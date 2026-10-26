@@ -18,6 +18,7 @@ public final class TorrentSafCancellationWireTest {
     @Test
     public void cancellationNeverWaitsForReplyParcel() throws Exception {
         final long[] received = new long[1];
+        final long[] retired = new long[1];
         final int[] calls = new int[1];
         Binder endpoint = new Binder() {
             @Override
@@ -25,16 +26,20 @@ public final class TorrentSafCancellationWireTest {
                 data.enforceInterface("org.openi2pd.router.ITorrentSafStorage");
                 assertEquals(IBinder.FLAG_ONEWAY, flags & IBinder.FLAG_ONEWAY);
                 assertNull(reply);
-                if (calls[0]++ == 0)
+                if (calls[0] == 0)
                     received[0] = data.readLong();
+                else
+                    retired[0] = data.readLong();
+                calls[0]++;
                 return true;
             }
         };
         // An un-attached Binder deliberately forces the generated remote proxy path.
         ITorrentSafStorage proxy = ITorrentSafStorage.Stub.asInterface(endpoint);
         proxy.cancel(74231L);
-        proxy.retire();
+        proxy.retire(9L);
         assertEquals(74231L, received[0]);
+        assertEquals(9L, retired[0]);
         assertEquals(2, calls[0]);
     }
 }

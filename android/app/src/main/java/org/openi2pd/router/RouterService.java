@@ -24,6 +24,7 @@ import android.app.PendingIntent;
 import android.app.Service;
 import android.content.Context;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.content.pm.ServiceInfo;
 import android.net.ConnectivityManager;
 import android.net.wifi.WifiManager;
@@ -48,6 +49,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.UnaryOperator;
 
 /**
  * Started and bound router service.
@@ -65,6 +67,22 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * listener unregisters, while the daemon and notification keep running until
  * an explicit stop (or until the scheduled graceful-stop deadline enqueues
  * the native stop on the worker).</p>
+ *
+ * <p><b>Run-state ownership:</b> the durable intent lives in
+ * {@link RouterRunState} inside the {@code router_state} preference file
+ * ({@code run_phase}, {@code graceful_deadline_epoch_ms},
+ * {@code run_generation}, plus the legacy {@code should_run} mirror). The
+ * graceful deadline is therefore wall-clock data, not process memory: if the
+ * process dies during a drain, the next owner either finishes the stop (the
+ * deadline passed) or re-arms the remaining window instead of resurrecting a
+ * router that was already stopping. {@code Stopped} never starts the daemon.</p>
+ *
+ * <p><b>Task removal:</b> the manifest declares
+ * {@code android:stopWithTask="false"}, so {@link #onTaskRemoved(Intent)} is a
+ * UI event and must not stop the daemon or touch the run state;
+ * {@link #onDestroy()} is the only place that drops the remaining main-handler
+ * messages (including SAF deadlines), so a destroyed owner cannot be kept
+ * reachable by a queued callback.</p>
  *
  * <p><b>Process model:</b> the service is intentionally same-process and not
  * exported. {@link LocalBinder} is therefore an in-process Binder, not AIDL.
@@ -115,8 +133,18 @@ public class RouterService extends Service {
     private static final int LOG_FETCH_LIMIT = 200;
     private static final int MAX_LOG_ENTRIES = 1000;
     private static final int MAX_ERROR_TEXT = 4096;
+    /** Bounded diagnostics counter for task-removal events; never a run-state write. */
+    private static final int MAX_TASK_REMOVED_EVENTS = 20;
     private static final String PREFERENCES = "router_state";
-    private static final String PREF_SHOULD_RUN = "should_run";
+    /**
+     * Distinct published/logged state used when a restore could not reach the
+     * foreground. It is prefixed to the snapshot error text until the single
+     * bounded retry runs, so the UI never shows a healthy router that does not
+     * exist.
+     */
+    private static final String RESTORE_DEFERRED = "restoreDeferred";
+    private static final String RESTORE_DEFERRED_NOTE = RESTORE_DEFERRED
+            + ": the persisted run state could not be restored yet; the next bind retries once";
     /**
      * Coarse process-wide flag for components that cannot bind (Quick Settings
      * tile, deprecated connectivity receiver). It only mirrors the daemon
@@ -169,6 +197,26 @@ public class RouterService extends Service {
     /** Bumped by clearLogs(); an older poll must not republish the cleared list. */
     private volatile long logsEpoch;
     private volatile DaemonWrapper.State lastNotificationState;
+    /**
+     * Serialises the read-modify-write of the persisted run state so a
+     * generation increment cannot be lost between a main-thread command and the
+     * daemon state listener.
+     */
+    private final Object runStateLock = new Object();
+    /**
+     * One-shot marker set when a restore could not enter the foreground. The
+     * next bind consumes it exactly once, so no unbounded retry loop exists.
+     */
+    private volatile boolean restoreRetryPending;
+    /**
+     * Remaining drain delay that must be re-armed once a restored daemon
+     * reports {@code startedOkay}; {@code -1} when no resume is pending. The
+     * native deadline lives only in {@link DaemonWrapper}, so a fresh process
+     * has to re-arm it after the asynchronous start completes.
+     */
+    private volatile long pendingDrainResumeMillis = -1L;
+    /** Main-thread diagnostics counter; bounded so a swipe loop cannot spam the log. */
+    private int taskRemovedEvents;
 
     private final Runnable pollTick = new Runnable() {
         @Override
@@ -212,6 +260,10 @@ public class RouterService extends Service {
      * only enqueues the native stop on the single-thread worker. This replaces
      * the legacy timer thread and keeps every JNI-visible transition on the
      * service command path.
+     *
+     * <p>The terminal intent is persisted before the native stop, so a process
+     * death between this callback and the native call cannot resurrect the
+     * router: the next owner sees an expired or stopped run state.</p>
      */
     private final Runnable gracefulStopExpired = () -> {
         if (destroyed) {
@@ -219,9 +271,17 @@ public class RouterService extends Service {
         }
         enqueueControl(() -> {
             DaemonWrapper local = daemon;
-            if (local != null && local.isGracefulShutdownScheduled()) {
-                local.stopDaemon();
+            if (local == null) {
+                return;
             }
+            long now = wallClockNow();
+            boolean drainExpired = readRunState().isDrainExpired(now);
+            if (!local.isGracefulShutdownScheduled() && !drainExpired) {
+                // A cancel, an explicit start or a restart removed the drain.
+                return;
+            }
+            persistStopped();
+            local.stopDaemon();
         });
     };
 
@@ -236,21 +296,39 @@ public class RouterService extends Service {
             routerRunning = newState.isStartedOkay();
             if (newState == DaemonWrapper.State.stopped) {
                 mainHandler.removeCallbacks(gracefulStopExpired);
+                pendingDrainResumeMillis = -1L;
                 if (!restartInProgress.get()) {
                     releaseMulticastLock();
                 }
             } else if (newState == DaemonWrapper.State.startFailed) {
                 releaseMulticastLock();
+                if (pendingDrainResumeMillis >= 0L) {
+                    // A drain cannot be re-armed against a daemon that never
+                    // started. The persisted Draining phase stays in place so
+                    // the next owner decides once, from the wall-clock
+                    // deadline, instead of retrying in a loop.
+                    pendingDrainResumeMillis = -1L;
+                    markRestoreDeferred("daemon start failed during a restored drain");
+                }
+            }
+            if (newState == DaemonWrapper.State.startedOkay
+                    && pendingDrainResumeMillis >= 0L) {
+                long resume = pendingDrainResumeMillis;
+                pendingDrainResumeMillis = -1L;
+                // The start is asynchronous, so the drain is re-armed here
+                // rather than right after startDaemon(), where the wrapper is
+                // still in "starting" and would stop the router immediately.
+                enqueueControl(() -> beginGracefulShutdownOnWorker(resume));
             }
             if (newState == DaemonWrapper.State.stopped && !destroyed && !restartInProgress.get()) {
                 // Stop, graceful-stop expiration and a failed restart all
-                // converge here. An explicit restart keeps the flag set
+                // converge here. An explicit restart keeps the intent set
                 // until the new start completes, so stopIfIdle() cannot
                 // tear the service down between the stop and start
-                // phases. During service destruction the flag is left
+                // phases. During service destruction the intent is left
                 // intact so START_STICKY can restore a router that the
                 // system stopped for resource pressure.
-                setShouldRun(false);
+                persistStopped();
             }
             mainHandler.post(() -> {
                 if (destroyed || !ServiceOwnerEpoch.isCurrent(ownerEpoch)) {
@@ -284,7 +362,10 @@ public class RouterService extends Service {
         TorrentSafStorage.initialize(appContext);
         notificationManager =
                 (NotificationManager) appContext.getSystemService(NOTIFICATION_SERVICE);
-        createNotificationChannel();
+        // The channel is created and verified inside ensureForeground(); a
+        // failure there fails the command closed instead of being swallowed
+        // here, where a missing channel would silently disable the foreground
+        // service for the rest of the process lifetime.
 
         // All owners share one process-local FIFO. The owner gate fences stale
         // submissions; NativeCallGuard still serializes JNI entry itself.
@@ -302,16 +383,38 @@ public class RouterService extends Service {
         lastSnapshot = localSnapshot();
         routerRunning = false;
 
-        if (readShouldRun()) {
-            // Sticky service restart or a fresh bind after process death. If
-            // the process is in a state where a foreground service may not be
-            // started, leave the flag set: the next visible launch will retry.
+        // Reconcile the durable run intent exactly once per owner creation.
+        // Stopped never starts; a drain whose deadline passed while the
+        // process was gone becomes the terminal stop it was heading for; a
+        // drain still inside its window is re-armed with the remaining
+        // wall-clock delay.
+        RestorePlan plan = reconcilePersistedRunState();
+        switch (plan.action()) {
+        case STAY_STOPPED -> {
+            // Nothing to restore. A binding UI can still start the router.
+        }
+        case START_RUNNING -> {
             if (ensureForeground()) {
                 enqueueControl(this::startDaemonWithMulticast);
             } else {
+                // Sticky restart or a fresh bind after process death. If the
+                // process is in a state where a foreground service may not be
+                // started, keep the persisted intent and publish the deferred
+                // restore so the next bind retries once.
                 Log.w(TAG, "foreground notification unavailable during restore");
+                markRestoreDeferred("foreground unavailable");
                 stopSelf();
             }
+        }
+        case RESUME_DRAIN -> {
+            if (ensureForeground()) {
+                startDrainRestore(plan.remainingDrainMs());
+            } else {
+                Log.w(TAG, "foreground notification unavailable while resuming a drain");
+                markRestoreDeferred("foreground unavailable");
+                stopSelf();
+            }
+        }
         }
     }
 
@@ -330,28 +433,35 @@ public class RouterService extends Service {
         // fails compilation here instead of being silently ignored.
         switch (command) {
         case RouterCommand.Restore ignored -> {
-            // START_STICKY restart. Without a persisted "should run" flag
-            // there is nothing to restore.
-            if (!readShouldRun()) {
+            // START_STICKY restart. Reconcile the durable run state: a stopped
+            // router is never restarted, a finished drain stays stopped and a
+            // live drain is re-armed with its remaining wall-clock delay.
+            RestorePlan plan = reconcilePersistedRunState();
+            if (plan.action() == RestoreAction.STAY_STOPPED) {
                 stopSelfResult(startId);
                 return START_NOT_STICKY;
             }
             if (!ensureForegroundOrFail(startId)) {
+                markRestoreDeferred("foreground unavailable");
                 return START_NOT_STICKY;
             }
-            enqueueControl(this::startDaemonWithMulticast);
+            if (plan.action() == RestoreAction.RESUME_DRAIN) {
+                startDrainRestore(plan.remainingDrainMs());
+            } else {
+                enqueueControl(this::startDaemonWithMulticast);
+            }
             return START_STICKY;
         }
         case RouterCommand.Start ignored -> {
             if (!ensureForegroundOrFail(startId)) {
                 return START_NOT_STICKY;
             }
-            setShouldRun(true);
+            beginRunRequest();
             enqueueControl(this::startDaemonWithMulticast);
         }
         case RouterCommand.Stop ignored -> {
-            setShouldRun(false);
-            mainHandler.removeCallbacks(gracefulStopExpired);
+            persistStopped();
+            clearGracefulDeadline();
             // A startForegroundService() caller expects startForeground()
             // or stopSelf() within five seconds. If the notification cannot
             // be installed, fail the command instead of leaving the service
@@ -372,21 +482,16 @@ public class RouterService extends Service {
             // Persist intent before the worker starts the two-phase restart,
             // so a process death cannot leave a non-sticky half-restarted
             // service behind.
-            setShouldRun(true);
-            mainHandler.removeCallbacks(gracefulStopExpired);
+            beginRunRequest();
             enqueueControl(this::performRestart);
         }
         case RouterCommand.GracefulStop ignored -> {
             if (!ensureForegroundOrFail(startId)) {
                 return START_NOT_STICKY;
             }
-            setShouldRun(true);
-            beginGracefulStopCommand();
+            beginGracefulStopRequest();
         }
-        case RouterCommand.CancelGracefulStop ignored -> {
-            mainHandler.removeCallbacks(gracefulStopExpired);
-            enqueueControl(daemon::cancelGracefulShutdown);
-        }
+        case RouterCommand.CancelGracefulStop ignored -> cancelGracefulStopRequest();
         case RouterCommand.ReloadTunnels ignored -> enqueueControl(daemon::reloadTunnelsConfigs);
         case RouterCommand.Reseed ignored ->
             enqueueControl(() -> {
@@ -451,7 +556,7 @@ public class RouterService extends Service {
     }
 
     /**
-     * Stop only this start id when neither the persisted run flag nor a
+     * Stop only this start id when neither the persisted run intent nor a
      * started daemon still needs the service. This is the command-scoped
      * counterpart of {@link #stopIfIdle()} and must not tear down a restart
      * that is still between its two phases.
@@ -474,6 +579,28 @@ public class RouterService extends Service {
         listeners.clear();
         mainHandler.removeCallbacks(pollTick);
         return false;
+    }
+
+    /**
+     * The manifest contract is {@code android:stopWithTask="false"}, so removing
+     * the task is a UI event and not a router command. The foreground service,
+     * the daemon and the persisted run state are left untouched; only the
+     * notification is republished and one bounded diagnostics counter moves.
+     * An OEM that force-stops the process still relies on START_STICKY plus the
+     * persisted run state, never on this callback.
+     */
+    @Override
+    public void onTaskRemoved(Intent rootIntent) {
+        if (!destroyed) {
+            if (taskRemovedEvents < MAX_TASK_REMOVED_EVENTS) {
+                taskRemovedEvents++;
+                Log.i(TAG, "task removed; the router keeps running ("
+                        + taskRemovedEvents + "/" + MAX_TASK_REMOVED_EVENTS + ")");
+            }
+            // Refresh the notification text without changing any state.
+            publishNotification();
+        }
+        super.onTaskRemoved(rootIntent);
     }
 
     @Override
@@ -502,6 +629,7 @@ public class RouterService extends Service {
         safWorker.shutdownNow();
         mainHandler.removeCallbacks(pollTick);
         mainHandler.removeCallbacks(gracefulStopExpired);
+        pendingDrainResumeMillis = -1L;
         if (daemon != null) {
             daemon.removeStateChangeListener(daemonStateListener);
         }
@@ -509,10 +637,16 @@ public class RouterService extends Service {
         // unconditionally also cancels a start that is still in progress:
         // checking only isStartedOkay() would let that start thread finish
         // after the service and its notification are gone. The persisted
-        // should-run flag is intentionally not cleared, so START_STICKY can
+        // run state is intentionally not cleared, so START_STICKY can
         // still restore the router after a system-initiated destruction.
         releaseMulticastLock();
         stopForegroundCompat();
+        // Destruction only: drop every remaining main-handler message so the
+        // SAF import/export deadlines and their completion posts cannot keep a
+        // destroyed service (or the Activity that called it) reachable. This
+        // must never run on a plain stop, where queued work still has to
+        // finish and report its outcome.
+        mainHandler.removeCallbacksAndMessages(null);
         super.onDestroy();
     }
 
@@ -525,8 +659,8 @@ public class RouterService extends Service {
     @Override
     public void onTimeout(int startId, int fgsType) {
         Log.w(TAG, "foreground service timeout for type " + fgsType);
-        setShouldRun(false);
-        mainHandler.removeCallbacks(gracefulStopExpired);
+        persistStopped();
+        clearGracefulDeadline();
         enqueueControl(daemon::stopDaemon);
         // The platform requires a timed-out dataSync service to stop itself.
         // onDestroy repeats the native stop request, which is idempotent.
@@ -554,6 +688,9 @@ public class RouterService extends Service {
             }
             listener.onRouterSnapshot(snapshot);
             listener.onRouterLogs(lastLogs);
+            // A bind is the documented retry point for a restore that could not
+            // reach the foreground; the marker allows exactly one attempt.
+            retryDeferredRestore();
             pollNow();
         });
     }
@@ -589,15 +726,15 @@ public class RouterService extends Service {
                 Log.w(TAG, "unable to start foreground notification");
                 return;
             }
-            setShouldRun(true);
+            beginRunRequest();
             enqueueControl(this::startDaemonWithMulticast);
         });
     }
 
     public void stopRouter() {
         runOnMain(() -> {
-            setShouldRun(false);
-            mainHandler.removeCallbacks(gracefulStopExpired);
+            persistStopped();
+            clearGracefulDeadline();
             enqueueControl(daemon::stopDaemon);
         });
     }
@@ -608,23 +745,22 @@ public class RouterService extends Service {
                 Log.w(TAG, "unable to start foreground notification");
                 return;
             }
-            setShouldRun(true);
-            mainHandler.removeCallbacks(gracefulStopExpired);
+            beginRunRequest();
             enqueueControl(this::performRestart);
         });
     }
 
     /**
-     * Stop and start the daemon as one explicit user action. The run flag is
-     * set before the stop phase, and the stopped transition is ignored while
-     * restartInProgress is set, so stopIfIdle() cannot stop the service
-     * between the two phases.
+     * Stop and start the daemon as one explicit user action. The run intent is
+     * persisted by the caller before this reaches the worker, and the stopped
+     * transition is ignored while restartInProgress is set, so stopIfIdle()
+     * cannot stop the service between the two phases.
      */
     private void performRestart() {
         restartInProgress.set(true);
         acquireMulticastLock();
         mainHandler.removeCallbacks(gracefulStopExpired);
-        setShouldRun(true);
+        pendingDrainResumeMillis = -1L;
         boolean restarted = false;
         try {
             restarted = daemon.restartDaemon();
@@ -640,7 +776,7 @@ public class RouterService extends Service {
             if (daemon.getState() == DaemonWrapper.State.stopped) {
                 // Do not leave a sticky service whose daemon is stopped and
                 // has no start thread left to complete.
-                setShouldRun(false);
+                persistStopped();
             }
             Log.w(TAG, "restart did not complete");
         }
@@ -652,35 +788,116 @@ public class RouterService extends Service {
                 Log.w(TAG, "unable to start foreground notification");
                 return;
             }
-            setShouldRun(true);
-            beginGracefulStopCommand();
+            beginGracefulStopRequest();
         });
     }
 
     /**
-     * Stop accepting transit tunnels and schedule the service-owned deadline.
-     * Must be called on the main thread; the native call itself runs on the
-     * service worker.
+     * Persist an explicit start intent and drop any graceful-stop deadline.
+     *
+     * <p>Starting while a drain is in progress must also cancel the native
+     * graceful shutdown; otherwise the deadline would stop a router the
+     * operator just asked to keep running. The cancel is enqueued before the
+     * caller's start command, so the control worker keeps its ordering.</p>
      */
-    private void beginGracefulStopCommand() {
+    private void beginRunRequest() {
+        RouterRunState previous = readRunState();
         mainHandler.removeCallbacks(gracefulStopExpired);
+        pendingDrainResumeMillis = -1L;
+        persistRunState(previous.running(wallClockNow()));
+        if (previous.isDraining()) {
+            enqueueControl(() -> {
+                DaemonWrapper local = daemon;
+                if (local != null) {
+                    local.cancelGracefulShutdown();
+                }
+            });
+        }
+    }
+
+    /** Persist the intent to stop when draining and schedule the deadline. */
+    private void beginGracefulStopRequest() {
+        if (readRunState().phase() == RouterRunState.Phase.Stopped) {
+            // No router is running: stay sticky only until the native call
+            // decides to stop (or starts a drain); a failed call ends in the
+            // stopped transition, which persists Stopped again.
+            persistRunning();
+        }
+        clearGracefulDeadline();
+        beginGracefulStopCommand();
+    }
+
+    /**
+     * Cancel a drain. A stacked or repeated cancel never resurrects a stopped
+     * router, and the persisted phase only moves Draining to Running.
+     */
+    private void cancelGracefulStopRequest() {
+        clearGracefulDeadline();
+        RouterRunState current = readRunState();
+        if (current.isDraining()) {
+            persistRunState(current.cancelGraceful());
+        }
         enqueueControl(() -> {
-            long delay = daemon.beginGracefulShutdown(DaemonWrapper.GRACEFUL_STOP_DELAY_MILLIS);
-            if (delay > 0L) {
-                mainHandler.postDelayed(gracefulStopExpired, delay);
-            } else if (daemon.isGracefulShutdownScheduled()) {
-                // The previous deadline expired while this command was being
-                // queued; do not lose the terminal stop.
-                enqueueControl(daemon::stopDaemon);
+            DaemonWrapper local = daemon;
+            if (local != null) {
+                local.cancelGracefulShutdown();
             }
         });
     }
 
+    /**
+     * Stop accepting transit tunnels and arm the service-owned deadline.
+     *
+     * <p>The deadline is persisted before the delayed callback is posted, so a
+     * process death during the drain is recoverable from the wall clock. If the
+     * window already closed while this command was queued, the terminal stop is
+     * persisted first and the native stop is issued immediately; a finished
+     * drain is never turned back into a running router.</p>
+     */
+    private void beginGracefulStopCommand() {
+        long requestedDelay = DaemonWrapper.GRACEFUL_STOP_DELAY_MILLIS;
+        enqueueControl(() -> beginGracefulShutdownOnWorker(requestedDelay));
+    }
+
+    /** Worker-side counterpart of {@link #beginGracefulStopCommand()}. */
+    private void beginGracefulShutdownOnWorker(long requestedDelayMs) {
+        DaemonWrapper local = daemon;
+        if (local == null) {
+            return;
+        }
+        long delay = local.beginGracefulShutdown(Math.max(0L, requestedDelayMs));
+        if (delay > 0L) {
+            long now = wallClockNow();
+            long deadline = RouterRunState.sanitizeDeadline(now + delay, now);
+            if (deadline <= now) {
+                // Corrupt or already-closed window: keep the terminal stop.
+                persistStopped();
+                enqueueControl(this::stopDaemonOnWorker);
+                return;
+            }
+            persistDraining(deadline);
+            mainHandler.postDelayed(gracefulStopExpired, deadline - now);
+            return;
+        }
+        // Either the router drained immediately or a previous deadline had
+        // already expired. Persist the terminal intent before the stop so a
+        // process death cannot resurrect a finished drain.
+        persistStopped();
+        if (local.isGracefulShutdownScheduled()) {
+            enqueueControl(this::stopDaemonOnWorker);
+        }
+    }
+
+    /** Enqueue the idempotent native stop; the daemon may already be gone. */
+    private void stopDaemonOnWorker() {
+        DaemonWrapper local = daemon;
+        if (local != null) {
+            local.stopDaemon();
+        }
+    }
+
     public void cancelGracefulStop() {
-        runOnMain(() -> {
-            mainHandler.removeCallbacks(gracefulStopExpired);
-            enqueueControl(daemon::cancelGracefulShutdown);
-        });
+        runOnMain(this::cancelGracefulStopRequest);
     }
 
     public void reloadTunnels() {
@@ -690,14 +907,16 @@ public class RouterService extends Service {
     /**
      * Request a NetDb reseed without restarting the router.
      *
-     * <p>The native call is synchronous and single-flight, so only one request
-     * is outstanding at a time and it runs on the service worker, ordered with
-     * stop and reload. The callback is invoked on the main thread with
-     * {@code true} only when the request was issued.</p>
+     * <p>The native call is single-flight and non-blocking: it starts the owned
+     * NetDb job and returns the typed outcome, so the service worker stays
+     * ordered with stop and reload. The callback is invoked on the main thread
+     * with {@code started}, {@code already-running}, {@code disabled},
+     * {@code accepted}, {@code busy}, {@code unavailable} or
+     * {@code failed}.</p>
      */
-    public void requestReseed(java.util.function.Consumer<Boolean> callback) {
+    public void requestReseed(java.util.function.Consumer<String> callback) {
         if (destroyed || !reseedInFlight.compareAndSet(false, true)) {
-            mainHandler.post(() -> callback.accept(false));
+            mainHandler.post(() -> callback.accept("busy"));
             return;
         }
         Executor executor = worker;
@@ -706,21 +925,159 @@ public class RouterService extends Service {
                 throw new RejectedExecutionException();
             }
             executor.execute(() -> {
-                boolean issued = false;
+                String outcome = "failed";
                 try {
                     DaemonWrapper local = daemon;
-                    issued = local != null && local.requestReseed();
+                    outcome = local == null ? "unavailable" : local.requestReseed();
                 } catch (RuntimeException | LinkageError error) {
-                    issued = false;
+                    outcome = "failed";
                 } finally {
                     reseedInFlight.set(false);
                 }
-                boolean result = issued;
+                String result = outcome;
                 mainHandler.post(() -> callback.accept(result));
             });
         } catch (RejectedExecutionException error) {
             reseedInFlight.set(false);
-            mainHandler.post(() -> callback.accept(false));
+            mainHandler.post(() -> callback.accept("unavailable"));
+        }
+    }
+
+    /** Bounded reseed status record on the control worker; empty when stopped. */
+    public void readReseedStatus(java.util.function.Consumer<String> callback) {
+        runOnWorker(() -> {
+            String status = "";
+            try {
+                DaemonWrapper local = daemon;
+                status = local == null ? "" : local.getReseedStatus();
+            } catch (RuntimeException | LinkageError error) {
+                status = "";
+            }
+            String result = status;
+            mainHandler.post(() -> callback.accept(result));
+        }, () -> callback.accept(""));
+    }
+
+    /** Configured tunnel rows on the control worker; empty when stopped. */
+    public void readTunnelServices(java.util.function.Consumer<String> callback) {
+        runOnWorker(() -> {
+            String rows = "";
+            try {
+                DaemonWrapper local = daemon;
+                rows = local == null ? "" : local.getTunnelServices();
+            } catch (RuntimeException | LinkageError error) {
+                rows = "";
+            }
+            String result = rows;
+            mainHandler.post(() -> callback.accept(result));
+        }, () -> callback.accept(""));
+    }
+
+    /** Start or stop one configured tunnel; the callback receives the outcome token. */
+    public void tunnelCommand(String name, boolean start, java.util.function.Consumer<String> callback) {
+        if (destroyed || !RuntimeAdminPolicy.isValidTunnelName(name)) {
+            mainHandler.post(() -> callback.accept("invalid"));
+            return;
+        }
+        runOnWorker(() -> {
+            String outcome = "failed";
+            try {
+                DaemonWrapper local = daemon;
+                outcome = local == null ? "unavailable"
+                                        : (start ? local.startTunnel(name) : local.stopTunnel(name));
+            } catch (RuntimeException | LinkageError error) {
+                outcome = "failed";
+            }
+            String result = outcome;
+            mainHandler.post(() -> callback.accept(result));
+        }, () -> callback.accept("unavailable"));
+    }
+
+    /** Add/replace one address-book name; the callback receives the outcome token. */
+    public void addAddressChecked(
+            String name, String destination, boolean replace,
+            java.util.function.Consumer<String> callback) {
+        runOnWorker(() -> {
+            String outcome = "failed";
+            try {
+                DaemonWrapper local = daemon;
+                outcome = local == null ? "unavailable"
+                                        : local.addAddressChecked(name, destination, replace);
+            } catch (RuntimeException | LinkageError error) {
+                outcome = "failed";
+            }
+            String result = outcome;
+            mainHandler.post(() -> callback.accept(result));
+        }, () -> callback.accept("unavailable"));
+    }
+
+    /** Address-book subscription sources, one bounded URL per line. */
+    public void readSubscriptions(java.util.function.Consumer<String> callback) {
+        runOnWorker(() -> {
+            String rows = "";
+            try {
+                DaemonWrapper local = daemon;
+                rows = local == null ? "" : local.getSubscriptions();
+            } catch (RuntimeException | LinkageError error) {
+                rows = "";
+            }
+            String result = rows;
+            mainHandler.post(() -> callback.accept(result));
+        }, () -> callback.accept(""));
+    }
+
+    /** Add or remove one subscription source; the callback receives the outcome token. */
+    public void subscriptionCommand(
+            String url, boolean add, java.util.function.Consumer<String> callback) {
+        if (destroyed || !RuntimeAdminPolicy.isValidSubscriptionUrl(url)) {
+            mainHandler.post(() -> callback.accept("invalid"));
+            return;
+        }
+        runOnWorker(() -> {
+            String outcome = "failed";
+            try {
+                DaemonWrapper local = daemon;
+                outcome = local == null ? "unavailable"
+                                        : (add ? local.addSubscription(url) : local.removeSubscription(url));
+            } catch (RuntimeException | LinkageError error) {
+                outcome = "failed";
+            }
+            String result = outcome;
+            mainHandler.post(() -> callback.accept(result));
+        }, () -> callback.accept("unavailable"));
+    }
+
+    /** Ban or unban one base64 router hash; the callback receives the outcome token. */
+    public void banCommand(String hash, boolean ban, java.util.function.Consumer<String> callback) {
+        if (destroyed || !RuntimeAdminPolicy.isValidRouterHash(hash)) {
+            mainHandler.post(() -> callback.accept("invalid"));
+            return;
+        }
+        runOnWorker(() -> {
+            String outcome = "failed";
+            try {
+                DaemonWrapper local = daemon;
+                outcome = local == null ? "unavailable"
+                                        : (ban ? local.banRouter(hash) : local.unbanRouter(hash));
+            } catch (RuntimeException | LinkageError error) {
+                outcome = "failed";
+            }
+            String result = outcome;
+            mainHandler.post(() -> callback.accept(result));
+        }, () -> callback.accept("unavailable"));
+    }
+
+    /** Run one bounded native command on the control worker or report unavailability. */
+    private void runOnWorker(Runnable work, Runnable unavailable) {
+        Executor executor = worker;
+        if (destroyed || executor == null) {
+            mainHandler.post(unavailable);
+            return;
+        }
+        try {
+            executor.execute(work);
+        } catch (RejectedExecutionException error) {
+            mainHandler.post(unavailable);
         }
     }
 
@@ -785,10 +1142,11 @@ public class RouterService extends Service {
     }
 
     /**
-     * True when the process has never persisted a run state. A fresh install
-     * auto-starts the router once; after an explicit stop, or after the
-     * service has started at boot/from the tile, a later Activity launch must
-     * not silently restart a deliberately stopped daemon.
+     * True when the persisted run intent is anything other than a stopped
+     * router. A fresh install has no record at all and auto-starts once; after
+     * an explicit stop, a finished drain, or the service having started at
+     * boot/from the tile, a later Activity launch must not silently restart a
+     * deliberately stopped daemon.
      */
     public static boolean isStartRequested(Context context) {
         if (context == null)
@@ -796,8 +1154,7 @@ public class RouterService extends Service {
         Context appContext = context.getApplicationContext();
         if (appContext == null)
             appContext = context;
-        return appContext.getSharedPreferences(PREFERENCES, MODE_PRIVATE)
-                .getBoolean(PREF_SHOULD_RUN, false);
+        return loadRunState(appContext).shouldRun();
     }
 
     static boolean hasPersistedRunState(Context context) {
@@ -808,7 +1165,8 @@ public class RouterService extends Service {
         if (appContext == null) {
             appContext = context;
         }
-        return appContext.getSharedPreferences(PREFERENCES, MODE_PRIVATE).contains(PREF_SHOULD_RUN);
+        return RouterRunState.hasPersisted(
+                appContext.getSharedPreferences(PREFERENCES, MODE_PRIVATE));
     }
 
     private static boolean sendCommand(Context context, String action, boolean foreground) {
@@ -899,6 +1257,7 @@ public class RouterService extends Service {
 
         RouterSnapshot snapshot;
         long grace = local.getGracefulStopRemainingMillis();
+        errorText = deferredRestoreErrorText(errorText);
         if (rawStatus == null || rawStatus.isEmpty()) {
             snapshot = RouterSnapshot.empty(state, errorText, local.getDaemonStartResult(), grace);
         } else {
@@ -986,18 +1345,21 @@ public class RouterService extends Service {
     private RouterSnapshot localSnapshot() {
         DaemonWrapper local = daemon;
         if (local == null) {
-            return RouterSnapshot.empty(DaemonWrapper.State.uninitialized, "", "", 0L);
+            return RouterSnapshot.empty(DaemonWrapper.State.uninitialized,
+                    deferredRestoreErrorText(""), "", 0L);
         }
-        return RouterSnapshot.empty(local.getState(), describe(local.getLastThrowable()),
+        return RouterSnapshot.empty(local.getState(),
+                deferredRestoreErrorText(describe(local.getLastThrowable())),
                 local.getDaemonStartResult(), local.getGracefulStopRemainingMillis());
     }
 
     private RouterSnapshot localSnapshotWithError(String errorText) {
+        String merged = deferredRestoreErrorText(errorText);
         DaemonWrapper local = daemon;
         if (local == null) {
-            return RouterSnapshot.empty(DaemonWrapper.State.uninitialized, errorText, "", 0L);
+            return RouterSnapshot.empty(DaemonWrapper.State.uninitialized, merged, "", 0L);
         }
-        return RouterSnapshot.empty(local.getState(), errorText, local.getDaemonStartResult(),
+        return RouterSnapshot.empty(local.getState(), merged, local.getDaemonStartResult(),
                 local.getGracefulStopRemainingMillis());
     }
 
@@ -1009,6 +1371,13 @@ public class RouterService extends Service {
         if (foregroundShown) {
             updateNotification();
             return true;
+        }
+        if (!ensureNotificationChannel()) {
+            // A post to a missing channel is dropped, so the service would run
+            // without its notification. Fail closed instead of disabling the
+            // foreground service silently for the rest of the process.
+            Log.e(TAG, "notification channel unavailable; refusing to run the router");
+            return false;
         }
         try {
             Notification notification = buildNotification();
@@ -1035,6 +1404,24 @@ public class RouterService extends Service {
         }
     }
 
+    /**
+     * Create the notification channel when it is missing and verify it exists.
+     * The create is retried exactly once here rather than being swallowed at
+     * service creation, where a transient failure would leave the foreground
+     * service permanently unavailable.
+     */
+    private boolean ensureNotificationChannel() {
+        if (notificationManager == null) {
+            Log.e(TAG, "notification manager unavailable");
+            return false;
+        }
+        if (notificationManager.getNotificationChannel(CHANNEL_ID) != null) {
+            return true;
+        }
+        createNotificationChannel();
+        return notificationManager.getNotificationChannel(CHANNEL_ID) != null;
+    }
+
     private void updateNotification() {
         if (!foregroundShown || destroyed || notificationManager == null) {
             return;
@@ -1045,11 +1432,25 @@ public class RouterService extends Service {
         if (state == lastNotificationState) {
             return;
         }
+        publishNotification();
+    }
+
+    /**
+     * Republish the foreground notification unconditionally. Used when the
+     * daemon state did not change (task removal) but the notification must be
+     * kept current; the call is bounded and never touches the run state.
+     */
+    private void publishNotification() {
+        if (!foregroundShown || destroyed || notificationManager == null) {
+            return;
+        }
         try {
             notificationManager.notify(NOTIFICATION_ID, buildNotification());
-            lastNotificationState = state;
+            DaemonWrapper local = daemon;
+            lastNotificationState =
+                    local == null ? DaemonWrapper.State.uninitialized : local.getState();
         } catch (RuntimeException e) {
-            Log.w(TAG, "unable to update router notification", e);
+            Log.w(TAG, "unable to publish router notification", e);
         }
     }
 
@@ -1065,6 +1466,8 @@ public class RouterService extends Service {
                         .setSmallIcon(R.drawable.ic_logo_monochrome)
                         .setPriority(NotificationCompat.PRIORITY_DEFAULT)
                         .setCategory(NotificationCompat.CATEGORY_SERVICE)
+                        .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
+                        .setOnlyAlertOnce(true)
                         .setTicker(text)
                         .setWhen(System.currentTimeMillis())
                         .setContentTitle(getText(R.string.app_name))
@@ -1074,6 +1477,18 @@ public class RouterService extends Service {
                                         new Intent(this, RouterService.class)
                                                 .setAction(ACTION_STOP),
                                         FLAG_IMMUTABLE | FLAG_UPDATE_CURRENT));
+        // One drain action, never both: a running router offers Graceful stop,
+        // an already-draining one offers Cancel. Keeping the stale label would
+        // let the notification promise an action the drain state rejects.
+        boolean draining = state == DaemonWrapper.State.gracefulShutdownInProgress;
+        builder.addAction(R.drawable.ic_graceful,
+                getText(draining ? R.string.action_cancel_graceful_stop
+                                 : R.string.action_graceful_stop),
+                PendingIntent.getService(this, draining ? 3 : 2,
+                        new Intent(this, RouterService.class)
+                                .setAction(draining ? ACTION_CANCEL_GRACEFUL_STOP
+                                                    : ACTION_GRACEFUL_STOP),
+                        FLAG_IMMUTABLE | FLAG_UPDATE_CURRENT));
 
         Intent launch = getPackageManager().getLaunchIntentForPackage(getPackageName());
         if (launch != null) {
@@ -1091,11 +1506,15 @@ public class RouterService extends Service {
         }
         try {
             NotificationChannel channel = new NotificationChannel(
-                    CHANNEL_ID, getText(R.string.app_name), NotificationManager.IMPORTANCE_LOW);
+                    CHANNEL_ID, getText(R.string.notification_channel_name),
+                    NotificationManager.IMPORTANCE_LOW);
+            channel.setDescription(getString(R.string.notification_channel_description));
             channel.setLockscreenVisibility(Notification.VISIBILITY_PRIVATE);
             channel.setShowBadge(false);
             notificationManager.createNotificationChannel(channel);
         } catch (RuntimeException e) {
+            // ensureNotificationChannel() verifies the result and fails the
+            // foreground transition closed, so this is diagnostic only.
             Log.e(TAG, "unable to create notification channel", e);
         }
     }
@@ -1169,29 +1588,6 @@ public class RouterService extends Service {
             });
         } catch (RejectedExecutionException error) {
             mainHandler.post(() -> callback.accept(""));
-        }
-    }
-
-    /** Add/replace one validated address-book name on the control worker. */
-    public void addAddress(
-            String name, String destination, java.util.function.Consumer<Boolean> callback) {
-        Executor executor = worker;
-        try {
-            if (destroyed || executor == null)
-                throw new RejectedExecutionException();
-            executor.execute(() -> {
-                boolean result = false;
-                try {
-                    DaemonWrapper local = daemon;
-                    result = local != null && local.addAddress(name, destination);
-                } catch (RuntimeException | LinkageError error) {
-                    result = false;
-                }
-                boolean added = result;
-                mainHandler.post(() -> callback.accept(added));
-            });
-        } catch (RejectedExecutionException error) {
-            mainHandler.post(() -> callback.accept(false));
         }
     }
 
@@ -1283,6 +1679,52 @@ public class RouterService extends Service {
         }
     }
 
+    /**
+     * Persist or release a SAF payload tree off the main thread. Both
+     * operations commit the grant map to disk and may talk to the provider,
+     * so they must never run in an Activity or picker callback. The SAF worker
+     * owns the authority; the callback is delivered on the main thread and may
+     * be invoked after the calling view is destroyed.
+     */
+    public void selectPayloadTree(
+            String tunnel, String hash, android.net.Uri tree, java.util.function.Consumer<Boolean> callback) {
+        runSafGrantOperation(
+                () -> TorrentSafStorage.select(getApplicationContext(), tunnel, hash, tree), callback);
+    }
+
+    /** Release the persisted grant for one torrent payload. */
+    public void detachPayload(
+            String tunnel, String hash, java.util.function.Consumer<Boolean> callback) {
+        runSafGrantOperation(
+                () -> TorrentSafStorage.detach(getApplicationContext(), tunnel, hash), callback);
+    }
+
+    private void runSafGrantOperation(
+            java.util.concurrent.Callable<Boolean> operation, java.util.function.Consumer<Boolean> callback) {
+        if (destroyed || callback == null) {
+            if (callback != null) {
+                mainHandler.post(() -> callback.accept(false));
+            }
+            return;
+        }
+        try {
+            safWorker.execute(() -> {
+                boolean result = false;
+                try {
+                    result = Boolean.TRUE.equals(operation.call());
+                } catch (Exception ignored) {
+                    // A provider or preference failure is a typed false result.
+                }
+                boolean accepted = result;
+                if (!destroyed) {
+                    mainHandler.post(() -> callback.accept(accepted));
+                }
+            });
+        } catch (RejectedExecutionException error) {
+            mainHandler.post(() -> callback.accept(false));
+        }
+    }
+
     /** Reads only a user-granted content URI; JNI receives bytes, never its path. */
     public void importTorrent(
             int tunnel, android.net.Uri document, java.util.function.Consumer<String> callback) {
@@ -1298,7 +1740,10 @@ public class RouterService extends Service {
         Runnable cancel = cancellation::cancel;
         cancelTorrentImport = cancel;
         mainHandler.postDelayed(cancel, 20_000L);
-        Executor executor = worker;
+        // Import reads a provider and must not occupy the serialized daemon
+        // control lane used by start/stop/reseed. The SAF worker is the
+        // dedicated document lane; JNI still takes its own native-call guard.
+        Executor executor = safWorker != null ? safWorker : worker;
         try {
             if (executor == null)
                 throw new RejectedExecutionException();
@@ -1597,28 +2042,211 @@ public class RouterService extends Service {
     }
 
     private boolean readShouldRun() {
-        return getSharedPreferences(PREFERENCES, MODE_PRIVATE).getBoolean(PREF_SHOULD_RUN, false);
+        return readRunState().shouldRun();
     }
 
-    private void setShouldRun(boolean shouldRun) {
-        getSharedPreferences(PREFERENCES, MODE_PRIVATE)
-                .edit()
-                .putBoolean(PREF_SHOULD_RUN, shouldRun)
-                .apply();
+    // ---------------------------------------------------------------------
+    // Persisted run state
+    // ---------------------------------------------------------------------
+
+    private static long wallClockNow() {
+        return System.currentTimeMillis();
+    }
+
+    private SharedPreferences runStatePreferences() {
+        return getSharedPreferences(PREFERENCES, MODE_PRIVATE);
+    }
+
+    private static RouterRunState loadRunState(Context appContext) {
+        return RouterRunState.load(
+                appContext.getSharedPreferences(PREFERENCES, MODE_PRIVATE), wallClockNow());
+    }
+
+    /** Persisted run intent with the graceful deadline sanitised against now. */
+    private RouterRunState readRunState() {
+        return RouterRunState.load(runStatePreferences(), wallClockNow());
+    }
+
+    /**
+     * Apply one durable run-state transition.
+     *
+     * <p>The read-modify-write is serialised so the generation truly increases
+     * even when a main-thread command races the daemon state listener.</p>
+     */
+    private void updateRunState(UnaryOperator<RouterRunState> transition) {
+        synchronized (runStateLock) {
+            RouterRunState next = transition.apply(readRunState());
+            SharedPreferences.Editor editor = runStatePreferences().edit();
+            next.save(editor);
+            editor.apply();
+        }
+    }
+
+    /** Persist an already computed state (used when the caller started from a loaded value). */
+    private void persistRunState(RouterRunState state) {
+        if (state == null) {
+            return;
+        }
+        synchronized (runStateLock) {
+            SharedPreferences.Editor editor = runStatePreferences().edit();
+            state.save(editor);
+            editor.apply();
+        }
+    }
+
+    private void persistStopped() {
+        updateRunState(RouterRunState::stop);
+    }
+
+    private void persistRunning() {
+        updateRunState(state -> state.running(wallClockNow()));
+    }
+
+    private void persistDraining(long deadlineEpochMs) {
+        updateRunState(state -> state.draining(deadlineEpochMs));
+    }
+
+    /** Cancel the scheduled expiry and any pending drain resume. */
+    private void clearGracefulDeadline() {
+        mainHandler.removeCallbacks(gracefulStopExpired);
+        pendingDrainResumeMillis = -1L;
+    }
+
+    // ---------------------------------------------------------------------
+    // Restore reconciliation
+    // ---------------------------------------------------------------------
+
+    private enum RestoreAction {
+        /** No router is wanted; never start the daemon. */
+        STAY_STOPPED,
+        /** A running router was interrupted; start it normally. */
+        START_RUNNING,
+        /** A graceful drain is still inside its window; start and re-arm it. */
+        RESUME_DRAIN
+    }
+
+    private record RestorePlan(RestoreAction action, long remainingDrainMs) {}
+
+    /**
+     * Reconcile the persisted run state with a freshly created service owner.
+     *
+     * <p>The only side effect is persisting the terminal stop for a drain whose
+     * deadline passed while the process was gone: that drain was already
+     * stopping, so the next owner must not restart the router.</p>
+     */
+    private RestorePlan reconcilePersistedRunState() {
+        long now = wallClockNow();
+        SharedPreferences preferences = runStatePreferences();
+        long storedDeadline = RouterRunState.persistedDeadline(preferences);
+        RouterRunState persisted = RouterRunState.load(preferences, now);
+        if (persisted.isDraining()
+                && !RouterRunState.isPlausibleDeadline(storedDeadline, now)) {
+            Log.w(TAG, "persisted graceful-stop deadline was implausible; clamped or dropped");
+        }
+        if (persisted.phase() == RouterRunState.Phase.Stopped) {
+            return new RestorePlan(RestoreAction.STAY_STOPPED, 0L);
+        }
+        if (persisted.isDrainExpired(now)) {
+            persistRunState(persisted.stop());
+            return new RestorePlan(RestoreAction.STAY_STOPPED, 0L);
+        }
+        if (persisted.isDraining()) {
+            return new RestorePlan(RestoreAction.RESUME_DRAIN, persisted.remainingDrainMs(now));
+        }
+        return new RestorePlan(RestoreAction.START_RUNNING, 0L);
+    }
+
+    /**
+     * Continue a persisted drain after a process death.
+     *
+     * <p>The daemon and its in-memory deadline are gone, so the remaining
+     * wall-clock delay is posted here as a backstop and re-armed against the
+     * native wrapper once the asynchronous start reports {@code startedOkay}.
+     * Re-arming earlier would see the wrapper in "starting" and stop the router
+     * before it ever ran.</p>
+     */
+    private void startDrainRestore(long remainingMs) {
+        long delayMs = Math.max(0L, Math.min(remainingMs, RouterRunState.MAX_DRAIN_WINDOW_MILLIS));
+        pendingDrainResumeMillis = delayMs;
+        mainHandler.removeCallbacks(gracefulStopExpired);
+        mainHandler.postDelayed(gracefulStopExpired, delayMs);
+        enqueueControl(this::startDaemonWithMulticast);
+    }
+
+    /**
+     * Publish and record a restore that could not start the daemon, and leave a
+     * one-shot retry marker. The marker is consumed by the next bind (or by the
+     * next successful foreground transition), which retries exactly once, so
+     * the router is never left sticky with no daemon and no signal.
+     */
+    private void markRestoreDeferred(String reason) {
+        restoreRetryPending = true;
+        Log.w(TAG, RESTORE_DEFERRED + ": " + reason);
+        // Publish the distinct state immediately: a bound client must not read
+        // a healthy snapshot for a router that does not exist.
+        lastSnapshot = localSnapshot();
+        if (!listeners.isEmpty()) {
+            mainHandler.post(this::pollNow);
+        }
+    }
+
+    /**
+     * Consume the deferred-restore marker. The persisted phase decides the
+     * action, exactly as in {@link #reconcilePersistedRunState()}: a stopped
+     * router is never started and an expired drain only persists its terminal
+     * stop.
+     */
+    private void retryDeferredRestore() {
+        if (!restoreRetryPending || destroyed) {
+            return;
+        }
+        restoreRetryPending = false;
+        long now = wallClockNow();
+        RouterRunState persisted = readRunState();
+        if (persisted.phase() == RouterRunState.Phase.Stopped) {
+            return;
+        }
+        if (persisted.isDrainExpired(now)) {
+            persistRunState(persisted.stop());
+            return;
+        }
+        DaemonWrapper local = daemon;
+        if (local == null || local.isStartedOkay()
+                || local.getState() == DaemonWrapper.State.starting) {
+            return;
+        }
+        if (!ensureForeground()) {
+            Log.w(TAG, "deferred restore retry could not enter the foreground");
+            return;
+        }
+        Log.i(TAG, "retrying the deferred router restore once");
+        if (persisted.isDraining()) {
+            startDrainRestore(persisted.remainingDrainMs(now));
+        } else {
+            enqueueControl(this::startDaemonWithMulticast);
+        }
+    }
+
+    /** Extra snapshot text while a deferred restore has not been retried yet. */
+    private String deferredRestoreErrorText(String existing) {
+        return restoreRetryPending ? mergeErrorText(existing, RESTORE_DEFERRED_NOTE) : existing;
     }
 
     private static String mergeError(String existing, Throwable tr) {
-        String description = describe(tr);
-        if (description.isEmpty()) {
+        return mergeErrorText(existing, describe(tr));
+    }
+
+    private static String mergeErrorText(String existing, String extra) {
+        if (extra == null || extra.isEmpty()) {
             return existing;
         }
         if (existing == null || existing.isEmpty()) {
-            return description;
+            return extra;
         }
-        if (existing.contains(description)) {
+        if (existing.contains(extra)) {
             return existing;
         }
-        String combined = existing + "\n" + description;
+        String combined = existing + "\n" + extra;
         return combined.length() <= MAX_ERROR_TEXT ? combined
                                                    : combined.substring(0, MAX_ERROR_TEXT);
     }

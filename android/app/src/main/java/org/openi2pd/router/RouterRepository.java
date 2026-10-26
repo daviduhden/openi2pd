@@ -208,16 +208,6 @@ public final class RouterRepository implements RouterService.Listener {
         local.unblockAddress(name, callback);
     }
 
-    public void addAddress(
-            String name, String destination, java.util.function.Consumer<Boolean> callback) {
-        RouterService local = service;
-        if (closed || local == null) {
-            mainHandler.post(() -> callback.accept(false));
-            return;
-        }
-        local.addAddress(name, destination, callback);
-    }
-
     public void removeAddress(String name, java.util.function.Consumer<Boolean> callback) {
         RouterService local = service;
         if (closed || local == null) {
@@ -261,6 +251,28 @@ public final class RouterRepository implements RouterService.Listener {
             return;
         }
         local.importTorrent(tunnel, document, callback);
+    }
+
+    /** Persist a selected SAF payload tree on the service's SAF worker. */
+    public void selectPayloadTree(String tunnel, String hash, android.net.Uri tree,
+            java.util.function.Consumer<Boolean> callback) {
+        RouterService local = service;
+        if (closed || local == null) {
+            mainHandler.post(() -> callback.accept(false));
+            return;
+        }
+        local.selectPayloadTree(tunnel, hash, tree, callback);
+    }
+
+    /** Release a persisted SAF payload grant on the service's SAF worker. */
+    public void detachPayload(String tunnel, String hash,
+            java.util.function.Consumer<Boolean> callback) {
+        RouterService local = service;
+        if (closed || local == null) {
+            mainHandler.post(() -> callback.accept(false));
+            return;
+        }
+        local.detachPayload(tunnel, hash, callback);
     }
 
     /**
@@ -311,18 +323,87 @@ public final class RouterRepository implements RouterService.Listener {
     }
 
     /**
-     * Ask the running router to reseed. The service runs the blocking native
-     * bootstrap on its worker and reports the bounded result on the main
-     * thread. A missing binding is reported as {@code false} rather than an
-     * intent fallback because the result is part of the contract.
+     * Ask the running router to reseed. The service starts the non-blocking
+     * native job on its worker and reports the typed outcome token on the main
+     * thread. A missing binding is reported as {@code unavailable} rather than
+     * an intent fallback because the result is part of the contract.
      */
-    public void requestReseed(java.util.function.Consumer<Boolean> callback) {
+    public void requestReseed(java.util.function.Consumer<String> callback) {
         RouterService local = service;
         if (closed || local == null) {
-            mainHandler.post(() -> callback.accept(false));
+            mainHandler.post(() -> callback.accept("unavailable"));
             return;
         }
         local.requestReseed(callback);
+    }
+
+    /** Bounded reseed status record; empty when the router is not running. */
+    public void readReseedStatus(java.util.function.Consumer<String> callback) {
+        RouterService local = service;
+        if (closed || local == null) {
+            mainHandler.post(() -> callback.accept(""));
+            return;
+        }
+        local.readReseedStatus(callback);
+    }
+
+    /** Configured tunnel rows; empty when the router is not running. */
+    public void readTunnelServices(java.util.function.Consumer<String> callback) {
+        RouterService local = service;
+        if (closed || local == null) {
+            mainHandler.post(() -> callback.accept(""));
+            return;
+        }
+        local.readTunnelServices(callback);
+    }
+
+    public void tunnelCommand(
+            String name, boolean start, java.util.function.Consumer<String> callback) {
+        RouterService local = service;
+        if (closed || local == null) {
+            mainHandler.post(() -> callback.accept("unavailable"));
+            return;
+        }
+        local.tunnelCommand(name, start, callback);
+    }
+
+    public void addAddressChecked(
+            String name, String destination, boolean replace,
+            java.util.function.Consumer<String> callback) {
+        RouterService local = service;
+        if (closed || local == null) {
+            mainHandler.post(() -> callback.accept("unavailable"));
+            return;
+        }
+        local.addAddressChecked(name, destination, replace, callback);
+    }
+
+    public void readSubscriptions(java.util.function.Consumer<String> callback) {
+        RouterService local = service;
+        if (closed || local == null) {
+            mainHandler.post(() -> callback.accept(""));
+            return;
+        }
+        local.readSubscriptions(callback);
+    }
+
+    public void subscriptionCommand(
+            String url, boolean add, java.util.function.Consumer<String> callback) {
+        RouterService local = service;
+        if (closed || local == null) {
+            mainHandler.post(() -> callback.accept("unavailable"));
+            return;
+        }
+        local.subscriptionCommand(url, add, callback);
+    }
+
+    public void banCommand(String hash, boolean ban, java.util.function.Consumer<String> callback) {
+        RouterService local = service;
+        if (closed || local == null) {
+            mainHandler.post(() -> callback.accept("unavailable"));
+            return;
+        }
+        local.banCommand(hash, ban, callback);
     }
 
     /**

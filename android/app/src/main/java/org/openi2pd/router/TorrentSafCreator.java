@@ -75,12 +75,14 @@ final class TorrentSafCreator {
             try (var descriptor = resolver.openAssetFileDescriptor(source.uri(), "r", cancel)) {
                 if (descriptor == null)
                     throw new IOException("Source unavailable");
-                cancel.setOnCancelListener(() -> {
-                    try {
-                        descriptor.close();
-                    } catch (IOException ignored) {
-                    }
-                });
+                // Never close the descriptor from the CancellationSignal
+                // callback: that listener runs on the thread requesting the
+                // cancel, while this thread may be inside read(). The engine
+                // already refuses that cross-thread descriptor close for
+                // import (fd reuse could return unrelated bytes). Cancellation
+                // is observed at the next throwIfCanceled()/read boundary; a
+                // provider that blocks indefinitely is bounded by the SAF
+                // operation watchdog instead.
                 try (var input = descriptor.createInputStream()) {
                     for (;;) {
                         cancel.throwIfCanceled();
@@ -110,7 +112,6 @@ final class TorrentSafCreator {
                     }
                 }
             }
-            cancel.setOnCancelListener(null);
             if (source.length() >= 0 && lengths[i] != source.length())
                 throw new IOException("Source changed while hashing");
         }

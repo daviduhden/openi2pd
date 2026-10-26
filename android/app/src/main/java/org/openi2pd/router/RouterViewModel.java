@@ -83,11 +83,6 @@ public class RouterViewModel extends AndroidViewModel {
         repository.unblockAddress(name, callback);
     }
 
-    public void addAddress(
-            String name, String destination, java.util.function.Consumer<Boolean> callback) {
-        repository.addAddress(name, destination, callback);
-    }
-
     public void removeAddress(String name, java.util.function.Consumer<Boolean> callback) {
         repository.removeAddress(name, callback);
     }
@@ -131,7 +126,10 @@ public class RouterViewModel extends AndroidViewModel {
                 -> safCreation.setValue(new SafCreation(true, bytes, null, null)),
                 metadata
                 -> safCreation.setValue(new SafCreation(false, 0, metadata,
-                        metadata == null ? "Creation failed or cancelled" : null)));
+                        metadata == null
+                                ? getApplication().getString(
+                                        R.string.torrent_creation_failed_unknown)
+                                : null)));
     }
     public void cancelSafCreation() {
         repository.cancelSafCreation();
@@ -143,6 +141,17 @@ public class RouterViewModel extends AndroidViewModel {
             return;
         }
         repository.exportTorrent(target, state.metadata(), result);
+    }
+
+    /** Persist or release a SAF payload grant away from the UI thread. */
+    public void selectPayloadTree(String tunnel, String hash, android.net.Uri tree,
+            java.util.function.Consumer<Boolean> callback) {
+        repository.selectPayloadTree(tunnel, hash, tree, callback);
+    }
+
+    public void detachPayload(String tunnel, String hash,
+            java.util.function.Consumer<Boolean> callback) {
+        repository.detachPayload(tunnel, hash, callback);
     }
 
     public void startRouter() {
@@ -169,9 +178,42 @@ public class RouterViewModel extends AndroidViewModel {
         repository.reloadTunnels();
     }
 
-    /** Request a bounded, single-flight NetDb reseed; the callback runs on the main thread. */
-    public void requestReseed(java.util.function.Consumer<Boolean> callback) {
+    /** Request a bounded, non-blocking NetDb reseed; the callback runs on the main thread. */
+    public void requestReseed(java.util.function.Consumer<String> callback) {
         repository.requestReseed(callback);
+    }
+
+    /** Bounded reseed phase/attempt/error record; empty when the router is stopped. */
+    public void readReseedStatus(java.util.function.Consumer<String> callback) {
+        repository.readReseedStatus(callback);
+    }
+
+    public void readTunnelServices(java.util.function.Consumer<String> callback) {
+        repository.readTunnelServices(callback);
+    }
+
+    public void tunnelCommand(
+            String name, boolean start, java.util.function.Consumer<String> callback) {
+        repository.tunnelCommand(name, start, callback);
+    }
+
+    public void addAddressChecked(
+            String name, String destination, boolean replace,
+            java.util.function.Consumer<String> callback) {
+        repository.addAddressChecked(name, destination, replace, callback);
+    }
+
+    public void readSubscriptions(java.util.function.Consumer<String> callback) {
+        repository.readSubscriptions(callback);
+    }
+
+    public void subscriptionCommand(
+            String url, boolean add, java.util.function.Consumer<String> callback) {
+        repository.subscriptionCommand(url, add, callback);
+    }
+
+    public void banCommand(String hash, boolean ban, java.util.function.Consumer<String> callback) {
+        repository.banCommand(hash, ban, callback);
     }
 
     /** Apply a runtime log level to the running logger; the file is written separately. */

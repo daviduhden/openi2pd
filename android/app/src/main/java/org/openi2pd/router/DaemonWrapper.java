@@ -95,14 +95,17 @@ public class DaemonWrapper {
         }
 
         public boolean isStartedOkay() {
+            // Exhaustive on purpose: adding a state must be a compile error
+            // rather than silently falling into a false/default branch.
             return switch (this) {
                 case startedOkay, gracefulShutdownInProgress -> true;
-                default -> false;
+                case uninitialized, starting, startFailed, stopping, stopped -> false;
             };
         }
     }
 
     private final Object lock = new Object();
+    private final Object stopLock = new Object();
     private final AssetManager assetManager;
     private final ConnectivityManager connectivityManager;
     private final List<File> appStorageRoots;
@@ -367,31 +370,51 @@ public class DaemonWrapper {
         return false;
     }
 
-    public synchronized void stopDaemon() {
+    /**
+     * Stop the daemon.
+     *
+     * <p>The start-cancellation token is published before any monitor is
+     * acquired. A start that is inside {@code I2PD_JNI.startDaemon()} holds
+     * {@link #lock} and the native-call guard for the whole transition, so
+     * waiting for either first would make the stop unable to cancel it; the
+     * native {@link I2PD_JNI#requestStop()} token is instead observed by that
+     * start in its packaged-asset wait and between initialisation and start.</p>
+     *
+     * <p>{@link #stopLock} still serialises two concurrent stop calls, so the
+     * native teardown is never entered twice for the same router.</p>
+     */
+    public void stopDaemon() {
+        // Publish the cancellation request first: it is the only signal that can
+        // reach a start which already owns the Java state monitor and the native
+        // guard. Both calls are non-blocking and never throw.
         stopRequested.set(true);
-        final boolean callNative;
-        StateChange beginChange = null;
+        I2PD_JNI.requestStop();
+
         StateChange finishChange = null;
-        synchronized (lock) {
-            cancelGracefulStopLocked();
-            callNative = state.isStartedOkay();
-            beginChange = setStateLocked(callNative ? State.stopping : State.stopped);
-        }
-        // Publish Stopping before entering native teardown. A status poll
-        // that cannot take the native-call lock can then say that the router
-        // is going away instead of reading a stale Running state.
-        notifyListeners(beginChange);
-        if (callNative) {
-            try {
-                I2PD_JNI.stopDaemon();
-            } catch (Throwable tr) {
-                Log.e(TAG, "native stop failed", tr);
-            }
+        synchronized (stopLock) {
+            final boolean callNative;
+            final StateChange beginChange;
             synchronized (lock) {
-                finishChange = setStateLocked(State.stopped);
+                cancelGracefulStopLocked();
+                callNative = state.isStartedOkay();
+                beginChange = setStateLocked(callNative ? State.stopping : State.stopped);
             }
+            // Publish Stopping before entering native teardown. A status poll
+            // that cannot take the native-call lock can then say that the router
+            // is going away instead of reading a stale Running state.
+            notifyListeners(beginChange);
+            if (callNative) {
+                try {
+                    I2PD_JNI.stopDaemon();
+                } catch (Throwable tr) {
+                    Log.e(TAG, "native stop failed", tr);
+                }
+                synchronized (lock) {
+                    finishChange = setStateLocked(State.stopped);
+                }
+            }
+            unregisterNetworkCallback();
         }
-        unregisterNetworkCallback();
         notifyListeners(finishChange);
     }
 
@@ -456,6 +479,11 @@ public class DaemonWrapper {
             processAssets();
             prepareTorrentSession();
             I2PD_JNI.loadLibraries();
+            // Claim the router process role before the first router-capable
+            // native entry point. A process already bound to the SAF storage
+            // broker throws here and this start fails closed instead of
+            // initialising a second router.
+            I2PD_JNI.claimRouterProcessRole();
             if (!I2PD_JNI.installSafStorageBridge(TorrentSafStorage.class)
                     && TorrentSafStorage.hasAnyGrant())
                 throw new IllegalStateException("SAF storage bridge initialization failed");
@@ -470,27 +498,34 @@ public class DaemonWrapper {
         }
 
         boolean started = false;
+        boolean stopAfterCanceledStart = false;
         try {
+            // Do not hold the state monitor across the native start: a stop must
+            // be able to publish its token and its state while this thread is
+            // still waiting for assets or inside Daemon.init(). The token, not
+            // the monitor, is what excludes a start that is still running.
+            final boolean proceed;
             synchronized (lock) {
-                if (!stopRequested.get()) {
-                    I2PD_JNI.setDataDir(dataDir.getAbsolutePath());
-
-                    String result = I2PD_JNI.startDaemon();
+                proceed = !stopRequested.get();
+            }
+            String result = null;
+            if (proceed) {
+                I2PD_JNI.setDataDir(dataDir.getAbsolutePath());
+                result = I2PD_JNI.startDaemon();
+            }
+            synchronized (lock) {
+                final boolean canceled =
+                        stopRequested.get() || I2PD_JNI.START_CANCELED.equals(result);
+                final boolean ok = "ok".equals(result);
+                started = ok && !canceled;
+                // A router that did start but lost the race with a stop request
+                // is torn down below, outside the monitor.
+                stopAfterCanceledStart = ok && !started;
+                if (result != null) {
                     daemonStartResult = result;
-                    started = "ok".equals(result) && !stopRequested.get();
-                    change = setStateLocked(started       ? State.startedOkay
-                                    : stopRequested.get() ? State.stopped
-                                                          : State.startFailed);
-                    if (!started && "ok".equals(result)) {
-                        try {
-                            I2PD_JNI.stopDaemon();
-                        } catch (Throwable tr) {
-                            Log.e(TAG, "native stop after cancelled start failed", tr);
-                        }
-                    }
-                } else {
-                    change = setStateLocked(State.stopped);
                 }
+                change = setStateLocked(
+                        started ? State.startedOkay : canceled ? State.stopped : State.startFailed);
             }
         } catch (Throwable tr) {
             lastThrowable = tr;
@@ -498,6 +533,15 @@ public class DaemonWrapper {
                 change = setStateLocked(stopRequested.get() ? State.stopped : State.startFailed);
             }
         } finally {
+            // Tear down a started-but-cancelled router before the thread is
+            // reported idle, so restartDaemon() cannot overlap the teardown.
+            if (stopAfterCanceledStart) {
+                try {
+                    I2PD_JNI.stopDaemon();
+                } catch (Throwable tr) {
+                    Log.e(TAG, "native stop after cancelled start failed", tr);
+                }
+            }
             synchronized (lock) {
                 startThreadRunning = false;
             }
@@ -526,20 +570,6 @@ public class DaemonWrapper {
         } catch (RuntimeException | LinkageError e) {
             Log.e(TAG, "native address-book read failed", e);
             return "";
-        }
-    }
-
-    /** Add or replace one validated name; false on any validation failure. */
-    public boolean addAddress(String name, String destination) {
-        synchronized (lock) {
-            if (!state.isStartedOkay())
-                return false;
-        }
-        try {
-            return I2PD_JNI.addAddress(name, destination);
-        } catch (RuntimeException | LinkageError e) {
-            Log.e(TAG, "native address-book add failed", e);
-            return false;
         }
     }
 
@@ -620,25 +650,186 @@ public class DaemonWrapper {
      * Ask the running netDb to reseed from the configured reseed servers.
      *
      * <p>This is only valid while the daemon is started. The native call is
-     * synchronous and single-flight, so the caller must be the service worker:
-     * it can block for minutes on a poor connection and must stay ordered
-     * against stop and reload commands.</p>
+     * non-blocking: it starts the owned NetDb job and returns the typed
+     * outcome, so the service worker is not held for the length of a
+     * bootstrap.</p>
      *
-     * @return {@code true} when the request was issued; {@code false} when the
-     *         daemon is not started, a reseed is already running or the native
-     *         call failed
+     * @return {@code started}, {@code already-running}, {@code disabled},
+     *         {@code accepted}, {@code busy}, {@code unavailable} or
+     *         {@code failed}
      */
-    public boolean requestReseed() {
+    public String requestReseed() {
         synchronized (lock) {
             if (!state.isStartedOkay()) {
-                return false;
+                return "unavailable";
             }
         }
         try {
-            return I2PD_JNI.requestReseed();
+            String outcome = I2PD_JNI.requestReseed();
+            return outcome == null || outcome.isEmpty() ? "failed" : outcome;
         } catch (RuntimeException | LinkageError e) {
             Log.e(TAG, "native reseed request failed", e);
-            return false;
+            return "failed";
+        }
+    }
+
+    /**
+     * Bounded reseed phase/attempt/error record, or an empty string while the
+     * router is not running. It never waits for the job and carries no URL.
+     */
+    public String getReseedStatus() {
+        synchronized (lock) {
+            if (!state.isStartedOkay()) {
+                return "";
+            }
+        }
+        try {
+            String status = I2PD_JNI.getReseedStatus();
+            return status == null ? "" : status;
+        } catch (RuntimeException | LinkageError e) {
+            Log.e(TAG, "native reseed status read failed", e);
+            return "";
+        }
+    }
+
+    /** Configured client/server tunnels as bounded {@code name|kind|running|...} rows. */
+    public String getTunnelServices() {
+        synchronized (lock) {
+            if (!state.isStartedOkay()) {
+                return "";
+            }
+        }
+        try {
+            String rows = I2PD_JNI.getTunnelServices();
+            return rows == null ? "" : rows;
+        } catch (RuntimeException | LinkageError e) {
+            Log.e(TAG, "native tunnel service read failed", e);
+            return "";
+        }
+    }
+
+    /** Start one configured tunnel by its bounded service name. */
+    public String startTunnel(String name) {
+        return tunnelCommand(name, true);
+    }
+
+    /** Stop one configured tunnel by its bounded service name. */
+    public String stopTunnel(String name) {
+        return tunnelCommand(name, false);
+    }
+
+    private String tunnelCommand(String name, boolean start) {
+        if (!RuntimeAdminPolicy.isValidTunnelName(name)) {
+            return "invalid";
+        }
+        synchronized (lock) {
+            if (!state.isStartedOkay()) {
+                return "unavailable";
+            }
+        }
+        try {
+            String outcome = start ? I2PD_JNI.startTunnel(name) : I2PD_JNI.stopTunnel(name);
+            return outcome == null || outcome.isEmpty() ? "failed" : outcome;
+        } catch (RuntimeException | LinkageError e) {
+            Log.e(TAG, "native tunnel command failed", e);
+            return "failed";
+        }
+    }
+
+    /**
+     * Add or replace one address-book name with the typed result.
+     *
+     * @return {@code ok}, {@code exists}, {@code invalid}, {@code unavailable}
+     *         or {@code failed}
+     */
+    public String addAddressChecked(String name, String destination, boolean replace) {
+        if (!RuntimeAdminPolicy.isValidAddressName(name)
+                || !RuntimeAdminPolicy.isValidDestination(destination)) {
+            return "invalid";
+        }
+        synchronized (lock) {
+            if (!state.isStartedOkay()) {
+                return "unavailable";
+            }
+        }
+        try {
+            String outcome = I2PD_JNI.addAddressWithResult(name, destination, replace);
+            return outcome == null || outcome.isEmpty() ? "failed" : outcome;
+        } catch (RuntimeException | LinkageError e) {
+            Log.e(TAG, "native address-book update failed", e);
+            return "failed";
+        }
+    }
+
+    /** Address-book subscription sources, one bounded URL per line. */
+    public String getSubscriptions() {
+        synchronized (lock) {
+            if (!state.isStartedOkay()) {
+                return "";
+            }
+        }
+        try {
+            String rows = I2PD_JNI.getSubscriptions();
+            return rows == null ? "" : rows;
+        } catch (RuntimeException | LinkageError e) {
+            Log.e(TAG, "native subscription read failed", e);
+            return "";
+        }
+    }
+
+    /** Add one validated subscription source; returns the typed outcome token. */
+    public String addSubscription(String url) {
+        return subscriptionCommand(url, true);
+    }
+
+    /** Remove one subscription source by its exact URL. */
+    public String removeSubscription(String url) {
+        return subscriptionCommand(url, false);
+    }
+
+    private String subscriptionCommand(String url, boolean add) {
+        if (!RuntimeAdminPolicy.isValidSubscriptionUrl(url)) {
+            return "invalid";
+        }
+        synchronized (lock) {
+            if (!state.isStartedOkay()) {
+                return "unavailable";
+            }
+        }
+        try {
+            String outcome = add ? I2PD_JNI.addSubscription(url) : I2PD_JNI.removeSubscription(url);
+            return outcome == null || outcome.isEmpty() ? "failed" : outcome;
+        } catch (RuntimeException | LinkageError e) {
+            Log.e(TAG, "native subscription update failed", e);
+            return "failed";
+        }
+    }
+
+    /** Ban one base64 router identity until the router restarts. */
+    public String banRouter(String hash) {
+        return banCommand(hash, true);
+    }
+
+    /** Remove one in-memory router ban. */
+    public String unbanRouter(String hash) {
+        return banCommand(hash, false);
+    }
+
+    private String banCommand(String hash, boolean ban) {
+        if (!RuntimeAdminPolicy.isValidRouterHash(hash)) {
+            return "invalid";
+        }
+        synchronized (lock) {
+            if (!state.isStartedOkay()) {
+                return "unavailable";
+            }
+        }
+        try {
+            String outcome = ban ? I2PD_JNI.banRouter(hash) : I2PD_JNI.unbanRouter(hash);
+            return outcome == null || outcome.isEmpty() ? "failed" : outcome;
+        } catch (RuntimeException | LinkageError e) {
+            Log.e(TAG, "native router ban update failed", e);
+            return "failed";
         }
     }
 
@@ -668,8 +859,20 @@ public class DaemonWrapper {
         }
     }
 
+    /**
+     * Transit tunnel count used by the graceful-shutdown decision.
+     *
+     * <p>Returns {@code 0} when the native library is unavailable: the graceful
+     * path must degrade to an immediate stop instead of throwing
+     * {@link LinkageError} out of a lifecycle method.</p>
+     */
     public int getTransitTunnelsCount() {
-        return I2PD_JNI.getTransitTunnelsCount();
+        try {
+            return I2PD_JNI.getTransitTunnelsCount();
+        } catch (RuntimeException | LinkageError e) {
+            Log.e(TAG, "native transit-tunnel count unavailable", e);
+            return 0;
+        }
     }
 
     /**

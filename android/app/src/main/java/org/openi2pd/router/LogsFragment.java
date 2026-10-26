@@ -285,7 +285,8 @@ public class LogsFragment extends Fragment {
         }
         summary.setVisibility(View.VISIBLE);
         UiFormat.setTextIfChanged(
-                summary, getString(R.string.logs_summary_format, shown, retained));
+                summary, getResources().getQuantityString(
+                        R.plurals.logs_summary, shown, shown, retained));
     }
 
     private void updateClearButton() {

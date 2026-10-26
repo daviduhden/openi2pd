@@ -16,6 +16,7 @@
 
 #include "DaemonLifecycle.h"
 
+#include <atomic>
 #include <mutex>
 #include <string>
 
@@ -23,6 +24,95 @@ namespace i2p
 {
 namespace android
 {
+	/**
+	 * The one role a process may serve. Android runs the router and the
+	 * opt-in SAF storage broker in different processes of the same UID, so
+	 * the role cannot be inferred from credentials, arguments or the loaded
+	 * library: every process claims exactly one role before it reaches its
+	 * first router- or document-capable entry point.
+	 *
+	 * A claim is process memory only. It never appears on a command line, in
+	 * the environment, in a log record or in a persisted file, and it is not
+	 * inherited across a deliberate process restart.
+	 */
+	enum class ProcessRole : int
+	{
+		None = 0,
+		Router = 1,
+		StorageBroker = 2
+	};
+
+	/**
+	 * Fixed, non-secret token reported when a role claim conflicts with the
+	 * role already claimed by this process. It carries no path, identity,
+	 * grant or credential detail and is safe to display and to log.
+	 */
+	inline constexpr const char * PROCESS_ROLE_CONFLICT = "process-role-conflict";
+
+	/**
+	 * Result token returned by start() when a stop request aborted the start
+	 * before the router reached Running. Java maps it to the stopped state
+	 * instead of a start failure.
+	 */
+	inline constexpr const char * START_CANCELED_RESULT = "start-canceled";
+
+	namespace detail
+	{
+		/**
+		 * One process-wide role slot. It is a function-local static so the
+		 * header stays ODR-safe and a host regression can include it without
+		 * linking the daemon. It is deliberately never reset: a process role
+		 * is irreversible, which is what makes the guard effective.
+		 */
+		inline std::atomic<int> & ProcessRoleSlot () noexcept
+		{
+			static std::atomic<int> slot { static_cast<int> (ProcessRole::None) };
+			return slot;
+		}
+	}
+
+	/** Role claimed by this process, or None before the first claim. */
+	inline ProcessRole CurrentProcessRole () noexcept
+	{
+		return static_cast<ProcessRole> (detail::ProcessRoleSlot ().load (std::memory_order_acquire));
+	}
+
+	/**
+	 * Claim `role` exactly once per process.
+	 *
+	 * @return true when this call claimed the role or this process already
+	 *         serves exactly that role; false for a conflicting role or an
+	 *         unknown value. A false result is terminal: the caller must not
+	 *         start a router and must not install document authority.
+	 */
+	inline bool ClaimProcessRole (ProcessRole role) noexcept
+	{
+		if (role != ProcessRole::Router && role != ProcessRole::StorageBroker) return false;
+		auto & slot = detail::ProcessRoleSlot ();
+		int expected = static_cast<int> (ProcessRole::None);
+		if (slot.compare_exchange_strong (
+				expected, static_cast<int> (role), std::memory_order_acq_rel, std::memory_order_acquire))
+			return true;
+		return expected == static_cast<int> (role);
+	}
+
+	/** True when this process has already claimed exactly `role`. */
+	inline bool HasProcessRole (ProcessRole role) noexcept
+	{
+		return CurrentProcessRole () == role;
+	}
+
+	/**
+	 * Request cancellation of an in-progress start transition. It sets one
+	 * process-global atomic and returns immediately: the caller (a Java stop
+	 * request) may run while start() still owns the native-call guard, so this
+	 * function must never take a lock.
+	 */
+	void RequestStartCancel () noexcept;
+
+	/** True when a start cancellation is pending for the current attempt. */
+	bool IsStartCancelRequested () noexcept;
+
 	/**
 	 * Native mirror of the Java daemon state. It is published before the
 	 * corresponding transition, so a status/control call that is not holding
@@ -43,6 +133,16 @@ namespace android
 	 * worker. The native guard remains defence in depth for any caller that
 	 * bypasses that path (for example service destruction); it is not a
 	 * substitute for the Java lifecycle contract.
+	 *
+	 * Because start() holds this guard for the whole native transition, a stop
+	 * request cannot be expressed by calling stop(): it would wait for the
+	 * start to finish. RequestStartCancel() is therefore the only lock-free
+	 * signal; start() observes it in the packaged-asset wait and between
+	 * Daemon.init and Daemon.start, rolls the initialized daemon back and
+	 * reports START_CANCELED_RESULT. Stop-vs-start ordering is: publish the
+	 * Java stop token, set the native cancel token, then take the Java state
+	 * monitor and, only for a daemon that already reached Running, call the
+	 * guarded native stop.
 	 */
 	/**
 	 * Serialises every JNI-visible control/status call (start, stop, reload,
@@ -90,7 +190,6 @@ namespace android
 		/** Invoke Daemon.start(); the enclosing lifecycle owner changes state. */
 		bool start ();
 		void stop ();
-		void restart ();
 
 		void setDataDir (std::string path);
 	};

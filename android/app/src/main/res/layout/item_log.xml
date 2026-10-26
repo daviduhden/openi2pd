@@ -27,6 +27,7 @@ Defines native Android application resources.
 
         <TextView
             android:id="@+id/log_time"
+            android:importantForAccessibility="no"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:fontFamily="monospace"
@@ -35,6 +36,7 @@ Defines native Android application resources.
 
         <TextView
             android:id="@+id/log_level"
+            android:importantForAccessibility="no"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginStart="@dimen/margin_small"
@@ -46,6 +48,7 @@ Defines native Android application resources.
 
     <TextView
         android:id="@+id/log_message"
+        android:importantForAccessibility="no"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginTop="@dimen/margin_tiny"

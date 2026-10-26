@@ -28,5 +28,13 @@ set(WITH_TORRENTS ON CACHE BOOL "" FORCE)
 set(WITH_UPNP ON CACHE BOOL "" FORCE)
 set(BUILD_TESTING OFF CACHE BOOL "" FORCE)
 
+# The NDK toolchain restricts find_path/find_library/find_package to the
+# sysroot by default. vcpkg prefixes (Boost, OpenSSL, zlib, MiniUPnPc) live
+# outside it, so use the same BOTH modes as the manual native CI build. Keep
+# the sysroot first in the search order.
+set(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY BOTH)
+set(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE BOTH)
+set(CMAKE_FIND_ROOT_PATH_MODE_PACKAGE BOTH)
+
 add_subdirectory("${CMAKE_CURRENT_LIST_DIR}/../../../../../build"
   "${CMAKE_BINARY_DIR}/i2pd")

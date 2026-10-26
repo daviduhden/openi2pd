@@ -37,10 +37,14 @@ import java.util.function.Consumer;
 
 /** Administrative views only: closing this screen never stops the service or torrents. */
 public final class TorrentsFragment extends Fragment {
+    /** Highest comment record offset TORRENT-DETAIL accepts (0..255). */
+    private static final int MAX_COMMENT_OFFSET = 255;
+    /** Records a torrent retains, including hidden entries. */
+    private static final int MAX_COMMENT_TOTAL = 256;
     private RouterViewModel model;
     private LinearLayout rows;
     private TextView status;
-    private MaterialButton bulkStart, bulkStop, bulkReannounce;
+    private MaterialButton bulkStart, bulkStop, bulkReannounce, bulkRemove;
     private boolean busy;
     private int tunnel;
     private int generation;
@@ -50,11 +54,16 @@ public final class TorrentsFragment extends Fragment {
             registerForActivityResult(new ActivityResultContracts.OpenDocumentTree(), uri -> {
                 if (uri == null || !isAdded())
                     return;
-                boolean saved =
-                        TorrentSafStorage.select(requireContext(), storageTunnel, storageHash, uri);
-                if (status != null)
+                final int expected = generation;
+                // The grant map commit and the provider round trip run on the
+                // service's SAF worker; the fragment only renders the typed
+                // result and ignores it after its view is gone.
+                model.selectPayloadTree(storageTunnel, storageHash, uri, saved -> {
+                    if (expected != generation || status == null || !isAdded())
+                        return;
                     status.setText(saved ? R.string.torrent_storage_selected
                                          : R.string.torrent_storage_permission_required);
+                });
             });
     // Registration is unconditional and precedes STARTED, so the registry
     // restores picker results across Activity/Fragment recreation.
@@ -118,12 +127,9 @@ public final class TorrentsFragment extends Fragment {
     public View onCreateView(@NonNull LayoutInflater inflater, @Nullable ViewGroup container,
             @Nullable Bundle state) {
         model = new ViewModelProvider(requireActivity()).get(RouterViewModel.class);
-        ScrollView scroll = new ScrollView(requireContext());
-        LinearLayout content = new LinearLayout(requireContext());
-        content.setOrientation(LinearLayout.VERTICAL);
-        int padding = Math.round(16 * getResources().getDisplayMetrics().density);
-        content.setPadding(padding, padding, padding, padding);
-        scroll.addView(content);
+        UiFactory.Column column = UiFactory.scrollingColumn(requireContext());
+        ScrollView scroll = column.scroll();
+        LinearLayout content = column.content();
         status = new TextView(requireContext());
         status.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);
         content.addView(status);
@@ -135,6 +141,7 @@ public final class TorrentsFragment extends Fragment {
                 ignored -> sendBulk(TorrentControl.Bulk.STOP_ALL));
         bulkReannounce = button(content, R.string.torrent_reannounce_all,
                 ignored -> sendBulk(TorrentControl.Bulk.REANNOUNCE_ALL));
+        bulkRemove = button(content, R.string.torrent_remove, ignored -> removeAllTorrents());
         button(content, R.string.torrent_import, ignored -> {
             if (busy)
                 return;
@@ -169,13 +176,33 @@ public final class TorrentsFragment extends Fragment {
         rows = new LinearLayout(requireContext());
         rows.setOrientation(LinearLayout.VERTICAL);
         content.addView(rows);
+        if (state != null) {
+            // Restore the selected session so a rotation or a process restart
+            // does not reopen the session picker or show another tunnel's rows.
+            tunnel = Math.max(0, state.getInt("torrent_tunnel", 0));
+            importTunnel = Math.max(0, state.getInt("torrent_import_tunnel", tunnel));
+            storageTunnel = safeTunnelName(state.getString("torrent_storage_tunnel"));
+            String hash = state.getString("torrent_storage_hash");
+            storageHash = hash != null && hash.matches("[0-9a-fA-F]{40}") ? hash : "";
+            currentTunnelName = safeTunnelName(state.getString("torrent_current_tunnel_name"));
+        } else {
+            storageTunnel = "";
+            storageHash = "";
+            currentTunnelName = "";
+        }
         return scroll;
     }
 
     @Override
     public void onResume() {
         super.onResume();
-        discover();
+        // Do not re-open the session picker on every rotation/return. A
+        // restored selection refreshes its session; discover() is only for a
+        // first entry or after the session disappeared.
+        if (currentTunnelName.isEmpty())
+            discover();
+        else
+            refresh();
     }
 
     @Override
@@ -215,12 +242,12 @@ public final class TorrentsFragment extends Fragment {
         busy = false;
         rows = null;
         status = null;
-        bulkStart = bulkStop = bulkReannounce = null;
+        bulkStart = bulkStop = bulkReannounce = bulkRemove = null;
         super.onDestroyView();
     }
 
     private MaterialButton button(LinearLayout parent, int label, View.OnClickListener action) {
-        MaterialButton button = new MaterialButton(requireContext());
+        MaterialButton button = UiFactory.button(requireContext());
         button.setText(label);
         button.setOnClickListener(action);
         parent.addView(button);
@@ -235,7 +262,7 @@ public final class TorrentsFragment extends Fragment {
             request(command, ignored -> refresh());
         } catch (IllegalArgumentException error) {
             if (status != null)
-                status.setText(getString(R.string.torrent_error, error.getMessage()));
+                status.setText(getString(R.string.torrent_error, errorText(error)));
         }
     }
 
@@ -246,6 +273,41 @@ public final class TorrentsFragment extends Fragment {
             bulkStop.setEnabled(enabled);
         if (bulkReannounce != null)
             bulkReannounce.setEnabled(enabled);
+        if (bulkRemove != null)
+            bulkRemove.setEnabled(enabled);
+    }
+
+    /**
+     * Session-wide removal, confirmed like a single-torrent removal. The two
+     * variants map to the closed TORRENT-REMOVE-ALL verb; deleting local data
+     * keeps its separate destructive confirmation.
+     */
+    private void removeAllTorrents() {
+        if (busy || status == null)
+            return;
+        String session =
+                currentTunnelName.isEmpty() ? getString(R.string.torrent_title) : currentTunnelName;
+        String[] options = {getString(R.string.torrent_remove),
+                getString(R.string.torrent_remove_files)};
+        new MaterialAlertDialogBuilder(requireContext())
+                .setTitle(R.string.torrent_remove)
+                .setItems(options, (dialog, choice) -> confirmRemoveAll(choice == 0, session))
+                .show();
+    }
+
+    private void confirmRemoveAll(boolean keepData, String session) {
+        int message =
+                keepData ? R.string.torrent_remove_confirm : R.string.torrent_remove_files_confirm;
+        TorrentControl.Bulk bulk = keepData ? TorrentControl.Bulk.REMOVE_ALL
+                                            : TorrentControl.Bulk.REMOVE_ALL_FILES;
+        new MaterialAlertDialogBuilder(requireContext())
+                .setTitle(R.string.torrent_remove)
+                .setMessage(keepData ? getString(message) : getString(message, session))
+                .setNegativeButton(R.string.action_cancel, null)
+                .setPositiveButton(keepData ? R.string.torrent_remove
+                                            : R.string.torrent_remove_files,
+                        (confirmation, which) -> sendBulk(bulk))
+                .show();
     }
 
     private void request(String command, Consumer<Map<String, String>> done) {
@@ -263,9 +325,22 @@ public final class TorrentsFragment extends Fragment {
                 status.setText("");
                 done.accept(fields);
             } catch (IllegalArgumentException error) {
-                status.setText(getString(R.string.torrent_error, error.getMessage()));
+                status.setText(getString(R.string.torrent_error, errorText(error)));
             }
         });
+    }
+
+    /**
+     * True when a new control request may be started. A dialog action that
+     * cannot be sent is reported instead of being dropped silently, so the
+     * dialog never implies a moderation decision the engine never received.
+     */
+    private boolean ready() {
+        if (!busy)
+            return true;
+        if (status != null)
+            status.setText(R.string.torrent_busy);
+        return false;
     }
 
     private int number(Map<String, String> fields, String key, int max) {
@@ -314,35 +389,34 @@ public final class TorrentsFragment extends Fragment {
             currentTunnelName = safeTunnelName(fields.getOrDefault("torrent.tunnel.name", ""));
             setBulkEnabled(count > 0 && !busy);
             status.setText(currentTunnelName.isEmpty()
-                            ? getString(R.string.torrent_count, count)
+                            ? getResources().getQuantityString(R.plurals.torrent_count, count, count)
                             : getString(R.string.torrent_session_count, currentTunnelName, count));
             for (int i = 0; i < count; ++i) {
-                String prefix = "torrent." + i + ".";
-                String id = Integer.toString(number(fields, prefix + "id", Integer.MAX_VALUE));
-                MaterialButton row = new MaterialButton(requireContext());
-                row.setText(fields.getOrDefault(prefix + "name", "") + "\n"
-                        + fields.getOrDefault(prefix + "status", "") + " · "
-                        + fields.getOrDefault(prefix + "percent", "0") + "%"
-                        + ("1".equals(fields.get(prefix + "private"))
-                                        ? " · " + getString(R.string.torrent_private_badge)
-                                        : ""));
-                row.setOnClickListener(view
-                        -> actions(id, fields.getOrDefault(prefix + "magnet", ""),
-                                fields.getOrDefault(prefix + "name", ""),
-                                fields.getOrDefault(prefix + "hash", "")));
-                rows.addView(row);
+                TorrentRow row = TorrentRow.from(fields, "torrent." + i + ".");
+                String badge = getString(R.string.torrent_private_badge);
+                MaterialButton button = UiFactory.button(requireContext());
+                button.setText(row.displayLabel(badge));
+                UiFactory.applyRowSemantics(button, row.accessibilityLabel(badge));
+                button.setOnClickListener(view -> actions(row));
+                rows.addView(button);
             }
         });
     }
 
-    private void actions(String id, String magnet, String name, String hash) {
+    private void actions(TorrentRow selection) {
+        String id = selection.id();
+        String magnet = selection.magnet();
+        String name = selection.name();
+        String hash = selection.hash();
         String[] labels = {getString(R.string.torrent_details), getString(R.string.torrent_pause),
                 getString(R.string.torrent_resume), getString(R.string.torrent_share),
                 getString(R.string.torrent_remove), getString(R.string.torrent_trackers),
                 getString(R.string.torrent_comments), getString(R.string.torrent_priorities),
                 getString(R.string.torrent_recheck), getString(R.string.torrent_payload_action),
-                getString(R.string.torrent_meta), getString(R.string.torrent_remove_files)};
+                getString(R.string.torrent_meta), getString(R.string.torrent_remove_files),
+                getString(R.string.action_start), getString(R.string.action_stop)};
         new MaterialAlertDialogBuilder(requireContext())
+                .setTitle(selection.name())
                 .setItems(labels,
                         (dialog, action) -> {
                             switch (action) {
@@ -378,9 +452,17 @@ public final class TorrentsFragment extends Fragment {
                             case 5 ->
                                 request("TORRENT-DETAIL " + tunnel + " " + id,
                                         fields -> trackers(id, fields));
-                            case 6 ->
-                                request("TORRENT-DETAIL " + tunnel + " " + id,
-                                        fields -> comments(id, fields));
+                            case 6 -> {
+                                try {
+                                    request(TorrentControl.commentPage(tunnel, id, 0,
+                                                    TorrentControl.COMMENT_PAGE),
+                                            fields -> comments(id, fields));
+                                } catch (IllegalArgumentException error) {
+                                    if (status != null)
+                                        status.setText(getString(
+                                                R.string.torrent_error, errorText(error)));
+                                }
+                            }
                             case 7 ->
                                 request("TORRENT-DETAIL " + tunnel + " " + id,
                                         fields -> priorities(id, fields));
@@ -390,7 +472,7 @@ public final class TorrentsFragment extends Fragment {
                                             ignored -> refresh());
                                 } catch (IllegalArgumentException error) {
                                     status.setText(
-                                            getString(R.string.torrent_error, error.getMessage()));
+                                            getString(R.string.torrent_error, errorText(error)));
                                 }
                             }
                             case 9 ->
@@ -425,15 +507,30 @@ public final class TorrentsFragment extends Fragment {
                                                     } catch (IllegalArgumentException error) {
                                                         status.setText(
                                                                 getString(R.string.torrent_error,
-                                                                        error.getMessage()));
+                                                                        errorText(error)));
                                                     }
                                                 })
                                         .show();
+                            // 12/13: explicit single-torrent lifecycle verbs. They
+                            // are typed TORRENT-START/TORRENT-STOP commands built by
+                            // TorrentControl.single(); pause/resume above remain the
+                            // state toggle.
+                            case 12 -> single(id, TorrentControl.Action.START);
+                            case 13 -> single(id, TorrentControl.Action.STOP);
                             default -> {
                             }
                             }
                         })
                 .show();
+    }
+
+    private void single(String id, TorrentControl.Action action) {
+        try {
+            request(TorrentControl.single(tunnel, id, action), ignored -> refresh());
+        } catch (IllegalArgumentException error) {
+            if (status != null)
+                status.setText(getString(R.string.torrent_error, errorText(error)));
+        }
     }
 
     private void editMetadata(String id) {
@@ -444,7 +541,7 @@ public final class TorrentsFragment extends Fragment {
             String currentCreatedBy = fields.getOrDefault("detail.createdBy", "");
             LinearLayout form = new LinearLayout(requireContext());
             form.setOrientation(LinearLayout.VERTICAL);
-            int padding = Math.round(16 * getResources().getDisplayMetrics().density);
+            int padding = getResources().getDimensionPixelSize(R.dimen.margin_medium);
             form.setPadding(padding, padding, padding, 0);
             TextInputLayout commentLayout = new TextInputLayout(requireContext());
             commentLayout.setHint(R.string.torrent_meta_comment);
@@ -541,7 +638,7 @@ public final class TorrentsFragment extends Fragment {
                                                     } catch (IllegalArgumentException error) {
                                                         status.setText(
                                                                 getString(R.string.torrent_error,
-                                                                        error.getMessage()));
+                                                                        errorText(error)));
                                                     }
                                                 })
                                         .setNeutralButton(R.string.action_cancel, null)
@@ -594,7 +691,7 @@ public final class TorrentsFragment extends Fragment {
                                                 removed -> refresh());
                                 });
                             } catch (IllegalArgumentException error) {
-                                layout.setError(error.getMessage());
+                                layout.setError(errorText(error));
                             }
                         }));
         dialog.show();
@@ -626,7 +723,7 @@ public final class TorrentsFragment extends Fragment {
                                 dialog.dismiss();
                                 request(command, result -> refresh());
                             } catch (IllegalArgumentException error) {
-                                layout.setError(error.getMessage());
+                                layout.setError(errorText(error));
                             }
                         }));
         dialog.show();
@@ -748,13 +845,16 @@ public final class TorrentsFragment extends Fragment {
                                             getString(R.string.torrent_private_tracker_required));
                                 for (int i = 0; i < addresses.length; ++i) {
                                     addresses[i] = addresses[i].trim();
-                                    TorrentControl.tracker(true, 0, "0", addresses[i]);
+                                    // A SAF creation has no engine torrent id yet,
+                                    // so the creation-scoped validator applies the
+                                    // same I2P-only URL rules without one.
+                                    TorrentControl.creationTracker(addresses[i]);
                                 }
                                 model.createSafTorrent(source, tree, pieceLength[0], addresses,
                                         privacy.isChecked());
                                 dialog.dismiss();
                             } catch (IllegalArgumentException error) {
-                                trackersLayout.setError(error.getMessage());
+                                trackersLayout.setError(errorText(error));
                             }
                         }));
         dialog.show();
@@ -788,7 +888,7 @@ public final class TorrentsFragment extends Fragment {
                                         -> request(
                                                 "TORRENT-SESSION " + tunnel, this::showCreation));
                             } catch (IllegalArgumentException error) {
-                                layout.setError(error.getMessage());
+                                layout.setError(errorText(error));
                             }
                         }));
         dialog.show();
@@ -843,10 +943,22 @@ public final class TorrentsFragment extends Fragment {
                                                  : R.string.torrent_priority_normal);
     }
 
+    /**
+     * Comment page size the daemon emits per TORRENT-DETAIL response. The
+     * daemon retains up to 256 records (64 hidden) and the dialog pages
+     * explicitly instead of expecting one unbounded reply.
+     */
     private void comments(String id, Map<String, String> fields) {
         boolean enabled = "1".equals(fields.get("comments.enabled"))
                 || "true".equals(fields.get("comments.enabled"));
         boolean privateTorrent = "1".equals(fields.get("detail.private"));
+        int offset = number(fields, "comments.offset", MAX_COMMENT_OFFSET);
+        int count = number(fields, "comments.count", TorrentControl.COMMENT_PAGE);
+        int total = number(fields, "comments.total", MAX_COMMENT_TOTAL);
+        int hiddenCount = number(fields, "comments.hidden", MAX_COMMENT_TOTAL);
+        int localCount = number(fields, "comments.local", MAX_COMMENT_TOTAL);
+        boolean truncated = "1".equals(fields.get("comments.truncated"))
+                || "true".equals(fields.get("comments.truncated"));
         ScrollView scroll = new ScrollView(requireContext());
         LinearLayout content = new LinearLayout(requireContext());
         content.setOrientation(LinearLayout.VERTICAL);
@@ -860,6 +972,12 @@ public final class TorrentsFragment extends Fragment {
                 fields.getOrDefault("comments.average", "0"),
                 fields.getOrDefault("comments.ratingCount", "0")));
         content.addView(summary);
+        TextView paging = new TextView(requireContext());
+        paging.setText(getString(R.string.torrent_comments_page,
+                Integer.toString(count == 0 ? 0 : offset + 1),
+                Integer.toString(offset + count), Integer.toString(total),
+                Integer.toString(hiddenCount), Integer.toString(localCount)));
+        content.addView(paging);
         if (privateTorrent) {
             TextView privateNotice = new TextView(requireContext());
             privateNotice.setText(R.string.torrent_comments_private);
@@ -880,7 +998,9 @@ public final class TorrentsFragment extends Fragment {
             button(content,
                     enabled ? R.string.torrent_comments_disable : R.string.torrent_comments_enable,
                     ignored -> {
-                        if (busy)
+                        // A dropped moderation request would leave the dialog
+                        // showing a state the engine does not have.
+                        if (!ready())
                             return;
                         if (enabled) {
                             dialog.dismiss();
@@ -892,6 +1012,8 @@ public final class TorrentsFragment extends Fragment {
                                     .setNegativeButton(R.string.action_cancel, null)
                                     .setPositiveButton(R.string.torrent_comments_enable,
                                             (confirmation, button) -> {
+                                                if (!ready())
+                                                    return;
                                                 dialog.dismiss();
                                                 request("TORRENT-COMMENTS " + tunnel + " " + id
                                                                 + " ON",
@@ -903,14 +1025,18 @@ public final class TorrentsFragment extends Fragment {
         }
         if (enabled && !privateTorrent)
             button(content, R.string.torrent_comment_add, ignored -> {
+                if (!ready())
+                    return;
                 dialog.dismiss();
                 addComment(id);
             });
-        int count = number(fields, "comments.count", 256);
-        for (int i = 0; i < count; ++i) {
+        int shown = Math.min(count, TorrentControl.COMMENT_PAGE);
+        for (int i = 0; i < shown; ++i) {
             String prefix = "comment." + i + ".";
             boolean hidden = "1".equals(fields.get(prefix + "hidden"))
                     || "true".equals(fields.get(prefix + "hidden"));
+            boolean local = "1".equals(fields.get(prefix + "local"))
+                    || "true".equals(fields.get(prefix + "local"));
             String localId = fields.getOrDefault(prefix + "id", "");
             try {
                 if (Long.parseLong(localId) <= 0)
@@ -918,63 +1044,97 @@ public final class TorrentsFragment extends Fragment {
             } catch (NumberFormatException error) {
                 throw new IllegalArgumentException("Invalid comment ID");
             }
-            MaterialButton entry = new MaterialButton(requireContext());
+            MaterialButton entry = UiFactory.button(requireContext());
             String owner = fields.getOrDefault(prefix + "owner", "");
             String rating = fields.getOrDefault(prefix + "rating", "0");
-            if (hidden) {
-                entry.setText(getString(R.string.torrent_comment_hidden) + " · "
-                        + (owner.isEmpty() ? getString(R.string.torrent_comment_anonymous)
-                                           : owner));
-                entry.setOnClickListener(ignored
-                        -> new MaterialAlertDialogBuilder(requireContext())
-                                .setMessage(R.string.torrent_comment_unhide_confirm)
-                                .setNegativeButton(R.string.action_cancel, null)
-                                .setPositiveButton(R.string.torrent_comment_unhide,
-                                        (confirmation, button) -> {
-                                            try {
-                                                request(TorrentControl.commentId(
-                                                                tunnel, id, localId, false),
-                                                        result
-                                                        -> request("TORRENT-DETAIL " + tunnel + " "
-                                                                        + id,
-                                                                next -> comments(id, next)));
-                                            } catch (IllegalArgumentException error) {
-                                                status.setText(getString(R.string.torrent_error,
-                                                        error.getMessage()));
-                                            }
-                                        })
-                                .show());
-                content.addView(entry);
-                continue;
-            }
-            entry.setText((owner.isEmpty() ? getString(R.string.torrent_comment_anonymous) : owner)
-                    + " · "
-                    + ("0".equals(rating) ? getString(R.string.torrent_comment_no_rating)
-                                            : rating + "/5")
-                    + "\n" + fields.getOrDefault(prefix + "text", ""));
+            StringBuilder label = new StringBuilder();
+            if (hidden)
+                label.append(getString(R.string.torrent_comment_hidden)).append(" \u00b7 ");
+            if (local)
+                label.append(getString(R.string.torrent_comment_local)).append(" \u00b7 ");
+            label.append(owner.isEmpty() ? getString(R.string.torrent_comment_anonymous) : owner)
+                    .append(" \u00b7 ")
+                    .append("0".equals(rating) ? getString(R.string.torrent_comment_no_rating)
+                                               : rating + "/5");
+            String when = commentAge(fields.getOrDefault(prefix + "time", "0"));
+            if (!when.isEmpty())
+                label.append(" \u00b7 ").append(when);
+            // Hidden records keep the same preview as visible ones: the local
+            // store already ships owner, rating, time and text, and an
+            // operator needs them to decide whether to unhide.
+            label.append("\n").append(fields.getOrDefault(prefix + "text", ""));
+            entry.setText(label.toString());
+            final boolean unhide = hidden;
             entry.setOnClickListener(ignored
                     -> new MaterialAlertDialogBuilder(requireContext())
-                            .setMessage(R.string.torrent_comment_hide_confirm)
+                            .setMessage(unhide ? R.string.torrent_comment_unhide_confirm
+                                               : R.string.torrent_comment_hide_confirm)
                             .setNegativeButton(R.string.action_cancel, null)
-                            .setPositiveButton(R.string.torrent_comment_hide,
+                            .setPositiveButton(
+                                    unhide ? R.string.torrent_comment_unhide
+                                           : R.string.torrent_comment_hide,
                                     (confirmation, button) -> {
-                                        dialog.dismiss();
+                                        if (!ready())
+                                            return;
                                         try {
-                                            request(TorrentControl.commentId(
-                                                            tunnel, id, localId, true),
+                                            String command = TorrentControl.commentId(
+                                                    tunnel, id, localId, !unhide);
+                                            dialog.dismiss();
+                                            // Keep the operator on the same page
+                                            // after a moderation decision.
+                                            request(command,
                                                     result
-                                                    -> request(
-                                                            "TORRENT-DETAIL " + tunnel + " " + id,
-                                                            next -> comments(id, next)));
+                                                    -> request(TorrentControl.commentPage(
+                                                                       tunnel, id, offset,
+                                                                       TorrentControl.COMMENT_PAGE),
+                                                            refreshed -> comments(id, refreshed)));
                                         } catch (IllegalArgumentException error) {
                                             status.setText(getString(
-                                                    R.string.torrent_error, error.getMessage()));
+                                                    R.string.torrent_error, errorText(error)));
                                         }
                                     })
                             .show());
             content.addView(entry);
         }
+        if (shown == 0) {
+            TextView empty = new TextView(requireContext());
+            empty.setText(R.string.torrent_comments_empty_page);
+            content.addView(empty);
+        }
+        int next = offset + shown;
+        if (truncated && shown > 0 && next > offset && next < total && next <= MAX_COMMENT_OFFSET) {
+            button(content, R.string.torrent_comments_more, ignored -> {
+                if (!ready())
+                    return;
+                try {
+                    String command = TorrentControl.commentPage(
+                            tunnel, id, next, TorrentControl.COMMENT_PAGE);
+                    dialog.dismiss();
+                    request(command, page -> comments(id, page));
+                } catch (IllegalArgumentException error) {
+                    status.setText(getString(R.string.torrent_error, errorText(error)));
+                }
+            });
+        }
         dialog.show();
+    }
+
+    /** Bounded, localized age for a comment epoch-seconds field. */
+    private String commentAge(String seconds) {
+        try {
+            long epoch = Long.parseLong(seconds);
+            // Reject non-positive and implausible times: a hostile or broken
+            // peer-supplied record must not overflow the millisecond value or
+            // render as a date decades away.
+            if (epoch <= 0 || epoch > 4102444800L)
+                return "";
+            return android.text.format.DateUtils
+                    .getRelativeTimeSpanString(epoch * 1000L, System.currentTimeMillis(),
+                            android.text.format.DateUtils.MINUTE_IN_MILLIS)
+                    .toString();
+        } catch (NumberFormatException error) {
+            return "";
+        }
     }
 
     private void addComment(String id) {
@@ -998,7 +1158,7 @@ public final class TorrentsFragment extends Fragment {
         textLayout.addView(text);
         form.addView(textLayout);
         final int[] rating = {0};
-        MaterialButton chooseRating = new MaterialButton(requireContext());
+        MaterialButton chooseRating = UiFactory.button(requireContext());
         chooseRating.setText(R.string.torrent_comment_no_rating);
         chooseRating.setOnClickListener(ignored -> {
             String[] options = {getString(R.string.torrent_comment_no_rating), "1/5", "2/5", "3/5",
@@ -1027,18 +1187,32 @@ public final class TorrentsFragment extends Fragment {
                                 String command = TorrentControl.comment(tunnel, id, rating[0],
                                         String.valueOf(owner.getText()).trim(),
                                         String.valueOf(text.getText()).trim());
-                                if (busy)
+                                // Keep the form open with a visible reason
+                                // instead of discarding the composed comment.
+                                if (!ready())
                                     return;
                                 dialog.dismiss();
                                 request(command,
                                         result
-                                        -> request("TORRENT-DETAIL " + tunnel + " " + id,
-                                                next -> comments(id, next)));
+                                        -> request(TorrentControl.commentPage(tunnel, id, 0,
+                                                           TorrentControl.COMMENT_PAGE),
+                                                refreshed -> comments(id, refreshed)));
                             } catch (IllegalArgumentException error) {
-                                textLayout.setError(error.getMessage());
+                                textLayout.setError(errorText(error));
                             }
                         }));
         dialog.show();
+    }
+
+    /**
+     * A validation failure that names a resource is already localized; a wire
+     * diagnostic keeps its daemon-provided English text.
+     */
+    private String errorText(IllegalArgumentException error) {
+        if (error instanceof TorrentControl.UserMessageException typed) {
+            return getString(typed.messageRes());
+        }
+        return error.getMessage();
     }
 
     private String safeTunnelName(String value) {
@@ -1053,6 +1227,14 @@ public final class TorrentsFragment extends Fragment {
     private void detachStorage(String hash) {
         if (hash == null || !hash.matches("[0-9a-fA-F]{40}") || currentTunnelName.isEmpty())
             return;
-        TorrentSafStorage.detach(requireContext(), currentTunnelName, hash);
+        // The torrrent is already gone; a failed grant release is reported but
+        // never resurrects the row. The operation is off the main thread.
+        final int expected = generation;
+        model.detachPayload(currentTunnelName, hash, released -> {
+            if (expected != generation || status == null || !isAdded())
+                return;
+            status.setText(released ? R.string.torrent_storage_detached
+                                    : R.string.torrent_storage_detach_failed);
+        });
     }
 }

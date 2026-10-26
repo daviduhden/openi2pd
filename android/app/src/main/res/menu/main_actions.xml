@@ -20,6 +20,10 @@ Defines native Android application resources.
         android:title="@string/address_book_title"
         app:showAsAction="never" />
     <item
+        android:id="@+id/action_runtime_admin"
+        android:title="@string/runtime_admin_title"
+        app:showAsAction="never" />
+    <item
         android:id="@+id/action_logs"
         android:icon="@drawable/ic_logs"
         android:title="@string/action_logs"

@@ -66,7 +66,10 @@ if [ -n "${R8_JAR:-}" ] || [ -n "${ANDROID_JAR:-}" ]; then
 		exit 1
 	fi
 
-	class_file="$classes_dir/org/openi2pd/java25probe/Java25Probe.class"
+	# Dex every probe class, including the nested record/sealed classes. Passing
+	# only the outer class left the record and type-switch lowering paths
+	# untested while the keep rule referenced classes D8 never saw.
+	class_files=$(find "$classes_dir" -name '*.class' -print)
 
 	echo
 	echo "== D8 --min-api 29 =="
@@ -74,7 +77,7 @@ if [ -n "${R8_JAR:-}" ] || [ -n "${ANDROID_JAR:-}" ]; then
 		--min-api 29 \
 		--lib "$ANDROID_JAR" \
 		--output "$dex_dir" \
-		"$class_file"
+		$class_files
 	ls -l "$dex_dir/classes.dex"
 
 	echo
@@ -84,7 +87,7 @@ if [ -n "${R8_JAR:-}" ] || [ -n "${ANDROID_JAR:-}" ]; then
 		--lib "$ANDROID_JAR" \
 		--pg-conf "$keep_file" \
 		--output "$r8_dir" \
-		"$class_file"
+		$class_files
 	ls -l "$r8_dir/classes.dex"
 
 	echo
@@ -92,6 +95,15 @@ if [ -n "${R8_JAR:-}" ] || [ -n "${ANDROID_JAR:-}" ]; then
 	if command -v od >/dev/null 2>&1; then
 		od -An -c -N8 "$dex_dir/classes.dex"
 		od -An -c -N8 "$r8_dir/classes.dex"
+		# minSdk 29 must produce DEX version 039, not the older 037 used by
+		# historical --min-api 24 probes.
+		for dex in "$dex_dir/classes.dex" "$r8_dir/classes.dex"; do
+			version=$(od -An -t u1 -j4 -N3 "$dex" | tr -d ' \n')
+			if [ "$version" != "485157" ]; then # '039' in ASCII (48/51/57)
+				echo "ERROR: $dex is not DEX 039 (got $version)" >&2
+				exit 1
+			fi
+		done
 	fi
 else
 	echo

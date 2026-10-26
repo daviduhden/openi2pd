@@ -70,6 +70,38 @@ public final class TorrentSafStorageTest {
         assertFalse(TorrentSafStorageService.validPath(repeat("x", 256)));
         assertFalse(TorrentSafStorageService.validPath(repeat("a/", 33) + "file"));
     }
+    @Test
+    public void nestedFixturePathsFollowThePathPolicy() {
+        // The multi-file fixture layout is exactly what the engine opens.
+        for (String path : new String[] {"torrent/part-00001.bin", "torrent/sub/part-00002.bin",
+                     "torrent/empty.bin"})
+            assertTrue(path, TorrentSafStorageService.validPath(path));
+        for (String path : new String[] {"/torrent/part-00001.bin", "torrent/../part-00001.bin",
+                     "torrent//part-00001.bin", "torrent/./part-00001.bin", "torrent/",
+                     "torrent/part-00001.bin\u0000", "torrent/part-00001.bin\n",
+                     "torrent/part-00001.bin\t"})
+            assertFalse(path, TorrentSafStorageService.validPath(path));
+    }
+    @Test
+    public void exactSizeRulesAreEnforcedOnOpen() {
+        // A read-only open must match the declared length exactly; only a
+        // write-mode open may extend an existing shorter document.
+        assertFalse(TorrentSafPolicy.canExtendExisting(false, 0, 16384));
+        assertTrue(TorrentSafPolicy.canExtendExisting(true, 0, 16384));
+        assertTrue(TorrentSafPolicy.canExtendExisting(true, 12000, 16384));
+        assertFalse(TorrentSafPolicy.canExtendExisting(true, 16384, 16384));
+        assertFalse(TorrentSafPolicy.canExtendExisting(true, 16385, 16384));
+        // The final commit of an export still requires the exact size.
+        assertTrue(TorrentSafPolicy.exportSizeAllowed(16384, 0));
+        assertTrue(TorrentSafPolicy.exportSizeAllowed(16384, 16384));
+        assertFalse(TorrentSafPolicy.exportSizeAllowed(16384, 16385));
+    }
+    @Test
+    public void zeroLengthDocumentsTransferNothing() {
+        assertTrue(TorrentSafStorageService.validRange(0, 0, 0));
+        assertFalse(TorrentSafStorageService.validRange(0, 0, 1));
+        assertFalse(TorrentSafStorageService.validRange(0, 1, 0));
+    }
     // String.repeat is API 33; instrumentation must still run on API 29.
     private static String repeat(String value, int count) {
         StringBuilder result = new StringBuilder(value.length() * count);

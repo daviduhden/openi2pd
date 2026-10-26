@@ -16,6 +16,13 @@ plugins {
     id 'com.android.application'
 }
 
+// Dependency prefixes are built for arm64-v8a by default. A builder that also
+// produces the other ABI prefixes can pass -Pi2pd.abis=arm64-v8a,armeabi-v7a.
+// Keeping the default aligned with the available prefix avoids configuring
+// native targets whose dependencies do not exist.
+def i2pdAbis = (project.findProperty("i2pd.abis") ?: "arm64-v8a")
+        .split(",").collect { it.trim() }.findAll { it }
+
 dependencies {
     // Stable AndroidX/Material releases used by the modernized UI. Versions
     // were checked against Google Maven on 2026-10-19 and are pinned so the
@@ -73,12 +80,15 @@ android {
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
 
         ndk {
-            abiFilters "arm64-v8a", "armeabi-v7a", "x86_64", "x86"
+            abiFilters(*i2pdAbis)
         }
 
         externalNativeBuild {
             cmake {
-                arguments "-DI2PD_BUILD_JNI=ON"
+                // vcpkg builds its dependencies against c++_shared. Keep the
+                // JNI library on the same STL instead of the AGP c++_static
+                // default, which would mix two libc++ copies.
+                arguments "-DI2PD_BUILD_JNI=ON", "-DANDROID_STL=c++_shared", "-DI2PD_OPENSSL_EXPECT=OpenSSL"
                 def extraArgs = project.findProperty("i2pd.cmakeArgs")
                 if (extraArgs) arguments extraArgs.split("\\s+")
             }
@@ -89,7 +99,7 @@ android {
         abi {
             enable true
             reset()
-            include "armeabi-v7a", "arm64-v8a", "x86", "x86_64"
+            include(*i2pdAbis)
             universalApk true
         }
     }
@@ -143,6 +153,15 @@ android {
         textReport true
         xmlReport true
     }
+
+    testOptions {
+        unitTests {
+            // RouterConfigStore touches android.util.Log; pure-JVM tests must
+            // observe the documented default-value behaviour instead of
+            // failing with "Method not mocked".
+            returnDefaultValues = true
+        }
+    }
 }
 
 java {
@@ -154,8 +173,10 @@ java {
     }
 }
 
-ext.abiCodes = ['armeabi-v7a': 1, 'x86': 2, 'arm64-v8a': 3, 'x86_64': 4]
-ext.baseVersionCode = 2610000
+// Capture these values in locals: AndroidComponents callbacks must not read
+// project.ext under the Gradle configuration cache.
+def i2pdAbiCodes = ['armeabi-v7a': 1, 'x86': 2, 'arm64-v8a': 3, 'x86_64': 4]
+def i2pdBaseVersionCode = 2610000
 
 androidComponents {
     onVariants(selector().all()) { variant ->
@@ -163,14 +184,13 @@ androidComponents {
             def abi = output.filters.find {
                 it.filterType == com.android.build.api.variant.FilterConfiguration.FilterType.ABI
             }?.identifier
-            def baseAbiVersionCode = project.ext.abiCodes.get(abi)
+            def baseAbiVersionCode = i2pdAbiCodes.get(abi)
             if (baseAbiVersionCode != null) {
-                output.versionCode.set(project.ext.baseVersionCode + baseAbiVersionCode)
+                output.versionCode.set(i2pdBaseVersionCode + baseAbiVersionCode)
             } else {
                 // The universal APK must be installable over any split. Give
                 // it the highest version code so it is never a downgrade.
-                output.versionCode.set(project.ext.baseVersionCode
-                        + project.ext.abiCodes.values().max() + 1)
+                output.versionCode.set(i2pdBaseVersionCode + i2pdAbiCodes.values().max() + 1)
             }
         }
     }

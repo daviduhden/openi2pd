@@ -13,7 +13,9 @@
 
 package org.openi2pd.router;
 
+import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertTrue;
 
 import android.content.Context;
@@ -65,9 +67,46 @@ public final class RuntimeAdminParityTest {
         // The library is loaded here only to prove the JNI entry points fail
         // closed while no daemon is running; nothing is initialised or started.
         I2PD_JNI.loadLibraries();
-        assertFalse(I2PD_JNI.requestReseed());
+        assertEquals("unavailable", I2PD_JNI.requestReseed());
+        assertEquals("", I2PD_JNI.getReseedStatus());
+        assertEquals("", I2PD_JNI.getTunnelServices());
+        assertEquals("unavailable", I2PD_JNI.startTunnel("unused"));
+        assertEquals("unavailable", I2PD_JNI.stopTunnel("unused"));
+        assertEquals("unavailable",
+                I2PD_JNI.addAddressWithResult("unused.i2p", "AAAA", false));
+        assertEquals("", I2PD_JNI.getSubscriptions());
+        assertEquals("unavailable", I2PD_JNI.addSubscription("http://unused.i2p/hosts.txt"));
+        assertEquals("unavailable", I2PD_JNI.removeSubscription("http://unused.i2p/hosts.txt"));
+        assertEquals("unavailable", I2PD_JNI.banRouter(
+                "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="));
+        assertEquals("unavailable", I2PD_JNI.unbanRouter(
+                "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="));
         // Even a valid level is rejected: the daemon, not the name, is missing.
         assertFalse(I2PD_JNI.setRuntimeLogLevel("debug"));
         assertFalse(I2PD_JNI.setRuntimeLogLevel("verbose"));
+    }
+
+    @Test
+    public void oversizedArgumentsAreRejectedBeforeAnyNativeWork() {
+        // The length caps are checked on the Java side before conversion, and
+        // again in native code; an oversized value can never become a command.
+        org.junit.Assume.assumeFalse("router already running", RouterService.isRouterRunning());
+        I2PD_JNI.loadLibraries();
+        StringBuilder tunnelName = new StringBuilder();
+        for (int i = 0; i < 65; ++i) {
+            tunnelName.append('a');
+        }
+        StringBuilder hash = new StringBuilder();
+        for (int i = 0; i < 45; ++i) {
+            hash.append('A');
+        }
+        // The native entry points reject an oversized value with "invalid" (or
+        // "unavailable" when the router is stopped) but never with a token that
+        // reports success.
+        assertNotEquals("started", I2PD_JNI.startTunnel(tunnelName.toString()));
+        assertNotEquals("stopped", I2PD_JNI.stopTunnel(tunnelName.toString()));
+        assertNotEquals("ok", I2PD_JNI.banRouter(hash.toString()));
+        assertNotEquals("ok", I2PD_JNI.addSubscription(tunnelName.toString()));
+        assertNotEquals("ok", I2PD_JNI.addAddressWithResult("n.i2p", "AAAA", false));
     }
 }

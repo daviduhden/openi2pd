@@ -16,6 +16,15 @@
 
 # JNI entry points are resolved by their Java names. Keep them if minification
 # is enabled later.
--keepclasseswithmembernames class org.openi2pd.router.I2PD_JNI {
+-keepclasseswithmembers,includedescriptorclasses class org.openi2pd.router.I2PD_JNI {
     native <methods>;
 }
+
+# The SAF bridge looks up these static methods by name from JNI
+# (GetStaticMethodID), so obfuscation/removal would break document storage even
+# though the class is not an entry point itself.
+-keep class org.openi2pd.router.TorrentSafStorage { *; }
+# The broker and its generated AIDL stubs are named by the manifest/interface.
+-keep class org.openi2pd.router.TorrentSafStorageService { *; }
+-keep interface org.openi2pd.router.ITorrentSafStorage { *; }
+-keep class org.openi2pd.router.ITorrentSafStorage$* { *; }

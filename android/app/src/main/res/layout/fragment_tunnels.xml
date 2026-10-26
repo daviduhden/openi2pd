@@ -160,7 +160,7 @@ Defines native Android application resources.
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="@dimen/margin_small"
-            android:accessibilityLiveRegion="polite"
+            android:accessibilityLiveRegion="none"
             android:text="@string/tunnels_grace_active"
             android:textAppearance="@style/TextAppearance.OpenI2Pd.Body"
             android:textColor="?attr/colorPrimary"

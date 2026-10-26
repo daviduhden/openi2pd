@@ -161,6 +161,36 @@ public class TorrentControlTest {
     }
 
     @Test
+    public void commentPagingIsBoundedAndKeepsTheHistoricDetailLine() {
+        // The daemon emits at most 16 comment records per TORRENT-DETAIL
+        // response; offset 0 with the default page reproduces the historic
+        // request line so older daemons keep working.
+        assertEquals(16, TorrentControl.COMMENT_PAGE);
+        assertEquals("TORRENT-DETAIL 2 7", TorrentControl.commentPage(2, "7", 0, 16));
+        assertEquals("TORRENT-DETAIL 2 7 16 16", TorrentControl.commentPage(2, "7", 16, 16));
+        assertEquals("TORRENT-DETAIL 2 7 240 1", TorrentControl.commentPage(2, "7", 240, 1));
+        assertEquals("TORRENT-DETAIL 0 1 255 16", TorrentControl.commentPage(0, "1", 255, 16));
+        // Both bounds are strict: the engine retains 256 records and the wire
+        // page is 1..16, so nothing else is expressible.
+        assertThrows(IllegalArgumentException.class,
+                () -> TorrentControl.commentPage(2, "7", -1, 16));
+        assertThrows(IllegalArgumentException.class,
+                () -> TorrentControl.commentPage(2, "7", 256, 16));
+        assertThrows(IllegalArgumentException.class,
+                () -> TorrentControl.commentPage(2, "7", 0, 0));
+        assertThrows(IllegalArgumentException.class,
+                () -> TorrentControl.commentPage(2, "7", 0, 17));
+        assertThrows(IllegalArgumentException.class,
+                () -> TorrentControl.commentPage(2, "7", 0, -1));
+        assertThrows(IllegalArgumentException.class,
+                () -> TorrentControl.commentPage(-1, "7", 0, 16));
+        assertThrows(
+                IllegalArgumentException.class, () -> TorrentControl.commentPage(2, "0", 0, 16));
+        assertThrows(
+                IllegalArgumentException.class, () -> TorrentControl.commentPage(2, "7\n", 0, 16));
+    }
+
+    @Test
     public void bulkCommandsAreFixedAndRejectNegativeSessions() {
         org.junit.Assert.assertEquals(
                 "TORRENT-START-ALL 0", TorrentControl.bulk(0, TorrentControl.Bulk.START_ALL));
@@ -171,5 +201,46 @@ public class TorrentControlTest {
         assertThrows(IllegalArgumentException.class,
                 () -> TorrentControl.bulk(-1, TorrentControl.Bulk.START_ALL));
         assertThrows(IllegalArgumentException.class, () -> TorrentControl.bulk(0, null));
+    }
+
+    @Test
+    public void singleLifecycleCommandsUseBoundedIds() {
+        assertEquals("TORRENT-START 0 7", TorrentControl.single(0, "7", TorrentControl.Action.START));
+        assertEquals("TORRENT-STOP 2 9", TorrentControl.single(2, "9", TorrentControl.Action.STOP));
+        assertEquals("TORRENT-REANNOUNCE 1 3",
+                TorrentControl.single(1, "3", TorrentControl.Action.REANNOUNCE));
+        assertThrows(IllegalArgumentException.class,
+                () -> TorrentControl.single(-1, "7", TorrentControl.Action.START));
+        assertThrows(IllegalArgumentException.class,
+                () -> TorrentControl.single(0, "0", TorrentControl.Action.START));
+        assertThrows(IllegalArgumentException.class,
+                () -> TorrentControl.single(0, "abc", TorrentControl.Action.START));
+        assertThrows(IllegalArgumentException.class,
+                () -> TorrentControl.single(0, "2147483648", TorrentControl.Action.START));
+        assertThrows(IllegalArgumentException.class,
+                () -> TorrentControl.single(0, "7", null));
+    }
+
+    @Test
+    public void creationTrackerValidatesWithoutAnEngineId() {
+        TorrentControl.creationTracker("http://tracker.example.i2p/announce");
+        TorrentControl.creationTracker("udp://tracker.i2p:6969/announce");
+        for (String invalid : new String[] {null, "", "http://clearnet.example.com/announce",
+                "https://tracker.i2p/announce", "http://user:secret@tracker.i2p/announce",
+                "http://tracker.i2p/announce\nQUIT", "http://tracker.i2p:0/announce",
+                "http://tracker.i2p/announce#fragment"}) {
+            assertThrows(IllegalArgumentException.class,
+                    () -> TorrentControl.creationTracker(invalid));
+        }
+        // A creation hint never becomes an admin tracker command for id 0.
+        assertThrows(IllegalArgumentException.class,
+                () -> TorrentControl.tracker(true, 0, "0", "http://tracker.i2p/announce"));
+    }
+
+    @Test
+    public void removeAllBulkVariantsAreExact() {
+        assertEquals("TORRENT-REMOVE-ALL 4", TorrentControl.bulk(4, TorrentControl.Bulk.REMOVE_ALL));
+        assertEquals("TORRENT-REMOVE-ALL 4 files",
+                TorrentControl.bulk(4, TorrentControl.Bulk.REMOVE_ALL_FILES));
     }
 }

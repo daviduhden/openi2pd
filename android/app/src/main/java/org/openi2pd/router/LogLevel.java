@@ -81,7 +81,7 @@ public enum LogLevel {
     public boolean accepts(LogLevel level) {
         return switch (this) {
             case ALL, DEBUG -> true;
-            case INFO, WARN, ERROR -> level != null&& level.severity() >= minimum();
+            case INFO, WARN, ERROR -> level != null && level.severity() >= minimum();
         };
     }
 

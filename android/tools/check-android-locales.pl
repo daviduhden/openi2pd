@@ -12,7 +12,9 @@
 
 use strict;
 use warnings;
+use 5.016;
 use File::Find qw(find);
+use File::Spec;
 
 my @languages    = qw(en es ru zh-CN);
 my %language_dir = (
@@ -23,7 +25,7 @@ my %language_dir = (
 );
 my %allowed_store = map { $_ => 1 } qw(en-US es-ES ru-RU zh-CN);
 my $root          = -d 'android/app/src/main' ? 'android' : '.';
-my $res           = "$root/app/src/main/res";
+my $res           = File::Spec->catdir( $root, qw(app src main res) );
 my @errors;
 
 sub fail { push @errors, join( '', @_ ) . "\n" }
@@ -54,6 +56,22 @@ sub catalog {
     return ( \%strings, \%attrs );
 }
 
+sub plurals
+{
+    my ($path) = @_;
+    my $xml = read_file($path);
+    my %out;
+    while ( $xml =~ /<plurals\s+name="([^"]+)"[^>]*>(.*?)<\/plurals>/sg ) {
+        my ( $name, $body ) = ( $1, $2 );
+        my %quantity;
+        while ( $body =~ /<item\s+quantity="([^"]+)"[^>]*>(.*?)<\/item>/sg ) {
+            $quantity{$1} = $2;
+        }
+        $out{$name} = \%quantity;
+    }
+    return \%out;
+}
+
 sub placeholders {
     my ($value) = @_;
     my @matches = ( $value =~ /%(?:\d+\$)?[-+ 0#]*\d*(?:\.\d+)?[sd]/g );
@@ -76,11 +94,11 @@ for my $dir ( sort @value_dirs ) {
       || $dir eq 'values-zh-rCN';
 }
 
-my $base_path = "$res/values/strings.xml";
+my $base_path = File::Spec->catfile( $res, qw(values strings.xml) );
 my ( $base, $base_attrs ) = catalog($base_path);
 my %translations;
 for my $tag (qw(es ru zh-CN)) {
-    my $path = "$res/$language_dir{$tag}/strings.xml";
+    my $path = File::Spec->catfile( $res, $language_dir{$tag}, 'strings.xml' );
     fail("missing locale catalog $path") unless -f $path;
     next                                 unless -f $path;
     my ( $translated, $attrs ) = catalog($path);
@@ -101,23 +119,63 @@ for my $tag (qw(es ru zh-CN)) {
     }
 }
 
-if ( !-f "$res/xml/locales_config.xml" ) {
+# Plural resources must exist in every catalog with the quantities the
+# language actually uses, and keep the same placeholders as the base form.
+my $base_plurals = plurals($base_path);
+my %plural_counts = ( es => [qw(one other)], ru => [qw(one few many other)], 'zh-CN' => [qw(one other)] );
+for my $tag (qw(es ru zh-CN)) {
+    my $path = File::Spec->catfile( $res, $language_dir{$tag}, 'strings.xml' );
+    next unless -f $path;
+    my $translated = plurals($path);
+    for my $name ( sort keys %$base_plurals ) {
+        fail("missing $tag plurals $name") unless exists $translated->{$name};
+        next unless exists $translated->{$name};
+        for my $quantity ( @{ $plural_counts{$tag} } ) {
+            fail("missing $tag plurals $name quantity=$quantity")
+              unless exists $translated->{$name}{$quantity};
+        }
+        my $want = placeholders( $base_plurals->{$name}{other} );
+        for my $quantity ( keys %{ $translated->{$name} } ) {
+            my $got = placeholders( $translated->{$name}{$quantity} );
+            fail("placeholder mismatch for $tag plurals $name:$quantity ($want != $got)")
+              if $want ne $got;
+        }
+    }
+    for my $name ( sort keys %$translated ) {
+        fail("extra $tag plurals $name") unless exists $base_plurals->{$name};
+    }
+}
+
+# Android formatting is positional so a translated word order is safe. A bare
+# %s/%d would bind to the first argument regardless of the sentence.
+for my $name ( keys %$base ) {
+    fail("non-positional placeholder in values string $name")
+      if $base->{$name} =~ /%(?!%|\d+\$)[-+ 0#]*\d*(?:\.\d+)?[sdif]/;
+}
+for my $tag ( keys %translations ) {
+    for my $name ( keys %{ $translations{$tag} } ) {
+        fail("non-positional placeholder in $tag string $name")
+          if $translations{$tag}{$name} =~ /%(?!%|\d+\$)[-+ 0#]*\d*(?:\.\d+)?[sdif]/;
+    }
+}
+
+if ( !-f File::Spec->catfile( $res, qw(xml locales_config.xml) ) ) {
     fail("missing res/xml/locales_config.xml");
 }
 else {
-    my $xml     = read_file("$res/xml/locales_config.xml");
+    my $xml     = read_file( File::Spec->catfile( $res, qw(xml locales_config.xml) ) );
     my @locales = ( $xml =~ /<locale\s+android:name="([^"]+)"/g );
     fail("locales_config must declare en, es, ru, zh-CN")
       unless join( ',', @locales ) eq join( ',', @languages );
 }
 
-my $manifest = read_file("$root/app/src/main/AndroidManifest.xml");
+my $manifest = read_file( File::Spec->catfile( $root, qw(app src main AndroidManifest.xml) ) );
 fail("AndroidManifest.xml does not declare localeConfig")
   unless $manifest =~ /android:localeConfig="\@xml\/locales_config"/;
 fail("AndroidManifest.xml lacks AppCompat auto-store service")
   unless $manifest =~ /AppLocalesMetadataHolderService/;
 
-my $gradle = read_file("$root/app/build.gradle");
+my $gradle = read_file( File::Spec->catfile( $root, qw(app build.gradle) ) );
 if ( $gradle =~ /androidResources\s*\{(.*?)\}/s ) {
     my $block   = $1;
     my @filters = ( $block =~ /localeFilters\s*\+=\s*\[([^\]]*)\]/s );
@@ -139,7 +197,7 @@ for my $dir (@store_dirs) {
     fail("unsupported Fastlane locale $dir") unless $allowed_store{$dir};
 }
 
-my $prefs = read_file("$res/values/preferences_i2pd_options.xml");
+my $prefs = read_file( File::Spec->catfile( $res, qw(values preferences_i2pd_options.xml) ) );
 for my $array (
     qw(pref_language_values pref_bandwidth_values pref_loglevel_values))
 {
@@ -181,6 +239,10 @@ find(
                     fail("missing string resource R.string.$1 in $_")
                       unless exists $base->{$1};
                 }
+                while ( $text =~ /(?<!android\.)R\.plurals\.([A-Za-z0-9_]+)/g ) {
+                    fail("missing plural resource R.plurals.$1 in $_")
+                      unless exists $base_plurals->{$1};
+                }
                 while ( $text =~ /\@string\/([A-Za-z0-9_]+)/g ) {
                     fail("missing string resource \@string/$1 in $_")
                       unless exists $base->{$1};
@@ -192,9 +254,36 @@ find(
     "$root/app/src/main"
 );
 
+# Instrumentation and JVM tests also reference resources; a removed id would
+# only fail on the device lane otherwise.
+for my $tree ("$root/app/src/androidTest", "$root/app/src/test") {
+    next unless -d $tree;
+    find(
+        {
+            no_chdir => 1,
+            wanted   => sub {
+                return unless /\.(?:java|xml)$/;
+                open( my $fh, '<', $_ ) or return;
+                while ( my $text = <$fh> ) {
+                    while ( $text =~ /(?<!android\.)R\.string\.([A-Za-z0-9_]+)/g ) {
+                        fail("missing string resource R.string.$1 in $_")
+                          unless exists $base->{$1};
+                    }
+                    while ( $text =~ /(?<!android\.)R\.plurals\.([A-Za-z0-9_]+)/g ) {
+                        fail("missing plural resource R.plurals.$1 in $_")
+                          unless exists $base_plurals->{$1};
+                    }
+                }
+                close($fh);
+            }
+        },
+        $tree
+    );
+}
+
 if (@errors) {
-    print for @errors;
-    print "FAIL: Android locale catalogs are incomplete or inconsistent\n";
+    print STDERR for @errors;
+    print STDERR "FAIL: Android locale catalogs are incomplete or inconsistent\n";
     exit 1;
 }
 print

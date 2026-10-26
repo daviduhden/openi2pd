@@ -8,7 +8,8 @@
  * assets.ready marker, initialises and starts i2p::Daemon and returns a
  * bounded error string on failure. A mutex serialises control and status
  * calls, and an atomic lifecycle mirror is published before each transition
- * so a torn-down router is never touched.
+ * so a torn-down router is never touched. A separate lock-free cancellation
+ * token aborts a start that currently owns that mutex.
  *
  */
 
@@ -55,6 +56,24 @@ namespace android
 		/** Serialises all JNI-visible control and status calls. */
 		std::mutex nativeCallMutex;
 		std::atomic<DaemonLifecycle> lifecycle { DaemonLifecycle::Stopped };
+
+		/**
+		 * Start-cancellation token. It is published by RequestStartCancel()
+		 * without nativeCallMutex, so a Java stop request can abort a start
+		 * that currently owns the guard. It is cleared exactly once, at the
+		 * beginning of the next start transition.
+		 */
+		std::atomic<bool> startCancelRequested { false };
+	}
+
+	void RequestStartCancel () noexcept
+	{
+		startCancelRequested.store (true, std::memory_order_release);
+	}
+
+	bool IsStartCancelRequested () noexcept
+	{
+		return startCancelRequested.load (std::memory_order_acquire);
 	}
 
 	NativeCallGuard::NativeCallGuard ()
@@ -96,13 +115,6 @@ namespace android
 		lifecycle.store (DaemonLifecycle::Stopped, std::memory_order_release);
 	}
 
-	void DaemonAndroidImpl::restart ()
-	{
-		stop ();
-		StartDaemonLifecycle (
-			lifecycle, [] () { return true; }, [this] () { return start (); }, [this] () { stop (); });
-	}
-
 	void DaemonAndroidImpl::setDataDir (std::string path)
 	{
 		Daemon.setDataDir (path);
@@ -115,10 +127,16 @@ namespace android
 	/**
 	 * returns error details if failed
 	 * returns "ok" if daemon initialized and started okay
+	 * returns START_CANCELED_RESULT if a stop request aborted the transition
 	 */
 	std::string start (/*int argc, char* argv[]*/)
 	{
+		// A token left behind by an earlier stop belongs to the previous
+		// lifecycle. Only a request that arrives after this point aborts this
+		// start; the packaged-asset wait and the init/start boundary observe it.
+		startCancelRequested.store (false, std::memory_order_release);
 		std::string setupFailure;
+		bool canceled = false;
 		try
 		{
 			const auto result = StartDaemonLifecycle (
@@ -136,15 +154,29 @@ namespace android
 					int numAttempts = 0;
 					do
 					{
+						if (IsStartCancelRequested ())
+						{
+							canceled = true;
+							return false;
+						}
 						if (i2p::fs::Exists (i2p::fs::DataDirPath ("assets.ready")))
 						{
 							assetsReady = true;
 							break;
 						}
 						numAttempts++;
-						std::this_thread::sleep_for (std::chrono::seconds (1)); // otherwise wait for 1 more second
+						// Sleep in bounded slices so a stop request that
+						// arrives during the wait is observed within ~100 ms
+						// instead of after the whole second.
+						for (int slice = 0; slice < 10 && !IsStartCancelRequested (); ++slice)
+							std::this_thread::sleep_for (std::chrono::milliseconds (100));
 					} while (numAttempts <= 10); // 10 seconds max
 
+					if (IsStartCancelRequested ())
+					{
+						canceled = true;
+						return false;
+					}
 					if (!assetsReady)
 					{
 						setupFailure = "Assets not ready";
@@ -160,7 +192,29 @@ namespace android
 					}
 					return true;
 				},
-				[] () { return daemon.start (); }, [] () { daemon.stop (); });
+				[&] ()
+				{
+					// Between init and start: an aborted start returns false so
+					// the lifecycle owner rolls the initialized daemon back
+					// (exactly one stop) before publishing Stopped.
+					if (IsStartCancelRequested ())
+					{
+						canceled = true;
+						return false;
+					}
+					if (!daemon.start ()) return false;
+					if (IsStartCancelRequested ())
+					{
+						canceled = true;
+						return false;
+					}
+					return true;
+				},
+				[] () { daemon.stop (); });
+
+			// A cancellation owns the result even though the lifecycle helper
+			// reports it as an initialization or start failure.
+			if (canceled) return START_CANCELED_RESULT;
 
 			switch (result)
 			{

@@ -120,9 +120,12 @@ public class LogAdapter extends ListAdapter<LogEntry, LogAdapter.Holder> {
             level.setText(levelText);
             message.setText(messageText);
             level.setTextColor(colorFor(rawLevel));
-            // Keep the individual TextViews accessible. A row-level
-            // contentDescription duplicates the same text in TalkBack and can
-            // also make a multi-kilobyte log message a single enormous label.
+            // The row is one screen-reader stop. The child TextViews are
+            // excluded from the accessibility tree (item_log.xml) so TalkBack
+            // does not announce the timestamp, level and message separately,
+            // and the combined description preserves the reading order.
+            itemView.setContentDescription(
+                    context.getString(R.string.log_row_description, timeText, levelText, messageText));
         }
 
         private int colorFor(@NonNull String rawLevel) {

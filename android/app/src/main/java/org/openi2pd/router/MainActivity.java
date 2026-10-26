@@ -79,6 +79,7 @@ public class MainActivity extends AppCompatActivity {
     private static final String TAG_ABOUT = "about";
     private static final String TAG_TORRENTS = "torrents";
     private static final String TAG_ADDRESS_BOOK = "address_book";
+    private static final String TAG_RUNTIME_ADMIN = "runtime_admin";
 
     private RouterViewModel viewModel;
     private MaterialToolbar toolbar;
@@ -247,6 +248,8 @@ public class MainActivity extends AppCompatActivity {
                 toolbar.setTitle(R.string.torrent_title);
             } else if (TAG_ADDRESS_BOOK.equals(name)) {
                 toolbar.setTitle(R.string.address_book_title);
+            } else if (TAG_RUNTIME_ADMIN.equals(name)) {
+                toolbar.setTitle(R.string.runtime_admin_title);
             } else {
                 toolbar.setTitle(R.string.app_name);
             }
@@ -335,7 +338,8 @@ public class MainActivity extends AppCompatActivity {
 
         FragmentTransaction transaction = fragments.beginTransaction().setReorderingAllowed(true);
         for (String existingTag : new String[] {TAG_DASHBOARD, TAG_NETWORK, TAG_TUNNELS,
-                     TAG_STATISTICS, TAG_SETTINGS, TAG_LOGS, TAG_ABOUT, TAG_TORRENTS}) {
+                     TAG_STATISTICS, TAG_SETTINGS, TAG_LOGS, TAG_ABOUT, TAG_TORRENTS,
+                     TAG_ADDRESS_BOOK, TAG_RUNTIME_ADMIN}) {
             Fragment existing = fragments.findFragmentByTag(existingTag);
             if (existing != null && !existingTag.equals(tag)) {
                 transaction.hide(existing);
@@ -452,13 +456,14 @@ public class MainActivity extends AppCompatActivity {
         MenuItem stop = menu.findItem(R.id.action_stop);
 
         boolean detail = getSupportFragmentManager().getBackStackEntryCount() > 0;
-        MenuItem logs = menu.findItem(R.id.action_logs);
-        MenuItem about = menu.findItem(R.id.action_about);
-        if (logs != null) {
-            logs.setVisible(!detail);
-        }
-        if (about != null) {
-            about.setVisible(!detail);
+        // Secondary destinations are entries, not tabs: showing them while a
+        // detail is open would replace that detail and lose the back target.
+        for (int id : new int[] {R.id.action_logs, R.id.action_about, R.id.action_torrents,
+                     R.id.action_address_book, R.id.action_runtime_admin}) {
+            MenuItem entry = menu.findItem(id);
+            if (entry != null) {
+                entry.setVisible(!detail);
+            }
         }
 
         boolean gracefulActive = UiFormat.gracefulActive(lastSnapshot);
@@ -505,6 +510,10 @@ public class MainActivity extends AppCompatActivity {
             openDetail(new AddressBookFragment(), TAG_ADDRESS_BOOK, R.string.address_book_title);
             return true;
         }
+        if (id == R.id.action_runtime_admin) {
+            openDetail(new RuntimeAdminFragment(), TAG_RUNTIME_ADMIN, R.string.runtime_admin_title);
+            return true;
+        }
         if (id == R.id.action_battery_optimizations) {
             showBatteryOptimizationOptions();
             return true;
@@ -535,26 +544,25 @@ public class MainActivity extends AppCompatActivity {
     }
 
     /**
-     * Reseeding contacts the configured reseed servers over HTTPS and can run
-     * for minutes on a poor connection, so it is confirmed first. The immediate
-     * Toast tells the user the request left the UI thread; the bounded result
-     * arrives later from the service worker. Both Toasts use the application
-     * context, so a rotation during the bootstrap cannot retain the Activity.
+     * Reseeding contacts the configured reseed servers over HTTPS, so it is
+     * confirmed first. The native call returns immediately with a typed
+     * outcome; the bootstrap itself runs in the NetDb background job. Both
+     * Toasts use the application context, so a rotation during the reseed
+     * cannot retain the Activity.
      */
     void confirmReseed() {
         final Context appContext = getApplicationContext();
         confirm(R.string.confirm_reseed_title, R.string.confirm_reseed_message,
-                R.string.action_reseed, () -> {
-                    Toast.makeText(appContext, R.string.toast_reseed_started, Toast.LENGTH_SHORT)
-                            .show();
-                    viewModel.requestReseed(issued
-                            -> Toast.makeText(appContext,
-                                            Boolean.TRUE.equals(issued)
-                                                    ? R.string.toast_reseed_finished
-                                                    : R.string.toast_reseed_failed,
-                                            Toast.LENGTH_SHORT)
-                                    .show());
-                });
+                R.string.action_reseed, () -> viewModel.requestReseed(outcome -> {
+                    String token = outcome == null ? "" : outcome;
+                    int message = switch (token) {
+                        case "started" -> R.string.toast_reseed_started;
+                        case "already-running" -> R.string.runtime_admin_reseed_running;
+                        case "disabled" -> R.string.runtime_admin_reseed_disabled;
+                        default -> R.string.toast_reseed_failed;
+                    };
+                    Toast.makeText(appContext, message, Toast.LENGTH_SHORT).show();
+                }));
     }
 
     private void toggleGracefulStop() {

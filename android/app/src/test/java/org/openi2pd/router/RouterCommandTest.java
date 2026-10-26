@@ -109,4 +109,27 @@ public class RouterCommandTest {
         assertEquals(RouterService.ACTION_RESEED, ACTION_RESEED);
         assertEquals(RouterService.ACTION_SET_RUNTIME_LOG_LEVEL, ACTION_SET_RUNTIME_LOG_LEVEL);
     }
+
+    @Test
+    public void noGenericAdministrativeActionExists() {
+        // Runtime administration is a closed set of binder methods
+        // (startTunnel/stopTunnel, requestReseed, addAddressWithResult,
+        // addSubscription/removeSubscription, banRouter/unbanRouter). No intent
+        // action may carry a free-form verb, name, path or URL, so any attempt
+        // to smuggle one through the started-service path stays Unknown.
+        for (String action : new String[] {
+                     "org.openi2pd.router.action.ADMIN",
+                     "org.openi2pd.router.action.ADMIN_TUNNEL_START",
+                     "org.openi2pd.router.action.TUNNEL_START",
+                     "org.openi2pd.router.action.TUNNEL_STOP",
+                     "org.openi2pd.router.action.BAN_ROUTER",
+                     "org.openi2pd.router.action.ADDRESS_REPLACE",
+                     "org.openi2pd.router.action.ADDRESS_SUB_ADD",
+                     "org.openi2pd.router.action.SET_OPTION"}) {
+            assertEquals(action, new RouterCommand.Unknown(action),
+                    RouterCommand.fromAction(action));
+            assertEquals(action, new RouterCommand.Unknown(action),
+                    RouterCommand.fromAction(action, "debug"));
+        }
+    }
 }

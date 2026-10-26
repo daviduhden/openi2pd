@@ -57,6 +57,11 @@ public final class LocaleResourceTest {
             R.string.os_version_does_not_support_battery_optimizations_show_os_dialog_api,
             R.string.tunnels_reloading,
             R.string.autostart_enabled,
+            R.string.notification_channel_name,
+            R.string.notification_channel_description,
+            R.string.torrent_creation_failed_unknown,
+            R.string.torrent_create_source_invalid,
+            R.string.log_row_description,
     };
 
     @Test
@@ -81,6 +86,19 @@ public final class LocaleResourceTest {
             assertTrue("locale " + tag + " did not select a translated catalog", translated);
         }
 
+        // Traditional Chinese is deliberately not shipped: a zh-TW or zh-Hant
+        // device must fall back to English rather than show Simplified text as
+        // if it were Traditional.
+        for (String tag : new String[] {"zh-TW", "zh-Hant", "zh-HK"}) {
+            Configuration configuration = new Configuration(base.getResources().getConfiguration());
+            configuration.setLocale(Locale.forLanguageTag(tag));
+            Context localized = base.createConfigurationContext(configuration);
+            for (int i = 0; i < SAMPLE_STRINGS.length; i++) {
+                assertEquals("Traditional Chinese locale " + tag + " must fall back to English",
+                        english[i], localized.getString(SAMPLE_STRINGS[i]));
+            }
+        }
+
         for (String tag : new String[] {"de-DE", "fr-FR", "tr-TR", "ar-EG"}) {
             Configuration configuration = new Configuration(base.getResources().getConfiguration());
             configuration.setLocale(Locale.forLanguageTag(tag));
@@ -90,5 +108,27 @@ public final class LocaleResourceTest {
                         english[i], localized.getString(SAMPLE_STRINGS[i]));
             }
         }
+    }
+
+    @Test
+    public void russianPluralCategoriesSelectDistinctForms() {
+        Context base = ApplicationProvider.getApplicationContext();
+        Configuration configuration = new Configuration(base.getResources().getConfiguration());
+        configuration.setLocale(Locale.forLanguageTag("ru-RU"));
+        Context ru = base.createConfigurationContext(configuration);
+        String one = ru.getResources().getQuantityString(R.plurals.torrent_count, 1, 1);
+        String few = ru.getResources().getQuantityString(R.plurals.torrent_count, 2, 2);
+        String many = ru.getResources().getQuantityString(R.plurals.torrent_count, 5, 5);
+        assertTrue("Russian one/few forms must differ: " + one + " / " + few,
+                !one.equals(few));
+        assertTrue("Russian few/many forms must differ: " + few + " / " + many,
+                !few.equals(many));
+        // Spanish has one/other and Simplified Chinese uses one form text.
+        Configuration esConfig = new Configuration(base.getResources().getConfiguration());
+        esConfig.setLocale(Locale.forLanguageTag("es-ES"));
+        Context es = base.createConfigurationContext(esConfig);
+        assertTrue("Spanish plural forms must differ",
+                !es.getResources().getQuantityString(R.plurals.torrent_count, 1, 1)
+                        .equals(es.getResources().getQuantityString(R.plurals.torrent_count, 2, 2)));
     }
 }
