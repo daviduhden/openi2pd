@@ -13,6 +13,11 @@ name: Fuzzing
 # Run this workflow only on a maintainer-dispatched revision.
 on:
   workflow_dispatch:
+    inputs:
+      fuzz_seconds:
+        description: "Bounded seconds per target (manual CI only)"
+        required: false
+        default: "30"
 
 permissions:
   contents: read
@@ -24,53 +29,77 @@ concurrency:
 jobs:
   fuzz-smoke:
     runs-on: ubuntu-24.04
-    timeout-minutes: 50
+    timeout-minutes: 60
+    env:
+      ASAN_OPTIONS: "detect_leaks=0:halt_on_error=1:abort_on_error=1:quarantine_size_mb=64:thread_local_quarantine_size_kb=256"
+      UBSAN_OPTIONS: "halt_on_error=1:print_stacktrace=1"
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
         with:
           persist-credentials: false
       - name: Install latest build tools from Homebrew
+        timeout-minutes: 20
         uses: ./.github/actions/brew-toolchain
       - name: Build libFuzzer targets
+        timeout-minutes: 30
         run: |
           cmake -S build -B build-fuzz -G Ninja \
             -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ \
             -DCMAKE_BUILD_TYPE=RelWithDebInfo \
             -DBUILD_TESTING=ON -DWITH_FUZZERS=ON -DWITH_ADDRSANITIZER=ON -DWITH_UNDEFSANITIZER=ON \
+            -DI2PD_OPENSSL_EXPECT=OpenSSL \
             -DWITH_UPNP=OFF -DI2PD_BUILD_TUI=OFF
           cmake --build build-fuzz --parallel 2 --target \
             fuzz-tui-protocol fuzz-http-parser fuzz-protocol-bounds \
             fuzz-log-record fuzz-privsep-protocol fuzz-torrents-parsers \
-            fuzz-base-blinding fuzz-signature-der
+            fuzz-torrents-krpc fuzz-torrents-extensions \
+            fuzz-base-blinding fuzz-signature-der fuzz-i2np-policy \
+            fuzz-i2np-database fuzz-ntcp2-blocks fuzz-sam-control fuzz-i2cp-message
       - name: Run one-input CTest fuzz smoke entries
+        timeout-minutes: 10
         run: |
-          ctest --test-dir build-fuzz --output-on-failure \
-            -L fuzz --no-tests=error --timeout 60
+          ctest --test-dir build-fuzz -j 2 --output-on-failure \
+            -L fuzz --no-tests=error --timeout 60 \
+            --output-junit "$PWD/ctest-fuzz.xml"
       - name: Run bounded fuzz smoke checks
-        env:
-          ASAN_OPTIONS: "detect_leaks=0:halt_on_error=1:abort_on_error=1:quarantine_size_mb=64:thread_local_quarantine_size_kb=256"
-          UBSAN_OPTIONS: "halt_on_error=1:print_stacktrace=1"
+        timeout-minutes: 25
         run: |
-          mkdir -p "$RUNNER_TEMP/fuzz-artifacts"
+          artifact_root="$RUNNER_TEMP/fuzz-artifacts"
+          mkdir -p "$artifact_root"
+          summary="$RUNNER_TEMP/fuzz-summary.md"
+          printf '| Fuzzer | Result |\n|---|---|\n' > "$summary"
           rc=0
           for fuzzer in \
             fuzz-tui-protocol fuzz-http-parser fuzz-protocol-bounds \
             fuzz-log-record fuzz-privsep-protocol fuzz-torrents-parsers \
-            fuzz-base-blinding fuzz-signature-der
+            fuzz-torrents-krpc fuzz-torrents-extensions \
+            fuzz-base-blinding fuzz-signature-der fuzz-i2np-policy \
+            fuzz-i2np-database fuzz-ntcp2-blocks fuzz-sam-control fuzz-i2cp-message
           do
             corpus="$RUNNER_TEMP/corpus/$fuzzer"
-            mkdir -p "$corpus"
-            if ! "build-fuzz/tests/$fuzzer" \
-              -max_total_time=30 \
+            artifact_dir="$artifact_root/$fuzzer"
+            log="$RUNNER_TEMP/fuzz-$fuzzer.log"
+            mkdir -p "$corpus" "$artifact_dir"
+            if [ -d "tests/fuzz/corpus/$fuzzer" ]; then
+              cp -a "tests/fuzz/corpus/$fuzzer/." "$corpus"/
+            fi
+            if "build-fuzz/tests/$fuzzer" \
+              -max_total_time=${{ inputs.fuzz_seconds }} \
               -timeout=10 \
+              -max_len=65536 \
               -rss_limit_mb=6144 \
               -malloc_limit_mb=6144 \
               -print_final_stats=1 \
-              -artifact_prefix="$RUNNER_TEMP/fuzz-artifacts/" \
-              "$corpus"; then
+              -artifact_prefix="$artifact_dir/" \
+              "$corpus" >"$log" 2>&1; then
+              printf '| %s | pass |\n' "$fuzzer" >> "$summary"
+            else
+              printf '| %s | **FAIL** |\n' "$fuzzer" >> "$summary"
+              tail -n 20 "$log" >> "$summary"
               rc=1
             fi
           done
+          cat "$summary" >> "$GITHUB_STEP_SUMMARY"
           exit "$rc"
       - name: Stage fuzz corpora and crash artifacts
         if: always()
@@ -80,9 +109,13 @@ jobs:
           find fuzz-output -type f -print | sort | sed -n '1,80p'
       - name: Upload fuzz corpora and crash artifacts
         if: always()
+        timeout-minutes: 5
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
         with:
           name: fuzz-corpus-and-artifacts
-          path: fuzz-output
+          path: |
+            fuzz-output
+            build-fuzz/Testing
+            ctest-fuzz.xml
           if-no-files-found: warn
           retention-days: 7

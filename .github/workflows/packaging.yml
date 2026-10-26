@@ -34,7 +34,7 @@ jobs:
         run: |
           sudo apt-get update -qq
           sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y \
-            --no-install-recommends shellcheck
+            --no-install-recommends shellcheck ksh
       - name: Validate service contracts and shell syntax
         run: |
           cmake -DPROJECT_ROOT="$PWD" -P tests/check-services.cmake
@@ -43,11 +43,14 @@ jobs:
           sh -n contrib/sysvinit/i2pd
           sh -n contrib/openrc/i2pd.openrc
           sh -n contrib/runit/i2pd/run
+          sh -n contrib/runit/i2pd/finish
           sh -n contrib/runit/i2pd/log/run
+          ksh -n contrib/openbsd/i2pd.rc
           shellcheck -s sh \
             contrib/openrc/i2pd.openrc \
             contrib/sysvinit/i2pd \
             contrib/runit/i2pd/run \
+            contrib/runit/i2pd/finish \
             contrib/runit/i2pd/log/run \
             debian/postinst debian/postrm debian/tests/smoke
       - name: Check maintenance shell scripts
@@ -79,6 +82,152 @@ jobs:
           grep -q '^Depends: .*i2pd-tui' debian/tests/control
           sh -n debian/tests/smoke
 
+  service-install-matrix:
+    name: Service component install matrix
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
+        with:
+          persist-credentials: false
+      - name: Install configure-time dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y \
+            --no-install-recommends cmake ninja-build \
+            libboost-program-options-dev libboost-json-dev libboost-url-dev \
+            libssl-dev zlib1g-dev libminiupnpc-dev libncurses-dev
+      # Install only the Service component: the router is not built, but the
+      # selected manager's files must land in the documented directories. This
+      # is a packaging-layout check, not a service start.
+      - name: Install each selected manager into a staging prefix
+        run: |
+          set -euo pipefail
+          for manager in systemd openrc runit s6 s6-rc shepherd sysvinit; do
+            build="build-service-$manager"
+            prefix="$RUNNER_TEMP/service-$manager"
+            cmake -S build -B "$build" -G Ninja \
+              -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF \
+              -DWITH_BINARY=ON -DWITH_LIBRARY=OFF \
+              -DI2PD_BUILD_TUI=OFF -DI2PD_BUILD_TOOLS=OFF \
+              -DI2PD_SERVICE_MANAGER="$manager" \
+              -DCMAKE_INSTALL_PREFIX=/usr
+            cmake --install "$build" --prefix "$prefix" --component Service
+            case "$manager" in
+              systemd)
+                test -f "$prefix/lib/systemd/system/i2pd.service"
+                test -f "$prefix/lib/sysusers.d/openi2pd.conf"
+                test -f "$prefix/lib/tmpfiles.d/openi2pd.conf"
+                ;;
+              openrc)
+                test -x "$prefix/etc/init.d/i2pd"
+                test -f "$prefix/etc/conf.d/i2pd"
+                ;;
+              runit)
+                test -x "$prefix/etc/sv/i2pd/run"
+                test -x "$prefix/etc/sv/i2pd/finish"
+                test -x "$prefix/etc/sv/i2pd/log/run"
+                test -f "$prefix/etc/sv/i2pd/log/config"
+                ;;
+              s6)
+                test -x "$prefix/etc/s6/service/i2pd/run"
+                test -x "$prefix/etc/s6/service/i2pd/finish"
+                test -f "$prefix/etc/s6/service/i2pd/down-signal"
+                test -f "$prefix/etc/s6/service/i2pd/timeout-kill"
+                test -f "$prefix/etc/s6/service/i2pd/timeout-finish"
+                test ! -e "$prefix/etc/s6/service/i2pd/notification-fd"
+                ;;
+              s6-rc)
+                test -x "$prefix/etc/s6-rc/source/i2pd/run"
+                test -x "$prefix/etc/s6-rc/source/i2pd/finish"
+                test -f "$prefix/etc/s6-rc/source/i2pd/type"
+                test -f "$prefix/etc/s6-rc/source/i2pd/down-signal"
+                test -f "$prefix/etc/s6-rc/source/i2pd/timeout-kill"
+                test -f "$prefix/etc/s6-rc/source/i2pd/timeout-finish"
+                test -f "$prefix/etc/s6-rc/source/i2pd/dependencies.d/base"
+                ;;
+              shepherd)
+                test -f "$prefix/etc/shepherd/i2pd.scm"
+                ;;
+              sysvinit)
+                test -x "$prefix/etc/init.d/i2pd"
+                ;;
+            esac
+            # A manager that is not selectable must be rejected rather than
+            # silently installing nothing.
+            if grep -q "^bin/" <(find "$prefix" -type f -printf '%P\n'); then
+              echo "Service component installed an unexpected binary" >&2
+              exit 1
+            fi
+          done
+      - name: Reject uninstalled sample managers
+        run: |
+          set -euo pipefail
+          for manager in dinit upstart; do
+            if cmake -S build -B "build-service-$manager" -G Ninja \
+              -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF \
+              -DWITH_BINARY=ON -DWITH_LIBRARY=OFF \
+              -DI2PD_BUILD_TUI=OFF -DI2PD_BUILD_TOOLS=OFF \
+              -DI2PD_SERVICE_MANAGER="$manager" >/dev/null 2>&1; then
+              echo "I2PD_SERVICE_MANAGER=$manager must be rejected" >&2
+              exit 1
+            fi
+          done
+
+  static-musl:
+    name: Static musl build and package
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
+        with:
+          persist-credentials: false
+      - name: Build the fully static router in Alpine
+        run: |
+          docker run --rm -v "$PWD:/src" -w /src alpine:latest \
+            sh contrib/static/build-musl.sh
+      - name: Verify the static binary and package it
+        run: |
+          set -euo pipefail
+          file build-output/i2pd | tee /tmp/static-file
+          grep -q 'statically linked' /tmp/static-file
+          build-output/i2pd --version
+          mkdir -p static-bin/i2pd-static-x86_64
+          cp build-output/i2pd static-bin/i2pd-static-x86_64/i2pd
+          version=$(sed -n 's/^#define I2PD_VERSION_MAJOR \([0-9]*\)$/\1/p' libi2pd/version.h)
+          version="${version}.$(sed -n 's/^#define I2PD_VERSION_MINOR \([0-9]*\)$/\1/p' libi2pd/version.h)"
+          version="${version}.$(sed -n 's/^#define I2PD_VERSION_MICRO \([0-9]*\)$/\1/p' libi2pd/version.h)"
+          docker run --rm -e VERSION="$version" \
+            -v "$PWD:/src" -w /src debian:bookworm \
+            sh contrib/static/package.sh deb /src/static-bin /src/static-out
+          test -n "$(find static-out -name '*.deb' -print -quit)"
+      - name: Upload static package evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
+        with:
+          name: static-musl-packages
+          path: |
+            static-out
+            /tmp/static-file
+          if-no-files-found: warn
+          retention-days: 7
+
+  container-image:
+    name: Container image
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
+        with:
+          persist-credentials: false
+      - name: Build the multi-stage image
+        run: |
+          docker build -f contrib/docker/Dockerfile -t openi2pd:ci .
+      - name: Verify the packaged binary
+        run: |
+          set -euo pipefail
+          docker run --rm --entrypoint /usr/local/bin/i2pd openi2pd:ci --version
+
   debian:
     name: Debian packages
     runs-on: ubuntu-24.04
@@ -93,7 +242,8 @@ jobs:
           sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y \
             --no-install-recommends \
             build-essential debhelper cmake ninja-build fakeroot lintian \
-            autopkgtest systemd shellcheck \
+            autopkgtest systemd shellcheck apparmor apparmor-utils \
+            desktop-file-utils \
             libboost-program-options-dev libboost-json-dev libboost-url-dev \
             libssl-dev zlib1g-dev libminiupnpc-dev libncurses-dev \
             perl openssl
@@ -109,7 +259,12 @@ jobs:
         run: |
           sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y \
             ../i2pd_*.deb ../i2pd-tui_*.deb
-          sudo systemd-analyze verify --man=no /lib/systemd/system/i2pd.service
+          if [ -f /usr/lib/systemd/system/i2pd.service ]; then
+            unit=/usr/lib/systemd/system/i2pd.service
+          else
+            unit=/lib/systemd/system/i2pd.service
+          fi
+          sudo systemd-analyze verify --man=no "$unit"
           sudo sh debian/tests/smoke
       - name: Check package manifests and split
         run: |
@@ -129,6 +284,17 @@ jobs:
           fi
           grep -q /usr/share/doc/i2pd/LICENSE.i2pd-tools /tmp/i2pd-files
           grep -q /usr/share/doc/i2pd/CC-BY-SA-4.0 /tmp/i2pd-files
+          grep -q /usr/share/doc/i2pd/docs/i18n.md /tmp/i2pd-files
+          grep -q /usr/share/doc/i2pd/assets/branding/colors.md /tmp/i2pd-files
+          grep -qE '/usr/share/man/man1/i2pd\.1(\.gz)?$' /tmp/i2pd-files
+          grep -qE '/usr/share/man/man1/i2pdctl\.1(\.gz)?$' /tmp/i2pd-files
+          grep -qE '/usr/share/man/man1/i2pd-tui\.1(\.gz)?$' /tmp/i2pd-tui-files
+          grep -q /etc/apparmor.d/usr.bin.i2pd /tmp/i2pd-files
+          grep -qE '^d /var/lib/i2pd 0700 i2pd i2pd ' /usr/lib/tmpfiles.d/i2pd.conf
+          dpkg-query -W -f='${Breaks}' i2pd-tui | grep -q 'i2pd (<< 2.61.0-3)'
+          dpkg-query -W -f='${Replaces}' i2pd-tui | grep -q 'i2pd (<< 2.61.0-3)'
+          sudo apparmor_parser -Q -T /etc/apparmor.d/usr.bin.i2pd
+          desktop-file-validate /usr/share/applications/openi2pd.desktop
       - name: Preserve conffiles across reinstall
         run: |
           set -euo pipefail

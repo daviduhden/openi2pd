@@ -14,6 +14,15 @@ name: Linux and Android
 # explicitly dispatches the workflow.
 on:
   workflow_dispatch:
+    inputs:
+      android_ui:
+        description: 'Run the API 29 emulator UI/accessibility lane (x86_64)'
+        type: boolean
+        default: false
+      perl_style:
+        description: 'Run the Perl::Critic and Test::More quality lane'
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -37,6 +46,49 @@ jobs:
         run: cmake -DPROJECT_ROOT="$PWD" -P tests/check-language-modernization.cmake
       - name: Validate translation catalogs without compiling
         run: cmake -DPROJECT_ROOT="$PWD" -P tests/check-i18n.cmake
+      - name: Validate tool inventory without compiling
+        run: cmake -DPROJECT_ROOT="$PWD" -P tests/check-tools-inventory.cmake
+      - name: Validate legal metadata without compiling
+        run: cmake -DPROJECT_ROOT="$PWD" -P tests/check-legal-metadata.cmake
+      - name: Validate upstream pins without compiling
+        run: cmake -DPROJECT_ROOT="$PWD" -P tests/check-upstream-pins.cmake
+      - name: Validate service definitions without compiling
+        run: |
+          cmake -DPROJECT_ROOT="$PWD" -P tests/check-services.cmake
+          cmake -DPROJECT_ROOT="$PWD" -P tests/check-build-system.cmake
+      - name: Validate manual workflow contracts without compiling
+        run: perl tools/scripts/check-workflows.pl
+
+  perl-quality:
+    name: Perl quality (Test::More and Perl::Critic)
+    # Opt-in at dispatch time. libperl-critic-perl is a distribution package,
+    # not a CPAN download; the job never runs for a normal dispatch.
+    if: ${{ inputs.perl_style == true }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
+        with:
+          persist-credentials: false
+      - name: Install distribution Perl tooling
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            perl libperl-critic-perl
+          perl --version | head -2
+          perlcritic --version
+      - name: Compile maintained Perl
+        run: |
+          for file in $(git ls-files '*.pl' '*.t' 'tools/scripts/i2pdctl'); do
+            perl -c "$file"
+          done
+      - name: Run Test::More suites
+        run: prove -v tools/tests/i2pdctl.t tools/tests/validate-branding.t tools/tests/perl-portability.t tools/tests/maintenance-checkers.t
+      - name: Run Perl::Critic
+        run: |
+          mapfile -t perl_files < <(git ls-files '*.pl' '*.t' 'tools/scripts/i2pdctl')
+          perlcritic --profile .perlcriticrc "${perl_files[@]}"
+
 
   linux:
     name: Linux (${{ matrix.name }})
@@ -57,6 +109,7 @@ jobs:
         with:
           persist-credentials: false
       - name: Install latest build tools from Homebrew
+        timeout-minutes: 20
         uses: ./.github/actions/brew-toolchain
       - name: Build and run all CTest targets
         run: |
@@ -64,26 +117,31 @@ jobs:
             -DCMAKE_C_COMPILER=${{ matrix.cc }} \
             -DCMAKE_CXX_COMPILER=${{ matrix.cxx }} \
             -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON \
+            -DI2PD_REQUIRE_PERL=ON \
             -DI2PD_BUILD_TUI=ON -DI2PD_OPENSSL_EXPECT=OpenSSL
           cmake --build build-output --parallel 2
-          ctest --test-dir build-output --output-on-failure --timeout 120
+          ctest --test-dir build-output -j 2 --output-on-failure \
+            --no-tests=error --output-junit "$PWD/ctest-${{ matrix.name }}.xml"
           ./build-output/i2pd --version
       - name: Run I2PSnark compatibility regressions
         run: |
-          ctest --test-dir build-output --output-on-failure --timeout 120 \
-            -R '^test-(torrents-(magnet|engine-interop|dht-interop|comments|creator|state|priorities)|torrent-payload-storage)$' --no-tests=error
+          ctest --test-dir build-output -j 2 --output-on-failure --no-tests=error \
+            --output-junit "$PWD/ctest-torrents.xml" \
+            -R '^test-(torrents-(magnet|engine-interop|dht-interop|dht-protocol|pex|comments|creator|state|priorities)|torrent-payload-storage)$'
       - name: Run client parsing and persistence regressions
         run: |
-          ctest --test-dir build-output --output-on-failure --timeout 120 \
-            -R '^test-(i2ptunnel-http|addressbook-case|torrents-security)$' --no-tests=error
+          ctest --test-dir build-output -j 2 --output-on-failure --no-tests=error \
+            --output-junit "$PWD/ctest-client.xml" \
+            -R '^test-(i2ptunnel-http|addressbook-case|torrents-security)$'
       - name: Run profile, Android lifecycle and firewall regressions
         # The native Android seam runs on the host; JNI/device evidence is separate.
         run: |
-          ctest --test-dir build-output --output-on-failure --timeout 120 \
-            -R '^(test-(datagram-receiver-lifecycle|netdb-stop-admission|tunnels-restart|router-profile-(race|storage)|daemon-init-rollback|android-daemon-lifecycle|routerinfo-firewall)|tools-smoke)$' --no-tests=error
+          ctest --test-dir build-output -j 2 --output-on-failure --no-tests=error \
+            --output-junit "$PWD/ctest-profile.xml" \
+            -R '^(test-(datagram-receiver-lifecycle|netdb-stop-admission|tunnels-restart|router-profile-(race|storage)|daemon-init-rollback|android-daemon-lifecycle|routerinfo-firewall)|tools-smoke)$'
       - name: Verify CTest subsystem labels
         run: |
-          for label in i2p security memory ipc tui torrent tools perl docs interop platform android ci static packaging services unit install smoke; do
+          for label in i2p security memory ipc tui torrent tools perl docs interop platform android ci static packaging services unit install smoke cli integration; do
             ctest --test-dir build-output -N -L "$label" --no-tests=error
           done
       - name: Validate Perl and static interoperability fixtures
@@ -94,6 +152,8 @@ jobs:
           perl -c tools/scripts/check-doc-nav.pl
           perl -c tests/interop/check-vectors.pl
           perl -c android/tools/check-android-locales.pl
+          perl -c android/tools/check-android-jni-symbols.pl
+          perl -c i18n/check-i18n-catalogs.pl
           perl tools/scripts/validate-branding.pl
           perl tools/scripts/check-doc-links.pl docs
           perl tools/scripts/check-doc-nav.pl .
@@ -102,19 +162,12 @@ jobs:
             prove -v tools/tests/i2pdctl.t
             prove -v tools/tests/validate-branding.t
             prove -v tools/tests/perl-portability.t
+            prove -v tools/tests/maintenance-checkers.t
           else
             perl tools/tests/i2pdctl.t
             perl tools/tests/validate-branding.t
             perl tools/tests/perl-portability.t
-          fi
-          if command -v perlcritic >/dev/null 2>&1; then
-            perlcritic --profile .perlcriticrc \
-              tools/scripts/i2pdctl tools/scripts/check-doc-links.pl \
-              tools/scripts/check-doc-nav.pl tools/scripts/validate-branding.pl tools/tests/i2pdctl.t \
-              tools/tests/validate-branding.t tools/tests/perl-portability.t \
-              tests/interop/check-vectors.pl android/tools/check-android-locales.pl
-          else
-            echo "perlcritic not installed; optional style lane skipped"
+            perl tools/tests/maintenance-checkers.t
           fi
       - name: Upload Linux CTest evidence
         if: always()
@@ -123,6 +176,7 @@ jobs:
           name: linux-${{ matrix.name }}-ctest
           path: |
             build-output/Testing
+            ctest-*.xml
           if-no-files-found: warn
           retention-days: 7
 
@@ -146,10 +200,22 @@ jobs:
           cmake -S build -B build-openssl3 -G Ninja \
             -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++ \
             -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON \
+            -DI2PD_REQUIRE_PERL=ON \
             -DI2PD_BUILD_TUI=ON -DI2PD_OPENSSL_EXPECT=OpenSSL
           cmake --build build-openssl3 --parallel 2
-          ctest --test-dir build-openssl3 --output-on-failure --timeout 120
+          ctest --test-dir build-openssl3 -j 2 --output-on-failure \
+            --no-tests=error --output-junit "$PWD/ctest-openssl3.xml"
           ./build-openssl3/i2pd --version
+      - name: Upload OpenSSL 3 CTest evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
+        with:
+          name: linux-openssl-3-ctest
+          path: |
+            build-openssl3/Testing
+            ctest-openssl3.xml
+          if-no-files-found: warn
+          retention-days: 7
 
   openssl-pinned:
     name: Linux OpenSSL ${{ matrix.openssl }}
@@ -168,6 +234,7 @@ jobs:
         with:
           persist-credentials: false
       - name: Install latest build tools from Homebrew
+        timeout-minutes: 20
         uses: ./.github/actions/brew-toolchain
       - name: Build pinned OpenSSL (manual CI only)
         env:
@@ -194,11 +261,23 @@ jobs:
           cmake -S build -B build-pinned -G Ninja \
             -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++ \
             -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON \
+            -DI2PD_REQUIRE_PERL=ON \
             -DI2PD_BUILD_TUI=ON -DI2PD_OPENSSL_EXPECT=OpenSSL \
             -DI2PD_OPENSSL_EXPECT_VERSION=${{ matrix.openssl }}
           cmake --build build-pinned --parallel 2
-          ctest --test-dir build-pinned --output-on-failure --timeout 120
+          ctest --test-dir build-pinned -j 2 --output-on-failure \
+            --no-tests=error --output-junit "$PWD/ctest-pinned-${{ matrix.openssl }}.xml"
           ./build-pinned/i2pd --version
+      - name: Upload pinned OpenSSL CTest evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
+        with:
+          name: linux-openssl-${{ matrix.openssl }}-ctest
+          path: |
+            build-pinned/Testing
+            ctest-pinned-${{ matrix.openssl }}.xml
+          if-no-files-found: warn
+          retention-days: 7
 
   install-components:
     name: Install components and consumer package
@@ -209,6 +288,7 @@ jobs:
         with:
           persist-credentials: false
       - name: Install latest build tools from Homebrew
+        timeout-minutes: 20
         uses: ./.github/actions/brew-toolchain
       - name: Build, install components and consume package
         run: |
@@ -218,18 +298,40 @@ jobs:
             -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF \
             -DWITH_LIBRARY=ON -DWITH_BINARY=ON \
             -DI2PD_BUILD_TUI=ON -DI2PD_BUILD_TOOLS=ON \
+            -DI2PD_SERVICE_MANAGER=systemd \
             -DI2PD_OPENSSL_EXPECT=OpenSSL
           cmake --build build-install --parallel 2
           prefix="$RUNNER_TEMP/openi2pd-install"
-          for component in Runtime Tui Libraries Development Tools Documentation; do
+          for component in Runtime Tui Libraries Development Tools Documentation Service; do
             cmake --install build-install --prefix "$prefix" --component "$component"
           done
+          test -f "$prefix/lib/systemd/system/i2pd.service"
+          test -f "$prefix/lib/sysusers.d/openi2pd.conf"
+          test -f "$prefix/lib/tmpfiles.d/openi2pd.conf"
+          test -f "$prefix/include/privsep/Protocol.h"
+          # Exercise DESTDIR independently of the configured prefix.
+          dest="$RUNNER_TEMP/openi2pd-dest"
+          DESTDIR="$dest" cmake --install build-install --prefix /usr --component Runtime >/dev/null
+          test -x "$dest/usr/bin/i2pd"
           test -x "$prefix/bin/i2pd"
           test -x "$prefix/bin/i2pd-tui"
           test -f "$prefix/include/libi2pd/Log.h"
           test -f "$prefix/lib/cmake/i2pd/i2pdConfig.cmake"
+          test -f "$prefix/etc/i2pd/i2pd.conf"
+          test -f "$prefix/share/i2pd/certificates/reseed/acetone_at_mail.i2p.crt"
+          test -f "$prefix/share/i2pd/certificates/family/i2p-dev.crt"
           test -f "$prefix/share/doc/i2pd/LICENSE"
+          test -f "$prefix/share/doc/i2pd/NOTICE"
+          test -f "$prefix/share/doc/i2pd/ChangeLog"
+          test -f "$prefix/share/doc/i2pd/README.md"
+          test -f "$prefix/share/doc/i2pd/LICENSE.i2pd-tools"
+          test -f "$prefix/share/doc/i2pd/CC-BY-SA-4.0"
           test -f "$prefix/share/doc/i2pd/docs/LICENSE.i2pd-docs-en"
+          test -f "$prefix/share/doc/i2pd/docs/i18n.md"
+          test -f "$prefix/share/doc/i2pd/assets/branding/colors.md"
+          test -f "$prefix/share/man/man1/i2pd.1"
+          test -f "$prefix/share/man/man1/i2pd-tui.1"
+          test -f "$prefix/share/man/man1/i2pdctl.1"
           test -x "$prefix/bin/i2pdctl"
           perl -c "$prefix/bin/i2pdctl"
           test -f "$prefix/share/doc/i2pd/LICENSE.i2pd-tools"
@@ -246,7 +348,7 @@ jobs:
           cmake_minimum_required(VERSION 3.24)
           project(openi2pd_consumer CXX)
           set(CMAKE_CXX_STANDARD 23)
-          find_package(i2pd CONFIG REQUIRED)
+          find_package(i2pd CONFIG REQUIRED COMPONENTS Libraries Development)
           add_executable(consumer main.cpp)
           target_link_libraries(consumer PRIVATE i2pd::libi2pdclient)
           EOF
@@ -280,7 +382,7 @@ jobs:
 
   android:
     runs-on: ubuntu-24.04
-    timeout-minutes: 60
+    timeout-minutes: 90
     env:
       I2PD_ANDROID_CMAKE_ARGS: >-
         -DWITH_HARDENING=ON
@@ -303,6 +405,13 @@ jobs:
         with:
           distribution: temurin
           java-version: '25'
+      - name: Cache Gradle distributions and dependencies
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830  # v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: android-gradle-${{ hashFiles('android/gradle/wrapper/gradle-wrapper.properties', 'android/**/*.gradle', 'android/gradle.properties') }}
       - name: Validate Android Gradle toolchain
         run: |
           sh android/tools/java25-probe/check-config.sh
@@ -332,6 +441,14 @@ jobs:
             "cmake;3.31.6" \
             "ndk;30.0.16248370"
           echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/30.0.16248370" >> "$GITHUB_ENV"
+          # AGP may resolve compileSdk 37 to android-37 or the minor-versioned
+          # android-37.0 package. Accept either installed directory and export
+          # the resolved android.jar for the D8/R8 probe.
+          PLATFORM_DIR=$(find "$ANDROID_HOME/platforms" -maxdepth 1 -type d -name 'android-37*' | sort | head -1)
+          test -n "$PLATFORM_DIR"
+          test -f "$PLATFORM_DIR/android.jar"
+          echo "ANDROID_JAR=$PLATFORM_DIR/android.jar" >> "$GITHUB_ENV"
+          ls -1 "$ANDROID_HOME/platforms"
       - name: Checkout vcpkg
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
         with:
@@ -362,7 +479,8 @@ jobs:
             -DVCPKG_TARGET_TRIPLET=arm64-android \
             -DANDROID_ABI=arm64-v8a -DANDROID_PLATFORM=android-29 \
             -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF \
-            -DI2PD_BUILD_JNI=ON -DWITH_BINARY=OFF -DWITH_HARDENING=ON
+            -DI2PD_BUILD_JNI=ON -DWITH_BINARY=OFF -DWITH_HARDENING=ON \
+            -DI2PD_OPENSSL_EXPECT=OpenSSL
           cmake --build build-android --parallel 2 --target i2pd_jni
           file build-android/libi2pd.so | grep 'ARM aarch64'
       - name: Android unit tests and Lint
@@ -370,6 +488,7 @@ jobs:
           cd android
           ./gradlew :i2pd:testDebugUnitTest :i2pd:lintDebug --no-daemon \
             -Pi2pd.ndkVersion="$NDK_VERSION" \
+            -Pi2pd.abis=arm64-v8a \
             -Pandroid.injected.build.abi=arm64-v8a \
             -Pi2pd.cmakeArgs="$I2PD_ANDROID_CMAKE_ARGS"
       - name: Assert Android JVM tests actually ran
@@ -380,8 +499,22 @@ jobs:
         run: |
           class_file=$(find android/app/build/intermediates/javac/debug -name RouterService.class -print -quit)
           test -n "$class_file"
-          javap -verbose "$class_file" | grep -q 'major version: 69' \
+          javap_out=$(mktemp)
+          javap -verbose "$class_file" > "$javap_out"
+          grep -q 'major version: 69' "$javap_out" \
             || { echo "RouterService.class is not class-file major 69" >&2; exit 1; }
+          rm -f "$javap_out"
+      - name: Probe Java 25 D8/R8 dexing
+        run: |
+          R8_JAR=$(find "$HOME/.gradle/caches/modules-2/files-2.1/com.android.tools" \
+            -path '*/r8/*' -name 'r8-*.jar' ! -name '*-sources.jar' ! -name '*-javadoc.jar' -print -quit)
+          if [ -z "$R8_JAR" ]; then
+            echo "AGP-resolved R8 jar not found in the Gradle cache" >&2
+            exit 1
+          fi
+          test -f "$ANDROID_JAR"
+          ANDROID_JAR="$ANDROID_JAR" R8_JAR="$R8_JAR" \
+            sh android/tools/java25-probe/verify-java25.sh
       - name: Show Android lint report on failure
         if: failure()
         run: |
@@ -394,13 +527,54 @@ jobs:
           ./gradlew :i2pd:assembleDebug :i2pd:assembleDebugAndroidTest \
             :i2pd:assembleRelease :i2pd:lintRelease --no-daemon \
             -Pi2pd.ndkVersion="$NDK_VERSION" \
+            -Pi2pd.abis=arm64-v8a \
             -Pandroid.injected.build.abi=arm64-v8a \
             -Pi2pd.cmakeArgs="$I2PD_ANDROID_CMAKE_ARGS"
           apk=$(find app/build/outputs/apk/debug -name '*.apk' -print -quit)
           test -n "$apk"
-          unzip -l "$apk" | grep -q 'lib/arm64-v8a/libi2pd.so' \
+          listing=$(unzip -l "$apk")
+          printf '%s\n' "$listing" | grep -q 'lib/arm64-v8a/libi2pd.so' \
             || { echo "debug APK does not package lib/arm64-v8a/libi2pd.so" >&2; exit 1; }
+          printf '%s\n' "$listing" | grep -q 'lib/arm64-v8a/libc++_shared.so' \
+            || { echo "debug APK does not package libc++_shared.so" >&2; exit 1; }
+          printf '%s\n' "$listing" | grep -q 'assets/i2pd.conf' \
+            || { echo "debug APK does not package the bundled i2pd.conf" >&2; exit 1; }
+          expected_certs=$(find ../contrib/certificates -type f -name '*.crt' | wc -l | tr -d ' ')
+          actual_certs=$(printf '%s\n' "$listing" | grep -cE 'assets/certificates/.*\.crt$' || true)
+          test "$actual_certs" -eq "$expected_certs" \
+            || { echo "APK has $actual_certs certificates, expected $expected_certs" >&2; exit 1; }
+          unzip -p "$apk" classes.dex | od -An -t x1 -N4 | grep -q '64 65 78 0a' \
+            || { echo "debug APK classes.dex has no dex magic" >&2; exit 1; }
+          native=$(mktemp)
+          unzip -p "$apk" lib/arm64-v8a/libi2pd.so > "$native"
+          file "$native" | grep -q 'ARM aarch64' \
+            || { echo "packaged libi2pd.so is not aarch64" >&2; exit 1; }
+          nm -D --defined-only "$native" | grep -q 'Java_org_openi2pd_router_I2PD' \
+            || { echo "packaged libi2pd.so exports no JNI entry points" >&2; exit 1; }
+          rm -f "$native"
           test -n "$(find app/build/outputs/apk/release -name '*.apk' -print -quit)"
+      - name: Check Android JNI declarations
+        run: perl android/tools/check-android-jni-symbols.pl
+      - name: Verify Java 25 dex lowering
+        run: |
+          apk=$(find android/app/build/outputs/apk/debug -name '*.apk' -print -quit)
+          test -n "$apk" || { echo "debug APK missing" >&2; exit 1; }
+          dex=$(mktemp)
+          unzip -p "$apk" classes.dex > "$dex"
+          version=$(od -An -t u1 -j4 -N3 "$dex" | tr -d ' \n')
+          test "$version" = "485157" \
+            || { echo "APK classes.dex is not DEX 039 (got $version)" >&2; exit 1; }
+          # D8 must remove the record superclass, record ObjectMethods
+          # bootstrap and the sealed type-switch/MatchException references at
+          # minSdk 29. A surviving reference would fail on ART 10.
+          strings_out=$(mktemp)
+          strings "$dex" > "$strings_out"
+          if grep -Eq 'java/lang/Record|ObjectMethods|SwitchBootstraps|MatchException' "$strings_out"; then
+            echo "DEX still contains a Java 25 bootstrap unavailable on ART 29" >&2
+            rm -f "$strings_out" "$dex"
+            exit 1
+          fi
+          rm -f "$strings_out" "$dex"
       - name: Upload Android reports and APKs
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
@@ -410,6 +584,161 @@ jobs:
             android/app/build/reports
             android/app/build/test-results
             android/app/build/outputs/apk
+          if-no-files-found: warn
+          retention-days: 7
+
+  android-ui:
+    name: Android API 29 UI and accessibility
+    # Opt-in at dispatch time. This lane needs an x86_64 native build plus an
+    # API 29 system image, so a normal Android dispatch stays arm64-only. It
+    # exercises the prepared Espresso/contract tests on a real ART image; it
+    # is not evidence for the arm64 device matrix.
+    if: ${{ inputs.android_ui == true }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      I2PD_ANDROID_CMAKE_ARGS: >-
+        -DWITH_HARDENING=ON
+        -DCMAKE_PREFIX_PATH=${{ github.workspace }}/build-android-x86_64/vcpkg_installed/x86_64-android
+        -DBOOST_ROOT=${{ github.workspace }}/build-android-x86_64/vcpkg_installed/x86_64-android
+        -DBOOST_INCLUDEDIR=${{ github.workspace }}/build-android-x86_64/vcpkg_installed/x86_64-android/include
+        -DBOOST_LIBRARYDIR=${{ github.workspace }}/build-android-x86_64/vcpkg_installed/x86_64-android/lib
+        -DBoost_INCLUDE_DIR=${{ github.workspace }}/build-android-x86_64/vcpkg_installed/x86_64-android/include
+        -DBoost_LIBRARY_DIR_RELEASE=${{ github.workspace }}/build-android-x86_64/vcpkg_installed/x86_64-android/lib
+        -DBoost_LIBRARY_DIR_DEBUG=${{ github.workspace }}/build-android-x86_64/vcpkg_installed/x86_64-android/lib
+        -DCMAKE_FIND_ROOT_PATH_MODE_LIBRARY=BOTH
+        -DCMAKE_FIND_ROOT_PATH_MODE_INCLUDE=BOTH
+        -DCMAKE_FIND_ROOT_PATH_MODE_PACKAGE=BOTH
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
+        with:
+          persist-credentials: false
+      - name: Set up OpenJDK 25
+        uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3  # v4
+        with:
+          distribution: temurin
+          java-version: '25'
+      - name: Cache Gradle distributions and dependencies
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830  # v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: android-ui-gradle-${{ hashFiles('android/gradle/wrapper/gradle-wrapper.properties', 'android/**/*.gradle', 'android/gradle.properties') }}
+      - name: Validate Android Gradle toolchain
+        run: |
+          sh android/tools/java25-probe/check-config.sh
+          perl android/tools/check-android-locales.pl
+          perl android/tools/check-android-jni-symbols.pl
+          cd android
+          ./gradlew --version --no-daemon
+      - name: Install SDK, emulator and API 29 image
+        run: |
+          if [ -z "${ANDROID_HOME:-}" ]; then
+            echo "ANDROID_HOME is not set" >&2
+            exit 1
+          fi
+          SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          if [ ! -x "$SDKMANAGER" ]; then
+            SDKMANAGER="$(command -v sdkmanager)"
+          fi
+          test -x "$SDKMANAGER"
+          set +o pipefail
+          yes | "$SDKMANAGER" --licenses >/dev/null
+          set -o pipefail
+          "$SDKMANAGER" --install \
+            "platforms;android-37.0" \
+            "build-tools;36.0.0" \
+            "cmake;3.31.6" \
+            "ndk;30.0.16248370" \
+            "emulator" \
+            "system-images;android-29;google_apis;x86_64" \
+            "platform-tools"
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/30.0.16248370" >> "$GITHUB_ENV"
+          test -x "$ANDROID_HOME/emulator/emulator"
+          test -x "$ANDROID_HOME/platform-tools/adb"
+      - name: Checkout vcpkg
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
+        with:
+          persist-credentials: false
+          repository: microsoft/vcpkg
+          ref: bf19794383e8fb95eba5aa553235bc8ec2271688
+          path: .ci-vcpkg
+      - name: Prepare Android toolchain
+        run: |
+          test -d "$ANDROID_NDK_HOME"
+          echo "VCPKG_ROOT=$GITHUB_WORKSPACE/.ci-vcpkg" >> "$GITHUB_ENV"
+          echo "NDK_VERSION=$(basename "$ANDROID_NDK_HOME")" >> "$GITHUB_ENV"
+          mkdir -p "$RUNNER_TEMP/vcpkg-cache"
+          echo "VCPKG_DEFAULT_BINARY_CACHE=$RUNNER_TEMP/vcpkg-cache" >> "$GITHUB_ENV"
+          .ci-vcpkg/bootstrap-vcpkg.sh -disableMetrics
+      - name: Cache Android x86_64 dependencies
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830  # v4
+        with:
+          path: ${{ env.VCPKG_DEFAULT_BINARY_CACHE }}
+          key: android-x86_64-android-29-${{ env.NDK_VERSION }}-${{ hashFiles('contrib/ci/android/*') }}
+      - name: Build Android x86_64
+        run: |
+          cmake -S build -B build-android-x86_64 -G Ninja \
+            -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" \
+            -DVCPKG_CHAINLOAD_TOOLCHAIN_FILE="$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake" \
+            -DVCPKG_MANIFEST_DIR="$GITHUB_WORKSPACE/contrib/ci/android" \
+            -DVCPKG_TARGET_TRIPLET=x86_64-android \
+            -DVCPKG_CMAKE_SYSTEM_VERSION=29 \
+            -DVCPKG_BUILD_TYPE=release \
+            -DANDROID_ABI=x86_64 -DANDROID_PLATFORM=android-29 \
+            -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF \
+            -DI2PD_BUILD_JNI=ON -DWITH_BINARY=OFF -DWITH_HARDENING=ON \
+            -DI2PD_OPENSSL_EXPECT=OpenSSL
+          cmake --build build-android-x86_64 --parallel 2 --target i2pd_jni
+          file build-android-x86_64/libi2pd.so | grep 'x86-64'
+      - name: Boot API 29 emulator
+        run: |
+          AVDMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/avdmanager"
+          if [ ! -x "$AVDMANAGER" ]; then
+            AVDMANAGER="$(command -v avdmanager)"
+          fi
+          test -x "$AVDMANAGER"
+          echo "no" | "$AVDMANAGER" create avd --force --name openi2pd-api29 \
+            --package "system-images;android-29;google_apis;x86_64" --device pixel_2
+          "$ANDROID_HOME/emulator/emulator" -avd openi2pd-api29 -no-window -no-audio \
+            -no-boot-anim -no-snapshot -gpu swiftshader_indirect > "$RUNNER_TEMP/emulator.log" 2>&1 &
+          ADB="$ANDROID_HOME/platform-tools/adb"
+          timeout 180 "$ADB" wait-for-device
+          timeout 420 bash -c "until [ \"\$($ADB shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')\" = 1 ]; do sleep 3; done" \
+            || { cat "$RUNNER_TEMP/emulator.log"; exit 1; }
+          "$ADB" shell settings put global window_animation_scale 0
+          "$ADB" shell settings put global transition_animation_scale 0
+          "$ADB" shell settings put global animator_duration_scale 0
+          "$ADB" shell input keyevent 82
+          "$ADB" shell getprop ro.build.version.sdk
+      - name: Run UI and accessibility instrumentation tests
+        run: |
+          cd android
+          ./gradlew :i2pd:connectedDebugAndroidTest --no-daemon \
+            -Pi2pd.ndkVersion="$NDK_VERSION" \
+            -Pi2pd.abis=x86_64 \
+            -Pandroid.injected.build.abi=x86_64 \
+            -Pi2pd.cmakeArgs="$I2PD_ANDROID_CMAKE_ARGS"
+          results=app/build/outputs/androidTest-results/connected
+          test -n "$(find "$results" -name '*.xml' -print -quit)" \
+            || { echo "connectedDebugAndroidTest produced no XML report" >&2; exit 1; }
+          ! grep -R -E '<(failure|error)' "$results"
+      - name: Collect emulator diagnostics on failure
+        if: failure()
+        run: |
+          ADB="$ANDROID_HOME/platform-tools/adb"
+          "$ADB" logcat -d -v threadtime > "$RUNNER_TEMP/logcat.txt" || true
+          cat "$RUNNER_TEMP/emulator.log" 2>/dev/null || true
+      - name: Upload Android UI reports
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
+        with:
+          name: android-api29-ui-reports
+          path: |
+            android/app/build/reports
+            android/app/build/outputs/androidTest-results
+            android/app/build/test-results
           if-no-files-found: warn
           retention-days: 7
 
@@ -463,6 +792,10 @@ jobs:
             flags: "-DWITH_ADDRSANITIZER=ON -DWITH_UNDEFSANITIZER=ON"
             asan_options: "detect_leaks=1:halt_on_error=1:abort_on_error=1"
             ubsan_options: "halt_on_error=1:print_stacktrace=1"
+          - name: ubsan
+            flags: "-DWITH_UNDEFSANITIZER=ON"
+            asan_options: ""
+            ubsan_options: "halt_on_error=1:print_stacktrace=1"
           - name: tsan
             flags: "-DWITH_THREADSANITIZER=ON"
             asan_options: ""
@@ -472,6 +805,7 @@ jobs:
         with:
           persist-credentials: false
       - name: Install latest build tools from Homebrew
+        timeout-minutes: 20
         uses: ./.github/actions/brew-toolchain
       - name: Build and run sanitizer CTest matrix
         env:
@@ -483,15 +817,19 @@ jobs:
             -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ \
             -DCMAKE_BUILD_TYPE=Debug \
             -DBUILD_TESTING=ON -DWITH_UPNP=OFF \
+            -DI2PD_REQUIRE_PERL=ON \
             -DI2PD_BUILD_TUI=ON -DI2PD_OPENSSL_EXPECT=OpenSSL \
             ${{ matrix.flags }}
           cmake --build build-sanitizers --parallel 2
-          ctest --test-dir build-sanitizers --output-on-failure --timeout 180
+          ctest --test-dir build-sanitizers -j 1 --output-on-failure \
+            --no-tests=error --output-junit "$PWD/ctest-sanitizers-${{ matrix.name }}.xml"
       - name: Upload sanitizer test logs
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
         with:
           name: sanitizer-${{ matrix.name }}-logs
-          path: build-sanitizers/Testing
+          path: |
+            build-sanitizers/Testing
+            ctest-sanitizers-*.xml
           if-no-files-found: warn
           retention-days: 7

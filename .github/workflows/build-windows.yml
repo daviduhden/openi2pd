@@ -53,7 +53,8 @@ jobs:
             -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON \
             -DI2PD_BUILD_TUI=ON -DI2PD_TUI_REQUIRED=ON -DWITH_HARDENING=ON
           cmake --build build-output --parallel 2
-          ctest --test-dir build-output --output-on-failure --timeout 120
+          ctest --test-dir build-output -j 2 --output-on-failure \
+            --no-tests=error --output-junit "$PWD/ctest-msys2.xml"
           ./build-output/i2pd.exe --version
           ./build-output/i2pd-tui.exe --version
           pacman -Q > build-output/msys2-packages.txt
@@ -64,6 +65,7 @@ jobs:
           name: windows-msys2-ctest
           path: |
             build-output/Testing
+            ctest-msys2.xml
             build-output/msys2-packages.txt
           if-no-files-found: warn
           retention-days: 7
@@ -118,16 +120,20 @@ jobs:
             -DCMAKE_BUILD_TYPE=Release `
             -DBUILD_TESTING=ON `
             -DI2PD_BUILD_TOOLS=OFF `
+            -DI2PD_TUI_REQUIRED=ON `
+            -DWITH_HARDENING=ON `
             -DWITH_UPNP=OFF
       - name: Build MSVC TUI and tests
         run: |
           cmake --build build-msvc --config Release --parallel 2 `
             --target i2pd i2pd-tui test-tui-protocol test-tui-terminal `
-              test-tui-pipe-name test-tui-win32-pipe test-privsep-windows-ipc
+              test-tui-pipe-name test-tui-win32-pipe test-privsep-windows-ipc `
+              test-privsep-windows-isolation test-privsep-windows-supervisor
       - name: Run TUI and worker IPC tests
         run: |
-          ctest --test-dir build-msvc -C Release --output-on-failure --timeout 60 `
-            -R '^(test-(tui-protocol|tui-terminal|tui-pipe-name|tui-win32-pipe|privsep-windows-ipc))$'
+          ctest --test-dir build-msvc -C Release -j 2 --output-on-failure `
+            -R '^(test-(tui-protocol|tui-terminal|tui-pipe-name|tui-win32-pipe|privsep-windows-(ipc|isolation|supervisor)))$' `
+            --no-tests=error --output-junit "$PWD/ctest-msvc.xml"
       - name: Verify runtime install
         run: |
           $prefix = Join-Path $env:RUNNER_TEMP 'openi2pd-install'
@@ -140,6 +146,8 @@ jobs:
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
         with:
           name: windows-msvc-ctest
-          path: build-msvc/Testing
+          path: |
+            build-msvc/Testing
+            ctest-msvc.xml
           if-no-files-found: warn
           retention-days: 7

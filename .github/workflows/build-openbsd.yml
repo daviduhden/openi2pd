@@ -41,13 +41,20 @@ jobs:
             pkg_add cmake ninja boost miniupnpc llvm libcxx
           run: |
             set -eu
-            cmake -S build -B build-output -G Ninja \
+            if ! cmake -S build -B build-output -G Ninja \
               -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ \
               -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON \
-              -DI2PD_OPENSSL_EXPECT=LibreSSL
+              -DI2PD_REQUIRE_PERL=ON \
+              -DI2PD_OPENSSL_EXPECT=LibreSSL > configure.log 2>&1; then
+              cat configure.log
+              exit 1
+            fi
+            cat configure.log
+            grep -q 'OpenSSL library    : LibreSSL' configure.log
             cmake --build build-output --parallel 2
             test -x build-output/i2pd-tui
-            ctest --test-dir build-output --output-on-failure --timeout 180
+            ctest --test-dir build-output -j 2 --output-on-failure \
+              --no-tests=error --output-junit "$PWD/ctest-openbsd.xml"
             ctest --test-dir build-output -N -L platform --no-tests=error
             make BUILD_DIR=build-make \
               CMAKE_FLAGS="-DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF -DI2PD_OPENSSL_EXPECT=LibreSSL" \
@@ -58,6 +65,9 @@ jobs:
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
         with:
           name: openbsd-ctest
-          path: build-output/Testing
+          path: |
+            build-output/Testing
+            configure.log
+            ctest-openbsd.xml
           if-no-files-found: warn
           retention-days: 7
