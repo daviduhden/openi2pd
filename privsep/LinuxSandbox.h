@@ -70,6 +70,35 @@ i2p::expected<void, std::string> ApplyLinuxSandbox (const LinuxSandboxProfile & 
 i2p::expected<void, std::string> ApplyLinuxSupervisorSandbox ();
 
 /**
+ * First capability stage in the forked child, **while it is still
+ * privileged**: clear the ambient set and drop every bounding-set bit. The
+ * effective/permitted sets are deliberately kept so the following
+ * `setgroups`/`setgid`/`setuid` calls still have CAP_SETGID/CAP_SETUID.
+ */
+i2p::expected<void, std::string> PrepareCapabilitiesBeforeCredentialDrop ();
+/**
+ * Second capability stage, after `setuid`: zero the effective/permitted/
+ * inheritable sets and verify with capget. Running this before the credential
+ * drop would make setgid/setuid fail; running it only after the drop (the old
+ * behaviour) left file capabilities in place.
+ */
+i2p::expected<void, std::string> ClearCapabilitiesAfterCredentialDrop ();
+
+/**
+ * Apply the part of a worker policy that needs no configuration and must be
+ * in force before the first untrusted frame is parsed: no-new-privs, an empty
+ * capability set and the role's socket-creation/Internet seccomp filter.
+ * Landlock (which needs the delegated root) is applied later. The same filter
+ * is installed at most once per process.
+ */
+i2p::expected<void, std::string> ApplyLinuxIpcLockdown (const LinuxSandboxProfile & profile);
+/**
+ * Assert the post-exec preconditions before a worker serves a frame:
+ * `PR_GET_NO_NEW_PRIVS == 1` and an empty capability set (Linux only).
+ */
+i2p::expected<void, std::string> VerifyWorkerPrivileges ();
+
+/**
  * Optional cgroup v2 limits. The path must name a delegated cgroup directory
  * (not an arbitrary filesystem path). The function writes only the known
  * cgroup control files, with O_NOFOLLOW/O_CLOEXEC, and can move the current

@@ -5,9 +5,12 @@
  * openi2pd: WindowsIpc.
  *
  * Declares the Windows confinement and IPC layer: restricted worker tokens,
- * Job Objects, policy checks and probing, plus the message-mode named-pipe
- * server and channel that carry the shared Protocol frames. The worker
- * inherits no handles and reconnects by pipe name.
+ * AppContainer/LPAC delegation, Job Objects with a mitigation policy, the
+ * message-mode named-pipe server and channel that carry the shared Protocol
+ * frames, and the exec'ed worker entry point. A worker inherits no handle: it
+ * reconnects by name, proves a per-spawn CSPRNG nonce with a WorkerHello frame
+ * and is bound to the spawned PID, session and AppContainer SID before a
+ * single request frame is served.
  *
  */
 
@@ -16,8 +19,11 @@
 
 #include <cstdint>
 #include <optional>
+#include <span>
 #include <string>
 #include <string_view>
+#include <utility>
+#include <vector>
 
 #include "Expected.h"
 #include "Protocol.h"
@@ -33,12 +39,30 @@
 
 namespace i2p::privsep
 {
+/**
+ * AppContainer profile and SID owner, declared by WindowsIsolation.h. It is
+ * only forward declared here so this header stays independent of the isolation
+ * model that includes it; callers that spawn an isolated worker include
+ * WindowsIsolation.h themselves.
+ */
+class WindowsAppContainer;
+
+/**
+ * Identity of one pipe peer. `appContainer` and `appContainerSid` are filled
+ * from the client impersonation token on the accepting side, so an accepted
+ * connection is bound to a container SID rather than to a PID alone.
+ */
 struct WindowsPeer
 {
 	DWORD processId = 0;
 	DWORD sessionId = 0;
 	std::wstring userSid;
 	bool elevated = false;
+	bool appContainer = false;
+	bool lowPrivilegeAppContainer = false;
+	std::wstring appContainerSid;
+	/** Integrity level RID (SECURITY_MANDATORY_*), 0 when unavailable. */
+	DWORD integrityLevel = 0;
 };
 
 enum class WindowsWorkerRole : uint8_t
@@ -51,10 +75,24 @@ enum class WindowsWorkerRole : uint8_t
 	Admin
 };
 
+/**
+ * Spawn policy for one worker. The isolation mechanism itself (AppContainer
+ * versus restricted token, capability set, Internet access) is decided by
+ * `GetWindowsRoleIsolation()` in WindowsIsolation.h; this structure only
+ * carries the operator-visible delegation and the Job Object limits.
+ */
 struct WindowsWorkerPolicy
 {
 	bool allowNetwork = false;
+	/** Secondary (LAN) reach; never implied by allowNetwork. */
+	bool allowLan = false;
 	bool allowPersistentWrites = false;
+	/**
+	 * Absolute directory granted to the worker's AppContainer SID before the
+	 * spawn. A role whose isolation table demands persistent writes is
+	 * refused when this is empty; there is no implicit current directory.
+	 */
+	std::wstring persistentWriteRoot;
 	bool useRestrictedToken = true;
 	bool useAppContainer = false;
 	bool useLowPrivilegeAppContainer = false;
@@ -66,6 +104,28 @@ struct WindowsWorkerPolicy
 
 WindowsWorkerPolicy GetWindowsWorkerPolicy (WindowsWorkerRole role);
 bool WindowsAllowsOperation (WindowsWorkerRole role, MessageType type);
+
+/** Nonce size of the WorkerHello frame, in bytes. */
+inline constexpr size_t WINDOWS_WORKER_NONCE_SIZE = 32;
+
+/** Lowercase hex encoding of one nonce; empty for a wrong-sized nonce. */
+std::wstring EncodeWindowsWorkerNonce (std::string_view nonce);
+/** Decode 64 hex characters into exactly WINDOWS_WORKER_NONCE_SIZE bytes. */
+i2p::expected<std::string, std::string> DecodeWindowsWorkerNonce (std::string_view hex);
+/** Fresh CSPRNG nonce, hex encoded; fails closed when the provider fails. */
+i2p::expected<std::wstring, std::string> GenerateWindowsWorkerNonce ();
+
+/**
+ * Build the WorkerHello payload: `u8 role | u8 nonce length (32) | nonce`.
+ * Rejects an unknown role, a wrong-sized nonce and an all-zero nonce.
+ */
+i2p::expected<std::string, std::string> EncodeWorkerHelloFrame (WindowsWorkerRole role, std::string_view nonce);
+/**
+ * Validate one received WorkerHello frame. The nonce is returned as raw bytes
+ * and is never included in an error message.
+ */
+i2p::expected<std::pair<WindowsWorkerRole, std::string>, std::string> DecodeWorkerHelloFrame (
+	const Message & message);
 
 struct WindowsIsolationSupport
 {
@@ -111,30 +171,49 @@ struct WindowsWorkerProcess
 	WindowsHandle thread;
 	WindowsHandle job;
 	DWORD processId = 0;
+	/**
+	 * Hex nonce that was passed on the worker command line: the supervisor must
+	 * hand the same value to WindowsServer::AcceptBound().
+	 */
+	std::wstring nonceHex;
 
 	/** Bounded wait for the worker; false on timeout or an invalid handle. */
 	bool Wait (DWORD timeoutMs) const;
 	DWORD ExitCode () const;
-	/** Terminate and wait for the process to leave before returning. */
+	/** Terminate the job (when present) and the process, then wait for exit. */
 	bool TerminateAndWait (DWORD timeoutMs, UINT exitCode = ERROR_PROCESS_ABORTED);
+	/** Wait for a graceful exit within the budget, then terminate. */
+	bool Stop (DWORD timeoutMs = 2000);
 };
 
 /**
- * Spawn a worker with a restricted token and an optional Job Object. The
- * worker inherits no handles: it connects to the named pipe by name. The
- * process is created suspended, assigned to the Job Object and only then
- * resumed. AppContainer/LPAC policy is probed but not silently substituted by
- * a weaker token.
+ * Spawn a worker bound to one supervisor.
+ *
+ * The child receives
+ * `--privsep-worker <role> <pipe> <parentPid> <parentSession> <nonceHex>` and
+ * inherits no handle: it reconnects to the named pipe by name. The process is
+ * created suspended, placed in a Job Object with per-role limits and then
+ * resumed. A role that the isolation table marks as AppContainer-based is
+ * spawned with PROC_THREAD_ATTRIBUTE_SECURITY_CAPABILITIES; a role that needs
+ * persistent writes additionally requires `policy.persistentWriteRoot` and an
+ * explicit AppContainer grant before the spawn. There is no silent fallback to
+ * an unseparated token, and every failure terminates the child and closes its
+ * handles.
+ *
+ * An empty `nonceHex` makes the helper generate one (returned in
+ * `WindowsWorkerProcess::nonceHex`); a supplied value must be 64 hex
+ * characters.
  */
 i2p::expected<WindowsWorkerProcess, std::string> SpawnWindowsWorker (const std::wstring & executable,
-	WindowsWorkerRole role, const std::wstring & pipeName, const WindowsWorkerPolicy & policy);
+	WindowsWorkerRole role, const std::wstring & pipeName, DWORD parentProcessId, DWORD parentSessionId,
+	const std::wstring & nonceHex, const WindowsAppContainer * container, const WindowsWorkerPolicy & policy);
 
 /**
  * Windows local transport for the same versioned Message frames used by the
  * UNIX backend. It is a message-mode named pipe, never TCP or an undocumented
  * ALPC interface. No handle is inherited by the worker: the child reconnects
- * by name to a pipe whose protected DACL contains only the service user and
- * SYSTEM.
+ * by name to a pipe whose protected DACL contains the service user, SYSTEM and
+ * optionally one explicitly supplied AppContainer SID.
  */
 class WindowsServer
 {
@@ -146,16 +225,39 @@ public:
 	WindowsServer (const WindowsServer &) = delete;
 	WindowsServer & operator= (const WindowsServer &) = delete;
 
-	static i2p::expected<WindowsServer, std::string> Create (const std::wstring & pipeName);
-	i2p::expected<class WindowsChannel, std::string> Accept (DWORD timeoutMs);
 	/**
-	 * Accept only the expected spawned worker. A zero expected value keeps
-	 * the legacy check (same user SID) for tests and early bootstrap; callers
-	 * must pass the PID/session returned by SpawnWindowsWorker when binding a
-	 * production child.
+	 * Create the single pipe instance. `extraSid` is a container SID string
+	 * (`S-1-...`) granted full access in addition to the service user and
+	 * SYSTEM; an empty value keeps the two-ACE DACL. The name must be free:
+	 * FILE_FLAG_FIRST_PIPE_INSTANCE fails instead of joining a squatted name.
 	 */
-	i2p::expected<class WindowsChannel, std::string> AcceptBound (
-		DWORD timeoutMs, DWORD expectedProcessId, DWORD expectedSessionId);
+	static i2p::expected<WindowsServer, std::string> Create (const std::wstring & pipeName,
+		const std::wstring & extraSid = { });
+
+	/**
+	 * Test-only legacy accept. It binds the same user SID but verifies no spawn
+	 * nonce, PID, session or AppContainer identity; production callers must use
+	 * AcceptBound().
+	 */
+	i2p::expected<class WindowsChannel, std::string> Accept (DWORD timeoutMs);
+
+	/**
+	 * Accept only the expected spawned worker.
+	 *
+	 * Both the PID and the session are mandatory (a zero value is a programming
+	 * error, never "disabled"). The client identity is read from the pipe
+	 * impersonation token, so the connection must come from the same user, the
+	 * expected PID/session and, when @a container is given, the exact
+	 * AppContainer SID; an AppContainer peer is refused when no container is
+	 * expected, and a non-AppContainer peer is refused when one is. The first
+	 * frame must then be a WorkerHello carrying the expected role and nonce;
+	 * it is consumed before the channel is returned. Rejected connections are
+	 * closed, re-armed with a short backoff and bounded to 16 per call.
+	 */
+	i2p::expected<class WindowsChannel, std::string> AcceptBound (DWORD timeoutMs, DWORD expectedProcessId,
+		DWORD expectedSessionId, WindowsWorkerRole role, const std::wstring & nonceHex,
+		const WindowsAppContainer * container);
+
 	HANDLE Native () const { return m_Pipe; }
 	const std::wstring & Name () const { return m_Name; }
 
@@ -167,6 +269,9 @@ private:
 		, m_Security (security)
 	{
 	}
+
+	/** One bounded ConnectNamedPipe() on the armed instance. */
+	i2p::expected<bool, std::string> WaitForConnection (DWORD timeoutMs);
 
 	HANDLE m_Pipe = INVALID_HANDLE_VALUE;
 	std::wstring m_Name;
@@ -200,7 +305,41 @@ public:
 	}
 	void Close ();
 
+	/**
+	 * Bind this endpoint to one worker role. Once set, Receive() authorizes
+	 * every decoded frame against the shared registry plus the Windows
+	 * descriptor limitation: an unauthorized type is answered with one typed
+	 * Error(NotAuthorized) and closes the channel after the bounded violation
+	 * budget. A WorkerHello handshake must be consumed before the role is set,
+	 * because the registry lets only the core receive it.
+	 */
+	void SetRole (WindowsWorkerRole role)
+	{
+		m_Role = role;
+		m_RoleSet = true;
+		m_CoreSide = false;
+	}
+	/**
+	 * Bind this endpoint as the request-issuing side. It then receives only
+	 * reply-direction types (Pong/Error/storage replies) and the pre-dispatch
+	 * WorkerHello, never a worker request.
+	 */
+	void SetCoreRole ()
+	{
+		m_RoleSet = true;
+		m_CoreSide = true;
+	}
+	WindowsWorkerRole Role () const { return m_Role; }
+	bool RoleSet () const { return m_RoleSet; }
+	bool IsCoreSide () const { return m_CoreSide; }
+
 	i2p::expected<void, std::string> Send (const Message & message, DWORD timeoutMs = 5000);
+	/**
+	 * Receive one frame. A deadline expiry that cancels a read is reported as
+	 * an empty optional *only* when no record completed: a record that finished
+	 * while the cancellation was in flight is delivered rather than discarded.
+	 * Receive() must not be called concurrently on the same channel.
+	 */
 	i2p::expected<std::optional<Message>, std::string> Receive (DWORD timeoutMs = 1000);
 	i2p::expected<WindowsPeer, std::string> Peer () const;
 
@@ -214,12 +353,32 @@ private:
 
 	HANDLE m_Pipe = INVALID_HANDLE_VALUE;
 	bool m_ServerSide = false;
+	WindowsWorkerRole m_Role = WindowsWorkerRole::Admin;
+	bool m_RoleSet = false;
+	bool m_CoreSide = false;
+	/** Reusable overlapped receive state; guarded by single-threaded Receive(). */
+	WindowsHandle m_ReadEvent;
+	std::vector<char> m_ReadBuffer;
+	/** Bounded tolerance for attributable frame faults (mirrors Channel). */
+	static constexpr unsigned MAX_WINDOWS_PROTOCOL_VIOLATIONS = 8;
+	unsigned m_ProtocolViolations = 0;
 };
 
 /** Build a deterministic local pipe name from an operator-configured endpoint (tests). */
 i2p::expected<std::wstring, std::string> MakePrivatePipeName (std::string_view endpoint);
 /** Build a per-spawn, CSPRNG-scoped local pipe name. */
 i2p::expected<std::wstring, std::string> MakeRandomPipeName ();
+
+/**
+ * Entry point of an exec'ed Windows worker. It pins standard descriptors to
+ * NUL, connects to the supervisor pipe bound to the given parent PID/session,
+ * sends the WorkerHello frame with the spawn nonce, binds the role and serves
+ * only control frames. It never initialises or runs the router: a role without
+ * a Windows data-plane backend answers a data frame with a typed Error and
+ * exits instead of silently ignoring it.
+ */
+int RunWindowsWorker (std::string_view role, std::string_view pipeName, std::string_view parentPid,
+	std::string_view parentSession, std::string_view nonceHex);
 }
 
 #endif // _WIN32

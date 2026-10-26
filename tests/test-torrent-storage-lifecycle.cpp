@@ -16,8 +16,11 @@
 #include "../privsep/LinuxSandbox.h"
 #include <unistd.h>
 #endif
+#include "privsep-test-executable.h"
+
 int main (int argc, char ** argv)
 {
+	i2p::privsep::PinTestExecutable (argv[0]);
 	if (argc == 4 && std::string_view (argv[1]) == "--privsep-worker")
 		return i2p::privsep::RunWorker (argv[2], argv[3]);
 #if defined(__linux__) && !defined(__ANDROID__)

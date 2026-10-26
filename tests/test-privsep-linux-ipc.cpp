@@ -250,6 +250,60 @@ void TestMissingCredentialsRejected ()
 	::close (fds[0]);
 }
 
+void TestPeerExpectation ()
+{
+	auto pair = Channel::CreatePair ();
+	assert (pair.has_value ());
+	const uint32_t uid = static_cast<uint32_t> (geteuid ());
+	const uint32_t gid = static_cast<uint32_t> (getegid ());
+
+	// A frame from a different uid is rejected and the channel stays usable.
+	pair->second.ExpectPeer (PeerExpectation { uid + 1, gid, 0, true, false, false, true });
+	assert (pair->first.Send (Message { MessageType::Ping, 401, { } }).has_value ());
+	auto rejected = pair->second.Receive (1000);
+	assert (!rejected.has_value ());
+	assert (rejected.error ().find ("expected peer") != std::string::npos);
+
+	pair->second.ExpectPeer (PeerExpectation { uid, gid, 0, true, false, false, true });
+	assert (pair->first.Send (Message { MessageType::Ping, 402, { } }).has_value ());
+	auto accepted = pair->second.Receive (1000);
+	assert (accepted.has_value () && accepted->has_value ());
+	assert ((*accepted)->requestId == 402);
+
+	// A same-uid sender with a different pid is rejected when pid binding is
+	// requested (the core binds the direct child pid).
+	pair->second.ExpectPeer (
+		PeerExpectation { uid, gid, static_cast<uint32_t> (getpid ()) + 1, true, true, false, true });
+	assert (pair->first.Send (Message { MessageType::Ping, 403, { } }).has_value ());
+	auto wrongPid = pair->second.Receive (1000);
+	assert (!wrongPid.has_value ());
+
+	// The predicate, independent of the kernel: an unprivileged worker accepts
+	// the root core as its spawner only when allowRoot is set.
+	if (uid != 0)
+	{
+		pair->second.ExpectPeer (PeerExpectation { uid, gid, 0, true, false, true, true });
+		assert (pair->second.MatchesPeerExpectation (0, gid, 0));
+		pair->second.ExpectPeer (PeerExpectation { uid, gid, 0, true, false, false, true });
+		assert (!pair->second.MatchesPeerExpectation (0, gid, 0));
+	}
+	pair->second.ExpectPeer (PeerExpectation { uid, gid, 0, true, false, false, false });
+	assert (!pair->second.MatchesPeerExpectation (uid + 1, gid, 0));
+}
+
+void TestAdoptRejectsPendingRecord ()
+{
+	int fds[2] = { -1, -1 };
+	assert (::socketpair (AF_UNIX, SOCK_SEQPACKET | SOCK_CLOEXEC, 0, fds) == 0);
+	auto frame = Encode (Message { MessageType::Ping, 404, { } });
+	assert (frame.has_value ());
+	assert (::write (fds[1], frame->data (), frame->size ()) == static_cast<ssize_t> (frame->size ()));
+	auto adopted = Channel::AdoptValidated (fds[0], static_cast<uint32_t> (geteuid ()));
+	assert (!adopted.has_value ());
+	assert (adopted.error ().find ("pending") != std::string::npos);
+	::close (fds[1]);
+}
+
 void TestDescriptorTransfer ()
 {
 	auto pair = Channel::CreatePair ();
@@ -421,8 +475,8 @@ void TestMalformedFrames ()
 	}
 
 	// A record that is one byte above the frame limit still fits the
-	// receive-buffer headroom, so truncation cannot mask it. The declared
-	// length mismatch must be classified as a framing error.
+	// receive-buffer headroom, so truncation cannot mask it. The per-type
+	// ceiling rejects it before the length comparison.
 	{
 		std::string slightlyOversized = BuildHeader (2, 8, static_cast<uint32_t> (MAX_MESSAGE_SIZE - HEADER_SIZE));
 		slightlyOversized.append (MAX_MESSAGE_SIZE - HEADER_SIZE, 'y');
@@ -431,26 +485,38 @@ void TestMalformedFrames ()
 		assert (SendRaw (sender.Fd (), slightlyOversized));
 		auto received = receiver.Receive (1000);
 		assert (!received.has_value ());
-		assert (received.error ().find ("length mismatch") != std::string::npos);
+		assert (received.error ().find ("too large") != std::string::npos);
 		ExpectReusable (sender, receiver, 108);
 	}
 
-	// An exact maximum frame still fits the receive buffer, and the next
-	// frame is read cleanly (no off-by-one in the headroom).
+	// A declared length inside the type ceiling but one byte shorter than the
+	// record is a framing error, so a peer cannot smuggle a second frame.
 	{
-		auto maximum
-			= Encode (Message { MessageType::LogRecord, 7, std::string (MAX_MESSAGE_SIZE - HEADER_SIZE, 'm') });
+		std::string mismatched = BuildHeader (2, 8, 10);
+		mismatched.append (11, 'z');
+		assert (SendRaw (sender.Fd (), mismatched));
+		auto received = receiver.Receive (1000);
+		assert (!received.has_value ());
+		assert (received.error ().find ("length mismatch") != std::string::npos);
+		ExpectReusable (sender, receiver, 109);
+	}
+
+	// The largest legal per-type frame still fits the receive buffer, and the
+	// next frame is read cleanly (no off-by-one in the headroom).
+	{
+		const size_t ceiling = MaxPayloadFor (MessageType::RouterStorageRequest);
+		auto maximum = Encode (Message { MessageType::RouterStorageRequest, 7, std::string (ceiling, 'm') });
 		assert (maximum.has_value ());
-		assert (maximum->size () == MAX_MESSAGE_SIZE);
+		assert (maximum->size () == HEADER_SIZE + ceiling);
 		assert (SendRaw (sender.Fd (), *maximum));
 		auto received = receiver.Receive (1000);
 		assert (received.has_value ());
 		assert (received->has_value ());
 		assert ((*received)->requestId == 7);
-		assert ((*received)->payload.size () == MAX_MESSAGE_SIZE - HEADER_SIZE);
+		assert ((*received)->payload.size () == ceiling);
 		// The whole payload must round-trip; a stale or short receive buffer
 		// would leave zeroes or the previous record here.
-		assert ((*received)->payload == std::string (MAX_MESSAGE_SIZE - HEADER_SIZE, 'm'));
+		assert ((*received)->payload == std::string (ceiling, 'm'));
 		ExpectReusable (sender, receiver, 107);
 	}
 }
@@ -694,6 +760,8 @@ int main ()
 	TestEmptyRecordIsNotEof ();
 	TestAdoptValidatedRejectsNonChannels ();
 	TestAdoptValidatedEnablesPasscred ();
+	TestAdoptRejectsPendingRecord ();
+	TestPeerExpectation ();
 	TestMissingCredentialsRejected ();
 	TestDescriptorTransfer ();
 	TestMultipleDescriptorRejection ();

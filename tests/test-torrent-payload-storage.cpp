@@ -131,6 +131,30 @@ int main ()
 	auto zeroFragments = zeroLayout->GetPieceFileFragments (0);
 	assert (zeroFragments.size () == 2);
 	for (const auto & fragment : zeroFragments) assert (fragment.fragmentSize > 0);
+	// A final-name file is normally opened read-only for seeding. If a later
+	// hash failure invalidates the piece, Save must close that descriptor and
+	// reopen it writable instead of writing through the read-only handle.
+	first->Open (false);
+	assert (first->IsOpen ());
+	const auto opensBeforeUpgrade = backend->opens;
+	assert (first->Save (0, piece.data (), 16));
+	assert (backend->opens == opensBeforeUpgrade + 1);
+	assert (first->IsOpen ());
+	first->Close ();
+	// A document that is absent at startup is not silently "present": the
+	// startup probe sees a closed capability and leaves the piece downloadable.
+	auto missing = std::make_shared<TorrentFile> (root / "missing.bin", 4096);
+	missing->SetPayloadStorage (backend, root);
+	missing->SetIsPart (false);
+	// The startup probe opens/closes without caching or logging and reports
+	// absence so a deleted/revoked document stays downloadable.
+	assert (!missing->ProbePayload ());
+	assert (first->ProbePayload ());
+	missing->Open (false);
+	assert (!missing->IsOpen ());
+	missing->Open (true);
+	assert (missing->IsOpen ());
+	missing->Close ();
 	first->Close ();
 	second->Close ();
 	assert (backend->handles.empty ());

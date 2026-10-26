@@ -27,6 +27,7 @@
 #include <signal.h>
 #ifndef _WIN32
 #include <pthread.h>
+#include <unistd.h>
 #endif
 
 #ifdef __OpenBSD__
@@ -57,16 +58,25 @@
 #include "Tunnel.h"
 #include "HTTP.h"
 #include "NetDb.hpp"
+#include "Blocklist.h"
 #include "Garlic.h"
 #include "Streaming.h"
 #include "Destination.h"
 #include "I2PControl.h"
+#if !defined(__ANDROID__)
 #include "TuiServer.h"
+#endif
 #include "TuiServerCommon.h"
 #if !defined(_WIN32) && !defined(I2PD_NO_PRIVSEP)
+#include <filesystem>
+#include <fstream>
+#include "privsep/Credentials.h"
 #include "privsep/LogWorker.h"
+#include "privsep/OpenBSDSandbox.h"
 #include "privsep/Worker.h"
 #include "privsep/RouterStorage.h"
+#include "privsep/DataStorage.h"
+#include "PersistentStorage.h"
 #endif
 #include "ClientContext.h"
 #include "Crypto.h"
@@ -104,15 +114,19 @@ namespace util
 #endif
 		};
 
+#if !defined(__ANDROID__)
 		std::unique_ptr<i2p::tui::Server> tuiServer;
+#endif
 #if !defined(_WIN32) && !defined(I2PD_NO_PRIVSEP)
 		std::shared_ptr<i2p::privsep::RouterStorageClient> routerStorage;
+		std::shared_ptr<i2p::privsep::DataStorageClient> dataStorage;
 		std::unique_ptr<i2p::privsep::LogSink> logSink;
 		std::unique_ptr<i2p::privsep::ChildProcess> logWorker;
 		std::thread logSupervisor;
 		std::atomic<bool> logSupervisorStop { false };
 		std::chrono::steady_clock::time_point logWorkerStarted;
 		bool privsepLog = false;
+		bool privsepArtifacts = false;
 		bool privsepSyslog = false;
 		bool privsepCanRestart = true;
 		std::string privsepLogPath;
@@ -126,6 +140,15 @@ namespace util
 	{
 		constexpr std::array<std::string_view, 6> ADMIN_LOG_LEVEL_NAMES
 			= { "none", "critical", "error", "warn", "info", "debug" };
+
+		// Bounded view of a NUL-terminated fixed buffer. Unlike string_view's
+		// char* constructor this never scans past the array, so a malformed
+		// embedder submission cannot over-read.
+		std::string_view BoundedAdminText (const char * buffer, size_t size)
+		{
+			const auto end = std::find (buffer, buffer + size, '\0');
+			return std::string_view (buffer, static_cast<size_t> (end - buffer));
+		}
 
 		void SetAdminResultMessage (i2p::tui::AdminCommandResult & result, const char * message)
 		{
@@ -146,6 +169,7 @@ namespace util
 		void ExecuteAdminCommand (const i2p::tui::AdminCommand & command, i2p::tui::AdminCommandResult & result)
 		{
 			using i2p::tui::AdminCommandKind;
+			using i2p::tui::AdminOutcome;
 			using i2p::tui::AdminResultCode;
 
 			result = i2p::tui::AdminCommandResult { };
@@ -154,10 +178,102 @@ namespace util
 			{
 			case AdminCommandKind::Reseed:
 			{
-				const bool active = i2p::data::netdb.IsReseeding ();
-				if (!active) i2p::data::netdb.Reseed ();
-				result.value = i2p::data::netdb.IsReseeding () ? 1 : 0;
-				SetAdminResultMessage (result, active ? "reseed already in progress" : "reseed requested");
+				// Never blocks the administrative thread. RequestReseed() starts
+				// the owned, cancellable NetDb job and returns immediately, so
+				// a slow mirror cannot stall the local-IPC thread or delay
+				// shutdown (NetDb::Stop() cancels and joins the job).
+				if (i2p::data::netdb.RequestReseed ())
+				{
+					result.outcome = AdminOutcome::Started;
+					result.value = 1;
+					SetAdminResultMessage (result, "reseed started");
+				}
+				else if (i2p::data::netdb.IsReseeding ())
+				{
+					result.outcome = AdminOutcome::AlreadyRunning;
+					result.value = 1;
+					SetAdminResultMessage (result, "reseed already in progress");
+				}
+				else
+				{
+					result.code = AdminResultCode::Unavailable;
+					result.outcome = AdminOutcome::Disabled;
+					result.value = 0;
+					SetAdminResultMessage (result, "reseed is disabled");
+				}
+				break;
+			}
+			case AdminCommandKind::TunnelStart:
+			case AdminCommandKind::TunnelStop:
+			{
+				// One configured client or server tunnel, resolved by its
+				// unique service name. The name is already bounded by the
+				// parser and by the fixed command buffer.
+				const auto name = BoundedAdminText (command.name, sizeof (command.name));
+				const bool start = command.kind == AdminCommandKind::TunnelStart;
+				if (name.empty ())
+				{
+					result.code = AdminResultCode::Invalid;
+					result.outcome = AdminOutcome::Unknown;
+					SetAdminResultMessage (result, "invalid tunnel service name");
+					break;
+				}
+				bool found = false;
+				bool running = false;
+				for (const auto & service : i2p::client::context.GetTunnelServices ())
+					if (service.name == name)
+					{
+						found = true;
+						running = service.running;
+						break;
+					}
+				if (!found)
+				{
+					result.code = AdminResultCode::Failed;
+					result.outcome = AdminOutcome::Unknown;
+					result.value = 0;
+					SetAdminResultMessage (result, "unknown tunnel service name");
+					break;
+				}
+				if (start && running)
+				{
+					result.outcome = AdminOutcome::AlreadyRunning;
+					result.enabled = true;
+					result.value = 1;
+					SetAdminResultMessage (result, "tunnel is already running");
+					break;
+				}
+				if (!start && !running)
+				{
+					result.outcome = AdminOutcome::AlreadyStopped;
+					result.enabled = false;
+					result.value = 0;
+					SetAdminResultMessage (result, "tunnel is already stopped");
+					break;
+				}
+				std::string error;
+				const bool changed = start ? i2p::client::context.StartTunnel (name, error)
+										   : i2p::client::context.StopTunnel (name, error);
+				if (!changed)
+				{
+					result.code = AdminResultCode::Failed;
+					result.enabled = running;
+					result.value = running ? 1 : 0;
+					SetAdminResultMessage (
+						result, error.empty () ? "tunnel command failed" : error.c_str ());
+					break;
+				}
+				bool nowRunning = start;
+				for (const auto & service : i2p::client::context.GetTunnelServices ())
+					if (service.name == name)
+					{
+						nowRunning = service.running;
+						break;
+					}
+				result.enabled = nowRunning;
+				result.value = nowRunning ? 1 : 0;
+				result.outcome = start ? AdminOutcome::Started : AdminOutcome::Stopped;
+				SetAdminResultMessage (result, start ? "tunnel started" : "tunnel stopped");
 				break;
 			}
 			case AdminCommandKind::ShutdownGraceful:
@@ -221,6 +337,17 @@ namespace util
 				SetAdminResultMessage (
 					result, command.enabled ? "transit tunnels enabled" : "transit tunnels disabled");
 				break;
+			case AdminCommandKind::Online:
+				i2p::transport::transports.SetOnline (command.enabled);
+				result.enabled = i2p::transport::transports.IsOnline ();
+				SetAdminResultMessage (result,
+					result.enabled ? "transports online" : "transports offline; the router keeps running");
+				break;
+			case AdminCommandKind::LogReopen:
+				i2p::log::Logger ().Reopen ();
+				result.enabled = true;
+				SetAdminResultMessage (result, "log file reopened");
+				break;
 			case AdminCommandKind::LogLevel:
 				if (command.value < 0 || command.value >= static_cast<int32_t> (ADMIN_LOG_LEVEL_NAMES.size ()))
 				{
@@ -234,6 +361,40 @@ namespace util
 				SetAdminResultMessage (result, "daemon log level applied");
 				break;
 			case AdminCommandKind::AddressAdd:
+			{
+				// ADDRESS-ADD and ADDRESS-REPLACE share this path. Only the
+				// explicit replace verb re-points an existing name; add reports
+				// `exists` so a client can offer the replacement instead of
+				// silently overwriting.
+				auto & book = i2p::client::context.GetAddressBook ();
+				const auto outcome = book.AddAddressChecked (BoundedAdminText (command.name, sizeof (command.name)),
+					BoundedAdminText (command.destination, sizeof (command.destination)), command.enabled);
+				switch (outcome)
+				{
+				case i2p::client::AddressAddResult::Ok:
+					result.code = AdminResultCode::Ok;
+					SetAdminResultMessage (result, command.enabled ? "address replaced" : "address added");
+					break;
+				case i2p::client::AddressAddResult::InvalidName:
+					result.code = AdminResultCode::Invalid;
+					SetAdminResultMessage (result, "invalid address name");
+					break;
+				case i2p::client::AddressAddResult::InvalidDestination:
+					result.code = AdminResultCode::Invalid;
+					SetAdminResultMessage (result, "invalid base64 destination");
+					break;
+				case i2p::client::AddressAddResult::Exists:
+					result.code = AdminResultCode::Failed;
+					result.outcome = AdminOutcome::Exists;
+					SetAdminResultMessage (result, "address already exists; use replace to overwrite");
+					break;
+				case i2p::client::AddressAddResult::Unavailable:
+					result.code = AdminResultCode::Unavailable;
+					SetAdminResultMessage (result, "address book storage is unavailable");
+					break;
+				}
+				break;
+			}
 			case AdminCommandKind::AddressRemove:
 			case AdminCommandKind::AddressBlock:
 			case AdminCommandKind::AddressUnblock:
@@ -243,10 +404,6 @@ namespace util
 				const char * success = "address updated";
 				switch (command.kind)
 				{
-				case AdminCommandKind::AddressAdd:
-					outcome = book.AddAddress (command.name, command.destination, true);
-					success = "address added";
-					break;
 				case AdminCommandKind::AddressRemove:
 					outcome = book.RemoveAddress (command.name);
 					success = "address removed";
@@ -287,6 +444,66 @@ namespace util
 					SetAdminResultMessage (result, "address book storage is unavailable");
 					break;
 				}
+				break;
+			}
+			case AdminCommandKind::NetDbBan:
+			case AdminCommandKind::NetDbUnban:
+			{
+				const auto text = BoundedAdminText (command.name, sizeof (command.name));
+				i2p::data::IdentHash hash { };
+				if (text.empty () || hash.FromBase64 (text) != i2p::data::IdentHash::len)
+				{
+					result.code = AdminResultCode::Invalid;
+					SetAdminResultMessage (result, "invalid base64 router hash");
+					break;
+				}
+				if (command.kind == AdminCommandKind::NetDbBan)
+				{
+					if (!i2p::data::AddRuntimeRouterBan (hash))
+					{
+						result.code = AdminResultCode::Failed;
+						SetAdminResultMessage (result, "router ban list is full");
+						break;
+					}
+					SetAdminResultMessage (result, "router banned until restart");
+				}
+				else
+				{
+					if (!i2p::data::RemoveRuntimeRouterBan (hash))
+					{
+						result.code = AdminResultCode::Failed;
+						SetAdminResultMessage (result, "router is not in the runtime ban list");
+						break;
+					}
+					SetAdminResultMessage (result, "router unbanned");
+				}
+				result.value = static_cast<int32_t> (i2p::data::GetRuntimeRouterBanCount ());
+				break;
+			}
+			case AdminCommandKind::AddressSubAdd:
+			case AdminCommandKind::AddressSubRemove:
+			{
+				const auto url = BoundedAdminText (command.destination, sizeof (command.destination));
+				if (url.empty ())
+				{
+					result.code = AdminResultCode::Invalid;
+					SetAdminResultMessage (result, "invalid subscription URL");
+					break;
+				}
+				std::string error;
+				auto & book = i2p::client::context.GetAddressBook ();
+				const bool ok = command.kind == AdminCommandKind::AddressSubAdd ? book.AddSubscription (url, error)
+																				: book.RemoveSubscription (url, error);
+				if (!ok)
+				{
+					result.code = AdminResultCode::Failed;
+					SetAdminResultMessage (result, error.empty () ? "subscription update failed" : error.c_str ());
+					break;
+				}
+				result.value
+					= static_cast<int32_t> (book.GetSubscriptions (i2p::client::MAX_SUBSCRIPTION_URLS).size ());
+				SetAdminResultMessage (result,
+					command.kind == AdminCommandKind::AddressSubAdd ? "subscription added" : "subscription removed");
 				break;
 			}
 			default:
@@ -534,6 +751,153 @@ namespace util
 		if (!path.empty ()) DaemonDataDir = path;
 	}
 
+#if !defined(_WIN32) && !defined(I2PD_NO_PRIVSEP)
+	namespace
+	{
+		/**
+		 * A torrent tunnel may request isolated payload storage. The option is
+		 * per tunnel section in tunnels.conf / tunnels.d/*.conf and is parsed by
+		 * ClientContext much later, so the credential gate - which must run
+		 * before the startup pledge and the first spawn - needs a bounded
+		 * pre-scan. Only an explicit true counts; ClientContext remains the
+		 * authority for the value that is actually used, and the storage broker
+		 * re-validates the delegated root independently.
+		 */
+		constexpr size_t MAX_TUNNEL_SCAN_FILES = 64;
+		constexpr size_t MAX_TUNNEL_SCAN_BYTES = 256 * 1024;
+
+		std::string_view TrimScanText (std::string_view text)
+		{
+			const auto first = text.find_first_not_of (" \t\r");
+			if (first == std::string_view::npos) return { };
+			const auto last = text.find_last_not_of (" \t\r");
+			return text.substr (first, last - first + 1);
+		}
+
+		std::string LowerScanText (std::string_view text)
+		{
+			std::string lowered (text);
+			for (auto & character : lowered)
+				if (character >= 'A' && character <= 'Z') character = static_cast<char> (character - 'A' + 'a');
+			return lowered;
+		}
+
+		bool TunnelFileRequestsIsolatedStorage (const std::string & path)
+		{
+			std::ifstream file (path);
+			if (!file) return false;
+			size_t budget = MAX_TUNNEL_SCAN_BYTES;
+			std::string line;
+			while (std::getline (file, line))
+			{
+				if (line.size () >= budget) return false;
+				budget -= line.size ();
+				const auto separator = line.find_first_of ("=:");
+				if (separator == std::string::npos) continue;
+				const auto key = LowerScanText (TrimScanText (std::string_view (line).substr (0, separator)));
+				if (key != "isolatedstorage") continue;
+				const auto value = LowerScanText (TrimScanText (std::string_view (line).substr (separator + 1)));
+				if (value == "true" || value == "1" || value == "yes") return true;
+			}
+			return false;
+		}
+
+		bool InstalledTunnelsRequestIsolatedStorage ()
+		{
+			std::string tunnelsConfig;
+			i2p::config::GetOption ("tunconf", tunnelsConfig);
+			if (tunnelsConfig.empty ()) tunnelsConfig = i2p::fs::DataDirPath ("tunnels.conf");
+			if (i2p::fs::Exists (tunnelsConfig) && TunnelFileRequestsIsolatedStorage (tunnelsConfig)) return true;
+
+			std::string tunnelsDir;
+			i2p::config::GetOption ("tunnelsdir", tunnelsDir);
+			if (tunnelsDir.empty ()) tunnelsDir = i2p::fs::DataDirPath ("tunnels.d");
+			std::error_code ec;
+			if (!std::filesystem::is_directory (tunnelsDir, ec)) return false;
+			size_t scanned = 0;
+			std::filesystem::directory_iterator iterator (tunnelsDir, ec);
+			const std::filesystem::directory_iterator end;
+			while (!ec && iterator != end && scanned < MAX_TUNNEL_SCAN_FILES)
+			{
+				if (iterator->path ().extension () == ".conf")
+				{
+					++scanned;
+					if (TunnelFileRequestsIsolatedStorage (iterator->path ().string ())) return true;
+				}
+				iterator.increment (ec);
+			}
+			return false;
+		}
+
+		struct PrivsepFeatures
+		{
+			bool enabled = false;
+			bool routerStorage = false;
+			bool artifacts = false;
+			bool isolatedTorrentStorage = false;
+
+			bool Any () const { return enabled || routerStorage || artifacts || isolatedTorrentStorage; }
+		};
+
+		PrivsepFeatures ReadPrivsepFeatures ()
+		{
+			PrivsepFeatures features;
+			i2p::config::GetOption ("privsep.enabled", features.enabled);
+			i2p::config::GetOption ("privsep.routerstorage", features.routerStorage);
+			i2p::config::GetOption ("privsep.artifacts", features.artifacts);
+			features.isolatedTorrentStorage = InstalledTunnelsRequestIsolatedStorage ();
+			return features;
+		}
+
+		/**
+		 * Resolve and install the worker identity.
+		 *
+		 * Runs before the startup pledge (name-service lookups need ambient
+		 * filesystem access), before the logger thread and before the first
+		 * spawn. A root core with any isolation feature enabled and no
+		 * configured `privsep.user` fails startup: silently continuing would
+		 * give the workers root's ambient authority while claiming isolation.
+		 * No chroot is attempted; credential drop happens in the forked child.
+		 */
+		bool PreparePrivsepIdentity ()
+		{
+			std::string user, group;
+			i2p::config::GetOption ("privsep.user", user);
+			i2p::config::GetOption ("privsep.group", group);
+			auto resolved = i2p::privsep::ResolveWorkerCredentials (user, group);
+			if (!resolved)
+			{
+				std::cerr << "Daemon: privsep identity: " << resolved.error () << std::endl;
+				return false;
+			}
+			// An unprivileged core cannot switch a child to a different uid/gid:
+			// setuid/setgid would fail after fork, so reject the configuration
+			// now with an explicit message instead of failing the first spawn.
+			if (resolved->configured && ::geteuid () != 0
+				&& (resolved->uid != static_cast<uint32_t> (::geteuid ())
+					|| resolved->gid != static_cast<uint32_t> (::getegid ())))
+			{
+				std::cerr << "Daemon: privsep identity: an unprivileged daemon cannot switch to another "
+							 "uid/gid"
+						  << std::endl;
+				return false;
+			}
+			// The resolver rejects uid/gid 0 for a configured identity, so the
+			// installed pair is either the current identity or unprivileged.
+			i2p::privsep::SetWorkerCredentials (*resolved);
+			if (!ReadPrivsepFeatures ().Any ()) return true;
+			if (::geteuid () == 0 && !resolved->configured)
+			{
+				std::cerr << "Daemon: worker isolation requires an unprivileged identity; "
+							 "configure privsep.user or run as a dedicated user"
+						  << std::endl;
+				return false;
+			}
+			return true;
+		}
+	}
+#endif
+
 	bool Daemon_Singleton::init (int argc, char * argv[])
 	{
 		return init (argc, argv, nullptr);
@@ -543,6 +907,9 @@ namespace util
 	{
 		auto rollbackPhase = [this] (DaemonInitPhase phase)
 		{
+			// The private-data access below is compiled out on Windows, Android
+			// and I2PD_NO_PRIVSEP builds; keep the capture used there too.
+			(void)d;
 			switch (phase)
 			{
 			case DaemonInitPhase::Logging:
@@ -561,6 +928,18 @@ namespace util
 				{
 					d->routerStorage->Stop ();
 					d->routerStorage.reset ();
+				}
+#endif
+				break;
+			case DaemonInitPhase::DataStorage:
+#if !defined(_WIN32) && !defined(__ANDROID__) && !defined(I2PD_NO_PRIVSEP)
+				// Revoke artifact authority before stopping the worker that owns
+				// it, for the same reason as the fixed files.
+				i2p::data::ClearArtifactStorage ();
+				if (d->dataStorage)
+				{
+					d->dataStorage->Stop ();
+					d->dataStorage.reset ();
 				}
 #endif
 				break;
@@ -633,6 +1012,14 @@ namespace util
 		// configuration file.
 		if (foreground) isDaemon = false;
 
+#if !defined(_WIN32) && !defined(I2PD_NO_PRIVSEP)
+		// The worker identity must be resolved and installed before the startup
+		// pledge (name-service lookups), before the logger thread starts and
+		// before any spawn helper runs. A root core with isolation requested and
+		// no configured `privsep.user` fails here instead of degrading silently.
+		if (!PreparePrivsepIdentity ()) return false;
+#endif
+
 		std::string certsdir;
 		i2p::config::GetOption ("certsdir", certsdir);
 		i2p::fs::SetCertsDir (certsdir);
@@ -660,10 +1047,16 @@ namespace util
 #endif
 
 #if !defined(_WIN32) && !defined(I2PD_NO_PRIVSEP)
-		bool privsepEnabled = false, privsepLogEnabled = false;
+		bool privsepEnabled = false, privsepLogEnabled = false, privsepArtifacts = false;
 		i2p::config::GetOption ("privsep.enabled", privsepEnabled);
 		i2p::config::GetOption ("privsep.log", privsepLogEnabled);
+		// `privsep.artifacts` is independent of the log worker: it moves the
+		// hash-named runtime artifacts (RouterInfo cache, peer profiles and
+		// destination keys) into the data-storage worker. Without it the core
+		// keeps writing those files exactly as before.
+		i2p::config::GetOption ("privsep.artifacts", privsepArtifacts);
 		d->privsepLog = privsepEnabled && privsepLogEnabled && !logstream;
+		d->privsepArtifacts = privsepEnabled && privsepArtifacts;
 #ifdef __OpenBSD__
 		// The runtime policy drops proc/exec. The supervisor itself owns
 		// bounded log-worker replacement; the core must not attempt to fork a
@@ -732,65 +1125,70 @@ namespace util
 		if (!ssu && i2p::config::IsDefault ("precomputation.elgamal"))
 			precomputation = false; // we don't elgamal table if no ssu, unless it's specified explicitly
 #if defined(__OpenBSD__) && !defined(I2PD_NO_PRIVSEP)
-		// Keep startup-only promises until fork/setsid/setrlimit and unveil.
-		// A custom policy is additive at this phase too: it may request more
-		// promises, but it can never remove proc/unveil or the fixed baseline
-		// needed before the runtime sandbox is installed.
-		bool usePledge;
+		// Keep startup-only promises until fork/setsid/setrlimit, unveil and
+		// the first worker spawn. This window is the widest set the core ever
+		// holds; UnixDaemon::start() later builds the runtime set from the same
+		// table and verifies it is a subset (pledge can only drop promises).
+		bool usePledge, useUnveil;
 		i2p::config::GetOption ("openbsd.pledge_enabled", usePledge);
-		std::string policy;
-		i2p::config::GetOption ("openbsd.pledge_file", policy);
+		i2p::config::GetOption ("openbsd.unveil_enabled", useUnveil);
 		if (usePledge)
 		{
-			std::string promises = "stdio rpath wpath cpath fattr inet dns unix flock proc";
-			// Every startup worker (log supervisor, router storage and the
-			// torrent storage supervisor) is forked/exec'ed before the runtime
-			// sandbox. Keep exec only in this startup window; the runtime policy
-			// in UnixDaemon::start() omits proc/exec. Previously the promise was
-			// conditional on privsep.log, so the default OpenBSD build failed to
-			// exec the storage supervisor.
-			promises += " exec";
-			bool useUnveil;
-			i2p::config::GetOption ("openbsd.unveil_enabled", useUnveil);
-			if (useUnveil) promises += " unveil";
 			bool upnp;
 			i2p::config::GetOption ("upnp.enabled", upnp);
-			if (upnp) promises += " mcast";
+			i2p::privsep::OpenBSDPledgeWindow window;
+			window.unveil = useUnveil;
+			window.upnp = upnp;
+			// Every startup worker (log supervisor, router storage, data storage
+			// and the torrent storage broker) is forked/exec'ed before the
+			// runtime sandbox. exec exists only in this window.
+			window.execWorkers = true;
+			// Supervised storage hands a worker channel or root back to the core.
+			window.descriptorReception = true;
+			// The forked child drops supplementary groups, gid and uid.
+			window.credentialDrop = i2p::privsep::GetWorkerCredentials ().configured;
+			auto promises = i2p::privsep::OpenBSDPledgePromiseList (
+				i2p::privsep::OpenBSDPledgePhase::Startup, window);
+			std::string policy;
+			i2p::config::GetOption ("openbsd.pledge_file", policy);
 			if (!policy.empty ())
 			{
-				std::ifstream file (policy);
-				if (!file)
+				// One parser for both phases: an operator file may select from
+				// the validated base set, never widen it, and must not contain
+				// comments or blank lines that could look like active promises.
+				std::vector<std::string_view> allowed;
+				allowed.reserve (promises.size ());
+				for (const auto & promise : promises) allowed.emplace_back (promise);
+				auto accepted = i2p::privsep::ParseOpenBSDPledgeFile (
+					policy, allowed, i2p::privsep::OpenBSDPledgePhase::Startup);
+				if (!accepted)
 				{
-					std::cerr << "Daemon: can't open openbsd.pledge_file: " << policy << std::endl;
+					std::cerr << "Daemon: openbsd.pledge_file: " << accepted.error () << std::endl;
 					std::exit (EXIT_FAILURE);
 				}
-				std::string line;
-				while (std::getline (file, line))
-				{
-					auto comment = line.find ('#');
-					if (comment != std::string::npos) line.resize (comment);
-					std::istringstream tokens (line);
-					std::string token;
-					while (tokens >> token)
-					{
-						promises.push_back (' ');
-						promises += token;
-					}
-				}
-				if (file.bad ())
-				{
-					std::cerr << "Daemon: can't read openbsd.pledge_file: " << policy << std::endl;
-					std::exit (EXIT_FAILURE);
-				}
+				for (const auto & promise : *accepted)
+					if (std::find (promises.begin (), promises.end (), promise) == promises.end ())
+						promises.push_back (promise);
 			}
-			if (pledge (promises.c_str (), nullptr) == -1)
+			std::string joined;
+			for (const auto & promise : promises)
+			{
+				if (!joined.empty ()) joined.push_back (' ');
+				joined += promise;
+			}
+			if (pledge (joined.c_str (), i2p::privsep::OPENBSD_PLEDGE_EXECPROMISES) == -1)
 			{
 				std::cerr << "Daemon: startup pledge: " << strerror (errno) << std::endl;
 				std::exit (EXIT_FAILURE);
 			}
 		}
 #endif
-		initTransaction.Run (DaemonInitPhase::Crypto, [&] { i2p::crypto::InitCrypto (precomputation); });
+		initTransaction.Run (DaemonInitPhase::Crypto,
+			[&]
+			{
+				if (!i2p::crypto::InitCrypto (precomputation))
+					throw std::runtime_error ("Crypto: required libcrypto provider algorithms are unavailable");
+			});
 
 		i2p::transport::InitAddressFromIface (); // get address4/6 from interfaces
 
@@ -830,6 +1228,45 @@ namespace util
 		}
 		else
 			i2p::data::InstallRouterPersistenceWriter ({ });
+
+#if !defined(_WIN32) && !defined(I2PD_NO_PRIVSEP)
+		if (d->privsepArtifacts)
+		{
+			// The data worker joins the same isolation phase as the fixed-file
+			// router storage: both are persistence authority, and a rollback
+			// must revoke both before either process is stopped.
+			initTransaction.Run (DaemonInitPhase::DataStorage, [&] ()
+			{
+				// Fail closed until the isolated writer is actually installed.
+				i2p::data::ClearArtifactStorage ();
+#if !defined(__ANDROID__)
+				std::string error;
+				d->dataStorage = std::make_shared<i2p::privsep::DataStorageClient> ();
+				if (!d->dataStorage->Start (i2p::fs::GetDataDir (), error))
+				{
+					// A bounded, non-secret diagnostic: the message never
+					// contains an artifact name, path or key material. The
+					// router continues with artifact writes failing closed
+					// instead of silently reverting to core writes.
+					LogPrint (eLogError, "Daemon: Data storage worker unavailable: ", error);
+					d->dataStorage->Stop ();
+					d->dataStorage.reset ();
+					i2p::data::ClearArtifactStorage ();
+					return;
+				}
+				auto client = d->dataStorage;
+				i2p::data::InstallArtifactStorage (
+					[client] (i2p::data::StorageArtifact kind, std::string_view name, std::span<const uint8_t> bytes)
+					{ return client->Write (kind, name, bytes); },
+					[client] (i2p::data::StorageArtifact kind, std::string_view name)
+					{ return client->Remove (kind, name); });
+				LogPrint (eLogInfo, "Daemon: Hash-named artifact writes are isolated");
+#else
+				LogPrint (eLogError, "Daemon: Data storage worker unavailable on this platform");
+#endif
+			});
+		}
+#endif
 
 		initTransaction.Run (DaemonInitPhase::RouterContext, [] { i2p::context.Init (); });
 
@@ -874,7 +1311,6 @@ namespace util
 				const auto number = bandWithMatch[1].str ();
 				const auto unit = bandWithMatch[2].str ();
 				int limit = std::atoi (number.c_str ());
-				std::cout << unit;
 				if (unit == "b")
 				{
 					limit /= 1000;
@@ -1088,6 +1524,10 @@ namespace util
 		if (!i2p::tui::StartAdminCommandQueue (&ExecuteAdminCommand))
 			LogPrint (eLogWarning, "Daemon: Admin command queue unavailable");
 
+#if !defined(__ANDROID__)
+		// Android has no AF_UNIX TUI client. The in-app bridge calls the shared
+		// request dispatcher directly; do not start an unused local listener
+		// inside the app sandbox.
 		bool tuiEnabled;
 		i2p::config::GetOption ("tui.enabled", tuiEnabled);
 		if (tuiEnabled)
@@ -1104,6 +1544,7 @@ namespace util
 				d->tuiServer.reset ();
 			}
 		}
+#endif
 
 		// I2P Control Protocol
 		bool i2pcontrol;
@@ -1143,12 +1584,14 @@ namespace util
 		LogPrint (eLogInfo, "Daemon: Shutting down");
 		// These two own threads and read router state, so they must stop
 		// before the subsystems they observe are torn down.
+#if !defined(__ANDROID__)
 		if (d->tuiServer)
 		{
 			LogPrint (eLogInfo, "Daemon: Stopping TUI IPC");
 			d->tuiServer->Stop ();
 			d->tuiServer = nullptr;
 		}
+#endif
 		// No IPC thread can submit after the server above has been joined.
 		i2p::tui::StopAdminCommandQueue ();
 		if (d->m_I2PControlService)
@@ -1184,6 +1627,15 @@ namespace util
 		LogPrint (eLogInfo, "Daemon: Stopping NetDB");
 		i2p::data::netdb.Stop ();
 #if !defined(_WIN32) && !defined(I2PD_NO_PRIVSEP)
+		// Revoke artifact authority before the worker that owns it is stopped
+		// and before the data directory is torn down. A write that arrives
+		// after this point fails closed instead of reaching a dying channel.
+		i2p::data::ClearArtifactStorage ();
+		if (d->dataStorage)
+		{
+			d->dataStorage->Stop ();
+			d->dataStorage.reset ();
+		}
 		if (d->routerStorage) d->routerStorage->Stop ();
 #endif
 		i2p::crypto::TerminateCrypto ();

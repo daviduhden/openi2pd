@@ -6,17 +6,23 @@
  *
  * Declares the child-process owner used by the core and supervisor, with
  * bounded spawn/reap, optional pidfd tracking and channel ownership. Also
- * declares the log-worker and supervisor spawn helpers and executable
- * resolution.
+ * declares the log-worker and supervisor spawn helpers, the frozen executable
+ * path, the one-way process-creation barrier and the per-spawn identity
+ * handshake that binds the exec'ed role and its uid/gid to the process that
+ * forked it.
  *
  */
 
 #ifndef I2PD_PRIVSEP_WORKER_H__
 #define I2PD_PRIVSEP_WORKER_H__
 
+#include <cstdint>
+#include <optional>
+#include <span>
 #include <string>
 #include <string_view>
 #include <sys/types.h>
+#include <vector>
 
 #include "Channel.h"
 
@@ -34,6 +40,87 @@
 
 namespace i2p::privsep
 {
+/**
+ * Worker roles as an enumerated identity. The spawner declares the role both
+ * on the command line and in the identity hello written to the child's
+ * descriptor 5; RunWorker refuses a process whose argv role and hello role do
+ * not agree, so a hand-started executable cannot select a role by itself.
+ */
+enum class WorkerRole : uint8_t
+{
+	Log = 1,
+	Supervisor = 2,
+	RouterStorage = 3,
+	RouterStorageInherited = 4,
+	TorrentStorage = 5,
+	TorrentStorageInherited = 6,
+	TorrentStorageSupervisor = 7,
+	DataStorage = 8,
+	DataStorageInherited = 9
+};
+
+const char * WorkerRoleName (WorkerRole role);
+
+/**
+ * True for roles that receive an inherited storage root at descriptor 4.
+ * A role outside this set must never be spawned with a root fd, and every role
+ * in it must receive one; the spawn helper enforces both directions.
+ */
+bool WorkerRoleTakesInheritedRoot (WorkerRole role);
+std::optional<WorkerRole> WorkerRoleFromName (std::string_view name);
+
+inline constexpr size_t WORKER_HELLO_NONCE_SIZE = 16;
+/** A big-endian 32-bit uid followed by a big-endian 32-bit gid. */
+inline constexpr size_t WORKER_HELLO_IDENTITY_SIZE = 8;
+/**
+ * One role byte, the 16-byte nonce and the identity of the process that will
+ * serve the channel: `[role u8 | nonce 16 | uid u32 BE | gid u32 BE]`, a fixed
+ * 25-byte record. The uid/gid are written by the forked child after its
+ * credential drop, so the exec'ed worker can prove both the spawner and the
+ * identity it was started with.
+ */
+inline constexpr size_t WORKER_HELLO_SIZE = 1 + WORKER_HELLO_NONCE_SIZE + WORKER_HELLO_IDENTITY_SIZE;
+
+/** Decoded spawn identity: the role and the identity the worker must have. */
+struct WorkerHelloRecord
+{
+	WorkerRole role = WorkerRole::Log;
+	uint32_t uid = 0;
+	uint32_t gid = 0;
+};
+
+/**
+ * Build the hello record for one spawn from an explicit nonce and identity.
+ *
+ * Returns nullopt for an unknown role, a zero nonce, a nonce of the wrong size
+ * or uid 0: a predictable or partial nonce would make the handshake worthless,
+ * and a uid-0 record must never be produced.
+ */
+std::optional<std::vector<uint8_t>> EncodeWorkerHello (
+	WorkerRole role, std::span<const uint8_t> nonce, uint32_t uid, uint32_t gid);
+/**
+ * Validate a complete hello record. Requires exactly WORKER_HELLO_SIZE bytes,
+ * a known role id, a non-zero nonce and a non-zero uid. Errors never contain
+ * the nonce.
+ */
+std::optional<WorkerHelloRecord> DecodeWorkerHello (std::span<const uint8_t> hello);
+/**
+ * Generate a fresh 16-byte nonce from the platform CSPRNG and build the hello
+ * for an explicit identity. Fails closed (nullopt) when the provider cannot
+ * supply randomness.
+ */
+std::optional<std::vector<uint8_t>> CreateWorkerHello (WorkerRole role, uint32_t uid, uint32_t gid);
+/**
+ * Read, validate and consume the hello from @a fd, then close it.
+ *
+ * Exactly WORKER_HELLO_SIZE bytes are read and one further byte is peeked with
+ * a non-blocking read: a missing descriptor, an empty/short record, a second
+ * or duplicated record (one extra byte, or a writer that is still open), an
+ * unknown role or uid 0 all return nullopt. The nonce is never logged,
+ * formatted or retained.
+ */
+std::optional<WorkerHelloRecord> ReadWorkerHello (int fd);
+
 #ifndef _WIN32
 /**
  * Close inherited standard descriptors that are sockets. A foreground
@@ -48,6 +135,18 @@ inline void SanitizeInheritedStdio ()
 		if (::fstat (fd, &status) == 0 && S_ISSOCK (status.st_mode)) ::close (fd);
 	}
 }
+
+/**
+ * Rebind descriptors 0, 1 and 2 to /dev/null.
+ *
+ * A worker must never write to the operator's terminal, a service-manager log
+ * pipe or a socket-activation descriptor it merely inherited, and it must not
+ * read the operator's stdin. /dev/null is opened once and duplicated onto each
+ * differing descriptor. Returns false when it cannot be opened or duplicated;
+ * callers must treat that as fatal instead of continuing with the inherited
+ * descriptors.
+ */
+bool PinStandardDescriptors ();
 
 /**
  * Wait for a child until an absolute deadline without ever blocking past it.
@@ -172,6 +271,24 @@ i2p::expected<Channel, std::string> SpawnDetachedWorker (const char * role);
 i2p::expected<Channel, std::string> SpawnDetachedWorkerWithRoot (const char * role, int rootFd);
 i2p::expected<ChildProcess, std::string> SpawnWorkerWithRoot (
 	const char * role, std::string_view executable, int rootFd);
+
+/**
+ * Freeze the executable used for every spawn.
+ *
+ * Called once during startup with the resolved `argv[0]`. The candidate must
+ * be absolute, free of NUL, a regular file owned by root or this process,
+ * without group/world write permission, executable and of bounded size; the
+ * stored value is the canonical `realpath()`. An unusable candidate clears the
+ * value, so ExecutablePath() returns empty and every spawn fails closed. There
+ * is no `$PATH` search and no `/proc/self/exe` fallback: on OpenBSD that
+ * fallback was an invalid path, and a PATH search is a substitution surface.
+ *
+ * The process-wide process-creation gate consulted by every spawn helper is
+ * declared in Supervisor.h (`ForbidProcessCreation()` /
+ * `IsProcessCreationForbidden()`): one flag, one owner, one definition.
+ */
+void SetExecutablePath (std::string path);
+/** Frozen executable path, or empty when it was never validated. */
 std::string ExecutablePath ();
 }
 

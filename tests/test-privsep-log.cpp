@@ -19,6 +19,7 @@
 #include <functional>
 #include <iterator>
 #include <string>
+#include <string_view>
 #include <sys/stat.h>
 #include <sys/wait.h>
 #include <thread>
@@ -181,6 +182,149 @@ void TestLogTextSanitization ()
 	assert (SanitizeLogText (oversized).size () == MAX_TEXT_SIZE);
 }
 
+/** The sanitizer matrix: UTF-8 awareness, C1 neutralisation and the bound. */
+void TestLogSanitizerMatrix ()
+{
+	// C0 controls other than tab, DEL and NUL are neutralised one for one.
+	std::string controls = "a\tb\nc\rd";
+	controls.push_back ('\x1b');
+	controls.push_back ('\x7f');
+	controls.push_back ('\0');
+	const std::string sanitized = SanitizeLogText (controls);
+	assert (sanitized.size () == controls.size ());
+	assert (sanitized.find ('\n') == std::string::npos);
+	assert (sanitized.find ('\r') == std::string::npos);
+	assert (sanitized.find ('\x1b') == std::string::npos);
+	assert (sanitized.find ('\x7f') == std::string::npos);
+	assert (sanitized.find ('\0') == std::string::npos);
+	assert (sanitized[0] == 'a');
+	assert (sanitized[1] == '\t');
+	assert (sanitized[2] == 'b');
+
+	// The single-byte C1 CSI (0x9B) is not valid UTF-8 and must not survive.
+	std::string csi;
+	csi.push_back ('\x9b');
+	csi += "[31mred";
+	const std::string csiSanitized = SanitizeLogText (csi);
+	assert (csiSanitized.find ('\x9b') == std::string::npos);
+	assert (csiSanitized == "?[31mred");
+
+	// U+009B (bytes C2 9B) is the encoded C1 CSI. The whole sequence becomes
+	// one space so the output stays valid UTF-8 and no sequence is split.
+	const std::string encodedCsi = "\xC2\x9B"
+								   "[31mred";
+	const std::string encodedSanitized = SanitizeLogText (encodedCsi);
+	assert (encodedSanitized == " [31mred");
+	assert (encodedSanitized.size () == encodedCsi.size () - 1);
+
+	// Valid multi-byte text survives byte for byte.
+	const std::string valid = "h\xC3\xA9llo \xF0\x9F\x98\x80";
+	assert (SanitizeLogText (valid) == valid);
+
+	// Invalid UTF-8 becomes one replacement byte per offending byte and is
+	// never copied as a partial sequence.
+	assert (SanitizeLogText ("a\xE2\x82") == "a??"); // truncated 3-byte sequence
+	assert (SanitizeLogText ("a\xC0\x80") == "a??"); // overlong encoding
+	assert (SanitizeLogText ("a\xED\xA0\x80") == "a???"); // surrogate
+	assert (SanitizeLogText ("a\xF0\x9F\x98") == "a???"); // truncated 4-byte sequence
+
+	// Cutting at the bound happens on a sequence boundary and is marked, with
+	// the marker inside the bound.
+	const std::string oversized = std::string (MAX_TEXT_SIZE, 'a') + "\xF0\x9F\x98\x80";
+	const std::string truncated = SanitizeLogText (oversized);
+	assert (truncated.size () == MAX_TEXT_SIZE);
+	assert (truncated.ends_with (LOG_TRUNCATION_MARKER));
+	assert (truncated.find (static_cast<char> ('\xF0')) == std::string::npos);
+
+	// A sequence straddling the bound is dropped rather than split.
+	const std::string straddling = std::string (MAX_TEXT_SIZE - 1, 'a') + "\xC3\xA9";
+	const std::string straddled = SanitizeLogText (straddling);
+	assert (straddled.size () == MAX_TEXT_SIZE);
+	assert (straddled.ends_with (LOG_TRUNCATION_MARKER));
+	assert (straddled.find (static_cast<char> ('\xC3')) == std::string::npos);
+
+	// Short text is never marked.
+	assert (SanitizeLogText ("short").find (LOG_TRUNCATION_MARKER) == std::string::npos);
+}
+
+/** The compiled-in sensitive-key list and its bounded, exact redaction. */
+void TestLogRedaction ()
+{
+	assert (RedactLogSecrets ("password=hunter2") == "password=<redacted>");
+	assert (RedactLogSecrets ("password = hunter2") == "password = <redacted>");
+	assert (RedactLogSecrets ("Password:Hunter2") == "Password:<redacted>");
+	assert (RedactLogSecrets ("TOKEN=abc") == "TOKEN=<redacted>");
+	assert (RedactLogSecrets ("secret=\"a b\"") == "secret=<redacted>");
+	assert (RedactLogSecrets ("privateKey: abc123;next=1") == "privateKey: <redacted>;next=1");
+	assert (RedactLogSecrets ("private key=abc") == "private key=<redacted>");
+	assert (RedactLogSecrets ("passphrase=topsecret rest") == "passphrase=<redacted> rest");
+
+	// Non-secret text is never touched.
+	for (const std::string_view plain : { "user=david tokens=5 passwordless=1",
+			 "path=/var/lib/i2pd/router.info", "assertion failed: value=3", "key exchange started" })
+	{
+		assert (RedactLogSecrets (plain) == plain);
+	}
+
+	// A key inside a longer identifier is not a key, but a separated prefix is.
+	assert (RedactLogSecrets ("sessiontoken=abc") == "sessiontoken=abc");
+	assert (RedactLogSecrets ("auth_token=abc") == "auth_token=<redacted>");
+	assert (RedactLogSecrets ("client_secret:abc") == "client_secret:<redacted>");
+
+	// Multiple pairs in one line are all redacted.
+	assert (RedactLogSecrets ("password=a token=b") == "password=<redacted> token=<redacted>");
+
+	// The pass is capped, so hostile input cannot make it expensive.
+	std::string many;
+	for (size_t index = 0; index < MAX_LOG_REDACTIONS * 4; ++index) many += "token=x ";
+	const std::string capped = RedactLogSecrets (many);
+	size_t redactions = 0;
+	for (size_t offset = capped.find (LOG_REDACTED_VALUE); offset != std::string::npos;
+		 offset = capped.find (LOG_REDACTED_VALUE, offset + LOG_REDACTED_VALUE.size ()))
+	{
+		++redactions;
+	}
+	assert (redactions == MAX_LOG_REDACTIONS);
+}
+
+/** The file-sink byte budget decision, independent of the 64 MiB default. */
+void TestLogSinkBudget ()
+{
+	assert (MAX_LOG_SINK_BYTES == 64u * 1024u * 1024u);
+	assert (FitsLogSinkBudget (0, 10, 100));
+	assert (FitsLogSinkBudget (90, 10, 100));
+	assert (!FitsLogSinkBudget (91, 10, 100));
+	assert (!FitsLogSinkBudget (100, 1, 100));
+	assert (!FitsLogSinkBudget (101, 0, 100));
+	assert (FitsLogSinkBudget (0, 0, 0));
+	// A budget that is already exceeded never accepts another record.
+	assert (!FitsLogSinkBudget (MAX_LOG_SINK_BYTES, 1));
+	assert (FitsLogSinkBudget (MAX_LOG_SINK_BYTES - 1, 1));
+}
+
+/**
+ * A minimal log peer that acknowledges one configuration and then drains one
+ * record every 400 ms. The slow drain keeps the sender's queue full so a send
+ * has to wait, without ever hitting the sink's one-second send timeout.
+ */
+void RunSlowLogPeer (int fd)
+{
+	Channel channel = Channel::Adopt (fd);
+	auto configure = channel.Receive (2000);
+	if (!configure || !*configure) _exit (1);
+	auto ping = channel.Receive (2000);
+	if (!ping || !*ping) _exit (1);
+	if (!channel.Send (Message { MessageType::Pong, (**ping).requestId, { } })) _exit (1);
+	while (true)
+	{
+		auto record = channel.Receive (2000);
+		if (!record) _exit (0);
+		if (!*record) continue;
+		if ((**record).type == MessageType::Shutdown) _exit (0);
+		std::this_thread::sleep_for (std::chrono::milliseconds (400));
+	}
+}
+
 void TestBoundedChildStop ()
 {
 	// A child that ignores SIGTERM must not make the production wait helper
@@ -337,11 +481,11 @@ int main ()
 
 	// Descriptor policy: ConfigureLogFd requires exactly one regular-file
 	// descriptor for a file sink, legacy ConfigureLog must not carry one, and
-	// a non-file sink must not carry one either. Every rejected descriptor is
-	// closed by the worker before it exits. The post-switch "unconsumed
-	// descriptor" guard in RunLogWorker is defensive: every current message
-	// type either consumes or rejects its descriptor, so these cases exercise
-	// the per-type checks rather than the fallback.
+	// a non-file sink must not carry one either. Most of these are now rejected
+	// by the channel's endpoint enforcement (registry DescriptorPolicy) with a
+	// typed Error, before the worker switch runs; the worker's own checks remain
+	// as defence in depth. Either way the descriptor is closed and a closed
+	// control channel then terminates the worker with a non-zero status.
 	{
 		// 1. Descriptor mode without a descriptor.
 		const std::string path = std::string (dir) + "/missing-fd.log";
@@ -607,6 +751,170 @@ int main ()
 		unlink (path.c_str ());
 	}
 
+	// Redaction and C1 neutralisation happen before a record reaches the sink.
+	// A secret value must never be written, and the C1 CSI byte must not reach
+	// the file or a terminal that later displays it.
+	{
+		const std::string path = std::string (dir) + "/redacted.log";
+		RunScenario (
+			[&path] (Channel & channel)
+			{
+				assert (channel.Send (Message { MessageType::ConfigureLog, 1, LogConfig (false, path, "test") })
+						.has_value ());
+				std::string text = "login password=hunter2 user=david ";
+				text.push_back ('\x9b'); // raw C1 CSI byte
+				text += "[31mred";
+				assert (
+					channel.Send (Message { MessageType::LogRecord, 2, EncodeLogRecord (4, 1, text) }).has_value ());
+				assert (channel.Send (Message { MessageType::Shutdown, 3, { } }).has_value ());
+			},
+			0);
+
+		const std::string contents = ReadFile (path);
+		assert (contents.find ("hunter2") == std::string::npos);
+		assert (contents.find ("password=<redacted>") != std::string::npos);
+		assert (contents.find ("user=david") != std::string::npos);
+		assert (contents.find (static_cast<char> ('\x9b')) == std::string::npos);
+		assert (CountChar (contents, '\n') == 1);
+		unlink (path.c_str ());
+	}
+
+	// The file sink stops appending at its byte budget. The test presents the
+	// file already at the cap (a sparse file, so no real bytes are written) and
+	// the worker must discard the record instead of growing it. There is no
+	// rotation and no rewrite of existing content.
+	{
+		const std::string path = std::string (dir) + "/capped.log";
+		{
+			const int fd = OpenLogDescriptor (path);
+			assert (ftruncate (fd, static_cast<off_t> (MAX_LOG_SINK_BYTES)) == 0);
+			close (fd);
+		}
+		RunScenario (
+			[&path] (Channel & channel)
+			{
+				const int fd = OpenLogDescriptor (path);
+				assert (
+					channel.SendWithFd (Message { MessageType::ConfigureLogFd, 1, LogConfig (false, path, "test") }, fd)
+						.has_value ());
+				close (fd);
+				assert (channel.Send (Message { MessageType::LogRecord, 2, EncodeLogRecord (4, 1, "capped record") })
+						.has_value ());
+				assert (channel.Send (Message { MessageType::Shutdown, 3, { } }).has_value ());
+			},
+			0);
+
+		struct stat info { };
+		assert (stat (path.c_str (), &info) == 0);
+		assert (static_cast<uint64_t> (info.st_size) == MAX_LOG_SINK_BYTES);
+		unlink (path.c_str ());
+	}
+
+	// The proxy path is what the supervisor uses: the sink never opens the log
+	// path locally, the worker opens it itself, and a replacement worker is
+	// attached with ReattachProxy.
+	{
+		const std::string path = std::string (dir) + "/proxy.log";
+		auto first = Channel::CreatePair ();
+		assert (first.has_value ());
+		pid_t firstPid = fork ();
+		assert (firstPid >= 0);
+		if (firstPid == 0)
+		{
+			first->first.Close ();
+			_exit (RunLogWorker (first->second.Fd ()));
+		}
+		first->second.Close ();
+
+		{
+			LogSink sink (std::move (first->first));
+			assert (sink.ConfigureProxy (false, path, "test").has_value ());
+			assert (sink.IsOpen ());
+			assert (!sink.ConfigureProxy (false, path, "test").has_value ()); // once
+			sink.Write (4, 1, "proxy first");
+			assert (WaitForContent (path, "proxy first", 1000));
+
+			auto second = Channel::CreatePair ();
+			assert (second.has_value ());
+			pid_t secondPid = fork ();
+			assert (secondPid >= 0);
+			if (secondPid == 0)
+			{
+				second->first.Close ();
+				_exit (RunLogWorker (second->second.Fd ()));
+			}
+			second->second.Close ();
+			assert (sink.ReattachProxy (std::move (second->first)).has_value ());
+			assert (sink.IsOpen ());
+			sink.Write (4, 2, "proxy second");
+			assert (WaitForContent (path, "proxy second", 1000));
+			assert (sink.Shutdown ().has_value ());
+
+			int firstStatus = 0;
+			assert (WaitForExit (firstPid, firstStatus, 5000));
+			int secondStatus = 0;
+			assert (WaitForExit (secondPid, secondStatus, 5000));
+			assert (WIFEXITED (secondStatus));
+			assert (WEXITSTATUS (secondStatus) == 0);
+		}
+
+		const std::string contents = ReadFile (path);
+		assert (contents.find ("proxy first") != std::string::npos);
+		assert (contents.find ("proxy second") != std::string::npos);
+		unlink (path.c_str ());
+	}
+
+	// A slow worker must not hold the router's log mutex: Write() snapshots the
+	// channel under the lock and performs the bounded send outside it. A port
+	// that kept the send inside the lock would make this counter read wait for
+	// the whole send.
+	{
+		auto pair = Channel::CreatePair ();
+		assert (pair.has_value ());
+		pid_t pid = fork ();
+		assert (pid >= 0);
+		if (pid == 0)
+		{
+			pair->first.Close ();
+			RunSlowLogPeer (pair->second.Fd ());
+			_exit (1);
+		}
+		pair->second.Close ();
+
+		LogSink sink (std::move (pair->first));
+		assert (sink.Configure (true, "", "mutex").has_value ());
+		assert (sink.IsOpen ());
+
+		const std::string record (MAX_TEXT_SIZE, 'm');
+		bool waited = false;
+		for (int attempt = 0; attempt < 128 && !waited; ++attempt)
+		{
+			const auto started = std::chrono::steady_clock::now ();
+			sink.Write (4, 1, record);
+			waited = std::chrono::steady_clock::now () - started >= std::chrono::milliseconds (100);
+		}
+		// The peer drains one record per 400 ms, so a full queue makes the send
+		// wait well past the threshold while still completing under the sink's
+		// one-second timeout.
+		assert (waited);
+		assert (sink.IsOpen ());
+		assert (sink.GetDroppedCount () == 0);
+
+		std::thread slow ([&sink, &record] () { sink.Write (4, 2, record); });
+		std::this_thread::sleep_for (std::chrono::milliseconds (100));
+		const auto started = std::chrono::steady_clock::now ();
+		const uint64_t dropped = sink.GetDroppedCount ();
+		const auto waitedForLock = std::chrono::steady_clock::now () - started;
+		slow.join ();
+		assert (waitedForLock < std::chrono::milliseconds (250));
+		assert (dropped == 0); // slow, not dead: nothing was dropped
+		assert (sink.GetWorkerDroppedCount () == dropped);
+
+		kill (pid, SIGKILL);
+		int status = 0;
+		assert (WaitForExit (pid, status, 5000));
+	}
+
 	// Peer credentials are readable and match the worker's expected uid.
 	{
 		auto pair = Channel::CreatePair ();
@@ -617,6 +925,9 @@ int main ()
 	}
 
 	TestLogTextSanitization ();
+	TestLogSanitizerMatrix ();
+	TestLogRedaction ();
+	TestLogSinkBudget ();
 	TestBoundedChildStop ();
 
 	rmdir (dir);

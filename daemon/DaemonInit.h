@@ -27,6 +27,7 @@ enum class DaemonInitPhase : uint8_t
 	Logging,
 	Crypto,
 	RouterStorage,
+	DataStorage,
 	RouterContext
 };
 
@@ -81,7 +82,7 @@ public:
 
 private:
 	RollbackFunction m_RollbackFunction;
-	std::array<DaemonInitPhase, 4> m_Phases { };
+	std::array<DaemonInitPhase, 5> m_Phases { };
 	std::size_t m_PhaseCount = 0;
 	bool m_Committed = false;
 };

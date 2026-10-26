@@ -24,6 +24,7 @@
 #include <poll.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
+#include <sys/ioctl.h>
 #include <sys/uio.h>
 #include <unistd.h>
 
@@ -45,7 +46,59 @@ namespace
 	using SteadyClock = std::chrono::steady_clock;
 
 	/** A negative timeout keeps the historical infinite-wait meaning. */
-	bool IsInfiniteTimeout (int timeoutMs)
+	/**
+ * Enforce the registry's descriptor classification. The caller has already
+ * confirmed there is at most one descriptor, so this decides presence and
+ * kind only. A missing required descriptor and a forbidden one are both a
+ * `BadField` fault; the caller closes the descriptor (if any) before replying.
+ */
+bool ValidateRegistryDescriptor (MessageType type, int fd, std::string & why)
+{
+	const auto policy = DescriptorPolicyFor (type);
+	const bool present = fd >= 0;
+	if (!DescriptorPresenceAllowed (type, present))
+	{
+		why = present ? "descriptor is not allowed on this message type" : "message requires a descriptor";
+		return false;
+	}
+	if (!present) return true;
+	struct stat info { };
+	if (::fstat (fd, &info) != 0)
+	{
+		why = "descriptor cannot be inspected";
+		return false;
+	}
+	switch (policy)
+	{
+	case DescriptorPolicy::OptionalFile:
+	case DescriptorPolicy::RequiredFile:
+		if (!S_ISREG (info.st_mode))
+		{
+			why = "message requires a regular file descriptor";
+			return false;
+		}
+		return true;
+	case DescriptorPolicy::OptionalDirectory:
+	case DescriptorPolicy::RequiredDirectory:
+		if (!S_ISDIR (info.st_mode))
+		{
+			why = "message requires a directory descriptor";
+			return false;
+		}
+		return true;
+	case DescriptorPolicy::OptionalSocket:
+	case DescriptorPolicy::RequiredSocket:
+		if (!S_ISSOCK (info.st_mode))
+		{
+			why = "message requires a socket descriptor";
+			return false;
+		}
+		return true;
+	case DescriptorPolicy::None: break;
+	}
+	return false;
+}
+bool IsInfiniteTimeout (int timeoutMs)
 	{
 		return timeoutMs < 0;
 	}
@@ -80,9 +133,32 @@ Channel & Channel::operator= (Channel && other) noexcept
 	{
 		Close ();
 		m_Fd = other.m_Fd;
+		m_EnforcementPolicy = other.m_EnforcementPolicy;
+		m_ProtocolViolations = other.m_ProtocolViolations;
+		m_PeerExpectation = other.m_PeerExpectation;
 		other.m_Fd = -1;
 	}
 	return *this;
+}
+
+Channel Channel::Adopt (int fd)
+{
+	Channel channel (fd);
+	// A worker is spawned by the core/supervisor and may be a different uid
+	// after the credential drop. It accepts its own uid or the root core.
+	channel.m_PeerExpectation = PeerExpectation {
+		static_cast<uint32_t> (::geteuid ()), 0, 0, false, false, true, true
+	};
+	return channel;
+}
+
+bool Channel::MatchesPeerExpectation (uint32_t uid, uint32_t gid, uint32_t pid) const
+{
+	if (!m_PeerExpectation.configured) return true;
+	if (uid != m_PeerExpectation.uid && !(m_PeerExpectation.allowRoot && uid == 0)) return false;
+	if (m_PeerExpectation.requireGid && gid != m_PeerExpectation.gid) return false;
+	if (m_PeerExpectation.requirePid && pid != m_PeerExpectation.pid) return false;
+	return true;
 }
 
 void Channel::Close ()
@@ -155,6 +231,19 @@ i2p::expected<Channel, std::string> Channel::AdoptValidated (int fd, uint32_t ex
 		channel.Close ();
 		return i2p::unexpected ("adopted channel peer has an unexpected uid");
 	}
+	// A broker must not hand over a socket with a frame already queued: its
+	// kernel credentials would carry the broker's uid and could impersonate
+	// the worker before the first genuine reply.
+	int pending = 0;
+	if (::ioctl (fd, FIONREAD, &pending) != 0 || pending != 0)
+	{
+		channel.Close ();
+		return i2p::unexpected ("adopted channel has a pending record");
+	}
+	channel.m_PeerExpectation = PeerExpectation { expectedUid, 0, 0, false, false, false, true };
+	// An adopted channel is a request/reply endpoint: enforce the registry's
+	// descriptor policy and answer attributable faults with a typed Error.
+	channel.SetEnforcementPolicy (EnforcementPolicy::Endpoint);
 	return channel;
 }
 
@@ -202,7 +291,17 @@ i2p::expected<std::pair<Channel, Channel>, std::string> Channel::CreatePair ()
 		}
 #endif
 	}
-	return std::pair<Channel, Channel> (Channel (fds[0]), Channel (fds[1]));
+	// Both ends are created by this process. The parent overrides the child
+	// end with the post-drop worker identity after fork; a test that keeps
+	// both ends in one process matches itself.
+	const PeerExpectation expectation {
+		static_cast<uint32_t> (::geteuid ()), static_cast<uint32_t> (::getegid ()), 0, true, false, false, true
+	};
+	Channel first (fds[0]);
+	Channel second (fds[1]);
+	first.ExpectPeer (expectation);
+	second.ExpectPeer (expectation);
+	return std::pair<Channel, Channel> (std::move (first), std::move (second));
 }
 
 i2p::expected<void, std::string> Channel::Send (const Message & message, int timeoutMs)
@@ -215,8 +314,16 @@ i2p::expected<void, std::string> Channel::SendWithFd (const Message & message, i
 	if (!IsOpen ()) return i2p::unexpected ("channel is closed");
 	if (fd >= 0 && fcntl (fd, F_GETFD) < 0)
 		return i2p::unexpected (std::string ("invalid descriptor: ") + strerror (errno));
-	auto encoded = Encode (message);
-	if (!encoded) return i2p::unexpected (std::string (encoded.error ().text));
+	auto header = EncodeHeader (message);
+	if (!header) return i2p::unexpected (std::string (header.error ().text));
+	// Two iovecs: the header is built once and the payload is referenced in
+	// place. sendmsg on SOCK_SEQPACKET queues one atomic record either way.
+	struct iovec iov[2] { };
+	iov[0].iov_base = header->data ();
+	iov[0].iov_len = header->size ();
+	iov[1].iov_base = const_cast<char *> (message.payload.data ());
+	iov[1].iov_len = message.payload.size ();
+	const size_t frameSize = header->size () + message.payload.size ();
 
 	// SOCK_SEQPACKET is atomic: one sendmsg either queues the whole record or
 	// fails with EAGAIN. A poll(POLLOUT) followed by a blocking sendmsg is NOT
@@ -242,23 +349,25 @@ i2p::expected<void, std::string> Channel::SendWithFd (const Message & message, i
 		if (pfd.revents & POLLNVAL) return i2p::unexpected ("poll: invalid descriptor");
 		if (pfd.revents & (POLLERR | POLLHUP)) return i2p::unexpected ("sendmsg: peer closed the channel");
 
-		struct iovec iov { encoded->data (), encoded->size () };
-		struct msghdr header { };
-		header.msg_iov = &iov;
-		header.msg_iovlen = 1;
+		struct msghdr messageHeader { };
+		messageHeader.msg_iov = iov;
+		// A zero-length payload is sent as a single header record; some
+		// kernels are stricter about an empty second iovec than about a short
+		// iovec list.
+		messageHeader.msg_iovlen = message.payload.empty () ? 1 : 2;
 		alignas (struct cmsghdr) char control[CMSG_SPACE (sizeof (int))] { };
 		if (fd >= 0)
 		{
-			header.msg_control = control;
-			header.msg_controllen = sizeof (control);
-			auto * cmsg = CMSG_FIRSTHDR (&header);
+			messageHeader.msg_control = control;
+			messageHeader.msg_controllen = sizeof (control);
+			auto * cmsg = CMSG_FIRSTHDR (&messageHeader);
 			cmsg->cmsg_level = SOL_SOCKET;
 			cmsg->cmsg_type = SCM_RIGHTS;
 			cmsg->cmsg_len = CMSG_LEN (sizeof (int));
 			memcpy (CMSG_DATA (cmsg), &fd, sizeof (fd));
 		}
 		ssize_t sent;
-		do sent = ::sendmsg (m_Fd, &header, MSG_NOSIGNAL | MSG_DONTWAIT);
+		do sent = ::sendmsg (m_Fd, &messageHeader, MSG_NOSIGNAL | MSG_DONTWAIT);
 		while (sent < 0 && errno == EINTR && (infinite || !DeadlineExpired (deadline)));
 		if (sent < 0)
 		{
@@ -273,9 +382,18 @@ i2p::expected<void, std::string> Channel::SendWithFd (const Message & message, i
 		}
 		// SOCK_SEQPACKET is all-or-nothing. Treat anything else as an error
 		// rather than waiting for a continuation that cannot exist.
-		if (sent != static_cast<ssize_t> (encoded->size ())) return i2p::unexpected ("sendmsg: short write");
+		if (sent != static_cast<ssize_t> (frameSize)) return i2p::unexpected ("sendmsg: short write");
 		return { };
 	}
+}
+
+bool Channel::RejectFrame (const Message & frame, ErrorCode code, std::string_view detail, int timeoutMs)
+{
+	// The budget is charged before the send so a peer cannot force an
+	// unbounded error loop by filling the socket in both directions.
+	if (++m_ProtocolViolations > MAX_PROTOCOL_VIOLATIONS) return false;
+	std::string_view bounded = detail.substr (0, MAX_ERROR_DETAIL);
+	return Send ({ MessageType::Error, frame.requestId, EncodeError (frame.type, code, bounded) }, timeoutMs).has_value ();
 }
 
 i2p::expected<std::optional<Message>, std::string> Channel::Receive (int timeoutMs)
@@ -426,10 +544,19 @@ i2p::expected<std::optional<ReceivedMessage>, std::string> Channel::ReceiveWithF
 			// per-record credential rule as a data frame.
 #if defined(__linux__)
 			if (!receivedCredentials) return i2p::unexpected ("missing SCM_CREDENTIALS on an empty record");
-			auto emptyPeer = Credentials ();
-			if (!emptyPeer) return i2p::unexpected (emptyPeer.error ());
-			if (messageCredentials.uid != emptyPeer->uid || messageCredentials.gid != emptyPeer->gid)
-				return i2p::unexpected ("empty record failed SCM_CREDENTIALS");
+			if (m_PeerExpectation.configured)
+			{
+				if (!MatchesPeerExpectation (
+						messageCredentials.uid, messageCredentials.gid, messageCredentials.pid))
+					return i2p::unexpected ("empty record failed the peer expectation");
+			}
+			else
+			{
+				auto emptyPeer = Credentials ();
+				if (!emptyPeer) return i2p::unexpected (emptyPeer.error ());
+				if (messageCredentials.uid != emptyPeer->uid || messageCredentials.gid != emptyPeer->gid)
+					return i2p::unexpected ("empty record failed SCM_CREDENTIALS");
+			}
 #endif
 			// SOCK_SEQPACKET delivers a zero-length datagram as recvmsg()==0,
 			// exactly like EOF. Only a hangup/error event makes this terminal.
@@ -459,28 +586,71 @@ i2p::expected<std::optional<ReceivedMessage>, std::string> Channel::ReceiveWithF
 		if (!message)
 		{
 			if (receivedFd >= 0) ::close (receivedFd);
+			if (m_EnforcementPolicy == EnforcementPolicy::Endpoint && IsRecoverableFrameFault (message.error ()))
+			{
+				// Only a record whose magic, version and declared length are
+				// consistent can be attributed to a request id; answering a
+				// corrupt header would let a peer claim an arbitrary one.
+				const auto inspection = InspectFrame (frame);
+				const bool attributable = inspection.headerPresent && inspection.magicValid
+					&& inspection.version >= MIN_PROTOCOL_VERSION && inspection.version <= PROTOCOL_VERSION
+					&& inspection.lengthConsistent;
+				if (attributable)
+				{
+					const Message offending { static_cast<MessageType> (inspection.rawType), inspection.requestId, { } };
+					if (RejectFrame (offending, message.error ().code, message.error ().text, 250)) continue;
+				}
+			}
 			return i2p::unexpected (std::string ("protocol: ") + std::string (message.error ().text));
+		}
+		if (m_EnforcementPolicy == EnforcementPolicy::Endpoint)
+		{
+			std::string descriptorFault;
+			if (!ValidateRegistryDescriptor (message->type, receivedFd, descriptorFault))
+			{
+				if (receivedFd >= 0)
+				{
+					::close (receivedFd);
+					receivedFd = -1;
+				}
+				if (!RejectFrame (*message, ErrorCode::BadField, descriptorFault, 250))
+					return i2p::unexpected ("protocol: " + descriptorFault);
+				continue;
+			}
 		}
 #if defined(__linux__)
 		// SO_PASSCRED makes SCM_CREDENTIALS mandatory on every received record.
-		// SO_PEERCRED identifies the socket creator, but its PID is fixed before
-		// fork+exec; the worker's SCM_CREDENTIALS PID is the child PID and may
-		// legitimately differ. Compare the stable uid/gid, not the PID.
+		// SO_PEERCRED reports the credentials captured when the socket was
+		// created: after a root core drops the worker to `privsep.user`, the
+		// worker's frames carry the worker uid and the creator record is stale.
+		// Production channels therefore carry an explicit expectation set by
+		// the spawner; only a raw test channel falls back to SO_PEERCRED.
 		if (!receivedCredentials)
 		{
 			if (receivedFd >= 0) ::close (receivedFd);
 			return i2p::unexpected ("missing SCM_CREDENTIALS");
 		}
-		auto peer = Credentials ();
-		if (!peer)
+		if (m_PeerExpectation.configured)
 		{
-			if (receivedFd >= 0) ::close (receivedFd);
-			return i2p::unexpected (peer.error ());
+			if (!MatchesPeerExpectation (messageCredentials.uid, messageCredentials.gid, messageCredentials.pid))
+			{
+				if (receivedFd >= 0) ::close (receivedFd);
+				return i2p::unexpected ("SCM_CREDENTIALS do not match the expected peer");
+			}
 		}
-		if (messageCredentials.uid != peer->uid || messageCredentials.gid != peer->gid)
+		else
 		{
-			if (receivedFd >= 0) ::close (receivedFd);
-			return i2p::unexpected ("SCM_CREDENTIALS do not match peer");
+			auto peer = Credentials ();
+			if (!peer)
+			{
+				if (receivedFd >= 0) ::close (receivedFd);
+				return i2p::unexpected (peer.error ());
+			}
+			if (messageCredentials.uid != peer->uid || messageCredentials.gid != peer->gid)
+			{
+				if (receivedFd >= 0) ::close (receivedFd);
+				return i2p::unexpected ("SCM_CREDENTIALS do not match peer");
+			}
 		}
 #endif
 		return std::optional<ReceivedMessage> (ReceivedMessage { std::move (*message), receivedFd });

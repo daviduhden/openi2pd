@@ -7,11 +7,13 @@
  */
 #include "TorrentStorage.h"
 #include "Channel.h"
+#include "Credentials.h"
 #include "LinuxSandbox.h"
 #include "OpenBSDSandbox.h"
 #include <set>
 #include <limits>
 #include <map>
+#include <optional>
 #ifndef _WIN32
 #include <cerrno>
 #include <stdio.h>
@@ -303,6 +305,13 @@ namespace
 int RunTorrentStorageWorker (int fd, int inheritedRoot)
 {
 	Channel channel = Channel::Adopt (fd);
+	channel.SetEnforcementPolicy (EnforcementPolicy::Endpoint);
+#if defined(__linux__)
+	// The socket/capability boundary does not need the delegated root and is
+	// installed before the first Configure frame is parsed.
+	if (auto lockdown = ApplyLinuxIpcLockdown (GetLinuxSandboxProfile (WorkerClass::Storage)); !lockdown)
+		return 1;
+#endif
 	auto first = channel.ReceiveWithFd (5000);
 	if (!first || !*first) return 1;
 	auto & config = **first;
@@ -334,7 +343,7 @@ int RunTorrentStorageWorker (int fd, int inheritedRoot)
 		|| (status.st_mode & 0022))
 		return 1;
 	auto peer = channel.PeerUid ();
-	if (!peer || *peer != ::geteuid ()) return 1;
+	if (!peer || !IsAllowedParentUid (*peer)) return 1;
 	if (root.fd <= 3)
 	{
 		int relocated = ::fcntl (root.fd, F_DUPFD_CLOEXEC, 4);
@@ -440,6 +449,8 @@ int RunTorrentStorageWorker (int fd, int inheritedRoot)
 			for (auto & [id, file] : files) ::close (file.fd);
 		}
 	} cleanup { files };
+	unsigned loopViolations = 0;
+	std::optional<uint32_t> cancelledRequest;
 	while (true)
 	{
 		auto received = channel.ReceiveWithFd (30000);
@@ -452,7 +463,20 @@ int RunTorrentStorageWorker (int fd, int inheritedRoot)
 			return 1;
 		}
 		const auto & request = frame.message;
-		if (!AllowsOperation (EndpointRole::TorrentStorage, request.type)) return 1;
+		unsigned & violations = loopViolations;
+		auto reject = [&] (ErrorCode code, std::string_view detail)
+		{
+			if (++violations > Channel::MAX_PROTOCOL_VIOLATIONS) return false;
+			return channel.Send ({ MessageType::Error, request.requestId, EncodeError (request.type, code, detail) },
+				5000)
+				.has_value ();
+		};
+		if (!AllowsOperation (EndpointRole::TorrentStorage, request.type))
+		{
+			if (!reject (ErrorCode::NotAuthorized, "operation is not allowed on the torrent storage endpoint"))
+				return 1;
+			continue;
+		}
 		if (request.type == MessageType::Ping)
 		{
 			if (!request.payload.empty ()) return 1;
@@ -464,7 +488,31 @@ int RunTorrentStorageWorker (int fd, int inheritedRoot)
 			if (!request.payload.empty ()) return 1;
 			return 0;
 		}
-		if (request.type != MessageType::TorrentStorageRequest || !request.requestId) return 1;
+		if (request.type == MessageType::Cancel)
+		{
+			auto cancelled = DecodeCancel (request.payload);
+			if (!cancelled)
+			{
+				if (!reject (ErrorCode::BadField, "invalid cancel request")) return 1;
+				continue;
+			}
+			cancelledRequest = *cancelled;
+			continue;
+		}
+		if (request.type != MessageType::TorrentStorageRequest || !request.requestId)
+		{
+			if (!reject (ErrorCode::BadField, "invalid torrent storage request")) return 1;
+			continue;
+		}
+		if (cancelledRequest && request.requestId == *cancelledRequest)
+		{
+			cancelledRequest.reset ();
+			if (!channel.Send ({ MessageType::Error, request.requestId,
+					   EncodeError (MessageType::TorrentStorageRequest, ErrorCode::Busy, "request cancelled") },
+					5000))
+				return 1;
+			continue;
+		}
 		// The worker is the security boundary: a duplicate or replayed request
 		// must not re-execute a mutation. The reply is an operation failure so the
 		// channel remains usable for a later legitimate request.

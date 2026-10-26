@@ -8,8 +8,10 @@
  * with a readiness pipe, pidfile locking and rlimit setup, signal-driven
  * reload and shutdown, and graceful tunnel draining. On OpenBSD it installs
  * the startup pledge, spawns privilege-separated workers before the sandbox,
- * then applies validated unveil rules and a fixed runtime pledge; an add-on
- * policy file may not grant proc or exec.
+ * then applies validated unveil rules and the fixed runtime pledge. The
+ * runtime promise set is built from the same table as the startup set and must
+ * be a subset of it; `openbsd.pledge_file` may only select from that set and
+ * may never add process, identity or privilege promises at runtime.
  *
  */
 
@@ -31,6 +33,8 @@
 #include <sys/resource.h>
 
 #ifdef __OpenBSD__
+#include <algorithm>
+#include <filesystem>
 #include <fstream>
 #include <vector>
 #include <cerrno>
@@ -50,7 +54,12 @@
 #include "ClientContext.h"
 #include "Transports.h"
 #include "util.h"
-#if defined(__OpenBSD__) && !defined(I2PD_NO_PRIVSEP)
+#ifdef __OpenBSD__
+// These declarations are platform-free and remain available in an
+// I2PD_NO_PRIVSEP build: the runtime pledge, the promise table and the worker
+// identity are still part of the core's own sandbox contract.
+#include "../privsep/Credentials.h"
+#include "../privsep/OpenBSDSandbox.h"
 #include "../privsep/Supervisor.h"
 #endif
 
@@ -112,41 +121,12 @@ static bool SignalError (const char * operation, int error)
 	return false;
 }
 
-// The runtime sandbox is fixed and additive. A custom openbsd.pledge_file may
-// request more, but it can never remove a promise the daemon needs to run and
-// shut down safely. Keep this list in sync with the code paths below.
-static const char * g_RequiredPledgePromises[] = {
-	"stdio", // queue, sockets, signals and already-open descriptors
-	"rpath", // read router data, certificates and configuration
-	"wpath", // write router data and logs
-	"cpath", // create and remove files, sockets and the pidfile
-	"fattr", // chmod/chflags when saving keys and restricting files
-	"inet", // NTCP2/SSU2, HTTP proxies and reseed
-	"dns", // resolver support
-	"unix", // local IPC and /dev/log
-	"recvfd", // bounded worker channels returned by that supervisor
-	"flock" // pidfile lockf(3)
-};
-
-// Current pledge(2) promise names. Unknown tokens are rejected instead of
-// being passed to pledge(), so a typo or malformed file fails closed.
-static const char * g_KnownPledgePromises[]
-	= { "audio", "bpf", "chown", "cpath", "disklabel", "dns", "dpath", "drm", "error", "exec", "fattr", "flock",
-		  "getpw", "id", "inet", "mcast", "pf", "proc", "prot_exec", "ps", "recvfd", "route", "rpath", "sendfd",
-		  "settime", "stdio", "tape", "tty", "unix", "unveil", "video", "vminfo", "vmm", "wpath", "wroute" };
-
-static bool IsKnownPledgePromise (const std::string & promise)
+// Bounded, non-secret startup notice. The logger thread has not started yet, so
+// stderr and syslog are the only destinations available.
+static void WarnBeforeLogger (const std::string & message)
 {
-	for (const char * known : g_KnownPledgePromises)
-		if (promise == known) return true;
-	return false;
-}
-
-static void AddPledgePromise (std::vector<std::string> & promises, const std::string & promise)
-{
-	for (const auto & existing : promises)
-		if (existing == promise) return;
-	promises.push_back (promise);
+	std::cerr << message << std::endl;
+	syslog (LOG_DAEMON | LOG_WARNING, "%s", message.c_str ());
 }
 #endif
 
@@ -202,8 +182,12 @@ static void HandlePendingSignals ()
 			else
 				Daemon.running = 0;
 			break;
-		case SIGABRT:
 		case SIGTERM:
+			// Prompt ordered shutdown: stop accepting work, stop the owned
+			// workers and flush state. SIGINT is the slower transit-tunnel
+			// drain. SIGABRT is deliberately not handled: an abort must keep
+			// its default disposition so a crash exits as a failure and the
+			// service manager can restart it.
 			Daemon.running = 0; // Exit loop
 			break;
 		case SIGPIPE: LogPrint (eLogInfo, "SIGPIPE received"); break;
@@ -572,7 +556,7 @@ namespace util
 		// ReloadConfig() can stop and join destination threads. Never run
 		// it from an asynchronous handler on an arbitrary service thread.
 		sigemptyset (&daemonSignals);
-		for (int sig : { SIGHUP, SIGUSR1, SIGABRT, SIGTERM, SIGINT, SIGPIPE }) sigaddset (&daemonSignals, sig);
+		for (int sig : { SIGHUP, SIGUSR1, SIGTERM, SIGINT, SIGPIPE }) sigaddset (&daemonSignals, sig);
 		if (handleTSTP)
 		{
 			sigaddset (&daemonSignals, SIGTSTP);
@@ -600,7 +584,9 @@ namespace util
 		sa.sa_handler = handle_signal;
 		sigemptyset (&sa.sa_mask);
 		sa.sa_flags = SA_RESTART;
-		for (int sig : { SIGHUP, SIGUSR1, SIGABRT, SIGTERM, SIGINT, SIGPIPE })
+		// SIGABRT is intentionally absent: a crash must not be converted
+		// into a clean shutdown with exit status 0.
+		for (int sig : { SIGHUP, SIGUSR1, SIGTERM, SIGINT, SIGPIPE })
 			if (sigaction (sig, &sa, nullptr) == -1)
 			{
 				LogPrint (eLogError, "Daemon: Can't install handler for signal ", sig, ": ", strerror (errno));
@@ -623,9 +609,11 @@ namespace util
 		// installs its own policy after exec instead of inheriting this one.
 		if (!PreparePrivsepWorkers ()) return abortStart ();
 #if !defined(I2PD_NO_PRIVSEP) && !defined(NO_TORRENTS)
-		// Separate broker is created before runtime pledge removes exec. Its root
-		// authority is immutable; roots outside datadir are deliberately rejected.
-		if (::geteuid () != 0)
+		// The separate broker is created before the runtime pledge removes exec.
+		// Its root authority is immutable and roots outside datadir are rejected.
+		// A root core can only start it when a worker identity is configured: the
+		// broker and its workers run as that identity, never as root.
+		if (::geteuid () != 0 || i2p::privsep::GetWorkerCredentials ().configured)
 		{
 			std::string storageError;
 			if (!i2p::privsep::PrepareTorrentStorageSupervisor (i2p::fs::GetDataDir (), storageError))
@@ -634,28 +622,35 @@ namespace util
 				return abortStart ();
 			}
 		}
+		else
+			// Never skip this silently: root without privsep.user cannot run an
+			// unprivileged worker, so isolated torrent storage will fail closed.
+			WarnBeforeLogger ("storage supervisor: not started (root core without privsep.user); "
+							  "isolated torrent storage is unavailable");
 #endif
 		// Resolve/read sandbox policy before the first unveil hides it.
 		bool useUnveil, usePledge;
 		i2p::config::GetOption ("openbsd.unveil_enabled", useUnveil);
 		i2p::config::GetOption ("openbsd.pledge_enabled", usePledge);
+		if (!usePledge)
+			WarnBeforeLogger ("Daemon: openbsd.pledge_enabled is false; the router runs without a pledge policy");
+		if (!useUnveil)
+			WarnBeforeLogger ("Daemon: openbsd.unveil_enabled is false; the router runs without unveil rules");
 		bool privsepEnabled = false, privsepLog = false;
 		i2p::config::GetOption ("privsep.enabled", privsepEnabled);
 		i2p::config::GetOption ("privsep.log", privsepLog);
-		// CreatePrivateFile() uses chmod when saving router and destination keys.
-		// The required promises are always present; a custom file may only add
-		// to this set (see openbsd.pledge_file handling below).
-		std::vector<std::string> promises;
-		for (const char * promise : g_RequiredPledgePromises) promises.emplace_back (promise);
-		if (privsepEnabled && privsepLog)
-			// The core monitor still uses waitpid()/kill() to reap and, when
-			// necessary, stop the supervisor. proc does not permit exec, so the
-			// core cannot create a replacement worker after this point. The
-			// supervisor remains the process-creation boundary.
-			promises.emplace_back ("proc");
 		bool upnp;
 		i2p::config::GetOption ("upnp.enabled", upnp);
-		if (upnp) promises.emplace_back ("mcast");
+		// The runtime window is built from the same table as the startup window
+		// in Daemon::init(): stdio/rpath/wpath/cpath/fattr/inet/dns/unix/flock/
+		// recvfd, plus proc only for reaping/signalling an owned supervisor. It
+		// never contains exec, id, chown, unveil or any privileged ioctl promise.
+		i2p::privsep::OpenBSDPledgeWindow runtimeWindow;
+		runtimeWindow.upnp = upnp;
+		runtimeWindow.reapChildren = privsepEnabled && privsepLog;
+		runtimeWindow.descriptorReception = true;
+		auto promises = i2p::privsep::OpenBSDPledgePromiseList (
+			i2p::privsep::OpenBSDPledgePhase::Runtime, runtimeWindow);
 		std::vector<std::string> extraPaths;
 		auto fail = [] (const std::string & message)
 		{
@@ -664,9 +659,6 @@ namespace util
 			syslog (LOG_DAEMON | LOG_ERR, "%s", message.c_str ());
 			return false;
 		};
-		// The supervisor/log-worker pair has already been spawned above. The
-		// runtime policy has no exec; proc is retained only for supervisor
-		// reaping/signalling while the log worker is enabled.
 		auto readPolicy = [&fail] (const char * option, std::vector<std::string> & lines)
 		{
 			std::string path;
@@ -678,8 +670,9 @@ namespace util
 				return fail (std::string ("Daemon: Can't open ") + option + ": " + path);
 			}
 			std::string line;
-			while (std::getline (f, line))
-				if (!line.empty ()) lines.push_back (line);
+			// Keep every line, including empty and whitespace-only ones: the
+			// caller rejects them instead of silently dropping a rule.
+			while (std::getline (f, line)) lines.push_back (line);
 			if (f.bad ())
 			{
 				return fail (std::string ("Daemon: Can't read ") + option + ": " + path);
@@ -692,39 +685,19 @@ namespace util
 			i2p::config::GetOption ("openbsd.pledge_file", policy);
 			if (!policy.empty ())
 			{
-				std::vector<std::string> lines;
-				if (!readPolicy ("openbsd.pledge_file", lines)) return abortStart ();
-				// Parse whitespace-separated tokens and treat '#' as a comment.
-				// Duplicates are ignored, unknown names are rejected, and the
-				// fixed required set above stays in place.
-				for (const auto & line : lines)
+				std::vector<std::string_view> allowed;
+				allowed.reserve (promises.size ());
+				for (const auto & promise : promises) allowed.emplace_back (promise);
+				auto accepted = i2p::privsep::ParseOpenBSDPledgeFile (
+					policy, allowed, i2p::privsep::OpenBSDPledgePhase::Runtime);
+				if (!accepted)
 				{
-					size_t pos = 0;
-					while (pos < line.size ())
-					{
-						size_t start = line.find_first_not_of (" \t\r", pos);
-						if (start == std::string::npos || line[start] == '#') break;
-						size_t end = line.find_first_of (" \t\r#", start);
-						std::string token
-							= line.substr (start, end == std::string::npos ? std::string::npos : end - start);
-						if (!IsKnownPledgePromise (token))
-						{
-							fail ("Daemon: Unknown pledge promise \"" + token + "\" in openbsd.pledge_file");
-							return abortStart ();
-						}
-						if (token == "proc" || token == "exec")
-						{
-							// Workers are spawned before this runtime policy. The
-							// core must not regain process-creation capability
-							// through an additive policy file.
-							fail ("Daemon: runtime openbsd.pledge_file may not add proc or exec");
-							return abortStart ();
-						}
-						AddPledgePromise (promises, token);
-						if (end == std::string::npos || line[end] == '#') break;
-						pos = end;
-					}
+					fail ("Daemon: openbsd.pledge_file: " + accepted.error ());
+					return abortStart ();
 				}
+				for (const auto & promise : *accepted)
+					if (std::find (promises.begin (), promises.end (), promise) == promises.end ())
+						promises.push_back (promise);
 			}
 		}
 		if (useUnveil && !readPolicy ("openbsd.unveil_file", extraPaths)) return abortStart ();
@@ -737,9 +710,17 @@ namespace util
 			{
 				if (path.empty ()) return true;
 				while (path.size () > 1 && path.back () == '/') path.pop_back ();
+				if (path == "/")
+					return fail ("Daemon: refusing to unveil the whole filesystem");
+				// realpath() intentionally resolves a configured datadir or
+				// certificate symlink: unveil() matches the resolved path, and a
+				// configured symlink is an explicit administrator choice.
 				char resolved[PATH_MAX];
 				if (realpath (path.c_str (), resolved))
+				{
 					path = resolved;
+					if (path == "/") return fail ("Daemon: refusing to unveil the whole filesystem");
+				}
 				else
 				{
 					if (errno != ENOENT) return fail ("Daemon: resolve " + path + ": " + strerror (errno));
@@ -756,6 +737,24 @@ namespace util
 					if (mask.find (*p) == std::string::npos) mask += *p;
 				return true;
 			};
+			// Operator rules are validated before they are resolved: a trimmed
+			// absolute path only, no NUL, and never the filesystem root.
+			for (auto & path : extraPaths)
+			{
+				const auto first = path.find_first_not_of (" \t\r");
+				const auto last = path.find_last_not_of (" \t\r");
+				path = first == std::string::npos ? std::string () : path.substr (first, last - first + 1);
+				if (path.empty ())
+				{
+					fail ("Daemon: openbsd.unveil_file requires an absolute path");
+					return abortStart ();
+				}
+				if (path.find ('\0') != std::string::npos || path.front () != '/')
+				{
+					fail ("Daemon: openbsd.unveil_file requires an absolute path");
+					return abortStart ();
+				}
+			}
 			if (!allow (i2p::fs::GetDataDir (), "rwc") || !allow (i2p::fs::GetCertsDir (), "r")
 				|| !allow (pidfile, "rwc"))
 				return abortStart ();
@@ -768,6 +767,13 @@ namespace util
 				if (path.find ("://") != std::string::npos) continue;
 				if (!allow (path, "r")) return abortStart ();
 			}
+			// A relative blocklist path is covered by the datadir rule above;
+			// only an absolute path can point outside it. Resolving the relative
+			// default here would depend on the pre-chdir working directory.
+			std::string blocklistFile;
+			i2p::config::GetOption ("blocklist.file", blocklistFile);
+			if (std::filesystem::path (blocklistFile).is_absolute () && !allow (blocklistFile, "r"))
+				return abortStart ();
 			// Mirror Daemon_Singleton::init(): a daemon with no explicit
 			// destination logs to a file, otherwise stdout stays stdout.
 			std::string logDestination;
@@ -849,15 +855,39 @@ namespace util
 				return abortStart ();
 			}
 		}
-		// fork/setsid/setrlimit and PID locking are complete; no proc,
-		// id, chown, descriptor passing or error promise is needed.
+		// fork/setsid/setrlimit, PID locking, unveil and every worker spawn are
+		// complete. The runtime set therefore has no exec, no id and no unveil;
+		// proc survives only for reaping an owned supervisor.
 		std::string pledgePromises;
 		for (const auto & promise : promises)
 		{
 			if (!pledgePromises.empty ()) pledgePromises += ' ';
 			pledgePromises += promise;
 		}
-		if (usePledge && pledge (pledgePromises.c_str (), nullptr) == -1)
+		// Pledge can only remove promises. A runtime promise that the startup set
+		// never contained is silently ignored by the kernel, and the first use of
+		// that subsystem aborts the core. Recompute the startup window from the
+		// same table rather than trusting that the two call sites stayed in sync.
+		i2p::privsep::OpenBSDPledgeWindow startupWindow;
+		startupWindow.unveil = useUnveil;
+		startupWindow.upnp = upnp;
+		startupWindow.execWorkers = true;
+		startupWindow.reapChildren = runtimeWindow.reapChildren;
+		startupWindow.descriptorReception = true;
+		startupWindow.credentialDrop = i2p::privsep::GetWorkerCredentials ().configured;
+		const auto startupPromises = i2p::privsep::BuildOpenBSDPledgePromises (
+			i2p::privsep::OpenBSDPledgePhase::Startup, startupWindow);
+		if (!i2p::privsep::IsPledgePromiseSubset (pledgePromises, startupPromises))
+		{
+			fail ("Daemon: internal pledge policy error: the runtime promise set is not a subset of the "
+				  "startup set");
+			return abortStart ();
+		}
+		// Every allowed worker already exists. Fail closed in-process as well, so
+		// a future code path cannot fork/exec merely because the platform sandbox
+		// lets it; the spawn helpers refuse from this point on.
+		i2p::privsep::ForbidProcessCreation ();
+		if (usePledge && pledge (pledgePromises.c_str (), i2p::privsep::OPENBSD_PLEDGE_EXECPROMISES) == -1)
 		{
 			fail (std::string ("Daemon: pledge: ") + strerror (errno));
 			return abortStart ();

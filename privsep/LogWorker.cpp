@@ -6,22 +6,26 @@
  *
  * Implements LogSink configuration and reattachment plus the log worker: the
  * sink sends configuration (optionally with a pre-opened descriptor) and
- * records, while the worker applies its role sandbox, sanitises records and
- * writes to one O_NOFOLLOW file or syslog. Control characters are flattened
- * so a record cannot forge extra physical log lines.
+ * records, while the worker applies its role sandbox, redacts secrets,
+ * sanitises records and writes to one O_NOFOLLOW file or syslog. Control
+ * characters are neutralised so a record cannot forge extra physical log lines
+ * and the file sink stops appending at a fixed byte budget.
  *
  */
 
 #include "LogWorker.h"
+#include "Credentials.h"
 #include "Worker.h"
 #include "LinuxSandbox.h"
 #include "OpenBSDSandbox.h"
 
 #ifndef _WIN32
 
+#include <array>
 #include <cerrno>
 #include <algorithm>
 #include <chrono>
+#include <cstddef>
 #include <cstdio>
 #include <cstring>
 #include <fcntl.h>
@@ -36,19 +40,215 @@
 
 namespace i2p::privsep
 {
+namespace
+{
+	/**
+	 * Validate one UTF-8 sequence at @a pos and report its length plus code
+	 * point. Returns 0 for invalid input: a bad lead or continuation byte, a
+	 * truncated sequence, an overlong form, a surrogate or a value above
+	 * U+10FFFF. Never reads past the end of @a text.
+	 */
+	size_t DecodeUtf8 (std::string_view text, size_t pos, uint32_t & codePoint)
+	{
+		const auto lead = static_cast<unsigned char> (text[pos]);
+		if (lead < 0x80)
+		{
+			codePoint = lead;
+			return 1;
+		}
+		size_t length = 0;
+		uint32_t value = 0;
+		if ((lead & 0xe0) == 0xc0)
+		{
+			length = 2;
+			value = lead & 0x1f;
+		}
+		else if ((lead & 0xf0) == 0xe0)
+		{
+			length = 3;
+			value = lead & 0x0f;
+		}
+		else if ((lead & 0xf8) == 0xf0)
+		{
+			length = 4;
+			value = lead & 0x07;
+		}
+		else
+		{
+			return 0;
+		}
+		if (pos + length > text.size ()) return 0;
+		for (size_t index = 1; index < length; ++index)
+		{
+			const auto byte = static_cast<unsigned char> (text[pos + index]);
+			if ((byte & 0xc0) != 0x80) return 0;
+			value = (value << 6) | (byte & 0x3f);
+		}
+		static constexpr uint32_t MINIMUM[5] = { 0, 0, 0x80, 0x800, 0x10000 };
+		if (value < MINIMUM[length] || value > 0x10ffff) return 0;
+		if (value >= 0xd800 && value <= 0xdfff) return 0;
+		codePoint = value;
+		return length;
+	}
+
+	/**
+	 * Code points that must not reach a file, syslog or a terminal verbatim.
+	 * Tab is the only C0 control kept; C1 contains the single-byte CSI (0x9B)
+	 * that some terminals still honour inside an otherwise UTF-8 stream.
+	 */
+	bool IsUnsafeLogCodePoint (uint32_t codePoint)
+	{
+		if (codePoint == '\t') return false;
+		if (codePoint < 0x20) return true;
+		if (codePoint == 0x7f) return true;
+		return codePoint >= 0x80 && codePoint <= 0x9f;
+	}
+}
+
 std::string SanitizeLogText (std::string_view text)
 {
-	// Keep one record bounded and flatten every byte that could start a new
-	// physical line or emit a terminal control sequence. Tab is preserved.
-	static constexpr size_t MAX_LINE = MAX_TEXT_SIZE;
+	// The marker is inside the bound so one sanitised fragment never exceeds
+	// MAX_TEXT_SIZE and a truncated record is visibly truncated.
+	const std::string_view marker = LOG_TRUNCATION_MARKER;
+	const size_t payloadBudget = MAX_TEXT_SIZE > marker.size () ? MAX_TEXT_SIZE - marker.size () : 0;
+	const std::string_view bounded = text.substr (0, std::min (text.size (), MAX_TEXT_SIZE));
+	bool truncated = bounded.size () < text.size ();
 	std::string line;
-	line.reserve (std::min (text.size (), MAX_LINE));
-	for (char ch : text.substr (0, MAX_LINE))
+	line.reserve (std::min (bounded.size (), payloadBudget));
+	size_t pos = 0;
+	while (pos < bounded.size ())
 	{
-		const auto byte = static_cast<unsigned char> (ch);
-		line.push_back ((byte < 0x20 && ch != '\t') || byte == 0x7f ? ' ' : ch);
+		uint32_t codePoint = 0;
+		const size_t length = DecodeUtf8 (bounded, pos, codePoint);
+		if (length == 0)
+		{
+			// Invalid UTF-8, or a sequence cut by the text bound: emit one
+			// replacement byte and never a partial sequence.
+			if (line.size () + 1 > payloadBudget)
+			{
+				truncated = true;
+				break;
+			}
+			line.push_back ('?');
+			++pos;
+			continue;
+		}
+		if (IsUnsafeLogCodePoint (codePoint))
+		{
+			if (line.size () + 1 > payloadBudget)
+			{
+				truncated = true;
+				break;
+			}
+			line.push_back (' ');
+		}
+		else
+		{
+			if (line.size () + length > payloadBudget)
+			{
+				truncated = true;
+				break;
+			}
+			line.append (bounded.substr (pos, length));
+		}
+		pos += length;
 	}
+	if (truncated) line.append (marker);
 	return line;
+}
+
+namespace
+{
+	char LowerAscii (char ch)
+	{
+		return ch >= 'A' && ch <= 'Z' ? static_cast<char> (ch - 'A' + 'a') : ch;
+	}
+
+	bool EqualsAsciiIgnoreCase (std::string_view text, std::string_view needle)
+	{
+		if (text.size () != needle.size ()) return false;
+		for (size_t index = 0; index < needle.size (); ++index)
+		{
+			if (LowerAscii (text[index]) != LowerAscii (needle[index])) return false;
+		}
+		return true;
+	}
+
+	/** A key must start a token: the preceding byte must not be alphanumeric. */
+	bool IsKeyBoundary (std::string_view text, size_t pos)
+	{
+		if (pos == 0) return true;
+		const auto previous = static_cast<unsigned char> (text[pos - 1]);
+		const bool alphanumeric = (previous >= '0' && previous <= '9') || (previous >= 'a' && previous <= 'z')
+			|| (previous >= 'A' && previous <= 'Z');
+		return !alphanumeric;
+	}
+
+	bool IsValueTerminator (char ch)
+	{
+		return ch == ' ' || ch == '\t' || ch == ',' || ch == ';' || ch == '}' || ch == ']' || ch == ')';
+	}
+
+	/** A quoted value ends after its closing quote; an unquoted one at a separator. */
+	size_t FindValueEnd (std::string_view text, size_t start)
+	{
+		if (start >= text.size ()) return start;
+		const char quote = text[start];
+		if (quote == '"' || quote == '\'')
+		{
+			for (size_t index = start + 1; index < text.size (); ++index)
+			{
+				if (text[index] == quote) return index + 1;
+			}
+			return text.size ();
+		}
+		size_t index = start;
+		while (index < text.size () && !IsValueTerminator (text[index])) ++index;
+		return index;
+	}
+}
+
+std::string RedactLogSecrets (std::string_view text)
+{
+	// The whole sensitive-name set is compiled in: no configuration file, no
+	// network input and no operator can change what counts as a secret name.
+	static constexpr std::array<std::string_view, 6> SENSITIVE_KEYS { "privatekey", "private key", "passphrase",
+		"password", "secret", "token" };
+	std::string out;
+	out.reserve (text.size ());
+	size_t redactions = 0;
+	size_t pos = 0;
+	while (pos < text.size ())
+	{
+		if (redactions < MAX_LOG_REDACTIONS && IsKeyBoundary (text, pos))
+		{
+			bool matched = false;
+			size_t valueStart = 0;
+			for (const auto key : SENSITIVE_KEYS)
+			{
+				if (text.size () - pos < key.size ()) continue;
+				if (!EqualsAsciiIgnoreCase (text.substr (pos, key.size ()), key)) continue;
+				size_t cursor = pos + key.size ();
+				while (cursor < text.size () && (text[cursor] == ' ' || text[cursor] == '\t')) ++cursor;
+				if (cursor >= text.size () || (text[cursor] != '=' && text[cursor] != ':')) continue;
+				++cursor;
+				while (cursor < text.size () && (text[cursor] == ' ' || text[cursor] == '\t')) ++cursor;
+				valueStart = cursor;
+				matched = true;
+				break;
+			}
+			if (matched)
+			{
+				out.append (text.substr (pos, valueStart - pos));
+				out.append (LOG_REDACTED_VALUE);
+				pos = FindValueEnd (text, valueStart);
+				++redactions;
+				continue;
+			}
+		}
+		out.push_back (text[pos++]);
+	}
+	return out;
 }
 
 namespace
@@ -64,6 +264,29 @@ namespace
 	bool IsLevel (uint8_t level)
 	{
 		return level <= 5; // eLogNone..eLogDebug
+	}
+
+	/**
+	 * Bind a pre-opened log descriptor to the configured path. Without this
+	 * check the sender could hand over any same-UID writable regular file and
+	 * turn the log worker into a write primitive for it. The comparison is
+	 * dev/inode identity plus owner and link count, so a replaced path, a
+	 * symlink or a hard link is rejected before the sandbox is applied.
+	 */
+	i2p::expected<void, std::string> ValidateLogDescriptorIdentity (int fd, const std::string & path)
+	{
+		struct stat descriptor { };
+		struct stat named { };
+		if (::fstat (fd, &descriptor) != 0)
+			return i2p::unexpected ("fstat log descriptor: " + std::string (strerror (errno)));
+		if (::lstat (path.c_str (), &named) != 0)
+			return i2p::unexpected ("stat configured log path: " + std::string (strerror (errno)));
+		if (!S_ISREG (named.st_mode)) return i2p::unexpected ("configured log path is not a regular file");
+		if (descriptor.st_dev != named.st_dev || descriptor.st_ino != named.st_ino)
+			return i2p::unexpected ("pre-opened descriptor is not the configured log file");
+		if (descriptor.st_uid != ::geteuid () || descriptor.st_nlink != 1)
+			return i2p::unexpected ("pre-opened log descriptor has an unexpected owner or link count");
+		return { };
 	}
 
 	int OpenLogFile (std::string_view path)
@@ -126,6 +349,16 @@ namespace
 	}
 #endif
 
+	/**
+	 * The single text pipeline: redact first (it can grow the text) and
+	 * sanitise last, so the fragment written to the sink is bounded and never
+	 * ends inside a multi-byte sequence.
+	 */
+	std::string PrepareRecordText (std::string_view text)
+	{
+		return SanitizeLogText (RedactLogSecrets (text));
+	}
+
 	std::string FormatRecord (uint8_t level, std::time_t timestamp, std::string_view text)
 	{
 		static constexpr const char * levels[] = { "none", "critical", "error", "warn", "info", "debug" };
@@ -136,8 +369,17 @@ namespace
 		line += " [";
 		line += levels[level <= 5 ? level : 0];
 		line += "] ";
-		line += SanitizeLogText (text);
+		line += PrepareRecordText (text);
 		return line;
+	}
+
+	/** Bytes already in the attached sink, or 0 when it cannot be measured. */
+	uint64_t CurrentSinkSize (FILE * file)
+	{
+		struct stat info { };
+		const int fd = file ? fileno (file) : -1;
+		if (fd < 0 || fstat (fd, &info) != 0 || info.st_size < 0) return 0;
+		return static_cast<uint64_t> (info.st_size);
 	}
 }
 
@@ -184,22 +426,24 @@ i2p::expected<void, std::string> LogSink::Configure (bool useSyslog, std::string
 {
 	std::lock_guard<std::mutex> lock (m_Mutex);
 	if (m_Configured) return i2p::unexpected ("log sink already configured");
+	if (!m_Channel || !m_Channel->IsOpen ()) return i2p::unexpected ("log sink channel is not open");
 	int logFd = -1;
 	if (!useSyslog && !path.empty ())
 	{
 		logFd = OpenLogFile (path);
 		if (logFd < 0) return i2p::unexpected (std::string ("open log file: ") + strerror (errno));
 	}
-	auto configured = ConfigureChannel (m_Channel, MessageType::ConfigureLogFd, useSyslog, path, tag, logFd);
+	auto configured = ConfigureChannel (*m_Channel, MessageType::ConfigureLogFd, useSyslog, path, tag, logFd);
 	if (logFd >= 0) close (logFd);
 	if (!configured)
 	{
-		m_Channel.Close ();
+		if (m_Channel) m_Channel->Close ();
 		return configured;
 	}
 	m_Syslog = useSyslog;
 	m_Path.assign (path);
 	m_Tag.assign (tag.substr (0, MAX_TEXT_SIZE));
+	m_ChannelFailed = false;
 	m_Configured = true;
 	return { };
 }
@@ -208,15 +452,17 @@ i2p::expected<void, std::string> LogSink::ConfigureProxy (bool useSyslog, std::s
 {
 	std::lock_guard<std::mutex> lock (m_Mutex);
 	if (m_Configured) return i2p::unexpected ("log sink already configured");
-	auto configured = ConfigureChannel (m_Channel, MessageType::ConfigureLog, useSyslog, path, tag, -1);
+	if (!m_Channel || !m_Channel->IsOpen ()) return i2p::unexpected ("log sink channel is not open");
+	auto configured = ConfigureChannel (*m_Channel, MessageType::ConfigureLog, useSyslog, path, tag, -1);
 	if (!configured)
 	{
-		m_Channel.Close ();
+		if (m_Channel) m_Channel->Close ();
 		return configured;
 	}
 	m_Syslog = useSyslog;
 	m_Path.assign (path);
 	m_Tag.assign (tag.substr (0, MAX_TEXT_SIZE));
+	m_ChannelFailed = false;
 	m_Configured = true;
 	return { };
 }
@@ -244,8 +490,9 @@ i2p::expected<void, std::string> LogSink::Reattach (Channel channel)
 		channel.Close ();
 		return configured;
 	}
-	m_Channel.Close ();
-	m_Channel = std::move (channel);
+	if (m_Channel) m_Channel->Close ();
+	m_Channel = std::make_shared<Channel> (std::move (channel));
+	m_ChannelFailed = false;
 	return { };
 }
 
@@ -261,28 +508,48 @@ i2p::expected<void, std::string> LogSink::ReattachProxy (Channel channel)
 		channel.Close ();
 		return configured;
 	}
-	m_Channel.Close ();
-	m_Channel = std::move (channel);
+	if (m_Channel) m_Channel->Close ();
+	m_Channel = std::make_shared<Channel> (std::move (channel));
+	m_ChannelFailed = false;
 	return { };
+}
+
+void LogSink::CountDroppedLocked (bool workerUnavailable)
+{
+	++m_Dropped;
+	if (workerUnavailable) ++m_WorkerDropped;
 }
 
 void LogSink::Write (uint8_t level, std::time_t timestamp, std::string_view text)
 {
-	std::lock_guard<std::mutex> lock (m_Mutex);
-	if (m_Shutdown || !IsLevel (level)) return;
-	if (!m_Channel.IsOpen ())
+	if (!IsLevel (level)) return;
+	std::shared_ptr<Channel> channel;
 	{
-		++m_Dropped;
-		return;
+		std::lock_guard<std::mutex> lock (m_Mutex);
+		if (m_Shutdown) return;
+		channel = m_Channel;
+		if (m_ChannelFailed || !channel || !channel->IsOpen ())
+		{
+			CountDroppedLocked (true);
+			return;
+		}
 	}
 	Message message { MessageType::LogRecord, 0, EncodeLogRecord (level, static_cast<int64_t> (timestamp), text) };
-	// A bounded send keeps a wedged worker from stalling the logger
-	// thread for the full default timeout on every record.
-	auto result = m_Channel.Send (message, 1000);
-	if (!result)
+	// The send is deliberately outside m_Mutex: a wedged worker must cost one
+	// bounded slow record, never the router's logger thread and every other
+	// sink reader for up to the send timeout.
+	const auto sent = channel->Send (message, 1000);
+	if (sent) return;
+	std::lock_guard<std::mutex> lock (m_Mutex);
+	CountDroppedLocked (true); // drop logs; never fall back to a local file
+	if (m_Channel == channel)
 	{
-		++m_Dropped;
-		m_Channel.Close (); // drop logs; never fall back to a local file
+		// Detach without closing: a send still in flight on another thread keeps
+		// the object, and therefore its descriptor number, alive until it
+		// returns. Closing here could hand the number to an unrelated open()
+		// underneath that send.
+		m_ChannelFailed = true;
+		m_Channel.reset ();
 	}
 }
 
@@ -292,21 +559,28 @@ uint64_t LogSink::DroppedCount () const
 	return m_Dropped;
 }
 
+uint64_t LogSink::GetWorkerDroppedCount () const
+{
+	std::lock_guard<std::mutex> lock (m_Mutex);
+	return m_WorkerDropped;
+}
+
 i2p::expected<void, std::string> LogSink::Shutdown ()
 {
 	std::lock_guard<std::mutex> lock (m_Mutex);
 	m_Shutdown = true;
-	if (!m_Channel.IsOpen ()) return { };
+	if (!m_Channel || !m_Channel->IsOpen ()) return { };
 	Message message { MessageType::Shutdown, 0, { } };
-	auto result = m_Channel.Send (message, 1000);
-	m_Channel.Close ();
+	auto result = m_Channel->Send (message, 1000);
+	m_Channel->Close ();
+	m_Channel.reset ();
 	return result;
 }
 
 bool LogSink::IsOpen () const
 {
 	std::lock_guard<std::mutex> lock (m_Mutex);
-	return !m_Shutdown && m_Channel.IsOpen ();
+	return !m_Shutdown && !m_ChannelFailed && m_Channel && m_Channel->IsOpen ();
 }
 
 bool LogSink::IsShutdown () const
@@ -319,8 +593,14 @@ int RunLogWorker (int fd)
 {
 	SanitizeInheritedStdio ();
 	Channel channel = Channel::Adopt (fd);
+	channel.SetEnforcementPolicy (EnforcementPolicy::Endpoint);
+#if defined(__linux__)
+	// Restrict the log role before it reads its configuration frame.
+	if (auto lockdown = ApplyLinuxIpcLockdown (GetLinuxSandboxProfile (WorkerClass::Log)); !lockdown)
+		return 1;
+#endif
 	auto peer = channel.PeerUid ();
-	if (!peer || *peer != geteuid ())
+	if (!peer || !IsAllowedParentUid (*peer))
 	{
 		std::cerr << "privsep log: rejecting peer with unexpected uid" << std::endl;
 		return 1;
@@ -328,6 +608,12 @@ int RunLogWorker (int fd)
 
 	LogConfig config;
 	FILE * file = nullptr;
+	// Bytes already appended to the file sink. The budget is a compile-time
+	// policy: the configuration frame has no spare field and adding one would
+	// change the wire format for every existing worker.
+	uint64_t sinkBytes = 0;
+	bool sinkCapped = false;
+	unsigned violations = 0;
 	while (true)
 	{
 		auto received = channel.ReceiveWithFd (1000);
@@ -354,8 +640,12 @@ int RunLogWorker (int fd)
 		if (!AllowsOperation (EndpointRole::Log, message.type))
 		{
 			closeMessageFd ();
-			std::cerr << "privsep log: operation is not allowed on this endpoint" << std::endl;
-			return 1;
+			if (++violations > Channel::MAX_PROTOCOL_VIOLATIONS) return 1;
+			if (!channel.Send ({ MessageType::Error, message.requestId,
+					   EncodeError (message.type, ErrorCode::NotAuthorized, "operation is not allowed on the log endpoint") },
+					500))
+				return 1;
+			continue;
 		}
 		switch (message.type)
 		{
@@ -364,9 +654,15 @@ int RunLogWorker (int fd)
 		{
 			if (config.configured)
 			{
-				std::cerr << "privsep log: duplicate configuration" << std::endl;
+				// A second configure is a bounded refusal, not a teardown:
+				// the original sink stays valid for the peer that owns it.
 				closeMessageFd ();
-				return 1;
+				if (++violations > Channel::MAX_PROTOCOL_VIOLATIONS) return 1;
+				if (!channel.Send ({ MessageType::Error, message.requestId,
+						   EncodeError (message.type, ErrorCode::BadField, "duplicate log configuration") },
+						500))
+					return 1;
+				continue;
 			}
 			auto parsed = DecodeLogConfig (message.payload);
 			if (!parsed)
@@ -395,6 +691,13 @@ int RunLogWorker (int fd)
 					{
 						std::cerr << "privsep log: invalid pre-opened log descriptor: " << descriptor.error ()
 								  << std::endl;
+						closeMessageFd ();
+						return 1;
+					}
+					auto identity = ValidateLogDescriptorIdentity (messageFd, path);
+					if (!identity)
+					{
+						std::cerr << "privsep log: " << identity.error () << std::endl;
 						closeMessageFd ();
 						return 1;
 					}
@@ -472,6 +775,7 @@ int RunLogWorker (int fd)
 					closeMessageFd ();
 					return 1;
 				}
+				sinkBytes = CurrentSinkSize (file);
 			}
 			break;
 		}
@@ -504,8 +808,9 @@ int RunLogWorker (int fd)
 			{
 				// syslog(3) does not neutralise embedded newlines or terminal
 				// escapes; a malicious/compromised router thread could forge
-				// extra log entries. Apply exactly the file-sink sanitisation.
-				const std::string sanitized = SanitizeLogText (text);
+				// extra log entries. Apply exactly the file-sink pipeline
+				// (redaction and sanitisation) so both sinks agree.
+				const std::string sanitized = PrepareRecordText (text);
 				syslog (level == 1	 ? LOG_CRIT
 						: level == 2 ? LOG_ERR
 						: level == 3 ? LOG_WARNING
@@ -518,6 +823,20 @@ int RunLogWorker (int fd)
 			if (file)
 			{
 				const std::string record = line + '\n';
+				if (!FitsLogSinkBudget (sinkBytes, record.size ()))
+				{
+					// The sink reached its byte budget. Stop appending and say so
+					// once, on stderr: the worker keeps draining records so the
+					// channel never wedges, and nothing rotates, truncates or
+					// rewrites the existing content behind the operator's back.
+					if (!sinkCapped)
+					{
+						sinkCapped = true;
+						std::cerr << "privsep log: log sink byte budget reached; further records are discarded"
+								  << std::endl;
+					}
+					break;
+				}
 				if (fwrite (record.data (), 1, record.size (), file) != record.size () || fflush (file) != 0
 					|| ferror (file))
 				{
@@ -526,6 +845,7 @@ int RunLogWorker (int fd)
 					std::cerr << "privsep log: write failed" << std::endl;
 					return 1;
 				}
+				sinkBytes += record.size ();
 			}
 			else
 			{

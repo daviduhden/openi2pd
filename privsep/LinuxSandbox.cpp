@@ -41,6 +41,26 @@ i2p::expected<void, std::string> ApplyLinuxCgroupV2Limits (const LinuxCgroupV2Li
 	return i2p::unexpected ("cgroup v2 is not available on this platform");
 }
 
+i2p::expected<void, std::string> PrepareCapabilitiesBeforeCredentialDrop ()
+{
+	return i2p::unexpected ("Linux capabilities are not available on this platform");
+}
+
+i2p::expected<void, std::string> ClearCapabilitiesAfterCredentialDrop ()
+{
+	return i2p::unexpected ("Linux capabilities are not available on this platform");
+}
+
+i2p::expected<void, std::string> ApplyLinuxIpcLockdown (const LinuxSandboxProfile &)
+{
+	return i2p::unexpected ("Linux sandbox is not available on this platform");
+}
+
+i2p::expected<void, std::string> VerifyWorkerPrivileges ()
+{
+	return i2p::unexpected ("Linux privileges are not available on this platform");
+}
+
 LinuxIsolationSupport ProbeLinuxIsolation ()
 {
 	return { };
@@ -87,6 +107,8 @@ namespace i2p::privsep
 #endif
 namespace
 {
+	/** A process installs its socket filter at most once (filters stack). */
+	bool g_SeccompInstalled = false;
 #ifdef I2PD_LANDLOCK_HEADERS_AVAILABLE
 	// Linux UAPI linux/landlock.h: ABI 2 adds REFER (bit 13), ABI 3 adds
 	// TRUNCATE (bit 14), and ABI 4 appends handled_access_net with TCP bits
@@ -163,10 +185,13 @@ namespace
 	{
 		// Only rights understood by the running ABI are requested. Including
 		// an unknown bit makes landlock_create_ruleset fail with EINVAL.
-		uint64_t mask = LANDLOCK_ACCESS_FS_WRITE_FILE | LANDLOCK_ACCESS_FS_REMOVE_DIR | LANDLOCK_ACCESS_FS_REMOVE_FILE
-			| LANDLOCK_ACCESS_FS_MAKE_CHAR | LANDLOCK_ACCESS_FS_MAKE_DIR | LANDLOCK_ACCESS_FS_MAKE_REG
-			| LANDLOCK_ACCESS_FS_MAKE_SOCK | LANDLOCK_ACCESS_FS_MAKE_FIFO | LANDLOCK_ACCESS_FS_MAKE_BLOCK
-			| LANDLOCK_ACCESS_FS_MAKE_SYM;
+		// EXECUTE is handled but no worker rule grants it: a Landlock-restricted
+		// worker must not exec a helper binary. It is excluded from the rule
+		// mask below so writable roots do not become executable.
+		uint64_t mask = LANDLOCK_ACCESS_FS_EXECUTE | LANDLOCK_ACCESS_FS_WRITE_FILE | LANDLOCK_ACCESS_FS_REMOVE_DIR
+			| LANDLOCK_ACCESS_FS_REMOVE_FILE | LANDLOCK_ACCESS_FS_MAKE_CHAR | LANDLOCK_ACCESS_FS_MAKE_DIR
+			| LANDLOCK_ACCESS_FS_MAKE_REG | LANDLOCK_ACCESS_FS_MAKE_SOCK | LANDLOCK_ACCESS_FS_MAKE_FIFO
+			| LANDLOCK_ACCESS_FS_MAKE_BLOCK | LANDLOCK_ACCESS_FS_MAKE_SYM;
 		if (abi >= 2) mask |= LandlockFsRefer;
 		if (abi >= 3) mask |= LandlockFsTruncate;
 		return mask;
@@ -258,7 +283,7 @@ namespace
 		filter.push_back (BPF_JUMP (BPF_JMP | BPF_JEQ | BPF_K, SYS_ptrace, 0, 1));
 		filter.push_back (BPF_STMT (BPF_RET | BPF_K, deny));
 #endif
-		auto denySyscall = [&filter, deny] (int syscallNumber)
+		auto denySyscall = [&filter] (int syscallNumber)
 		{
 			filter.push_back (BPF_JUMP (BPF_JMP | BPF_JEQ | BPF_K, static_cast<uint32_t> (syscallNumber), 0, 1));
 			filter.push_back (BPF_STMT (BPF_RET | BPF_K, deny));
@@ -301,6 +326,44 @@ namespace
 			filter.push_back (BPF_STMT (BPF_RET | BPF_K, deny));
 			filter.push_back (BPF_JUMP (BPF_JMP | BPF_JEQ | BPF_K, SYS_socketpair, 0, 1));
 			filter.push_back (BPF_STMT (BPF_RET | BPF_K, deny));
+			// A storage worker has no new peer: deny the connection lifecycle on
+			// any inherited or later-received socket as well as process creation.
+#ifdef SYS_connect
+			denySyscall (SYS_connect);
+#endif
+#ifdef SYS_bind
+			denySyscall (SYS_bind);
+#endif
+#ifdef SYS_listen
+			denySyscall (SYS_listen);
+#endif
+#ifdef SYS_accept
+			denySyscall (SYS_accept);
+#endif
+#ifdef SYS_accept4
+			denySyscall (SYS_accept4);
+#endif
+#ifdef SYS_sendto
+			denySyscall (SYS_sendto);
+#endif
+#ifdef SYS_execve
+			denySyscall (SYS_execve);
+#endif
+#ifdef SYS_execveat
+			denySyscall (SYS_execveat);
+#endif
+#ifdef SYS_fork
+			denySyscall (SYS_fork);
+#endif
+#ifdef SYS_vfork
+			denySyscall (SYS_vfork);
+#endif
+#ifdef SYS_clone
+			denySyscall (SYS_clone);
+#endif
+#ifdef SYS_clone3
+			denySyscall (SYS_clone3);
+#endif
 		}
 		else
 		{
@@ -318,6 +381,7 @@ namespace
 		struct sock_fprog program { static_cast<unsigned short> (filter.size ()), filter.data () };
 		if (prctl (PR_SET_SECCOMP, SECCOMP_MODE_FILTER, &program) != 0)
 			return i2p::unexpected (std::string ("PR_SET_SECCOMP: ") + strerror (errno));
+		g_SeccompInstalled = true;
 		return { };
 	}
 
@@ -371,7 +435,8 @@ namespace
 					break;
 				}
 				struct landlock_path_beneath_attr beneath { };
-				beneath.allowed_access = ruleset.handled_access_fs;
+				// Never grant EXECUTE through a writable root.
+				beneath.allowed_access = ruleset.handled_access_fs & ~LANDLOCK_ACCESS_FS_EXECUTE;
 				if (S_ISREG (pathStat.st_mode))
 				{
 					// Directory-only rights (make/remove/refer) are invalid for a
@@ -421,7 +486,12 @@ LinuxSandboxProfile GetLinuxSandboxProfile (WorkerClass workerClass)
 		profile.allowNetwork = false;
 		profile.allowPersistentWrites = true;
 		profile.denySocketCreation = true;
-		profile.isolateNetworkNamespace = true;
+		// A storage worker reads only the delegated root and the files inside
+		// it; do not leave this to each call site.
+		profile.restrictFilesystemReads = true;
+		// The namespace, when available, is installed by the spawn child while
+		// it is still privileged. It is best-effort; seccomp is the boundary.
+		profile.isolateNetworkNamespace = false;
 		break;
 	case WorkerClass::Network:
 		// Landlock/seccomp deny persistent writes; sockets are the only
@@ -446,6 +516,75 @@ LinuxSandboxProfile GetLinuxSandboxProfile (WorkerClass workerClass)
 	return profile;
 }
 
+i2p::expected<void, std::string> PrepareCapabilitiesBeforeCredentialDrop ()
+{
+	const bool privileged = ::geteuid () == 0;
+#if defined(PR_CAP_AMBIENT) && defined(PR_CAP_AMBIENT_CLEAR_ALL)
+	if (prctl (PR_CAP_AMBIENT, PR_CAP_AMBIENT_CLEAR_ALL, 0, 0, 0) != 0 && errno != EINVAL && errno != EPERM)
+		return i2p::unexpected (std::string ("PR_CAP_AMBIENT_CLEAR_ALL: ") + strerror (errno));
+#endif
+#ifdef PR_CAPBSET_DROP
+	for (int capability = 0; capability <= 63; ++capability)
+	{
+		if (prctl (PR_CAPBSET_DROP, capability, 0, 0, 0) == 0) continue;
+		const int error = errno;
+		if (error == EINVAL) continue; // capability number unknown on this kernel
+		if (error == EPERM && !privileged) break; // unprivileged: set is already empty
+		return i2p::unexpected (std::string ("PR_CAPBSET_DROP: ") + strerror (error));
+	}
+#endif
+	// Effective/permitted are intentionally kept: setgroups/setgid/setuid
+	// below still need CAP_SETGID/CAP_SETUID when the core is root.
+	return { };
+}
+
+i2p::expected<void, std::string> ClearCapabilitiesAfterCredentialDrop ()
+{
+	struct __user_cap_header_struct header { _LINUX_CAPABILITY_VERSION_3, 0 };
+	struct __user_cap_data_struct data[2] { };
+	const bool privileged = ::geteuid () == 0;
+	if (syscall (SYS_capset, &header, data) != 0 && (privileged || errno != EPERM))
+		return i2p::unexpected (std::string ("capset: ") + strerror (errno));
+	struct __user_cap_data_struct current[2] { };
+	if (syscall (SYS_capget, &header, current) != 0)
+		return i2p::unexpected (std::string ("capget: ") + strerror (errno));
+	if (current[0].effective || current[0].permitted || current[0].inheritable
+		|| current[1].effective || current[1].permitted || current[1].inheritable)
+		return i2p::unexpected ("worker capabilities are not empty");
+	return { };
+}
+
+i2p::expected<void, std::string> VerifyWorkerPrivileges ()
+{
+	if (prctl (PR_GET_NO_NEW_PRIVS, 0, 0, 0, 0) != 1)
+		return i2p::unexpected ("worker did not set PR_SET_NO_NEW_PRIVS");
+	struct __user_cap_header_struct header { _LINUX_CAPABILITY_VERSION_3, 0 };
+	struct __user_cap_data_struct data[2] { };
+	if (syscall (SYS_capget, &header, data) != 0)
+		return i2p::unexpected (std::string ("capget: ") + strerror (errno));
+	if (data[0].effective || data[0].permitted || data[0].inheritable
+		|| data[1].effective || data[1].permitted || data[1].inheritable)
+		return i2p::unexpected ("worker capabilities are not empty");
+	return { };
+}
+
+i2p::expected<void, std::string> ApplyLinuxIpcLockdown (const LinuxSandboxProfile & profile)
+{
+	if (profile.allowNetwork && profile.allowPersistentWrites)
+		return i2p::unexpected ("a worker cannot have both network and persistent-write capabilities");
+	if (profile.denySocketCreation && profile.denyInetSockets)
+		return i2p::unexpected ("a worker cannot both deny all and deny only Internet sockets");
+	if (prctl (PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0) != 0)
+		return i2p::unexpected (std::string ("PR_SET_NO_NEW_PRIVS: ") + strerror (errno));
+	if (auto caps = DropCapabilities (); !caps) return caps;
+	if ((profile.denySocketCreation || profile.denyInetSockets) && !g_SeccompInstalled)
+	{
+		auto seccomp = InstallSocketFilter (profile.denySocketCreation);
+		if (!seccomp) return seccomp;
+	}
+	return { };
+}
+
 i2p::expected<void, std::string> ApplyLinuxSandbox (const LinuxSandboxProfile & profile)
 {
 	if (profile.allowNetwork && profile.allowPersistentWrites)
@@ -465,7 +604,7 @@ i2p::expected<void, std::string> ApplyLinuxSandbox (const LinuxSandboxProfile & 
 	}
 	if (auto caps = DropCapabilities (); !caps) return caps;
 	if (auto landlock = ApplyLandlock (profile); !landlock) return landlock;
-	if (profile.denySocketCreation || profile.denyInetSockets)
+	if ((profile.denySocketCreation || profile.denyInetSockets) && !g_SeccompInstalled)
 	{
 		auto seccomp = InstallSocketFilter (profile.denySocketCreation);
 		if (!seccomp) return seccomp;

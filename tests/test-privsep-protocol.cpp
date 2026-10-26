@@ -72,10 +72,23 @@ int main ()
 	// Version 1 frames remain readable; new senders emit version 2.
 	assert (Decode (Header (PROTOCOL_MAGIC, MIN_PROTOCOL_VERSION, 2, 0, 0)).has_value ());
 	ExpectDecodeError (Header (PROTOCOL_MAGIC, PROTOCOL_VERSION, 0, 0, 0), ErrorCode::UnknownType);
-	// Error is the last known type; one past it and 0xffff are unknown.
+	// Error is a known type; the data-storage family follows it and the
+	// boundary above the last known type is refused.
 	assert (Decode (Header (PROTOCOL_MAGIC, PROTOCOL_VERSION, 15, 0, 0)).has_value ());
 	assert (Decode (Header (PROTOCOL_MAGIC, PROTOCOL_VERSION, 16, 0, 0)).has_value ());
-	ExpectDecodeError (Header (PROTOCOL_MAGIC, PROTOCOL_VERSION, 17, 0, 0), ErrorCode::UnknownType);
+	assert (Decode (Header (PROTOCOL_MAGIC, PROTOCOL_VERSION, 17, 0, 0)).has_value ());
+	assert (Decode (Header (PROTOCOL_MAGIC, PROTOCOL_VERSION, 18, 0, 0)).has_value ());
+	assert (Decode (Header (PROTOCOL_MAGIC, PROTOCOL_VERSION, 19, 0, 0)).has_value ());
+	// Cancel is the version-4 type; the same header at version 3 is refused
+	// instead of being interpreted with older semantics.
+	assert (Decode (Header (PROTOCOL_MAGIC, PROTOCOL_VERSION, 20, 0, 0)).has_value ());
+	ExpectDecodeError (Header (PROTOCOL_MAGIC, 3, 20, 0, 0), ErrorCode::UnsupportedVersion);
+	// The Windows worker handshake is the version-5 type and is refused by an
+	// older header and at the boundary above it.
+	assert (Decode (Header (PROTOCOL_MAGIC, PROTOCOL_VERSION, 21, 0, 0)).has_value ());
+	ExpectDecodeError (Header (PROTOCOL_MAGIC, 4, 21, 0, 0), ErrorCode::UnsupportedVersion);
+	assert (MAX_MESSAGE_TYPE == 21);
+	ExpectDecodeError (Header (PROTOCOL_MAGIC, PROTOCOL_VERSION, MAX_MESSAGE_TYPE + 1, 0, 0), ErrorCode::UnknownType);
 	ExpectDecodeError (Header (PROTOCOL_MAGIC, PROTOCOL_VERSION, 0xffff, 0, 0), ErrorCode::UnknownType);
 
 	// Configuration and supervisor types are accepted by framing; role-specific
@@ -119,10 +132,20 @@ int main ()
 		ErrorCode::TooLarge);
 	ExpectDecodeError (
 		Header (PROTOCOL_MAGIC, PROTOCOL_VERSION, 2, 0, std::numeric_limits<uint32_t>::max ()), ErrorCode::TooLarge);
-	// A header-only record that declares the maximum payload is a framing
-	// error, not a size error: the length is legal but absent.
+	// A type-2 frame above its own ceiling is a size error even when the
+	// declared length would fit the global frame maximum: the per-type bound,
+	// not the transport maximum, is what authorizes the payload.
 	ExpectDecodeError (
 		Header (PROTOCOL_MAGIC, PROTOCOL_VERSION, 2, 0, static_cast<uint32_t> (MAX_MESSAGE_SIZE - HEADER_SIZE)),
+		ErrorCode::TooLarge);
+	// A header-only record one byte over the type ceiling is a size error too.
+	ExpectDecodeError (Header (PROTOCOL_MAGIC, PROTOCOL_VERSION, 2, 0,
+						 static_cast<uint32_t> (MaxPayloadFor (MessageType::LogRecord) + 1)),
+		ErrorCode::TooLarge);
+	// A header that declares the per-type maximum but carries no payload is a
+	// framing error: the length is legal for the type but absent.
+	ExpectDecodeError (Header (PROTOCOL_MAGIC, PROTOCOL_VERSION, 2, 0,
+						 static_cast<uint32_t> (MaxPayloadFor (MessageType::LogRecord))),
 		ErrorCode::Malformed);
 	ExpectDecodeError (Header (PROTOCOL_MAGIC, PROTOCOL_VERSION, 2, 0, 1), ErrorCode::Malformed);
 	{
@@ -138,20 +161,28 @@ int main ()
 	assert (!Decode ("").has_value ());
 	assert (!Decode (std::string (MAX_MESSAGE_SIZE + HEADER_SIZE, 'x')).has_value ());
 
-	// A frame exactly at the documented limit is accepted.
-	Message maximum { MessageType::LogRecord, 7, std::string (MAX_MESSAGE_SIZE - HEADER_SIZE, 'z') };
+	// A frame exactly at the largest per-type ceiling is accepted.
+	static_assert (MaxPayloadFor (MessageType::RouterStorageRequest) < MAX_MESSAGE_SIZE - HEADER_SIZE,
+		"no type may reach the transport maximum");
+	Message maximum { MessageType::RouterStorageRequest, 7,
+		std::string (MaxPayloadFor (MessageType::RouterStorageRequest), 'z') };
 	auto maximumFrame = Encode (maximum);
 	assert (maximumFrame.has_value ());
-	assert (maximumFrame->size () == MAX_MESSAGE_SIZE);
+	assert (maximumFrame->size () == HEADER_SIZE + MaxPayloadFor (MessageType::RouterStorageRequest));
 	auto maximumDecoded = Decode (*maximumFrame);
 	assert (maximumDecoded.has_value ());
-	assert (maximumDecoded->payload.size () == MAX_MESSAGE_SIZE - HEADER_SIZE);
+	assert (maximumDecoded->payload.size () == MaxPayloadFor (MessageType::RouterStorageRequest));
 
-	// Encode refuses a payload that cannot fit the framed size.
-	Message tooLarge { MessageType::LogRecord, 0, std::string (MAX_MESSAGE_SIZE, 'x') };
+	// Encode refuses one byte above the type ceiling and an unknown type.
+	Message tooLarge { MessageType::RouterStorageRequest, 0,
+		std::string (MaxPayloadFor (MessageType::RouterStorageRequest) + 1, 'x') };
 	auto tooLargeFrame = Encode (tooLarge);
 	assert (!tooLargeFrame.has_value ());
 	assert (tooLargeFrame.error ().code == ErrorCode::TooLarge);
+	Message unknownType { static_cast<MessageType> (MAX_MESSAGE_TYPE + 1), 0, { } };
+	auto unknownFrame = Encode (unknownType);
+	assert (!unknownFrame.has_value ());
+	assert (unknownFrame.error ().code == ErrorCode::UnknownType);
 
 	// Log-record field bounds: truncation on encode and rejection on decode.
 	std::string oversized (MAX_TEXT_SIZE + 100, 'a');
@@ -281,6 +312,13 @@ int main ()
 	assert (!AllowsOperation (EndpointRole::TorrentStorage, MessageType::ConfigureRouterStorage));
 	assert (!AllowsOperation (EndpointRole::RouterStorage, MessageType::LogRecord));
 	assert (!AllowsOperation (EndpointRole::StorageBroker, MessageType::LogRecord));
+	// The data-storage endpoint owns artifact operations only.
+	assert (AllowsOperation (EndpointRole::DataStorage, MessageType::DataStorageRequest));
+	assert (AllowsOperation (EndpointRole::DataStorage, MessageType::ConfigureDataStorage));
+	assert (!AllowsOperation (EndpointRole::DataStorage, MessageType::LogRecord));
+	assert (!AllowsOperation (EndpointRole::DataStorage, MessageType::RouterStorageRequest));
+	assert (!AllowsOperation (EndpointRole::Log, MessageType::DataStorageRequest));
+	assert (!AllowsOperation (EndpointRole::Supervisor, MessageType::DataStorageReply));
 
 	// Channel behavior: SOCK_SEQPACKET only, peer credentials, timeout versus
 	// peer close, and use after close.

@@ -13,6 +13,7 @@
 #include <mutex>
 #if (defined(__linux__) || defined(__OpenBSD__)) && !defined(__ANDROID__) && !defined(I2PD_NO_PRIVSEP)
 #include "../privsep/Worker.h"
+#include "../privsep/Credentials.h"
 #include "../privsep/Supervisor.h"
 #include "../privsep/TorrentStorage.h"
 #include <fcntl.h>
@@ -118,9 +119,10 @@ bool TorrentStorageWorker::Start (const std::filesystem::path & root, std::strin
 		error = "storage worker already running";
 		return false;
 	}
-	if (::geteuid () == 0)
+	const uint32_t workerUid = WorkerUid ();
+	if (workerUid == 0)
 	{
-		error = "storage worker requires an unprivileged service identity";
+		error = "storage worker requires an unprivileged worker identity";
 		return false;
 	}
 	std::error_code ec;
@@ -139,7 +141,7 @@ bool TorrentStorageWorker::Start (const std::filesystem::path & root, std::strin
 		return false;
 	}
 	struct stat rootStatus { };
-	if (::fstat (fd, &rootStatus) || !S_ISDIR (rootStatus.st_mode) || rootStatus.st_uid != ::geteuid ()
+	if (::fstat (fd, &rootStatus) || !S_ISDIR (rootStatus.st_mode) || rootStatus.st_uid != workerUid
 		|| (rootStatus.st_mode & 0022))
 	{
 		::close (fd);
@@ -157,6 +159,7 @@ bool TorrentStorageWorker::Start (const std::filesystem::path & root, std::strin
 		return false;
 	}
 	m_Impl->process = ChildProcess::Adopt (-1, std::move (*channel));
+	m_Impl->process.ChannelFd ().SetEnforcementPolicy (EnforcementPolicy::Endpoint);
 	m_Impl->ready = true;
 	return true;
 #else

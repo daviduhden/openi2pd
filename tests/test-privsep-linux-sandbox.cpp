@@ -18,6 +18,7 @@
 #include <sys/socket.h>
 #include <sys/stat.h>
 #include <sys/syscall.h>
+#include <sys/un.h>
 #include <sys/uio.h>
 #include <sys/wait.h>
 #include <unistd.h>
@@ -64,6 +65,47 @@ int ExpectStorageDeniesNetwork ()
 		return 2;
 	}
 	return (errno == EACCES || errno == EPERM) ? 0 : 3;
+}
+
+int ExpectStorageDeniesExec ()
+{
+	char * const argv[] = { const_cast<char *> ("/bin/true"), nullptr };
+	char * const envp[] = { nullptr };
+	errno = 0;
+	execve ("/bin/true", argv, envp);
+	return (errno == EACCES || errno == EPERM) ? 0 : 2;
+}
+
+int ExpectStorageDeniesFork ()
+{
+	errno = 0;
+	const pid_t pid = fork ();
+	if (pid == 0) _exit (0);
+	if (pid > 0)
+	{
+		int status = 0;
+		waitpid (pid, &status, 0);
+		return 2;
+	}
+	return (errno == EACCES || errno == EPERM) ? 0 : 3;
+}
+
+int ExpectStorageDeniesOutsideRead ()
+{
+	errno = 0;
+	const int fd = open ("/etc/passwd", O_RDONLY | O_CLOEXEC);
+	if (fd >= 0)
+	{
+		close (fd);
+		return 2;
+	}
+	return (errno == EACCES || errno == EPERM) ? 0 : 3;
+}
+
+int ExpectWorkerPrivileges ()
+{
+	auto verified = VerifyWorkerPrivileges ();
+	return verified ? 0 : 2;
 }
 
 int ExpectStorageAllowsWritablePath (const std::string & file)
@@ -240,6 +282,7 @@ int main ()
 	assert (!storage.allowNetwork);
 	assert (storage.allowPersistentWrites);
 	assert (storage.denySocketCreation);
+	assert (storage.restrictFilesystemReads);
 
 	auto network = GetLinuxSandboxProfile (WorkerClass::Network);
 	assert (network.allowNetwork);
@@ -294,8 +337,34 @@ int main ()
 	RequireExitZero (RunChild (storageProfile, &ExpectStorageDeniesSocketpair), "storage socketpair");
 	RequireExitZero (RunChild (storageProfile, &ExpectStorageDeniesProcessMemory), "storage process memory");
 	RequireExitZero (RunChild (storageProfile, &ExpectStorageDeniesPidfdOpen), "storage pidfd open");
+	RequireExitZero (RunChild (storageProfile, &ExpectStorageDeniesExec), "storage exec");
+	RequireExitZero (RunChild (storageProfile, &ExpectStorageDeniesFork), "storage fork");
+	RequireExitZero (RunChild (storageProfile, &ExpectStorageDeniesOutsideRead), "storage outside read");
+	RequireExitZero (RunChild (storageProfile, &ExpectWorkerPrivileges), "storage privileges");
 	RequireExitZero (RunChild (storageProfile, &ExpectNoEffectiveCapabilities), "storage capabilities");
 	RequireExitZero (RunChild (storageProfile, [] () { return 0; }), "storage start");
+
+	// A socket created before the sandbox must not be usable to connect either:
+	// seccomp denies the connection lifecycle, not only socket creation.
+	{
+		pid_t connectPid = fork ();
+		assert (connectPid >= 0);
+		if (connectPid == 0)
+		{
+			int fds[2] = { -1, -1 };
+			if (socketpair (AF_UNIX, SOCK_STREAM, 0, fds) != 0) _exit (2);
+			auto applied = ApplyLinuxSandbox (storageProfile);
+			if (!applied) _exit (77);
+			struct sockaddr_un address { };
+			address.sun_family = AF_UNIX;
+			std::strncpy (address.sun_path, "/tmp/openi2pd-denied-connect", sizeof (address.sun_path) - 1);
+			const int code = connect (fds[0], reinterpret_cast<struct sockaddr *> (&address), sizeof (address));
+			_exit (code < 0 && (errno == EACCES || errno == EPERM) ? 0 : 3);
+		}
+		int connectStatus = 0;
+		assert (waitpid (connectPid, &connectStatus, 0) == connectPid);
+		RequireExitZero (ChildResult { connectStatus }, "storage inherited connect");
+	}
 
 	LinuxSandboxProfile logProfile = log;
 	logProfile.requireLandlock = false;
