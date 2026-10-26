@@ -107,6 +107,20 @@ int main ()
 		destination->Stop ();
 	}
 
+	// The concurrent-connection counter is charged only by HandleAccept: a
+	// session built directly never releases an uncharged slot, so repeated
+	// termination cannot underflow the counter.
+	assert (server.GetNumConnections () == 0);
+	{
+		auto socket = std::make_shared<boost::asio::ip::tcp::socket> (server.GetService ());
+		auto session = std::make_shared<I2CPSession> (server, socket);
+		session->Stop ();
+		session->Stop ();
+	}
+	assert (server.GetNumConnections () == 0);
+	assert (server.GetAdmissionPolicy ().maxConnections >= 1);
+	assert (server.GetAdmissionPolicy ().maxSessions >= 1);
+
 	server.Stop ();
 	return 0;
 }

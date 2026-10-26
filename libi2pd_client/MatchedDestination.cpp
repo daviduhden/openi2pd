@@ -47,11 +47,33 @@ namespace client
 			if (ls)
 				HandleFoundCurrentLeaseSet (ls);
 			else
+			{
+				// The lookup completes on the destination's service thread and
+				// may outlive this object; pin a weak reference instead of
+				// capturing a raw this.
+				std::weak_ptr<MatchedTunnelDestination> weak = GetSharedFromThis ();
 				RequestDestination (ident,
-					std::bind (&MatchedTunnelDestination::HandleFoundCurrentLeaseSet, this, std::placeholders::_1));
+					[weak] (std::shared_ptr<i2p::data::LeaseSet> leaseSet)
+					{
+						if (auto self = weak.lock ()) self->HandleFoundCurrentLeaseSet (std::move (leaseSet));
+					});
+			}
 		}
 		else
 			LogPrint (eLogWarning, "Destination: Failed to resolve ", m_RemoteName);
+	}
+
+	void MatchedTunnelDestination::ScheduleResolveRetry ()
+	{
+		if (!m_ResolveTimer) return;
+		m_ResolveTimer->expires_after (std::chrono::seconds (1));
+		std::weak_ptr<MatchedTunnelDestination> weak = GetSharedFromThis ();
+		m_ResolveTimer->async_wait (
+			[weak] (const boost::system::error_code & ec)
+			{
+				if (ec) return; // cancelled by Stop()/destruction
+				if (auto self = weak.lock ()) self->ResolveCurrentLeaseSet ();
+			});
 	}
 
 	void MatchedTunnelDestination::HandleFoundCurrentLeaseSet (std::shared_ptr<const i2p::data::LeaseSet> ls)
@@ -63,19 +85,15 @@ namespace client
 			m_RemoteLeaseSet = ls;
 		}
 		else
-		{
-			m_ResolveTimer->expires_after (std::chrono::seconds (1));
-			m_ResolveTimer->async_wait (
-				[&] (const boost::system::error_code & ec)
-				{
-					if (!ec) ResolveCurrentLeaseSet ();
-				});
-		}
+			ScheduleResolveRetry ();
 	}
 
 	void MatchedTunnelDestination::Start ()
 	{
-		ClientDestination::Start ();
+		// Start the runnable service as well: the resolve timer and the lease
+		// set request callbacks run on this destination's io_context, which
+		// ClientDestination::Start() alone does not run.
+		RunnableClientDestination::Start ();
 		m_ResolveTimer = std::make_shared<boost::asio::steady_timer> (GetService ());
 		GetTunnelPool ()->SetCustomPeerSelector (this, shared_from_this ());
 		ResolveCurrentLeaseSet ();
@@ -84,8 +102,8 @@ namespace client
 	void MatchedTunnelDestination::Stop ()
 	{
 		if (auto pool = GetTunnelPool ()) pool->UnsetCustomPeerSelector ();
-		ClientDestination::Stop ();
 		if (m_ResolveTimer) m_ResolveTimer->cancel ();
+		RunnableClientDestination::Stop ();
 	}
 
 	bool MatchedTunnelDestination::SelectPeers (i2p::tunnel::Path & path, int hops, bool inbound)
@@ -102,10 +120,15 @@ namespace client
 			std::lock_guard<std::mutex> lock (m_RemoteMutex);
 			remoteLeaseSet = m_RemoteLeaseSet;
 		}
-		if (!inbound && remoteLeaseSet)
+		if (!inbound)
 		{
-			if (remoteLeaseSet->IsExpired ()) ResolveCurrentLeaseSet ();
-			if (remoteLeaseSet && !remoteLeaseSet->IsExpired ())
+			if (remoteLeaseSet && remoteLeaseSet->IsExpired ())
+			{
+				ResolveCurrentLeaseSet ();
+				remoteLeaseSet = nullptr;
+			}
+			bool matched = false;
+			if (remoteLeaseSet)
 			{
 				// remote lease set is good
 				auto leases = remoteLeaseSet->GetNonExpiredLeases ();
@@ -115,19 +138,30 @@ namespace client
 				{
 					auto idx = i2p::crypto::RandomBelow (static_cast<uint32_t> (leases.size ()));
 					auto lease = leases[idx];
-					obep = i2p::data::netdb.FindRouter (lease->tunnelGateway);
 					leases.erase (leases.begin () + idx);
+					auto candidate = i2p::data::netdb.FindRouter (lease->tunnelGateway);
+					// Only an ECIES-capable gateway can serve as our OBEP.
+					if (candidate && candidate->IsECIES () && !candidate->IsUnreachable ())
+						obep = candidate;
 				}
 				if (obep)
 				{
 					path.Add (obep);
+					matched = true;
 					LogPrint (eLogDebug, "Destination: Found OBEP matching IBGW");
 				}
 				else
 					LogPrint (eLogWarning, "Destination: Could not find proper IBGW for matched outbound tunnel");
 			}
+			if (!matched)
+			{
+				// An unmatched outbound path would defeat the purpose of this
+				// destination, so report the failure instead of returning a
+				// path that silently is not matched.
+				return false;
+			}
 		}
-		return true;
+		return !path.peers.empty ();
 	}
 }
 }

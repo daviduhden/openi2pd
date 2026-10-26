@@ -17,10 +17,12 @@
 #include <map>
 #include <unordered_map>
 #include <vector>
+#include <set>
 #include <utility>
 #include <mutex>
 #include <memory>
 #include <algorithm>
+#include <string>
 #include <string_view>
 #include <boost/asio.hpp>
 #include <boost/property_tree/ptree_fwd.hpp>
@@ -73,11 +75,25 @@ namespace client
 	const char I2P_SERVER_TUNNEL_INPORT[] = "inport";
 	const char I2P_SERVER_TUNNEL_ACCESS_LIST[] = "accesslist";
 	const char I2P_SERVER_TUNNEL_WHITE_LIST[] = "whitelist";
+	const char I2P_SERVER_TUNNEL_FILTER_DEFINITION[] = "filterDefinition";
+	const char I2P_SERVER_TUNNEL_LIMIT_ACTION[] = "limitAction";
+	const char I2P_SERVER_TUNNEL_TARGET_FOR_PORT[] = "targetForPort.";
+	const char I2P_SERVER_TUNNEL_SPOOFED_HOST[] = "spoofedHost.";
+	const char I2P_SERVER_TUNNEL_DEFAULT_ACCEPTOR[] = "defaultacceptor";
+	const char I2P_SERVER_TUNNEL_REJECT_INPROXY[] = "rejectInproxy";
+	const char I2P_SERVER_TUNNEL_REJECT_REFERER[] = "rejectReferer";
+	const char I2P_SERVER_TUNNEL_REJECT_USER_AGENTS[] = "rejectUserAgents";
+	const char I2P_SERVER_TUNNEL_POST_MAX[] = "postMax";
+	const char I2P_SERVER_TUNNEL_DELAY_OPEN[] = "delayOpen";
 	const char I2P_SERVER_TUNNEL_GZIP[] = "gzip";
 	const char I2P_SERVER_TUNNEL_WEBIRC_PASSWORD[] = "webircpassword";
 	const char I2P_SERVER_TUNNEL_ADDRESS[] = "address";
 	const char I2P_SERVER_TUNNEL_ENABLE_UNIQUE_LOCAL[] = "enableuniquelocal";
 	const char I2P_SERVER_TUNNEL_SSL[] = "ssl";
+	// Administrative lifecycle keys honoured by ReadTunnels.
+	const char I2P_TUNNEL_NAME[] = "name";
+	const char I2P_TUNNEL_ENABLE[] = "enable";
+	const char I2P_TUNNEL_START_ON_LOAD[] = "startOnLoad";
 	const char UDP_CLIENT_TUNNEL_DATAGRAM_VERSION[] = "datagramversion";
 	const char UDP_TUNNEL_MAX_WINDOW[] = "maxwindow";
 	const char TORRENTS_TUNNEL_KEYS[] = "keys";
@@ -94,6 +110,52 @@ namespace client
 	const char TORRENTS_TUNNEL_DHT_FILE[] = "dhtfile";
 
 	constexpr int STOP_DESTINATIONS_TIMEOUT = 8; // in seconds
+	constexpr size_t I2P_TUNNEL_SERVICE_NAME_MAX_LENGTH = 64;
+
+	// Administrative view of one configured client or server tunnel. Names are
+	// unique across tunnels.conf and tunnels.d so the typed StartTunnel and
+	// StopTunnel verbs have exactly one target.
+	struct TunnelServiceInfo
+	{
+		std::string name;
+		std::string kind; // client, httpproxy, socksproxy, server, http, irc
+		// Server tunnels: the local destination in base32. Client tunnels: the
+		// configured destination list, comma separated.
+		std::string destination;
+		// Client tunnels: the bound 127.0.0.1:<port>. Server tunnels:
+		// i2p:<inport>, the port clients connect to.
+		std::string localEndpoint;
+		// Client tunnels: the configured destination list. Server tunnels:
+		// the configured local host:port upstream.
+		std::string target;
+		bool running = false;
+	};
+
+	// Stable administrative service name: the configured `name=` value when
+	// set, the INI section name otherwise and `<type>://<endpoint>` as the last
+	// fallback for a nameless section.
+	std::string MakeTunnelServiceName (std::string_view configuredName, std::string_view sectionName,
+		std::string_view type, std::string_view endpoint);
+	// Rejects empty, over-long and control-character-bearing names.
+	bool IsValidTunnelServiceName (std::string_view name);
+	// `enable`/`startOnLoad` gate. Both default to true; a false `enable`
+	// always wins so a disabled tunnel stays disabled regardless of startOnLoad.
+	bool ShouldStartTunnelOnLoad (bool enable, bool startOnLoad);
+
+	// Tracks the configured service names of one configuration reload so a
+	// duplicate is a configuration error instead of an ambiguous verb target.
+	class TunnelServiceNameRegistry
+	{
+	public:
+		void Clear ();
+		bool Register (std::string_view name);
+		size_t Size () const;
+		bool Contains (std::string_view name) const;
+
+	private:
+		mutable std::mutex m_Mutex;
+		std::set<std::string> m_Names;
+	};
 
 	class ClientContext
 	{
@@ -138,6 +200,17 @@ namespace client
 		const BOBCommandChannel * GetBOBCommandChannel () const { return m_BOBCommandChannel.get (); };
 		const SAMBridge * GetSAMBridge () const { return m_SamBridge.get (); };
 		const I2CPServer * GetI2CPServer () const { return m_I2CPServer.get (); };
+
+		// --- administrative tunnel inventory and lifecycle -------------------
+		// Sorted, stable snapshot of every configured TCP client and server
+		// tunnel. Returns copies; callers never hold a ClientContext lock.
+		std::vector<TunnelServiceInfo> GetTunnelServices () const;
+		// Start or stop one configured tunnel by its unique service name. Both
+		// are idempotent (starting a running tunnel succeeds without a second
+		// bind) and never touch another tunnel that shares a destination.
+		// `error` receives a non-secret description when the call fails.
+		bool StartTunnel (std::string_view name, std::string & error);
+		bool StopTunnel (std::string_view name, std::string & error);
 
 		std::vector<std::shared_ptr<DatagramSessionInfo>> GetForwardInfosFor (const i2p::data::IdentHash & destination);
 
@@ -199,6 +272,8 @@ namespace client
 			m_ClientForwards; // local endpoint -> udp tunnel
 		std::map<std::pair<i2p::data::IdentHash, int>, std::shared_ptr<I2PUDPServerTunnel>>
 			m_ServerForwards; // <destination,port> -> udp tunnel
+
+		TunnelServiceNameRegistry m_ServiceNames;
 
 #ifndef NO_TORRENTS
 		std::unordered_map<i2p::data::IdentHash, std::shared_ptr<i2p::torrents::TorrentsTunnel>>

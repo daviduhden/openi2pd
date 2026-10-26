@@ -59,32 +59,30 @@ namespace client
 			}
 		}
 
-		struct BlindingInfo
+		typedef std::pair<uint16_t, std::vector<uint8_t>> BlindingInfoKey;
+
+		struct BlindingInfoEntry
 		{
-			std::shared_ptr<const i2p::data::IdentityEx> identity; // TYPE_DEST only
-			i2p::data::SigningKeyType blindType = i2p::data::SIGNING_KEY_TYPE_EDDSA_SHA512_ED25519;
-			uint8_t authType = 0;
-			std::vector<uint8_t> authPrivateKey;
-			std::string secret;
-			uint64_t expiration = 0; // milliseconds since epoch, 0 = forever
+			I2CPBlindingInfo info;
 			uint64_t updated = 0;
 		};
 
-		typedef std::pair<uint16_t, std::vector<uint8_t>> BlindingInfoKey;
-
 		std::mutex g_BlindingInfosMutex;
-		std::map<BlindingInfoKey, BlindingInfo> g_BlindingInfos;
+		std::map<BlindingInfoKey, BlindingInfoEntry> g_BlindingInfos;
 
-		BlindingInfoKey MakeBlindingInfoKey (i2p::data::SigningKeyType keyType, const uint8_t * key, size_t keyLen)
+		BlindingInfoKey MakeBlindingInfoKey (
+			i2p::data::SigningKeyType keyType, const uint8_t * key, size_t keyLen)
 		{
 			return { (uint16_t)keyType, std::vector<uint8_t> (key, key + keyLen) };
 		}
 
+		// Drops expired records and, once the cap is reached, the least recently
+		// updated one. The caller holds g_BlindingInfosMutex.
 		void PruneBlindingInfos (uint64_t now)
 		{
 			for (auto it = g_BlindingInfos.begin (); it != g_BlindingInfos.end ();)
 			{
-				if (it->second.expiration && now > it->second.expiration)
+				if (it->second.info.expiration && now > it->second.info.expiration)
 					it = g_BlindingInfos.erase (it);
 				else
 					++it;
@@ -98,34 +96,425 @@ namespace client
 				g_BlindingInfos.erase (oldest);
 			}
 		}
+	} // namespace
 
-		void StoreBlindingInfo (BlindingInfoKey key, BlindingInfo info)
+	I2CPAdmissionPolicy MakeI2CPAdmissionPolicy (size_t configuredConnections, size_t configuredSessions)
+	{
+		I2CPAdmissionPolicy policy;
+		policy.maxConnections = configuredConnections ? configuredConnections : I2CP_MAX_CONNECTIONS_DEFAULT;
+		if (policy.maxConnections > I2CP_MAX_CONNECTIONS_LIMIT) policy.maxConnections = I2CP_MAX_CONNECTIONS_LIMIT;
+		policy.maxSessions = configuredSessions ? configuredSessions : I2CP_MAX_SESSIONS_DEFAULT;
+		if (policy.maxSessions > I2CP_MAX_SESSIONS_LIMIT) policy.maxSessions = I2CP_MAX_SESSIONS_LIMIT;
+		return policy;
+	}
+
+	namespace
+	{
+		// Reads the optional i2cp.maxconnections / i2cp.maxsessions limits. An
+		// absent option or a non-numeric value falls back to the default; the
+		// hard ceiling is applied by MakeI2CPAdmissionPolicy(). The option is
+		// declared as uint32_t in Config.cpp, so the value must be read with the
+		// same type: boost::any_cast<int> on it would throw.
+		size_t ReadI2CPLimit (const char * name)
 		{
-			std::lock_guard<std::mutex> l (g_BlindingInfosMutex);
-			info.updated = i2p::util::GetMillisecondsSinceEpoch ();
-			PruneBlindingInfos (info.updated);
-			auto it = g_BlindingInfos.find (key);
-			if (it != g_BlindingInfos.end ())
-			{
-				// A TYPE_KEY update must not erase a TYPE_DEST identity, auth
-				// key or secret already associated with the same signing key.
-				auto & existing = it->second;
-				if (!info.identity) info.identity = existing.identity;
-				if (info.authType == 0)
-				{
-					info.authType = existing.authType;
-					info.authPrivateKey = existing.authPrivateKey;
-				}
-				if (info.secret.empty ()) info.secret = existing.secret;
-				if (!info.expiration)
-					info.expiration = existing.expiration;
-				else if (existing.expiration && info.expiration < existing.expiration)
-					info.expiration = existing.expiration;
-			}
-			g_BlindingInfos.insert_or_assign (std::move (key), std::move (info));
+			uint32_t configured = 0;
+			if (!i2p::config::GetOption (name, configured)) return 0;
+			return static_cast<size_t> (configured);
 		}
 
+		I2CPAdmissionPolicy ReadI2CPAdmissionPolicy ()
+		{
+			return MakeI2CPAdmissionPolicy (
+				ReadI2CPLimit ("i2cp.maxconnections"), ReadI2CPLimit ("i2cp.maxsessions"));
+		}
 	} // namespace
+
+	uint8_t GetI2CPHostReplyResultForAuth (uint8_t authType, bool hasUsableSecret)
+	{
+		if (hasUsableSecret) return eI2CPHostReplySuccess;
+		switch (authType)
+		{
+		case eI2CPBlindingAuthNone: return eI2CPHostReplySuccess;
+		// A PSK-only destination needs the shared secret; a DH destination the
+		// per-client private key; DH+PSK needs one of the two.
+		case eI2CPBlindingAuthPSK: return eI2CPHostReplySecretRequired;
+		case eI2CPBlindingAuthDH: return eI2CPHostReplyKeyRequired;
+		case eI2CPBlindingAuthDHAndPSK: return eI2CPHostReplySecretAndKeyRequired;
+		default: return eI2CPHostReplyFailure;
+		}
+	}
+
+	std::vector<uint8_t> BuildI2CPHostReplyPayload (uint32_t requestID, uint16_t sessionID,
+		std::shared_ptr<const i2p::data::IdentityEx> identity, const std::vector<uint8_t> & options, uint8_t result)
+	{
+		// A failure reply never carries an identity: HostReplyMessage writes
+		// only sessionId, requestId and the result code in that case.
+		if (result != eI2CPHostReplySuccess) identity = nullptr;
+		std::vector<uint8_t> buf;
+		if (identity)
+		{
+			const size_t identityLen = identity->GetFullLen ();
+			buf.resize (identityLen + 7 + options.size ());
+			htobe16buf (buf.data (), sessionID);
+			htobe32buf (buf.data () + 2, requestID);
+			buf[6] = eI2CPHostReplySuccess;
+			identity->ToBuffer (buf.data () + 7, identityLen);
+			if (!options.empty ()) memcpy (buf.data () + 7 + identityLen, options.data (), options.size ());
+		}
+		else
+		{
+			buf.resize (7);
+			htobe16buf (buf.data (), sessionID);
+			htobe32buf (buf.data () + 2, requestID);
+			// An identity-less reply without an explicit result still reports
+			// the generic failure, matching the previous behaviour.
+			buf[6] = result != eI2CPHostReplySuccess ? result : (uint8_t)eI2CPHostReplyFailure;
+		}
+		return buf;
+	}
+
+	bool ParseI2CPSendMessage (
+		const uint8_t * buf, size_t len, bool withExpiration, I2CPSendMessageRequest & request)
+	{
+		request = I2CPSendMessageRequest { };
+		if (!buf || len < 2) return false;
+		request.sessionID = bufbe16toh (buf);
+		size_t offset = 2;
+		// GetIdentityBufferLen() rejects a truncated or reserved identity
+		// without trusting the advertised length field.
+		const size_t identSize = i2p::data::GetIdentityBufferLen (buf + offset, len - offset);
+		if (!identSize || identSize > len - offset) return false;
+		request.identity = buf + offset;
+		request.identityLen = identSize;
+		offset += identSize;
+		if (len - offset < 4) return false;
+		const uint32_t payloadLen = bufbe32toh (buf + offset);
+		offset += 4;
+		// Subtraction form: a hostile 32-bit length must not wrap the offset.
+		if ((size_t)payloadLen > len - offset) return false;
+		// A zero-length payload keeps a valid (non-null) pointer: the send path
+		// distinguishes "no payload buffer" from "empty payload".
+		request.payload = buf + offset;
+		request.payloadLen = payloadLen;
+		offset += payloadLen;
+		// nonce, plus the expires form's flags(2) and expiration(6)
+		const size_t trailer = withExpiration ? 4 + 2 + 6 : 4;
+		if (len - offset < trailer) return false;
+		request.nonce = bufbe32toh (buf + offset);
+		request.hasNonce = true;
+		offset += 4;
+		if (withExpiration)
+		{
+			request.flags = bufbe16toh (buf + offset);
+			offset += 2;
+			// 48-bit milliseconds-since-epoch; 0 means "does not expire".
+			uint64_t expiration = 0;
+			for (int i = 0; i < 6; i++) expiration = (expiration << 8) | buf[offset + i];
+			request.expiration = expiration;
+			offset += 6;
+		}
+		// Java's readMessage() rejects a payload size that does not exactly
+		// fill the message, so trailing bytes are malformed rather than ignored.
+		return offset == len;
+	}
+
+	I2CPSendMessageCheck CheckI2CPSendMessage (const I2CPSendMessageRequest & request, uint16_t ownSessionID,
+		bool hasDestination, uint64_t nowMilliseconds)
+	{
+		if (request.sessionID != ownSessionID) return I2CPSendMessageCheck::BadSession;
+		if (!hasDestination) return I2CPSendMessageCheck::BadSession;
+		if (!request.hasNonce || !request.identity || !request.identityLen) return I2CPSendMessageCheck::BadMessage;
+		if (request.payloadLen && !request.payload) return I2CPSendMessageCheck::BadMessage;
+		// Java uses "expiration > 0 && expiration <= now".
+		if (request.expiration && request.expiration <= nowMilliseconds) return I2CPSendMessageCheck::Expired;
+		return I2CPSendMessageCheck::Ok;
+	}
+
+	I2CPBlindingInfoResult ParseI2CPBlindingInfoMessage (
+		const uint8_t * buf, size_t len, I2CPBlindingInfo & info, std::string & error)
+	{
+		error.clear ();
+		info = I2CPBlindingInfo { };
+		constexpr uint8_t FLAG_AUTH = 0x0f;
+		constexpr uint8_t FLAG_SECRET = 0x10;
+		// sessionId(2), flags(1), endpointType(1), blindType(2), expiration
+		// seconds(4), endpoint, optional 32-byte auth private key, optional
+		// 1-byte length secret.
+		if (!buf || len < 10)
+		{
+			error = "message is too short";
+			return eI2CPBlindingInfoMalformed;
+		}
+		size_t offset = 2; // sessionId is validated by the caller
+		const uint8_t flags = buf[offset++];
+		const uint8_t authType = flags & FLAG_AUTH;
+		// Java accepts none, DH, PSK and DH+PSK only; a value above 3 is a
+		// corrupt flags byte, not an unknown scheme to ignore.
+		if (authType > eI2CPBlindingAuthDHAndPSK)
+		{
+			error = "bad auth type";
+			return eI2CPBlindingInfoMalformed;
+		}
+		info.authType = authType;
+		const uint8_t endpointType = buf[offset++];
+		if (endpointType > eI2CPBlindingEndpointKey)
+		{
+			error = "bad endpoint type";
+			return eI2CPBlindingInfoMalformed;
+		}
+		info.endpointType = endpointType;
+		const uint16_t blindType = bufbe16toh (buf + offset);
+		offset += 2;
+		{
+			std::unique_ptr<i2p::crypto::Verifier> verifier (
+				i2p::data::IdentityEx::CreateVerifier ((i2p::data::SigningKeyType)blindType));
+			if (!verifier)
+			{
+				error = "unsupported blind type";
+				return eI2CPBlindingInfoUnsupported;
+			}
+		}
+		info.blindType = (i2p::data::SigningKeyType)blindType;
+		if (len - offset < 4)
+		{
+			error = "message is truncated";
+			return eI2CPBlindingInfoMalformed;
+		}
+		// seconds on the wire, milliseconds in the registry; 0 = never.
+		info.expiration = (uint64_t)bufbe32toh (buf + offset) * 1000;
+		offset += 4;
+
+		switch (endpointType)
+		{
+		case eI2CPBlindingEndpointHash:
+			if (len - offset < 32)
+			{
+				error = "hash is truncated";
+				return eI2CPBlindingInfoMalformed;
+			}
+			offset += 32;
+			break;
+		case eI2CPBlindingEndpointHost:
+		{
+			if (len - offset < 1)
+			{
+				error = "host is truncated";
+				return eI2CPBlindingInfoMalformed;
+			}
+			const uint8_t hostLen = buf[offset++];
+			if (!hostLen || len - offset < hostLen)
+			{
+				error = "host is malformed";
+				return eI2CPBlindingInfoMalformed;
+			}
+			info.host.assign ((const char *)buf + offset, hostLen);
+			offset += hostLen;
+			break;
+		}
+		case eI2CPBlindingEndpointDestination:
+		{
+			auto identity = std::make_shared<i2p::data::IdentityEx> ();
+			const size_t identityLen = identity->FromBuffer (buf + offset, len - offset);
+			if (!identityLen || identityLen > len - offset)
+			{
+				error = "destination is malformed";
+				return eI2CPBlindingInfoMalformed;
+			}
+			const auto * key = identity->GetSigningPublicKeyBuffer ();
+			const auto keyLen = identity->GetSigningPublicKeyLen ();
+			if (!key || !keyLen)
+			{
+				error = "destination has no signing public key";
+				return eI2CPBlindingInfoMalformed;
+			}
+			info.identity = identity;
+			info.signingKeyType = identity->GetSigningKeyType ();
+			info.signingKey.assign (key, key + keyLen);
+			offset += identityLen;
+			break;
+		}
+		case eI2CPBlindingEndpointKey:
+		{
+			if (len - offset < 2)
+			{
+				error = "key type is truncated";
+				return eI2CPBlindingInfoMalformed;
+			}
+			const uint16_t keyType = bufbe16toh (buf + offset);
+			offset += 2;
+			std::unique_ptr<i2p::crypto::Verifier> verifier (
+				i2p::data::IdentityEx::CreateVerifier ((i2p::data::SigningKeyType)keyType));
+			if (!verifier)
+			{
+				error = "unsupported endpoint key type";
+				return eI2CPBlindingInfoUnsupported;
+			}
+			const auto keyLen = verifier->GetPublicKeyLen ();
+			if (!keyLen || len - offset < keyLen)
+			{
+				error = "key is truncated";
+				return eI2CPBlindingInfoMalformed;
+			}
+			info.signingKeyType = (i2p::data::SigningKeyType)keyType;
+			info.signingKey.assign (buf + offset, buf + offset + keyLen);
+			offset += keyLen;
+			break;
+		}
+		default:
+			error = "bad endpoint type";
+			return eI2CPBlindingInfoMalformed;
+		}
+
+		// The 32-byte auth private key exists for the DH schemes only; PSK
+		// carries the secret and nothing else.
+		if (authType == eI2CPBlindingAuthDH || authType == eI2CPBlindingAuthDHAndPSK)
+		{
+			if (len - offset < 32)
+			{
+				error = "auth key is truncated";
+				return eI2CPBlindingInfoMalformed;
+			}
+			info.authPrivateKey.assign (buf + offset, buf + offset + 32);
+			offset += 32;
+		}
+		if (flags & FLAG_SECRET)
+		{
+			if (len - offset < 1)
+			{
+				error = "secret is truncated";
+				return eI2CPBlindingInfoMalformed;
+			}
+			const uint8_t secretLen = buf[offset++];
+			if (len - offset < secretLen)
+			{
+				error = "secret is malformed";
+				return eI2CPBlindingInfoMalformed;
+			}
+			info.secret.assign ((const char *)buf + offset, secretLen);
+			offset += secretLen;
+		}
+		if (offset != len)
+		{
+			error = "message has trailing bytes";
+			return eI2CPBlindingInfoMalformed;
+		}
+		return eI2CPBlindingInfoOk;
+	}
+
+	void StoreI2CPBlindingInfo (I2CPBlindingInfo info)
+	{
+		if (info.signingKey.empty ()) return;
+		auto key = MakeBlindingInfoKey (info.signingKeyType, info.signingKey.data (), info.signingKey.size ());
+		const uint64_t now = i2p::util::GetMillisecondsSinceEpoch ();
+		std::lock_guard<std::mutex> l (g_BlindingInfosMutex);
+		PruneBlindingInfos (now);
+		auto it = g_BlindingInfos.find (key);
+		if (it != g_BlindingInfos.end ())
+		{
+			// A second registration for the same signing key must not erase
+			// material that the first one already supplied.
+			auto & existing = it->second.info;
+			if (!info.identity) info.identity = existing.identity;
+			if (info.authType == eI2CPBlindingAuthNone)
+			{
+				info.authType = existing.authType;
+				info.authPrivateKey = existing.authPrivateKey;
+			}
+			if (info.secret.empty ()) info.secret = existing.secret;
+			if (!info.expiration)
+				info.expiration = existing.expiration;
+			else if (existing.expiration && info.expiration < existing.expiration)
+				info.expiration = existing.expiration;
+		}
+		g_BlindingInfos.insert_or_assign (std::move (key), BlindingInfoEntry { std::move (info), now });
+	}
+
+	bool FindI2CPBlindingInfoBySigningKey (
+		i2p::data::SigningKeyType keyType, const uint8_t * key, size_t keyLen, I2CPBlindingInfo & info)
+	{
+		if (!key || !keyLen) return false;
+		const uint64_t now = i2p::util::GetMillisecondsSinceEpoch ();
+		std::lock_guard<std::mutex> l (g_BlindingInfosMutex);
+		PruneBlindingInfos (now);
+		auto it = g_BlindingInfos.find (MakeBlindingInfoKey (keyType, key, keyLen));
+		if (it == g_BlindingInfos.end ()) return false;
+		info = it->second.info;
+		return true;
+	}
+
+	bool FindI2CPBlindingInfoByBlindedKey (const i2p::data::BlindedPublicKey & blinded, I2CPBlindingInfo & info)
+	{
+		if (!blinded.IsValid () || !blinded.GetPublicKeyLen ()) return false;
+		// Blinding is one-way and a b33 address never carries the unblinded
+		// key, so the association to a registered destination has to be
+		// re-derived. Only destination endpoints carry an identity (key/hash
+		// endpoints name the unblinded key without one) and are therefore
+		// matchable here; the scan is bounded by the registry cap.
+		std::vector<I2CPBlindingInfo> candidates;
+		{
+			const uint64_t now = i2p::util::GetMillisecondsSinceEpoch ();
+			std::lock_guard<std::mutex> l (g_BlindingInfosMutex);
+			PruneBlindingInfos (now);
+			for (const auto & it : g_BlindingInfos)
+			{
+				const auto & candidate = it.second.info;
+				if (!candidate.identity) continue;
+				if ((uint16_t)candidate.signingKeyType != (uint16_t)blinded.GetSigType ()) continue;
+				candidates.push_back (candidate);
+			}
+		}
+		char date[9];
+		i2p::util::GetCurrentDate (date);
+		for (auto & candidate : candidates)
+		{
+			i2p::data::BlindedPublicKey derived (candidate.identity);
+			if (!derived.IsValid () || derived.GetBlindedSigType () != blinded.GetBlindedSigType ()) continue;
+			uint8_t blindedKey[i2p::crypto::EDDSA25519_PUBLIC_KEY_LENGTH];
+			const size_t len = derived.GetBlindedKey (date, blindedKey);
+			if (len && len == blinded.GetPublicKeyLen () && !memcmp (blindedKey, blinded.GetPublicKey (), len))
+			{
+				info = std::move (candidate);
+				return true;
+			}
+		}
+		return false;
+	}
+
+	std::vector<uint8_t> GetI2CPBlindingAuthSecret (const I2CPBlindingInfo & info)
+	{
+		// LeaseSet2::ExtractClientAuthData() consumes exactly 32 bytes: the
+		// per-client DH private key or the PSK. Anything else cannot be used
+		// and must not be passed on as if it were a key.
+		static constexpr size_t SECRET_LEN = 32;
+		switch (info.authType)
+		{
+		case eI2CPBlindingAuthDH:
+			if (info.authPrivateKey.size () == SECRET_LEN) return info.authPrivateKey;
+			return { };
+		case eI2CPBlindingAuthPSK:
+			if (info.secret.size () == SECRET_LEN) return std::vector<uint8_t> (info.secret.begin (), info.secret.end ());
+			return { };
+		case eI2CPBlindingAuthDHAndPSK:
+			if (info.authPrivateKey.size () == SECRET_LEN) return info.authPrivateKey;
+			if (info.secret.size () == SECRET_LEN) return std::vector<uint8_t> (info.secret.begin (), info.secret.end ());
+			return { };
+		default: return { };
+		}
+	}
+
+	size_t GetI2CPBlindingInfoCount ()
+	{
+		const uint64_t now = i2p::util::GetMillisecondsSinceEpoch ();
+		std::lock_guard<std::mutex> l (g_BlindingInfosMutex);
+		PruneBlindingInfos (now);
+		return g_BlindingInfos.size ();
+	}
+
+	void ClearI2CPBlindingInfos ()
+	{
+		std::lock_guard<std::mutex> l (g_BlindingInfosMutex);
+		g_BlindingInfos.clear ();
+	}
 
 	I2CPDestination::I2CPDestination (boost::asio::io_context & service, std::shared_ptr<I2CPSession> owner,
 		std::shared_ptr<const i2p::data::IdentityEx> identity, bool isPublic, bool isSameThread,
@@ -138,6 +527,13 @@ namespace client
 		, m_LeaseSetCreationTimer (service)
 		, m_ReadinessCheckTimer (service)
 	{
+		// ClientConnectionRunner parses i2cp.leaseSetEncType once; the first
+		// listed selectable type is the preferred publication key. Only the
+		// installed key set is consulted for availability later, so an option
+		// naming a key the client never supplied degrades to the highest
+		// installed type instead of publishing a dead section.
+		m_ConfiguredPreferredCryptoType
+			= ParseLeaseSetEncryptionTypes (params[I2CP_PARAM_LEASESET_ENCRYPTION_TYPE]).preferred;
 	}
 
 	void I2CPDestination::Stop ()
@@ -179,6 +575,13 @@ namespace client
 		i2p::data::CryptoKeyType keyType, const uint8_t * key, size_t keyLen)
 	{
 		if (!key) return;
+		// Reject reserved EC types and hybrid parameter sets that the active
+		// provider cannot decapsulate instead of publishing a dead LeaseSet.
+		if (!i2p::data::IsSelectableLS2EncryptionKeyType (keyType))
+		{
+			LogPrint (eLogError, "I2CP: encryption key type ", (int)keyType, " is unavailable in this provider");
+			return;
+		}
 		const size_t expected = keyLen ? keyLen : 32;
 		if (expected != 32)
 		{
@@ -235,12 +638,48 @@ namespace client
 
 	bool I2CPDestination::SupportsEncryptionType (i2p::data::CryptoKeyType keyType) const
 	{
-		return m_EncryptionKeys.contains (keyType);
+		auto it = m_EncryptionKeys.find (keyType);
+		return it != m_EncryptionKeys.end () && it->second && it->second->decryptor && !it->second->pub.empty ();
+	}
+
+	bool I2CPDestination::IsAdvertisedEncryptionKey (i2p::data::CryptoKeyType keyType, const uint8_t * key,
+		size_t keyLen, const i2p::data::LeaseSet2 & ls, bool & verifiable) const
+	{
+		verifiable = false;
+		if (!key) return false;
+		if (keyType < i2p::data::CRYPTO_KEY_TYPE_ECIES_X25519_AEAD)
+		{
+			// ElGamal (and the legacy P-256 storage form) cannot be re-derived
+			// from the private scalar with the current providers. The caller
+			// keeps the install-time decryptor check for those types.
+			return true;
+		}
+		if (keyLen != 32) return false;
+		i2p::crypto::ECIESX25519AEADRatchetDecryptor decryptor (key, true);
+		// Pad to the longest key section any known LS2 type can advertise
+		// (ElGamal/P-256 are 256/64 bytes): IsEncryptionKey() compares
+		// section-length bytes, so the candidate buffer must be at least that
+		// long for every type we verify here.
+		std::vector<uint8_t> candidate (256, 0);
+		memcpy (candidate.data (), decryptor.GetPubicKey (), 32);
+		verifiable = true;
+		return ls.IsEncryptionKey (keyType, candidate.data ());
 	}
 
 	i2p::data::CryptoKeyType I2CPDestination::GetPreferredCryptoType () const
 	{
-		return !m_EncryptionKeys.empty () ? m_EncryptionKeys.rbegin ()->first : 0;
+		// The client's i2cp.leaseSetEncType list is the authority for the
+		// preferred key (Java publishes in that order). Only the numeric
+		// "highest installed type" was used before, which contradicts an
+		// explicit "4,6" order. A configured type that the client never
+		// supplied falls back to the highest installed one.
+		if (m_EncryptionKeys.empty ()) return 0;
+		if (m_ConfiguredPreferredCryptoType)
+		{
+			auto it = m_EncryptionKeys.find (m_ConfiguredPreferredCryptoType);
+			if (it != m_EncryptionKeys.end () && it->second && it->second->decryptor) return it->first;
+		}
+		return m_EncryptionKeys.rbegin ()->first;
 	}
 
 	i2p::data::CryptoKeyType I2CPDestination::GetRatchetsHighestCryptoType () const
@@ -657,13 +1096,16 @@ namespace client
 		m_Self.reset ();
 	}
 
-	I2CPSession::I2CPSession (I2CPServer & owner, std::shared_ptr<boost::asio::ip::tcp::socket> socket)
+	I2CPSession::I2CPSession (I2CPServer & owner, std::shared_ptr<boost::asio::ip::tcp::socket> socket,
+		bool connectionAdmitted)
 		: m_Owner (owner)
 		, m_Socket (socket)
 		, m_SessionID (0xFFFF)
 		, m_MessageID (0)
 		, m_IsSendAccepted (true)
 		, m_IsSending (false)
+		, m_ReadTimer (owner.GetService ())
+		, m_ConnectionAdmitted (connectionAdmitted)
 	{
 	}
 
@@ -691,11 +1133,47 @@ namespace client
 		Terminate ();
 	}
 
+	void I2CPSession::ArmReadTimeout (int seconds)
+	{
+		// cancel() on a timer without a pending wait is safe and each arm
+		// replaces the previous deadline, so no stale handler survives.
+		boost::system::error_code ec;
+		m_ReadTimer.cancel (ec);
+		m_ReadTimer.expires_after (std::chrono::seconds (seconds));
+		m_ReadTimer.async_wait ([s = shared_from_this ()] (const boost::system::error_code & ecode) {
+			s->HandleReadTimeout (ecode);
+		});
+	}
+
+	void I2CPSession::CancelReadTimeout ()
+	{
+		boost::system::error_code ec;
+		m_ReadTimer.cancel (ec);
+	}
+
+	void I2CPSession::HandleReadTimeout (const boost::system::error_code & ecode)
+	{
+		if (ecode == boost::asio::error::operation_aborted) return;
+		if (m_Terminated.load ())
+		{
+			// The connection is already being torn down; a delivered timer must
+			// not defer another termination.
+			return;
+		}
+		LogPrint (eLogWarning, "I2CP: Read timeout on control connection");
+		// Runs on the owner service thread, and TerminateInOwnerThread closes
+		// the socket, which aborts the pending read.
+		Terminate ();
+	}
+
 	void I2CPSession::ReadProtocolByte ()
 	{
 		auto socket = m_Socket;
 		if (socket)
 		{
+			// The protocol byte is part of the handshake: a peer that connects
+			// and sends nothing must not hold the slot.
+			ArmReadTimeout (I2CP_HANDSHAKE_TIMEOUT);
 			auto s = shared_from_this ();
 			socket->async_read_some (boost::asio::buffer (m_Header, 1),
 				[s, socket] (const boost::system::error_code & ecode, std::size_t bytes_transferred)
@@ -716,59 +1194,55 @@ namespace client
 			LogPrint (eLogError, "I2CP: Can't receive header");
 			return;
 		}
-		// the handler keeps the socket alive: Terminate resets m_Socket, while a composed
-		// read holds a reference to the socket object until the whole read completes
-		boost::asio::async_read (*socket, boost::asio::buffer (m_Header, I2CP_HEADER_SIZE),
-			boost::asio::transfer_all (),
+		// The header is read incrementally so a peer that stalls in the middle
+		// of it is covered by the read deadline, while a connection that has
+		// not started a message yet is idle and must not be killed: established
+		// clients keep the socket open between messages.
+		if (!m_HandshakeComplete) ArmReadTimeout (I2CP_HANDSHAKE_TIMEOUT);
+		else if (m_HeaderReceived > 0) ArmReadTimeout (I2CP_BODY_TIMEOUT);
+		else CancelReadTimeout ();
+		// the handler keeps the socket alive: Terminate resets m_Socket, while a
+		// pending read holds a reference to the socket object until it completes
+		socket->async_read_some (
+			boost::asio::buffer (m_Header + m_HeaderReceived, I2CP_HEADER_SIZE - m_HeaderReceived),
 			[s = shared_from_this (), socket] (const boost::system::error_code & ecode, std::size_t bytes_transferred)
-			{ s->HandleReceivedHeader (ecode, bytes_transferred); });
+			{
+				if (ecode)
+				{
+					s->Terminate ();
+					return;
+				}
+				s->m_HeaderReceived += bytes_transferred;
+				if (s->m_HeaderReceived < I2CP_HEADER_SIZE)
+				{
+					s->ReceiveHeader ();
+					return;
+				}
+				s->m_HeaderReceived = 0;
+				s->HandleReceivedHeader ();
+			});
 	}
 
-	void I2CPSession::HandleReceivedHeader (const boost::system::error_code & ecode, std::size_t)
+	void I2CPSession::HandleReceivedHeader ()
 	{
-		if (ecode)
-			Terminate ();
-		else
+		m_PayloadLen = bufbe32toh (m_Header + I2CP_HEADER_LENGTH_OFFSET);
+		if (m_PayloadLen > I2CP_MAX_MESSAGE_LENGTH)
 		{
-			m_PayloadLen = bufbe32toh (m_Header + I2CP_HEADER_LENGTH_OFFSET);
-			if (m_PayloadLen > 0)
-			{
-				if (m_PayloadLen <= I2CP_MAX_MESSAGE_LENGTH)
-				{
-					if (!m_Socket) return;
-					boost::system::error_code ec;
-					size_t moreBytes = m_Socket->available (ec);
-					if (!ec)
-					{
-						if (moreBytes >= m_PayloadLen)
-						{
-							// read and process payload immediately if available
-							moreBytes = boost::asio::read (*m_Socket, boost::asio::buffer (m_Payload, m_PayloadLen),
-								boost::asio::transfer_all (), ec);
-							HandleReceivedPayload (ec, moreBytes);
-						}
-						else
-							ReceivePayload ();
-					}
-					else
-					{
-						LogPrint (eLogWarning, "I2CP: Socket error: ", ec.message ());
-						Terminate ();
-					}
-				}
-				else
-				{
-					LogPrint (eLogError, "I2CP: Unexpected payload length ", m_PayloadLen);
-					Terminate ();
-				}
-			}
-			else // no following payload
-			{
-				HandleMessage ();
-				if (m_Terminated.load ()) return;
-				ReceiveHeader (); // next message
-			}
+			LogPrint (eLogError, "I2CP: Unexpected payload length ", m_PayloadLen);
+			Terminate ();
+			return;
 		}
+		if (m_PayloadLen > 0)
+		{
+			ReceivePayload ();
+			return;
+		}
+		// no following payload
+		CancelReadTimeout ();
+		m_HandshakeComplete = true;
+		HandleMessage ();
+		if (m_Terminated.load ()) return;
+		ReceiveHeader (); // next message
 	}
 
 	void I2CPSession::ReceivePayload ()
@@ -779,6 +1253,10 @@ namespace client
 			LogPrint (eLogError, "I2CP: Can't receive payload");
 			return;
 		}
+		// A declared body must arrive within the body deadline; the synchronous
+		// available()/read() fast path is gone so no read blocks the service
+		// thread.
+		ArmReadTimeout (I2CP_BODY_TIMEOUT);
 		boost::asio::async_read (*socket, boost::asio::buffer (m_Payload, m_PayloadLen), boost::asio::transfer_all (),
 			[s = shared_from_this (), socket] (const boost::system::error_code & ecode, std::size_t bytes_transferred)
 			{ s->HandleReceivedPayload (ecode, bytes_transferred); });
@@ -787,14 +1265,16 @@ namespace client
 	void I2CPSession::HandleReceivedPayload (const boost::system::error_code & ecode, std::size_t)
 	{
 		if (ecode)
-			Terminate ();
-		else
 		{
-			HandleMessage ();
-			m_PayloadLen = 0;
-			if (m_Terminated.load ()) return;
-			ReceiveHeader (); // next message
+			Terminate ();
+			return;
 		}
+		CancelReadTimeout ();
+		m_HandshakeComplete = true;
+		HandleMessage ();
+		m_PayloadLen = 0;
+		if (m_Terminated.load ()) return;
+		ReceiveHeader (); // next message
 	}
 
 	void I2CPSession::HandleMessage ()
@@ -825,6 +1305,10 @@ namespace client
 	{
 		if (m_Terminated.exchange (true)) return;
 
+		// Stop the read deadline before the socket is closed: the pending timer
+		// handler holds a reference to this session and would otherwise keep it
+		// alive for up to the full timeout.
+		CancelReadTimeout ();
 		if (m_Destination)
 		{
 			m_Destination->Stop ();
@@ -850,6 +1334,9 @@ namespace client
 			m_Owner.RemoveSession (sessionID);
 			LogPrint (eLogDebug, "I2CP: Session ", sessionID, " terminated");
 		}
+		// The admission slot is released exactly once, and only when this
+		// session was actually charged for one.
+		if (m_ConnectionAdmitted && !m_ConnectionReleased.exchange (true)) m_Owner.ReleaseConnection ();
 	}
 
 	void I2CPSession::SendI2CPMessage (uint8_t type, const uint8_t * payload, size_t len)
@@ -1208,11 +1695,12 @@ namespace client
 		SendI2CPMessage (I2CP_SESSION_STATUS_MESSAGE, buf, 3);
 	}
 
-	void I2CPSession::SendMessageStatusMessage (uint32_t nonce, I2CPMessageStatus status)
+	void I2CPSession::SendMessageStatusMessage (uint32_t nonce, I2CPMessageStatus status, uint16_t sessionID)
 	{
 		if (!nonce) return; // don't send status with zero nonce
 		uint8_t buf[15];
-		htobe16buf (buf, m_SessionID.load ());
+		if (sessionID == 0xFFFF) sessionID = m_SessionID.load ();
+		htobe16buf (buf, sessionID);
 		htobe32buf (buf + 2, m_MessageID.fetch_add (1));
 		buf[6] = (uint8_t)status;
 		memset (buf + 7, 0, 4); // size
@@ -1256,27 +1744,93 @@ namespace client
 
 	void I2CPSession::CreateLeaseSetMessageHandler (const uint8_t * buf, size_t len)
 	{
-		size_t offset = 2 + i2p::crypto::DSA_PRIVATE_KEY_LENGTH + 256;
-		if (len < offset)
+		if (len < 2)
 		{
 			LogPrint (eLogError, "I2CP: CreateLeaseSetMessage is too short ", len);
 			return;
 		}
-		uint16_t sessionID = bufbe16toh (buf);
-		if (sessionID == m_SessionID.load ())
+		const uint16_t sessionID = bufbe16toh (buf);
+		if (sessionID != m_SessionID.load ())
 		{
-			if (m_Destination)
-			{
-				// we always assume this field as 20 bytes (DSA) regardless actual size
-				// instead of
-				//offset += m_Destination->GetIdentity ()->GetSigningPrivateKeyLen ();
-				m_Destination->SetEncryptionPrivateKey (
-					i2p::data::CRYPTO_KEY_TYPE_ELGAMAL, buf + 2 + i2p::crypto::DSA_PRIVATE_KEY_LENGTH);
-				m_Destination->LeaseSetCreated (buf + offset, len - offset);
-			}
-		}
-		else
 			LogPrint (eLogError, "I2CP: Unexpected sessionID ", sessionID);
+			return;
+		}
+		auto destination = m_Destination;
+		if (!destination)
+		{
+			LogPrint (eLogError, "I2CP: CreateLeaseSetMessage without a session destination");
+			return;
+		}
+		auto identity = destination->GetIdentity ();
+		if (!identity)
+		{
+			LogPrint (eLogError, "I2CP: CreateLeaseSetMessage without a session identity");
+			return;
+		}
+		// Java reads the signing private key with the session destination's
+		// signature type and the encryption private key with its crypto type. A
+		// LeaseSet (CLS1) is ElGamal-encrypted by definition, so a destination
+		// that is not an ElGamal destination must publish through CLS2 instead.
+		const size_t signingKeyLen = identity->GetSigningPrivateKeyLen ();
+		if (identity->GetCryptoKeyType () != i2p::data::CRYPTO_KEY_TYPE_ELGAMAL
+			|| identity->GetSigningKeyType () != i2p::data::SIGNING_KEY_TYPE_DSA_SHA1
+			|| signingKeyLen != i2p::crypto::DSA_PRIVATE_KEY_LENGTH || !signingKeyLen)
+		{
+			// Fail closed: the per-signature-type wire layout is only certain for
+			// DSA here, and a mis-sized offset would install an unrelated scalar
+			// as the destination's encryption key. DSA-only install (residual
+			// risk tracked in the audit notes) is preferable to guessing.
+			LogPrint (eLogError, "I2CP: CreateLeaseSet for signing type ", (int)identity->GetSigningKeyType (),
+				" and crypto type ", (int)identity->GetCryptoKeyType (),
+				" is not supported; use CreateLeaseSet2");
+			return;
+		}
+		const size_t encryptionKeyLen = 256; // ElGamal private key on the wire
+		const size_t offset = 2 + signingKeyLen + encryptionKeyLen;
+		if (len < offset + 1)
+		{
+			LogPrint (eLogError, "I2CP: CreateLeaseSetMessage is too short ", len);
+			return;
+		}
+		// The embedded LeaseSet must belong to this session's destination and
+		// carry a valid signature over the whole structure.
+		i2p::data::IdentityEx embedded (buf + offset, len - offset);
+		if (!embedded.GetFullLen () || embedded.GetFullLen () > len - offset)
+		{
+			LogPrint (eLogError, "I2CP: CreateLeaseSetMessage has no LeaseSet identity");
+			return;
+		}
+		if (embedded.GetIdentHash () != identity->GetIdentHash ())
+		{
+			LogPrint (eLogError, "I2CP: CreateLeaseSetMessage is for a foreign destination");
+			return;
+		}
+		uint64_t expires = 0;
+		if (!i2p::data::LeaseSetBufferValidate (buf + offset, len - offset, expires))
+		{
+			LogPrint (eLogError, "I2CP: Invalid LeaseSet in CreateLeaseSetMessage");
+			return;
+		}
+		// The LeaseSet must advertise this destination's own encryption public
+		// key, otherwise the private key below would decrypt for someone else.
+		const uint8_t * advertisedKey = buf + offset + embedded.GetFullLen ();
+		if (len - offset - embedded.GetFullLen () < 256
+			|| memcmp (advertisedKey, identity->GetEncryptionPublicKey (), 256))
+		{
+			LogPrint (eLogError, "I2CP: LeaseSet encryption key does not match the destination");
+			return;
+		}
+		const uint8_t * encryptionKey = buf + 2 + signingKeyLen;
+		// ElGamal public keys cannot be re-derived from the private scalar with
+		// the current providers, so the advertised-key comparison above is the
+		// available proof that both halves belong together.
+		destination->SetEncryptionPrivateKey (i2p::data::CRYPTO_KEY_TYPE_ELGAMAL, encryptionKey, encryptionKeyLen);
+		if (!destination->SupportsEncryptionType (i2p::data::CRYPTO_KEY_TYPE_ELGAMAL))
+		{
+			LogPrint (eLogError, "I2CP: Failed to install the LeaseSet encryption key");
+			return;
+		}
+		destination->LeaseSetCreated (buf + offset, len - offset);
 	}
 
 	void I2CPSession::CreateLeaseSet2MessageHandler (const uint8_t * buf, size_t len)
@@ -1287,168 +1841,215 @@ namespace client
 			return;
 		}
 		uint16_t sessionID = bufbe16toh (buf);
-		if (sessionID == m_SessionID.load ())
+		if (sessionID != m_SessionID.load ())
 		{
-			size_t offset = 2;
-			if (m_Destination)
+			LogPrint (eLogError, "I2CP: Unexpected sessionID ", sessionID);
+			return;
+		}
+		size_t offset = 2;
+		if (!m_Destination)
+		{
+			LogPrint (eLogError, "I2CP: CreateLeaseSet2Message without a session destination");
+			return;
+		}
+		uint8_t storeType = buf[offset];
+		offset++; // store type
+		i2p::data::LeaseSet2 ls (storeType, buf + offset, len - offset); // outer layer only for encrypted
+		if (!ls.IsValid ())
+		{
+			LogPrint (eLogError, "I2CP: Invalid LeaseSet2 of type ", storeType);
+			return;
+		}
+		offset += ls.GetBufferLen ();
+		if (storeType == i2p::data::NETDB_STORE_TYPE_META_LEASESET2)
+		{
+			// A MetaLeaseSet2 carries no private-key list on the wire (Java's
+			// CreateLeaseSet2Message writes one only for key-bearing store
+			// types), so requiring a count byte here rejected every valid meta
+			// message.
+			if (offset != len)
 			{
-				uint8_t storeType = buf[offset];
-				offset++; // store type
-				i2p::data::LeaseSet2 ls (storeType, buf + offset, len - offset); // outer layer only for encrypted
-				if (!ls.IsValid ())
+				LogPrint (eLogError, "I2CP: CreateLeaseSet2Message has trailing bytes");
+				return;
+			}
+			m_Destination->LeaseSet2Created (storeType, ls.GetBuffer (), ls.GetBufferLen ());
+			return;
+		}
+		// private keys
+		if (offset >= len)
+		{
+			LogPrint (eLogError, "I2CP: CreateLeaseSet2Message is too short for private keys");
+			return;
+		}
+		int numPrivateKeys = buf[offset];
+		offset++;
+		std::vector<std::pair<i2p::data::CryptoKeyType, std::vector<uint8_t>>> stagedKeys;
+		stagedKeys.reserve (numPrivateKeys > 0 ? numPrivateKeys : 0);
+		for (int i = 0; i < numPrivateKeys; i++)
+		{
+			if (offset + 4 > len) return;
+			uint16_t keyType = bufbe16toh (buf + offset);
+			offset += 2; // encryption type
+			uint16_t keyLen = bufbe16toh (buf + offset);
+			offset += 2; // private key length
+			const size_t expected = GetI2CPPrivateKeyLen (keyType);
+			if (!expected || keyLen != expected || offset + keyLen > len)
+			{
+				LogPrint (eLogError, "I2CP: bad private key length ", keyLen, " for type ", keyType);
+				return;
+			}
+			stagedKeys.emplace_back (static_cast<i2p::data::CryptoKeyType> (keyType),
+				std::vector<uint8_t> (buf + offset, buf + offset + keyLen));
+			offset += keyLen;
+		}
+		if (offset != len)
+		{
+			LogPrint (eLogError, "I2CP: CreateLeaseSet2Message has trailing bytes");
+			return;
+		}
+		// Java CreateLeaseSet2Message requires the private-key list to match the
+		// standard LS2 key sections exactly before installing any key or
+		// publishing the set. Only a standard LeaseSet2 carries comparable key
+		// sections; an encrypted outer layer has none.
+		const bool standardLeaseSet = storeType == i2p::data::NETDB_STORE_TYPE_STANDARD_LEASESET2;
+		if (standardLeaseSet)
+		{
+			if (stagedKeys.size () != ls.GetNumEncryptionKeys ())
+			{
+				LogPrint (eLogError, "I2CP: LeaseSet2 key count does not match private keys");
+				return;
+			}
+			for (size_t i = 0; i < stagedKeys.size (); ++i)
+			{
+				if (stagedKeys[i].first != ls.GetEncryptionKeyType (i))
 				{
-					LogPrint (eLogError, "I2CP: Invalid LeaseSet2 of type ", storeType);
+					LogPrint (eLogError, "I2CP: LeaseSet2 key type does not match private key ", i);
 					return;
 				}
-				offset += ls.GetBufferLen ();
-				// private keys
-				if (offset >= len)
+			}
+			// Every staged private key must derive the public key the LeaseSet
+			// advertises for that type; otherwise the session would publish a set
+			// whose traffic nobody (including this destination) can decrypt.
+			for (const auto & key : stagedKeys)
+			{
+				bool verifiable = false;
+				if (!m_Destination->IsAdvertisedEncryptionKey (
+						key.first, key.second.data (), key.second.size (), ls, verifiable))
 				{
-					LogPrint (eLogError, "I2CP: CreateLeaseSet2Message is too short for private keys");
+					LogPrint (eLogError, "I2CP: LeaseSet2 key type ", (int)key.first,
+						" does not match the private key");
 					return;
 				}
-				int numPrivateKeys = buf[offset];
-				offset++;
-				std::vector<std::pair<i2p::data::CryptoKeyType, std::vector<uint8_t>>> stagedKeys;
-				stagedKeys.reserve (numPrivateKeys > 0 ? numPrivateKeys : 0);
-				for (int i = 0; i < numPrivateKeys; i++)
-				{
-					if (offset + 4 > len) return;
-					uint16_t keyType = bufbe16toh (buf + offset);
-					offset += 2; // encryption type
-					uint16_t keyLen = bufbe16toh (buf + offset);
-					offset += 2; // private key length
-					const size_t expected = GetI2CPPrivateKeyLen (keyType);
-					if (!expected || keyLen != expected || offset + keyLen > len)
-					{
-						LogPrint (eLogError, "I2CP: bad private key length ", keyLen, " for type ", keyType);
-						return;
-					}
-					stagedKeys.emplace_back (static_cast<i2p::data::CryptoKeyType> (keyType),
-						std::vector<uint8_t> (buf + offset, buf + offset + keyLen));
-					offset += keyLen;
-				}
-				if (offset != len)
-				{
-					LogPrint (eLogError, "I2CP: CreateLeaseSet2Message has trailing bytes");
-					return;
-				}
-				// Java CreateLeaseSet2Message requires the private-key list to
-				// match the standard LS2 key sections exactly before installing
-				// any key or publishing the set.
-				if (storeType == i2p::data::NETDB_STORE_TYPE_STANDARD_LEASESET2)
-				{
-					if (stagedKeys.size () != ls.GetNumEncryptionKeys ())
-					{
-						LogPrint (eLogError, "I2CP: LeaseSet2 key count does not match private keys");
-						return;
-					}
-					for (size_t i = 0; i < stagedKeys.size (); ++i)
-					{
-						if (stagedKeys[i].first != ls.GetEncryptionKeyType (i))
-						{
-							LogPrint (eLogError, "I2CP: LeaseSet2 key type does not match private key ", i);
-							return;
-						}
-					}
-				}
-				for (const auto & key : stagedKeys)
-				{
-					if (key.first >= i2p::data::CRYPTO_KEY_TYPE_ECIES_X25519_AEAD)
-						m_Destination->SetECIESx25519EncryptionPrivateKey (
-							key.first, key.second.data (), key.second.size ());
-					else
-						m_Destination->SetEncryptionPrivateKey (key.first, key.second.data (), key.second.size ());
-				}
-
-				m_Destination->LeaseSet2Created (storeType, ls.GetBuffer (), ls.GetBufferLen ());
+				if (!verifiable)
+					LogPrint (eLogDebug, "I2CP: LeaseSet2 key type ", (int)key.first,
+						" public key cannot be re-derived; install-time check only");
 			}
 		}
-		else
-			LogPrint (eLogError, "I2CP: Unexpected sessionID ", sessionID);
+		for (const auto & key : stagedKeys)
+		{
+			if (key.first >= i2p::data::CRYPTO_KEY_TYPE_ECIES_X25519_AEAD)
+				m_Destination->SetECIESx25519EncryptionPrivateKey (
+					key.first, key.second.data (), key.second.size ());
+			else
+				m_Destination->SetEncryptionPrivateKey (key.first, key.second.data (), key.second.size ());
+			if (!m_Destination->SupportsEncryptionType (key.first))
+			{
+				// A partially installed key set would publish a LeaseSet that no
+				// peer can use for this type.
+				LogPrint (eLogError, "I2CP: failed to install LeaseSet2 encryption key type ", (int)key.first);
+				return;
+			}
+		}
+
+		m_Destination->LeaseSet2Created (storeType, ls.GetBuffer (), ls.GetBufferLen ());
 	}
 
 	void I2CPSession::SendMessageMessageHandler (const uint8_t * buf, size_t len)
 	{
-		if (len < 2)
-		{
-			LogPrint (eLogError, "I2CP: Send message is too short");
-			return;
-		}
-		uint16_t sessionID = bufbe16toh (buf);
-		if (sessionID == m_SessionID.load ())
-		{
-			size_t offset = 2;
-			if (m_Destination)
-			{
-				const uint8_t * ident = buf + offset;
-				size_t identSize = i2p::data::GetIdentityBufferLen (ident, len - offset);
-				if (identSize && offset <= len && identSize <= len - offset && len - offset - identSize >= 4)
-				{
-					offset += identSize;
-					uint32_t payloadLen = bufbe32toh (buf + offset);
-					// Subtraction form: a 32-bit size_t must not wrap when adding a
-					// hostile 32-bit payload length to the offset plus framing.
-					if (offset <= len && len - offset >= 8 && (size_t)payloadLen <= len - offset - 8)
-					{
-						offset += 4;
-						uint32_t nonce = bufbe32toh (buf + offset + payloadLen);
-						if (m_Destination->IsReady ())
-						{
-							if (m_IsSendAccepted.load ())
-								SendMessageStatusMessage (nonce, eI2CPMessageStatusAccepted); // accepted
-							// The cache is indexed by the parsed identity hash, so
-							// every signature/crypto type keys its own entry and a
-							// crafted identity cannot reuse another peer's session.
-							auto remoteIdentHash = GetI2CPRoutingSessionKey (ident, identSize);
-							std::shared_ptr<i2p::garlic::GarlicRoutingSession> remoteSession;
-							{
-								std::lock_guard<std::mutex> l (m_RoutingSessionsMutex);
-								auto it = m_RoutingSessions.find (remoteIdentHash);
-								if (it != m_RoutingSessions.end ())
-								{
-									if (!it->second->IsTerminated () && it->second->IsReadyToSend ())
-										remoteSession = it->second;
-									else
-										m_RoutingSessions.erase (it);
-								}
-							}
-							const bool sent
-								= remoteSession && m_Destination->SendMsg (buf + offset, payloadLen, remoteSession);
-							if (sent)
-								SendMessageStatusMessage (nonce, eI2CPMessageStatusGuaranteedSuccess);
-							else
-							{
-								// SendMsgTo owns the single terminal status for the
-								// fallback path; SendMsg must not emit one itself.
-								m_Destination->SendMsgTo (buf + offset, payloadLen, remoteIdentHash, nonce);
-							}
-						}
-						else
-						{
-							LogPrint (eLogInfo, "I2CP: Destination is not ready");
-							SendMessageStatusMessage (nonce, eI2CPMessageStatusNoLocalTunnels);
-						}
-					}
-					else
-						LogPrint (eLogError, "I2CP: Cannot send message, too big");
-				}
-				else
-					LogPrint (eLogError, "I2CP: Invalid identity");
-			}
-		}
-		else
-			LogPrint (eLogError, "I2CP: Unexpected sessionID ", sessionID);
+		SendMessageRequest (buf, len, false);
 	}
 
 	void I2CPSession::SendMessageExpiresMessageHandler (const uint8_t * buf, size_t len)
 	{
-		if (len < 8)
+		// flags(2) and expiration(6) follow the nonce; keep them instead of
+		// truncating them away. The expiration is enforced as a deadline and the
+		// flags are carried through the request.
+		SendMessageRequest (buf, len, true);
+	}
+
+	void I2CPSession::SendMessageRequest (const uint8_t * buf, size_t len, bool withExpiration)
+	{
+		I2CPSendMessageRequest request;
+		if (!ParseI2CPSendMessage (buf, len, withExpiration, request))
 		{
-			LogPrint (eLogError, "I2CP: Send message expires is too short");
+			// The control connection stays open: a single malformed send is not a
+			// protocol violation. A status reply needs the nonce, which a
+			// malformed layout does not reliably expose, so only log.
+			LogPrint (eLogError, "I2CP: Malformed send message ", len);
+			if (request.hasNonce)
+				SendMessageStatusMessage (request.nonce, eI2CPMessageStatusBadMessage, request.sessionID);
 			return;
 		}
-		SendMessageMessageHandler (buf, len - 8); // ignore flags(2) and expiration(6)
+		uint64_t now = i2p::util::GetMillisecondsSinceEpoch ();
+		switch (CheckI2CPSendMessage (request, m_SessionID.load (), m_Destination != nullptr, now))
+		{
+		case I2CPSendMessageCheck::BadSession:
+			LogPrint (eLogWarning, "I2CP: Send message for an unknown session ", request.sessionID);
+			SendMessageStatusMessage (request.nonce, eI2CPMessageStatusBadSession, request.sessionID);
+			return;
+		case I2CPSendMessageCheck::BadMessage:
+			LogPrint (eLogError, "I2CP: Send message has no usable destination or payload");
+			SendMessageStatusMessage (request.nonce, eI2CPMessageStatusBadMessage, request.sessionID);
+			return;
+		case I2CPSendMessageCheck::Expired:
+			// Java answers SendFailureExpired() without touching the tunnel pool.
+			LogPrint (eLogDebug, "I2CP: Send message expired");
+			SendMessageStatusMessage (request.nonce, eI2CPMessageStatusSendFailureExpired);
+			return;
+		case I2CPSendMessageCheck::Ok: break;
+		}
+		if (request.flags)
+		{
+			// Proposal 167 defines no bit yet; an undefined bit must not change
+			// the delivery semantics of the send. The parsed value is kept so a
+			// future definition does not silently disappear here.
+			LogPrint (eLogWarning, "I2CP: Send message carries undefined flags ", request.flags);
+		}
+
+		if (!m_Destination->IsReady ())
+		{
+			LogPrint (eLogInfo, "I2CP: Destination is not ready");
+			SendMessageStatusMessage (request.nonce, eI2CPMessageStatusNoLocalTunnels);
+			return;
+		}
+		if (m_IsSendAccepted.load ())
+			SendMessageStatusMessage (request.nonce, eI2CPMessageStatusAccepted); // accepted
+		// The cache is indexed by the parsed identity hash, so every
+		// signature/crypto type keys its own entry and a crafted identity cannot
+		// reuse another peer's session.
+		auto remoteIdentHash = GetI2CPRoutingSessionKey (request.identity, request.identityLen);
+		std::shared_ptr<i2p::garlic::GarlicRoutingSession> remoteSession;
+		{
+			std::lock_guard<std::mutex> l (m_RoutingSessionsMutex);
+			auto it = m_RoutingSessions.find (remoteIdentHash);
+			if (it != m_RoutingSessions.end ())
+			{
+				if (!it->second->IsTerminated () && it->second->IsReadyToSend ())
+					remoteSession = it->second;
+				else
+					m_RoutingSessions.erase (it);
+			}
+		}
+		const bool sent = remoteSession
+			&& m_Destination->SendMsg (request.payload, request.payloadLen, remoteSession);
+		if (sent)
+			SendMessageStatusMessage (request.nonce, eI2CPMessageStatusGuaranteedSuccess);
+		else
+		{
+			// SendMsgTo owns the single terminal status for the fallback path;
+			// SendMsg must not emit one itself.
+			m_Destination->SendMsgTo (request.payload, request.payloadLen, remoteIdentHash, request.nonce);
+		}
 	}
 
 	void I2CPSession::HostLookupMessageHandler (const uint8_t * buf, size_t len)
@@ -1546,10 +2147,40 @@ namespace client
 					SendHostReplyMessage (requestID, sessionID, ls->GetIdentity (), requestOptions, ls);
 				else
 				{
+					// A client-authorised b33 destination can only be decrypted
+					// with the material the client registered through a
+					// BlindingInfo message. The record is keyed by the unblinded
+					// signing key, so it is looked up through today's blinded key;
+					// without usable material the reply tells the client which
+					// part is missing instead of reporting a bare failure.
+					std::vector<uint8_t> secret;
+					if (blinded)
+					{
+						I2CPBlindingInfo blindingInfo;
+						if (FindI2CPBlindingInfoByBlindedKey (*blinded, blindingInfo))
+						{
+							secret = GetI2CPBlindingAuthSecret (blindingInfo);
+							const uint8_t result
+								= GetI2CPHostReplyResultForAuth (blindingInfo.authType, !secret.empty ());
+							if (result != eI2CPHostReplySuccess)
+							{
+								// Never log the key or the secret, only the scheme.
+								LogPrint (eLogWarning, "I2CP: Blinded LeaseSet needs client auth type ",
+									(int)blindingInfo.authType);
+								SendHostReplyMessage (requestID, sessionID, nullptr, requestOptions, nullptr, result);
+								return;
+							}
+						}
+					}
 					auto s = shared_from_this ();
-					auto complete = [s, requestID, sessionID, blinded, requestOptions] (
+					auto complete = [s, requestID, sessionID, blinded, requestOptions, secret] (
 										std::shared_ptr<i2p::data::LeaseSet> leaseSet)
 					{
+						// The captured secret keeps the client-auth bytes alive for
+						// the whole pending request, so no future asynchronous copy
+						// can read a released buffer.
+						(void)secret;
+						uint8_t result = eI2CPHostReplySuccess;
 						// A b33 LeaseSet is stored under the blinded store key.
 						// Its inner identity is necessarily different from the
 						// unblinded BlindingInfo destination, so compare the
@@ -1561,13 +2192,23 @@ namespace client
 							{
 								LogPrint (eLogError, "I2CP: Blinded LeaseSet store key does not match request");
 								leaseSet = nullptr;
+								// The reply arrived but could not be authenticated
+								// or decrypted: that is DECRYPTION_FAILURE, not a
+								// plain lookup failure.
+								result = eI2CPHostReplyDecryptionFailure;
 							}
 						}
-						s->SendHostReplyMessage (requestID, sessionID, leaseSet ? leaseSet->GetIdentity () : nullptr,
-							requestOptions, std::move (leaseSet));
+						// A null completion without a decryption result is a
+						// lookup that timed out or found no LeaseSet.
+						if (!leaseSet && result == eI2CPHostReplySuccess)
+							result = eI2CPHostReplyLeaseSetLookupFailure;
+						s->SendHostReplyMessage (requestID, sessionID,
+							leaseSet ? leaseSet->GetIdentity () : nullptr, requestOptions, std::move (leaseSet),
+							result);
 					};
 					if (blinded)
-						destination->RequestDestinationWithEncryptedLeaseSet (blinded, complete);
+						destination->RequestDestinationWithEncryptedLeaseSet (blinded, complete,
+							secret.empty () ? nullptr : secret.data (), secret.size ());
 					else
 						destination->RequestDestination (ident, complete);
 				}
@@ -1584,237 +2225,69 @@ namespace client
 		// BlindingInfoMessage.doReadMessage(): sessionId(2), flags(1),
 		// endpointType(1), blindType(2), expiration seconds(4), endpoint,
 		// optional 32-byte auth private key, optional 1-byte-length secret.
-		constexpr uint8_t FLAG_AUTH = 0x0f;
-		constexpr uint8_t FLAG_SECRET = 0x10;
-		constexpr uint8_t TYPE_HASH = 0;
-		constexpr uint8_t TYPE_HOST = 1;
-		constexpr uint8_t TYPE_DEST = 2;
-		constexpr uint8_t TYPE_KEY = 3;
 		if (len < 10)
 		{
 			LogPrint (eLogError, "I2CP: BlindingInfo message is too short ", len);
 			Terminate ();
 			return;
 		}
-		size_t offset = 0;
-		uint16_t sessionID = bufbe16toh (buf + offset);
-		offset += 2;
+		const uint16_t sessionID = bufbe16toh (buf);
 		if (sessionID != m_SessionID.load () && sessionID != 0xFFFF)
 		{
 			LogPrint (eLogWarning, "I2CP: BlindingInfo for unexpected session ", sessionID);
 			return;
 		}
-		uint8_t flags = buf[offset++];
-		uint8_t authType = flags & FLAG_AUTH;
-		if (authType != 0 && authType != 1 && authType != 3) // none, DH, PSK
+		I2CPBlindingInfo info;
+		std::string error;
+		if (ParseI2CPBlindingInfoMessage (buf, len, info, error) != eI2CPBlindingInfoOk)
 		{
-			LogPrint (eLogError, "I2CP: BlindingInfo bad auth type ", (int)authType);
+			// Malformed and unsupported requests are protocol violations, as
+			// before; the diagnostic never contains key or secret bytes.
+			LogPrint (eLogError, "I2CP: BlindingInfo ", error);
 			Terminate ();
 			return;
 		}
-		uint8_t endpointType = buf[offset++];
-		uint16_t blindType = bufbe16toh (buf + offset);
-		offset += 2;
+		if (info.endpointType == eI2CPBlindingEndpointHash || info.endpointType == eI2CPBlindingEndpointHost)
 		{
-			std::unique_ptr<i2p::crypto::Verifier> verifier (
-				i2p::data::IdentityEx::CreateVerifier ((i2p::data::SigningKeyType)blindType));
-			if (!verifier)
-			{
-				LogPrint (eLogError, "I2CP: BlindingInfo unsupported blind type ", blindType);
-				Terminate ();
-				return;
-			}
-		}
-		if (offset + 4 > len)
-		{
-			LogPrint (eLogError, "I2CP: BlindingInfo message is truncated");
-			Terminate ();
-			return;
-		}
-		uint64_t expiration = (uint64_t)bufbe32toh (buf + offset) * 1000; // milliseconds
-		offset += 4;
-
-		BlindingInfo info;
-		info.blindType = (i2p::data::SigningKeyType)blindType;
-		info.expiration = expiration;
-		BlindingInfoKey key;
-		std::string host;
-		switch (endpointType)
-		{
-		case TYPE_HASH:
-			if (offset + 32 > len)
-			{
-				LogPrint (eLogError, "I2CP: BlindingInfo hash is truncated");
-				Terminate ();
-				return;
-			}
-			offset += 32;
-			break;
-		case TYPE_HOST:
-		{
-			if (offset + 1 > len)
-			{
-				LogPrint (eLogError, "I2CP: BlindingInfo host is truncated");
-				Terminate ();
-				return;
-			}
-			uint8_t hostLen = buf[offset++];
-			if (!hostLen || offset + hostLen > len)
-			{
-				LogPrint (eLogError, "I2CP: BlindingInfo host is malformed");
-				Terminate ();
-				return;
-			}
-			host.assign ((const char *)buf + offset, hostLen);
-			offset += hostLen;
-			break;
-		}
-		case TYPE_DEST:
-		{
-			auto identity = std::make_shared<i2p::data::IdentityEx> ();
-			size_t identityLen = identity->FromBuffer (buf + offset, len - offset);
-			if (!identityLen || offset + identityLen > len)
-			{
-				LogPrint (eLogError, "I2CP: BlindingInfo destination is malformed");
-				Terminate ();
-				return;
-			}
-			auto identityKey = identity->GetSigningPublicKeyBuffer ();
-			auto identityKeyLen = identity->GetSigningPublicKeyLen ();
-			if (!identityKey || !identityKeyLen)
-			{
-				LogPrint (eLogError, "I2CP: BlindingInfo destination has no signing public key");
-				Terminate ();
-				return;
-			}
-			key = MakeBlindingInfoKey (identity->GetSigningKeyType (), identityKey, identityKeyLen);
-			info.identity = identity;
-			offset += identityLen;
-			break;
-		}
-		case TYPE_KEY:
-		{
-			if (offset + 2 > len)
-			{
-				LogPrint (eLogError, "I2CP: BlindingInfo key type is truncated");
-				Terminate ();
-				return;
-			}
-			uint16_t keyType = bufbe16toh (buf + offset);
-			offset += 2;
-			std::unique_ptr<i2p::crypto::Verifier> verifier (
-				i2p::data::IdentityEx::CreateVerifier ((i2p::data::SigningKeyType)keyType));
-			if (!verifier)
-			{
-				LogPrint (eLogError, "I2CP: BlindingInfo unsupported endpoint key type ", keyType);
-				Terminate ();
-				return;
-			}
-			auto keyLen = verifier->GetPublicKeyLen ();
-			if (!keyLen || offset + keyLen > len)
-			{
-				LogPrint (eLogError, "I2CP: BlindingInfo key is truncated");
-				Terminate ();
-				return;
-			}
-			key = MakeBlindingInfoKey ((i2p::data::SigningKeyType)keyType, buf + offset, keyLen);
-			offset += keyLen;
-			break;
-		}
-		default:
-			LogPrint (eLogError, "I2CP: BlindingInfo bad endpoint type ", (int)endpointType);
-			Terminate ();
-			return;
-		}
-		info.authType = authType;
-		if (authType != 0)
-		{
-			if (offset + 32 > len)
-			{
-				LogPrint (eLogError, "I2CP: BlindingInfo auth key is truncated");
-				Terminate ();
-				return;
-			}
-			info.authPrivateKey.assign (buf + offset, buf + offset + 32);
-			offset += 32;
-		}
-		if (flags & FLAG_SECRET)
-		{
-			if (offset + 1 > len)
-			{
-				LogPrint (eLogError, "I2CP: BlindingInfo secret is truncated");
-				Terminate ();
-				return;
-			}
-			uint8_t secretLen = buf[offset++];
-			if (offset + secretLen > len)
-			{
-				LogPrint (eLogError, "I2CP: BlindingInfo secret is malformed");
-				Terminate ();
-				return;
-			}
-			info.secret.assign ((const char *)buf + offset, secretLen);
-			offset += secretLen;
-		}
-		if (offset != len)
-		{
-			LogPrint (eLogError, "I2CP: BlindingInfo has ", len - offset, " trailing bytes");
-			Terminate ();
-			return;
-		}
-		if (endpointType == TYPE_HASH || endpointType == TYPE_HOST)
-		{
-			// Java's handleBlindingInfo() cannot use these either.
-			LogPrint (eLogWarning, "I2CP: BlindingInfo endpoint type ", (int)endpointType, " is not supported",
-				endpointType == TYPE_HOST ? (": " + host) : "");
+			// Java's handleBlindingInfo() cannot use these either: the record
+			// cannot be matched to a LeaseSet store key.
+			LogPrint (eLogWarning, "I2CP: BlindingInfo endpoint type ", (int)info.endpointType, " is not supported",
+				info.endpointType == eI2CPBlindingEndpointHost ? (": " + info.host) : "");
 			return;
 		}
 		LogPrint (eLogDebug, "I2CP: BlindingInfo for ",
-			info.identity ? info.identity->GetIdentHash ().ToBase32 () : "a signing key", ", auth type ", (int)authType,
-			", expires ", expiration);
-		StoreBlindingInfo (std::move (key), std::move (info));
+			info.identity ? info.identity->GetIdentHash ().ToBase32 () : "a signing key", ", auth type ",
+			(int)info.authType, ", expires ", info.expiration);
+		// Only the record and the scheme are logged: the auth private key and
+		// the secret never reach a log line.
+		StoreI2CPBlindingInfo (std::move (info));
 	}
 
 	void I2CPSession::SendHostReplyMessage (uint32_t requestID, uint16_t sessionID,
 		std::shared_ptr<const i2p::data::IdentityEx> identity, bool withOptions,
-		std::shared_ptr<const i2p::data::LeaseSet> leaseSet)
+		std::shared_ptr<const i2p::data::LeaseSet> leaseSet, uint8_t result)
 	{
-		if (identity)
+		std::vector<uint8_t> options;
+		if (withOptions && result == eI2CPHostReplySuccess && identity)
 		{
-			std::vector<uint8_t> options;
-			if (withOptions)
+			// Proposal 167: types 2-4 return the standard LeaseSet2 options
+			// mapping when available, otherwise an empty Mapping.
+			if (leaseSet && leaseSet->GetStoreType () == i2p::data::NETDB_STORE_TYPE_STANDARD_LEASESET2)
 			{
-				// Proposal 167: types 2-4 return the standard LeaseSet2 options
-				// mapping when available, otherwise an empty Mapping.
-				if (leaseSet && leaseSet->GetStoreType () == i2p::data::NETDB_STORE_TYPE_STANDARD_LEASESET2)
+				const auto & properties = static_cast<const i2p::data::LeaseSet2 *> (leaseSet.get ())->GetProperties ();
+				if (!properties.IsEmpty ())
 				{
-					const auto & properties
-						= static_cast<const i2p::data::LeaseSet2 *> (leaseSet.get ())->GetProperties ();
-					if (!properties.IsEmpty ())
-					{
-						options.resize (4096);
-						options.resize (properties.ToBuffer (options.data (), options.size ()));
-					}
+					options.resize (4096);
+					options.resize (properties.ToBuffer (options.data (), options.size ()));
 				}
-				if (options.empty ()) options = { 0, 0 };
 			}
-			size_t l = identity->GetFullLen () + 7 + options.size ();
-			std::vector<uint8_t> buf (l);
-			htobe16buf (buf.data (), sessionID);
-			htobe32buf (buf.data () + 2, requestID);
-			buf[6] = 0; // result code
-			identity->ToBuffer (buf.data () + 7, identity->GetFullLen ());
-			if (!options.empty ()) memcpy (buf.data () + 7 + identity->GetFullLen (), options.data (), options.size ());
-			SendI2CPMessage (I2CP_HOST_REPLY_MESSAGE, buf.data (), l);
+			if (options.empty ()) options = { 0, 0 };
 		}
-		else
-		{
-			uint8_t buf[7];
-			htobe16buf (buf, sessionID);
-			htobe32buf (buf + 2, requestID);
-			buf[6] = 1; // result code
-			SendI2CPMessage (I2CP_HOST_REPLY_MESSAGE, buf, 7);
-		}
+		// Success is framed exactly as before (identity + optional options with
+		// result 0); every failure is the 7-byte layout with the Java result
+		// code, so a client can tell a missing secret/key from a missing set.
+		auto payload = BuildI2CPHostReplyPayload (requestID, sessionID, std::move (identity), options, result);
+		SendI2CPMessage (I2CP_HOST_REPLY_MESSAGE, payload.data (), payload.size ());
 	}
 
 	void I2CPSession::DestLookupMessageHandler (const uint8_t * buf, size_t len)
@@ -1902,6 +2375,7 @@ namespace client
 	I2CPServer::I2CPServer (const std::string & interface, uint16_t port, bool isSingleThread)
 		: RunnableService ("I2CP")
 		, m_IsSingleThread (isSingleThread)
+		, m_AdmissionPolicy (ReadI2CPAdmissionPolicy ())
 		, m_Acceptor (GetIOService (), boost::asio::ip::tcp::endpoint (boost::asio::ip::make_address (interface), port))
 	{
 		memset (m_MessagesHandlers, 0, sizeof (m_MessagesHandlers));
@@ -1991,14 +2465,24 @@ namespace client
 		{
 			boost::system::error_code ec;
 			auto ep = socket->remote_endpoint (ec);
-			if (!ec)
+			if (!ec && TryAcquireConnection ())
 			{
 				LogPrint (eLogDebug, "I2CP: New connection from ", ep);
-				auto session = std::make_shared<I2CPSession> (*this, socket);
+				auto session = std::make_shared<I2CPSession> (*this, socket, true);
 				session->Start ();
 			}
 			else
-				LogPrint (eLogError, "I2CP: Incoming connection error ", ec.message ());
+			{
+				// No I2CP message has been exchanged yet, so there is no
+				// session to answer with STATUS REFUSED: close the socket and
+				// keep the admission slot free for a real client.
+				if (ec) LogPrint (eLogError, "I2CP: Incoming connection error ", ec.message ());
+				else LogPrint (eLogWarning, "I2CP: Refused connection, ", GetNumConnections (), " of ",
+							 m_AdmissionPolicy.maxConnections, " in use");
+				boost::system::error_code closeEc;
+				socket->shutdown (boost::asio::ip::tcp::socket::shutdown_both, closeEc);
+				socket->close (closeEc);
+			}
 		}
 		else
 			LogPrint (eLogError, "I2CP: Accept error: ", ecode.message ());
@@ -2006,10 +2490,37 @@ namespace client
 		if (ecode != boost::asio::error::operation_aborted) Accept ();
 	}
 
+	bool I2CPServer::TryAcquireConnection ()
+	{
+		// Compare-and-increment under the admission policy: a rejected accept
+		// never charges a slot, and ReleaseConnection() can therefore never
+		// underflow.
+		size_t current = m_NumConnections.load ();
+		do
+		{
+			if (!m_AdmissionPolicy.AcceptConnection (current)) return false;
+		} while (!m_NumConnections.compare_exchange_weak (current, current + 1));
+		return true;
+	}
+
+	void I2CPServer::ReleaseConnection ()
+	{
+		size_t current = m_NumConnections.load ();
+		while (current > 0 && !m_NumConnections.compare_exchange_weak (current, current - 1))
+		{
+		}
+	}
+
 	bool I2CPServer::InsertSession (std::shared_ptr<I2CPSession> session, uint16_t sessionID)
 	{
 		if (!session || sessionID == 0xFFFF) return false;
 		std::lock_guard<std::mutex> l (m_SessionsMutex);
+		if (!m_AdmissionPolicy.AcceptSession (m_Sessions.size ()))
+		{
+			LogPrint (eLogWarning, "I2CP: Refused session, ", m_Sessions.size (), " of ", m_AdmissionPolicy.maxSessions,
+				" in use");
+			return false;
+		}
 		if (!m_Sessions.emplace (sessionID, session).second)
 		{
 			LogPrint (eLogError, "I2CP: Duplicate session id ", sessionID);

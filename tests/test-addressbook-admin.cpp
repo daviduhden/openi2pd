@@ -5,18 +5,26 @@
  * openi2pd: test address-book administration.
  *
  * Offline checks for Java-compatible name validation, bounded add/replace/
- * remove semantics and shared-identity reference handling. No filesystem,
- * network, resolver or router is started.
+ * remove semantics, shared-identity reference handling, subscription-URL
+ * validation and the atomic subscriptions.txt round trip. No socket, resolver,
+ * destination, timer or thread is started; the only filesystem use is an
+ * isolated temporary data directory.
  */
 
 #include <cassert>
+#include <chrono>
+#include <filesystem>
+#include <fstream>
+#include <iterator>
 #include <map>
 #include <memory>
 #include <sstream>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "AddressBook.h"
+#include "FS.h"
 #include "Identity.h"
 
 namespace
@@ -161,6 +169,149 @@ void TestDeletedHosts ()
 	// An explicit add clears matching tombstone patterns.
 	assert (book->GetDeletedHosts (10).empty ());
 }
+
+void TestSubscriptionValidation ()
+{
+	using i2p::client::IsValidSubscriptionURL;
+	auto keys = i2p::data::PrivateKeys::CreateRandomKeys (
+		i2p::data::SIGNING_KEY_TYPE_EDDSA_SHA512_ED25519, i2p::data::CRYPTO_KEY_TYPE_ECIES_X25519_AEAD, true);
+	const auto b32 = keys.GetPublic ()->GetIdentHash ().ToBase32 ();
+
+	std::string error;
+	const char * accepted[] = {
+		"http://stats.i2p/hosts",
+		"https://sub.home.i2p:8443/hosts?format=hosts",
+		"HTTP://STATS.I2P/HOSTS",
+	};
+	for (const char * url : accepted)
+	{
+		assert (IsValidSubscriptionURL (url, error));
+		assert (error.empty ());
+	}
+	// A base32 destination host resolves without an address-book entry, so it
+	// stays a valid I2P-only source.
+	const std::string b32HostSource = "http://" + b32 + ".b32.i2p/hosts";
+	assert (IsValidSubscriptionURL (b32HostSource, error));
+	assert (error.empty ());
+
+	const char * rejected[] = {
+		"",
+		"ftp://stats.i2p/hosts",
+		"stats.i2p/hosts",
+		"http://",
+		"http:///hosts",
+		"http://user:pass@stats.i2p/hosts",
+		"http://stats.i2p:pass@stats.i2p/hosts",
+		"http://stats.i2p/hosts#fragment",
+		"http://stats.i2p/ho sts",
+		"http://stats.i2p/hosts\t",
+		"http://stats.i2p/hosts\n",
+		// Cleartext hosts are refused: a subscription stays an I2P fetch.
+		"http://example.com/hosts",
+		"http://127.0.0.1/hosts",
+		"http://[::1]/hosts",
+		// Port and authority bounds.
+		"http://stats.i2p:/hosts",
+		"http://stats.i2p:0/hosts",
+		"http://stats.i2p:70000/hosts",
+		"http://stats.i2p:80x/hosts",
+		"http://stats.i2p./hosts",
+	};
+	for (const char * url : rejected)
+	{
+		assert (!IsValidSubscriptionURL (url, error));
+		assert (!error.empty ());
+	}
+	assert (!IsValidSubscriptionURL (std::string ("http://stats.i2p/") + std::string (600, 'a'), error));
+	assert (!error.empty ());
+}
+
+void TestSubscriptionRoundTrip ()
+{
+	const auto root = std::filesystem::temp_directory_path ()
+		/ ("openi2pd-addressbook-subscriptions-"
+			+ std::to_string (std::chrono::steady_clock::now ().time_since_epoch ().count ()));
+	std::filesystem::create_directories (root);
+	// The subscription list lives in the data directory, not in storage.
+	i2p::fs::DetectDataDir (root.string (), false);
+	const auto file = i2p::fs::DataDirPath ("subscriptions.txt");
+
+	auto storage = std::make_unique<FakeStorage> ();
+	i2p::client::AddressBook book (std::move (storage));
+	std::string error;
+
+	assert (book.GetSubscriptions (16).empty ());
+	assert (book.AddSubscription ("http://stats.i2p/hosts", error));
+	assert (error.empty ());
+	// Surrounding whitespace is trimmed; the stored value is the clean URL.
+	assert (book.AddSubscription ("  https://other.i2p/hosts?format=hosts  ", error));
+	assert (error.empty ());
+
+	auto list = book.GetSubscriptions (16);
+	assert (list.size () == 2);
+	assert (list[0] == "http://stats.i2p/hosts");
+	assert (list[1] == "https://other.i2p/hosts?format=hosts");
+	assert (book.GetSubscriptions (1).size () == 1);
+	assert (book.GetSubscriptions (0).size () == 2); // 0 selects the stored cap
+
+	// Duplicates and invalid sources never reach the list.
+	assert (!book.AddSubscription ("http://stats.i2p/hosts", error));
+	assert (!error.empty ());
+	assert (!book.AddSubscription ("ftp://stats.i2p/hosts", error));
+	assert (!book.AddSubscription ("http://user:pass@stats.i2p/hosts", error));
+	assert (!book.AddSubscription ("http://stats.i2p/hosts#frag", error));
+	assert (book.GetSubscriptions (16).size () == 2);
+
+	std::string contents;
+	{
+		std::ifstream saved (file);
+		assert (saved.is_open ());
+		contents.assign (std::istreambuf_iterator<char> (saved), std::istreambuf_iterator<char> ());
+	}
+	assert (contents.find ("http://stats.i2p/hosts\n") != std::string::npos);
+	assert (contents.find ("https://other.i2p/hosts?format=hosts\n") != std::string::npos);
+	assert (contents.find ("user:pass") == std::string::npos);
+	// The atomic replacement leaves no staging file behind.
+	assert (std::filesystem::exists (file));
+	size_t staging = 0;
+	for (const auto & entry : std::filesystem::directory_iterator (root))
+		if (entry.is_regular_file ()
+			&& entry.path ().filename ().string ().find (".tmp-") != std::string::npos)
+			staging++;
+	assert (staging == 0);
+
+	// Remove: validation first, then an exact match.
+	assert (!book.RemoveSubscription ("ftp://stats.i2p/hosts", error));
+	assert (!error.empty ());
+	assert (!book.RemoveSubscription ("http://absent.i2p/hosts", error));
+	assert (!error.empty ());
+	assert (book.RemoveSubscription ("http://stats.i2p/hosts", error));
+	assert (error.empty ());
+	list = book.GetSubscriptions (16);
+	assert (list.size () == 1 && list[0] == "https://other.i2p/hosts?format=hosts");
+	assert (book.RemoveSubscription ("https://other.i2p/hosts?format=hosts", error));
+	assert (error.empty ());
+	assert (book.GetSubscriptions (16).empty ());
+	{
+		std::ifstream saved (file);
+		assert (saved.is_open ());
+		std::string line;
+		while (std::getline (saved, line))
+			assert (line.empty () || line[0] == '#');
+	}
+
+	// The source list is capped; an entry beyond the cap is rejected instead of
+	// silently dropped.
+	for (size_t i = 0; i < i2p::client::MAX_SUBSCRIPTION_URLS; i++)
+		assert (book.AddSubscription ("http://h" + std::to_string (i) + ".i2p/hosts", error));
+	assert (book.GetSubscriptions (0).size () == i2p::client::MAX_SUBSCRIPTION_URLS);
+	assert (!book.AddSubscription ("http://extra.i2p/hosts", error));
+	assert (!error.empty ());
+	assert (book.GetSubscriptions (0).size () == i2p::client::MAX_SUBSCRIPTION_URLS);
+
+	std::error_code ignored;
+	std::filesystem::remove_all (root, ignored);
+}
 }
 
 int main ()
@@ -168,5 +319,7 @@ int main ()
 	TestNameValidation ();
 	TestAddReplaceRemove ();
 	TestDeletedHosts ();
+	TestSubscriptionValidation ();
+	TestSubscriptionRoundTrip ();
 	return 0;
 }

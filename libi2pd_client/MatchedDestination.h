@@ -12,8 +12,10 @@
 
 #ifndef MATCHED_DESTINATION_H_
 #define MATCHED_DESTINATION_H_
-#include "Destination.h"
+
 #include <string>
+#include <mutex>
+#include "Destination.h"
 
 namespace i2p
 {
@@ -34,8 +36,13 @@ namespace client
 		bool SelectPeers (i2p::tunnel::Path & peers, int hops, bool inbound);
 
 	private:
+		std::shared_ptr<MatchedTunnelDestination> GetSharedFromThis ()
+		{
+			return std::static_pointer_cast<MatchedTunnelDestination> (shared_from_this ());
+		}
 		void ResolveCurrentLeaseSet ();
 		void HandleFoundCurrentLeaseSet (std::shared_ptr<const i2p::data::LeaseSet> ls);
+		void ScheduleResolveRetry ();
 
 	private:
 		std::string m_RemoteName;
