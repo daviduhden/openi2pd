@@ -4,8 +4,11 @@
  *
  * openi2pd: HTTPProxy.
  *
- * Declares the HTTP proxy acceptor and the hard 1 MiB cap for an incomplete
- * request header, checked before every append to bound client buffering.
+ * Declares the HTTP proxy acceptor, the hard 1 MiB cap for an incomplete
+ * request header (checked before every append to bound client buffering), the
+ * request-target classifier that admits only HTTP(S), the HTML/URL escaping
+ * helpers used by every generated page, and the local RFC 7617 Basic plus
+ * opt-in RFC 7616 Digest authenticators shared with the SOCKS proxy.
  *
  */
 
@@ -13,6 +16,16 @@
 #define HTTP_PROXY_H__
 
 #include <cstddef>
+#include <cstdint>
+#include <map>
+#include <memory>
+#include <mutex>
+#include <string>
+#include <string_view>
+#include <vector>
+
+#include "I2PService.h"
+#include "HTTP.h"
 
 namespace i2p
 {
@@ -25,6 +38,29 @@ namespace proxy
 	 * cannot grow the buffer past it by sending one byte at a time.
 	 */
 	constexpr std::size_t HTTP_PROXY_MAX_HEADER_SIZE = 1024 * 1024; // 1 MiB
+
+	/**
+	 * A client that opens a connection but never finishes the request header
+	 * must not keep a handler (and its socket) allocated indefinitely. The
+	 * timer starts when the handler takes the socket and is cancelled as soon
+	 * as parsing sees an end-of-headers result.
+	 */
+	constexpr int HTTP_PROXY_HEADER_TIMEOUT = 30; // seconds
+
+	/**
+	 * Upstream (outproxy) connect budget. It covers name resolution, the TCP
+	 * connect and the SOCKS5 version/method/request exchange. Every phase is a
+	 * cancellable steady_timer; the service thread is never blocked and an
+	 * expired phase answers 504 and closes the client.
+	 */
+	constexpr int HTTP_PROXY_UPSTREAM_TIMEOUT = 30; // seconds
+
+	/**
+	 * Budget for the first response header coming back from a destination.
+	 * Once the header is complete the connection becomes an opaque pipe, so
+	 * the timer only guards the header read.
+	 */
+	constexpr int HTTP_PROXY_RESPONSE_HEADER_TIMEOUT = 60; // seconds
 
 	/**
 	 * @return true when appending @a incoming bytes to a header that has no
@@ -41,6 +77,7 @@ namespace proxy
 	// values are part of the local HTTP surface and are regression-tested.
 	inline constexpr int HTTP_PROXY_STATUS_BAD_REQUEST = 400;
 	inline constexpr int HTTP_PROXY_STATUS_FORBIDDEN = 403;
+	inline constexpr int HTTP_PROXY_STATUS_PROXY_AUTH_REQUIRED = 407;
 	inline constexpr int HTTP_PROXY_STATUS_HEADER_TOO_LARGE = 431;
 	inline constexpr int HTTP_PROXY_STATUS_INTERNAL_ERROR = 500;
 	inline constexpr int HTTP_PROXY_STATUS_BAD_GATEWAY = 502;
@@ -68,6 +105,447 @@ namespace proxy
 		return HTTP_PROXY_STATUS_INTERNAL_ERROR;
 	}
 
+	/*
+	 * Generated pages and URL redaction.
+	 *
+	 * Every value interpolated into a proxy-generated page comes from an
+	 * untrusted peer: the `Host` header, the request target, a jump-service
+	 * link and the destination host. EscapeHTML() is the single escaper for
+	 * text and attribute contexts, so a hostile `Host: <script>` can never
+	 * produce markup. Escaping is bounded: input past
+	 * HTTP_PROXY_MAX_ESCAPED_INPUT bytes is dropped, so a generated page
+	 * cannot grow arbitrarily from a 1 MiB header.
+	 */
+	inline constexpr std::size_t HTTP_PROXY_MAX_ESCAPED_INPUT = 2048;
+
+	/**
+	 * Escape `&`, `<`, `>`, `"` and `'` (and drop C0 controls, DEL and any
+	 * byte that is not part of a valid UTF-8 sequence) for interpolation into
+	 * HTML text or a quoted attribute. The result never contains a character
+	 * that can terminate an element, an attribute or a line.
+	 */
+	std::string EscapeHTML (std::string_view value);
+
+	/**
+	 * Remove a `user[:password]@` userinfo part from an absolute URL so the
+	 * value is safe to log. The scheme, host, port and path are preserved; a
+	 * value without "://" or without "@" is returned unchanged (bounded).
+	 * This never returns credential material that was present in the input.
+	 */
+	std::string RedactURLUserInfo (std::string_view url);
+
+	/*
+	 * Request hygiene.
+	 *
+	 * RFC 7230 hop-by-hop headers only apply to a single transport hop and
+	 * must be consumed by the proxy. The X-Forwarded-* family is never
+	 * forwarded in either direction: a destination or a client must not be
+	 * able to attribute a request to an address it did not observe.
+	 */
+	bool IsHopByHopHeaderName (std::string_view name) noexcept;
+	bool IsProxyDisclosureHeaderName (std::string_view name) noexcept;
+
+	/**
+	 * Remove hop-by-hop, proxy-only and X-Forwarded-* headers from a request.
+	 * @return the number of removed headers.
+	 */
+	std::size_t StripHopByHopHeaders (i2p::http::HTTPReq & req);
+
+	/**
+	 * @return true for an `Authorization: NTLM ...` value. NTLM authenticates
+	 * the *connection*, not the request, so passing it through a proxy would
+	 * bind the upstream connection to the proxy's identity.
+	 */
+	bool IsNTLMAuthorizationValue (std::string_view value) noexcept;
+
+	/*
+	 * Request-target classification.
+	 *
+	 * The proxy is a forward proxy for HTTP only: `http://` absolute form and
+	 * origin form (`GET /path` plus `Host:`) are forwarded, `CONNECT` is
+	 * accepted as an opaque HTTPS tunnel, and every other scheme is refused
+	 * with 403 before any address-book lookup or outproxy selection. This
+	 * mirrors I2P Java `I2PTunnelHTTPClient.isSupportedAddress()`, which
+	 * accepts only `http` and `https`.
+	 */
+	enum class ProxyTargetError
+	{
+		None,
+		Malformed,
+		MissingHost,
+		UnsupportedScheme,
+		BadPort
+	};
+
+	struct ProxyRequestTarget
+	{
+		/** `http` for absolute/origin form, `https` for CONNECT. */
+		std::string scheme;
+		/** Host without IPv6 brackets. */
+		std::string host;
+		uint16_t port = 0;
+		/** Origin-form request target (path plus optional query), never empty. */
+		std::string path;
+		bool useConnect = false;
+		/** true when the host came from the request target, not from `Host`. */
+		bool absolute = false;
+		ProxyTargetError error = ProxyTargetError::None;
+
+		bool IsValid () const noexcept { return error == ProxyTargetError::None; }
+	};
+
+	/**
+	 * @param method       request method, verbatim
+	 * @param target       request target, verbatim
+	 * @param host_header  the request `Host` value (empty when absent)
+	 *
+	 * Absolute form requires an `http` scheme; `CONNECT` accepts an
+	 * `authority-form` target (`[::1]:443` included) and requires a port.
+	 * Origin form takes the host and port from @a host_header and defaults a
+	 * missing port to 80. A scheme-less absolute-ish target
+	 * (`example.i2p/path`) is still accepted for compatibility with the
+	 * previous parser, with port 80.
+	 */
+	ProxyRequestTarget ClassifyRequestTarget (
+		std::string_view method, std::string_view target, std::string_view host_header);
+
+	/** Status code for a classification failure: 403 for a scheme, else 400. */
+	constexpr int ProxyTargetErrorStatus (ProxyTargetError error) noexcept
+	{
+		return error == ProxyTargetError::UnsupportedScheme ? HTTP_PROXY_STATUS_FORBIDDEN : HTTP_PROXY_STATUS_BAD_REQUEST;
+	}
+
+	/*
+	 * Local proxy authentication.
+	 *
+	 * `httpproxy.auth.type` selects the scheme:
+	 *   basic  (default) - RFC 7617 `Basic realm="openi2pd"`; this is the
+	 *                      historical behaviour and the default.
+	 *   digest           - RFC 7616 `qop=auth` with MD5 or SHA-256. `-sess`
+	 *                      variants and `auth-int` are not advertised.
+	 *
+	 * The realm is a stable local value ("openi2pd", configurable with
+	 * `httpproxy.auth.realm`). I2P Java uses "I2P HTTP Proxy"; the realm is a
+	 * local display string and the project identity is kept instead, so an
+	 * existing local Basic client keeps working unchanged.
+	 *
+	 * The same 255-byte field bound and the same constant-time comparison are
+	 * used by the SOCKS5 RFC 1929 authenticator, so the HTTP proxy header owns
+	 * both. Credentials never leave the process, are never logged and are
+	 * never forwarded to a destination or to an outproxy.
+	 */
+
+	/** RFC 1929 ULEN/PLEN ceiling; also the conservative Basic field limit. */
+	inline constexpr std::size_t PROXY_AUTH_MAX_FIELD_SIZE = 255;
+
+	/**
+	 * Bound for the whole `Proxy-Authorization` value before any decoding.
+	 * 4 * ceil((255 + 1 + 255) / 3) = 684 bytes of base64 plus scheme and
+	 * padding, so 1 KiB keeps a comfortable margin without allowing growth.
+	 */
+	inline constexpr std::size_t PROXY_AUTH_MAX_ENCODED_SIZE = 1024;
+
+	/** Fixed challenge value; part of the local proxy contract. */
+	inline constexpr std::string_view HTTP_PROXY_AUTH_CHALLENGE = "Basic realm=\"openi2pd\"";
+
+	/**
+	 * Default local realm for both schemes. I2P Java uses "I2P HTTP Proxy";
+	 * the project keeps its own identity so an existing local Basic client
+	 * continues to match. `httpproxy.auth.realm` overrides it.
+	 */
+	inline constexpr std::string_view HTTP_PROXY_AUTH_REALM = "openi2pd";
+
+	/**
+	 * Upper bound for `httpproxy.auth.failuredelay`. The delay is applied with
+	 * a timer, never with a blocking sleep on the service thread.
+	 */
+	inline constexpr std::uint32_t HTTP_PROXY_AUTH_MAX_FAILURE_DELAY_MS = 30000;
+
+	/**
+	 * Outcome of a local proxy authentication check. The same enum describes
+	 * a parsed `Proxy-Authorization` value and the final per-request decision,
+	 * so callers and regressions can distinguish "no local auth" from every
+	 * rejection reason without parsing strings.
+	 */
+	enum class ProxyAuthResult
+	{
+		/** No local credential is configured; the request is not authenticated. */
+		NotRequired,
+		/** The value parsed as Basic and matched the configured credential. */
+		Accepted,
+		/** No `Proxy-Authorization` header (or an empty value) was supplied. */
+		Missing,
+		/** More than one `Proxy-Authorization` header: ambiguous, so rejected. */
+		Duplicate,
+		/** The value, or the decoded field, exceeds the documented bound. */
+		TooLarge,
+		/** A syntactically valid scheme other than Basic (for example Digest). */
+		UnsupportedScheme,
+		/** Broken syntax, broken base64, or a missing/empty user or password. */
+		Malformed,
+		/** Well-formed credentials that do not match the configured ones. */
+		BadCredentials
+	};
+
+	constexpr bool ProxyAuthAllowed (ProxyAuthResult result) noexcept
+	{
+		return result == ProxyAuthResult::Accepted || result == ProxyAuthResult::NotRequired;
+	}
+
+	/** Short stable log label. It never contains credential material. */
+	constexpr std::string_view ProxyAuthResultName (ProxyAuthResult result) noexcept
+	{
+		switch (result)
+		{
+		case ProxyAuthResult::NotRequired: return "not required";
+		case ProxyAuthResult::Accepted: return "accepted";
+		case ProxyAuthResult::Missing: return "missing header";
+		case ProxyAuthResult::Duplicate: return "duplicate header";
+		case ProxyAuthResult::TooLarge: return "field too large";
+		case ProxyAuthResult::UnsupportedScheme: return "unsupported scheme";
+		case ProxyAuthResult::Malformed: return "malformed value";
+		case ProxyAuthResult::BadCredentials: return "bad credentials";
+		}
+		return "unknown";
+	}
+
+	/**
+	 * Compare two credential fields without an early exit on the first
+	 * mismatching byte. The loop always runs over the longer of the two
+	 * strings; the length itself is not treated as a secret, but a length
+	 * difference is still folded into the result.
+	 */
+	inline bool ProxySecretEquals (std::string_view expected, std::string_view provided) noexcept
+	{
+		const std::size_t length = expected.size () > provided.size () ? expected.size () : provided.size ();
+		unsigned char difference = static_cast<unsigned char> (expected.size () != provided.size ());
+		for (std::size_t i = 0; i < length; ++i)
+		{
+			const unsigned char a = i < expected.size () ? static_cast<unsigned char> (expected[i]) : 0;
+			const unsigned char b = i < provided.size () ? static_cast<unsigned char> (provided[i]) : 0;
+			difference = static_cast<unsigned char> (difference | (a ^ b));
+		}
+		return difference == 0;
+	}
+
+	/**
+	 * Strictly decode an RFC 7617 Basic credential value.
+	 *
+	 * @param value    the `Proxy-Authorization` header value, verbatim
+	 * @param user     receives the decoded username on success
+	 * @param password receives the decoded password on success
+	 * @return ProxyAuthResult::Accepted when the value is `Basic` followed by
+	 *   standard-alphabet base64 of `user ":" password` with both fields in
+	 *   1..PROXY_AUTH_MAX_FIELD_SIZE bytes; otherwise the rejection reason.
+	 *
+	 * The I2P codec (`i2p::data::Base64ToByteStream`) uses the URL-safe
+	 * `-`/`~` alphabet and therefore cannot be used here. Nothing is logged.
+	 */
+	ProxyAuthResult ProxyBasicAuthDecode (std::string_view value, std::string & user, std::string & password);
+
+	/**
+	 * Local HTTP proxy credential. `enabled` is the operator's intent; when it
+	 * is set but a field is empty or oversized, HasUsableCredentials() is false
+	 * and every request is rejected (fail closed) instead of falling back to an
+	 * unauthenticated proxy.
+	 */
+	struct ProxyBasicAuth
+	{
+		bool enabled = false;
+		std::string username;
+		std::string password;
+
+		bool IsEnabled () const noexcept { return enabled; }
+
+		bool HasUsableCredentials () const noexcept
+		{
+			return enabled && !username.empty () && !password.empty () && username.size () <= PROXY_AUTH_MAX_FIELD_SIZE
+				&& password.size () <= PROXY_AUTH_MAX_FIELD_SIZE;
+		}
+
+		/**
+		 * @param value the `Proxy-Authorization` value, already extracted by
+		 *   the caller (empty when absent)
+		 * @param occurrences how many `Proxy-Authorization` headers the request
+		 *   carried; more than one is always rejected
+		 */
+		ProxyAuthResult Verify (std::string_view value, std::size_t occurrences) const;
+	};
+
+	/**
+	 * Remove every credential-bearing `Proxy-*` request header, including
+	 * `Proxy-Authorization`, case-insensitively.
+	 * @return the number of removed headers.
+	 */
+	std::size_t HTTPProxyStripCredentials (i2p::http::HTTPReq & req);
+
+	/**
+	 * Bounded `407 Proxy Authentication Required` response with the Basic
+	 * challenge and `Connection: close`. The realm is escaped into a quoted
+	 * string; the default overload uses HTTP_PROXY_AUTH_REALM.
+	 */
+	std::string HTTPProxyAuthChallengeResponse ();
+	std::string HTTPProxyAuthChallengeResponse (std::string_view realm);
+
+	/*
+	 * RFC 7616 Digest authentication (server side, opt-in).
+	 *
+	 * Only `qop=auth` is advertised and accepted; `auth-int`, `MD5-sess`,
+	 * `SHA-256-sess` and `SHA-512-256` are refused, and a request without a
+	 * `qop` is refused because the proxy always advertises one. The verifier
+	 * keeps a bounded nonce cache: 1024 entries, one hour, and a strictly
+	 * increasing `nc` per nonce. It is the local equivalent of I2P Java
+	 * `I2PTunnelHTTPClientBase` `NonceInfo`/`verifyNonce` (which uses a
+	 * per-nonce bit set); a monotonic counter also rejects reordering.
+	 *
+	 * Digest never weakens Basic: either scheme is verified independently and
+	 * a rejection is fail-closed. Neither the password nor any `response`,
+	 * `cnonce` or `nc` value is ever logged or echoed.
+	 */
+	enum class ProxyAuthScheme
+	{
+		/** No local credential is configured. */
+		None,
+		Basic,
+		Digest
+	};
+
+	std::string_view ProxyAuthSchemeName (ProxyAuthScheme scheme) noexcept;
+
+	/** RFC 7616 digest algorithm selector: only MD5 and SHA-256 are supported. */
+	enum class ProxyDigestAlgorithm
+	{
+		Md5,
+		Sha256,
+		Unsupported
+	};
+
+	/** Lower-case hex H() over @a data. Empty when the provider is unavailable. */
+	std::string ProxyDigestHashHex (std::string_view data, ProxyDigestAlgorithm algorithm);
+
+	/** Bounded parse of a `Digest ...` credential value (RFC 7616 section 3.4). */
+	struct ProxyDigestCredentials
+	{
+		std::string username, realm, nonce, uri, qop, nc, cnonce, response, opaque;
+		std::string algorithm; // empty when the parameter is absent (MD5)
+		bool hasAlgorithm = false;
+	};
+
+	/**
+	 * @return false when the value is not `Digest`, when a parameter is
+	 *   duplicated or oversized, or when the quoting is not a well-formed
+	 *   RFC 7230 quoted-string.
+	 */
+	bool ParseProxyDigestCredentials (std::string_view value, ProxyDigestCredentials & credentials);
+
+	enum class ProxyDigestResult
+	{
+		Accepted,
+		Missing,
+		Duplicate,
+		Malformed,
+		UnsupportedScheme,
+		UnsupportedAlgorithm,
+		BadRealm,
+		BadQop,
+		/** The nonce is unknown or expired: answer 407 with `stale=true`. */
+		StaleNonce,
+		/** The `opaque` value is not the one issued with this nonce. */
+		BadNonce,
+		/** A valid `nc` was already used (replay) or went backwards. */
+		Replayed,
+		BadCredentials
+	};
+
+	constexpr bool ProxyDigestAllowed (ProxyDigestResult result) noexcept
+	{
+		return result == ProxyDigestResult::Accepted;
+	}
+
+	constexpr bool ProxyDigestStale (ProxyDigestResult result) noexcept
+	{
+		return result == ProxyDigestResult::StaleNonce;
+	}
+
+	/** Short stable log label. It never contains credential material. */
+	std::string_view ProxyDigestResultName (ProxyDigestResult result) noexcept;
+
+	/** Nonce lifetime and cache bound, matching I2P Java MAX_NONCE_AGE/MAX_NONCE_COUNT. */
+	inline constexpr std::int64_t PROXY_DIGEST_NONCE_LIFETIME_MS = 60 * 60 * 1000;
+	inline constexpr std::size_t PROXY_DIGEST_MAX_NONCES = 1024;
+	/** RFC 7616 nonce-count is exactly eight lower-case hex digits. */
+	inline constexpr std::size_t PROXY_DIGEST_NC_LENGTH = 8;
+	inline constexpr std::size_t PROXY_DIGEST_MAX_PARAM_SIZE = PROXY_AUTH_MAX_ENCODED_SIZE;
+
+	/**
+	 * Local Digest credential plus its nonce cache. The configured fields are
+	 * immutable after Prepare(); the cache is mutex-guarded because every
+	 * accepted connection shares this object through the acceptor.
+	 */
+	class ProxyDigestAuth
+	{
+	public:
+		struct NonceState
+		{
+			std::int64_t expiresMs = 0;
+			std::uint32_t lastNc = 0;
+			std::string opaque;
+		};
+
+		bool enabled = false;
+		std::string username;
+		std::string password;
+		std::string realm = "openi2pd";
+
+		/**
+		 * Validate the configuration and precompute H(A1) for both algorithms.
+		 * @return false when the credential or the realm is unusable; the
+		 *   caller must then deny every request (fail closed).
+		 */
+		bool Prepare ();
+
+		bool IsEnabled () const noexcept { return enabled; }
+		bool HasUsableCredentials () const noexcept { return m_Prepared; }
+
+		/**
+		 * Issue a fresh nonce for a challenge.
+		 * @return false when the CSPRNG is unavailable; the caller must then
+		 *   deny the request instead of advertising an unverifiable nonce.
+		 */
+		bool NewChallenge (std::int64_t nowMs, std::string & nonce, std::string & opaque);
+
+		/**
+		 * Insert a specific nonce, for a regression vector or for a nonce the
+		 * caller generated elsewhere. Same bounds as NewChallenge().
+		 */
+		void SeedNonce (std::string nonce, std::string opaque, std::int64_t nowMs);
+
+		/**
+		 * Verify one `Proxy-Authorization` value against @a method (needed for
+		 * H(A2)) at @a nowMs.
+		 */
+		ProxyDigestResult Verify (std::string_view value, std::string_view method, std::int64_t nowMs);
+
+		std::size_t NonceCount () const;
+
+	private:
+		void PurgeExpiredLocked (std::int64_t nowMs);
+
+		std::string m_Ha1Md5, m_Ha1Sha256;
+		bool m_Prepared = false;
+		mutable std::mutex m_Mutex;
+		std::map<std::string, NonceState> m_Nonces;
+	};
+
+	/** One `Proxy-Authenticate: Digest ...` value (one algorithm). */
+	std::string HTTPProxyDigestChallenge (
+		std::string_view realm, std::string_view nonce, std::string_view opaque, ProxyDigestAlgorithm algorithm,
+		bool stale);
+
+	/** Bounded 407 page carrying both Digest challenges (SHA-256 first). */
+	std::string HTTPProxyDigestChallengeResponse (
+		std::string_view realm, std::string_view nonce, std::string_view opaque, bool stale);
+
 	class HTTPProxy : public i2p::client::TCPIPAcceptor
 	{
 	public:
@@ -83,6 +561,26 @@ namespace proxy
 		bool GetHelperSupport () const { return m_Addresshelper; }
 		bool GetSendUserAgent () const { return m_SendUserAgent; }
 
+		/**
+		 * Local authentication state. The constructor reads
+		 * `httpproxy.auth.type` (basic|digest), `httpproxy.auth.enabled`,
+		 * `httpproxy.auth.username`, `httpproxy.auth.password`,
+		 * `httpproxy.auth.realm` and `httpproxy.auth.failuredelay`; a
+		 * programmatic caller may override the Basic credential with
+		 * SetBasicAuth() before Start(). New connections pick up the new value;
+		 * handlers already accepted keep the credential they started with.
+		 */
+		const ProxyBasicAuth & GetBasicAuth () const { return m_Auth; }
+		void SetBasicAuth (std::string username, std::string password);
+
+		ProxyAuthScheme GetAuthScheme () const { return m_AuthScheme; }
+		/** Shared so every handler uses one bounded nonce cache. */
+		const std::shared_ptr<ProxyDigestAuth> & GetDigestAuth () const { return m_DigestAuth; }
+		/** Realm used by the Basic and Digest challenges. */
+		const std::string & GetAuthRealm () const { return m_AuthRealm; }
+		/** Non-blocking authentication failure delay in milliseconds. */
+		std::uint32_t GetAuthFailureDelayMs () const { return m_AuthFailureDelayMs; }
+
 	protected:
 		// Implements TCPIPAcceptor
 		std::shared_ptr<i2p::client::I2PServiceHandler> CreateHandler (
@@ -94,6 +592,11 @@ namespace proxy
 		std::vector<std::string> m_OutproxyUrls;
 		size_t m_NextOutproxy;
 		bool m_Addresshelper, m_SendUserAgent;
+		ProxyBasicAuth m_Auth;
+		ProxyAuthScheme m_AuthScheme = ProxyAuthScheme::None;
+		std::shared_ptr<ProxyDigestAuth> m_DigestAuth;
+		std::string m_AuthRealm = std::string (HTTP_PROXY_AUTH_REALM);
+		std::uint32_t m_AuthFailureDelayMs = 0;
 	};
 } // http
 } // i2p

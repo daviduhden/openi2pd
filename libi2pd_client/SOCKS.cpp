@@ -7,15 +7,24 @@
  * Implements SOCKS4/4a and SOCKS5 CONNECT, torsocks address resolution and
  * UDP ASSOCIATE, resolving .i2p names through the address book and optionally
  * forwarding non-I2P traffic to an upstream SOCKS proxy. Handshakes are parsed
- * incrementally with per-request validation.
+ * incrementally with per-request validation. Optional local RFC 1929
+ * username/password authentication is negotiated before any request byte is
+ * accepted and rejects SOCKS4, which has no credential exchange.
  *
  */
 
+#include <algorithm>
+#include <chrono>
 #include <cstring>
 #include <cassert>
+#include <array>
 #include <string>
+#include <string_view>
+#include <vector>
 #include <atomic>
 #include <boost/algorithm/string/predicate.hpp>
+#include <openssl/crypto.h>
+#include <openssl/rand.h>
 #include "SOCKS.h"
 #include "SOCKSAddress.h"
 #include "Identity.h"
@@ -26,6 +35,7 @@
 #include "I2PTunnel.h"
 #include "I2PService.h"
 #include "util.h"
+#include "Config.h"
 #include "Socks5.h"
 #include "UDPTunnel.h"
 
@@ -33,6 +43,12 @@ namespace i2p
 {
 namespace proxy
 {
+	namespace
+	{
+		// A client that opens a SOCKS connection but never finishes the version,
+		// method or request exchange must not keep the handler allocated.
+		constexpr int SOCKS_HANDSHAKE_TIMEOUT = 30; // seconds
+	}
 	static const size_t socks_buffer_size = 8192;
 
 	class SOCKSServer;
@@ -147,12 +163,18 @@ namespace proxy
 		boost::asio::const_buffer GenerateSOCKS5Response (
 			errTypes error, addrTypes type, const address & addr, uint16_t port);
 		bool Socks5ChooseAuth ();
-		void Socks5UserPasswdResponse ();
+		authMethods ChooseAuthMethod () const;
+		void Socks5UserPasswdResponse (bool success);
+		/** Zero the decoded RFC 1929 fields; called after verification and on stop. */
+		void WipeCredentialFields () noexcept;
+		bool VerifyUserPass ();
 		void SocksRequestFailed (errTypes error);
 		void SocksRequestSuccess ();
 		void SentSocksFailed (const boost::system::error_code & ecode);
 		void SentSocksDone (const boost::system::error_code & ecode);
 		void SentSocksResponse (const boost::system::error_code & ecode);
+		void ArmHandshakeDeadline ();
+		void HandleHandshakeDeadline (const boost::system::error_code & ecode);
 		void HandleStreamRequestComplete (std::shared_ptr<i2p::stream::Stream> stream);
 		void ForwardSOCKS ();
 
@@ -165,6 +187,7 @@ namespace proxy
 			const boost::system::error_code & ecode, boost::asio::ip::tcp::resolver::results_type endpoints);
 
 		boost::asio::ip::tcp::resolver m_proxy_resolver;
+		boost::asio::steady_timer m_HandshakeTimer;
 		uint8_t m_sock_buff[socks_buffer_size];
 		std::shared_ptr<boost::asio::ip::tcp::socket> m_sock, m_upstreamSock;
 #if defined(BOOST_ASIO_HAS_LOCAL_SOCKETS)
@@ -188,6 +211,20 @@ namespace proxy
 		const bool m_UseUpstreamProxy; // do we want to use the upstream proxy for non i2p addresses?
 		const std::string m_UpstreamProxyAddress;
 		const uint16_t m_UpstreamProxyPort;
+		// Local RFC 1929 credential, snapshotted from the acceptor at accept time.
+		SOCKSUserPassAuth m_Auth;
+		std::array<char, SOCKS_AUTH_BUFFER_SIZE> m_authUser { };
+		std::array<char, SOCKS_AUTH_BUFFER_SIZE> m_authPassword { };
+		std::size_t m_authUserLen = 0;
+		std::size_t m_authPasswordLen = 0;
+		bool m_authOfferedNone = false;
+		bool m_authOfferedUserPass = false;
+		bool m_authVerified = false;
+		// Bytes that arrived in the same read as the credentials or the method
+		// list. They are parsed only after the corresponding reply write has
+		// completed, because every SOCKS reply reuses m_response and Asio does
+		// not allow two overlapping async_write operations on one socket.
+		std::vector<uint8_t> m_DeferredAuthInput;
 		std::shared_ptr<i2p::client::I2PUDPClientTunnel> m_UDPTunnel; // shared, the tunnel takes references to itself
 
 	public:
@@ -196,21 +233,59 @@ namespace proxy
 			const uint16_t upstreamPort, const bool useUpstream)
 			: I2PServiceHandler (parent)
 			, m_proxy_resolver (parent->GetService ())
+			, m_HandshakeTimer (parent->GetService ())
 			, m_sock (sock)
 			, m_stream (nullptr)
+			, m_remaining_data (nullptr)
+			, m_remaining_upstream_data (nullptr)
+			, m_remaining_data_len (0)
+			, m_4aip (0)
+			, m_port (0)
+			, m_command (0)
+			, m_parseleft (0)
 			, m_authchosen (AUTH_UNACCEPTABLE)
 			, m_addrtype (ADDR_IPV4)
+			, m_socksv (SOCKS5)
+			, m_cmd (CMD_CONNECT)
+			, m_state (GET_SOCKSV)
 			, m_UseUpstreamProxy (useUpstream)
 			, m_UpstreamProxyAddress (upstreamAddr)
 			, m_UpstreamProxyPort (upstreamPort)
+			, m_Auth (std::static_pointer_cast<SOCKSServer> (parent)->GetAuth ())
 		{
 			m_address.ip = 0;
 			EnterState (GET_SOCKSV);
 		}
 
 		~SOCKSHandler () { Terminate (); }
-		void Handle () override { AsyncSockRead (); }
+		void Handle () override
+		{
+			ArmHandshakeDeadline ();
+			AsyncSockRead ();
+		}
 	};
+
+	void SOCKSHandler::ArmHandshakeDeadline ()
+	{
+		auto weak = weak_from_this ();
+		m_HandshakeTimer.expires_after (std::chrono::seconds (SOCKS_HANDSHAKE_TIMEOUT));
+		m_HandshakeTimer.async_wait (
+			[weak] (const boost::system::error_code & ecode)
+			{
+				if (ecode) return;
+				auto self = weak.lock ();
+				if (self) self->HandleHandshakeDeadline (boost::system::error_code ());
+			});
+	}
+
+	void SOCKSHandler::HandleHandshakeDeadline (const boost::system::error_code &)
+	{
+		// Terminate() is idempotent and owns the Kill() transition; clearing the
+		// flag here first would make it return without closing the socket.
+		LogPrint (eLogWarning, "SOCKS: handshake was not completed in ", SOCKS_HANDSHAKE_TIMEOUT,
+			" seconds, closing connection");
+		Terminate ();
+	}
 
 	void SOCKSHandler::AsyncSockRead ()
 	{
@@ -229,6 +304,14 @@ namespace proxy
 
 	void SOCKSHandler::Terminate ()
 	{
+		m_HandshakeTimer.cancel ();
+		// Any decoded credential is dropped before the socket state changes.
+		WipeCredentialFields ();
+		if (!m_DeferredAuthInput.empty ())
+		{
+			OPENSSL_cleanse (m_DeferredAuthInput.data (), m_DeferredAuthInput.size ());
+			m_DeferredAuthInput.clear ();
+		}
 		if (Kill ()) return;
 		if (m_sock)
 		{
@@ -318,6 +401,39 @@ namespace proxy
 		return boost::asio::const_buffer (m_response, size);
 	}
 
+	SOCKSHandler::authMethods SOCKSHandler::ChooseAuthMethod () const
+	{
+		switch (SOCKSChooseAuthMethod (m_Auth.IsEnabled (), m_authOfferedNone, m_authOfferedUserPass))
+		{
+		case SOCKSAuthMethodChoice::None: return AUTH_NONE;
+		case SOCKSAuthMethodChoice::UserPass: return AUTH_USERPASSWD;
+		case SOCKSAuthMethodChoice::Unacceptable: break;
+		}
+		return AUTH_UNACCEPTABLE;
+	}
+
+	void SOCKSHandler::WipeCredentialFields () noexcept
+	{
+		OPENSSL_cleanse (m_authUser.data (), m_authUser.size ());
+		OPENSSL_cleanse (m_authPassword.data (), m_authPassword.size ());
+		m_authUserLen = 0;
+		m_authPasswordLen = 0;
+	}
+
+	bool SOCKSHandler::VerifyUserPass ()
+	{
+		// m_Auth.Verify() is constant-time and fail-closed when the local
+		// credential is unusable. Only the non-secret outcome is logged.
+		const bool accepted = m_Auth.Verify (std::string_view (m_authUser.data (), m_authUserLen),
+			std::string_view (m_authPassword.data (), m_authPasswordLen));
+		WipeCredentialFields ();
+		if (accepted)
+			LogPrint (eLogDebug, "SOCKS: v5 user/password authentication accepted");
+		else
+			LogPrint (eLogWarning, "SOCKS: v5 user/password authentication failed");
+		return accepted;
+	}
+
 	bool SOCKSHandler::Socks5ChooseAuth ()
 	{
 		m_response[0] = '\x05'; // Version
@@ -339,13 +455,21 @@ namespace proxy
 		}
 	}
 
-	void SOCKSHandler::Socks5UserPasswdResponse ()
+	void SOCKSHandler::Socks5UserPasswdResponse (bool success)
 	{
 		m_response[0] = 1; // Version of the subnegotiation
-		m_response[1] = 0; // Response code
-		LogPrint (eLogDebug, "SOCKS: v5 user/password response");
-		boost::asio::async_write (*m_sock, boost::asio::const_buffer (m_response, 2),
-			std::bind (&SOCKSHandler::SentSocksResponse, shared_from_this (), std::placeholders::_1));
+		m_response[1] = success ? 0 : 1; // RFC 1929 STATUS
+		LogPrint (eLogDebug, "SOCKS: v5 user/password response: ", success ? "accepted" : "rejected");
+		auto response = boost::asio::const_buffer (m_response, 2);
+		if (success)
+			// Keep the connection: the request follows in the same stream.
+			boost::asio::async_write (*m_sock, response,
+				std::bind (&SOCKSHandler::SentSocksResponse, shared_from_this (), std::placeholders::_1));
+		else
+			// A rejected sub-negotiation always closes the connection, so a
+			// pipelined request behind it can never be served.
+			boost::asio::async_write (*m_sock, response,
+				std::bind (&SOCKSHandler::SentSocksFailed, shared_from_this (), std::placeholders::_1));
 	}
 
 	/* All hope is lost beyond this point */
@@ -383,31 +507,22 @@ namespace proxy
 			LogPrint (eLogInfo, "SOCKS: v5 connection success");
 			if (m_cmd == CMD_UDP && m_UDPTunnel)
 			{
-				address ad;
-				// TODO: implement ipv6
-				ad.ip = m_UDPTunnel->GetLocalEndpoint ().address ().to_v4 ().to_uint ();
-				response = GenerateSOCKS5Response (SOCKS5_OK, ADDR_IPV4, ad, m_UDPTunnel->GetLocalEndpoint ().port ());
+				// RFC 1928 BND.ADDR/BND.PORT of the UDP relay: the loopback
+				// address, never a wildcard, so the client has an address it
+				// can actually send to (matches I2P Java handleUDP()).
+				const auto reply = SOCKS5UdpAssociateReply (m_UDPTunnel->GetLocalEndpoint ().port ());
+				std::copy (reply.begin (), reply.end (), m_response);
+				response = boost::asio::const_buffer (m_response, reply.size ());
 			}
 			else
 			{
-				auto owner = GetOwner ();
-				if (!owner)
-				{
-					Terminate ();
-					return;
-				}
-				auto s
-					= i2p::client::context.GetAddressBook ().ToAddress (owner->GetLocalDestination ()->GetIdentHash ());
-				address ad;
-				if (!ad.dns.SetString (s))
-				{
-					LogPrint (eLogError, "SOCKS: v5 response destination is too large");
-					SocksRequestFailed (SOCKS5_ADDR_UNSUP);
-					return;
-				}
-				// HACK only 16 bits passed in port as SOCKS5 doesn't allow for more
-				response = GenerateSOCKS5Response (
-					SOCKS5_OK, ADDR_DNS, ad, m_stream ? (uint16_t)m_stream->GetRecvStreamID () : 0);
+				// A successful CONNECT has no meaningful bound endpoint on an
+				// I2P stream. 127.0.0.1:1 is the I2P Java confirmConnection()
+				// reply; the previous own-b32/truncated-stream-ID trick could
+				// emit a wildcard address and a meaningless port.
+				const auto reply = SOCKS5ConnectSuccessReply ();
+				std::copy (reply.begin (), reply.end (), m_response);
+				response = boost::asio::const_buffer (m_response, reply.size ());
 			}
 			break;
 		}
@@ -501,6 +616,15 @@ namespace proxy
 				switch (*sock_buff)
 				{
 				case SOCKS4:
+					// SOCKS4 has no credential exchange. With local
+					// authentication enabled it fails closed instead of
+					// passing an unauthenticated client to the request parser.
+					if (m_Auth.IsEnabled ())
+					{
+						LogPrint (eLogWarning, "SOCKS: Rejecting SOCKS4 because local authentication is enabled");
+						SocksRequestFailed (SOCKS4_FAIL);
+						return false;
+					}
 					EnterState (GET_COMMAND); //Initialize the parser at the right position
 					break;
 				case SOCKS5:
@@ -512,20 +636,37 @@ namespace proxy
 					return false;
 				}
 				break;
-			case GET5_AUTHNUM: EnterState (GET5_AUTH, *sock_buff); break;
+			case GET5_AUTHNUM:
+				// `05 00` (an empty method list) is invalid: without this check
+				// m_parseleft would underflow and treat following bytes as
+				// offered methods.
+				if (!*sock_buff)
+				{
+					LogPrint (eLogWarning, "SOCKS: v5 empty authentication method list");
+					m_authchosen = AUTH_UNACCEPTABLE;
+					Socks5ChooseAuth ();
+					return false;
+				}
+				EnterState (GET5_AUTH, *sock_buff);
+				break;
 			case GET5_AUTH:
 				m_parseleft--;
+				// Remember every offered method and decide once the list ends,
+				// so an early 0x00 cannot override a later 0x02.
 				if (*sock_buff == AUTH_NONE)
-					m_authchosen = AUTH_NONE;
+					m_authOfferedNone = true;
 				else if (*sock_buff == AUTH_USERPASSWD)
-					m_authchosen = AUTH_USERPASSWD;
+					m_authOfferedUserPass = true;
 				if (m_parseleft == 0)
 				{
+					m_authchosen = ChooseAuthMethod ();
 					if (!Socks5ChooseAuth ()) return false;
 					if (m_authchosen == AUTH_USERPASSWD)
 						EnterState (GET5_USERPASSWD);
 					else
 						EnterState (GET5_REQUESTV);
+					m_DeferredAuthInput.assign (sock_buff + 1, sock_buff + len);
+					return false; // resume in SentSocksResponse
 				}
 				break;
 			case GET_COMMAND:
@@ -605,6 +746,15 @@ namespace proxy
 				}
 				break;
 			case GET5_REQUESTV:
+				// Defence in depth: an enabled local credential must have been
+				// verified before the request parser is reachable, whatever the
+				// method negotiation did.
+				if (m_Auth.IsEnabled () && !m_authVerified)
+				{
+					LogPrint (eLogError, "SOCKS: Rejecting request that skipped local authentication");
+					SocksRequestFailed (SOCKS5_RULE_DENIED);
+					return false;
+				}
 				if (*sock_buff != SOCKS5)
 				{
 					LogPrint (eLogError, "SOCKS: v5 rejected unknown request version: ", ((int)*sock_buff));
@@ -661,40 +811,65 @@ namespace proxy
 			case GET5_USERPASSWD:
 				if (*sock_buff != 1)
 				{
-					LogPrint (
-						eLogError, "SOCKS: v5 rejected invalid username/password subnegotiation: ", ((int)*sock_buff));
-					SocksRequestFailed (SOCKS5_GEN_FAIL);
+					LogPrint (eLogError, "SOCKS: v5 rejected invalid username/password subnegotiation");
+					Socks5UserPasswdResponse (false);
 					return false;
 				}
 				EnterState (GET5_USER_SIZE);
 				break;
 			case GET5_USER_SIZE:
-				if (*sock_buff)
-					EnterState (GET5_USER, *sock_buff);
-				else // empty user
-					EnterState (GET5_PASSWD_SIZE);
+				// RFC 1929: ULEN is 1..255, so an empty username is invalid.
+				if (!SOCKSUserPassFieldValid (*sock_buff))
+				{
+					LogPrint (eLogWarning, "SOCKS: v5 rejected empty or oversized username field");
+					Socks5UserPasswdResponse (false);
+					return false;
+				}
+				m_authUserLen = 0;
+				EnterState (GET5_USER, *sock_buff);
 				break;
 			case GET5_USER:
-				// skip user for now
+				if (m_authUserLen >= SOCKS_AUTH_MAX_FIELD_SIZE)
+				{
+					LogPrint (eLogWarning, "SOCKS: v5 rejected oversized username");
+					Socks5UserPasswdResponse (false);
+					return false;
+				}
+				m_authUser[m_authUserLen++] = static_cast<char> (*sock_buff);
 				m_parseleft--;
 				if (m_parseleft == 0) EnterState (GET5_PASSWD_SIZE);
 				break;
 			case GET5_PASSWD_SIZE:
-				if (*sock_buff)
-					EnterState (GET5_PASSWD, *sock_buff);
-				else // empty password
+				// RFC 1929: PLEN is 1..255, so an empty password is invalid.
+				if (!SOCKSUserPassFieldValid (*sock_buff))
 				{
-					Socks5UserPasswdResponse ();
-					EnterState (GET5_REQUESTV);
+					LogPrint (eLogWarning, "SOCKS: v5 rejected empty or oversized password field");
+					Socks5UserPasswdResponse (false);
+					return false;
 				}
+				m_authPasswordLen = 0;
+				EnterState (GET5_PASSWD, *sock_buff);
 				break;
 			case GET5_PASSWD:
-				// skip passwd for now
+				if (m_authPasswordLen >= SOCKS_AUTH_MAX_FIELD_SIZE)
+				{
+					LogPrint (eLogWarning, "SOCKS: v5 rejected oversized password");
+					Socks5UserPasswdResponse (false);
+					return false;
+				}
+				m_authPassword[m_authPasswordLen++] = static_cast<char> (*sock_buff);
 				m_parseleft--;
 				if (m_parseleft == 0)
 				{
-					Socks5UserPasswdResponse ();
+					const bool accepted = VerifyUserPass ();
+					m_authVerified = accepted;
+					Socks5UserPasswdResponse (accepted);
+					// Never fall through to the request parser: the write
+					// callback closes the connection after reporting failure.
+					if (!accepted) return false;
 					EnterState (GET5_REQUESTV);
+					m_DeferredAuthInput.assign (sock_buff + 1, sock_buff + len);
+					return false; // resume in SentSocksResponse
 				}
 				break;
 			default:
@@ -728,9 +903,10 @@ namespace proxy
 		{
 			if (m_state == READY)
 			{
+				m_HandshakeTimer.cancel ();
 				if (GetServer ()->HasResolvedAddresses ())
 				{
-					std::string_view resolved;
+					std::string resolved;
 					if (m_addrtype == ADDR_IPV4)
 					{
 						if ((m_address.ip & 0xFF000000) == 0xFF000000) // 255.x.x.x
@@ -781,14 +957,19 @@ namespace proxy
 						Terminate ();
 						return;
 					}
+					// A raw `this` would dangle if the handler is destroyed
+					// before the posted task runs, and a string_view into
+					// m_address would dangle with it: capture both explicitly.
 					boost::asio::post (owner->GetService (),
-						[this, addr] (void)
+						[self = shared_from_this (), host = std::string (addr)] (void)
 						{
+							auto server = self->GetServer ();
+							if (!server || !self->m_sock) return;
 							address ad;
-							ad.ip = GetServer ()->ResolveAddress (addr).to_uint ();
-							boost::asio::async_write (*m_sock,
-								GenerateSOCKS5Response (SOCKS5_OK, ADDR_IPV4, ad, m_port),
-								std::bind (&SOCKSHandler::SentSocksDone, shared_from_this (), std::placeholders::_1));
+							ad.ip = server->ResolveAddress (host).to_uint ();
+							boost::asio::async_write (*self->m_sock,
+								self->GenerateSOCKS5Response (SOCKS5_OK, ADDR_IPV4, ad, self->m_port),
+								std::bind (&SOCKSHandler::SentSocksDone, self, std::placeholders::_1));
 						});
 					return;
 				}
@@ -829,7 +1010,12 @@ namespace proxy
 						m_UDPTunnel = std::make_shared<i2p::client::I2PUDPClientTunnel> ("", addr,
 							GetServer ()->GetNextLocalUDPEndpoint (), owner->GetLocalDestination (), m_port, false,
 							i2p::datagram::eDatagramV3);
-						boost::asio::post (owner->GetService (), [this] (void) { SocksRequestSuccess (); });
+						boost::asio::post (owner->GetService (),
+							[self = shared_from_this ()] (void)
+							{
+								if (self->m_sock) self->SocksRequestSuccess ();
+							});
+
 					}
 					break;
 					default:;
@@ -897,7 +1083,26 @@ namespace proxy
 		{
 			LogPrint (eLogError, "SOCKS: Closing socket after sending reply because: ", ecode.message ());
 			Terminate ();
+			return;
 		}
+		if (!m_DeferredAuthInput.empty ())
+		{
+			// The reply write is complete, so the parser may now consume the
+			// pipelined bytes and reuse m_response for its own reply.
+			const auto size = m_DeferredAuthInput.size ();
+			if (size > sizeof (m_sock_buff))
+			{
+				LogPrint (eLogError, "SOCKS: Pipelined input after authentication is too large");
+				Terminate ();
+				return;
+			}
+			std::copy (m_DeferredAuthInput.begin (), m_DeferredAuthInput.end (), m_sock_buff);
+			OPENSSL_cleanse (m_DeferredAuthInput.data (), size);
+			m_DeferredAuthInput.clear ();
+			HandleSockRecv (boost::system::error_code (), size);
+			return;
+		}
+		AsyncSockRead ();
 	}
 
 	void SOCKSHandler::HandleStreamRequestComplete (std::shared_ptr<i2p::stream::Stream> stream)
@@ -1095,6 +1300,57 @@ namespace proxy
 	{
 		m_UseUpstreamProxy = false;
 		if (outAddress.length () > 0 && outEnable) SetUpstreamProxy (outAddress, outPort);
+
+		// The torsocks fake-IP key is per process: two runs of the same
+		// destination name do not share an address, so a stale client cache
+		// cannot point at a different destination after a restart. If the
+		// CSPRNG is unavailable the mapping falls back to a time-derived key;
+		// that weakens only the unpredictability of a routing hint, never a
+		// credential or a signature.
+		std::array<uint8_t, 16> resolveKey { };
+		if (RAND_bytes (resolveKey.data (), static_cast<int> (resolveKey.size ())) != 1)
+		{
+			LogPrint (eLogCritical, "SOCKS: CSPRNG unavailable for the RESOLVE cache key");
+			const auto seed = static_cast<uint64_t> (std::chrono::steady_clock::now ().time_since_epoch ().count ());
+			socks_detail::StoreLe64 (seed, resolveKey.data ());
+			socks_detail::StoreLe64 (seed ^ 0x9e3779b97f4a7c15ULL, resolveKey.data () + 8);
+		}
+		m_ResolveCache.SetKey (resolveKey);
+
+		// Local SOCKS5 authentication. Keys (see libi2pd/Config.cpp):
+		//   socksproxy.auth.enabled  - require RFC 1929 credentials
+		//   socksproxy.auth.username - accepted username, 1..255 bytes
+		//   socksproxy.auth.password - accepted password, 1..255 bytes
+		// An enabled listener with an empty or oversized field denies every
+		// client (fail closed), and SOCKS4 is rejected while it is enabled.
+		bool authEnabled = false;
+		i2p::config::GetOption ("socksproxy.auth.enabled", authEnabled);
+		std::string authUsername;
+		std::string authPassword;
+		i2p::config::GetOption ("socksproxy.auth.username", authUsername);
+		i2p::config::GetOption ("socksproxy.auth.password", authPassword);
+		m_Auth.enabled = authEnabled;
+		m_Auth.username = std::move (authUsername);
+		m_Auth.password = std::move (authPassword);
+		if (m_Auth.enabled)
+		{
+			if (m_Auth.HasUsableCredentials ())
+				LogPrint (eLogInfo, "SOCKS: Local username/password authentication enabled for ", m_Name);
+			else
+				LogPrint (eLogCritical, "SOCKS: socksproxy.auth.enabled is set but socksproxy.auth.username/password are "
+										"empty or longer than ",
+					SOCKS_AUTH_MAX_FIELD_SIZE, " bytes; every request will be rejected");
+		}
+	}
+
+	void SOCKSServer::SetAuth (std::string username, std::string password)
+	{
+		m_Auth.enabled = true;
+		m_Auth.username = std::move (username);
+		m_Auth.password = std::move (password);
+		if (!m_Auth.HasUsableCredentials ())
+			LogPrint (
+				eLogCritical, "SOCKS: Local authentication configured without usable credentials; every request will be rejected");
 	}
 
 	std::shared_ptr<i2p::client::I2PServiceHandler> SOCKSServer::CreateHandler (
@@ -1126,20 +1382,14 @@ namespace proxy
 		m_UDPPorts.erase (port);
 	}
 
-	std::string_view SOCKSServer::GetResolvedAddress (const boost::asio::ip::address_v4 & addr) const
+	std::string SOCKSServer::GetResolvedAddress (const boost::asio::ip::address_v4 & addr) const
 	{
-		auto it = m_Resolved.find (addr);
-		if (it != m_Resolved.end ()) return it->second.first;
-		return std::string_view (); // empty string
+		return m_ResolveCache.Lookup (addr, i2p::util::GetMillisecondsSinceEpoch ());
 	}
 
-	const boost::asio::ip::address_v4 & SOCKSServer::ResolveAddress (std::string_view resolved)
+	boost::asio::ip::address_v4 SOCKSServer::ResolveAddress (std::string_view resolved)
 	{
-		auto ts = i2p::util::GetMillisecondsSinceEpoch ();
-		size_t h = std::hash<std::string_view> { }(resolved);
-		auto [it, inserted] = m_Resolved.emplace (0xFF000000 | (h & 0xFFFFFF), std::pair { resolved, ts });
-		if (!inserted) it->second.second = ts;
-		return it->first;
+		return m_ResolveCache.Insert (resolved, i2p::util::GetMillisecondsSinceEpoch ());
 	}
 }
 }
