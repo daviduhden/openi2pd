@@ -1,8 +1,8 @@
 {
-  "version": 3,
+  "version": 5,
   "cmakeMinimumRequired": {
     "major": 3,
-    "minor": 24,
+    "minor": 25,
     "patch": 0
   },
   "configurePresets": [
@@ -11,6 +11,7 @@
       "displayName": "Ninja release with tests (run from build/)",
       "generator": "Ninja",
       "binaryDir": "${sourceDir}/../build-output",
+      "installDir": "${sourceDir}/../build-output/install",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Release",
         "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
@@ -19,11 +20,24 @@
     },
     {
       "name": "portable",
-      "displayName": "Ninja without optional UPnP/TUI",
+      "displayName": "Ninja release without optional UPnP/TUI/tests",
       "inherits": "default",
+      "binaryDir": "${sourceDir}/../build-portable",
       "cacheVariables": {
         "WITH_UPNP": "OFF",
-        "I2PD_BUILD_TUI": "OFF"
+        "I2PD_BUILD_TUI": "OFF",
+        "BUILD_TESTING": "OFF"
+      }
+    },
+    {
+      "name": "ci-linux",
+      "displayName": "Ninja CI build with tests, tools and TUI",
+      "inherits": "default",
+      "binaryDir": "${sourceDir}/../build-ci",
+      "cacheVariables": {
+        "I2PD_BUILD_TUI": "ON",
+        "I2PD_BUILD_TOOLS": "ON",
+        "I2PD_INSTALL_DOCS": "ON"
       }
     }
   ],
@@ -35,6 +49,10 @@
     {
       "name": "portable",
       "configurePreset": "portable"
+    },
+    {
+      "name": "ci-linux",
+      "configurePreset": "ci-linux"
     }
   ],
   "testPresets": [
@@ -51,6 +69,23 @@
       "output": {
         "outputOnFailure": true
       }
+    },
+    {
+      "name": "ci-linux",
+      "configurePreset": "ci-linux",
+      "output": {
+        "outputOnFailure": true
+      }
+    }
+  ],
+  "installPresets": [
+    {
+      "name": "default",
+      "configurePreset": "default"
+    },
+    {
+      "name": "ci-linux",
+      "configurePreset": "ci-linux"
     }
   ]
 }

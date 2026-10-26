@@ -3,39 +3,28 @@
 #
 # openi2pd: Makefile.
 #
-# POSIX make wrapper that configures the CMake build with BUILD_TESTING=ON,
-# builds it and runs CTest. Run this file from the tests/ directory (or with
-# `make -C tests`), because its paths are relative to tests/.
+# Compatibility shim for the historical tests/ entry point. The root POSIX
+# Makefile is the single source of build configuration; this file only
+# forwards the same targets so `make -C tests` keeps working without a second
+# copy of the CMake options and build directory.
 #
-
-BUILD_DIR = ../build-output
-CMAKE = cmake
-CMAKE_GENERATOR = Ninja
-CMAKE_FLAGS =
-DESTDIR =
-PREFIX =
 
 .PHONY: all configure build test check clean
 
-all: test
+all:
+	"${MAKE}" -C ".." all
 
 configure:
-	"${CMAKE}" -S ../build -B "${BUILD_DIR}" -G "${CMAKE_GENERATOR}" -DBUILD_TESTING=ON -DI2PD_BUILD_TUI=OFF ${CMAKE_FLAGS}
+	"${MAKE}" -C ".." configure
 
-build: configure
-	"${CMAKE}" --build "${BUILD_DIR}"
+build:
+	"${MAKE}" -C ".." build
 
-test: build
-	ctest --test-dir "${BUILD_DIR}" --output-on-failure
+test:
+	"${MAKE}" -C ".." test
 
-check: test
+check:
+	"${MAKE}" -C ".." check
 
 clean:
-	@case "${BUILD_DIR}" in ""|"."|".."|"/") \
-		echo "refusing to remove unsafe BUILD_DIR" >&2; exit 1;; \
-	esac
-	@if [ -f "${BUILD_DIR}/CMakeCache.txt" ]; then \
-		"${CMAKE}" -E remove_directory "${BUILD_DIR}"; \
-	else \
-		echo "refusing to remove ${BUILD_DIR}: no CMakeCache.txt" >&2; exit 1; \
-	fi
+	"${MAKE}" -C ".." clean

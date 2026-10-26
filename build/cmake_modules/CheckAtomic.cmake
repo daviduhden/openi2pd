@@ -8,8 +8,13 @@
 
 # atomic builtins are required for threading support.
 
-INCLUDE(CheckCXXSourceCompiles)
-INCLUDE(CheckLibraryExists)
+include(CheckCXXSourceCompiles)
+include(CheckLibraryExists)
+
+# Report the extra library the host really needs. Consumers link this result
+# instead of reading the probe-scope CMAKE_REQUIRED_LIBRARIES side effect.
+set(I2PD_ATOMIC_LIBRARIES "")
+set(_i2pd_saved_required_libraries "${CMAKE_REQUIRED_LIBRARIES}")
 
 # Sometimes linking against libatomic is required for atomic ops, if
 # the platform doesn't support lock-free atomics.
@@ -59,6 +64,7 @@ else()
     check_library_exists(atomic __atomic_fetch_add_4 "" HAVE_LIBATOMIC)
     if(HAVE_LIBATOMIC)
       list(APPEND CMAKE_REQUIRED_LIBRARIES "atomic")
+      set(I2PD_ATOMIC_LIBRARIES atomic)
       check_working_cxx_atomics(HAVE_CXX_ATOMICS_WITH_LIB)
       if (NOT HAVE_CXX_ATOMICS_WITH_LIB)
         message(FATAL_ERROR "Host compiler must support std::atomic!")
@@ -80,6 +86,7 @@ else()
     check_library_exists(atomic __atomic_load_8 "" HAVE_CXX_LIBATOMICS64)
     if(HAVE_CXX_LIBATOMICS64)
       list(APPEND CMAKE_REQUIRED_LIBRARIES "atomic")
+      set(I2PD_ATOMIC_LIBRARIES atomic)
       check_working_cxx_atomics64(HAVE_CXX_ATOMICS64_WITH_LIB)
       if (NOT HAVE_CXX_ATOMICS64_WITH_LIB)
         message(FATAL_ERROR "Host compiler must support 64-bit std::atomic!")
@@ -89,3 +96,6 @@ else()
     endif()
   endif()
 endif()
+
+set(CMAKE_REQUIRED_LIBRARIES "${_i2pd_saved_required_libraries}")
+unset(_i2pd_saved_required_libraries)

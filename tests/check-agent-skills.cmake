@@ -236,7 +236,10 @@ foreach(required_policy IN ITEMS
     "Raw `this` is forbidden"
     "a stopped"
     "never perform a blocking read on an event-loop thread"
-    "Never chmod a pathname and reopen it for secret output")
+    "Never chmod a pathname and reopen it for secret output"
+    "Do not duplicate normative policy"
+    "development task is not complete until the agent has reviewed"
+    "even when the correct outcome is \"no skill file changed\"")
   string(FIND "${agents_text}" "${required_policy}" policy_position)
   if(policy_position EQUAL -1)
     message(FATAL_ERROR "AGENTS security policy drift: ${required_policy}")
