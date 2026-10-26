@@ -11,6 +11,7 @@
  *
  */
 
+#include <cctype>
 #include <cstdio>
 #include <time.h>
 
@@ -157,7 +158,9 @@ namespace log
 
 		std::shared_ptr<std::ostream> previousStream;
 		SinkFunction previousSink;
+#ifndef _WIN32
 		bool closeSyslog = false;
+#endif
 		{
 			std::lock_guard<std::mutex> destination (m_LogMutex);
 #ifndef _WIN32

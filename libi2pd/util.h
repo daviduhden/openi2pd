@@ -86,16 +86,24 @@ namespace util
 			++m_Size;
 		}
 
-		template <typename... TArgs> std::unique_ptr<T, std::function<void (T *)>> AcquireUnique (TArgs &&... args)
+		/**
+		 * Typed pool deleter. Replaces the former std::function/std::bind
+		 * erasure: the object still borrows the pool, which must outlive it.
+		 */
+		struct Deleter
 		{
-			return std::unique_ptr<T, std::function<void (T *)>> (Acquire (std::forward<TArgs> (args)...),
-				std::bind (&MemoryPool<T>::Release, this, std::placeholders::_1));
+			MemoryPool * pool;
+			void operator() (T * value) const noexcept { pool->Release (value); }
+		};
+
+		template <typename... TArgs> std::unique_ptr<T, Deleter> AcquireUnique (TArgs &&... args)
+		{
+			return std::unique_ptr<T, Deleter> (Acquire (std::forward<TArgs> (args)...), Deleter { this });
 		}
 
 		template <typename... TArgs> std::shared_ptr<T> AcquireShared (TArgs &&... args)
 		{
-			return std::shared_ptr<T> (Acquire (std::forward<TArgs> (args)...),
-				std::bind (&MemoryPool<T>::Release, this, std::placeholders::_1));
+			return std::shared_ptr<T> (Acquire (std::forward<TArgs> (args)...), Deleter { this });
 		}
 
 	protected:
@@ -177,10 +185,16 @@ namespace util
 			}
 		}
 
+		/** Thread-safe typed pool deleter; the pool must outlive the object. */
+		struct Deleter
+		{
+			MemoryPoolMt * pool;
+			void operator() (T * value) const noexcept { pool->ReleaseMt (value); }
+		};
+
 		template <typename... TArgs> std::shared_ptr<T> AcquireSharedMt (TArgs &&... args)
 		{
-			return std::shared_ptr<T> (AcquireMt (std::forward<TArgs> (args)...),
-				std::bind<void (MemoryPoolMt<T>::*) (T *)> (&MemoryPoolMt<T>::ReleaseMt, this, std::placeholders::_1));
+			return std::shared_ptr<T> (AcquireMt (std::forward<TArgs> (args)...), Deleter { this });
 		}
 
 		void CleanUpMt ()
@@ -258,32 +272,6 @@ namespace util
 	};
 
 	void SetThreadName (const char * name);
-
-	template <typename T> class SaveStateHelper
-	{
-	public:
-		SaveStateHelper (T & orig)
-			: m_Original (orig)
-			, m_Copy (orig) { };
-		~SaveStateHelper () { m_Original = m_Copy; };
-
-	private:
-		T & m_Original;
-		T m_Copy;
-	};
-
-	template <typename DeferFunction> class Defer final
-	{
-	public:
-		Defer (DeferFunction && deferFunction)
-			: m_DeferFunction (std::forward<DeferFunction> (deferFunction))
-		{
-		}
-		~Defer () { m_DeferFunction (); }
-
-	private:
-		DeferFunction m_DeferFunction;
-	};
 
 	class Mapping
 	{

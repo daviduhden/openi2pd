@@ -14,6 +14,7 @@
 #ifndef I2PD_EXPECTED_H__
 #define I2PD_EXPECTED_H__
 
+#include <functional>
 #include <memory>
 #include <optional>
 #include <stdexcept>
@@ -101,6 +102,34 @@ public:
 		return std::get<1> (m_Value);
 	}
 
+	template <class U> T value_or (U && fallback) const &
+	{
+		return has_value () ? std::get<0> (m_Value) : static_cast<T> (std::forward<U> (fallback));
+	}
+
+	template <class U> T value_or (U && fallback) &&
+	{
+		return has_value () ? std::get<0> (std::move (m_Value)) : static_cast<T> (std::forward<U> (fallback));
+	}
+
+	/** Monadic chaining with the same error type (std::expected-style). */
+	template <class F> auto and_then (F && func) &
+		-> std::invoke_result_t<F, T &>
+	{
+		using Result = std::invoke_result_t<F, T &>;
+		if (has_value ()) return std::invoke (std::forward<F> (func), std::get<0> (m_Value));
+		return Result (unexpected<E> (std::get<1> (m_Value)));
+	}
+
+	template <class F> auto and_then (F && func) &&
+		-> std::invoke_result_t<F, T &&>
+	{
+		using Result = std::invoke_result_t<F, T &&>;
+		if (has_value ())
+			return std::invoke (std::forward<F> (func), std::get<0> (std::move (m_Value)));
+		return Result (unexpected<E> (std::move (std::get<1> (m_Value))));
+	}
+
 private:
 	std::variant<T, E> m_Value;
 };
@@ -132,6 +161,14 @@ public:
 	{
 		if (has_value ()) throw std::logic_error ("expected has a value");
 		return *m_Error;
+	}
+
+	template <class F> auto and_then (F && func) const
+		-> std::invoke_result_t<F>
+	{
+		using Result = std::invoke_result_t<F>;
+		if (has_value ()) return std::invoke (std::forward<F> (func));
+		return Result (unexpected<E> (*m_Error));
 	}
 
 private:

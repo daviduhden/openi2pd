@@ -17,8 +17,9 @@
 #include <memory>
 #include <mutex>
 #include <string_view>
-#include <openssl/ssl.h>
+#include <vector>
 #include <openssl/ecdsa.h>
+#include <openssl/pem.h>
 #include <openssl/objects.h>
 #include "Crypto.h"
 #include "FS.h"
@@ -32,8 +33,8 @@ namespace data
 {
 	namespace
 	{
-		using SslCtxPtr = std::unique_ptr<SSL_CTX, decltype (&SSL_CTX_free)>;
-		using SslPtr = std::unique_ptr<SSL, decltype (&SSL_free)>;
+		using BioPtr = std::unique_ptr<BIO, decltype (&BIO_free)>;
+		using X509Ptr = std::unique_ptr<X509, decltype (&X509_free)>;
 		using PkeyPtr = std::unique_ptr<EVP_PKEY, decltype (&EVP_PKEY_free)>;
 		using MdCtxPtr = std::unique_ptr<EVP_MD_CTX, decltype (&EVP_MD_CTX_free)>;
 		using EcdsaSigPtr = std::unique_ptr<ECDSA_SIG, decltype (&ECDSA_SIG_free)>;
@@ -42,16 +43,17 @@ namespace data
 		std::string GetFamilyName (X509 * cert)
 		{
 			if (!cert) return { };
-			std::array<char, 100> name { };
-			if (!X509_NAME_oneline (X509_get_issuer_name (cert), name.data (), name.size ())) return { };
-			std::string_view view (name.data ());
-			const auto cn = view.find ("CN=");
-			if (cn == std::string_view::npos) return { };
-			const auto start = cn + 3;
-			auto end = view.find (".family", start);
-			if (end == std::string_view::npos) end = view.find ('/', start);
-			if (end == std::string_view::npos) end = view.size ();
-			return std::string (view.substr (start, end - start));
+			// Use the bounded X.509 accessor instead of the legacy
+			// X509_NAME_oneline() text format, which truncates long names and
+			// confuses escaped separators.
+			std::array<char, 256> name { };
+			const int length = X509_NAME_get_text_by_NID (
+				X509_get_issuer_name (cert), NID_commonName, name.data (), name.size ());
+			if (length <= 0) return { };
+			std::string_view view (name.data (), static_cast<size_t> (length));
+			const auto suffix = view.find (".family");
+			if (suffix != std::string_view::npos) view = view.substr (0, suffix);
+			return std::string (view);
 		}
 	}
 
@@ -77,31 +79,22 @@ namespace data
 
 	void Families::LoadCertificate (const std::string & filename)
 	{
-		SslCtxPtr ctx (SSL_CTX_new (TLS_method ()), SSL_CTX_free);
-		if (!ctx)
-		{
-			LogPrint (eLogError, "Family: Can't create SSL context for ", filename);
-			return;
-		}
-		if (SSL_CTX_use_certificate_file (ctx.get (), filename.c_str (), SSL_FILETYPE_PEM) != 1)
+		BioPtr bio (BIO_new_file (filename.c_str (), "r"), BIO_free);
+		X509Ptr cert (bio ? PEM_read_bio_X509 (bio.get (), nullptr, nullptr, nullptr) : nullptr, X509_free);
+		if (!cert)
 		{
 			LogPrint (eLogError, "Family: Can't open certificate file ", filename);
 			return;
 		}
 
-		SslPtr ssl (SSL_new (ctx.get ()), SSL_free);
-		if (!ssl) return;
-		X509 * cert = SSL_get_certificate (ssl.get ());
-		if (!cert) return;
-
-		const std::string family = GetFamilyName (cert);
+		const std::string family = GetFamilyName (cert.get ());
 		if (family.empty () || family.find_first_of ("/\\\r\n") != std::string::npos)
 		{
 			LogPrint (eLogWarning, "Family: Invalid family name in ", filename);
 			return;
 		}
 
-		PkeyPtr pkey (X509_get_pubkey (cert), EVP_PKEY_free);
+		PkeyPtr pkey (X509_get_pubkey (cert.get ()), EVP_PKEY_free);
 		if (!pkey) return;
 		const int curve = GetFamilyKeyCurve (pkey.get ());
 		if (curve != NID_X9_62_prime256v1)
@@ -186,16 +179,16 @@ namespace data
 		(void)r.release ();
 		(void)s.release ();
 
-		std::array<uint8_t, 72> der { };
+		const int derLength = i2d_ECDSA_SIG (sig.get (), nullptr);
+		if (derLength <= 0) return false;
+		std::vector<uint8_t> der (static_cast<size_t> (derLength));
 		uint8_t * derPos = der.data ();
-		const int derLength = i2d_ECDSA_SIG (sig.get (), &derPos);
-		if (derLength <= 0 || static_cast<size_t> (derLength) > der.size ()) return false;
+		if (i2d_ECDSA_SIG (sig.get (), &derPos) != derLength) return false;
 
 		MdCtxPtr ctx (EVP_MD_CTX_new (), EVP_MD_CTX_free);
 		if (!ctx || EVP_DigestVerifyInit (ctx.get (), nullptr, EVP_sha256 (), nullptr, it->second.pkey.get ()) != 1)
 			return false;
-		return EVP_DigestVerify (ctx.get (), der.data (), static_cast<size_t> (derLength), buf.data (), messageLength)
-			== 1;
+		return EVP_DigestVerify (ctx.get (), der.data (), der.size (), buf.data (), messageLength) == 1;
 	}
 
 	FamilyID Families::GetFamilyID (const std::string & family) const
@@ -215,27 +208,14 @@ namespace data
 			return { };
 		}
 
-		SslCtxPtr ctx (SSL_CTX_new (TLS_method ()), SSL_CTX_free);
-		if (!ctx)
-		{
-			LogPrint (eLogError, "Family: Can't create SSL context for keys file: ", filename);
-			return { };
-		}
-		if (SSL_CTX_use_PrivateKey_file (ctx.get (), filename.c_str (), SSL_FILETYPE_PEM) != 1)
-		{
-			LogPrint (eLogError, "Family: Can't open keys file: ", filename);
-			return { };
-		}
-
-		SslPtr ssl (SSL_new (ctx.get ()), SSL_free);
-		if (!ssl) return { };
-		EVP_PKEY * pkey = SSL_get_privatekey (ssl.get ());
+		BioPtr bio (BIO_new_file (filename.c_str (), "r"), BIO_free);
+		PkeyPtr pkey (bio ? PEM_read_bio_PrivateKey (bio.get (), nullptr, nullptr, nullptr) : nullptr, EVP_PKEY_free);
 		if (!pkey)
 		{
 			LogPrint (eLogError, "Family: No private key in ", filename);
 			return { };
 		}
-		const int curve = GetFamilyKeyCurve (pkey);
+		const int curve = GetFamilyKeyCurve (pkey.get ());
 		if (curve != NID_X9_62_prime256v1)
 		{
 			LogPrint (eLogWarning, "Family: elliptic curve ", curve, " is not supported");
@@ -248,7 +228,7 @@ namespace data
 		const size_t messageLength = family.size () + IdentHash::len;
 
 		MdCtxPtr mdCtx (EVP_MD_CTX_new (), EVP_MD_CTX_free);
-		if (!mdCtx || EVP_DigestSignInit (mdCtx.get (), nullptr, EVP_sha256 (), nullptr, pkey) != 1) return { };
+		if (!mdCtx || EVP_DigestSignInit (mdCtx.get (), nullptr, EVP_sha256 (), nullptr, pkey.get ()) != 1) return { };
 
 		std::array<uint8_t, 72> der { };
 		size_t derLength = der.size ();

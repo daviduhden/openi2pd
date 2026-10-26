@@ -123,9 +123,15 @@ namespace config
 
 		options_description privsep ("Privilege-separation options (Unix only)");
 		privsep.add_options () ("privsep.enabled", value<bool> ()->default_value (false),
-			"Enable the isolated log worker (default: false)") ("privsep.log", value<bool> ()->default_value (true),
+			"Enable isolated worker processes (log and opt-in storage) (default: false)") ("privsep.log", value<bool> ()->default_value (true),
 			"Isolate log writing in a worker process") ("privsep.routerstorage", value<bool> ()->default_value (false),
-			"Delegate fixed router state writes to a storage worker");
+			"Delegate fixed router state writes to a storage worker") ("privsep.artifacts",
+			value<bool> ()->default_value (false),
+			"With privsep.enabled, delegate netDb cache, peer profile and destination key writes to the data-storage worker") (
+			"privsep.user", value<std::string> ()->default_value (""),
+			"Unprivileged account every privilege-separated worker runs as; resolved before the sandbox is installed "
+			"(default: keep the daemon identity)") ("privsep.group", value<std::string> ()->default_value (""),
+			"Group for privilege-separated workers; requires privsep.user (default: the account's primary group)");
 
 		options_description tui ("Local TUI options");
 #if defined(ANDROID)
@@ -159,10 +165,23 @@ namespace config
 			"httpproxy.outproxy", value<std::string> ()->default_value (""), "HTTP proxy upstream out proxy url") (
 			"httpproxy.addresshelper", value<bool> ()->default_value (true), "Enable or disable addresshelper") (
 			"httpproxy.senduseragent", value<bool> ()->default_value (false),
-			"Pass through user's User-Agent if enabled. Disabled by default") ("httpproxy.i2cp.leaseSetType",
+			"Pass through user's User-Agent if enabled. Disabled by default") ("httpproxy.auth.enabled",
+			value<bool> ()->default_value (false),
+			"Require local proxy authentication (HTTP 407). Disabled by default") ("httpproxy.auth.type",
+			value<std::string> ()->default_value ("basic"),
+			"Local proxy authentication scheme: basic (RFC 7617) or digest (RFC 7616 qop=auth)") (
+			"httpproxy.auth.username", value<std::string> ()->default_value (""),
+			"Username accepted by the HTTP proxy. Empty with auth.enabled rejects every request") (
+			"httpproxy.auth.password", value<std::string> ()->default_value (""),
+			"Password accepted by the HTTP proxy. Never logged or forwarded to a destination") (
+			"httpproxy.auth.realm", value<std::string> ()->default_value ("openi2pd"),
+			"Realm shown by the HTTP proxy authentication challenge") (
+			"httpproxy.auth.failuredelay", value<std::string> ()->default_value ("0"),
+			"Non-blocking delay in milliseconds before answering a rejected credential (0..30000)") (
+			"httpproxy.i2cp.leaseSetType",
 			value<std::string> ()->default_value ("3"), "Local destination's LeaseSet type")
 #if OPENSSL_PQ
-			("httpproxy.i2cp.leaseSetEncType", value<std::string> ()->default_value ("6,4,0"),
+			("httpproxy.i2cp.leaseSetEncType", value<std::string> ()->default_value ("6,4"),
 				"Local destination's LeaseSet encryption type")
 #else
 			("httpproxy.i2cp.leaseSetEncType", value<std::string> ()->default_value ("4,0"),
@@ -205,10 +224,17 @@ namespace config
 			value<bool> ()->default_value (false), "Enable or disable SOCKS outproxy") ("socksproxy.outproxy",
 			value<std::string> ()->default_value ("127.0.0.1"), "Upstream outproxy address for SOCKS Proxy") (
 			"socksproxy.outproxyport", value<uint16_t> ()->default_value (9050),
-			"Upstream outproxy port for SOCKS Proxy") ("socksproxy.i2cp.leaseSetType",
+			"Upstream outproxy port for SOCKS Proxy") ("socksproxy.auth.enabled",
+			value<bool> ()->default_value (false),
+			"Require RFC 1929 username/password authentication on the SOCKS proxy. Disabled by default") (
+			"socksproxy.auth.username", value<std::string> ()->default_value (""),
+			"Username accepted by the SOCKS proxy. Empty with auth.enabled rejects every request") (
+			"socksproxy.auth.password", value<std::string> ()->default_value (""),
+			"Password accepted by the SOCKS proxy. Never logged or forwarded to a destination") (
+			"socksproxy.i2cp.leaseSetType",
 			value<std::string> ()->default_value ("3"), "Local destination's LeaseSet type")
 #if OPENSSL_PQ
-			("socksproxy.i2cp.leaseSetEncType", value<std::string> ()->default_value ("6,4,0"),
+			("socksproxy.i2cp.leaseSetEncType", value<std::string> ()->default_value ("6,4"),
 				"Local destination's LeaseSet encryption type")
 #else
 			("socksproxy.i2cp.leaseSetEncType", value<std::string> ()->default_value ("4,0"),
@@ -238,7 +264,7 @@ namespace config
 			"Shared local destination outbound tunnels quantity") ("shareddest.i2cp.leaseSetType",
 			value<std::string> ()->default_value ("3"), "Shared local destination's LeaseSet type")
 #if OPENSSL_PQ
-			("shareddest.i2cp.leaseSetEncType", value<std::string> ()->default_value ("6,4,0"),
+			("shareddest.i2cp.leaseSetEncType", value<std::string> ()->default_value ("6,4"),
 				"Shared local destination's LeaseSet encryption type")
 #else
 			("shareddest.i2cp.leaseSetEncType", value<std::string> ()->default_value ("4,0"),
@@ -258,14 +284,21 @@ namespace config
 		options_description bob ("BOB options");
 		bob.add_options () ("bob.enabled", value<bool> ()->default_value (false),
 			"Enable or disable BOB command channel") ("bob.address", value<std::string> ()->default_value ("127.0.0.1"),
-			"BOB listen address") ("bob.port", value<uint16_t> ()->default_value (2827), "BOB listen port");
+			"BOB listen address") ("bob.port", value<uint16_t> ()->default_value (2827), "BOB listen port") (
+			"bob.allowgetkeys", value<bool> ()->default_value (false),
+			"Allow the BOB getkeys command to return a destination's private keys. Disabled by default");
 
 		options_description i2cp ("I2CP options");
 		i2cp.add_options () ("i2cp.enabled", value<bool> ()->default_value (false), "Enable or disable I2CP") (
 			"i2cp.address", value<std::string> ()->default_value ("127.0.0.1"), "I2CP listen address") (
 			"i2cp.port", value<uint16_t> ()->default_value (7654), "I2CP listen port") ("i2cp.singlethread",
 			value<bool> ()->default_value (true),
-			"Destinations run in the I2CP server's thread") ("i2cp.inboundlimit", value<uint32_t> ()->default_value (0),
+			"Destinations run in the I2CP server's thread") (
+			"i2cp.maxconnections", value<uint32_t> ()->default_value (0),
+			"Maximum concurrent I2CP control connections. 0 uses the default of 50, capped at 2048") (
+			"i2cp.maxsessions", value<uint32_t> ()->default_value (0),
+			"Maximum concurrent I2CP sessions. 0 uses the default of 512, capped at 4096") (
+			"i2cp.inboundlimit", value<uint32_t> ()->default_value (0),
 			"Client inbound limit in KBps to return in BandwidthLimitsMessage. Router's bandwidth by default") (
 			"i2cp.outboundlimit", value<uint32_t> ()->default_value (0),
 			"Client outbound limit in KBps to return in BandwidthLimitsMessage. Router's bandwidth by default");
@@ -302,6 +335,9 @@ namespace config
 		// Java SU3File always verifies signatures. Keep the compiled default
 		// fail-closed so an absent option never disables verification.
 		reseed.add_options () ("reseed.verify", value<bool> ()->default_value (true), "Verify .su3 signature") (
+			"reseed.disable", value<bool> ()->default_value (false),
+			"Disable reseed: no automatic or administrative RouterInfo bootstrap") (
+			"i2p.noReseed", value<bool> ()->default_value (false), "Alias for reseed.disable") (
 			"reseed.threshold", value<uint16_t> ()->default_value (25),
 			"Minimum number of known routers before requesting reseed") (
 			"reseed.floodfill", value<std::string> ()->default_value (""), "Ignored. Always empty") ("reseed.file",
@@ -333,6 +369,14 @@ namespace config
 												  "http://[316:f9e0:f22e:a74f::216]/"),
 			"Reseed URLs through the Yggdrasil, separated by comma") (
 			"reseed.followredirect", value<bool> ()->default_value (false), "Follow redirects when reseeding");
+
+		options_description blocklist ("Blocklist options");
+		blocklist.add_options () ("blocklist.enable", value<bool> ()->default_value (true),
+			"Enable the operator blocklist read once at startup (default: enabled)") ("blocklist.file",
+			value<std::string> ()->default_value (""),
+			"Operator blocklist file, relative to the data directory (default: blocklist.txt)") ("blocklist.detail",
+			value<bool> ()->default_value (false),
+			"Retain a bounded diagnostic sample of rejected blocklist reasons");
 
 		options_description addressbook ("AddressBook options");
 		addressbook.add_options () ("addressbook.enabled", value<bool> ()->default_value (true),
@@ -454,6 +498,7 @@ namespace config
 			.add (upnp)
 			.add (precomputation)
 			.add (reseed)
+			.add (blocklist)
 			.add (addressbook)
 			.add (trust)
 			.add (websocket) // deprecated
@@ -492,6 +537,16 @@ namespace config
 			ThrowFatal ("Error while parsing arguments: ", e.what ());
 			std::cerr << "args: " << e.what () << std::endl;
 			exit (EXIT_FAILURE);
+		}
+
+		// Credentials are configuration-file only: a command-line value would
+		// be visible in process listings and shell history.
+		const char * secretOptions[] = { "httpproxy.auth.username", "httpproxy.auth.password",
+			"socksproxy.auth.username", "socksproxy.auth.password" };
+		for (const char * secret : secretOptions)
+		{
+			if (m_Options.count (secret))
+				ThrowFatal ("Proxy authentication credentials must be set in the configuration file, not on the command line");
 		}
 
 		if (!ignoreUnknown && (m_Options.count ("help") || m_Options.count ("h")))

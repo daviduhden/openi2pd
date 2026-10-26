@@ -14,6 +14,7 @@
 
 #include <string>
 #include <map>
+#include <stdexcept>
 #include "Config.h"
 #include "Log.h"
 #include "NetDb.hpp"
@@ -45,7 +46,8 @@ namespace api
 
 		bool precomputation;
 		i2p::config::GetOption ("precomputation.elgamal", precomputation);
-		i2p::crypto::InitCrypto (precomputation);
+		if (!i2p::crypto::InitCrypto (precomputation))
+			throw std::runtime_error ("Crypto: required libcrypto provider algorithms are unavailable");
 
 		int netID;
 		i2p::config::GetOption ("netid", netID);

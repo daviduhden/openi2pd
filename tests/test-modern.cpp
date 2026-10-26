@@ -19,6 +19,7 @@
 #include <variant>
 #include <vector>
 
+#include "Expected.h"
 #include "Modern.h"
 
 namespace
@@ -81,6 +82,20 @@ int main ()
 		},
 		value);
 	assert (visitedInt && !visitedString);
+
+	i2p::expected<int, std::string> present (21);
+	assert (present.value_or (0) == 21);
+	auto chained = present.and_then ([] (int value) { return i2p::expected<int, std::string> (value * 2); });
+	assert (chained && chained.value () == 42);
+	i2p::expected<int, std::string> absent (i2p::unexpected<std::string> ("failed"));
+	assert (absent.value_or (7) == 7);
+	auto propagated = absent.and_then ([] (int value) { return i2p::expected<int, std::string> (value); });
+	assert (!propagated && propagated.error () == "failed");
+	i2p::expected<void, std::string> emptyPresent;
+	assert (emptyPresent.and_then ([] { return i2p::expected<int, std::string> (3); }).value () == 3);
+	i2p::expected<void, std::string> emptyAbsent (i2p::unexpected<std::string> ("void failed"));
+	auto emptyPropagated = emptyAbsent.and_then ([] { return i2p::expected<int, std::string> (3); });
+	assert (!emptyPropagated && emptyPropagated.error () == "void failed");
 
 	return 0;
 }

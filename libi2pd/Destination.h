@@ -15,17 +15,21 @@
 #define DESTINATION_H__
 
 #include <string.h>
+#include <atomic>
 #include <thread>
 #include <mutex>
+#include <set>
 #include <vector>
 #include <memory>
 #include <map>
 #include <unordered_map>
 #include <unordered_set>
 #include <string>
+#include <string_view>
 #include <functional>
 #include <future>
 #include <utility>
+#include <list>
 #include <boost/asio.hpp>
 #include "Identity.h"
 #include "TunnelPool.h"
@@ -58,6 +62,24 @@ namespace client
 	const int MAX_LEASESET_REQUEST_TIMEOUT = 17000; // in milliseconds
 	const int DESTINATION_CLEANUP_TIMEOUT = 44; // in seconds
 	const int DESTINATION_CLEANUP_TIMEOUT_VARIANCE = 30; // in seconds
+	// The garlic queue is fed by network input before the destination service
+	// runs, so it must never grow without limit. 256 pending garlic messages
+	// is far beyond the burst a legitimate peer produces.
+	const size_t MAX_INCOMING_GARLIC_QUEUE = 256;
+
+	// True when admitting one more garlic message would exceed the bound, in
+	// which case the oldest queued message is discarded.
+	constexpr bool IsIncomingGarlicQueueFull (size_t queueSize) noexcept
+	{
+		return queueSize >= MAX_INCOMING_GARLIC_QUEUE;
+	}
+
+	// Java DataMessage: the 4-byte declared length must cover the whole
+	// payload. Trailing bytes used to be ignored by every protocol handler.
+	constexpr bool IsValidDataMessageLength (uint32_t declared, size_t payloadLen) noexcept
+	{
+		return payloadLen >= 4 && static_cast<size_t> (declared) == payloadLen - 4;
+	}
 	// Java ACKTimer fallback for a received New Session, forward NEXT_KEY or
 	// ACK request when the application has no data to send.
 	const int CLIENT_RATCHETS_RESPONSE_TIMEOUT = 1000; // in milliseconds
@@ -118,10 +140,39 @@ namespace client
 	const int DEFAULT_MAX_CONCURRENT_STREAMS = 2048;
 	const char I2CP_PARAM_STREAMING_MAX_CONNS_PER_MINUTE[] = "i2p.streaming.maxConnsPerMinute"; // per dest
 	const int DEFAULT_MAX_CONNS_PER_MINUTE = 0; // unlimited
+	const char I2CP_PARAM_STREAMING_MAX_CONNS_PER_HOUR[] = "i2p.streaming.maxConnsPerHour";
+	const int DEFAULT_MAX_CONNS_PER_HOUR = 0;
+	const char I2CP_PARAM_STREAMING_MAX_CONNS_PER_DAY[] = "i2p.streaming.maxConnsPerDay";
+	const int DEFAULT_MAX_CONNS_PER_DAY = 0;
+	const char I2CP_PARAM_STREAMING_MAX_TOTAL_CONNS_PER_MINUTE[] = "i2p.streaming.maxTotalConnsPerMinute";
+	const int DEFAULT_MAX_TOTAL_CONNS_PER_MINUTE = 0;
+	const char I2CP_PARAM_STREAMING_MAX_TOTAL_CONNS_PER_HOUR[] = "i2p.streaming.maxTotalConnsPerHour";
+	const int DEFAULT_MAX_TOTAL_CONNS_PER_HOUR = 0;
+	const char I2CP_PARAM_STREAMING_MAX_TOTAL_CONNS_PER_DAY[] = "i2p.streaming.maxTotalConnsPerDay";
+	const int DEFAULT_MAX_TOTAL_CONNS_PER_DAY = 0;
 	const char I2CP_PARAM_STREAMING_MAX_WINDOW_SIZE[] = "i2p.streaming.maxWindowSize";
 	const char I2CP_PARAM_STREAMING_MAX_RESENDS[] = "i2p.streaming.maxResends";
 	const char I2CP_PARAM_STREAMING_DONT_SIGN[] = "i2p.streaming.dontSign";
 	const int DEFAULT_DONT_SIGN = false;
+
+	// Parsed i2cp.leaseSetEncType option. Java's ClientConnectionRunner parses
+	// the value as a strict comma-separated list of decimal CryptoKeyType
+	// codes: it rejects leading whitespace, a leading '+' and trailing
+	// garbage, allows at most one hybrid type and never combines ElGamal with
+	// a hybrid type. `valid == false` means a present option is malformed or
+	// names an unusable combination, so no LeaseSet2 key may be installed from
+	// it; an absent/empty option is valid and leaves `specified` false.
+	struct LeaseSetEncryptionTypes
+	{
+		std::set<i2p::data::CryptoKeyType> types; // selectable types, in the parsed set
+		// First selectable non-zero type in list order (ElGamal is code 0, so it
+		// only becomes the preferred type when nothing stronger was configured).
+		i2p::data::CryptoKeyType preferred = 0;
+		bool specified = false; // the option was present and non-empty
+		bool valid = true;
+	};
+
+	LeaseSetEncryptionTypes ParseLeaseSetEncryptionTypes (std::string_view value);
 
 	typedef std::function<void (std::shared_ptr<i2p::stream::Stream> stream)> StreamRequestComplete;
 
@@ -146,6 +197,11 @@ namespace client
 			std::shared_ptr<i2p::tunnel::OutboundTunnel> outboundTunnel;
 			std::shared_ptr<i2p::tunnel::InboundTunnel> replyTunnel;
 			std::shared_ptr<const i2p::data::BlindedPublicKey> requestedBlindedKey; // for encrypted LeaseSet2 only
+			// Client-auth material for an encrypted LeaseSet2, supplied by the
+			// I2CP BlindingInfo for this destination. Exactly 32 bytes: the
+			// per-client DH private key (authType 1/3) or the pre-shared key
+			// (authType 2/3). Empty means "use the session key, if any".
+			std::vector<uint8_t> authSecret;
 
 			void Complete (std::shared_ptr<i2p::data::LeaseSet> ls)
 			{
@@ -172,7 +228,8 @@ namespace client
 		std::shared_ptr<i2p::data::LeaseSet> FindLeaseSet (const i2p::data::IdentHash & ident);
 		bool RequestDestination (const i2p::data::IdentHash & dest, RequestComplete requestComplete = nullptr);
 		bool RequestDestinationWithEncryptedLeaseSet (
-			std::shared_ptr<const i2p::data::BlindedPublicKey> dest, RequestComplete requestComplete = nullptr);
+			std::shared_ptr<const i2p::data::BlindedPublicKey> dest, RequestComplete requestComplete = nullptr,
+			const uint8_t * secret = nullptr, size_t secretLen = 0);
 		void CancelDestinationRequest (const i2p::data::IdentHash & dest, bool notify = true);
 		void CancelDestinationRequestWithEncryptedLeaseSet (
 			std::shared_ptr<const i2p::data::BlindedPublicKey> dest, bool notify = true);
@@ -223,7 +280,8 @@ namespace client
 		void HandleDeliveryStatusMessage (uint32_t msgID);
 
 		void RequestLeaseSet (const i2p::data::IdentHash & dest, RequestComplete requestComplete,
-			std::shared_ptr<const i2p::data::BlindedPublicKey> requestedBlindedKey = nullptr);
+			std::shared_ptr<const i2p::data::BlindedPublicKey> requestedBlindedKey = nullptr,
+			std::vector<uint8_t> authSecret = {});
 		bool SendLeaseSetRequest (const i2p::data::IdentHash & dest,
 			std::shared_ptr<const i2p::data::RouterInfo> nextFloodfill, std::shared_ptr<LeaseSetRequest> request);
 		void SendNextLeaseSetRequest (const i2p::data::IdentHash & key, std::shared_ptr<LeaseSetRequest> request);
@@ -239,6 +297,8 @@ namespace client
 
 		std::list<std::shared_ptr<I2NPMessage>> m_IncomingMsgsQueue;
 		mutable std::mutex m_IncomingMsgsQueueMutex;
+		// Number of garlic messages discarded because the queue was full.
+		std::atomic<uint64_t> m_NumDroppedIncomingMsgs { 0 };
 
 		std::shared_ptr<i2p::tunnel::TunnelPool> m_Pool;
 		std::mutex m_LeaseSetMutex;
@@ -272,6 +332,17 @@ namespace client
 		}
 		bool IsEncryptedLeaseSet () const { return m_LeaseSetType == i2p::data::NETDB_STORE_TYPE_ENCRYPTED_LEASESET2; };
 		bool IsPerClientAuth () const { return m_AuthType > 0; };
+		// Administrative view: garlic messages dropped because the incoming
+		// queue was full.
+		uint64_t GetNumDroppedIncomingMsgs () const
+		{
+			return m_NumDroppedIncomingMsgs.load (std::memory_order_relaxed);
+		}
+		size_t GetNumQueuedIncomingMsgs () const
+		{
+			std::lock_guard<std::mutex> l (m_IncomingMsgsQueueMutex);
+			return m_IncomingMsgsQueue.size ();
+		}
 		std::future<std::vector<i2p::garlic::ECIESX25519AEADRatchetSessionPtr>> GetECIESx25519SessionsList () const
 		{
 			return boost::asio::post (
@@ -309,7 +380,12 @@ namespace client
 		std::shared_ptr<i2p::stream::StreamingDestination> CreateStreamingDestination (
 			uint16_t port, bool gzip = true); // additional
 		std::shared_ptr<i2p::stream::StreamingDestination> GetStreamingDestination (uint16_t port = 0) const;
+		std::shared_ptr<i2p::stream::StreamingDestination> GetDefaultStreamingDestination () const;
 		std::shared_ptr<i2p::stream::StreamingDestination> RemoveStreamingDestination (uint16_t port);
+		std::shared_ptr<i2p::stream::StreamingConnectionThrottle> GetStreamingConnectionThrottle () const
+		{
+			return m_StreamingConnectionThrottle;
+		}
 		// following methods operate with default streaming destination
 		void CreateStream (
 			StreamRequestComplete streamRequestComplete, const i2p::data::IdentHash & dest, uint16_t port = 0);
@@ -333,6 +409,11 @@ namespace client
 		int GetStreamingInboundSpeed () const { return m_StreamingInboundSpeed; }
 		int GetStreamingMaxConcurrentStreams () const { return m_StreamingMaxConcurrentStreams; }
 		int GetStreamingMaxConnsPerMinute () const { return m_StreamingMaxConnsPerMinute; }
+		int GetStreamingMaxConnsPerHour () const { return m_StreamingMaxConnsPerHour; }
+		int GetStreamingMaxConnsPerDay () const { return m_StreamingMaxConnsPerDay; }
+		int GetStreamingMaxTotalConnsPerMinute () const { return m_StreamingMaxTotalConnsPerMinute; }
+		int GetStreamingMaxTotalConnsPerHour () const { return m_StreamingMaxTotalConnsPerHour; }
+		int GetStreamingMaxTotalConnsPerDay () const { return m_StreamingMaxTotalConnsPerDay; }
 		bool IsStreamingAnswerPings () const { return m_IsStreamingAnswerPings; }
 		bool IsStreamingDontSign () const { return m_IsStreamingDontSign; }
 		int GetStreamingMaxWindowSize () const { return m_StreamingMaxWindowSize; }
@@ -382,8 +463,17 @@ namespace client
 		i2p::data::CryptoKeyType m_PreferredCryptoType;
 
 		int m_StreamingAckDelay, m_StreamingOutboundSpeed, m_StreamingInboundSpeed, m_StreamingMaxConcurrentStreams,
-			m_StreamingMaxConnsPerMinute, m_StreamingMaxWindowSize, m_StreamingMaxResends;
+			m_StreamingMaxConnsPerMinute, m_StreamingMaxConnsPerHour, m_StreamingMaxConnsPerDay,
+			m_StreamingMaxTotalConnsPerMinute, m_StreamingMaxTotalConnsPerHour, m_StreamingMaxTotalConnsPerDay,
+			m_StreamingMaxWindowSize, m_StreamingMaxResends;
+		std::shared_ptr<i2p::stream::StreamingConnectionThrottle> m_StreamingConnectionThrottle;
 		bool m_IsStreamingAnswerPings, m_IsStreamingDontSign;
+		// SAM creates and removes per-port streaming destinations from its own
+		// control thread while the destination service thread dispatches data
+		// messages, so the default pointer and the port map are guarded. Every
+		// caller takes a shared_ptr copy and drops the lock before invoking the
+		// streaming destination, whose callbacks can re-enter this class.
+		mutable std::mutex m_StreamingDestinationsMutex;
 		std::shared_ptr<i2p::stream::StreamingDestination> m_StreamingDestination; // default
 		std::map<uint16_t, std::shared_ptr<i2p::stream::StreamingDestination>> m_StreamingDestinationsByPorts;
 		std::shared_ptr<i2p::stream::StreamingDestination> m_LastStreamingDestination;

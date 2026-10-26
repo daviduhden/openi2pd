@@ -21,6 +21,7 @@
 #include "TransportConnector.h"
 #include "Config.h"
 #include "HTTP.h"
+#include "Blocklist.h"
 #include "util.h"
 
 using namespace i2p::data;
@@ -29,6 +30,32 @@ namespace i2p
 {
 namespace transport
 {
+	namespace
+	{
+		// Mirror TransportConnectContext's address selection so an operator
+		// blocklist entry can skip a single blocked transport without dropping a
+		// router that is still reachable through an unblocked address.
+		std::shared_ptr<const i2p::data::RouterInfo::Address> GetConnectAddress (
+			const i2p::data::RouterInfo & router, i2p::data::RouterInfo::SupportedTransports transport)
+		{
+			switch (transport)
+			{
+			case i2p::data::RouterInfo::eNTCP2V4: return router.GetPublishedNTCP2V4Address ();
+			case i2p::data::RouterInfo::eNTCP2V6: return router.GetPublishedNTCP2V6Address ();
+			case i2p::data::RouterInfo::eSSU2V4: return router.GetSSU2V4Address ();
+			case i2p::data::RouterInfo::eSSU2V6: return router.GetSSU2V6Address ();
+			case i2p::data::RouterInfo::eNTCP2V6Mesh: return router.GetYggdrasilAddress ();
+			default: return nullptr;
+			}
+		}
+
+		bool IsBlockedConnectAddress (
+			const i2p::data::RouterInfo & router, i2p::data::RouterInfo::SupportedTransports transport)
+		{
+			auto address = GetConnectAddress (router, transport);
+			return address && !address->host.is_unspecified () && i2p::data::IsOperatorBlockedAddress (address->host);
+		}
+	} // namespace
 	X25519KeysPairSupplier::X25519KeysPairSupplier (int size)
 		: m_QueueSize (size)
 	{
@@ -106,7 +133,13 @@ namespace transport
 			for (int i = 0; i < num; i++)
 			{
 				auto pair = m_KeysPool.AcquireSharedMt ();
-				pair->GenerateKeys ();
+				if (!pair->GenerateKeys ())
+				{
+					// Never pool a keyless pair: consumers would publish or
+					// encrypt with an all-zero X25519 key.
+					LogPrint (eLogError, "Transports: X25519 key generation failed; not pooling the pair");
+					continue;
+				}
 				newKeys.emplace_back (pair);
 			}
 			std::unique_lock<std::mutex> l (m_AcquiredMutex);
@@ -136,9 +169,15 @@ namespace transport
 			m_Acquired.notify_one ();
 			return pair;
 		}
-		// queue is empty, create new
-		pair = m_KeysPool.AcquireSharedMt ();
-		pair->GenerateKeys ();
+		// queue is empty, create new. A provider failure is retried a few
+		// times; a persistent failure returns the (keyless) pair so callers
+		// that check HasPrivateKey can fail closed instead of blocking.
+		for (int attempt = 0; attempt < 4; ++attempt)
+		{
+			pair = m_KeysPool.AcquireSharedMt ();
+			if (pair->GenerateKeys ()) return pair;
+			LogPrint (eLogWarning, "Transports: X25519 key generation attempt ", attempt + 1, " failed");
+		}
 		return pair;
 	}
 
@@ -655,6 +694,20 @@ namespace transport
 
 	bool Transports::ConnectToPeer (const i2p::data::IdentHash & ident, std::shared_ptr<Peer> peer)
 	{
+		// Operator blocklist and runtime bans are terminal: do not request an RI
+		// and do not retry. The historical profile-tier unreachable check is
+		// deliberately NOT applied here: it has a decay window and the original
+		// code still retried a peer that already had a RouterInfo.
+		if (i2p::data::IsOperatorBlockedRouter (ident) || i2p::data::IsRuntimeRouterBanned (ident))
+		{
+			LogPrint (eLogWarning, "Transports: Router ", ident.ToBase64 (), " is banned. Peer dropped");
+			{
+				std::lock_guard<std::mutex> l (m_PeersMutex);
+				m_Peers.erase (ident);
+			}
+			peer->Done ();
+			return false;
+		}
 		if (!peer->router) // reconnect
 		{
 			auto r = netdb.FindRouter (ident); // try to get new one from netdb
@@ -673,6 +726,12 @@ namespace transport
 			{
 				auto tr = peer->priority[peer->numAttempts];
 				peer->numAttempts++;
+				if (IsBlockedConnectAddress (*peer->router, tr))
+				{
+					LogPrint (eLogInfo, "Transports: Blocklisted address for ", ident.ToBase64 (),
+						" on transport ", (int)tr);
+					continue;
+				}
 				const auto * connector = FindTransportConnector (tr);
 				if (!connector)
 				{
