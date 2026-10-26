@@ -2330,3 +2330,38 @@ contracts in the owning checkers; they remain Pending CI compilation and
 Pending CI tests until a manual run passes. No compiler, configure, CTest,
 Gradle, package, validator, workflow, commit or push was performed for this
 follow-up.
+
+## CI-driven compile fixes (`88ac1e92`, 2026-10-26, static)
+
+The first manual batches for `88ac1e92` were read with `gh` (runs 40411690766,
+40411699490, 40411695544, 40411703834 and 40411709057). The detailed inventory
+is `docs/ci/COMPILATION-ERRORS.md` (CE-001..CE-008); `BUILD-021` tracks the
+corrections. The load-bearing lessons are:
+
+- `libi2pd_client/HTTPProxy.cpp` is `i2p::proxy`; client types such as
+  `I2PTunnelHTTPHeader` need explicit `i2p::client::` qualification. A
+  compile-free checker now pins the form.
+- Boost.Asio has no `ip::address::to_string(error_code&)` and
+  `basic_waitable_timer` has no `cancel(error_code&)` on the supported range.
+  Use `i2p::util::net::FormatAddress`/`FormatEndpoint` and `cancel()`.
+- `privsep/Worker.h` is parsed by the Windows daemon. `ChildProcess` is
+  POSIX-only; use `worker_pid_t` (`int` on Windows) and guard `<sys/types.h>`.
+- A static link probe must order dependent archives (`libssl` before
+  `libcrypto`), restore `CMAKE_REQUIRED_*`/`CMAKE_TRY_COMPILE_TARGET_TYPE`,
+  and not leave later checks in archive-only mode.
+- The source-docs lane must create the gitignored
+  `docs/generated/source-api` before Doxygen; bare `shellcheck -s sh` treats a
+  compatibility helper's SC2317/SC2329 as failure.
+
+`BUILD-022` also removes the warning classes visible in the same logs:
+nested comment openers, unused captures/helpers, a hidden virtual `Start`, the
+OpenSSL 4 `X509_NAME_get_text_by_NID` deprecation (bounded
+`i2p::crypto::GetX509NameTextByNID`), Windows CRT deprecations
+(`_dupenv_s`/`_wsopen_s`/`generic_category`), and MSVC narrowing/shadowing/
+unused-parameter diagnostics. Do not suppress the CRT warning family with
+`_CRT_SECURE_NO_WARNINGS`; fix the call or bound the conversion.
+
+These are static corrections only. Do not claim CI validation or a
+warning-free build until a new manual dispatch on the corrected revision
+passes; no compiler, configure, CTest, Gradle, Doxygen, package, workflow,
+commit or push was performed for this note.

@@ -25,6 +25,7 @@
 #ifdef _WIN32
 #include <windows.h>
 #include <io.h>
+#include <share.h>
 #include <fcntl.h>
 #else
 #include <dirent.h>
@@ -261,7 +262,10 @@ try
 			return fail ("source changed before hashing");
 #else
 		if (!NoReparse (root, file.path)) return fail ("unsafe source path");
-		Descriptor fd (_wopen ((root / file.path).c_str (), _O_RDONLY | _O_BINARY | _O_NOINHERIT));
+		int rawFd = -1;
+		if (_wsopen_s (&rawFd, (root / file.path).c_str (), _O_RDONLY | _O_BINARY | _O_NOINHERIT, _SH_DENYNO, 0) != 0)
+			return fail ("cannot open source file");
+		Descriptor fd (rawFd);
 		struct _stat64 before, after;
 		if (fd.value < 0 || _fstat64 (fd.value, &before) || (before.st_mode & _S_IFMT) != _S_IFREG || before.st_size < 0
 			|| static_cast<uint64_t> (before.st_size) != file.size)

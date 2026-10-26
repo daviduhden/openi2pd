@@ -2921,7 +2921,7 @@ namespace transport
 							// leaves us without a tag rather than publishing an
 							// unusable one.
 							const uint32_t tag = MintSSU2RelayTag (
-								[this] () -> uint64_t
+								[] () -> uint64_t
 								{
 									uint32_t value = 0;
 									RAND_bytes (reinterpret_cast<uint8_t *> (&value), sizeof (value));

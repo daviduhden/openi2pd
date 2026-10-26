@@ -48,7 +48,8 @@ namespace data
 			// confuses escaped separators.
 			std::array<char, 256> name { };
 			const int length
-				= X509_NAME_get_text_by_NID (X509_get_issuer_name (cert), NID_commonName, name.data (), name.size ());
+				= i2p::crypto::GetX509NameTextByNID (
+					X509_get_issuer_name (cert), NID_commonName, name.data (), static_cast<int> (name.size ()));
 			if (length <= 0) return { };
 			std::string_view view (name.data (), static_cast<size_t> (length));
 			const auto suffix = view.find (".family");

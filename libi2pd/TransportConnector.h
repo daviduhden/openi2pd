@@ -70,23 +70,23 @@ namespace transport
 	public:
 		virtual ~ITransportConnector () = default;
 		[[nodiscard]] virtual bool TryConnect (
-			const TransportConnectContext & context, i2p::data::RouterInfo::SupportedTransports transport) const = 0;
+			const TransportConnectContext & connectContext, i2p::data::RouterInfo::SupportedTransports transport) const = 0;
 	};
 
 	class NTCP2Connector final : public ITransportConnector
 	{
 	public:
-		[[nodiscard]] bool TryConnect (const TransportConnectContext & context,
+		[[nodiscard]] bool TryConnect (const TransportConnectContext & connectContext,
 			i2p::data::RouterInfo::SupportedTransports transport) const override
 		{
-			if (!context.ntcp2) return false;
-			auto address = context.SelectNTCP2Address (transport);
-			if (!address || context.IsReserved (address->host)) return false;
-			auto session = std::make_shared<NTCP2Session> (*context.ntcp2, context.router, address);
-			if (context.ntcp2->UsingProxy ())
-				context.ntcp2->ConnectWithProxy (session);
+			if (!connectContext.ntcp2) return false;
+			auto address = connectContext.SelectNTCP2Address (transport);
+			if (!address || connectContext.IsReserved (address->host)) return false;
+			auto session = std::make_shared<NTCP2Session> (*connectContext.ntcp2, connectContext.router, address);
+			if (connectContext.ntcp2->UsingProxy ())
+				connectContext.ntcp2->ConnectWithProxy (session);
 			else
-				context.ntcp2->Connect (session);
+				connectContext.ntcp2->Connect (session);
 			return true;
 		}
 	};
@@ -94,20 +94,20 @@ namespace transport
 	class SSU2Connector final : public ITransportConnector
 	{
 	public:
-		[[nodiscard]] bool TryConnect (const TransportConnectContext & context,
+		[[nodiscard]] bool TryConnect (const TransportConnectContext & connectContext,
 			i2p::data::RouterInfo::SupportedTransports transport) const override
 		{
-			if (!context.ssu2) return false;
-			auto address = context.SelectSSU2Address (transport);
-			if (!address || context.IsReserved (address->host) || !address->IsReachableSSU ()) return false;
-			if (context.ssu2->CreateSession (context.router, address)) return true;
+			if (!connectContext.ssu2) return false;
+			auto address = connectContext.SelectSSU2Address (transport);
+			if (!address || connectContext.IsReserved (address->host) || !address->IsReachableSSU ()) return false;
+			if (connectContext.ssu2->CreateSession (connectContext.router, address)) return true;
 			// CreateSession() also returns false when a session to the same
 			// endpoint is already pending. Do not fall through to another
 			// transport in that case: Java keeps one establishment state per
 			// peer, and a second concurrent NTCP2 attempt would create a
 			// duplicate connection to the same router.
 			return !address->host.is_unspecified () && address->port
-				&& context.ssu2->FindPendingOutgoingSession (
+				&& connectContext.ssu2->FindPendingOutgoingSession (
 					boost::asio::ip::udp::endpoint (address->host, static_cast<uint16_t> (address->port)));
 		}
 	};
@@ -115,14 +115,14 @@ namespace transport
 	class YggdrasilNTCP2Connector final : public ITransportConnector
 	{
 	public:
-		[[nodiscard]] bool TryConnect (const TransportConnectContext & context,
+		[[nodiscard]] bool TryConnect (const TransportConnectContext & connectContext,
 			i2p::data::RouterInfo::SupportedTransports /* transport */) const override
 		{
-			if (!context.ntcp2) return false;
-			auto address = context.router->GetYggdrasilAddress ();
+			if (!connectContext.ntcp2) return false;
+			auto address = connectContext.router->GetYggdrasilAddress ();
 			if (!address) return false;
-			auto session = std::make_shared<NTCP2Session> (*context.ntcp2, context.router, address);
-			context.ntcp2->Connect (session);
+			auto session = std::make_shared<NTCP2Session> (*connectContext.ntcp2, connectContext.router, address);
+			connectContext.ntcp2->Connect (session);
 			return true;
 		}
 	};

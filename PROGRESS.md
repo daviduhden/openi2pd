@@ -5130,3 +5130,64 @@ Pending CI compilation and the generated API lane is Pending CI. Static checks
 `check-build-system`, `check-i18n`, `git diff --check`) passed. No Doxygen,
 Javadoc, compiler, CTest, Gradle, package, validator, workflow, commit or push
 was performed.
+
+## 2026-10-26 CI-driven compile fixes (static)
+
+The manual workflows dispatched for `88ac1e92` were inspected with `gh`
+(`run view`, `--log-failed`, `--job --log`). All five batches failed; the
+Windows run was read after its jobs completed. The
+diagnostics were grouped by first error, not by cascading message:
+
+- **CE-001:** `HTTPProxy.cpp` used `I2PTunnelHTTPHeader` unqualified inside
+  `i2p::proxy`; qualified the member and four `Result` comparisons with
+  `i2p::client::`.
+- **CE-002:** `ClientContext.cpp` called the non-existent
+  `ip::address::to_string(error_code&)`; now uses
+  `i2p::util::net::FormatAddress`, which also avoids Asio's POSIX scope-ID
+  formatter.
+- **CE-007:** MSVC failed on `pid_t` in the public `privsep/Worker.h`; guarded
+  `<sys/types.h>` and added a `worker_pid_t` alias (`int` on Windows) for the
+  POSIX-only `ChildProcess` declarations.
+- **CE-008:** `basic_waitable_timer` has no `cancel(error_code&)`; `I2CP` and
+  `SAM` now call `cancel()` directly.
+- **CE-003:** the source-docs workflow now creates the gitignored
+  `docs/generated/source-api` before Doxygen; pinned in
+  `check-build-system.cmake`.
+- **CE-004:** the static link probe passed `libcrypto.a` before `libssl.a`.
+  Fixed the order in both probe stages, restored the saved
+  `CMAKE_REQUIRED_*`/try-compile state correctly, and pinned the order.
+- **CE-005:** the unused SysV `log_success_msg` LSB shim tripped ShellCheck
+  SC2317/SC2329; documented `# shellcheck disable=SC2317,SC2329` and pinned
+  the shim and directive.
+- **Documentation:** added `docs/ci/COMPILATION-ERRORS.md` with run IDs,
+  commit SHA, first diagnostics, causes, corrections and validation states;
+  linked it from the developer navigation.
+
+Static verification: all `check-*.cmake` contracts, `shellcheck -s sh
+contrib/sysvinit/i2pd`, `sh -n`/`ksh -n`, documentation links/navigation and
+`git diff --check` pass. No compiler, CMake, CTest, Gradle, Doxygen, package
+or workflow was run; every correction remains Pending CI compilation/tests.
+
+## 2026-10-26 CI warning cleanup (static)
+
+The same `88ac1e92` logs were filtered by warning category. The first errors
+had hidden several warning classes; the following were corrected locally:
+
+- **Cross-platform:** a `/*` inside block-comment prose in
+  `I2PTunnelAccessFilter` and `Daemon.cpp`; the unused `this` capture in
+  `SSU2Session`; `HTTPProxyClientConnection::Start` hiding the base
+  `Start()`; the OpenBSD-only unused `RoleWantsNetworkNamespace`.
+- **OpenSSL 4:** replaced deprecated `X509_NAME_get_text_by_NID` in
+  `Family.cpp`/`Reseed.cpp` with a bounded
+  `i2p::crypto::GetX509NameTextByNID` built on the stable index/entry/ASN1
+  accessors.
+- **MSVC:** replaced `getenv` with `_dupenv_s`, `strerror` with
+  `std::generic_category().message()`, and `_wopen` with `_wsopen_s`; made
+  size_t/int, int64/uint8 and double/float conversions explicit where the
+  bounds are already enforced; renamed shadowing locals (`context`, `l`,
+  `ind`); removed unused formal names/lambda captures; widened the DHT bit
+  index before the `< 32*8` guard so it cannot wrap through `uint8_t`.
+
+Static checks and `shellcheck` pass; no compiler, CTest, Gradle, Doxygen or
+workflow was run. These warning fixes are Pending CI compilation and are not
+claimed as a clean warning-free build.

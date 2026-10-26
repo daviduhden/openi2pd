@@ -157,9 +157,9 @@ namespace client
 	void SAMSocket::CancelControlDeadline ()
 	{
 		// cancel() only aborts the wait; the handler still runs and returns on
-		// the aborted error code, so a closed/reused timer cannot fire.
-		boost::system::error_code ec;
-		m_ControlDeadline.cancel (ec);
+		// the aborted error code, so a closed/reused timer cannot fire. The
+		// supported Boost range has no error_code overload on this timer.
+		m_ControlDeadline.cancel ();
 	}
 
 	void SAMSocket::HandleControlDeadline (const boost::system::error_code & ecode)

@@ -15,6 +15,7 @@
 #define CRYPTO_H__
 
 #include <inttypes.h>
+#include <cstring>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -28,6 +29,7 @@
 #include <openssl/rsa.h>
 #include <openssl/sha.h>
 #include <openssl/evp.h>
+#include <openssl/x509.h>
 #include <openssl/rand.h>
 #include <openssl/opensslv.h>
 
@@ -95,6 +97,34 @@ namespace i2p
 namespace crypto
 {
 	bool bn2buf (const BIGNUM * bn, uint8_t * buf, size_t len);
+
+	/**
+	 * Copy one X.509 name attribute as UTF-8 into a bounded buffer.
+	 *
+	 * OpenSSL 4 deprecates `X509_NAME_get_text_by_NID`; this uses the stable
+	 * index/entry/ASN1 accessors instead. @return the copied byte count, or
+	 * -1 when the attribute is absent or the ASN.1 value cannot be converted.
+	 * @pre @a out is non-null and @a size is positive; output is always
+	 * NUL-terminated on success.
+	 */
+	inline int GetX509NameTextByNID (X509_NAME * name, int nid, char * out, int size)
+	{
+		if (!name || !out || size <= 0) return -1;
+		const int index = X509_NAME_get_index_by_NID (name, nid, -1);
+		if (index < 0) return -1;
+		X509_NAME_ENTRY * entry = X509_NAME_get_entry (name, index);
+		if (!entry) return -1;
+		ASN1_STRING * data = X509_NAME_ENTRY_get_data (entry);
+		if (!data) return -1;
+		unsigned char * utf8 = nullptr;
+		const int length = ASN1_STRING_to_UTF8 (&utf8, data);
+		if (length < 0) return -1;
+		const int copied = length < size - 1 ? length : size - 1;
+		std::memcpy (out, utf8, static_cast<size_t> (copied));
+		out[copied] = '\0';
+		OPENSSL_free (utf8);
+		return copied;
+	}
 
 	// DSA
 #ifndef LIBRESSL_VERSION_NUMBER // OpenSSL 3.0.2 is the minimum

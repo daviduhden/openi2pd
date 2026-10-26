@@ -397,7 +397,6 @@ private:
 	Clock::time_point m_RestartDue { };
 	uint32_t m_PendingGeneration = 0;
 	bool m_RestartPending = false;
-	bool m_Started = false;
 	/** A Failed snapshot is published at most once per supervisor lifetime. */
 	bool m_FailedPublished = false;
 

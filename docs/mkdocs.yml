@@ -114,6 +114,7 @@ nav:
   - Developer:
       - Guide: developer-guide/README.md
       - Source documentation: source-documentation.md
+      - Compilation errors: ci/COMPILATION-ERRORS.md
       - Requirements: devs/building/requirements.md
       - Linux and OpenBSD: devs/building/unix.md
       - Windows: devs/building/windows.md

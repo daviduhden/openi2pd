@@ -5,7 +5,7 @@
  * openi2pd: I2PTunnelAccessFilter.
  *
  * Parses and evaluates the server-tunnel `filterDefinition` grammar used by
- * the Java i2ptunnel `access/*` elements: a `default=allow|deny` fallback plus
+ * the Java i2ptunnel `access` elements: a `default=allow|deny` fallback plus
  * an ordered list of `explicit`, `file` and `record` rules whose first match
  * decides. The definition is immutable; the runtime object caches parsed
  * `file` lists (reloaded when the file's mtime/size changes, bounded to 1 MiB

@@ -148,7 +148,8 @@ foreach(required IN ITEMS "OpenSSL 3.0.2" "LibreSSL 4.0" "cmake_minimum_required
     "check_library_exists(\"\${_i2pd_curses_probe}\" wadd_wch" "I2PD_CURSES_HAS_WIDE_ENTRY"
     "i2pd_apply_dialect(i2pd_privsep PRIVATE)" "i2pd_apply_dialect(libi2pd PUBLIC)"
     "Expected.h lives in libi2pd" "MiniUPnPc 2.2.6" "I2PD_ATOMIC_LIBRARIES"
-    "WITH_STATIC cannot be combined" "I2PD_REQUIRE_PERL")
+    "WITH_STATIC cannot be combined" "I2PD_REQUIRE_PERL"
+    "OPENSSL_SSL_LIBRARY};\${OPENSSL_CRYPTO_LIBRARY")
   string(FIND "${top_cmake_text}" "${required}" position)
   if(position EQUAL -1)
     message(FATAL_ERROR "CMake is missing dependency-floor marker '${required}'")
@@ -516,6 +517,9 @@ endforeach()
 # definition and have a Crypto.h fallback, so a target that includes the header
 # without CMake's definitions cannot silently select a different branch.
 file(READ "${PROJECT_ROOT}/libi2pd/Crypto.h" crypto_feature_text)
+file(READ "${PROJECT_ROOT}/privsep/Worker.h" worker_header_text)
+assert_present("${worker_header_text}" "worker_pid_t"
+  "public Worker.h must alias the POSIX pid type for Windows parsers")
 string(REGEX MATCH "set\\(I2PD_OPENSSL_PROBES[^)]*\\)" openssl_probes_block "${top_cmake_text}")
 string(REGEX MATCHALL "I2PD_HAVE_[A-Z0-9_]+" crypto_probe_names "${openssl_probes_block}")
 list(REMOVE_DUPLICATES crypto_probe_names)
@@ -529,5 +533,9 @@ foreach(probe_name IN LISTS crypto_probe_names)
     message(FATAL_ERROR "Crypto.h has no fallback for probe ${probe_name}")
   endif()
 endforeach()
+
+file(READ "${PROJECT_ROOT}/.github/workflows/build.yml" build_workflow_text)
+assert_present("${build_workflow_text}" "mkdir -p docs/generated/source-api"
+  "source-docs job must create the gitignored Doxygen output directory")
 
 message(STATUS "build-system-static: OK")

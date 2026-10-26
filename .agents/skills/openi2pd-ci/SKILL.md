@@ -165,6 +165,24 @@ workflow, run `gh`, build or test.
   a real reusable consumer. Manual results never validate an unpublished
   local tree.
 
+
+- Start a compile-failure triage with the real manual runs:
+  `gh run list`, `gh run view RUN_ID`, `gh run view RUN_ID --log-failed`,
+  `gh run view --job JOB_ID --log`. Record the run ID, SHA and first
+  diagnostic in `docs/ci/COMPILATION-ERRORS.md`; do not count cancelled jobs or
+  cascaded messages as independent causes.
+- The source-docs lane runs Doxygen with warnings as errors and needs
+  `mkdir -p docs/generated/source-api` first. The service-contract job runs
+  bare `shellcheck -s sh`; a compatibility helper may need an explicit
+  `SC2317`/`SC2329` disable with a reason.
+
+
+- After fixing first errors, re-filter the same logs by warning class; a
+  failed build hides warnings from translation units that never compiled.
+  Keep the warning inventory in `docs/ci/COMPILATION-ERRORS.md` and do not
+  call a build warning-free until a new manual run on the corrected revision
+  reports it.
+
 ## Do not
 
 - Do not compile, configure, run CTest, sanitizers, fuzzers, Gradle or project

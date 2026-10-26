@@ -55,8 +55,8 @@ namespace torrents
 
 	std::optional<NodeID> Bucket::GetMiddleID () const
 	{
-		uint8_t bit = std::max (start.FindLowestBit (), next ? next->start.FindLowestBit () : -1) + 1;
-		if (bit >= NodeID::len * 8) return { };
+		const int bit = std::max (start.FindLowestBit (), next ? next->start.FindLowestBit () : -1) + 1;
+		if (bit < 0 || bit >= NodeID::len * 8) return { };
 		NodeID middleID = start;
 		middleID[bit >> 3] |= (0x80 >> (bit & 0x07));
 		return { middleID };
@@ -64,8 +64,8 @@ namespace torrents
 
 	NodeID Bucket::GetRandomID (std::mt19937 & rng) const
 	{
-		uint8_t bit = std::max (start.FindLowestBit (), next ? next->start.FindLowestBit () : -1) + 1;
-		if (bit >= NodeID::len * 8) return start;
+		const int bit = std::max (start.FindLowestBit (), next ? next->start.FindLowestBit () : -1) + 1;
+		if (bit < 0 || bit >= NodeID::len * 8) return start;
 
 		NodeID randomID;
 		auto d = div (bit, 8);
@@ -647,7 +647,7 @@ namespace torrents
 			memcpy (m_NodeID.data (), dest->GetIdentHash (), 6);
 			m_NodeID[4] ^= (m_Port >> 8);
 			m_NodeID[5] ^= (m_Port & 0xFF);
-			RAND_bytes (m_NodeID.data () + 6, m_NodeID.size () - 6);
+			RAND_bytes (m_NodeID.data () + 6, static_cast<int> (m_NodeID.size () - 6));
 			m_RoutingTable = std::make_unique<RoutingTable> (m_NodeID);
 		}
 		else
@@ -1089,7 +1089,9 @@ namespace torrents
 		if (it == m_Queries.end ()) return;
 		const auto query = std::get<2> (it->second);
 		const auto expectedPort = std::get<1> (it->second);
-		const auto queryPort = query == eKRPCQueryAnnouncePeer ? expectedPort - 1 : expectedPort;
+		const auto queryPort = query == eKRPCQueryAnnouncePeer && expectedPort > 0
+			? static_cast<uint16_t> (expectedPort - 1)
+			: expectedPort;
 		if (fromPort != queryPort) return;
 		// Extract before any continuation can insert a new query and rehash.
 		// A protocol error completes the request, but is not a successful
@@ -1377,7 +1379,7 @@ namespace torrents
 		bool issued = false;
 		for (int attempt = 0; attempt < 4 && !issued; attempt++)
 		{
-			if (RAND_bytes (reinterpret_cast<unsigned char *> (token.data ()), token.size ()) != 1) return;
+			if (RAND_bytes (reinterpret_cast<unsigned char *> (token.data ()), static_cast<int> (token.size ())) != 1) return;
 			DHTIncomingToken entry;
 			entry.token = token;
 			entry.nodeID = from->id;
@@ -1490,7 +1492,9 @@ namespace torrents
 		if (it != m_Queries.end ())
 		{
 			const auto & [expectedIdent, expectedPort, expectedQuery, request, sent] = it->second;
-			const auto queryPort = expectedQuery == eKRPCQueryAnnouncePeer ? expectedPort - 1 : expectedPort;
+			const uint16_t queryPort = expectedQuery == eKRPCQueryAnnouncePeer && expectedPort > 0
+				? static_cast<uint16_t> (expectedPort - 1)
+				: expectedPort;
 			if (fromPort != queryPort || !Node (nodeID, expectedIdent, queryPort).VerifyID ()) return;
 			if ((expectedQuery == eKRPCQueryGetPeers || expectedQuery == eKRPCQueryFindNode) && request
 				&& request->lastNode && request->lastNode->id != nodeID)
@@ -1666,7 +1670,10 @@ namespace torrents
 		uint64_t transactionID;
 		do
 		{
-			if (RAND_bytes (reinterpret_cast<unsigned char *> (&transactionID), sizeof (transactionID)) != 1) return;
+			if (RAND_bytes (reinterpret_cast<unsigned char *> (&transactionID),
+				static_cast<int> (sizeof (transactionID)))
+				!= 1)
+			return;
 		} while (m_Queries.contains (transactionID));
 		auto msg = CreateDictionary ({ { "a", arguments }, { "q", CreateByteString (KRPCQueryStr[query]) },
 			{ "t", CreateByteString (std::string_view ((const char *)&transactionID, sizeof (transactionID))) },

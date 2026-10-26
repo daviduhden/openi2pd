@@ -257,6 +257,12 @@ report that limitation; do not substitute local execution. Ask for:
   dependency; keep the link edge when adding a new supervisor/worker unit so
   installed consumers and the Windows tests resolve the core symbols.
 
+
+- The public `Worker.h` must parse on Windows: `ChildProcess` declarations use
+  `worker_pid_t`, not raw POSIX `pid_t`, and `<sys/types.h>` is non-Windows
+  only. The Windows supervisor does not adopt a POSIX child, but the daemon
+  includes the header for the worker-identity declarations.
+
 ## Do not
 
 - Do not compile, run CTest, sanitizers, process tests or project validators

@@ -21,7 +21,9 @@
 #include <span>
 #include <string>
 #include <string_view>
+#ifndef _WIN32
 #include <sys/types.h>
+#endif
 #include <vector>
 
 #include "Channel.h"
@@ -40,6 +42,16 @@
 
 namespace i2p::privsep
 {
+#ifdef _WIN32
+// Windows has no POSIX pid_t. ChildProcess is a POSIX only spawn owner; the
+// alias keeps this public header parseable for the Windows daemon, which
+// includes it for the shared worker-identity declarations but never adopts a
+// POSIX child.
+using worker_pid_t = int;
+#else
+using worker_pid_t = pid_t;
+#endif
+
 /**
  * Worker roles as an enumerated identity. The spawner declares the role both
  * on the command line and in the identity hello written to the child's
@@ -215,7 +227,7 @@ public:
 	 * Adopt an existing child and channel. Used by the spawn path to apply
 	 * the shared ownership and pidfd setup.
 	 */
-	static ChildProcess Adopt (pid_t pid, Channel channel);
+	static ChildProcess Adopt (worker_pid_t pid, Channel channel);
 
 	bool IsRunning ();
 	/**
@@ -241,7 +253,7 @@ public:
 		m_Pid = -1;
 		m_Channel.Close ();
 	}
-	pid_t Pid () const { return m_Pid; }
+	worker_pid_t Pid () const { return m_Pid; }
 	Channel & ChannelFd () { return m_Channel; }
 
 private:
@@ -251,7 +263,7 @@ private:
 	/** Wait for exit until an absolute deadline. Never blocks indefinitely. */
 	bool WaitForExit (int timeoutMs);
 	void ClosePidFd ();
-	pid_t m_Pid = -1;
+	worker_pid_t m_Pid = -1;
 	int m_PidFd = -1;
 	Channel m_Channel;
 };

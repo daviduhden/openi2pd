@@ -1412,7 +1412,7 @@ namespace proxy
 			return;
 		}
 		i2p::http::HTTPRes res;
-		res.code = code;
+		res.code = static_cast<uint16_t> (code);
 		res.add_header ("Content-Type", "text/html; charset=UTF-8");
 		res.add_header ("Connection", "close");
 		std::stringstream ss;
@@ -2434,7 +2434,7 @@ namespace proxy
 		~HTTPProxyClientConnection () { m_ResponseTimer.cancel (); }
 
 		/** Arm the response-header deadline, then start the connection. */
-		void Start (const uint8_t * msg, size_t len)
+		void StartResponse (const uint8_t * msg, size_t len)
 		{
 			ArmResponseDeadline ();
 			I2PConnect (msg, len);
@@ -2443,22 +2443,22 @@ namespace proxy
 	protected:
 		void Write (const uint8_t * buf, size_t len) override
 		{
-			if (m_ResponseHeader.State () == I2PTunnelHTTPHeader::Result::Complete)
+			if (m_ResponseHeader.State () == i2p::client::I2PTunnelHTTPHeader::Result::Complete)
 			{
 				I2PTunnelConnection::Write (buf, len);
 				return;
 			}
 			switch (m_ResponseHeader.Feed ({ reinterpret_cast<const char *> (buf), len }))
 			{
-			case I2PTunnelHTTPHeader::Result::Complete:
+			case i2p::client::I2PTunnelHTTPHeader::Result::Complete:
 			{
 				m_ResponseTimer.cancel ();
 				const auto & output = m_ResponseHeader.Output ();
 				I2PTunnelConnection::Write (reinterpret_cast<const uint8_t *> (output.data ()), output.size ());
 				break;
 			}
-			case I2PTunnelHTTPHeader::Result::Incomplete: StreamReceive (); break;
-			case I2PTunnelHTTPHeader::Result::Rejected:
+			case i2p::client::I2PTunnelHTTPHeader::Result::Incomplete: StreamReceive (); break;
+			case i2p::client::I2PTunnelHTTPHeader::Result::Rejected:
 				// Fail closed: a header the sanitizer cannot parse must not be
 				// forwarded verbatim to the client.
 				LogPrint (eLogError, "HTTPProxy: response header exceeds bounds");
@@ -2506,7 +2506,7 @@ namespace proxy
 				[self, response] (const boost::system::error_code &, std::size_t) { self->Terminate (); });
 		}
 
-		I2PTunnelHTTPHeader m_ResponseHeader { I2PTunnelHTTPHeader::Mode::ClientResponse };
+		i2p::client::I2PTunnelHTTPHeader m_ResponseHeader { i2p::client::I2PTunnelHTTPHeader::Mode::ClientResponse };
 		boost::asio::steady_timer m_ResponseTimer;
 	};
 
@@ -2569,7 +2569,7 @@ namespace proxy
 		}
 		auto connection = std::make_shared<HTTPProxyClientConnection> (owner, m_sock, stream);
 		owner->AddHandler (connection);
-		connection->Start (reinterpret_cast<const uint8_t *> (m_send_buf.data ()), m_send_buf.length ());
+		connection->StartResponse (reinterpret_cast<const uint8_t *> (m_send_buf.data ()), m_send_buf.length ());
 		// Ownership of the client socket is handed to the tunnel connection.
 		// Do not close it from this handler's destructor.
 		m_sock = nullptr;

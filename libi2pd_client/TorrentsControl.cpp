@@ -74,7 +74,7 @@ namespace torrents
 				if (c == '%')
 				{
 					if (text.size () - i < 3 || hex (text[i + 1]) < 0 || hex (text[i + 2]) < 0) return std::nullopt;
-					c = (hex (text[i + 1]) << 4) | hex (text[i + 2]);
+					c = static_cast<unsigned char> ((hex (text[i + 1]) << 4) | hex (text[i + 2]));
 					i += 2;
 				}
 				else if (c == '+')
@@ -107,7 +107,7 @@ namespace torrents
 					for (size_t i = 0; i < parsed.size (); ++i)
 					{
 						if (hex (hash[2 * i]) < 0 || hex (hash[2 * i + 1]) < 0) return std::nullopt;
-						parsed[i] = (hex (hash[2 * i]) << 4) | hex (hash[2 * i + 1]);
+						parsed[i] = static_cast<uint8_t> ((hex (hash[2 * i]) << 4) | hex (hash[2 * i + 1]));
 					}
 				}
 				else if (hash.size () == 32)
@@ -125,7 +125,7 @@ namespace torrents
 						if (count >= 8)
 						{
 							count -= 8;
-							parsed[offset++] = bits >> count;
+							parsed[offset++] = static_cast<uint8_t> (bits >> count);
 						}
 					}
 				}

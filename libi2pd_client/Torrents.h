@@ -1162,7 +1162,9 @@ namespace torrents
 		}
 		int GetNumPeers (size_t trackerID) const
 		{
-			return (trackerID < m_TrackerStats.size ()) ? std::get<0> (m_TrackerStats[trackerID]).size () : 0;
+			return (trackerID < m_TrackerStats.size ())
+				? static_cast<int> (std::get<0> (m_TrackerStats[trackerID]).size ())
+				: 0;
 		}
 		uint64_t GetLastTrackerUpdateTime (size_t trackerID) const
 		{

@@ -1132,10 +1132,10 @@ namespace client
 
 	void I2CPSession::ArmReadTimeout (int seconds)
 	{
-		// cancel() on a timer without a pending wait is safe and each arm
-		// replaces the previous deadline, so no stale handler survives.
-		boost::system::error_code ec;
-		m_ReadTimer.cancel (ec);
+		// basic_waitable_timer has no error_code cancel overload on the
+		// supported Boost range; cancel() is safe without a pending wait and
+		// each arm replaces the previous deadline.
+		m_ReadTimer.cancel ();
 		m_ReadTimer.expires_after (std::chrono::seconds (seconds));
 		m_ReadTimer.async_wait (
 			[s = shared_from_this ()] (const boost::system::error_code & ecode) { s->HandleReadTimeout (ecode); });
@@ -1143,8 +1143,7 @@ namespace client
 
 	void I2CPSession::CancelReadTimeout ()
 	{
-		boost::system::error_code ec;
-		m_ReadTimer.cancel (ec);
+		m_ReadTimer.cancel ();
 	}
 
 	void I2CPSession::HandleReadTimeout (const boost::system::error_code & ecode)

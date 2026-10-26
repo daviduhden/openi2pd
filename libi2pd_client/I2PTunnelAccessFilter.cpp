@@ -4,7 +4,7 @@
  *
  * openi2pd: I2PTunnelAccessFilter.
  *
- * Implements the Java i2ptunnel `access/*` filter grammar: ordered `explicit`,
+ * Implements the Java i2ptunnel `access` filter grammar: ordered `explicit`,
  * `file` and `record` elements with first-match-wins evaluation, an immutable
  * definition, bounded file caching with mtime/size reload and per-destination
  * record counters. Invalid grammar is rejected at configuration load; entry

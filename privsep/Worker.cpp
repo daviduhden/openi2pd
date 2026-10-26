@@ -394,7 +394,7 @@ bool WorkerRoleTakesInheritedRoot (WorkerRole role)
 namespace
 {
 	/** Roles that benefit from an empty network namespace when one is available. */
-	bool RoleWantsNetworkNamespace (WorkerRole role)
+	[[maybe_unused]] bool RoleWantsNetworkNamespace (WorkerRole role)
 	{
 		switch (role)
 		{

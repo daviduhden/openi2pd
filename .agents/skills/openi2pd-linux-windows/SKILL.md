@@ -173,6 +173,18 @@ execution. Ask for:
   peer-credential overload must receive a mutable accepted socket even though
   the generic no-op overload can accept a const socket.
 
+
+- `privsep/Worker.h` is included by the Windows daemon even though
+  `ChildProcess` is POSIX-only. Do not declare POSIX-only `pid_t` fields
+  unguarded: use the `worker_pid_t` alias (`int` on Windows, `pid_t`
+  elsewhere) and guard `<sys/types.h>` (`CE-007`).
+
+
+- MSVC reports C4996 for `getenv`, `strerror` and `_wopen`, plus C4244/C4267
+  for narrowing conversions. Use `_dupenv_s`, `std::generic_category().message`
+  and `_wsopen_s` with `_SH_DENYNO`; cast only after the existing bound check.
+  Do not add `_CRT_SECURE_NO_WARNINGS` to hide the family wholesale.
+
 ## Do not
 
 - Do not compile, run CTest, sanitizers, console/pipe tests or validators

@@ -330,9 +330,13 @@ message(STATUS "OpenSSL libs       : ${OPENSSL_CRYPTO_LIBRARY};${OPENSSL_SSL_LIB
 # execute the target platform. LibreSSL keeps the fallback branches in code.
 set(_i2pd_saved_required_includes "${CMAKE_REQUIRED_INCLUDES}")
 set(_i2pd_saved_required_libraries "${CMAKE_REQUIRED_LIBRARIES}")
-set(_i2pd_saved_try_compile_target_type "${CMAKE_TRY_COMPILE_TARGET_TYPE}")
+set(_i2pd_saved_required_link_options "${CMAKE_REQUIRED_LINK_OPTIONS}")
+set(_i2pd_original_try_compile_target_type "${CMAKE_TRY_COMPILE_TARGET_TYPE}")
 set(CMAKE_REQUIRED_INCLUDES "${OPENSSL_INCLUDE_DIR}")
-set(CMAKE_REQUIRED_LIBRARIES "${OPENSSL_CRYPTO_LIBRARY};${OPENSSL_SSL_LIBRARY}")
+# Static archives are resolved in one pass, so the dependent libssl must
+# precede libcrypto. Shared builds tolerate either order, which previously hid
+# this from every non-musl lane.
+set(CMAKE_REQUIRED_LIBRARIES "${OPENSSL_SSL_LIBRARY};${OPENSSL_CRYPTO_LIBRARY}")
 set(CMAKE_TRY_COMPILE_TARGET_TYPE STATIC_LIBRARY)
 
 # Feature probe answers are cache entries. Reusing a build directory after
@@ -439,24 +443,14 @@ check_cxx_source_compiles("
 #include <openssl/mlkem.h>
 int main() { return 0; }"
   I2PD_HAVE_OPENSSL_MLKEM_H)
-if(_i2pd_saved_try_compile_target_type)
-  set(CMAKE_TRY_COMPILE_TARGET_TYPE "${_i2pd_saved_try_compile_target_type}")
-else()
-  unset(CMAKE_TRY_COMPILE_TARGET_TYPE)
-endif()
-set(CMAKE_REQUIRED_INCLUDES "${_i2pd_saved_required_includes}")
-set(CMAKE_REQUIRED_LIBRARIES "${_i2pd_saved_required_libraries}")
-unset(_i2pd_saved_try_compile_target_type)
-unset(_i2pd_saved_required_includes)
-unset(_i2pd_saved_required_libraries)
 # Compile-only probes cannot detect a header/library prefix mismatch. One
 # combined link probe references the required surface for the selected
 # backend and fails at configure time if the library cannot supply it.
 set(CMAKE_REQUIRED_INCLUDES "${OPENSSL_INCLUDE_DIR}")
 # Use the exact imported file paths rather than the targets so try_compile
-# exercises the same libssl/libcrypto selected for the build.
-set(CMAKE_REQUIRED_LIBRARIES "${OPENSSL_CRYPTO_LIBRARY};${OPENSSL_SSL_LIBRARY}")
-set(_i2pd_link_saved_try_type "${CMAKE_TRY_COMPILE_TARGET_TYPE}")
+# exercises the same libssl/libcrypto selected for the build. Keep the static
+# link order: libssl first, then its libcrypto dependency.
+set(CMAKE_REQUIRED_LIBRARIES "${OPENSSL_SSL_LIBRARY};${OPENSSL_CRYPTO_LIBRARY}")
 set(CMAKE_TRY_COMPILE_TARGET_TYPE EXECUTABLE)
 if(I2PD_OPENSSL_KIND STREQUAL "OpenSSL")
   check_cxx_source_compiles("
@@ -490,12 +484,19 @@ int main() {
 endif()
 set(CMAKE_REQUIRED_INCLUDES "${_i2pd_saved_required_includes}")
 set(CMAKE_REQUIRED_LIBRARIES "${_i2pd_saved_required_libraries}")
-if(_i2pd_link_saved_try_type)
-  set(CMAKE_TRY_COMPILE_TARGET_TYPE "${_i2pd_link_saved_try_type}")
+set(CMAKE_REQUIRED_LINK_OPTIONS "${_i2pd_saved_required_link_options}")
+# Restore the caller's try_compile mode rather than the STATIC_LIBRARY value
+# used above; later link checks (ncurses wide entry, library_exists) depend on
+# an executable probe.
+if(_i2pd_original_try_compile_target_type)
+  set(CMAKE_TRY_COMPILE_TARGET_TYPE "${_i2pd_original_try_compile_target_type}")
 else()
   unset(CMAKE_TRY_COMPILE_TARGET_TYPE)
 endif()
-unset(_i2pd_link_saved_try_type)
+unset(_i2pd_original_try_compile_target_type)
+unset(_i2pd_saved_required_includes)
+unset(_i2pd_saved_required_libraries)
+unset(_i2pd_saved_required_link_options)
 if(NOT I2PD_OPENSSL_LINK_OK)
   message(FATAL_ERROR
     "The selected OpenSSL headers and libraries do not provide one linked modern API surface")

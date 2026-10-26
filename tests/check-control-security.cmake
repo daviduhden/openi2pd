@@ -620,6 +620,14 @@ foreach(required IN ITEMS
   endif()
 endforeach()
 
+# basic_waitable_timer exposes cancel()/cancel_one() only; an error_code
+# argument fails MSVC and other template instantiations.
+foreach(source IN ITEMS i2cp_source sam_source)
+  string(FIND "${${source}}" ".cancel (ec)" timer_cancel_ec)
+  if(NOT timer_cancel_ec EQUAL -1)
+    message(FATAL_ERROR "Timer cancel(error_code) is not portable in ${source}")
+  endif()
+endforeach()
 foreach(required IN ITEMS
     "GetI2CPBlindingAuthSecret"
     "GetI2CPHostReplyResultForAuth"

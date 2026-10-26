@@ -49,8 +49,21 @@ namespace i18n
 		{
 			for (const char * name : { "LC_ALL", "LC_MESSAGES", "LANG" })
 			{
+#ifdef _MSC_VER
+				// The CRT marks getenv deprecated; _dupenv_s returns an owned
+				// copy that is freed immediately after the value is copied.
+				char * raw = nullptr;
+				size_t rawLength = 0;
+				if (_dupenv_s (&raw, &rawLength, name) == 0 && raw)
+				{
+					std::string value (raw);
+					std::free (raw);
+					if (!value.empty ()) return value;
+				}
+#else
 				const char * value = std::getenv (name);
 				if (value && *value) return value;
+#endif
 			}
 			return { };
 		}

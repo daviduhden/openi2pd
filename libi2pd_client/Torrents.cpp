@@ -23,6 +23,7 @@
 #include <algorithm>
 #include <cerrno>
 #include <climits>
+#include <system_error>
 #include <functional>
 #include <iterator>
 #include <limits>
@@ -34,6 +35,7 @@
 #ifdef _WIN32
 #include <fcntl.h>
 #include <io.h>
+#include <share.h>
 #include <sys/stat.h>
 // Boost.Asio requires Winsock 2 to be included before windows.h.
 #include <winsock2.h>
@@ -132,7 +134,9 @@ namespace torrents
 			case FileAccess::eCreateOrTruncate: flags |= _O_WRONLY | _O_CREAT | _O_TRUNC; break;
 			default: return -1;
 			}
-			return _wopen (fullPath.c_str (), flags, _S_IREAD | _S_IWRITE);
+			int fd = -1;
+			if (_wsopen_s (&fd, fullPath.c_str (), flags, _SH_DENYNO, _S_IREAD | _S_IWRITE) != 0) return -1;
+			return fd;
 #else
 			int directory
 				= ::open (root.empty () ? "." : root.c_str (), O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW);
@@ -560,7 +564,7 @@ namespace torrents
 		if (root.empty () || !IsSafeRelativePath (relativePath) || (len && !data))
 			return fail ("invalid atomic write target");
 		std::array<uint8_t, 16> random;
-		if (RAND_bytes (random.data (), random.size ()) != 1) return fail ("cannot randomize temporary name");
+		if (RAND_bytes (random.data (), static_cast<int> (random.size ())) != 1) return fail ("cannot randomize temporary name");
 		static constexpr char hex[] = "0123456789abcdef";
 		std::string temporary = ".openi2pd-";
 		for (auto byte : random)
@@ -1237,7 +1241,8 @@ namespace torrents
 			m_FileWritable = false;
 			errno = EINVAL;
 		}
-		if (m_File < 0) LogPrint (eLogError, "Torrents: Can't open file ", filePath, " : ", std::strerror (errno));
+		if (m_File < 0) LogPrint (eLogError, "Torrents: Can't open file ", filePath, " : ",
+			std::generic_category ().message (errno));
 		m_LastAccessTime = i2p::util::GetMonotonicSeconds ();
 	}
 
@@ -1488,7 +1493,9 @@ namespace torrents
 	size_t Piece::GetNumBlocks (size_t len) const
 	{
 		auto d = lldiv (len, REQUEST_BLOCK_SIZE);
-		int numBlocks = d.quot;
+		// A torrent block count is bounded well below INT_MAX by the metadata
+		// and piece-size checks; make the narrowing explicit.
+		int numBlocks = static_cast<int> (d.quot);
 		if (d.rem > 0) numBlocks++;
 		return numBlocks;
 	}
@@ -1615,7 +1622,7 @@ namespace torrents
 	{
 		std::lock_guard<std::mutex> l (m_Mutex);
 		if (offset >= m_Size || m_IsSaving || m_IsVerificationPending) return false;
-		return IsAvailableLocked (offset / REQUEST_BLOCK_SIZE);
+		return IsAvailableLocked (static_cast<int> (offset / REQUEST_BLOCK_SIZE));
 	}
 
 	std::pair<size_t, size_t> Piece::GetNextBlockToRequest ()
@@ -1747,7 +1754,7 @@ namespace torrents
 		constexpr size_t randomLength = 14;
 		static_assert (prefixLength + randomLength == std::tuple_size_v<PeerID>, "peer id must stay 20 bytes");
 		uint8_t random[randomLength] { };
-		if (RAND_bytes (random, sizeof (random)) != 1)
+		if (RAND_bytes (random, static_cast<int> (sizeof (random))) != 1)
 		{
 			// Never fall back to a predictable identity: derive from the
 			// project RNG seed so the id is still per-process unpredictable.
@@ -1996,8 +2003,8 @@ namespace torrents
 				else if (key == "meta version")
 				{
 					auto [value, l] = ExtractInteger (buf);
-					if (l && !version) // no pieces yet, might be v2
-						version = value;
+					if (l && !version && value >= 0 && value <= 2) // no pieces yet, v1/v2
+						version = static_cast<int> (value);
 					return l;
 				}
 				return 0;
@@ -3083,9 +3090,9 @@ namespace torrents
 			}
 			for (const auto & it : sortedByNumPeers)
 			{
-				uint32_t ind = std::get<0> (it);
-				auto [offset, len] = m_Pieces[ind].GetNextBlockToRequest ();
-				if (len > 0) return { ind, offset, len };
+				const uint32_t pieceIndex = std::get<0> (it);
+				auto [offset, len] = m_Pieces[pieceIndex].GetNextBlockToRequest ();
+				if (len > 0) return { pieceIndex, offset, len };
 			}
 		}
 		return { 0, 0, 0 };
@@ -3786,7 +3793,7 @@ namespace torrents
 		if (!m_Stream) return;
 		LogPrint (eLogDebug, "Torrents: Sending ", len, " bytes");
 		m_Stream->AsyncSend (buf, len,
-			[s = shared_from_this ()] (const boost::system::error_code & ecode, size_t bytes_transferred)
+			[s = shared_from_this ()] (const boost::system::error_code & ecode, size_t)
 			{
 				if (ecode || !s->m_Stream) s->Terminate ();
 			});
@@ -4224,7 +4231,8 @@ namespace torrents
 				if (buf[i] & bit)
 				{
 					m_RemoteBitfield.set (idx);
-					if (!m_IsInterested && !m_Torrent->GetPiece (idx).IsComplete ()) m_IsInterested = true;
+					if (!m_IsInterested && !m_Torrent->GetPiece (static_cast<int> (idx)).IsComplete ())
+						m_IsInterested = true;
 				}
 				bit >>= 1;
 				idx++;
@@ -4239,7 +4247,7 @@ namespace torrents
 	void PeerConnection::SendBitfieldMsg (const uint8_t * bitfield, size_t bitfieldLen)
 	{
 		std::vector<uint8_t> sendBuffer (bitfieldLen + 5);
-		htobe32buf (sendBuffer.data (), bitfieldLen + 1); // length
+		htobe32buf (sendBuffer.data (), static_cast<uint32_t> (bitfieldLen + 1)); // length
 		sendBuffer[4] = eMessageTypeBitfield; // msg ID
 		memcpy (sendBuffer.data () + 5, bitfield, bitfieldLen);
 		WriteToStream (sendBuffer.data (), sendBuffer.size ());
@@ -4428,7 +4436,7 @@ namespace torrents
 	{
 		if (!m_Stream) return;
 		std::array<uint8_t, PIECE_MSG_LENGTH> header { };
-		htobe32buf (header.data (), len + 8 + 1); // length
+		htobe32buf (header.data (), static_cast<uint32_t> (len + 8 + 1)); // length
 		header[4] = eMessageTypePiece; // msg ID
 		htobe32buf (header.data () + 5, index);
 		htobe32buf (header.data () + 9, offset);
@@ -4438,7 +4446,7 @@ namespace torrents
 			{ data, len } };
 		auto sendBuffer = std::make_shared<i2p::stream::SendBuffer> (buffers, header.size () + len,
 			[s = shared_from_this (), blockLength = len] (
-				const boost::system::error_code & ecode, size_t bytes_transferred)
+				const boost::system::error_code & ecode, size_t)
 			{
 				if (s->m_NumPieces > 0) s->m_NumPieces--;
 				if (!ecode && s->m_Stream)
@@ -4746,7 +4754,7 @@ namespace torrents
 		if (IsPieceAvailable (index)) m_SuggestedPieceIndex = index;
 	}
 
-	void PeerConnection::HandleAllowedFastMsg (const uint8_t * buf, size_t len)
+	void PeerConnection::HandleAllowedFastMsg (const uint8_t *, size_t)
 	{
 		LogPrint (eLogDebug, "Torrents: allowed fast msg received");
 		// ignore for now
@@ -4909,19 +4917,19 @@ namespace torrents
 		{
 			if (m_RemoteMsgIDUtMetadata) return;
 			m_ExtendedMessageHandlers.emplace (EXTENSION_MSGID_UT_METADATA, &PeerConnection::HandleUtMetadataExtension);
-			m_RemoteMsgIDUtMetadata = msgID;
+			m_RemoteMsgIDUtMetadata = static_cast<uint8_t> (msgID);
 		}
 		else if (extensionName == EXTENSION_NAME_I2P_PEX)
 		{
 			if (m_RemoteMsgIDI2PPEX) return;
 			m_ExtendedMessageHandlers.emplace (EXTENSION_MSGID_I2P_PEX, &PeerConnection::HandleI2PPEXExtension);
-			m_RemoteMsgIDI2PPEX = msgID;
+			m_RemoteMsgIDI2PPEX = static_cast<uint8_t> (msgID);
 		}
 		else if (extensionName == EXTENSION_NAME_I2P_DHT)
 		{
 			if (m_RemoteMsgIDI2PDHT) return;
 			m_ExtendedMessageHandlers.emplace (EXTENSION_MSGID_I2P_DHT, &PeerConnection::HandleI2PDHTExtension);
-			m_RemoteMsgIDI2PDHT = msgID;
+			m_RemoteMsgIDI2PDHT = static_cast<uint8_t> (msgID);
 		}
 	}
 
@@ -4968,7 +4976,8 @@ namespace torrents
 			payload = str;
 		}
 		std::vector<uint8_t> sendBuffer (payload.length () + data.length () + 1 + 5);
-		htobe32buf (sendBuffer.data (), payload.length () + data.length () + 1 + 1); // length
+		htobe32buf (sendBuffer.data (),
+			static_cast<uint32_t> (payload.length () + data.length () + 1 + 1)); // length
 		sendBuffer[4] = eMessageTypeExtended; // msg ID
 		sendBuffer[5] = extendedMsgID;
 		memcpy (sendBuffer.data () + 6, payload.data (), payload.size ());

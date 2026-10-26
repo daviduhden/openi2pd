@@ -252,6 +252,25 @@ build.
   `Tools` only when `I2PD_INSTALL_DOCS=OFF`; two rules for one destination
   make per-component installs race.
 
+
+- Static archives are single-pass: list the dependent `libssl` before
+  `libcrypto` in `CMAKE_REQUIRED_LIBRARIES`, and keep the order in both probe
+  stages. Shared builds hide the defect; only the Alpine `WITH_STATIC` lane
+  exposes it (`CE-004`).
+- Save and restore `CMAKE_REQUIRED_INCLUDES`, `CMAKE_REQUIRED_LIBRARIES`,
+  `CMAKE_REQUIRED_LINK_OPTIONS` and the original
+  `CMAKE_TRY_COMPILE_TARGET_TYPE` around the linked probe. Do not re-read
+  variables after unsetting them; later `check_library_exists` must still use
+  an executable probe.
+- Boost.Asio API floor: `ip::address` has no `to_string(error_code&)` overload
+  in any supported release, and `basic_waitable_timer` has only
+  `cancel()`/`cancel_one()`, not `cancel(error_code&)`. Use
+  `i2p::util::net::FormatAddress`/`FormatEndpoint` and `cancel()` directly
+  (`CE-002`, `CE-008`).
+- The manual source-docs job must create the gitignored
+  `docs/generated/source-api` before Doxygen. `WARN_AS_ERROR` turns a missing
+  output directory into a job failure (`CE-003`).
+
 ## Do not
 
 - Do not configure, build, run CTest, `make`, Ninja, Gradle, sanitizers,

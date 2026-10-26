@@ -158,6 +158,12 @@ executing project code, or inspect a real private key.
   record and fail the build. Never publish a record whose key material was
   produced by a partially failed operation.
 
+
+- OpenSSL 4 deprecates `X509_NAME_get_text_by_NID`. Use the bounded
+  `i2p::crypto::GetX509NameTextByNID` helper (index/entry/`ASN1_STRING_to_UTF8`)
+  instead; it preserves the common-name contract, NUL-terminates and rejects
+  conversion failure. Do not reintroduce the deprecated call in Family/Reseed.
+
 ## Do not
 
 - Do not compile, run CTest, sanitizers, fuzzers, Java peers or validators

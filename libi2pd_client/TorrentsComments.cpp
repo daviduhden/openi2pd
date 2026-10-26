@@ -534,7 +534,7 @@ bool DecodeTorrentCommentState (std::string_view encoded, uint64_t now, TorrentC
 			}
 			TorrentComment comment;
 			comment.localId = id;
-			comment.rating = rating;
+			comment.rating = static_cast<uint8_t> (rating);
 			comment.local = local;
 			comment.hidden = hidden;
 			// A timestamp ahead of the local clock (restored backup, backwards

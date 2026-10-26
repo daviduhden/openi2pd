@@ -50,7 +50,9 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends doxygen ripgrep
       - name: Generate and check C++ API documentation
-        run: doxygen docs/Doxyfile.source
+        run: |
+          mkdir -p docs/generated/source-api
+          doxygen docs/Doxyfile.source
       - name: Collect source TODO candidates for review
         if: always()
         run: |

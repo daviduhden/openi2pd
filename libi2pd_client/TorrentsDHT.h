@@ -146,7 +146,7 @@ namespace torrents
 		}
 		constexpr int FindLowestBit () const // -1 in not found
 		{
-			for (int i = size () - 1; i >= 0; i--)
+			for (int i = static_cast<int> (size ()) - 1; i >= 0; i--)
 			{
 				uint8_t byte = (*this)[i];
 				if (byte)

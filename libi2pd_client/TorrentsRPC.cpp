@@ -717,8 +717,9 @@ namespace torrents
 				[] (std::shared_ptr<Torrent> torrent)
 				{
 					float ratio = torrent->GetDownloaded ()
-						? ((float)torrent->GetUploaded ()) / ((float)torrent->GetDownloaded ())
-						: 1.0;
+						? static_cast<float> (torrent->GetUploaded ())
+							/ static_cast<float> (torrent->GetDownloaded ())
+						: 1.0f;
 					return boost::json::value (ratio);
 				} },
 			{ "metadataPercentComplete", [] (std::shared_ptr<Torrent> torrent)
@@ -729,10 +730,10 @@ namespace torrents
 				[] (std::shared_ptr<Torrent> torrent) { return boost::json::value (torrent->GetUploaded ()); } },
 			{ "downloadedEver",
 				[] (std::shared_ptr<Torrent> torrent) { return boost::json::value (torrent->GetDownloaded ()); } },
-			{ "isStalled", [] (std::shared_ptr<Torrent> torrent) { return boost::json::value (false); } }, // TODO:
-			{ "labels", [] (std::shared_ptr<Torrent> torrent) { return boost::json::array (); } },
-			{ "queuePosition", [] (std::shared_ptr<Torrent> torrent) { return boost::json::value (1); } },
-			{ "recheckProgress", [] (std::shared_ptr<Torrent> torrent) { return boost::json::value (0); } },
+			{ "isStalled", [] (std::shared_ptr<Torrent>) { return boost::json::value (false); } }, // TODO:
+			{ "labels", [] (std::shared_ptr<Torrent>) { return boost::json::array (); } },
+			{ "queuePosition", [] (std::shared_ptr<Torrent>) { return boost::json::value (1); } },
+			{ "recheckProgress", [] (std::shared_ptr<Torrent>) { return boost::json::value (0); } },
 
 			// follow the global settings
 			// TR_RATIOLIMIT_GLOBAL = 0,
@@ -740,20 +741,20 @@ namespace torrents
 			// TR_RATIOLIMIT_SINGLE = 1,
 			// override the global settings, seeding regardless of ratio
 			// TR_RATIOLIMIT_UNLIMITED = 2
-			{ "seedRatioMode", [] (std::shared_ptr<Torrent> torrent) { return boost::json::value (0); } },
-			{ "seedRatioLimit", [] (std::shared_ptr<Torrent> torrent) { return boost::json::value (0); } },
+			{ "seedRatioMode", [] (std::shared_ptr<Torrent>) { return boost::json::value (0); } },
+			{ "seedRatioLimit", [] (std::shared_ptr<Torrent>) { return boost::json::value (0); } },
 
 			{ "downloadDir",
-				[] (std::shared_ptr<Torrent> torrent) { return boost::json::value (""); } }, // TODO: torrentsdir
+				[] (std::shared_ptr<Torrent>) { return boost::json::value (""); } }, // TODO: torrentsdir
 			{ "webseedsSendingToUs",
-				[] (std::shared_ptr<Torrent> torrent) { return boost::json::value (0); } }, // not webseeds in i2p yet
+				[] (std::shared_ptr<Torrent>) { return boost::json::value (0); } }, // not webseeds in i2p yet
 			{ "peers", &JSONRPCHandler::GetPeers },
 			{ "peersConnected", [] (std::shared_ptr<Torrent> torrent)
 				{ return boost::json::value (torrent->GetConnections ().size ()); } },
 			{ "fileStats", &JSONRPCHandler::GetFileStats },
-			{ "comment", [] (std::shared_ptr<Torrent> torrent)
+			{ "comment", [] (std::shared_ptr<Torrent>)
 				{ return boost::json::value (""); } }, // TODO: extract from "comment" dictionary key
-			{ "creator", [] (std::shared_ptr<Torrent> torrent)
+			{ "creator", [] (std::shared_ptr<Torrent>)
 				{ return boost::json::value (""); } } // TODO: extract from "created by" dictionary key
 		};
 		if (torrent)

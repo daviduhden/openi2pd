@@ -188,6 +188,12 @@ compile, run tests or run project scripts.
   comment that contradicts the implementation. A documentation-only change
   must not alter code, identifiers or formatting.
 
+
+- Keep warning-clean MSVC builds: do not narrow `size_t`/`int64_t` into
+  `int`/`uint8_t` without an explicit cast and a proven bound, and do not
+  shadow a local (`context`, `l`, `ind`) across nested scopes. A wire field
+  still gets one cast at serialization, not a narrowed accumulator.
+
 ## Do not
 
 - Do not compile, configure, run CTest, sanitizers, fuzzers or project scripts

@@ -81,6 +81,9 @@ if [ -r /lib/lsb/init-functions ]; then
 else
 	log_daemon_msg() { printf '%s' "${1:-}: ${2:-}"; }
 	log_end_msg() { [ "${1:-0}" -eq 0 ] && printf '.\n' || printf ' failed!\n'; }
+	# Compatibility shim mirroring /lib/lsb/init-functions; this script has no
+	# success call site, so ShellCheck reports SC2317 for the definition.
+	# shellcheck disable=SC2317,SC2329
 	log_success_msg() { printf '%s\n' "$*"; }
 	log_warning_msg() { printf '%s\n' "$*" >&2; }
 	log_failure_msg() { printf '%s\n' "$*" >&2; }

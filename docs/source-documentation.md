@@ -132,7 +132,8 @@ guarantee that the unit does not provide.
 
 Generation is manual-only and never part of a local build or default install:
 
-- `docs/Doxyfile.source` generates C++ API HTML;
+- the source-docs lane creates the gitignored `docs/generated/source-api`
+  path before `docs/Doxyfile.source` generates C++ API HTML;
 - the Android Javadoc command uses the debug Java compiler and Android SDK
   classpath;
 - Doxygen and Javadoc failures (including doclint and undocumented-parameter

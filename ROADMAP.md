@@ -1611,3 +1611,33 @@ warnings as errors, the remaining unreviewed files receive contracts, and the
 tracked findings are either fixed with regressions or explicitly accepted.
 No compiler, generator, Gradle, package, validator or workflow ran for this
 pass; everything remains static analysis pending manual CI.
+
+## CI-driven compile fixes (2026-10-26, static)
+
+The manually dispatched `88ac1e92` runs were read with `gh`: Linux/Android
+40411690766, OpenBSD 40411699490, Windows 40411695544, Fuzzing 40411703834 and
+Packaging 40411709057. The first significant diagnostics were grouped into
+CE-001..CE-008 in `docs/ci/COMPILATION-ERRORS.md`: the unqualified client HTTP
+header type, the non-existent Boost address error-code formatter, the Windows
+POSIX `pid_t`, the timer error-code cancel overload, the missing Doxygen output
+directory, the static OpenSSL archive order, and the SysV ShellCheck shim.
+
+All eight causes are corrected locally; the linked-probe save/restore bug found
+during the same analysis is fixed and pinned. Exit criteria: a new manual
+dispatch on the corrected revision compiles Linux/OpenSSL variants, Windows
+MSVC/MinGW, OpenBSD, Android/JNI, fuzzing, static-musl, container and Debian,
+then passes the CTest, Doxygen/Javadoc and package lanes. No local compiler,
+configure, CTest, Gradle, Doxygen, package or workflow dispatch exists for
+this revision.
+
+## CI warning cleanup (2026-10-26, static)
+
+The `88ac1e92` warning inventory was reduced across the cross-platform and
+MSVC lanes: nested comment markers, unused captures/helpers, a hidden virtual
+`Start`, deprecated OpenSSL 4 X509 access, Windows CRT deprecations, narrowing
+conversions, shadowed locals and unused formal parameters. The X509 helper is
+bounded and keeps the same common-name contract. BUILD-022 tracks the pass.
+
+Exit criteria: a new manual dispatch reports no warning from first-party
+sources in Linux/OpenBSD/Windows/Android/OpenSSL 4 and fuzz builds. This is
+not yet demonstrated; the changes remain Pending CI compilation.

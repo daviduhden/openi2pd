@@ -1097,7 +1097,8 @@ namespace data
 		// a stable parser.
 		char name[256] = { };
 		const int cnLength
-			= X509_NAME_get_text_by_NID (X509_get_issuer_name (cert.get ()), NID_commonName, name, sizeof (name));
+			= i2p::crypto::GetX509NameTextByNID (
+				X509_get_issuer_name (cert.get ()), NID_commonName, name, static_cast<int> (sizeof (name)));
 		char * cn = cnLength > 0 ? name : nullptr;
 
 		// Extract the signing key. RSA keeps the modulus only (e = 65537).

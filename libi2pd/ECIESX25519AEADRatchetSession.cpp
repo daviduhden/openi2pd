@@ -2305,7 +2305,7 @@ namespace garlic
 		}
 		{
 			const auto now = i2p::util::GetSecondsSinceEpoch ();
-			std::lock_guard<std::mutex> l (m_EphemeralReplayMutex);
+			std::lock_guard<std::mutex> replayLock (m_EphemeralReplayMutex);
 			constexpr uint64_t REPLAY_WINDOW = 600;
 			while (!m_EphemeralReplay.empty () && now > m_EphemeralReplay.front ().second + REPLAY_WINDOW)
 				m_EphemeralReplay.pop_front ();

@@ -755,7 +755,7 @@ namespace util
 	{
 		/**
 		 * A torrent tunnel may request isolated payload storage. The option is
-		 * per tunnel section in tunnels.conf / tunnels.d/*.conf and is parsed by
+		 * per tunnel section in tunnels.conf and tunnels.d (one .conf per tunnel) and is parsed by
 		 * ClientContext much later, so the credential gate - which must run
 		 * before the startup pledge and the first spawn - needs a bounded
 		 * pre-scan. Only an explicit true counts; ClientContext remains the

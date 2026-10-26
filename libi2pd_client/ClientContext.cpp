@@ -296,9 +296,12 @@ namespace client
 	{
 		std::string FormatTcpEndpoint (const boost::asio::ip::tcp::endpoint & endpoint)
 		{
-			boost::system::error_code ec;
-			auto address = endpoint.address ().to_string (ec);
-			if (ec) address = "?";
+			// Portable across the Boost 1.74 floor and current Asio: the
+			// error_code overload never existed on ip::address, and Asio's
+			// POSIX scope-ID path is the unsafe formatter avoided by
+			// AddressFormat.h.
+			auto address = i2p::util::net::FormatAddress (endpoint.address ());
+			if (address.empty ()) address = "?";
 			return address + ":" + std::to_string (endpoint.port ());
 		}
 

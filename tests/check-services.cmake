@@ -290,6 +290,8 @@ foreach(required IN ITEMS
     "set -f"
     "set +f"
     "log_daemon_msg()"
+    "log_success_msg()"
+    "shellcheck disable=SC2317,SC2329"
     "force-reload)"
     "status)"
     "--foreground"
