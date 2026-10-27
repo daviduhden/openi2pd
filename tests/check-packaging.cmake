@@ -255,9 +255,12 @@ foreach(required IN ITEMS
     "docs/i18n.md"
     "apparmor_parser"
     "desktop-file-validate"
+    "/usr/share/doc/i2pd/ChangeLog.gz"
     "i2pd (= ")
   assert_contains("${debian_tests_smoke}" "${required}" "autopkgtest smoke")
 endforeach()
+assert_absent("${debian_tests_smoke}" "require_file /usr/share/doc/i2pd/ChangeLog\n"
+  "autopkgtest must expect debhelper's compressed upstream changelog")
 
 # DEP-5 structure and the documentation licence split.
 assert_contains("${debian_copyright}" "Files: contrib/certificates/*"

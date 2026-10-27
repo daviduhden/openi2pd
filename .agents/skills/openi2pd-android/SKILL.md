@@ -254,6 +254,10 @@ run Gradle, install an APK or run a device test.
   and no record/type-switch bootstraps in the packaged DEX. There is no
   automated API denylist; API-30+/33+ usage is prevented by review only.
   Real Gradle/D8/R8/Lint/device evidence is manual CI only.
+- The CI Java 25 D8/R8 probe must follow `:i2pd:assembleDebug`: unit-test and
+  lint tasks can finish without resolving AGP's R8 artifact. Discover the jar
+  selected by the pinned AGP from the Gradle cache only after app dexing; do
+  not substitute a separately pinned or historical R8 version.
 
 - Native GUI contract: `UiFactory` owns the programmatic-screen row and
   column helpers (48dp target, logical padding, centred `MaxWidthLinearLayout`,

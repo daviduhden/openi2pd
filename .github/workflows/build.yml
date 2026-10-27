@@ -557,23 +557,6 @@ jobs:
           grep -q 'major version: 69' "$javap_out" \
             || { echo "RouterService.class is not class-file major 69" >&2; exit 1; }
           rm -f "$javap_out"
-      - name: Probe Java 25 D8/R8 dexing
-        run: |
-          R8_JAR=$(find "$HOME/.gradle/caches/modules-2/files-2.1/com.android.tools" \
-            -path '*/r8/*' -name 'r8-*.jar' ! -name '*-sources.jar' ! -name '*-javadoc.jar' -print -quit)
-          if [ -z "$R8_JAR" ]; then
-            echo "AGP-resolved R8 jar not found in the Gradle cache" >&2
-            exit 1
-          fi
-          test -f "$ANDROID_JAR"
-          ANDROID_JAR="$ANDROID_JAR" R8_JAR="$R8_JAR" \
-            sh android/tools/java25-probe/verify-java25.sh
-      - name: Show Android lint report on failure
-        if: failure()
-        run: |
-          for report in android/app/build/reports/lint-results-debug.txt android/app/build/reports/lint-results-release.txt; do
-            if [ -f "$report" ]; then cat "$report"; fi
-          done
       - name: Build debug APK for arm64
         run: |
           cd android
@@ -606,6 +589,26 @@ jobs:
             || { echo "packaged libi2pd.so exports no JNI entry points" >&2; exit 1; }
           rm -f "$native"
           test -n "$(find app/build/outputs/apk/release -name '*.apk' -print -quit)"
+      - name: Probe Java 25 D8/R8 dexing
+        run: |
+          # assembleDebug above invokes AGP's D8 and resolves the exact R8
+          # artifact selected by AGP 9.4.1. Unit tests and lint alone do not
+          # necessarily resolve it, so discover it only after app dexing.
+          R8_JAR=$(find "$HOME/.gradle/caches/modules-2/files-2.1/com.android.tools" \
+            -path '*/r8/*' -name 'r8-*.jar' ! -name '*-sources.jar' ! -name '*-javadoc.jar' -print -quit)
+          if [ -z "$R8_JAR" ]; then
+            echo "AGP-resolved R8 jar not found in the Gradle cache after assembleDebug" >&2
+            exit 1
+          fi
+          test -f "$ANDROID_JAR"
+          ANDROID_JAR="$ANDROID_JAR" R8_JAR="$R8_JAR" \
+            sh android/tools/java25-probe/verify-java25.sh
+      - name: Show Android lint report on failure
+        if: failure()
+        run: |
+          for report in android/app/build/reports/lint-results-debug.txt android/app/build/reports/lint-results-release.txt; do
+            if [ -f "$report" ]; then cat "$report"; fi
+          done
       - name: Check Android JNI declarations
         run: perl android/tools/check-android-jni-symbols.pl
       - name: Verify Java 25 dex lowering

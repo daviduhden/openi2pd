@@ -173,6 +173,11 @@ Ask for exact paths and package names. Do not let them run `dpkg-buildpackage`,
   tree wins and bypasses CMake filtering). List the installed
   `usr/share/doc/i2pd/...` and `usr/share/man/...` paths. `dh_missing
   --fail-missing` is the guard.
+- The source manifest installs `ChangeLog` from CMake's Documentation
+  component, while debhelper compresses it in the binary package to
+  `/usr/share/doc/i2pd/ChangeLog.gz`. Keep `debian/i2pd.install` and the
+  compile-free manifest contract on the uncompressed source path; Debian smoke
+  checks must expect the installed `.gz` path.
 - `i2pd-tui` carries `Breaks`/`Replaces: i2pd (<< 2.61.0-3)` for the moved
   binary. Debian loads the profile with `dh_apparmor`, installs
   `debian/i2pd.sysusers`, and uses `debian/i2pd.preinst` to move a real
