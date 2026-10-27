@@ -120,6 +120,12 @@ workflow, run `gh`, build or test.
 
 ## Known issues and decisions
 
+- For package Lintian failures in generated maintainer scripts, download the
+  exact-run package artifact and inspect its `control.tar.*` script before
+  changing source hooks. The regular and static Debian package trees have
+  distinct postrm files; `dh_installinit` can add its own `update-rc.d` purge
+  call at `#DEBHELPER#` expansion.
+
 - The manual packaging service-contract job ShellChecks maintenance scripts
   as well as init scripts. Its fake-`nc` SAM regression checks mismatch exit
   status without a live bridge; it establishes no live SAM compatibility.

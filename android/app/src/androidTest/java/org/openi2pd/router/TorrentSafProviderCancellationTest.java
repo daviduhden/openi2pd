@@ -268,7 +268,7 @@ public final class TorrentSafProviderCancellationTest {
     }
     private static boolean hasChild(TorrentSafFixtureProvider provider, String parent, String name)
             throws Exception {
-        try (Cursor cursor = provider.queryChildDocuments(parent, null, null)) {
+        try (Cursor cursor = provider.queryChildDocuments(parent, null, (String) null)) {
             int column =
                     cursor.getColumnIndexOrThrow(DocumentsContract.Document.COLUMN_DISPLAY_NAME);
             while (cursor.moveToNext())

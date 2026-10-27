@@ -116,6 +116,11 @@ execution. Ask for:
 - Windows has a named-pipe worker transport and restricted-token/Job policy, but
   no `--privsep-worker` daemon wiring, AppContainer/LPAC token construction or
   per-role WFP/ACL enforcement. Do not claim Windows separation.
+- `WindowsWorkerSupervisor::Start()` currently does not share the lifecycle
+  mutex used by stop/monitor operations, and its public channel/state getters
+  expose or read mutable state without synchronization. Before production
+  wiring, serialize start/stop and replace raw channel access with an owned or
+  locked snapshot contract; add lifecycle concurrency coverage.
 - Linux storage/log boundaries exist; network/router/verifier workers and
   complete storage authority remain pending. OpenBSD-only inherited-root roles
   are rejected on Linux.

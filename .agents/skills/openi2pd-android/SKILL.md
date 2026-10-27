@@ -143,6 +143,10 @@ run Gradle, install an APK or run a device test.
   and `setHint(@StringRes int)`. Check the pinned dependency source before
   classifying a resource-ID call as invalid; older API recollection is not
   evidence of a current source defect.
+- `DocumentsProvider` overloads can make a fixture helper call ambiguous when
+  a null argument matches both a platform `Bundle` and a helper `String`.
+  Cast null to the intended overload type in instrumentation tests rather than
+  changing the provider API or hiding the ambiguity through a test wrapper.
 - `RouterCommand` is a sealed interface of nested records decoded by
   `fromAction`; `RouterService.onStartCommand` must keep an exhaustive switch
   with no `default`. Adding an action requires a record, mapping, service case

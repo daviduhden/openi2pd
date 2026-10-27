@@ -23,6 +23,7 @@
 
 namespace
 {
+using i2p::SHORT_TUNNEL_BUILD_RECORD_SIZE;
 using namespace i2p::data;
 using namespace i2p::tunnel;
 

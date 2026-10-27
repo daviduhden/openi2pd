@@ -256,11 +256,18 @@ foreach(required IN ITEMS
     "apparmor_parser"
     "desktop-file-validate"
     "/usr/share/doc/i2pd/ChangeLog.gz"
+    "/usr/share/doc/i2pd/README.md.gz"
     "i2pd (= ")
   assert_contains("${debian_tests_smoke}" "${required}" "autopkgtest smoke")
 endforeach()
 assert_absent("${debian_tests_smoke}" "require_file /usr/share/doc/i2pd/ChangeLog\n"
   "autopkgtest must expect debhelper's compressed upstream changelog")
+assert_absent("${debian_tests_smoke}" "require_file /usr/share/doc/i2pd/README.md\n"
+  "autopkgtest must expect debhelper's compressed Markdown documentation")
+
+read_file("${PROJECT_ROOT}/contrib/static/debian/i2pd.postrm" static_debian_postrm)
+assert_absent("${static_debian_postrm}" "update-rc.d i2pd remove"
+  "static package postrm must delegate init cleanup to dh_installinit")
 
 # DEP-5 structure and the documentation licence split.
 assert_contains("${debian_copyright}" "Files: contrib/certificates/*"

@@ -200,7 +200,7 @@ require_file /etc/logrotate.d/i2pd
 require_file /usr/share/doc/i2pd/LICENSE.i2pd-tools
 require_file /usr/share/doc/i2pd/ChangeLog.gz
 require_file /usr/share/doc/i2pd/LICENSE
-require_file /usr/share/doc/i2pd/README.md
+require_file /usr/share/doc/i2pd/README.md.gz
 require_file /usr/share/doc/i2pd/docs/LICENSE
 require_file /usr/share/doc/i2pd/docs/i18n.md
 require_file /usr/share/doc/i2pd/assets/branding/colors.md

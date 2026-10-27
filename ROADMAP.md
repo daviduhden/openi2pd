@@ -39,6 +39,18 @@ Debian postrm Lintian duplicate-updaterc finding remains under investigation.
 Static reconnaissance found no new CMake link-closure or transport/crypto
 source defect; incomplete jobs do not establish downstream targets as passing.
 
+The next exact-SHA batch, `b25d0c3a` (runs 40532383635, 40532389857,
+40532395786, 40532402554 and 40532412220), found three independent compile or
+package blockers: an unqualified `i2p::SHORT_TUNNEL_BUILD_RECORD_SIZE`, an
+ambiguous Android SAF fixture overload, and Debian's compressed `README.md.gz`
+path. The static-package artifact also confirmed that its custom postrm and
+`dh_installinit` both called `update-rc.d`; the explicit duplicate is removed.
+These corrections are implemented by source inspection only, pending a newer
+manual CI run. Fuzzing passed on `b25d0c3a`; Linux, OpenBSD, Windows and
+packaging did not. The Android native/Java production compile advanced to the
+instrumentation Java test compile before its overload error; this does not
+validate the APK/D8 step.
+
 Permanent policy: no agent compiles, configures a build or executes tests
 locally. Build/test/package workflows and dynamic validation are CI-only
 through manual `workflow_dispatch`; the compile-free agent-maintenance gate is

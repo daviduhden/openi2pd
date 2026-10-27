@@ -120,6 +120,12 @@ Ask for exact paths and package names. Do not let them run `dpkg-buildpackage`,
   English.
 - Package validation claims require the manual packaging workflow; static file
   inspection is not package validation.
+- Debian's `dh_compress` packages the upstream `ChangeLog` as `ChangeLog.gz`
+  and can compress `README.md` to `README.md.gz`; package smoke assertions must
+  check the installed archive names while CMake/source manifests keep the
+  original source names. The ordinary `debian/` and `contrib/static/debian/`
+  postrm files are separate: if `dh_installinit` owns init cleanup, do not add
+  a second manual `update-rc.d` purge call beside `#DEBHELPER#`.
 
 - The Debian workflow's dependency install must include every package in
   `debian/control` Build-Depends, including `dh-apparmor`; otherwise

@@ -5289,7 +5289,7 @@ files, no specialized `.agent.md` definitions or alternate-tool instruction
 trees, and existing compile-free skill/workflow checks. Added the mandatory
 `Continuous Agent & Skills Maintenance` policy and Definition of Done, a
 `Maintenance & Continuous Learning` section in each skill, and reusable Perl
-checker `tools/scripts/check-agent-maintenance.pl`. The new
+checker `scripts/validate-agent-knowledge.py`. The new
 `.github/workflows/agent-maintenance.yml` runs only on pull requests; it is the
 sole trigger exception, and performs no build/test. Existing build/test/package
 workflows remain manual-only. Updated the workflow guard, skill contract,
@@ -5329,3 +5329,36 @@ changed in this compilation-focused pass. No local compiler, configure/build,
 CTest, Gradle, fuzz, lintian or package execution occurred. CE-022..CE-026
 remain Pending CI compilation/validation on the corrected worktree; no commit
 or push was made.
+
+## 2026-10-27 Fifth CI-driven compile/link audit (static)
+
+Reviewed the manual workflow batch on exact commit
+`b25d0c3a31a65e13001629522c10db949cdeda2d`: Linux/Android 40532383635,
+OpenBSD 40532389857, Windows 40532395786, Fuzzing 40532402554 and Packaging
+40532412220. The source inventory and first diagnostics are recorded as
+CE-027..CE-030 in `docs/ci/COMPILATION-ERRORS.md` and BUILD-026 in `TODO.md`.
+
+Three independent blockers were present at that SHA: Linux/OpenBSD/MinGW
+failed compiling `test-tunnel-build-records.cpp` because it looked up a
+parent-namespace constant through only the child namespace; the Android
+instrumentation source passed an untyped null to two applicable
+`queryChildDocuments` overloads; Debian smoke expected `README.md` although
+the downloaded package contains `README.md.gz`. Static review fixes these
+references and adds the package path contract. Inspection of the downloaded
+static Debian package's generated `postrm` showed both a manual and
+`dh_installinit`-generated `update-rc.d` purge call; the manual duplicate is
+removed. The maintenance workflow's setup-python action is pinned to its
+verified v5.6.0 commit SHA.
+
+Subagent reconnaissance covered C++23/core, protocols/crypto, IPC/platforms,
+Android, TUI/tools and CMake/link closure. No other compile/link defect was
+demonstrated in those scopes. Fuzzing passed at `b25d0c3a`; the Linux,
+OpenBSD, Windows and package workflows failed as above. The MSVC lane compiled
+selected targets but still had two Windows IPC/supervisor CTest assertion
+failures. No local build, compiler, Gradle, test, linter or package execution
+was performed. Corrections remain pending manual CI on a later SHA.
+
+The IPC reconnaissance separately found an unsynchronized Windows supervisor
+start/stop surface and mutable raw getters. This is a lifecycle/concurrency
+finding, not a compile/link diagnostic; it remains pending under WIN-010 and
+is now called out in the Linux/Windows skill before production wiring.

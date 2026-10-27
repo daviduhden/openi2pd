@@ -135,6 +135,10 @@ compile, run tests or run project scripts.
   protected state such as `RunnableService::IsRunning()`, provide a narrow
   public observer on the test subclass; do not widen the production API only
   to satisfy a test.
+- `using namespace i2p::tunnel` does not import declarations from the parent
+  `i2p` namespace. Tests using shared protocol constants declared in `i2p`
+  should qualify them or add a narrow using-declaration; avoid duplicating
+  wire-size literals in fixtures.
 
 
 - Profile-root/durability decisions (CONC-010) and their residual risks are
