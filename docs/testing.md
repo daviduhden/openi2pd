@@ -117,8 +117,9 @@ current platform and registers it with CTest. The suite labels are:
   supervision, stop budgets, s6 `down-signal`/`timeout-kill`, OpenRC
   `stopsig`, SysV pidfile ownership, systemd sysusers/tmpfiles, OpenBSD
   rc.d/login/config and the unselected Upstart/dinit samples;
-- `ci`, `static`, `workflow`, `binary`, `smoke`: build-policy, manual-only
-  workflow contract, version and static checks;
+- `ci`, `static`, `workflow`, `binary`, `smoke`: build-policy, manual build/test
+  workflow contract (plus the PR-only agent-maintenance gate), version and
+  static checks;
 - `cli`, `integration`: native tool exit-code/stdout contracts and the
   scripted tool/firewall suites;
 - `reference`: optional read-only Java reference and fixture-provenance checks
@@ -714,7 +715,7 @@ current uncommitted tree.
 | Build-system static check | `build-system-static` prepared, including dependency-floor, removed-compatibility and test/fuzzer inventory assertions; static check passes, no build execution |
 | Agent Skills static check | `agent-skills-static` passed locally as a compile-free source check for exact inventory, README, frontmatter/name, required sections including `Known issues and decisions`, `AGENTS.md`, reference links and LICENSE headers; CI execution pending |
 | Translation check | `i18n-static` validates native catalog registration, TUI selection/boundaries and Android locale metadata without compiling; CI execution pending |
-| Language modernization check | `language-modernization-static` validates the AGENTS.md modernization and Agent Knowledge Maintenance policy, C++23/Java 25 levels, availability matrix, Strategy/`jthread`/registry seams and typed Java models without compiling; CI execution pending |
+| Language modernization check | `language-modernization-static` validates the AGENTS.md modernization and Continuous Agent & Skills Maintenance policy, C++23/Java 25 levels, availability matrix, Strategy/`jthread`/registry seams and typed Java models without compiling; CI execution pending |
 | CTest registration and labels | Static inventory prepared; Linux-only and OpenBSD-only tests are registered on their host, with i2p/security/memory/ipc/tui/torrent/tools/perl/interop/platform/android groups; CTest execution pending CI |
 | Fuzzers | Fifteen targets, checked-in corpus seeds, per-target bounds/artifacts and manual smoke workflow prepared; not run |
 | OpenBSD build/runtime | Baseline `39160543186` failed at `getexecname()`; local `<stdlib.h>` fix and full CTest pending. New dispatch `39189495752` reproduced the same old-revision failure |

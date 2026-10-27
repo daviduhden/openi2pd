@@ -2,6 +2,10 @@
 name: openi2pd-ci
 description: Use when changing openi2pd manual GitHub Actions workflows, CTest label integration, sanitizer or fuzzer jobs, or triaging CI logs with GitHub CLI after explicit authorization.
 ---
+
+## Maintenance & Continuous Learning
+
+When this skill guides a repository change, review it after implementation. Update procedures, tools, configurations, assumptions, examples and validation steps when they changed or when reusable knowledge improves future work; correct inaccurate guidance and omit one-off execution details. Report synchronization in the task summary. Follow the normative process and Definition of Done in [AGENTS.md](../../../AGENTS.md#continuous-agent--skills-maintenance).
 <!--
 See the LICENSE file at the top of the project tree for copyright
 and license details.
@@ -76,9 +80,11 @@ workflow, run `gh`, build or test.
   [source documentation policy](../../../AGENTS.md#source-documentation-policy)
   and run in manual CI; report generator coverage and unresolved warnings.
 
-- Every workflow remains `workflow_dispatch`-only; no `push`,
-  `pull_request`, `schedule` or automatic `workflow_call` unless the policy is
-  deliberately changed by the coordinator.
+- Build, test and packaging workflows remain `workflow_dispatch`-only. The
+  compile-free `agent-maintenance.yml` PR gate is the sole pull-request
+  exception; it never builds or tests. `check-workflows.pl` enforces this
+  exact exception, so any additional automatic trigger needs an explicit
+  policy and checker update.
 - Pin third-party actions to commit SHAs with a version comment; set
   `persist-credentials: false` on checkout.
 - Do not add `continue-on-error`, ignore a failing test or suppress warnings to
@@ -95,6 +101,10 @@ workflow, run `gh`, build or test.
   policy, C++23/Java 25 levels, availability matrix and seam inventory) and
   `i18n-static` (native/Android catalog wiring) in the compile-free
   `ci;docs;static` gate; do not execute a skill or compile to validate them.
+- The maintenance PR checker compares the base/head commit range and rejects
+  repository changes without a substantive instruction update. It validates
+  structure and local paths, not semantic relevance; the final review must
+  record the reason the knowledge update is reusable.
 
 ## Authorization and triage
 
@@ -161,9 +171,10 @@ workflow, run `gh`, build or test.
 - SIGPIPE under `pipefail` can turn a matching `grep -q` pipeline into status
   141 (false pass) or a failing check (false fail). Capture `javap`,
   `strings`, `file` or `nm` output to a temporary file before grepping.
-- Workflows are `workflow_dispatch`-only; `workflow_call` is allowed only for
-  a real reusable consumer. Manual results never validate an unpublished
-  local tree.
+- Build/test/package workflows are `workflow_dispatch`-only; the compile-free
+  agent-maintenance gate is the sole pull-request workflow. `workflow_call` is
+  allowed only for a real reusable consumer. Manual results never validate an
+  unpublished local tree.
 
 
 - Start a compile-failure triage with the real manual runs:
@@ -182,15 +193,26 @@ workflow, run `gh`, build or test.
   Keep the warning inventory in `docs/ci/COMPILATION-ERRORS.md` and do not
   call a build warning-free until a new manual run on the corrected revision
   reports it.
+- `boost::program_options::variables_map::operator[]` exposes a const mapped
+  value; fixture setup for an option that may not exist must use
+  `insert_or_assign`, not assignment through `operator[]`.
+- Windows worker tests must preserve message direction: the core sends
+  requests and the worker sends replies. Restart backoff sums are not worker
+  uptime; compare each generation's ready interval with `STABLE_PERIOD`.
+- ShellCheck SC2015 can reject `[ A ] && [ B ] || fail` under the manual
+  service-contract lane; express multi-field validation with an explicit
+  `if`. Static-musl verification must recognize `file`'s `static-pie linked`
+  wording without dropping the static-link requirement.
 
 ## Do not
 
-- Do not compile, configure, run CTest, sanitizers, fuzzers, Gradle or project
-  validators locally.
+- Do not compile, configure, run CTest, sanitizers, fuzzers, Gradle or dynamic
+  project tests locally. Compile-free structural checks required by
+  `AGENTS.md` may run locally.
 - Do not dispatch or watch a workflow, read remote logs with `gh`, or otherwise
   act on GitHub without explicit coordinator authorization.
-- Do not add `push`/`pull_request`/`schedule` triggers, mutable action tags,
-  persisted checkout credentials or `continue-on-error`.
+- Do not add `push`/`schedule` triggers or additional `pull_request` triggers,
+  mutable action tags, persisted checkout credentials or `continue-on-error`.
 - Do not hide a failure by deleting a test, weakening an assertion or
   suppressing warnings.
 - Do not create commits, tags, releases, worktrees or temporary commits, and do not push; inspect `git status`/`git diff` before editing.

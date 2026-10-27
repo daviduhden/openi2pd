@@ -33,11 +33,12 @@ invocation returns to a maintained build consumer.
 
 ## Current Perl inventory
 
-| Script | Role | CTest coverage |
+| Script | Role | Validation |
 |---|---|---|
 | `tools/scripts/i2pdctl` | I2PControl client | syntax, `prove`, install layout, portability |
 | `tools/scripts/check-doc-links.pl` | offline Markdown link checker | syntax, `perl-doc-links`, portability, negative fixture |
 | `tools/scripts/check-workflows.pl` | manual-only workflow and empty-CTest guard | syntax, `workflow-static`, `skills-static` |
+| `tools/scripts/check-agent-maintenance.pl` | substantive instruction synchronization, section and local-link gate | syntax and `agent-maintenance.yml` PR gate |
 | `tools/scripts/check-doc-nav.pl` | MkDocs navigation/unlisted-page checker | syntax, `docs-nav-static`, portability |
 | `tools/scripts/validate-branding.pl` | static branding/palette validator | syntax, `prove` wrapper, portability |
 | `tools/tests/i2pdctl.t` | Test::More client/transport regressions | `perl-i2pdctl` |

@@ -2,6 +2,10 @@
 name: openi2pd-tooling
 description: Use when changing openi2pd native tools, the firewall rule generator, Perl maintenance scripts, i2pdctl, or tool install/inventory/provenance tests.
 ---
+
+## Maintenance & Continuous Learning
+
+When this skill guides a repository change, review it after implementation. Update procedures, tools, configurations, assumptions, examples and validation steps when they changed or when reusable knowledge improves future work; correct inaccurate guidance and omit one-off execution details. Report synchronization in the task summary. Follow the normative process and Definition of Done in [AGENTS.md](../../../AGENTS.md#continuous-agent--skills-maintenance).
 <!--
 See the LICENSE file at the top of the project tree for copyright
 and license details.
@@ -104,6 +108,12 @@ a TUI client.
 - Preserve upstream provenance/license notices for imported tools.
 - Keep tool names, CLI behavior and install paths unless a migration is
   approved.
+- `tools/scripts/check-agent-maintenance.pl` is the reusable Perl gate for
+  synchronization: local mode inspects staged/unstaged plus untracked paths;
+  PR mode accepts explicit `--base`/`--head` commit SHAs. Its substantive-text
+  heuristic and link/section checks are structural only; a reviewer must still
+  assess whether the update records useful knowledge. Keep it core-Perl and
+  never let it execute repository code.
 
 ## Known issues and decisions
 
@@ -196,7 +206,8 @@ a TUI client.
 ## Do not
 
 - Do not compile, run tools, Perl/prove/shell tests, firewall commands,
-  sanitizers or validators locally.
+  sanitizers or dynamic project tests locally. Compile-free structural checks
+  required by `AGENTS.md` may run locally.
 - Do not add Python, CPAN, Node, a runtime download or a hidden checkout.
 - Do not add an HTTP/web admin console or cleartext torrent/RPC path.
 - Do not execute generated firewall rules or require root in a test.

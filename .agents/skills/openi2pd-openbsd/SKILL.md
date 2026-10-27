@@ -2,6 +2,10 @@
 name: openi2pd-openbsd
 description: Use when changing openi2pd OpenBSD pledge/unveil policy, LibreSSL compatibility, imsg transport, rc.d service files, storage-supervisor startup or OpenBSD transport behavior.
 ---
+
+## Maintenance & Continuous Learning
+
+When this skill guides a repository change, review it after implementation. Update procedures, tools, configurations, assumptions, examples and validation steps when they changed or when reusable knowledge improves future work; correct inaccurate guidance and omit one-off execution details. Report synchronization in the task summary. Follow the normative process and Definition of Done in [AGENTS.md](../../../AGENTS.md#continuous-agent--skills-maintenance).
 <!--
 See the LICENSE file at the top of the project tree for copyright
 and license details.

@@ -2,6 +2,10 @@
 name: openi2pd-i2p-interop
 description: Use when checking or changing I2P wire behavior against the pinned I2P Java 2.14.0 target, including NTCP2, SSU2, I2NP, netDb, RouterInfo, LeaseSet, SAM, I2CP, Streaming and Datagram parity.
 ---
+
+## Maintenance & Continuous Learning
+
+When this skill guides a repository change, review it after implementation. Update procedures, tools, configurations, assumptions, examples and validation steps when they changed or when reusable knowledge improves future work; correct inaccurate guidance and omit one-off execution details. Report synchronization in the task summary. Follow the normative process and Definition of Done in [AGENTS.md](../../../AGENTS.md#continuous-agent--skills-maintenance).
 <!--
 See the LICENSE file at the top of the project tree for copyright
 and license details.

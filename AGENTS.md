@@ -65,8 +65,10 @@ weakening, or removal of security restrictions.
 
 ### CI is the only dynamic validator
 
-All builds and tests run through GitHub Actions. Workflows remain
-`workflow_dispatch`-only; do not add `push`, `pull_request`, `schedule` or
+All builds and tests run through GitHub Actions. Build, test and packaging
+workflows remain `workflow_dispatch`-only; only
+`.github/workflows/agent-maintenance.yml` may use `pull_request`, solely for
+compile-free synchronization checks. Do not add `push`, `schedule` or
 `workflow_call` triggers. Do not attribute results from an earlier revision to
 current local changes. Do not commit or
 push without authorization. When changes exist only locally, prepare the tests
@@ -111,7 +113,8 @@ proposed tracking updates to the coordinator.
   coordinator.
 - Do not reintroduce GNU make, the HTTP admin console, web assets, submodules
   or hidden downloads.
-- Keep CI manual-only (`workflow_dispatch`); do not edit triggers.
+- Keep build/test/package CI manual-only (`workflow_dispatch`); the only
+  trigger exception is the maintenance PR gate defined above.
 - Preserve copyright, license, SPDX, NOTICE and upstream provenance.
 - Do not weaken `pledge`/`unveil`, cryptographic checks, signature/AEAD
   verification or untrusted-input limits.
@@ -212,11 +215,79 @@ changes under coordinator review. A subagent that identifies a needed
 tracking change reports it to the coordinator; the coordinator owns
 concurrent edits to `TODO.md`, `ROADMAP.md` and `PROGRESS.md`.
 
-## Agent Knowledge Maintenance
+## Continuous Agent & Skills Maintenance
 
-This section is permanent and applies to the coordinator and every subagent. A
-development task is not complete until the agent has reviewed the instructions
-and knowledge affected by the change:
+Agent instructions and skills are living repository artifacts.
+
+Every repository modification MUST include an agent/skills synchronization step.
+
+Before completing any task, inspect the applicable AGENTS.md and SKILL.md files, update the affected instructions, and validate their consistency with the implementation.
+
+A code change without the corresponding agent knowledge maintenance is considered incomplete.
+
+Never claim completion when the synchronization step has been skipped or has failed.
+
+This rule applies to every repository change: source, tests, configuration,
+dependencies, documentation, workflows, packaging, architecture and agent
+knowledge itself. Perform one complete synchronization review at task end;
+repeat it only when that review finds an error that is corrected.
+
+1. Inspect the root `AGENTS.md`, every more-specific `AGENTS.md` on affected
+   paths, `.agents/skills/README.md`, and the relevant `SKILL.md` files. Also
+   identify applicable `.agent.md`, `.github/agents/`, `.github/skills/`,
+   `.claude/skills/`, `.cursor/rules/`, Copilot and other tool instruction
+   files present in the repository.
+2. Select skills from their responsibilities and file maps. Review adjacent
+   skills when APIs, build graph, CI, platform behavior, security or packaging
+   crosses ownership boundaries; do not read unrelated skills merely to claim
+   coverage.
+3. Every repository change must include a meaningful, reusable update to at
+   least one applicable instruction or skill file. Update existing knowledge
+   when behavior, paths, assumptions, commands or validation procedures
+   change. Create a skill only when a durable distinct procedure has no
+   suitable owner; update its README inventory and static contract together.
+   Never add cosmetic edits, timestamps or empty changes to satisfy this rule.
+4. Keep specialized agents synchronized with their skills and this root
+   policy. Every `.agent.md` must include `Post-Change Knowledge
+   Synchronization`; every skill must include `Maintenance & Continuous
+   Learning` and link back to this policy. Skills add their domain procedure
+   without copying the full normative policy.
+5. Remove obsolete or duplicated instructions, validate local references, and
+   update examples and validation commands affected by the implementation. If
+   an update cannot be made, document why and report the task incomplete.
+6. Run `perl tools/scripts/check-agent-maintenance.pl` (with `--base BASE_SHA
+   --head HEAD_SHA` in pull-request CI) and the owning compile-free checks. The
+   checker verifies structure and substantive text changes, not semantic
+   relevance; explain in the final report why the update helps future work.
+7. Report agents and skills reviewed, instruction files changed, reusable
+   knowledge added/corrected, checks run and synchronization status in the
+   final `Agent & Skills Synchronization` section.
+
+The `agent-maintenance.yml` pull-request gate is the only exception to the
+manual-only workflow rule. Build, test, packaging and release validation stay
+`workflow_dispatch`-only. This does not change branch protection settings.
+
+### Mandatory Definition of Done
+
+- [ ] Repository changes implemented.
+- [ ] Relevant agent instructions reviewed.
+- [ ] Relevant skills reviewed.
+- [ ] Affected AGENTS.md / SKILL.md files updated.
+- [ ] Obsolete knowledge removed.
+- [ ] New reusable knowledge incorporated.
+- [ ] Agent and skill references validated.
+- [ ] Automated maintenance checks passed.
+- [ ] Final synchronization status reported.
+
+If any item fails, correct it or explicitly declare the task incomplete and
+state the limitation. Never present structural checks as proof of semantic
+relevance.
+
+This policy governs edits to AGENTS.md, agent definitions, skills and the
+maintenance policy itself. After such edits, inspect the complete policy,
+agent/skill contracts, references, discovery index and workflow guard once.
+
+### Security, tracking and source-documentation details
 
 1. Identify which statements in `AGENTS.md`, the owning `SKILL.md`/references,
    technical documentation, tests and workflows the change may invalidate.
@@ -236,8 +307,9 @@ and knowledge affected by the change:
 7. Remove duplication: a skill must not restate a normative `AGENTS.md` rule,
    a service/packaging value owned by another skill or a generated list. Link
    the owner and keep the procedure that this subsystem adds. A relevant
-   change is not complete until this review is recorded in the task report,
-   even when the correct outcome is "no skill file changed".
+   change is not complete until this review and the substantive instruction
+   update are recorded in the task report; the update may be an AGENTS file,
+   agent definition or relevant skill rather than a skill specifically.
 
 Security fixes additionally require a negative compile-free contract or a
 focused regression that pins secret redaction, lifetime ownership, bounds and
@@ -268,8 +340,10 @@ executor for blocking calls, deadlines and admission quotas.
   code/comment mismatch as a `TODO.md` finding. Fix code only for a clear,
   bounded defect; do not smuggle functional changes into a comment pass.
 
-The review is mandatory; file edits are not. Do not generate cosmetic changes
-when the existing knowledge is still correct. If a new reusable procedure has
+The review and a meaningful instruction/skill update are mandatory. Do not
+generate cosmetic changes when the existing knowledge is still correct: add
+new reusable knowledge, correct a stale assumption, or document a changed
+procedure instead. If a new reusable procedure has
 no equivalent skill, propose a new skill with valid Agent Skills metadata and
 update the README inventory and `tests/check-agent-skills.cmake` together.
 Never introduce an automatic mechanism that rewrites agent instructions
@@ -369,7 +443,9 @@ CI. Update the feature matrix in `docs/cpp23-migration.md` and
   Perl ownership includes `tools/**` (including `tools/scripts/*.pl` and
   `i2pdctl`), `android/tools/*.pl`, `i18n/*.pl`, `tests/interop/*.pl` and their
   tests/docs.
-- Every workflow is `workflow_dispatch`-only, actions are SHA-pinned and
+- Build, test, packaging and release-validation workflows are
+  `workflow_dispatch`-only; the maintenance PR gate is the sole exception.
+  Actions are SHA-pinned and
   checkout credentials are not persisted.
 - OpenBSD is first-class; do not weaken pledge/unveil or LibreSSL support.
   Supported crypto floors are OpenSSL 3.0.2–4.0.x and LibreSSL 4.0+ with
@@ -2286,8 +2362,9 @@ uploaded. A skipped stub returns 77 with a registered `SKIP_RETURN_CODE`; it
 must never print `skip:` and return 0. Do not use `continue-on-error` to hide a
 failing test, and do not treat an empty CTest selection as success.
 
-Workflows remain `workflow_dispatch`-only; `workflow_call` may be added only
-with an actual reusable consumer and an explicit trigger-policy update.
+Build/test/package workflows remain `workflow_dispatch`-only;
+`agent-maintenance.yml` is the sole `pull_request` gate. `workflow_call` may be
+added only with an actual reusable consumer and an explicit policy update.
 `tools/scripts/check-workflows.pl` is the compile-free guard (CTest
 `workflow-static` and the `skills-static` job): it rejects other triggers,
 `continue-on-error`, and any executing ctest line without
@@ -2378,3 +2455,21 @@ These are static corrections only. Do not claim CI validation or a
 warning-free build until a new manual dispatch on the corrected revision
 passes; no compiler, configure, CTest, Gradle, Doxygen, package, workflow,
 commit or push was performed for this note.
+
+## Third CI compile and validation pass (`0da3aed0`, 2026-10-27, static)
+
+The current published SHA was reviewed first through GitHub CLI: runs
+40419430023 (Linux/Android), 40419433360 (Windows), 40419436959 (OpenBSD),
+40419440596 (Fuzzing) and 40419444535 (Packaging/service validation). The
+run-by-run evidence and obsolete diagnostics are in
+`docs/ci/COMPILATION-ERRORS.md` CE-014..CE-021. Corrected locally: read-only
+X.509 helper constness; test-fixture insertion into `variables_map`; Windows
+IPC request/reply direction and restart-uptime assertions; Android opaque
+tunnel-name parity; Doxygen parameter docs; ShellCheck SC2015; static-PIE
+verification wording; Debian package-specific Lintian override ownership.
+Earlier `Crypto.h` child-constness, b33offlinekeys namespace and JNI
+`string_view` errors are obsolete by later source revisions. No current
+protocol-specific or CMake configure/link root failure was observed; early
+compile stops leave later Linux targets unverified. State: Implemented / static;
+Pending CI compilation; Pending CI tests. No compile, link, configure, test,
+Gradle, Doxygen, ShellCheck, Lintian or packaging command was run locally.

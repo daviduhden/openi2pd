@@ -4,8 +4,8 @@
 #
 # openi2pd: check workflows.
 #
-# Compile-free contract for the manual GitHub Actions workflows: only
-# workflow_dispatch/workflow_call triggers, no continue-on-error, and every
+# Compile-free contract for manual build/test workflows and the dedicated
+# pull-request agent-maintenance gate: no other triggers, no continue-on-error, and every
 # executing ctest invocation must fail on an empty selection. It never
 # dispatches, parses YAML with a third-party module or runs a workflow.
 #
@@ -90,14 +90,24 @@ for my $file (@files) {
         push @errors, "$file: missing on: block";
     }
     else {
+        my $maintenance_gate = $file eq 'agent-maintenance.yml';
         for my $trigger (@triggers) {
             $trigger =~ s/:$//;
-            next
-              if $trigger eq 'workflow_dispatch' || $trigger eq 'workflow_call';
+            next if $maintenance_gate && $trigger eq 'pull_request';
+            next if !$maintenance_gate
+              && ( $trigger eq 'workflow_dispatch' || $trigger eq 'workflow_call' );
             push @errors, "$file: unsupported trigger '$trigger'";
         }
-        push @errors, "$file: workflow_dispatch is not declared"
-          unless grep { $_ eq 'workflow_dispatch' } @triggers;
+        if ($maintenance_gate) {
+            push @errors, "$file: maintenance gate must declare pull_request"
+              unless grep { $_ eq 'pull_request' } @triggers;
+            push @errors, "$file: maintenance gate must not run on workflow_dispatch"
+              if grep { $_ eq 'workflow_dispatch' } @triggers;
+        }
+        else {
+            push @errors, "$file: workflow_dispatch is not declared"
+              unless grep { $_ eq 'workflow_dispatch' } @triggers;
+        }
     }
 }
 
@@ -107,12 +117,12 @@ if (@errors) {
 }
 
 print
-"workflow-static: $checked workflow(s) are manual-only and fail on empty CTest selections\n";
+"workflow-static: $checked workflow(s) obey the manual-build/PR-maintenance trigger policy and fail on empty CTest selections\n";
 exit 0;
 
 =head1 NAME
 
-check-workflows.pl - enforce the manual-only GitHub Actions policy
+check-workflows.pl - enforce manual-build and PR-maintenance GitHub Actions policies
 
 =head1 SYNOPSIS
 
@@ -130,9 +140,10 @@ Read-only contract check for everything under F<.github/workflows/>:
 
 =item *
 
-an F<on:> block is required and must declare C<workflow_dispatch>; only
-C<workflow_dispatch> and C<workflow_call> are accepted, so a C<push>,
-C<pull_request> or C<schedule> trigger fails the check;
+an F<on:> block is required. All build, test and packaging workflows must
+declare C<workflow_dispatch> (optionally C<workflow_call>); only
+F<agent-maintenance.yml> may declare C<pull_request>, and it may not also
+declare C<workflow_dispatch>. Push and schedule triggers fail the check;
 
 =item *
 

@@ -2,6 +2,10 @@
 name: openi2pd-packaging
 description: Use when changing openi2pd Debian or RPM packaging, static bundles, service-manager definitions, install layout, man pages, tmpfiles or desktop integration.
 ---
+
+## Maintenance & Continuous Learning
+
+When this skill guides a repository change, review it after implementation. Update procedures, tools, configurations, assumptions, examples and validation steps when they changed or when reusable knowledge improves future work; correct inaccurate guidance and omit one-off execution details. Report synchronization in the task summary. Follow the normative process and Definition of Done in [AGENTS.md](../../../AGENTS.md#continuous-agent--skills-maintenance).
 <!--
 See the LICENSE file at the top of the project tree for copyright
 and license details.
@@ -205,13 +209,16 @@ Ask for exact paths and package names. Do not let them run `dpkg-buildpackage`,
 ## Do not
 
 - Do not compile, build a package, run `lintian`, `autopkgtest`, `systemctl`,
-  `rcctl`, `runit`, `s6`, Docker or project validators locally.
+  `rcctl`, `runit`, `s6`, Docker or dynamic project tests locally.
+  Compile-free structural checks required by `AGENTS.md` may run locally.
 - Do not change binary/config/data paths without a migration and
   compatibility test.
 - Do not weaken service hardening, sandbox paths, user separation or file
   permissions.
 - Do not claim package/service validation from a manifest inspection.
-- Keep every workflow `workflow_dispatch`-only; do not add `push`, `pull_request`, `schedule` or automatic `workflow_call` triggers.
+- Keep packaging/build/test workflows `workflow_dispatch`-only. The sole
+  pull-request exception is the compile-free `agent-maintenance.yml` gate;
+  use `openi2pd-ci` for workflow trigger policy and validation.
 - Do not create commits, tags, releases, worktrees or temporary commits, and do not push; inspect `git status`/`git diff` before editing.
 - Do not install dependencies, fetch/vendor code or perform hidden downloads to enable a local build or test. Preserve LICENSE/NOTICE/provenance and technical identifiers/paths unless an approved migration exists (AGENTS.md).
 
@@ -247,6 +254,11 @@ Ask for exact paths and package names. Do not let them run `dpkg-buildpackage`,
   from separate rules.
 - CI artifact uploads must stay inside `GITHUB_WORKSPACE`; `upload-artifact`
   v4 skips absolute paths such as `/tmp/static-file`.
+- Debian Lintian overrides are scoped by binary package: an
+  `i2pd-tui:` tag belongs in `debian/i2pd-tui.lintian-overrides`, not the
+  daemon's `i2pd.lintian-overrides`. `debugedit` may report unknown DWARF
+  forms during `dh_strip`; classify the command's exit and later package
+  diagnostics before treating that message as the failure cause.
 
 ## Tracking
 

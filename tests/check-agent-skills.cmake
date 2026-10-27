@@ -81,6 +81,7 @@ set(required_sections
   "Known issues and decisions"
   "Do not"
   "Prepare for CI"
+  "Maintenance & Continuous Learning"
   "Tracking"
   "References"
 )
@@ -243,8 +244,8 @@ foreach(required_policy IN ITEMS
     "Explain security decisions"
     "Update affected comments whenever implementation or interfaces change"
     "Do not retain comments that contradict the code"
-    "development task is not complete until the agent has reviewed"
-    "even when the correct outcome is \"no skill file changed\"")
+    "Every repository modification MUST include an agent/skills synchronization step."
+    "Every repository change must include a meaningful, reusable update")
   string(FIND "${agents_text}" "${required_policy}" policy_position)
   if(policy_position EQUAL -1)
     message(FATAL_ERROR "AGENTS security policy drift: ${required_policy}")

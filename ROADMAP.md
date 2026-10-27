@@ -29,8 +29,10 @@ host regression; JNI/device evidence is pending. `ANDROID-018` adds phase-aware 
 production rollback, JNI/device and restart evidence remain pending manual CI.
 
 Permanent policy: no agent compiles, configures a build or executes tests
-locally. Builds and dynamic validation are CI-only through manual
-`workflow_dispatch` workflows. The results below are historical evidence from
+locally. Build/test/package workflows and dynamic validation are CI-only
+through manual `workflow_dispatch`; the compile-free agent-maintenance gate is
+the sole pull-request workflow. Every repository change synchronizes relevant
+agent/skill knowledge and passes the structural maintenance gate. The results below are historical evidence from
 earlier revisions, not validation of current uncommitted changes.
 
 - Historical Linux/GCC 16: CMake configure and build passed on 2026-10-18 with
@@ -297,7 +299,8 @@ compatibility claim from static inspection alone.
 2. Compile and run the OpenBSD role-policy and imsg tests, including the
    storage/no-external-network and network/no-persistent-write negative cases.
 3. Run manual GitHub workflows on all platforms.
-4. Keep workflows manual-only.
+4. Keep build/test/package workflows manual-only; the compile-free
+   agent-maintenance gate is the only pull-request exception.
 
 Exit criteria: OpenBSD build/runtime evidence and manual CI results recorded.
 
@@ -1670,3 +1673,24 @@ Exit criteria: the next manual Linux/OpenSSL/Windows/OpenBSD/Android/fuzz/
 packaging dispatch compiles and the source-docs lane emits no unsupported-tag
 warning. No local compiler, CMake, CTest, Gradle, Doxygen or package evidence
 exists for this revision.
+
+## Third CI compile and validation continuation (2026-10-27, static)
+
+Runs 40419430023, 40419433360, 40419436959, 40419440596 and 40419444535 on
+published SHA `0da3aed0f255d801cf9e85ab1cf155b7175d24e2` exposed the next
+failures: const X.509 issuer helper input, reseed fixture `variables_map`
+assignment, two Windows IPC/restart assertions, one Android tunnel-name
+expectation, a missing Doxygen parameter tag, ShellCheck SC2015, the static-PIE
+`file` wording check and a package-scoped Lintian override. Corrected locally
+and recorded as CE-014..CE-021 in `docs/ci/COMPILATION-ERRORS.md` and BUILD-024.
+The earlier helper-child-constness, `b33offlinekeys` namespace and JNI
+`string_view` diagnostics are obsolete by source changes after SHA `88ac1e92`.
+The new evidence contains no independent current NTCP2/SSU2/ratchet/netDb/client
+or CMake configure/link root cause; several downstream lanes were stopped
+before their later checks.
+
+Exit criteria: manual CI on the corrected source passes Linux GCC/Clang and
+OpenSSL 3/4, OpenBSD, Windows MSYS2/MSVC, Android Java/JNI/APK, Doxygen,
+sanitizer/fuzzer, static-musl and Debian package/Lintian lanes. No such run was
+performed on these local changes; compilation, tests and packaging remain
+pending CI.

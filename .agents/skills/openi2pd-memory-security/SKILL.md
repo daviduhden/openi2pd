@@ -2,6 +2,10 @@
 name: openi2pd-memory-security
 description: Use when auditing untrusted-input parsers, concurrency, object lifetime, resource bounds or security-sensitive behavior in openi2pd, excluding general C++23 ownership refactors and cryptographic primitive selection.
 ---
+
+## Maintenance & Continuous Learning
+
+When this skill guides a repository change, review it after implementation. Update procedures, tools, configurations, assumptions, examples and validation steps when they changed or when reusable knowledge improves future work; correct inaccurate guidance and omit one-off execution details. Report synchronization in the task summary. Follow the normative process and Definition of Done in [AGENTS.md](../../../AGENTS.md#continuous-agent--skills-maintenance).
 <!--
 See the LICENSE file at the top of the project tree for copyright
 and license details.

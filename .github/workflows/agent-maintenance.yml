@@ -1,0 +1,37 @@
+# See the LICENSE file at the top of the project tree for copyright
+# and license details.
+#
+# openi2pd: pull-request agent knowledge synchronization gate.
+#
+---
+name: Agent knowledge maintenance
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: agent-maintenance-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  instruction-sync:
+    name: Agent and skills synchronization
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Check synchronization and instruction references
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: perl tools/scripts/check-agent-maintenance.pl --base "$BASE_SHA" --head "$HEAD_SHA"
+      - name: Check Agent Skills contract
+        run: cmake -DPROJECT_ROOT="$PWD" -P tests/check-agent-skills.cmake
+      - name: Check workflow trigger policy
+        run: perl tools/scripts/check-workflows.pl

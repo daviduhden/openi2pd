@@ -13,7 +13,8 @@ This directory contains reusable Agent Skills in the open
 `<name>/SKILL.md` layout. Each frontmatter declares a unique `name` and a
 `description` that tells an agent when to load it. The canonical permanent
 policy remains [`../../AGENTS.md`](../../AGENTS.md); skills add procedures and
-file maps, not a second policy layer.
+file maps, not a second policy layer. Every skill has a `Maintenance &
+Continuous Learning` section that applies this policy after task changes.
 
 ## Selection
 
@@ -75,17 +76,20 @@ by `openi2pd-tui`.
 - Launch at least one read-only reconnaissance subagent when subagents are
   available. Split independent implementation work across owners; do not let
   two agents edit the same file.
-- Every relevant change performs the `AGENTS.md` `Agent Knowledge Maintenance`
-  review, including the affected skills and their references. Knowledge is not
-  complete unless the review outcome is recorded, even when no skill file
-  changes.
+- Every repository change performs the mandatory `Continuous Agent & Skills
+  Maintenance` procedure in `AGENTS.md` and includes a substantive update to
+  at least one relevant instruction or skill file. The PR maintenance gate
+  checks structure, changed paths and local references; semantic relevance
+  remains an explicit review obligation.
 - Never duplicate normative policy. Link the single `AGENTS.md` owner and keep
   only the subsystem procedure, file map, invariant or review step here. A
   rule change updates the owner and removes stale copies in the same
   increment; generated lists and values owned by another skill are not
   restated.
 - Do not compile, configure a build, run CTest, Gradle, sanitizers, fuzzers or
-  project validators locally. Dynamic validation is dispatched manually in CI.
+  dynamic project tests locally. Compile-free structural checks required by
+  `AGENTS.md` may and should run locally. Other dynamic validation is dispatched
+  manually in CI.
 - Do not create commits, tags, releases, worktrees or temporary commits, and do not push. Inspect `git status`/`git diff` and preserve existing worktree changes.
 - Do not install dependencies or fetch/vendor code locally to enable a build, test or inspection; no hidden downloads.
 - Record code as implemented by static analysis separately from pending CI
@@ -93,10 +97,9 @@ by `openi2pd-tui`.
 - Keep `TODO.md`, `ROADMAP.md` and `PROGRESS.md` coherent. Subagents report
   proposed tracking rows to the coordinator; the coordinator owns shared
   tracking-file edits.
-- Perform the permanent `Agent Knowledge Maintenance` review after every
-  significant change: update the owning skill/reference when it gains reusable
-  decisions, pitfalls, paths, limitations or pending validation. Cosmetic
-  rewrites are not required when the existing knowledge is still correct.
+- After changes to a skill, agent definition or this index, validate the
+  complete inventory, required sections, cross-links and CI guard together.
+  Do not use cosmetic rewrites to satisfy the synchronization requirement.
 
 ## Skill maintenance
 
@@ -112,10 +115,10 @@ Before considering a skill change complete:
 4. Keep `## Reconnaissance`, `## Known issues and decisions`, `## Do not` and
    `## Tracking`; require read-only subagents, AGENTS.md limits, reusable
    decisions/pitfalls, and coordinator-owned tracking edits.
-5. Run only static source checks locally. `agent-skills-static` and
-   `language-modernization-static` are compile-free maintenance gates;
-   docs-link/branding checks and all validators remain manual CI checks. Do not
-   run them locally or claim them passed.
+5. Run compile-free checks locally only as allowed by `AGENTS.md`.
+   `agent-skills-static` and `language-modernization-static` are source
+   contracts; dynamic validation remains manual CI work. Never claim a check
+   passed unless it was executed.
 6. If a pinned policy phrase, seam name or required section changes, update
    `AGENTS.md`, the owning skill/reference, the technical doc and the checker in
    the same increment.

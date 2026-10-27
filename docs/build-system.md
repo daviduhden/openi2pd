@@ -303,8 +303,9 @@ service/sandbox files and validation notes are in
   and `-DWITH_TORRENTS=OFF`; the current specs do not claim that toolchain
   path is validated.
 - The Windows helper builds with CMake/Ninja; the Windows XP path was removed.
-- CI workflows use Ninja explicitly and remain **manual-only**
-  (`workflow_dispatch`). Linux native, sanitizer and
+- Build/test/package CI workflows use Ninja explicitly and remain
+  **manual-only** (`workflow_dispatch`); the compile-free agent-maintenance
+  gate is the sole pull-request workflow. Linux native, sanitizer and
   fuzz jobs install the latest GCC, LLVM, CMake, Ninja, Boost, OpenSSL, zlib,
   MiniUPnPc and ncurses from Homebrew. The Debian package job deliberately
   retains the distribution toolchain so the produced package is validated

@@ -2,6 +2,10 @@
 name: openi2pd-build
 description: Use when changing the openi2pd CMake graph, POSIX Make front-end, dependency floors, compiler/platform options, test registration or sanitizer configuration.
 ---
+
+## Maintenance & Continuous Learning
+
+When this skill guides a repository change, review it after implementation. Update procedures, tools, configurations, assumptions, examples and validation steps when they changed or when reusable knowledge improves future work; correct inaccurate guidance and omit one-off execution details. Report synchronization in the task summary. Follow the normative process and Definition of Done in [AGENTS.md](../../../AGENTS.md#continuous-agent--skills-maintenance).
 <!--
 See the LICENSE file at the top of the project tree for copyright
 and license details.
@@ -280,14 +284,17 @@ build.
 ## Do not
 
 - Do not configure, build, run CTest, `make`, Ninja, Gradle, sanitizers,
-  fuzzers or project validators locally.
+  fuzzers or dynamic project tests locally. Compile-free structural checks
+  required by `AGENTS.md` may run locally.
 - Do not reintroduce GNU make, the HTTP console, web assets, submodules or
   hidden downloads.
 - Do not weaken hardening/sanitizer checks or suppress warnings to force a
   build.
 - Do not make an option silently change a wire/persisted format or a security
   boundary.
-- Keep every workflow `workflow_dispatch`-only; do not add `push`, `pull_request`, `schedule` or automatic `workflow_call` triggers.
+- Keep build/test/package workflows `workflow_dispatch`-only. The sole
+  pull-request exception is the compile-free `agent-maintenance.yml` gate;
+  use `openi2pd-ci` for workflow trigger policy and validation.
 - Do not create commits, tags, releases, worktrees or temporary commits, and do not push; inspect `git status`/`git diff` before editing.
 - Do not install dependencies, fetch/vendor code or perform hidden downloads to enable a local build or test. Preserve LICENSE/NOTICE/provenance and technical identifiers/paths unless an approved migration exists (AGENTS.md).
 

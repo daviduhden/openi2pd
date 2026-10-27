@@ -5252,3 +5252,51 @@ Static checks (all `check-*`, docs links/nav/branding, shellcheck and
 `git diff --check`) pass. No compiler, CMake, CTest, Gradle, Doxygen or
 package was run; the fixes remain Pending CI compilation and the Windows MSVC
 lane was still in progress when the diagnostics were collected.
+
+## 2026-10-27 Third CI-driven compile and packaging pass (static)
+
+I used `gh auth status`, `gh repo view`, `gh workflow list` and
+`gh run list --limit 100` first, then retrieved run/job details and failed logs
+for the latest Linux/Android (40419430023), Windows (40419433360), OpenBSD
+(40419436959), fuzz (40419440596) and packaging (40419444535) workflows. All
+ran on published SHA `0da3aed0f255d801cf9e85ab1cf155b7175d24e2`, the clean local
+HEAD before changes. Earlier `88ac1e92` runs were compared to separate fixed
+diagnostics from current failures. Downloaded diagnostic artifacts to
+`/tmp/openi2pd-ci/`; the OpenBSD run had no downloadable artifacts.
+
+Applied static corrections for the const X.509 name helper, two reseed test
+fixture map updates, Windows IPC protocol direction and per-generation stable
+period assertions, Android tunnel-name test parity, Doxygen `len1` docs,
+ShellCheck SC2015, `static-pie linked` verification, and Debian Lintian
+override ownership. Added a package contract check and updated the detailed
+run/SHA/job/root-cause inventory CE-014..CE-021. Current protocol and CMake
+logs contain no independent root error; OpenBSD reached core/client/privsep
+library linking, while Linux stopped earlier at `Family.cpp`. MSVC reached
+its selected link targets, then failed tests; those findings are not compile
+failures.
+
+Knowledge maintenance updated the CI, Android, documentation and packaging
+skills. No change was needed to the crypto skill's existing const-accessor
+decision. No local compiler, configure, CTest, Gradle, Doxygen, ShellCheck,
+Lintian, static package verification or workflow was run. These corrections
+are implemented by static analysis and remain Pending CI compilation and
+Pending CI tests; no commit or push was made.
+
+## 2026-10-27 Continuous agent and skills maintenance (static)
+
+Repository discovery found one root `AGENTS.md`, 17 `.agents/skills/*/SKILL.md`
+files, no specialized `.agent.md` definitions or alternate-tool instruction
+trees, and existing compile-free skill/workflow checks. Added the mandatory
+`Continuous Agent & Skills Maintenance` policy and Definition of Done, a
+`Maintenance & Continuous Learning` section in each skill, and reusable Perl
+checker `tools/scripts/check-agent-maintenance.pl`. The new
+`.github/workflows/agent-maintenance.yml` runs only on pull requests; it is the
+sole trigger exception, and performs no build/test. Existing build/test/package
+workflows remain manual-only. Updated the workflow guard, skill contract,
+CI/testing docs, README, language policy contract and task inventory.
+
+Static-only in this session: no compiler, CMake/CTest, Perl test suite, Gradle,
+workflow dispatch, commit or push was run. Compile-free checker execution and
+diff review remain pending; the PR workflow cannot validate unpublished local
+edits. Structural automation cannot establish semantic relevance, which remains
+a required agent/reviewer judgment.

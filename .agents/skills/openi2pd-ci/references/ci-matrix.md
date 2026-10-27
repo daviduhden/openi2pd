@@ -18,8 +18,9 @@ Use with `SKILL.md`. All jobs are manual; no result here validates a revision.
 | `fuzz.yml` | fuzzing | fifteen libFuzzer targets + bounded smoke; `--no-tests=error`/JUnit smoke |
 | `packaging.yml` | service-contracts, service-install-matrix, static-musl, container-image, Debian | static contracts; seven-manager Service staging; static Debian/RPM-style package; container image; Debian lintian/autopkgtest, conffile reinstall, remove/purge |
 
-All use `workflow_dispatch` only. Actions are SHA-pinned and checkout
-credentials are not persisted.
+Build/test/package workflows use `workflow_dispatch`; the compile-free
+agent-maintenance gate is the sole pull-request workflow. Actions are
+SHA-pinned and checkout credentials are not persisted.
 
 The interop job verifies the current Java 2.14.0 reference separately from
 historical 2.13.0 fixture provenance. Use `I2P_JAVA_REFERENCE` for the current

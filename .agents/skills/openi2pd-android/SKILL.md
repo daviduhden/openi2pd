@@ -2,6 +2,10 @@
 name: openi2pd-android
 description: Use when changing the openi2pd Android app, Java 25 build, Material Views UI, RouterService lifecycle, JNI bridge or Storage Access Framework torrent storage.
 ---
+
+## Maintenance & Continuous Learning
+
+When this skill guides a repository change, review it after implementation. Update procedures, tools, configurations, assumptions, examples and validation steps when they changed or when reusable knowledge improves future work; correct inaccurate guidance and omit one-off execution details. Report synchronization in the task summary. Follow the normative process and Definition of Done in [AGENTS.md](../../../AGENTS.md#continuous-agent--skills-maintenance).
 <!--
 See the LICENSE file at the top of the project tree for copyright
 and license details.
@@ -334,6 +338,9 @@ run Gradle, install an APK or run a device test.
 - `content_max_width` needs a `values-w600dp` override as well as
   `values-sw600dp`; the rail layout uses `w600dp` and multi-window can select
   it without `smallestWidth >= 600dp`.
+- Tunnel service names are bounded opaque protocol tokens. A slash does not
+  make a name a filesystem path; Java tests must match the native length and
+  control-character predicate rather than rejecting path-like spelling.
 
 ## Tracking
 

@@ -10,8 +10,10 @@ Documents project documentation.
 
 # CI policy and workflow linting
 
-Workflows remain **manual-only** (`workflow_dispatch`); no `push`,
-`pull_request`, schedule or automatic trigger is allowed.
+Build, test and packaging workflows remain **manual-only** (`workflow_dispatch`).
+The sole automatic gate is `.github/workflows/agent-maintenance.yml`, which
+runs compile-free agent/skill synchronization checks on pull requests. No build
+or test workflow runs automatically; no `push` or schedule trigger is allowed.
 
 The optional `source_docs` input on **Linux and Android** generates C++ API
 HTML with `docs/Doxyfile.source` and Android Javadoc with the debug Java
@@ -88,7 +90,8 @@ the component-install lane checks every tool binary, `i2pdctl` and
   crash reproducers are uploaded as short-retention artifacts. The workflow
   does not claim a long-running corpus campaign.
 - A compile-free `workflow-static` check (`tools/scripts/check-workflows.pl`)
-  rejects any trigger other than `workflow_dispatch`/`workflow_call`, any
+  permits `pull_request` only in the maintenance gate and otherwise requires
+  `workflow_dispatch` (optionally `workflow_call`), rejects any
   `continue-on-error`, and any executing `ctest` invocation without
   `--no-tests=error` and `--output-junit`. It runs in `skills-static` and as a
   CTest target.
@@ -115,8 +118,8 @@ the component-install lane checks every tool binary, `i2pdctl` and
   target graph and runs all registered Windows tests; the native MSVC job
   remains TUI/API-focused, builds the TUI tests and verifies installation.
   Dependencies are build-time only; the installed product downloads nothing.
-- Every workflow is `workflow_dispatch`-only; no push, pull-request, schedule
-  or automatic trigger exists. `workflow_call` is permitted by the static
+- Build/test/package workflows are `workflow_dispatch`-only; the maintenance
+  gate is the sole pull-request workflow and runs no build or test. `workflow_call` is permitted by the static
   guard for a future reusable consumer, but no workflow declares it today. Manual runs do not cancel an
   earlier validation (`cancel-in-progress: false`), and CTest logs, package
   outputs, Android reports and fuzz corpora are archived as short-retention

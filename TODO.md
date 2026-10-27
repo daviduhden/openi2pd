@@ -29,10 +29,10 @@ Add a parenthetical qualifier only when needed, for example
 
 Permanent development policy: local compilation, build configuration and test
 execution are prohibited for all agents and subagents. Dynamic validation is
-CI-only through manual `workflow_dispatch` workflows. Local work is static
-analysis, implementation, test preparation and CMake/workflow updates. Every
-significant change also performs the `Agent Knowledge Maintenance` review in
-`AGENTS.md` (skills, technical docs and tracking). See
+CI-only; build/test/package workflows use manual `workflow_dispatch`. The
+compile-free agent-maintenance gate alone runs on pull requests. Every
+repository change requires substantive agent/skill synchronization under
+`AGENTS.md` “Continuous Agent & Skills Maintenance”. See
 `AGENTS.md` “Permanent priority policy: static-only local work”. Historical
 local build/test results in this file refer to earlier work and do not validate
 current uncommitted changes.
@@ -614,8 +614,8 @@ they do not establish 2.14.0 compatibility. See NET-026.
 
 - [x] **[GOV-001]** Remove obsolete personal author/maintainer credits while preserving copyright/license notices.
   - Status Implemented / static; `docs/attribution-audit.md`; personal PPA/donation/team and endorsement references removed. Debian/RPM `Maintainer` and changelog contacts are retained because package metadata requires a responsible address; they are not presented as product credits.
-- [x] **[GOV-002]** Keep all GitHub Actions manual-only (`workflow_dispatch`).
-  - Status Implemented; no automatic triggers.
+- [x] **[GOV-002]** Keep build/test/package GitHub Actions manual-only (`workflow_dispatch`).
+  - Status Implemented; the compile-free agent-maintenance PR gate is the sole automatic exception.
 - [ ] **[GOV-003]** Update CI to OpenJDK 25 for Android and add app/tool/docs checks when runnable.
   - Priority P1; Status Implemented / static; the Android job now wires the Java 25 guard, `:i2pd:testDebugUnitTest`, `:i2pd:lintDebug`, the native arm64 link and an arm64 debug APK build. Instrumentation remains device-only; current uncommitted changes are not published.
 - [ ] **[GOV-004]** Re-run manual CI on Linux/OpenBSD/Windows/Android and record results.
@@ -832,12 +832,15 @@ when there is no older ID.
 - [x] **[LEGAL-003]** License all project-authored documentation under BSD-3-Clause.
   - Priority P0; Status Implemented / static; `docs/file-headers.md` and `docs/torrent/snark-compatibility.md` now declare BSD-3-Clause, Debian/RPM/container metadata agrees, and the project-wide license page, NOTICE, policies and static contract reflect the unified documentation license. The CC notice file remains absent. Pending manual CI checks; no legal scanner or packaging validation was run.
   - Files: `docs/{file-headers.md,torrent/snark-compatibility.md,about/license.md,attribution-audit.md}`, `NOTICE`, `debian/copyright`, package metadata, `AGENTS.md`, documentation/packaging skills and `tests/check-legal-metadata.cmake`.
-- [ ] **[CI-001]** Keep workflows `workflow_dispatch`-only, actions SHA-pinned, checkout credentials disabled and workflow lint clean.
+- [ ] **[CI-001]** Keep build/test/package workflows `workflow_dispatch`-only, actions SHA-pinned, checkout credentials disabled and workflow lint clean; preserve only the checked maintenance PR exception.
   - Priority P0; Status Implemented; zizmor/yamllint clean; re-run after workflow edits.
 - [ ] **[CI-002]** Close the latest manual-run compile and packaging failures before the next dispatch.
   - Priority P0; Status Implemented / static; Pending CI compilation; Pending CI tests. Read-only `gh` triage of `a2b8dc48` (`40381250464`, `40381278483`, `40381304032`, `40381324823`, `40381344546`) and `b9cbdaa8` (`40389733799`, `40389743711`, `40389753745`) plus six parallel subsystem reviews found and corrected: the missing `RequestLeaseSet` bind argument, garlic/SSU2/streaming/tunnel-pool/cache const or declaration mismatches, BOB's const socket peer check, Win32 token-enumerator shadowing and move-ctor order, the `size_t` torrent parser returns, `Mapping` assignment, the i18n capture reset, the invalid CMake escapes (`\[`, `\.`, `\0`), the stale documentation holder, the removed Alpine `miniupnpc-static` package, the stale `i2pdctl` diagnostic expectation, the Documentation-owned tools licence in `perl-install-layout`, the OpenBSD `imsg_get`/`imsgbuf_get` probe, `_GNU_SOURCE` for IPC credentials, direct standard/OpenSSL includes, `OPENSSL_PQ 0`, the undefined `AsyncUpstreamSockRead`, the NTCP2 SipHash provider parameter, the SSU2 PeerTest null guard, the `/tmp` artifact path and the Android status/internal-storage/reseed/dimension contracts.
   - Files: `libi2pd/{Crypto,Queue,Gost,Socks5,Transports,TransportSession,NetDbRequests,Blinding,util}.h`, `libi2pd/{Config,IdentMetrics,NTCP2,SSU2Session}.cpp`, `libi2pd_client/{BOB.cpp,TorrentsDHT.cpp,ClientContext.cpp,MatchedDestination.h,TorrentPayloadStorage.h,SOCKS.cpp,SOCKS.h}`, `daemon/I2PControlHandlers.h`, `privsep/{Channel,OpenBSDImsg,Supervisor,WindowsIpc}.cpp`, `i18n/check-i18n-catalogs.pl`, `tests/check-{build-system,legal-metadata,packaging}.cmake`, `tools/{CMakeLists.txt,test-perl-install.cmake,test-tools-cli.cmake,test-tools-inventory.cmake,tests/i2pdctl.t}`, `contrib/static/build-musl.sh`, `.github/workflows/packaging.yml`, `android/app/src/main/{cpp/i2pd_android.cpp,java/org/openi2pd/router/{DaemonWrapper.java,RouterStatusParser.java},res/values-w600dp/dimens.xml}`, `android/app/src/test/java/org/openi2pd/router/RouterStatusParserTest.java`, `docs/{static-build-audit.md,security/openbsd-validation.md}`.
   - Residual: Android SAF status on the UI thread, JNI state calls under the state monitor, unused data-directory JNI helpers, `TorrentsComments.h` guard asymmetry, `AcceptLocalControlPeer` template hazard and unaudited provider/ABI branches. The CMake `CURSES_INCLUDE_DIRS` concern is not a defect (module variable since CMake 3.1).
+- [ ] **[CI-003]** Enforce continuous agent and skills synchronization on every repository change.
+  - Priority P1; Status Implemented / static; local structural checks passed; Pending CI validation. `tools/scripts/check-agent-maintenance.pl` requires a substantive instruction/skill diff, validates required skill/agent sections and local Markdown paths, and explicitly leaves semantic relevance to review. `.github/workflows/agent-maintenance.yml` runs this check plus the Agent Skills and workflow contracts on pull requests; it is the sole automatic workflow exception. All 17 skills have the maintenance-learning section. No branch protection changes were made.
+  - Validation: local compile-free checks passed; the GitHub Actions workflow itself remains pending a future PR. No commit or push.
 
 ## N. BitTorrent native console and TUI
 
@@ -2113,3 +2116,7 @@ compilation and Pending CI tests.
   - Priority P2; Status Pending. The packaged unit passes `--log=stdout`; the file-log instructions now require replacing `ExecStart` as well as setting `log = file`. Verify command-line/config precedence and the drop-in on a manual systemd run; no manager was started during this review.
 - [ ] **[CONC-027]** Retain `ClientDestination` authority through timed shutdown.
   - Priority P0; Status Pending. `ClientDestination::Stop()` posts a callback capturing raw `this` and waits at most ten seconds; timeout can leave it queued after the caller proceeds toward destruction. Define stop/restart ownership and cancellation semantics and prepare a timeout with later queue execution regression.
+- [ ] **[BUILD-024]** Correct the third layer of failures in current manual CI runs.
+  - Priority P0; Status Implemented / static; Pending CI compilation; Pending CI tests. Runs 40419430023, 40419433360, 40419436959, 40419440596 and 40419444535 all used published SHA `0da3aed0f255d801cf9e85ab1cf155b7175d24e2`. Corrected the const X.509 issuer helper signature; reseed test fixture map insertion; Windows IPC request/reply direction and per-generation restart timing assertions; Android opaque tunnel-name expectation; Doxygen `len1` parameter; ShellCheck SC2015; static-PIE wording; and package-specific Debian Lintian override. Detailed evidence and obsolete prior-SHA diagnostics are in `docs/ci/COMPILATION-ERRORS.md` CE-014..CE-021.
+  - Files: `libi2pd/Crypto.h`, `tests/test-reseed-{lifecycle,redaction}.cpp`, `tests/test-privsep-windows-{ipc,supervisor}.cpp`, `android/app/src/test/java/org/openi2pd/router/RuntimeAdminPolicyTest.java`, `android/tools/java25-probe/check-config.sh`, `libi2pd/I2NPProtocol.h`, `.github/workflows/packaging.yml`, `debian/*lintian-overrides`, `tests/check-packaging.cmake` and tracking/docs/skills.
+  - Validation: static source/diff review only. No compile, link, CTest, Android Gradle/Lint/APK, Doxygen, ShellCheck, Lintian, static package verification or workflow was run on the corrected tree. All remain pending manual CI. No commit or push.

@@ -2,6 +2,10 @@
 name: openi2pd-upstream
 description: Use when reviewing or applying selective upstream i2pd, i2pd-docs or i2pd-tools changes, updating provenance, synchronization manifests or documenting an omitted upstream change.
 ---
+
+## Maintenance & Continuous Learning
+
+When this skill guides a repository change, review it after implementation. Update procedures, tools, configurations, assumptions, examples and validation steps when they changed or when reusable knowledge improves future work; correct inaccurate guidance and omit one-off execution details. Report synchronization in the task summary. Follow the normative process and Definition of Done in [AGENTS.md](../../../AGENTS.md#continuous-agent--skills-maintenance).
 <!--
 See the LICENSE file at the top of the project tree for copyright
 and license details.
@@ -111,7 +115,8 @@ run tests.
 ## Do not
 
 - Do not run `sync.sh`, clone/fetch into the tree, build, test, fuzz or run
-  validators locally.
+  dynamic project tests locally. Compile-free structural checks required by
+  `AGENTS.md` may run locally.
 - Do not merge an upstream branch, copy a whole directory or import code with
   unclear licensing.
 - Do not reintroduce GNU make, the HTTP console, web assets, submodules or

@@ -2,6 +2,10 @@
 name: openi2pd-documentation
 description: Use when changing openi2pd documentation, source comments/Doxygen/Javadoc/POD/shell comments, licensing and attribution, branding metadata, manual pages or navigation, excluding subsystem design claims and coordinator-owned tracking edits unless assigned.
 ---
+
+## Maintenance & Continuous Learning
+
+When this skill guides a repository change, review it after implementation. Update procedures, tools, configurations, assumptions, examples and validation steps when they changed or when reusable knowledge improves future work; correct inaccurate guidance and omit one-off execution details. Report synchronization in the task summary. Follow the normative process and Definition of Done in [AGENTS.md](../../../AGENTS.md#continuous-agent--skills-maintenance).
 <!--
 See the LICENSE file at the top of the project tree for copyright
 and license details.
@@ -166,7 +170,9 @@ branding validators or a build.
   formats in docs without a migration.
 - Do not add personal credits, donation links or outdated upstream install
   instructions.
-- Keep every workflow `workflow_dispatch`-only; do not add `push`, `pull_request`, `schedule` or automatic `workflow_call` triggers.
+- Build/test/package workflows remain `workflow_dispatch`-only; the
+  compile-free agent-maintenance PR gate is the only pull-request exception.
+  See `openi2pd-ci` for workflow policy.
 - Do not create commits, tags, releases, worktrees or temporary commits, and do not push; inspect `git status`/`git diff` before editing.
 - Do not install dependencies, fetch/vendor code or perform hidden downloads to enable a local build or test. Preserve LICENSE/NOTICE/provenance and technical identifiers/paths unless an approved migration exists (AGENTS.md).
 
@@ -184,6 +190,9 @@ branding validators or a build.
 - Keep `agent-skills-static` coherent and record the exact AGENTS.md tracking
   state; documentation/link checks remain pending until the manual Linux job
   runs.
+- Doxygen warnings are errors in the source API lane. Every documented public
+  parameter must have a matching `@param`, even when the surrounding prose
+  describes the same bound; check added signatures against each tag.
 
 ## Tracking
 

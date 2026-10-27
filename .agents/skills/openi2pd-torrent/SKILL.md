@@ -2,6 +2,10 @@
 name: openi2pd-torrent
 description: Use when changing the native openi2pd I2PSnark-compatible BitTorrent engine, torrent creation, DHT/PEX/tracker behavior, priorities, comments, local state or isolated payload storage.
 ---
+
+## Maintenance & Continuous Learning
+
+When this skill guides a repository change, review it after implementation. Update procedures, tools, configurations, assumptions, examples and validation steps when they changed or when reusable knowledge improves future work; correct inaccurate guidance and omit one-off execution details. Report synchronization in the task summary. Follow the normative process and Definition of Done in [AGENTS.md](../../../AGENTS.md#continuous-agent--skills-maintenance).
 <!--
 See the LICENSE file at the top of the project tree for copyright
 and license details.
@@ -250,7 +254,9 @@ Do not let them edit, build or run tests.
 
 ## Do not
 
-- Do not compile, run CTest, sanitizers, fuzzers, Gradle or validators locally.
+- Do not compile, run CTest, sanitizers, fuzzers, Gradle or dynamic project
+  tests locally. Compile-free structural checks required by `AGENTS.md` may
+  run locally.
 - Do not reintroduce the web console, HTML/CSS/JS, Node/V8/QuickJS, Python or a
   cleartext torrent path.
 - Do not weaken bencode/path/piece/identity checks or resource caps.

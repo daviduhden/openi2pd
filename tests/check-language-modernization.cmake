@@ -70,8 +70,10 @@ read_required("${router_service_java}" router_service_text)
 
 assert_present("${agents_text}" "Modern language utilization policy"
   "AGENTS.md must keep the permanent modernization policy")
-assert_present("${agents_text}" "Agent Knowledge Maintenance"
-  "AGENTS.md must keep the permanent knowledge-maintenance rule")
+assert_present("${agents_text}" "Continuous Agent & Skills Maintenance"
+  "AGENTS.md must keep the mandatory agent/skills synchronization rule")
+assert_present("${agents_text}" "Every repository modification MUST include an agent/skills synchronization step."
+  "AGENTS.md must require maintenance for every repository change")
 assert_present("${agents_text}" "even when an existing" "policy must justify non-performance modernization")
 assert_present("${agents_text}" "virtual threads" "Java library-availability limits must remain explicit")
 assert_present("${cmake_text}" "set(CMAKE_CXX_STANDARD 23)" "C++23 remains mandatory")
