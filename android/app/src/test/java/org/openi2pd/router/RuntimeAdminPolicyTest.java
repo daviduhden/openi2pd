@@ -41,7 +41,8 @@ public class RuntimeAdminPolicyTest {
         assertFalse(RuntimeAdminPolicy.isValidTunnelName("tab\tname"));
         assertFalse(RuntimeAdminPolicy.isValidTunnelName("line\nbreak"));
         assertFalse(RuntimeAdminPolicy.isValidTunnelName("ctrl\u0001name"));
-        assertFalse(RuntimeAdminPolicy.isValidTunnelName("/etc/i2pd/tunnels.conf"));
+        // Names are opaque protocol tokens; a slash does not make this path authority.
+        assertTrue(RuntimeAdminPolicy.isValidTunnelName("/etc/i2pd/tunnels.conf"));
     }
 
     @Test

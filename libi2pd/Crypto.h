@@ -99,7 +99,7 @@ namespace crypto
 	bool bn2buf (const BIGNUM * bn, uint8_t * buf, size_t len);
 
 	/**
-	 * Copy one X.509 name attribute as UTF-8 into a bounded buffer.
+	 * Copy one attribute from a read-only X.509 name as UTF-8 into a bounded buffer.
 	 *
 	 * OpenSSL 4 deprecates `X509_NAME_get_text_by_NID`; this uses the stable
 	 * index/entry/ASN1 accessors instead. @return the copied byte count, or
@@ -107,7 +107,7 @@ namespace crypto
 	 * @pre @a out is non-null and @a size is positive; output is always
 	 * NUL-terminated on success.
 	 */
-	inline int GetX509NameTextByNID (X509_NAME * name, int nid, char * out, int size)
+	inline int GetX509NameTextByNID (const X509_NAME * name, int nid, char * out, int size)
 	{
 		if (!name || !out || size <= 0) return -1;
 		const int index = X509_NAME_get_index_by_NID (name, nid, -1);

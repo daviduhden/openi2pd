@@ -18,15 +18,35 @@ corrected revision passes.
 
 | Run | Workflow | Commit | Result |
 |---|---|---|---|
-| 40411690766 | Linux and Android | `88ac1e92` | failure (several jobs) |
-| 40411699490 | OpenBSD | `88ac1e92` | failure |
-| 40411695544 | Windows | `88ac1e92` | failure (MinGW and MSVC jobs) |
-| 40411703834 | Fuzzing | `88ac1e92` | failure |
-| 40411709057 | Packaging and service validation | `88ac1e92` | failure |
+| [40411690766](https://github.com/daviduhden/openi2pd/actions/runs/40411690766) | Linux and Android | `88ac1e92` | failure (several jobs) |
+| [40411699490](https://github.com/daviduhden/openi2pd/actions/runs/40411699490) | OpenBSD | `88ac1e92` | failure |
+| [40411695544](https://github.com/daviduhden/openi2pd/actions/runs/40411695544) | Windows | `88ac1e92` | failure (MinGW and MSVC jobs) |
+| [40411703834](https://github.com/daviduhden/openi2pd/actions/runs/40411703834) | Fuzzing | `88ac1e92` | failure |
+| [40411709057](https://github.com/daviduhden/openi2pd/actions/runs/40411709057) | Packaging and service validation | `88ac1e92` | failure |
+| [40416816523](https://github.com/daviduhden/openi2pd/actions/runs/40416816523) | Linux and Android | `88ac1e92` | failure |
+| [40416819852](https://github.com/daviduhden/openi2pd/actions/runs/40416819852) | Windows | `88ac1e92` | failure |
+| [40416823112](https://github.com/daviduhden/openi2pd/actions/runs/40416823112) | OpenBSD | `88ac1e92` | failure |
+| [40416827033](https://github.com/daviduhden/openi2pd/actions/runs/40416827033) | Fuzzing | `88ac1e92` | failure |
+| [40416830825](https://github.com/daviduhden/openi2pd/actions/runs/40416830825) | Packaging and service validation | `88ac1e92` | failure |
+| [40419430023](https://github.com/daviduhden/openi2pd/actions/runs/40419430023) | Linux and Android | `0da3aed0` | failure |
+| [40419433360](https://github.com/daviduhden/openi2pd/actions/runs/40419433360) | Windows | `0da3aed0` | failure |
+| [40419436959](https://github.com/daviduhden/openi2pd/actions/runs/40419436959) | OpenBSD | `0da3aed0` | failure |
+| [40419440596](https://github.com/daviduhden/openi2pd/actions/runs/40419440596) | Fuzzing | `0da3aed0` | failure |
+| [40419444535](https://github.com/daviduhden/openi2pd/actions/runs/40419444535) | Packaging and service validation | `0da3aed0` | failure |
 
 Earlier runs (`b9cbdaa8`, `a2b8dc48`, `2ae36284`, `d5d0bd6f`) were cancelled
 or failed for older trees; they are historical evidence only and do not
 validate the local corrections.
+
+For the latest SHA, artifacts downloaded with `gh run download` were:
+`source-api-docs/source-doc-todos.txt` from 40419430023;
+`windows-msvc-ctest/ctest-msvc.xml` from 40419433360; and
+`static-musl-packages/static-file.txt` plus
+`debian-packages-and-logs/{lintian.log,*.deb,*.changes,*.buildinfo}` from
+40419444535. Runs 40419436959 (OpenBSD) and 40419440596 (Fuzzing) had no valid
+downloadable artifacts. First-failure compile logs were retrieved directly
+with `gh run view --log-failed` and job logs; no complete credential-bearing
+or secret-bearing logs are stored here.
 
 ## Confirmed causes
 
@@ -269,3 +289,182 @@ the SOCKS/Log/TorrentsDHT warning families listed in CE-013 and the Doxygen
 placeholder-tag failure. No local OpenBSD linker, Doxygen, MinGW/MSVC or
 Android build exists; the next manual dispatch must confirm the warning set
 and the `-static` link closure.
+
+## Third-pass failures (`0da3aed0`, 2026-10-26)
+
+The latest manual dispatch was on the current published `main` commit
+`0da3aed0f255d801cf9e85ab1cf155b7175d24e2`, identical to the clean local HEAD
+before this correction pass. All five workflows are
+`workflow_dispatch`-only. Full run records and first-failure logs are available
+from the linked runs: [Linux and Android](https://github.com/daviduhden/openi2pd/actions/runs/40419430023),
+[Windows](https://github.com/daviduhden/openi2pd/actions/runs/40419433360),
+[OpenBSD](https://github.com/daviduhden/openi2pd/actions/runs/40419436959),
+[Fuzzing](https://github.com/daviduhden/openi2pd/actions/runs/40419440596) and
+[Packaging and service validation](https://github.com/daviduhden/openi2pd/actions/runs/40419444535).
+The Linux matrix's first shared-core error stopped GCC, Clang, OpenSSL 3/4,
+sanitizer and installed-consumer targets before their later link/test stages.
+OpenBSD compiled and linked the core/client/privsep libraries before the two
+shared fixture compilation errors. Windows MSYS2 stopped on those fixtures;
+the separate MSVC job compiled and linked its selected targets and then hit
+two CTest assertions. No current protocol-specific compile/link failure was
+observed. No local compile or test was run.
+
+### CE-014 — Const issuer name passed to mutable X.509 helper
+
+- **Workflow/jobs:** Linux and Android 40419430023 (`Linux (gcc)`, job
+  121909863534; `Linux (clang)`, 121909863659; OpenSSL 4.0.0, 121909863608;
+  OpenSSL 4.0.3, 121909863861; ASan/UBSan, 121909863431; UBSan, 121909863602;
+  TSan, 121909863731; install consumer, 121909863537); Fuzzing 40419440596
+  (`fuzz-smoke`, 121909927718). The separate OpenSSL 3.x job failed later at
+  CE-015's fixture compile, not this X.509 diagnostic.
+- **Commit/platform:** `0da3aed0f255d801cf9e85ab1cf155b7175d24e2`; Linux GCC/Clang
+  and sanitizer/fuzz lanes using OpenSSL 4.0.x.
+- **First diagnostic:** `libi2pd/Family.cpp:52`, invalid conversion from
+  `const X509_NAME*` to `X509_NAME*` when calling
+  `i2p::crypto::GetX509NameTextByNID`.
+- **Cause:** OpenSSL's issuer accessor is read-only; the bounded helper did
+  not express its read-only input in its signature.
+- **Correction:** accept `const X509_NAME*`; keep the bounded index/entry/ASN.1
+  accessors const. `Reseed.cpp` is the other caller and remains compatible.
+- **Files:** `libi2pd/Crypto.h`, `libi2pd/Family.cpp`, `libi2pd/Reseed.cpp`.
+- **State:** Corregido mediante análisis estático; **Pending CI compilation**.
+  The earlier `Crypto.h:115/117` mutable-child-pointer diagnostic from
+  `88ac1e92` is obsolete by the already-applied const-child correction; the
+  newest OpenBSD run compiled the helper before reaching the reseed fixtures.
+
+### CE-015 — Reseed fixtures assign through const variables-map lookup
+
+- **Workflow/jobs:** Linux and Android 40419430023 (`Linux OpenSSL 3.x`, job
+  121909863501), Windows 40419433360 (`build`, MSYS2/Clang64, job
+  121911332256), OpenBSD 40419436959 (`build`, job 121909886795).
+- **Commit/platform:** `0da3aed0f255d801cf9e85ab1cf155b7175d24e2`; GCC, Clang,
+  MSYS2/Clang64 and OpenBSD Clang.
+- **First diagnostics:** `tests/test-reseed-lifecycle.cpp:49` and
+  `tests/test-reseed-redaction.cpp:49`; GCC reports assignment through a
+  const `boost::program_options::variable_value`, while Clang says no viable
+  `operator=`.
+- **Cause:** `variables_map::operator[]` exposes a const mapped value. Both
+  fixture setters need to insert or replace options that may not already exist.
+- **Correction:** use `variables_map::insert_or_assign` in both fixture helpers;
+  production configuration and reseed behavior are unchanged.
+- **Files:** `tests/test-reseed-lifecycle.cpp`,
+  `tests/test-reseed-redaction.cpp`.
+- **State:** Corregido mediante análisis estático; **Pending CI compilation**.
+  OpenBSD CTest/Make forwarding and Linux CTest were not reached in these runs.
+
+### CE-016 — Windows IPC and restart-budget test assertions
+
+- **Workflow/job:** Windows 40419433360, `build-msvc`, job 121911332781; the
+  same IPC assertion recurred in Windows run 40416819852.
+- **Commit/platform:** `0da3aed0f255d801cf9e85ab1cf155b7175d24e2`; native MSVC.
+- **First diagnostics:** `tests/test-privsep-windows-ipc.cpp:446`, core-side
+  `accepted->Send(Pong)` rejected; and
+  `tests/test-privsep-windows-supervisor.cpp:135`, cumulative elapsed time
+  exceeded the 60-second stable period.
+- **Cause:** the IPC test reversed request/reply direction; the supervisor
+  test summed the backoff ladder (61.75 seconds) while asserting it was below
+  the per-generation uptime threshold.
+- **Correction:** model core-to-worker Ping and worker-to-core Pong without
+  weakening direction checks; give each replacement 10 ms uptime and assert
+  stability per generation.
+- **Files:** `tests/test-privsep-windows-ipc.cpp`,
+  `tests/test-privsep-windows-supervisor.cpp`.
+- **State:** Corregido mediante análisis estático; **Pending CI tests**. The
+  MSVC compile/link step succeeded on the recorded SHA; no runtime result on
+  the corrected source exists.
+
+### CE-017 — Android test rejects an opaque slash-containing tunnel name
+
+- **Workflow/job:** Linux and Android 40419430023, `android`, job 121909863548.
+- **Commit/platform:** `0da3aed0f255d801cf9e85ab1cf155b7175d24e2`; Java 25/Android
+  API 29+ unit-test lane and arm64 JNI build.
+- **First diagnostic:** `RuntimeAdminPolicyTest.tunnelNameBoundMatchesTheNativeVerb`
+  failed at line 44; 112 unit tests ran, one failed.
+- **Cause:** the Java test treated `/etc/i2pd/tunnels.conf` as a filesystem
+  path, but the native and Java validators treat names as bounded opaque
+  printable tokens and do not reject `/`.
+- **Correction:** pin the existing native parity by expecting that bounded
+  opaque name to pass; do not use the name as filesystem authority.
+- **Files:** `android/app/src/test/java/org/openi2pd/router/RuntimeAdminPolicyTest.java`.
+- **State:** Corregido mediante análisis estático; **Pending CI tests**. JNI
+  compilation passed in this job; Java unit failure stopped later Gradle
+  steps. The earlier `string_view` JNI compilation diagnostic in run
+  40416816523 is obsolete after direct `std::string` initialization.
+
+### CE-018 — Doxygen missing `len1` parameter documentation
+
+- **Workflow/job:** Linux and Android 40419430023, C++ source API
+  documentation, job 121909863226.
+- **Commit/platform:** `0da3aed0f255d801cf9e85ab1cf155b7175d24e2`; Ubuntu 24.04,
+  Doxygen with warnings as errors.
+- **First diagnostic:** `libi2pd/I2NPProtocol.h:447`: parameter `len1` of
+  `I2NPMessage::Concat` is undocumented; warning treated as error.
+- **Cause:** the new public contract documented `buf1` and the return value
+  but omitted the source byte-count parameter.
+- **Correction:** document `len1` as the number of available source bytes.
+- **Files:** `libi2pd/I2NPProtocol.h`.
+- **State:** Corregido mediante análisis estático; **Pending CI tests**.
+
+### CE-019 — ShellCheck SC2015 in the Java 25 configuration probe
+
+- **Workflow/job:** Packaging and service validation 40419444535, Service
+  contracts, job 121909912409; reproduced in run 40416830825.
+- **Commit/platform:** `0da3aed0f255d801cf9e85ab1cf155b7175d24e2`; Ubuntu 24.04,
+  ShellCheck 0.9.0.
+- **First diagnostic:** `android/tools/java25-probe/check-config.sh:84`,
+  SC2015 on chained `[ -n ] && ... || fail`.
+- **Cause:** ShellCheck warns that the fallback command may run when the
+  preceding conjunction is true; the service-contract lane treats the info
+  diagnostic as a failure.
+- **Correction:** use an explicit `if` testing each missing version component.
+- **Files:** `android/tools/java25-probe/check-config.sh`.
+- **State:** Corregido mediante análisis estático; **Pending CI tests**.
+
+### CE-020 — Static-PIE verification rejects the `file` description
+
+- **Workflow/job:** Packaging and service validation 40419444535, Static musl
+  build and package, job 121909911741; same failure in 40416830825.
+- **Commit/platform:** `0da3aed0f255d801cf9e85ab1cf155b7175d24e2`; Alpine musl
+  static PIE on x86_64.
+- **First diagnostic:** the 99/99 object build and link succeeded; verification
+  then failed because `file` printed `static-pie linked`, while the workflow
+  only matched `statically linked`.
+- **Cause:** the verification pattern omitted the valid static-PIE wording.
+- **Correction:** accept either `static linked` or `static-pie linked`; the
+  requirement remains a static binary.
+- **Files:** `.github/workflows/packaging.yml`,
+  `tests/check-packaging.cmake`.
+- **State:** Corregido mediante análisis estático; **Pending CI tests**.
+  This is a verification-script failure, not a compiler or linker failure.
+
+### CE-021 — Debian override file names a different binary package
+
+- **Workflow/job:** Packaging and service validation 40419444535, Debian
+  packages, job 121909912161.
+- **Commit/platform:** `0da3aed0f255d801cf9e85ab1cf155b7175d24e2`; Ubuntu 24.04,
+  Debian package/Lintian lane.
+- **First diagnostic:** `E: i2pd: alien-tag i2pd-tui:` at
+  `usr/share/lintian/overrides/i2pd:12`.
+- **Cause:** the `i2pd-tui` override was stored in the `i2pd` package's
+  override file. `lintian --fail-on error` stops on this error. Missing-manual
+  page and upstream changelog messages are warnings only; `debugedit`'s
+  unknown DWARF forms did not fail `dh_strip` or the package build step.
+- **Correction:** move the override to `debian/i2pd-tui.lintian-overrides` and
+  pin package ownership in the static packaging contract.
+- **Files:** `debian/i2pd.lintian-overrides`,
+  `debian/i2pd-tui.lintian-overrides`, `tests/check-packaging.cmake`.
+- **State:** Corregido mediante análisis estático; **Pending CI tests**.
+
+The historical `b33offlinekeys` namespace error from SHA `88ac1e92` is
+obsolete: current source qualifies `i2p::tools::LoadPrivateKeys`, and the
+latest Debian build passed its build step. The latest current-SHA jobs provide
+no independent NTCP2/SSU2/ratchet/netDb/client protocol, CMake configure, or
+library-link failure. Their coverage is incomplete where an earlier shared
+compile failure stopped the job. Downloaded artifacts are under
+`/tmp/openi2pd-ci/<run-id>/` for 40419430023, 40419433360 and 40419444535;
+40419436959 reported no downloadable artifacts. These files are temporary
+diagnostics, not committed evidence.
+
+All current corrections remain local and unpublished. No workflow was
+dispatched on the corrected tree; all listed corrected states therefore remain
+pending manual CI compilation/tests.

@@ -105,8 +105,14 @@ void TestRestartLadder ()
 		milliseconds (4000), milliseconds (8000), milliseconds (16000), milliseconds (30000) };
 	uint32_t generation = first;
 	int64_t elapsed = 0;
+	int64_t readyAt = elapsed;
 	for (uint32_t index = 0; index < LogWorkerRestartBudget::MAX_RESTARTS; ++index)
 	{
+		// Each replacement is ready for a short interval before it exits. The
+		// stable-period budget measures this generation's uptime, not the total
+		// wall-clock time spent traversing the backoff ladder.
+		elapsed += 10;
+		assert (elapsed - readyAt < LogWorkerRestartBudget::STABLE_PERIOD.count () * 1000);
 		auto outcome = PlanWindowsWorkerFailure (policy, WindowsWorkerFailureKind::Exit, At (elapsed));
 		assert (!outcome.terminal);
 		assert (outcome.state == SupervisorWorkerState::Restarting);
@@ -125,17 +131,20 @@ void TestRestartLadder ()
 		assert (snapshot->restarts == index + 1);
 
 		elapsed += outcome.delay.count ();
+		readyAt = elapsed;
 		policy.NoteReady (At (elapsed));
 		PublishWindowsWorkerTransition (status, worker, SupervisorWorkerState::Ready, generation, outcome.restarts);
 		snapshot = status.Get (worker);
 		assert (snapshot->state == SupervisorWorkerState::Ready);
 	}
-	// Eight replacements all happen inside one stable period, which is why the
-	// budget is expressible as "at most eight restarts per 60 s".
-	assert (elapsed < LogWorkerRestartBudget::STABLE_PERIOD.count () * 1000);
+	// Each generation failed before its own stable period, so the restart
+	// counter has not been reset even though the backoff ladder spans over a
+	// minute in aggregate.
 	assert (policy.NextDelay () == LogWorkerRestartBudget::MAXIMUM_DELAY);
 
 	// The ninth exit is refused: Failed, no new generation, and one snapshot.
+	elapsed += 10;
+	assert (elapsed - readyAt < LogWorkerRestartBudget::STABLE_PERIOD.count () * 1000);
 	auto exhausted = PlanWindowsWorkerFailure (policy, WindowsWorkerFailureKind::Exit, At (elapsed));
 	assert (exhausted.terminal);
 	assert (exhausted.state == SupervisorWorkerState::Failed);

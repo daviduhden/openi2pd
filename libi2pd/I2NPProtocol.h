@@ -446,6 +446,7 @@ struct I2NPMessage
 
 	/// Append at most the remaining capacity; a short result means truncation.
 	/// @param buf1 Source bytes, valid for at least len1 bytes.
+	/// @param len1 Number of source bytes available to append.
 	/// @return Number of bytes copied, which may be less than len1.
 	size_t Concat (const uint8_t * buf1, size_t len1)
 	{

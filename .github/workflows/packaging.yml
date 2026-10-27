@@ -190,7 +190,7 @@ jobs:
         run: |
           set -euo pipefail
           file build-output/i2pd | tee static-file.txt
-          grep -q 'statically linked' static-file.txt
+          grep -Eq 'static(-pie)? linked' static-file.txt
           build-output/i2pd --version
           mkdir -p static-bin/i2pd-static-x86_64
           cp build-output/i2pd static-bin/i2pd-static-x86_64/i2pd

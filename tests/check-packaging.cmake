@@ -55,6 +55,9 @@ read_file("${PROJECT_ROOT}/debian/changelog" debian_changelog)
 read_file("${PROJECT_ROOT}/debian/control" debian_control)
 read_file("${PROJECT_ROOT}/debian/i2pd.install" debian_i2pd_install)
 read_file("${PROJECT_ROOT}/debian/i2pd-tui.install" debian_tui_install)
+read_file("${PROJECT_ROOT}/debian/i2pd.lintian-overrides" debian_i2pd_lintian)
+read_file("${PROJECT_ROOT}/debian/i2pd-tui.lintian-overrides" debian_tui_lintian)
+read_file("${PROJECT_ROOT}/.github/workflows/packaging.yml" packaging_workflow)
 read_file("${PROJECT_ROOT}/debian/rules" debian_rules)
 read_file("${PROJECT_ROOT}/debian/copyright" debian_copyright)
 read_file("${PROJECT_ROOT}/debian/i2pd.preinst" debian_preinst)
@@ -208,6 +211,14 @@ assert_absent("${debian_i2pd_install}" "assets/branding usr/share/doc/i2pd"
   "daemon manifest must not copy the unfiltered source branding tree")
 assert_contains("${debian_tui_install}" "usr/share/man/man1/i2pd-tui.1"
   "TUI package must own its man page")
+assert_contains("${debian_i2pd_lintian}" "i2pd: possible-gpl-code-linked-with-openssl"
+  "daemon Lintian override must be package-scoped")
+assert_absent("${debian_i2pd_lintian}" "i2pd-tui:"
+  "daemon Lintian overrides must not contain the TUI package")
+assert_contains("${debian_tui_lintian}" "i2pd-tui: possible-gpl-code-linked-with-openssl"
+  "TUI Lintian override must be in the TUI package file")
+assert_contains("${packaging_workflow}" "grep -Eq 'static(-pie)? linked' static-file.txt"
+  "static-musl verification must accept static PIE file descriptions")
 foreach(absent IN ITEMS
     "${PROJECT_ROOT}/debian/i2pd.1"
     "${PROJECT_ROOT}/debian/i2pd-tui.manpages")

@@ -46,7 +46,7 @@ template <typename Predicate> bool WaitFor (Predicate predicate, std::chrono::mi
 
 void SetConfigValue (const std::string & name, const std::string & value)
 {
-	i2p::config::m_Options[name] = boost::program_options::variable_value (value, false);
+	i2p::config::m_Options.insert_or_assign (name, boost::program_options::variable_value (value, false));
 }
 
 bool ContainsSecret (const std::string & text)

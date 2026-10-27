@@ -434,17 +434,20 @@ void TestAcceptBoundHappyPath ()
 	assert (accepted->IsOpen ());
 	assert (accepted->RoleSet ());
 	assert (accepted->Role () == WindowsWorkerRole::Storage);
+	// The test connector sent the worker hello, so bind it to the worker side
+	// of the same request/reply direction enforced by production workers.
+	client->SetRole (WindowsWorkerRole::Storage);
 
-	// The handshake was consumed: the first request the worker sends is
-	// dispatched normally.
-	assert (client->Send ({ MessageType::Ping, 11, { } }).has_value ());
-	auto ping = accepted->Receive (2000);
+	// The handshake was consumed: the core sends the first request and the
+	// worker returns its reply through the authenticated channel.
+	assert (accepted->Send ({ MessageType::Ping, 11, { } }).has_value ());
+	auto ping = client->Receive (2000);
 	assert (ping.has_value ());
 	assert (ping->has_value ());
 	assert ((*ping)->type == MessageType::Ping);
 	assert ((*ping)->requestId == 11);
-	assert (accepted->Send ({ MessageType::Pong, 11, { } }).has_value ());
-	auto pong = client->Receive (2000);
+	assert (client->Send ({ MessageType::Pong, 11, { } }).has_value ());
+	auto pong = accepted->Receive (2000);
 	assert (pong.has_value () && pong->has_value ());
 	assert ((*pong)->type == MessageType::Pong);
 
