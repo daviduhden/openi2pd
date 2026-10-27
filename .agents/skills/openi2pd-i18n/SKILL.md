@@ -99,6 +99,13 @@ the text crosses a protocol/IPC boundary.
 
 ## Known issues and decisions
 
+- In variadic `FormatPrintf`, keep the zero-argument `if constexpr` branch paired
+  with an `else` containing every `snprintf` call. Statements after an
+  `if constexpr` without `else` are still instantiated; the empty pack then
+  calls `snprintf` with a nonliteral format and no format arguments, which
+  fails `-Wformat-security` under `WITH_HARDENING`. Keep a direct
+  `FormatPrintf("")` instantiation in the formatting regression.
+
 - `tr`/`ntr` are canonical `i2p::i18n` templates with global using aliases for
   historical callers. Keep both forms in `test-i18n-locale`; locale accessor
   declarations in `I18N_langs.h` include `<memory>` directly.

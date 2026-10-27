@@ -130,6 +130,12 @@ compile, run tests or run project scripts.
   smaller targets compile `LeaseSet.h`/`I2PService.h` before any logger header
   and fail with undeclared log levels.
 
+- A test subclass does not gain public access to a protected base method just
+  by exposing other lifecycle operations. When a lifecycle test needs to read
+  protected state such as `RunnableService::IsRunning()`, provide a narrow
+  public observer on the test subclass; do not widen the production API only
+  to satisfy a test.
+
 
 - Profile-root/durability decisions (CONC-010) and their residual risks are
   owned by `openi2pd-memory-security`; do not restate the storage protocol in

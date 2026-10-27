@@ -218,6 +218,11 @@ Do not let them edit, build or run tests.
   envelope, `t` 1..16, one `a`/`r`, optional BEP 5 `v`. PEX/BEP 10 helpers are
   pure; repeated handshakes are rejected, private torrents omit
   `metadata_size`, and seed classification requires a received bitfield.
+- For compile-time ranges in Clang/libFuzzer translation units, use
+  `constexpr std::array` for a fixed enum sequence. A `constexpr auto` deduced
+  from a braced initializer list can fail because its initializer-list backing
+  storage is a temporary subobject; `fuzz-torrents-extensions` exercises both
+  PEX and DHT candidate origins this way.
 - PEX/DHT candidates use the bounded per-torrent table (TTL/backoff/failures,
   100/60 s per origin) and are purged on stop/remove/private. Tracker peers are
   not budgeted. Registered but not executed: `test-torrents-dht-protocol`,

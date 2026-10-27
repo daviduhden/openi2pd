@@ -28,6 +28,7 @@ public:
 	void Start () { StartIOService (); }
 	void Stop () { StopIOService (); }
 	auto & Service () { return GetIOService (); }
+	bool Running () const { return IsRunning (); }
 };
 }
 
@@ -35,7 +36,7 @@ int main ()
 {
 	TestService service;
 	service.Start ();
-	assert (service.IsRunning ());
+	assert (service.Running ());
 
 	std::promise<void> stopped;
 	auto future = stopped.get_future ();
@@ -50,6 +51,6 @@ int main ()
 	// to observe the cleared running flag before the service is destroyed.
 	std::this_thread::sleep_for (std::chrono::milliseconds (100));
 	service.Stop ();
-	assert (!service.IsRunning ());
+	assert (!service.Running ());
 	return 0;
 }
