@@ -33,6 +33,11 @@ corrected revision passes.
 | [40419436959](https://github.com/daviduhden/openi2pd/actions/runs/40419436959) | OpenBSD | `0da3aed0` | failure |
 | [40419440596](https://github.com/daviduhden/openi2pd/actions/runs/40419440596) | Fuzzing | `0da3aed0` | failure |
 | [40419444535](https://github.com/daviduhden/openi2pd/actions/runs/40419444535) | Packaging and service validation | `0da3aed0` | failure |
+| [40504357198](https://github.com/daviduhden/openi2pd/actions/runs/40504357198) | Linux and Android | `cec24388` | failure |
+| [40504361287](https://github.com/daviduhden/openi2pd/actions/runs/40504361287) | OpenBSD | `cec24388` | failure |
+| [40504365634](https://github.com/daviduhden/openi2pd/actions/runs/40504365634) | Windows | `cec24388` | failure (MSYS2 build and MSVC CTest) |
+| [40504369803](https://github.com/daviduhden/openi2pd/actions/runs/40504369803) | Fuzzing | `cec24388` | failure |
+| [40504374509](https://github.com/daviduhden/openi2pd/actions/runs/40504374509) | Packaging and service validation | `cec24388` | failure |
 
 Earlier runs (`b9cbdaa8`, `a2b8dc48`, `2ae36284`, `d5d0bd6f`) were cancelled
 or failed for older trees; they are historical evidence only and do not
@@ -465,6 +470,137 @@ compile failure stopped the job. Downloaded artifacts are under
 40419436959 reported no downloadable artifacts. These files are temporary
 diagnostics, not committed evidence.
 
-All current corrections remain local and unpublished. No workflow was
-dispatched on the corrected tree; all listed corrected states therefore remain
-pending manual CI compilation/tests.
+At the time this third-pass correction was written, its fixes were local and
+unpublished and had no validating run. The later published `cec24388` batch is
+recorded separately below; do not treat an early stop in that batch as evidence
+for downstream targets that it never reached.
+
+## Fourth-pass failures (`cec24388`, 2026-10-27)
+
+The next manual batch ran on published SHA
+`cec243883ab41037401c25b6a5be7e64bfd56b66`. The `main` source corrections in
+this section are being prepared locally against those exact diagnostics; no
+run has yet evaluated them. The first shared Linux/OpenBSD/MSYS2 compile
+blocker is a test's protected-member access. Other independent compiler roots
+are the zero-argument formatting instantiation and a Clang constexpr
+initializer-list rejection. Android source compilation, Java 25 unit tests,
+Lint, class-file 69 validation and arm64 JNI linkage passed in this batch; its
+Java 25 D8/R8 probe failed because the AGP-selected R8 artifact had not been
+resolved before the cache search. CMake graph reconnaissance found no missing
+source or link dependency, but the OpenBSD run did not reach all downstream
+targets.
+
+### CE-022 — Lifecycle test calls a protected base observer
+
+- **Workflows/runs:** Linux and Android 40504357198 (Linux matrix) and OpenBSD
+  40504361287 (build); Windows 40504365634 (MSYS2/Clang64 build).
+- **Commit/platform:** `cec243883ab41037401c25b6a5be7e64bfd56b66`; Linux GCC/Clang,
+  OpenBSD Clang and Windows MSYS2 Clang64.
+- **First diagnostic:** `tests/test-runnableservice-lifecycle.cpp:38` and `:53`
+  call `RunnableService::IsRunning()` from `main`; `libi2pd/util.h:249`
+  declares it protected.
+- **Cause:** the test subclass exposed Start/Stop and the Asio context, but no
+  public observation method. Inheritance does not make a protected member
+  public to callers using the derived object.
+- **Correction:** add a narrow public `Running()` observer on the test-only
+  subclass and route both assertions through it; production access remains
+  protected.
+- **Files:** `tests/test-runnableservice-lifecycle.cpp`, `libi2pd/util.h` (read-only
+  declaration).
+- **State:** Corrected by static analysis; **Pending CI compilation/tests**.
+
+### CE-023 — Zero-argument `FormatPrintf` still instantiates dynamic `snprintf`
+
+- **Workflow/run:** Windows 40504365634, MSYS2/Clang64 build with
+  `WITH_HARDENING`.
+- **Commit/platform:** `cec243883ab41037401c25b6a5be7e64bfd56b66`; MinGW/Clang64.
+- **First diagnostic:** `i18n/I18N.h:100,104`, instantiated by
+  `tests/test-i18n-format.cpp:28`; `-Wformat-security` rejects a nonliteral
+  format argument with no matching variadic arguments.
+- **Cause:** the zero-argument `if constexpr` returned, but the subsequent
+  formatting statements were outside an `else` and remained instantiated.
+- **Correction:** place all `snprintf` logic in the `else` branch. The existing
+  empty-format regression instantiates the zero-argument specialization.
+- **Files:** `i18n/I18N.h`, `tests/test-i18n-format.cpp` (existing regression).
+- **State:** Corrected by static analysis; **Pending CI compilation/tests**.
+
+### CE-024 — Fuzzer uses a non-constant `initializer_list` as `constexpr`
+
+- **Workflow/run:** Fuzzing 40504369803, fuzz target build.
+- **Commit/platform:** `cec243883ab41037401c25b6a5be7e64bfd56b66`; Clang/libFuzzer.
+- **First diagnostic:** `tests/fuzz/fuzz-torrents-extensions.cpp:100`,
+  initializer-list backing storage refers to a temporary and is not a constant
+  expression.
+- **Cause:** the two enum values are used only as a small constexpr iteration
+  set; a constexpr `std::initializer_list` is not a portable supported
+  constant object for this construction.
+- **Correction:** use `constexpr std::array` and include `<array>` directly.
+- **Files:** `tests/fuzz/fuzz-torrents-extensions.cpp`.
+- **State:** Corrected by static analysis; **Pending CI compilation/tests**.
+
+### CE-025 — Android R8 probe searches before AGP resolves R8
+
+- **Workflow/job:** Linux and Android 40504357198, Android job
+  122189741321.
+- **Commit/platform:** `cec243883ab41037401c25b6a5be7e64bfd56b66`; Java 25,
+  Gradle/AGP, arm64 Android.
+- **First diagnostic:** `AGP-resolved R8 jar not found in the Gradle cache` in
+  the Java 25 D8/R8 probe. Android native JNI build, Java/resource compilation,
+  JVM tests, Lint and class-file major-69 assertion passed before it.
+- **Cause:** unit-test and lint tasks did not require AGP's R8 artifact, but the
+  workflow searched the Gradle cache before any APK dexing task resolved it.
+- **Correction:** run the existing `assembleDebug`/APK step before discovering
+  the AGP-selected R8 jar and running the Java 25 probe; do not pin a separate
+  R8 version or lower the Java target.
+- **Files:** `.github/workflows/build.yml`,
+  `.agents/skills/openi2pd-android/SKILL.md`.
+- **State:** Corrected by static analysis; **Pending CI validation**. This is a
+  workflow dependency-order failure, not a Java/JNI source compilation error.
+
+### CE-026 — Debian smoke test expects an uncompressed upstream changelog
+
+- **Workflow/run:** Packaging and service validation 40504374509, Debian
+  package smoke/DEP-8 validation.
+- **Commit/platform:** `cec243883ab41037401c25b6a5be7e64bfd56b66`; Debian/Ubuntu
+  package install.
+- **First diagnostic:** `debian/tests/smoke:201` cannot find
+  `/usr/share/doc/i2pd/ChangeLog`; debhelper installs the upstream changelog as
+  `/usr/share/doc/i2pd/ChangeLog.gz`.
+- **Cause:** the smoke assertion did not account for Debian changelog
+  compression, although the CMake and package source manifests correctly name
+  the source `ChangeLog`.
+- **Correction:** assert the packaged `ChangeLog.gz` and pin that path in the
+  packaging static contract; keep the source manifest and normal compression.
+- **Files:** `debian/tests/smoke`, `tests/check-packaging.cmake`,
+  `.agents/skills/openi2pd-packaging/SKILL.md`.
+- **State:** Corrected by static analysis; **Pending CI tests**.
+
+### CE-027 — Lintian reports duplicate updaterc calls in generated postrm
+
+- **Workflow/run:** Packaging and service validation 40504374509, static musl
+  package Lintian validation.
+- **Commit/platform:** `cec243883ab41037401c25b6a5be7e64bfd56b66`; Debian package
+  metadata.
+- **First diagnostic:** `duplicate-updaterc.d-calls-in-postrm` at generated
+  `postrm:30`. The source script has one `#DEBHELPER#` marker plus the purge
+  data-removal branch; the diagnostic alone does not identify which generated
+  maintscript fragment duplicated the call.
+- **Cause:** under investigation; the generated maintainer script needed to
+  attribute this to debhelper expansion or an explicit hook before changing
+  package lifecycle behavior.
+- **Correction:** none yet; do not remove service cleanup or alter purge
+  semantics without the generated `postrm` evidence.
+- **Files:** `debian/postrm`, `debian/rules` and debhelper-generated package
+  maintscript (generated artifact unavailable to this static review).
+- **State:** En investigación; diagnosis/fix pending. Lintian also emitted
+  non-fatal shared-library prerequisite and changelog-name warnings; these are
+  not compile/link failures.
+
+The MSVC job on run 40504365634 compiled its selected targets; its remaining
+failures were two CTest assertions in the Windows worker IPC/supervisor tests,
+not compiler or linker errors. This audit does not claim those runtime tests
+passed. No new CMake source-list or target link-closure defect was demonstrated
+by static review; early stops still leave downstream configurations unproven.
+Every correction in CE-022..CE-026 remains **Pending CI compilation/tests** on
+the corrected worktree. No compiler, CMake configure/build, CTest, Gradle,
+fuzzer, Lintian, package runtime or workflow was run locally.

@@ -5300,3 +5300,32 @@ workflow dispatch, commit or push was run. Compile-free checker execution and
 diff review remain pending; the PR workflow cannot validate unpublished local
 edits. Structural automation cannot establish semantic relevance, which remains
 a required agent/reviewer judgment.
+
+## 2026-10-27 Fourth CI-driven compile/link audit (static)
+
+Audited clean published HEAD `cec243883ab41037401c25b6a5be7e64bfd56b66` and
+the exact-source manual batch: Linux/Android 40504357198, OpenBSD 40504361287,
+Windows 40504365634, Fuzzing 40504369803 and Packaging 40504374509. Independent
+reconnaissance covered core C++23, protocols/OpenSSL/LibreSSL, privsep/IPC,
+TUI/I2PSnark/tools, Android Java 25/JNI and the CMake/platform graph.
+
+Static corrections address CE-022..CE-026: the common lifecycle test now
+observes protected `RunnableService` state through a test-only wrapper;
+`FormatPrintf`'s empty argument pack excludes all `snprintf` calls through an
+`if constexpr` `else`; the torrent fuzzer uses a constexpr `std::array`; the
+Android workflow resolves AGP R8 by running the existing APK/D8 step before
+the cache probe; Debian smoke expects debhelper's compressed `ChangeLog.gz`.
+The CMake/source and protocol audits found no additional demonstrated link or
+declaration root. The Android JNI compile, Java/resource compile, unit tests,
+Lint and class-file major-69 gate passed in the recorded run; the later R8
+probe failed due to workflow ordering.
+
+CE-027 remains under investigation: Lintian flagged duplicate updaterc calls
+in the generated `postrm`, but the generated maintainer-script artifact was
+not available to prove the source of duplication. The MSVC lane compiled its
+selected targets and then failed two worker IPC/supervisor CTest assertions;
+these are runtime test failures, not compile/link failures, and were not
+changed in this compilation-focused pass. No local compiler, configure/build,
+CTest, Gradle, fuzz, lintian or package execution occurred. CE-022..CE-026
+remain Pending CI compilation/validation on the corrected worktree; no commit
+or push was made.

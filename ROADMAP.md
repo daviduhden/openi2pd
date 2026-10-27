@@ -28,6 +28,17 @@ remaining configurations. All compilation/tests remain pending manual CI;
 host regression; JNI/device evidence is pending. `ANDROID-018` adds phase-aware initialization unwind by static analysis;
 production rollback, JNI/device and restart evidence remain pending manual CI.
 
+The fourth static CI-driven audit is recorded as BUILD-025 and CE-022..CE-027
+in `TODO.md` and `docs/ci/COMPILATION-ERRORS.md`. Exact-SHA runs on `cec24388`
+found three independent compile blockers (protected lifecycle-test access,
+zero-argument format instantiation under hardening, and a non-constant fuzzer
+initializer-list). Those are corrected statically, as are Android AGP R8
+resolution ordering and the Debian compressed-changelog smoke expectation;
+each correction still awaits an appropriate manual CI run. The generated
+Debian postrm Lintian duplicate-updaterc finding remains under investigation.
+Static reconnaissance found no new CMake link-closure or transport/crypto
+source defect; incomplete jobs do not establish downstream targets as passing.
+
 Permanent policy: no agent compiles, configures a build or executes tests
 locally. Build/test/package workflows and dynamic validation are CI-only
 through manual `workflow_dispatch`; the compile-free agent-maintenance gate is

@@ -78,6 +78,13 @@ Do not hide failures with `continue-on-error` or unjustified suppressions.
 When CI reports a failure, fix the cause rather than deleting functionality,
 disabling tests or indiscriminately reverting the new architecture.
 
+For compile/link triage, record the exact run, job, commit SHA, platform/matrix
+and first significant diagnostic. Compare the diagnosed file at that SHA with
+the current tree before applying a fix; group cascading messages by root cause
+and separate source errors from warnings-as-errors, test failures, packaging
+checks and runner/dependency failures. A run that stopped before a target is
+not evidence that the skipped target links successfully.
+
 ### Tracking states
 
 Maintain `AGENTS.md`, `TODO.md`, `ROADMAP.md` and `PROGRESS.md` as work
