@@ -68,6 +68,8 @@ namespace
 
 	std::string EncodeBase64 (const uint8_t * in, size_t size)
 	{
+		// Encode each three-byte group as four six-bit symbols. The final
+		// one- or two-byte group uses the I2P alphabet and '=' padding.
 		std::string out;
 		out.reserve ((size + 2) / 3 * 4);
 		size_t pos = 0;
@@ -135,6 +137,8 @@ namespace
 	std::string EncodeBase32 (const uint8_t * in, size_t size)
 	{
 		if (!size) return { };
+		// Emit five-bit symbols from the input bit stream. A partial final
+		// symbol is zero-filled; this name format has no '=' padding.
 		std::string out;
 		out.reserve ((size * 8 + 4) / 5);
 		size_t pos = 1;

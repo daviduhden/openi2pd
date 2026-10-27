@@ -136,6 +136,11 @@ report that limitation; do not substitute local execution. Ask for:
   only path and a failure must never fall back to a local write. Startup reads
   remain direct. Garlic tags, address book, torrent state, bootstrap keys and
   config are still core-written — do not describe the core as write-free.
+- `privsep/DataStorage.cpp` keeps standalone codecs for artifact names so the
+  worker does not link the core library. I2P base64 uses its `-~` alphabet and
+  `=` padding; the lower-case base32 encoding emits a zero-filled final
+  five-bit symbol without `=` padding. Keep these details aligned with the
+  core codec and its parity tests when changing artifact-name handling.
 - Storage clients are generation-fenced and restartable; never replay an
   ambiguous write, and return `Busy` at request-id exhaustion instead of
   killing the client. OpenBSD cannot respawn an exec'ed worker after the
