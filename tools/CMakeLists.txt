@@ -88,7 +88,7 @@ if(BUILD_TESTING AND NOT CMAKE_CROSSCOMPILING)
     if(I2PD_REQUIRE_PERL)
       message(FATAL_ERROR "I2PD_REQUIRE_PERL=ON but no Perl interpreter was found")
     endif()
-    message(STATUS "Perl not found: i2pdctl and Perl maintenance checks are not registered")
+    message(STATUS "Perl not found: i2pdctl and Perl static checks are not registered")
   endif()
   if(PERL_EXECUTABLE)
     add_test(NAME perl-i2pdctl-syntax

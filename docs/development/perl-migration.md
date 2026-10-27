@@ -38,7 +38,7 @@ invocation returns to a maintained build consumer.
 | `tools/scripts/i2pdctl` | I2PControl client | syntax, `prove`, install layout, portability |
 | `tools/scripts/check-doc-links.pl` | offline Markdown link checker | syntax, `perl-doc-links`, portability, negative fixture |
 | `tools/scripts/check-workflows.pl` | manual-only workflow and empty-CTest guard | syntax, `workflow-static`, `skills-static` |
-| `tools/scripts/check-agent-maintenance.pl` | substantive instruction synchronization, section and local-link gate | syntax and `agent-maintenance.yml` PR gate |
+| `scripts/validate-agent-knowledge.py` | substantive instruction synchronization, section and local-link gate | syntax and `agent-maintenance.yml` PR gate |
 | `tools/scripts/check-doc-nav.pl` | MkDocs navigation/unlisted-page checker | syntax, `docs-nav-static`, portability |
 | `tools/scripts/validate-branding.pl` | static branding/palette validator | syntax, `prove` wrapper, portability |
 | `tools/tests/i2pdctl.t` | Test::More client/transport regressions | `perl-i2pdctl` |
@@ -135,7 +135,7 @@ stderr and the no-cleartext refusal are covered deterministically without a
 network. A live TLS exchange against a real i2pd I2PControl endpoint (Linux and
 OpenBSD/LibreSSL) remains the required dynamic validation.
 
-CMake registers the Perl syntax, portability, branding, maintenance-checker
+CMake registers the Perl syntax, portability, branding, static maintenance
 and install-layout checks when Perl is available and `I2PD_BUILD_TOOLS=ON`
 (the default). A `BUILD_TESTING` configuration without Perl keeps the native
 tests but skips these optional static guards. `perl-i2pdctl` runs through `prove` when that

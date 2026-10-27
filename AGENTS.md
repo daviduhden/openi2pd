@@ -84,6 +84,10 @@ the current tree before applying a fix; group cascading messages by root cause
 and separate source errors from warnings-as-errors, test failures, packaging
 checks and runner/dependency failures. A run that stopped before a target is
 not evidence that the skipped target links successfully.
+For package errors in generated maintainer scripts, download the artifact for
+that exact run and inspect the generated control archive before changing
+packaging hooks; related regular/static package trees can have different
+scripts and helper expansions.
 
 ### Tracking states
 
@@ -262,7 +266,7 @@ repeat it only when that review finds an error that is corrected.
 5. Remove obsolete or duplicated instructions, validate local references, and
    update examples and validation commands affected by the implementation. If
    an update cannot be made, document why and report the task incomplete.
-6. Run `perl tools/scripts/check-agent-maintenance.pl` (with `--base BASE_SHA
+6. Run `python3 scripts/validate-agent-knowledge.py --scope worktree` (with `--base BASE_SHA
    --head HEAD_SHA` in pull-request CI) and the owning compile-free checks. The
    checker verifies structure and substantive text changes, not semantic
    relevance; explain in the final report why the update helps future work.
@@ -273,6 +277,27 @@ repeat it only when that review finds an error that is corrected.
 The `agent-maintenance.yml` pull-request gate is the only exception to the
 manual-only workflow rule. Build, test, packaging and release validation stay
 `workflow_dispatch`-only. This does not change branch protection settings.
+
+### Shared Agent Knowledge Validation Contract
+
+Use `python3 scripts/validate-agent-knowledge.py --scope worktree` for local
+changes and `python3 -m unittest discover -s tests/agent_knowledge_validator -v`
+for its contract tests. The validator requires Python 3.11+ and Git, uses only
+the Python standard library, and publishes contract version `1.0.0`. All
+adopting repositories share the same CLI, AK001-AK006 identifiers, output
+schema, and exit codes (`0` pass, `1` policy failure, `2` execution/configuration
+error). For a pull request, pass both revisions with
+`--scope range --base BASE_REF --head HEAD_REF`; compare from their merge base.
+
+Read [Agent Knowledge Validation Contract](docs/agent-knowledge-validation.md)
+for the complete rules, JSON schema, optional repository configuration,
+warning semantics, and extension process. AK004 and AK006 can require human
+review; their warnings do not prove or disprove semantic correctness. Keep the
+canonical script and black-box unittest suite byte-identical across adopting
+repositories. Repository-specific requirements belong in the documented TOML
+configuration or a stable `AKX...` extension, never in a private fork of the
+shared rules. The GitHub PR workflow runs the same tests and range command;
+it does not edit files or require secrets.
 
 ### Mandatory Definition of Done
 

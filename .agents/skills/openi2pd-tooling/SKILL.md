@@ -108,7 +108,7 @@ a TUI client.
 - Preserve upstream provenance/license notices for imported tools.
 - Keep tool names, CLI behavior and install paths unless a migration is
   approved.
-- `tools/scripts/check-agent-maintenance.pl` is the reusable Perl gate for
+- `scripts/validate-agent-knowledge.py` is the canonical Python gate for
   synchronization: local mode inspects staged/unstaged plus untracked paths;
   PR mode accepts explicit `--base`/`--head` commit SHAs. Its substantive-text
   heuristic and link/section checks are structural only; a reviewer must still
