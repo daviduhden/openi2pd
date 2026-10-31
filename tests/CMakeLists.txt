@@ -500,15 +500,6 @@ set_tests_properties(language-modernization-static PROPERTIES
   LABELS "ci;docs;static"
   TIMEOUT 30)
 
-# Compile-free native/Android translation contract check.
-add_test(NAME i18n-static
-  COMMAND "${CMAKE_COMMAND}"
-    "-DPROJECT_ROOT=${PROJECT_ROOT}"
-    -P "${CMAKE_CURRENT_SOURCE_DIR}/check-i18n.cmake")
-set_tests_properties(i18n-static PROPERTIES
-  LABELS "ci;docs;static"
-  TIMEOUT 30)
-
 # Legal/notice and upstream-pin contracts, compile-free.
 add_test(NAME legal-metadata-static
   COMMAND "${CMAKE_COMMAND}"
@@ -589,6 +580,18 @@ if(NOT PERL_EXECUTABLE)
   message(STATUS "Perl not found: static interop/documentation checks are not registered")
 endif()
 if(PERL_EXECUTABLE)
+  # Compile-free native/Android translation contract. The interpreter
+  # comes from the configure step instead of a run-time `find_program`, so
+  # the catalog check cannot be skipped by a ctest PATH difference.
+  add_test(NAME i18n-static
+    COMMAND "${CMAKE_COMMAND}"
+      "-DPROJECT_ROOT=${PROJECT_ROOT}"
+      "-DPERL_EXECUTABLE=${PERL_EXECUTABLE}"
+      -P "${CMAKE_CURRENT_SOURCE_DIR}/check-i18n.cmake")
+  set_tests_properties(i18n-static PROPERTIES
+    LABELS "ci;docs;static"
+    TIMEOUT 60)
+
   add_test(NAME workflow-static
     COMMAND "${PERL_EXECUTABLE}" "${PROJECT_ROOT}/tools/scripts/check-workflows.pl")
   set_tests_properties(workflow-static PROPERTIES
@@ -623,6 +626,14 @@ if(PERL_EXECUTABLE)
   add_test(NAME android-locale-policy
     COMMAND "${PERL_EXECUTABLE}" "${PROJECT_ROOT}/android/tools/check-android-locales.pl")
   set_tests_properties(android-locale-policy PROPERTIES
+    WORKING_DIRECTORY "${PROJECT_ROOT}"
+    LABELS "ci;android;perl;static"
+    TIMEOUT 60)
+
+  add_test(NAME android-javadoc-static
+    COMMAND "${PERL_EXECUTABLE}" "${PROJECT_ROOT}/android/tools/check-android-javadoc.pl"
+      --root "${PROJECT_ROOT}/android")
+  set_tests_properties(android-javadoc-static PROPERTIES
     WORKING_DIRECTORY "${PROJECT_ROOT}"
     LABELS "ci;android;perl;static"
     TIMEOUT 60)

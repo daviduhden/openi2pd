@@ -34,6 +34,17 @@ sub read_file {
     return defined $text ? $text : '';
 }
 
+# Repository-relative paths are comparisons and diagnostics, not
+# filesystem access. File::Spec->abs2rel() returns the native separator
+# (a backslash on Windows) while the inventory below is written with '/',
+# so every relative value is rebuilt from File::Spec->splitdir(): the
+# result is separator independent and matches the manifest on every
+# platform.
+sub repo_relative {
+    my ($path) = @_;
+    return join '/', File::Spec->splitdir( File::Spec->abs2rel( $path, $root ) );
+}
+
 sub first_line {
     my ($path) = @_;
     open my $fh, '<', $path or return;
@@ -74,10 +85,9 @@ find(
             my $path = $File::Find::name;
             return if -d $path;
             my $name     = basename($path);
-            my $relative = join '/',
-              File::Spec->splitdir( File::Spec->abs2rel( $path, $root ) );
+            my $relative = repo_relative($path);
             my $is_shared_python_contract = $shared_python_contract{$relative};
-            push @python_files, $path
+            push @python_files, $relative
               if !$is_shared_python_contract
               && ( $name =~ /\.(?:py|pyw|pyi|pyx|pxd|ipynb)\z/i
                 || $name =~ /\.py\.in\z/i
@@ -100,7 +110,7 @@ find(
                         || $shebang =~ /^#!.*\b(?:python|pypy)[0-9.]*\b/i )
                   )
                 {
-                    push @python_shebang, $path;
+                    push @python_shebang, $relative;
                 }
             }
         },
@@ -122,17 +132,19 @@ my @scripts = (
     'tools/scripts/check-doc-nav.pl',
     'tools/scripts/validate-branding.pl',
     'tools/scripts/check-workflows.pl',
+    'tools/tests/cpp-comment-integrity.t',
     'tools/tests/i2pdctl.t',
     'tools/tests/validate-branding.t',
     'tools/tests/perl-portability.t',
     'tests/interop/check-vectors.pl',
     'android/tools/check-android-locales.pl',
+    'android/tools/check-android-javadoc.pl',
     'android/tools/check-android-jni-symbols.pl',
     'i18n/check-i18n-catalogs.pl',
     'tools/tests/maintenance-checkers.t',
 );
 
-my @discovered = map { File::Spec->abs2rel( $_, $root ) }
+my @discovered = map { repo_relative($_) }
   grep { -f $_ } (
     glob( File::Spec->catfile( $root, 'tools',   'scripts', '*' ) ),
     glob( File::Spec->catfile( $root, 'tools',   'tests',   '*.t' ) ),
@@ -145,6 +157,30 @@ is_deeply(
     [ sort @scripts ],
     'maintained Perl inventory matches discovered scripts'
 );
+
+# Regression for the Windows inventory failure: abs2rel() returns the
+# native separator, so an unnormalised value discovered on Windows
+# ('android\tools\x.pl') never matched the '/'-separated manifest.
+# Everything reported by this suite is rebuilt from splitdir().
+my $native_example =
+  File::Spec->catfile( $root, 'tools', 'scripts', 'i2pdctl' );
+like(
+    repo_relative($native_example),
+    qr{\Atools/scripts/i2pdctl\z},
+    'repository-relative paths use / on every platform'
+);
+unlike( join( "\n", @discovered ), qr{\\},
+    'discovered inventory contains no native separators' );
+SKIP: {
+    skip 'native separator is / on this platform', 1
+      unless $^O eq 'MSWin32' || $^O eq 'msys';
+    my $native = $root . '\\tools\\scripts\\i2pdctl';
+    like(
+        repo_relative($native),
+        qr{\Atools/scripts/i2pdctl\z},
+        'a backslash path is normalised before comparison'
+    );
+}
 
 # Modules shipped with the Perl core on OpenBSD/Linux. This also rejects
 # accidental CPAN or runtime downloads.
@@ -262,11 +298,21 @@ my @consumers = (
     '.gitignore',
     '.dockerignore',
 );
+
+# An ignore file is data, not a command: its '#' lines are documentation
+# and may name the shared Python validator without invoking anything. Only
+# the effective patterns are scanned, so the Python bytecode entries that
+# AGENTS.md requires stay allowed while a real interpreter or package
+# command in a pattern is still rejected.
+my %comment_only_consumer = map { $_ => 1 } qw(.gitignore .dockerignore);
 for my $relative (@consumers) {
     my $path = File::Spec->catfile( $root, split m{/}, $relative );
     my $text = read_file($path);
     ok( -f $path, "$relative exists" );
     next unless defined $text;
+    if ( $comment_only_consumer{$relative} ) {
+        $text = join "\n", grep { !/^\s*#/ } split /\n/, $text;
+    }
     unlike(
         $text,
 qr/(?:\bpython[0-9.]*\b|\bpip[0-9.]*\b|\bpy\s+-3\b|\bPYTHON(?:PATH|HOME)\b|\b(?:virtualenv|venv|tox|poetry)\b)/i,
@@ -303,7 +349,10 @@ F<AGENTS.md>;
 the maintained script inventory equals the scripts discovered under
 F<tools/scripts/>, F<tools/tests/>, F<tests/interop/>, F<android/tools/> and
 F<i18n/>. Adding, renaming or removing a script therefore requires updating
-the C<@scripts> list in this file;
+the C<@scripts> list in this file. Both sides are repository-relative paths
+with C</> separators on every platform: C<File::Spec-E<gt>abs2rel> returns the
+native separator, so an unnormalised discovery compares as
+C<android\tools\name.pl> on Windows and never matches the manifest;
 
 =item *
 
@@ -340,5 +389,9 @@ deliberately if a new core module is introduced.
 =head1 PORTABILITY
 
 The executable-bit assertion is skipped on Windows, where the mode is not
-meaningful. Everything else is platform-independent text inspection and runs
-with the OpenBSD base interpreter.
+meaningful. Repository-relative values are rebuilt from
+C<File::Spec-E<gt>splitdir> and joined with C</>, so the inventory comparison
+is independent of the native path separator; a backslash path is asserted on
+the platforms whose C<File::Spec> splits on both separators. Everything else is
+platform-independent text inspection and runs with the OpenBSD base
+interpreter.

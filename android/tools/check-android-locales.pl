@@ -42,6 +42,16 @@ my @errors;
 
 sub fail { push @errors, join( '', @_ ) . "\n" }
 
+# A catalog is read once per section (strings, plurals), so an encoding
+# defect would otherwise be reported twice for the same file.
+my %encoding_reported;
+sub fail_encoding {
+    my ( $kind, $path, $line ) = @_;
+    my $key = "$kind\0$path";
+    return if $encoding_reported{$key}++;
+    fail( defined $line ? "$kind in $path:$line" : "$kind in $path" );
+}
+
 sub read_file {
     my ($path) = @_;
     open( my $fh, '<:raw', $path ) or die "open $path: $!";
@@ -50,9 +60,17 @@ sub read_file {
     close($fh);
 
     # Encoding defects are recorded instead of aborting so one run
-    # reports every affected file rather than only the first.
-    fail("BOM in $path")  if $text =~ /^\xEF\xBB\xBF/;
-    fail("CRLF in $path") if $text =~ /\r\n/;
+    # reports every affected file rather than only the first. A CRLF
+    # line ending is reported with the first offending line: a Windows
+    # checkout without the repository .gitattributes rule produces the
+    # same defect in every catalog, so the diagnostic names the location
+    # and the checkout, not only a file list.
+    fail_encoding( 'BOM', $path ) if $text =~ /^\xEF\xBB\xBF/;
+    if ( ( my $offset = index( $text, "\r\n" ) ) >= 0 ) {
+        my $prefix = substr( $text, 0, $offset );
+        my $line   = 1 + ( $prefix =~ tr/\n// );
+        fail_encoding( 'CRLF line ending', $path, $line );
+    }
     return $text;
 }
 
@@ -395,6 +413,12 @@ status is 1. A clean run prints one C<OK:> line on STDOUT and exits 0. A
 missing resource directory reports C<FAIL:> on STDOUT and also exits 1; an
 unreadable manifest, Gradle file, preferences file or Fastlane metadata
 directory aborts through C<die> (typically status 255).
+
+A byte-order mark or a CRLF line ending is reported once per file, with the
+first offending line for CRLF, as in C<CRLF line ending in PATH:LINE>. That
+is a checkout hygiene defect rather than a translation defect: catalogs are
+stored with LF and the repository F<.gitattributes> pins C<eol=lf> so a
+Windows working tree is not reported as broken.
 
 =head1 FILE FORMAT
 

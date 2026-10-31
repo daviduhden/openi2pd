@@ -150,6 +150,19 @@ Generation is manual-only and never part of a local build or default install:
 - Doxygen and Javadoc failures (including doclint and undocumented-parameter
   warnings) fail the `source_docs` job.
 
+`android-javadoc-static` (`android/tools/check-android-javadoc.pl`) is the
+compile-free guard for the comment defects that doclint rejects only after
+the whole Android job has configured and compiled: unregistered block tags,
+an inline tag used as a block tag, raw angle-bracket placeholders in prose
+and a `@param` name the declaration does not have. Two rules follow from it.
+`@implNote`, `@implSpec` and `@apiNote` are JDK-internal tags, not standard
+doclet tags, so the Android task does not register them and they must not be
+used; state the implementation note as a prose paragraph instead. Angle
+brackets are HTML in Javadoc prose, so `TORRENT-DETAIL <tunnel> <id>` must be
+written as `{@code TORRENT-DETAIL <tunnel> <id>}`, whose body is rendered
+verbatim, or as `&lt;tunnel&gt;`. The same split applies to Doxygen, which
+parses Markdown, so protocol shapes there belong in backticks instead.
+
 Local work is limited to source inspection, link/reference checks that do not
 invoke a compiler, and `git diff --check`. Do not run Doxygen, Javadoc, a
 compiler or any project test locally. Record generated-documentation evidence

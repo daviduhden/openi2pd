@@ -3,9 +3,45 @@
 #
 # openi2pd: .gitattributes.
 #
-# Configures project configuration and integration.
+# Configures repository line-ending, binary and diff policy.
 #
 
-/build/build_mingw.cmd eol=crlf
+# Every text file is stored with LF and checked out with LF on every
+# platform. Without this, a Windows checkout that enables
+# core.autocrlf converts the localized catalogs, documentation, Perl and
+# build scripts to CRLF, and the static CRLF/placeholder guards then fail
+# on an unmodified tree. Binary content is left untouched by
+# `text=auto`; the explicit overrides below keep it that way even when Git
+# would guess wrong.
+* text=auto eol=lf
+
+# Windows command scripts are the only intentional CRLF text files.
+/build/build_mingw.cmd text eol=crlf
+
+# Byte-exact binary payloads: converted blobs would break the assets,
+# the Gradle wrapper, the toolchain jar and the interop fixtures.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.ico binary
+*.icns binary
+*.jar binary
+*.der binary
+*.p12 binary
+*.pfx binary
+*.jks binary
+*.keystore binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.otf binary
+*.eot binary
+*.pdf binary
+*.zip binary
+*.gz binary
+*.xz binary
+*.su3 binary
 # Interop fixtures are byte-exact; Git must not apply CRLF conversion.
 /tests/interop/vectors/** -text

@@ -40,6 +40,17 @@ for my $entry (@nav) {
 }
 
 my %navigated = map { $_ => 1 } @nav;
+
+# Navigation entries are always written with '/', but
+# File::Spec->abs2rel() returns the native separator (a backslash on
+# Windows). Rebuild every discovered page from splitdir() so the
+# comparison against mkdocs.yml and the allowlist is separator
+# independent.
+sub nav_relative {
+    my ($path) = @_;
+    return join '/', File::Spec->splitdir( File::Spec->abs2rel( $path, $docs ) );
+}
+
 my %allowed   = map { $_ => 1 } qw(
   README.md
   UPSTREAM-README.md
@@ -56,7 +67,7 @@ find(
         no_chdir => 1,
         wanted   => sub {
             return unless -f $_ && /\.md\z/;
-            my $rel = File::Spec->abs2rel( $File::Find::name, $docs );
+            my $rel = nav_relative( $File::Find::name );
             push @unlisted, $rel unless $navigated{$rel} || $allowed{$rel};
         },
     },
@@ -68,7 +79,9 @@ find(
     {
         no_chdir => 1,
         wanted   => sub {
-            push @html, $File::Find::name if -f $_ && /\.(?:html?|xhtml)\z/i;
+            push @html,
+              nav_relative( $File::Find::name )
+              if -f $_ && /\.(?:html?|xhtml)\z/i;
         },
     },
     $docs
@@ -138,4 +151,7 @@ runs with the OpenBSD base interpreter and needs no YAML module.
 =head1 SECURITY AND PORTABILITY
 
 Read-only and offline: no network access, no MkDocs run, nothing written.
-Paths are reported relative to ROOT.
+Paths are reported relative to ROOT with C</> separators on every platform:
+navigation entries in F<mkdocs.yml> always use C</>, and a native separator
+from C<File::Spec-E<gt>abs2rel> would otherwise mark every page as unlisted on
+Windows.

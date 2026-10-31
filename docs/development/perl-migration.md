@@ -44,9 +44,10 @@ invocation returns to a maintained build consumer.
 | `tools/tests/i2pdctl.t` | Test::More client/transport regressions | `perl-i2pdctl` |
 | `tools/tests/validate-branding.t` | Test::More branding wrapper | `perl-validate-branding` |
 | `tools/tests/perl-portability.t` | Python-free/core-module/permissions guard | `perl-portability` |
-| `tools/tests/maintenance-checkers.t` | negative fixtures for the link/nav/JNI checkers | `perl-maintenance-checkers` |
+| `tools/tests/maintenance-checkers.t` | negative fixtures for the link/nav/JNI/Javadoc checkers | `perl-maintenance-checkers` |
 | `tests/interop/check-vectors.pl` | static interoperability fixtures | syntax, `interop-static` |
 | `android/tools/check-android-locales.pl` | compile-free four-locale parity guard | syntax, `android-locale-policy` |
+| `android/tools/check-android-javadoc.pl` | compile-free doclint comment guard (unregistered tags, raw placeholders, `@param` names) | syntax, `android-javadoc-static`, negative fixture |
 | `android/tools/check-android-jni-symbols.pl` | Java/header/C++ JNI parity guard | syntax, `android-jni-symbols-static`, negative fixture |
 | `i18n/check-i18n-catalogs.pl` | native catalog key/placeholder/plural contract | syntax, `i18n-static` |
 
@@ -114,6 +115,7 @@ perl -c tools/scripts/check-doc-nav.pl
 perl -c tools/scripts/validate-branding.pl
 perl -c tests/interop/check-vectors.pl
 perl -c android/tools/check-android-locales.pl
+perl -c android/tools/check-android-javadoc.pl
 perl -c android/tools/check-android-jni-symbols.pl
 perl -c i18n/check-i18n-catalogs.pl
 prove -v tools/tests/i2pdctl.t

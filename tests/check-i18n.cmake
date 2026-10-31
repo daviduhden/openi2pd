@@ -146,11 +146,36 @@ if(detail_width EQUAL -1)
 endif()
 assert_present("${tui_text}" "TorrentStatusText" "localized torrent status rendering")
 
+# Line endings are part of catalog hygiene: the Android/Xml and native
+# catalog guards reject CRLF, and a Windows checkout with core.autocrlf
+# would otherwise convert them and fail on an unmodified tree. The
+# repository .gitattributes must pin LF for every localized format and keep
+# only the Windows command script on CRLF.
+set(gitattributes_path "${PROJECT_ROOT}/.gitattributes")
+read_required("${gitattributes_path}" gitattributes_text)
+assert_present("${gitattributes_text}" "* text=auto eol=lf"
+  "line endings are pinned to LF on every platform")
+assert_present("${gitattributes_text}" "/build/build_mingw.cmd text eol=crlf"
+  "the Windows command script keeps CRLF")
+foreach(binary_glob IN ITEMS "*.png binary" "*.ico binary" "*.jar binary")
+  assert_present("${gitattributes_text}" "${binary_glob}"
+    "binary assets are excluded from line-ending conversion (${binary_glob})")
+endforeach()
+assert_present("${guard_text}" "fail_encoding( 'CRLF line ending', \$path, \$line )"
+  "Android CRLF diagnostic names the file and line")
+
 # Full catalog contract: key/placeholder/plural parity, no translated
 # identifiers and every tr()/SetStatus()/BeginPrompt() literal present.
-find_program(PERL_EXECUTABLE NAMES perl)
+# The interpreter is passed by the test definition (configure-time
+# discovery); a run-time lookup made the contract depend on the ctest PATH
+# and silently skipped it on Windows.
 if(NOT PERL_EXECUTABLE)
-  message(STATUS "Perl not found: native catalog contract check skipped")
+  find_program(PERL_EXECUTABLE NAMES perl)
+endif()
+if(NOT PERL_EXECUTABLE)
+  message(FATAL_ERROR
+    "Perl is required for the native catalog contract; register the test "
+    "without -DPERL_EXECUTABLE only when Perl is installed")
 else()
   execute_process(
     COMMAND "${PERL_EXECUTABLE}" "${PROJECT_ROOT}/i18n/check-i18n-catalogs.pl"
@@ -159,7 +184,8 @@ else()
     OUTPUT_VARIABLE catalog_output
     ERROR_VARIABLE catalog_error)
   if(NOT catalog_result EQUAL 0)
-    message(FATAL_ERROR "i18n catalog check failed:\n${catalog_output}${catalog_error}")
+    message(FATAL_ERROR
+      "i18n catalog check failed (${PERL_EXECUTABLE}, result ${catalog_result}):\n${catalog_output}${catalog_error}")
   endif()
 endif()
 

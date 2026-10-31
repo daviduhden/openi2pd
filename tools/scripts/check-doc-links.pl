@@ -24,12 +24,35 @@ my $root      = abs_path($docs) or die "cannot resolve $docs\n";
 my $repo_root = abs_path( File::Spec->catdir( $root, File::Spec->updir ) );
 die "cannot resolve repository root\n" unless defined $repo_root;
 
-# catdir appends a trailing separator. The stripped value is therefore a
-# directory prefix ending in the platform separator, which index() can
-# compare against so a sibling such as "<repo>-old" is not accepted as
-# inside the tree.
-my $repo_prefix = File::Spec->catdir( $repo_root, 'x' );
-$repo_prefix =~ s/x\z//;
+# Cwd::abs_path() returns forward-slash paths on Windows while
+# File::Spec->catdir()/splitdir() use the native separator, so a raw
+# string prefix rejects every valid link on that platform. Both sides are
+# reduced to the same key: canonical components joined with '/', absolute
+# paths marked with a leading '/', and folded to lower case where the
+# filesystem is case-insensitive. The key is a comparison value only; the
+# filesystem is always accessed through the original path.
+sub path_key {
+    my ($path) = @_;
+    my $canonical = File::Spec->canonpath($path);
+    my $key = join '/', grep { length } File::Spec->splitdir($canonical);
+    $key = "/$key" if File::Spec->file_name_is_absolute($canonical);
+    $key = lc $key if $^O eq 'MSWin32' || $^O eq 'msys';
+    return $key;
+}
+
+my $repo_key = path_key($repo_root);
+
+# A sibling such as "<repo>-old" shares the textual prefix but not a path
+# component, so containment requires the separator boundary. A resolved
+# target equal to the repository root (the documentation directory is the
+# root here) is inside as well.
+sub is_inside_repository {
+    my ($resolved) = @_;
+    my $key = path_key($resolved);
+    return 1 if $key eq $repo_key;
+    return index( $key, "$repo_key/" ) == 0;
+}
+
 my @files;
 find(
     {
@@ -156,9 +179,7 @@ for my $file ( sort @files ) {
             }
             my $resolved = abs_path($path);
             $resolved = File::Spec->canonpath($path) unless defined $resolved;
-            if ( $resolved ne $repo_root
-                && index( $resolved, $repo_prefix ) != 0 )
-            {
+            if ( !is_inside_repository($resolved) ) {
                 push @missing,
                   "$file:$line_number: $target (escapes repository)";
                 next;
@@ -192,12 +213,9 @@ for my $file ( sort @files ) {
             my $resolved = abs_path($path);
             $resolved = File::Spec->canonpath($path) unless defined $resolved;
             push @missing, "$file:$line_number: $target (escapes repository)"
-              if $resolved ne $repo_root
-              && index( $resolved, $repo_prefix ) != 0;
+              unless is_inside_repository($resolved);
             push @missing, "$file:$line_number: $target"
-              if ( $resolved eq $repo_root
-                || index( $resolved, $repo_prefix ) == 0 )
-              && !-e $resolved;
+              if is_inside_repository($resolved) && !-e $resolved;
         }
     }
     close $fh;
@@ -270,3 +288,13 @@ the OpenBSD base interpreter provides.
 
 Read-only and offline. The checker never follows a link to the network and
 writes nothing except STDOUT/STDERR.
+
+Containment is decided on a separator-normalised key built from
+C<File::Spec-E<gt>canonpath> and C<File::Spec-E<gt>splitdir>, not on a raw
+string prefix: C<Cwd::abs_path> returns forward slashes on Windows while
+C<File::Spec-E<gt>catdir> uses the native separator, so a prefix comparison
+would report every valid link as escaping the repository there. The key is
+case-folded on case-insensitive filesystems, keeps the absolute-path marker,
+and requires a path-component boundary so a sibling directory that shares the
+prefix is still rejected. Symbolic links are resolved by C<abs_path> before
+the containment test, so C<..> and a symlinked target cannot escape it.
