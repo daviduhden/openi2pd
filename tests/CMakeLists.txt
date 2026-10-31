@@ -100,6 +100,7 @@ set(I2PD_TESTS
   test-i2ptunnel-filter
   test-i2ptunnel-targets
   test-base-64
+  test-win32-shutdown-deadline
   test-gost
   test-gost-sig
   test-aeadchacha20poly1305

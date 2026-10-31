@@ -27,6 +27,7 @@
 #include "resource.h"
 #include "Daemon.h"
 #include "Win32App.h"
+#include "GracefulShutdown.h"
 #include "Win32NetState.h"
 
 #define ID_ABOUT 2000
@@ -197,9 +198,9 @@ namespace win32
 			case ID_GRACEFUL_SHUTDOWN:
 			{
 				i2p::context.SetAcceptsTunnels (false);
-				SetTimer (hWnd, IDT_GRACEFUL_SHUTDOWN_TIMER, 10 * 60 * 1000, nullptr); // 10 minutes
+				SetTimer (hWnd, IDT_GRACEFUL_SHUTDOWN_TIMER, GRACEFUL_SHUTDOWN_TIMEOUT_MS, nullptr);
 				SetTimer (hWnd, IDT_GRACEFUL_TUNNELCHECK_TIMER, 1000, nullptr); // check tunnels every second
-				g_GracefulShutdownEndtime = GetTickCount () + 10 * 60 * 1000;
+				g_GracefulShutdownEndtime = GetTickCount () + GRACEFUL_SHUTDOWN_TIMEOUT_MS;
 				i2p::util::DaemonWin32::Instance ().isGraceful = true;
 				return 0;
 			}
@@ -419,9 +420,11 @@ namespace win32
 	int GetGracefulShutdownRemainingTime ()
 	{
 		if (!g_GracefulShutdownEndtime) return 0;
-		auto remains = (g_GracefulShutdownEndtime - GetTickCount ()) / 1000;
-		if (remains < 0) remains = 0;
-		return remains;
+		// Unsigned subtraction is wrap-safe for a deadline less than half
+		// the DWORD range away; values above the original budget are expired.
+		const auto remainsMs
+			= GetGracefulShutdownRemainingMilliseconds (g_GracefulShutdownEndtime, GetTickCount ());
+		return static_cast<int> (remainsMs / 1000U);
 	}
 }
 }
