@@ -4,9 +4,9 @@
  *
  * openi2pd: Torrents.
  *
- * Declares the torrent metadata, piece/file and peer-connection model plus
- * the BEP-encoded parser, path-containment checks and bounded file I/O
- * helpers used by the torrent engine.
+ * Declares the torrent metadata, piece/file and peer-connection model
+ * plus the BEP-encoded parser, path-containment checks and bounded file
+ * I/O helpers used by the torrent engine.
  *
  */
 
@@ -50,27 +50,32 @@ namespace i2p
 {
 namespace torrents
 {
-	/// Bencode readers parse one value from the front of @a buf and return the
-	/// consumed byte count, or 0 for a malformed value. A successful prefix can
-	/// leave trailing bytes; callers requiring a complete frame must compare the
-	/// count with buf.size(). Views in results borrow buf and cannot outlive it.
-	/// See BEP 3: https://www.bittorrent.org/beps/bep_0003.html.
+	/// Bencode readers parse one value from the front of @a buf and return
+	/// the consumed byte count, or 0 for a malformed value. A successful
+	/// prefix can leave trailing bytes; callers requiring a complete frame
+	/// must compare the count with buf.size(). Views in results borrow buf
+	/// and cannot outlive it. See BEP 3:
+	/// https://www.bittorrent.org/beps/bep_0003.html.
 	std::pair<std::string_view, size_t> ExtractByteString (std::string_view buf);
 	std::pair<int64_t, size_t> ExtractInteger (std::string_view buf);
-	/// The handler sees a decoded key and the encoded value suffix. A nonzero
-	/// return consumes that many value bytes; 0 falls back to generic parsing, so
-	/// 0 cannot be used by the handler alone to reject a value.
+	/// The handler sees a decoded key and the encoded value suffix. A
+	/// nonzero return consumes that many value bytes; 0 falls back to
+	/// generic parsing, so 0 cannot be used by the handler alone to reject
+	/// a value.
 	size_t ParseDictionary (std::string_view buf,
 		std::function<size_t (std::string_view key, std::string_view buf)> handler = nullptr, size_t depth = 0);
-	/// Return borrowed decoded keys and encoded value slices, plus bytes consumed.
+	/// Return borrowed decoded keys and encoded value slices, plus bytes
+	/// consumed.
 	std::pair<std::map<std::string_view, std::string_view>, size_t> ExtractDictionary (
 		std::string_view buf); // decoded keys, encoded values
-	/// Parse a list with the same handler fallback and prefix semantics as the
-	/// dictionary reader; nesting and item counts have fixed parser limits.
+	/// Parse a list with the same handler fallback and prefix semantics as
+	/// the dictionary reader; nesting and item counts have fixed parser
+	/// limits.
 	size_t ParseList (
 		std::string_view buf, std::function<size_t (std::string_view buf)> handler = nullptr, size_t depth = 0);
-	/// Collect byte-string elements as borrowed views. A malformed list or a
-	/// non-string element returns an empty vector and a zero consumed count.
+	/// Collect byte-string elements as borrowed views. A malformed list or
+	/// a non-string element returns an empty vector and a zero consumed
+	/// count.
 	std::pair<std::vector<std::string_view>, size_t> ParseStringList (std::string_view buf);
 	std::string CreateByteString (std::string_view str);
 	std::string CreateInteger (int64_t v);
@@ -91,12 +96,13 @@ namespace torrents
 	constexpr size_t MIN_PIECE_LENGTH = 16 * 1024; // 16K
 	constexpr size_t MAX_PIECE_LENGTH = 256 * 1024 * 1024; // 256M
 	constexpr size_t MAX_NUM_TORRENT_PIECES = 1024 * 1024; // 1M
-	// Bound the eager per-piece std::vector&lt;BlockStatus&gt; allocation. This is
-	// independent of the nominal piece count: 1M pieces of 256 MiB would
-	// otherwise request ~64 GiB of status arrays before any data arrives.
+	// Bound the eager per-piece std::vector&lt;BlockStatus&gt; allocation.
+	// This is independent of the nominal piece count: 1M pieces of 256 MiB
+	// would otherwise request ~64 GiB of status arrays before any data
+	// arrives.
 	constexpr size_t MAX_TORRENT_BLOCKS = 4 * 1024 * 1024;
-	// Keep the arithmetic in 64 bits. On ILP32 the product below is 2^48 and
-	// previously wrapped to zero because both operands are size_t.
+	// Keep the arithmetic in 64 bits. On ILP32 the product below is 2^48
+	// and previously wrapped to zero because both operands are size_t.
 	constexpr uint64_t MAX_TORRENT_LENGTH
 		= static_cast<uint64_t> (MAX_PIECE_LENGTH) * static_cast<uint64_t> (MAX_NUM_TORRENT_PIECES); // 256T
 	static_assert (MAX_TORRENT_LENGTH == (uint64_t { 256 } << 40), "MAX_TORRENT_LENGTH must stay at 256 TiB");
@@ -110,24 +116,26 @@ namespace torrents
 	constexpr int MAX_TRACKER_REQUESTS_INTERVAL = 24 * 3600 * 1000; // in milliseconds
 	// BEP 3 "interval"/"min interval" arrive in seconds. Java 2.14.0's
 	// TrackerClient floors a tracker-advertised interval at
-	// MIN_TRACKER_ANNOUNCE_INTERVAL (15 min) and keeps a larger "min interval",
-	// so a tracker answering "interval=30" is announced to every 15 minutes and
-	// not 30 times more often than Java. This floor applies to values a tracker
-	// advertised only. MIN_TRACKER_REQUESTS_INTERVAL above stays the internal
-	// retry/status granularity: a retry after a failure must never wait 15 min.
+	// MIN_TRACKER_ANNOUNCE_INTERVAL (15 min) and keeps a larger "min
+	// interval", so a tracker answering "interval=30" is announced to
+	// every 15 minutes and not 30 times more often than Java. This floor
+	// applies to values a tracker advertised only.
+	// MIN_TRACKER_REQUESTS_INTERVAL above stays the internal retry/status
+	// granularity: a retry after a failure must never wait 15 min.
 	constexpr int MIN_TRACKER_ANNOUNCE_INTERVAL = 15 * 60; // in seconds
 	// Java's consecutive-failure sleep cap (TrackerClient LONG_SLEEP). The
-	// retry interval doubles per failure and stops here instead of growing to
-	// MAX_TRACKER_REQUESTS_INTERVAL (24 h).
+	// retry interval doubles per failure and stops here instead of growing
+	// to MAX_TRACKER_REQUESTS_INTERVAL (24 h).
 	constexpr int MAX_TRACKER_FAILURE_BACKOFF = 30 * 60; // in seconds
 	constexpr int DHT_TORRENT_UPDATE_INTERVAL = 880; // in seconds
 	constexpr int DHT_TORRENT_UPDATE_INTERVAL_VARIANCE = 130; // in seconds
 	constexpr int DHT_TORRENT_INITIAL_UPDATE_INTERVAL = 100; // in seconds
 	constexpr int DHT_TORRENT_INITIAL_UPDATE_INTERVAL_VARIANCE = 40; // in seconds
-	// Peer/connection limits. They bound outbound dialing and inbound accepts
-	// per torrent and for the whole tunnel, so neither tracker responses, PEX,
-	// DHT answers nor incoming streams can create an unbounded set of
-	// connections. Rotation evicts only idle established peers.
+	// Peer/connection limits. They bound outbound dialing and inbound
+	// accepts per torrent and for the whole tunnel, so neither tracker
+	// responses, PEX, DHT answers nor incoming streams can create an
+	// unbounded set of connections. Rotation evicts only idle established
+	// peers.
 	constexpr size_t MAX_PEERS_PER_TORRENT = 40;
 	constexpr size_t MAX_TOTAL_PEERS = 200;
 	// Concurrent outbound dials whose stream is still being established.
@@ -149,15 +157,17 @@ namespace torrents
 	constexpr size_t MAX_PEX_RECEIVE_MESSAGES = 2;
 	constexpr size_t MAX_PEX_RECEIVE_PEERS = 100;
 	constexpr int PEER_DHT_HINT_INTERVAL = 60; // in seconds (received hints)
-	// Outgoing i2p_dht advertisement interval. BEP10 handshakes can be repeated
-	// by a peer, so the advertisement needs its own per-connection gate instead
-	// of relying on "it only happens once at negotiation".
+	// Outgoing i2p_dht advertisement interval. BEP10 handshakes can be
+	// repeated by a peer, so the advertisement needs its own
+	// per-connection gate instead of relying on "it only happens once at
+	// negotiation".
 	constexpr uint64_t PEER_DHT_ADVERTISE_INTERVAL = 60; // in seconds
 	constexpr size_t PEER_CONNECTION_RECEIVE_BUFFER_SIZE = 65535;
-	// A peer-wire message is prefixed by a 4-byte big-endian length. The whole
-	// frame (prefix included) must fit in the receive buffer, otherwise a
-	// message of exactly 65535 bytes would set m_NextMsgLength to 65539 and
-	// leave the connection permanently unable to make progress.
+	// A peer-wire message is prefixed by a 4-byte big-endian length. The
+	// whole frame (prefix included) must fit in the receive buffer,
+	// otherwise a message of exactly 65535 bytes would set m_NextMsgLength
+	// to 65539 and leave the connection permanently unable to make
+	// progress.
 	constexpr size_t MAX_PEER_MSG_LEN = PEER_CONNECTION_RECEIVE_BUFFER_SIZE - 4;
 	static_assert (MAX_PEER_MSG_LEN + 4 == PEER_CONNECTION_RECEIVE_BUFFER_SIZE, "peer frame must fit the buffer");
 	constexpr bool IsPeerMessageLengthAllowed (uint64_t msgLen)
@@ -171,19 +181,21 @@ namespace torrents
 	constexpr size_t MAX_NUM_REQUESTS = 24;
 	constexpr size_t MAX_NUM_PIECES = 6;
 	constexpr size_t MAX_INCOMING_REQUESTS_QUEUE_SIZE = 32;
-	// Per-request stall recovery. An outbound block request that the peer has
-	// not delivered within this many seconds is released so the block becomes
-	// requestable again (here or on another connection). Deliberately below
-	// PEER_KEEP_SEND_INTERVAL (95 s) so the per-request deadline fires first;
-	// the blanket release on a send-idle connection stays a safety net for
-	// connections that keep sending keep-alives or other blocks.
+	// Per-request stall recovery. An outbound block request that the peer
+	// has not delivered within this many seconds is released so the block
+	// becomes requestable again (here or on another connection).
+	// Deliberately below PEER_KEEP_SEND_INTERVAL (95 s) so the per-request
+	// deadline fires first; the blanket release on a send-idle connection
+	// stays a safety net for connections that keep sending keep-alives or
+	// other blocks.
 	constexpr uint64_t PEER_REQUEST_TIMEOUT = 60; // in seconds
-	// Idle peer rate decay. A peer rate is sampled only while blocks move, so
-	// without decay an idle connection would report the last burst forever.
-	// CheckKeepAlive runs every 15 s and halves a direction's rate after one
-	// idle window and zeroes it after two. The window is deliberately much
-	// longer than BANDWIDTH_RATE_SAMPLING_INTERVAL (20 ms): a 20 ms idle test
-	// would zero every rate at each check and carry no information.
+	// Idle peer rate decay. A peer rate is sampled only while blocks move,
+	// so without decay an idle connection would report the last burst
+	// forever. CheckKeepAlive runs every 15 s and halves a direction's
+	// rate after one idle window and zeroes it after two. The window is
+	// deliberately much longer than BANDWIDTH_RATE_SAMPLING_INTERVAL (20
+	// ms): a 20 ms idle test would zero every rate at each check and carry
+	// no information.
 	constexpr uint64_t PEER_RATE_DECAY_INTERVAL = 30; // in seconds
 	constexpr int PIECE_INACTIVITY_TIMEOUT = 22; // in seconds
 	constexpr int HANDSHAKE_RECEIVE_TIMEOUT = 20; // in seconds
@@ -206,39 +218,42 @@ namespace torrents
 	constexpr size_t PIECE_MSG_LENGTH = 13; // length + id + index + offset
 	constexpr size_t CANCEL_MSG_PAYLOAD_LENGTH = 12;
 
-	// Pure transfer-scheduling rules. They are constexpr and socket-free so the
-	// regression test can pin them without a connection, a timer or a thread.
+	// Pure transfer-scheduling rules. They are constexpr and socket-free
+	// so the regression test can pin them without a connection, a timer or
+	// a thread.
 
 	// True when an outbound block request sent at `requestedAt` (monotonic
-	// seconds) has exceeded `timeout`. A zero `requestedAt` (unknown, e.g. a
-	// request queued before this bookkeeping existed) or a zero timeout never
-	// expires, and clock non-monotonicity is treated as "not yet".
+	// seconds) has exceeded `timeout`. A zero `requestedAt` (unknown, e.g.
+	// a request queued before this bookkeeping existed) or a zero timeout
+	// never expires, and clock non-monotonicity is treated as "not yet".
 	constexpr bool ShouldExpireOutgoingRequest (uint64_t requestedAt, uint64_t now, uint64_t timeout)
 	{
 		if (!requestedAt || !timeout || now < requestedAt) return false;
 		return now - requestedAt >= timeout;
 	}
 
-	// Decayed peer rate after `idleSeconds` without a sample. Unchanged inside
-	// the first window, halved after one window and zero after two or more.
+	// Decayed peer rate after `idleSeconds` without a sample. Unchanged
+	// inside the first window, halved after one window and zero after two
+	// or more.
 	constexpr uint64_t DecayPeerRate (uint64_t rate, uint64_t idleSeconds)
 	{
 		if (!rate || idleSeconds < PEER_RATE_DECAY_INTERVAL) return rate;
 		return (idleSeconds / PEER_RATE_DECAY_INTERVAL >= 2) ? 0 : rate / 2;
 	}
 
-	// Bytes one transferred block charges to the peer and torrent counters.
-	// BEP 3 requests carry their own length and the final block of a piece is
-	// shorter than REQUEST_BLOCK_SIZE, so the nominal block size must never be
-	// used to account a variable-length block.
+	// Bytes one transferred block charges to the peer and torrent
+	// counters. BEP 3 requests carry their own length and the final block
+	// of a piece is shorter than REQUEST_BLOCK_SIZE, so the nominal block
+	// size must never be used to account a variable-length block.
 	constexpr size_t BlockTransferBytes (size_t payloadLength)
 	{
 		return payloadLength;
 	}
 
-	// A piece counts as transferred progress only when its bytes are present,
-	// hashed against the metainfo and flushed to storage. The same rule guards
-	// IsFileComplete so a saving piece cannot report a finished file.
+	// A piece counts as transferred progress only when its bytes are
+	// present, hashed against the metainfo and flushed to storage. The
+	// same rule guards IsFileComplete so a saving piece cannot report a
+	// finished file.
 	constexpr bool IsPieceProgressComplete (bool complete, bool verified, bool saving)
 	{
 		return complete && verified && !saving;
@@ -251,22 +266,22 @@ namespace torrents
 	constexpr uint8_t EXTENSION_MSGID_I2P_PEX = 2;
 	constexpr std::string_view EXTENSION_NAME_I2P_DHT { "i2p_dht" };
 	constexpr uint8_t EXTENSION_MSGID_I2P_DHT = 3;
-	// BEP10 "v" client string. Kept only for diagnostics and bounded, so one
-	// handshake cannot grow per-connection state arbitrarily.
+	// BEP10 "v" client string. Kept only for diagnostics and bounded, so
+	// one handshake cannot grow per-connection state arbitrarily.
 	constexpr size_t MAX_EXTENDED_CLIENT_VERSION_LENGTH = 64;
 	// Bound the extension map a single handshake may install.
 	constexpr size_t MAX_EXTENDED_HANDSHAKE_EXTENSIONS = 64;
 
-	// Pure BEP11 / i2p_dht decoders. They are side-effect free: no logging, no
-	// network and no torrent/connection state, so the peer-wire handlers and
-	// the fuzz/regression tests share exactly one parser. `malformed` means the
-	// whole message must be ignored; otherwise `peers`/`port` is the bounded
-	// subset that may be used.
+	// Pure BEP11 / i2p_dht decoders. They are side-effect free: no
+	// logging, no network and no torrent/connection state, so the
+	// peer-wire handlers and the fuzz/regression tests share exactly one
+	// parser. `malformed` means the whole message must be ignored;
+	// otherwise `peers`/`port` is the bounded subset that may be used.
 
-	// BEP11 for I2P: "added" is a plain concatenation of 32-byte destination
-	// hashes. There is no "added.f"/"dropped" in this profile. Zero hashes and
-	// duplicates are dropped, the result is capped at MAX_PEX_RECEIVE_PEERS and
-	// the dictionary must be consumed exactly.
+	// BEP11 for I2P: "added" is a plain concatenation of 32-byte
+	// destination hashes. There is no "added.f"/"dropped" in this profile.
+	// Zero hashes and duplicates are dropped, the result is capped at
+	// MAX_PEX_RECEIVE_PEERS and the dictionary must be consumed exactly.
 	struct PEXDecodeResult
 	{
 		std::vector<i2p::data::IdentHash> peers;
@@ -274,10 +289,10 @@ namespace torrents
 	};
 	PEXDecodeResult DecodePEXAdded (std::string_view dictionary);
 
-	// i2p_dht port hint. "port" must be 1..65534; "rport" is optional and only
-	// informative (Java uses "port"), so a present but unrelated "rport" is
-	// tolerated and reported through rportMismatch for a debug log. The
-	// dictionary must be consumed exactly.
+	// i2p_dht port hint. "port" must be 1..65534; "rport" is optional and
+	// only informative (Java uses "port"), so a present but unrelated
+	// "rport" is tolerated and reported through rportMismatch for a debug
+	// log. The dictionary must be consumed exactly.
 	struct DHTHintResult
 	{
 		std::optional<uint16_t> port;
@@ -307,18 +322,21 @@ namespace torrents
 		eMessageTypeExtended = 20
 	};
 
-	// Path helpers shared by the torrent metadata parser, the download session
-	// and the tests. They are purely lexical unless stated otherwise.
+	// Path helpers shared by the torrent metadata parser, the download
+	// session and the tests. They are purely lexical unless stated
+	// otherwise.
 	//
 	// IsSafeRelativePath accepts only a non-empty relative path whose
-	// components are neither "." nor ".." and which has no root name or root
-	// directory. A caller must still anchor the result at a trusted root.
+	// components are neither "." nor ".." and which has no root name or
+	// root directory. A caller must still anchor the result at a trusted
+	// root.
 	bool IsSafeRelativePath (const std::filesystem::path & path);
 
 	// Purely lexical containment check for callers on the network/control
 	// thread. It performs no filesystem access (no symlink or existence
-	// checks); the storage service must still call IsPathWithinRoot and the
-	// no-follow helpers before opening, creating, renaming or deleting.
+	// checks); the storage service must still call IsPathWithinRoot and
+	// the no-follow helpers before opening, creating, renaming or
+	// deleting.
 	bool IsPathLexicallyWithinRoot (const std::filesystem::path & root, const std::filesystem::path & target);
 
 	// True when target is lexically inside root and no existing component
@@ -330,32 +348,35 @@ namespace torrents
 		const std::filesystem::path & root, const std::filesystem::path & target, bool allowDirectoryLeaf);
 
 	// Bounded file helpers. Reads stop at maxBytes instead of trusting an
-	// on-disk size, reject symlink leaves/reparse points and non-regular files
-	// (FIFOs and devices cannot stall the disk service), and report truncated
-	// files as failure. Writes replace/create only a non-symlink, regular leaf. On
-	// Windows the reparse point check is performed before the CRT open
-	// (residual TOCTOU); POSIX uses O_NOFOLLOW on every component below the
-	// trusted root, so no such window exists there. Hard links are not
-	// distinguishable portably; the torrent root must already be trusted and
-	// not writable by other users.
+	// on-disk size, reject symlink leaves/reparse points and non-regular
+	// files (FIFOs and devices cannot stall the disk service), and report
+	// truncated files as failure. Writes replace/create only a
+	// non-symlink, regular leaf. On Windows the reparse point check is
+	// performed before the CRT open (residual TOCTOU); POSIX uses
+	// O_NOFOLLOW on every component below the trusted root, so no such
+	// window exists there. Hard links are not distinguishable portably;
+	// the torrent root must already be trusted and not writable by other
+	// users.
 	bool ReadFileBoundedNoFollow (
 		const std::filesystem::path & path, size_t maxBytes, std::vector<uint8_t> & content, std::string & error);
 	bool WriteFileNoFollow (const std::filesystem::path & path, const void * data, size_t len);
-	// Atomic replace beneath the authorized root. POSIX anchors traversal and
-	// fsyncs data and parent; Windows retains check/open reparse-point races.
-	// Failure after rename may mean the replacement exists but durability is
-	// uncertain; callers must report the error and must not truncate/retry.
+	// Atomic replace beneath the authorized root. POSIX anchors traversal
+	// and fsyncs data and parent; Windows retains check/open reparse-point
+	// races. Failure after rename may mean the replacement exists but
+	// durability is uncertain; callers must report the error and must not
+	// truncate/retry.
 	bool WriteFileAtomicNoFollow (const std::filesystem::path & root, const std::filesystem::path & relativePath,
 		const void * data, size_t len, std::string & error);
-	// Missing files are success; POSIX anchors parents without following links.
-	// Windows retains the existing path-check/delete reparse-point race.
+	// Missing files are success; POSIX anchors parents without following
+	// links. Windows retains the existing path-check/delete reparse-point
+	// race.
 	bool RemoveFileNoFollow (
 		const std::filesystem::path & root, const std::filesystem::path & relativePath, std::string & error);
 	// Creates path exclusively (O_EXCL) and reserves exactly `size` bytes.
 	bool CreateFileWithSizeNoFollow (const std::filesystem::path & path, size_t size);
-	// Anchored variants: `relativePath` is traversed from `root` one component
-	// at a time with O_NOFOLLOW, so an intermediate symlink cannot redirect
-	// the operation.
+	// Anchored variants: `relativePath` is traversed from `root` one
+	// component at a time with O_NOFOLLOW, so an intermediate symlink
+	// cannot redirect the operation.
 	bool ReadFileBoundedNoFollow (const std::filesystem::path & root, const std::filesystem::path & relativePath,
 		size_t maxBytes, std::vector<uint8_t> & content, std::string & error);
 	bool WriteFileNoFollow (
@@ -363,16 +384,16 @@ namespace torrents
 	bool CreateFileWithSizeNoFollow (
 		const std::filesystem::path & root, const std::filesystem::path & relativePath, size_t size);
 	// Creates the missing directories of `relativeDirectory` below `root`
-	// without traversing symlinks. The root itself is created when missing but
-	// must not be a symlink. `relativeDirectory` must be a safe relative path
-	// (or empty).
+	// without traversing symlinks. The root itself is created when missing
+	// but must not be a symlink. `relativeDirectory` must be a safe
+	// relative path (or empty).
 	bool CreateDirectoriesWithinRootNoFollow (
 		const std::filesystem::path & root, const std::filesystem::path & relativeDirectory);
 
-	/// Owns a lazily opened payload descriptor or backend capability for one
-	/// metainfo file. Its mutex serializes disk IO, close and authority changes;
-	/// destruction closes the held handle. Backend failure does not fall back to
-	/// direct filesystem access.
+	/// Owns a lazily opened payload descriptor or backend capability for
+	/// one metainfo file. Its mutex serializes disk IO, close and
+	/// authority changes; destruction closes the held handle. Backend
+	/// failure does not fall back to direct filesystem access.
 	class TorrentFile
 	{
 	public:
@@ -391,11 +412,12 @@ namespace torrents
 		TorrentFile & operator= (const TorrentFile &) = delete;
 
 		/// Write the requested range within the declared file length.
-		/// @return true only for a complete write; earlier chunks may have been
-		/// written when a later chunk fails.
+		/// @return true only for a complete write; earlier chunks may have
+		///         been written when a later chunk fails.
 		bool Save (size_t offset, const uint8_t * buf, size_t len);
-		/// Read the complete requested range; discard the buffer when false is
-		/// returned because an earlier chunk may already have filled part of it.
+		/// Read the complete requested range; discard the buffer when false
+		/// is returned because an earlier chunk may already have filled part
+		/// of it.
 		bool Load (size_t offset, uint8_t * buf, size_t len);
 		void Complete ();
 		void Open (bool create = false);
@@ -405,9 +427,10 @@ namespace torrents
 		// unreadable document without opening the file twice.
 		bool IsOpen () const;
 		// One-shot capability probe for document backends: opens the exact
-		// final name, closes it and reports whether it exists with the declared
-		// length. It never logs (a new torrent's documents legitimately do not
-		// exist yet) and never falls back to a POSIX path.
+		// final name, closes it and reports whether it exists with the
+		// declared length. It never logs (a new torrent's documents
+		// legitimately do not exist yet) and never falls back to a POSIX
+		// path.
 		bool ProbePayload ();
 
 		std::filesystem::path GetFullFilePath () const
@@ -431,7 +454,8 @@ namespace torrents
 		{
 			SetPayloadStorage (worker ? std::make_shared<WorkerPayloadStorage> (worker) : nullptr, root);
 		}
-		// Administrative capability injection; never derives authority from peer paths.
+		// Administrative capability injection; never derives authority from
+		// peer paths.
 		void SetPayloadStorage (std::shared_ptr<TorrentPayloadStorage> storage, const std::filesystem::path & root)
 		{
 			std::lock_guard<std::mutex> lock (m_Mutex);
@@ -478,9 +502,10 @@ namespace torrents
 		bool UpdateFullPath (const std::filesystem::path & rootDir);
 
 	private:
-		// The disk worker reads/writes through Load()/Save() while the torrent
-		// service thread completes files or replaces their authority. The handle
-		// and storage capability must never be closed or reopened concurrently.
+		// The disk worker reads/writes through Load()/Save() while the
+		// torrent service thread completes files or replaces their authority.
+		// The handle and storage capability must never be closed or reopened
+		// concurrently.
 		void OpenLocked (bool create);
 		void CloseLocked ();
 
@@ -516,9 +541,10 @@ namespace torrents
 	};
 
 	class PeerConnection;
-	/// One piece's block map, buffer and SHA-1 verification state. The mutex
-	/// serializes access by the service and disk threads; the buffer is owned
-	/// here and callers obtain block copies rather than borrowed pointers.
+	/// One piece's block map, buffer and SHA-1 verification state. The
+	/// mutex serializes access by the service and disk threads; the buffer
+	/// is owned here and callers obtain block copies rather than borrowed
+	/// pointers.
 	class Piece final
 	{
 		enum class BlockStatus
@@ -539,8 +565,9 @@ namespace torrents
 		Piece & operator= (Piece &&) = delete;
 		~Piece ();
 
-		/// True when the block map is complete; this alone does not authenticate
-		/// the data or establish that a pending storage write has finished.
+		/// True when the block map is complete; this alone does not
+		/// authenticate the data or establish that a pending storage write
+		/// has finished.
 		bool IsComplete () const;
 		// Pending local verification must not publish candidate availability.
 		void Complete (bool pendingVerification = false);
@@ -549,14 +576,15 @@ namespace torrents
 		/// evicted has nothing to hash, so it reports false and clears the
 		/// verified flag; reloading the data re-arms verification.
 		bool VerifyHash (); // marks the piece verified when the digest matches
-		/// True only after a matching digest and while neither a write nor local
-		/// re-verification is pending. Use this distinction for availability.
+		/// True only after a matching digest and while neither a write nor
+		/// local re-verification is pending. Use this distinction for
+		/// availability.
 		bool IsVerified () const;
-		// Local data re-verification. A resume bitfield or a pre-existing final
-		// file only claims which bytes should be on disk; this state marks a
-		// complete piece whose bytes have not been hashed in this session.
-		// It is owned by the tunnel's bounded verification pass and is not the
-		// same as a pending write (m_IsSaving).
+		// Local data re-verification. A resume bitfield or a pre-existing
+		// final file only claims which bytes should be on disk; this state
+		// marks a complete piece whose bytes have not been hashed in this
+		// session. It is owned by the tunnel's bounded verification pass and
+		// is not the same as a pending write (m_IsSaving).
 		void MarkPendingVerification ();
 		bool IsVerificationPending () const;
 		void FinishLocalVerification ();
@@ -571,16 +599,16 @@ namespace torrents
 		size_t GetNumPeers () const;
 		void SetNumPeers (size_t numPeers);
 
-		/// Apply one peer block under the piece lock.
-		/// Only an exact aligned 16 KiB range (or the final partial range) for a
-		/// block that is still Requested is accepted; a duplicate, late or
-		/// unsolicited block is ignored.
+		/// Apply one peer block under the piece lock. Only an exact aligned
+		/// 16 KiB range (or the final partial range) for a block that is
+		/// still Requested is accepted; a duplicate, late or unsolicited
+		/// block is ignored.
 		/// @return true only when this call newly applied the block. Only an
 		/// applied block may trigger completion, hashing, persistence, HAVE
 		/// publication or download accounting.
 		bool BlockReceived (const uint8_t * block, size_t len, size_t offset); // true only if newly applied
-		/// Write one verified fragment to its file. Refuses to write a piece that
-		/// is not verified or a fragment outside the piece.
+		/// Write one verified fragment to its file. Refuses to write a piece
+		/// that is not verified or a fragment outside the piece.
 		bool Dump (PieceFileFragment && fragment);
 		bool Load (PieceFileFragment && fragment);
 		bool HasData () const;
@@ -602,7 +630,8 @@ namespace torrents
 		void MarkCorrupt ();
 		void InvalidateAllBlocks () { MarkCorrupt (); }
 		// Drops the data buffer while preserving the complete/verified state.
-		// Used to evict idle pieces without forgetting that they are complete.
+		// Used to evict idle pieces without forgetting that they are
+		// complete.
 		void ReleaseData ();
 		void Reset ();
 
@@ -629,11 +658,12 @@ namespace torrents
 	};
 
 	/// Status vocabulary presented to the TUI, RPC and Android clients.
-	/// Torrent::GetStatus() derives the value from the stopped flag, completion
-	/// and an active local verification pass; nothing here is persisted. The
-	/// engine currently produces only Stopped, VerifyingLocalData, Downloading
-	/// or Seeding, so the queued entries remain console/wire vocabulary: adding
-	/// a queued transition requires teaching every status renderer about it.
+	/// Torrent::GetStatus() derives the value from the stopped flag,
+	/// completion and an active local verification pass; nothing here is
+	/// persisted. The engine currently produces only Stopped,
+	/// VerifyingLocalData, Downloading or Seeding, so the queued entries
+	/// remain console/wire vocabulary: adding a queued transition requires
+	/// teaching every status renderer about it.
 	enum TorrentStatus
 	{
 		eTorrentStatusStopped = 0,
@@ -659,9 +689,9 @@ namespace torrents
 
 	using RequestedBlock = std::tuple<uint32_t, uint32_t, uint32_t>; // (index, offset, len)
 
-	// Pure tracker announce scheduling arithmetic, shared by the HTTP and the
-	// datagram tracker responses. Wire values are seconds (BEP 3); results are
-	// milliseconds to match Torrent::TrackerStats.
+	// Pure tracker announce scheduling arithmetic, shared by the HTTP and
+	// the datagram tracker responses. Wire values are seconds (BEP 3);
+	// results are milliseconds to match Torrent::TrackerStats.
 	struct TrackerSchedule
 	{
 		// Tracker-advertised "interval" in seconds, floored at
@@ -672,23 +702,24 @@ namespace torrents
 		// announce floor is stored as sent: it can only raise, never lower,
 		// the effective interval.
 		static int AdvertisedMinInterval (int64_t minIntervalSeconds);
-		// Effective interval: the advertised value raised to a larger advertised
-		// minimum and to MIN_TRACKER_ANNOUNCE_INTERVAL.
+		// Effective interval: the advertised value raised to a larger
+		// advertised minimum and to MIN_TRACKER_ANNOUNCE_INTERVAL.
 		static int EffectiveInterval (int interval, int minInterval);
 		// Response without "interval": re-base at the announce floor.
 		static int DefaultInterval (int minInterval);
 		// Interval after a consecutive failure. The first failure starts at
-		// MIN_TRACKER_REQUESTS_INTERVAL so a retry stays short, each later one
-		// doubles, and the ladder stops at MAX_TRACKER_FAILURE_BACKOFF
+		// MIN_TRACKER_REQUESTS_INTERVAL so a retry stays short, each later
+		// one doubles, and the ladder stops at MAX_TRACKER_FAILURE_BACKOFF
 		// (30 min). A larger advertised minimum still governs. A
 		// previousFailureInterval of 0 means no failure is pending.
 		static int FailureInterval (int previousFailureInterval, int minInterval);
 	};
 
-	// Tracker "left"/"completed" announce parameters. Deliberately separate
-	// from UI/RPC progress and from Torrent::IsComplete(): BEP 3 describes the
-	// whole torrent to the swarm, while a skip-selected torrent is reported as
-	// complete locally and keeps seeding. See Torrent::GetAnnounceProgress().
+	// Tracker "left"/"completed" announce parameters. Deliberately
+	// separate from UI/RPC progress and from Torrent::IsComplete(): BEP 3
+	// describes the whole torrent to the swarm, while a skip-selected
+	// torrent is reported as complete locally and keeps seeding. See
+	// Torrent::GetAnnounceProgress().
 	struct AnnounceProgress
 	{
 		int64_t left; // bytes still missing in the whole torrent ("left")
@@ -703,17 +734,19 @@ namespace torrents
 		ePeerConnectionOriginDHT
 	};
 
-	// Per-torrent peer-candidate table. PEX and DHT offer destinations that are
-	// then dialed once and forgotten; without a table the same candidate is
-	// re-dialed at every message, and 40 connections times 100 candidates per
-	// minute can starve the dial budget. The table is bounded, dedupes, expires
-	// per origin, remembers failed attempts and is only ever touched on the
-	// torrent service thread (like the connection and piece state).
+	// Per-torrent peer-candidate table. PEX and DHT offer destinations
+	// that are then dialed once and forgotten; without a table the same
+	// candidate is re-dialed at every message, and 40 connections times
+	// 100 candidates per minute can starve the dial budget. The table is
+	// bounded, dedupes, expires per origin, remembers failed attempts and
+	// is only ever touched on the torrent service thread (like the
+	// connection and piece state).
 	constexpr size_t MAX_PEER_CANDIDATES = 256;
 	// Per-origin fixed (non-sliding) admission window.
 	constexpr size_t MAX_PEER_CANDIDATES_PER_WINDOW = 100;
 	constexpr uint64_t PEER_CANDIDATE_WINDOW = 60; // in seconds
-	// A PEX candidate is short-lived gossip; a DHT peer is worth keeping longer.
+	// A PEX candidate is short-lived gossip; a DHT peer is worth keeping
+	// longer.
 	constexpr uint64_t PEER_CANDIDATE_PEX_TTL = 1800; // in seconds
 	constexpr uint64_t PEER_CANDIDATE_DHT_TTL = 10800; // in seconds
 	constexpr uint64_t PEER_CANDIDATE_RETRY_DELAY = 30; // in seconds
@@ -735,8 +768,9 @@ namespace torrents
 		size_t admitted = 0;
 	};
 
-	// Pure candidate lifetime/backoff rules, socket-free and clock-parameterised
-	// so the regression test can pin them without a Torrent or a timer.
+	// Pure candidate lifetime/backoff rules, socket-free and
+	// clock-parameterised so the regression test can pin them without a
+	// Torrent or a timer.
 	struct PeerCandidatePolicy
 	{
 		static constexpr uint64_t Ttl (PeerConnectionOrigin origin)
@@ -758,11 +792,11 @@ namespace torrents
 			return delay < PEER_CANDIDATE_MAX_RETRY_DELAY ? delay : PEER_CANDIDATE_MAX_RETRY_DELAY;
 		}
 
-		// True when a remembered candidate may be dialed at `now`.
-		// Not dialable: without a clock, outside its per-origin TTL, while the
-		// backoff after a previous attempt is still running, after the failure
-		// budget is spent, or when the monotonic clock went backwards (a
-		// regression must never wrap `now - added` into a fresh lifetime).
+		// True when a remembered candidate may be dialed at `now`. Not
+		// dialable: without a clock, outside its per-origin TTL, while the
+		// backoff after a previous attempt is still running, after the
+		// failure budget is spent, or when the monotonic clock went backwards
+		// (a regression must never wrap `now - added` into a fresh lifetime).
 		static constexpr bool IsUsable (
 			uint64_t added, uint64_t lastAttempt, uint32_t failures, uint64_t now, PeerConnectionOrigin origin)
 		{
@@ -776,43 +810,46 @@ namespace torrents
 	};
 
 	class PeerConnection;
-	/// One torrent's metadata, piece map, peer candidates and tracker state.
+	/// One torrent's metadata, piece map, peer candidates and tracker
+	/// state.
 	///
-	/// Thread affinity: mutators and the connection/piece/tracker bookkeeping
-	/// run on the owning TorrentsTunnel service thread. The exceptions are
-	/// explicit: the atomics (completion, error, removal, verification flags)
-	/// exist because the disk service publishes staged filesystem errors and
-	/// timers poll progress, while Piece and TorrentFile serialize their own
-	/// heap and disk access per object. Any new cross-thread reader needs an
-	/// atomic or a documented lock.
+	/// Thread affinity: mutators and the connection/piece/tracker
+	/// bookkeeping run on the owning TorrentsTunnel service thread. The
+	/// exceptions are explicit: the atomics (completion, error, removal,
+	/// verification flags) exist because the disk service publishes staged
+	/// filesystem errors and timers poll progress, while Piece and
+	/// TorrentFile serialize their own heap and disk access per object.
+	/// Any new cross-thread reader needs an atomic or a documented lock.
 	///
-	/// Load-bearing invariants:
-	/// - The retained v1 `info` bytes and their SHA-1 infohash are the identity;
-	///   a .torrent rewrite must copy those bytes verbatim.
-	/// - Completion is selection-based, while verification and storage flushing
-	///   are per piece. Only a complete, hash-verified and not-still-saving
-	///   piece may be advertised, served or counted (IsPieceProgressComplete).
-	/// - A private swarm suppresses DHT, PEX and comment exchange once metadata
-	///   arrives; peers learned from public gossip before that are purged.
-	/// - MarkRemoved() is a terminal tombstone: queued work may finish, but no
-	///   new job may start and the infohash stays reserved until cleanup ends.
+	/// Load-bearing invariants: - The retained v1 `info` bytes and their
+	/// SHA-1 infohash are the identity; a .torrent rewrite must copy those
+	/// bytes verbatim. - Completion is selection-based, while verification
+	/// and storage flushing are per piece. Only a complete, hash-verified
+	/// and not-still-saving piece may be advertised, served or counted
+	/// (IsPieceProgressComplete). - A private swarm suppresses DHT, PEX
+	/// and comment exchange once metadata arrives; peers learned from
+	/// public gossip before that are purged. - MarkRemoved() is a terminal
+	/// tombstone: queued work may finish, but no new job may start and the
+	/// infohash stays reserved until cleanup ends.
 	class Torrent final
 	{
 		using TrackerStats = std::tuple<std::unordered_set<i2p::data::IdentHash>, int, uint64_t, int, int, uint64_t,
 			std::string, int, int>;
-		// (peers, interval, next tracker request time in monotonic milliseconds,
-		//  seeders, leechers, last update time in seconds since epoch, error,
-		//  minimum interval announced by the tracker in milliseconds,
-		//  consecutive-failure retry interval in milliseconds, 0 on success)
+		// (peers, interval, next tracker request time in monotonic
+		// milliseconds, seeders, leechers, last update time in seconds since
+		// epoch, error, minimum interval announced by the tracker in
+		// milliseconds, consecutive-failure retry interval in milliseconds, 0
+		// on success)
 	public:
 		using InfoHash = std::array<uint8_t, SHA_DIGEST_LENGTH>;
 		// Per-torrent random peer id. Never derived from the tunnel identity.
 		using PeerID = std::array<uint8_t, 20>;
 		using TrackerTiers = std::vector<std::vector<std::string>>;
-		// Pure metadata builder for the storage/hash worker. Piece hashes cover
-		// concatenated files in the supplied order, including file boundaries.
-		// Empty relative paths denote a single file; otherwise all paths are
-		// relative to name. No filesystem or network operation is performed.
+		// Pure metadata builder for the storage/hash worker. Piece hashes
+		// cover concatenated files in the supplied order, including file
+		// boundaries. Empty relative paths denote a single file; otherwise
+		// all paths are relative to name. No filesystem or network operation
+		// is performed.
 		static std::shared_ptr<Torrent> CreateV1 (std::string_view name,
 			const std::vector<std::pair<std::filesystem::path, size_t>> & files, size_t pieceLength,
 			const std::vector<InfoHash> & pieceHashes, const TrackerTiers & trackers = { },
@@ -820,38 +857,43 @@ namespace torrents
 
 		Torrent (std::string_view buf);
 		Torrent (const InfoHash & infoHash);
-		/// Parse one `info` dictionary as a value prefix and derive the length,
-		/// piece length, piece map, files and privacy flag.
-		/// @param buf Encoded info dictionary; trailing bytes are not consumed.
-		/// @return Bytes consumed, or 0 when the dictionary itself is malformed.
-		/// @post The raw info bytes and their infohash are retained even when a
-		/// policy check (version, name, file layout) recorded m_Error, because a
-		/// caller may still report the failure; the torrent is stopped in that
-		/// case and must not be inserted as usable.
+		/// Parse one `info` dictionary as a value prefix and derive the
+		/// length, piece length, piece map, files and privacy flag.
+		/// @param buf Encoded info dictionary; trailing bytes are not
+		///            consumed.
+		/// @return Bytes consumed, or 0 when the dictionary itself is
+		///         malformed.
+		/// @post The raw info bytes and their infohash are retained
+		///       even when a policy check (version, name, file layout)
+		///       recorded m_Error, because a caller may still report the
+		///       failure; the torrent is stopped in that case and must not be
+		///       inserted as usable.
 		size_t ParseInfo (std::string_view buf);
 		/// Rebuild the .torrent bencode from the retained info bytes plus the
-		/// current trackers, comment, created-by and bounded unknown top-level
-		/// keys.
+		/// current trackers, comment, created-by and bounded unknown
+		/// top-level keys.
 		/// @return The file content, or an empty string when no complete info
 		/// dictionary is held (a metadata-less magnet has nothing to write).
 		std::string CreateTorrentFileContent () const;
-		/// Parse one bounded HTTP tracker response: interval/min interval, peer
-		/// list, seeder/leecher counts and the opaque tracker id.
-		/// @warning A malformed, oversized or error-status response is not applied
-		/// as a partial update; it records a tracker failure so the retry ladder,
-		/// not the advertised interval, schedules the next attempt.
+		/// Parse one bounded HTTP tracker response: interval/min interval,
+		/// peer list, seeder/leecher counts and the opaque tracker id.
+		/// @warning A malformed, oversized or error-status response
+		///          is not applied as a partial update; it records a tracker
+		///          failure so the retry ladder, not the advertised interval,
+		///          schedules the next attempt.
 		void ParseTrackerResponse (size_t trackerID, std::string_view buf);
 		/// Apply a BEP 15 announce result: advertised interval, bounded peer
 		/// hashes and swarm counts. Datagram announces stay outside the HTTP
-		/// single-flight registry, so the caller owns transaction correlation.
+		/// single-flight registry, so the caller owns transaction
+		/// correlation.
 		void HandleDatagramTrackerResponse (size_t trackerID, uint32_t interval, const uint8_t * hashes,
 			size_t hashesLen, int numSeeders, int numLeechers);
 
 		bool IsComplete () const { return m_IsComplete.load (std::memory_order_acquire); }
 		void SetComplete ();
 		bool IsStopped () const { return m_IsStopped; }
-		// Stopping also purges the peer-candidate table: a stopped torrent must
-		// not keep a dialable backlog across a stop/start cycle.
+		// Stopping also purges the peer-candidate table: a stopped torrent
+		// must not keep a dialable backlog across a stop/start cycle.
 		void SetStopped (bool stopped);
 		bool IsActive () const { return !m_Connections.empty (); }
 		TorrentStatus GetStatus () const;
@@ -872,17 +914,19 @@ namespace torrents
 		// peers. The revision-aware request throttle still applies; no
 		// unsolicited comment push is invented.
 		void PublishComments ();
-		// Service-thread only. Per-torrent admission for new comment entries: a
-		// fixed 60 s window (MAX_COMMENT_ENTRIES_PER_TORRENT_WINDOW, monotonic
-		// seconds) that is independent of peers, so reconnecting cannot refill
-		// the store faster than one torrent-wide budget. Charges `count` and
-		// returns false when the window cannot take all of it (nothing is
-		// charged then). count == 0 always succeeds without consuming the
-		// window. Callers must already have checked enabled/private/valid.
+		// Service-thread only. Per-torrent admission for new comment entries:
+		// a fixed 60 s window (MAX_COMMENT_ENTRIES_PER_TORRENT_WINDOW,
+		// monotonic seconds) that is independent of peers, so reconnecting
+		// cannot refill the store faster than one torrent-wide budget.
+		// Charges `count` and returns false when the window cannot take all
+		// of it (nothing is charged then). count == 0 always succeeds without
+		// consuming the window. Callers must already have checked
+		// enabled/private/valid.
 		bool AdmitCommentEntries (size_t count, uint64_t nowSeconds);
 		int GetAnnounceTrackerID () const { return m_AnnounceTrackerID; }
 		void SetAnnounceTrackerID (int trackerID) { m_AnnounceTrackerID = trackerID; }
-		// Per-torrent random 20-byte peer id used in handshakes and announces.
+		// Per-torrent random 20-byte peer id used in handshakes and
+		// announces.
 		const PeerID & GetPeerID () const { return m_PeerID; }
 		// Opaque tracker id (BEP 3 "tracker id") echoed on later announces.
 		std::string GetTrackerID (size_t trackerID) const;
@@ -915,15 +959,17 @@ namespace torrents
 		// Service-thread policy only; metadata, payload and resume bitfields
 		// retain all files. Shared boundary pieces use the maximum priority.
 		int GetFilePriority (size_t index) const;
-		/// Set one file priority: 0 = skipped, 1 = normal, 2 = high.
-		/// The change rebuilds piece priorities, clears completion if a newly
-		/// selected file is incomplete, and refreshes every connection's interest.
+		/// Set one file priority: 0 = skipped, 1 = normal, 2 = high. The
+		/// change rebuilds piece priorities, clears completion if a newly
+		/// selected file is incomplete, and refreshes every connection's
+		/// interest.
 		/// @return false for an out-of-range index or a value above 2.
 		bool SetFilePriority (size_t index, uint8_t priority);
 		std::vector<uint8_t> GetFilePriorities () const { return m_FilePriorities; }
-		/// Replace the whole priority vector at once (used when restoring local
-		/// state). Rejected while the torrent has a metadata error, is invalid or
-		/// receives a vector whose size or values do not match the file set.
+		/// Replace the whole priority vector at once (used when restoring
+		/// local state). Rejected while the torrent has a metadata error, is
+		/// invalid or receives a vector whose size or values do not match the
+		/// file set.
 		bool SetFilePriorities (const std::vector<uint8_t> & priorities);
 		uint8_t GetPiecePriority (size_t index) const;
 		size_t GetSelectedWantedBytes () const;
@@ -950,8 +996,8 @@ namespace torrents
 		// Tracker announce parameters. "left" is the whole-torrent remaining
 		// bytes (GetFullLeft()), or the phony 1 while no piece exists yet
 		// (magnet/BEP 9 pending); "completed" requires every piece to be
-		// verified, matching Java 2.14.0's TrackerClient. A skip-selected torrent
-		// can be IsComplete() and still advertise left > 0 without
+		// verified, matching Java 2.14.0's TrackerClient. A skip-selected
+		// torrent can be IsComplete() and still advertise left > 0 without
 		// event=completed; only the tracker view changes, never the local
 		// progress semantics.
 		AnnounceProgress GetAnnounceProgress () const;
@@ -974,18 +1020,19 @@ namespace torrents
 		// satisfy this, so .part files are not promoted to final names until
 		// the local data has been verified.
 		bool AreAllPiecesVerified () const;
-		// True when every piece that belongs to at least one selected file has
-		// been completed and hash-verified in this session. An empty selection
-		// is complete by definition.
+		// True when every piece that belongs to at least one selected file
+		// has been completed and hash-verified in this session. An empty
+		// selection is complete by definition.
 		bool AreAllSelectedPiecesVerified () const;
 		bool IsFileComplete (size_t index) const;
 		// Best-effort corrupt-peer accounting. A rejected piece may have been
 		// assembled from several peers' blocks, so a hash mismatch can only
-		// charge the connection that delivered the block completing it; a peer
-		// that contributed an earlier, fine-looking block is not identifiable
-		// after the fact. The table is in-memory, per-torrent and bounded: no
-		// ban is persisted, no wire format changes, and the only effect is that
-		// the charged connection is closed at PEER_PENALTY_THRESHOLD.
+		// charge the connection that delivered the block completing it; a
+		// peer that contributed an earlier, fine-looking block is not
+		// identifiable after the fact. The table is in-memory, per-torrent
+		// and bounded: no ban is persisted, no wire format changes, and the
+		// only effect is that the charged connection is closed at
+		// PEER_PENALTY_THRESHOLD.
 		static constexpr size_t MAX_PENALIZED_PEERS = 64;
 		static constexpr uint32_t PEER_PENALTY_THRESHOLD = 3;
 		// Service-thread only. Returns the peer's failure count after the
@@ -999,31 +1046,34 @@ namespace torrents
 		}
 		size_t GetNumPieceFailurePeers () const { return m_PeerPieceFailures.size (); }
 		void SetSelectedComplete ();
-		/// Build the BEP 3 bitfield from the pieces that may be advertised now.
-		/// A piece still being written is reported as absent, so this can differ
-		/// from the resume bitmap.
-		/// @return (bitfield, true = all set, false = none set, indeterminate =
-		/// mixed). A metadata-less torrent returns an empty bitfield and false.
+		/// Build the BEP 3 bitfield from the pieces that may be advertised
+		/// now. A piece still being written is reported as absent, so this
+		/// can differ from the resume bitmap.
+		/// @return (bitfield, true = all set, false = none set,
+		///         indeterminate = mixed). A metadata-less torrent returns an
+		///         empty bitfield and false.
 		std::pair<std::vector<uint8_t>, boost::logic::tribool>
 		CreateBitfield () const; // (bitfield, true - all false - none)
 		// Exact wire length and zero spare bits. Separate from ApplyBitfield
 		// because a valid partial resume is not "complete".
 		bool IsBitfieldValid (const std::vector<uint8_t> & bitfield) const;
-		/// Mark the pieces named by a previously validated bitfield as complete.
-		/// Completion only claims that bytes should be on disk: the pieces stay
-		/// unverified and must be hashed before serving.
+		/// Mark the pieces named by a previously validated bitfield as
+		/// complete. Completion only claims that bytes should be on disk: the
+		/// pieces stay unverified and must be hashed before serving.
 		/// @return true when the bitfield marked every piece.
 		bool ApplyBitfield (const std::vector<uint8_t> & bitfield); // return true if complete
 		std::unordered_set<i2p::data::IdentHash> GetNonConnectedPeers ();
 		std::unordered_set<i2p::data::IdentHash> GetNonConnectedPeers (size_t trackerID);
-		/// Pick the next outbound block for one connection.
-		/// The highest eligible piece priority wins; within it the active piece
-		/// is continued and new pieces are ordered rarest-first with a random
+		/// Pick the next outbound block for one connection. The highest
+		/// eligible piece priority wins; within it the active piece is
+		/// continued and new pieces are ordered rarest-first with a random
 		/// tiebreak. BEP 6 suggestions never override that policy.
-		/// @param conn Connection whose remote bitfield constrains eligibility;
-		/// may be null to use the unconstrained policy.
+		/// @param conn Connection whose remote bitfield
+		///             constrains eligibility; may be null to use the
+		///             unconstrained policy.
 		/// @param skipRequested Exclude pieces already requested elsewhere.
-		/// @return (index, offset, len), or (0, 0, 0) when nothing is eligible.
+		/// @return (index, offset, len), or (0, 0, 0) when nothing is
+		///         eligible.
 		RequestedBlock GetNextBlockToRequest (std::shared_ptr<PeerConnection> conn, bool skipRequested = true);
 		std::vector<PieceFileFragment> GetPieceFileFragments (int index) const;
 		// Verified-and-flushed bytes per file. A complete-but-unverified or
@@ -1031,11 +1081,11 @@ namespace torrents
 		// 100% while HAVE and serving still withhold its pieces.
 		std::vector<size_t> GetFilesCompleted () const;
 		/// Periodic per-torrent maintenance driven by the status timer: prune
-		/// expired connections and candidates, then release idle piece memory.
-		/// Evicting a complete piece drops only its buffer (it stays complete and
-		/// verified); an incomplete piece loses its outstanding requests. Only
-		/// corruption calls Reset()/MarkCorrupt(), which makes a complete piece
-		/// downloadable again.
+		/// expired connections and candidates, then release idle piece
+		/// memory. Evicting a complete piece drops only its buffer (it stays
+		/// complete and verified); an incomplete piece loses its outstanding
+		/// requests. Only corruption calls Reset()/MarkCorrupt(), which makes
+		/// a complete piece downloadable again.
 		/// @return True when every selected piece is complete.
 		bool UpdateStatus (uint64_t ts); // return true if complete
 		uint64_t GetNextUpdateStatusTime () { return m_NextUpdateStatusTime; }
@@ -1051,45 +1101,49 @@ namespace torrents
 		std::list<std::shared_ptr<PeerConnection>> GetConnections ();
 		bool IsConnectedToPeer (const i2p::data::IdentHash & peer);
 
-		// Peer-candidate table. Service-thread only, never persisted and never
-		// logged with wire operands. PEX and DHT candidates are remembered until
-		// they are dialed, expire, or exhaust their failure budget instead of
-		// being dialed once and forgotten.
+		// Peer-candidate table. Service-thread only, never persisted and
+		// never logged with wire operands. PEX and DHT candidates are
+		// remembered until they are dialed, expire, or exhaust their failure
+		// budget instead of being dialed once and forgotten.
 		//
 		// AddPeerCandidate rejects a zero identity, an already connected peer
-		// and a duplicate (an existing entry keeps its origin, age and failure
-		// history). At MAX_PEER_CANDIDATES it expires dead/old entries and then
-		// evicts one; it fails only if nothing can be evicted. A private,
-		// stopped or removed torrent never accepts candidates.
+		// and a duplicate (an existing entry keeps its origin, age and
+		// failure history). At MAX_PEER_CANDIDATES it expires dead/old
+		// entries and then evicts one; it fails only if nothing can be
+		// evicted. A private, stopped or removed torrent never accepts
+		// candidates.
 		bool AddPeerCandidate (const i2p::data::IdentHash & peer, PeerConnectionOrigin origin, uint64_t nowSeconds);
 		// Charges the per-origin fixed window (100 PEX and 100 DHT candidates
-		// per 60 s, tracked independently) and returns false when `count` does
-		// not fit. Tracker and incoming origins are not peer-supplied gossip and
-		// are unbudgeted. count == 0 always succeeds.
+		// per 60 s, tracked independently) and returns false when `count`
+		// does not fit. Tracker and incoming origins are not peer-supplied
+		// gossip and are unbudgeted. count == 0 always succeeds.
 		bool AdmitPeerCandidates (PeerConnectionOrigin origin, size_t count, uint64_t nowSeconds);
 		// Candidates that are due now (see PeerCandidatePolicy::IsUsable),
-		// excluding peers that are already connected. Order is insertion order,
-		// which the caller may shuffle; at most `max` entries are returned.
+		// excluding peers that are already connected. Order is insertion
+		// order, which the caller may shuffle; at most `max` entries are
+		// returned.
 		std::vector<i2p::data::IdentHash> GetPeerCandidatesToConnect (uint64_t nowSeconds, size_t max) const;
 		void MarkPeerCandidateAttempt (const i2p::data::IdentHash & peer, uint64_t nowSeconds);
 		// Removes the entry: the connection table owns the peer from then on.
 		void MarkPeerCandidateConnected (const i2p::data::IdentHash & peer);
-		// Records a failed dial (backoff 30 s doubling to 900 s). The entry is
-		// kept after PEER_CANDIDATE_MAX_FAILURES so a re-advertisement cannot
-		// reset the history; it is then never dialable and is dropped by
-		// expiration or eviction.
+		// Records a failed dial (backoff 30 s doubling to 900 s). The entry
+		// is kept after PEER_CANDIDATE_MAX_FAILURES so a re-advertisement
+		// cannot reset the history; it is then never dialable and is dropped
+		// by expiration or eviction.
 		void MarkPeerCandidateFailed (const i2p::data::IdentHash & peer, uint64_t nowSeconds);
 		// Drops candidates past their per-origin TTL and permanently failed
 		// ones. Driven by the periodic status tick.
 		void ExpirePeerCandidates (uint64_t nowSeconds);
 		void ClearPeerCandidates ();
 		size_t GetNumPeerCandidates () const { return m_PeerCandidates.size (); }
-		// Origin recorded when the candidate was admitted (PEX or DHT). Returns
-		// PEX for an unknown hash so a dialer cannot invent tracker authority.
+		// Origin recorded when the candidate was admitted (PEX or DHT).
+		// Returns PEX for an unknown hash so a dialer cannot invent tracker
+		// authority.
 		PeerConnectionOrigin GetPeerCandidateOrigin (const i2p::data::IdentHash & peer) const;
 
-		// Service-thread connection accounting. Outbound dials in progress are
-		// accounted for by the tunnel, which also enforces the global limit.
+		// Service-thread connection accounting. Outbound dials in progress
+		// are accounted for by the tunnel, which also enforces the global
+		// limit.
 		bool HasConnectionRoom () const { return m_Connections.size () < MAX_PEERS_PER_TORRENT; }
 		// Closes one established, idle peer to make room for a new one. Peers
 		// that transfer data or are interested in either direction are never
@@ -1099,8 +1153,8 @@ namespace torrents
 
 		// Bounded local data verification. markAllPieces claims every piece
 		// (used when final-named data already exists); otherwise only pieces
-		// that are already complete and unverified become pending. The pass is
-		// driven one piece at a time by the tunnel's storage service.
+		// that are already complete and unverified become pending. The pass
+		// is driven one piece at a time by the tunnel's storage service.
 		void RequestLocalVerification (bool markAllPieces, bool includeIncomplete = false);
 		// Mark every piece whose fragments are all backed by an existing file
 		// (final or .part). Used on restart when only part of a multi-file
@@ -1113,11 +1167,11 @@ namespace torrents
 		// True only for the caller that starts the single verification chain.
 		bool BeginLocalVerification ();
 		void EndLocalVerification () { m_LocalVerificationActive.store (false, std::memory_order_release); }
-		// Service thread: next complete piece that still needs hashing, or -1.
-		// Clears the request flag when the whole set has been walked.
+		// Service thread: next complete piece that still needs hashing, or
+		// -1. Clears the request flag when the whole set has been walked.
 		int GetNextPieceToVerify ();
-		// Service thread: clears the pending flag; a mismatch has already been
-		// invalidated by the caller.
+		// Service thread: clears the pending flag; a mismatch has already
+		// been invalidated by the caller.
 		void FinishPieceVerification (size_t index);
 
 		uint64_t GetNextTrackerRequestTime (size_t trackerID) const;
@@ -1128,15 +1182,15 @@ namespace torrents
 		void AddDownloaded (size_t add) { m_Downloaded += add; }
 
 		/// Persist the current advertisement bitmap as the .resume state.
-		/// Skipped entirely while removed, path-less or a verification pass is
-		/// still running, because a mid-pass bitmap would claim fewer pieces than
-		/// the data on disk. With a delegated persistence callback there is no
-		/// direct-write fallback: a failed worker write is logged and retried on
-		/// the next call.
+		/// Skipped entirely while removed, path-less or a verification pass
+		/// is still running, because a mid-pass bitmap would claim fewer
+		/// pieces than the data on disk. With a delegated persistence
+		/// callback there is no direct-write fallback: a failed worker write
+		/// is logged and retried on the next call.
 		void SaveTorrentResumeFile ();
 		// Irreversible instance tombstone. IO already running may finish, but
-		// the single disk queue drains it before removal; later jobs must stop.
-		// Also purges the peer-candidate table.
+		// the single disk queue drains it before removal; later jobs must
+		// stop. Also purges the peer-candidate table.
 		void MarkRemoved ();
 		bool IsRemoved () const { return m_Removed.load (std::memory_order_acquire); }
 		using ResumePersistence = std::function<bool (std::span<const uint8_t>, bool remove)>;
@@ -1175,11 +1229,12 @@ namespace torrents
 			return (trackerID < m_TrackerStats.size ()) ? std::get<6> (m_TrackerStats[trackerID]) : "";
 		}
 		void SetTrackerError (size_t trackerID, std::string_view error);
-		// Records a transport/parse/tracker-level failure and schedules the next
-		// attempt on the internal retry ladder: MIN_TRACKER_REQUESTS_INTERVAL
-		// for the first failure, doubling up to MAX_TRACKER_FAILURE_BACKOFF
-		// (30 min). The tracker-advertised interval is left untouched, so a
-		// retry is never delayed to the 15-minute announce floor.
+		// Records a transport/parse/tracker-level failure and schedules the
+		// next attempt on the internal retry ladder:
+		// MIN_TRACKER_REQUESTS_INTERVAL for the first failure, doubling up to
+		// MAX_TRACKER_FAILURE_BACKOFF (30 min). The tracker-advertised
+		// interval is left untouched, so a retry is never delayed to the
+		// 15-minute announce floor.
 		void ReportTrackerFailure (size_t trackerID, std::string_view reason);
 		// Drops tracker peers after the tracker has not produced a successful
 		// response for max(2*interval, 30 min), capped at two hours.
@@ -1206,8 +1261,9 @@ namespace torrents
 		std::atomic<bool> m_Removed { false };
 		std::string m_Name, m_Announce;
 		std::string m_MetaComment, m_CreatedBy;
-		// Raw top-level bencode values other than announce/announce-list/info.
-		// Bounded so a hostile metainfo cannot make a rewrite allocate freely.
+		// Raw top-level bencode values other than
+		// announce/announce-list/info. Bounded so a hostile metainfo cannot
+		// make a rewrite allocate freely.
 		std::vector<std::pair<std::string, std::string>> m_TopLevelExtras;
 		bool m_MetaInfoComplete = true;
 		PeerID m_PeerID { };
@@ -1215,8 +1271,8 @@ namespace torrents
 		bool m_HasExplicitTrackers = false;
 		bool m_IsPrivate = false;
 		TorrentCommentStore m_Comments;
-		// Comment-entry admission window (service thread only): bounds how many
-		// new peer-supplied entries this torrent stores per minute.
+		// Comment-entry admission window (service thread only): bounds how
+		// many new peer-supplied entries this torrent stores per minute.
 		CommentAdmissionWindow m_CommentAdmission;
 		int m_AnnounceTrackerID; // -1 not set
 		std::filesystem::path m_FullPath;
@@ -1230,8 +1286,8 @@ namespace torrents
 			m_Connections; // remote ident hash -> connection
 		// Bounded best-effort corrupt-peer counters (service thread only).
 		std::unordered_map<i2p::data::IdentHash, uint32_t> m_PeerPieceFailures;
-		// Bounded PEX/DHT candidate table and its per-origin admission windows
-		// (service thread only; see PeerCandidatePolicy).
+		// Bounded PEX/DHT candidate table and its per-origin admission
+		// windows (service thread only; see PeerCandidatePolicy).
 		std::vector<PeerCandidate> m_PeerCandidates;
 		PeerCandidateWindow m_PexCandidateWindow;
 		PeerCandidateWindow m_DhtCandidateWindow;
@@ -1254,15 +1310,16 @@ namespace torrents
 	/// One peer-wire connection, owned by the I2PService handler list and
 	/// referenced weakly by the torrent's connection map.
 	///
-	/// All I/O is asynchronous on the tunnel service thread; handlers retain the
-	/// object through shared_from_this(), so Close() may be posted while a read
-	/// or write is still pending. Terminate() must stay the single teardown
-	/// path: it releases outgoing requests, drops the handler and closes the
-	/// stream exactly once.
+	/// All I/O is asynchronous on the tunnel service thread; handlers
+	/// retain the object through shared_from_this(), so Close() may be
+	/// posted while a read or write is still pending. Terminate() must
+	/// stay the single teardown path: it releases outgoing requests, drops
+	/// the handler and closes the stream exactly once.
 	///
-	/// Peer-supplied input is untrusted: message lengths are bounded by the
-	/// receive buffer, piece blocks must be exact aligned ranges, and an
-	/// extension payload is only parsed after a gateway that knows its ID.
+	/// Peer-supplied input is untrusted: message lengths are bounded by
+	/// the receive buffer, piece blocks must be exact aligned ranges, and
+	/// an extension payload is only parsed after a gateway that knows its
+	/// ID.
 	class PeerConnection : public i2p::client::I2PServiceHandler, public std::enable_shared_from_this<PeerConnection>
 	{
 		using ExtendedMessageHandler = void (PeerConnection::*) (const uint8_t * buf, size_t len);
@@ -1299,10 +1356,11 @@ namespace torrents
 			return index;
 		}
 		const boost::dynamic_bitset<> & GetRemoteBitfield () const { return m_RemoteBitfield; }
-		// An empty bitfield is `.all()` too, so `.all()` alone cannot mean "the
-		// remote is a seed". The flag is set by bitfield/have_all/have_none
-		// handling and identifies "the remote advertised a set"; the size check
-		// keeps a zero-piece bitset from counting as complete.
+		// An empty bitfield is `.all()` too, so `.all()` alone cannot mean
+		// "the remote is a seed". The flag is set by
+		// bitfield/have_all/have_none handling and identifies "the remote
+		// advertised a set"; the size check keeps a zero-piece bitset from
+		// counting as complete.
 		bool IsRemoteBitfieldReceived () const { return m_RemoteBitfieldReceived; }
 		bool IsRemoteSeed () const
 		{
@@ -1315,9 +1373,10 @@ namespace torrents
 
 		// stats
 		void ResetStats ();
-		/// End-of-torrent peer state: close seeds, reset the transfer counters,
-		/// release every outgoing request and send *not interested*. Called once
-		/// when the local torrent completes, so no further block is requested.
+		/// End-of-torrent peer state: close seeds, reset the transfer
+		/// counters, release every outgoing request and send *not
+		/// interested*. Called once when the local torrent completes, so no
+		/// further block is requested.
 		void TorrentComplete ();
 		uint64_t GetDownloadRate () const { return m_DownloadRate; }
 		uint64_t GetUploadRate () const { return m_UploadRate; }
@@ -1400,8 +1459,8 @@ namespace torrents
 		std::string m_RemoteName; // from BEP10
 		size_t m_MaxNumRequests; // min or from BEP10
 		boost::dynamic_bitset<> m_RemoteBitfield;
-		// Distinguishes a received (even empty) bitfield from "nothing yet", so
-		// an empty bitset is not mistaken for a seed.
+		// Distinguishes a received (even empty) bitfield from "nothing yet",
+		// so an empty bitset is not mistaken for a seed.
 		bool m_RemoteBitfieldReceived = false;
 		bool m_IsHandshakeSent, m_IsEstablished, m_IsChoked, m_IsRemoteChoked, m_IsInterested, m_IsRemoteInterested;
 		uint64_t m_LastReceiveTime, m_LastSendTime; // monotonic seconds
@@ -1421,21 +1480,22 @@ namespace torrents
 		// BEP10
 		std::unordered_map<uint8_t, PeerConnection::ExtendedMessageHandler> m_ExtendedMessageHandlers;
 		// Only the first well-formed BEP10 handshake negotiates and triggers
-		// extensions; a repeated ID-0 frame must not re-run the trigger block.
+		// extensions; a repeated ID-0 frame must not re-run the trigger
+		// block.
 		bool m_ExtendedHandshakeReceived = false;
 		uint8_t m_RemoteMsgIDUtMetadata, m_RemoteMsgIDI2PPEX, m_RemoteMsgIDI2PDHT;
 		// ut_comment: peer capability does not imply local consent.
 		uint8_t m_RemoteMsgIDComment = 0;
 		uint64_t m_CommentWindow = 0, m_LastCommentRequest = 0, m_LastCommentReply = 0;
-		// Store revision observed at the last request: a local mutation may ask
-		// for an immediate refresh, an unchanged revision keeps the 600 s
+		// Store revision observed at the last request: a local mutation may
+		// ask for an immediate refresh, an unchanged revision keeps the 600 s
 		// cadence.
 		uint64_t m_LastCommentRequestRevision = 0;
 		size_t m_CommentBytes = 0, m_CommentMessages = 0;
-		// New entries this connection admitted in the current m_CommentWindow.
-		// It is rolled with that window and capped per connection so a peer
-		// cannot refill the store by reconnecting while the torrent-wide budget
-		// keeps its own limit.
+		// New entries this connection admitted in the current
+		// m_CommentWindow. It is rolled with that window and capped per
+		// connection so a peer cannot refill the store by reconnecting while
+		// the torrent-wide budget keeps its own limit.
 		CommentAdmissionWindow m_CommentEntryWindow;
 		// BEP9
 		size_t m_RemoteMetadataSize;

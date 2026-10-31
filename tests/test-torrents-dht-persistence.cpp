@@ -3,7 +3,8 @@
  * and license details.
  *
  * openi2pd: delegated DHT state persistence regression.
- * Preserves compact NodeInfo bytes and fails closed on invalid storage input.
+ * Preserves compact NodeInfo bytes and fails closed on invalid storage
+ * input.
  */
 #include "TorrentsDHT.h"
 #include "TorrentsTunnel.h"
@@ -55,7 +56,8 @@ int main (int argc, char ** argv)
 	assert (reads == 1 && dht.GetNumNodes () == 1);
 	dht.Stop ();
 	assert (writes == 1 && saved == source);
-	// Partial records must not replace the live routing state or node identity.
+	// Partial records must not replace the live routing state or node
+	// identity.
 	source.push_back (0);
 	dht.Start ();
 	assert (dht.GetNumNodes () == 1);

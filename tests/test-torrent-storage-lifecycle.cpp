@@ -3,7 +3,8 @@
  * and license details.
  *
  * openi2pd: storage capability lifecycle regressions.
- * Prepared for manual CI; checks bounded metadata and payload administration.
+ * Prepared for manual CI; checks bounded metadata and payload
+ * administration.
  */
 #include "../libi2pd_client/TorrentStorageWorker.h"
 #include "../privsep/RunWorker.h"
@@ -53,7 +54,8 @@ int main (int argc, char ** argv)
 	handle = worker.Register ("nested/payload.part", bytes.size (), error, true);
 	assert (handle && worker.Release (handle, error));
 	assert (!worker.Promote ("nested/payload.part", "nested/payload", bytes.size (), error));
-	// Atomic metadata commits are bounded and never permit a general path write.
+	// Atomic metadata commits are bounded and never permit a general path
+	// write.
 	std::string state = ".openi2pd-state/" + std::string (40, 'a') + ".state";
 	std::string large (48 * 1024, 'x');
 	auto data = std::span<const uint8_t> (reinterpret_cast<const uint8_t *> (large.data ()), large.size ());
@@ -76,8 +78,9 @@ int main (int argc, char ** argv)
 	assert (worker.RemoveMetadata ("test.torrent", error));
 	assert (worker.RemoveMetadata ("test.torrent", error));
 	assert (worker.RemoveMetadata (state, error));
-	// Killed-worker staging cannot grow with restart count. Full reserved slots
-	// fail closed and preserve the last committed metadata instead of clobbering.
+	// Killed-worker staging cannot grow with restart count. Full reserved
+	// slots fail closed and preserve the last committed metadata instead
+	// of clobbering.
 	assert (worker.ReplaceMetadata ("test.resume", bytes, error));
 	for (unsigned slot = 0; slot < 8; ++slot)
 	{

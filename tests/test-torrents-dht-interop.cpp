@@ -4,7 +4,10 @@
  *
  * openi2pd: test torrents dht interop.
  *
- * Checks the I2P torrent DHT codec: compact node layout and secure node-ID binding, opaque token bytes, nearest-node selection across buckets, peer-bound routing lookup and removal, seed maintenance and KRPC error envelopes.
+ * Checks the I2P torrent DHT codec: compact node layout and secure
+ * node-ID binding, opaque token bytes, nearest-node selection across
+ * buckets, peer-bound routing lookup and removal, seed maintenance and
+ * KRPC error envelopes.
  *
  */
 
@@ -30,8 +33,9 @@ int main ()
 	// secure-NID binding (Java 2.13.0 NodeInfo, not the public UDP DHT).
 	i2p::data::IdentHash peer;
 	std::memset (peer (), 0x42, peer.len);
-	// A mixed-type values list cannot silently drop an integer and accept the
-	// remaining destination. A malformed result clears any previous output.
+	// A mixed-type values list cannot silently drop an integer and accept
+	// the remaining destination. A malformed result clears any previous
+	// output.
 	const std::string peerBytes (reinterpret_cast<const char *> (peer.data ()), peer.len);
 	std::vector<i2p::data::IdentHash> decodedPeers;
 	assert (DecodeCompactPeers ("l32:" + peerBytes + "e", decodedPeers) == 1);
@@ -59,7 +63,8 @@ int main ()
 	assert (!Node (id, peer, port).VerifyID ());
 
 	// Opaque tokens must retain every byte, including NULs and bytes past
-	// offset eight, when queued for a later announce. No integer conversion.
+	// offset eight, when queued for a later announce. No integer
+	// conversion.
 	auto torrent = std::make_shared<Torrent> (Torrent::InfoHash { });
 	RequestInfo request (torrent, 1);
 	GetPeersToken token (64, '\0');
@@ -74,7 +79,8 @@ int main ()
 	assert (std::get<2> (*emptyToken.tokens.begin ()).empty ());
 
 	// Find the globally nearest nodes even when the result crosses bucket
-	// boundaries; a target's single bucket is not a complete Kademlia answer.
+	// boundaries; a target's single bucket is not a complete Kademlia
+	// answer.
 	NodeID local { };
 	local[0] = 0x80;
 	RoutingTable routing (local);
@@ -83,7 +89,8 @@ int main ()
 	{
 		NodeID candidate { };
 		candidate[0] = 1 + i * 16;
-		// Distinct destinations: the routing table admits at most two node IDs
+		// Distinct destinations: the routing table admits at most two node
+		// IDs
 		// per peer, so reusing one identity would stop after the second node.
 		i2p::data::IdentHash candidatePeer = peer;
 		candidatePeer[1] = static_cast<uint8_t> (i);
@@ -106,9 +113,9 @@ int main ()
 	assert (budget.AddNode (inserted[0]) && budget.AddNode (inserted[1]));
 	assert (budget.GetNextNode () && !budget.GetNextNode ());
 
-	// A timed-out ping only records the peer identity. Resolve it back to the
-	// routing-table node so the heard-from check can use its node ID, and keep
-	// the peer-bound removal scoped to the matching entry.
+	// A timed-out ping only records the peer identity. Resolve it back to
+	// the routing-table node so the heard-from check can use its node ID,
+	// and keep the peer-bound removal scoped to the matching entry.
 	i2p::data::IdentHash pingPeer = peer;
 	pingPeer ()[0] ^= 0x11;
 	NodeID pingNode { };
@@ -152,7 +159,8 @@ int main ()
 	assert (swarm.CleanUp (i2p::util::GetMonotonicSeconds () + DHT_TORRENT_PEER_EXPIRATION_TIME + 1));
 	assert (swarm.GetPeers ().empty ());
 
-	// A single get_peers reply is bounded even when the local swarm map holds
+	// A single get_peers reply is bounded even when the local swarm map
+	// holds
 	// more peers. This caps amplification and per-response follow-up work.
 	DHTTorrent bounded;
 	for (size_t i = 0; i < MAX_DHT_VALUES_PER_RESPONSE + 32; ++i)

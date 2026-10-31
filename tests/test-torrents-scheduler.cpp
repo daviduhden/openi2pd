@@ -4,17 +4,19 @@
  *
  * openi2pd: Torrent transfer-scheduling, accounting and progress tests.
  *
- * Pins the socket-free rules behind the peer scheduler: outbound request
+ * Pins the socket-free rules behind the peer scheduler: outbound
+ * request
  * expiry, epoch-stale block release, actual-length block accounting,
  * verified-completion progress and idle rate decay, plus the bounded
  * best-effort corrupt-peer counters.
  *
- * Everything here is pure arithmetic, metadata or piece state. No stream,
- * io_context, timer, thread or filesystem payload is involved, so the
- * connection-level call sites (ReleaseExpiredOutgoingRequests,
- * UpdateIdleRates, the disk write error path and the hash-mismatch charge)
- * are exercised only through the helpers they use. Those call sites still
- * need a live peer/tunnel run and remain statically reviewed only.
+ * Everything here is pure arithmetic, metadata or piece state. No
+ * stream, io_context, timer, thread or filesystem payload is involved,
+ * so the connection-level call sites (ReleaseExpiredOutgoingRequests,
+ * UpdateIdleRates, the disk write error path and the hash-mismatch
+ * charge) are exercised only through the helpers they use. Those call
+ * sites still need a live peer/tunnel run and remain statically
+ * reviewed only.
  */
 
 #include <cassert>
@@ -50,7 +52,8 @@ Torrent::InfoHash HashBytes (const char * data, size_t len)
 
 int main ()
 {
-	// --- request expiry boundaries -----------------------------------------
+	// --- request expiry boundaries
+	// -----------------------------------------
 	// requestedAt is monotonic seconds; the boundary is inclusive.
 	constexpr uint64_t requestedAt = 1000;
 	assert (!ShouldExpireOutgoingRequest (0, requestedAt + 1000, PEER_REQUEST_TIMEOUT)); // unknown send time
@@ -58,14 +61,16 @@ int main ()
 	assert (!ShouldExpireOutgoingRequest (requestedAt, requestedAt + PEER_REQUEST_TIMEOUT - 1, PEER_REQUEST_TIMEOUT));
 	assert (ShouldExpireOutgoingRequest (requestedAt, requestedAt + PEER_REQUEST_TIMEOUT, PEER_REQUEST_TIMEOUT));
 	assert (ShouldExpireOutgoingRequest (requestedAt, requestedAt + PEER_REQUEST_TIMEOUT + 1, PEER_REQUEST_TIMEOUT));
-	// A clock that appears to move backwards must never expire a fresh request.
+	// A clock that appears to move backwards must never expire a fresh
+	// request.
 	assert (!ShouldExpireOutgoingRequest (requestedAt, requestedAt - 1, PEER_REQUEST_TIMEOUT));
 	// The per-request deadline has to fire before the blanket keep-alive
 	// release, otherwise the stalled-block case is never reached.
 	assert (PEER_REQUEST_TIMEOUT < PEER_KEEP_SEND_INTERVAL);
 	assert (PEER_REQUEST_TIMEOUT > 0);
 
-	// --- idle rate decay ----------------------------------------------------
+	// --- idle rate decay
+	// ----------------------------------------------------
 	assert (DecayPeerRate (0, 0) == 0);
 	assert (DecayPeerRate (0, 10 * PEER_RATE_DECAY_INTERVAL) == 0);
 	assert (DecayPeerRate (1000, 0) == 1000);
@@ -77,20 +82,23 @@ int main ()
 	assert (DecayPeerRate (1000, 10 * PEER_RATE_DECAY_INTERVAL) == 0);
 	// Integer halving has a floor; it must not wrap.
 	assert (DecayPeerRate (1, PEER_RATE_DECAY_INTERVAL) == 0);
-	// The decay window is a scheduler tick multiple, not the 20 ms sampler.
+	// The decay window is a scheduler tick multiple, not the 20 ms
+	// sampler.
 	assert (PEER_RATE_DECAY_INTERVAL > BANDWIDTH_RATE_SAMPLING_INTERVAL);
 
-	// --- verified-completion rule ------------------------------------------
+	// --- verified-completion rule
+	// ------------------------------------------
 	assert (IsPieceProgressComplete (true, true, false));
 	assert (!IsPieceProgressComplete (true, false, false)); // downloaded, not hashed
 	assert (!IsPieceProgressComplete (true, true, true)); // write still in flight
 	assert (!IsPieceProgressComplete (false, true, false));
 	assert (!IsPieceProgressComplete (false, false, false));
 
-	// --- actual-length block accounting ------------------------------------
-	// A single 8192-byte file becomes one 8192-byte piece, whose only block is
-	// shorter than the nominal block size. That wire length is what a peer and
-	// the torrent must be charged.
+	// --- actual-length block accounting
+	// ------------------------------------ A single 8192-byte file becomes
+	// one 8192-byte piece, whose only block is shorter than the nominal
+	// block size. That wire length is what a peer and the torrent must be
+	// charged.
 	std::string small (8192, 'x');
 	auto single = Torrent::CreateV1 (
 		"single", { { "", small.size () } }, MIN_PIECE_LENGTH, { HashBytes (small.data (), small.size ()) });
@@ -106,9 +114,10 @@ int main ()
 	// A full block is still accounted as itself.
 	assert (BlockTransferBytes (REQUEST_BLOCK_SIZE) == REQUEST_BLOCK_SIZE);
 
-	// --- epoch-stale release is a no-op ------------------------------------
-	// A recheck/invalidation bumps the piece epoch. An expiry that carries the
-	// old epoch must not free a block that the new epoch requested.
+	// --- epoch-stale release is a no-op
+	// ------------------------------------ A recheck/invalidation bumps
+	// the piece epoch. An expiry that carries the old epoch must not free
+	// a block that the new epoch requested.
 	const auto staleEpoch = lastPiece.GetBlockEpoch ();
 	lastPiece.MarkCorrupt ();
 	auto [againOffset, againLength] = lastPiece.GetNextBlockToRequest ();
@@ -125,9 +134,10 @@ int main ()
 		lastPiece.BlockReceived (reinterpret_cast<const uint8_t *> (small.data ()), releasedLength, releasedOffset));
 	assert (lastPiece.VerifyHash ());
 
-	// --- per-file progress with empty, shared and saving pieces ------------
-	// a[8192] + empty[0] + b[16384] + c[8192] over two 16384-byte pieces, so
-	// every file boundary case (empty file, piece shared by two files) appears.
+	// --- per-file progress with empty, shared and saving pieces
+	// ------------ a[8192] + empty[0] + b[16384] + c[8192] over two
+	// 16384-byte pieces, so every file boundary case (empty file, piece
+	// shared by two files) appears.
 	std::string payload;
 	payload.reserve (32768);
 	payload.append (8192, 'a');
@@ -139,8 +149,8 @@ int main ()
 			HashBytes (payload.data () + MIN_PIECE_LENGTH, MIN_PIECE_LENGTH) });
 	assert (torrent && torrent->GetNumPieces () == 2 && torrent->GetFiles ().size () == 4);
 
-	// Freshly created pieces are incomplete and never verified, so no file may
-	// claim progress yet (this is the 100%-while-withheld regression).
+	// Freshly created pieces are incomplete and never verified, so no file
+	// may claim progress yet (this is the 100%-while-withheld regression).
 	assert (!torrent->GetPiece (0).IsComplete () && !torrent->GetPiece (0).IsVerified ());
 	assert (torrent->GetFilesCompleted () == std::vector<size_t> ({ 0, 0, 0, 0 }));
 	assert (!torrent->IsFileComplete (0) && !torrent->IsFileComplete (2));
@@ -156,8 +166,8 @@ int main ()
 	assert (first.IsComplete () && !first.IsVerified ());
 	assert (torrent->GetFilesCompleted () == std::vector<size_t> ({ 0, 0, 0, 0 }));
 	assert (first.VerifyHash ());
-	// Piece 0 holds all of a and the first half of b; the empty file is 0 and
-	// c has not started.
+	// Piece 0 holds all of a and the first half of b; the empty file is 0
+	// and c has not started.
 	assert (torrent->GetFilesCompleted () == std::vector<size_t> ({ 8192, 0, 8192, 0 }));
 	assert (torrent->IsFileComplete (0)); // fully covered by a verified piece
 	assert (torrent->IsFileComplete (1)); // zero-length file needs no piece
@@ -183,7 +193,8 @@ int main ()
 	second.SetIsSaving (false);
 	assert (torrent->GetFilesCompleted () == std::vector<size_t> ({ 8192, 0, 16384, 8192 }));
 
-	// --- bounded best-effort corrupt-peer counters -------------------------
+	// --- bounded best-effort corrupt-peer counters
+	// -------------------------
 	assert (Torrent::PEER_PENALTY_THRESHOLD == 3);
 	assert (Torrent::MAX_PENALIZED_PEERS == 64);
 	const auto bad = MakePeer (1);
@@ -191,7 +202,8 @@ int main ()
 	assert (torrent->ChargePieceFailure (bad) == 1 && !torrent->IsPeerPenalized (bad));
 	assert (torrent->ChargePieceFailure (bad) == 2 && !torrent->IsPeerPenalized (bad));
 	assert (torrent->ChargePieceFailure (bad) == 3 && torrent->IsPeerPenalized (bad));
-	// A penalized peer keeps counting; only the disconnect threshold is new.
+	// A penalized peer keeps counting; only the disconnect threshold is
+	// new.
 	assert (torrent->ChargePieceFailure (bad) == 4 && torrent->IsPeerPenalized (bad));
 	const auto other = MakePeer (2);
 	assert (torrent->ChargePieceFailure (other) == 1 && !torrent->IsPeerPenalized (other));
@@ -201,7 +213,8 @@ int main ()
 	while (torrent->GetNumPieceFailurePeers () < Torrent::MAX_PENALIZED_PEERS)
 		assert (torrent->ChargePieceFailure (MakePeer (nextPeerId++)) == 1);
 	assert (torrent->GetNumPieceFailurePeers () == Torrent::MAX_PENALIZED_PEERS);
-	// The table is bounded and never evicts: a new peer is simply not tracked.
+	// The table is bounded and never evicts: a new peer is simply not
+	// tracked.
 	assert (torrent->ChargePieceFailure (MakePeer (nextPeerId++)) == 0);
 	assert (torrent->GetNumPieceFailurePeers () == Torrent::MAX_PENALIZED_PEERS);
 	assert (!torrent->IsPeerPenalized (MakePeer (nextPeerId)));

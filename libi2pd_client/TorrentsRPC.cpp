@@ -4,11 +4,12 @@
  *
  * openi2pd: TorrentsRPC.
  *
- * Implements a Transmission-style JSON-RPC endpoint restricted to loopback
- * HTTP, with optional Basic authentication, strict POST and application/json
- * checks, and bounded bodies, fields and torrent IDs. A subset of the
- * Transmission method set is marshalled to the torrent service thread with a
- * fixed timeout so a stalled engine cannot pin an RPC thread.
+ * Implements a Transmission-style JSON-RPC endpoint restricted to
+ * loopback HTTP, with optional Basic authentication, strict POST and
+ * application/json checks, and bounded bodies, fields and torrent IDs.
+ * A subset of the Transmission method set is marshalled to the torrent
+ * service thread with a fixed timeout so a stalled engine cannot pin an
+ * RPC thread.
  *
  */
 
@@ -46,8 +47,9 @@ namespace torrents
 {
 	namespace
 	{
-		// A maximum-size v1 metainfo is MAX_NUM_TORRENT_PIECES * SHA_DIGEST_LENGTH
-		// bytes of piece hashes plus a small amount of metadata, base64 encoded.
+		// A maximum-size v1 metainfo is MAX_NUM_TORRENT_PIECES *
+		// SHA_DIGEST_LENGTH bytes of piece hashes plus a small amount of
+		// metadata, base64 encoded.
 		constexpr size_t MAX_RPC_BODY_SIZE = 32 * 1024 * 1024; // 32 MiB
 		constexpr size_t MAX_RPC_METADATA_SIZE = 24 * 1024 * 1024; // 24 MiB
 		constexpr size_t MAX_RPC_MAGNET_LENGTH = 2048;
@@ -84,8 +86,8 @@ namespace torrents
 		}
 
 		// One RPC service round-trip is bounded by the same interval as the
-		// control plane. A stalled or stopped tunnel service must never pin an
-		// RPC I/O thread indefinitely.
+		// control plane. A stalled or stopped tunnel service must never pin
+		// an RPC I/O thread indefinitely.
 		constexpr std::chrono::milliseconds RPC_SERVICE_TIMEOUT = CONTROL_DEFAULT_TIMEOUT;
 		constexpr std::string_view RPC_SERVICE_TIMEOUT_ERROR = "Torrent service timeout";
 		constexpr std::string_view RPC_SERVICE_FAILURE_ERROR = "Internal error";
@@ -491,7 +493,8 @@ namespace torrents
 		if (!GetTorrentIds (arguments, torrentIds)) return ErrorResponse (GetTag (jsonRequest), "Invalid torrent ids");
 		if (arguments.contains ("ids"))
 		{
-			// An explicit empty list is a no-op; only a missing ids member means all.
+			// An explicit empty list is a no-op; only a missing ids member means
+			// all.
 			for (auto id : torrentIds) m_Tunnel->RemoveTorrent (id, deleteFiles);
 		}
 		else
@@ -993,8 +996,9 @@ namespace torrents
 
 	std::string JSONRPCHandler::HandleSessionStats (boost::json::object && jsonRequest)
 	{
-		// Counters and peer maps belong to the tunnel service thread. Aggregate
-		// them there instead of walking live connections from the RPC thread.
+		// Counters and peer maps belong to the tunnel service thread.
+		// Aggregate them there instead of walking live connections from the
+		// RPC thread.
 		auto outcome = RunOnTorrentService (m_Tunnel,
 			[tunnel = m_Tunnel] ()
 			{

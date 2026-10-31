@@ -59,7 +59,8 @@ int main ()
 	assert (torrent->IsComplete () && torrent->GetStatus () == eTorrentStatusSeeding);
 	assert (!torrent->AreAllPiecesVerified () && torrent->GetFullLeft () == 16384);
 	assert (!torrent->GetPiece (2).IsComplete () && !torrent->GetPiece (2).IsVerified ());
-	// A boundary piece includes skipped bytes and must retain both fragments.
+	// A boundary piece includes skipped bytes and must retain both
+	// fragments.
 	auto fragments = torrent->GetPieceFileFragments (0);
 	assert (fragments.size () == 2 && fragments[0].fragmentSize == 8192 && fragments[1].fragmentSize == 8192);
 	assert (torrent->SetFilePriorities ({ 0, 0, 0, 0 }));
@@ -67,13 +68,16 @@ int main ()
 	assert (torrent->GetSelectedVerifiedBytes () == 0);
 	assert (!torrent->AreAllPiecesVerified ());
 	assert (torrent->GetLeft () == 0);
-	// Tracker progress is whole-torrent based even after selected completion:
-	// "left" counts the skipped piece and event=completed is withheld, while
+	// Tracker progress is whole-torrent based even after selected
+	// completion:
+	// "left" counts the skipped piece and event=completed is withheld,
+	// while
 	// the local status above already reports seeding.
 	auto announce = torrent->GetAnnounceProgress ();
 	assert (announce.left == 16384 && !announce.completed);
-	// Once the last piece is present and verified, the same helper reports the
-	// whole payload as complete without changing any selection-based value.
+	// Once the last piece is present and verified, the same helper reports
+	// the whole payload as complete without changing any selection-based
+	// value.
 	{
 		auto & piece = torrent->GetPiece (2);
 		piece.MarkCorrupt (); // create the block map of a never-requested piece

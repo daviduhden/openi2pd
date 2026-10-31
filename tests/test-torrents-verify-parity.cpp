@@ -2,16 +2,17 @@
  * See the LICENSE file at the top of the project tree for copyright
  * and license details.
  *
- * openi2pd: Torrent resume verification, tracker peer parsing and peer-id
- * parity regression tests.
+ * openi2pd: Torrent resume verification, tracker peer parsing and
+ * peer-id parity regression tests.
  *
  * Covers the I2PSnark-parity fixes that can be exercised without a live
- * network: resume bitfields and pre-existing final-named data are hashed
- * before availability is published, tracker responses accept both compact and
- * dict-based I2P peer lists with per-entry rejection and a peer cap,
- * min-interval/tracker-id handling, percent-encoded query values and
- * per-torrent random peer ids. Connection limits, PEX scheduling and private
- * swarm announce selection require a running tunnel and are not covered here.
+ * network: resume bitfields and pre-existing final-named data are
+ * hashed before availability is published, tracker responses accept
+ * both compact and dict-based I2P peer lists with per-entry rejection
+ * and a peer cap, min-interval/tracker-id handling, percent-encoded
+ * query values and per-torrent random peer ids. Connection limits, PEX
+ * scheduling and private swarm announce selection require a running
+ * tunnel and are not covered here.
  *
  */
 
@@ -42,8 +43,9 @@ namespace
 {
 using namespace i2p::torrents;
 
-// Minimal in-memory payload capability: it keeps the test off the filesystem
-// and exercises exactly the TorrentFilePath/Piece path the storage worker uses.
+// Minimal in-memory payload capability: it keeps the test off the
+// filesystem and exercises exactly the TorrentFilePath/Piece path the
+// storage worker uses.
 class MemoryStorage final : public TorrentPayloadStorage
 {
 public:
@@ -110,8 +112,8 @@ struct Fixture
 	std::filesystem::path root { "torrent-verify-root" };
 };
 
-// Two 16 KiB files (one piece each) whose on-disk bytes hash to the piece
-// hashes in the metainfo, so verification can actually succeed.
+// Two 16 KiB files (one piece each) whose on-disk bytes hash to the
+// piece hashes in the metainfo, so verification can actually succeed.
 Fixture MakeVerifiedTorrent (std::string_view name, bool finalNames)
 {
 	Fixture fixture;
@@ -139,9 +141,10 @@ Fixture MakeVerifiedTorrent (std::string_view name, bool finalNames)
 	return fixture;
 }
 
-// Runs the bounded local-verification pass exactly as the tunnel's storage
-// service does: one piece at a time, hash from disk, then either finish it or
-// mark it corrupt. Returns the number of pieces that failed.
+// Runs the bounded local-verification pass exactly as the tunnel's
+// storage service does: one piece at a time, hash from disk, then
+// either finish it or mark it corrupt. Returns the number of pieces
+// that failed.
 size_t RunLocalVerification (Torrent & torrent)
 {
 	size_t failed = 0;
@@ -213,18 +216,20 @@ std::string EncodeHash (const std::string & hash)
 }
 } // namespace
 
-// A resume bitfield restores complete-but-unverified pieces. They must be
-// excluded from the published bitfield and from serving until the storage
-// service has hashed them, and a failed hash must make the piece downloadable
-// again instead of stalling promotion forever.
+// A resume bitfield restores complete-but-unverified pieces. They must
+// be excluded from the published bitfield and from serving until the
+// storage service has hashed them, and a failed hash must make the
+// piece downloadable again instead of stalling promotion forever.
 static void TestResumeVerificationGate ()
 {
 	auto fixture = MakeVerifiedTorrent ("resume-verify", false);
 	auto & torrent = *fixture.torrent;
 
 	assert (torrent.GetError () == eTorrentErrorNoError);
-	// Exact length and zero padding are part of the resume contract. A short,
-	// oversized or spare-bit bitfield is discarded without mutating pieces.
+	// Exact length and zero padding are part of the resume contract. A
+	// short,
+	// oversized or spare-bit bitfield is discarded without mutating
+	// pieces.
 	assert (!torrent.ApplyBitfield ({ }));
 	assert (!torrent.ApplyBitfield ({ 0xC0, 0x00 }));
 	assert (!torrent.ApplyBitfield ({ 0xC1 }));
@@ -267,7 +272,8 @@ static void TestResumeVerificationGate ()
 	assert (failed == 1);
 	torrent.EndLocalVerification ();
 
-	// The good piece is verified and published; the corrupt one is Missing.
+	// The good piece is verified and published; the corrupt one is
+	// Missing.
 	assert (torrent.GetPiece (0).IsVerified () && !torrent.GetPiece (0).IsVerificationPending ());
 	assert (!torrent.GetPiece (1).IsComplete () && !torrent.GetPiece (1).IsVerificationPending ());
 	assert (!torrent.AreAllPiecesVerified ());
@@ -281,8 +287,10 @@ static void TestResumeVerificationGate ()
 	assert (!torrent.IsLocalVerificationRequested ());
 }
 
-// A restart can find one final-named file and one absent file. Only pieces
-// fully backed by existing files are verified; the missing range remains
+// A restart can find one final-named file and one absent file. Only
+// pieces
+// fully backed by existing files are verified; the missing range
+// remains
 // downloadable instead of causing a whole-torrent re-download.
 static void TestMixedExistingFiles ()
 {
@@ -302,7 +310,8 @@ static void TestMixedExistingFiles ()
 	assert (torrent.GetLeft () == PIECE_LENGTH);
 }
 
-// Data that already exists under its final name must be hashed, never trusted
+// Data that already exists under its final name must be hashed, never
+// trusted
 // by filename, and must become fully verified so promotion can proceed.
 static void TestExistingFinalDataIsHashed ()
 {
@@ -338,7 +347,8 @@ static void TestExistingFinalDataIsHashed ()
 	}
 }
 
-// Tracker responses: compact peers and list-of-dicts must both work, each
+// Tracker responses: compact peers and list-of-dicts must both work,
+// each
 // malformed entry is rejected on its own, and the peer count is capped.
 static void TestTrackerPeerForms ()
 {
@@ -351,8 +361,10 @@ static void TestTrackerPeerForms ()
 	assert (torrent.GetNumPeers (0) == 2);
 	assert (torrent.GetInterval (0) == 1800 * 1000);
 
-	// List-of-dicts (I2P base64 "ip"): one valid pair plus a malformed base64
-	// value, a dictionary without "ip" and a truncated encoded hash. Each bad
+	// List-of-dicts (I2P base64 "ip"): one valid pair plus a malformed
+	// base64
+	// value, a dictionary without "ip" and a truncated encoded hash. Each
+	// bad
 	// entry is skipped individually.
 	std::string raw0 (i2p::data::IdentHash::len, '\0');
 	std::string raw1 (i2p::data::IdentHash::len, '\0');
@@ -384,7 +396,8 @@ static void TestTrackerPeerForms ()
 	torrent.ParseTrackerResponse (2, Dict ({ { "peers", many } }));
 	assert (torrent.GetNumPeers (2) == static_cast<int> (MAX_PEERS_PER_TRACKER_RESPONSE));
 
-	// The datagram tracker path obeys the same bound and skips zero hashes.
+	// The datagram tracker path obeys the same bound and skips zero
+	// hashes.
 	std::vector<uint8_t> hashes (i2p::data::IdentHash::len * 3, 0);
 	torrent.HandleDatagramTrackerResponse (
 		3, 900, hashes.data (), hashes.size (), -1, std::numeric_limits<int>::max ());
@@ -419,7 +432,8 @@ static void TestTrackerIntervalAndTrackerID ()
 	torrent.ParseTrackerResponse (2, Dict ({ { "tracker id", Bytes (longID) } }));
 	assert (torrent.GetTrackerID (2).empty ());
 
-	// Oversized bodies are rejected without touching previously known peers.
+	// Oversized bodies are rejected without touching previously known
+	// peers.
 	torrent.ParseTrackerResponse (0, Dict ({ { "peers", CompactPeers ({ 0x01 }) } }));
 	assert (torrent.GetNumPeers (0) == 1);
 	const std::string oversized (MAX_TRACKER_RESPONSE_BODY + 1, 'x');
@@ -432,8 +446,9 @@ static void TestTrackerIntervalAndTrackerID ()
 	assert (!torrent.GetTrackerError (0).empty ());
 	assert (torrent.GetNumPeers (0) == 1); // previous good list retained
 
-	// Transport/parse failures use the bounded retry ladder and a successful
-	// response without an interval re-bases the announce to the 15-minute floor.
+	// Transport/parse failures use the bounded retry ladder and a
+	// successful response without an interval re-bases the announce to the
+	// 15-minute floor.
 	const int before = torrent.GetInterval (3);
 	torrent.ReportTrackerFailure (3, "request failed");
 	assert (torrent.GetInterval (3) >= before);
@@ -462,8 +477,10 @@ static void TestQueryValueEncoding ()
 	assert (PercentEncodeQueryValue ("~-._").size () == 4); // unreserved per RFC 3986
 }
 
-// Peer ids are per torrent and random: two torrents with the same info hash
-// must not share one, and neither may be the info hash or identity hash.
+// Peer ids are per torrent and random: two torrents with the same info
+// hash
+// must not share one, and neither may be the info hash or identity
+// hash.
 static void TestPerTorrentPeerID ()
 {
 	auto first = MakeVerifiedTorrent ("peer-id", false).torrent;
@@ -480,8 +497,9 @@ static void TestPerTorrentPeerID ()
 	for (size_t i = 6; i < id.size (); ++i) assert (std::isalnum (id[i]) != 0);
 }
 
-// Connection limits must stay internally consistent: dials are the smaller
-// bound and a session may hold more peers than a single torrent.
+// Connection limits must stay internally consistent: dials are the
+// smaller bound and a session may hold more peers than a single
+// torrent.
 static void TestConnectionLimitRelations ()
 {
 	static_assert (MAX_DIALS_PER_TORRENT < MAX_PEERS_PER_TORRENT, "dials are bounded below the peer limit");

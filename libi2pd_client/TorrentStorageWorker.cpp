@@ -2,9 +2,9 @@
  * See the LICENSE file at the top of the project tree for copyright
  * and license details.
  *
- * openi2pd: torrent storage RPC client.
- * Serializes one bounded transaction; a timeout poisons the channel so late
- * replies cannot be mistaken for later requests. Unsupported platforms fail closed.
+ * openi2pd: torrent storage RPC client. Serializes one bounded
+ * transaction; a timeout poisons the channel so late replies cannot be
+ * mistaken for later requests. Unsupported platforms fail closed.
  */
 #include "TorrentStorageWorker.h"
 #include <algorithm>
@@ -30,13 +30,14 @@ struct TorrentStorageWorker::Impl
 	i2p::privsep::ChildProcess process;
 	uint32_t next = 0;
 	bool ready = false;
-	// One request/response transaction on the storage channel. Callers serialize
-	// through `mutex`, so at most one frame is in flight. Both the send and the
-	// receive carry a 5 s deadline; a transport failure retires the worker
-	// instead of leaving a late reply that could be matched to the next request.
-	// A typed Error reply with the same request id is an operation rejection and
-	// keeps the channel usable, while a reply with a descriptor, a foreign id or
-	// an unrecognized shape is treated as corruption and retires the worker.
+	// One request/response transaction on the storage channel. Callers
+	// serialize through `mutex`, so at most one frame is in flight. Both
+	// the send and the receive carry a 5 s deadline; a transport failure
+	// retires the worker instead of leaving a late reply that could be
+	// matched to the next request. A typed Error reply with the same
+	// request id is an operation rejection and keeps the channel usable,
+	// while a reply with a descriptor, a foreign id or an unrecognized
+	// shape is treated as corruption and retires the worker.
 	bool Exchange (
 		i2p::privsep::MessageType type, std::string payload, int fd, std::string & result, std::string & error)
 	{
@@ -139,8 +140,9 @@ bool TorrentStorageWorker::Start (const std::filesystem::path & root, std::strin
 		error = "invalid authorized storage root";
 		return false;
 	}
-	// O_RDONLY rather than O_PATH: the worker fsyncs parent directories after
-	// metadata/promote operations, which an O_PATH descriptor cannot satisfy.
+	// O_RDONLY rather than O_PATH: the worker fsyncs parent directories
+	// after metadata/promote operations, which an O_PATH descriptor cannot
+	// satisfy.
 	int fd = ::open (absolute.c_str (), O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
 	if (fd < 0)
 	{
@@ -156,8 +158,9 @@ bool TorrentStorageWorker::Start (const std::filesystem::path & root, std::strin
 		return false;
 	}
 #if defined(__OpenBSD__)
-	// No fork/exec in the pledged core. The pre-started supervisor validates the
-	// directory capability and configures the child before handing over its IPC.
+	// No fork/exec in the pledged core. The pre-started supervisor
+	// validates the directory capability and configures the child before
+	// handing over its IPC.
 	auto channel = SpawnSupervisedTorrentStorage (fd, absolute.string ());
 	::close (fd);
 	if (!channel)

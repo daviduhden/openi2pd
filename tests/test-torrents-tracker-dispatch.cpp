@@ -2,24 +2,32 @@
  * See the LICENSE file at the top of the project tree for copyright
  * and license details.
  *
- * openi2pd: Torrent tracker dispatch, registry and DHT privacy contracts.
+ * openi2pd: Torrent tracker dispatch, registry and DHT privacy
+ * contracts.
  *
- * Pins the announce policy that the torrent tunnel and the public DHT rely on,
+ * Pins the announce policy that the torrent tunnel and the public DHT
+ * rely on,
  * without a service, socket, timer, thread or sleep:
- *  - a dispatched request never overwrites the silent-tracker failure ladder,
+ * - a dispatched request never overwrites the silent-tracker failure
+ * ladder,
  *  - the advertised announce interval stays floored at 15 minutes,
- *  - tracker registry slots are reference counted, reused lowest-free-first and
+ * - tracker registry slots are reference counted, reused
+ * lowest-free-first and
  *    capped at MAX_NUM_TRACKERS without renumbering a live entry,
- *  - a free (unreferenced, non-common) slot is not live and cannot match,
- *  - tracker announces are single-flight per (torrent, slot) and bounded,
- *  - the private info-hash set admits, deduplicates, erases and evicts oldest.
+ * - a free (unreferenced, non-common) slot is not live and cannot
+ * match,
+ * - tracker announces are single-flight per (torrent, slot) and
+ * bounded,
+ * - the private info-hash set admits, deduplicates, erases and evicts
+ * oldest.
  *
- * Not covered here, because it needs the tunnel service thread or a live KRPC
- * peer: the HTTP announce deadline timer and its stream close/cancel paths, the
- * DHT peer/token purge performed by TorrentsDHT::MarkPrivate()/Forget(), and
- * inbound get_peers/announce_peer refusal. Those remain manual-CI integration
- * work; this file only exercises the pure policy seams and the registry API
- * that is synchronous by construction.
+ * Not covered here, because it needs the tunnel service thread or a
+ * live KRPC peer: the HTTP announce deadline timer and its stream
+ * close/cancel paths, the DHT peer/token purge performed by
+ * TorrentsDHT::MarkPrivate()/Forget(), and inbound
+ * get_peers/announce_peer refusal. Those remain manual-CI integration
+ * work; this file only exercises the pure policy seams and the registry
+ * API that is synchronous by construction.
  */
 
 #include <cassert>
@@ -67,7 +75,8 @@ Torrent::InfoHash MakeHash (uint32_t value)
 	hash[1] = static_cast<uint8_t> (value >> 16);
 	hash[2] = static_cast<uint8_t> (value >> 8);
 	hash[3] = static_cast<uint8_t> (value);
-	// Non-zero tail: hash 0 must not collide with a default-initialised array.
+	// Non-zero tail: hash 0 must not collide with a default-initialised
+	// array.
 	hash[hash.size () - 1] = 0xA5;
 	return hash;
 }
@@ -78,7 +87,8 @@ void TestAdvertisedIntervalFloor ()
 	assert (MIN_TRACKER_REQUESTS_INTERVAL == 15 * 1000);
 
 	const uint64_t now = 5'000'000;
-	// A tracker that advertises 30 s is still polled at the 15-minute floor.
+	// A tracker that advertises 30 s is still polled at the 15-minute
+	// floor.
 	assert (NextTrackerDispatchTime (now, false, 0, 30 * 1000, MIN_TRACKER_REQUESTS_INTERVAL, 0)
 		== now + static_cast<uint64_t> (MIN_TRACKER_ANNOUNCE_INTERVAL) * 1000);
 	// A hostile zero/negative interval is a floor, never a spin.
@@ -99,9 +109,9 @@ void TestSilentTrackerKeepsFailureLadder ()
 	assert (torrent.GetInterval (0) == 3600 * 1000);
 
 	// The retry tick reports the failure exactly like
-	// HandleTrackerRequestsCheckTimer() does (guarded by an empty error), and
-	// then dispatches a request. The dispatch must not replace the ladder retry
-	// with the advertised interval.
+	// HandleTrackerRequestsCheckTimer() does (guarded by an empty error),
+	// and then dispatches a request. The dispatch must not replace the
+	// ladder retry with the advertised interval.
 	const uint64_t now = i2p::util::GetMonotonicMilliseconds ();
 	torrent.ReportTrackerFailure (0, "No response");
 	assert (!torrent.GetTrackerError (0).empty ());
@@ -114,7 +124,8 @@ void TestSilentTrackerKeepsFailureLadder ()
 	assert (next < now + static_cast<uint64_t> (torrent.GetInterval (0)));
 	assert (next - now <= static_cast<uint64_t> (MIN_TRACKER_REQUESTS_INTERVAL) + 1000);
 
-	// Repeated failures escalate the ladder, and the dispatch decision follows
+	// Repeated failures escalate the ladder, and the dispatch decision
+	// follows
 	// the escalated value up to the 30-minute cap.
 	for (int i = 0; i < 8; i++) torrent.ReportTrackerFailure (0, "No response");
 	const uint64_t escalatedRetry = torrent.GetNextTrackerRequestTime (0);
@@ -131,8 +142,8 @@ void TestSilentTrackerKeepsFailureLadder ()
 			torrent.GetInterval (0), torrent.GetMinInterval (0), 2999);
 	assert (capped == now + static_cast<uint64_t> (MAX_TRACKER_FAILURE_BACKOFF) * 1000);
 
-	// An already-expired retry time still waits a full ladder floor instead of
-	// re-announcing immediately on the next tick.
+	// An already-expired retry time still waits a full ladder floor
+	// instead of re-announcing immediately on the next tick.
 	assert (NextTrackerDispatchTime (now, true, now - 1, 3600 * 1000, 15000, 0)
 		== now + static_cast<uint64_t> (MIN_TRACKER_REQUESTS_INTERVAL));
 
@@ -148,7 +159,8 @@ void TestSlotReuseAndReferenceCounting ()
 {
 	TrackerSlots slots;
 
-	// Two registrations append two slots (the caller initialises them, exactly
+	// Two registrations append two slots (the caller initialises them,
+	// exactly
 	// like TorrentsTunnel::ResolveTrackerSlot()).
 	auto first = AdmitTrackerSlot (slots, std::nullopt);
 	assert (first.trackerID && *first.trackerID == 0 && !first.existing);
@@ -160,8 +172,8 @@ void TestSlotReuseAndReferenceCounting ()
 	AcquireTrackerSlotReference (slots, 1);
 	assert (slots.size () == 2 && slots[0].references == 1 && slots[1].references == 1);
 
-	// An identical announce URL resolves to its existing slot: no new slot is
-	// consumed and the reference count carries the second membership.
+	// An identical announce URL resolves to its existing slot: no new slot
+	// is consumed and the reference count carries the second membership.
 	auto duplicate = AdmitTrackerSlot (slots, std::optional<size_t> { 0 });
 	assert (duplicate.trackerID && *duplicate.trackerID == 0 && duplicate.existing);
 	AcquireTrackerSlotReference (slots, 0);
@@ -172,8 +184,8 @@ void TestSlotReuseAndReferenceCounting ()
 	assert (IsTrackerSlotLive (slots, 0));
 	assert (slots[0].references == 1);
 
-	// The last holder frees it: the slot must be ignored by membership, so the
-	// production caller clears its announce URL at this point.
+	// The last holder frees it: the slot must be ignored by membership, so
+	// the production caller clears its announce URL at this point.
 	assert (ReleaseTrackerSlotReference (slots, 0) == TrackerSlotRelease::Freed);
 	assert (!IsTrackerSlotLive (slots, 0));
 	// A second release must not underflow the count.
@@ -181,8 +193,8 @@ void TestSlotReuseAndReferenceCounting ()
 	// Releasing an out-of-range slot is rejected, never indexed.
 	assert (ReleaseTrackerSlotReference (slots, 99) == TrackerSlotRelease::Invalid);
 
-	// A new announce URL reuses the lowest free slot instead of appending, and
-	// keeps the slot stable for every other live entry.
+	// A new announce URL reuses the lowest free slot instead of appending,
+	// and keeps the slot stable for every other live entry.
 	assert (FindReusableTrackerSlot (slots) == std::optional<size_t> { 0 });
 	auto reused = AdmitTrackerSlot (slots, std::nullopt);
 	assert (reused.trackerID && *reused.trackerID == 0 && !reused.existing);
@@ -213,7 +225,8 @@ void TestRegistryExhaustion ()
 	TrackerSlots slots (MAX_NUM_TRACKERS, TrackerSlotState { 1, false });
 	assert (!FindReusableTrackerSlot (slots));
 
-	// Every slot live: a new announce URL is refused, never appended past the cap
+	// Every slot live: a new announce URL is refused, never appended past
+	// the cap
 	// and never allowed to evict a registered tracker.
 	const auto rejected = AdmitTrackerSlot (slots, std::nullopt);
 	assert (!rejected.trackerID && !rejected.existing);
@@ -232,12 +245,14 @@ void TestRegistryExhaustion ()
 
 void TestTrackerRegistryApi ()
 {
-	// The registry is synchronous without a service: construction and AddTracker
-	// only touch the slot table, so the real API can be pinned here.
+	// The registry is synchronous without a service: construction and
+	// AddTracker only touch the slot table, so the real API can be pinned
+	// here.
 	TorrentsTunnel tunnel ("tracker-registry-test", nullptr, "/unused-authority", std::string_view { }, false);
 	assert (tunnel.GetNumTrackers () == 0);
 
-	// Fill the registry through the public API: every distinct I2P announce URL
+	// Fill the registry through the public API: every distinct I2P
+	// announce URL
 	// takes the next appended index until the cap is reached.
 	for (size_t i = 0; i < MAX_NUM_TRACKERS; i++)
 	{
@@ -247,18 +262,19 @@ void TestTrackerRegistryApi ()
 	assert (tunnel.GetNumTrackers () == MAX_NUM_TRACKERS);
 	assert (tunnel.GetTrackerAnnounce (7) == "http://tracker7.i2p/announce");
 
-	// An identical announce URL resolves to its existing slot and only raises the
-	// reference count: the table does not grow.
+	// An identical announce URL resolves to its existing slot and only
+	// raises the reference count: the table does not grow.
 	assert (tunnel.AddTracker ("http://tracker7.i2p/announce", false) == 7);
 	assert (tunnel.GetNumTrackers () == MAX_NUM_TRACKERS);
 
-	// The table is full of live (referenced) slots, so a new URL is refused with
-	// -1 instead of evicting a registered tracker or growing past the cap.
+	// The table is full of live (referenced) slots, so a new URL is
+	// refused with -1 instead of evicting a registered tracker or growing
+	// past the cap.
 	assert (tunnel.AddTracker ("http://tracker-overflow.i2p/announce", false) == -1);
 	assert (tunnel.GetNumTrackers () == MAX_NUM_TRACKERS);
 
-	// Non-I2P and control-character announces are refused before any slot is
-	// allocated; out-of-range ids read back as an empty announce.
+	// Non-I2P and control-character announces are refused before any slot
+	// is allocated; out-of-range ids read back as an empty announce.
 	assert (tunnel.AddTracker ("http://clearnet.example.com/announce", false) == -1);
 	assert (tunnel.AddTracker ("http://bad\nhost.i2p/announce", false) == -1);
 	assert (tunnel.AddTracker (std::string_view { }, false) == -1);
@@ -291,7 +307,8 @@ void TestInflightAdmission ()
 	assert (inflight.TryAcquire (TrackerRequestKey { otherHash, 0 }) == Registry::Admission::Full);
 	assert (inflight.Size () == MAX_INFLIGHT_TRACKER_REQUESTS);
 
-	// A torrent-scoped release drops only that torrent's keys and reports them,
+	// A torrent-scoped release drops only that torrent's keys and reports
+	// them,
 	// so the caller can retire its own timers and streams.
 	const auto released = inflight.ReleaseTorrent (infoHash);
 	assert (released.size () == MAX_INFLIGHT_TRACKER_REQUESTS);
@@ -318,8 +335,8 @@ void TestPrivateInfoHashSet ()
 	assert (hashes.Erase (privateHash) && !hashes.Contains (privateHash) && hashes.Size () == 0);
 	assert (!hashes.Erase (privateHash));
 
-	// Admission is bounded: filling the set evicts exactly the oldest entry and
-	// keeps the newest, so the size never exceeds the cap.
+	// Admission is bounded: filling the set evicts exactly the oldest
+	// entry and keeps the newest, so the size never exceeds the cap.
 	for (size_t i = 0; i < PrivateInfoHashSet::MaxHashes; i++)
 		assert (hashes.Insert (MakeHash (static_cast<uint32_t> (i))) == PrivateInfoHashSet::Admission::Inserted);
 	assert (hashes.Size () == PrivateInfoHashSet::MaxHashes);
@@ -338,10 +355,11 @@ void TestDHTPrivacyApi ()
 	const auto privateHash = MakeHash (0x44);
 	const auto publicHash = MakeHash (0x55);
 
-	// A private hash is refused by every DHT entry point once marked. Here the
-	// served peer map and the token table are empty, so the purge itself is not
-	// observable without a live KRPC peer; the admission and the retained marker
-	// are pinned below and the purge stays a manual-CI integration check.
+	// A private hash is refused by every DHT entry point once marked. Here
+	// the served peer map and the token table are empty, so the purge
+	// itself is not observable without a live KRPC peer; the admission and
+	// the retained marker are pinned below and the purge stays a manual-CI
+	// integration check.
 	dht.MarkPrivate (privateHash);
 	assert (dht.IsLocallyPrivate (privateHash));
 	assert (!dht.IsLocallyPrivate (publicHash));
@@ -351,8 +369,9 @@ void TestDHTPrivacyApi ()
 	dht.MarkPrivate (privateHash);
 	assert (dht.GetNumPrivateInfoHashes () == 1);
 
-	// Forget() drops the DHT state of a removed torrent but keeps the private
-	// marker: a removed private hash must not become servable again.
+	// Forget() drops the DHT state of a removed torrent but keeps the
+	// private marker: a removed private hash must not become servable
+	// again.
 	dht.Forget (privateHash);
 	assert (dht.IsLocallyPrivate (privateHash));
 	dht.Forget (publicHash); // no state, no crash

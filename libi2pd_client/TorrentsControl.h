@@ -4,10 +4,11 @@
  *
  * openi2pd: TorrentsControl.
  *
- * Defines the bounded snapshot and command structures exchanged with the TUI
- * and IPC layer, together with magnet, I2P tracker-host, safe torrent-file
- * helpers and the pure comment-page slice used by TORRENT-DETAIL. Fixed limits
- * keep responses and control arguments bounded even for hostile torrents.
+ * Defines the bounded snapshot and command structures exchanged with
+ * the TUI and IPC layer, together with magnet, I2P tracker-host, safe
+ * torrent-file helpers and the pure comment-page slice used by
+ * TORRENT-DETAIL. Fixed limits keep responses and control arguments
+ * bounded even for hostile torrents.
  *
  */
 
@@ -32,30 +33,32 @@ namespace i2p
 {
 namespace torrents
 {
-	// Upper bounds for one control snapshot. They keep both the snapshot and
-	// the resulting TUI response bounded regardless of how many records a
-	// torrent announces.
+	// Upper bounds for one control snapshot. They keep both the snapshot
+	// and the resulting TUI response bounded regardless of how many
+	// records a torrent announces.
 	inline constexpr size_t MAX_CONTROL_TORRENTS = 200;
 	inline constexpr size_t MAX_CONTROL_FILES = 1000;
 	inline constexpr size_t MAX_CONTROL_PEERS = 200;
 	inline constexpr size_t MAX_CONTROL_TRACKERS = 100;
 	inline constexpr size_t MAX_CONTROL_FILE_BYTES = 32 * 1024 * 1024;
 	inline constexpr size_t MAX_CONTROL_ARGUMENT = 2048;
-	// One TORRENT-DETAIL response emits at most this many comment records. It
-	// must stay equal to i2p::tui::MAX_TORRENT_COMMENT_RECORDS_PER_REQUEST;
-	// the daemon translation unit pins the equality with a static_assert.
+	// One TORRENT-DETAIL response emits at most this many comment records.
+	// It must stay equal to
+	// i2p::tui::MAX_TORRENT_COMMENT_RECORDS_PER_REQUEST; the daemon
+	// translation unit pins the equality with a static_assert.
 	inline constexpr size_t MAX_COMMENT_PAGE = 16;
 	inline constexpr std::chrono::milliseconds CONTROL_DEFAULT_TIMEOUT { 2000 };
 
-	/// Typed administrative operations. The daemon-owned queue executes them on
-	/// the torrent tunnel service thread; no raw engine pointer or arbitrary
-	/// filesystem path crosses the boundary.
+	/// Typed administrative operations. The daemon-owned queue executes
+	/// them on the torrent tunnel service thread; no raw engine pointer or
+	/// arbitrary filesystem path crosses the boundary.
 	///
-	/// Start/Stop/Pause/Resume describe intent, not a queued state: Pause and
-	/// Resume delegate to Stop and Start. `torrentId` selects a torrent, while
-	/// session-wide variants (RemoveAll/StartAll/StopAll/ReannounceAll) ignore
-	/// it. Recheck requires a paused torrent so the verification pass sees a
-	/// stable data set.
+	/// Start/Stop/Pause/Resume describe intent, not a queued state: Pause
+	/// and Resume delegate to Stop and Start. `torrentId` selects a
+	/// torrent, while session-wide variants
+	/// (RemoveAll/StartAll/StopAll/ReannounceAll) ignore it. Recheck
+	/// requires a paused torrent so the verification pass sees a stable
+	/// data set.
 	enum class TorrentCommandKind
 	{
 		Start,
@@ -117,11 +120,12 @@ namespace torrents
 		uint64_t nextAnnounce;
 	};
 
-	/// One torrent row of a control snapshot. `status` is the engine's stable
-	/// English token (see the status mapping in TorrentsTunnel); clients may
-	/// localize it for display but must not parse translated text. `wantedSize`
-	/// is the selected-file total while `totalSize` stays the whole metainfo, so
-	/// a skipped selection is visible; percent/ETA follow the selected set.
+	/// One torrent row of a control snapshot. `status` is the engine's
+	/// stable English token (see the status mapping in TorrentsTunnel);
+	/// clients may localize it for display but must not parse translated
+	/// text. `wantedSize` is the selected-file total while `totalSize`
+	/// stays the whole metainfo, so a skipped selection is visible;
+	/// percent/ETA follow the selected set.
 	struct TorrentInfo
 	{
 		int id;
@@ -195,10 +199,10 @@ namespace torrents
 	};
 
 	/// Immutable, value-owning view of one tunnel for the TUI/RPC/Android
-	/// clients. Every nested vector is capped by the MAX_CONTROL_* bounds, so a
-	/// snapshot can be serialized without consulting the engine again; it holds
-	/// no engine pointers and remains valid after the torrent is mutated or
-	/// removed.
+	/// clients. Every nested vector is capped by the MAX_CONTROL_* bounds,
+	/// so a snapshot can be serialized without consulting the engine
+	/// again; it holds no engine pointers and remains valid after the
+	/// torrent is mutated or removed.
 	struct TorrentsSnapshot
 	{
 		std::string tunnelName;
@@ -216,10 +220,11 @@ namespace torrents
 	 * One bounded page of the retained comment snapshot.
 	 *
 	 * `TORRENT-DETAIL` returns the newest records first (the snapshot is
-	 * sorted by time and local id) and emits at most MAX_COMMENT_PAGE records
-	 * per response. The slice below is pure: it never mutates the snapshot and
-	 * never fails, so a client asking beyond the retained records receives an
-	 * empty page with a truthful `total` rather than an error.
+	 * sorted by time and local id) and emits at most MAX_COMMENT_PAGE
+	 * records per response. The slice below is pure: it never mutates the
+	 * snapshot and never fails, so a client asking beyond the retained
+	 * records receives an empty page with a truthful `total` rather than
+	 * an error.
 	 */
 	struct CommentPageBounds
 	{
@@ -243,18 +248,18 @@ namespace torrents
 	}
 
 	/// One typed command with its bounded operands. `argument` carries the
-	/// kind-specific string (comment text, tracker URL, file priority, comment
-	/// page fields, magnet URI or local .torrent path); magnet and file
-	/// arguments are length-checked at the tunnel entry (MAX_CONTROL_ARGUMENT),
-	/// and every other producer must keep its value bounded too. The create-only
-	/// fields are used by TorrentCommandKind::Create and ignored elsewhere.
-	/// Nothing here is a pointer into engine state, so a command can outlive its
-	/// producer.
+	/// kind-specific string (comment text, tracker URL, file priority,
+	/// comment page fields, magnet URI or local .torrent path); magnet and
+	/// file arguments are length-checked at the tunnel entry
+	/// (MAX_CONTROL_ARGUMENT), and every other producer must keep its
+	/// value bounded too. The create-only fields are used by
+	/// TorrentCommandKind::Create and ignored elsewhere. Nothing here is a
+	/// pointer into engine state, so a command can outlive its producer.
 	struct TorrentCommand
 	{
-		// The explicit constructor keeps the common four-field control command
-		// free of -Wmissing-field-initializers diagnostics while leaving the
-		// creation-only fields at their safe defaults.
+		// The explicit constructor keeps the common four-field control
+		// command free of -Wmissing-field-initializers diagnostics while
+		// leaving the creation-only fields at their safe defaults.
 		TorrentCommand (
 			TorrentCommandKind kind_, int torrentId_ = 0, bool deleteFiles_ = false, std::string argument_ = { })
 			: kind (kind_)
@@ -273,8 +278,9 @@ namespace torrents
 		std::vector<std::vector<std::string>> createTrackers;
 	};
 
-	/// Result of a command: `success` covers acceptance, not completion of the
-	/// background work it queued, and `message` is a short non-secret status.
+	/// Result of a command: `success` covers acceptance, not completion of
+	/// the background work it queued, and `message` is a short non-secret
+	/// status.
 	struct TorrentCommandResult
 	{
 		bool success;
@@ -282,20 +288,21 @@ namespace torrents
 		int id;
 	};
 
-	// True only for a well-formed I2P host name ending in ".i2p". The check
-	// is case-insensitive and rejects empty labels, whitespace, path
+	// True only for a well-formed I2P host name ending in ".i2p". The
+	// check is case-insensitive and rejects empty labels, whitespace, path
 	// separators, credentials, ports and trailing dots. It is deliberately
 	// lexical: callers must still resolve the host through the I2P
 	// AddressBook before opening a stream.
 	bool IsI2PTrackerHost (std::string_view host);
 
-	// Lower-case hexadecimal representation, using exactly two characters per
-	// input byte. Used for torrent hashes and display magnets.
+	// Lower-case hexadecimal representation, using exactly two characters
+	// per input byte. Used for torrent hashes and display magnets.
 	std::string ToHexString (std::span<const uint8_t> data);
 
 	// Percent-encodes one query value, keeping only RFC 3986 unreserved
-	// characters. URL::create_query() does not encode values, so a peer id or
-	// opaque tracker id containing reserved bytes must be encoded first.
+	// characters. URL::create_query() does not encode values, so a peer id
+	// or opaque tracker id containing reserved bytes must be encoded
+	// first.
 	std::string PercentEncodeQueryValue (std::string_view value);
 
 	struct TorrentMagnet
@@ -306,11 +313,13 @@ namespace torrents
 	};
 
 	// Bounded BEP 9 v1 magnet parser. Conflicting exact topics, malformed
-	// escapes and unsupported v2-only magnets fail. Tracker hints are I2P-only.
+	// escapes and unsupported v2-only magnets fail. Tracker hints are
+	// I2P-only.
 	std::optional<TorrentMagnet> ParseTorrentMagnet (std::string_view uri);
 
-	// Builds a display-only magnet from an info hash and an optional name. The
-	// name is percent-encoded; no tracker or filesystem data is included.
+	// Builds a display-only magnet from an info hash and an optional name.
+	// The name is percent-encoded; no tracker or filesystem data is
+	// included.
 	std::string BuildTorrentMagnet (const std::array<uint8_t, 20> & infoHash, std::string_view name);
 
 	// Reads a local .torrent file for TORRENT-ADD-FILE. The caller is the

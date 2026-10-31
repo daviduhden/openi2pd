@@ -4,13 +4,14 @@
  *
  * openi2pd: TorrentsComments.
  *
- * Encodes and decodes bounded ut_comment request/response messages using
- * peer-wire age timestamps, and maintains the per-torrent store with
- * normalized deduplication, hidden-entry retention, anonymous and
- * pseudonymous visible quotas and rating aggregation. Malformed frames are
- * rejected; an invalid entry is skipped without discarding a valid entry from
- * the same peer reply. The persistence decoder clamps a future timestamp to
- * the local clock rather than discarding the whole state.
+ * Encodes and decodes bounded ut_comment request/response messages
+ * using peer-wire age timestamps, and maintains the per-torrent store
+ * with normalized deduplication, hidden-entry retention, anonymous and
+ * pseudonymous visible quotas and rating aggregation. Malformed frames
+ * are rejected; an invalid entry is skipped without discarding a valid
+ * entry from the same peer reply. The persistence decoder clamps a
+ * future timestamp to the local clock rather than discarding the whole
+ * state.
  *
  */
 
@@ -27,7 +28,8 @@ namespace i2p::torrents
 namespace
 {
 	// Validate UTF-8 and return Java-compatible UTF-16 code units, without
-	// accepting surrogate encodings, overlong encodings or terminal controls.
+	// accepting surrogate encodings, overlong encodings or terminal
+	// controls.
 	size_t TextUnits (std::string_view text)
 	{
 		size_t units = 0;
@@ -83,10 +85,10 @@ namespace
 		return ch == ' ' || ch == '\t' || ch == '\n' || ch == '\r' || ch == '\v' || ch == '\f';
 	}
 	// Deduplication key for a stored owner/text. The stored value is never
-	// rewritten; only the comparison ignores presentation-only differences, so
-	// trailing/leading whitespace, collapsed whitespace runs and zero-width
-	// characters cannot be used to replay the same comment past the dedupe and
-	// per-owner/anonymous quotas.
+	// rewritten; only the comparison ignores presentation-only
+	// differences, so trailing/leading whitespace, collapsed whitespace
+	// runs and zero-width characters cannot be used to replay the same
+	// comment past the dedupe and per-owner/anonymous quotas.
 	std::string CommentDedupeKey (std::string_view value)
 	{
 		std::string key;
@@ -95,8 +97,8 @@ namespace
 		for (size_t i = 0; i < value.size ();)
 		{
 			const auto ch = static_cast<unsigned char> (value[i]);
-			// U+200B/U+200C/U+200D and U+FEFF are invisible in every renderer and
-			// have no legitimate use as a comment separator.
+			// U+200B/U+200C/U+200D and U+FEFF are invisible in every renderer
+			// and have no legitimate use as a comment separator.
 			if (ch == 0xE2 && i + 2 < value.size () && static_cast<unsigned char> (value[i + 1]) == 0x80
 				&& (static_cast<unsigned char> (value[i + 2]) == 0x8B
 					|| static_cast<unsigned char> (value[i + 2]) == 0x8C
@@ -160,8 +162,8 @@ std::optional<TorrentCommentMessage> DecodeTorrentComments (std::string_view enc
 			// The filter is an optimisation hint for the requester's own cache
 			// and is not authenticated. Java sends 64 zero bytes, and a peer may
 			// send any 0..64-byte hint; content is ignored either way. Only a
-			// hint longer than the documented size or malformed bencode makes the
-			// request itself invalid.
+			// hint longer than the documented size or malformed bencode makes
+			// the request itself invalid.
 			auto [filter, n] = ExtractByteString (it->second);
 			if (!n || n != it->second.size () || filter.size () > 64) return std::nullopt;
 		}
@@ -267,16 +269,17 @@ bool TorrentCommentStore::Add (TorrentComment comment)
 		|| m_NextId >= static_cast<uint64_t> (std::numeric_limits<int64_t>::max ()))
 		return false;
 	// Content deduplication is independent of the rating and compares a
-	// normalized key, so the same pseudonymous text cannot be replayed with
-	// ratings 0..5 or with whitespace/zero-width padding. Hidden entries stay
-	// in the comparison; only local moderation can release a text again.
+	// normalized key, so the same pseudonymous text cannot be replayed
+	// with ratings 0..5 or with whitespace/zero-width padding. Hidden
+	// entries stay in the comparison; only local moderation can release a
+	// text again.
 	if (IsDuplicate (comment)) return false;
 	const auto textUnits = TextUnits (comment.text);
 	if (textUnits == static_cast<size_t> (-1)) return false;
 	// Bound one pseudonym's share of the visible store, and give anonymous
-	// entries their own smaller budget: an empty owner has no stable label, so
-	// it must not escape the per-pseudonym quota. Hidden entries remain for
-	// dedupe but do not count toward either budget.
+	// entries their own smaller budget: an empty owner has no stable
+	// label, so it must not escape the per-pseudonym quota. Hidden entries
+	// remain for dedupe but do not count toward either budget.
 	if (comment.owner.empty ())
 	{
 		size_t anonymousEntries = 0;
@@ -291,9 +294,9 @@ bool TorrentCommentStore::Add (TorrentComment comment)
 			if (!existing.hidden && existing.owner == comment.owner && ++ownerEntries >= MAX_COMMENT_PER_OWNER)
 				return false;
 	}
-	// Evict the oldest foreign entry rather than becoming permanently full.
-	// Local and hidden entries are never victims: moderation state and the
-	// operator's own comments outlive peer-supplied spam.
+	// Evict the oldest foreign entry rather than becoming permanently
+	// full. Local and hidden entries are never victims: moderation state
+	// and the operator's own comments outlive peer-supplied spam.
 	while (m_Comments.size () >= MAX_COMMENT_COUNT || m_TextUnits > MAX_COMMENT_TEXT_TOTAL_UNITS
 		|| textUnits > MAX_COMMENT_TEXT_TOTAL_UNITS - m_TextUnits)
 	{
@@ -328,8 +331,8 @@ bool TorrentCommentStore::Hide (size_t localIndex)
 		changed = true;
 	}
 	m_Comments[localIndex].hidden = true;
-	// Trimming can drop another hidden entry, which is a content change even
-	// when this entry was already hidden.
+	// Trimming can drop another hidden entry, which is a content change
+	// even when this entry was already hidden.
 	if (TrimHidden ()) changed = true;
 	if (changed) ++m_Revision;
 	return true;
@@ -454,8 +457,9 @@ size_t TorrentCommentStore::LocalCount () const
 
 namespace
 {
-	// A pseudonym cannot inflate the aggregate by posting many rated texts.
-	// Anonymous entries have no stable label and each count separately.
+	// A pseudonym cannot inflate the aggregate by posting many rated
+	// texts. Anonymous entries have no stable label and each count
+	// separately.
 	template <typename Callback> void ForEachRating (const std::vector<TorrentComment> & comments, Callback callback)
 	{
 		std::set<std::string> seenOwners;

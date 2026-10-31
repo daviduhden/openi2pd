@@ -3,8 +3,10 @@
  * and license details.
  *
  * openi2pd: OpenBSD supervised torrent storage regression.
- * Exercises pre-pledge startup, delegated roots and worker replacement while
- * the controlling process has neither proc nor exec promises. Manual CI only.
+ * Exercises pre-pledge startup, delegated roots and worker replacement
+ * while
+ * the controlling process has neither proc nor exec promises. Manual CI
+ * only.
  */
 #include "../privsep/Supervisor.h"
 #include "../privsep/RunWorker.h"
@@ -48,8 +50,9 @@ int main (int argc, char ** argv)
 	std::filesystem::create_directory_symlink (outside, root / "redirect");
 	std::string error;
 	assert (i2p::privsep::PrepareTorrentStorageSupervisor (root.string (), error));
-	// A fork/exec by the core from here would abort. Descriptor passing grants
-	// only the local IPC operations necessary to obtain an already-confined child.
+	// A fork/exec by the core from here would abort. Descriptor passing
+	// grants only the local IPC operations necessary to obtain an
+	// already-confined child.
 	assert (::pledge ("stdio rpath wpath cpath fattr unix recvfd", nullptr) == 0);
 	i2p::torrents::TorrentStorageWorker worker;
 	assert (worker.Start (root / "swarm", error));
@@ -61,14 +64,17 @@ int main (int argc, char ** argv)
 	assert (!worker.Write (handle, 7, data, error));
 	assert (!worker.Register ("../escape", 4, error, true));
 	worker.Stop ();
-	// Replacement is an explicit administrative action; acknowledged persisted
-	// bytes are retained, and outstanding writes are never silently replayed.
+	// Replacement is an explicit administrative action; acknowledged
+	// persisted
+	// bytes are retained, and outstanding writes are never silently
+	// replayed.
 	assert (worker.Start (root / "swarm", error));
 	const auto readOnly = worker.Register ("a/first.bin", 8, error);
 	assert (readOnly && worker.Read (readOnly, 2, result, error) && result == data);
 	assert (!worker.Write (readOnly, 0, data, error));
 	worker.Stop ();
-	// Deliberate channel loss: supervisor owns/reaps the child and permits a new
+	// Deliberate channel loss: supervisor owns/reaps the child and permits
+	// a new
 	// child without allowing process creation in the core.
 	int rootFd = ::open ((root / "swarm").c_str (), O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
 	assert (rootFd >= 0);
@@ -82,22 +88,26 @@ int main (int argc, char ** argv)
 	assert (worker.Start (root / "swarm", error));
 	worker.Stop ();
 	// An outside-root request becomes a forbidden relative traversal. Only
-	// identity integers are transmitted; directories never travel in SCM_RIGHTS.
-	// A per-request rejection must leave the broker and existing workers alive.
+	// identity integers are transmitted; directories never travel in
+	// SCM_RIGHTS. A per-request rejection must leave the broker and
+	// existing workers alive.
 	int outsideFd = ::open (outside.c_str (), O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
 	assert (outsideFd >= 0);
 	auto rejected = i2p::privsep::SpawnSupervisedTorrentStorage (outsideFd, outside.string ());
 	::close (outsideFd);
 	assert (!rejected);
-	// A path that resolves through a symlink must not become a delegated root.
-	// The worker walks the broker root with O_NOFOLLOW before applying policy;
+	// A path that resolves through a symlink must not become a delegated
+	// root.
+	// The worker walks the broker root with O_NOFOLLOW before applying
+	// policy;
 	// the broker reports a typed failure and stays alive.
 	int swarmFd = ::open ((root / "swarm").c_str (), O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
 	assert (swarmFd >= 0);
 	auto mismatched = i2p::privsep::SpawnSupervisedTorrentStorage (swarmFd, (root / "redirect").string ());
 	::close (swarmFd);
 	assert (!mismatched);
-	// The broker is still usable and a legitimate root can be delegated again.
+	// The broker is still usable and a legitimate root can be delegated
+	// again.
 	assert (worker.Start (root / "swarm", error));
 	worker.Stop ();
 	return 0;

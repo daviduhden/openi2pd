@@ -20,7 +20,8 @@
 namespace i2p::torrents
 {
 inline constexpr size_t MAX_TORRENT_LOCAL_STATE_BYTES = 256 * 1024;
-/// Administrative state kept separately from metainfo and resume bitfields.
+/// Administrative state kept separately from metainfo and resume
+/// bitfields.
 struct TorrentLocalState
 {
 	bool stopped = false;
@@ -31,16 +32,20 @@ struct TorrentLocalState
 };
 
 /// Encode the local v1 bencode dictionary: comments, priorities (binary
-/// values 0..2), stopped (0/1) and version (1). This is not an I2PSnark state
-/// format and must not replace metainfo or a .resume bitfield.
-/// @param error Cleared on entry and set if validation or size checks fail.
+/// values 0..2), stopped (0/1) and version (1). This is not an I2PSnark
+/// state format and must not replace metainfo or a .resume bitfield.
+/// @param error Cleared on entry and set if validation or size checks
+///              fail.
 /// @return Encoded state, or an empty string on failure.
 std::string EncodeTorrentLocalState (const TorrentLocalState & state, std::string & error);
-/// Decode exactly one bounded v1 dictionary, rejecting unknown keys or version.
-/// @param now Local epoch seconds used when restoring comment timestamps.
+/// Decode exactly one bounded v1 dictionary, rejecting unknown keys or
+/// version.
+/// @param now Local epoch seconds used when restoring comment
+///            timestamps.
 /// @param state Replaced only after the entire input passes validation.
 /// @param error Cleared on entry and set on failure.
-/// @return false for malformed, trailing or unsupported data; @a state is then unchanged.
+/// @return false for malformed, trailing or unsupported data; @a state
+///         is then unchanged.
 bool DecodeTorrentLocalState (std::string_view encoded, uint64_t now, TorrentLocalState & state, std::string & error);
 }
 #endif

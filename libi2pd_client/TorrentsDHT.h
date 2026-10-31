@@ -5,10 +5,11 @@
  * openi2pd: TorrentsDHT.
  *
  * Declares the DHT node identity, bucket routing table, KRPC request
- * tracking, bounded peer/token stores and the service that exchanges them
- * over I2P datagrams. The side-effect free KRPC frame decoder, the bounded
- * issued-token store, the anonymous raw-frame budget and the service-thread
- * hand-off queue live here so regressions can pin them without sockets.
+ * tracking, bounded peer/token stores and the service that exchanges
+ * them over I2P datagrams. The side-effect free KRPC frame decoder, the
+ * bounded issued-token store, the anonymous raw-frame budget and the
+ * service-thread hand-off queue live here so regressions can pin them
+ * without sockets.
  *
  */
 
@@ -73,9 +74,9 @@ namespace torrents
 	constexpr int DHT_MAX_NUM_GET_PEERS_ATTEMPTS = 22;
 	constexpr int DHT_MAX_NUM_FIND_NODE_ATTEMPTS = 8;
 	constexpr int DHT_MAX_NUM_CLOSEST_NODES_TO_ANNOUNCE = 4;
-	// Bounds for state created by untrusted DHT datagrams. They keep a flood of
-	// announces, get_peers queries or find_node responses from growing the maps
-	// without limit between expiration sweeps.
+	// Bounds for state created by untrusted DHT datagrams. They keep a
+	// flood of announces, get_peers queries or find_node responses from
+	// growing the maps without limit between expiration sweeps.
 	constexpr size_t MAX_DHT_TORRENTS = 2048;
 	constexpr size_t MAX_DHT_PEERS_PER_TORRENT = 128;
 	constexpr size_t MAX_DHT_INCOMING_TOKENS = 4096;
@@ -83,8 +84,8 @@ namespace torrents
 	constexpr size_t MAX_DHT_FAILED_PEERS = 2048;
 	constexpr size_t MAX_DHT_QUERIES = 2048;
 	constexpr size_t MAX_DHT_REQUEST_NODES = 256;
-	// A compliant reply carries at most k nodes/peer values. Bound the work
-	// and follow-up pings triggered by one hostile response.
+	// A compliant reply carries at most k nodes/peer values. Bound the
+	// work and follow-up pings triggered by one hostile response.
 	constexpr size_t MAX_DHT_NODES_PER_RESPONSE = 8; // Kademlia k
 	constexpr size_t MAX_DHT_VALUES_PER_RESPONSE = 64;
 	constexpr size_t MAX_DHT_LOADED_NODES = 2048;
@@ -92,42 +93,47 @@ namespace torrents
 	constexpr size_t MAX_DHT_QUERY_ORIGINS = 1024;
 	constexpr size_t MAX_DHT_QUERIES_PER_ORIGIN = 64;
 	constexpr uint64_t DHT_QUERY_RATE_WINDOW = 60;
-	// One KRPC frame is bounded independently of the I2P datagram limit; the
-	// decoder must never look at more than this, and a larger datagram is
-	// dropped before parsing.
+	// One KRPC frame is bounded independently of the I2P datagram limit;
+	// the decoder must never look at more than this, and a larger datagram
+	// is dropped before parsing.
 	constexpr size_t MAX_DHT_KRPC_FRAME = 32768;
 	constexpr size_t MAX_DHT_TRANSACTION_ID = 16;
 	constexpr size_t MAX_DHT_QUERY_NAME = 64;
 	constexpr size_t MAX_DHT_ERROR_TEXT = 1024;
-	// A destination can mint many valid node IDs because only six of the 20
-	// node-ID bytes are bound to its identity and port. Cap how many routing
-	// entries one peer may own so a single destination cannot fill buckets.
+	// A destination can mint many valid node IDs because only six of the
+	// 20 node-ID bytes are bound to its identity and port. Cap how many
+	// routing entries one peer may own so a single destination cannot fill
+	// buckets.
 	constexpr size_t MAX_DHT_NODES_PER_PEER = 2;
 	// A destination that keeps issuing get_peers may not evict every other
-	// destination's token: the store replaces only that node's oldest entry.
+	// destination's token: the store replaces only that node's oldest
+	// entry.
 	constexpr size_t MAX_DHT_TOKENS_PER_NODE = 16;
-	// A raw KRPC frame carries no authenticated sender, so one fixed global
-	// window bounds the parsing work an anonymous flood can cause.
+	// A raw KRPC frame carries no authenticated sender, so one fixed
+	// global window bounds the parsing work an anonymous flood can cause.
 	constexpr size_t MAX_DHT_RAW_FRAMES = 1024;
 	constexpr uint64_t DHT_RAW_FRAME_RATE_WINDOW = 60; // in seconds
-	// Inbound repliable datagrams are handed from the network thread to the
-	// service thread through this bounded queue and drained on this cadence.
+	// Inbound repliable datagrams are handed from the network thread to
+	// the service thread through this bounded queue and drained on this
+	// cadence.
 	constexpr size_t MAX_DHT_INCOMING_QUEUE = 64;
 	constexpr size_t MAX_DHT_DATAGRAM_SIZE = 32768;
 	constexpr int DHT_INCOMING_DRAIN_INTERVAL = 50; // in milliseconds
-	// Periodic routing-state persistence; Stop() still performs the final save.
+	// Periodic routing-state persistence; Stop() still performs the final
+	// save.
 	constexpr int DHT_STATE_SAVE_INTERVAL = 900; // in seconds
-	// The repliable KRPC port is `port` and the raw KRPC port is `port + 1`.
-	// 65535 would wrap GetRPort() to 0, so the accepted range is 1..65534:
-	// port 0 is never advertised and never expected.
+	// The repliable KRPC port is `port` and the raw KRPC port is `port +
+	// 1`. 65535 would wrap GetRPort() to 0, so the accepted range is
+	// 1..65534: port 0 is never advertised and never expected.
 	constexpr uint16_t DHT_MIN_PORT = 1;
 	constexpr uint16_t DHT_MAX_PORT = 65534;
 	constexpr bool IsValidDHTPort (uint32_t port)
 	{
 		return port >= DHT_MIN_PORT && port <= DHT_MAX_PORT;
 	}
-	// An unusable configured or persisted port is saturated into the accepted
-	// range instead of being advertised, so GetRPort() can never wrap.
+	// An unusable configured or persisted port is saturated into the
+	// accepted range instead of being advertised, so GetRPort() can never
+	// wrap.
 	constexpr uint16_t ClampDHTPort (uint16_t port)
 	{
 		if (IsValidDHTPort (port)) return port;
@@ -161,7 +167,8 @@ namespace torrents
 	};
 
 	// std::array has no standard hash, and node IDs key the per-node token
-	// quota. Node IDs are public routing identifiers and are never logged here.
+	// quota. Node IDs are public routing identifiers and are never logged
+	// here.
 	struct NodeIDHash
 	{
 		size_t operator() (const NodeID & id) const noexcept
@@ -177,8 +184,9 @@ namespace torrents
 	};
 
 	using NodeInfo = std::array<uint8_t, NodeID::len + i2p::data::IdentHash::len + 2>;
-	// BEP 5 compact node record: node ID, destination hash and a big-endian
-	// port. The layout is wire-fixed; only this size is normative here.
+	// BEP 5 compact node record: node ID, destination hash and a
+	// big-endian port. The layout is wire-fixed; only this size is
+	// normative here.
 	constexpr size_t DHT_COMPACT_NODE_SIZE = NodeID::len + i2p::data::IdentHash::len + 2;
 	static_assert (DHT_COMPACT_NODE_SIZE == 54, "compact node records stay 54 bytes");
 
@@ -231,8 +239,8 @@ namespace torrents
 	};
 
 	/// Owns the bucket chain and shared node records for one DHT identity.
-	/// Bucket pointers returned by FindBucket are borrowed and expire when the
-	/// chain changes; callers must serialize access to the table.
+	/// Bucket pointers returned by FindBucket are borrowed and expire when
+	/// the chain changes; callers must serialize access to the table.
 	class RoutingTable
 	{
 	public:
@@ -270,8 +278,8 @@ namespace torrents
 		// to the node ID checked against the heard-from window.
 		std::shared_ptr<Node> FindNodeByPeer (const i2p::data::IdentHash & peer) const;
 		void RemoveNodeByPeer (const i2p::data::IdentHash & peer);
-		// Number of routing entries owned by one peer destination. Used by the
-		// per-peer admission cap.
+		// Number of routing entries owned by one peer destination. Used by
+		// the per-peer admission cap.
 		size_t CountPeerNodes (const i2p::data::IdentHash & peer) const;
 		std::list<std::pair<NodeID, Bucket *>> GetExploratoryTargets (
 			std::mt19937 & rng, uint64_t ts); // (target, non-owning node to send find_node to)
@@ -292,8 +300,9 @@ namespace torrents
 	// KRPC errors have e:[integer,byte-string], t and y="e", without a
 	// response ID. The untrusted message text is bounded and never logged.
 	std::optional<DHTErrorReply> DecodeDHTErrorReply (std::string_view encoded);
-	// Called only after signed identity or a previously issued token identifies
-	// the origin. Never key this budget by an unauthenticated claimed node ID.
+	// Called only after signed identity or a previously issued token
+	// identifies the origin. Never key this budget by an unauthenticated
+	// claimed node ID.
 	class DHTQueryLimiter
 	{
 	public:
@@ -336,14 +345,14 @@ namespace torrents
 		eNumKRPCQueries
 	};
 
-	// Bounded record of info hashes whose metadata declared the swarm private.
-	// A private hash must never be answered from get_peers, stored from
-	// announce_peer or announced to the public DHT, so this set is checked by
-	// every DHT entry point that could publish or accept peers. Insertion order
-	// is retained so the oldest entry is evicted instead of growing without
-	// limit; the cap equals MAX_DHT_TORRENTS, which is the same bound as the
-	// served peer map, so eviction requires more distinct private torrents than
-	// a session can hold at once.
+	// Bounded record of info hashes whose metadata declared the swarm
+	// private. A private hash must never be answered from get_peers,
+	// stored from announce_peer or announced to the public DHT, so this
+	// set is checked by every DHT entry point that could publish or accept
+	// peers. Insertion order is retained so the oldest entry is evicted
+	// instead of growing without limit; the cap equals MAX_DHT_TORRENTS,
+	// which is the same bound as the served peer map, so eviction requires
+	// more distinct private torrents than a session can hold at once.
 	class PrivateInfoHashSet
 	{
 	public:
@@ -368,9 +377,9 @@ namespace torrents
 	constexpr std::array<std::string_view, eNumKRPCQueries> KRPCQueryStr { "ping", "find_node", "get_peers",
 		"announce_peer" };
 
-	// Query name to enum, or nullopt for an unknown (but well-formed) name.
-	// Unknown names are not a framing error: the caller decides whether to log
-	// and drop, exactly as before.
+	// Query name to enum, or nullopt for an unknown (but well-formed)
+	// name. Unknown names are not a framing error: the caller decides
+	// whether to log and drop, exactly as before.
 	std::optional<KRPCQuery> GetKRPCQueryKind (std::string_view name);
 
 	enum class DHTFrameKind : uint8_t
@@ -382,8 +391,8 @@ namespace torrents
 	};
 
 	/// Parsed KRPC envelope with views borrowing the input. Nested `a`/`r`
-	/// dictionaries stay encoded for the handler that knows their message type;
-	/// no view may outlive the input passed to DecodeDHTFrame().
+	/// dictionaries stay encoded for the handler that knows their message
+	/// type; no view may outlive the input passed to DecodeDHTFrame().
 	struct DHTFrame
 	{
 		DHTFrameKind kind = DHTFrameKind::Malformed;
@@ -397,38 +406,41 @@ namespace torrents
 		bool IsValid () const { return kind != DHTFrameKind::Malformed; }
 	};
 
-	/// Decode one complete KRPC envelope without changing DHT state or logging.
-	/// Keys must be unique and belong to y/t/q/a/r/e or optional BEP 5 `v`;
-	/// transaction IDs are 1..16 bytes, and queries/responses carry one encoded
-	/// `a`/`r` dictionary. Returned views borrow @a encoded.
+	/// Decode one complete KRPC envelope without changing DHT state or
+	/// logging. Keys must be unique and belong to y/t/q/a/r/e or optional
+	/// BEP 5 `v`; transaction IDs are 1..16 bytes, and queries/responses
+	/// carry one encoded `a`/`r` dictionary. Returned views borrow @a
+	/// encoded.
 	/// @return A malformed frame on structural or size failure.
 	/// @see https://www.bittorrent.org/beps/bep_0005.html
 	DHTFrame DecodeDHTFrame (std::string_view encoded);
 
-	// Decode up to `maxCount` compact BEP 5 node records. Records that fail the
-	// node-ID check are skipped, never repaired; work is bounded by both the
-	// input length and maxCount.
+	// Decode up to `maxCount` compact BEP 5 node records. Records that
+	// fail the node-ID check are skipped, never repaired; work is bounded
+	// by both the input length and maxCount.
 	size_t DecodeCompactNodes (
 		std::string_view nodes, std::vector<Node> & out, size_t maxCount = MAX_DHT_NODES_PER_RESPONSE);
-	// Decode a BEP 5 `values` list (or an already parsed entry list) into peer
-	// destination hashes. Wrong-length and all-zero entries are dropped.
+	// Decode a BEP 5 `values` list (or an already parsed entry list) into
+	// peer destination hashes. Wrong-length and all-zero entries are
+	// dropped.
 	size_t DecodeCompactPeers (const std::vector<std::string_view> & peers, std::vector<i2p::data::IdentHash> & out,
 		size_t maxCount = MAX_DHT_VALUES_PER_RESPONSE);
 	size_t DecodeCompactPeers (std::string_view encodedList, std::vector<i2p::data::IdentHash> & out,
 		size_t maxCount = MAX_DHT_VALUES_PER_RESPONSE);
 
 	// A persisted routing state is a flat sequence of fixed-size NodeInfo
-	// records. Empty, oversized and misaligned input is rejected before any
-	// parser can walk it; the result is the record count, bounded by
+	// records. Empty, oversized and misaligned input is rejected before
+	// any parser can walk it; the result is the record count, bounded by
 	// `maxRecords`.
 	std::optional<size_t> DecodeDHTStateRecords (
 		std::span<const uint8_t> bytes, size_t maxRecords = MAX_DHT_LOADED_NODES);
 
 	// One token issued in reply to a get_peers query. The wire token stays
-	// opaque; the node ID, destination hash, repliable port and info hash bind
-	// it so announce_peer can only confirm the swarm it was issued for, from
-	// the node and port that asked. Tokens other nodes send us are opaque
-	// 0..64-byte values held in RequestInfo::tokens and never enter this store.
+	// opaque; the node ID, destination hash, repliable port and info hash
+	// bind it so announce_peer can only confirm the swarm it was issued
+	// for, from the node and port that asked. Tokens other nodes send us
+	// are opaque 0..64-byte values held in RequestInfo::tokens and never
+	// enter this store.
 	struct DHTIncomingToken
 	{
 		GetPeersToken token; // exactly 8 wire bytes
@@ -440,8 +452,9 @@ namespace torrents
 	};
 
 	/// Bounded FIFO of issued tokens, indexed by opaque token and node ID.
-	/// The per-node quota limits eviction pressure from one node; callers purge
-	/// removed or newly private info hashes. Access is serialized by the owner.
+	/// The per-node quota limits eviction pressure from one node; callers
+	/// purge removed or newly private info hashes. Access is serialized by
+	/// the owner.
 	class DHTTokenStore
 	{
 	public:
@@ -473,8 +486,8 @@ namespace torrents
 			WrongNode,
 			WrongPort
 		};
-		// Expired entries are removed; every other rejection keeps the entry so
-		// a legitimate announce from the right node still succeeds.
+		// Expired entries are removed; every other rejection keeps the entry
+		// so a legitimate announce from the right node still succeeds.
 		Validation Validate (std::string_view token, const NodeID & nodeID, const Torrent::InfoHash & infoHash,
 			uint16_t port, uint64_t now, DHTIncomingToken & out);
 
@@ -496,9 +509,10 @@ namespace torrents
 		std::unordered_map<NodeID, std::deque<Order::iterator>, NodeIDHash> m_ByNode; // quota index
 	};
 
-	// Global fixed-window budget for sender-less raw KRPC frames. A monotonic
-	// clock regression never refills the window: the current window is kept
-	// until the clock passes its end, so a skewed clock cannot buy budget.
+	// Global fixed-window budget for sender-less raw KRPC frames. A
+	// monotonic clock regression never refills the window: the current
+	// window is kept until the clock passes its end, so a skewed clock
+	// cannot buy budget.
 	class DHTRawFrameLimiter
 	{
 	public:
@@ -561,21 +575,22 @@ namespace torrents
 	};
 
 	class TorrentsTunnel;
-	// Shared between the DHT service thread, its timers and the disk domain.
-	// Every new asynchronous callback captures a weak reference and enters the
-	// DHT only after locking a live guard with `stopping` false; Stop() sets it
-	// before cancelling, so a torn-down service is never entered from a timer
-	// or a disk-domain task.
+	// Shared between the DHT service thread, its timers and the disk
+	// domain. Every new asynchronous callback captures a weak reference
+	// and enters the DHT only after locking a live guard with `stopping`
+	// false; Stop() sets it before cancelling, so a torn-down service is
+	// never entered from a timer or a disk-domain task.
 	struct DHTServiceState
 	{
 		std::atomic<bool> stopping { false };
 		std::atomic<bool> saveInFlight { false };
 	};
 
-	/// I2P datagram DHT for one tunnel. It borrows the tunnel for its lifetime;
-	/// routing, tokens and query state belong to the tunnel service thread.
-	/// Repliable network datagrams enter a bounded queue before service-thread
-	/// parsing. This is I2P destination discovery, not a public IP DHT fallback.
+	/// I2P datagram DHT for one tunnel. It borrows the tunnel for its
+	/// lifetime; routing, tokens and query state belong to the tunnel
+	/// service thread. Repliable network datagrams enter a bounded queue
+	/// before service-thread parsing. This is I2P destination discovery,
+	/// not a public IP DHT fallback.
 	class TorrentsDHT
 	{
 	public:
@@ -584,7 +599,8 @@ namespace torrents
 		TorrentsDHT (const TorrentsDHT &) = delete;
 		TorrentsDHT & operator= (const TorrentsDHT &) = delete;
 
-		// Set before Start. Delegated persistence never falls back to parent IO.
+		// Set before Start. Delegated persistence never falls back to parent
+		// IO.
 		using LoadState = std::function<bool (const std::filesystem::path &, std::vector<uint8_t> &, std::string &)>;
 		using SaveState = std::function<bool (const std::filesystem::path &, std::span<const uint8_t>, std::string &)>;
 		void SetPersistence (LoadState load, SaveState save)
@@ -594,22 +610,24 @@ namespace torrents
 			m_DelegatedPersistence = true;
 		}
 		static constexpr size_t MaxStateBytes = 8 * 1024 * 1024;
-		// Legacy flat DHT filename: one component beneath &lt;datadir&gt;/torrents,
-		// no traversal, separators, reserved prefixes or control bytes.
+		// Legacy flat DHT filename: one component beneath
+		// &lt;datadir&gt;/torrents, no traversal, separators, reserved
+		// prefixes or control bytes.
 		static bool IsValidStateFileName (std::string_view name);
-		/// Load persisted routing state, publish the datagram receivers (when the
-		/// destination provides a datagram endpoint) and arm the DHT timers.
-		/// Loading may be delegated; an enabled-but-failing delegate must not
-		/// substitute a parent filesystem read.
+		/// Load persisted routing state, publish the datagram receivers (when
+		/// the destination provides a datagram endpoint) and arm the DHT
+		/// timers. Loading may be delegated; an enabled-but-failing delegate
+		/// must not substitute a parent filesystem read.
 		void Start ();
-		/// Publish the stopping flag before cancelling timers or resetting the
-		/// receivers, discard frames queued by the stopped generation and save
-		/// the routing snapshot. No callback may enter the DHT afterwards, and a
-		/// queued frame is never replayed into a later Start().
+		/// Publish the stopping flag before cancelling timers or resetting
+		/// the receivers, discard frames queued by the stopped generation and
+		/// save the routing snapshot. No callback may enter the DHT
+		/// afterwards, and a queued frame is never replayed into a later
+		/// Start().
 		void Stop ();
 
-		// Both are always in 1..65535: 65535 is refused at construction and on
-		// state load so the raw repliable port can never wrap to 0.
+		// Both are always in 1..65535: 65535 is refused at construction and
+		// on state load so the raw repliable port can never wrap to 0.
 		uint16_t GetPort () const { return m_Port; };
 		uint16_t GetRPort () const { return static_cast<uint16_t> (m_Port + 1); };
 		// Service-thread entry point for raw (sender-less) KRPC frames. The
@@ -618,23 +636,24 @@ namespace torrents
 		void HandleRawDatagram (const uint8_t * buf, size_t len, uint16_t fromPort, uint16_t toPort);
 
 		void SendPingQuery (const i2p::data::IdentHash & toIdent, uint16_t toPort);
-		/// Announce a torrent through the I2P DHT and start a bounded get_peers
-		/// lookup. Private, locally private, stopped and removed torrents are
-		/// ignored, and a rendezvous hit reuses peers that already announced
-		/// here instead of running a full lookup. Everything stays on the tunnel
-		/// service thread.
+		/// Announce a torrent through the I2P DHT and start a bounded
+		/// get_peers lookup. Private, locally private, stopped and removed
+		/// torrents are ignored, and a rendezvous hit reuses peers that
+		/// already announced here instead of running a full lookup.
+		/// Everything stays on the tunnel service thread.
 		void GetPeersAndAnnounce (std::shared_ptr<Torrent> torrent);
 		// Remove only our own rendezvous identity after stop/remove. Remote
 		// announcers remain until their normal expiry.
 		void Unannounce (const Torrent::InfoHash & infoHash);
-		// Metadata disclosed that the swarm is private: remember the hash so no
-		// later get_peers/announce_peer is answered or accepted for it, and purge
-		// every DHT trace that was collected before the metadata arrived.
+		// Metadata disclosed that the swarm is private: remember the hash so
+		// no later get_peers/announce_peer is answered or accepted for it,
+		// and purge every DHT trace that was collected before the metadata
+		// arrived.
 		void MarkPrivate (const Torrent::InfoHash & infoHash);
-		// A torrent was removed: drop every DHT trace of its hash (served peers,
-		// our own rendezvous identity and any token issued for that hash). The
-		// private marker, if any, is retained so a removed private hash cannot be
-		// served between removal and a later re-add.
+		// A torrent was removed: drop every DHT trace of its hash (served
+		// peers, our own rendezvous identity and any token issued for that
+		// hash). The private marker, if any, is retained so a removed private
+		// hash cannot be served between removal and a later re-add.
 		void Forget (const Torrent::InfoHash & infoHash);
 		bool IsLocallyPrivate (const Torrent::InfoHash & infoHash) const
 		{
@@ -648,14 +667,14 @@ namespace torrents
 		size_t GetNumIncomingTokens () const { return m_IncomingTokens.Size (); }
 		size_t GetNumHeardFrom () const { return m_HeardFrom.size (); }
 		size_t GetNumFailedPeers () const { return m_FailedPeers.size (); }
-		// Hand-off queue depth; the network thread writes it, the service thread
-		// drains it.
+		// Hand-off queue depth; the network thread writes it, the service
+		// thread drains it.
 		size_t GetNumQueuedDatagrams () const;
 
 	private:
 		// Bounded service-thread hand-off. The network thread only copies the
-		// frame here under the mutex: it never parses, sends or touches routing,
-		// query or torrent state.
+		// frame here under the mutex: it never parses, sends or touches
+		// routing, query or torrent state.
 		struct IncomingDatagram
 		{
 			std::shared_ptr<const i2p::data::IdentityEx> from;
@@ -671,8 +690,9 @@ namespace torrents
 
 		void HandleDatagram (const i2p::data::IdentityEx & from, uint16_t fromPort, uint16_t toPort,
 			const uint8_t * buf, size_t len, const i2p::util::Mapping * options);
-		// Drops every served peer set and every get_peers token bound to one info
-		// hash. Shared by MarkPrivate() and Forget(); never logs the hash.
+		// Drops every served peer set and every get_peers token bound to one
+		// info hash. Shared by MarkPrivate() and Forget(); never logs the
+		// hash.
 		void PurgeInfoHash (const Torrent::InfoHash & infoHash);
 		void HandlePingQuery (const i2p::data::IdentHash & fromIdent, uint16_t fromPort, std::string_view transactionID,
 			const NodeID & nodeID);
@@ -756,7 +776,7 @@ namespace torrents
 		std::unordered_map<i2p::data::IdentHash, uint64_t> m_FailedPeers; // peer -> failure time in monotonic seconds
 		DHTTokenStore m_IncomingTokens;
 		DHTRawFrameLimiter m_RawFrameLimiter;
-		// transactionID -> (ident, port, query,  request info, time in monotonic seconds)
+		// transactionID -> (ident, port, query, request info, monotonic time)
 		std::unordered_map<uint64_t,
 			std::tuple<i2p::data::IdentHash, uint16_t, KRPCQuery, std::shared_ptr<RequestInfo>, uint64_t>>
 			m_Queries;

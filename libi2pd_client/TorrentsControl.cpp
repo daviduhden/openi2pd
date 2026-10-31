@@ -4,9 +4,9 @@
  *
  * openi2pd: TorrentsControl.
  *
- * Implements the bounded control-plane helpers: BEP 9 magnet parsing and
- * building, I2P-only tracker host validation, and symlink-safe bounded
- * .torrent file reads.
+ * Implements the bounded control-plane helpers: BEP 9 magnet parsing
+ * and building, I2P-only tracker host validation, and symlink-safe
+ * bounded .torrent file reads.
  *
  */
 

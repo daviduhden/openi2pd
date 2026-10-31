@@ -4,10 +4,11 @@
  *
  * openi2pd: torrents DHT protocol regressions.
  *
- * Pins the side-effect free KRPC frame decoder, the bounded issued-token store
- * with its per-node quota, the compact node/peer decoders, the per-peer routing
- * cap, the anonymous raw-frame budget, the port-safety helpers and the flat
- * state-record validation. No socket, timer or live node is involved.
+ * Pins the side-effect free KRPC frame decoder, the bounded
+ * issued-token store with its per-node quota, the compact node/peer
+ * decoders, the per-peer routing cap, the anonymous raw-frame budget,
+ * the port-safety helpers and the flat state-record validation. No
+ * socket, timer or live node is involved.
  */
 
 #include <array>
@@ -73,7 +74,8 @@ Torrent::InfoHash MakeInfoHash (uint8_t salt)
 	return hash;
 }
 
-// Deterministic and unique per (fill, node, port). The wire token itself
+// Deterministic and unique per (fill, node, port). The wire token
+// itself
 // stays opaque eight-byte material.
 DHTIncomingToken MakeToken (uint8_t fill, const NodeID & nodeID, const i2p::data::IdentHash & peer,
 	const Torrent::InfoHash & infoHash, uint16_t port, uint64_t issued)

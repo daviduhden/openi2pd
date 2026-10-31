@@ -4,7 +4,9 @@
  *
  * openi2pd: test torrent bencode.
  *
- * Checks bencode metainfo parsing and creation bounds: piece/name validation, 64-bit length limits, file-count and depth caps, path sanitization and collisions, and bounded torrent-file reads.
+ * Checks bencode metainfo parsing and creation bounds: piece/name
+ * validation, 64-bit length limits, file-count and depth caps, path
+ * sanitization and collisions, and bounded torrent-file reads.
  *
  */
 
@@ -26,7 +28,8 @@
 
 using namespace i2p::torrents;
 
-// 256 TiB does not fit in a 32-bit size_t. The constant and every length
+// 256 TiB does not fit in a 32-bit size_t. The constant and every
+// length
 // comparison must therefore be performed in 64 bits.
 static_assert (MAX_TORRENT_LENGTH == (uint64_t { 256 } << 40), "limit must stay at 256 TiB");
 static_assert (MAX_TORRENT_LENGTH > std::numeric_limits<uint32_t>::max (), "limit must exceed 32-bit size_t");
@@ -181,17 +184,19 @@ static void TestDepthAndBounds ()
 	ExpectMalformed (MakeTorrentFile (Dict ({ { "length", Int (16384) }, { "name", Bytes ("file.bin") },
 		{ "piece length", Int (16384) }, { "pieces", Bytes (std::string (SHA_DIGEST_LENGTH + 1, 'A')) } })));
 
-	// A valid length that would require more than MAX_NUM_TORRENT_PIECES is rejected.
+	// A valid length that would require more than MAX_NUM_TORRENT_PIECES
+	// is rejected.
 	ExpectMalformed (MakeTorrentFile (SingleFileInfo (MAX_TORRENT_LENGTH, MIN_PIECE_LENGTH, 1)));
 	// The check happens in 64 bits: the limit itself is rejected, and the
 	// value one past it must never wrap back into an accepted length.
 	ExpectMalformed (MakeTorrentFile (SingleFileInfo (MAX_TORRENT_LENGTH + 1, MIN_PIECE_LENGTH, 1)));
-	// 4 GiB is the first length that does not fit in an ILP32 size_t. It is
-	// rejected either by the size_t check (32-bit) or by the piece-count/hash
-	// consistency check (64-bit).
+	// 4 GiB is the first length that does not fit in an ILP32 size_t. It
+	// is rejected either by the size_t check (32-bit) or by the
+	// piece-count/hash consistency check (64-bit).
 	ExpectMalformed (MakeTorrentFile (SingleFileInfo (uint64_t { 1 } << 32, MIN_PIECE_LENGTH, 1)));
 
-	// Two individually valid file lengths must not overflow the total length bound.
+	// Two individually valid file lengths must not overflow the total
+	// length bound.
 	ExpectMalformed (MakeTorrentFile (
 		MultiFileInfo ({ { MAX_TORRENT_LENGTH, { "a" } }, { MAX_TORRENT_LENGTH, { "b" } } }, MIN_PIECE_LENGTH, 1)));
 
@@ -241,7 +246,8 @@ static void TestCollidingPaths ()
 
 static void TestRequiredName ()
 {
-	// An empty or missing root name leaves no safe download path even though
+	// An empty or missing root name leaves no safe download path even
+	// though
 	// the other metadata fields can be individually valid.
 	ExpectMalformed (MakeTorrentFile (SingleFileInfo (16384, 16384, 1, "")));
 	ExpectMalformed (MakeTorrentFile (

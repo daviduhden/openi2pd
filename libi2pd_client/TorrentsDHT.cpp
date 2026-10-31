@@ -4,10 +4,11 @@
  *
  * openi2pd: TorrentsDHT.
  *
- * Implements a Kademlia-style routing table and KRPC ping/find_node/get_peers/
- * announce_peer over repliable and raw I2P datagrams, with token-authenticated
- * announces, exploratory lookups and a bounded query rate limiter. The node
- * identity and routing table are persisted and expire on timers.
+ * Implements a Kademlia-style routing table and KRPC
+ * ping/find_node/get_peers/ announce_peer over repliable and raw I2P
+ * datagrams, with token-authenticated announces, exploratory lookups
+ * and a bounded query rate limiter. The node identity and routing table
+ * are persisted and expire on timers.
  *
  */
 
@@ -87,7 +88,8 @@ namespace torrents
 		auto middleID = GetMiddleID ();
 		if (!middleID) return false;
 		auto newBucket = std::make_unique<Bucket> (*middleID);
-		// move some nodes before publishing the new link, so a failure leaves the chain unchanged
+		// move some nodes before publishing the new link, so a failure leaves
+		// the chain unchanged
 		auto it = nodes.begin ();
 		while (it != nodes.end ())
 		{
@@ -259,10 +261,10 @@ namespace torrents
 			bucket->lastUpdateTime = ts;
 			return it->second;
 		}
-		// A destination mints its own node ID, and only six of the 20 ID bytes
-		// are bound to it, so one peer can present many valid NIDs and fill
-		// several buckets. Enforce the per-peer cap by rejecting the newcomer;
-		// an existing entry is never evicted on its behalf.
+		// A destination mints its own node ID, and only six of the 20 ID
+		// bytes are bound to it, so one peer can present many valid NIDs and
+		// fill several buckets. Enforce the per-peer cap by rejecting the
+		// newcomer; an existing entry is never evicted on its behalf.
 		if (CountPeerNodes (node->peer) >= MAX_DHT_NODES_PER_PEER) return nullptr;
 		if (bucket->IsFull ())
 		{
@@ -408,10 +410,10 @@ namespace torrents
 		if (!IsValidToken (entry.token) || !IsValidPort (entry.port)) return Admission::Rejected;
 		if (m_Tokens.contains (entry.token)) return Admission::AlreadyPresent;
 		Admission result = Admission::Issued;
-		// Per-node quota first: reclaim only this node's own oldest token, so a
-		// destination that keeps issuing get_peers cannot flush every other
-		// destination's tokens. Re-look-up each round because Erase may drop an
-		// emptied per-node bucket.
+		// Per-node quota first: reclaim only this node's own oldest token, so
+		// a destination that keeps issuing get_peers cannot flush every other
+		// destination's tokens. Re-look-up each round because Erase may drop
+		// an emptied per-node bucket.
 		while (true)
 		{
 			auto node = m_ByNode.find (entry.nodeID);
@@ -527,8 +529,8 @@ namespace torrents
 			m_WindowStart = now;
 			m_Count = 0;
 		}
-		// A clock regression (now < m_WindowStart) keeps the current window and
-		// its count, so a skewed clock cannot refill an exhausted budget.
+		// A clock regression (now < m_WindowStart) keeps the current window
+		// and its count, so a skewed clock cannot refill an exhausted budget.
 		if (m_Count >= MaxFrames) return false;
 		++m_Count;
 		return true;
@@ -656,8 +658,8 @@ namespace torrents
 
 	TorrentsDHT::~TorrentsDHT ()
 	{
-		// A timer callback that already reached its turn or a disk-domain save
-		// that has not run yet must fail closed instead of entering
+		// A timer callback that already reached its turn or a disk-domain
+		// save that has not run yet must fail closed instead of entering
 		// half-destroyed state.
 		m_ServiceState->stopping.store (true, std::memory_order_release);
 		m_DHTUpdateCheckTimer.cancel ();
@@ -687,8 +689,8 @@ namespace torrents
 		else if (!m_DHTFileName.empty () && m_DHTFileName[0])
 			LogPrint (eLogError, "TorrentsDHT: Refusing unsafe DHT state filename");
 		m_ServiceState->stopping.store (false, std::memory_order_release);
-		// A fresh generation starts with no write in flight; a stale one could
-		// not have completed because Stop() marks `stopping` first.
+		// A fresh generation starts with no write in flight; a stale one
+		// could not have completed because Stop() marks `stopping` first.
 		m_ServiceState->saveInFlight.store (false, std::memory_order_release);
 		if (dest)
 		{
@@ -737,8 +739,9 @@ namespace torrents
 			std::lock_guard<std::mutex> lock (m_IncomingMutex);
 			m_Incoming.clear ();
 		}
-		// A periodic write that has not started yet sees `stopping` and returns
-		// without writing, so the flag must not stay latched across a restart.
+		// A periodic write that has not started yet sees `stopping` and
+		// returns without writing, so the flag must not stay latched across a
+		// restart.
 		m_ServiceState->saveInFlight.store (false, std::memory_order_release);
 		// The final save stays synchronous: the caller stops the delegated
 		// storage worker only after this returns, so no periodic save may
@@ -828,8 +831,8 @@ namespace torrents
 			f.seekg (0);
 			if (!bytes.empty () && !f.read (reinterpret_cast<char *> (bytes.data ()), bytes.size ())) return;
 		}
-		// Keep the existing flat 54-byte NodeInfo format; reject partial files
-		// before changing identity or routing state.
+		// Keep the existing flat 54-byte NodeInfo format; reject partial
+		// files before changing identity or routing state.
 		if (!DecodeDHTStateRecords (bytes)) return;
 		size_t offset = 0;
 		NodeInfo first;
@@ -871,9 +874,10 @@ namespace torrents
 
 	namespace
 	{
-		// Length of the single bencoded value at the front of `value`, or zero
-		// when the value is malformed. Used so the envelope handler returns the
-		// consumed length instead of asking ParseDictionary to reparse.
+		// Length of the single bencoded value at the front of `value`, or
+		// zero when the value is malformed. Used so the envelope handler
+		// returns the consumed length instead of asking ParseDictionary to
+		// reparse.
 		size_t GetEncodedValueLength (std::string_view value)
 		{
 			if (value.empty ()) return 0;
@@ -886,8 +890,8 @@ namespace torrents
 			}
 		}
 
-		// KRPC `e` is [integer code, byte-string text]. The text is bounded and
-		// informational only; it is never logged.
+		// KRPC `e` is [integer code, byte-string text]. The text is bounded
+		// and informational only; it is never logged.
 		bool DecodeKRPCError (std::string_view encoded, int32_t & code, std::string_view & text)
 		{
 			size_t count = 0;
@@ -1098,9 +1102,9 @@ namespace torrents
 		// ping/announce and must not promote routing or heard-from state.
 		auto completed = m_Queries.extract (it);
 		const auto & target = std::get<0> (completed.mapped ());
-		// An error answer means the peer cannot serve this query right now, so
-		// record it in the same bounded failure map a timeout uses before the
-		// lookup advances to the next candidate.
+		// An error answer means the peer cannot serve this query right now,
+		// so record it in the same bounded failure map a timeout uses before
+		// the lookup advances to the next candidate.
 		if (m_FailedPeers.contains (target) || m_FailedPeers.size () < MAX_DHT_FAILED_PEERS)
 			m_FailedPeers.insert_or_assign (target, i2p::util::GetMonotonicSeconds ());
 		auto info = std::get<3> (completed.mapped ());
@@ -1114,9 +1118,10 @@ namespace torrents
 	void TorrentsDHT::HandleRawDatagram (const uint8_t * buf, size_t len, uint16_t fromPort, uint16_t toPort)
 	{
 		if (!buf || !len || len > MAX_DHT_KRPC_FRAME || toPort != GetRPort () || !fromPort || fromPort == 65535) return;
-		// A raw frame carries no authenticated sender. Charge one global fixed
-		// window before parsing so an anonymous flood cannot buy unbounded
-		// decode work; the budget never grows back on a clock regression.
+		// A raw frame carries no authenticated sender. Charge one global
+		// fixed window before parsing so an anonymous flood cannot buy
+		// unbounded decode work; the budget never grows back on a clock
+		// regression.
 		if (!m_RawFrameLimiter.Allow (i2p::util::GetMonotonicSeconds ())) return;
 
 		const auto frame = DecodeDHTFrame (std::string_view (reinterpret_cast<const char *> (buf), len));
@@ -1365,14 +1370,14 @@ namespace torrents
 		if (m_PrivateInfoHashes.Contains (infoHash))
 		{
 			// A locally private swarm must not be confirmed, served or tokenized
-			// through the public DHT. Drop the query without a reply: an error or
-			// an empty response would still disclose that this node knows it.
+			// through the public DHT. Drop the query without a reply: an error
+			// or an empty response would still disclose that this node knows it.
 			LogPrint (eLogDebug, "TorrentsDHT: Ignoring get_peers for a locally private info hash");
 			return;
 		}
 
-		// The token stays cryptographic: eight CSPRNG bytes, never derived from
-		// the query or the node ID. The bounded store owns capacity, the
+		// The token stays cryptographic: eight CSPRNG bytes, never derived
+		// from the query or the node ID. The bounded store owns capacity, the
 		// per-node quota and eviction.
 		GetPeersToken token (8, '\0');
 		const auto ts = i2p::util::GetMonotonicSeconds ();
@@ -1438,9 +1443,9 @@ namespace torrents
 		LogPrint (eLogDebug, "TorrentsDHT: Announce peer received from ", nodeID.ToBase64 ());
 		if (m_PrivateInfoHashes.Contains (infoHash))
 		{
-			// Members of a private swarm are only reachable through its trackers.
-			// Refuse before the token table is consulted so no token, peer or
-			// reply confirms local knowledge of the hash.
+			// Members of a private swarm are only reachable through its
+			// trackers. Refuse before the token table is consulted so no token,
+			// peer or reply confirms local knowledge of the hash.
 			LogPrint (eLogDebug, "TorrentsDHT: Ignoring announce_peer for a locally private info hash");
 			return;
 		}
@@ -1600,8 +1605,9 @@ namespace torrents
 		}
 		LogPrint (eLogDebug, "TorrentsDHT: Send announce to ", toIdent.ToBase64 ());
 		if (token) SendAnnouncePeerQuery (info, *token, toIdent, toPort);
-		// A peers reply (including an empty list after removing the requester)
-		// does not end discovery; continue toward the remaining closest nodes.
+		// A peers reply (including an empty list after removing the
+		// requester) does not end discovery; continue toward the remaining
+		// closest nodes.
 		SendNextGetPeersQuery (info);
 	}
 
@@ -2095,8 +2101,9 @@ namespace torrents
 
 	void TorrentsDHT::DrainIncomingDatagrams ()
 	{
-		// Swap the whole bounded batch out under the lock so the network thread
-		// is never blocked by the parsers. HandleDatagram() runs only here.
+		// Swap the whole bounded batch out under the lock so the network
+		// thread is never blocked by the parsers. HandleDatagram() runs only
+		// here.
 		std::deque<IncomingDatagram> batch;
 		{
 			std::lock_guard<std::mutex> lock (m_IncomingMutex);
@@ -2157,8 +2164,8 @@ namespace torrents
 		ScheduleDHTStateSave ();
 		if (m_DHTFileName.empty () || !m_DHTFileName[0] || !IsValidStateFileName (m_DHTFileName)) return;
 		if (!m_RoutingTable) return;
-		// Single flight: a save that is still queued or running makes this tick a
-		// no-op, so the disk domain never accumulates writes.
+		// Single flight: a save that is still queued or running makes this
+		// tick a no-op, so the disk domain never accumulates writes.
 		if (m_ServiceState->saveInFlight.exchange (true, std::memory_order_acq_rel)) return;
 		const auto file = GetDHTFilePath (m_DHTFileName);
 		if (file.empty ())
@@ -2168,8 +2175,9 @@ namespace torrents
 		}
 		// The snapshot is built on the service thread because it reads the
 		// routing table and node identity. The write task captures no `this`:
-		// only the shared state, the path, the bytes and a copy of the storage
-		// callable, so it stays valid even if persistence is revoked first.
+		// only the shared state, the path, the bytes and a copy of the
+		// storage callable, so it stays valid even if persistence is revoked
+		// first.
 		std::vector<uint8_t> bytes;
 		if (!BuildStateSnapshot (bytes))
 		{
@@ -2215,14 +2223,16 @@ namespace torrents
 
 	void TorrentsDHT::PurgeInfoHash (const Torrent::InfoHash & infoHash)
 	{
-		// Served peers, our own rendezvous identity and every token issued for
-		// the hash go at once: a token would otherwise stay usable for the rest
-		// of its ten-minute window after the metadata revealed privacy.
+		// Served peers, our own rendezvous identity and every token issued
+		// for the hash go at once: a token would otherwise stay usable for
+		// the rest of its ten-minute window after the metadata revealed
+		// privacy.
 		m_Torrents.erase (infoHash);
 		m_IncomingTokens.RemoveInfoHash (infoHash);
 		// Outstanding lookups for the hash stop querying the network too: a
-		// removed or newly private swarm must not keep advertising our interest
-		// in it. The response to a dropped transaction is simply ignored.
+		// removed or newly private swarm must not keep advertising our
+		// interest in it. The response to a dropped transaction is simply
+		// ignored.
 		for (auto it = m_Queries.begin (); it != m_Queries.end ();)
 		{
 			const auto & request = std::get<3> (it->second);

@@ -4,9 +4,10 @@
  *
  * openi2pd: test torrents security.
  *
- * Adversarial torrent checks: 64-bit size limits, piece-block bounds and
- * stopped-torrent rejection, peer framing, corrupt pieces and resume
- * bitfields, metadata copy avoidance, and DHT routing-table ownership.
+ * Adversarial torrent checks: 64-bit size limits, piece-block bounds
+ * and stopped-torrent rejection, peer framing, corrupt pieces and
+ * resume bitfields, metadata copy avoidance, and DHT routing-table
+ * ownership.
  *
  */
 
@@ -33,8 +34,8 @@
 
 using namespace i2p::torrents;
 
-// The size constant must be computed in 64 bits even on ILP32, where the
-// product would otherwise wrap to zero.
+// The size constant must be computed in 64 bits even on ILP32, where
+// the product would otherwise wrap to zero.
 static_assert (MAX_TORRENT_LENGTH == (uint64_t { 256 } << 40), "limit must stay at 256 TiB");
 static_assert (MAX_TORRENT_LENGTH > std::numeric_limits<uint32_t>::max (), "limit must exceed 32-bit size_t");
 
@@ -164,13 +165,15 @@ void TestPieceBlockBounds ()
 	}
 }
 
-// A block is accepted only while the torrent is running and only when the
-// peer-supplied offset/length is a non-empty, in-range slice of the actual
-// piece. The helper uses the piece size, not the nominal piece length, so
-// the short final piece is handled without accepting bytes beyond it.
+// A block is accepted only while the torrent is running and only when
+// the peer-supplied offset/length is a non-empty, in-range slice of the
+// actual piece. The helper uses the piece size, not the nominal piece
+// length, so the short final piece is handled without accepting bytes
+// beyond it.
 void TestCanAcceptPieceBlock ()
 {
-	// 20000 bytes at a 16 KiB piece length produces a 16384-byte first piece
+	// 20000 bytes at a 16 KiB piece length produces a 16384-byte first
+	// piece
 	// and a 3616-byte final piece.
 	Torrent torrent (MakeMultiFileTorrent ("block-bounds", { "file.bin" }, 20000, 2));
 	assert (torrent.GetError () == eTorrentErrorNoError);
@@ -207,9 +210,10 @@ void TestCanAcceptPieceBlock ()
 	assert (torrent.CanAcceptPieceBlock (0, 0, 16384));
 }
 
-// A 65535-byte payload plus its 4-byte prefix does not fit in the receive
-// buffer. It must be rejected before it is stored as m_NextMsgLength, which
-// would otherwise wait forever for bytes that cannot be buffered.
+// A 65535-byte payload plus its 4-byte prefix does not fit in the
+// receive buffer. It must be rejected before it is stored as
+// m_NextMsgLength, which would otherwise wait forever for bytes that
+// cannot be buffered.
 void TestPeerMessageFraming ()
 {
 	static_assert (MAX_PEER_MSG_LEN + 4 == PEER_CONNECTION_RECEIVE_BUFFER_SIZE);
@@ -220,9 +224,10 @@ void TestPeerMessageFraming ()
 	assert (!IsPeerMessageLengthAllowed (std::numeric_limits<uint32_t>::max ()));
 }
 
-// A complete piece whose bytes do not match the metainfo hash must be turned
-// back into a Missing block map, not left complete with corrupt data. Reset()
-// of a complete piece has the same contract so it can be downloaded again.
+// A complete piece whose bytes do not match the metainfo hash must be
+// turned back into a Missing block map, not left complete with corrupt
+// data. Reset() of a complete piece has the same contract so it can be
+// downloaded again.
 void TestPieceRequestRelease ()
 {
 	std::vector<uint8_t> block (2 * 16384, 0x33);
@@ -291,8 +296,10 @@ void TestPieceCorruptionAndReset ()
 	}
 }
 
-// A resume bitfield is unverified input. Applying it may keep complete pieces,
-// but it must not make AreAllPiecesVerified() true, and an individual corrupt
+// A resume bitfield is unverified input. Applying it may keep complete
+// pieces,
+// but it must not make AreAllPiecesVerified() true, and an individual
+// corrupt
 // piece must remain recoverable.
 void TestCorruptResumeBitfield ()
 {
@@ -304,8 +311,9 @@ void TestCorruptResumeBitfield ()
 	assert (!torrent.AreAllPiecesVerified ());
 
 	auto [bitfield, have] = torrent.CreateBitfield ();
-	// Some Boost/logic implementations compare tribool to bool differently in
-	// this configuration; the exact bitfield is the stronger assertion below.
+	// Some Boost/logic implementations compare tribool to bool differently
+	// in this configuration; the exact bitfield is the stronger assertion
+	// below.
 	assert (have != false);
 	// Two pieces occupy the two high bits; unused tail bits stay zero.
 	assert (bitfield.size () == 1 && bitfield[0] == 0xC0);
@@ -441,12 +449,13 @@ void TestTorrentFileIO ()
 	assert (!file->Save (15, written, 2));
 	assert (!file->Load (std::numeric_limits<size_t>::max () - 4, &extra, 8));
 	assert (!file->Save (std::numeric_limits<size_t>::max () - 4, written, 8));
-	// A NULL buffer with a non-zero length is rejected rather than passed to
-	// the kernel.
+	// A NULL buffer with a non-zero length is rejected rather than passed
+	// to the kernel.
 	assert (!file->Load (0, nullptr, 1));
 	assert (!file->Save (0, nullptr, 1));
 
-	// A truncated ".part" must make Load fail, not return uninitialised bytes.
+	// A truncated ".part" must make Load fail, not return uninitialised
+	// bytes.
 	auto truncated = std::make_shared<TorrentFile> (dir.path / "truncated.bin", 16);
 	{
 		std::ofstream part (dir.path / "truncated.bin.part", std::ofstream::binary);
@@ -464,8 +473,8 @@ void TestTorrentFileIO ()
 	assert (complete->Load (0, loaded, sizeof (loaded)));
 	assert (!memcmp (written, loaded, sizeof (written)));
 
-	// A complete piece whose backing file cannot be loaded must be rebuilt as
-	// Missing rather than silently remaining complete.
+	// A complete piece whose backing file cannot be loaded must be rebuilt
+	// as Missing rather than silently remaining complete.
 	{
 		uint8_t zeroHash[SHA_DIGEST_LENGTH] = { };
 		Piece missingPiece (16, zeroHash);
@@ -480,13 +489,14 @@ void TestTorrentFileIO ()
 	}
 }
 
-// Path components from metainfo must never escape the torrent directory. The
-// parser rejects "." / "..", absolute components and NUL before a path is
-// constructed.
+// Path components from metainfo must never escape the torrent
+// directory. The parser rejects "." / "..", absolute components and NUL
+// before a path is constructed.
 void TestUnsafeTorrentPaths ()
 {
-	// A non-string component must invalidate the entire list rather than be
-	// skipped by the generic bencode parser and change the intended path.
+	// A non-string component must invalidate the entire list rather than
+	// be skipped by the generic bencode parser and change the intended
+	// path.
 	const auto invalidFile = Dict ({ { "length", "i16384e" }, { "path", "l3:subi1e8:file.bine" } });
 	const auto invalidMeta = Dict ({ { "info",
 		Dict ({ { "files", "l" + invalidFile + "e" }, { "name", Bytes ("root") },
@@ -504,8 +514,9 @@ void TestUnsafeTorrentPaths ()
 	assert (absoluteComponent.GetError () == eTorrentErrorMalformedMetaInfo);
 
 	Torrent backslashComponent (MakeMultiFileTorrent ("root", { "..\\escape.bin" }));
-	// Separators inside a component are neutralised, so this is not traversal;
-	// it must not produce an error but also must not create a directory.
+	// Separators inside a component are neutralised, so this is not
+	// traversal; it must not produce an error but also must not create a
+	// directory.
 	assert (backslashComponent.GetError () == eTorrentErrorNoError);
 	assert (!backslashComponent.GetFiles ().empty ());
 
@@ -533,8 +544,8 @@ void TestStrictBencodedStringList ()
 	}
 }
 
-// Lexical containment and symlink rejection used by the session before it
-// creates, opens or removes files.
+// Lexical containment and symlink rejection used by the session before
+// it creates, opens or removes files.
 void TestPathContainment ()
 {
 	assert (!IsSafeRelativePath (std::filesystem::path ("../escape")));
@@ -545,9 +556,9 @@ void TestPathContainment ()
 	assert (IsSafeRelativePath (std::filesystem::path ("a/b")));
 	assert (IsSafeRelativePath (std::filesystem::path ("file.bin")));
 
-	// This is the network-thread check: it must be purely lexical and reject
-	// any path that leaves the configured root before storage is asked to
-	// touch the filesystem.
+	// This is the network-thread check: it must be purely lexical and
+	// reject any path that leaves the configured root before storage is
+	// asked to touch the filesystem.
 	assert (IsPathLexicallyWithinRoot (std::filesystem::path ("root"), std::filesystem::path ("root/file.bin")));
 	assert (IsPathLexicallyWithinRoot (std::filesystem::path ("root"), std::filesystem::path ("root/sub/file")));
 	assert (!IsPathLexicallyWithinRoot (std::filesystem::path ("root"), std::filesystem::path ("root/../escape")));
@@ -611,8 +622,9 @@ void TestPathContainment ()
 }
 
 #ifndef _WIN32
-// A swapped part file or intermediate directory must never redirect reads or
-// writes outside the torrent root. The victim file must stay byte-identical.
+// A swapped part file or intermediate directory must never redirect
+// reads or writes outside the torrent root. The victim file must stay
+// byte-identical.
 void TestTorrentFileSymlinkRejection ()
 {
 	TempDir dir;
@@ -665,8 +677,8 @@ void TestTorrentFileSymlinkRejection ()
 #endif
 
 // Resume files are derived data but their write path is still attacker
-// reachable through the torrent directory. A symlinked ".resume" must not
-// truncate its target, and reads must be bounded.
+// reachable through the torrent directory. A symlinked ".resume" must
+// not truncate its target, and reads must be bounded.
 void TestRemovedTorrentPersistence ()
 {
 	TempDir dir { MakeTempDir () };
@@ -718,7 +730,8 @@ void TestRemovalQueueAndReadd ()
 	assert (tunnel->RemoveTorrent (id, false));
 	assert (torrent->IsRemoved ());
 	assert (!tunnel->AddTorrent (content).first); // cleanup not dispatched yet
-	// Drive both domains explicitly, without threads, sleeps, a router or peers.
+	// Drive both domains explicitly, without threads, sleeps, a router or
+	// peers.
 	auto pump = [&]
 	{
 		for (unsigned pass = 0; pass < 8; ++pass)
@@ -735,9 +748,11 @@ void TestRemovalQueueAndReadd ()
 	assert (std::filesystem::exists (dir.path / "queued" / "file.bin"));
 	auto [replacement, replacementID] = tunnel->AddTorrent (content);
 	assert (replacement && replacement != torrent && replacementID > 0 && !replacement->IsRemoved ());
-	// Simulate a disk transaction that passed authorization before removal.
+	// Simulate a disk transaction that passed authorization before
+	// removal.
 	// Revocation must not wait for this running transaction, and its late
-	// write must still precede the serialized cleanup, never resurrect state.
+	// write must still precede the serialized cleanup, never resurrect
+	// state.
 	boost::asio::post (tunnel->GetDiskIOService (),
 		[&]
 		{
@@ -751,8 +766,10 @@ void TestRemovalQueueAndReadd ()
 	auto [last, lastID] = tunnel->AddTorrent (content);
 	assert (last && lastID > 0);
 	assert (tunnel->RemoveTorrent (lastID, false));
-	// A nonempty directory at the exact metadata filename must fail closed;
-	// cleanup must never recurse into it or permit a replacement afterward.
+	// A nonempty directory at the exact metadata filename must fail
+	// closed;
+	// cleanup must never recurse into it or permit a replacement
+	// afterward.
 	std::filesystem::create_directory (dir.path / state);
 	{
 		std::ofstream file (dir.path / state / "keep");
@@ -807,7 +824,8 @@ void TestResumeWriteAndRead ()
 	Torrent torrent (MakeMultiFileTorrent ("resume-root", { "file.bin" }, 32768, 2));
 	assert (torrent.GetError () == eTorrentErrorNoError);
 	torrent.SetFullPath (dir.path / "resume-root");
-	// One complete and one incomplete piece makes the bitfield indeterminate,
+	// One complete and one incomplete piece makes the bitfield
+	// indeterminate,
 	// which is the state that is persisted to the resume file.
 	torrent.GetPiece (0).Complete ();
 
@@ -843,7 +861,8 @@ void TestResumeWriteAndRead ()
 		assert (!ReadFileBoundedNoFollow (resumePath, 64, content, error));
 		std::filesystem::remove (resumePath, ec);
 	}
-	// Empty and oversized/truncated resume payloads are rejected before any
+	// Empty and oversized/truncated resume payloads are rejected before
+	// any
 	// bitfield is applied.
 	{
 		std::ofstream f (resumePath, std::ofstream::binary | std::ofstream::trunc);

@@ -4,7 +4,10 @@
  *
  * openi2pd: test torrents creator.
  *
- * Creates a multi-file torrent from temporary files and compares independently constructed info bytes, covering cross-file piece hashing, zero-length entries, path/symlink rejection and no-follow atomic state I/O.
+ * Creates a multi-file torrent from temporary files and compares
+ * independently constructed info bytes, covering cross-file piece
+ * hashing, zero-length entries, path/symlink rejection and no-follow
+ * atomic state I/O.
  *
  */
 
@@ -60,7 +63,8 @@ int main ()
 	std::string bytes = first + second;
 	Torrent::InfoHash hash;
 	SHA1 (reinterpret_cast<const uint8_t *> (bytes.data ()), MIN_PIECE_LENGTH, hash.data ());
-	// Exact independently constructed info bytes check cross-file piece hashing
+	// Exact independently constructed info bytes check cross-file piece
+	// hashing
 	// and deterministic enumeration, including the empty file entry.
 	std::vector<Torrent::InfoHash> hashes { hash };
 	SHA1 (reinterpret_cast<const uint8_t *> (bytes.data () + MIN_PIECE_LENGTH), bytes.size () - MIN_PIECE_LENGTH,
@@ -75,8 +79,8 @@ int main ()
 	auto privateTorrent = CreateTorrentFromPath (root, "payload", options, error);
 	assert (privateTorrent && privateTorrent->IsPrivate () && privateTorrent->GetTrackerTiers () == options.trackers);
 	assert (privateTorrent->GetInfoHash () != torrent->GetInfoHash ());
-	// A private torrent without a tracker cannot discover peers and must fail
-	// closed, matching the Java manager's "no I2P trackers" policy.
+	// A private torrent without a tracker cannot discover peers and must
+	// fail closed, matching the Java manager's "no I2P trackers" policy.
 	options.trackers.clear ();
 	assert (!CreateTorrentFromPath (root, "payload", options, error));
 	options.privateTorrent = false;

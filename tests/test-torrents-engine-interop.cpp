@@ -4,7 +4,10 @@
  *
  * openi2pd: test torrents engine interop.
  *
- * Round-trips torrent metadata through creation and parsing, checking tracker tiers, private flag, info-hash stability, multi-file and zero-length entries, path validation and explicit tracker suppression.
+ * Round-trips torrent metadata through creation and parsing, checking
+ * tracker tiers, private flag, info-hash stability, multi-file and
+ * zero-length entries, path validation and explicit tracker
+ * suppression.
  *
  */
 
@@ -45,8 +48,9 @@ int main ()
 	const auto info
 		= std::string (reinterpret_cast<const char *> (torrent->GetInfo ().data ()), torrent->GetInfo ().size ());
 
-	// A primary announce outside a non-empty announce-list remains part of the
-	// policy and is normalized into tier 0 without changing the info hash.
+	// A primary announce outside a non-empty announce-list remains part of
+	// the policy and is normalized into tier 0 without changing the info
+	// hash.
 	auto splitTrackers = CreateDictionary ({ { "announce", CreateByteString ("http://primary.i2p/a") },
 		{ "announce-list", CreateList ({ CreateList ({ CreateByteString ("http://backup.i2p/a") }) }) },
 		{ "info", info } });
@@ -57,7 +61,8 @@ int main ()
 	assert (split.GetTrackerTiers ().front ().front () == "http://primary.i2p/a");
 	assert (split.GetInfoHash () == torrent->GetInfoHash ());
 
-	// A created public torrent with no trackers inherits the tunnel's common
+	// A created public torrent with no trackers inherits the tunnel's
+	// common
 	// endpoints instead of being marked as explicitly trackerless.
 	Torrent::TrackerTiers emptyTiers;
 	auto trackerlessCreated
@@ -78,12 +83,14 @@ int main ()
 	assert (!Torrent::CreateV1 ("root", { { { }, MIN_PIECE_LENGTH + 1 } }, MIN_PIECE_LENGTH, hashes));
 	Torrent::TrackerTiers excessive (MAX_NUM_TRACKERS + 1);
 	assert (!restored.SetTrackerTiers (excessive));
-	// A typed field with a syntactically valid but wrong bencode type is rejected.
+	// A typed field with a syntactically valid but wrong bencode type is
+	// rejected.
 	Torrent malformed (CreateDictionary ({ { "announce-list", "li1ee" }, { "info", info } }));
 	assert (malformed.GetError () == eTorrentErrorMalformedMetaInfo);
 
-	// Tracker/metadata rewrites preserve top-level keys the engine does not
-	// interpret. Java's MetaInfo copy constructor has the same guarantee.
+	// Tracker/metadata rewrites preserve top-level keys the engine does
+	// not interpret. Java's MetaInfo copy constructor has the same
+	// guarantee.
 	auto withExtras = CreateDictionary ({ { "announce", CreateByteString ("http://tracker.i2p/announce") },
 		{ "comment", CreateByteString ("original comment") }, { "created by", CreateByteString ("fixture") },
 		{ "creation date", "i1700000000e" }, { "url-list", CreateList ({ CreateByteString ("http://seed.i2p/file") }) },

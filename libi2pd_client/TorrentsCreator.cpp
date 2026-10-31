@@ -4,10 +4,11 @@
  *
  * openi2pd: TorrentsCreator.
  *
- * Hashes file trees into BEP 3 piece hashes with OpenSSL EVP on the storage
- * worker, traversing only beneath the authorized root and rejecting reparse
- * points and symlinked descendants. It produces metadata only and never
- * marks the resulting torrent complete or verified for seeding.
+ * Hashes file trees into BEP 3 piece hashes with OpenSSL EVP on the
+ * storage worker, traversing only beneath the authorized root and
+ * rejecting reparse points and symlinked descendants. It produces
+ * metadata only and never marks the resulting torrent complete or
+ * verified for seeding.
  *
  */
 
@@ -104,7 +105,8 @@ namespace
 		}
 		if (!S_ISDIR (status.st_mode)) return false;
 		// fdopendir takes ownership. Child opens remain rooted at the trusted
-		// anchor, so a renamed/symlinked intermediate path cannot redirect IO.
+		// anchor, so a renamed/symlinked intermediate path cannot redirect
+		// IO.
 		struct DirectoryCloser
 		{
 			void operator() (DIR * directory) const
@@ -224,9 +226,10 @@ try
 	uint64_t bytesDone = 0;
 	size_t filesDone = 0;
 	if (options.progress) options.progress (0, total, 0, files.size ());
-	// The byte stream hashed by BEP 3 is the concatenation of files in metainfo
-	// order. Sort before both layout construction and hashing so piece hashes
-	// remain reproducible even when directory iteration order changes.
+	// The byte stream hashed by BEP 3 is the concatenation of files in
+	// metainfo order. Sort before both layout construction and hashing so
+	// piece hashes remain reproducible even when directory iteration order
+	// changes.
 	std::sort (files.begin (), files.end (),
 		[] (const File & a, const File & b) { return a.path.generic_string () < b.path.generic_string (); });
 	const bool single = files.size () == 1 && files.front ().path == relativePath;
@@ -247,8 +250,9 @@ try
 		pieceBytes = 0;
 		return EVP_DigestInit_ex (digest.get (), EVP_sha1 (), nullptr) == 1;
 	};
-	// Keep the digest open across file boundaries: a piece is not reset at the
-	// end of a file, and its final block can start in the preceding file.
+	// Keep the digest open across file boundaries: a piece is not reset at
+	// the end of a file, and its final block can start in the preceding
+	// file.
 	for (const auto & file : files)
 	{
 		layout.emplace_back (single ? std::filesystem::path { } : file.path.lexically_relative (relativePath),

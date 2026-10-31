@@ -4,7 +4,9 @@
  *
  * openi2pd: test torrents magnet.
  *
- * Parses BTIH magnets in hex and Base32, normalizing names, deduplicating trackers, rejecting unsafe schemes, fragments, escapes and oversized arguments.
+ * Parses BTIH magnets in hex and Base32, normalizing names,
+ * deduplicating trackers, rejecting unsafe schemes, fragments, escapes
+ * and oversized arguments.
  *
  */
 

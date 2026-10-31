@@ -3,7 +3,8 @@
  * and license details.
  *
  * openi2pd: payload capability regression cases for manual CI.
- * Checks bounded cross-file IO and recovery without filesystem fallback.
+ * Checks bounded cross-file IO and recovery without filesystem
+ * fallback.
  */
 #include "Torrents.h"
 #include <algorithm>
@@ -64,7 +65,8 @@ public:
 int main ()
 {
 	auto backend = std::make_shared<MemoryStorage> ();
-	// Virtual paths have no filesystem authority and need never exist on disk.
+	// Virtual paths have no filesystem authority and need never exist on
+	// disk.
 	auto root = std::filesystem::path ("payload-capability-root");
 	auto first = std::make_shared<TorrentFile> (root / "first", 20000);
 	auto second = std::make_shared<TorrentFile> (root / "second", 20000);
@@ -131,9 +133,10 @@ int main ()
 	auto zeroFragments = zeroLayout->GetPieceFileFragments (0);
 	assert (zeroFragments.size () == 2);
 	for (const auto & fragment : zeroFragments) assert (fragment.fragmentSize > 0);
-	// A final-name file is normally opened read-only for seeding. If a later
-	// hash failure invalidates the piece, Save must close that descriptor and
-	// reopen it writable instead of writing through the read-only handle.
+	// A final-name file is normally opened read-only for seeding. If a
+	// later hash failure invalidates the piece, Save must close that
+	// descriptor and reopen it writable instead of writing through the
+	// read-only handle.
 	first->Open (false);
 	assert (first->IsOpen ());
 	const auto opensBeforeUpgrade = backend->opens;
@@ -142,12 +145,13 @@ int main ()
 	assert (first->IsOpen ());
 	first->Close ();
 	// A document that is absent at startup is not silently "present": the
-	// startup probe sees a closed capability and leaves the piece downloadable.
+	// startup probe sees a closed capability and leaves the piece
+	// downloadable.
 	auto missing = std::make_shared<TorrentFile> (root / "missing.bin", 4096);
 	missing->SetPayloadStorage (backend, root);
 	missing->SetIsPart (false);
-	// The startup probe opens/closes without caching or logging and reports
-	// absence so a deleted/revoked document stays downloadable.
+	// The startup probe opens/closes without caching or logging and
+	// reports absence so a deleted/revoked document stays downloadable.
 	assert (!missing->ProbePayload ());
 	assert (first->ProbePayload ());
 	missing->Open (false);

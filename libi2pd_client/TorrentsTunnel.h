@@ -4,10 +4,10 @@
  *
  * openi2pd: TorrentsTunnel.
  *
- * Declares the torrent tunnel service that owns torrents, trackers, peer
- * connections and the optional DHT, plus its bounded control snapshot/command
- * interface and background timers. It also coordinates a separate disk I/O
- * service and enforces root-confined paths.
+ * Declares the torrent tunnel service that owns torrents, trackers,
+ * peer connections and the optional DHT, plus its bounded control
+ * snapshot/command interface and background timers. It also coordinates
+ * a separate disk I/O service and enforces root-confined paths.
  *
  */
 
@@ -54,16 +54,17 @@ namespace i2p
 {
 namespace torrents
 {
-	// Administrative registration before service startup. A selected but unavailable
-	// backend must return an erroring capability, never nullptr/native fallback.
+	// Administrative registration before service startup. A selected but
+	// unavailable backend must return an erroring capability, never
+	// nullptr/native fallback.
 	using TorrentPayloadStorageFactory = std::function<std::shared_ptr<TorrentPayloadStorage> (
 		const std::string & tunnelName, const std::string & infoHash)>;
 	void SetTorrentPayloadStorageFactory (TorrentPayloadStorageFactory factory);
 
 	constexpr int TRACKER_RESPONSE_TIMEOUT = 8; // in seconds
-	// Hard cap on announces that may be airborne at the same time across every
-	// torrent of this tunnel. A hostile or silent tracker must never accumulate
-	// parallel requests from the retry ladder.
+	// Hard cap on announces that may be airborne at the same time across
+	// every torrent of this tunnel. A hostile or silent tracker must never
+	// accumulate parallel requests from the retry ladder.
 	constexpr size_t MAX_INFLIGHT_TRACKER_REQUESTS = 16;
 	constexpr uint16_t DATAGRAM_TRACKER_DEFAULT_PORT = 6969; // BEP 15
 	constexpr int DATAGRAM_TRACKER_TRANSACTION_TIMEOUT = 10000; // in milliseconds
@@ -79,10 +80,10 @@ namespace torrents
 	constexpr int TORRENTS_STATUS_UPDATE_INTERVAL_VARIANCE = 7; // in seconds
 	constexpr int TORRENTS_STATUS_UPDATE_CHECK_INTERVAL = 8; // in seconds
 	constexpr int TRACKER_MAX_NUM_WANT = 25;
-	// Upper bound for marshalling the shutdown sequence to the tunnel service
-	// thread. A timed-out teardown is left on the service thread and logged;
-	// the object is kept alive by the posted closure, so it is never destroyed
-	// while that closure is pending.
+	// Upper bound for marshalling the shutdown sequence to the tunnel
+	// service thread. A timed-out teardown is left on the service thread
+	// and logged; the object is kept alive by the posted closure, so it is
+	// never destroyed while that closure is pending.
 	constexpr std::chrono::milliseconds TORRENTS_STOP_TIMEOUT { 5000 };
 
 	enum DatagramTrackerAction
@@ -106,9 +107,9 @@ namespace torrents
 
 	// Identity of one outstanding tracker announce. Torrent-side tracker
 	// statistics are keyed by registry slot, so (torrent, slot) is the
-	// single-flight key: two torrents may legitimately announce to one slot at
-	// the same time, but one torrent must not have two announces in flight for
-	// the same slot.
+	// single-flight key: two torrents may legitimately announce to one
+	// slot at the same time, but one torrent must not have two announces
+	// in flight for the same slot.
 	struct TrackerRequestKey
 	{
 		Torrent::InfoHash infoHash { };
@@ -117,9 +118,10 @@ namespace torrents
 	};
 
 	// Bounded, service-thread-only single-flight admission for tracker
-	// announces. The payload is opaque, so the policy can be exercised without
-	// a service, a socket or a timer. `TryAcquire` never evicts an admitted
-	// request: a duplicate is refused and the cap is enforced exactly.
+	// announces. The payload is opaque, so the policy can be exercised
+	// without a service, a socket or a timer. `TryAcquire` never evicts an
+	// admitted request: a duplicate is refused and the cap is enforced
+	// exactly.
 	template <typename Payload> class TrackerInflightRegistry
 	{
 	public:
@@ -145,9 +147,9 @@ namespace torrents
 			return it == m_Entries.end () ? nullptr : &it->second;
 		}
 		// Drops every outstanding announce of one torrent and returns the
-		// removed keys so the caller can retire its own per-request state. The
-		// map is ordered by (info hash, slot), so all keys of one torrent are
-		// contiguous.
+		// removed keys so the caller can retire its own per-request state.
+		// The map is ordered by (info hash, slot), so all keys of one torrent
+		// are contiguous.
 		std::vector<TrackerRequestKey> ReleaseTorrent (const Torrent::InfoHash & infoHash)
 		{
 			std::vector<TrackerRequestKey> released;
@@ -164,8 +166,9 @@ namespace torrents
 			m_Entries.clear ();
 			return released;
 		}
-		// Read-only traversal used to retire per-request state (a stream handle)
-		// before the entries are dropped. The visitor must not insert or erase.
+		// Read-only traversal used to retire per-request state (a stream
+		// handle) before the entries are dropped. The visitor must not insert
+		// or erase.
 		template <typename Visitor> void ForEachTorrent (const Torrent::InfoHash & infoHash, Visitor visitor)
 		{
 			for (auto it = m_Entries.lower_bound (TrackerRequestKey { infoHash, 0 });
@@ -182,16 +185,17 @@ namespace torrents
 		std::map<TrackerRequestKey, Payload> m_Entries;
 	};
 
-	// Registry slot state, parallel to the announce URL table. Torrent-side
-	// tracker statistics are index-keyed, so a slot keeps its index for the
-	// lifetime of the tunnel process. A slot is reusable only when no torrent
-	// references it and it was not configured as a common tracker.
+	// Registry slot state, parallel to the announce URL table.
+	// Torrent-side tracker statistics are index-keyed, so a slot keeps its
+	// index for the lifetime of the tunnel process. A slot is reusable
+	// only when no torrent references it and it was not configured as a
+	// common tracker.
 	//
 	// Reuse does not reset Torrent::TrackerStats for that index: the next
-	// response overwrites them, so a snapshot taken in between can still show
-	// the previous announce's last result for the new URL. Clearing them would
-	// need a per-slot reset on the Torrent side, which this registry deliberately
-	// does not reach into.
+	// response overwrites them, so a snapshot taken in between can still
+	// show the previous announce's last result for the new URL. Clearing
+	// them would need a per-slot reset on the Torrent side, which this
+	// registry deliberately does not reach into.
 	struct TrackerSlotState
 	{
 		uint32_t references = 0;
@@ -199,16 +203,17 @@ namespace torrents
 	};
 	using TrackerSlots = std::vector<TrackerSlotState>;
 
-	// A common tracker slot (or one still referenced by a torrent) is live and
-	// may be matched; a released, non-common slot is free and must be ignored by
-	// every membership, snapshot and announce path.
+	// A common tracker slot (or one still referenced by a torrent) is live
+	// and may be matched; a released, non-common slot is free and must be
+	// ignored by every membership, snapshot and announce path.
 	inline bool IsTrackerSlotLive (const TrackerSlots & slots, size_t trackerID)
 	{
 		return trackerID < slots.size () && (slots[trackerID].isCommon || slots[trackerID].references > 0);
 	}
 
-	// Lowest slot a *new* announce URL may take. Returns nullopt when every slot
-	// is live, so the caller must append or refuse at MAX_NUM_TRACKERS.
+	// Lowest slot a *new* announce URL may take. Returns nullopt when
+	// every slot is live, so the caller must append or refuse at
+	// MAX_NUM_TRACKERS.
 	inline std::optional<size_t> FindReusableTrackerSlot (const TrackerSlots & slots)
 	{
 		for (size_t i = 0; i < slots.size (); i++)
@@ -216,11 +221,11 @@ namespace torrents
 		return std::nullopt;
 	}
 
-	// Pure admission decision for one announce URL. `existing` is the slot that
-	// already holds the same URL (the caller compares normalized URLs because it
-	// owns URL parsing); `trackerID` is the slot to use or nullopt when the table
-	// is full. `existing` distinguishes a plain reference increment from a slot
-	// that must be initialised first.
+	// Pure admission decision for one announce URL. `existing` is the slot
+	// that already holds the same URL (the caller compares normalized URLs
+	// because it owns URL parsing); `trackerID` is the slot to use or
+	// nullopt when the table is full. `existing` distinguishes a plain
+	// reference increment from a slot that must be initialised first.
 	struct TrackerSlotAdmission
 	{
 		std::optional<size_t> trackerID;
@@ -259,16 +264,19 @@ namespace torrents
 		return (!slot.isCommon && !slot.references) ? TrackerSlotRelease::Freed : TrackerSlotRelease::Retained;
 	}
 
-	// Next announce time in monotonic milliseconds for one (torrent, tracker).
+	// Next announce time in monotonic milliseconds for one (torrent,
+	// tracker).
 	//
-	// Dispatching a request is not a success: while `failurePending` is set the
-	// bounded failure ladder (written by Torrent::ReportTrackerFailure) owns the
-	// next attempt and must never be overwritten by the tracker-advertised
-	// interval, which is floored at MIN_TRACKER_ANNOUNCE_INTERVAL (15 minutes).
-	// `scheduledFailureTime` is the retry time Torrent already holds; it is
-	// honoured while it is still ahead of `now` and the ladder floor applies
-	// otherwise. Jitter is bounded by the failure cap, so no result exceeds
-	// MAX_TRACKER_FAILURE_BACKOFF (or a larger advertised minimum).
+	// Dispatching a request is not a success: while `failurePending` is
+	// set the bounded failure ladder (written by
+	// Torrent::ReportTrackerFailure) owns the next attempt and must never
+	// be overwritten by the tracker-advertised interval, which is floored
+	// at MIN_TRACKER_ANNOUNCE_INTERVAL (15 minutes).
+	// `scheduledFailureTime` is the retry time Torrent already holds; it
+	// is honoured while it is still ahead of `now` and the ladder floor
+	// applies otherwise. Jitter is bounded by the failure cap, so no
+	// result exceeds MAX_TRACKER_FAILURE_BACKOFF (or a larger advertised
+	// minimum).
 	inline uint64_t NextTrackerDispatchTime (uint64_t now, bool failurePending, uint64_t scheduledFailureTime,
 		int advertisedInterval, int minInterval, uint32_t jitter)
 	{
@@ -286,9 +294,10 @@ namespace torrents
 		return now + static_cast<uint64_t> (interval) + jitter;
 	}
 
-	/// Owns one I2P torrent session, its service-thread state and a separate disk
-	/// service. Administrative snapshots and commands are posted to the tunnel
-	/// service, which also owns a separate executor for payload IO.
+	/// Owns one I2P torrent session, its service-thread state and a
+	/// separate disk service. Administrative snapshots and commands are
+	/// posted to the tunnel service, which also owns a separate executor
+	/// for payload IO.
 	class TorrentsTunnel final : public i2p::client::I2PService
 	{
 	private:
@@ -305,7 +314,8 @@ namespace torrents
 		};
 
 		using TrackerInfo = std::tuple<i2p::http::URL, bool, uint64_t, uint64_t, uint16_t>;
-		// (announce url, common, connection_id, connection expiration time in monotonic milliseconds, connection from_port)
+		// (announce url, common, connection_id, connection expiration time in
+		// monotonic milliseconds, connection from_port)
 
 	public:
 		TorrentsTunnel (std::string_view name, std::shared_ptr<i2p::client::ClientDestination> localDestination,
@@ -313,10 +323,11 @@ namespace torrents
 			std::string_view dhtFileName = "", bool isolatedStorage = false);
 		~TorrentsTunnel () override;
 
-		/// Start the tunnel service: load persisted DHT state, begin accepting
-		/// inbound peer streams, enumerate the torrents directory on the disk
-		/// service and arm the tracker/keep-alive/reconnect/status timers. The
-		/// service thread never walks the directory or opens a torrent file.
+		/// Start the tunnel service: load persisted DHT state, begin
+		/// accepting inbound peer streams, enumerate the torrents directory
+		/// on the disk service and arm the
+		/// tracker/keep-alive/reconnect/status timers. The service thread
+		/// never walks the directory or opens a torrent file.
 		void Start () override;
 		// Marshals the service-thread teardown with a bounded wait. When it
 		// times out the posted closure owns a reference and completes the
@@ -326,43 +337,49 @@ namespace torrents
 		auto & GetDiskIOService () { return m_DiskIOService.GetService (); };
 
 		/// Obtain a bounded snapshot on the tunnel's Asio service thread.
-		/// @pre Call from another thread: this method posts to the service and waits.
+		/// @pre Call from another thread: this method posts to the service
+		///      and waits.
 		/// @return nullopt if posting, execution or the bounded wait fails.
 		std::optional<TorrentsSnapshot> GetControlSnapshot (std::chrono::milliseconds timeout);
-		/// Post an administrative command to the tunnel service and wait at most
-		/// @a timeout for its result. The posted closure owns the tunnel and command.
-		/// @pre Call from another thread to avoid blocking the service executor.
-		/// @warning A timeout does not cancel a queued command: it may still run.
+		/// Post an administrative command to the tunnel service and wait at
+		/// most
+		/// @a timeout for its result. The posted closure owns the tunnel and
+		/// command.
+		/// @pre Call from another thread to avoid blocking the service
+		///      executor.
+		/// @warning A timeout does not cancel a queued command: it may still
+		///          run.
 		TorrentCommandResult ExecuteControlCommand (const TorrentCommand & command, std::chrono::milliseconds timeout);
 
 		const std::filesystem::path & GetTorrentsDir () const { return m_TorrentsDir; }
-		// A released, non-common slot reports an empty announce so snapshots and
-		// RPC listings never expose a stale URL for a reusable index. The registry
-		// mutex is required because the RPC thread reads these slots while the
-		// service thread creates, recycles and releases them.
+		// A released, non-common slot reports an empty announce so snapshots
+		// and RPC listings never expose a stale URL for a reusable index. The
+		// registry mutex is required because the RPC thread reads these slots
+		// while the service thread creates, recycles and releases them.
 		std::string GetTrackerAnnounce (size_t id) const
 		{
 			std::lock_guard<std::mutex> lock (m_TrackerRegistryMutex);
 			return (IsTrackerSlotLive (m_TrackerSlots, id)) ? std::get<0> (m_Trackers[id]).to_string () : "";
 		}
-		// Registry slots are never renumbered, so this is the high-water mark and
-		// may include free slots; callers must skip ids without an announce.
+		// Registry slots are never renumbered, so this is the high-water mark
+		// and may include free slots; callers must skip ids without an
+		// announce.
 		size_t GetNumTrackers () const
 		{
 			std::lock_guard<std::mutex> lock (m_TrackerRegistryMutex);
 			return m_Trackers.size ();
 		}
-		// Resolves/creates the slot and increments its reference count; returns
-		// the tracker id or -1 if not inserted.
+		// Resolves/creates the slot and increments its reference count;
+		// returns the tracker id or -1 if not inserted.
 		int AddTracker (std::string_view announce, bool isCommon);
 		std::shared_ptr<Torrent> FindTorrent (const Torrent::InfoHash & infoHash) const;
 		std::shared_ptr<Torrent> FindTorrentByID (int id) const;
 		std::vector<int> GetTorrentIDs () const;
 		std::list<std::shared_ptr<Torrent>> GetTorrents () const;
 		/// Parse, validate and insert a .torrent, or reject it without side
-		/// effects. Trackers must be explicit I2P endpoints and a private torrent
-		/// needs at least one; the download root is confined beneath the torrents
-		/// directory before the session map is touched.
+		/// effects. Trackers must be explicit I2P endpoints and a private
+		/// torrent needs at least one; the download root is confined beneath
+		/// the torrents directory before the session map is touched.
 		/// @return (torrent, id > 0) on success, (nullptr, 0) on rejection.
 		std::pair<std::shared_ptr<Torrent>, int> AddTorrent (
 			std::string_view torrentFileContent); // retrun (torrent, id)
@@ -371,15 +388,16 @@ namespace torrents
 		/// info dictionary arrives (UpdateTorrentInfo).
 		std::pair<std::shared_ptr<Torrent>, int> AddMagnet (std::string_view magnet); // return (torrent, id)
 		// RPC entry points marshal to the tunnel service thread; they never
-		// touch m_Torrents from an HTTP I/O thread. Return {nullptr, 0} on timeout.
+		// touch m_Torrents from an HTTP I/O thread. Return {nullptr, 0} on
+		// timeout.
 		std::pair<std::shared_ptr<Torrent>, int> AddTorrentFromRpc (std::string_view torrentFileContent);
 		std::pair<std::shared_ptr<Torrent>, int> AddMagnetFromRpc (std::string_view magnet);
 		void UpdateTorrentInfo (std::shared_ptr<Torrent> torrent, std::string_view info); // magnet
 		/// Remove one torrent. The instance is tombstoned immediately, its
 		/// trackers/dials/candidates are retired and payload deletion (when
 		/// requested) is delegated to the storage service. The infohash stays
-		/// reserved until serialized cleanup succeeds, so a re-add before that
-		/// point is refused rather than racing the old files.
+		/// reserved until serialized cleanup succeeds, so a re-add before
+		/// that point is refused rather than racing the old files.
 		bool RemoveTorrent (int id, bool deleteFiles);
 		void RemoveAllTorrents (bool deleteFiles);
 		bool StopTorrent (int id);
@@ -394,9 +412,9 @@ namespace torrents
 		// owns dedupe/expiry/backoff, so a hostile peer cannot restart a dial
 		// storm by re-advertising the same destinations.
 		void DrainPeerCandidates (std::shared_ptr<Torrent> torrent, uint64_t now);
-		// Network-thread entry point: copy a bounded raw datagram and post it to
-		// the service thread. The service variant is the only one that mutates
-		// DHT/tracker state.
+		// Network-thread entry point: copy a bounded raw datagram and post it
+		// to the service thread. The service variant is the only one that
+		// mutates DHT/tracker state.
 		void HandleRecvFromI2PRawOnService (
 			uint8_t protocol, uint16_t fromPort, uint16_t toPort, const uint8_t * buf, size_t len);
 		void SendDHTPingQuery (const i2p::data::IdentHash & toIdent, uint16_t toPort);
@@ -437,17 +455,18 @@ namespace torrents
 		bool ReadTorrentFileForControl (
 			const std::filesystem::path & path, std::vector<uint8_t> & content, std::string & error);
 		void SaveTorrentFile (std::shared_ptr<Torrent> torrent, const std::string & content);
-		/// Prepare one torrent's payload authority after its metainfo is inserted
-		/// or completed by BEP 9 metadata.
-		/// Runs on the disk service: it installs the resume persistence callback,
-		/// injects the administrative payload capability, resolves/validates every
-		/// file path and probes existing data (final file, .part or SAF document)
-		/// so only intact data is marked present. Filesystem failures publish the
-		/// atomic eTorrentErrorFilesystem from this thread; the caller must check
-		/// GetError() before announcing.
-		/// @warning It still mutates some Torrent-level state from the disk
-		/// service; per-file operations are serialized, but the remaining split
-		/// into a disk phase plus service-thread commit is tracked (CONC-005).
+		/// Prepare one torrent's payload authority after its metainfo is
+		/// inserted or completed by BEP 9 metadata. Runs on the disk service:
+		/// it installs the resume persistence callback, injects the
+		/// administrative payload capability, resolves/validates every file
+		/// path and probes existing data (final file, .part or SAF document)
+		/// so only intact data is marked present. Filesystem failures publish
+		/// the atomic eTorrentErrorFilesystem from this thread; the caller
+		/// must check GetError() before announcing.
+		/// @warning It still mutates some Torrent-level state from
+		///          the disk service; per-file operations are serialized, but
+		///          the remaining split into a disk phase plus service-thread
+		///          commit is tracked (CONC-005).
 		void InitTorrentFiles (std::shared_ptr<Torrent> torrent);
 		std::pair<int, bool> InsertTorrent (
 			std::shared_ptr<Torrent> torrent); // returns id > 0 if success and 0 if failed, true if innserted
@@ -464,28 +483,30 @@ namespace torrents
 			std::shared_ptr<boost::beast::http::request<boost::beast::http::string_body>> req,
 			const TrackerRequestKey & key);
 
-		// Tracker registry and single-flight bookkeeping. Every helper below is
-		// service-thread only; the announce URL table, the slot table, the
+		// Tracker registry and single-flight bookkeeping. Every helper below
+		// is service-thread only; the announce URL table, the slot table, the
 		// membership map and the in-flight registry move together. The first
-		// three also take m_TrackerRegistryMutex because the RPC-facing getters
-		// read the same slot table from another thread.
-		// Validates an announce URL and resolves it to its slot. `create` may
-		// admit the URL into the lowest free slot (or append) without changing
-		// any reference count; returned indices are stable for the process.
+		// three also take m_TrackerRegistryMutex because the RPC-facing
+		// getters read the same slot table from another thread. Validates an
+		// announce URL and resolves it to its slot. `create` may admit the
+		// URL into the lowest free slot (or append) without changing any
+		// reference count; returned indices are stable for the process.
 		std::optional<size_t> ResolveTrackerSlot (std::string_view announce, bool isCommon, bool create);
 		void AcquireTrackerSlot (size_t trackerID);
-		// Decrements one membership. A non-common slot whose count reaches zero
-		// becomes free (its announce is cleared) and may be reused later.
+		// Decrements one membership. A non-common slot whose count reaches
+		// zero becomes free (its announce is cleared) and may be reused
+		// later.
 		bool ReleaseTrackerSlot (size_t trackerID);
 		// Releases every slot this torrent's membership holds, exactly once.
 		void ReleaseTorrentTrackers (const Torrent::InfoHash & infoHash);
-		// Recomputes the membership of one torrent from its current announce and
-		// tier list. Retained slots keep their index, so torrent-side tracker
-		// statistics stay bound to the same URL; dropped slots are released.
+		// Recomputes the membership of one torrent from its current announce
+		// and tier list. Retained slots keep their index, so torrent-side
+		// tracker statistics stay bound to the same URL; dropped slots are
+		// released.
 		void RegisterTorrentTrackers (const Torrent & torrent);
 
-		// Admit one HTTP announce. Returns false when the same (torrent, slot)
-		// already has a request in flight or the tunnel cap is reached.
+		// Admit one HTTP announce. Returns false when the same (torrent,
+		// slot) already has a request in flight or the tunnel cap is reached.
 		bool AcquireTrackerRequest (const TrackerRequestKey & key, const std::shared_ptr<Torrent> & torrent);
 		void ReleaseTrackerRequest (const TrackerRequestKey & key);
 		void CancelTrackerRequests (const Torrent::InfoHash & infoHash);
@@ -513,8 +534,8 @@ namespace torrents
 
 		// Peer accounting on the service thread. CountPeerHandlers() covers
 		// every PeerConnection, including inbound streams that have not
-		// completed a handshake yet, so the global bound cannot be bypassed by
-		// opening streams without announcing a torrent.
+		// completed a handshake yet, so the global bound cannot be bypassed
+		// by opening streams without announcing a torrent.
 		size_t CountPeerHandlers ();
 		bool CanDial (Torrent & torrent);
 		void FinishDial (uint64_t dial);
@@ -537,16 +558,16 @@ namespace torrents
 		std::string m_Name;
 		std::filesystem::path m_TorrentsDir;
 		std::vector<TrackerInfo> m_Trackers;
-		// Slot state parallel to m_Trackers; both vectors always have the same
-		// size and index i in one describes index i in the other. The mutex
-		// serializes the public RPC-facing getters against service-thread slot
-		// creation, recycling and release; it is never held across a stream,
-		// timer or torrent operation.
+		// Slot state parallel to m_Trackers; both vectors always have the
+		// same size and index i in one describes index i in the other. The
+		// mutex serializes the public RPC-facing getters against
+		// service-thread slot creation, recycling and release; it is never
+		// held across a stream, timer or torrent operation.
 		mutable std::mutex m_TrackerRegistryMutex;
 		TrackerSlots m_TrackerSlots;
-		// Registry slots referenced by one torrent membership. Indexed by info
-		// hash so removal releases exactly one reference per membership even when
-		// the torrent's tier list or instance is already gone.
+		// Registry slots referenced by one torrent membership. Indexed by
+		// info hash so removal releases exactly one reference per membership
+		// even when the torrent's tier list or instance is already gone.
 		std::map<Torrent::InfoHash, std::vector<size_t>> m_TrackerMemberships;
 		std::map<Torrent::InfoHash, std::shared_ptr<Torrent>> m_Torrents;
 		std::map<int, std::weak_ptr<Torrent>> m_TorrentsByID;
@@ -563,10 +584,11 @@ namespace torrents
 		i2p::datagram::DatagramDestination::ReceiverRegistration m_RawDatagramReceiver;
 		std::unordered_map<uint32_t, std::tuple<size_t, uint16_t, std::weak_ptr<Torrent>, uint64_t>>
 			m_DatragramTrackerTransactions;
-		// transactionID->(trackerID, from_port, torrent, timestamp monotonic milliseconds)
-		// Per-request state of an HTTP announce that is still airborne. The
-		// deadline timer is owned here; the stream is weak because the tunnel
-		// service thread owns it until the write/read completes.
+		// transactionID->(trackerID, from_port, torrent, timestamp monotonic
+		// milliseconds) Per-request state of an HTTP announce that is still
+		// airborne. The deadline timer is owned here; the stream is weak
+		// because the tunnel service thread owns it until the write/read
+		// completes.
 		struct TrackerRequestState
 		{
 			std::shared_ptr<boost::asio::steady_timer> deadline;

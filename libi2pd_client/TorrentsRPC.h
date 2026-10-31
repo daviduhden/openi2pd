@@ -5,7 +5,8 @@
  * openi2pd: TorrentsRPC.
  *
  * Declares the loopback JSON-RPC HTTP server, its per-path tunnel/auth
- * registry and the request session used by Transmission-style RPC clients.
+ * registry and the request session used by Transmission-style RPC
+ * clients.
  *
  */
 
@@ -31,8 +32,9 @@ namespace torrents
 {
 	class TorrentsRPCServer;
 	class TorrentsTunnel;
-	/// One loopback HTTP request/response. Asio handlers retain the session via
-	/// shared ownership; the referenced server must outlive all such handlers.
+	/// One loopback HTTP request/response. Asio handlers retain the
+	/// session via shared ownership; the referenced server must outlive
+	/// all such handlers.
 	class TorrentsRPCSession : public std::enable_shared_from_this<TorrentsRPCSession>
 	{
 	public:
@@ -53,11 +55,13 @@ namespace torrents
 		boost::beast::http::response<boost::beast::http::string_body> m_Response;
 	};
 
-	/// Loopback-only Transmission-style RPC listener with optional per-path
-	/// Basic authentication. The registry holds weak tunnel references.
-	/// @warning Stop cancels acceptance and stops the service but does not track
-	/// and close accepted sessions; session admission and IO deadlines are not
-	/// currently bounded. The server must outlive pending callbacks.
+	/// Loopback-only Transmission-style RPC listener with optional
+	/// per-path Basic authentication. The registry holds weak tunnel
+	/// references.
+	/// @warning Stop cancels acceptance and stops the service but
+	///          does not track and close accepted sessions; session
+	///          admission and IO deadlines are not currently bounded. The
+	///          server must outlive pending callbacks.
 	class TorrentsRPCServer final : private i2p::util::RunnableServiceWithWork
 	{
 	public:
@@ -71,21 +75,23 @@ namespace torrents
 		/// @param auth Require HTTP Basic authentication for that path.
 		/// @param user/pass Bounded non-empty credentials; an empty pair with
 		/// @a auth set is rejected and no entry is installed.
-		/// @warning The registry holds a weak tunnel reference, so the caller
-		/// owns the tunnel lifetime. The credential is stored as a Basic header
-		/// value and must never be logged or included in a snapshot.
+		/// @warning The registry holds a weak tunnel reference, so
+		///          the caller owns the tunnel lifetime. The credential is
+		///          stored as a Basic header value and must never be logged
+		///          or included in a snapshot.
 		void AddTunnel (std::string_view path, std::shared_ptr<TorrentsTunnel> tunnel, bool auth = false,
 			const std::string & user = "", const std::string & pass = "");
 		std::shared_ptr<TorrentsTunnel> GetTunnel (std::string_view path) const;
-		/// Return whether the path needs authentication and its credential value.
-		/// The returned string is sensitive and must not be logged.
+		/// Return whether the path needs authentication and its credential
+		/// value. The returned string is sensitive and must not be logged.
 		std::pair<bool, std::string> GetAuth (std::string_view path) const;
 
 		std::pair<boost::asio::ip::tcp::endpoint, std::string> GetTunnelEndpoint (
 			std::shared_ptr<TorrentsTunnel> tunnel) const;
 
-		/// Borrow the registry without locking. The caller must keep the server
-		/// alive and prevent concurrent registration while using this reference.
+		/// Borrow the registry without locking. The caller must keep the
+		/// server alive and prevent concurrent registration while using this
+		/// reference.
 		const auto & GetTunnels () const { return m_Tunnels; }
 		const auto & GetAcceptor () const { return m_Acceptor; }
 

@@ -4,18 +4,20 @@
  *
  * openi2pd: test torrents concurrency.
  *
- * Exercises concurrent piece publication and corruption against readers, plus CreateBitfield/GetLeft/AreAllPiecesVerified consistency. Intended for the manual TSan job and normal CTest.
+ * Exercises concurrent piece publication and corruption against
+ * readers, plus CreateBitfield/GetLeft/AreAllPiecesVerified
+ * consistency. Intended for the manual TSan job and normal CTest.
  *
  */
 
-// Torrent piece publication contract, suitable for a normal CTest run and
+// Torrent piece publication contract, suitable for a normal CTest run
+// and
 // for the manual TSan sanitizer job:
 //
-//   c++ -std=c++23 -fsanitize=thread -Ilibi2pd -Ilibi2pd_client
-//       tests/test-torrents-concurrency.cpp libi2pd_client/Torrents.cpp ...
+// The test uses the public Piece/Torrent API and is registered with
+// CTest and the manual TSan lane.
 //
-// The test only relies on the public Piece/Torrent API. It is registered in
-// `tests/CMakeLists.txt`; no local execution is claimed.
+// No local execution is claimed.
 
 #include <atomic>
 #include <cassert>
@@ -42,9 +44,10 @@ std::string MinimalTwoPieceTorrent ()
 	return "d4:infod6:lengthi32768e4:name8:file.bin12:piece lengthi16384e6:pieces40:" + hashes + "ee";
 }
 
-// One thread publishes blocks / corrupts / re-requests, another observes the
-// same piece. Every mutable field is under Piece::m_Mutex, so TSan must not
-// report a race even though the raw data buffer is replaced repeatedly.
+// One thread publishes blocks / corrupts / re-requests, another
+// observes the same piece. Every mutable field is under Piece::m_Mutex,
+// so TSan must not report a race even though the raw data buffer is
+// replaced repeatedly.
 void TestPiecePublication ()
 {
 	std::vector<uint8_t> good (16384, 0x42);
@@ -94,8 +97,10 @@ void TestPiecePublication ()
 	reader.join ();
 }
 
-// CreateBitfield/GetLeft/AreAllPiecesVerified run on the service thread while
-// another thread applies a resume-style bitfield and marks one piece corrupt.
+// CreateBitfield/GetLeft/AreAllPiecesVerified run on the service thread
+// while
+// another thread applies a resume-style bitfield and marks one piece
+// corrupt.
 void TestTorrentBitfieldConsistency ()
 {
 	Torrent torrent (MinimalTwoPieceTorrent ());

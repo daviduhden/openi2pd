@@ -4,10 +4,13 @@
  *
  * openi2pd: test torrents comments.
  *
- * Checks the I2P torrent comment wire codec: request/response fields, relative
+ * Checks the I2P torrent comment wire codec: request/response fields,
+ * relative
  * timestamps, size and count limits, trailing data, filter hints, TAB
- * normalization and rejection or filtering of control and overlong UTF-8
- * text; plus the store's normalized deduplication, anonymous/pseudonymous
+ * normalization and rejection or filtering of control and overlong
+ * UTF-8
+ * text; plus the store's normalized deduplication,
+ * anonymous/pseudonymous
  * quotas, eviction, revision semantics and the fixed admission windows.
  *
  */
@@ -37,8 +40,9 @@ std::shared_ptr<Torrent> MakeTorrent ()
 	return torrent;
 }
 
-// One reply-style list entry, so decoder-level normalization can be pinned
-// without going through the encoder (which filters invalid entries).
+// One reply-style list entry, so decoder-level normalization can be
+// pinned without going through the encoder (which filters invalid
+// entries).
 std::string CommentReply (std::string_view owner, std::string_view text)
 {
 	auto entry = CreateDictionary ({ { "like", CreateInteger (0) }, { "owner", CreateByteString (owner) },
@@ -59,13 +63,14 @@ int main ()
 	assert (decoded && !decoded->request && decoded->comments.size () == 1);
 	assert (decoded->comments[0].time == original.time);
 	assert (decoded->comments[0].owner == original.owner && decoded->comments[0].rating == 4);
-	// timestamp is an age, not an epoch. Missing required response fields fail.
+	// timestamp is an age, not an epoch. Missing required response fields
+	// fail.
 	assert (!DecodeTorrentComments (CreateDictionary ({ { "msg_type", CreateInteger (1) } }), now));
 	assert (!DecodeTorrentComments (encoded + "garbage", now));
 	assert (!DecodeTorrentComments (std::string (MAX_COMMENT_MESSAGE_BYTES + 1, 'a'), now));
-	// The filter is an ignored optimisation hint: Java sends 64 zero bytes and
-	// any 0..64-byte hint is accepted. It never changes the reply, and only an
-	// over-long hint or malformed bencode invalidates the request.
+	// The filter is an ignored optimisation hint: Java sends 64 zero bytes
+	// and any 0..64-byte hint is accepted. It never changes the reply, and
+	// only an over-long hint or malformed bencode invalidates the request.
 	auto requestWithFilter = [] (std::string_view filter)
 	{
 		return CreateDictionary ({ { "filter", CreateByteString (filter) }, { "msg_type", CreateInteger (0) },
@@ -84,7 +89,8 @@ int main ()
 	assert (DecodeTorrentComments (EncodeTorrentComments ({ invalid }, now), now)->comments.empty ());
 	invalid.text = std::string ("\xC0\xAF", 2); // overlong UTF-8
 	assert (DecodeTorrentComments (EncodeTorrentComments ({ invalid }, now), now)->comments.empty ());
-	// Independent Java wire field vector: timestamp 10 means age ten seconds.
+	// Independent Java wire field vector: timestamp 10 means age ten
+	// seconds.
 	auto javaFields = std::string ("d8:commentsld4:likei5e5:owner1:x4:text1:y9:timestampi10eee8:msg_typei1ee");
 	auto javaReply = DecodeTorrentComments (javaFields, now);
 	assert (javaReply && javaReply->comments.size () == 1);
@@ -133,8 +139,8 @@ int main ()
 	assert (!DecodeTorrentCommentState (state + "trailing", now, restored));
 	assert (restored.Revision () == revision);
 
-	// Invalid entries are skipped without discarding the valid ones, and Java's
-	// larger reply count is accepted.
+	// Invalid entries are skipped without discarding the valid ones, and
+	// Java's larger reply count is accepted.
 	TorrentComment good { "good", "keep me", 2, now, false };
 	const auto badEntry = CreateDictionary ({ { "like", CreateInteger (0) }, { "owner", CreateByteString ("bad") },
 		{ "text", CreateByteString ("\x1b") }, { "timestamp", CreateInteger (0) } });
@@ -145,8 +151,10 @@ int main ()
 	auto mixed = DecodeTorrentComments (mixedReply, now);
 	assert (mixed && mixed->comments.size () == 1 && mixed->comments[0].owner == good.owner);
 
-	// Java separates comment fields with TAB. Native maps CR, LF and TAB to one
-	// space before validation, so a Java-style reply stays usable; every other
+	// Java separates comment fields with TAB. Native maps CR, LF and TAB
+	// to one
+	// space before validation, so a Java-style reply stays usable; every
+	// other
 	// C0/DEL/C1 control remains rejected for terminal safety.
 	assert (DecodeTorrentComments (CommentReply ("plain", "plain text"), now)->comments.size () == 1);
 	auto tabbed = DecodeTorrentComments (CommentReply ("a\tb\t", "x\ty\tz"), now);
@@ -170,7 +178,8 @@ int main ()
 	firstRating.rating = 5;
 	assert (!rated.Add (firstRating));
 
-	// Newest comments are published first, even if older entries fill the store.
+	// Newest comments are published first, even if older entries fill the
+	// store.
 	TorrentCommentStore newest;
 	newest.SetEnabled (true);
 	for (size_t i = 0; i < 25; ++i)
@@ -249,8 +258,8 @@ int main ()
 	TorrentCommentStore budgetRoundTrip;
 	assert (DecodeTorrentCommentState (EncodeTorrentCommentState (hiddenBudget), now, budgetRoundTrip));
 
-	// Hide/unhide must survive a state round-trip without changing the stable
-	// local ID or resurrecting a duplicate.
+	// Hide/unhide must survive a state round-trip without changing the
+	// stable local ID or resurrecting a duplicate.
 	TorrentCommentStore persisted;
 	persisted.SetEnabled (true);
 	assert (persisted.Add (original));
@@ -269,9 +278,10 @@ int main ()
 	assert (DecodeTorrentCommentState (EncodeTorrentCommentState (store), now, disabled));
 	assert (!disabled.IsEnabled () && disabled.Snapshot ().size () == 1);
 
-	// --- normalized deduplication -----------------------------------------
-	// Whitespace and zero-width padding cannot replay one comment, and the
-	// stored text is never rewritten.
+	// --- normalized deduplication
+	// ----------------------------------------- Whitespace and zero-width
+	// padding cannot replay one comment, and the stored text is never
+	// rewritten.
 	TorrentCommentStore normalized;
 	normalized.SetEnabled (true);
 	TorrentComment padded { "pseudo", "spam  spam", 1, now, false };
@@ -293,8 +303,9 @@ int main ()
 	variant.text = "spam spam";
 	variant.owner = " pseudo\t";
 	assert (!normalized.Add (variant));
-	// A different normalized text is a different entry, and the rating is not
-	// part of the key: another rating for the same content is still a duplicate.
+	// A different normalized text is a different entry, and the rating is
+	// not part of the key: another rating for the same content is still a
+	// duplicate.
 	auto distinct = padded;
 	distinct.text = "spam spam spam";
 	distinct.rating = 5;
@@ -303,8 +314,8 @@ int main ()
 	reRated.rating = 4;
 	assert (!normalized.Add (reRated));
 	assert (normalized.VisibleCount () == 2 && normalized.HiddenCount () == 0 && normalized.LocalCount () == 0);
-	// Hidden entries stay in the dedupe set, so moderation is not undone by a
-	// padded replay.
+	// Hidden entries stay in the dedupe set, so moderation is not undone
+	// by a padded replay.
 	const auto spamId = normalized.Snapshot ().front ().localId;
 	assert (normalized.HideId (spamId));
 	variant.text = "spam   spam";
@@ -312,7 +323,8 @@ int main ()
 	assert (normalized.VisibleCount () == 1 && normalized.HiddenCount () == 1);
 	assert (normalized.UnhideId (spamId) && normalized.VisibleCount () == 2);
 
-	// The stored-entry counts are plain reads, so a UI snapshot can expose them
+	// The stored-entry counts are plain reads, so a UI snapshot can expose
+	// them
 	// without iterating a copy: local entries are counted separately.
 	TorrentCommentStore counted;
 	counted.SetEnabled (true);
@@ -325,9 +337,10 @@ int main ()
 	assert (counted.HideId (counted.Snapshot ().front ().localId));
 	assert (counted.VisibleCount () == 1 && counted.HiddenCount () == 1 && counted.LocalCount () == 1);
 
-	// --- anonymous visible cap ---------------------------------------------
-	// Anonymous entries have their own visible budget instead of bypassing the
-	// per-pseudonym quota, while hidden entries stop counting toward it.
+	// --- anonymous visible cap
+	// --------------------------------------------- Anonymous entries have
+	// their own visible budget instead of bypassing the per-pseudonym
+	// quota, while hidden entries stop counting toward it.
 	TorrentCommentStore anon;
 	anon.SetEnabled (true);
 	for (size_t i = 0; i < MAX_COMMENT_ANONYMOUS_VISIBLE; ++i)
@@ -346,14 +359,15 @@ int main ()
 	TorrentComment attributed { "named", "named text", 0, now, false };
 	assert (anon.Add (attributed));
 	assert (anon.VisibleCount () == MAX_COMMENT_ANONYMOUS_VISIBLE + 1);
-	// Hiding an anonymous entry frees exactly one slot; the entry itself is
-	// kept for deduplication.
+	// Hiding an anonymous entry frees exactly one slot; the entry itself
+	// is kept for deduplication.
 	const auto anonymousId = anon.Snapshot ().front ().localId;
 	assert (anon.HideId (anonymousId));
 	assert (anon.Add (anonymousOverflow));
 	assert (!anon.Add (anonymousOverflow));
 
-	// The global 256-entry limit still evicts an old peer entry rather than
+	// The global 256-entry limit still evicts an old peer entry rather
+	// than
 	// rejecting a fresh anonymous comment.
 	TorrentCommentStore evicting;
 	evicting.SetEnabled (true);
@@ -376,8 +390,10 @@ int main ()
 		if (c.localId == evictedId) evicted = false;
 	assert (evicted);
 
-	// --- revision semantics ------------------------------------------------
-	// The coalesced admin-state writer compares Revision(), so a real content
+	// --- revision semantics
+	// ------------------------------------------------
+	// The coalesced admin-state writer compares Revision(), so a real
+	// content
 	// change must bump it and a no-op hide/unhide must not.
 	TorrentCommentStore revisions;
 	revisions.SetEnabled (true);
@@ -401,8 +417,10 @@ int main ()
 	assert (!revisions.UnhideId (9999) && revisions.Revision () == visibleRevision);
 	assert (!revisions.Add (trackable) && revisions.Revision () == visibleRevision); // duplicate
 
-	// Trimming hidden state is a content change: at most MAX_COMMENT_HIDDEN_COUNT
-	// hidden entries survive and the store revision reflects the restored state.
+	// Trimming hidden state is a content change: at most
+	// MAX_COMMENT_HIDDEN_COUNT
+	// hidden entries survive and the store revision reflects the restored
+	// state.
 	std::vector<std::string> hiddenEntries;
 	for (size_t i = 0; i < MAX_COMMENT_HIDDEN_COUNT + 1; ++i)
 		hiddenEntries.push_back (CreateDictionary ({ { "hidden", CreateInteger (1) },
@@ -419,9 +437,10 @@ int main ()
 	const auto trimmedRevision = trimmed.Revision ();
 	assert (trimmed.Hide (0) && trimmed.Revision () == trimmedRevision); // already hidden, nothing trimmed
 
-	// --- future timestamps --------------------------------------------------
-	// A future stamp is clamped to `now` and the entry is kept, so a backwards
-	// clock or a restored backup cannot discard the whole local state.
+	// --- future timestamps
+	// -------------------------------------------------- A future stamp is
+	// clamped to `now` and the entry is kept, so a backwards clock or a
+	// restored backup cannot discard the whole local state.
 	TorrentCommentStore futureStore;
 	futureStore.SetEnabled (true);
 	TorrentComment future { "clock", "skewed", 3, now + 5000, false };
@@ -431,7 +450,8 @@ int main ()
 	assert (clamped.Snapshot ().size () == 1 && clamped.Snapshot ().front ().time == now);
 	assert (clamped.Snapshot ().front ().owner == future.owner && clamped.Snapshot ().front ().rating == 3);
 
-	// --- fixed admission windows -------------------------------------------
+	// --- fixed admission windows
+	// -------------------------------------------
 	constexpr size_t connectionCap = MAX_COMMENT_ENTRIES_PER_CONNECTION_WINDOW;
 	CommentAdmissionWindow window;
 	assert (window.Admit (0, connectionCap, 0)); // a zero count never consumes a window
@@ -441,8 +461,9 @@ int main ()
 	assert (window.start == 1000 && window.admitted == connectionCap);
 	assert (!window.Admit (1, connectionCap, 1000));
 	assert (!window.Admit (1, connectionCap, 1000 + COMMENT_ENTRY_WINDOW - 1));
-	// A backwards clock keeps the current window instead of granting a second
-	// full budget, and the fixed window restarts exactly at its boundary.
+	// A backwards clock keeps the current window instead of granting a
+	// second full budget, and the fixed window restarts exactly at its
+	// boundary.
 	assert (!window.Admit (connectionCap, connectionCap, 900));
 	assert (window.start == 1000 && window.admitted == connectionCap);
 	assert (window.Admit (1, connectionCap, 1000 + COMMENT_ENTRY_WINDOW));
@@ -456,7 +477,8 @@ int main ()
 	static_assert (MAX_COMMENT_ENTRIES_PER_TORRENT_WINDOW * 3 < MAX_COMMENT_COUNT,
 		"a reconnecting peer must not flush the store within three windows");
 
-	// --- per-torrent budget -------------------------------------------------
+	// --- per-torrent budget
+	// -------------------------------------------------
 	auto torrent = MakeTorrent ();
 	constexpr uint64_t windowBase = 5000;
 	assert (torrent->AdmitCommentEntries (0, 0)); // zero count is always free

@@ -3,7 +3,8 @@
  * and license details.
  *
  * openi2pd: isolated torrent storage regression.
- * Exercises descriptor-rooted IO, handle/range validation and denied networking.
+ * Exercises descriptor-rooted IO, handle/range validation and denied
+ * networking.
  * This executable is intended only for manually dispatched CI.
  */
 #include "../libi2pd_client/TorrentStorageWorker.h"
@@ -86,7 +87,8 @@ int main (int argc, char ** argv)
 	assert (!worker.Register ("../escape", 1, error));
 	std::filesystem::create_symlink (root.parent_path (), root / "redirect");
 	assert (!worker.Register ("redirect/escape", 1, error, true));
-	// An existing hardlink must not allow mutation of an inode outside the root.
+	// An existing hardlink must not allow mutation of an inode outside the
+	// root.
 	auto outside = root.parent_path () / (root.filename ().string () + "-outside");
 	{
 		auto fd = ::open (outside.c_str (), O_CREAT | O_EXCL | O_RDWR | O_CLOEXEC, 0600);
