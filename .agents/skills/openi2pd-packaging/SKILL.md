@@ -115,6 +115,10 @@ Ask for exact paths and package names. Do not let them run `dpkg-buildpackage`,
   preservation assertion in the log. When an exact run exits after a silent
   `test`, inspect that run's generated maintainer scripts and add labeled
   diagnostics before changing package hooks.
+  To verify data-directory preservation across `remove`, seed a harmless
+  marker file first: dpkg can prune a package-owned empty directory after
+  unlinking its last packaged child, which does not demonstrate loss of
+  administrator data. Keep purge assertions destructive and explicit.
 
 - Torrent-enabled Docker runtimes require `boost-json` and `boost-url` shared
   libraries as well as `boost-program_options`; JSON/URL are compiled

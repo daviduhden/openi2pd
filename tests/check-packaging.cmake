@@ -224,7 +224,8 @@ assert_contains("${packaging_workflow}" "grep -Eq 'static(-pie)? linked' static-
 foreach(required IN ITEMS
     "Checking that remove preserves administrator data"
     "FAIL: remove deleted /etc/i2pd/i2pd.conf"
-    "FAIL: remove deleted /var/lib/i2pd"
+    "install -o i2pd -g i2pd -m 0600 /dev/null /var/lib/i2pd/.ci-remove-preservation"
+    "FAIL: remove deleted persistent state under /var/lib/i2pd"
     "Purging packages and checking owned state cleanup"
     "FAIL: purge retained /etc/i2pd/i2pd.conf"
     "FAIL: purge retained /var/lib/i2pd"
