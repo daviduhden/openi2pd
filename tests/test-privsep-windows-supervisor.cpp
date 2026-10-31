@@ -143,7 +143,11 @@ void TestRestartLadder ()
 	}
 	// Each generation failed before its own stable period, so the restart
 	// counter has not been reset even though the backoff ladder spans over
-	// a minute in aggregate.
+	// a minute in aggregate. The budget measures per-generation uptime,
+	// never the wall clock spent traversing the ladder, and the total is
+	// exactly the shared ladder sum.
+	assert (elapsed >= LogWorkerRestartBudget::TotalLadderDelay ().count ());
+	assert (LogWorkerRestartBudget::TotalLadderDelay () >= LogWorkerRestartBudget::STABLE_PERIOD);
 	assert (policy.NextDelay () == LogWorkerRestartBudget::MAXIMUM_DELAY);
 
 	// The ninth exit is refused: Failed, no new generation, and one

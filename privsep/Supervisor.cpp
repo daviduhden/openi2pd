@@ -727,8 +727,10 @@ int RunSupervisor (int fd)
 		if (!worker || !worker->IsRunning () || !sink || !sink->IsOpen ())
 		{
 			const auto now = std::chrono::steady_clock::now ();
-			// A worker that served STABLE_PERIOD resets the budget. This is the
-			// only way a busy router avoids the terminal Failed state.
+			// Only a worker that stayed up for STABLE_PERIOD since its own
+			// NoteReady resets the budget. The observation time is the
+			// failure, so the backoff waits never count as service; this is
+			// the only way a busy router avoids the terminal Failed state.
 			budget.NoteStable (now);
 			if (worker) worker->Stop (500);
 			sink.reset ();
@@ -740,9 +742,9 @@ int RunSupervisor (int fd)
 				// fallback that would bypass the capability boundary.
 				status.NoteFailed (LOG_WORKER, generation, budget.Restarts (), "restart budget exhausted");
 				std::cerr << "privsep supervisor: log worker restart budget exhausted ("
-						  << LogWorkerRestartBudget::MAX_RESTARTS << " restarts in "
-						  << LogWorkerRestartBudget::STABLE_PERIOD.count ()
-						  << " s); log records are dropped (no local fallback)" << std::endl;
+						  << LogWorkerRestartBudget::MAX_RESTARTS << " restarts, "
+						  << LogWorkerRestartBudget::TotalLadderDelay ().count ()
+						  << " ms of backoff); log records are dropped (no local fallback)" << std::endl;
 				return 1;
 			}
 			status.NoteRestarting (LOG_WORKER, generation + 1, budget.Restarts (), "log worker exited");

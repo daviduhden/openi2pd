@@ -103,7 +103,7 @@ enum class WindowsWorkerFailureKind : uint8_t
 	Accept,
 	/** The authenticated worker left. The only restartable kind. */
 	Exit,
-	/** The restart ladder is exhausted for the current stable window. */
+	/** The restart ladder is exhausted for this supervisor. */
 	Budget
 };
 

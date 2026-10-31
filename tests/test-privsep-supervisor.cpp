@@ -55,6 +55,10 @@ void TestRestartBudgetSchedule ()
 	int64_t elapsed = 0;
 	for (uint32_t index = 0; index < LogWorkerRestartBudget::MAX_RESTARTS; ++index)
 	{
+		// Every generation exits immediately: no failure may therefore be
+		// mistaken for stable service, so the ladder is never reset while
+		// it is being traversed.
+		assert (!budget.NoteStable (At (elapsed)));
 		const auto delay = budget.NoteFailure (At (elapsed));
 		assert (delay.has_value ());
 		assert (*delay == expected[index]);
@@ -63,9 +67,16 @@ void TestRestartBudgetSchedule ()
 		assert (budget.Restarts () == index + 1);
 		assert (!budget.Exhausted ());
 	}
-	// All eight waits happen inside one 60 s window, which is why the
-	// budget is expressible as "at most eight restarts per stable period".
-	assert (elapsed < LogWorkerRestartBudget::STABLE_PERIOD.count () * 1000);
+	// The eighth wait is the 30 s cap, so the ladder totals 61.75 s and
+	// spans slightly more than one STABLE_PERIOD. That is the real policy:
+	// a worker that never stabilises is given a full stable period of wall
+	// clock before the supervisor gives up, and less than two, so the
+	// terminal state is reached in bounded time. The loop above shows that
+	// an immediate crash never resets the ladder.
+	assert (elapsed == LogWorkerRestartBudget::TotalLadderDelay ().count ());
+	assert (elapsed >= LogWorkerRestartBudget::STABLE_PERIOD.count () * 1000);
+	assert (elapsed < 2 * LogWorkerRestartBudget::STABLE_PERIOD.count () * 1000);
+	assert (LogWorkerRestartBudget::MAXIMUM_DELAY < LogWorkerRestartBudget::STABLE_PERIOD);
 	// The cap holds instead of doubling past 30 s.
 	assert (budget.NextDelay () == LogWorkerRestartBudget::MAXIMUM_DELAY);
 
@@ -73,6 +84,12 @@ void TestRestartBudgetSchedule ()
 	assert (!budget.NoteFailure (At (elapsed)).has_value ());
 	assert (budget.Exhausted ());
 	assert (!budget.NoteFailure (At (elapsed + 1)).has_value ());
+	// Terminal means terminal: a late stability observation must not
+	// revive a spent budget, otherwise a caller that keeps observing the
+	// dead worker could restart it forever. Only Reset() clears it.
+	assert (!budget.NoteStable (At (elapsed + 10 * 60000)));
+	assert (budget.Exhausted ());
+	assert (budget.Restarts () == LogWorkerRestartBudget::MAX_RESTARTS);
 }
 
 void TestRestartBudgetStableReset ()

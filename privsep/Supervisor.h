@@ -245,18 +245,26 @@ inline SupervisorStatus & GetSupervisorStatus ()
 }
 
 /**
- * The single restart policy for the supervisor's log worker.
+ * The single restart policy for the supervisor's log worker and for one
+ * Windows worker role.
  *
  * Initial delay 250 ms, doubling to a 30 s cap, reset after 60 s of
- * stable service, and at most 8 restarts before the supervisor gives
- * up. The exponential ladder spends 250+500+1000+2000+4000+8000+16000
- * ms on the waits before the eighth replacement, so eight restarts all
- * happen inside one 60 s window; the ninth failure can only follow a
- * fresh window and is refused. That makes "max 8 in 60 s" a property of
- * these four constants rather than a second counter that could drift
- * away from the delay schedule.
+ * *stable service*, and at most 8 restarts before the supervisor gives
+ * up. The budget is a restart count, not a clock window: a worker that
+ * keeps exiting is replaced at most 8 times in the process lifetime and
+ * the ladder then becomes terminal, so a permanently broken worker is
+ * never respawned forever.
+ * `TotalLadderDelay()` is the sum of the eight waits (61.75 s: the eighth
+ * wait is the 30 s cap, not the unclamped 32 s). It is deliberately at
+ * least one STABLE_PERIOD, so a worker that never stabilises is given a
+ * full stable period of wall clock before the supervisor gives up, and
+ * less than two, so the terminal state is reached in bounded time. Every
+ * single wait also stays below STABLE_PERIOD, so no wait in the ladder
+ * can be mistaken for stable service even by a caller that measured the
+ * reset from a spawn instead of from the ready time.
  * The caller supplies `now`, so the progression is deterministic in
- * tests and identical in production.
+ * tests and identical in production; the reset is measured from the
+ * `NoteReady` of the current generation, never from a wait or a spawn.
  */
 class LogWorkerRestartBudget
 {
@@ -265,6 +273,24 @@ public:
 	static constexpr std::chrono::milliseconds MAXIMUM_DELAY { 30000 };
 	static constexpr std::chrono::seconds STABLE_PERIOD { 60 };
 	static constexpr uint32_t MAX_RESTARTS = 8;
+
+	/**
+	 * Sum of every wait the ladder can hand out before the budget is
+	 * spent. Exposed so tests and diagnostics quote the same arithmetic
+	 * the scheduler uses instead of a hand-computed constant that can
+	 * drift away from MAX_RESTARTS/MAXIMUM_DELAY.
+	 */
+	static constexpr std::chrono::milliseconds TotalLadderDelay ()
+	{
+		auto delay = INITIAL_DELAY;
+		auto total = std::chrono::milliseconds (0);
+		for (uint32_t index = 0; index < MAX_RESTARTS; ++index)
+		{
+			total += delay;
+			delay = std::min (delay * 2, MAXIMUM_DELAY);
+		}
+		return total;
+	}
 
 	/** The worker for generation @a generation became ready at @a now. */
 	void NoteReady (std::chrono::steady_clock::time_point now)
@@ -276,9 +302,12 @@ public:
 	/**
 	 * Reset the budget when the current worker has served STABLE_PERIOD.
 	 * Returns true when a reset happened (used to publish a ready state).
+	 * Exhaustion is terminal until the owner calls Reset(): a late
+	 * stability observation must never revive a spent budget.
 	 */
 	bool NoteStable (std::chrono::steady_clock::time_point now)
 	{
+		if (m_Exhausted) return false;
 		if (!m_HasReady || m_Restarts == 0) return false;
 		if (now - m_ReadyAt < STABLE_PERIOD) return false;
 		Reset ();
@@ -288,7 +317,10 @@ public:
 	/**
 	 * Account one worker failure at @a now and return the bounded delay to
 	 * honour before the next spawn, or nullopt when the budget is
-	 * exhausted.
+	 * exhausted. The timestamp keeps the call clock-injected and uniform
+	 * with NoteReady/NoteStable; the ladder itself is a count, and the
+	 * stable decision is charged by NoteStable, so nothing here depends on
+	 * the clock.
 	 */
 	std::optional<std::chrono::milliseconds> NoteFailure (std::chrono::steady_clock::time_point now)
 	{
@@ -324,6 +356,18 @@ private:
 	bool m_HasReady = false;
 	bool m_Exhausted = false;
 };
+
+// A single wait must stay below the stable period, so the ladder is
+// always distinguishable from service even if the reset were measured
+// from a spawn instead of from the current generation's ready time.
+static_assert (LogWorkerRestartBudget::MAXIMUM_DELAY < LogWorkerRestartBudget::STABLE_PERIOD,
+	"a restart wait must stay shorter than the stable period");
+// The terminal state is reached only after repeated failures that span
+// at least one stable period, and within two of them.
+static_assert (LogWorkerRestartBudget::TotalLadderDelay () >= LogWorkerRestartBudget::STABLE_PERIOD,
+	"the restart ladder must span at least one stable period");
+static_assert (LogWorkerRestartBudget::TotalLadderDelay () < LogWorkerRestartBudget::STABLE_PERIOD * 2,
+	"the restart ladder must stay within two stable periods");
 
 /**
  * How one received frame relates to the request the client is
