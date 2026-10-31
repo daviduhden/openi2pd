@@ -99,6 +99,16 @@ build.
 
 ## Known issues and decisions
 
+- In `install(TARGETS ...)`, assign named components on each `ARCHIVE`,
+  `LIBRARY` and `RUNTIME` artifact group when consumers install components
+  separately. The exported target can otherwise refer to a static archive
+  that was omitted from the selected component; the installed-consumer lane
+  must inspect both the staged files and the imported target closure.
+- `tests/check-build-system.cmake` also pins the `Expected.h` include-interface
+  rationale in `build/CMakeLists.txt`. When reflowing that comment, preserve
+  the recognizable `Expected.h lives in libi2pd` marker or update the checker
+  in the same change; a failed marker check is not itself a compiler error.
+
 - `i2pd_apply_dialect()` is the single compile contract for capability macros,
   `BOOST_ASIO_HAS_SNPRINTF` and the Windows SDK macros. `libi2pd` publishes it,
   `i2pd_privsep`/`i2pd-tui` consume it privately. `libi2pd` exposes one merged

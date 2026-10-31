@@ -1,5 +1,5 @@
-; See the LICENSE file at the top of the project tree for copyright
-; and license details.
+; See the LICENSE file at the top of the project tree for copyright and
+; license details.
 ;
 ; openi2pd: win installer.iss.
 ;
@@ -14,8 +14,8 @@ AppName={#I2Pd_AppName}
 AppVersion={#I2Pd_TextVer}
 AppPublisher={#I2Pd_Publisher}
 
-; DefaultDirName is retained for upgrade compatibility; the visible product name
-; and all new artwork use openi2pd.
+; DefaultDirName is retained for upgrade compatibility; the visible
+; product name and all new artwork use openi2pd.
 DefaultDirName={pf}\Open I2Pd
 DefaultGroupName=openi2pd
 UninstallDisplayIcon={app}\I2Pd.exe

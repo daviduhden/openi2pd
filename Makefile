@@ -3,27 +3,27 @@
 #
 # openi2pd: Makefile.
 #
-# Convenience targets for the router, TUI, tools, tests, installation and
-# source distribution; CMake/Ninja provide the actual build rules.
+# Convenience targets for router, TUI, tools, tests, install and source
+# distribution. CMake/Ninja provide build rules.
 #
 
 # Portable POSIX make front-end for the CMake build.
 #
-# This file intentionally uses only POSIX make syntax: no GNU make functions,
-# pattern substitutions, conditionals or other extensions. It is usable with
-# BSD make on OpenBSD. CMake is the source of build rules.
+# This file uses only POSIX make syntax: no GNU make functions, pattern
+# substitutions, conditionals or extensions. BSD make can use it on
+# OpenBSD. CMake remains the source of build rules.
 #
-# The default generator is Ninja because CMake's "Unix Makefiles" generator
-# emits GNU make syntax. Ninja is therefore required by this convenience
-# front-end; invoking CMake directly remains possible with any generator that
-# matches the local make implementation.
+# The default generator is Ninja because CMake's "Unix Makefiles" emits
+# GNU make syntax. This front-end requires Ninja. Direct CMake use can
+# select any generator supported by the local build environment.
 #
 #   make
-#   make BUILD_DIR=build-release CMAKE_FLAGS="-DCMAKE_BUILD_TYPE=Release"
+#   make BUILD_DIR=build-release
+#   make CMAKE_FLAGS="-DCMAKE_BUILD_TYPE=Release"
 #   make test
 #   make DESTDIR=/tmp/stage PREFIX=/usr install
 #
-# Parallelism is controlled with CMAKE_BUILD_PARALLEL_LEVEL, not make -j.
+# Set parallelism with CMAKE_BUILD_PARALLEL_LEVEL, not make -j.
 
 BUILD_DIR = build-output
 CMAKE = cmake

@@ -1,11 +1,11 @@
-# See the LICENSE file at the top of the project tree for copyright
-# and license details.
+# See the LICENSE file at the top of the project tree for copyright and
+# license details.
 #
 # openi2pd: check upstream pins.
 #
 # Compile-free equality check between the synchronization script, the
-# documentation tables and the interoperability reference checker. It never
-# clones, fetches or executes anything.
+# documentation tables and the interoperability reference checker. It
+# never clones, fetches or executes anything.
 #
 
 if(NOT PROJECT_ROOT)

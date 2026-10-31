@@ -1,16 +1,17 @@
-# See the LICENSE file at the top of the project tree for copyright
-# and license details.
+# See the LICENSE file at the top of the project tree for copyright and
+# license details.
 #
 # openi2pd: CMakeLists.txt.
 #
-# Registers the C++ tests plus interoperability and static build-system checks
-# as CTest targets, labelled by unit, torrent, IPC, TUI and security groups.
+# Registers the C++ tests plus interoperability and static build-system
+# checks as CTest targets, labelled by unit, torrent, IPC, TUI and
+# security groups.
 #
 
 
 # Sanitizer and fuzz builds execute the same tests with much heavier
-# instrumentation; keep a single, explicit budget instead of relying on the
-# CTest default (1500 s) or an inert `ctest --timeout` override.
+# instrumentation; keep a single, explicit budget instead of relying on
+# the CTest default (1500 s) or an inert `ctest --timeout` override.
 set(I2PD_TEST_TIMEOUT 120)
 if(WITH_ADDRSANITIZER OR WITH_THREADSANITIZER OR WITH_UNDEFSANITIZER)
   set(I2PD_TEST_TIMEOUT 300)
@@ -20,28 +21,31 @@ function(i2pd_add_test name)
   add_executable(${name} "${name}.cpp")
   target_compile_features(${name} PRIVATE cxx_std_23)
   if(name MATCHES "^test-privsep-(protocol|log|authorization|capabilities|supervisor|linux-ipc|linux-sandbox|openbsd-policy|openbsd-imsg|windows-ipc|windows-isolation|windows-supervisor)$")
-    # Link the single IPC archive instead of recompiling the same production
-    # translation units in every test. Platform libraries (OpenBSD util,
-    # Windows advapi32/bcrypt) stay on the archive's interface.
+    # Link the single IPC archive instead of recompiling the same
+    # production translation units in every test. Platform libraries
+    # (OpenBSD util, Windows advapi32/bcrypt) stay on the archive's
+    # interface.
     if(TARGET i2pd_privsep)
       target_link_libraries(${name} PRIVATE i2pd_privsep)
     endif()
   endif()
   if(name STREQUAL "test-tui-terminal")
-    # Header-only shared key/attribute contract; no ncurses or console init.
+    # Header-only shared key/attribute contract; no ncurses or console
+    # init.
     target_include_directories(${name} PRIVATE "${PROJECT_ROOT}/tui")
   elseif(name STREQUAL "test-tui-pipe-name")
-    # The pipe-name helper is portable; keep the test runnable on Unix as well
-    # as Windows.
+    # The pipe-name helper is portable; keep the test runnable on Unix
+    # as well as Windows.
     target_sources(${name} PRIVATE "${PROJECT_ROOT}/tui/TuiWin32Ipc.cpp")
     target_include_directories(${name} PRIVATE "${PROJECT_ROOT}/tui")
   elseif(name STREQUAL "test-tui-win32-pipe")
-    # Exercises the Win32 named-pipe and DACL primitives used by the Windows
-    # TUI transport. It does not validate a running console or kernel ACLs
-    # across user accounts.
+    # Exercises the Win32 named-pipe and DACL primitives used by the
+    # Windows TUI transport. It does not validate a running console or
+    # kernel ACLs across user accounts.
     target_link_libraries(${name} PRIVATE advapi32)
   elseif(name STREQUAL "test-tui-ipc-regression")
-    # The real local transport and shared dispatch are not part of libi2pd.
+    # The real local transport and shared dispatch are not part of
+    # libi2pd.
     target_sources(${name} PRIVATE
       "${PROJECT_ROOT}/daemon/TuiServer.cpp"
       "${PROJECT_ROOT}/daemon/TuiServerCommon.cpp"
@@ -63,8 +67,8 @@ function(i2pd_add_test name)
 endfunction()
 
 # The BitTorrent client can be compiled out. Keep its engine tests in a
-# separate list so WITH_TORRENTS=OFF neither compiles their translation units
-# nor hides them as disabled tests at run time.
+# separate list so WITH_TORRENTS=OFF neither compiles their translation
+# units nor hides them as disabled tests at run time.
 set(I2PD_TORRENT_TESTS
   test-torrent-bencode
   test-torrents-comments
@@ -240,10 +244,11 @@ if(WITH_TORRENTS)
 endif()
 
 if(UNIX)
-  # Portable Unix IPC/protocol tests. Platform-specific sandbox/transport
-  # tests are registered only below; the source files also contain stubs, but
-  # the Linux sandbox test includes <linux/capability.h> before its guard and
-  # must never be added to an OpenBSD build.
+  # Portable Unix IPC/protocol tests. Platform-specific
+  # sandbox/transport tests are registered only below; the source files
+  # also contain stubs, but the Linux sandbox test includes
+  # <linux/capability.h> before its guard and must never be added to an
+  # OpenBSD build.
   list(APPEND I2PD_TESTS
     test-privsep-protocol
     test-privsep-log
@@ -442,13 +447,13 @@ foreach(test IN LISTS I2PD_TESTS)
     set_property(TEST ${test} APPEND PROPERTY LABELS docs)
   endif()
 
-  # A privileged/forked subsystem test must not overlap another test that
-  # changes the same process-global sandbox or storage state.
+  # A privileged/forked subsystem test must not overlap another test
+  # that changes the same process-global sandbox or storage state.
   if(test MATCHES "^(test-(privsep-(linux-sandbox|openbsd-policy|credentials|worker-identity|log)|datastorage-(client|worker|protocol)|router-storage|torrent-storage-(worker|lifecycle|openbsd)))$")
     set_tests_properties(${test} PROPERTIES RUN_SERIAL TRUE)
   endif()
-  # These tests still use fixed /tmp names; serialize their shared slot until
-  # every test is converted to a per-pid temporary directory.
+  # These tests still use fixed /tmp names; serialize their shared slot
+  # until every test is converted to a per-pid temporary directory.
   if(test STREQUAL "test-i2ptunnel-filter" OR test STREQUAL "test-reseed-outdated-bundle"
       OR test STREQUAL "test-reseed-zip-bounds" OR test STREQUAL "test-privsep-linux-sandbox"
       OR test STREQUAL "test-privsep-openbsd-policy")
@@ -456,8 +461,8 @@ foreach(test IN LISTS I2PD_TESTS)
   endif()
 endforeach()
 
-# Static build-system policy check. It does not invoke a compiler, a build
-# tool or a project binary.
+# Static build-system policy check. It does not invoke a compiler, a
+# build tool or a project binary.
 add_test(NAME build-system-static
   COMMAND "${CMAKE_COMMAND}"
     "-DPROJECT_ROOT=${PROJECT_ROOT}"
@@ -466,8 +471,9 @@ set_tests_properties(build-system-static PROPERTIES
   LABELS "ci;static"
   TIMEOUT 60)
 
-# Control-plane, proxy-handshake and cross-thread lifetime contracts. Reads
-# source text only; never invokes a compiler, socket or project binary.
+# Control-plane, proxy-handshake and cross-thread lifetime contracts.
+# Reads source text only; never invokes a compiler, socket or project
+# binary.
 add_test(NAME control-security-static
   COMMAND "${CMAKE_COMMAND}"
     "-DPROJECT_ROOT=${PROJECT_ROOT}"
@@ -476,8 +482,9 @@ set_tests_properties(control-security-static PROPERTIES
   LABELS "ci;static;security;memory"
   TIMEOUT 30)
 
-# Compile-free modern-language policy/availability check. It reads AGENTS.md,
-# CMake, Gradle, documentation and the modernization seam headers only.
+# Compile-free modern-language policy/availability check. It reads
+# AGENTS.md, CMake, Gradle, documentation and the modernization seam
+# headers only.
 add_test(NAME language-modernization-static
   COMMAND "${CMAKE_COMMAND}"
     "-DPROJECT_ROOT=${PROJECT_ROOT}"
@@ -512,8 +519,8 @@ set_tests_properties(upstream-pins-static PROPERTIES
   LABELS "ci;docs;static"
   TIMEOUT 30)
 
-# Tool inventory and documentation/packaging parity, without compiling or
-# running any tool.
+# Tool inventory and documentation/packaging parity, without compiling
+# or running any tool.
 add_test(NAME tools-inventory-static
   COMMAND "${CMAKE_COMMAND}"
     "-DPROJECT_ROOT=${PROJECT_ROOT}"
@@ -522,8 +529,9 @@ set_tests_properties(tools-inventory-static PROPERTIES
   LABELS "ci;tools;docs;static"
   TIMEOUT 30)
 
-# Static init-system service contract check. It reads the canonical service
-# sources and never invokes a shell, service manager or compiler.
+# Static init-system service contract check. It reads the canonical
+# service sources and never invokes a shell, service manager or
+# compiler.
 add_test(NAME services-static
   COMMAND "${CMAKE_COMMAND}"
     "-DPROJECT_ROOT=${PROJECT_ROOT}"
@@ -532,8 +540,9 @@ set_tests_properties(services-static PROPERTIES
   LABELS "ci;services;static"
   TIMEOUT 60)
 
-# Compile-free packaging/install-contract check. It reads the POSIX Makefile,
-# RPM/Docker/static packaging files and CMake install rules only.
+# Compile-free packaging/install-contract check. It reads the POSIX
+# Makefile, RPM/Docker/static packaging files and CMake install rules
+# only.
 add_test(NAME packaging-static
   COMMAND "${CMAKE_COMMAND}"
     "-DPROJECT_ROOT=${PROJECT_ROOT}"
@@ -543,7 +552,8 @@ set_tests_properties(packaging-static PROPERTIES
   TIMEOUT 30)
 
 # Static Agent Skills contract check. It reads the skill frontmatter,
-# references and required sections; it does not execute a skill or a workflow.
+# references and required sections; it does not execute a skill or a
+# workflow.
 add_test(NAME agent-skills-static
   COMMAND "${CMAKE_COMMAND}"
     "-DPROJECT_ROOT=${PROJECT_ROOT}"
@@ -562,8 +572,8 @@ if(TARGET i2pd)
     TIMEOUT 30)
 endif()
 
-# Interoperability fixtures and documentation/provenance checks. These are
-# static and never clone or execute the Java reference.
+# Interoperability fixtures and documentation/provenance checks. These
+# are static and never clone or execute the Java reference.
 find_package(Perl)
 if(NOT PERL_EXECUTABLE)
   if(I2PD_REQUIRE_PERL)
@@ -600,8 +610,9 @@ if(PERL_EXECUTABLE)
     LABELS "ci;docs;perl;static"
     TIMEOUT 60)
 
-  # Android static policy tests are compile-free and can run on every host
-  # with Perl. Gradle/APK/Lint/device execution remains in the Android job.
+  # Android static policy tests are compile-free and can run on every
+  # host with Perl. Gradle/APK/Lint/device execution remains in the
+  # Android job.
   add_test(NAME android-locale-policy
     COMMAND "${PERL_EXECUTABLE}" "${PROJECT_ROOT}/android/tools/check-android-locales.pl")
   set_tests_properties(android-locale-policy PROPERTIES
@@ -630,9 +641,9 @@ if(UNIX)
   endif()
 endif()
 
-# Current comparison target and historical fixture provenance are separate
-# read-only external checkouts. Do not apply old source-line citations to a
-# newer release merely by changing its reference pin.
+# Current comparison target and historical fixture provenance are
+# separate read-only external checkouts. Do not apply old source-line
+# citations to a newer release merely by changing its reference pin.
 set(I2PD_INTEROP_REFERENCE "" CACHE PATH "Read-only I2P Java 2.14.0 comparison checkout")
 if(I2PD_INTEROP_REFERENCE)
   add_test(NAME interop-reference
@@ -658,9 +669,10 @@ if(I2PD_INTEROP_FIXTURE_REFERENCE)
   endif()
 endif()
 
-# Optional libFuzzer targets. They are not built by default; when enabled,
-# one-input smoke entries are registered under the fuzz label while the manual
-# workflow runs each target with a corpus and a wall-clock budget.
+# Optional libFuzzer targets. They are not built by default; when
+# enabled, one-input smoke entries are registered under the fuzz label
+# while the manual workflow runs each target with a corpus and a
+# wall-clock budget.
 if(WITH_FUZZERS)
   if(NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang")
     message(FATAL_ERROR "WITH_FUZZERS requires Clang")
@@ -673,7 +685,8 @@ if(WITH_FUZZERS)
       fuzz-i2cp-message)
     add_executable(${fuzzer} "fuzz/${fuzzer}.cpp" "fuzz-initialize.cpp")
     target_compile_features(${fuzzer} PRIVATE cxx_std_23)
-    # Some fuzzers include privsep/, daemon/ and other project-root headers.
+    # Some fuzzers include privsep/, daemon/ and other project-root
+    # headers.
     target_include_directories(${fuzzer} PRIVATE "${PROJECT_ROOT}")
     target_link_libraries(${fuzzer} PRIVATE libi2pd libi2pdclient libi2pdlang i2pd_warnings)
     target_compile_options(${fuzzer} PRIVATE
@@ -685,14 +698,14 @@ if(WITH_FUZZERS)
       target_compile_options(${fuzzer} PRIVATE -UNDEBUG)
     endif()
     target_link_options(${fuzzer} PRIVATE -fsanitize=fuzzer,address,undefined)
-    # Optional, non-default CTest smoke entry. The manual Fuzzing workflow
-    # runs each target for a bounded wall-clock budget with a corpus; this
-    # one-input check makes `ctest -L fuzz` useful without making fuzzing part
-    # of the normal test build.
-    # Keep the smoke pass reproducible from a clean clone. The seed directory
-    # is checked in; the per-target artifact directory keeps crash files
-    # attributable. A 64 KiB cap leaves the documented larger parser guards
-    # reachable without unbounded growth.
+    # Optional, non-default CTest smoke entry. The manual Fuzzing
+    # workflow runs each target for a bounded wall-clock budget with a
+    # corpus; this one-input check makes `ctest -L fuzz` useful without
+    # making fuzzing part of the normal test build. Keep the smoke pass
+    # reproducible from a clean clone. The seed directory is checked in;
+    # the per-target artifact directory keeps crash files attributable.
+    # A 64 KiB cap leaves the documented larger parser guards reachable
+    # without unbounded growth.
     set(_fuzz_max_len 65536)
     if(fuzzer MATCHES "signature")
       set(_fuzz_max_len 1024)

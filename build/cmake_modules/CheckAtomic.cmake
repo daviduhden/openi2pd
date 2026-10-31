@@ -1,5 +1,5 @@
-# See the LICENSE file at the top of the project tree for copyright
-# and license details.
+# See the LICENSE file at the top of the project tree for copyright and
+# license details.
 #
 # openi2pd: CheckAtomic.
 #
@@ -11,13 +11,14 @@
 include(CheckCXXSourceCompiles)
 include(CheckLibraryExists)
 
-# Report the extra library the host really needs. Consumers link this result
-# instead of reading the probe-scope CMAKE_REQUIRED_LIBRARIES side effect.
+# Report the extra library the host really needs. Consumers link this
+# result instead of reading the probe-scope CMAKE_REQUIRED_LIBRARIES
+# side effect.
 set(I2PD_ATOMIC_LIBRARIES "")
 set(_i2pd_saved_required_libraries "${CMAKE_REQUIRED_LIBRARIES}")
 
-# Sometimes linking against libatomic is required for atomic ops, if
-# the platform doesn't support lock-free atomics.
+# Sometimes linking against libatomic is required for atomic ops, if the
+# platform doesn't support lock-free atomics.
 
 function(check_working_cxx_atomics varname)
   set(OLD_CMAKE_REQUIRED_FLAGS ${CMAKE_REQUIRED_FLAGS})

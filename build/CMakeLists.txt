@@ -1,12 +1,13 @@
-# See the LICENSE file at the top of the project tree for copyright
-# and license details.
+# See the LICENSE file at the top of the project tree for copyright and
+# license details.
 #
 # openi2pd: CMakeLists.txt.
 #
-# Top-level CMake entry point: it enforces C++23 and the supported platforms,
-# builds libi2pd/libi2pdclient/libi2pdlang, the router, TUI, optional Android
-# JNI and tools, and installs runtime, config and headers. Dependency floors
-# cover Boost, OpenSSL/LibreSSL, zlib and optional MiniUPnPc.
+# Top-level CMake entry point: it enforces C++23 and the supported
+# platforms, builds libi2pd/libi2pdclient/libi2pdlang, the router, TUI,
+# optional Android JNI and tools, and installs runtime, config and
+# headers. Dependency floors cover Boost, OpenSSL/LibreSSL, zlib and
+# optional MiniUPnPc.
 #
 
 cmake_minimum_required(VERSION 3.24)
@@ -26,10 +27,11 @@ project(
   LANGUAGES C CXX
 )
 
-# Win32/Resource.rc carries the executable icon and version block. Without the
-# RC language CMake ignores it as a non-compilable source. enable_language()
-# has no working OPTIONAL mode, so probe with CheckLanguage and enable RC only
-# when a resource compiler is actually available.
+# Win32/Resource.rc carries the executable icon and version block.
+# Without the RC language CMake ignores it as a non-compilable source.
+# enable_language() has no working OPTIONAL mode, so probe with
+# CheckLanguage and enable RC only when a resource compiler is actually
+# available.
 if(WIN32)
   include(CheckLanguage)
   check_language(RC)
@@ -94,9 +96,10 @@ if(WITH_FUZZERS AND (NOT WITH_ADDRSANITIZER OR NOT WITH_UNDEFSANITIZER))
     "WITH_FUZZERS requires WITH_ADDRSANITIZER=ON and WITH_UNDEFSANITIZER=ON; "
     "an uninstrumented library archive would make the fuzzers report false success.")
 endif()
-# A static executable and a sanitizer runtime cannot be combined portably: the
-# sanitizer needs its own shared runtime and `-static` conflicts with it. Fail
-# instead of silently producing a partially instrumented binary.
+# A static executable and a sanitizer runtime cannot be combined
+# portably: the sanitizer needs its own shared runtime and `-static`
+# conflicts with it. Fail instead of silently producing a partially
+# instrumented binary.
 if(WITH_STATIC AND (WITH_ADDRSANITIZER OR WITH_THREADSANITIZER OR WITH_UNDEFSANITIZER))
   message(FATAL_ERROR "WITH_STATIC cannot be combined with sanitizer options")
 endif()
@@ -105,25 +108,26 @@ if(WITH_STATIC AND I2PD_BUILD_JNI)
 endif()
 
 include(GNUInstallDirs)
-# GNUInstallDirs 3.30+ derives DOCDIR from PROJECT_NAME (OpenI2Pd here), while
-# the package and documentation paths are maintained as "i2pd". Replace only
-# that derived default; preserve an explicit user override.
+# GNUInstallDirs 3.30+ derives DOCDIR from PROJECT_NAME (OpenI2Pd here),
+# while the package and documentation paths are maintained as "i2pd".
+# Replace only that derived default; preserve an explicit user override.
 if(NOT DEFINED CMAKE_INSTALL_DOCDIR
     OR CMAKE_INSTALL_DOCDIR STREQUAL "${CMAKE_INSTALL_DATAROOTDIR}/doc/${PROJECT_NAME}")
   set(CMAKE_INSTALL_DOCDIR "${CMAKE_INSTALL_DATAROOTDIR}/doc/i2pd" CACHE PATH
     "Documentation installation directory" FORCE)
-  # GNUInstallDirs may have created a normal variable that shadows the cache
-  # on the first configure. Remove it so install() and later reconfigures read
-  # the selected cache value consistently.
+  # GNUInstallDirs may have created a normal variable that shadows the
+  # cache on the first configure. Remove it so install() and later
+  # reconfigures read the selected cache value consistently.
   unset(CMAKE_INSTALL_DOCDIR)
 endif()
 
 include(CTest)
 
-# Service-manager selection. Distributions install exactly one init system;
-# the default installs none so the historical build/install graph is unchanged.
-# Native platform service integration is meaningless on Windows and Android,
-# where the daemon is started by the OS service manager or the JNI host.
+# Service-manager selection. Distributions install exactly one init
+# system; the default installs none so the historical build/install
+# graph is unchanged. Native platform service integration is meaningless
+# on Windows and Android, where the daemon is started by the OS service
+# manager or the JNI host.
 set(I2PD_SERVICE_MANAGER "none" CACHE STRING
   "Init-system service files to install (none, systemd, openrc, runit, s6, s6-rc, shepherd, sysvinit)")
 set_property(CACHE I2PD_SERVICE_MANAGER PROPERTY STRINGS
@@ -153,9 +157,10 @@ if(NOT I2PD_SERVICE_MANAGER STREQUAL "none" AND NOT WITH_BINARY)
     "I2PD_SERVICE_MANAGER=${I2PD_SERVICE_MANAGER} requires WITH_BINARY=ON; "
     "a service definition must not be installed without the router it starts.")
 endif()
-# The packaged units and init scripts invoke /etc/i2pd/i2pd.conf explicitly.
-# Installing one without the sample configuration produces a service that can
-# never start, so reject that combination at configure time.
+# The packaged units and init scripts invoke /etc/i2pd/i2pd.conf
+# explicitly. Installing one without the sample configuration produces a
+# service that can never start, so reject that combination at configure
+# time.
 if(NOT I2PD_SERVICE_MANAGER STREQUAL "none" AND NOT I2PD_INSTALL_CONFIG)
   message(FATAL_ERROR
     "I2PD_SERVICE_MANAGER=${I2PD_SERVICE_MANAGER} requires "
@@ -163,7 +168,8 @@ if(NOT I2PD_SERVICE_MANAGER STREQUAL "none" AND NOT I2PD_INSTALL_CONFIG)
 endif()
 
 # The destination is relative by default, so DESTINATION is interpreted
-# against CMAKE_INSTALL_PREFIX. An absolute user override is passed through.
+# against CMAKE_INSTALL_PREFIX. An absolute user override is passed
+# through.
 if(I2PD_SERVICE_DIR)
   set(_i2pd_service_dir "${I2PD_SERVICE_DIR}")
 elseif(I2PD_SERVICE_MANAGER STREQUAL "systemd")
@@ -192,9 +198,9 @@ endif()
 
 if(ANDROID)
   set(I2PD_BUILD_TUI OFF)
-  # Android uses the JNI shared library; there is no supported standalone
-  # Android daemon executable. The app wrapper already forces this off, and
-  # the manual native CI build must use the same graph.
+  # Android uses the JNI shared library; there is no supported
+  # standalone Android daemon executable. The app wrapper already forces
+  # this off, and the manual native CI build must use the same graph.
   set(WITH_BINARY OFF CACHE BOOL "Build the router executable" FORCE)
 endif()
 
@@ -204,7 +210,8 @@ endif()
 
 if(WITH_STATIC)
   # Save the normal suffix list. The static hint only governs dependency
-  # discovery; tools, tests and the TUI must keep their platform defaults.
+  # discovery; tools, tests and the TUI must keep their platform
+  # defaults.
   set(_i2pd_saved_find_library_suffixes "${CMAKE_FIND_LIBRARY_SUFFIXES}")
   if(MSVC)
     set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
@@ -220,12 +227,13 @@ endif()
 include(CheckAtomic)
 include(CheckCXXSourceCompiles)
 include(CheckSymbolExists)
-# CheckAtomic restores its probe flags and reports the library that the host
-# actually needs (empty when lock-free atomics are native).
+# CheckAtomic restores its probe flags and reports the library that the
+# host actually needs (empty when lock-free atomics are native).
 set(I2PD_EXTRA_LIBS "${I2PD_ATOMIC_LIBRARIES}")
-# OpenBSD 8.0 replaced imsg_get() with imsgbuf_get() (the older name returns the
-# total message size, the new one 1/0/-1; this tree treats any positive result
-# as success). Probe the selected base rather than hard-coding a release macro.
+# OpenBSD 8.0 replaced imsg_get() with imsgbuf_get() (the older name
+# returns the total message size, the new one 1/0/-1; this tree treats
+# any positive result as success). Probe the selected base rather than
+# hard-coding a release macro.
 if(CMAKE_SYSTEM_NAME STREQUAL "OpenBSD")
   set(_i2pd_saved_required_libraries "${CMAKE_REQUIRED_LIBRARIES}")
   set(CMAKE_REQUIRED_LIBRARIES util)
@@ -237,12 +245,13 @@ set(THREADS_PREFER_PTHREAD_FLAG ON)
 find_package(Threads REQUIRED)
 
 if(WITH_TORRENTS)
-  # JSON and URL declare out-of-line symbols. We use their compiled libraries,
-  # rather than including either library's src.hpp in a project source file.
-  # Boost.JSON uses boost::container::pmr. Shared Boost resolves it through
-  # its own link closure; a static package needs the compiled Container
-  # library, so request it optionally rather than forcing every consumer to
-  # install a component that shared builds do not need.
+  # JSON and URL declare out-of-line symbols. We use their compiled
+  # libraries, rather than including either library's src.hpp in a
+  # project source file. Boost.JSON uses boost::container::pmr. Shared
+  # Boost resolves it through its own link closure; a static package
+  # needs the compiled Container library, so request it optionally
+  # rather than forcing every consumer to install a component that
+  # shared builds do not need.
   find_package(Boost 1.81 REQUIRED COMPONENTS program_options json url
     OPTIONAL_COMPONENTS container)
   set(I2PD_BOOST_MIN_VERSION 1.81)
@@ -252,7 +261,8 @@ else()
   find_package(Boost 1.74 REQUIRED COMPONENTS program_options)
   set(I2PD_BOOST_MIN_VERSION 1.74)
   set(I2PD_BOOST_COMPONENTS program_options)
-  # Keep the optional component name in the installed package config too:
+  # Keep the optional component name in the installed package config
+  # too:
   # FindBoost creates the target only when the host actually ships it.
   set(I2PD_BOOST_OPTIONAL_COMPONENTS container)
 endif()
@@ -262,10 +272,11 @@ if(WITH_STATIC AND WITH_TORRENTS AND NOT TARGET Boost::container)
     "install the Boost container component or disable torrents.")
 endif()
 find_package(OpenSSL REQUIRED COMPONENTS Crypto SSL)
-# LibreSSL deliberately keeps OPENSSL_VERSION_NUMBER frozen at 0x20000000
-# for source compatibility, so CMake's FindOpenSSL reports 2.0.0 even for a
-# current LibreSSL. Read the selected headers explicitly and never search a
-# different include prefix: headers and libraries must come from one install.
+# LibreSSL deliberately keeps OPENSSL_VERSION_NUMBER frozen at
+# 0x20000000 for source compatibility, so CMake's FindOpenSSL reports
+# 2.0.0 even for a current LibreSSL. Read the selected headers
+# explicitly and never search a different include prefix: headers and
+# libraries must come from one install.
 set(I2PD_OPENSSL_KIND "")
 set(I2PD_OPENSSL_VERSION "")
 set(I2PD_LIBRESSL_VERSION "")
@@ -326,22 +337,23 @@ message(STATUS "OpenSSL library    : ${I2PD_OPENSSL_KIND} ${I2PD_OPENSSL_VERSION
 message(STATUS "OpenSSL headers    : ${OPENSSL_INCLUDE_DIR}")
 message(STATUS "OpenSSL libs       : ${OPENSSL_CRYPTO_LIBRARY};${OPENSSL_SSL_LIBRARY}")
 
-# Feature probes, not version-number guesses. These are compile-only and do not
-# execute the target platform. LibreSSL keeps the fallback branches in code.
+# Feature probes, not version-number guesses. These are compile-only and
+# do not execute the target platform. LibreSSL keeps the fallback
+# branches in code.
 set(_i2pd_saved_required_includes "${CMAKE_REQUIRED_INCLUDES}")
 set(_i2pd_saved_required_libraries "${CMAKE_REQUIRED_LIBRARIES}")
 set(_i2pd_saved_required_link_options "${CMAKE_REQUIRED_LINK_OPTIONS}")
 set(_i2pd_original_try_compile_target_type "${CMAKE_TRY_COMPILE_TARGET_TYPE}")
 set(CMAKE_REQUIRED_INCLUDES "${OPENSSL_INCLUDE_DIR}")
 # Static archives are resolved in one pass, so the dependent libssl must
-# precede libcrypto. Shared builds tolerate either order, which previously hid
-# this from every non-musl lane.
+# precede libcrypto. Shared builds tolerate either order, which
+# previously hid this from every non-musl lane.
 set(CMAKE_REQUIRED_LIBRARIES "${OPENSSL_SSL_LIBRARY};${OPENSSL_CRYPTO_LIBRARY}")
 set(CMAKE_TRY_COMPILE_TARGET_TYPE STATIC_LIBRARY)
 
-# Feature probe answers are cache entries. Reusing a build directory after
-# switching OpenSSL/LibreSSL or a prefix must not mix old answers with the new
-# selected headers and libraries.
+# Feature probe answers are cache entries. Reusing a build directory
+# after switching OpenSSL/LibreSSL or a prefix must not mix old answers
+# with the new selected headers and libraries.
 set(I2PD_OPENSSL_PROBES
   I2PD_HAVE_TLS_METHOD
   I2PD_HAVE_ASN1_STRING_GET0_DATA
@@ -430,26 +442,28 @@ check_cxx_source_compiles("
 #include <openssl/ssl.h>
 int main() { SSL *s = nullptr; return s ? SSL_set1_dnsname(s, \"example.org\") + 1 : 0; }"
   I2PD_HAVE_SSL_SET1_DNSNAME)
-# OpenSSL 3.x and LibreSSL provide SSL_set1_host; a future release that drops
-# both hostname-verification setters must fail configure, never build a TLS
-# client that cannot verify the reseed host.
+# OpenSSL 3.x and LibreSSL provide SSL_set1_host; a future release that
+# drops both hostname-verification setters must fail configure, never
+# build a TLS client that cannot verify the reseed host.
 check_cxx_source_compiles("
 #include <openssl/ssl.h>
 int main() { SSL *s = nullptr; return s ? SSL_set1_host(s, \"example.org\") + 1 : 0; }"
   I2PD_HAVE_SSL_SET1_HOST)
-# LibreSSL 4.3+ exposes ML-KEM through a separate header. Probe it instead of
-# assuming that every 4.3 port ships the header and symbols.
+# LibreSSL 4.3+ exposes ML-KEM through a separate header. Probe it
+# instead of assuming that every 4.3 port ships the header and symbols.
 check_cxx_source_compiles("
 #include <openssl/mlkem.h>
 int main() { return 0; }"
   I2PD_HAVE_OPENSSL_MLKEM_H)
-# Compile-only probes cannot detect a header/library prefix mismatch. One
-# combined link probe references the required surface for the selected
-# backend and fails at configure time if the library cannot supply it.
+# Compile-only probes cannot detect a header/library prefix mismatch.
+# One combined link probe references the required surface for the
+# selected backend and fails at configure time if the library cannot
+# supply it.
 set(CMAKE_REQUIRED_INCLUDES "${OPENSSL_INCLUDE_DIR}")
-# Use the exact imported file paths rather than the targets so try_compile
-# exercises the same libssl/libcrypto selected for the build. Keep the static
-# link order: libssl first, then its libcrypto dependency.
+# Use the exact imported file paths rather than the targets so
+# try_compile exercises the same libssl/libcrypto selected for the
+# build. Keep the static link order: libssl first, then its libcrypto
+# dependency.
 set(CMAKE_REQUIRED_LIBRARIES "${OPENSSL_SSL_LIBRARY};${OPENSSL_CRYPTO_LIBRARY}")
 set(CMAKE_TRY_COMPILE_TARGET_TYPE EXECUTABLE)
 if(I2PD_OPENSSL_KIND STREQUAL "OpenSSL")
@@ -485,9 +499,9 @@ endif()
 set(CMAKE_REQUIRED_INCLUDES "${_i2pd_saved_required_includes}")
 set(CMAKE_REQUIRED_LIBRARIES "${_i2pd_saved_required_libraries}")
 set(CMAKE_REQUIRED_LINK_OPTIONS "${_i2pd_saved_required_link_options}")
-# Restore the caller's try_compile mode rather than the STATIC_LIBRARY value
-# used above; later link checks (ncurses wide entry, library_exists) depend on
-# an executable probe.
+# Restore the caller's try_compile mode rather than the STATIC_LIBRARY
+# value used above; later link checks (ncurses wide entry,
+# library_exists) depend on an executable probe.
 if(_i2pd_original_try_compile_target_type)
   set(CMAKE_TRY_COMPILE_TARGET_TYPE "${_i2pd_original_try_compile_target_type}")
 else()
@@ -542,8 +556,9 @@ if(WITH_UPNP)
 endif()
 
 if(WITH_STATIC)
-  # Dependency discovery saw only static archives; restore the normal search
-  # suffixes for everything built afterwards (tools, tests, TUI, consumers).
+  # Dependency discovery saw only static archives; restore the normal
+  # search suffixes for everything built afterwards (tools, tests, TUI,
+  # consumers).
   set(CMAKE_FIND_LIBRARY_SUFFIXES "${_i2pd_saved_find_library_suffixes}")
   unset(_i2pd_saved_find_library_suffixes)
 endif()
@@ -554,8 +569,8 @@ set(LANG_DIR "${PROJECT_ROOT}/i18n")
 set(DAEMON_DIR "${PROJECT_ROOT}/daemon")
 set(TUI_DIR "${PROJECT_ROOT}/tui")
 
-# Explicit source lists: a configure-time glob silently changed the ABI and
-# build graph whenever a file was added or removed.
+# Explicit source lists: a configure-time glob silently changed the ABI
+# and build graph whenever a file was added or removed.
 set(LIBI2PD_SOURCES
   "${LIBI2PD_DIR}/api.cpp"
   "${LIBI2PD_DIR}/Base.cpp"
@@ -639,9 +654,10 @@ set(LANG_SOURCES
   "${LANG_DIR}/ChineseSimplified.cpp"
 )
 
-# Daemon sources shared by the host executable and the Android JNI library.
-# Snapshot collection and request dispatch are shared by both local
-# transports; only the listener/peer-authorization layer is platform specific.
+# Daemon sources shared by the host executable and the Android JNI
+# library. Snapshot collection and request dispatch are shared by both
+# local transports; only the listener/peer-authorization layer is
+# platform specific.
 set(DAEMON_COMMON_SOURCES
   "${DAEMON_DIR}/Daemon.cpp"
   "${DAEMON_DIR}/I2PControl.cpp"
@@ -697,14 +713,15 @@ if(WIN32)
   endif()
 endif()
 
-# Common compiler diagnostics. These are not global flags: each target gets
-# the same interface plus its own definitions.
+# Common compiler diagnostics. These are not global flags: each target
+# gets the same interface plus its own definitions.
 add_library(i2pd_warnings INTERFACE)
 if(MSVC)
   target_compile_options(i2pd_warnings INTERFACE /W4 /permissive- /Zc:__cplusplus /utf-8)
   if(WITH_HARDENING)
-    # The Unix hardening block below is not equivalent on MSVC; do not accept
-    # the option silently and leave the binary uninstrumented by accident.
+    # The Unix hardening block below is not equivalent on MSVC; do not
+    # accept the option silently and leave the binary uninstrumented by
+    # accident.
     message(WARNING
       "WITH_HARDENING is not implemented for MSVC; configure without it or add explicit MSVC linker flags")
   endif()
@@ -718,7 +735,8 @@ else()
     )
     target_compile_definitions(i2pd_warnings INTERFACE _FORTIFY_SOURCE=2)
     if(WIN32)
-      # MinGW/Clang64 produce PE images; ELF -z flags are not accepted here.
+      # MinGW/Clang64 produce PE images; ELF -z flags are not accepted
+      # here.
       target_link_options(i2pd_warnings INTERFACE -Wl,--dynamicbase -Wl,--nxcompat)
     else()
       target_link_options(i2pd_warnings INTERFACE -Wl,-z,relro -Wl,-z,now)
@@ -727,9 +745,9 @@ else()
 endif()
 
 function(i2pd_enable_sanitizers target)
-  # The options are documented as Unix/GCC/Clang only. MSVC/clang-cl and the
-  # MinGW runtimes use different sanitizer support; ignore the flags rather
-  # than emitting an invalid or unsupported command line.
+  # The options are documented as Unix/GCC/Clang only. MSVC/clang-cl and
+  # the MinGW runtimes use different sanitizer support; ignore the flags
+  # rather than emitting an invalid or unsupported command line.
   if(WIN32)
     if(WITH_ADDRSANITIZER OR WITH_THREADSANITIZER OR WITH_UNDEFSANITIZER)
       message(FATAL_ERROR
@@ -755,9 +773,9 @@ function(i2pd_enable_sanitizers target)
   endif()
 endfunction()
 
-# Capability macros shared by libi2pd and i2pd_privsep. Define them before the
-# privsep target (which is optional/Android-disabled) so libi2pd consumers keep
-# the same provider branches on every platform.
+# Capability macros shared by libi2pd and i2pd_privsep. Define them
+# before the privsep target (which is optional/Android-disabled) so
+# libi2pd consumers keep the same provider branches on every platform.
 set(I2PD_CAPABILITY_DEFINITIONS
     I2PD_HAVE_TLS_METHOD=$<BOOL:${I2PD_HAVE_TLS_METHOD}>
     I2PD_HAVE_ASN1_STRING_GET0_DATA=$<BOOL:${I2PD_HAVE_ASN1_STRING_GET0_DATA}>
@@ -775,9 +793,9 @@ set(I2PD_CAPABILITY_DEFINITIONS
     BOOST_ASIO_HAS_SNPRINTF=1
   )
 
-# One compile contract for every native target. Public headers expose the
-# capability macros and Boost.Asio, so consumers and the export see exactly
-# the same definitions as the libraries.
+# One compile contract for every native target. Public headers expose
+# the capability macros and Boost.Asio, so consumers and the export see
+# exactly the same definitions as the libraries.
 function(i2pd_apply_dialect target visibility)
   target_compile_definitions(${target} ${visibility} ${I2PD_CAPABILITY_DEFINITIONS})
   if(WIN32)
@@ -787,14 +805,16 @@ function(i2pd_apply_dialect target visibility)
 endfunction()
 
 if(PRIVSEP_SOURCES AND NOT ANDROID)
-  # Keep the native IPC/supervisor code out of the core library and daemon
-  # source list. This gives the component one explicit ownership boundary and
-  # lets tests or a future supervisor link it independently.
+  # Keep the native IPC/supervisor code out of the core library and
+  # daemon source list. This gives the component one explicit ownership
+  # boundary and lets tests or a future supervisor link it
+  # independently.
   add_library(i2pd_privsep STATIC ${PRIVSEP_SOURCES})
   set_target_properties(i2pd_privsep PROPERTIES PREFIX "" POSITION_INDEPENDENT_CODE ON)
   target_compile_features(i2pd_privsep PRIVATE cxx_std_23)
-  # Capability macro parity with libi2pd: a future privsep header that includes
-  # an Asio/OpenSSL/Log header must see the same provider branches.
+  # Capability macro parity with libi2pd: a future privsep header that
+  # includes an Asio/OpenSSL/Log header must see the same provider
+  # branches.
   i2pd_apply_dialect(i2pd_privsep PRIVATE)
   # The exported archive needs a stable include interface.
   # Expected.h lives in libi2pd and is shared by the IPC targets.
@@ -810,17 +830,19 @@ if(PRIVSEP_SOURCES AND NOT ANDROID)
   )
   target_link_libraries(i2pd_privsep PRIVATE Threads::Threads ${I2PD_EXTRA_LIBS} $<BUILD_INTERFACE:i2pd_warnings>)
   if(CMAKE_SYSTEM_NAME STREQUAL "OpenBSD")
-    # OpenBSD imsg lives in libutil. 8.0 exposes imsgbuf_get(); older bases use
-    # imsg_get(). The configure probe selects the available name.
+    # OpenBSD imsg lives in libutil. 8.0 exposes imsgbuf_get(); older
+    # bases use imsg_get(). The configure probe selects the available
+    # name.
     target_link_libraries(i2pd_privsep PUBLIC util)
     if(I2PD_HAVE_IMSGBUF_GET)
       target_compile_definitions(i2pd_privsep PRIVATE I2PD_HAVE_IMSGBUF_GET=1)
     endif()
   elseif(WIN32)
-    # CreateRestrictedToken/CreateProcessAsUser, pipe/named-object security and
-    # the DACL grant APIs (advapi32), AppContainer profile creation and SID
-    # derivation (userenv) and the per-spawn pipe-name CSPRNG (bcrypt). The SDK
-    # macros come from i2pd_apply_dialect() above.
+    # CreateRestrictedToken/CreateProcessAsUser, pipe/named-object
+    # security and the DACL grant APIs (advapi32), AppContainer profile
+    # creation and SID derivation (userenv) and the per-spawn pipe-name
+    # CSPRNG (bcrypt). The SDK macros come from i2pd_apply_dialect()
+    # above.
     target_link_libraries(i2pd_privsep PUBLIC advapi32 userenv bcrypt)
   endif()
   i2pd_enable_sanitizers(i2pd_privsep)
@@ -836,9 +858,10 @@ target_include_directories(libi2pd
     ${LANG_DIR}
 )
 target_compile_features(libi2pd PUBLIC cxx_std_23)
-# Feature probes drive the OpenSSL/LibreSSL branches. Numeric versions remain
-# only for the documented source-compatibility floor and ML-KEM API presence.
-# i2pd_privsep and the TUI receive the same capability definitions.
+# Feature probes drive the OpenSSL/LibreSSL branches. Numeric versions
+# remain only for the documented source-compatibility floor and ML-KEM
+# API presence. i2pd_privsep and the TUI receive the same capability
+# definitions.
 i2pd_apply_dialect(libi2pd PUBLIC)
 target_link_libraries(libi2pd
   PUBLIC
@@ -847,8 +870,9 @@ target_link_libraries(libi2pd
 )
 target_link_libraries(libi2pd PRIVATE $<BUILD_INTERFACE:i2pd_warnings>)
 i2pd_enable_sanitizers(libi2pd)
-# The supervisor/worker archive is installed for direct consumers and uses the
-# core logging/framing helpers, so the dependency must travel with it.
+# The supervisor/worker archive is installed for direct consumers and
+# uses the core logging/framing helpers, so the dependency must travel
+# with it.
 if(TARGET i2pd_privsep)
   target_link_libraries(i2pd_privsep PUBLIC libi2pd)
 endif()
@@ -858,9 +882,9 @@ endif()
 if(WIN32)
   target_compile_definitions(libi2pd PRIVATE WIN32_APP)
   # One Windows import-library contract for the library and every static
-  # consumer: Asio/AcceptEx (ws2_32/mswsock), adapter enumeration (iphlpapi),
-  # SHGetFolderPathW (shell32) and private-file DACLs (advapi32). The macros
-  # themselves come from i2pd_apply_dialect().
+  # consumer: Asio/AcceptEx (ws2_32/mswsock), adapter enumeration
+  # (iphlpapi), SHGetFolderPathW (shell32) and private-file DACLs
+  # (advapi32). The macros themselves come from i2pd_apply_dialect().
   target_link_libraries(libi2pd PUBLIC ws2_32 mswsock iphlpapi shell32 advapi32)
 endif()
 if(ANDROID)
@@ -904,16 +928,18 @@ target_include_directories(libi2pdlang
 target_compile_features(libi2pdlang PUBLIC cxx_std_23)
 target_link_libraries(libi2pdlang PRIVATE $<BUILD_INTERFACE:i2pd_warnings>)
 i2pd_enable_sanitizers(libi2pdlang)
-# The language registry is process-local and intentionally independent of the
-# client context, so the TUI and tools can translate without linking the router.
+# The language registry is process-local and intentionally independent
+# of the client context, so the TUI and tools can translate without
+# linking the router.
 target_link_libraries(libi2pdclient PUBLIC libi2pdlang)
 
 if(I2PD_BUILD_JNI AND ANDROID)
   # The JNI library owns the in-process daemon. Daemon.cpp is the common
-  # daemon lifecycle implementation used by DaemonAndroid; UPnP.cpp and the
-  # local TUI/I2PControl services are linked here as well. Android deliberately
-  # does not use the privilege-separated log supervisor, so I2PD_NO_PRIVSEP
-  # removes that POSIX-only path while leaving the rest of the daemon intact.
+  # daemon lifecycle implementation used by DaemonAndroid; UPnP.cpp and
+  # the local TUI/I2PControl services are linked here as well. Android
+  # deliberately does not use the privilege-separated log supervisor, so
+  # I2PD_NO_PRIVSEP removes that POSIX-only path while leaving the rest
+  # of the daemon intact.
   add_library(i2pd_jni SHARED
     "${PROJECT_ROOT}/android/app/src/main/cpp/DaemonAndroid.cpp"
     "${PROJECT_ROOT}/android/app/src/main/cpp/i2pd_android.cpp"
@@ -932,8 +958,8 @@ if(I2PD_BUILD_JNI AND ANDROID)
     target_link_libraries(i2pd_jni PRIVATE MiniUPnPc::MiniUPnPc)
   endif()
   target_link_libraries(i2pd_jni PRIVATE libi2pd libi2pdclient libi2pdlang log i2pd_warnings)
-  # Only the Java_* entry points are part of the JNI ABI. Keep static-library
-  # internals out of the dynamic symbol table.
+  # Only the Java_* entry points are part of the JNI ABI. Keep
+  # static-library internals out of the dynamic symbol table.
   target_link_options(i2pd_jni PRIVATE -Wl,--exclude-libs,ALL)
   i2pd_enable_sanitizers(i2pd_jni)
   if(WITH_LIBRARY)
@@ -957,11 +983,13 @@ elseif(WITH_BINARY)
     target_link_libraries(i2pd PRIVATE MiniUPnPc::MiniUPnPc)
   endif()
   if(WIN32)
-    # WIN32_LEAN_AND_MEAN/NOMINMAX/WINVER come from libi2pd's public dialect
-    # contract; only the GUI subsystem switch is private to this executable.
+    # WIN32_LEAN_AND_MEAN/NOMINMAX/WINVER come from libi2pd's public
+    # dialect contract; only the GUI subsystem switch is private to this
+    # executable.
     target_compile_definitions(i2pd PRIVATE WIN32_APP)
-    # ws2_32/mswsock/iphlpapi/shell32/advapi32 are PUBLIC on libi2pd. Only
-    # the GUI/COM libraries used directly by Win32App/NetState are added here.
+    # ws2_32/mswsock/iphlpapi/shell32/advapi32 are PUBLIC on libi2pd.
+    # Only the GUI/COM libraries used directly by Win32App/NetState are
+    # added here.
     target_link_libraries(i2pd PRIVATE user32 ole32 uuid)
   endif()
   if(WITH_STATIC AND NOT MSVC)
@@ -970,21 +998,23 @@ elseif(WITH_BINARY)
   i2pd_enable_sanitizers(i2pd)
 endif()
 
-# The TUI is a separate process and never links the router libraries. It links
-# only the dependency-free language catalog. Both backends share main.cpp,
-# Theme.h and TuiProtocol.h; only the terminal and transport implementations
-# differ.
+# The TUI is a separate process and never links the router libraries. It
+# links only the dependency-free language catalog. Both backends share
+# main.cpp, Theme.h and TuiProtocol.h; only the terminal and transport
+# implementations differ.
 if(I2PD_BUILD_TUI)
   if(UNIX)
-    # CMake's wide-character search only accepts the ncursesw/ header layout.
-    # OpenBSD's base ncurses provides wide-character support but installs
-    # ncurses.h directly, so retry the plain header layout and verify that the
-    # discovered library really exports wide-character entry points.
+    # CMake's wide-character search only accepts the ncursesw/ header
+    # layout. OpenBSD's base ncurses provides wide-character support but
+    # installs ncurses.h directly, so retry the plain header layout and
+    # verify that the discovered library really exports wide-character
+    # entry points.
     set(CURSES_NEED_WIDE TRUE)
     find_package(Curses QUIET)
     if(NOT CURSES_FOUND)
-      # FindCurses caches the header/library results. A second attempt with a
-      # different header layout must not reuse the failed cached values.
+      # FindCurses caches the header/library results. A second attempt
+      # with a different header layout must not reuse the failed cached
+      # values.
       unset(CURSES_INCLUDE_PATH CACHE)
       unset(CURSES_INCLUDE_DIR CACHE)
       unset(CURSES_LIBRARY CACHE)
@@ -1027,8 +1057,8 @@ if(I2PD_BUILD_TUI)
       message(WARNING "ncursesw not found: building without i2pd-tui")
     endif()
   elseif(WIN32)
-    # Win32 console/VT backend and named-pipe client. There is deliberately no
-    # Curses/PDCurses dependency on Windows.
+    # Win32 console/VT backend and named-pipe client. There is
+    # deliberately no Curses/PDCurses dependency on Windows.
     add_executable(i2pd-tui
       "${TUI_DIR}/main.cpp"
       "${TUI_DIR}/TuiClientWin32.cpp"
@@ -1039,9 +1069,10 @@ if(I2PD_BUILD_TUI)
     target_include_directories(i2pd-tui PRIVATE
       "${LIBI2PD_DIR}" "${LANG_DIR}" "${TUI_DIR}")
     i2pd_apply_dialect(i2pd-tui PRIVATE)
-    # advapi32: token/SID inspection used for the named-pipe authorization
-    # policy. ws2_32 is required by the inline Boost.Asio address types pulled
-    # in through Log.h. No shell or Curses library is required.
+    # advapi32: token/SID inspection used for the named-pipe
+    # authorization policy. ws2_32 is required by the inline Boost.Asio
+    # address types pulled in through Log.h. No shell or Curses library
+    # is required.
     target_link_libraries(i2pd-tui PRIVATE
       Boost::headers advapi32 ws2_32 Threads::Threads ${I2PD_EXTRA_LIBS} libi2pdlang i2pd_warnings)
     i2pd_enable_sanitizers(i2pd-tui)
@@ -1056,10 +1087,9 @@ if(WITH_LIBRARY)
   endif()
   install(TARGETS libi2pd libi2pdclient libi2pdlang
     EXPORT i2pd-targets
-    ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
-    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
-    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
-    COMPONENT Libraries
+    ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR} COMPONENT Libraries
+    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR} COMPONENT Libraries
+    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR} COMPONENT Runtime
   )
   install(DIRECTORY "${LIBI2PD_DIR}/" DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/libi2pd
     COMPONENT Development
@@ -1071,18 +1101,20 @@ if(WITH_LIBRARY)
     COMPONENT Development
     FILES_MATCHING PATTERN "*.h" PATTERN "*.hpp")
   if(UNIX AND TARGET i2pd_privsep)
-    # The archive is part of i2pd-targets because static libi2pdclient records
-    # its LINK_ONLY edge. Install the matching headers so consumers can use the
-    # exported target; the API remains internal and version-unstable.
+    # The archive is part of i2pd-targets because static libi2pdclient
+    # records its LINK_ONLY edge. Install the matching headers so
+    # consumers can use the exported target; the API remains internal
+    # and version-unstable.
     install(DIRECTORY "${PROJECT_ROOT}/privsep/" DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/privsep
       COMPONENT Development
       FILES_MATCHING PATTERN "*.h" PATTERN "*.hpp")
   endif()
 
   include(CMakePackageConfigHelpers)
-  # The installed headers are the internal router libraries, not a stable
-  # public ABI; an exact version avoids promising source compatibility that
-  # the project does not maintain between minor releases.
+  # The installed headers are the internal router libraries, not a
+  # stable public ABI; an exact version avoids promising source
+  # compatibility that the project does not maintain between minor
+  # releases.
   write_basic_package_version_file(
     "${CMAKE_CURRENT_BINARY_DIR}/i2pdConfigVersion.cmake"
     VERSION ${PROJECT_VERSION}
@@ -1123,8 +1155,9 @@ if(WITH_BINARY)
 endif()
 
 # The TUI is a client, not a service. Its desktop launcher and icons are
-# installed with the Tui component so a packager can ship i2pd-tui separately
-# without adding a second router instance or a second service definition.
+# installed with the Tui component so a packager can ship i2pd-tui
+# separately without adding a second router instance or a second service
+# definition.
 if(TARGET i2pd-tui AND UNIX)
   install(FILES "${PROJECT_ROOT}/contrib/openi2pd.desktop"
     DESTINATION ${CMAKE_INSTALL_DATADIR}/applications
@@ -1164,9 +1197,10 @@ if(I2PD_INSTALL_DOCS)
     COMPONENT Documentation)
 endif()
 
-# Man pages describe the binary that owns them and must not disappear when a
-# packager disables the optional documentation tree (for example the static
-# build or the OpenBSD port). Keep the component aligned with the executable.
+# Man pages describe the binary that owns them and must not disappear
+# when a packager disables the optional documentation tree (for example
+# the static build or the OpenBSD port). Keep the component aligned with
+# the executable.
 if(UNIX AND NOT ANDROID)
   if(WITH_BINARY)
     install(FILES "${PROJECT_ROOT}/man/i2pd.1"
@@ -1185,8 +1219,9 @@ if(UNIX AND NOT ANDROID)
   endif()
 endif()
 
-# Exactly one service manager is installed. The executable/config/doc/man and
-# TUI install rules above are independent of this selection.
+# Exactly one service manager is installed. The
+# executable/config/doc/man and TUI install rules above are independent
+# of this selection.
 if(I2PD_SERVICE_MANAGER STREQUAL "systemd")
   install(FILES "${PROJECT_ROOT}/contrib/i2pd.service"
     DESTINATION "${_i2pd_service_dir}"

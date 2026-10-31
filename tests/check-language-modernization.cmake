@@ -1,12 +1,12 @@
-# See the LICENSE file at the top of the project tree for copyright
-# and license details.
+# See the LICENSE file at the top of the project tree for copyright and
+# license details.
 #
 # openi2pd: check language modernization.
 #
-# Compile-free contract check for the permanent modern C++23/Java 25 policy,
-# its documented availability limits and the presence of the reusable
-# modernization seams. It never invokes a compiler, Gradle, CTest or a project
-# binary.
+# Compile-free contract check for the permanent modern C++23/Java 25
+# policy, its documented availability limits and the presence of the
+# reusable modernization seams. It never invokes a compiler, Gradle,
+# CTest or a project binary.
 #
 
 if(NOT PROJECT_ROOT)

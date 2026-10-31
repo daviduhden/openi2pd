@@ -1,12 +1,13 @@
-# See the LICENSE file at the top of the project tree for copyright
-# and license details.
+# See the LICENSE file at the top of the project tree for copyright and
+# license details.
 #
 # openi2pd: check tools inventory.
 #
-# Compile-free parity check for the auxiliary tool inventory. The CMake target
-# list, documentation navigation, Debian/RPM packaging and the manual install
-# assertion must all name the same executables, and every source/doc/manifest
-# entry must exist. It never configures, compiles or runs a tool.
+# Compile-free parity check for the auxiliary tool inventory. The CMake
+# target list, documentation navigation, Debian/RPM packaging and the
+# manual install assertion must all name the same executables, and every
+# source/doc/manifest entry must exist. It never configures, compiles or
+# runs a tool.
 #
 
 if(NOT PROJECT_ROOT)
@@ -135,7 +136,8 @@ foreach(tool IN LISTS tools_list)
   endif()
 endforeach()
 
-# Shared helpers must exist and every upstream manifest entry must resolve.
+# Shared helpers must exist and every upstream manifest entry must
+# resolve.
 foreach(helper IN ITEMS
     "tools/common/file.hpp"
     "tools/common/key.hpp"

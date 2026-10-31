@@ -1,11 +1,11 @@
-# See the LICENSE file at the top of the project tree for copyright
-# and license details.
+# See the LICENSE file at the top of the project tree for copyright and
+# license details.
 #
 # openi2pd: check build system.
 #
-# Static CMake check of the build-system contract: POSIX make syntax, Ninja
-# defaults, dependency floors and the absence of hidden downloads, globs,
-# hardcoded prefixes and removed compatibility branches.
+# Static CMake check of the build-system contract: POSIX make syntax,
+# Ninja defaults, dependency floors and the absence of hidden downloads,
+# globs, hardcoded prefixes and removed compatibility branches.
 #
 
 if(NOT PROJECT_ROOT)
@@ -82,8 +82,8 @@ read_required("${rpm_git_spec}" rpm_git_text)
 read_required("${presets_file}" presets_text)
 read_required("${fuzz_workflow}" fuzz_workflow_text)
 
-# POSIX make has no ?= or GNU pattern/functions. The front-end must be usable
-# with BSD make on OpenBSD.
+# POSIX make has no ?= or GNU pattern/functions. The front-end must be
+# usable with BSD make on OpenBSD.
 foreach(make_text IN ITEMS "${root_make}" "${test_make}")
   assert_absent("${make_text}" "?=" "POSIX makefile uses non-POSIX conditional assignment")
   assert_absent("${make_text}" "wildcard(" "POSIX makefile uses GNU wildcard")
@@ -117,8 +117,8 @@ if(root_generator EQUAL -1)
   message(FATAL_ERROR "POSIX Makefile must default to the Ninja CMake generator")
 endif()
 
-# No configure-time downloads, globs or hidden source trees in any maintained
-# CMake entry point.
+# No configure-time downloads, globs or hidden source trees in any
+# maintained CMake entry point.
 foreach(cmake_text IN ITEMS "${top_cmake_text}" "${tools_cmake_text}" "${tests_cmake_text}" "${android_cmake_text}"
     "${miniupnpc_text}")
   assert_absent("${cmake_text}" "file(DOWNLOAD" "CMake fetches files")
@@ -169,6 +169,12 @@ assert_present("${presets_text}" "\"version\": 5" "CMake presets must use the CM
 assert_present("${presets_text}" "\"minor\": 25" "Preset schema 5 requires CMake 3.25 (installPresets)")
 assert_present("${presets_text}" "\"installPresets\"" "CMake presets must expose the install path")
 assert_present("${top_cmake_text}" "COMPONENT Development" "development installs need a component")
+assert_present("${top_cmake_text}"
+  "ARCHIVE DESTINATION \${CMAKE_INSTALL_LIBDIR} COMPONENT Libraries"
+  "static library archives must be assigned to the Libraries component")
+assert_present("${top_cmake_text}"
+  "LIBRARY DESTINATION \${CMAKE_INSTALL_LIBDIR} COMPONENT Libraries"
+  "shared library artifacts must be assigned to the Libraries component")
 assert_present("${top_cmake_text}" "COMPONENT Tui" "the TUI needs a separate install component")
 assert_present("${top_cmake_text}" "COMPONENT Service" "service files need a separate install component")
 assert_present("${top_cmake_text}" "configure_package_config_file"
@@ -262,14 +268,15 @@ foreach(required IN ITEMS "std::endian" "std::byteswap")
   endif()
 endforeach()
 
-# Windows packaging must not assume an installation drive/directory or pull
-# the worktree from a remote during a local build.
+# Windows packaging must not assume an installation drive/directory or
+# pull the worktree from a remote during a local build.
 foreach(mingw_needle IN ITEMS "C:\\msys64" "C:\\PROGRA~2" "git pull")
   assert_absent("${mingw_text}" "${mingw_needle}" "Windows helper hardcodes or downloads")
 endforeach()
 
 # The retired administrative web console must not reappear in the source
-# graph. HTTP proxy/tunnel and reseed services are separate and retained.
+# graph. HTTP proxy/tunnel and reseed services are separate and
+# retained.
 foreach(removed IN ITEMS
     "${PROJECT_ROOT}/contrib/webconsole"
     "${PROJECT_ROOT}/contrib/torrents/web"
@@ -305,9 +312,9 @@ foreach(required IN ITEMS
   endif()
 endforeach()
 
-# Service-manager installation is opt-in and exclusive. Each canonical source
-# must occur exactly once in the top-level install graph, so a second
-# unconditional install cannot silently ship every init system.
+# Service-manager installation is opt-in and exclusive. Each canonical
+# source must occur exactly once in the top-level install graph, so a
+# second unconditional install cannot silently ship every init system.
 string(FIND "${top_cmake_text}" "set(I2PD_SERVICE_MANAGER \"none\" CACHE STRING" service_default)
 if(service_default EQUAL -1)
   message(FATAL_ERROR "I2PD_SERVICE_MANAGER must default to none")
@@ -318,7 +325,8 @@ foreach(manager IN ITEMS none systemd openrc runit s6 s6-rc shepherd sysvinit)
     message(FATAL_ERROR "I2PD_SERVICE_MANAGER is missing supported value '${manager}'")
   endif()
 endforeach()
-# dinit and Upstart are sample definitions, not selectable install components.
+# dinit and Upstart are sample definitions, not selectable install
+# components.
 foreach(sample IN ITEMS dinit upstart)
   string(FIND "${top_cmake_text}" "\"${sample}\"" sample_position)
   if(NOT sample_position EQUAL -1)
@@ -359,9 +367,9 @@ foreach(service_source IN ITEMS
   endif()
 endforeach()
 
-# Distribution payload ownership: documentation, licences and man pages are
-# installed by the component that owns the binary, not only when the optional
-# documentation tree is enabled.
+# Distribution payload ownership: documentation, licences and man pages
+# are installed by the component that owns the binary, not only when the
+# optional documentation tree is enabled.
 foreach(payload IN ITEMS
     "RENAME LICENSE.i2pd-tools"
     "man/i2pd.1"
@@ -372,7 +380,8 @@ foreach(payload IN ITEMS
     message(FATAL_ERROR "CMake install graph is missing ${payload}")
   endif()
 endforeach()
-# The sample configuration is a hard prerequisite of the packaged services.
+# The sample configuration is a hard prerequisite of the packaged
+# services.
 string(FIND "${top_cmake_text}"
   "I2PD_SERVICE_MANAGER=\${I2PD_SERVICE_MANAGER} requires " config_guard)
 if(config_guard EQUAL -1)
@@ -384,14 +393,16 @@ if(generator_position EQUAL -1)
   message(FATAL_ERROR "The POSIX front-end must default to the Ninja generator")
 endif()
 
-# Every checked-in regression source must be named in tests/CMakeLists.txt.
-# Platform-specific sources may still be conditionally registered, but a new
-# file cannot silently fall out of the suite.
+# Every checked-in regression source must be named in
+# tests/CMakeLists.txt. Platform-specific sources may still be
+# conditionally registered, but a new file cannot silently fall out of
+# the suite.
 file(GLOB _i2pd_test_sources RELATIVE "${PROJECT_ROOT}/tests" "${PROJECT_ROOT}/tests/test-*.cpp")
 foreach(_source IN LISTS _i2pd_test_sources)
   string(REGEX REPLACE "\\.cpp$" "" _test_name "${_source}")
   # Match a complete token, not a prefix such as test-addressbook inside
-  # test-addressbook-admin. CMake list entries are separated by whitespace.
+  # test-addressbook-admin. CMake list entries are separated by
+  # whitespace.
   string(FIND "${tests_cmake_text}" "\n  ${_test_name}\n" _test_line)
   string(FIND "${tests_cmake_text}" " ${_test_name} " _test_inline)
   string(FIND "${tests_cmake_text}" " ${_test_name}\n" _test_eol)
@@ -401,8 +412,8 @@ foreach(_source IN LISTS _i2pd_test_sources)
   endif()
 endforeach()
 
-# The fuzzer inventory is also explicit: adding a source without wiring it to
-# the manual Fuzzing workflow must fail the static check.
+# The fuzzer inventory is also explicit: adding a source without wiring
+# it to the manual Fuzzing workflow must fail the static check.
 file(GLOB _i2pd_fuzz_sources RELATIVE "${PROJECT_ROOT}/tests/fuzz" "${PROJECT_ROOT}/tests/fuzz/*.cpp")
 foreach(_source IN LISTS _i2pd_fuzz_sources)
   string(REGEX REPLACE "\\.cpp$" "" _fuzzer_name "${_source}")
@@ -426,8 +437,8 @@ foreach(_source IN LISTS _i2pd_fuzz_sources)
 endforeach()
 
 # Reproducible corpus contract: each registered fuzzer has at least one
-# checked-in seed, no orphan corpus directory exists, every seed is small and
-# no seed is named like private key material.
+# checked-in seed, no orphan corpus directory exists, every seed is
+# small and no seed is named like private key material.
 file(GLOB _fuzz_corpus_dirs LIST_DIRECTORIES true
   "${PROJECT_ROOT}/tests/fuzz/corpus/*")
 foreach(_corpus_dir IN LISTS _fuzz_corpus_dirs)
@@ -453,8 +464,9 @@ foreach(_corpus_dir IN LISTS _fuzz_corpus_dirs)
     endif()
   endforeach()
 endforeach()
-# Every registered fuzzer must have a seed directory so a clean clone starts
-# from a reproducible corpus instead of an empty temporary directory.
+# Every registered fuzzer must have a seed directory so a clean clone
+# starts from a reproducible corpus instead of an empty temporary
+# directory.
 file(GLOB _registered_fuzzers RELATIVE "${PROJECT_ROOT}/tests/fuzz"
   "${PROJECT_ROOT}/tests/fuzz/fuzz-*.cpp")
 foreach(_source IN LISTS _registered_fuzzers)
@@ -464,10 +476,11 @@ foreach(_source IN LISTS _registered_fuzzers)
   endif()
 endforeach()
 
-# The RPM specs must not invoke GNU make or Ninja directly: they build through
-# cmake --build and pin the Ninja generator explicitly. Some Fedora releases
-# package the required Boost.JSON/URL libraries separately, so the guarded
-# build requirements must keep a defined distro-macro test.
+# The RPM specs must not invoke GNU make or Ninja directly: they build
+# through cmake --build and pin the Ninja generator explicitly. Some
+# Fedora releases package the required Boost.JSON/URL libraries
+# separately, so the guarded build requirements must keep a defined
+# distro-macro test.
 foreach(_rpm_text IN ITEMS "${rpm_text}" "${rpm_git_text}")
   assert_absent("${_rpm_text}" "_smp_mflags" "RPM spec uses make/ninja directly")
   assert_absent("${_rpm_text}" "%make_build" "RPM spec uses %make_build")
@@ -491,8 +504,8 @@ foreach(_rpm_text IN ITEMS "${rpm_text}" "${rpm_git_text}")
 endforeach()
 
 # Keep first-party source free of the unbounded C string functions. The
-# token boundary prevents std::snprintf from matching; Boost/OpenSSL/system
-# headers are excluded.
+# token boundary prevents std::snprintf from matching;
+# Boost/OpenSSL/system headers are excluded.
 file(GLOB_RECURSE _i2pd_format_sources
   "${PROJECT_ROOT}/libi2pd/*.cpp" "${PROJECT_ROOT}/libi2pd/*.h" "${PROJECT_ROOT}/libi2pd/*.hpp"
   "${PROJECT_ROOT}/libi2pd_client/*.cpp" "${PROJECT_ROOT}/libi2pd_client/*.h"
@@ -514,8 +527,9 @@ foreach(_format_source IN LISTS _i2pd_format_sources)
 endforeach()
 
 # Every OpenSSL/LibreSSL capability probe must be exported as a compile
-# definition and have a Crypto.h fallback, so a target that includes the header
-# without CMake's definitions cannot silently select a different branch.
+# definition and have a Crypto.h fallback, so a target that includes the
+# header without CMake's definitions cannot silently select a different
+# branch.
 file(READ "${PROJECT_ROOT}/libi2pd/Crypto.h" crypto_feature_text)
 file(READ "${PROJECT_ROOT}/privsep/Worker.h" worker_header_text)
 assert_present("${worker_header_text}" "worker_pid_t"

@@ -4,10 +4,11 @@
  *
  * openi2pd: test executable path.
  *
- * Resolves the test binary so a privilege-separation test can spawn itself as
- * a worker after Worker.cpp stopped trusting $PATH and /proc. Linux uses
- * /proc/self/exe; every other platform resolves argv[0] against the current
- * directory. This header is test-only and never installed.
+ * Resolves the test binary so a privilege-separation test can spawn
+ * itself as a worker after Worker.cpp stopped trusting $PATH and /proc.
+ * Linux uses /proc/self/exe; every other platform resolves argv[0]
+ * against the current directory. This header is test-only and never
+ * installed.
  *
  */
 

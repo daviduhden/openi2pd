@@ -1,23 +1,24 @@
-# See the LICENSE file at the top of the project tree for copyright
-# and license details.
+# See the LICENSE file at the top of the project tree for copyright and
+# license details.
 #
 # openi2pd: FindMiniUPnPc.
 #
-# Finds MiniUPnPc through the normal CMake search paths, reads its API version
-# from the header and rejects versions below 2.2.6/API 17. It defines the
-# imported MiniUPnPc::MiniUPnPc target without source-relative or downloaded
-# paths.
+# Finds MiniUPnPc through the normal CMake search paths, reads its API
+# version from the header and rejects versions below 2.2.6/API 17. It
+# defines the imported MiniUPnPc::MiniUPnPc target without
+# source-relative or downloaded paths.
 #
 
 # - Find MiniUPnPc
 #
-# Uses the normal CMake search path (CMAKE_PREFIX_PATH, toolchain sysroot,
-# package-manager prefixes and the platform default). No source-relative,
-# absolute or downloaded paths are injected here.
+# Uses the normal CMake search path (CMAKE_PREFIX_PATH, toolchain
+# sysroot, package-manager prefixes and the platform default). No
+# source-relative, absolute or downloaded paths are injected here.
 #
-# MiniUPnPc 2.2.6 (API 17) is the minimum available in the supported Linux
-# distribution set. API 18 adds the external-address form of UPNP_GetValidIGD;
-# daemon/UPnP.cpp selects that signature when the header reports it.
+# MiniUPnPc 2.2.6 (API 17) is the minimum available in the supported
+# Linux distribution set. API 18 adds the external-address form of
+# UPNP_GetValidIGD; daemon/UPnP.cpp selects that signature when the
+# header reports it.
 
 include(FindPackageHandleStandardArgs)
 

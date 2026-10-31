@@ -11,14 +11,18 @@ setlocal enableextensions enabledelayedexpansion
 title Building i2pd
 
 
-REM To use that script, you must have installed in your MSYS installation these packages:
+REM Install the required packages in the matching MSYS2 environments:
 REM Base: git cmake ninja zip
-REM UCRT64: mingw-w64-ucrt-x86_64-boost mingw-w64-ucrt-x86_64-openssl mingw-w64-ucrt-x86_64-gcc mingw-w64-ucrt-x86_64-miniupnpc
-REM MINGW32: mingw-w64-i686-boost mingw-w64-i686-openssl mingw-w64-i686-gcc mingw-w64-i686-miniupnpc
+REM UCRT64:
+REM   mingw-w64-ucrt-x86_64-boost
+REM   mingw-w64-ucrt-x86_64-openssl
+REM   mingw-w64-ucrt-x86_64-gcc
+REM   mingw-w64-ucrt-x86_64-miniupnpc
+REM MINGW32:
+REM   mingw-w64-i686-boost mingw-w64-i686-openssl
+REM   mingw-w64-i686-gcc mingw-w64-i686-miniupnpc
 
-REM setting up variables for MSYS
-REM Set MSYS2_ROOT when MSYS2 is not on PATH; no hard-coded installation
-REM directory is assumed by this script.
+REM Set MSYS2_ROOT when bash.exe is not available through PATH.
 set MSYS2_PATH_TYPE=inherit
 set CHERE_INVOKING=enabled_from_arguments
 set MSYSTEM=MINGW32
@@ -67,9 +71,10 @@ echo Preparing configuration files and README for packaging...
 
 %xSH% "echo To use configs and certificates, move all files and certificates folder from contrib directory here. > README.txt" >> nul
 
-REM Configuration files are distributed with native LF line endings. Modern
-REM Windows editors handle LF and the parser is line based, so do not rewrite
-REM tracked sources in place merely to normalise Notepad input.
+REM Configuration files are distributed with native LF line endings.
+REM Modern Windows editors handle LF and the parser is line based, so do
+REM not rewrite tracked sources in place merely to normalise Notepad
+REM input.
 
 REM Prepare binary signing command if signing key and password provided
 if defined SIGN (

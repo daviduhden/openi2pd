@@ -1,5 +1,5 @@
-# See the LICENSE file at the top of the project tree for copyright
-# and license details.
+# See the LICENSE file at the top of the project tree for copyright and
+# license details.
 #
 # openi2pd: compile-free control, proxy and lifetime security contracts.
 
@@ -85,9 +85,10 @@ file(READ "${PROJECT_ROOT}/libi2pd_client/HTTPProxy.cpp" http_proxy)
 file(READ "${PROJECT_ROOT}/libi2pd_client/I2PService.h" service_header)
 file(READ "${PROJECT_ROOT}/android/app/src/main/cpp/i2pd_android.cpp" android_jni)
 
-# Streams keep their destination alive and Stop() runs on the destination's
-# io_context, so SAM teardown cannot free a StreamingDestination under a
-# pending timer/handler (ASan/TSan exercise the resulting code paths).
+# Streams keep their destination alive and Stop() runs on the
+# destination's io_context, so SAM teardown cannot free a
+# StreamingDestination under a pending timer/handler (ASan/TSan exercise
+# the resulting code paths).
 foreach(required IN ITEMS
     "m_LocalDestinationOwner"
     "m_AcceptorMutex"
@@ -99,8 +100,9 @@ foreach(required IN ITEMS
   endif()
 endforeach()
 
-# The NACK count is written into a one-byte wire field, but accumulation must
-# not wrap before the 256 guard or the saved-packet cap is bypassed.
+# The NACK count is written into a one-byte wire field, but accumulation
+# must not wrap before the 256 guard or the saved-packet cap is
+# bypassed.
 foreach(required IN ITEMS
     "size_t numNacks = 0"
     "if (numNacks + (seqn - nextSeqn) >= 256)"
@@ -111,7 +113,8 @@ foreach(required IN ITEMS
   endif()
 endforeach()
 
-# SAM creates/removes per-port streaming destinations from its control thread.
+# SAM creates/removes per-port streaming destinations from its control
+# thread.
 foreach(required IN ITEMS
     "m_StreamingDestinationsMutex"
     "GetDefaultStreamingDestination")
@@ -121,8 +124,8 @@ foreach(required IN ITEMS
   endif()
 endforeach()
 
-# SSU2 snapshots introducers instead of iterating a vector the netDb thread
-# prunes. The header owns the mutex and the snapshot accessor.
+# SSU2 snapshots introducers instead of iterating a vector the netDb
+# thread prunes. The header owns the mutex and the snapshot accessor.
 foreach(required IN ITEMS
     "GetIntroducers () const"
     "mutable std::mutex mutex"
@@ -135,7 +138,8 @@ foreach(required IN ITEMS
   endif()
 endforeach()
 
-# A TorrentFile handle is shared by the disk worker and the torrent service.
+# A TorrentFile handle is shared by the disk worker and the torrent
+# service.
 foreach(required IN ITEMS
     "OpenLocked"
     "CloseLocked"
@@ -147,11 +151,12 @@ foreach(required IN ITEMS
   endif()
 endforeach()
 
-# Peer-wire state changes are gated on the block actually being applied, the
-# datagram-tracker default port is applied without rewriting the stored URL,
-# and a failed part-file/directory creation publishes a filesystem error from
-# the disk worker. BEP 3 cancel must stay a queued-request removal with the
-# fork's Fast Extension reject gate (upstream replies unconditionally).
+# Peer-wire state changes are gated on the block actually being applied,
+# the datagram-tracker default port is applied without rewriting the
+# stored URL, and a failed part-file/directory creation publishes a
+# filesystem error from the disk worker. BEP 3 cancel must stay a
+# queued-request removal with the fork's Fast Extension reject gate
+# (upstream replies unconditionally).
 foreach(required IN ITEMS
     "bool BlockReceived (const uint8_t * block, size_t len, size_t offset)"
     "applied = piece.BlockReceived (buf + 8, len, offset)"
@@ -179,9 +184,9 @@ foreach(required IN ITEMS
   endif()
 endforeach()
 
-# The operator blocklist is one immutable snapshot published atomically; the
-# runtime ban set is separate, bounded and in-memory only. Subscription merges
-# may never re-point an already-known name.
+# The operator blocklist is one immutable snapshot published atomically;
+# the runtime ban set is separate, bounded and in-memory only.
+# Subscription merges may never re-point an already-known name.
 foreach(required IN ITEMS
     "class OperatorBlocklistSnapshot"
     "std::shared_ptr<const OperatorBlocklistSnapshot>"
@@ -213,7 +218,8 @@ foreach(required IN ITEMS
 endforeach()
 
 # Tracker announces keep whole-torrent progress separate from the
-# selection-based local completion state, and honour Java scheduling floors.
+# selection-based local completion state, and honour Java scheduling
+# floors.
 foreach(required IN ITEMS
     "MIN_TRACKER_ANNOUNCE_INTERVAL"
     "MAX_TRACKER_FAILURE_BACKOFF"
@@ -225,7 +231,8 @@ foreach(required IN ITEMS
   endif()
 endforeach()
 
-# Administrative verbs stay a closed typed set; no generic option/path writer.
+# Administrative verbs stay a closed typed set; no generic option/path
+# writer.
 foreach(required IN ITEMS
     "ADDRESSBOOK-SUBSCRIPTIONS"
     "BLOCKLIST"
@@ -241,8 +248,8 @@ foreach(required IN ITEMS
 endforeach()
 
 # SSU2/ NTCP2 transport hardening: pre-authentication block whitelists,
-# PeerTest address provenance, ACK-0 completion, admission caps and the NTCP2
-# AEAD-failure drain are load-bearing wire/security contracts.
+# PeerTest address provenance, ACK-0 completion, admission caps and the
+# NTCP2 AEAD-failure drain are load-bearing wire/security contracts.
 foreach(required IN ITEMS
     "IsHolePunchPayloadBlockAllowed"
     "eSSU2SessionStateHolePunch"
@@ -282,9 +289,9 @@ foreach(required IN ITEMS
   endif()
 endforeach()
 
-# Ratchet split promotion, NSR payload whitelist, tagset-exhaustion restart,
-# fail-closed X25519 generation, Ed25519 secret cleansing and PQ downgrade
-# resistance are load-bearing cryptographic contracts.
+# Ratchet split promotion, NSR payload whitelist, tagset-exhaustion
+# restart, fail-closed X25519 generation, Ed25519 secret cleansing and
+# PQ downgrade resistance are load-bearing cryptographic contracts.
 foreach(required IN ITEMS
     "m_PendingReplyTagsets"
     "MarkFirstTagConsumed"
@@ -329,9 +336,10 @@ foreach(required IN ITEMS
   endif()
 endforeach()
 
-# netDb/LeaseSet continuation: garlic origin, flood admission, bounded netDb
-# admission, identity-bound persistence, non-creating profile selection and
-# MetaLeaseSet canonicalisation are load-bearing security contracts.
+# netDb/LeaseSet continuation: garlic origin, flood admission, bounded
+# netDb admission, identity-bound persistence, non-creating profile
+# selection and MetaLeaseSet canonicalisation are load-bearing security
+# contracts.
 foreach(required IN ITEMS
     "IsDatabaseLookupDispatchAllowed"
     "IsAllowedCloveMessageType"
@@ -430,10 +438,11 @@ foreach(required IN ITEMS
   endif()
 endforeach()
 
-# Tunnel build / I2NP / garlic hardening: the record table is planned before
-# any write, a reused path passes the same admission rules as fresh selection,
-# a transit build request is replay-filtered, the dispatcher applies the Java
-# expiration/duplicate window and a clove payload is bounded.
+# Tunnel build / I2NP / garlic hardening: the record table is planned
+# before any write, a reused path passes the same admission rules as
+# fresh selection, a transit build request is replay-filtered, the
+# dispatcher applies the Java expiration/duplicate window and a clove
+# payload is bounded.
 file(READ "${PROJECT_ROOT}/libi2pd/Tunnel.cpp" tunnel)
 file(READ "${PROJECT_ROOT}/libi2pd/TunnelPool.cpp" tunnel_pool)
 file(READ "${PROJECT_ROOT}/libi2pd/TunnelConfig.cpp" tunnel_config)
@@ -520,11 +529,12 @@ foreach(required IN ITEMS
   endif()
 endforeach()
 
-# SAM / I2CP / streaming / datagram client-service hardening: client secrets
-# are never logged, the SAM control plane is bounded and an idle session socket
-# is left open (Java disables SO_TIMEOUT after HELLO), b33 names resolve, the
-# BlindingInfo auth material reaches the encrypted-LeaseSet request, the
-# datagram framing is selected per send and a rejected SYN is answered.
+# SAM / I2CP / streaming / datagram client-service hardening: client
+# secrets are never logged, the SAM control plane is bounded and an idle
+# session socket is left open (Java disables SO_TIMEOUT after HELLO),
+# b33 names resolve, the BlindingInfo auth material reaches the
+# encrypted-LeaseSet request, the datagram framing is selected per send
+# and a rejected SYN is answered.
 file(READ "${PROJECT_ROOT}/libi2pd_client/SAM.h" sam_header)
 file(READ "${PROJECT_ROOT}/libi2pd_client/SAM.cpp" sam_source)
 file(READ "${PROJECT_ROOT}/libi2pd/Streaming.h" streaming_header)
@@ -558,8 +568,8 @@ foreach(required IN ITEMS
     message(FATAL_ERROR "Missing SAM teardown/admission contract: ${required}")
   endif()
 endforeach()
-# The SESSION CREATE line carries private keys and the HELLO line may carry
-# USER/PASSWORD: neither may ever be passed to a log call.
+# The SESSION CREATE line carries private keys and the HELLO line may
+# carry USER/PASSWORD: neither may ever be passed to a log call.
 string(REGEX MATCH "LogPrint[^\n]*\"SAM: Session create: \"[^\n]*buf" sam_secret_log "${sam_source}")
 if(sam_secret_log)
   message(FATAL_ERROR "SAM logs the SESSION CREATE operand (private keys)")
@@ -648,8 +658,9 @@ foreach(required IN ITEMS
   endif()
 endforeach()
 
-# The encrypted-LeaseSet request must carry the per-destination client-auth
-# material instead of silently falling back to an unauthenticated lookup.
+# The encrypted-LeaseSet request must carry the per-destination
+# client-auth material instead of silently falling back to an
+# unauthenticated lookup.
 foreach(required IN ITEMS
     "RequestDestinationWithEncryptedLeaseSet"
     "authSecret")
@@ -663,11 +674,12 @@ if(auth_secret_use EQUAL -1)
   message(FATAL_ERROR "Encrypted-LeaseSet decryption ignores the BlindingInfo auth material")
 endif()
 
-# Application-facing services: proxy output must never reflect a hostile Host
-# or a configured outproxy credential, only http(s) is proxied, responses are
-# sanitized, the I2PControl local socket is private, NTP replies are validated
-# and agreed, reseed is cancellable and never deletes peers from a bundle, the
-# address book writes atomically, and the new administrative verbs stay typed.
+# Application-facing services: proxy output must never reflect a hostile
+# Host or a configured outproxy credential, only http(s) is proxied,
+# responses are sanitized, the I2PControl local socket is private, NTP
+# replies are validated and agreed, reseed is cancellable and never
+# deletes peers from a bundle, the address book writes atomically, and
+# the new administrative verbs stay typed.
 file(READ "${PROJECT_ROOT}/libi2pd_client/HTTPProxy.h" http_proxy_header)
 file(READ "${PROJECT_ROOT}/libi2pd_client/HTTPProxy.cpp" http_proxy_source)
 file(READ "${PROJECT_ROOT}/libi2pd_client/SOCKS.h" socks_header)
@@ -813,11 +825,11 @@ foreach(required IN ITEMS
   endif()
 endforeach()
 
-# Privilege-separation invariants: a worker role is bound to a spawn-time
-# identity, the data-storage worker owns hash-named artifacts with no network
-# capability, the core never falls back to a local write when delegation is
-# enabled, and the capability matrix forbids a role with both external network
-# and persistent-write authority.
+# Privilege-separation invariants: a worker role is bound to a
+# spawn-time identity, the data-storage worker owns hash-named artifacts
+# with no network capability, the core never falls back to a local write
+# when delegation is enabled, and the capability matrix forbids a role
+# with both external network and persistent-write authority.
 file(READ "${PROJECT_ROOT}/privsep/Capabilities.h" privsep_capabilities)
 file(READ "${PROJECT_ROOT}/privsep/Worker.cpp" privsep_worker_source)
 file(READ "${PROJECT_ROOT}/privsep/RunWorker.cpp" privsep_runworker_source)
@@ -918,10 +930,11 @@ foreach(required IN ITEMS
   endif()
 endforeach()
 
-# IPC consolidation: one message registry is the only role/limit/version/
-# descriptor authority, a serving endpoint answers attributable frame faults
-# instead of dropping the connection, the descriptor policy is enforced, and a
-# worker cannot be killed by an idle Windows pipe.
+# IPC consolidation: one message registry is the only
+# role/limit/version/ descriptor authority, a serving endpoint answers
+# attributable frame faults instead of dropping the connection, the
+# descriptor policy is enforced, and a worker cannot be killed by an
+# idle Windows pipe.
 file(READ "${PROJECT_ROOT}/privsep/Protocol.h" protocol_header)
 file(READ "${PROJECT_ROOT}/privsep/Channel.h" channel_header)
 file(READ "${PROJECT_ROOT}/privsep/Channel.cpp" channel_source)
@@ -998,8 +1011,9 @@ foreach(required IN ITEMS
   endif()
 endforeach()
 
-# OpenBSD supervised start: credentials, pre-opened descriptors, the frozen
-# executable, startup/runtime pledge consistency and the credential gate.
+# OpenBSD supervised start: credentials, pre-opened descriptors, the
+# frozen executable, startup/runtime pledge consistency and the
+# credential gate.
 file(READ "${PROJECT_ROOT}/privsep/Credentials.h" credentials_header)
 file(READ "${PROJECT_ROOT}/privsep/Credentials.cpp" credentials_source)
 file(READ "${PROJECT_ROOT}/privsep/Worker.cpp" worker_source)
@@ -1056,9 +1070,9 @@ foreach(required IN ITEMS
     message(FATAL_ERROR "Missing OpenBSD pledge-window contract: ${required}")
   endif()
 endforeach()
-# No execpromises string may ever be supplied: the exec'ed image must reapply
-# its own unveil and pledge policy. The only accepted second argument is the
-# compile-time null constant declared in the header.
+# No execpromises string may ever be supplied: the exec'ed image must
+# reapply its own unveil and pledge policy. The only accepted second
+# argument is the compile-time null constant declared in the header.
 string(REGEX MATCH "pledge \\([^,]+,[[:space:]]*\"" openbsd_execpromises "${openbsd_sandbox_source}")
 if(openbsd_execpromises)
   message(FATAL_ERROR "A pledge call passes an execpromises literal")
@@ -1096,10 +1110,11 @@ foreach(required IN ITEMS
   endif()
 endforeach()
 
-# Linux backend hardening: explicit per-frame peer expectation (SO_PEERCRED is
-# stale after a credential drop), capability teardown while still privileged,
-# seccomp connection/exec/process denial, Landlock EXECUTE handling, early
-# pre-config lockdown and role/root pairing.
+# Linux backend hardening: explicit per-frame peer expectation
+# (SO_PEERCRED is stale after a credential drop), capability teardown
+# while still privileged, seccomp connection/exec/process denial,
+# Landlock EXECUTE handling, early pre-config lockdown and role/root
+# pairing.
 file(READ "${PROJECT_ROOT}/privsep/Channel.h" channel_header_linux)
 file(READ "${PROJECT_ROOT}/privsep/Channel.cpp" channel_source_linux)
 file(READ "${PROJECT_ROOT}/privsep/Worker.cpp" worker_source_linux)
@@ -1162,16 +1177,17 @@ foreach(required IN ITEMS
   endif()
 endforeach()
 
-# Storage must install the socket boundary before parsing its configuration.
+# Storage must install the socket boundary before parsing its
+# configuration.
 file(READ "${PROJECT_ROOT}/privsep/DataStorage.cpp" datastorage_source_linux)
 string(FIND "${datastorage_source_linux}" "ApplyLinuxIpcLockdown (GetLinuxSandboxProfile (WorkerClass::Storage))" datastorage_early)
 if(datastorage_early EQUAL -1)
   message(FATAL_ERROR "Data storage parses the configure frame before the Linux socket lockdown")
 endif()
 
-# Windows backend: the shared WorkerHello spawn proof, accept-time identity
-# binding, AppContainer role authority, per-role IPC, Job Object/supervisor
-# lifecycle, service drain and the no-raw-ALPC rule.
+# Windows backend: the shared WorkerHello spawn proof, accept-time
+# identity binding, AppContainer role authority, per-role IPC, Job
+# Object/supervisor lifecycle, service drain and the no-raw-ALPC rule.
 file(READ "${PROJECT_ROOT}/privsep/WindowsIpc.cpp" windows_ipc_source)
 file(READ "${PROJECT_ROOT}/privsep/WindowsIpc.h" windows_ipc_header)
 file(READ "${PROJECT_ROOT}/privsep/WindowsIsolation.h" windows_isolation_header)
@@ -1234,12 +1250,12 @@ if(windows_alpc)
   message(FATAL_ERROR "Windows IPC references a raw ALPC/ntdll port API")
 endif()
 
-# Android daemon lifecycle/process-role hardening: exactly one irreversible
-# process-role claim per process, a lock-free start-cancellation token that a
-# start observes while it owns the native guard, a NewString boundary that never
-# receives a null jchar pointer, cleared JNI exceptions on the string/array
-# failure paths, and SAF destructors that never attach a thread or push a local
-# frame.
+# Android daemon lifecycle/process-role hardening: exactly one
+# irreversible process-role claim per process, a lock-free
+# start-cancellation token that a start observes while it owns the
+# native guard, a NewString boundary that never receives a null jchar
+# pointer, cleared JNI exceptions on the string/array failure paths, and
+# SAF destructors that never attach a thread or push a local frame.
 file(READ "${PROJECT_ROOT}/android/app/src/main/cpp/DaemonAndroid.h" android_daemon_header)
 file(READ "${PROJECT_ROOT}/android/app/src/main/cpp/DaemonAndroid.cpp" android_daemon_source)
 file(READ "${PROJECT_ROOT}/android/app/src/main/java/org/openi2pd/router/DaemonWrapper.java" android_daemon_wrapper)
@@ -1268,9 +1284,10 @@ foreach(required IN ITEMS
   endif()
 endforeach()
 
-# The daemon start must require the router role, the SAF bridge installation
-# must require it as well, and the broker sandbox must claim the broker role
-# before installing anything. A conflict never starts a router.
+# The daemon start must require the router role, the SAF bridge
+# installation must require it as well, and the broker sandbox must
+# claim the broker role before installing anything. A conflict never
+# starts a router.
 string(REGEX MATCH
   "Java_org_openi2pd_router_I2PD_1JNI_startDaemon[^}]*HasProcessRole \\(i2p::android::ProcessRole::Router\\)[^}]*i2p::android::start \\(\\)"
   android_start_role "${android_jni}")
@@ -1304,8 +1321,9 @@ string(FIND "${android_jni}" "utf16.empty () ? &kEmptyUtf16 : utf16.data ()" and
 if(android_empty_utf16 EQUAL -1)
   message(FATAL_ERROR "The empty UTF-16 NewString case lost its stable element")
 endif()
-# The VM-owned UTF-16 buffer is released through an RAII owner on every path,
-# and a GetStringChars failure clears the pending exception before returning.
+# The VM-owned UTF-16 buffer is released through an RAII owner on every
+# path, and a GetStringChars failure clears the pending exception before
+# returning.
 string(FIND "${android_jni}" "ScopedJStringChars chars (env, text);" android_string_raii)
 if(android_string_raii EQUAL -1)
   message(FATAL_ERROR "Utf8FromJavaString does not use the RAII UTF-16 owner")
@@ -1316,7 +1334,8 @@ if(android_string_clear STREQUAL "")
   message(FATAL_ERROR "Utf8FromJavaString returns a fallback with a pending JNI exception")
 endif()
 
-# requestStop sets one atomic and must never wait for the native-call guard.
+# requestStop sets one atomic and must never wait for the native-call
+# guard.
 string(REGEX MATCH "Java_org_openi2pd_router_I2PD_1JNI_requestStopNative[^}]*NativeCallGuard"
   android_requeststop_guard "${android_jni}")
 if(NOT android_requeststop_guard STREQUAL "")
@@ -1359,9 +1378,10 @@ foreach(required IN ITEMS
   endif()
 endforeach()
 
-# No SAF destructor may attach a thread, push a local frame or delete a JNI
-# global reference: the bridge is a deliberate process-lifetime object and a
-# payload falls back to an explicit detach on the attached JNI thread.
+# No SAF destructor may attach a thread, push a local frame or delete a
+# JNI global reference: the bridge is a deliberate process-lifetime
+# object and a payload falls back to an explicit detach on the attached
+# JNI thread.
 string(FIND "${android_jni}" "~SafBridge () = default;" android_bridge_destructor)
 if(android_bridge_destructor EQUAL -1)
   message(FATAL_ERROR "SafBridge is not a process-lifetime object with a trivial destructor")
@@ -1389,10 +1409,10 @@ if(android_detach_call EQUAL -1)
   message(FATAL_ERROR "The daemon stop path does not detach SAF payloads")
 endif()
 
-# Android SAF broker protocol v2 and the durable router run intent. These are
-# compile-free guards for contracts whose real compilation happens in the
-# manual Android job; they catch an accidental protocol/state downgrade in the
-# Linux static lane first.
+# Android SAF broker protocol v2 and the durable router run intent.
+# These are compile-free guards for contracts whose real compilation
+# happens in the manual Android job; they catch an accidental
+# protocol/state downgrade in the Linux static lane first.
 file(READ "${PROJECT_ROOT}/android/app/src/main/aidl/org/openi2pd/router/ITorrentSafStorage.aidl"
   android_saf_aidl)
 file(READ "${PROJECT_ROOT}/android/app/src/main/java/org/openi2pd/router/TorrentSafStorageService.java"
@@ -1414,7 +1434,8 @@ foreach(required IN ITEMS
     message(FATAL_ERROR "SAF AIDL v2 contract is missing: ${required}")
   endif()
 endforeach()
-# A descriptor may only be mentioned in a comment, never in a declaration.
+# A descriptor may only be mentioned in a comment, never in a
+# declaration.
 string(REGEX MATCH "\n[ \t]*[^/ \t][^\n]*ParcelFileDescriptor" android_saf_fd_export
   "${android_saf_aidl}")
 if(NOT android_saf_fd_export STREQUAL "")
@@ -1460,8 +1481,9 @@ if(android_router_stop_with_task STREQUAL "")
   message(FATAL_ERROR "RouterService must declare android:stopWithTask=\"false\"")
 endif()
 
-# Native TUI/daemon separation and console-lifecycle contracts. These are
-# compile-free text pins for behavior that otherwise needs a terminal/runner.
+# Native TUI/daemon separation and console-lifecycle contracts. These
+# are compile-free text pins for behavior that otherwise needs a
+# terminal/runner.
 file(READ "${PROJECT_ROOT}/tui/main.cpp" tui_main)
 file(READ "${PROJECT_ROOT}/tui/TerminalWin32.cpp" tui_terminal_win32)
 file(READ "${PROJECT_ROOT}/daemon/Daemon.cpp" daemon_main)

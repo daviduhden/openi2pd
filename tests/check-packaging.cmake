@@ -1,10 +1,11 @@
-# See the LICENSE file at the top of the project tree for copyright
-# and license details.
+# See the LICENSE file at the top of the project tree for copyright and
+# license details.
 #
 # openi2pd: check packaging.
 #
-# Compile-free checks for the POSIX front-end and the maintained packaging
-# files. This script never configures, builds, installs or runs a package.
+# Compile-free checks for the POSIX front-end and the maintained
+# packaging files. This script never configures, builds, installs or
+# runs a package.
 #
 
 if(NOT PROJECT_ROOT)
@@ -189,9 +190,10 @@ assert_contains("${openbsd_plist}" "share/icons/hicolor/256x256/apps/openi2pd.pn
   "OpenBSD PLIST must ship the raster TUI icon")
 assert_contains("${openbsd_descr}" "C++ implementation" "OpenBSD pkg/DESCR must describe the package")
 
-# Debian manifests must describe what the CMake components actually install.
-# dh_install prefers the current directory before debian/tmp, so a source-tree
-# "docs" or "assets/branding" entry silently bypasses the CMake filters.
+# Debian manifests must describe what the CMake components actually
+# install. dh_install prefers the current directory before debian/tmp,
+# so a source-tree "docs" or "assets/branding" entry silently bypasses
+# the CMake filters.
 foreach(required IN ITEMS
     "usr/share/doc/i2pd/ChangeLog"
     "usr/share/doc/i2pd/LICENSE"
@@ -257,6 +259,7 @@ foreach(required IN ITEMS
     "desktop-file-validate"
     "/usr/share/doc/i2pd/ChangeLog.gz"
     "/usr/share/doc/i2pd/README.md.gz"
+    "/usr/share/doc/i2pd/assets/branding/colors.md.gz"
     "i2pd (= ")
   assert_contains("${debian_tests_smoke}" "${required}" "autopkgtest smoke")
 endforeach()
@@ -311,9 +314,9 @@ assert_contains("${docker}" "org.opencontainers.image.licenses=\"BSD-3-Clause\""
 assert_absent("${docker}" "CC-BY-SA-4.0"
   "container license metadata must not retain the replaced CC license")
 
-# OpenBSD @sample targets resolve to share/examples/<absolute path>. The port
-# must install the mirrored trees, create /var/i2pd from a sample, keep the
-# configuration root-owned and ship the mandatory notices.
+# OpenBSD @sample targets resolve to share/examples/<absolute path>. The
+# port must install the mirrored trees, create /var/i2pd from a sample,
+# keep the configuration root-owned and ship the mandatory notices.
 assert_contains("${openbsd_port_make}" "share/examples/etc/i2pd"
   "OpenBSD port must install the /etc sample tree")
 assert_contains("${openbsd_port_make}" "share/examples/var/i2pd"
@@ -382,8 +385,8 @@ assert_contains("${debian_changelog}" "i2pd (${_version}"
   "Debian changelog version must match libi2pd/version.h")
 unset(_version)
 
-# The OpenBSD PLIST ships the certificate tree file by file. A new certificate
-# must not silently break pkg_create with an unlisted file.
+# The OpenBSD PLIST ships the certificate tree file by file. A new
+# certificate must not silently break pkg_create with an unlisted file.
 file(GLOB_RECURSE openbsd_certificate_files RELATIVE "${PROJECT_ROOT}/contrib/certificates"
   "${PROJECT_ROOT}/contrib/certificates/*.crt")
 foreach(certificate IN LISTS openbsd_certificate_files)

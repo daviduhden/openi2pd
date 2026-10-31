@@ -1,11 +1,11 @@
-# See the LICENSE file at the top of the project tree for copyright
-# and license details.
+# See the LICENSE file at the top of the project tree for copyright and
+# license details.
 #
 # openi2pd: check legal metadata.
 #
-# Compile-free consistency check for LICENSE, NOTICE, documentation licences,
-# package metadata and the Windows version resource. It never reads git history
-# or runs a packaging tool.
+# Compile-free consistency check for LICENSE, NOTICE, documentation
+# licences, package metadata and the Windows version resource. It never
+# reads git history or runs a packaging tool.
 #
 
 if(NOT PROJECT_ROOT)

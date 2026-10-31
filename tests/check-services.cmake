@@ -1,12 +1,12 @@
-# See the LICENSE file at the top of the project tree for copyright
-# and license details.
+# See the LICENSE file at the top of the project tree for copyright and
+# license details.
 #
 # openi2pd: check services.
 #
 # Compile-free source contract for the init-system service files and the
-# service-management documentation. The checks describe supervision, stop and
-# restart semantics; they never start a service, inspect a live process or call
-# an external binary.
+# service-management documentation. The checks describe supervision,
+# stop and restart semantics; they never start a service, inspect a live
+# process or call an external binary.
 #
 
 if(NOT PROJECT_ROOT)
@@ -45,8 +45,9 @@ function(require_any text description)
   message(FATAL_ERROR "${description}: none of '${ARGN}' found")
 endfunction()
 
-# Exact-value files (down-signal, timeout-kill, type, ...) must contain one
-# line and nothing else. A comment or a longer word must not satisfy them.
+# Exact-value files (down-signal, timeout-kill, type, ...) must contain
+# one line and nothing else. A comment or a longer word must not satisfy
+# them.
 function(require_exact_value path expected description)
   if(NOT EXISTS "${path}")
     message(FATAL_ERROR "${description}: missing file ${path}")
@@ -75,8 +76,9 @@ function(require_single_line text token description)
   endif()
 endfunction()
 
-# Compare the daemon argv between the plain s6 and s6-rc definitions. Comments
-# and line continuations are normalised so the two trees cannot drift apart.
+# Compare the daemon argv between the plain s6 and s6-rc definitions.
+# Comments and line continuations are normalised so the two trees cannot
+# drift apart.
 function(daemon_argv text out_var)
   string(REGEX REPLACE ".*/usr/bin/i2pd" "/usr/bin/i2pd" tail "${text}")
   string(REGEX REPLACE "[ \t\r\n]+" " " tail "${tail}")
@@ -151,8 +153,9 @@ read_required("${openbsd_descr}" openbsd_descr_text)
 read_required("${service_doc}" service_doc_text)
 
 # No service file may request the removed self-daemonising mode, claim
-# notification readiness or assert full privilege separation. Those properties
-# stay with the supervisor/service manager and the native IPC workers.
+# notification readiness or assert full privilege separation. Those
+# properties stay with the supervisor/service manager and the native IPC
+# workers.
 foreach(service_name IN ITEMS
     "systemd unit" "sysvinit script" "OpenRC script" "OpenRC conf.d"
     "runit run" "runit finish" "runit log/run" "s6 run" "s6 finish"
@@ -203,9 +206,10 @@ foreach(service_name IN ITEMS
   endforeach()
 endforeach()
 
-# systemd: foreground Type=exec with journal-backed output, a bounded stop
-# window and a strict but writable sandbox. Directory ownership is delegated to
-# State/Runtime/LogsDirectory so the unit does not depend on tmpfiles order.
+# systemd: foreground Type=exec with journal-backed output, a bounded
+# stop window and a strict but writable sandbox. Directory ownership is
+# delegated to State/Runtime/LogsDirectory so the unit does not depend
+# on tmpfiles order.
 foreach(required IN ITEMS
     "Type=exec"
     "ExecStart="
@@ -267,9 +271,9 @@ if(NOT systemd_text STREQUAL debian_systemd_text)
   message(FATAL_ERROR "debian/i2pd.service differs from contrib/i2pd.service")
 endif()
 
-# SysV: LSB metadata, start-stop-daemon privilege dropping, an identity-checked
-# pidfile, a verified stop and a real force-reload. The script must expose the
-# full action set expected by policy tooling.
+# SysV: LSB metadata, start-stop-daemon privilege dropping, an
+# identity-checked pidfile, a verified stop and a real force-reload. The
+# script must expose the full action set expected by policy tooling.
 foreach(required IN ITEMS
     "### BEGIN INIT INFO"
     "### END INIT INFO"
@@ -316,8 +320,8 @@ if(NOT sysvinit_text STREQUAL debian_sysvinit_text)
   message(FATAL_ERROR "debian/i2pd.init differs from contrib/sysvinit/i2pd")
 endif()
 
-# OpenRC: supervise-daemon with privilege dropping, a checked directory setup,
-# a parsed retry grammar and a respawn budget matching systemd.
+# OpenRC: supervise-daemon with privilege dropping, a checked directory
+# setup, a parsed retry grammar and a respawn budget matching systemd.
 foreach(required IN ITEMS
     "openrc-run"
     "supervise-daemon"
@@ -353,8 +357,9 @@ foreach(required IN ITEMS "I2PD_USER=" "I2PD_DATADIR=" "I2PD_PIDFILE="
   require_text("${openrc_conf_text}" "${required}" "OpenRC conf.d")
 endforeach()
 
-# runit: a foreground chpst service with a bounded descriptor limit, an account
-# and configuration precondition, a backoff finish script and an svlogd policy.
+# runit: a foreground chpst service with a bounded descriptor limit, an
+# account and configuration precondition, a backoff finish script and an
+# svlogd policy.
 foreach(required IN ITEMS
     "#!/bin/sh"
     "set -eu"
@@ -376,14 +381,16 @@ require_text("${runit_log_text}" "svlogd -tt" "runit log/run")
 require_text("${runit_log_text}" "chpst" "runit log/run")
 require_text("${runit_log_config_text}" "s1000000" "runit log config")
 require_text("${runit_log_config_text}" "n10" "runit log config")
-# Stock runsv has no per-service stop timeout or down-signal file. Adding one
-# would imply a KILL window the supervisor does not implement.
+# Stock runsv has no per-service stop timeout or down-signal file.
+# Adding one would imply a KILL window the supervisor does not
+# implement.
 if(EXISTS "${PROJECT_ROOT}/contrib/runit/i2pd/down-signal")
   message(FATAL_ERROR "runit run has no down-signal support; do not ship one")
 endif()
 
-# s6: execline run script with a descriptor limit, s6-setuidgid and the same
-# stop/restart limits as the other managers. A finish script provides backoff.
+# s6: execline run script with a descriptor limit, s6-setuidgid and the
+# same stop/restart limits as the other managers. A finish script
+# provides backoff.
 foreach(required IN ITEMS
     "execlineb"
     "foreground { /usr/bin/install -d -m 0700"
@@ -436,8 +443,9 @@ if(NOT s6_argv STREQUAL s6rc_argv)
     "s6 and s6-rc daemon argv differ:\n  s6:    ${s6_argv}\n  s6-rc: ${s6rc_argv}")
 endif()
 
-# Upstart: foreground main process, restricted credentials, explicit console
-# capture, private umask and a SIGINT stop with the same bounded escalation.
+# Upstart: foreground main process, restricted credentials, explicit
+# console capture, private umask and a SIGINT stop with the same bounded
+# escalation.
 foreach(required IN ITEMS
     "description \"openi2pd router\""
     "start on runlevel [2345]"
@@ -459,9 +467,10 @@ foreach(required IN ITEMS
   require_text("${upstart_text}" "${required}" "upstart job")
 endforeach()
 
-# dinit: foreground process supervision, a restricted account, a private log
-# file and the same SIGINT/660-second stop policy. It remains an unselected
-# sample, so a missing /var/log/i2pd is a documented precondition.
+# dinit: foreground process supervision, a restricted account, a private
+# log file and the same SIGINT/660-second stop policy. It remains an
+# unselected sample, so a missing /var/log/i2pd is a documented
+# precondition.
 foreach(required IN ITEMS
     "type = process"
     "run-as = i2pd"
@@ -485,9 +494,9 @@ foreach(required IN ITEMS
   require_text("${dinit_text}" "${required}" "dinit service")
 endforeach()
 
-# OpenBSD: rc.subr foreground/background semantics, the login class, packaged
-# paths and a stop signal that reaches the daemon's drain. The port's SUBST
-# must preserve these variables in the rendered rc.d file.
+# OpenBSD: rc.subr foreground/background semantics, the login class,
+# packaged paths and a stop signal that reaches the daemon's drain. The
+# port's SUBST must preserve these variables in the rendered rc.d file.
 foreach(required IN ITEMS
     "daemon=\"\${TRUEPREFIX}/bin/i2pd\""
     "daemon_user=\"_i2pd\""
@@ -515,8 +524,8 @@ require_text("${openbsd_conf_text}" "tunnelsdir = /etc/i2pd/tunnels.conf.d" "ope
 require_text("${openbsd_conf_text}" "certsdir = /usr/local/share/i2pd/certificates" "openbsd config")
 require_text("${openbsd_conf_text}" "log = syslog" "openbsd config")
 
-# OpenBSD port template: one service authority, @sample trees that actually
-# resolve, a private state directory and the mandatory notices.
+# OpenBSD port template: one service authority, @sample trees that
+# actually resolve, a private state directory and the mandatory notices.
 require_text("${openbsd_port_make_text}" "-DI2PD_SERVICE_MANAGER=none" "OpenBSD port")
 require_text("${openbsd_port_make_text}" "-DI2PD_INSTALL_DOCS=OFF" "OpenBSD port")
 require_text("${openbsd_port_make_text}" "share/examples/etc/i2pd" "OpenBSD port samples")
@@ -540,8 +549,9 @@ require_text("${openbsd_plist_text}" "share/examples/var/i2pd/subscriptions.txt"
   "OpenBSD PLIST subscriptions sample")
 forbid_text("${openbsd_descr_text}" "native tools" "OpenBSD DESCR")
 
-# Shepherd: Guile constructors, a restricted account and directory, an explicit
-# process-group note, a 660-second grace period and no shell readiness loop.
+# Shepherd: Guile constructors, a restricted account and directory, an
+# explicit process-group note, a 660-second grace period and no shell
+# readiness loop.
 foreach(required IN ITEMS
     "(use-modules (shepherd service))"
     "(service"
@@ -572,8 +582,9 @@ foreach(forbidden IN ITEMS "while " "until " "sleep ")
   forbid_text("${shepherd_text}" "${forbidden}" "shepherd script")
 endforeach()
 
-# Cross-manager parity: every Linux definition that can own /run uses the same
-# pidfile and the foreground flag, and no definition claims readiness.
+# Cross-manager parity: every Linux definition that can own /run uses
+# the same pidfile and the foreground flag, and no definition claims
+# readiness.
 foreach(manager IN ITEMS systemd sysvinit openrc runit s6 s6-rc)
   if(manager STREQUAL "systemd")
     set(manager_text "${systemd_text}")
@@ -593,8 +604,9 @@ foreach(manager IN ITEMS systemd sysvinit openrc runit s6 s6-rc)
   require_text("${manager_text}" "--foreground" "${manager} foreground")
 endforeach()
 
-# Documentation: the manager matrix, the exit-code contract and the per-manager
-# caveats are part of the service contract, not optional prose.
+# Documentation: the manager matrix, the exit-code contract and the
+# per-manager caveats are part of the service contract, not optional
+# prose.
 foreach(required IN ITEMS
     "systemd" "GNU Shepherd" "OpenRC" "runit" "s6 and s6-rc" "SysVinit"
     "OpenBSD" "dinit" "Upstart"
