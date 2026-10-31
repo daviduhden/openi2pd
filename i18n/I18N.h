@@ -103,8 +103,8 @@ namespace i18n
 				const int required = std::snprintf (nullptr, 0, formatString.c_str (), std::forward<TArgs> (args)...);
 				if (required < 0) return { };
 				std::vector<char> buffer (static_cast<std::size_t> (required) + 1);
-				const int written
-					= std::snprintf (buffer.data (), buffer.size (), formatString.c_str (), std::forward<TArgs> (args)...);
+				const int written = std::snprintf (
+					buffer.data (), buffer.size (), formatString.c_str (), std::forward<TArgs> (args)...);
 				if (written < 0 || written > required) return { };
 				return std::string (buffer.data (), static_cast<std::size_t> (written));
 			}

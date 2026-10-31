@@ -80,6 +80,7 @@ sub parse_strings {
     my ( $text, $path ) = @_;
     my $start = index( $text, 'static const LocaleStrings strings {' );
     fail("$path has no LocaleStrings table") if $start < 0;
+
     # The singular table ends where the plural map begins. Parsing stays
     # textual on purpose: the checker must run without a C++ compiler.
     my $end = index( $text, 'static const std::map', $start );
@@ -87,14 +88,13 @@ sub parse_strings {
     my $block = substr( $text, $start, $end - $start );
     my %strings;
     my $literal_run = qr/((?:"(?:[^"\\]|\\.)*"\s*)+)/;
-    while (
-        $block =~ /\{\s*$literal_run\s*,\s*$literal_run\s*\}/g )
-    {
+    while ( $block =~ /\{\s*$literal_run\s*,\s*$literal_run\s*\}/g ) {
+
         # A nested match below resets $1/$2, so snapshot both literal
         # runs
         # before extracting the individual string fragments from them.
         my ( $key_run, $value_run ) = ( $1, $2 );
-        my @key_parts = $key_run =~ /"((?:[^"\\]|\\.)*)"/g;
+        my @key_parts   = $key_run   =~ /"((?:[^"\\]|\\.)*)"/g;
         my @value_parts = $value_run =~ /"((?:[^"\\]|\\.)*)"/g;
         my ( $key, $value ) = (
             unescape( join( '', @key_parts ) ),
@@ -130,6 +130,7 @@ sub parse_plurals {
 
 sub placeholders {
     my ($value) = @_;
+
     # Conversions are compared as a sorted multiset, never by position:
     # a
     # translation may reorder a sentence, but the set of %s/%d/%i/%u/%f
@@ -145,6 +146,7 @@ sub placeholders {
 
 sub valid_utf8 {
     my ($value) = @_;
+
     # Reject overlong encodings, UTF-16 surrogates and code points above
     # U+10FFFF. The catalogs are compiled as UTF-8 literals and the TUI
     # measures display columns, so an invalid sequence would corrupt
@@ -184,6 +186,7 @@ for my $catalog (@catalogs) {
         fail(
 "placeholder mismatch for '$key' in $catalog->{path} ($want != $got)"
         ) if $want ne $got;
+
         # A trailing space in the English key is a word separator in a
         # composed
         # TUI line. If a translation stores its last word without it,
