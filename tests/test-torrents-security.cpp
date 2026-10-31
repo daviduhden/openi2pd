@@ -311,10 +311,13 @@ void TestCorruptResumeBitfield ()
 	assert (!torrent.AreAllPiecesVerified ());
 
 	auto [bitfield, have] = torrent.CreateBitfield ();
-	// Some Boost/logic implementations compare tribool to bool differently
-	// in this configuration; the exact bitfield is the stronger assertion
-	// below.
-	assert (have != false);
+	// The tri-state is compared the way the engine itself reads it
+	// (Torrent::SaveTorrentResumeFile): `indeterminate()` plus an explicit
+	// boolean conversion. A tribool `!= false` yields another tribool, so
+	// an indeterminate value would silently satisfy a `!= false` test. The
+	// two conditions are split so a failure names the state that was seen.
+	assert (!boost::logic::indeterminate (have));
+	assert (static_cast<bool> (have));
 	// Two pieces occupy the two high bits; unused tail bits stay zero.
 	assert (bitfield.size () == 1 && bitfield[0] == 0xC0);
 

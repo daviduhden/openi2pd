@@ -246,11 +246,16 @@ static void TestResumeVerificationGate ()
 	torrent.RequestLocalVerification (false);
 	assert (torrent.IsLocalVerificationRequested ());
 	assert (torrent.GetPiece (0).IsVerificationPending () && torrent.GetPiece (1).IsVerificationPending ());
-	// Pending pieces are neither advertised nor served.
+	// Pending pieces are neither advertised nor served. The tri-state is
+	// read the way the engine reads it (Torrent::SaveTorrentResumeFile):
+	// `indeterminate()` plus an explicit boolean conversion, never a
+	// tribool comparison that would propagate the indeterminate value. The
+	// two conditions are split so a failure names the state that was seen.
 	{
 		auto [bitfield, have] = torrent.CreateBitfield ();
 		assert (bitfield.size () == 1 && bitfield[0] == 0x00);
-		assert (!boost::logic::indeterminate (have) && !have);
+		assert (!boost::logic::indeterminate (have));
+		assert (!static_cast<bool> (have));
 	}
 	assert (torrent.GetPiece (0).IsComplete () && !torrent.GetPiece (0).IsVerified ());
 	assert (torrent.GetPiece (0).IsSaving ());
@@ -329,9 +334,12 @@ static void TestExistingFinalDataIsHashed ()
 	assert (torrent.IsLocalVerificationRequested ());
 	assert (torrent.GetPiece (0).IsVerificationPending () && torrent.GetPiece (1).IsVerificationPending ());
 	{
+		// A pending pass withholds every piece, so the tri-state is the
+		// definite "none" value rather than indeterminate.
 		auto [bitfield, have] = torrent.CreateBitfield ();
 		assert (bitfield.size () == 1 && bitfield[0] == 0x00);
-		assert (!boost::logic::indeterminate (have) && !have);
+		assert (!boost::logic::indeterminate (have));
+		assert (!static_cast<bool> (have));
 	}
 
 	assert (torrent.BeginLocalVerification ());
@@ -343,7 +351,8 @@ static void TestExistingFinalDataIsHashed ()
 	{
 		auto [bitfield, have] = torrent.CreateBitfield ();
 		assert (bitfield.size () == 1 && bitfield[0] == 0xC0);
-		assert (!boost::logic::indeterminate (have) && have);
+		assert (!boost::logic::indeterminate (have));
+		assert (static_cast<bool> (have));
 	}
 }
 
