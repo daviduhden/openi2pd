@@ -87,6 +87,8 @@ jobs:
         run: cmake -DPROJECT_ROOT="$PWD" -P tests/check-agent-skills.cmake
       - name: Validate modern-language policy without compiling
         run: cmake -DPROJECT_ROOT="$PWD" -P tests/check-language-modernization.cmake
+      - name: Check maintained C++ comment delimiters without compiling
+        run: perl tools/tests/cpp-comment-integrity.t
       - name: Validate translation catalogs without compiling
         run: cmake -DPROJECT_ROOT="$PWD" -P tests/check-i18n.cmake
       - name: Validate tool inventory without compiling

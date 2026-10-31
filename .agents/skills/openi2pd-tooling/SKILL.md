@@ -240,6 +240,12 @@ a TUI client.
   are invalid (and CMake cannot store NUL). Use `\\.` for a literal regex dot
   and let base64 decode an `AAAA` payload to NUL bytes instead of embedding
   one in the script.
+- Compile-free lexical Perl checks may protect source syntax across platforms;
+  fixtures must cover comment tokens inside ordinary, escaped and raw strings
+  so delimiters are recognized in lexical context rather than by grep alone.
+  Keep maintained-source traversal explicit and prune vendored/generated
+  trees; wire the check into the manual static CI job without executing it
+  locally under the repository's no-test policy.
 - `perl-install-layout` covers both component ownership cases: `Tools` owns
   the licence only when documentation is disabled; otherwise install
   `Documentation` into the same private prefix before asserting it.

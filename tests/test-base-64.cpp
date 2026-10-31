@@ -78,8 +78,7 @@ int main ()
 	in = "dGVzdA"; /* missing padding is outside this wire format */
 	assert (Base64ToByteStream (in, (uint8_t *)out, sizeof (out)) == 0);
 
-	/* The reverse table used to be initialized lazily and raced on first
-	/* use.
+	// The reverse table used to be initialized lazily and raced on first use.
 	assert (Base64ToByteStream ("dGVzdA==", (uint8_t *)out, sizeof (out)) == 4);
 	assert (memcmp (out, "test", 4) == 0);
 

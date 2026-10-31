@@ -55,7 +55,6 @@ inline constexpr std::size_t IDENTITY_LEN = 391;
  * buffer. */
 inline constexpr std::size_t NONCE_OFFSET = 320;
 
-/**
 /** A base32 destination hash is 52 characters, plus a NUL byte. */
 inline constexpr std::size_t ADDRESS_LEN = 52;
 

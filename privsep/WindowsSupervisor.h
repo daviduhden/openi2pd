@@ -300,7 +300,6 @@ struct WindowsWorkerSupervisorConfig
 	 * supervisor grants the container SID and refuses to start without it.
 	 */
 	std::wstring persistentWriteRoot;
-	/**
 	/** Test pipe name; empty selects a per-spawn random name. */
 	std::wstring pipeName;
 	uint32_t acceptTimeoutMs = WINDOWS_WORKER_ACCEPT_TIMEOUT_MS;

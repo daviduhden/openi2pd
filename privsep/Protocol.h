@@ -445,7 +445,6 @@ public:
 		m_Data.append (value);
 		return true;
 	}
-	/**
 	/** Path fields have no embedded NUL and are bounded before framing. */
 	bool WritePath (std::string_view value)
 	{

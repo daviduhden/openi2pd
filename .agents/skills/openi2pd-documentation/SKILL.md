@@ -207,6 +207,10 @@ branding validators or a build.
 - Doxygen warnings are errors in the source API lane. Every documented public
   parameter must have a matching `@param`, even when the surrounding prose
   describes the same bound; check added signatures against each tag.
+- When reflowing source comments, inspect token delimiters in the full
+  translation unit: C/C++ block comments do not nest, and an extra opener can
+  either create warnings or comment out executable code. Keep comment-integrity
+  fixtures in the compile-free CI check when a reflow defect is found.
 
 ## Tracking
 
