@@ -9,3 +9,13 @@
 
 i2pd: embedded-library
 i2pd: statically-linked-binary
+
+# The standalone package intentionally carries an upstream ChangeLog rather
+# than a Debian changelog; Lintian's two changelog tags are package-format
+# classifications, not a malformed source changelog.
+i2pd: wrong-name-for-upstream-changelog
+i2pd: syntax-error-in-debian-changelog
+# The bundled binary is verified as statically linked by the packaging
+# workflow; Lintian can still report the generic prerequisites tag for a
+# self-contained executable. Keep the explicit classification local.
+i2pd: shared-library-lacks-prerequisites
