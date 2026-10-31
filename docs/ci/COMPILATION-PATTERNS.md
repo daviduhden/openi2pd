@@ -67,3 +67,19 @@ current disposition rather than deleting their evidence.
 The normative requirement is owned by
 [`AGENTS.md`](../../AGENTS.md#permanent-priority-policy-static-only-local-work).
 This document provides the diagnostic-family search procedure only.
+
+## Patterns from the `63c42ca4` batch
+
+| Pattern | Search | Contract |
+|---|---|---|
+| Member call on a C array (`.c_str()` on `char[]`) | Inventory every `char`/`uint8_t` array local/member and every `name.member(`/`name->member(` where `name` is the array; distinguish a same-named `std::string`. | The `mkdtemp` buffer is already a C string; never call a member on it. |
+| Partially undocumented Doxygen function | For every documented public function, compare the declared parameter names with the `@param` set; also catch a `@param` naming a parameter the declaration lacks. | `WARN_AS_ERROR=YES` needs every parameter documented, not just the interesting ones. |
+| Raw `<placeholder>` in Javadoc | Scan comments for `<...>` outside `{@code}`/`{@literal}`/HTML; inventory unregistered block tags (`@implNote`, `@implSpec`, `@apiNote`, resource ids at line start). | Javadoc parses `<tunnel>` as HTML; `{@code}` escapes it. |
+| Test-time `find_program(perl)` | Every CTest registration whose script re-discovers a tool; every `message(STATUS "... skipped")` followed by success. | Pass the configure-time interpreter and fail closed; a silently skipped contract is a false pass. |
+| Native path separator in a comparison | Search `abs2rel`, `abs_path`, `catdir`, `catfile`, `rel2abs`, `split m{/}`, prefix `index()` checks and `File::Find` results in first-party Perl/CMake. | Normalise to `/` (and case-fold on Windows) in one helper; compare canonical containment keys with a component boundary. |
+| Two-pipe capture on Windows | Every helper that drains stdout and stderr with `IO::Select`/`select`. | Win32 `select()` accepts sockets only; merge stderr into one captured stream. |
+| `UNIX` guard on a portable install rule | Every `install(FILES|DIRECTORY)` and `if(UNIX ...)` around components. | Man pages and headers belong to their component on every non-Android platform. |
+| Unversioned `core.autocrlf` checkout | `.gitattributes` has a `*` rule; CRLF-sensitive checkers report file:line. | Pin `text=auto eol=lf`, list binary exceptions and the one CRLF script. |
+| Reserved word missing from a renderer allow-list | Every lexical guard that decides whether caller text may enter generated command/router text. | An nft verdict such as `accept` must never be usable as a table/chain name. |
+| Privilege-dependent existence check in a workflow | Every `test -f`/`-d`/`ls` against a service-owned 0700 path and the `sudo` usage around it. | Either run the check as root or test a path the runner can traverse; do not read EACCES as "missing". |
+| GUI-subsystem binary under headless CTest | Every CTest that launches a `WIN32` executable. | Bound the wait, print captured output and keep the exit status authoritative; a modal dialog must be a diagnostic, not a 30 s timeout. |

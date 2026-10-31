@@ -1168,3 +1168,182 @@ Runs: Linux/Android [41229374061](https://github.com/daviduhden/openi2pd/actions
   on failure. The D8/R8 `--min-api 29` probe itself is unchanged.
 - **Files:** `.github/workflows/build.yml`.
 - **State:** Corrected by static analysis; **Pending Android CI**.
+
+### CE-055 — Member call on a `char[]` in the I2PControl socket test
+
+- **Run/job:** Linux and Android `41232673150` (every Linux job), OpenBSD
+  `41232678782`, Sanitizers (inside `41232673150`).
+- **First diagnostic:** `tests/test-i2pcontrol-socket.cpp:181:18: error:
+  member reference base type 'char[32]' is not a structure or union`.
+- **Cause:** the test's `char directory[] = "/tmp/...XXXXXX"` is the mutable
+  `mkdtemp` buffer, but the cleanup called `rmdir (directory.c_str ())` as if
+  it were a `std::string` (the sibling `directoryPath` is one). Compilation
+  stopped all Linux/OpenBSD/sanitizer lanes, so their CTest suites never ran.
+- **Correction:** pass the array directly; keep `mkdtemp`, `unlink`/`rmdir`
+  order and the cleanup semantics. Search of every first-party array
+  local/member for a member call found no second instance.
+- **Files:** `tests/test-i2pcontrol-socket.cpp`.
+- **State:** Corrected by static analysis; **Pending CI compilation**.
+
+### CE-056 — Undocumented Doxygen parameters (WARN_AS_ERROR)
+
+- **Run/job:** Linux and Android `41232673150`, job `C++ source API
+  documentation`.
+- **First diagnostic:** `libi2pd_client/I2PService.h:87: error: The following
+  parameter of ... CreateStream(...) is not documented: parameter
+  'streamRequestComplete'`.
+- **Cause:** the first overload documented `dest`/`port` but not the callback;
+  the second overload had no `@param` at all. Doxygen with
+  `WARN_AS_ERROR=YES` rejects a partially documented function.
+- **Correction:** document every parameter of both overloads with the real
+  completion/ownership contract. A repository scan of the Doxyfile inputs
+  found the same class in `libi2pd/HTTP.h` (stale `@param data`), `Siphash.h`,
+  `Config.h`, `Reseed.cpp`, `privsep/Worker.h`, `tools/common/keys.hpp` and
+  the Android JNI entry point; all are fixed.
+- **Files:** `libi2pd_client/I2PService.h`, `libi2pd/{HTTP.h,Siphash.h,
+  Config.h,Reseed.cpp}`, `privsep/Worker.h`, `tools/common/keys.hpp`,
+  `android/app/src/main/cpp/i2pd_android.cpp`.
+- **State:** Corrected by static analysis; **Pending CI source-docs lane**.
+
+### CE-057 — Android Javadoc rejects raw angle brackets and JDK-internal tags
+
+- **Run/job:** Linux and Android `41232673150`, job `android` (Javadoc).
+- **First diagnostic:** `TorrentControl.java:271: error: unknown tag: tunnel`
+  and `unknown tag: id`; `TorrentSafCreator.java:81: error: unknown tag.
+  Unregistered custom tag?` (`@implNote`).
+- **Cause:** a Javadoc line used backticked protocol shape
+  `` `TORRENT-DETAIL <tunnel> <id>` ``; javadoc parses `<tunnel>` as HTML.
+  `@implNote` is a JDK-internal tag that the configured doclet does not
+  register under `-Xdoclint:all`. A third instance (`@dimen/touch_target` at
+  the start of a comment line in `UiFactory.java`) was found by the
+  repository search.
+- **Correction:** place protocol shapes inside `{@code ...}` (which escapes
+  them), replace `@implNote` with a plain paragraph, and escape the resource
+  reference. New compile-free `android/tools/check-android-javadoc.pl`
+  (registered as `android-javadoc-static`, with negative fixtures in
+  `tools/tests/maintenance-checkers.t`) rejects the same patterns.
+- **Files:** `android/app/src/main/java/org/openi2pd/router/{TorrentControl,
+  TorrentSafCreator,UiFactory}.java`, `android/tools/check-android-javadoc.pl`,
+  `tests/CMakeLists.txt`, `tools/tests/maintenance-checkers.t`.
+- **State:** Corrected by static analysis; **Pending Android CI**.
+
+### CE-058 — `i18n-static` silently skipped without a CTest-time Perl
+
+- **Run/job:** Linux and Android `41232673150` and Windows `41232676139`.
+- **Diagnostic:** the test ran in 0.05 s and printed `Perl not found ...
+  skipped` while returning success; the native catalog contract never
+  executed (the Windows lane separately reported CRLF in the Android
+  catalogs that the checker should also have seen).
+- **Cause:** `tests/CMakeLists.txt` registered `i18n-static` outside the
+  `PERL_EXECUTABLE` block, and `check-i18n.cmake` re-ran `find_program(perl)`
+  at test time, where the CTest PATH can differ from the configure step.
+- **Correction:** register the test inside the Perl block with
+  `-DPERL_EXECUTABLE=${PERL_EXECUTABLE}` and fail closed when the interpreter
+  is missing. `tests/check-i18n.cmake` also pins the `.gitattributes` LF
+  policy.
+- **Files:** `tests/CMakeLists.txt`, `tests/check-i18n.cmake`.
+- **State:** Corrected by static analysis; **Pending CI**.
+
+### CE-059 — Checkers assumed POSIX path separators and pipe semantics
+
+- **Run/job:** Windows `41232676139`, MSYS2 `build` job.
+- **Diagnostics:** `perl-portability` compared `android\tools\x.pl` with
+  `android/tools/x.pl`; `perl-doc-links` reported every valid relative link
+  as `(escapes repository)`; `docs-nav-static` reported every page as
+  `unlisted Markdown: about\community.md`; `perl-maintenance-checkers` lost
+  all child diagnostics because Win32 `select()` only accepts sockets.
+- **Cause:** `File::Spec->abs2rel`/`catdir` return native separators while the
+  manifests and `Cwd::abs_path` results used `/`; the containment test
+  compared the two spellings with a plain prefix match. The checker helper
+  drained separate stdout/stderr pipes with `IO::Select`.
+- **Correction:** normalise repository-relative paths through one `splitdir` +
+  `join '/'` helper (case-folded comparison on Windows), compare canonical
+  containment keys with a component boundary, and merge the child's stderr
+  into the captured stream instead of using `select`. `perl-portability` also
+  stops treating whole-line comments in `.gitignore`/`.dockerignore` as
+  invocations.
+- **Files:** `tools/scripts/check-doc-links.pl`,
+  `tools/scripts/check-doc-nav.pl`, `tools/tests/perl-portability.t`,
+  `tools/tests/maintenance-checkers.t`.
+- **State:** Corrected by static analysis; **Pending Windows CI**.
+
+### CE-060 — Man pages were not installed on Windows
+
+- **Run/job:** Windows `41232676139`, `perl-install-layout`.
+- **Diagnostic:** `i2pdctl man page was not installed in the Tools component:
+  .../share/man/man1/i2pdctl.1`.
+- **Cause:** every man-page `install(FILES ...)` rule lived inside
+  `if(UNIX AND NOT ANDROID)`, so a Windows install had no `share/man` tree
+  even though the component contract requires the page.
+- **Correction:** guard the rules with `if(NOT ANDROID)` only (an APK never
+  installs man pages). Component ownership is unchanged and
+  `tests/check-build-system.cmake` now rejects a UNIX-only guard.
+- **Files:** `build/CMakeLists.txt`, `tests/check-build-system.cmake`.
+- **State:** Corrected by static analysis; **Pending Windows CI**.
+
+### CE-061 — CRLF checkout invalidated the locale policy
+
+- **Run/job:** Windows `41232676139`, `android-locale-policy`.
+- **Diagnostic:** `CRLF in android\app\src\main\res\values\strings.xml` and
+  nine other files on an unmodified tree.
+- **Cause:** the repository had no `*` line-ending rule, so the runner's
+  `core.autocrlf` converted the catalogs; the checker correctly rejected the
+  result.
+- **Correction:** pin `* text=auto eol=lf`, keep `build/build_mingw.cmd` as
+  the only CRLF text file, and mark binary payloads explicitly. The checker
+  now reports `CRLF line ending in <path>:<line>` once per file.
+- **Files:** `.gitattributes`, `android/tools/check-android-locales.pl`,
+  `tests/check-i18n.cmake`.
+- **State:** Corrected by static analysis; **Pending Windows CI**.
+
+### CE-062 — `keyinfo` printed partial output and failed on an optional batch
+
+- **Run/job:** Windows `41232676139`, `tools-cli` and `tools-regressions`.
+- **Diagnostics:** `keyinfo -b non-blindable stdout: expected empty, got:
+  <b32>.b32.i2p`; `keyinfo failed (3)` after printing `b33 offline keys: no
+  batch in this key file`.
+- **Cause:** the default b32 section was printed before `-b` validated
+  blindability, and an absent b33 offline-key batch (the normal case for a
+  `keygen` file) returned failure.
+- **Correction:** validate every section before the first stdout byte, keep
+  diagnostics on stderr, treat a missing batch as a successful summary with
+  a stderr note, and leave structural corruption a failure. The same
+  stdout/stderr split was corrected in `famtool`, `i2pbase64`, `regaddr_3ld`,
+  `b33address` and `b33offlinekeys`; `verifyhost`'s verdict and `vain`'s
+  historical prefix diagnostic stay on stdout as documented.
+- **Files:** `tools/{keyinfo,routerinfo,famtool,i2pbase64,regaddr_3ld,
+  b33address,b33offlinekeys}.cpp`, `tools/common/key.hpp`,
+  `tools/test-tools{,-cli,-regressions}.cmake`, `docs/tools/*.md`.
+- **State:** Corrected by static analysis; **Pending Windows/Linux CI**.
+
+### CE-063 — `routerinfo` applied reserved-range admission to a file listing
+
+- **Run/job:** Windows `41232676139`, `tools-smoke`.
+- **Diagnostic:** `routerinfo -6 -p omitted 'NTCP2: 192.0.2.10:12345'`.
+- **Cause:** `RouterInfo` parsing filters hosts through
+  `transports.IsInReservedRange()`, an admission rule for dialing peers; the
+  signed fixture uses documentation ranges, so the listing showed only the
+  hash.
+- **Correction:** the inspection tool disables that process-local policy
+  before parsing (it never starts a transport), and firewall rendering now
+  classifies `ValidateEndpoint` rejections: a well-formed non-public endpoint
+  is skipped under the public-endpoint policy, while a malformed one is a
+  diagnostic and a non-zero exit.
+- **Files:** `tools/routerinfo.cpp`, `tools/firewall.hpp`,
+  `tools/test-tools.cmake`, `docs/tools/routerinfo.md`.
+- **State:** Corrected by static analysis; **Pending Windows/Linux CI**.
+
+### CE-064 — Debian remove check read a 0700 directory without root
+
+- **Run/job:** Packaging `41232685065`, job `Debian packages`.
+- **Diagnostic:** `FAIL: remove deleted persistent netDb state under
+  /var/lib/i2pd`, although the pre-remove `sudo test -f` had succeeded.
+- **Cause:** `/var/lib/i2pd` is mode 0700 owned by `i2pd`; the post-remove
+  `[ ! -f ... ]` ran as the unprivileged runner, so permission denied was
+  indistinguishable from a missing file. The package's own maintainer
+  scripts only remove state on purge (verified against the generated
+  `postrm`). No maintainer-script defect exists.
+- **Correction:** run the post-remove existence and post-purge directory
+  checks through `sudo`; pin both forms in `tests/check-packaging.cmake`.
+- **Files:** `.github/workflows/packaging.yml`, `tests/check-packaging.cmake`.
+- **State:** Corrected by static analysis; **Pending CI package validation**.

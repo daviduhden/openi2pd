@@ -40,3 +40,43 @@ Each correction records the exact run/job/SHA and the first diagnostic, then
 searches for semantic equivalents across platforms, overloads, headers and
 tests. Keep historical evidence separate from local static fixes; a skipped
 target or a build that stopped early is not a pass.
+
+## Patterns added by the `63c42ca4` batch
+
+- **Component send before start:** any singleton that owns a service/context
+  must reject work before that context exists. Pin it with a test that calls
+  the send path on an unstarted instance and expects a dropped message rather
+  than a crash, in addition to the offline flag.
+- **Zero-hop paths:** an outbound path with no reply hop is created and
+  recreated without an inbound tunnel. Assert the shared
+  `OutboundPathNeedsInboundTunnel()` predicate in both directions, so a future
+  refactor cannot reintroduce the inbound requirement in only one call site.
+- **Buffer suffix writes:** a checksum/IV concatenation next to a fixed-size
+  cell needs a negative test where the backing storage ends exactly at the
+  payload and a positive test at the exact required boundary.
+- **Address validity vs descriptor validity:** a signature-valid RouterInfo
+  with no usable address is parseable and storable for the Java grace window.
+  Assert `!HasValidAddresses()`, `!IsPublished()`, `!IsReachableBy()` rather
+  than `IsUnreachable()`.
+- **Artifact names:** every cache fixture builds the canonical name
+  (`<shard>/routerInfo-<b64>.dat`, `profile-<b64>.txt`,
+  `destinations/<b32>.<type>.dat`); the prefix-less spelling is asserted
+  `Foreign`, never `Load`.
+- **Direct fallback storage:** a test that exercises the no-follow atomic write
+  must first call `i2p::fs::DetectDataDir`; otherwise the write fails before
+  the behaviour under test and the case is vacuous.
+- **Tribool:** read Boost `tribool` through `indeterminate()` plus an explicit
+  `static_cast<bool>`, never through `!=`/`!`, and split "not indeterminate"
+  from "is true" so a failure names the state.
+- **CLI streams:** a tool validates every section before its first stdout byte;
+  `-h` is stdout/0, usage and runtime errors are stderr/non-zero, and optional
+  sections succeed with a stderr note instead of a failure.
+- **Reserved-range admission in inspection tools:** a tool that reports what a
+  file publishes disables the dialing admission policy for its process and
+  keeps the public-endpoint policy only where it generates rules.
+- **Windows rejected-handshake race:** when the accepting side rejects on
+  identity before reading, the client's write can fail; the test tolerates the
+  write and asserts the server-side rejection, not both.
+- **Restart ladder arithmetic:** quote the ladder total from one
+  `TotalLadderDelay()` authority and pin the bounds; never hand-sum the
+  constants in a test or a comment.

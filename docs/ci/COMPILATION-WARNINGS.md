@@ -227,3 +227,16 @@ category.
 - **Correction:** explicit bounded casts at the wire/test sites, `NarrowHex`
   for ASCII nonce hex, `long` for `time_t`, and macro guards.
 - **State:** corrected by static analysis; Pending Windows CI.
+
+## Batch `63c42ca4` (2026-10-31)
+
+- **MSYS2 (`41232676139`):** the build completed and its log contains no
+  warning from first-party C++ sources. That covers the GCC/Clang warning
+  classes corrected in the `00929cd1` batch (tuple/narrowing conversions,
+  macro redefinition, Asio formatter) on that lane.
+- **Linux (`41232673150`):** every job stopped at CE-055, so the lanes after
+  the failing test target were not compiled; a green warning summary cannot be
+  claimed for them.
+- **OpenBSD (`41232678782`):** stopped at the same error.
+- No new warning class was observed in the inspected logs; this is a
+  "nothing new observed" statement, not a warning-free proof.

@@ -56,3 +56,62 @@ matrix stopped at the shared test compile error, and the Fuzzing workflow
 passed its bounded smoke run. Windows TUI/worker tests are the only executed
 runtime suite in the reviewed batch. Do not infer sanitizer or live-peer
 cleanliness from this inventory.
+
+## Batch `63c42ca4` (Windows 41232676139)
+
+### RT-004 — Tunnel sends dereference a null io_context before `Start()`
+
+- **Diagnostic:** `test-tunnel-build-records`, `test-tunnelpool-build-backoff`
+  and `test-tunnel-endpoint-fragments` exit with `***Exception: SegFault`
+  after 0.02-0.03 s with no printed output.
+- **Cause:** `Transports::SendMessage` gated only on `m_IsOnline`, which
+  defaults to `true`, while `m_Service` is a `std::unique_ptr` created in
+  `Transports::Start()`. `Build()`/the endpoint path calls
+  `transports.SendMessages()` and `boost::asio::post(*m_Service, ...)`
+  dereferences null. This is reachable outside the tests (any component that
+  sends before transports start), not a test-only artefact.
+- **Correction:** `SendMessage`/`SendMessages` return an invalid future when
+  `m_Service` is null, exactly like the offline path; no message is queued and
+  no capability is bypassed. The affected tests also call
+  `transports.SetOnline(false)` so their "no transport" premise is explicit.
+- **Files:** `libi2pd/Transports.cpp`,
+  `tests/test-tunnel-{build-records,endpoint-fragments}.cpp`,
+  `tests/test-tunnelpool-build-backoff.cpp`.
+- **State:** Implemented / static; Pending CI compilation and tests.
+
+### RT-005 — Tunnel checksum IV could be written past the cell storage
+
+- **Diagnostic:** no observed corruption in this batch (the crash came from
+  RT-004), but the write at `payload + TUNNEL_DATA_MSG_SIZE` was unguarded and
+  the header only documented a precondition.
+- **Cause:** the checksum pass copies the 16-byte IV directly after the cell
+  so one SHA256 range covers fragments plus IV; a buffer that ends at the
+  payload turned that into a 16-byte overwrite.
+- **Correction:** `TunnelEndpoint::HandleDecryptedTunnelDataMsg` now validates
+  `offset`, the declared length and `maxLen - offset >= 16 + cell + IV` before
+  the copy and drops the cell otherwise. A bounded regression feeds a buffer
+  without the suffix and accepts the exact boundary.
+- **Files:** `libi2pd/TunnelEndpoint.cpp`, `libi2pd/TunnelEndpoint.h`,
+  `tests/test-tunnel-endpoint-fragments.cpp`.
+- **State:** Implemented / static; Pending CI compilation and tests.
+
+### RT-006 — MSVC abort while the server rejects a hello (test race)
+
+- **Diagnostic:** `test-privsep-windows-ipc:182` asserts that sending
+  `WorkerHello` succeeds, exit `0xc0000409`, on MSVC only.
+- **Cause:** the wrong-PID/wrong-session cases send the hello while
+  `AcceptBound` is rejecting the candidate and disconnecting the pipe; the
+  writer can observe `ERROR_NO_DATA`. MSYS2 happened to win the race. The
+  early rejection is the required security behaviour.
+- **Correction:** a test helper documents and tolerates the racing write; the
+  server-side rejection remains asserted. The channel also now refuses a
+  second handshake after `SetRole` and answers a refused duplicate with a
+  legal `Pong`.
+- **Files:** `tests/test-privsep-windows-ipc.cpp`, `privsep/WindowsIpc.cpp`.
+- **State:** Implemented / static; Pending Windows CI.
+
+### Not observed
+
+No ASan, UBSan or TSan report exists for this batch: every Linux sanitizer job
+stopped at CE-055 before CTest, and Fuzzing passed its bounded smoke run.
+Absence of a sanitizer report in these logs is not sanitizer evidence.
