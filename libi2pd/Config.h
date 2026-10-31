@@ -46,6 +46,9 @@ namespace config
 	 * @brief Parse cmdline parameters, and show help if requested
 	 * @param argc Cmdline arguments count, should be passed from main().
 	 * @param argv Cmdline parameters array, should be passed from main()
+	 * @param ignoreUnknown when true, unregistered options are accepted
+	 * and kept in the option map instead of failing the parse; used by
+	 * front-ends that forward arguments to another component
 	 *
 	 * If --help is given in parameters, shows its list with description
 	 * and terminates the program with exitcode 0.

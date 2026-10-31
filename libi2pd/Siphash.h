@@ -84,6 +84,8 @@ namespace crypto
 	 * @param hash Output buffer of exactly hashsz bytes.
 	 * @param input Message bytes; the length is taken from inputSize and
 	 *              never from a terminator, so binary input is supported.
+	 * @param inputSize number of message bytes to hash, taken verbatim
+	 *                  from the caller and never derived from @a input
 	 * @param key Exactly 16 bytes (two little-endian 64-bit
 	 *            words). The key is a secret: it is never logged and
 	 *            callers must not reuse one key across unrelated

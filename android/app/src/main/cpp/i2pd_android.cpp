@@ -1240,6 +1240,14 @@ JNIEXPORT jstring JNICALL Java_org_openi2pd_router_I2PD_1JNI_stopTunnel (JNIEnv 
 /**
 	 * Add or replace one address-book name.
 	 *
+	 * @param env JNI environment supplied by the VM for this call; it is
+	 * only used on the calling thread.
+	 * @param clazz static class reference of the Java declaration; the
+	 * native side keeps no reference to it.
+	 * @param name bounded `.i2p` host label, validated before use and
+	 * never re-pointed unless @a replace is true.
+	 * @param destination full base64 destination for @a name, bounded
+	 * and validated by the native address book.
 	 * @param replace {@code false} never re-points an existing name and
 	 * reports {@code exists}; {@code true} is the explicit overwrite.
 	 * @return {@code ok}, {@code exists}, {@code invalid}, {@code

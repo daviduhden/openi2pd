@@ -168,10 +168,15 @@ bool PinStandardDescriptors ();
 /**
  * Wait for a child until an absolute deadline without ever blocking
  * past it.
+ * @param pid child process id; a non-positive value is treated as
+ *        already reaped so the function returns true at once.
  * @param pidFd an optional pidfd for @a pid, or -1 when pidfd_open is
  *        unavailable. When present it is polled for exit before falling
  *        back
  *        to WNOHANG; the caller still owns and closes the descriptor.
+ * @param timeoutMs how far ahead of the call the deadline lies, in
+ *        milliseconds; negative values are clamped to 0 so the function
+ *        still performs one non-blocking reap attempt.
  * @return true when the child was reaped (including ECHILD), false on
  * timeout.
  * This is deliberately header-inline so the bounded-reap regression can
@@ -328,6 +333,10 @@ i2p::expected<Channel, std::string> SpawnDetachedWorkerWithRoot (const char * ro
 /**
  * Spawn a worker role that takes the delegated storage root as fd4.
  *
+ * @param role role name accepted by WorkerRoleFromName; the pairing
+ * with a delegated root is checked below.
+ * @param executable frozen executable image to exec; the override is
+ * validated as a spawnable path exactly as in SpawnWorker().
  * @param rootFd validated directory owned by the worker identity; it is
  * duplicated above descriptor 5 and closed in the parent, so the
  * child's capability cannot alias the identity record or the channel.

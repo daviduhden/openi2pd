@@ -73,6 +73,8 @@ private:
 	 * oversized file is refused before a buffer is allocated for it. The
 	 * whole input is wiped on both paths, including a parse failure.
 	 *
+	 * @param path destination key file to read; it is opened read-only
+	 * and is never created, truncated or renamed by this helper.
 	 * @param keys Receives the parsed destination.
 	 * `PrivateKeys::FromBuffer` resets itself before parsing, so on
 	 * failure this object is left empty rather than partially populated;

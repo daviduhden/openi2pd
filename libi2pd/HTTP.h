@@ -204,7 +204,7 @@ namespace http
 
 	/**
 	 * @brief Replaces %-encoded characters in string with their values
-	 * @param data Source string
+	 * @param url Source string
 	 * @param null If set to true - decode also %00 sequence, otherwise -
 	 *             skip
 	 * @return Decoded string

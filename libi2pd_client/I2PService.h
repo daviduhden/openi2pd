@@ -90,6 +90,10 @@ namespace client
 		/// with `nullptr` instead of throwing. Completion runs on the
 		/// destination's io_context, and a b33/blinded name takes the
 		/// blinded-key path rather than being looked up as a b32 hash.
+		/// @param streamRequestComplete completion retained by value and
+		///        invoked exactly once with the opened stream, or with
+		///        `nullptr` when the name cannot be resolved; it must not
+		///        be empty
 		/// @param dest full base64 destination, `.i2p` host name or b33 label
 		/// @param port destination port, 0 when the service supplies it
 		void CreateStream (StreamRequestComplete streamRequestComplete, std::string_view dest, uint16_t port = 0);
@@ -99,6 +103,12 @@ namespace client
 		/// captures a weak owner; a service stopped in the meantime completes
 		/// the request with `nullptr` instead of resuming work for a dead
 		/// service.
+		/// @param complete completion retained by value and invoked exactly
+		///        once with the opened stream or with `nullptr`; it must not
+		///        be empty
+		/// @param address resolved address; it must not be null, and its
+		///        identity selects the ident-hash or blinded-key path
+		/// @param port destination port passed through unchanged
 		void CreateStream (StreamRequestComplete complete, std::shared_ptr<const Address> address, uint16_t port);
 		auto & GetService () { return m_LocalDestination->GetService (); }
 

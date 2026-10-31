@@ -464,7 +464,13 @@ namespace data
 
 	/**
 	 * @brief bootstrap from HTTPS URL with SU3 file
-	 * @param url
+	 * @param url absolute SU3 or directory URL, with the Proposal 147
+	 * `netid` query parameter already appended by the caller; it is
+	 * passed to the configured fetch hook or to the matching transport.
+	 * @param isHttps selects the HTTPS transport; false uses the
+	 * Yggdrasil-internal request path for the same URL.
+	 * @param token stop token honoured during the download and import,
+	 * which reports a cancelled result rather than a transport error.
 	 * @return imported and skipped entry counts
 	 */
 	ReseedResult Reseeder::ReseedFromSU3Url (const std::string & url, bool isHttps, const std::stop_token & token)
