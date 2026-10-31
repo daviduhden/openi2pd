@@ -78,6 +78,7 @@ sub find_git {
         return Cwd::abs_path( $ENV{GIT} );
     }
     for my $directory ( File::Spec->path ) {
+
         # Only absolute PATH entries are trusted: a relative entry
         # (including the implicit empty one) could resolve to an
         # unrelated program in the current directory.
@@ -97,6 +98,7 @@ sub run_git {
     my $git = find_git();
     return ( undef, 'git not found in an absolute PATH directory' )
       unless defined $git;
+
     # List-form pipe open: the argument vector is handed to the process
     # directly, so no shell interprets the reference path or the git
     # options.
@@ -332,6 +334,7 @@ sub static_checks {
 
 sub canonical {
     my ($data) = @_;
+
     # Sorted keys make the comparison independent of hash order, which
     # the pretty-printed expectation in a case file does not control.
     return JSON::PP->new->canonical->encode($data);
@@ -343,6 +346,7 @@ sub run_binary {
       or return ( undef, "cannot execute $bin: $!" );
     my $out       = '';
     my $too_large = 0;
+
     # Cap the collected output so a runaway harness cannot exhaust
     # memory; a truncated case is reported instead of being compared.
     while (1) {

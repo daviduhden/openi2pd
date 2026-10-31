@@ -23,6 +23,7 @@ die "documentation directory not found: $docs\n" unless -d $docs;
 my $root      = abs_path($docs) or die "cannot resolve $docs\n";
 my $repo_root = abs_path( File::Spec->catdir( $root, File::Spec->updir ) );
 die "cannot resolve repository root\n" unless defined $repo_root;
+
 # catdir appends a trailing separator. The stripped value is therefore a
 # directory prefix ending in the platform separator, which index() can
 # compare against so a sibling such as "<repo>-old" is not accepted as
@@ -47,6 +48,7 @@ my %anchor_cache;
 
 sub slugify {
     my ($heading) = @_;
+
     # Must stay identical to the MkDocs/Python-Markdown slug rules; any
     # divergence turns every valid intra-page link into a false report.
     my $slug = lc $heading;
@@ -67,6 +69,7 @@ sub anchors_for {
     my %seen_slug;
     my $add_heading = sub {
         my ($heading) = @_;
+
         # MkDocs honours an explicit trailing {#id} as well as the
         # derived slug, and appends -1, -2 ... to repeated headings.
         # Both forms must be recorded or a valid link is reported

@@ -13,7 +13,7 @@ use warnings;
 use 5.016;
 
 use File::Basename qw(basename);
-use File::Find qw(find);
+use File::Find     qw(find);
 use File::Spec;
 use FindBin qw($Bin);
 use Test::More;
@@ -22,8 +22,8 @@ sub scan_comments {
     my ($source) = @_;
     my @errors;
     my $offset = 0;
-    my $line = 1;
-    my $state = 'code';
+    my $line   = 1;
+    my $state  = 'code';
     my $block_start;
     my $raw_end;
 
@@ -38,7 +38,7 @@ sub scan_comments {
                 next;
             }
             if ( $pair eq '/*' ) {
-                $state = 'block';
+                $state       = 'block';
                 $block_start = $line;
                 $offset += 2;
                 next;
@@ -47,7 +47,7 @@ sub scan_comments {
             my $rest = substr( $source, $offset );
             if ( $rest =~ /\A(?:u8|u|U|L)?R"([^\s()\\]{0,16})\(/ ) {
                 my $delimiter = $1;
-                my $token = $&;
+                my $token     = $&;
                 $raw_end = ")${delimiter}\"";
                 $offset += length $token;
                 $state = 'raw';
@@ -75,6 +75,7 @@ sub scan_comments {
         if ( $state eq 'block' ) {
             if ( $pair eq '/*' ) {
                 push @errors, "line $line: nested block-comment opener";
+
                 # C and C++ do not nest comments; keep scanning the same
                 # block so its first closing token remains authoritative.
                 $offset += 2;
@@ -96,11 +97,12 @@ sub scan_comments {
                 push @errors, "line $line: unterminated raw string";
                 last;
             }
-            my $consumed = substr( $source, $offset, $end + length($raw_end) - $offset );
+            my $consumed =
+              substr( $source, $offset, $end + length($raw_end) - $offset );
             my $newlines = () = $consumed =~ /\n/g;
             $line += $newlines;
             $offset = $end + length $raw_end;
-            $state = 'code';
+            $state  = 'code';
             next;
         }
 
@@ -127,18 +129,23 @@ sub scan_comments {
 }
 
 my @nested = scan_comments("int f;\n/**\n/**\n */\n");
-like( $nested[0] // '', qr/line 3: nested block-comment opener/,
-    'nested documentation comments are rejected' );
+like(
+    $nested[0] // '',
+    qr/line 3: nested block-comment opener/,
+    'nested documentation comments are rejected'
+);
 
 my @unterminated = scan_comments("int f;\n/* missing close\n");
-like( $unterminated[0] // '', qr/line 2: unterminated block comment/,
-    'unterminated block comments are rejected' );
-
-my @valid = scan_comments(
-    "const char *a = \"/* string */\";\n"
-      . "auto b = R\"tag(/* raw string */)tag\"; // /* line comment */\n"
-      . "/* ordinary closed comment */ int c;\n"
+like(
+    $unterminated[0] // '',
+    qr/line 2: unterminated block comment/,
+    'unterminated block comments are rejected'
 );
+
+my @valid =
+  scan_comments( "const char *a = \"/* string */\";\n"
+      . "auto b = R\"tag(/* raw string */)tag\"; // /* line comment */\n"
+      . "/* ordinary closed comment */ int c;\n" );
 is( scalar @valid, 0, 'strings, raw strings and closed comments are accepted' );
 
 my $root = File::Spec->rel2abs(
@@ -171,7 +178,8 @@ for my $path ( sort @source_files ) {
     close $fh or die "close $path: $!\n";
     push @tree_errors, map { "$path: $_" } scan_comments($source);
 }
-is( scalar @tree_errors, 0,
+is( scalar @tree_errors,
+    0,
     'maintained C/C++ files contain no nested or unterminated block comments' );
 diag($_) for @tree_errors;
 

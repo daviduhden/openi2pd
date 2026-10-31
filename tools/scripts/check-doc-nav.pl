@@ -21,6 +21,7 @@ die "missing $config\n" unless -f $config;
 
 open my $fh, '<', $config or die "open $config: $!\n";
 my ( @nav, $in_nav );
+
 # Only the indented `- Title: page.md` values matter; the nav block ends
 # at the next top-level key. Indentation depth is ignored so nested
 # sections are covered without needing a YAML parser.

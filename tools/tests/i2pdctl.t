@@ -79,6 +79,7 @@ sub _read_http_request {
 
     my $buffer = '';
     my $header_end;
+
     # A client that never finishes its header must not make the fixture read
     # forever; 64 KiB is far more than a real request needs.
     while (1) {
@@ -292,6 +293,7 @@ sub _run_command {
 
     waitpid( $pid, 0 );
     my $status = $?;
+
     # Normalise the wait status the way a shell would: 255 when the child
     # could not be reaped, 128+signal for a signal death, otherwise the exit
     # code. Tests assert on the value the caller of the script would see.

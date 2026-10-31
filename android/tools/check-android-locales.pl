@@ -25,11 +25,12 @@ my %language_dir = (
     'zh-CN' => 'values-zh-rCN'
 );
 my %allowed_store = map { $_ => 1 } qw(en-US es-ES ru-RU zh-CN);
+
 # The checker is run from the repository root by CI and from android/ by
 # hand. Probe the known layout instead of trusting the current
 # directory.
-my $root          = -d 'android/app/src/main' ? 'android' : '.';
-my $res           = File::Spec->catdir( $root, qw(app src main res) );
+my $root = -d 'android/app/src/main' ? 'android' : '.';
+my $res  = File::Spec->catdir( $root, qw(app src main res) );
 my @errors;
 
 sub fail { push @errors, join( '', @_ ) . "\n" }
@@ -40,6 +41,7 @@ sub read_file {
     local $/;
     my $text = <$fh>;
     close($fh);
+
     # Encoding defects are recorded instead of aborting so one run
     # reports every affected file rather than only the first.
     fail("BOM in $path")  if $text =~ /^\xEF\xBB\xBF/;
@@ -92,6 +94,7 @@ my @value_dirs = grep { /^values(?:-|$)/ } readdir($dh);
 closedir($dh);
 for my $dir ( sort @value_dirs ) {
     next if $dir eq 'values';
+
     # Configuration qualifiers are not locales and are legitimate
     # siblings.
     next if $dir =~ /^values-(?:night|sw\d+dp|w\d+dp|v\d+)$/;

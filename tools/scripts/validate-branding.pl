@@ -104,6 +104,7 @@ for my $rel (@svgs) {
 sub png_size {
     my ($path) = @_;
     open my $fh, '<:raw', $path or return;
+
     # Read only the signature and the first chunk header: IHDR must be
     # the first chunk, and its payload starts with two big-endian 32-bit
     # sizes. Parsing the header instead of trusting a tool keeps the
@@ -140,6 +141,7 @@ for my $pair (
 sub ico_sizes {
     my ($path) = @_;
     open my $fh, '<:raw', $path or return;
+
     # ICONDIR: reserved(0), type(1 = icon), image count. Each 16-byte
     # ICONDIRENTRY starts with width and height as single bytes, where 0
     # encodes 256. Only square entries are recorded; the expected lists
@@ -283,6 +285,7 @@ check_palette_file( 'libi2pd_client/HTTPProxy.cpp',
 
 sub normalize_hex {
     my ($hex) = @_;
+
     # Android vectors and SVG fills may spell the same opaque colour as
     # #AARRGGBB. Collapse an opaque FF alpha prefix onto the 6-digit
     # token that colors.md declares; a non-opaque value stays distinct

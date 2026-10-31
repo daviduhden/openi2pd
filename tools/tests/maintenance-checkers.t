@@ -29,9 +29,10 @@ my $root = File::Spec->rel2abs(
 
 sub write_file {
     my ( $path, $contents ) = @_;
+
     # Fixtures are written into a fresh File::Temp tree; create the parent
     # directory so a nested layout such as res/img/ can be reproduced.
-    my ( undef, $dir )      = File::Spec->splitpath($path);
+    my ( undef, $dir ) = File::Spec->splitpath($path);
     make_path($dir) unless -d $dir;
     open my $fh, '>', $path or die "open $path: $!\n";
     print {$fh} $contents;
@@ -43,6 +44,7 @@ sub run_checker {
     my $error = gensym;
     my $pid   = open3( my $input, my $output, $error, $^X, $script, @args );
     close $input;
+
     # Drain both pipes until EOF. Reading only STDOUT would let a chatty
     # checker block on a full STDERR pipe, and the 30 s wait keeps a hung
     # checker from stalling the whole suite.

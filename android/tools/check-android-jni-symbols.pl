@@ -68,6 +68,7 @@ while ( $java_text =~ /(?:^|\s)native\s+[\w\.\[\]<>?]+\s+(\w+)\s*\(/mg ) {
 my %java = map { $_ => 1 } @java_names;
 
 my %native;
+
 # JNI mangles package/class separators as '_' and escapes a literal
 # underscore as '_1', so I2PD_JNI appears as I2PD_1JNI. Only method
 # names are compared: arguments, return types and overloads are outside

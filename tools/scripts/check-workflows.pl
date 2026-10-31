@@ -73,6 +73,7 @@ for my $file (@files) {
         if ( $line =~ /^\s*continue-on-error\s*:/ ) {
             push @errors, "$file: continue-on-error is forbidden";
         }
+
         # Only executing invocations are constrained. The two exclusions
         # are query-only forms: -N lists tests without running them and
         # --print-labels only reports the label inventory.
@@ -95,14 +96,17 @@ for my $file (@files) {
         for my $trigger (@triggers) {
             $trigger =~ s/:$//;
             next if $maintenance_gate && $trigger eq 'pull_request';
-            next if !$maintenance_gate
-              && ( $trigger eq 'workflow_dispatch' || $trigger eq 'workflow_call' );
+            next
+              if !$maintenance_gate
+              && ( $trigger eq 'workflow_dispatch'
+                || $trigger eq 'workflow_call' );
             push @errors, "$file: unsupported trigger '$trigger'";
         }
         if ($maintenance_gate) {
             push @errors, "$file: maintenance gate must declare pull_request"
               unless grep { $_ eq 'pull_request' } @triggers;
-            push @errors, "$file: maintenance gate must not run on workflow_dispatch"
+            push @errors,
+              "$file: maintenance gate must not run on workflow_dispatch"
               if grep { $_ eq 'workflow_dispatch' } @triggers;
         }
         else {
