@@ -238,17 +238,27 @@ void TestFeedRetraction ()
 	assert (book.LoadHostsFromStream (std::move (oversize), true, "stats.i2p"));
 	assert (book.FindAddress ("oversize.i2p"));
 
-	// The originating feed retracts its own name: the entry and its
-	// identity
-	// file are gone, and a tombstone keeps another feed from resurrecting
-	// it.
+	// The originating feed retracts its own name: the entry is gone and a
+	// tombstone keeps another feed from resurrecting it, but the shared
+	// identity file stays because updated.i2p and oversize.i2p reference
+	// the same destination.
 	std::istringstream retract ("fromfeed.i2p=" + Base64 (feedKey) + "#!action=delete\n");
 	assert (book.LoadHostsFromStream (std::move (retract), true, "stats.i2p"));
 	assert (!book.FindAddress ("fromfeed.i2p"));
-	assert (!fake->identities.contains (feedHash));
+	assert (fake->identities.contains (feedHash));
 	assert (fake->sources.count ("fromfeed.i2p") == 0);
 	auto deleted = book.GetDeletedHosts (10);
 	assert (deleted.size () == 1 && deleted[0] == "fromfeed.i2p");
+
+	// A destination no other name references is deleted together with the
+	// retracted name.
+	std::istringstream unique ("unique.i2p=" + Base64 (otherKey) + "\n");
+	assert (book.LoadHostsFromStream (std::move (unique), true, "stats.i2p"));
+	assert (fake->identities.contains (Hash (otherKey)));
+	std::istringstream uniqueRetract ("unique.i2p=" + Base64 (otherKey) + "#!action=delete\n");
+	assert (book.LoadHostsFromStream (std::move (uniqueRetract), true, "stats.i2p"));
+	assert (!book.FindAddress ("unique.i2p"));
+	assert (!fake->identities.contains (Hash (otherKey)));
 
 	std::istringstream resurrect ("fromfeed.i2p=" + Base64 (feedKey) + "\n");
 	assert (book.LoadHostsFromStream (std::move (resurrect), true, "other.i2p"));
