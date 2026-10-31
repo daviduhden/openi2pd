@@ -561,11 +561,17 @@ set_tests_properties(agent-skills-static PROPERTIES
   LABELS "ci;docs;static"
   TIMEOUT 60)
 
-# Shell-level checks that only need the built router binary.
+# Shell-level checks that only need the built router binary. The driver
+# runs the executable directly with a bounded wait and reports its exit
+# status plus captured output: a bare `add_test(... i2pd --version)` cannot
+# distinguish a healthy quiet windowed build from a child that is blocked
+# on a modal dialog, which is how this test timed out on the Windows
+# GUI-subsystem router. The exit status stays authoritative.
 if(TARGET i2pd)
-  add_test(NAME i2pd-version COMMAND i2pd --version)
-  # The process exit status is authoritative. A regular-expression match
-  # would turn a failing --version implementation into a green test.
+  add_test(NAME i2pd-version
+    COMMAND "${CMAKE_COMMAND}"
+      "-DBINARY=$<TARGET_FILE:i2pd>"
+      -P "${CMAKE_CURRENT_SOURCE_DIR}/check-binary-version.cmake")
   set_tests_properties(i2pd-version PROPERTIES
     LABELS "ci;binary;smoke"
     TIMEOUT 30)
