@@ -3,9 +3,10 @@
 #
 # openi2pd: test perl install.
 #
-# CTest install-layout smoke test that installs the Tools component into a
-# private prefix and checks i2pdctl's shebang, Perl syntax and executable
-# mode. The private prefix is deleted and no system prefix is touched.
+# CTest install-layout smoke test that installs the Tools component into
+# a private prefix and checks i2pdctl's shebang, Perl syntax and
+# executable mode. The private prefix is deleted and no system prefix is
+# touched.
 #
 
 foreach(required BUILD_DIR WORK_DIR PERL_EXECUTABLE INSTALL_BINDIR INSTALL_DOCDIR INSTALL_MANDIR TOOLS)
@@ -37,9 +38,10 @@ if(NOT install_result EQUAL 0)
     "Tools install failed (${install_result}): ${install_output}${install_error}")
 endif()
 
-# The shared tools licence belongs to Documentation when that component is
-# enabled (the Tools rule is conditioned on the same option), so install the
-# documentation component into the private prefix before checking attribution.
+# The shared tools licence belongs to Documentation when that component
+# is enabled (the Tools rule is conditioned on the same option), so
+# install the documentation component into the private prefix before
+# checking attribution.
 if(I2PD_INSTALL_DOCS)
   execute_process(
     COMMAND "${CMAKE_COMMAND}" --install "${BUILD_DIR}"

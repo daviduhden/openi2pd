@@ -3,18 +3,18 @@
 #
 # openi2pd: test tools inventory.
 #
-# Build-gated artifact inventory check that every maintained tool executable and
-# shared source exists, and that the pinned upstream manifest names real local
-# files. The compile-free CMake/docs/packaging parity check lives in
-# tests/check-tools-inventory.cmake.
+# Build-gated artifact inventory check that every maintained tool
+# executable and shared source exists, and that the pinned upstream
+# manifest names real local files. The compile-free CMake/docs/packaging
+# parity check lives in tests/check-tools-inventory.cmake.
 #
 
 if(NOT DEFINED TOOLS_DIR OR NOT DEFINED TOOLS OR NOT DEFINED TOOLS_SOURCE_DIR)
   message(FATAL_ERROR "TOOLS_DIR, TOOLS and TOOLS_SOURCE_DIR are required")
 endif()
 
-# The list is passed comma-separated so it survives a single -D argument on
-# every CMake version/platform.
+# The list is passed comma-separated so it survives a single -D argument
+# on every CMake version/platform.
 string(REPLACE "," ";" TOOLS "${TOOLS}")
 set(EXE "${CMAKE_EXECUTABLE_SUFFIX}")
 foreach(tool IN LISTS TOOLS)
@@ -26,8 +26,9 @@ foreach(tool IN LISTS TOOLS)
   endif()
 endforeach()
 
-# Shared portability/file helpers and the upstream licence must travel with the
-# tool component even when only a subset of binaries is inspected.
+# Shared portability/file helpers and the upstream licence must travel
+# with the tool component even when only a subset of binaries is
+# inspected.
 set(REQUIRED_SOURCES
   common/file.hpp
   common/getopt.cpp
@@ -52,8 +53,8 @@ if(NOT EXISTS "${PROJECT_ROOT}/man/i2pdctl.1")
   message(FATAL_ERROR "Missing man page: ${PROJECT_ROOT}/man/i2pdctl.1")
 endif()
 
-# Verify the pinned upstream manifest describes real local files. A missing
-# manifest is a provenance failure, not a skipped check.
+# Verify the pinned upstream manifest describes real local files. A
+# missing manifest is a provenance failure, not a skipped check.
 if(NOT DEFINED TOOLS_UPSTREAM_MANIFEST OR NOT EXISTS "${TOOLS_UPSTREAM_MANIFEST}")
   message(FATAL_ERROR "Upstream tools manifest is missing: ${TOOLS_UPSTREAM_MANIFEST}")
 endif()
@@ -67,8 +68,8 @@ foreach(source IN LISTS UPSTREAM_FILES)
   endif()
 endforeach()
 
-# Every top-level tool source must be declared as an executable. A new .cpp
-# that is not wired into CMake is a build/inventory drift error.
+# Every top-level tool source must be declared as an executable. A new
+# .cpp that is not wired into CMake is a build/inventory drift error.
 file(GLOB TOOL_SOURCES "${TOOLS_SOURCE_DIR}/*.cpp")
 foreach(source IN LISTS TOOL_SOURCES)
   get_filename_component(name "${source}" NAME_WE)

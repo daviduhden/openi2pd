@@ -4,10 +4,10 @@
  *
  * openi2pd: famtool.
  *
- * Creates a router-family signing key and certificate, signs a RouterInfo's
- * family properties, or verifies signed family membership. The family name is
- * capped so the name-plus-identity signature input stays bounded.
- *
+ * Creates a router-family signing key and certificate, signs a
+ * RouterInfo's family properties, or verifies signed family membership.
+ * The family name is capped so the name-plus-identity signature input
+ * stays bounded.
  */
 
 /**
@@ -48,9 +48,9 @@ constexpr size_t MAX_FAMILY_SIGNATURE_INPUT = 50;
 constexpr size_t MAX_FAMILY_NAME_LENGTH = MAX_FAMILY_SIGNATURE_INPUT - IdentHash::len;
 
 /**
- * A family name is written into RouterInfo properties and the certificate CN.
- * Keep it to the documented label alphabet; ';' or a newline would inject an
- * extra property.
+ * A family name is written into RouterInfo properties and the
+ * certificate CN. Keep it to the documented label alphabet; ';' or a
+ * newline would inject an extra property.
  */
 bool IsValidFamilyName (std::string_view name)
 {
@@ -117,7 +117,8 @@ static bool IsP256Key (EVP_PKEY * pkey)
 	return groupLength > 0 && OBJ_txt2nid (group) == NID_X9_62_prime256v1;
 #else
 	// LibreSSL and older compatibility builds retain the EC_KEY accessor.
-	// The OpenSSL 3/4 path above never relies on a deprecated low-level API.
+	// The OpenSSL 3/4 path above never relies on a deprecated low-level
+	// API.
 	std::unique_ptr<EC_KEY, decltype (&EC_KEY_free)> ecKey (EVP_PKEY_get1_EC_KEY (pkey), EC_KEY_free);
 	if (!ecKey) return false;
 	const EC_GROUP * group = EC_KEY_get0_group (ecKey.get ());
@@ -176,12 +177,12 @@ static std::shared_ptr<Verifier> LoadCertificate (const std::string & filename)
 
 /// @brief Sign `family || identityHash` with the family's P-256 key.
 ///
-/// The signed input is the family label followed by the 32-byte identity hash,
-/// bounded by MAX_FAMILY_SIGNATURE_INPUT so a family name cannot make the
-/// signature cover an unbounded buffer. The private key is read from PEM, must
-/// be P-256 (nothing else is a valid family key), and the result is the two
-/// fixed 32-byte r/s values in I2P family-signature wire form.
-///
+/// The signed input is the family label followed by the 32-byte
+/// identity hash, bounded by MAX_FAMILY_SIGNATURE_INPUT so a family
+/// name cannot make the signature cover an unbounded buffer. The
+/// private key is read from PEM, must be P-256 (nothing else is a valid
+/// family key), and the result is the two fixed 32-byte r/s values in
+/// I2P family-signature wire form.
 /// @param family Validated family label.
 /// @param ident Router identity the signature is bound to.
 /// @param filename PEM private key of the family.
@@ -204,9 +205,10 @@ static bool CreateFamilySignature (
 	message.insert (message.end (), family.begin (), family.end ());
 	message.insert (message.end (), ident.data (), ident.data () + IdentHash::len);
 
-	// Sign the family/identity buffer through EVP so OpenSSL 3/4 and LibreSSL
-	// share the same ownership and error handling. The wire format is still
-	// the two fixed 32-byte r/s values expected by I2P family signatures.
+	// Sign the family/identity buffer through EVP so OpenSSL 3/4 and
+	// LibreSSL share the same ownership and error handling. The wire
+	// format is still the two fixed 32-byte r/s values expected by I2P
+	// family signatures.
 	std::unique_ptr<EVP_MD_CTX, decltype (&EVP_MD_CTX_free)> mdCtx (EVP_MD_CTX_new (), EVP_MD_CTX_free);
 	if (!mdCtx || EVP_DigestSignInit (mdCtx.get (), nullptr, EVP_sha256 (), nullptr, pkey.get ()) != 1) return false;
 
@@ -235,26 +237,27 @@ static bool CreateFamilySignature (
 	return !sig.empty ();
 }
 
-/// @brief Generate a family key/certificate, sign a RouterInfo, or verify one.
-///
-/// At least one of `-g` (generate), `-s` (sign) or `-V` (verify) is required,
-/// together with a family name (`-n`); the selected modes run in that order.
-/// File roles differ per mode: `-k` is the PEM private key (the new key when
-/// generating, the signing key otherwise), `-c` the certificate (the new
-/// certificate when generating, the verification certificate otherwise);
-/// omitted paths default to `&lt;family&gt;.key`/`&lt;family&gt;.crt` when generating.
-///
-/// Generation writes both PEM objects in memory and installs them through the
-/// validated atomic helpers: the private key uses the core owner-only writer
-/// (no in-place truncation, no symlink follow) and the certificate the public
-/// writer. Each file is replaced atomically, but the pair is not one
-/// transaction: a failure after the certificate was installed leaves that
-/// certificate in place without a matching key file.
-///
-/// `-o` is accepted for compatibility with the historical tool and ignored;
-/// `-v` only enables progress lines on stdout. Diagnostics stay on stderr.
-///
-/// @return 0 on success, 1 for usage, mode, key/certificate or write failures.
+/// @brief Generate a family key/certificate, sign a RouterInfo, or
+/// verify one.
+/// At least one of `-g` (generate), `-s` (sign) or `-V` (verify) is
+/// required, together with a family name (`-n`); the selected modes run
+/// in that order. File roles differ per mode: `-k` is the PEM private
+/// key (the new key when generating, the signing key otherwise), `-c`
+/// the certificate (the new certificate when generating, the
+/// verification certificate otherwise); omitted paths default to
+/// `&lt;family&gt;.key`/`&lt;family&gt;.crt` when generating.
+/// Generation writes both PEM objects in memory and installs them
+/// through the validated atomic helpers: the private key uses the core
+/// owner-only writer (no in-place truncation, no symlink follow) and
+/// the certificate the public writer. Each file is replaced atomically,
+/// but the pair is not one transaction: a failure after the certificate
+/// was installed leaves that certificate in place without a matching
+/// key file.
+/// `-o` is accepted for compatibility with the historical tool and
+/// ignored; `-v` only enables progress lines on stdout. Diagnostics
+/// stay on stderr.
+/// @return 0 on success, 1 for usage, mode, key/certificate or write
+/// failures.
 int main (int argc, char * argv[])
 {
 	if (argc == 1)
@@ -425,7 +428,8 @@ int main (int argc, char * argv[])
 		}
 
 		// X509_get_subject_name() is const in OpenSSL 3/4. Work on an owned
-		// duplicate instead of casting away const, then install it explicitly.
+		// duplicate instead of casting away const, then install it
+		// explicitly.
 		std::unique_ptr<X509_NAME, decltype (&X509_NAME_free)> name (
 			X509_NAME_dup (X509_get_subject_name (x.get ())), X509_NAME_free);
 		if (!name)
@@ -455,8 +459,9 @@ int main (int argc, char * argv[])
 		}
 
 		// Encode both PEM objects in memory and install them through the
-		// validated no-follow/atomic helpers. A direct fopen() follows symlinks,
-		// truncates in place and briefly creates a key with the process umask.
+		// validated no-follow/atomic helpers. A direct fopen() follows
+		// symlinks, truncates in place and briefly creates a key with the
+		// process umask.
 		using BioPtr = std::unique_ptr<BIO, decltype (&BIO_free)>;
 		BioPtr keyBio (BIO_new (BIO_s_mem ()), BIO_free);
 		BioPtr certBio (BIO_new (BIO_s_mem ()), BIO_free);

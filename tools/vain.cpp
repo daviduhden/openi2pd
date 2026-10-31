@@ -5,9 +5,9 @@
  * openi2pd: vain.
  *
  * Multithreaded vanity destination generator that searches an Ed25519
- * identifying nonce for a base32 prefix or regular expression. It bounds the
- * thread count, wipes rejected key material and writes found key files
- * owner-only.
+ * identifying nonce for a base32 prefix or regular expression. It
+ * bounds the thread count, wipes rejected key material and writes found
+ * key files owner-only.
  *
  */
 
@@ -36,8 +36,9 @@
 #include "common/key.hpp"
 #include "common/keys.hpp"
 #include "common/crypto.hpp"
-// Included last: it defines single-letter function-like macros (S0/S1/Ch),
-// which must not leak into the standard or libi2pd headers above.
+// Included last: it defines single-letter function-like macros
+// (S0/S1/Ch), which must not leak into the standard or libi2pd headers
+// above.
 #include "vanity.hpp"
 
 namespace
@@ -63,15 +64,15 @@ struct Options
 /**
  * Shared result of one search generation.
  *
- * `found` is the stop signal, not only a result: a worker that matches sets it
- * with `exchange`, and only the first winner (the one that observes `false`)
- * publishes `nonce`, `address` and `keyId`. The other atomics are progress
- * counters, so they are read without the mutex. `address`/`keyId` are written
- * and read under `mutex`; the main thread reads them only after joining every
- * worker, so the lock there is for a later reuse of the same state object
- * rather than for the join itself. `failed` is set by a worker that caught an
- * exception and also stops the other workers; it always wins over a reported
- * match.
+ * `found` is the stop signal, not only a result: a worker that matches
+ * sets it with `exchange`, and only the first winner (the one that
+ * observes `false`) publishes `nonce`, `address` and `keyId`. The other
+ * atomics are progress counters, so they are read without the mutex.
+ * `address`/`keyId` are written and read under `mutex`; the main thread
+ * reads them only after joining every worker, so the lock there is for
+ * a later reuse of the same state object rather than for the join
+ * itself. `failed` is set by a worker that caught an exception and also
+ * stops the other workers; it always wins over a reported match.
  */
 struct SearchState
 {
@@ -216,9 +217,9 @@ void HashNextBlock (uint32_t state[8], const uint8_t * block)
 }
 
 /**
-	 * Encode at most outLen base32 characters and NUL-terminate. The caller
-	 * must provide outLen + 1 bytes of storage. Returns the number of
-	 * characters written (excluding the terminator).
+	 * Encode at most outLen base32 characters and NUL-terminate. The
+	 * caller must provide outLen + 1 bytes of storage. Returns the number
+	 * of characters written (excluding the terminator).
 	 */
 size_t ByteStreamToBase32 (const uint8_t * inBuf, size_t len, char * outBuf, size_t outLen)
 {
@@ -420,8 +421,8 @@ Outcome RunSearch (Options & options, std::string_view prefix, const std::regex 
 	std::cout << "Start vanity generator in " << options.threads << " threads" << std::endl;
 
 	// Keep joins explicit for this worker fan-out. If a thread cannot be
-	// created, join the workers that did start before returning so no joinable
-	// std::thread is destroyed.
+	// created, join the workers that did start before returning so no
+	// joinable std::thread is destroyed.
 	std::vector<std::thread> workers;
 	workers.reserve (static_cast<size_t> (options.threads));
 	try
@@ -484,14 +485,15 @@ Outcome RunSearch (Options & options, std::string_view prefix, const std::regex 
 	// output path is the normal case: clear ENOENT instead of treating it
 	// as an inspection failure.
 	//
-	// Collision policy: an occupied name advances to the next `PREFIX&lt;N&gt;.dat`
-	// for the rest of the run (foundKeys is never reset), so multiple-address
-	// mode cannot overwrite an earlier match or an operator file. With no `-o`
-	// the stored prefix is empty, so the fallback name is `&lt;N&gt;.dat` rather than
-	// `&lt;address&gt;&lt;N&gt;.dat`. The probe is
-	// advisory: it does not reserve the name, the file is created later by the
-	// atomic writer, and a directory this user cannot write or a non-regular
-	// leaf is rejected there rather than silently replaced. Run the tool in a
+	// Collision policy: an occupied name advances to the next
+	// `PREFIX&lt;N&gt;.dat` for the rest of the run (foundKeys is never
+	// reset), so multiple-address mode cannot overwrite an earlier match
+	// or an operator file. With no `-o` the stored prefix is empty, so the
+	// fallback name is `&lt;N&gt;.dat` rather than
+	// `&lt;address&gt;&lt;N&gt;.dat`. The probe is advisory: it does not
+	// reserve the name, the file is created later by the atomic writer,
+	// and a directory this user cannot write or a non-regular leaf is
+	// rejected there rather than silently replaced. Run the tool in a
 	// directory no other user can create names in.
 	for (;;)
 	{
@@ -550,9 +552,10 @@ ParseResult ParseArguments (int argc, char ** argv, Options & options)
 		{ "output", required_argument, nullptr, 'o' }, { "multiplymode", no_argument, nullptr, 'm' },
 		{ nullptr, 0, nullptr, 0 } };
 
-	// The Windows getopt shim stops at the first operand instead of permuting
-	// like glibc. Move one leading pattern after the options so the documented
-	// "vain pattern [options]" form works on every platform.
+	// The Windows getopt shim stops at the first operand instead of
+	// permuting like glibc. Move one leading pattern after the options so
+	// the documented "vain pattern [options]" form works on every
+	// platform.
 	if (argc > 2 && argv[1] && argv[1][0] != '-' && argv[1][0] != '\0')
 	{
 		char * pattern = argv[1];
@@ -606,12 +609,13 @@ int main (int argc, char * argv[])
 {
 	// Exit status: 0 for help and for a written key; 1 for every rejected
 	// argument, unsupported signature type, invalid regular expression,
-	// thread-start, path-inspection or write failure. With no operands the usage
-	// text goes to stdout and the status is 0; that differs from the other key
-	// tools, which treat a missing operand as a usage error on stderr with status
-	// 1. Option and pattern errors use stderr so stdout stays limited to progress
-	// and result lines, with one historical exception: the "not correct
-	// prefix" diagnostic for a non-base32 pattern is still printed to stdout.
+	// thread-start, path-inspection or write failure. With no operands the
+	// usage text goes to stdout and the status is 0; that differs from the
+	// other key tools, which treat a missing operand as a usage error on
+	// stderr with status 1. Option and pattern errors use stderr so stdout
+	// stays limited to progress and result lines, with one historical
+	// exception: the "not correct prefix" diagnostic for a non-base32
+	// pattern is still printed to stdout.
 	if (argc < 2)
 	{
 		usage ();
@@ -623,9 +627,9 @@ int main (int argc, char * argv[])
 	if (parseResult == ParseResult::Help) return 0;
 	if (parseResult == ParseResult::Error) return 1;
 
-	// getopt_long permutes arguments, so the pattern is whatever positional
-	// argument is left; this preserves the historical "vain pattern [options]"
-	// form and also accepts options before the pattern.
+	// getopt_long permutes arguments, so the pattern is whatever
+	// positional argument is left; this preserves the historical "vain
+	// pattern [options]" form and also accepts options before the pattern.
 	if (optind >= argc)
 	{
 		usage ();

@@ -4,10 +4,10 @@
  *
  * openi2pd: keygen.
  *
- * Creates a random I2P destination key file, defaulting to ED25519-SHA512 and
- * accepting a signature type by name or number. It prints the destination hash
- * and wipes the serialized private key after writing.
- *
+ * Creates a random I2P destination key file, defaulting to
+ * ED25519-SHA512 and accepting a signature type by name or number. It
+ * prints the destination hash and wipes the serialized private key
+ * after writing.
  */
 
 #include <fstream>
@@ -24,15 +24,16 @@
 int main (int argc, char * argv[])
 {
 	constexpr const char * usage = "Usage: keygen <filename> [<signature type>]\n";
-	// Exit status is part of the CLI contract: 0 for help or a written key, 1
-	// for a usage error, 2 for an unusable signature type (including a
-	// generator this build cannot provide) and 3 for a failed write. Every
-	// check runs before the first byte reaches the destination, so a rejected
-	// invocation leaves no half-written or empty key file behind.
-	//
-	// A leading '-' is refused as a filename: it is indistinguishable from an
-	// option in this invocation and in any shell command the operator reuses,
-	// and it is what keeps "keygen --help" from creating a file named --help.
+	// Exit status is part of the CLI contract: 0 for help or a written
+	// key, 1 for a usage error, 2 for an unusable signature type
+	// (including a generator this build cannot provide) and 3 for a failed
+	// write. Every check runs before the first byte reaches the
+	// destination, so a rejected invocation leaves no half-written or
+	// empty key file behind.
+	// A leading '-' is refused as a filename: it is indistinguishable from
+	// an option in this invocation and in any shell command the operator
+	// reuses, and it is what keeps "keygen --help" from creating a file
+	// named --help.
 	if (argc == 2 && (std::string_view (argv[1]) == "-h" || std::string_view (argv[1]) == "--help"))
 	{
 		std::cout << usage;

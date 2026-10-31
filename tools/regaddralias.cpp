@@ -4,9 +4,9 @@
  *
  * openi2pd: regaddralias.
  *
- * Builds an alias registration record linking a new destination to an old one,
- * signing with both private-key files. The output carries `action=adddest`,
- * both destinations and both signatures.
+ * Builds an alias registration record linking a new destination to an
+ * old one, signing with both private-key files. The output carries
+ * `action=adddest`, both destinations and both signatures.
  *
  */
 
@@ -72,12 +72,13 @@ int main (int argc, char * argv[])
 	};
 
 	// Two signatures over one accumulated record, in this order:
-	// `#oldsig=` covers `name=newdest#!action=adddest#olddest=&lt;old&gt;`, and the
-	// final `#sig=` covers that plus the old signature. The new destination key
-	// signs last because it is the key the record claims; the old key proves
-	// the operator still controls the previous address. Both key files are read
-	// before any output is produced, so a missing or empty key file cannot leave
-	// a partially signed record on stdout.
+	// `#oldsig=` covers
+	// `name=newdest#!action=adddest#olddest=&lt;old&gt;`, and the final
+	// `#sig=` covers that plus the old signature. The new destination key
+	// signs last because it is the key the record claims; the old key
+	// proves the operator still controls the previous address. Both key
+	// files are read before any output is produced, so a missing or empty
+	// key file cannot leave a partially signed record on stdout.
 	appendSignature (oldKeys, "#oldsig=");
 	appendSignature (newKeys, "#sig=");
 	std::cout << out.str () << std::endl;

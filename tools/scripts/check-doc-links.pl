@@ -4,9 +4,9 @@
 #
 # openi2pd: check doc links.
 #
-# Static checker for relative links, images and heading anchors in the Markdown
-# documentation tree. It never fetches external URLs and exits non-zero when a
-# local target or anchor is missing.
+# Static checker for relative links, images and heading anchors in the
+# Markdown documentation tree. It never fetches external URLs and exits
+# non-zero when a local target or anchor is missing.
 #
 
 use strict;
@@ -24,8 +24,9 @@ my $root      = abs_path($docs) or die "cannot resolve $docs\n";
 my $repo_root = abs_path( File::Spec->catdir( $root, File::Spec->updir ) );
 die "cannot resolve repository root\n" unless defined $repo_root;
 # catdir appends a trailing separator. The stripped value is therefore a
-# directory prefix ending in the platform separator, which index() can compare
-# against so a sibling such as "<repo>-old" is not accepted as inside the tree.
+# directory prefix ending in the platform separator, which index() can
+# compare against so a sibling such as "<repo>-old" is not accepted as
+# inside the tree.
 my $repo_prefix = File::Spec->catdir( $repo_root, 'x' );
 $repo_prefix =~ s/x\z//;
 my @files;
@@ -66,9 +67,10 @@ sub anchors_for {
     my %seen_slug;
     my $add_heading = sub {
         my ($heading) = @_;
-        # MkDocs honours an explicit trailing {#id} as well as the derived
-        # slug, and appends -1, -2 ... to repeated headings. Both forms must be
-        # recorded or a valid link is reported missing.
+        # MkDocs honours an explicit trailing {#id} as well as the
+        # derived slug, and appends -1, -2 ... to repeated headings.
+        # Both forms must be recorded or a valid link is reported
+        # missing.
         my $explicit;
         if ( $heading =~ s/\s*\{#([A-Za-z0-9_.:-]+)\}\s*\z// ) {
             $explicit = $1;
@@ -99,8 +101,9 @@ sub anchors_for {
             && $previous !~ /^\s*(?:[-*+]|\d+\.)\s/
             && $previous !~ /^\s*\|/ )
         {
-            # A setext underline promotes the previous line to a heading. Table
-            # rows and list items share the '-' character and are excluded.
+            # A setext underline promotes the previous line to a
+            # heading. Table rows and list items share the '-' character
+            # and are excluded.
             $add_heading->($previous);
             $previous = '';
             next;

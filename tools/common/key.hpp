@@ -4,9 +4,9 @@
  *
  * openi2pd: key.
  *
- * Maps numeric or textual signature type names to I2P SigningKeyType values
- * and back to stable display names for the tools. Empty, unknown or
- * out-of-range values return std::nullopt instead of a sentinel.
+ * Maps numeric or textual signature type names to I2P SigningKeyType
+ * values and back to stable display names for the tools. Empty, unknown
+ * or out-of-range values return std::nullopt instead of a sentinel.
  *
  */
 
@@ -54,12 +54,13 @@ inline constexpr std::array<SigTypeName, 16> SIG_TYPE_NAMES { {
 /**
  * @brief returns stable string representation of a signing key type
  *
- * The first table entry with a matching type wins, so an alias must never be
- * listed before the canonical I2P spelling: `ECDSA-P256` therefore renders as
- * `ECDSA-P256` while `ECDSA-SHA256-P256` stays an accepted input alias. The
- * result is display and diagnostic text (`keygen` and `b33address` print it)
- * and is never parsed back, so an unnamed type degrades to
- * `unknown: &lt;number&gt;` instead of failing.
+ * The first table entry with a matching type wins, so an alias must
+ * never be listed before the canonical I2P spelling: `ECDSA-P256`
+ * therefore renders as `ECDSA-P256` while `ECDSA-SHA256-P256` stays an
+ * accepted input alias. The result is display and diagnostic text
+ * (`keygen` and `b33address` print it) and is never parsed back, so an
+ * unnamed type degrades to `unknown: &lt;number&gt;` instead of
+ * failing.
  */
 inline std::string SigTypeToName (uint16_t keytype)
 {
@@ -71,17 +72,17 @@ inline std::string SigTypeToName (uint16_t keytype)
 }
 
 /**
- * A registration record is `name=destination#!sig=...`; a name carrying a
- * separator, control byte or whitespace could forge extra fields. The check is
- * deliberately about the record grammar, not DNS policy.
+ * A registration record is `name=destination#!sig=...`; a name carrying
+ * a separator, control byte or whitespace could forge extra fields. The
+ * check is deliberately about the record grammar, not DNS policy.
  *
- * Rejecting `=` and `#` keeps the signed prefix parseable, and refusing every
- * byte at or below space plus DEL keeps it one LF-terminated line on both
- * platforms. Backslash is refused because the registration services accept
- * escaped fields. Length is capped at 255 bytes; the DNS/label rules a
- * registration service applies are a separate, later decision. Callers run
- * this before loading a key file, so a malformed name is refused without
- * touching the key.
+ * Rejecting `=` and `#` keeps the signed prefix parseable, and refusing
+ * every byte at or below space plus DEL keeps it one LF-terminated line
+ * on both platforms. Backslash is refused because the registration
+ * services accept escaped fields. Length is capped at 255 bytes; the
+ * DNS/label rules a registration service applies are a separate, later
+ * decision. Callers run this before loading a key file, so a malformed
+ * name is refused without touching the key.
  */
 inline bool IsValidRecordName (std::string_view name)
 {
@@ -94,8 +95,9 @@ inline bool IsValidRecordName (std::string_view name)
 }
 
 /**
- * Parse a complete decimal integer inside a closed range. Trailing characters,
- * overflow and an empty input are rejected instead of silently truncated.
+ * Parse a complete decimal integer inside a closed range. Trailing
+ * characters, overflow and an empty input are rejected instead of
+ * silently truncated.
  */
 template <typename TValue> std::optional<TValue> ParseBounded (std::string_view text, TValue minimum, TValue maximum)
 {
@@ -107,24 +109,24 @@ template <typename TValue> std::optional<TValue> ParseBounded (std::string_view 
 	return value;
 }
 
-/// @brief Resolve a numeric or textual signature-type spelling to its wire value.
-///
-/// Two spellings are accepted because the CLI historically allowed both. A
-/// one- or two-character argument is a decimal type number, bounded to the
-/// highest type this build names; anything longer is a name, matched
-/// case-insensitively after folding '_' to '-' (so `eddsa_sha512_ed25519` and
-/// `EDDSA-SHA512-ED25519` are the same alias). The table intentionally keeps
-/// alternate short names such as `ECDSA-P256` next to the canonical I2P name.
-///
-/// @return The signing key type, or std::nullopt for an unknown, empty or
-///         out-of-range spelling; callers report a CLI error instead of
+/// @brief Resolve a numeric or textual signature-type spelling to its
+/// wire value.
+/// Two spellings are accepted because the CLI historically allowed
+/// both. A one- or two-character argument is a decimal type number,
+/// bounded to the highest type this build names; anything longer is a
+/// name, matched case-insensitively after folding '_' to '-' (so
+/// `eddsa_sha512_ed25519` and `EDDSA-SHA512-ED25519` are the same
+/// alias). The table intentionally keeps alternate short names such as
+/// `ECDSA-P256` next to the canonical I2P name.
+/// @return The signing key type, or std::nullopt for an unknown, empty
+/// or out-of-range spelling; callers report a CLI error instead of
 ///         silently defaulting.
 ///
 /// The one/two-character gate is part of the contract: `7` and `11` are
-/// numbers, while a zero-padded `007` is treated as a name and refused. Numeric
-/// input stops at `RED25519-SHA512`, so the remaining wire values stay
-/// unnameable here rather than being accepted for a key this build cannot
-/// generate or label.
+/// numbers, while a zero-padded `007` is treated as a name and refused.
+/// Numeric input stops at `RED25519-SHA512`, so the remaining wire
+/// values stay unnameable here rather than being accepted for a key
+/// this build cannot generate or label.
 inline std::optional<uint16_t> NameToSigType (std::string_view keyname)
 {
 	if (keyname.empty ()) return std::nullopt;

@@ -4,10 +4,11 @@
 #
 # openi2pd: i2pdctl.
 #
-# Command-line client for the I2PControl JSON-RPC service with exec, raw_info
-# and info subcommands. It uses core Perl modules plus a shell-free openssl
-# s_client fallback. HTTPS is the default; an explicit http:// URL is a
-# documented loopback-only opt-in that sends the password in cleartext.
+# Command-line client for the I2PControl JSON-RPC service with exec,
+# raw_info and info subcommands. It uses core Perl modules plus a
+# shell-free openssl s_client fallback. HTTPS is the default; an
+# explicit http:// URL is a documented loopback-only opt-in that sends
+# the password in cleartext.
 #
 
 use strict;
@@ -32,15 +33,16 @@ my $VERSION = '2.0';
 my $DEFAULT_URL      = 'https://127.0.0.1:7650/';
 my $DEFAULT_PASSWORD = 'itoopie';
 
-# Keep request/response bounds well below anything that could exhaust memory.
+# Keep request/response bounds well below anything that could exhaust
+# memory.
 my $MAX_REQUEST  = 1_048_576;    # bytes of JSON sent to I2PControl
 my $MAX_RESPONSE = 1_048_576;    # bytes of HTTP body accepted from I2PControl
 my $TIMEOUT      = 30;           # seconds for HTTP/TLS exchanges
 
-# HTTPS backend selection.  "auto" prefers IO::Socket::SSL (through HTTP::Tiny)
-# and falls back to the shell-free openssl s_client transport.  "openssl"
-# forces the fallback for diagnostics and tests.  There is deliberately no
-# value that permits cleartext.
+# HTTPS backend selection.  "auto" prefers IO::Socket::SSL (through
+# HTTP::Tiny) and falls back to the shell-free openssl s_client
+# transport.  "openssl" forces the fallback for diagnostics and tests.
+# There is deliberately no value that permits cleartext.
 my $TLS_BACKEND = exists $ENV{I2PDCTL_TLS_BACKEND}
     ? lc $ENV{I2PDCTL_TLS_BACKEND}
     : 'auto';
@@ -90,9 +92,9 @@ my @STATUS = (
 
 my @SUFFIXES = qw(B KB MB GB TB);
 
-# ---------------------------------------------------------------------------
+#-----------------------------------------------------------------------
 # Help and diagnostics
-# ---------------------------------------------------------------------------
+#-----------------------------------------------------------------------
 
 sub _main_usage {
     return "usage: i2pdctl [-h] {exec,raw_info,info} ...\n";
@@ -167,9 +169,9 @@ sub _usage_error {
     return 2;
 }
 
-# ---------------------------------------------------------------------------
+#-----------------------------------------------------------------------
 # Small helpers
-# ---------------------------------------------------------------------------
+#-----------------------------------------------------------------------
 
 sub _humanize_size {
     my ($size, $precision) = @_;
@@ -181,13 +183,15 @@ sub _humanize_size {
         $index++;
     }
 
-    # Python's round() keeps the integer type when no division happened, so
-    # bytes below the first threshold are printed without a decimal part.
+    # Python's round() keeps the integer type when no division happened,
+    # so bytes below the first threshold are printed without a decimal
+    # part.
     return int($size) . $SUFFIXES[$index] if $index == 0;
 
     my $text = sprintf("%.${precision}f", $size);
-    # Match Python's str(round(value, precision)): keep one decimal place for
-    # integral values ("2.0"), but drop redundant trailing zeros ("1.5").
+    # Match Python's str(round(value, precision)): keep one decimal
+    # place for integral values ("2.0"), but drop redundant trailing
+    # zeros ("1.5").
     $text =~ s/0+\z//;
     $text =~ s/\.\z/.0/;
 
@@ -242,11 +246,12 @@ sub _quote_string {
     return "'" . $text . "'";
 }
 
-# Server-controlled values are written to the operator's terminal. Escape
-# control, format and non-ASCII characters so a spoofed or compromised
-# I2PControl endpoint cannot inject ANSI/bidi sequences, cause encoding
-# warnings, or forge extra output lines through MITM (TLS verification is
-# intentionally disabled for the self-signed certificate).
+# Server-controlled values are written to the operator's terminal.
+# Escape control, format and non-ASCII characters so a spoofed or
+# compromised I2PControl endpoint cannot inject ANSI/bidi sequences,
+# cause encoding warnings, or forge extra output lines through MITM (TLS
+# verification is intentionally disabled for the self-signed
+# certificate).
 sub _display {
     my ($value) = @_;
     return '' if !defined $value || ref $value;
@@ -256,8 +261,9 @@ sub _display {
     return $text;
 }
 
-# A small, deterministic pretty printer close to Python's pprint for the flat
-# results produced by I2PControl.  Sorted keys make output stable across runs.
+# A small, deterministic pretty printer close to Python's pprint for the
+# flat results produced by I2PControl.  Sorted keys make output stable
+# across runs.
 sub _pretty {
     my ($value) = @_;
 
@@ -289,9 +295,9 @@ sub _pretty {
 
 sub _json_encode {
     my ($value) = @_;
-    # ascii keeps the body byte-identical whatever the process locale is;
-    # canonical output makes -j replies reproducible. The depth cap bounds a
-    # hostile or accidental deep structure.
+    # ascii keeps the body byte-identical whatever the process locale
+    # is; canonical output makes -j replies reproducible. The depth cap
+    # bounds a hostile or accidental deep structure.
     return JSON::PP->new->ascii->canonical->max_depth(64)->encode($value);
 }
 
@@ -300,14 +306,15 @@ sub _json_decode {
     return JSON::PP->new->utf8->max_depth(128)->decode($text);
 }
 
-# ---------------------------------------------------------------------------
+#-----------------------------------------------------------------------
 # URL, HTTP and TLS transport
-# ---------------------------------------------------------------------------
+#-----------------------------------------------------------------------
 
 sub _parse_url {
     my ($url) = @_;
     return undef unless defined $url && length $url;
-    # I2PControl URLs are tiny; refuse pathological input before parsing.
+    # I2PControl URLs are tiny; refuse pathological input before
+    # parsing.
     return undef if length($url) > 4096;
     return undef if $url =~ /[\x00-\x20\x7f]/;
 
@@ -316,8 +323,8 @@ sub _parse_url {
     $scheme = lc $scheme;
     return undef unless $scheme eq 'http' || $scheme eq 'https';
 
-    # Reject credentials in the URL: they would end up in logs and are not
-    # used by I2PControl authentication.
+    # Reject credentials in the URL: they would end up in logs and are
+    # not used by I2PControl authentication.
     return undef if $rest =~ /\@/;
 
     my ($authority, $tail) = $rest =~ m{\A([^/?#]*)(.*)\z}s;
@@ -334,9 +341,9 @@ sub _parse_url {
         return undef;
     }
 
-    # Never accept a host that openssl could mistake for an option, and keep
-    # the authority unambiguous.  I2PControl is a local service, so refusing
-    # odd spellings is safer than guessing.
+    # Never accept a host that openssl could mistake for an option, and
+    # keep the authority unambiguous.  I2PControl is a local service, so
+    # refusing odd spellings is safer than guessing.
     return undef if length($host) > 253;
     return undef if $host =~ /\A[.-]/ || $host =~ /[.-]\z/;
 
@@ -364,10 +371,10 @@ sub _which {
     my ($name) = @_;
     $name .= $Config{_exe}
         if length $Config{_exe} && $name !~ /\Q$Config{_exe}\E\z/;
-    # Only absolute PATH entries are searched. A relative or empty entry could
-    # resolve to whatever sits in the current directory, and the result is
-    # executed without a shell, so the resolved absolute path is returned
-    # instead of the bare name.
+    # Only absolute PATH entries are searched. A relative or empty entry
+    # could resolve to whatever sits in the current directory, and the
+    # result is executed without a shell, so the resolved absolute path
+    # is returned instead of the bare name.
     for my $directory (File::Spec->path) {
         next unless length $directory && File::Spec->file_name_is_absolute($directory);
         my $candidate = File::Spec->catfile($directory, $name);
@@ -379,9 +386,10 @@ sub _which {
 }
 
 sub _http_tiny_can_ssl {
-    # can_ssl() reports whether IO::Socket::SSL/Net::SSLeay are usable. The
-    # call is wrapped so an unusable stack is treated as "no TLS available"
-    # instead of aborting, which lets the openssl s_client fallback take over.
+    # can_ssl() reports whether IO::Socket::SSL/Net::SSLeay are usable.
+    # The call is wrapped so an unusable stack is treated as "no TLS
+    # available" instead of aborting, which lets the openssl s_client
+    # fallback take over.
     my $can = eval { HTTP::Tiny->can_ssl() };
     return $can ? 1 : 0;
 }
@@ -441,8 +449,9 @@ sub _dechunk {
 
         $output .= substr($body, 0, $size);
         $body = substr($body, $size);
-        # RFC 7230 requires CRLF after every non-final chunk.  Accept a bare LF
-        # but reject anything else instead of resynchronising on garbage.
+        # RFC 7230 requires CRLF after every non-final chunk.  Accept a
+        # bare LF but reject anything else instead of resynchronising on
+        # garbage.
         die "Error: malformed chunked response from I2PControl\n"
             unless $body =~ s/\A\r?\n//;
     }
@@ -453,8 +462,8 @@ sub _dechunk {
 sub _parse_http_response {
     my ($raw) = @_;
 
-    # Start at the status line so anything printed before it is skipped instead
-    # of being treated as part of the body or the headers.
+    # Start at the status line so anything printed before it is skipped
+    # instead of being treated as part of the body or the headers.
     my $start = index($raw, 'HTTP/');
     die "Error: invalid HTTP response from I2PControl\n" if $start < 0;
     my $response = substr($raw, $start);
@@ -504,8 +513,9 @@ sub _reap_child {
     return unless $pid;
 
     # A successful exchange still needs a bounded wait, then escalation:
-    # s_client can linger after the response, and a stuck child would otherwise
-    # keep the command alive. Polling keeps the wait interruptible and bounded.
+    # s_client can linger after the response, and a stuck child would
+    # otherwise keep the command alive. Polling keeps the wait
+    # interruptible and bounded.
     my $result = waitpid($pid, POSIX::WNOHANG());
     return if $result == -1;
 
@@ -540,8 +550,9 @@ sub _stderr_hint {
     my ($line) = grep { /\S/ } split /\r?\n/, $stderr;
     return undef unless defined $line;
     # OpenSSL may colorize diagnostics. Strip complete CSI/OSC sequences
-    # before replacing remaining control characters, otherwise the printable
-    # "[31m" residue reaches the operator and breaks stable diagnostics.
+    # before replacing remaining control characters, otherwise the
+    # printable "[31m" residue reaches the operator and breaks stable
+    # diagnostics.
     $line =~ s/\e\[[0-?]*[ -\/]*[@-~]//g;
     $line =~ s/\e\][^\a]*(?:\a|\e\\)//g;
     $line =~ s/[\x00-\x1f\x7f\x80-\x9f]+/ /g;
@@ -558,8 +569,8 @@ sub _https_post {
         . "refusing to use cleartext\n"
         unless defined $openssl;
 
-    # OpenSSL expects bracketed IPv6 literals for -connect; the Host header is
-    # bracketed separately in _build_request.
+    # OpenSSL expects bracketed IPv6 literals for -connect; the Host
+    # header is bracketed separately in _build_request.
     my $authority = $url->{host} =~ /:/
         ? "[$url->{host}]:$url->{port}"
         : "$url->{host}:$url->{port}";
@@ -582,9 +593,10 @@ sub _https_post {
 
         print {$writer} $request
             or die "Error: failed to send request to openssl s_client\n";
-        # The request is buffered by PerlIO; close the pipe to flush it and
-        # signal EOF.  -ign_eof makes s_client keep reading the response
-        # instead of shutting the TLS connection down on stdin EOF.
+        # The request is buffered by PerlIO; close the pipe to flush it
+        # and signal EOF.  -ign_eof makes s_client keep reading the
+        # response instead of shutting the TLS connection down on stdin
+        # EOF.
         close $writer
             or die "Error: failed to send request to openssl s_client\n";
         undef $writer;
@@ -658,8 +670,9 @@ sub _https_post {
 sub _post_raw {
     my ($url_text, $body) = @_;
 
-    # Content-Length and the request bound are byte counts.  JSON::PP emits
-    # ASCII, but a caller-supplied string may still carry the UTF-8 flag.
+    # Content-Length and the request bound are byte counts.  JSON::PP
+    # emits ASCII, but a caller-supplied string may still carry the
+    # UTF-8 flag.
     if (utf8::is_utf8($body)) {
         utf8::encode($body);
     }
@@ -674,18 +687,20 @@ sub _post_raw {
 
     if ($url->{scheme} eq 'https'
         && ($tls_backend eq 'openssl' || !_http_tiny_can_ssl())) {
-        # Either IO::Socket::SSL/Net::SSLeay are absent or the operator forced
-        # the fallback.  Use openssl s_client with no verification: this
-        # matches the old Python script's ssl._create_unverified_context() for
-        # i2pd's self-signed certificate.  The fallback is shell-free
-        # (argument list, no interpolation) and never sends the request over a
-        # cleartext connection.
+        # Either IO::Socket::SSL/Net::SSLeay are absent or the operator
+        # forced the fallback.  Use openssl s_client with no
+        # verification: this matches the old Python script's
+        # ssl._create_unverified_context() for i2pd's self-signed
+        # certificate.  The fallback is shell-free (argument list, no
+        # interpolation) and never sends the request over a cleartext
+        # connection.
         ($status, $content) = _https_post($url, $body);
     }
     else {
-        # HTTP::Tiny's proxy option semantics vary by core version. Remove
-        # proxy variables in a localized environment so credentials never
-        # travel through an operator- or environment-selected proxy.
+        # HTTP::Tiny's proxy option semantics vary by core version.
+        # Remove proxy variables in a localized environment so
+        # credentials never travel through an operator- or
+        # environment-selected proxy.
         local %ENV = %ENV;
         delete @ENV{qw(http_proxy HTTP_PROXY https_proxy HTTPS_PROXY
                        all_proxy ALL_PROXY no_proxy NO_PROXY)};
@@ -699,8 +714,9 @@ sub _post_raw {
             https_proxy => undef,
         );
 
-        # HTTP::Tiny's timeout is per socket operation.  A peer that trickles
-        # bytes can keep resetting it, so bound the whole exchange as well.
+        # HTTP::Tiny's timeout is per socket operation.  A peer that
+        # trickles bytes can keep resetting it, so bound the whole
+        # exchange as well.
         my $response;
         my $posted = eval {
             local $SIG{ALRM} = sub {
@@ -757,9 +773,9 @@ sub _post_json {
     return wantarray ? ($decoded, $raw) : $decoded;
 }
 
-# ---------------------------------------------------------------------------
+#-----------------------------------------------------------------------
 # I2PControl session
-# ---------------------------------------------------------------------------
+#-----------------------------------------------------------------------
 
 sub _token {
     my ($control) = @_;
@@ -800,9 +816,9 @@ sub _rpc {
     return _post_json($control->{url}, $message);
 }
 
-# ---------------------------------------------------------------------------
+#-----------------------------------------------------------------------
 # Commands
-# ---------------------------------------------------------------------------
+#-----------------------------------------------------------------------
 
 sub _cmd_exec {
     my ($control, $arguments) = @_;
@@ -853,7 +869,8 @@ sub _cmd_exec {
         1;
     };
     if (!$decode_ok || ref $parameters ne 'HASH') {
-        # Preserved message and exit status from the Python implementation.
+        # Preserved message and exit status from the Python
+        # implementation.
         print "Error: parameters should be a valid JSON object\n";
         return 0;
     }
@@ -1052,9 +1069,9 @@ sub _cmd_info {
     return 0;
 }
 
-# ---------------------------------------------------------------------------
+#-----------------------------------------------------------------------
 # Entry point
-# ---------------------------------------------------------------------------
+#-----------------------------------------------------------------------
 
 sub main {
     my @arguments = @_;
@@ -1075,8 +1092,9 @@ sub main {
     my $password = exists $ENV{I2PCONTROL_PASSWORD}
         ? $ENV{I2PCONTROL_PASSWORD}
         : $DEFAULT_PASSWORD;
-    # %ENV values are bytes. Decode valid UTF-8 so JSON::PP->ascii does not
-    # turn a non-ASCII password into a different Latin-1 code point sequence.
+    # %ENV values are bytes. Decode valid UTF-8 so JSON::PP->ascii does
+    # not turn a non-ASCII password into a different Latin-1 code point
+    # sequence.
     utf8::decode($url);
     utf8::decode($password);
 

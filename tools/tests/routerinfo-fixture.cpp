@@ -5,9 +5,9 @@
  * openi2pd: routerinfo fixture generator.
  *
  * Creates a signed RouterInfo for the native tool smoke test using the
- * production LocalRouterInfo serializer. Its documentation-range endpoints
- * and signing identity are test-only; the identity is ephemeral.
- *
+ * production LocalRouterInfo serializer. Its documentation-range
+ * endpoints and signing identity are test-only; the identity is
+ * ephemeral.
  */
 
 #include <array>

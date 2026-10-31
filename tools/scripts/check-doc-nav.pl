@@ -4,9 +4,9 @@
 #
 # openi2pd: check doc nav.
 #
-# Static MkDocs publication check: navigation targets and theme assets must
-# exist, no HTML documentation may remain, and every Markdown file must be
-# navigable or explicitly allowlisted. It never runs MkDocs.
+# Static MkDocs publication check: navigation targets and theme assets
+# must exist, no HTML documentation may remain, and every Markdown file
+# must be navigable or explicitly allowlisted. It never runs MkDocs.
 
 use strict;
 use warnings;
@@ -21,9 +21,9 @@ die "missing $config\n" unless -f $config;
 
 open my $fh, '<', $config or die "open $config: $!\n";
 my ( @nav, $in_nav );
-# Only the indented `- Title: page.md` values matter; the nav block ends at
-# the next top-level key. Indentation depth is ignored so nested sections are
-# covered without needing a YAML parser.
+# Only the indented `- Title: page.md` values matter; the nav block ends
+# at the next top-level key. Indentation depth is ignored so nested
+# sections are covered without needing a YAML parser.
 while ( my $line = <$fh> ) {
     $in_nav = 1 if $line =~ /^nav:\s*$/;
     last if $in_nav && $line =~ /^\S/ && $line !~ /^nav:/;

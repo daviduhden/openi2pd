@@ -4,8 +4,8 @@
  *
  * openi2pd: b33address.
  *
- * Reads a base64 destination from stdin and prints its b33 address and the
- * current daily store hash. Only ED25519-SHA512 and RED25519-SHA512
+ * Reads a base64 destination from stdin and prints its b33 address and
+ * the current daily store hash. Only ED25519-SHA512 and RED25519-SHA512
  * destinations can be blinded; the input length is bounded.
  *
  */
@@ -33,16 +33,17 @@ int main (int argc, char * argv[])
 		std::cerr << "Usage: b33address < base64-destination" << std::endl;
 		return 1;
 	}
-	// Contract: the prompt goes to stderr so stdout carries only the two data
-	// lines a pipeline can parse, and only the first line of stdin is read (a
-	// pasted multi-address input uses the first destination, not an error).
-	// Exit status is 0 for `--help` or a derived address, 1 for a usage error,
-	// oversized input, non-printable byte, undecodable base64 or a
-	// non-blindable key.
+	// Contract: the prompt goes to stderr so stdout carries only the two
+	// data lines a pipeline can parse, and only the first line of stdin is
+	// read (a pasted multi-address input uses the first destination, not
+	// an error). Exit status is 0 for `--help` or a derived address, 1 for
+	// a usage error, oversized input, non-printable byte, undecodable
+	// base64 or a non-blindable key.
 	//
-	// base64 input, b33 and store key output, 11->11 only. Read one byte at a
-	// time so the cap is enforced before allocation and an embedded NUL can
-	// never silently truncate the value the way getline()+string_view did.
+	// base64 input, b33 and store key output, 11->11 only. Read one byte
+	// at a time so the cap is enforced before allocation and an embedded
+	// NUL can never silently truncate the value the way
+	// getline()+string_view did.
 	constexpr size_t MAX_BASE64_INPUT = 4096;
 	std::cerr << "Waiting for base64 from stdin..." << std::endl;
 	std::string base64;

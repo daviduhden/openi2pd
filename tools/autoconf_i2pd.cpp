@@ -5,9 +5,9 @@
  * openi2pd: autoconf i2pd.
  *
  * Interactive i2pd.conf generator. It prompts in Russian or English for
- * clearnet or Yggdrasil-only mode and the individual paths and options, then
- * writes the assembled configuration to a chosen file. Terminal input is
- * length-bounded.
+ * clearnet or Yggdrasil-only mode and the individual paths and options,
+ * then writes the assembled configuration to a chosen file. Terminal
+ * input is length-bounded.
  *
  */
 
@@ -41,8 +41,9 @@ inline void ClearInputLine (void) noexcept
 	if (std::cin.eof ()) std::cin.clear (std::ios::goodbit);
 }
 
-// Read a single whitespace-delimited token with an explicit upper bound.
-// Returns false on EOF or when the token does not fit in MAX_INPUT_LENGTH.
+// Read a single whitespace-delimited token with an explicit upper
+// bound. Returns false on EOF or when the token does not fit in
+// MAX_INPUT_LENGTH.
 inline bool ReadToken (std::string & token)
 {
 	token.clear ();
@@ -81,22 +82,23 @@ namespace PreInitConfigs
 }
 
 // Functions
-/// @brief Read a yes/no answer from the interactive configuration wizard.
+/// @brief Read a yes/no answer from the interactive configuration
+/// wizard.
+/// The answer is read as a whitespace-delimited token rather than one
+/// byte because the localized catalogs advertise multibyte answers:
+/// Spanish `s`/`sí` and Russian `д`/`да`. Accepting only ASCII would
+/// make the advertised prompt unusable in those languages. An
+/// unrecognized token re-asks in a loop (never recurses, so a scripted
+/// stdin cannot exhaust the stack); EOF keeps the safe default of "no".
 ///
-/// The answer is read as a whitespace-delimited token rather than one byte
-/// because the localized catalogs advertise multibyte answers: Spanish `s`/`sí`
-/// and Russian `д`/`да`. Accepting only ASCII would make the advertised prompt
-/// unusable in those languages. An unrecognized token re-asks in a loop
-/// (never recurses, so a scripted stdin cannot exhaust the stack); EOF keeps
-/// the safe default of "no".
-///
-/// @return true for y/Y/s/S/д/Д, false for n/N/н/Н, EOF or input failure.
+/// @return true for y/Y/s/S/д/Д, false for n/N/н/Н, EOF or input
+/// failure.
 bool AskYN (void) noexcept
 {
 	for (;;)
 	{
-		// Read a token rather than one byte: the localized Spanish and Russian
-		// answers are multibyte UTF-8 sequences.
+		// Read a token rather than one byte: the localized Spanish and
+		// Russian answers are multibyte UTF-8 sequences.
 		std::string answ;
 		std::cout << i2p::i18n::tr (" ? (y/n) ");
 		if (!ReadToken (answ))
@@ -219,7 +221,8 @@ int main (void)
 			ASK_BOOL ("Use ipv4?", "ipv4");
 			ASK_BOOL ("Use full CFL format for date in logs? Default is only time.", "logclftime");
 			ASK_BOOL ("Use daemon mode?", "daemon");
-// TODO: - to constexpr or just const and use this const in text formating
+// TODO: - to constexpr or just const and use this const in text
+// formating
 #define ASK_TEXT(A, B)                                                                                                 \
 	{                                                                                                                  \
 		std::cout << i2p::i18n::tr (A) << std::endl;                                                                   \
@@ -269,9 +272,9 @@ int main (void)
 		return 1;
 	}
 	const auto count = static_cast<size_t> (std::cin.gcount ());
-	// gcount() also counts the extracted delimiter, which is not stored in the
-	// buffer. Construct from the actual C string so a trailing NUL never
-	// becomes part of the path or truncates it silently.
+	// gcount() also counts the extracted delimiter, which is not stored in
+	// the buffer. Construct from the actual C string so a trailing NUL
+	// never becomes part of the path or truncates it silently.
 	std::string outFileName (nameBuffer.data (), ::strnlen (nameBuffer.data (), count));
 	while (!outFileName.empty () && (outFileName.back () == '\n' || outFileName.back () == '\r'))
 		outFileName.pop_back ();
@@ -281,8 +284,8 @@ int main (void)
 		return 1;
 	}
 	if (outFileName.empty ()) outFileName = "i2pd_.conf";
-	// Publish the configuration through the same staged writer the daemon uses
-	// instead of truncating an existing file in place.
+	// Publish the configuration through the same staged writer the daemon
+	// uses instead of truncating an existing file in place.
 	if (!i2p::fs::AtomicWrite (outFileName, conf.str ()))
 	{
 		std::cerr << "cannot write " << outFileName << std::endl;

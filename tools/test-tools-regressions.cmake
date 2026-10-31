@@ -3,10 +3,10 @@
 #
 # openi2pd: test tools regressions.
 #
-# Deterministic per-tool CTest regressions for key types, offline/b33 keys,
-# registration records and firewall CLI errors. Each run is time-limited;
-# network access, external interpreters and long-running searches are avoided,
-# and ephemeral keys are removed.
+# Deterministic per-tool CTest regressions for key types, offline/b33
+# keys, registration records and firewall CLI errors. Each run is
+# time-limited; network access, external interpreters and long-running
+# searches are avoided, and ephemeral keys are removed.
 #
 
 if(NOT DEFINED TOOLS_DIR)
@@ -36,8 +36,9 @@ function(restrict_secret path)
 endfunction()
 
 # Run one tool. TOOL_STDIN, when set to a non-empty path in the caller's
-# scope, is connected to the process stdin. A per-process timeout keeps a
-# regression from hanging a CI job even if a tool starts waiting for input.
+# scope, is connected to the process stdin. A per-process timeout keeps
+# a regression from hanging a CI job even if a tool starts waiting for
+# input.
 function(run_tool name expect_success)
   if(DEFINED TOOL_STDIN AND NOT "${TOOL_STDIN}" STREQUAL "")
     execute_process(
@@ -75,8 +76,9 @@ function(run_tool name expect_success)
   set(LAST_TOOL_RESULT "${result}" PARENT_SCOPE)
 endfunction()
 
-# Run one tool whose stdout is written to a file. Used for byte-exact binary
-# comparisons so CMake never has to carry arbitrary bytes in a variable.
+# Run one tool whose stdout is written to a file. Used for byte-exact
+# binary comparisons so CMake never has to carry arbitrary bytes in a
+# variable.
 function(run_tool_to_file name output_file expect_success)
   execute_process(
     COMMAND "${TOOLS_DIR}/${name}${EXE}" ${ARGN}
@@ -103,8 +105,8 @@ function(run_tool_to_file name output_file expect_success)
   set(LAST_TOOL_RESULT "${result}" PARENT_SCOPE)
 endfunction()
 
-# Messages may be written to either stream; the tools are inconsistent about
-# it, and both are part of the observable CLI contract.
+# Messages may be written to either stream; the tools are inconsistent
+# about it, and both are part of the observable CLI contract.
 function(assert_output_matches pattern description)
   if(NOT "${LAST_TOOL_OUTPUT}${LAST_TOOL_ERROR}" MATCHES "${pattern}")
     fail("${description}: output does not match /${pattern}/\nstdout:\n${LAST_TOOL_OUTPUT}\nstderr:\n${LAST_TOOL_ERROR}")
@@ -185,9 +187,9 @@ function(assert_file_hex path expected description)
   endif()
 endfunction()
 
-# ---------------------------------------------------------------------------
+# --------------------------------------------------------------------
 # keyinfo: several signing-key types and every output option.
-# ---------------------------------------------------------------------------
+# --------------------------------------------------------------------
 run_tool(keygen TRUE ed25519.keys EDDSA-SHA512-ED25519)
 assert_output_contains("Signature type: ED25519-SHA512" "keygen ED25519")
 restrict_secret("${WORK}/ed25519.keys")
@@ -283,9 +285,9 @@ file(WRITE "${WORK}/empty.keys" "")
 run_tool(keyinfo FALSE empty.keys)
 assert_output_contains("bad key file format" "keyinfo empty file")
 
-# ---------------------------------------------------------------------------
+# --------------------------------------------------------------------
 # b33address: Ed25519/RedDSA input, stdin, and invalid-input paths.
-# ---------------------------------------------------------------------------
+# --------------------------------------------------------------------
 file(WRITE "${WORK}/ed25519.dest" "${ED_DEST}\n")
 set(TOOL_STDIN "${WORK}/ed25519.dest")
 run_tool(b33address TRUE)
@@ -330,12 +332,12 @@ run_tool(b33address FALSE)
 unset(TOOL_STDIN)
 assert_output_contains("input too long" "b33address rejects oversized stdin")
 
-# ---------------------------------------------------------------------------
+# --------------------------------------------------------------------
 # b33offlinekeys: bounded day counts, output round trip and error paths.
-# ---------------------------------------------------------------------------
+# --------------------------------------------------------------------
 # 30 days rather than 1: the outer offline signature expires at the next
-# midnight for a one-day batch, so parsing it later in the same test run would
-# be a (very unlikely) midnight race.
+# midnight for a one-day batch, so parsing it later in the same test run
+# would be a (very unlikely) midnight race.
 run_tool(b33offlinekeys TRUE b33-batch.dat ed25519.keys 30)
 assert_output_matches("Address [a-z2-7]+\\.b32\\.i2p, 30 days" "b33offlinekeys output")
 assert_file_nonempty("${WORK}/b33-batch.dat" "b33offlinekeys output file")
@@ -376,9 +378,10 @@ assert_output_contains("bad keys file format" "b33offlinekeys malformed key file
 run_tool(b33offlinekeys FALSE bad.dat empty.keys 1)
 assert_output_contains("bad keys file format" "b33offlinekeys empty key file")
 
-# ---------------------------------------------------------------------------
-# offlinekeys: defaults, limits, output parseability and invalid arguments.
-# ---------------------------------------------------------------------------
+# --------------------------------------------------------------------
+# offlinekeys: defaults, limits, output parseability and invalid
+# arguments.
+# --------------------------------------------------------------------
 run_tool(offlinekeys TRUE offline-batch.dat ed25519.keys EDDSA-SHA512-ED25519 30)
 assert_output_contains("Signature type: ED25519-SHA512" "offlinekeys signature type")
 assert_output_contains("Days: 30" "offlinekeys explicit days")
@@ -422,10 +425,10 @@ assert_output_contains("bad keys file format" "offlinekeys empty key file")
 run_tool(offlinekeys FALSE "${WORK}" ed25519.keys EDDSA-SHA512-ED25519 1)
 assert_output_contains("Can't create file" "offlinekeys unwritable output")
 
-# ---------------------------------------------------------------------------
-# regaddr / regaddr_3ld / regaddralias: records must verify with verifyhost
-# and tampering must be rejected.
-# ---------------------------------------------------------------------------
+# --------------------------------------------------------------------
+# regaddr / regaddr_3ld / regaddralias: records must verify with
+# verifyhost and tampering must be rejected.
+# --------------------------------------------------------------------
 run_tool(keygen TRUE old.keys EDDSA-SHA512-ED25519)
 restrict_secret("${WORK}/old.keys")
 run_tool(keygen TRUE new.keys EDDSA-SHA512-ED25519)
@@ -526,10 +529,11 @@ assert_output_contains("Usage: verifyhost" "verifyhost without arguments")
 run_tool(verifyhost FALSE "not-a-record")
 assert_output_contains("Invalid destination record" "verifyhost malformed record")
 
-# ---------------------------------------------------------------------------
-# famtool: certificate generation, name-length boundary and invalid options.
-# No RouterInfo is available, so the positive sign/verify path is not run.
-# ---------------------------------------------------------------------------
+# --------------------------------------------------------------------
+# famtool: certificate generation, name-length boundary and invalid
+# options. No RouterInfo is available, so the positive sign/verify path
+# is not run.
+# --------------------------------------------------------------------
 run_tool(famtool TRUE -h)
 assert_output_contains("usage:" "famtool -h")
 assert_output_contains("-g -n" "famtool help generation syntax")
@@ -583,9 +587,10 @@ assert_output_contains("unexpected argument" "famtool unexpected positional argu
 run_tool(famtool FALSE -g -n testfam -c "${WORK}/missing-dir/testfam.crt" -k "${WORK}/testfam.pem")
 assert_output_contains("cannot open" "famtool unwritable certificate path")
 
-# ---------------------------------------------------------------------------
-# i2pbase64: text, UTF-8, control bytes, embedded NULs and malformed input.
-# ---------------------------------------------------------------------------
+# --------------------------------------------------------------------
+# i2pbase64: text, UTF-8, control bytes, embedded NULs and malformed
+# input.
+# --------------------------------------------------------------------
 file(WRITE "${WORK}/text.bin" "hello i2pd tools\n")
 file(READ "${WORK}/text.bin" TEXT_HEX HEX)
 run_tool(i2pbase64 TRUE text.bin)
@@ -616,8 +621,9 @@ file(WRITE "${WORK}/unicode.b64" "${UNICODE_B64}")
 run_tool_to_file(i2pbase64 "${WORK}/unicode.out" TRUE -d unicode.b64)
 assert_file_hex("${WORK}/unicode.out" "${UNICODE_HEX}" "i2pbase64 UTF-8 round trip")
 
-# Control bytes exercise the binary path; NUL is covered separately below
-# because CMake cannot reliably carry a NUL inside a script string.
+# Control bytes exercise the binary path; NUL is covered separately
+# below because CMake cannot reliably carry a NUL inside a script
+# string.
 string(ASCII 1 2 3 7 8 11 12 31 127 BINARY_TEXT)
 file(WRITE "${WORK}/binary.bin" "${BINARY_TEXT}")
 file(READ "${WORK}/binary.bin" BINARY_HEX HEX)
@@ -639,7 +645,8 @@ file(READ "${WORK}/spaced.expected" SPACED_HEX HEX)
 run_tool_to_file(i2pbase64 "${WORK}/spaced.out" TRUE -d spaced.b64)
 assert_file_hex("${WORK}/spaced.out" "${SPACED_HEX}" "i2pbase64 ignores ASCII whitespace")
 
-# The I2P alphabet uses '-' and '~' where standard base64 uses '+' and '/'.
+# The I2P alphabet uses '-' and '~' where standard base64 uses '+' and
+# '/'.
 file(WRITE "${WORK}/i2p-dash.b64" "-A==")
 run_tool_to_file(i2pbase64 "${WORK}/i2p-dash.bin" TRUE -d i2p-dash.b64)
 assert_file_hex("${WORK}/i2p-dash.bin" "f8" "i2pbase64 decodes the I2P '-' digit")
@@ -681,9 +688,10 @@ assert_output_contains("usage:" "i2pbase64 rejects extra arguments")
 run_tool(i2pbase64 FALSE -x text.bin)
 assert_output_contains("usage:" "i2pbase64 rejects unknown options")
 
-# ---------------------------------------------------------------------------
-# vain: bounds and invalid arguments only. A valid search is never started.
-# ---------------------------------------------------------------------------
+# --------------------------------------------------------------------
+# vain: bounds and invalid arguments only. A valid search is never
+# started.
+# --------------------------------------------------------------------
 run_tool(vain TRUE)
 assert_output_contains("vain pattern" "vain without arguments prints usage")
 run_tool(vain TRUE --help)
@@ -732,18 +740,19 @@ run_tool(vain FALSE -o)
 assert_output_contains("Undefined argument" "vain missing -o argument")
 run_tool(vain FALSE --bogus example)
 
-# ---------------------------------------------------------------------------
+# --------------------------------------------------------------------
 # x25519 / b33address: strict option surfaces.
-# ---------------------------------------------------------------------------
+# --------------------------------------------------------------------
 run_tool(x25519 FALSE --bogus)
 assert_output_contains("Unknown option" "x25519 rejects unknown option")
 run_tool(b33address TRUE --help)
 assert_output_contains("Usage: b33address" "b33address help does not read stdin")
 
-# ---------------------------------------------------------------------------
+# --------------------------------------------------------------------
 # autoconf_i2pd: deterministic non-interactive transcript. It writes a
-# configuration file below WORK and never touches the real data directory.
-# ---------------------------------------------------------------------------
+# configuration file below WORK and never touches the real data
+# directory.
+# --------------------------------------------------------------------
 # Exactly one answer per prompt: AskYN rejects a '-', so a well-formed
 # transcript is required to keep the save name aligned with the prompt.
 file(WRITE "${WORK}/autoconf.in"

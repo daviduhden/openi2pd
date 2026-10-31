@@ -4,10 +4,10 @@
  *
  * openi2pd: routerinfo.
  *
- * Reads RouterInfo files and prints their NTCP2/SSU2 addresses, optionally
- * rendered as outbound firewall rules for iptables, nftables, Windows or pf.
- * It deduplicates endpoints, requires public numeric addresses, and only
- * writes text; no firewall is modified.
+ * Reads RouterInfo files and prints their NTCP2/SSU2 addresses,
+ * optionally rendered as outbound firewall rules for iptables,
+ * nftables, Windows or pf. It deduplicates endpoints, requires public
+ * numeric addresses, and only writes text; no firewall is modified.
  *
  */
 
@@ -121,10 +121,10 @@ bool PrintRules (const std::string & hash,
 	{
 		auto transport = TransportOf (*address);
 		if (!transport) continue;
-		// SSU2 addresses may be introducer-only: the serialized RouterInfo has
-		// neither a host nor a direct port for them. They are valid RouterInfo
-		// data but cannot produce a direct outbound rule, so skip them instead of
-		// treating the whole file as malformed.
+		// SSU2 addresses may be introducer-only: the serialized RouterInfo
+		// has neither a host nor a direct port for them. They are valid
+		// RouterInfo data but cannot produce a direct outbound rule, so skip
+		// them instead of treating the whole file as malformed.
 		if (address->host.is_unspecified () || address->port <= 0) continue;
 
 		auto endpoint = i2p::tools::firewall::MakeEndpoint (
@@ -167,26 +167,26 @@ bool PrintRules (const std::string & hash,
 
 /// @brief Render RouterInfo addresses or outbound firewall rules.
 ///
-/// Two modes, chosen by `-f`/`--firewall=`: an address listing (default), or
-/// firewall text for iptables (legacy fragment or full command), nftables,
-/// Windows PowerShell or OpenBSD pf. Nothing is executed; the tool only writes
-/// text.
+/// Two modes, chosen by `-f`/`--firewall=`: an address listing
+/// (default), or firewall text for iptables (legacy fragment or full
+/// command), nftables, Windows PowerShell or OpenBSD pf. Nothing is
+/// executed; the tool only writes text.
 ///
-/// The whole run is buffered and written to stdout only after every input file
-/// has been parsed. That is deliberate: a generator that leaves a partial rule
-/// set on stdout after a later file fails can be piped straight into a shell
-/// and half-applied. Errors always go to stderr, so `routerinfo ... > rules`
-/// yields a file that is complete or empty.
+/// The whole run is buffered and written to stdout only after every
+/// input file has been parsed. That is deliberate: a generator that
+/// leaves a partial rule set on stdout after a later file fails can be
+/// piped straight into a shell and half-applied. Errors always go to
+/// stderr, so `routerinfo ... > rules` yields a file that is complete
+/// or empty.
+/// Option contracts: `-p` affects the listing only and is ignored with
+/// a backend; `-y` needs `-6` when generating rules because Yggdrasil
+/// is IPv6; nftables options require `--firewall=nftables`; `-f` cannot
+/// be combined with an explicit backend. Duplicate endpoints across
+/// files are collapsed by family/transport/address/port.
 ///
-/// Option contracts: `-p` affects the listing only and is ignored with a
-/// backend; `-y` needs `-6` when generating rules because Yggdrasil is IPv6;
-/// nftables options require `--firewall=nftables`; `-f` cannot be combined with
-/// an explicit backend. Duplicate endpoints across files are collapsed by
-/// family/transport/address/port.
-///
-/// @return 0 on success (including an empty, already-diagnosed rule set),
-///         1 on usage error, unreadable input, invalid endpoint, conflicting
-///         options or more than 4096 distinct endpoints.
+/// @return 0 on success (including an empty, already-diagnosed rule
+/// set), 1 on usage error, unreadable input, invalid endpoint,
+/// conflicting options or more than 4096 distinct endpoints.
 int main (int argc, char * argv[])
 {
 	Options options;
@@ -303,8 +303,9 @@ int main (int argc, char * argv[])
 	std::set<std::string> seen;
 	size_t total = 0;
 	bool inputError = false;
-	// Buffer the whole run. A generator that leaves partial rules on stdout
-	// after a later file fails can be piped into a shell and half-applied.
+	// Buffer the whole run. A generator that leaves partial rules on
+	// stdout after a later file fails can be piped into a shell and
+	// half-applied.
 	std::ostringstream output;
 	for (int index = optind; index < argc; ++index)
 	{

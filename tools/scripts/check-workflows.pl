@@ -4,10 +4,11 @@
 #
 # openi2pd: check workflows.
 #
-# Compile-free contract for manual build/test workflows and the dedicated
-# pull-request agent-maintenance gate: no other triggers, no continue-on-error, and every
-# executing ctest invocation must fail on an empty selection. It never
-# dispatches, parses YAML with a third-party module or runs a workflow.
+# Compile-free contract for manual build/test workflows and the
+# dedicated pull-request agent-maintenance gate: no other triggers, no
+# continue-on-error, and every executing ctest invocation must fail on
+# an empty selection. It never dispatches, parses YAML with a
+# third-party module or runs a workflow.
 #
 
 use strict;
@@ -36,8 +37,8 @@ for my $file (@files) {
     close $fh;
     $checked++;
 
-    # Join shell/command continuations so a ctest invocation split across
-    # lines is checked as one logical command.
+    # Join shell/command continuations so a ctest invocation split
+    # across lines is checked as one logical command.
     ( my $joined = $text ) =~ s/\\\n\s*/ /g;
     $joined =~ s/`\n\s*/ /g;
     my @lines = split /\n/, $joined;
@@ -72,8 +73,8 @@ for my $file (@files) {
         if ( $line =~ /^\s*continue-on-error\s*:/ ) {
             push @errors, "$file: continue-on-error is forbidden";
         }
-        # Only executing invocations are constrained. The two exclusions are
-        # query-only forms: -N lists tests without running them and
+        # Only executing invocations are constrained. The two exclusions
+        # are query-only forms: -N lists tests without running them and
         # --print-labels only reports the label inventory.
         if (   $line =~ /(?:^|\s)ctest\s+--/
             && $line !~ /\s-N(?:\s|$)/

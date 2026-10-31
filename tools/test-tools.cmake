@@ -4,8 +4,9 @@
 # openi2pd: test tools.
 #
 # Offline CTest smoke test for the native tools: key generation, base64
-# round-trip, host-record signing/verification and routerinfo firewall CLI
-# validation. It runs in a temporary work directory and needs no network.
+# round-trip, host-record signing/verification and routerinfo firewall
+# CLI validation. It runs in a temporary work directory and needs no
+# network.
 #
 
 if(NOT DEFINED TOOLS_DIR)
@@ -90,8 +91,9 @@ if(NOT LAST_TOOL_OUTPUT MATCHES "--firewall=iptables"
 endif()
 
 # Generate a valid, signed RouterInfo with documentation-range v4/v6
-# endpoints through the production LocalRouterInfo serializer. The helper
-# creates ephemeral keys in memory and writes only the public RouterInfo.
+# endpoints through the production LocalRouterInfo serializer. The
+# helper creates ephemeral keys in memory and writes only the public
+# RouterInfo.
 execute_process(COMMAND "${ROUTERINFO_FIXTURE_HELPER}" "${WORK}/valid-routerinfo.dat"
   WORKING_DIRECTORY "${WORK}"
   RESULT_VARIABLE fixture_result
@@ -101,9 +103,9 @@ if(NOT fixture_result EQUAL 0 OR NOT EXISTS "${WORK}/valid-routerinfo.dat")
   message(FATAL_ERROR "RouterInfo fixture helper failed (${fixture_result}): ${fixture_output}${fixture_error}")
 endif()
 
-# Positive CLI coverage for IPv6 address selection and both legacy/explicit
-# iptables output families. TOOL-012 intentionally keeps IPv4 -f bytes stable
-# and prefixes IPv6 commands with ip6tables.
+# Positive CLI coverage for IPv6 address selection and both
+# legacy/explicit iptables output families. TOOL-012 intentionally keeps
+# IPv4 -f bytes stable and prefixes IPv6 commands with ip6tables.
 run_tool(routerinfo -6 -p valid-routerinfo.dat)
 foreach(expected
     "NTCP2: 192.0.2.10:12345"
@@ -295,8 +297,8 @@ if(nft_chain_without_nft EQUAL 0)
   message(FATAL_ERROR "routerinfo accepted nftables options with a non-nft backend")
 endif()
 
-# A malformed RouterInfo must be rejected before hash/address access in every
-# backend, including the legacy -f path.
+# A malformed RouterInfo must be rejected before hash/address access in
+# every backend, including the legacy -f path.
 file(WRITE "${WORK}/malformed-routerinfo.dat" "not a RouterInfo\n")
 foreach(firewall_mode iptables nftables windows pf)
   execute_process(COMMAND "${TOOLS_DIR}/routerinfo${EXE}"
@@ -313,7 +315,8 @@ if(malformed_legacy EQUAL 0)
   message(FATAL_ERROR "routerinfo accepted a malformed RouterInfo with legacy -f")
 endif()
 
-# vain: help and validation paths only; never start a search in the smoke test.
+# vain: help and validation paths only; never start a search in the
+# smoke test.
 run_tool(vain --help)
 if(NOT LAST_TOOL_OUTPUT MATCHES "--multiplymode" OR NOT LAST_TOOL_OUTPUT MATCHES "--threads")
   message(FATAL_ERROR "vain help is incomplete")

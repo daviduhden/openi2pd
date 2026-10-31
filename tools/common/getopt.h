@@ -4,9 +4,9 @@
  *
  * openi2pd: getopt.
  *
- * Declares the Windows/MSVC getopt compatibility layer and its `struct option`
- * and argument flags; POSIX builds include the system &lt;getopt.h&gt;. It is a
- * compatibility shim, not a new CLI grammar.
+ * Declares the Windows/MSVC getopt compatibility layer and its `struct
+ * option` and argument flags; POSIX builds include the system
+ * &lt;getopt.h&gt;. It is a compatibility shim, not a new CLI grammar.
  *
  */
 
@@ -15,17 +15,18 @@
 
 /*
  * Tools keep their historical getopt/getopt_long command lines on Unix.
- * Windows/MSVC has no &lt;getopt.h&gt;; tools/common/getopt.cpp provides the small
- * subset used by the maintained tools. This is deliberately a compatibility
- * layer, not a new CLI grammar.
+ * Windows/MSVC has no &lt;getopt.h&gt;; tools/common/getopt.cpp
+ * provides the small subset used by the maintained tools. This is
+ * deliberately a compatibility layer, not a new CLI grammar.
  *
- * Contract callers must not assume more than this subset: processing stops at
- * the first non-option operand (no glibc-style permutation), long options match
- * exactly with no GNU abbreviation, `optional_argument` is not implemented, and
- * `optind`/`optarg`/`opterr`/`optopt` plus the internal cursor are process-wide
- * state. Parsing is therefore neither reentrant nor thread-safe, and a tool
- * that accepts the pattern before its options must reorder `argv` itself
- * (`vain` does this in `ParseArguments`).
+ * Contract callers must not assume more than this subset: processing
+ * stops at the first non-option operand (no glibc-style permutation),
+ * long options match exactly with no GNU abbreviation,
+ * `optional_argument` is not implemented, and
+ * `optind`/`optarg`/`opterr`/`optopt` plus the internal cursor are
+ * process-wide state. Parsing is therefore neither reentrant nor
+ * thread-safe, and a tool that accepts the pattern before its options
+ * must reorder `argv` itself (`vain` does this in `ParseArguments`).
  */
 #if defined(_WIN32) || defined(I2PD_TOOLS_GETOPT_TEST)
 

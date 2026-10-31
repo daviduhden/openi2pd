@@ -4,9 +4,9 @@
  *
  * openi2pd: file.
  *
- * Bounded whole-file reads (16 MiB default), owner-only non-following writes on
- * POSIX and secure buffer wiping for the tools. Read failures are returned as
- * values rather than exceptions or partial buffers.
+ * Bounded whole-file reads (16 MiB default), owner-only non-following
+ * writes on POSIX and secure buffer wiping for the tools. Read failures
+ * are returned as values rather than exceptions or partial buffers.
  *
  */
 
@@ -47,8 +47,9 @@ namespace i2p::tools
 inline constexpr size_t MAX_TOOL_FILE_SIZE = 16 * 1024 * 1024; // 16 MiB
 
 /**
-	 * Read a complete file with an explicit size cap. Returns a value instead
-	 * of throwing or leaving a partially initialized buffer on short reads.
+	 * Read a complete file with an explicit size cap. Returns a value
+	 * instead of throwing or leaving a partially initialized buffer on
+	 * short reads.
 	 */
 inline i2p::expected<std::vector<uint8_t>, std::string> ReadFile (
 	const std::string & path, size_t maxSize = MAX_TOOL_FILE_SIZE)
@@ -91,8 +92,8 @@ inline bool WriteFile (const std::string & path, std::span<const uint8_t> data)
 	return true;
 #else
 	// Key and vanity outputs are private by default. O_NOFOLLOW avoids
-	// redirecting a write through a planted symlink; the caller still treats
-	// an existing non-regular leaf as a normal write failure.
+	// redirecting a write through a planted symlink; the caller still
+	// treats an existing non-regular leaf as a normal write failure.
 	int fd = ::open (path.c_str (), O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC | O_NOFOLLOW, 0600);
 	if (fd < 0) return false;
 	(void)::fchmod (fd, S_IRUSR | S_IWUSR);

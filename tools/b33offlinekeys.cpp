@@ -4,10 +4,10 @@
  *
  * openi2pd: b33offlinekeys.
  *
- * Generates a daily b33 offline-key batch from a destination key file and
- * writes the combined online/b33 key file that the router is given. The batch
- * is bounded by the 16-bit day count, and plaintext private material is
- * cleansed.
+ * Generates a daily b33 offline-key batch from a destination key file
+ * and writes the combined online/b33 key file that the router is given.
+ * The batch is bounded by the 16-bit day count, and plaintext private
+ * material is cleansed.
  *
  */
 
@@ -47,18 +47,19 @@ struct WipeGuard
 
 /// @brief Build the daily b33 offline-key batch for a destination.
 ///
-/// Layout (unchanged): `version || identHash || numKeys || per-day records`,
-/// where each record is `expires || transientSigType || transientPublicKey ||
-/// signature by the blinded key || transientPrivateKey`. Day `i` expires at the
-/// end of that UTC day, and the batch day count is bounded by the two-byte
-/// count field, so the allocation is `header + days * keyLen` and stays small.
+/// Layout (unchanged): `version || identHash || numKeys || per-day
+/// records`, where each record is `expires || transientSigType ||
+/// transientPublicKey || signature by the blinded key ||
+/// transientPrivateKey`. Day `i` expires at the end of that UTC day,
+/// and the batch day count is bounded by the two-byte count field, so
+/// the allocation is `header + days * keyLen` and stays small.
+/// Every transient key is blinded and signed by the destination's
+/// blinded signing key, which is what lets a b33 address rotate daily
+/// while the destination private key stays offline. Intermediate
+/// private material is wiped through WipeGuard on every failure path.
 ///
-/// Every transient key is blinded and signed by the destination's blinded
-/// signing key, which is what lets a b33 address rotate daily while the
-/// destination private key stays offline. Intermediate private material is
-/// wiped through WipeGuard on every failure path.
-///
-/// @param keys Destination private keys; must not itself hold offline keys.
+/// @param keys Destination private keys; must not itself hold offline
+/// keys.
 /// @param transientSigType Signature type for the daily transient keys.
 /// @param days 1..65535 days to cover.
 /// @return Packed batch, or an empty vector when any step fails.
@@ -173,7 +174,8 @@ int main (int argc, char * argv[])
 		days = *parsed;
 	}
 
-	// The outer layer of an encrypted LeaseSet is built on blinded keys, which are RedDSA
+	// The outer layer of an encrypted LeaseSet is built on blinded keys,
+	// which are RedDSA
 	const i2p::data::SigningKeyType type = i2p::data::SIGNING_KEY_TYPE_REDDSA_SHA512_ED25519;
 	auto b33Keys = createB33OfflineKeys (keys, type, days);
 	if (b33Keys.empty ())
@@ -181,7 +183,8 @@ int main (int argc, char * argv[])
 		std::cout << "Can't create b33 offline keys" << std::endl;
 		return 7;
 	}
-	// the transient of the inner LeaseSet lasts exactly as long as the batch
+	// the transient of the inner LeaseSet lasts exactly as long as the
+	// batch
 	const uint32_t expires
 		= (i2p::util::GetSecondsSinceEpoch () / i2p::data::SECONDS_PER_DAY + days) * i2p::data::SECONDS_PER_DAY;
 	auto onlineKeys = keys.CreateOfflineKeys (i2p::data::SIGNING_KEY_TYPE_EDDSA_SHA512_ED25519, expires);

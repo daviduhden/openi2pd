@@ -4,10 +4,10 @@
  *
  * openi2pd: regaddr 3ld.
  *
- * Implements the three-step third-level-domain registration workflow: step1
- * creates the subdomain record, step2 counter-signs with the old destination,
- * and step3 signs with the new key. Each step prints the resulting record to
- * stdout.
+ * Implements the three-step third-level-domain registration workflow:
+ * step1 creates the subdomain record, step2 counter-signs with the old
+ * destination, and step3 signs with the new key. Each step prints the
+ * resulting record to stdout.
  *
  */
 
@@ -47,9 +47,9 @@ i2p::expected<std::string, std::string> ReadText (const char * path)
 	if (!input) return i2p::unexpected (input.error ());
 	std::string text (reinterpret_cast<const char *> (input->data ()), input->size ());
 	i2p::tools::Wipe (*input);
-	// A step file is exactly one record. Trailing CR/LF is a line terminator,
-	// not signed data; an embedded newline would emit two records from one
-	// invocation and never verify on the other platform.
+	// A step file is exactly one record. Trailing CR/LF is a line
+	// terminator, not signed data; an embedded newline would emit two
+	// records from one invocation and never verify on the other platform.
 	//
 	// Only trailing terminators are stripped: leading text is part of the
 	// record and would change the signed bytes, so a step file must not be
@@ -68,17 +68,17 @@ i2p::expected<std::string, std::string> ReadText (const char * path)
 	 * Sign everything accumulated so far, then append the marker and the
 	 * base64 signature.
 	 *
-	 * Call order is the wire contract: each step signs the complete previous
-	 * record, so step2 covers step1 plus `#date=`/`#olddest=`/`#oldname=` and
-	 * step3 covers the step2 record including `#oldsig=`. Appending a field
-	 * after a signature therefore invalidates that signature instead of
-	 * silently changing what was signed.
-	 *
-	 * @return Always true today. `PrivateKeys::Sign` is still a void interface,
-	 *         so a provider that cannot sign is not observable here and would
-	 *         produce a zero-filled signature field; a fallible signing result
-	 *         (tracked as CRY-236) must be propagated through this return value
-	 *         rather than ignored.
+	 * Call order is the wire contract: each step signs the complete
+	 * previous record, so step2 covers step1 plus
+	 * `#date=`/`#olddest=`/`#oldname=` and step3 covers the step2 record
+	 * including `#oldsig=`. Appending a field after a signature therefore
+	 * invalidates that signature instead of silently changing what was
+	 * signed.
+	 * @return Always true today. `PrivateKeys::Sign` is still a void
+	 * interface, so a provider that cannot sign is not observable here and
+	 * would produce a zero-filled signature field; a fallible signing
+	 * result (tracked as CRY-236) must be propagated through this return
+	 * value rather than ignored.
 	 */
 bool AppendSignature (std::ostringstream & out, i2p::data::PrivateKeys & keys, const char * marker)
 {

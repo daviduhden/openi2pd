@@ -5,8 +5,9 @@
 # openi2pd: validate branding.
 #
 # Validates the branding asset inventory, SVG vector constraints, PNG
-# dimensions, palette definitions and documentation mirror hashes. It only
-# reads files and exits non-zero for every missing or non-conforming asset.
+# dimensions, palette definitions and documentation mirror hashes. It
+# only reads files and exits non-zero for every missing or
+# non-conforming asset.
 #
 
 use strict;
@@ -103,9 +104,10 @@ for my $rel (@svgs) {
 sub png_size {
     my ($path) = @_;
     open my $fh, '<:raw', $path or return;
-    # Read only the signature and the first chunk header: IHDR must be the
-    # first chunk, and its payload starts with two big-endian 32-bit sizes.
-    # Parsing the header instead of trusting a tool keeps the check offline.
+    # Read only the signature and the first chunk header: IHDR must be
+    # the first chunk, and its payload starts with two big-endian 32-bit
+    # sizes. Parsing the header instead of trusting a tool keeps the
+    # check offline.
     read( $fh, my $sig, 8 );
     return unless defined $sig && $sig eq "\x89PNG\r\n\x1a\n";
     read( $fh, my $ihdr, 8 );
@@ -140,8 +142,9 @@ sub ico_sizes {
     open my $fh, '<:raw', $path or return;
     # ICONDIR: reserved(0), type(1 = icon), image count. Each 16-byte
     # ICONDIRENTRY starts with width and height as single bytes, where 0
-    # encodes 256. Only square entries are recorded; the expected lists below
-    # compare the complete sorted set, so an added or dropped size fails.
+    # encodes 256. Only square entries are recorded; the expected lists
+    # below compare the complete sorted set, so an added or dropped size
+    # fails.
     read( $fh, my $header, 6 );
     return unless defined $header && length($header) == 6;
     my ( $reserved, $type, $count ) = unpack( 'vvv', $header );
@@ -208,9 +211,9 @@ if ( -f $original ) {
     }
 }
 
-# Palette centralization: every hex value in a platform file must appear in
-# assets/branding/colors.md. This catches an Android/TUI/CSS palette drifting
-# away from the canonical source without requiring a build.
+# Palette centralization: every hex value in a platform file must appear
+# in assets/branding/colors.md. This catches an Android/TUI/CSS palette
+# drifting away from the canonical source without requiring a build.
 my %canonical;
 my $colors_rel  = 'assets/branding/colors.md';
 my $colors_path = File::Spec->catfile( $root, split m{/}, $colors_rel );
@@ -281,8 +284,9 @@ check_palette_file( 'libi2pd_client/HTTPProxy.cpp',
 sub normalize_hex {
     my ($hex) = @_;
     # Android vectors and SVG fills may spell the same opaque colour as
-    # #AARRGGBB. Collapse an opaque FF alpha prefix onto the 6-digit token
-    # that colors.md declares; a non-opaque value stays distinct and fails.
+    # #AARRGGBB. Collapse an opaque FF alpha prefix onto the 6-digit
+    # token that colors.md declares; a non-opaque value stays distinct
+    # and fails.
     $hex = uc $hex;
     $hex =~ s/^#//;
     if ( length($hex) == 8 && substr( $hex, 0, 2 ) eq 'FF' ) {
@@ -291,9 +295,9 @@ sub normalize_hex {
     return "#$hex";
 }
 
-# Brand SVG and Android vector fills must also use the canonical palette. Do
-# not apply this to generic UI action icons: they use #FF000000 plus a theme
-# tint, not a brand colour.
+# Brand SVG and Android vector fills must also use the canonical
+# palette. Do not apply this to generic UI action icons: they use
+# #FF000000 plus a theme tint, not a brand colour.
 sub check_svg_palette {
     my ($rel) = @_;
     my $path = File::Spec->catfile( $root, split m{/}, $rel );
@@ -357,7 +361,8 @@ for my $rel (
     check_android_vector_palette($rel);
 }
 
-# The MkDocs mirror must not silently drift from the canonical SVG masters.
+# The MkDocs mirror must not silently drift from the canonical SVG
+# masters.
 for my $name (
     qw(logo.svg symbol.svg logo-horizontal.svg logo-monochrome.svg logo-light.svg logo-dark.svg
     logo.png symbol.png logo-original.png)

@@ -4,17 +4,18 @@
  *
  * openi2pd: vanity.
  *
- * Provides the SHA-256 compression primitives, identity/nonce offsets and
- * fixed sizes used by the vanity nonce search. It contains no mutable state
- * and preserves the upstream key format.
+ * Provides the SHA-256 compression primitives, identity/nonce offsets
+ * and fixed sizes used by the vanity nonce search. It contains no
+ * mutable state and preserves the upstream key format.
  *
  */
 
 #pragma once
 
-// SHA-256 primitives and constants used by the vanity generator. The nonce
-// search, the hashing steps and the persisted key format are unchanged from
-// the upstream tool; this header deliberately contains no mutable state.
+// SHA-256 primitives and constants used by the vanity generator. The
+// nonce search, the hashing steps and the persisted key format are
+// unchanged from the upstream tool; this header deliberately contains
+// no mutable state.
 
 #include <array>
 #include <cstddef>
@@ -49,10 +50,13 @@ namespace i2p::tools::vanity
 	 */
 inline constexpr std::size_t IDENTITY_LEN = 391;
 
-/** Byte mutated by the search: the nonce is carried in the key buffer. */
+/**
+ * Byte mutated by the search: the nonce is carried in the key
+ * buffer. */
 inline constexpr std::size_t NONCE_OFFSET = 320;
 
-/** A base32 destination hash is 52 characters; 53 bytes with the NUL. */
+/**
+/** A base32 destination hash is 52 characters, plus a NUL byte. */
 inline constexpr std::size_t ADDRESS_LEN = 52;
 
 inline constexpr std::array<uint8_t, 64> LAST_BLOCK = {

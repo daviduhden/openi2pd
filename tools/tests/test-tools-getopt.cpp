@@ -4,10 +4,10 @@
  *
  * openi2pd: test tools getopt.
  *
- * Host-side regression for the Windows/MSVC getopt compatibility shim. It is
- * built with I2PD_TOOLS_GETOPT_TEST on POSIX so the same implementation that
- * MSVC uses is exercised without a Windows runner. It does not touch the
- * network, files or the router.
+ * Host-side regression for the Windows/MSVC getopt compatibility shim.
+ * It is built with I2PD_TOOLS_GETOPT_TEST on POSIX so the same
+ * implementation that MSVC uses is exercised without a Windows runner.
+ * It does not touch the network, files or the router.
  */
 
 #include <cassert>
@@ -21,18 +21,18 @@ namespace
 /**
  * Reset the shim's process-wide parser state between cases.
  *
- * `optarg`, `optind`, `optopt` and `opterr` are globals, so each case must start
- * from this state or it inherits the previous case's position. `opterr = 0`
- * keeps expected diagnostics out of the test output. The `index` parameter only
- * resets the long-option index that `getopt_long` writes.
- *
- * The shim also keeps an internal position inside the current argument, which
- * this helper cannot reach: a case is only isolated when it consumes every
- * option it starts, as the cases below do. A case that abandoned a clustered
- * argument such as `-ab` after the first letter would poison the next one.
- *
- * Cases pass writable `char` arrays because the implementation permutes `argv`
- * and hands out pointers into it through `optarg`.
+ * `optarg`, `optind`, `optopt` and `opterr` are globals, so each case
+ * must start from this state or it inherits the previous case's
+ * position. `opterr = 0` keeps expected diagnostics out of the test
+ * output. The `index` parameter only resets the long-option index that
+ * `getopt_long` writes.
+ * The shim also keeps an internal position inside the current argument,
+ * which this helper cannot reach: a case is only isolated when it
+ * consumes every option it starts, as the cases below do. A case that
+ * abandoned a clustered argument such as `-ab` after the first letter
+ * would poison the next one.
+ * Cases pass writable `char` arrays because the implementation permutes
+ * `argv` and hands out pointers into it through `optarg`.
  */
 void Reset (int & index)
 {

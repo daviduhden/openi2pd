@@ -4,9 +4,9 @@
  *
  * openi2pd: offlinekeys.
  *
- * Creates an offline-signature key file from a destination's private keys,
- * with a selectable signature type and an expiry of 1 to 3650 days. Input and
- * output key buffers are wiped after use.
+ * Creates an offline-signature key file from a destination's private
+ * keys, with a selectable signature type and an expiry of 1 to 3650
+ * days. Input and output key buffers are wiped after use.
  *
  */
 
@@ -35,24 +35,25 @@ bool ParseDays (const char * text, int & days)
 }
 }
 
-/// @brief Create an offline-signature key set for an existing destination.
-///
-/// Reads the destination's own key file, derives an offline signing key pair
-/// for the requested signature type and validity window, and writes the
-/// resulting blob to a separate path. The input key file is never modified, and
-/// an output path that resolves to the input is refused before anything is
-/// read or written, because the blob replaces rather than augments the file.
-///
-/// Defaults: Ed25519 (`EDDSA-SHA512-ED25519`) for 365 days. The private part of
-/// the created blob is written only through the owner-only atomic writer, so it
-/// is never briefly world-readable and a crash cannot leave a truncated key.
-///
-/// Exit codes are part of the CLI contract: 0 success, 1 usage or an output
-/// path that would overwrite the input, 2 an unreadable key file or a bad
-/// signature-type/day argument, 3 a structurally invalid key file or a failed
-/// write, 4 the core cannot create offline keys for the requested type.
-/// @post Secrets are held in a wiping buffer; only the destination hash and
-///       the non-secret parameters are printed.
+/// @brief Create an offline-signature key set for an existing
+/// destination.
+/// Reads the destination's own key file, derives an offline signing key
+/// pair for the requested signature type and validity window, and
+/// writes the resulting blob to a separate path. The input key file is
+/// never modified, and an output path that resolves to the input is
+/// refused before anything is read or written, because the blob
+/// replaces rather than augments the file.
+/// Defaults: Ed25519 (`EDDSA-SHA512-ED25519`) for 365 days. The private
+/// part of the created blob is written only through the owner-only
+/// atomic writer, so it is never briefly world-readable and a crash
+/// cannot leave a truncated key.
+/// Exit codes are part of the CLI contract: 0 success, 1 usage or an
+/// output path that would overwrite the input, 2 an unreadable key file
+/// or a bad signature-type/day argument, 3 a structurally invalid key
+/// file or a failed write, 4 the core cannot create offline keys for
+/// the requested type.
+/// @post Secrets are held in a wiping buffer; only the destination hash
+/// and the non-secret parameters are printed.
 int main (int argc, char * argv[])
 {
 	constexpr const char * usage = "Usage: offlinekeys <output file> <keys file> [<signature type>] [<days>]\n";

@@ -4,10 +4,10 @@
  *
  * openi2pd: verifyhost.
  *
- * Verifies the destination signature of a host-registration record and, when
- * present, the old destination's counter-signature for an `olddest` transition.
- * It prints a validity diagnostic and exits non-zero on any malformed or
- * invalid signature.
+ * Verifies the destination signature of a host-registration record and,
+ * when present, the old destination's counter-signature for an
+ * `olddest` transition. It prints a validity diagnostic and exits
+ * non-zero on any malformed or invalid signature.
  *
  */
 
@@ -30,30 +30,30 @@ std::optional<std::string_view> FindValue (std::string_view record, std::string_
 	const auto marker = record.find (key);
 	if (marker == std::string_view::npos) return std::nullopt;
 	auto value = record.substr (marker + key.size ());
-	// A record can carry an internal newline between the old signature and a
-	// later marker. Stop at record delimiters, not only at '#'.
+	// A record can carry an internal newline between the old signature and
+	// a later marker. Stop at record delimiters, not only at '#'.
 	const auto end = value.find_first_of ("#\r\n");
 	if (end != std::string_view::npos) value = value.substr (0, end);
 	return value;
 }
 }
 
-/// @brief Verify the `#sig=`/`!sig=` signature on an address-book record.
+/// @brief Verify the `#sig=`/`!sig=` signature on an address-book
+/// record.
+/// Input is the whole record as one argument:
+/// `host=destination#!sig=...` optionally followed by
+/// `olddest=`/`oldsig=` for a destination rotation. The primary
+/// signature covers the record text before its marker; the old
+/// signature covers the text before `#oldsig=`, which by then includes
+/// the newly added signature.
+/// CMake and the Windows text-mode toolchain can hand the tool CRLF
+/// while the signer canonicalized LF; signatures cover the logical
+/// record, so line endings are normalized before any verification.
+/// `FindValue` stops at `#`, CR and LF because a record may carry an
+/// internal newline between the old signature and a later marker.
 ///
-/// Input is the whole record as one argument: `host=destination#!sig=...`
-/// optionally followed by `olddest=`/`oldsig=` for a destination rotation.
-/// The primary signature covers the record text before its marker; the old
-/// signature covers the text before `#oldsig=`, which by then includes the
-/// newly added signature.
-///
-/// CMake and the Windows text-mode toolchain can hand the tool CRLF while the
-/// signer canonicalized LF; signatures cover the logical record, so line
-/// endings are normalized before any verification. `FindValue` stops at `#`,
-/// CR and LF because a record may carry an internal newline between the old
-/// signature and a later marker.
-///
-/// @return 0 when every present signature verifies, 1 on a malformed record,
-///         missing/invalid encoding, or a failed verification.
+/// @return 0 when every present signature verifies, 1 on a malformed
+/// record, missing/invalid encoding, or a failed verification.
 /// @post All diagnostics go to stdout, including the success line.
 int main (int argc, char * argv[])
 {
@@ -66,9 +66,10 @@ int main (int argc, char * argv[])
 	i2p::tools::CryptoGuard guard;
 	i2p::data::IdentityEx identity, oldIdentity;
 	std::string record (argv[1]);
-	// CMake and the Windows text-mode tool chain may hand us CRLF while the
-	// signer canonicalized the same record with LF. Signatures cover the
-	// logical record, so normalize the line endings before verification.
+	// CMake and the Windows text-mode tool chain may hand us CRLF while
+	// the signer canonicalized the same record with LF. Signatures cover
+	// the logical record, so normalize the line endings before
+	// verification.
 	if (record.find ('\r') != std::string::npos)
 	{
 		std::string normalized;

@@ -4,10 +4,10 @@
  *
  * openi2pd: firewall.
  *
- * Renders outbound allow rules for NTCP2/SSU2 endpoints in iptables, nftables,
- * Windows Firewall and OpenBSD pf syntax. It accepts only validated numeric
- * public addresses and rejects unsafe nft identifiers; nothing is executed.
- *
+ * Renders outbound allow rules for NTCP2/SSU2 endpoints in iptables,
+ * nftables, Windows Firewall and OpenBSD pf syntax. It accepts only
+ * validated numeric public addresses and rejects unsafe nft
+ * identifiers; nothing is executed.
  */
 
 #ifndef I2PD_TOOLS_FIREWALL_HPP
@@ -71,9 +71,9 @@ inline const char * L4Protocol (Transport transport)
 }
 
 /**
-	 * Parse and validate an address/port/transport tuple. Numeric addresses
-	 * only: RouterInfo files are untrusted, and a hostname would make the
-	 * generated rules depend on DNS.
+	 * Parse and validate an address/port/transport tuple. Numeric
+	 * addresses only: RouterInfo files are untrusted, and a hostname would
+	 * make the generated rules depend on DNS.
 	 */
 inline bool IsNumericAddressText (std::string_view text)
 {
@@ -103,8 +103,8 @@ inline std::optional<Endpoint> MakeEndpoint (std::string_view addressText, int p
 
 	// A v4-mapped v6 address would bypass the IPv4 checks above and is not
 	// a valid RouterInfo endpoint. IPv4-compatible (::a.b.c.d) and
-	// link-local destinations are also unusable for a public I2P router and
-	// would create misleading firewall rules.
+	// link-local destinations are also unusable for a public I2P router
+	// and would create misleading firewall rules.
 	if (address.is_v6 ())
 	{
 		const auto bytes = address.to_v6 ().to_bytes ();
@@ -153,10 +153,11 @@ inline std::optional<Endpoint> MakeEndpoint (std::string_view addressText, int p
 }
 
 /**
-	 * Revalidate an Endpoint at the rendering boundary. Endpoint is deliberately
-	 * a small aggregate, so callers should use MakeEndpoint(); this guard keeps a
-	 * manually constructed or deserialized endpoint from bypassing its family,
-	 * canonical-address and port checks.
+	 * Revalidate an Endpoint at the rendering boundary. Endpoint is
+	 * deliberately a small aggregate, so callers should use
+	 * MakeEndpoint(); this guard keeps a manually constructed or
+	 * deserialized endpoint from bypassing its family, canonical-address
+	 * and port checks.
 	 */
 inline bool IsValidEndpoint (const Endpoint & endpoint)
 {
@@ -202,9 +203,10 @@ inline bool IsSafeIdentifier (std::string_view value)
 }
 
 /**
-	 * nftables chain names are configured by the caller. Reject the standard
-	 * inbound/forward hook names so a typo cannot turn an "outbound" command
-	 * into an INPUT/FORWARD rule. Custom output chains remain possible.
+	 * nftables chain names are configured by the caller. Reject the
+	 * standard inbound/forward hook names so a typo cannot turn an
+	 * "outbound" command into an INPUT/FORWARD rule. Custom output chains
+	 * remain possible.
 	 */
 inline bool IsSafeOutputChain (std::string_view value)
 {
@@ -218,8 +220,8 @@ inline bool IsSafeOutputChain (std::string_view value)
 	 * Display-name tag for Windows rules (normally a router hash prefix).
 	 * Restricted to printable identifier characters so the generated
 	 * PowerShell line cannot acquire a newline, a control character or an
-	 * unbalanced quote. Empty is allowed; the address/port still identify the
-	 * rule.
+	 * unbalanced quote. Empty is allowed; the address/port still identify
+	 * the rule.
 	 */
 inline bool IsSafeRuleTag (std::string_view value)
 {
@@ -248,8 +250,9 @@ inline std::string EscapePowerShell (std::string_view value)
 
 inline std::string IptablesLegacy (const Endpoint & endpoint)
 {
-	// Preserve the historical IPv4 fragment exactly. IPv6 needs an explicit
-	// executable prefix because iptables and ip6tables are separate programs.
+	// Preserve the historical IPv4 fragment exactly. IPv6 needs an
+	// explicit executable prefix because iptables and ip6tables are
+	// separate programs.
 	const std::string rule = " -A OUTPUT -p " + std::string (L4Protocol (endpoint.transport)) + " -d "
 		+ endpoint.address + " --dport " + std::to_string (endpoint.port) + " -j ACCEPT";
 	return endpoint.ipv6 ? "ip6tables" + rule : rule;
@@ -322,7 +325,9 @@ inline std::optional<std::string> Pf (const Endpoint & endpoint, const RenderOpt
 	return rule;
 }
 
-/** True when the backend's configured family deliberately excludes endpoint. */
+/**
+ * True when the backend's configured family deliberately excludes
+ * endpoint. */
 inline bool IsSelectedByFamily (const Endpoint & endpoint, const RenderOptions & options)
 {
 	if (options.backend != Backend::Nftables) return true;
