@@ -526,13 +526,26 @@ void TestCryptoKeyLengthsAndECIES ()
 	assert (i2p::crypto::CreateECIESX25519AEADRatchetRandomKeys (ratchetPriv, ratchetPub));
 	assert (i2p::crypto::CreateECIESX25519AEADRatchetRandomKeys (ephemeralPriv, ephemeralPub));
 	assert (!IsAllZero (ratchetPriv, 32) && !IsAllZero (ratchetPub, 32));
-	// Null outputs fail closed instead of dereferencing.
-	assert (!i2p::crypto::CreateECIESX25519AEADRatchetRandomKeys (nullptr, ratchetPub));
-	assert (!i2p::crypto::CreateECIESX25519AEADRatchetRandomKeys (ratchetPriv, nullptr));
+	// Null outputs fail closed instead of dereferencing, and the call also
+	// wipes whichever buffer the caller did provide. Use scratch copies:
+	// that contract consumes its input, so the pair above must stay intact
+	// for the encryptor/decryptor checks below.
+	{
+		uint8_t scratchPriv[32], scratchPub[32];
+		memcpy (scratchPriv, ratchetPriv, sizeof (scratchPriv));
+		memcpy (scratchPub, ratchetPub, sizeof (scratchPub));
+		assert (!i2p::crypto::CreateECIESX25519AEADRatchetRandomKeys (nullptr, scratchPub));
+		assert (IsAllZero (scratchPub, 32));
+		assert (!i2p::crypto::CreateECIESX25519AEADRatchetRandomKeys (scratchPriv, nullptr));
+		assert (IsAllZero (scratchPriv, 32));
+	}
+	assert (!IsAllZero (ratchetPriv, 32) && !IsAllZero (ratchetPub, 32));
 	i2p::crypto::ECIESX25519AEADRatchetEncryptor ratchetEncryptor (ratchetPub);
 	uint8_t copied[32];
-	ratchetEncryptor.Encrypt (nullptr, copied);
+	assert (ratchetEncryptor.Encrypt (nullptr, copied));
 	assert (memcmp (copied, ratchetPub, 32) == 0);
+	// The decryptor must report the static public key it was configured
+	// with, whatever the ignored calculatePublic argument says.
 	i2p::crypto::ECIESX25519AEADRatchetDecryptor ratchetDecryptor (ratchetPriv, false);
 	assert (memcmp (ratchetDecryptor.GetPubicKey (), ratchetPub, 32) == 0);
 	uint8_t ratchetShared[32];
@@ -541,6 +554,29 @@ void TestCryptoKeyLengthsAndECIES ()
 	i2p::crypto::X25519Keys ephemeral (ephemeralPriv, nullptr);
 	assert (ephemeral.Agree (ratchetPub, directShared));
 	assert (memcmp (ratchetShared, directShared, 32) == 0);
+
+	// Empty private material is not key material: X25519 clamps an all-zero
+	// scalar to a fixed value, so a public key derived from it would be
+	// known to every peer. Neither the holder nor a ratchet decryptor may
+	// expose one.
+	{
+		uint8_t zeroPriv[32] = { };
+		i2p::crypto::X25519Keys zeroHolder (zeroPriv, nullptr);
+		assert (!zeroHolder.HasPrivateKey ());
+		assert (IsAllZero (zeroHolder.GetPublicKey (), 32));
+		assert (!zeroHolder.Agree (ephemeralPub, directShared));
+		assert (IsAllZero (directShared, 32));
+		zeroHolder.SetPrivateKey (ratchetPriv, false);
+		assert (zeroHolder.HasPrivateKey ()); // a real scalar is still accepted
+		assert (memcmp (zeroHolder.GetPublicKey (), ratchetPub, 32) == 0);
+		zeroHolder.SetPrivateKey (zeroPriv, false);
+		assert (!zeroHolder.HasPrivateKey ());
+		assert (IsAllZero (zeroHolder.GetPublicKey (), 32));
+		i2p::crypto::ECIESX25519AEADRatchetDecryptor zeroDecryptor (zeroPriv, false);
+		assert (IsAllZero (zeroDecryptor.GetPubicKey (), 32));
+		assert (!zeroDecryptor.Decrypt (ephemeralPub, ratchetShared));
+		assert (IsAllZero (ratchetShared, 32));
+	}
 
 	// ElGamal with a null public key is rejected by the primitive.
 	i2p::crypto::ElGamalEncryptor elGamal (nullptr);

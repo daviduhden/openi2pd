@@ -151,7 +151,8 @@ namespace crypto
 	public:
 		X25519Keys ();
 		// A non-null pub is not trusted: it is compared with the public key
-		// derived from priv and the object is left unusable on any mismatch.
+		// derived from priv and the object is left unusable on any mismatch
+		// or when priv is not usable key material (null or all-zero).
 		X25519Keys (const uint8_t * priv, const uint8_t * pub);
 		X25519Keys (const X25519Keys &) = delete;
 		X25519Keys & operator= (const X25519Keys &) = delete;
@@ -164,8 +165,18 @@ namespace crypto
 		// the caller must abort instead of publishing the key material.
 		bool GenerateKeys ();
 		bool HasPrivateKey () const { return m_Pkey != nullptr; };
+		/// @return The 32-byte public key derived from the private key, or
+		///         an all-zero value when no usable private key is held. The
+		///         pointer refers to internal storage owned by this object.
 		const uint8_t * GetPublicKey () const { return m_PublicKey; };
 		void GetPrivateKey (uint8_t * priv) const;
+		/// Load an existing 32-byte private scalar.
+		/// @param priv Private scalar, or null for an empty holder. An
+		///        all-zero scalar is rejected because X25519 clamps it to a
+		///        fixed publicly known value.
+		/// @param calculatePublic Retained for source compatibility only; the
+		///        public key is always derived, so a false value can never
+		///        leave the buffer uninitialised.
 		void SetPrivateKey (const uint8_t * priv, bool calculatePublic = false);
 		/// Derive a 32-byte shared secret from a 32-byte peer public key.
 		/// @return False for an unusable local key, invalid peer or

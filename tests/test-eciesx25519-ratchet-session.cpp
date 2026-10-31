@@ -508,9 +508,8 @@ void InteropLoop (CryptoKeyType type, const char * label)
 void CheckRouterEnvelope ()
 {
 	// The router N envelope is exactly 32-byte ephemeral key + garlic
-	// payload
-	// + 16-byte Poly1305 tag. It must never gain the spec-1c 32-byte flags
-	// section that Java's N decoder does not parse.
+	// payload + 16-byte Poly1305 tag. It must never gain the spec-1c 32-byte
+	// flags section that Java's N decoder does not parse.
 	Peer bob = MakePeer (i2p::data::CRYPTO_KEY_TYPE_ECIES_X25519_AEAD);
 	const std::vector<uint8_t> body { 0x77, 0x66, 0x55 };
 	auto msg = MakeDataMessage (body, 0x0E0E0001);
@@ -520,8 +519,22 @@ void CheckRouterEnvelope ()
 	assert (total > 4 + 32 + 16);
 	const size_t len = total - 4;
 	assert (bufbe32toh (wrapped->GetPayload ()) == len);
-	const uint8_t * inner = wrapped->GetPayload () + 4 + 32;
+	const uint8_t * envelope = wrapped->GetPayload () + 4;
 	const size_t innerLen = len - 32 - 16;
+
+	// The block section is AEAD-protected by the Noise N handshake, so it can
+	// only be inspected after mirroring the router-side receiver
+	// (RouterIncomingRatchetSession::HandleNextMessage). Reading the
+	// ciphertext as block headers would interpret pseudo-random length
+	// fields.
+	i2p::crypto::NoiseSymmetricState noise;
+	i2p::crypto::InitNoiseNState (noise, bob.destination->GetPublicKey ());
+	noise.MixHash (envelope, 32); // h = SHA256(h || aepk)
+	uint8_t sharedSecret[32];
+	assert (bob.destination->Decrypt (envelope, sharedSecret, i2p::data::CRYPTO_KEY_TYPE_ECIES_X25519_AEAD));
+	noise.MixKey (sharedSecret); // x25519(bsk, aepk)
+	std::vector<uint8_t> inner (innerLen);
+	assert (noise.Decrypt (envelope + 32, inner.data (), innerLen));
 
 	size_t offset = 0;
 	bool gotDateTime = false, gotGarlic = false, gotPadding = false;
@@ -551,6 +564,10 @@ void CheckRouterEnvelope ()
 	}
 	assert (offset == innerLen);
 	assert (gotDateTime && gotGarlic);
+	// The DateTime block must come first: a spec-1c style flags section in
+	// front of it would shift every following block.
+	assert (innerLen >= 1 && inner[0] == i2p::garlic::eECIESx25519BlkDateTime);
+	OPENSSL_cleanse (sharedSecret, sizeof (sharedSecret));
 }
 
 void CheckInboundTagClamp ()

@@ -312,6 +312,27 @@ namespace crypto
 
 	// x25519
 
+	namespace
+	{
+		/**
+		 * @brief Report whether a 32-byte buffer is unusable X25519 key
+		 * material.
+		 *
+		 * An all-zero scalar is not a secret: X25519 clamps it to a fixed
+		 * value, so the public key derived from it is known to everyone who
+		 * reads this code. The same rule as LocalEncryptionKey::CreateDecryptor
+		 * applies to every load path, and the comparison accumulates the
+		 * whole buffer so it does not depend on the first non-zero byte.
+		 */
+		bool IsEmptyX25519Scalar (const uint8_t * priv)
+		{
+			if (!priv) return true;
+			uint8_t acc = 0;
+			for (size_t i = 0; i < 32; ++i) acc |= priv[i];
+			return acc == 0;
+		}
+	} // namespace
+
 	X25519Keys::X25519Keys ()
 	{
 		m_Ctx = EVP_PKEY_CTX_new_id (NID_X25519, NULL);
@@ -329,7 +350,9 @@ namespace crypto
 	 * The public key is always re-derived from the private key. A
 	 * caller-supplied public key is only used for a constant-time
 	 * comparison, so a mismatched or unrelated key cannot be published on
-	 * behalf of this scalar. There is no error return: any provider or
+	 * behalf of this scalar. An all-zero or null private scalar leaves the
+	 * holder empty instead of producing a public key that belongs to a
+	 * publicly known scalar. There is no error return: any provider or
 	 * comparison failure leaves the object empty (Reset()), and every
 	 * operation on it then fails. Callers must check HasPrivateKey()
 	 * before advertising or persisting the pair.
@@ -337,6 +360,15 @@ namespace crypto
 	X25519Keys::X25519Keys (const uint8_t * priv, const uint8_t * pub)
 	{
 		memset (m_PublicKey, 0, sizeof (m_PublicKey));
+		// Fail closed before touching the provider: the public key derived
+		// from an all-zero scalar is not key material.
+		if (priv && IsEmptyX25519Scalar (priv))
+		{
+			LogPrint (eLogError, "X25519: empty private key");
+			m_Ctx = nullptr;
+			m_Pkey = nullptr;
+			return;
+		}
 		m_Pkey = priv ? EVP_PKEY_new_raw_private_key (EVP_PKEY_X25519, NULL, priv, 32) : nullptr;
 		m_Ctx = m_Pkey ? EVP_PKEY_CTX_new (m_Pkey, NULL) : nullptr;
 		if (!m_Pkey || !m_Ctx)
@@ -508,16 +540,30 @@ namespace crypto
 		if (!m_Pkey || EVP_PKEY_get_raw_private_key (m_Pkey, priv, &len) != 1 || len != 32) memset (priv, 0, 32);
 	}
 
+	/**
+	 * @brief Load an existing private scalar and derive its public key.
+	 * @param priv 32-byte private scalar, or null to leave the holder empty.
+	 * @param calculatePublic Ignored; retained for source compatibility.
+	 *
+	 * The public key is always derived. Leaving m_PublicKey untouched when
+	 * the caller passed calculatePublic=false used to expose uninitialised
+	 * bytes through GetPublicKey(). An all-zero scalar is rejected for the
+	 * same reason as in the constructor: the derived public key would be
+	 * the one that belongs to a publicly known scalar, so the holder stays
+	 * empty and every operation on it fails.
+	 */
 	void X25519Keys::SetPrivateKey (const uint8_t * priv, bool calculatePublic)
 	{
 		m_IsElligatorIneligible = false;
 		Reset ();
 		if (!priv) return;
+		if (IsEmptyX25519Scalar (priv))
+		{
+			LogPrint (eLogError, "X25519: empty private key");
+			return;
+		}
 		m_Pkey = EVP_PKEY_new_raw_private_key (EVP_PKEY_X25519, NULL, priv, 32);
 		m_Ctx = m_Pkey ? EVP_PKEY_CTX_new (m_Pkey, NULL) : nullptr;
-		// Always derive the public key. Leaving m_PublicKey untouched when
-		// the caller passed calculatePublic=false used to expose
-		// uninitialised bytes through GetPublicKey().
 		(void)calculatePublic;
 		if (m_Pkey)
 		{

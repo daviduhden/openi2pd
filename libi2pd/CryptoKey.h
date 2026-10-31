@@ -142,14 +142,26 @@ namespace crypto
 		uint8_t m_PublicKey[32];
 	};
 
+	/// Static-key decryptor for the ECIES-X25519-AEAD-Ratchet handshake.
+	/// The 32-byte static public key is always derived from the configured
+	/// private key, so GetPubicKey() reports the key this instance actually
+	/// holds and an unusable (null or all-zero) private key yields an
+	/// all-zero public key.
 	class ECIESX25519AEADRatchetDecryptor : public CryptoKeyDecryptor
 	{
 	public:
+		/// @param priv 32-byte static private key, or null for an empty
+		///        decryptor whose Decrypt() always fails.
+		/// @param calculatePublic Retained for source compatibility only; the
+		///        public key is always derived.
 		ECIESX25519AEADRatchetDecryptor (const uint8_t * priv, bool calculatePublic = false);
 		~ECIESX25519AEADRatchetDecryptor () { };
 		bool Decrypt (const uint8_t * epub, uint8_t * sharedSecret) override;
 		// agree with static and return in sharedSecret (32 bytes)
 		size_t GetPublicKeyLen () const override { return 32; };
+		/// @return The static public key derived from the configured private
+		///         key, or all zero for an empty decryptor. The misspelling
+		///         is part of the existing internal API and is kept stable.
 		const uint8_t * GetPubicKey () const { return m_StaticKeys.GetPublicKey (); };
 
 	private:
@@ -157,9 +169,10 @@ namespace crypto
 	};
 
 	// Generates an X25519 (or hybrid X25519 first hop) key pair. Returns
-	// false when the provider cannot generate a key; both buffers are left
-	// all-zero in that case and the caller must abort instead of
-	// publishing them.
+	// false when the provider cannot generate a key or when either output
+	// pointer is null. Every non-null output buffer is zeroed on failure,
+	// including the buffer whose sibling pointer was null, so a caller must
+	// abort and must not reuse the buffer it passed in.
 	bool CreateECIESX25519AEADRatchetRandomKeys (uint8_t * priv, uint8_t * pub); // including hybrid
 
 	constexpr size_t GetCryptoPrivateKeyLen (i2p::data::CryptoKeyType type)

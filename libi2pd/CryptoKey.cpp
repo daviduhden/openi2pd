@@ -282,6 +282,9 @@ namespace crypto
 	{
 		if (!priv || !pub)
 		{
+			// A caller that passed a partially null pair probably holds a
+			// stale key in the other buffer. Wipe it as well so no half of a
+			// failed generation can be published.
 			if (priv) OPENSSL_cleanse (priv, 32);
 			if (pub) memset (pub, 0, 32);
 			LogPrint (eLogError, "Crypto: null X25519 key output buffer");
