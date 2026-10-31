@@ -4,7 +4,9 @@
  *
  * openi2pd: test tui terminal.
  *
- * Verifies the shared terminal key/attribute contract: special keys stay above printable bytes, and attribute, color-pair and color bits do not overlap; ncurses/Win32 rendering is not exercised.
+ * Verifies the shared terminal key/attribute contract: special keys
+ * stay above printable bytes, and attribute, color-pair and color bits
+ * do not overlap; ncurses/Win32 rendering is not exercised.
  *
  */
 

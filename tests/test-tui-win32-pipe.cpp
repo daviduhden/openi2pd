@@ -4,7 +4,9 @@
  *
  * openi2pd: test tui win32 pipe.
  *
- * Windows-only primitive check that the SDK exposes named-pipe and DACL APIs, a protected DACL can be attached and a local byte-mode round trip succeeds; cross-account enforcement is not covered.
+ * Windows-only primitive check that the SDK exposes named-pipe and DACL
+ * APIs, a protected DACL can be attached and a local byte-mode round
+ * trip succeeds; cross-account enforcement is not covered.
  *
  */
 
@@ -72,9 +74,9 @@ void TestDaclAndRoundTrip ()
 {
 	PSECURITY_DESCRIPTOR descriptor = nullptr;
 	// Mirrors the product policy: protected DACL with full control for the
-	// process user, SYSTEM and built-in Administrators only. Use the actual
-	// process SID rather than OW: the object owner may be a different
-	// principal in service/CI contexts.
+	// process user, SYSTEM and built-in Administrators only. Use the
+	// actual process SID rather than OW: the object owner may be a
+	// different principal in service/CI contexts.
 	const std::wstring userSid = CurrentUserSidString ();
 	assert (!userSid.empty ());
 	const std::wstring sddl = L"D:P(A;;GA;;;" + userSid + L")(A;;GA;;;SY)(A;;GA;;;BA)";

@@ -4,11 +4,11 @@
  *
  * openi2pd: TuiClientWin32.
  *
- * Implements the Windows local-IPC client over the derived named pipe, using
- * overlapped I/O and three-second connect and request timeouts. Before use it
- * verifies that the pipe server image is i2pd.exe and that its token belongs
- * to the current user, SYSTEM or Administrators, then exchanges versioned,
- * length-framed TUI protocol requests.
+ * Implements the Windows local-IPC client over the derived named pipe,
+ * using overlapped I/O and three-second connect and request timeouts.
+ * Before use it verifies that the pipe server image is i2pd.exe and
+ * that its token belongs to the current user, SYSTEM or Administrators,
+ * then exchanges versioned, length-framed TUI protocol requests.
  *
  */
 
@@ -458,13 +458,13 @@ namespace tui
 	i2p::expected<void, std::string> Client::Impl::Connect ()
 	{
 		// One logical attempt bounded by a three-second deadline; the retry
-		// inside the loop exists only for the short window in which the daemon
-		// has closed its single instance and not yet created the next one. The
-		// pipe name is derived from the endpoint hash (TuiWin32Ipc), never used
-		// verbatim, so --socket cannot select an arbitrary existing pipe. The
-		// server identity is verified before the first command is written,
-		// because the DACL is the authorization boundary and this check only
-		// catches a same-user squatter.
+		// inside the loop exists only for the short window in which the
+		// daemon has closed its single instance and not yet created the next
+		// one. The pipe name is derived from the endpoint hash (TuiWin32Ipc),
+		// never used verbatim, so --socket cannot select an arbitrary
+		// existing pipe. The server identity is verified before the first
+		// command is written, because the DACL is the authorization boundary
+		// and this check only catches a same-user squatter.
 		Disconnect ();
 		if (m_Endpoint.empty ()) return i2p::unexpected ("local IPC endpoint is empty");
 		if (m_PipeName.empty ()) m_PipeName = MakeWin32PipeName (m_Endpoint);
@@ -539,13 +539,13 @@ namespace tui
 
 	bool Client::Impl::WaitForIo (OVERLAPPED & overlapped, DWORD timeoutMs, DWORD & transferred, std::string & error)
 	{
-		// The OVERLAPPED and the I/O buffer belong to the caller's stack, so a
-		// timeout must cancel the request and then wait for it to finish
-		// before this function returns; otherwise the kernel could still write
-		// into a dead frame. A write that completes during the cancellation is
-		// deliberately treated as a failure here: the caller closes the
-		// channel, so a retry can never land on a stream whose position is
-		// ambiguous.
+		// The OVERLAPPED and the I/O buffer belong to the caller's stack, so
+		// a timeout must cancel the request and then wait for it to finish
+		// before this function returns; otherwise the kernel could still
+		// write into a dead frame. A write that completes during the
+		// cancellation is deliberately treated as a failure here: the caller
+		// closes the channel, so a retry can never land on a stream whose
+		// position is ambiguous.
 		DWORD wait = WaitForSingleObject (overlapped.hEvent, timeoutMs);
 		if (wait == WAIT_OBJECT_0)
 		{
@@ -569,9 +569,10 @@ namespace tui
 	bool Client::Impl::WriteAll (std::string_view data, std::string & error)
 	{
 		// Each WriteFile on this byte-mode pipe appends bytes, so the loop
-		// normally completes in one iteration; it exists because a short count
-		// is still possible and must never truncate the request line. A
-		// timeout or a closed pipe reports failure and the caller disconnects.
+		// normally completes in one iteration; it exists because a short
+		// count is still possible and must never truncate the request line. A
+		// timeout or a closed pipe reports failure and the caller
+		// disconnects.
 		while (!data.empty ())
 		{
 			OVERLAPPED overlapped { };

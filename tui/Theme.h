@@ -5,9 +5,9 @@
  * openi2pd: Theme.
  *
  * Maps semantic interface roles to the openi2pd palette and allocates
- * terminal colour pairs. Support degrades from direct and 256-colour output
- * through 16- and 8-colour ANSI to monochrome attributes, keeping default
- * terminal colours when they are usable.
+ * terminal colour pairs. Support degrades from direct and 256-colour
+ * output through 16- and 8-colour ANSI to monochrome attributes,
+ * keeping default terminal colours when they are usable.
  *
  */
 
@@ -24,20 +24,21 @@
 /*
  * Central terminal theme for i2pd-tui.
  *
- * The palette is derived from assets/branding/colors.md.  The terminal is
- * never sent raw ANSI escapes by the shared code: every colour goes through
- * a terminal colour-pair attribute.  The module degrades in this order:
- *
+ * The palette is derived from assets/branding/colors.md.  The terminal
+ * is never sent raw ANSI escapes by the shared code: every colour goes
+ * through a terminal colour-pair attribute.  The module degrades in
+ * this order:
  *   direct colour (terminal RGB indices + extended pairs)
  *   256-colour xterm cube
  *   16-colour ANSI
  *   8-colour ANSI
  *   monochrome attributes (reverse, bold, underline, dim)
  *
- * The brand colours are approximations on 8/16/256-colour terminals.  Plain
- * text stays on the terminal's default colours whenever default colours are
- * available and the background is known.  If it is not, an explicit
- * black/white background is chosen so text never becomes invisible.
+ * The brand colours are approximations on 8/16/256-colour terminals.
+ * Plain text stays on the terminal's default colours whenever default
+ * colours are available and the background is known.  If it is not, an
+ * explicit black/white background is chosen so text never becomes
+ * invisible.
  */
 
 namespace i2p
@@ -386,12 +387,12 @@ namespace tui
 
 		inline bool DetectLightBackground ()
 		{
-			// COLORFGBG is "&lt;fg&gt;;&lt;bg&gt;[:&lt;fg&gt;;&lt;bg&gt;...]" as set by some terminals;
-			// only the last numeric field (the background palette index) is
-			// considered, and it must name a palette entry this module can map
-			// to RGB. An unparsable value reports "not light", which keeps the
-			// dark palette; Theme::Init separately records that the variable
-			// was present at all.
+			// COLORFGBG is "&lt;fg&gt;;&lt;bg&gt;[:&lt;fg&gt;;&lt;bg&gt;...]" as
+			// set by some terminals; only the last numeric field (the background
+			// palette index) is considered, and it must name a palette entry
+			// this module can map to RGB. An unparsable value reports "not
+			// light", which keeps the dark palette; Theme::Init separately
+			// records that the variable was present at all.
 			const std::string value = EnvironmentValue ("COLORFGBG");
 			if (value.empty ()) return false;
 
@@ -440,8 +441,8 @@ namespace tui
 		 * @post Every role maps either to an allocated pair or to a
 		 *       monochrome attribute; Attributes() is always safe to call.
 		 * @note m_BackgroundKnown records that COLORFGBG was *present*, not
-		 *       that it was understood: an unparsable value is classified as a
-		 *       dark background, so a light terminal that exports a
+		 *       that it was understood. An unparsable value is classified as
+		 *       dark, so a light terminal that exports a
 		 *       non-numeric value still receives the dark palette and default
 		 *       colours.
 		 * @return True when at least one colour pair was installed.

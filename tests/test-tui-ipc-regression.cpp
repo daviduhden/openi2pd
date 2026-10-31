@@ -4,7 +4,9 @@
  *
  * openi2pd: test tui ipc regression.
  *
- * Exercises the UNIX-socket TUI transport with the real server and client framing: partial and pipelined requests, line limits, error recovery, QUIT and bounded shutdown, without router subsystems.
+ * Exercises the UNIX-socket TUI transport with the real server and
+ * client framing: partial and pipelined requests, line limits, error
+ * recovery, QUIT and bounded shutdown, without router subsystems.
  *
  */
 
@@ -172,8 +174,10 @@ void TestClientRoundTrip (const std::string & path)
 	assert (admin->find ("result=ok") != std::string::npos);
 	assert (admin->find ("code=ok") != std::string::npos);
 
-	// Every typed router-wide command travels through the fixed-size daemon
-	// queue. The test executor only records the variant; no daemon subsystem
+	// Every typed router-wide command travels through the fixed-size
+	// daemon
+	// queue. The test executor only records the variant; no daemon
+	// subsystem
 	// is linked or changed here.
 	for (const auto * command :
 		{ "ADMIN RESEED", "ADMIN SHUTDOWN GRACEFUL", "ADMIN SHUTDOWN IMMEDIATE", "ADMIN SHUTDOWN CANCEL",
@@ -269,7 +273,8 @@ void TestAbortedClient (const std::string & path)
 	int fd = ConnectRaw (path);
 	assert (fd >= 0);
 
-	// Send a partial request, then abort with RST. The server may fail while
+	// Send a partial request, then abort with RST. The server may fail
+	// while
 	// reading or while writing the error frame; that client-local failure
 	// must not terminate the accept loop.
 	assert (SendAll (fd, "I2PDTUI/1 PI"));
@@ -337,8 +342,10 @@ void TestAdminQueueBounds ()
 	assert (std::string_view (full.message).find ("full") != std::string_view::npos);
 
 	g_ReleaseAdminExecutor.store (true, std::memory_order_relaxed);
-	// A timed-out IPC waiter must not discard the command itself. The single
-	// executor has to run every accepted slot exactly once before shutdown.
+	// A timed-out IPC waiter must not discard the command itself. The
+	// single
+	// executor has to run every accepted slot exactly once before
+	// shutdown.
 	for (int i = 0;
 		i < 2000 && g_AdminExecutorCount.load (std::memory_order_relaxed) < i2p::tui::ADMIN_COMMAND_QUEUE_CAPACITY; ++i)
 		std::this_thread::sleep_for (std::chrono::milliseconds (1));
@@ -357,8 +364,8 @@ void TestBoundedStop (const std::string & directory)
 	i2p::tui::Server server (path);
 	assert (server.Start ());
 
-	// Keep one connection open with an incomplete line: Stop() must not wait
-	// for the old five-second receive timeout.
+	// Keep one connection open with an incomplete line: Stop() must not
+	// wait for the old five-second receive timeout.
 	int fd = ConnectRaw (path);
 	assert (fd >= 0);
 	assert (SendAll (fd, "I2PDTUI/1 PI"));

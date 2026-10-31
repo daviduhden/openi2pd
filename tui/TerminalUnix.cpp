@@ -5,10 +5,10 @@
  * openi2pd: TerminalUnix.
  *
  * Implements the terminal boundary with ncursesw: initialises cbreak,
- * no-echo keypad input, maps ncurses keys to stable shared codes and exposes
- * colour-pair and timeout-based read operations. It is compiled only on
- * non-Windows targets and translates resize and keypad input for the shared
- * TUI loop.
+ * no-echo keypad input, maps ncurses keys to stable shared codes and
+ * exposes colour-pair and timeout-based read operations. It is compiled
+ * only on non-Windows targets and translates resize and keypad input
+ * for the shared TUI loop.
  *
  */
 
@@ -22,10 +22,10 @@
 
 #include <ncurses.h>
 
-// Terminal.h deliberately uses stable, platform-neutral key values.  ncurses
-// also exposes KEY_* names as macros; capture the native values before
-// undefining them so TranslateKey can compare getch() results without making
-// the shared identifiers macro-dependent.
+// Terminal.h deliberately uses stable, platform-neutral key values.
+// ncurses also exposes KEY_* names as macros; capture the native values
+// before undefining them so TranslateKey can compare getch() results
+// without making the shared identifiers macro-dependent.
 namespace
 {
 constexpr int NC_KEY_RESIZE = KEY_RESIZE;

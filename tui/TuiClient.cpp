@@ -4,11 +4,11 @@
  *
  * openi2pd: TuiClient.
  *
- * Implements the Unix local-IPC client: resolves the socket from options or
- * i2pd.conf, connects with bounded send and receive timeouts, and exchanges
- * versioned, length-framed TUI protocol requests. Transport and protocol
- * failures close the connection, while a well-formed remote error leaves it
- * usable.
+ * Implements the Unix local-IPC client: resolves the socket from
+ * options or i2pd.conf, connects with bounded send and receive
+ * timeouts, and exchanges versioned, length-framed TUI protocol
+ * requests. Transport and protocol failures close the connection, while
+ * a well-formed remote error leaves it usable.
  *
  */
 
@@ -60,9 +60,9 @@ namespace tui
 		// because the console links neither the router nor its configuration
 		// parser. Unknown keys and sections are ignored rather than rejected,
 		// and a file that does not exist is skipped by the caller before this
-		// reader runs, so its defaults survive. '#' always starts a comment, so
-		// a value containing '#' (a path or a URL fragment) is truncated at the
-		// first one.
+		// reader runs, so its defaults survive. '#' always starts a comment,
+		// so a value containing '#' (a path or a URL fragment) is truncated
+		// at the first one.
 		i2p::expected<ConfigValues, std::string> ReadConfigValues (const std::string & path)
 		{
 			std::ifstream config (path);
@@ -251,13 +251,14 @@ namespace tui
 		// One attempt, no retry loop: App::ConnectIfNeeded owns the reconnect
 		// cadence (two seconds while disconnected) and keeps the failure text
 		// on screen, so retrying here would hide a missing daemon behind a
-		// blocked event loop. AF_UNIX connect() is blocking and has no timeout
-		// of its own, so a daemon that stops accepting can stall this call
-		// until the address queue drains; nothing here can interrupt it.
+		// blocked event loop. AF_UNIX connect() is blocking and has no
+		// timeout of its own, so a daemon that stops accepting can stall this
+		// call until the address queue drains; nothing here can interrupt it.
 		//
-		// A path that does not fit sun_path (including the terminating NUL) is
-		// rejected before the socket exists rather than truncated. FD_CLOEXEC
-		// keeps the descriptor out of any child the console might start.
+		// A path that does not fit sun_path (including the terminating NUL)
+		// is rejected before the socket exists rather than truncated.
+		// FD_CLOEXEC keeps the descriptor out of any child the console might
+		// start.
 		Disconnect ();
 		if (m_Path.size () >= sizeof (sockaddr_un { }.sun_path)) return i2p::unexpected ("socket path is too long");
 
@@ -301,8 +302,8 @@ namespace tui
 	{
 		// One byte at a time so the payload that follows the header stays in
 		// the socket buffer: over-reading would consume the next frame and
-		// leave the connection unusable even after a well-formed remote error.
-		//
+		// leave the connection unusable even after a well-formed remote
+		// error.
 		// The loop counts characters before LF, while the codec treats 128
 		// bytes as an inclusive response-header bound, so the client's
 		// effective limit is one byte smaller than the protocol allows.

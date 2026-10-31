@@ -4,11 +4,11 @@
  *
  * openi2pd: TuiWin32Ipc.
  *
- * Normalises configured local endpoints and hashes them with 64-bit FNV-1a to
- * produce the named-pipe path mounted under \\.\pipe\openi2pd-tui-. ASCII case
- * is folded and separators are collapsed, so equivalent endpoint spellings
- * yield the same bounded pipe name on both sides.
- *
+ * Normalises configured local endpoints and hashes them with 64-bit
+ * FNV-1a to produce the named-pipe path mounted under
+ * \\.\pipe\openi2pd-tui-. ASCII case is folded and separators are
+ * collapsed, so equivalent endpoint spellings yield the same bounded
+ * pipe name on both sides.
  */
 
 #include "TuiWin32Ipc.h"
@@ -31,12 +31,13 @@ namespace tui
 	{
 		// Both sides (daemon TuiServerWin32 and this client) must derive the
 		// same name from the same configured endpoint, so only spellings that
-		// are certainly equivalent are folded: surrounding blanks are removed,
-		// '/' becomes '\', repeated and trailing separators are collapsed, and
-		// ASCII A-Z is lowercased. Case folding is ASCII-only on purpose, so a
-		// Turkish locale cannot change the result. No 8.3 aliasing, UNC
-		// canonicalisation or symlink resolution is attempted: a path that
-		// differs in those respects is a different endpoint by design.
+		// are certainly equivalent are folded: surrounding blanks are
+		// removed, '/' becomes '\', repeated and trailing separators are
+		// collapsed, and ASCII A-Z is lowercased. Case folding is ASCII-only
+		// on purpose, so a Turkish locale cannot change the result. No 8.3
+		// aliasing, UNC canonicalisation or symlink resolution is attempted:
+		// a path that differs in those respects is a different endpoint by
+		// design.
 		while (!endpoint.empty () && (endpoint.front () == ' ' || endpoint.front () == '\t'))
 			endpoint.remove_prefix (1);
 		while (!endpoint.empty () && (endpoint.back () == ' ' || endpoint.back () == '\t')) endpoint.remove_suffix (1);
@@ -68,11 +69,11 @@ namespace tui
 	{
 		// The hash is a name deriver, not a security control: it keeps the
 		// pipe inside the system pipe namespace, gives a fixed-width
-		// (16 lowercase hex) name for any endpoint length, and avoids exposing
-		// a data-directory path to every process on the machine. An empty
-		// endpoint still hashes (to the FNV-1a offset basis), so callers must
-		// reject an empty endpoint before reaching here rather than treating
-		// the resulting name as "no pipe".
+		// (16 lowercase hex) name for any endpoint length, and avoids
+		// exposing a data-directory path to every process on the machine. An
+		// empty endpoint still hashes (to the FNV-1a offset basis), so
+		// callers must reject an empty endpoint before reaching here rather
+		// than treating the resulting name as "no pipe".
 		const std::string normalized = NormalizeWin32Endpoint (endpoint);
 		uint64_t hash = FNV1A_OFFSET_BASIS;
 		for (unsigned char ch : normalized)

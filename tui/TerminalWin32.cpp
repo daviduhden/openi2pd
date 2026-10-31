@@ -4,12 +4,12 @@
  *
  * openi2pd: TerminalWin32.
  *
- * Implements the terminal boundary on the Win32 console using virtual-terminal
- * output and the alternate screen. It enables VT processing, disables line and
- * echo input, diffs a cell buffer into UTF-8 updates, and translates console
- * key events, including surrogate pairs and Ctrl letters, into shared key
- * codes. An attached console is required; redirected input or output fails
- * instead of allocating one.
+ * Implements the terminal boundary on the Win32 console using
+ * virtual-terminal output and the alternate screen. It enables VT
+ * processing, disables line and echo input, diffs a cell buffer into
+ * UTF-8 updates, and translates console key events, including surrogate
+ * pairs and Ctrl letters, into shared key codes. An attached console is
+ * required; redirected input or output fails instead of allocating one.
  *
  */
 

@@ -4,12 +4,12 @@
  *
  * openi2pd: main.
  *
- * Implements the i2pd-tui application: a tabbed terminal interface that polls
- * the router over local IPC and renders status, peers, tunnels, torrents,
- * netDb, logs, services, destinations, configuration and connections. It handles resize
- * and key events, editable prompts, UTF-8-aware truncation and periodic
- * background refreshes while retaining the last complete snapshot.
- *
+ * Implements the i2pd-tui application: a tabbed terminal interface that
+ * polls the router over local IPC and renders status, peers, tunnels,
+ * torrents, netDb, logs, services, destinations, configuration and
+ * connections. It handles resize and key events, editable prompts,
+ * UTF-8-aware truncation and periodic background refreshes while
+ * retaining the last complete snapshot.
  */
 
 #include "TuiClient.h"
@@ -62,9 +62,9 @@ namespace terminal = i2p::tui::terminal;
 volatile std::sig_atomic_t g_Resize = 0;
 volatile std::sig_atomic_t g_Stop = 0;
 #ifdef _WIN32
-// Console close, logoff, shutdown, Ctrl-C and Ctrl-Break arrive on a helper
-// thread. Only the stop flag is touched; the main loop restores the console
-// through the normal shutdown path.
+// Console close, logoff, shutdown, Ctrl-C and Ctrl-Break arrive on a
+// helper thread. Only the stop flag is touched; the main loop restores
+// the console through the normal shutdown path.
 BOOL WINAPI HandleConsoleEvent (DWORD type)
 {
 	g_Stop = 1;
@@ -98,9 +98,9 @@ enum class Tab
 	Connections
 };
 
-// The original 1..9 bindings are preserved; Connections is appended as 0 and
-// Services uses v so existing muscle memory/help text keeps working.
-// Tab/arrow navigation visits all eleven views in this order.
+// The original 1..9 bindings are preserved; Connections is appended as
+// 0 and Services uses v so existing muscle memory/help text keeps
+// working. Tab/arrow navigation visits all eleven views in this order.
 constexpr std::array<std::string_view, 11> TAB_NAMES = { "Status", "Peers", "Tunnels", "Torrents", "NetDb", "Logs",
 	"Services", "Help", "Destinations", "Config", "Connections" };
 constexpr std::array<std::string_view, 11> TAB_SHORT_NAMES
@@ -208,9 +208,10 @@ struct ServiceRow
 	bool enabled = false;
 };
 
-// One configured client or server tunnel from the bounded SERVICES snapshot.
-// `name` is the unique service name the typed TUNNEL-START/TUNNEL-STOP verbs
-// address; `destination` is a public label only (no keys, no identity file).
+// One configured client or server tunnel from the bounded SERVICES
+// snapshot. `name` is the unique service name the typed
+// TUNNEL-START/TUNNEL-STOP verbs address; `destination` is a public
+// label only (no keys, no identity file).
 struct TunnelServiceRow
 {
 	std::string name;
@@ -402,7 +403,8 @@ std::string Trim (std::string_view value)
 }
 
 // Count Java-style UTF-16 units for the shared ut_comment field limits.
-// Invalid UTF-8 (overlong, surrogate, truncated or above U+10FFFF) fails closed.
+// Invalid UTF-8 (overlong, surrogate, truncated or above U+10FFFF)
+// fails closed.
 size_t Utf16Units (std::string_view text)
 {
 	size_t units = 0;
@@ -508,9 +510,9 @@ std::string ToLowerAscii (std::string_view value)
 }
 
 // A confirmation prompt is rendered from a translated catalog, so the
-// advertised affirmative letter must be accepted too. Spanish uses s/sí and
-// Russian uses д/да; Chinese keeps y. Byte comparison is safe because these
-// tokens are short and the input is already trimmed.
+// advertised affirmative letter must be accepted too. Spanish uses s/sí
+// and Russian uses д/да; Chinese keeps y. Byte comparison is safe
+// because these tokens are short and the input is already trimmed.
 bool IsAffirmative (std::string_view input)
 {
 	const std::string answer = ToLowerAscii (Trim (input));
@@ -547,12 +549,13 @@ std::string BoundUtf8 (std::string_view value, size_t limit)
 	return std::string (value.substr (0, cut));
 }
 
-/// @brief Result of one UTF-8 step: bytes consumed and terminal columns occupied.
-///
-/// Separating the two is the core of the console's text handling: a client
-/// label or a Chinese translation may occupy two cells per three bytes, so
-/// truncation, padding and wrapping must advance by columns while slicing by
-/// bytes. `width == 0` is used for combining marks and zero-width controls.
+/// @brief Result of one UTF-8 step: bytes consumed and terminal columns
+/// occupied.
+/// Separating the two is the core of the console's text handling: a
+/// client label or a Chinese translation may occupy two cells per three
+/// bytes, so truncation, padding and wrapping must advance by columns
+/// while slicing by bytes. `width == 0` is used for combining marks and
+/// zero-width controls.
 struct Utf8Character
 {
 	size_t length = 1;
@@ -562,9 +565,9 @@ struct Utf8Character
 #ifdef _WIN32
 int CodePointWidth (std::uint32_t codePoint)
 {
-	// MSVC does not provide POSIX wcwidth().  Mirror the terminal backend's
-	// conservative Unicode width table instead of treating UTF-8 byte length
-	// as a terminal cell width.
+	// MSVC does not provide POSIX wcwidth().  Mirror the terminal
+	// backend's conservative Unicode width table instead of treating UTF-8
+	// byte length as a terminal cell width.
 	if ((codePoint >= 0x0300 && codePoint <= 0x036F) || (codePoint >= 0x1AB0 && codePoint <= 0x1AFF)
 		|| (codePoint >= 0x1DC0 && codePoint <= 0x1DFF) || (codePoint >= 0x20D0 && codePoint <= 0x20FF)
 		|| (codePoint >= 0xFE00 && codePoint <= 0xFE0F) || (codePoint >= 0xFE20 && codePoint <= 0xFE2F))
@@ -580,23 +583,25 @@ int CodePointWidth (std::uint32_t codePoint)
 }
 #endif
 
-/// @brief Advance one character and report its byte length and cell width.
+/// @brief Advance one character and report its byte length and cell
+/// width.
+/// POSIX uses mbrtowc/wcwidth in the locale established by main(). The
+/// state object is created fresh for every call on purpose: the
+/// renderer never carries shift state across characters, so a malformed
+/// sequence cannot poison the following rows.
 ///
-/// POSIX uses mbrtowc/wcwidth in the locale established by main(). The state
-/// object is created fresh for every call on purpose: the renderer never
-/// carries shift state across characters, so a malformed sequence cannot
-/// poison the following rows.
-///
-/// Windows has no wcwidth(), so the same conservative width table the Win32
-/// terminal backend uses is mirrored here. It must stay in sync with
-/// TerminalWin32.cpp: if the two disagree, the layout arithmetic and the
-/// backend's clipping disagree too, and the result is a torn right-hand
-/// column plus misaligned selection highlighting.
+/// Windows has no wcwidth(), so the same conservative width table the
+/// Win32 terminal backend uses is mirrored here. It must stay in sync
+/// with TerminalWin32.cpp: if the two disagree, the layout arithmetic
+/// and the backend's clipping disagree too, and the result is a torn
+/// right-hand column plus misaligned selection highlighting.
 ///
 /// @param offset Byte offset into `text`; must be before text.size().
-/// @return Consumed bytes (at least 1, so callers always progress) and width.
-/// @warning Invalid/truncated sequences report length 1 and width 1. They are
-///          never skipped in bulk, so the decoder cannot walk past a row.
+/// @return Consumed bytes (at least 1, so callers always progress) and
+/// width.
+/// @warning Invalid/truncated sequences report length 1 and width 1.
+/// They are never skipped in bulk, so the decoder cannot walk past a
+/// row.
 Utf8Character NextCharacter (std::string_view text, size_t offset)
 {
 	if (offset >= text.size ()) return { 1, 0 };
@@ -643,10 +648,10 @@ Utf8Character NextCharacter (std::string_view text, size_t offset)
 
 /// @brief Total terminal columns occupied by `text`.
 ///
-/// Never use `text.size()` for layout: it measures bytes, so a single Chinese
-/// title or a combining accent would shift every following column. A character
-/// with no definable width counts as one column, matching the terminal's own
-/// fallback for an unknown glyph.
+/// Never use `text.size()` for layout: it measures bytes, so a single
+/// Chinese title or a combining accent would shift every following
+/// column. A character with no definable width counts as one column,
+/// matching the terminal's own fallback for an unknown glyph.
 /// @return Column count, never less than zero.
 int DisplayWidth (std::string_view text)
 {
@@ -694,7 +699,8 @@ bool DecodeUtf8 (std::string_view text, size_t offset, std::uint32_t & codePoint
 		if ((next & 0xC0) != 0x80) return false;
 		codePoint = (codePoint << 6) | (next & 0x3F);
 	}
-	// Reject overlong encodings, UTF-16 surrogates and values above U+10FFFF.
+	// Reject overlong encodings, UTF-16 surrogates and values above
+	// U+10FFFF.
 	if ((length == 3 && codePoint < 0x800) || (length == 4 && codePoint < 0x10000) || codePoint > 0x10FFFF
 		|| (codePoint >= 0xD800 && codePoint <= 0xDFFF))
 		return false;
@@ -703,19 +709,21 @@ bool DecodeUtf8 (std::string_view text, size_t offset, std::uint32_t & codePoint
 
 /// @brief Make untrusted text safe for a terminal cell grid.
 ///
-/// Every string that originates in router data, peers or the daemon (peer
-/// labels, torrent names, comments, log lines, addresses) passes through here
-/// before layout: tabs/newlines become a plain space, other C0 and DEL become
-/// `?`, C1 bytes become `?`, invalid or truncated UTF-8 becomes `?` one byte
-/// at a time, and bidi embedding/override/isolate controls are removed
-/// entirely. The bidi removal is not cosmetic: they occupy no cells but
-/// reorder the rendered row, so a peer-supplied label could otherwise make a
-/// rating or a "yours" marker appear on someone else's line.
-///
+/// Every string that originates in router data, peers or the daemon
+/// (peer labels, torrent names, comments, log lines, addresses) passes
+/// through here before layout: tabs/newlines become a plain space,
+/// other C0 and DEL become `?`, C1 bytes become `?`, invalid or
+/// truncated UTF-8 becomes `?` one byte at a time, and bidi
+/// embedding/override/isolate controls are removed entirely. The bidi
+/// removal is not cosmetic: they occupy no cells but reorder the
+/// rendered row, so a peer-supplied label could otherwise make a rating
+/// or a "yours" marker appear on someone else's line.
 /// @param text Raw untrusted text.
-/// @return A string that is valid UTF-8 and free of cursor/mode escapes.
-/// @warning This is not an escaping function for program output. It sanitizes
-///          what is written into cells; it is not used for IPC or file data.
+/// @return A string that is valid UTF-8 and free of cursor/mode
+/// escapes.
+/// @warning This is not an escaping function for program output. It
+/// sanitizes what is written into cells; it is not used for IPC or file
+/// data.
 std::string SanitizeText (std::string_view text)
 {
 	std::string result;
@@ -760,30 +768,33 @@ std::string SanitizeText (std::string_view text)
 	return result;
 }
 
-// Comment owners and texts come from unauthenticated peers. On top of the
-// C0/DEL replacement SanitizeText performs, drop the Unicode bidi embedding,
-// override and isolate controls (U+202A..U+202E and U+2066..U+2069). They
-// occupy no cells but reorder the surrounding rows, so a peer-supplied label
-// could otherwise spoof which line a rating or the "yours" marker belongs to.
-// Invalid UTF-8 sequences are passed through unchanged, exactly like
-// SanitizeText, and never make the decoder skip more than one byte.
+// Comment owners and texts come from unauthenticated peers. On top of
+// the C0/DEL replacement SanitizeText performs, drop the Unicode bidi
+// embedding, override and isolate controls (U+202A..U+202E and
+// U+2066..U+2069). They occupy no cells but reorder the surrounding
+// rows, so a peer-supplied label could otherwise spoof which line a
+// rating or the "yours" marker belongs to. Invalid UTF-8 sequences are
+// passed through unchanged, exactly like SanitizeText, and never make
+// the decoder skip more than one byte.
 std::string SanitizeCommentText (std::string_view text)
 {
-	// SanitizeText now strips bidi controls and replaces invalid/C1 bytes for
-	// every untrusted field, not only comments.
+	// SanitizeText now strips bidi controls and replaces invalid/C1 bytes
+	// for every untrusted field, not only comments.
 	return SanitizeText (text);
 }
 
-/// @brief Cut a string to a column budget, optionally ending in an ellipsis.
-///
-/// Characters are added only while they still fit, so a wide glyph is dropped
-/// whole; a partial UTF-8 sequence can never be produced. The ellipsis is
-/// counted in columns before the body, so the returned width never exceeds
-/// `maxWidth`.
+/// @brief Cut a string to a column budget, optionally ending in an
+/// ellipsis.
+/// Characters are added only while they still fit, so a wide glyph is
+/// dropped whole; a partial UTF-8 sequence can never be produced. The
+/// ellipsis is counted in columns before the body, so the returned
+/// width never exceeds `maxWidth`.
 ///
 /// @param maxWidth Column budget (not bytes).
-/// @param ellipsis Append "..." when at least three columns are available.
-/// @return Possibly empty string; the input unchanged when it already fits.
+/// @param ellipsis Append "..." when at least three columns are
+/// available.
+/// @return Possibly empty string; the input unchanged when it already
+/// fits.
 std::string TruncateUtf8 (std::string_view text, int maxWidth, bool ellipsis = true)
 {
 	if (maxWidth <= 0 || text.empty ()) return { };
@@ -1154,14 +1165,15 @@ void FinalizeTorrent (TorrentRow & row)
 	if (row.eta && !*row.eta) row.eta.reset ();
 }
 
-/// @brief Rebuild torrent rows from a flat `torrent.&lt;index&gt;.&lt;field&gt;` snapshot.
-///
-/// The daemon replies with one key per field, not with records, so decoding is
-/// a fold over an ordered map: unknown prefixes and unknown fields are ignored
-/// (forward compatibility with a newer daemon), rows without an id are dropped
-/// and a duplicated id keeps its first appearance. The 1000-row cap and the
-/// per-field length bounds are the client-side counterpart of the request
-/// limit, so a hostile or buggy sender cannot grow the model without bound.
+/// @brief Rebuild torrent rows from a flat
+/// `torrent.&lt;index&gt;.&lt;field&gt;` snapshot.
+/// The daemon replies with one key per field, not with records, so
+/// decoding is a fold over an ordered map: unknown prefixes and unknown
+/// fields are ignored (forward compatibility with a newer daemon), rows
+/// without an id are dropped and a duplicated id keeps its first
+/// appearance. The 1000-row cap and the per-field length bounds are the
+/// client-side counterpart of the request limit, so a hostile or buggy
+/// sender cannot grow the model without bound.
 /// @return At most 1000 rows, each finalized with derived percent/eta.
 std::vector<TorrentRow> BuildTorrentRows (const std::map<std::string, std::string> & fields)
 {
@@ -1312,15 +1324,17 @@ TorrentDetail BuildTorrentDetail (const std::map<std::string, std::string> & fie
 	return detail;
 }
 
-/// @brief Choose which torrent table columns fit in the available width.
-///
-/// Columns are shed from the least important to the most important (error
-/// text, ratio, upload, size, download, peers) until the name column has at
-/// least 12 cells, with a hard floor of 4. The order is fixed so the table
-/// never reorders as the terminal is resized and a reader keeps the same
-/// column positions for everything that is still visible.
+/// @brief Choose which torrent table columns fit in the available
+/// width.
+/// Columns are shed from the least important to the most important
+/// (error text, ratio, upload, size, download, peers) until the name
+/// column has at least 12 cells, with a hard floor of 4. The order is
+/// fixed so the table never reorders as the terminal is resized and a
+/// reader keeps the same column positions for everything that is still
+/// visible.
 /// @param width Total row width available to the table.
-/// @return The name-column width plus the flags selecting the visible columns.
+/// @return The name-column width plus the flags selecting the visible
+/// columns.
 TorrentLayout ComputeTorrentLayout (int width)
 {
 	TorrentLayout layout;
@@ -1395,8 +1409,9 @@ bool IsActiveStatus (std::string_view status)
 		|| lower.find ("check") != std::string::npos || lower.find ("announc") != std::string::npos;
 }
 
-// Torrent status is an English wire token shared with Android. The protocol
-// value itself never changes; only the table/detail rendering is localized.
+// Torrent status is an English wire token shared with Android. The
+// protocol value itself never changes; only the table/detail rendering
+// is localized.
 std::string_view TorrentStatusText (std::string_view status)
 {
 	if (status == "downloading") return i2p::i18n::tr ("downloading");
@@ -1429,31 +1444,33 @@ std::string RatioEtaText (const TorrentRow & torrent)
 	return text;
 }
 
-/// @brief Interactive console application: snapshot model, render loop and input dispatch.
-///
-/// App owns every piece of console state for the process lifetime. The data
-/// model is a set of immutable snapshots fetched from the daemon over the
-/// local TUI IPC channel (see TuiClient.h): each `Parse*` method only replaces
-/// the rows of one panel, and no drawing code ever talks to the daemon. Draw
-/// only reads the model; the event loop is the single writer, so there is no
-/// locking anywhere in the presentation layer.
-///
-/// Pacing: one iteration of Run draws the dirty screen, issues the snapshot
-/// requests that are due for the current tab, then blocks in ReadKey for at
-/// most 200 ms. Per-snapshot deadlines keep the IPC load bounded, and a slow
-/// or absent daemon is represented as an error string plus `[stale]` panels
-/// rather than a blocked UI.
+/// @brief Interactive console application: snapshot model, render loop
+/// and input dispatch.
+/// App owns every piece of console state for the process lifetime. The
+/// data model is a set of immutable snapshots fetched from the daemon
+/// over the local TUI IPC channel (see TuiClient.h): each `Parse*`
+/// method only replaces the rows of one panel, and no drawing code ever
+/// talks to the daemon. Draw only reads the model; the event loop is
+/// the single writer, so there is no locking anywhere in the
+/// presentation layer.
+/// Pacing: one iteration of Run draws the dirty screen, issues the
+/// snapshot requests that are due for the current tab, then blocks in
+/// ReadKey for at most 200 ms. Per-snapshot deadlines keep the IPC load
+/// bounded, and a slow or absent daemon is represented as an error
+/// string plus `[stale]` panels rather than a blocked UI.
 ///
 /// Presentation is platform-neutral: all output goes through the
-/// `terminal::` boundary (ncursesw on POSIX, VT sequences over the Win32
-/// console on Windows) and all measurement goes through the UTF-8 helpers
-/// below, never through byte counts.
+/// `terminal::` boundary (ncursesw on POSIX, VT sequences over the
+/// Win32 console on Windows) and all measurement goes through the UTF-8
+/// helpers below, never through byte counts.
 class App
 {
 public:
 	/// @brief Bind the console to parsed options and a prepared theme.
-	/// @param options Resolved client options; the socket path must already be absolute.
-	/// @param theme Theme owning colour discovery; must outlive this object.
+	/// @param options Resolved client options; the socket path must
+	/// already be absolute.
+	/// @param theme Theme owning colour discovery; must outlive this
+	/// object.
 	explicit App (i2p::tui::ClientOptions options, const Theme & theme)
 		: m_Options (std::move (options))
 		, m_Client (m_Options.socketPath)
@@ -1572,9 +1589,9 @@ private:
 	i2p::tui::Client m_Client;
 	const Theme & m_Theme;
 	bool m_Connected = false;
-	// True once a successful snapshot arrived. A disconnected client keeps the
-	// last snapshot for reference, but every panel marks it stale instead of
-	// presenting cached rows as live.
+	// True once a successful snapshot arrived. A disconnected client keeps
+	// the last snapshot for reference, but every panel marks it stale
+	// instead of presenting cached rows as live.
 	bool m_StateLoaded = false, m_PeersLoaded = false, m_TunnelsLoaded = false;
 	bool m_DestinationsLoaded = false, m_ServicesLoaded = false, m_LogsLoaded = false;
 	std::string m_Error;
@@ -1639,8 +1656,9 @@ private:
 	TorrentDetail m_TorrentDetail;
 	TorrentDetailTab m_TorrentDetailTab = TorrentDetailTab::General;
 	int m_TorrentDetailScroll = 0;
-	// TORRENT-DETAIL comment page: the daemon retains up to 256 records but
-	// emits at most 16 per response, so the comments tab pages explicitly.
+	// TORRENT-DETAIL comment page: the daemon retains up to 256 records
+	// but emits at most 16 per response, so the comments tab pages
+	// explicitly.
 	int m_TorrentCommentOffset = 0;
 
 	std::chrono::steady_clock::time_point m_NextTorrentTunnels;
@@ -1656,19 +1674,21 @@ private:
 	int m_PendingTorrentTunnel = -1;
 	std::string m_PendingTorrentName;
 	std::string m_PendingTrackerHash;
-	// Local comment id captured by the hide/unhide prompt and consumed by the
-	// [y/N] confirmation, so the operator never retypes it.
+	// Local comment id captured by the hide/unhide prompt and consumed by
+	// the [y/N] confirmation, so the operator never retypes it.
 	std::string m_PendingCommentId;
 	std::string m_PendingTunnelName;
 	bool m_PendingTransit = false;
 	bool m_PendingOnline = false;
-	// Pending address add/replace target: set by the add prompt and reused by
-	// the confirmation prompt so the destination never has to be retyped.
+	// Pending address add/replace target: set by the add prompt and reused
+	// by the confirmation prompt so the destination never has to be
+	// retyped.
 	std::string m_PendingAddressName;
 	std::string m_PendingAddressDestination;
 	std::string m_PendingServiceName;
-	// Last typed ADMIN outcome token (started/stopped/already-running/...);
-	// empty when the verb reports no discrete outcome.
+	// Last typed ADMIN outcome token
+	// (started/stopped/already-running/...); empty when the verb reports
+	// no discrete outcome.
 	std::string m_LastAdminOutcome;
 
 	std::string m_StatusMessage;
@@ -1678,16 +1698,18 @@ private:
 
 /// @brief Run the render/input loop until the stop flag is published.
 ///
-/// Draw happens before the synchronous snapshot requests so that a daemon
-/// which accepts the connection but answers slowly can never leave an empty
-/// screen: the operator keeps seeing the last complete snapshot while the
-/// client waits inside its bounded socket timeout.
+/// Draw happens before the synchronous snapshot requests so that a
+/// daemon which accepts the connection but answers slowly can never
+/// leave an empty screen: the operator keeps seeing the last complete
+/// snapshot while the client waits inside its bounded socket timeout.
 ///
-/// @return Always 0; a transport or protocol problem is surfaced in the UI.
+/// @return Always 0; a transport or protocol problem is surfaced in the
+/// UI.
 /// @pre terminal::Init() succeeded and the process locale provides a
-///      multibyte LC_CTYPE, because the renderer decodes UTF-8 with mbrtowc.
-/// @post Drawing has stopped; the caller must still call terminal::Shutdown()
-///       to restore the screen and input modes.
+///      multibyte LC_CTYPE, because the renderer decodes UTF-8 with
+///      mbrtowc.
+/// @post Drawing has stopped; the caller must still call
+/// terminal::Shutdown() to restore the screen and input modes.
 int App::Run ()
 {
 	while (!g_Stop)
@@ -1720,13 +1742,15 @@ int App::Run ()
 	return 0;
 }
 
-/// @brief Attempt a reconnect at most every two seconds while disconnected.
-///
-/// A successful connect resets the auxiliary torrent state so rows from the
-/// previous daemon instance can never be shown against a new one, and it
-/// schedules an immediate snapshot pass. Failures are kept as the error text
-/// that Draw renders, never as an exception or a modal dialog.
-/// @post On success `m_Connected` is true and the refresh deadlines are reset.
+/// @brief Attempt a reconnect at most every two seconds while
+/// disconnected.
+/// A successful connect resets the auxiliary torrent state so rows from
+/// the previous daemon instance can never be shown against a new one,
+/// and it schedules an immediate snapshot pass. Failures are kept as
+/// the error text that Draw renders, never as an exception or a modal
+/// dialog.
+/// @post On success `m_Connected` is true and the refresh deadlines are
+/// reset.
 void App::ConnectIfNeeded ()
 {
 	if (m_Connected) return;
@@ -1750,20 +1774,23 @@ void App::ConnectIfNeeded ()
 	m_Dirty = true;
 }
 
-/// @brief Issue one request and classify its failure for the presentation layer.
-///
-/// The client distinguishes a well-formed remote error (the daemon parsed the
-/// verb and rejected it) from a transport or protocol failure. Only the former
-/// leaves the socket usable, so only the former is shown as a status message:
-/// anything else marks the client disconnected and schedules a reconnect.
-///
-/// @param command Protocol request line without the `name/version ` prefix.
-/// @param payload Receives the response payload on success; untouched otherwise.
-/// @param reportRemoteError Show a remote error in the status bar. Optional
-///        companion snapshots pass false so an older daemon that does not know
-///        a verb cannot pin a permanent error message on screen.
+/// @brief Issue one request and classify its failure for the
+/// presentation layer.
+/// The client distinguishes a well-formed remote error (the daemon
+/// parsed the verb and rejected it) from a transport or protocol
+/// failure. Only the former leaves the socket usable, so only the
+/// former is shown as a status message: anything else marks the client
+/// disconnected and schedules a reconnect.
+/// @param command Protocol request line without the `name/version `
+/// prefix.
+/// @param payload Receives the response payload on success; untouched
+/// otherwise.
+/// @param reportRemoteError Show a remote error in the status bar.
+/// Optional companion snapshots pass false so an older daemon that does
+/// not know a verb cannot pin a permanent error message on screen.
 /// @return true when a payload was received.
-/// @post On a non-remote failure the connection is closed and `m_Error` is set.
+/// @post On a non-remote failure the connection is closed and `m_Error`
+/// is set.
 bool App::Request (std::string_view command, std::string & payload, bool reportRemoteError)
 {
 	auto response = m_Client.Request (command);
@@ -1793,16 +1820,17 @@ bool App::Request (std::string_view command, std::string & payload, bool reportR
 
 /// @brief Fetch the snapshots that are due for the active tab.
 ///
-/// All waits are synchronous and bounded by the client socket timeout, so the
-/// schedule below is what keeps the console responsive: the two-second base
-/// tick carries STATE and the cheap tab snapshot, while lists, logs and the
-/// address-book auxiliaries run on their own slower deadlines. Only the
-/// primary snapshot of a panel sets its `*Loaded` flag, so a failed auxiliary
-/// request cannot make a panel look like it was refreshed.
-///
-/// Destinations rotates one address-book auxiliary request per six seconds
-/// (names, blocked names, subscriptions) rather than issuing four blocking
-/// requests in one tick, which used to stall input for up to ~12 s.
+/// All waits are synchronous and bounded by the client socket timeout,
+/// so the schedule below is what keeps the console responsive: the
+/// two-second base tick carries STATE and the cheap tab snapshot, while
+/// lists, logs and the address-book auxiliaries run on their own slower
+/// deadlines. Only the primary snapshot of a panel sets its `*Loaded`
+/// flag, so a failed auxiliary request cannot make a panel look like it
+/// was refreshed.
+/// Destinations rotates one address-book auxiliary request per six
+/// seconds (names, blocked names, subscriptions) rather than issuing
+/// four blocking requests in one tick, which used to stall input for up
+/// to ~12 s.
 /// @pre `m_Connected` is true; otherwise this is a no-op.
 void App::Refresh ()
 {
@@ -1901,14 +1929,14 @@ void App::Refresh ()
 	if (m_Tab == Tab::Torrents) RefreshTorrents (now);
 }
 
-/// @brief Poll the torrent tunnel list and the selected tunnel's data in rotation.
-///
-/// Each pass issues at most one request, ordered from the cheapest and most
-/// structural (tunnel list) to the most detailed (open detail tab), so the
-/// service thread on the daemon side is never asked for everything at once.
-/// The torrent list is the only snapshot required for the table, and it is
-/// skipped entirely while no tunnel is selected.
-///
+/// @brief Poll the torrent tunnel list and the selected tunnel's data
+/// in rotation.
+/// Each pass issues at most one request, ordered from the cheapest and
+/// most structural (tunnel list) to the most detailed (open detail
+/// tab), so the service thread on the daemon side is never asked for
+/// everything at once. The torrent list is the only snapshot required
+/// for the table, and it is skipped entirely while no tunnel is
+/// selected.
 /// @param now Monotonic timestamp sampled once by the caller.
 void App::RefreshTorrents (std::chrono::steady_clock::time_point now)
 {
@@ -2464,9 +2492,9 @@ void App::ParseTorrentDetail (const std::string & payload)
 	m_TorrentDetailScroll = std::max (0, m_TorrentDetailScroll);
 	if (m_TorrentDetail.info.id != previousId) m_TorrentCommentOffset = 0;
 
-	// Keep the requested page inside the retained set: moderation, expiry or
-	// a reload can shrink the comment vector between requests, and an offset
-	// past the end would otherwise show an empty tab forever.
+	// Keep the requested page inside the retained set: moderation, expiry
+	// or a reload can shrink the comment vector between requests, and an
+	// offset past the end would otherwise show an empty tab forever.
 	auto field = [] (const std::map<std::string, std::string> & fields, const char * key)
 	{ return ToU64 (MapValue (fields, key)); };
 	const auto & comments = m_TorrentDetail.comments;
@@ -2506,12 +2534,14 @@ bool App::ParseCommandResult (const std::string & payload)
 
 /// @brief Translate a typed admin outcome token for display.
 ///
-/// The tokens (`started`, `already-running`, `exists`, `disabled`, ...) are
-/// protocol values shared with Android and must never be printed as the
-/// result of a translation lookup; each one maps to a complete translated
-/// sentence. An unknown token returns an empty string so the caller keeps the
-/// daemon's own message instead of inventing an outcome.
-/// @return Localized text, or empty for a token this build does not know.
+/// The tokens (`started`, `already-running`, `exists`, `disabled`, ...)
+/// are protocol values shared with Android and must never be printed as
+/// the result of a translation lookup; each one maps to a complete
+/// translated sentence. An unknown token returns an empty string so the
+/// caller keeps the daemon's own message instead of inventing an
+/// outcome.
+/// @return Localized text, or empty for a token this build does not
+/// know.
 std::string App::AdminOutcomeText (std::string_view outcome)
 {
 	if (outcome == "started") return std::string (i2p::i18n::tr ("tunnel started"));
@@ -2526,17 +2556,17 @@ std::string App::AdminOutcomeText (std::string_view outcome)
 
 /// @brief Send one typed administrative verb and refresh on acceptance.
 ///
-/// Administrative writes are a closed set of `ADMIN ...`/`TORRENT-...` verbs
-/// handled by the daemon-owned queue; this client never builds one from user
-/// text beyond the value already validated by the prompting path. The last
-/// typed outcome is cleared first so this verb cannot report a previous one,
-/// and an accepted command immediately schedules a snapshot refresh so the
-/// panel reflects the daemon's state rather than an optimistic local guess.
-///
+/// Administrative writes are a closed set of `ADMIN ...`/`TORRENT-...`
+/// verbs handled by the daemon-owned queue; this client never builds
+/// one from user text beyond the value already validated by the
+/// prompting path. The last typed outcome is cleared first so this verb
+/// cannot report a previous one, and an accepted command immediately
+/// schedules a snapshot refresh so the panel reflects the daemon's
+/// state rather than an optimistic local guess.
 /// @return true when the daemon accepted the command.
-/// @warning Refuses to send while disconnected instead of queueing: there is
-///          no persistent client-side queue, and a queued write could be
-///          applied long after the operator saw it fail.
+/// @warning Refuses to send while disconnected instead of queueing:
+/// there is no persistent client-side queue, and a queued write could
+/// be applied long after the operator saw it fail.
 bool App::SendAdminCommand (std::string_view command)
 {
 	// Never let a previous verb's outcome be observed by this one.
@@ -2707,8 +2737,8 @@ void App::BeginTunnelServicePrompt (bool start)
 			false);
 		return;
 	}
-	// The selected name is a bounded, printable service name from the daemon's
-	// own snapshot; it is never assembled from typed input.
+	// The selected name is a bounded, printable service name from the
+	// daemon's own snapshot; it is never assembled from typed input.
 	m_PendingServiceName = service->name;
 	const std::string label = start ? i2p::i18n::tr ("Start tunnel '%s'?", service->name.c_str ())
 									: i2p::i18n::tr ("Stop tunnel '%s'?", service->name.c_str ());
@@ -2798,9 +2828,9 @@ bool App::RequireTorrentTunnel ()
 
 void App::SetStatus (std::string message, bool error)
 {
-	// Translate at the status boundary. Rendering only translated the exact
-	// full line, but the status line is prefixed with "> "/"! " later, so a
-	// catalog entry for a status message was unreachable.
+	// Translate at the status boundary. Rendering only translated the
+	// exact full line, but the status line is prefixed with "> "/"! "
+	// later, so a catalog entry for a status message was unreachable.
 	const auto localized = i2p::i18n::tr (std::string_view (message));
 	if (localized != std::string_view (message)) message.assign (localized);
 	m_StatusMessage = BoundUtf8 (SanitizeText (message), 1024);
@@ -2922,16 +2952,18 @@ void App::LeaveTorrentDetails ()
 /// @brief Move the retained-comment window by one daemon-side page.
 ///
 /// The daemon keeps a larger retained set but emits at most
-/// MAX_TORRENT_COMMENT_RECORDS_PER_REQUEST records per TORRENT-DETAIL reply,
-/// so paging is an offset request, not a local slice of what is already on
-/// screen. The offset is clamped to the last page that still holds a retained
-/// record; the display always refreshes, because only the daemon knows
-/// whether the set shrank between pages.
+/// MAX_TORRENT_COMMENT_RECORDS_PER_REQUEST records per TORRENT-DETAIL
+/// reply, so paging is an offset request, not a local slice of what is
+/// already on screen. The offset is clamped to the last page that still
+/// holds a retained record; the display always refreshes, because only
+/// the daemon knows whether the set shrank between pages.
 ///
-/// @param direction Positive for older records, negative for newer; 0 is ignored.
+/// @param direction Positive for older records, negative for newer; 0
+/// is ignored.
 /// @pre The comments tab is active; the caller checks that.
-/// @post A daemon that does not report `comments.offset` produces a status
-///       message instead of an offset argument the parser would reject.
+/// @post A daemon that does not report `comments.offset` produces a
+/// status message instead of an offset argument the parser would
+/// reject.
 void App::PageTorrentComments (int direction)
 {
 	if (!direction) return;
@@ -2948,8 +2980,8 @@ void App::PageTorrentComments (int direction)
 	int64_t next = static_cast<int64_t> (m_TorrentCommentOffset)
 		+ (direction > 0 ? static_cast<int64_t> (page) : -static_cast<int64_t> (page));
 	if (next < 0) next = 0;
-	// The last page is the one that holds the oldest retained record; never
-	// request an offset the parser would reject.
+	// The last page is the one that holds the oldest retained record;
+	// never request an offset the parser would reject.
 	const int64_t lastPage = total ? static_cast<int64_t> (((total - 1) / page) * page) : 0;
 	if (next > lastPage) next = lastPage;
 	if (next != m_TorrentCommentOffset)
@@ -2961,8 +2993,8 @@ void App::PageTorrentComments (int direction)
 				+ std::to_string (total),
 			false);
 	}
-	// Refresh even when the page did not move: the retained set may have shrunk
-	// and only the daemon knows the real offset.
+	// Refresh even when the page did not move: the retained set may have
+	// shrunk and only the daemon knows the real offset.
 	m_NextTorrentDetail = std::chrono::steady_clock::now ();
 	m_Dirty = true;
 }
@@ -2976,19 +3008,20 @@ bool App::TerminalTooSmall () const
 
 /// @brief Enter modal input mode for one prompt kind.
 ///
-/// The prompt owns the keyboard until CommitPrompt or CancelPrompt runs. The
-/// label is looked up in the active catalog exactly as given; a label that is
-/// not a catalog key (for example one containing a formatted value) is kept
-/// verbatim so an unrelated entry can never be substituted.
-///
+/// The prompt owns the keyboard until CommitPrompt or CancelPrompt
+/// runs. The label is looked up in the active catalog exactly as given;
+/// a label that is not a catalog key (for example one containing a
+/// formatted value) is kept verbatim so an unrelated entry can never be
+/// substituted.
 /// @param kind Prompt identity that CommitPrompt switches on.
-/// @param label English source string, translated here when it is a catalog key.
+/// @param label English source string, translated here when it is a
+/// catalog key.
 /// @param initial Pre-filled buffer contents.
-/// @warning Refuses to open a prompt on a terminal smaller than the safety
-///          floor (see TerminalTooSmall): a destructive confirmation that
+/// @warning Refuses to open a prompt on a terminal smaller than the
+/// safety floor (see TerminalTooSmall): a destructive confirmation that
 ///          cannot be displayed must never be committed.
-/// @post Input is bounded to 2048 bytes so a paste cannot grow state without
-///       limit; the bound is a byte budget, not a display budget.
+/// @post Input is bounded to 2048 bytes so a paste cannot grow state
+/// without limit; the bound is a byte budget, not a display budget.
 void App::BeginPrompt (PromptKind kind, std::string label, std::string initial)
 {
 	if (TerminalTooSmall ())
@@ -3007,16 +3040,16 @@ void App::BeginPrompt (PromptKind kind, std::string label, std::string initial)
 
 /// @brief Consume one key while a prompt is open.
 ///
-/// Modal semantics are deliberate: navigation, tab switching and tool keys
-/// are swallowed so a stray arrow or function key cannot trigger a torrent or
-/// admin action behind the prompt. Backspace removes one whole UTF-8 sequence
-/// rather than one byte, so a multibyte answer (Spanish/Russian/Chinese)
-/// stays valid while editing.
+/// Modal semantics are deliberate: navigation, tab switching and tool
+/// keys are swallowed so a stray arrow or function key cannot trigger a
+/// torrent or admin action behind the prompt. Backspace removes one
+/// whole UTF-8 sequence rather than one byte, so a multibyte answer
+/// (Spanish/Russian/Chinese) stays valid while editing.
 ///
 /// @param key Shared terminal key code from terminal::ReadKey.
 /// @return Always true; prompt input completely owns the key.
-/// @post Returns true without committing anything when the terminal is too
-///       small, except that Esc still cancels the prompt.
+/// @post Returns true without committing anything when the terminal is
+/// too small, except that Esc still cancels the prompt.
 bool App::HandlePromptKey (int key)
 {
 	if (TerminalTooSmall ())
@@ -3057,23 +3090,23 @@ bool App::HandlePromptKey (int key)
 	return true;
 }
 
-/// @brief Apply a completed prompt: local filter, ledger edit or typed daemon verb.
-///
-/// The function is the single place where prompt text turns into an action, so
-/// the accepted grammar of every verb is visible together. Three families:
-///
+/// @brief Apply a completed prompt: local filter, ledger edit or typed
+/// daemon verb.
+/// The function is the single place where prompt text turns into an
+/// action, so the accepted grammar of every verb is visible together.
+/// Three families:
 ///   - local view state (filters) — applied immediately, no IPC;
-///   - `Confirm*` kinds — read a yes/no answer through IsAffirmative and only
-///     then emit the corresponding typed `ADMIN`/`TORRENT-*` verb; the target
-///     identity was captured when the prompt opened (m_Pending*) so the
-///     operator never retypes a name, hash or comment id;
-///   - value prompts — validated, bounded, and sent through SendAdminCommand
-///     or SendTorrentCommand, which report the daemon's typed outcome.
-///
-/// Prompts clear their state before dispatch, so no path can leave the modal
-/// flag set or re-enter with a stale pending target.
-/// @post The prompt is closed and the screen is scheduled for redraw even when
-///       the entered value was rejected.
+/// - `Confirm*` kinds — read a yes/no answer through IsAffirmative and
+/// only then emit the corresponding typed `ADMIN`/`TORRENT-*` verb; the
+/// target identity was captured when the prompt opened (m_Pending*) so
+/// the operator never retypes a name, hash or comment id;
+/// - value prompts — validated, bounded, and sent through
+/// SendAdminCommand or SendTorrentCommand, which report the daemon's
+/// typed outcome.
+/// Prompts clear their state before dispatch, so no path can leave the
+/// modal flag set or re-enter with a stale pending target.
+/// @post The prompt is closed and the screen is scheduled for redraw
+/// even when the entered value was rejected.
 void App::CommitPrompt ()
 {
 	auto kind = m_Prompt;
@@ -3141,8 +3174,9 @@ void App::CommitPrompt ()
 			return;
 		}
 		const bool accepted = SendAdminCommand ("ADMIN RESEED");
-		// The daemon starts the job and returns immediately; the typed outcome
-		// distinguishes a new request from an already running or disabled one.
+		// The daemon starts the job and returns immediately; the typed
+		// outcome distinguishes a new request from an already running or
+		// disabled one.
 		if (m_LastAdminOutcome == "already-running")
 			SetStatus (std::string (i2p::i18n::tr ("reseed is already running")), false);
 		else if (m_LastAdminOutcome == "disabled")
@@ -3263,9 +3297,9 @@ void App::CommitPrompt ()
 			return;
 		}
 		// The daemon never re-points an existing name for ADDRESS-ADD. Ask
-		// first when the bounded address-book snapshot already knows the name,
-		// so the operator chooses the overwrite instead of discovering it
-		// afterwards.
+		// first when the bounded address-book snapshot already knows the
+		// name, so the operator chooses the overwrite instead of discovering
+		// it afterwards.
 		if (m_AddressBookNames.contains (std::string (name)))
 		{
 			AskAddressReplace (std::string (name), std::string (destination));
@@ -3334,8 +3368,8 @@ void App::CommitPrompt ()
 	if (kind == PromptKind::AddressSubAdd || kind == PromptKind::AddressSubRemove)
 	{
 		auto url = Trim (input);
-		// The address book lowercases the scheme; accept the same spellings here
-		// instead of requiring one exact case at the prompt.
+		// The address book lowercases the scheme; accept the same spellings
+		// here instead of requiring one exact case at the prompt.
 		auto hasScheme = [] (std::string_view value, std::string_view prefix)
 		{
 			if (value.size () < prefix.size ()) return false;
@@ -3412,7 +3446,8 @@ void App::CommitPrompt ()
 			SetStatus ("torrent session changed; creation cancelled", true);
 			return;
 		}
-		// The daemon validates sizes, tracker tiers and paths. The terminal never opens the source.
+		// The daemon validates sizes, tracker tiers and paths. The terminal
+		// never opens the source.
 		SendTorrentCommand (std::string (kind == PromptKind::CreateTorrent ? "TORRENT-CREATE " : "TORRENT-CREATE-V1 ")
 			+ std::to_string (tunnel) + " " + source);
 		return;
@@ -3783,8 +3818,8 @@ void App::RemoveAllTorrents (bool files)
 	m_PendingTorrentId = -1;
 	m_PendingTorrentTunnel = m_TorrentTunnel;
 	m_PendingTorrentName.clear ();
-	// The snapshot is bounded, so the prompt names the session instead of a
-	// count that could understate a truncated list.
+	// The snapshot is bounded, so the prompt names the session instead of
+	// a count that could understate a truncated list.
 	auto session = TruncateUtf8 (SanitizeText (m_TorrentTunnelName), 60);
 	if (files)
 		BeginPrompt (PromptKind::ConfirmRemoveAllFiles,
@@ -3879,28 +3914,31 @@ void App::CycleTorrentTunnel (int delta)
 	SetStatus (std::string (i2p::i18n::tr ("tunnel: ")) + m_TorrentTunnels[position].name, false);
 }
 
-/// @brief Draw one whole line at `row` after sanitizing, translating and fitting it.
-///
-/// This is the only rendering primitive panels use, which makes it the single
-/// localization and safety boundary: text is sanitized (control/bidi/invalid
-/// UTF-8), translated only when it is an exact catalog entry (or an exact
-/// catalog entry after a leading layout-space prefix), then truncated by
-/// terminal columns. Composition of runtime values happens before this call
-/// and is intentionally not looked up, so a translated sentence can never be
+/// @brief Draw one whole line at `row` after sanitizing, translating
+/// and fitting it.
+/// This is the only rendering primitive panels use, which makes it the
+/// single localization and safety boundary: text is sanitized
+/// (control/bidi/invalid UTF-8), translated only when it is an exact
+/// catalog entry (or an exact catalog entry after a leading
+/// layout-space prefix), then truncated by terminal columns.
+/// Composition of runtime values happens before this call and is
+/// intentionally not looked up, so a translated sentence can never be
 /// matched against a partially formatted string.
-///
-/// @param width Column budget for the whole line; wide glyphs count as two.
-/// @param attributes Theme attribute word; 0 keeps the current attribute.
-/// @post A single-line attribute is restored to normal before returning.
+/// @param width Column budget for the whole line; wide glyphs count as
+/// two.
+/// @param attributes Theme attribute word; 0 keeps the current
+/// attribute.
+/// @post A single-line attribute is restored to normal before
+/// returning.
 void App::PutLine (int row, const std::string & text, int width, int attributes)
 {
 	terminal::Move (row, 0);
 	terminal::ClearToEol ();
 	if (attributes) terminal::SetAttribute (attributes);
-	// Translate exact catalog entries at the rendering boundary. Lines with
-	// leading layout spaces keep the prefix while the visible text is looked
-	// up without it; composed strings remain unchanged unless their full text
-	// has a catalog entry.
+	// Translate exact catalog entries at the rendering boundary. Lines
+	// with leading layout spaces keep the prefix while the visible text is
+	// looked up without it; composed strings remain unchanged unless their
+	// full text has a catalog entry.
 	std::string translated (i2p::i18n::tr (text));
 	if (translated == text)
 	{
@@ -4044,9 +4082,9 @@ void App::DrawStatus (int top, int height, int width)
 			m_Theme.Attributes (ThemeRole::Muted));
 		return;
 	}
-	// The Status page has more rows than a 24-line terminal. Scroll over the
-	// fixed rows; the bandwidth history is only drawn on the first page so a
-	// scrolled view never hides a status field behind it.
+	// The Status page has more rows than a 24-line terminal. Scroll over
+	// the fixed rows; the bandwidth history is only drawn on the first
+	// page so a scrolled view never hides a status field behind it.
 	const int scroll = std::clamp (m_Scroll, 0, 25);
 	int lineIndex = 0;
 	auto show = [&] (std::string_view label, std::string_view value)
@@ -4252,8 +4290,9 @@ void App::DrawNetDb (int top, int height, int width)
 		if (row >= top + height) return;
 		PutLine (row++, "  " + FitUtf8 (i2p::i18n::tr (label), 26) + std::move (value), width);
 	};
-	// Timestamps are milliseconds since the epoch in the protocol; the view
-	// shows them through the same age formatter the rest of the panel uses.
+	// Timestamps are milliseconds since the epoch in the protocol; the
+	// view shows them through the same age formatter the rest of the panel
+	// uses.
 	auto millis = [] (std::string_view text)
 	{
 		if (text.empty ()) return std::string ();
@@ -4976,8 +5015,8 @@ void App::BuildDetailComments (std::vector<std::string> & lines, const TorrentDe
 		auto it = detail.comments.find (std::string (key));
 		return it == detail.comments.end () ? std::string () : SanitizeText (it->second);
 	};
-	// Every displayed bound is clamped again locally: the daemon bounds the
-	// page, but this renderer must stay correct with any snapshot.
+	// Every displayed bound is clamped again locally: the daemon bounds
+	// the page, but this renderer must stay correct with any snapshot.
 	const uint64_t maxOffset = i2p::tui::MAX_TORRENT_COMMENT_OFFSET;
 	const uint64_t total = std::min<uint64_t> (ToU64 (summary ("comments.total")), maxOffset + 1);
 	const uint64_t count
@@ -5007,8 +5046,8 @@ void App::BuildDetailComments (std::vector<std::string> & lines, const TorrentDe
 		page += " | " + std::string (i2p::i18n::tr ("] older"));
 	lines.push_back (page);
 	const std::string persistence = summary ("comments.persistenceError");
-	// A failed local-state write is the reason a moderation decision may not
-	// survive a restart; never hide it.
+	// A failed local-state write is the reason a moderation decision may
+	// not survive a restart; never hide it.
 	if (!persistence.empty ()) lines.push_back ("  " + std::string (i2p::i18n::tr ("persistence: ")) + persistence);
 
 	const int textColumns = std::max (16, width - 4);
@@ -5148,15 +5187,15 @@ void App::DrawTorrentStatusLine (int height, int width)
 
 /// @brief Render one full frame into the back buffer.
 ///
-/// The layout is a fixed band model: a one-line header with the tab bar, a
-/// content band of `height - 4` rows (row 1 optionally carries the torrent
-/// tunnel context), then the status/prompt line at `height - 2` and the help
-/// footer at `height - 1`. Below the 6x40 safety floor the frame is replaced by
-/// a notice, because every panel assumes a readable content band.
-///
-/// Nothing here requests data or mutates the model; Draw is only ever called
-/// from the event loop with a complete snapshot, which is why the panels can
-/// read fields without locks.
+/// The layout is a fixed band model: a one-line header with the tab
+/// bar, a content band of `height - 4` rows (row 1 optionally carries
+/// the torrent tunnel context), then the status/prompt line at `height
+/// - 2` and the help footer at `height - 1`. Below the 6x40 safety
+/// floor the frame is replaced by a notice, because every panel assumes
+/// a readable content band.
+/// Nothing here requests data or mutates the model; Draw is only ever
+/// called from the event loop with a complete snapshot, which is why
+/// the panels can read fields without locks.
 /// @post The terminal is refreshed and `m_Dirty` is cleared.
 void App::Draw ()
 {
@@ -5212,16 +5251,16 @@ void App::Draw ()
 
 /// @brief Dispatch one non-modal key press to the active view.
 ///
-/// Dispatch is layered and first-match-wins: modal prompt, then the torrent
-/// table/detail block, then the NetDb and Status shortcuts, and finally the
-/// global keys (refresh, tab switch, help, quit). Because the earlier layers
-/// return on the keys they own, a view action can deliberately shadow a
-/// global letter; the important case is `q`, which quits only from the torrent
-/// table and returns from a torrent detail view instead, so a modal view can
-/// never end the session by accident.
-///
-/// @param key Shared terminal key code; printable input arrives one UTF-8 byte
-///        at a time, matching the terminal boundary contract.
+/// Dispatch is layered and first-match-wins: modal prompt, then the
+/// torrent table/detail block, then the NetDb and Status shortcuts, and
+/// finally the global keys (refresh, tab switch, help, quit). Because
+/// the earlier layers return on the keys they own, a view action can
+/// deliberately shadow a global letter; the important case is `q`,
+/// which quits only from the torrent table and returns from a torrent
+/// detail view instead, so a modal view can never end the session by
+/// accident.
+/// @param key Shared terminal key code; printable input arrives one
+/// UTF-8 byte at a time, matching the terminal boundary contract.
 void App::HandleKey (int key)
 {
 	if (m_Prompt != PromptKind::None)
@@ -5792,19 +5831,20 @@ void App::HandleKey (int key)
 }
 }
 
-/// @brief Process entry point: parse, establish locale, then own the console.
-///
-/// Order is load-bearing. Options are resolved (including the `[tui] socket`
-/// key from i2pd.conf) before any terminal work, so `--help`/`--version` never
-/// require a console. The locale is then established *before* ncursesw starts,
-/// because the renderer measures text with mbrtowc/wcwidth in that locale; on
-/// POSIX a C/POSIX LC_CTYPE is retried with C.UTF-8 and en_US.UTF-8 so UTF-8
-/// payloads are not decoded byte-by-byte. Signals publish a stop flag only,
-/// which lets the normal shutdown path restore the alternate screen, cursor
-/// and input modes instead of dying inside a handler.
-///
-/// @return EXIT_SUCCESS on a clean exit, EXIT_FAILURE for bad options or an
-///         unusable terminal (the error goes to stderr, never the screen).
+/// @brief Process entry point: parse, establish locale, then own the
+/// console.
+/// Order is load-bearing. Options are resolved (including the `[tui]
+/// socket` key from i2pd.conf) before any terminal work, so
+/// `--help`/`--version` never require a console. The locale is then
+/// established *before* ncursesw starts, because the renderer measures
+/// text with mbrtowc/wcwidth in that locale; on POSIX a C/POSIX
+/// LC_CTYPE is retried with C.UTF-8 and en_US.UTF-8 so UTF-8 payloads
+/// are not decoded byte-by-byte. Signals publish a stop flag only,
+/// which lets the normal shutdown path restore the alternate screen,
+/// cursor and input modes instead of dying inside a handler.
+/// @return EXIT_SUCCESS on a clean exit, EXIT_FAILURE for bad options
+/// or an unusable terminal (the error goes to stderr, never the
+/// screen).
 /// @post terminal::Shutdown() restored the console before returning.
 int main (int argc, char * argv[])
 {
@@ -5844,16 +5884,17 @@ int main (int argc, char * argv[])
 
 #ifdef _WIN32
 	// The shared text helpers decode payloads with mbrtowc()/wcwidth(), so
-	// the CRT must use UTF-8.  Fall back to the system locale if a very old
-	// CRT rejects the explicit name.
+	// the CRT must use UTF-8.  Fall back to the system locale if a very
+	// old CRT rejects the explicit name.
 	if (!setlocale (LC_ALL, ".UTF-8")) setlocale (LC_ALL, "");
-	// A console close/logoff would otherwise terminate without restoring the
-	// alternate screen and input modes. The handler only publishes g_Stop.
+	// A console close/logoff would otherwise terminate without restoring
+	// the alternate screen and input modes. The handler only publishes
+	// g_Stop.
 	(void)SetConsoleCtrlHandler (HandleConsoleEvent, TRUE);
 #else
 	setlocale (LC_ALL, "");
-	// The shared renderer measures UTF-8 with mbrtowc()/wcwidth(). Ensure a
-	// multibyte LC_CTYPE even when LANG/LC_ALL is unset or C/POSIX.
+	// The shared renderer measures UTF-8 with mbrtowc()/wcwidth(). Ensure
+	// a multibyte LC_CTYPE even when LANG/LC_ALL is unset or C/POSIX.
 	if (MB_CUR_MAX == 1 && !setlocale (LC_CTYPE, "C.UTF-8")) (void)setlocale (LC_CTYPE, "en_US.UTF-8");
 	struct sigaction resizeAction { };
 	resizeAction.sa_handler = HandleResize;
@@ -5867,8 +5908,9 @@ int main (int argc, char * argv[])
 #endif
 
 	// Select the UI catalog after the platform locale is established. An
-	// explicit --lang/[tui] language wins; otherwise LC_ALL/LC_MESSAGES/LANG
-	// is consulted and unsupported locales fall back to English.
+	// explicit --lang/[tui] language wins; otherwise
+	// LC_ALL/LC_MESSAGES/LANG is consulted and unsupported locales fall
+	// back to English.
 	i2p::i18n::SetLanguage (options->language);
 
 	if (!i2p::tui::terminal::Init ())

@@ -4,7 +4,9 @@
  *
  * openi2pd: test tui protocol.
  *
- * Checks TUI request/response parsing, field escaping, framing and payload limits, config snapshot/write restrictions and torrent command bounds.
+ * Checks TUI request/response parsing, field escaping, framing and
+ * payload limits, config snapshot/write restrictions and torrent
+ * command bounds.
  *
  */
 
@@ -15,11 +17,13 @@
 
 #include "TuiProtocol.h"
 // The daemon-side header is self-contained and declares only enums plus
-// inline name tables, so the token vocabulary can be pinned by this test
+// inline name tables, so the token vocabulary can be pinned by this
+// test
 // without linking the daemon dispatcher.
 #include "daemon/TuiServerCommon.h"
 #ifndef NO_TORRENTS
-// Pure comment-page slicing lives in the snapshot header; the torrents build
+// Pure comment-page slicing lives in the snapshot header; the torrents
+// build
 // pins its page size against the wire bound.
 #include "TorrentsControl.h"
 #endif
@@ -151,7 +155,8 @@ static void TestRequests ()
 	assert (!ParseRequest ("I2PDTUI/1 LOGS 0 999999").has_value ());
 	assert (!ParseRequest ("I2PDTUI/1 PEERS 0").has_value ());
 	assert (!ParseRequest ("I2PDTUI/1 STATE extra").has_value ());
-	// Repeated separators are tolerated, leading/trailing whitespace is not.
+	// Repeated separators are tolerated, leading/trailing whitespace is
+	// not.
 	assert (ParseRequest ("I2PDTUI/1  STATE").has_value ());
 	assert (!ParseRequest ("I2PDTUI/1 STATE ").has_value ());
 	assert (!ParseRequest (std::string (MAX_REQUEST_LINE + 1, 'A')).has_value ());
@@ -172,7 +177,8 @@ static void TestResponseHeader ()
 	assert (ErrorCodeName (error->errorCode) == "unknown-command");
 	assert (ErrorCodeName (ErrorCode::BadArgument) == "bad-argument");
 
-	// Every declared error code is accepted; anything above Internal is not.
+	// Every declared error code is accepted; anything above Internal is
+	// not.
 	for (uint32_t code = 0; code <= static_cast<uint32_t> (ErrorCode::Internal); ++code)
 	{
 		auto header = ParseResponseHeader ("I2PDTUI/1 ERR " + std::to_string (code) + " 1");
@@ -206,8 +212,9 @@ static void TestFraming ()
 	AppendField (payload, "disabled", false);
 	assert (payload == "count=42\nenabled=1\ndisabled=0\n");
 
-	// Field names are silently ignored when empty or over the limit; a noisy
-	// snapshot producer must not be able to grow the frame through them.
+	// Field names are silently ignored when empty or over the limit; a
+	// noisy snapshot producer must not be able to grow the frame through
+	// them.
 	std::string names;
 	std::string validName (MAX_FIELD_NAME, 'n');
 	AppendField (names, validName, "ok");
@@ -236,7 +243,8 @@ static void TestFraming ()
 	assert (atLimit.size () == MAX_REQUEST_LINE + 1);
 	assert (!ParseRequest (atLimit).has_value ());
 
-	// Escaping is symmetric and preserves unknown/truncated escapes verbatim.
+	// Escaping is symmetric and preserves unknown/truncated escapes
+	// verbatim.
 	assert (EscapeValue ("a\\b\nc\rd") == "a\\\\b\\nc\\rd");
 	assert (UnescapeValue ("a\\\\b\\nc\\rd") == "a\\b\nc\rd");
 	assert (UnescapeValue ("tail\\") == "tail\\");
@@ -332,8 +340,9 @@ static void TestAdminCommands ()
 	assert (blocked.has_value () && blocked->type == RequestType::AddressBookBlocked);
 	assert (blocked->limit == 12);
 
-	// Address-book subscription sources are read as a bounded list and edited
-	// through typed ADMIN verbs; a URL is one whitespace-free token.
+	// Address-book subscription sources are read as a bounded list and
+	// edited through typed ADMIN verbs; a URL is one whitespace-free
+	// token.
 	auto subscriptions = ParseRequest ("I2PDTUI/1 ADDRESSBOOK-SUBSCRIPTIONS 16");
 	assert (subscriptions.has_value () && subscriptions->type == RequestType::AddressBookSubscriptions);
 	assert (subscriptions->limit == 16);
@@ -350,7 +359,8 @@ static void TestAdminCommands ()
 	assert (!ParseRequest ("I2PDTUI/1 ADMIN ADDRESS-SUB-ADD http://a/ http://b/").has_value ());
 	assert (!ParseRequest ("I2PDTUI/1 ADMIN ADDRESS-SUB-ADD bad\nurl").has_value ());
 
-	// Operator blocklist: counters plus the in-memory runtime ban list. The
+	// Operator blocklist: counters plus the in-memory runtime ban list.
+	// The
 	// router hash is a bounded base64 token.
 	auto blocklist = ParseRequest ("I2PDTUI/1 BLOCKLIST 200");
 	assert (blocklist.has_value () && blocklist->type == RequestType::Blocklist);
@@ -403,7 +413,8 @@ static void TestAdminCommands ()
 
 static void TestTunnelAndReseedAdminVerbs ()
 {
-	// One configured tunnel, addressed by its bounded, whitespace-free service
+	// One configured tunnel, addressed by its bounded, whitespace-free
+	// service
 	// name. Both verbs accept exactly one token and no trailing data.
 	auto start = ParseRequest ("I2PDTUI/1 ADMIN TUNNEL-START web");
 	assert (start.has_value () && start->type == RequestType::AdminTunnelStart);
@@ -417,21 +428,22 @@ static void TestTunnelAndReseedAdminVerbs ()
 	assert (!ParseRequest ("I2PDTUI/1 ADMIN TUNNEL-START").has_value ());
 	assert (!ParseRequest ("I2PDTUI/1 ADMIN TUNNEL-START web extra").has_value ());
 	assert (!ParseRequest ("I2PDTUI/1 ADMIN TUNNEL-START ").has_value ());
-	// A name is one line: no whitespace, control characters, NUL or a hidden
-	// second request can ride along.
+	// A name is one line: no whitespace, control characters, NUL or a
+	// hidden second request can ride along.
 	assert (!ParseRequest ("I2PDTUI/1 ADMIN TUNNEL-START two words").has_value ());
 	assert (!ParseRequest ("I2PDTUI/1 ADMIN TUNNEL-START web\tname").has_value ());
 	assert (!ParseRequest ("I2PDTUI/1 ADMIN TUNNEL-START web\nQUIT").has_value ());
 	assert (!ParseRequest (std::string ("I2PDTUI/1 ADMIN TUNNEL-START web") + '\0' + "QUIT").has_value ());
 	assert (!ParseRequest ("I2PDTUI/1 ADMIN TUNNEL-START web\x01name").has_value ());
-	// Only the closed verb set exists: no generic tunnel writer. The argument is
-	// a lookup key and never a file path or URL the daemon would open, so a
-	// path-shaped name simply resolves to "unknown".
+	// Only the closed verb set exists: no generic tunnel writer. The
+	// argument is a lookup key and never a file path or URL the daemon
+	// would open, so a path-shaped name simply resolves to "unknown".
 	assert (!ParseRequest ("I2PDTUI/1 ADMIN TUNNEL-RESTART web").has_value ());
 	assert (ParseRequest ("I2PDTUI/1 ADMIN TUNNEL-START /etc/i2pd/tunnels.conf").has_value ());
 	assert (!ParseRequest ("I2PDTUI/1 TUNNEL-START web").has_value ());
 
-	// Reseed never carries an argument: the daemon reports the typed outcome.
+	// Reseed never carries an argument: the daemon reports the typed
+	// outcome.
 	auto reseed = ParseRequest ("I2PDTUI/1 ADMIN RESEED");
 	assert (reseed.has_value () && reseed->type == RequestType::AdminReseed);
 	assert (!ParseRequest ("I2PDTUI/1 ADMIN RESEED now").has_value ());
@@ -449,8 +461,9 @@ static void TestTunnelAndReseedAdminVerbs ()
 	assert (AdminOutcomeName (AdminOutcome::Unknown) == "unknown");
 	assert (AdminOutcomeName (AdminOutcome::Disabled) == "disabled");
 	assert (AdminOutcomeName (AdminOutcome::Exists) == "exists");
-	// Every token is one lowercase word, so a client never has to translate
-	// or guess a spelling and a token can never carry whitespace.
+	// Every token is one lowercase word, so a client never has to
+	// translate or guess a spelling and a token can never carry
+	// whitespace.
 	for (auto outcome : { AdminOutcome::Started, AdminOutcome::Stopped, AdminOutcome::AlreadyRunning,
 			 AdminOutcome::AlreadyStopped, AdminOutcome::Unknown, AdminOutcome::Disabled, AdminOutcome::Exists })
 	{
@@ -459,8 +472,9 @@ static void TestTunnelAndReseedAdminVerbs ()
 		for (char ch : token) assert ((ch >= 'a' && ch <= 'z') || ch == '-');
 	}
 
-	// The reseed status and tunnel list field names must fit the wire limit,
-	// including the largest indexed variant a bounded snapshot can produce.
+	// The reseed status and tunnel list field names must fit the wire
+	// limit, including the largest indexed variant a bounded snapshot can
+	// produce.
 	for (auto name : { "netdb.reseed.phase", "netdb.reseed.enabled", "netdb.reseed.attempts", "netdb.reseed.succeeded",
 			 "netdb.reseed.last_attempt_ms", "netdb.reseed.last_success_ms", "netdb.reseed.last_error",
 			 "tunnel.service", "tunnel.service.count", "outcome", "running" })
@@ -528,7 +542,8 @@ static void TestConfigRequests ()
 	assert (config.has_value ());
 	assert (config->type == RequestType::Config);
 
-	// The snapshot command takes no section selector, option name or value.
+	// The snapshot command takes no section selector, option name or
+	// value.
 	auto extra = ParseRequest ("I2PDTUI/1 CONFIG 1");
 	assert (!extra.has_value ());
 	assert (extra.error ().code == ErrorCode::BadArgument);
@@ -559,7 +574,8 @@ static void TestConfigRequests ()
 	assert (header->payloadSize == payload.size ());
 	assert (frame.substr (newline + 1) == payload);
 
-	// The worst-case indexed field name must fit the wire field-name limit.
+	// The worst-case indexed field name must fit the wire field-name
+	// limit.
 	const auto largest
 		= std::string ("config.option.") + std::to_string (MAX_CONFIG_RECORDS_PER_REQUEST - 1) + ".value";
 	assert (largest.size () <= MAX_FIELD_NAME);
@@ -580,7 +596,8 @@ static void TestTorrentRequests ()
 	auto detail = ParseRequest ("I2PDTUI/1 TORRENT-DETAIL 1 7");
 	assert (detail.has_value () && detail->type == RequestType::TorrentDetail);
 	assert (detail->tunnelIndex == 1 && detail->torrentId == 7);
-	// Without page arguments the historic request is preserved exactly: page
+	// Without page arguments the historic request is preserved exactly:
+	// page
 	// one, newest records first.
 	assert (detail->commentOffset == 0);
 	assert (detail->commentLimit == MAX_TORRENT_COMMENT_RECORDS_PER_REQUEST);
@@ -602,7 +619,8 @@ static void TestTorrentRequests ()
 	assert (detailSingle.has_value () && detailSingle->commentOffset == 0 && detailSingle->commentLimit == 1);
 	auto detailLastPage = ParseRequest ("I2PDTUI/1 TORRENT-DETAIL 0 7 255 16");
 	assert (detailLastPage.has_value () && detailLastPage->commentOffset == MAX_TORRENT_COMMENT_OFFSET);
-	// Out-of-range, negative, non-numeric and extra tokens are rejected rather
+	// Out-of-range, negative, non-numeric and extra tokens are rejected
+	// rather
 	// than clamped: a client must learn that its page request was invalid.
 	assert (!ParseRequest ("I2PDTUI/1 TORRENT-DETAIL 0 7 0 0").has_value ());
 	assert (!ParseRequest ("I2PDTUI/1 TORRENT-DETAIL 0 7 0 17").has_value ());
@@ -651,7 +669,8 @@ static void TestTorrentRequests ()
 	assert (!ParseRequest ("I2PDTUI/1 TORRENT-REMOVE-ALL -1").has_value ());
 	assert (!ParseRequest ("I2PDTUI/1 TORRENT-REMOVE-ALL 4294967296").has_value ());
 
-	// Comment hide/unhide carry the bounded local comment id as their argument.
+	// Comment hide/unhide carry the bounded local comment id as their
+	// argument.
 	auto commentHide = ParseRequest ("I2PDTUI/1 TORRENT-COMMENT-HIDE 0 3 42");
 	assert (commentHide.has_value () && commentHide->type == RequestType::TorrentCommentHide);
 	assert (commentHide->tunnelIndex == 0 && commentHide->torrentId == 3 && commentHide->argument == "42");
@@ -688,7 +707,8 @@ static void TestTorrentRequests ()
 	assert (startAll.has_value () && startAll->type == RequestType::TorrentStartAll);
 	assert (!ParseRequest ("I2PDTUI/1 TORRENT-STOP-ALL").has_value ());
 
-	// Single-torrent lifecycle verbs used by the TUI and the Android detail
+	// Single-torrent lifecycle verbs used by the TUI and the Android
+	// detail
 	// actions; each binds a tunnel index and a positive engine id.
 	auto startOne = ParseRequest ("I2PDTUI/1 TORRENT-START 1 9");
 	assert (startOne.has_value () && startOne->type == RequestType::TorrentStart);
@@ -707,11 +727,11 @@ static void TestCommentPageBounds ()
 {
 #ifndef NO_TORRENTS
 	using i2p::torrents::SliceCommentPage;
-	// The snapshot retains up to 256 records while one response emits at most
-	// 16; the pure slice is what both the daemon and the clients rely on.
-	// The per-torrent comments.visible/hidden/local counters are produced by
-	// TorrentsTunnel::GetControlSnapshot and need a live torrent fixture, so
-	// they are not exercised by this protocol test.
+	// The snapshot retains up to 256 records while one response emits at
+	// most 16; the pure slice is what both the daemon and the clients rely
+	// on. The per-torrent comments.visible/hidden/local counters are
+	// produced by TorrentsTunnel::GetControlSnapshot and need a live
+	// torrent fixture, so they are not exercised by this protocol test.
 	assert (i2p::torrents::MAX_COMMENT_PAGE == MAX_TORRENT_COMMENT_RECORDS_PER_REQUEST);
 
 	auto first = SliceCommentPage (40, 0, MAX_TORRENT_COMMENT_RECORDS_PER_REQUEST);

@@ -5,10 +5,10 @@
  * openi2pd: Terminal.
  *
  * Defines the platform-neutral terminal boundary shared by i2pd-tui:
- * integer attributes, fixed key codes and UTF-8 input/output operations.
- * Unix backs it with ncursesw and Windows with the Win32 console and VT
- * sequences, so presentation code never depends on either API.
- *
+ * integer attributes, fixed key codes and UTF-8 input/output
+ * operations. Unix backs it with ncursesw and Windows with the Win32
+ * console and VT sequences, so presentation code never depends on
+ * either API.
  */
 
 #ifndef OPENI2PD_TUI_TERMINAL_H
@@ -20,8 +20,8 @@
  * Minimal terminal boundary for the shared i2pd-tui presentation code.
  *
  * Unix wraps ncursesw; Windows uses the Win32 console API with VT/ANSI
- * output.  Attributes stay plain ints so the theme and the application do
- * not depend on ncurses types.  The layout is:
+ * output.  Attributes stay plain ints so the theme and the application
+ * do not depend on ncurses types.  The layout is:
  *
  *   bits 0..7   text style (bold, dim, underline, reverse)
  *   bits 16..   colour pair number, see ColorPair()
@@ -141,8 +141,8 @@ namespace tui
 		 * Input must already be sanitized (SanitizeText turns tabs and line
 		 * breaks into spaces). A control character that wcwidth() reports as
 		 * -1 is charged one column here although a terminal may advance a tab
-		 * to the next tab stop, so the backend does not expand tabs itself and
-		 * a caller that bypasses sanitizing can drift the column budget.
+		 * to the next tab stop, so the backend does not expand tabs itself
+		 * and a caller that bypasses sanitizing can drift the column budget.
 		 */
 		void Put (std::string_view text, int limit = -1);
 		void ClearToEol ();

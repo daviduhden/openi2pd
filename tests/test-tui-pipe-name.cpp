@@ -4,7 +4,9 @@
  *
  * openi2pd: test tui pipe name.
  *
- * Checks portable Windows named-pipe name derivation: one-way endpoint normalization, ASCII case folding and a stable hashed pipe name so daemon and client agree; no pipe is created.
+ * Checks portable Windows named-pipe name derivation: one-way endpoint
+ * normalization, ASCII case folding and a stable hashed pipe name so
+ * daemon and client agree; no pipe is created.
  *
  */
 
