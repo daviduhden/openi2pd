@@ -4,11 +4,11 @@
  *
  * openi2pd: RuntimeAdminFragment.
  *
- * Material runtime-administration screen: per-tunnel start/stop, the
- * bounded NetDb reseed status with a "reseed now" action, and in-memory
- * router ban/unban. Every action is a closed typed command through
- * RouterViewModel's worker-backed bridge; the screen never reads keys,
- * filesystem paths or URLs.
+ * Material admin screen: tunnel control, bounded reseed,
+ * live router controls and in-memory router bans.
+ * Every action is a closed typed command through RouterViewModel's
+ * worker-backed bridge; the screen never reads keys, filesystem paths
+ * or URLs.
  *
  */
 
@@ -38,11 +38,13 @@ import com.google.android.material.textfield.TextInputLayout;
  * Bounded runtime administration.
  *
  * <p>Each control maps to one typed native command: {@code
- * startTunnel}/ {@code stopTunnel}, {@code requestReseed} plus {@code
- * getReseedStatus}, and {@code banRouter}/{@code unbanRouter}. There is
- * no generic admin entry point, no free-form option, and no path or URL
- * argument. Results arrive as the closed outcome tokens produced by the
- * native protocol and are shown as localized text.</p>
+ * startTunnel}/{@code stopTunnel}, {@code requestReseed}, the bounded
+ * transit/bandwidth/share setters, and {@code banRouter}/{@code
+ * unbanRouter}. The live setters use fixed typed queue commands; none
+ * writes persisted configuration. There is no generic admin entry
+ * point, free-form option, path or URL argument. Results arrive as the
+ * closed outcome tokens produced by the native protocol and are shown
+ * as localized text.</p>
  */
 public final class RuntimeAdminFragment extends Fragment {
     /** Bounds shared with the native bridge. */
@@ -98,6 +100,27 @@ public final class RuntimeAdminFragment extends Fragment {
         reseed.setText(R.string.runtime_admin_reseed_now);
         reseed.setOnClickListener(ignored -> confirmReseed());
         content.addView(reseed);
+
+        content.addView(sectionTitle(R.string.runtime_admin_controls_title));
+        TextView controlsHint = new TextView(requireContext());
+        controlsHint.setText(R.string.runtime_admin_controls_hint);
+        content.addView(controlsHint);
+        MaterialButton transit = UiFactory.button(requireContext());
+        transit.setText(R.string.runtime_admin_transit_action);
+        transit.setOnClickListener(ignored -> transitDialog(true));
+        content.addView(transit);
+        MaterialButton nonTransit = UiFactory.button(requireContext());
+        nonTransit.setText(R.string.runtime_admin_nontransit_action);
+        nonTransit.setOnClickListener(ignored -> transitDialog(false));
+        content.addView(nonTransit);
+        MaterialButton bandwidth = UiFactory.button(requireContext());
+        bandwidth.setText(R.string.runtime_admin_bandwidth_action);
+        bandwidth.setOnClickListener(ignored -> bandwidthDialog());
+        content.addView(bandwidth);
+        MaterialButton share = UiFactory.button(requireContext());
+        share.setText(R.string.runtime_admin_share_action);
+        share.setOnClickListener(ignored -> shareDialog());
+        content.addView(share);
 
         content.addView(sectionTitle(R.string.runtime_admin_bans_title));
         TextView banHint = new TextView(requireContext());
@@ -247,6 +270,80 @@ public final class RuntimeAdminFragment extends Fragment {
                             });
                         })
                 .show();
+    }
+
+    private void transitDialog(boolean enabled) {
+        if (busy || status == null) return;
+        new MaterialAlertDialogBuilder(requireContext())
+                .setTitle(enabled ? R.string.runtime_admin_transit_action
+                                  : R.string.runtime_admin_nontransit_action)
+                .setMessage(R.string.runtime_admin_controls_confirm)
+                .setNegativeButton(R.string.action_cancel, null)
+                .setPositiveButton(enabled ? R.string.runtime_admin_transit_action
+                                           : R.string.runtime_admin_nontransit_action,
+                        (dialog, which) -> submitControl(
+                                callback -> model.setTransit(enabled, callback)))
+                .show();
+    }
+
+    private void bandwidthDialog() {
+        if (busy || status == null) return;
+        String[] options = getResources().getStringArray(R.array.runtime_admin_bandwidth_options);
+        String[] classes = {"K", "L", "M", "N", "O", "P", "X"};
+        new MaterialAlertDialogBuilder(requireContext())
+                .setTitle(R.string.runtime_admin_bandwidth_action)
+                .setSingleChoiceItems(options, -1, (dialog, which) -> {
+                    dialog.dismiss();
+                    submitControl(callback -> model.setBandwidth(classes[which], callback));
+                })
+                .setNegativeButton(R.string.action_cancel, null)
+                .show();
+    }
+
+    private void shareDialog() {
+        if (busy || status == null) return;
+        TextInputLayout layout = new TextInputLayout(requireContext());
+        layout.setHint(R.string.runtime_admin_share_hint);
+        TextInputEditText input = new TextInputEditText(requireContext());
+        input.setInputType(android.text.InputType.TYPE_CLASS_NUMBER);
+        input.setFilters(new android.text.InputFilter[] {
+                new android.text.InputFilter.LengthFilter(3)});
+        layout.addView(input);
+        new MaterialAlertDialogBuilder(requireContext())
+                .setTitle(R.string.runtime_admin_share_action)
+                .setView(layout)
+                .setNegativeButton(R.string.action_cancel, null)
+                .setPositiveButton(R.string.address_book_save, (dialog, which) -> {
+                    int percent = RuntimeAdminPolicy.parseShareRatio(
+                            input.getText() == null ? "" : input.getText().toString());
+                    if (percent < 0) {
+                        status.setText(R.string.runtime_admin_share_invalid);
+                        return;
+                    }
+                    submitControl(callback -> model.setShareRatio(percent, callback));
+                })
+                .show();
+    }
+
+    private void submitControl(java.util.function.Consumer<java.util.function.Consumer<String>> submit) {
+        if (busy || status == null) return;
+        busy = true;
+        int expected = generation;
+        submit.accept(outcome -> {
+            if (expected != generation || status == null || !isAdded()) return;
+            busy = false;
+            status.setText(controlOutcomeLabel(outcome));
+        });
+    }
+
+    private int controlOutcomeLabel(String outcome) {
+        return switch (outcome == null ? "" : outcome) {
+            case "ok" -> R.string.runtime_admin_control_applied;
+            case "accepted" -> R.string.runtime_admin_control_queued;
+            case "busy" -> R.string.runtime_admin_control_busy;
+            case "invalid" -> R.string.runtime_admin_control_invalid;
+            default -> R.string.runtime_admin_control_failed;
+        };
     }
 
     private int reseedOutcomeLabel(String outcome) {

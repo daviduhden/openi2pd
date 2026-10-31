@@ -80,6 +80,26 @@ public class RuntimeAdminPolicyTest {
     }
 
     @Test
+    public void liveRouterControlsUseClosedValues() {
+        for (String value : new String[] {"K", "L", "M", "N", "O", "P", "X"}) {
+            assertTrue(RuntimeAdminPolicy.isValidBandwidthClass(value));
+        }
+        for (String value : new String[] {"", "k", "Q", "KL", "X ", null}) {
+            assertFalse(RuntimeAdminPolicy.isValidBandwidthClass(value));
+        }
+
+        assertTrue(RuntimeAdminPolicy.isValidShareRatio(0));
+        assertTrue(RuntimeAdminPolicy.isValidShareRatio(100));
+        assertFalse(RuntimeAdminPolicy.isValidShareRatio(-1));
+        assertFalse(RuntimeAdminPolicy.isValidShareRatio(101));
+        assertEquals(0, RuntimeAdminPolicy.parseShareRatio("0"));
+        assertEquals(100, RuntimeAdminPolicy.parseShareRatio("100"));
+        for (String value : new String[] {"", "-1", "+1", "101", "0000", "1.0", " 1", null}) {
+            assertEquals(-1, RuntimeAdminPolicy.parseShareRatio(value));
+        }
+    }
+
+    @Test
     public void outcomeVocabularyIsClosed() {
         assertTrue(RuntimeAdminPolicy.isOk("ok"));
         assertFalse(RuntimeAdminPolicy.isOk("OK"));

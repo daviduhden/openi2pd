@@ -236,3 +236,27 @@ These are in-process/static cases; none has been executed against Java.
 | `streaming-incoming-no-ls` — signed SYN with an empty LS cache | Loopback pending | STR-105 |
 | `streaming-incoming-mtu` — SYN advertises 512 and carries data | Loopback pending | STR-106 |
 | `streaming-offline-expiry` / unsigned CLOSE | Unit pending | STR-107 |
+
+## 10b. Full functional-parity differential scenarios (2026-10-31)
+
+These are test specifications for future manual CI/device lanes, not checked-in
+Java output. They are derived from the pinned 2.14.0 sources and, where
+applicable, the normative protocol specification. Do not promote them to
+passing status until a controlled Java/native run records both outcomes.
+
+| Scenario | Status | Java source / specification | Native target and assertion |
+|---|---|---|---|
+| `netdb-lookup-drop-before-throttle` — non-floodfill EXPL/ANY and direct floodfill EXPL/ANY | Dynamic pending | [`FloodfillDatabaseLookupMessageHandler.java`](https://github.com/i2p/i2p.i2p/blob/3c98503c5f14efe7bdd783528ba7f621f12d8081/router/java/src/net/i2p/router/networkdb/kademlia/FloodfillDatabaseLookupMessageHandler.java#L579-L598) | `NetDb::HandleDatabaseLookupMsg`; verify rejection and that throttle allowance is unchanged. |
+| `netdb-go-away-on-demotion` — floodfill loses eligibility during store/lookup response | Dynamic pending | [`FloodfillDatabaseLookupMessageHandler.java`](https://github.com/i2p/i2p.i2p/blob/3c98503c5f14efe7bdd783528ba7f621f12d8081/router/java/src/net/i2p/router/networkdb/kademlia/FloodfillDatabaseLookupMessageHandler.java) | Local `NetDb`; compare emitted RouterInfo/reply behavior and ensure no stale floodfill advertisement. |
+| `addressbook-feed-signed-actions` — valid `sig`, bad `sig`, valid/invalid `oldsig`, replay, cross-feed origin, canonicalization | Capture + Dynamic pending | [Proposal 112](https://i2p.net/en/proposals/112-addressbook-subscription-feed-commands/); pinned Java [`Daemon.java`](https://github.com/i2p/i2p.i2p/blob/3c98503c5f14efe7bdd783528ba7f621f12d8081/apps/addressbook/java/src/net/i2p/addressbook/Daemon.java) | `AddressBook::LoadHostsFromStream`; create disposable identities outside the repository and assert identical accepted actions, rejected actions, and unchanged storage on failure. |
+| `floodfill-participant-policy` — hidden override, explicit true/false, auto qualification and hysteresis | Dynamic pending | [`FloodfillMonitorJob.java`](https://github.com/i2p/i2p.i2p/blob/3c98503c5f14efe7bdd783528ba7f621f12d8081/router/java/src/net/i2p/router/networkdb/kademlia/FloodfillMonitorJob.java#L102-L170) | Candidate native policy helper; deterministic clock, bandwidth, transport, restart and peer-health inputs. Local `floodfill` bool is not an auto-policy substitute. |
+| `ntcp2-session-admission-options` — saturation, 12-byte option negotiation and close/send races | Dynamic pending | NTCP2 transport source plus [NTCP2 specification](https://i2p.net/en/docs/specs/ntcp2/); `NET-172` | C++ establisher/service ownership; assert bounded admission, negotiated options and no cross-thread descriptor use after close. |
+| `reseed-manual-input-boundary` — configured-source action, rejected arbitrary path/URL and trusted/untrusted unsigned ZIP policy | Dynamic pending | [`ConfigReseedHandler.java`](https://github.com/i2p/i2p.i2p/blob/3c98503c5f14efe7bdd783528ba7f621f12d8081/apps/routerconsole/java/src/net/i2p/router/web/helpers/ConfigReseedHandler.java#L25-L108); [SU3 specification](https://i2p.net/en/docs/specs/su3/) | Native/TUI/Android admin; test only after a separately reviewed authority design. Current behavior intentionally accepts no arbitrary path/URL command. |
+| `snark-magnet-restart` — unresolved magnet, tracker hints, name and stopped state survive restart | Dynamic pending | [`SnarkManager.saveMagnetStatus()`](https://github.com/i2p/i2p.i2p/blob/3c98503c5f14efe7bdd783528ba7f621f12d8081/apps/i2psnark/java/src/org/klomp/snark/SnarkManager.java#L2403-L2445) | `TorrentsState`/`TorrentsTunnel`; verify bounded versioned persistence, no duplicate announce and deterministic re-add order. |
+| `snark-upload-slots-bandwidth` — max eight unchoked peers and global/torrent/peer rate budgets | Dynamic pending | [`PeerCoordinator.java`](https://github.com/i2p/i2p.i2p/blob/3c98503c5f14efe7bdd783528ba7f621f12d8081/apps/i2psnark/java/src/org/klomp/snark/PeerCoordinator.java#L826-L838); [`BandwidthManager.java`](https://github.com/i2p/i2p.i2p/blob/3c98503c5f14efe7bdd783528ba7f621f12d8081/apps/i2psnark/java/src/org/klomp/snark/BandwidthManager.java#L45-L68) | Native engine scheduler; compare slot rotation, fairness, pause/private policy and byte-rate windows. |
+
+Android live transit/bandwidth/share parity uses a separate instrumentation
+contract rather than a Java-peer fixture: typed values must traverse the
+service worker, reach the existing daemon admin queue, reject out-of-range
+input and never invoke JNI on the main thread. Gradle/device execution remains
+manual CI only.

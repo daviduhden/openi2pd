@@ -370,6 +370,34 @@ public final class RouterRepository implements RouterService.Listener {
         local.requestReseed(callback);
     }
 
+    public void setTransit(boolean enabled, java.util.function.Consumer<String> callback) {
+        RouterService local = service;
+        if (closed || local == null) {
+            mainHandler.post(() -> callback.accept("unavailable"));
+            return;
+        }
+        local.setTransit(enabled, callback);
+    }
+
+    public void setBandwidth(String bandwidthClass,
+            java.util.function.Consumer<String> callback) {
+        RouterService local = service;
+        if (closed || local == null) {
+            mainHandler.post(() -> callback.accept("unavailable"));
+            return;
+        }
+        local.setBandwidth(bandwidthClass, callback);
+    }
+
+    public void setShareRatio(int percent, java.util.function.Consumer<String> callback) {
+        RouterService local = service;
+        if (closed || local == null) {
+            mainHandler.post(() -> callback.accept("unavailable"));
+            return;
+        }
+        local.setShareRatio(percent, callback);
+    }
+
     /**
      * Bounded reseed status record; empty when the router is not
      * running.

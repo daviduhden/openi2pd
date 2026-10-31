@@ -445,6 +445,25 @@ Defines native Android application resources.
     <string name="address_book_subscription_added">订阅源已添加。</string>
     <string name="address_book_subscription_removed">订阅源已移除。</string>
     <string name="address_book_subscription_failed">订阅源被拒绝。请使用不含空格和片段的 http(s) .i2p URL。</string>
+    <string name="runtime_admin_controls_title">路由器控制</string>
+    <string name="runtime_admin_controls_hint">这些更改仅作用于正在运行的路由器，不会写入配置文件。</string>
+    <string name="runtime_admin_controls_confirm">将此更改应用于正在运行的路由器？</string>
+    <string name="runtime_admin_transit_action">接受中转隧道</string>
+    <string name="runtime_admin_nontransit_action">停止接受中转隧道</string>
+    <string name="runtime_admin_bandwidth_action">设置带宽等级</string>
+    <string name="runtime_admin_share_action">设置中转占比 (%)</string>
+    <string name="runtime_admin_share_hint">输入 0 到 100 的百分比</string>
+    <string name="runtime_admin_share_invalid">请输入 0 到 100 之间的整数百分比。</string>
+    <string name="runtime_admin_control_applied">更改已应用到正在运行的路由器。</string>
+    <string name="runtime_admin_control_queued">更改已加入路由器命令队列。</string>
+    <string name="runtime_admin_control_busy">路由器命令队列繁忙，请重试。</string>
+    <string name="runtime_admin_control_invalid">路由器拒绝了此值。</string>
+    <string name="runtime_admin_control_failed">路由器控制命令失败。</string>
+    <string-array name="runtime_admin_bandwidth_options">
+        <item>K (&lt;12 KB/s)</item><item>L (12–48 KB/s)</item><item>M (48–64 KB/s)</item>
+        <item>N (64–128 KB/s)</item><item>O (128–256 KB/s)</item>
+        <item>P (256 KB/s–2 MB/s)</item><item>X (无限制)</item>
+    </string-array>
     <string name="runtime_admin_title">运行时管理</string>
     <string name="runtime_admin_bounds">此处仅有类型化、有界命令：本屏幕不读取密钥、文件系统路径或 URL。</string>
     <string name="runtime_admin_tunnels_title">客户端与服务器隧道</string>

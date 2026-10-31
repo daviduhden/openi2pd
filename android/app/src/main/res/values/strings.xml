@@ -454,6 +454,29 @@ Defines native Android application resources.
     <string name="address_book_subscription_removed">Subscription source removed.</string>
     <string name="address_book_subscription_failed">The subscription source was rejected. Use an http(s) .i2p URL without spaces or a fragment.</string>
 
+    <string name="runtime_admin_controls_title">Router controls</string>
+    <string name="runtime_admin_controls_hint">These changes apply to the running router only; they do not write the configuration file.</string>
+    <string name="runtime_admin_controls_confirm">Apply this change to the running router?</string>
+    <string name="runtime_admin_transit_action">Accept transit tunnels</string>
+    <string name="runtime_admin_nontransit_action">Stop accepting transit tunnels</string>
+    <string name="runtime_admin_bandwidth_action">Set bandwidth class</string>
+    <string name="runtime_admin_share_action">Set transit share (%)</string>
+    <string name="runtime_admin_share_hint">Percentage from 0 to 100</string>
+    <string name="runtime_admin_share_invalid">Enter a whole percentage from 0 to 100.</string>
+    <string name="runtime_admin_control_applied">Change applied to the running router.</string>
+    <string name="runtime_admin_control_queued">Change queued for the running router.</string>
+    <string name="runtime_admin_control_busy">The router command queue is busy. Try again.</string>
+    <string name="runtime_admin_control_invalid">The router rejected this value.</string>
+    <string name="runtime_admin_control_failed">The router control command failed.</string>
+    <string-array name="runtime_admin_bandwidth_options">
+        <item>K (&lt;12 KB/s)</item>
+        <item>L (12–48 KB/s)</item>
+        <item>M (48–64 KB/s)</item>
+        <item>N (64–128 KB/s)</item>
+        <item>O (128–256 KB/s)</item>
+        <item>P (256 KB/s–2 MB/s)</item>
+        <item>X (unlimited)</item>
+    </string-array>
     <string name="runtime_admin_title">Runtime administration</string>
     <string name="runtime_admin_bounds">Only typed, bounded commands are available here: no keys, filesystem paths or URLs are read by this screen.</string>
     <string name="runtime_admin_tunnels_title">Client and server tunnels</string>

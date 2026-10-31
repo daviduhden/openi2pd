@@ -1027,7 +1027,8 @@ or workflow ran.
 | PARITY-017 | Server-tunnel filters | `filterDefinition` was absent and the `accesslist` check ran after accept, so a denied peer still cost a full inbound tunnel and SYNACK. | Bounded parser (`default`, `explicit`, `file`, `record`, first-match-wins, mtime-cached 1 MiB file, 4096 counters) and a `StreamingDestination` admission predicate that rejects before the stream exists, with `limitAction=drop|reset`. |
 | PARITY-019 | Server-tunnel options | No `targetForPort.<port>` (HTTPS on 443 was forwarded as plaintext HTTP), `spoofedHost`, `rejectInproxy`/`rejectReferer`/`rejectUserAgents`, POST throttling, `enable`/`startOnLoad` or per-tunnel control. | All are parsed and enforced (443/22 reset without a mapping, 403/429 bodies, bounded POST window); stable names plus `GetTunnelServices`/`StartTunnel`/`StopTunnel`, and only port 0 may own the default acceptor. |
 | RS-107 | Reseed lifecycle | A stale-but-signature-valid bundle could call `ResetRemoteRouterInfos()` and erase every cached peer; the synchronous reseed blocked the admin thread/Android worker for minutes and TLS read/write had no deadline; proxy credentials were logged. | The reset path is gone (stale entries are skipped and counted); reseed is an owned, stop-token-cancellable job with per-phase/per-host deadlines, `RequestReseed()`/`ReseedState`, `reseed.disable`/`i2p.noReseed`, redacted proxy logs and strict `netid` query handling. |
-| AB-106 | Address book | Index/identity/etag/`deleted.txt` writes were non-atomic and could follow a symlink; add always replaced; feed `#!action=delete` was ignored; destination/host bounds were looser than Java; 304 escalated retries; every miss re-looked-up. | All artifacts use the atomic no-follow writer; `AddAddressChecked` distinguishes `Exists`; feed retraction is origin-scoped via a bounded sidecar; Java-compatible length/label rules; 304 keeps the ETag/cadence; bounded negative cache. |
+| AB-106 | Address book | Index/identity/etag/`deleted.txt` writes were non-atomic and could follow a symlink; add always replaced; feed `#!action=delete` was ignored; destination/host bounds were looser than Java; 304 escalated retries; every miss re-looked-up. | All artifacts use the atomic no-follow writer; `AddAddressChecked` distinguishes `Exists`; feed deletion is restricted to the recorded source origin via a bounded sidecar; Java-compatible length/label rules; 304 keeps the ETag/cadence; bounded negative cache. This does not authenticate feed commands. |
+| AB-107 | Address-book feed signatures | Proposal 112 and Java 2.14 require canonical `sig` verification for signed actions and `oldsig` where an existing destination authorizes a change. Native feed handling applies only `action=delete` after source-origin matching and verifies neither signature; other signed actions are absent. | Pending. Add canonical signature preimages, action-by-action authority checks, replay and migration vectors from Proposal 112; preserve the feed-origin restriction. Do not describe source ownership as authenticity. |
 | SEC-029 | Auxiliary services | BOB returned private keys to any loopback client, had no session/line cap and threw on bad ports; the I2PControl AF_UNIX path was unlinked blindly, mode depended on umask and had no peer check; JSON ids/strings could inject or break the reply; bandwidth accepted negatives; NTP trusted any source and a single packet; UPnP used permanent mappings. | BOB is loopback/same-UID only, capped (16 sessions, 4 KiB line), `from_chars` ports and `getkeys` behind `bob.allowgetkeys`; I2PControl validates the stale socket, `chmod 0600`, removes only its own socket, requires a same-UID peer, escapes ids/strings, validates `API` and returns Java error objects; NTP validates every field and needs three agreeing servers for a large jump; UPnP uses a 3 h renewable lease, replaces mappings and refuses a same-host IGD. |
 | PARITY-021 | Administration | TUI/Android could only read tunnel counters and request a blocking reseed; address add always replaced; Android lacked subscription and ban bridges. | Typed verbs `ADMIN TUNNEL-START/TUNNEL-STOP`, `ADMIN ADDRESS-REPLACE` (plain add answers `exists`), non-blocking `ADMIN RESEED` with `netdb.reseed.*`, `tunnel.service` rows, TUI screens/actions and Android JNI/screens for tunnels, reseed, add-vs-replace, subscriptions and bans. No config writer and no web console. |
 
@@ -1042,14 +1043,15 @@ UDP/torrent tunnels in the start/stop registry, Streaming `limitAction`
 `http`/custom responses, daemon bootstrap still waiting synchronously for the
 first reseed, day-scoped BlindingInfo matching, 33–61 KiB Java datagrams
 versus the local 32 KiB bound, feed retraction depending on the
-`entry-sources.txt` sidecar, UPnP status not yet in TUI/Android, Windows
+`entry-sources.txt` sidecar and Proposal 112 signatures still unverified,
+UPnP status not yet in TUI/Android, Windows
 local-socket peer credentials, and the es/ru/zh-Hans catalog entries for the
 new TUI strings (`I18N-004`). No dynamic evidence exists for any row above.
 
 ## Open items requiring dynamic evidence
 
-1. Re-audit the source differences against the pinned 2.14.0 target, then
-   exercise NTCP2 session establishment with and without ML-KEM. Historical
+1. Exercise the audited source differences against the pinned 2.14.0 target,
+   including NTCP2 session establishment with and without ML-KEM. Historical
    2.13.0 scenarios remain version-specific regression cases.
 2. SSU2 relay, peer test and MTU discovery on IPv4/IPv6, especially OpenBSD.
 3. Large RouterInfo (3073–4096) publication and lookup.

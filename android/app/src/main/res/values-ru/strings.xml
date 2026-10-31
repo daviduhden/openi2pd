@@ -441,6 +441,25 @@ Defines native Android application resources.
     <string name="address_book_subscription_added">Источник подписки добавлен.</string>
     <string name="address_book_subscription_removed">Источник подписки удалён.</string>
     <string name="address_book_subscription_failed">Источник подписки отклонён. Используйте URL http(s) .i2p без пробелов и фрагмента.</string>
+    <string name="runtime_admin_controls_title">Параметры маршрутизатора</string>
+    <string name="runtime_admin_controls_hint">Изменения действуют только для работающего маршрутизатора и не записываются в файл конфигурации.</string>
+    <string name="runtime_admin_controls_confirm">Применить изменение к работающему маршрутизатору?</string>
+    <string name="runtime_admin_transit_action">Принимать транзитные туннели</string>
+    <string name="runtime_admin_nontransit_action">Прекратить приём транзитных туннелей</string>
+    <string name="runtime_admin_bandwidth_action">Задать класс пропускной способности</string>
+    <string name="runtime_admin_share_action">Задать долю транзита (%)</string>
+    <string name="runtime_admin_share_hint">Процент от 0 до 100</string>
+    <string name="runtime_admin_share_invalid">Введите целое значение от 0 до 100.</string>
+    <string name="runtime_admin_control_applied">Изменение применено к работающему маршрутизатору.</string>
+    <string name="runtime_admin_control_queued">Изменение поставлено в очередь.</string>
+    <string name="runtime_admin_control_busy">Очередь команд занята. Повторите попытку.</string>
+    <string name="runtime_admin_control_invalid">Маршрутизатор отклонил это значение.</string>
+    <string name="runtime_admin_control_failed">Не удалось выполнить команду управления.</string>
+    <string-array name="runtime_admin_bandwidth_options">
+        <item>K (&lt;12 KB/s)</item><item>L (12–48 KB/s)</item><item>M (48–64 KB/s)</item>
+        <item>N (64–128 KB/s)</item><item>O (128–256 KB/s)</item>
+        <item>P (256 KB/s–2 MB/s)</item><item>X (без ограничений)</item>
+    </string-array>
     <string name="runtime_admin_title">Управление во время работы</string>
     <string name="runtime_admin_bounds">Здесь доступны только типизированные ограниченные команды: экран не читает ключи, пути файловой системы и URL.</string>
     <string name="runtime_admin_tunnels_title">Клиентские и серверные туннели</string>

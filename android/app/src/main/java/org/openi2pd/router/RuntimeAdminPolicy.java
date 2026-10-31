@@ -41,6 +41,8 @@ final class RuntimeAdminPolicy {
     static final int MAX_SUBSCRIPTION_URL = 512;
     /** Base64 of a 32-byte router identity hash. */
     static final int MAX_ROUTER_HASH = 44;
+    /** Router bandwidth classes accepted by the daemon admin verb. */
+    private static final String[] BANDWIDTH_CLASSES = {"K", "L", "M", "N", "O", "P", "X"};
     /** Rows kept from the bounded tunnel snapshot. */
     static final int MAX_TUNNEL_ROWS = 200;
     /** Rows kept from the bounded subscription snapshot. */
@@ -119,6 +121,42 @@ final class RuntimeAdminPolicy {
             }
         }
         return true;
+    }
+
+    /** Accept only the exact one-character bandwidth classes. */
+    static boolean isValidBandwidthClass(String value) {
+        if (value == null) {
+            return false;
+        }
+        for (String candidate : BANDWIDTH_CLASSES) {
+            if (candidate.equals(value)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** Share is a decimal percentage in the daemon's 0..100 range. */
+    static boolean isValidShareRatio(int value) {
+        return value >= 0 && value <= 100;
+    }
+
+    /** Parse a bounded percentage; return -1 when invalid. */
+    static int parseShareRatio(String text) {
+        if (text == null || text.isEmpty() || text.length() > 3) {
+            return -1;
+        }
+        for (int i = 0; i < text.length(); ++i) {
+            if (text.charAt(i) < '0' || text.charAt(i) > '9') {
+                return -1;
+            }
+        }
+        try {
+            int value = Integer.parseInt(text);
+            return isValidShareRatio(value) ? value : -1;
+        } catch (NumberFormatException e) {
+            return -1;
+        }
     }
 
     /**

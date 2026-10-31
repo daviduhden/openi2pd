@@ -1090,6 +1090,50 @@ public class RouterService extends Service {
         }
     }
 
+    /** Apply live transit acceptance on the service worker. */
+    public void setTransit(boolean enabled, java.util.function.Consumer<String> callback) {
+        runRuntimeAdmin(() -> daemon == null ? "unavailable" : daemon.setTransit(enabled), callback);
+    }
+
+    /** Apply one closed bandwidth class at runtime. */
+    public void setBandwidth(String bandwidthClass,
+            java.util.function.Consumer<String> callback) {
+        if (destroyed || !RuntimeAdminPolicy.isValidBandwidthClass(bandwidthClass)) {
+            mainHandler.post(() -> callback.accept("invalid"));
+            return;
+        }
+        runRuntimeAdmin(() -> daemon == null ? "unavailable" : daemon.setBandwidth(bandwidthClass),
+                callback);
+    }
+
+    /** Apply a bounded live share percentage. */
+    public void setShareRatio(int percent, java.util.function.Consumer<String> callback) {
+        if (destroyed || !RuntimeAdminPolicy.isValidShareRatio(percent)) {
+            mainHandler.post(() -> callback.accept("invalid"));
+            return;
+        }
+        runRuntimeAdmin(() -> daemon == null ? "unavailable" : daemon.setShareRatio(percent),
+                callback);
+    }
+
+    private void runRuntimeAdmin(java.util.function.Supplier<String> command,
+            java.util.function.Consumer<String> callback) {
+        if (destroyed) {
+            mainHandler.post(() -> callback.accept("unavailable"));
+            return;
+        }
+        runOnWorker(() -> {
+            String outcome = "failed";
+            try {
+                outcome = command.get();
+            } catch (RuntimeException | LinkageError error) {
+                outcome = "failed";
+            }
+            String result = outcome;
+            mainHandler.post(() -> callback.accept(result));
+        }, () -> callback.accept("unavailable"));
+    }
+
     /**
      * Bounded reseed status record on the control worker; empty when
      * stopped.

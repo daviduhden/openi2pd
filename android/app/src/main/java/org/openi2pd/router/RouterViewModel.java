@@ -220,6 +220,19 @@ public class RouterViewModel extends AndroidViewModel {
         repository.requestReseed(callback);
     }
 
+    public void setTransit(boolean enabled, java.util.function.Consumer<String> callback) {
+        repository.setTransit(enabled, callback);
+    }
+
+    public void setBandwidth(String bandwidthClass,
+            java.util.function.Consumer<String> callback) {
+        repository.setBandwidth(bandwidthClass, callback);
+    }
+
+    public void setShareRatio(int percent, java.util.function.Consumer<String> callback) {
+        repository.setShareRatio(percent, callback);
+    }
+
     /**
      * Bounded reseed phase/attempt/error record; empty when the router
      * is stopped.

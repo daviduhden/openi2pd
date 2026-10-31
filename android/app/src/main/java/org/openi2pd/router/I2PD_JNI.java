@@ -290,6 +290,15 @@ public final class I2PD_JNI {
      */
     public static native String requestReseed();
 
+    /** Apply transit acceptance through the typed admin queue. */
+    static native String setTransit(boolean enabled);
+
+    /** Apply one exact bandwidth class: K, L, M, N, O, P or X. */
+    static native String setBandwidth(String bandwidthClass);
+
+    /** Apply a bounded transit share percentage, 0..100. */
+    static native String setShareRatio(int percent);
+
     /**
      * Bounded, non-secret reseed status with ordered phase, enabled,
      * attempts, succeeded, lastAttemptMs, lastSuccessMs and lastError.

@@ -409,6 +409,7 @@ constexpr size_t MAX_ADDRESS_NAME_UNITS = 255;
 constexpr size_t MAX_ADDRESS_DESTINATION_UNITS = 1024;
 constexpr size_t MAX_SUBSCRIPTION_UNITS = 512;
 constexpr size_t MAX_ROUTER_HASH_UNITS = 44; // base64 of a 32-byte hash
+constexpr size_t MAX_BANDWIDTH_CLASS_UNITS = 1;
 
 /**
 	 * True when `text` is a non-empty Java string of at most `maximum`
@@ -449,11 +450,13 @@ std::string_view ReseedPhaseToken (i2p::data::ReseedPhase phase) noexcept
 	 * points; there is no generic request/verb string.
 	 */
 std::string SubmitAdminOutcome (
-	i2p::tui::AdminCommandKind kind, std::string_view name, std::string_view destination, bool enabled)
+	i2p::tui::AdminCommandKind kind, std::string_view name, std::string_view destination, bool enabled,
+	int32_t value = 0)
 {
 	i2p::tui::AdminCommand command;
 	command.kind = kind;
 	command.enabled = enabled;
+	command.value = value;
 	if (!name.empty ())
 		std::snprintf (command.name, sizeof (command.name), "%.*s", static_cast<int> (name.size ()), name.data ());
 	if (!destination.empty ())
@@ -484,6 +487,13 @@ inline bool IsRuntimeLogLevelName (std::string_view level) noexcept
 {
 	return level == "none" || level == "critical" || level == "error" || level == "warn" || level == "info"
 		|| level == "debug";
+}
+
+/** Only the classes accepted by the daemon's typed BANDWIDTH verb. */
+inline bool IsRuntimeBandwidthClass (std::string_view bandwidth) noexcept
+{
+	return bandwidth == "K" || bandwidth == "L" || bandwidth == "M" || bandwidth == "N"
+		|| bandwidth == "O" || bandwidth == "P" || bandwidth == "X";
 }
 
 /**
@@ -1051,6 +1061,62 @@ JNIEXPORT jstring JNICALL Java_org_openi2pd_router_I2PD_1JNI_requestReseed (JNIE
 			i2p::android::NativeCallGuard call;
 			if (!call.IsRunning ()) return NewStringChecked (env, "unavailable");
 			return NewStringChecked (env, SubmitAdminOutcome (i2p::tui::AdminCommandKind::Reseed, { }, { }, false));
+		},
+		"failed");
+}
+
+/** Change transit acceptance through the daemon-owned typed queue. */
+JNIEXPORT jstring JNICALL Java_org_openi2pd_router_I2PD_1JNI_setTransit (
+	JNIEnv * env, jclass clazz, jboolean enabled)
+{
+	return JniStringCall (
+		env,
+		[&] () -> jstring
+		{
+			if (enabled != JNI_TRUE && enabled != JNI_FALSE) return NewStringChecked (env, "invalid");
+			i2p::android::NativeCallGuard call;
+			if (!call.IsRunning ()) return NewStringChecked (env, "unavailable");
+			return NewStringChecked (env,
+				SubmitAdminOutcome (i2p::tui::AdminCommandKind::Transit, { }, { }, enabled == JNI_TRUE));
+		},
+		"failed");
+}
+
+/** Apply one closed bandwidth class without writing configuration. */
+JNIEXPORT jstring JNICALL Java_org_openi2pd_router_I2PD_1JNI_setBandwidth (
+	JNIEnv * env, jclass clazz, jstring bandwidth)
+{
+	return JniStringCall (
+		env,
+		[&] () -> jstring
+		{
+			if (!JavaStringWithin (env, bandwidth, MAX_BANDWIDTH_CLASS_UNITS))
+				return NewStringChecked (env, "invalid");
+			ScopedUtfChars bandwidthUtf8 (env, bandwidth);
+			if (!bandwidthUtf8 || !IsRuntimeBandwidthClass (bandwidthUtf8.view ()))
+				return NewStringChecked (env, "invalid");
+			i2p::android::NativeCallGuard call;
+			if (!call.IsRunning ()) return NewStringChecked (env, "unavailable");
+			const auto token = static_cast<int32_t> (bandwidthUtf8.view ().front ());
+			return NewStringChecked (env,
+				SubmitAdminOutcome (i2p::tui::AdminCommandKind::Bandwidth, { }, { }, false, token));
+		},
+		"failed");
+}
+
+/** Apply a bounded share ratio without writing config. */
+JNIEXPORT jstring JNICALL Java_org_openi2pd_router_I2PD_1JNI_setShareRatio (
+	JNIEnv * env, jclass clazz, jint percent)
+{
+	return JniStringCall (
+		env,
+		[&] () -> jstring
+		{
+			if (percent < 0 || percent > 100) return NewStringChecked (env, "invalid");
+			i2p::android::NativeCallGuard call;
+			if (!call.IsRunning ()) return NewStringChecked (env, "unavailable");
+			return NewStringChecked (env, SubmitAdminOutcome (
+				i2p::tui::AdminCommandKind::Share, { }, { }, false, static_cast<int32_t> (percent)));
 		},
 		"failed");
 }

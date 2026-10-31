@@ -437,6 +437,25 @@ Defines native Android application resources.
     <string name="address_book_subscription_added">Origen de suscripción añadido.</string>
     <string name="address_book_subscription_removed">Origen de suscripción eliminado.</string>
     <string name="address_book_subscription_failed">El origen de suscripción fue rechazado. Usa una URL http(s) .i2p sin espacios ni fragmento.</string>
+    <string name="runtime_admin_controls_title">Controles del router</string>
+    <string name="runtime_admin_controls_hint">Estos cambios solo se aplican al router en ejecución; no modifican el archivo de configuración.</string>
+    <string name="runtime_admin_controls_confirm">¿Aplicar este cambio al router en ejecución?</string>
+    <string name="runtime_admin_transit_action">Aceptar túneles de tránsito</string>
+    <string name="runtime_admin_nontransit_action">Dejar de aceptar túneles de tránsito</string>
+    <string name="runtime_admin_bandwidth_action">Establecer clase de ancho de banda</string>
+    <string name="runtime_admin_share_action">Establecer cuota de tránsito (%)</string>
+    <string name="runtime_admin_share_hint">Porcentaje de 0 a 100</string>
+    <string name="runtime_admin_share_invalid">Introduce un porcentaje entero de 0 a 100.</string>
+    <string name="runtime_admin_control_applied">Cambio aplicado al router en ejecución.</string>
+    <string name="runtime_admin_control_queued">Cambio en cola para el router en ejecución.</string>
+    <string name="runtime_admin_control_busy">La cola de comandos está ocupada. Inténtalo de nuevo.</string>
+    <string name="runtime_admin_control_invalid">El router rechazó este valor.</string>
+    <string name="runtime_admin_control_failed">Falló el comando de control del router.</string>
+    <string-array name="runtime_admin_bandwidth_options">
+        <item>K (&lt;12 KB/s)</item><item>L (12–48 KB/s)</item><item>M (48–64 KB/s)</item>
+        <item>N (64–128 KB/s)</item><item>O (128–256 KB/s)</item>
+        <item>P (256 KB/s–2 MB/s)</item><item>X (ilimitado)</item>
+    </string-array>
     <string name="runtime_admin_title">Administración en ejecución</string>
     <string name="runtime_admin_bounds">Aquí solo hay comandos tipados y acotados: esta pantalla no lee claves, rutas del sistema ni URL.</string>
     <string name="runtime_admin_tunnels_title">Túneles cliente y servidor</string>

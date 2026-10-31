@@ -73,6 +73,9 @@ public final class RuntimeAdminParityTest {
         // initialised or started.
         I2PD_JNI.loadLibraries();
         assertEquals("unavailable", I2PD_JNI.requestReseed());
+        assertEquals("unavailable", I2PD_JNI.setTransit(true));
+        assertEquals("unavailable", I2PD_JNI.setBandwidth("K"));
+        assertEquals("unavailable", I2PD_JNI.setShareRatio(0));
         assertEquals("", I2PD_JNI.getReseedStatus());
         assertEquals("", I2PD_JNI.getTunnelServices());
         assertEquals("unavailable", I2PD_JNI.startTunnel("unused"));
@@ -114,5 +117,21 @@ public final class RuntimeAdminParityTest {
         assertNotEquals("ok", I2PD_JNI.banRouter(hash.toString()));
         assertNotEquals("ok", I2PD_JNI.addSubscription(tunnelName.toString()));
         assertNotEquals("ok", I2PD_JNI.addAddressWithResult("n.i2p", "AAAA", false));
+        assertEquals("invalid", I2PD_JNI.setBandwidth("KL"));
+        assertEquals("invalid", I2PD_JNI.setBandwidth("k"));
+        assertEquals("invalid", I2PD_JNI.setShareRatio(-1));
+        assertEquals("invalid", I2PD_JNI.setShareRatio(101));
+    }
+
+    @Test
+    public void bandwidthPickerMatchesNativeClosedSet() {
+        Context context = ApplicationProvider.getApplicationContext();
+        String[] options = context.getResources()
+                .getStringArray(R.array.runtime_admin_bandwidth_options);
+        String[] classes = {"K", "L", "M", "N", "O", "P", "X"};
+        assertEquals(classes.length, options.length);
+        for (String value : classes) {
+            assertTrue(value, RuntimeAdminPolicy.isValidBandwidthClass(value));
+        }
     }
 }

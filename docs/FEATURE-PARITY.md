@@ -23,17 +23,17 @@ the broader user-visible and administrative feature set.
 | Current target tag | `i2p-2.14.0` |
 | Target commit (peeled tag) | `3c98503c5f14efe7bdd783528ba7f621f12d8081` |
 | Tag object | `9db233ed7241599eba76f29b8c334eaaf3db2e87` |
-| Pin verification | Official remote tag refs inspected with `git ls-remote`; scoped 2026-10-21 source review completed for admin/client/torrent/router candidates, full matrix re-audit pending |
+| Pin verification | Official remote tag refs inspected; a read-only 2026-10-31 source audit covers router/netDb/transports, client/admin/address book/reseed, I2PSnark and Android; dynamic Java/native differentials remain pending |
 | Historical audit baseline | `i2p-2.13.0`, commit `9134f808337b401e8e53c73734c81fab04280c9d` |
 | Reference use | Read-only external clone; no Java source is vendored, built or shipped |
 | Historical audited C++ tree | `bce8771b` plus the parity increment recorded at that audit |
 
-The matrices and findings below retain their historical Java 2.13.0 evidence.
-A scoped 2026-10-21 read-only review checked 2.14.0 sources for the
-administration, address-book, client-service, torrent and selected
-router/tunnel candidates recorded here; the full matrix re-audit remains
-`NET-026`. Tag existence and source inspection do not establish feature parity
-or dynamic interoperability.
+Older matrices and findings retain their historical Java 2.13.0 evidence.
+Read-only 2.14.0 reviews on 2026-10-21 and 2026-10-31 checked the target areas
+listed in §18 against pinned source and specifications. Tag existence and
+source inspection do not establish feature parity or dynamic interoperability;
+unreviewed feature families and all runtime differentials remain tracked under
+`NET-026`/`PARITY-008`.
 
 The Java reference is used to understand behavior and specification
 compliance, not as an architectural template. No Java code, JVM or Java
@@ -67,7 +67,7 @@ applicable, a device or Java-peer run succeeds.
 | SSU2 flood request flag | `PeerState2.gotRI`, `NTCP2Payload` | `SSU2Session.cpp` RouterInfo handling | Implemented, not validated | A newly accepted/replaced RouterInfo with the request-flood bit is forwarded only by a floodfill and only within the per-key FloodThrottler budget; stale replays are not re-flooded. Amplification and malformed-block tests remain. | SSU2 RouterInfo tests pending | P1 |
 | PQ transport variants | `UDPTransport.addSSU2Options`, ML-KEM classes | `PostQuantum.*`, `SSU2*.cpp` | Implemented, not validated | Runtime provider probing now gates publication and key creation instead of a compile-time constant. Cross-provider and Java PQ session vectors are absent. | `test-crypto-x25519-noise-elligator-mlkem-audit`; Java PQ test pending | P0 |
 | RouterInfo parsing and validation | `data/router/RouterInfo.java`, `RouterAddress.java` | `libi2pd/RouterInfo.*` | Compatible, implementation different | Strict bounded parser; 4 KiB Java ceiling aligned. Fuzz and large-RI fixture execution pending. | `test-protocol-bounds`; fuzz pending | P0 |
-| NetDb store/lookup/floodfill | `networkdb/kademlia/*`, `database/DatabaseStoreMessage.java` | `libi2pd/NetDb.*`, `KadDHT.*` | Partial | Replacement, freshness, DLM/DSRM, clove origin, admission caps and persistence were hardened. A DatabaseLookup in direct-transport garlic is answered while a tunnel-delivered one is dropped; a token-bearing DatabaseStore keeps its token for direct/direct-garlic and is stored without an ack for tunnel garlic. Non-floodfills no longer re-flood transport RIs; the inbound queue and new-RI map are capped; cached RouterInfos are written with the durable atomic writer and bound to their file name. Live Java floodfill lookup and network routing remain unvalidated. | `test-tunnel-dsm-policy`; live lookup pending | P0 |
+| NetDb store/lookup/floodfill | `networkdb/kademlia/*`, `database/DatabaseStoreMessage.java` | `libi2pd/NetDb.*`, `KadDHT.*` | Partial | Replacement, freshness, DLM/DSRM, clove origin, admission caps and persistence were hardened. Direct-transport garlic lookup is answered while tunnel-delivered lookup is dropped; token-bearing DatabaseStore keeps its token for direct/direct-garlic and is stored without ack for tunnel garlic. Non-floodfills no longer re-flood transport RIs; inbound queues and new-RI maps are capped; cached RouterInfos use durable atomic, filename-bound persistence. Java go-away RouterInfo, pdrop admission, per-use stale-RI refresh, and the `router.floodfillParticipant=auto` policy remain absent; local `floodfill` is an explicit boolean. | `test-tunnel-dsm-policy`; go-away/pdrop/refresh/floodfill-policy vectors pending | P0 |
 | Reseeding and SU3 | `util/SU3File.java`, `networkdb/reseed/*` | `Reseed.cpp`, `Config.cpp` | Implemented, not validated | `reseed.verify` now defaults to true; RSA 2048/3072/4096 and Ed25519/RedDSA SU3 verification paths were added with fail-closed unsupported handling. A real signed bundle and Java cross-vector are pending. | `test-su3-bounds`; signed-bundle test pending | P0 |
 | LeaseSet, LS2, EncryptedLeaseSet, MetaLeaseSet | `core/.../LeaseSet.java`, `LeaseSet2.java` | `libi2pd/LeaseSet.*`, `Blinding.cpp` | Partial | Parsing, expiry, encrypted store key and Meta precedence exist; MetaLeaseSet now rejects non-canonical header expiry and revocations (Java would fail the signature), and an older encrypted-LS reply cannot roll back the client cache. Secret-blinded authorization, client-side Meta resolution and a Java-generated encrypted-LS corpus remain absent. | LeaseSet tests; Java vector pending | P0 |
 | Tunnels and tunnel builds | `router/.../tunnel/*` | `libi2pd/Tunnel*`, `TransitTunnel.*` | Compatible, implementation different | Short/long build and transit paths exist. No live tunnel-build interoperability run has been recorded. | Tunnel tests; live build pending | P1 |
@@ -97,7 +97,7 @@ applicable, a device or Java-peer run succeeds.
 | Client and server tunnels | `apps/i2ptunnel/java/src/net/i2p/i2ptunnel/*` | `libi2pd_client/ClientContext.*`, `I2PTunnel.*` | Partial | Native client/server tunnel configuration exists; TUI/admin coverage is still narrower than Java's web editing. | TUI reload/admin tests; live tunnel test pending | P1 |
 | HTTP proxy | `apps/i2ptunnel/java/src/net/i2p/i2ptunnel/HTTPProxy.java` | `libi2pd_client/HTTPProxy.*` | Compatible, implementation different | Native proxy; header lifetime/compaction fixes were retained. No browser-embedded console. | HTTP tests; live proxy pending | P2 |
 | SOCKS proxy | `apps/i2ptunnel/java/src/net/i2p/i2ptunnel/SOCKS*.java` | `libi2pd_client/SOCKS.*` | Compatible, implementation different | Native implementation. Authentication/edge cases need live differential tests. | SOCKS tests pending | P2 |
-| Address book, .i2p and b32/b33 | `apps/addressbook/java/src/net/i2p/addressbook/*` | `libi2pd_client/AddressBook.*` | Implemented, not validated | ASCII case folding, case-preserving b33 labels, mixed-case hosts.txt replacement and exact base64 handling remain. Native TUI Destinations and Android Material screens list, add/replace, remove and block/unblock entries with Java-compatible name validation. Removed names persist as deleted-host tombstones and subscription merges skip them; an explicit add clears the matching block. Subscription URL editing remains open. | `test-addressbook-case`, `test-addressbook-admin`; live .i2p lookup pending | P1 |
+| Address book, .i2p and b32/b33 | `apps/addressbook/java/src/net/i2p/addressbook/*`; [Proposal 112](https://i2p.net/en/proposals/112-addressbook-subscription-feed-commands/) | `libi2pd_client/AddressBook.*` | Partial | Native TUI and Android support bounded entry and subscription-source administration. Case handling, tombstones and origin-scoped feed deletion exist, but the feed parser handles only `action=delete` and does not verify the required `sig`/`oldsig`; signed add/change/subdomain commands and Java host-entry signature semantics are absent. Preserve origin checks until spec-compliant cryptographic verification and migration tests exist. | `test-addressbook-case`, `test-addressbook-admin`; signed Proposal 112 corpus pending | P0 |
 | Naming and destination lookup | `client/NamingService.java`, `LookupDestJob.java` | `AddressBook.*`, `Destination.*` | Partial | Local and remote lookup paths exist; secret-blinded and some HostReply option combinations remain fail-closed. | AddressBook/Destination tests | P1 |
 | I2PControl and local APIs | `apps/i2pcontrol/java/net/i2p/i2pcontrol/*` | `daemon/I2PControl*`, TUI IPC | Partial | Native JSON-RPC/control compatibility is retained, but not every Java console action has a TUI/Android equivalent. Generic config writes are deliberately excluded. | Control tests; parity matrix below | P2 |
 
@@ -112,7 +112,7 @@ applicable, a device or Java-peer run succeeds.
 | DHT and PEX | `apps/i2psnark/.../DHT*`, `PeerCoordinator` | `TorrentsDHT.*`, `Torrents.*` | Partial | DHT KRPC/token/bounds and 32-byte PEX exist; PEX now sends inbound/outbound with bounded tracking. The own-bucket rendezvous path reuses local peers and publishes our destination with seed/private/cap guards. DHT source authenticity and live Java trackerless exchange remain open. | DHT/PEX tests; live test pending | P0 |
 | Peer connection limits | Java connection-manager/peer limits | `Torrents.*`, `TorrentsTunnel.*` | Implemented, not validated | Per-torrent/global peer and dial caps, bounded accepts and idle rotation were added. No live exhaustion test exists. | `test-torrents-verify-parity`; stress test pending | P1 |
 | Comments, ratings and metadata | `apps/i2psnark/.../Comments*`, `ut_comment` | `TorrentsComments.*` | Implemented, not validated | Opt-in negotiated exchange; empty bencode strings and private suppression retained. Java peer exchange and consent tests remain. | Comment codec tests; Java peer pending | P2 |
-| Native TUI/Android control | Java web UI (functional equivalent only) | `TuiProtocol`, `tui/*`, Android torrent fragment | Partial | Native typed control includes force recheck, metainfo comment/created-by editing and Android remove-with-data, with commands retained on the torrent service thread. Selected-file promotion, full queue/bandwidth controls and crash recovery remain incomplete. | TUI/IPC/Android tests; device test pending | P0 |
+| Native TUI/Android control | Java web UI (functional equivalent only) | `TuiProtocol`, `tui/*`, Android torrent fragment | Partial | Native typed control includes force recheck, metainfo comment/created-by editing, selected-file verification/promotion and Android remove-with-data, with commands retained on the torrent service thread. Durable queue recovery, uploader-slot/bandwidth controls and crash recovery remain incomplete. | TUI/IPC/Android tests; device test pending | P0 |
 
 ## 5. Administration, TUI and Android
 
@@ -123,16 +123,16 @@ replacement is native terminal and Android UI over bounded local IPC/JNI.
 |---|---|---|---|---|---|
 | Router status and diagnostics | `apps/routerconsole/.../RouterConsoleRunner`, status pages | TUI Status/Connections; Android Dashboard/Network/Statistics | Compatible, implementation different | Read-only snapshots are bounded. Advanced Java graph/profile pages are summarized rather than copied. | P1 |
 | Logs | `apps/routerconsole/.../LogsHelper`, log pages | TUI Logs; Android Logs/settings | Compatible, implementation different | Native log queue and levels. Android validates the closed set and applies the saved level to the running logger on the service worker; TUI has ADMIN LOGLEVEL. | P1 |
-| Transit toggle, bandwidth, share | `RouterConsoleRunner`, `configui` | TUI ADMIN TRANSIT/BANDWIDTH/SHARE | Implemented, not validated | Typed command queue executes on the daemon thread; no generic config writer. Dynamic tests pending. | P0 |
+| Transit toggle, bandwidth, share | `RouterConsoleRunner`, `configui` | TUI ADMIN TRANSIT/BANDWIDTH/SHARE; Android Runtime admin | Implemented, not validated | Both surfaces send closed typed operations through the daemon queue; Android uses the service worker and dedicated JNI calls. These operations change live state and do not write preferences/configuration. Dynamic Android and daemon checks pending (`PARITY-022`). | P1 |
 | Reseed | Java console reseed action and reseed status | TUI ADMIN RESEED; Android Reseed NetDb action | Implemented, not validated | Single-flight NetDb reseed; no URL/path input. Android calls the service worker and shows a bounded result. Signed bundle/device test pending. | P0 |
 | Tunnel reload | `I2PTunnel` config reload | TUI ADMIN RELOAD TUNNELS; Android Reload tunnels | Implemented, not validated | Reuses `ClientContext::ReloadConfig`; no arbitrary file path. | P1 |
 | Shutdown/graceful drain | Java console shutdown | TUI ADMIN SHUTDOWN GRACEFUL/IMMEDIATE/CANCEL | Implemented, not validated | Typed modes only; immediate shutdown requires typed confirmation. Signal/IPC paths remain daemon-owned. | P0 |
 | Router-wide configuration | Java config UI | TUI read-only snapshot; settings files/Android preferences | Compatible, implementation different | There is deliberately no generic TUI config writer. Android validates and persists a closed set. | P1 |
 | Client/server tunnel editing | Java I2PTunnel web editor | TUI Destinations/reload; Android Tunnels | Partial | Existing configuration can be reloaded; full native tunnel creation/editing UI is missing. | P1 |
-| Address book editing | Java addressbook UI | TUI Destinations; Android Address book screen | Implemented, not validated | List/add/replace/remove plus deleted-host block/unblock use bounded local TUI IPC or app-internal JNI, full base64 identities only, and do not delete key material. Subscription sources are listed and edited through bounded TUI/Android verbs; automatic merges never re-point a known name (Java `Daemon.java` precedence). | P1 |
-| Peer/netDb browsing and bans | Java netDb/peers pages, `ConfigPeerHandler` | TUI NetDb (`b`/`u`), `BLOCKLIST` | Implemented, not validated | Bounded read-only views plus the startup operator blocklist counters and an in-memory runtime router ban set (1024 entries, cleared on restart, enforced through `IsRouterBanned`). Per-router detail pages and profile diagnostics remain narrower. | P2 |
-| Client services | Java I2PTunnel/proxy/SAM status pages | TUI Services (`v`) | Compatible, implementation different | Bounded read-only inventory of TCP/UDP client and server tunnels, HTTP/SOCKS proxies and SAM/BOB/I2CP servers; public b32 destinations only, no keys or paths. Per-tunnel start/stop/editing and Android live transit remain open (`PARITY-019`). | P2 |
-| I2PSnark operations | Java Snark UI | TUI Torrents + Android native panel | Partial | Pause/start/recheck/priorities/comments/tracker operations; force recheck requires a paused torrent and hashes all pieces. Selected-file completion drives local Seeding status and per-file `.part` promotion, while tracker `left`/`event=completed` are whole-torrent (Java `TrackerClient`); mixed final/`.part` restarts verify only fully backed pieces and resume bitfields require exact padding. Private swarms are labeled and use a fixed primary tracker. Metainfo comment/created-by editing and Android remove-with-data are exposed; queue/bandwidth policy and durable magnets remain incomplete. | P0 |
+| Address book editing | Java addressbook UI | TUI Destinations; Android Address book screen | Implemented, not validated | List/add/replace/remove, deleted-host block/unblock and subscription source list/add/remove use bounded local TUI IPC or typed app-internal JNI methods, full base64 identities only, and do not delete key material. Automatic merges never re-point a known name (Java `Daemon.java` precedence). | P1 |
+| Peer/netDb browsing and bans | Java netDb/peers pages, `ConfigPeerHandler` | TUI NetDb (`b`/`u`), Android Runtime admin, `BLOCKLIST` | Implemented, not validated | Bounded read-only views plus startup operator blocklist counters and an in-memory runtime router ban set (1024 entries, cleared on restart, enforced through `IsRouterBanned`). TUI and Android expose typed ban/unban actions; the detailed blocklist view and per-router profile diagnostics remain narrower. | P2 |
+| Client services | Java I2PTunnel/proxy/SAM status pages | TUI Services (`v`); Android Runtime admin | Compatible, implementation different | Bounded read-only inventory of TCP/UDP client and server tunnels, HTTP/SOCKS proxies and SAM/BOB/I2CP servers; public b32 destinations only, no keys or paths. Typed per-tunnel start/stop is implemented; full create/edit/restart remains absent. | P2 |
+| I2PSnark operations | Java Snark UI | TUI Torrents + Android native panel | Partial | Pause/start/recheck/priorities/comments/tracker operations; force recheck requires a paused torrent and hashes all pieces. Selected-file completion drives local Seeding status and per-file `.part` promotion, while tracker `left`/`event=completed` are whole-torrent (Java `TrackerClient`); mixed final/`.part` restarts verify only fully backed pieces and resume bitfields require exact padding. Private swarms are labeled and use a fixed primary tracker. Metainfo comment/created-by editing and Android remove-with-data are exposed. Java's durable unresolved-magnet queue, eight-uploader policy, and global/per-torrent/per-peer bandwidth queues remain missing. | P0 |
 | Themes/accessibility | Java web themes | TUI themes; Android Material 3 light/dark | Compatible, implementation different | Native focus, screen-reader labels and responsive layouts exist; device validation pending. | P2 |
 | Web console, JSP, HTML, CSS, JS | Java router console | None | Incompatible with fork goals | Intentionally removed. No administrative web technology is reintroduced. | — |
 
@@ -178,12 +178,13 @@ device, OpenBSD, Windows or live-network run has validated these changes.
 
 ## 8. Remaining implementation order
 
-1. Add native Android tunnel/address-book administration and validate the new
-   reseed/log-level actions with Gradle/JNI/Lint/device tests.
+1. Validate Android address-book/subscription, tunnel and runtime-admin flows,
+   including the newly added live transit/bandwidth/share JNI path, with
+   manual Gradle/JNI/Lint/device CI.
 2. Close controlled interoperability gaps: Java PQ/non-PQ handshakes, signed
-   SU3 bundle, RSA key vector, SAM LISTEN_PROTOCOL routing, I2CP secret-blinded
-   lookup and Datagram2 offline vector.
-3. Finish torrent operations: selected-file promotion, durable queue,
+   SU3 bundle, RSA key vector, SAM `LISTEN_PROTOCOL` differential, I2CP
+   secret-blinded lookup and Datagram2 offline vector.
+3. Finish torrent operations: durable magnet queue, uploader-slot and
    bandwidth scheduling, Windows storage and worker recovery; metainfo edit
    and Android remove-with-data are in the current static increment.
 4. Move network/router/verifier responsibilities out of the network-capable
@@ -215,7 +216,7 @@ increment; they remain `PARITY-014` in `TODO.md`.
 | Streaming | Minute/hour/day and total incoming limits, destination-hash counting after signature validation, `limitAction` drop/reset/HTTP/custom | Partially implemented / static: per-peer and total minute/hour/day windows (`StreamingConnectionThrottle`); `limitAction` reset/HTTP/custom still pending | P1 |
 | SAM | `LISTEN_PROTOCOL`, protocol+port RAW/DATAGRAM receiver dispatch, per-subsession datagram version, duplicate rejection and receiver reset on `SESSION REMOVE` | Implemented / static: protocol-aware RAW dispatch, `(STYLE,protocol,port)` duplicate keying and reset; the per-subsession datagram version and the 2.14.0 per-style listen protocol are corrected in §16, and the Java differential remains pending | P1 |
 | Proxies | Local HTTP 407 Basic/Digest and SOCKS5 username/password authentication with constant-time checks and no credential forwarding | Implemented / static for Basic and SOCKS5 RFC 1929; HTTP Digest remains pending reference verification | P1 |
-| Administration | Read-only peer profile diagnostics and client/server tunnel inventory; per-tunnel runtime start/stop; Android live transit toggle | Partial: subscription-source editing and router ban/unban are implemented statically; profile diagnostics, per-tunnel start/stop and Android live transit/bandwidth remain | P2 |
+| Administration | Read-only peer profile diagnostics and client/server tunnel inventory; per-tunnel runtime start/stop; Android live router controls | Partial: subscription-source editing, router ban/unban, per-tunnel start/stop and live Android transit/bandwidth/share controls are implemented statically; profile diagnostics remain narrower | P2 |
 | I2PSnark | Selected-file promotion, uploader-slot allocation and per-session/per-torrent bandwidth limits | Partial: selection/promotion and tracker `left`/`completed` and announce scheduling match Java statically; uploader slots and session rate limits remain | P0/P1 |
 
 The Java console's JSP/HTML/JavaScript, console authentication, plugins,
@@ -262,7 +263,7 @@ vendored or executed by agents.
 | 5 | Operator IP/CIDR and router-hash blocklist with bounded parsing and transport/netDb enforcement | `router/java/.../Router.java`, `Banlist.java`, `NetworkDatabaseFacade.java` | `libi2pd/Config.*`, `Transports.*`, `NetDb.*` | Parser bounds, enforcement-point tests, no reload race; live Java differential run |
 | 6 | NetDb per-requester/per-key admission and bounded stale-RouterInfo refresh | `router/java/.../networkdb/*` | `libi2pd/NetDb.*` | Throttle/refresh vectors; floodfill differential run |
 | 7 | Per-tunnel inventory/start-stop and Android live controls | `apps/routerconsole/java/...`, `apps/i2ptunnel/java/...` | TUI IPC, `daemon/TuiServer*`, Android JNI/UI | Protocol round-trips, start/stop lifecycle tests, device run |
-| 8 | I2PSnark selected-file promotion, durable queue, uploader slots and bandwidth scheduling | `apps/i2psnark/java/src/org/klomp/snark/*` | `libi2pd_client/Torrents*`, storage worker, TUI/Android | Engine tests, queue/priority/bandwidth vectors, Java Snark differential run |
+| 8 | I2PSnark durable magnet queue, uploader slots and bandwidth scheduling | `apps/i2psnark/java/src/org/klomp/snark/*` | `libi2pd_client/Torrents*`, storage worker, TUI/Android | Selected-file verification/promotion is implemented statically; remaining acceptance needs restart/recovery, queue/priority/bandwidth vectors and Java Snark differential runs |
 | 9 | Network/router/verifier process separation and remaining persistence authority | JVM-specific; I2P Java is the behavioural reference only | `privsep/**`, `daemon/**` | Negative-capability tests, crash/restart, Linux/OpenBSD/Windows runtime evidence |
 
 Cross-cutting rules:
@@ -296,10 +297,10 @@ implementation evidence, not dynamic equivalence. Every row remains
 | Client services | HTTP proxy Digest authentication | `I2PTunnelHTTPClientBase.java` | Implemented / static in §17 (RFC 7616 MD5/SHA-256, opt-in; Basic remains default) | `PARITY-017` |
 | Client services | `targetForPort`, `spoofedHost.<port>`, `rejectInproxy`/`rejectReferer`/`rejectUserAgents`, POST throttling, `startOnLoad`, per-tunnel start/stop | `I2PTunnel*.java` | Implemented / static in §17 (typed TUI/Android start/stop; no create/edit/restart verb) | `PARITY-019`/`PARITY-021` |
 | Address book | Subscription merge never re-points an already-known name; bounded conflict accounting | `Daemon.java` merge path | Implemented / static | `SEC-028` |
-| Address book | Subscription source list/add/remove with validation and atomic `subscriptions.txt` rewrite | `SubscriptionsBean.java` (functional equivalent) | Implemented / static (TUI verbs; Android next) | `PARITY-018` |
+| Address book | Subscription source list/add/remove with validation and atomic `subscriptions.txt` rewrite | `SubscriptionsBean.java` (functional equivalent) | Implemented / static (typed TUI and Android controls) | `PARITY-018` |
 | I2PSnark | Whole-torrent tracker `left`, `event=completed` only after every piece is verified, 15-minute advertised interval floor, 30-minute failure cap | `TrackerClient.java` | Implemented / static | `SNARK-011` |
 | I2PSnark | Session up/down rate limits, uploader slots/rotation, durable magnets, peer blame/CANCEL | `BandwidthManager.java`, `PeerCoordinator.java`, `MagnetState.java` | Missing — deferred (engine work) | `SNARK-011` |
-| Administration | Bounded `BLOCKLIST`, `ADDRESSBOOK-SUBSCRIPTIONS` reads and typed `NETDB-BAN`/`NETDB-UNBAN`/`ADDRESS-SUB-ADD`/`ADDRESS-SUB-REMOVE` writes on the daemon-owned queue | Router console functional equivalent | Implemented / static (TUI); Android typed bridge pending | `PARITY-018` |
+| Administration | Bounded `BLOCKLIST`, `ADDRESSBOOK-SUBSCRIPTIONS` reads and typed `NETDB-BAN`/`NETDB-UNBAN`/`ADDRESS-SUB-ADD`/`ADDRESS-SUB-REMOVE` writes on the daemon-owned queue | Router console functional equivalent | Implemented / static (TUI and Android typed JNI); the full `BLOCKLIST` listing remains TUI-only | `PARITY-018` |
 
 Deliberate decisions recorded by this increment:
 
@@ -322,19 +323,21 @@ Deliberate decisions recorded by this increment:
   receives `event=completed` after every piece is verified. Failure retries use
   a short internal ladder capped at 30 minutes, while tracker-advertised
   intervals are floored at 15 minutes.
-- The new administrative writes remain a closed typed set. They never accept a
-  path, shell string or generic option; the only URL accepted is a validated
-  `http(s)` subscription source. The Android JNI allowlist is not widened to
-  generic `ADMIN` verbs; a typed bridge is a separate task.
+- Administrative writes remain a closed typed set. They never accept a path,
+  shell string or generic option; the only URL accepted is a validated
+  `http(s)` subscription source. Android has dedicated typed JNI methods for
+  subscription edits and router ban/unban; do not widen the torrent command
+  allowlist or add a generic `ADMIN` bridge.
 - No web console, JSP, plugin, shell service, update download or generic
   configuration writer was introduced or restored.
 
-Deferred with reasons: `filterDefinition` needs a streaming-level admission
-hook before the accept path (the current acceptor runs after the stream is
-open, so a rejected peer sees accept-then-close instead of the Java RST/drop);
-Digest authentication needs its own vector review; per-tunnel start/stop needs
-an owning-io_context teardown contract; Snark shaping needs engine-level token
-buckets and uploader slots. None of these is claimed as equivalent.
+Deferred with reasons: Java supports URL/file-based manual reseed and reseed
+proxy/URL editing, but openi2pd deliberately exposes only configured-source
+single-flight reseed until a safe URL/file authority design is specified.
+`filterDefinition` pre-accept semantics, remaining Digest vectors and Snark
+queue/uploader/rate scheduling remain distinct work. Per-tunnel start/stop is
+implemented; create/edit/restart remains absent. None of the deferred behavior
+is claimed as equivalent.
 
 Prepared regressions: `test-blocklist-parse`, `test-blocklist-enforce`,
 `test-addressbook-merge`, extended `test-addressbook-admin`,
@@ -585,3 +588,33 @@ Prepared regressions: `test-http-proxy-limits`, `test-proxy-auth`,
 `control-security-static` pins. No compiler, CTest, sanitizer, fuzzer, Gradle,
 device, live proxy/tunnel/reseed/IGD/NTP/BOB/Java peer or workflow run exists
 for them.
+
+## 18. Full 2.14.0 subsystem re-audit (2026-10-31, static)
+
+The audits below use the official `i2p-2.14.0` source pin
+`3c98503c5f14efe7bdd783528ba7f621f12d8081`, inspected read-only with
+`gh api`, plus the protocol specifications linked from
+[`protocols/README.md`](protocols/README.md). Java sources were not copied,
+vendored, built or executed. The comparison establishes source-level behavior,
+not runtime interoperability. Each status remains pending manual CI and, where
+applicable, controlled differential tests.
+
+| Area | Verifiable Java reference | Local evidence and classification | Required regression / decision |
+|---|---|---|---|
+| NetDb lookup admission | [`FloodfillDatabaseLookupMessageHandler.createJob()`](https://github.com/i2p/i2p.i2p/blob/3c98503c5f14efe7bdd783528ba7f621f12d8081/router/java/src/net/i2p/router/networkdb/kademlia/FloodfillDatabaseLookupMessageHandler.java#L579-L598) drops EXPL/ANY before throttle charging on non-floodfills; direct EXPL/ANY from known floodfills is also refused. | `NetDb::HandleDatabaseLookupMsg()` (`libi2pd/NetDb.cpp`) has the corresponding ordering and local bounds. Compatible by static source comparison; Java peer differential pending. | Exercise both flag/origin combinations and prove a dropped request does not consume the budget. |
+| NetDb go-away and store admission | [`FloodfillDatabaseLookupMessageHandler`](https://github.com/i2p/i2p.i2p/blob/3c98503c5f14efe7bdd783528ba7f621f12d8081/router/java/src/net/i2p/router/networkdb/kademlia/FloodfillDatabaseLookupMessageHandler.java) and [`KademliaNetworkDatabaseFacade`](https://github.com/i2p/i2p.i2p/blob/3c98503c5f14efe7bdd783528ba7f621f12d8081/router/java/src/net/i2p/router/networkdb/kademlia/KademliaNetworkDatabaseFacade.java) send a go-away RI when a node stops being floodfill and use probabilistic `LIMIT_ROUTERS` admission. | Missing/partial: local `NetDb` uses deterministic bounded admission and does not send the matching go-away RI on store acknowledgement/lookup responses. Keep deterministic caps until a source-backed policy preserves existing updates, reseed and hard bounds. | Differentially test demotion replies, store count around the limit, existing-key replacement, and bounded memory under churn. `PARITY-020`/`DB-127`. |
+| Floodfill policy | [`FloodfillMonitorJob`](https://github.com/i2p/i2p.i2p/blob/3c98503c5f14efe7bdd783528ba7f621f12d8081/router/java/src/net/i2p/router/networkdb/kademlia/FloodfillMonitorJob.java#L102-L170) and [`FloodfillNetworkDatabaseFacade`](https://github.com/i2p/i2p.i2p/blob/3c98503c5f14efe7bdd783528ba7f621f12d8081/router/java/src/net/i2p/router/networkdb/kademlia/FloodfillNetworkDatabaseFacade.java) define `router.floodfillParticipant` as `true`, `false` or `auto`; hidden mode disables it and the default is automatic. | Missing: local `floodfill` is an explicit boolean defaulting to false. A direct alias would be misleading because Java's `auto` is a substantial runtime policy, not a boolean synonym. | Add a deterministic policy state-machine only as a separately scoped feature; test hidden override, explicit modes, restart/uptime, transport and network-health hysteresis. Do not silently map `auto` to false. |
+| NTCP2 resource/ownership policy | Java router transport's established-session admission, 12-byte options and establisher/service socket lifecycle (see `NET-172` and [`INTEROPERABILITY.md`](INTEROPERABILITY.md)). | Partial: C++ lacks the same established-session cap and option negotiation; the exact-IP pending map is bounded but has a coarse expiry sweep, and initiation/close I/O ownership crosses threads. These are implementation/availability differences, not proven wire failures. | Add tests for admission saturation, option negotiation and descriptor close/send races before changing socket ownership. Keep deadlines on every handshake read. |
+| Address-book feed actions | [Proposal 112](https://i2p.net/en/proposals/112-addressbook-subscription-feed-commands/) defines `sig`, `oldsig`, canonical signed command forms and actions including `adddest`, `addname`, `addsubdomain`, `changedest`, `update`, `remove` and `removeall`; pinned Java [`Daemon.java`](https://github.com/i2p/i2p.i2p/blob/3c98503c5f14efe7bdd783528ba7f621f12d8081/apps/addressbook/java/src/net/i2p/addressbook/Daemon.java) verifies signatures before mutation. | Partial/security gap: `AddressBook.cpp::ParseSubscriptionAction()` handles `action=delete` with local source-origin matching but does not verify `sig` or `oldsig`; the other signed actions are absent. Do not treat origin equality as feed authenticity. | Build signed valid/invalid vectors from Proposal 112 for every action, old-destination authority, replay, canonicalization and cross-feed origin. Implement only after signature-scope/crypto review; retain the local origin restriction. `AB-107`. |
+| Subscription administration | Pinned Java [`SubscriptionList.java`](https://github.com/i2p/i2p.i2p/blob/3c98503c5f14efe7bdd783528ba7f621f12d8081/apps/addressbook/java/src/net/i2p/addressbook/SubscriptionList.java) and [`SubscriptionsBean.java`](https://github.com/i2p/i2p.i2p/blob/3c98503c5f14efe7bdd783528ba7f621f12d8081/apps/susidns/src/java/src/i2p/susi/dns/SubscriptionsBean.java#L97-L159) persist subscription metadata and request a naming-service refresh after edits. | Functionally implemented through bounded TUI requests and Android AddressBook typed JNI/service-worker calls. It intentionally does not provide a generic text-file editor or Java web UI. | Test add/remove/duplicate/invalid URL, persistence failure and refresh semantics; Android policy tests exist, Gradle/device validation remains pending. `PARITY-018`. |
+| Manual reseed administration | Java [`ConfigReseedHandler`](https://github.com/i2p/i2p.i2p/blob/3c98503c5f14efe7bdd783528ba7f621f12d8081/apps/routerconsole/java/src/net/i2p/router/web/helpers/ConfigReseedHandler.java#L25-L108) accepts a user URL or uploaded ZIP/SU3; [`Reseeder.java`](https://github.com/i2p/i2p.i2p/blob/3c98503c5f14efe7bdd783528ba7f621f12d8081/router/java/src/net/i2p/router/networkdb/reseed/Reseeder.java#L180-L260) imports bundles. | Partial by design: native administration exposes configured-source, single-flight reseed. User-selected paths/URLs and the Java proxy/URL editor are absent; an unsigned ZIP can inject RouterInfos and arbitrary path/URL authority is not exposed. | Keep the bounded action. Any SAF import or URL-selection feature needs a separate trust/authority design and signed/unsigned fixture policy; do not add arbitrary strings to generic admin IPC. `RS-108`. |
+| Tunnel lifecycle administration | Pinned Java [`TunnelController`](https://github.com/i2p/i2p.i2p/blob/3c98503c5f14efe7bdd783528ba7f621f12d8081/apps/i2ptunnel/java/src/net/i2p/i2ptunnel/TunnelController.java#L415-L442) implements start and stop. | Per-tunnel start/stop is implemented statically in daemon-owned TUI and Android typed operations; create/edit/restart remains absent. The prior note that start/stop needed an owner-context contract is obsolete. | Test stopped/in-use/restart and shutdown races through the typed queue; Java `restartTunnel()` remains distinct work if requested. `PARITY-019`/`PARITY-021`. |
+| Android live router controls | Java router console config handlers apply bandwidth and share changes to the running router. | Implemented / static: Android Runtime admin now invokes dedicated, bounded JNI methods on the service worker for transit, bandwidth and share; the native daemon validates the same closed inputs and queues the existing typed operations. It does not persist preferences or expose a generic config writer. | Manual Android CI/device validation remains pending for accepted values, rejection, stopped-router behavior and lifecycle races. `PARITY-022`. |
+| I2PSnark durable magnets | Pinned Java [`SnarkManager.saveMagnetStatus()`](https://github.com/i2p/i2p.i2p/blob/3c98503c5f14efe7bdd783528ba7f621f12d8081/apps/i2psnark/java/src/org/klomp/snark/SnarkManager.java#L2403-L2445) stores magnet identity, tracker hints, display name and run state per infohash. | Missing: `TorrentsState` stores stop/priorities/comments only; `TorrentsTunnel::AddMagnet` does not persist the unresolved URI/hints, so restart loses unresolved magnets. | Add a bounded versioned local record, migration/rejection semantics, duplicate-hint merge and restart-before-announce vectors. No wire or metainfo change. `SNARK-012`. |
+| I2PSnark upload and bandwidth policy | Pinned Java [`PeerCoordinator`](https://github.com/i2p/i2p.i2p/blob/3c98503c5f14efe7bdd783528ba7f621f12d8081/apps/i2psnark/java/src/org/klomp/snark/PeerCoordinator.java#L826-L838) gates unchokes and caps each torrent at eight uploaders; [`BandwidthManager`](https://github.com/i2p/i2p.i2p/blob/3c98503c5f14efe7bdd783528ba7f621f12d8081/apps/i2psnark/java/src/org/klomp/snark/BandwidthManager.java#L45-L68) coordinates global, torrent and peer limits. | Missing: local per-peer rate observations are not admission limits or uploader-slot rotation; Android bandwidth settings are router-wide, not torrent policy. | Add deterministic slot rotation, starvation, pause/private-swarm and layered token-budget regressions before implementation. `SNARK-012`. |
+
+The user-visible administration surfaces remain the ncursesw/Win32 TUI and
+Android Material 3/Java 25. Java source is behavioral evidence only: do not
+add a desktop JVM, copy JSP/HTML/JavaScript, expose an administrative web
+server, or broaden the typed control boundary to arbitrary paths, URLs or
+configuration writes.

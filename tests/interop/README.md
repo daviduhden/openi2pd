@@ -34,7 +34,7 @@ building Java/C++ or running peers locally.
 | Current target tag | `i2p-2.14.0` |
 | Target commit | `3c98503c5f14efe7bdd783528ba7f621f12d8081` |
 | Annotated tag object | `9db233ed7241599eba76f29b8c334eaaf3db2e87` |
-| Target checked | 2026-10-21; official remote tag and peeled commit verified; source/parity review and CI remain pending |
+| Target checked | 2026-10-31; official remote tag and peeled commit verified; scoped router/transport/client/admin/address-book/reseed/Snark source audit completed; Java execution and CI remain pending |
 | Existing corpus tag | `i2p-2.13.0` |
 | Corpus commit | `9134f808337b401e8e53c73734c81fab04280c9d` |
 

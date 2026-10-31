@@ -724,6 +724,60 @@ public class DaemonWrapper {
         }
     }
 
+    /** Apply live transit acceptance without changing config. */
+    public String setTransit(boolean enabled) {
+        synchronized (lock) {
+            if (!state.isStartedOkay()) {
+                return "unavailable";
+            }
+        }
+        try {
+            String outcome = I2PD_JNI.setTransit(enabled);
+            return outcome == null || outcome.isEmpty() ? "failed" : outcome;
+        } catch (RuntimeException | LinkageError e) {
+            Log.e(TAG, "native transit control failed");
+            return "failed";
+        }
+    }
+
+    /** Apply one allowlisted router bandwidth class at runtime. */
+    public String setBandwidth(String bandwidthClass) {
+        if (!RuntimeAdminPolicy.isValidBandwidthClass(bandwidthClass)) {
+            return "invalid";
+        }
+        synchronized (lock) {
+            if (!state.isStartedOkay()) {
+                return "unavailable";
+            }
+        }
+        try {
+            String outcome = I2PD_JNI.setBandwidth(bandwidthClass);
+            return outcome == null || outcome.isEmpty() ? "failed" : outcome;
+        } catch (RuntimeException | LinkageError e) {
+            Log.e(TAG, "native bandwidth control failed");
+            return "failed";
+        }
+    }
+
+    /** Apply a bounded transit-share percentage. */
+    public String setShareRatio(int percent) {
+        if (!RuntimeAdminPolicy.isValidShareRatio(percent)) {
+            return "invalid";
+        }
+        synchronized (lock) {
+            if (!state.isStartedOkay()) {
+                return "unavailable";
+            }
+        }
+        try {
+            String outcome = I2PD_JNI.setShareRatio(percent);
+            return outcome == null || outcome.isEmpty() ? "failed" : outcome;
+        } catch (RuntimeException | LinkageError e) {
+            Log.e(TAG, "native transit share control failed");
+            return "failed";
+        }
+    }
+
     /**
      * Bounded reseed phase/attempt/error record, or an empty string
      * while the router is not running. It never waits for the job and
