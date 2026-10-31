@@ -1376,8 +1376,13 @@ namespace client
 			// an unblinded name, and a revoked or renamed b33 must not silently
 			// become another destination.
 			const std::string_view hostPart (normalized.data (), normalized.size () - 4);
-			const auto label = GetFinalLabel (hostPart);
-			const bool b33 = normalized.ends_with (".b33.i2p") || label.size () > B33_ADDRESS_THRESHOLD;
+			// The explicit ".b33" marker is part of the suffix, not of the
+			// label: reading the final label without stripping it yields
+			// the literal "b33" and rejects every explicit b33 name.
+			const bool explicitB33 = HasSuffixIgnoreCase (hostPart, ".b33");
+			const auto labelHost = explicitB33 ? hostPart.substr (0, hostPart.size () - 4) : hostPart;
+			const auto label = GetFinalLabel (labelHost);
+			const bool b33 = explicitB33 || label.size () > B33_ADDRESS_THRESHOLD;
 			if (b33)
 			{
 				// A short label behind an explicit ".b33.i2p" suffix is not a
