@@ -176,9 +176,11 @@ int main ()
 	// A different UID cannot be simulated without changing credentials.
 	if (geteuid () != 0) std::cout << "skip: different-UID peer rejection needs root" << std::endl;
 
+	// `directory` is the mkdtemp buffer, so it already is the C string
+	// rmdir() takes; the derived std::string paths need c_str().
 	unlink (filePath.c_str ());
 	rmdir (directoryPath.c_str ());
-	rmdir (directory.c_str ());
+	rmdir (directory);
 
 	if (failures)
 	{
