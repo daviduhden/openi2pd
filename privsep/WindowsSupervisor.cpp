@@ -99,6 +99,13 @@ i2p::expected<void, std::string> WindowsWorkerSupervisor::Start ()
 		return FailTerminal (WindowsWorkerFailureKind::Spawn, 0, "empty worker executable");
 	if (!m_StopEvent.IsValid ()) return FailTerminal (WindowsWorkerFailureKind::Spawn, 0, "stop event unavailable");
 	const auto isolation = GetWindowsRoleIsolation (m_Config.role);
+	// Validate the write root before creating the AppContainer profile: a
+	// configuration error must not leave a durable profile or one-time
+	// userenv/runtime handles behind. The test measures exactly this
+	// fail-closed path.
+	if (isolation.persistentWrites && m_Config.persistentWriteRoot.empty ())
+		return FailTerminal (
+			WindowsWorkerFailureKind::Spawn, 0, "role requires an explicitly delegated persistent-write root");
 	if (isolation.appContainer)
 	{
 		auto container = CreateWindowsAppContainer (m_Config.role);
@@ -110,9 +117,6 @@ i2p::expected<void, std::string> WindowsWorkerSupervisor::Start ()
 		if (!m_Container)
 			return FailTerminal (WindowsWorkerFailureKind::Spawn, 0,
 				"role requires an AppContainer identity and cannot run with a restricted token");
-		if (m_Config.persistentWriteRoot.empty ())
-			return FailTerminal (
-				WindowsWorkerFailureKind::Spawn, 0, "role requires an explicitly delegated persistent-write root");
 		auto granted = GrantAppContainerPath (*m_Container, m_Config.persistentWriteRoot, true);
 		if (!granted) return FailTerminal (WindowsWorkerFailureKind::Spawn, 0, granted.error ());
 	}
