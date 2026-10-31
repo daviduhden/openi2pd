@@ -5698,3 +5698,24 @@ pins the support linkage, the logger API and the documentation paragraph in
 for an aborting test. Static checks pass. No compiler, CTest, Gradle or
 workflow run exists for this increment; it remains Implemented / static,
 Pending CI compilation and Pending CI tests.
+
+## Doxygen partial-parameter guard (2026-10-31, static)
+
+The `dc5540ae` source-docs lane stopped at `libi2pd/Elligator.h:33`:
+`Elligator2::Encode` documented `highY`/`random` but not `key`/`encoded`.
+Doxygen reports a function that names some parameters and omits others
+(`WARN_IF_DOC_ERROR`, fatal under `WARN_AS_ERROR`), while
+`WARN_NO_PARAMDOC=NO` keeps a block with no `@param` out of scope. The
+previous scan handled only `/** */` blocks and missed this `///` header.
+
+Documented `Encode` and `Decode`, then fixed the other 17 findings of the same
+class that a corrected scan found in `SSU2Session.h`, `LeaseSet.h`,
+`ECIESX25519AEADRatchetSession.h`, `Crypto.h`, `AddressFormat.h`,
+`TorrentsState.h`, `TorrentsRPC.h`, `TorrentsCreator.h`, `RouterStorage.h`,
+`tui/main.cpp` and `getopt.cpp`, including the `@param user/pass` spelling.
+The new `tools/scripts/check-doxygen-params.pl` mirrors the rule over the
+`Doxyfile.source` roots (skipping `tools/tests`, accepting no-`@param`
+blocks) and is registered as `doxygen-static`, executed by the workflow Perl
+step, covered by negative fixtures in `maintenance-checkers.t` and pinned by
+`check-build-system.cmake`. CE-065 records the evidence. Static checks pass;
+no Doxygen run exists, so the manual source-docs lane remains pending.

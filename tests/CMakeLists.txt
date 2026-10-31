@@ -645,6 +645,14 @@ if(PERL_EXECUTABLE)
     LABELS "ci;android;perl;static"
     TIMEOUT 60)
 
+  add_test(NAME doxygen-static
+    COMMAND "${PERL_EXECUTABLE}" "${PROJECT_ROOT}/tools/scripts/check-doxygen-params.pl"
+      --root "${PROJECT_ROOT}")
+  set_tests_properties(doxygen-static PROPERTIES
+    WORKING_DIRECTORY "${PROJECT_ROOT}"
+    LABELS "ci;docs;perl;static"
+    TIMEOUT 60)
+
   add_test(NAME android-jni-symbols-static
     COMMAND "${PERL_EXECUTABLE}" "${PROJECT_ROOT}/android/tools/check-android-jni-symbols.pl"
       --root "${PROJECT_ROOT}")

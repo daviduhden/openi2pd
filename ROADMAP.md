@@ -1916,3 +1916,16 @@ Exit criteria: the next manual batch shows `[test-log ...]` lines for the
 product diagnostics of every C++ test, including a deliberately failing
 assertion in CI, without changing any test result. No local compiler or CTest
 run exists.
+
+## Doxygen parameter guard (2026-10-31, static)
+
+The first source-docs run on the corrected revision failed at
+`Elligator2::Encode`: the block named two parameters and omitted the two
+pointers, and Doxygen treats partial parameter documentation as fatal. All
+17 instances of the same defect, across both `/** */` and `///` blocks, are
+corrected, and `doxygen-static` (a compile-free scanner over the
+`Doxyfile.source` roots) now catches the class before the manual lane.
+
+Exit criteria: the next source-docs dispatch compiles the API documentation
+without a `WARN_AS_ERROR` abort, and the static Perl step keeps
+`doxygen-static` green. No local Doxygen or compiler run exists.

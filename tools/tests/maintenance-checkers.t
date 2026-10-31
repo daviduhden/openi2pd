@@ -74,6 +74,8 @@ my $locale_checker = File::Spec->catfile( $root, 'android', 'tools',
     'check-android-locales.pl' );
 my $javadoc_checker = File::Spec->catfile( $root, 'android', 'tools',
     'check-android-javadoc.pl' );
+my $doxygen_checker = File::Spec->catfile( $root, 'tools', 'scripts',
+    'check-doxygen-params.pl' );
 
 # --- check-android-locales.pl plural categories ---------------------------
 {
@@ -320,6 +322,47 @@ my $javadoc_checker = File::Spec->catfile( $root, 'android', 'tools',
     is( $code, 1, 'Javadoc checker rejects a mismatched @param name' );
     like( $out, qr/\@param data is not a parameter/,
         'mismatched-parameter diagnostic is emitted' );
+}
+
+# --- Doxygen partial parameter documentation -------------------------------
+# The source-docs lane fails on a documented function that names some
+# parameters with @param and leaves others out; WARN_NO_PARAMDOC is off, so
+# a block with no @param at all is intentionally accepted.
+{
+    my $tmp = tempdir( CLEANUP => 1 );
+    my $header =
+      File::Spec->catfile( $tmp, 'libi2pd', 'probe.h' );
+    write_file(
+        $header,
+        "class Probe {\n"
+          . "public:\n"
+          . "    /// Encode.\n"
+          . "    /// \@param highY selects.\n"
+          . "    bool Encode (const uint8_t * key, uint8_t * encoded, bool highY = false) const;\n"
+          . "    /// No parameter documentation at all.\n"
+          . "    bool Ignored (int a, int b) const;\n"
+          . "};\n"
+    );
+    my ( $code, $out ) = run_checker( $doxygen_checker, '--root', $tmp );
+    is( $code, 1, 'Doxygen checker rejects partial parameter docs' );
+    like( $out, qr/undocumented parameter\(s\): key, encoded/,
+        'missing-parameter diagnostic names the parameters' );
+
+    write_file(
+        $header,
+        "class Probe {\n"
+          . "public:\n"
+          . "    /// Encode.\n"
+          . "    /// \@param key input key.\n"
+          . "    /// \@param encoded output bytes.\n"
+          . "    /// \@param highY selects.\n"
+          . "    bool Encode (const uint8_t * key, uint8_t * encoded, bool highY = false) const;\n"
+          . "    /// No parameter documentation at all.\n"
+          . "    bool Ignored (int a, int b) const;\n"
+          . "};\n"
+    );
+    ( $code, $out ) = run_checker( $doxygen_checker, '--root', $tmp );
+    is( $code, 0, 'Doxygen checker accepts complete and undocumented blocks' );
 }
 
 # --- CRLF catalogs and nested documentation paths --------------------------

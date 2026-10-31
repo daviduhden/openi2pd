@@ -2642,3 +2642,22 @@ and `test-leaseset-encrypted-freshness` (hand-rolled sealed fixture does not
 parse), plus the Windows `i2pd-version` launch hang. No compiler, CTest,
 Gradle, Doxygen, package or workflow was run for this note; every entry is
 Implemented / static until the corrected revision passes a manual dispatch.
+
+## Doxygen partial-parameter guard (2026-10-31, static)
+
+The `41248772071` source-docs job stopped at
+`libi2pd/Elligator.h:33` because `Elligator2::Encode` documented `highY` and
+`random` but not `key` and `encoded`. Doxygen's `WARN_IF_DOC_ERROR` reports
+a function that names *some* parameters and leaves others out, and
+`WARN_AS_ERROR` makes it fatal. `WARN_NO_PARAMDOC` is disabled, so a
+documented function with no `@param` at all is intentionally accepted: do
+not mass-document every parameter, and do not assume a new `///` block is
+checked because an older `/** */` header passed.
+
+Both comment forms are in scope, including files under `daemon/`, `tui/`,
+`tools/` and `android/app/src/main/cpp`. `tools/scripts/check-doxygen-params.pl`
+(`doxygen-static`, also run in the workflow Perl step) mirrors the rule over
+the `Doxyfile.source` roots and reports file, line and missing names; it is
+a compile-free guard, not a replacement for the manual Doxygen lane. A new
+partially documented function must fail that check, and a `@param a/b`
+spelling is not a substitute for separate `@param a` and `@param b` entries.

@@ -40,11 +40,12 @@ invocation returns to a maintained build consumer.
 | `tools/scripts/check-workflows.pl` | manual-only workflow and empty-CTest guard | syntax, `workflow-static`, `skills-static` |
 | `scripts/validate-agent-knowledge.py` | substantive instruction synchronization, section and local-link gate | syntax and `agent-maintenance.yml` PR gate |
 | `tools/scripts/check-doc-nav.pl` | MkDocs navigation/unlisted-page checker | syntax, `docs-nav-static`, portability |
+| `tools/scripts/check-doxygen-params.pl` | compile-free partial-`@param` guard mirroring Doxygen's `WARN_IF_DOC_ERROR` | syntax, `doxygen-static`, negative fixture |
 | `tools/scripts/validate-branding.pl` | static branding/palette validator | syntax, `prove` wrapper, portability |
 | `tools/tests/i2pdctl.t` | Test::More client/transport regressions | `perl-i2pdctl` |
 | `tools/tests/validate-branding.t` | Test::More branding wrapper | `perl-validate-branding` |
 | `tools/tests/perl-portability.t` | Python-free/core-module/permissions guard | `perl-portability` |
-| `tools/tests/maintenance-checkers.t` | negative fixtures for the link/nav/JNI/Javadoc checkers | `perl-maintenance-checkers` |
+| `tools/tests/maintenance-checkers.t` | negative fixtures for the link/nav/JNI/Javadoc/Doxygen checkers | `perl-maintenance-checkers` |
 | `tests/interop/check-vectors.pl` | static interoperability fixtures | syntax, `interop-static` |
 | `android/tools/check-android-locales.pl` | compile-free four-locale parity guard | syntax, `android-locale-policy` |
 | `android/tools/check-android-javadoc.pl` | compile-free doclint comment guard (unregistered tags, raw placeholders, `@param` names) | syntax, `android-javadoc-static`, negative fixture |
@@ -112,6 +113,7 @@ OpenBSD base interpreter is newer.
 perl -c tools/scripts/i2pdctl
 perl -c tools/scripts/check-doc-links.pl
 perl -c tools/scripts/check-doc-nav.pl
+perl -c tools/scripts/check-doxygen-params.pl
 perl -c tools/scripts/validate-branding.pl
 perl -c tests/interop/check-vectors.pl
 perl -c android/tools/check-android-locales.pl

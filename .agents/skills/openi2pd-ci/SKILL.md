@@ -135,6 +135,10 @@ workflow, run `gh`, build or test.
   releases or secrets.
 
 ## Known issues and decisions
+- `doxygen-static` (`tools/scripts/check-doxygen-params.pl`) runs in the
+  static Perl block and the workflow Perl step. It catches the recurring
+  partial-`@param` source-docs failure without invoking Doxygen; the manual
+  `source_docs` lane remains the only dynamic evidence.
 - A failed `assert()` aborts without unwinding, so a ring-based log dump at
   the end of a test is never reached. Every `i2pd_add_test()` target therefore
   links `tests/log-support.cpp`, which installs a synchronous stderr echo on

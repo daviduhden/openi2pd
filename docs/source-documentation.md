@@ -150,6 +150,16 @@ Generation is manual-only and never part of a local build or default install:
 - Doxygen and Javadoc failures (including doclint and undocumented-parameter
   warnings) fail the `source_docs` job.
 
+`doxygen-static` (`tools/scripts/check-doxygen-params.pl`) is the
+compile-free C++ counterpart. Doxygen reports a partially documented
+function under `WARN_IF_DOC_ERROR`, and `WARN_AS_ERROR` makes it fatal; the
+checker accepts a block with no `@param` at all (because
+`WARN_NO_PARAMDOC` is disabled) and rejects a documented function that names
+some parameters but leaves others out. It reads the same input roots and
+file patterns as `docs/Doxyfile.source`, skips `tools/tests`, and reports the
+file, line and missing names. It does not replace the manual lane, which
+remains the only dynamic Doxygen evidence.
+
 `android-javadoc-static` (`android/tools/check-android-javadoc.pl`) is the
 compile-free guard for the comment defects that doclint rejects only after
 the whole Android job has configured and compiled: unregistered block tags,

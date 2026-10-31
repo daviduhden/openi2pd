@@ -197,6 +197,7 @@ jobs:
           perl -c tools/scripts/validate-branding.pl
           perl -c tools/scripts/check-doc-links.pl
           perl -c tools/scripts/check-doc-nav.pl
+          perl -c tools/scripts/check-doxygen-params.pl
           perl -c tests/interop/check-vectors.pl
           perl -c android/tools/check-android-locales.pl
           perl -c android/tools/check-android-jni-symbols.pl
@@ -204,6 +205,7 @@ jobs:
           perl tools/scripts/validate-branding.pl
           perl tools/scripts/check-doc-links.pl docs
           perl tools/scripts/check-doc-nav.pl .
+          perl tools/scripts/check-doxygen-params.pl
           perl tests/interop/check-vectors.pl
           if command -v prove >/dev/null 2>&1; then
             prove -v tools/tests/i2pdctl.t

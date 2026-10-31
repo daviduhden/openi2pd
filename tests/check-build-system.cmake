@@ -469,6 +469,16 @@ if(_test_log_support EQUAL -1 OR _test_log_api EQUAL -1 OR _test_log_append EQUA
     "is documented in docs/testing.md")
 endif()
 
+# The compile-free Doxygen parameter guard must stay registered: the
+# source-docs lane is the only place Doxygen itself runs, so a static lane
+# is what catches the recurring partial-@param defect before it.
+foreach(_marker IN ITEMS "doxygen-static" "check-doxygen-params.pl")
+  string(FIND "${tests_cmake_text}" "${_marker}" _doxygen_marker)
+  if(_doxygen_marker EQUAL -1)
+    message(FATAL_ERROR "tests/CMakeLists.txt must register the ${_marker} contract")
+  endif()
+endforeach()
+
 # The fuzzer inventory is also explicit: adding a source without wiring
 # it to the manual Fuzzing workflow must fail the static check.
 file(GLOB _i2pd_fuzz_sources RELATIVE "${PROJECT_ROOT}/tests/fuzz" "${PROJECT_ROOT}/tests/fuzz/*.cpp")

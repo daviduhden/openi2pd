@@ -117,6 +117,11 @@ branding validators or a build.
   than rewriting history without cause.
 
 ## Known issues and decisions
+- Doxygen `WARN_IF_DOC_ERROR` fails a function that names some `@param`s
+  and omits others, for both `/** */` and `///` blocks. `WARN_NO_PARAMDOC` is
+  off, so a block with no `@param` is accepted; do not over-correct. Run
+  `tools/scripts/check-doxygen-params.pl` (`doxygen-static`) over the
+  `Doxyfile.source` roots and split `@param user/pass` into two entries.
 
 - Javadoc parses `<tunnel>` as HTML and rejects JDK-internal tags such as
   `@implNote`. Put protocol shapes in `{@code ...}` and use plain paragraphs

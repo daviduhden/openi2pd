@@ -1347,3 +1347,43 @@ Runs: Linux/Android [41229374061](https://github.com/daviduhden/openi2pd/actions
   checks through `sudo`; pin both forms in `tests/check-packaging.cmake`.
 - **Files:** `.github/workflows/packaging.yml`, `tests/check-packaging.cmake`.
 - **State:** Corrected by static analysis; **Pending CI package validation**.
+
+### CE-065 — Doxygen rejected a partially documented function
+
+- **Run/job:** Linux and Android `41248772071`, job `C++ source API
+  documentation`.
+- **First diagnostic:** `libi2pd/Elligator.h:33: error: The following
+  parameters of i2p::crypto::Elligator2::Encode(...) are not documented:
+  parameter 'key', parameter 'encoded'` (warning treated as error).
+- **Cause:** the doc block named `highY` and `random` but not the two pointer
+  parameters. Doxygen reports a function under `WARN_IF_DOC_ERROR` whenever
+  some parameters are named and others are not; `WARN_NO_PARAMDOC` is
+  disabled, so a block with no `@param` at all is intentionally accepted.
+  The previous scan missed the `///` comment form used by this header and
+  looked only at `/** ... */` blocks with an already-documented parameter.
+- **Correction:** document `key`/`encoded` (and `encoded`/`key` on the
+  adjacent `Decode`) and fix the same defect found by a corrected scan:
+  `SSU2Session.h` (`ProcessData`), `LeaseSet.h` (`ExtractClientAuthData`),
+  `ECIESX25519AEADRatchetSession.h` (`GetSymmKey`), `Crypto.h`
+  (`AEADChaCha20Poly1305`, `HKDF`), `AddressFormat.h`
+  (`FormatAddressBytes`), `TorrentsState.h` (encode/decode),
+  `TorrentsRPC.h` (`AddTunnel`), `TorrentsCreator.h`
+  (`SelectTorrentPieceLength`, `CreateTorrentFromPath`),
+  `RouterStorage.h` (`Start`), `tui/main.cpp` (`NextCharacter`,
+  `TruncateUtf8`, `PutLine`) and `getopt.cpp` (`getopt`, `getopt_long`),
+  including the `@param user/pass` form.
+- **Regression:** new `tools/scripts/check-doxygen-params.pl`, registered as
+  CTest `doxygen-static`, run by the static Linux lane and the workflow Perl
+  step, with negative fixtures in `tools/tests/maintenance-checkers.t` and a
+  registration pin in `tests/check-build-system.cmake`. It reads the
+  `Doxyfile.source` roots, skips `tools/tests`, and reports file, line and
+  missing names.
+- **Files:** `libi2pd/Elligator.h`, `SSU2Session.h`, `LeaseSet.h`,
+  `ECIESX25519AEADRatchetSession.h`, `Crypto.h`, `AddressFormat.h`,
+  `libi2pd_client/{TorrentsState.h,TorrentsRPC.h,TorrentsCreator.h}`,
+  `privsep/RouterStorage.h`, `tui/main.cpp`, `tools/common/getopt.cpp`,
+  `tools/scripts/check-doxygen-params.pl`, `tools/tests/*`,
+  `tests/CMakeLists.txt`, `tests/check-build-system.cmake`,
+  `.github/workflows/build.yml`, `docs/source-documentation.md`,
+  `docs/development/perl-migration.md`.
+- **State:** Corrected by static analysis; **Pending source-docs CI**.

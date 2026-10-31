@@ -130,6 +130,7 @@ my @scripts = (
     'tools/scripts/i2pdctl',
     'tools/scripts/check-doc-links.pl',
     'tools/scripts/check-doc-nav.pl',
+    'tools/scripts/check-doxygen-params.pl',
     'tools/scripts/validate-branding.pl',
     'tools/scripts/check-workflows.pl',
     'tools/tests/cpp-comment-integrity.t',
