@@ -413,6 +413,21 @@ foreach(_source IN LISTS _i2pd_test_sources)
   endif()
 endforeach()
 
+# Every unit test echoes the product's own records to stderr; otherwise a
+# failing assertion aborts with its diagnostics still only in the
+# administrative ring, invisible to CTest.
+file(READ "${PROJECT_ROOT}/libi2pd/Log.h" log_header_text)
+file(READ "${PROJECT_ROOT}/libi2pd/Log.cpp" log_source_text)
+string(FIND "${tests_cmake_text}" "log-support.cpp" _test_log_support)
+string(FIND "${log_header_text}" "SetSynchronousSink" _test_log_api)
+string(FIND "${log_source_text}" "m_SynchronousSink" _test_log_append)
+string(FIND "${testing_doc_text}" "OPENI2PD_TEST_LOG_LEVEL" _test_log_doc)
+if(_test_log_support EQUAL -1 OR _test_log_api EQUAL -1 OR _test_log_append EQUAL -1 OR _test_log_doc EQUAL -1)
+  message(FATAL_ERROR
+    "unit tests must link tests/log-support.cpp, whose synchronous logger sink "
+    "is documented in docs/testing.md")
+endif()
+
 # The fuzzer inventory is also explicit: adding a source without wiring
 # it to the manual Fuzzing workflow must fail the static check.
 file(GLOB _i2pd_fuzz_sources RELATIVE "${PROJECT_ROOT}/tests/fuzz" "${PROJECT_ROOT}/tests/fuzz/*.cpp")

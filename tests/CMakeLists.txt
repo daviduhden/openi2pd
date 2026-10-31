@@ -19,6 +19,11 @@ endif()
 
 function(i2pd_add_test name)
   add_executable(${name} "${name}.cpp")
+  # Every C++ test echoes the product's own diagnostics to stderr as they
+  # happen (tests/log-support.cpp). Without it a failing assert would
+  # abort with the records still only in the administrative ring, which is
+  # invisible to CTest. Fuzz targets skip this unit on purpose.
+  target_sources(${name} PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/log-support.cpp")
   target_compile_features(${name} PRIVATE cxx_std_23)
   if(name MATCHES "^test-privsep-(protocol|log|authorization|capabilities|supervisor|linux-ipc|linux-sandbox|openbsd-policy|openbsd-imsg|windows-ipc|windows-isolation|windows-supervisor)$")
     # Link the single IPC archive instead of recompiling the same
@@ -90,6 +95,7 @@ set(I2PD_TORRENT_TESTS
 )
 
 set(I2PD_TESTS
+  test-log-diagnostic-sink
   test-http-merge_chunked
   test-http-req
   test-http-res

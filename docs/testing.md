@@ -975,3 +975,38 @@ expectations for the non-floodfill lookup budget. `control-security-static`
 pins the immutable blocklist snapshot, merge precedence, tracker progress and
 the closed administrative verb set. None of these has been compiled or
 executed; manual CI is the first dynamic check.
+
+## Test log diagnostics
+
+Every C++ test target created by `i2pd_add_test()` links `tests/log-support.cpp`.
+Its static initializer installs a synchronous sink on the product logger
+(`i2p::log::Log::SetSynchronousSink`) so each record produced by the code under
+test is written to stderr as it happens, in addition to the bounded
+administrative ring:
+
+```text
+[test-log warn] RouterInfo: Unexpected netId=...
+```
+
+This matters because a failing `assert()` aborts the process: the ring is
+never printed, and CTest would otherwise show only the abort status. The sink
+receives the logger's sanitized copy (C0 controls except TAB flattened, at most
+`LOG_RECENT_TEXT_LIMIT` bytes), serializes lines with its own mutex, flushes per
+record, and never runs while a logger mutex is held. A throwing sink cannot
+change the test outcome.
+
+`OPENI2PD_TEST_LOG_LEVEL` selects the minimum level (`none`, `critical`,
+`error`, `warn`/`warning`, `info`, `debug`); the default is the product's own
+`info`. Set it on the CTest invocation, for example:
+
+```sh
+OPENI2PD_TEST_LOG_LEVEL=debug ctest --test-dir build -R test-netdb --output-on-failure
+```
+
+Fuzz targets deliberately do not link the support unit: per-input stderr output
+would dominate their throughput, and a sanitizer report already identifies the
+failing input. The sink is diagnostic only; it does not initialize the logger
+thread, open a file or change filtering in production. `tests/check-build-system.cmake`
+pins the support source and the API, and `test-log-diagnostic-sink` verifies the
+sink contract (synchronous delivery, sanitization, size bound, ring
+preservation and removal).

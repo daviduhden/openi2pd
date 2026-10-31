@@ -362,22 +362,56 @@ namespace log
 	 */
 	void Log::Append (std::shared_ptr<i2p::log::LogMsg> & msg)
 	{
+		std::string diagnosticText;
 		if (msg)
 		{
 			if (msg->text.size () > LOG_QUEUE_MAX_TEXT) msg->text.resize (LOG_QUEUE_MAX_TEXT);
 			// Make a bounded copy before handing the message to the writer.
 			// Control characters are flattened so a malformed log line cannot
 			// inject terminal escapes into an administrative client.
-			std::string text = msg->text.substr (0, LOG_RECENT_TEXT_LIMIT);
-			for (auto & ch : text)
+			diagnosticText = msg->text.substr (0, LOG_RECENT_TEXT_LIMIT);
+			for (auto & ch : diagnosticText)
 				if (static_cast<unsigned char> (ch) < 0x20 && ch != '\t') ch = ' ';
+			std::string ringText = diagnosticText;
 			{
 				std::lock_guard<std::mutex> l (m_RecentMutex);
-				m_Recent.push_back (LogRecord { ++m_RecentSequence, msg->timestamp, msg->level, std::move (text) });
+				m_Recent.push_back (LogRecord { ++m_RecentSequence, msg->timestamp, msg->level, std::move (ringText) });
 				while (m_Recent.size () > LOG_RECENT_CAPACITY) m_Recent.pop_front ();
 			}
 		}
+		// The test diagnostic sink runs before the queue so a later abort
+		// still leaves the record in the CI log. It is copied under the
+		// lock and invoked after releasing it: the callback is not allowed
+		// to call back into Log, but it must not be able to deadlock the
+		// logging path either.
+		SinkFunction diagnostic;
+		if (m_HasSynchronousSink.load (std::memory_order_relaxed))
+		{
+			std::lock_guard<std::mutex> l (m_LogMutex);
+			diagnostic = m_SynchronousSink;
+		}
+		if (diagnostic && msg)
+		{
+			try
+			{
+				diagnostic (msg->level, msg->timestamp, diagnosticText);
+			}
+			catch (...)
+			{
+				// A diagnostic sink must never be able to fail logging.
+			}
+		}
 		if (!m_Queue.PutIfBelow (msg, LOG_QUEUE_MAX_RECORDS)) m_QueuedDropped.fetch_add (1, std::memory_order_relaxed);
+	}
+
+	void Log::SetSynchronousSink (SinkFunction sink)
+	{
+		const bool installed = static_cast<bool> (sink);
+		{
+			std::lock_guard<std::mutex> l (m_LogMutex);
+			m_SynchronousSink = std::move (sink);
+		}
+		m_HasSynchronousSink.store (installed, std::memory_order_relaxed);
 	}
 
 	std::vector<LogRecord> Log::GetRecent (uint64_t after, size_t max) const

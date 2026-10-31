@@ -128,6 +128,14 @@ namespace log
 		// never waits for a slow disk write.
 		mutable std::mutex m_LogMutex;
 		SinkFunction m_Sink;
+		// Diagnostic duplicate of each record, invoked synchronously on
+		// the logging thread before the record is queued. Test executables
+		// install one so a failing assertion still leaves the product's
+		// own diagnostics in the CI log; production never sets it. The
+		// atomic flag keeps the production path from taking m_LogMutex for
+		// every record just to discover an empty callback.
+		SinkFunction m_SynchronousSink;
+		std::atomic<bool> m_HasSynchronousSink { false };
 
 	private:
 		/** prevent making copies */
@@ -225,6 +233,23 @@ namespace log
 			std::lock_guard<std::mutex> l (m_LogMutex);
 			m_Sink = std::move (sink);
 		}
+
+		/**
+		 * Route every record to @a sink synchronously, on the thread that
+		 * called LogPrint(), in addition to the normal destination/queue.
+		 *
+		 * A test process that never calls Start() would otherwise keep
+		 * its diagnostics only in the recent ring, so an assertion abort
+		 * would leave nothing in the CI log. The test support translation
+		 * unit installs a bounded stderr sink; the callback must not
+		 * throw, must not call LogPrint() and must not retain the
+		 * string_view. Passing an empty function removes it. Production
+		 * code never installs one.
+		 *
+		 * @param sink Callback receiving the level, timestamp and
+		 *        sanitized text, or empty to remove.
+		 */
+		void SetSynchronousSink (SinkFunction sink);
 
 		/**
 			 * @brief Copy up to @a max records with sequence greater than @a
