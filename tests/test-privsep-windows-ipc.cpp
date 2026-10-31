@@ -730,8 +730,8 @@ void TestFrameBounds ()
 	// One frame exactly at the per-type ceiling is delivered intact.
 	const size_t ceiling = MaxPayloadFor (MessageType::RouterStorageRequest);
 	Message maximum { MessageType::RouterStorageRequest, 41, std::string (ceiling, 'z') };
-	assert (client->Send (maximum).has_value ());
-	auto delivered = accepted->Receive (2000);
+	assert (accepted->Send (maximum).has_value ());
+	auto delivered = client->Receive (2000);
 	assert (delivered.has_value () && delivered->has_value ());
 	assert ((*delivered)->payload.size () == ceiling);
 
