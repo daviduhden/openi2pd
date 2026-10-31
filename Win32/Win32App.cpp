@@ -422,8 +422,7 @@ namespace win32
 		if (!g_GracefulShutdownEndtime) return 0;
 		// Unsigned subtraction is wrap-safe for a deadline less than half
 		// the DWORD range away; values above the original budget are expired.
-		const auto remainsMs
-			= GetGracefulShutdownRemainingMilliseconds (g_GracefulShutdownEndtime, GetTickCount ());
+		const auto remainsMs = GetGracefulShutdownRemainingMilliseconds (g_GracefulShutdownEndtime, GetTickCount ());
 		return static_cast<int> (remainsMs / 1000U);
 	}
 }

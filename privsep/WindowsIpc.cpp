@@ -1150,7 +1150,7 @@ i2p::expected<void, std::string> WindowsChannel::Send (const Message & message, 
 	if (m_RoleSet)
 	{
 		const bool allowed = m_CoreSide ? (IsRequestType (message.type) || message.type == MessageType::Error)
-										 : IsReplyType (message.type);
+										: IsReplyType (message.type);
 		if (!allowed) return i2p::unexpected ("message direction is not allowed on this endpoint");
 	}
 	auto encoded = Encode (message);
@@ -1288,8 +1288,9 @@ i2p::expected<std::optional<Message>, std::string> WindowsChannel::Receive (DWOR
 	std::string_view refusal;
 	const bool duplicateHello = m_CoreSide && decoded->type == MessageType::WorkerHello;
 	const bool unauthorized = m_RoleSet
-		&& (duplicateHello || !(m_CoreSide ? AllowsOperation (EndpointRole::Core, decoded->type)
-						: WindowsAllowsOperation (m_Role, decoded->type)));
+		&& (duplicateHello
+			|| !(m_CoreSide ? AllowsOperation (EndpointRole::Core, decoded->type)
+							: WindowsAllowsOperation (m_Role, decoded->type)));
 	if (RequiresDescriptorChannel (decoded->type))
 		refusal = "descriptor-carrying messages are not supported on the Windows pipe transport";
 	else if (unauthorized)
