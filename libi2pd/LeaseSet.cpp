@@ -602,10 +602,9 @@ namespace data
 		// Do not write buf[-1]: callers may pass a buffer that has no
 		// preceding byte (for example the inner layer extracted from I2CP)
 		// and the previous implementation performed an out-of-bounds store.
-		std::vector<uint8_t> signedData;
-		signedData.reserve (signatureOffset + 1);
-		signedData.push_back (m_StoreType);
-		signedData.insert (signedData.end (), buf, buf + signatureOffset);
+		std::vector<uint8_t> signedData (signatureOffset + 1);
+		signedData[0] = m_StoreType;
+		std::copy_n (buf, signatureOffset, signedData.begin () + 1);
 		bool verified = verifier->Verify (signedData.data (), signedData.size (), buf + signatureOffset);
 		if (!verified) LogPrint (eLogWarning, "LeaseSet2: Verification failed");
 		return verified;
