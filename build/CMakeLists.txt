@@ -12,6 +12,13 @@
 
 cmake_minimum_required(VERSION 3.24)
 
+# CMake 3.30 removed FindBoost in favor of Boost's package config. Select
+# that maintained discovery path explicitly where the policy is available;
+# older supported CMake versions continue using their bundled module.
+if(POLICY CMP0167)
+  cmake_policy(SET CMP0167 NEW)
+endif()
+
 # The project deliberately keeps its CMake entry point in build/ for
 # compatibility with existing package recipes.
 set(PROJECT_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/..")

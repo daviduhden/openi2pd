@@ -120,6 +120,14 @@ build.
   rationale in `build/CMakeLists.txt`. When reflowing that comment, preserve
   the recognizable `Expected.h lives in libi2pd` marker or update the checker
   in the same change; a failed marker check is not itself a compiler error.
+- Keep platform-specific test fixtures and helper functions inside the same
+  preprocessor branch as their consumers. Windows Clang warns on POSIX-only
+  symlink helpers compiled outside `_WIN32` guards even when those helpers are
+  never called on Windows.
+- CMake 3.30+ warns when CMP0167 is unset at `find_package(Boost)`. Set the
+  policy to NEW only when `POLICY CMP0167` exists; this selects Boost's config
+  package on newer CMake while preserving the bundled `FindBoost` path on the
+  supported CMake 3.24 floor. Keep Boost component and target closure checks.
 
 - `i2pd_apply_dialect()` is the single compile contract for capability macros,
   `BOOST_ASIO_HAS_SNPRINTF` and the Windows SDK macros. `libi2pd` publishes it,

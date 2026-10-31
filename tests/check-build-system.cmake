@@ -140,6 +140,7 @@ endforeach()
 # Dependency floors and removed compatibility branches are part of the
 # maintained contract. These are compile-free source checks.
 foreach(required IN ITEMS "OpenSSL 3.0.2" "LibreSSL 4.0" "cmake_minimum_required(VERSION 3.24)" "I2PD_LIBRESSL_VERSION" "LIBRESSL_VERSION_TEXT"
+    "cmake_policy(SET CMP0167 NEW)"
     "I2PD_OPENSSL_EXPECT" "I2PD_HAVE_EVP_PKEY_IS_A" "I2PD_HAVE_EVP_KDF_FETCH"
     "I2PD_HAVE_EVP_EC_GEN" "I2PD_HAVE_SSL_SET1_DNSNAME" "I2PD_HAVE_SSL_SET1_HOST"
     "I2PD_HAVE_OPENSSL_MLKEM_H" "I2PD_OPENSSL_PROBE_STAMP" "I2PD_OPENSSL_LINK_OK"
