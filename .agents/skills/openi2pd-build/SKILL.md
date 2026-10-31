@@ -90,6 +90,10 @@ build.
   no GNU make fragments, `?=`, `wildcard`, `shell`, `patsubst`, `ifeq` or
   includes. `tests/Makefile` only forwards to the root file; keep a single
   CMake configuration and build directory.
+- Keep each target recipe within checkmake's five-line `maxbodylength`
+  default. For shell guards, compact related branches into one POSIX shell
+  command per recipe line without changing the guarded operation or failure
+  status; avoid blanket linter-rule suppression.
 - Do not add configure-time downloads, submodules, in-tree globs, hidden
   checkouts or absolute install prefixes.
 - Preserve dependency floors and fail with a clear message when a required

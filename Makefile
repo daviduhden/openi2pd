@@ -69,14 +69,11 @@ install: build
 	fi
 
 clean:
-	@case "${BUILD_DIR}" in ""|"."|".."|"/") \
-		echo "refusing to remove unsafe BUILD_DIR" >&2; exit 1;; \
-	esac
+	@case "${BUILD_DIR}" in ""|"."|".."|"/") echo "refusing to remove unsafe BUILD_DIR" >&2; exit 1;; esac
 	@if [ -f "${BUILD_DIR}/CMakeCache.txt" ]; then \
 		"${CMAKE}" -E remove_directory "${BUILD_DIR}"; \
 	else \
-		echo "refusing to remove ${BUILD_DIR}: no CMakeCache.txt" >&2; exit 1; \
-	fi
+		echo "refusing to remove ${BUILD_DIR}: no CMakeCache.txt" >&2; exit 1; fi
 
 dist:
 	git archive --format=tar.gz -9 --prefix=openi2pd/ HEAD -o openi2pd.tar.gz
