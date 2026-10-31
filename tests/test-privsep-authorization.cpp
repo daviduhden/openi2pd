@@ -6,10 +6,11 @@
  *
  * Compile-free authorization contract: the message registry is the only
  * authority for which role may receive which type, a worker never
- * accepts a reply and the request-issuing side never accepts a request,
- * per-type version and payload ceilings hold, the descriptor policy is
- * explicit, and a malformed or downgraded frame is refused without
- * being reinterpreted.
+ * accepts a reply (except the typed Error refusal that names a refused
+ * frame) and the request-issuing side never accepts a request (except
+ * the Windows pre-dispatch spawn proof), per-type version and payload
+ * ceilings hold, the descriptor policy is explicit, and a malformed or
+ * downgraded frame is refused without being reinterpreted.
  *
  */
 
@@ -46,6 +47,11 @@ void TestRegistry ()
 	// Every declared value in the contiguous range has exactly one row.
 	for (uint16_t value = 1; value <= MAX_MESSAGE_TYPE; ++value) assert (FindMessageSpec (value) != nullptr);
 	assert (FindMessageSpec (MAX_MESSAGE_TYPE + 1) == nullptr);
+	// The direction topology is also a compile-time property, so no
+	// transport can disagree with this test about who receives a request
+	// or a reply.
+	static_assert (ValidateDirectionInvariants (), "direction topology must hold");
+	assert (ValidateDirectionInvariants ());
 }
 
 void TestRoleDirections ()
@@ -71,9 +77,11 @@ void TestRoleDirections ()
 					|| type == MessageType::TorrentStorageSupervisorReply);
 				continue;
 			}
-			// A pure worker receives requests and notifications, never a reply:
-			// a worker cannot inject a reply into the core.
-			assert (IsRequestType (type));
+			// A pure worker receives requests and notifications, and the
+			// typed Error refusal that names a frame the core refused; it
+			// never receives a reply, which would let it inject another
+			// client's answer.
+			assert (IsRequestType (type) || type == MessageType::Error);
 		}
 		if (AllowsOperation (EndpointRole::Core, type))
 		{
@@ -81,15 +89,40 @@ void TestRoleDirections ()
 			// core would let a worker drive the router. WorkerHello is the one
 			// pre-dispatch spawn proof the server must read before a role exists
 			// (Windows named-pipe backend).
-			assert (IsReplyType (type) || type == MessageType::WorkerHello);
+			assert (IsReplyType (type) || IsPreDispatchHandshake (type));
 		}
 	}
 	assert (!AllowsOperation (EndpointRole::Count, MessageType::Ping));
+	// A request is never accepted by the requesting side: the core answers
+	// a worker's Ping with a Pong, it never answers a Ping itself.
+	assert (!AllowsOperation (EndpointRole::Core, MessageType::Ping));
+	assert (!AllowsOperation (EndpointRole::Core, MessageType::Shutdown));
+	assert (AllowsOperation (EndpointRole::Log, MessageType::Ping));
+	assert (AllowsOperation (EndpointRole::Supervisor, MessageType::Ping));
+	// The typed refusal is the only reply a pure worker may receive.
+	for (auto role : kWorkers) assert (AllowsOperation (role, MessageType::Error));
+	// The pre-dispatch handshake is the accepting side's only request and
+	// is never receivable by a worker.
+	assert (AllowsOperation (EndpointRole::Core, MessageType::WorkerHello));
+	for (auto role : kWorkers) assert (!AllowsOperation (role, MessageType::WorkerHello));
 	// Replies are not globally accepted: a worker cannot inject one.
 	assert (!AllowsOperation (EndpointRole::DataStorage, MessageType::DataStorageReply));
 	assert (!AllowsOperation (EndpointRole::RouterStorage, MessageType::RouterStorageReply));
 	assert (!AllowsOperation (EndpointRole::TorrentStorage, MessageType::TorrentStorageReply));
 	assert (!AllowsOperation (EndpointRole::Core, MessageType::DataStorageRequest));
+	// Send-side direction vocabulary comes from the same registry: a bound
+	// worker only writes replies and the requesting side only writes
+	// requests (plus the typed refusal), never the spawn proof.
+	assert (WorkerMaySend (MessageType::Pong));
+	assert (WorkerMaySend (MessageType::Error));
+	assert (WorkerMaySend (MessageType::DataStorageReply));
+	assert (!WorkerMaySend (MessageType::Ping));
+	assert (!WorkerMaySend (MessageType::WorkerHello));
+	assert (RequesterMaySend (MessageType::Ping));
+	assert (RequesterMaySend (MessageType::Error));
+	assert (RequesterMaySend (MessageType::Shutdown));
+	assert (!RequesterMaySend (MessageType::Pong));
+	assert (!RequesterMaySend (MessageType::WorkerHello));
 	// Descriptor authority is narrow.
 	assert (AllowsOperation (EndpointRole::Log, MessageType::ConfigureLogFd));
 	assert (!AllowsOperation (EndpointRole::Supervisor, MessageType::ConfigureLogFd));

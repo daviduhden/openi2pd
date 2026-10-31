@@ -240,7 +240,18 @@ constexpr uint16_t RoleBit (EndpointRole role)
 constexpr uint16_t kAllWorkersMask = RoleBit (EndpointRole::Supervisor) | RoleBit (EndpointRole::Log)
 	| RoleBit (EndpointRole::RouterStorage) | RoleBit (EndpointRole::TorrentStorage)
 	| RoleBit (EndpointRole::StorageBroker) | RoleBit (EndpointRole::DataStorage);
+/// Every endpoint, including the requesting side. Only the typed
+/// `Error` refusal is addressed this broadly.
 constexpr uint16_t kAnyReceiverMask = kAllWorkersMask | RoleBit (EndpointRole::Core);
+/**
+ * Worker roles that only ever receive requests. The supervisor and the
+ * storage broker are also clients: they issue their own requests, so
+ * they receive the correlated reply (and the broker's accepted socket
+ * hand-off). A pure worker that could receive a reply would be able to
+ * forge the answer to a request it never received.
+ */
+constexpr uint16_t kPureWorkerMask = RoleBit (EndpointRole::Log) | RoleBit (EndpointRole::RouterStorage)
+	| RoleBit (EndpointRole::TorrentStorage) | RoleBit (EndpointRole::DataStorage);
 
 /**
  * One row of the protocol registry. It is the single authority for
@@ -266,7 +277,11 @@ inline constexpr MessageSpec kMessageSpecs[] = {
 	{ MessageType::LogRecord, 1, MessageDirection::Request,
 		RoleBit (EndpointRole::Supervisor) | RoleBit (EndpointRole::Log), 8205, DescriptorPolicy::None },
 	{ MessageType::Shutdown, 1, MessageDirection::Request, kAllWorkersMask, 0, DescriptorPolicy::None },
-	{ MessageType::Ping, 1, MessageDirection::Request, kAnyReceiverMask, 0, DescriptorPolicy::None },
+	// Workers only. A worker never drives the requesting side, so the
+	// core does not accept a Ping: the keepalive it needs is Pong, which
+	// a worker sends only in answer to a Ping. The pre-dispatch
+	// `WorkerHello` below is the single request the accepting side reads.
+	{ MessageType::Ping, 1, MessageDirection::Request, kAllWorkersMask, 0, DescriptorPolicy::None },
 	{ MessageType::Pong, 1, MessageDirection::Reply, RoleBit (EndpointRole::Core), 0, DescriptorPolicy::None },
 	{ MessageType::ConfigureLogFd, 1, MessageDirection::Request, RoleBit (EndpointRole::Log), 12297,
 		DescriptorPolicy::RequiredFile },
@@ -291,8 +306,12 @@ inline constexpr MessageSpec kMessageSpecs[] = {
 		DescriptorPolicy::None },
 	{ MessageType::RouterStorageReply, 1, MessageDirection::Reply, RoleBit (EndpointRole::Core), 1,
 		DescriptorPolicy::None },
-	{ MessageType::Error, 2, MessageDirection::Reply,
-		RoleBit (EndpointRole::Core) | RoleBit (EndpointRole::Supervisor) | RoleBit (EndpointRole::StorageBroker), 263,
+	// The typed refusal is exempt from the request/reply direction rule.
+	// A worker whose frame was refused has to be able to read the Error
+	// that names the refusal; otherwise it would answer the refusal with
+	// another refusal until the violation budget closed the channel. It
+	// never carries a descriptor and its detail is bounded.
+	{ MessageType::Error, 2, MessageDirection::Reply, kAnyReceiverMask, 263,
 		DescriptorPolicy::None },
 	{ MessageType::ConfigureTorrentStorageSupervised, 1, MessageDirection::Request,
 		RoleBit (EndpointRole::TorrentStorage), 8300, DescriptorPolicy::None },
@@ -309,7 +328,9 @@ inline constexpr MessageSpec kMessageSpecs[] = {
 			| RoleBit (EndpointRole::DataStorage),
 		4, DescriptorPolicy::None },
 	// The Windows worker handshake: one role byte, one length byte and the
-	// 32-byte spawn nonce. Only the accepting core receives it.
+	// 32-byte spawn nonce. Only the accepting core receives it, and it is
+	// the only request the requesting side ever reads; a bound worker may
+	// neither send nor receive one.
 	{ MessageType::WorkerHello, 5, MessageDirection::Request, RoleBit (EndpointRole::Core), 34,
 		DescriptorPolicy::None },
 };
@@ -331,6 +352,36 @@ constexpr bool IsReplyType (MessageType type)
 {
 	const auto * spec = FindMessageSpec (static_cast<uint16_t> (type));
 	return spec && spec->direction == MessageDirection::Reply;
+}
+
+/**
+ * True for the one request-direction frame the accepting side has to read
+ * before any worker role exists: the Windows `WorkerHello` spawn proof.
+ * It is the only exception to "the requesting side receives replies only",
+ * because the receiver cannot know which role may receive what until it
+ * has authenticated the frame. Everything else that is a request belongs
+ * to a worker endpoint.
+ */
+constexpr bool IsPreDispatchHandshake (MessageType type)
+{
+	return type == MessageType::WorkerHello;
+}
+
+/**
+ * What each side may put on the wire, derived from the registry instead
+ * of a second hand-written direction switch. A bound worker sends replies
+ * only; it writes its pre-dispatch handshake before the role binds. The
+ * requesting side sends requests and the typed `Error` refusal, but never
+ * the spawn proof, which only a worker connection may send.
+ */
+constexpr bool WorkerMaySend (MessageType type)
+{
+	return IsReplyType (type);
+}
+
+constexpr bool RequesterMaySend (MessageType type)
+{
+	return type == MessageType::Error || (IsRequestType (type) && !IsPreDispatchHandshake (type));
 }
 
 constexpr size_t MaxPayloadFor (MessageType type)
@@ -373,9 +424,11 @@ constexpr bool DescriptorPresenceAllowed (MessageType type, bool present)
 
 /**
  * Authorize one received frame for a receiving role. A sender cannot
- * claim a different role on the wire, and a reply type is never
- * accepted by a worker role because the registry gives replies to the
- * requesting side only.
+ * claim a different role on the wire, a reply type is not accepted by a
+ * pure worker role because the registry gives replies to the requesting
+ * side, and a request type is not accepted by the requesting side. The
+ * typed `Error` refusal and the Windows pre-dispatch handshake are the
+ * two documented exceptions; `ValidateDirectionInvariants` pins both.
  */
 constexpr bool AllowsOperation (EndpointRole role, MessageType type)
 {
@@ -383,6 +436,42 @@ constexpr bool AllowsOperation (EndpointRole role, MessageType type)
 	const auto * spec = FindMessageSpec (static_cast<uint16_t> (type));
 	return spec && (spec->receivers & RoleBit (role)) != 0;
 }
+
+/**
+ * Compile-time direction invariant over the registry, so the runtime
+ * authorization test and every transport share one authority:
+ * - a request is received by worker endpoints only, except the
+ *   pre-dispatch spawn proof the accepting side must read;
+ * - a reply is received by the requesting side and never by a pure worker
+ *   role, except the typed `Error` refusal that a refused worker must be
+ *   able to read.
+ * A violation is a topology change, not a style issue: it decides whether
+ * a worker can drive the router or forge another client's reply.
+ */
+constexpr bool ValidateDirectionInvariants ()
+{
+	for (const auto & spec : kMessageSpecs)
+	{
+		if (spec.direction == MessageDirection::Request)
+		{
+			if (IsPreDispatchHandshake (spec.type))
+			{
+				if (spec.receivers != RoleBit (EndpointRole::Core)) return false;
+				continue;
+			}
+			if ((spec.receivers & RoleBit (EndpointRole::Core)) != 0) return false;
+			continue;
+		}
+		// Every reply reaches the requesting side. The broker's dual-use
+		// acknowledgement is the only one a worker-side client also reads.
+		if ((spec.receivers & RoleBit (EndpointRole::Core)) == 0) return false;
+		if (spec.type == MessageType::Error) continue;
+		if ((spec.receivers & kPureWorkerMask) != 0) return false;
+	}
+	return true;
+}
+
+static_assert (ValidateDirectionInvariants (), "message direction violates the request/reply topology");
 
 constexpr bool ValidateMessageRegistry ()
 {

@@ -7,8 +7,9 @@
  * Windows-only checks for the worker pipe transport: role
  * authorization, private DACL derivation with an optional AppContainer
  * SID, spawn-nonce and WorkerHello binding, identity-bound accept with
- * rejection and re-arm, frame bounds, descriptor refusal, cancellation
- * delivery and reconnect behavior.
+ * rejection and re-arm, frame bounds, descriptor refusal, delivery of
+ * the typed refusal to a bound worker, cancellation delivery and
+ * reconnect behavior.
  *
  */
 
@@ -182,6 +183,19 @@ void SendHello (WindowsChannel & channel, WindowsWorkerRole role, const std::str
 	assert (channel.Send ({ MessageType::WorkerHello, requestId, *payload }, 5000).has_value ());
 }
 
+/**
+ * Send one handshake on a connection the server is expected to reject on
+ * identity *before* it reads a frame. The client's write races the
+ * server's DisconnectNamedPipe, so a failed send is a legal outcome of
+ * the rejection; only the server-side rejection is asserted.
+ */
+void SendHelloAfterRejection (WindowsChannel & channel, WindowsWorkerRole role, const std::string & nonce)
+{
+	auto payload = EncodeWorkerHelloFrame (role, nonce);
+	assert (payload.has_value ());
+	(void)channel.Send ({ MessageType::WorkerHello, 1, *payload }, 5000);
+}
+
 /** Write one raw message-mode record, bypassing the frame encoders. */
 void WriteRawRecord (HANDLE pipe, const std::string & record)
 {
@@ -216,9 +230,11 @@ void TestPolicyAndRoles ()
 		assert (policy.processLimit == (role == WindowsWorkerRole::Supervisor ? 2u : 1u));
 
 		// Every worker accepts the control plane only; a handshake and a core
-		// reply are never receivable by a worker endpoint.
+		// reply are never receivable by a worker endpoint. The typed Error
+		// refusal is the one reply it must be able to read.
 		assert (WindowsAllowsOperation (role, MessageType::Ping));
 		assert (WindowsAllowsOperation (role, MessageType::Shutdown));
+		assert (WindowsAllowsOperation (role, MessageType::Error));
 		assert (!WindowsAllowsOperation (role, MessageType::WorkerHello));
 		assert (!WindowsAllowsOperation (role, MessageType::Pong));
 	}
@@ -472,6 +488,10 @@ void TestHelloRejectionsAndRearm ()
 	const std::string nonce = TestNonce ();
 	const std::wstring nonceHex = TestNonceHexA ();
 	const std::wstring otherNonce = OtherNonceHex ();
+	// A connection the server rejects on identity is closed before its
+	// handshake is read, so that sender must tolerate a failed write.
+	auto rejectedHello = [&nonce] (WindowsChannel & channel)
+	{ SendHelloAfterRejection (channel, WindowsWorkerRole::Storage, nonce); };
 
 	// A handshake with the wrong nonce is rejected and the listener
 	// re-arms for the real worker, so an impostor can never starve the
@@ -571,9 +591,7 @@ void TestHelloRejectionsAndRearm ()
 		auto server = WindowsServer::Create (name);
 		assert (server.has_value ());
 		std::unique_ptr<WindowsChannel> client;
-		std::thread worker (StartTestWorker (
-			name, [&nonce] (WindowsChannel & channel) { SendHello (channel, WindowsWorkerRole::Storage, nonce); },
-			client));
+		std::thread worker (StartTestWorker (name, rejectedHello, client));
 		auto accepted = server->AcceptBound (
 			500, GetCurrentProcessId () + 1, CurrentSessionId (), WindowsWorkerRole::Storage, nonceHex, nullptr);
 		worker.join ();
@@ -586,9 +604,7 @@ void TestHelloRejectionsAndRearm ()
 		auto server = WindowsServer::Create (name);
 		assert (server.has_value ());
 		std::unique_ptr<WindowsChannel> client;
-		std::thread worker (StartTestWorker (
-			name, [&nonce] (WindowsChannel & channel) { SendHello (channel, WindowsWorkerRole::Storage, nonce); },
-			client));
+		std::thread worker (StartTestWorker (name, rejectedHello, client));
 		auto accepted = server->AcceptBound (
 			500, GetCurrentProcessId (), CurrentSessionId () + 1, WindowsWorkerRole::Storage, nonceHex, nullptr);
 		worker.join ();
@@ -635,10 +651,18 @@ void TestDuplicateHelloIsRefused ()
 	assert (std::get<0> (*decoded) == MessageType::WorkerHello);
 	assert (std::get<1> (*decoded) == ErrorCode::NotAuthorized);
 
-	assert (client->Send ({ MessageType::Ping, 21, { } }).has_value ());
-	auto ping = accepted->Receive (2000);
-	assert (ping.has_value () && ping->has_value ());
-	assert ((*ping)->type == MessageType::Ping);
+	// The connection stays usable for a legal worker frame. A bound worker
+	// sends replies only, so Pong is that frame; a repeated handshake is
+	// refused by the sender-side gate before it can reach the wire.
+	auto secondHello = EncodeWorkerHelloFrame (WindowsWorkerRole::Storage, nonce);
+	assert (secondHello.has_value ());
+	client->SetRole (WindowsWorkerRole::Storage);
+	assert (!client->Send ({ MessageType::WorkerHello, 22, *secondHello }, 5000).has_value ());
+	assert (client->Send ({ MessageType::Pong, 21, { } }).has_value ());
+	auto pong = accepted->Receive (2000);
+	assert (pong.has_value () && pong->has_value ());
+	assert ((*pong)->type == MessageType::Pong);
+	assert ((*pong)->requestId == 21);
 
 	accepted->Close ();
 	client->Close ();
@@ -705,6 +729,32 @@ void TestAuthorizationAndDescriptorRefusal ()
 	auto pong = accepted->Receive (2000);
 	assert (pong.has_value () && pong->has_value ());
 	assert ((*pong)->type == MessageType::Pong);
+
+	// A *bound* worker must receive the core's typed refusal. Error is the
+	// one reply exempt from the direction rule; without that exemption the
+	// worker would refuse the refusal and the channel would die in a loop.
+	// The offending frame bypasses the sender-side gate on purpose, like a
+	// peer that writes its own header.
+	client->SetRole (WindowsWorkerRole::Storage);
+	PayloadWriter raw;
+	raw.WriteU32 (PROTOCOL_MAGIC);
+	raw.WriteU16 (PROTOCOL_VERSION);
+	raw.WriteU16 (static_cast<uint16_t> (MessageType::LogRecord));
+	raw.WriteU32 (35);
+	const std::string rawRecord = EncodeLogRecord (1, 2, "secret-free");
+	raw.WriteU32 (static_cast<uint32_t> (rawRecord.size ()));
+	raw.WriteRaw (rawRecord);
+	WriteRawRecord (client->Native (), raw.Data ());
+	auto boundRefused = accepted->Receive (2000);
+	assert (boundRefused.has_value () && !boundRefused->has_value ());
+	auto boundRefusal = client->Receive (2000);
+	assert (boundRefusal.has_value () && boundRefusal->has_value ());
+	assert ((*boundRefusal)->type == MessageType::Error);
+	assert ((*boundRefusal)->requestId == 35);
+	auto boundDecoded = DecodeError ((*boundRefusal)->payload);
+	assert (boundDecoded.has_value ());
+	assert (std::get<0> (*boundDecoded) == MessageType::LogRecord);
+	assert (std::get<1> (*boundDecoded) == ErrorCode::NotAuthorized);
 
 	accepted->Close ();
 	client->Close ();

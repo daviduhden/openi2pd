@@ -1146,11 +1146,10 @@ i2p::expected<void, std::string> WindowsChannel::Send (const Message & message, 
 	// requests and a bound worker sends replies. A core endpoint may also
 	// send
 	// typed Error refusals; WorkerHello is written before the worker role
-	// binds.
+	// binds, so it is never sendable once a role is set on either side.
 	if (m_RoleSet)
 	{
-		const bool allowed = m_CoreSide ? (IsRequestType (message.type) || message.type == MessageType::Error)
-										: IsReplyType (message.type);
+		const bool allowed = m_CoreSide ? RequesterMaySend (message.type) : WorkerMaySend (message.type);
 		if (!allowed) return i2p::unexpected ("message direction is not allowed on this endpoint");
 	}
 	auto encoded = Encode (message);
@@ -1286,7 +1285,7 @@ i2p::expected<std::optional<Message>, std::string> WindowsChannel::Receive (DWOR
 	// transport
 	// does not have, is a bounded typed refusal rather than a silent drop.
 	std::string_view refusal;
-	const bool duplicateHello = m_CoreSide && decoded->type == MessageType::WorkerHello;
+	const bool duplicateHello = m_CoreSide && IsPreDispatchHandshake (decoded->type);
 	const bool unauthorized = m_RoleSet
 		&& (duplicateHello
 			|| !(m_CoreSide ? AllowsOperation (EndpointRole::Core, decoded->type)
@@ -1369,8 +1368,10 @@ bool WindowsAllowsOperation (WindowsWorkerRole role, MessageType type)
 	case WindowsWorkerRole::Network:
 	case WindowsWorkerRole::Crypto:
 	case WindowsWorkerRole::Admin:
-		// No typed Windows backend exists yet; control-plane messages only.
-		return type == MessageType::Ping || type == MessageType::Shutdown;
+		// No typed Windows backend exists yet; control-plane messages only,
+		// plus the shared typed refusal so a refused frame reaches the
+		// worker instead of being refused again.
+		return type == MessageType::Ping || type == MessageType::Shutdown || type == MessageType::Error;
 	}
 	return false;
 }
