@@ -1031,3 +1031,16 @@ workflow was run.
   evidence points there.
 - **State:** Detected in CI; En investigación. A manual package run must
   identify the failing command before a lifecycle correction is claimed.
+
+### CE-045 — Base64 regression source has an unterminated block comment
+
+- **Workflows/jobs:** Windows [41222224440](https://github.com/daviduhden/openi2pd/actions/runs/41222224440), failing MSYS2 job `124599005640`; Linux and Android [41222227216](https://github.com/daviduhden/openi2pd/actions/runs/41222227216), failing Linux OpenSSL 3 job `124599012964`, Clang job `124599013038`, GCC job `124599013155`, and sanitizer jobs `124599013117`, `124599013184`, `124599013239`; OpenBSD [41222229438](https://github.com/daviduhden/openi2pd/actions/runs/41222229438), job `124599019529`. Fuzzing [41222231944](https://github.com/daviduhden/openi2pd/actions/runs/41222231944) built fuzz targets and passed one-input CTest smoke before the bounded fuzz step was canceled. Packaging [41222233937](https://github.com/daviduhden/openi2pd/actions/runs/41222233937) built static-musl, container and service jobs successfully; Debian was canceled. All five runs used the published SHA below; several matrix jobs were canceled after the user asked to stop following them.
+- **Commit/platform:** `45f5f739aa47ed87aa7462e9b040c0db601bc667`, Windows Clang64, Linux GCC/Clang and OpenSSL variants, OpenBSD 8.0 Clang/LibreSSL.
+- **First diagnostic:** `tests/test-base-64.cpp:81` unterminated block comment; line 82 reports `-Wcomment`; the closing-brace diagnostic at line 87 is a parser cascade.
+- **Cause:** a second `/*` was inserted into an open explanatory block during comment reflow, so the intended test assertions remain inside a comment through EOF.
+- **Related pattern:** the same duplicate `/**` reflow defect produced warnings in `privsep/Protocol.h:449`, `privsep/WindowsSupervisor.h:304` and `tools/vanity.hpp:59`. These are one comment-maintenance root cause, not four independent parser incidents. Historical malformed comments in `test-http-req.cpp`, `test-http-res.cpp`, `OpenBSDSandbox.h` and `I2PTunnelAccessFilter.h` are already corrected in later revisions.
+- **Correction:** use a single-line comment for the base64 explanation and remove duplicate openers from all three current production files. Added a Perl lexical comment-integrity regression with nested-comment, unclosed-comment, ordinary-comment, string and raw-string fixtures; the manual `skills-static` job invokes it.
+- **Files:** `tests/test-base-64.cpp`, `privsep/Protocol.h`, `privsep/WindowsSupervisor.h`, `tools/vanity.hpp`, `tools/tests/cpp-comment-integrity.t`, `.github/workflows/build.yml`.
+- **Local status:** corrected by static analysis; regression prepared. CI on this exact SHA is not validation of the local correction.
+- **Validation pending:** next manual Windows/Linux/OpenBSD/Fuzzing builds and the compile-free comment-integrity CI step. The latest MSVC job was canceled during dependency installation; it did not validate MSVC.
+- **Related warning inventory:** `docs/ci/COMPILATION-WARNINGS.md` CW-001; reusable pattern and search procedure: `docs/ci/COMPILATION-PATTERNS.md`.

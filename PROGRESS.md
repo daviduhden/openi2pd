@@ -5498,3 +5498,33 @@ parity invariants.
 
 No build, compiler, Java runtime, test, Gradle/device run or workflow was
 executed. All implementation and regression work remains subject to manual CI.
+
+## Compiler warning history and pattern audit continuation (2026-10-31, static)
+
+Queried the retained GitHub Actions history before editing: 201 runs across 11
+workflow names were available from 2026-10-17 through 2026-10-31. Logs were
+retrieved for 198 runs; three expired job logs (`39058841124`, `39058430980`,
+`39058346321`) returned `log not found`. Fifty-four unexpired artifacts from
+30 runs were listed, and relevant Android, documentation, Windows CTest,
+Debian and fuzz artifacts were downloaded outside the repository. The latest
+five-run batch was tied to published SHA
+`45f5f739aa47ed87aa7462e9b040c0db601bc667`; its cancellation/failures do not
+validate local changes.
+
+The shared Base64 test comment syntax failure and three duplicate block
+comment openers were corrected, with a compile-free Perl lexical regression
+added to the existing manual static job. Static warning follow-ups also cover
+Win32 wrap-safe shutdown tick arithmetic, the DataStorage enum rollback
+branch, and the GCC 15 LeaseSet signed-data vector growth warning. Android
+Lint edits address 34 of 51 observed instances; 17 remain for ABI/dependency,
+vector-path, nested-weight and overdraw review. The OpenBSD Boost.Asio `strcat`
+diagnostic is tracked as external. Broad `-Wno-unused-parameter` and
+`-Wno-uninitialized` suppressions were removed; no global warnings-as-errors
+gate was introduced while project/external findings remain.
+
+Added `docs/ci/COMPILATION-WARNINGS.md` and
+`docs/ci/COMPILATION-PATTERNS.md`, extended CE-045, and updated BUILD-029,
+AGENTS and the CI/build/C++23/Android Skills. Static source review and
+diff/resource inspection only; no compiler, build, CTest, Perl test, Gradle,
+Lint, package, sanitizer, fuzz run or new workflow dispatch was performed.
+All local corrections await manual CI on a revision containing them.

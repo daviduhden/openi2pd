@@ -1822,3 +1822,32 @@ CE-038..CE-044 and BUILD-028 track the causes and statuses. A new manual CI
 revision must validate the corrections and disambiguate the Debian lifecycle
 failure. No local build, compiler, CTest, Gradle, Doxygen, Perl tests, package
 install, commit or push was performed.
+
+## Compiler and warning prevention pass (2026-10-31, static)
+
+The retained Actions history currently covers 201 runs across 11 workflow
+names; logs were available for 198, while three expired job logs returned
+`log not found`. The latest dispatched platform batch on published SHA
+`45f5f739aa47ed87aa7462e9b040c0db601bc667` exposed a shared malformed comment
+in the Base64 test on Linux, Windows and OpenBSD, plus repeated `-Wcomment`
+warnings in shared headers. `docs/ci/COMPILATION-ERRORS.md` records CE-045;
+warning history and remaining findings are in
+`docs/ci/COMPILATION-WARNINGS.md`, with semantic search guidance in
+`docs/ci/COMPILATION-PATTERNS.md`.
+
+Static changes repair the comment roots and add a Perl lexical regression,
+replace a Win32 unsigned countdown check with wrap-safe tick arithmetic and a
+focused regression, exercise the previously omitted DataStorage rollback
+phase, and construct the LeaseSet signed-data buffer at its final size after
+GCC 15 warned in the vector growth path. Android source/resource changes
+address 34 of the 51 observed Lint instances by static review. Seventeen
+instances remain for ABI/dependency and layout/branding review; Boost.Asio's
+OpenBSD `strcat` linker warning remains dependency-owned. Broad unused-
+parameter and uninitialized warning suppressions were removed, but global
+warnings-as-errors is deferred while these diagnostics remain unresolved.
+
+None of the static edits has run in Actions. The cancelled/failed batch at the
+old published SHA does not validate them. Fresh manual Linux, Windows,
+OpenBSD, Android, fuzz and packaging runs on the corrected revision must
+establish compile/link status and enumerate warnings beyond targets blocked
+by the first syntax failure.

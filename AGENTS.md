@@ -84,6 +84,14 @@ the current tree before applying a fix; group cascading messages by root cause
 and separate source errors from warnings-as-errors, test failures, packaging
 checks and runner/dependency failures. A run that stopped before a target is
 not evidence that the skipped target links successfully.
+Every new CI compiler error or warning must trigger a root-cause analysis and
+a repository-wide search for semantically equivalent patterns, including
+other consumers, overloads, templates, macros and platform branches. Fix all
+demonstrable instances and prepare focused regressions; do not stop at the
+file named by the diagnostic. Keep observed diagnostics distinct from static
+risks and third-party/toolchain messages in
+`docs/ci/COMPILATION-ERRORS.md`, `COMPILATION-WARNINGS.md` and
+`COMPILATION-PATTERNS.md`.
 When a diagnostic recurs, compare earlier runs and record every affected lane
 under one root-cause entry in `docs/ci/COMPILATION-ERRORS.md`; distinguish
 compile/link failures from CTest failures and output-path/package assertions.

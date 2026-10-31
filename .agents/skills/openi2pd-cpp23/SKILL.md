@@ -107,6 +107,13 @@ compile, run tests or run project scripts.
   a local build looking plausible.
 - Do not change I2P wire formats, persisted formats, binary names,
   configuration paths or security checks as part of a mechanical cleanup.
+- A compiler diagnostic can be a cascade from malformed comments, an
+  incomplete enum switch or a template instantiation far from its cause. Find
+  the first meaningful diagnostic, inspect declarations and consumers, then
+  search semantic variants in all platform branches before editing. Keep
+  warnings and their historical disposition in
+  `docs/ci/COMPILATION-WARNINGS.md`; static fixes remain pending until the
+  relevant manual CI lane reruns.
 
 ## Known issues and decisions
 

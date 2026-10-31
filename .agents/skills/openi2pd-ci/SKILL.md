@@ -91,6 +91,14 @@ workflow, run `gh`, build or test.
   make a job green.
 - Do not attribute a run to a revision it did not build. Local uncommitted
   changes are not validated by an earlier remote run.
+- For every compiler or linker warning, inspect successful and failed job
+  logs, trace inlining/template output to the owning source or dependency, and
+  search semantically equivalent code across targets and platform branches.
+  Keep first-party, dependency, toolchain and runner messages distinct in the
+  compilation warning inventory; preserve corrected historical findings.
+- A warning fix is pending until the same supported toolchain lane runs on a
+  revision containing the change. A job stopped before a target cannot certify
+  that target as warning-free.
 - Keep jobs reproducible: pinned toolchains/dependencies where practical, no
   hidden downloads into the source tree, bounded timeouts.
 - Add negative/failure-path tests, not only smoke checks.
@@ -128,6 +136,10 @@ workflow, run `gh`, build or test.
 
 ## Known issues and decisions
 
+- Retained run logs may outlive neither the run metadata nor its artifacts.
+  Record inaccessible job IDs and artifact retention explicitly; missing
+  evidence does not establish a clean target. The current multi-run coverage
+  and missing-log IDs are summarized in `docs/ci/COMPILATION-WARNINGS.md`.
 - For package Lintian failures in generated maintainer scripts, download the
   exact-run package artifact and inspect its `control.tar.*` script before
   changing source hooks. The regular and static Debian package trees have
