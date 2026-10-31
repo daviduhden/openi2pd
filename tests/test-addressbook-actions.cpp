@@ -4,12 +4,13 @@
  *
  * openi2pd: test address-book add and feed actions.
  *
- * Offline checks for the administrative add result (Exists without replace),
- * the Java destination-length bounds, the name rules that reject the doubled
- * hyphen and the 52-character base32 lookalike, and the subscription
- * "action=delete" retraction: only the feed that supplied a name may retract
- * it, and a locally curated name is never deleted by a feed. No storage
- * directory, resolver, destination, socket, thread or timer is started.
+ * Offline checks for the administrative add result (Exists without
+ * replace), the Java destination-length bounds, the name rules that
+ * reject the doubled hyphen and the 52-character base32 lookalike, and
+ * the subscription "action=delete" retraction: only the feed that
+ * supplied a name may retract it, and a locally curated name is never
+ * deleted by a feed. No storage directory, resolver, destination,
+ * socket, thread or timer is started.
  */
 
 #include <cassert>
@@ -53,8 +54,8 @@ public:
 	bool GetEtag (const i2p::data::IdentHash &, std::string &, std::string &) override { return false; }
 	void ResetEtags () override { }
 
-	// Tombstones and entry origins are held in memory so the merge path can be
-	// tested without creating a data directory.
+	// Tombstones and entry origins are held in memory so the merge path
+	// can be tested without creating a data directory.
 	bool LoadDeletedHosts (std::vector<std::string> & patterns) override
 	{
 		patterns = deleted;
@@ -101,7 +102,8 @@ i2p::data::IdentHash Hash (const i2p::data::PrivateKeys & keys)
 void TestDestinationLengthBounds ()
 {
 	using i2p::client::IsValidDestinationLength;
-	// Java bounds the base64 string before decoding it: 516..616 characters.
+	// Java bounds the base64 string before decoding it: 516..616
+	// characters.
 	assert (!IsValidDestinationLength (""));
 	assert (!IsValidDestinationLength (std::string (515, 'A')));
 	assert (IsValidDestinationLength (std::string (516, 'A')));
@@ -119,7 +121,8 @@ void TestDestinationLengthBounds ()
 void TestNameRules ()
 {
 	using i2p::client::IsValidHostName;
-	// A label may not contain a doubled hyphen (IDNA "xn--" prefix position).
+	// A label may not contain a doubled hyphen (IDNA "xn--" prefix
+	// position).
 	assert (!IsValidHostName ("foo--bar.i2p"));
 	assert (!IsValidHostName ("xn--site.i2p"));
 	assert (IsValidHostName ("foo-bar.i2p"));
@@ -150,21 +153,23 @@ void TestAddAddressChecked ()
 	assert (book.FindAddress ("site.i2p")->identHash == hashA);
 	const int saves = fake->saveCount;
 
-	// Without replace an existing destination is kept and nothing is written.
+	// Without replace an existing destination is kept and nothing is
+	// written.
 	assert (book.AddAddressChecked ("site.i2p", Base64 (keyB), false) == Result::Exists);
 	assert (fake->saveCount == saves);
 	assert (book.FindAddress ("site.i2p")->identHash == hashA);
 	assert (!fake->identities.contains (hashB));
 	assert (fake->identities.contains (hashA));
 
-	// With replace the operator re-points the name and the old identity file is
-	// no longer referenced.
+	// With replace the operator re-points the name and the old identity
+	// file is no longer referenced.
 	assert (book.AddAddressChecked ("site.i2p", Base64 (keyB), true) == Result::Ok);
 	assert (book.FindAddress ("site.i2p")->identHash == hashB);
 	assert (fake->identities.contains (hashB));
 	assert (!fake->identities.contains (hashA));
 
-	// Repeating the stored destination is a no-op, not Exists, for either mode.
+	// Repeating the stored destination is a no-op, not Exists, for either
+	// mode.
 	assert (book.AddAddressChecked ("site.i2p", Base64 (keyB), false) == Result::Ok);
 	assert (book.AddAddressChecked ("site.i2p", Base64 (keyB), true) == Result::Ok);
 	assert (fake->saveCount == saves + 1);
@@ -178,7 +183,8 @@ void TestAddAddressChecked ()
 	assert (book.FindAddress ("site.i2p")->identHash == hashB);
 	assert (fake->saveCount == saves + 1);
 
-	// The historical AddAddress contract is preserved for the existing callers.
+	// The historical AddAddress contract is preserved for the existing
+	// callers.
 	using Mutate = i2p::client::AddressBookMutationResult;
 	assert (book.AddAddress ("site.i2p", Base64 (keyA), false) == Mutate::Exists);
 	assert (book.AddAddress ("site.i2p", Base64 (keyA), true) == Mutate::Ok);
@@ -207,7 +213,8 @@ void TestFeedRetraction ()
 	assert (fake->sources.at ("fromfeed.i2p") == "stats.i2p");
 	assert (!fake->sources.contains ("local.i2p"));
 
-	// A locally added name is never deleted by a feed, even if the feed offers
+	// A locally added name is never deleted by a feed, even if the feed
+	// offers
 	// the same destination the operator stored.
 	std::istringstream localDelete ("local.i2p=" + Base64 (localKey) + "#!action=delete\n");
 	assert (book.LoadHostsFromStream (std::move (localDelete), true, "stats.i2p"));
@@ -218,20 +225,23 @@ void TestFeedRetraction ()
 	assert (book.LoadHostsFromStream (std::move (otherDelete), true, "other.i2p"));
 	assert (book.FindAddress ("fromfeed.i2p"));
 
-	// "action=update" and unknown keys stay a no-op, and the entry is merged.
+	// "action=update" and unknown keys stay a no-op, and the entry is
+	// merged.
 	std::istringstream update ("updated.i2p=" + Base64 (feedKey) + "#!action=update,updated=now\n");
 	assert (book.LoadHostsFromStream (std::move (update), true, "stats.i2p"));
 	assert (book.FindAddress ("updated.i2p"));
 
-	// An over-long metainfo block is treated as comment text: the line is still
-	// a normal entry and no action is honoured.
+	// An over-long metainfo block is treated as comment text: the line is
+	// still a normal entry and no action is honoured.
 	std::istringstream oversize (
 		"oversize.i2p=" + Base64 (feedKey) + "#!action=delete," + std::string (400, 'x') + "\n");
 	assert (book.LoadHostsFromStream (std::move (oversize), true, "stats.i2p"));
 	assert (book.FindAddress ("oversize.i2p"));
 
-	// The originating feed retracts its own name: the entry and its identity
-	// file are gone, and a tombstone keeps another feed from resurrecting it.
+	// The originating feed retracts its own name: the entry and its
+	// identity
+	// file are gone, and a tombstone keeps another feed from resurrecting
+	// it.
 	std::istringstream retract ("fromfeed.i2p=" + Base64 (feedKey) + "#!action=delete\n");
 	assert (book.LoadHostsFromStream (std::move (retract), true, "stats.i2p"));
 	assert (!book.FindAddress ("fromfeed.i2p"));
@@ -244,8 +254,8 @@ void TestFeedRetraction ()
 	assert (book.LoadHostsFromStream (std::move (resurrect), true, "other.i2p"));
 	assert (!book.FindAddress ("fromfeed.i2p"));
 
-	// A destination with the wrong length is rejected without logging it, and
-	// the rest of the source is still merged.
+	// A destination with the wrong length is rejected without logging it,
+	// and the rest of the source is still merged.
 	std::istringstream badDestination (
 		"short.i2p=" + std::string (515, 'A') + "\n" + "good.i2p=" + Base64 (otherKey) + "\n");
 	assert (book.LoadHostsFromStream (std::move (badDestination), true, "stats.i2p"));
@@ -259,9 +269,10 @@ void TestRetractionOutsideFeed ()
 	auto storage = std::make_unique<FakeStorage> ();
 	auto book = std::make_unique<i2p::client::AddressBook> (std::move (storage));
 
-	// A startup hosts.txt load is not a feed merge, so a retraction request can
-	// never be honoured there. The line is skipped instead of being merged as a
-	// new destination; every other line of the same file is still applied.
+	// A startup hosts.txt load is not a feed merge, so a retraction
+	// request can never be honoured there. The line is skipped instead of
+	// being merged as a new destination; every other line of the same file
+	// is still applied.
 	std::istringstream startup ("plain.i2p=" + Base64 (key) + "#!action=delete\n" + "kept.i2p=" + Base64 (key) + "\n");
 	assert (book->LoadHostsFromStream (std::move (startup), false));
 	assert (!book->FindAddress ("plain.i2p"));

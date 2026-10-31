@@ -4,9 +4,10 @@
  *
  * openi2pd: reseed outdated-bundle regression.
  *
- * A downloaded bundle whose RouterInfos are outdated must be skipped and
- * counted, and must never delete the cached peer set. Deterministic: no
- * socket, no thread, no sleep; the clock and the target netDb are injected.
+ * A downloaded bundle whose RouterInfos are outdated must be skipped
+ * and counted, and must never delete the cached peer set.
+ * Deterministic: no socket, no thread, no sleep; the clock and the
+ * target netDb are injected.
  *
  */
 
@@ -30,8 +31,10 @@
 
 namespace i2p::data
 {
-// The friend declared by NetDb. The fixture installs already-built descriptors
-// so a cached but outdated peer can exist at all, and clears them again before
+// The friend declared by NetDb. The fixture installs already-built
+// descriptors
+// so a cached but outdated peer can exist at all, and clears them again
+// before
 // the destructor persistence pass.
 struct NetDbLifecycleTestAccess
 {
@@ -89,9 +92,9 @@ void AppendParam (std::string & out, std::string_view key, std::string_view valu
 	out.push_back (';');
 }
 
-// Minimal signed RouterInfo: no addresses (storable inside the 54-minute
-// grace), a valid netId and router.version. Only the published timestamp
-// varies between cases.
+// Minimal signed RouterInfo: no addresses (storable inside the
+// 54-minute grace), a valid netId and router.version. Only the
+// published timestamp varies between cases.
 std::vector<uint8_t> BuildRouterInfo (const PrivateKeys & keys, uint64_t published)
 {
 	std::vector<uint8_t> body;
@@ -120,7 +123,8 @@ std::vector<uint8_t> BuildRouterInfo (const PrivateKeys & keys, uint64_t publish
 	return buffer;
 }
 
-// A stored ZIP archive; the reseed reader only requires the local file headers
+// A stored ZIP archive; the reseed reader only requires the local file
+// headers
 // and stops at the central directory.
 std::vector<uint8_t> BuildZip (const std::vector<std::vector<uint8_t>> & entries)
 {
@@ -178,8 +182,10 @@ int main ()
 	const uint64_t stalePublished
 		= now - (RESEED_STALE_ROUTER_TIMEOUT + 24ULL * 60 * 60 * 1000); // one day past the window
 
-	// Two cached peers that are already far beyond the freshness window. They
-	// are installed directly because the netDb store policy would reject them;
+	// Two cached peers that are already far beyond the freshness window.
+	// They
+	// are installed directly because the netDb store policy would reject
+	// them;
 	// the regression is that a later bundle must not delete them.
 	auto cachedKeysA = CreateKeys ();
 	auto cachedKeysB = CreateKeys ();
@@ -211,7 +217,8 @@ int main ()
 	const auto mixedPath = WriteFile (directory, "mixed.zip", BuildZip ({ staleA, staleB, fresh }));
 	const auto mixed = reseeder.ReadZIPFile (mixedPath.c_str ());
 
-	// The outdated entries are skipped and counted; the fresh one is imported.
+	// The outdated entries are skipped and counted; the fresh one is
+	// imported.
 	assert (mixed.imported == 1);
 	assert (mixed.skippedStale == 2);
 	assert (!mixed.cancelled);
@@ -222,8 +229,8 @@ int main ()
 	assert (database.FindRouter (cachedKeysB.GetPublic ()->GetIdentHash ()));
 	assert (database.FindRouter (freshKeys.GetPublic ()->GetIdentHash ()));
 
-	// A bundle that only carries outdated entries reports the reason and still
-	// leaves every cached peer untouched.
+	// A bundle that only carries outdated entries reports the reason and
+	// still leaves every cached peer untouched.
 	const auto staleOnlyPath = WriteFile (directory, "stale-only.zip", BuildZip ({ staleA, staleB }));
 	const auto staleOnly = reseeder.ReadZIPFile (staleOnlyPath.c_str ());
 	assert (staleOnly.imported == 0);
@@ -236,7 +243,8 @@ int main ()
 	// The injected target was used; the process netDb was never populated.
 	assert (i2p::data::netdb.GetNumRouters () == 0);
 
-	// Leave the fixture empty so the destructor persistence pass is skipped.
+	// Leave the fixture empty so the destructor persistence pass is
+	// skipped.
 	Access::ClearRouterInfos (database);
 	assert (database.GetNumRouters () == 0);
 

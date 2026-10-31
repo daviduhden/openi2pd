@@ -4,9 +4,10 @@
  *
  * openi2pd: fuzz NTCP2 blocks.
  *
- * Exercises the pure SessionConfirmed payload validator and the handshake
- * padding table. No socket, session or global router state is touched, so a
- * finding is a framing/padding bug rather than a networking artifact.
+ * Exercises the pure SessionConfirmed payload validator and the
+ * handshake padding table. No socket, session or global router state is
+ * touched, so a finding is a framing/padding bug rather than a
+ * networking artifact.
  *
  */
 

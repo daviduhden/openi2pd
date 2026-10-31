@@ -4,9 +4,10 @@
  *
  * openi2pd: test streaming recently closed.
  *
- * Checks the bounded recently-closed set that stops a retransmitted SYN from
- * resurrecting a finished incoming connection (Java ConnectionManager
- * _recentlyClosed) and that such a SYN is answered with a RESET.
+ * Checks the bounded recently-closed set that stops a retransmitted SYN
+ * from resurrecting a finished incoming connection (Java
+ * ConnectionManager _recentlyClosed) and that such a SYN is answered
+ * with a RESET.
  *
  */
 
@@ -56,8 +57,8 @@ int main ()
 	assert (destination.GetNumStreams () == 0);
 	assert (destination.GetNumRecentlyClosedForTesting () == 1);
 
-	// The replayed SYN is dropped by policy: no stream is created, nothing is
-	// queued and no acceptor is invoked.
+	// The replayed SYN is dropped by policy: no stream is created, nothing
+	// is queued and no acceptor is invoked.
 	int accepted = 0;
 	auto token = destination.AcceptOnce (
 		[&accepted] (std::shared_ptr<i2p::stream::Stream> s)
@@ -70,8 +71,8 @@ int main ()
 	assert (accepted == 0);
 	destination.RemoveAcceptor (token);
 
-	// ... and the SYN is answered with a RESET instead of silence, so the peer
-	// stops its retransmission ladder.
+	// ... and the SYN is answered with a RESET instead of silence, so the
+	// peer stops its retransmission ladder.
 	const auto before = destination.GetNumRejectionResetsForTesting ();
 	assert (destination.BuildRejectionResetForTesting (peerStreamID));
 	assert (destination.GetNumRejectionResetsForTesting () == before + 1);
@@ -79,19 +80,21 @@ int main ()
 	// Other receive stream ids are unaffected by the remembered one.
 	assert (destination.AdmitSynForTesting (0x55667788) == StreamingDestination::SynAdmission::eAccept);
 
-	// The set is bounded: it never grows past MAX_RECENTLY_CLOSED_STREAMS, so
-	// a peer that opens and closes many connections cannot grow it without
-	// limit. Inserting decays the expired entries first.
+	// The set is bounded: it never grows past MAX_RECENTLY_CLOSED_STREAMS,
+	// so a peer that opens and closes many connections cannot grow it
+	// without limit. Inserting decays the expired entries first.
 	for (uint32_t i = 1; i <= MAX_RECENTLY_CLOSED_STREAMS + 50; ++i)
 		destination.RememberRecentlyClosedForTesting (0x10000000 + i);
 	assert (destination.GetNumRecentlyClosedForTesting () <= MAX_RECENTLY_CLOSED_STREAMS);
 	assert (destination.GetNumRecentlyClosedForTesting () > 0);
 
-	// Oldest entries are evicted first: the most recent id is still refused.
+	// Oldest entries are evicted first: the most recent id is still
+	// refused.
 	assert (destination.AdmitSynForTesting (0x10000000 + MAX_RECENTLY_CLOSED_STREAMS + 50)
 		== StreamingDestination::SynAdmission::eRecentlyClosed);
 
-	// Teardown forgets the set, so a restarted destination accepts the id again.
+	// Teardown forgets the set, so a restarted destination accepts the id
+	// again.
 	destination.StopForTesting ();
 	assert (destination.GetNumRecentlyClosedForTesting () == 0);
 	return 0;

@@ -4,9 +4,10 @@
  *
  * openi2pd: test streaming throttle.
  *
- * Checks the Java ConnThrottler/ConnectionManager-compatible per-peer and total
- * minute/hour/day admission windows, retry intervals, saturation and cleanup
- * used before a streaming SYN creates an incoming stream.
+ * Checks the Java ConnThrottler/ConnectionManager-compatible per-peer
+ * and total minute/hour/day admission windows, retry intervals,
+ * saturation and cleanup used before a streaming SYN creates an
+ * incoming stream.
  *
  */
 
@@ -34,7 +35,8 @@ int main ()
 	assert (unlimited.Check (peerA, 102) == 60);
 	assert (unlimited.Check (peerA, 161) == 0); // 60-second window restarted
 
-	// Per-peer minute window: two allowed, third rejected; the retry interval
+	// Per-peer minute window: two allowed, third rejected; the retry
+	// interval
 	// is 60 seconds and the fixed window restarts after it expires.
 	StreamingConnectionThrottle minute;
 	limits = { };
@@ -57,7 +59,8 @@ int main ()
 	assert (totalMinute.Check (peerC, 200) == 60);
 	assert (totalMinute.Check (peerC, 260) == 0);
 
-	// Java checks day, then hour, then minute, and returns the window length.
+	// Java checks day, then hour, then minute, and returns the window
+	// length.
 	StreamingConnectionThrottle day;
 	limits = { };
 	limits.perPeerDay = 1;
@@ -91,8 +94,8 @@ int main ()
 	assert (cleanup.GetNumPeers () == 0);
 
 	// A saturated peer table must not bypass the total budget. The first
-	// attempt is allowed; every later attempt is rejected even when the peer
-	// cannot be tracked individually.
+	// attempt is allowed; every later attempt is rejected even when the
+	// peer cannot be tracked individually.
 	StreamingConnectionThrottle saturated;
 	limits = { };
 	limits.perPeerDay = 1000000; // track peers but do not reject them individually

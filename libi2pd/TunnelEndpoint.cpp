@@ -4,9 +4,9 @@
  *
  * openi2pd: TunnelEndpoint.
  *
- * Implements decrypted tunnel message parsing, in-order and out-of-sequence
- * fragment reassembly with cleanup, delivery dispatch and buffered sends to the
- * next peer.
+ * Implements decrypted tunnel message parsing, in-order and
+ * out-of-sequence fragment reassembly with cleanup, delivery dispatch
+ * and buffered sends to the next peer.
  *
  */
 
@@ -29,15 +29,16 @@ namespace tunnel
 	void TunnelEndpoint::HandleDecryptedTunnelDataMsg (std::shared_ptr<I2NPMessage> msg)
 	{
 		// One decrypted cell is: a 4-byte tunnel ID, a 16-byte IV, a 4-byte
-		// truncated checksum and then the decrypted data area, which starts with a
-		// 4-byte clock/sequence header. The fragment walk therefore starts after
-		// that header (decrypted + 4 skips the checksum), and the first zero byte
-		// found there terminates the fragment area and starts the padding.
-		// The checksum covers the fragment area plus the IV, but not the fragment
-		// framing itself: every header field is length-checked against the cell end
-		// before it is decoded. Any framing error resets the in-progress message
-		// (m_CurrentMsgID / m_CurrentMessage) so a truncated cell cannot leave half
-		// a message behind for a later cell to complete.
+		// truncated checksum and then the decrypted data area, which starts
+		// with a 4-byte clock/sequence header. The fragment walk therefore
+		// starts after that header (decrypted + 4 skips the checksum), and
+		// the first zero byte found there terminates the fragment area and
+		// starts the padding. The checksum covers the fragment area plus the
+		// IV, but not the fragment framing itself: every header field is
+		// length-checked against the cell end before it is decoded. Any
+		// framing error resets the in-progress message (m_CurrentMsgID /
+		// m_CurrentMessage) so a truncated cell cannot leave half a message
+		// behind for a later cell to complete.
 		m_NumReceivedBytes += TUNNEL_DATA_MSG_SIZE;
 		m_LastReceiveTime.store (i2p::util::GetMillisecondsSinceEpoch (), std::memory_order_relaxed);
 
@@ -276,7 +277,8 @@ namespace tunnel
 		{
 			if (msg.data->len + size > msg.data->maxLen)
 			{
-				//	LogPrint (eLogWarning, "TunnelMessage: I2NP message size ", msg.data->maxLen, " is not enough");
+				// LogPrint (eLogWarning, "TunnelMessage: I2NP message size ",
+				// msg.data->maxLen, " is not enough");
 				auto newMsg = NewI2NPMessage (msg.data->len + size);
 				*newMsg = *(msg.data);
 				msg.data = newMsg;
@@ -342,12 +344,13 @@ namespace tunnel
 	void TunnelEndpoint::AddOutOfSequenceFragment (
 		uint32_t msgID, uint8_t fragmentNum, bool isLastFragment, const uint8_t * fragment, size_t size)
 	{
-		// Two independent bounds keep a peer from parking memory here: at most
-		// 4096 saved fragments per endpoint, and each saved fragment is a copy of
-		// at most one cell payload. Fragments below nextFragmentNum are never
-		// stored (the callers filter them) because storing a duplicate would
-		// corrupt the reassembled message; a full table drops the new fragment and
-		// lets the message time out instead of evicting older state.
+		// Two independent bounds keep a peer from parking memory here: at
+		// most 4096 saved fragments per endpoint, and each saved fragment is
+		// a copy of at most one cell payload. Fragments below nextFragmentNum
+		// are never stored (the callers filter them) because storing a
+		// duplicate would corrupt the reassembled message; a full table drops
+		// the new fragment and lets the message time out instead of evicting
+		// older state.
 		constexpr size_t MAX_OUT_OF_SEQUENCE_FRAGMENTS = 4096;
 		if (m_OutOfSequenceFragments.size () >= MAX_OUT_OF_SEQUENCE_FRAGMENTS)
 		{
@@ -415,7 +418,8 @@ namespace tunnel
 	{
 		if (msg.data->GetLength () < I2NP_HEADER_SIZE)
 		{
-			// GetPayloadLength subtracts the header size, a shorter message wraps it around
+			// GetPayloadLength subtracts the header size, a shorter message
+			// wraps it around
 			LogPrint (eLogError, "TunnelMessage: Message of ", msg.data->GetLength (),
 				" bytes is shorter than I2NP header, dropped");
 			return;

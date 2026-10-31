@@ -4,11 +4,12 @@
  *
  * openi2pd: Elligator.
  *
- * Implements Elligator2 encoding and decoding of X25519 public keys into
- * 32-byte strings for the ECIES ratchet's oblivious new-session field. Encoding
- * selects the random alternative branch and high bits, while decoding
- * reconstructs and validates a curve point, rejecting non-canonical or
- * unmappable inputs; shared curve constants are initialised thread-safely.
+ * Implements Elligator2 encoding and decoding of X25519 public keys
+ * into 32-byte strings for the ECIES ratchet's oblivious new-session
+ * field. Encoding selects the random alternative branch and high bits,
+ * while decoding reconstructs and validates a curve point, rejecting
+ * non-canonical or unmappable inputs; shared curve constants are
+ * initialised thread-safely.
  *
  */
 

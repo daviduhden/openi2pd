@@ -4,9 +4,10 @@
  *
  * openi2pd: test SSU2 payload blocks.
  *
- * Negative framing matrix for the pure SSU2 decrypted-payload validator:
- * truncated headers, DateTime size, termination size/order, padding order and
- * the per-state block whitelist. No socket or session is created.
+ * Negative framing matrix for the pure SSU2 decrypted-payload
+ * validator: truncated headers, DateTime size, termination size/order,
+ * padding order and the per-state block whitelist. No socket or session
+ * is created.
  *
  */
 
@@ -49,8 +50,8 @@ int main ()
 	assert (Validate (eSSU2SessionStateEstablished, Block (i2p::transport::eSSU2BlkDateTime, four)));
 	assert (!Validate (eSSU2SessionStateEstablished, Block (i2p::transport::eSSU2BlkDateTime, { 0, 0, 0 })));
 
-	// A termination block is at least nine bytes and must be last except for
-	// padding.
+	// A termination block is at least nine bytes and must be last except
+	// for padding.
 	assert (!Validate (
 		eSSU2SessionStateEstablished, Block (i2p::transport::eSSU2BlkTermination, std::vector<uint8_t> (8, 0))));
 	assert (Validate (
@@ -78,14 +79,14 @@ int main ()
 	std::vector<uint8_t> overrun = { i2p::transport::eSSU2BlkPadding, 0, 4, 0 };
 	assert (!Validate (eSSU2SessionStateEstablished, overrun));
 
-	// A block that is not permitted in the SessionCreated state is rejected
-	// even when its frame is otherwise well formed (Termination is only valid
-	// in the request/retry states).
+	// A block that is not permitted in the SessionCreated state is
+	// rejected even when its frame is otherwise well formed (Termination
+	// is only valid in the request/retry states).
 	assert (!Validate (eSSU2SessionStateSessionCreatedReceived,
 		Block (i2p::transport::eSSU2BlkTermination, std::vector<uint8_t> (9, 0))));
 
-	// Empty payload is a valid block list (the caller decides whether a state
-	// requires at least one block).
+	// Empty payload is a valid block list (the caller decides whether a
+	// state requires at least one block).
 	assert (Validate (eSSU2SessionStateEstablished, { }));
 
 	return 0;

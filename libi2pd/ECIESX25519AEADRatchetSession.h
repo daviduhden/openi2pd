@@ -4,10 +4,11 @@
  *
  * openi2pd: ECIESX25519AEADRatchetSession.
  *
- * Declares the ECIES-X25519-AEAD-Ratchet garlic session state machine with its
- * DH and tag ratchets, session negotiation, ACK tracking and replay-protected
- * New Session handling. Enforces protocol timing, tag and payload bounds, and
- * supports optional ML-KEM hybrid keys when OpenSSL provides them.
+ * Declares the ECIES-X25519-AEAD-Ratchet garlic session state machine
+ * with its DH and tag ratchets, session negotiation, ACK tracking and
+ * replay-protected New Session handling. Enforces protocol timing, tag
+ * and payload bounds, and supports optional ML-KEM hybrid keys when
+ * OpenSSL provides them.
  *
  */
 
@@ -56,31 +57,35 @@ namespace garlic
 	const uint64_t ECIESX25519_DATETIME_MAX_FUTURE = 2 * 60; // seconds
 	// Java 2.13.0 RatchetSKM.OutboundSession.MAX_SEND_ACKS
 	const int ECIESX25519_MAX_ACKS_PER_MESSAGE = 16;
-	// Upper bound for ACK requests queued on one session. Java drains at most
-	// MAX_SEND_ACKS per message, so the queue is bounded in practice too.
+	// Upper bound for ACK requests queued on one session. Java drains at
+	// most MAX_SEND_ACKS per message, so the queue is bounded in practice
+	// too.
 	const size_t ECIESX25519_MAX_PENDING_ACKS = 128;
-	// Java RatchetSKM.OutboundSession keeps every New Session Reply split in
-	// _unackedTagSets until the matching inbound tagset consumes its first tag.
-	// Bound that list and expire unused splits after Java's
+	// Java RatchetSKM.OutboundSession keeps every New Session Reply split
+	// in _unackedTagSets until the matching inbound tagset consumes its
+	// first tag. Bound that list and expire unused splits after Java's
 	// SESSION_PENDING_DURATION_MS (3 minutes).
 	const size_t ECIESX25519_MAX_PENDING_REPLY_TAGSETS = 8;
 	const uint64_t ECIESX25519_PENDING_REPLY_TAGSET_TIMEOUT = 180; // seconds
 
 	const size_t ECIESX25519_OPTIMAL_PAYLOAD_SIZE = 1912; // 1912 = 1956 /* to fit 2 tunnel messages */
-	// - 16 /* I2NP header */ - 16 /* poly hash */ - 8 /* tag */ - 4 /* garlic length */
+	// - 16 /* I2NP header */ - 16 /* poly hash */ - 8 /* tag */ - 4 /*
+	//   garlic length */
 
-	// Payload-size normalisation status: this implementation pads a payload to
-	// the optimal size above and keeps a New Session out of the 2 (mod 16)
-	// residue that selects the ElGamal/AES path. Java's additional B1/B2/B3
-	// bucket normalisation (which also moves the plaintext out of the size
-	// classes a peer can distinguish) is deliberately deferred: applying it
-	// without the exact bucket boundaries from the reference would change the
-	// length distribution without matching it, which is worse than not applying
-	// it. Tracked as an open tuning item, not as a security fix.
+	// Payload-size normalisation status: this implementation pads a
+	// payload to the optimal size above and keeps a New Session out of the
+	// 2 (mod 16) residue that selects the ElGamal/AES path. Java's
+	// additional B1/B2/B3 bucket normalisation (which also moves the
+	// plaintext out of the size classes a peer can distinguish) is
+	// deliberately deferred: applying it without the exact bucket
+	// boundaries from the reference would change the length distribution
+	// without matching it, which is worse than not applying it. Tracked as
+	// an open tuning item, not as a security fix.
 
-	/// Holds the tag and message-key chains for one ECIES ratchet generation.
-	/// Derived intermediate keys support out-of-order delivery; retrieving a
-	/// cached key consumes it. The destructor wipes the retained key material.
+	/// Holds the tag and message-key chains for one ECIES ratchet
+	/// generation. Derived intermediate keys support out-of-order
+	/// delivery; retrieving a cached key consumes it. The destructor wipes
+	/// the retained key material.
 	/// @see https://i2p.net/en/docs/specs/ecies/
 	class RatchetTagSet
 	{
@@ -104,7 +109,8 @@ namespace garlic
 		int GetNextIndex () const { return m_NextIndex; };
 		/// Derive or consume a cached key for the 16-bit message index.
 		/// @param key Writable 32-byte output.
-		/// @return False for an invalid index, null output or missing cached key.
+		/// @return False for an invalid index, null output or missing cached
+		///         key.
 		bool GetSymmKey (int index, uint8_t * key);
 		void DeleteSymmKey (int index);
 
@@ -130,8 +136,9 @@ namespace garlic
 	};
 
 	class ECIESX25519AEADRatchetSession;
-	/// Receive-side tag set that retains its session while tags can be used.
-	/// Destruction of a New Session tag set also releases the session's NSR keys.
+	/// Receive-side tag set that retains its session while tags can be
+	/// used. Destruction of a New Session tag set also releases the
+	/// session's NSR keys.
 	class ReceiveRatchetTagSet : public RatchetTagSet, public std::enable_shared_from_this<ReceiveRatchetTagSet>
 	{
 	public:
@@ -196,9 +203,10 @@ namespace garlic
 	const uint8_t ECIESX25519_NEXT_KEY_REVERSE_KEY_FLAG = 0x02;
 	const uint8_t ECIESX25519_NEXT_KEY_REQUEST_REVERSE_KEY_FLAG = 0x04;
 
-	// Payload context. An established-session payload may carry ratchet keys,
-	// ACKs and a Termination block; a New Session Reply may carry only
-	// DateTime, Garlic, Options and Padding; a New Session is stricter still.
+	// Payload context. An established-session payload may carry ratchet
+	// keys, ACKs and a Termination block; a New Session Reply may carry
+	// only DateTime, Garlic, Options and Padding; a New Session is
+	// stricter still.
 	enum class RatchetPayloadMode
 	{
 		NewSession,
@@ -206,26 +214,28 @@ namespace garlic
 		ExistingSession
 	};
 
-	// Validates an established payload before any side effects are applied:
-	// exact block framing, DateTime uniqueness/skew, NEXT_KEY/ACK/ACKREQUEST
-	// lengths, and Padding/Termination ordering.
+	// Validates an established payload before any side effects are
+	// applied: exact block framing, DateTime uniqueness/skew,
+	// NEXT_KEY/ACK/ACKREQUEST lengths, and Padding/Termination ordering.
 	bool ValidateRatchetPayload (const uint8_t * buf, size_t len);
-	// Validates the payload of a New Session (NS/N): exactly one DateTime block
-	// inside the Java 2.14.0 window, a deliberately stricter non-empty Garlic policy, no
-	// Termination/SessionID/unknown blocks and nothing after Padding.
-	// Exposed for the self-contained regression tests.
+	// Validates the payload of a New Session (NS/N): exactly one DateTime
+	// block inside the Java 2.14.0 window, a deliberately stricter
+	// non-empty Garlic policy, no Termination/SessionID/unknown blocks and
+	// nothing after Padding. Exposed for the self-contained regression
+	// tests.
 	bool ValidateNewSessionPayload (const uint8_t * buf, size_t len);
 	// Validates the payload of a New Session Reply (NSR): only DateTime,
 	// Garlic, Options and Padding. Any Termination/NEXT_KEY/SessionID/ACK/
-	// ACK_REQUEST or unknown block is rejected before the split is installed,
-	// so an NSR can never remove a session.
+	// ACK_REQUEST or unknown block is rejected before the split is
+	// installed, so an NSR can never remove a session.
 	bool ValidateNewSessionReplyPayload (const uint8_t * buf, size_t len);
 
 	/// ECIES-X25519 garlic session with handshake, tag-set and ACK state.
-	/// A received New Session candidate is validated and authenticated before
-	/// its Noise state and remote key are committed. The first consumed inbound
-	/// tag selects a matching pending reply split; when no send tag set exists,
-	/// the send path can use the oldest pending split as a fallback.
+	/// A received New Session candidate is validated and authenticated
+	/// before its Noise state and remote key are committed. The first
+	/// consumed inbound tag selects a matching pending reply split; when
+	/// no send tag set exists, the send path can use the oldest pending
+	/// split as a fallback.
 	/// @see https://i2p.net/en/docs/specs/ecies/
 	class ECIESX25519AEADRatchetSession : public GarlicRoutingSession,
 										  private i2p::crypto::NoiseSymmetricState,
@@ -316,9 +326,9 @@ namespace garlic
 			std::lock_guard<std::recursive_mutex> l (m_StateMutex);
 			return m_State != eSessionStateNewSessionSent && !IsExhausted ();
 		}
-		// Java RatchetSKM.consumeNext() creates a new Session when the outbound
-		// tagset is empty. The exhausted object stays alive to receive but must
-		// never be handed out for a new send.
+		// Java RatchetSKM.consumeNext() creates a new Session when the
+		// outbound tagset is empty. The exhausted object stays alive to
+		// receive but must never be handed out for a new send.
 		bool IsExhausted () const override { return m_SendTagsetExhausted.load (std::memory_order_acquire); }
 		bool IsTerminated () const override { return m_IsTerminated.load (std::memory_order_acquire); }
 		uint64_t GetLastActivityTimestamp () const override
@@ -342,7 +352,8 @@ namespace garlic
 
 	private:
 		// Java RatchetSKM.OutboundSession._unackedTagSets: one entry per New
-		// Session Reply split until its inbound tagset consumes the first tag.
+		// Session Reply split until its inbound tagset consumes the first
+		// tag.
 		struct PendingReplyTagsets
 		{
 			std::shared_ptr<ReceiveRatchetTagSet> receive;
@@ -363,8 +374,9 @@ namespace garlic
 		void ExpirePendingReplyTagsets (uint64_t ts);
 
 		bool HandleNewIncomingSession (const uint8_t * buf, size_t len);
-		// Try one locally supported ratchet key type. A trial never touches the
-		// session state until every AEAD tag and the payload are authenticated.
+		// Try one locally supported ratchet key type. A trial never touches
+		// the session state until every AEAD tag and the payload are
+		// authenticated.
 		bool HandleNewIncomingSessionCandidate (i2p::data::CryptoKeyType cryptoType, const uint8_t * buf, size_t len);
 		bool HandleNewOutgoingSessionReply (uint8_t * buf, size_t len);
 		bool HandleExistingSessionMessage (
@@ -408,9 +420,10 @@ namespace garlic
 		std::atomic<uint64_t> m_SessionCreatedTimestamp { 0 }, m_LastActivityTimestamp { 0 }, // incoming (in seconds)
 			m_LastSentTimestamp { 0 }; // in milliseconds
 		std::shared_ptr<RatchetTagSet> m_SendTagset, m_NSRSendTagset;
-		// Every New Session Reply split that has not seen its first inbound ES
-		// tag yet. Guarded by m_PendingReplyTagsetsMutex; the actual outbound
-		// tagset is only promoted when the matching inbound tagset is used.
+		// Every New Session Reply split that has not seen its first inbound
+		// ES tag yet. Guarded by m_PendingReplyTagsetsMutex; the actual
+		// outbound tagset is only promoted when the matching inbound tagset
+		// is used.
 		mutable std::mutex m_PendingReplyTagsetsMutex;
 		std::list<PendingReplyTagsets> m_PendingReplyTagsets;
 		std::atomic_bool m_SendTagsetExhausted { false };
@@ -418,10 +431,10 @@ namespace garlic
 		std::list<std::pair<uint16_t, int>> m_AckRequests; // incoming (tagsetid, index)
 		// Java caps how often a forward/reverse key is re-announced while the
 		// peer has not acknowledged it (MAX_SEND_REVERSE_KEY). That cap could
-		// not be verified against the pinned reference in this environment, so
-		// it is intentionally not guessed: the flags are cleared as soon as the
-		// matching NEXT_KEY or tagset arrives, and the per-session tag budget
-		// already bounds the work a peer can cause.
+		// not be verified against the pinned reference in this environment,
+		// so it is intentionally not guessed: the flags are cleared as soon
+		// as the matching NEXT_KEY or tagset arrives, and the per-session tag
+		// budget already bounds the work a peer can cause.
 		bool m_SendReverseKey = false, m_SendForwardKey = false;
 		std::atomic_bool m_IsTerminated { false };
 		std::atomic_bool m_ResponseTimerArmed { false };
@@ -471,9 +484,10 @@ namespace garlic
 
 	private:
 		i2p::crypto::NoiseSymmetricState m_CurrentNoiseState;
-		// Java ECIESAEADEngine.decryptNewSession_N checks keyManager.isDuplicate(pk)
-		// and drops a replayed router N message. Keep a bounded, time-limited
-		// cache; only authenticated and structurally valid N messages enter it.
+		// Java ECIESAEADEngine.decryptNewSession_N checks
+		// keyManager.isDuplicate(pk) and drops a replayed router N message.
+		// Keep a bounded, time-limited cache; only authenticated and
+		// structurally valid N messages enter it.
 		mutable std::mutex m_EphemeralReplayMutex;
 		std::deque<std::pair<std::array<uint8_t, 32>, uint64_t>> m_EphemeralReplay;
 	};

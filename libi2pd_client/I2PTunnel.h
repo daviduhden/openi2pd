@@ -4,8 +4,9 @@
  *
  * openi2pd: I2PTunnel.
  *
- * Declares the local-socket/I2P stream connection classes, their HTTP and IRC
- * variants, client keep-alive and server-side access-list handling.
+ * Declares the local-socket/I2P stream connection classes, their HTTP
+ * and IRC variants, client keep-alive and server-side access-list
+ * handling.
  *
  */
 
@@ -56,9 +57,10 @@ namespace client
 	class I2PServerTunnelHTTPPolicy;
 	class I2PServerTunnelTargetMap;
 
-	/// Bridges a local TCP socket and an I2P stream, optionally through TLS.
-	/// The service holds the handler while its reverse reference is weak;
-	/// Terminate closes its transports and removes the handler from that owner.
+	/// Bridges a local TCP socket and an I2P stream, optionally through
+	/// TLS. The service holds the handler while its reverse reference is
+	/// weak; Terminate closes its transports and removes the handler from
+	/// that owner.
 	class I2PTunnelConnection : public I2PServiceHandler, public std::enable_shared_from_this<I2PTunnelConnection>
 	{
 	public:
@@ -71,8 +73,9 @@ namespace client
 			std::shared_ptr<boost::asio::ssl::context> sslCtx = nullptr); // from I2P
 		~I2PTunnelConnection ();
 		/// Start the stream and bidirectional receive paths.
-		/// @warning Without @a msg, currently available local TCP bytes can be
-		/// read synchronously; that initial read has no explicit operation deadline.
+		/// @warning Without @a msg, currently available local TCP
+		///          bytes can be read synchronously; that initial read has no
+		///          explicit operation deadline.
 		void I2PConnect (const uint8_t * msg = nullptr, size_t len = 0);
 		void Connect (bool isUniqueLocal = true);
 		void Connect (const boost::asio::ip::address & localAddress);
@@ -109,13 +112,15 @@ namespace client
 		bool m_IsReceiving;
 	};
 
-	/// Client-side HTTP tunnel connection: it parses the first header block it
-	/// forwards towards the local socket with the ClientRequest mode, so the
-	/// bytes are bounded and carry a single `Connection: close`.
-	/// @warning The transform is applied in the stream-to-local direction, and
-	///   it is the *request* transform; do not reuse this class for a proxied
-	///   response, where a ClientResponse transform is required. The HTTP proxy
-	///   therefore uses its own connection type for that direction.
+	/// Client-side HTTP tunnel connection: it parses the first header
+	/// block it forwards towards the local socket with the ClientRequest
+	/// mode, so the bytes are bounded and carry a single `Connection:
+	/// close`.
+	/// @warning The transform is applied in the stream-to-local
+	///          direction, and it is the *request* transform; do not reuse
+	///          this class for a proxied response, where a ClientResponse
+	///          transform is required. The HTTP proxy therefore uses its
+	///          own connection type for that direction.
 	class I2PClientTunnelConnectionHTTP : public I2PTunnelConnection
 	{
 	public:
@@ -132,12 +137,13 @@ namespace client
 	};
 
 	/// Server-side HTTP tunnel connection: injects the configured host /
-	/// X-I2P identity header, evaluates the request policy and, when it refuses,
-	/// writes exactly one generated response before closing.
-	/// @warning The rejection response is derived only from the policy decision
-	///   and a status/reason pair; the client's request line, target and headers
-	///   are never echoed, so a refused request cannot be reflected back into
-	///   the response.
+	/// X-I2P identity header, evaluates the request policy and, when it
+	/// refuses, writes exactly one generated response before closing.
+	/// @warning The rejection response is derived only from the
+	///          policy decision and a status/reason pair; the client's
+	///          request line, target and headers are never echoed, so a
+	///          refused request cannot be reflected back into the
+	///          response.
 	class I2PServerTunnelConnectionHTTP : public I2PTunnelConnection
 	{
 	public:
@@ -151,7 +157,8 @@ namespace client
 		void WriteToStream (const uint8_t * buf, size_t len) override;
 
 	private:
-		// Answers a request refused by the tunnel policy and closes the stream.
+		// Answers a request refused by the tunnel policy and closes the
+		// stream.
 		void RejectRequest (int status, std::string_view reason);
 
 		I2PTunnelHTTPHeader m_RequestHeader, m_ResponseHeader;
@@ -159,14 +166,15 @@ namespace client
 		bool m_RequestRejected = false;
 	};
 
-	/// IRC server-tunnel connection: it prefixes the first outbound line with a
-	/// WEBIRC command (`WEBIRC &lt;pass&gt; cgiirc &lt;destination&gt; &lt;local address&gt;`) and
-	/// replaces the hostname field of a `USER` line with the peer destination,
-	/// so the upstream ircd attributes the session to the I2P identity instead
-	/// of the tunnel's local address.
-	/// @warning The WEBIRC password is a credential. It is written only into
-	///   that outbound line and must never reach a log, an error page or a
-	///   diagnostic string.
+	/// IRC server-tunnel connection: it prefixes the first outbound line
+	/// with a WEBIRC command (`WEBIRC &lt;pass&gt; cgiirc
+	/// &lt;destination&gt; &lt;local address&gt;`) and replaces the
+	/// hostname field of a `USER` line with the peer destination, so the
+	/// upstream ircd attributes the session to the I2P identity instead of
+	/// the tunnel's local address.
+	/// @warning The WEBIRC password is a credential. It is
+	///          written only into that outbound line and must never reach
+	///          a log, an error page or a diagnostic string.
 	class I2PTunnelConnectionIRC : public I2PTunnelConnection
 	{
 	public:
@@ -186,16 +194,16 @@ namespace client
 
 	/// Client tunnel (local TCP listener to an I2P destination).
 	///
-	/// One configured section may name several destinations: every accepted
-	/// local socket is sent to the next resolvable destination in round-robin
-	/// order, and an unresolvable entry is skipped so one dead server cannot
-	/// block the whole listener. An optional keep-alive timer pings every
-	/// resolved destination so the spare ones do not go cold while the primary
-	/// carries the traffic.
+	/// One configured section may name several destinations: every
+	/// accepted local socket is sent to the next resolvable destination in
+	/// round-robin order, and an unresolvable entry is skipped so one dead
+	/// server cannot block the whole listener. An optional keep-alive
+	/// timer pings every resolved destination so the spare ones do not go
+	/// cold while the primary carries the traffic.
 	///
-	/// The address list is resolved lazily and cached for the running tunnel; a
-	/// name that could not be resolved is retried on the next accepted socket,
-	/// and Stop() clears the cache.
+	/// The address list is resolved lazily and cached for the running
+	/// tunnel; a name that could not be resolved is retried on the next
+	/// accepted socket, and Stop() clears the cache.
 	class I2PClientTunnel : public TCPIPAcceptor
 	{
 	protected:
@@ -233,9 +241,10 @@ namespace client
 		std::unique_ptr<boost::asio::steady_timer> m_KeepAliveTimer;
 	};
 
-	// Immutable, bounded `targetForPort.&lt;port&gt;=host:port` map. At most
-	// I2P_SERVER_TUNNEL_MAX_PORT_TARGETS entries; malformed values, duplicate
-	// local ports and out-of-range ports are rejected at configuration load.
+	// Immutable, bounded `targetForPort.&lt;port&gt;=host:port` map. At
+	// most I2P_SERVER_TUNNEL_MAX_PORT_TARGETS entries; malformed values,
+	// duplicate local ports and out-of-range ports are rejected at
+	// configuration load.
 	class I2PServerTunnelTargetMap
 	{
 	public:
@@ -273,19 +282,19 @@ namespace client
 
 	/// Server tunnel (I2P destination to a local TCP service).
 	///
-	/// The tunnel registers one acceptor on a streaming destination, either the
-	/// port-specific one (`inport`) or the destination-wide default when
-	/// `defaultacceptor=true`. A port-specific tunnel never adopts the default
-	/// destination implicitly: doing so would silently serve every unregistered
-	/// port. The acceptor callback holds a weak owner plus the start generation,
-	/// so a completion from an earlier run answers with a RESET instead of
-	/// reaching a stopped tunnel.
+	/// The tunnel registers one acceptor on a streaming destination,
+	/// either the port-specific one (`inport`) or the destination-wide
+	/// default when `defaultacceptor=true`. A port-specific tunnel never
+	/// adopts the default destination implicitly: doing so would silently
+	/// serve every unregistered port. The acceptor callback holds a weak
+	/// owner plus the start generation, so a completion from an earlier
+	/// run answers with a RESET instead of reaching a stopped tunnel.
 	///
 	/// Admission is decided before a stream exists: the optional
-	/// `filterDefinition` predicate runs inside the SYN path, and a denial is
-	/// answered with either silence or one signed RESET according to
-	/// `limitAction`. Stop() (the forced form) additionally closes the live
-	/// stream/socket pairs; Stop(false) leaves them to drain.
+	/// `filterDefinition` predicate runs inside the SYN path, and a denial
+	/// is answered with either silence or one signed RESET according to
+	/// `limitAction`. Stop() (the forced form) additionally closes the
+	/// live stream/socket pairs; Stop(false) leaves them to drain.
 	class I2PServerTunnel : public I2PService
 	{
 	public:
@@ -301,14 +310,15 @@ namespace client
 		bool IsInUse () const { return GetNumHandlers () > 0; }
 
 		void SetAccessList (const std::set<i2p::data::IdentHash> & accessList);
-		// Installs the parsed `filterDefinition` and its rejection action. The
-		// predicate runs inside the streaming SYN path, before any stream is
-		// created; `limitAction=reset` answers a denial with a signed RESET,
-		// anything else (the default) keeps the peer in silence.
+		// Installs the parsed `filterDefinition` and its rejection action.
+		// The predicate runs inside the streaming SYN path, before any stream
+		// is created; `limitAction=reset` answers a denial with a signed
+		// RESET, anything else (the default) keeps the peer in silence.
 		void SetAccessFilter (std::shared_ptr<const FilterDefinition> definition, std::string_view limitAction);
 		void SetLimitAction (std::string_view limitAction);
 		// Wire action used for a refused SYN (`limitAction`). Filter denials
-		// default to a silent drop; `limitAction=reset` opts into a signed RESET.
+		// default to a silent drop; `limitAction=reset` opts into a signed
+		// RESET.
 		TunnelAccessRejectAction GetAccessRejectAction () const { return m_AccessRejectAction; }
 
 		void SetTargets (const I2PServerTunnelTargetMap & targets);
@@ -328,9 +338,9 @@ namespace client
 		uint16_t GetPort () const { return m_Port; };
 		uint16_t GetLocalPort () const { return m_PortDestination->GetLocalPort (); };
 		const boost::asio::ip::tcp::endpoint & GetEndpoint () const { return m_Endpoint; }
-		// Local target for a stream accepted on `localPort`. Returns false when
-		// the port has no usable target and the stream must be reset: Java
-		// requires an explicit `targetForPort` mapping for 443 and 22.
+		// Local target for a stream accepted on `localPort`. Returns false
+		// when the port has no usable target and the stream must be reset:
+		// Java requires an explicit `targetForPort` mapping for 443 and 22.
 		bool SelectTarget (uint16_t localPort, boost::asio::ip::tcp::endpoint & target) const;
 
 		const char * GetName () const override { return m_Name.c_str (); }
@@ -349,7 +359,8 @@ namespace client
 		void HandleResolve (const boost::system::error_code & ecode,
 			boost::asio::ip::tcp::resolver::results_type endpoints, std::shared_ptr<i2p::stream::Stream> stream);
 		// Registers the acceptor and admission predicate on one streaming
-		// destination. The lambda holds a weak owner plus the start generation.
+		// destination. The lambda holds a weak owner plus the start
+		// generation.
 		void InstallAcceptor (const std::shared_ptr<i2p::stream::StreamingDestination> & destination);
 		void InstallAdmissionPolicy (const std::shared_ptr<i2p::stream::StreamingDestination> & destination);
 		// Resolves `targetForPort` hostnames asynchronously; a nameless (IP
@@ -366,8 +377,8 @@ namespace client
 		uint16_t m_Port;
 		boost::asio::ip::tcp::endpoint m_Endpoint;
 		std::shared_ptr<i2p::stream::StreamingDestination> m_PortDestination;
-		// The default streaming destination when `defaultacceptor=true` made a
-		// port-specific tunnel take it over as well.
+		// The default streaming destination when `defaultacceptor=true` made
+		// a port-specific tunnel take it over as well.
 		std::shared_ptr<i2p::stream::StreamingDestination> m_DefaultAcceptorDestination;
 		std::set<i2p::data::IdentHash> m_AccessList;
 		bool m_IsAccessList;
@@ -393,8 +404,9 @@ namespace client
 	};
 
 	// Server-tunnel HTTP request policy: `spoofedhost.&lt;port&gt;` with a
-	// `hostoverride` fallback, the inproxy/referer/user-agent rejects and the
-	// bounded POST/PUT throttle. Header names and values are never logged.
+	// `hostoverride` fallback, the inproxy/referer/user-agent rejects and
+	// the bounded POST/PUT throttle. Header names and values are never
+	// logged.
 	class I2PServerTunnelHTTPPolicy
 	{
 	public:

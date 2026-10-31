@@ -4,7 +4,8 @@
  *
  * openi2pd: test gost sig.
  *
- * Generates GOST R 34.10-2012 256- and 512-bit keys and checks that each signature verifies with the matching verifier and parameter set.
+ * Generates GOST R 34.10-2012 256- and 512-bit keys and checks that
+ * each signature verifies with the matching verifier and parameter set.
  *
  */
 

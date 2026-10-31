@@ -4,7 +4,9 @@
  *
  * openi2pd: test crypto audit bounds.
  *
- * Regression checks the audited bounds of bignum-to-buffer conversion, Base32/Base64 decoding, X25519 and ElGamal key validation, AEAD lengths and AES output sizing, all in-process.
+ * Regression checks the audited bounds of bignum-to-buffer conversion,
+ * Base32/Base64 decoding, X25519 and ElGamal key validation, AEAD
+ * lengths and AES output sizing, all in-process.
  *
  */
 
@@ -74,8 +76,8 @@ void TestX25519RejectsInvalidPeer ()
 			publicKeyIsZero = false;
 			break;
 		}
-	// SetPrivateKey/constructor must derive the public key instead of leaving
-	// the buffer uninitialised.
+	// SetPrivateKey/constructor must derive the public key instead of
+	// leaving the buffer uninitialised.
 	assert (!publicKeyIsZero);
 
 	uint8_t shared[32] = { };
@@ -113,8 +115,8 @@ void TestElGamalRejectsTrivialPublicKeys ()
 	uint8_t decrypted[222];
 	assert (!i2p::crypto::ElGamalDecrypt (privateKey, encrypted, decrypted));
 
-	// A generated key pair must still round-trip; the range checks above must
-	// not reject legitimate ElGamal keys.
+	// A generated key pair must still round-trip; the range checks above
+	// must not reject legitimate ElGamal keys.
 	uint8_t generatedPrivate[256] = { };
 	uint8_t generatedPublic[256] = { };
 	i2p::crypto::GenerateElGamalKeyPair (generatedPrivate, generatedPublic);
@@ -155,14 +157,14 @@ void TestAESRejectsInvalidLengths ()
 	i2p::crypto::CBCEncryption encryption;
 	encryption.SetKey (key);
 	// A misaligned length is rejected without touching the output: the
-	// helper cannot safely infer the caller's buffer capacity from a length
-	// that is not a valid AES block multiple.
+	// helper cannot safely infer the caller's buffer capacity from a
+	// length that is not a valid AES block multiple.
 	std::memset (out, 0xA5, sizeof (out));
 	assert (!encryption.EncryptChecked (in, 15, iv, out));
 	for (auto byte : out) assert (byte == 0xA5);
 
-	// An unrepresentable length must be rejected before any output wipe and
-	// before it is converted to an EVP int.
+	// An unrepresentable length must be rejected before any output wipe
+	// and before it is converted to an EVP int.
 	std::memset (out, 0xA5, sizeof (out));
 	assert (!encryption.EncryptChecked (in, static_cast<size_t> (std::numeric_limits<int>::max ()) + 1, iv, out));
 	for (auto byte : out) assert (byte == 0xA5);

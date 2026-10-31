@@ -4,10 +4,11 @@
  *
  * openi2pd: Profiling.
  *
- * Peer profiles used for tunnel and routing decisions: participation, usage, reachability and
- * last-endpoint history with decline and usefulness thresholds. Profiles persist to disk,
- * expire after 1.5 days, and are updated through a coalesced path so the router thread is not
- * blocked by storage.
+ * Peer profiles used for tunnel and routing decisions: participation,
+ * usage, reachability and last-endpoint history with decline and
+ * usefulness thresholds. Profiles persist to disk, expire after 1.5
+ * days, and are updated through a coalesced path so the router thread
+ * is not blocked by storage.
  *
  */
 
@@ -55,16 +56,18 @@ namespace data
 	const int PEER_PROFILE_APPLY_POSTPONED_TIMEOUT = 2100; // in milliseconds
 	const int PEER_PROFILE_APPLY_POSTPONED_TIMEOUT_VARIANCE = 500; // in milliseconds
 
-	/// Mutable per-peer observations used in tunnel selection and reachability.
-	/// State is protected by m_Mutex; persistence takes m_IoMutex first and
-	/// snapshots state briefly, so disk I/O does not hold the state lock.
+	/// Mutable per-peer observations used in tunnel selection and
+	/// reachability. State is protected by m_Mutex; persistence takes
+	/// m_IoMutex first and snapshots state briefly, so disk I/O does not
+	/// hold the state lock.
 	class RouterProfile
 	{
 	public:
 		RouterProfile ();
 
 		bool Save (const IdentHash & identHash);
-		// Load before publication; do not replace state while callers mutate it.
+		// Load before publication; do not replace state while callers mutate
+		// it.
 		void Load (const IdentHash & identHash);
 
 		bool IsBad ();
@@ -125,26 +128,30 @@ namespace data
 	};
 
 	std::shared_ptr<RouterProfile> GetRouterProfile (const IdentHash & identHash);
-	// Non-creating lookup: returns an existing in-memory profile, or null. It
-	// never creates a profile and never reads from disk, so it is safe for
-	// callers that hold a netDb container lock (selection filters).
+	// Non-creating lookup: returns an existing in-memory profile, or null.
+	// It never creates a profile and never reads from disk, so it is safe
+	// for callers that hold a netDb container lock (selection filters).
 	std::shared_ptr<RouterProfile> GetRouterProfileIfExists (const IdentHash & identHash);
 	// Deterministic test seam: observes every profile created by
-	// GetRouterProfile() that has to load its persisted state. The observer runs
-	// before the load; nullptr restores the default (no observer).
+	// GetRouterProfile() that has to load its persisted state. The
+	// observer runs before the load; nullptr restores the default (no
+	// observer).
 	void SetRouterProfileLoadObserverForTesting (std::function<void (const IdentHash &)> observer);
-	// Operator blocklist or runtime ban first, then the existing profile-tier
-	// unreachable check. Cheap and lock-free while the blocklist/runtime sets
-	// are empty; callers may use it on the transport hot path.
+	// Operator blocklist or runtime ban first, then the existing
+	// profile-tier unreachable check. Cheap and lock-free while the
+	// blocklist/runtime sets are empty; callers may use it on the
+	// transport hot path.
 	bool IsRouterBanned (const IdentHash & identHash);
 	bool IsRouterDuplicated (const IdentHash & identHash); // check only existing profiles
 	void InitProfilesStorage ();
-	// The selected root is immutable for the process lifetime; changing datadir
-	// requires a process restart. Calls are coordinated within this process and
-	// require exclusive ownership of the data directory. The overload accepts a test root.
+	// The selected root is immutable for the process lifetime; changing
+	// datadir requires a process restart. Calls are coordinated within
+	// this process and require exclusive ownership of the data directory.
+	// The overload accepts a test root.
 	void InitProfilesStorage (const std::string & place);
 	std::future<void> DeleteObsoleteProfiles ();
-	// Caller must stop profile producers and drain NetDb-owned async profile work first.
+	// Caller must stop profile producers and drain NetDb-owned async
+	// profile work first.
 	void SaveProfiles ();
 	std::future<void> PersistProfiles ();
 	bool UpdateRouterProfile (const IdentHash & identHash,

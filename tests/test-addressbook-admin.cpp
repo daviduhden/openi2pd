@@ -4,11 +4,11 @@
  *
  * openi2pd: test address-book administration.
  *
- * Offline checks for Java-compatible name validation, bounded add/replace/
- * remove semantics, shared-identity reference handling, subscription-URL
- * validation and the atomic subscriptions.txt round trip. No socket, resolver,
- * destination, timer or thread is started; the only filesystem use is an
- * isolated temporary data directory.
+ * Offline checks for Java-compatible name validation, bounded
+ * add/replace/ remove semantics, shared-identity reference handling,
+ * subscription-URL validation and the atomic subscriptions.txt round
+ * trip. No socket, resolver, destination, timer or thread is started;
+ * the only filesystem use is an isolated temporary data directory.
  */
 
 #include <cassert>
@@ -110,7 +110,8 @@ void TestAddReplaceRemove ()
 	assert (entries.size () == 1 && entries[0].name == "site.i2p");
 	assert (!entries[0].blinded);
 
-	// Same destination is a no-op; a different destination requires replace.
+	// Same destination is a no-op; a different destination requires
+	// replace.
 	assert (book.AddAddress ("site.i2p", Base64 (keyA), false) == Result::Ok);
 	assert (book.AddAddress ("site.i2p", Base64 (keyB), false) == Result::Exists);
 	assert (fake->saveCount == 1);
@@ -188,8 +189,8 @@ void TestSubscriptionValidation ()
 		assert (IsValidSubscriptionURL (url, error));
 		assert (error.empty ());
 	}
-	// A base32 destination host resolves without an address-book entry, so it
-	// stays a valid I2P-only source.
+	// A base32 destination host resolves without an address-book entry, so
+	// it stays a valid I2P-only source.
 	const std::string b32HostSource = "http://" + b32 + ".b32.i2p/hosts";
 	assert (IsValidSubscriptionURL (b32HostSource, error));
 	assert (error.empty ());
@@ -243,7 +244,8 @@ void TestSubscriptionRoundTrip ()
 	assert (book.GetSubscriptions (16).empty ());
 	assert (book.AddSubscription ("http://stats.i2p/hosts", error));
 	assert (error.empty ());
-	// Surrounding whitespace is trimmed; the stored value is the clean URL.
+	// Surrounding whitespace is trimmed; the stored value is the clean
+	// URL.
 	assert (book.AddSubscription ("  https://other.i2p/hosts?format=hosts  ", error));
 	assert (error.empty ());
 
@@ -298,8 +300,8 @@ void TestSubscriptionRoundTrip ()
 		while (std::getline (saved, line)) assert (line.empty () || line[0] == '#');
 	}
 
-	// The source list is capped; an entry beyond the cap is rejected instead of
-	// silently dropped.
+	// The source list is capped; an entry beyond the cap is rejected
+	// instead of silently dropped.
 	for (size_t i = 0; i < i2p::client::MAX_SUBSCRIPTION_URLS; i++)
 		assert (book.AddSubscription ("http://h" + std::to_string (i) + ".i2p/hosts", error));
 	assert (book.GetSubscriptions (0).size () == i2p::client::MAX_SUBSCRIPTION_URLS);

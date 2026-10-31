@@ -4,9 +4,10 @@
  *
  * openi2pd: Gzip.
  *
- * Streaming zlib wrappers for gzip inflate and deflate, including multi-buffer compression,
- * checked inflation that distinguishes a valid empty stream from a malformed one, and a
- * stored-block encoder for payloads smaller than 64 KiB.
+ * Streaming zlib wrappers for gzip inflate and deflate, including
+ * multi-buffer compression, checked inflation that distinguishes a
+ * valid empty stream from a malformed one, and a stored-block encoder
+ * for payloads smaller than 64 KiB.
  *
  */
 
@@ -29,11 +30,12 @@ namespace data
 		~GzipInflator ();
 
 		/// Inflate one gzip stream into a fixed output buffer.
-		/// @return Bytes written, or 0 when the input is too short, the stored
-		/// length exceeds the input or inflation fails. A truncated stored block
-		/// is copied up to outLen without an error, and a valid empty stream also
-		/// yields 0, so callers that must distinguish success from failure use
-		/// InflateChecked().
+		/// @return Bytes written, or 0 when the input is too short,
+		///         the stored length exceeds the input or inflation fails. A
+		///         truncated stored block is copied up to outLen without an
+		///         error, and a valid empty stream also yields 0, so callers
+		///         that must distinguish success from failure use
+		///         InflateChecked().
 		size_t Inflate (const uint8_t * in, size_t inLen, uint8_t * out, size_t outLen);
 		// Unlike Inflate(), this distinguishes a valid empty stream from a
 		// malformed one and reports the exact uncompressed length.

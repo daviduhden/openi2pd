@@ -5,8 +5,8 @@
  * openi2pd: test transport connector strategy.
  *
  * Verifies the static transport-to-strategy mapping and the null-server
- * short-circuit without opening a socket or creating a session. The test is
- * prepared for manual CI.
+ * short-circuit without opening a socket or creating a session. The
+ * test is prepared for manual CI.
  */
 
 #include <cassert>

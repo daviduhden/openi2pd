@@ -4,9 +4,10 @@
  *
  * openi2pd: Transports.
  *
- * Implements transport startup and shutdown, peer and session management,
- * message queueing with retry, ban-list maintenance, bandwidth sampling and the
- * X25519 key supplier, together with periodic peer tests and RouterInfo updates.
+ * Implements transport startup and shutdown, peer and session
+ * management, message queueing with retry, ban-list maintenance,
+ * bandwidth sampling and the X25519 key supplier, together with
+ * periodic peer tests and RouterInfo updates.
  *
  */
 
@@ -33,8 +34,9 @@ namespace transport
 	namespace
 	{
 		// Mirror TransportConnectContext's address selection so an operator
-		// blocklist entry can skip a single blocked transport without dropping a
-		// router that is still reachable through an unblocked address.
+		// blocklist entry can skip a single blocked transport without
+		// dropping a router that is still reachable through an unblocked
+		// address.
 		std::shared_ptr<const i2p::data::RouterInfo::Address> GetConnectAddress (
 			const i2p::data::RouterInfo & router, i2p::data::RouterInfo::SupportedTransports transport)
 		{
@@ -89,12 +91,13 @@ namespace transport
 	void X25519KeysPairSupplier::Run (std::stop_token token)
 	{
 		// Replenish/refill loop. `num` is "how many pairs are still missing",
-		// recomputed from the queue length after every refill, so a burst that
-		// overshoots the target (CreateEphemeralKeys can only add whole batches and
-		// generation itself may be slow) is detected by `total > m_QueueSize`: the
-		// worker then pauses instead of spinning, and the wait below blocks until a
-		// consumer takes a pair. condition_variable_any makes a stop request wake
-		// the wait without a separate flag, so Stop() never waits a full cycle.
+		// recomputed from the queue length after every refill, so a burst
+		// that overshoots the target (CreateEphemeralKeys can only add whole
+		// batches and generation itself may be slow) is detected by `total >
+		// m_QueueSize`: the worker then pauses instead of spinning, and the
+		// wait below blocks until a consumer takes a pair.
+		// condition_variable_any makes a stop request wake the wait without a
+		// separate flag, so Stop() never waits a full cycle.
 		i2p::util::SetThreadName ("Ephemerals");
 
 		int num = 0;
@@ -478,9 +481,9 @@ namespace transport
 		if (m_UpdateBandwidthTimer) m_UpdateBandwidthTimer->cancel ();
 		if (m_BanListCleanupTimer) m_BanListCleanupTimer->cancel ();
 
-		// Stop and release the servers before dropping the last peer refs. Each
-		// server drains its own service and destroys executor-bound sessions
-		// while its io_context is still alive.
+		// Stop and release the servers before dropping the last peer refs.
+		// Each server drains its own service and destroys executor-bound
+		// sessions while its io_context is still alive.
 		if (m_SSU2Server)
 		{
 			m_HasSSU2.store (false, std::memory_order_release);
@@ -605,15 +608,16 @@ namespace transport
 	std::shared_ptr<TransportSession> Transports::PostMessages (
 		const i2p::data::IdentHash & ident, std::list<std::shared_ptr<i2p::I2NPMessage>> & msgs)
 	{
-		// Runs on the transports thread (SendMessages posts here). The peer table is
-		// the admission point: a peer record exists before its session does, and
-		// messages for a connecting peer wait in peer->delayedMessages.
-		// MAX_NUM_DELAYED_MESSAGES bounds that wait, but past half of it messages
-		// are dropped (through onDrop when the sender registered one) instead of
-		// being queued, so a peer that never connects cannot hold a second
-		// half-queue of live callbacks. A ban is re-checked exactly at the
-		// half-queue threshold, the last point where the peer record can still be
-		// removed before the queue grows.
+		// Runs on the transports thread (SendMessages posts here). The peer
+		// table is the admission point: a peer record exists before its
+		// session does, and messages for a connecting peer wait in
+		// peer->delayedMessages. MAX_NUM_DELAYED_MESSAGES bounds that wait,
+		// but past half of it messages are dropped (through onDrop when the
+		// sender registered one) instead of being queued, so a peer that
+		// never connects cannot hold a second half-queue of live callbacks. A
+		// ban is re-checked exactly at the half-queue threshold, the last
+		// point where the peer record can still be removed before the queue
+		// grows.
 		if (ident == i2p::context.GetRouterInfo ().GetIdentHash ())
 		{
 			// we send it to ourself
@@ -712,15 +716,15 @@ namespace transport
 	{
 		// Peer priority is consumed monotonically: peer->numAttempts advances
 		// through peer->priority and is only reset by SetPriority() (a new
-		// RouterInfo) or by PeerConnected() after a successful connect. That is
-		// what lets PeerConnected() learn which transports already failed
-		// (priority[0 .. numAttempts-1]) and tell netDb to exclude them.
-		// A per-transport blocklist entry only skips that address, so a router
-		// reachable through another transport is not dropped.
-		// Operator blocklist and runtime bans are terminal: do not request an RI
-		// and do not retry. The historical profile-tier unreachable check is
-		// deliberately NOT applied here: it has a decay window and the original
-		// code still retried a peer that already had a RouterInfo.
+		// RouterInfo) or by PeerConnected() after a successful connect. That
+		// is what lets PeerConnected() learn which transports already failed
+		// (priority[0 .. numAttempts-1]) and tell netDb to exclude them. A
+		// per-transport blocklist entry only skips that address, so a router
+		// reachable through another transport is not dropped. Operator
+		// blocklist and runtime bans are terminal: do not request an RI and
+		// do not retry. The historical profile-tier unreachable check is
+		// deliberately NOT applied here: it has a decay window and the
+		// original code still retried a peer that already had a RouterInfo.
 		if (i2p::data::IsOperatorBlockedRouter (ident) || i2p::data::IsRuntimeRouterBanned (ident))
 		{
 			LogPrint (eLogWarning, "Transports: Router ", ident.ToBase64 (), " is banned. Peer dropped");
@@ -796,15 +800,15 @@ namespace transport
 
 	void Transports::SetPriority (std::shared_ptr<Peer> peer)
 	{
-		// Builds the ordered attempt list once per RouterInfo generation.
-		// The transport family is picked at random (a 1/2 chance of SSU2) and SSU2 is
-		// only kept when the peer's profile looks real; direct (published to us)
-		// addresses come first, then the remaining compatible transports.
-		// Post-quantum SSU2 is only attempted when the peer publishes a PQ version
-		// on every address it offers, otherwise the classic/NTCP2 ladder is used.
-		// A peer with no usable transport falls back to a recently seen SSU2
-		// endpoint from its profile, which is the only way to reach a firewalled
-		// NAT peer.
+		// Builds the ordered attempt list once per RouterInfo generation. The
+		// transport family is picked at random (a 1/2 chance of SSU2) and
+		// SSU2 is only kept when the peer's profile looks real; direct
+		// (published to us) addresses come first, then the remaining
+		// compatible transports. Post-quantum SSU2 is only attempted when the
+		// peer publishes a PQ version on every address it offers, otherwise
+		// the classic/NTCP2 ladder is used. A peer with no usable transport
+		// falls back to a recently seen SSU2 endpoint from its profile, which
+		// is the only way to reach a firewalled NAT peer.
 		static constexpr std::array ntcp2Priority = { i2p::data::RouterInfo::eNTCP2V6, i2p::data::RouterInfo::eNTCP2V4,
 			i2p::data::RouterInfo::eSSU2V6, i2p::data::RouterInfo::eSSU2V4, i2p::data::RouterInfo::eNTCP2V6Mesh },
 									ssu2Priority
@@ -1269,12 +1273,12 @@ namespace transport
 
 	void Transports::HandlePeerCleanupTimer (const boost::system::error_code & ecode)
 	{
-		// The peer table is swept under m_PeersMutex, but session and peer objects
-		// are only moved into the two local lists there and destroyed after the
-		// lock is released: a session destructor tears down executor-bound state
-		// and must not run while the table lock is held. An established peer is
-		// asked for a fresh RouterInfo on a jittered interval instead of being
-		// touched on every tick.
+		// The peer table is swept under m_PeersMutex, but session and peer
+		// objects are only moved into the two local lists there and destroyed
+		// after the lock is released: a session destructor tears down
+		// executor-bound state and must not run while the table lock is held.
+		// An established peer is asked for a fresh RouterInfo on a jittered
+		// interval instead of being touched on every tick.
 		if (ecode != boost::asio::error::operation_aborted)
 		{
 			auto ts = i2p::util::GetSecondsSinceEpoch ();
@@ -1390,14 +1394,12 @@ namespace transport
 	std::shared_ptr<const i2p::data::RouterInfo> Transports::GetRandomPeer (
 		Filter filter, i2p::data::PeerOrdering * peerOrdering) const
 	{
-		// m_Peers is an unordered_map without stable iteration order, so the
-		// selection is: one uniformly random index, then the neighbours before and
-		// after it, and finally the two tails. The scan order is what keeps the
-		// cost of a failed first pick small without ever iterating the whole table
-		// under the lock for the common case. lastSelectionTime is updated inside
-		// the lock so concurrent selectors cannot hand out the same peer within
-		// PEER_SELECTION_MIN_INTERVAL. The RouterInfo is looked up after the lock
-		// is dropped because netDb may evict or reload the entry.
+		// m_Peers has no stable order. Selection starts at a random index,
+		// then checks adjacent entries and finally both tails. This keeps the
+		// common case cheap without scanning the full table under the lock.
+		// Update lastSelectionTime under lock to prevent picks within the
+		// minimum interval. Look up RouterInfo after unlocking;
+		// netDb may evict or reload the entry.
 		bool found = false;
 		i2p::data::IdentHash foundIdent;
 		{

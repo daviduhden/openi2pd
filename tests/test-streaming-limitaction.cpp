@@ -2,12 +2,14 @@
  * See the LICENSE file at the top of the project tree for copyright
  * and license details.
  *
- * openi2pd: streaming admission (limitAction / access filter) regression.
+ * openi2pd: streaming admission (limitAction / access filter)
+ * regression.
  *
  * Installs the server-tunnel admission predicate on two streaming
- * destinations and proves that a denied peer is decided before any stream is
- * offered to the acceptor: `drop` keeps the wire silent, `reset` produces one
- * signed RESET, and a predicate installed for one port never affects another.
+ * destinations and proves that a denied peer is decided before any
+ * stream is offered to the acceptor: `drop` keeps the wire silent,
+ * `reset` produces one signed RESET, and a predicate installed for one
+ * port never affects another.
  *
  */
 
@@ -53,7 +55,8 @@ int main ()
 	assert (defaultDestination.GetLocalPort () == 0);
 	assert (portDestination.GetLocalPort () == 5555);
 
-	// Without a predicate every SYN is admitted and the historical RESET action
+	// Without a predicate every SYN is admitted and the historical RESET
+	// action
 	// stays in place for the streaming limits.
 	i2p::data::IdentHash peer;
 	peer.Fill (0x42);
@@ -75,8 +78,8 @@ int main ()
 	assert (portDestination.EvaluateAdmissionForTesting (peer) == StreamAdmission::eDrop);
 	assert (defaultDestination.EvaluateAdmissionForTesting (peer) == StreamAdmission::eAllow);
 
-	// Per-port isolation: a second predicate on another destination must not
-	// change the first one.
+	// Per-port isolation: a second predicate on another destination must
+	// not change the first one.
 	const auto resetAll
 		= [] (const i2p::data::IdentHash &, uint16_t) -> StreamAdmission { return StreamAdmission::eReset; };
 	auto otherDestination = std::make_shared<StreamingDestination> (fixture.owner, 6666);
@@ -85,8 +88,9 @@ int main ()
 	assert (otherDestination->EvaluateAdmissionForTesting (peer) == StreamAdmission::eReset);
 	assert (defaultDestination.EvaluateAdmissionForTesting (peer) == StreamAdmission::eAllow);
 
-	// A dropped admission is silent: no RESET is built, the connection is not
-	// remembered as recently closed and no stream reaches the acceptor queue.
+	// A dropped admission is silent: no RESET is built, the connection is
+	// not remembered as recently closed and no stream reaches the acceptor
+	// queue.
 	{
 		const uint32_t receiveStreamID = 0x0BADF00D;
 		assert (portDestination.GetNumRejectionResetsForTesting () == 0);
@@ -94,13 +98,15 @@ int main ()
 		assert (portDestination.GetNumRejectionResetsForTesting () == 0);
 		assert (portDestination.GetNumPendingIncomingForTesting () == 0);
 		assert (portDestination.GetNumStreams () == 0);
-		// A retransmitted SYN is not remembered, so it is dropped again rather
+		// A retransmitted SYN is not remembered, so it is dropped again
+		// rather
 		// than answered with a RESET.
 		assert (portDestination.AdmitSynForTesting (receiveStreamID) == StreamingDestination::SynAdmission::eAccept);
 	}
 
-	// A reset admission answers with exactly one signed RESET and remembers the
-	// connection as closed so a retransmission cannot reopen it.
+	// A reset admission answers with exactly one signed RESET and
+	// remembers the connection as closed so a retransmission cannot reopen
+	// it.
 	{
 		const uint32_t receiveStreamID = 0x0BADBEEF;
 		assert (otherDestination->GetNumRejectionResetsForTesting () == 0);
@@ -112,7 +118,8 @@ int main ()
 			== StreamingDestination::SynAdmission::eRecentlyClosed);
 	}
 
-	// limitAction maps onto the rejection action used for streaming limits:
+	// limitAction maps onto the rejection action used for streaming
+	// limits:
 	// `drop` is silent, the default resets.
 	portDestination.SetRejectionAction (StreamAdmission::eDrop);
 	assert (portDestination.GetRejectionAction () == StreamAdmission::eDrop);

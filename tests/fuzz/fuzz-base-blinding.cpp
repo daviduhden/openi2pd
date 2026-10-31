@@ -4,7 +4,9 @@
  *
  * openi2pd: fuzz base blinding.
  *
- * Fuzzes the Base32/Base64 decoders and the proposal 149 b33 parser using fixed output buffers, so malformed or overlong addresses must fail closed without out-of-bounds reads.
+ * Fuzzes the Base32/Base64 decoders and the proposal 149 b33 parser
+ * using fixed output buffers, so malformed or overlong addresses must
+ * fail closed without out-of-bounds reads.
  *
  */
 

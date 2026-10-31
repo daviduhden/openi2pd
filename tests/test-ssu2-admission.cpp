@@ -4,9 +4,9 @@
  *
  * openi2pd: test ssu2 admission.
  *
- * Checks the inbound handshake admission cap, the state set that it counts,
- * the connection-limit (reason 19) decision at the cap and the separate
- * PeerTest pseudo-session cap.
+ * Checks the inbound handshake admission cap, the state set that it
+ * counts, the connection-limit (reason 19) decision at the cap and the
+ * separate PeerTest pseudo-session cap.
  *
  */
 

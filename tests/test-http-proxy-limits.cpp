@@ -4,7 +4,9 @@
  *
  * openi2pd: test http proxy limits.
  *
- * Exercises the HTTP proxy receive-header ceiling at and above its boundary and handler accounting when CreateStream() completes with a null stream, using no listener or peer.
+ * Exercises the HTTP proxy receive-header ceiling at and above its
+ * boundary and handler accounting when CreateStream() completes with a
+ * null stream, using no listener or peer.
  *
  */
 
@@ -25,7 +27,10 @@ namespace
 using i2p::proxy::HTTP_PROXY_MAX_HEADER_SIZE;
 using i2p::proxy::HTTPProxyHeaderLimitExceeded;
 
-/** Build a syntactically valid request whose header is exactly `total` bytes. */
+/**
+ * Build a syntactically valid request whose header is exactly `total`
+ * bytes.
+ */
 std::string MakeRequestWithHeaderSize (std::size_t total)
 {
 	const std::string prefix = "GET / HTTP/1.1\r\nHost: example.i2p\r\nX-Fill: ";
@@ -53,8 +58,9 @@ void TestHeaderLimitBoundary ()
 }
 
 /**
- * The parser must stay incomplete while the header is being accumulated and
- * must succeed once the end-of-headers marker arrives at exactly 1 MiB.
+ * The parser must stay incomplete while the header is being accumulated
+ * and must succeed once the end-of-headers marker arrives at exactly 1
+ * MiB.
  */
 void TestIncrementalParserAtHeaderLimit ()
 {
@@ -92,9 +98,10 @@ void TestIncrementalParserAtHeaderLimit ()
 }
 
 /**
- * A peer that never terminates its header must be rejected before the buffer
- * grows past the ceiling. This mirrors HTTPReqHandler::HandleSockRecv(), which
- * calls HTTPProxyHeaderLimitExceeded() before every append.
+ * A peer that never terminates its header must be rejected before the
+ * buffer grows past the ceiling. This mirrors
+ * HTTPReqHandler::HandleSockRecv(), which calls
+ * HTTPProxyHeaderLimitExceeded() before every append.
  */
 void TestOversizedHeaderRejected ()
 {
@@ -119,8 +126,9 @@ void TestOversizedHeaderRejected ()
 }
 
 /**
- * Mirrors HTTPReqHandler's finalisation contract: a null stream closes the
- * handler state, leaves the owner's handler set and is safe to repeat.
+ * Mirrors HTTPReqHandler's finalisation contract: a null stream closes
+ * the handler state, leaves the owner's handler set and is safe to
+ * repeat.
  */
 class NullStreamHandler final : public i2p::client::I2PServiceHandler,
 								public std::enable_shared_from_this<NullStreamHandler>
@@ -230,7 +238,10 @@ void TestRequestTargetSchemes ()
 	assert (ProxyTargetErrorStatus (ProxyTargetError::Malformed) == 400);
 }
 
-/** `CONNECT [::1]:443` must parse an IPv6 literal instead of splitting on ':'. */
+/**
+ * `CONNECT [::1]:443` must parse an IPv6 literal instead of splitting
+ * on ':'.
+ */
 void TestConnectAuthority ()
 {
 	using i2p::proxy::ClassifyRequestTarget;
@@ -257,7 +268,7 @@ void TestConnectAuthority ()
 	assert (!ClassifyRequestTarget ("CONNECT", "::1:443", { }).IsValid ());
 }
 
-/** Hop-by-hop and proxy-disclosure headers are consumed by the proxy. */
+/** The proxy consumes hop-by-hop and proxy-disclosure headers. */
 void TestHopByHopStripMatrix ()
 {
 	using i2p::proxy::IsHopByHopHeaderName;
@@ -317,7 +328,10 @@ void TestHopByHopStripMatrix ()
 	assert (StripHopByHopHeaders (req) == 0);
 }
 
-/** A hostile Host can never produce markup, and the escaper is bounded. */
+/**
+ * A hostile Host can never produce markup, and the escaper is
+ * bounded.
+ */
 void TestHtmlEscaping ()
 {
 	using i2p::proxy::EscapeHTML;
@@ -337,11 +351,13 @@ void TestHtmlEscaping ()
 	assert (escaped.find ('"') == std::string::npos);
 	assert (escaped.find ("&lt;") != std::string::npos);
 
-	// C0 controls and DEL are dropped, so a page cannot inject a raw CR/LF.
+	// C0 controls and DEL are dropped, so a page cannot inject a raw
+	// CR/LF.
 	assert (EscapeHTML ("a\r\nb") == "ab");
 	assert (EscapeHTML (std::string ("a\0b", 3)) == "ab");
 
-	// Valid UTF-8 is preserved, invalid bytes become a replacement reference.
+	// Valid UTF-8 is preserved, invalid bytes become a replacement
+	// reference.
 	assert (EscapeHTML ("\xc3\xa9") == "\xc3\xa9");
 	assert (EscapeHTML ("\xff") == "&#xFFFD;");
 
@@ -378,8 +394,9 @@ void TestOutproxyURLRedaction ()
 
 void TestNullStreamHandlerAccounting ()
 {
-	// I2PService allocates a transient local destination (no network I/O and
-	// no listener) so CreateStream() can return through its normal callback.
+	// I2PService allocates a transient local destination (no network I/O
+	// and no listener) so CreateStream() can return through its normal
+	// callback.
 	auto owner = std::make_shared<i2p::client::I2PService> ();
 	auto handler = std::make_shared<NullStreamHandler> (owner);
 	std::weak_ptr<NullStreamHandler> weak = handler;

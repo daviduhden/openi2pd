@@ -4,9 +4,9 @@
  *
  * openi2pd: Random.
  *
- * Small bounded helpers over OpenSSL's CSPRNG. They replace process-global
- * rand()/srand() so security-relevant ports, padding, jitter and peer choices
- * do not depend on deterministic libc state.
+ * Small bounded helpers over OpenSSL's CSPRNG. They replace
+ * process-global rand()/srand() so security-relevant ports, padding,
+ * jitter and peer choices do not depend on deterministic libc state.
  *
  */
 

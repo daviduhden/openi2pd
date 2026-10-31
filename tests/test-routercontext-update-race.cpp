@@ -4,7 +4,10 @@
  *
  * openi2pd: test routercontext update race.
  *
- * Overlaps SetFamily/UpdateTimestamp with property reads and RouterInfo snapshots to exercise RouterContext locking; the test has no router identity, so signing and file persistence remain uncovered. Intended for TSan.
+ * Overlaps SetFamily/UpdateTimestamp with property reads and RouterInfo
+ * snapshots to exercise RouterContext locking; the test has no router
+ * identity, so signing and file persistence remain uncovered. Intended
+ * for TSan.
  *
  */
 

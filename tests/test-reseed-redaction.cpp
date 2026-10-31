@@ -4,10 +4,10 @@
  *
  * openi2pd: reseed credential redaction regression.
  *
- * The configured reseed proxy may carry `user:pass@host`. Only the endpoint may
- * reach a log record or the administrative reseed state; a credential must
- * never appear in a reason string. Deterministic: no socket, no thread beyond
- * the owned reseed job and no sleep.
+ * The configured reseed proxy may carry `user:pass@host`. Only the
+ * endpoint may reach a log record or the administrative reseed state; a
+ * credential must never appear in a reason string. Deterministic: no
+ * socket, no thread beyond the owned reseed job and no sleep.
  *
  */
 
@@ -29,8 +29,8 @@ using namespace i2p;
 using namespace i2p::data;
 
 constexpr const char * CREDENTIAL_PROXY = "http://user:secret@127.0.0.1:1";
-// An unsupported proxy scheme is rejected before any socket is opened, which
-// exercises the real HTTPS error path without a network.
+// An unsupported proxy scheme is rejected before any socket is opened,
+// which exercises the real HTTPS error path without a network.
 constexpr const char * UNSUPPORTED_PROXY = "ftp://user:secret@127.0.0.1:1";
 
 template <typename Predicate> bool WaitFor (Predicate predicate, std::chrono::milliseconds budget)
@@ -60,8 +60,8 @@ int main ()
 	using namespace i2p;
 	using namespace i2p::data;
 
-	// The redaction helper keeps only scheme://host:port and never returns the
-	// credential-bearing part of the value.
+	// The redaction helper keeps only scheme://host:port and never returns
+	// the credential-bearing part of the value.
 	assert (RedactReseedProxyForLog (CREDENTIAL_PROXY) == "http://127.0.0.1:1");
 	assert (
 		RedactReseedProxyForLog ("socks://user:secret@127.0.0.1:9050/path?x=1#fragment") == "socks://127.0.0.1:9050");
@@ -76,7 +76,8 @@ int main ()
 			 "http://user:secret@", "://user:secret@", "user:secret@127.0.0.1" })
 		assert (!ContainsSecret (RedactReseedProxyForLog (value)));
 
-	// A failing reseed reports a fixed reason and never the configured proxy.
+	// A failing reseed reports a fixed reason and never the configured
+	// proxy.
 	SetConfigValue ("reseed.proxy", CREDENTIAL_PROXY);
 
 	ReseedTestHooks hooks;
@@ -94,8 +95,9 @@ int main ()
 		assert (!ContainsSecret (state.lastError));
 	}
 
-	// A transport failure in the real HTTPS path (an unsupported proxy scheme is
-	// rejected before any socket is opened) is reported the same way.
+	// A transport failure in the real HTTPS path (an unsupported proxy
+	// scheme is rejected before any socket is opened) is reported the same
+	// way.
 	SetConfigValue ("reseed.proxy", UNSUPPORTED_PROXY);
 	SetConfigValue ("reseed.file", std::string ("https://reseed.invalid/i2pseeds.su3"));
 	database.SetReseedTestHooks (ReseedTestHooks { }); // no fetch hook: real transport

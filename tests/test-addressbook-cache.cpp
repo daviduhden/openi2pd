@@ -4,12 +4,12 @@
  *
  * openi2pd: test address-book negative cache.
  *
- * Offline checks for the bounded negative cache that suppresses repeated
- * FindAddress/LookupAddress attempts for an unknown name: the 60-second
- * lifetime, the 32-entry bound, the clear on add/remove, the removal on a
- * successful lookup and the rule that a blinded (b33) label is never cached.
- * No storage directory, resolver, destination, socket, thread or timer is
- * started.
+ * Offline checks for the bounded negative cache that suppresses
+ * repeated FindAddress/LookupAddress attempts for an unknown name: the
+ * 60-second lifetime, the 32-entry bound, the clear on add/remove, the
+ * removal on a successful lookup and the rule that a blinded (b33)
+ * label is never cached. No storage directory, resolver, destination,
+ * socket, thread or timer is started.
  */
 
 #include <cassert>
@@ -67,8 +67,8 @@ void TestHitAndExpiry ()
 	assert (!cache.IsCached ("absent.example.i2p", 100));
 
 	cache.Insert ("Absent.Example.I2P", 100);
-	// A hit inside the lifetime lets the caller skip the second lookup, and the
-	// key is the normalised name.
+	// A hit inside the lifetime lets the caller skip the second lookup,
+	// and the key is the normalised name.
 	assert (cache.Size (100) == 1);
 	assert (cache.IsCached ("absent.example.i2p", 100));
 	assert (cache.IsCached ("ABSENT.EXAMPLE.I2P", 100));
@@ -99,7 +99,8 @@ void TestBound ()
 		if (cache.IsCached (std::to_string (i) + ".example.i2p", 1001)) remaining++;
 	assert (remaining == Cache::MAX_ENTRIES - 1);
 
-	// Re-inserting a cached name refreshes it without evicting another entry.
+	// Re-inserting a cached name refreshes it without evicting another
+	// entry.
 	cache.Insert ("extra.example.i2p", 1002);
 	assert (cache.Size (1002) == Cache::MAX_ENTRIES);
 	assert (cache.IsCached ("extra.example.i2p", 1002 + Cache::TIMEOUT_SECONDS - 1));
@@ -110,7 +111,8 @@ void TestNeverCacheBlindedLabel ()
 	auto keys = MakeKeys ();
 	const std::string b33 = MakeB33 (keys);
 
-	// A b33 name is decoded locally, so it must never be remembered as a miss.
+	// A b33 name is decoded locally, so it must never be remembered as a
+	// miss.
 	assert (!Cache::IsCacheable (b33 + ".i2p"));
 	assert (!Cache::IsCacheable (b33 + ".b33.i2p"));
 	assert (!Cache::IsCacheable (b33 + ".b33.i2p.alt"));
@@ -149,14 +151,16 @@ void TestBookIntegration ()
 	i2p::client::AddressBook book (std::move (storage));
 	assert (book.GetNegativeCacheSize () == 0);
 
-	// A miss is remembered once: polling the same unknown name does not grow the
-	// table (the second call is served by the cache instead of a new lookup).
+	// A miss is remembered once: polling the same unknown name does not
+	// grow the table (the second call is served by the cache instead of a
+	// new lookup).
 	assert (!book.GetAddress ("absent.example.i2p"));
 	assert (book.GetNegativeCacheSize () == 1);
 	assert (!book.GetAddress ("absent.example.i2p"));
 	assert (book.GetNegativeCacheSize () == 1);
 
-	// A local add clears the cached miss and the name resolves immediately.
+	// A local add clears the cached miss and the name resolves
+	// immediately.
 	using Result = i2p::client::AddressAddResult;
 	assert (book.AddAddressChecked ("absent.example.i2p", Base64 (keys), false) == Result::Ok);
 	assert (book.GetNegativeCacheSize () == 0);
@@ -171,8 +175,8 @@ void TestBookIntegration ()
 	assert (book.RemoveAddress ("absent.example.i2p") == i2p::client::AddressBookMutationResult::Ok);
 	assert (book.GetNegativeCacheSize () == 0);
 
-	// A b33 name and a rejected b33 name are never cached: both are decided
-	// locally and must stay resolvable.
+	// A b33 name and a rejected b33 name are never cached: both are
+	// decided locally and must stay resolvable.
 	const std::string b33 = MakeB33 (keys);
 	auto blinded = book.GetAddress (b33 + ".i2p");
 	assert (blinded);

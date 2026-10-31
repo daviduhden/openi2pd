@@ -7,12 +7,13 @@
  * Implements an HTTP forward proxy that resolves .i2p hosts through the
  * address book, handles addresshelper jumps, sanitizes proxy-revealing
  * headers and rotates between configured outproxies. CONNECT, upstream
- * HTTP/SOCKS proxying and request parsing use a bounded header buffer, and
- * optional local Basic or Digest authentication answers 407 before any
- * address-book or outproxy side effect. Every generated page escapes the
- * client-supplied host and path, only HTTP(S) request targets are admitted,
- * hop-by-hop headers never cross the proxy in either direction and the
- * upstream/response phases are bounded by cancellable timers.
+ * HTTP/SOCKS proxying and request parsing use a bounded header buffer,
+ * and optional local Basic or Digest authentication answers 407 before
+ * any address-book or outproxy side effect. Every generated page
+ * escapes the client-supplied host and path, only HTTP(S) request
+ * targets are admitted, hop-by-hop headers never cross the proxy in
+ * either direction and the upstream/response phases are bounded by
+ * cancellable timers.
  *
  */
 
@@ -116,16 +117,17 @@ namespace proxy
 	/*
 	 * Local proxy authentication.
 	 *
-	 * See HTTPProxy.h for the contract. The helpers below never log, echo or
-	 * retain the supplied credential: the decoded buffer is cleansed before it
-	 * is released and only the configured username/password live in memory.
+	 * See HTTPProxy.h for the contract. The helpers below never log, echo
+	 * or retain the supplied credential: the decoded buffer is cleansed
+	 * before it is released and only the configured username/password live
+	 * in memory.
 	 */
 	namespace
 	{
 		/*
-		 * RFC 4648 standard alphabet. `i2p::data::Base64ToByteStream` uses the
-		 * I2P URL-safe alphabet ('-'/'~'), so a browser's '+'/'/' payload would
-		 * be rejected there; Basic credentials need the standard table.
+		 * RFC 4648 standard alphabet. `i2p::data::Base64ToByteStream` uses
+		 * the I2P URL-safe alphabet ('-'/'~'), so a browser's '+'/'/' payload
+		 * would be rejected there; Basic credentials need the standard table.
 		 */
 		constexpr std::array<std::int8_t, 256> BuildStandardBase64Table () noexcept
 		{
@@ -153,8 +155,9 @@ namespace proxy
 
 		/**
 		 * Strict standard-alphabet base64 decoder: four-character framing,
-		 * terminal-only padding, no whitespace, no non-canonical trailing bits
-		 * and a hard output bound of PROXY_AUTH_MAX_FIELD_SIZE * 2 + 1 bytes.
+		 * terminal-only padding, no whitespace, no non-canonical trailing
+		 * bits and a hard output bound of PROXY_AUTH_MAX_FIELD_SIZE * 2 + 1
+		 * bytes.
 		 */
 		bool DecodeStandardBase64 (std::string_view encoded, std::string & output)
 		{
@@ -344,7 +347,10 @@ namespace proxy
 			return true;
 		}
 
-		/** Append the UTF-8 sequence starting at @a index, or a replacement char. */
+		/**
+		 * Append the UTF-8 sequence starting at @a index, or a replacement
+		 * char.
+		 */
 		bool AppendUtf8 (std::string & out, std::string_view input, std::size_t & index)
 		{
 			const auto lead = static_cast<unsigned char> (input[index]);
@@ -633,8 +639,8 @@ namespace proxy
 		if (payload.find_first_of (" \t") != std::string_view::npos) return ProxyAuthResult::Malformed;
 		if (payload.size () > PROXY_AUTH_MAX_ENCODED_SIZE) return ProxyAuthResult::TooLarge;
 
-		// Only Basic is implemented; Digest and every other scheme are rejected
-		// rather than treated as an absent header.
+		// Only Basic is implemented; Digest and every other scheme are
+		// rejected rather than treated as an absent header.
 		if (!boost::iequals (scheme, "Basic")) return ProxyAuthResult::UnsupportedScheme;
 
 		std::string decoded;
@@ -666,8 +672,8 @@ namespace proxy
 			return parsed;
 		}
 
-		// An enabled but unusable configuration denies every request instead of
-		// falling back to an unauthenticated proxy. Both fields are always
+		// An enabled but unusable configuration denies every request instead
+		// of falling back to an unauthenticated proxy. Both fields are always
 		// compared so the timing does not depend on which one mismatches.
 		const bool user_ok = ProxySecretEquals (username, provided_user);
 		const bool password_ok = ProxySecretEquals (password, provided_password);
@@ -683,8 +689,8 @@ namespace proxy
 	std::size_t HTTPProxyStripCredentials (i2p::http::HTTPReq & req)
 	{
 		const std::size_t before = req.GetNumHeaders ();
-		// Case-insensitive prefix match: Proxy-Authorization, Proxy-Connection
-		// and every other proxy-scoped header stay local.
+		// Case-insensitive prefix match: Proxy-Authorization,
+		// Proxy-Connection and every other proxy-scoped header stay local.
 		req.RemoveHeader ("Proxy-");
 		return before - req.GetNumHeaders ();
 	}
@@ -963,8 +969,8 @@ namespace proxy
 		if (!enabled) return false;
 		if (username.empty () || password.empty ()) return false;
 		if (username.size () > PROXY_AUTH_MAX_FIELD_SIZE || password.size () > PROXY_AUTH_MAX_FIELD_SIZE) return false;
-		// A realm is interpolated verbatim into a quoted-string, so it must not
-		// contain a quote, a backslash, a comma or a line break.
+		// A realm is interpolated verbatim into a quoted-string, so it must
+		// not contain a quote, a backslash, a comma or a line break.
 		if (realm.empty () || realm.size () > 64) return false;
 		for (const char ch : realm)
 			if (ch == '"' || ch == '\\' || ch == ',' || static_cast<unsigned char> (ch) < 0x20
@@ -1102,8 +1108,9 @@ namespace proxy
 			return ProxyDigestResult::StaleNonce;
 		}
 		if (!ProxySecretEquals (nonce->second.opaque, credentials.opaque)) return ProxyDigestResult::BadNonce;
-		// The nonce count must strictly increase: a replay and an out-of-order
-		// retry are both rejected without touching the recorded value.
+		// The nonce count must strictly increase: a replay and an
+		// out-of-order retry are both rejected without touching the recorded
+		// value.
 		if (nc <= nonce->second.lastNc) return ProxyDigestResult::Replayed;
 
 		const std::string & ha1 = algorithm == ProxyDigestAlgorithm::Sha256 ? m_Ha1Sha256 : m_Ha1Md5;
@@ -1150,9 +1157,9 @@ namespace proxy
 
 		// Two `Proxy-Authenticate` headers cannot be represented by the
 		// HTTPRes header map (it is keyed by name), so the response is built
-		// explicitly. RFC 7616 clients accept the first algorithm they support,
-		// so the stronger one is offered first; an MD5-only client reads the
-		// second challenge.
+		// explicitly. RFC 7616 clients accept the first algorithm they
+		// support, so the stronger one is offered first; an MD5-only client
+		// reads the second challenge.
 		std::string response = "HTTP/1.1 407 Proxy Authentication Required\r\n";
 		response += "Proxy-Authenticate: "
 			+ HTTPProxyDigestChallenge (realm, nonce, opaque, ProxyDigestAlgorithm::Sha256, stale) + "\r\n";
@@ -1171,7 +1178,9 @@ namespace proxy
 		bool HandleRequest ();
 		void HandleSockRecv (const boost::system::error_code & ecode, std::size_t bytes_transfered);
 		void Terminate ();
-		/** Close both sockets without calling Done (safe in the destructor). */
+		/**
+		 * Close both sockets without calling Done (safe in the destructor).
+		 */
 		void CloseSockets () noexcept;
 		void AsyncSockRead ();
 		static bool ExtractAddressHelper (i2p::http::URL & url, std::string & jump, bool & confirm);
@@ -1192,7 +1201,7 @@ namespace proxy
 		void SendRedirect (const std::string & address);
 		/** Local proxy authentication; also strips every Proxy-* header. */
 		bool AuthorizeClient ();
-		/** @param stale true when a Digest nonce expired and the client may retry. */
+		/** @param stale True if an expired Digest nonce allows a retry. */
 		void SendProxyAuthRequired (bool stale = false);
 
 		void ForwardToUpstreamProxy ();
@@ -1230,7 +1239,9 @@ namespace proxy
 		boost::asio::steady_timer m_UpstreamTimer;
 		boost::asio::steady_timer m_AuthTimer;
 		std::string m_UpstreamPhase;
-		/** Set once an upstream phase expired: late callbacks must not reply. */
+		/**
+		 * Set once an upstream phase expired: late callbacks must not reply.
+		 */
 		bool m_UpstreamAbandoned = false;
 		std::string m_OutproxyUrl, m_Response;
 		bool m_Addresshelper, m_SendUserAgent;
@@ -1326,8 +1337,8 @@ namespace proxy
 
 	void HTTPReqHandler::CloseSockets () noexcept
 	{
-		// Move the references out first so an exception from logging or from a
-		// socket operation cannot leave a half-closed member behind. The
+		// Move the references out first so an exception from logging or from
+		// a socket operation cannot leave a half-closed member behind. The
 		// remaining shared_ptr destructors close the descriptors.
 		auto sock = std::move (m_sock);
 		auto proxysock = std::move (m_proxysock);
@@ -1357,9 +1368,10 @@ namespace proxy
 		m_HeaderTimer.cancel ();
 		m_UpstreamTimer.cancel ();
 		m_AuthTimer.cancel ();
-		// Idempotent: Kill() may already have been called by another callback,
-		// in which case the owner's reference was already released (or the
-		// owner is clearing its handler set). Sockets are always closed.
+		// Idempotent: Kill() may already have been called by another
+		// callback, in which case the owner's reference was already released
+		// (or the owner is clearing its handler set). Sockets are always
+		// closed.
 		const bool alreadyDead = Kill ();
 		CloseSockets ();
 		if (!alreadyDead) Done (shared_from_this ());
@@ -1367,9 +1379,9 @@ namespace proxy
 
 	void HTTPReqHandler::GenericProxyError (std::string_view title, std::string_view description, int code)
 	{
-		// Both arguments are plain text: every untrusted value must already be
-		// escaped by the caller, and the escaping happens here as well so a
-		// future call site cannot interpolate markup.
+		// Both arguments are plain text: every untrusted value must already
+		// be escaped by the caller, and the escaping happens here as well so
+		// a future call site cannot interpolate markup.
 		std::stringstream ss;
 		ss << "<h1>" << EscapeHTML (tr ("Proxy error")) << ": " << EscapeHTML (title) << "</h1>\r\n";
 		ss << "<p>" << EscapeHTML (description) << "</p>\r\n";
@@ -1400,7 +1412,8 @@ namespace proxy
 				ss << "  <li><a href=\"" << js->second << escapedHost << "\">" << js->first << "</a></li>\r\n";
 		}
 		ss << "</ul>\r\n";
-		// 502: the proxy is a gateway and could not resolve a valid destination.
+		// 502: the proxy is a gateway and could not resolve a valid
+		// destination.
 		SendProxyError (ss.str (), HTTP_PROXY_STATUS_BAD_GATEWAY);
 	}
 
@@ -1432,8 +1445,8 @@ namespace proxy
 			Terminate ();
 			return;
 		}
-		// A header value must never carry a line break. The address comes from
-		// the parsed request, so this is defence in depth only.
+		// A header value must never carry a line break. The address comes
+		// from the parsed request, so this is defence in depth only.
 		if (address.find ('\r') != std::string::npos || address.find ('\n') != std::string::npos
 			|| address.size () > HTTP_PROXY_MAX_HEADER_SIZE)
 		{
@@ -1584,13 +1597,15 @@ namespace proxy
 			confirm = true;
 		}
 
-		// if helper is not only one query option and it placed after user's query
+		// if helper is not only one query option and it placed after user's
+		// query
 		if (pos != 0 && url.query[pos - 1] == '&')
 		{
 			pos--;
 			len++;
 		}
-		// if helper is not only one query option and it placed before user's query
+		// if helper is not only one query option and it placed before user's
+		// query
 		else if (pos == 0 && url.query.length () > len && url.query[len] == '&')
 		{
 			// we don't touch the '?' but remove the trailing '&'
@@ -1635,20 +1650,18 @@ namespace proxy
 		return false;
 	}
 
-	// Request hygiene for anything forwarded to a destination. The order is
-	// load-bearing:
-	//   1. the websocket-upgrade decision is taken from the *original*
-	//      Connection value, because hop-by-hop stripping would remove it;
-	//   2. hop-by-hop headers, proxy-only headers and the X-Forwarded-* family
-	//      are removed in both directions (a destination must not learn a
-	//      client's address, and a client must not attribute a request to one);
-	//   3. an NTLM Authorization value is dropped, because NTLM authenticates
-	//      the upstream *connection* and would bind the destination connection
-	//      to the proxy identity;
-	//   4. either the upgrade is restored as `Connection: Upgrade` or the
-	//      connection is forced to `close`.
-	// Nothing here logs a header value, and no header that carries a credential
-	// is copied into an error page.
+	// Request hygiene for anything forwarded to a destination. The order
+	// is load-bearing: 1. the websocket-upgrade decision is taken from the
+	// *original* Connection value, because hop-by-hop stripping would
+	// remove it; 2. hop-by-hop headers, proxy-only headers and the
+	// X-Forwarded-* family are removed in both directions (a destination
+	// must not learn a client's address, and a client must not attribute a
+	// request to one); 3. an NTLM Authorization value is dropped, because
+	// NTLM authenticates the upstream *connection* and would bind the
+	// destination connection to the proxy identity; 4. either the upgrade
+	// is restored as `Connection: Upgrade` or the connection is forced to
+	// `close`. Nothing here logs a header value, and no header that
+	// carries a credential is copied into an error page.
 	void HTTPReqHandler::SanitizeHTTPRequest (i2p::http::HTTPReq & req)
 	{
 		/* drop common headers */
@@ -1662,9 +1675,10 @@ namespace proxy
 		req.RemoveHeader ("Proxy-"); // Proxy-*
 
 		/*
-		 * Hop-by-hop headers and the X-Forwarded-* and *-IP families are never
-		 * forwarded. The websocket upgrade decision is taken first because a
-		 * legitimate `Connection: Upgrade` must survive in a normalised form.
+		 * Hop-by-hop headers and the X-Forwarded-* and *-IP families are
+		 * never forwarded. The websocket upgrade decision is taken first
+		 * because a legitimate `Connection: Upgrade` must survive in a
+		 * normalised form.
 		 */
 		const std::string connection = req.GetHeader ("Connection");
 		const auto upgrade = connection.find ("pgrade");
@@ -1680,9 +1694,9 @@ namespace proxy
 		if (!m_SendUserAgent) req.UpdateHeader ("User-Agent", "MYOB/6.66 (AN/ON)");
 
 		/**
-		 * i2pd PR #1816:
-		 * Android Webview send this with the value set to the application ID, so we drop it,
-		 * but only if it does not belong to an AJAX request (*HttpRequest, like XMLHttpRequest).
+		 * i2pd PR #1816: Android Webview send this with the value set to the
+		 * application ID, so we drop it, but only if it does not belong to an
+		 * AJAX request (*HttpRequest, like XMLHttpRequest).
 		 */
 		if (req.GetHeader ("X-Requested-With") != "")
 		{
@@ -1725,10 +1739,10 @@ namespace proxy
 	bool HTTPReqHandler::HandleRequest ()
 	{
 		/*
-		 * Refuse an unsupported request scheme before the full parser can turn
-		 * it into a different error and before any address-book, resolver or
-		 * outproxy side effect. `ftp://`, `mailto:` and every other non-HTTP
-		 * scheme must be a 403, matching I2P Java
+		 * Refuse an unsupported request scheme before the full parser can
+		 * turn it into a different error and before any address-book,
+		 * resolver or outproxy side effect. `ftp://`, `mailto:` and every
+		 * other non-HTTP scheme must be a 403, matching I2P Java
 		 * `I2PTunnelHTTPClient.isSupportedAddress()`.
 		 */
 		if (const auto firstLine = m_recv_buf.find ("\r\n"); firstLine != std::string::npos)
@@ -1758,7 +1772,8 @@ namespace proxy
 		m_req_len = m_ClientRequest.parse (m_recv_buf);
 
 		if (!m_req_len) return false; /* need more data */
-		// Header complete (or rejected): the handshake deadline no longer applies.
+		// Header complete (or rejected): the handshake deadline no longer
+		// applies.
 		m_HeaderTimer.cancel ();
 
 		if (m_req_len < 0)
@@ -1781,13 +1796,14 @@ namespace proxy
 			return true;
 		}
 
-		// Local authentication runs before any address-book mutation, redirect
-		// or stream creation. It also rewrites the parsed request so the local
-		// credential is gone whatever happens below.
+		// Local authentication runs before any address-book mutation,
+		// redirect or stream creation. It also rewrites the parsed request so
+		// the local credential is gone whatever happens below.
 		if (!AuthorizeClient ()) return true;
 
 		// Only the method and the validated destination host are logged: the
-		// request target may carry a query string, a session token or userinfo.
+		// request target may carry a query string, a session token or
+		// userinfo.
 		ProxyRequestTarget requestTarget
 			= ClassifyRequestTarget (m_ClientRequest.method, m_ClientRequest.uri, m_ClientRequest.GetHeader ("Host"));
 		if (!requestTarget.IsValid ())
@@ -1908,15 +1924,15 @@ namespace proxy
 		}
 
 		// The classifier already resolved the authority (including an IPv6
-		// CONNECT target and the origin-form default port), so no branch below
-		// can act on an unvalidated host.
+		// CONNECT target and the origin-form default port), so no branch
+		// below can act on an unvalidated host.
 		const std::string dest_host = requestTarget.host;
 		const uint16_t dest_port = requestTarget.port;
 		const bool useConnect = requestTarget.useConnect;
 		if (!useConnect)
 		{
 			SanitizeHTTPRequest (m_ClientRequest);
-			/* absolute url: set the proper 'Host' header in the upstream request */
+			/* Set Host for an absolute URL sent to the upstream. */
 			if (requestTarget.absolute)
 			{
 				std::string h (dest_host);
@@ -1924,14 +1940,14 @@ namespace proxy
 				m_ClientRequest.UpdateHeader ("Host", h);
 			}
 		}
-		/* Never relay loopback/private clearnet targets through an outproxy. */
+		/* Never send loopback or private clearnet targets to an outproxy. */
 		if (!i2p::client::IsI2PHost (dest_host) && IsBlockedClearnetTarget (dest_host))
 		{
 			GenericProxyError (tr ("Blocked target"), tr ("Loopback and private clearnet targets are not allowed"),
 				HTTP_PROXY_STATUS_FORBIDDEN);
 			return true;
 		}
-		/* check dest_host really exists and inside I2P network */
+		/* Resolve the host only through the I2P network. */
 		if (i2p::client::IsI2PHost (dest_host))
 		{
 			auto addr = i2p::client::context.GetAddressBook ().GetAddress (dest_host);
@@ -1995,7 +2011,7 @@ namespace proxy
 
 		/* drop original request from recv buffer */
 		m_recv_buf.erase (0, m_req_len);
-		/* build new buffer from modified request and data from original request */
+		/* Combine the rewritten request with the unread body bytes. */
 		m_send_buf = m_ClientRequest.to_string ();
 		m_send_buf.append (m_recv_buf);
 		/* connect to destination */
@@ -2009,14 +2025,14 @@ namespace proxy
 		return true;
 	}
 
-	// Forward one sanitized request to the configured outproxy.
-	// Two shapes are supported: an I2P outproxy (a destination reached through a
+	// Forward one sanitized request to the configured outproxy. Two shapes
+	// are supported: an I2P outproxy (a destination reached through a
 	// stream, with an optional locally added Proxy-Authorization) and a
-	// configured upstream HTTP/SOCKS proxy. The outproxy credential is used only
-	// to build that header; it is never logged and never forwarded as part of a
-	// URI. A non-I2P upstream is used only because the operator configured it as
-	// an outproxy; an ordinary request target is never resolved to a cleartext
-	// address on this path.
+	// configured upstream HTTP/SOCKS proxy. The outproxy credential is
+	// used only to build that header; it is never logged and never
+	// forwarded as part of a URI. A non-I2P upstream is used only because
+	// the operator configured it as an outproxy; an ordinary request
+	// target is never resolved to a cleartext address on this path.
 	void HTTPReqHandler::ForwardToUpstreamProxy ()
 	{
 		LogPrint (eLogDebug, "HTTPProxy: Forwarded to upstream");
@@ -2029,7 +2045,7 @@ namespace proxy
 		std::string origURI = m_ClientRequest.uri; // TODO: what do we need to change uri for?
 		m_ClientRequest.uri = m_ClientRequestURL.to_string ();
 
-		/* update User-Agent to ESR version of Firefox, same as Tor Browser below version 13, for non-HTTPS connections */
+		/* Match the Firefox ESR user agent for non-HTTPS requests. */
 		if (m_ClientRequest.method != "CONNECT" && !m_SendUserAgent)
 			m_ClientRequest.UpdateHeader (
 				"User-Agent", "Mozilla/5.0 (Windows NT 10.0; rv:109.0) Gecko/20100101 Firefox/115.0");
@@ -2107,8 +2123,8 @@ namespace proxy
 
 	void HTTPReqHandler::ArmUpstreamDeadline (std::string_view phase)
 	{
-		// The phase label is a fixed internal string: it never contains a URL,
-		// a credential, a query string or any client input.
+		// The phase label is a fixed internal string: it never contains a
+		// URL, a credential, a query string or any client input.
 		m_UpstreamPhase.assign (phase);
 		auto weak = weak_from_this ();
 		m_UpstreamTimer.expires_after (std::chrono::seconds (HTTP_PROXY_UPSTREAM_TIMEOUT));
@@ -2382,9 +2398,10 @@ namespace proxy
 		}
 
 		// Invariant: a previous HandleRequest() that saw the end of headers
-		// either consumed the request (m_recv_buf cleared) or stopped reading.
-		// Whenever this callback runs, m_recv_buf therefore holds at most an
-		// incomplete header, and the ceiling is checked before every append.
+		// either consumed the request (m_recv_buf cleared) or stopped
+		// reading. Whenever this callback runs, m_recv_buf therefore holds at
+		// most an incomplete header, and the ceiling is checked before every
+		// append.
 		if (HTTPProxyHeaderLimitExceeded (m_recv_buf.size (), len))
 		{
 			LogPrint (eLogWarning, "HTTPProxy: Request header exceeds ", HTTP_PROXY_MAX_HEADER_SIZE,
@@ -2413,13 +2430,14 @@ namespace proxy
 	/**
 	 * A proxied connection towards an I2P destination.
 	 *
-	 * The request direction keeps the existing ClientRequest normalisation.
-	 * The response direction is parsed with Mode::ClientResponse, so
-	 * hop-by-hop and proxy-only headers from the destination never reach the
-	 * browser, and the first response header must arrive within
-	 * HTTP_PROXY_RESPONSE_HEADER_TIMEOUT; an expiry answers 504 and closes.
-	 * `I2PClientTunnelConnectionHTTP` cannot be reused because it applies the
-	 * *request* transform to the response direction.
+	 * The request direction keeps the existing ClientRequest
+	 * normalisation. The response direction is parsed with
+	 * Mode::ClientResponse, so hop-by-hop and proxy-only headers from the
+	 * destination never reach the browser, and the first response header
+	 * must arrive within HTTP_PROXY_RESPONSE_HEADER_TIMEOUT; an expiry
+	 * answers 504 and closes. `I2PClientTunnelConnectionHTTP` cannot be
+	 * reused because it applies the *request* transform to the response
+	 * direction.
 	 */
 	class HTTPProxyClientConnection final : public i2p::client::I2PTunnelConnection
 	{
@@ -2511,13 +2529,13 @@ namespace proxy
 	};
 
 	// Completion of the destination stream request. This is the ownership
-	// handoff point: a successful completion moves the client socket into a new
-	// I2PTunnelConnection (registered with the owner) and clears m_sock, so the
-	// request handler never closes a socket it no longer owns. A failed
-	// completion answers 504 and releases the owner's handler reference
-	// immediately, so request accounting does not depend on the error write
-	// completing; a handler that was killed meanwhile closes its sockets instead
-	// of writing.
+	// handoff point: a successful completion moves the client socket into
+	// a new I2PTunnelConnection (registered with the owner) and clears
+	// m_sock, so the request handler never closes a socket it no longer
+	// owns. A failed completion answers 504 and releases the owner's
+	// handler reference immediately, so request accounting does not depend
+	// on the error write completing; a handler that was killed meanwhile
+	// closes its sockets instead of writing.
 	void HTTPReqHandler::HandleStreamRequestComplete (std::shared_ptr<i2p::stream::Stream> stream)
 	{
 		// Any upstream phase (an I2P outproxy stream included) ends here.
@@ -2586,7 +2604,8 @@ namespace proxy
 		, m_Addresshelper (addresshelper)
 		, m_SendUserAgent (senduseragent)
 	{
-		// outproxy is a comma separated list, the same way a client tunnel takes several destinations
+		// outproxy is a comma separated list, the same way a client tunnel
+		// takes several destinations
 		boost::split (m_OutproxyUrls, outproxy, boost::is_any_of (","), boost::token_compress_on);
 		for (auto & it : m_OutproxyUrls) boost::trim (it);
 		m_OutproxyUrls.erase (std::remove (m_OutproxyUrls.begin (), m_OutproxyUrls.end (), ""), m_OutproxyUrls.end ());
@@ -2597,9 +2616,9 @@ namespace proxy
 		//   httpproxy.auth.username    - accepted username, 1..255 bytes
 		//   httpproxy.auth.password    - accepted password, 1..255 bytes
 		//   httpproxy.auth.realm       - Digest realm, default "openi2pd"
-		//   httpproxy.auth.failuredelay- non-blocking delay before a 407, ms
+		//   httpproxy.auth.failuredelay - non-blocking delay before 407, ms
 		// An enabled listener with an empty or oversized field, an unknown
-		// scheme or an invalid realm denies every request (fail closed) instead
+		// scheme, or invalid realm denies every request (fail closed) instead
 		// of exposing an open proxy.
 		bool authEnabled = false;
 		i2p::config::GetOption ("httpproxy.auth.enabled", authEnabled);

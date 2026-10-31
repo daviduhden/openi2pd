@@ -4,7 +4,9 @@
  *
  * openi2pd: test http merge chunked.
  *
- * Checks chunked-response de-framing: hex sizes, chunk extensions, content concatenation and rejection of truncated, non-hex or trailing-garbage input without partial output.
+ * Checks chunked-response de-framing: hex sizes, chunk extensions,
+ * content concatenation and rejection of truncated, non-hex or
+ * trailing-garbage input without partial output.
  *
  */
 
@@ -42,7 +44,8 @@ int main ()
 	assert (MergeChunkedResponse (extended, out3) == true);
 	assert (out3.str () == "abc");
 
-	/* non-hex and trailing garbage must be rejected, not partially parsed */
+	/* Reject non-hex digits and trailing garbage instead of parsing a
+	 * prefix. */
 	std::stringstream invalid ("zz\r\nabc\r\n0\r\n\r\n");
 	std::stringstream out4;
 	assert (MergeChunkedResponse (invalid, out4) == false);

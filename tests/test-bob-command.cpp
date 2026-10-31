@@ -4,12 +4,13 @@
  *
  * openi2pd: test bob command.
  *
- * Compile-free regression for the BOB command channel policy: the bounded line
- * reader rejects a newline-free flood without unbounded growth and keeps a
- * pipelined line queued, an invalid port operand becomes a protocol error
- * instead of a throwing conversion, the concurrent-session cap is enforced,
- * and the private-key reply stays disabled unless the option is explicit. No
- * socket, destination or tunnel is created.
+ * Compile-free regression for the BOB command channel policy: the
+ * bounded line reader rejects a newline-free flood without unbounded
+ * growth and keeps a pipelined line queued, an invalid port operand
+ * becomes a protocol error instead of a throwing conversion, the
+ * concurrent-session cap is enforced, and the private-key reply stays
+ * disabled unless the option is explicit. No socket, destination or
+ * tunnel is created.
  *
  */
 
@@ -38,7 +39,8 @@ int main ()
 {
 	using namespace i2p::client;
 
-	// --- bounded line reader ----------------------------------------------
+	// --- bounded line reader
+	// ----------------------------------------------
 	{
 		Check (BOB_MAX_COMMAND_LINE == 4096, "command line bound is 4 KiB");
 
@@ -91,7 +93,8 @@ int main ()
 		}
 	}
 
-	// --- port operand ------------------------------------------------------
+	// --- port operand
+	// ------------------------------------------------------
 	{
 		uint16_t port = 0;
 		Check (ParseBOBPort ("", port) == BOBPortResult::Empty, "empty port is rejected");
@@ -105,7 +108,8 @@ int main ()
 		Check (ParseBOBPort ("8080", port) == BOBPortResult::Ok && port == 8080, "ordinary port is accepted");
 	}
 
-	// --- session admission -------------------------------------------------
+	// --- session admission
+	// -------------------------------------------------
 	{
 		Check (BOB_MAX_CONCURRENT_SESSIONS >= 1, "session cap is positive");
 		BOBAdmissionState state;
@@ -146,7 +150,8 @@ int main ()
 		Check (shared.active.load () == 0, "contended admission returns to zero");
 	}
 
-	// --- getkeys opt-in ----------------------------------------------------
+	// --- getkeys opt-in
+	// ----------------------------------------------------
 	{
 		Check (!BOB_DEFAULT_ALLOW_GETKEYS, "getkeys is denied by default");
 		Check (!ResolveBOBAllowGetKeys (false, false), "absent option denies getkeys");

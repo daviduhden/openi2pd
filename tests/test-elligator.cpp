@@ -4,7 +4,9 @@
  *
  * openi2pd: test elligator.
  *
- * Checks Elligator2 encoding/decoding round trips, high-Y handling and rejection of non-canonical representatives at the (p-1)/2 boundary required by proposal 148.
+ * Checks Elligator2 encoding/decoding round trips, high-Y handling and
+ * rejection of non-canonical representatives at the (p-1)/2 boundary
+ * required by proposal 148.
  *
  */
 
@@ -56,8 +58,8 @@ int main ()
 	el.Decode (encoded2, buf);
 	assert (memcmp (buf, key2, 32) == 0);
 	// Proposal 148 / Java Elligator2 rejects r >= (p-1)/2. encoded3 is the
-	// boundary representative; accepting it would make Decode() return a key
-	// that Java never decodes from the same bytes.
+	// boundary representative; accepting it would make Decode() return a
+	// key that Java never decodes from the same bytes.
 	assert (!el.Decode (encoded3, buf));
 	// encoding fails
 	assert (!el.Encode (failed_key, buf));

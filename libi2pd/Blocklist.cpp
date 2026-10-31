@@ -5,17 +5,17 @@
  * openi2pd: Blocklist.
  *
  * Implements the one-shot operator blocklist load, the Java-compatible
- * bounded line parser, immutable snapshot queries and the bounded in-memory
- * runtime-ban set.
+ * bounded line parser, immutable snapshot queries and the bounded
+ * in-memory runtime-ban set.
  *
- * Deliberate omissions (do not add silently):
- *   - no reload watcher: an operator must restart the router to change the
- *     list, so a reader can never observe a half-built table;
- *   - no country/GeoIP blocking and no blocklist.tor/country feeds;
- *   - no hostname resolution: Java resolves hostnames while reading, but this
- *     implementation skips them so startup never depends on DNS and a
- *     resolver failure cannot silently unblock an entry;
- *   - no persisted runtime bans and no automatic banlist write-back.
+ * Deliberate omissions (do not add silently): - no reload watcher: an
+ * operator must restart the router to change the list, so a reader can
+ * never observe a half-built table; - no country/GeoIP blocking and no
+ * blocklist.tor/country feeds; - no hostname resolution: Java resolves
+ * hostnames while reading, but this implementation skips them so
+ * startup never depends on DNS and a resolver failure cannot silently
+ * unblock an entry; - no persisted runtime bans and no automatic
+ * banlist write-back.
  *
  */
 
@@ -142,9 +142,10 @@ namespace data
 			return bytes[10] == 0xFF && bytes[11] == 0xFF;
 		}
 
-		// Read one boolean option with an explicit fallback. GetOption() writes
-		// a default-constructed value when the key is absent, so the fallback
-		// must be restored from its return value rather than the mapped value.
+		// Read one boolean option with an explicit fallback. GetOption()
+		// writes a default-constructed value when the key is absent, so the
+		// fallback must be restored from its return value rather than the
+		// mapped value.
 		bool GetBooleanOption (const char * name, bool fallback)
 		{
 			bool value = fallback;
@@ -276,8 +277,8 @@ namespace data
 
 	bool OperatorBlocklistSnapshot::IsAddressBlocked (uint32_t ipv4) const
 	{
-		// The ranges are sorted by `from` and merged, so the candidate range is
-		// the last one starting at or before the address.
+		// The ranges are sorted by `from` and merged, so the candidate range
+		// is the last one starting at or before the address.
 		const auto it = std::upper_bound (m_Ipv4Ranges.begin (), m_Ipv4Ranges.end (), ipv4,
 			[] (uint32_t value, const std::pair<uint32_t, uint32_t> & range) { return value < range.first; });
 		if (it == m_Ipv4Ranges.begin ()) return false;

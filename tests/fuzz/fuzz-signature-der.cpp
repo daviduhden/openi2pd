@@ -4,7 +4,9 @@
  *
  * openi2pd: fuzz signature der.
  *
- * Mutates a valid P-521 signature and verifies it to exercise ECDSA DER conversion at and beyond the historical keyLen + 8 buffer bound, using a fixed generator identity instead of key generation.
+ * Mutates a valid P-521 signature and verifies it to exercise ECDSA DER
+ * conversion at and beyond the historical keyLen + 8 buffer bound,
+ * using a fixed generator identity instead of key generation.
  *
  */
 

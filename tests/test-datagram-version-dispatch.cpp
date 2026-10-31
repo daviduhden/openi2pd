@@ -4,12 +4,12 @@
  *
  * openi2pd: test per-send datagram version dispatch.
  *
- * Verifies that the framing version is chosen per send: a destination created
- * for Datagram1 must emit Datagram3 framing when the caller asks for it, an
- * unset version keeps the session's version, and the session version is not
- * frozen by an explicit request. The built I2NP Data message is inspected
- * through the DatagramSession send observer, so no routing path, LeaseSet or
- * socket is involved.
+ * Verifies that the framing version is chosen per send: a destination
+ * created for Datagram1 must emit Datagram3 framing when the caller
+ * asks for it, an unset version keeps the session's version, and the
+ * session version is not frozen by an explicit request. The built I2NP
+ * Data message is inspected through the DatagramSession send observer,
+ * so no routing path, LeaseSet or socket is involved.
  *
  */
 
@@ -38,10 +38,11 @@ struct FramedMessage
 	bool valid = false;
 };
 
-// Decode one I2NP Data message built by DatagramDestination::CreateDataMessage
-// for a destination created without compression: 4-byte length, then a
-// stored gzip member whose MTIME/OS bytes carry the ports and protocol and
-// whose stored block starts at offset 15.
+// Decode one I2NP Data message built by
+// DatagramDestination::CreateDataMessage for a destination created
+// without compression: 4-byte length, then a stored gzip member whose
+// MTIME/OS bytes carry the ports and protocol and whose stored block
+// starts at offset 15.
 FramedMessage Decode (const i2p::I2NPMessage & msg)
 {
 	FramedMessage framed;
@@ -80,7 +81,8 @@ Fixture MakeFixture ()
 	fixture.keys = i2p::data::PrivateKeys::CreateRandomKeys (
 		i2p::data::SIGNING_KEY_TYPE_EDDSA_SHA512_ED25519, i2p::data::CRYPTO_KEY_TYPE_ECIES_X25519_AEAD, true);
 	fixture.owner = std::make_shared<i2p::client::ClientDestination> (service, fixture.keys, false);
-	// The destination is created for Datagram1, exactly like the UDP tunnel
+	// The destination is created for Datagram1, exactly like the UDP
+	// tunnel
 	// and the torrent code do.
 	fixture.destination
 		= std::make_shared<i2p::datagram::DatagramDestination> (fixture.owner, false, i2p::datagram::eDatagramV1);
@@ -110,8 +112,8 @@ void TestPerSendVersion ()
 	const auto remote = fixture.remote;
 	const auto * identityHash = fixture.keys.GetPublic ()->GetIdentHash ().data ();
 
-	// A DATAGRAM3 SAM subsession must send Datagram3 framing even though the
-	// shared destination was created for Datagram1.
+	// A DATAGRAM3 SAM subsession must send Datagram3 framing even though
+	// the shared destination was created for Datagram1.
 	fixture.destination->SendDatagramTo (
 		payload.data (), payload.size (), remote, 111, 222, i2p::datagram::eDatagramV3);
 	assert (fixture.sent.size () == 1);

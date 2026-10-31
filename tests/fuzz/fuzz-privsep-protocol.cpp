@@ -7,9 +7,9 @@
  * Feeds arbitrary input to every privilege-separation codec: the frame
  * decoder and inspector, the log/config/error/cancel payloads and the
  * data-storage configure/request/reply family. It also round-trips a
- * structurally valid frame through Encode/Decode so an encoder that accepts a
- * payload its own decoder rejects is a finding. No I/O, no worker, no
- * descriptor is used.
+ * structurally valid frame through Encode/Decode so an encoder that
+ * accepts a payload its own decoder rejects is a finding. No I/O, no
+ * worker, no descriptor is used.
  *
  */
 
@@ -29,7 +29,8 @@ extern "C" int LLVMFuzzerTestOneInput (const uint8_t * data, size_t size)
 	std::string_view input (reinterpret_cast<const char *> (data), size);
 
 	// Frame layer. The inspector must never disagree about a record it
-	// declares attributable, and a decoded frame must always be re-encodable.
+	// declares attributable, and a decoded frame must always be
+	// re-encodable.
 	(void)InspectFrame (input);
 	auto frame = Decode (input);
 	if (frame)
@@ -51,8 +52,10 @@ extern "C" int LLVMFuzzerTestOneInput (const uint8_t * data, size_t size)
 	(void)DecodeDataStorageRequest (input);
 	(void)DecodeDataStorageReply (input);
 
-	// Encoder/decoder agreement for a payload taken from the input. A failure
-	// is a legitimate outcome (oversized name, non-canonical artifact name);
+	// Encoder/decoder agreement for a payload taken from the input. A
+	// failure
+	// is a legitimate outcome (oversized name, non-canonical artifact
+	// name);
 	// success must decode back to the same bytes.
 	if (size >= 2)
 	{
@@ -68,8 +71,9 @@ extern "C" int LLVMFuzzerTestOneInput (const uint8_t * data, size_t size)
 		}
 	}
 
-	// A frame declared with an input-derived type must respect the registry:
-	// either Encode refuses it or Decode of the result accepts the same type.
+	// A frame declared with an input-derived type must respect the
+	// registry: either Encode refuses it or Decode of the result accepts
+	// the same type.
 	if (size >= 2)
 	{
 		const auto type = static_cast<MessageType> (static_cast<uint16_t> (data[0]) << 8 | data[1]);

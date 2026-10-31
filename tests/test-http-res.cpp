@@ -4,7 +4,9 @@
  *
  * openi2pd: test http res.
  *
- * Parses and serializes HTTP responses, covering status lines, case-insensitive headers, duplicate/replace semantics, Content-Length and chunked/gzip detection.
+ * Parses and serializes HTTP responses, covering status lines,
+ * case-insensitive headers, duplicate/replace semantics, Content-Length
+ * and chunked/gzip detection.
  *
  */
 
@@ -91,7 +93,8 @@ int main ()
 	assert (res->headers.size () == 0);
 	delete res;
 
-	/* test: to_string() doesn't add duplicate Date/Content-Length with different case */
+	/* test: to_string() doesn't add duplicate Date/Content-Length with
+	/* different case
 	res = new HTTPRes;
 	res->version = "HTTP/1.1";
 	res->code = 200;
@@ -110,7 +113,8 @@ int main ()
 	assert (date_count == 1); /* only one Date header */
 	delete res;
 
-	/* test: get_header case-insensitivity (used by Reseed for Location redirect) */
+	/* test: get_header case-insensitivity (used by Reseed for Location
+	/* redirect)
 	buf = "HTTP/1.1 302 Found\r\n"
 		  "location: https://example.com/new\r\n"
 		  "\r\n";

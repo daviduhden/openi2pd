@@ -4,11 +4,11 @@
  *
  * openi2pd: Ed25519.
  *
- * Implements Ed25519/EdDSA signing and verification plus RedDSA signing and
- * public/private key blinding over OpenSSL BIGNUM and EC arithmetic. Point
- * decoding recovers x from y, checks the curve equation and preserves the sign
- * bit, while signing uses deterministic EdDSA nonces or a fresh random RedDSA
- * nonce.
+ * Implements Ed25519/EdDSA signing and verification plus RedDSA signing
+ * and public/private key blinding over OpenSSL BIGNUM and EC
+ * arithmetic. Point decoding recovers x from y, checks the curve
+ * equation and preserves the sign bit, while signing uses deterministic
+ * EdDSA nonces or a fresh random RedDSA nonce.
  *
  */
 

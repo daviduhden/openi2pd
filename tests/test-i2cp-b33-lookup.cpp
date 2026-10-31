@@ -5,10 +5,11 @@
  * openi2pd: test i2cp b33 lookup.
  *
  * Offline checks that AddressBook::GetAddress resolves the explicit
- * ".b33.i2p" form, the implicit long-final-label form and the ".i2p.alt"
- * alias, and that malformed, truncated, over-long, reserved or unsigned b33
- * labels fail instead of falling through to base32/base64 parsing. No storage,
- * resolver, destination or network is started.
+ * ".b33.i2p" form, the implicit long-final-label form and the
+ * ".i2p.alt" alias, and that malformed, truncated, over-long, reserved
+ * or unsigned b33 labels fail instead of falling through to
+ * base32/base64 parsing. No storage, resolver, destination or network
+ * is started.
  *
  */
 
@@ -39,7 +40,8 @@ std::string MakeB33 (const i2p::data::PrivateKeys & keys)
 	return b33;
 }
 
-// Standard CRC-32 (the b33 checksum) without a zlib dependency in the test.
+// Standard CRC-32 (the b33 checksum) without a zlib dependency in the
+// test.
 uint32_t Crc32 (const uint8_t * data, size_t len)
 {
 	uint32_t crc = 0xFFFFFFFFu;
@@ -51,9 +53,10 @@ uint32_t Crc32 (const uint8_t * data, size_t len)
 	return ~crc;
 }
 
-// Re-encodes a valid b33 with a different header. A b33 stores the CRC32 of the
-// key XORed into flags/signature types, so a crafted header still has one
-// canonical encoding and exercises the parser's own validation.
+// Re-encodes a valid b33 with a different header. A b33 stores the
+// CRC32 of the key XORed into flags/signature types, so a crafted
+// header still has one canonical encoding and exercises the parser's
+// own validation.
 std::string MakeB33WithHeader (
 	const std::string & validB33, uint8_t flags, uint8_t signatureType, uint8_t blindedSignatureType)
 {
@@ -84,8 +87,8 @@ int main ()
 	const std::string b33 = MakeB33 (keys);
 	i2p::client::AddressBook book;
 
-	// Explicit ".b33.i2p" suffix: Java's LookupDestJob strips the suffix and
-	// decodes the remaining label as a blinded destination.
+	// Explicit ".b33.i2p" suffix: Java's LookupDestJob strips the suffix
+	// and decodes the remaining label as a blinded destination.
 	{
 		auto addr = book.GetAddress (b33 + ".b33.i2p");
 		assert (addr);
@@ -105,8 +108,8 @@ int main ()
 		assert (alt->ToBase32 () == b33);
 	}
 
-	// Implicit long final label: "<b33>.i2p" is the same destination. A b33 is
-	// base32, so a differently cased label decodes to the same key.
+	// Implicit long final label: "<b33>.i2p" is the same destination. A
+	// b33 is base32, so a differently cased label decodes to the same key.
 	{
 		auto addr = book.GetAddress (b33 + ".i2p");
 		assert (addr);
@@ -134,8 +137,8 @@ int main ()
 		assert (book.GetAddress (std::string (B33_LABEL_MAX_LENGTH + 1, 'a') + ".i2p") == nullptr);
 		assert (book.GetAddress (std::string (B33_LABEL_MAX_LENGTH + 1, 'a') + ".b33.i2p") == nullptr);
 
-		// A reserved b33 flag bit is rejected instead of producing a destination
-		// no peer can address.
+		// A reserved b33 flag bit is rejected instead of producing a
+		// destination no peer can address.
 		assert (book.GetAddress (MakeB33WithHeader (b33, 0x08, 7, 11) + ".b33.i2p") == nullptr);
 
 		// A signature type that cannot be blinded (DSA) fails closed, both in
@@ -158,16 +161,16 @@ int main ()
 		assert (book.GetAddress (b32 + ".b32.i2p.alt"));
 	}
 
-	// A b33 name is decoded locally; a rejected b33 must not be remembered as a
-	// resolver miss either.
+	// A b33 name is decoded locally; a rejected b33 must not be remembered
+	// as a resolver miss either.
 	{
 		const auto before = book.GetNegativeCacheSize ();
 		assert (book.GetAddress ("abcdefghijklmnop.b33.i2p") == nullptr);
 		assert (book.GetAddress (std::string (B33_LABEL_MAX_LENGTH + 1, 'a') + ".i2p") == nullptr);
 		assert (book.GetNegativeCacheSize () == before);
 
-		// A plain name goes through the address book, not the b33 parser, and its
-		// miss is the only case the bounded negative cache may remember.
+		// A plain name goes through the address book, not the b33 parser, and
+		// its miss is the only case the bounded negative cache may remember.
 		assert (book.GetAddress ("example.I2P") == nullptr);
 		assert (book.GetNegativeCacheSize () == before + 1);
 	}

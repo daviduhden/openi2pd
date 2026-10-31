@@ -4,7 +4,10 @@
  *
  * openi2pd: test routerinfo update transaction.
  *
- * Exercises RouterInfo update atomicity: only a newer, correctly signed, same-identity body replaces state, while malformed, wrong-netId or file-loaded bodies leave the old snapshot intact. Also checks local v4/v6 address serialization.
+ * Exercises RouterInfo update atomicity: only a newer, correctly
+ * signed, same-identity body replaces state, while malformed,
+ * wrong-netId or file-loaded bodies leave the old snapshot intact. Also
+ * checks local v4/v6 address serialization.
  *
  */
 
@@ -176,7 +179,8 @@ int main ()
 
 	const uint64_t timestamp = 1700000000000ULL;
 
-	// IsNewer() is a strict timestamp comparison and needs the full identity
+	// IsNewer() is a strict timestamp comparison and needs the full
+	// identity
 	// in the supplied buffer.
 	{
 		const auto first = SignRouterInfo (keys, BuildBody (MakeSpec (timestamp, "12345")));
@@ -193,8 +197,8 @@ int main ()
 		assert (!router.IsNewer (nullptr, 0));
 	}
 
-	// A valid newer body replaces the state and buffer, and marks the object
-	// for persistence.
+	// A valid newer body replaces the state and buffer, and marks the
+	// object for persistence.
 	{
 		const auto first = SignRouterInfo (keys, BuildBody (MakeSpec (timestamp, "12345")));
 		RouterInfo router (first.data (), first.size ());
@@ -239,8 +243,8 @@ int main ()
 		ExpectSameState (router, timestamp + 10, 22222, 25000);
 	}
 
-	// Signature/identity binding: a valid RouterInfo for another identity and
-	// an oversized buffer are both refused.
+	// Signature/identity binding: a valid RouterInfo for another identity
+	// and an oversized buffer are both refused.
 	{
 		const auto first = SignRouterInfo (keys, BuildBody (MakeSpec (timestamp, "12345")));
 		RouterInfo router (first.data (), first.size ());
@@ -257,7 +261,8 @@ int main ()
 		assert (!router.Update (nullptr, 0));
 		ExpectSameState (router, timestamp, 12345, 25000);
 
-		// Flip one signature byte: verification fails and the old state stays.
+		// Flip one signature byte: verification fails and the old state
+		// stays.
 		auto tampered = first;
 		assert (!tampered.empty ());
 		tampered.at (tampered.size () - 1) ^= 0x01;
@@ -265,9 +270,10 @@ int main ()
 		ExpectSameState (router, timestamp, 12345, 25000);
 	}
 
-	// Buffer ownership: CopyBuffer() is a deep copy, GetSharedBuffer() aliases
-	// the internal buffer, DeleteBuffer() releases it, LoadBuffer() reloads the
-	// persisted bytes without re-parsing the object.
+	// Buffer ownership: CopyBuffer() is a deep copy, GetSharedBuffer()
+	// aliases the internal buffer, DeleteBuffer() releases it,
+	// LoadBuffer() reloads the persisted bytes without re-parsing the
+	// object.
 	{
 		const auto buffer = SignRouterInfo (keys, BuildBody (MakeSpec (timestamp, "12345")));
 		RouterInfo router (buffer.data (), buffer.size ());
@@ -307,8 +313,8 @@ int main ()
 	}
 
 	// File round-trip: the constructor now verifies the signature on load
-	// (Java PersistentDataStore.readBytes(in, true)). A corrupted file must be
-	// rejected instead of being inserted into the netDb.
+	// (Java PersistentDataStore.readBytes(in, true)). A corrupted file
+	// must be rejected instead of being inserted into the netDb.
 	{
 		const auto buffer = SignRouterInfo (keys, BuildBody (MakeSpec (timestamp, "12345")));
 		RouterInfo original (buffer.data (), buffer.size ());
@@ -343,10 +349,10 @@ int main ()
 		std::filesystem::remove (path);
 	}
 
-	// Local generation: a firewalled NTCP2 address with caps "46" must become
-	// two independent objects. Mutating the v4 endpoint must not change the v6
-	// endpoint. The serialized buffer must still contain both families and the
-	// RouterAddress expiration must be big-endian.
+	// Local generation: a firewalled NTCP2 address with caps "46" must
+	// become two independent objects. Mutating the v4 endpoint must not
+	// change the v6 endpoint. The serialized buffer must still contain
+	// both families and the RouterAddress expiration must be big-endian.
 	{
 		LocalRouterInfo local;
 		local.SetRouterIdentity (keys.GetPublic ());
@@ -385,8 +391,8 @@ int main ()
 		assert (parsed.GetNTCP2V4Address ()->date == date);
 		assert (parsed.GetNTCP2V6Address ()->IsV6 ());
 		assert (!parsed.GetNTCP2V6Address ()->IsV4 ());
-		// Firewalled addresses do not serialize host, but the v4 mutation must
-		// not have turned the v6 entry into a v4 one.
+		// Firewalled addresses do not serialize host, but the v4 mutation
+		// must not have turned the v6 entry into a v4 one.
 		assert (parsed.GetNTCP2V4Address ()->IsV4 ());
 		assert (parsed.GetNTCP2V6Address ()->host.is_unspecified ());
 
@@ -395,9 +401,10 @@ int main ()
 		assert (parsed.GetAddresses ());
 	}
 
-	// An unmodified dual-stack firewalled NTCP2 endpoint is still serialized as
-	// one RouterAddress with caps "46" (the pre-split bytes), even though the
-	// in-memory state uses two independent objects.
+	// An unmodified dual-stack firewalled NTCP2 endpoint is still
+	// serialized as one RouterAddress with caps "46" (the pre-split
+	// bytes), even though the in-memory state uses two independent
+	// objects.
 	{
 		LocalRouterInfo local;
 		local.SetRouterIdentity (keys.GetPublic ());
@@ -424,8 +431,8 @@ int main ()
 		assert (parsed.GetNTCP2V6Address () != nullptr);
 	}
 
-	// Local SSU2 introducers: indices are limited to 0..2 and tag 0 is not a
-	// valid introducer (Java UDPAddress requires tag > 0).
+	// Local SSU2 introducers: indices are limited to 0..2 and tag 0 is not
+	// a valid introducer (Java UDPAddress requires tag > 0).
 	{
 		LocalRouterInfo local;
 		local.SetRouterIdentity (keys.GetPublic ());

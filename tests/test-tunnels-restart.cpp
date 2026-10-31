@@ -4,7 +4,9 @@
  *
  * openi2pd: test tunnels restart.
  *
- * Checks tunnel service restart: Stop() is idempotent, joins both workers and clears runtime maps so Start() can run again without replacing a joinable thread; no transports are started.
+ * Checks tunnel service restart: Stop() is idempotent, joins both
+ * workers and clears runtime maps so Start() can run again without
+ * replacing a joinable thread; no transports are started.
  *
  */
 

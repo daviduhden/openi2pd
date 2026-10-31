@@ -4,7 +4,9 @@
  *
  * openi2pd: fuzz log record.
  *
- * Exercises the bounded recent-log snapshot: records must truncate to the documented text limit, remove control characters except tab, and never reappear after their sequence number.
+ * Exercises the bounded recent-log snapshot: records must truncate to
+ * the documented text limit, remove control characters except tab, and
+ * never reappear after their sequence number.
  *
  */
 
@@ -38,7 +40,8 @@ extern "C" int LLVMFuzzerTestOneInput (const uint8_t * data, size_t size)
 		if (byte < 0x20 && ch != '\t') std::abort ();
 	}
 
-	// A second call with a larger "after" sequence must not return the record.
+	// A second call with a larger "after" sequence must not return the
+	// record.
 	if (!log.GetRecent (record.sequence, 8).empty ()) std::abort ();
 	return 0;
 }

@@ -4,9 +4,9 @@
  *
  * openi2pd: util.
  *
- * Implements service thread lifecycle, option mapping encoding and decoding with
- * bounds checks, platform-specific MTU discovery and address classification
- * helpers.
+ * Implements service thread lifecycle, option mapping encoding and
+ * decoding with bounds checks, platform-specific MTU discovery and
+ * address classification helpers.
  *
  */
 
@@ -231,7 +231,8 @@ namespace util
 	std::string_view Mapping::ExtractString (const uint8_t * buf, size_t len)
 	{
 		if (!len) return { };
-		// The length prefix is one byte, so the clamped size always fits size_t.
+		// The length prefix is one byte, so the clamped size always fits
+		// size_t.
 		size_t l = buf[0];
 		if (l > len - 1) l = len - 1;
 		return { (const char *)(buf + 1), l };
@@ -247,7 +248,8 @@ namespace util
 			if (!l) break;
 			offset += l;
 		}
-		// Option buffers are tunnel/datagram-size, far below the 16-bit prefix.
+		// Option buffers are tunnel/datagram-size, far below the 16-bit
+		// prefix.
 		htobe16buf (buf, static_cast<uint16_t> (offset - 2));
 		return offset;
 	}
@@ -290,8 +292,9 @@ namespace util
 
 	bool Mapping::Contains (std::string_view param) const
 	{
-		// find rather than contains: the heterogeneous contains is missing in some
-		// standard libraries, while find takes the string_view through std::less<>
+		// find rather than contains: the heterogeneous contains is missing in
+		// some standard libraries, while find takes the string_view through
+		// std::less<>
 		auto it = m_Options.find (param);
 		return it != m_Options.end ();
 	}
@@ -331,11 +334,11 @@ namespace util
 
 	uint_fast32_t GetRngSeed ()
 	{
-		// Protocol-visible choices (I2NP message IDs, padding, tunnel order and
-		// peer ordering) must not be derived from an observable monotonic
-		// clock. mt19937 is only a fast non-cryptographic mixer here; its seed
-		// comes from the provider CSPRNG. Fail closed to a mixed clock value
-		// rather than a constant if the provider is unavailable.
+		// Protocol-visible choices (I2NP message IDs, padding, tunnel order
+		// and peer ordering) must not be derived from an observable monotonic
+		// clock. mt19937 is only a fast non-cryptographic mixer here; its
+		// seed comes from the provider CSPRNG. Fail closed to a mixed clock
+		// value rather than a constant if the provider is unavailable.
 		uint32_t seed = 0;
 		if (RAND_bytes (reinterpret_cast<unsigned char *> (&seed), sizeof (seed)) == 1)
 			return static_cast<uint_fast32_t> (seed);
@@ -658,8 +661,8 @@ namespace util
 
 		bool IsPortInReservedRange (const uint16_t port) noexcept
 		{
-			// https://en.wikipedia.org/wiki/List_of_TCP_and_UDP_port_numbers (Feb. 3, 2023)
-			// + Tor browser (9150) + Intel AMT (16992-16995)
+			// Sources: Wikipedia's TCP/UDP port list (Feb. 3, 2023), Tor Browser
+			// (9150), and Intel AMT (16992-16995).
 			static const std::unordered_set<uint16_t> reservedPorts { 9119, 9150, 9306, 9312, 9389, 9418, 9535, 9536,
 				9695, 9800, 9899, 10000, 10050, 10051, 10110, 10212, 10933, 11001, 11112, 11235, 11371, 12222, 12223,
 				13075, 13400, 13720, 13721, 13724, 13782, 13783, 13785, 13786, 15345, 16992, 16993, 16994, 16995, 17224,

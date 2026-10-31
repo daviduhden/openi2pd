@@ -4,11 +4,13 @@
  *
  * openi2pd: RouterInfo.
  *
- * RouterInfo parsing, serialization and capability model: identity, NTCP2/SSU2 addresses for
- * IPv4, IPv6 and mesh, caps, congestion, introducers, transport bitmasks and family signatures,
- * bounded by Java-compatible size, address and introducer limits. LocalRouterInfo rebuilds and
- * signs the published descriptor; instances are non-copyable, keep their signed buffer behind
- * a mutex and publish transport and profile state atomically for concurrent readers.
+ * RouterInfo parsing, serialization and capability model: identity,
+ * NTCP2/SSU2 addresses for IPv4, IPv6 and mesh, caps, congestion,
+ * introducers, transport bitmasks and family signatures, bounded by
+ * Java-compatible size, address and introducer limits. LocalRouterInfo
+ * rebuilds and signs the published descriptor; instances are
+ * non-copyable, keep their signed buffer behind a mutex and publish
+ * transport and profile state atomically for concurrent readers.
  *
  */
 
@@ -75,30 +77,31 @@ namespace data
 	const uint8_t COST_SSU2_DIRECT = 8;
 	const uint8_t COST_SSU2_NON_PUBLISHED = 15;
 
-	// I2P Java RouterInfo.MAX_UNCOMPRESSED_SIZE is 4096 (RouterInfo.java, 2.13.0).
-	// Keep the same upper bound so a valid Java RouterInfo with many address
-	// properties is not rejected by the C++ parser. NTCP2's on-wire handshake
-	// still limits its own RI payload independently.
+	// I2P Java RouterInfo.MAX_UNCOMPRESSED_SIZE is 4096 (RouterInfo.java,
+	// 2.13.0). Keep the same upper bound so a valid Java RouterInfo with
+	// many address properties is not rejected by the C++ parser. NTCP2's
+	// on-wire handshake still limits its own RI payload independently.
 	const size_t MAX_RI_BUFFER_SIZE = 4096;
 	// I2P Java RouterInfo.MAX_ADDRESSES is 16 (RouterInfo.java, 2.13.0).
-	// Reject excess address entries before parsing rather than relying on the
-	// RouterInfo byte cap to bound the loop.
+	// Reject excess address entries before parsing rather than relying on
+	// the RouterInfo byte cap to bound the loop.
 	const uint8_t MAX_RI_ADDRESSES = 16;
 	// SSU2 RouterAddress introducer options are ih[0-2], iexp[0-2] and
 	// itag[0-2]. Java UDPAddress.MAX_INTRODUCERS is 3 (2.13.0).
 	const uint8_t MAX_RI_INTRODUCERS = 3;
 	// SSU2 spec, MTU section: 1280 is the minimum for both IPv4 and IPv6.
-	// ML-KEM-768 handshakes need 1318 (IPv4) or 1338 (IPv6); Java rejects a
-	// published SSU2 address below those values for pq=4.
+	// ML-KEM-768 handshakes need 1318 (IPv4) or 1338 (IPv6); Java rejects
+	// a published SSU2 address below those values for pq=4.
 	const int MIN_SSU2_MTU = 1280;
 	const int MIN_SSU2_MLKEM768_MTU_IPV4 = 1318;
 	const int MIN_SSU2_MLKEM768_MTU_IPV6 = 1338;
 	const int HIGH_CONGESTION_INTERVAL = 15 * 60; // in seconds, 15 minutes
 	const int INTRODUCER_UPDATE_INTERVAL = 20 * 60 * 1000; // in milliseconds, 20 minutes
 
-	/// Router identity, signed descriptor bytes and advertised transport addresses.
-	/// Address snapshots use shared ownership so selection can outlive a map
-	/// lookup; the SSU introducer list has its own synchronization contract.
+	/// Router identity, signed descriptor bytes and advertised transport
+	/// addresses. Address snapshots use shared ownership so selection can
+	/// outlive a map lookup; the SSU introducer list has its own
+	/// synchronization contract.
 	/// @see https://i2p.net/en/docs/specs/common-structures/
 	class RouterInfo : public RoutingDestination
 	{
@@ -260,8 +263,8 @@ namespace data
 			bool IsPeerTesting () const { return caps & eSSUTesting; };
 
 			// A concrete host determines the family. Address caps only declare
-			// families for non-published/unspecified addresses and must not let an
-			// untrusted "caps=6" turn an IPv4 endpoint into an IPv6 one.
+			// families for non-published/unspecified addresses and must not let
+			// an untrusted "caps=6" turn an IPv4 endpoint into an IPv6 one.
 			bool IsV4 () const { return !host.is_unspecified () ? host.is_v4 () : ((caps & AddressCaps::eV4) != 0); };
 			bool IsV6 () const { return !host.is_unspecified () ? host.is_v6 () : ((caps & AddressCaps::eV6) != 0); };
 
@@ -371,9 +374,9 @@ namespace data
 		};
 		CompatibleTransports GetPublishedTransports () const { return m_PublishedTransports.load (); };
 		bool HasValidAddresses () const { return m_SupportedTransports.load () != 0; };
-		// Java validate(): the 54-minute "introducers may have rotated" and the
-		// 75-minute "SSU only without introducers" predicates need a cheap view
-		// of the parsed addresses and introducer tags.
+		// Java validate(): the 54-minute "introducers may have rotated" and
+		// the 75-minute "SSU only without introducers" predicates need a
+		// cheap view of the parsed addresses and introducer tags.
 		bool HasSSUIntroducers () const;
 		bool HasNTCP2Address () const;
 		// Java RouterInfo.isHidden() (2.13.0) checks both the "H" capability
@@ -407,9 +410,9 @@ namespace data
 		void SetUnreachable (bool unreachable) { m_IsUnreachable.store (unreachable); };
 		bool IsUnreachable () const { return m_IsUnreachable.load (); };
 		// A signed "netId" property that is non-zero and not ours. Such a
-		// RouterInfo is still rejected (IsUnreachable stays set), but the reason
-		// is distinguishable so NTCP2 can ban the peer with reason 17 instead of
-		// reporting a signature failure. netId=0 is never foreign.
+		// RouterInfo is still rejected (IsUnreachable stays set), but the
+		// reason is distinguishable so NTCP2 can ban the peer with reason 17
+		// instead of reporting a signature failure. netId=0 is never foreign.
 		bool HasForeignNetId () const { return m_HasForeignNetId.load (); };
 		bool IsForeignNetId () const { return HasForeignNetId (); };
 		void ExcludeReachableTransports (CompatibleTransports transports)
@@ -453,39 +456,43 @@ namespace data
 		bool SaveToFile (const std::string & fullPath);
 		static bool SaveToFile (const std::string & fullPath, std::shared_ptr<Buffer> buf);
 		/**
-		 * Persist a cached descriptor through the artifact writer. The artifact
-		 * name is the canonical base64 identity hash, so the cache file stays
-		 * netDb/routerInfo-&lt;b64&gt;.dat with identical bytes. A failed write keeps
-		 * the previous file intact and returns false.
+		 * Persist a cached descriptor through the artifact writer. The
+		 * artifact name is the canonical base64 identity hash, so the cache
+		 * file stays netDb/routerInfo-&lt;b64&gt;.dat with identical bytes. A
+		 * failed write keeps the previous file intact and returns false.
 		 */
 		static bool SaveToArtifact (const std::string & identBase64, std::shared_ptr<Buffer> buf);
 
 		std::shared_ptr<RouterProfile> GetProfile () const;
 		// Non-creating lookup for callers that must not perform disk IO, such
-		// as the netDb selection filters running under a container lock. Returns
-		// the cached profile, else one already known process-wide, else null.
-		// An absent profile must be treated as reachable/real by those callers.
+		// as the netDb selection filters running under a container lock.
+		// Returns the cached profile, else one already known process-wide,
+		// else null. An absent profile must be treated as reachable/real by
+		// those callers.
 		std::shared_ptr<RouterProfile> GetProfileIfExists () const;
 		void DropProfile () { m_Profile.Store (std::shared_ptr<RouterProfile> { }); };
 		bool HasProfile () const { return m_Profile.Load () != nullptr; };
 
-		/// Replace this descriptor from an already received buffer.
-		/// The identity is retained and every field is re-parsed from the new
-		/// body, which must still verify under the stored identity's signing key.
-		/// RSA router identities, a missing identity, an oversized buffer or a
-		/// failed signature/parse check leave the previous state untouched and
-		/// return false. The freshness comparison is the caller's decision: a
-		/// netDb store path must apply IsNewer() first, because Update() itself
-		/// does not compare timestamps.
+		/// Replace this descriptor from an already received buffer. The
+		/// identity is retained and every field is re-parsed from the new
+		/// body, which must still verify under the stored identity's signing
+		/// key. RSA router identities, a missing identity, an oversized
+		/// buffer or a failed signature/parse check leave the previous state
+		/// untouched and return false. The freshness comparison is the
+		/// caller's decision: a netDb store path must apply IsNewer() first,
+		/// because Update() itself does not compare timestamps.
 		bool Update (const uint8_t * buf, size_t len);
 		/// True when the supplied buffer carries a strictly newer published
-		/// timestamp than the stored descriptor. The buffer must already describe
-		/// this identity; the timestamp is read at the identity's fixed offset.
-		/// This check is what prevents an old RouterInfo replay from replacing
-		/// fresher addresses or keys; equal timestamps are not newer.
+		/// timestamp than the stored descriptor. The buffer must already
+		/// describe this identity; the timestamp is read at the identity's
+		/// fixed offset. This check is what prevents an old RouterInfo replay
+		/// from replacing fresher addresses or keys; equal timestamps are not
+		/// newer.
 		bool IsNewer (const uint8_t * buf, size_t len) const;
 
-		/** return true if we are in a router family and the signature is valid */
+		/**
+		 * return true if we are in a router family and the signature is valid
+		 */
 		bool IsFamily (FamilyID famid) const
 		{
 			auto id = m_FamilyID.load ();
@@ -541,9 +548,10 @@ namespace data
 		std::shared_ptr<const IdentityEx> m_RouterIdentity;
 		std::shared_ptr<Buffer> m_Buffer;
 		std::atomic<uint64_t> m_Timestamp; // in milliseconds
-		// AtomicSharedPtr uses std::atomic&lt;std::shared_ptr&gt; where available and
-		// a mutex-backed fallback on libc++ targets that lack the C++20
-		// specialization. The mutable marker is required by const readers.
+		// AtomicSharedPtr uses std::atomic&lt;std::shared_ptr&gt; where
+		// available and a mutex-backed fallback on libc++ targets that lack
+		// the C++20 specialization. The mutable marker is required by const
+		// readers.
 		mutable i2p::util::AtomicSharedPtr<Addresses> m_Addresses;
 		std::atomic<bool> m_IsUpdated, m_IsUnreachable, m_IsFloodfill, m_IsBufferScheduledToDelete;
 		// Distinct from m_IsUnreachable: set when the parser saw a non-zero
@@ -565,10 +573,10 @@ namespace data
 	{
 	public:
 		LocalRouterInfo () = default;
-		/// Re-serialize and sign this router's own descriptor.
-		/// The published timestamp is refreshed first; the previous timestamp is
-		/// restored when serialization fails, so a failed rebuild never advances
-		/// the timestamp without producing a signed body. Only a descriptor that
+		/// Re-serialize and sign this router's own descriptor. The published
+		/// timestamp is refreshed first; the previous timestamp is restored
+		/// when serialization fails, so a failed rebuild never advances the
+		/// timestamp without producing a signed body. Only a descriptor that
 		/// fits MAX_RI_BUFFER_SIZE after the identity and signature is kept.
 		void CreateBuffer (const PrivateKeys & privateKeys);
 		void UpdateCaps (uint8_t caps);

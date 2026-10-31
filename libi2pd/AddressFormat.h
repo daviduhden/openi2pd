@@ -4,10 +4,11 @@
  *
  * openi2pd: address format.
  *
- * Small IPv4/IPv6 and endpoint formatters. POSIX uses inet_ntop and appends
- * scope IDs explicitly, so Boost.Asio's unsafe POSIX scope-ID
+ * Small IPv4/IPv6 and endpoint formatters. POSIX uses inet_ntop and
+ * appends scope IDs explicitly, so Boost.Asio's unsafe POSIX scope-ID
  * sprintf/strcat path is not instantiated. Windows uses Asio's
- * WSAAddressToString path and appends a missing scope suffix explicitly.
+ * WSAAddressToString path and appends a missing scope suffix
+ * explicitly.
  */
 
 #ifndef ADDRESS_FORMAT_H
@@ -43,14 +44,15 @@ namespace util
 		/// @param scopeId IPv6 zone index; for link-local and link-local
 		/// multicast addresses an interface name is emitted when one can be
 		/// resolved, otherwise the numeric index is appended.
-		/// @return Empty string on a null source or a formatting failure, so a
-		/// caller must not render an empty address as a valid endpoint.
+		/// @return Empty string on a null source or a formatting
+		///         failure, so a caller must not render an empty address as a
+		///         valid endpoint.
 		inline std::string FormatAddressBytes (bool ipv6, const void * source, std::uint32_t scopeId)
 		{
 			if (!source) return { };
 #if defined(_WIN32)
-			// Asio's Windows path uses WSAAddressToString and does not contain the
-			// POSIX sprintf/strcat scope-ID branch.
+			// Asio's Windows path uses WSAAddressToString and does not contain
+			// the POSIX sprintf/strcat scope-ID branch.
 			if (ipv6)
 			{
 				boost::asio::ip::address_v6::bytes_type bytes { };

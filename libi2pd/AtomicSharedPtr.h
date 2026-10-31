@@ -4,10 +4,10 @@
  *
  * openi2pd: AtomicSharedPtr.
  *
- * Portable atomic shared-pointer storage. libc++ did not expose the C++20
- * std::atomic&lt;std::shared_ptr&lt;T&gt;&gt; specialization on every supported target;
- * the mutex fallback keeps those builds correct without deprecated free
- * functions.
+ * Portable atomic shared-pointer storage. libc++ did not expose the
+ * C++20 std::atomic&lt;std::shared_ptr&lt;T&gt;&gt; specialization on
+ * every supported target; the mutex fallback keeps those builds correct
+ * without deprecated free functions.
  *
  */
 
@@ -23,9 +23,10 @@ namespace i2p
 {
 namespace util
 {
-	/// Atomic publication of shared ownership, with a mutex fallback when the
-	/// standard-library specialization is unavailable. Loading keeps the object
-	/// alive but does not synchronize later mutation of the pointed-to object.
+	/// Atomic publication of shared ownership, with a mutex fallback when
+	/// the standard-library specialization is unavailable. Loading keeps
+	/// the object alive but does not synchronize later mutation of the
+	/// pointed-to object.
 #if defined(__cpp_lib_atomic_shared_ptr) && __cpp_lib_atomic_shared_ptr >= 201711L
 	template <typename T> class AtomicSharedPtr
 	{

@@ -4,8 +4,10 @@
  *
  * openi2pd: test streaming accept race.
  *
- * Checks the acceptor registration list: arming, single-registration removal,
- * reset of every armed registration and the pending-incoming hand-off never
+ * Checks the acceptor registration list: arming, single-registration
+ * removal,
+ * reset of every armed registration and the pending-incoming hand-off
+ * never
  * strand a stream or leave the destination with a phantom acceptor.
  *
  */
@@ -62,8 +64,9 @@ int main ()
 	assert (destination.GetNumPendingIncomingForTesting () == 0);
 	assert (destination.GetNumStreams () == 0); // fabricated stream stays unregistered
 
-	// ResetAcceptor completes every armed registration with nullptr and leaves
-	// no acceptor behind, so no waiter is left stranded by another waiter.
+	// ResetAcceptor completes every armed registration with nullptr and
+	// leaves no acceptor behind, so no waiter is left stranded by another
+	// waiter.
 	int firstCalls = 0, secondCalls = 0, nullCalls = 0;
 	destination.AcceptOnce (
 		[&] (std::shared_ptr<Stream> s)
@@ -85,7 +88,8 @@ int main ()
 	assert (!destination.IsAcceptorSet ());
 	assert (destination.GetNumArmedAcceptorsForTesting () == 0);
 
-	// With no acceptor, an incoming stream is queued instead of being lost.
+	// With no acceptor, an incoming stream is queued instead of being
+	// lost.
 	auto queuedStream = f.MakeStream ();
 	assert (destination.OfferIncomingStreamForTesting (queuedStream));
 	assert (destination.GetNumPendingIncomingForTesting () == 1);
@@ -135,7 +139,8 @@ int main ()
 	assert (!destination.IsAcceptorSet ());
 	assert (destination.GetNumStreams () == 0);
 
-	// Removing an unknown or already consumed token is reported, never thrown.
+	// Removing an unknown or already consumed token is reported, never
+	// thrown.
 	assert (!destination.RemoveAcceptor (firstToken));
 	assert (!destination.RemoveAcceptor (0));
 	assert (!destination.RemoveAcceptor (firstToken + 1000));

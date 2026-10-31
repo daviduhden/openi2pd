@@ -4,9 +4,9 @@
  *
  * openi2pd: TunnelBase.
  *
- * Implements TunnelTransportSender: forwarding queued I2NP messages through a
- * cached or asynchronously resolved transport session and resetting it when the
- * session disappears.
+ * Implements TunnelTransportSender: forwarding queued I2NP messages
+ * through a cached or asynchronously resolved transport session and
+ * resetting it when the session disappears.
  *
  */
 
@@ -24,7 +24,8 @@ namespace tunnel
 		auto currentTransport = m_CurrentTransport.lock ();
 		if (!currentTransport)
 		{
-			// try to obtain transport from pending request or send thought transport is not complete
+			// try to obtain transport from pending request or send thought
+			// transport is not complete
 			if (m_PendingTransport.valid ()) // pending request?
 			{
 				if (m_PendingTransport.wait_for (std::chrono::seconds (0)) == std::future_status::ready)

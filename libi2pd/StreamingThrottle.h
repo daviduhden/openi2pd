@@ -5,9 +5,9 @@
  * openi2pd: StreamingThrottle.
  *
  * Counts incoming streaming connections per peer and in total over the
- * minute/hour/day windows used by Java's ConnThrottler and ConnectionManager.
- * Check() returns the retry interval so the streaming layer can apply the
- * configured limitAction.
+ * minute/hour/day windows used by Java's ConnThrottler and
+ * ConnectionManager. Check() returns the retry interval so the
+ * streaming layer can apply the configured limitAction.
  *
  */
 
@@ -35,11 +35,12 @@ namespace stream
 	};
 
 	// Java ConnectionManager checks day, hour and minute in that order and
-	// consumes an outer window even when a later window rejects the attempt.
-	// ConnThrottler increments a counter and clears it periodically; this
-	// implementation uses a fixed window per counter (constant memory) rather
-	// than an unbounded list of timestamps. The retry values are the
-	// ConnectionManager 60/3600/86400-second reasons used by limitAction.
+	// consumes an outer window even when a later window rejects the
+	// attempt. ConnThrottler increments a counter and clears it
+	// periodically; this implementation uses a fixed window per counter
+	// (constant memory) rather than an unbounded list of timestamps. The
+	// retry values are the ConnectionManager 60/3600/86400-second reasons
+	// used by limitAction.
 	class StreamingConnectionThrottle
 	{
 	public:
@@ -115,8 +116,9 @@ namespace stream
 		static constexpr uint64_t MINUTE_WINDOW = 60;
 		static constexpr uint64_t HOUR_WINDOW = 3600;
 		static constexpr uint64_t DAY_WINDOW = 86400;
-		// Bound memory under source churn. The total windows stay authoritative
-		// when the peer table is full; the timer cleanup eventually frees it.
+		// Bound memory under source churn. The total windows stay
+		// authoritative when the peer table is full; the timer cleanup
+		// eventually frees it.
 		static constexpr size_t MAX_TRACKED_PEERS = 4096;
 
 	private:

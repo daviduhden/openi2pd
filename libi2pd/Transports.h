@@ -5,9 +5,10 @@
  * openi2pd: Transports.
  *
  * Declares the transport manager, which selects peers, opens NTCP2/SSU2
- * sessions, queues and retries messages, samples bandwidth and maintains the IP
- * ban list, peer tests and traffic statistics. Also provides a bounded
- * pre-generated X25519 key pool and immutable peer snapshots for admin views.
+ * sessions, queues and retries messages, samples bandwidth and
+ * maintains the IP ban list, peer tests and traffic statistics. Also
+ * provides a bounded pre-generated X25519 key pool and immutable peer
+ * snapshots for admin views.
  *
  */
 
@@ -49,11 +50,11 @@ namespace transport
 	///
 	/// Key generation is the slowest step of an outbound handshake, so a
 	/// background jthread keeps a small queue ready and `Acquire()` only
-	/// generates on the calling thread when the queue ran dry. A pair whose
-	/// private key never left the process is recycled through `Return()`. A
-	/// provider failure is retried a few times and then returned keyless, so
-	/// callers must check `HasPrivateKey()` and fail that handshake closed
-	/// instead of publishing an all-zero key.
+	/// generates on the calling thread when the queue ran dry. A pair
+	/// whose private key never left the process is recycled through
+	/// `Return()`. A provider failure is retried a few times and then
+	/// returned keyless, so callers must check `HasPrivateKey()` and fail
+	/// that handshake closed instead of publishing an all-zero key.
 	class X25519KeysPairSupplier
 	{
 	public:
@@ -84,13 +85,14 @@ namespace transport
 	const int PEER_SELECTION_MIN_INTERVAL = 20; // in seconds
 	/// One router in the transport peer table.
 	///
-	/// `router` is the last known RouterInfo, `sessions` the live transport
-	/// sessions for it, and `delayedMessages` messages waiting for a session.
-	/// `priority` is recomputed by `Transports::SetPriority()` from the mutually
-	/// supported transports (a random SSU2/NTCP2 preference decides the order)
-	/// and is the list `ConnectToPeer()` walks. `isEligible` means the peer is
-	/// reachable, accepts tunnels, is not congested, is ECIES-capable and new
-	/// enough; `isDone` marks a discarded entry and makes `Done()` safe to call
+	/// `router` is the last known RouterInfo, `sessions` the live
+	/// transport sessions for it, and `delayedMessages` messages waiting
+	/// for a session. `priority` is recomputed by
+	/// `Transports::SetPriority()` from the mutually supported transports
+	/// (a random SSU2/NTCP2 preference decides the order) and is the list
+	/// `ConnectToPeer()` walks. `isEligible` means the peer is reachable,
+	/// accepts tunnels, is not congested, is ECIES-capable and new enough;
+	/// `isDone` marks a discarded entry and makes `Done()` safe to call
 	/// once, dropping sessions and undeliverable delayed messages.
 	struct Peer
 	{
@@ -181,16 +183,16 @@ namespace transport
 		uint64_t TotalTransitTransmittedBytes;
 	};
 
-	/// Transport manager: owns the NTCP2 and SSU2 servers, the peer table, the
-	/// ban list and the traffic samples, and runs one service thread.
+	/// Transport manager: owns the NTCP2 and SSU2 servers, the peer table,
+	/// the ban list and the traffic samples, and runs one service thread.
 	///
-	/// `SendMessage()`/`SendMessages()` post onto that service and complete once
-	/// the messages were handed to a session (or the attempt gave up); the
-	/// returned future is the only completion signal, and it is invalid when the
-	/// transport is offline. The peer map is guarded by `m_PeersMutex`, the
-	/// connected-subnet accounting by `m_ConnectedNetworksMutex`, and the
-	/// administrative views publish copies so a caller never holds transport
-	/// locks while rendering.
+	/// `SendMessage()`/`SendMessages()` post onto that service and
+	/// complete once the messages were handed to a session (or the attempt
+	/// gave up); the returned future is the only completion signal, and it
+	/// is invalid when the transport is offline. The peer map is guarded
+	/// by `m_PeersMutex`, the connected-subnet accounting by
+	/// `m_ConnectedNetworksMutex`, and the administrative views publish
+	/// copies so a caller never holds transport locks while rendering.
 	class Transports
 	{
 	public:
@@ -239,15 +241,20 @@ namespace transport
 		size_t GetNumPeers () const;
 		size_t GetNumConnectedPeers () const;
 		std::vector<PeerSnapshot> GetPeersSnapshot (size_t max) const;
-		/** bounded snapshot containing only peers with at least one live session */
+		/**
+		 * bounded snapshot containing only peers with at least one live
+		 * session
+		 */
 		std::vector<PeerSnapshot> GetConnectedPeersSnapshot (size_t max) const;
 		/// Pick one connected peer that passes every session check, or null.
-		/// Candidates must have a live session that is not overloaded, slow or
-		/// over its bandwidth allowance; @a peerOrdering is an optional first-hop
-		/// policy consulted per candidate, and null accepts any eligible peer.
+		/// Candidates must have a live session that is not overloaded, slow
+		/// or over its bandwidth allowance; @a peerOrdering is an optional
+		/// first-hop policy consulted per candidate, and null accepts any
+		/// eligible peer.
 		/// @param isHighBandwidth require a high-bandwidth peer
 		/// @param peerOrdering optional first-hop policy, may be null
-		/// @return RouterInfo resolved from netDb, or null when nothing qualified
+		/// @return RouterInfo resolved from netDb, or null when nothing
+		///         qualified
 		std::shared_ptr<const i2p::data::RouterInfo> GetRandomPeer (
 			bool isHighBandwidth, i2p::data::PeerOrdering * peerOrdering = nullptr) const;
 
@@ -255,7 +262,9 @@ namespace transport
 		std::shared_ptr<const i2p::data::RouterInfo> GetRestrictedPeer ();
 		/** do we want to use restricted routes? */
 		bool RoutesRestricted () const;
-		/** restrict routes to use only these router families for first hops */
+		/**
+		 * restrict routes to use only these router families for first hops
+		 */
 		void RestrictRoutesToFamilies (const std::vector<std::string_view> & families);
 		/** restrict routes to use only these routers for first hops */
 		void RestrictRoutesToRouters (const std::vector<i2p::data::IdentHash> & routers);

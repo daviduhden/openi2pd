@@ -4,7 +4,9 @@
  *
  * openi2pd: test tunnelpool detach race.
  *
- * Stress test overlapping DetachTunnels() with administrative getters, requiring snapshot iteration to avoid invalidated sets and all tunnels to be released; intended for TSan.
+ * Stress test overlapping DetachTunnels() with administrative getters,
+ * requiring snapshot iteration to avoid invalidated sets and all
+ * tunnels to be released; intended for TSan.
  *
  */
 

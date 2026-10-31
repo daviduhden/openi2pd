@@ -4,13 +4,13 @@
  *
  * openi2pd: Blinding.
  *
- * Implements Proposal 149 destination blinding for EdDSA and RedDSA keys:
- * b33 address parsing, credential/subcredential derivation, daily key
- * blinding and store-hash calculation. Only canonical base32, supported
- * signature types, defined flag bits and the one-byte signature-type form are
- * accepted (Java 2.14.0 rejects the two-byte form); malformed, non-blindable,
- * off-curve or secret-requiring addresses produce an invalid key instead of a
- * usable address.
+ * Implements Proposal 149 destination blinding for EdDSA and RedDSA
+ * keys: b33 address parsing, credential/subcredential derivation, daily
+ * key blinding and store-hash calculation. Only canonical base32,
+ * supported signature types, defined flag bits and the one-byte
+ * signature-type form are accepted (Java 2.14.0 rejects the two-byte
+ * form); malformed, non-blindable, off-curve or secret-requiring
+ * addresses produce an invalid key instead of a usable address.
  *
  */
 
@@ -70,9 +70,9 @@ namespace data
 		// compares like with like.
 		std::string address (b33);
 		for (char & ch : address) ch = (char)std::tolower ((unsigned char)ch);
-		// Decode with room for the largest b33 we accept and reject inputs that
-		// decode to more than 40 bytes. The old fixed 40-byte destination
-		// silently truncated overlong addresses.
+		// Decode with room for the largest b33 we accept and reject inputs
+		// that decode to more than 40 bytes. The old fixed 40-byte
+		// destination silently truncated overlong addresses.
 		std::array<uint8_t, 64> addr { };
 		size_t l = i2p::data::Base32ToByteStream (address, addr.data (), addr.size ());
 		if (l < 32 || l > 40)
@@ -81,8 +81,8 @@ namespace data
 			return;
 		}
 		// Base32 decoders may silently drop unused trailing bits. Require the
-		// canonical encoding so a non-standard string cannot alias a different
-		// b33 address.
+		// canonical encoding so a non-standard string cannot alias a
+		// different b33 address.
 		if (i2p::data::ByteStreamToBase32 (addr.data (), l) != address)
 		{
 			LogPrint (eLogError, "Blinding: Non-canonical b33 ", b33);
@@ -136,8 +136,8 @@ namespace data
 		offset++;
 		m_IsClientAuth = flags & B33_PER_CLIENT_AUTH_FLAG;
 
-		// The b33 encoding of a 32-byte signing key is exactly the header plus
-		// the key. Reject trailing bytes so two different strings cannot
+		// The b33 encoding of a 32-byte signing key is exactly the header
+		// plus the key. Reject trailing bytes so two different strings cannot
 		// denote the same blinded destination.
 		std::unique_ptr<i2p::crypto::Verifier> blindedVerifier (i2p::data::IdentityEx::CreateVerifier (m_SigType));
 		// Proposal 149 only defines EdDSA/RedDSA inputs and a RedDSA blinded
@@ -226,7 +226,8 @@ namespace data
 		}
 		uint16_t stA = htobe16 (GetSigType ()), stA1 = htobe16 (GetBlindedSigType ());
 		uint8_t salt[32];
-		//seed = HKDF(H("I2PGenerateAlpha", keydata), datestring || secret, "i2pblinding1", 64)
+		// seed = HKDF(H("I2PGenerateAlpha", keydata), datestring || secret,
+		// "i2pblinding1", 64)
 		H ("I2PGenerateAlpha",
 			{ { GetPublicKey (), GetPublicKeyLen () }, { (const uint8_t *)&stA, 2 }, { (const uint8_t *)&stA1, 2 } },
 			salt);

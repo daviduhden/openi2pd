@@ -5,14 +5,15 @@
  * openi2pd: SAM.
  *
  * Implements the SAM bridge over TCP and UDP: version negotiation,
- * session/subsession management, stream connect/accept/forward, datagram and
- * raw send/receive, destination generation and naming lookups. A persistent
- * bounded input buffer frames pipelined commands, preserves split lines and
- * SEND payloads across reads, and serialises replies so protocol order is
- * unchanged. Version-gated port fields and bounded accept/session tracking
- * keep the protocol replies compatible and the peer-controlled state limited.
- * Control connections are admission-capped and carry a cancellable HELLO and
- * inter-command deadline; private-key and credential operands are never logged.
+ * session/subsession management, stream connect/accept/forward,
+ * datagram and raw send/receive, destination generation and naming
+ * lookups. A persistent bounded input buffer frames pipelined commands,
+ * preserves split lines and SEND payloads across reads, and serialises
+ * replies so protocol order is unchanged. Version-gated port fields and
+ * bounded accept/session tracking keep the protocol replies compatible
+ * and the peer-controlled state limited. Control connections are
+ * admission-capped and carry a cancellable HELLO and inter-command
+ * deadline; private-key and credential operands are never logged.
  *
  */
 
@@ -156,9 +157,9 @@ namespace client
 
 	void SAMSocket::CancelControlDeadline ()
 	{
-		// cancel() only aborts the wait; the handler still runs and returns on
-		// the aborted error code, so a closed/reused timer cannot fire. The
-		// supported Boost range has no error_code overload on this timer.
+		// cancel() only aborts the wait; the handler still runs and returns
+		// on the aborted error code, so a closed/reused timer cannot fire.
+		// The supported Boost range has no error_code overload on this timer.
 		m_ControlDeadline.cancel ();
 	}
 
@@ -172,8 +173,8 @@ namespace client
 
 	void SAMSocket::ReleaseControlConnection ()
 	{
-		// Exactly once per admitted socket, whatever terminates it. The counter
-		// is shared, so a socket that outlives the bridge stays safe.
+		// Exactly once per admitted socket, whatever terminates it. The
+		// counter is shared, so a socket that outlives the bridge stays safe.
 		if (!m_IsControlConnectionCounted.exchange (false)) return;
 		if (m_ControlConnectionCounter) m_ControlConnectionCounter->fetch_sub (1);
 	}
@@ -311,8 +312,8 @@ namespace client
 		m_Version = selected;
 		m_IsHandshakeDone = true;
 		LogPrint (eLogInfo, "SAM: Handshake done, version ", CreateVersion (m_Version));
-		// The HELLO deadline is replaced by the inter-command deadline as soon
-		// as the next control read starts.
+		// The HELLO deadline is replaced by the inter-command deadline as
+		// soon as the next control read starts.
 		SendReplyWithMessage (SAM_HANDSHAKE_REPLY, CreateVersion (m_Version), false);
 	}
 
@@ -352,7 +353,8 @@ namespace client
 		// protocol order: later commands must not produce replies first.
 		if (m_IsReplyQueued || m_IsCommandPending) return false;
 		// Only a control socket (before or after SESSION CREATE) parses
-		// commands. Acceptors and forwarders stay idle until a stream arrives.
+		// commands. Acceptors and forwarders stay idle until a stream
+		// arrives.
 		if (m_SocketType != SAMSocketType::eSAMSocketTypeUnknown
 			&& m_SocketType != SAMSocketType::eSAMSocketTypeSession)
 			return false;
@@ -433,8 +435,7 @@ namespace client
 			}
 		}
 
-		// Two-word command: normalize the separator between the words so a
-		// repeated space cannot turn "SESSION  CREATE" into a one-word command.
+		// Normalize the separator so repeated spaces do not merge the words.
 		std::string commandStorage;
 		std::string_view command;
 		std::string_view params;
@@ -527,8 +528,8 @@ namespace client
 	void SAMSocket::SendMessageReply (std::string_view msg, bool close)
 	{
 		// The reply body may carry secret operands: SESSION STATUS RESULT=OK
-		// contains DESTINATION=&lt;private keys&gt; and DEST REPLY contains PRIV=.
-		// Log only the size and the close decision, never the bytes.
+		// contains DESTINATION=&lt;private keys&gt; and DEST REPLY contains
+		// PRIV=. Log only the size and the close decision, never the bytes.
 		LogPrint (eLogDebug, "SAMSocket::SendMessageReply, close=", close ? "true" : "false", ", bytes=", msg.size ());
 
 		// The reply (or the decision not to send one) settles any deferred
@@ -615,9 +616,9 @@ namespace client
 		return true;
 	}
 
-	// .i2p host names are case-insensitive, unlike base64 destinations. Java
-	// lowercases the name before its ".b32.i2p" check and the naming service
-	// matches case-insensitively.
+	// .i2p host names are case-insensitive, unlike base64 destinations.
+	// Java lowercases the name before its ".b32.i2p" check and the naming
+	// service matches case-insensitively.
 	static bool IsI2PHostName (std::string_view address)
 	{
 		return address.size () > 4 && SAMCommandEquals (address.substr (address.size () - 4), ".I2P");
@@ -629,8 +630,8 @@ namespace client
 		// later command may be dispatched (or answered) before it.
 		m_IsCommandPending = true;
 		// DESTINATION carries the base64 private keys. The command line is
-		// never logged; only the canonical style and whether an ID was supplied
-		// are (MakeSAMSessionCreateLogLine).
+		// never logged; only the canonical style and whether an ID was
+		// supplied are (MakeSAMSessionCreateLogLine).
 		i2p::util::Mapping params;
 		if (!GetCommandParams (buf, params)) return;
 		std::string_view style = params[SAM_PARAM_STYLE];
@@ -683,7 +684,8 @@ namespace client
 			return;
 		}
 
-		// SAM 3.2 session defaults. They apply to later SEND/CONNECT commands.
+		// SAM 3.2 session defaults. They apply to later SEND/CONNECT
+		// commands.
 		uint16_t fromPort = 0, toPort = 0;
 		uint8_t protocol = i2p::datagram::DATAGRAM_RAW_PROTOCOL; // RAW default, SAMv3 spec
 		if (!ParseSAMPort (params, SAM_PARAM_FROM_PORT, fromPort))
@@ -696,17 +698,18 @@ namespace client
 			SendSessionI2PError ("Invalid TO_PORT");
 			return;
 		}
-		// PROTOCOL is only meaningful for RAW sessions; other styles ignore it.
+		// PROTOCOL is only meaningful for RAW sessions; other styles ignore
+		// it.
 		if (type == SAMSessionType::eSAMSessionTypeRaw && !ParseSAMProtocol (params, SAM_PARAM_PROTOCOL, protocol))
 		{
 			SendSessionI2PError ("Invalid PROTOCOL");
 			return;
 		}
-		// SAM 3.3 LISTEN_PROTOCOL selects the effective receive protocol. It is
-		// interpreted for RAW, validated and ignored for DATAGRAM (the style
-		// selects 17/19/20) and rejected for STREAM/PRIMARY. `PORT` below is
-		// only the local UDP forward endpoint (see SAMv3Handler/SAM 3.x), so it
-		// can never become the I2CP receive port.
+		// SAM 3.3 LISTEN_PROTOCOL selects the effective receive protocol. It
+		// is interpreted for RAW, validated and ignored for DATAGRAM (the
+		// style selects 17/19/20) and rejected for STREAM/PRIMARY. `PORT`
+		// below is only the local UDP forward endpoint (see SAMv3Handler/SAM
+		// 3.x), so it can never become the I2CP receive port.
 		uint8_t listenProtocol = protocol;
 		if (!ResolveSAMListenProtocol (params, type, protocol, listenProtocol))
 		{
@@ -714,17 +717,17 @@ namespace client
 			return;
 		}
 		const uint8_t receiveProtocol = SAMStyleListenProtocol (type, datagramVersion, listenProtocol);
-		// I2CP receive port: LISTEN_PORT, default 0 (PORT_ANY). Java uses 0 for
-		// a single session unless LISTEN_PORT is given.
+		// I2CP receive port: LISTEN_PORT, default 0 (PORT_ANY). Java uses 0
+		// for a single session unless LISTEN_PORT is given.
 		uint16_t listenPort = 0;
 		if (!ResolveSAMSessionListenPort (params, listenPort))
 		{
 			SendSessionI2PError ("Invalid LISTEN_PORT");
 			return;
 		}
-		// HEADER=true makes forwarded raw datagrams carry a PROTOCOL/FROM_PORT/
-		// TO_PORT line, as in SAMv3RawSession (SAM 3.2+). A bare HEADER token
-		// means true (SAMUtils.getBool).
+		// HEADER=true makes forwarded raw datagrams carry a
+		// PROTOCOL/FROM_PORT/ TO_PORT line, as in SAMv3RawSession (SAM 3.2+).
+		// A bare HEADER token means true (SAMUtils.getBool).
 		bool header = m_Version >= SAM_VERSION_32 && type == SAMSessionType::eSAMSessionTypeRaw
 			&& SAMIsParamTrue (params, SAM_PARAM_HEADER);
 
@@ -732,8 +735,8 @@ namespace client
 		if ((type == SAMSessionType::eSAMSessionTypeDatagram || type == SAMSessionType::eSAMSessionTypeRaw)
 			&& params.Contains (SAM_PARAM_PORT))
 		{
-			// udp forward selected. Like SAMv3RawSession.getSocketAddress(), HOST
-			// defaults to the control connection's remote address. SAM v3
+			// udp forward selected. Like SAMv3RawSession.getSocketAddress(),
+			// HOST defaults to the control connection's remote address. SAM v3
 			// (`SESSION CREATE`) defines PORT as this local forwarding endpoint
 			// and LISTEN_PORT as the I2CP receive port, so PORT never selects
 			// the receiver registration below.
@@ -897,11 +900,11 @@ namespace client
 
 	void SAMSocket::ProcessStreamConnect (std::string_view buf, const char * payload, size_t rem)
 	{
-		// The reply arrives after the connect completes, so no further command
-		// may be parsed (or replied to) in the meantime.
+		// The reply arrives after the connect completes, so no further
+		// command may be parsed (or replied to) in the meantime.
 		m_IsCommandPending = true;
-		// CONNECT carries only a public destination and ports, so the parameter
-		// list is safe to log (unlike SESSION CREATE and HELLO).
+		// CONNECT carries only a public destination and ports, so the
+		// parameter list is safe to log (unlike SESSION CREATE and HELLO).
 		LogPrint (eLogDebug, "SAM: Stream connect: ", buf);
 		if (m_SocketType != SAMSocketType::eSAMSocketTypeUnknown)
 		{
@@ -912,8 +915,8 @@ namespace client
 		if (!GetCommandParams (buf, params)) return;
 		std::string_view id = params[SAM_PARAM_ID];
 		std::string_view destination = params[SAM_PARAM_DESTINATION];
-		// SAMv3Handler/SAMv1Handler report a missing ID as I2P_ERROR, not as an
-		// unknown session.
+		// SAMv3Handler/SAMv1Handler report a missing ID as I2P_ERROR, not as
+		// an unknown session.
 		if (id.empty ())
 		{
 			SendStreamI2PError ("ID not specified");
@@ -1277,15 +1280,15 @@ namespace client
 
 	size_t SAMSocket::ProcessDatagramSend (std::string_view line, const char * payload, size_t available)
 	{
-		// The SEND parameters name the public peer destination, ports and size;
-		// the payload itself is never logged.
+		// The SEND parameters name the public peer destination, ports and
+		// size; the payload itself is never logged.
 		LogPrint (eLogDebug, "SAM: Datagram send: ", line);
 		i2p::util::Mapping params;
 		if (!GetCommandParams (line, params)) return available;
-		// A SEND has no ID parameter: it belongs to the session created on this
-		// control connection. Java SAMv1Handler reports a missing/unknown
-		// session as an error and closes the connection instead of silently
-		// consuming the command and its payload.
+		// A SEND has no ID parameter: it belongs to the session created on
+		// this control connection. Java SAMv1Handler reports a
+		// missing/unknown session as an error and closes the connection
+		// instead of silently consuming the command and its payload.
 		if (m_ID.empty ())
 		{
 			LogPrint (eLogError, "SAM: DATAGRAM SEND without a session, ID not specified");
@@ -1543,7 +1546,8 @@ namespace client
 				forward = std::make_shared<boost::asio::ip::udp::endpoint> (addr, port);
 			}
 
-			// traffic from I2P is routed by port, LISTEN_PORT defaults to FROM_PORT
+			// traffic from I2P is routed by port, LISTEN_PORT defaults to
+			// FROM_PORT
 			uint16_t listenPort = fromPort;
 			if (!ParseSAMPort (params, SAM_PARAM_LISTEN_PORT, listenPort))
 			{
@@ -1785,10 +1789,11 @@ namespace client
 				Terminate ("SAM: control input overflow");
 				return;
 			}
-			// Before HELLO the client has 60 s (SAMHandlerFactory.HELLO_TIMEOUT).
-			// After HELLO Java calls setSoTimeout(0): a session control socket may
-			// stay idle for hours, so only a *partially* received command line is
-			// bounded, and an idle connection is left to the peer.
+			// Before HELLO the client has 60 s
+			// (SAMHandlerFactory.HELLO_TIMEOUT). After HELLO Java calls
+			// setSoTimeout(0): a session control socket may stay idle for hours,
+			// so only a *partially* received command line is bounded, and an
+			// idle connection is left to the peer.
 			if (!m_IsHandshakeDone)
 				ArmControlDeadline (SAM_CONTROL_HELLO_TIMEOUT, "HELLO timeout");
 			else if (m_InputSize)
@@ -2053,14 +2058,16 @@ namespace client
 					std::string ident = stream->GetRemoteIdentity ()->ToBase64 ();
 					if (m_Version >= SAM_VERSION_32)
 					{
-						// SAMv3Handler.notifyStreamIncomingConnection(): peer port then local port
+						// SAMv3Handler.notifyStreamIncomingConnection(): peer port then
+						// local port
 						ident.append (" FROM_PORT=");
 						ident.append (std::to_string (stream->GetRemotePort ()));
 						ident.append (" TO_PORT=");
 						ident.append (std::to_string (stream->GetLocalPort ()));
 					}
 					ident.push_back ('\n');
-					// send remote peer address back to client like received from stream
+					// send remote peer address back to client like received from
+					// stream
 					QueueI2PData (reinterpret_cast<const uint8_t *> (ident.data ()), ident.size ());
 				}
 			}
@@ -2137,8 +2144,9 @@ namespace client
 	void SAMSocket::HandleI2PDatagramReceive (std::string sessionID, const i2p::data::IdentityEx & from,
 		uint16_t fromPort, uint16_t toPort, const uint8_t * buf, size_t len, const i2p::util::Mapping *)
 	{
-		// This callback may run on the destination's service. Copy the payload
-		// before it is reused by the next datagram, then handle it on SAM.
+		// This callback may run on the destination's service. Copy the
+		// payload before it is reused by the next datagram, then handle it on
+		// SAM.
 		std::vector<uint8_t> payload;
 		if (buf && len) payload.assign (buf, buf + len);
 		auto s = shared_from_this ();
@@ -2222,7 +2230,8 @@ namespace client
 	{
 		size_t len = payload.size ();
 		const uint8_t * buf = payload.empty () ? nullptr : payload.data ();
-		// Datagram3 has only the sender hash (SAMv3DatagramSession.receiveDatagramBytes(Hash,...)).
+		// Datagram3 has only the sender hash
+		// (SAMv3DatagramSession.receiveDatagramBytes(Hash,...)).
 		LogPrint (eLogDebug, "SAM: Datagram3 received ", len);
 		auto session = m_Owner.FindSession (sessionID);
 		if (session)
@@ -2231,7 +2240,8 @@ namespace client
 			auto ep = session->UDPEndpoint;
 			if (ep)
 			{
-				// send to remote endpoint: sender hash [FROM_PORT TO_PORT] LF payload
+				// send to remote endpoint: sender hash [FROM_PORT TO_PORT] LF
+				// payload
 				std::string header = base64;
 				if (m_Version >= SAM_VERSION_32)
 				{
@@ -2441,8 +2451,9 @@ namespace client
 			LogPrint (eLogError, "SAM: Missing datagram destination for session ", Name);
 			return;
 		}
-		// Resolve like a stream connect: a full base64 destination, or a .i2p host
-		// that is either a plain b32 (ident hash) or a blinded b33 (encrypted leaseset).
+		// Resolve like a stream connect: a full base64 destination, or a .i2p
+		// host that is either a plain b32 (ident hash) or a blinded b33
+		// (encrypted leaseset).
 		std::shared_ptr<const Address> addr;
 		if (IsI2PHostName (destination))
 			addr = context.GetAddressBook ().GetAddress (std::string (destination));
@@ -2478,8 +2489,9 @@ namespace client
 			sendTo (payload, len, addr->identHash); // plain b32 / full dest: send straight away
 		else
 		{
-			// b33: the leaseset lookup is async and the receive buffer is reused, so copy
-			// the payload, then send to the resolved ident hash once the leaseset arrives.
+			// b33: the leaseset lookup is async and the receive buffer is
+			// reused, so copy the payload, then send to the resolved ident hash
+			// once the leaseset arrives.
 			auto data = std::make_shared<std::vector<uint8_t>> (payload, payload + len);
 			localDest->RequestDestinationWithEncryptedLeaseSet (addr->blindedPublicKey,
 				[sendTo, data] (std::shared_ptr<i2p::data::LeaseSet> ls)
@@ -2499,8 +2511,8 @@ namespace client
 	SAMSingleSession::~SAMSingleSession ()
 	{
 		// Do not remove/stop a destination still referenced by another SAM
-		// session or tunnel. CleanupDestinations() removes an orphan after the
-		// last owner releases it.
+		// session or tunnel. CleanupDestinations() removes an orphan after
+		// the last owner releases it.
 		if (localDestination && localDestination->GetRefCounter () <= 0)
 			i2p::client::context.DeleteLocalDestination (localDestination);
 	}
@@ -2508,8 +2520,9 @@ namespace client
 	void SAMSingleSession::StopLocalDestination ()
 	{
 		if (!localDestination) return;
-		// Destination is ref-counted and may be shared by sessions whose SESSION
-		// CREATEs resolve to the same identity hash; only its last user may stop it.
+		// Destination is ref-counted and may be shared by sessions whose
+		// SESSION CREATEs resolve to the same identity hash; only its last
+		// user may stop it.
 		if (localDestination->Release () > 0) return;
 		// stop accepting new streams
 		localDestination->StopAcceptingStreams ();
@@ -2557,8 +2570,8 @@ namespace client
 			if (d) d->Stop ();
 		}
 		// Datagram receivers are protocol/port registrations tracked by the
-		// owning SAMSocket; SESSION REMOVE and socket teardown reset them before
-		// this subsession (and the callback's owner) is released.
+		// owning SAMSocket; SESSION REMOVE and socket teardown reset them
+		// before this subsession (and the callback's owner) is released.
 	}
 
 	SAMBridge::SAMBridge (const std::string & address, uint16_t portTCP, uint16_t portUDP, bool singleThread)
@@ -2630,9 +2643,9 @@ namespace client
 			LogPrint (eLogError, "SAM: Runtime exception: ", ex.what ());
 		}
 
-		// Sockets and sessions are owned by the SAM service. Close them there,
-		// then join from this thread. A bridge that never started has no owner
-		// thread to marshal to.
+		// Sockets and sessions are owned by the SAM service. Close them
+		// there, then join from this thread. A bridge that never started has
+		// no owner thread to marshal to.
 		if (IsRunning () && !IsInServiceThread ())
 		{
 			auto done = std::make_shared<std::promise<void>> ();

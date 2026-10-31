@@ -4,9 +4,9 @@
  *
  * openi2pd: test OpenSSL capabilities.
  *
- * Exercises the provider/algorithm capability probe used by startup and the
- * runtime ML-KEM publication gate. It does not load a non-default provider or
- * make a network connection.
+ * Exercises the provider/algorithm capability probe used by startup and
+ * the runtime ML-KEM publication gate. It does not load a non-default
+ * provider or make a network connection.
  */
 
 #include <cassert>
@@ -34,8 +34,9 @@ int main ()
 	assert (capabilities.ed25519);
 
 #if OPENSSL_PQ
-	// A version may be advertised only when its exact ML-KEM parameter set is
-	// usable; the selection helper must never return an unsupported version.
+	// A version may be advertised only when its exact ML-KEM parameter set
+	// is usable; the selection helper must never return an unsupported
+	// version.
 	for (int maximum = 2; maximum <= 5; ++maximum)
 	{
 		const int highest = i2p::crypto::HighestSupportedPQVersion (5, maximum);

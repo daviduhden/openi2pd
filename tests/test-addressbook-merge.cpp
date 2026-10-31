@@ -4,12 +4,13 @@
  *
  * openi2pd: test address-book subscription merge precedence.
  *
- * Offline checks that an automatic subscription merge never replaces a name
- * that already had a destination, that duplicate lines inside one source still
- * follow last-wins, that declined entries are counted, that tombstones still
- * block a merge and that the .i2p.alt alias and www. fallback are unaffected.
- * No storage directory, resolver, destination, socket, thread or timer is
- * started; the merge helper is exercised directly.
+ * Offline checks that an automatic subscription merge never replaces a
+ * name that already had a destination, that duplicate lines inside one
+ * source still follow last-wins, that declined entries are counted,
+ * that tombstones still block a merge and that the .i2p.alt alias and
+ * www. fallback are unaffected. No storage directory, resolver,
+ * destination, socket, thread or timer is started; the merge helper is
+ * exercised directly.
  */
 
 #include <cassert>
@@ -52,8 +53,8 @@ public:
 	void SaveEtag (const i2p::data::IdentHash &, const std::string &, const std::string &) override { }
 	bool GetEtag (const i2p::data::IdentHash &, std::string &, std::string &) override { return false; }
 	void ResetEtags () override { }
-	// Tombstones are held in memory so the merge path can be tested without
-	// creating a data directory.
+	// Tombstones are held in memory so the merge path can be tested
+	// without creating a data directory.
 	bool LoadDeletedHosts (std::vector<std::string> & patterns) override
 	{
 		patterns = deleted;
@@ -98,8 +99,8 @@ void TestKnownNameKeepsLocalDestination ()
 	auto * fake = storage.get ();
 	i2p::client::AddressBook book (std::move (storage));
 
-	// Curated locally through the explicit add path; the original spelling is
-	// normalised, the destination is not rewritten.
+	// Curated locally through the explicit add path; the original spelling
+	// is normalised, the destination is not rewritten.
 	book.InsertAddress ("Curated.Example.I2P", Base64 (local));
 	assert (book.FindAddress ("curated.example.i2p"));
 	assert (book.FindAddress ("curated.example.i2p")->identHash == localHash);
@@ -120,7 +121,8 @@ void TestKnownNameKeepsLocalDestination ()
 	assert (book.FindAddress ("curated.example.i2p")->identHash == localHash);
 	assert (book.GetMergeConflicts () == 1);
 
-	// An explicit administrative replace is an operator action and still wins.
+	// An explicit administrative replace is an operator action and still
+	// wins.
 	assert (
 		book.AddAddress ("curated.example.i2p", Base64 (remote), true) == i2p::client::AddressBookMutationResult::Ok);
 	assert (book.FindAddress ("curated.example.i2p")->identHash == remoteHash);
@@ -135,14 +137,15 @@ void TestSourceAddsAndRefinesItsOwnNames ()
 	const auto firstHash = Hash (first);
 	const auto secondHash = Hash (second);
 
-	// No storage: the merge only touches the in-memory map, which is the same
-	// precedence decision an update from a subscription makes.
+	// No storage: the merge only touches the in-memory map, which is the
+	// same precedence decision an update from a subscription makes.
 	i2p::client::AddressBook book;
 	std::istringstream source ("fresh.i2p=" + Base64 (first) + "\n" + "dupe.i2p=" + Base64 (first) + "\n"
 		+ "dupe.i2p=" + Base64 (second) + "\n");
 	assert (book.LoadHostsFromStream (std::move (source), true, "stats.i2p"));
 	assert (book.FindAddress ("fresh.i2p")->identHash == firstHash);
-	// Last line wins inside one source (properties-style), and refining its own
+	// Last line wins inside one source (properties-style), and refining
+	// its own
 	// entry is not counted as a conflict against a locally known name.
 	assert (book.FindAddress ("dupe.i2p")->identHash == secondHash);
 	assert (book.GetMergeConflicts () == 0);
@@ -191,7 +194,8 @@ void TestAliasAndWwwFallbackUnaffected ()
 	assert (book.LoadHostsFromStream (std::move (source), true, "stats.i2p"));
 	assert (book.GetMergeConflicts () == 1);
 
-	// RFC 9476 .i2p.alt stays a lookup-only alias of the untouched local name.
+	// RFC 9476 .i2p.alt stays a lookup-only alias of the untouched local
+	// name.
 	auto alt = book.GetAddress ("PORTAL.Example.I2P.ALT");
 	assert (alt);
 	assert (alt->identHash == localHash);
@@ -213,7 +217,8 @@ void TestConflictCounterIsPerEntry ()
 	book.InsertAddress ("kept.i2p", Base64 (local));
 	assert (book.GetMergeConflicts () == 0);
 
-	// Every differing offer for the known name is counted once, no matter how
+	// Every differing offer for the known name is counted once, no matter
+	// how
 	// many log lines the bounded diagnostics print.
 	std::string body;
 	for (size_t i = 0; i < 32; i++) body += "kept.i2p=" + Base64 (remote) + "\n";

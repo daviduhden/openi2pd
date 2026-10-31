@@ -4,15 +4,17 @@
  *
  * openi2pd: Garlic.
  *
- * Implements garlic routing sessions and clove encoding for ElGamal/AES+
- * SessionTag and ECIES-X25519 destinations, including session-tag creation,
- * expiry and persistence, delivery instructions/status and routing-path reuse.
- * Incoming blocks are bounded to 200 ElGamal tags and fixed per-destination
- * tag pools, and unknown or malformed tags are discarded without growing
- * state. A clove payload is limited to I2NP_MAX_CLOVES well-framed cloves, a
- * stale or foreign clove is skipped without stopping the walk, a replayed
- * clove is dropped by a bounded per-destination filter, and every session
- * serializes its own state so concurrent wrapping cannot share tags or IVs.
+ * Implements garlic routing sessions and clove encoding for
+ * ElGamal/AES+ SessionTag and ECIES-X25519 destinations, including
+ * session-tag creation, expiry and persistence, delivery
+ * instructions/status and routing-path reuse. Incoming blocks are
+ * bounded to 200 ElGamal tags and fixed per-destination tag pools, and
+ * unknown or malformed tags are discarded without growing state. A
+ * clove payload is limited to I2NP_MAX_CLOVES well-framed cloves, a
+ * stale or foreign clove is skipped without stopping the walk, a
+ * replayed clove is dropped by a bounded per-destination filter, and
+ * every session serializes its own state so concurrent wrapping cannot
+ * share tags or IVs.
  *
  */
 
@@ -41,20 +43,20 @@ namespace i2p
 namespace garlic
 {
 	// Java's ElGamalAESEngine.MAX_TAGS_RECEIVED and the ElGamal/AES
-	// specification allow at most 200 tags in one AES block. A larger count
-	// must be rejected before the receiver grows its tag table.
+	// specification allow at most 200 tags in one AES block. A larger
+	// count must be rejected before the receiver grows its tag table.
 	constexpr uint16_t MAX_ELGAMAL_AES_TAGS = 200;
-	// Per-destination bounds. A peer can otherwise add up to 200 ElGamal tags
-	// per block (retained for INCOMING_TAGS_EXPIRATION_TIMEOUT) or request up
-	// to 800 ECIES tags in one NEXT_KEY block.
+	// Per-destination bounds. A peer can otherwise add up to 200 ElGamal
+	// tags per block (retained for INCOMING_TAGS_EXPIRATION_TIMEOUT) or
+	// request up to 800 ECIES tags in one NEXT_KEY block.
 	constexpr size_t MAX_INCOMING_ELGAMAL_TAGS = 4096;
 	constexpr size_t MAX_INCOMING_ECIES_TAGS = 8192;
 
 	namespace
 	{
-		// Throttled diagnostics for the garlic parse paths. A peer controls the
-		// ciphertext, clove headers and tag sets, so a malformed block or a stale
-		// clove must not be able to flood the log.
+		// Throttled diagnostics for the garlic parse paths. A peer controls
+		// the ciphertext, clove headers and tag sets, so a malformed block or
+		// a stale clove must not be able to flood the log.
 		I2NPDropCounter g_GarlicParseDrops;
 		I2NPDropCounter g_ElGamalTagBudgetDrops;
 		I2NPDropCounter g_CloveStaleDrops;
@@ -63,8 +65,8 @@ namespace garlic
 	} // namespace
 
 	// Java MessageValidator: reject a clove whose expiration is older than
-	// 90 seconds or more than 240 seconds in the future. The same window is
-	// applied by the I2NP dispatcher (IsFreshI2NPExpiration).
+	// 90 seconds or more than 240 seconds in the future. The same window
+	// is applied by the I2NP dispatcher (IsFreshI2NPExpiration).
 	bool IsFreshCloveDate (uint64_t dateMs)
 	{
 		return IsFreshI2NPExpiration (dateMs, i2p::util::GetMillisecondsSinceEpoch ());
@@ -229,8 +231,8 @@ namespace garlic
 		const size_t baseLen = m->len;
 		const size_t capacity = baseLen <= m->maxLen ? m->maxLen - baseLen : 0;
 		// Worst case envelope: length, ElGamal block, freshly generated tags,
-		// AES block header, garlic payload and padding. Refuse oversized input
-		// before consuming a tag or mutating session state.
+		// AES block header, garlic payload and padding. Refuse oversized
+		// input before consuming a tag or mutating session state.
 		size_t worstTags = 0;
 		if (m_NumTags > 0)
 		{
@@ -369,9 +371,9 @@ namespace garlic
 		blockSize += 32;
 		buf[blockSize] = 0; // flag
 		blockSize++;
-		// Ownership of newTags moves into CreateGarlicPayload: it either stores
-		// the tags together with the DeliveryStatus message that confirms them
-		// or releases them on failure.
+		// Ownership of newTags moves into CreateGarlicPayload: it either
+		// stores the tags together with the DeliveryStatus message that
+		// confirms them or releases them on failure.
 		size_t len = CreateGarlicPayload (buf + blockSize, capacity - blockSize - maxPadding, msg, std::move (newTags));
 		if (!len) return 0;
 		htobe32buf (payloadSize, static_cast<uint32_t> (len));
@@ -561,7 +563,8 @@ namespace garlic
 				// before creating the key so a failed attempt does not leave
 				// an unused tag behind.
 				if (capacity < 512) return 0;
-				// create msg first so the exact capacity check happens before writing
+				// create msg first so the exact capacity check happens before
+				// writing
 				auto msg = CreateEncryptedDeliveryStatusMsg (msgID);
 				if (!msg) return 0;
 				const size_t needed = 1 + 32 + 4 + msg->GetLength () + 4 + 8 + 3;
@@ -688,8 +691,8 @@ namespace garlic
 	std::mt19937 & GarlicDestination::GetRng ()
 	{
 		// One generator per thread: the destination service, streaming,
-		// datagram, torrent and timer threads all ask for random selection, and
-		// a shared std::mt19937 would be read and written concurrently.
+		// datagram, torrent and timer threads all ask for random selection,
+		// and a shared std::mt19937 would be read and written concurrently.
 		thread_local std::mt19937 rng (i2p::util::GetRngSeed ());
 		return rng;
 	}
@@ -699,8 +702,9 @@ namespace garlic
 	void GarlicDestination::CleanUp ()
 	{
 		// Detach and destroy every session outside the locks. The ElGamal map
-		// used to be iterated and cleared without any lock while another thread
-		// could insert into it, and every map was destroyed under its mutex.
+		// used to be iterated and cleared without any lock while another
+		// thread could insert into it, and every map was destroyed under its
+		// mutex.
 		std::unordered_map<i2p::data::IdentHash, ElGamalAESSessionPtr> sessions;
 		std::unordered_map<i2p::data::Tag<32>, ECIESX25519AEADRatchetSessionPtr> ratchetSessions;
 		std::unordered_map<uint32_t, GarlicRoutingSessionPtr> deliveryStatusSessions;
@@ -769,9 +773,10 @@ namespace garlic
 				++it;
 		}
 		// The map has no insertion-order metadata. Evicting arbitrary entries
-		// only affects old tag windows; keeping the hard bound is more important
-		// than preserving one abusive session's tags. A later message fails
-		// authentication/decryption instead of blocking all new handshakes.
+		// only affects old tag windows; keeping the hard bound is more
+		// important than preserving one abusive session's tags. A later
+		// message fails authentication/decryption instead of blocking all new
+		// handshakes.
 		while (m_ECIESx25519Tags.size () + minSlots > MAX_INCOMING_ECIES_TAGS && !m_ECIESx25519Tags.empty ())
 		{
 			auto it = m_ECIESx25519Tags.begin ();
@@ -793,8 +798,8 @@ namespace garlic
 			else
 				m_ECIESx25519Tags.emplace (tag, ECIESX25519AEADRatchetIndexTagset { 0, tagset });
 		}
-		// Any removed tagset is released here, outside m_TagsMutex, because its
-		// destructor calls back into the session.
+		// Any removed tagset is released here, outside m_TagsMutex, because
+		// its destructor calls back into the session.
 		removed.clear ();
 	}
 
@@ -811,18 +816,19 @@ namespace garlic
 
 	void GarlicDestination::HandleGarlicMessage (std::shared_ptr<I2NPMessage> msg)
 	{
-		// Envelope selection is a fixed order, not a guess: (1) an ECIES-X25519
-		// ratchet tag, (2) an ElGamal/AES+SessionTag block (16-byte aligned and at
-		// least 32 bytes for the tag), (3) a new-session envelope, chosen as
-		// ElGamal/AES only when the length is 2 mod 16, at least 514 bytes (the
-		// encrypted block) and the destination still has an ElGamal key; otherwise
-		// an ECIES-X25519 New Session message is assumed. A failed step must not
-		// consume state for the next one, so a tag is erased only by the branch
-		// that then uses it.
-		// Runs on the executor that owns this destination (LeaseSetDestination
-		// drains its incoming queue on its own service). The shared tag and
-		// session maps are still locked because transport threads insert
-		// received session keys and tags from outside that executor.
+		// Envelope selection is a fixed order, not a guess: (1) an
+		// ECIES-X25519 ratchet tag, (2) an ElGamal/AES+SessionTag block
+		// (16-byte aligned and at least 32 bytes for the tag), (3) a
+		// new-session envelope, chosen as ElGamal/AES only when the length is
+		// 2 mod 16, at least 514 bytes (the encrypted block) and the
+		// destination still has an ElGamal key; otherwise an ECIES-X25519 New
+		// Session message is assumed. A failed step must not consume state
+		// for the next one, so a tag is erased only by the branch that then
+		// uses it. Runs on the executor that owns this destination
+		// (LeaseSetDestination drains its incoming queue on its own service).
+		// The shared tag and session maps are still locked because transport
+		// threads insert received session keys and tags from outside that
+		// executor.
 		if (!msg || msg->GetLength () < I2NP_HEADER_SIZE + 4)
 		{
 			if (g_GarlicParseDrops.Record ())
@@ -1012,8 +1018,8 @@ namespace garlic
 		}
 		// Only install the announced session tags once the payload hash has
 		// been verified. Previously unauthenticated tags were inserted before
-		// the check and could be used to grow m_Tags with forged entries.
-		// A rekey flag associates the new tags with the announced session key,
+		// the check and could be used to grow m_Tags with forged entries. A
+		// rekey flag associates the new tags with the announced session key,
 		// exactly as Java's tagsReceived(foundKey, tags) does.
 		std::shared_ptr<AESDecryption> tagDecryption = decryption;
 		if (newSessionKey) tagDecryption = std::make_shared<AESDecryption> (newSessionKey);
@@ -1068,13 +1074,14 @@ namespace garlic
 		}
 		buf++;
 		len--;
-		// Two-phase walk per clove: classify first (framing, freshness, addressed
-		// destination), then deliver. A clove that is merely skipped still has
-		// intact framing, so the shared advance at the bottom of the loop moves
-		// past exactly one clove and the walk continues; broken framing is the
-		// only reason to stop the whole payload. `from` marks tunnel delivery,
-		// which decides whether a TUNNEL clove is forwarded through this
-		// destination's outbound tunnel or sent directly with a gateway wrapper.
+		// Two-phase walk per clove: classify first (framing, freshness,
+		// addressed destination), then deliver. A clove that is merely
+		// skipped still has intact framing, so the shared advance at the
+		// bottom of the loop moves past exactly one clove and the walk
+		// continues; broken framing is the only reason to stop the whole
+		// payload. `from` marks tunnel delivery, which decides whether a
+		// TUNNEL clove is forwarded through this destination's outbound
+		// tunnel or sent directly with a gateway wrapper.
 		for (unsigned int i = 0; i < numCloves; i++)
 		{
 			if (len < 1) // no flag byte left for the announced clove
@@ -1356,9 +1363,9 @@ namespace garlic
 		{
 			// A session method takes the session's own state lock, and a session
 			// that registers itself with this destination takes that lock before
-			// m_SessionsMutex. Calling one while holding the map lock would be the
-			// opposite order and could deadlock, so the map is only snapshotted
-			// here and every callback runs outside the lock.
+			// m_SessionsMutex. Calling one while holding the map lock would be
+			// the opposite order and could deadlock, so the map is only
+			// snapshotted here and every callback runs outside the lock.
 			std::vector<std::pair<i2p::data::IdentHash, ElGamalAESSessionPtr>> sessions;
 			{
 				std::unique_lock<std::mutex> l (m_SessionsMutex);
@@ -1488,9 +1495,9 @@ namespace garlic
 
 	void GarlicDestination::SetLeaseSetUpdated (bool /* post */)
 	{
-		// Snapshot both maps and notify outside m_SessionsMutex: the setter takes
-		// the session state lock, which a self-registering session takes before
-		// this map lock.
+		// Snapshot both maps and notify outside m_SessionsMutex: the setter
+		// takes the session state lock, which a self-registering session
+		// takes before this map lock.
 		std::vector<GarlicRoutingSessionPtr> sessions;
 		{
 			std::unique_lock<std::mutex> l (m_SessionsMutex);
@@ -1510,8 +1517,9 @@ namespace garlic
 	void GarlicDestination::ProcessDeliveryStatusMessage (std::shared_ptr<I2NPMessage> msg)
 	{
 		// Java DeliveryStatusMessage is exactly msgID (4) + timestamp (8); a
-		// longer or shorter payload means the sender and this handler disagree
-		// about the message layout, so it is not used to confirm anything.
+		// longer or shorter payload means the sender and this handler
+		// disagree about the message layout, so it is not used to confirm
+		// anything.
 		if (!msg || msg->GetLength () < I2NP_HEADER_SIZE || !IsValidDeliveryStatusPayload (msg->GetPayloadLength ()))
 		{
 			if (g_GarlicParseDrops.Record ())
@@ -1545,12 +1553,12 @@ namespace garlic
 
 	void GarlicDestination::LoadTags ()
 	{
-		// Tags are handed over exactly once per clean shutdown: SaveTags() writes
-		// them, this function installs only records still inside
+		// Tags are handed over exactly once per clean shutdown: SaveTags()
+		// writes them, this function installs only records still inside
 		// INCOMING_TAGS_EXPIRATION_TIMEOUT and then removes the file (see the
-		// Remove at the end). A crash therefore cannot leave a stale tag set that
-		// a later start would install as if it were fresh. A short read stops the
-		// loop instead of publishing a partially filled tag or key.
+		// Remove at the end). A crash therefore cannot leave a stale tag set
+		// that a later start would install as if it were fresh. A short read
+		// stops the loop instead of publishing a partially filled tag or key.
 		std::string ident = GetIdentHash ().ToBase32 ();
 		std::string path = i2p::fs::DataDirPath ("tags", (ident + ".tags"));
 		uint32_t ts = static_cast<uint32_t> (i2p::util::GetSecondsSinceEpoch ());

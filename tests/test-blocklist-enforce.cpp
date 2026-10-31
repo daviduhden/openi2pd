@@ -4,11 +4,12 @@
  *
  * openi2pd: blocklist enforcement regression.
  *
- * Exercises immutable snapshot matching for IPv4/IPv6/router hashes, the
- * bounded runtime-ban set and its IsRouterBanned() integration. The global
- * one-shot file load is intentionally not invoked: the static contract in
- * NetDb.cpp and Profiling.cpp covers the startup wiring, while these checks
- * stay free of configuration, sockets and filesystem fixtures.
+ * Exercises immutable snapshot matching for IPv4/IPv6/router hashes,
+ * the bounded runtime-ban set and its IsRouterBanned() integration. The
+ * global one-shot file load is intentionally not invoked: the static
+ * contract in NetDb.cpp and Profiling.cpp covers the startup wiring,
+ * while these checks stay free of configuration, sockets and filesystem
+ * fixtures.
  *
  */
 
@@ -146,8 +147,8 @@ void TestRuntimeBanCap ()
 
 void TestUnloadedStats ()
 {
-	// LoadOperatorBlocklist() is not called here, so no file was read and the
-	// published table is absent.
+	// LoadOperatorBlocklist() is not called here, so no file was read and
+	// the published table is absent.
 	auto stats = GetOperatorBlocklistStats ();
 	assert (!stats.loaded);
 	assert (stats.ipv4Ranges == 0);
@@ -158,7 +159,8 @@ void TestUnloadedStats ()
 
 int main ()
 {
-	// Snapshot membership is pure; runtime bans and the Profiling predicate
+	// Snapshot membership is pure; runtime bans and the Profiling
+	// predicate
 	// need no router context, configuration or profile files.
 	TestSnapshotAddresses ();
 	TestRuntimeBans ();

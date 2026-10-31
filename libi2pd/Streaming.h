@@ -4,10 +4,11 @@
  *
  * openi2pd: Streaming.
  *
- * Declares the I2P streaming layer: packet flags and MTU limits, asynchronous
- * send buffers, the per-connection Stream state (sequence/ACK, RTT, window, RTO,
- * resend and pacing) and StreamingDestination for accepting, pooling and
- * dispatching streams. Receive timeouts are capped by MAX_RECEIVE_TIMEOUT.
+ * Declares the I2P streaming layer: packet flags and MTU limits,
+ * asynchronous send buffers, the per-connection Stream state
+ * (sequence/ACK, RTT, window, RTO, resend and pacing) and
+ * StreamingDestination for accepting, pooling and dispatching streams.
+ * Receive timeouts are capped by MAX_RECEIVE_TIMEOUT.
  *
  */
 
@@ -88,10 +89,10 @@ namespace stream
 	const size_t MAX_PENDING_INCOMING_BACKLOG = 1024;
 	const size_t MAX_SAVED_STREAM_IDS = 512;
 	const size_t MAX_SAVED_PACKETS_PER_STREAM = 64;
-	// Java ConnectionManager keeps a bounded map of closed connections so a
-	// retransmitted SYN cannot resurrect a connection the peer has not yet
-	// noticed as gone. The window only has to outlive the peer's SYN retry
-	// ladder; a bounded, timestamped table is enough.
+	// Java ConnectionManager keeps a bounded map of closed connections so
+	// a retransmitted SYN cannot resurrect a connection the peer has not
+	// yet noticed as gone. The window only has to outlive the peer's SYN
+	// retry ladder; a bounded, timestamped table is enough.
 	const size_t MAX_RECENTLY_CLOSED_STREAMS = 128;
 	const uint64_t RECENTLY_CLOSED_TIMEOUT = 120; // in seconds
 	const uint64_t SYN_REJECT_LOG_INTERVAL = 1000; // in milliseconds
@@ -109,11 +110,12 @@ namespace stream
 	const uint64_t STREAMING_DESTINATION_POOLS_CLEANUP_INTERVAL = 646; // in seconds
 	const uint64_t STREAMING_CONNECTION_CLEANUP_INTERVAL = 60; // in seconds
 
-	/// Buffered streaming wire packet. Header accessors assume the caller has
-	/// checked len, the NACK count and option length before accessing fields.
-	/// `from` is a borrowed ratchet session pointer. The destination-level queue
-	/// clears it for packets saved before SYN; stream-level reordering requires
-	/// separate lifetime review because it retains packets without clearing it.
+	/// Buffered streaming wire packet. Header accessors assume the caller
+	/// has checked len, the NACK count and option length before accessing
+	/// fields. `from` is a borrowed ratchet session pointer. The
+	/// destination-level queue clears it for packets saved before SYN;
+	/// stream-level reordering requires separate lifetime review because
+	/// it retains packets without clearing it.
 	/// @see https://i2p.net/en/docs/specs/streaming/
 	struct Packet
 	{
@@ -163,9 +165,9 @@ namespace stream
 #endif
 
 	/// Owns bytes and their completion handler while queued for streaming.
-	/// Destruction invokes a remaining handler with success; an owner discarding
-	/// unsent data must call Cancel() first. This reports local queue progress,
-	/// not acknowledgment by the remote peer.
+	/// Destruction invokes a remaining handler with success; an owner
+	/// discarding unsent data must call Cancel() first. This reports local
+	/// queue progress, not acknowledgment by the remote peer.
 	struct SendBuffer
 	{
 		// Owns the payload for the whole asynchronous write. `buf` is a
@@ -208,8 +210,9 @@ namespace stream
 		}
 		size_t GetRemainingSize () const { return len - offset; };
 		const uint8_t * GetRemaningBuffer () const { return buf + offset; };
-		/// Complete the handler with operation_aborted and the consumed byte count.
-		/// The handler is cleared so destruction does not report success as well.
+		/// Complete the handler with operation_aborted and the consumed byte
+		/// count. The handler is cleared so destruction does not report
+		/// success as well.
 		void Cancel ()
 		{
 			if (handler) handler (boost::asio::error::make_error_code (boost::asio::error::operation_aborted), offset);
@@ -247,9 +250,10 @@ namespace stream
 
 	class StreamingDestination;
 
-	// Policy answer for one incoming SYN. The server tunnel's access filter
-	// and the streaming connection limits share it so a refused peer is
-	// answered before any stream exists and before a SYNACK is sent.
+	// Policy answer for one incoming SYN. The server tunnel's access
+	// filter and the streaming connection limits share it so a refused
+	// peer is answered before any stream exists and before a SYNACK is
+	// sent.
 	enum class StreamAdmission
 	{
 		eAllow,
@@ -257,32 +261,33 @@ namespace stream
 		eReset // one signed RESET
 	};
 
-	// Identity announced by a SYN, or the ratchet-authenticated destination
-	// when the packet carries no FROM option. Empty when the packet does not
-	// reveal a peer identity (such a SYN is refused later by the normal
-	// authentication path, never by the admission policy).
+	// Identity announced by a SYN, or the ratchet-authenticated
+	// destination when the packet carries no FROM option. Empty when the
+	// packet does not reveal a peer identity (such a SYN is refused later
+	// by the normal authentication path, never by the admission policy).
 	std::optional<i2p::data::IdentHash> ExtractSynPeerIdentity (const Packet * packet);
 
 	class Stream;
 
-	// Shared state for the blocking StreamingDestination::AcceptStream helper.
-	// The armed acceptor owns this object through a shared_ptr, so a late
-	// invocation after AcceptStream returned writes into live heap memory
-	// instead of a dead stack frame; Cancel() makes such an invocation a no-op
-	// and the caller re-offers the stream instead of losing it.
+	// Shared state for the blocking StreamingDestination::AcceptStream
+	// helper. The armed acceptor owns this object through a shared_ptr, so
+	// a late invocation after AcceptStream returned writes into live heap
+	// memory instead of a dead stack frame; Cancel() makes such an
+	// invocation a no-op and the caller re-offers the stream instead of
+	// losing it.
 	class SyncAcceptState
 	{
 	public:
 		// Returns false when the waiter already cancelled: the caller must
 		// re-offer the stream rather than drop it.
 		bool Deliver (std::shared_ptr<Stream> stream);
-		// Marks the wait as abandoned without a delivery. Returns true when the
-		// cancellation won, i.e. no stream was delivered.
+		// Marks the wait as abandoned without a delivery. Returns true when
+		// the cancellation won, i.e. no stream was delivered.
 		bool Cancel ();
 		// Waits for a delivery. `timeout` == 0 waits indefinitely, a positive
-		// value bounds the wait and a negative one returns immediately. Returns
-		// true when the wait was completed (by a stream or by a reset with
-		// nullptr).
+		// value bounds the wait and a negative one returns immediately.
+		// Returns true when the wait was completed (by a stream or by a reset
+		// with nullptr).
 		bool Wait (int timeout);
 		std::shared_ptr<Stream> GetStream () const;
 
@@ -294,18 +299,18 @@ namespace stream
 		bool m_Cancelled = false;
 	};
 
-	/// One I2P streaming connection: sequence/ACK state, window and pacing,
-	/// resend queue and the send/receive buffers.
+	/// One I2P streaming connection: sequence/ACK state, window and
+	/// pacing, resend queue and the send/receive buffers.
 	///
 	/// Every state-machine entry point (`HandleNextPacket`, `SendBuffer`,
 	/// `ProcessAck`, `Close`, `Terminate`, the timers) runs on the owning
-	/// destination's io_context, so the members are not mutex-guarded; only the
-	/// `Async*` helpers may be called from another thread, and they post onto
-	/// that context. `Receive()` blocks the calling thread until such a posted
-	/// read completes, so it must never run on the service thread itself.
-	/// `Packet` objects come from and return to the destination's pool, and
-	/// `m_LocalDestinationOwner` keeps the destination alive for handlers that
-	/// outlive its map entry.
+	/// destination's io_context, so the members are not mutex-guarded;
+	/// only the `Async*` helpers may be called from another thread, and
+	/// they post onto that context. `Receive()` blocks the calling thread
+	/// until such a posted read completes, so it must never run on the
+	/// service thread itself. `Packet` objects come from and return to the
+	/// destination's pool, and `m_LocalDestinationOwner` keeps the
+	/// destination alive for handlers that outlive its map entry.
 	class Stream : public std::enable_shared_from_this<Stream>
 	{
 	public:
@@ -352,7 +357,10 @@ namespace stream
 
 		void AsyncClose () { boost::asio::post (m_Service, std::bind (&Stream::Close, shared_from_this ())); };
 
-		/** only call close from destination thread, use Stream::AsyncClose for other threads */
+		/**
+		 * only call close from destination thread, use Stream::AsyncClose for
+		 * other threads
+		 */
 		void Close ();
 		void Cancel () { m_ReceiveTimer.cancel (); };
 
@@ -366,18 +374,20 @@ namespace stream
 
 		void Terminate (bool deleteFromDestination = true);
 
-		// --- connection termination helpers ----------------------------------
-		// One-shot RESET for a connection that is not retained: a policy
-		// rejection or a retransmitted SYN for a recently closed stream. Unlike
-		// SendReset() it never enters the resend queue (Java sends one RESET).
-		// Returns false when the stream has no sendStreamID yet.
+		// --- connection termination helpers
+		// ---------------------------------- One-shot RESET for a connection
+		// that is not retained: a policy rejection or a retransmitted SYN for
+		// a recently closed stream. Unlike SendReset() it never enters the
+		// resend queue (Java sends one RESET). Returns false when the stream
+		// has no sendStreamID yet.
 		bool SendResetOnce ();
 		// Answers a first SYN with a single RESET instead of a SYNACK. The
-		// packet is consumed. Returns false when the SYN did not authenticate,
-		// so a forged SYN never gets a signed response.
+		// packet is consumed. Returns false when the SYN did not
+		// authenticate, so a forged SYN never gets a signed response.
 		bool RejectWithReset (Packet * packet);
-		// Resets and terminates a stream that was created but cannot be handed
-		// to an acceptor: one RESET is sent and the stream leaves the maps.
+		// Resets and terminates a stream that was created but cannot be
+		// handed to an acceptor: one RESET is sent and the stream leaves the
+		// maps.
 		void AbortWithReset ();
 
 		// Deterministic test seams: force the wire state of a stream so the
@@ -439,9 +449,10 @@ namespace stream
 			m_IsSendTime, m_IsWinDropped, m_IsChoking2, m_IsChoking3, m_IsClientChoked, m_IsClientChoked2,
 			m_IsTimeOutResend, m_IsImmediateAckRequested, m_IsRemoteLeaseChangeInProgress, m_IsBufferEmpty,
 			m_IsJavaClient, m_DontSign, m_IsResetReceived = false, m_IsRequestingLeaseSet = false;
-		// Keep the destination alive: timer, receive and send handlers can still
-		// run after the owner removed it from its map, and every one of them
-		// reaches the destination or its packet pools through the reference below.
+		// Keep the destination alive: timer, receive and send handlers can
+		// still run after the owner removed it from its map, and every one of
+		// them reaches the destination or its packet pools through the
+		// reference below.
 		std::shared_ptr<StreamingDestination> m_LocalDestinationOwner;
 		StreamingDestination & m_LocalDestination;
 		// own reference: the stream may outlive the destination's map entry
@@ -476,15 +487,17 @@ namespace stream
 		size_t m_MTU;
 	};
 
-	/// Streaming endpoint for one local port: accepts incoming SYNs, dispatches
-	/// data packets to the right `Stream`, and holds the acceptor registrations.
+	/// Streaming endpoint for one local port: accepts incoming SYNs,
+	/// dispatches data packets to the right `Stream`, and holds the
+	/// acceptor registrations.
 	///
-	/// `m_Streams`/`m_IncomingStreams` are guarded by `m_StreamsMutex`; the
-	/// acceptor registrations, the pong handler, the admission predicate and the
-	/// pending-incoming backlog are guarded by `m_AcceptorMutex` because other
-	/// threads (SAM, server tunnels, tests) publish them while the service
-	/// thread dispatches. A SYN is refused by the installed admission predicate
-	/// before a stream object exists, so a denied peer never receives a SYNACK.
+	/// `m_Streams`/`m_IncomingStreams` are guarded by `m_StreamsMutex`;
+	/// the acceptor registrations, the pong handler, the admission
+	/// predicate and the pending-incoming backlog are guarded by
+	/// `m_AcceptorMutex` because other threads (SAM, server tunnels,
+	/// tests) publish them while the service thread dispatches. A SYN is
+	/// refused by the installed admission predicate before a stream object
+	/// exists, so a denied peer never receives a SYNACK.
 	class StreamingDestination : public std::enable_shared_from_this<StreamingDestination>
 	{
 	public:
@@ -494,13 +507,14 @@ namespace stream
 		// created, so a denied peer never receives a SYNACK and never reaches
 		// an acceptor. `toPort` is the local streaming port.
 		typedef std::function<StreamAdmission (const i2p::data::IdentHash & peer, uint16_t toPort)> AdmissionPredicate;
-		// Identifies one armed one-shot acceptor so a caller can unlink exactly
-		// that registration (AcceptStream's timeout) without disturbing the
-		// acceptors other clients armed.
+		// Identifies one armed one-shot acceptor so a caller can unlink
+		// exactly that registration (AcceptStream's timeout) without
+		// disturbing the acceptors other clients armed.
 		typedef uint64_t AcceptorToken;
 
-		// Outcome of the SYN admission policy. The packet path uses it to decide
-		// between accepting, dropping a duplicate and answering with a RESET.
+		// Outcome of the SYN admission policy. The packet path uses it to
+		// decide between accepting, dropping a duplicate and answering with a
+		// RESET.
 		enum class SynAdmission
 		{
 			eAccept,
@@ -528,9 +542,10 @@ namespace stream
 			std::lock_guard<std::mutex> l (m_StreamsMutex);
 			return m_Streams.size ();
 		};
-		// Replaces the persistent acceptor and returns the previous one, so the
-		// caller owns exactly the registration it displaced and cannot silently
-		// disable another tunnel's acceptor without knowing about it.
+		// Replaces the persistent acceptor and returns the previous one, so
+		// the caller owns exactly the registration it displaced and cannot
+		// silently disable another tunnel's acceptor without knowing about
+		// it.
 		Acceptor SetAcceptor (const Acceptor & acceptor);
 		// Remove every armed acceptor (one-shot registrations first, then the
 		// persistent one). Each registration is completed with nullptr so a
@@ -553,12 +568,13 @@ namespace stream
 		// the caller gave up cannot touch a dead stack frame.
 		AcceptorToken AcceptOnce (const Acceptor & acceptor);
 		// Unlinks one armed registration. Returns false when it was already
-		// consumed for delivery or removed, so the caller knows that a delivery
-		// may be in flight.
+		// consumed for delivery or removed, so the caller knows that a
+		// delivery may be in flight.
 		bool RemoveAcceptor (AcceptorToken token);
-		// Blocking accept for the C API. On timeout this unlinks exactly its own
-		// registration (RemoveAcceptor), so other armed acceptors keep working;
-		// the wait state lives on the heap and outlives the caller's frame.
+		// Blocking accept for the C API. On timeout this unlinks exactly its
+		// own registration (RemoveAcceptor), so other armed acceptors keep
+		// working; the wait state lives on the heap and outlives the caller's
+		// frame.
 		std::shared_ptr<Stream> AcceptStream (int timeout = 0); // sync
 		void SetPongHandler (const PongHandler & handler);
 		void ResetPongHandler ();
@@ -569,8 +585,8 @@ namespace stream
 
 		void HandleDataMessagePayload (
 			const uint8_t * buf, size_t len, i2p::garlic::ECIESX25519AEADRatchetSession * from);
-		// SAM 3.2 incoming stream port reporting; fromPort is the peer source port,
-		// toPort is the destination port selected by the Data message.
+		// SAM 3.2 incoming stream port reporting; fromPort is the peer source
+		// port, toPort is the destination port selected by the Data message.
 		void HandleDataMessagePayload (uint16_t fromPort, uint16_t toPort, const uint8_t * buf, size_t len,
 			i2p::garlic::ECIESX25519AEADRatchetSession * from);
 		std::shared_ptr<I2NPMessage> CreateDataMessage (
@@ -587,23 +603,23 @@ namespace stream
 		void StopInternal ();
 		void StartInternal ();
 		void UpdateConnectionLimits ();
-		// Decides and dispatches under one lock so a stream is either handed to
-		// an acceptor or queued in m_PendingIncomingStreams, never lost.
+		// Decides and dispatches under one lock so a stream is either handed
+		// to an acceptor or queued in m_PendingIncomingStreams, never lost.
 		void DispatchPendingIncoming ();
 		bool AddPendingIncomingStream (std::shared_ptr<Stream> stream);
 		AcceptorToken ArmSyncAccept (const std::shared_ptr<SyncAcceptState> & state);
 		// Service thread only.
 		SynAdmission DecideSynAdmission (uint32_t receiveStreamID, i2p::garlic::ECIESX25519AEADRatchetSession * from);
 		// Consumes `packet`, answers it with one signed RESET when it
-		// authenticates, and leaves no stream behind. Returns true when a RESET
-		// was built.
+		// authenticates, and leaves no stream behind. Returns true when a
+		// RESET was built.
 		bool RejectSynWithReset (Packet * packet, uint32_t receiveStreamID);
 		bool IsRecentlyClosed (uint32_t receiveStreamID) const;
 		void RememberRecentlyClosed (uint32_t receiveStreamID);
 		void ClearRecentlyClosed ();
 		void LogSynRejection (const char * reason, uint32_t receiveStreamID);
-		// Consumes a SYN refused by a limit: drops it silently or answers with
-		// one signed RESET according to m_RejectionAction.
+		// Consumes a SYN refused by a limit: drops it silently or answers
+		// with one signed RESET according to m_RejectionAction.
 		void RejectSyn (Packet * packet, uint32_t receiveStreamID, const char * reason);
 		// Copies the installed predicate out of the registration lock and
 		// invokes it. Returns eAllow when no predicate is installed.
@@ -624,8 +640,8 @@ namespace stream
 		std::shared_ptr<Stream> m_LastStream;
 		uint16_t m_LastFromPort = 0, m_LastToPort = 0;
 		// Guards the acceptor registrations, the pong handler and the pending
-		// incoming queue; all of them are published or cleared from threads other
-		// than the destination service.
+		// incoming queue; all of them are published or cleared from threads
+		// other than the destination service.
 		mutable std::mutex m_AcceptorMutex;
 		struct AcceptorRegistration
 		{
@@ -660,12 +676,14 @@ namespace stream
 		// for administrative views
 		const decltype (m_Streams) & GetStreams () const { return m_Streams; };
 
-		// copy for other threads, unlike GetStreams which hands out the map itself
+		// copy for other threads, unlike GetStreams which hands out the map
+		// itself
 		std::vector<std::shared_ptr<const Stream>> GetStreamsList ();
 
-		// --- deterministic test seams -----------------------------------------
-		// Run the real admission/policy helpers without constructing a signed
-		// streaming packet, so the state transitions stay testable in isolation.
+		// --- deterministic test seams
+		// ----------------------------------------- Run the real
+		// admission/policy helpers without constructing a signed streaming
+		// packet, so the state transitions stay testable in isolation.
 		SynAdmission AdmitSynForTesting (uint32_t receiveStreamID)
 		{
 			return DecideSynAdmission (receiveStreamID, nullptr);
@@ -675,8 +693,8 @@ namespace stream
 		size_t GetNumRejectionResetsForTesting () const { return m_NumRejectionResets.load (); }
 		size_t GetNumPendingIncomingForTesting () const;
 		size_t GetNumArmedAcceptorsForTesting () const;
-		// Hands an already-created stream to the acceptor/pending dispatch, as
-		// the SYN path does. Returns false when the backlog is full.
+		// Hands an already-created stream to the acceptor/pending dispatch,
+		// as the SYN path does. Returns false when the backlog is full.
 		bool OfferIncomingStreamForTesting (std::shared_ptr<Stream> stream)
 		{
 			return AddPendingIncomingStream (std::move (stream));
@@ -686,13 +704,14 @@ namespace stream
 		{
 			return ArmSyncAccept (state);
 		}
-		// Removes and returns one armed registration so a test can prove that a
-		// late invocation after cancellation has no effect.
+		// Removes and returns one armed registration so a test can prove that
+		// a late invocation after cancellation has no effect.
 		Acceptor TakeArmedAcceptorForTesting (AcceptorToken token);
-		// Builds (and counts) the one-shot RESET a rejected SYN receives without
-		// requiring a signed SYN packet.
+		// Builds (and counts) the one-shot RESET a rejected SYN receives
+		// without requiring a signed SYN packet.
 		bool BuildRejectionResetForTesting (uint32_t receiveStreamID);
-		// Runs the installed admission predicate exactly as the SYN path does.
+		// Runs the installed admission predicate exactly as the SYN path
+		// does.
 		StreamAdmission EvaluateAdmissionForTesting (const i2p::data::IdentHash & peer) const
 		{
 			return EvaluateAdmission (peer);
@@ -707,9 +726,9 @@ namespace stream
 		// Registers an extra local stream so tests can reach the concurrent
 		// stream cap without a live peer.
 		std::shared_ptr<Stream> CreateStreamForTesting () { return CreateNewIncomingStream (GetRandom ()); }
-		// Runs the real teardown on the calling thread so a test can release the
-		// pending backlog (and break the destination/stream ownership cycle)
-		// without starting an io thread.
+		// Runs the real teardown on the calling thread so a test can release
+		// the pending backlog (and break the destination/stream ownership
+		// cycle) without starting an io thread.
 		void StopForTesting () { StopInternal (); }
 	};
 

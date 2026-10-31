@@ -4,10 +4,11 @@
  *
  * openi2pd: ClientContext.
  *
- * Declares the process-wide client context that owns destinations, proxies,
- * tunnel collections, the address book and optional SAM/BOB/I2CP/torrent
- * services. It exposes destination creation, key loading and the tunnel
- * configuration identifiers shared by the client modules.
+ * Declares the process-wide client context that owns destinations,
+ * proxies, tunnel collections, the address book and optional
+ * SAM/BOB/I2CP/torrent services. It exposes destination creation, key
+ * loading and the tunnel configuration identifiers shared by the client
+ * modules.
  *
  */
 
@@ -112,15 +113,15 @@ namespace client
 	constexpr int STOP_DESTINATIONS_TIMEOUT = 8; // in seconds
 	constexpr size_t I2P_TUNNEL_SERVICE_NAME_MAX_LENGTH = 64;
 
-	// Administrative view of one configured client or server tunnel. Names are
-	// unique across tunnels.conf and tunnels.d so the typed StartTunnel and
-	// StopTunnel verbs have exactly one target.
+	// Administrative view of one configured client or server tunnel. Names
+	// are unique across tunnels.conf and tunnels.d so the typed
+	// StartTunnel and StopTunnel verbs have exactly one target.
 	struct TunnelServiceInfo
 	{
 		std::string name;
 		std::string kind; // client, httpproxy, socksproxy, server, http, irc
-		// Server tunnels: the local destination in base32. Client tunnels: the
-		// configured destination list, comma separated.
+		// Server tunnels: the local destination in base32. Client tunnels:
+		// the configured destination list, comma separated.
 		std::string destination;
 		// Client tunnels: the bound 127.0.0.1:&lt;port&gt;. Server tunnels:
 		// i2p:&lt;inport&gt;, the port clients connect to.
@@ -131,19 +132,22 @@ namespace client
 		bool running = false;
 	};
 
-	// Stable administrative service name: the configured `name=` value when
-	// set, the INI section name otherwise and `&lt;type&gt;://&lt;endpoint&gt;` as the last
-	// fallback for a nameless section.
+	// Stable administrative service name: the configured `name=` value
+	// when set, the INI section name otherwise and
+	// `&lt;type&gt;://&lt;endpoint&gt;` as the last fallback for a
+	// nameless section.
 	std::string MakeTunnelServiceName (std::string_view configuredName, std::string_view sectionName,
 		std::string_view type, std::string_view endpoint);
 	// Rejects empty, over-long and control-character-bearing names.
 	bool IsValidTunnelServiceName (std::string_view name);
 	// `enable`/`startOnLoad` gate. Both default to true; a false `enable`
-	// always wins so a disabled tunnel stays disabled regardless of startOnLoad.
+	// always wins so a disabled tunnel stays disabled regardless of
+	// startOnLoad.
 	bool ShouldStartTunnelOnLoad (bool enable, bool startOnLoad);
 
 	// Tracks the configured service names of one configuration reload so a
-	// duplicate is a configuration error instead of an ambiguous verb target.
+	// duplicate is a configuration error instead of an ambiguous verb
+	// target.
 	class TunnelServiceNameRegistry
 	{
 	public:
@@ -157,10 +161,11 @@ namespace client
 		std::set<std::string> m_Names;
 	};
 
-	/// Owns the client destination registry and configured client services.
-	/// Registry snapshots retain shared objects after the lock is released, but
-	/// do not guarantee that those objects are still running. Lifecycle changes
-	/// stop services outside registry locks because shutdown can re-enter them.
+	/// Owns the client destination registry and configured client
+	/// services. Registry snapshots retain shared objects after the lock
+	/// is released, but do not guarantee that those objects are still
+	/// running. Lifecycle changes stop services outside registry locks
+	/// because shutdown can re-enter them.
 	class ClientContext
 	{
 	public:
@@ -170,20 +175,22 @@ namespace client
 		void Start ();
 		void Stop ();
 
-		/// Re-read the live client configuration. It replaces the shared local
-		/// destination, the HTTP/SOCKS proxies and the configured tunnels, then
-		/// drops destinations that no configured tunnel references any more.
+		/// Re-read the live client configuration. It replaces the shared
+		/// local destination, the HTTP/SOCKS proxies and the configured
+		/// tunnels, then drops destinations that no configured tunnel
+		/// references any more.
 		///
-		/// Server tunnel acceptors are detached before the tunnels are re-read,
-		/// so incoming streams queue while a tunnel that still exists re-installs
-		/// its own acceptor, and `isUpdated` (a transient reload flag) decides
-		/// which tunnels are removed afterwards. The already loaded
-		/// configuration object and the tunnel files are read again, but the
-		/// process-wide configuration is not reparsed.
+		/// Server tunnel acceptors are detached before the tunnels are
+		/// re-read, so incoming streams queue while a tunnel that still
+		/// exists re-installs its own acceptor, and `isUpdated` (a transient
+		/// reload flag) decides which tunnels are removed afterwards. The
+		/// already loaded configuration object and the tunnel files are read
+		/// again, but the process-wide configuration is not reparsed.
 		///
-		/// @pre The caller is the single owner of the reload path (the daemon
-		///   administration thread); the path stops and joins destination threads
-		///   and must not run on a destination or TUI handler thread.
+		/// @pre The caller is the single owner of the reload path (the
+		///      daemon administration thread); the path stops and joins
+		///      destination threads and must not run on a destination or TUI
+		///      handler thread.
 		/// @warning Any reference returned by the legacy accessors (or a raw
 		///   service pointer) is invalid once this returns. Use the snapshot
 		///   accessors instead.
@@ -210,21 +217,24 @@ namespace client
 		std::shared_ptr<ClientDestination> CreateNewMatchedTunnelDestination (
 			const i2p::data::PrivateKeys & keys, const std::string & name, const i2p::util::Mapping * params = nullptr);
 		/// Remove and stop the exact registered destination object, including
-		/// when its map key has been replaced. An unregistered object is ignored.
+		/// when its map key has been replaced. An unregistered object is
+		/// ignored.
 		void DeleteLocalDestination (std::shared_ptr<ClientDestination> destination);
 		bool ReplaceLocalDestinationHash (
 			const i2p::data::IdentHash & oldIdentHash, const i2p::data::IdentHash & newIdentHash);
 		std::shared_ptr<ClientDestination> FindLocalDestination (const i2p::data::IdentHash & destination) const;
-		/// Load a destination's private keys, generating a fresh identity when
-		/// @a filename starts with "transient".
-		/// The file is read relative to the data directory, its size is bounded
-		/// before reading, and only the generated or loaded public address is
-		/// ever logged. A missing file is not an error: a new identity is
-		/// created and written back. A file that exists but is empty, oversized,
-		/// truncated or unparsable fails the call instead of silently creating a
+		/// Load a destination's private keys, generating a fresh identity
+		/// when
+		/// @a filename starts with "transient". The file is read relative to
+		/// the data directory, its size is bounded before reading, and only
+		/// the generated or loaded public address is ever logged. A missing
+		/// file is not an error: a new identity is created and written back.
+		/// A file that exists but is empty, oversized, truncated or
+		/// unparsable fails the call instead of silently creating a
 		/// replacement identity, so a damaged key file cannot rotate an
 		/// operator's address.
-		/// @return false only for an existing file that cannot be used as a key.
+		/// @return false only for an existing file that cannot be used as a
+		///         key.
 		bool LoadPrivateKeys (i2p::data::PrivateKeys & keys, std::string_view filename,
 			i2p::data::SigningKeyType sigType = i2p::data::SIGNING_KEY_TYPE_EDDSA_SHA512_ED25519,
 			i2p::data::CryptoKeyType cryptoType = i2p::data::CRYPTO_KEY_TYPE_ELGAMAL);
@@ -234,14 +244,16 @@ namespace client
 		const SAMBridge * GetSAMBridge () const { return m_SamBridge.get (); };
 		const I2CPServer * GetI2CPServer () const { return m_I2CPServer.get (); };
 
-		// --- administrative tunnel inventory and lifecycle -------------------
-		// Sorted, stable snapshot of every configured TCP client and server
-		// tunnel. Returns copies; callers never hold a ClientContext lock.
+		// --- administrative tunnel inventory and lifecycle
+		// ------------------- Sorted, stable snapshot of every configured TCP
+		// client and server tunnel. Returns copies; callers never hold a
+		// ClientContext lock.
 		std::vector<TunnelServiceInfo> GetTunnelServices () const;
-		// Start or stop one configured tunnel by its unique service name. Both
-		// are idempotent (starting a running tunnel succeeds without a second
-		// bind) and never touch another tunnel that shares a destination.
-		// `error` receives a non-secret description when the call fails.
+		// Start or stop one configured tunnel by its unique service name.
+		// Both are idempotent (starting a running tunnel succeeds without a
+		// second bind) and never touch another tunnel that shares a
+		// destination. `error` receives a non-secret description when the
+		// call fails.
 		bool StartTunnel (std::string_view name, std::string & error);
 		bool StopTunnel (std::string_view name, std::string & error);
 
@@ -259,7 +271,8 @@ namespace client
 			boost::property_tree::ptree & pt, const std::string & name, const std::string & chunk, int & numSections);
 		void ReadHttpProxy ();
 		void ReadSocksProxy ();
-		// take the proxy out under the lock, so it can be stopped without holding it
+		// take the proxy out under the lock, so it can be stopped without
+		// holding it
 		std::shared_ptr<I2PService> DetachHttpProxy ();
 		std::shared_ptr<I2PService> DetachSocksProxy ();
 		template <typename Section, typename Type>
@@ -323,7 +336,8 @@ namespace client
 		std::shared_ptr<const i2p::i18n::Locale> m_Language;
 
 	public:
-		// for HTTP; thread-safe snapshot, safe to iterate without holding any lock
+		// for HTTP; thread-safe snapshot, safe to iterate without holding any
+		// lock
 		std::vector<std::pair<i2p::data::IdentHash, std::shared_ptr<ClientDestination>>> GetDestinationsList () const
 		{
 			std::lock_guard<std::mutex> l (m_DestinationsMutex);

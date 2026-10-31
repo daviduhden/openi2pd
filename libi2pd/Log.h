@@ -4,10 +4,12 @@
  *
  * openi2pd: Log.
  *
- * Asynchronous logger with a bounded message queue, level filtering, configurable file,
- * stream or syslog destinations and type-safe variadic LogPrint helpers. A pluggable sink
- * forwards records to the privilege-separated log worker, and a bounded sanitized recent
- * ring serves the TUI; mutexes keep Reopen() from waiting on slow disk writes.
+ * Asynchronous logger with a bounded message queue, level filtering,
+ * configurable file, stream or syslog destinations and type-safe
+ * variadic LogPrint helpers. A pluggable sink forwards records to the
+ * privilege-separated log worker, and a bounded sanitized recent ring
+ * serves the TUI; mutexes keep Reopen() from waiting on slow disk
+ * writes.
  *
  */
 
@@ -83,8 +85,9 @@ namespace log
 
 	inline constexpr size_t LOG_RECENT_CAPACITY = 512;
 	inline constexpr size_t LOG_RECENT_TEXT_LIMIT = 512;
-	// Bound the writer queue even when a sink (for example the optional log
-	// worker) stalls. Records beyond this limit are dropped and counted.
+	// Bound the writer queue even when a sink (for example the optional
+	// log worker) stalls. Records beyond this limit are dropped and
+	// counted.
 	inline constexpr size_t LOG_QUEUE_MAX_RECORDS = 8192;
 	inline constexpr size_t LOG_QUEUE_MAX_TEXT = 8192;
 
@@ -104,8 +107,8 @@ namespace log
 		std::string m_TimeFormat;
 		std::atomic<bool> m_IsRunning;
 		std::unique_ptr<std::thread> m_Thread;
-		// Serializes Start()/Stop() and lets Run() wait for Start() to publish
-		// m_IsRunning only after the thread object exists.
+		// Serializes Start()/Stop() and lets Run() wait for Start() to
+		// publish m_IsRunning only after the thread object exists.
 		std::mutex m_LifecycleMutex;
 		std::mutex m_StartMutex;
 		bool m_StartRequested;
@@ -224,7 +227,8 @@ namespace log
 		}
 
 		/**
-			 * @brief Copy up to @a max records with sequence greater than @a after
+			 * @brief Copy up to @a max records with sequence greater than @a
+			 *        after
 			 * @note Thread-safe. Intended for the local TUI IPC service.
 			 */
 		std::vector<LogRecord> GetRecent (uint64_t after, size_t max) const;
@@ -266,9 +270,10 @@ inline bool CheckLogLevel (LogLevel level) noexcept
 	return level <= i2p::log::Logger ().GetLogLevel ();
 }
 
-// Format Asio addresses without instantiating Asio's scope-ID formatter,
-// which uses unsafe sprintf/strcat on POSIX platforms. These overloads are
-// declared before the generic fold so existing LogPrint call sites use them.
+// Format Asio addresses without instantiating Asio's scope-ID
+// formatter, which uses unsafe sprintf/strcat on POSIX platforms. These
+// overloads are declared before the generic fold so existing LogPrint
+// call sites use them.
 inline void LogPrint (std::stringstream & s, const boost::asio::ip::address & value) noexcept
 {
 	s << i2p::util::net::FormatAddress (value);
@@ -295,9 +300,10 @@ inline void LogPrint (std::stringstream & s, const boost::asio::ip::udp::endpoin
 }
 
 /** internal usage only -- folding args array to single string */
-// Exclude Asio address/endpoint types so an rvalue/lvalue does not prefer
-// this forwarding overload over the safe FormatAddress/FormatEndpoint
-// overloads above (Boost's POSIX formatter uses sprintf/strcat for scope IDs).
+// Exclude Asio address/endpoint types so an rvalue/lvalue does not
+// prefer this forwarding overload over the safe
+// FormatAddress/FormatEndpoint overloads above (Boost's POSIX formatter
+// uses sprintf/strcat for scope IDs).
 template <typename TValue>
 	requires (!std::is_same_v<std::remove_cvref_t<TValue>, boost::asio::ip::address>
 		&& !std::is_same_v<std::remove_cvref_t<TValue>, boost::asio::ip::address_v4>
@@ -314,12 +320,13 @@ void LogPrint (std::stringstream & s, TValue && arg) noexcept
  * @param level Message level (eLogError, eLogInfo, ...)
  * @param args Array of message parts
  *
- * The formatted text is a persistence boundary: it reaches a file, syslog, the
- * privilege-separated log worker and the TUI ring. Never pass a password,
- * private key, seed, token, PSK or a complete credential-bearing operand; log
- * only the operation and a non-secret outcome. The log worker additionally
- * redacts known secret labels and control characters, which is a safety net for
- * untrusted text, not a licence to pass a secret.
+ * The formatted text is a persistence boundary: it reaches a file,
+ * syslog, the privilege-separated log worker and the TUI ring. Never
+ * pass a password, private key, seed, token, PSK or a complete
+ * credential-bearing operand; log only the operation and a non-secret
+ * outcome. The log worker additionally redacts known secret labels and
+ * control characters, which is a safety net for untrusted text, not a
+ * licence to pass a secret.
  */
 template <typename... TArgs> void LogPrint (LogLevel level, TArgs &&... args) noexcept
 {

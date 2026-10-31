@@ -4,7 +4,10 @@
  *
  * openi2pd: test signature identity hardening.
  *
- * Checks identity and signature encodings: P-521 certificate sizes and DER bounds, Ed25519 excess-data rejection, malformed identities, RSA wire lengths and Java-compatible raw RSA verification, and private-key round trips, all by in-process verification.
+ * Checks identity and signature encodings: P-521 certificate sizes and
+ * DER bounds, Ed25519 excess-data rejection, malformed identities, RSA
+ * wire lengths and Java-compatible raw RSA verification, and
+ * private-key round trips, all by in-process verification.
  *
  */
 
@@ -44,7 +47,8 @@ void TestP521ExcessSigningKey ()
 	assert (CreateECDSAP521RandomKeys (priv, pub));
 
 	// 12-byte key certificate: 4-byte header, 4 bytes of P-521 excess
-	// signing key and 4 unused crypto-key bytes. The extended part therefore
+	// signing key and 4 unused crypto-key bytes. The extended part
+	// therefore
 	// lives in m_ExtendedBufferPtr rather than the 8-byte inline buffer.
 	std::array<uint8_t, DEFAULT_IDENTITY_SIZE + 12> buffer { };
 	memcpy (buffer.data () + 256, pub, 128);
@@ -111,9 +115,9 @@ void TestKeyCertificateExcessData ()
 	using namespace i2p::data;
 
 	// Ed25519 requires no excess signing data. Java's
-	// SigningPublicKey.toTypedKey() rejects excess data when the crypto type
-	// is ElGamal; accepting it would make two different identities hash the
-	// same key layout ambiguously.
+	// SigningPublicKey.toTypedKey() rejects excess data when the crypto
+	// type is ElGamal; accepting it would make two different identities
+	// hash the same key layout ambiguously.
 	std::array<uint8_t, DEFAULT_IDENTITY_SIZE + 5> excess { };
 	PutCertificate (excess.data (), CERTIFICATE_TYPE_KEY, 5);
 	htobe16buf (excess.data () + DEFAULT_IDENTITY_SIZE, SIGNING_KEY_TYPE_EDDSA_SHA512_ED25519);
@@ -171,7 +175,8 @@ void TestRsaWireLengths ()
 	assert (identity.GetSigningPublicKeyLen () == 256);
 	assert (identity.GetSigningPrivateKeyLen () == 512);
 	assert (identity.GetSignatureLen () == 256);
-	// A zero modulus is not a usable RSA key, so verification fails closed.
+	// A zero modulus is not a usable RSA key, so verification fails
+	// closed.
 	// RSA signing/key generation remains unavailable.
 	assert (!identity.Verify (TEST_MESSAGE, sizeof (TEST_MESSAGE), buffer.data ()));
 
@@ -212,8 +217,8 @@ void TestEddsaFallbackMatchesCompat ()
 	uint8_t pub[EDDSA25519_PUBLIC_KEY_LENGTH];
 	assert (CreateEDDSA25519RandomKeys (priv, pub));
 
-	// Give the provider-backed signer a public key that cannot match the one
-	// derived from the private key. Both paths must therefore use the
+	// Give the provider-backed signer a public key that cannot match the
+	// one derived from the private key. Both paths must therefore use the
 	// compatibility signer and produce the same deterministic signature.
 	uint8_t mismatched[EDDSA25519_PUBLIC_KEY_LENGTH];
 	memcpy (mismatched, pub, sizeof (mismatched));
@@ -235,8 +240,8 @@ void TestEddsaFallbackMatchesCompat ()
 }
 
 // Produce an RSA-2048 modulus and a Java-compatible raw PKCS#1 v1.5
-// signature: SHA-256 of the message, then the raw private operation over the
-// 32-byte digest (NONEwithRSA), with no DigestInfo wrapper.
+// signature: SHA-256 of the message, then the raw private operation
+// over the 32-byte digest (NONEwithRSA), with no DigestInfo wrapper.
 void CreateRsaRawTestSignature (std::array<uint8_t, 256> & modulus, std::array<uint8_t, 256> & signature)
 {
 	using namespace i2p::crypto;

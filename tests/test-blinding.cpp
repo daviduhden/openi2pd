@@ -4,7 +4,9 @@
  *
  * openi2pd: test blinding.
  *
- * Round-trips Ed25519 and RedDSA destination blinding: the public key derived from the blinded private key must match GenerateAlpha(), and a blinded signature must verify.
+ * Round-trips Ed25519 and RedDSA destination blinding: the public key
+ * derived from the blinded private key must match GenerateAlpha(), and
+ * a blinded signature must verify.
  *
  */
 
@@ -30,7 +32,8 @@ void BlindTest (SigningKeyType sigType)
 	auto publicKeyLen = blindedKey.BlindPrivateKey (keys.GetSigningPrivateKey (), date, blindedPriv, blindedPub);
 	uint8_t blindedPub1[32];
 	blindedKey.GetBlindedKey (date, blindedPub1);
-	// check if public key produced from private blinded key matches blided public key
+	// check if public key produced from private blinded key matches blided
+	// public key
 	assert (!memcmp (blindedPub, blindedPub1, publicKeyLen));
 	// try to sign and verify
 	std::unique_ptr<Signer> blindedSigner (PrivateKeys::CreateSigner (blindedKey.GetBlindedSigType (), blindedPriv));

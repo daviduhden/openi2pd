@@ -4,7 +4,9 @@
  *
  * openi2pd: test streaming buffer.
  *
- * Checks the owning Streaming SendBuffer and span constructors copy caller memory, expose owned writable storage, and keep queued bytes alive after the producer releases its buffer.
+ * Checks the owning Streaming SendBuffer and span constructors copy
+ * caller memory, expose owned writable storage, and keep queued bytes
+ * alive after the producer releases its buffer.
  *
  */
 
@@ -37,8 +39,8 @@ int main ()
 	std::memcpy (writable.buf, source, sizeof (source));
 	assert (std::memcmp (writable.GetRemaningBuffer (), source, sizeof (source)) == 0);
 
-	// A queue owns its buffers: dropping the producer's shared_ptr and reusing
-	// the source must not change the bytes later copied by Get().
+	// A queue owns its buffers: dropping the producer's shared_ptr and
+	// reusing the source must not change the bytes later copied by Get().
 	i2p::stream::SendBufferQueue queue;
 	auto queued = std::make_shared<i2p::stream::SendBuffer> (sizeof (source));
 	std::memcpy (queued->buf, source, sizeof (source));

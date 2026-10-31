@@ -4,7 +4,8 @@
  *
  * openi2pd: test bounded string copy.
  *
- * Exercises the fixed-buffer CopyString helper used for platform interface
+ * Exercises the fixed-buffer CopyString helper used for platform
+ * interface
  * names and other C-style buffers. The test is prepared for manual CI.
  */
 

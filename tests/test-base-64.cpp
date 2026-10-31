@@ -4,7 +4,9 @@
  *
  * openi2pd: test base 64.
  *
- * Validates Base64 encode/decode sizing, padding and alphabet rules plus the span overloads, including short-output rejection and the lazily initialized reverse table.
+ * Validates Base64 encode/decode sizing, padding and alphabet rules
+ * plus the span overloads, including short-output rejection and the
+ * lazily initialized reverse table.
  *
  */
 
@@ -76,7 +78,8 @@ int main ()
 	in = "dGVzdA"; /* missing padding is outside this wire format */
 	assert (Base64ToByteStream (in, (uint8_t *)out, sizeof (out)) == 0);
 
-	/* The reverse table used to be initialized lazily and raced on first use. */
+	/* The reverse table used to be initialized lazily and raced on first
+	/* use.
 	assert (Base64ToByteStream ("dGVzdA==", (uint8_t *)out, sizeof (out)) == 4);
 	assert (memcmp (out, "test", 4) == 0);
 

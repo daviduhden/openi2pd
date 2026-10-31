@@ -4,10 +4,10 @@
  *
  * openi2pd: Destination.
  *
- * Defines client destinations that own a tunnel pool, publish and refresh
- * LeaseSets, resolve remote destinations and expose streaming and datagram
- * endpoints. Includes I2CP option handling, publish retry and verification
- * timers, and the asynchronous destination lifecycle.
+ * Defines client destinations that own a tunnel pool, publish and
+ * refresh LeaseSets, resolve remote destinations and expose streaming
+ * and datagram endpoints. Includes I2CP option handling, publish retry
+ * and verification timers, and the asynchronous destination lifecycle.
  *
  */
 
@@ -62,26 +62,27 @@ namespace client
 	const int MAX_LEASESET_REQUEST_TIMEOUT = 17000; // in milliseconds
 	const int DESTINATION_CLEANUP_TIMEOUT = 44; // in seconds
 	const int DESTINATION_CLEANUP_TIMEOUT_VARIANCE = 30; // in seconds
-	// The garlic queue is fed by network input before the destination service
-	// runs, so it must never grow without limit. 256 pending garlic messages
-	// is far beyond the burst a legitimate peer produces.
+	// The garlic queue is fed by network input before the destination
+	// service runs, so it must never grow without limit. 256 pending
+	// garlic messages is far beyond the burst a legitimate peer produces.
 	const size_t MAX_INCOMING_GARLIC_QUEUE = 256;
 
-	// True when admitting one more garlic message would exceed the bound, in
-	// which case the oldest queued message is discarded.
+	// True when admitting one more garlic message would exceed the bound,
+	// in which case the oldest queued message is discarded.
 	constexpr bool IsIncomingGarlicQueueFull (size_t queueSize) noexcept
 	{
 		return queueSize >= MAX_INCOMING_GARLIC_QUEUE;
 	}
 
 	// Java DataMessage: the 4-byte declared length must cover the whole
-	// payload. Trailing bytes used to be ignored by every protocol handler.
+	// payload. Trailing bytes used to be ignored by every protocol
+	// handler.
 	constexpr bool IsValidDataMessageLength (uint32_t declared, size_t payloadLen) noexcept
 	{
 		return payloadLen >= 4 && static_cast<size_t> (declared) == payloadLen - 4;
 	}
-	// Java ACKTimer fallback for a received New Session, forward NEXT_KEY or
-	// ACK request when the application has no data to send.
+	// Java ACKTimer fallback for a received New Session, forward NEXT_KEY
+	// or ACK request when the application has no data to send.
 	const int CLIENT_RATCHETS_RESPONSE_TIMEOUT = 1000; // in milliseconds
 	const unsigned int MAX_NUM_FLOODFILLS_PER_REQUEST = 7;
 
@@ -155,18 +156,20 @@ namespace client
 	const char I2CP_PARAM_STREAMING_DONT_SIGN[] = "i2p.streaming.dontSign";
 	const int DEFAULT_DONT_SIGN = false;
 
-	// Parsed i2cp.leaseSetEncType option. Java's ClientConnectionRunner parses
-	// the value as a strict comma-separated list of decimal CryptoKeyType
-	// codes: it rejects leading whitespace, a leading '+' and trailing
-	// garbage, allows at most one hybrid type and never combines ElGamal with
-	// a hybrid type. `valid == false` means a present option is malformed or
-	// names an unusable combination, so no LeaseSet2 key may be installed from
-	// it; an absent/empty option is valid and leaves `specified` false.
+	// Parsed i2cp.leaseSetEncType option. Java's ClientConnectionRunner
+	// parses the value as a strict comma-separated list of decimal
+	// CryptoKeyType codes: it rejects leading whitespace, a leading '+'
+	// and trailing garbage, allows at most one hybrid type and never
+	// combines ElGamal with a hybrid type. `valid == false` means a
+	// present option is malformed or names an unusable combination, so no
+	// LeaseSet2 key may be installed from it; an absent/empty option is
+	// valid and leaves `specified` false.
 	struct LeaseSetEncryptionTypes
 	{
 		std::set<i2p::data::CryptoKeyType> types; // selectable types, in the parsed set
-		// First selectable non-zero type in list order (ElGamal is code 0, so it
-		// only becomes the preferred type when nothing stronger was configured).
+		// First selectable non-zero type in list order (ElGamal is code 0, so
+		// it only becomes the preferred type when nothing stronger was
+		// configured).
 		i2p::data::CryptoKeyType preferred = 0;
 		bool specified = false; // the option was present and non-empty
 		bool valid = true;
@@ -176,9 +179,10 @@ namespace client
 
 	typedef std::function<void (std::shared_ptr<i2p::stream::Stream> stream)> StreamRequestComplete;
 
-	/// Destination service responsible for LeaseSet lookup and publication.
-	/// Lookup requests and timer callbacks are dispatched on the supplied
-	/// io_context; individual handlers determine their own lifetime authority.
+	/// Destination service responsible for LeaseSet lookup and
+	/// publication. Lookup requests and timer callbacks are dispatched on
+	/// the supplied io_context; individual handlers determine their own
+	/// lifetime authority.
 	class LeaseSetDestination : public i2p::garlic::GarlicDestination,
 								public std::enable_shared_from_this<LeaseSetDestination>
 	{
@@ -228,19 +232,20 @@ namespace client
 
 		std::shared_ptr<i2p::tunnel::TunnelPool> GetTunnelPool () { return m_Pool; };
 		bool IsReady () const { return m_LeaseSet && !m_LeaseSet->IsExpired () && m_Pool->HasOutboundTunnels (); };
-		/// Cache-only lookup for a remote destination.
-		/// An entry that is still valid is returned, and one that expires soon
-		/// also triggers a background refresh so the caller keeps a usable
-		/// LeaseSet; an expired entry is removed and null is returned. A miss
-		/// returns null without starting a lookup, so callers that need the
-		/// LeaseSet must use RequestDestination().
+		/// Cache-only lookup for a remote destination. An entry that is still
+		/// valid is returned, and one that expires soon also triggers a
+		/// background refresh so the caller keeps a usable LeaseSet; an
+		/// expired entry is removed and null is returned. A miss returns null
+		/// without starting a lookup, so callers that need the LeaseSet must
+		/// use RequestDestination().
 		std::shared_ptr<i2p::data::LeaseSet> FindLeaseSet (const i2p::data::IdentHash & ident);
 		/// Post a LeaseSet lookup; the completion receives null on failure.
 		/// @return False when the pool is unavailable or not ready, in which
 		/// case a supplied completion is still posted with null.
 		bool RequestDestination (const i2p::data::IdentHash & dest, RequestComplete requestComplete = nullptr);
-		/// Request a blinded LeaseSet; a supplied client-auth secret is copied
-		/// only when its length is exactly 32 bytes, otherwise it is ignored.
+		/// Request a blinded LeaseSet; a supplied client-auth secret is
+		/// copied only when its length is exactly 32 bytes, otherwise it is
+		/// ignored.
 		bool RequestDestinationWithEncryptedLeaseSet (std::shared_ptr<const i2p::data::BlindedPublicKey> dest,
 			RequestComplete requestComplete = nullptr, const uint8_t * secret = nullptr, size_t secretLen = 0);
 		void CancelDestinationRequest (const i2p::data::IdentHash & dest, bool notify = true);
@@ -334,7 +339,8 @@ namespace client
 			std::lock_guard<std::mutex> lock (m_RemoteLeaseSetsMutex);
 			return static_cast<int> (m_RemoteLeaseSets.size ());
 		};
-		// copy for other threads, unlike GetLeaseSets which hands out the container itself
+		// copy for other threads, unlike GetLeaseSets which hands out the
+		// container itself
 		std::vector<std::shared_ptr<i2p::data::LeaseSet>> GetLeaseSetsList () const
 		{
 			std::lock_guard<std::mutex> lock (m_RemoteLeaseSetsMutex);
@@ -363,8 +369,8 @@ namespace client
 		}
 	};
 
-	/// Local client identity and its streaming/datagram endpoints.
-	/// Stop() normally posts teardown to the service, or runs it inline when the
+	/// Local client identity and its streaming/datagram endpoints. Stop()
+	/// normally posts teardown to the service, or runs it inline when the
 	/// service is already stopped or the caller is on its executor.
 	class ClientDestination : public LeaseSetDestination
 	{
@@ -387,8 +393,8 @@ namespace client
 		int Release () { return --m_RefCounter; };
 		int GetRefCounter () const { return m_RefCounter; };
 
-		// Java ACKTimer: send an empty ratchet response if the application has
-		// not sent anything after an NS, forward NEXT_KEY or ACK request.
+		// Java ACKTimer: send an empty ratchet response if the application
+		// has not sent anything after an NS, forward NEXT_KEY or ACK request.
 		void ScheduleSessionResponseTimer (
 			std::shared_ptr<i2p::garlic::ECIESX25519AEADRatchetSession> session) override;
 
@@ -484,11 +490,12 @@ namespace client
 			m_StreamingMaxWindowSize, m_StreamingMaxResends;
 		std::shared_ptr<i2p::stream::StreamingConnectionThrottle> m_StreamingConnectionThrottle;
 		bool m_IsStreamingAnswerPings, m_IsStreamingDontSign;
-		// SAM creates and removes per-port streaming destinations from its own
-		// control thread while the destination service thread dispatches data
-		// messages, so the default pointer and the port map are guarded. Every
-		// caller takes a shared_ptr copy and drops the lock before invoking the
-		// streaming destination, whose callbacks can re-enter this class.
+		// SAM creates and removes per-port streaming destinations from its
+		// own control thread while the destination service thread dispatches
+		// data messages, so the default pointer and the port map are guarded.
+		// Every caller takes a shared_ptr copy and drops the lock before
+		// invoking the streaming destination, whose callbacks can re-enter
+		// this class.
 		mutable std::mutex m_StreamingDestinationsMutex;
 		std::shared_ptr<i2p::stream::StreamingDestination> m_StreamingDestination; // default
 		std::map<uint16_t, std::shared_ptr<i2p::stream::StreamingDestination>> m_StreamingDestinationsByPorts;

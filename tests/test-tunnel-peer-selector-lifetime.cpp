@@ -4,9 +4,10 @@
  *
  * openi2pd: test tunnel peer-selector lifetime.
  *
- * The custom peer selector is registered with an owner and must stay alive for
- * the whole SelectPeers() call, while a released owner must never be called.
- * Deterministic: the owner is dropped explicitly, no threads or sleeps.
+ * The custom peer selector is registered with an owner and must stay
+ * alive for the whole SelectPeers() call, while a released owner must
+ * never be called. Deterministic: the owner is dropped explicitly, no
+ * threads or sleeps.
  *
  */
 
@@ -74,9 +75,9 @@ void TestSelectorWithoutOwner ()
 
 void TestOwnerPinnedForTheWholeCall ()
 {
-	// The selector drops the last external reference to its own owner while it
-	// runs. Only the handle's pin keeps it alive; without the pin the selector
-	// would be used after its owner was destroyed.
+	// The selector drops the last external reference to its own owner
+	// while it runs. Only the handle's pin keeps it alive; without the pin
+	// the selector would be used after its owner was destroyed.
 	CountingSelector selector;
 	auto owner = std::make_shared<Owner> ();
 	bool destroyed = false;
@@ -129,7 +130,8 @@ void TestPoolRegistration ()
 	Path path;
 	assert (handle.TrySelectPeers (path, 1, false) == TunnelPeerSelectorHandle::Result::Accepted);
 
-	// Dropping the owner retires the registration without a dangling pointer.
+	// Dropping the owner retires the registration without a dangling
+	// pointer.
 	owner.reset ();
 	auto retired = pool->GetCustomPeerSelector ();
 	assert (retired.HasSelector ());

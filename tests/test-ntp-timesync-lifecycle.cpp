@@ -4,11 +4,11 @@
  *
  * openi2pd: test ntp timesync lifecycle.
  *
- * Checks NTPTimeSync start/stop restartability with no configured servers,
- * repeated cycles and destruction while the worker runs, without contacting a
- * time server. It also exercises the SNTP reply validator and the three-reply
- * agreement rule with synthetic packets: no socket, DNS lookup or real NTP
- * server is used.
+ * Checks NTPTimeSync start/stop restartability with no configured
+ * servers, repeated cycles and destruction while the worker runs,
+ * without contacting a time server. It also exercises the SNTP reply
+ * validator and the three-reply agreement rule with synthetic packets:
+ * no socket, DNS lookup or real NTP server is used.
  *
  */
 
@@ -148,7 +148,8 @@ int main ()
 		running.Start ();
 	}
 
-	// --- request/response packet format -----------------------------------
+	// --- request/response packet format
+	// -----------------------------------
 	const uint64_t nowUnix = 1700000000ULL;
 	const uint64_t transmit = MakeNTPTransmitTimestamp (nowUnix, 0x12345678U);
 	{
@@ -173,7 +174,8 @@ int main ()
 		Check (seconds == nowUnix + 100, "server time is extracted");
 	}
 
-	// --- rejections -------------------------------------------------------
+	// --- rejections
+	// -------------------------------------------------------
 	{
 		ReplyFields fields;
 		fields.ntpSeconds = UnixToNTP (nowUnix);
@@ -232,7 +234,8 @@ int main ()
 		CheckReply (boundary, transmit, NTPReplyError::None, "boundary values are accepted");
 	}
 
-	// --- agreement before a large jump ------------------------------------
+	// --- agreement before a large jump
+	// ------------------------------------
 	{
 		NTPOffsetAgreement agreement;
 		// A small offset is applied from one validated reply.

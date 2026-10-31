@@ -4,10 +4,11 @@
  *
  * openi2pd: Log.
  *
- * Implements the asynchronous logger: level filtering, timestamp and level
- * formatting, ANSI colouring, and output to stdout, a file/stream or syslog on
- * a dedicated worker thread. A bounded, sanitised recent-record ring serves
- * read-only TUI queries, and start/stop drains, flushes and joins the writer.
+ * Implements the asynchronous logger: level filtering, timestamp and
+ * level formatting, ANSI colouring, and output to stdout, a file/stream
+ * or syslog on a dedicated worker thread. A bounded, sanitised
+ * recent-record ring serves read-only TUI queries, and start/stop
+ * drains, flushes and joins the writer.
  *
  */
 
@@ -105,7 +106,8 @@ namespace log
 		std::lock_guard<std::mutex> l (m_LifecycleMutex);
 		if (m_Thread || m_IsRunning.load (std::memory_order_relaxed)) return;
 		// Create the thread first, then publish the running flag. Run() waits
-		// on m_StartCondition so it cannot observe a false flag and exit early.
+		// on m_StartCondition so it cannot observe a false flag and exit
+		// early.
 		m_Thread = std::make_unique<std::thread> (std::bind (&Log::Run, this));
 		{
 			std::lock_guard<std::mutex> start (m_StartMutex);
@@ -150,9 +152,9 @@ namespace log
 
 	bool Log::ResetDestination ()
 	{
-		// Keep the same lifecycle -> destination lock order as Start()/Stop().
-		// The sink and stream may own external resources, so release their last
-		// references after dropping m_LogMutex.
+		// Keep the same lifecycle -> destination lock order as
+		// Start()/Stop(). The sink and stream may own external resources, so
+		// release their last references after dropping m_LogMutex.
 		std::lock_guard<std::mutex> lifecycle (m_LifecycleMutex);
 		if (m_Thread || m_IsRunning.load (std::memory_order_acquire)) return false;
 
@@ -238,29 +240,32 @@ namespace log
 	}
 
 	/**
-	 * @brief Write one record to the current destination on the writer thread.
-	 * @note This function better to be run in separate thread due to disk i/o.
-	 * Unfortunately, with current startup process with late fork() this
-	 * will give us nothing but pain. Maybe later. See in NetDb as example.
+	 * @brief Write one record to the current destination on the writer
+	 *        thread.
+	 * @note This function better to be run in separate thread due to
+	 *       disk i/o. Unfortunately, with current startup process with
+	 *       late fork() this will give us nothing but pain. Maybe later.
+	 *       See in NetDb as example.
 	 *
-	 * The destination, sink and stream are snapshotted under m_LogMutex and used
-	 * after the lock is dropped, so a concurrent SendTo()/Reopen() only replaces a
-	 * pointer and never waits for a slow disk. A custom sink takes the record
-	 * verbatim; the file and stdout paths add the timestamp, thread id and level.
+	 * The destination, sink and stream are snapshotted under m_LogMutex
+	 * and used after the lock is dropped, so a concurrent
+	 * SendTo()/Reopen() only replaces a pointer and never waits for a slow
+	 * disk. A custom sink takes the record verbatim; the file and stdout
+	 * paths add the timestamp, thread id and level.
 	 *
-	 * This layer performs no redaction and no secret filtering. The text is a
-	 * persistence boundary: producers must never pass a password, private key,
-	 * seed, token or credential-bearing operand, and the privilege-separated log
-	 * worker's redaction pass is a safety net for untrusted text, not a licence to
-	 * log a secret.
+	 * This layer performs no redaction and no secret filtering. The text
+	 * is a persistence boundary: producers must never pass a password,
+	 * private key, seed, token or credential-bearing operand, and the
+	 * privilege-separated log worker's redaction pass is a safety net for
+	 * untrusted text, not a licence to log a secret.
 	 */
 	void Log::Process (std::shared_ptr<LogMsg> msg)
 	{
 		if (!msg) return;
 
 		// Snapshot the destination under the lock, then release it before any
-		// formatting or I/O. Reopen() can swap the stream concurrently without
-		// waiting on the sink or a slow log device.
+		// formatting or I/O. Reopen() can swap the stream concurrently
+		// without waiting on the sink or a slow log device.
 		SinkFunction sink;
 		LogType destination;
 		std::shared_ptr<std::ostream> stream;
@@ -342,17 +347,18 @@ namespace log
 	/**
 	 * @brief Enqueue a record and update the bounded recent-record ring.
 	 *
-	 * Two independent bounds apply. The queue holds at most LOG_QUEUE_MAX_RECORDS
-	 * (8192) entries; beyond that the record is dropped and only a counter is
-	 * incremented, so a stalled writer degrades into lossy logging instead of
-	 * unbounded memory growth. The TUI ring keeps the newest LOG_RECENT_CAPACITY
-	 * (512) records with at most LOG_RECENT_TEXT_LIMIT bytes of text each.
+	 * Two independent bounds apply. The queue holds at most
+	 * LOG_QUEUE_MAX_RECORDS (8192) entries; beyond that the record is
+	 * dropped and only a counter is incremented, so a stalled writer
+	 * degrades into lossy logging instead of unbounded memory growth. The
+	 * TUI ring keeps the newest LOG_RECENT_CAPACITY (512) records with at
+	 * most LOG_RECENT_TEXT_LIMIT bytes of text each.
 	 *
-	 * The ring copy is additionally flattened: control bytes below 0x20 except TAB
-	 * are replaced with spaces so a hostile log line cannot inject terminal escapes
-	 * into an administrative client. The queued text keeps its bytes (only the
-	 * hard size cap applies), which is why producers must still keep secrets out of
-	 * the message.
+	 * The ring copy is additionally flattened: control bytes below 0x20
+	 * except TAB are replaced with spaces so a hostile log line cannot
+	 * inject terminal escapes into an administrative client. The queued
+	 * text keeps its bytes (only the hard size cap applies), which is why
+	 * producers must still keep secrets out of the message.
 	 */
 	void Log::Append (std::shared_ptr<i2p::log::LogMsg> & msg)
 	{
@@ -459,7 +465,8 @@ namespace log
 		}
 		if (logfile.empty ()) return;
 		// Open before taking the lock, then re-check the destination so a
-		// concurrent SendTo() is never overwritten by this signal-thread path.
+		// concurrent SendTo() is never overwritten by this signal-thread
+		// path.
 		auto flags = std::ofstream::out | std::ofstream::app;
 		auto os = std::make_shared<std::ofstream> (logfile, flags);
 		if (!os->is_open ())

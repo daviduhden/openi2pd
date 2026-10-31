@@ -5,9 +5,10 @@
  * openi2pd: Base.
  *
  * Implements the I2P base32 and base64 alphabets and their conversions.
- * Base64 decoding requires four-character framing, terminal-only padding and
- * a caller-sized output buffer; base32 emits the canonical lowercase/digit
- * alphabet, so callers can safely compare re-encoded addresses.
+ * Base64 decoding requires four-character framing, terminal-only
+ * padding and a caller-sized output buffer; base32 emits the canonical
+ * lowercase/digit alphabet, so callers can safely compare re-encoded
+ * addresses.
  *
  */
 
@@ -88,8 +89,8 @@ namespace data
 	/*
 	* Reverse Substitution Table (build time). A value of -1 marks a byte
 	* that is not part of the alphabet. Building it with consteval removes
-	* the previous lazy initialisation, which raced when two threads decoded
-	* base64 for the first time concurrently.
+	* the previous lazy initialisation, which raced when two threads
+	* decoded base64 for the first time concurrently.
 	*/
 	static consteval std::array<int8_t, 256> BuildReverseTable ()
 	{

@@ -4,7 +4,9 @@
  *
  * openi2pd: test i2cp session lifecycle.
  *
- * Exercises I2CP session allocation, collision handling, idempotent termination and self-stop joins on loopback port 0, without a router or external network.
+ * Exercises I2CP session allocation, collision handling, idempotent
+ * termination and self-stop joins on loopback port 0, without a router
+ * or external network.
  *
  */
 
@@ -46,8 +48,8 @@ int main ()
 
 	I2CPServer server ("127.0.0.1", 0, true);
 
-	// Sentinel and collision handling. The identifier is assigned only when the
-	// insertion succeeds.
+	// Sentinel and collision handling. The identifier is assigned only
+	// when the insertion succeeds.
 	{
 		auto socket = std::make_shared<boost::asio::ip::tcp::socket> (server.GetService ());
 		auto session = std::make_shared<I2CPSession> (server, socket);
@@ -74,8 +76,8 @@ int main ()
 
 	server.Start ();
 
-	// Idempotent termination, marshalled from the test thread to the service
-	// thread, must remove exactly the inserted identifier.
+	// Idempotent termination, marshalled from the test thread to the
+	// service thread, must remove exactly the inserted identifier.
 	{
 		auto socket = std::make_shared<boost::asio::ip::tcp::socket> (server.GetService ());
 		auto session = std::make_shared<I2CPSession> (server, socket);
@@ -87,9 +89,9 @@ int main ()
 		assert (session->GetSessionID () == 0xFFFF);
 	}
 
-	// A destination stopping itself from its own worker must defer the join to
-	// a different thread. Reaching the destructor with a joinable thread would
-	// terminate the process.
+	// A destination stopping itself from its own worker must defer the
+	// join to a different thread. Reaching the destructor with a joinable
+	// thread would terminate the process.
 	{
 		auto socket = std::make_shared<boost::asio::ip::tcp::socket> (server.GetService ());
 		auto owner = std::make_shared<I2CPSession> (server, socket);

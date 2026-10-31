@@ -4,7 +4,9 @@
  *
  * openi2pd: test routerinfo java213 parsing.
  *
- * Checks Java 2.13 RouterInfo/RouterAddress parsing: address and property limits, duplicate rejection, NTCP2 and SSU2 option rules, bandwidth tiers, hidden certificates and every truncation point.
+ * Checks Java 2.13 RouterInfo/RouterAddress parsing: address and
+ * property limits, duplicate rejection, NTCP2 and SSU2 option rules,
+ * bandwidth tiers, hidden certificates and every truncation point.
  *
  */
 
@@ -252,7 +254,8 @@ int main ()
 		assert (!router.IsExtraBandwidth ());
 	}
 
-	// Java RouterInfo.MAX_ADDRESSES is 16. 16 parse, 17 are rejected before
+	// Java RouterInfo.MAX_ADDRESSES is 16. 16 parse, 17 are rejected
+	// before
 	// the loop.
 	{
 		RouterSpec spec;
@@ -271,7 +274,8 @@ int main ()
 		ExpectUnreachable (keys, spec);
 	}
 
-	// Duplicate address options are rejected (Java readProperties(..., true)).
+	// Duplicate address options are rejected (Java readProperties(...,
+	// true)).
 	{
 		AddressSpec address { "SSU2", 8, 0, SSU2V4Options (), true };
 		RouterSpec spec;
@@ -280,8 +284,9 @@ int main ()
 		ExpectUnreachable (keys, spec);
 	}
 
-	// Duplicate properties are rejected; unsorted (but unique) properties are
-	// tolerated because other implementations have shipped unsorted mappings.
+	// Duplicate properties are rejected; unsorted (but unique) properties
+	// are tolerated because other implementations have shipped unsorted
+	// mappings.
 	{
 		RouterSpec spec;
 		spec.addresses = { { "SSU2", 8, 0, SSU2V4Options () } };
@@ -325,8 +330,8 @@ int main ()
 		ExpectUnreachable (keys, spec);
 	}
 
-	// Proposal 133: iexp is optional. A firewalled SSU2 address with a valid
-	// itag/ih but no iexp remains reachable and peer-testable.
+	// Proposal 133: iexp is optional. A firewalled SSU2 address with a
+	// valid itag/ih but no iexp remains reachable and peer-testable.
 	{
 		RouterSpec spec;
 		spec.addresses = { { "SSU2", 15, 0, SSU2IntroducerOptions ("1234", false) } };
@@ -369,9 +374,10 @@ int main ()
 		assert (address->ssu->introducers.front ().iTag == 1234);
 	}
 
-	// Multiple RouterAddress entries for one transport are allowed. A later
-	// published address must replace an earlier introducer-only entry for the
-	// same family (Java keeps both and its transports pick the usable one).
+	// Multiple RouterAddress entries for one transport are allowed. A
+	// later published address must replace an earlier introducer-only
+	// entry for the same family (Java keeps both and its transports pick
+	// the usable one).
 	{
 		RouterSpec spec;
 		spec.addresses
@@ -387,11 +393,11 @@ int main ()
 		assert (router.IsPublished (true));
 	}
 
-	// SSU2 pq/MTU selection follows UDPTransport.getSSUVersion(): pq=4 needs
-	// 1318 bytes on IPv4 and 1338 on IPv6; pq=3 is the fallback.
+	// SSU2 pq/MTU selection follows UDPTransport.getSSUVersion(): pq=4
+	// needs 1318 bytes on IPv4 and 1338 on IPv6; pq=3 is the fallback.
 	// openi2pd keeps a stricter policy than Java UDPAddress here: an SSU2
-	// address whose published MTU is below the spec minimum is not usable at
-	// all (see test-ssu2-address-negotiation), so the RI is rejected.
+	// address whose published MTU is below the spec minimum is not usable
+	// at all (see test-ssu2-address-negotiation), so the RI is rejected.
 	{
 		RouterSpec spec;
 		spec.addresses = { { "SSU2", 8, 0, SSU2V4Options ("1000", "4,3") } };
@@ -424,7 +430,8 @@ int main ()
 	}
 
 	// Java RouterInfo.getBandwidthTier() picks the strongest bandwidth cap
-	// regardless of its position; "POf" must not degrade to "O" or keep both
+	// regardless of its position; "POf" must not degrade to "O" or keep
+	// both
 	// the extra and high flags inconsistently.
 	{
 		RouterSpec spec;
@@ -457,8 +464,8 @@ int main ()
 		RouterInfo router (buffer.data (), buffer.size ());
 		assert (router.GetBandwidthCap () == 0); // "Unknown", not uninitialized
 	}
-	// A malformed caps string with several congestion markers resolves to the
-	// most severe one regardless of order ("ED" must not mean medium).
+	// A malformed caps string with several congestion markers resolves to
+	// the most severe one regardless of order ("ED" must not mean medium).
 	{
 		RouterSpec spec;
 		spec.addresses = { { "SSU2", 8, 0, SSU2V4Options () } };
@@ -469,9 +476,9 @@ int main ()
 		assert (router.GetCongestion () == RouterInfo::eHighCongestion);
 	}
 
-	// RouterInfo.isHidden() includes a hidden identity certificate, not only
-	// the "H" capability. A hidden router's published address must not count
-	// as published.
+	// RouterInfo.isHidden() includes a hidden identity certificate, not
+	// only the "H" capability. A hidden router's published address must
+	// not count as published.
 	{
 		// A hidden certificate carries no key certificate, so the identity is
 		// a legacy DSA identity. Use matching DSA keys for the signature.
@@ -512,8 +519,8 @@ int main ()
 		assert (router.GetVersion () == 962);
 	}
 
-	// Wrong netId, oversized address/property blocks and trailing bytes are
-	// rejected.
+	// Wrong netId, oversized address/property blocks and trailing bytes
+	// are rejected.
 	{
 		RouterSpec spec;
 		spec.addresses = { { "SSU2", 8, 0, SSU2V4Options () } };
@@ -536,8 +543,8 @@ int main ()
 		ExpectUnreachable (keys, spec);
 	}
 
-	// Truncating a valid signed RouterInfo at every offset must never parse as
-	// valid and must not read out of bounds.
+	// Truncating a valid signed RouterInfo at every offset must never
+	// parse as valid and must not read out of bounds.
 	{
 		RouterSpec spec;
 		spec.addresses = { { "SSU2", 8, 0, SSU2V4Options () } };

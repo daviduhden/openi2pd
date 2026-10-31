@@ -4,10 +4,11 @@
  *
  * openi2pd: netDb RouterInfo persistence.
  *
- * Checks the cache-file naming policy (exact identity-hash binding, staged
- * leftovers skipped), the atomic no-follow replacement of a cached RouterInfo,
- * and the bounded final persistence pass in NetDb::Stop(). Uses a temporary
- * directory only; no sockets, threads or sleeps.
+ * Checks the cache-file naming policy (exact identity-hash binding,
+ * staged leftovers skipped), the atomic no-follow replacement of a
+ * cached RouterInfo, and the bounded final persistence pass in
+ * NetDb::Stop(). Uses a temporary directory only; no sockets, threads
+ * or sleeps.
  *
  */
 
@@ -39,7 +40,8 @@
 
 namespace i2p::data
 {
-// The friend declared by NetDb; only deterministic storage/admission helpers.
+// The friend declared by NetDb; only deterministic storage/admission
+// helpers.
 struct NetDbLifecycleTestAccess
 {
 	static void InitStorage (NetDb & database, const std::string & root)
@@ -150,8 +152,8 @@ void TestFileNameBinding ()
 	assert (ClassifyRouterInfoFile (std::string ("/data/netDb/r/") + hash + ".dat", ident) == RouterInfoFileKind::Load);
 	assert (ident == hash);
 
-	// Both the retired ".tmp" name and AtomicWrite's unique staging name are
-	// leftovers of this storage and may be removed.
+	// Both the retired ".tmp" name and AtomicWrite's unique staging name
+	// are leftovers of this storage and may be removed.
 	ident.clear ();
 	assert (ClassifyRouterInfoFile (std::string ("/data/netDb/r/") + hash + ".dat.tmp", ident)
 		== RouterInfoFileKind::Staging);
@@ -187,7 +189,8 @@ void TestAtomicSaveReplacesWithoutLeftovers ()
 	assert (RouterInfo::SaveToFile (target.string (), buffer));
 	assert (ReadFile (target) == std::string (reinterpret_cast<const char *> (first.data ()), first.size ()));
 
-	// A second replacement is atomic and leaves no unique staging file behind.
+	// A second replacement is atomic and leaves no unique staging file
+	// behind.
 	auto second = std::make_shared<RouterInfo::Buffer> (first.data (), 512);
 	assert (second);
 	assert (RouterInfo::SaveToFile (target.string (), second));
@@ -226,19 +229,22 @@ void TestStopFlushesUpdatedRouterInfo ()
 	assert (router->IsUpdated ()); // a freshly parsed descriptor is pending
 	i2p::data::NetDbLifecycleTestAccess::Insert (database, router);
 
-	// NetDb was never started: Stop() must still flush the accepted descriptor
-	// before the maps are cleared, so at most the pending interval is lost.
+	// NetDb was never started: Stop() must still flush the accepted
+	// descriptor before the maps are cleared, so at most the pending
+	// interval is lost.
 	database.Stop ();
 	assert (std::filesystem::exists (expectedPath));
 	assert (ReadFile (expectedPath) == std::string (reinterpret_cast<const char *> (buffer.data ()), buffer.size ()));
 	assert (database.GetNumRouters () == 0);
 
-	// The file name is bound to the identity hash and the loader accepts it.
+	// The file name is bound to the identity hash and the loader accepts
+	// it.
 	std::string fileIdent;
 	assert (ClassifyRouterInfoFile (expectedPath, fileIdent) == RouterInfoFileKind::Load);
 	assert (fileIdent == ident.ToBase64 ());
 
-	// A second Stop() has nothing left to persist and must not recreate files.
+	// A second Stop() has nothing left to persist and must not recreate
+	// files.
 	database.Stop ();
 	assert (database.GetNumRouters () == 0);
 	std::filesystem::remove_all (root);
@@ -259,9 +265,9 @@ struct RecordedRemove
 	std::string name;
 };
 
-// A cached RouterInfo is persisted and removed through the installed artifact
-// writer; no direct cache file appears, and the direct backend keeps the
-// previous on-disk name and bytes when nothing is installed.
+// A cached RouterInfo is persisted and removed through the installed
+// artifact writer; no direct cache file appears, and the direct backend
+// keeps the previous on-disk name and bytes when nothing is installed.
 void TestArtifactRoutedPersistence ()
 {
 	auto keys
@@ -318,8 +324,8 @@ void TestArtifactRoutedPersistence ()
 	ClearArtifactStorage ();
 	assert (!IsArtifactStorageInstalled ());
 
-	// The direct backend preserves the cache name, the identity binding and
-	// the exact descriptor bytes of the previous writer.
+	// The direct backend preserves the cache name, the identity binding
+	// and the exact descriptor bytes of the previous writer.
 	auto directBuffer = std::make_shared<RouterInfo::Buffer> (buffer.data (), buffer.size ());
 	assert (RouterInfo::SaveToArtifact (name, directBuffer));
 	assert (std::filesystem::exists (cachePath));

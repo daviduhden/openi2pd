@@ -4,10 +4,10 @@
  *
  * openi2pd: test upnp mapping.
  *
- * Compile-free regression for the UPnP mapping policy helpers: the lease
- * duration handed to the IGD, the same-host IGD refusal and the ownership test
- * used before a superseded mapping is replaced. No IGD, network or MiniUPnPc
- * call is made.
+ * Compile-free regression for the UPnP mapping policy helpers: the
+ * lease duration handed to the IGD, the same-host IGD refusal and the
+ * ownership test used before a superseded mapping is replaced. No IGD,
+ * network or MiniUPnPc call is made.
  *
  */
 
@@ -32,7 +32,8 @@ int main ()
 {
 	using namespace i2p::transport;
 
-	// --- lease duration ---------------------------------------------------
+	// --- lease duration
+	// ---------------------------------------------------
 	{
 		Check (UPNP_LEASE_DURATION_SECONDS == 3 * 60 * 60, "default lease is three hours");
 		Check (FormatUPnPLeaseDuration () == "10800", "default lease is 10800 seconds");
@@ -43,7 +44,8 @@ int main ()
 			"lease above the maximum is clamped");
 	}
 
-	// --- same-host IGD ----------------------------------------------------
+	// --- same-host IGD
+	// ----------------------------------------------------
 	{
 		Check (IsSameHostIGD ("", "192.168.1.10"), "empty external address is refused");
 		Check (IsSameHostIGD ("0.0.0.0", "192.168.1.10"), "0.0.0.0 is refused");
@@ -58,7 +60,8 @@ int main ()
 		Check (!IsSameHostIGD ("203.0.113.7", ""), "a missing local address does not refuse an IGD");
 	}
 
-	// --- existing mapping ownership ---------------------------------------
+	// --- existing mapping ownership
+	// ---------------------------------------
 	{
 		Check (IsOwnUPnPMapping ("192.168.1.10", "28080", "192.168.1.10", "28080"),
 			"identical mapping is renewable in place");
@@ -70,7 +73,8 @@ int main ()
 		Check (!IsOwnUPnPMapping ("192.168.1.10", "28080", "", ""), "missing local target is not ours");
 	}
 
-	// --- status shape -----------------------------------------------------
+	// --- status shape
+	// -----------------------------------------------------
 	{
 		const UPnPStatus status;
 		Check (!status.enabled && !status.mapped && status.lastError == 0, "status defaults are inert");

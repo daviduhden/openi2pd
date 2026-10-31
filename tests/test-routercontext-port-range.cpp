@@ -4,9 +4,10 @@
  *
  * openi2pd: test router port reservation.
  *
- * Pins the reserved TCP/UDP port table used by RouterContext::SelectRandomPort,
- * including the Intel AMT range added upstream in 37090fe0. It is not
- * executed during static review and runs only in manual CI.
+ * Pins the reserved TCP/UDP port table used by
+ * RouterContext::SelectRandomPort, including the Intel AMT range added
+ * upstream in 37090fe0. It is not executed during static review and
+ * runs only in manual CI.
  */
 
 #include <cstdint>

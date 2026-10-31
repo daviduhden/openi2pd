@@ -4,8 +4,8 @@
  *
  * openi2pd: CPU.
  *
- * Defines the IS_X86 and IS_X86_64 preprocessor flags that select x86-specific
- * code paths at compile time.
+ * Defines the IS_X86 and IS_X86_64 preprocessor flags that select
+ * x86-specific code paths at compile time.
  *
  */
 

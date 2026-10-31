@@ -4,7 +4,9 @@
  *
  * openi2pd: test ssu2 fragment ordering.
  *
- * Checks SSU2 follow-on fragment ordering: a second last fragment or any fragment at or above a known last marker is rejected, preventing silent truncation at the first marker.
+ * Checks SSU2 follow-on fragment ordering: a second last fragment or
+ * any fragment at or above a known last marker is rejected, preventing
+ * silent truncation at the first marker.
  *
  */
 

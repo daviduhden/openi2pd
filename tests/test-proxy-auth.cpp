@@ -4,10 +4,11 @@
  *
  * openi2pd: test proxy auth.
  *
- * Exercises local HTTP proxy Basic and Digest authentication (parsing, bounds,
- * constant time comparison, 407 challenges, nonce replay/staleness and no
- * credential forwarding) and the SOCKS5 RFC 1929 authenticator with its
- * method-selection state machine. No socket, listener or peer is used.
+ * Exercises local HTTP proxy Basic and Digest authentication (parsing,
+ * bounds, constant time comparison, 407 challenges, nonce
+ * replay/staleness and no credential forwarding) and the SOCKS5 RFC
+ * 1929 authenticator with its method-selection state machine. No
+ * socket, listener or peer is used.
  *
  */
 
@@ -55,9 +56,9 @@ using i2p::proxy::SOCKSUserPassAuth;
 using i2p::proxy::SOCKSUserPassFieldValid;
 
 /**
- * RFC 4648 standard-alphabet encoder for the test vectors. The production
- * decoder is deliberately independent of the I2P URL-safe codec, so the test
- * must not use i2p::data::ByteStreamToBase64 either.
+ * RFC 4648 standard-alphabet encoder for the test vectors. The
+ * production decoder is deliberately independent of the I2P URL-safe
+ * codec, so the test must not use i2p::data::ByteStreamToBase64 either.
  */
 std::string EncodeStandardBase64 (std::string_view input)
 {
@@ -137,7 +138,8 @@ void TestHttpBasicAccepted ()
 	// The scheme token is case-insensitive (RFC 7235).
 	assert (auth.Verify ("basic dXNlcjpwYXNz", 1) == ProxyAuthResult::Accepted);
 	assert (auth.Verify ("BASIC dXNlcjpwYXNz", 1) == ProxyAuthResult::Accepted);
-	// Surrounding optional whitespace is tolerated, interior whitespace is not.
+	// Surrounding optional whitespace is tolerated, interior whitespace is
+	// not.
 	assert (auth.Verify ("  Basic dXNlcjpwYXNz\t", 1) == ProxyAuthResult::Accepted);
 	assert (auth.Verify ("Basic\tdXNlcjpwYXNz", 1) == ProxyAuthResult::Accepted);
 
@@ -148,12 +150,14 @@ void TestHttpBasicAccepted ()
 	assert (user == "user");
 	assert (password == "pass");
 
-	// A password may contain the separator; the first ':' splits the fields.
+	// A password may contain the separator; the first ':' splits the
+	// fields.
 	const ProxyBasicAuth colon_auth = MakeAuth ("alice", "pa:ss:word");
 	assert (colon_auth.Verify (BasicHeader ("alice", "pa:ss:word"), 1) == ProxyAuthResult::Accepted);
 	assert (colon_auth.Verify (BasicHeader ("alice", "pa:ss:word!"), 1) == ProxyAuthResult::BadCredentials);
 
-	// '+' and '/' must be accepted: the I2P URL-safe alphabet would reject them.
+	// '+' and '/' must be accepted: the I2P URL-safe alphabet would reject
+	// them.
 	std::string plus_user;
 	plus_user.push_back (static_cast<char> (0xfb)); // base64 quantum "++++"
 	plus_user.push_back (static_cast<char> (0xef));
@@ -260,7 +264,8 @@ void TestChallengeResponse ()
 	// Bounded, fixed-size response with no client input echoed.
 	assert (response.size () < 2048);
 
-	// Repeating the call must be deterministic apart from the generated Date.
+	// Repeating the call must be deterministic apart from the generated
+	// Date.
 	assert (HTTPProxyAuthChallengeResponse ().find ("Proxy-Authenticate: Basic") != std::string::npos);
 }
 
@@ -339,8 +344,8 @@ void TestSocksUserPass ()
 	assert (!oversized.HasUsableCredentials ());
 	assert (!oversized.Verify (oversized.username, oversized.password));
 
-	// Authentication disabled never accepts credentials, and never rejects a
-	// credential-free method either (see the selection test below).
+	// Authentication disabled never accepts credentials, and never rejects
+	// a credential-free method either (see the selection test below).
 	SOCKSUserPassAuth disabled;
 	assert (!disabled.IsEnabled ());
 	assert (!disabled.HasUsableCredentials ());
@@ -360,8 +365,10 @@ void TestSocksMethodSelection ()
 	assert (SOCKSChooseAuthMethod (false, true, false) == SOCKSAuthMethodChoice::None);
 	assert (SOCKSChooseAuthMethod (false, true, true) == SOCKSAuthMethodChoice::None);
 
-	// A client that offers nothing but 0x02 must not be accepted just because
-	// the proxy has no credential: arbitrary credentials are never trusted.
+	// A client that offers nothing but 0x02 must not be accepted just
+	// because
+	// the proxy has no credential: arbitrary credentials are never
+	// trusted.
 	assert (SOCKSChooseAuthMethod (false, false, true) == SOCKSAuthMethodChoice::Unacceptable);
 	assert (SOCKSChooseAuthMethod (false, false, false) == SOCKSAuthMethodChoice::Unacceptable);
 }
@@ -369,9 +376,10 @@ void TestSocksMethodSelection ()
 /*
  * RFC 7616 Digest.
  *
- * The two vectors below are the published examples from RFC 7616 sections
- * 3.9.1 (SHA-256) and 3.9.2 (MD5); the response values were re-derived from
- * the referenced username/realm/password/nonce/cnonce/uri/method tuple.
+ * The two vectors below are the published examples from RFC 7616
+ * sections 3.9.1 (SHA-256) and 3.9.2 (MD5); the response values were
+ * re-derived from the referenced
+ * username/realm/password/nonce/cnonce/uri/method tuple.
  */
 constexpr char RFC7616_REALM[] = "http-auth@example.org";
 constexpr char RFC7616_USER[] = "Mufasa";
@@ -610,7 +618,8 @@ void TestDigestNonceCacheBounds ()
 	auto shortlived = MakeDigestAuth ("user", "pass", std::string (HTTP_PROXY_AUTH_REALM));
 	shortlived->SeedNonce ("only-nonce", "opaque", DIGEST_NOW);
 	assert (shortlived->NonceCount () == 1);
-	// An insert at a much later time purges everything that already expired.
+	// An insert at a much later time purges everything that already
+	// expired.
 	shortlived->SeedNonce ("newer", "opaque2", DIGEST_NOW + PROXY_DIGEST_NONCE_LIFETIME_MS + 1);
 	assert (shortlived->NonceCount () == 1);
 }
@@ -725,7 +734,8 @@ void TestDigestCredentialParser ()
 	assert (credentials.hasAlgorithm && credentials.algorithm == "SHA-256");
 	assert (credentials.opaque == "o");
 
-	// A quoted-string may escape a quote; the parameter name is case-insensitive.
+	// A quoted-string may escape a quote; the parameter name is
+	// case-insensitive.
 	ProxyDigestCredentials escaped;
 	assert (ParseProxyDigestCredentials (
 		"digest USERNAME=\"a\\\"b\", realm=\"r\", nonce=\"n\", uri=\"/x\", qop=auth, nc=00000001, "
@@ -733,7 +743,8 @@ void TestDigestCredentialParser ()
 		escaped));
 	assert (escaped.username == "a\"b");
 
-	// Missing mandatory parameters, a duplicate parameter and broken quoting.
+	// Missing mandatory parameters, a duplicate parameter and broken
+	// quoting.
 	ProxyDigestCredentials invalid;
 	assert (!ParseProxyDigestCredentials ("Digest realm=\"r\"", invalid));
 	assert (!ParseProxyDigestCredentials (

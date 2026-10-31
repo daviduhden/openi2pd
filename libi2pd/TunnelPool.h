@@ -4,10 +4,10 @@
  *
  * openi2pd: TunnelPool.
  *
- * Declares per-destination tunnel pools: peer selection (explicit, trusted or
- * exploratory), inbound/outbound tunnel replacement, latency requirements,
- * tunnel tests and I2CP reconfiguration. Numeric configuration and pool state
- * are synchronized for concurrent readers.
+ * Declares per-destination tunnel pools: peer selection (explicit,
+ * trusted or exploratory), inbound/outbound tunnel replacement, latency
+ * requirements, tunnel tests and I2CP reconfiguration. Numeric
+ * configuration and pool state are synchronized for concurrent readers.
  *
  */
 
@@ -45,22 +45,25 @@ namespace tunnel
 	const int TUNNEL_POOL_MAX_NUM_BUILD_REQUESTS = 3;
 	const int TUNNEL_POOL_MAX_HOP_SELECTION_ATTEMPTS = 3;
 	// A tunnel is failed only after this many tunnel tests missed their
-	// deadline in a row. One lost test is ordinary packet loss; three in a row
-	// is a dead tunnel. The counter lives in Tunnel, never in the state, so
-	// inbound traffic cannot erase it (Java Tunnel.testJob).
+	// deadline in a row. One lost test is ordinary packet loss; three in a
+	// row is a dead tunnel. The counter lives in Tunnel, never in the
+	// state, so inbound traffic cannot erase it (Java Tunnel.testJob).
 	const int TUNNEL_POOL_TEST_STRIKES = 3;
 	// A test reply is expected within a per-hop budget plus the local
-	// transport delay, bounded so a dead tunnel is still replaced promptly.
+	// transport delay, bounded so a dead tunnel is still replaced
+	// promptly.
 	const int TUNNEL_POOL_TEST_TIMEOUT_PER_HOP = 2500; // in milliseconds
 	const int TUNNEL_POOL_TEST_TIMEOUT_MIN = 7500; // in milliseconds
 	const int TUNNEL_POOL_TEST_TIMEOUT_MAX = 15000; // in milliseconds
-	// An inbound tunnel that delivered a message this recently is proven alive
-	// and is not tested again: the test would only duplicate recent traffic.
+	// An inbound tunnel that delivered a message this recently is proven
+	// alive and is not tested again: the test would only duplicate recent
+	// traffic.
 	const int TUNNEL_POOL_INBOUND_ACTIVITY_SKIP_TEST = 40; // in seconds
-	// Java-like build backoff ladder. After 4 consecutive failed builds fewer
-	// requests are issued; 8 and 12 reduce the quantity further and raise the
-	// delay between build rounds. The quantity never drops to zero and the
-	// delay is capped so a recovering network is noticed quickly.
+	// Java-like build backoff ladder. After 4 consecutive failed builds
+	// fewer requests are issued; 8 and 12 reduce the quantity further and
+	// raise the delay between build rounds. The quantity never drops to
+	// zero and the delay is capped so a recovering network is noticed
+	// quickly.
 	const int TUNNEL_POOL_BUILD_FAILURES_TO_REDUCE = 4;
 	const int TUNNEL_POOL_BUILD_BACKOFF_BASE = 10; // in seconds
 	const int TUNNEL_POOL_BUILD_BACKOFF_MAX = 240; // in seconds
@@ -95,18 +98,21 @@ namespace tunnel
 	};
 
 	/**
-	 * Peer admission rules shared by fresh path selection and tunnel reuse.
+	 * Peer admission rules shared by fresh path selection and tunnel
+	 * reuse.
 	 *
-	 * NetDb random selection applies most of these centrally, but a recreated
-	 * tunnel reuses identities chosen earlier and would otherwise bypass the
-	 * operator blocklist, runtime bans, revocation, congestion, version floor
-	 * and endpoint reachability rules. `compatibleWith` is the router the peer
-	 * will connect to: the previous hop during selection, our own RouterInfo
-	 * when a recreated path is validated. It may be null when no local identity
-	 * is available (unit tests); the reachability and family checks are then
-	 * skipped rather than guessed. `clientTunnel` selects the NetDb congestion
-	 * rule: a client tunnel may not use a peer that is congested for client
-	 * traffic, an exploratory tunnel is more tolerant.
+	 * NetDb random selection applies most of these centrally, but a
+	 * recreated tunnel reuses identities chosen earlier and would
+	 * otherwise bypass the operator blocklist, runtime bans, revocation,
+	 * congestion, version floor and endpoint reachability rules.
+	 * `compatibleWith` is the router the peer will connect to: the
+	 * previous hop during selection, our own RouterInfo when a recreated
+	 * path is validated. It may be null when no local identity is
+	 * available (unit tests); the reachability and family checks are then
+	 * skipped rather than guessed. `clientTunnel` selects the NetDb
+	 * congestion rule: a client tunnel may not use a peer that is
+	 * congested for client traffic, an exploratory tunnel is more
+	 * tolerant.
 	 */
 	bool IsRouterUsableForTunnel (const i2p::data::RouterInfo & router, const i2p::data::RouterInfo * compatibleWith,
 		TunnelPeerRole role, bool inbound, bool clientTunnel);
@@ -114,16 +120,21 @@ namespace tunnel
 	/**
 	 * Role of peer @a index in a path of @a numPeers.
 	 *
-	 * Matches the flags StandardSelectPeers passes to NetDb: the last hop is
-	 * requested with `endpoint = true` in both directions, and the first hop of
-	 * an inbound tunnel is the gateway a peer connects to.
+	 * Matches the flags StandardSelectPeers passes to NetDb: the last hop
+	 * is requested with `endpoint = true` in both directions, and the
+	 * first hop of an inbound tunnel is the gateway a peer connects to.
 	 */
 	TunnelPeerRole GetTunnelPeerRole (int index, int numPeers, bool inbound);
 
-	/** Clamp a configured hop count and variance to the build record table. */
+	/**
+	 * Clamp a configured hop count and variance to the build record table.
+	 */
 	void ClampTunnelLength (int & hops, int & variance, bool inbound);
 
-	/** Build requests this round may start, given the pool shape and failures. */
+	/**
+	 * Build requests this round may start, given the pool shape and
+	 * failures.
+	 */
 	int ComputeBuildRequestCount (int configured, int established, int pending, int consecutiveFailures);
 
 	/** Delay before the next build round for @a consecutiveFailures. */
@@ -141,9 +152,10 @@ namespace tunnel
 	 * The pool never owns the selector. A registration may carry an owner,
 	 * normally the std::shared_ptr of the object that also implements
 	 * ITunnelPeerSelector. TrySelectPeers() pins that owner with a strong
-	 * reference for the whole call, so the selector cannot be destroyed while
-	 * it runs even if the owner is released concurrently. The stored reference
-	 * stays weak, which keeps destination/pool cycles out of the object graph.
+	 * reference for the whole call, so the selector cannot be destroyed
+	 * while it runs even if the owner is released concurrently. The stored
+	 * reference stays weak, which keeps destination/pool cycles out of the
+	 * object graph.
 	 */
 	class TunnelPeerSelectorHandle final
 	{
@@ -254,21 +266,21 @@ namespace tunnel
 			return m_Tests.size ();
 		}
 
-		/** @brief make this tunnel pool yield tunnels that fit latency range [min, max] */
+		/** Make this pool yield tunnels within [min, max] latency. */
 		void RequireLatency (int min, int max)
 		{
 			m_MinLatency.store (min, std::memory_order_relaxed);
 			m_MaxLatency.store (max, std::memory_order_relaxed);
 		}
 
-		/** @brief return true if this tunnel pool has a latency requirement */
+		/** @brief Return true when both latency limits are positive. */
 		bool HasLatencyRequirement () const
 		{
 			return m_MinLatency.load (std::memory_order_relaxed) > 0
 				&& m_MaxLatency.load (std::memory_order_relaxed) > 0;
 		}
 
-		/** @brief get the lowest latency tunnel in this tunnel pool regardless of latency requirements */
+		/** Get the lowest-latency tunnel, ignoring pool latency limits. */
 		std::shared_ptr<InboundTunnel> GetLowestLatencyInboundTunnel (
 			std::shared_ptr<InboundTunnel> exclude = nullptr) const;
 		std::shared_ptr<OutboundTunnel> GetLowestLatencyOutboundTunnel (
@@ -326,9 +338,9 @@ namespace tunnel
 		std::atomic<bool> m_IsActive;
 		bool m_IsHighBandwidth;
 		uint64_t m_NextManageTime; // in seconds
-		// Consecutive failed builds and the earliest next build round. Jitter is
-		// deliberately absent for pooled tunnels: the ladder itself spreads the
-		// load when the network is unhealthy.
+		// Consecutive failed builds and the earliest next build round. Jitter
+		// is deliberately absent for pooled tunnels: the ladder itself
+		// spreads the load when the network is unhealthy.
 		std::atomic<int> m_ConsecutiveBuildFailures;
 		std::atomic<uint64_t> m_NextBuildTime; // in seconds
 		mutable std::mutex m_CustomPeerSelectorMutex;
@@ -359,7 +371,8 @@ namespace tunnel
 			return !m_InboundTunnels.empty ();
 		}
 
-		// for administrative views; thread-safe snapshots, safe to iterate without holding any lock
+		// for administrative views; thread-safe snapshots, safe to iterate
+		// without holding any lock
 		std::vector<std::shared_ptr<OutboundTunnel>> GetOutboundTunnelsList () const
 		{
 			std::unique_lock<std::mutex> l (m_OutboundTunnelsMutex);

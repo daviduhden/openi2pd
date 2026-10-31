@@ -4,7 +4,9 @@
  *
  * openi2pd: test netdb lookup wire bounds.
  *
- * Validates DatabaseLookup and DatabaseSearchReply serialization and parsing, including direct/tunnel layouts, excluded-peer caps and rejection of every truncated prefix.
+ * Validates DatabaseLookup and DatabaseSearchReply serialization and
+ * parsing, including direct/tunnel layouts, excluded-peer caps and
+ * rejection of every truncated prefix.
  *
  */
 
@@ -23,7 +25,8 @@
 #include "RouterContext.h"
 
 // Static wire checks for I2NP DatabaseLookup (type 2) and
-// DatabaseSearchReply (type 3) serialization and parsing. No network, netDb
+// DatabaseSearchReply (type 3) serialization and parsing. No network,
+// netDb
 // thread or tunnel is started.
 //
 // References:
@@ -31,9 +34,11 @@
 //     reply_tunnelId (4, only if flag bit 0) || size (2) ||
 //     size*32 excluded hashes || optional reply key block.
 //     size valid range 0-512.
-//   I2NP DatabaseSearchReply: key (32) || num (1) || num*32 peer hashes ||
+// I2NP DatabaseSearchReply: key (32) || num (1) || num*32 peer hashes
+// ||
 //     from (32). num valid range 0-255; recommended maximum 16.
-//   Java 2.13.0 DatabaseLookupMessage.java (MAX_NUM_PEERS = 512, readMessage)
+// Java 2.13.0 DatabaseLookupMessage.java (MAX_NUM_PEERS = 512,
+// readMessage)
 //   Java 2.13.0 DatabaseSearchReplyMessage.java (readMessage).
 
 namespace
@@ -52,7 +57,8 @@ IdentHash MakeHash (uint32_t value)
 void InitializeLocalIdentity ()
 {
 	// CreateDatabaseSearchReply() writes our router hash into the trailing
-	// "from" field. RouterInfo::GetIdentHash() dereferences m_RouterIdentity,
+	// "from" field. RouterInfo::GetIdentHash() dereferences
+	// m_RouterIdentity,
 	// so install a real identity instead of relying on test-only defaults.
 	auto keys = PrivateKeys::CreateRandomKeys (
 		SIGNING_KEY_TYPE_EDDSA_SHA512_ED25519, CRYPTO_KEY_TYPE_ECIES_X25519_AEAD, false);
@@ -73,7 +79,8 @@ void AssertHeader (const std::shared_ptr<I2NPMessage> & msg, I2NPMessageType typ
 
 void TestLookupFlagConstants ()
 {
-	// I2NP DatabaseLookup flag bits and Java DatabaseLookupMessage constants.
+	// I2NP DatabaseLookup flag bits and Java DatabaseLookupMessage
+	// constants.
 	static_assert (DATABASE_LOOKUP_DELIVERY_FLAG == 0x01);
 	static_assert (DATABASE_LOOKUP_ENCRYPTION_FLAG == 0x02);
 	static_assert (DATABASE_LOOKUP_TYPE_FLAGS_MASK == 0x0c);
@@ -84,8 +91,8 @@ void TestLookupFlagConstants ()
 	static_assert (DATABASE_LOOKUP_RATCHET_FLAG == 0x10);
 	static_assert (DATABASE_LOOKUP_MAX_NUM_PEERS == 512);
 	// 0x02 (AES/session key), 0x10 (ECIES tag) and 0x12 (proposal 154
-	// public-key form) are receiver-side reply-key forms; the bits must not
-	// overlap with the lookup type mask or the tunnel flag.
+	// public-key form) are receiver-side reply-key forms; the bits must
+	// not overlap with the lookup type mask or the tunnel flag.
 	assert ((DATABASE_LOOKUP_ENCRYPTION_FLAG & DATABASE_LOOKUP_TYPE_FLAGS_MASK) == 0);
 	assert ((DATABASE_LOOKUP_RATCHET_FLAG & DATABASE_LOOKUP_TYPE_FLAGS_MASK) == 0);
 	assert ((DATABASE_LOOKUP_RATCHET_FLAG & DATABASE_LOOKUP_DELIVERY_FLAG) == 0);
@@ -145,8 +152,9 @@ void TestRouterInfoLookupTunnelLayout ()
 
 void TestExploratoryLookupDirectLayout ()
 {
-	// I2NP lookup type bits 3-2: 11 = exploratory. Java ExploreJob always sets
-	// Type.EXPL for a real exploration, whether the DLM is direct or tunneled.
+	// I2NP lookup type bits 3-2: 11 = exploratory. Java ExploreJob always
+	// sets Type.EXPL for a real exploration, whether the DLM is direct or
+	// tunneled.
 	std::array<uint8_t, 32> key { };
 	std::array<uint8_t, 32> from { };
 	key.fill (0x55);
@@ -160,7 +168,8 @@ void TestExploratoryLookupDirectLayout ()
 
 void TestLookupExcludedPeerCap ()
 {
-	// I2NP DatabaseLookup "size" is a 2-byte integer with valid range 0-512;
+	// I2NP DatabaseLookup "size" is a 2-byte integer with valid range
+	// 0-512;
 	// Java DatabaseLookupMessage.MAX_NUM_PEERS is 512.
 	std::array<uint8_t, 32> key { };
 	std::array<uint8_t, 32> from { };
@@ -185,7 +194,8 @@ void TestLookupExcludedPeerCap ()
 		assert (emitted.insert (peer).second);
 	}
 
-	// The tunnel form has the same cap even though the fixed header is larger.
+	// The tunnel form has the same cap even though the fixed header is
+	// larger.
 	auto tunneled = CreateRouterInfoDatabaseLookupMsg (key.data (), from.data (), 1, true, &excluded);
 	assert (bufbe16toh (tunneled->GetPayload () + 69) == DATABASE_LOOKUP_MAX_NUM_PEERS);
 	assert (tunneled->GetPayloadLength () == 71 + DATABASE_LOOKUP_MAX_NUM_PEERS * 32);
@@ -216,14 +226,16 @@ void TestParseDatabaseSearchReplyValid ()
 
 void TestParseDatabaseSearchReplyBounds ()
 {
-	// Zero peers is the minimum valid body: key (32) + num (1) + from (32).
+	// Zero peers is the minimum valid body: key (32) + num (1) + from
+	// (32).
 	std::vector<uint8_t> body (DATABASE_SEARCH_REPLY_MIN_SIZE, 0);
 	body[DATABASE_SEARCH_REPLY_COUNT_OFFSET] = 0;
 	DatabaseSearchReply reply;
 	assert (ParseDatabaseSearchReply (body.data (), body.size (), reply));
 	assert (reply.peers.empty ());
 
-	// Declared peer count whose bytes (or the mandatory "from") are missing.
+	// Declared peer count whose bytes (or the mandatory "from") are
+	// missing.
 	body[DATABASE_SEARCH_REPLY_COUNT_OFFSET] = 1;
 	assert (!ParseDatabaseSearchReply (body.data (), body.size (), reply));
 	body.resize (DATABASE_SEARCH_REPLY_MIN_SIZE + 31); // one byte short of peer+from
@@ -232,7 +244,8 @@ void TestParseDatabaseSearchReplyBounds ()
 	assert (ParseDatabaseSearchReply (body.data (), body.size (), reply));
 	assert (reply.peers.size () == 1);
 
-	// Every prefix shorter than the minimum must be rejected without reading.
+	// Every prefix shorter than the minimum must be rejected without
+	// reading.
 	std::array<uint8_t, 64> one { };
 	for (size_t len = 0; len < DATABASE_SEARCH_REPLY_MIN_SIZE; len++)
 		assert (!ParseDatabaseSearchReply (one.data (), len, reply));

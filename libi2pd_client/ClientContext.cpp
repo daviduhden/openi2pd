@@ -5,10 +5,10 @@
  * openi2pd: ClientContext.
  *
  * Orchestrates client startup and teardown: it creates the shared local
- * destination, starts the address book, proxies, configured tunnels, SAM,
- * BOB, I2CP and torrent RPC servers, and parses tunnel sections and I2CP
- * options on reload. Destinations and tunnels are tracked so they can be
- * replaced or stopped without dangling references.
+ * destination, starts the address book, proxies, configured tunnels,
+ * SAM, BOB, I2CP and torrent RPC servers, and parses tunnel sections
+ * and I2CP options on reload. Destinations and tunnels are tracked so
+ * they can be replaced or stopped without dangling references.
  *
  */
 
@@ -42,8 +42,8 @@ namespace client
 	ClientContext::~ClientContext ()
 	{
 		// Preserve the historical destruction order (SAM, BOB, I2CP). Stop()
-		// already resets these; the explicit resets keep the destructor correct
-		// when the context is torn down without a preceding Stop().
+		// already resets these; the explicit resets keep the destructor
+		// correct when the context is torn down without a preceding Stop().
 		m_SamBridge.reset ();
 		m_BOBCommandChannel.reset ();
 		m_I2CPServer.reset ();
@@ -163,13 +163,14 @@ namespace client
 		return proxy;
 	}
 
-	// Ordered client teardown. Every container is snapshotted and cleared under
-	// its own lock, then the services are stopped outside the lock, because a
-	// stop re-enters the registry (Done()/RemoveHandler). The order matters:
-	// listeners and proxies first, then the protocol servers that own
-	// destinations, then the address book and datagram tunnels, and only then
-	// the destinations themselves. Reversing it would let an acceptor publish a
-	// handler for a destination that is already gone.
+	// Ordered client teardown. Every container is snapshotted and cleared
+	// under its own lock, then the services are stopped outside the lock,
+	// because a stop re-enters the registry (Done()/RemoveHandler). The
+	// order matters: listeners and proxies first, then the protocol
+	// servers that own destinations, then the address book and datagram
+	// tunnels, and only then the destinations themselves. Reversing it
+	// would let an acceptor publish a handler for a destination that is
+	// already gone.
 	void ClientContext::Stop ()
 	{
 		auto httpProxy = DetachHttpProxy ();
@@ -205,7 +206,8 @@ namespace client
 			LogPrint (eLogInfo, "Clients: Stopping I2P server tunnel");
 			if (it.second) it.second->Stop ();
 		}
-		// A later Start() rebuilds the inventory from the configuration files.
+		// A later Start() rebuilds the inventory from the configuration
+		// files.
 		m_ServiceNames.Clear ();
 
 		if (m_SamBridge)
@@ -479,7 +481,8 @@ namespace client
 			error = "unknown tunnel";
 			return false;
 		}
-		// Idempotent: a running tunnel is left alone instead of binding twice.
+		// Idempotent: a running tunnel is left alone instead of binding
+		// twice.
 		if (service->IsRunning ()) return true;
 		try
 		{
@@ -549,15 +552,16 @@ namespace client
 	}
 
 	// Live reload protocol. The shared local destination is replaced first
-	// because the address book timers and every service hold it; then the two
-	// proxies are re-created. Server tunnels are handled in three passes:
-	// detach every acceptor (incoming streams wait in the streaming queue
-	// instead of being refused), reset the transient `isUpdated` flag, re-read
-	// the tunnel files (a tunnel that still exists re-installs its own
-	// acceptor and sets the flag again), and finally remove the tunnels that
-	// nobody re-read. Destinations whose reference count dropped to zero are
-	// collected and stopped last, so a tunnel removed in an earlier pass has
-	// already released its destination.
+	// because the address book timers and every service hold it; then the
+	// two proxies are re-created. Server tunnels are handled in three
+	// passes: detach every acceptor (incoming streams wait in the
+	// streaming queue instead of being refused), reset the transient
+	// `isUpdated` flag, re-read the tunnel files (a tunnel that still
+	// exists re-installs its own acceptor and sets the flag again), and
+	// finally remove the tunnels that nobody re-read. Destinations whose
+	// reference count dropped to zero are collected and stopped last, so a
+	// tunnel removed in an earlier pass has already released its
+	// destination.
 	void ClientContext::ReloadConfig ()
 	{
 		// TODO: handle config changes
@@ -586,8 +590,8 @@ namespace client
 		ReadSocksProxy ();
 
 		// handle tunnels
-		// take the acceptors off first, a tunnel still in the config sets its own back
-		// while it is read, incoming streams wait in the queue meanwhile
+		// Detach acceptors first; configured tunnels reattach after reload.
+		// Incoming streams wait in the queue during that interval.
 		std::vector<std::shared_ptr<I2PServerTunnel>> serverTunnels;
 		{
 			std::lock_guard<std::mutex> l (m_ProxyMutex);
@@ -935,8 +939,8 @@ namespace client
 		options.Insert (I2CP_PARAM_STREAMING_MAX_RESENDS,
 			GetI2CPOption (section, I2CP_PARAM_STREAMING_MAX_RESENDS, i2p::stream::MAX_NUM_RESEND_ATTEMPTS));
 #if OPENSSL_PQ
-		// Hybrid + X25519. ElGamal is deliberately not combined with a hybrid
-		// type: the strict parser rejects that combination (same policy as Java).
+		// Hybrid + X25519. ElGamal cannot be combined with a hybrid type;
+		// the strict parser enforces the same policy as Java.
 		std::string encType = GetI2CPStringOption (section, I2CP_PARAM_LEASESET_ENCRYPTION_TYPE, "6,4");
 #else
 		std::string encType
@@ -1009,15 +1013,14 @@ namespace client
 
 	// Reads every tunnel section from the main tunnel file and from
 	// `tunnels.d/*.conf`, in that order. Each section must claim a unique
-	// administrative name before any object is created, so a duplicate is a
-	// configuration error rather than an ambiguous StartTunnel/StopTunnel
-	// target; the registry is cleared first, which is what releases the names of
-	// sections that disappeared.
+	// Check administrative names before creating objects. Duplicates would
+	// make StartTunnel/StopTunnel ambiguous. Clearing the registry first
+	// releases names for sections removed from the configuration.
 	void ClientContext::ReadTunnels ()
 	{
 		int numClientTunnels = 0, numServerTunnels = 0;
-		// Every section of every file must claim a unique administrative name,
-		// so a removed/renamed tunnel releases its name on reload.
+		// Each section needs a unique administrative name; removed or renamed
+		// tunnels release their names on reload.
 		m_ServiceNames.Clear ();
 		std::string tunConf;
 		i2p::config::GetOption ("tunconf", tunConf);
@@ -1051,11 +1054,9 @@ namespace client
 		LogPrint (eLogInfo, "Clients: ", numServerTunnels, " I2P server tunnels created");
 	}
 
-	// Append one INI section that was recovered from a file the parser rejected
-	// as a whole. A single malformed line makes read_ini throw and would drop
-	// every tunnel in the file, including the correct sections, so the recovery
-	// path parses each section independently and skips only the ones that are
-	// still unreadable.
+	// Recover one section from a file rejected as a whole. read_ini throws
+	// on one malformed line and would discard valid sections.
+	// Parse sections independently and skip only those still unreadable.
 	void ClientContext::AddSection (
 		boost::property_tree::ptree & pt, const std::string & name, const std::string & chunk, int & numSections)
 	{
@@ -1076,9 +1077,9 @@ namespace client
 		numSections++;
 	}
 
-	// Fallback for a file rejected as a whole: a single malformed line makes read_ini throw
-	// and every tunnel is lost, including sections that are correct. Read section by section
-	// instead, so that only unreadable ones are skipped
+	// Fallback for a file rejected as a whole: read_ini throws on one bad
+	// line and would discard valid tunnels. Read each section separately
+	// and skip only unreadable sections.
 	int ClientContext::ReadTunnelsBySection (const std::string & tunConf, boost::property_tree::ptree & pt)
 	{
 		std::ifstream f (tunConf);
@@ -1193,8 +1194,8 @@ namespace client
 								}
 								else
 								{
-									// destination is already running, the pool takes new parameters
-									// on the fly, no need to recreate anything
+					// Reconfigure the running destination in place; no restart
+					// is needed.
 									localDestination->Reconfigure (options);
 									if (keys != "transient") destinations[keys] = localDestination;
 								}
@@ -1869,7 +1870,7 @@ namespace client
 			}
 			try
 			{
-				// publish only after it is started, so readers never see a half-built proxy
+				// Publish after start so readers cannot see a partial proxy.
 				auto proxy = std::make_shared<i2p::proxy::HTTPProxy> ("HTTP Proxy", httpProxyAddr, httpProxyPort,
 					httpOutProxyURL, httpAddresshelper, httpSendUserAgent, localDestination);
 				uint64_t closeIdleTime;

@@ -4,7 +4,10 @@
  *
  * openi2pd: test reseed zip bounds.
  *
- * Checks the reseed ZIP reader's local-header and descriptor bounds, deflate/CRC handling, proposal-147 netid URL composition and rejection of oversized, truncated or inconsistent entries before AddRouterInfo.
+ * Checks the reseed ZIP reader's local-header and descriptor bounds,
+ * deflate/CRC handling, proposal-147 netid URL composition and
+ * rejection of oversized, truncated or inconsistent entries before
+ * AddRouterInfo.
  *
  */
 
@@ -48,9 +51,9 @@ std::vector<uint8_t> LocalFileHeader (uint32_t compressedSize, uint32_t uncompre
 	return out;
 }
 
-// A single final stored block is valid raw deflate and needs no zlib helper
-// in the test. It lets the fixture reach inflate, CRC and AddRouterInfo without
-// embedding precomputed compressed bytes.
+// A single final stored block is valid raw deflate and needs no zlib
+// helper in the test. It lets the fixture reach inflate, CRC and
+// AddRouterInfo without embedding precomputed compressed bytes.
 std::vector<uint8_t> RawDeflateStored (const std::vector<uint8_t> & data)
 {
 	assert (data.size () <= 0xFFFF);
@@ -88,8 +91,8 @@ int main ()
 	i2p::data::Reseeder reseeder;
 	std::vector<std::string> cases;
 
-	// Both declared sizes exceed MAX_RESEED_FILE_SIZE. The parser must reject
-	// them before allocating the compressed/uncompressed buffers.
+	// Both declared sizes exceed MAX_RESEED_FILE_SIZE. The parser must
+	// reject them before allocating the compressed/uncompressed buffers.
 	cases.push_back (WriteCase (directory, "oversized.zip", LocalFileHeader (0xFFFFFFFFu, 0xFFFFFFFFu, 0)));
 
 	// A 255-byte name is rejected by the fixed-size name buffer.
@@ -108,8 +111,10 @@ int main ()
 	// A truncated header must not be accepted either.
 	cases.push_back (WriteCase (directory, "truncated-header.zip", { 0x50, 0x4B, 0x03, 0x04, 20 }));
 
-	// A stored entry reaches the uncompressed AddRouterInfo path. The payload
-	// is not a RouterInfo, so the parser must reject it after the buffers have
+	// A stored entry reaches the uncompressed AddRouterInfo path. The
+	// payload
+	// is not a RouterInfo, so the parser must reject it after the buffers
+	// have
 	// been allocated and released.
 	{
 		auto bytes = LocalFileHeader (4, 4, 4);
@@ -120,8 +125,8 @@ int main ()
 		cases.push_back (WriteCase (directory, "stored-payload.zip", bytes));
 	}
 
-	// A complete deflate stream with a wrong CRC exercises the uncompressed
-	// buffer and the CRC failure path.
+	// A complete deflate stream with a wrong CRC exercises the
+	// uncompressed buffer and the CRC failure path.
 	{
 		const std::vector<uint8_t> payload (32, 'A');
 		const auto deflated = RawDeflateStored (payload);
@@ -131,8 +136,8 @@ int main ()
 		cases.push_back (WriteCase (directory, "deflated-bad-crc.zip", bytes));
 	}
 
-	// A truncated deflate stream must not reach CRC32/AddRouterInfo and must
-	// release both buffers on the error path.
+	// A truncated deflate stream must not reach CRC32/AddRouterInfo and
+	// must release both buffers on the error path.
 	{
 		const std::vector<uint8_t> payload (32, 'A');
 		auto deflated = RawDeflateStored (payload);
@@ -143,9 +148,10 @@ int main ()
 		cases.push_back (WriteCase (directory, "deflated-truncated.zip", bytes));
 	}
 
-	// Streaming entry: the local header has zero sizes and the real values are
-	// in the trailing data descriptor. The descriptor signature is consumed as
-	// part of the compressed data, as the reader has always done.
+	// Streaming entry: the local header has zero sizes and the real values
+	// are in the trailing data descriptor. The descriptor signature is
+	// consumed as part of the compressed data, as the reader has always
+	// done.
 	{
 		const std::vector<uint8_t> payload { 'n', 'o', 't', 'a', 'r', 'o', 'u', 't', 'e', 'r' };
 		auto bytes = LocalFileHeader (0, 0, 0, 0, 0x0008 /* data descriptor */);
@@ -157,9 +163,9 @@ int main ()
 		cases.push_back (WriteCase (directory, "data-descriptor.zip", bytes));
 	}
 
-	// The descriptor sizes are attacker controlled as well. A value that would
-	// wrap when the 4-byte signature is added must be rejected before the
-	// buffers are allocated.
+	// The descriptor sizes are attacker controlled as well. A value that
+	// would wrap when the 4-byte signature is added must be rejected
+	// before the buffers are allocated.
 	{
 		auto bytes = LocalFileHeader (0, 0, 0, 0, 0x0008 /* data descriptor */);
 		bytes.push_back ('x'); // one byte before the descriptor
@@ -172,8 +178,8 @@ int main ()
 
 	for (const auto & path : cases) assert (reseeder.ProcessZIPFile (path.c_str ()) == 0);
 
-	// Proposal 147: the router network ID is appended without destroying an
-	// existing query string, and an explicit netid is never duplicated.
+	// Proposal 147: the router network ID is appended without destroying
+	// an existing query string, and an explicit netid is never duplicated.
 	assert (i2p::data::AppendReseedNetId ("https://example.invalid/i2pseeds.su3", 2)
 		== "https://example.invalid/i2pseeds.su3?netid=2");
 	assert (i2p::data::AppendReseedNetId ("https://example.invalid/i2pseeds.su3?x=1", 2)

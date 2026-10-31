@@ -5,10 +5,10 @@
  * openi2pd: Gost.
  *
  * Implements GOST R 34.10 curve arithmetic, signing, verification and
- * public-key recovery for the CryptoPro-A and TC26 512 parameter sets, along
- * with the GOST R 34.11-2012 256/512-bit hash. OpenSSL objects and static
- * curve parameters are owned by RAII wrappers and shared through thread-safe
- * one-time initialisation.
+ * public-key recovery for the CryptoPro-A and TC26 512 parameter sets,
+ * along with the GOST R 34.11-2012 256/512-bit hash. OpenSSL objects
+ * and static curve parameters are owned by RAII wrappers and shared
+ * through thread-safe one-time initialisation.
  *
  */
 
@@ -36,8 +36,9 @@ namespace crypto
 		};
 		using BIGNUM_ptr = std::unique_ptr<BIGNUM, BIGNUM_Deleter>;
 
-		// BN_hex2bn takes a BIGNUM ** output and allocates on success. Wrap the
-		// six static parameters so every early return releases what was parsed.
+		// BN_hex2bn takes a BIGNUM ** output and allocates on success. Wrap
+		// the six static parameters so every early return releases what was
+		// parsed.
 		BIGNUM_ptr ParseHexBIGNUM (const char * hex)
 		{
 			BIGNUM * bn = nullptr;
@@ -296,8 +297,8 @@ namespace crypto
 	std::unique_ptr<GOSTR3410Curve> & GetGOSTR3410Curve (GOSTR3410ParamSet paramSet)
 	{
 		// Keep one published curve per parameter set. Function-local statics
-		// make publication thread-safe without ever moving the object out from
-		// under a caller that already holds a reference to it.
+		// make publication thread-safe without ever moving the object out
+		// from under a caller that already holds a reference to it.
 		static std::array<std::unique_ptr<GOSTR3410Curve>, eGOSTR3410NumParamSets> curves;
 		static std::array<std::once_flag, eGOSTR3410NumParamSets> onceFlags;
 		static std::unique_ptr<GOSTR3410Curve> invalidCurve;
@@ -896,9 +897,10 @@ namespace crypto
 	}
 
 	// The GOST 34.11-2012 compression consumes the message from its last
-	// 512-bit block. An incremental encoder cannot emit a block before the end
-	// of the message without buffering the input, so the context retains the
-	// bytes and Finish() runs the same one-shot transform as the helpers above.
+	// 512-bit block. An incremental encoder cannot emit a block before the
+	// end of the message without buffering the input, so the context
+	// retains the bytes and Finish() runs the same one-shot transform as
+	// the helpers above.
 	struct GOSTR3411_2012_CTX
 	{
 		std::vector<uint8_t> data;

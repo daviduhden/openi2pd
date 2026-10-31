@@ -4,8 +4,9 @@
  *
  * openi2pd: test address formatting.
  *
- * Pins IPv4, IPv6, link-local scope-ID and endpoint formatting used by logs
- * and configuration. It deliberately does not invoke Boost.Asio's formatter.
+ * Pins IPv4, IPv6, link-local scope-ID and endpoint formatting used by
+ * logs and configuration. It deliberately does not invoke Boost.Asio's
+ * formatter.
  */
 
 #include <iostream>

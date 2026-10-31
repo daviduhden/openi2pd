@@ -4,7 +4,9 @@
  *
  * openi2pd: fuzz protocol bounds.
  *
- * Exercises IdentityEx, LeaseSet, I2NP length, RouterInfo and SSU2 payload-block parsing on untrusted bytes, requiring truncation and overruns to fail without a running router.
+ * Exercises IdentityEx, LeaseSet, I2NP length, RouterInfo and SSU2
+ * payload-block parsing on untrusted bytes, requiring truncation and
+ * overruns to fail without a running router.
  *
  */
 
@@ -32,8 +34,8 @@ extern "C" int LLVMFuzzerTestOneInput (const uint8_t * data, size_t size)
 	i2p::data::RouterInfo routerInfo (data, size);
 	(void)routerInfo.IsUnreachable ();
 
-	// Pure SSU2 payload framing/state whitelist. No socket, session or router
-	// state is touched, so this can run on arbitrary input.
+	// Pure SSU2 payload framing/state whitelist. No socket, session or
+	// router state is touched, so this can run on arbitrary input.
 	using i2p::transport::SSU2SessionState;
 	const SSU2SessionState states[] = {
 		i2p::transport::eSSU2SessionStateTokenRequestReceived,

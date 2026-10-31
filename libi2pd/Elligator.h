@@ -4,9 +4,9 @@
  *
  * openi2pd: Elligator.
  *
- * Declares Elligator2 encoding and decoding, which make X25519 public keys
- * indistinguishable from random bytes. The shared instance holds the curve
- * constants and square-root helpers required by the mapping.
+ * Declares Elligator2 encoding and decoding, which make X25519 public
+ * keys indistinguishable from random bytes. The shared instance holds
+ * the curve constants and square-root helpers required by the mapping.
  *
  */
 
@@ -33,17 +33,18 @@ namespace crypto
 		/// Map a 32-byte X25519 public key to a 32-byte representative.
 		/// @param highY Selects which of the two curve points with the same
 		/// x-coordinate the receiver should use.
-		/// @param random Draw the remaining ambiguity from the CSPRNG instead of
-		/// deriving it deterministically.
-		/// @return False when the key has no Elligator representation (roughly
-		/// half of all keys) or on provider failure. The caller must then send
-		/// the plain key, which remains a valid handshake encoding; see
-		/// X25519Keys::SetElligatorIneligible().
+		/// @param random Draw the remaining ambiguity from the CSPRNG instead
+		///               of deriving it deterministically.
+		/// @return False when the key has no Elligator representation
+		///         (roughly half of all keys) or on provider failure. The
+		///         caller must then send the plain key, which remains a valid
+		///         handshake encoding; see
+		///         X25519Keys::SetElligatorIneligible().
 		bool Encode (const uint8_t * key, uint8_t * encoded, bool highY = false, bool random = true) const;
 		/// Recover the public key from a representative.
-		/// @return False when the input is not a canonical representative, so a
-		/// failed decode must abort the handshake and never be retried as if it
-		/// were a plain key.
+		/// @return False when the input is not a canonical
+		///         representative, so a failed decode must abort the
+		///         handshake and never be retried as if it were a plain key.
 		bool Decode (const uint8_t * encoded, uint8_t * key) const;
 
 	private:

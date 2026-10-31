@@ -4,8 +4,9 @@
  *
  * openi2pd: version.
  *
- * Defines openi2pd, I2P protocol and network version constants together with
- * the stringification macros used for RouterInfo and administrative output.
+ * Defines openi2pd, I2P protocol and network version constants together
+ * with the stringification macros used for RouterInfo and
+ * administrative output.
  *
  */
 

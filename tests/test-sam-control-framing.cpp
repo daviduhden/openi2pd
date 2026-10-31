@@ -4,11 +4,14 @@
  *
  * openi2pd: test sam control framing.
  *
- * Exercises the bounded SAM control framer and the one-word command grammar:
+ * Exercises the bounded SAM control framer and the one-word command
+ * grammar:
  * pipelined commands, split lines and SEND payloads across reads, CRLF,
- * buffer limits, PING/PONG/HELP/AUTH/QUIT classification, the exact reply lines
+ * buffer limits, PING/PONG/HELP/AUTH/QUIT classification, the exact
+ * reply lines
  * of SAMv3Handler, the HELLO VERSION negotiation, duplicate-parameter
- * rejection, bare boolean tokens and the non-secret SESSION CREATE log summary.
+ * rejection, bare boolean tokens and the non-secret SESSION CREATE log
+ * summary.
  * No socket, router or session is created.
  *
  */
@@ -47,7 +50,8 @@ void TestSingleAndPipelinedLines ()
 	assert (frame.lineLength == 6);
 	assert (frame.frameLength == 6);
 
-	// Two pipelined commands in one read: the first frame stops at its '\n',
+	// Two pipelined commands in one read: the first frame stops at its
+	// '\n',
 	// and the second one is framed from the remainder.
 	const std::string two = "PING\nDEST GENERATE\n";
 	assert (Frame (two, frame) == SAMFrameStatus::eSAMFrameComplete);
@@ -57,8 +61,8 @@ void TestSingleAndPipelinedLines ()
 	assert (frame.lineLength == second.size ());
 	assert (second == "DEST GENERATE\n");
 
-	// HELLO and a command in the same read: the HELLO line is one frame and
-	// the command survives in the remaining input.
+	// HELLO and a command in the same read: the HELLO line is one frame
+	// and the command survives in the remaining input.
 	const std::string hello = "HELLO VERSION MIN=3.0 MAX=3.3\nPING\n";
 	assert (Frame (hello, frame) == SAMFrameStatus::eSAMFrameComplete);
 	assert (frame.lineLength == std::string_view ("HELLO VERSION MIN=3.0 MAX=3.3\n").size ());
@@ -94,8 +98,8 @@ void TestSendFraming ()
 	assert (Frame (send.substr (0, send.size () - 1), frame) == SAMFrameStatus::eSAMFrameNeedMore);
 	assert (Frame ("RAW SEND DESTINATION=abc SIZE=3\n", frame) == SAMFrameStatus::eSAMFrameNeedMore);
 
-	// A complete frame followed by the next pipelined command: only the frame
-	// is consumed and the trailing command stays framed.
+	// A complete frame followed by the next pipelined command: only the
+	// frame is consumed and the trailing command stays framed.
 	const std::string pipelined = send + "PING\n";
 	assert (Frame (pipelined, frame) == SAMFrameStatus::eSAMFrameComplete);
 	assert (frame.frameLength == send.size ());
@@ -154,8 +158,8 @@ void TestBufferLimits ()
 	assert (frame.lineLength == SAM_SOCKET_BUFFER_SIZE);
 
 	// An incomplete SEND payload in a full buffer is rejected instead of
-	// looping on a zero-length read. The line is long enough that the buffer
-	// cannot also hold the declared 32 KiB payload.
+	// looping on a zero-length read. The line is long enough that the
+	// buffer cannot also hold the declared 32 KiB payload.
 	std::string longLine = "RAW SEND DESTINATION=";
 	longLine.append (SAM_SOCKET_BUFFER_SIZE - longLine.size () - 32, 'a');
 	longLine.append (" SIZE=32768\n");
@@ -201,8 +205,8 @@ void TestParameterLookup ()
 
 void TestBooleanParameters ()
 {
-	// SAMUtils.getBool(): a bare key is true, "true" (any case) is true, an
-	// explicit "false" and an absent key are false.
+	// SAMUtils.getBool(): a bare key is true, "true" (any case) is true,
+	// an explicit "false" and an absent key are false.
 	auto enabled = ParseSAMParams ("SILENT HEADER=true key=TrUe off=false").values;
 	assert (SAMIsParamTrue (enabled, SAM_PARAM_SILENT));
 	assert (SAMIsParamTrue (enabled, SAM_PARAM_HEADER));
@@ -228,8 +232,8 @@ void TestDuplicateParameter ()
 	assert (ParseSAMParams ("SILENT SILENT=true").duplicate);
 	assert (ParseSAMParams ("SIZE=1").duplicate == false);
 
-	// The duplicate is not silently merged away: the first value is kept so a
-	// diagnostic can name the key.
+	// The duplicate is not silently merged away: the first value is kept
+	// so a diagnostic can name the key.
 	auto parsed = ParseSAMParams ("ID=first ID=second");
 	assert (parsed.duplicate);
 	assert (parsed.values["ID"] == "first");
@@ -266,13 +270,14 @@ void TestHandshakeNegotiation ()
 		NegotiateSAMHandshake ("HELLO VERSION MIN=3.3 MAX=3.0", version) == SAMHandshakeResult::eSAMHandshakeNoVersion);
 	assert (
 		NegotiateSAMHandshake ("HELLO VERSION MIN=2.0 MAX=2.9", version) == SAMHandshakeResult::eSAMHandshakeNoVersion);
-	// A component above 3.3.x is still a well-formed range, not a syntax error.
+	// A component above 3.3.x is still a well-formed range, not a syntax
+	// error.
 	assert (NegotiateSAMHandshake ("HELLO VERSION MIN=3.0.0.0.0.0.0.0.0.0.0.0.1", version)
 		== SAMHandshakeResult::eSAMHandshakeNoVersion);
 
 	// Malformed HELLO lines (not a HELLO VERSION command at all, or a
-	// duplicate parameter key) get I2P_ERROR, as SAMHandlerFactory throws on
-	// them.
+	// duplicate parameter key) get I2P_ERROR, as SAMHandlerFactory throws
+	// on them.
 	for (const char * line : { "", "HELLO", "HELLO VERSIONX", "VERSION MIN=3.0", "HELLO VERSION MIN=3.0 MIN=3.1" })
 	{
 		version = 0;
@@ -280,9 +285,9 @@ void TestHandshakeNegotiation ()
 	}
 	// A present but unparsable/empty bound matches no supported version.
 	// SAMHandlerFactory does not validate the syntax either; it answers
-	// NOVERSION rather than I2P_ERROR. The numeric comparison here is stricter
-	// than Java's lexicographic VersionComparator (which happens to accept a
-	// negative bound), a deliberate and documented divergence.
+	// NOVERSION rather than I2P_ERROR. The numeric comparison here is
+	// stricter than Java's lexicographic VersionComparator (which happens
+	// to accept a negative bound), a deliberate and documented divergence.
 	for (const char * line : { "HELLO VERSION MIN=x", "HELLO VERSION MAX=3.x", "HELLO VERSION MIN= 3.0",
 			 "HELLO VERSION MIN=-1", "HELLO VERSION MAX=" })
 	{
@@ -290,8 +295,8 @@ void TestHandshakeNegotiation ()
 		assert (NegotiateSAMHandshake (line, version) == SAMHandshakeResult::eSAMHandshakeNoVersion);
 	}
 
-	// A bare HELLO VERSION (no MIN/MAX) still selects the newest version, as
-	// the previous implementation did.
+	// A bare HELLO VERSION (no MIN/MAX) still selects the newest version,
+	// as the previous implementation did.
 	assert (NegotiateSAMHandshake ("HELLO VERSION", version) == SAMHandshakeResult::eSAMHandshakeOk);
 	assert (version == MAX_SAM_VERSION);
 
@@ -303,14 +308,15 @@ void TestHandshakeNegotiation ()
 
 void TestHandshakePrecedesCommands ()
 {
-	// The first complete frame of a control connection is consumed as HELLO
-	// (SAMSocket::ProcessOneBufferedFrame), so no SESSION/STREAM/DEST command
-	// can execute before a successful HELLO VERSION exchange.
+	// The first complete frame of a control connection is consumed as
+	// HELLO (SAMSocket::ProcessOneBufferedFrame), so no
+	// SESSION/STREAM/DEST command can execute before a successful HELLO
+	// VERSION exchange.
 	assert (!SAMCanDispatchCommands (false));
 	assert (SAMCanDispatchCommands (true));
 
-	// A command line is not a HELLO line: the handshake parser refuses it, so a
-	// pipelined command cannot be mistaken for the handshake.
+	// A command line is not a HELLO line: the handshake parser refuses it,
+	// so a pipelined command cannot be mistaken for the handshake.
 	int version = 0;
 	for (const char * line :
 		{ "SESSION CREATE STYLE=STREAM SILENT=true", "DEST GENERATE", "STREAM ACCEPT ID=x", "AUTH", "PING" })
@@ -321,8 +327,10 @@ void TestHandshakePrecedesCommands ()
 
 void TestSecretRedaction ()
 {
-	// The SESSION CREATE log line never carries DESTINATION (base64 private
-	// keys) or any other operand value, and an unrecognized STYLE cannot inject
+	// The SESSION CREATE log line never carries DESTINATION (base64
+	// private
+	// keys) or any other operand value, and an unrecognized STYLE cannot
+	// inject
 	// log content either.
 	const std::string raw = MakeSAMSessionCreateLogLine ("RAW", true);
 	assert (raw == "SAM: Session create, STYLE=RAW, id present");
@@ -336,8 +344,8 @@ void TestSecretRedaction ()
 	assert (injected.find ("secret") == std::string::npos);
 	assert (injected.find ('\n') == std::string::npos);
 
-	// The reply builders never include a secret operand in the fixed part; the
-	// DESTINATION reply is formatted separately and is not logged.
+	// The reply builders never include a secret operand in the fixed part;
+	// the DESTINATION reply is formatted separately and is not logged.
 	assert (std::string_view (SAM_AUTH_STATUS_I2P_ERROR).find ("PASSWORD") == std::string_view::npos);
 	assert (std::string_view (SAM_HANDSHAKE_NOVERSION) == "HELLO REPLY RESULT=NOVERSION\n");
 }
@@ -376,7 +384,8 @@ void TestControlGrammar ()
 	assert (ParseSAMControlCommand ("auth USER=x PASSWORD=y", argument) == Command::eSAMControlCommandAuth);
 	assert (argument == "USER=x PASSWORD=y");
 
-	// Two-word SAM commands are not control commands, and a lone unknown word
+	// Two-word SAM commands are not control commands, and a lone unknown
+	// word
 	// is reported without dropping the session.
 	assert (ParseSAMControlCommand ("SESSION CREATE STYLE=STREAM", argument) == Command::eSAMControlCommandNone);
 	assert (ParseSAMControlCommand ("STREAM CONNECT ID=x", argument) == Command::eSAMControlCommandNone);
@@ -388,7 +397,8 @@ void TestControlReplies ()
 {
 	using Command = SAMControlCommand;
 
-	// Bare PING works and has no trailing space, like execPingMessage(null).
+	// Bare PING works and has no trailing space, like
+	// execPingMessage(null).
 	assert (MakeSAMControlReply (Command::eSAMControlCommandPing, "PING", "") == "PONG\n");
 	assert (MakeSAMControlReply (Command::eSAMControlCommandPing, "ping", "123") == "PONG 123\n");
 	assert (MakeSAMControlReply (Command::eSAMControlCommandPing, "PING", " a b") == "PONG  a b\n");
@@ -406,7 +416,8 @@ void TestControlReplies ()
 	assert (MakeSAMControlReply (Command::eSAMControlCommandStop, "STOP", "") == "STOP STATUS RESULT=OK MESSAGE=bye\n");
 	assert (MakeSAMControlReply (Command::eSAMControlCommandExit, "exit", "") == "EXIT STATUS RESULT=OK MESSAGE=bye\n");
 
-	// A single unknown word is answered with an error but keeps the session.
+	// A single unknown word is answered with an error but keeps the
+	// session.
 	assert (MakeSAMControlReply (Command::eSAMControlCommandUnknown, "foo", "")
 		== "FOO STATUS RESULT=I2P_ERROR MESSAGE=\"unknown command or missing subcommand, enter HELP "
 		   "for help\"\n");

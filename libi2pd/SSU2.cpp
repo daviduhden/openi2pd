@@ -4,10 +4,10 @@
  *
  * openi2pd: SSU2.
  *
- * Implements SSU2Server lifecycle, batched UDP receive and packet dispatch,
- * session/relay/peer-test bookkeeping with bounded caches, introducer selection
- * and timer-driven maintenance. Handshake and data-phase packet handling live in
- * the session classes.
+ * Implements SSU2Server lifecycle, batched UDP receive and packet
+ * dispatch, session/relay/peer-test bookkeeping with bounded caches,
+ * introducer selection and timer-driven maintenance. Handshake and
+ * data-phase packet handling live in the session classes.
  *
  */
 
@@ -145,10 +145,10 @@ namespace transport
 			m_IntroducersUpdateTimer.cancel ();
 			m_IntroducersUpdateTimerV6.cancel ();
 
-			// Stop() is normally called from the transports thread while the SSU2
-			// service thread is still running. Shut the sessions down on that
-			// thread and wait for it, otherwise RequestTermination()/Done() race
-			// with the session map and the per-session send state.
+			// Stop() is normally called from the transports thread while the
+			// SSU2 service thread is still running. Shut the sessions down on
+			// that thread and wait for it, otherwise RequestTermination()/Done()
+			// race with the session map and the per-session send state.
 			try
 			{
 				boost::asio::post (GetService (),
@@ -183,13 +183,13 @@ namespace transport
 		}
 
 		m_ReceiveService.Stop ();
-		// Join both service threads before closing the sockets. A timer or send
-		// handler that is still running must not use the sockets while they are
-		// being closed from this thread.
+		// Join both service threads before closing the sockets. A timer or
+		// send handler that is still running must not use the sockets while
+		// they are being closed from this thread.
 		StopIOService ();
 
-		// Receiving may have added a session between the posted shutdown and the
-		// service stop; no service thread is running now.
+		// Receiving may have added a session between the posted shutdown and
+		// the service stop; no service thread is running now.
 		m_Sessions.clear ();
 		m_LastSession = nullptr;
 
@@ -261,7 +261,8 @@ namespace transport
 			if (mtu < (int)SSU2_MIN_PACKET_SIZE) mtu = SSU2_MIN_PACKET_SIZE;
 			// Clamp the published IPv6 MTU to the SSU2 IPv6 ceiling: IPv6 plus
 			// UDP headers leave no room above 1488 inside a 1500-byte path MTU
-			// (Java PeerState2.MAX_IPV6_MTU). The 1280 floor above still applies.
+			// (Java PeerState2.MAX_IPV6_MTU). The 1280 floor above still
+			// applies.
 			if (mtu > (int)SSU2_MAX_IPV6_MTU) mtu = static_cast<uint16_t> (SSU2_MAX_IPV6_MTU);
 			i2p::context.SetMTU (mtu, false);
 		}
@@ -446,11 +447,12 @@ namespace transport
 	{
 		// Runs on the receive service (m_ReceiveService), never on the SSU2
 		// service: packets are only classified by size here and handed to the
-		// bounded queue, which the SSU2 service drains in ProcessNextPacket().
-		// available() is used to coalesce a burst into one batch, capped at
-		// SSU2_MAX_NUM_PACKETS_PER_BATCH so one busy socket cannot monopolise the
-		// thread. ICMP-induced errors are treated as continue-reading, not as a
-		// reason to tear down the socket.
+		// bounded queue, which the SSU2 service drains in
+		// ProcessNextPacket(). available() is used to coalesce a burst into
+		// one batch, capped at SSU2_MAX_NUM_PACKETS_PER_BATCH so one busy
+		// socket cannot monopolise the thread. ICMP-induced errors are
+		// treated as continue-reading, not as a reason to tear down the
+		// socket.
 		if (!ecode || ecode == boost::asio::error::connection_refused || ecode == boost::asio::error::connection_reset
 			|| ecode == boost::asio::error::network_reset || ecode == boost::asio::error::network_unreachable
 			|| ecode == boost::asio::error::host_unreachable
@@ -461,8 +463,9 @@ namespace transport
 			|| ecode.value () == boost::winapi::ERROR_HOST_UNREACHABLE_
 #endif
 		)
-		// just try continue reading when received ICMP response otherwise socket can crash,
-		// but better to find out which host were sent it and mark that router as unreachable
+		// just try continue reading when received ICMP response otherwise
+		// socket can crash, but better to find out which host were sent it
+		// and mark that router as unreachable
 		{
 			i2p::transport::transports.UpdateReceivedBytes (bytes_transferred);
 			if (bytes_transferred < SSU2_MIN_RECEIVED_PACKET_SIZE)
@@ -545,8 +548,9 @@ namespace transport
 	void SSU2Server::HandleReceivedPackets (std::list<Packet *> && packets)
 	{
 		if (packets.empty ()) return;
-		// A parser or allocation failure must not leak the batch. Release every
-		// borrowed Packet back to the pool on scope exit, including exceptions.
+		// A parser or allocation failure must not leak the batch. Release
+		// every borrowed Packet back to the pool on scope exit, including
+		// exceptions.
 		auto releasePackets = [this] (std::list<Packet *> * batch)
 		{
 			if (!batch) return;
@@ -674,11 +678,12 @@ namespace transport
 
 	void SSU2Server::AddSessionByRouterHash (std::shared_ptr<SSU2Session> session)
 	{
-		// One published session per router identity. A replacement must not silently
-		// drop work that the old session still holds, so its unsent messages are
-		// moved to the new session before the old one is terminated through the
-		// service queue (terminating inline would re-enter the session maps from
-		// the caller's context). PeerTest sessions never reach this map.
+		// One published session per router identity. A replacement must not
+		// silently drop work that the old session still holds, so its unsent
+		// messages are moved to the new session before the old one is
+		// terminated through the service queue (terminating inline would
+		// re-enter the session maps from the caller's context). PeerTest
+		// sessions never reach this map.
 		if (session)
 		{
 			auto ident = session->GetRemoteIdentity ();
@@ -816,8 +821,8 @@ namespace transport
 		uint32_t nonce, std::shared_ptr<SSU2Session> aliceSession, uint64_t ts)
 	{
 		if (m_PeerTests.find (nonce) != m_PeerTests.end ()) return SSU2PeerTestAdmission::Duplicate;
-		// Nonces come from msg 1 on an established session. Never evict a live
-		// test to make room: Bob answers msg 4 with
+		// Nonces come from msg 1 on an established session. Never evict a
+		// live test to make room: Bob answers msg 4 with
 		// eSSU2PeerTestCodeBobLimitExceeded instead (Java rejects at the cap
 		// rather than silently dropping another test's state).
 		if (IsSSU2PeerTestTableFull (m_PeerTests.size (), SSU2_MAX_PEER_TESTS))
@@ -969,18 +974,19 @@ namespace transport
 	void SSU2Server::ProcessNextPacket (
 		uint8_t * buf, size_t len, const boost::asio::ip::udp::endpoint & senderEndpoint)
 	{
-		// All SSU2 state (m_Sessions, m_LastSession, m_PendingOutgoingSessions) is
-		// owned by the SSU2 service thread; this function runs only there.
-		// The connection ID is demultiplexed with the intro-key header mask, and
-		// m_LastSession caches the last match so a burst for one session does not
-		// search the map per packet. Before switching to a different session the
-		// previous one is flushed, and m_LastSession is the only place a
-		// termination is detected: a state that has already ended (Closing/
-		// Terminated) drops the cached pointer instead of processing further data.
-		// An unknown ID is either an outgoing handshake still in progress
-		// (SessionCreated/Retry are matched by remote endpoint, not by connID) or a
-		// new inbound session, which is admitted only after the address, blocklist
-		// and admission checks below.
+		// All SSU2 state (m_Sessions, m_LastSession,
+		// m_PendingOutgoingSessions) is owned by the SSU2 service thread;
+		// this function runs only there. The connection ID is demultiplexed
+		// with the intro-key header mask, and m_LastSession caches the last
+		// match so a burst for one session does not search the map per
+		// packet. Before switching to a different session the previous one is
+		// flushed, and m_LastSession is the only place a termination is
+		// detected: a state that has already ended (Closing/ Terminated)
+		// drops the cached pointer instead of processing further data. An
+		// unknown ID is either an outgoing handshake still in progress
+		// (SessionCreated/Retry are matched by remote endpoint, not by
+		// connID) or a new inbound session, which is admitted only after the
+		// address, blocklist and admission checks below.
 		if (len < 24) return;
 		uint64_t connID;
 		memcpy (&connID, buf, 8);
@@ -1210,7 +1216,8 @@ namespace transport
 			auto session = std::make_shared<SSU2Session> (*this, router, address);
 			if (!isValidEndpoint && router->HasProfile () && router->GetProfile ()->HasLastEndpoint (address->IsV4 ()))
 			{
-				// router doesn't publish endpoint, but we connected before and hole punch might be alive
+				// router doesn't publish endpoint, but we connected before and hole
+				// punch might be alive
 				auto ep = router->GetProfile ()->GetLastEndpoint ();
 				if (IsConnectedRecently (ep, false))
 				{
@@ -1235,20 +1242,22 @@ namespace transport
 
 	void SSU2Server::ConnectThroughIntroducer (std::shared_ptr<SSU2Session> session)
 	{
-		// The introducer list is an immutable snapshot taken under the address
-		// mutex (netDb prunes the live vector from its own thread). An existing
-		// session to any listed introducer with a live relay tag is used directly;
-		// otherwise only introducers still published on a transport we can reach
-		// are dialled, and the relay tag of the first usable candidate is what the
-		// introduction is bound to. Everything else triggers a RouterInfo request
-		// and gives up immediately instead of waiting for the connect timeout.
+		// The introducer list is an immutable snapshot taken under the
+		// address mutex (netDb prunes the live vector from its own thread).
+		// An existing session to any listed introducer with a live relay tag
+		// is used directly; otherwise only introducers still published on a
+		// transport we can reach are dialled, and the relay tag of the first
+		// usable candidate is what the introduction is bound to. Everything
+		// else triggers a RouterInfo request and gives up immediately instead
+		// of waiting for the connect timeout.
 		if (!session) return;
 		auto address = session->GetAddress ();
 		if (!address) return;
 		session->WaitForIntroduction ();
 		auto ts = i2p::util::GetSecondsSinceEpoch ();
-		// Snapshot under the address mutex: the netDb maintenance thread prunes
-		// or clears the live vector while this transport thread iterates it.
+		// Snapshot under the address mutex: the netDb maintenance thread
+		// prunes or clears the live vector while this transport thread
+		// iterates it.
 		const auto introducers = address->ssu->GetIntroducers ();
 		std::vector<int> indices;
 		int i = 0;
@@ -1298,7 +1307,8 @@ namespace transport
 							break;
 						else
 						{
-							// address is invalid or not introducer, try another SSU2 address if exists
+							// address is invalid or not introducer, try another SSU2 address
+							// if exists
 							if (address->IsV4 ())
 							{
 								if (i2p::context.SupportsV6 ()) addr = r->GetSSU2V6Address ();
@@ -1915,10 +1925,11 @@ namespace transport
 	void SSU2Server::SetVersion (int version)
 	{
 #if OPENSSL_PQ
-		// Version 3/4 selects ML-KEM-512/768. Do not advertise a parameter set
-		// that the active provider cannot create, including a provider-enabled
-		// OpenSSL build where ML-KEM was disabled at runtime. Cascade 4 -> 3
-		// when only the smaller parameter set is usable.
+		// Version 3/4 selects ML-KEM-512/768. Do not advertise a parameter
+		// set that the active provider cannot create, including a
+		// provider-enabled OpenSSL build where ML-KEM was disabled at
+		// runtime. Cascade 4 -> 3 when only the smaller parameter set is
+		// usable.
 		const int selected = i2p::crypto::HighestSupportedPQVersion (version, 4);
 		m_Version = selected ? selected : 2;
 #else
@@ -1937,8 +1948,9 @@ namespace transport
 			relay = *m_ProxyRelayEndpoint;
 		}
 		// Build the SOCKS5 UDP request header on this stack frame. The shared
-		// m_ProxyHandshakeBuffer belongs to the receive service's handshake and
-		// must never be written from SendThroughProxy (SSU2 service thread).
+		// m_ProxyHandshakeBuffer belongs to the receive service's handshake
+		// and must never be written from SendThroughProxy (SSU2 service
+		// thread).
 		uint8_t udpRequestHeader[SOCKS5_UDP_IPV6_REQUEST_HEADER_SIZE];
 		memset (udpRequestHeader, 0, 3); // RSV
 		size_t requestHeaderSize = 0;

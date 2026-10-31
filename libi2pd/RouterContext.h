@@ -4,11 +4,12 @@
  *
  * openi2pd: RouterContext.
  *
- * Router-wide state: the local RouterInfo and private keys, NTCP2/SSU2 static keys, status,
- * bandwidth and congestion settings, publish/cleanup timers and the current ECIES noise state.
- * Provides mutex-protected mutation and immutable snapshots for TUI/IPC readers, and
- * implements LocalDestination plus GarlicDestination so router-targeted garlic and
- * tunnel-build records can be decrypted.
+ * Router-wide state: the local RouterInfo and private keys, NTCP2/SSU2
+ * static keys, status, bandwidth and congestion settings,
+ * publish/cleanup timers and the current ECIES noise state. Provides
+ * mutex-protected mutation and immutable snapshots for TUI/IPC readers,
+ * and implements LocalDestination plus GarlicDestination so
+ * router-targeted garlic and tunnel-build records can be decrypted.
  *
  */
 
@@ -112,18 +113,19 @@ public:
 	~RouterContext ();
 	void Init ();
 	/** Release transient pre-start state after failed Daemon::init.
-	 * Caller serializes lifecycle access; persisted identity and transport keys
-	 * are retained. This does not undo filesystem/configuration side effects.
+	 * Caller serializes lifecycle access; persisted identity and transport
+	 * keys are retained. This does not undo filesystem/configuration side
+	 * effects.
 	 */
 	void ResetAfterFailedInit ();
 	void Start ();
 	void Stop ();
 
 	const i2p::data::PrivateKeys & GetPrivateKeys () const { return m_Keys; };
-	// Returns the live RouterInfo by reference. Mutators take m_RouterInfoMutex,
-	// but this accessor cannot hold it for the caller: code that needs a
-	// coherent snapshot while mutations can run concurrently must use
-	// CopyRouterInfoBuffer() instead.
+	// Returns the live RouterInfo by reference. Mutators take
+	// m_RouterInfoMutex, but this accessor cannot hold it for the caller:
+	// code that needs a coherent snapshot while mutations can run
+	// concurrently must use CopyRouterInfoBuffer() instead.
 	i2p::data::LocalRouterInfo & GetRouterInfo () { return m_RouterInfo; };
 	// Alias of the live m_RouterInfo; same caveat as GetRouterInfo().
 	std::shared_ptr<i2p::data::RouterInfo> GetSharedRouterInfo ()
@@ -136,8 +138,8 @@ public:
 	}
 	std::shared_ptr<i2p::data::RouterInfo::Buffer> CopyRouterInfoBuffer () const;
 	// An immutable copy for readers outside the router service (TUI, IPC,
-	// tools). The live GetRouterInfo()/GetSharedRouterInfo() accessors remain
-	// for hot paths that only compare identity hashes.
+	// tools). The live GetRouterInfo()/GetSharedRouterInfo() accessors
+	// remain for hot paths that only compare identity hashes.
 	std::shared_ptr<const i2p::data::RouterInfo> GetRouterInfoSnapshot () const;
 
 	const uint8_t * GetNTCP2StaticPublicKey () const { return m_NTCP2Keys ? m_NTCP2Keys->staticPublicKey : nullptr; };
@@ -193,8 +195,9 @@ public:
 	void SetFamily (const std::string & family);
 	std::string GetFamily () const;
 	// Read-only access to a property on the live RouterInfo under the same
-	// mutex used by its mutators. Prefer this over GetRouterInfo().GetProperty()
-	// when the caller is not the router service thread.
+	// mutex used by its mutators. Prefer this over
+	// GetRouterInfo().GetProperty() when the caller is not the router
+	// service thread.
 	std::string GetRouterInfoProperty (const std::string & key) const;
 	void SetBandwidth (int limit); /* in kilobytes */
 	void SetBandwidth (char L); /* by letter */
@@ -248,12 +251,14 @@ private:
 	void CreateNewRouter ();
 	void NewRouterInfo ();
 	void UpdateRouterInfo ();
-	// Helpers below require m_RouterInfoMutex to be held by the caller. Keeping
-	// the rebuild and the cap update lock-free prevents self-deadlock when a
-	// public mutator has to perform several related changes atomically.
+	// Helpers below require m_RouterInfoMutex to be held by the caller.
+	// Keeping the rebuild and the cap update lock-free prevents
+	// self-deadlock when a public mutator has to perform several related
+	// changes atomically.
 	void UpdateRouterInfoLocked ();
 	void UpdateCapsLocked (uint8_t caps);
-	// Caller must hold m_RouterInfoMutex. Returns true if an address changed.
+	// Caller must hold m_RouterInfoMutex. Returns true if an address
+	// changed.
 	bool PublishNTCP2AddressLocked (int port, bool publish, bool v4, bool v6, bool ygg, int version);
 	void UpdateCaps (uint8_t caps);
 	void NewNTCP2Keys ();
@@ -293,8 +298,9 @@ private:
 	i2p::data::PrivateKeys m_Keys;
 	std::shared_ptr<i2p::crypto::CryptoKeyDecryptor> m_Decryptor, m_TunnelDecryptor;
 	std::shared_ptr<i2p::garlic::RouterIncomingRatchetSession> m_ECIESSession;
-	// Snapshotted concurrently by TUI/IPC. These are independent scalars, so
-	// relaxed ordering is sufficient; no other state is published through them.
+	// Snapshotted concurrently by TUI/IPC. These are independent scalars,
+	// so relaxed ordering is sufficient; no other state is published
+	// through them.
 	std::atomic<uint64_t> m_LastUpdateTime; // in seconds
 	std::atomic<bool> m_AcceptsTunnels, m_IsFloodfill;
 	std::atomic<uint64_t> m_StartupTime; // monotonic seconds
@@ -319,9 +325,9 @@ private:
 	std::unordered_set<i2p::data::IdentHash> m_PublishExcluded;
 	uint32_t m_PublishReplyToken;
 	std::atomic<bool> m_IsHiddenMode; // not publish
-	// Guards m_RouterInfo, its m_Properties map and every Address reachable
-	// through it, including the signed-buffer rebuild. Helpers suffixed
-	// "Locked" require it to be held by the caller.
+	// Guards m_RouterInfo, its m_Properties map and every Address
+	// reachable through it, including the signed-buffer rebuild. Helpers
+	// suffixed "Locked" require it to be held by the caller.
 	mutable std::mutex m_RouterInfoMutex;
 	std::shared_ptr<i2p::data::RouterInfo::Buffer> m_SaveBuffer;
 	std::mutex m_SaveBufferMutex; // guards m_SaveBuffer

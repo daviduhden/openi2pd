@@ -4,11 +4,11 @@
  *
  * openi2pd: BOB.
  *
- * Declares the legacy BOB command channel, per-nickname destinations and the
- * inbound/outbound I2P tunnel classes they manage. The command channel is
- * default-disabled, accepts same-user local peers, bounds its line reader and
- * its concurrent sessions, and never logs or exposes key material unless
- * `bob.allowgetkeys` is explicitly enabled.
+ * Declares the legacy BOB command channel, per-nickname destinations
+ * and the inbound/outbound I2P tunnel classes they manage. The command
+ * channel is default-disabled, accepts same-user local peers, bounds
+ * its line reader and its concurrent sessions, and never logs or
+ * exposes key material unless `bob.allowgetkeys` is explicitly enabled.
  *
  */
 
@@ -44,16 +44,17 @@ namespace client
 	const size_t BOB_COMMAND_BUFFER_SIZE = 1024;
 	const int BOB_PING_TIMEOUT = 8000; // in milliseconds
 
-	// A command line is bounded independently of the socket read size: a peer
-	// that never sends a newline is disconnected instead of growing a buffer.
+	// A command line is bounded independently of the socket read size: a
+	// peer that never sends a newline is disconnected instead of growing a
+	// buffer.
 	constexpr size_t BOB_MAX_COMMAND_LINE = 4096;
 	// Bound on one queued reply (a `list` of every accepted nickname).
 	constexpr size_t BOB_MAX_REPLY_SIZE = 8192;
-	// Concurrent command sessions. BOB has no per-request authentication, so
-	// an unbounded session count is a local denial of service.
+	// Concurrent command sessions. BOB has no per-request authentication,
+	// so an unbounded session count is a local denial of service.
 	constexpr size_t BOB_MAX_CONCURRENT_SESSIONS = 16;
-	// `getkeys` returns a destination's private keys. It stays disabled unless
-	// the operator sets the option explicitly.
+	// `getkeys` returns a destination's private keys. It stays disabled
+	// unless the operator sets the option explicitly.
 	constexpr std::string_view BOB_OPTION_ALLOW_GETKEYS { "bob.allowgetkeys" };
 	constexpr bool BOB_DEFAULT_ALLOW_GETKEYS = false;
 
@@ -122,9 +123,10 @@ namespace client
 	/*
 	 * Bounded line accumulator for the command channel.
 	 *
-	 * Feed() never stores more than one command line plus its terminator, so a
-	 * peer that sends no newline is disconnected instead of growing memory, and
-	 * a pipelined burst keeps its remaining complete lines queued.
+	 * Feed() never stores more than one command line plus its terminator,
+	 * so a peer that sends no newline is disconnected instead of growing
+	 * memory, and a pipelined burst keeps its remaining complete lines
+	 * queued.
 	 */
 	class BOBCommandLineReader
 	{
@@ -138,7 +140,8 @@ namespace client
 
 		Result Feed (std::string_view bytes);
 		bool HasCompleteLine () const { return m_Pending.find ('\n') != std::string::npos; }
-		// Removes and returns the first complete line without its CR/LF ending.
+		// Removes and returns the first complete line without its CR/LF
+		// ending.
 		std::string TakeLine ();
 		void Clear () { m_Pending.clear (); }
 		size_t GetPendingSize () const { return m_Pending.size (); }
@@ -155,8 +158,8 @@ namespace client
 		OutOfRange
 	};
 
-	// Parses a decimal port operand without throwing: a non-numeric, negative
-	// or out-of-range value becomes a protocol ERROR reply.
+	// Parses a decimal port operand without throwing: a non-numeric,
+	// negative or out-of-range value becomes a protocol ERROR reply.
 	BOBPortResult ParseBOBPort (std::string_view operand, uint16_t & port);
 
 	// Shared, non-blocking session admission counter.
@@ -168,8 +171,8 @@ namespace client
 	bool TryAcquireBOBSession (BOBAdmissionState & state);
 	void ReleaseBOBSession (BOBAdmissionState & state);
 
-	// Fail closed: only the literal `true` from the configuration enables the
-	// private-key reply.
+	// Fail closed: only the literal `true` from the configuration enables
+	// the private-key reply.
 	bool ResolveBOBAllowGetKeys (bool optionFound, bool optionValue);
 
 	class BOBI2PTunnelIncomingConnection : public I2PTunnelConnection
@@ -264,12 +267,13 @@ namespace client
 		std::mutex m_AdmissionMutex;
 	};
 
-	/// One BOB nickname: a client destination plus the optional inbound/outbound
-	/// tunnel pair another process can attach to by connecting locally.
-	/// Start()/Stop() own both tunnel objects. A host, port or quiet change is
-	/// only applied while the corresponding tunnel object is absent, i.e. after
-	/// an explicit stop, so a running tunnel is never mutated underneath its
-	/// handlers; StopTunnels() clears both objects and the running flag.
+	/// One BOB nickname: a client destination plus the optional
+	/// inbound/outbound tunnel pair another process can attach to by
+	/// connecting locally. Start()/Stop() own both tunnel objects. A host,
+	/// port or quiet change is only applied while the corresponding tunnel
+	/// object is absent, i.e. after an explicit stop, so a running tunnel
+	/// is never mutated underneath its handlers; StopTunnels() clears both
+	/// objects and the running flag.
 	class BOBDestination
 	{
 	public:
@@ -390,21 +394,22 @@ namespace client
 	/// Legacy BOB command channel.
 	///
 	/// A line-oriented TCP protocol (default bind 127.0.0.1, disabled by
-	/// default) whose sessions act on the process-global client context: they
-	/// create and start nicknamed destinations and their tunnel direction, and
-	/// register the SOCKS/HTTP proxies they start.
+	/// default) whose sessions act on the process-global client context:
+	/// they create and start nicknamed destinations and their tunnel
+	/// direction, and register the SOCKS/HTTP proxies they start.
 	///
-	/// The protocol carries no authentication, so it is only safe on a local
-	/// loopback socket. The channel therefore bounds what a local peer can
-	/// consume instead: one command line (BOB_MAX_COMMAND_LINE), one queued
-	/// reply (BOB_MAX_REPLY_SIZE) and a fixed number of concurrent sessions
-	/// (BOB_MAX_CONCURRENT_SESSIONS). The private-key reply is denied unless
-	/// `bob.allowgetkeys=true` was configured at startup, and no command
-	/// operand, key or credential is written to a log.
+	/// The protocol carries no authentication, so it is only safe on a
+	/// local loopback socket. The channel therefore bounds what a local
+	/// peer can consume instead: one command line (BOB_MAX_COMMAND_LINE),
+	/// one queued reply (BOB_MAX_REPLY_SIZE) and a fixed number of
+	/// concurrent sessions (BOB_MAX_CONCURRENT_SESSIONS). The private-key
+	/// reply is denied unless `bob.allowgetkeys=true` was configured at
+	/// startup, and no command operand, key or credential is written to a
+	/// log.
 	///
-	/// @warning Do not bind this channel to a non-loopback address: any local
-	///   process that can connect can otherwise start and stop tunnels and
-	///   enumerate them.
+	/// @warning Do not bind this channel to a non-loopback
+	///          address: any local process that can connect can otherwise
+	///          start and stop tunnels and enumerate them.
 	class BOBCommandChannel : private i2p::util::RunnableService
 	{
 	public:
@@ -435,7 +440,8 @@ namespace client
 		std::map<std::string, std::shared_ptr<BOBDestination>> m_Destinations;
 		std::map<std::string_view, BOBCommandHandler> m_CommandHandlers;
 		std::map<std::string_view, std::string_view> m_HelpStrings;
-		// shared, a proxy takes a reference to itself when it accepts a connection
+		// shared, a proxy takes a reference to itself when it accepts a
+		// connection
 		std::map<std::string, std::pair<std::shared_ptr<I2PService>, std::string>>
 			m_Proxies; // name ->(tunnel, proxy type)
 

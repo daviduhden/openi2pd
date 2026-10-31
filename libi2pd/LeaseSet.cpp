@@ -4,11 +4,12 @@
  *
  * openi2pd: LeaseSet.
  *
- * Implements LeaseSet1 and LeaseSet2 parsing, validation, signature checking,
- * lease expiry/selection and store-key derivation, including encrypted LS2
- * with client authentication and per-client keys. Local lease sets are
- * assembled and re-signed with EdDSA/RedDSA, and peer-supplied sections,
- * properties and lengths are bounds-checked before use.
+ * Implements LeaseSet1 and LeaseSet2 parsing, validation, signature
+ * checking, lease expiry/selection and store-key derivation, including
+ * encrypted LS2 with client authentication and per-client keys. Local
+ * lease sets are assembled and re-signed with EdDSA/RedDSA, and
+ * peer-supplied sections, properties and lengths are bounds-checked
+ * before use.
  *
  */
 
@@ -46,7 +47,8 @@ namespace data
 
 		// Java EncType.EC_P256 (code 1) carries a 64-byte uncompressed point
 		// on the wire. GetCryptoPublicKeyLen() reports 256 for this type only
-		// to keep the legacy 256-byte key file layout; LS2 uses the wire size.
+		// to keep the legacy 256-byte key file layout; LS2 uses the wire
+		// size.
 		size_t GetLS2PublicKeyLen (CryptoKeyType keyType)
 		{
 			switch (keyType)
@@ -64,8 +66,9 @@ namespace data
 		}
 
 		// Mapping::FromBuffer() tolerates a malformed or duplicate entry and
-		// returns the declared size anyway. Java's DataHelper.readProperties()
-		// throws DataFormatException for both, so validate before populating.
+		// returns the declared size anyway. Java's
+		// DataHelper.readProperties() throws DataFormatException for both, so
+		// validate before populating.
 		bool ReadProperties (const uint8_t * buf, size_t len, uint16_t size, i2p::util::Mapping & mapping)
 		{
 			if (!size) return true;
@@ -95,14 +98,15 @@ namespace data
 	/**
 	 * @brief May this advertised LS2 key type become the active encryptor?
 	 *
-	 * Selection is policy, not parsing: every advertised section is retained so
-	 * IsEncryptionKey() can match what the publisher (and the peer's ratchet)
-	 * actually used, but only a type with a local implementation may encrypt to a
-	 * peer. ElGamal and X25519 are always usable; the hybrid ML-KEM types are
-	 * gated on a real provider round trip (IsMLKEMSupported) so a build without PQ
-	 * support cannot advertise or select a key it cannot use. Reserved EC types
-	 * (P384/P521 codes) and unknown types are never selectable here even when
-	 * their wire length is known.
+	 * Selection is policy, not parsing: every advertised section is
+	 * retained so IsEncryptionKey() can match what the publisher (and the
+	 * peer's ratchet) actually used, but only a type with a local
+	 * implementation may encrypt to a peer. ElGamal and X25519 are always
+	 * usable; the hybrid ML-KEM types are gated on a real provider round
+	 * trip (IsMLKEMSupported) so a build without PQ support cannot
+	 * advertise or select a key it cannot use. Reserved EC types
+	 * (P384/P521 codes) and unknown types are never selectable here even
+	 * when their wire length is known.
 	 */
 	bool IsSelectableLS2EncryptionKeyType (CryptoKeyType keyType)
 	{
@@ -155,17 +159,20 @@ namespace data
 
 	/**
 	 * @brief Parse an LS1 (or the legacy layout) from the stored buffer.
-	 * @param readIdentity re-read the identity prefix instead of reusing it.
-	 * @param verifySignature verify the trailing signature over the signed body.
+	 * @param readIdentity re-read the identity prefix instead of reusing
+	 *                     it.
+	 * @param verifySignature verify the trailing signature over the signed
+	 *                        body.
 	 *
-	 * A reused object must not keep a previous verdict, so validity and the
-	 * earliest-lease date are reset on entry. The order is identity, the two key
-	 * fields, the lease count and the lease block, with each step bounds-checked
-	 * against the remaining bytes before it is read. Lease timestamps are checked
-	 * against the Java windows (earliest not too old, latest not too far in the
-	 * future) before any lease is stored, so a forged far-future LS1 cannot occupy
-	 * a netDb slot. When the signature is verified, trailing bytes outside the
-	 * signed body are trimmed so every node stores and serves one canonical form.
+	 * A reused object must not keep a previous verdict, so validity and
+	 * the earliest-lease date are reset on entry. The order is identity,
+	 * the two key fields, the lease count and the lease block, with each
+	 * step bounds-checked against the remaining bytes before it is read.
+	 * Lease timestamps are checked against the Java windows (earliest not
+	 * too old, latest not too far in the future) before any lease is
+	 * stored, so a forged far-future LS1 cannot occupy a netDb slot. When
+	 * the signature is verified, trailing bytes outside the signed body
+	 * are trimmed so every node stores and serves one canonical form.
 	 */
 	void LeaseSet::ReadFromBuffer (bool readIdentity, bool verifySignature)
 	{
@@ -181,7 +188,8 @@ namespace data
 		}
 		// Java's Kademlia facade rejects RSA destinations for LeaseSets even
 		// though it can still verify legacy RSA RouterInfos. Keep that policy
-		// explicit so a local RSA verifier does not widen LeaseSet acceptance.
+		// explicit so a local RSA verifier does not widen LeaseSet
+		// acceptance.
 		if (m_Identity->IsRSA ())
 		{
 			LogPrint (eLogWarning, "LeaseSet: RSA destination signature type is not accepted");
@@ -224,8 +232,8 @@ namespace data
 		}
 
 		// KademliaNetworkDatabaseFacade.validate() rejects a lease set whose
-		// earliest lease is more than 10 minutes old and whose latest lease is
-		// more than CLOCK_FUDGE + MAX_LEASE_FUTURE ahead. Do this before
+		// earliest lease is more than 10 minutes old and whose latest lease
+		// is more than CLOCK_FUDGE + MAX_LEASE_FUTURE ahead. Do this before
 		// changing any stored leases so a forged far-future LS1 cannot occupy
 		// a netDb entry indefinitely.
 		auto ts = i2p::util::GetMillisecondsSinceEpoch ();
@@ -591,9 +599,9 @@ namespace data
 		auto signatureLen = verifier->GetSignatureLen ();
 		if (signatureOffset > len || signatureLen > len - signatureOffset) return false;
 		// The signed data is the canonical store type followed by the buffer.
-		// Do not write buf[-1]: callers may pass a buffer that has no preceding
-		// byte (for example the inner layer extracted from I2CP) and the
-		// previous implementation performed an out-of-bounds store.
+		// Do not write buf[-1]: callers may pass a buffer that has no
+		// preceding byte (for example the inner layer extracted from I2CP)
+		// and the previous implementation performed an out-of-bounds store.
 		std::vector<uint8_t> signedData;
 		signedData.reserve (signatureOffset + 1);
 		signedData.push_back (m_StoreType);
@@ -705,14 +713,13 @@ namespace data
 		// Deliberate divergence from Java 2.14.0: Java's standard LS2
 		// validation checks the individual leases and does not enforce the
 		// signed header `expires` on receipt. This node also rejects a header
-		// that has already expired and caps one that is too far in the future,
-		// because IsExpired()/cleanup are header-based here and a stored entry
-		// that never expires would keep being served. Do not relax these two
-		// checks without replacing the expiry rule used for storage and
-		// serving.
-		// KademliaNetworkDatabaseFacade.MAX_LEASE_FUTURE plus clock fudge.
-		// The old 12-minute check rejected valid LS2s from peers whose clock
-		// was a few minutes fast.
+		// that has already expired and caps one that is too far in the
+		// future, because IsExpired()/cleanup are header-based here and a
+		// stored entry that never expires would keep being served. Do not
+		// relax these two checks without replacing the expiry rule used for
+		// storage and serving. KademliaNetworkDatabaseFacade.MAX_LEASE_FUTURE
+		// plus clock fudge. The old 12-minute check rejected valid LS2s from
+		// peers whose clock was a few minutes fast.
 		if (GetExpirationTime () > ts + LEASESET_MAX_LEASE_FUTURE + LEASESET2_CLOCK_FUDGE)
 		{
 			LogPrint (eLogWarning, "LeaseSet2: Expiration time is from future ", GetExpirationTime () / 1000LL);
@@ -720,7 +727,8 @@ namespace data
 		}
 		if (GetExpirationTime () + LEASESET2_CLOCK_FUDGE <= ts)
 		{
-			// LeaseSet expiration is authoritative (KademliaNetworkDatabaseFacade.validate)
+			// LeaseSet expiration is authoritative
+			// (KademliaNetworkDatabaseFacade.validate)
 			LogPrint (eLogWarning, "LeaseSet2: Expiration time is in the past ", GetExpirationTime () / 1000LL);
 			return 0;
 		}
@@ -770,9 +778,10 @@ namespace data
 
 	size_t LeaseSet2::ReadMetaLS2TypeSpecificPart (const uint8_t * buf, size_t len)
 	{
-		// Proposal 123, Meta LS2. Same layout as MetaLeaseSet.java: properties,
-		// one byte entry count, MetaLease entries (40 bytes), one byte
-		// revocation count, 32-byte revocations, then the standard signature.
+		// Proposal 123, Meta LS2. Same layout as MetaLeaseSet.java:
+		// properties, one byte entry count, MetaLease entries (40 bytes), one
+		// byte revocation count, 32-byte revocations, then the standard
+		// signature.
 		size_t offset = 0;
 		// properties
 		if (offset + 2 > len) return 0;
@@ -783,8 +792,9 @@ namespace data
 		// entries
 		if (offset + 1 > len) return 0;
 		uint8_t numEntries = buf[offset++];
-		// MetaLeaseSet.readBytes() adds every entry through LeaseSet.addLease(),
-		// which enforces MAX_LEASES (16); a 17th entry throws.
+		// MetaLeaseSet.readBytes() adds every entry through
+		// LeaseSet.addLease(), which enforces MAX_LEASES (16); a 17th entry
+		// throws.
 		if (numEntries > MAX_NUM_LEASES)
 		{
 			LogPrint (eLogWarning, "LeaseSet2: Too many Meta leases ", (int)numEntries);
@@ -857,9 +867,9 @@ namespace data
 			LogPrint (eLogWarning, "LeaseSet2: All Meta leases are expired");
 			return 0;
 		}
-		// Java's MetaLeaseSet derives getEarliestLeaseDate() from its entries,
-		// so cross-type LS1/Meta replacement must compare this value rather
-		// than the zero sentinel used for encrypted outer layers.
+		// Java's MetaLeaseSet derives getEarliestLeaseDate() from its
+		// entries, so cross-type LS1/Meta replacement must compare this value
+		// rather than the zero sentinel used for encrypted outer layers.
 		SetEarliestLeaseDate (earliestEntry);
 		// writeBytesWithoutSig() always writes a zero revocation count, so
 		// Java's re-serialisation cannot reproduce a signed buffer that
@@ -919,7 +929,8 @@ namespace data
 		const uint8_t * blindedPublicKey = buf + offset;
 		blindedVerifier->SetPublicKey (blindedPublicKey);
 		{
-			// Proposal 123: store key = SHA256(blinded sig type || blinded public key).
+			// Proposal 123: store key = SHA256(blinded sig type || blinded
+			// public key).
 			std::vector<uint8_t> hashInput (2 + blindedKeyLen);
 			memcpy (hashInput.data (), stA1, 2);
 			memcpy (hashInput.data () + 2, blindedPublicKey, blindedKeyLen);
@@ -1042,8 +1053,8 @@ namespace data
 				i2p::crypto::HKDF (outerPlainText.data () + 1 + authDataLen, innerInput, 68, "ELS2_L2K", keys);
 			}
 			else
-				// no authData presented, innerInput = subcredential || publishedTimestamp
-				// skip 1 byte flags
+				// no authData presented, innerInput = subcredential ||
+				// publishedTimestamp skip 1 byte flags
 				i2p::crypto::HKDF (outerPlainText.data () + 1, subcredential, 36, "ELS2_L2K", keys); // no authCookie
 			// decrypt Layer 2
 			// innerKey = keys[0:31]
@@ -1104,28 +1115,31 @@ namespace data
 	}
 
 	/**
-	 * @brief Decode per-client authorization data and derive the auth cookie.
+	 * @brief Decode per-client authorization data and derive the auth
+	 *        cookie.
 	 * @param buf encrypted-LeaseSet tail that follows the header.
 	 * @param len bytes available.
-	 * @param secret caller-supplied client secret: X25519 private key for the DH
-	 *        scheme (flag bits 3-1 = 0) or the 32-byte PSK for scheme 2.
-	 * @param subcredential 36-byte subcredential for this blinded destination.
+	 * @param secret caller-supplied client secret: X25519
+	 *               private key for the DH scheme (flag bits 3-1 = 0) or
+	 *               the 32-byte PSK for scheme 2.
+	 * @param subcredential 36-byte subcredential for this blinded
+	 *                      destination.
 	 * @param authCookie 32-byte output, written only on success.
-	 * @return bytes consumed, 0 when the message declares no client auth, or
-	 *         size_t(-1) on any validation failure.
+	 * @return bytes consumed, 0 when the message declares no client auth,
+	 *         or size_t(-1) on any validation failure.
 	 *
-	 * The secret never leaves this function: it is used as the DH private key or
-	 * hashed into the PSK input and is never logged. Both derivation inputs bind
-	 * the recipient's key/PSK to the subcredential and the salt/ephemeral key, so a
-	 * cookie from another destination or another blinded period cannot be
-	 * replayed. The client entry list is bounded by the remaining buffer before it
-	 * is walked, and a client identifier match is the only way the cookie is
-	 * produced.
+	 * The secret never leaves this function: it is used as the DH private
+	 * key or hashed into the PSK input and is never logged. Both
+	 * derivation inputs bind the recipient's key/PSK to the subcredential
+	 * and the salt/ephemeral key, so a cookie from another destination or
+	 * another blinded period cannot be replayed. The client entry list is
+	 * bounded by the remaining buffer before it is walked, and a client
+	 * identifier match is the only way the cookie is produced.
 	 *
-	 * The intermediate key material (authInput, okm, okm-derived client key and IV)
-	 * currently remains in local stack buffers after return; clearing it is part of
-	 * the tracked secret-cleansing work (`CRY-237`), not something this function
-	 * claims to do.
+	 * The intermediate key material (authInput, okm, okm-derived client
+	 * key and IV) currently remains in local stack buffers after return;
+	 * clearing it is part of the tracked secret-cleansing work
+	 * (`CRY-237`), not something this function claims to do.
 	 */
 	size_t LeaseSet2::ExtractClientAuthData (const uint8_t * buf, size_t len, const uint8_t * secret,
 		const uint8_t * subcredential, uint8_t * authCookie) const
@@ -1245,14 +1259,13 @@ namespace data
 		if (!key) return false;
 		// Do not assume X25519: ML-KEM and future key types have other
 		// lengths. Compare against the stored LS2 wire section instead of a
-		// computed length so an unknown type is matched with the opaque length
-		// the publisher advertised, exactly like Java's List comparison.
-		// Whether the type is usable is a separate question (see
-		// IsSelectableLS2EncryptionKeyType).
-		// Every advertised section is kept, including a repeated type. Java's
-		// List may contain the same type twice and either key can be the one
-		// the peer's ratchet selected, so match any section rather than only
-		// the last one.
+		// computed length so an unknown type is matched with the opaque
+		// length the publisher advertised, exactly like Java's List
+		// comparison. Whether the type is usable is a separate question (see
+		// IsSelectableLS2EncryptionKeyType). Every advertised section is
+		// kept, including a repeated type. Java's List may contain the same
+		// type twice and either key can be the one the peer's ratchet
+		// selected, so match any section rather than only the last one.
 		for (const auto & section : m_EncryptionKeys)
 		{
 			if (section.type != type || section.key.empty ()) continue;
@@ -1350,7 +1363,8 @@ namespace data
 				continue;
 			}
 			if (ts > m_ExpirationTime) m_ExpirationTime = ts;
-			// make sure leaseset is newer than previous, but adding some time to expiration date
+			// make sure leaseset is newer than previous, but adding some time to
+			// expiration date
 			ts += (currentTime - tunnels[i]->GetCreationTime () * 1000LL) * 2
 				/ i2p::tunnel::TUNNEL_EXPIRATION_TIMEOUT; // up to 2 secs
 			memcpy (m_Buffer.get () + offset, tunnels[i]->GetNextIdentHash (), 32);
@@ -1399,14 +1413,15 @@ namespace data
 	 * @param ptr buffer beginning with the identity prefix.
 	 * @param sz bytes available.
 	 * @param expires out-parameter receiving the latest lease end date.
-	 * @return true only when the structure, the lease windows and the signature
-	 *         all validate.
+	 * @return true only when the structure, the lease windows and the
+	 *         signature all validate.
 	 *
-	 * This is the store-side counterpart of LeaseSet::ReadFromBuffer(): it never
-	 * keeps state, so it can be used to decide whether an incoming LS1 may be
-	 * cached or flooded. The lease windows are the Java validate() bounds (latest
-	 * lease not years ahead, earliest not older than ten minutes), and the
-	 * signature covers only the bytes before it.
+	 * This is the store-side counterpart of LeaseSet::ReadFromBuffer(): it
+	 * never keeps state, so it can be used to decide whether an incoming
+	 * LS1 may be cached or flooded. The lease windows are the Java
+	 * validate() bounds (latest lease not years ahead, earliest not older
+	 * than ten minutes), and the signature covers only the bytes before
+	 * it.
 	 */
 	bool LeaseSetBufferValidate (const uint8_t * ptr, size_t sz, uint64_t & expires)
 	{

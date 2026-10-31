@@ -4,10 +4,10 @@
  *
  * openi2pd: I2PService.
  *
- * Provides shared service lifecycle behavior: destination reference counting,
- * handler registration, readiness callbacks, connect timeouts and close-idle
- * resume logic. Resuming can regenerate the destination identity and
- * re-register it in the client context.
+ * Provides shared service lifecycle behavior: destination reference
+ * counting, handler registration, readiness callbacks, connect timeouts
+ * and close-idle resume logic. Resuming can regenerate the destination
+ * identity and re-register it in the client context.
  *
  */
 
@@ -82,8 +82,8 @@ namespace client
 	{
 		if (m_ConnectTimeout) m_ReadyTimer.cancel ();
 		// Snapshot and detach under the lock, then terminate outside it: a
-		// handler's Terminate() re-enters RemoveHandler through Done() and may
-		// close sockets whose completion handlers run on another thread.
+		// handler's Terminate() re-enters RemoveHandler through Done() and
+		// may close sockets whose completion handlers run on another thread.
 		std::vector<std::shared_ptr<I2PServiceHandler>> handlers;
 		{
 			std::unique_lock<std::mutex> l (m_HandlersMutex);
@@ -221,8 +221,8 @@ namespace client
 		if (m_ConnectTimeout && !m_LocalDestination->IsReady ())
 		{
 			// The readiness callback can fire after this service was stopped and
-			// destroyed, so it captures a weak owner plus the destination it must
-			// talk to instead of `this`.
+			// destroyed, so it captures a weak owner plus the destination it
+			// must talk to instead of `this`.
 			auto localDestination = m_LocalDestination;
 			std::weak_ptr<I2PService> weakSelf = weak_from_this ();
 			AddReadyCallback (

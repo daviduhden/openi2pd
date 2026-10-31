@@ -4,7 +4,9 @@
  *
  * openi2pd: test log lifecycle.
  *
- * Exercises logger start/stop/reopen, sink replacement and destruction while the writer thread runs, requiring records to be drained and the output file to close before removal.
+ * Exercises logger start/stop/reopen, sink replacement and destruction
+ * while the writer thread runs, requiring records to be drained and the
+ * output file to close before removal.
  *
  */
 
@@ -50,8 +52,8 @@ std::string ReadFile (const std::filesystem::path & path)
 
 int main ()
 {
-	// Repeated Start()/Stop() must not replace a joinable thread or lose the
-	// records queued in each cycle.
+	// Repeated Start()/Stop() must not replace a joinable thread or lose
+	// the records queued in each cycle.
 	{
 		auto out = std::make_shared<std::ostringstream> ();
 		i2p::log::Log log;
@@ -73,8 +75,9 @@ int main ()
 		assert (contents.find ("round-2") != std::string::npos);
 	}
 
-	// Failed initialization resets a stopped logger to stdout and releases the
-	// configured stream. The operation must refuse to replace a live destination.
+	// Failed initialization resets a stopped logger to stdout and releases
+	// the configured stream. The operation must refuse to replace a live
+	// destination.
 	{
 		i2p::log::Log log;
 		auto out = std::make_shared<std::ostringstream> ();
@@ -92,7 +95,8 @@ int main ()
 		assert (weakOut.expired ());
 	}
 
-	// Reset also closes a file destination before the logger object is destroyed.
+	// Reset also closes a file destination before the logger object is
+	// destroyed.
 	{
 		const auto unique = std::chrono::steady_clock::now ().time_since_epoch ().count ()
 			^ static_cast<long long> (std::random_device { }());
@@ -153,9 +157,10 @@ int main ()
 		assert (out->str ().find ("destructor-drain") != std::string::npos);
 	}
 
-	// An unwritable/stalled sink must not grow the queue without bound. The
-	// writer is intentionally not started, so every accepted record stays in
-	// the queue and records beyond the fixed quota are counted and dropped.
+	// An unwritable/stalled sink must not grow the queue without bound.
+	// The writer is intentionally not started, so every accepted record
+	// stays in the queue and records beyond the fixed quota are counted
+	// and dropped.
 	{
 		i2p::log::Log log;
 		for (size_t i = 0; i < i2p::log::LOG_QUEUE_MAX_RECORDS; ++i) Append (log, "queued-" + std::to_string (i));
@@ -164,9 +169,9 @@ int main ()
 		assert (log.GetDroppedCount () == 5);
 	}
 
-	// Reopen() is called from the signal-handling thread while the writer is
-	// active. Every record must reach the same file and no stream swap may
-	// deadlock against the writer.
+	// Reopen() is called from the signal-handling thread while the writer
+	// is active. Every record must reach the same file and no stream swap
+	// may deadlock against the writer.
 	{
 		const auto unique = std::chrono::steady_clock::now ().time_since_epoch ().count ()
 			^ static_cast<long long> (std::random_device { }());

@@ -4,10 +4,10 @@
  *
  * openi2pd: Streaming.
  *
- * Implements Streaming packet parsing and generation, window and congestion
- * control, ACK/NACK handling, resend and pacing timers, gzip and data-message
- * plumbing, stream lifecycle, and destination-level admission of incoming
- * streams with per-key rate limiting.
+ * Implements Streaming packet parsing and generation, window and
+ * congestion control, ACK/NACK handling, resend and pacing timers, gzip
+ * and data-message plumbing, stream lifecycle, and destination-level
+ * admission of incoming streams with per-key rate limiting.
  *
  */
 
@@ -32,8 +32,8 @@ namespace stream
 	namespace
 	{
 		// Validate the fixed part of a packet before any option accessor is
-		// used. Packet buffers are fixed-size, but a short/malformed packet must
-		// not make GetFlags()/GetOptionSize() read stale pool memory.
+		// used. Packet buffers are fixed-size, but a short/malformed packet
+		// must not make GetFlags()/GetOptionSize() read stale pool memory.
 		bool ValidatePacket (const Packet * packet)
 		{
 			if (!packet || packet->len < 22) return false;
@@ -61,10 +61,10 @@ namespace stream
 		const size_t optionOffset = optionData - packet->buf;
 		const size_t optionSize = packet->GetOptionSize ();
 		if (optionOffset > packet->len || optionSize > packet->len - optionOffset || !optionSize) return std::nullopt;
-		// The FROM identity is the first option of a SYN (streaming spec order,
-		// same assumption ProcessOptions validates before using it). The
-		// signature is verified later by the normal path; a forged identity
-		// only makes its sender choose its own admission outcome.
+		// The FROM identity is the first option of a SYN (streaming spec
+		// order, same assumption ProcessOptions validates before using it).
+		// The signature is verified later by the normal path; a forged
+		// identity only makes its sender choose its own admission outcome.
 		i2p::data::IdentityEx identity;
 		if (!identity.FromBuffer (optionData, optionSize)) return std::nullopt;
 		return identity.GetIdentHash ();
@@ -426,13 +426,13 @@ namespace stream
 
 		LogPrint (eLogDebug, "Streaming: Received seqn=", receivedSeqn, " on sSID=", m_SendStreamID);
 		// Receive-side reordering and backpressure. Three independent limits
-		// apply below: a queue above three windows drops the packet and sets the
-		// choke flag; a gap of a whole window, or of 256 sequence numbers when
-		// nothing is saved yet, is dropped instead of saved; and a saved set
-		// whose gaps plus the new distance reach 256 is dropped, because an ACK
-		// block carries one NACK-count byte and cannot describe more missing
-		// ranges. A dropped packet is not acknowledged here; the peer's
-		// retransmission recovers it.
+		// apply below: a queue above three windows drops the packet and sets
+		// the choke flag; a gap of a whole window, or of 256 sequence numbers
+		// when nothing is saved yet, is dropped instead of saved; and a saved
+		// set whose gaps plus the new distance reach 256 is dropped, because
+		// an ACK block carries one NACK-count byte and cannot describe more
+		// missing ranges. A dropped packet is not acknowledged here; the
+		// peer's retransmission recovers it.
 		if (m_ReceiveQueue.size () > m_MaxWindowSize * 3)
 		{
 			LogPrint (eLogDebug, "Streaming: ReceiveQueue is full, delete packet");
@@ -727,7 +727,8 @@ namespace stream
 			}
 			if (packet->from && m_RemoteLeaseSet)
 			{
-				// stream came from ratchets session and static key must match one from LeaseSet
+				// stream came from ratchets session and static key must match one
+				// from LeaseSet
 				if (!m_RemoteLeaseSet->IsEncryptionKey (
 						packet->from->GetRemoteStaticKeyType (), packet->from->GetRemoteStaticKey ()))
 				{
@@ -741,8 +742,9 @@ namespace stream
 			}
 		}
 
-		// Java ConnectionPacketHandler rejects a SYN that has no FROM identity
-		// unless the stream was already authenticated by a ratchet session.
+		// Java ConnectionPacketHandler rejects a SYN that has no FROM
+		// identity unless the stream was already authenticated by a ratchet
+		// session.
 		if ((flags & PACKET_FLAG_SYNCHRONIZE) && !(flags & PACKET_FLAG_FROM_INCLUDED) && !m_RemoteIdentity)
 		{
 			LogPrint (eLogInfo, "Streaming: SYN without authenticated FROM identity, dropped");
@@ -1643,12 +1645,12 @@ namespace stream
 		LogPrint (eLogDebug, "Streaming: closing stream with sSID=", m_SendStreamID, ", rSID=", m_RecvStreamID,
 			", status=", m_Status);
 		// Close is a two-step state machine and is re-entered on purpose:
-		// Open moves to Closing and recurses so pending data can drain; Closing
-		// sends the FIN only once the send queue and the buffer are empty; Reset
-		// sends one RESET (unless the peer reset first) and terminates. The
-		// Closed and New states have nothing to send and only release the stream.
-		// A caller that closes an Open stream while data is still queued therefore
-		// gets a deferred FIN, not data after FIN.
+		// Open moves to Closing and recurses so pending data can drain;
+		// Closing sends the FIN only once the send queue and the buffer are
+		// empty; Reset sends one RESET (unless the peer reset first) and
+		// terminates. The Closed and New states have nothing to send and only
+		// release the stream. A caller that closes an Open stream while data
+		// is still queued therefore gets a deferred FIN, not data after FIN.
 		switch (m_Status)
 		{
 		case eStreamStatusOpen:
@@ -1716,7 +1718,7 @@ namespace stream
 			size += 2; // options size
 			if (isOfflineSignature)
 			{
-				// we must include FROM  if offline signature for compatibility with Java-I2P
+				// Include FROM for offline-signature compatibility with Java-I2P.
 				size_t identityLen = m_LocalDestination.GetOwner ()->GetIdentity ()->GetFullLen ();
 				m_LocalDestination.GetOwner ()->GetIdentity ()->ToBuffer (packet + size, identityLen);
 				size += identityLen; // from
@@ -1734,10 +1736,10 @@ namespace stream
 		}
 
 		p->len = size;
-		// The FIN is sent once: it is not retransmitted and no TIME-WAIT state
-		// retains the closed connection. FIN/TIME-WAIT retention is tracked as
-		// an open divergence from I2P Java; do not add retransmission here
-		// without a specification reference.
+		// The FIN is sent once: it is not retransmitted and no TIME-WAIT
+		// state retains the closed connection. FIN/TIME-WAIT retention is
+		// tracked as an open divergence from I2P Java; do not add
+		// retransmission here without a specification reference.
 		boost::asio::post (m_Service, std::bind (&Stream::SendPacket, shared_from_this (), p));
 		if (m_RoutingSession)
 		{
@@ -1832,8 +1834,8 @@ namespace stream
 	bool Stream::RejectWithReset (Packet * packet)
 	{
 		if (!packet) return false;
-		// Suppress the SYNACK that HandleNextPacket sends for a first SYN: this
-		// connection is being refused, not accepted.
+		// Suppress the SYNACK that HandleNextPacket sends for a first SYN:
+		// this connection is being refused, not accepted.
 		m_Status = eStreamStatusReset;
 		HandleNextPacket (packet); // consumes the packet
 		if (m_Status == eStreamStatusTerminated || !m_SendStreamID) return false;
@@ -1893,8 +1895,8 @@ namespace stream
 
 	void Stream::SendPackets (const std::list<Packet *> & packets)
 	{
-		// the local destination is a reference and it can be gone already: a handler
-		// queued before the destination was stopped runs after it
+		// the local destination is a reference and it can be gone already: a
+		// handler queued before the destination was stopped runs after it
 		if (m_Status == eStreamStatusTerminated) return;
 		if (!m_RemoteLeaseSet)
 		{
@@ -1982,7 +1984,8 @@ namespace stream
 			{
 				LogPrint (eLogDebug, "Streaming: OutboundTunnel changed, set initial window size");
 				ResetWindowSize ();
-				//				m_TunnelsChangeSequenceNumber = m_SequenceNumber; // should be determined more precisely
+				// m_TunnelsChangeSequenceNumber = m_SequenceNumber; // should be
+				// determined more precisely
 			}
 
 			std::vector<i2p::tunnel::TunnelMessageBlock> msgs;
@@ -2190,12 +2193,12 @@ namespace stream
 	{
 		// Retransmission timer. Only packets older than the current RTO are
 		// collected, and one iteration sends at most m_NumPacketsToSend so a
-		// single tick cannot flush the whole send queue. A packet resent within
-		// 3xRTO is marked resent so ProcessAck() excludes it from the RTT sample
-		// (the retransmission has an ambiguous round trip). The attempt counter is
-		// bounded by m_MaxNumResendAttempts, and an unacknowledged SYNACK is
-		// abandoned earlier because the peer never confirmed the reverse path.
-		// check for resend attempts
+		// single tick cannot flush the whole send queue. A packet resent
+		// within 3xRTO is marked resent so ProcessAck() excludes it from the
+		// RTT sample (the retransmission has an ambiguous round trip). The
+		// attempt counter is bounded by m_MaxNumResendAttempts, and an
+		// unacknowledged SYNACK is abandoned earlier because the peer never
+		// confirmed the reverse path. check for resend attempts
 		if (m_IsIncoming && m_SequenceNumber == 1 && m_NumResendAttempts > 0
 			&& (!m_RoutingSession || !m_RoutingSession->HasSharedRoutingPath ())) // ack not received
 		{
@@ -2632,8 +2635,9 @@ namespace stream
 	{
 		std::unique_lock<std::mutex> lock (m_Mutex);
 		auto ready = [this] () { return m_Completed; };
-		// A zero timeout waits indefinitely, a positive one bounds the wait and a
-		// negative one returns immediately, matching the previous helper.
+		// A zero timeout waits indefinitely, a positive one bounds the wait
+		// and a negative one returns immediately, matching the previous
+		// helper.
 		if (timeout != 0) return m_Changed.wait_for (lock, std::chrono::seconds (timeout), ready);
 		m_Changed.wait (lock, ready);
 		return true;
@@ -2651,9 +2655,9 @@ namespace stream
 		// Order matters: the cheap local checks run before the connection
 		// throttle is charged, so a duplicate, an over-limit SYN or a full
 		// backlog cannot consume the per-peer admission budget that a fresh
-		// legitimate connection needs. Every rejection is answered by the caller
-		// after this decision, which keeps the throttle and the response
-		// consistent.
+		// legitimate connection needs. Every rejection is answered by the
+		// caller after this decision, which keeps the throttle and the
+		// response consistent.
 		if (IsRecentlyClosed (receiveStreamID)) return SynAdmission::eRecentlyClosed;
 		{
 			std::lock_guard<std::mutex> lock (m_StreamsMutex);
@@ -2681,8 +2685,8 @@ namespace stream
 	bool StreamingDestination::RejectSynWithReset (Packet * packet, uint32_t receiveStreamID)
 	{
 		if (!packet) return false;
-		// A detached stream consumes the SYN so only an authenticated packet is
-		// answered, and it is never registered: follow-on packets for this
+		// A detached stream consumes the SYN so only an authenticated packet
+		// is answered, and it is never registered: follow-on packets for this
 		// receiveStreamID still find no stream and are treated as unknown.
 		auto stream = std::make_shared<Stream> (m_Owner->GetService (), shared_from_this ());
 		stream->SetPorts (m_LastFromPort, m_LastToPort);
@@ -2713,8 +2717,8 @@ namespace stream
 			std::lock_guard<std::mutex> lock (m_AcceptorMutex);
 			predicate = m_AdmissionPredicate;
 		}
-		// Invoke outside the lock: the filter takes its own lock and may read a
-		// cached file list, so no streaming lock may be held here.
+		// Invoke outside the lock: the filter takes its own lock and may read
+		// a cached file list, so no streaming lock may be held here.
 		if (!predicate || !*predicate) return StreamAdmission::eAllow;
 		return (*predicate) (peer, m_LocalPort);
 	}
@@ -2765,13 +2769,14 @@ namespace stream
 		RejectSynWithReset (packet, receiveStreamID);
 	}
 
-	// Bounded memory of streams that ended, or whose SYN was refused, recently.
-	// A retransmitted SYN for such a receive stream ID must not create a second
-	// stream or a second RESET, so it is answered once and then dropped. Entries
-	// decay after RECENTLY_CLOSED_TIMEOUT and are trimmed to
-	// MAX_RECENTLY_CLOSED_STREAMS (oldest evicted) on insertion, so the bound
-	// applies to the live window. The key is the peer-chosen receive stream ID:
-	// this is per-destination state, never a peer identity or a ban.
+	// Bounded memory of streams that ended, or whose SYN was refused,
+	// recently. A retransmitted SYN for such a receive stream ID must not
+	// create a second stream or a second RESET, so it is answered once and
+	// then dropped. Entries decay after RECENTLY_CLOSED_TIMEOUT and are
+	// trimmed to MAX_RECENTLY_CLOSED_STREAMS (oldest evicted) on
+	// insertion, so the bound applies to the live window. The key is the
+	// peer-chosen receive stream ID: this is per-destination state, never
+	// a peer identity or a ban.
 	bool StreamingDestination::IsRecentlyClosed (uint32_t receiveStreamID) const
 	{
 		if (!receiveStreamID) return false;
@@ -2819,8 +2824,8 @@ namespace stream
 
 	void StreamingDestination::LogSynRejection (const char * reason, uint32_t receiveStreamID)
 	{
-		// Throttle: a rejected peer retransmits, and each retransmission must not
-		// produce an unbounded log line.
+		// Throttle: a rejected peer retransmits, and each retransmission must
+		// not produce an unbounded log line.
 		auto ts = i2p::util::GetMillisecondsSinceEpoch ();
 		if (ts < m_LastSynRejectLogTime + SYN_REJECT_LOG_INTERVAL)
 		{
@@ -2902,7 +2907,8 @@ namespace stream
 	{
 		// Like Stop(), timer arming belongs to the owning io_context. SAM
 		// creates and starts an additional per-port destination from its own
-		// control thread while the destination service may already be running.
+		// control thread while the destination service may already be
+		// running.
 		if (m_Owner)
 		{
 			auto & service = m_Owner->GetService ();
@@ -2927,9 +2933,10 @@ namespace stream
 	void StreamingDestination::Stop ()
 	{
 		// Timers, stream maps and acceptor callbacks belong to the owning
-		// destination's io_context. SAM removes a streaming destination from its
-		// own control thread, so marshal the teardown like ClientDestination::Stop
-		// does instead of cancelling timers and terminating streams concurrently.
+		// destination's io_context. SAM removes a streaming destination from
+		// its own control thread, so marshal the teardown like
+		// ClientDestination::Stop does instead of cancelling timers and
+		// terminating streams concurrently.
 		if (m_Owner)
 		{
 			auto & service = m_Owner->GetService ();
@@ -3216,8 +3223,8 @@ namespace stream
 	std::shared_ptr<Stream> StreamingDestination::CreateNewIncomingStream (uint32_t receiveStreamID)
 	{
 		auto s = std::make_shared<Stream> (m_Owner->GetService (), shared_from_this ());
-		// An incoming stream replies to the peer's source port, and reports the
-		// destination port it arrived on (SAM 3.2 FROM_PORT/TO_PORT).
+		// An incoming stream replies to the peer's source port, and reports
+		// the destination port it arrived on (SAM 3.2 FROM_PORT/TO_PORT).
 		s->SetPorts (m_LastFromPort, m_LastToPort);
 		std::lock_guard<std::mutex> l (m_StreamsMutex);
 		m_Streams.emplace (s->GetRecvStreamID (), s);
@@ -3293,8 +3300,9 @@ namespace stream
 			auto self = shared_from_this ();
 			boost::asio::post (m_Owner->GetService (), [self] () { self->DispatchPendingIncoming (); });
 		}
-		// Hand the previous registration back: the caller owns exactly what it
-		// displaced and can tell whether it took over another tunnel's acceptor.
+		// Hand the previous registration back: the caller owns exactly what
+		// it displaced and can tell whether it took over another tunnel's
+		// acceptor.
 		return replaced;
 	}
 
@@ -3331,9 +3339,9 @@ namespace stream
 				registrations.push_back (std::move (it->acceptor));
 			m_ArmedAcceptors.clear ();
 		}
-		// Every armed registration is completed with nullptr, outside the lock:
-		// a single reset must not strand the other waiters (a SAM socket would
-		// otherwise stay in its accepting state forever).
+		// Every armed registration is completed with nullptr, outside the
+		// lock: a single reset must not strand the other waiters (a SAM
+		// socket would otherwise stay in its accepting state forever).
 		for (auto & acceptor : registrations)
 			if (acceptor) acceptor (nullptr);
 		if (persistent) persistent (nullptr);
@@ -3440,8 +3448,8 @@ namespace stream
 
 	void StreamingDestination::SetPongHandler (const PongHandler & handler)
 	{
-		// Publish an immutable copy: the service thread invokes the handler while
-		// BOB/other clients may replace or clear it.
+		// Publish an immutable copy: the service thread invokes the handler
+		// while BOB/other clients may replace or clear it.
 		auto holder = handler ? std::make_shared<const PongHandler> (handler) : nullptr;
 		std::lock_guard<std::mutex> lock (m_AcceptorMutex);
 		m_PongHandler = std::move (holder);
@@ -3499,18 +3507,19 @@ namespace stream
 	{
 		if (m_Owner && m_Owner->GetService ().get_executor ().running_in_this_thread ())
 		{
-			// Blocking here deadlocks: the acceptor is invoked on this very thread,
-			// so the wait could never be completed.
+			// Blocking here deadlocks: the acceptor is invoked on this very
+			// thread, so the wait could never be completed.
 			LogPrint (eLogError, "Streaming: AcceptStream called from the destination service thread");
 			return nullptr;
 		}
 		auto state = std::make_shared<SyncAcceptState> ();
 		auto token = ArmSyncAccept (state);
 		if (state->Wait (timeout)) return state->GetStream ();
-		// Timed out. Cancel first and unlink afterwards: when the cancellation
-		// wins, no invocation can reach this wait any more and the armSyncAccept
-		// callback re-offers any stream it may still receive. When a delivery won
-		// the race the stream exists and is returned, never dropped.
+		// Timed out. Cancel first and unlink afterwards: when the
+		// cancellation wins, no invocation can reach this wait any more and
+		// the armSyncAccept callback re-offers any stream it may still
+		// receive. When a delivery won the race the stream exists and is
+		// returned, never dropped.
 		if (state->Cancel ())
 		{
 			RemoveAcceptor (token);
@@ -3534,8 +3543,9 @@ namespace stream
 	void StreamingDestination::HandleDataMessagePayload (uint16_t fromPort, uint16_t toPort, const uint8_t * buf,
 		size_t len, i2p::garlic::ECIESX25519AEADRatchetSession * from)
 	{
-		// The port fields belong to the Data message and to the stream created from
-		// a SYN in this call. Everything here runs on the destination service thread.
+		// The port fields belong to the Data message and to the stream
+		// created from a SYN in this call. Everything here runs on the
+		// destination service thread.
 		m_LastFromPort = fromPort;
 		m_LastToPort = toPort;
 		HandleDataMessagePayload (buf, len, from);

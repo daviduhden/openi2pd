@@ -4,20 +4,19 @@
 #
 # openi2pd: test sam version.
 #
-# Drives a live SAM bridge on 127.0.0.1:7656 with MIN/MAX version ranges, including reversed, unparseable and out-of-range values, expecting OK VERSION=3.3 or NOVERSION replies.
+# Drives the SAM bridge on 127.0.0.1:7656 with MIN/MAX version ranges.
+# Expects OK VERSION=3.3 or NOVERSION for reversed, malformed and
+# out-of-range values.
 #
-# This is a manual interoperability probe, not a CTest case: it requires an
-# already running router with the SAM bridge enabled on the loopback default
-# port, a netcat that supports `-q 0` (so the client half-closes after the
-# greeting), and bash for the parallel IN/EXP arrays below. It reads no router
-# files, changes no configuration and is expected to run unprivileged.
+# Manual probe, not CTest. It requires a router with the SAM bridge
+# enabled on loopback, netcat with `-q 0` (half-close), and Bash arrays.
+# It reads no router files/configuration and runs unprivileged.
 #
-# Each case sends one `HELLO VERSION ...` line and compares the whole reply with
-# the expected `HELLO REPLY RESULT=...` line. Exit status is 0 only when every
-# case matched and 1 if any reply differed; there is no retry, so start the
-# router first and stop it afterwards. The greeting is not a secret, but the
-# bridge itself is a local administrative surface and must not be reachable
-# from the network while this script runs.
+# Each case sends one `HELLO VERSION ...` line and compares the full
+# `HELLO REPLY RESULT=...` response. Exit status is 0 only if all cases
+# match; otherwise it returns 1. There is no retry; start and stop the
+# router around the probe. Keep SAM loopback-only because it is a local
+# administrative surface.
 
 # This script tests the version negotiation in the SAM handshake.
 
@@ -58,9 +57,8 @@ EXP+=("OK VERSION=3.3")
 IN+=("MIN=afddab3vsfdsg1df MAX=dsaaffdb3ggfgfbgf1bssbf")
 EXP+=("NOVERSION")
 
-# A bound without a dot is not a supported version range: SAMHandlerFactory
-# matches no candidate and answers NOVERSION (the old local comparator treated
-# the digits as "3.1").
+# A bound without a dot matches no candidate; SAMHandlerFactory answers
+# NOVERSION. The former local comparator treated "31" as "3.1".
 IN+=("MIN=31 MAX=31")
 EXP+=("NOVERSION")
 

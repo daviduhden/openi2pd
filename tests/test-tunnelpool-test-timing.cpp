@@ -4,10 +4,11 @@
  *
  * openi2pd: test tunnel pool test timing and strikes.
  *
- * A tunnel test survives management ticks until its own deadline, one lost
- * test is not a failure, the third strike fails the tunnel, and a tunnel with
- * recent inbound traffic is not tested again. Deterministic: the pending test
- * table is inspected directly and every deadline is injected.
+ * A tunnel test survives management ticks until its own deadline, one
+ * lost test is not a failure, the third strike fails the tunnel, and a
+ * tunnel with recent inbound traffic is not tested again.
+ * Deterministic: the pending test table is inspected directly and every
+ * deadline is injected.
  *
  */
 
@@ -97,7 +98,8 @@ EstablishedPair MakeEstablishedPair ()
 	auto outbound = std::make_shared<OutboundTunnel> (std::make_shared<TunnelConfig> (peers, 1, IdentHash { }));
 	outbound->SetState (eTunnelStateEstablished);
 	auto inboundPeers = peers;
-	auto inbound = std::make_shared<InboundTunnel> (std::make_shared<TunnelConfig> (inboundPeers, eAllTransports));
+	auto inbound = std::make_shared<InboundTunnel> (std::make_shared<TunnelConfig> (
+		inboundPeers, i2p::data::RouterInfo::eAllTransports));
 	inbound->SetState (eTunnelStateEstablished);
 	return { outbound, inbound };
 }
@@ -115,7 +117,8 @@ void TestPendingTestsSurviveTicks ()
 
 	using Access = TunnelPoolTestAccess;
 	Access::RunTestTunnels (*pool, i2p::util::GetSecondsSinceEpoch ());
-	// The deadline has not passed: the test is kept and no strike is applied.
+	// The deadline has not passed: the test is kept and no strike is
+	// applied.
 	assert (Access::NumTests (*pool) == 1);
 	assert (pair.outbound->GetTestStrikes () == 0);
 	assert (pair.inbound->GetTestStrikes () == 0);
@@ -197,8 +200,9 @@ void TestTestFailedTunnelsAreNotPublished ()
 
 void TestRecentInboundTrafficSkipsTesting ()
 {
-	// Recent traffic must make a test redundant; the pure decision is covered
-	// here so the pool wiring stays testable without a live destination.
+	// Recent traffic must make a test redundant; the pure decision is
+	// covered here so the pool wiring stays testable without a live
+	// destination.
 	const uint64_t now = i2p::util::GetMillisecondsSinceEpoch ();
 	assert (ShouldSkipTunnelTest (now, now));
 	assert (!ShouldSkipTunnelTest (now, 0));

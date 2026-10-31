@@ -4,12 +4,12 @@
  *
  * openi2pd: Modern.
  *
- * Small, portable C++23 vocabulary used by the native tree: enumeration and
- * byte-range concepts, a checked underlying-value conversion, an overload-set
- * helper for std::visit, a move-only scope guard and read-only byte-span
- * views. The header deliberately avoids the expected, format, print and
- * mdspan headers, coroutines and executors, which the supported toolchains do
- * not all provide.
+ * Small, portable C++23 vocabulary used by the native tree: enumeration
+ * and byte-range concepts, a checked underlying-value conversion, an
+ * overload-set helper for std::visit, a move-only scope guard and
+ * read-only byte-span views. The header deliberately avoids the
+ * expected, format, print and mdspan headers, coroutines and executors,
+ * which the supported toolchains do not all provide.
  *
  */
 
@@ -35,8 +35,8 @@ namespace modern
 	/**
 	 * A type whose object representation is one byte.
 	 *
-	 * std::uint8_t and std::int8_t are normally aliases of unsigned char and
-	 * signed char, so they are covered without separate alternatives.
+	 * std::uint8_t and std::int8_t are normally aliases of unsigned char
+	 * and signed char, so they are covered without separate alternatives.
 	 */
 	template <typename T>
 	concept ByteLike = std::same_as<std::remove_cvref_t<T>, std::byte> || std::same_as<std::remove_cvref_t<T>, char>
@@ -50,7 +50,9 @@ namespace modern
 	template <typename T>
 	concept StringViewLike = std::convertible_to<T, std::string_view>;
 
-	/** The underlying integer value of an enumeration, preserving its type. */
+	/**
+	 * The underlying integer value of an enumeration, preserving its type.
+	 */
 	template <typename T>
 		requires Enum<T>
 	[[nodiscard]] constexpr std::underlying_type_t<std::remove_cv_t<T>> ToUnderlying (T value) noexcept
@@ -69,12 +71,13 @@ namespace modern
 	template <typename... Ts> Overloaded (Ts...) -> Overloaded<Ts...>;
 
 	/**
-	 * Move-only scope guard that invokes its callable on destruction unless
-	 * dismiss() was called.
+	 * Move-only scope guard that invokes its callable on destruction
+	 * unless dismiss() was called.
 	 *
-	 * The callable must not throw: the destructor is noexcept and terminates
-	 * if the callable escapes with an exception. Use a braced lambda or a
-	 * named function object; the deduction guide stores the callable by value.
+	 * The callable must not throw: the destructor is noexcept and
+	 * terminates if the callable escapes with an exception. Use a braced
+	 * lambda or a named function object; the deduction guide stores the
+	 * callable by value.
 	 */
 	template <typename F> class ScopeExit
 	{
@@ -112,7 +115,10 @@ namespace modern
 	/** A borrowed, read-only view over raw bytes. */
 	using ByteSpan = std::span<const std::byte>;
 
-	/** Identity overload for an already-typed byte span (including rvalues). */
+	/**
+	 * Identity overload for an already-typed byte span (including
+	 * rvalues).
+	 */
 	constexpr ByteSpan AsByteSpan (ByteSpan bytes) noexcept
 	{
 		return bytes;
@@ -121,10 +127,11 @@ namespace modern
 	/**
 	 * Borrow contiguous byte storage as a read-only byte span.
 	 *
-	 * The range must outlive the returned view; temporaries are rejected so a
-	 * dangling view cannot be created accidentally. std::as_bytes performs the
-	 * object-representation conversion, so callers do not need a manual
-	 * reinterpret_cast and no alignment assumption is introduced.
+	 * The range must outlive the returned view; temporaries are rejected
+	 * so a dangling view cannot be created accidentally. std::as_bytes
+	 * performs the object-representation conversion, so callers do not
+	 * need a manual reinterpret_cast and no alignment assumption is
+	 * introduced.
 	 */
 	template <ContiguousByteRange R>
 		requires std::ranges::sized_range<R>

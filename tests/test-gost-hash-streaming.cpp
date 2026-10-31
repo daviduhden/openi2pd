@@ -4,7 +4,9 @@
  *
  * openi2pd: test gost hash streaming.
  *
- * Requires incremental GOST R 34.11-2012 contexts to match one-shot digests for every message length and split, covering the former partial-block and byte-order regression.
+ * Requires incremental GOST R 34.11-2012 contexts to match one-shot
+ * digests for every message length and split, covering the former
+ * partial-block and byte-order regression.
  *
  */
 

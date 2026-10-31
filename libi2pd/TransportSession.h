@@ -4,10 +4,10 @@
  *
  * openi2pd: TransportSession.
  *
- * Defines the shared transport-session base: remote identity, byte counters and
- * bandwidth estimates, termination timeout and slowness detection, plus
- * SignedData for building and verifying handshake payloads. NTCP2 and SSU2
- * sessions derive from it.
+ * Defines the shared transport-session base: remote identity, byte
+ * counters and bandwidth estimates, termination timeout and slowness
+ * detection, plus SignedData for building and verifying handshake
+ * payloads. NTCP2 and SSU2 sessions derive from it.
  *
  */
 
@@ -35,8 +35,9 @@ namespace transport
 	const size_t UDP_HEADER_SIZE = 8;
 
 	/// Fixed-capacity handshake transcript used as input to a signature.
-	/// Insert truncates to capacity; callers must check its return value before
-	/// signing or verifying a transcript assembled from variable-length fields.
+	/// Insert truncates to capacity; callers must check its return value
+	/// before signing or verifying a transcript assembled from
+	/// variable-length fields.
 	template <size_t sz> class SignedData
 	{
 	public:
@@ -85,15 +86,16 @@ namespace transport
 
 	/// State shared by the NTCP2 and SSU2 session implementations.
 	///
-	/// The derived class owns the socket, its timers and the protocol state;
-	/// this base only keeps the remote identity, byte counters, the sampled
-	/// bandwidth and the idle deadline. Counters are updated from the session's
-	/// own I/O handlers, while the remote identity is mutex-guarded because
-	/// netDb and administrative readers resolve it from other threads. The pure
-	/// virtuals below (`Done`, `SendI2NPMessages`, transport identity) are what
-	/// the transport manager needs; `Done()` in particular may be reached from a
-	/// completion handler after the owner already dropped its reference, so it
-	/// must tolerate being called once on a dying session.
+	/// The derived class owns the socket, its timers and the protocol
+	/// state; this base only keeps the remote identity, byte counters, the
+	/// sampled bandwidth and the idle deadline. Counters are updated from
+	/// the session's own I/O handlers, while the remote identity is
+	/// mutex-guarded because netDb and administrative readers resolve it
+	/// from other threads. The pure virtuals below (`Done`,
+	/// `SendI2NPMessages`, transport identity) are what the transport
+	/// manager needs; `Done()` in particular may be reached from a
+	/// completion handler after the owner already dropped its reference,
+	/// so it must tolerate being called once on a dying session.
 	class TransportSession
 	{
 	public:
@@ -167,9 +169,9 @@ namespace transport
 		int GetTerminationTimeout () const { return m_TerminationTimeout; };
 		void SetTerminationTimeout (int terminationTimeout) { m_TerminationTimeout = terminationTimeout; };
 		/// True when @a ts lies outside the idle window in either direction.
-		/// The symmetric comparison deliberately reaps a session after a large
-		/// backwards clock step instead of keeping it alive until wall time
-		/// catches up.
+		/// The symmetric comparison deliberately reaps a session after a
+		/// large backwards clock step instead of keeping it alive until wall
+		/// time catches up.
 		bool IsTerminationTimeoutExpired (uint64_t ts) const
 		{
 			return ts >= m_LastActivityTimestamp + GetTerminationTimeout ()

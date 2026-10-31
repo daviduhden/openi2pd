@@ -6,8 +6,9 @@
  *
  * Declares the polymorphic encryptor and decryptor interfaces used by
  * destinations, with ElGamal, ECIES-P256, ECIES-GOST and
- * ECIES-X25519-AEAD-Ratchet implementations. Also defines key-length helpers
- * and local encryption-key containers for the supported crypto key types.
+ * ECIES-X25519-AEAD-Ratchet implementations. Also defines key-length
+ * helpers and local encryption-key containers for the supported crypto
+ * key types.
  *
  */
 
@@ -24,9 +25,10 @@ namespace i2p
 {
 namespace crypto
 {
-	/// Destination encryption interface selected by the identity's key type.
-	/// Implementations have different wire sizes and, for ratchets, different
-	/// semantics; callers must provide buffers sized for the selected type.
+	/// Destination encryption interface selected by the identity's key
+	/// type. Implementations have different wire sizes and, for ratchets,
+	/// different semantics; callers must provide buffers sized for the
+	/// selected type.
 	class CryptoKeyEncryptor
 	{
 	public:
@@ -34,11 +36,11 @@ namespace crypto
 		virtual bool Encrypt (const uint8_t * data, uint8_t * encrypted) = 0;
 	};
 
-	/// Matching destination decryption or key-agreement interface.
-	/// A false return from Decrypt must stop processing of the result.
-	/// Implementations hold long-term private key material, so an instance must
-	/// never be copied, cached in a log or reused after the owning destination's
-	/// keys were regenerated.
+	/// Matching destination decryption or key-agreement interface. A false
+	/// return from Decrypt must stop processing of the result.
+	/// Implementations hold long-term private key material, so an instance
+	/// must never be copied, cached in a log or reused after the owning
+	/// destination's keys were regenerated.
 	class CryptoKeyDecryptor
 	{
 	public:
@@ -154,9 +156,10 @@ namespace crypto
 		X25519Keys m_StaticKeys;
 	};
 
-	// Generates an X25519 (or hybrid X25519 first hop) key pair. Returns false
-	// when the provider cannot generate a key; both buffers are left all-zero
-	// in that case and the caller must abort instead of publishing them.
+	// Generates an X25519 (or hybrid X25519 first hop) key pair. Returns
+	// false when the provider cannot generate a key; both buffers are left
+	// all-zero in that case and the caller must abort instead of
+	// publishing them.
 	bool CreateECIESX25519AEADRatchetRandomKeys (uint8_t * priv, uint8_t * pub); // including hybrid
 
 	constexpr size_t GetCryptoPrivateKeyLen (i2p::data::CryptoKeyType type)
@@ -198,9 +201,9 @@ namespace crypto
 		std::shared_ptr<CryptoKeyDecryptor> decryptor;
 
 		LocalEncryptionKey (i2p::data::CryptoKeyType t);
-		// Returns false for an unsupported type or a provider failure. pub and
-		// priv are then all-zero/empty, so a caller must not add the key to a
-		// LeaseSet2 key section.
+		// Returns false for an unsupported type or a provider failure. pub
+		// and priv are then all-zero/empty, so a caller must not add the key
+		// to a LeaseSet2 key section.
 		bool GenerateKeys ();
 		void CreateDecryptor ();
 	};

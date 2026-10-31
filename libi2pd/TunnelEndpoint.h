@@ -4,9 +4,10 @@
  *
  * openi2pd: TunnelEndpoint.
  *
- * Declares TunnelEndpoint, which reassembles decrypted tunnel data messages and
- * follow-on fragments, dispatches local, tunnel and router deliveries, and
- * buffers outbound I2NP messages for its transport sender.
+ * Declares TunnelEndpoint, which reassembles decrypted tunnel data
+ * messages and follow-on fragments, dispatches local, tunnel and router
+ * deliveries, and buffers outbound I2NP messages for its transport
+ * sender.
  *
  */
 
@@ -28,13 +29,15 @@ namespace i2p
 {
 namespace tunnel
 {
-	// Java FragmentHandler keeps an incomplete message for 45 s; the generic
-	// I2NP expiration (8 s) is far too short for a multi-tunnel retransmission.
+	// Java FragmentHandler keeps an incomplete message for 45 s; the
+	// generic I2NP expiration (8 s) is far too short for a multi-tunnel
+	// retransmission.
 	const uint64_t TUNNEL_FRAGMENT_REASSEMBLY_TIMEOUT = 45 * 1000; // milliseconds
 
 	/// Reassembles tunnel fragments and routes complete I2NP messages.
-	/// Reassembly maps and delivery queues are owned by the tunnel's caller;
-	/// calls that manipulate them must be serialized with cleanup and flushing.
+	/// Reassembly maps and delivery queues are owned by the tunnel's
+	/// caller; calls that manipulate them must be serialized with cleanup
+	/// and flushing.
 	class TunnelEndpoint final
 	{
 		struct TunnelMessageBlockEx : public TunnelMessageBlock
@@ -65,25 +68,36 @@ namespace tunnel
 			, m_CurrentMsgID (0) { };
 		~TunnelEndpoint () = default;
 		size_t GetNumReceivedBytes () const { return m_NumReceivedBytes; };
-		/** arrival time of the last tunnel data message in milliseconds, 0 if none */
+		/**
+		 * arrival time of the last tunnel data message in milliseconds, 0 if
+		 * none
+		 */
 		uint64_t GetLastReceiveTimeMs () const { return m_LastReceiveTime.load (std::memory_order_relaxed); };
-		/** pending reassembly state sizes, for diagnostics and regression tests */
+		/**
+		 * pending reassembly state sizes, for diagnostics and regression
+		 * tests
+		 */
 		size_t GetNumIncompleteMessages () const { return m_IncompleteMessages.size (); };
 		size_t GetNumOutOfSequenceFragments () const { return m_OutOfSequenceFragments.size (); };
 		void Cleanup ();
-		/** expiry pass against an explicit clock, used by deterministic tests */
+		/**
+		 * expiry pass against an explicit clock, used by deterministic tests
+		 */
 		void Cleanup (uint64_t nowMs);
 
-		/// Parse a decrypted cell after its owning tunnel has checked its size.
-		/// @pre The message contains a full TUNNEL_DATA_MSG_SIZE payload and has
-		/// 16 writable bytes after it for the checksum's IV suffix.
-		/// @param msg Shared message whose backing storage must remain alive while
-		/// retained; the final fragment may reuse this buffer.
+		/// Parse a decrypted cell after its owning tunnel has checked its
+		/// size.
+		/// @pre The message contains a full TUNNEL_DATA_MSG_SIZE payload and
+		///      has 16 writable bytes after it for the checksum's IV suffix.
+		/// @param msg Shared message whose backing storage must
+		///            remain alive while retained; the final fragment may
+		///            reuse this buffer.
 		void HandleDecryptedTunnelDataMsg (std::shared_ptr<I2NPMessage> msg);
 		void FlushI2NPMsgs ();
 
-		/// Borrow the current outbound target, or null when no sender/queue exists.
-		/// The pointed-to value may change on a later send and does not outlive this endpoint.
+		/// Borrow the current outbound target, or null when no sender/queue
+		/// exists. The pointed-to value may change on a later send and does
+		/// not outlive this endpoint.
 		const i2p::data::IdentHash * GetCurrentHash () const;
 		const std::unique_ptr<TunnelTransportSender> & GetSender () const { return m_Sender; };
 

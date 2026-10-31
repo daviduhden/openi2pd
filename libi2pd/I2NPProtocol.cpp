@@ -5,13 +5,14 @@
  * openi2pd: I2NPProtocol.
  *
  * Implements I2NP message allocation, header/checksum framing and
- * type-specific constructors for database lookup/store/search-reply, delivery
- * status, tunnel data/gateway and tunnel-build messages, with expiry and clock
- * skew checks. The batching handler groups tunnel data and gateway traffic and
- * rate-limits tunnel-build messages under bounded drop counters. The dispatcher
- * applies Java's 90/240 s expiration window, a bounded decaying duplicate
- * filter for every non-tunnel message and the origin-dependent clove allow-list
- * before a message reaches netDb, garlic or a status handler.
+ * type-specific constructors for database lookup/store/search-reply,
+ * delivery status, tunnel data/gateway and tunnel-build messages, with
+ * expiry and clock skew checks. The batching handler groups tunnel data
+ * and gateway traffic and rate-limits tunnel-build messages under
+ * bounded drop counters. The dispatcher applies Java's 90/240 s
+ * expiration window, a bounded decaying duplicate filter for every
+ * non-tunnel message and the origin-dependent clove allow-list before a
+ * message reaches netDb, garlic or a status handler.
  *
  */
 
@@ -85,9 +86,9 @@ bool I2NPMessage::IsExpired () const
 std::shared_ptr<I2NPMessage> CreateI2NPMessage (
 	I2NPMessageType msgType, const uint8_t * buf, size_t len, uint32_t replyMsgID)
 {
-	// Refuse an oversized payload before allocating: the previous version kept
-	// the truncated bytes and then wrote a header and size field describing a
-	// message that did not exist.
+	// Refuse an oversized payload before allocating: the previous version
+	// kept the truncated bytes and then wrote a header and size field
+	// describing a message that did not exist.
 	if (!buf && len) return nullptr;
 	if (len > I2NP_MAX_MESSAGE_SIZE - I2NP_HEADER_SIZE - 2)
 	{
@@ -111,9 +112,9 @@ std::shared_ptr<I2NPMessage> CreateI2NPMessage (
 {
 	if (!buf && len) return nullptr;
 	auto msg = NewI2NPMessage ();
-	// `<=`: a payload that exactly fills the buffer is valid. Returning the
-	// half-written message on overflow used to hand callers a header with a
-	// zero type and a stale length.
+	// `<=`: a payload that exactly fills the buffer is valid. Returning
+	// the half-written message on overflow used to hand callers a header
+	// with a zero type and a stale length.
 	if (len <= msg->maxLen - msg->offset)
 	{
 		memcpy (msg->GetBuffer (), buf, len);
@@ -171,9 +172,9 @@ std::shared_ptr<I2NPMessage> CreateDeliveryStatusMsg (uint32_t msgID)
 std::shared_ptr<I2NPMessage> CreateRouterInfoDatabaseLookupMsg (const uint8_t * key, const uint8_t * from,
 	uint32_t replyTunnelID, bool exploratory, std::unordered_set<i2p::data::IdentHash> * excludedPeers)
 {
-	// The number of excluded peers is a 16-bit field and the message itself
-	// is bounded. Cap the set before sizing the buffer so a large exclusion
-	// set cannot make the serialized block overflow.
+	// The number of excluded peers is a 16-bit field and the message
+	// itself is bounded. Cap the set before sizing the buffer so a large
+	// exclusion set cannot make the serialized block overflow.
 	size_t headerLen = 32 + 32 + (replyTunnelID ? 5 : 1) + 2;
 	size_t maxPeers = (I2NP_MAX_MESSAGE_SIZE - 2 - I2NP_HEADER_SIZE - headerLen) / 32;
 	maxPeers = std::min<size_t> (maxPeers, DATABASE_LOOKUP_MAX_NUM_PEERS);
@@ -316,10 +317,10 @@ std::shared_ptr<I2NPMessage> CreateDatabaseStoreMsg (std::shared_ptr<const i2p::
 	if (!router) // we send own RouterInfo
 		router = context.GetSharedRouterInfo ();
 
-	// Keep one owning snapshot for the whole serialization. GetBuffer() only
-	// returns a raw pointer after releasing m_BufferMutex, so a concurrent
-	// DeleteBuffer()/Update() could otherwise free or rewrite it while Gzip
-	// reads it.
+	// Keep one owning snapshot for the whole serialization. GetBuffer()
+	// only returns a raw pointer after releasing m_BufferMutex, so a
+	// concurrent DeleteBuffer()/Update() could otherwise free or rewrite
+	// it while Gzip reads it.
 	auto routerBuffer = router->GetSharedBuffer ();
 	if (!routerBuffer)
 	{
@@ -410,11 +411,12 @@ std::shared_ptr<I2NPMessage> CreateDatabaseStoreMsg (std::shared_ptr<const i2p::
 	uint32_t replyToken, std::shared_ptr<const i2p::tunnel::InboundTunnel> replyTunnel)
 {
 	if (!leaseSet) return nullptr;
-	// A non-zero reply token always requires the 4-byte reply tunnel ID and
-	// 32-byte reply gateway. Java's DatabaseStoreMessage.writeMessageBody()
-	// writes a zero tunnel ID plus the writer's hash when no tunnel is set;
-	// omitting the block entirely would make the receiver treat the first
-	// LeaseSet bytes as reply information.
+	// A non-zero reply token always requires the 4-byte reply tunnel ID
+	// and 32-byte reply gateway. Java's
+	// DatabaseStoreMessage.writeMessageBody() writes a zero tunnel ID plus
+	// the writer's hash when no tunnel is set; omitting the block entirely
+	// would make the receiver treat the first LeaseSet bytes as reply
+	// information.
 	size_t required = DATABASE_STORE_HEADER_SIZE + (replyToken ? 36 : 0) + leaseSet->GetBufferLen ();
 	auto m = NewI2NPMessage (required);
 	if (required > m->maxLen)
@@ -485,9 +487,9 @@ std::shared_ptr<I2NPMessage> CreateEmptyTunnelDataMsg (bool endpoint)
 
 std::shared_ptr<I2NPMessage> CreateTunnelGatewayMsg (uint32_t tunnelID, const uint8_t * buf, size_t len)
 {
-	// Reserve the six-byte gateway header in addition to the I2NP header. The
-	// previous +0 reservation truncated payloads exactly at buffer-tier edges
-	// while still advertising the full length.
+	// Reserve the six-byte gateway header in addition to the I2NP header.
+	// The previous +0 reservation truncated payloads exactly at
+	// buffer-tier edges while still advertising the full length.
 	auto msg = NewI2NPMessage (len + TUNNEL_GATEWAY_HEADER_SIZE);
 	if (len > std::numeric_limits<uint16_t>::max ()) return nullptr;
 	uint8_t * payload = msg->GetPayload ();
@@ -551,8 +553,8 @@ std::shared_ptr<I2NPMessage> CreateTunnelGatewayMsg (
 
 size_t GetI2NPMessageLength (const uint8_t * msg, size_t len)
 {
-	// Both failures are reachable from an unauthenticated peer, so the log is
-	// throttled to the first and every 256th occurrence.
+	// Both failures are reachable from an unauthenticated peer, so the log
+	// is throttled to the first and every 256th occurrence.
 	static I2NPDropCounter lengthDrops;
 	if (len < I2NP_HEADER_SIZE_OFFSET + 2)
 	{
@@ -593,8 +595,9 @@ I2NPDuplicateFilter & GetI2NPRouterDuplicateFilter ()
 
 void I2NPDuplicateFilter::Rotate (uint64_t nowSeconds)
 {
-	// The previous generation is dropped wholesale and the current one becomes
-	// the previous, so an entry stays visible for at most two windows.
+	// The previous generation is dropped wholesale and the current one
+	// becomes the previous, so an entry stays visible for at most two
+	// windows.
 	m_Previous.swap (m_Current);
 	m_Current.clear ();
 	m_Order.clear ();
@@ -634,13 +637,14 @@ void I2NPDuplicateFilter::Clear ()
 bool IsI2NPDispatchDuplicate (const I2NPMessage & msg, uint64_t nowSeconds)
 {
 	// A TunnelData cell has its own IV-based replay filter at the tunnel
-	// endpoint, and SSU2 keeps a per-session message-ID map, so neither path
-	// may be second-guessed here.
+	// endpoint, and SSU2 keeps a per-session message-ID map, so neither
+	// path may be second-guessed here.
 	if (msg.GetTypeID () == eI2NPTunnelData) return false;
-	// A clove is deduplicated by its destination's per-context clove filter
-	// (GarlicDestination), which includes the destination-specific salt Java
-	// uses. Applying the router-wide key here as well would let a message to one
-	// destination suppress a different destination's clove with the same ID.
+	// A clove is deduplicated by its destination's per-context clove
+	// filter (GarlicDestination), which includes the destination-specific
+	// salt Java uses. Applying the router-wide key here as well would let
+	// a message to one destination suppress a different destination's
+	// clove with the same ID.
 	if (msg.fromClove) return false;
 	const uint32_t key = GetI2NPDuplicateKey (msg.GetMsgID (), msg.GetExpiration (), I2NP_DUPLICATE_SALT_ROUTER);
 	return g_RouterDuplicateFilter.CheckAndInsert (key, nowSeconds);
@@ -650,9 +654,10 @@ void HandleI2NPMessage (std::shared_ptr<I2NPMessage> msg)
 {
 	if (!msg) return;
 	uint8_t typeID = msg->GetTypeID ();
-	// The clove allow-list depends on the origin of the enclosing garlic: a
-	// tunnel-delivered clove is Java's InboundMessageDistributor path, a clove
-	// of a garlic received directly from a peer is HandleGarlicMessageJob.
+	// The clove allow-list depends on the origin of the enclosing garlic:
+	// a tunnel-delivered clove is Java's InboundMessageDistributor path, a
+	// clove of a garlic received directly from a peer is
+	// HandleGarlicMessageJob.
 	if (msg->fromClove && !IsAllowedCloveMessageType (typeID, msg->fromTunnel))
 	{
 		const uint64_t dropped = GetI2NPDispatchCounters ().disallowedCloveType.fetch_add (1) + 1;
@@ -662,9 +667,9 @@ void HandleI2NPMessage (std::shared_ptr<I2NPMessage> msg)
 		return;
 	}
 	// Java MessageValidator: drop a message whose expiration date is older
-	// than 90 s or further than 240 s in the future before any handler sees
-	// it. Replaying a very old netDb, garlic or DeliveryStatus message must not
-	// reach netDb/garlic/status state.
+	// than 90 s or further than 240 s in the future before any handler
+	// sees it. Replaying a very old netDb, garlic or DeliveryStatus
+	// message must not reach netDb/garlic/status state.
 	const uint64_t now = i2p::util::GetMillisecondsSinceEpoch ();
 	if (IsI2NPDispatchExpired (*msg, now))
 	{
@@ -700,7 +705,8 @@ void HandleI2NPMessage (std::shared_ptr<I2NPMessage> msg)
 		break;
 	}
 	case eI2NPDatabaseStore:
-		// forward to netDb if came directly or through exploratory tunnel as response to our request
+		// forward to netDb if came directly or through exploratory tunnel as
+		// response to our request
 		if (!msg->from || !msg->from->GetTunnelPool () || msg->from->GetTunnelPool ()->IsExploratory ())
 			i2p::data::netdb.PostI2NPMsg (msg);
 		break;

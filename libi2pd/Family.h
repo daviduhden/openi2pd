@@ -4,9 +4,10 @@
  *
  * openi2pd: Family.
  *
- * Handles I2P family certificates: loads trusted family signing keys and
- * verifies that a destination identity and signature belong to a named family.
- * Also creates the family signature attached to published destinations.
+ * Handles I2P family certificates: loads trusted family signing keys
+ * and verifies that a destination identity and signature belong to a
+ * named family. Also creates the family signature attached to published
+ * destinations.
  *
  */
 

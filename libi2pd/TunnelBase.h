@@ -4,10 +4,10 @@
  *
  * openi2pd: TunnelBase.
  *
- * Defines the tunnel base interface (IDs, next hop, creation time, message
- * handling and encryption), tunnel message block types, and
- * TunnelTransportSender, which resolves and caches the transport session used
- * to reach the next peer.
+ * Defines the tunnel base interface (IDs, next hop, creation time,
+ * message handling and encryption), tunnel message block types, and
+ * TunnelTransportSender, which resolves and caches the transport
+ * session used to reach the next peer.
  *
  */
 
@@ -41,18 +41,18 @@ namespace tunnel
 	const size_t TUNNEL_DATA_ENCRYPTED_SIZE = 1008;
 	const size_t TUNNEL_DATA_MAX_PAYLOAD_SIZE = 1003;
 
-	// Record table of a short tunnel build message. These live here because
-	// both the tunnel object and the pool that configures its length need
-	// them: a path longer than the record table is a memory-safety bug, not a
-	// tunable.
+	// Record table of a short tunnel build message. These live here
+	// because both the tunnel object and the pool that configures its
+	// length need them: a path longer than the record table is a
+	// memory-safety bug, not a tunable.
 	const int STANDARD_NUM_RECORDS = 4; // records in a ShortTunnelBuild message
 	const int MAX_NUM_RECORDS = 8;
-	// An inbound tunnel spends one record slot on the phony record, so a pool
-	// can never configure more than this many real hops for it.
+	// An inbound tunnel spends one record slot on the phony record, so a
+	// pool can never configure more than this many real hops for it.
 	const int MAX_INBOUND_HOPS = MAX_NUM_RECORDS - 1;
 	// Bounded inbound tunnel queue. A stalled tunnel worker must not let
-	// producers grow the queue without limit; excess messages are dropped and
-	// counted instead of retried.
+	// producers grow the queue without limit; excess messages are dropped
+	// and counted instead of retried.
 	const size_t TUNNEL_MESSAGE_QUEUE_MAX_SIZE = 8192;
 	inline bool IsTunnelQueueAdmissionAllowed (size_t queueSize)
 	{
@@ -73,17 +73,18 @@ namespace tunnel
 		std::shared_ptr<I2NPMessage> data;
 	};
 
-	/// One tunnel endpoint on this router, in either direction, with its IDs,
-	/// next hop and per-tunnel IV replay filter.
+	/// One tunnel endpoint on this router, in either direction, with its
+	/// IDs, next hop and per-tunnel IV replay filter.
 	///
-	/// `HandleTunnelDataMsg()` consumes the shared message it is given and runs
-	/// only on the tunnel worker. `SendTunnelDataMsg()` is the producing side;
-	/// each implementation decides its own synchronization, and the outbound and
-	/// transit-gateway variants serialize producers with a mutex.
-	/// `EncryptTunnelMsg()` applies one hop's layer of the onion encryption: `in`
-	/// is the plaintext cell and `out` receives the encrypted one. A transit
-	/// participant re-encrypts in place, so `in` and `out` may alias there; any
-	/// caller that still needs the plaintext must pass two distinct buffers.
+	/// `HandleTunnelDataMsg()` consumes the shared message it is given and
+	/// runs only on the tunnel worker. `SendTunnelDataMsg()` is the
+	/// producing side; each implementation decides its own
+	/// synchronization, and the outbound and transit-gateway variants
+	/// serialize producers with a mutex. `EncryptTunnelMsg()` applies one
+	/// hop's layer of the onion encryption: `in` is the plaintext cell and
+	/// `out` receives the encrypted one. A transit participant re-encrypts
+	/// in place, so `in` and `out` may alias there; any caller that still
+	/// needs the plaintext must pass two distinct buffers.
 	class TunnelBase
 	{
 	public:
@@ -153,14 +154,16 @@ namespace tunnel
 		}
 	};
 
-	/// Caches the transport session used to reach the next hop of a tunnel.
+	/// Caches the transport session used to reach the next hop of a
+	/// tunnel.
 	///
-	/// `m_CurrentTransport` is a weak reference on purpose: a session can close
-	/// at any time, and a strong reference would keep a dead session and its
-	/// buffers alive. A miss harvests a completed `transports.SendMessages`
-	/// future and adopts the session when it is established; while that future
-	/// is still pending the cells are handed to `Transports` again rather than
-	/// waiting here, so the tunnel worker never blocks on a connect attempt.
+	/// `m_CurrentTransport` is a weak reference on purpose: a session can
+	/// close at any time, and a strong reference would keep a dead session
+	/// and its buffers alive. A miss harvests a completed
+	/// `transports.SendMessages` future and adopts the session when it is
+	/// established; while that future is still pending the cells are
+	/// handed to `Transports` again rather than waiting here, so the
+	/// tunnel worker never blocks on a connect attempt.
 	class TunnelTransportSender final
 	{
 	public:

@@ -4,9 +4,10 @@
  *
  * openi2pd: Socks5.
  *
- * Header-only asynchronous SOCKS5 client helpers for I2P transports: method
- * negotiation, CONNECT requests for IPv4, IPv6 and named endpoints, and reply
- * parsing that maps SOCKS5 reply codes to Boost.Asio error codes.
+ * Header-only asynchronous SOCKS5 client helpers for I2P transports:
+ * method negotiation, CONNECT requests for IPv4, IPv6 and named
+ * endpoints, and reply parsing that maps SOCKS5 reply codes to
+ * Boost.Asio error codes.
  *
  */
 

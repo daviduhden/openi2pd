@@ -4,16 +4,18 @@
  *
  * openi2pd: I2PTunnelAccessFilter.
  *
- * Parses and evaluates the server-tunnel `filterDefinition` grammar used by
- * the Java i2ptunnel `access` elements: a `default=allow|deny` fallback plus
- * an ordered list of `explicit`, `file` and `record` rules whose first match
- * decides. The definition is immutable; the runtime object caches parsed
- * `file` lists (reloaded when the file's mtime/size changes, bounded to 1 MiB
- * and 100k entries) and the per-destination `record` counters.
+ * Parses and evaluates the server-tunnel `filterDefinition` grammar
+ * used by the Java i2ptunnel `access` elements: a `default=allow|deny`
+ * fallback plus an ordered list of `explicit`, `file` and `record`
+ * rules whose first match decides. The definition is immutable; the
+ * runtime object caches parsed `file` lists (reloaded when the file's
+ * mtime/size changes, bounded to 1 MiB and 100k entries) and the
+ * per-destination `record` counters.
  *
- * Evaluation never blocks on the packet path beyond one bounded local file
- * read per changed list and never takes a lock that the streaming packet path
- * holds. No rule value, file path or entry list is ever logged.
+ * Evaluation never blocks on the packet path beyond one bounded local
+ * file read per changed list and never takes a lock that the streaming
+ * packet path holds. No rule value, file path or entry list is ever
+ * logged.
  *
  */
 
@@ -42,8 +44,8 @@ namespace client
 		eReset // one signed RESET
 	};
 
-	// One parsed `filterDefinition` value. Instances are immutable and shared
-	// between the configuration reader and the runtime evaluator.
+	// One parsed `filterDefinition` value. Instances are immutable and
+	// shared between the configuration reader and the runtime evaluator.
 	class FilterDefinition
 	{
 	public:
@@ -55,8 +57,9 @@ namespace client
 		};
 
 		// A dotted component mask matched against the loopback-mapped IPv4
-		// address of a peer (127.&lt;hash byte 0&gt;.&lt;byte 1&gt;.&lt;byte 2&gt;, the same
-		// convention the Linux unique-local mapping uses). `-1` is a wildcard.
+		// address of a peer (127.&lt;hash byte 0&gt;.&lt;byte 1&gt;.&lt;byte
+		// 2&gt;, the same convention the Linux unique-local mapping uses).
+		// `-1` is a wildcard.
 		struct AddressMask
 		{
 			std::array<int, 4> octets { -1, -1, -1, -1 };
@@ -84,8 +87,9 @@ namespace client
 		static constexpr size_t MAX_FILE_ELEMENTS = 16;
 		static constexpr size_t MAX_TARGET_LENGTH = 256;
 
-		// Parses a `filterDefinition` value (`;` or newline separated). Returns
-		// nullptr and sets a non-secret `error` description on invalid grammar.
+		// Parses a `filterDefinition` value (`;` or newline separated).
+		// Returns nullptr and sets a non-secret `error` description on
+		// invalid grammar.
 		static std::shared_ptr<const FilterDefinition> Parse (std::string_view definition, std::string & error);
 		// Upgrade path for the legacy inline `accesslist`/`whitelist`: the
 		// listed destinations are allowed and everything else is denied.
@@ -155,8 +159,9 @@ namespace client
 			uint64_t lastSeen = 0;
 		};
 
-		// All helpers below run with m_Mutex held; EvaluateInternal is the only
-		// place that takes it, so no rule evaluation ever nests a filter lock.
+		// All helpers below run with m_Mutex held; EvaluateInternal is the
+		// only place that takes it, so no rule evaluation ever nests a filter
+		// lock.
 		FileCache & GetFileCacheLocked (const std::string & path, uint64_t nowSeconds) const;
 		uint32_t NextRecordCountLocked (const i2p::data::IdentHash & peer, uint64_t nowSeconds) const;
 		uint32_t PeekRecordCountLocked (const i2p::data::IdentHash & peer) const;
@@ -170,8 +175,9 @@ namespace client
 		mutable std::unordered_map<i2p::data::IdentHash, RecordEntry> m_Records;
 	};
 
-	// Parses one filter target (`*`, a base32/base64 destination or a dotted
-	// address mask). Exposed for the configuration validator and the tests.
+	// Parses one filter target (`*`, a base32/base64 destination or a
+	// dotted address mask). Exposed for the configuration validator and
+	// the tests.
 	bool ParseFilterTarget (std::string_view target, std::vector<i2p::data::IdentHash> & destinations,
 		std::vector<FilterDefinition::AddressMask> & masks, bool & matchesAny, std::string & error);
 

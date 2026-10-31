@@ -4,7 +4,11 @@
  *
  * openi2pd: test eciesx25519 ratchet session.
  *
- * Runs the ECIES-X25519-AEAD-Ratchet New Session/New Session Reply handshake between in-process destinations, validating payload block ordering, reply-split loss in both directions, delayed replies, tagset exhaustion, the router-N envelope, replay handling, retransmission and established-session traffic.
+ * Runs the ECIES-X25519-AEAD-Ratchet New Session/New Session Reply
+ * handshake between in-process destinations, validating payload block
+ * ordering, reply-split loss in both directions, delayed replies,
+ * tagset exhaustion, the router-N envelope, replay handling,
+ * retransmission and established-session traffic.
  *
  */
 
@@ -177,8 +181,10 @@ void CheckHandshakePayloadValidation ()
 			static_cast<uint8_t> (ts >> 8), static_cast<uint8_t> (ts) };
 	};
 
-	// Java accepts an empty NS clove set without creating a session; openi2pd
-	// deliberately requires a non-empty Garlic block, so DateTime-only fails.
+	// Java accepts an empty NS clove set without creating a session;
+	// openi2pd
+	// deliberately requires a non-empty Garlic block, so DateTime-only
+	// fails.
 	append (i2p::garlic::eECIESx25519BlkDateTime, dateTime ());
 	assert (!i2p::garlic::ValidateNewSessionPayload (payload.data (), payload.size ()));
 
@@ -203,8 +209,9 @@ void CheckHandshakePayloadValidation ()
 		assert (!i2p::garlic::ValidateNewSessionPayload (stale.data (), stale.size ()));
 	}
 
-	// A second DateTime, a Termination/SessionID/unknown block, a zero-length
-	// Garlic block, a malformed ACK size and any block after Padding fail.
+	// A second DateTime, a Termination/SessionID/unknown block, a
+	// zero-length Garlic block, a malformed ACK size and any block after
+	// Padding fail.
 	payload.clear ();
 	append (i2p::garlic::eECIESx25519BlkDateTime, dateTime ());
 	append (i2p::garlic::eECIESx25519BlkDateTime, dateTime ());
@@ -251,8 +258,8 @@ void CheckHandshakePayloadValidation ()
 	payload = { i2p::garlic::eECIESx25519BlkDateTime, 0, 4, 0, 0, 0 };
 	assert (!i2p::garlic::ValidateNewSessionPayload (payload.data (), payload.size ()));
 
-	// Established/NSR payloads are validated before any clove, ACK or ratchet
-	// side effect. A stale DateTime must reject the whole payload.
+	// Established/NSR payloads are validated before any clove, ACK or
+	// ratchet side effect. A stale DateTime must reject the whole payload.
 	payload.clear ();
 	{
 		const uint32_t stale = static_cast<uint32_t> (now - 5 * 60 - 1);
@@ -289,10 +296,10 @@ void CheckHandshakePayloadValidation ()
 	append (i2p::garlic::eECIESx25519BlkPadding, { 0, 0 });
 	assert (i2p::garlic::ValidateNewSessionReplyPayload (payload.data (), payload.size ()));
 
-	// Termination, NEXT_KEY, SessionID, ACK, ACK_REQUEST and unknown blocks
-	// are all rejected before any split or session side effect. In particular
-	// a Termination block must never reach RemoveECIESx25519Session from an
-	// NSR.
+	// Termination, NEXT_KEY, SessionID, ACK, ACK_REQUEST and unknown
+	// blocks are all rejected before any split or session side effect. In
+	// particular a Termination block must never reach
+	// RemoveECIESx25519Session from an NSR.
 	{
 		struct RejectedBlock
 		{
@@ -349,7 +356,8 @@ void InteropLoop (CryptoKeyType type, const char * label)
 	assert (bob.destination->Received ().size () == 1);
 	assert (bob.destination->Received ().back ().payload == again);
 
-	// Duplicate New Session ephemeral key is rejected before any new session
+	// Duplicate New Session ephemeral key is rejected before any new
+	// session
 	// is created, even when the caller bypasses the per-destination rate
 	// limiter (as a replay could).
 	{
@@ -383,8 +391,9 @@ void InteropLoop (CryptoKeyType type, const char * label)
 		assert (frank.destination->Received ().size () == 1);
 	}
 
-	// New Session Reply retransmission: two replies with different tags and
-	// different ephemeral keys; the ES chain follows the latest accepted one.
+	// New Session Reply retransmission: two replies with different tags
+	// and different ephemeral keys; the ES chain follows the latest
+	// accepted one.
 	{
 		Peer lisa = MakePeer (type);
 		Peer mark = MakePeer (type);
@@ -498,7 +507,8 @@ void InteropLoop (CryptoKeyType type, const char * label)
 
 void CheckRouterEnvelope ()
 {
-	// The router N envelope is exactly 32-byte ephemeral key + garlic payload
+	// The router N envelope is exactly 32-byte ephemeral key + garlic
+	// payload
 	// + 16-byte Poly1305 tag. It must never gain the spec-1c 32-byte flags
 	// section that Java's N decoder does not parse.
 	Peer bob = MakePeer (i2p::data::CRYPTO_KEY_TYPE_ECIES_X25519_AEAD);
@@ -577,9 +587,9 @@ void TagsetExhaustion (CryptoKeyType type)
 	assert (alice.session->IsReadyToSend ());
 	assert (!alice.session->IsExhausted ());
 
-	// The 16-bit tag space holds 65536 tags. One was already used by the ES
-	// above, so exactly 65535 more can be sent. Exhaustion must mark the
-	// session unusable for sending without removing or terminating it.
+	// The 16-bit tag space holds 65536 tags. One was already used by the
+	// ES above, so exactly 65535 more can be sent. Exhaustion must mark
+	// the session unusable for sending without removing or terminating it.
 	int sent = 0;
 	while (sent <= 0x10000)
 	{
@@ -595,7 +605,8 @@ void TagsetExhaustion (CryptoKeyType type)
 	assert (!alice.session->IsReadyToSend ());
 	assert (!alice.session->IsTerminated ());
 
-	// The destination must hand out a fresh session for the next send while
+	// The destination must hand out a fresh session for the next send
+	// while
 	// the exhausted object stays alive to receive delayed messages.
 	auto replacement = alice.destination->GetRoutingSession (bob.routing, true);
 	assert (replacement);

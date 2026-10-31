@@ -4,9 +4,10 @@
  *
  * openi2pd: test transit tunnel build replay filter and message sizes.
  *
- * The transit build handlers must reject a replayed request and a payload that
- * carries trailing bytes. Deterministic: the filter is driven with explicit
- * clocks and the size predicates are pure functions.
+ * The transit build handlers must reject a replayed request and a
+ * payload that carries trailing bytes. Deterministic: the filter is
+ * driven with explicit clocks and the size predicates are pure
+ * functions.
  *
  */
 
@@ -90,9 +91,9 @@ void TestReplayTableIsBounded ()
 
 void TestBuildExpirations ()
 {
-	// Java BuildHandler: a reply for a tunnel we created may take a full round
-	// trip, a relayed request only has to reach the next hop. Both are longer
-	// than the generic 8 s I2NP expiration.
+	// Java BuildHandler: a reply for a tunnel we created may take a full
+	// round trip, a relayed request only has to reach the next hop. Both
+	// are longer than the generic 8 s I2NP expiration.
 	assert (TUNNEL_BUILD_REPLY_EXPIRATION_MS == 60 * 1000);
 	assert (TUNNEL_BUILD_RELAY_EXPIRATION_MS == 25 * 1000);
 	assert (TUNNEL_BUILD_REPLY_EXPIRATION_MS > i2p::I2NP_MESSAGE_EXPIRATION_TIMEOUT);

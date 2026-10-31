@@ -4,9 +4,10 @@
  *
  * openi2pd: I2PService.
  *
- * Declares the base class for client services, its handler lifetime protocol
- * and the bidirectional socket pipe used by tunnel implementations. It also
- * defines the readiness and idle-close policy shared by acceptors.
+ * Declares the base class for client services, its handler lifetime
+ * protocol and the bidirectional socket pipe used by tunnel
+ * implementations. It also defines the readiness and idle-close policy
+ * shared by acceptors.
  *
  */
 
@@ -34,9 +35,10 @@ namespace client
 	constexpr uint64_t I2P_SERVICE_MIN_CLOSE_IDLE_TIME = 30000; // in milliseconds
 
 	class I2PServiceHandler;
-	/// Shared owner for a client destination and its active service handlers.
-	/// Handler entries retain shared ownership; handlers refer back weakly so
-	/// the registry does not itself create an ownership cycle.
+	/// Shared owner for a client destination and its active service
+	/// handlers. Handler entries retain shared ownership; handlers refer
+	/// back weakly so the registry does not itself create an ownership
+	/// cycle.
 	class I2PService : public std::enable_shared_from_this<I2PService>
 	{
 	public:
@@ -57,8 +59,9 @@ namespace client
 			std::unique_lock<std::mutex> l (m_HandlersMutex);
 			m_Handlers.erase (conn);
 		}
-		/// Detach a snapshot under the registry lock, then terminate its handlers
-		/// outside that lock because termination can re-enter RemoveHandler().
+		/// Detach a snapshot under the registry lock, then terminate its
+		/// handlers outside that lock because termination can re-enter
+		/// RemoveHandler().
 		void ClearHandlers ();
 		size_t GetNumHandlers () const
 		{
@@ -82,19 +85,20 @@ namespace client
 			m_LocalDestination = dest;
 		}
 		/// Resolve @a dest through the address book and open one I2P stream.
-		/// The name comes from a local client or proxy request and is therefore
-		/// untrusted: an unresolvable or invalid name completes with `nullptr`
-		/// instead of throwing. Completion runs on the destination's io_context,
-		/// and a b33/blinded name takes the blinded-key path rather than being
-		/// looked up as a b32 hash.
+		/// The name comes from a local client or proxy request and is
+		/// therefore untrusted: an unresolvable or invalid name completes
+		/// with `nullptr` instead of throwing. Completion runs on the
+		/// destination's io_context, and a b33/blinded name takes the
+		/// blinded-key path rather than being looked up as a b32 hash.
 		/// @param dest full base64 destination, `.i2p` host name or b33 label
 		/// @param port destination port, 0 when the service supplies it
 		void CreateStream (StreamRequestComplete streamRequestComplete, std::string_view dest, uint16_t port = 0);
-		/// Same as above for an address that was already resolved by the caller.
-		/// When a connect timeout is configured and the destination is not yet
-		/// ready, the request waits on a readiness callback that captures a weak
-		/// owner; a service stopped in the meantime completes the request with
-		/// `nullptr` instead of resuming work for a dead service.
+		/// Same as above for an address that was already resolved by the
+		/// caller. When a connect timeout is configured and the destination
+		/// is not yet ready, the request waits on a readiness callback that
+		/// captures a weak owner; a service stopped in the meantime completes
+		/// the request with `nullptr` instead of resuming work for a dead
+		/// service.
 		void CreateStream (StreamRequestComplete complete, std::shared_ptr<const Address> address, uint16_t port);
 		auto & GetService () { return m_LocalDestination->GetService (); }
 
@@ -142,8 +146,9 @@ namespace client
 		bool isUpdated; // transient, used during reload only
 	};
 
-	/// Base for a service-owned handler. Kill() makes derived teardown idempotent;
-	/// Done() removes the handler if its weak owner still exists.
+	/// Base for a service-owned handler. Kill() makes derived teardown
+	/// idempotent; Done() removes the handler if its weak owner still
+	/// exists.
 	class I2PServiceHandler
 	{
 	public:
@@ -184,11 +189,13 @@ namespace client
 
 	const size_t SOCKETS_PIPE_BUFFER_SIZE = 8192 * 8;
 
-	/// Bidirectional asynchronous pipe with one fixed buffer per direction.
-	/// Each read is followed by a complete write before reusing that buffer;
-	/// callbacks retain the pipe and both endpoints while IO is in flight.
-	/// @warning Normal termination must precede release of the final shared
-	/// owner: the active teardown path uses shared_from_this().
+	/// Bidirectional asynchronous pipe with one fixed buffer per
+	/// direction. Each read is followed by a complete write before reusing
+	/// that buffer; callbacks retain the pipe and both endpoints while IO
+	/// is in flight.
+	/// @warning Normal termination must precede release of the
+	///          final shared owner: the active teardown path uses
+	///          shared_from_this().
 	template <typename SocketUpstream, typename SocketDownstream>
 	class SocketsPipe : public I2PServiceHandler,
 						public std::enable_shared_from_this<SocketsPipe<SocketUpstream, SocketDownstream>>
@@ -285,14 +292,15 @@ namespace client
 		return std::make_shared<SocketsPipe<SocketUpstream, SocketDownstream>> (owner, upstream, downstream);
 	}
 
-	// A local listener must not let an unauthenticated peer allocate handlers
-	// without bound. The cap is per listener and applies to every accepted
-	// socket, including those still in a proxy handshake.
+	// A local listener must not let an unauthenticated peer allocate
+	// handlers without bound. The cap is per listener and applies to every
+	// accepted socket, including those still in a proxy handshake.
 	constexpr size_t MAX_ACCEPTED_HANDLERS = 1024;
 
 	/// Listener that creates one service handler per accepted socket.
-	/// @warning A successful accept completion can race Stop() and publish after
-	/// the handler snapshot; Stop() does not share an admission lock with it.
+	/// @warning A successful accept completion can race Stop()
+	///          and publish after the handler snapshot; Stop() does not
+	///          share an admission lock with it.
 	template <typename Protocol> class ServiceAcceptor : public I2PService
 	{
 	public:
@@ -308,7 +316,8 @@ namespace client
 		{
 			I2PService::Start ();
 			m_Acceptor.reset (new typename Protocol::acceptor (GetService (), m_LocalEndpoint));
-			// update the local end point in case port has been set zero and got updated now
+			// update the local end point in case port has been set zero and got
+			// updated now
 			m_LocalEndpoint = m_Acceptor->local_endpoint ();
 			m_Acceptor->listen ();
 			Accept ();
@@ -321,8 +330,8 @@ namespace client
 				m_Acceptor.reset (nullptr);
 			}
 			// Mark the service stopped before clearing the current handlers. The
-			// accept callback does not check this flag under the registry lock, so
-			// an already-completed accept may still race this snapshot.
+			// accept callback does not check this flag under the registry lock,
+			// so an already-completed accept may still race this snapshot.
 			I2PService::Stop ();
 			ClearHandlers ();
 		}

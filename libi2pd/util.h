@@ -4,10 +4,10 @@
  *
  * openi2pd: util.
  *
- * Provides allocation pools (single-threaded and mutex-protected), asio worker
- * service wrappers, RAII helpers, the Mapping option codec and network utilities
- * such as MTU discovery, interface lookup and local/reserved/Yggdrasil range
- * checks.
+ * Provides allocation pools (single-threaded and mutex-protected), asio
+ * worker service wrappers, RAII helpers, the Mapping option codec and
+ * network utilities such as MTU discovery, interface lookup and
+ * local/reserved/Yggdrasil range checks.
  *
  */
 
@@ -37,7 +37,8 @@ namespace util
 
 	template <class T> class MemoryPool
 	{
-		//BOOST_STATIC_ASSERT_MSG(sizeof(T) >= sizeof(void*), "size cannot be less that general pointer size");
+		// BOOST_STATIC_ASSERT_MSG(sizeof(T) >= sizeof(void*), "size cannot be
+		// less that general pointer size");
 
 	public:
 		MemoryPool ()
@@ -102,9 +103,10 @@ namespace util
 		}
 
 		/// Acquire with shared ownership.
-		/// @warning The result keeps the object alive but holds only a borrow of
-		/// the pool: the last owner must be released before the pool is
-		/// destroyed, otherwise the deleter touches freed pool state.
+		/// @warning The result keeps the object alive but holds only
+		///          a borrow of the pool: the last owner must be released
+		///          before the pool is destroyed, otherwise the deleter
+		///          touches freed pool state.
 		template <typename... TArgs> std::shared_ptr<T> AcquireShared (TArgs &&... args)
 		{
 			return std::shared_ptr<T> (Acquire (std::forward<TArgs> (args)...), Deleter { this });
@@ -145,10 +147,10 @@ namespace util
 	{
 	public:
 		MemoryPoolMt () { }
-		/// Acquire from the shared pool. The locked section only pops a cached
-		/// object; construction of a new object happens outside the mutex, so a
-		/// slow constructor cannot block other threads and a throwing constructor
-		/// does not leave the pool locked.
+		/// Acquire from the shared pool. The locked section only pops a
+		/// cached object; construction of a new object happens outside the
+		/// mutex, so a slow constructor cannot block other threads and a
+		/// throwing constructor does not leave the pool locked.
 		template <typename... TArgs> T * AcquireMt (TArgs &&... args)
 		{
 			T * ret = nullptr;
@@ -193,7 +195,9 @@ namespace util
 			}
 		}
 
-		/** Thread-safe typed pool deleter; the pool must outlive the object. */
+		/**
+		 * Thread-safe typed pool deleter; the pool must outlive the object.
+		 */
 		struct Deleter
 		{
 			MemoryPoolMt * pool;
@@ -338,8 +342,9 @@ namespace util
 
 	uint_fast32_t GetRngSeed ();
 
-	// Bounded, NUL-terminating copy for fixed platform buffers. Returns the
-	// required source length (like strlcpy) without reading past the view.
+	// Bounded, NUL-terminating copy for fixed platform buffers. Returns
+	// the required source length (like strlcpy) without reading past the
+	// view.
 	inline std::size_t CopyString (char * destination, std::size_t capacity, std::string_view source) noexcept
 	{
 		const std::size_t required = source.size ();

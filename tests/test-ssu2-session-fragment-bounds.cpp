@@ -4,7 +4,9 @@
  *
  * openi2pd: test ssu2 session fragment bounds.
  *
- * Checks SSU2 SessionConfirmed 4-bit and follow-on 7-bit fragment limits, rejecting out-of-range or duplicate last markers and reassembly that would exceed the I2NP message bound.
+ * Checks SSU2 SessionConfirmed 4-bit and follow-on 7-bit fragment
+ * limits, rejecting out-of-range or duplicate last markers and
+ * reassembly that would exceed the I2NP message bound.
  *
  */
 
@@ -41,7 +43,8 @@ size_t CountQueuedFragments (const std::shared_ptr<i2p::transport::SSU2Incomplet
 
 int main ()
 {
-	// SessionConfirmed uses a 4-bit fragment count; FIRST/FOLLOW-ON fragments
+	// SessionConfirmed uses a 4-bit fragment count; FIRST/FOLLOW-ON
+	// fragments
 	// use the wider 7-bit field. Do not share these limits.
 	static_assert (i2p::transport::SSU2_MAX_SESSION_CONFIRMED_FRAGMENTS == 15);
 	static_assert (i2p::transport::SSU2_MAX_SESSION_CONFIRMED_FRAGMENTS < i2p::transport::SSU2_MAX_NUM_FRAGMENTS,
@@ -71,8 +74,8 @@ int main ()
 	assert (data[1] == 0xA2);
 	assert (data[2] == 0xA3);
 
-	// A fragment above the known last marker, and a second last marker, are
-	// rejected rather than truncating or extending the message.
+	// A fragment above the known last marker, and a second last marker,
+	// are rejected rather than truncating or extending the message.
 	auto second = std::make_shared<i2p::transport::SSU2IncompleteMessage> ();
 	second->msg = i2p::NewI2NPShortMessage ();
 	second->msg->len = second->msg->offset;
@@ -86,9 +89,9 @@ int main ()
 	assert (second->outOfSequenceFragments == last);
 	assert (!last->next);
 
-	// An in-sequence follow-on fragment that would push the reassembled I2NP
-	// message past its absolute limit is rejected without appending or
-	// advancing the fragment number.
+	// An in-sequence follow-on fragment that would push the reassembled
+	// I2NP message past its absolute limit is rejected without appending
+	// or advancing the fragment number.
 	auto overflow = std::make_shared<i2p::transport::SSU2IncompleteMessage> ();
 	overflow->msg = i2p::NewI2NPShortMessage ();
 	overflow->msg->len = i2p::I2NP_MAX_MESSAGE_SIZE;
@@ -100,10 +103,10 @@ int main ()
 
 	// Out-of-sequence chains are bounded per incomplete message. The byte
 	// budget charges the fixed fragment slab (every Fragment owns a full
-	// SSU2_MAX_PACKET_SIZE buffer), not the carried payload length, so tiny
-	// fragments cannot pin more memory than the budget allows. The cap must
-	// reject the excess fragment without disturbing the accepted chain, and
-	// consuming the queue must release the accounting again.
+	// SSU2_MAX_PACKET_SIZE buffer), not the carried payload length, so
+	// tiny fragments cannot pin more memory than the budget allows. The
+	// cap must reject the excess fragment without disturbing the accepted
+	// chain, and consuming the queue must release the accounting again.
 	constexpr size_t slab = sizeof (i2p::transport::SSU2IncompleteMessage::Fragment);
 	static_assert (slab > i2p::transport::SSU2_MAX_PACKET_SIZE, "the slab includes bookkeeping");
 	auto bounded = std::make_shared<i2p::transport::SSU2IncompleteMessage> ();
@@ -119,8 +122,9 @@ int main ()
 		++acceptedFragments;
 	}
 	assert (acceptedFragments > 0);
-	// The per-message fragment count is the primary cap: a full chain must fit
-	// inside the fixed slab budget, and the next fragment is always rejected.
+	// The per-message fragment count is the primary cap: a full chain must
+	// fit inside the fixed slab budget, and the next fragment is always
+	// rejected.
 	assert (acceptedFragments == i2p::transport::SSU2_MAX_FRAGMENTS_PER_MESSAGE);
 	assert (bounded->numOutOfSequenceFragments == acceptedFragments);
 	assert (bounded->outOfSequenceBytes == acceptedFragments * slab);
@@ -134,9 +138,9 @@ int main ()
 	assert (bounded->numOutOfSequenceFragments == 0);
 	assert (bounded->outOfSequenceBytes == 0);
 
-	// The same accounting holds for larger payloads: the budget follows the
-	// slab count, so a 256-byte fragment can no longer queue more entries than
-	// a one-byte fragment could.
+	// The same accounting holds for larger payloads: the budget follows
+	// the slab count, so a 256-byte fragment can no longer queue more
+	// entries than a one-byte fragment could.
 	auto bytes = std::make_shared<i2p::transport::SSU2IncompleteMessage> ();
 	bytes->nextFragmentNum = 1;
 	for (int i = 1; i <= static_cast<int> (i2p::transport::SSU2_MAX_OUT_OF_SEQUENCE_FRAGMENTS); ++i)
@@ -147,9 +151,10 @@ int main ()
 	assert (CountQueuedFragments (bytes) == bytes->numOutOfSequenceFragments);
 
 	// SSUExt readers must never observe a vector being resized or cleared.
-	// The writer uses the same mutex as RouterInfo::UpdateIntroducers and the
-	// RouterContext clears; the reader exercises both snapshot accessors. The
-	// manual TSan job is the intended race detector for this case.
+	// The writer uses the same mutex as RouterInfo::UpdateIntroducers and
+	// the RouterContext clears; the reader exercises both snapshot
+	// accessors. The manual TSan job is the intended race detector for
+	// this case.
 	i2p::data::RouterInfo::SSUExt ext;
 	std::atomic<bool> stop { false };
 	std::thread reader (

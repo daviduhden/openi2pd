@@ -4,12 +4,13 @@
  *
  * openi2pd: ECIESX25519AEADRatchetSession.
  *
- * Implements the ECIES-X25519 AEAD ratchet (Noise IK) for garlic sessions:
- * new-session and reply handshakes, optional ML-KEM hybrid key exchange,
- * session-tag and symmetric-key ratchets with 16-bit indices, acknowledgements
- * and ratchet rotation. Handshakes are trial-authenticated before any state is
- * committed, and all-zero X25519 outputs, timestamp deviations, replays and
- * oversized tag/ACK sets are rejected.
+ * Implements the ECIES-X25519 AEAD ratchet (Noise IK) for garlic
+ * sessions: new-session and reply handshakes, optional ML-KEM hybrid
+ * key exchange, session-tag and symmetric-key ratchets with 16-bit
+ * indices, acknowledgements and ratchet rotation. Handshakes are
+ * trial-authenticated before any state is committed, and all-zero
+ * X25519 outputs, timestamp deviations, replays and oversized tag/ACK
+ * sets are rejected.
  *
  */
 
@@ -36,9 +37,9 @@ namespace garlic
 {
 	namespace
 	{
-		// X25519 accepts low-order points and returns an all-zero shared secret.
-		// Such a value is known to everybody, so it must never enter the Noise
-		// chain key of an authenticated session.
+		// X25519 accepts low-order points and returns an all-zero shared
+		// secret. Such a value is known to everybody, so it must never enter
+		// the Noise chain key of an authenticated session.
 		bool IsZeroBuf (const uint8_t * buf, size_t len)
 		{
 			uint8_t acc = 0;
@@ -61,7 +62,8 @@ namespace garlic
 			rootKey, k, 32, "KDFDHRatchetStep", keydata); // keydata = HKDF(rootKey, k, "KDFDHRatchetStep", 64)
 		memcpy (m_NextRootKey, keydata, 32); // nextRootKey = keydata[0:31]
 		i2p::crypto::HKDF (keydata + 32, nullptr, 0, "TagAndKeyGenKeys", m_SessionTagKeyData);
-		// [sessTag_ck, symmKey_ck] = HKDF(keydata[32:63], ZEROLEN, "TagAndKeyGenKeys", 64)
+		// [sessTag_ck, symmKey_ck] = HKDF(keydata[32:63], ZEROLEN,
+		// "TagAndKeyGenKeys", 64)
 		memcpy (m_SymmKeyCK, (const uint8_t *)m_SessionTagKeyData + 32, 32);
 		m_NextSymmKeyIndex = 0;
 	}
@@ -598,8 +600,8 @@ namespace garlic
 		bool gotDateTime = false, gotPadding = false, gotTermination = false;
 		int nextKeyBlocks = 0, forwardKeys = 0, reverseKeys = 0;
 		unsigned int garlicBlocks = 0;
-		// the block header is three bytes: without all of them the size field below
-		// would be read past the end of the payload
+		// the block header is three bytes: without all of them the size field
+		// below would be read past the end of the payload
 		while (offset < len)
 		{
 			if (offset + 3 > len)
@@ -1485,9 +1487,9 @@ namespace garlic
 		uint8_t keydata[64];
 		i2p::modern::ScopeExit cleanseKeydata ([&keydata] () { OPENSSL_cleanse (keydata, sizeof (keydata)); });
 		i2p::crypto::HKDF (m_CK, nullptr, 0, "", keydata); // keydata = HKDF(chainKey, ZEROLEN, "", 64)
-		// Every reply (a retransmission carries a fresh ephemeral key) derives
-		// a new split. Install it only after the payload is authenticated.
-		// k_ab = keydata[0:31], k_ba = keydata[32:63]
+		// Every reply (a retransmission carries a fresh ephemeral key)
+		// derives a new split. Install it only after the payload is
+		// authenticated. k_ab = keydata[0:31], k_ba = keydata[32:63]
 		auto sendTagset = std::make_shared<RatchetTagSet> ();
 		sendTagset->DHInitialize (m_CK, keydata); // tagset_ab = DH_INITIALIZE(chainKey, k_ab)
 		sendTagset->NextSessionTagRatchet ();
@@ -1541,8 +1543,9 @@ namespace garlic
 		if (firstReply)
 		{
 			m_State = eSessionStateEstablished;
-			// don't delete m_EphemeralKey and m_PQKeys because delayed NSR's might come
-			// done in CleanupReceiveNSRKeys called from NSR tagset destructor
+			// don't delete m_EphemeralKey and m_PQKeys because delayed NSR's
+			// might come done in CleanupReceiveNSRKeys called from NSR tagset
+			// destructor
 			m_SessionCreatedTimestamp = i2p::util::GetSecondsSinceEpoch ();
 			owner->AddECIESx25519Session (m_RemoteStaticKey, shared_from_this ());
 		}
@@ -1650,10 +1653,10 @@ namespace garlic
 		}
 		HandlePayload (payload, len - 16, receiveTagset, index, RatchetPayloadMode::ExistingSession);
 
-		// Keep the receive window at the configured (or Java's default 320) tag
-		// count. The previous fallback derived a 24..800-tag window from the
-		// current index, which does not match any peer's advertised receive
-		// window and churned the shared tag budget.
+		// Keep the receive window at the configured (or Java's default 320)
+		// tag count. The previous fallback derived a 24..800-tag window from
+		// the current index, which does not match any peer's advertised
+		// receive window and churned the shared tag budget.
 		const int receiveWindow = owner->GetEffectiveNumRatchetInboundTags ();
 		int moreTags = 0;
 		if (receiveTagset->GetNextIndex () - index < receiveWindow / 2) moreTags = receiveWindow;
@@ -1708,8 +1711,9 @@ namespace garlic
 	std::shared_ptr<I2NPMessage> ECIESX25519AEADRatchetSession::WrapSingleMessage (
 		std::shared_ptr<const I2NPMessage> msg)
 	{
-		// Serialized with the receive path: the send tagset, ratchet keys, ACK
-		// list and LeaseSet bookkeeping are shared with HandleNextMessage.
+		// Serialized with the receive path: the send tagset, ratchet keys,
+		// ACK list and LeaseSet bookkeeping are shared with
+		// HandleNextMessage.
 		std::lock_guard<std::recursive_mutex> l (m_StateMutex);
 		auto owner = GetOwner ();
 		if (!owner) return nullptr;
@@ -1858,8 +1862,9 @@ namespace garlic
 
 		htobe32buf (m->GetPayload (), static_cast<uint32_t> (len));
 		m->len += len + 4;
-		// A zero msgID makes FillI2NPMessageHeader draw the ID from the CSPRNG,
-		// so the shared (and unsynchronized) seeded generator is not used.
+		// A zero msgID makes FillI2NPMessageHeader draw the ID from the
+		// CSPRNG, so the shared (and unsynchronized) seeded generator is not
+		// used.
 		m->FillI2NPMessageHeader (eI2NPGarlic);
 		return m;
 	}
@@ -1922,9 +1927,9 @@ namespace garlic
 			}
 		}
 		if (sendAckRequest) payloadLen += 4;
-		// Java RatchetSKM drains at most MAX_SEND_ACKS per message; sending an
-		// unbounded ACK block can overflow I2NP_MAX_MESSAGE_SIZE and stop the
-		// session from ever sending again.
+		// Java RatchetSKM drains at most MAX_SEND_ACKS per message; sending
+		// an unbounded ACK block can overflow I2NP_MAX_MESSAGE_SIZE and stop
+		// the session from ever sending again.
 		const size_t numAcks = std::min<size_t> (m_AckRequests.size (), ECIESX25519_MAX_ACKS_PER_MESSAGE);
 		if (numAcks) payloadLen += numAcks * 4 + 3;
 		if (m_SendReverseKey)

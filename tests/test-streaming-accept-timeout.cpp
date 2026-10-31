@@ -4,9 +4,10 @@
  *
  * openi2pd: test streaming accept timeout.
  *
- * Exercises the heap-allocated wait state of StreamingDestination::AcceptStream:
- * a cancelled wait can never be written after the caller returned, and a stream
- * that raced with the cancellation is re-offered instead of being dropped.
+ * Exercises the heap-allocated wait state of
+ * StreamingDestination::AcceptStream: a cancelled wait can never be
+ * written after the caller returned, and a stream that raced with the
+ * cancellation is re-offered instead of being dropped.
  *
  */
 
@@ -50,7 +51,8 @@ int main ()
 	Fixture f;
 	auto & destination = *f.destination;
 
-	// Arm the same registration AcceptStream arms, then take the timeout path
+	// Arm the same registration AcceptStream arms, then take the timeout
+	// path
 	// synchronously instead of waiting for a real clock.
 	auto state = std::make_shared<SyncAcceptState> ();
 	auto token = destination.StartSyncAcceptForTesting (state);
@@ -64,9 +66,10 @@ int main ()
 	assert (destination.GetNumArmedAcceptorsForTesting () == 0);
 	assert (!destination.IsAcceptorSet ());
 
-	// A registration preserved past its cancellation must not write the result
-	// of the finished wait. The registration owns the wait state through a
-	// shared_ptr, so this is a logical no-op and not a use-after-free.
+	// A registration preserved past its cancellation must not write the
+	// result of the finished wait. The registration owns the wait state
+	// through a shared_ptr, so this is a logical no-op and not a
+	// use-after-free.
 	auto staleState = std::make_shared<SyncAcceptState> ();
 	auto staleToken = destination.StartSyncAcceptForTesting (staleState);
 	assert (staleState->Cancel ());
@@ -76,8 +79,8 @@ int main ()
 	lateAcceptor (lateStream);
 	assert (!staleState->GetStream ());
 
-	// The refused stream is not lost: the stale registration re-offers it on the
-	// service thread, where it waits for the next acceptor.
+	// The refused stream is not lost: the stale registration re-offers it
+	// on the service thread, where it waits for the next acceptor.
 	f.service.poll ();
 	assert (destination.GetNumPendingIncomingForTesting () == 1);
 	assert (destination.GetNumStreams () == 0);

@@ -4,10 +4,10 @@
  *
  * openi2pd: Signature.
  *
- * Declares the Verifier/Signer interfaces and concrete I2P signature types:
- * DSA, ECDSA P-256/P-384/P-521, RSA PKCS#1 v1.5 verification, Ed25519 and
- * Ed25519ph, RedDSA and GOST R 34.10, together with random-key generation
- * helpers.
+ * Declares the Verifier/Signer interfaces and concrete I2P signature
+ * types: DSA, ECDSA P-256/P-384/P-521, RSA PKCS#1 v1.5 verification,
+ * Ed25519 and Ed25519ph, RedDSA and GOST R 34.10, together with
+ * random-key generation helpers.
  *
  */
 
@@ -29,9 +29,9 @@ namespace i2p
 {
 namespace crypto
 {
-	// EVP_PKEY is reference counted by OpenSSL. Keep the raw accessor used by
-	// the derived Ed25519ph classes while making the owner release it exactly
-	// once on every constructor and Sign failure path.
+	// EVP_PKEY is reference counted by OpenSSL. Keep the raw accessor used
+	// by the derived Ed25519ph classes while making the owner release it
+	// exactly once on every constructor and Sign failure path.
 	struct EVP_PKEY_Deleter
 	{
 		void operator() (EVP_PKEY * pkey) const { EVP_PKEY_free (pkey); }
@@ -385,10 +385,10 @@ namespace crypto
 
 #endif
 
-	// RSA PKCS#1 v1.5 verification (types 4/5/6). Java hashes the signed data
-	// and verifies the resulting digest with NONEwithRSA, so this verifier
-	// hashes once and then applies the raw PKCS#1 v1.5 operation. Signing and
-	// key generation are intentionally not provided.
+	// RSA PKCS#1 v1.5 verification (types 4/5/6). Java hashes the signed
+	// data and verifies the resulting digest with NONEwithRSA, so this
+	// verifier hashes once and then applies the raw PKCS#1 v1.5 operation.
+	// Signing and key generation are intentionally not provided.
 	class RSAVerifier : public Verifier
 	{
 	public:
@@ -429,10 +429,11 @@ namespace crypto
 		EVP_PKEY * GetPkey () const { return m_Pkey.get (); };
 	};
 
-	// I2P SigType 8 is named Ed25519ph, but Java's generic signer uses plain
-	// Ed25519 over the supplied bytes. Keep the same key/signature layout and
-	// primitive here; callers that need a prehash (for example SU3) provide it
-	// explicitly. No private cryptographic primitive is implemented locally.
+	// I2P SigType 8 is named Ed25519ph, but Java's generic signer uses
+	// plain Ed25519 over the supplied bytes. Keep the same key/signature
+	// layout and primitive here; callers that need a prehash (for example
+	// SU3) provide it explicitly. No private cryptographic primitive is
+	// implemented locally.
 	class EDDSA25519phVerifier : public EDDSA25519Verifier
 	{
 	public:

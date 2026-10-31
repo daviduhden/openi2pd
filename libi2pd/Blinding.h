@@ -4,10 +4,10 @@
  *
  * openi2pd: Blinding.
  *
- * Computes blinded public keys, subcredentials and store hashes for encrypted
- * LeaseSet2 destinations, including per-client authorization. Keys can derive
- * from an identity or a b33 address, and validity requires a blindable signing
- * type.
+ * Computes blinded public keys, subcredentials and store hashes for
+ * encrypted LeaseSet2 destinations, including per-client authorization.
+ * Keys can derive from an identity or a b33 address, and validity
+ * requires a blindable signing type.
  *
  */
 

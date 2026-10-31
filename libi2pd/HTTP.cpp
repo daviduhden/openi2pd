@@ -4,11 +4,12 @@
  *
  * openi2pd: HTTP.
  *
- * Implements HTTP/1.0 and 1.1 request/response parsing and serialisation with
- * strict token, header and version validation, URL and query-string handling,
- * percent encoding, chunked-response merging, gzip detection and Basic
- * authentication. Content lengths are capped before allocation, and malformed
- * headers or body framing are rejected.
+ * Implements HTTP/1.0 and 1.1 request/response parsing and
+ * serialisation with strict token, header and version validation, URL
+ * and query-string handling, percent encoding, chunked-response
+ * merging, gzip detection and Basic authentication. Content lengths are
+ * capped before allocation, and malformed headers or body framing are
+ * rejected.
  *
  */
 

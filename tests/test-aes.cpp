@@ -4,7 +4,9 @@
  *
  * openi2pd: test aes.
  *
- * Checks AES-256 ECB and CBC encryption/decryption against fixed known-answer vectors, covering key setup, IV handling and exact 16-byte block output.
+ * Checks AES-256 ECB and CBC encryption/decryption against fixed
+ * known-answer vectors, covering key setup, IV handling and exact
+ * 16-byte block output.
  *
  */
 

@@ -4,11 +4,11 @@
  *
  * openi2pd: blocklist parser regression.
  *
- * Exercises the bounded, Java-compatible blocklist grammar: IPv4 singles,
- * ranges and CIDR prefixes, IPv6 semicolon form, router hashes, reason
- * prefixes, comments, malformed input and every parser-level cap. It uses
- * only the pure parser/builder API, so no sockets, threads, configuration or
- * filesystem are involved.
+ * Exercises the bounded, Java-compatible blocklist grammar: IPv4
+ * singles, ranges and CIDR prefixes, IPv6 semicolon form, router
+ * hashes, reason prefixes, comments, malformed input and every
+ * parser-level cap. It uses only the pure parser/builder API, so no
+ * sockets, threads, configuration or filesystem are involved.
  *
  */
 
@@ -197,7 +197,8 @@ void TestMerge ()
 	auto two = disjoint.Build ();
 	assert (two->GetNumIPv4Ranges () == 2);
 
-	// A range may cross the signed 32-bit boundary; this tree sorts unsigned.
+	// A range may cross the signed 32-bit boundary; this tree sorts
+	// unsigned.
 	OperatorBlocklistBuilder wide;
 	assert (wide.AddLine ("126.0.0.0-130.0.0.0"));
 	auto crossing = wide.Build ();

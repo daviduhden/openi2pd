@@ -4,10 +4,10 @@
  *
  * openi2pd: TuiProtocol.
  *
- * Defines the I2PDTUI v1 request/response codec: typed request fields, error
- * codes, and bounded parsing/serialization helpers shared by the daemon server
- * and the terminal client. These limits are part of the local-IPC trust
- * boundary.
+ * Defines the I2PDTUI v1 request/response codec: typed request fields,
+ * error codes, and bounded parsing/serialization helpers shared by the
+ * daemon server and the terminal client. These limits are part of the
+ * local-IPC trust boundary.
  *
  */
 
@@ -28,35 +28,37 @@
 #include <vector>
 
 /**
- * Versioned, line-framed protocol used between the router and i2pd-tui over
- * a local UNIX stream socket.
+ * Line-framed protocol between the router and i2pd-tui over a
+ * local UNIX stream socket.
  *
  * Request:   I2PDTUI/1 &lt;COMMAND&gt; [arguments]\n
  * Response:  I2PDTUI/1 OK &lt;payload-length&gt;\n&lt;payload&gt;
- *            I2PDTUI/1 ERR &lt;error-code&gt; &lt;message-length&gt;\n&lt;message&gt;
+ *            I2PDTUI/1 ERR &lt;error-code&gt; &lt;message-length&gt;\n
+ *            &lt;message&gt;
  *
- * The payload is a sequence of "key=escaped-value\n" fields. Every length is
- * explicit and bounded; the receiver must never allocate based on a value it
- * has not validated. Torrent commands are validated here and then mediated by
- * the torrents tunnel's Asio service thread; the IPC thread never touches
- * mutable engine state. Configuration snapshots are read-only and limited to
- * a server-side allowlist; version 1 has no configuration writer. Router-wide
- * writes are restricted to a closed set of explicitly typed ADMIN operations:
- * non-blocking reseed, shutdown/cancel, tunnel reload, one configured client
- * or server tunnel start/stop, bandwidth class, share percentage, transit
- * acceptance, daemon log level, bounded address-book add/replace/remove and
- * bounded subscription/ban list edits.
- * The dispatcher converts each into a bounded daemon command; no request
- * carries a generic option name, path, URL or shell string. ADMIN replies
- * carry typed fields: admin=&lt;action&gt;,
- * result=ok|accepted|error, code=&lt;reason&gt;, value=&lt;integer&gt;, message=&lt;text&gt;
- * and, for the verbs with a discrete outcome, outcome=&lt;token&gt;
- * (started|stopped|already-running|already-stopped|unknown|disabled|exists).
- * The reseed verb never waits for the bootstrap: it reports that the job was
- * started, is already running or is disabled by configuration.
+ * Payloads contain "key=escaped-value\n" fields. Lengths are explicit
+ * and bounded; the receiver validates each before allocating from it.
+ * Torrent commands are validated here, then mediated by the tunnel's
+ * service thread. The IPC thread never touches mutable engine state.
+ * Configuration snapshots are read-only and restricted to a server-side
+ * allowlist; version 1 has no configuration writer. Router-wide writes
+ * use typed ADMIN operations: reseed, cancel, reload, and start/stop
+ * for one configured client or
+ * server tunnel, bandwidth class, share percentage, transit acceptance,
+ * daemon log level, bounded address-book edits, and subscription
+ * or ban-list edits.
+ * Each request maps to a bounded daemon command. Requests cannot carry
+ * generic option names, paths, URLs or shell strings. ADMIN
+ * replies use typed fields: admin=&lt;action&gt;,
+ * result=ok|accepted|error, code=&lt;reason&gt;, value=&lt;integer&gt;,
+ * message=&lt;text&gt;, and discrete outcomes use outcome=&lt;token&gt;
+ * (started|stopped|already-running|already-stopped|unknown|disabled|
+ * exists).
+ * Reseed replies immediately with started, already-running or disabled;
+ * it never waits for bootstrap completion.
  * TORRENT-DETAIL accepts an optional trailing comment page
- * (`[offset] [limit]`, offset 0..255, limit 1..16); without arguments it
- * returns the newest page every existing client already understands.
+ * (`[offset] [limit]`, offset 0..255, limit 1..16). Without arguments,
+ * it returns the newest page supported by existing clients.
  */
 namespace i2p
 {
@@ -65,25 +67,27 @@ namespace tui
 	/**
 	 * Framing invariants shared by the daemon and the console.
 	 *
-	 * A request is exactly one line; a response is a header line followed by
-	 * exactly `payload-size` bytes. There are no request ids and no
-	 * pipelining, so a receiver must consume the declared payload before it
-	 * can read the next header. The header bounds are inclusive (4096 bytes
-	 * for a request, 128 bytes for a response header), and the 256 KiB
-	 * payload ceiling is what makes the `uint32_t` conversion of a parsed
-	 * length safe in ParseResponseHeader.
+	 * A request is exactly one line; a response is a header line followed
+	 * by exactly `payload-size` bytes. There are no request ids and no
+	 * pipelining, so a receiver must consume the declared payload before
+	 * it can read the next header. The header bounds are inclusive (4096
+	 * bytes for a request, 128 bytes for a response header), and the 256
+	 * KiB payload ceiling is what makes the `uint32_t` conversion of a
+	 * parsed length safe in ParseResponseHeader.
 	 *
 	 * Every constant below is the wire contract, mirrored by
 	 * docs/tui-ipc.md. A producer must clamp to them before serializing
-	 * because the receiver rejects an oversized frame instead of truncating
-	 * it; a limit is a ceiling for one response, never an invitation to emit
-	 * a full page of every collection in a single message.
+	 * because the receiver rejects an oversized frame instead of
+	 * truncating it; a limit is a ceiling for one response, never an
+	 * invitation to emit a full page of every collection in a single
+	 * message.
 	 */
 	inline constexpr std::string_view PROTOCOL_NAME = "I2PDTUI";
 	inline constexpr uint32_t PROTOCOL_VERSION = 1;
 
 	// Requests are single lines. A malicious client cannot make the daemon
-	// buffer without bound: the accumulator is bounded by MAX_REQUEST_LINE.
+	// buffer without bound: the accumulator is bounded by
+	// MAX_REQUEST_LINE.
 	inline constexpr size_t MAX_REQUEST_LINE = 4096;
 	inline constexpr size_t MAX_RESPONSE_PAYLOAD = 256 * 1024;
 	inline constexpr size_t MAX_FIELD_NAME = 64;
@@ -92,19 +96,20 @@ namespace tui
 	inline constexpr size_t MAX_CONNECTION_RECORDS_PER_REQUEST = 200;
 	inline constexpr size_t MAX_NETDB_RECORDS_PER_REQUEST = 200;
 	inline constexpr size_t MAX_ADDRESS_BOOK_RECORDS_PER_REQUEST = 200;
-	// Address-book subscription URLs are capped by the address book itself; the
-	// protocol refuses to page beyond that fixed bound.
+	// Address-book subscription URLs are capped by the address book
+	// itself; the protocol refuses to page beyond that fixed bound.
 	inline constexpr size_t MAX_SUBSCRIPTION_RECORDS_PER_REQUEST = 16;
 	inline constexpr size_t MAX_BLOCKLIST_RECORDS_PER_REQUEST = 200;
 	inline constexpr size_t MAX_SUBSCRIPTION_URL_LENGTH = 512;
 	inline constexpr size_t MAX_ROUTER_HASH_TEXT_LENGTH = 64; // base64 of a 32-byte hash
-	// A configured tunnel service name is printable, whitespace-free text. The
-	// bound matches ClientContext::I2P_TUNNEL_SERVICE_NAME_MAX_LENGTH so a name
-	// the client context can never hold is also rejected at the wire.
+	// A configured tunnel service name is printable, whitespace-free text.
+	// The bound matches ClientContext::I2P_TUNNEL_SERVICE_NAME_MAX_LENGTH
+	// so a name the client context can never hold is also rejected at the
+	// wire.
 	inline constexpr size_t MAX_TUNNEL_SERVICE_NAME_LENGTH = 64;
 	// Address-book administration: a stored name is bounded by the address
-	// book, an added/replaced name additionally has to be a host label, and a
-	// destination is one full base64 identity.
+	// book, an added/replaced name additionally has to be a host label,
+	// and a destination is one full base64 identity.
 	inline constexpr size_t MAX_ADDRESS_NAME_LENGTH = 255;
 	inline constexpr size_t MAX_ADDRESS_ADD_NAME_LENGTH = 67;
 	inline constexpr size_t MAX_ADDRESS_DESTINATION_LENGTH = 1024;
@@ -114,12 +119,12 @@ namespace tui
 	inline constexpr size_t MAX_TORRENT_FILE_RECORDS_PER_REQUEST = 1000;
 	inline constexpr size_t MAX_TORRENT_PEER_RECORDS_PER_REQUEST = 200;
 	inline constexpr size_t MAX_TORRENT_TRACKER_RECORDS_PER_REQUEST = 100;
-	// One TORRENT-DETAIL response emits at most this many comment records even
-	// though a torrent retains up to MAX_COMMENT_COUNT (256) records, of which
-	// at most MAX_COMMENT_HIDDEN_COUNT (64) are hidden. Clients page with the
-	// optional `[offset] [limit]` arguments instead of the daemon growing the
-	// single-response bound. The offset bound is the highest record index the
-	// retained store can have.
+	// One TORRENT-DETAIL response emits at most this many comment records
+	// even though a torrent retains up to MAX_COMMENT_COUNT (256) records,
+	// of which at most MAX_COMMENT_HIDDEN_COUNT (64) are hidden. Clients
+	// page with the optional `[offset] [limit]` arguments instead of the
+	// daemon growing the single-response bound. The offset bound is the
+	// highest record index the retained store can have.
 	inline constexpr size_t MAX_TORRENT_COMMENT_RECORDS_PER_REQUEST = 16;
 	inline constexpr size_t MAX_TORRENT_COMMENT_OFFSET = 255;
 	inline constexpr size_t MAX_TORRENT_ARGUMENT_LENGTH = 2048;
@@ -985,12 +990,13 @@ namespace tui
 		return header;
 	}
 
-	// Field values are escaped so a payload always splits on LF and a field on
-	// its first '='. Only backslash, LF and CR need escaping, and '=' is left
-	// alone because the splitter takes the first one, so a value may contain
-	// '=' unchanged. UnescapeValue deliberately keeps an unknown escape as
-	// backslash plus the character, which makes it the exact inverse for
-	// every string EscapeValue can produce and never drops input.
+	// Field values are escaped so a payload always splits on LF and a
+	// field on its first '='. Only backslash, LF and CR need escaping, and
+	// '=' is left alone because the splitter takes the first one, so a
+	// value may contain '=' unchanged. UnescapeValue deliberately keeps an
+	// unknown escape as backslash plus the character, which makes it the
+	// exact inverse for every string EscapeValue can produce and never
+	// drops input.
 	inline std::string EscapeValue (std::string_view value)
 	{
 		std::string escaped;
@@ -1053,9 +1059,10 @@ namespace tui
 	}
 
 	// Serialise one frame. The payload is not re-checked against
-	// MAX_RESPONSE_PAYLOAD here: the daemon verifies the bound while building
-	// the payload and substitutes a ResponseTooLarge error frame, and a client
-	// only ever parses a frame whose declared length it already accepted.
+	// MAX_RESPONSE_PAYLOAD here: the daemon verifies the bound while
+	// building the payload and substitutes a ResponseTooLarge error frame,
+	// and a client only ever parses a frame whose declared length it
+	// already accepted.
 	inline std::string MakeResponse (
 		ResponseStatus status, std::string_view payload, ErrorCode errorCode = ErrorCode::None)
 	{

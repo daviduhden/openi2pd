@@ -4,9 +4,10 @@
  *
  * openi2pd: KadDHT.
  *
- * Binary-trie Kademlia routing table ordered by XOR distance over IdentHash. Supports insert,
- * remove, closest-peer lookup with an optional filter and cleanup of stale RouterInfo entries;
- * nodes are uniquely owned and non-copyable.
+ * Binary-trie Kademlia routing table ordered by XOR distance over
+ * IdentHash. Supports insert, remove, closest-peer lookup with an
+ * optional filter and cleanup of stale RouterInfo entries; nodes are
+ * uniquely owned and non-copyable.
  *
  */
 

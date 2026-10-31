@@ -4,7 +4,9 @@
  *
  * openi2pd: test ssu2 routerinfo bounds.
  *
- * Signs both valid and malformed RouterInfo bodies with a fresh EdDSA identity, so parsing rather than signature verification must reject overrunning address/property sections and family-mismatched hosts.
+ * Signs both valid and malformed RouterInfo bodies with a fresh EdDSA
+ * identity, so parsing rather than signature verification must reject
+ * overrunning address/property sections and family-mismatched hosts.
  *
  */
 
@@ -39,7 +41,8 @@ void AppendString (std::vector<uint8_t> & out, std::string_view value)
 	out.insert (out.end (), value.begin (), value.end ());
 }
 
-// RouterInfo mappings are sequences of length-prefixed key, '=', value and ';'.
+// RouterInfo mappings are sequences of length-prefixed key, '=', value
+// and ';'.
 // Build the encoded bytes, not a human-readable semicolon list.
 void AppendParam (std::string & out, std::string_view key, std::string_view value)
 {
@@ -143,7 +146,8 @@ int main ()
 		i2p::data::SIGNING_KEY_TYPE_EDDSA_SHA512_ED25519, i2p::data::CRYPTO_KEY_TYPE_ECIES_X25519_AEAD);
 	assert (keys.GetPublic ());
 
-	// Regression: ReadFromBuffer() used to subtract the signature length after
+	// Regression: ReadFromBuffer() used to subtract the signature length
+	// after
 	// the caller had already removed it, rejecting every valid RouterInfo.
 	{
 		const auto buffer = SignRouterInfo (keys, BuildBody ({ }));
@@ -153,7 +157,8 @@ int main ()
 		assert (router.GetSSU2V6Address () == nullptr);
 	}
 
-	// The update path parses the signed body after the identity as well; it had
+	// The update path parses the signed body after the identity as well;
+	// it had
 	// the same second signature-length subtraction.
 	{
 		const auto first = SignRouterInfo (keys, BuildBody ({ }));

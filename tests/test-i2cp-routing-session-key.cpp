@@ -4,11 +4,11 @@
  *
  * openi2pd: test i2cp routing session key.
  *
- * Verifies that the I2CP garlic routing-session cache is keyed by the parsed
- * wire identity hash for every signature/crypto type, and documents that the
- * former fixed signing-key slice could be reproduced by a crafted identity so
- * that another destination's cached session was selected. No router or network
- * is started.
+ * Verifies that the I2CP garlic routing-session cache is keyed by the
+ * parsed wire identity hash for every signature/crypto type, and
+ * documents that the former fixed signing-key slice could be reproduced
+ * by a crafted identity so that another destination's cached session
+ * was selected. No router or network is started.
  *
  */
 
@@ -43,8 +43,9 @@ void TestKeyMatchesIdentityHash ()
 		= MakeIdentity (i2p::data::SIGNING_KEY_TYPE_EDDSA_SHA512_ED25519, i2p::data::CRYPTO_KEY_TYPE_ECIES_X25519_AEAD);
 	auto wire = WireIdentity (identity);
 	auto key = GetI2CPRoutingSessionKey (wire.data (), wire.size ());
-	// Same value IdentityEx derives (and LeaseSet::GetIdentHash() exposes), so
-	// inserting after a send and looking up by the wire identity agree.
+	// Same value IdentityEx derives (and LeaseSet::GetIdentHash()
+	// exposes), so inserting after a send and looking up by the wire
+	// identity agree.
 	assert (key == identity->GetIdentHash ());
 
 	// Defensive: no identity bytes yields the zero key, never the previous
@@ -62,19 +63,19 @@ void TestFormerSliceIsCraftable ()
 	auto key = GetI2CPRoutingSessionKey (wire.data (), wire.size ());
 	assert (key == identity->GetIdentHash ());
 
-	// The former insert key was signingKey + 96 and the former lookup key was
-	// wire identity + DEFAULT_IDENTITY_SIZE - 35; both are identity offset 352,
-	// i.e. the last 32 bytes of the fixed 128-byte signing-key slot. That is
-	// not the identity hash for any signature type.
+	// The former insert key was signingKey + 96 and the former lookup key
+	// was wire identity + DEFAULT_IDENTITY_SIZE - 35; both are identity
+	// offset 352, i.e. the last 32 bytes of the fixed 128-byte signing-key
+	// slot. That is not the identity hash for any signature type.
 	i2p::data::IdentHash formerInsert (identity->GetStandardIdentity ().signingKey + 96);
 	i2p::data::IdentHash formerLookup (wire.data () + i2p::data::DEFAULT_IDENTITY_SIZE - 35);
 	assert (formerInsert == formerLookup);
 	assert (formerInsert != key);
 
-	// A different, still-parseable destination that preserves those 32 bytes
-	// (only a public-key byte changes) reproduces the old cache key while
-	// having its own identity hash: the former lookup would have selected the
-	// original destination's routing session.
+	// A different, still-parseable destination that preserves those 32
+	// bytes (only a public-key byte changes) reproduces the old cache key
+	// while having its own identity hash: the former lookup would have
+	// selected the original destination's routing session.
 	auto forged = wire;
 	forged[0] ^= 0x01; // encryption public key byte, outside the old slice
 	i2p::data::IdentityEx forgedIdentity (forged.data (), forged.size ());

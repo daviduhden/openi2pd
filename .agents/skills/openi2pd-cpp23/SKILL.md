@@ -139,6 +139,12 @@ compile, run tests or run project scripts.
   `i2p` namespace. Tests using shared protocol constants declared in `i2p`
   should qualify them or add a narrow using-declaration; avoid duplicating
   wire-size literals in fixtures.
+- Namespace imports do not expose members nested inside a type in that
+  namespace. For example, a test importing `i2p::data` still must qualify the
+  transport enumerator as `i2p::data::RouterInfo::eAllTransports`.
+- When reviewing comment width, distinguish prose from code continuations,
+  preprocessor directives embedded in CMake probes and protocol literals.
+  Reflow only complete comment text; preserve adjacent source syntax exactly.
 
 
 - Profile-root/durability decisions (CONC-010) and their residual risks are

@@ -4,7 +4,9 @@
  *
  * openi2pd: test datagram options.
  *
- * Checks Datagram2/3 options parsing, including a zero-length mapping, bounded length prefixes, trailing application data and empty gzip output, matching Java's permissive but bounded load path.
+ * Checks Datagram2/3 options parsing, including a zero-length mapping,
+ * bounded length prefixes, trailing application data and empty gzip
+ * output, matching Java's permissive but bounded load path.
  *
  */
 
@@ -29,7 +31,8 @@ int main ()
 	assert (offset == 2);
 	assert (options.IsEmpty ());
 
-	// A normal mapping written by Mapping::ToBuffer (length prefix included).
+	// A normal mapping written by Mapping::ToBuffer (length prefix
+	// included).
 	i2p::util::Mapping source;
 	assert (source.Insert ("a", "b"));
 	uint8_t encoded[64];
@@ -64,9 +67,8 @@ int main ()
 
 	// A valid gzip stream may produce zero uncompressed bytes. Datagram2/3
 	// must deliver that payload rather than treating it as decompression
-	// failure.
-	// Minimal empty gzip member: header, one final empty DEFLATE block and
-	// the CRC/ISIZE trailer.
+	// failure. Minimal empty gzip member: header, one final empty DEFLATE
+	// block and the CRC/ISIZE trailer.
 	const uint8_t gzip[] = { 0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xff, 0x03, 0x00, 0x00, 0x00, 0x00,
 		0x00, 0x00, 0x00, 0x00, 0x00 };
 	i2p::data::GzipInflator inflator;

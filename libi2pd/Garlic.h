@@ -4,13 +4,16 @@
  *
  * openi2pd: Garlic.
  *
- * Garlic message construction and routing for destinations and routers: builds cloves and
- * wraps payloads with ElGamal/AES+SessionTag or ECIES-X25519-AEAD ratchet sessions, while
- * tracking session tags, LeaseSet attachment/confirmation and DeliveryStatus correlation.
- * Session and tag maps are mutex-protected because keys and payloads arrive from router,
- * client and administrative threads, and each GarlicRoutingSession serializes its own state
- * with a recursive lock that is never held across a wait. Incoming cloves use one shared
- * classification (deliver, skip stale, skip foreign destination, reject framing).
+ * Garlic message construction and routing for destinations and routers:
+ * builds cloves and wraps payloads with ElGamal/AES+SessionTag or
+ * ECIES-X25519-AEAD ratchet sessions, while tracking session tags,
+ * LeaseSet attachment/confirmation and DeliveryStatus correlation.
+ * Session and tag maps are mutex-protected because keys and payloads
+ * arrive from router, client and administrative threads, and each
+ * GarlicRoutingSession serializes its own state with a recursive lock
+ * that is never held across a wait. Incoming cloves use one shared
+ * classification (deliver, skip stale, skip foreign destination, reject
+ * framing).
  *
  */
 
@@ -69,35 +72,37 @@ namespace garlic
 	const int ROUTING_PATH_EXPIRATION_TIMEOUT = 120; // in seconds
 	const int INCOMING_SESSIONS_MINIMAL_INTERVAL = 200; // in milliseconds
 	// Java RatchetSKM.OutboundSession.MAX_RCV_WINDOW_ES. A configured
-	// crypto.ratchet.inboundTags above this would churn the shared 8192-tag
-	// budget without matching any peer's receive window.
+	// crypto.ratchet.inboundTags above this would churn the shared
+	// 8192-tag budget without matching any peer's receive window.
 	const int ECIESX25519_MAX_INBOUND_TAGS = 320;
-	// Effective ES receive window when the configuration leaves it unset. Java
-	// defaults crypto.ratchet.inboundTags to the same 320-tag window instead of
-	// deriving a per-message window from the current tag index.
+	// Effective ES receive window when the configuration leaves it unset.
+	// Java defaults crypto.ratchet.inboundTags to the same 320-tag window
+	// instead of deriving a per-message window from the current tag index.
 	const int ECIESX25519_DEFAULT_INBOUND_TAGS = 320;
 
 	i2p::crypto::HKDFContext & GetThreadLocalHKDFContext ();
 
-	// A garlic payload announces its clove count in a single byte. Zero cloves
-	// is an empty payload Java treats as invalid, and an unbounded count lets
-	// one authenticated message trigger thousands of dispatch calls.
+	// A garlic payload announces its clove count in a single byte. Zero
+	// cloves is an empty payload Java treats as invalid, and an unbounded
+	// count lets one authenticated message trigger thousands of dispatch
+	// calls.
 	constexpr bool IsValidCloveCount (unsigned int numCloves) noexcept
 	{
 		return numCloves > 0 && numCloves <= static_cast<unsigned int> (I2NP_MAX_CLOVES);
 	}
 
-	// The DESTINATION delivery instruction names the destination the clove is
-	// for. A clove addressed to another destination is not ours and must be
-	// skipped instead of being delivered locally.
+	// The DESTINATION delivery instruction names the destination the clove
+	// is for. A clove addressed to another destination is not ours and
+	// must be skipped instead of being delivered locally.
 	inline bool IsCloveForDestination (const uint8_t * hash, const i2p::data::IdentHash & local) noexcept
 	{
 		return hash && !memcmp (hash, local, i2p::data::IdentHash::len);
 	}
 
 	// What a clove walker must do with one clove. Framing that cannot be
-	// resynchronised stops the whole payload; a well-framed clove that is only
-	// stale or addressed elsewhere is skipped and the next clove is processed.
+	// resynchronised stops the whole payload; a well-framed clove that is
+	// only stale or addressed elsewhere is skipped and the next clove is
+	// processed.
 	enum class GarlicCloveDisposition : uint8_t
 	{
 		Deliver = 0,
@@ -106,8 +111,9 @@ namespace garlic
 		RejectMessage
 	};
 
-	// Pure decision shared by the ElGamal and the ratchet clove walkers, so the
-	// policy can be unit-tested and fuzzed without keys or a session.
+	// Pure decision shared by the ElGamal and the ratchet clove walkers,
+	// so the policy can be unit-tested and fuzzed without keys or a
+	// session.
 	constexpr GarlicCloveDisposition ClassifyGarlicClove (bool wellFramed, bool fresh, bool destinationMatches) noexcept
 	{
 		if (!wellFramed) return GarlicCloveDisposition::RejectMessage;
@@ -156,9 +162,10 @@ namespace garlic
 	};
 
 	class GarlicDestination;
-	/// Common outbound garlic session state shared by ElGamal and ratchet paths.
-	/// The owner pointer is non-owning; atomic publication does not extend the
-	/// destination's lifetime, so teardown must be coordinated with users.
+	/// Common outbound garlic session state shared by ElGamal and ratchet
+	/// paths. The owner pointer is non-owning; atomic publication does not
+	/// extend the destination's lifetime, so teardown must be coordinated
+	/// with users.
 	class GarlicRoutingSession
 	{
 	protected:
@@ -182,8 +189,8 @@ namespace garlic
 		virtual bool MessageConfirmed (uint32_t msgID);
 		virtual bool IsRatchets () const { return false; };
 		virtual bool IsReadyToSend () const { return true; };
-		// True when an outbound ratchet tagset is empty and a new session must
-		// be created. The old session is kept for receiving only.
+		// True when an outbound ratchet tagset is empty and a new session
+		// must be created. The old session is kept for receiving only.
 		virtual bool IsExhausted () const { return false; };
 		virtual bool IsTerminated () const { return !GetOwner (); };
 		virtual bool IsInactive (uint64_t /* ts */) const
@@ -246,8 +253,9 @@ namespace garlic
 		uint64_t LastSendTime () const { return m_LastSendTime.load (std::memory_order_relaxed); }
 		void SetLastSendTime (uint64_t lastSendTime) { m_LastSendTime.store (lastSendTime, std::memory_order_relaxed); }
 
-		/// Borrow the current owner, or null after detachment. A successful load
-		/// is not a lifetime barrier against concurrent destination teardown.
+		/// Borrow the current owner, or null after detachment. A successful
+		/// load is not a lifetime barrier against concurrent destination
+		/// teardown.
 		GarlicDestination * GetOwner () const { return m_Owner.load (std::memory_order_acquire); }
 		void SetOwner (GarlicDestination * owner) { m_Owner.store (owner, std::memory_order_release); }
 
@@ -278,14 +286,15 @@ namespace garlic
 			m_LeaseSetSubmissionTime = ts;
 		}
 
-		// Serializes the whole session state: leaseSet update bookkeeping, the
-		// routing path, the ElGamal tag/IV/encryption state and the ratchet
-		// state machine, tag sets, ACK list and timestamps, all of which are
-		// read by several threads. Recursive because a session method can call
-		// another one on the same thread. Lock order: session state -> owner
-		// tag/delivery-status maps. The owner session map is never held while a
-		// session method runs (the destination snapshots it instead), because a
-		// self-registering session takes this lock before that map.
+		// Serializes the whole session state: leaseSet update bookkeeping,
+		// the routing path, the ElGamal tag/IV/encryption state and the
+		// ratchet state machine, tag sets, ACK list and timestamps, all of
+		// which are read by several threads. Recursive because a session
+		// method can call another one on the same thread. Lock order: session
+		// state -> owner tag/delivery-status maps. The owner session map is
+		// never held while a session method runs (the destination snapshots
+		// it instead), because a self-registering session takes this lock
+		// before that map.
 		mutable std::recursive_mutex m_StateMutex;
 
 		std::shared_ptr<I2NPMessage> CreateEncryptedDeliveryStatusMsg (uint32_t msgID);
@@ -306,17 +315,18 @@ namespace garlic
 		// for administrative views
 		virtual size_t GetNumOutgoingTags () const { return 0; };
 	};
-	//using GarlicRoutingSessionPtr = std::shared_ptr&lt;GarlicRoutingSession&gt;;
+	// using GarlicRoutingSessionPtr =
+	// std::shared_ptr&lt;GarlicRoutingSession&gt;;
 	typedef std::shared_ptr<GarlicRoutingSession> GarlicRoutingSessionPtr; // TODO: replace to using after switch to 4.8
 
 	/// Outbound ElGamal/AES+SessionTag session for one remote destination.
 	///
-	/// The session owns a short list of one-time session tags and the CBC state
-	/// used to wrap messages; wrapping is serialized by the inherited
-	/// `m_StateMutex` because several client threads can target the same
-	/// destination. A tag is only usable after the peer confirmed the message
-	/// that announced it (`MessageConfirmed`), so unconfirmed tags stay in
-	/// `m_UnconfirmedTagsMsgs` until an ACK clears them.
+	/// The session owns a short list of one-time session tags and the CBC
+	/// state used to wrap messages; wrapping is serialized by the
+	/// inherited `m_StateMutex` because several client threads can target
+	/// the same destination. A tag is only usable after the peer confirmed
+	/// the message that announced it (`MessageConfirmed`), so unconfirmed
+	/// tags stay in `m_UnconfirmedTagsMsgs` until an ACK clears them.
 	class ElGamalAESSession : public GarlicRoutingSession, public std::enable_shared_from_this<ElGamalAESSession>
 	{
 		struct UnconfirmedTags
@@ -396,8 +406,9 @@ namespace garlic
 	};
 
 	/// Local garlic endpoint managing session and receive-tag registries.
-	/// Session snapshots and retired tag sets are released outside registry
-	/// locks because their cleanup can reenter session or destination code.
+	/// Session snapshots and retired tag sets are released outside
+	/// registry locks because their cleanup can reenter session or
+	/// destination code.
 	class GarlicDestination : public i2p::data::LocalDestination
 	{
 	public:
@@ -405,10 +416,10 @@ namespace garlic
 		~GarlicDestination ();
 
 		void CleanUp ();
-		/// Return this thread's generator for selections and message identifiers.
-		/// The reference is valid only for the calling thread's lifetime; this
-		/// generator is not a cryptographic source for keys or secret nonces and
-		/// must not be shared across threads.
+		/// Return this thread's generator for selections and message
+		/// identifiers. The reference is valid only for the calling thread's
+		/// lifetime; this generator is not a cryptographic source for keys or
+		/// secret nonces and must not be shared across threads.
 		std::mt19937 & GetRng ();
 		bool IsIdling () const { return m_IsIdling; };
 		void SetIsIdling (bool isIdling) { m_IsIdling = isIdling; };
@@ -425,8 +436,8 @@ namespace garlic
 			m_NumRatchetInboundTags = numTags;
 		};
 		int GetNumRatchetInboundTags () const { return m_NumRatchetInboundTags; };
-		// The window actually used for tag generation: the configured value, or
-		// Java's 320-tag default when crypto.ratchet.inboundTags is unset.
+		// The window actually used for tag generation: the configured value,
+		// or Java's 320-tag default when crypto.ratchet.inboundTags is unset.
 		int GetEffectiveNumRatchetInboundTags () const
 		{
 			return m_NumRatchetInboundTags > 0 ? m_NumRatchetInboundTags : ECIESX25519_DEFAULT_INBOUND_TAGS;
@@ -443,11 +454,12 @@ namespace garlic
 			bool requestNewIfNotFound = true);
 		void CleanupExpiredTags ();
 		void RemoveDeliveryStatusSession (uint32_t msgID);
-		/// Wrap one I2NP message for a router (not a destination) and return the
-		/// resulting Garlic message, or null when no session could be created.
-		/// A ratchet-capable router is wrapped with a one-shot ECIES-X25519
-		/// garlic; otherwise an ElGamal/AES routing session is used, so the
-		/// returned message is always ready to hand to a transport.
+		/// Wrap one I2NP message for a router (not a destination) and return
+		/// the resulting Garlic message, or null when no session could be
+		/// created. A ratchet-capable router is wrapped with a one-shot
+		/// ECIES-X25519 garlic; otherwise an ElGamal/AES routing session is
+		/// used, so the returned message is always ready to hand to a
+		/// transport.
 		std::shared_ptr<I2NPMessage> WrapMessageForRouter (
 			std::shared_ptr<const i2p::data::RouterInfo> router, std::shared_ptr<I2NPMessage> msg);
 
@@ -499,9 +511,10 @@ namespace garlic
 		// Called with m_TagsMutex held. Expired entries are removed first; if
 		// the hard map bound is still reached, arbitrary oldest entries are
 		// evicted so one authenticated peer cannot permanently deny tag
-		// registration to every other session. Removed tagsets are appended to
-		// `removed` (when given) so the caller can release them after unlocking:
-		// a ReceiveRatchetTagSet destructor calls back into its session.
+		// registration to every other session. Removed tagsets are appended
+		// to `removed` (when given) so the caller can release them after
+		// unlocking: a ReceiveRatchetTagSet destructor calls back into its
+		// session.
 		void MakeRoomForECIESx25519Tag (size_t minSlots, std::vector<ReceiveRatchetTagSetPtr> * removed = nullptr);
 		void HandleAESBlock (uint8_t * buf, size_t len, std::shared_ptr<AESDecryption> decryption,
 			std::shared_ptr<i2p::tunnel::InboundTunnel> from);
@@ -541,10 +554,10 @@ namespace garlic
 		std::mutex m_DeliveryStatusSessionsMutex;
 		std::unordered_map<uint32_t, GarlicRoutingSessionPtr> m_DeliveryStatusSessions; // msgID -> session
 		// Bounded replay filter for clove message IDs. A clove sits inside an
-		// authenticated garlic, but its I2NP header is chosen by the sender and
-		// a replayed clove would otherwise be delivered to the client twice.
-		// The filter is per destination and has its own lock, so no global lock
-		// is taken on the clove path.
+		// authenticated garlic, but its I2NP header is chosen by the sender
+		// and a replayed clove would otherwise be delivered to the client
+		// twice. The filter is per destination and has its own lock, so no
+		// global lock is taken on the clove path.
 		I2NPDuplicateFilter m_CloveReplayFilter;
 		// encryption
 		i2p::crypto::AEADChaCha20Poly1305Encryptor m_Encryptor;

@@ -4,11 +4,12 @@
  *
  * openi2pd: Family.
  *
- * Loads P-256 family certificates from the certificates/family directory,
- * extracts the CN family name and verifies ECDSA-SHA256 signatures over the
- * family name concatenated with the router identity. It also generates the
- * corresponding base64 signature from the family private key; certificates on
- * other curves and duplicate family names are rejected.
+ * Loads P-256 family certificates from the certificates/family
+ * directory, extracts the CN family name and verifies ECDSA-SHA256
+ * signatures over the family name concatenated with the router
+ * identity. It also generates the corresponding base64 signature from
+ * the family private key; certificates on other curves and duplicate
+ * family names are rejected.
  *
  */
 

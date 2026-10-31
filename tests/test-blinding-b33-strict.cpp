@@ -4,7 +4,9 @@
  *
  * openi2pd: test blinding b33 strict.
  *
- * Requires exact b33 length and layout so truncated, overlong and trailing-byte addresses are invalid and cannot round-trip, closing the former zero-key acceptance path.
+ * Requires exact b33 length and layout so truncated, overlong and
+ * trailing-byte addresses are invalid and cannot round-trip, closing
+ * the former zero-key acceptance path.
  *
  */
 
@@ -34,8 +36,8 @@ int main ()
 	assert (!truncated.IsValid ());
 	assert (truncated.ToB33 ().empty ());
 
-	// One byte of trailing data is inside the old 40-byte limit but does not
-	// match the exact b33 layout for a 32-byte key.
+	// One byte of trailing data is inside the old 40-byte limit but does
+	// not match the exact b33 layout for a 32-byte key.
 	BlindedPublicKey extraByte (b33 + "aa");
 	assert (!extraByte.IsValid ());
 	assert (extraByte.ToB33 ().empty ());

@@ -4,11 +4,11 @@
  *
  * openi2pd: api.
  *
- * Implements the embeddable C++ API that initialises configuration, storage
- * and crypto and starts or stops NetDB, transports, tunnels and the router
- * context. Local destinations, streams and LeaseSet lookups are exposed, and
- * startup is separated from initialisation so a host can install its own log
- * stream.
+ * Implements the embeddable C++ API that initialises configuration,
+ * storage and crypto and starts or stops NetDB, transports, tunnels and
+ * the router context. Local destinations, streams and LeaseSet lookups
+ * are exposed, and startup is separated from initialisation so a host
+ * can install its own log stream.
  *
  */
 

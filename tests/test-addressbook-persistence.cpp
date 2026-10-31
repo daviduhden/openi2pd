@@ -4,14 +4,14 @@
  *
  * openi2pd: test address-book persistence.
  *
- * Offline checks that every address-book artifact (the identity file, the
- * address index, the hosts.txt dump, the subscription ETag file, deleted.txt
- * and the entry-origin sidecar) is replaced atomically: no staging file is left
- * behind, a symlink pre-placed at the target path is never followed or
- * truncated, the files keep private permissions and an empty index is not
- * materialised. The only filesystem use is an isolated temporary data
- * directory; no destination, resolver, socket, thread, timer or network is
- * started.
+ * Offline checks that every address-book artifact (the identity file,
+ * the address index, the hosts.txt dump, the subscription ETag file,
+ * deleted.txt and the entry-origin sidecar) is replaced atomically: no
+ * staging file is left behind, a symlink pre-placed at the target path
+ * is never followed or truncated, the files keep private permissions
+ * and an empty index is not materialised. The only filesystem use is an
+ * isolated temporary data directory; no destination, resolver, socket,
+ * thread, timer or network is started.
  */
 
 #include <cassert>
@@ -51,7 +51,8 @@ void WriteFile (const fs::path & path, const std::string & contents)
 }
 
 #ifndef _WIN32
-// A symlink is only meaningful where the test platform allows creating one
+// A symlink is only meaningful where the test platform allows creating
+// one
 // unprivileged; the rest of the checks run everywhere.
 void PlaceSymlink (const fs::path & victim, const fs::path & link)
 {
@@ -133,8 +134,8 @@ int main ()
 	const auto etagsPath = storageRoot / "etags";
 	const auto identityPath = storageRoot / ("b" + std::string (1, b32[0])) / (b32 + ".b32");
 
-	// An empty index is not materialised: a clean shutdown must not turn an
-	// absent index into an authoritative empty one.
+	// An empty index is not materialised: a clean shutdown must not turn
+	// an absent index into an authoritative empty one.
 	{
 		i2p::client::AddressBook book;
 		book.Start ();
@@ -178,8 +179,8 @@ int main ()
 #endif
 	}
 
-	// The identity file, the hosts.txt dump, deleted.txt, the ETag file and the
-	// entry-origin sidecar are replaced atomically as well.
+	// The identity file, the hosts.txt dump, deleted.txt, the ETag file
+	// and the entry-origin sidecar are replaced atomically as well.
 	{
 		i2p::client::AddressBook book;
 		book.Start ();
@@ -198,7 +199,8 @@ int main ()
 		const auto identity = ReadFile (identityPath);
 		assert (identity.size () == keys.GetPublic ()->GetFullLen ());
 		assert (!fs::is_symlink (hostsDump));
-		// The dump is a full hosts.txt view: both stored names share one identity.
+		// The dump is a full hosts.txt view: both stored names share one
+		// identity.
 		const auto dump = ReadFile (hostsDump);
 		assert (dump.find ("artifact.i2p=" + destination + "\n") != std::string::npos);
 		assert (dump.find ("site.i2p=" + destination + "\n") != std::string::npos);
@@ -242,8 +244,8 @@ int main ()
 	}
 
 	// The reloaded book reads the index and the origin sidecar back: the
-	// originating feed may still retract its own name, which proves that the
-	// sidecar round trip works without changing the index columns.
+	// originating feed may still retract its own name, which proves that
+	// the sidecar round trip works without changing the index columns.
 	{
 		i2p::client::AddressBook book;
 		book.Start ();

@@ -4,9 +4,9 @@
  *
  * openi2pd: api.
  *
- * Declares the embeddable libi2pd API for starting and stopping the router and
- * for creating, using and destroying local destinations and stream
- * connections.
+ * Declares the embeddable libi2pd API for starting and stopping the
+ * router and for creating, using and destroying local destinations and
+ * stream connections.
  *
  */
 
@@ -28,7 +28,8 @@ namespace api
 	void InitI2P (int argc, char * argv[], const char * appName);
 	void TerminateI2P ();
 	void StartI2P (std::shared_ptr<std::ostream> logStream = nullptr);
-	// write system log to logStream, if not specified to &lt;appName&gt;.log in application's folder
+	// write system log to logStream, if not specified to
+	// &lt;appName&gt;.log in application's folder
 	void StopI2P ();
 	void RunPeerTest (); // should be called after UPnP
 

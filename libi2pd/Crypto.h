@@ -4,10 +4,10 @@
  *
  * openi2pd: Crypto.
  *
- * Declares the OpenSSL-backed primitives used across the router: X25519,
- * ElGamal and ECIES key agreement, AES tunnel layers, ChaCha20-Poly1305,
- * HKDF and Noise symmetric states. Feature macros adapt the interface to the
- * detected OpenSSL or LibreSSL version.
+ * Declares the OpenSSL-backed primitives used across the router:
+ * X25519, ElGamal and ECIES key agreement, AES tunnel layers,
+ * ChaCha20-Poly1305, HKDF and Noise symmetric states. Feature macros
+ * adapt the interface to the detected OpenSSL or LibreSSL version.
  *
  */
 
@@ -37,8 +37,9 @@
 #include "Random.h"
 #include "Tag.h"
 
-// Feature macros come from compile-time capability probes in CMake, not from
-// a guess that every non-LibreSSL build provides the same algorithm set.
+// Feature macros come from compile-time capability probes in CMake, not
+// from a guess that every non-LibreSSL build provides the same
+// algorithm set.
 #ifndef I2PD_HAVE_TLS_METHOD
 #define I2PD_HAVE_TLS_METHOD 0
 #endif
@@ -99,11 +100,13 @@ namespace crypto
 	bool bn2buf (const BIGNUM * bn, uint8_t * buf, size_t len);
 
 	/**
-	 * Copy one attribute from a read-only X.509 name as UTF-8 into a bounded buffer.
+	 * Copy one attribute from a read-only X.509 name as UTF-8 into a
+	 * bounded buffer.
 	 *
-	 * OpenSSL 4 deprecates `X509_NAME_get_text_by_NID`; this uses the stable
-	 * index/entry/ASN1 accessors instead. @return the copied byte count, or
-	 * -1 when the attribute is absent or the ASN.1 value cannot be converted.
+	 * OpenSSL 4 deprecates `X509_NAME_get_text_by_NID`; this uses the
+	 * stable index/entry/ASN1 accessors instead. @return the copied byte
+	 * count, or -1 when the attribute is absent or the ASN.1 value cannot
+	 * be converted.
 	 * @pre @a out is non-null and @a size is positive; output is always
 	 * NUL-terminated on success.
 	 */
@@ -138,10 +141,11 @@ namespace crypto
 
 	// x25519
 	//
-	// The object owns an EVP_PKEY and its context, so it is neither copyable
-	// nor assignable: a shallow copy would double-free the provider objects.
-	// A move transfers the ownership and leaves the source in the same
-	// fail-closed state as a default-constructed object.
+	// The object owns an EVP_PKEY and its context, so it is neither
+	// copyable nor assignable: a shallow copy would double-free the
+	// provider objects. A move transfers the ownership and leaves the
+	// source in the same fail-closed state as a default-constructed
+	// object.
 	class X25519Keys
 	{
 	public:
@@ -155,18 +159,18 @@ namespace crypto
 		X25519Keys & operator= (X25519Keys && other) noexcept;
 		~X25519Keys ();
 
-		// Returns false when the provider cannot generate a key. On failure no
-		// private key is held and the public key is an all-zero value, so the
-		// caller must abort instead of publishing the key material.
+		// Returns false when the provider cannot generate a key. On failure
+		// no private key is held and the public key is an all-zero value, so
+		// the caller must abort instead of publishing the key material.
 		bool GenerateKeys ();
 		bool HasPrivateKey () const { return m_Pkey != nullptr; };
 		const uint8_t * GetPublicKey () const { return m_PublicKey; };
 		void GetPrivateKey (uint8_t * priv) const;
 		void SetPrivateKey (const uint8_t * priv, bool calculatePublic = false);
 		/// Derive a 32-byte shared secret from a 32-byte peer public key.
-		/// @return False for an unusable local key, invalid peer or all-zero
-		/// result. A non-null output is zeroed on failure; never use that output
-		/// as a handshake key.
+		/// @return False for an unusable local key, invalid peer or
+		///         all-zero result. A non-null output is zeroed on failure;
+		///         never use that output as a handshake key.
 		bool Agree (const uint8_t * pub, uint8_t * shared);
 
 		bool IsElligatorIneligible () const { return m_IsElligatorIneligible; }
@@ -322,12 +326,16 @@ namespace crypto
 	};
 
 	/// ChaCha20-Poly1305 with a 32-byte key and 12-byte nonce.
-	/// @param msgLen Plaintext/ciphertext length excluding the 16-byte tag.
-	/// @param len Capacity of buf: at least msgLen + 16 for encryption and
-	/// at least msgLen for decryption. For decryption msg must also contain the
-	/// tag immediately after its msgLen ciphertext bytes.
-	/// @return True only when encryption or tag-verified decryption succeeds.
-	/// @warning Discard output on false, including argument-validation failures.
+	/// @param msgLen Plaintext/ciphertext length excluding the 16-byte
+	///               tag.
+	/// @param len Capacity of buf: at least msgLen + 16 for
+	///            encryption and at least msgLen for decryption. For
+	///            decryption msg must also contain the tag immediately
+	///            after its msgLen ciphertext bytes.
+	/// @return True only when encryption or tag-verified decryption
+	///         succeeds.
+	/// @warning Discard output on false, including argument-validation
+	///          failures.
 	bool AEADChaCha20Poly1305 (const uint8_t * msg, size_t msgLen, const uint8_t * ad, size_t adLen,
 		const uint8_t * key, const uint8_t * nonce, uint8_t * buf, size_t len,
 		bool encrypt); // msgLen is len without tag
@@ -349,21 +357,26 @@ namespace crypto
 	// HKDF
 
 	/// RFC 5869 HKDF-SHA256 over a 32-byte salt.
-	/// @param key Input keying material; a null pointer together with keyLen 0
-	/// selects the expand-only form, where HMAC-SHA256(salt, empty) is used as
-	/// the PRK because the handshake already produced a pseudorandom key.
-	/// @param info Protocol context string; it separates otherwise identical
-	/// derivations and must never carry secret material.
+	/// @param key Input keying material; a null pointer
+	///            together with keyLen 0 selects the expand-only form,
+	///            where HMAC-SHA256(salt, empty) is used as the PRK
+	///            because the handshake already produced a pseudorandom
+	///            key.
+	/// @param info Protocol context string; it separates
+	///             otherwise identical derivations and must never carry
+	///             secret material.
 	/// @param out Destination holding at least outLen bytes.
-	/// @param outLen Requested length, bounded by RFC 5869's 255 * 32 bytes.
+	/// @param outLen Requested length, bounded by RFC 5869's 255 * 32
+	///               bytes.
 	/// @warning A failed or rejected derivation leaves the whole output
 	/// zeroed; callers must treat that as failure rather than as a key.
 	void HKDF (const uint8_t * salt, const uint8_t * key, size_t keyLen, std::string_view info, uint8_t * out,
 		size_t outLen = 64); // salt - 32, out - 32 or 64, info <= 32
 
 	/// Reusable HKDF context. Unlike the free function it owns a provider
-	/// context and is therefore stateful and not reentrant: every thread that
-	/// derives keys must use its own instance, never one shared context.
+	/// context and is therefore stateful and not reentrant: every thread
+	/// that derives keys must use its own instance, never one shared
+	/// context.
 	class HKDFContext final
 	{
 	public:
@@ -384,9 +397,10 @@ namespace crypto
 
 	// Noise
 
-	/// Mutable Noise transcript and chain state used during I2P handshakes.
-	/// The caller owns the protocol transition order and must abort a handshake
-	/// when Encrypt or Decrypt fails. The chain-key storage is wiped on destruction.
+	/// Mutable Noise transcript and chain state used during I2P
+	/// handshakes. The caller owns the protocol transition order and must
+	/// abort a handshake when Encrypt or Decrypt fails. The chain-key
+	/// storage is wiped on destruction.
 	struct NoiseSymmetricState
 	{
 		uint8_t m_H[32] /*h*/ { }, m_CK[64] /*[ck, k]*/ { };
@@ -410,8 +424,9 @@ namespace crypto
 	void InitNoiseIKState (NoiseSymmetricState & state, const uint8_t * pub); // Noise_IK (ratchets)
 
 	// Provider/algorithm availability as observed by the active libcrypto.
-	// Algorithm names are fetched through the EVP provider API where it exists;
-	// the legacy helpers are only the compatibility branch for LibreSSL.
+	// Algorithm names are fetched through the EVP provider API where it
+	// exists; the legacy helpers are only the compatibility branch for
+	// LibreSSL.
 	struct CryptoCapabilities
 	{
 		bool sha1;

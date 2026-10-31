@@ -4,10 +4,11 @@
  *
  * openi2pd: test tunnel pool build accounting and backoff.
  *
- * Checks the hop/variance clamp, the Java-like build backoff ladder, the
- * per-tunnel test deadline and the in-progress build accounting that stops a
- * pool from oversubscribing a slow build round. Deterministic: the pending map
- * is inspected directly and no transport, socket or thread runs.
+ * Checks the hop/variance clamp, the Java-like build backoff ladder,
+ * the per-tunnel test deadline and the in-progress build accounting
+ * that stops a pool from oversubscribing a slow build round.
+ * Deterministic: the pending map is inspected directly and no
+ * transport, socket or thread runs.
  *
  */
 
@@ -76,7 +77,8 @@ void TestClampTunnelLength ()
 void TestReconfigureClamp ()
 {
 	// A pool length change must keep the variance inside the record table:
-	// inbound reserves the phony record slot, outbound may use all records.
+	// inbound reserves the phony record slot, outbound may use all
+	// records.
 	auto pool = std::make_shared<TunnelPool> (MAX_NUM_RECORDS, MAX_NUM_RECORDS, 1, 1, 3, 3, false);
 	assert (pool->GetNumInboundHops () == MAX_INBOUND_HOPS);
 	assert (pool->GetNumOutboundHops () == MAX_NUM_RECORDS);
@@ -98,7 +100,8 @@ void TestReconfigureClamp ()
 
 void TestBuildRequestLadder ()
 {
-	// No work when the target is reached, even if one request is in flight.
+	// No work when the target is reached, even if one request is in
+	// flight.
 	assert (ComputeBuildRequestCount (0, 0, 0, 0) == 0);
 	assert (ComputeBuildRequestCount (2, 2, 0, 0) == 0);
 	assert (ComputeBuildRequestCount (3, 0, 3, 0) == 0);
@@ -106,7 +109,8 @@ void TestBuildRequestLadder ()
 
 	// Healthy pool: the round is capped at the configured maximum.
 	assert (ComputeBuildRequestCount (16, 0, 0, 0) == TUNNEL_POOL_MAX_NUM_BUILD_REQUESTS);
-	// In-progress builds count against the target, so a slow build round cannot
+	// In-progress builds count against the target, so a slow build round
+	// cannot
 	// be oversubscribed by the next management tick.
 	assert (ComputeBuildRequestCount (3, 0, 1, 0) == 2);
 	assert (ComputeBuildRequestCount (3, 0, 3, 0) == 0);
@@ -190,8 +194,8 @@ void TestPoolAccounting ()
 	assert (tunnels.GetNumPendingTunnels (pool.get (), true) == 0);
 	assert (tunnels.GetNumPendingTunnels (nullptr, false) == 0);
 
-	// The pool target is one tunnel and one build is already in flight: the
-	// next round must not start another request.
+	// The pool target is one tunnel and one build is already in flight:
+	// the next round must not start another request.
 	const uint64_t ts = 1000;
 	TunnelPoolTestAccess::RunCreateTunnels (*pool, ts);
 	assert (tunnels.GetNumPendingTunnels (pool.get (), false) == 1);

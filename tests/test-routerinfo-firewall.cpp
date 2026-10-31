@@ -4,7 +4,10 @@
  *
  * openi2pd: test routerinfo firewall.
  *
- * Validates firewall-rule endpoint parsing and rendering across iptables, nftables, pf and Windows backends, requiring outbound-only rules, canonical numeric addresses and rejection of private, reserved, scoped or injected values.
+ * Validates firewall-rule endpoint parsing and rendering across
+ * iptables, nftables, pf and Windows backends, requiring outbound-only
+ * rules, canonical numeric addresses and rejection of private,
+ * reserved, scoped or injected values.
  *
  */
 
@@ -43,7 +46,8 @@ int main ()
 	const auto ntcp6 = Make ("2001:db8::10", 12345, Transport::NTCP2);
 	const auto ssu6 = Make ("2001:db8::20", 4567, Transport::SSU2);
 
-	// Validation rejects values that would create unsafe or meaningless rules.
+	// Validation rejects values that would create unsafe or meaningless
+	// rules.
 	assert (!MakeEndpoint ("192.0.2.10", 0, Transport::NTCP2));
 	assert (!MakeEndpoint ("192.0.2.10", 65536, Transport::NTCP2));
 	assert (!MakeEndpoint ("192.0.2.10", -1, Transport::NTCP2));
@@ -112,7 +116,8 @@ int main ()
 	RenderOptions options;
 	options.ruleTag = "abcdef12";
 
-	// The public aggregate must not bypass validation at the render boundary.
+	// The public aggregate must not bypass validation at the render
+	// boundary.
 	assert (!IsValidEndpoint ((Endpoint { "192.0.2.10", 0, Transport::NTCP2, false })));
 	assert (!IsValidEndpoint ((Endpoint { "192.0.2.10", 1234, static_cast<Transport> (99), false })));
 	assert (!IsValidEndpoint ((Endpoint { "192.0.2.10", 1234, Transport::NTCP2, true })));
@@ -125,7 +130,8 @@ int main ()
 		assert (Render (wrongFamily, options) == std::nullopt);
 	}
 
-	// Preserve historical IPv4 -f output; IPv6 is explicitly routed through
+	// Preserve historical IPv4 -f output; IPv6 is explicitly routed
+	// through
 	// ip6tables so the family-specific command is unambiguous.
 	options.backend = Backend::IptablesLegacy;
 	assert (Render (ntcp4, options) == " -A OUTPUT -p tcp -d 192.0.2.10 --dport 12345 -j ACCEPT");
@@ -149,7 +155,8 @@ int main ()
 		== "nft add rule inet filter output ip6 daddr 2001:db8::20 udp dport 4567 accept comment \"openi2pd SSU2 "
 		   "abcdef12\"");
 
-	// Family-specific nftables output never silently widens to the other family.
+	// Family-specific nftables output never silently widens to the other
+	// family.
 	options.nftFamily = "ip";
 	assert (Render (ntcp6, options) == std::nullopt);
 	assert (Render (ntcp4, options).has_value ());
@@ -160,7 +167,8 @@ int main ()
 	assert (Render (ssu6, options).has_value ());
 	options.nftFamily = "inet";
 
-	// Invalid identifiers are rejected instead of being inserted into a command.
+	// Invalid identifiers are rejected instead of being inserted into a
+	// command.
 	assert (!IsSafeIdentifier (""));
 	assert (!IsSafeIdentifier ("-table"));
 	assert (!IsSafeIdentifier ("out;flush ruleset"));
@@ -217,7 +225,8 @@ int main ()
 		   "TCP -RemoteAddress '192.0.2.10' -RemotePort 12345 -ErrorAction Stop");
 	AssertSafeRule (windows);
 
-	// Base64 '~' survives in the rule Name so a prefix query still matches.
+	// Base64 '~' survives in the rule Name so a prefix query still
+	// matches.
 	options.ruleTag = "ab~def12";
 	auto windowsTilde = Render (ntcp4, options);
 	assert (windowsTilde.has_value ());
@@ -233,8 +242,9 @@ int main ()
 	assert (windows6->find ("-Name 'openi2pd_SSU2_v6_abcdef12_2001_db8__20_4567'") != std::string::npos);
 	AssertSafeRule (windows6);
 
-	// Display-name tags accept base64/identifier characters and are rejected
-	// rather than emitted with quotes, newlines or control characters.
+	// Display-name tags accept base64/identifier characters and are
+	// rejected rather than emitted with quotes, newlines or control
+	// characters.
 	assert (IsSafeRuleTag (""));
 	assert (IsSafeRuleTag ("abcdef12"));
 	assert (IsSafeRuleTag ("abc+/=~-._"));

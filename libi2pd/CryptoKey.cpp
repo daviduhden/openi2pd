@@ -4,11 +4,12 @@
  *
  * openi2pd: CryptoKey.
  *
- * Wraps the I2P asymmetric key types as encryptor/decryptor objects: ElGamal,
- * ECIES-P256, ECIES-GOST R 34.10 and the ECIES-X25519 ratchet key agreement.
- * Key import rejects invalid curve points, secret material is cleared on
- * destruction or generation failure, and LocalEncryptionKey owns a local
- * destination pair whose decryptor is created lazily.
+ * Wraps the I2P asymmetric key types as encryptor/decryptor objects:
+ * ElGamal, ECIES-P256, ECIES-GOST R 34.10 and the ECIES-X25519 ratchet
+ * key agreement. Key import rejects invalid curve points, secret
+ * material is cleared on destruction or generation failure, and
+ * LocalEncryptionKey owns a local destination pair whose decryptor is
+ * created lazily.
  *
  */
 
@@ -72,15 +73,15 @@ namespace crypto
 		 * @return false for a null argument, a provider failure, an off-curve
 		 *         point or the point at infinity.
 		 *
-		 * I2P transmits affine coordinates without an uncompressed-point tag, so
-		 * the encoding itself carries no curve information and the caller must
-		 * already know which group is expected. OpenSSL validates that the
-		 * coordinates satisfy the curve equation in
-		 * EC_POINT_set_affine_coordinates(); the point at infinity is rejected
-		 * explicitly. No separate subgroup check is performed, which matches the I2P
-		 * key formats (P-256 has cofactor 1) and keeps the accepted encodings
-		 * identical to Java's. The coordinates are public input, so the temporary
-		 * BIGNUMs are freed without cleansing.
+		 * I2P transmits affine coordinates without an uncompressed-point tag,
+		 * so the encoding itself carries no curve information and the caller
+		 * must already know which group is expected. OpenSSL validates that
+		 * the coordinates satisfy the curve equation in
+		 * EC_POINT_set_affine_coordinates(); the point at infinity is
+		 * rejected explicitly. No separate subgroup check is performed, which
+		 * matches the I2P key formats (P-256 has cofactor 1) and keeps the
+		 * accepted encodings identical to Java's. The coordinates are public
+		 * input, so the temporary BIGNUMs are freed without cleansing.
 		 */
 		bool LoadECPublicKey (const EC_GROUP * curve, EC_POINT * point, const uint8_t * pub)
 		{
@@ -338,12 +339,13 @@ namespace crypto
 	/**
 	 * @brief Build the decryptor for this local key pair on first use.
 	 *
-	 * Lazy creation keeps the long-term private key out of a second object until
-	 * a peer actually sends a message. An empty or all-zero private field is the
-	 * fail-closed result of GenerateKeys() and never produces a decryptor: such a
-	 * key was never published, so silently decrypting with it would only hide a
-	 * generation failure. Not synchronized; the owning destination must call it
-	 * before the key is used from another thread.
+	 * Lazy creation keeps the long-term private key out of a second object
+	 * until a peer actually sends a message. An empty or all-zero private
+	 * field is the fail-closed result of GenerateKeys() and never produces
+	 * a decryptor: such a key was never published, so silently decrypting
+	 * with it would only hide a generation failure. Not synchronized; the
+	 * owning destination must call it before the key is used from another
+	 * thread.
 	 */
 	void LocalEncryptionKey::CreateDecryptor ()
 	{

@@ -4,9 +4,12 @@
  *
  * openi2pd: fuzz torrent extension decoders.
  *
- * Fuzzes the pure BEP11 "i2p_pex", i2p_dht and BEP10 handshake-dictionary
- * parsers. Every input must be decoded without throwing or crashing, and every
- * output must stay within the documented bounds (at most MAX_PEX_RECEIVE_PEERS
+ * Fuzzes the pure BEP11 "i2p_pex", i2p_dht and BEP10
+ * handshake-dictionary
+ * parsers. Every input must be decoded without throwing or crashing,
+ * and every
+ * output must stay within the documented bounds (at most
+ * MAX_PEX_RECEIVE_PEERS
  * destinations, port in 1..65534, no zero destinations).
  */
 
@@ -26,9 +29,9 @@ extern "C" int LLVMFuzzerTestOneInput (const uint8_t * data, size_t size)
 {
 	std::string_view input (reinterpret_cast<const char *> (data), size);
 
-	// BEP11 PEX: the decoder is the only authority on "added"; it must drop
-	// zero/duplicate destinations, cap the result and report malformed input
-	// instead of returning a partial list.
+	// BEP11 PEX: the decoder is the only authority on "added"; it must
+	// drop zero/duplicate destinations, cap the result and report
+	// malformed input instead of returning a partial list.
 	{
 		auto decoded = i2p::torrents::DecodePEXAdded (input);
 		assert (decoded.peers.size () <= i2p::torrents::MAX_PEX_RECEIVE_PEERS);
@@ -37,8 +40,8 @@ extern "C" int LLVMFuzzerTestOneInput (const uint8_t * data, size_t size)
 		else
 			for (const auto & peer : decoded.peers) assert (!peer.IsZero ());
 		// A well-formed message built from the same bytes can only describe
-		// input.size() / 32 destinations and never more. Only whole hashes are
-		// used: a truncated tail is *supposed* to be rejected.
+		// input.size() / 32 destinations and never more. Only whole hashes
+		// are used: a truncated tail is *supposed* to be rejected.
 		if (size <= i2p::torrents::PEER_CONNECTION_RECEIVE_BUFFER_SIZE)
 		{
 			const size_t wholeHashes = (size / i2p::data::IdentHash::len) * i2p::data::IdentHash::len;
@@ -57,14 +60,14 @@ extern "C" int LLVMFuzzerTestOneInput (const uint8_t * data, size_t size)
 		}
 	}
 
-	// i2p_dht port hint: an out-of-range or missing port is "no port", and a
-	// malformed message never carries a usable port.
+	// i2p_dht port hint: an out-of-range or missing port is "no port", and
+	// a malformed message never carries a usable port.
 	{
 		auto decoded = i2p::torrents::DecodeDHTHint (input);
 		if (decoded.port) assert (*decoded.port >= 1 && *decoded.port <= 65534);
 		if (decoded.malformed) assert (!decoded.port);
-		// The port/rport relationship must never wrap: a hint around the 16-bit
-		// boundary is either a tolerated mismatch or a plain mismatch.
+		// The port/rport relationship must never wrap: a hint around the
+		// 16-bit boundary is either a tolerated mismatch or a plain mismatch.
 		const int64_t port = static_cast<int64_t> (size % 65540);
 		const std::string message = i2p::torrents::CreateDictionary (
 			{ { "port", i2p::torrents::CreateInteger (port) }, { "rport", i2p::torrents::CreateInteger (port + 1) } });
@@ -89,8 +92,8 @@ extern "C" int LLVMFuzzerTestOneInput (const uint8_t * data, size_t size)
 			});
 	}
 
-	// Candidate lifetime arithmetic must stay total for arbitrary clock and
-	// failure values (no wrap, no unbounded loop).
+	// Candidate lifetime arithmetic must stay total for arbitrary clock
+	// and failure values (no wrap, no unbounded loop).
 	{
 		uint64_t clock = 0;
 		uint32_t failures = 0;

@@ -4,9 +4,10 @@
  *
  * openi2pd: test leaseset encrypted freshness.
  *
- * Static checks for the encrypted LeaseSet2 client replay guard: the signed
- * outer published timestamp survives the outer-only and the decrypted parse,
- * and only a strictly newer reply may replace the cached entry.
+ * Static checks for the encrypted LeaseSet2 client replay guard: the
+ * signed outer published timestamp survives the outer-only and the
+ * decrypted parse, and only a strictly newer reply may replace the
+ * cached entry.
  *
  */
 
@@ -23,11 +24,11 @@
 #include "LeaseSet.h"
 #include "Timestamp.h"
 
-// No destination, socket or thread is created here. The type 5 branch of
-// LeaseSetDestination::HandleDatabaseStoreMessage is private, so the test
-// pins the two contracts that branch depends on: the outer timestamp is not
-// replaced by the inner header, and the cache accepts only a strictly newer
-// candidate.
+// No destination, socket or thread is created here. The type 5 branch
+// of LeaseSetDestination::HandleDatabaseStoreMessage is private, so the
+// test pins the two contracts that branch depends on: the outer
+// timestamp is not replaced by the inner header, and the cache accepts
+// only a strictly newer candidate.
 
 namespace
 {
@@ -65,8 +66,9 @@ void AppendSignature (std::vector<uint8_t> & buffer, const PrivateKeys & keys)
 	buffer.insert (buffer.end (), signature.begin (), signature.end ());
 }
 
-// The returned vector starts with the NetDb store type, which is covered by
-// the inner LeaseSet2 signature but is not part of LeaseSet2::GetBuffer().
+// The returned vector starts with the NetDb store type, which is
+// covered by the inner LeaseSet2 signature but is not part of
+// LeaseSet2::GetBuffer().
 std::vector<uint8_t> BuildStandardLeaseSet2 (
 	const PrivateKeys & keys, uint32_t published, uint16_t expires, uint32_t leaseEnd)
 {
@@ -90,9 +92,9 @@ std::vector<uint8_t> BuildStandardLeaseSet2 (
 }
 
 // Seals an already signed inner standard LS2 exactly like
-// LocalEncryptedLeaseSet2 with ENCRYPTED_LEASESET_AUTH_TYPE_NONE, but with an
-// explicit published timestamp so the replay order is deterministic instead
-// of depending on the wall clock.
+// LocalEncryptedLeaseSet2 with ENCRYPTED_LEASESET_AUTH_TYPE_NONE, but
+// with an explicit published timestamp so the replay order is
+// deterministic instead of depending on the wall clock.
 std::vector<uint8_t> SealEncryptedLeaseSet2 (
 	const PrivateKeys & keys, const std::vector<uint8_t> & inner, uint32_t published, uint16_t expires)
 {
@@ -165,14 +167,14 @@ void TestOuterTimestampSurvivesBothParses ()
 	auto keys = PrivateKeys::CreateRandomKeys (
 		SIGNING_KEY_TYPE_EDDSA_SHA512_ED25519, CRYPTO_KEY_TYPE_ECIES_X25519_AEAD, true);
 	auto now = static_cast<uint32_t> (i2p::util::GetMillisecondsSinceEpoch () / 1000);
-	// The inner layer is valid on its own: published now - 300 and a
-	// 20 minute expires, so its own expiration is now + 900.
+	// The inner layer is valid on its own: published now - 300 and a 20
+	// minute expires, so its own expiration is now + 900.
 	auto inner = BuildStandardLeaseSet2 (keys, now - 300, 1200, now + 600);
 	auto olderBuffer = SealEncryptedLeaseSet2 (keys, inner, now - 120, 900);
 	auto newerBuffer = SealEncryptedLeaseSet2 (keys, inner, now - 60, 900);
 
-	// A floodfill stores and serves the outer layer only, but it must still
-	// record the signed published timestamp that orders the cache.
+	// A floodfill stores and serves the outer layer only, but it must
+	// still record the signed published timestamp that orders the cache.
 	auto olderOuter = ParseOuterEncrypted (olderBuffer);
 	auto newerOuter = ParseOuterEncrypted (newerBuffer);
 	assert (olderOuter->IsValid ());
@@ -182,7 +184,8 @@ void TestOuterTimestampSurvivesBothParses ()
 	assert (newerOuter->GetPublishedTimestamp () == now - 60);
 
 	// A client decrypts the inner layer. The inner header must not replace
-	// the outer timestamp, and the signed outer expiry stays authoritative.
+	// the outer timestamp, and the signed outer expiry stays
+	// authoritative.
 	auto blindedKey = std::make_shared<BlindedPublicKey> (keys.GetPublic ());
 	LeaseSet2 olderDecrypted (olderBuffer.data () + 1, olderBuffer.size () - 1, blindedKey, nullptr, nullptr);
 	LeaseSet2 newerDecrypted (newerBuffer.data () + 1, newerBuffer.size () - 1, blindedKey, nullptr, nullptr);
@@ -209,8 +212,8 @@ void TestOlderReplyDoesNotReplaceNewer ()
 	auto newer = ParseOuterEncrypted (newerBuffer);
 	auto older = ParseOuterEncrypted (olderBuffer);
 	auto duplicate = ParseOuterEncrypted (newerBuffer);
-	// Both replies are authentic, well formed and unexpired, so the published
-	// order is the only thing that may decide the replacement.
+	// Both replies are authentic, well formed and unexpired, so the
+	// published order is the only thing that may decide the replacement.
 	assert (older->IsValid () && !older->IsExpired ());
 	assert (newer->IsValid () && !newer->IsExpired ());
 	assert (duplicate->IsValid () && !duplicate->IsExpired ());
@@ -232,8 +235,8 @@ void TestOlderReplyDoesNotReplaceNewer ()
 	store (duplicate); // an equal timestamp is a duplicate, not a refresh
 	assert (cached == newer);
 
-	// The same strict-newer rule through the public comparison also used by
-	// the type 1/3 branch.
+	// The same strict-newer rule through the public comparison also used
+	// by the type 1/3 branch.
 	assert (older->IsNewer (newerBuffer.data () + 1, newerBuffer.size () - 1));
 	assert (!newer->IsNewer (olderBuffer.data () + 1, olderBuffer.size () - 1));
 	assert (!newer->IsNewer (newerBuffer.data () + 1, newerBuffer.size () - 1));

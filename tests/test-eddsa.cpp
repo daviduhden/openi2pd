@@ -4,10 +4,10 @@
  *
  * openi2pd: test eddsa.
  *
- * Reproduces RFC 8032 test vector 1024 to check deterministic Ed25519 signing and
- * verification for a 1023-byte message, then pins the hand-rolled verifier's
- * canonical-S (S < L) rejection and the fail-closed point decoding used by
- * encrypted LeaseSet2 blinding.
+ * Reproduces RFC 8032 test vector 1024 to check deterministic Ed25519
+ * signing and verification for a 1023-byte message, then pins the
+ * hand-rolled verifier's canonical-S (S < L) rejection and the
+ * fail-closed point decoding used by encrypted LeaseSet2 blinding.
  *
  */
 
@@ -23,7 +23,8 @@
 
 namespace
 {
-// value = le32(v) interpreted as a little-endian scalar, increased by L.
+// value = le32(v) interpreted as a little-endian scalar, increased by
+// L.
 void AddOrder (uint8_t * littleEndian)
 {
 	// L = 2^252 + 27742317777372353535851937790883648493.
@@ -113,7 +114,8 @@ int main ()
 	verifier.SetPublicKey (pub);
 	assert (verifier.Verify (msg, 1023, s));
 
-	// Blinding must reject a y-encoding whose recovered x is not on the curve.
+	// Blinding must reject a y-encoding whose recovered x is not on the
+	// curve.
 	auto & ed25519 = i2p::crypto::GetEd25519 ();
 	assert (ed25519->IsValidPublicKey (pub));
 	uint8_t invalid[32] { };
@@ -124,13 +126,14 @@ int main ()
 		foundInvalid = !ed25519->IsValidPublicKey (invalid);
 	}
 	assert (foundInvalid);
-	// Java also accepts the order-4 all-zero encoding; this check must be an
-	// on-curve test, not an accidental low-order rejection.
+	// Java also accepts the order-4 all-zero encoding; this check must be
+	// an on-curve test, not an accidental low-order rejection.
 	uint8_t allZero[32] { };
 	assert (ed25519->IsValidPublicKey (allZero));
 
-	// Point decoding fails closed: an off-curve encoding decodes to an empty
-	// point and every consumer reports failure instead of hashing through it.
+	// Point decoding fails closed: an off-curve encoding decodes to an
+	// empty point and every consumer reports failure instead of hashing
+	// through it.
 	{
 		BN_CTX * ctx = BN_CTX_new ();
 		assert (ctx);
@@ -149,9 +152,9 @@ int main ()
 		BN_CTX_free (ctx);
 	}
 
-	// The hand-rolled verifier must apply RFC 8032's canonical-S rule and use
-	// a constant-time comparison. S + L would otherwise verify because the
-	// base-point multiplication reduces the scalar modulo L.
+	// The hand-rolled verifier must apply RFC 8032's canonical-S rule and
+	// use a constant-time comparison. S + L would otherwise verify because
+	// the base-point multiplication reduces the scalar modulo L.
 	{
 		std::array<uint8_t, 32> r { }, pubKey { }, digest { };
 		memcpy (r.data (), s, r.size ());

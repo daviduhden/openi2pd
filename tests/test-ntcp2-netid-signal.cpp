@@ -5,11 +5,12 @@
  * openi2pd: test ntcp2 netid signal.
  *
  * Verifies RouterInfo::HasForeignNetId(), the signal the NTCP2
- * SessionConfirmed path uses to answer reason 17 and ban the source instead of
- * reporting a signature failure. A foreign netId keeps the RouterInfo
- * unreachable (it must never be stored or selected) but stays distinguishable
- * from a malformed body. Only signed RouterInfo buffers are built here; the
- * ban/termination itself needs the socket harness.
+ * SessionConfirmed path uses to answer reason 17 and ban the source
+ * instead of reporting a signature failure. A foreign netId keeps the
+ * RouterInfo unreachable (it must never be stored or selected) but
+ * stays distinguishable from a malformed body. Only signed RouterInfo
+ * buffers are built here; the ban/termination itself needs the socket
+ * harness.
  *
  */
 
@@ -55,8 +56,10 @@ void AppendParam (std::string & out, std::string_view key, std::string_view valu
 	out.push_back (';');
 }
 
-// A RouterInfo with no addresses: the parser accepts that (the no-address
-// policy lives in NetDb), so the test only depends on the property block.
+// A RouterInfo with no addresses: the parser accepts that (the
+// no-address
+// policy lives in NetDb), so the test only depends on the property
+// block.
 std::vector<uint8_t> BuildBody (const std::vector<std::pair<std::string, std::string>> & properties)
 {
 	std::vector<uint8_t> body;
@@ -96,11 +99,12 @@ int main ()
 	assert (keys.GetPublic ());
 
 	const auto ourNetId = i2p::context.GetNetID ();
-	// The default build netId is not zero, which lets the test distinguish a
-	// foreign network (>= 1) from the unspecified netId=0 property.
+	// The default build netId is not zero, which lets the test distinguish
+	// a foreign network (>= 1) from the unspecified netId=0 property.
 	assert (ourNetId != 0);
 
-	// Baseline: our own netId parses and is neither unreachable nor foreign.
+	// Baseline: our own netId parses and is neither unreachable nor
+	// foreign.
 	{
 		const auto buffer = SignRouterInfo (keys, BuildBody (Properties (std::to_string (ourNetId))));
 		RouterInfo router (buffer.data (), buffer.size ());
@@ -109,10 +113,10 @@ int main ()
 		assert (!router.IsForeignNetId ());
 	}
 
-	// A non-zero netId of another network: the RouterInfo stays rejected (it
-	// must never be stored or selected) but the reason is queryable, so NTCP2
-	// answers reason 17 and bans the source instead of treating it as a
-	// signature failure.
+	// A non-zero netId of another network: the RouterInfo stays rejected
+	// (it must never be stored or selected) but the reason is queryable,
+	// so NTCP2 answers reason 17 and bans the source instead of treating
+	// it as a signature failure.
 	{
 		const auto buffer = SignRouterInfo (keys, BuildBody (Properties (std::to_string (ourNetId + 1))));
 		RouterInfo router (buffer.data (), buffer.size ());
@@ -122,7 +126,8 @@ int main ()
 	}
 
 	// netId=0 is never foreign. It is still rejected because it is not our
-	// network ID (unchanged behaviour), but it must not trigger the ban path.
+	// network ID (unchanged behaviour), but it must not trigger the ban
+	// path.
 	{
 		const auto buffer = SignRouterInfo (keys, BuildBody (Properties ("0")));
 		RouterInfo router (buffer.data (), buffer.size ());
@@ -148,8 +153,8 @@ int main ()
 		assert (!router.HasForeignNetId ());
 	}
 
-	// A truncated buffer never yields the foreign-netId signal: the error is
-	// detected before the property block.
+	// A truncated buffer never yields the foreign-netId signal: the error
+	// is detected before the property block.
 	{
 		const auto buffer = SignRouterInfo (keys, BuildBody (Properties (std::to_string (ourNetId + 1))));
 		for (size_t len = 0; len < buffer.size (); len += 7)

@@ -4,7 +4,9 @@
  *
  * openi2pd: test aeadchacha20poly1305.
  *
- * Validates ChaCha20-Poly1305 against the RFC 7539 vector, including associated data, tag verification and the multi-buffer encryption path.
+ * Validates ChaCha20-Poly1305 against the RFC 7539 vector, including
+ * associated data, tag verification and the multi-buffer encryption
+ * path.
  *
  */
 
@@ -55,9 +57,9 @@ int main ()
 	decryptor.Decrypt (buf, 114, nullptr, 0, key, nonce, buf1, 114);
 	assert (memcmp (buf1, text, 114) == 0);
 
-	// An empty/failed multi-buffer operation must report failure and clear the
-	// MAC instead of producing a frame with a zero tag that a caller could
-	// still transmit.
+	// An empty/failed multi-buffer operation must report failure and clear
+	// the MAC instead of producing a frame with a zero tag that a caller
+	// could still transmit.
 	uint8_t failedTag[16];
 	memset (failedTag, 0xAA, sizeof (failedTag));
 	assert (!encryptor.Encrypt ({ }, key, nonce, failedTag));

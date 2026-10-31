@@ -4,8 +4,10 @@
  *
  * openi2pd: test ssu2 holepunch whitelist.
  *
- * Enforces the HolePunch/Introduced block whitelist: only DateTime, Address,
- * RelayResponse, Padding and Termination are accepted, and a data-phase block
+ * Enforces the HolePunch/Introduced block whitelist: only DateTime,
+ * Address,
+ * RelayResponse, Padding and Termination are accepted, and a data-phase
+ * block
  * smuggled into an introduction payload invalidates the whole payload.
  *
  */
@@ -75,7 +77,8 @@ void TestBlockMatrix ()
 		for (auto state : holePunchStates) assert (!IsSSU2PayloadBlockAllowedForState (state, block));
 	}
 
-	// The PeerTest whitelist is independent and unchanged: it still accepts
+	// The PeerTest whitelist is independent and unchanged: it still
+	// accepts
 	// the PeerTest block and Termination stays invalid there.
 	assert (IsPeerTestPayloadBlockAllowed (eSSU2BlkDateTime));
 	assert (IsPeerTestPayloadBlockAllowed (eSSU2BlkPeerTest));
@@ -127,8 +130,8 @@ void TestPayloadValidation ()
 			assert (!ValidateSSU2PayloadBlocks (state, payload.data (), payload.size ()));
 	}
 
-	// The same blocks stay valid in the data phase, so the rejection above is
-	// specific to the introduction context.
+	// The same blocks stay valid in the data phase, so the rejection above
+	// is specific to the introduction context.
 	for (const auto * allowed : { &i2np, &peerTest, &ack, &newToken, &routerInfo })
 	{
 		const auto payload = Concat ({ dateTime, *allowed, padding });

@@ -4,7 +4,9 @@
  *
  * openi2pd: test http url.
  *
- * Parses absolute HTTP(S) URLs with optional credentials, ports and queries, checking component splitting, query maps and round-trip serialization.
+ * Parses absolute HTTP(S) URLs with optional credentials, ports and
+ * queries, checking component splitting, query maps and round-trip
+ * serialization.
  *
  */
 

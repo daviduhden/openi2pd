@@ -4,10 +4,11 @@
  *
  * openi2pd: Identity.
  *
- * I2P identity and key material: the fixed 387-byte Identity layout, extended identities with
- * signing and crypto key types, IdentHash derivation, sign/verify and encryption helpers, and
- * Base64/buffer codecs. Private key containers cleanse transient secrets with OPENSSL_cleanse
- * and support b33 per-day offline signing keys.
+ * I2P identity and key material: the fixed 387-byte Identity layout,
+ * extended identities with signing and crypto key types, IdentHash
+ * derivation, sign/verify and encryption helpers, and Base64/buffer
+ * codecs. Private key containers cleanse transient secrets with
+ * OPENSSL_cleanse and support b33 per-day offline signing keys.
  *
  */
 
@@ -102,9 +103,10 @@ namespace data
 	typedef uint16_t CryptoKeyType;
 
 	const size_t MAX_EXTENDED_BUFFER_SIZE = 8; // cryptoKeyType + signingKeyType + 4 extra bytes of P521
-	/// Parsed I2P identity, including its key certificate and computed hash.
-	/// The certificate may extend the fixed identity with signing-key bytes;
-	/// the verifier and extended storage are owned by this object.
+	/// Parsed I2P identity, including its key certificate and computed
+	/// hash. The certificate may extend the fixed identity with
+	/// signing-key bytes; the verifier and extended storage are owned by
+	/// this object.
 	/// @see https://i2p.net/en/docs/specs/common-structures/
 	class IdentityEx
 	{
@@ -120,11 +122,13 @@ namespace data
 		IdentityEx & operator= (const Identity & standard);
 
 		/// Replace the identity from a bounded serialized input.
-		/// @return Bytes consumed, or zero on malformed/truncated input; on
-		/// failure IsValid() is false and the previous parsed identity is lost.
+		/// @return Bytes consumed, or zero on malformed/truncated
+		///         input; on failure IsValid() is false and the previous
+		///         parsed identity is lost.
 		size_t FromBuffer (const uint8_t * buf, size_t len);
 		/// Write the complete serialized identity without partial output.
-		/// @return Bytes written, or zero if invalid or the buffer is too small.
+		/// @return Bytes written, or zero if invalid or the buffer is too
+		///         small.
 		size_t ToBuffer (uint8_t * buf, size_t len) const;
 		size_t FromBase64 (std::string_view s);
 		std::string ToBase64 () const;
@@ -141,8 +145,8 @@ namespace data
 		size_t GetSigningPrivateKeyLen () const;
 		size_t GetSignatureLen () const;
 		/// Verify using this identity's signing key; false also covers an
-		/// unsupported or unavailable verifier. The signature buffer must hold
-		/// GetSignatureLen() bytes.
+		/// unsupported or unavailable verifier. The signature buffer must
+		/// hold GetSignatureLen() bytes.
 		bool Verify (const uint8_t * buf, size_t len, const uint8_t * signature) const;
 		SigningKeyType GetSigningKeyType () const;
 		bool IsRSA () const; // signing key type
@@ -179,8 +183,9 @@ namespace data
 	const size_t B33_OFFLINE_KEYS_HEADER_LENGTH = 1 + IdentHash::len + 2; // version, ident hash, number of keys
 	const uint64_t SECONDS_PER_DAY = 24 * 60 * 60;
 
-	// version || ident hash || number of keys, then an offline signature per day. Appended to the keys
-	// file, where a router without b33 offline keys does not look for it
+	// version || ident hash || number of keys, then an offline signature
+	// per day. Appended to the keys file, where a router without b33
+	// offline keys does not look for it
 	class B33OfflineKeys
 	{
 	public:
@@ -195,8 +200,9 @@ namespace data
 		/// The section is accepted only when its version byte matches and the
 		/// embedded identity hash equals `ident`, so a keys file copied from
 		/// another destination cannot introduce foreign per-day signing keys.
-		/// @return Bytes consumed, or zero when rejected; the previous contents
-		/// are cleared before validation, so a rejection leaves no key behind.
+		/// @return Bytes consumed, or zero when rejected; the
+		///         previous contents are cleared before validation, so a
+		///         rejection leaves no key behind.
 		size_t FromBuffer (const uint8_t * buf, size_t len, const IdentHash & ident);
 		size_t ToBuffer (uint8_t * buf, size_t len) const;
 
@@ -228,21 +234,23 @@ namespace data
 		bool IsOfflineSignature () const { return m_TransientSignatureLen > 0; };
 		uint8_t * GetPadding ();
 		void RecalculateIdentHash (uint8_t * buf = nullptr) { m_Public->RecalculateIdentHash (buf); }
-		/// Sign with the identity's own signer, created on first use.
-		/// A missing identity, an unsupported signing type or a malformed length
-		/// zeroes the signature and returns without signing, because the signer
-		/// interface itself is `void`; a provider failure is therefore only
-		/// visible as an all-zero signature. Callers must not publish a signature
-		/// they did not verify. See `CRY-236` for the planned fallible interface.
+		/// Sign with the identity's own signer, created on first use. A
+		/// missing identity, an unsupported signing type or a malformed
+		/// length zeroes the signature and returns without signing, because
+		/// the signer interface itself is `void`; a provider failure is
+		/// therefore only visible as an all-zero signature. Callers must not
+		/// publish a signature they did not verify. See `CRY-236` for the
+		/// planned fallible interface.
 		void Sign (const uint8_t * buf, int len, uint8_t * signature) const;
 
 		size_t GetFullLen () const;
-		/// Parse a complete keys file: identity, crypto private key and signing
-		/// private key, optionally followed by the offline-signature and b33
-		/// sections.
-		/// @return Bytes consumed, or zero for unsupported key types, truncated
-		/// input or an invalid identity. Every intermediate failure path clears
-		/// the partially parsed key material through a scope guard.
+		/// Parse a complete keys file: identity, crypto private key and
+		/// signing private key, optionally followed by the offline-signature
+		/// and b33 sections.
+		/// @return Bytes consumed, or zero for unsupported key types,
+		///         truncated input or an invalid identity. Every intermediate
+		///         failure path clears the partially parsed key material
+		///         through a scope guard.
 		size_t FromBuffer (const uint8_t * buf, size_t len);
 		size_t ToBuffer (uint8_t * buf, size_t len) const;
 
@@ -282,8 +290,9 @@ namespace data
 		B33OfflineKeys m_B33OfflineKeys;
 	};
 
-	// the destination's signing key is offline: a transient per day out of the b33 offline keys,
-	// each authorized by the blinded key of its own day
+	// the destination's signing key is offline: a transient per day out of
+	// the b33 offline keys, each authorized by the blinded key of its own
+	// day
 	class OfflinePrivateKeys : public PrivateKeys
 	{
 	public:

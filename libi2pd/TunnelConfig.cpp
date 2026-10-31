@@ -5,8 +5,8 @@
  * openi2pd: TunnelConfig.
  *
  * Implements short tunnel-build record construction, ECIES layer/IV key
- * derivation, build-response decryption and per-hop record decryption, plus hop
- * list assembly and phony-hop insertion.
+ * derivation, build-response decryption and per-hop record decryption,
+ * plus hop list assembly and phony-hop insertion.
  *
  */
 

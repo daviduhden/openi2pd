@@ -4,9 +4,9 @@
  *
  * openi2pd: Timestamp.
  *
- * Declares epoch and monotonic clock accessors, UTC date formatting, the
- * router-wide clock offset and NTPTimeSync, which periodically queries the
- * configured NTP servers from a background thread.
+ * Declares epoch and monotonic clock accessors, UTC date formatting,
+ * the router-wide clock offset and NTPTimeSync, which periodically
+ * queries the configured NTP servers from a background thread.
  *
  */
 
@@ -44,20 +44,21 @@ namespace util
 	void GetNextDayDate (char * date); // returns next UTC day as YYYYMMDD string, 9 bytes
 	void GetDateString (
 		uint64_t timestamp, char * date); // timestamp is seconds since epoch, returns date as YYYYMMDD string, 9 bytes
-	/// Shift the router-wide clock offset in seconds.
-	/// The offset is applied by every GetSecondsSinceEpoch()/GetMillisecondsSinceEpoch()
-	/// caller, so it changes signed descriptor timestamps and lease expiry for the
-	/// whole process. Only the NTP sync path or an explicit operator action may
-	/// move it, and a large jump is applied only after independent agreement.
+	/// Shift the router-wide clock offset in seconds. The offset is
+	/// applied by every GetSecondsSinceEpoch()/GetMillisecondsSinceEpoch()
+	/// caller, so it changes signed descriptor timestamps and lease expiry
+	/// for the whole process. Only the NTP sync path or an explicit
+	/// operator action may move it, and a large jump is applied only after
+	/// independent agreement.
 	void AdjustTimeOffset (int64_t offset); // in seconds from current
 
 	/*
 	 * SNTP request/reply validation.
 	 *
 	 * An unauthenticated UDP reply must never move the router clock on its
-	 * own: the source endpoint, mode, version, leap indicator, stratum, root
-	 * delay/dispersion and the echoed origin timestamp are all checked before
-	 * the transmit timestamp is trusted.
+	 * own: the source endpoint, mode, version, leap indicator, stratum,
+	 * root delay/dispersion and the echoed origin timestamp are all
+	 * checked before the transmit timestamp is trusted.
 	 */
 	constexpr size_t NTP_PACKET_SIZE = 48;
 	constexpr uint32_t NTP_UNIX_EPOCH_DELTA = 2208988800U; // 1900-01-01 .. 1970-01-01
@@ -67,14 +68,17 @@ namespace util
 	constexpr uint32_t NTP_MAX_ROOT_DISPERSION_SECONDS = 16;
 	// An offset this small is applied from one validated reply.
 	constexpr int64_t NTP_MAX_SINGLE_PACKET_OFFSET = 1; // seconds
-	// A larger offset needs this many replies that agree within the window.
+	// A larger offset needs this many replies that agree within the
+	// window.
 	constexpr int64_t NTP_AGREEMENT_WINDOW = 2; // seconds
 	constexpr size_t NTP_AGREEMENT_SAMPLES = 3;
 	constexpr uint64_t NTP_AGREEMENT_SAMPLE_LIFETIME = 300; // seconds
 
-	// Encodes the client transmit timestamp (seconds since 1900, 32-bit fraction).
+	// Encodes the client transmit timestamp (seconds since 1900, 32-bit
+	// fraction).
 	uint64_t MakeNTPTransmitTimestamp (uint64_t unixSeconds, uint32_t fraction);
-	// Fills a 48-byte client request (LI 0, VN 3, mode 3, origin in transmit).
+	// Fills a 48-byte client request (LI 0, VN 3, mode 3, origin in
+	// transmit).
 	void BuildNTPRequest (std::span<uint8_t> packet, uint64_t transmitTimestamp);
 
 	enum class NTPReplyError
@@ -95,10 +99,10 @@ namespace util
 	NTPReplyError ValidateNTPReply (std::span<const uint8_t> packet, uint64_t expectedOrigin, uint32_t & serverSeconds);
 
 	/*
-	 * Majority agreement for clock offsets. Small offsets are returned from a
-	 * single sample; a larger jump requires NTP_AGREEMENT_SAMPLES samples whose
-	 * spread is inside NTP_AGREEMENT_WINDOW. Samples older than
-	 * NTP_AGREEMENT_SAMPLE_LIFETIME are discarded.
+	 * Majority agreement for clock offsets. Small offsets are returned
+	 * from a single sample; a larger jump requires NTP_AGREEMENT_SAMPLES
+	 * samples whose spread is inside NTP_AGREEMENT_WINDOW. Samples older
+	 * than NTP_AGREEMENT_SAMPLE_LIFETIME are discarded.
 	 */
 	class NTPOffsetAgreement
 	{

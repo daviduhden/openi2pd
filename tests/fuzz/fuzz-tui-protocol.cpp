@@ -4,7 +4,9 @@
  *
  * openi2pd: fuzz tui protocol.
  *
- * Parses arbitrary TUI request and response headers, then re-frames accepted requests and escaped fields, exercising line/payload limits and symmetric escaping without a daemon.
+ * Parses arbitrary TUI request and response headers, then re-frames
+ * accepted requests and escaped fields, exercising line/payload limits
+ * and symmetric escaping without a daemon.
  *
  */
 

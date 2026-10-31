@@ -5,8 +5,8 @@
  * openi2pd: fuzz SAM control.
  *
  * Exercises the bounded SAM control framing, parameter parser and HELLO
- * version negotiation on untrusted text. The harness never opens a socket or
- * starts a destination.
+ * version negotiation on untrusted text. The harness never opens a
+ * socket or starts a destination.
  *
  */
 

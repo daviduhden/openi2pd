@@ -4,7 +4,9 @@
  *
  * openi2pd: test crypto wire validation.
  *
- * Checks untrusted key and signature encodings: key-certificate lengths, proposal 149 b33 flags and blinded types, Ed25519ph message binding, and GOST signatures with off-curve or zeroed keys.
+ * Checks untrusted key and signature encodings: key-certificate
+ * lengths, proposal 149 b33 flags and blinded types, Ed25519ph message
+ * binding, and GOST signatures with off-curve or zeroed keys.
  *
  */
 
@@ -93,14 +95,16 @@ void TestB33FlagsAndBlindedType ()
 	BlindedPublicKey unchanged (b33);
 	assert (unchanged.IsValid ());
 
-	// Proposal 149 only defines flags 0x01, 0x02 and 0x04. Java rejects any
+	// Proposal 149 only defines flags 0x01, 0x02 and 0x04. Java rejects
+	// any
 	// bit in 0xf8 instead of silently using a different representation.
 	const std::string unknownFlag = ReencodeB33 (b33, [] (uint8_t * raw) { raw[0] |= 0x08; });
 	BlindedPublicKey unknown (unknownFlag);
 	assert (!unknown.IsValid ());
 	assert (unknown.ToB33 ().empty ());
 
-	// Proposal 149 requires a RedDSA (11) blinded key. Accepting another type
+	// Proposal 149 requires a RedDSA (11) blinded key. Accepting another
+	// type
 	// produced a store hash that no Java peer would look up.
 	const std::string wrongBlindedType = ReencodeB33 (b33, [] (uint8_t * raw) { raw[2] = 7; });
 	BlindedPublicKey wrongType (wrongBlindedType);
@@ -125,7 +129,8 @@ void TestEd25519phGate ()
 	keys.Sign (message, sizeof (message), signature);
 	assert (keys.GetPublic ()->Verify (message, sizeof (message), signature));
 
-	// A changed message must not verify under the same Ed25519ph signature.
+	// A changed message must not verify under the same Ed25519ph
+	// signature.
 	message[0] ^= 1;
 	assert (!keys.GetPublic ()->Verify (message, sizeof (message), signature));
 }
@@ -161,7 +166,8 @@ void TestGostSignatureValidation ()
 	memset (sZero + 64, 0, 64);
 	assert (!verifier.Verify (message, sizeof (message), sZero));
 
-	// A public key that is not a finite point on the curve must not verify.
+	// A public key that is not a finite point on the curve must not
+	// verify.
 	GOSTR3410_512_Verifier invalidVerifier (eGOSTR3410TC26A512);
 	uint8_t invalidPublicKey[128] = { };
 	invalidVerifier.SetPublicKey (invalidPublicKey);

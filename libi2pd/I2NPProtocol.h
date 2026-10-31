@@ -4,12 +4,15 @@
  *
  * openi2pd: I2NPProtocol.
  *
- * I2NP wire format: message type IDs, field offsets, buffer accessors and header conversion
- * for NTCP2 framing, with expiration and checksum handling. Also defines tunnel-build record
- * layouts, database lookup/search-reply bounds, strict DatabaseSearchReply parsing, message
- * factories and a handler that throttles tunnel-build traffic. The dispatcher applies Java's
- * expiration window, a bounded router-wide duplicate filter for non-tunnel messages, and the
- * clove-type allow-list that depends on whether the enclosing garlic crossed a tunnel.
+ * I2NP wire format: message type IDs, field offsets, buffer accessors
+ * and header conversion for NTCP2 framing, with expiration and checksum
+ * handling. Also defines tunnel-build record layouts, database
+ * lookup/search-reply bounds, strict DatabaseSearchReply parsing,
+ * message factories and a handler that throttles tunnel-build traffic.
+ * The dispatcher applies Java's expiration window, a bounded
+ * router-wide duplicate filter for non-tunnel messages, and the
+ * clove-type allow-list that depends on whether the enclosing garlic
+ * crossed a tunnel.
  *
  */
 
@@ -60,9 +63,10 @@ const size_t DELIVERY_STATUS_MSGID_OFFSET = 0;
 const size_t DELIVERY_STATUS_TIMESTAMP_OFFSET = DELIVERY_STATUS_MSGID_OFFSET + 4;
 const size_t DELIVERY_STATUS_SIZE = DELIVERY_STATUS_TIMESTAMP_OFFSET + 8;
 
-// Java DeliveryStatusMessage carries exactly msgID (4) + timestamp (8). Any
-// other payload length means the sender and this handler disagree about the
-// layout, so the message must not confirm or clear any delivery state.
+// Java DeliveryStatusMessage carries exactly msgID (4) + timestamp (8).
+// Any other payload length means the sender and this handler disagree
+// about the layout, so the message must not confirm or clear any
+// delivery state.
 constexpr bool IsValidDeliveryStatusPayload (size_t payloadLen) noexcept
 {
 	return payloadLen == DELIVERY_STATUS_SIZE;
@@ -79,8 +83,8 @@ const size_t DATABASE_STORE_TYPE_OFFSET = DATABASE_STORE_KEY_OFFSET + 32;
 const size_t DATABASE_STORE_REPLY_TOKEN_OFFSET = DATABASE_STORE_TYPE_OFFSET + 1;
 const size_t DATABASE_STORE_HEADER_SIZE = DATABASE_STORE_REPLY_TOKEN_OFFSET + 4;
 // Java DatabaseStoreMessage.readMessage() masks the type byte with 0x0f
-// ("ignore other 4 bits ... in preparation for future options"). Keep the
-// same mask so future-flagged stores are still recognized.
+// ("ignore other 4 bits ... in preparation for future options"). Keep
+// the same mask so future-flagged stores are still recognized.
 const uint8_t DATABASE_STORE_TYPE_MASK = 0x0f;
 
 // TunnelBuild
@@ -155,9 +159,9 @@ const int NUM_TUNNEL_BUILD_RECORDS = 8;
 // DatabaseLookup flags
 const uint8_t DATABASE_LOOKUP_DELIVERY_FLAG = 0x01;
 const uint8_t DATABASE_LOOKUP_ENCRYPTION_FLAG = 0x02;
-// DatabaseLookupMessage.FLAG_RATCHET (0x10, proposal 154 bit 4). Alone it
-// selects an ECIES tag reply; together with ENCRYPTION_FLAG it means a
-// 32-byte ratchet public key and no tag.
+// DatabaseLookupMessage.FLAG_RATCHET (0x10, proposal 154 bit 4). Alone
+// it selects an ECIES tag reply; together with ENCRYPTION_FLAG it means
+// a 32-byte ratchet public key and no tag.
 const uint8_t DATABASE_LOOKUP_RATCHET_FLAG = 0x10;
 const uint8_t DATABASE_LOOKUP_MAX_NUM_TAGS = 32; // proposal 154
 const size_t DATABASE_LOOKUP_MAX_NUM_PEERS = 512; // DatabaseLookupMessage.MAX_NUM_PEERS
@@ -167,9 +171,9 @@ const uint8_t DATABASE_LOOKUP_TYPE_LEASESET_LOOKUP = 0x04; // 0100
 const uint8_t DATABASE_LOOKUP_TYPE_ROUTERINFO_LOOKUP = 0x08; // 1000
 const uint8_t DATABASE_LOOKUP_TYPE_EXPLORATORY_LOOKUP = 0x0C; // 1100
 
-// DatabaseSearchReply: key (32) + num (1) + num*32 peer hashes + from (32).
-// I2NP specifies num as a 1-byte integer (0-255), a typical count of 3 and a
-// recommended maximum of 16 returned hashes.
+// DatabaseSearchReply: key (32) + num (1) + num*32 peer hashes + from
+// (32). I2NP specifies num as a 1-byte integer (0-255), a typical count
+// of 3 and a recommended maximum of 16 returned hashes.
 const size_t DATABASE_SEARCH_REPLY_KEY_OFFSET = 0;
 const size_t DATABASE_SEARCH_REPLY_COUNT_OFFSET = DATABASE_SEARCH_REPLY_KEY_OFFSET + 32;
 const size_t DATABASE_SEARCH_REPLY_PEERS_OFFSET = DATABASE_SEARCH_REPLY_COUNT_OFFSET + 1;
@@ -198,33 +202,33 @@ const unsigned int I2NP_MESSAGE_CLOCK_SKEW = 60 * 1000; // 1 minute in milliseco
 
 /**
  * Java MessageValidator window applied before an I2NP message reaches a
- * handler: an expiration date older than 90 s or further than 240 s in the
- * future is invalid. The stricter per-hop tunnel window
- * (I2NP_MESSAGE_CLOCK_SKEW) of the tunnel data path is unchanged; this only
- * guards the dispatcher, where a direct, garlic-clove or tunnel-delivered
- * message would otherwise reach netDb, garlic and delivery-status handlers
- * with an unbounded expiration date.
+ * handler: an expiration date older than 90 s or further than 240 s in
+ * the future is invalid. The stricter per-hop tunnel window
+ * (I2NP_MESSAGE_CLOCK_SKEW) of the tunnel data path is unchanged; this
+ * only guards the dispatcher, where a direct, garlic-clove or
+ * tunnel-delivered message would otherwise reach netDb, garlic and
+ * delivery-status handlers with an unbounded expiration date.
  */
 const uint64_t I2NP_DISPATCH_MAX_AGE = 90 * 1000; // milliseconds
 const uint64_t I2NP_DISPATCH_MAX_FUTURE = 240 * 1000; // milliseconds
 
-// A garlic payload announces its clove count in a single byte. Java's clove
-// walker processes a bounded number of cloves per message; the bound also
-// stops one authenticated garlic from turning into thousands of dispatch
-// calls, clove-replay lookups and log lines.
+// A garlic payload announces its clove count in a single byte. Java's
+// clove walker processes a bounded number of cloves per message; the
+// bound also stops one authenticated garlic from turning into thousands
+// of dispatch calls, clove-replay lookups and log lines.
 const int I2NP_MAX_CLOVES = 32;
 
 constexpr bool IsFreshI2NPExpiration (uint64_t expiration, uint64_t now) noexcept
 {
-	// Written as additions so a hostile 64-bit expiration cannot underflow;
-	// UINT64_MAX wraps to a small value and is rejected.
+	// Written as additions so a hostile 64-bit expiration cannot
+	// underflow; UINT64_MAX wraps to a small value and is rejected.
 	return expiration + I2NP_DISPATCH_MAX_AGE >= now && expiration <= now + I2NP_DISPATCH_MAX_FUTURE;
 }
 
 /**
- * Throttled diagnostics for a drop path an unauthenticated peer can trigger.
- * The first drop and every `logEvery`-th drop are logged; the total stays
- * readable so an operator can still see the rate.
+ * Throttled diagnostics for a drop path an unauthenticated peer can
+ * trigger. The first drop and every `logEvery`-th drop are logged; the
+ * total stays readable so an operator can still see the rate.
  */
 class I2NPDropCounter
 {
@@ -249,9 +253,9 @@ private:
 };
 
 /**
- * Drop accounting for the I2NP dispatcher and the garlic clove walker. All
- * counters are relaxed atomics: they only feed throttled diagnostics and the
- * administrative view, never a decision.
+ * Drop accounting for the I2NP dispatcher and the garlic clove walker.
+ * All counters are relaxed atomics: they only feed throttled
+ * diagnostics and the administrative view, never a decision.
  */
 struct I2NPDispatchCounters
 {
@@ -279,24 +283,26 @@ struct I2NPDispatchCounters
 
 I2NPDispatchCounters & GetI2NPDispatchCounters ();
 
-// Java DecayingHashSet.TIME_MASK: the expiration second is masked before it is
-// mixed into the duplicate key.
+// Java DecayingHashSet.TIME_MASK: the expiration second is masked
+// before it is mixed into the duplicate key.
 const uint32_t I2NP_DUPLICATE_TIME_MASK = 0x7fffffff;
-// Per-context salts keep a router-wide filter and a destination-scoped garlic
-// clove filter from treating each other's message IDs as duplicates.
+// Per-context salts keep a router-wide filter and a destination-scoped
+// garlic clove filter from treating each other's message IDs as
+// duplicates.
 const uint32_t I2NP_DUPLICATE_SALT_ROUTER = 0x9e3779b9;
 const uint32_t I2NP_DUPLICATE_SALT_DESTINATION = 0x85ebca6b;
 const size_t I2NP_DUPLICATE_MAX_ENTRIES = 8192; // per generation
-// One entry stays visible for one to two windows, i.e. 5-10 minutes, which is
-// far longer than the 90/240 s dispatch window it has to cover.
+// One entry stays visible for one to two windows, i.e. 5-10 minutes,
+// which is far longer than the 90/240 s dispatch window it has to
+// cover.
 const uint64_t I2NP_DUPLICATE_GENERATION_TIMEOUT = 300; // seconds
 
 /**
- * Java DecayingHashSet key for I2NP duplicate suppression: the message ID is
- * combined with the message's expiration second and a per-context salt. The
- * expiration component means a peer cannot keep one message ID alive forever
- * by resending it with a later date, and it separates two different messages
- * that happen to share an ID.
+ * Java DecayingHashSet key for I2NP duplicate suppression: the message
+ * ID is combined with the message's expiration second and a per-context
+ * salt. The expiration component means a peer cannot keep one message
+ * ID alive forever by resending it with a later date, and it separates
+ * two different messages that happen to share an ID.
  */
 constexpr uint32_t GetI2NPDuplicateKey (uint32_t msgID, uint64_t expiration, uint32_t salt) noexcept
 {
@@ -309,12 +315,13 @@ constexpr uint32_t GetI2NPDuplicateKey (uint32_t msgID, uint64_t expiration, uin
 }
 
 /**
- * Bounded, decaying duplicate filter. Two generations are kept and rotated by
- * age (Java DecayingBloomFilter's double-buffered set), so an entry survives at
- * most two generation windows and the memory is fixed. The oldest key of the
- * current generation is evicted when the hard bound is reached: keeping the
- * bound is more important than perfect recall, because a dropped entry can only
- * let one duplicate through, never block a new message.
+ * Bounded, decaying duplicate filter. Two generations are kept and
+ * rotated by age (Java DecayingBloomFilter's double-buffered set), so
+ * an entry survives at most two generation windows and the memory is
+ * fixed. The oldest key of the current generation is evicted when the
+ * hard bound is reached: keeping the bound is more important than
+ * perfect recall, because a dropped entry can only let one duplicate
+ * through, never block a new message.
  */
 class I2NPDuplicateFilter
 {
@@ -343,8 +350,9 @@ private:
 	size_t m_MaxEntries;
 };
 
-// Router-wide filter used by HandleI2NPMessage(). Destination-scoped filters
-// (garlic clove replay) own their instance and use the destination salt.
+// Router-wide filter used by HandleI2NPMessage(). Destination-scoped
+// filters (garlic clove replay) own their instance and use the
+// destination salt.
 I2NPDuplicateFilter & GetI2NPRouterDuplicateFilter ();
 
 /**
@@ -352,8 +360,8 @@ I2NPDuplicateFilter & GetI2NPRouterDuplicateFilter ();
  *
  * Java separates a garlic message received directly from a peer
  * (HandleGarlicMessageJob) from one that arrived through an I2NP tunnel
- * (InboundMessageDistributor). A clove has no InboundTunnel pointer of its own,
- * so the enclosing garlic's origin must be carried explicitly.
+ * (InboundMessageDistributor). A clove has no InboundTunnel pointer of
+ * its own, so the enclosing garlic's origin must be carried explicitly.
  */
 enum class I2NPCloveOrigin : uint8_t
 {
@@ -362,26 +370,29 @@ enum class I2NPCloveOrigin : uint8_t
 	TunnelGarlic // clove of a garlic that arrived through an I2NP tunnel
 };
 
-/// Message view over a byte buffer containing the normal 16-byte I2NP header.
-/// `buf` is borrowed; the allocating I2NPMessageBuffer specialization owns its
-/// storage. The logical message occupies [offset, len), with maxLen limiting
-/// writes. Accessors do not check framing, so callers must validate lengths
-/// before reading an untrusted header or payload.
+/// Message view over a byte buffer containing the normal 16-byte I2NP
+/// header. `buf` is borrowed; the allocating I2NPMessageBuffer
+/// specialization owns its storage. The logical message occupies
+/// [offset, len), with maxLen limiting writes. Accessors do not check
+/// framing, so callers must validate lengths before reading an
+/// untrusted header or payload.
 /// @see https://i2p.net/en/docs/specs/i2np/
 struct I2NPMessage
 {
 	uint8_t * buf;
 	size_t len, offset, maxLen;
 	std::shared_ptr<i2p::tunnel::InboundTunnel> from;
-	// A clove has no InboundTunnel pointer even when the enclosing garlic came
-	// through an exploratory tunnel. Preserve that untrusted origin so netDb
-	// does not treat a clove-delivered DatabaseStore/Lookup as direct.
+	// A clove has no InboundTunnel pointer even when the enclosing garlic
+	// came through an exploratory tunnel. Preserve that untrusted origin
+	// so netDb does not treat a clove-delivered DatabaseStore/Lookup as
+	// direct.
 	bool fromClove = false;
 	// True only when the enclosing garlic was delivered through an I2NP
-	// tunnel. `fromClove` alone is ambiguous: a garlic received directly from
-	// a peer is trusted enough for a DatabaseLookup/DatabaseStore reply token,
-	// a tunnel-delivered one is not. Set by the clove dispatch paths from the
-	// outer garlic's `from` pointer; never set for a non-clove message.
+	// tunnel. `fromClove` alone is ambiguous: a garlic received directly
+	// from a peer is trusted enough for a DatabaseLookup/DatabaseStore
+	// reply token, a tunnel-delivered one is not. Set by the clove
+	// dispatch paths from the outer garlic's `from` pointer; never set for
+	// a non-clove message.
 	bool fromTunnel = false;
 	std::function<void ()> onDrop;
 	uint64_t enqueueTime; // monotonic microseconds
@@ -444,7 +455,8 @@ struct I2NPMessage
 		}
 	}
 
-	/// Append at most the remaining capacity; a short result means truncation.
+	/// Append at most the remaining capacity; a short result means
+	/// truncation.
 	/// @param buf1 Source bytes, valid for at least len1 bytes.
 	/// @param len1 Number of source bytes available to append.
 	/// @return Number of bytes copied, which may be less than len1.
@@ -458,8 +470,9 @@ struct I2NPMessage
 	}
 
 	/// Copy the message bytes and tunnel-origin metadata into this buffer.
-	/// @pre This buffer has at least other.GetLength() bytes after its offset.
-	/// Drop callback and enqueue time remain properties of the destination.
+	/// @pre This buffer has at least other.GetLength() bytes after
+	///      its offset. Drop callback and enqueue time remain properties
+	///      of the destination.
 	I2NPMessage & operator= (const I2NPMessage & other)
 	{
 		memcpy (buf + offset, other.buf + other.offset, other.GetLength ());
@@ -513,27 +526,29 @@ template <int sz> struct I2NPMessageBuffer : public I2NPMessage
 	uint8_t m_Buffer[sz + 32]; // 16 alignment + 16 padding
 };
 
-// True when the dispatcher must drop the message because of its expiration
-// date. A TunnelData cell carries no meaningful expiration (the endpoint
-// validates the inner I2NP message after decryption), so it is exempt.
+// True when the dispatcher must drop the message because of its
+// expiration date. A TunnelData cell carries no meaningful expiration
+// (the endpoint validates the inner I2NP message after decryption), so
+// it is exempt.
 inline bool IsI2NPDispatchExpired (const I2NPMessage & msg, uint64_t now)
 {
 	if (msg.GetTypeID () == eI2NPTunnelData) return false;
 	return !IsFreshI2NPExpiration (msg.GetExpiration (), now);
 }
 
-// True when this non-TunnelData message repeats one the dispatcher already
-// saw. TunnelData is exempt (the tunnel IV filter rejects replays), and SSU2
-// keeps its own per-session message-ID map.
+// True when this non-TunnelData message repeats one the dispatcher
+// already saw. TunnelData is exempt (the tunnel IV filter rejects
+// replays), and SSU2 keeps its own per-session message-ID map.
 bool IsI2NPDispatchDuplicate (const I2NPMessage & msg, uint64_t nowSeconds);
 
 /**
- * Java InboundMessageDistributor.handleClove() allow-list for a clove of a
- * garlic that arrived through an I2NP tunnel. A clove may carry a data or
- * control-reply message only; tunnel/build/request types would inject directly
- * into the tunnel worker or bypass the build throttle. DatabaseLookup is
- * allowed because HandleGarlicMessageJob dispatches it to the netDb, where the
- * origin check below still decides whether it may be answered.
+ * Java InboundMessageDistributor.handleClove() allow-list for a clove
+ * of a garlic that arrived through an I2NP tunnel. A clove may carry a
+ * data or control-reply message only; tunnel/build/request types would
+ * inject directly into the tunnel worker or bypass the build throttle.
+ * DatabaseLookup is allowed because HandleGarlicMessageJob dispatches
+ * it to the netDb, where the origin check below still decides whether
+ * it may be answered.
  */
 constexpr bool IsAllowedCloveMessageType (uint8_t typeID) noexcept
 {
@@ -554,28 +569,30 @@ constexpr bool IsAllowedCloveMessageType (uint8_t typeID) noexcept
 
 /**
  * Clove types of a garlic received directly from a peer (Java
- * HandleGarlicMessageJob). The set is the tunnel set plus TunnelTest: a peer
- * that has no inbound tunnel of its own can only test ours through garlic, and
- * the tunnel-test handler validates the payload before use. TunnelData and the
- * tunnel/build request types stay rejected either way.
+ * HandleGarlicMessageJob). The set is the tunnel set plus TunnelTest: a
+ * peer that has no inbound tunnel of its own can only test ours through
+ * garlic, and the tunnel-test handler validates the payload before use.
+ * TunnelData and the tunnel/build request types stay rejected either
+ * way.
  */
 constexpr bool IsAllowedDirectGarlicCloveMessageType (uint8_t typeID) noexcept
 {
 	return IsAllowedCloveMessageType (typeID) || typeID == eI2NPTunnelTest;
 }
 
-// The clove allow-list depends on where the enclosing garlic came from: only a
-// tunnel-delivered garlic is Java's InboundMessageDistributor path.
+// The clove allow-list depends on where the enclosing garlic came from:
+// only a tunnel-delivered garlic is Java's InboundMessageDistributor
+// path.
 constexpr bool IsAllowedCloveMessageType (uint8_t typeID, bool fromTunnel) noexcept
 {
 	return fromTunnel ? IsAllowedCloveMessageType (typeID) : IsAllowedDirectGarlicCloveMessageType (typeID);
 }
 
 /**
- * Java DatabaseLookup admission. A directly received message and a clove of a
- * garlic received directly from a peer are dispatched to the netDb; a message
- * or clove that crossed an I2NP tunnel is dropped. The caller still requires
- * floodfill mode.
+ * Java DatabaseLookup admission. A directly received message and a
+ * clove of a garlic received directly from a peer are dispatched to the
+ * netDb; a message or clove that crossed an I2NP tunnel is dropped. The
+ * caller still requires floodfill mode.
  */
 inline bool IsDatabaseLookupDispatchAllowed (const I2NPMessage & msg)
 {
@@ -588,9 +605,9 @@ std::shared_ptr<I2NPMessage> NewI2NPMediumMessage ();
 std::shared_ptr<I2NPMessage> NewI2NPTunnelMessage (bool endpoint);
 std::shared_ptr<I2NPMessage> NewI2NPMessage (size_t len);
 
-// Both factories return nullptr when the payload does not fit any I2NP buffer
-// instead of handing back an empty or truncated message that still carries a
-// header and a size field. Callers must check.
+// Both factories return nullptr when the payload does not fit any I2NP
+// buffer instead of handing back an empty or truncated message that
+// still carries a header and a size field. Callers must check.
 std::shared_ptr<I2NPMessage> CreateI2NPMessage (
 	I2NPMessageType msgType, const uint8_t * buf, size_t len, uint32_t replyMsgID = 0);
 std::shared_ptr<I2NPMessage> CreateI2NPMessage (
@@ -608,12 +625,13 @@ std::shared_ptr<I2NPMessage> CreateLeaseSetDatabaseLookupMsg (const i2p::data::I
 std::shared_ptr<I2NPMessage> CreateDatabaseSearchReply (
 	const i2p::data::IdentHash & ident, std::vector<i2p::data::IdentHash> routers);
 
-// Strict structural parser for a DatabaseSearchReply payload (without the
-// I2NP header). The declared count and the trailing "from" hash must fit in
-// the supplied payload; trailing bytes beyond the defined body are ignored,
-// matching Java DatabaseSearchReplyMessage.readMessage(). Semantic checks on
-// the key, "from" and peer hashes belong to the caller because the sender
-// hash is unauthenticated (I2NP DatabaseSearchReply notes).
+// Strict structural parser for a DatabaseSearchReply payload (without
+// the I2NP header). The declared count and the trailing "from" hash
+// must fit in the supplied payload; trailing bytes beyond the defined
+// body are ignored, matching Java
+// DatabaseSearchReplyMessage.readMessage(). Semantic checks on the key,
+// "from" and peer hashes belong to the caller because the sender hash
+// is unauthenticated (I2NP DatabaseSearchReply notes).
 struct DatabaseSearchReply
 {
 	i2p::data::IdentHash key;
@@ -640,11 +658,13 @@ std::shared_ptr<I2NPMessage> CreateTunnelGatewayMsg (
 	uint32_t tunnelID, I2NPMessageType msgType, const uint8_t * buf, size_t len, uint32_t replyMsgID = 0);
 std::shared_ptr<I2NPMessage> CreateTunnelGatewayMsg (uint32_t tunnelID, std::shared_ptr<I2NPMessage> msg);
 
-/// Total wire length of the I2NP message starting at @a msg, from the 16-bit
-/// size field in its header. @a len is the number of readable bytes: the caller
-/// is parsing an untrusted stream, so a short prefix or a declared size beyond
-/// @a len yields @a len instead of an exception, and the offending message is
-/// counted (the log is throttled because any peer can trigger it).
+/// Total wire length of the I2NP message starting at @a msg, from the
+/// 16-bit size field in its header. @a len is the number of readable
+/// bytes: the caller is parsing an untrusted stream, so a short prefix
+/// or a declared size beyond
+/// @a len yields @a len instead of an exception, and the offending
+/// message is counted (the log is throttled because any peer can
+/// trigger it).
 size_t GetI2NPMessageLength (const uint8_t * msg, size_t len);
 void HandleI2NPMessage (std::shared_ptr<I2NPMessage> msg);
 
@@ -652,12 +672,12 @@ const uint64_t TUNNEL_BUILD_MESSAGES_MIN_INTERVAL = 500; // in milliseconds
 const int MAX_NUM_THROTTLED_TUNNEL_BUILD_MESSAGES = 5;
 const int MAX_NUM_DROPPED_TUNNEL_BUILD_MESSAGES = 1000;
 /// Groups the I2NP messages a session accepted before dispatching them.
-/// TunnelData and TunnelGateway messages are buffered and flushed in order,
-/// while tunnel-build requests are rate limited by
-/// `TUNNEL_BUILD_MESSAGES_MIN_INTERVAL` so a burst cannot monopolise the
-/// tunnel worker; over the cap they are counted and dropped instead of queued.
-/// One handler belongs to one session and `Flush()` runs on that session's
-/// service thread.
+/// TunnelData and TunnelGateway messages are buffered and flushed in
+/// order, while tunnel-build requests are rate limited by
+/// `TUNNEL_BUILD_MESSAGES_MIN_INTERVAL` so a burst cannot monopolise
+/// the tunnel worker; over the cap they are counted and dropped instead
+/// of queued. One handler belongs to one session and `Flush()` runs on
+/// that session's service thread.
 class I2NPMessagesHandler
 {
 public:

@@ -4,8 +4,8 @@
  *
  * openi2pd: test siphash.
  *
- * Checks the portable SipHash-2-4 fallback against the published 64-bit and
- * 128-bit vectors for key 000102...0f and message bytes 00..3f.
+ * Checks the portable SipHash-2-4 fallback against the published 64-bit
+ * and 128-bit vectors for key 000102...0f and message bytes 00..3f.
  *
  */
 
@@ -93,8 +93,8 @@ int main ()
 
 int main ()
 {
-	// OpenSSL supplies SipHash on this platform; the portable fallback is not
-	// compiled. The fallback vectors run on LibreSSL/OpenBSD builds.
+	// OpenSSL supplies SipHash on this platform; the portable fallback is
+	// not compiled. The fallback vectors run on LibreSSL/OpenBSD builds.
 }
 
 #endif

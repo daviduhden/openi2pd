@@ -5,13 +5,14 @@
  * openi2pd: Datagram.
  *
  * Serialises datagram1, datagram2 and datagram3 payloads into I2NP Data
- * messages and dispatches inbound Data, raw and protocol-specific payloads to
- * (protocol, port)-keyed receivers. Datagram2 signatures cover the remote
- * hash, flags, options, offline section and payload; Datagram3 options use a
- * bounded 16-bit-length-prefixed Mapping, and per-peer sessions handle routing
- * paths, LeaseSet refresh, send queues and idle cleanup. The framing version is
- * selected per send, and the session queue/routing state is mutex-guarded for
- * SAM sends from its own socket threads.
+ * messages and dispatches inbound Data, raw and protocol-specific
+ * payloads to (protocol, port)-keyed receivers. Datagram2 signatures
+ * cover the remote hash, flags, options, offline section and payload;
+ * Datagram3 options use a bounded 16-bit-length-prefixed Mapping, and
+ * per-peer sessions handle routing paths, LeaseSet refresh, send queues
+ * and idle cleanup. The framing version is selected per send, and the
+ * session queue/routing state is mutex-guarded for SAM sends from its
+ * own socket threads.
  *
  */
 
@@ -30,19 +31,19 @@ namespace datagram
 {
 	namespace
 	{
-		// All receiver tables are addressed by (protocol, port). SAM 3.3 keys a
-		// subsession on its listen protocol so two subsessions may share a port;
-		// the protocol is the high half to keep the map key bounded. Protocol 0
-		// is the catch-all on every table.
+		// All receiver tables are addressed by (protocol, port). SAM 3.3 keys
+		// a subsession on its listen protocol so two subsessions may share a
+		// port; the protocol is the high half to keep the map key bounded.
+		// Protocol 0 is the catch-all on every table.
 		constexpr uint32_t MakeReceiverKey (uint8_t protocol, uint16_t port)
 		{
 			return (static_cast<uint32_t> (protocol) << 16) | port;
 		}
 
-		// The project signer is a void interface that leaves zeroed output behind
-		// when the provider operation fails. A zero signature can never verify,
-		// so it must never be published; the fallible Signer::Sign interface is
-		// tracked separately.
+		// The project signer is a void interface that leaves zeroed output
+		// behind when the provider operation fails. A zero signature can
+		// never verify, so it must never be published; the fallible
+		// Signer::Sign interface is tracked separately.
 		bool IsZeroSignature (const uint8_t * signature, size_t len)
 		{
 			if (!signature || !len) return true;
@@ -53,8 +54,9 @@ namespace datagram
 
 		// Datagram2 offline section: expires(4) || transient key type(2) ||
 		// transient public key || long-term signature (PrivateKeys::
-		// CreateOfflineKeys). A shorter section cannot be parsed by the receiver,
-		// so it is dropped instead of published as an unverifiable datagram.
+		// CreateOfflineKeys). A shorter section cannot be parsed by the
+		// receiver, so it is dropped instead of published as an unverifiable
+		// datagram.
 		bool IsCompleteOfflineSection (const std::vector<uint8_t> & offline, size_t ownerSignatureLen)
 		{
 			if (offline.size () < i2p::data::OFFLINE_SIGNATURE_HEADER_LENGTH) return false;
@@ -69,15 +71,15 @@ namespace datagram
 		// Signing failures are locally generated, but a broken provider would
 		// otherwise log once per datagram.
 		i2p::I2NPDropCounter g_SignatureFailures;
-		// An unsupported framing request is a caller error; keep it observable
-		// without letting a misbehaving subsession flood the log.
+		// An unsupported framing request is a caller error; keep it
+		// observable without letting a misbehaving subsession flood the log.
 		i2p::I2NPDropCounter g_UnsupportedFraming;
 	}
 
-	// Datagram2/3 options are a Mapping prefixed by its 16-bit length.
-	// A zero-length Mapping is valid (Java reads the length, then only parses
-	// properties when it is non-zero); Mapping::FromBuffer alone cannot
-	// distinguish that from a parse failure.
+	// Datagram2/3 options are a Mapping prefixed by its 16-bit length. A
+	// zero-length Mapping is valid (Java reads the length, then only
+	// parses properties when it is non-zero); Mapping::FromBuffer alone
+	// cannot distinguish that from a parse failure.
 	bool ParseDatagramOptions (i2p::util::Mapping & options, const uint8_t * buf, size_t len, size_t & offset)
 	{
 		if (offset > len || len - offset < 2) return false;
@@ -182,8 +184,8 @@ namespace datagram
 			}
 			case eDatagramV1:
 			{
-				// Java I2PDatagramMaker rejects offline destinations: Datagram1 has no
-				// offline signature section (I2PDatagramMaker.java:49-52).
+				// Java I2PDatagramMaker rejects offline destinations: Datagram1 has
+				// no offline signature section (I2PDatagramMaker.java:49-52).
 				if (m_Owner->GetPrivateKeys ().IsOfflineSignature ())
 				{
 					LogPrint (eLogError, "Datagram: datagram1 doesn't support offline signature");
@@ -217,9 +219,10 @@ namespace datagram
 			}
 			case eDatagramV2:
 			{
-				// Datagram2.java make(): Destination || flags || options || offline section ||
-				// payload || signature. The signature covers toHash || flags || options ||
-				// offline section || payload; the toHash is not transmitted.
+				// Datagram2.java make(): Destination || flags || options || offline
+				// section || payload || signature. The signature covers toHash ||
+				// flags || options || offline section || payload; the toHash is not
+				// transmitted.
 				const auto & keys = m_Owner->GetPrivateKeys ();
 				bool isOfflineSignature = keys.IsOfflineSignature ();
 				uint8_t flags[2]
@@ -284,8 +287,8 @@ namespace datagram
 		size_t len, uint16_t fromPort, uint16_t toPort, uint8_t protocol)
 	{
 		if (session)
-			// Protocol 0 (I2CP "any") is a valid per-message value and must not be
-			// rewritten to 18; callers that want the default pass
+			// Protocol 0 (I2CP "any") is a valid per-message value and must not
+			// be rewritten to 18; callers that want the default pass
 			// DATAGRAM_RAW_PROTOCOL explicitly.
 			session->SendMsg (CreateDataMessage ({ { payload, len } }, fromPort, toPort, protocol,
 				!session->IsRatchets ())); // raw
@@ -299,14 +302,15 @@ namespace datagram
 	void DatagramDestination::HandleDatagram (uint16_t fromPort, uint16_t toPort, const uint8_t * buf, size_t len,
 		i2p::garlic::ECIESX25519AEADRatchetSession * from)
 	{
-		// Datagram1 authentication is two-sided and deliberately strict. A ratchet
-		// session that already proved the sender is accepted only when its static
-		// key is the one the cached LeaseSet advertises; otherwise the embedded
-		// identity's own signature over the payload is the only authority. A
-		// static-key mismatch is fatal rather than falling back to the signature,
-		// because then the LeaseSet and the live session disagree about who the
-		// peer is. A newly observed peer inherits the framing of this datagram;
-		// an existing session keeps its own outgoing version.
+		// Datagram1 authentication is two-sided and deliberately strict. A
+		// ratchet session that already proved the sender is accepted only
+		// when its static key is the one the cached LeaseSet advertises;
+		// otherwise the embedded identity's own signature over the payload is
+		// the only authority. A static-key mismatch is fatal rather than
+		// falling back to the signature, because then the LeaseSet and the
+		// live session disagree about who the peer is. A newly observed peer
+		// inherits the framing of this datagram; an existing session keeps
+		// its own outgoing version.
 		i2p::data::IdentityEx identity;
 		size_t identityLen = identity.FromBuffer (buf, len);
 		if (!identityLen) return;
@@ -371,12 +375,14 @@ namespace datagram
 		uint8_t protocol, uint16_t fromPort, uint16_t toPort, const uint8_t * buf, size_t len)
 	{
 		// I2CP forwards the payload protocol byte verbatim, and the OS-level
-		// "unspecified" value 0xff reaches us from a peer or a local UDP client.
-		// Java maps it to PROTO_UNSPECIFIED (0) before selecting a listener.
+		// "unspecified" value 0xff reaches us from a peer or a local UDP
+		// client. Java maps it to PROTO_UNSPECIFIED (0) before selecting a
+		// listener.
 		if (protocol == 0xff) protocol = 0;
-		// Streaming (6) and the typed datagram protocols are never raw payloads.
-		// Java's SAM 3.3 PrimarySession refuses to route them to a RAW subsession
-		// and a catch-all (protocol 0) registration must not capture them either.
+		// Streaming (6) and the typed datagram protocols are never raw
+		// payloads. Java's SAM 3.3 PrimarySession refuses to route them to a
+		// RAW subsession and a catch-all (protocol 0) registration must not
+		// capture them either.
 		if (IsReservedRawProtocol (protocol))
 		{
 			LogPrint (eLogWarning, "DatagramDestination: protocol ", (int)protocol, " is not a raw payload");
@@ -423,9 +429,9 @@ namespace datagram
 
 		size_t offset = identityLen + 2;
 		bool isOptions = false;
-		// Per-call options: the receiver may hold the pointer for the duration of
-		// the callback only, and a member would be overwritten by the next
-		// datagram while the callback still runs.
+		// Per-call options: the receiver may hold the pointer for the
+		// duration of the callback only, and a member would be overwritten by
+		// the next datagram while the callback still runs.
 		i2p::util::Mapping options;
 		if (flags[1] & DATAGRAM2_FLAG_OPTIONS)
 		{
@@ -442,9 +448,10 @@ namespace datagram
 			return;
 		}
 
-		// The offline section is part of the signed data and must be validated even
-		// when the ratchet session's static key already matched the sender's
-		// LeaseSet. Datagram2.java always verifies it and rejects expired delegations.
+		// The offline section is part of the signed data and must be
+		// validated even when the ratchet session's static key already
+		// matched the sender's LeaseSet. Datagram2.java always verifies it
+		// and rejects expired delegations.
 		std::shared_ptr<i2p::crypto::Verifier> transientVerifier;
 		if (flags[1] & DATAGRAM2_FLAG_OFFLINE_SIGNATURE)
 		{
@@ -461,8 +468,8 @@ namespace datagram
 			LogPrint (eLogWarning, "Datagram: datagram2 is too short ", len, " expected ", offset + signatureLen);
 			return;
 		}
-		// signed data = destination hash (not transmitted) || flags || options ||
-		// offline section || payload
+		// signed data = destination hash (not transmitted) || flags ||
+		// options || offline section || payload
 		if (len < identityLen + signatureLen) return;
 		std::vector<uint8_t> signedData (32 + len - identityLen - signatureLen);
 		memcpy (signedData.data (), m_Owner->GetIdentity ()->GetIdentHash (), 32);
@@ -506,9 +513,9 @@ namespace datagram
 		}
 		// Datagram3 is explicitly unauthenticated (proposal 163 / datagrams
 		// spec). When it arrives through a ratchet session the router can
-		// additionally validate the sender, but legacy/raw delivery must still
-		// hand the hash to a HashReceiver. Datagram3.java load() itself does not
-		// require a session or a cached LeaseSet.
+		// additionally validate the sender, but legacy/raw delivery must
+		// still hand the hash to a HashReceiver. Datagram3.java load() itself
+		// does not require a session or a cached LeaseSet.
 		const uint8_t * flags = buf + 32;
 		if ((flags[1] & 0x0f) != 0x03) // Datagram3.java VERSION_MASK/VERSION
 		{
@@ -516,8 +523,8 @@ namespace datagram
 			return;
 		}
 		i2p::data::IdentHash ident (buf);
-		// If the ratchet session already established the peer destination, the
-		// unauthenticated sender hash must not contradict it.
+		// If the ratchet session already established the peer destination,
+		// the unauthenticated sender hash must not contradict it.
 		if (from && from->GetDestinationPtr () && *from->GetDestinationPtr () != ident)
 		{
 			LogPrint (eLogError, "Datagram: datagram3 sender hash mismatch for ", ident.ToBase32 ());
@@ -541,10 +548,11 @@ namespace datagram
 			return;
 		}
 
-		// First contact has no cached LeaseSet. Datagram3 deliberately carries
-		// only an unauthenticated sender hash, so deliver it to the HashReceiver
-		// without forcing a lookup; a cached LeaseSet (or a ratchet session)
-		// can still be used for the optional extra checks above.
+		// First contact has no cached LeaseSet. Datagram3 deliberately
+		// carries only an unauthenticated sender hash, so deliver it to the
+		// HashReceiver without forcing a lookup; a cached LeaseSet (or a
+		// ratchet session) can still be used for the optional extra checks
+		// above.
 		auto session = FindSession (ident);
 		bool acknowledgeSession = false;
 		std::shared_ptr<const i2p::data::LeaseSet> ls;
@@ -705,13 +713,14 @@ namespace datagram
 
 	bool DatagramDestination::ResetRegistration (const ReceiverRegistration & registration)
 	{
-		// Teardown of one registration, identified by its token rather than by the
-		// map key: a replacement installed later under the same (protocol, port)
-		// must never be removed by the previous owner's reset. The registry entry
-		// is erased under its own mutex and the slot is then deactivated outside
-		// every registry lock; DeactivateAndWait() returns false when this runs
-		// inside a receiver callback, and the caller must not treat that as a
-		// destruction barrier or free the callback target on it.
+		// Teardown of one registration, identified by its token rather than
+		// by the map key: a replacement installed later under the same
+		// (protocol, port) must never be removed by the previous owner's
+		// reset. The registry entry is erased under its own mutex and the
+		// slot is then deactivated outside every registry lock;
+		// DeactivateAndWait() returns false when this runs inside a receiver
+		// callback, and the caller must not treat that as a destruction
+		// barrier or free the callback target on it.
 		auto identity = registration.m_Slot.lock ();
 		if (!identity) return true;
 		bool drained = false;
@@ -787,9 +796,9 @@ namespace datagram
 	DatagramDestination::ReceiverSlotPtr DatagramDestination::FindReceiver (uint16_t port, uint8_t protocol)
 	{
 		std::lock_guard<std::mutex> lock (m_ReceiversMutex);
-		// Fallback order (Java PrimarySession): the exact (protocol, port) pair,
-		// the protocol-0 catch-all on that port, the protocol wildcard, and only
-		// then the explicitly registered destination-wide fallback.
+		// Fallback order (Java PrimarySession): the exact (protocol, port)
+		// pair, the protocol-0 catch-all on that port, the protocol wildcard,
+		// and only then the explicitly registered destination-wide fallback.
 		if (protocol)
 		{
 			auto it = m_ReceiversByProtocolPorts.find (MakeReceiverKey (protocol, port));
@@ -840,8 +849,8 @@ namespace datagram
 		if (IsReservedRawProtocol (protocol)) return nullptr;
 		std::lock_guard<std::mutex> lock (m_RawReceiversMutex);
 		// Java's SAM 3.3 routing prefers an exact protocol match on the
-		// addressed port, then the protocol-0 catch-all on that port, then the
-		// port wildcards, and finally the destination-wide fallback.
+		// addressed port, then the protocol-0 catch-all on that port, then
+		// the port wildcards, and finally the destination-wide fallback.
 		if (protocol)
 		{
 			auto it = m_RawReceiversByProtocolPorts.find (MakeReceiverKey (protocol, port));
@@ -865,9 +874,10 @@ namespace datagram
 	void DatagramDestination::HandleDataMessagePayload (uint16_t fromPort, uint16_t toPort, const uint8_t * buf,
 		size_t len, uint8_t protocolType, i2p::garlic::ECIESX25519AEADRatchetSession * from)
 	{
-		// I2CP passes the payload protocol byte through unchanged and a peer (or
-		// a local UDP client) can send the OS-level "unspecified" value 0xff.
-		// Java maps it to PROTO_UNSPECIFIED (0) before listener selection.
+		// I2CP passes the payload protocol byte through unchanged and a peer
+		// (or a local UDP client) can send the OS-level "unspecified" value
+		// 0xff. Java maps it to PROTO_UNSPECIFIED (0) before listener
+		// selection.
 		if (protocolType == 0xff) protocolType = 0;
 		// unzip it. A valid gzip stream may produce zero bytes; only a
 		// decompression failure is dropped. The inflator keeps zlib state per
@@ -908,9 +918,9 @@ namespace datagram
 		uint8_t protocolType, bool checksum)
 	{
 		size_t size;
-		// The pool is thread-safe (SAM sends on its socket thread while inbound
-		// Acks release messages on the destination service); the deflator holds
-		// one zlib stream and is serialized here.
+		// The pool is thread-safe (SAM sends on its socket thread while
+		// inbound Acks release messages on the destination service); the
+		// deflator holds one zlib stream and is serialized here.
 		auto msg = m_I2NPMsgsPool.AcquireSharedMt ();
 		uint8_t * buf = msg->GetPayload ();
 		buf += 4; // reserve for length
@@ -969,8 +979,8 @@ namespace datagram
 			if (m_Sessions.size () >= DATAGRAM_SESSIONS_MAX_SIZE)
 			{
 				// Datagram3 first contact names an unauthenticated hash before any
-				// LeaseSet exists, so never let these create unbounded state. Reclaim
-				// idle entries if possible, otherwise refuse the new one.
+				// LeaseSet exists, so never let these create unbounded state.
+				// Reclaim idle entries if possible, otherwise refuse the new one.
 				auto now = i2p::util::GetMillisecondsSinceEpoch ();
 				for (auto it = m_Sessions.begin (); it != m_Sessions.end ();)
 				{
@@ -1141,13 +1151,14 @@ namespace datagram
 
 	std::shared_ptr<i2p::garlic::GarlicRoutingPath> DatagramSession::GetSharedRoutingPath ()
 	{
-		// Precondition: the caller holds m_Mutex (Ack(), FlushSendQueueLocked() and
-		// the recursive re-entry at the end of this function all do). The method
-		// mutates m_RemoteLeaseSet, m_RequestingLS, m_RoutingSession and
-		// m_PendingRoutingSessions, and it may rebuild the path once after a
-		// ratchet tag cleanup; holding the lock is what makes that re-entry safe.
-		// It also performs a netDb lookup and may start a LeaseSet request, so it
-		// must not be called while a tunnel or session lock is already held.
+		// Precondition: the caller holds m_Mutex (Ack(),
+		// FlushSendQueueLocked() and the recursive re-entry at the end of
+		// this function all do). The method mutates m_RemoteLeaseSet,
+		// m_RequestingLS, m_RoutingSession and m_PendingRoutingSessions, and
+		// it may rebuild the path once after a ratchet tag cleanup; holding
+		// the lock is what makes that re-entry safe. It also performs a netDb
+		// lookup and may start a LeaseSet request, so it must not be called
+		// while a tunnel or session lock is already held.
 		if (!m_RemoteLeaseSet || m_RemoteLeaseSet->IsExpired ())
 		{
 			m_RemoteLeaseSet = m_LocalDestination->FindLeaseSet (m_RemoteIdent);
@@ -1346,13 +1357,14 @@ namespace datagram
 
 	void DatagramSession::FlushSendQueueLocked (bool waitForLeaseSet)
 	{
-		// Drains the whole queue in one pass. V3 batches every queued clove into a
-		// single multi-message garlic payload; older framings wrap per message
-		// because those peers do not accept a multi-clove payload. Without a usable
-		// path the queue is dropped and counted in m_NumDroppedNoPath rather than
-		// retried forever; waitForLeaseSet only defers that decision while a
-		// LeaseSet request is genuinely outstanding (HandleLeaseSetUpdated then
-		// re-enters here). Called with m_Mutex held.
+		// Drains the whole queue in one pass. V3 batches every queued clove
+		// into a single multi-message garlic payload; older framings wrap per
+		// message because those peers do not accept a multi-clove payload.
+		// Without a usable path the queue is dropped and counted in
+		// m_NumDroppedNoPath rather than retried forever; waitForLeaseSet
+		// only defers that decision while a LeaseSet request is genuinely
+		// outstanding (HandleLeaseSetUpdated then re-enters here). Called
+		// with m_Mutex held.
 		if (m_SendQueue.empty ()) return;
 		auto routingPath = GetSharedRoutingPath ();
 		if (!routingPath && waitForLeaseSet && m_RequestingLS) return; // defer to HandleLeaseSetUpdated

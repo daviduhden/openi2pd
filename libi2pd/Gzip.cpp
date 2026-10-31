@@ -4,11 +4,11 @@
  *
  * openi2pd: Gzip.
  *
- * Implements gzip inflate and deflate over zlib for I2NP payloads, including
- * i2pd's stored (uncompressed) block form and 16 KiB streaming through
- * iostreams. Every declared length is checked against both the input and
- * output bounds before copying or inflating, and stream-level errors are
- * reported through the stream state.
+ * Implements gzip inflate and deflate over zlib for I2NP payloads,
+ * including i2pd's stored (uncompressed) block form and 16 KiB
+ * streaming through iostreams. Every declared length is checked against
+ * both the input and output bounds before copying or inflating, and
+ * stream-level errors are reported through the stream state.
  *
  */
 
@@ -27,8 +27,9 @@ namespace data
 
 	namespace
 	{
-		// zlib describes its input and output through 32-bit uInt fields. Reject
-		// buffers that cannot be represented instead of silently truncating them.
+		// zlib describes its input and output through 32-bit uInt fields.
+		// Reject buffers that cannot be represented instead of silently
+		// truncating them.
 		bool IsZlibLength (size_t len)
 		{
 			return len <= std::numeric_limits<uInt>::max ();

@@ -4,10 +4,11 @@
  *
  * openi2pd: I2PTunnel.
  *
- * Implements TCP client and server tunnels that bridge local sockets to I2P
- * streams, including HTTP header rewriting, IRC WEBIRC injection, optional
- * TLS, gzip and destination access lists. Server tunnels resolve destinations
- * before connecting and tie each connection to a handler's lifetime.
+ * Implements TCP client and server tunnels that bridge local sockets to
+ * I2P streams, including HTTP header rewriting, IRC WEBIRC injection,
+ * optional TLS, gzip and destination access lists. Server tunnels
+ * resolve destinations before connecting and tie each connection to a
+ * handler's lifetime.
  *
  */
 
@@ -133,10 +134,10 @@ namespace client
 	{
 		if (sock)
 		{
-			// bind to 127.x.x.x address for ipv4
-			// where x.x.x are first three bytes from ident
-			// bind to fdxx.xxxx.xxxx.xxxx.xxxx.xxxx.xxxx.xxxx address for ipv6
-			// where xx.xxxx.xxxx.xxxx.xxxx.xxxx.xxxx.xxxx are first 15 bytes from ident
+			// bind to 127.x.x.x address for ipv4 where x.x.x are first three
+			// bytes from ident bind to fdxx.xxxx.xxxx.xxxx.xxxx.xxxx.xxxx.xxxx
+			// address for ipv6 where xx.xxxx.xxxx.xxxx.xxxx.xxxx.xxxx.xxxx are
+			// first 15 bytes from ident
 			auto ourIP = isV4 ? GetLoopbackAddressFor (addr) : GetLoopbackAddress6For (addr);
 			boost::system::error_code ec;
 			sock->bind (boost::asio::ip::tcp::endpoint (ourIP, 0), ec);
@@ -571,11 +572,12 @@ namespace client
 			else
 				m_OutPacket << line << '\n';
 		}
-		// view() references m_OutPacket, which remains valid until the asynchronous write completes
+		// view() references m_OutPacket, which remains valid until the
+		// asynchronous write completes
 		I2PTunnelConnection::Write ((const uint8_t *)m_OutPacket.view ().data (), m_OutPacket.view ().size ());
 	}
 
-	/* This handler tries to establish a connection with the desired server and dies if it fails to do so */
+	/* Connect to the requested server; terminate on connection failure. */
 	class I2PClientTunnelHandler : public I2PServiceHandler, public std::enable_shared_from_this<I2PClientTunnelHandler>
 	{
 	public:
@@ -659,7 +661,8 @@ namespace client
 		Done (shared_from_this ());
 	}
 
-	// destination is a comma separated list, so one tunnel can serve several servers
+	// destination is a comma separated list, so one tunnel can serve
+	// several servers
 	static std::vector<std::string> SplitDestinations (const std::string & destination)
 	{
 		std::vector<std::string> destinations;
@@ -707,7 +710,7 @@ namespace client
 			m_KeepAliveTimer.reset (new boost::asio::steady_timer (GetLocalDestination ()->GetService ()));
 	}
 
-	/* HACK: maybe we should create a caching IdentHash provider in AddressBook */
+	/* TODO: Consider a cached IdentHash lookup in AddressBook. */
 	std::shared_ptr<const Address> I2PClientTunnel::GetAddress ()
 	{
 		// round-robin over the destinations, skipping those we can't resolve,
@@ -1121,9 +1124,10 @@ namespace client
 	void I2PServerTunnel::InstallAcceptor (const std::shared_ptr<i2p::stream::StreamingDestination> & destination)
 	{
 		if (!destination) return;
-		// The acceptor outlives an unforced stop, so it holds a weak owner and
-		// the generation it was installed in. A late invocation for a stopped
-		// tunnel answers with a RESET instead of touching freed memory.
+		// The acceptor outlives an unforced stop, so it holds a weak owner
+		// and the generation it was installed in. A late invocation for a
+		// stopped tunnel answers with a RESET instead of touching freed
+		// memory.
 		std::weak_ptr<I2PServerTunnel> weakSelf = std::static_pointer_cast<I2PServerTunnel> (weak_from_this ().lock ());
 		const auto generation = m_Generation.load ();
 		auto replaced = destination->SetAcceptor (
@@ -1163,14 +1167,15 @@ namespace client
 		if (m_LimitActionConfigured) destination->SetRejectionAction (filterAction);
 	}
 
-	// Server-side admission of one accepted I2P stream. The filter predicate
-	// has already run inside the SYN path when one is configured; this function
-	// only repeats the legacy access-list check that has no predicate
-	// equivalent, refuses a stream when the tunnel stopped between the acceptor
-	// dispatch and this call, and selects the local target for the port the
-	// stream arrived on. Every refusal answers with one signed RESET instead of
-	// leaving an accepted stream unowned, and a target that is a host name is
-	// resolved asynchronously so no blocking lookup runs on the service thread.
+	// Server-side admission of one accepted I2P stream. The filter
+	// predicate has already run inside the SYN path when one is
+	// configured; this function only repeats the legacy access-list check
+	// that has no predicate equivalent, refuses a stream when the tunnel
+	// stopped between the acceptor dispatch and this call, and selects the
+	// local target for the port the stream arrived on. Every refusal
+	// answers with one signed RESET instead of leaving an accepted stream
+	// unowned, and a target that is a host name is resolved asynchronously
+	// so no blocking lookup runs on the service thread.
 	void I2PServerTunnel::HandleAccept (std::shared_ptr<i2p::stream::Stream> stream)
 	{
 		if (!stream) return;
@@ -1300,8 +1305,8 @@ namespace client
 			ss << X_I2P_DEST_B64 << ": " << from->ToBase64 () << "\r\n";
 			m_XI2P = ss.str ();
 		}
-		// `spoofedhost.&lt;port&gt;` wins over the `hostoverride` fallback for the
-		// port the client connected to.
+		// `spoofedhost.&lt;port&gt;` wins over the `hostoverride` fallback
+		// for the port the client connected to.
 		const auto host = m_Policy->HostFor (stream->GetLocalPort ());
 		return std::make_shared<I2PServerTunnelConnectionHTTP> (
 			shared_from_this (), stream, target, host, m_XI2P, GetSSLCtx (), m_Policy);

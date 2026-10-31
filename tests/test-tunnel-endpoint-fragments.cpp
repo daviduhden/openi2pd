@@ -4,11 +4,12 @@
  *
  * openi2pd: test tunnel endpoint fragment reassembly.
  *
- * A duplicate follow-on fragment below the next expected number must never be
- * stored as out-of-sequence data, and reassembly state must survive longer
- * than the 8 s I2NP lifetime (45 s, Java FragmentHandler). Deterministic: the
- * decrypted tunnel message is crafted in memory and delivery is a no-op while
- * the transports are offline.
+ * A duplicate follow-on fragment below the next expected number must
+ * never be stored as out-of-sequence data, and reassembly state must
+ * survive longer than the 8 s I2NP lifetime (45 s, Java
+ * FragmentHandler). Deterministic: the decrypted tunnel message is
+ * crafted in memory and delivery is a no-op while the transports are
+ * offline.
  *
  */
 
@@ -32,14 +33,12 @@ using namespace i2p::tunnel;
 
 /*
  * Decrypted tunnel data message layout (TunnelGatewayBuffer):
- *   payload[0..3]   unused
- *   payload[4..19]  IV
- *   payload[20..23] first four bytes of SHA256 over the fragments and IV
- *   payload[24]     zero terminator
- *   payload[25..]   fragments
+ * payload[0..3]   unused payload[4..19]  IV payload[20..23] first four
+ * bytes of SHA256 over the fragments and IV payload[24]     zero
+ * terminator payload[25..]   fragments
  *
- * Every crafted message ends with one terminal single-message fragment so the
- * parser cannot run into random padding.
+ * Every crafted message ends with one terminal single-message fragment
+ * so the parser cannot run into random padding.
  */
 class TunnelDataCraft
 {
@@ -59,10 +58,12 @@ public:
 	void AddFirstFragment (
 		uint32_t msgID, TunnelDeliveryType deliveryType, const uint8_t * toHash, const uint8_t * data, uint16_t size)
 	{
-		*m_Cursor++ = static_cast<uint8_t> (0x08 | (deliveryType << 5)); // fragmented first fragment
+		// The first-fragment flag shares the byte with the delivery type.
+		*m_Cursor++ = static_cast<uint8_t> (0x08 | (deliveryType << 5));
 		if (deliveryType == eDeliveryTypeRouter || deliveryType == eDeliveryTypeTunnel)
 		{
-			std::memcpy (m_Cursor, toHash, 32); // to-hash is a 32-byte ident hash prefix
+			// Fragment routing uses the leading 32 bytes of the ident hash.
+			std::memcpy (m_Cursor, toHash, 32);
 			m_Cursor += 32;
 		}
 		WriteBe32 (msgID);
@@ -72,6 +73,7 @@ public:
 
 	void AddFollowOnFragment (uint32_t msgID, uint8_t fragmentNumber, bool last, const uint8_t * data, uint16_t size)
 	{
+		// Follow-on flags encode the sequence number and final-fragment bit.
 		*m_Cursor++ = static_cast<uint8_t> (0x80 | ((fragmentNumber & 0x3F) << 1) | (last ? 0x01 : 0x00));
 		WriteBe32 (msgID);
 		WriteBe16 (size);
@@ -128,8 +130,8 @@ private:
 
 std::vector<uint8_t> MakeI2NPBody ()
 {
-	// A real I2NP message so assembled messages pass the header checks; the
-	// outbound endpoint sends it to a router, a no-op while offline.
+	// A real I2NP message so assembled messages pass the header checks;
+	// the outbound endpoint sends it to a router, a no-op while offline.
 	auto msg = NewI2NPShortMessage ();
 	msg->FillI2NPMessageHeader (eI2NPData, 1);
 	std::vector<uint8_t> body (msg->GetBuffer (), msg->GetBuffer () + msg->GetLength ());
@@ -147,7 +149,8 @@ void TestStaleFollowOnFragmentIsDropped ()
 	uint8_t toHash[32];
 	std::memset (toHash, 0x33, sizeof (toHash));
 
-	// Open message 7, then move it to the incomplete table with another one.
+	// Open message 7, then move it to the incomplete table with another
+	// one.
 	{
 		TunnelDataCraft craft;
 		craft.AddFirstFragment (7, eDeliveryTypeRouter, toHash, body.data (), firstSize);
@@ -166,8 +169,8 @@ void TestStaleFollowOnFragmentIsDropped ()
 		endpoint.HandleDecryptedTunnelDataMsg (craft.Finish ());
 	}
 
-	// A duplicate of fragment #1 is below the next expected number. It must be
-	// dropped instead of being stored as out-of-sequence data.
+	// A duplicate of fragment #1 is below the next expected number. It
+	// must be dropped instead of being stored as out-of-sequence data.
 	{
 		TunnelDataCraft craft;
 		craft.AddFollowOnFragment (7, 1, false, body.data () + firstSize, secondSize);

@@ -4,10 +4,10 @@
  *
  * openi2pd: FS.
  *
- * Declares filesystem helpers for the router data and certificate directories,
- * including platform-specific path autodetection, directory creation and
- * file operations. HashedStorage shards NetDb and peer-profile files by a
- * configurable prefix alphabet.
+ * Declares filesystem helpers for the router data and certificate
+ * directories, including platform-specific path autodetection,
+ * directory creation and file operations. HashedStorage shards NetDb
+ * and peer-profile files by a configurable prefix alphabet.
  *
  */
 
@@ -34,16 +34,15 @@ namespace fs
 	 *
 	 * Usage:
 	 *
-	 * const char alphabet[8] = {'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'};
-	 * auto h = HashedStorage("name", "y", "z-", ".txt");
+	 * const char alphabet[] = {'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'};
+	 * HashedStorage h ("name", "y", "z-", ".txt");
 	 * h.SetPlace("/tmp/hs-test");
-	 * h.GetName()          -> gives "name"
-	 * h.GetRoot()          -> gives "/tmp/hs-test/name"
-	 * h.Init(alphabet, 8); <- creates needed dirs, 8 is size of alphabet
-	 * h.Path("abcd");      <- returns /tmp/hs-test/name/ya/z-abcd.txt
-	 * h.Remove("abcd");    <- removes /tmp/hs-test/name/ya/z-abcd.txt, if it exists
+	 * h.GetName() returns "name"; GetRoot() returns "/tmp/hs-test/name".
+	 * h.Init (alphabet, 8) creates the shard directories.
+	 * h.Path ("abcd") returns the sharded file path.
+	 * h.Remove ("abcd") removes that file if it exists.
 	 * std::vector&lt;std::string&gt; files;
-	 * h.Traverse(files);   <- finds all files in storage and saves in given vector
+	 * h.Traverse (files) appends stored file paths to the vector.
 	 */
 	class HashedStorage
 	{
@@ -94,26 +93,31 @@ namespace fs
 
 	/**
 	 * @brief Set datadir either from cmdline option or using autodetection
-	 * @param cmdline_datadir Value of cmdline parameter --datadir=&lt;something&gt;
+	 * @param cmdline_datadir Value of cmdline parameter
+	 *                        --datadir=&lt;something&gt;
 	 * @param isService Value of cmdline parameter --service
 	 *
 	 * Examples of autodetected paths:
 	 *
-	 *   Windows: C:\Users\Username\AppData\Roaming\i2pd\
-	 *   Mac: /Library/Application Support/i2pd/ or ~/Library/Application Support/i2pd/
-	 *   Unix: /var/lib/i2pd/ (system=1) >> ~/.i2pd/ or /tmp/i2pd/
+	 * Windows: C:\Users\Username\AppData\Roaming\i2pd\ Mac:
+	 * /Library/Application Support/i2pd/ or ~/Library/Application
+	 * Support/i2pd/ Unix: /var/lib/i2pd/ (system=1) >> ~/.i2pd/ or
+	 * /tmp/i2pd/
 	 */
 	void DetectDataDir (const std::string & cmdline_datadir, bool isService = false);
 
 	/**
-	 * @brief Set certsdir either from cmdline option or using autodetection
-	 * @param cmdline_certsdir Value of cmdline parameter --certsdir=&lt;something&gt;
+	 * @brief Set certsdir either from cmdline option or using
+	 *        autodetection
+	 * @param cmdline_certsdir Value of cmdline parameter
+	 *                         --certsdir=&lt;something&gt;
 	 *
 	 * Examples of autodetected paths:
 	 *
-	 *   Windows: C:\Users\Username\AppData\Roaming\i2pd\certificates
-	 *   Mac: /Library/Application Support/i2pd/ or ~/Library/Application Support/i2pd/certificates
-	 *   Unix: /var/lib/i2pd/certificates (system=1) >> ~/.i2pd/ or /tmp/i2pd/certificates
+	 * Windows: C:\Users\Username\AppData\Roaming\i2pd\certificates Mac:
+	 * /Library/Application Support/i2pd/ or ~/Library/Application
+	 * Support/i2pd/certificates Unix: /var/lib/i2pd/certificates
+	 * (system=1) >> ~/.i2pd/ or /tmp/i2pd/certificates
 	 */
 	void SetCertsDir (const std::string & cmdline_certsdir);
 
@@ -133,28 +137,33 @@ namespace fs
 	/**
 	 * @brief Remove file with given path
 	 * @param path Absolute path to file
-	 * @return true on success, false if file not exists, throws exception on error
+	 * @return true on success, false if file not exists, throws exception
+	 *         on error
 	 */
 	bool Remove (const std::string & path);
 
-	/// Rename a file or directory within one storage hierarchy.
-	/// A POSIX rename is atomic but durable only after the parent directory is
-	/// synced; callers that need durability use the atomic writers above rather
-	/// than a bare rename. Returns false when the operating system rejects the
-	/// rename.
+	/// Rename a file or directory within one storage hierarchy. A POSIX
+	/// rename is atomic but durable only after the parent directory is
+	/// synced; callers that need durability use the atomic writers above
+	/// rather than a bare rename. Returns false when the operating system
+	/// rejects the rename.
 	bool Rename (std::string_view from, std::string_view to);
 
 	/**
-	 * Write bytes to a same-directory temporary file and durably replace path.
-	 * A false result after POSIX rename can mean the new file is visible but
-	 * parent-directory durability could not be confirmed.
-	 * The parent hierarchy must be trusted by the caller. POSIX opens the final
-	 * parent directory without following it and uses leaf-relative operations;
-	 * Windows uses same-volume write-through replacement and relies on the
-	 * configured data directory's ownership against concurrent reparse changes.
+	 * Write bytes to a same-directory temporary file and durably replace
+	 * path. A false result after POSIX rename can mean the new file is
+	 * visible but parent-directory durability could not be confirmed. The
+	 * parent hierarchy must be trusted by the caller. POSIX opens the
+	 * final parent directory without following it and uses leaf-relative
+	 * operations; Windows uses same-volume write-through replacement and
+	 * relies on the configured data directory's ownership against
+	 * concurrent reparse changes.
 	 */
 	bool AtomicWrite (std::string_view path, std::string_view contents);
-	/** AtomicWrite with a protected owner/SYSTEM DACL on Windows and mode 0600 on POSIX. */
+	/**
+	 * AtomicWrite with a protected owner/SYSTEM DACL on Windows and mode
+	 * 0600 on POSIX.
+	 */
 	bool AtomicWritePrivate (std::string_view path, std::string_view contents);
 
 	/**

@@ -4,12 +4,13 @@
  *
  * openi2pd: I2CP.
  *
- * Implements the router-side I2CP server: session handshake, destination
- * creation, lease-set publication and message send/receive over the binary
- * protocol. Session identifiers are validated against collisions, message and
- * send-queue sizes are bounded, payloads are routed through the local
- * destination or garlic sessions, and cached routing sessions are keyed by the
- * parsed identity hash of the wire destination.
+ * Implements the router-side I2CP server: session handshake,
+ * destination creation, lease-set publication and message send/receive
+ * over the binary protocol. Session identifiers are validated against
+ * collisions, message and send-queue sizes are bounded, payloads are
+ * routed through the local destination or garlic sessions, and cached
+ * routing sessions are keyed by the parsed identity hash of the wire
+ * destination.
  *
  */
 
@@ -38,13 +39,13 @@ namespace client
 	{
 		// ClientMessageEventListener.handleBlindingInfo() keeps this in the
 		// router's netDb keyed by the unblinded SigningPublicKey. The local
-		// equivalent is bounded and only trusted for the duration announced by
-		// the client.
+		// equivalent is bounded and only trusted for the duration announced
+		// by the client.
 		const size_t I2CP_MAX_BLINDING_INFOS = 64;
 
 		// CreateLeaseSet2Message private-key lengths from Java EncType. The
-		// local storage for type 1 is 256 bytes for legacy file compatibility,
-		// but the I2CP wire scalar is 32 bytes.
+		// local storage for type 1 is 256 bytes for legacy file
+		// compatibility, but the I2CP wire scalar is 32 bytes.
 		size_t GetI2CPPrivateKeyLen (uint16_t type)
 		{
 			switch (type)
@@ -75,8 +76,8 @@ namespace client
 			return { (uint16_t)keyType, std::vector<uint8_t> (key, key + keyLen) };
 		}
 
-		// Drops expired records and, once the cap is reached, the least recently
-		// updated one. The caller holds g_BlindingInfosMutex.
+		// Drops expired records and, once the cap is reached, the least
+		// recently updated one. The caller holds g_BlindingInfosMutex.
 		void PruneBlindingInfos (uint64_t now)
 		{
 			for (auto it = g_BlindingInfos.begin (); it != g_BlindingInfos.end ();)
@@ -109,11 +110,12 @@ namespace client
 
 	namespace
 	{
-		// Reads the optional i2cp.maxconnections / i2cp.maxsessions limits. An
-		// absent option or a non-numeric value falls back to the default; the
-		// hard ceiling is applied by MakeI2CPAdmissionPolicy(). The option is
-		// declared as uint32_t in Config.cpp, so the value must be read with the
-		// same type: boost::any_cast&lt;int&gt; on it would throw.
+		// Reads the optional i2cp.maxconnections / i2cp.maxsessions limits.
+		// An absent option or a non-numeric value falls back to the default;
+		// the hard ceiling is applied by MakeI2CPAdmissionPolicy(). The
+		// option is declared as uint32_t in Config.cpp, so the value must be
+		// read with the same type: boost::any_cast&lt;int&gt; on it would
+		// throw.
 		size_t ReadI2CPLimit (const char * name)
 		{
 			uint32_t configured = 0;
@@ -133,8 +135,8 @@ namespace client
 		switch (authType)
 		{
 		case eI2CPBlindingAuthNone: return eI2CPHostReplySuccess;
-		// A PSK-only destination needs the shared secret; a DH destination the
-		// per-client private key; DH+PSK needs one of the two.
+		// A PSK-only destination needs the shared secret; a DH destination
+		// the per-client private key; DH+PSK needs one of the two.
 		case eI2CPBlindingAuthPSK: return eI2CPHostReplySecretRequired;
 		case eI2CPBlindingAuthDH: return eI2CPHostReplyKeyRequired;
 		case eI2CPBlindingAuthDHAndPSK: return eI2CPHostReplySecretAndKeyRequired;
@@ -189,8 +191,8 @@ namespace client
 		offset += 4;
 		// Subtraction form: a hostile 32-bit length must not wrap the offset.
 		if ((size_t)payloadLen > len - offset) return false;
-		// A zero-length payload keeps a valid (non-null) pointer: the send path
-		// distinguishes "no payload buffer" from "empty payload".
+		// A zero-length payload keeps a valid (non-null) pointer: the send
+		// path distinguishes "no payload buffer" from "empty payload".
 		request.payload = buf + offset;
 		request.payloadLen = payloadLen;
 		offset += payloadLen;
@@ -211,7 +213,8 @@ namespace client
 			offset += 6;
 		}
 		// Java's readMessage() rejects a payload size that does not exactly
-		// fill the message, so trailing bytes are malformed rather than ignored.
+		// fill the message, so trailing bytes are malformed rather than
+		// ignored.
 		return offset == len;
 	}
 
@@ -555,8 +558,9 @@ namespace client
 		if (it != m_EncryptionKeys.end () && it->second->priv.size () == encryptionKey->priv.size ()
 			&& !memcmp (it->second->priv.data (), key, expected)) // same key
 			return;
-		// Legacy type-1 storage is 256 bytes while the I2CP scalar is 32 bytes.
-		// Zero the remainder so no stale key material is read by a decryptor.
+		// Legacy type-1 storage is 256 bytes while the I2CP scalar is 32
+		// bytes. Zero the remainder so no stale key material is read by a
+		// decryptor.
 		memset (encryptionKey->priv.data (), 0, encryptionKey->priv.size ());
 		memcpy (encryptionKey->priv.data (), key, expected);
 		encryptionKey->CreateDecryptor (); // from private key
@@ -929,11 +933,12 @@ namespace client
 			else
 				remoteSession->SetSharedRoutingPath (nullptr);
 		}
-		// Key the cache by the destination's identity hash. The former key was
-		// the 32-byte signing-key slice at identity offset 352 (DSA's last key
-		// bytes, but type-specific padding or a key fragment for every other
-		// signature type); a crafted identity could reproduce that slice with a
-		// different public key and select another destination's routing session.
+		// Key the cache by the destination's identity hash. The former key
+		// was the 32-byte signing-key slice at identity offset 352 (DSA's
+		// last key bytes, but type-specific padding or a key fragment for
+		// every other signature type); a crafted identity could reproduce
+		// that slice with a different public key and select another
+		// destination's routing session.
 		m_Owner->AddRoutingSession (remote->GetIdentHash (), remoteSession);
 		return SendMsg (garlic, outboundTunnel, remoteLease);
 	}
@@ -1018,9 +1023,10 @@ namespace client
 
 	RunnableI2CPDestination::~RunnableI2CPDestination ()
 	{
-		// m_Self keeps the object alive while its service thread is running, so
-		// this only runs after the thread has been joined. The explicit Stop is
-		// still needed for a destination that was never started through Start().
+		// m_Self keeps the object alive while its service thread is running,
+		// so this only runs after the thread has been joined. The explicit
+		// Stop is still needed for a destination that was never started
+		// through Start().
 		if (IsRunning ()) Stop ();
 	}
 
@@ -1108,10 +1114,10 @@ namespace client
 
 	I2CPSession::~I2CPSession ()
 	{
-		// Sessions must normally be destroyed on the owner thread: Terminate()
-		// posts there, and the posted handler holds a reference until cleanup
-		// completes. Use the inline teardown here so the destructor never calls
-		// shared_from_this().
+		// Sessions must normally be destroyed on the owner thread:
+		// Terminate() posts there, and the posted handler holds a reference
+		// until cleanup completes. Use the inline teardown here so the
+		// destructor never calls shared_from_this().
 		TerminateInOwnerThread ();
 	}
 
@@ -1189,18 +1195,19 @@ namespace client
 			LogPrint (eLogError, "I2CP: Can't receive header");
 			return;
 		}
-		// The header is read incrementally so a peer that stalls in the middle
-		// of it is covered by the read deadline, while a connection that has
-		// not started a message yet is idle and must not be killed: established
-		// clients keep the socket open between messages.
+		// The header is read incrementally so a peer that stalls in the
+		// middle of it is covered by the read deadline, while a connection
+		// that has not started a message yet is idle and must not be killed:
+		// established clients keep the socket open between messages.
 		if (!m_HandshakeComplete)
 			ArmReadTimeout (I2CP_HANDSHAKE_TIMEOUT);
 		else if (m_HeaderReceived > 0)
 			ArmReadTimeout (I2CP_BODY_TIMEOUT);
 		else
 			CancelReadTimeout ();
-		// the handler keeps the socket alive: Terminate resets m_Socket, while a
-		// pending read holds a reference to the socket object until it completes
+		// the handler keeps the socket alive: Terminate resets m_Socket,
+		// while a pending read holds a reference to the socket object until
+		// it completes
 		socket->async_read_some (boost::asio::buffer (m_Header + m_HeaderReceived, I2CP_HEADER_SIZE - m_HeaderReceived),
 			[s = shared_from_this (), socket] (const boost::system::error_code & ecode, std::size_t bytes_transferred)
 			{
@@ -1250,9 +1257,9 @@ namespace client
 			LogPrint (eLogError, "I2CP: Can't receive payload");
 			return;
 		}
-		// A declared body must arrive within the body deadline; the synchronous
-		// available()/read() fast path is gone so no read blocks the service
-		// thread.
+		// A declared body must arrive within the body deadline; the
+		// synchronous available()/read() fast path is gone so no read blocks
+		// the service thread.
 		ArmReadTimeout (I2CP_BODY_TIMEOUT);
 		boost::asio::async_read (*socket, boost::asio::buffer (m_Payload, m_PayloadLen), boost::asio::transfer_all (),
 			[s = shared_from_this (), socket] (const boost::system::error_code & ecode, std::size_t bytes_transferred)
@@ -1302,9 +1309,9 @@ namespace client
 	{
 		if (m_Terminated.exchange (true)) return;
 
-		// Stop the read deadline before the socket is closed: the pending timer
-		// handler holds a reference to this session and would otherwise keep it
-		// alive for up to the full timeout.
+		// Stop the read deadline before the socket is closed: the pending
+		// timer handler holds a reference to this session and would otherwise
+		// keep it alive for up to the full timeout.
 		CancelReadTimeout ();
 		if (m_Destination)
 		{
@@ -1344,8 +1351,9 @@ namespace client
 			LogPrint (eLogError, "I2CP: Message to send is too long ", l);
 			return;
 		}
-		// Build a complete, caller-independent buffer. The service thread is the
-		// only place where it is copied into the in-flight buffer or queued.
+		// Build a complete, caller-independent buffer. The service thread is
+		// the only place where it is copied into the in-flight buffer or
+		// queued.
 		auto sendBuf = std::make_shared<i2p::stream::SendBuffer> (l);
 		uint8_t * buf = sendBuf->buf;
 		htobe32buf (buf + I2CP_HEADER_LENGTH_OFFSET, static_cast<uint32_t> (len));
@@ -1437,8 +1445,9 @@ namespace client
 
 	void I2CPSession::CreateSessionMessageHandler (const uint8_t * buf, size_t len)
 	{
-		// A second CREATE SESSION must not touch the identifier of the session
-		// that is already inserted. Reject it before any local state changes.
+		// A second CREATE SESSION must not touch the identifier of the
+		// session that is already inserted. Reject it before any local state
+		// changes.
 		if (m_Destination)
 		{
 			LogPrint (eLogError, "I2CP: Session already exists");
@@ -1496,9 +1505,9 @@ namespace client
 		}
 		offset += 8; // date
 
-		// SessionConfig.verifySignature(): an offline-signed session carries the
-		// three leaseSetOffline* options in the mapping and its Session Config
-		// signature is made by the transient key.
+		// SessionConfig.verifySignature(): an offline-signed session carries
+		// the three leaseSetOffline* options in the mapping and its Session
+		// Config signature is made by the transient key.
 		std::unique_ptr<i2p::crypto::Verifier> transientVerifier;
 		const auto & expirationStr = params["i2cp.leaseSetOfflineExpiration"];
 		std::string_view transientKeyStr = params["i2cp.leaseSetTransientPublicKey"];
@@ -1705,9 +1714,9 @@ namespace client
 		SendI2CPMessage (I2CP_MESSAGE_STATUS_MESSAGE, buf, 15);
 	}
 
-	// Full-identity hash: the same value IdentityEx derives for a destination
-	// and LeaseSet::GetIdentHash() returns for the cached lease set, so inserts
-	// and lookups agree for every key type.
+	// Full-identity hash: the same value IdentityEx derives for a
+	// destination and LeaseSet::GetIdentHash() returns for the cached
+	// lease set, so inserts and lookups agree for every key type.
 	i2p::data::IdentHash GetI2CPRoutingSessionKey (const uint8_t * identity, size_t len)
 	{
 		i2p::data::IdentHash key;
@@ -1765,18 +1774,20 @@ namespace client
 			return;
 		}
 		// Java reads the signing private key with the session destination's
-		// signature type and the encryption private key with its crypto type. A
-		// LeaseSet (CLS1) is ElGamal-encrypted by definition, so a destination
-		// that is not an ElGamal destination must publish through CLS2 instead.
+		// signature type and the encryption private key with its crypto type.
+		// A LeaseSet (CLS1) is ElGamal-encrypted by definition, so a
+		// destination that is not an ElGamal destination must publish through
+		// CLS2 instead.
 		const size_t signingKeyLen = identity->GetSigningPrivateKeyLen ();
 		if (identity->GetCryptoKeyType () != i2p::data::CRYPTO_KEY_TYPE_ELGAMAL
 			|| identity->GetSigningKeyType () != i2p::data::SIGNING_KEY_TYPE_DSA_SHA1
 			|| signingKeyLen != i2p::crypto::DSA_PRIVATE_KEY_LENGTH || !signingKeyLen)
 		{
-			// Fail closed: the per-signature-type wire layout is only certain for
-			// DSA here, and a mis-sized offset would install an unrelated scalar
-			// as the destination's encryption key. DSA-only install (residual
-			// risk tracked in the audit notes) is preferable to guessing.
+			// Fail closed: the per-signature-type wire layout is only certain
+			// for DSA here, and a mis-sized offset would install an unrelated
+			// scalar as the destination's encryption key. DSA-only install
+			// (residual risk tracked in the audit notes) is preferable to
+			// guessing.
 			LogPrint (eLogError, "I2CP: CreateLeaseSet for signing type ", (int)identity->GetSigningKeyType (),
 				" and crypto type ", (int)identity->GetCryptoKeyType (), " is not supported; use CreateLeaseSet2");
 			return;
@@ -1807,8 +1818,9 @@ namespace client
 			LogPrint (eLogError, "I2CP: Invalid LeaseSet in CreateLeaseSetMessage");
 			return;
 		}
-		// The LeaseSet must advertise this destination's own encryption public
-		// key, otherwise the private key below would decrypt for someone else.
+		// The LeaseSet must advertise this destination's own encryption
+		// public key, otherwise the private key below would decrypt for
+		// someone else.
 		const uint8_t * advertisedKey = buf + offset + embedded.GetFullLen ();
 		if (len - offset - embedded.GetFullLen () < 256
 			|| memcmp (advertisedKey, identity->GetEncryptionPublicKey (), 256))
@@ -1817,9 +1829,9 @@ namespace client
 			return;
 		}
 		const uint8_t * encryptionKey = buf + 2 + signingKeyLen;
-		// ElGamal public keys cannot be re-derived from the private scalar with
-		// the current providers, so the advertised-key comparison above is the
-		// available proof that both halves belong together.
+		// ElGamal public keys cannot be re-derived from the private scalar
+		// with the current providers, so the advertised-key comparison above
+		// is the available proof that both halves belong together.
 		destination->SetEncryptionPrivateKey (i2p::data::CRYPTO_KEY_TYPE_ELGAMAL, encryptionKey, encryptionKeyLen);
 		if (!destination->SupportsEncryptionType (i2p::data::CRYPTO_KEY_TYPE_ELGAMAL))
 		{
@@ -1903,10 +1915,10 @@ namespace client
 			LogPrint (eLogError, "I2CP: CreateLeaseSet2Message has trailing bytes");
 			return;
 		}
-		// Java CreateLeaseSet2Message requires the private-key list to match the
-		// standard LS2 key sections exactly before installing any key or
-		// publishing the set. Only a standard LeaseSet2 carries comparable key
-		// sections; an encrypted outer layer has none.
+		// Java CreateLeaseSet2Message requires the private-key list to match
+		// the standard LS2 key sections exactly before installing any key or
+		// publishing the set. Only a standard LeaseSet2 carries comparable
+		// key sections; an encrypted outer layer has none.
 		const bool standardLeaseSet = storeType == i2p::data::NETDB_STORE_TYPE_STANDARD_LEASESET2;
 		if (standardLeaseSet)
 		{
@@ -1924,8 +1936,8 @@ namespace client
 				}
 			}
 			// Every staged private key must derive the public key the LeaseSet
-			// advertises for that type; otherwise the session would publish a set
-			// whose traffic nobody (including this destination) can decrypt.
+			// advertises for that type; otherwise the session would publish a
+			// set whose traffic nobody (including this destination) can decrypt.
 			for (const auto & key : stagedKeys)
 			{
 				bool verifiable = false;
@@ -1967,8 +1979,8 @@ namespace client
 	void I2CPSession::SendMessageExpiresMessageHandler (const uint8_t * buf, size_t len)
 	{
 		// flags(2) and expiration(6) follow the nonce; keep them instead of
-		// truncating them away. The expiration is enforced as a deadline and the
-		// flags are carried through the request.
+		// truncating them away. The expiration is enforced as a deadline and
+		// the flags are carried through the request.
 		SendMessageRequest (buf, len, true);
 	}
 
@@ -1977,8 +1989,8 @@ namespace client
 		I2CPSendMessageRequest request;
 		if (!ParseI2CPSendMessage (buf, len, withExpiration, request))
 		{
-			// The control connection stays open: a single malformed send is not a
-			// protocol violation. A status reply needs the nonce, which a
+			// The control connection stays open: a single malformed send is not
+			// a protocol violation. A status reply needs the nonce, which a
 			// malformed layout does not reliably expose, so only log.
 			LogPrint (eLogError, "I2CP: Malformed send message ", len);
 			if (request.hasNonce)
@@ -1997,7 +2009,8 @@ namespace client
 			SendMessageStatusMessage (request.nonce, eI2CPMessageStatusBadMessage, request.sessionID);
 			return;
 		case I2CPSendMessageCheck::Expired:
-			// Java answers SendFailureExpired() without touching the tunnel pool.
+			// Java answers SendFailureExpired() without touching the tunnel
+			// pool.
 			LogPrint (eLogDebug, "I2CP: Send message expired");
 			SendMessageStatusMessage (request.nonce, eI2CPMessageStatusSendFailureExpired);
 			return;
@@ -2019,8 +2032,8 @@ namespace client
 		}
 		if (m_IsSendAccepted.load ()) SendMessageStatusMessage (request.nonce, eI2CPMessageStatusAccepted); // accepted
 		// The cache is indexed by the parsed identity hash, so every
-		// signature/crypto type keys its own entry and a crafted identity cannot
-		// reuse another peer's session.
+		// signature/crypto type keys its own entry and a crafted identity
+		// cannot reuse another peer's session.
 		auto remoteIdentHash = GetI2CPRoutingSessionKey (request.identity, request.identityLen);
 		std::shared_ptr<i2p::garlic::GarlicRoutingSession> remoteSession;
 		{
@@ -2274,9 +2287,10 @@ namespace client
 			}
 			if (options.empty ()) options = { 0, 0 };
 		}
-		// Success is framed exactly as before (identity + optional options with
-		// result 0); every failure is the 7-byte layout with the Java result
-		// code, so a client can tell a missing secret/key from a missing set.
+		// Success is framed exactly as before (identity + optional options
+		// with result 0); every failure is the 7-byte layout with the Java
+		// result code, so a client can tell a missing secret/key from a
+		// missing set.
 		auto payload = BuildI2CPHostReplyPayload (requestID, sessionID, std::move (identity), options, result);
 		SendI2CPMessage (I2CP_HOST_REPLY_MESSAGE, payload.data (), payload.size ());
 	}
@@ -2417,9 +2431,10 @@ namespace client
 	{
 		m_Acceptor.cancel ();
 
-		// Session sockets and send queues belong to the service thread. Run the
-		// teardown there, then join from this (non-owner) thread. When the
-		// server was never started there is no owner thread to marshal to.
+		// Session sockets and send queues belong to the service thread. Run
+		// the teardown there, then join from this (non-owner) thread. When
+		// the server was never started there is no owner thread to marshal
+		// to.
 		if (IsRunning () && !IsInServiceThread ())
 		{
 			auto done = std::make_shared<std::promise<void>> ();

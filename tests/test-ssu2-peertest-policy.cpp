@@ -4,9 +4,12 @@
  *
  * openi2pd: test ssu2 peertest policy.
  *
- * Checks the pure PeerTest policy helpers: the per-source msg 1/2 rate limit,
- * the Bob nonce-table cap that never evicts live state, the msg 4 target
- * validation, the msg 5/7 external-address rule, nonzero first-wins relay
+ * Checks the pure PeerTest policy helpers: the per-source msg 1/2 rate
+ * limit,
+ * the Bob nonce-table cap that never evicts live state, the msg 4
+ * target
+ * validation, the msg 5/7 external-address rule, nonzero first-wins
+ * relay
  * tags, the ACK-0 predicate and the accepted out-of-session versions.
  *
  */
@@ -64,7 +67,8 @@ void TestPeerTestRateKey ()
 	assert (GetSSU2PeerTestRateKey (v4a) == v4a);
 	assert (GetSSU2PeerTestRateKey (v4a) != GetSSU2PeerTestRateKey (v4b));
 
-	// IPv6 is keyed on the /64 prefix, so rotating the interface identifier
+	// IPv6 is keyed on the /64 prefix, so rotating the interface
+	// identifier
 	// inside one prefix cannot reset the limiter.
 	const auto v6a = boost::asio::ip::make_address ("2001:db8:1:2::1");
 	const auto v6b = boost::asio::ip::make_address ("2001:db8:1:2:ffff:ffff:ffff:ffff");
@@ -77,7 +81,8 @@ void TestPeerTestRateKey ()
 
 void TestBobNonceTableCap ()
 {
-	// Bob must reject at the cap and never evict another test's live state.
+	// Bob must reject at the cap and never evict another test's live
+	// state.
 	assert (!IsSSU2PeerTestTableFull (0, 64));
 	assert (!IsSSU2PeerTestTableFull (63, 64));
 	assert (IsSSU2PeerTestTableFull (64, 64));
@@ -102,7 +107,8 @@ void TestMsg4TargetValidation ()
 
 void TestExternalAddressRule ()
 {
-	// Java never publishes an address from msg 5, and msg 7 only counts when
+	// Java never publishes an address from msg 5, and msg 7 only counts
+	// when
 	// it comes from the Charlie learned in msg 4.
 	assert (!AllowPeerTestExternalAddressUpdate (5, false));
 	assert (!AllowPeerTestExternalAddressUpdate (5, true));
@@ -116,7 +122,8 @@ void TestExternalAddressRule ()
 
 void TestRelayTagMinting ()
 {
-	// Zero means "no tag", so zero draws are skipped up to the attempt bound.
+	// Zero means "no tag", so zero draws are skipped up to the attempt
+	// bound.
 	uint32_t draws[] = { 0, 0, 0x1234 };
 	size_t index = 0;
 	assert (MintSSU2RelayTag ([&] () { return draws[index++]; }) == 0x1234);

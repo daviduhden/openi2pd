@@ -4,7 +4,9 @@
  *
  * openi2pd: test timestamp offset.
  *
- * Concurrent readers and writers of the global NTP time offset must not race; balanced AdjustTimeOffset calls must cancel and epoch getters must remain valid and monotonic. Intended for TSan.
+ * Concurrent readers and writers of the global NTP time offset must not
+ * race; balanced AdjustTimeOffset calls must cancel and epoch getters
+ * must remain valid and monotonic. Intended for TSan.
  *
  */
 
@@ -63,7 +65,8 @@ int main ()
 
 	const int64_t drift = static_cast<int64_t> (GetSecondsSinceEpoch ()) - static_cast<int64_t> (before);
 	// The balanced adjustments must cancel. Allow a small clock jump while
-	// the test runs, but not a leaked accumulation of ITERATIONS increments.
+	// the test runs, but not a leaked accumulation of ITERATIONS
+	// increments.
 	if (drift < -5 || drift > 5)
 	{
 		std::cerr << "time offset leaked: drift=" << drift << " seconds" << std::endl;

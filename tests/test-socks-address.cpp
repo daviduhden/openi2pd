@@ -4,9 +4,9 @@
  *
  * openi2pd: test SOCKS address buffer.
  *
- * Regression for zero-length and maximum-length SOCKS5 domain names. The old
- * buffer wrapped its uint8_t length on a zero-length name and wrote past the
- * 255-byte union member.
+ * Regression for zero-length and maximum-length SOCKS5 domain names.
+ * The old buffer wrapped its uint8_t length on a zero-length name and
+ * wrote past the 255-byte union member.
  */
 
 #include <iostream>

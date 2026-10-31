@@ -4,11 +4,12 @@
  *
  * openi2pd: fuzz torrents KRPC.
  *
- * Feeds arbitrary bytes to the side-effect free KRPC frame decoder, the compact
- * node/peer decoders, the state-record validator, the issued-token store and
- * the anonymous raw-frame budget. The target asserts that every output is
- * bounded and that no decoder throws or reads outside its input; it needs no
- * destination, socket or live DHT node.
+ * Feeds arbitrary bytes to the side-effect free KRPC frame decoder, the
+ * compact node/peer decoders, the state-record validator, the
+ * issued-token store and the anonymous raw-frame budget. The target
+ * asserts that every output is bounded and that no decoder throws or
+ * reads outside its input; it needs no destination, socket or live DHT
+ * node.
  */
 
 #include <cassert>
@@ -29,7 +30,8 @@ extern "C" int LLVMFuzzerTestOneInput (const uint8_t * data, size_t size)
 	using namespace i2p::torrents;
 	std::string_view input (reinterpret_cast<const char *> (data), size);
 
-	// Every returned view must point into the input: the decoder never copies
+	// Every returned view must point into the input: the decoder never
+	// copies
 	// and never manufactures bytes.
 	const auto inRange = [&input] (std::string_view view)
 	{
@@ -66,16 +68,16 @@ extern "C" int LLVMFuzzerTestOneInput (const uint8_t * data, size_t size)
 	}
 	assert (!GetKRPCQueryKind (frame.query).has_value () || frame.kind == DHTFrameKind::Query);
 
-	// Compact node decoding is bounded by the input and by the k cap, and every
-	// record it returns already passed the node-ID binding check.
+	// Compact node decoding is bounded by the input and by the k cap, and
+	// every record it returns already passed the node-ID binding check.
 	std::vector<Node> nodes;
 	assert (DecodeCompactNodes (input, nodes) == nodes.size ());
 	assert (nodes.size () <= MAX_DHT_NODES_PER_RESPONSE);
 	assert (nodes.size () <= size / DHT_COMPACT_NODE_SIZE);
 	for (const auto & node : nodes) assert (node.VerifyID ());
 
-	// Compact peer decoding drops wrong-length and all-zero entries and never
-	// exceeds the k cap.
+	// Compact peer decoding drops wrong-length and all-zero entries and
+	// never exceeds the k cap.
 	std::vector<i2p::data::IdentHash> peers;
 	assert (DecodeCompactPeers (input, peers) == peers.size ());
 	assert (peers.size () <= MAX_DHT_VALUES_PER_RESPONSE);
@@ -89,7 +91,8 @@ extern "C" int LLVMFuzzerTestOneInput (const uint8_t * data, size_t size)
 		assert (size % (NodeID::len + i2p::data::IdentHash::len + 2) == 0);
 	}
 
-	// The token store stays bounded whatever the inserted material looks like.
+	// The token store stays bounded whatever the inserted material looks
+	// like.
 	DHTTokenStore store;
 	DHTIncomingToken entry;
 	entry.token.assign (8, '\0');
@@ -120,8 +123,8 @@ extern "C" int LLVMFuzzerTestOneInput (const uint8_t * data, size_t size)
 	assert (store.Size () == 0);
 	store.Clear ();
 
-	// The anonymous raw budget never admits more than its fixed window, and a
-	// clock regression cannot refill it.
+	// The anonymous raw budget never admits more than its fixed window,
+	// and a clock regression cannot refill it.
 	DHTRawFrameLimiter limiter;
 	uint64_t now = 12345;
 	if (size >= 8) std::memcpy (&now, data, sizeof (now));

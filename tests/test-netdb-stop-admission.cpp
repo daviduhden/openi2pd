@@ -38,8 +38,9 @@ struct NetDbLifecycleTestAccess
 
 int main ()
 {
-	// The fixture opens admission with a paused worker: real Post/Stop code is
-	// exercised without starting storage, router context, transports or reseed.
+	// The fixture opens admission with a paused worker: real Post/Stop
+	// code is exercised without starting storage, router context,
+	// transports or reseed.
 	using Access = i2p::data::NetDbLifecycleTestAccess;
 	i2p::data::NetDb database;
 	auto message = i2p::NewI2NPMessage ();
@@ -56,8 +57,8 @@ int main ()
 	for (int i = 0; i < 3; ++i) assert (!Access::FloodThrottled (database, hash));
 	assert (Access::FloodThrottled (database, hash));
 
-	// Bounded admission: a burst larger than the cap is partially rejected and
-	// Stop() drains whatever was accepted. No worker is started.
+	// Bounded admission: a burst larger than the cap is partially rejected
+	// and Stop() drains whatever was accepted. No worker is started.
 	{
 		Access::OpenAdmission (database);
 		for (size_t i = 0; i < i2p::data::NETDB_MAX_QUEUED_MESSAGES + 100; ++i) database.PostI2NPMsg (message);

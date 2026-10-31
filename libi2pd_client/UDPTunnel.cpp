@@ -5,9 +5,9 @@
  * openi2pd: UDPTunnel.
  *
  * Implements UDP client and server tunnels over repliable and raw I2P
- * datagrams, multiplexing conversations by port. A reliability layer provides
- * RFC 6298 RTT/RTO estimation, a bounded in-flight window and send-rate
- * limiting, and expires stale sessions.
+ * datagrams, multiplexing conversations by port. A reliability layer
+ * provides RFC 6298 RTT/RTO estimation, a bounded in-flight window and
+ * send-rate limiting, and expires stale sessions.
  *
  */
 
@@ -207,7 +207,8 @@ namespace client
 		m_IsSendingAllowed = true; // if we receive ack after path change, now can send new datagrams
 		if (!m_UnackedDatagrams.empty ())
 		{
-			// keep armed while anything is unacked, otherwise a full window can't be unblocked
+			// keep armed while anything is unacked, otherwise a full window
+			// can't be unblocked
 			if (acknowledged)
 			{
 				m_AckTimer.cancel ();
@@ -262,7 +263,8 @@ namespace client
 		uint32_t rate = static_cast<uint32_t> (m_NumSentSinceRateUpdate * 1000 / interval);
 		m_NumSentSinceRateUpdate = 0;
 		m_SendRateUpdateTime = ts;
-		// best rate of the last few seconds, a rate following every dip would shrink the window
+		// best rate of the last few seconds, a rate following every dip would
+		// shrink the window
 		if (rate >= m_SendRate || ts > m_SendRateMaxTime + I2P_UDP_SEND_RATE_EXPIRATION_TIMEOUT)
 		{
 			m_SendRate = rate;
@@ -273,7 +275,8 @@ namespace client
 	size_t UDPConnection::GetMaxNumUnackedDatagrams () const
 	{
 		if (!m_MinRTT || !m_SendRate) return I2P_UDP_MIN_MAX_NUM_UNACKED_DATAGRAMS;
-		// bandwidth-delay product for one path delay plus one repliable interval
+		// bandwidth-delay product for one path delay plus one repliable
+		// interval
 		size_t w = I2P_UDP_WINDOW_GAIN * m_SendRate * (m_MinRTT + I2P_UDP_REPLIABLE_DATAGRAM_INTERVAL) / 1000;
 		if (w < I2P_UDP_MIN_MAX_NUM_UNACKED_DATAGRAMS) w = I2P_UDP_MIN_MAX_NUM_UNACKED_DATAGRAMS;
 		if (w > m_MaxWindow) w = m_MaxWindow;
@@ -328,7 +331,8 @@ namespace client
 						auto ts = i2p::util::GetMillisecondsSinceEpoch ();
 						m_NumAckTimeouts++;
 						m_NumAckTimeoutsInRow++;
-						// timeouts happen under congestion, only silence means the path is dead
+						// timeouts happen under congestion, only silence means the path
+						// is dead
 						bool resetPath = m_NumAckTimeoutsInRow >= I2P_UDP_MAX_NUM_ACK_TIMEOUTS
 							&& ts > m_LastReceivedTime + I2P_UDP_MAX_UNACKED_DATAGRAM_TIME;
 						bool resetPeerPath = resetPath && ts > m_LastReceivedTime + I2P_UDP_PEER_PATH_RESET_TIMEOUT;
@@ -343,10 +347,12 @@ namespace client
 						if (resetPeerPath) flags |= UDP_SESSION_FLAG_RESET_PATH | UDP_SESSION_FLAG_RESET_SEQN;
 						i2p::util::Mapping options;
 						options.Put (UDP_SESSION_FLAGS, flags);
-						// without seqn the peer acks a stale one and a full window stays blocked
+						// without seqn the peer acks a stale one and a full window stays
+						// blocked
 						options.Put (UDP_SESSION_SEQN, m_NextSendPacketNum);
 						m_NextSendPacketNum++;
-						// probe only while real data is outstanding, otherwise probes feed themselves
+						// probe only while real data is outstanding, otherwise probes
+						// feed themselves
 						if (!m_UnackedDatagrams.empty ()) ScheduleAckTimer (0);
 						auto session = GetDatagramSession ();
 						if (session)
@@ -391,8 +397,8 @@ namespace client
 		IPSocket.set_option (boost::asio::socket_base::receive_buffer_size (I2P_UDP_SOCKET_BUFFER_SIZE));
 		IPSocket.set_option (boost::asio::socket_base::send_buffer_size (I2P_UDP_SOCKET_BUFFER_SIZE));
 		IPSocket.non_blocking (true);
-		// Receive is not called here: it takes a shared pointer to this session,
-		// which does not exist yet while the constructor runs
+		// Receive is not called here: it takes a shared pointer to this
+		// session, which does not exist yet while the constructor runs
 	}
 
 	void UDPSession::Receive ()
@@ -489,8 +495,9 @@ namespace client
 		, m_Gzip (gzip)
 		, isUpdated (true)
 	{
-		// without a reference the destination counts as unused and a config reload
-		// stops it, leaving the tunnel with a destination that receives nothing
+		// without a reference the destination counts as unused and a config
+		// reload stops it, leaving the tunnel with a destination that
+		// receives nothing
 		if (m_LocalDest) m_LocalDest->Acquire ();
 	}
 
@@ -573,9 +580,9 @@ namespace client
 
 	void I2PUDPServerTunnel::Stop ()
 	{
-		// a config reload builds a second tunnel object and drops it when the same
-		// one is already there. Its destructor must not reset the receiver of the
-		// live tunnel: they share the datagram destination
+		// a config reload builds a second tunnel object and drops it when the
+		// same one is already there. Its destructor must not reset the
+		// receiver of the live tunnel: they share the datagram destination
 		if (!m_IsStarted) return;
 		m_IsStarted = false;
 		if (m_StatsTimer) m_StatsTimer->cancel ();
@@ -745,7 +752,8 @@ namespace client
 					RecvFromLocal ();
 					return;
 				}
-				// else fall through and send new first packet, previous one wasn't acked in time
+				// else fall through and send new first packet, previous one wasn't
+				// acked in time
 			}
 		}
 		ExpireUnackedDatagrams (i2p::util::GetMillisecondsSinceEpoch ());

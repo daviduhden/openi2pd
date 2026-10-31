@@ -4,9 +4,9 @@
  *
  * openi2pd: test tunnel inbound queue bound.
  *
- * The tunnel worker queue is bounded so a stalled worker cannot let producers
- * grow memory without limit. Deterministic: the bound and the drop counter are
- * checked without starting the worker thread.
+ * The tunnel worker queue is bounded so a stalled worker cannot let
+ * producers grow memory without limit. Deterministic: the bound and the
+ * drop counter are checked without starting the worker thread.
  *
  */
 
@@ -48,8 +48,8 @@ void TestStoppedServiceRejectsWithoutCounting ()
 	assert (tunnels.GetNumDroppedTunnelMessages () == 0);
 	assert (tunnels.GetQueueSize () == 0);
 
-	// A stopped service rejects posts; that is not a queue overflow, so the
-	// drop counter must stay untouched.
+	// A stopped service rejects posts; that is not a queue overflow, so
+	// the drop counter must stay untouched.
 	assert (!tunnels.PostTunnelData (MakeMessage ()));
 	std::list<std::shared_ptr<i2p::I2NPMessage>> batch { MakeMessage (), MakeMessage () };
 	assert (!tunnels.PostTunnelData (batch));

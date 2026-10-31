@@ -4,8 +4,10 @@
  *
  * openi2pd: test I2NP database bounds.
  *
- * Negative vectors for the pure DatabaseSearchReply body parser: missing key,
- * truncated peer list/from hash, count overflow and trailing bytes. The parser
+ * Negative vectors for the pure DatabaseSearchReply body parser:
+ * missing key,
+ * truncated peer list/from hash, count overflow and trailing bytes. The
+ * parser
  * deliberately ignores trailing bytes like Java's readMessage().
  *
  */
@@ -26,13 +28,14 @@ int main ()
 	assert (i2p::ParseDatabaseSearchReply (buf.data (), buf.size (), reply));
 	assert (reply.peers.empty ());
 
-	// A declared peer without its 32-byte hash and the trailing "from" hash is
-	// rejected instead of reading past the buffer.
+	// A declared peer without its 32-byte hash and the trailing "from"
+	// hash is rejected instead of reading past the buffer.
 	buf[32] = 1;
 	assert (!i2p::ParseDatabaseSearchReply (buf.data (), buf.size (), reply));
 	assert (!i2p::ParseDatabaseSearchReply (buf.data (), 32 + 1 + 31, reply));
 
-	// One peer requires 65 + 32 bytes; 255 peers cannot fit a short buffer.
+	// One peer requires 65 + 32 bytes; 255 peers cannot fit a short
+	// buffer.
 	buf.resize (97, 0);
 	buf[32] = 1;
 	assert (i2p::ParseDatabaseSearchReply (buf.data (), buf.size (), reply));
@@ -40,8 +43,8 @@ int main ()
 	buf[32] = 255;
 	assert (!i2p::ParseDatabaseSearchReply (buf.data (), buf.size (), reply));
 
-	// Trailing bytes are ignored by design (Java parity), but the mandatory
-	// key/from layout still has to be present.
+	// Trailing bytes are ignored by design (Java parity), but the
+	// mandatory key/from layout still has to be present.
 	buf.resize (66, 0);
 	buf[32] = 0;
 	assert (i2p::ParseDatabaseSearchReply (buf.data (), buf.size (), reply));

@@ -6,8 +6,9 @@
  *
  * Implements peer profiles that record tunnel participation, decline,
  * non-reply and usage history and derive bad, unreachable and useful
- * classifications. Profiles are loaded from and saved to per-peer INI files in
- * hashed storage through asynchronous persistence, with expiry-based cleanup.
+ * classifications. Profiles are loaded from and saved to per-peer INI
+ * files in hashed storage through asynchronous persistence, with
+ * expiry-based cleanup.
  *
  */
 
@@ -44,18 +45,19 @@ namespace i2p
 namespace data
 {
 	static i2p::fs::HashedStorage g_ProfilesStorage ("peerProfiles", "p", "profile-", "txt");
-	// Storage lock is outermost for filesystem work; no map/state lock is held
-	// while performing file IO. Profile methods acquire their IO lock first.
-	// A RouterProfile can be read from several threads while it is written by the
-	// tunnel or transport that observed the peer. m_Mutex guards every field
-	// (including endpoints and the dirty flag); m_IoMutex serialises Save()/Load()
-	// per object so one profile has at most one file operation in flight.
-	// The lock order is m_IoMutex before m_Mutex. Callers must hold a shared_ptr for
-	// as long as they touch the profile: the caches only evict an entry whose shared
-	// count is one.
-	// The storage root is fixed for the process lifetime (InitProfilesStorage);
-	// g_ProfilesStorageMutex makes "initialized + root" a single immutable fact so a
-	// writer never observes a half-configured store.
+	// Storage lock is outermost for filesystem work; no map/state lock is
+	// held while performing file IO. Profile methods acquire their IO lock
+	// first. A RouterProfile can be read from several threads while it is
+	// written by the tunnel or transport that observed the peer. m_Mutex
+	// guards every field (including endpoints and the dirty flag);
+	// m_IoMutex serialises Save()/Load() per object so one profile has at
+	// most one file operation in flight. The lock order is m_IoMutex
+	// before m_Mutex. Callers must hold a shared_ptr for as long as they
+	// touch the profile: the caches only evict an entry whose shared count
+	// is one. The storage root is fixed for the process lifetime
+	// (InitProfilesStorage); g_ProfilesStorageMutex makes "initialized +
+	// root" a single immutable fact so a writer never observes a
+	// half-configured store.
 	static std::mutex g_ProfilesStorageMutex;
 	static bool g_ProfilesStorageInitialized = false;
 	static std::string g_ProfilesStoragePlace;
@@ -512,18 +514,21 @@ namespace data
 	}
 
 	/**
-	 * @brief Return the canonical profile for a peer, creating and loading it once.
+	 * @brief Return the canonical profile for a peer, creating and loading
+	 *        it once.
 	 *
-	 * The cache lookup is done under g_ProfilesMutex; a miss then loads from disk
-	 * outside every lock and inserts under the lock again. Two threads that race on
-	 * the same new peer may therefore both parse the file, but emplace keeps the
-	 * first instance and both callers receive that same canonical object, so
-	 * accounting is never split across two profiles. The returned shared_ptr
-	 * extends the object's lifetime past map eviction; callers must keep it for the
-	 * whole time they read or mutate the profile.
+	 * The cache lookup is done under g_ProfilesMutex; a miss then loads
+	 * from disk outside every lock and inserts under the lock again. Two
+	 * threads that race on the same new peer may therefore both parse the
+	 * file, but emplace keeps the first instance and both callers receive
+	 * that same canonical object, so accounting is never split across two
+	 * profiles. The returned shared_ptr extends the object's lifetime past
+	 * map eviction; callers must keep it for the whole time they read or
+	 * mutate the profile.
 	 *
-	 * The optional load observer runs on the miss path only (used by tests and by the
-	 * deferred-update flush), outside the map lock, so it may allocate and perform IO.
+	 * The optional load observer runs on the miss path only (used by tests
+	 * and by the deferred-update flush), outside the map lock, so it may
+	 * allocate and perform IO.
 	 */
 	std::shared_ptr<RouterProfile> GetRouterProfile (const IdentHash & identHash)
 	{
@@ -572,9 +577,10 @@ namespace data
 
 	bool IsRouterBanned (const IdentHash & identHash)
 	{
-		// Operator policy comes first: a blocklisted or runtime-banned router is
-		// never a valid peer, regardless of its historical profile. Both checks
-		// are cheap and the runtime-ban path is lock-free while the set is empty.
+		// Operator policy comes first: a blocklisted or runtime-banned router
+		// is never a valid peer, regardless of its historical profile. Both
+		// checks are cheap and the runtime-ban path is lock-free while the
+		// set is empty.
 		if (IsOperatorBlockedRouter (identHash) || IsRuntimeRouterBanned (identHash)) return true;
 		std::lock_guard<std::mutex> l (g_ProfilesMutex);
 		auto it = g_Profiles.find (identHash);
@@ -621,20 +627,23 @@ namespace data
 	}
 
 	/**
-	 * @brief Snapshot the profiles that are due and start an asynchronous save.
+	 * @brief Snapshot the profiles that are due and start an asynchronous
+	 *        save.
 	 * @return future of the save; an invalid future when nothing is due.
 	 *
-	 * MarkPersistenceDue() both selects a profile and clears its dirty flag, so the
-	 * snapshot cannot contain the same update twice; a failed write is reported back
-	 * through MarkPersistenceFailed() and the flag is restored. Eviction requires
-	 * use_count() == 1: any thread still holding the profile may mutate it outside
-	 * the map lock, so dropping the canonical reference early would let a later
-	 * lookup create a second object for the same peer.
+	 * MarkPersistenceDue() both selects a profile and clears its dirty
+	 * flag, so the snapshot cannot contain the same update twice; a failed
+	 * write is reported back through MarkPersistenceFailed() and the flag
+	 * is restored. Eviction requires use_count() == 1: any thread still
+	 * holding the profile may mutate it outside the map lock, so dropping
+	 * the canonical reference early would let a later lookup create a
+	 * second object for the same peer.
 	 *
-	 * The future is not detached: destroying it blocks until the save finished, which
-	 * is what keeps the storage root and the worker channel alive across shutdown.
-	 * Callers that start a save must therefore wait for the future before
-	 * reconfiguring or releasing the storage backend.
+	 * The future is not detached: destroying it blocks until the save
+	 * finished, which is what keeps the storage root and the worker
+	 * channel alive across shutdown. Callers that start a save must
+	 * therefore wait for the future before reconfiguring or releasing the
+	 * storage backend.
 	 */
 	std::future<void> PersistProfiles ()
 	{
@@ -658,8 +667,9 @@ namespace data
 					++it;
 					continue;
 				}
-				// A shared owner may still mutate this profile outside the map lock.
-				// Keep it canonical until the map is its only remaining owner.
+				// A shared owner may still mutate this profile outside the map
+				// lock. Keep it canonical until the map is its only remaining
+				// owner.
 				if (it->second.use_count () == 1 && it->second->IsExpiredFromCache (ts))
 					it = g_Profiles.erase (it);
 				else
@@ -686,15 +696,16 @@ namespace data
 	/**
 	 * @brief Remove expired profile files from the shared hashed storage.
 	 *
-	 * Traverse() yields every regular file below the store root, including files
-	 * that belong to a different store or to a future format. Each candidate is
-	 * therefore re-encoded and compared with the canonical path for that hash, which
-	 * accepts only a "profile-&lt;base64&gt;.txt" leaf in its own shard; staging files,
-	 * backups, symlink leaves and unrelated regular files are skipped. Deletion goes
-	 * through the installed artifact authority, so a delegated worker owns the
-	 * removal (direct unlink is only used when no worker is installed). The whole
-	 * sweep runs under the storage lock and is executed on a caller-owned async
-	 * task.
+	 * Traverse() yields every regular file below the store root, including
+	 * files that belong to a different store or to a future format. Each
+	 * candidate is therefore re-encoded and compared with the canonical
+	 * path for that hash, which accepts only a
+	 * "profile-&lt;base64&gt;.txt" leaf in its own shard; staging files,
+	 * backups, symlink leaves and unrelated regular files are skipped.
+	 * Deletion goes through the installed artifact authority, so a
+	 * delegated worker owns the removal (direct unlink is only used when
+	 * no worker is installed). The whole sweep runs under the storage lock
+	 * and is executed on a caller-owned async task.
 	 */
 	static void DeleteFilesFromDisk ()
 	{
@@ -809,13 +820,15 @@ namespace data
 	}
 
 	/**
-	 * @brief Apply and clear all postponed profile updates, asynchronously.
+	 * @brief Apply and clear all postponed profile updates,
+	 *        asynchronously.
 	 * @return future of the flush; invalid when the queue was empty.
 	 *
-	 * The queue is swapped out under its own mutex before any work starts, so new
-	 * submissions are accepted while the flush runs and are handled by the next call.
-	 * The future must be waited for before the profile store is released, because the
-	 * task creates profiles and therefore touches the storage root.
+	 * The queue is swapped out under its own mutex before any work starts,
+	 * so new submissions are accepted while the flush runs and are handled
+	 * by the next call. The future must be waited for before the profile
+	 * store is released, because the task creates profiles and therefore
+	 * touches the storage root.
 	 */
 	std::future<void> FlushPostponedRouterProfileUpdates ()
 	{

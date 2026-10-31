@@ -4,10 +4,10 @@
  *
  * openi2pd: MatchedDestination.
  *
- * Builds a client destination whose outbound tunnel pool reuses the remote
- * lease set's inbound gateway as the last hop, keeping traffic to a service
- * on matched peers. The remote lease set is resolved asynchronously and
- * refreshed when it expires.
+ * Builds a client destination whose outbound tunnel pool reuses the
+ * remote lease set's inbound gateway as the last hop, keeping traffic
+ * to a service on matched peers. The remote lease set is resolved
+ * asynchronously and refreshed when it expires.
  *
  */
 

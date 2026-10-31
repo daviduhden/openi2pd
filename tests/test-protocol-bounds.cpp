@@ -4,7 +4,9 @@
  *
  * openi2pd: test protocol bounds.
  *
- * Regression checks length handling in LeaseSet, IdentityEx and I2NP parsing, requiring truncated certificates, short buffers and oversized declared lengths to be rejected or clamped.
+ * Regression checks length handling in LeaseSet, IdentityEx and I2NP
+ * parsing, requiring truncated certificates, short buffers and
+ * oversized declared lengths to be rejected or clamped.
  *
  */
 
@@ -19,21 +21,21 @@
 #include "LeaseSet.h"
 
 // Regression checks for length handling in untrusted protocol payloads.
-// These only exercise pure parsers and bounded helpers; no network setup is
-// required.
+// These only exercise pure parsers and bounded helpers; no network
+// setup is required.
 
 static void TestLeaseSetTruncatedBuffer ()
 {
 	// A standard (DSA) identity is 387 bytes, followed by a 256-byte
-	// encryption key and a 128-byte signing key. With a 771-byte buffer the
-	// "num leases" byte is just past the end. Parsing must reject this without
-	// reading it.
+	// encryption key and a 128-byte signing key. With a 771-byte buffer
+	// the "num leases" byte is just past the end. Parsing must reject this
+	// without reading it.
 	std::vector<uint8_t> buffer (771, 0);
 	uint64_t expires = 1;
 	assert (!i2p::data::LeaseSetBufferValidate (buffer.data (), buffer.size (), expires));
 
-	// ExtractExpirationTimestamp() is reached through IsNewer(). Before the
-	// off-by-one fix this read buffer[771].
+	// ExtractExpirationTimestamp() is reached through IsNewer(). Before
+	// the off-by-one fix this read buffer[771].
 	i2p::data::LeaseSet leaseSet (buffer.data (), buffer.size (), false);
 	assert (!leaseSet.IsValid ());
 	assert (!leaseSet.IsNewer (buffer.data (), buffer.size ()));
@@ -76,7 +78,8 @@ static void TestI2NPMessageLength ()
 	htobe16buf (buffer.data () + i2p::I2NP_HEADER_SIZE_OFFSET, 10);
 	assert (i2p::GetI2NPMessageLength (buffer.data (), buffer.size ()) == i2p::I2NP_HEADER_SIZE + 10);
 
-	// A declared size larger than the buffer is clamped to the buffer length.
+	// A declared size larger than the buffer is clamped to the buffer
+	// length.
 	htobe16buf (buffer.data () + i2p::I2NP_HEADER_SIZE_OFFSET, 1000);
 	assert (i2p::GetI2NPMessageLength (buffer.data (), buffer.size ()) == buffer.size ());
 }

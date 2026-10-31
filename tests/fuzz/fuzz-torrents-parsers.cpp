@@ -4,7 +4,9 @@
  *
  * openi2pd: fuzz torrents parsers.
  *
- * Fuzzes magnet, comment, bencode, metainfo, piece-block and DHT parsers, checking piece/bitfield accounting, peer-frame length caps and bounded DHT peer growth from unverified input.
+ * Fuzzes magnet, comment, bencode, metainfo, piece-block and DHT
+ * parsers, checking piece/bitfield accounting, peer-frame length caps
+ * and bounded DHT peer growth from unverified input.
  *
  */
 
@@ -60,8 +62,8 @@ extern "C" int LLVMFuzzerTestOneInput (const uint8_t * data, size_t size)
 		"peer frame must fit the receive buffer");
 
 	// The 4-byte peer-wire length prefix must be rejected before it can be
-	// stored as a frame length. The maximum representable length and 65535 in
-	// particular do not fit together with the prefix.
+	// stored as a frame length. The maximum representable length and 65535
+	// in particular do not fit together with the prefix.
 	{
 		uint32_t wireLen = 0;
 		if (size >= 4)
@@ -109,8 +111,8 @@ extern "C" int LLVMFuzzerTestOneInput (const uint8_t * data, size_t size)
 					assert ((bitfield[i / 8] & (0x80 >> (i % 8))) == 0);
 			}
 
-			// A resume-style bitfield is unverified input. Applying it may
-			// mark pieces complete, but it must not claim verification.
+			// A resume-style bitfield is unverified input. Applying it may mark
+			// pieces complete, but it must not claim verification.
 			std::vector<uint8_t> claimed (expectedSize, 0xFF);
 			(void)torrent.ApplyBitfield (claimed);
 			if (numPieces) assert (!torrent.AreAllPiecesVerified ());
@@ -126,8 +128,9 @@ extern "C" int LLVMFuzzerTestOneInput (const uint8_t * data, size_t size)
 		}
 	}
 
-	// Exercise the peer-wire block path with attacker-controlled offset and
-	// length. The Piece bounds checks must reject everything outside the piece.
+	// Exercise the peer-wire block path with attacker-controlled offset
+	// and length. The Piece bounds checks must reject everything outside
+	// the piece.
 	static constexpr uint8_t zeroHash[SHA_DIGEST_LENGTH] = { };
 	i2p::torrents::Piece piece (16384, zeroHash);
 	(void)piece.GetNextBlockToRequest ();

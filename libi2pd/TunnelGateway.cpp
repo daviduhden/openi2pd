@@ -5,7 +5,8 @@
  * openi2pd: TunnelGateway.
  *
  * Implements tunnel data message packing with fragmentation and padding
- * detection, and gateway send-buffer flushing through the underlying tunnel.
+ * detection, and gateway send-buffer flushing through the underlying
+ * tunnel.
  *
  */
 
@@ -35,13 +36,14 @@ namespace tunnel
 
 	void TunnelGatewayBuffer::PutI2NPMsg (const TunnelMessageBlock & block)
 	{
-		// A cell holds TUNNEL_DATA_MAX_PAYLOAD_SIZE of fragment data. When the new
-		// message does not fit the cell being filled, starting a fresh cell is
-		// chosen instead of fragmenting when the split would be wasteful: no
-		// remainder is left to fill the cell (nonFit == 0), the remainder does not
-		// fit in what is left, or the space left is smaller than a fifth of the
-		// message. Otherwise the delivery instructions are emitted with the
-		// fragmented flag and the tail continues in follow-on cells.
+		// A cell holds TUNNEL_DATA_MAX_PAYLOAD_SIZE of fragment data. When
+		// the new message does not fit the cell being filled, starting a
+		// fresh cell is chosen instead of fragmenting when the split would be
+		// wasteful: no remainder is left to fill the cell (nonFit == 0), the
+		// remainder does not fit in what is left, or the space left is
+		// smaller than a fifth of the message. Otherwise the delivery
+		// instructions are emitted with the fragmented flag and the tail
+		// continues in follow-on cells.
 		bool messageCreated = false;
 		if (!m_CurrentTunnelDataMsg)
 		{
@@ -185,13 +187,14 @@ namespace tunnel
 
 	void TunnelGatewayBuffer::CompleteCurrentTunnelDataMessage ()
 	{
-		// Finalises one cell: a random IV, the 4-byte truncated SHA-256 checksum
-		// over fragments plus that IV, and a zero byte terminating the fragment
-		// area. The unused remainder is filled from a reusable non-zero random
-		// buffer at a random offset: zero padding would be trivially
-		// distinguishable from data by the next hop, and the buffer is built once
-		// per tunnel to keep the per-cell cost at one memcpy. The final I2NP header
-		// is left unwritten because the layer encryption still changes the body.
+		// Finalises one cell: a random IV, the 4-byte truncated SHA-256
+		// checksum over fragments plus that IV, and a zero byte terminating
+		// the fragment area. The unused remainder is filled from a reusable
+		// non-zero random buffer at a random offset: zero padding would be
+		// trivially distinguishable from data by the next hop, and the buffer
+		// is built once per tunnel to keep the per-cell cost at one memcpy.
+		// The final I2NP header is left unwritten because the layer
+		// encryption still changes the body.
 		if (!m_CurrentTunnelDataMsg) return;
 		uint8_t * payload = m_CurrentTunnelDataMsg->GetBuffer ();
 		size_t size = m_CurrentTunnelDataMsg->len - m_CurrentTunnelDataMsg->offset;

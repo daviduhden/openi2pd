@@ -4,10 +4,12 @@
  *
  * openi2pd: NTCP2.
  *
- * NTCP2 transport: Noise XK handshake with optional ML-KEM hybrid key exchange,
- * SessionRequest/Created/Confirmed processing, AEAD-ChaCha20-Poly1305 data framing, SipHash
- * obfuscation and padding policy. The server bounds handshake allocation, enforces replay
- * caches and per-address pending-session limits, and uses Java-compatible termination timers.
+ * NTCP2 transport: Noise XK handshake with optional ML-KEM hybrid key
+ * exchange, SessionRequest/Created/Confirmed processing,
+ * AEAD-ChaCha20-Poly1305 data framing, SipHash obfuscation and padding
+ * policy. The server bounds handshake allocation, enforces replay
+ * caches and per-address pending-session limits, and uses
+ * Java-compatible termination timers.
  *
  */
 
@@ -50,24 +52,26 @@ namespace transport
 	constexpr size_t NTCP2_SESSION_CONFIRMED_PART2_MAX_SIZE = 4048;
 	const int NTCP2_MAX_PADDING_RATIO = 6; // in %
 
-	// Bob must reject a SessionRequest whose encrypted ephemeral key was seen
-	// before. Java uses a 10 minute decaying set (DecayingHashSet in
+	// Bob must reject a SessionRequest whose encrypted ephemeral key was
+	// seen before. Java uses a 10 minute decaying set (DecayingHashSet in
 	// NTCPTransport); the spec requires a cache lifetime of at least 2*D.
 	const int NTCP2_HANDSHAKE_REPLAY_TIMEOUT = 10 * 60; // in seconds
 	const size_t NTCP2_MAX_HANDSHAKE_REPLAY_ENTRIES = 8192;
-	// Bound the number of distinct source addresses that can occupy a pending
-	// inbound handshake slot at once. One pending handshake per address is
-	// already enforced by NTCP2Server::m_PendingIncomingSessions.
+	// Bound the number of distinct source addresses that can occupy a
+	// pending inbound handshake slot at once. One pending handshake per
+	// address is already enforced by
+	// NTCP2Server::m_PendingIncomingSessions.
 	const size_t NTCP2_MAX_PENDING_INCOMING_SESSIONS = 512;
 
-	// spec/ntcp2-hybrid, table "Maximum Padding": the maximum cleartext padding
-	// a peer may send in SessionRequest (message 1) and SessionCreated
-	// (message 2). ML-KEM-512 uses the non-PQ limits; ML-KEM-768 and
-	// ML-KEM-1024 have their own row. Only the SessionCreated column of
-	// ML-KEM-512/768 is smaller than its SessionRequest column, and the
-	// ML-KEM-1024 row is 1648 for both messages. A larger padLen must be
-	// rejected (see NTCP2IsValidHandshakePadding below), so do not collapse the
-	// two columns into one value: 1136/1616 for SessionCreated was wrong.
+	// spec/ntcp2-hybrid, table "Maximum Padding": the maximum cleartext
+	// padding a peer may send in SessionRequest (message 1) and
+	// SessionCreated (message 2). ML-KEM-512 uses the non-PQ limits;
+	// ML-KEM-768 and ML-KEM-1024 have their own row. Only the
+	// SessionCreated column of ML-KEM-512/768 is smaller than its
+	// SessionRequest column, and the ML-KEM-1024 row is 1648 for both
+	// messages. A larger padLen must be rejected (see
+	// NTCP2IsValidHandshakePadding below), so do not collapse the two
+	// columns into one value: 1136/1616 for SessionCreated was wrong.
 	constexpr size_t NTCP2GetMaxHandshakePadding (int version, bool sessionCreated)
 	{
 		switch (version)
@@ -79,23 +83,25 @@ namespace transport
 		}
 	}
 
-	// ML-KEM-1024 SessionRequest/SessionCreated size before padding: encrypted
-	// X/Y (32) + ML-KEM frame (1568 + 16) + encrypted options (32).
+	// ML-KEM-1024 SessionRequest/SessionCreated size before padding:
+	// encrypted X/Y (32) + ML-KEM frame (1568 + 16) + encrypted options
+	// (32).
 	constexpr size_t NTCP2_MLKEM1024_HANDSHAKE_BASE_SIZE = 1648;
 
-	// The only accepted padLen rule for both handshake messages, so the table
-	// above can be regression-tested without constructing a handshake.
+	// The only accepted padLen rule for both handshake messages, so the
+	// table above can be regression-tested without constructing a
+	// handshake.
 	constexpr bool NTCP2IsValidHandshakePadding (int version, bool sessionCreated, size_t paddingLen)
 	{
 		return paddingLen <= NTCP2GetMaxHandshakePadding (version, sessionCreated);
 	}
 
-	// Outbound NTCP2 uses the version negotiated from the peer's RouterInfo
-	// "v" option for the whole connection. An earlier build randomly forced
-	// x25519 for one in four hybrid peers; that is removed because Java 2.14.0
-	// never downgrades and a passive observer could otherwise expect/force the
-	// weaker handshake half the time. Kept as a pure function so the policy is
-	// pinned by a test without sockets.
+	// Outbound NTCP2 uses the version negotiated from the peer's
+	// RouterInfo "v" option for the whole connection. An earlier build
+	// randomly forced x25519 for one in four hybrid peers; that is removed
+	// because Java 2.14.0 never downgrades and a passive observer could
+	// otherwise expect/force the weaker handshake half the time. Kept as a
+	// pure function so the policy is pinned by a test without sockets.
 	constexpr int NTCP2SelectOutboundVersion (int negotiatedVersion)
 	{
 		return negotiatedVersion;
@@ -103,8 +109,8 @@ namespace transport
 
 	const int NTCP2_CONNECT_TIMEOUT = 10; // in seconds, Java NTCPTransport.ESTABLISH_TIMEOUT
 	const int NTCP2_ESTABLISH_TIMEOUT = 10; // 10 seconds
-	// Java EventPumper.MIN_EXPIRE_IDLE_TIME is 120 s; closing earlier can race
-	// the peer's keepalive/expiration decision.
+	// Java EventPumper.MIN_EXPIRE_IDLE_TIME is 120 s; closing earlier can
+	// race the peer's keepalive/expiration decision.
 	const int NTCP2_TERMINATION_TIMEOUT = 120; // in seconds
 	const int NTCP2_TERMINATION_TIMEOUT_VARIANCE = 10; // 10 seconds
 	const int NTCP2_TERMINATION_CHECK_TIMEOUT = 28; // 28 seconds
@@ -116,20 +122,21 @@ namespace transport
 	const int NTCP2_CLOCK_SKEW = 60; // in seconds
 	const int NTCP2_MAX_OUTGOING_QUEUE_SIZE = 500; // how many messages we can queue up
 
-	// spec/ntcp2 "AEAD Error Handling" ("decryption oracle"): a data-phase tag
-	// failure must not be answered immediately, because an immediate
-	// Termination tells an attacker that the ciphertext was processed with the
-	// session keys. Bob/Alice instead read and discard a random number of bytes
-	// bounded by the largest possible frame and only then send Termination with
-	// reason 4. The drain is uniform in [18, 1041] and costs one fixed-size
-	// buffer, so it cannot be used to force allocation.
+	// spec/ntcp2 "AEAD Error Handling" ("decryption oracle"): a data-phase
+	// tag failure must not be answered immediately, because an immediate
+	// Termination tells an attacker that the ciphertext was processed with
+	// the session keys. Bob/Alice instead read and discard a random number
+	// of bytes bounded by the largest possible frame and only then send
+	// Termination with reason 4. The drain is uniform in [18, 1041] and
+	// costs one fixed-size buffer, so it cannot be used to force
+	// allocation.
 	constexpr size_t NTCP2_AEAD_FAILURE_DRAIN_MIN_SIZE = 18;
 	constexpr size_t NTCP2_AEAD_FAILURE_DRAIN_MAX_SIZE = 1041; // 18 + 1023
 	constexpr int NTCP2_AEAD_FAILURE_DRAIN_TIMEOUT = 10; // in seconds
-	// An established session that stops in the middle of a frame is closed with
-	// reason 14. The 2-byte obfuscated length read is not covered: an idle
-	// session legitimately waits there, and the 120 s idle termination handles
-	// a stalled peer that never completes it.
+	// An established session that stops in the middle of a frame is closed
+	// with reason 14. The 2-byte obfuscated length read is not covered: an
+	// idle session legitimately waits there, and the 120 s idle
+	// termination handles a stalled peer that never completes it.
 	constexpr int NTCP2_INTRA_FRAME_READ_TIMEOUT = 30; // in seconds
 
 	// Uniform drain length for one data-phase AEAD failure, in bytes.
@@ -139,11 +146,12 @@ namespace transport
 			+ (randomValue % (NTCP2_AEAD_FAILURE_DRAIN_MAX_SIZE - NTCP2_AEAD_FAILURE_DRAIN_MIN_SIZE + 1));
 	}
 
-	// Pure model of the data-phase failure sequence. It encodes the ordering
-	// rule that is otherwise buried in socket handlers: after an authentication
-	// failure nothing may be written until the drain finished (completion or
-	// deadline), and the drain itself is a single bounded step. NTCP2Session
-	// owns one of these; tests exercise it without sockets.
+	// Pure model of the data-phase failure sequence. It encodes the
+	// ordering rule that is otherwise buried in socket handlers: after an
+	// authentication failure nothing may be written until the drain
+	// finished (completion or deadline), and the drain itself is a single
+	// bounded step. NTCP2Session owns one of these; tests exercise it
+	// without sockets.
 	class NTCP2FailureDrain
 	{
 	public:
@@ -156,8 +164,9 @@ namespace transport
 			m_Remaining = 0;
 		}
 
-		// Starts a drain. Returns false for an out-of-range size or when a drain
-		// is already in progress, so duplicate failures cannot restart it.
+		// Starts a drain. Returns false for an out-of-range size or when a
+		// drain is already in progress, so duplicate failures cannot restart
+		// it.
 		constexpr bool Begin (size_t drainSize)
 		{
 			if (m_IsDraining || drainSize < NTCP2_AEAD_FAILURE_DRAIN_MIN_SIZE
@@ -168,8 +177,8 @@ namespace transport
 			return true;
 		}
 
-		// Accounts received bytes during the drain; returns true once the drain
-		// is satisfied and Termination may be sent.
+		// Accounts received bytes during the drain; returns true once the
+		// drain is satisfied and Termination may be sent.
 		constexpr bool Consume (size_t received)
 		{
 			if (!m_IsDraining) return false;
@@ -178,8 +187,8 @@ namespace transport
 			return !m_IsDraining;
 		}
 
-		// The drain deadline expired. Termination is allowed afterwards, exactly
-		// as for a completed drain.
+		// The drain deadline expired. Termination is allowed afterwards,
+		// exactly as for a completed drain.
 		constexpr bool Expire ()
 		{
 			if (!m_IsDraining) return false;
@@ -199,8 +208,8 @@ namespace transport
 	};
 
 	// Java NTCP2Payload honors the RouterInfo request-flood bit only for a
-	// RouterInfo block smaller than 3 KiB, so a large RI is stored but never
-	// forwarded.
+	// RouterInfo block smaller than 3 KiB, so a large RI is stored but
+	// never forwarded.
 	constexpr size_t NTCP2_ROUTER_INFO_MAX_FLOOD_SIZE = 3 * 1024;
 
 	enum NTCP2BlockType
@@ -238,16 +247,18 @@ namespace transport
 	// RouterInfo flags
 	const uint8_t NTCP2_ROUTER_INFO_FLAG_REQUEST_FLOOD = 0x01;
 
-	// Validates the decrypted payload of SessionConfirmed part 2 (message 3
-	// part 2, with the 16-byte MAC removed). The only permitted layout is:
-	// RouterInfo block, optional Options block, optional Padding block last
-	// (spec/ntcp2 "Block Ordering Rules"). No other block type is allowed in
-	// the handshake. Returns false on any malformed or out-of-order block and
-	// stores the RouterInfo block data size (flag + RouterInfo) on success.
+	// Validates the decrypted payload of SessionConfirmed part 2 (message
+	// 3 part 2, with the 16-byte MAC removed). The only permitted layout
+	// is: RouterInfo block, optional Options block, optional Padding block
+	// last (spec/ntcp2 "Block Ordering Rules"). No other block type is
+	// allowed in the handshake. Returns false on any malformed or
+	// out-of-order block and stores the RouterInfo block data size (flag +
+	// RouterInfo) on success.
 	bool ValidateNTCP2SessionConfirmedPayload (const uint8_t * payload, size_t len, size_t & routerInfoDataSize);
 
 	/// Owns the transient Noise transcript and key material for one NTCP2
-	/// handshake. Failed KDF or message processing must abort establishment.
+	/// handshake. Failed KDF or message processing must abort
+	/// establishment.
 	/// @see https://i2p.net/en/docs/specs/ntcp2/
 	struct NTCP2Establisher : private i2p::crypto::NoiseSymmetricState
 	{
@@ -255,9 +266,9 @@ namespace transport
 
 		void SetVersion (int version);
 
-		// A null or zeroed ephemeral pair means the provider failed to generate
-		// a key. Every handshake message that embeds X or Y must then abort
-		// instead of sending an all-zero public key.
+		// A null or zeroed ephemeral pair means the provider failed to
+		// generate a key. Every handshake message that embeds X or Y must
+		// then abort instead of sending an all-zero public key.
 		bool HasUsableEphemeralKey () const
 		{
 			if (!m_EphemeralKeys || !m_EphemeralKeys->HasPrivateKey ()) return false;
@@ -311,8 +322,9 @@ namespace transport
 		static constexpr size_t m_MaxMsgSize = 2 * i2p::crypto::MLKEM1024_KEY_LENGTH + 160;
 		// spec/ntcp2-hybrid: the largest handshake frame is ML-KEM-1024
 		// SessionRequest/SessionCreated (1648 bytes of base data) with the v5
-		// padding limit (1648 bytes). Both must fit the shared buffer exactly;
-		// reducing it or "fixing" the padding table to 1136/1616 breaks this.
+		// padding limit (1648 bytes). Both must fit the shared buffer
+		// exactly; reducing it or "fixing" the padding table to 1136/1616
+		// breaks this.
 		static_assert (NTCP2_MLKEM1024_HANDSHAKE_BASE_SIZE + NTCP2GetMaxHandshakePadding (5, false) <= m_MaxMsgSize,
 			"NTCP2 handshake buffer must hold the v5 SessionRequest maximum");
 		static_assert (NTCP2_MLKEM1024_HANDSHAKE_BASE_SIZE + NTCP2GetMaxHandshakePadding (5, true) <= m_MaxMsgSize,
@@ -330,9 +342,10 @@ namespace transport
 	};
 
 	class NTCP2Server;
-	/// TCP transport session spanning NTCP2 establishment and data framing.
-	/// The server must outlive its sessions; data-frame send buffers and message
-	/// owners are retained by completion handlers until their writes complete.
+	/// TCP transport session spanning NTCP2 establishment and data
+	/// framing. The server must outlive its sessions; data-frame send
+	/// buffers and message owners are retained by completion handlers
+	/// until their writes complete.
 	/// @see https://i2p.net/en/docs/specs/ntcp2/
 	class NTCP2Session : public TransportSession, public std::enable_shared_from_this<NTCP2Session>
 	{
@@ -355,21 +368,22 @@ namespace transport
 		boost::asio::ip::address GetRemoteAddress () const override { return m_RemoteEndpoint.address (); };
 		bool IsTerminated () const { return m_IsTerminated; };
 
-		/// Start the Alice side of the handshake after the TCP connect completed.
-		/// The establishment deadline starts here (not at connect) and the
-		/// SessionRequest is built on the establisher service so key generation
-		/// never blocks the transport thread.
+		/// Start the Alice side of the handshake after the TCP connect
+		/// completed. The establishment deadline starts here (not at connect)
+		/// and the SessionRequest is built on the establisher service so key
+		/// generation never blocks the transport thread.
 		void ClientLogin (); // Alice
 		/// Start the Bob side: adopt the version announced in the peer's
 		/// RouterInfo and read the fixed 64-byte SessionRequest prologue.
-		/// @param version negotiated NTCP2 version from the peer advertisement
+		/// @param version negotiated NTCP2 version from the peer
+		///                advertisement
 		void ServerLogin (int version); // Bob
 
 		void SendLocalRouterInfo (bool update) override; // after handshake or by update
 		void SendI2NPMessages (std::list<std::shared_ptr<I2NPMessage>> & msgs) override;
-		/// Re-offer this session's unsent queue to a replacement session for the
-		/// same peer; expired messages are dropped (their `onDrop` runs) instead
-		/// of being delayed. The source queue is emptied either way.
+		/// Re-offer this session's unsent queue to a replacement session for
+		/// the same peer; expired messages are dropped (their `onDrop` runs)
+		/// instead of being delayed. The source queue is emptied either way.
 		void MoveSendQueue (std::shared_ptr<NTCP2Session> other);
 
 	private:
@@ -436,18 +450,21 @@ namespace transport
 	private:
 		NTCP2Server & m_Server;
 		boost::asio::ip::tcp::socket m_Socket;
-		// One timer for the data phase: the per-frame read deadline and, after a
-		// failure, the bounded drain deadline. Both are cancelled on close/Stop.
+		// One timer for the data phase: the per-frame read deadline and,
+		// after a failure, the bounded drain deadline. Both are cancelled on
+		// close/Stop.
 		boost::asio::steady_timer m_ReadTimer;
 		boost::asio::ip::tcp::endpoint m_RemoteEndpoint;
 		std::atomic<bool> m_IsEstablished, m_IsTerminated;
-		// SessionRequest carried a tsA outside ±NTCP2_CLOCK_SKEW. Bob still sends
-		// SessionCreated so Alice can see our time, but terminates with reason 7
-		// once SessionConfirmed arrived and the message 2 write has completed.
+		// SessionRequest carried a tsA outside ±NTCP2_CLOCK_SKEW. Bob still
+		// sends SessionCreated so Alice can see our time, but terminates with
+		// reason 7 once SessionConfirmed arrived and the message 2 write has
+		// completed.
 		std::atomic<bool> m_IsClockSkew;
 		NTCP2FailureDrain m_FailureDrain;
 		// Fixed drain buffer: the drain size is bounded by
-		// NTCP2_AEAD_FAILURE_DRAIN_MAX_SIZE, so no allocation depends on input.
+		// NTCP2_AEAD_FAILURE_DRAIN_MAX_SIZE, so no allocation depends on
+		// input.
 		uint8_t m_FailureDrainBuffer[NTCP2_AEAD_FAILURE_DRAIN_MAX_SIZE];
 
 		std::unique_ptr<NTCP2Establisher> m_Establisher;
@@ -461,8 +478,8 @@ namespace transport
 #endif
 		uint16_t m_NextReceivedLen;
 		std::unique_ptr<uint8_t[]> m_NextReceivedBuffer;
-		// staging buffer for the next outgoing frame; ownership is moved into the
-		// write completion handler before async_write
+		// staging buffer for the next outgoing frame; ownership is moved into
+		// the write completion handler before async_write
 		std::unique_ptr<uint8_t[]> m_NextSendBuffer;
 		size_t m_NextReceivedBufferSize;
 		union
@@ -475,9 +492,9 @@ namespace transport
 		i2p::I2NPMessagesHandler m_Handler;
 
 		bool m_IsSending, m_IsReceiving;
-		// A control frame (RouterInfo/termination) must not be started while a
-		// data frame write is in flight. Remember the request and act on it in
-		// HandleNextFrameSent() instead of dropping it.
+		// A control frame (RouterInfo/termination) must not be started while
+		// a data frame write is in flight. Remember the request and act on it
+		// in HandleNextFrameSent() instead of dropping it.
 		bool m_IsTerminating;
 		int m_PendingTerminationReason; // -1 when none
 		bool m_PendingRouterInfo;
@@ -491,15 +508,17 @@ namespace transport
 		int m_NextPaddingSize;
 	};
 
-	/// Owns the TCP listeners, the established-session table and the handshake
-	/// replay caches, and runs its own io_context service plus a separate
-	/// establisher service (outbound handshakes only, with its own RNG).
+	/// Owns the TCP listeners, the established-session table and the
+	/// handshake replay caches, and runs its own io_context service plus a
+	/// separate establisher service (outbound handshakes only, with its
+	/// own RNG).
 	///
-	/// `m_NTCP2Sessions` and `m_PendingIncomingSessions` are touched from the
-	/// NTCP2 service thread; the replay caches are the exception and are
-	/// protected by `m_HandshakeReplayMutex` so a connection-attempt thread can
-	/// insert atomically. `GetNTCP2Sessions()` is a diagnostic view only: the
-	/// caller must not mutate or retain entries from another thread.
+	/// `m_NTCP2Sessions` and `m_PendingIncomingSessions` are touched from
+	/// the NTCP2 service thread; the replay caches are the exception and
+	/// are protected by `m_HandshakeReplayMutex` so a connection-attempt
+	/// thread can insert atomically. `GetNTCP2Sessions()` is a diagnostic
+	/// view only: the caller must not mutate or retain entries from
+	/// another thread.
 	class NTCP2Server : private i2p::util::RunnableServiceWithWork
 	{
 	private:

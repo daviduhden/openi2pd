@@ -4,10 +4,11 @@
  *
  * openi2pd: test tunnel build record table.
  *
- * Checks the short-build record plan, the hard hop-count guard in Tunnel::Build
- * (a path longer than the record table must fail without sending) and the
- * fail-closed record writer plus the exact build-response count/length checks.
- * Deterministic: no sockets, threads or sleeps.
+ * Checks the short-build record plan, the hard hop-count guard in
+ * Tunnel::Build (a path longer than the record table must fail without
+ * sending) and the fail-closed record writer plus the exact
+ * build-response count/length checks. Deterministic: no sockets,
+ * threads or sleeps.
  *
  */
 
@@ -49,8 +50,8 @@ void TestRecordPlan ()
 			const auto plan = PlanTunnelBuildRecords (hops, inbound);
 			if (hops <= 0 || hops > MAX_NUM_RECORDS)
 			{
-				// Anything the table cannot describe must be rejected before a
-				// byte is written; the hop loop indexes the shuffled record map.
+				// Anything the table cannot describe must be rejected before a byte
+				// is written; the hop loop indexes the shuffled record map.
 				assert (!plan.valid);
 				continue;
 			}
@@ -70,8 +71,8 @@ void TestRecordPlan ()
 		}
 	}
 
-	// An inbound path at the record limit needs no phony record, one below it
-	// does, and the phony hop still fits.
+	// An inbound path at the record limit needs no phony record, one below
+	// it does, and the phony hop still fits.
 	assert (!PlanTunnelBuildRecords (MAX_NUM_RECORDS, true).insertPhonyRecord);
 	assert (PlanTunnelBuildRecords (MAX_INBOUND_HOPS, true).insertPhonyRecord);
 	assert (PlanTunnelBuildRecords (MAX_INBOUND_HOPS, true).numRecords == MAX_NUM_RECORDS);
@@ -79,8 +80,8 @@ void TestRecordPlan ()
 
 void TestOversizedBuildFailsClosed ()
 {
-	// Nine hops cannot be indexed by an eight-entry record map. The build must
-	// fail before touching the message and must not send anything.
+	// Nine hops cannot be indexed by an eight-entry record map. The build
+	// must fail before touching the message and must not send anything.
 	auto config = std::make_shared<TunnelConfig> (MakePeers (MAX_NUM_RECORDS + 1), 1, IdentHash { });
 	assert (config->GetNumHops () == MAX_NUM_RECORDS + 1);
 	auto tunnel = std::make_shared<OutboundTunnel> (config);
@@ -102,8 +103,9 @@ void TestValidBuildStoresRecordCount ()
 	wrongCount[0] = static_cast<uint8_t> (MAX_NUM_RECORDS);
 	assert (!tunnel->HandleTunnelBuildResponse (wrongCount.data (), wrongCount.size ()));
 
-	// Trailing bytes are rejected: the reply must be exactly the advertised
-	// record table, otherwise the nonce/record mapping would be ambiguous.
+	// Trailing bytes are rejected: the reply must be exactly the
+	// advertised record table, otherwise the nonce/record mapping would be
+	// ambiguous.
 	std::vector<uint8_t> trailing (1 + STANDARD_NUM_RECORDS * SHORT_TUNNEL_BUILD_RECORD_SIZE + 1, 0);
 	trailing[0] = static_cast<uint8_t> (STANDARD_NUM_RECORDS);
 	assert (!tunnel->HandleTunnelBuildResponse (trailing.data (), trailing.size ()));
@@ -111,7 +113,8 @@ void TestValidBuildStoresRecordCount ()
 	// Truncated by one byte is rejected too.
 	assert (!tunnel->HandleTunnelBuildResponse (trailing.data (), trailing.size () - 2));
 
-	// Correct shape but unauthenticatable records: rejected, not established.
+	// Correct shape but unauthenticatable records: rejected, not
+	// established.
 	std::vector<uint8_t> exact (1 + STANDARD_NUM_RECORDS * SHORT_TUNNEL_BUILD_RECORD_SIZE, 0);
 	exact[0] = static_cast<uint8_t> (STANDARD_NUM_RECORDS);
 	assert (!tunnel->HandleTunnelBuildResponse (exact.data (), exact.size ()));
@@ -129,7 +132,8 @@ void TestRecordWriterBounds ()
 	assert (hop->CreateBuildRequestRecord (records.data (), STANDARD_NUM_RECORDS, 0x11223344U));
 
 	const std::vector<uint8_t> before = records;
-	// An index outside the table is refused and the buffer is left untouched.
+	// An index outside the table is refused and the buffer is left
+	// untouched.
 	hop->recordIndex = STANDARD_NUM_RECORDS;
 	assert (!hop->CreateBuildRequestRecord (records.data (), STANDARD_NUM_RECORDS, 1));
 	assert (std::memcmp (before.data (), records.data (), records.size ()) == 0);
@@ -137,8 +141,8 @@ void TestRecordWriterBounds ()
 	assert (!hop->CreateBuildRequestRecord (records.data (), STANDARD_NUM_RECORDS, 1));
 	assert (std::memcmp (before.data (), records.data (), records.size ()) == 0);
 
-	// A phony record fails closed while the router has no identity: it must be
-	// zeroed instead of naming a null identity.
+	// A phony record fails closed while the router has no identity: it
+	// must be zeroed instead of naming a null identity.
 	ShortPhonyTunnelHopConfig phony;
 	phony.recordIndex = 0;
 	std::vector<uint8_t> phonyRecords (STANDARD_NUM_RECORDS * SHORT_TUNNEL_BUILD_RECORD_SIZE, 0xAA);

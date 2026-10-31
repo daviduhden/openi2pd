@@ -4,7 +4,8 @@
  *
  * openi2pd: test tunnel-config ownership.
  *
- * Checks the owned hop chain, ordering and phony-hop add/remove transitions
+ * Checks the owned hop chain, ordering and phony-hop add/remove
+ * transitions
  * without starting a router or a tunnel pool.
  */
 

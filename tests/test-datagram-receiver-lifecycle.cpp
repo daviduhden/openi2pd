@@ -4,8 +4,10 @@
  *
  * openi2pd: test datagram receiver lifecycle.
  *
- * Covers identity-bearing receiver reset, no port-to-wildcard promotion,
- * protocol/port keyed identity and hash dispatch, draining callbacks before
+ * Covers identity-bearing receiver reset, no port-to-wildcard
+ * promotion,
+ * protocol/port keyed identity and hash dispatch, draining callbacks
+ * before
  * owner teardown, and reset from inside a callback.
  *
  */
@@ -31,7 +33,8 @@ namespace
 std::vector<uint8_t> MakeEmptyStoredGzipMember ()
 {
 	// DatagramDestination inflates every incoming protocol. This minimal
-	// stored empty gzip member uses the parser's documented zero-block form.
+	// stored empty gzip member uses the parser's documented zero-block
+	// form.
 	return { 0x1f, 0x8b, 0x08, 0, 0, 0, 0, 0, 0, 0xff, 0x01, 0, 0, 0xff, 0xff, 0, 0, 0, 0, 0, 0, 0, 0 };
 }
 
@@ -54,7 +57,8 @@ void DispatchRaw (const std::shared_ptr<i2p::datagram::DatagramDestination> & de
 		0, port, payload.data (), payload.size (), i2p::client::PROTOCOL_TYPE_RAW, nullptr);
 }
 
-// Identity/hash dispatch needs a real remote peer: a Datagram1 frame carries
+// Identity/hash dispatch needs a real remote peer: a Datagram1 frame
+// carries
 // the sender's full identity and signature, Datagram3 the sender hash.
 struct Sender
 {
@@ -127,9 +131,10 @@ void TestIdentityRegistrationAndNoPromotion ()
 	assert (firstCalls == 1);
 	assert (secondPortCalls == 1);
 
-	// A port-specific registration is never promoted to the destination-wide
-	// fallback (Java only falls back to an explicit PROTO_ANY/PORT_ANY
-	// listener), so an unrelated port and the default port stay undelivered.
+	// A port-specific registration is never promoted to the
+	// destination-wide fallback (Java only falls back to an explicit
+	// PROTO_ANY/PORT_ANY listener), so an unrelated port and the default
+	// port stay undelivered.
 	DispatchDatagram1 (destination, sender, 99);
 	DispatchDatagram1 (destination, sender, 0);
 	assert (firstCalls == 1);
@@ -142,8 +147,8 @@ void TestIdentityRegistrationAndNoPromotion ()
 	DispatchDatagram1 (destination, sender, 41);
 	assert (replacementCalls == 1);
 
-	// A stale owner's token cannot remove a replacement at the same port or
-	// the replacement's independent lifetime.
+	// A stale owner's token cannot remove a replacement at the same port
+	// or the replacement's independent lifetime.
 	assert (first.Reset ());
 	DispatchDatagram1 (destination, sender, 41);
 	assert (replacementCalls == 2);
@@ -151,8 +156,8 @@ void TestIdentityRegistrationAndNoPromotion ()
 	DispatchDatagram1 (destination, sender, 41);
 	assert (replacementCalls == 2);
 
-	// Hash (Datagram3) receivers follow the same keying: only the addressed
-	// port delivers, and the default slot stays empty.
+	// Hash (Datagram3) receivers follow the same keying: only the
+	// addressed port delivers, and the default slot stays empty.
 	auto hash = destination->SetHashReceiver (
 		[&] (const i2p::data::IdentHash &, uint16_t, uint16_t, const uint8_t *, size_t, const i2p::util::Mapping *)
 		{ ++hashCalls; }, 41);
@@ -297,8 +302,9 @@ void TestReentrantCallbackDestructionOutsideRegistryLock ()
 	};
 	auto captured = std::make_shared<Reentrant> ();
 	captured->destination = destination;
-	// Retain only the registration/map references after this scope. Replacing
-	// both map and fallback entries releases the callback outside the lock.
+	// Retain only the registration/map references after this scope.
+	// Replacing both map and fallback entries releases the callback
+	// outside the lock.
 	auto original
 		= destination->SetRawReceiver ([captured] (uint8_t, uint16_t, uint16_t, const uint8_t *, size_t) { }, 89);
 	captured.reset ();

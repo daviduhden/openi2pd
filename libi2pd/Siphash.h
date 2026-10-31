@@ -4,10 +4,10 @@
  *
  * openi2pd: Siphash.
  *
- * Portable, independent implementation of the SipHash-2-4 construction with
- * 64- and 128-bit output. It provides the fallback for keyed peer-ordering
- * hashes and NTCP2 length obfuscation when OpenSSL is built without SipHash
- * support.
+ * Portable, independent implementation of the SipHash-2-4 construction
+ * with 64- and 128-bit output. It provides the fallback for keyed
+ * peer-ordering hashes and NTCP2 length obfuscation when OpenSSL is
+ * built without SipHash support.
  *
  */
 
@@ -77,19 +77,22 @@ namespace crypto
 	 * SipHash-2-4 (Aumasson/Bernstein), 64- or 128-bit output.
 	 *
 	 * This is the portable fallback used when the crypto provider is built
-	 * without SipHash; the OpenSSL-backed path in Crypto.cpp is preferred when
-	 * available and both must produce identical bytes for the same key.
+	 * without SipHash; the OpenSSL-backed path in Crypto.cpp is preferred
+	 * when available and both must produce identical bytes for the same
+	 * key.
 	 *
 	 * @param hash Output buffer of exactly hashsz bytes.
-	 * @param input Message bytes; the length is taken from inputSize and never
-	 * from a terminator, so binary input is supported.
-	 * @param key Exactly 16 bytes (two little-endian 64-bit words). The key is
-	 * a secret: it is never logged and callers must not reuse one key across
-	 * unrelated protocols.
-	 * @tparam hashsz 8 or 16 only. The 128-bit form is the two-pass variant
-	 * required by the 16-byte peer-ordering digest; NTCP2's AEAD-length tag is
-	 * the 8-byte form. Other values are not part of the contract even though
-	 * the template accepts them.
+	 * @param input Message bytes; the length is taken from inputSize and
+	 *              never from a terminator, so binary input is supported.
+	 * @param key Exactly 16 bytes (two little-endian 64-bit
+	 *            words). The key is a secret: it is never logged and
+	 *            callers must not reuse one key across unrelated
+	 *            protocols.
+	 * @tparam hashsz 8 or 16 only. The 128-bit form is the
+	 *                two-pass variant required by the 16-byte
+	 *                peer-ordering digest; NTCP2's AEAD-length tag is the
+	 *                8-byte form. Other values are not part of the
+	 *                contract even though the template accepts them.
 	 * @note This is a keyed hash, not a MAC-verify primitive: callers must
 	 * compare results with a constant-time comparison.
 	 */

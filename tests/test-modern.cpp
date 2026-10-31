@@ -4,9 +4,10 @@
  *
  * openi2pd: test modern vocabulary.
  *
- * Exercises the portable C++23 Modern.h seams (concepts, enum conversion,
- * overload composition, scope guard and byte-span views) without network,
- * filesystem or crypto operations. The test is prepared for manual CI.
+ * Exercises the portable C++23 Modern.h seams (concepts, enum
+ * conversion, overload composition, scope guard and byte-span views)
+ * without network, filesystem or crypto operations. The test is
+ * prepared for manual CI.
  */
 
 #include <array>

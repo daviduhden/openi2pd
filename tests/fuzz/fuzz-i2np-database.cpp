@@ -4,8 +4,9 @@
  *
  * openi2pd: fuzz I2NP database messages.
  *
- * Exercises the pure DatabaseSearchReply parser on untrusted payload bytes.
- * The harness does not create a router, perform a lookup or contact a peer.
+ * Exercises the pure DatabaseSearchReply parser on untrusted payload
+ * bytes. The harness does not create a router, perform a lookup or
+ * contact a peer.
  *
  */
 

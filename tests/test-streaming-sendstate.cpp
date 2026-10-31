@@ -4,10 +4,11 @@
  *
  * openi2pd: test streaming send state.
  *
- * Checks that no data packet is built once a stream reached CLOSE or RESET and
- * that a write queued in that state fails with operation_aborted instead of
- * being silently accepted. A still-open control stream must keep building
- * packets, so the assertion is not vacuous.
+ * Checks that no data packet is built once a stream reached CLOSE or
+ * RESET and that a write queued in that state fails with
+ * operation_aborted instead of being silently accepted. A still-open
+ * control stream must keep building packets, so the assertion is not
+ * vacuous.
  *
  */
 
@@ -80,7 +81,8 @@ int main ()
 		assert (stream->GetSendQueueSize () == 1);
 	}
 
-	// After CLOSE the queued write fails with operation_aborted and no packet
+	// After CLOSE the queued write fails with operation_aborted and no
+	// packet
 	// is queued.
 	{
 		auto stream = std::make_shared<Stream> (f.service, f.destination);
@@ -109,8 +111,9 @@ int main ()
 		assert (stream->GetSendBufferSize () == 0);
 	}
 
-	// Half-close must keep working: a Closing stream keeps the bytes queued for
-	// the FIN flush (or has already sent them); it never aborts them.
+	// Half-close must keep working: a Closing stream keeps the bytes
+	// queued for the FIN flush (or has already sent them); it never aborts
+	// them.
 	{
 		auto stream = std::make_shared<Stream> (f.service, f.destination);
 		stream->SetStreamIDsForTesting (7, 8);

@@ -4,11 +4,11 @@
  *
  * openi2pd: KadDHT.
  *
- * Implements a binary-trie Kademlia routing table keyed by IdentHash bits,
- * supporting insert, remove, closest-peer selection (one or many, with an
- * optional filter) and stale-entry cleanup. Child nodes are uniquely owned and
- * collapsed singles are promoted; the table does no locking and relies on the
- * caller's synchronisation.
+ * Implements a binary-trie Kademlia routing table keyed by IdentHash
+ * bits, supporting insert, remove, closest-peer selection (one or many,
+ * with an optional filter) and stale-entry cleanup. Child nodes are
+ * uniquely owned and collapsed singles are promoted; the table does no
+ * locking and relies on the caller's synchronisation.
  *
  */
 

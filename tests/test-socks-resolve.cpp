@@ -5,9 +5,9 @@
  * openi2pd: test SOCKS resolve cache and success replies.
  *
  * Exercises the bounded, expiring torsocks RESOLVE mapping (fake IPv4
- * derivation, determinism, key isolation, expiry and eviction) and the SOCKS5
- * success replies, which must never carry a wildcard address. No socket,
- * listener or peer is used.
+ * derivation, determinism, key isolation, expiry and eviction) and the
+ * SOCKS5 success replies, which must never carry a wildcard address. No
+ * socket, listener or peer is used.
  *
  */
 
@@ -129,15 +129,17 @@ void TestBoundAndEviction ()
 		"host" + std::to_string (SOCKS_RESOLVE_CACHE_MAX_ENTRIES + 99) + ".i2p", MakeKey (0x41));
 	assert (cache.Lookup (latest, NOW + 1000) == "host355.i2p");
 
-	// Expired entries are dropped before eviction, so re-inserting after the
-	// lifetime starts from a small cache instead of evicting live entries.
+	// Expired entries are dropped before eviction, so re-inserting after
+	// the lifetime starts from a small cache instead of evicting live
+	// entries.
 	cache.Insert ("fresh.i2p", NOW + SOCKS_RESOLVE_CACHE_TTL_MS * 4);
 	assert (cache.Size () == 1);
 }
 
 void TestSuccessReplies ()
 {
-	// CONNECT: 05 00 00 01 7F 00 00 01 00 01 (I2P Java confirmConnection()).
+	// CONNECT: 05 00 00 01 7F 00 00 01 00 01 (I2P Java
+	// confirmConnection()).
 	const auto connectReply = SOCKS5ConnectSuccessReply ();
 	assert (connectReply.size () == 10);
 	assert (connectReply[0] == 0x05);

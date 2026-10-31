@@ -4,12 +4,13 @@
  *
  * openi2pd: test LeaseSet2 encryption-type selection.
  *
- * Reserved EC types and unavailable hybrid parameter sets must never become
- * the active LeaseSet2 encryptor; unknown advertised key types are retained
- * inert so the key list matches Java. Also pins the strict i2cp.leaseSetEncType
- * option grammar: exact decimal tokens, at most one hybrid type and no
- * ElGamal/hybrid combination. This pins the policy used by the local
- * destination configuration and the I2CP LeaseSet2 key installer.
+ * Reserved EC types and unavailable hybrid parameter sets must never
+ * become the active LeaseSet2 encryptor; unknown advertised key types
+ * are retained inert so the key list matches Java. Also pins the strict
+ * i2cp.leaseSetEncType option grammar: exact decimal tokens, at most
+ * one hybrid type and no ElGamal/hybrid combination. This pins the
+ * policy used by the local destination configuration and the I2CP
+ * LeaseSet2 key installer.
  */
 
 #include <cassert>
@@ -59,8 +60,8 @@ void TestSelectableTypes ()
 #endif
 
 #if OPENSSL_PQ
-	// The PQ selection helper must never return a version above its bound or
-	// one that cannot actually be published.
+	// The PQ selection helper must never return a version above its bound
+	// or one that cannot actually be published.
 	for (int maximum = 2; maximum <= 5; ++maximum)
 	{
 		const int highest = i2p::crypto::HighestSupportedPQVersion (5, maximum);
@@ -99,8 +100,8 @@ void TestEncTypeOptionGrammar ()
 		assert (parsed.preferred == CRYPTO_KEY_TYPE_ECIES_X25519_AEAD);
 	}
 	{
-		// The default value. The hybrid entry is only installed when the active
-		// provider supports it, but the grammar itself stays valid.
+		// The default value. The hybrid entry is only installed when the
+		// active provider supports it, but the grammar itself stays valid.
 		const auto parsed = ParseLeaseSetEncryptionTypes ("4,0");
 		assert (parsed.valid);
 		assert (parsed.types.count (CRYPTO_KEY_TYPE_ECIES_X25519_AEAD));
@@ -124,8 +125,8 @@ void TestEncTypeOptionGrammar ()
 		assert (parsed.preferred == 0);
 	}
 
-	// More than one hybrid type is rejected (Java ClientConnectionRunner), as
-	// is a hybrid combined with ElGamal.
+	// More than one hybrid type is rejected (Java ClientConnectionRunner),
+	// as is a hybrid combined with ElGamal.
 	for (const char * mixed : { "4,6", "6,4", "6,7", "6,6", "0,6", "6,0", "0,4,6", "5,6" })
 	{
 		const auto parsed = ParseLeaseSetEncryptionTypes (mixed);
@@ -135,8 +136,8 @@ void TestEncTypeOptionGrammar ()
 	}
 
 	// Unavailable-but-well-formed types keep the configuration valid; the
-	// installation step then skips them and fails closed only when nothing is
-	// left (covered by the destination, not by this parser).
+	// installation step then skips them and fails closed only when nothing
+	// is left (covered by the destination, not by this parser).
 	{
 		const auto parsed = ParseLeaseSetEncryptionTypes ("1,4");
 		assert (parsed.valid);
@@ -152,8 +153,10 @@ void TestEncTypeOptionGrammar ()
 	}
 }
 
-// Builds a signed standard LeaseSet2 with the given key sections. The returned
-// vector starts with the NetDb store type, which is part of the signed data.
+// Builds a signed standard LeaseSet2 with the given key sections. The
+// returned
+// vector starts with the NetDb store type, which is part of the signed
+// data.
 std::vector<uint8_t> BuildLeaseSet2 (
 	const PrivateKeys & keys, const std::vector<std::pair<uint16_t, std::vector<uint8_t>>> & sections)
 {
@@ -206,9 +209,9 @@ void TestUnknownKeyTypeIsRetainedInert ()
 {
 	auto keys = PrivateKeys::CreateRandomKeys (
 		SIGNING_KEY_TYPE_EDDSA_SHA512_ED25519, CRYPTO_KEY_TYPE_ECIES_X25519_AEAD, true);
-	// Type 99 is not defined by proposal 144/145. Java keeps the section in its
-	// key list, so the count and IsEncryptionKey() must match, but it must never
-	// become the active encryptor.
+	// Type 99 is not defined by proposal 144/145. Java keeps the section
+	// in its key list, so the count and IsEncryptionKey() must match, but
+	// it must never become the active encryptor.
 	const uint16_t unknownType = 99;
 	std::vector<uint8_t> unknownKey (40, 0x5A);
 	{
@@ -224,7 +227,8 @@ void TestUnknownKeyTypeIsRetainedInert ()
 		assert (leaseSet.GetEncryptionType () == 0);
 	}
 
-	// A known usable type next to it still wins, and the wire order is kept.
+	// A known usable type next to it still wins, and the wire order is
+	// kept.
 	{
 		std::vector<uint8_t> x25519Key (32, 0x44);
 		const auto buffer
@@ -244,7 +248,8 @@ void TestUnknownKeyTypeIsRetainedInert ()
 		assert (leaseSet.GetEncryptionType () == CRYPTO_KEY_TYPE_ECIES_X25519_AEAD);
 	}
 
-	// A known type with the wrong explicit length is still rejected before any
+	// A known type with the wrong explicit length is still rejected before
+	// any
 	// signature work, even though unknown types are retained.
 	{
 		std::vector<uint8_t> shortX25519 (31, 0x44);

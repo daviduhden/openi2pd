@@ -4,10 +4,10 @@
  *
  * openi2pd: BOB.
  *
- * Implements the line-oriented BOB command protocol for creating nicknamed
- * destinations and their TCP-to-I2P tunnels, including key, lookup, ping and
- * proxy commands. Operands are parsed with fixed-length bounds on the command
- * channel's service thread.
+ * Implements the line-oriented BOB command protocol for creating
+ * nicknamed destinations and their TCP-to-I2P tunnels, including key,
+ * lookup, ping and proxy commands. Operands are parsed with
+ * fixed-length bounds on the command channel's service thread.
  *
  */
 
@@ -120,10 +120,10 @@ namespace client
 			return true;
 		}
 
-		// The command listener is an INET socket, so a per-user peer credential
-		// is not universally available. Where the platform exposes one it is
-		// enforced; otherwise the peer must at least be local and the operator
-		// must opt in explicitly to the private-key reply.
+		// The command listener is an INET socket, so a per-user peer
+		// credential is not universally available. Where the platform exposes
+		// one it is enforced; otherwise the peer must at least be local and
+		// the operator must opt in explicitly to the private-key reply.
 		bool IsTrustedCommandPeer (boost::asio::ip::tcp::socket & socket)
 		{
 			boost::system::error_code ec;
@@ -921,9 +921,9 @@ namespace client
 	void BOBCommandSession::GetkeysCommandHandler (const char *, size_t)
 	{
 		LogPrint (eLogDebug, "BOB: getkeys request");
-		// The reply carries a destination's private keys. It is refused unless
-		// the operator explicitly enabled the option: BOB itself authenticates
-		// nothing beyond the local peer.
+		// The reply carries a destination's private keys. It is refused
+		// unless the operator explicitly enabled the option: BOB itself
+		// authenticates nothing beyond the local peer.
 		if (!m_Owner.IsGetKeysAllowed ())
 		{
 			LogPrint (eLogWarning, "BOB: getkeys is disabled; set bob.allowgetkeys=true to enable it");

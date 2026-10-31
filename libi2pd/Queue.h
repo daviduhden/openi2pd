@@ -4,10 +4,11 @@
  *
  * openi2pd: Queue.
  *
- * Thread-safe FIFO queue built on std::list, a mutex and a condition variable, with blocking,
- * timed and non-blocking dequeue, bulk splice insertion and queue swapping. Put() is
- * unbounded, so callers that need backpressure use PutIfBelow(); Get() and Peek() return
- * nullptr when empty.
+ * Thread-safe FIFO queue built on std::list, a mutex and a condition
+ * variable, with blocking, timed and non-blocking dequeue, bulk splice
+ * insertion and queue swapping. Put() is unbounded, so callers that
+ * need backpressure use PutIfBelow(); Get() and Peek() return nullptr
+ * when empty.
  *
  */
 
@@ -26,9 +27,10 @@ namespace i2p
 {
 namespace util
 {
-	/// Mutex-protected FIFO for nullable, copyable elements.
-	/// Waiting is notification-based rather than a queue-nonempty predicate;
-	/// consumers must recheck both their stop condition and the queue after wakeup.
+	/// Mutex-protected FIFO for nullable, copyable elements. Waiting is
+	/// notification-based rather than a queue-nonempty predicate;
+	/// consumers must recheck both their stop condition and the queue
+	/// after wakeup.
 	template <typename Element> class Queue
 	{
 	public:
@@ -42,9 +44,10 @@ namespace util
 		/**
 		 * Enqueue only while the queue is below an explicit limit. The size
 		 * check and insertion are one critical section, so concurrent
-		 * producers cannot exceed the limit. Returns false when the record was
-		 * rejected. The argument is passed by value, so an rvalue supplied by
-		 * the caller has already been moved from even when admission fails.
+		 * producers cannot exceed the limit. Returns false when the record
+		 * was rejected. The argument is passed by value, so an rvalue
+		 * supplied by the caller has already been moved from even when
+		 * admission fails.
 		 */
 		bool PutIfBelow (Element e, size_t limit)
 		{
@@ -66,7 +69,8 @@ namespace util
 		}
 
 		/// Wait at most once for notification and return the next element.
-		/// @return nullptr if woken without an element, including a spurious wake.
+		/// @return nullptr if woken without an element, including a spurious
+		///         wake.
 		Element GetNext ()
 		{
 			std::unique_lock<std::mutex> l (m_QueueMutex);
@@ -79,8 +83,8 @@ namespace util
 			return el;
 		}
 
-		/// As GetNext(), with a timed wait. Despite the legacy parameter name,
-		/// usec is interpreted as milliseconds.
+		/// As GetNext(), with a timed wait. Despite the legacy parameter
+		/// name, usec is interpreted as milliseconds.
 		Element GetNextWithTimeout (int usec)
 		{
 			std::unique_lock<std::mutex> l (m_QueueMutex);
@@ -136,8 +140,8 @@ namespace util
 			return GetNonThreadSafe (true);
 		}
 
-		/// Swap out all currently queued elements, discarding the output list's
-		/// previous contents before transferring the FIFO to it.
+		/// Swap out all currently queued elements, discarding the output
+		/// list's previous contents before transferring the FIFO to it.
 		void GetWholeQueue (std::list<Element> & queue)
 		{
 			if (!queue.empty ())

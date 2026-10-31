@@ -4,9 +4,10 @@
  *
  * openi2pd: TransitTunnel.
  *
- * Declares transit tunnel roles (participant, gateway and endpoint) that
- * decrypt, forward or terminate tunnel data messages, and TransitTunnels, which
- * accepts build requests and tracks active transit tunnels on a worker thread.
+ * Declares transit tunnel roles (participant, gateway and endpoint)
+ * that decrypt, forward or terminate tunnel data messages, and
+ * TransitTunnels, which accepts build requests and tracks active
+ * transit tunnels on a worker thread.
  *
  */
 
@@ -35,14 +36,15 @@ namespace i2p
 {
 namespace tunnel
 {
-	/// One hop of a tunnel built by another router: it holds only that hop's
-	/// layer and IV keys and re-encrypts a cell for the next hop.
+	/// One hop of a tunnel built by another router: it holds only that
+	/// hop's layer and IV keys and re-encrypts a cell for the next hop.
 	///
 	/// The base class is abstract scaffolding: `SendTunnelDataMsg()` and
-	/// `HandleTunnelDataMsg()` log an error, so only the role subclasses below
-	/// are created. `EncryptTunnelMsg()` applies exactly this hop's AES layer and
-	/// may be called with the same buffer for `in` and `out` (a participant
-	/// re-encrypts in place); the counter feeds the transit bandwidth statistic.
+	/// `HandleTunnelDataMsg()` log an error, so only the role subclasses
+	/// below are created. `EncryptTunnelMsg()` applies exactly this hop's
+	/// AES layer and may be called with the same buffer for `in` and `out`
+	/// (a participant re-encrypts in place); the counter feeds the transit
+	/// bandwidth statistic.
 	class TransitTunnel : public TunnelBase
 	{
 	public:
@@ -62,10 +64,10 @@ namespace tunnel
 		std::unique_ptr<i2p::crypto::TunnelEncryption> m_Encryption;
 	};
 
-	/// Middle hop: validate and de-duplicate the cell, replace the tunnel ID and
-	/// message ID, re-encrypt one layer and queue it for the next hop. Batches
-	/// are flushed by the tunnel worker so several cells share one transport
-	/// write.
+	/// Middle hop: validate and de-duplicate the cell, replace the tunnel
+	/// ID and message ID, re-encrypt one layer and queue it for the next
+	/// hop. Batches are flushed by the tunnel worker so several cells
+	/// share one transport write.
 	class TransitTunnelParticipant : public TransitTunnel
 	{
 	public:
@@ -86,10 +88,11 @@ namespace tunnel
 		std::unique_ptr<TunnelTransportSender> m_Sender;
 	};
 
-	/// First hop of an inbound tunnel built by another router: this router is the
-	/// gateway, so locally originated I2NP messages enter here. `m_SendMutex`
-	/// serializes the producers against the worker's flush, and all messages are
-	/// packed as local deliveries at this end of the path.
+	/// First hop of an inbound tunnel built by another router: this router
+	/// is the gateway, so locally originated I2NP messages enter here.
+	/// `m_SendMutex` serializes the producers against the worker's flush,
+	/// and all messages are packed as local deliveries at this end of the
+	/// path.
 	class TransitTunnelGateway : public TransitTunnel
 	{
 	public:
@@ -108,10 +111,11 @@ namespace tunnel
 		TunnelGateway m_Gateway;
 	};
 
-	/// Last hop of an outbound tunnel built by another router: remove this hop's
-	/// layer into a fresh cell and let the endpoint reassemble and dispatch the
-	/// I2NP message. The endpoint is created on first use under `m_HandleMutex`
-	/// because `Cleanup()` can run concurrently from the tunnel worker.
+	/// Last hop of an outbound tunnel built by another router: remove this
+	/// hop's layer into a fresh cell and let the endpoint reassemble and
+	/// dispatch the I2NP message. The endpoint is created on first use
+	/// under `m_HandleMutex` because `Cleanup()` can run concurrently from
+	/// the tunnel worker.
 	class TransitTunnelEndpoint : public TransitTunnel
 	{
 	public:
@@ -138,14 +142,15 @@ namespace tunnel
 	const int TRANSIT_TUNNELS_QUEUE_WAIT_INTERVAL = 10; // in seconds
 	const int TRANSIT_TUNNELS_BUILD_MSG_QUEUE_MAX_SIZE = 100;
 
-	// A transit build request is replayed when the same derived reply key is
-	// seen again inside this window. The key is derived from the request's DH,
-	// so it is unique per legitimate request; only a replay matches.
+	// A transit build request is replayed when the same derived reply key
+	// is seen again inside this window. The key is derived from the
+	// request's DH, so it is unique per legitimate request; only a replay
+	// matches.
 	const uint64_t TRANSIT_TUNNEL_BUILD_REPLAY_WINDOW_MS = 8 * 60 * 1000; // 8 minutes
 	const size_t TRANSIT_TUNNEL_BUILD_REPLAY_MAX_ENTRIES = 4096;
-	// Java BuildHandler: a build reply we send for a tunnel we just created may
-	// take a full round trip, a build request we merely relay is forwarded with
-	// a much shorter lifetime.
+	// Java BuildHandler: a build reply we send for a tunnel we just
+	// created may take a full round trip, a build request we merely relay
+	// is forwarded with a much shorter lifetime.
 	const uint64_t TUNNEL_BUILD_REPLY_EXPIRATION_MS = 60 * 1000; // 60 seconds
 	const uint64_t TUNNEL_BUILD_RELAY_EXPIRATION_MS = 25 * 1000; // 25 seconds
 
@@ -154,12 +159,17 @@ namespace tunnel
 	{
 		return 1 + static_cast<size_t> (numRecords) * SHORT_TUNNEL_BUILD_RECORD_SIZE;
 	}
-	/** Exact VariableTunnelBuild payload size for @a numRecords records. */
+	/**
+	 * Exact VariableTunnelBuild payload size for @a numRecords records.
+	 */
 	constexpr size_t GetVariableTunnelBuildMessageSize (int numRecords)
 	{
 		return 1 + static_cast<size_t> (numRecords) * TUNNEL_BUILD_RECORD_SIZE;
 	}
-	/** True when a build payload is exactly the declared size (no trailing bytes). */
+	/**
+	 * True when a build payload is exactly the declared size (no trailing
+	 * bytes).
+	 */
 	inline bool IsExactTunnelBuildMessageSize (size_t payloadLength, int numRecords, bool shortRecords)
 	{
 		if (numRecords <= 0 || numRecords > MAX_NUM_RECORDS) return false;
@@ -172,8 +182,8 @@ namespace tunnel
 	 * Bounded, decaying replay filter for transit build requests.
 	 *
 	 * Entries expire after the replay window and the table is capped, so a
-	 * hostile peer cannot grow it without limit. Keys are never logged: only
-	 * the record index and the outcome are.
+	 * hostile peer cannot grow it without limit. Keys are never logged:
+	 * only the record index and the outcome are.
 	 */
 	class TransitBuildReplayFilter final
 	{
@@ -185,7 +195,7 @@ namespace tunnel
 		{
 		}
 
-		/** @return true when @a key is new (and remembers it), false on replay */
+		/** @return True for a new key; false for a replay. */
 		bool CheckAndStore (const uint8_t * key, uint64_t nowMs);
 		size_t GetSize () const { return m_Entries.size (); }
 		void Clear ();
@@ -209,13 +219,14 @@ namespace tunnel
 	constexpr std::string_view TRANSIT_TUNNEL_LIMIT_BANDWIDTH { "l" };
 	constexpr std::string_view TRANSIT_TUNNEL_AVAILABLE_BANDWIDTH { "b" };
 
-	/// Registry and owner of the transit tunnels this router participates in.
+	/// Registry and owner of the transit tunnels this router participates
+	/// in.
 	///
 	/// A single worker thread consumes build requests from a bounded queue
-	/// (`TRANSIT_TUNNELS_BUILD_MSG_QUEUE_MAX_SIZE`), creates the tunnels and then
-	/// expires them; `m_TransitTunnelsMutex` guards the list for that worker and
-	/// for the administrative snapshots. The replay filter is only touched by
-	/// the worker, so it needs no lock of its own.
+	/// (`TRANSIT_TUNNELS_BUILD_MSG_QUEUE_MAX_SIZE`), creates the tunnels
+	/// and then expires them; `m_TransitTunnelsMutex` guards the list for
+	/// that worker and for the administrative snapshots. The replay filter
+	/// is only touched by the worker, so it needs no lock of its own.
 	class TransitTunnels
 	{
 	public:
@@ -257,7 +268,8 @@ namespace tunnel
 		std::mt19937 m_Rng;
 
 	public:
-		// for administrative views and I2PControl; thread-safe snapshot, safe to iterate without holding any lock
+		// for administrative views and I2PControl; thread-safe snapshot, safe
+		// to iterate without holding any lock
 		std::vector<std::shared_ptr<TransitTunnel>> GetTransitTunnelsList () const
 		{
 			std::lock_guard<std::mutex> l (m_TransitTunnelsMutex);

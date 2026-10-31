@@ -4,10 +4,11 @@
  *
  * openi2pd: reseed job lifecycle regression.
  *
- * The owned reseed job must be single-flight, non-blocking for the caller and
- * cancellable by NetDb::Stop() through its stop token, so an administrative
- * reseed can never freeze an admin/Android thread for minutes. Deterministic:
- * an injected fetcher stalls for at most 100 ms and no socket is opened.
+ * The owned reseed job must be single-flight, non-blocking for the
+ * caller and cancellable by NetDb::Stop() through its stop token, so an
+ * administrative reseed can never freeze an admin/Android thread for
+ * minutes. Deterministic: an injected fetcher stalls for at most 100 ms
+ * and no socket is opened.
  *
  */
 
@@ -31,8 +32,8 @@ namespace
 using namespace i2p;
 using namespace i2p::data;
 
-// Wait for a predicate with a bounded, CI-friendly budget instead of a fixed
-// sleep. Returns false on timeout.
+// Wait for a predicate with a bounded, CI-friendly budget instead of a
+// fixed sleep. Returns false on timeout.
 template <typename Predicate> bool WaitFor (Predicate predicate, std::chrono::milliseconds budget)
 {
 	const auto deadline = std::chrono::steady_clock::now () + budget;
@@ -55,8 +56,9 @@ int main ()
 	using namespace i2p;
 	using namespace i2p::data;
 
-	// A stalled fetch that only returns when the stop token is requested or the
-	// short bounded wait elapsed. No long sleep, no socket, no live server.
+	// A stalled fetch that only returns when the stop token is requested
+	// or the short bounded wait elapsed. No long sleep, no socket, no live
+	// server.
 	std::mutex mutex;
 	std::condition_variable cv;
 	std::atomic<bool> tokenObserved { false };
@@ -82,8 +84,8 @@ int main ()
 	assert (!database.IsReseeding ());
 	assert (database.GetReseedState ().phase == ReseedPhase::Idle);
 
-	// The first request starts the owned job and returns immediately; a second
-	// request while it runs is refused instead of queued.
+	// The first request starts the owned job and returns immediately; a
+	// second request while it runs is refused instead of queued.
 	{
 		const auto start = std::chrono::steady_clock::now ();
 		assert (database.RequestReseed ());
@@ -102,7 +104,8 @@ int main ()
 		assert (state.lastAttemptMs > 0);
 	}
 
-	// The state surface is readable while the job runs and never waits for it.
+	// The state surface is readable while the job runs and never waits for
+	// it.
 	{
 		const auto start = std::chrono::steady_clock::now ();
 		const auto state = database.GetReseedState ();
@@ -110,16 +113,16 @@ int main ()
 		assert (state.phase == ReseedPhase::Running);
 	}
 
-	// Let the stalled fetch actually start so cancellation is exercised on an
-	// in-flight phase, not only before it.
+	// Let the stalled fetch actually start so cancellation is exercised on
+	// an in-flight phase, not only before it.
 	{
 		const bool started
 			= WaitFor ([&] { return fetchCount.load (std::memory_order_relaxed) > 0; }, std::chrono::seconds (2));
 		assert (started);
 	}
 
-	// Stop() must cancel and join the job within a bounded time, and the fetch
-	// must have observed the stop token.
+	// Stop() must cancel and join the job within a bounded time, and the
+	// fetch must have observed the stop token.
 	{
 		const auto start = std::chrono::steady_clock::now ();
 		database.Stop ();
@@ -137,7 +140,8 @@ int main ()
 		assert (state.lastError.empty ());
 	}
 
-	// Disabled reseed: the request is refused, nothing runs and the state says
+	// Disabled reseed: the request is refused, nothing runs and the state
+	// says
 	// so. `reseed.disable` is the operator switch.
 	SetConfigValue ("reseed.disable", true);
 	{

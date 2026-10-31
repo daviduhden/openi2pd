@@ -4,11 +4,12 @@
  *
  * openi2pd: PostQuantum.
  *
- * Implements ML-KEM-512/768/1024 generation, import/export, encapsulation and
- * decapsulation over OpenSSL EVP, with a LibreSSL-specific backend, and
- * initialises the Noise protocol names for the hybrid IK and XK handshakes.
- * Shared secrets and temporary encoded keys are wiped on every failure path,
- * and unsupported parameter sets fail closed.
+ * Implements ML-KEM-512/768/1024 generation, import/export,
+ * encapsulation and decapsulation over OpenSSL EVP, with a
+ * LibreSSL-specific backend, and initialises the Noise protocol names
+ * for the hybrid IK and XK handshakes. Shared secrets and temporary
+ * encoded keys are wiped on every failure path, and unsupported
+ * parameter sets fail closed.
  *
  */
 
@@ -33,8 +34,9 @@ namespace crypto
 {
 #ifdef LIBRESSL_VERSION_NUMBER
 	// LibreSSL allocates operation outputs. Always wipe and release them,
-	// including when an operation or a subsequent length check fails. Declared
-	// before the provider probe so the probe uses the same wiping wrapper.
+	// including when an operation or a subsequent length check fails.
+	// Declared before the provider probe so the probe uses the same wiping
+	// wrapper.
 	struct MLKEMBuffer
 	{
 		MLKEMBuffer () = default;
@@ -52,9 +54,10 @@ namespace crypto
 
 	namespace
 	{
-		// One cached provider probe per parameter set. Probe keys are generated
-		// only to prove that the provider implements the algorithm; they are
-		// released immediately and never used as protocol key material.
+		// One cached provider probe per parameter set. Probe keys are
+		// generated only to prove that the provider implements the algorithm;
+		// they are released immediately and never used as protocol key
+		// material.
 		struct MLKEMProviderProbe
 		{
 			std::once_flag flag;

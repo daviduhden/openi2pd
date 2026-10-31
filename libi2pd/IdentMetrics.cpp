@@ -4,10 +4,11 @@
  *
  * openi2pd: IdentMetrics.
  *
- * Implements daily Kademlia routing-key derivation, XOR distance metrics and
- * the SipHash-based peer ordering groups used to spread tunnel selection.
- * Ordering groups are cached per router with an inactivity timeout, and the
- * SipHash key can be reseeded or fixed for deterministic grouping.
+ * Implements daily Kademlia routing-key derivation, XOR distance
+ * metrics and the SipHash-based peer ordering groups used to spread
+ * tunnel selection. Ordering groups are cached per router with an
+ * inactivity timeout, and the SipHash key can be reseeded or fixed for
+ * deterministic grouping.
  *
  */
 

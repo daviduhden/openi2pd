@@ -4,9 +4,9 @@
  *
  * openi2pd: TransitTunnel.
  *
- * Implements transit tunnel message dispatch and forwarding, gateway buffering,
- * endpoint cleanup and the transit tunnel manager thread, including build-record
- * handling, expiration and queue bounds.
+ * Implements transit tunnel message dispatch and forwarding, gateway
+ * buffering, endpoint cleanup and the transit tunnel manager thread,
+ * including build-record handling, expiration and queue bounds.
  *
  */
 
@@ -31,10 +31,10 @@ namespace tunnel
 {
 	namespace
 	{
-		// Java BuildHandler.java:101-104.
-		// ECIES long and short records carry a request time in minutes, rounded
-		// down. ElGamal long records use an hour timestamp and a 65 minute age,
-		// but that record format is not decrypted by this file.
+		// Java BuildHandler.java:101-104. ECIES long and short records carry
+		// a request time in minutes, rounded down. ElGamal long records use
+		// an hour timestamp and a 65 minute age, but that record format is
+		// not decrypted by this file.
 		constexpr int64_t BUILD_REQUEST_MAX_AGE_ECIES = 8; // minutes
 		constexpr int64_t BUILD_REQUEST_MAX_FUTURE = 5; // minutes
 
@@ -71,8 +71,8 @@ namespace tunnel
 	bool TransitBuildReplayFilter::CheckAndStore (const uint8_t * key, uint64_t nowMs)
 	{
 		if (!key) return false;
-		// Decay: entries older than the window can no longer be replayed with a
-		// valid request time.
+		// Decay: entries older than the window can no longer be replayed with
+		// a valid request time.
 		while (!m_Entries.empty () && m_Entries.front ().time + m_WindowMs <= nowMs)
 		{
 			m_Keys.erase (m_Entries.front ().key);
@@ -334,8 +334,8 @@ namespace tunnel
 		// Any queued build messages belong to the stopped instance.
 		std::list<std::shared_ptr<I2NPMessage>> stale;
 		m_TunnelBuildMsgQueue.GetWholeQueue (stale);
-		// Replay state is per instance too: a restart must not inherit a window
-		// that would silently drop legitimate first requests.
+		// Replay state is per instance too: a restart must not inherit a
+		// window that would silently drop legitimate first requests.
 		m_BuildReplayFilter.Clear ();
 	}
 
@@ -842,8 +842,9 @@ namespace tunnel
 		if (!tunnel) return false;
 		if (!m_IsRunning.load (std::memory_order_relaxed)) return false;
 		// Keep the transit-list -> global-tunnel lock order used by
-		// ManageTransitTunnels()/Stop(). Taking the global tunnel map first and
-		// the transit list second would deadlock against the cleanup path.
+		// ManageTransitTunnels()/Stop(). Taking the global tunnel map first
+		// and the transit list second would deadlock against the cleanup
+		// path.
 		std::lock_guard<std::mutex> l (m_TransitTunnelsMutex);
 		if (!tunnels.AddTunnel (tunnel))
 		{

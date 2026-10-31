@@ -4,7 +4,9 @@
  *
  * openi2pd: test ssu2 control plane.
  *
- * Checks SSU2 control-plane rules: per-family address splitting, Java-compatible pq publication and MTU downgrade, peer-test reachability, hole-punch version and state-specific block whitelists.
+ * Checks SSU2 control-plane rules: per-family address splitting,
+ * Java-compatible pq publication and MTU downgrade, peer-test
+ * reachability, hole-punch version and state-specific block whitelists.
  *
  */
 
@@ -47,7 +49,8 @@ void AppendString (std::vector<uint8_t> & out, std::string_view value)
 	out.insert (out.end (), value.begin (), value.end ());
 }
 
-// RouterInfo mappings are sequences of length-prefixed key, '=', value and ';'.
+// RouterInfo mappings are sequences of length-prefixed key, '=', value
+// and ';'.
 void AppendParam (std::string & out, std::string_view key, std::string_view value)
 {
 	assert (key.size () <= 255 && value.size () <= 255);
@@ -185,8 +188,8 @@ void TestPQPublicationUsesPerFamilyMTU (const i2p::data::PrivateKeys & keys)
 	assert (v6->IsV6 () && !v6->IsV4 ());
 
 	// Simulate PublishSSU2Address(): pq=4 requested for both families, but
-	// only the IPv4 interface has a low MTU. ML-KEM-768 needs 1318 bytes on
-	// IPv4 (PeerState2.MIN_MLKEM768_IPV4_MTU).
+	// only the IPv4 interface has a low MTU. ML-KEM-768 needs 1318 bytes
+	// on IPv4 (PeerState2.MIN_MLKEM768_IPV4_MTU).
 	v4->v = 4;
 	v4->ssu->mtu = 1280;
 	v4->caps |= i2p::data::RouterInfo::eSSUTesting;
@@ -206,21 +209,24 @@ void TestPQPublicationUsesPerFamilyMTU (const i2p::data::PrivateKeys & keys)
 	auto pv6 = parsed.GetSSU2V6Address ();
 	assert (pv4 && pv6 && pv4 != pv6);
 
-	// The provider decides which advertised parameter sets can be selected.
+	// The provider decides which advertised parameter sets can be
+	// selected.
 	bool has3 = false, has4 = false;
 #if OPENSSL_PQ
 	has3 = i2p::crypto::CanPublishPQ (3);
 	has4 = i2p::crypto::CanPublishPQ (4);
 #endif
 
-	// IPv4: published "pq=3". A low MTU prevents ML-KEM-768, so use version 3
+	// IPv4: published "pq=3". A low MTU prevents ML-KEM-768, so use
+	// version 3
 	// only when the provider supplies ML-KEM-512.
 	assert (pv4->ssu && pv4->ssu->mtu == 1280);
 	assert (pv4->v == (has3 ? 3 : 2));
 	assert (pv4->SupportsSSU2Version (3) == has3);
 	assert (!pv4->SupportsSSU2Version (4));
 
-	// IPv6: unknown MTU keeps the Java-compatible "4,3" list when available.
+	// IPv6: unknown MTU keeps the Java-compatible "4,3" list when
+	// available.
 	assert (pv6->ssu && pv6->ssu->mtu == 0);
 	assert (pv6->v == (has4 ? 4 : (has3 ? 3 : 2)));
 	assert (pv6->SupportsSSU2Version (4) == has4);
@@ -333,17 +339,18 @@ void TestOutOfSessionVersionAndRouterInfoFrag ()
 {
 	using namespace i2p::transport;
 
-	// PeerTest and HolePunch send version 2 but accept 2..4 on receive, so a
-	// peer that already negotiated a post-quantum version is not rejected.
+	// PeerTest and HolePunch send version 2 but accept 2..4 on receive, so
+	// a peer that already negotiated a post-quantum version is not
+	// rejected.
 	assert (!IsSSU2OutOfSessionVersionAccepted (1));
 	for (uint8_t version = 2; version <= 4; ++version) assert (IsSSU2OutOfSessionVersionAccepted (version));
 	assert (!IsSSU2OutOfSessionVersionAccepted (5));
 	assert (SSU2_HOLE_PUNCH_VERSION == 2);
 
 	// A single unfragmented RouterInfo is the only accepted frag byte. The
-	// SSU2 field is `index << 4 | count`, so 0x00, 0x11 and 0x12 are fragments
-	// and must be rejected in the SessionConfirmed leading block and in a
-	// data-phase RouterInfo block alike.
+	// SSU2 field is `index << 4 | count`, so 0x00, 0x11 and 0x12 are
+	// fragments and must be rejected in the SessionConfirmed leading block
+	// and in a data-phase RouterInfo block alike.
 	assert (IsSSU2RouterInfoFragmentAcceptable (0x01));
 	assert (!IsSSU2RouterInfoFragmentAcceptable (0x00));
 	assert (!IsSSU2RouterInfoFragmentAcceptable (0x11));
@@ -361,8 +368,9 @@ void TestPeerTestEndpointValidation ()
 	assert (i2p::transport::IsValidPeerTestEndpoint (endpoint (boost::asio::ip::make_address ("8.8.8.8"), 9151)));
 	assert (i2p::transport::IsValidPeerTestEndpoint (
 		endpoint (boost::asio::ip::make_address ("2001:4860:4860::8888"), 9151)));
-	// Ports in Java's SSU2 random range are acceptable even when they are on
-	// the local port-selection blacklist (Java isValidPort() first clause).
+	// Ports in Java's SSU2 random range are acceptable even when they are
+	// on the local port-selection blacklist (Java isValidPort() first
+	// clause).
 	assert (i2p::transport::IsValidPeerTestEndpoint (endpoint (boost::asio::ip::make_address ("8.8.8.8"), 20000)));
 
 	// Privileged, zero and conventional reserved ports.
@@ -388,7 +396,8 @@ void TestPeerTestEndpointValidation ()
 	assert (!i2p::transport::IsValidPeerTestEndpoint (endpoint (banned, 9151)));
 
 	// A PeerTest payload is decrypted with the public introduction key, so
-	// the generic I2NP/fragment/path/termination blocks must never be accepted.
+	// the generic I2NP/fragment/path/termination blocks must never be
+	// accepted.
 	assert (i2p::transport::IsPeerTestPayloadBlockAllowed (i2p::transport::eSSU2BlkDateTime));
 	assert (i2p::transport::IsPeerTestPayloadBlockAllowed (i2p::transport::eSSU2BlkPeerTest));
 	assert (i2p::transport::IsPeerTestPayloadBlockAllowed (i2p::transport::eSSU2BlkAddress));

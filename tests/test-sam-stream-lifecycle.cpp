@@ -4,7 +4,9 @@
  *
  * openi2pd: test sam stream lifecycle.
  *
- * Exercises SAM session state: bounded synchronized accept-queue transfer, FIFO and concurrent producers and, over loopback UDP only, serialized datagram sends with handler-owned buffers.
+ * Exercises SAM session state: bounded synchronized accept-queue
+ * transfer, FIFO and concurrent producers and, over loopback UDP only,
+ * serialized datagram sends with handler-owned buffers.
  *
  */
 
@@ -43,14 +45,14 @@ struct TestSession : SAMSession
 int main ()
 {
 	// The control buffer must hold the largest SAM RAW SEND frame (32 KiB
-	// payload plus a base64 destination/command), and the receive buffer must
-	// hold a 32 KiB datagram plus its header.
+	// payload plus a base64 destination/command), and the receive buffer
+	// must hold a 32 KiB datagram plus its header.
 	static_assert (SAM_SOCKET_BUFFER_SIZE > 32 * 1024 + 1024);
 	static_assert (SAM_STREAM_BUFFER_SIZE > 32 * 1024 + 1024);
 	static_assert (SAM_STREAM_MAX_SEND_BUFFER_SIZE >= 32 * 1024);
 
-	// Sockets below only construct their (unbound) TCP objects; the bridge is
-	// not started until the loopback send test.
+	// Sockets below only construct their (unbound) TCP objects; the bridge
+	// is not started until the loopback send test.
 	SAMBridge bridge ("127.0.0.1", 0, 0, true);
 	TestSession session (bridge);
 
@@ -62,8 +64,8 @@ int main ()
 	assert (!session.EnqueueAccept (sockets[SAM_SESSION_MAX_ACCEPT_QUEUE_SIZE], now));
 	assert (session.GetAcceptQueueSize () == SAM_SESSION_MAX_ACCEPT_QUEUE_SIZE);
 
-	// Java keeps queued acceptors waiting indefinitely. Advancing time must
-	// not expire or drop them.
+	// Java keeps queued acceptors waiting indefinitely. Advancing time
+	// must not expire or drop them.
 	std::list<std::shared_ptr<SAMSocket>> dropped;
 	for (size_t i = 0; i < SAM_SESSION_MAX_ACCEPT_QUEUE_SIZE; i++)
 		assert (session.TakeNextAccept (now + 10 * 60, dropped) == sockets[i]);
@@ -107,8 +109,9 @@ int main ()
 		assert (session.GetAcceptQueueSize () == 0);
 	}
 
-	// Loopback UDP send: two buffers must arrive concatenated, and the queue
-	// must keep the copied bytes alive after the caller's strings are gone.
+	// Loopback UDP send: two buffers must arrive concatenated, and the
+	// queue must keep the copied bytes alive after the caller's strings
+	// are gone.
 	bridge.Start ();
 	{
 		boost::asio::ip::udp::socket receiver (
@@ -149,9 +152,9 @@ int main ()
 		std::atomic<int> remaining { 8 };
 		auto second = std::make_shared<std::promise<void>> ();
 		auto secondFuture = second->get_future ();
-		// The handler owns this buffer. Reusing a single queued receive buffer is
-		// safe because the next async_receive is only posted after the previous
-		// handler has consumed the datagram.
+		// The handler owns this buffer. Reusing a single queued receive
+		// buffer is safe because the next async_receive is only posted after
+		// the previous handler has consumed the datagram.
 		auto nextBuffer = std::make_shared<std::vector<uint8_t>> (64);
 		std::function<void ()> receiveNext = [&, second, nextBuffer] ()
 		{

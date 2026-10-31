@@ -4,10 +4,10 @@
  *
  * openi2pd: test x25519 RFC 7748.
  *
- * Pins the published X25519 Diffie-Hellman vectors from RFC 7748 section 6.1
- * and the public keys derived from the private scalars. This is a
- * reproducible known-answer test independent of the local OpenSSL/LibreSSL
- * version.
+ * Pins the published X25519 Diffie-Hellman vectors from RFC 7748
+ * section 6.1 and the public keys derived from the private scalars.
+ * This is a reproducible known-answer test independent of the local
+ * OpenSSL/LibreSSL version.
  *
  */
 

@@ -4,20 +4,23 @@
  *
  * openi2pd: AddressBook.
  *
- * Declares the hosts.txt/subscription address book, its pluggable storage
- * backend and the per-destination datagram resolver for .i2p names.
+ * Declares the hosts.txt/subscription address book, its pluggable
+ * storage backend and the per-destination datagram resolver for .i2p
+ * names.
  *
- * An automatic subscription merge never replaces a name that already had a
- * destination: only an explicit local add/replace may re-point it. Subscription
- * sources are bounded, credential-free I2P URLs that the administration
- * thread may list, add and remove; the destination's io_context reloads them.
+ * An automatic subscription merge never replaces a name that already
+ * had a destination: only an explicit local add/replace may re-point
+ * it. Subscription sources are bounded, credential-free I2P URLs that
+ * the administration thread may list, add and remove; the destination's
+ * io_context reloads them.
  *
- * A source may retract a name it created with the Java advanced hosts.txt form
- * "&lt;name&gt;=&lt;destination&gt;#!action=delete". To honour that without letting a feed
- * delete a locally curated name, the book records which subscription first
- * supplied each entry. The legacy "name,destination" index columns are kept
- * byte-compatible, so the origin is persisted in a separate "entry-sources.txt"
- * sidecar; a missing or unreadable sidecar means no entry has a feed origin and
+ * A source may retract a name it created with the Java advanced
+ * hosts.txt form "&lt;name&gt;=&lt;destination&gt;#!action=delete". To
+ * honour that without letting a feed delete a locally curated name, the
+ * book records which subscription first supplied each entry. The legacy
+ * "name,destination" index columns are kept byte-compatible, so the
+ * origin is persisted in a separate "entry-sources.txt" sidecar; a
+ * missing or unreadable sidecar means no entry has a feed origin and
  * therefore no feed can delete anything.
  *
  */
@@ -62,19 +65,20 @@ namespace client
 	const uint16_t ADDRESS_RESPONSE_DATAGRAM_PORT = 54;
 
 	const size_t B33_ADDRESS_THRESHOLD = 52; // characters
-	// A 32-byte destination hash is 52 base32 characters. A final ".i2p" label
-	// of exactly that length is rejected so a name cannot imitate the
-	// "&lt;hash&gt;.b32.i2p" form.
+	// A 32-byte destination hash is 52 base32 characters. A final ".i2p"
+	// label of exactly that length is rejected so a name cannot imitate
+	// the "&lt;hash&gt;.b32.i2p" form.
 	const size_t B32_HASH_LABEL_LENGTH = 52;
-	// A b33 label of a 32-byte key is 56 base32 characters. The parser rejects
-	// any non-canonical encoding, so this bound only stops an oversized label
-	// from reaching it; it is not an accepted alternative spelling.
+	// A b33 label of a 32-byte key is 56 base32 characters. The parser
+	// rejects any non-canonical encoding, so this bound only stops an
+	// oversized label from reaching it; it is not an accepted alternative
+	// spelling.
 	const size_t B33_LABEL_MAX_LENGTH = 128; // characters
 
-	// Java bounds the base64 destination string itself (516..616 characters)
-	// and refuses a value outside that range before decoding it; the decoded
-	// identity is then 387..462 bytes. One predicate keeps the administrative,
-	// merge and jump-link paths on the same bound.
+	// Java bounds the base64 destination string itself (516..616
+	// characters) and refuses a value outside that range before decoding
+	// it; the decoded identity is then 387..462 bytes. One predicate keeps
+	// the administrative, merge and jump-link paths on the same bound.
 	const size_t MIN_DESTINATION_BASE64_LENGTH = 516;
 	const size_t MAX_DESTINATION_BASE64_LENGTH = 616;
 	const size_t MIN_IDENTITY_LENGTH = 387;
@@ -106,30 +110,32 @@ namespace client
 		return ident.ToBase32 ().append (".b32.i2p");
 	}
 
-	// Host names in the address book are case-insensitive: Java lowercases the
-	// name in its naming service and before the ".b32.i2p" check. Returns an
-	// ASCII-lowercase copy suitable as a lookup/insertion key. The current
-	// administration listing returns that normalized key; diagnostics may keep
-	// the original spelling. Only 'A'-'Z' are folded so the result does not
-	// depend on the process locale, and a b33 label (URL-safe
-	// base64, case-sensitive) is preserved byte-for-byte.
+	// Host names in the address book are case-insensitive: Java lowercases
+	// the name in its naming service and before the ".b32.i2p" check.
+	// Returns an ASCII-lowercase copy suitable as a lookup/insertion key.
+	// The current administration listing returns that normalized key;
+	// diagnostics may keep the original spelling. Only 'A'-'Z' are folded
+	// so the result does not depend on the process locale, and a b33 label
+	// (URL-safe base64, case-sensitive) is preserved byte-for-byte.
 	bool HasSuffixIgnoreCase (std::string_view value, std::string_view suffix);
 	bool IsI2PHost (std::string_view host);
 	std::string NormalizeHostName (std::string_view name);
 
-	// Local, bounded address-book administration. Names use the ASCII rules
-	// expected by the Java address book; destinations are full base64
-	// identities, never paths, URLs or key filenames. Every label is LDH-only,
-	// may not contain a doubled hyphen (the IDNA "xn--" prefix position is
-	// reserved, and no I2P name needs one) and the final label may not be
-	// exactly 52 base32 characters: that is the length of a base32 destination
-	// hash and would let a name imitate the "&lt;hash&gt;.b32.i2p" form.
+	// Local, bounded address-book administration. Names use the ASCII
+	// rules expected by the Java address book; destinations are full
+	// base64 identities, never paths, URLs or key filenames. Every label
+	// is LDH-only, may not contain a doubled hyphen (the IDNA "xn--"
+	// prefix position is reserved, and no I2P name needs one) and the
+	// final label may not be exactly 52 base32 characters: that is the
+	// length of a base32 destination hash and would let a name imitate the
+	// "&lt;hash&gt;.b32.i2p" form.
 	bool IsValidHostName (std::string_view name);
 
 	// Subscription sources are fetched through the I2P HTTP client, so the
 	// host must resolve to an .i2p destination: a subscription can never
-	// become a cleartext fetch authority. The list is bounded, credential-free
-	// and fragment-free. `error` receives a short, non-secret diagnostic.
+	// become a cleartext fetch authority. The list is bounded,
+	// credential-free and fragment-free. `error` receives a short,
+	// non-secret diagnostic.
 	const size_t MAX_SUBSCRIPTION_URLS = 16;
 	const size_t MAX_SUBSCRIPTION_URL_LENGTH = 512; // bytes
 	bool IsValidSubscriptionURL (std::string_view url, std::string & error);
@@ -144,10 +150,10 @@ namespace client
 		Unavailable
 	};
 
-	// Result of an administrative destination add. It is the mutation result
-	// without NotFound: an add either stores, declines an existing name or
-	// fails. A caller that must distinguish "kept the existing destination"
-	// from "re-pointed it" uses AddAddressChecked().
+	// Result of an administrative destination add. It is the mutation
+	// result without NotFound: an add either stores, declines an existing
+	// name or fails. A caller that must distinguish "kept the existing
+	// destination" from "re-pointed it" uses AddAddressChecked().
 	enum class AddressAddResult : uint8_t
 	{
 		Ok = 0,
@@ -157,10 +163,11 @@ namespace client
 		Unavailable
 	};
 
-	// Internal outcome of one subscription fetch. 304 Not Modified is neither a
-	// failure nor an update: the stored ETag and the normal refresh cadence are
-	// kept. The public DownloadComplete(bool, ...) callback contract is
-	// unchanged; this tri-state only exists between the fetch and the book.
+	// Internal outcome of one subscription fetch. 304 Not Modified is
+	// neither a failure nor an update: the stored ETag and the normal
+	// refresh cadence are kept. The public DownloadComplete(bool, ...)
+	// callback contract is unchanged; this tri-state only exists between
+	// the fetch and the book.
 	enum class AddressBookDownloadResult : uint8_t
 	{
 		Failed = 0,
@@ -177,8 +184,9 @@ namespace client
 
 	namespace detail
 	{
-		// Correlate authenticated datagram replies with a bounded, short-lived
-		// request. The nonce alone never grants authority to change a name.
+		// Correlate authenticated datagram replies with a bounded,
+		// short-lived request. The nonce alone never grants authority to
+		// change a name.
 		class AddressLookupRequests
 		{
 		public:
@@ -201,11 +209,11 @@ namespace client
 		};
 
 		// Bounded negative cache for a name that neither the book nor the
-		// resolver could satisfy recently. Without it every lookup of an unknown
-		// name repeats FindAddress and sends another resolver query. Entries
-		// expire after TIMEOUT_SECONDS, the table is capped at MAX_ENTRIES, and a
-		// b33/blinded label is never cached: it is decoded locally and is never
-		// resolved through the book.
+		// resolver could satisfy recently. Without it every lookup of an
+		// unknown name repeats FindAddress and sends another resolver query.
+		// Entries expire after TIMEOUT_SECONDS, the table is capped at
+		// MAX_ENTRIES, and a b33/blinded label is never cached: it is decoded
+		// locally and is never resolved through the book.
 		class NegativeAddressCache
 		{
 		public:
@@ -266,12 +274,13 @@ namespace client
 			return true;
 		}
 
-		// Per-name origin of an entry learned from a subscription feed, used to
-		// decide whether "action=delete" may retract it. The persisted index
-		// keeps the legacy "name,destination" columns, so the origin lives in a
-		// separate sidecar file. A missing or unreadable sidecar means no entry
-		// has a feed origin, and a feed can then delete nothing: fail closed.
-		// The default implementation keeps custom storages usable.
+		// Per-name origin of an entry learned from a subscription feed, used
+		// to decide whether "action=delete" may retract it. The persisted
+		// index keeps the legacy "name,destination" columns, so the origin
+		// lives in a separate sidecar file. A missing or unreadable sidecar
+		// means no entry has a feed origin, and a feed can then delete
+		// nothing: fail closed. The default implementation keeps custom
+		// storages usable.
 		virtual bool LoadAddressSources (std::map<std::string, std::string, std::less<>> & sources)
 		{
 			(void)sources;
@@ -297,37 +306,38 @@ namespace client
 		void Stop ();
 		/// Resolve a name or destination for a local caller (proxy, tunnel or
 		/// destination). Three input forms are accepted: a base32
-		/// `&lt;hash&gt;.b32.i2p` label, an `.i2p`/`.b33.i2p` host name, and a full
-		/// base64 destination. A `.i2p.alt` suffix is treated as a lookup-only
-		/// alias for `.i2p`.
-		/// A b32/b33 result is decoded locally and succeeds without any network
-		/// activity; a host name that is not in the book triggers one bounded,
-		/// non-blocking resolver query (see LookupAddress()) and returns `nullptr`
-		/// for this call, so a caller must not treat a miss as terminal.
-		/// A miss is negatively cached for a short, bounded time; a b33 label is
-		/// never cached and never resolved through the local `www.` alias.
+		/// `&lt;hash&gt;.b32.i2p` label, an `.i2p`/`.b33.i2p` host name, and
+		/// a full base64 destination. A `.i2p.alt` suffix is treated as a
+		/// lookup-only alias for `.i2p`. A b32/b33 result is decoded locally
+		/// and succeeds without any network activity; a host name that is not
+		/// in the book triggers one bounded, non-blocking resolver query (see
+		/// LookupAddress()) and returns `nullptr` for this call, so a caller
+		/// must not treat a miss as terminal. A miss is negatively cached for
+		/// a short, bounded time; a b33 label is never cached and never
+		/// resolved through the local `www.` alias.
 		std::shared_ptr<const Address> GetAddress (std::string_view address);
 		std::shared_ptr<const i2p::data::IdentityEx> GetFullAddress (const std::string & address);
 		/// Local-only lookup under the normalised (lower-case) key. It never
 		/// sends a query, so it is the right call for a caller that must not
 		/// create network side effects.
 		std::shared_ptr<const Address> FindAddress (std::string_view address);
-		/// Send one resolver query for an unqualified host name. The name must
-		/// have a `.i2p` target already present in the book, its length must fit
-		/// the single byte of the wire format, and the reply is correlated by a
-		/// CSPRNG nonce that is bound to the queried name and the authenticated
-		/// resolver identity: a reply can only inform, never authorize, a name
-		/// change.
+		/// Send one resolver query for an unqualified host name. The name
+		/// must have a `.i2p` target already present in the book, its length
+		/// must fit the single byte of the wire format, and the reply is
+		/// correlated by a CSPRNG nonce that is bound to the queried name and
+		/// the authenticated resolver identity: a reply can only inform,
+		/// never authorize, a name change.
 		void LookupAddress (std::string_view address);
-		/// Store a jump-link result. The destination value is an identity, not a
-		/// path or URL; an invalid length or a blocked (tombstoned) name is
-		/// refused, and the value is never logged.
+		/// Store a jump-link result. The destination value is an identity,
+		/// not a path or URL; an invalid length or a blocked (tombstoned)
+		/// name is refused, and the value is never logged.
 		void InsertAddress (const std::string & address, const std::string & jump); // for jump links
 		void InsertFullAddress (std::shared_ptr<const i2p::data::IdentityEx> address);
 
 		/// True when the stored destination for @a address equals the one in
-		/// @a jump (accepted as a b32 label or a full base64 identity). Used to
-		/// decide whether a jump link is new information before it is applied.
+		/// @a jump (accepted as a b32 label or a full base64 identity). Used
+		/// to decide whether a jump link is new information before it is
+		/// applied.
 		bool RecordExists (const std::string & address, const std::string & jump);
 
 		// Administrative list/mutation helpers. They copy only names and
@@ -353,8 +363,8 @@ namespace client
 		AddressBookMutationResult UnblockAddress (std::string_view name);
 
 		// Subscription administration. These helpers only edit the source
-		// list: they never fetch, never block on a download and never stop the
-		// address book. They may be called from the daemon administration
+		// list: they never fetch, never block on a download and never stop
+		// the address book. They may be called from the daemon administration
 		// thread; the shared destination's io_context performs the reload.
 		// The list is populated by Start(), and the daemon only serves these
 		// commands after startup, so add/remove rewrites the complete list.
@@ -369,14 +379,15 @@ namespace client
 		bool LoadHostsFromStream (std::istream && f, bool is_update);
 		// Source-aware merge used by subscription downloads. `source` is a
 		// non-secret diagnostic label (the resolved subscription host). It is
-		// recorded as the entry origin, appears in conflict log lines, and only
-		// a line whose "action=delete" matches that origin may retract the name.
+		// recorded as the entry origin, appears in conflict log lines, and
+		// only a line whose "action=delete" matches that origin may retract
+		// the name.
 		bool LoadHostsFromStream (std::istream && f, bool is_update, std::string_view source);
 		void DownloadComplete (bool success, const i2p::data::IdentHash & subscription, const std::string & etag,
 			const std::string & lastModified);
-		// Tri-state variant used by AddressBookSubscription. A 304 Not Modified
-		// keeps the stored ETag, is not a failure and does not advance the retry
-		// ladder.
+		// Tri-state variant used by AddressBookSubscription. A 304 Not
+		// Modified keeps the stored ETag, is not a failure and does not
+		// advance the retry ladder.
 		void DownloadComplete (AddressBookDownloadResult result, const i2p::data::IdentHash & subscription,
 			const std::string & etag, const std::string & lastModified);
 		//This method returns the ".b32.i2p" address
@@ -410,8 +421,8 @@ namespace client
 		// io_context. RearmSubscriptionsTimer() must only run there.
 		void RearmSubscriptionsTimer (std::chrono::seconds delay);
 		// Any thread: hands a re-arm to the io_context. The shared lifetime
-		// token is cleared by Stop(), so a queued re-arm cannot touch released
-		// timer or subscription state.
+		// token is cleared by Stop(), so a queued re-arm cannot touch
+		// released timer or subscription state.
 		void PostSubscriptionsRearm (std::chrono::seconds delay);
 		std::shared_ptr<std::atomic<bool>> ReloadToken () const;
 
@@ -428,8 +439,8 @@ namespace client
 		bool IsFeedOriginLocked (std::string_view name, std::string_view source) const;
 		bool SaveAddressSourcesLocked ();
 		void ForgetAddressSourceLocked (std::string_view name);
-		// Retracts an entry that its own feed asked to delete. Requires the lock;
-		// returns true when the entry was removed.
+		// Retracts an entry that its own feed asked to delete. Requires the
+		// lock; returns true when the entry was removed.
 		bool ApplyFeedDeleteLocked (std::string_view key, std::string_view name);
 
 		void HandleSubscriptionsUpdateTimer (const boost::system::error_code & ecode);
@@ -445,7 +456,8 @@ namespace client
 		std::mutex m_AddressBookMutex;
 		AddressBookStorage::Addresses m_Addresses;
 		std::vector<std::string> m_DeletedHosts;
-		// Origin of entries that a subscription supplied; see the file comment.
+		// Origin of entries that a subscription supplied; see the file
+		// comment.
 		std::map<std::string, std::string, std::less<>> m_AddressSources;
 		detail::NegativeAddressCache m_NegativeCache;
 		std::map<i2p::data::IdentHash, std::shared_ptr<AddressResolver>> m_Resolvers; // local destination->resolver
@@ -455,8 +467,8 @@ namespace client
 		volatile bool m_IsLoaded;
 		std::future<void> m_Downloading;
 		int m_NumRetries;
-		// Subscription sources, guarded by m_SubscriptionsMutex. The URL list is
-		// the persisted authority; the objects are rebuilt from it and are
+		// Subscription sources, guarded by m_SubscriptionsMutex. The URL list
+		// is the persisted authority; the objects are rebuilt from it and are
 		// shared so an in-flight download keeps its source alive.
 		mutable std::mutex m_SubscriptionsMutex;
 		std::vector<std::string> m_SubscriptionURLs;
@@ -475,8 +487,8 @@ namespace client
 		void CheckUpdates ();
 
 	private:
-		// Failed, NotModified (HTTP 304) or Updated; the book keeps the normal
-		// cadence for the last two.
+		// Failed, NotModified (HTTP 304) or Updated; the book keeps the
+		// normal cadence for the last two.
 		AddressBookDownloadResult MakeRequest ();
 
 	private:

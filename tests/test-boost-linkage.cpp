@@ -4,7 +4,8 @@
  *
  * openi2pd: Boost implementation linkage regression.
  *
- * Requires both compiled torrent RPC dependencies through libi2pdclient's
+ * Requires both compiled torrent RPC dependencies through
+ * libi2pdclient's
  * transitive static-library link interface.
  */
 

@@ -4,9 +4,10 @@
  *
  * openi2pd: Config.
  *
- * Declares the Boost.Program_options-based configuration layer for command-line
- * and configuration-file options. Callers initialize the option set, parse
- * inputs, finalize defaults, then read or update typed values by name.
+ * Declares the Boost.Program_options-based configuration layer for
+ * command-line and configuration-file options. Callers initialize the
+ * option set, parse inputs, finalize defaults, then read or update
+ * typed values by name.
  *
  */
 
@@ -73,7 +74,8 @@ namespace config
 	void ParseConfig (const std::string & path);
 
 	/**
-	 * @brief Used to combine options from cmdline, config and default values
+	 * @brief Used to combine options from cmdline, config and default
+	 *        values
 	 */
 	void Finalize ();
 

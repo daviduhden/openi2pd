@@ -5,8 +5,8 @@
  * openi2pd: Tag.
  *
  * Fixed-size, byte-comparable tag type used for garlic and session
- * identifiers, with Base32/Base64 conversion and CSPRNG-backed randomization
- * that zeroes the buffer if the provider fails.
+ * identifiers, with Base32/Base64 conversion and CSPRNG-backed
+ * randomization that zeroes the buffer if the provider fails.
  *
  */
 

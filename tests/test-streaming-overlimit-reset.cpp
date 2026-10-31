@@ -4,9 +4,9 @@
  *
  * openi2pd: test streaming overlimit reset.
  *
- * Checks that a SYN refused by the concurrent-stream cap or by a full pending
- * backlog is answered with a signed RESET (never silence), and that the RESET
- * builder used for that answer produces a packet.
+ * Checks that a SYN refused by the concurrent-stream cap or by a full
+ * pending backlog is answered with a signed RESET (never silence), and
+ * that the RESET builder used for that answer produces a packet.
  *
  */
 
@@ -67,8 +67,8 @@ int main ()
 		assert (destination.GetNumRejectionResetsForTesting () == 1);
 
 		// The refused connection is remembered, so the peer's next SYN is
-		// refused as an already-closed connection instead of consuming another
-		// signature verification and RESET round trip.
+		// refused as an already-closed connection instead of consuming
+		// another signature verification and RESET round trip.
 		destination.RememberRecentlyClosedForTesting (receiveStreamID);
 		assert (
 			destination.AdmitSynForTesting (receiveStreamID) == StreamingDestination::SynAdmission::eRecentlyClosed);
@@ -78,8 +78,8 @@ int main ()
 		assert (destination.GetNumStreams () == 0);
 	}
 
-	// Pending backlog: with no acceptor armed, the backlog fills and further
-	// SYNs are refused with a RESET.
+	// Pending backlog: with no acceptor armed, the backlog fills and
+	// further SYNs are refused with a RESET.
 	{
 		Fixture f;
 		auto & destination = *f.destination;

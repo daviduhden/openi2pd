@@ -4,10 +4,10 @@
  *
  * openi2pd: I2PEndian.
  *
- * Endian conversion for I2P's big-endian wire fields, with memcpy-based unaligned buffer
- * access and htobe/be16toh-style macros. POSIX builds use endian(3); Windows uses C++23
- * std::byteswap because its SDK lacks that header, and mixed-endian hosts are rejected at
- * compile time.
+ * Endian conversion for I2P's big-endian wire fields, with memcpy-based
+ * unaligned buffer access and htobe/be16toh-style macros. POSIX builds
+ * use endian(3); Windows uses C++23 std::byteswap because its SDK lacks
+ * that header, and mixed-endian hosts are rejected at compile time.
  *
  */
 

@@ -4,10 +4,11 @@
  *
  * openi2pd: SSU2Session.
  *
- * Implements the SSU2 handshake (SessionRequest/Created/Confirmed, Retry,
- * TokenRequest), data-phase packet encoding, ACK generation, fragmentation and
- * block handlers including relay, address, RouterInfo and peer-test processing.
- * Timers and the negotiated MTU govern retransmission and payload sizing.
+ * Implements the SSU2 handshake (SessionRequest/Created/Confirmed,
+ * Retry, TokenRequest), data-phase packet encoding, ACK generation,
+ * fragmentation and block handlers including relay, address, RouterInfo
+ * and peer-test processing. Timers and the negotiated MTU govern
+ * retransmission and payload sizing.
  *
  */
 
@@ -113,9 +114,9 @@ namespace transport
 		if (!fragment || !fragment->fragmentNum) return; // fragment 0 not allowed
 		if (fragment->fragmentNum < nextFragmentNum) return; // already processed
 		// Java InboundMessageState.receiveFragment() rejects additional
-		// fragments at or above an already-known last fragment. Do the same so
-		// an attacker cannot make ConcatOutOfSequenceFragments() truncate the
-		// message at a lower "last" fragment.
+		// fragments at or above an already-known last fragment. Do the same
+		// so an attacker cannot make ConcatOutOfSequenceFragments() truncate
+		// the message at a lower "last" fragment.
 		if (lastFragmentNum >= 0 && (fragment->isLast || fragment->fragmentNum >= lastFragmentNum))
 		{
 			LogPrint (eLogWarning, "SSU2: Fragment ", fragment->fragmentNum, " after last fragment ", lastFragmentNum);
@@ -159,11 +160,12 @@ namespace transport
 		lastFragmentInsertTime = static_cast<uint32_t> (i2p::util::GetSecondsSinceEpoch ());
 	}
 
-	// m_MaxPayloadSize starts from the IPv6 worst case (no IPv4 header) and is
-	// replaced by AdjustMaxPayloadSize() once the local address, MTU and
-	// negotiated version are known. Keep the initial value conservative: the
-	// first packets are sized from it before the address-specific MTU is applied,
-	// so it must never exceed what any supported family can carry.
+	// m_MaxPayloadSize starts from the IPv6 worst case (no IPv4 header)
+	// and is replaced by AdjustMaxPayloadSize() once the local address,
+	// MTU and negotiated version are known. Keep the initial value
+	// conservative: the first packets are sized from it before the
+	// address-specific MTU is applied, so it must never exceed what any
+	// supported family can carry.
 	SSU2Session::SSU2Session (SSU2Server & server, std::shared_ptr<const i2p::data::RouterInfo> in_RemoteRouter,
 		std::shared_ptr<const i2p::data::RouterInfo::Address> addr)
 		: TransportSession (in_RemoteRouter, SSU2_CONNECT_TIMEOUT)
@@ -257,12 +259,13 @@ namespace transport
 		}
 	}
 
-	// RelayRequest (Alice to Bob) asks Bob to introduce this session to Charlie,
-	// who answers with a HolePunch. The pending introduction is keyed by a
-	// random nonce with a bounded lifetime and a per-role expiry; the nonce also
-	// derives the pairwise connection IDs of the new session, so the three
-	// parties agree on them without exchanging them in the clear. The relay
-	// signature covers "RelayRequestData" || bhash || chash || the relay fields.
+	// RelayRequest (Alice to Bob) asks Bob to introduce this session to
+	// Charlie, who answers with a HolePunch. The pending introduction is
+	// keyed by a random nonce with a bounded lifetime and a per-role
+	// expiry; the nonce also derives the pairwise connection IDs of the
+	// new session, so the three parties agree on them without exchanging
+	// them in the clear. The relay signature covers "RelayRequestData" ||
+	// bhash || chash || the relay fields.
 	bool SSU2Session::Introduce (std::shared_ptr<SSU2Session> session, uint32_t relayTag)
 	{
 		// we are Alice
@@ -339,8 +342,8 @@ namespace transport
 	{
 		if (m_State == eSSU2SessionStateIntroduced)
 		{
-			// we are Alice
-			//  keep ConnIDs used for introduction, because Charlie waits for SessionRequest from us
+			// we are Alice keep ConnIDs used for introduction, because Charlie
+			// waits for SessionRequest from us
 			m_State = eSSU2SessionStateTokenReceived;
 			// move session to pending outgoing
 			if (m_Server.AddPendingOutgoingSession (shared_from_this ()))
@@ -423,8 +426,9 @@ namespace transport
 			ClearOnEstablished ();
 			if (m_RelayTag) m_Server.RemoveRelay (m_RelayTag);
 			// Only sessions that actually reached the data phase may feed the
-			// hole-punch cache. A pre-auth handshake (TokenRequest/SessionRequest
-			// or a failed SessionCreated) must not publish an endpoint.
+			// hole-punch cache. A pre-auth handshake
+			// (TokenRequest/SessionRequest or a failed SessionCreated) must not
+			// publish an endpoint.
 			if (state == eSSU2SessionStateEstablished || state == eSSU2SessionStateClosing
 				|| state == eSSU2SessionStateClosingConfirmed)
 				m_Server.AddConnectedRecently (m_RemoteEndpoint, GetLastActivityTimestamp ());
@@ -495,8 +499,9 @@ namespace transport
 		LogPrint (eLogDebug, "SSU2: Session with ", GetRemoteEndpoint (), " (",
 			i2p::data::GetIdentHashAbbreviation (GetRemoteIdentity ()->GetIdentHash ()), ") established");
 		// Consume callbacks with exchange() under the mutex. A callback that
-		// appends another one while running is observed by the next iteration;
-		// TakeOnEstablished() guarantees each function is invoked only once.
+		// appends another one while running is observed by the next
+		// iteration; TakeOnEstablished() guarantees each function is invoked
+		// only once.
 		while (auto onEstablished = TakeOnEstablished ()) onEstablished ();
 	}
 
@@ -726,9 +731,9 @@ namespace transport
 					else
 					{
 						// Do not expand an ACK block without writing valid ranges: the
-						// old branch exposed uninitialized payload bytes as acknowledgements.
-						// The message is more important; drop the ACK and let a later packet
-						// carry it.
+						// old branch exposed uninitialized payload bytes as
+						// acknowledgements. The message is more important; drop the ACK
+						// and let a later packet carry it.
 						packet->payloadSize = 0;
 						// msg fits single packet
 						m_SendQueue.pop_front ();
@@ -759,15 +764,16 @@ namespace transport
 		return false;
 	}
 
-	// Fragmentation policy: a message that fits is sent as a single I2NP block,
-	// otherwise it is split into FIRSTFRAG plus FOLLOWON blocks of at most
-	// m_MaxPayloadSize. The surplus capacity of the last fragment (extraSize) is
-	// spread over the earlier fragments as a random per-fragment shrinkage
-	// before the fragment is built. pickOffset() bounds that shrinkage by both
-	// the remaining surplus and the minimum room a valid fragment needs: a block
-	// header plus 10 bytes of FIRSTFRAG payload, or 6 bytes of FOLLOWON payload,
-	// because the peer rejects anything shorter as malformed. The returned value
-	// only reports whether an ACK block was prepended for the surplus.
+	// Fragmentation policy: a message that fits is sent as a single I2NP
+	// block, otherwise it is split into FIRSTFRAG plus FOLLOWON blocks of
+	// at most m_MaxPayloadSize. The surplus capacity of the last fragment
+	// (extraSize) is spread over the earlier fragments as a random
+	// per-fragment shrinkage before the fragment is built. pickOffset()
+	// bounds that shrinkage by both the remaining surplus and the minimum
+	// room a valid fragment needs: a block header plus 10 bytes of
+	// FIRSTFRAG payload, or 6 bytes of FOLLOWON payload, because the peer
+	// rejects anything shorter as malformed. The returned value only
+	// reports whether an ACK block was prepended for the surplus.
 	bool SSU2Session::SendFragmentedMessage (std::shared_ptr<I2NPMessage> msg)
 	{
 		if (!msg || m_MaxPayloadSize < 16) return false;
@@ -808,8 +814,8 @@ namespace transport
 			else
 				extraSize -= packet->payloadSize;
 		}
-		// Leave room for at least a block header and 10 bytes of fragment data;
-		// a 9-byte FIRSTFRAG data field is rejected by the peer.
+		// Leave room for at least a block header and 10 bytes of fragment
+		// data; a 9-byte FIRSTFRAG data field is rejected by the peer.
 		auto pickOffset = [this, &extraSize] (size_t minCapacity) -> size_t
 		{
 			if (!extraSize) return 0;
@@ -887,8 +893,8 @@ namespace transport
 			CancelPathChallenge (false);
 		}
 		// Resend data packets. RFC 6298 section 5.5 requires exponential
-		// backoff, and the SSU2 spec does not require tearing down the session
-		// when one I2NP message's delivery eventually fails.
+		// backoff, and the SSU2 spec does not require tearing down the
+		// session when one I2NP message's delivery eventually fails.
 		if (m_SentPackets.empty ()) return 0;
 		std::map<uint32_t, std::shared_ptr<SSU2SentPacket>> resentPackets;
 		bool congestion = false;
@@ -992,9 +998,9 @@ namespace transport
 	void SSU2Session::ResetHandshakeCryptoState ()
 	{
 		// Noise state, the ephemeral X25519 pair and the ML-KEM key pair all
-		// belong to the version of the rejected attempt. They must never prefix
-		// a SessionRequest for a different version, and a stale handshake hash
-		// would make the next attempt fail in a confusing way.
+		// belong to the version of the rejected attempt. They must never
+		// prefix a SessionRequest for a different version, and a stale
+		// handshake hash would make the next attempt fail in a confusing way.
 		m_NoiseState.reset ();
 		m_EphemeralKeys.reset ();
 #if OPENSSL_PQ
@@ -1180,8 +1186,8 @@ namespace transport
 			LogPrint (eLogWarning, "SSU2: SessionRequest message too short ", len);
 			return false;
 		}
-		// Decrypt the long-header tail and X before validating the version, so
-		// an incompatible-version Retry can carry the real Destination
+		// Decrypt the long-header tail and X before validating the version,
+		// so an incompatible-version Retry can carry the real Destination
 		// Connection ID instead of the zero placeholder.
 		const uint8_t nonce[12] = { 0 };
 		uint8_t headerX[48];
@@ -1502,7 +1508,8 @@ namespace transport
 			32); // k_header_2 = HKDF(chainKey, ZEROLEN, "SessCreateHeader", 32)
 		header.ll[1] ^= CreateHeaderMask (kh2, buf + (len - 12));
 		if (header.h.type != eSSU2SessionCreated)
-			// this situation is valid, because it might be Retry with different encryption
+			// this situation is valid, because it might be Retry with different
+			// encryption
 			return false;
 		if (header.h.connID != m_SourceConnID)
 		{
@@ -1829,8 +1836,9 @@ namespace transport
 			LogPrint (eLogError, "SSU2: Non zero packet number in SessionConfirmed");
 			return false;
 		}
-		// check if fragmented. The SSU2 count field permits up to 15 fragments;
-		// Java uses that range for SessionConfirmed with large RouterInfos.
+		// check if fragmented. The SSU2 count field permits up to 15
+		// fragments; Java uses that range for SessionConfirmed with large
+		// RouterInfos.
 		std::vector<uint8_t> reconstructed;
 		uint8_t numFragments = header.h.flags[0] & 0x0F;
 		uint8_t index = header.h.flags[0] >> 4;
@@ -1960,10 +1968,11 @@ namespace transport
 			LogPrint (eLogError, "SSU2: SessionConfirmed RouterInfo block is too long ", riSize);
 			return false;
 		}
-		// The leading RouterInfo must be a single unfragmented block: the frag
-		// field is `index << 4 | count` for fragments, but the SSU2 spec only
-		// defines 1 (fragment 0 of 1) in SessionConfirmed. Reject anything else
-		// instead of handing a fragment to the RouterInfo parser.
+		// The leading RouterInfo must be a single unfragmented block: the
+		// frag field is `index << 4 | count` for fragments, but the SSU2 spec
+		// only defines 1 (fragment 0 of 1) in SessionConfirmed. Reject
+		// anything else instead of handing a fragment to the RouterInfo
+		// parser.
 		if (riSize < 2 || !IsSSU2RouterInfoFragmentAcceptable (decryptedPayload[4]))
 		{
 			LogPrint (eLogError, "SSU2: SessionConfirmed RouterInfo is fragmented or too short");
@@ -2306,15 +2315,16 @@ namespace transport
 			LogPrint (eLogWarning, "SSU2: Retry has wrong Source Connection ID");
 			return false;
 		}
-		// A Retry header is authenticated only with the peer's published intro
-		// key, which is public, so an on-path attacker can forge it. Its "ver"
-		// byte therefore never authorises a version change on its own: adopt a
-		// change only when the peer's signed RouterInfo advertises that exact
-		// version and it is not below the highest version that RouterInfo
-		// advertises. In practice that means the only accepted change is the
-		// peer's own maximum; a lower or unadvertised value fails the attempt
-		// instead of silently downgrading the PQ handshake (the previous code
-		// adopted any lower value). See IsSSU2RetryVersionAccepted().
+		// A Retry header is authenticated only with the peer's published
+		// intro key, which is public, so an on-path attacker can forge it.
+		// Its "ver" byte therefore never authorises a version change on its
+		// own: adopt a change only when the peer's signed RouterInfo
+		// advertises that exact version and it is not below the highest
+		// version that RouterInfo advertises. In practice that means the only
+		// accepted change is the peer's own maximum; a lower or unadvertised
+		// value fails the attempt instead of silently downgrading the PQ
+		// handshake (the previous code adopted any lower value). See
+		// IsSSU2RetryVersionAccepted().
 		const auto address = GetAddress ();
 		if (!address) return false;
 		const uint8_t advertisedVersions = GetSSU2AdvertisedVersionMask (address->pqVersions);
@@ -2497,10 +2507,10 @@ namespace transport
 			return false;
 		}
 		// The SSU2 spec fixes the HolePunch version to 2 and validates the
-		// network ID exactly (Java PacketHandler does the same before dispatch).
-		// A peer that already negotiated a post-quantum session may still put
-		// its version in this long header, so accept 2..4 on receive while
-		// continuing to send 2.
+		// network ID exactly (Java PacketHandler does the same before
+		// dispatch). A peer that already negotiated a post-quantum session
+		// may still put its version in this long header, so accept 2..4 on
+		// receive while continuing to send 2.
 		if (!IsSSU2OutOfSessionVersionAccepted (header.h.flags[0]))
 		{
 			LogPrint (eLogWarning, "SSU2: HolePunch has wrong version ", (int)header.h.flags[0]);
@@ -2532,8 +2542,8 @@ namespace transport
 			return false;
 		}
 		// Validate DateTime before HandleRelayResponse() can call
-		// ConnectAfterIntroduction(); HandlePayload() would otherwise reset the
-		// skew flag before the caller can observe it.
+		// ConnectAfterIntroduction(); HandlePayload() would otherwise reset
+		// the skew flag before the caller can observe it.
 		if (!ValidateHolePunchDateTime (payload, len - 48))
 		{
 			LogPrint (eLogWarning, "SSU2: Invalid HolePunch DateTime/skew");
@@ -2563,9 +2573,9 @@ namespace transport
 			LogPrint (eLogWarning, "SSU2: Data message payload length ", (int)len, " is out of range");
 			return false;
 		}
-		// Packet number 0 is the first valid data packet, so a failure must not
-		// be reported as packet 0. Do not wrap around either; the spec requires
-		// a new session well before the number space is exhausted.
+		// Packet number 0 is the first valid data packet, so a failure must
+		// not be reported as packet 0. Do not wrap around either; the spec
+		// requires a new session well before the number space is exhausted.
 		if (m_SendPacketNum == UINT32_MAX)
 		{
 			LogPrint (eLogError, "SSU2: Packet number space exhausted, terminating session");
@@ -2600,9 +2610,9 @@ namespace transport
 
 	void SSU2Session::ProcessData (uint8_t * buf, size_t len, const boost::asio::ip::udp::endpoint & from)
 	{
-		// Minimum wire size: 16 byte short header + 8 byte payload + 16 byte MAC.
-		// The header mask also reads the final 24 bytes, so reject before any
-		// header or AEAD processing.
+		// Minimum wire size: 16 byte short header + 8 byte payload + 16 byte
+		// MAC. The header mask also reads the final 24 bytes, so reject
+		// before any header or AEAD processing.
 		if (len < 40)
 		{
 			LogPrint (eLogWarning, "SSU2: Data message too short ", len);
@@ -2722,8 +2732,8 @@ namespace transport
 				LogPrint (eLogInfo, "SSU2: Remote endpoint update ", m_RemoteEndpoint, "->", from);
 				SendPathChallenge (from);
 			}
-			// A decryptable data packet proves that Bob processed SessionConfirmed even
-			// if Java's single ACK0 was lost.
+			// A decryptable data packet proves that Bob processed
+			// SessionConfirmed even if Java's single ACK0 was lost.
 			if (m_State == eSSU2SessionStateSessionConfirmedSent) Established ();
 			m_IsInvalidMessage = false;
 			HandlePayload (payload, payloadSize, &from);
@@ -2740,8 +2750,9 @@ namespace transport
 		m_IsInvalidMessage = false;
 		m_ReceivedTermination = false;
 		// Validate the complete block sequence before dispatching the first
-		// handler. This guarantees that a payload containing a disallowed block
-		// cannot mutate state through an allowed block that precedes it.
+		// handler. This guarantees that a payload containing a disallowed
+		// block cannot mutate state through an allowed block that precedes
+		// it.
 		if (!ValidateSSU2PayloadBlocks (m_State.load (), buf, len))
 		{
 			LogPrint (eLogWarning, "SSU2: Invalid block sequence in state ", (int)m_State.load ());
@@ -2750,8 +2761,8 @@ namespace transport
 		}
 		size_t offset = 0;
 		bool gotPadding = false, gotTermination = false;
-		// the block header is three bytes: without all of them the size field below
-		// would be read past the end of the payload
+		// the block header is three bytes: without all of them the size field
+		// below would be read past the end of the payload
 		while (offset + 3 <= len)
 		{
 			uint8_t blk = buf[offset];
@@ -3017,10 +3028,10 @@ namespace transport
 	{
 		if (len < 4) return;
 		int64_t offset = (int64_t)i2p::util::GetSecondsSinceEpoch () - (int64_t)bufbe32toh (buf);
-		// Java adds half the measured RTT to the clock window on an established
-		// path. m_RTT is in milliseconds and stays SSU2_UNKNOWN_RTT (-1) until
-		// the first ACK sample, so an unmeasured session keeps the plain
-		// SSU2_CLOCK_SKEW window.
+		// Java adds half the measured RTT to the clock window on an
+		// established path. m_RTT is in milliseconds and stays
+		// SSU2_UNKNOWN_RTT (-1) until the first ACK sample, so an unmeasured
+		// session keeps the plain SSU2_CLOCK_SKEW window.
 		const double allowedSkew = SSU2_CLOCK_SKEW + (m_RTT > 0 ? m_RTT / 2000.0 : 0.0);
 		switch (m_State)
 		{
@@ -3065,14 +3076,16 @@ namespace transport
 		if (len < 2) return;
 		// A data-phase RouterInfo block must be a single unfragmented RI. The
 		// frag field is `index << 4 | count` for fragments, but the SSU2 spec
-		// only defines 0x01 for a complete RouterInfo in this block. Rejecting
-		// it here prevents a fragment being parsed as a complete RouterInfo.
+		// only defines 0x01 for a complete RouterInfo in this block.
+		// Rejecting it here prevents a fragment being parsed as a complete
+		// RouterInfo.
 		if (!IsSSU2RouterInfoFragmentAcceptable (buf[1]))
 		{
 			LogPrint (eLogWarning, "SSU2: RouterInfo block frag ", (int)buf[1], " is not a single fragment, ignored");
 			return;
 		}
-		// not from SessionConfirmed, we must add it instantly to use in next block
+		// not from SessionConfirmed, we must add it instantly to use in next
+		// block
 		std::shared_ptr<const i2p::data::RouterInfo> newRi;
 		bool updated = false;
 		if (buf[0] & SSU2_ROUTER_INFO_FLAG_GZIP) // compressed?
@@ -3134,9 +3147,10 @@ namespace transport
 			return;
 		}
 		// Process every ACK first, including while SessionConfirmed is
-		// unacknowledged: a non-covering ACK for a later packet is still valid
-		// and must retire those packets and feed the RTT sampler. The previous
-		// early return discarded them and left stale send timestamps behind.
+		// unacknowledged: a non-covering ACK for a later packet is still
+		// valid and must retire those packets and feed the RTT sampler. The
+		// previous early return discarded them and left stale send timestamps
+		// behind.
 		uint32_t firstPacketNum = ackThrough - acnt;
 		HandleAckRange (firstPacketNum, ackThrough, i2p::util::GetMillisecondsSinceEpoch ()); // acnt
 		// ranges
@@ -3219,10 +3233,10 @@ namespace transport
 	void SSU2Session::HandleAddress (const uint8_t * buf, size_t len)
 	{
 		// Address handling updates RouterContext. Accept it only in the
-		// authenticated contexts where the protocol places it (SessionCreated,
-		// Retry and the established data phase) and only when the peer identity
-		// is known. The state whitelist already excludes it elsewhere; this is
-		// the independent defensive guard.
+		// authenticated contexts where the protocol places it
+		// (SessionCreated, Retry and the established data phase) and only
+		// when the peer identity is known. The state whitelist already
+		// excludes it elsewhere; this is the independent defensive guard.
 		if (!IsSSU2AddressBlockContextAllowed (m_State.load (), GetRemoteIdentity () != nullptr))
 		{
 			LogPrint (eLogWarning, "SSU2: Address block ignored in state ", (int)m_State.load ());
@@ -3233,12 +3247,13 @@ namespace transport
 		{
 			// The Address block reports the recipient's apparent endpoint, so it
 			// must use the same address family as this session. Java only stores
-			// the value (PeerState2.gotAddress(), SSU2Payload.java BLOCK_ADDRESS);
-			// this implementation actively updates RouterContext, so an
-			// unvalidated cross-family value could overwrite the wrong family's
-			// external address. The SSU2 spec also permits treating a new address
-			// in the other family as invalid. Ignore the block rather than marking
-			// the whole message invalid, matching Java's non-fatal handling.
+			// the value (PeerState2.gotAddress(), SSU2Payload.java
+			// BLOCK_ADDRESS); this implementation actively updates
+			// RouterContext, so an unvalidated cross-family value could
+			// overwrite the wrong family's external address. The SSU2 spec also
+			// permits treating a new address in the other family as invalid.
+			// Ignore the block rather than marking the whole message invalid,
+			// matching Java's non-fatal handling.
 			bool isV4 = ep.address ().is_v4 ();
 			// m_Address identifies the peer's SSU2 address for this session. Use
 			// its family when it is unambiguous; fall back to the UDP endpoint
@@ -3277,7 +3292,8 @@ namespace transport
 						{
 							i2p::context.SetError (
 								eRouterErrorFullConeNAT); // TODO: Full-Cone NAT detection isn't working.
-							// i2p::context.PublishNTCP2Address (TCP_PORT, true, true, false, false); // TODO: TCP_PORT to be filled similar to ep.port()
+							// i2p::context.PublishNTCP2Address (TCP_PORT, true, true, false,
+							// false); // TODO: TCP_PORT to be filled similar to ep.port()
 							i2p::context.PublishSSU2Address (ep.port (), true, true, false, m_Server.GetVersion ());
 						}
 					}
@@ -3288,7 +3304,8 @@ namespace transport
 						else if (m_State == eSSU2SessionStatePeerTest)
 						{
 							i2p::context.SetErrorV6 (eRouterErrorFullConeNAT);
-							// i2p::context.PublishNTCP2Address (TCP_PORT, true, false, true, false); // TODO: TCP_PORT to be filled similar to ep.port()
+							// i2p::context.PublishNTCP2Address (TCP_PORT, true, false, true,
+							// false); // TODO: TCP_PORT to be filled similar to ep.port()
 							i2p::context.PublishSSU2Address (ep.port (), true, false, true, m_Server.GetVersion ());
 						}
 					}
@@ -3327,12 +3344,13 @@ namespace transport
 	}
 
 	// Reassembly state is bounded per session and per message: at most
-	// SSU2_MAX_NUM_INCOMPLETE_MESSAGES incomplete messages, 64 fragment numbers
-	// per message, 512 out-of-sequence fragments and 128 KiB of out-of-sequence
-	// payload charged by the fixed fragment slab rather than by the claimed
-	// length. A repeated first fragment is ignored instead of resetting progress
-	// (Java InboundMessageState), and a message that already completed is never
-	// rebuilt from a late fragment.
+	// SSU2_MAX_NUM_INCOMPLETE_MESSAGES incomplete messages, 64 fragment
+	// numbers per message, 512 out-of-sequence fragments and 128 KiB of
+	// out-of-sequence payload charged by the fixed fragment slab rather
+	// than by the claimed length. A repeated first fragment is ignored
+	// instead of resetting progress (Java InboundMessageState), and a
+	// message that already completed is never rebuilt from a late
+	// fragment.
 	void SSU2Session::HandleFirstFragment (const uint8_t * buf, size_t len)
 	{
 		if (len <= 9) // Java SSU2Payload: len <= 9 is invalid for FIRSTFRAG
@@ -3482,9 +3500,10 @@ namespace transport
 
 	void SSU2Session::HandleRelayRequest (const uint8_t * buf, size_t len)
 	{
-		// we are Bob. Layout follows IntroductionManager.receiveRelayRequest():
-		// flag, nonce, relay tag, timestamp, ver, asz, Alice endpoint, signature.
-		// The block must carry at least the fixed fields and the flag.
+		// we are Bob. Layout follows
+		// IntroductionManager.receiveRelayRequest(): flag, nonce, relay tag,
+		// timestamp, ver, asz, Alice endpoint, signature. The block must
+		// carry at least the fixed fields and the flag.
 		if (!IsEstablished ())
 		{
 			LogPrint (eLogWarning, "SSU2: RelayRequest in non-established state ", (int)m_State);
@@ -3659,7 +3678,8 @@ namespace transport
 			LogPrint (eLogWarning, "SSU2: RelayIntro from banned or operator-blocked Bob ignored");
 			return;
 		}
-		// flag, Alice hash, nonce, tag, timestamp, ver, asz, endpoint, signature
+		// flag, Alice hash, nonce, tag, timestamp, ver, asz, endpoint,
+		// signature
 		if (len < 47) return;
 		uint32_t timestamp = bufbe32toh (buf + 41);
 		int64_t skew = (int64_t)timestamp - (int64_t)i2p::util::GetSecondsSinceEpoch ();
@@ -3771,7 +3791,8 @@ namespace transport
 			LogPrint (eLogInfo, "SSU2: RelayIntro rate limit for ", ep);
 			code = eSSU2RelayResponseCodeCharlieLimit;
 		}
-		// send relay response to Bob. Do not mint a token for a rejected intro.
+		// send relay response to Bob. Do not mint a token for a rejected
+		// intro.
 		auto packet = m_Server.GetSentPacketsPool ().AcquireShared ();
 		uint32_t nonce = bufbe32toh (buf + 33);
 		const uint64_t incomingToken = code == eSSU2RelayResponseCodeAccept ? m_Server.GetIncomingToken (ep) : 0;
@@ -3803,14 +3824,14 @@ namespace transport
 
 	void SSU2Session::HandleRelayResponse (const uint8_t * buf, size_t len)
 	{
-		// flag, status, nonce, timestamp, ver, csz, endpoint, signature[, token].
-		// IntroductionManager.receiveRelayResponse() validates time/version for
-		// every path before it looks up the nonce.
-		// eSSU2SessionStateIntroduced is required here: Charlie's HolePunch reply
-		// arrives while Bob is still waiting for the introducer's relay response,
-		// and upstream 54068be9 only applies the established-state guard after the
-		// Introduced branch has been handled. Rejecting it earlier would break
-		// hole punching.
+		// flag, status, nonce, timestamp, ver, csz, endpoint, signature[,
+		// token]. IntroductionManager.receiveRelayResponse() validates
+		// time/version for every path before it looks up the nonce.
+		// eSSU2SessionStateIntroduced is required here: Charlie's HolePunch
+		// reply arrives while Bob is still waiting for the introducer's relay
+		// response, and upstream 54068be9 only applies the established-state
+		// guard after the Introduced branch has been handled. Rejecting it
+		// earlier would break hole punching.
 		if (!IsEstablished () && m_State != eSSU2SessionStateIntroduced)
 		{
 			LogPrint (eLogWarning, "SSU2: RelayResponse in invalid state ", (int)m_State);
@@ -4067,8 +4088,8 @@ namespace transport
 			LogPrint (eLogWarning, "SSU2: PeerTest block is too short for signed data ", len);
 			return;
 		}
-		// PeerTest always sends version 2 (Java PacketBuilder2), but a peer that
-		// negotiated a post-quantum session may advertise 3 or 4 here.
+		// PeerTest always sends version 2 (Java PacketBuilder2), but a peer
+		// that negotiated a post-quantum session may advertise 3 or 4 here.
 		if (!IsSSU2OutOfSessionVersionAccepted (buf[offset]))
 		{
 			LogPrint (eLogWarning, "SSU2: PeerTest has wrong version ", (int)buf[offset]);
@@ -4130,8 +4151,8 @@ namespace transport
 		}
 		auto ts = i2p::util::GetMillisecondsSinceEpoch ();
 		uint32_t nonce = bufbe32toh (buf + offset + 1);
-		// Bob rejects a msg 1 with a msg 4 code and Alice's signed data echoed
-		// back. Never evict another pending test to make room.
+		// Bob rejects a msg 1 with a msg 4 code and Alice's signed data
+		// echoed back. Never evict another pending test to make room.
 		auto sendPeerTest4Error = [this, ts, buf, len, offset] (SSU2PeerTestCode code)
 		{
 			auto packet = m_Server.GetSentPacketsPool ().AcquireShared ();
@@ -4930,8 +4951,8 @@ namespace transport
 		msg->ToNTCP2 ();
 		auto msgBuf = msg->GetNTCP2Header ();
 		auto msgLen = msg->GetNTCP2Length ();
-		// A truncated I2NP block is not a valid fragment. Callers must use the
-		// fragmentation path when the message does not fit.
+		// A truncated I2NP block is not a valid fragment. Callers must use
+		// the fragmentation path when the message does not fit.
 		if (msgLen + 3 > len) return 0;
 		buf[0] = eSSU2BlkI2NPMessage;
 		htobe16buf (buf + 1, static_cast<uint16_t> (msgLen)); // size
@@ -5110,8 +5131,8 @@ namespace transport
 		if (len < 12) return 0;
 		buf[0] = eSSU2BlkTermination;
 		htobe16buf (buf + 1, 9);
-		// Java PacketBuilder2 uses the highest received packet (not merely the
-		// contiguous receive point) here.
+		// Java PacketBuilder2 uses the highest received packet (not merely
+		// the contiguous receive point) here.
 		htobe64buf (buf + 3, GetHighestReceivedPacketNum ());
 		buf[11] = (uint8_t)m_TerminationReason;
 		return 12;
@@ -5140,19 +5161,20 @@ namespace transport
 	}
 
 	/**
-	 * @brief Record an authenticated packet number and advance the contiguous receive point.
+	 * @brief Record an authenticated packet number and advance the
+	 *        contiguous receive point.
 	 * @param packetNum packet number decoded from an authenticated header.
-	 * @return true when the packet is new, either in sequence or stored as an
-	 *         out-of-sequence entry; false for a duplicate, for a number at or
-	 *         below the contiguous point, or for an out-of-sequence insert that
-	 *         the memory bound rejects.
+	 * @return true when the packet is new, either in sequence or
+	 *         stored as an out-of-sequence entry; false for a duplicate,
+	 *         for a number at or below the contiguous point, or for an
+	 *         out-of-sequence insert that the memory bound rejects.
 	 *
-	 * Only an authenticated packet may reach this method: a forged number would
-	 * otherwise move m_ReceivePacketNum and let CreateAckBlock acknowledge
-	 * packets that were never received. The contiguous point never crosses a
-	 * gap, the out-of-sequence set is capped between cleanup passes, and
-	 * m_NumRanges is invalidated whenever the range shape changes so the next
-	 * ACK block is rebuilt from the actual set.
+	 * Only an authenticated packet may reach this method: a forged number
+	 * would otherwise move m_ReceivePacketNum and let CreateAckBlock
+	 * acknowledge packets that were never received. The contiguous point
+	 * never crosses a gap, the out-of-sequence set is capped between
+	 * cleanup passes, and m_NumRanges is invalidated whenever the range
+	 * shape changes so the next ACK block is rebuilt from the actual set.
 	 */
 	bool SSU2Session::UpdateReceivePacketNum (uint32_t packetNum)
 	{
@@ -5316,7 +5338,8 @@ namespace transport
 		size_t addressSize = CreateAddressBlock (payload + payloadSize, m_MaxPayloadSize - payloadSize, state.endpoint);
 		if (!addressSize) return false;
 		payloadSize += addressSize;
-		// path challenge block, always 8 bytes, reused by every retransmission
+		// path challenge block, always 8 bytes, reused by every
+		// retransmission
 		if (payloadSize + 11 > m_MaxPayloadSize) return false;
 		payload[payloadSize] = eSSU2BlkPathChallenge;
 		htobe16buf (payload + payloadSize + 1, 8);
@@ -5368,9 +5391,10 @@ namespace transport
 
 	void SSU2Session::CleanUp (uint64_t ts)
 	{
-		// Java's MAX_RECEIVE_TIME is 10 s. Expiry is only observed on the next
-		// server cleanup pass (SSU2_CLEANUP_INTERVAL), so the effective bound is
-		// the timeout plus that interval; no per-message timer is introduced.
+		// Java's MAX_RECEIVE_TIME is 10 s. Expiry is only observed on the
+		// next server cleanup pass (SSU2_CLEANUP_INTERVAL), so the effective
+		// bound is the timeout plus that interval; no per-message timer is
+		// introduced.
 		for (auto it = m_IncompleteMessages.begin (); it != m_IncompleteMessages.end ();)
 		{
 			if (ts > it->second->lastFragmentInsertTime + SSU2_INCOMPLETE_MESSAGES_CLEANUP_TIMEOUT)
@@ -5398,11 +5422,11 @@ namespace transport
 			}
 		}
 		// Never advance m_ReceivePacketNum across packets that were not
-		// received. Doing so makes CreateAckBlock acknowledge gaps and makes the
-		// peer erase still-unacknowledged messages from m_SentPackets. The
-		// out-of-sequence set is bounded at insertion; CreateAckBlock emits
-		// NACK-only ranges and drops entries that do not fit the ACK budget.
-		// Missing packets are retransmitted normally.
+		// received. Doing so makes CreateAckBlock acknowledge gaps and makes
+		// the peer erase still-unacknowledged messages from m_SentPackets.
+		// The out-of-sequence set is bounded at insertion; CreateAckBlock
+		// emits NACK-only ranges and drops entries that do not fit the ACK
+		// budget. Missing packets are retransmitted normally.
 
 		for (auto it = m_RelaySessions.begin (); it != m_RelaySessions.end ();)
 		{
@@ -5443,7 +5467,8 @@ namespace transport
 	void SSU2Session::FlushData ()
 	{
 		// A packet batch can terminate a session (Termination block or a bad
-		// payload). Do not emit an ACK/resend afterwards from the flushed state.
+		// payload). Do not emit an ACK/resend afterwards from the flushed
+		// state.
 		if (m_State.load () == eSSU2SessionStateTerminated) return;
 		bool sent = SendQueue (); // if we have something to send
 		if (sent) SetSendQueueSize (m_SendQueue.size ());

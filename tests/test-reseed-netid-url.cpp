@@ -6,8 +6,8 @@
  *
  * Proposal 147 appends the router network ID to a reseed URL. A `netid`
  * parameter is matched as a complete query parameter (never as a raw
- * substring), the fragment is stripped and the composition is idempotent.
- * Compile-free logic only: no socket, no thread.
+ * substring), the fragment is stripped and the composition is
+ * idempotent. Compile-free logic only: no socket, no thread.
  *
  */
 

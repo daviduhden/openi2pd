@@ -4,10 +4,10 @@
  *
  * openi2pd: TunnelConfig.
  *
- * Describes tunnel hop configuration and short ECIES build records: hop keys,
- * reply routing, record encryption/decryption and phony hops. TunnelConfig
- * assembles inbound and outbound hop chains; ZeroHopsTunnelConfig covers the
- * local shortcut case.
+ * Describes tunnel hop configuration and short ECIES build records: hop
+ * keys, reply routing, record encryption/decryption and phony hops.
+ * TunnelConfig assembles inbound and outbound hop chains;
+ * ZeroHopsTunnelConfig covers the local shortcut case.
  *
  */
 
@@ -55,8 +55,8 @@ namespace tunnel
 		 *
 		 * `numRecords` bounds the record table. Returns false when the record
 		 * index is out of range or the record could not be encrypted; the
-		 * caller must then fail the whole build instead of sending a partially
-		 * initialised record.
+		 * caller must then fail the whole build instead of sending a
+		 * partially initialised record.
 		 */
 		virtual bool CreateBuildRequestRecord (uint8_t * records, size_t numRecords, uint32_t replyMsgID) = 0;
 		virtual bool DecryptBuildResponseRecord (uint8_t * records) const = 0;
@@ -76,7 +76,7 @@ namespace tunnel
 		ShortECIESTunnelHopConfig (std::shared_ptr<const i2p::data::IdentityEx> r)
 			: TunnelHopConfig (r) { };
 
-		/** @return false when the record could not be encrypted (fail closed) */
+		/** @return False on encryption failure; callers must fail closed. */
 		bool EncryptECIES (const uint8_t * clearText, uint8_t * encrypted);
 
 		uint8_t GetRetCode (const uint8_t * records) const override
@@ -101,9 +101,10 @@ namespace tunnel
 		bool CreateBuildRequestRecord (uint8_t * records, size_t numRecords, uint32_t /* replyMsgID */) override;
 	};
 
-	/// Owns the ordered hop chain used to construct a tunnel build request.
-	/// GetFirstHop()/GetLastHop() return borrowed observers; insertion/removal
-	/// of a phony hop or destruction of the config can invalidate an observer.
+	/// Owns the ordered hop chain used to construct a tunnel build
+	/// request. GetFirstHop()/GetLastHop() return borrowed observers;
+	/// insertion/removal of a phony hop or destruction of the config can
+	/// invalidate an observer.
 	class TunnelConfig
 	{
 	public:

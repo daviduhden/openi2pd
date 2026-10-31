@@ -4,11 +4,12 @@
  *
  * openi2pd: netDb RouterInfo admission bounds.
  *
- * Checks the hard store cap for new unsolicited RouterInfos (an update of an
- * existing key and a reseed insert are still allowed), the transport flood
- * admission (only a floodfill forwards a requested flood), and that router
- * selection never creates or loads a peer profile while holding a container
- * lock. Deterministic, no sockets, threads or sleeps.
+ * Checks the hard store cap for new unsolicited RouterInfos (an update
+ * of an existing key and a reseed insert are still allowed), the
+ * transport flood admission (only a floodfill forwards a requested
+ * flood), and that router selection never creates or loads a peer
+ * profile while holding a container lock. Deterministic, no sockets,
+ * threads or sleeps.
  *
  */
 
@@ -32,12 +33,13 @@
 
 namespace i2p::data
 {
-// The friend declared by NetDb; the test drives only deterministic helpers.
+// The friend declared by NetDb; the test drives only deterministic
+// helpers.
 struct NetDbLifecycleTestAccess
 {
-	// Fill the RouterInfo map with placeholder slots so the hard cap can be
-	// reached without signing hundreds of descriptors. A null slot is an
-	// ordinary "no cached object" entry for every reader.
+	// Fill the RouterInfo map with placeholder slots so the hard cap can
+	// be reached without signing hundreds of descriptors. A null slot is
+	// an ordinary "no cached object" entry for every reader.
 	static void FillWithPlaceholders (NetDb & database, size_t total)
 	{
 		std::lock_guard lock (database.m_RouterInfosMutex);
@@ -92,9 +94,9 @@ void AppendParam (std::string & out, std::string_view key, std::string_view valu
 	out.push_back (';');
 }
 
-// Minimal signed RouterInfo: no addresses (storable inside the 54-minute
-// grace), a valid netId and router.version, and the requested caps. The
-// RouterInfo parser requires exactly this shape.
+// Minimal signed RouterInfo: no addresses (storable inside the
+// 54-minute grace), a valid netId and router.version, and the requested
+// caps. The RouterInfo parser requires exactly this shape.
 std::vector<uint8_t> BuildRouterInfo (const PrivateKeys & keys, uint64_t published, const char * caps)
 {
 	std::vector<uint8_t> body;
@@ -135,7 +137,8 @@ void TestRouterInfoStoreCap ()
 	assert (database.AddRouterInfo (ident, original.data (), original.size ()));
 	assert (database.GetNumRouters () == 1);
 
-	// The global test context is not a floodfill, so the ordinary cap applies.
+	// The global test context is not a floodfill, so the ordinary cap
+	// applies.
 	using Access = i2p::data::NetDbLifecycleTestAccess;
 	Access::FillWithPlaceholders (database, NETDB_MAX_ROUTER_INFOS);
 	assert (database.GetNumRouters () == static_cast<int> (NETDB_MAX_ROUTER_INFOS));
@@ -154,8 +157,9 @@ void TestRouterInfoStoreCap ()
 	assert (database.AddRouterInfo (newer.data (), newer.size (), updated));
 	assert (updated);
 
-	// A reseed insert bypasses the cap: the verified SU3 payload is already a
-	// bounded source and bootstrap must not be starved by a flooded map.
+	// A reseed insert bypasses the cap: the verified SU3 payload is
+	// already a bounded source and bootstrap must not be starved by a
+	// flooded map.
 	Access::SetReseeding (database, true);
 	updated = false;
 	assert (database.AddRouterInfo (other.data (), other.size (), updated));
@@ -187,8 +191,9 @@ void TestTransportFloodAdmission ()
 	auto stored = database.FindRouter (ident);
 	assert (stored);
 
-	// The transport path refuses to flood while this router is not a floodfill;
-	// the DatabaseStore path keeps its own accounting and is not asserted here.
+	// The transport path refuses to flood while this router is not a
+	// floodfill; the DatabaseStore path keeps its own accounting and is
+	// not asserted here.
 	assert (!database.FloodRouterInfoConditional (stored));
 	assert (!database.FloodRouterInfoConditional (nullptr));
 	// A banned key is refused by the unconditional path as well.
@@ -243,7 +248,8 @@ void TestSelectionDoesNotLoadProfiles ()
 	assert (profileLoads.load () == 0);
 	assert (!stored->HasProfile ());
 
-	// Creating a profile is an explicit operation outside the selection path.
+	// Creating a profile is an explicit operation outside the selection
+	// path.
 	auto profile = stored->GetProfile ();
 	assert (profile);
 	assert (profileLoads.load () == 1);

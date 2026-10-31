@@ -5,16 +5,18 @@
  * openi2pd: test i2pcontrol socket.
  *
  * Compile-free regression for the I2PControl AF_UNIX path policy: a
- * pre-existing regular file or directory is never unlinked, an owned stale
- * socket is replaced, the path is restricted to 0600 after bind, the path is
- * removed only while it is still the recorded socket, and a same-user peer is
- * recognised. The different-UID case is skipped unless the process can switch
- * credentials. The TLS service itself is not started.
+ * pre-existing regular file or directory is never unlinked, an owned
+ * stale socket is replaced, the path is restricted to 0600 after bind,
+ * the path is removed only while it is still the recorded socket, and a
+ * same-user peer is recognised. The different-UID case is skipped
+ * unless the process can switch credentials. The TLS service itself is
+ * not started.
  *
  */
 
 // I2PControl publishes the AF_UNIX helpers only when Asio reports local
-// socket support; include the configuration header before guarding the test.
+// socket support; include the configuration header before guarding the
+// test.
 #include <boost/asio.hpp>
 
 #if defined(BOOST_ASIO_HAS_LOCAL_SOCKETS) && !defined(_WIN32)
@@ -118,8 +120,8 @@ int main ()
 		}
 	}
 
-	// The mode is restricted to owner read/write after bind, and removal is
-	// tied to the identity of the socket this process created.
+	// The mode is restricted to owner read/write after bind, and removal
+	// is tied to the identity of the socket this process created.
 	{
 		const int fd = BindUnixSocket (socketPath);
 		Check (fd >= 0, "socket bound for mode check");
@@ -135,8 +137,8 @@ int main ()
 			Check (identity.valid, "socket identity recorded");
 			::close (fd);
 
-			// Same path, different socket: the recorded identity must not
-			// delete the replacement.
+			// Same path, different socket: the recorded identity must not delete
+			// the replacement.
 			::unlink (socketPath.c_str ());
 			const int replacement = BindUnixSocket (socketPath);
 			Check (replacement >= 0, "replacement socket bound");

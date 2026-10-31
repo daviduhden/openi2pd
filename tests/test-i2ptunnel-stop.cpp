@@ -4,11 +4,12 @@
  *
  * openi2pd: server-tunnel teardown and restart regression.
  *
- * Proves that stopping a server tunnel actually terminates and removes every
- * registered handler (the base Terminate used to poison m_Dead before the
- * derived teardown ran), that Stop(bool) distinguishes the forced and in-use
- * cases, that a restart accepts again and that a port-specific tunnel never
- * takes the default streaming acceptor away from another tunnel.
+ * Proves that stopping a server tunnel actually terminates and removes
+ * every registered handler (the base Terminate used to poison m_Dead
+ * before the derived teardown ran), that Stop(bool) distinguishes the
+ * forced and in-use cases, that a restart accepts again and that a
+ * port-specific tunnel never takes the default streaming acceptor away
+ * from another tunnel.
  *
  */
 
@@ -66,7 +67,8 @@ int main ()
 	Fixture fixture;
 	auto & destination = *fixture.destination;
 
-	// The default streaming destination is the port-0 destination. It has no
+	// The default streaming destination is the port-0 destination. It has
+	// no
 	// acceptor until a tunnel claims it.
 	auto defaultDestination = destination.GetStreamingDestination (0);
 	if (!defaultDestination) defaultDestination = destination.CreateStreamingDestination (0);
@@ -78,8 +80,10 @@ int main ()
 	assert (tunnel->IsRunning ());
 	assert (defaultDestination->IsAcceptorSet ());
 
-	// Virtual dispatch through the base class must reach the derived teardown:
-	// the old non-virtual Terminate only set m_Dead and left the socket open.
+	// Virtual dispatch through the base class must reach the derived
+	// teardown:
+	// the old non-virtual Terminate only set m_Dead and left the socket
+	// open.
 	{
 		auto handler = std::make_shared<CountingHandler> (tunnel);
 		I2PServiceHandler * base = handler.get ();
@@ -87,8 +91,8 @@ int main ()
 		assert (handler->terminations == 1);
 	}
 
-	// ClearHandlers snapshots under the lock and terminates outside it: every
-	// live handler is torn down once and the set is emptied.
+	// ClearHandlers snapshots under the lock and terminates outside it:
+	// every live handler is torn down once and the set is emptied.
 	auto first = std::make_shared<CountingHandler> (tunnel);
 	auto second = std::make_shared<CountingHandler> (tunnel);
 	tunnel->AddHandler (first);
@@ -107,7 +111,8 @@ int main ()
 	tunnel->Stop ();
 	assert (tunnel->GetNumHandlers () == 0);
 
-	// Restartability: Start() installs the acceptor again after a full stop.
+	// Restartability: Start() installs the acceptor again after a full
+	// stop.
 	tunnel->Start ();
 	assert (tunnel->IsRunning ());
 	assert (defaultDestination->IsAcceptorSet ());
@@ -115,8 +120,8 @@ int main ()
 	assert (tunnel->IsRunning ());
 	assert (defaultDestination->IsAcceptorSet ());
 
-	// Non-forced stop keeps the live connections of a tunnel in use, but stops
-	// accepting so no new stream is offered to them.
+	// Non-forced stop keeps the live connections of a tunnel in use, but
+	// stops accepting so no new stream is offered to them.
 	auto kept = std::make_shared<CountingHandler> (tunnel);
 	tunnel->AddHandler (kept);
 	tunnel->Stop (false);
@@ -130,7 +135,8 @@ int main ()
 	assert (kept->terminations == 1);
 	assert (tunnel->GetNumHandlers () == 0);
 
-	// Acceptor isolation: a port-specific tunnel owns only its own streaming
+	// Acceptor isolation: a port-specific tunnel owns only its own
+	// streaming
 	// port and cannot disable the default acceptor of another tunnel.
 	tunnel->Start ();
 	assert (defaultDestination->IsAcceptorSet ());

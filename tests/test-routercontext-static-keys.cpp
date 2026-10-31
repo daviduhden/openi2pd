@@ -4,7 +4,9 @@
  *
  * openi2pd: test routercontext static keys.
  *
- * Spawns 16 threads racing NTCP2/SSU2 static-key access, requiring call-once initialization to yield one key object with stable public bytes and no regeneration on later reads. Uses a temporary HOME.
+ * Spawns 16 threads racing NTCP2/SSU2 static-key access, requiring
+ * call-once initialization to yield one key object with stable public
+ * bytes and no regeneration on later reads. Uses a temporary HOME.
  *
  */
 

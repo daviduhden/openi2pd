@@ -4,11 +4,9 @@
  *
  * openi2pd: fuzz initialize.
  *
- * Common libFuzzer initialization. The harness never starts the asynchronous
- * log worker, so parser diagnostics would otherwise accumulate in its
- * unbounded pre-start queue for every malformed input and turn a valid run
- * into an out-of-memory failure. Logging is therefore disabled before the
- * first input is processed.
+ * Shared libFuzzer initialization. The harness does not start the async
+ * log worker, so parser diagnostics accumulate in its unbounded queue
+ * queue. Disable logging before input processing to prevent exhaustion.
  *
  */
 

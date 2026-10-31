@@ -4,9 +4,9 @@
  *
  * openi2pd: TunnelGateway.
  *
- * Declares the tunnel gateway buffer that packs I2NP messages and random padding
- * into tunnel data messages, and TunnelGateway, which queues and sends those
- * messages through its tunnel.
+ * Declares the tunnel gateway buffer that packs I2NP messages and
+ * random padding into tunnel data messages, and TunnelGateway, which
+ * queues and sends those messages through its tunnel.
  *
  */
 
@@ -25,9 +25,10 @@ namespace i2p
 {
 namespace tunnel
 {
-	/// Packs delivery instructions and I2NP messages into tunnel-sized cells.
-	/// Large messages span a first fragment and numbered follow-on fragments;
-	/// each completed cell has nonzero padding, a delimiter, IV and checksum.
+	/// Packs delivery instructions and I2NP messages into tunnel-sized
+	/// cells. Large messages span a first fragment and numbered follow-on
+	/// fragments; each completed cell has nonzero padding, a delimiter, IV
+	/// and checksum.
 	/// @see https://i2p.net/en/docs/specs/tunnel-message/
 	class TunnelGatewayBuffer
 	{
@@ -52,8 +53,8 @@ namespace tunnel
 		std::unique_ptr<std::mt19937> m_Rng;
 	};
 
-	/// Buffered sender borrowing the tunnel through which completed cells travel.
-	/// The referenced TunnelBase must outlive the gateway.
+	/// Buffered sender borrowing the tunnel through which completed cells
+	/// travel. The referenced TunnelBase must outlive the gateway.
 	class TunnelGateway
 	{
 	public:

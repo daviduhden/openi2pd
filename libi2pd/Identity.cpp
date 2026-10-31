@@ -4,11 +4,12 @@
  *
  * openi2pd: Identity.
  *
- * Implements standard and extended I2P identities: key and option parsing,
- * serialisation, signature verification for the supported signing types,
- * offline-signature sections and b33 offline keys, plus private-key
- * generation, signing and decryption. Untrusted key blobs and offline
- * signatures are length-checked and expiry-validated before use.
+ * Implements standard and extended I2P identities: key and option
+ * parsing, serialisation, signature verification for the supported
+ * signing types, offline-signature sections and b33 offline keys, plus
+ * private-key generation, signing and decryption. Untrusted key blobs
+ * and offline signatures are length-checked and expiry-validated before
+ * use.
  *
  */
 
@@ -373,22 +374,24 @@ namespace data
 	}
 
 	/**
-	 * @brief Parse a serialised identity (standard 387 bytes plus certificate).
+	 * @brief Parse a serialised identity (standard 387 bytes plus
+	 *        certificate).
 	 * @param buf untrusted wire bytes.
 	 * @param len bytes available; the parser never reads past it.
 	 * @return number of bytes consumed, or 0 on any validation failure.
 	 *
-	 * Validation order is load bearing. The fixed part is copied first, then the
-	 * certificate length is bounds-checked, then a KeyCertificate is checked
-	 * against the signing-key size table before any verifier is constructed, so
-	 * a malformed certificate can never reach provider code. The identity hash is
-	 * hashed over exactly the consumed prefix, which makes it the canonical
-	 * Java-compatible value even when the caller's buffer holds trailing bytes.
+	 * Validation order is load bearing. The fixed part is copied first,
+	 * then the certificate length is bounds-checked, then a KeyCertificate
+	 * is checked against the signing-key size table before any verifier is
+	 * constructed, so a malformed certificate can never reach provider
+	 * code. The identity hash is hashed over exactly the consumed prefix,
+	 * which makes it the canonical Java-compatible value even when the
+	 * caller's buffer holds trailing bytes.
 	 *
-	 * On failure the object reports m_IsValid = false, has no verifier, and
-	 * carries no extended bytes from the rejected input. A zero hash is used for
-	 * an invalid identity so a caller that persisted it early cannot collide with
-	 * a real destination.
+	 * On failure the object reports m_IsValid = false, has no verifier,
+	 * and carries no extended bytes from the rejected input. A zero hash
+	 * is used for an invalid identity so a caller that persisted it early
+	 * cannot collide with a real destination.
 	 */
 	size_t IdentityEx::FromBuffer (const uint8_t * buf, size_t len)
 	{
@@ -825,23 +828,24 @@ namespace data
 	}
 
 	/**
-	 * @brief Parse a private key file (identity, crypto key, signing key, ...).
+	 * @brief Parse a private key file (identity, crypto key, signing key,
+	 *        ...).
 	 * @param buf untrusted key material as stored in a destination file.
 	 * @param len bytes available.
 	 * @return bytes consumed, or 0 when the material is rejected.
 	 *
-	 * The layout is identity, crypto private key, signing private key, and then,
-	 * only when the signing key is all zeros, the offline-signature block
-	 * (expiry, transient type, public key, signature) followed by the transient
-	 * private key. Optional trailing b33 offline keys are accepted only when they
-	 * are bound to this identity's hash. Every length is compared against the
-	 * remaining bytes before it is used.
+	 * The layout is identity, crypto private key, signing private key, and
+	 * then, only when the signing key is all zeros, the offline-signature
+	 * block (expiry, transient type, public key, signature) followed by
+	 * the transient private key. Optional trailing b33 offline keys are
+	 * accepted only when they are bound to this identity's hash. Every
+	 * length is compared against the remaining bytes before it is used.
 	 *
-	 * A ScopeExit resets the object to an empty key on every early return, so a
-	 * partially parsed file never leaves usable material behind; the guard is
-	 * dismissed only by the successful return. Offline signatures are verified
-	 * here, because this is the only place that still has the destination public
-	 * key and the transient key together.
+	 * A ScopeExit resets the object to an empty key on every early return,
+	 * so a partially parsed file never leaves usable material behind; the
+	 * guard is dismissed only by the successful return. Offline signatures
+	 * are verified here, because this is the only place that still has the
+	 * destination public key and the transient key together.
 	 */
 	size_t PrivateKeys::FromBuffer (const uint8_t * buf, size_t len)
 	{
@@ -1002,14 +1006,16 @@ namespace data
 	/**
 	 * @brief Sign a message buffer with the destination or transient key.
 	 *
-	 * @warning The interface cannot report failure. A negative length, a missing
-	 * signer (unsupported type, malformed identity) or a provider error results in
-	 * an all-zero signature of the correct length, and the caller cannot
-	 * distinguish that from a real signature. Do not treat the output as
-	 * authenticated without verifying it, and do not use this path to decide
-	 * whether a key is usable. Making the interface fallible is tracked as
-	 * `CRY-236`; until then callers must check that the returned signature is not
-	 * all zero before publishing a RouterInfo or LeaseSet.
+	 * @warning The interface cannot report failure. A negative
+	 *          length, a missing signer (unsupported type, malformed
+	 *          identity) or a provider error results in an all-zero
+	 *          signature of the correct length, and the caller cannot
+	 *          distinguish that from a real signature. Do not treat the
+	 *          output as authenticated without verifying it, and do not
+	 *          use this path to decide whether a key is usable. Making the
+	 *          interface fallible is tracked as `CRY-236`; until then
+	 *          callers must check that the returned signature is not all
+	 *          zero before publishing a RouterInfo or LeaseSet.
 	 */
 	void PrivateKeys::Sign (const uint8_t * buf, int len, uint8_t * signature) const
 	{
@@ -1036,7 +1042,8 @@ namespace data
 
 	void PrivateKeys::UpdateOfflineSignature (const PrivateKeys & other)
 	{
-		// same identity (m_Public): refresh only the transient material and the signer
+		// same identity (m_Public): refresh only the transient material and
+		// the signer
 		m_SigningPrivateKey = other.m_SigningPrivateKey;
 		m_OfflineSignature = other.m_OfflineSignature;
 		m_TransientSignatureLen = other.m_TransientSignatureLen;
@@ -1157,20 +1164,23 @@ namespace data
 	}
 
 	/**
-	 * @brief Generate a destination or router identity of the requested types.
+	 * @brief Generate a destination or router identity of the requested
+	 *        types.
 	 * @param type requested signing key type.
 	 * @param cryptoType requested encryption key type.
-	 * @param isDestination a destination keeps its encryption key private (the
-	 *        public key is derived from the private half later).
-	 * @return a complete key set, degraded to DSA-SHA1/ElGamal when the request
-	 *         cannot be satisfied.
+	 * @param isDestination a destination keeps its
+	 *                      encryption key private (the public key is
+	 *                      derived from the private half later).
+	 * @return a complete key set, degraded to DSA-SHA1/ElGamal when the
+	 *         request cannot be satisfied.
 	 *
-	 * The degradation is deliberate and loud: an unsupported or failed provider
-	 * path logs an error and returns the legacy identity shape instead of
-	 * publishing a certificate whose key layout has no implementation. A caller
-	 * that must not accept the downgrade has to compare the resulting key types
-	 * with the request. An unknown crypto type is mapped to ElGamal for the same
-	 * reason: key-file parsing would otherwise consume zero bytes.
+	 * The degradation is deliberate and loud: an unsupported or failed
+	 * provider path logs an error and returns the legacy identity shape
+	 * instead of publishing a certificate whose key layout has no
+	 * implementation. A caller that must not accept the downgrade has to
+	 * compare the resulting key types with the request. An unknown crypto
+	 * type is mapped to ElGamal for the same reason: key-file parsing
+	 * would otherwise consume zero bytes.
 	 */
 	PrivateKeys PrivateKeys::CreateRandomKeys (SigningKeyType type, CryptoKeyType cryptoType, bool isDestination)
 	{
@@ -1322,9 +1332,9 @@ namespace data
 			break;
 		default: LogPrint (eLogError, "Identity: Crypto key type ", (int)type, " is not supported");
 		}
-		// A provider failure is not the only way to arrive here with empty key
-		// material: report both cases so CreateRandomKeys() takes its fallback
-		// instead of publishing an unusable identity.
+		// A provider failure is not the only way to arrive here with empty
+		// key material: report both cases so CreateRandomKeys() takes its
+		// fallback instead of publishing an unusable identity.
 		if (!generated || isAllZero (priv, privLen) || isAllZero (pub, pubLen))
 		{
 			LogPrint (eLogError, "Identity: Crypto key generation failed for type ", (int)type);

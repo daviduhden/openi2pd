@@ -4,10 +4,10 @@
  *
  * openi2pd: SOCKS.
  *
- * Declares the SOCKS acceptor, upstream-proxy configuration, UDP port pool,
- * the local RFC 1929 username/password authenticator, the fixed success
- * replies and the bounded virtual IPv4 mapping used for torsocks-style
- * resolution.
+ * Declares the SOCKS acceptor, upstream-proxy configuration, UDP port
+ * pool, the local RFC 1929 username/password authenticator, the fixed
+ * success replies and the bounded virtual IPv4 mapping used for
+ * torsocks-style resolution.
  *
  */
 
@@ -26,9 +26,10 @@
 #include <boost/asio.hpp>
 #include <mutex>
 #include "I2PService.h"
-// ProxySecretEquals() and the shared 255-byte field bound are declared by the
-// HTTP proxy header so both local proxy authenticators use one comparison and
-// one limit instead of two copies of a security primitive.
+// ProxySecretEquals() and the shared 255-byte field bound are declared
+// by the HTTP proxy header so both local proxy authenticators use one
+// comparison and one limit instead of two copies of a security
+// primitive.
 #include "HTTPProxy.h"
 
 namespace i2p
@@ -44,12 +45,13 @@ namespace proxy
 	/**
 	 * Success replies.
 	 *
-	 * RFC 1928 requires BND.ADDR/BND.PORT in a success reply. The proxy has no
-	 * meaningful bound endpoint for an I2P stream or for a UDP relay that is
-	 * not a wildcard, so it answers with the loopback address like I2P Java
-	 * `SOCKS5Server.confirmConnection()` (127.0.0.1, port 1) and
-	 * `handleUDP()` (127.0.0.1, relay port). A wildcard 0.0.0.0 must never be
-	 * sent: a client could otherwise try to connect back to its own wildcard.
+	 * RFC 1928 requires BND.ADDR/BND.PORT in a success reply. The proxy
+	 * has no meaningful bound endpoint for an I2P stream or for a UDP
+	 * relay that is not a wildcard, so it answers with the loopback
+	 * address like I2P Java `SOCKS5Server.confirmConnection()` (127.0.0.1,
+	 * port 1) and `handleUDP()` (127.0.0.1, relay port). A wildcard
+	 * 0.0.0.0 must never be sent: a client could otherwise try to connect
+	 * back to its own wildcard.
 	 */
 	inline constexpr std::uint32_t SOCKS5_REPLY_LOOPBACK_ADDRESS = 0x7F000001; // 127.0.0.1
 	inline constexpr std::uint16_t SOCKS5_CONNECT_REPLY_PORT = 1;
@@ -60,14 +62,19 @@ namespace proxy
 		return { 0x05, 0x00, 0x00, 0x01, 0x7f, 0x00, 0x00, 0x01, 0x00, SOCKS5_CONNECT_REPLY_PORT };
 	}
 
-	/** `05 00 00 01 7F 00 00 01 &lt;port&gt;` (UDP ASSOCIATE succeeded). */
+	/**
+	 * `05 00 00 01 7F 00 00 01 &lt;port&gt;` (UDP ASSOCIATE succeeded).
+	 */
 	inline std::array<std::uint8_t, 10> SOCKS5UdpAssociateReply (std::uint16_t port) noexcept
 	{
 		return { 0x05, 0x00, 0x00, 0x01, 0x7f, 0x00, 0x00, 0x01, static_cast<std::uint8_t> (port >> 8),
 			static_cast<std::uint8_t> (port & 0xff) };
 	}
 
-	/** Bounds for the torsocks RESOLVE cache, matching I2P Java LHMCache(256). */
+	/**
+	 * Bounds for the torsocks RESOLVE cache, matching I2P Java
+	 * LHMCache(256).
+	 */
 	inline constexpr std::size_t SOCKS_RESOLVE_CACHE_MAX_ENTRIES = 256;
 	inline constexpr std::uint64_t SOCKS_RESOLVE_CACHE_TTL_MS = 10 * 60 * 1000;
 	/** 255.0.0.0/8 is reserved and can never name a real host. */
@@ -152,9 +159,9 @@ namespace proxy
 	} // namespace socks_detail
 
 	/**
-	 * Deterministic fake IPv4 for a destination: 255.a.b.c derived from a keyed
-	 * SipHash of the name. The mapping is stable for the process lifetime and
-	 * never overlaps a routable address.
+	 * Deterministic fake IPv4 for a destination: 255.a.b.c derived from a
+	 * keyed SipHash of the name. The mapping is stable for the process
+	 * lifetime and never overlaps a routable address.
 	 */
 	inline boost::asio::ip::address_v4 SocksFakeIPv4Address (
 		std::string_view destination, const std::array<std::uint8_t, 16> & key) noexcept
@@ -168,11 +175,11 @@ namespace proxy
 	/**
 	 * Bounded, mutex-guarded cache for torsocks RESOLVE.
 	 *
-	 * A lookup maps a fake IPv4 back to the destination name, and an insert
-	 * maps the name to its fake IPv4. Entries expire after
+	 * A lookup maps a fake IPv4 back to the destination name, and an
+	 * insert maps the name to its fake IPv4. Entries expire after
 	 * SOCKS_RESOLVE_CACHE_TTL_MS and the cache never holds more than
-	 * SOCKS_RESOLVE_CACHE_MAX_ENTRIES entries; the entry that expires first is
-	 * evicted when every entry is still live.
+	 * SOCKS_RESOLVE_CACHE_MAX_ENTRIES entries; the entry that expires
+	 * first is evicted when every entry is still live.
 	 */
 	class SocksResolveCache
 	{
@@ -221,7 +228,7 @@ namespace proxy
 			return address;
 		}
 
-		/** @return the live destination for @a address, or an empty string. */
+		/** @return the live destination for @a address, or empty. */
 		std::string Lookup (const boost::asio::ip::address_v4 & address, std::uint64_t nowMs) const
 		{
 			std::lock_guard<std::mutex> lock (m_Mutex);
@@ -271,8 +278,8 @@ namespace proxy
 	};
 
 	/**
-	 * @return true when an RFC 1929 field length (taken from ULEN/PLEN or from
-	 * the configured credential) is acceptable: 1..255 bytes.
+	 * @return true when an RFC 1929 field length (taken from ULEN/PLEN or
+	 *         from the configured credential) is acceptable: 1..255 bytes.
 	 */
 	constexpr bool SOCKSUserPassFieldValid (std::size_t length) noexcept
 	{
@@ -285,17 +292,20 @@ namespace proxy
 		None,
 		/** Method 0x02: the RFC 1929 username/password sub-negotiation. */
 		UserPass,
-		/** Method 0xFF: reply and close; no offered method can be satisfied. */
+		/**
+		 * Method 0xFF: reply and close; no offered method can be satisfied.
+		 */
 		Unacceptable
 	};
 
 	/**
 	 * RFC 1929 method selection.
 	 *
-	 * With local authentication enabled only a verifiable credential exchange
-	 * is acceptable (0x02). Without it, only 0x00 is acceptable: a client that
-	 * offers nothing but 0x02 must not be let through, because the proxy has no
-	 * credential to compare against and would otherwise accept arbitrary input.
+	 * With local authentication enabled only a verifiable credential
+	 * exchange is acceptable (0x02). Without it, only 0x00 is acceptable:
+	 * a client that offers nothing but 0x02 must not be let through,
+	 * because the proxy has no credential to compare against and would
+	 * otherwise accept arbitrary input.
 	 */
 	constexpr SOCKSAuthMethodChoice SOCKSChooseAuthMethod (
 		bool auth_enabled, bool offered_none, bool offered_userpass) noexcept
@@ -306,9 +316,9 @@ namespace proxy
 	}
 
 	/**
-	 * Local SOCKS5 username/password credential. Same fail-closed contract as
-	 * ProxyBasicAuth: `enabled` with an empty or oversized field denies every
-	 * client instead of accepting arbitrary credentials.
+	 * Local SOCKS5 username/password credential. Same fail-closed contract
+	 * as ProxyBasicAuth: `enabled` with an empty or oversized field denies
+	 * every client instead of accepting arbitrary credentials.
 	 */
 	struct SOCKSUserPassAuth
 	{
@@ -335,9 +345,9 @@ namespace proxy
 		}
 	};
 
-	/// SOCKS listener with optional local authentication and upstream proxy.
-	/// The resolve cache maps fake IPv4 hints back to destination names; those
-	/// hints do not authorize or identify a remote peer.
+	/// SOCKS listener with optional local authentication and upstream
+	/// proxy. The resolve cache maps fake IPv4 hints back to destination
+	/// names; those hints do not authorize or identify a remote peer.
 	class SOCKSServer : public i2p::client::TCPIPAcceptor
 	{
 	public:
@@ -347,23 +357,24 @@ namespace proxy
 		~SOCKSServer () { };
 
 		void SetUpstreamProxy (const std::string & addr, const uint16_t port);
-		/// Allocate a local UDP port for a UDP ASSOCIATE relay.
-		/// The scan starts at the listener's own port and takes the first port
-		/// not currently held by this listener, so the relay endpoint stays on
-		/// the proxy address. The held set grows with the live associations and
-		/// has no eviction: a port stays reserved until its owner calls
-		/// ReleaseLocalUDPPort(), which is why the association teardown path must
-		/// release it exactly once.
+		/// Allocate a local UDP port for a UDP ASSOCIATE relay. The scan
+		/// starts at the listener's own port and takes the first port not
+		/// currently held by this listener, so the relay endpoint stays on
+		/// the proxy address. The held set grows with the live associations
+		/// and has no eviction: a port stays reserved until its owner calls
+		/// ReleaseLocalUDPPort(), which is why the association teardown path
+		/// must release it exactly once.
 		boost::asio::ip::udp::endpoint GetNextLocalUDPEndpoint ();
-		/// Return a relay port allocated by GetNextLocalUDPEndpoint() so a later
-		/// client can reuse it. Must not be called twice for one association.
+		/// Return a relay port allocated by GetNextLocalUDPEndpoint() so a
+		/// later client can reuse it. Must not be called twice for one
+		/// association.
 		void ReleaseLocalUDPPort (uint16_t port);
 
 		/**
 		 * Torsocks RESOLVE mapping. A fake address is 255/8 and expires after
 		 * SOCKS_RESOLVE_CACHE_TTL_MS; the cache holds at most 256 entries.
-		 * GetResolvedAddress() returns a copy because the cache is guarded and
-		 * may evict the entry at any time.
+		 * GetResolvedAddress() returns a copy because the cache is guarded
+		 * and may evict the entry at any time.
 		 */
 		std::string GetResolvedAddress (const boost::asio::ip::address_v4 & addr) const;
 		boost::asio::ip::address_v4 ResolveAddress (std::string_view resolved);

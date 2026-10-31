@@ -4,10 +4,11 @@
  *
  * openi2pd: HTTP.
  *
- * HTTP/1.x message model and incremental parsers: URL splitting and query encoding,
- * case-insensitive header maps, request/response headers with incomplete-input reporting,
- * chunked transfer merging, gzip detection and basic authorization. Parsing is bounded by
- * the supplied buffer and is shared by reseed and client proxy code.
+ * HTTP/1.x message model and incremental parsers: URL splitting and
+ * query encoding, case-insensitive header maps, request/response
+ * headers with incomplete-input reporting, chunked transfer merging,
+ * gzip detection and basic authorization. Parsing is bounded by the
+ * supplied buffer and is shared by reseed and client proxy code.
  *
  */
 
@@ -91,7 +92,8 @@ namespace http
 
 		/**
 		 * @brief Serialize URL structure to url
-		 * @note Returns relative url if schema if empty, absolute url otherwise
+		 * @note Returns relative url if schema if empty, absolute url
+		 *       otherwise
 		 */
 		std::string to_string (bool requestTargetOnly = false) const;
 
@@ -203,7 +205,8 @@ namespace http
 	/**
 	 * @brief Replaces %-encoded characters in string with their values
 	 * @param data Source string
-	 * @param null If set to true - decode also %00 sequence, otherwise - skip
+	 * @param null If set to true - decode also %00 sequence, otherwise -
+	 *             skip
 	 * @return Decoded string
 	 */
 	std::string UrlDecode (std::string_view url, bool null = false);

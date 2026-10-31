@@ -4,9 +4,10 @@
  *
  * openi2pd: IdentMetrics.
  *
- * Kademlia XOR distance metric and routing-key derivation used by the network database.
- * PeerOrdering derives peer ordering groups from a periodically rotated SipHash key so that
- * first and last tunnel hops can be chosen without clustering.
+ * Kademlia XOR distance metric and routing-key derivation used by the
+ * network database. PeerOrdering derives peer ordering groups from a
+ * periodically rotated SipHash key so that first and last tunnel hops
+ * can be chosen without clustering.
  *
  */
 
@@ -44,11 +45,12 @@ namespace data
 
 	// peer ordering
 	constexpr uint64_t PEER_ORDERING_INACTIVITY_TIMEOUT = 400; // in seconds
-	/// Keyed peer-ordering groups for tunnel hop placement.
-	/// The ordering key is a short-lived SipHash key rotated by the router, so a
-	/// remote peer cannot predict or bias which group it lands in; it is secret
-	/// material and must never be logged or published. Cached groups expire after
-	/// PEER_ORDERING_INACTIVITY_TIMEOUT and are recomputed from the new key.
+	/// Keyed peer-ordering groups for tunnel hop placement. The ordering
+	/// key is a short-lived SipHash key rotated by the router, so a remote
+	/// peer cannot predict or bias which group it lands in; it is secret
+	/// material and must never be logged or published. Cached groups
+	/// expire after PEER_ORDERING_INACTIVITY_TIMEOUT and are recomputed
+	/// from the new key.
 	class PeerOrdering
 	{
 	public:
@@ -56,10 +58,11 @@ namespace data
 		~PeerOrdering ();
 		void CleanUp (uint64_t ts);
 
-		/// Install a 16-byte ordering key and invalidate cached groups. A null
-		/// key draws a fresh CSPRNG key; when the provider fails the key stays
-		/// invalid (wiped) and group lookups must not treat the peer as ordered.
-		/// The caller owns the source buffer; only the bytes are copied.
+		/// Install a 16-byte ordering key and invalidate cached groups. A
+		/// null key draws a fresh CSPRNG key; when the provider fails the key
+		/// stays invalid (wiped) and group lookups must not treat the peer as
+		/// ordered. The caller owns the source buffer; only the bytes are
+		/// copied.
 		void SetKey (const uint8_t * key);
 		const Tag<16> & GetKey () const { return m_PeerOrderingKey; }
 

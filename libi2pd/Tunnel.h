@@ -4,9 +4,10 @@
  *
  * openi2pd: Tunnel.
  *
- * Declares Tunnel, OutboundTunnel and InboundTunnel together with their state
- * machine, build-response handling, layered encryption, latency tracking and
- * gateway sending, plus the Tunnels manager thread, pools and pending builds.
+ * Declares Tunnel, OutboundTunnel and InboundTunnel together with their
+ * state machine, build-response handling, layered encryption, latency
+ * tracking and gateway sending, plus the Tunnels manager thread, pools
+ * and pending builds.
  *
  */
 
@@ -65,12 +66,13 @@ namespace tunnel
 	/**
 	 * Record table planned for one short tunnel build message.
 	 *
-	 * `numHops` are the real hops of the configured path, `insertPhonyRecord`
-	 * adds the trailing phony record for an inbound tunnel and `numRecords` is
-	 * the record count advertised in ShortTunnelBuild. The hop loop indexes the
-	 * shuffled record map once per real hop, so `valid == false` means the
-	 * build must fail before any record buffer is touched. `PlanTunnelBuildRecords`
-	 * is the single authority for that decision.
+	 * `numHops` are the real hops of the configured path,
+	 * `insertPhonyRecord` adds the trailing phony record for an inbound
+	 * tunnel and `numRecords` is the record count advertised in
+	 * ShortTunnelBuild. The hop loop indexes the shuffled record map once
+	 * per real hop, so `valid == false` means the build must fail before
+	 * any record buffer is touched. `PlanTunnelBuildRecords` is the single
+	 * authority for that decision.
 	 */
 	struct TunnelBuildRecordPlan
 	{
@@ -95,9 +97,10 @@ namespace tunnel
 
 	class OutboundTunnel;
 	class InboundTunnel;
-	/// Locally built tunnel with a configuration, build state and hop ciphers.
-	/// Successful build-response processing installs the ciphers and releases
-	/// the configuration; the pool association is a shared-ownership snapshot.
+	/// Locally built tunnel with a configuration, build state and hop
+	/// ciphers. Successful build-response processing installs the ciphers
+	/// and releases the configuration; the pool association is a
+	/// shared-ownership snapshot.
 	class Tunnel : public TunnelBase, public std::enable_shared_from_this<Tunnel>
 	{
 		struct TunnelHop
@@ -126,18 +129,21 @@ namespace tunnel
 		bool IsRecreated () const { return m_IsRecreated.load (std::memory_order_relaxed); };
 		void SetRecreated (bool recreated) { m_IsRecreated.store (recreated, std::memory_order_relaxed); };
 		int GetNumHops () const { return static_cast<int> (m_Hops.size ()); };
-		/** record count advertised by the last build request, 0 if none was sent */
+		/**
+		 * record count advertised by the last build request, 0 if none was
+		 * sent
+		 */
 		int GetNumBuildRecords () const { return m_NumBuildRecords.load (std::memory_order_relaxed); };
 
 		/**
 		 * @name Tunnel test strikes
 		 *
-		 * How many tunnel tests this tunnel has failed in a row. The counter is
-		 * deliberately independent of the state machine: inbound traffic may
-		 * promote a pending tunnel to established, but it must not erase the
-		 * evidence that the tunnel already missed its test deadlines. The pool
-		 * fails the tunnel at TUNNEL_POOL_TEST_STRIKES and clears the counter
-		 * when a test succeeds.
+		 * How many tunnel tests this tunnel has failed in a row. The counter
+		 * is deliberately independent of the state machine: inbound traffic
+		 * may promote a pending tunnel to established, but it must not erase
+		 * the evidence that the tunnel already missed its test deadlines. The
+		 * pool fails the tunnel at TUNNEL_POOL_TEST_STRIKES and clears the
+		 * counter when a test succeeds.
 		 */
 		///@{
 		int GetTestStrikes () const { return m_TestStrikes.load (std::memory_order_relaxed); };
@@ -155,11 +161,14 @@ namespace tunnel
 		};
 
 		/// Decrypt and evaluate the response for the outstanding build.
-		/// @param msg Mutable response payload, including its record-count byte.
-		/// @param len Exact payload length; it must match the sent record count.
+		/// @param msg Mutable response payload, including its record-count
+		///            byte.
+		/// @param len Exact payload length; it must match the sent record
+		///            count.
 		/// @return True only when every hop accepted the build.
-		/// @warning Records are decrypted in place; a false result can still leave
-		/// the buffer modified and it must not be reused as the original response.
+		/// @warning Records are decrypted in place; a false result
+		///          can still leave the buffer modified and it must not be
+		///          reused as the original response.
 		bool HandleTunnelBuildResponse (uint8_t * msg, size_t len);
 
 		// implements TunnelBase
@@ -181,7 +190,7 @@ namespace tunnel
 		}
 		/** @brief get this tunnel's estimated latency */
 		int GetMeanLatency () const { return (m_Latency.load (std::memory_order_relaxed) + 500) / 1000; }
-		/** @brief return true if this tunnel's latency fits in range [lowerbound, upperbound] */
+		/** Return true when latency is within [lowerbound, upperbound]. */
 		bool LatencyFitsRange (int lowerbound, int upperbound) const;
 
 		bool LatencyIsKnown () const { return m_Latency.load (std::memory_order_relaxed) != UNKNOWN_LATENCY; }
@@ -203,11 +212,11 @@ namespace tunnel
 		std::atomic<int> m_TestStrikes; // failed tunnel tests in a row
 	};
 
-	/// Locally built outbound tunnel: this router is the gateway, so locally
-	/// originated cells are encrypted hop by hop and handed to the first peer.
-	/// `SendTunnelDataMsg...` are producer entry points and serialize through
-	/// `m_SendMutex`; `HandleTunnelDataMsg()` cannot legitimately be reached in
-	/// this direction and only logs an error.
+	/// Locally built outbound tunnel: this router is the gateway, so
+	/// locally originated cells are encrypted hop by hop and handed to the
+	/// first peer. `SendTunnelDataMsg...` are producer entry points and
+	/// serialize through `m_SendMutex`; `HandleTunnelDataMsg()` cannot
+	/// legitimately be reached in this direction and only logs an error.
 	class OutboundTunnel : public Tunnel
 	{
 	public:
@@ -238,10 +247,11 @@ namespace tunnel
 		i2p::data::IdentHash m_EndpointIdentHash;
 	};
 
-	/// Locally built inbound tunnel: the last hop delivers to this router, which
-	/// decrypts every layer and reassembles the I2NP message in `m_Endpoint`.
-	/// `HandleTunnelDataMsg()` runs on the tunnel worker and consumes the cell;
-	/// fragments and the per-tunnel IV replay filter are owned by the endpoint.
+	/// Locally built inbound tunnel: the last hop delivers to this router,
+	/// which decrypts every layer and reassembles the I2NP message in
+	/// `m_Endpoint`. `HandleTunnelDataMsg()` runs on the tunnel worker and
+	/// consumes the cell; fragments and the per-tunnel IV replay filter
+	/// are owned by the endpoint.
 	class InboundTunnel : public Tunnel
 	{
 	public:
@@ -268,9 +278,9 @@ namespace tunnel
 		TunnelEndpoint m_Endpoint;
 	};
 
-	/// Inbound shortcut for the local (zero-hop) case: no peer decrypts the cell,
-	/// so `SendTunnelDataMsg()` delivers it straight to the local endpoint and
-	/// the counter only exists for statistics.
+	/// Inbound shortcut for the local (zero-hop) case: no peer decrypts
+	/// the cell, so `SendTunnelDataMsg()` delivers it straight to the
+	/// local endpoint and the counter only exists for statistics.
 	class ZeroHopsInboundTunnel : public InboundTunnel
 	{
 	public:
@@ -282,9 +292,10 @@ namespace tunnel
 		size_t m_NumReceivedBytes;
 	};
 
-	/// Outbound shortcut for the local (zero-hop) case: a cell destined for
-	/// another router or tunnel is sent as a plain I2NP message, and a local
-	/// delivery is dispatched directly, so nothing is layered-encrypted.
+	/// Outbound shortcut for the local (zero-hop) case: a cell destined
+	/// for another router or tunnel is sent as a plain I2NP message, and a
+	/// local delivery is dispatched directly, so nothing is
+	/// layered-encrypted.
 	class ZeroHopsOutboundTunnel : public OutboundTunnel
 	{
 	public:
@@ -302,10 +313,10 @@ namespace tunnel
 	 * One-hop tunnel configurations used by the fallback builders.
 	 *
 	 * The far-end transport mask is the peer's real transport set in the
-	 * tunnel's direction. Passing a zero mask (a `false` boolean in the old
-	 * call sites) makes the tunnel incompatible with every paired tunnel and
-	 * disables the pairing checks in the pool, so these helpers exist to keep
-	 * the mask correct and testable.
+	 * tunnel's direction. Passing a zero mask (a `false` boolean in the
+	 * old call sites) makes the tunnel incompatible with every paired
+	 * tunnel and disables the pairing checks in the pool, so these helpers
+	 * exist to keep the mask correct and testable.
 	 */
 	std::shared_ptr<TunnelConfig> CreateOneHopInboundTunnelConfig (const i2p::data::RouterInfo & router);
 	std::shared_ptr<TunnelConfig> CreateOneHopOutboundTunnelConfig (
@@ -313,17 +324,17 @@ namespace tunnel
 	/** Outbound mirror of @a inbound: same peers, same far-end mask. */
 	std::shared_ptr<TunnelConfig> CreatePairedOutboundTunnelConfig (const InboundTunnel & inbound);
 
-	/// Tunnel manager: owns the tunnel worker thread, the registered tunnel
-	/// maps, the pending builds keyed by reply message ID, the pool list and the
-	/// transit-tunnel worker.
+	/// Tunnel manager: owns the tunnel worker thread, the registered
+	/// tunnel maps, the pending builds keyed by reply message ID, the pool
+	/// list and the transit-tunnel worker.
 	///
 	/// Tunnel and pool objects are shared, so administrative views publish
 	/// copies under `m_TunnelsMutex`. `m_PendingTunnelsMutex` guards the
 	/// reply-ID maps alone, while `m_LifecycleMutex` serializes Start/Stop
-	/// transitions and `m_QueueAdmissionMutex` keeps queue admission short so a
-	/// producer rejects promptly during a stop. The shared `std::mt19937` is
-	/// not thread-safe, so it is only reached through `GetRng()`/`Shuffle()`
-	/// under `m_RngMutex`.
+	/// transitions and `m_QueueAdmissionMutex` keeps queue admission short
+	/// so a producer rejects promptly during a stop. The shared
+	/// `std::mt19937` is not thread-safe, so it is only reached through
+	/// `GetRng()`/`Shuffle()` under `m_RngMutex`.
 	class Tunnels
 	{
 	public:
@@ -333,7 +344,8 @@ namespace tunnel
 		// tunnel maps. Start()/Stop() cycles are supported for an orderly
 		// restart with no in-flight traffic; wire messages queued for the old
 		// instance are dropped and must be retransmitted by peers. Producers
-		// must be quiesced across restart; posts carry no instance generation.
+		// must be quiesced across restart; posts carry no instance
+		// generation.
 		void Start ();
 		void Stop ();
 
@@ -352,8 +364,9 @@ namespace tunnel
 			std::shared_ptr<TunnelPool> pool, std::shared_ptr<OutboundTunnel> outboundTunnel);
 		std::shared_ptr<OutboundTunnel> CreateOutboundTunnel (
 			std::shared_ptr<TunnelConfig> config, std::shared_ptr<TunnelPool> pool);
-		// Returns false for a null message or when the service is stopped. The
-		// list overload consumes its input on both accepted and rejected posts.
+		// Returns false for a null message or when the service is stopped.
+		// The list overload consumes its input on both accepted and rejected
+		// posts.
 		bool PostTunnelData (std::shared_ptr<I2NPMessage> msg);
 		bool PostTunnelData (std::list<std::shared_ptr<I2NPMessage>> & msgs);
 		void AddPendingTunnel (uint32_t replyMsgID, std::shared_ptr<InboundTunnel> tunnel);
@@ -365,14 +378,19 @@ namespace tunnel
 
 		std::shared_ptr<I2NPMessage> NewI2NPTunnelMessage (bool endpoint);
 
-		/** Tunnels with an outstanding build request that belong to @a pool. */
+		/**
+		 * Tunnels with an outstanding build request that belong to @a pool.
+		 */
 		size_t GetNumPendingTunnels (const TunnelPool * pool, bool inbound) const;
 		/** Inbound registry messages dropped because the queue was full. */
 		uint64_t GetNumDroppedTunnelMessages () const
 		{
 			return m_NumDroppedTunnelMessages.load (std::memory_order_relaxed);
 		}
-		/** Queue size bound used by PostTunnelData(), for diagnostics and tests. */
+		/**
+		 * Queue size bound used by PostTunnelData(), for diagnostics and
+		 * tests.
+		 */
 		size_t GetTunnelMessageQueueLimit () const { return TUNNEL_MESSAGE_QUEUE_MAX_SIZE; }
 
 		void SetMaxNumTransitTunnels (uint32_t maxNumTransitTunnels);
@@ -388,7 +406,9 @@ namespace tunnel
 		uint32_t GetRng ();
 		/** Returns a copy of the shared RNG for read-only algorithms. */
 		std::mt19937 GetRngSnapshot () const;
-		/** Shuffle in place while advancing the shared RNG under its mutex. */
+		/**
+		 * Shuffle in place while advancing the shared RNG under its mutex.
+		 */
 		template <typename RandomIt> void Shuffle (RandomIt first, RandomIt last)
 		{
 			std::lock_guard<std::mutex> l (m_RngMutex);
@@ -482,7 +502,8 @@ namespace tunnel
 		TransitTunnels m_TransitTunnels;
 
 	public:
-		// for administrative views; thread-safe snapshots, safe to iterate without holding any lock
+		// for administrative views; thread-safe snapshots, safe to iterate
+		// without holding any lock
 		std::vector<std::shared_ptr<OutboundTunnel>> GetOutboundTunnelsList () const
 		{
 			std::lock_guard<std::mutex> l (m_TunnelsMutex);

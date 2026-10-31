@@ -4,7 +4,9 @@
  *
  * openi2pd: fuzz http parser.
  *
- * Feeds arbitrary bytes to HTTP request/response parsing, URL decoding and chunked-response merging, exercising header syntax, framing and chunk-length validation without sockets.
+ * Feeds arbitrary bytes to HTTP request/response parsing, URL decoding
+ * and chunked-response merging, exercising header syntax, framing and
+ * chunk-length validation without sockets.
  *
  */
 
@@ -32,8 +34,9 @@ extern "C" int LLVMFuzzerTestOneInput (const uint8_t * data, size_t size)
 	(void)i2p::http::MergeChunkedResponse (in, out);
 
 	// Compare the production tunnel transformer under whole-buffer and
-	// fragmented delivery. After the first header, production forwards body
-	// bytes directly, so include that untouched tail in the comparison.
+	// fragmented delivery. After the first header, production forwards
+	// body bytes directly, so include that untouched tail in the
+	// comparison.
 	using Parser = i2p::client::I2PTunnelHTTPHeader;
 	const auto tunnelInput = input.substr (0, i2p::client::I2P_TUNNEL_HTTP_MAX_HEADER_SIZE + 4096);
 	for (auto mode : { Parser::Mode::ClientRequest, Parser::Mode::ServerRequest, Parser::Mode::ServerResponse })

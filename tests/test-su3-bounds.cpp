@@ -4,7 +4,9 @@
  *
  * openi2pd: test su3 bounds.
  *
- * Feeds deliberately malformed SU3 reseed headers to the bounded parser, checking magic, versions, signature type/length, signer and content lengths, and rejection before allocation or decompression.
+ * Feeds deliberately malformed SU3 reseed headers to the bounded
+ * parser, checking magic, versions, signature type/length, signer and
+ * content lengths, and rejection before allocation or decompression.
  *
  */
 
@@ -105,8 +107,8 @@ int main ()
 		cases.push_back (WriteCase (directory, "empty-signer.su3", bytes));
 	}
 
-	// Valid prefix, then an impossible content length.  The parser must not
-	// reserve or seek based on this value.
+	// Valid prefix, then an impossible content length.  The parser must
+	// not reserve or seek based on this value.
 	{
 		auto bytes = HeaderPrefix ();
 		bytes.push_back (0); // format version
@@ -139,8 +141,9 @@ int main ()
 	i2p::data::Reseeder reseeder;
 	for (const auto & path : cases) assert (reseeder.ProcessSU3File (path.c_str ()) == 0);
 
-	// Java SU3File always verifies. The compiled default must be fail-closed
-	// when the configuration does not mention reseed.verify at all.
+	// Java SU3File always verifies. The compiled default must be
+	// fail-closed when the configuration does not mention reseed.verify at
+	// all.
 	{
 		i2p::config::Init ();
 		const auto configPath = directory / "empty.conf";

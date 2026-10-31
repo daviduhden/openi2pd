@@ -6,8 +6,8 @@
  *
  * Defines and parses the Boost.Program_options command line and INI
  * configuration surface for router, proxy, transport, limit, reseed and
- * platform-specific settings. Options are registered once and stored values
- * are cleared on re-initialisation, and help text documents the
+ * platform-specific settings. Options are registered once and stored
+ * values are cleared on re-initialisation, and help text documents the
  * platform-specific default paths; missing or invalid configuration
  * terminates startup with a fatal diagnostic.
  *
@@ -49,18 +49,19 @@ namespace config
 	/**
 	 * @brief Register the option table and clear previously stored values.
 	 *
-	 * Registration happens once per process; a second call only drops the stored
-	 * variables_map so a re-initialisation cannot keep values from an earlier
-	 * parse. Options and the parsed map are process globals with no locking, so all
-	 * of Init(), ParseCmdline(), ParseConfig() and Finalize() must run on the startup
-	 * thread before any service reads a value. There is no runtime reload path: a
-	 * changed configuration file takes effect only after a restart, and a component
-	 * that needs a section reloaded must implement it explicitly.
+	 * Registration happens once per process; a second call only drops the
+	 * stored variables_map so a re-initialisation cannot keep values from
+	 * an earlier parse. Options and the parsed map are process globals
+	 * with no locking, so all of Init(), ParseCmdline(), ParseConfig() and
+	 * Finalize() must run on the startup thread before any service reads a
+	 * value. There is no runtime reload path: a changed configuration file
+	 * takes effect only after a restart, and a component that needs a
+	 * section reloaded must implement it explicitly.
 	 */
 	void Init ()
 	{
-		// register options once, they never change; drop stored values because
-		// store() keeps the ones set by a previous Init
+		// register options once, they never change; drop stored values
+		// because store() keeps the ones set by a previous Init
 		m_Options.clear ();
 		static bool optionsRegistered = false;
 		if (optionsRegistered) return;
@@ -529,16 +530,17 @@ namespace config
 	 * @brief Parse the command line into the global option map.
 	 * @param argc argument count supplied by the process entry point.
 	 * @param argv argument vector supplied by the process entry point.
-	 * @param ignoreUnknown accept unregistered options instead of failing (used by
-	 *        front-ends that forward arguments to another component).
+	 * @param ignoreUnknown accept unregistered
+	 *                      options instead of failing (used by front-ends
+	 *                      that forward arguments to another component).
 	 *
-	 * Guessing of long option names is disabled so a typo cannot silently select a
-	 * different option. Proxy credentials are rejected here on purpose: a command
-	 * line value is visible in the process list and in shell history and may also
-	 * be echoed by a fatal parse diagnostic, so the credential options are
-	 * configuration-file only. Help and version print to stdout and exit, and a
-	 * parse error is fatal because a partially applied configuration is worse than
-	 * a failed start.
+	 * Guessing of long option names is disabled so a typo cannot silently
+	 * select a different option. Proxy credentials are rejected here on
+	 * purpose: a command line value is visible in the process list and in
+	 * shell history and may also be echoed by a fatal parse diagnostic, so
+	 * the credential options are configuration-file only. Help and version
+	 * print to stdout and exit, and a parse error is fatal because a
+	 * partially applied configuration is worse than a failed start.
 	 */
 	void ParseCmdline (int argc, char * argv[], bool ignoreUnknown)
 	{

@@ -4,11 +4,12 @@
  *
  * openi2pd: fuzz I2NP/garlic dispatch policy.
  *
- * Exercises the pure predicates that decide whether an untrusted message may
- * reach a handler: expiration, router-wide duplicate suppression, clove type
- * admission, clove count, DataMessage and DeliveryStatus lengths. It never
- * creates a router, socket or thread, so a finding is a policy/framing bug
- * rather than a networking artifact.
+ * Exercises the pure predicates that decide whether an untrusted
+ * message may reach a handler: expiration, router-wide duplicate
+ * suppression, clove type admission, clove count, DataMessage and
+ * DeliveryStatus lengths. It never creates a router, socket or thread,
+ * so a finding is a policy/framing bug rather than a networking
+ * artifact.
  *
  */
 
@@ -51,8 +52,9 @@ extern "C" int LLVMFuzzerTestOneInput (const uint8_t * data, size_t size)
 	(void)i2p::IsAllowedCloveMessageType (type, fromTunnel);
 	(void)i2p::IsAllowedCloveMessageType (type);
 
-	// Exercise the bounded filter itself, including generation rotation and
-	// eviction, with a tiny capacity so the input can reach both branches.
+	// Exercise the bounded filter itself, including generation rotation
+	// and eviction, with a tiny capacity so the input can reach both
+	// branches.
 	i2p::I2NPDuplicateFilter filter (size % 64 + 1, 1 + (size % 4));
 	(void)filter.CheckAndInsert (i2p::GetI2NPDuplicateKey (msgID, expiration, salt), now / 1000);
 	(void)filter.CheckAndInsert (i2p::GetI2NPDuplicateKey (msgID, expiration, salt), now / 1000 + 1);

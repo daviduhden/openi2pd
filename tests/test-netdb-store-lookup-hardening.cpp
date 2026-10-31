@@ -4,10 +4,10 @@
  *
  * openi2pd: test netdb store lookup hardening.
  *
- * Checks netDb store replacement: future or badly signed RouterInfos and stale
- * lease-sets must not erase valid entries, a replaced RouterInfo is installed
- * as one validated generation, and floodfill membership must follow
- * eligibility.
+ * Checks netDb store replacement: future or badly signed RouterInfos
+ * and stale lease-sets must not erase valid entries, a replaced
+ * RouterInfo is installed as one validated generation, and floodfill
+ * membership must follow eligibility.
  *
  */
 
@@ -29,9 +29,9 @@
 #include "RouterInfo.h"
 #include "Timestamp.h"
 
-// Static regression checks for the netDb store/replacement and DatabaseLookup
-// reply-key rules. No network, filesystem, netDb thread or request manager is
-// started.
+// Static regression checks for the netDb store/replacement and
+// DatabaseLookup reply-key rules. No network, filesystem, netDb thread
+// or request manager is started.
 
 namespace
 {
@@ -206,15 +206,18 @@ void TestRouterInfoReplacementPreservesValidEntry ()
 	assert (afterFuture == original);
 	assert (afterFuture->GetTimestamp () == now - 60 * 1000);
 
-	// A newer RI with an invalid signature is also rejected without erasing.
+	// A newer RI with an invalid signature is also rejected without
+	// erasing.
 	auto badSignature = BuildRouterInfo (keys, now, false, "2.13.0");
 	assert (!badSignature.empty ());
 	badSignature.at (badSignature.size () - 1) ^= 0x80;
 	assert (!db.AddRouterInfo (ident, badSignature.data (), badSignature.size ()));
 	assert (db.FindRouter (ident) == original);
 
-	// A valid newer RI is installed as the already-validated candidate. The
-	// map now publishes one generation instead of mutating the old object under
+	// A valid newer RI is installed as the already-validated candidate.
+	// The
+	// map now publishes one generation instead of mutating the old object
+	// under
 	// the container lock; holders of the previous shared_ptr keep the old
 	// descriptor, like the LeaseSet replacement path.
 	auto newerBuffer = BuildRouterInfo (keys, now, false, "2.13.0");
@@ -340,14 +343,16 @@ void TestLeaseSetCrossTypeFreshness ()
 	auto storedLs1 = db.FindLeaseSet (ident);
 	assert (storedLs1 && storedLs1->GetStoreType () == NETDB_STORE_TYPE_LEASESET);
 
-	// Java isNewer() uses the earliest lease date for an LS1<->LS2 transition.
+	// Java isNewer() uses the earliest lease date for an LS1<->LS2
+	// transition.
 	auto ls2Newer = BuildLeaseSet2 (keys, nowSec - 60, nowSec + 6 * 60);
 	assert (db.AddLeaseSet2 (ident, ls2Newer.data () + 1, ls2Newer.size () - 1, NETDB_STORE_TYPE_STANDARD_LEASESET2));
 	auto storedLs2 = db.FindLeaseSet (ident);
 	assert (storedLs2 && storedLs2 != storedLs1);
 	assert (storedLs2->GetStoreType () == NETDB_STORE_TYPE_STANDARD_LEASESET2);
 
-	// The reverse direction also compares earliest leases, not header expiry.
+	// The reverse direction also compares earliest leases, not header
+	// expiry.
 	auto ls1Newer = BuildLeaseSet1 (keys, { now + 7 * 60 * 1000, now + 12 * 60 * 1000 });
 	assert (db.AddLeaseSet (ident, ls1Newer.data (), ls1Newer.size ()));
 	auto storedLs1Again = db.FindLeaseSet (ident);
@@ -391,16 +396,16 @@ void TestDatabaseLookupReplyKeyParser ()
 	assert (!ParseDatabaseLookupReplyKey (block.data (), 33, i2p::DATABASE_LOOKUP_RATCHET_FLAG, parsed));
 	assert (!ParseDatabaseLookupReplyKey (block.data (), 33 + 7, i2p::DATABASE_LOOKUP_RATCHET_FLAG, parsed));
 
-	// 0x12: proposal 154 derived keys are TBD. Java 2.14.0 parses the mode but
-	// has no sender/KDF and answers in cleartext; this implementation stays
-	// fail-closed and must never produce a cleartext reply.
+	// 0x12: proposal 154 derived keys are TBD. Java 2.14.0 parses the mode
+	// but has no sender/KDF and answers in cleartext; this implementation
+	// stays fail-closed and must never produce a cleartext reply.
 	const uint8_t derivedKeyFlags = i2p::DATABASE_LOOKUP_ENCRYPTION_FLAG | i2p::DATABASE_LOOKUP_RATCHET_FLAG;
 	block[32] = 0;
 	assert (!ParseDatabaseLookupReplyKey (block.data (), 32, derivedKeyFlags, parsed));
 	assert (parsed.mode == DatabaseLookupReplyKey::Mode::None);
 	assert (!CanEncryptDatabaseLookupReply (derivedKeyFlags, parsed));
-	// The same matrix with a spurious count byte: no value of it may be read as
-	// a usable tag count or as an ElGamal/ECIES key block.
+	// The same matrix with a spurious count byte: no value of it may be
+	// read as a usable tag count or as an ElGamal/ECIES key block.
 	for (uint8_t count : { uint8_t (1), uint8_t (2), i2p::DATABASE_LOOKUP_MAX_NUM_TAGS, uint8_t (0xFF) })
 	{
 		block[32] = count;
@@ -416,8 +421,8 @@ void TestDatabaseLookupReplyKeyParser ()
 	assert (!ParseDatabaseLookupReplyKey (block.data (), 33 + 8, i2p::DATABASE_LOOKUP_ENCRYPTION_FLAG, parsed));
 	assert (parsed.mode == DatabaseLookupReplyKey::Mode::None);
 
-	// A successful parse always yields an encrypting mode, so a lookup that
-	// requested an encrypted reply can never fall back to cleartext.
+	// A successful parse always yields an encrypting mode, so a lookup
+	// that requested an encrypted reply can never fall back to cleartext.
 	block[32] = 1;
 	assert (ParseDatabaseLookupReplyKey (block.data (), 33 + 32, i2p::DATABASE_LOOKUP_ENCRYPTION_FLAG, parsed));
 	assert (CanEncryptDatabaseLookupReply (i2p::DATABASE_LOOKUP_ENCRYPTION_FLAG, parsed));

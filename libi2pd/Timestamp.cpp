@@ -4,9 +4,9 @@
  *
  * openi2pd: Timestamp.
  *
- * Implements wall-clock and monotonic time accessors, offset-adjusted UTC date
- * formatting, and the NTP client loop that resolves the configured servers and
- * updates the shared offset atomically.
+ * Implements wall-clock and monotonic time accessors, offset-adjusted
+ * UTC date formatting, and the NTP client loop that resolves the
+ * configured servers and updates the shared offset atomically.
  *
  */
 
@@ -87,21 +87,21 @@ namespace util
 		// Leap 3 means the server itself is unsynchronized: the reply carries
 		// no authoritative time and must not be applied.
 		if (leap > 2) return NTPReplyError::Leap;
-		// Stratum 0 is a kiss-o'-death or unspecified clock; 16..255 is reserved
-		// or unsynchronized.
+		// Stratum 0 is a kiss-o'-death or unspecified clock; 16..255 is
+		// reserved or unsynchronized.
 		if (packet[1] == 0 || packet[1] > 15) return NTPReplyError::Stratum;
 		const uint32_t rootDelay = bufbe32toh (packet.data () + 4) >> 16;
 		if (rootDelay > NTP_MAX_ROOT_DELAY_SECONDS) return NTPReplyError::RootDelay;
 		const uint32_t rootDispersion = bufbe32toh (packet.data () + 8) >> 16;
 		if (rootDispersion > NTP_MAX_ROOT_DISPERSION_SECONDS) return NTPReplyError::RootDispersion;
-		// The origin field must echo the transmit timestamp of our request, so
-		// an off-path or delayed reply is not accepted as an answer to it.
+		// The origin field must echo the transmit timestamp of our request,
+		// so an off-path or delayed reply is not accepted as an answer to it.
 		if (bufbe64toh (packet.data () + 24) != expectedOrigin) return NTPReplyError::Origin;
 		const uint64_t transmit = bufbe64toh (packet.data () + 32);
 		const uint64_t ntpSeconds = transmit >> 32;
 		if (ntpSeconds == 0) return NTPReplyError::TransmitTime;
-		// NTP counts from 1900 in a 32-bit second field: values below the Unix
-		// epoch delta belong to era 1 (after 2036).
+		// NTP counts from 1900 in a 32-bit second field: values below the
+		// Unix epoch delta belong to era 1 (after 2036).
 		const uint64_t unixSeconds = ntpSeconds >= NTP_UNIX_EPOCH_DELTA
 			? ntpSeconds - NTP_UNIX_EPOCH_DELTA
 			: ntpSeconds + (uint64_t { 1 } << 32) - NTP_UNIX_EPOCH_DELTA;

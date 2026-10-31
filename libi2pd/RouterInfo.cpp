@@ -4,12 +4,12 @@
  *
  * openi2pd: RouterInfo.
  *
- * Implements RouterInfo and LocalRouterInfo wire parsing, validation, signing,
- * capability/transport extraction and persistence, including per-family
- * NTCP2/SSU2 addresses, introducers, options and congestion metadata. Address
- * hosts, ports, MTU, versions, introducers and signatures from peers are
- * strictly bounded, while local updates rebuild the signed buffer and save it
- * asynchronously.
+ * Implements RouterInfo and LocalRouterInfo wire parsing, validation,
+ * signing, capability/transport extraction and persistence, including
+ * per-family NTCP2/SSU2 addresses, introducers, options and congestion
+ * metadata. Address hosts, ports, MTU, versions, introducers and
+ * signatures from peers are strictly bounded, while local updates
+ * rebuild the signed buffer and save it asynchronously.
  *
  */
 
@@ -49,10 +49,10 @@ namespace data
 	{
 		// Copy an address into a distinct object restricted to one address
 		// family. A non-published SSU2 or NTCP2 address can declare both "4"
-		// and "6" in its caps, but host, published state, introducers, MTU and
-		// version are per-family state. Java publishes separate v4 and v6
-		// RouterAddresses for this reason; keep the same independence here so a
-		// v4 firewall/port update cannot modify the v6 address (and vice
+		// and "6" in its caps, but host, published state, introducers, MTU
+		// and version are per-family state. Java publishes separate v4 and v6
+		// RouterAddresses for this reason; keep the same independence here so
+		// a v4 firewall/port update cannot modify the v6 address (and vice
 		// versa).
 		void CopyAddressForFamily (const RouterInfo::Address & src, RouterInfo::Address & dst, bool v4)
 		{
@@ -124,10 +124,10 @@ namespace data
 			return (rank >= 1 && rank <= 7) ? caps[rank] : 0;
 		}
 
-		// Derive supported/reachable/published transports from address objects.
-		// Both the RouterInfo parser and UpdateSupportedTransports() use this,
-		// so a parsed RouterInfo and the same object after a local address
-		// update agree.
+		// Derive supported/reachable/published transports from address
+		// objects. Both the RouterInfo parser and UpdateSupportedTransports()
+		// use this, so a parsed RouterInfo and the same object after a local
+		// address update agree.
 		void ComputeAddressTransports (const RouterInfo::Addresses & addresses,
 			RouterInfo::CompatibleTransports & supported, RouterInfo::CompatibleTransports & reachable,
 			RouterInfo::CompatibleTransports & published)
@@ -168,11 +168,12 @@ namespace data
 			reachable |= published;
 		}
 
-		// A dual-stack firewalled NTCP2 endpoint is one RouterAddress with caps
-		// "46" in Java (setOutboundNTCP2Address). Locally we keep two address
-		// objects so host/port mutations stay family-local, but merge them back
-		// on the wire when everything except the family cap is identical. This
-		// preserves the bytes our RouterInfo published before the split.
+		// A dual-stack firewalled NTCP2 endpoint is one RouterAddress with
+		// caps "46" in Java (setOutboundNTCP2Address). Locally we keep two
+		// address objects so host/port mutations stay family-local, but merge
+		// them back on the wire when everything except the family cap is
+		// identical. This preserves the bytes our RouterInfo published before
+		// the split.
 		bool IsMergeableNTCP2Twin (const RouterInfo::Address & v4, const RouterInfo::Address & v6)
 		{
 			if (!v4.IsNTCP2 () || !v6.IsNTCP2 () || v4.published || v6.published) return false;
@@ -286,13 +287,14 @@ namespace data
 	 * @param len bytes available; bounded by MAX_RI_BUFFER_SIZE.
 	 * @return true only when the new body was verified and installed.
 	 *
-	 * The update is bound to the identity already cached for this entry: the
-	 * identity prefix of @a buf is not re-parsed and cannot introduce a different
-	 * router. RSA identities are refused before any provider work, mirroring the
-	 * network parse path. The body is parsed into temporary state and installed
-	 * only after the whole structure validates, and the updated flag is published
-	 * after the buffer, so a persistence pass can never observe the new flag with
-	 * the old bytes. Any failure leaves the previous entry intact.
+	 * The update is bound to the identity already cached for this entry:
+	 * the identity prefix of @a buf is not re-parsed and cannot introduce
+	 * a different router. RSA identities are refused before any provider
+	 * work, mirroring the network parse path. The body is parsed into
+	 * temporary state and installed only after the whole structure
+	 * validates, and the updated flag is published after the buffer, so a
+	 * persistence pass can never observe the new flag with the old bytes.
+	 * Any failure leaves the previous entry intact.
 	 */
 	bool RouterInfo::Update (const uint8_t * buf, size_t len)
 	{
@@ -307,18 +309,18 @@ namespace data
 			LogPrint (eLogWarning, "RouterInfo: Can't update without an identity");
 			return false;
 		}
-		// Java DatabaseEntry.verifySignature() rejects RSA router identities as
-		// a DoS policy, independently of whether this build can verify them.
-		// Keep that policy for updates too, so an RSA identity can never be
-		// introduced through a re-signed body.
+		// Java DatabaseEntry.verifySignature() rejects RSA router identities
+		// as a DoS policy, independently of whether this build can verify
+		// them. Keep that policy for updates too, so an RSA identity can
+		// never be introduced through a re-signed body.
 		if (identity->IsRSA ())
 		{
 			LogPrint (eLogWarning, "RouterInfo: RSA router identities are not accepted");
 			return false;
 		}
-		// Verify the signature with the identity we already have. This binds the
-		// new body to the cached router identity; the caller also checks that
-		// the announced identity hash matches the store key.
+		// Verify the signature with the identity we already have. This binds
+		// the new body to the cached router identity; the caller also checks
+		// that the announced identity hash matches the store key.
 		size_t signatureLen = identity->GetSignatureLen ();
 		if (len < signatureLen)
 		{
@@ -337,9 +339,9 @@ namespace data
 			LogPrint (eLogError, "RouterInfo: Identity length ", identityLen, " leaves no signed body");
 			return false;
 		}
-		// ReadFromBuffer() commits its result only after the complete body has
-		// been validated. A signed but malformed update therefore leaves the
-		// previously cached RouterInfo untouched instead of destroying it
+		// ReadFromBuffer() commits its result only after the complete body
+		// has been validated. A signed but malformed update therefore leaves
+		// the previously cached RouterInfo untouched instead of destroying it
 		// (Java NetDb keeps the old RouterInfo when validation fails).
 		bool foreignNetId = false;
 		if (!ReadFromBuffer (buf + identityLen, signedLen - identityLen, &foreignNetId))
@@ -348,9 +350,9 @@ namespace data
 			if (foreignNetId) m_HasForeignNetId.store (true);
 			return false;
 		}
-		// Install the validated body first; publish the updated flag only after
-		// it is visible. A persistence pass can then never snapshot the old
-		// body while consuming the new update flag.
+		// Install the validated body first; publish the updated flag only
+		// after it is visible. A persistence pass can then never snapshot the
+		// old body while consuming the new update flag.
 		UpdateBuffer (buf, len);
 		m_IsUpdated.store (true);
 		return true;
@@ -406,8 +408,9 @@ namespace data
 	{
 		if (LoadFile (fullPath))
 			// Files are locally stored but can still be corrupted or replaced.
-			// Java PersistentDataStore.read() uses readBytes(in, true), so verify
-			// the signature on load instead of trusting the data directory.
+			// Java PersistentDataStore.read() uses readBytes(in, true), so
+			// verify the signature on load instead of trusting the data
+			// directory.
 			ReadFromBuffer (true);
 		else
 			m_IsUnreachable.store (true);
@@ -442,12 +445,13 @@ namespace data
 			return;
 		}
 		size_t signedLen = bufferLen - signatureLen;
-		// Java DatabaseEntry.verifySignature() rejects an RSA-signed RouterInfo
-		// as a DoS policy. The RSA verifier stays available for SU3 files and
-		// local use, but a network or on-disk RouterInfo must never be accepted
-		// with an RSA identity (this also removes RSA modulus work from the
-		// untrusted parse path). Check it before signature verification so the
-		// policy does not depend on the verifier implementation.
+		// Java DatabaseEntry.verifySignature() rejects an RSA-signed
+		// RouterInfo as a DoS policy. The RSA verifier stays available for
+		// SU3 files and local use, but a network or on-disk RouterInfo must
+		// never be accepted with an RSA identity (this also removes RSA
+		// modulus work from the untrusted parse path). Check it before
+		// signature verification so the policy does not depend on the
+		// verifier implementation.
 		if (m_RouterIdentity->IsRSA ())
 		{
 			LogPrint (eLogError, "RouterInfo: RSA router identities are not accepted");
@@ -486,36 +490,41 @@ namespace data
 	}
 
 	/**
-	 * @brief Parse the signed body of a RouterInfo (no identity, no signature).
+	 * @brief Parse the signed body of a RouterInfo (no identity, no
+	 *        signature).
 	 * @param buf first byte after the identity prefix.
 	 * @param len bytes up to the start of the trailing signature.
-	 * @param foreignNetIdOut optional flag set when the body declared a netId
-	 *        other than ours and the parse was rejected for that reason.
+	 * @param foreignNetIdOut optional flag set when
+	 *                        the body declared a netId other than ours and
+	 *                        the parse was rejected for that reason.
 	 * @return true when the complete body was parsed and committed.
 	 *
-	 * Two rules keep this parser safe against untrusted peers. First, the caller
-	 * has already removed the prefix and signature, so no length is subtracted
-	 * twice and the property section must end exactly at @a len. Second, all state
-	 * is parsed into locals and committed only on success, because the same
-	 * function is used by Update() on an existing entry that must survive a
-	 * malformed but correctly signed replacement.
+	 * Two rules keep this parser safe against untrusted peers. First, the
+	 * caller has already removed the prefix and signature, so no length is
+	 * subtracted twice and the property section must end exactly at @a
+	 * len. Second, all state is parsed into locals and committed only on
+	 * success, because the same function is used by Update() on an
+	 * existing entry that must survive a malformed but correctly signed
+	 * replacement.
 	 *
-	 * Independent checks mirror Java RouterInfo.readBytes(): at most sixteen
-	 * addresses, each address block bounded by its own declared size, unique
-	 * parameter keys, and only the exact "NTCP"/"NTCP2"/"SSU"/"SSU2" transport
-	 * names are matched. A parse failure never yields a partially populated
-	 * address list or property map.
+	 * Independent checks mirror Java RouterInfo.readBytes(): at most
+	 * sixteen addresses, each address block bounded by its own declared
+	 * size, unique parameter keys, and only the exact
+	 * "NTCP"/"NTCP2"/"SSU"/"SSU2" transport names are matched. A parse
+	 * failure never yields a partially populated address list or property
+	 * map.
 	 */
 	bool RouterInfo::ReadFromBuffer (const uint8_t * buf, size_t len, bool * foreignNetIdOut)
 	{
-		// Callers pass the signed body only: ReadFromBuffer(bool) and Update()
-		// already removed the identity prefix and the trailing signature. The
-		// parser must not subtract the signature length a second time, otherwise
-		// the property section cannot end at len and every RouterInfo is rejected.
+		// Callers pass the signed body only: ReadFromBuffer(bool) and
+		// Update() already removed the identity prefix and the trailing
+		// signature. The parser must not subtract the signature length a
+		// second time, otherwise the property section cannot end at len and
+		// every RouterInfo is rejected.
 		if (!buf || len < 9) return false;
 		// Parse into locals and commit only after the complete body is valid.
-		// Update() must keep the previously cached RouterInfo when a signed but
-		// malformed update arrives (Java NetDb keeps the old entry too).
+		// Update() must keep the previously cached RouterInfo when a signed
+		// but malformed update arrives (Java NetDb keeps the old entry too).
 		uint64_t timestamp = bufbe64toh (buf);
 		size_t offset = 8; // timestamp
 		// read addresses
@@ -925,8 +934,9 @@ namespace data
 			}
 		}
 		// Derive the transport masks from the surviving address objects, the
-		// same way UpdateSupportedTransports() does. Keeping one implementation
-		// avoids the parser and later local updates disagreeing.
+		// same way UpdateSupportedTransports() does. Keeping one
+		// implementation avoids the parser and later local updates
+		// disagreeing.
 		CompatibleTransports supportedTransports = 0, reachableTransports = 0, publishedTransports = 0;
 		ComputeAddressTransports (*addresses, supportedTransports, reachableTransports, publishedTransports);
 		// read peers
@@ -1024,9 +1034,9 @@ namespace data
 		}
 
 		// Verify the family signature with the final family value. Java reads
-		// the option map first and FamilyKeyCrypto.verify(ri) afterwards, so a
-		// tolerated unsorted "family.sig" before "family" must not disable the
-		// family binding.
+		// the option map first and FamilyKeyCrypto.verify(ri) afterwards, so
+		// a tolerated unsorted "family.sig" before "family" must not disable
+		// the family binding.
 		FamilyID familyID = 0;
 		if (hasFamilySignature)
 		{
@@ -1046,16 +1056,17 @@ namespace data
 		if (!valid) return false;
 
 		// Java routers older than the peer-test version must not publish the
-		// SSU2 "B" cap. Apply it after all properties are known so an unsorted
-		// caps/version pair cannot re-add it.
+		// SSU2 "B" cap. Apply it after all properties are known so an
+		// unsorted caps/version pair cannot re-add it.
 		if (version < NETDB_MIN_PEER_TEST_VERSION)
 		{
 			for (auto & address : *addresses)
 				if (address && address->IsSSU2 ()) address->caps &= ~eSSUTesting;
 		}
 
-		// Commit the fully validated body. Nothing above changes this object's
-		// state, so Update() can keep the old RouterInfo on any failure.
+		// Commit the fully validated body. Nothing above changes this
+		// object's state, so Update() can keep the old RouterInfo on any
+		// failure.
 		m_Timestamp.store (timestamp);
 		m_Caps.store (caps);
 		m_BandwidthCap.store (bandwidthCap);
@@ -1080,11 +1091,12 @@ namespace data
 	void RouterInfo::ExtractCaps (
 		std::string_view value, uint8_t & caps, char & bandwidthCap, Congestion & congestion) const
 	{
-		// Java RouterInfo.getBandwidthTier() searches the fixed strongest-first
-		// list "X P O N M L K", i.e. the result does not depend on the order in
-		// which several bandwidth caps appear. Track the strongest one here and
-		// derive the high/extra flags from it instead of letting the last
-		// character win (which could keep eExtraBandwidth with an "O" tier).
+		// Java RouterInfo.getBandwidthTier() searches the fixed
+		// strongest-first list "X P O N M L K", i.e. the result does not
+		// depend on the order in which several bandwidth caps appear. Track
+		// the strongest one here and derive the high/extra flags from it
+		// instead of letting the last character win (which could keep
+		// eExtraBandwidth with an "O" tier).
 		int bandwidthRank = BandwidthRank (bandwidthCap);
 		for (auto cap : value)
 		{
@@ -1196,9 +1208,10 @@ namespace data
 	{
 		if (!buf) return false;
 		// Replace the previous descriptor through the shared atomic writer:
-		// unique no-follow temporary file, fsync, then rename. A crash or short
-		// write must not truncate the last valid cached RouterInfo, and a
-		// predictable ".tmp" name must not be reusable as an attack surface.
+		// unique no-follow temporary file, fsync, then rename. A crash or
+		// short write must not truncate the last valid cached RouterInfo, and
+		// a predictable ".tmp" name must not be reusable as an attack
+		// surface.
 		const auto contents = std::string_view (reinterpret_cast<const char *> (buf->data ()), buf->GetBufferLen ());
 		if (!i2p::fs::AtomicWrite (fullPath, contents))
 		{
@@ -1230,8 +1243,8 @@ namespace data
 		const size_t len = buf->GetBufferLen ();
 		if (!len) return false;
 		// The artifact writer replaces the previous cache file atomically, so
-		// a failure keeps the last valid RouterInfo on disk. The bytes and the
-		// name are unchanged from the direct writer.
+		// a failure keeps the last valid RouterInfo on disk. The bytes and
+		// the name are unchanged from the direct writer.
 		return i2p::data::WriteArtifact (
 			i2p::data::StorageArtifact::RouterInfoCache, identBase64, std::span<const uint8_t> (buf->data (), len));
 	}
@@ -1283,11 +1296,11 @@ namespace data
 
 	void RouterInfo::AddNTCP2Address (const uint8_t * staticKey, const uint8_t * iv, int port, uint8_t caps)
 	{
-		// A firewalled NTCP2 address with caps "46" is one RouterAddress entry
-		// but two independent per-family endpoints. Storing the same object in
-		// both slots let UpdateAddress()/PublishNTCP2Address() set a v4 host on
-		// the v6 object (and vice versa), silently dropping a family from our
-		// own RouterInfo. Split it exactly like SSU2.
+		// A firewalled NTCP2 address with caps "46" is one RouterAddress
+		// entry but two independent per-family endpoints. Storing the same
+		// object in both slots let UpdateAddress()/PublishNTCP2Address() set
+		// a v4 host on the v6 object (and vice versa), silently dropping a
+		// family from our own RouterInfo. Split it exactly like SSU2.
 		auto addresses = GetAddresses ();
 		auto add = [&] (bool v4)
 		{
@@ -1646,10 +1659,11 @@ namespace data
 	{
 		auto profile = m_Profile.Load ();
 		if (profile) return profile;
-		// Never create or load a profile here. Selection filters call this while
-		// holding a netDb container mutex, where disk IO is forbidden; a profile
-		// created by another component is still visible through the process-wide
-		// map, so a known-unreachable peer is not resurrected by the fallback.
+		// Never create or load a profile here. Selection filters call this
+		// while holding a netDb container mutex, where disk IO is forbidden;
+		// a profile created by another component is still visible through the
+		// process-wide map, so a known-unreachable peer is not resurrected by
+		// the fallback.
 		return i2p::data::GetRouterProfileIfExists (GetIdentHash ());
 	}
 
@@ -1681,8 +1695,8 @@ namespace data
 
 	bool RouterInfo::IsEligibleFloodfill () const
 	{
-		// floodfill must have published ipv4 or reachable ipv4 and published ipv6
-		// >= 0.9.62 and not DSA
+		// floodfill must have published ipv4 or reachable ipv4 and published
+		// ipv6 >= 0.9.62 and not DSA
 		auto identity = GetIdentity ();
 		if (!identity) return false;
 		return m_Version.load () >= NETDB_MIN_FLOODFILL_VERSION
@@ -1725,8 +1739,8 @@ namespace data
 	void RouterInfo::SetUnreachableAddressesTransportCaps (uint8_t transports)
 	{
 		// A split address object belongs to exactly one family slot. Applying
-		// the caller's combined "46" mask to every object would make a v4-only
-		// address claim eV6 while the v6 slot stays empty.
+		// the caller's combined "46" mask to every object would make a
+		// v4-only address claim eV6 while the v6 slot stays empty.
 		auto addresses = GetAddresses ();
 		if (!addresses) return;
 		for (uint8_t i = 0; i < eNumTransports; i++)
@@ -1884,14 +1898,16 @@ namespace data
 
 	/**
 	 * @brief Rebuild the serialised RouterInfo and sign it.
-	 * @param privateKeys our identity; signs the body and supplies the prefix.
+	 * @param privateKeys our identity; signs the body and supplies the
+	 *                    prefix.
 	 *
-	 * The previous timestamp is restored when serialisation, buffer allocation or
-	 * the size bound fails, so a failed rebuild never leaves a timestamp newer than
-	 * the retained bytes. The signature is written directly after the body with
-	 * exactly GetSignatureLen() bytes; len + signatureLen is checked against
-	 * MAX_RI_BUFFER_SIZE before the buffer is created, which is what makes the
-	 * narrowing cast of len to int safe.
+	 * The previous timestamp is restored when serialisation, buffer
+	 * allocation or the size bound fails, so a failed rebuild never leaves
+	 * a timestamp newer than the retained bytes. The signature is written
+	 * directly after the body with exactly GetSignatureLen() bytes; len +
+	 * signatureLen is checked against MAX_RI_BUFFER_SIZE before the buffer
+	 * is created, which is what makes the narrowing cast of len to int
+	 * safe.
 	 */
 	void LocalRouterInfo::CreateBuffer (const PrivateKeys & privateKeys)
 	{
@@ -1939,7 +1955,8 @@ namespace data
 	{
 		SetCaps (caps);
 		// Keep IsFloodfill() consistent with the "f" cap (Java reads the cap
-		// string each time). RouterContext keeps its own policy flag separately.
+		// string each time). RouterContext keeps its own policy flag
+		// separately.
 		if (caps & i2p::data::RouterInfo::eFloodfill)
 			SetFloodfill ();
 		else
@@ -1947,12 +1964,13 @@ namespace data
 		UpdateCapsProperty ();
 	}
 
-	// The caps string is a wire value: peers and Java compare it as flags, so the
-	// order and the single letter per flag matter more than readability. Bandwidth
-	// is the only flag that is encoded as exactly one of L/O/P/X, and congestion
-	// only appends a letter for medium/high/reject-all (low congestion is the
-	// absence of a letter). Keep this in sync with ExtractCaps() and never emit a
-	// duplicate letter: a duplicated cap is ambiguous to the peer.
+	// The caps string is a wire value: peers and Java compare it as flags,
+	// so the order and the single letter per flag matter more than
+	// readability. Bandwidth is the only flag that is encoded as exactly
+	// one of L/O/P/X, and congestion only appends a letter for
+	// medium/high/reject-all (low congestion is the absence of a letter).
+	// Keep this in sync with ExtractCaps() and never emit a duplicate
+	// letter: a duplicated cap is ambiguous to the peer.
 	void LocalRouterInfo::UpdateCapsProperty ()
 	{
 		std::string caps;
@@ -2001,11 +2019,11 @@ namespace data
 		return false;
 	}
 
-	// A RouterInfo is only hashed, signed and served from the buffer written by
-	// CreateBuffer(); the trailing bytes are the signature over everything before
-	// them. Writing stops at the declared addresses/properties, so a RouterInfo with
-	// no addresses still serialises a valid empty list rather than a truncated
-	// structure.
+	// A RouterInfo is only hashed, signed and served from the buffer
+	// written by CreateBuffer(); the trailing bytes are the signature over
+	// everything before them. Writing stops at the declared
+	// addresses/properties, so a RouterInfo with no addresses still
+	// serialises a valid empty list rather than a truncated structure.
 	void LocalRouterInfo::WriteToStream (std::ostream & s) const
 	{
 		auto addresses = GetAddresses ();
@@ -2286,10 +2304,10 @@ namespace data
 
 	void LocalRouterInfo::WriteString (const std::string & str, std::ostream & s) const
 	{
-		// Java DataHelper.writeString()/writeProperties() throw on strings over
-		// 255 bytes. CreateBuffer() cannot signal an error, so keep the mapping
-		// well-formed and make the loss visible instead of silently wrapping
-		// the length byte (256 bytes used to become an empty value).
+		// Java DataHelper.writeString()/writeProperties() throw on strings
+		// over 255 bytes. CreateBuffer() cannot signal an error, so keep the
+		// mapping well-formed and make the loss visible instead of silently
+		// wrapping the length byte (256 bytes used to become an empty value).
 		if (str.size () > 255)
 			LogPrint (eLogError, "RouterInfo: String of ", str.size (), " bytes exceeds the 255-byte mapping limit");
 		uint8_t len = static_cast<uint8_t> (std::min<size_t> (str.size (), 255));

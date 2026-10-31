@@ -4,11 +4,12 @@
  *
  * openi2pd: test datagram receiver dispatch.
  *
- * Covers (protocol, port) keying of identity and hash receivers for Datagram1
- * (17), Datagram2 (19) and Datagram3 (20), the explicit catch-all fallback,
- * the absence of port-to-wildcard promotion, the raw protocol registration
- * refusals and the 0xff to PROTO_UNSPECIFIED normalization. No socket, routing
- * path or SAM control connection is involved.
+ * Covers (protocol, port) keying of identity and hash receivers for
+ * Datagram1 (17), Datagram2 (19) and Datagram3 (20), the explicit
+ * catch-all fallback, the absence of port-to-wildcard promotion, the
+ * raw protocol registration refusals and the 0xff to PROTO_UNSPECIFIED
+ * normalization. No socket, routing path or SAM control connection is
+ * involved.
  *
  */
 
@@ -80,8 +81,9 @@ std::vector<uint8_t> MakeDatagram1 (const Sender & sender, const std::vector<uin
 	return frame;
 }
 
-// Datagram2 wire form: identity || flags || payload || signature, where the
-// signature covers toHash || flags || payload (Datagram2.java make()).
+// Datagram2 wire form: identity || flags || payload || signature, where
+// the signature covers toHash || flags || payload (Datagram2.java
+// make()).
 std::vector<uint8_t> MakeDatagram2 (
 	const Sender & sender, const i2p::data::IdentHash & to, const std::vector<uint8_t> & payload)
 {
@@ -108,9 +110,9 @@ std::vector<uint8_t> MakeDatagram3 (const i2p::data::IdentHash & from, const std
 	return frame;
 }
 
-// DatagramDestination inflates every inbound protocol. The fixture is built
-// without compression, so a stored (uncompressed) gzip member is what the
-// destination would have produced itself.
+// DatagramDestination inflates every inbound protocol. The fixture is
+// built without compression, so a stored (uncompressed) gzip member is
+// what the destination would have produced itself.
 std::vector<uint8_t> Store (const std::vector<uint8_t> & frame)
 {
 	std::vector<uint8_t> out (frame.size () + 23);
@@ -214,7 +216,8 @@ void TestCatchAllFallback ()
 	auto fixture = MakeFixture ();
 	auto sender = MakeSender ();
 	int identityCalls = 0, protocolWildcardCalls = 0;
-	// Explicit (PROTO_ANY, PORT_ANY) listener: Java's only destination-wide
+	// Explicit (PROTO_ANY, PORT_ANY) listener: Java's only
+	// destination-wide
 	// fallback.
 	auto catchAll = fixture.destination->SetReceiver (
 		[&] (const i2p::data::IdentityEx &, uint16_t, uint16_t, const uint8_t *, size_t, const i2p::util::Mapping *)
@@ -228,7 +231,8 @@ void TestCatchAllFallback ()
 	assert (protocolWildcardCalls == 1);
 	assert (identityCalls == 0);
 
-	// Datagram2 has no protocol wildcard, so it reaches the (0, 0) listener.
+	// Datagram2 has no protocol wildcard, so it reaches the (0, 0)
+	// listener.
 	Dispatch (fixture, 9051, i2p::client::PROTOCOL_TYPE_DATAGRAM2,
 		MakeDatagram2 (sender, fixture.keys.GetPublic ()->GetIdentHash (), PAYLOAD));
 	assert (identityCalls == 1);
@@ -320,8 +324,8 @@ void TestUnspecifiedProtocolNormalization ()
 	assert (observed == 0);
 	assert (receiver.Reset ());
 
-	// A registration on the literal 0xff value can never be reached, so the
-	// normalization does not create a second catch-all.
+	// A registration on the literal 0xff value can never be reached, so
+	// the normalization does not create a second catch-all.
 	auto literal = MakeFixture ();
 	int literalCalls = 0;
 	auto literalReceiver = literal.destination->SetRawReceiver (

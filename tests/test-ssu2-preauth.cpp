@@ -4,7 +4,12 @@
  *
  * openi2pd: test ssu2 preauth.
  *
- * Enforces SSU2 pre-authentication boundaries: handshake states accept only whitelisted blocks, PeerTest/I2NP/Address handlers require an established session with a remote identity, PathChallenge is answered only from an established session, data-phase blocks are rejected before authentication, and an unauthenticated Retry cannot downgrade the negotiated PQ version.
+ * Enforces SSU2 pre-authentication boundaries: handshake states accept
+ * only whitelisted blocks, PeerTest/I2NP/Address handlers require an
+ * established session with a remote identity, PathChallenge is answered
+ * only from an established session, data-phase blocks are rejected
+ * before authentication, and an unauthenticated Retry cannot downgrade
+ * the negotiated PQ version.
  *
  */
 
@@ -68,8 +73,8 @@ void TestStateBlockMatrix ()
 
 void TestPreAuthHandlerGuards ()
 {
-	// HandlePeerTest (msgs 1-4) and HandleI2NPMsg only run in the established
-	// data phase and only with a known peer identity.
+	// HandlePeerTest (msgs 1-4) and HandleI2NPMsg only run in the
+	// established data phase and only with a known peer identity.
 	assert (IsSSU2EstablishedPayloadContext (eSSU2SessionStateEstablished, true));
 	assert (!IsSSU2EstablishedPayloadContext (eSSU2SessionStateEstablished, false));
 	for (auto state :
@@ -82,8 +87,9 @@ void TestPreAuthHandlerGuards ()
 		assert (!IsSSU2EstablishedPayloadContext (state, false));
 	}
 
-	// HandleAddress also accepts the two authenticated pre-data contexts that
-	// legitimately carry an Address block, but never without an identity.
+	// HandleAddress also accepts the two authenticated pre-data contexts
+	// that legitimately carry an Address block, but never without an
+	// identity.
 	assert (IsSSU2AddressBlockContextAllowed (eSSU2SessionStateEstablished, true));
 	assert (IsSSU2AddressBlockContextAllowed (eSSU2SessionStateSessionCreatedReceived, true));
 	assert (IsSSU2AddressBlockContextAllowed (eSSU2SessionStateTokenReceived, true));
@@ -116,8 +122,8 @@ void TestPathChallengeStateMatrix ()
 
 void TestPathChallengeRetransmissionSchedule ()
 {
-	// Java PeerState2: initial send, then retries after 5 s, 10 s, 20 s and a
-	// 30 s overall deadline. The delay doubles after every send.
+	// Java PeerState2: initial send, then retries after 5 s, 10 s, 20 s
+	// and a 30 s overall deadline. The delay doubles after every send.
 	assert (SSU2_MAX_PATH_CHALLENGE_SENDS == 4);
 	assert (SSU2_PATH_CHALLENGE_DELAY == 5000);
 	assert (SSU2_MAX_PATH_CHALLENGE_TIME == 30000);
@@ -136,7 +142,8 @@ void TestPathChallengeRetransmissionSchedule ()
 	assert (!IsSSU2PathChallengeExpired (started, started, 1));
 	assert (!IsSSU2PathChallengeExpired (started + SSU2_MAX_PATH_CHALLENGE_TIME, started, 1));
 	assert (IsSSU2PathChallengeExpired (started + SSU2_MAX_PATH_CHALLENGE_TIME + 1, started, 1));
-	// Exactly four sends are still allowed; only a fifth exceeds the bound.
+	// Exactly four sends are still allowed; only a fifth exceeds the
+	// bound.
 	assert (!IsSSU2PathChallengeExpired (started + 1, started, SSU2_MAX_PATH_CHALLENGE_SENDS));
 	assert (IsSSU2PathChallengeExpired (started + 1, started, SSU2_MAX_PATH_CHALLENGE_SENDS + 1));
 
@@ -223,7 +230,8 @@ void TestPayloadValidatorRejectsPreAuthInjection ()
 void TestRetryVersionAuthorisation ()
 {
 	// The Retry header "ver" byte is authenticated only with the peer's
-	// published intro key, so a forged lower value must never be adopted. The
+	// published intro key, so a forged lower value must never be adopted.
+	// The
 	// signed RouterInfo "pq" option is the only authority.
 	const uint8_t v2Only = GetSSU2AdvertisedVersionMask (0);
 	const uint8_t v2v3 = GetSSU2AdvertisedVersionMask (1u << 3);
@@ -251,13 +259,14 @@ void TestRetryVersionAuthorisation ()
 	assert (!IsSSU2RetryVersionAccepted (0, v2Only));
 	assert (!IsSSU2RetryVersionAccepted (1, v2Only));
 
-	// The authenticated IncompatibleVersion fallback may only select a version
-	// the peer advertised, and only ever downwards.
+	// The authenticated IncompatibleVersion fallback may only select a
+	// version the peer advertised, and only ever downwards.
 	assert (GetSSU2FallbackVersion (4, v2v3v4) == 3);
 	assert (GetSSU2FallbackVersion (4, v2v4) == 2); // 3 was not advertised
 	assert (GetSSU2FallbackVersion (3, v2v3) == 2);
 	assert (GetSSU2FallbackVersion (3, v2v3v4) == 2);
-	// Nothing left to fall back to: the attempt must fail, not force version 2
+	// Nothing left to fall back to: the attempt must fail, not force
+	// version 2
 	// for a peer that never advertised a lower one.
 	assert (GetSSU2FallbackVersion (2, v2Only) == 0);
 	assert (GetSSU2FallbackVersion (2, v2v3v4) == 0);

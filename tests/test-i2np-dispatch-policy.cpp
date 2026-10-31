@@ -5,11 +5,12 @@
  * openi2pd: I2NP dispatcher admission policy.
  *
  * Checks the Java 2.14.0 MessageValidator window applied before an I2NP
- * message reaches a handler, the bounded decaying duplicate filter keyed by
- * message ID and expiration second (DecayingHashSet TIMER_MASK form), the
- * origin-dependent clove allow-list, the strict DeliveryStatus and DataMessage
- * payload lengths, the bounded garlic queue predicate and the
- * CreateI2NPMessage overflow behaviour. No sockets, threads or sleeps are used.
+ * message reaches a handler, the bounded decaying duplicate filter
+ * keyed by message ID and expiration second (DecayingHashSet TIMER_MASK
+ * form), the origin-dependent clove allow-list, the strict
+ * DeliveryStatus and DataMessage payload lengths, the bounded garlic
+ * queue predicate and the CreateI2NPMessage overflow behaviour. No
+ * sockets, threads or sleeps are used.
  *
  */
 
@@ -26,8 +27,8 @@
 
 namespace i2p::data
 {
-// The friend declared by NetDb; only queue admission is exposed so the dispatch
-// path can be observed without starting the netDb worker.
+// The friend declared by NetDb; only queue admission is exposed so the
+// dispatch path can be observed without starting the netDb worker.
 struct NetDbLifecycleTestAccess
 {
 	static void OpenAdmission (NetDb & database)
@@ -56,8 +57,8 @@ void ResetDispatchState ()
 
 void TestDispatcherExpirationWindow ()
 {
-	// Java MessageValidator: 90 s in the past and 240 s in the future are the
-	// boundaries and both are inclusive.
+	// Java MessageValidator: 90 s in the past and 240 s in the future are
+	// the boundaries and both are inclusive.
 	const uint64_t now = 1'700'000'000'000ULL;
 	assert (IsFreshI2NPExpiration (now, now));
 	assert (IsFreshI2NPExpiration (now - I2NP_DISPATCH_MAX_AGE, now)); // exactly 90 s old
@@ -71,7 +72,8 @@ void TestDispatcherExpirationWindow ()
 
 void TestDispatchExpiryExemptsTunnelData ()
 {
-	// A TunnelData cell has no meaningful expiration; the endpoint validates
+	// A TunnelData cell has no meaningful expiration; the endpoint
+	// validates
 	// the inner message after decryption.
 	const uint8_t empty = 0;
 	auto tunnelData = CreateI2NPMessage (eI2NPTunnelData, &empty, 0, 0x01020304);
@@ -99,7 +101,8 @@ void TestDuplicateKeyMatrix ()
 	// Same ID and same expiration second: same key.
 	assert (GetI2NPDuplicateKey (msgID, expiration, I2NP_DUPLICATE_SALT_ROUTER)
 		== GetI2NPDuplicateKey (msgID, expiration + 999, I2NP_DUPLICATE_SALT_ROUTER));
-	// A different expiration second is a different key, so a peer cannot keep
+	// A different expiration second is a different key, so a peer cannot
+	// keep
 	// one ID alive by resending it with a later date.
 	assert (GetI2NPDuplicateKey (msgID, expiration, I2NP_DUPLICATE_SALT_ROUTER)
 		!= GetI2NPDuplicateKey (msgID, expiration + 1000, I2NP_DUPLICATE_SALT_ROUTER));
@@ -111,7 +114,8 @@ void TestDuplicateKeyMatrix ()
 	assert (GetI2NPDuplicateKey (msgID, expiration, I2NP_DUPLICATE_SALT_ROUTER)
 		!= GetI2NPDuplicateKey (msgID, expiration, I2NP_DUPLICATE_SALT_DESTINATION));
 	// TIME_MASK drops the high bits of the expiration second, so dates one
-	// 2^31-second cycle apart share a key (Java DecayingHashSet semantics).
+	// 2^31-second cycle apart share a key (Java DecayingHashSet
+	// semantics).
 	const uint64_t wrapped = expiration + (static_cast<uint64_t> (I2NP_DUPLICATE_TIME_MASK) + 1) * 1000;
 	assert (GetI2NPDuplicateKey (msgID, expiration, I2NP_DUPLICATE_SALT_ROUTER)
 		== GetI2NPDuplicateKey (msgID, wrapped, I2NP_DUPLICATE_SALT_ROUTER));
@@ -125,8 +129,8 @@ void TestDuplicateFilterDecayAndBound ()
 	assert (!filter.CheckAndInsert (2, 1000));
 	assert (filter.GetSize () == 2);
 
-	// Rotation moves the current generation to the previous one, so an entry
-	// stays visible for one more window.
+	// Rotation moves the current generation to the previous one, so an
+	// entry stays visible for one more window.
 	assert (!filter.CheckAndInsert (3, 1011));
 	assert (filter.CheckAndInsert (1, 1011));
 	assert (filter.CheckAndInsert (2, 1011));
@@ -152,7 +156,8 @@ void TestDuplicateFilterDecayAndBound ()
 
 void TestCloveAllowListByOrigin ()
 {
-	// Java InboundMessageDistributor.handleClove(): a tunnel-delivered garlic
+	// Java InboundMessageDistributor.handleClove(): a tunnel-delivered
+	// garlic
 	// may carry data and control replies only.
 	assert (IsAllowedCloveMessageType (eI2NPData, true));
 	assert (IsAllowedCloveMessageType (eI2NPDeliveryStatus, true));
@@ -165,8 +170,9 @@ void TestCloveAllowListByOrigin ()
 	assert (!IsAllowedCloveMessageType (eI2NPShortTunnelBuild, true));
 	assert (!IsAllowedCloveMessageType (eI2NPVariableTunnelBuild, true));
 
-	// A garlic received directly from a peer is HandleGarlicMessageJob: it may
-	// additionally carry a TunnelTest, but still no tunnel/build request.
+	// A garlic received directly from a peer is HandleGarlicMessageJob: it
+	// may additionally carry a TunnelTest, but still no tunnel/build
+	// request.
 	assert (IsAllowedCloveMessageType (eI2NPData, false));
 	assert (IsAllowedCloveMessageType (eI2NPTunnelTest, false));
 	assert (!IsAllowedCloveMessageType (eI2NPTunnelData, false));
@@ -203,7 +209,8 @@ void TestDispatcherDropsExpiredAndDuplicate ()
 	HandleI2NPMessage (other);
 	assert (Access::Queued (database) == 2);
 
-	// An expired message is dropped before the handler, even with a fresh ID.
+	// An expired message is dropped before the handler, even with a fresh
+	// ID.
 	auto expired = CreateI2NPMessage (eI2NPDatabaseStore, payload, sizeof (payload), 0xAABBCCDF);
 	assert (expired);
 	expired->SetExpiration (i2p::util::GetMillisecondsSinceEpoch () - I2NP_DISPATCH_MAX_AGE - 1);
@@ -219,7 +226,8 @@ void TestDispatcherDropsExpiredAndDuplicate ()
 	assert (Access::Queued (database) == 2);
 	assert (GetI2NPDispatchCounters ().expired.load () == 2);
 
-	// A clove-delivered type outside the allow-list never reaches the netDb.
+	// A clove-delivered type outside the allow-list never reaches the
+	// netDb.
 	auto cloveLookup = CreateI2NPMessage (eI2NPTunnelData, payload, 0, 0xAABBCCE1);
 	assert (cloveLookup);
 	cloveLookup->fromClove = true;
@@ -242,7 +250,8 @@ void TestCreateI2NPMessageBounds ()
 	assert (fits);
 	assert (fits->GetPayloadLength () == maxPayload);
 
-	// ... one more byte is refused instead of returning a truncated message.
+	// ... one more byte is refused instead of returning a truncated
+	// message.
 	auto tooLong = CreateI2NPMessage (eI2NPData, payload.get (), maxPayload + 1, 2);
 	assert (!tooLong);
 	assert (GetI2NPDispatchCounters ().oversizedMessage.load () >= 1);
@@ -250,7 +259,8 @@ void TestCreateI2NPMessageBounds ()
 	// A null payload with a non-zero length is refused as well.
 	assert (!CreateI2NPMessage (eI2NPData, nullptr, 4, 3));
 
-	// The tunnel-delivered factory rejects a payload that does not fit rather
+	// The tunnel-delivered factory rejects a payload that does not fit
+	// rather
 	// than handing back an uninitialised message.
 	auto fromTunnel = CreateI2NPMessage (payload.get (), I2NP_MAX_MESSAGE_SIZE + 1, nullptr);
 	assert (!fromTunnel);
@@ -274,7 +284,8 @@ void TestStrictPayloadLengths ()
 	assert (deliveryStatus->GetPayloadLength () == DELIVERY_STATUS_SIZE);
 	assert (IsValidDeliveryStatusPayload (deliveryStatus->GetPayloadLength ()));
 
-	// DataMessage: the declared length is the whole payload, no trailing bytes.
+	// DataMessage: the declared length is the whole payload, no trailing
+	// bytes.
 	assert (IsValidDataMessageLength (0, 4));
 	assert (IsValidDataMessageLength (10, 14));
 	assert (!IsValidDataMessageLength (11, 14));

@@ -4,7 +4,9 @@
  *
  * openi2pd: test ssu2 address negotiation.
  *
- * Checks SSU2 RouterInfo address metadata: version-2 compatibility lists, pq preference selection against published MTU, and rejection of sub-1280 MTUs or malformed values.
+ * Checks SSU2 RouterInfo address metadata: version-2 compatibility
+ * lists, pq preference selection against published MTU, and rejection
+ * of sub-1280 MTUs or malformed values.
  *
  */
 
@@ -42,7 +44,8 @@ void AppendString (std::vector<uint8_t> & out, std::string_view value)
 	out.insert (out.end (), value.begin (), value.end ());
 }
 
-// RouterInfo mappings are sequences of length-prefixed key, '=', value and ';'.
+// RouterInfo mappings are sequences of length-prefixed key, '=', value
+// and ';'.
 // Build the encoded bytes, not a human-readable semicolon list.
 void AppendParam (std::string & out, std::string_view key, std::string_view value)
 {
@@ -171,8 +174,8 @@ int main ()
 	const int bestDefaultMTU = HasPQ (4) ? 4 : (HasPQ (3) ? 3 : 2);
 	ExpectAccepted (keys, "", "2", "4,3", bestDefaultMTU, true);
 
-	// ML-KEM-768 needs 1318 bytes on IPv4. A lower published MTU must select
-	// the ML-KEM-512 version when available, otherwise base SSU2.
+	// ML-KEM-768 needs 1318 bytes on IPv4. A lower published MTU must
+	// select the ML-KEM-512 version when available, otherwise base SSU2.
 	const int bestLowMTU = HasPQ (3) ? 3 : 2;
 	ExpectAccepted (keys, "1317", "2", "4,3", bestLowMTU, true);
 	ExpectAccepted (keys, "1318", "2", "4,3", HasPQ (4) ? 4 : bestLowMTU, true);

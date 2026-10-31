@@ -4,7 +4,10 @@
  *
  * openi2pd: test sam datagram framing.
  *
- * Parses SAM 3.x datagram first lines, supporting versioned and legacy forms, per-datagram ports, raw protocol and repeated spaces while rejecting missing nickname/destination and computing resume offsets for split sends.
+ * Parses SAM 3.x datagram first lines, supporting versioned and legacy
+ * forms, per-datagram ports, raw protocol and repeated spaces while
+ * rejecting missing nickname/destination and computing resume offsets
+ * for split sends.
  *
  */
 
@@ -59,19 +62,21 @@ int main ()
 	assert (!ParseSAMDatagramHeader ("nick", header));
 	assert (!ParseSAMDatagramHeader ("", header));
 
-	// Resume offset for a DATAGRAM SEND split across reads. A partial payload
-	// must keep the complete command line (offset inside the socket buffer),
-	// not only the bytes after the parameters. A complete frame with trailing
-	// bytes keeps just the trailing fragment.
+	// Resume offset for a DATAGRAM SEND split across reads. A partial
+	// payload must keep the complete command line (offset inside the
+	// socket buffer), not only the bytes after the parameters. A complete
+	// frame with trailing bytes keeps just the trailing fragment.
 	const size_t paramsOffset = 14; // "DATAGRAM SEND "
 	assert (GetSAMSendResumeOffset (paramsOffset, 100, 0) == paramsOffset + 100);
 	assert (GetSAMSendResumeOffset (paramsOffset, 100, 40) == 60);
 	assert (GetSAMSendResumeOffset (paramsOffset, 100, 100) == 0);
 	assert (GetSAMSendResumeOffset (paramsOffset, 0, 0) == 0);
 
-	// The SAM 3.3 LISTEN_PROTOCOL contract and the DatagramDestination dispatch
+	// The SAM 3.3 LISTEN_PROTOCOL contract and the DatagramDestination
+	// dispatch
 	// contract must agree: streaming (6) and the typed datagram protocols
-	// (17/19/20) are consumed by their own handlers and are never RAW payloads,
+	// (17/19/20) are consumed by their own handlers and are never RAW
+	// payloads,
 	// while PROTO_UNSPECIFIED (0) and ordinary payload protocols are.
 	for (const uint8_t reserved :
 		{ SAM_LISTEN_PROTOCOL_STREAMING, PROTOCOL_TYPE_DATAGRAM, PROTOCOL_TYPE_DATAGRAM2, PROTOCOL_TYPE_DATAGRAM3 })

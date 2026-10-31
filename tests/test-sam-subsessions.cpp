@@ -4,12 +4,13 @@
  *
  * openi2pd: test SAM subsessions.
  *
- * Exercises the SAM 3.3 LISTEN_PROTOCOL grammar, LISTEN_PORT selection, the
- * per-style effective receive protocol (17/19/20 for DATAGRAM/DATAGRAM2/
- * DATAGRAM3), the primary-subsession duplicate key and protocol-aware RAW
- * receiver dispatch (exact match, protocol-0 catch-all, streaming exclusion and
- * registration reset). No socket, router or SAM session is created; the
- * dispatch cases use a local DatagramDestination fixture.
+ * Exercises the SAM 3.3 LISTEN_PROTOCOL grammar, LISTEN_PORT selection,
+ * the per-style effective receive protocol (17/19/20 for
+ * DATAGRAM/DATAGRAM2/ DATAGRAM3), the primary-subsession duplicate key
+ * and protocol-aware RAW receiver dispatch (exact match, protocol-0
+ * catch-all, streaming exclusion and registration reset). No socket,
+ * router or SAM session is created; the dispatch cases use a local
+ * DatagramDestination fixture.
  *
  */
 
@@ -38,8 +39,10 @@ i2p::util::Mapping MakeParams (std::initializer_list<std::pair<const std::string
 
 std::vector<uint8_t> MakeEmptyStoredGzipMember ()
 {
-	// DatagramDestination inflates every raw incoming payload. This minimal
-	// stored empty gzip member is the same fixture the receiver-lifecycle test
+	// DatagramDestination inflates every raw incoming payload. This
+	// minimal
+	// stored empty gzip member is the same fixture the receiver-lifecycle
+	// test
 	// uses; it produces a valid zero-length payload.
 	return { 0x1f, 0x8b, 0x08, 0, 0, 0, 0, 0, 0, 0xff, 0x01, 0, 0, 0xff, 0xff, 0, 0, 0, 0, 0, 0, 0, 0 };
 }
@@ -56,9 +59,9 @@ std::shared_ptr<i2p::datagram::DatagramDestination> MakeDatagramDestination ()
 	return std::make_shared<i2p::datagram::DatagramDestination> (owner, false, i2p::datagram::eDatagramV1);
 }
 
-// Delivers a raw payload with the given I2CP protocol number through the
-// production dispatch path, so the protocol-6 guard and receiver selection are
-// both exercised.
+// Delivers a raw payload with the given I2CP protocol number through
+// the production dispatch path, so the protocol-6 guard and receiver
+// selection are both exercised.
 void DispatchRaw (
 	const std::shared_ptr<i2p::datagram::DatagramDestination> & destination, uint16_t port, uint8_t protocol)
 {
@@ -78,9 +81,10 @@ void TestListenProtocolGrammar ()
 	assert (ResolveSAMListenProtocol (absent, SAMSessionType::eSAMSessionTypeRaw, 33, listen));
 	assert (listen == 33);
 
-	// The PROTOCOL default obeys the same rule: a RAW receive key can never be
-	// streaming (6) or one of the datagram style protocols (17/19/20), because
-	// DatagramDestination routes those to the datagram handlers.
+	// The PROTOCOL default obeys the same rule: a RAW receive key can
+	// never be streaming (6) or one of the datagram style protocols
+	// (17/19/20), because DatagramDestination routes those to the datagram
+	// handlers.
 	assert (!ResolveSAMListenProtocol (absent, SAMSessionType::eSAMSessionTypeRaw, 6, listen));
 	assert (!ResolveSAMListenProtocol (absent, SAMSessionType::eSAMSessionTypeRaw, 17, listen));
 	assert (!ResolveSAMListenProtocol (absent, SAMSessionType::eSAMSessionTypeRaw, 19, listen));
@@ -104,7 +108,8 @@ void TestListenProtocolGrammar ()
 	assert (ResolveSAMListenProtocol (raw255, SAMSessionType::eSAMSessionTypeRaw, 18, listen));
 	assert (listen == 255);
 
-	// Protocol 6 is streaming and 17/19/20 belong to the datagram styles; a RAW
+	// Protocol 6 is streaming and 17/19/20 belong to the datagram styles;
+	// a RAW
 	// receiver must reject them instead of registering an unreachable key.
 	for (const char * value : { "6", "17", "19", "20" })
 	{
@@ -112,17 +117,17 @@ void TestListenProtocolGrammar ()
 		assert (!ResolveSAMListenProtocol (reserved, SAMSessionType::eSAMSessionTypeRaw, 18, listen));
 	}
 
-	// Malformed values are rejected: no digits, trailing garbage, signs and a
-	// value beyond the uint8_t range.
+	// Malformed values are rejected: no digits, trailing garbage, signs
+	// and a value beyond the uint8_t range.
 	for (const char * value : { "", "x", "18x", "-1", "+18", "256", "0x12" })
 	{
 		auto bad = MakeParams ({ { SAM_PARAM_LISTEN_PROTOCOL, value } });
 		assert (!ResolveSAMListenProtocol (bad, SAMSessionType::eSAMSessionTypeRaw, 18, listen));
 	}
 
-	// Java only interprets the option for RAW, but a DATAGRAM subsession must
-	// accept (validate and ignore) it: the style itself selects 17/19/20. An
-	// invalid value is still refused.
+	// Java only interprets the option for RAW, but a DATAGRAM subsession
+	// must accept (validate and ignore) it: the style itself selects
+	// 17/19/20. An invalid value is still refused.
 	auto validValue = MakeParams ({ { SAM_PARAM_LISTEN_PROTOCOL, "17" } });
 	assert (ResolveSAMListenProtocol (validValue, SAMSessionType::eSAMSessionTypeDatagram, 17, listen));
 	assert (ResolveSAMListenProtocol (validValue, SAMSessionType::eSAMSessionTypeDatagram, 0, listen));
@@ -131,7 +136,8 @@ void TestListenProtocolGrammar ()
 	auto badValue = MakeParams ({ { SAM_PARAM_LISTEN_PROTOCOL, "x" } });
 	assert (!ResolveSAMListenProtocol (badValue, SAMSessionType::eSAMSessionTypeDatagram, 17, listen));
 
-	// STREAM, PRIMARY and unknown styles reject the option even when its value
+	// STREAM, PRIMARY and unknown styles reject the option even when its
+	// value
 	// is valid.
 	assert (!ResolveSAMListenProtocol (validValue, SAMSessionType::eSAMSessionTypeStream, 0, listen));
 	assert (!ResolveSAMListenProtocol (validValue, SAMSessionType::eSAMSessionTypeMaster, 0, listen));
@@ -144,7 +150,8 @@ void TestStyleListenProtocol ()
 {
 	using Version = i2p::datagram::DatagramVersion;
 
-	// RAW keeps LISTEN_PROTOCOL; the three datagram styles map onto their I2CP
+	// RAW keeps LISTEN_PROTOCOL; the three datagram styles map onto their
+	// I2CP
 	// protocols so they can share a listen port; STREAM has no receive
 	// protocol.
 	assert (SAMStyleListenProtocol (SAMSessionType::eSAMSessionTypeRaw, i2p::datagram::eDatagramV1, 33) == 33);
@@ -201,7 +208,8 @@ void TestSubsessionDuplicateKey ()
 	assert (datagram1 != MakeSAMSubsessionKey (SAMSessionType::eSAMSessionTypeDatagram, PROTOCOL_TYPE_DATAGRAM, 9001));
 	assert (datagram1 != raw18);
 
-	// STREAM subsessions have no receive protocol (SAMStyleListenProtocol is 0),
+	// STREAM subsessions have no receive protocol (SAMStyleListenProtocol
+	// is 0),
 	// so they may share a port with a RAW subsession.
 	assert (SAMStyleListenProtocol (SAMSessionType::eSAMSessionTypeStream, Version::eDatagramV1, 6) == 0);
 	assert (SAMStyleListenProtocol (SAMSessionType::eSAMSessionTypeMaster, Version::eDatagramV1, 6) == 0);
@@ -213,8 +221,8 @@ void TestSubsessionDuplicateKey ()
 void TestSessionListenPort ()
 {
 	// SAM v3: LISTEN_PORT is the I2CP receive port and defaults to 0
-	// (PORT_ANY); PORT is only the local UDP forward endpoint and must never
-	// become the receive port.
+	// (PORT_ANY); PORT is only the local UDP forward endpoint and must
+	// never become the receive port.
 	uint16_t listenPort = 1234;
 	assert (ResolveSAMSessionListenPort (MakeParams ({ }), listenPort));
 	assert (listenPort == 0);
@@ -247,7 +255,8 @@ void TestProtocolAwareRawDispatch ()
 	auto wildcardPort = destination->SetRawReceiver (
 		[&] (uint8_t, uint16_t, uint16_t, const uint8_t *, size_t) { ++wildcardPortCalls; }, 0, 33);
 
-	// Exact protocol match wins over the protocol-0 catch-all on that port.
+	// Exact protocol match wins over the protocol-0 catch-all on that
+	// port.
 	DispatchRaw (destination, 9000, 33);
 	assert (exactCalls == 1);
 	assert (catchAllCalls == 0);
@@ -268,14 +277,14 @@ void TestProtocolAwareRawDispatch ()
 	assert (catchAllCalls == 2);
 	assert (exactCalls == 1);
 
-	// A protocol-specific registration must not become the destination-wide
-	// fallback for unrelated raw traffic.
+	// A protocol-specific registration must not become the
+	// destination-wide fallback for unrelated raw traffic.
 	DispatchRaw (destination, 9002, 18);
 	assert (catchAllCalls == 3);
 	assert (wildcardPortCalls == 1);
 
-	// Protocol 6 (streaming) is never delivered to a raw receiver, including a
-	// protocol-0 catch-all.
+	// Protocol 6 (streaming) is never delivered to a raw receiver,
+	// including a protocol-0 catch-all.
 	DispatchRaw (destination, 9000, 6);
 	DispatchRaw (destination, 9000, SAM_LISTEN_PROTOCOL_STREAMING);
 	assert (catchAllCalls == 3);
@@ -307,15 +316,15 @@ void TestProtocolAwareReset ()
 	DispatchRaw (destination, 9100, 33);
 	assert (exactCalls == 1);
 
-	// SESSION REMOVE-style reset of the exact protocol registration leaves the
-	// catch-all as the remaining match, not a stale protocol-33 entry.
+	// SESSION REMOVE-style reset of the exact protocol registration leaves
+	// the catch-all as the remaining match, not a stale protocol-33 entry.
 	assert (exact.Reset ());
 	DispatchRaw (destination, 9100, 33);
 	assert (catchAllCalls == 1);
 	exactCalls = 0;
 
-	// Re-registering the same protocol key after a reset succeeds and the new
-	// receiver receives the traffic.
+	// Re-registering the same protocol key after a reset succeeds and the
+	// new receiver receives the traffic.
 	auto replacement = destination->SetRawReceiver (
 		[&] (uint8_t, uint16_t, uint16_t, const uint8_t *, size_t) { ++replacementCalls; }, 9100, 33);
 	DispatchRaw (destination, 9100, 33);

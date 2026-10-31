@@ -4,7 +4,9 @@
  *
  * openi2pd: test leaseset netdb 2.13 freshness.
  *
- * Checks Java 2.13 netDb lease-set rules, including the 15-minute future-lease window, P-256 wire keys, the unpublished flag, DatabaseLookup peer caps and DatabaseStore type masking.
+ * Checks Java 2.13 netDb lease-set rules, including the 15-minute
+ * future-lease window, P-256 wire keys, the unpublished flag,
+ * DatabaseLookup peer caps and DatabaseStore type masking.
  *
  */
 
@@ -21,8 +23,8 @@
 #include "LeaseSet.h"
 #include "Timestamp.h"
 
-// Static regression checks for the Java 2.13 lease-set store rules and the
-// DatabaseStore type byte. No network or netDb thread is started.
+// Static regression checks for the Java 2.13 lease-set store rules and
+// the DatabaseStore type byte. No network or netDb thread is started.
 
 namespace
 {
@@ -121,8 +123,8 @@ void TestLeaseSet1FutureLease ()
 	}
 
 	// Java KademliaNetworkDatabaseFacade.validate() rejects leases beyond
-	// CLOCK_FUDGE + MAX_LEASE_FUTURE (15 minutes). Before the fix this LS1 was
-	// accepted and would never expire in ManageLeaseSets().
+	// CLOCK_FUDGE + MAX_LEASE_FUTURE (15 minutes). Before the fix this LS1
+	// was accepted and would never expire in ManageLeaseSets().
 	{
 		auto buffer = BuildLeaseSet1 (keys, now + 17 * 60 * 1000);
 		uint64_t expires = 0;
@@ -206,8 +208,8 @@ void TestDatabaseLookupPeerLimit ()
 		excluded.insert (peer);
 	}
 
-	// Java DatabaseLookupMessage rejects more than MAX_NUM_PEERS (512), so a
-	// serializer must not emit a larger exclusion block.
+	// Java DatabaseLookupMessage rejects more than MAX_NUM_PEERS (512), so
+	// a serializer must not emit a larger exclusion block.
 	auto msg = i2p::CreateRouterInfoDatabaseLookupMsg (key.data (), from.data (), 0, false, &excluded);
 	assert (msg);
 	const uint8_t * payload = msg->GetPayload ();

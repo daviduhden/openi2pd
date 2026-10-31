@@ -4,7 +4,8 @@
  *
  * openi2pd: test http url decode.
  *
- * Checks percent-decoding of UTF-8 and embedded NUL bytes, including the option that preserves or decodes %00.
+ * Checks percent-decoding of UTF-8 and embedded NUL bytes, including
+ * the option that preserves or decodes %00.
  *
  */
 

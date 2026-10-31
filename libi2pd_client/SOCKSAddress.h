@@ -4,8 +4,8 @@
  *
  * openi2pd: SOCKS address buffer.
  *
- * Fixed-capacity SOCKS5 domain-name buffer with explicit rejection instead of
- * length wrap or out-of-bounds writes.
+ * Fixed-capacity SOCKS5 domain-name buffer with explicit rejection
+ * instead of length wrap or out-of-bounds writes.
  */
 
 #ifndef SOCKS_ADDRESS_H__

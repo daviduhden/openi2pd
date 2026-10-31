@@ -4,11 +4,12 @@
  *
  * openi2pd: FS.
  *
- * Implements data-directory detection and filesystem helpers: Windows AppData
- * or service paths, OpenBSD /var/i2pd, Android external storage and Unix home
- * fallbacks, plus directory/file creation, rename and removal. Hashed storage
- * maps identities to sanitised leaf names and walks the tree, while private
- * key files are created owner-readable and owner-writable only.
+ * Implements data-directory detection and filesystem helpers: Windows
+ * AppData or service paths, OpenBSD /var/i2pd, Android external storage
+ * and Unix home fallbacks, plus directory/file creation, rename and
+ * removal. Hashed storage maps identities to sanitised leaf names and
+ * walks the tree, while private key files are created owner-readable
+ * and owner-writable only.
  *
  */
 
@@ -307,35 +308,38 @@ namespace fs
 
 	/**
 	 * @brief Durable, atomic replacement of one file.
-	 * @param path target path; the parent directory supplies the temporary file.
+	 * @param path target path; the parent directory supplies the temporary
+	 *             file.
 	 * @param contents full new contents (binary safe).
-	 * @param privateWrite create/replace with owner-only permissions and refuse a
-	 *        directory or reparse target on Windows.
+	 * @param privateWrite create/replace with owner-only permissions and
+	 *                     refuse a directory or reparse target on Windows.
 	 * @return false when the replacement did not commit.
 	 *
-	 * The sequence is the same on every platform: write a unique temporary file in
-	 * the target directory, flush it to stable storage, close it, then rename it
-	 * over the target, and finally flush the directory. Nothing is ever written
-	 * into the target name, so a crash leaves either the old file or the new one,
-	 * never a truncated mixture, and a concurrent reader never sees a partial
-	 * document. The temporary name includes the PID and a process-wide counter, and
-	 * POSIX creation uses O_EXCL|O_NOFOLLOW so a pre-planted file or symlink cannot
-	 * be followed or overwritten; on POSIX the directory is opened with O_DIRECTORY
-	 * and O_NOFOLLOW and all operations use *at() calls relative to it. A name
-	 * collision is retried with the next counter value instead of reusing a
-	 * temporary that may already belong to another writer.
+	 * The sequence is the same on every platform: write a unique temporary
+	 * file in the target directory, flush it to stable storage, close it,
+	 * then rename it over the target, and finally flush the directory.
+	 * Nothing is ever written into the target name, so a crash leaves
+	 * either the old file or the new one, never a truncated mixture, and a
+	 * concurrent reader never sees a partial document. The temporary name
+	 * includes the PID and a process-wide counter, and POSIX creation uses
+	 * O_EXCL|O_NOFOLLOW so a pre-planted file or symlink cannot be
+	 * followed or overwritten; on POSIX the directory is opened with
+	 * O_DIRECTORY and O_NOFOLLOW and all operations use *at() calls
+	 * relative to it. A name collision is retried with the next counter
+	 * value instead of reusing a temporary that may already belong to
+	 * another writer.
 	 *
-	 * Notes for callers:
-	 * - The whole write is serialised by one process-wide mutex, so a slow disk
-	 *   delays every other atomic writer in this process. That is intentional: it
-	 *   keeps the temporary-name sequence and the store renames ordered.
-	 * - On POSIX a successful rename followed by a failed directory fsync reports
-	 *   false even though the new contents are visible. The durability of that
-	 *   replacement is therefore ambiguous, and a caller that tracks dirty state
-	 *   must keep it rather than assume the update was lost.
-	 * - Private mode is applied with fchmod() to the already-open temporary before
-	 *   the rename, so the secret is never chmod-ed after it became visible under
-	 *   its final name.
+	 * Notes for callers: - The whole write is serialised by one
+	 * process-wide mutex, so a slow disk delays every other atomic writer
+	 * in this process. That is intentional: it keeps the temporary-name
+	 * sequence and the store renames ordered. - On POSIX a successful
+	 * rename followed by a failed directory fsync reports false even
+	 * though the new contents are visible. The durability of that
+	 * replacement is therefore ambiguous, and a caller that tracks dirty
+	 * state must keep it rather than assume the update was lost. - Private
+	 * mode is applied with fchmod() to the already-open temporary before
+	 * the rename, so the secret is never chmod-ed after it became visible
+	 * under its final name.
 	 */
 	bool AtomicWriteImpl (std::string_view path, std::string_view contents, bool privateWrite)
 	{
@@ -541,18 +545,21 @@ namespace fs
 	}
 
 	/**
-	 * @brief Create a private-mode file for a caller that writes it itself.
+	 * @brief Create a private-mode file for a caller that writes it
+	 *        itself.
 	 * @param path file to create or append to.
-	 * @return the same path, so it can be used inline in an ofstream constructor.
+	 * @return the same path, so it can be used inline in an ofstream
+	 *         constructor.
 	 *
-	 * This is the legacy helper for callers that need a stream rather than a
-	 * complete buffer. It creates the file with the process umask and then applies
-	 * owner read/write permissions afterwards, which leaves a window in which the
-	 * file is more permissive than intended and follows a pre-existing symlink.
-	 * New secret output should use AtomicWritePrivate() instead, which creates a
-	 * unique no-follow temporary and applies the mode before the rename. A failure
-	 * to restrict the mode is only logged, so a caller handling key material must
-	 * not rely on this function alone.
+	 * This is the legacy helper for callers that need a stream rather than
+	 * a complete buffer. It creates the file with the process umask and
+	 * then applies owner read/write permissions afterwards, which leaves a
+	 * window in which the file is more permissive than intended and
+	 * follows a pre-existing symlink. New secret output should use
+	 * AtomicWritePrivate() instead, which creates a unique no-follow
+	 * temporary and applies the mode before the rename. A failure to
+	 * restrict the mode is only logged, so a caller handling key material
+	 * must not rely on this function alone.
 	 */
 	std::filesystem::path CreatePrivateFile (const std::filesystem::path & path)
 	{
@@ -594,16 +601,17 @@ namespace fs
 
 	/**
 	 * @brief Map an identity string to a sharded storage path.
-	 * @param ident encoded identity (base64 or base32, already validated by the
-	 *        caller); the first character selects the shard directory.
+	 * @param ident encoded identity (base64 or base32,
+	 *              already validated by the caller); the first character
+	 *              selects the shard directory.
 	 * @return relative path below the store root.
 	 *
-	 * Only the two path separators are replaced, so this function is a name
-	 * normaliser, not a sanitiser: the caller must pass a canonical encoded
-	 * identity and must never pass a peer-controlled file name, because "..", NUL
-	 * or drive colons would otherwise reach the filesystem. The result keeps the
-	 * store's prefix/suffix conventions so an unrelated regular file is never
-	 * matched by expiry cleanup.
+	 * Only the two path separators are replaced, so this function is a
+	 * name normaliser, not a sanitiser: the caller must pass a canonical
+	 * encoded identity and must never pass a peer-controlled file name,
+	 * because "..", NUL or drive colons would otherwise reach the
+	 * filesystem. The result keeps the store's prefix/suffix conventions
+	 * so an unrelated regular file is never matched by expiry cleanup.
 	 */
 	std::string HashedStorage::Path (const std::string & ident) const
 	{

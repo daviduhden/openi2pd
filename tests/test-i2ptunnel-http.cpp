@@ -15,8 +15,9 @@ using Result = Parser::Result;
 static void EverySplit (Parser::Mode mode, const std::string & message, const std::string & expected,
 	std::string host = { }, std::string identity = { })
 {
-	// Fragment only the header. Once complete, production forwards subsequent
-	// body buffers directly rather than passing them back through the parser.
+	// Fragment only the header. Once complete, production forwards
+	// subsequent body buffers directly rather than passing them back
+	// through the parser.
 	const auto end = message.find ("\r\n\r\n") + 4;
 	for (size_t split = 0; split < end; ++split)
 	{
@@ -56,8 +57,8 @@ int main ()
 			+ body,
 		"HTTP/1.1 200 OK\r\nContent-Length: 6\r\n\r\n" + body);
 	// Header-name matching is ASCII case-insensitive. The trusted identity
-	// header is re-injected after the request headers, never accepted from the
-	// untrusted client spelling.
+	// header is re-injected after the request headers, never accepted from
+	// the untrusted client spelling.
 	EverySplit (Parser::Mode::ServerRequest,
 		"GET / HTTP/1.1\r\nhOsT: peer\r\nkEeP-aLiVe: 1\r\nx-i2p-desthash: forged\r\ncOnNeCtIoN: uPgRaDe\r\n\r\n" + body,
 		"GET / HTTP/1.1\r\nHost: local\r\ncOnNeCtIoN: uPgRaDe\r\nX-I2P-DestHash: trusted\r\n\r\n" + body, "local",
@@ -65,8 +66,10 @@ int main ()
 	EverySplit (Parser::Mode::ServerRequest, "GET / HTTP/1.1\r\nconnection: upgrade\r\n\r\n",
 		"GET / HTTP/1.1\r\nconnection: upgrade\r\n\r\n");
 
-	// Request output is borrowed by async_write while independent TCP response
-	// fragments arrive. Response state must never overwrite request storage.
+	// Request output is borrowed by async_write while independent TCP
+	// response
+	// fragments arrive. Response state must never overwrite request
+	// storage.
 	Parser request (Parser::Mode::ServerRequest), response (Parser::Mode::ServerResponse);
 	assert (request.Feed ("GET / HTTP/1.1\r\nConnection: Upgrade\r\n\r\n") == Result::Complete);
 	const auto saved = request.Output ();

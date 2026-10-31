@@ -4,9 +4,10 @@
  *
  * openi2pd: BoostStream.
  *
- * Adapts an I2P streaming socket to the Boost.Asio asynchronous read/write
- * stream concepts so Boost.Beast HTTP and WebSocket code can use it directly.
- * Reads honor the stream receive timeout; Beast teardown closes the stream.
+ * Adapts an I2P streaming socket to the Boost.Asio asynchronous
+ * read/write stream concepts so Boost.Beast HTTP and WebSocket code can
+ * use it directly. Reads honor the stream receive timeout; Beast
+ * teardown closes the stream.
  *
  */
 
@@ -85,7 +86,8 @@ namespace client
 				// we can save handler with SendBuffer
 				auto sendBuffer = std::make_shared<i2p::stream::SendBuffer> (bufsToSend, sent, std::move (handler));
 #else
-				// we can't save handler with SendBuffer due to lack of std::move_only_function
+				// we can't save handler with SendBuffer due to lack of
+				// std::move_only_function
 				auto sendBuffer = std::make_shared<i2p::stream::SendBuffer> (bufsToSend, sent, nullptr);
 #endif
 				m_Stream->Send (std::move (sendBuffer));

@@ -4,11 +4,12 @@
  *
  * openi2pd: PostQuantum.
  *
- * ML-KEM (FIPS 203) key encapsulation wrappers for the hybrid I2P crypto types, with
- * key/ciphertext sizes selected by CryptoKeyType and OpenSSL/LibreSSL feature detection.
- * Provides the Noise IK, XK and XK1 state initialization used by ratchets, NTCP2 and SSU2;
- * every initialization reports failure so a handshake aborts instead of continuing with
- * partial or zeroed hash state.
+ * ML-KEM (FIPS 203) key encapsulation wrappers for the hybrid I2P
+ * crypto types, with key/ciphertext sizes selected by CryptoKeyType and
+ * OpenSSL/LibreSSL feature detection. Provides the Noise IK, XK and XK1
+ * state initialization used by ratchets, NTCP2 and SSU2; every
+ * initialization reports failure so a handshake aborts instead of
+ * continuing with partial or zeroed hash state.
  *
  */
 
@@ -66,26 +67,29 @@ namespace crypto
 		return std::get<2> (MLKEMS[type - i2p::data::CRYPTO_KEY_TYPE_ECIES_X25519_AEAD - 1]);
 	}
 
-	// Runtime availability of the parameter set in the active crypto provider.
-	// The first call for each type performs a bounded probe (key generation
-	// with no caller-visible key material) and caches the result, so callers
-	// can gate publication and selection on what the provider can actually
-	// create. Unknown types and providers without the API report false.
+	// Runtime availability of the parameter set in the active crypto
+	// provider. The first call for each type performs a bounded probe (key
+	// generation with no caller-visible key material) and caches the
+	// result, so callers can gate publication and selection on what the
+	// provider can actually create. Unknown types and providers without
+	// the API report false.
 	bool IsMLKEMSupported (i2p::data::CryptoKeyType type);
 
-	// True only when the active provider can perform the ML-KEM parameter set
-	// selected by an NTCP2/SSU2 hybrid version. Callers use this before writing
-	// a "pq" address option or choosing a hybrid session version.
+	// True only when the active provider can perform the ML-KEM parameter
+	// set selected by an NTCP2/SSU2 hybrid version. Callers use this
+	// before writing a "pq" address option or choosing a hybrid session
+	// version.
 	bool CanPublishPQ (int version);
 
 	// Highest configured/requested hybrid version at or below maximum that
-	// the active provider supports. Returns 0 when no hybrid version works.
+	// the active provider supports. Returns 0 when no hybrid version
+	// works.
 	int HighestSupportedPQVersion (int requested, int maximum);
 
-	/// Owning ML-KEM key pair for one parameter set.
-	/// Non-copyable because it holds provider key material; the destructor
-	/// frees it. A key is only usable after GenerateKeys() or SetPublicKey()
-	/// succeeded, and private material is never logged or serialized here.
+	/// Owning ML-KEM key pair for one parameter set. Non-copyable because
+	/// it holds provider key material; the destructor frees it. A key is
+	/// only usable after GenerateKeys() or SetPublicKey() succeeded, and
+	/// private material is never logged or serialized here.
 	class MLKEMKeys
 	{
 	public:
@@ -95,8 +99,9 @@ namespace crypto
 		MLKEMKeys (const MLKEMKeys &) = delete;
 		MLKEMKeys & operator= (const MLKEMKeys &) = delete;
 
-		// Buffers must hold GetKeyLen(), GetCTLen(), or 32 bytes as appropriate.
-		// On false, callers must abort the handshake and discard outputs.
+		// Buffers must hold GetKeyLen(), GetCTLen(), or 32 bytes as
+		// appropriate. On false, callers must abort the handshake and discard
+		// outputs.
 		[[nodiscard]] bool GenerateKeys ();
 		[[nodiscard]] bool GetPublicKey (uint8_t * pub) const;
 		[[nodiscard]] bool SetPublicKey (const uint8_t * pub);
@@ -123,8 +128,9 @@ namespace crypto
 	std::unique_ptr<MLKEMKeys> CreateMLKEMKeys (i2p::data::CryptoKeyType type);
 
 	// These return false for an unsupported type or a null peer key, after
-	// zeroing the state. A caller that cannot use the returned state must abort
-	// the handshake instead of continuing with a zero/partially mixed hash.
+	// zeroing the state. A caller that cannot use the returned state must
+	// abort the handshake instead of continuing with a zero/partially
+	// mixed hash.
 	bool InitNoiseIKStateMLKEM (NoiseSymmetricState & state, i2p::data::CryptoKeyType type,
 		const uint8_t * pub); // Noise_IK (ratchets) PQ ML-KEM
 	bool InitNoiseXKStateMLKEM (

@@ -4,10 +4,11 @@
  *
  * openi2pd: test ntcp2 failstate.
  *
- * Pins the socket-free parts of the NTCP2 data-phase failure policy: the
- * bounded AEAD-failure drain arithmetic, the ordering rule that nothing may be
- * written before the drain completes or times out, and the termination reasons
- * the session must use (4, 14 and 7). No socket, thread or sleep is used.
+ * Pins the socket-free parts of the NTCP2 data-phase failure policy:
+ * the bounded AEAD-failure drain arithmetic, the ordering rule that
+ * nothing may be written before the drain completes or times out, and
+ * the termination reasons the session must use (4, 14 and 7). No
+ * socket, thread or sleep is used.
  *
  */
 
@@ -28,13 +29,15 @@ void CheckDrainArithmetic ()
 	static_assert (NTCP2_AEAD_FAILURE_DRAIN_MAX_SIZE - NTCP2_AEAD_FAILURE_DRAIN_MIN_SIZE + 1 == 1024,
 		"the drain window must cover exactly the 1024 residual values");
 	static_assert (NTCP2_AEAD_FAILURE_DRAIN_TIMEOUT == 10, "the drain deadline is 10 seconds");
-	// The intra-frame deadline must stay below the 120 s idle termination so an
-	// established session cannot be closed as idle before this deadline fires.
+	// The intra-frame deadline must stay below the 120 s idle termination
+	// so an established session cannot be closed as idle before this
+	// deadline fires.
 	static_assert (NTCP2_INTRA_FRAME_READ_TIMEOUT > 0);
 	static_assert (NTCP2_INTRA_FRAME_READ_TIMEOUT < NTCP2_TERMINATION_TIMEOUT);
 
-	// Uniform in [18, 1041]: every residual maps into the window, the extreme
-	// values are reachable, and nothing depends on the width of the RNG value.
+	// Uniform in [18, 1041]: every residual maps into the window, the
+	// extreme values are reachable, and nothing depends on the width of
+	// the RNG value.
 	static_assert (NTCP2GetAEADFailureDrainSize (0) == 18);
 	static_assert (NTCP2GetAEADFailureDrainSize (1) == 19);
 	static_assert (NTCP2GetAEADFailureDrainSize (1023) == 1041);
@@ -52,8 +55,8 @@ void CheckDrainArithmetic ()
 	for (size_t size = NTCP2_AEAD_FAILURE_DRAIN_MIN_SIZE; size <= NTCP2_AEAD_FAILURE_DRAIN_MAX_SIZE; ++size)
 		assert (seen[size]);
 
-	// Large RNG values must not overflow into an unbounded drain: the request
-	// stays inside the fixed buffer.
+	// Large RNG values must not overflow into an unbounded drain: the
+	// request stays inside the fixed buffer.
 	const uint32_t extremes[] = { 1024u, 0xFFFFu, 0x00800000u, 0xFFFFFFFFu };
 	for (uint32_t rng : extremes)
 	{
@@ -87,15 +90,16 @@ void CheckDrainOrdering ()
 	assert (drain.CanWrite ());
 	assert (!drain.IsDraining ());
 
-	// Only the bounded window is accepted; an out-of-range request must fail
-	// closed instead of allocating or reading an arbitrary amount.
+	// Only the bounded window is accepted; an out-of-range request must
+	// fail closed instead of allocating or reading an arbitrary amount.
 	assert (!drain.Begin (0));
 	assert (!drain.Begin (NTCP2_AEAD_FAILURE_DRAIN_MIN_SIZE - 1));
 	assert (!drain.Begin (NTCP2_AEAD_FAILURE_DRAIN_MAX_SIZE + 1));
 	assert (!drain.IsDraining ());
 	assert (drain.CanWrite ());
 
-	// While the drain is outstanding nothing may be written, partial progress
+	// While the drain is outstanding nothing may be written, partial
+	// progress
 	// does not authorize a write, and a second failure cannot restart it.
 	const size_t drained = 100;
 	assert (drain.Begin (drained));
@@ -123,8 +127,9 @@ void CheckDrainOrdering ()
 	assert (drain.Consume (NTCP2_AEAD_FAILURE_DRAIN_MAX_SIZE));
 	assert (drain.CanWrite ());
 
-	// The deadline ends the drain with the same write permission and drops the
-	// remaining count, so a peer that stops sending is handled identically.
+	// The deadline ends the drain with the same write permission and drops
+	// the remaining count, so a peer that stops sending is handled
+	// identically.
 	assert (drain.Begin (drained));
 	assert (drain.Expire ());
 	assert (!drain.IsDraining ());
@@ -132,8 +137,8 @@ void CheckDrainOrdering ()
 	assert (drain.GetRemaining () == 0);
 	assert (!drain.Expire ()); // idempotent, and never a second write permission
 
-	// Terminate() resets the state; the closed session, not the drain, is what
-	// blocks further writes afterwards.
+	// Terminate() resets the state; the closed session, not the drain, is
+	// what blocks further writes afterwards.
 	assert (drain.Begin (drained));
 	drain.Reset ();
 	assert (!drain.IsDraining ());
@@ -142,7 +147,8 @@ void CheckDrainOrdering ()
 
 void CheckRouterInfoFloodBound ()
 {
-	// Java NTCP2Payload only forwards a request-flood RouterInfo below 3 KiB.
+	// Java NTCP2Payload only forwards a request-flood RouterInfo below 3
+	// KiB.
 	static_assert (i2p::transport::NTCP2_ROUTER_INFO_MAX_FLOOD_SIZE == 3 * 1024);
 }
 }

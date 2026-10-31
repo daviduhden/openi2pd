@@ -4,7 +4,9 @@
  *
  * openi2pd: test eciesx25519 ratchet tagsets.
  *
- * Validates ratchet tag-set KDFs against independent HMAC vectors and checks tag indices, 16-bit tagset IDs, symmetric-key gaps and fail-closed exhaustion of the Java-compatible tag space.
+ * Validates ratchet tag-set KDFs against independent HMAC vectors and
+ * checks tag indices, 16-bit tagset IDs, symmetric-key gaps and
+ * fail-closed exhaustion of the Java-compatible tag space.
  *
  */
 
@@ -116,7 +118,8 @@ int main ()
 	assert (!std::memcmp (tagset.GetNextRootKey (), reference.nextRootKey.data (), 32));
 
 	// Index 0 is the tag whose N (nonce) is 0: callers read GetNextIndex()
-	// before generating the tag. CreatePayload and the tag map rely on this.
+	// before generating the tag. CreatePayload and the tag map rely on
+	// this.
 	i2p::crypto::HKDFContext hkdf;
 	for (int i = 0; i < 8; i++)
 	{
@@ -139,8 +142,9 @@ int main ()
 	assert (tagset.GetMsgID () == 0xFFFF0008u);
 	tagset.SetTagSetID (3);
 
-	// Symmetric key ratchet: in-order, gap, and a late older key served from
-	// the intermediate cache. Expected values come from the independent KDF.
+	// Symmetric key ratchet: in-order, gap, and a late older key served
+	// from the intermediate cache. Expected values come from the
+	// independent KDF.
 	ReferenceTagSet referenceKeys (rootKey, tagsetKey);
 	std::array<Bytes32, 4> expectedKeys { };
 	for (auto & key : expectedKeys) key = referenceKeys.NextKey ();
@@ -159,8 +163,8 @@ int main ()
 	// Each intermediate is consumed exactly once.
 	assert (!tagset.GetSymmKey (1, actual));
 
-	// Out-of-range and already-consumed indexes fail closed: the caller must
-	// not encrypt or decrypt with an uninitialised stack key.
+	// Out-of-range and already-consumed indexes fail closed: the caller
+	// must not encrypt or decrypt with an uninitialised stack key.
 	std::memset (actual, 0xAA, sizeof (actual));
 	assert (!tagset.GetSymmKey (-1, actual));
 	assert (!tagset.GetSymmKey (0x10000, actual));
@@ -180,9 +184,9 @@ int main ()
 		assert (!std::memcmp (got, expected0.data (), 32));
 	}
 
-	// Java's 16-bit tag space accepts indices 0..65535 and then fails closed.
-	// The generator must not be one tag short, and the failure must not advance
-	// the index (which would silently skip a peer tag).
+	// Java's 16-bit tag space accepts indices 0..65535 and then fails
+	// closed. The generator must not be one tag short, and the failure
+	// must not advance the index (which would silently skip a peer tag).
 	{
 		i2p::garlic::RatchetTagSet boundary;
 		boundary.DHInitialize (rootKey.data (), tagsetKey.data ());

@@ -4,9 +4,9 @@
  *
  * openi2pd: I2CP.
  *
- * Declares the I2CP server, the per-connection session state machine and the
- * destination adapter that exposes a client-managed destination to the
- * streaming and datagram layers.
+ * Declares the I2CP server, the per-connection session state machine
+ * and the destination adapter that exposes a client-managed destination
+ * to the streaming and datagram layers.
  *
  */
 
@@ -43,27 +43,28 @@ namespace client
 	const int I2CP_SESSION_ACK_REQUEST_INTERVAL = 12100; // in milliseconds
 	const int I2CP_RATCHETS_RESPONSE_TIMEOUT = 1000; // in milliseconds
 
-	// Read deadlines for the control plane. The handshake deadline covers the
-	// protocol byte and the first message; the body deadline covers a declared
-	// payload and a partially received header. An established connection that
-	// sends nothing is idle (clients keep the socket open between messages), so
-	// waiting for the first header byte of a later message is not bounded here;
-	// the connection and session caps bound how many such sockets exist.
+	// Read deadlines for the control plane. The handshake deadline covers
+	// the protocol byte and the first message; the body deadline covers a
+	// declared payload and a partially received header. An established
+	// connection that sends nothing is idle (clients keep the socket open
+	// between messages), so waiting for the first header byte of a later
+	// message is not bounded here; the connection and session caps bound
+	// how many such sockets exist.
 	const int I2CP_HANDSHAKE_TIMEOUT = 30; // in seconds
 	const int I2CP_BODY_TIMEOUT = 30; // in seconds
 
-	// Admission bounds for the I2CP control plane. The reference router admits
-	// 50 concurrent I2CP client connections; a configured value is clamped to a
-	// hard ceiling so a hostile or mistaken configuration cannot exhaust the
-	// process' descriptor and session budget.
+	// Admission bounds for the I2CP control plane. The reference router
+	// admits 50 concurrent I2CP client connections; a configured value is
+	// clamped to a hard ceiling so a hostile or mistaken configuration
+	// cannot exhaust the process' descriptor and session budget.
 	const size_t I2CP_MAX_CONNECTIONS_DEFAULT = 50;
 	const size_t I2CP_MAX_CONNECTIONS_LIMIT = 2048;
 	const size_t I2CP_MAX_SESSIONS_DEFAULT = 512;
 	const size_t I2CP_MAX_SESSIONS_LIMIT = 4096;
 
 	// Pure, socket-free admission policy. A configuration value of 0 means
-	// "use the default"; anything above the hard limit is clamped. Pinned by
-	// the I2CP tests so the counters and the policy cannot drift apart.
+	// "use the default"; anything above the hard limit is clamped. Pinned
+	// by the I2CP tests so the counters and the policy cannot drift apart.
 	struct I2CPAdmissionPolicy
 	{
 		size_t maxConnections = I2CP_MAX_CONNECTIONS_DEFAULT;
@@ -74,9 +75,9 @@ namespace client
 	};
 	I2CPAdmissionPolicy MakeI2CPAdmissionPolicy (size_t configuredConnections, size_t configuredSessions);
 
-	/// I2CP message header: four-byte big-endian payload length followed by a
-	/// one-byte type. The connection begins with I2CP_PROTOCOL_BYTE before any
-	/// such header. See https://i2p.net/en/docs/specs/i2cp/.
+	/// I2CP message header: four-byte big-endian payload length followed
+	/// by a one-byte type. The connection begins with I2CP_PROTOCOL_BYTE
+	/// before any such header. See https://i2p.net/en/docs/specs/i2cp/.
 	const size_t I2CP_HEADER_LENGTH_OFFSET = 0;
 	const size_t I2CP_HEADER_TYPE_OFFSET = I2CP_HEADER_LENGTH_OFFSET + 4;
 	const size_t I2CP_HEADER_SIZE = I2CP_HEADER_TYPE_OFFSET + 1;
@@ -125,8 +126,9 @@ namespace client
 	};
 
 	// HostReplyMessage result codes (HostReplyMessage.java, proposal 167).
-	// 2-4 tell the client which client-auth material the blinded destination
-	// needs before the encrypted LeaseSet2 can even be decrypted.
+	// 2-4 tell the client which client-auth material the blinded
+	// destination needs before the encrypted LeaseSet2 can even be
+	// decrypted.
 	enum I2CPHostReplyResult : uint8_t
 	{
 		eI2CPHostReplySuccess = 0,
@@ -140,23 +142,26 @@ namespace client
 
 	// Maps the client-auth scheme of a stored BlindingInfo record onto the
 	// HostReply result the requesting session receives. authType follows
-	// BlindingInfoMessage: 0 none, 1 DH (private key), 2 PSK (secret),
-	// 3 DH+PSK. A usable secret is the 32 bytes LeaseSet2 client auth consumes.
+	// BlindingInfoMessage: 0 none, 1 DH (private key), 2 PSK (secret), 3
+	// DH+PSK. A usable secret is the 32 bytes LeaseSet2 client auth
+	// consumes.
 	uint8_t GetI2CPHostReplyResultForAuth (uint8_t authType, bool hasUsableSecret);
 
-	// Builds a complete HOST REPLY payload (without the I2CP header). A result
-	// other than success never carries an identity, and an identity without a
-	// result reports the generic failure: both forms are the 7-byte failure
-	// layout. The success layout is the identity followed by the optional
-	// options mapping, byte-identical to the pre-existing encoder.
+	// Builds a complete HOST REPLY payload (without the I2CP header). A
+	// result other than success never carries an identity, and an identity
+	// without a result reports the generic failure: both forms are the
+	// 7-byte failure layout. The success layout is the identity followed
+	// by the optional options mapping, byte-identical to the pre-existing
+	// encoder.
 	std::vector<uint8_t> BuildI2CPHostReplyPayload (uint32_t requestID, uint16_t sessionID,
 		std::shared_ptr<const i2p::data::IdentityEx> identity, const std::vector<uint8_t> & options = { },
 		uint8_t result = eI2CPHostReplySuccess);
 
-	/// Decoded SEND MESSAGE / SEND MESSAGE EXPIRES payload. Identity and payload
-	/// pointers borrow the input passed to ParseI2CPSendMessage and cannot
-	/// outlive it. Flags and expiration exist only in the expires form; the
-	/// 48-bit expiration is epoch milliseconds, with 0 meaning no expiry.
+	/// Decoded SEND MESSAGE / SEND MESSAGE EXPIRES payload. Identity and
+	/// payload pointers borrow the input passed to ParseI2CPSendMessage
+	/// and cannot outlive it. Flags and expiration exist only in the
+	/// expires form; the 48-bit expiration is epoch milliseconds, with 0
+	/// meaning no expiry.
 	struct I2CPSendMessageRequest
 	{
 		uint16_t sessionID = 0xFFFF;
@@ -170,10 +175,10 @@ namespace client
 		uint64_t expiration = 0;
 	};
 
-	// Pure wire parse. Returns false for a malformed request; sessionID is set
-	// whenever the buffer held it and `hasNonce` records whether the trailing
-	// nonce could still be located, so the caller can answer with a status
-	// instead of dropping the message silently.
+	// Pure wire parse. Returns false for a malformed request; sessionID is
+	// set whenever the buffer held it and `hasNonce` records whether the
+	// trailing nonce could still be located, so the caller can answer with
+	// a status instead of dropping the message silently.
 	bool ParseI2CPSendMessage (const uint8_t * buf, size_t len, bool withExpiration, I2CPSendMessageRequest & request);
 
 	enum class I2CPSendMessageCheck : uint8_t
@@ -225,25 +230,27 @@ namespace client
 		eI2CPBlindingInfoUnsupported = 2
 	};
 
-	// Pure wire parse of a BLINDING INFO payload. `error` receives a short,
-	// non-secret diagnostic; key and secret bytes are never logged or echoed.
+	// Pure wire parse of a BLINDING INFO payload. `error` receives a
+	// short, non-secret diagnostic; key and secret bytes are never logged
+	// or echoed.
 	I2CPBlindingInfoResult ParseI2CPBlindingInfoMessage (
 		const uint8_t * buf, size_t len, I2CPBlindingInfo & info, std::string & error);
 
 	// Bounded, mutex-guarded registry. Records are keyed by the unblinded
-	// signing key (ClientMessageEventListener.handleBlindingInfo keeps the same
-	// association in the router's netDb) and expire at the announced time.
-	// Every read prunes expired records.
+	// signing key (ClientMessageEventListener.handleBlindingInfo keeps the
+	// same association in the router's netDb) and expire at the announced
+	// time. Every read prunes expired records.
 	void StoreI2CPBlindingInfo (I2CPBlindingInfo info);
 	bool FindI2CPBlindingInfoBySigningKey (
 		i2p::data::SigningKeyType keyType, const uint8_t * key, size_t keyLen, I2CPBlindingInfo & info);
-	// Blinding is one-way and the b33 address never carries the unblinded key,
-	// so a b33 lookup matches a stored destination identity by re-deriving the
-	// current day's blinded key. The scan is bounded by the registry size.
+	// Blinding is one-way and the b33 address never carries the unblinded
+	// key, so a b33 lookup matches a stored destination identity by
+	// re-deriving the current day's blinded key. The scan is bounded by
+	// the registry size.
 	bool FindI2CPBlindingInfoByBlindedKey (const i2p::data::BlindedPublicKey & blinded, I2CPBlindingInfo & info);
-	// The 32-byte value LeaseSet2 client auth consumes: the DH private key for
-	// auth types 1/3, otherwise the PSK secret for types 2/3. Empty when the
-	// record carries no usable material.
+	// The 32-byte value LeaseSet2 client auth consumes: the DH private key
+	// for auth types 1/3, otherwise the PSK secret for types 2/3. Empty
+	// when the record carries no usable material.
 	std::vector<uint8_t> GetI2CPBlindingAuthSecret (const I2CPBlindingInfo & info);
 	size_t GetI2CPBlindingInfoCount ();
 	void ClearI2CPBlindingInfos (); // tests and shutdown
@@ -260,15 +267,17 @@ namespace client
 	// params
 	const char I2CP_PARAM_MESSAGE_RELIABILITY[] = "i2cp.messageReliability";
 
-	// Cache key for a remote garlic routing session. The complete wire identity
-	// is hashed, so DSA, ECDSA, EdDSA and offline-signed destinations each key
-	// their own entry; no fixed signing-key offset is involved.
+	// Cache key for a remote garlic routing session. The complete wire
+	// identity is hashed, so DSA, ECDSA, EdDSA and offline-signed
+	// destinations each key their own entry; no fixed signing-key offset
+	// is involved.
 	i2p::data::IdentHash GetI2CPRoutingSessionKey (const uint8_t * identity, size_t len);
 
 	class I2CPSession;
-	/// Destination adapter owned by an I2CP session. It holds a shared session
-	/// reference for callbacks; Stop() cancels its timers and releases that
-	/// reference so destination/session ownership can unwind.
+	/// Destination adapter owned by an I2CP session. It holds a shared
+	/// session reference for callbacks; Stop() cancels its timers and
+	/// releases that reference so destination/session ownership can
+	/// unwind.
 	class I2CPDestination : public LeaseSetDestination
 	{
 	public:
@@ -282,11 +291,11 @@ namespace client
 		void SetEncryptionPrivateKey (i2p::data::CryptoKeyType keyType, const uint8_t * key, size_t keyLen = 0);
 		void SetECIESx25519EncryptionPrivateKey (
 			i2p::data::CryptoKeyType keyType, const uint8_t * key, size_t keyLen = 0);
-		// Derives the public key of a staged private key without installing it
-		// and reports whether the LeaseSet2 advertises exactly that key. Types
-		// whose public key cannot be re-derived from the stored scalar (ElGamal,
-		// P-256) return "not verifiable" so the caller can keep the install-time
-		// check for them instead of rejecting a valid set.
+		// Derives the public key of a staged private key without installing
+		// it and reports whether the LeaseSet2 advertises exactly that key.
+		// Types whose public key cannot be re-derived from the stored scalar
+		// (ElGamal, P-256) return "not verifiable" so the caller can keep the
+		// install-time check for them instead of rejecting a valid set.
 		bool IsAdvertisedEncryptionKey (i2p::data::CryptoKeyType keyType, const uint8_t * key, size_t keyLen,
 			const i2p::data::LeaseSet2 & ls, bool & verifiable) const;
 		void LeaseSetCreated (const uint8_t * buf, size_t len); // called from I2CPSession
@@ -336,7 +345,8 @@ namespace client
 			m_EncryptionKeys; // last is most preferable
 		uint64_t m_LeaseSetExpirationTime;
 		bool m_IsCreatingLeaseSet, m_IsSameThread;
-		// First selectable type of i2cp.leaseSetEncType (Java publication order).
+		// First selectable type of i2cp.leaseSetEncType (Java publication
+		// order).
 		i2p::data::CryptoKeyType m_ConfiguredPreferredCryptoType = 0;
 		boost::asio::steady_timer m_LeaseSetCreationTimer, m_ReadinessCheckTimer;
 		i2p::util::MemoryPoolMt<I2NPMessageBuffer<I2NP_MAX_MESSAGE_SIZE>> m_I2NPMsgsPool;
@@ -368,9 +378,10 @@ namespace client
 	};
 
 	class I2CPServer;
-	/// One I2CP control connection. Socket and send queue belong to the server's
-	/// service thread; cross-thread Stop() posts teardown with shared ownership.
-	/// The referenced server must outlive this session and pending callbacks.
+	/// One I2CP control connection. Socket and send queue belong to the
+	/// server's service thread; cross-thread Stop() posts teardown with
+	/// shared ownership. The referenced server must outlive this session
+	/// and pending callbacks.
 	class I2CPSession : public std::enable_shared_from_this<I2CPSession>
 	{
 	public:
@@ -381,33 +392,34 @@ namespace client
 
 		/// Begin the control connection: the first byte on the wire is
 		/// I2CP_PROTOCOL_BYTE, followed by length/type framed messages. Every
-		/// later read is individually deadline-bounded; an established session
-		/// that simply sends nothing stays open, because clients keep the socket
-		/// between messages. The server already charged this connection against
-		/// its admission budget before Start().
+		/// later read is individually deadline-bounded; an established
+		/// session that simply sends nothing stays open, because clients keep
+		/// the socket between messages. The server already charged this
+		/// connection against its admission budget before Start().
 		void Start ();
-		/// Post a teardown request. The socket and the send queue belong to the
-		/// server's service thread, so a caller on another thread only schedules
-		/// the owner-thread teardown; it never closes the socket itself.
+		/// Post a teardown request. The socket and the send queue belong to
+		/// the server's service thread, so a caller on another thread only
+		/// schedules the owner-thread teardown; it never closes the socket
+		/// itself.
 		void Stop ();
 		uint16_t GetSessionID () const { return m_SessionID.load (); };
-		// Only I2CPServer inserts a session, and only after the identifier has
-		// been checked for collisions. The identifier is never assigned from
-		// an unvalidated CREATE SESSION request.
+		// Only I2CPServer inserts a session, and only after the identifier
+		// has been checked for collisions. The identifier is never assigned
+		// from an unvalidated CREATE SESSION request.
 		void AssignSessionID (uint16_t sessionID) { m_SessionID.store (sessionID); };
 		std::shared_ptr<const I2CPDestination> GetDestination () const { return m_Destination; };
 
 		// called from I2CPDestination
-		/// Queue one I2CP message to the client. The four-byte big-endian length
-		/// covers the payload only (the type byte is not counted) and the whole
-		/// frame is copied into a caller-independent buffer before it is queued,
-		/// so the caller may release @a payload immediately and a caller on any
-		/// thread is safe. An oversized message is dropped with an error log
-		/// instead of being truncated.
+		/// Queue one I2CP message to the client. The four-byte big-endian
+		/// length covers the payload only (the type byte is not counted) and
+		/// the whole frame is copied into a caller-independent buffer before
+		/// it is queued, so the caller may release @a payload immediately and
+		/// a caller on any thread is safe. An oversized message is dropped
+		/// with an error log instead of being truncated.
 		void SendI2CPMessage (uint8_t type, const uint8_t * payload, size_t len);
 		void SendMessagePayloadMessage (const uint8_t * payload, size_t len);
-		// `sessionID` defaults to this session's identifier; a BAD_SESSION status
-		// echoes the identifier the client used instead.
+		// `sessionID` defaults to this session's identifier; a BAD_SESSION
+		// status echoes the identifier the client used instead.
 		void SendMessageStatusMessage (uint32_t nonce, I2CPMessageStatus status, uint16_t sessionID = 0xFFFF);
 		void AddRoutingSession (
 			const i2p::data::IdentHash & identHash, std::shared_ptr<i2p::garlic::GarlicRoutingSession> remoteSession);
@@ -435,13 +447,14 @@ namespace client
 		void HandleReceivedPayload (const boost::system::error_code & ecode, std::size_t bytes_transferred);
 		void HandleMessage ();
 		// Cancellable read deadline. Every arm replaces the previous one; the
-		// completion paths cancel it so an idle connection is never killed by a
-		// stale timer.
+		// completion paths cancel it so an idle connection is never killed by
+		// a stale timer.
 		void ArmReadTimeout (int seconds);
 		void CancelReadTimeout ();
 		void HandleReadTimeout (const boost::system::error_code & ecode);
-		// Terminate always runs on the I2CP server's service thread, which owns
-		// the socket and the send queue. Callers on another thread only post it.
+		// Terminate always runs on the I2CP server's service thread, which
+		// owns the socket and the send queue. Callers on another thread only
+		// post it.
 		void Terminate ();
 		void TerminateInOwnerThread ();
 
@@ -491,14 +504,16 @@ namespace client
 		boost::asio::steady_timer m_ReadTimer;
 		std::atomic<bool> m_ConnectionReleased { false };
 		// True only when the server charged this session against the
-		// concurrent-connection budget (HandleAccept). A session built directly
-		// by a test or another owner never releases an uncharged slot.
+		// concurrent-connection budget (HandleAccept). A session built
+		// directly by a test or another owner never releases an uncharged
+		// slot.
 		bool m_ConnectionAdmitted = false;
 	};
 	typedef void (I2CPSession::*I2CPMessageHandler) (const uint8_t * buf, size_t len);
 
-	/// I2CP listener and session registry. Connection and session admission are
-	/// separately bounded, while the session map is protected by its mutex.
+	/// I2CP listener and session registry. Connection and session
+	/// admission are separately bounded, while the session map is
+	/// protected by its mutex.
 	class I2CPServer : private i2p::util::RunnableService
 	{
 	public:
@@ -510,24 +525,24 @@ namespace client
 		auto & GetService () { return GetIOService (); };
 		bool IsSingleThread () const { return m_IsSingleThread; };
 
-		// Inserts with an explicit, already validated identifier. The session's
-		// identifier is assigned only after the insertion succeeds.
+		// Inserts with an explicit, already validated identifier. The
+		// session's identifier is assigned only after the insertion succeeds.
 		bool InsertSession (std::shared_ptr<I2CPSession> session, uint16_t sessionID);
 		void RemoveSession (uint16_t sessionID);
 		std::shared_ptr<I2CPSession> FindSessionByIdentHash (const i2p::data::IdentHash & ident) const;
 
-		// Concurrent-connection admission. The counter is incremented once per
-		// accepted socket and released exactly once, from the session's
-		// owner-thread teardown, so a refused or failed connection cannot leak a
-		// slot.
+		// Concurrent-connection admission. The counter is incremented once
+		// per accepted socket and released exactly once, from the session's
+		// owner-thread teardown, so a refused or failed connection cannot
+		// leak a slot.
 		bool TryAcquireConnection ();
 		void ReleaseConnection ();
 		size_t GetNumConnections () const { return m_NumConnections.load (); };
 		const I2CPAdmissionPolicy & GetAdmissionPolicy () const { return m_AdmissionPolicy; };
 
 		// The I2CP service runs on one worker thread. This is the local
-		// equivalent of RunnableService::IsInServiceThread(), which is not part
-		// of the public utility interface.
+		// equivalent of RunnableService::IsInServiceThread(), which is not
+		// part of the public utility interface.
 		bool IsInServiceThread () const
 		{
 			std::lock_guard<std::mutex> l (m_ServiceThreadMutex);
@@ -556,7 +571,8 @@ namespace client
 	public:
 		const decltype (m_MessagesHandlers) & GetMessagesHandlers () const { return m_MessagesHandlers; };
 
-		// for HTTP; thread-safe snapshot, safe to iterate without holding any lock
+		// for HTTP; thread-safe snapshot, safe to iterate without holding any
+		// lock
 		std::vector<std::pair<uint16_t, std::shared_ptr<I2CPSession>>> GetSessionsList () const
 		{
 			std::lock_guard<std::mutex> l (m_SessionsMutex);

@@ -4,12 +4,12 @@
  *
  * openi2pd: Reseed.
  *
- * Implements network bootstrap from SU3-signed ZIP bundles, either local files
- * or HTTPS/Yggdrasil reseed servers with optional HTTP or SOCKS proxies and
- * redirects. SU3 headers, content and ZIP entries are length-bounded, RSA and
- * Ed25519 SU3 signatures are checked against loaded certificates (verification
- * defaults to enabled), and accepted RouterInfos are imported with duplicate
- * and expiry filtering.
+ * Implements network bootstrap from SU3-signed ZIP bundles, either
+ * local files or HTTPS/Yggdrasil reseed servers with optional HTTP or
+ * SOCKS proxies and redirects. SU3 headers, content and ZIP entries are
+ * length-bounded, RSA and Ed25519 SU3 signatures are checked against
+ * loaded certificates (verification defaults to enabled), and accepted
+ * RouterInfos are imported with duplicate and expiry filtering.
  *
  */
 
@@ -64,26 +64,27 @@ namespace data
 	const uint32_t MAX_RESEED_FILE_SIZE = 1 * 1024 * 1024; // 1 MB per ZIP entry
 	const uint64_t MAX_RESEED_UNCOMPRESSED_TOTAL = 32 * 1024 * 1024; // 32 MB total inflated data
 	const size_t MAX_RESEED_ENTRIES = 400; // Java Reseeder local archive entry cap
-	// HTTP headers, chunk framing and redirect bodies are small compared with
-	// the signed payload. Refuse to buffer more than the SU3 cap plus a small
-	// allowance so a malicious or broken reseed server cannot grow the
-	// response string without bound.
+	// HTTP headers, chunk framing and redirect bodies are small compared
+	// with the signed payload. Refuse to buffer more than the SU3 cap plus
+	// a small allowance so a malicious or broken reseed server cannot grow
+	// the response string without bound.
 	const size_t MAX_RESEED_HTTP_RESPONSE_SIZE = static_cast<size_t> (MAX_RESEED_CONTENT_LENGTH) + 1024 * 1024;
 
 	namespace
 	{
 		// Administrative reasons are fixed tokens. Nothing that can carry a
-		// credential (URL, proxy userinfo, configuration value) is ever stored
-		// or logged as a reason.
+		// credential (URL, proxy userinfo, configuration value) is ever
+		// stored or logged as a reason.
 		void SetReseedReason (std::string & target, std::string_view reason)
 		{
 			if (reason.size () > RESEED_MAX_ERROR_LENGTH) reason = reason.substr (0, RESEED_MAX_ERROR_LENGTH);
 			target.assign (reason);
 		}
 
-		// A `netid` query parameter is a match only when its name is complete:
-		// "?netid=2", "&netid=2" or a bare "netid" token. A raw substring match
-		// rejects a URL whose other parameter or value merely mentions it.
+		// A `netid` query parameter is a match only when its name is
+		// complete: "?netid=2", "&netid=2" or a bare "netid" token. A raw
+		// substring match rejects a URL whose other parameter or value merely
+		// mentions it.
 		bool HasReseedNetIdParameter (std::string_view url)
 		{
 			const auto query = url.find ('?');
@@ -102,9 +103,9 @@ namespace data
 			return false;
 		}
 
-		// Sleeps for `delay` unless the stop token is signalled first. The stop
-		// callback wakes the wait immediately, so shutdown never waits for the
-		// historical 30-second retry interval.
+		// Sleeps for `delay` unless the stop token is signalled first. The
+		// stop callback wakes the wait immediately, so shutdown never waits
+		// for the historical 30-second retry interval.
 		bool SleepUnlessStopped (std::chrono::milliseconds delay, const std::stop_token & token)
 		{
 			if (token.stop_requested ()) return false;
@@ -115,11 +116,12 @@ namespace data
 			return !cv.wait_for (lock, delay, [&token] { return token.stop_requested (); });
 		}
 
-		// Runs one asynchronous operation with a hard deadline and cooperative
-		// cancellation. `start` posts the operation and `cancel` aborts it.
-		// Returns true only when the operation completed; on timeout or stop the
-		// operation is aborted and every handler is drained before the operands
-		// go out of scope, so the stream must then be discarded.
+		// Runs one asynchronous operation with a hard deadline and
+		// cooperative cancellation. `start` posts the operation and `cancel`
+		// aborts it. Returns true only when the operation completed; on
+		// timeout or stop the operation is aborted and every handler is
+		// drained before the operands go out of scope, so the stream must
+		// then be discarded.
 		template <typename Start, typename Cancel>
 		bool RunWithDeadline (boost::asio::io_context & service, std::chrono::milliseconds timeout,
 			const std::stop_token & token, Start && start, Cancel && cancel)
@@ -154,9 +156,9 @@ namespace data
 		}
 
 		// The published date follows the variable-length RouterIdentity. The
-		// netDb applies its own store-validity policy; this check exists only to
-		// count entries that the bundle carries already far too old, which Java's
-		// reseeder skips instead of deleting cached peers.
+		// netDb applies its own store-validity policy; this check exists only
+		// to count entries that the bundle carries already far too old, which
+		// Java's reseeder skips instead of deleting cached peers.
 		bool GetRouterInfoPublishedDate (const uint8_t * buf, int len, uint64_t & published)
 		{
 			if (!buf || len <= 0) return false;
@@ -180,8 +182,8 @@ namespace data
 
 	std::string AppendReseedNetId (std::string url, int netId)
 	{
-		// The fragment is never sent to the server; appending after it would put
-		// the parameter outside the query.
+		// The fragment is never sent to the server; appending after it would
+		// put the parameter outside the query.
 		const auto fragment = url.find ('#');
 		if (fragment != std::string::npos) url.erase (fragment);
 		if (HasReseedNetIdParameter (url)) return url;
@@ -291,13 +293,13 @@ namespace data
 		}
 
 		// Bootstrap retry budget: each pass draws a bounded number of servers
-		// (ReseedFromServers), and the outer loop repeats only while a retry can
-		// still help. It stops on success, on an explicit stop request, when no
-		// server is configured, or when RESEED_GIVEUP_TIMEOUT of monotonic time
-		// has elapsed. The budget is monotonic, so a wall-clock jump cannot
-		// stretch it, and every wait goes through SleepUnlessStopped() so a
-		// cancellation never waits out the interval.
-		// bootstrap from reseed servers
+		// (ReseedFromServers), and the outer loop repeats only while a retry
+		// can still help. It stops on success, on an explicit stop request,
+		// when no server is configured, or when RESEED_GIVEUP_TIMEOUT of
+		// monotonic time has elapsed. The budget is monotonic, so a
+		// wall-clock jump cannot stretch it, and every wait goes through
+		// SleepUnlessStopped() so a cancellation never waits out the
+		// interval. bootstrap from reseed servers
 		const auto start = i2p::util::GetMonotonicSeconds ();
 		for (;;)
 		{
@@ -335,20 +337,23 @@ namespace data
 	}
 
 	/**
-	 * @brief Download and verify one round of SU3 bundles from randomly chosen reseed servers.
-	 * @param token stop token; honoured before every download and before any
-	 *        further store.
-	 * @return imported and skipped-stale RouterInfo counts, the number of servers
-	 *         that contributed at least one entry, and a non-secret reason token
-	 *         when the round failed or was cancelled. Credentials and URLs are
-	 *         never placed in that reason.
+	 * @brief Download and verify one round of SU3 bundles from randomly
+	 *        chosen reseed servers.
+	 * @param token stop token; honoured before every download and before
+	 *              any further store.
+	 * @return imported and skipped-stale RouterInfo counts, the
+	 *         number of servers that contributed at least one entry, and a
+	 *         non-secret reason token when the round failed or was
+	 *         cancelled. Credentials and URLs are never placed in that
+	 *         reason.
 	 *
-	 * At most MAX_NUM_RESEED_ATTEMPTS servers are tried per round and each list
-	 * entry is removed after its attempt, so a retry never re-downloads the same
-	 * bundle. The round returns as soon as MIN_RESEED_ROUTER_INFOS descriptors
-	 * were accepted from MIN_RESEED_SERVERS independent hosts (Java's
-	 * threshold); otherwise it keeps trying until the attempts are exhausted and
-	 * still reports whatever was imported.
+	 * At most MAX_NUM_RESEED_ATTEMPTS servers are tried per round and each
+	 * list entry is removed after its attempt, so a retry never
+	 * re-downloads the same bundle. The round returns as soon as
+	 * MIN_RESEED_ROUTER_INFOS descriptors were accepted from
+	 * MIN_RESEED_SERVERS independent hosts (Java's threshold); otherwise
+	 * it keeps trying until the attempts are exhausted and still reports
+	 * whatever was imported.
 	 */
 	ReseedResult Reseeder::ReseedFromServers (const std::stop_token & token)
 	{
@@ -553,8 +558,8 @@ namespace data
 		}
 
 		// SU3File verifies the digest of the header and content. RSA uses the
-		// raw PKCS#1 v1.5 operation over that digest (NONEwithRSA in Java), and
-		// EdDSA verifies the digest bytes directly.
+		// raw PKCS#1 v1.5 operation over that digest (NONEwithRSA in Java),
+		// and EdDSA verifies the digest bytes directly.
 		const EVP_MD * GetSU3Digest (SigningKeyType type)
 		{
 			switch (type)
@@ -582,7 +587,8 @@ namespace data
 		}
 
 		// Check the complete PKCS#1 v1.5 type-1 encoding that Java's
-		// NONEwithRSA expects, not only the digest tail: 00 01 FF..FF 00 hash.
+		// NONEwithRSA expects, not only the digest tail: 00 01 FF..FF 00
+		// hash.
 		bool IsValidSU3RSAEncoding (
 			const uint8_t * encoded, size_t encodedLen, const uint8_t * digest, size_t digestLen)
 		{
@@ -617,7 +623,8 @@ namespace data
 
 		if (token.stop_requested ()) return failure ("cancelled");
 
-		// SU3File.java: six-byte magic, one unused byte, then the file version.
+		// SU3File.java: six-byte magic, one unused byte, then the file
+		// version.
 		constexpr size_t SU3_MAGIC_LENGTH = 6;
 		char magicNumber[SU3_MAGIC_LENGTH];
 		if (!readExact (magicNumber, sizeof (magicNumber))
@@ -853,8 +860,9 @@ namespace data
 			SetReseedReason (result.error, reason);
 			return result;
 		};
-		// Imported entries are bounded by the verified payload, and an outdated
-		// entry is only skipped and counted. Nothing here deletes a cached peer.
+		// Imported entries are bounded by the verified payload, and an
+		// outdated entry is only skipped and counted. Nothing here deletes a
+		// cached peer.
 		auto addRouterInfo = [&] (const uint8_t * data, size_t size)
 		{
 			if (!data || !size || size > static_cast<size_t> (std::numeric_limits<int>::max ())) return;
@@ -874,8 +882,8 @@ namespace data
 		auto contentPosition = s.tellg ();
 		if (contentPosition < 0) return stopWith ("protocol");
 		size_t contentPos = static_cast<size_t> (contentPosition);
-		// not !eof: seekg clears eofbit, so a stream broken in the middle of a
-		// header stays not-eof forever and the loop never ends
+		// not !eof: seekg clears eofbit, so a stream broken in the middle of
+		// a header stays not-eof forever and the loop never ends
 		while (s.good ())
 		{
 			if (token.stop_requested ())
@@ -1045,9 +1053,9 @@ namespace data
 			size_t end = s.tellg ();
 			if (end - contentPos >= contentLength) break; // we are beyond contentLength
 		}
-		// A downloaded bundle can add or skip RouterInfos, but it never deletes
-		// a cached peer: an ordinary slow or partially stale mirror must not
-		// erase a working peer set.
+		// A downloaded bundle can add or skip RouterInfos, but it never
+		// deletes a cached peer: an ordinary slow or partially stale mirror
+		// must not erase a working peer set.
 		if (result.imported == 0 && result.error.empty ())
 		{
 			if (result.skippedStale > 0)
@@ -1093,8 +1101,8 @@ namespace data
 		}
 
 		// Extract the issuer CN with the bounded X.509 accessor. The legacy
-		// X509_NAME_oneline() format truncates long or escaped names and is not
-		// a stable parser.
+		// X509_NAME_oneline() format truncates long or escaped names and is
+		// not a stable parser.
 		char name[256] = { };
 		const int cnLength
 			= i2p::crypto::GetX509NameTextByNID (
@@ -1250,8 +1258,9 @@ namespace data
 
 		boost::asio::io_context service;
 		boost::system::error_code ecode;
-		// Every phase below is bounded by this deadline and by the stop token, so
-		// a stalled mirror cannot hold the reseed worker for minutes.
+		// Every phase below is bounded by this deadline and by the stop
+		// token, so a stalled mirror cannot hold the reseed worker for
+		// minutes.
 		const auto hostDeadline = std::chrono::steady_clock::now () + RESEED_HOST_TIMEOUT;
 
 		boost::asio::ssl::context ctx (boost::asio::ssl::context::tls_client);
@@ -1266,7 +1275,8 @@ namespace data
 		}
 		// Reseed transport must authenticate the server chain and hostname.
 		// SU3 protects the bundle contents, but TLS prevents bootstrap
-		// fingerprinting and stale/mirror substitution at the transport layer.
+		// fingerprinting and stale/mirror substitution at the transport
+		// layer.
 		ctx.set_default_verify_paths (ecode);
 		if (ecode)
 		{

@@ -4,12 +4,13 @@
  *
  * openi2pd: test tunnel peer reuse policy and far-end masks.
  *
- * Recreating a tunnel reused the old peers without re-applying the blocklist,
- * runtime bans, reachability, version, congestion or endpoint rules, and the
- * fallback builders passed a zero far-end transport mask. This test pins the
- * shared admission predicate, the "never reuse a failed path" decision and the
- * far-end mask of the one-hop configurations. Deterministic: RouterInfos are
- * built in memory, no netdb lookup, socket or thread runs.
+ * Recreating a tunnel reused the old peers without re-applying the
+ * blocklist, runtime bans, reachability, version, congestion or
+ * endpoint rules, and the fallback builders passed a zero far-end
+ * transport mask. This test pins the shared admission predicate, the
+ * "never reuse a failed path" decision and the far-end mask of the
+ * one-hop configurations. Deterministic: RouterInfos are built in
+ * memory, no netdb lookup, socket or thread runs.
  *
  */
 
@@ -152,12 +153,14 @@ void TestAdmissionPredicate ()
 	assert (RemoveRuntimeRouterBan (router->GetIdentHash ()));
 	assert (IsRouterUsableForTunnel (*router, nullptr, TunnelPeerRole::Middle, true, false));
 
-	// A descriptor without a usable transport can never carry a tunnel hop.
+	// A descriptor without a usable transport can never carry a tunnel
+	// hop.
 	auto unreachable = MakeRouter (MakeEciesKeys (), "2.14.0", "O", false);
 	assert (!unreachable->HasValidAddresses ());
 	assert (!IsRouterUsableForTunnel (*unreachable, nullptr, TunnelPeerRole::Middle, true, false));
 
-	// Old routers: the general floor is waived only for a high-bandwidth peer.
+	// Old routers: the general floor is waived only for a high-bandwidth
+	// peer.
 	auto old = MakeRouter (MakeEciesKeys (), "0.9.1");
 	assert (!old->IsHighBandwidth ());
 	assert (!IsRouterUsableForTunnel (*old, nullptr, TunnelPeerRole::Middle, true, false));
@@ -180,7 +183,8 @@ void TestRoleAssignment ()
 	assert (GetTunnelPeerRole (0, 3, false) == TunnelPeerRole::Middle);
 	assert (GetTunnelPeerRole (1, 3, false) == TunnelPeerRole::Middle);
 	assert (GetTunnelPeerRole (2, 3, false) == TunnelPeerRole::Endpoint);
-	// The last hop of an inbound path is requested as an endpoint by NetDb too.
+	// The last hop of an inbound path is requested as an endpoint by NetDb
+	// too.
 	assert (GetTunnelPeerRole (2, 3, true) == TunnelPeerRole::Endpoint);
 	// A single-hop inbound tunnel is its own gateway.
 	assert (GetTunnelPeerRole (0, 1, true) == TunnelPeerRole::Gateway);
@@ -196,8 +200,8 @@ void TestFarEndTransports ()
 	assert (inboundMask != 0);
 	assert (outboundMask != 0);
 
-	// The fallback builders must pass the peer's real transport set, not the
-	// zero mask a `false` boolean argument used to produce.
+	// The fallback builders must pass the peer's real transport set, not
+	// the zero mask a `false` boolean argument used to produce.
 	auto inboundConfig = i2p::tunnel::CreateOneHopInboundTunnelConfig (*router);
 	assert (inboundConfig);
 	assert (inboundConfig->GetNumHops () == 1);

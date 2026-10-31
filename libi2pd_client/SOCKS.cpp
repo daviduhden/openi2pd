@@ -4,12 +4,13 @@
  *
  * openi2pd: SOCKS.
  *
- * Implements SOCKS4/4a and SOCKS5 CONNECT, torsocks address resolution and
- * UDP ASSOCIATE, resolving .i2p names through the address book and optionally
- * forwarding non-I2P traffic to an upstream SOCKS proxy. Handshakes are parsed
- * incrementally with per-request validation. Optional local RFC 1929
- * username/password authentication is negotiated before any request byte is
- * accepted and rejects SOCKS4, which has no credential exchange.
+ * Implements SOCKS4/4a and SOCKS5 CONNECT, torsocks address resolution
+ * and UDP ASSOCIATE, resolving .i2p names through the address book and
+ * optionally forwarding non-I2P traffic to an upstream SOCKS proxy.
+ * Handshakes are parsed incrementally with per-request validation.
+ * Optional local RFC 1929 username/password authentication is
+ * negotiated before any request byte is accepted and rejects SOCKS4,
+ * which has no credential exchange.
  *
  */
 
@@ -45,30 +46,33 @@ namespace proxy
 {
 	namespace
 	{
-		// A client that opens a SOCKS connection but never finishes the version,
-		// method or request exchange must not keep the handler allocated.
+		// A client that opens a SOCKS connection but never finishes the
+		// version, method or request exchange must not keep the handler
+		// allocated.
 		constexpr int SOCKS_HANDSHAKE_TIMEOUT = 30; // seconds
 	}
 	static const size_t socks_buffer_size = 8192;
 
 	class SOCKSServer;
-	/// One accepted local SOCKS connection and its handshake state machine.
+	/// One accepted local SOCKS connection and its handshake state
+	/// machine.
 	///
-	/// The parser is a byte-at-a-time state machine over a fixed buffer; the
-	/// handler is the only owner of m_state, so partial input can never be
-	/// interpreted twice or by two paths. Bytes that arrive in the same read as
-	/// the method list or the credentials are deferred (m_DeferredAuthInput) and
-	/// replayed only after the corresponding reply has been written, because
-	/// every reply reuses m_response and Asio does not allow overlapping writes
-	/// on one socket.
+	/// The parser is a byte-at-a-time state machine over a fixed buffer;
+	/// the handler is the only owner of m_state, so partial input can
+	/// never be interpreted twice or by two paths. Bytes that arrive in
+	/// the same read as the method list or the credentials are deferred
+	/// (m_DeferredAuthInput) and replayed only after the corresponding
+	/// reply has been written, because every reply reuses m_response and
+	/// Asio does not allow overlapping writes on one socket.
 	///
-	/// Trust boundary: the local client is untrusted. The first version byte
-	/// selects SOCKS4 or SOCKS5, a request is validated (command, address type,
-	/// then a loopback/private/multicast target check) before any destination
-	/// resolution, and local authentication is honoured for both versions: with
-	/// a credential configured, a SOCKS4 request (which has no credential
-	/// exchange) and an unverifiable method list are refused instead of being
-	/// let through. Only the non-secret authentication outcome is logged.
+	/// Trust boundary: the local client is untrusted. The first version
+	/// byte selects SOCKS4 or SOCKS5, a request is validated (command,
+	/// address type, then a loopback/private/multicast target check)
+	/// before any destination resolution, and local authentication is
+	/// honoured for both versions: with a credential configured, a SOCKS4
+	/// request (which has no credential exchange) and an unverifiable
+	/// method list are refused instead of being let through. Only the
+	/// non-secret authentication outcome is logged.
 	class SOCKSHandler : public i2p::client::I2PServiceHandler, public std::enable_shared_from_this<SOCKSHandler>
 	{
 	private:
@@ -182,7 +186,10 @@ namespace proxy
 		bool Socks5ChooseAuth ();
 		authMethods ChooseAuthMethod () const;
 		void Socks5UserPasswdResponse (bool success);
-		/** Zero the decoded RFC 1929 fields; called after verification and on stop. */
+		/**
+		 * Zero the decoded RFC 1929 fields; called after verification and on
+		 * stop.
+		 */
 		void WipeCredentialFields () noexcept;
 		bool VerifyUserPass ();
 		void SocksRequestFailed (errTypes error);
@@ -225,7 +232,8 @@ namespace proxy
 		const bool m_UseUpstreamProxy; // do we want to use the upstream proxy for non i2p addresses?
 		const std::string m_UpstreamProxyAddress;
 		const uint16_t m_UpstreamProxyPort;
-		// Local RFC 1929 credential, snapshotted from the acceptor at accept time.
+		// Local RFC 1929 credential, snapshotted from the acceptor at accept
+		// time.
 		SOCKSUserPassAuth m_Auth;
 		std::array<char, SOCKS_AUTH_BUFFER_SIZE> m_authUser { };
 		std::array<char, SOCKS_AUTH_BUFFER_SIZE> m_authPassword { };
@@ -234,10 +242,11 @@ namespace proxy
 		bool m_authOfferedNone = false;
 		bool m_authOfferedUserPass = false;
 		bool m_authVerified = false;
-		// Bytes that arrived in the same read as the credentials or the method
-		// list. They are parsed only after the corresponding reply write has
-		// completed, because every SOCKS reply reuses m_response and Asio does
-		// not allow two overlapping async_write operations on one socket.
+		// Bytes that arrived in the same read as the credentials or the
+		// method list. They are parsed only after the corresponding reply
+		// write has completed, because every SOCKS reply reuses m_response
+		// and Asio does not allow two overlapping async_write operations on
+		// one socket.
 		std::vector<uint8_t> m_DeferredAuthInput;
 		std::shared_ptr<i2p::client::I2PUDPClientTunnel> m_UDPTunnel; // shared, the tunnel takes references to itself
 
@@ -292,8 +301,9 @@ namespace proxy
 
 	void SOCKSHandler::HandleHandshakeDeadline (const boost::system::error_code &)
 	{
-		// Terminate() is idempotent and owns the Kill() transition; clearing the
-		// flag here first would make it return without closing the socket.
+		// Terminate() is idempotent and owns the Kill() transition; clearing
+		// the flag here first would make it return without closing the
+		// socket.
 		LogPrint (eLogWarning, "SOCKS: handshake was not completed in ", SOCKS_HANDSHAKE_TIMEOUT,
 			" seconds, closing connection");
 		Terminate ();
@@ -508,7 +518,8 @@ namespace proxy
 	void SOCKSHandler::SocksRequestSuccess ()
 	{
 		boost::asio::const_buffer response (nullptr, 0);
-		// TODO: this should depend on things like the command type and callbacks may change
+		// TODO: this should depend on things like the command type and
+		// callbacks may change
 		switch (m_socksv)
 		{
 		case SOCKS4:
@@ -568,13 +579,13 @@ namespace proxy
 		m_state = nstate;
 	}
 
-	// Final request checks before any destination work.
-	// IP literals are converted to their textual form first, so the rest of the
-	// path only deals with host names. A CONNECT/UDP request for a name that is
-	// not an `.i2p` host must not reach a loopback, private, link-local or
-	// multicast target: the proxy is an I2P forward proxy and must never become
-	// a local-network pivot. A RESOLVE (torsocks) request is exempt because it
-	// maps the name to a fake 255/8 address and opens nothing.
+	// Final request checks before any destination work. IP literals are
+	// converted to their textual form first, so the rest of the path only
+	// deals with host names. A CONNECT/UDP request for a name that is not
+	// an `.i2p` host must not reach a loopback, private, link-local or
+	// multicast target: the proxy is an I2P forward proxy and must never
+	// become a local-network pivot. A RESOLVE (torsocks) request is exempt
+	// because it maps the name to a fake 255/8 address and opens nothing.
 	bool SOCKSHandler::ValidateSOCKSRequest ()
 	{
 		if (m_cmd != CMD_CONNECT && m_cmd != CMD_UDP && m_cmd != CMD_RESOLVE)
@@ -623,16 +634,16 @@ namespace proxy
 		return true;
 	}
 
-	// Run the handshake state machine over one read.
-	// Returns true when the request reached the READY state and the caller must
-	// continue (resolve-cache substitution, destination stream request or
-	// upstream forwarding); false when a reply was queued, in which case the
-	// remaining bytes are replayed by the write completion and the caller must
-	// not start another read.
-	// The buffer is consumed incrementally, so a fragment boundary can fall
-	// anywhere in the version, method list, address or port. A refusal ends the
-	// exchange: one status reply is written and the connection is closed, so no
-	// further request bytes are parsed for it.
+	// Run the handshake state machine over one read. Returns true when the
+	// request reached the READY state and the caller must continue
+	// (resolve-cache substitution, destination stream request or upstream
+	// forwarding); false when a reply was queued, in which case the
+	// remaining bytes are replayed by the write completion and the caller
+	// must not start another read. The buffer is consumed incrementally,
+	// so a fragment boundary can fall anywhere in the version, method
+	// list, address or port. A refusal ends the exchange: one status reply
+	// is written and the connection is closed, so no further request bytes
+	// are parsed for it.
 	bool SOCKSHandler::HandleData (uint8_t * sock_buff, std::size_t len)
 	{
 		assert (len); // This should always be called with a least a byte left to parse

@@ -4,9 +4,12 @@
  *
  * openi2pd: test leaseset2 java213 regression.
  *
- * Static checks for Java 2.13 LeaseSet, LeaseSet2 and MetaLeaseSet parsing:
- * offline signatures, truncated blocks, lease freshness, key-section lengths,
- * duplicate or overrunning mappings and the canonical Meta header/revocation
+ * Static checks for Java 2.13 LeaseSet, LeaseSet2 and MetaLeaseSet
+ * parsing:
+ * offline signatures, truncated blocks, lease freshness, key-section
+ * lengths,
+ * duplicate or overrunning mappings and the canonical Meta
+ * header/revocation
  * shape.
  *
  */
@@ -92,8 +95,9 @@ std::vector<uint8_t> BuildLeaseSet1 (const PrivateKeys & keys, const std::vector
 	return buffer;
 }
 
-// The returned vector starts with the NetDb store type, which is covered by
-// the LeaseSet2 signature but is not part of LeaseSet2::GetBuffer().
+// The returned vector starts with the NetDb store type, which is
+// covered by the LeaseSet2 signature but is not part of
+// LeaseSet2::GetBuffer().
 std::vector<uint8_t> BuildLeaseSet2 (const PrivateKeys & keys, uint32_t published, uint16_t expires, uint16_t flags,
 	const std::vector<KeySection> & keySections, const std::vector<uint32_t> & leaseEnds,
 	const std::vector<uint8_t> & properties = { })
@@ -133,9 +137,9 @@ std::vector<uint8_t> BuildLeaseSet2 (const PrivateKeys & keys, uint32_t publishe
 	return buffer;
 }
 
-// Meta LS2 header + type-specific body without the signature. `declaredEntries`
-// is written to the wire so a negative vector can declare more entries than it
-// actually carries.
+// Meta LS2 header + type-specific body without the signature.
+// `declaredEntries` is written to the wire so a negative vector can
+// declare more entries than it actually carries.
 std::vector<uint8_t> BuildMetaBody (const PrivateKeys & keys, uint32_t published, uint16_t expires,
 	const std::vector<MetaEntry> & entries, size_t declaredEntries, const std::vector<uint8_t> & revocations)
 {
@@ -182,8 +186,8 @@ void TestOfflineSignatureAtEndOfBuffer ()
 		SIGNING_KEY_TYPE_EDDSA_SHA512_ED25519, CRYPTO_KEY_TYPE_ECIES_X25519_AEAD, true);
 	auto now = static_cast<uint32_t> (i2p::util::GetMillisecondsSinceEpoch () / 1000);
 	// CreateOfflineKeys() produces the proposal-123 block signed by the
-	// destination key; the final LeaseSet2 signature is made by the transient
-	// key and is the last field in the buffer.
+	// destination key; the final LeaseSet2 signature is made by the
+	// transient key and is the last field in the buffer.
 	auto keys = destination.CreateOfflineKeys (SIGNING_KEY_TYPE_EDDSA_SHA512_ED25519, now + 3600);
 	std::vector<uint8_t> key (32, 0x44);
 	auto buffer = BuildLeaseSet2 (keys, now - 60, 300, LEASESET2_FLAG_OFFLINE_KEYS,
@@ -195,9 +199,9 @@ void TestOfflineSignatureAtEndOfBuffer ()
 
 void TestTruncatedSignatureWithSkipVerify ()
 {
-	// Update(..., verifySignature=false) is used after a caller validated the
-	// signature once. The signature bytes are still structural and must be
-	// present before the object is marked valid.
+	// Update(..., verifySignature=false) is used after a caller validated
+	// the signature once. The signature bytes are still structural and
+	// must be present before the object is marked valid.
 	auto keys = PrivateKeys::CreateRandomKeys (
 		SIGNING_KEY_TYPE_EDDSA_SHA512_ED25519, CRYPTO_KEY_TYPE_ECIES_X25519_AEAD, true);
 	auto now = static_cast<uint32_t> (i2p::util::GetMillisecondsSinceEpoch () / 1000);
@@ -217,8 +221,8 @@ void TestStandardLeaseFreshness ()
 	auto now = static_cast<uint32_t> (i2p::util::GetMillisecondsSinceEpoch () / 1000);
 	std::vector<uint8_t> key (32, 0x66);
 
-	// Java validates the earliest lease (<= now - 10 min rejects), not only
-	// the latest lease.
+	// Java validates the earliest lease (<= now - 10 min rejects), not
+	// only the latest lease.
 	{
 		auto buffer = BuildLeaseSet2 (
 			keys, now - 60, 360, 0, { { CRYPTO_KEY_TYPE_ECIES_X25519_AEAD, key } }, { now + 300, now - 660 });
@@ -235,7 +239,8 @@ void TestStandardLeaseFreshness ()
 		assert (leaseSet.IsValid ());
 	}
 
-	// A stale earliest lease plus one current lease is also rejected for LS1.
+	// A stale earliest lease plus one current lease is also rejected for
+	// LS1.
 	{
 		auto buffer = BuildLeaseSet1 (keys, { now * 1000ULL + 300000, now * 1000ULL - 660000 });
 		uint64_t expires = 0;
@@ -251,8 +256,9 @@ void TestLeaseSet2KeySections ()
 		SIGNING_KEY_TYPE_EDDSA_SHA512_ED25519, CRYPTO_KEY_TYPE_ECIES_X25519_AEAD, true);
 	auto now = static_cast<uint32_t> (i2p::util::GetMillisecondsSinceEpoch () / 1000);
 
-	// A known encryption type with the wrong explicit length is malformed in
-	// Java (PublicKey(type, data) throws); it must not be silently skipped.
+	// A known encryption type with the wrong explicit length is malformed
+	// in Java (PublicKey(type, data) throws); it must not be silently
+	// skipped.
 	{
 		std::vector<uint8_t> key (31, 0x77);
 		auto buffer
@@ -324,13 +330,14 @@ void TestLeaseSet1CanonicalBuffer ()
 	padded.insert (padded.end (), 64, 0x5A);
 	LeaseSet leaseSet (padded.data (), padded.size (), false);
 	assert (leaseSet.IsValid ());
-	// The signature covers only the canonical body; trailing unauthenticated
+	// The signature covers only the canonical body; trailing
+	// unauthenticated
 	// bytes must not be stored or re-served by a floodfill.
 	assert (leaseSet.GetBufferLen () == canonical.size ());
 	assert (!std::memcmp (leaseSet.GetBuffer (), canonical.data (), canonical.size ()));
 
-	// The cached-LS refresh path calls PopulateLeases(). For LS2 this must be
-	// a no-op rather than re-running the LS1 parser over the LS2 body.
+	// The cached-LS refresh path calls PopulateLeases(). For LS2 this must
+	// be a no-op rather than re-running the LS1 parser over the LS2 body.
 	{
 		std::vector<uint8_t> key (32, 0x7B);
 		auto ls2Buffer = BuildLeaseSet2 (keys, static_cast<uint32_t> (now / 1000), 600, 0,
@@ -349,7 +356,8 @@ void TestLeaseSet1CanonicalBuffer ()
 void TestEncryptedBlindedRsaRejected ()
 {
 	// stA1 = RSA-4096 (6). Java rejects the RSA signature type before any
-	// public-key operation; a two-byte header is enough to exercise the guard.
+	// public-key operation; a two-byte header is enough to exercise the
+	// guard.
 	const uint8_t header[2] = { 0x00, static_cast<uint8_t> (SIGNING_KEY_TYPE_RSA_SHA512_4096) };
 	LeaseSet2 leaseSet (NETDB_STORE_TYPE_ENCRYPTED_LEASESET2, header, sizeof (header), false);
 	assert (!leaseSet.IsValid ());
@@ -362,11 +370,11 @@ void TestMetaLeaseValidation ()
 	auto now = static_cast<uint32_t> (i2p::util::GetMillisecondsSinceEpoch () / 1000);
 
 	// Canonical Meta LS2. MetaLeaseSet.readBytes() adds each entry through
-	// LeaseSet2.addLease(), which rewrites _expires to the latest entry, and
-	// MetaLeaseSet.writeBytesWithoutSig() re-serialises the signed header from
-	// it. The header field is therefore latestEntry - published (600 here),
-	// not latestEntry - now, and Java's verifySignature() rejects any other
-	// value in either direction.
+	// LeaseSet2.addLease(), which rewrites _expires to the latest entry,
+	// and MetaLeaseSet.writeBytesWithoutSig() re-serialises the signed
+	// header from it. The header field is therefore latestEntry -
+	// published (600 here), not latestEntry - now, and Java's
+	// verifySignature() rejects any other value in either direction.
 	{
 		std::vector<MetaEntry> entries {
 			{ now + 180, NETDB_STORE_TYPE_STANDARD_LEASESET2, 1 },
@@ -400,7 +408,8 @@ void TestMetaLeaseValidation ()
 		assert (!ParseLeaseSet2 (buffer).IsValid ());
 	}
 
-	// MetaLeaseSet.readBytes() adds every entry through LeaseSet.addLease(),
+	// MetaLeaseSet.readBytes() adds every entry through
+	// LeaseSet.addLease(),
 	// which enforces MAX_LEASES = 16.
 	{
 		std::vector<MetaEntry> entries (17, MetaEntry { now + 3000, NETDB_STORE_TYPE_STANDARD_LEASESET2, 1 });
@@ -428,8 +437,9 @@ void TestMetaLeaseValidation ()
 	}
 
 	// Java's earliest = min(earliest entry, published) rejects a Meta LS2
-	// whose oldest entry is more than 10 minutes old even if another entry is
-	// current. The canonical header (latestEntry - published) is unaffected.
+	// whose oldest entry is more than 10 minutes old even if another entry
+	// is current. The canonical header (latestEntry - published) is
+	// unaffected.
 	{
 		std::vector<MetaEntry> entries {
 			{ now + 300, NETDB_STORE_TYPE_STANDARD_LEASESET2, 1 },
@@ -453,7 +463,8 @@ void TestEncryptedOuterAndInnerLayers ()
 		NETDB_STORE_TYPE_STANDARD_LEASESET2, keys.GetPublic (), innerBuffer.data () + 1, innerBuffer.size () - 1);
 
 	// Java rejects per-client auth without client keys (or with an invalid
-	// auth type). The previous code silently published an unauthenticated LS2.
+	// auth type). The previous code silently published an unauthenticated
+	// LS2.
 	{
 		auto emptyKeys = std::make_shared<std::vector<AuthPublicKey>> ();
 		LocalEncryptedLeaseSet2 encrypted (inner, keys, ENCRYPTED_LEASESET_AUTH_TYPE_DH, emptyKeys);
@@ -464,9 +475,10 @@ void TestEncryptedOuterAndInnerLayers ()
 		assert (encrypted.GetBuffer () == nullptr);
 	}
 
-	// Outer-only verification (the floodfill path) and full decryption of the
-	// inner layer. The raw buffer deliberately has no type byte in front of
-	// it, exercising the signature-prefix path without writing buf[-1].
+	// Outer-only verification (the floodfill path) and full decryption of
+	// the inner layer. The raw buffer deliberately has no type byte in
+	// front of it, exercising the signature-prefix path without writing
+	// buf[-1].
 	LocalEncryptedLeaseSet2 encrypted (inner, keys, ENCRYPTED_LEASESET_AUTH_TYPE_NONE, nullptr);
 	assert (encrypted.GetBuffer () != nullptr);
 	LeaseSet2 outer (NETDB_STORE_TYPE_ENCRYPTED_LEASESET2, encrypted.GetBuffer (), encrypted.GetBufferLen (), false);

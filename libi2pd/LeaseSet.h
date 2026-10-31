@@ -4,10 +4,11 @@
  *
  * openi2pd: LeaseSet.
  *
- * LeaseSet v1 and LeaseSet2 parsing, signature verification and expiry policy for standard,
- * meta and encrypted store types, including offline signatures and per-type encryption-key
- * selection. Local builders assemble the inbound-tunnel leases that the netDb publishes, with
- * Java-compatible lease-age and clock-fudge bounds.
+ * LeaseSet v1 and LeaseSet2 parsing, signature verification and expiry
+ * policy for standard, meta and encrypted store types, including
+ * offline signatures and per-type encryption-key selection. Local
+ * builders assemble the inbound-tunnel leases that the netDb publishes,
+ * with Java-compatible lease-age and clock-fudge bounds.
  *
  */
 
@@ -44,8 +45,8 @@ namespace data
 	const int LEASE_ENDDATE_THRESHOLD = 51000; // in milliseconds
 
 	// True when this codebase can use the type as the active LeaseSet2
-	// encryptor. Reserved EC types and unsupported hybrid sets are false even
-	// though they may be parsed for compatibility.
+	// encryptor. Reserved EC types and unsupported hybrid sets are false
+	// even though they may be parsed for compatibility.
 	bool IsSelectableLS2EncryptionKeyType (CryptoKeyType keyType);
 	struct Lease
 	{
@@ -53,7 +54,7 @@ namespace data
 		uint32_t tunnelID;
 		uint64_t endDate; // 0 means invalid
 		bool isUpdated; // transient
-		/* return true if this lease expires within t millisecond + fudge factor */
+		/** Return true if expiry is within t plus the clock fudge. */
 		bool ExpiresWithin (const uint64_t t, const uint64_t fudge = 1000) const
 		{
 			auto expire = i2p::util::GetMillisecondsSinceEpoch ();
@@ -84,8 +85,9 @@ namespace data
 	const uint8_t MAX_NUM_ENCRYPTION_KEYS = 8; // LeaseSet2.MAX_KEYS
 	const uint64_t LEASESET_EXPIRATION_TIME_THRESHOLD = 12 * 60 * 1000; // in milliseconds
 	const uint64_t LEASESET2_CLOCK_FUDGE = 60 * 1000; // Router.CLOCK_FUDGE_FACTOR
-	// KademliaNetworkDatabaseFacade.validate() rejects an entry whose earliest
-	// lease is more than 10 minutes old. This applies to LS1 and LS2.
+	// KademliaNetworkDatabaseFacade.validate() rejects an entry whose
+	// earliest lease is more than 10 minutes old. This applies to LS1 and
+	// LS2.
 	const uint64_t LEASESET_MAX_LEASE_AGE = 10 * 60 * 1000; // in milliseconds
 	// KademliaNetworkDatabaseFacade.MAX_LEASE_FUTURE. This applies to LS1
 	// and LS2 lease dates. Clock fudge is added separately.
@@ -96,9 +98,10 @@ namespace data
 	const uint64_t LEASESET2_META_MAX_PUBLISHED_AGE = 10 * 60 * 1000; // Java earliest-lease bound
 
 	const uint8_t NETDB_STORE_TYPE_LEASESET = 1;
-	/// Parsed LS1 destination and leases, with its serialized representation.
-	/// The object owns its buffer and lease objects; consumers must synchronize
-	/// reads with updates rather than treating a shared pointer as a state snapshot.
+	/// Parsed LS1 destination and leases, with its serialized
+	/// representation. The object owns its buffer and lease objects;
+	/// consumers must synchronize reads with updates rather than treating
+	/// a shared pointer as a state snapshot.
 	/// @see https://i2p.net/en/docs/specs/common-structures/
 	class LeaseSet : public RoutingDestination
 	{
@@ -106,15 +109,16 @@ namespace data
 		LeaseSet (const uint8_t * buf, size_t len, bool storeLeases = true);
 		virtual ~LeaseSet () = default;
 		/// Replace and parse the stored buffer.
-		/// @warning verifySignature=false skips signature verification and is only
-		/// suitable when the caller has already authenticated the exact bytes.
+		/// @warning verifySignature=false skips signature
+		///          verification and is only suitable when the caller has
+		///          already authenticated the exact bytes.
 		virtual void Update (
 			const uint8_t * buf, size_t len, std::shared_ptr<LocalDestination> dest, bool verifySignature);
 		virtual bool IsNewer (const uint8_t * buf, size_t len) const;
 		virtual void PopulateLeases (); // from buffer
 
-		/// Borrow the serialized bytes. Update or destruction may invalidate the
-		/// pointer; GetBufferLen() is the current usable length.
+		/// Borrow the serialized bytes. Update or destruction may invalidate
+		/// the pointer; GetBufferLen() is the current usable length.
 		const uint8_t * GetBuffer () const { return m_Buffer.get (); };
 		size_t GetBufferLen () const { return m_BufferLen; };
 		bool IsValid () const { return m_IsValid; };
@@ -208,7 +212,8 @@ namespace data
 			std::shared_ptr<LocalDestination> dest = nullptr,
 			CryptoKeyType preferredCrypto = CRYPTO_KEY_TYPE_ECIES_X25519_AEAD);
 		// The LS2 constructor already populated its leases; running the LS1
-		// parser on this buffer would clear validity and overwrite the key slot.
+		// parser on this buffer would clear validity and overwrite the key
+		// slot.
 		void PopulateLeases () override { }
 		LeaseSet2 (const uint8_t * buf, size_t len, std::shared_ptr<const BlindedPublicKey> key,
 			std::shared_ptr<LocalDestination> dest = nullptr, const uint8_t * secret = nullptr,
@@ -220,9 +225,9 @@ namespace data
 		// LeaseSet2 options mapping (proposal 167 HostReply types 2-4).
 		const i2p::util::Mapping & GetProperties () const { return m_Properties; };
 		bool IsPublishedEncrypted () const override { return m_IsPublishedEncrypted; };
-		// Key must point to at least the advertised section length for `type`.
-		// Unknown types are compared with their opaque wire length, matching
-		// Java's List of PublicKey(type, data) entries.
+		// Key must point to at least the advertised section length for
+		// `type`. Unknown types are compared with their opaque wire length,
+		// matching Java's List of PublicKey(type, data) entries.
 		bool IsEncryptionKey (CryptoKeyType type, const uint8_t * key) const override;
 		size_t GetNumEncryptionKeys () const { return m_EncryptionKeys.size (); };
 		CryptoKeyType GetEncryptionKeyType (size_t index) const
@@ -230,10 +235,10 @@ namespace data
 			return index < m_EncryptionKeys.size () ? m_EncryptionKeys[index].type : CRYPTO_KEY_TYPE_ELGAMAL;
 		};
 		/// True when a received DatabaseStore keyed by `key` belongs to this
-		/// LeaseSet: the recorded store hash for an encrypted LeaseSet2, otherwise
-		/// the inner identity hash. Callers must use this predicate rather than
-		/// comparing the identity hash themselves, because an encrypted LeaseSet2
-		/// is published under the blinded destination.
+		/// LeaseSet: the recorded store hash for an encrypted LeaseSet2,
+		/// otherwise the inner identity hash. Callers must use this predicate
+		/// rather than comparing the identity hash themselves, because an
+		/// encrypted LeaseSet2 is published under the blinded destination.
 		bool IsStoreKey (const IdentHash & key) const;
 		std::shared_ptr<const i2p::crypto::Verifier> GetTransientVerifier () const override
 		{
@@ -262,24 +267,27 @@ namespace data
 		uint64_t ExtractExpirationTimestamp (const uint8_t * buf, size_t len) const override;
 		uint64_t ExtractPublishedTimestamp (const uint8_t * buf, size_t len, uint64_t & expiration) const;
 		/// Build the encrypted-LeaseSet2 client-auth block (Proposal 123).
-		/// @param secret 32-byte DH private key or PSK supplied by the caller; it
-		/// is a credential and must never be logged, stored in the object or
-		/// reused as a nonce.
-		/// @param subcredential Subcredential extended with the LeaseSet timestamp.
-		/// @return Length of the auth data without its leading flag; 0 means the
-		/// publisher requested no per-client auth. Malformed auth data, a missing
-		/// secret or a failed agreement returns the size_t failure sentinel, so
-		/// callers must treat any value other than a plausible length as a
-		/// rejected LeaseSet rather than as "no auth".
+		/// @param secret 32-byte DH private key or PSK supplied
+		///               by the caller; it is a credential and must never be
+		///               logged, stored in the object or reused as a nonce.
+		/// @param subcredential Subcredential extended with the LeaseSet
+		///                      timestamp.
+		/// @return Length of the auth data without its leading flag;
+		///         0 means the publisher requested no per-client auth.
+		///         Malformed auth data, a missing secret or a failed
+		///         agreement returns the size_t failure sentinel, so callers
+		///         must treat any value other than a plausible length as a
+		///         rejected LeaseSet rather than as "no auth".
 		size_t ExtractClientAuthData (const uint8_t * buf, size_t len, const uint8_t * secret,
 			const uint8_t * subcredential, uint8_t * authCookie)
 			const; // subcredential is subcredential + timestamp, return length of autData without flag
 
 	private:
-		// One wire key section, kept in the order the publisher advertised it.
-		// A std::map keyed by type would silently drop an earlier section when
-		// the same type is advertised twice; Java keeps every section in a List
-		// and only getEncryptionKey()/IsEncryptionKey() collapse them by type.
+		// One wire key section, kept in the order the publisher advertised
+		// it. A std::map keyed by type would silently drop an earlier section
+		// when the same type is advertised twice; Java keeps every section in
+		// a List and only getEncryptionKey()/IsEncryptionKey() collapse them
+		// by type.
 		struct EncryptionKeySection
 		{
 			CryptoKeyType type;
@@ -315,8 +323,9 @@ namespace data
 		uint16_t keyType = bufbe16toh (buf + offset);
 		offset += 2;
 		// Java LeaseSet2.verifySignature() rejects RSA transient keys so one
-		// untrusted LeaseSet cannot force a 4096-bit public operation. Datagram2
-		// and Streaming keep Java's permissive policy and pass allowRSA=true.
+		// untrusted LeaseSet cannot force a 4096-bit public operation.
+		// Datagram2 and Streaming keep Java's permissive policy and pass
+		// allowRSA=true.
 		if (!allowRSA && keyType >= SIGNING_KEY_TYPE_RSA_SHA256_2048 && keyType <= SIGNING_KEY_TYPE_RSA_SHA512_4096)
 		{
 			LogPrint (eLogWarning, "Offline signature: RSA transient key type ", (int)keyType,
@@ -336,7 +345,7 @@ namespace data
 		return transientVerifier;
 	}
 
-	//------------------------------------------------------------------------------------
+	//---------------------------------------------------------------------
 	class LocalLeaseSet
 	{
 	public:

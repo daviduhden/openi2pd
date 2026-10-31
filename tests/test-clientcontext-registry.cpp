@@ -4,7 +4,9 @@
  *
  * openi2pd: test clientcontext registry.
  *
- * Exercises ClientContext destination registration, replacement and deletion against concurrent snapshot readers, requiring complete consistent views without starting a router or network.
+ * Exercises ClientContext destination registration, replacement and
+ * deletion against concurrent snapshot readers, requiring complete
+ * consistent views without starting a router or network.
  *
  */
 
@@ -57,8 +59,8 @@ int main ()
 	assert (Contains (context.GetDestinationsList (), hashA));
 	assert (Contains (context.GetDestinationsList (), hashB));
 
-	// Replacing the key is visible to both lookup styles and keeps the same
-	// destination object.
+	// Replacing the key is visible to both lookup styles and keeps the
+	// same destination object.
 	i2p::data::IdentHash replacement;
 	replacement.Fill (0xA5);
 	assert (context.ReplaceLocalDestinationHash (hashA, replacement));
@@ -67,8 +69,8 @@ int main ()
 	assert (!Contains (context.GetDestinationsList (), hashA));
 	assert (Contains (context.GetDestinationsList (), replacement));
 
-	// Concurrent readers must always see a complete snapshot, and a deleted
-	// destination must disappear atomically.
+	// Concurrent readers must always see a complete snapshot, and a
+	// deleted destination must disappear atomically.
 	{
 		std::atomic<bool> stop { false };
 		std::atomic<int> snapshots { 0 };

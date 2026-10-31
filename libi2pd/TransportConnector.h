@@ -4,10 +4,10 @@
  *
  * openi2pd: TransportConnector.
  *
- * Defines the outbound transport-connect strategy used by Transports. Each
- * concrete connector owns one protocol's address selection and session-start
- * semantics; the manager iterates the peer's transport priority and asks the
- * matching strategy to start an attempt.
+ * Defines the outbound transport-connect strategy used by Transports.
+ * Each concrete connector owns one protocol's address selection and
+ * session-start semantics; the manager iterates the peer's transport
+ * priority and asks the matching strategy to start an attempt.
  *
  */
 
@@ -28,8 +28,8 @@ namespace transport
 	/**
 	 * Inputs shared by outbound transport strategies.
 	 *
-	 * The context is deliberately a short-lived view: it never owns the
-	 * router or the servers and must not outlive one ConnectToPeer call.
+	 * The context pins RouterInfo and borrows both server objects. Keep it
+	 * within one ConnectToPeer call so those servers remain alive.
 	 */
 	struct TransportConnectContext
 	{
@@ -61,9 +61,9 @@ namespace transport
 	/**
 	 * One outbound protocol strategy.
 	 *
-	 * `TryConnect` returns true only when this strategy started (or observed)
-	 * a connection attempt. False means "not applicable for this address" and
-	 * lets Transports try the next priority entry.
+	 * `TryConnect` returns true only when this strategy started (or
+	 * observed) a connection attempt. False means "not applicable for this
+	 * address" and lets Transports try the next priority entry.
 	 */
 	class ITransportConnector
 	{

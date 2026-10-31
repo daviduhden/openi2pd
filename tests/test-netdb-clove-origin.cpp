@@ -4,11 +4,12 @@
  *
  * openi2pd: netDb garlic-clove origin policy.
  *
- * Checks the Java 2.14.0 distinction between a garlic received directly from a
- * peer and one that arrived through an I2NP tunnel: a direct-garlic clove may
- * be answered and may keep a DatabaseStore reply token, a tunnel-garlic clove
- * neither answers a DatabaseLookup nor acknowledges/relays a store. No
- * sockets, threads or sleeps are used.
+ * Checks the Java 2.14.0 distinction between a garlic received directly
+ * from a peer and one that arrived through an I2NP tunnel: a
+ * direct-garlic clove may be answered and may keep a DatabaseStore
+ * reply token, a tunnel-garlic clove neither answers a DatabaseLookup
+ * nor acknowledges/relays a store. No sockets, threads or sleeps are
+ * used.
  *
  */
 
@@ -23,8 +24,8 @@
 
 namespace i2p::data
 {
-// The friend declared by NetDb; only queue admission is exposed so the dispatch
-// path can be observed without starting the netDb worker.
+// The friend declared by NetDb; only queue admission is exposed so the
+// dispatch path can be observed without starting the netDb worker.
 struct NetDbLifecycleTestAccess
 {
 	static void OpenAdmission (NetDb & database)
@@ -57,8 +58,8 @@ void TestCloveOriginMatrix ()
 	assert (IsDirectDatabaseStoreOrigin (DatabaseStoreOrigin::Direct));
 
 	// Clove of a garlic received directly from a peer: Java's
-	// HandleGarlicMessageJob. It has no InboundTunnel pointer but is trusted
-	// enough to answer a lookup and to acknowledge a store.
+	// HandleGarlicMessageJob. It has no InboundTunnel pointer but is
+	// trusted enough to answer a lookup and to acknowledge a store.
 	I2NPMessage directGarlic;
 	directGarlic.fromClove = true;
 	assert (directGarlic.GetCloveOrigin () == I2NPCloveOrigin::DirectGarlic);
@@ -91,8 +92,9 @@ void TestCloveOriginMatrix ()
 void TestCloveAllowList ()
 {
 	// Java InboundMessageDistributor.handleClove(): database and control
-	// messages only. DatabaseLookup is admitted so HandleGarlicMessageJob can
-	// dispatch it; the origin check then decides whether it is answered.
+	// messages only. DatabaseLookup is admitted so HandleGarlicMessageJob
+	// can dispatch it; the origin check then decides whether it is
+	// answered.
 	assert (IsAllowedCloveMessageType (eI2NPDatabaseStore));
 	assert (IsAllowedCloveMessageType (eI2NPDatabaseLookup));
 	assert (IsAllowedCloveMessageType (eI2NPDatabaseSearchReply));
@@ -112,8 +114,10 @@ void TestCloveAllowList ()
 
 void TestDatabaseStoreTokenMatrix ()
 {
-	// Direct and direct-garlic stores keep a reply token (store + DeliveryStatus
-	// acknowledgement); a tunnel-origin store clears it and never acknowledges.
+	// Direct and direct-garlic stores keep a reply token (store +
+	// DeliveryStatus
+	// acknowledgement); a tunnel-origin store clears it and never
+	// acknowledges.
 	const uint32_t tokens[] = { 0, 1, 0xFFFFFFFFU, 0x12345678U };
 	for (uint32_t token : tokens)
 	{
@@ -122,7 +126,8 @@ void TestDatabaseStoreTokenMatrix ()
 		assert (!KeepsDatabaseStoreReplyToken (DatabaseStoreOrigin::Tunnel, token));
 	}
 
-	// An unsolicited LeaseSet is stored for a direct and a direct-garlic store,
+	// An unsolicited LeaseSet is stored for a direct and a direct-garlic
+	// store,
 	// never for a tunnel-origin one.
 	assert (AcceptsUnsolicitedDatabaseStore (DatabaseStoreOrigin::Direct));
 	assert (AcceptsUnsolicitedDatabaseStore (DatabaseStoreOrigin::DirectGarlic));
@@ -131,9 +136,10 @@ void TestDatabaseStoreTokenMatrix ()
 
 void TestCloveDispatchReachesNetDbAdmission ()
 {
-	// End-to-end dispatch without a worker: a clove DatabaseStore is handed to
-	// the netDb admission queue. The origin policy itself is applied inside
-	// HandleDatabaseStoreMsg(), which the predicate assertions above pin.
+	// End-to-end dispatch without a worker: a clove DatabaseStore is
+	// handed to the netDb admission queue. The origin policy itself is
+	// applied inside HandleDatabaseStoreMsg(), which the predicate
+	// assertions above pin.
 	using Access = i2p::data::NetDbLifecycleTestAccess;
 	auto & database = i2p::data::netdb;
 	Access::Drain (database);
@@ -147,8 +153,9 @@ void TestCloveDispatchReachesNetDbAdmission ()
 	HandleI2NPMessage (directGarlicStore);
 	assert (Access::Queued (database) == 1);
 
-	// A tunnel-origin clove store is still admitted: the handler stores the
-	// entry and applies the token/origin policy instead of dropping it.
+	// A tunnel-origin clove store is still admitted: the handler stores
+	// the entry and applies the token/origin policy instead of dropping
+	// it.
 	auto tunnelGarlicStore = CreateI2NPMessage (eI2NPDatabaseStore, payload, sizeof (payload), 0x1235);
 	assert (tunnelGarlicStore);
 	tunnelGarlicStore->fromClove = true;

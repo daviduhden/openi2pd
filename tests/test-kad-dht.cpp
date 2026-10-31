@@ -4,7 +4,9 @@
  *
  * openi2pd: test kad dht.
  *
- * Checks deterministic Kademlia insertion, exact-hash lookup, duplicate replacement, leaf removal with sibling promotion, filtered cleanup and full node release on destruction.
+ * Checks deterministic Kademlia insertion, exact-hash lookup, duplicate
+ * replacement, leaf removal with sibling promotion, filtered cleanup
+ * and full node release on destruction.
  *
  */
 
@@ -22,9 +24,9 @@
 #include "KadDHT.h"
 #include "RouterInfo.h"
 
-// Deterministic Kademlia ownership and tree-shape checks. The identities are
-// built from fixed key bytes rather than generated keys, and no network,
-// filesystem or netDb component is used.
+// Deterministic Kademlia ownership and tree-shape checks. The
+// identities are built from fixed key bytes rather than generated keys,
+// and no network, filesystem or netDb component is used.
 
 namespace
 {

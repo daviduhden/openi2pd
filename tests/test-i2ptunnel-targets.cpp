@@ -4,11 +4,12 @@
  *
  * openi2pd: server-tunnel option and lifecycle regression.
  *
- * Covers the pure target/policy helpers of a server tunnel: `targetForPort`
- * parsing and selection, the 443/22 reset rule, `spoofedHost` fallback, the
- * inproxy/referer/user-agent rejects, the bounded POST window, `limitAction`
- * mapping, the administrative name helpers and Start/Stop idempotence. No
- * socket, DNS lookup or timer is used.
+ * Covers the pure target/policy helpers of a server tunnel:
+ * `targetForPort` parsing and selection, the 443/22 reset rule,
+ * `spoofedHost` fallback, the inproxy/referer/user-agent rejects, the
+ * bounded POST window, `limitAction` mapping, the administrative name
+ * helpers and Start/Stop idempotence. No socket, DNS lookup or timer is
+ * used.
  *
  */
 
@@ -49,7 +50,8 @@ const std::string BasicGet = "GET / HTTP/1.1\r\nHost: peer\r\n\r\n";
 
 int main ()
 {
-	// --- targetForPort parsing and selection ------------------------------
+	// --- targetForPort parsing and selection
+	// ------------------------------
 	{
 		I2PServerTunnelTargetMap targets;
 		std::string error;
@@ -85,7 +87,8 @@ int main ()
 		assert (bounded.Size () == i2p::client::I2P_SERVER_TUNNEL_MAX_PORT_TARGETS);
 	}
 
-	// --- target selection through a tunnel --------------------------------
+	// --- target selection through a tunnel
+	// --------------------------------
 	Fixture fixture;
 	auto tunnel = std::make_shared<I2PServerTunnel> ("targets", "127.0.0.1", 8080, fixture.destination, 0, false);
 	tunnel->Start ();
@@ -106,7 +109,8 @@ int main ()
 		assert (tunnel->GetTargets ().Size () == 2);
 	}
 
-	// --- spoofedHost and hostoverride fallback ----------------------------
+	// --- spoofedHost and hostoverride fallback
+	// ----------------------------
 	{
 		I2PServerTunnelHTTPPolicy policy;
 		policy.SetHostOverride ("override.example");
@@ -119,7 +123,8 @@ int main ()
 		assert (policy.HostFor (443) == "secure.example"); // unchanged on failure
 	}
 
-	// --- request rejects ---------------------------------------------------
+	// --- request rejects
+	// ---------------------------------------------------
 	{
 		I2PServerTunnelHTTPPolicy policy;
 		policy.SetRejectInproxy (true);
@@ -152,7 +157,8 @@ int main ()
 		assert (!policy.SetRejectUserAgents (std::string (257, 'a'), error));
 	}
 
-	// --- bounded POST/PUT window ------------------------------------------
+	// --- bounded POST/PUT window
+	// ------------------------------------------
 	{
 		I2PServerTunnelHTTPPolicy policy;
 		policy.SetPostLimit (2);
@@ -173,7 +179,8 @@ int main ()
 				policy.Check (BasicPost, 9000 + static_cast<uint64_t> (i)) == I2PServerTunnelRequestDecision::eAllow);
 	}
 
-	// --- limitAction mapping ----------------------------------------------
+	// --- limitAction mapping
+	// ----------------------------------------------
 	{
 		auto denyAll = i2p::client::FilterDefinition::DenyAll ();
 		tunnel->SetAccessFilter (denyAll, ""); // default: filter denials drop
@@ -186,7 +193,8 @@ int main ()
 		assert (tunnel->GetAccessRejectAction () == i2p::client::TunnelAccessRejectAction::eDrop);
 	}
 
-	// --- administrative name helpers --------------------------------------
+	// --- administrative name helpers
+	// --------------------------------------
 	{
 		assert (i2p::client::MakeTunnelServiceName ("admin", "section", "client", "127.0.0.1:80") == "admin");
 		assert (i2p::client::MakeTunnelServiceName ("", "section", "client", "127.0.0.1:80") == "section");
@@ -212,15 +220,16 @@ int main ()
 		assert (registry.Register ("first"));
 	}
 
-	// --- Start/Stop idempotence and the running flag ----------------------
+	// --- Start/Stop idempotence and the running flag
+	// ----------------------
 	{
 		assert (tunnel->IsRunning ());
 		tunnel->Start (); // idempotent: no second acceptor failure
 		assert (tunnel->IsRunning ());
 
 		// A restart resolves the configured targetForPort literals again; the
-		// hostname entry stays unresolved because the io_context never runs, so
-		// its port is refused instead of blocking the service thread.
+		// hostname entry stays unresolved because the io_context never runs,
+		// so its port is refused instead of blocking the service thread.
 		boost::asio::ip::tcp::endpoint target;
 		assert (tunnel->SelectTarget (443, target) && target.port () == 8443);
 		assert (!tunnel->SelectTarget (80, target));

@@ -22,15 +22,16 @@ namespace
 	std::mutex writerMutex;
 	RouterPersistenceWriter installedWriter;
 
-	// An explicitly installed (worker) backend. While it is empty the direct
-	// data-directory backend is the effective writer, but only as long as
-	// privsep.artifacts is disabled.
+	// An explicitly installed (worker) backend. While it is empty the
+	// direct data-directory backend is the effective writer, but only as
+	// long as privsep.artifacts is disabled.
 	std::mutex artifactMutex;
 	ArtifactWriter installedArtifactWriter;
 	ArtifactRemover installedArtifactRemover;
 
-	// Per-kind error throttling: at most one line per minute for a kind so a
-	// failing worker cannot turn a persistence pass into unbounded log output.
+	// Per-kind error throttling: at most one line per minute for a kind so
+	// a failing worker cannot turn a persistence pass into unbounded log
+	// output.
 	constexpr uint64_t ARTIFACT_LOG_INTERVAL_MS = 60 * 1000;
 	std::array<std::atomic<uint64_t>, 3> artifactLogNotBefore { };
 
@@ -98,9 +99,9 @@ namespace
 		return std::string_view (hash.ToBase32 ()) == identBase32;
 	}
 
-	// "&lt;52-character lowercase base32 identity&gt;.&lt;decimal CryptoKeyType&gt;".
-	// ElGamal is type 0, so zero is a valid key type; leading zeros are not
-	// canonical and are rejected.
+	// "&lt;52-character lowercase base32 identity&gt;.&lt;decimal
+	// CryptoKeyType&gt;". ElGamal is type 0, so zero is a valid key type;
+	// leading zeros are not canonical and are rejected.
 	bool IsCanonicalDestinationKeyName (std::string_view name)
 	{
 		const auto separator = name.find ('.');
@@ -121,8 +122,8 @@ namespace
 	}
 
 	// The direct backend resolves the same paths the storage classes used
-	// before the worker existed: the shard is the leading alphabet character
-	// of the canonical name.
+	// before the worker existed: the shard is the leading alphabet
+	// character of the canonical name.
 	std::string DirectArtifactPath (StorageArtifact kind, std::string_view name)
 	{
 		const std::string encoded (name);
@@ -243,8 +244,9 @@ bool WriteArtifact (StorageArtifact kind, std::string_view name, std::span<const
 	}
 	if (writer)
 	{
-		// The installed writer is the only authority for a delegated artifact.
-		// A failure is reported to the caller and never retried on disk.
+		// The installed writer is the only authority for a delegated
+		// artifact. A failure is reported to the caller and never retried on
+		// disk.
 		if (writer (kind, name, bytes)) return true;
 		LogArtifactError (kind, "writer failed for", name);
 		return false;

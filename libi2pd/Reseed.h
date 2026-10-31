@@ -4,10 +4,12 @@
  *
  * openi2pd: Reseed.
  *
- * Initial RouterInfo bootstrap from signed SU3 reseed bundles or ZIP files fetched over HTTPS
- * or Yggdrasil. Bundles are verified against configured signing keys, redirects are bounded,
- * every I/O phase carries a cancellable deadline, outdated entries are skipped instead of
- * deleting cached peers, and the owned job publishes a bounded administrative state.
+ * Initial RouterInfo bootstrap from signed SU3 reseed bundles or ZIP
+ * files fetched over HTTPS or Yggdrasil. Bundles are verified against
+ * configured signing keys, redirects are bounded, every I/O phase
+ * carries a cancellable deadline, outdated entries are skipped instead
+ * of deleting cached peers, and the owned job publishes a bounded
+ * administrative state.
  *
  */
 
@@ -37,30 +39,32 @@ namespace data
 	constexpr int MAX_NUM_RESEED_ATTEMPTS = 10;
 	constexpr int MAX_RESEED_REDIRECTS = 5;
 	// Historical per-connect budget. Individual phases are bounded by
-	// RESEED_PHASE_TIMEOUT below; this constant is kept for API compatibility.
+	// RESEED_PHASE_TIMEOUT below; this constant is kept for API
+	// compatibility.
 	constexpr int RESEED_CONNECT_TIMEOUT = 5; // in seconds
 	constexpr int RESEED_WAITING_INTERVAL = 30; // in second
 	constexpr int RESEED_GIVEUP_TIMEOUT = 180; // in seconds
-	// Java 2.14.0 Reseeder: stop only after enough router infos from at least
-	// two independent reseed servers.
+	// Java 2.14.0 Reseeder: stop only after enough router infos from at
+	// least two independent reseed servers.
 	constexpr int MIN_RESEED_ROUTER_INFOS = 100;
 	constexpr int MIN_RESEED_SERVERS = 2;
 
-	// Per-phase I/O budget (DNS resolve, connect, TLS handshake, request write
-	// and each response read) and the total budget for one host. A stalled or
-	// slow mirror can therefore never hold a reseed worker for minutes, and a
-	// cooperative stop returns after at most one phase.
+	// Per-phase I/O budget (DNS resolve, connect, TLS handshake, request
+	// write and each response read) and the total budget for one host. A
+	// stalled or slow mirror can therefore never hold a reseed worker for
+	// minutes, and a cooperative stop returns after at most one phase.
 	constexpr std::chrono::seconds RESEED_PHASE_TIMEOUT { 45 };
 	constexpr std::chrono::seconds RESEED_HOST_TIMEOUT { 7 * 60 };
 
-	// An imported RouterInfo older than this is skipped. Java's Reseeder only
-	// skips an outdated entry; it never deletes cached peers because a
-	// downloaded bundle happens to carry old descriptors. The window matches
-	// the historical 10 x NETDB_MAX_EXPIRATION_TIMEOUT check (270 hours).
+	// An imported RouterInfo older than this is skipped. Java's Reseeder
+	// only skips an outdated entry; it never deletes cached peers because
+	// a downloaded bundle happens to carry old descriptors. The window
+	// matches the historical 10 x NETDB_MAX_EXPIRATION_TIMEOUT check (270
+	// hours).
 	constexpr uint64_t RESEED_STALE_ROUTER_TIMEOUT = 10ULL * 27 * 60 * 60 * 1000;
 
-	// Administrative reasons are bounded; they never carry a URL, a proxy or a
-	// credential.
+	// Administrative reasons are bounded; they never carry a URL, a proxy
+	// or a credential.
 	constexpr size_t RESEED_MAX_ERROR_LENGTH = 128;
 
 	enum class ReseedPhase : uint8_t
@@ -84,8 +88,8 @@ namespace data
 	};
 
 	// Result of one import pass. Imported and skipped entries are reported
-	// separately so a caller can distinguish "the mirror was stale" from "the
-	// bundle was rejected" without touching the cached peer set.
+	// separately so a caller can distinguish "the mirror was stale" from
+	// "the bundle was rejected" without touching the cached peer set.
 	struct ReseedResult
 	{
 		int imported { 0 };
@@ -100,20 +104,22 @@ namespace data
 	// `i2p.noReseed` is accepted as the historical alias.
 	bool IsReseedEnabled ();
 
-	// Proposal 147: append the router network ID to an SU3 reseed URL. Java
-	// appends "?netid=" unconditionally; this helper keeps an existing query
-	// intact, matches the parameter instead of a raw substring and strips the
-	// fragment, which is never sent to the server.
+	// Proposal 147: append the router network ID to an SU3 reseed URL.
+	// Java appends "?netid=" unconditionally; this helper keeps an
+	// existing query intact, matches the parameter instead of a raw
+	// substring and strips the fragment, which is never sent to the
+	// server.
 	std::string AppendReseedNetId (std::string url, int netId);
 
 	// Drops userinfo, path, query and fragment from a configured proxy
-	// endpoint, so a `user:pass@host` value never reaches a log record or an
-	// administrative state. An unparsable value reports "invalid" instead of
-	// being echoed.
+	// endpoint, so a `user:pass@host` value never reaches a log record or
+	// an administrative state. An unparsable value reports "invalid"
+	// instead of being echoed.
 	std::string RedactReseedProxyForLog (const std::string & proxy);
 
-	// Deterministic seams for the reseed regressions. Production uses the real
-	// HTTPS/Yggdrasil transport, the wall clock and the configured sources.
+	// Deterministic seams for the reseed regressions. Production uses the
+	// real HTTPS/Yggdrasil transport, the wall clock and the configured
+	// sources.
 	struct ReseedTestHooks
 	{
 		std::function<std::string (const std::string & url, const std::stop_token & token)> fetch;
@@ -122,10 +128,11 @@ namespace data
 		bool overrideSources { false };
 	};
 
-	/// Imports bootstrap RouterInfos from configured local or remote sources.
-	/// Remote SU3 bundles are checked against loaded signing certificates;
-	/// a local ZIP import is a separate entry point and has no SU3 signature.
-	/// One owner performs a pass and controls cancellation through its stop token.
+	/// Imports bootstrap RouterInfos from configured local or remote
+	/// sources. Remote SU3 bundles are checked against loaded signing
+	/// certificates; a local ZIP import is a separate entry point and has
+	/// no SU3 signature. One owner performs a pass and controls
+	/// cancellation through its stop token.
 	/// @see https://i2p.net/en/docs/specs/su3/
 	class Reseeder
 	{
@@ -136,8 +143,8 @@ namespace data
 		~Reseeder ();
 
 		// One bootstrap pass: a configured local file/URL when present,
-		// otherwise the reseed servers with the historical retry budget. Every
-		// wait and every I/O phase observes `token`.
+		// otherwise the reseed servers with the historical retry budget.
+		// Every wait and every I/O phase observes `token`.
 		ReseedResult Bootstrap (const std::stop_token & token = std::stop_token { });
 		ReseedResult ReseedFromServers (const std::stop_token & token = std::stop_token { });
 
@@ -149,10 +156,11 @@ namespace data
 		ReseedResult ReadZIPFile (const char * filename);
 
 		/// Load the SU3 signing certificates into the in-process trust store.
-		/// Only `*.crt` entries are read; unparsable files are logged and skipped.
-		/// The store only grows, so a certificate removed from the directory stays
-		/// trusted until the process restarts, and a bundle whose signer is absent
-		/// from the store is rejected rather than imported unverified.
+		/// Only `*.crt` entries are read; unparsable files are logged and
+		/// skipped. The store only grows, so a certificate removed from the
+		/// directory stays trusted until the process restarts, and a bundle
+		/// whose signer is absent from the store is rejected rather than
+		/// imported unverified.
 		void LoadCertificates ();
 
 		void SetFetchHookForTesting (
@@ -187,8 +195,9 @@ namespace data
 		std::vector<std::string> m_SourceOverride;
 		bool m_HasSourceOverride = false;
 		NetDb * m_NetDbOverride = nullptr;
-		// Fixed failure reason of the last transport phase. Only written by the
-		// thread that owns this reseeder; never contains a URL or credential.
+		// Fixed failure reason of the last transport phase. Only written by
+		// the thread that owns this reseeder; never contains a URL or
+		// credential.
 		std::string m_LastTransportError;
 	};
 }

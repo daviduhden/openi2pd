@@ -4,12 +4,13 @@
  *
  * openi2pd: Destination.
  *
- * Implements the client-destination lifecycle: tunnel-pool construction,
- * LeaseSet generation and re-signing, floodfill publication with retry and
- * delivery verification, and remote LeaseSet resolution. Garlic and delivery
- * status messages are posted to the destination's own asio service, while
- * cached LeaseSets, publication intervals and pending lookups are expired on
- * the destination's cleanup timer.
+ * Implements the client-destination lifecycle: tunnel-pool
+ * construction, LeaseSet generation and re-signing, floodfill
+ * publication with retry and delivery verification, and remote LeaseSet
+ * resolution. Garlic and delivery status messages are posted to the
+ * destination's own asio service, while cached LeaseSets, publication
+ * intervals and pending lookups are expired on the destination's
+ * cleanup timer.
  *
  */
 
@@ -41,7 +42,8 @@ namespace client
 	namespace
 	{
 		// Throttled diagnostics for the clove/data parse paths. A remote peer
-		// controls the payloads, so a malformed message must not flood the log.
+		// controls the payloads, so a malformed message must not flood the
+		// log.
 		I2NPDropCounter g_CloveParseDrops;
 
 		// Strict decimal CryptoKeyType token. std::stoi() ignores leading
@@ -183,7 +185,8 @@ namespace client
 				m_Nickname = (*params)[I2CP_PARAM_INBOUND_NICKNAME];
 				if (m_Nickname.empty ()) // try outbound
 					m_Nickname = (*params)[I2CP_PARAM_OUTBOUND_NICKNAME];
-				// otherwise we set default nickname in Start when we know local address
+				// otherwise we set default nickname in Start when we know local
+				// address
 				bool dontPublishLeaseSet = true;
 				if (params->Get (I2CP_PARAM_DONT_PUBLISH_LEASESET, dontPublishLeaseSet))
 					m_IsPublic = !dontPublishLeaseSet; // override isPublic
@@ -323,11 +326,11 @@ namespace client
 
 	std::shared_ptr<i2p::data::LeaseSet> LeaseSetDestination::FindLeaseSet (const i2p::data::IdentHash & ident)
 	{
-		// Callable from any thread. The lookup and the expired-entry removal take
-		// only m_RemoteLeaseSetsMutex; the "expires soon" refresh is posted to the
-		// destination service and re-locks the map inside its own callback, so the
-		// caller keeps using the snapshot it already received rather than a
-		// half-updated entry.
+		// Callable from any thread. The lookup and the expired-entry removal
+		// take only m_RemoteLeaseSetsMutex; the "expires soon" refresh is
+		// posted to the destination service and re-locks the map inside its
+		// own callback, so the caller keeps using the snapshot it already
+		// received rather than a half-updated entry.
 		std::shared_ptr<i2p::data::LeaseSet> remoteLS;
 		{
 			std::lock_guard<std::mutex> lock (m_RemoteLeaseSetsMutex);
@@ -564,13 +567,14 @@ namespace client
 	void LeaseSetDestination::HandleDatabaseStoreMessage (
 		const uint8_t * buf, size_t len, i2p::garlic::ECIESX25519AEADRatchetSession * from)
 	{
-		// Reached only from the destination service (garlic/data dispatch), so
-		// m_LeaseSetRequests is deliberately unguarded here and in
-		// RequestLeaseSet/CancelDestinationRequest/HandleRequestTimeoutTimer: all
-		// of them run on that one executor. Only m_RemoteLeaseSets is shared,
-		// because FindLeaseSet() is called from streaming, datagram and torrent
-		// threads. A candidate that fails validation keeps the previous snapshot
-		// installed, so readers are never left without a usable LeaseSet.
+		// Reached only from the destination service (garlic/data dispatch),
+		// so m_LeaseSetRequests is deliberately unguarded here and in
+		// RequestLeaseSet/CancelDestinationRequest/HandleRequestTimeoutTimer:
+		// all of them run on that one executor. Only m_RemoteLeaseSets is
+		// shared, because FindLeaseSet() is called from streaming, datagram
+		// and torrent threads. A candidate that fails validation keeps the
+		// previous snapshot installed, so readers are never left without a
+		// usable LeaseSet.
 		if (len < DATABASE_STORE_HEADER_SIZE)
 		{
 			LogPrint (eLogError, "Destination: Database store msg is too short ", len);
@@ -874,12 +878,13 @@ namespace client
 
 	void LeaseSetDestination::Publish ()
 	{
-		// Single-flight publication on the destination service: m_PublishReplyToken
-		// stays non-zero for the whole attempt (including the retry value installed
-		// by SchedulePublishRetry()), so a concurrent Publish() only logs. Each
-		// attempt excludes the floodfills it already tried and needs a tunnel pair
-		// whose far end is compatible with the chosen floodfill. The confirmation
-		// timeout is scaled by the real (or hop-estimated) latency of both tunnels,
+		// Single-flight publication on the destination service:
+		// m_PublishReplyToken stays non-zero for the whole attempt (including
+		// the retry value installed by SchedulePublishRetry()), so a
+		// concurrent Publish() only logs. Each attempt excludes the
+		// floodfills it already tried and needs a tunnel pair whose far end
+		// is compatible with the chosen floodfill. The confirmation timeout
+		// is scaled by the real (or hop-estimated) latency of both tunnels,
 		// because a fixed timeout would retry a slow but healthy path.
 		auto leaseSet = GetLeaseSetMt ();
 		if (!leaseSet || !m_Pool)
@@ -1070,9 +1075,10 @@ namespace client
 			if (requestComplete) boost::asio::post (m_Service, [requestComplete] (void) { requestComplete (nullptr); });
 			return false;
 		}
-		// The client-auth material is a 32-byte DH private key or PSK. Any other
-		// length is not usable and is ignored rather than truncated: a wrong
-		// cookie would silently turn a decryption failure into a false negative.
+		// The client-auth material is a 32-byte DH private key or PSK. Any
+		// other length is not usable and is ignored rather than truncated: a
+		// wrong cookie would silently turn a decryption failure into a false
+		// negative.
 		std::vector<uint8_t> authSecret;
 		if (secret && secretLen == 32) authSecret.assign (secret, secret + secretLen);
 		auto storeHash = dest->GetStoreHash ();
@@ -1168,12 +1174,13 @@ namespace client
 		std::shared_ptr<const i2p::data::RouterInfo> nextFloodfill, std::shared_ptr<LeaseSetRequest> request)
 	{
 		// The reply path is a fresh inbound tunnel plus a throw-away ECIES
-		// key/tag pair registered before the lookup leaves: the floodfill answers
-		// through that tunnel to a destination-only garlic clove, so the key must
-		// already exist or the reply is undecryptable. A dropped outbound message
-		// (onDrop) retries with the next floodfill instead of failing the request,
-		// and the timeout is re-armed from the real tunnel latency so a slow path
-		// is not mistaken for a missing LeaseSet.
+		// key/tag pair registered before the lookup leaves: the floodfill
+		// answers through that tunnel to a destination-only garlic clove, so
+		// the key must already exist or the reply is undecryptable. A dropped
+		// outbound message (onDrop) retries with the next floodfill instead
+		// of failing the request, and the timeout is re-armed from the real
+		// tunnel latency so a slow path is not mistaken for a missing
+		// LeaseSet.
 		if (!request->replyTunnel || !request->replyTunnel->IsEstablished ())
 			request->replyTunnel = m_Pool->GetNextInboundTunnel (
 				nullptr, nextFloodfill->GetCompatibleTransports (false)); // outbound from floodfill
@@ -1457,8 +1464,9 @@ namespace client
 
 	void ClientDestination::Start ()
 	{
-		// Idempotent: a second Start() on a running destination must not re-create
-		// m_StreamingDestination (orphaning the live one) nor re-arm leaseset/pool.
+		// Idempotent: a second Start() on a running destination must not
+		// re-create m_StreamingDestination (orphaning the live one) nor
+		// re-arm leaseset/pool.
 		std::vector<std::shared_ptr<i2p::stream::StreamingDestination>> targets;
 		{
 			std::lock_guard<std::mutex> lock (m_StreamingDestinationsMutex);
@@ -1474,10 +1482,10 @@ namespace client
 
 	void ClientDestination::Stop ()
 	{
-		// Stop may be called from any thread, while the service thread is still
-		// inside handlers of this destination, so the teardown goes there. A
-		// stopped service would never run it, in that case there is nobody left
-		// to race with and it is done right here
+		// Stop may be called from any thread, while the service thread is
+		// still inside handlers of this destination, so the teardown goes
+		// there. A stopped service would never run it, in that case there is
+		// nobody left to race with and it is done right here
 		auto & service = GetService ();
 		if (!service.stopped () && !service.get_executor ().running_in_this_thread ())
 		{
@@ -1587,9 +1595,10 @@ namespace client
 
 	void ClientDestination::UpdateOfflineSignature (const i2p::data::PrivateKeys & keys)
 	{
-		// Adopt a newer offline transient of the same identity in place, on the
-		// destination's service so it stays single-threaded with LeaseSet and stream
-		// signing. Only the transient is refreshed, the identity is unchanged.
+		// Adopt a newer offline transient of the same identity in place, on
+		// the destination's service so it stays single-threaded with LeaseSet
+		// and stream signing. Only the transient is refreshed, the identity
+		// is unchanged.
 		if (!keys.IsOfflineSignature ()) return;
 		boost::asio::post (GetService (),
 			[s = GetSharedFromThis (), keys] ()
@@ -1617,9 +1626,9 @@ namespace client
 			return;
 		}
 		uint32_t length = bufbe32toh (buf);
-		// Java DataMessage.readMessage() requires the declared length to be the
-		// whole payload: trailing bytes would otherwise be silently ignored by
-		// every protocol handler below.
+		// Java DataMessage.readMessage() requires the declared length to be
+		// the whole payload: trailing bytes would otherwise be silently
+		// ignored by every protocol handler below.
 		if (!IsValidDataMessageLength (length, len))
 		{
 			if (g_CloveParseDrops.Record ())
@@ -1654,7 +1663,8 @@ namespace client
 		case PROTOCOL_TYPE_DATAGRAM2:
 		case PROTOCOL_TYPE_DATAGRAM3:
 		// A SAM RAW session may register any I2CP protocol number; unknown
-		// protocols are dispatched to its raw receiver instead of being dropped.
+		// protocols are dispatched to its raw receiver instead of being
+		// dropped.
 		default:
 			// datagram protocol
 			if (m_DatagramDestination)
@@ -1932,8 +1942,8 @@ namespace client
 
 		// Keep the exact pub||priv layout the read path above expects. The
 		// destination key file is secret material, so the writer replaces it
-		// atomically with mode 0600 and a failed write leaves the previous pair
-		// intact instead of truncating it.
+		// atomically with mode 0600 and a failed write leaves the previous
+		// pair intact instead of truncating it.
 		std::vector<uint8_t> blob;
 		blob.reserve (keys->pub.size () + keys->priv.size ());
 		blob.insert (blob.end (), keys->pub.begin (), keys->pub.end ());
@@ -1949,13 +1959,14 @@ namespace client
 
 	void ClientDestination::CreateNewLeaseSet (const std::vector<std::shared_ptr<i2p::tunnel::InboundTunnel>> & tunnels)
 	{
-		// One immutable LeaseSet object per call: the previous one stays readable
-		// through GetLeaseSetMt() until SetLeaseSet() swaps the pointer, so no
-		// reader ever observes a half-built or unsigned buffer. LS2 key sections
-		// are published highest-type-first with the local preferred type moved to
-		// the front, and the published timestamp is forced strictly increasing: a
-		// second update within the same second would otherwise be rejected as an
-		// older store by every receiver (types 1/3 compare it before replacing).
+		// One immutable LeaseSet object per call: the previous one stays
+		// readable through GetLeaseSetMt() until SetLeaseSet() swaps the
+		// pointer, so no reader ever observes a half-built or unsigned
+		// buffer. LS2 key sections are published highest-type-first with the
+		// local preferred type moved to the front, and the published
+		// timestamp is forced strictly increasing: a second update within the
+		// same second would otherwise be rejected as an older store by every
+		// receiver (types 1/3 compare it before replacing).
 		std::shared_ptr<i2p::data::LocalLeaseSet> leaseSet;
 		if (GetLeaseSetType () == i2p::data::NETDB_STORE_TYPE_LEASESET)
 		{
@@ -2048,10 +2059,11 @@ namespace client
 	bool ClientDestination::Decrypt (
 		const uint8_t * encrypted, uint8_t * data, i2p::data::CryptoKeyType preferredCrypto) const
 	{
-		// A type selected by the peer (ratchet static key type or ElGamal/AES)
-		// must map to the same local key type. Falling back to another type
-		// would combine a shared secret from the wrong static key (or, worse,
-		// run the ElGamal and ratchet decoders on each other's encodings).
+		// A type selected by the peer (ratchet static key type or
+		// ElGamal/AES) must map to the same local key type. Falling back to
+		// another type would combine a shared secret from the wrong static
+		// key (or, worse, run the ElGamal and ratchet decoders on each
+		// other's encodings).
 		auto it = m_EncryptionKeys.find (preferredCrypto);
 		if (it == m_EncryptionKeys.end () || !it->second || !it->second->decryptor)
 		{

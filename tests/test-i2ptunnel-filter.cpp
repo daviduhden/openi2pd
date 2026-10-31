@@ -4,9 +4,12 @@
  *
  * openi2pd: server-tunnel access filter regression.
  *
- * Exercises the `filterDefinition` grammar (default/explicit/file/record),
- * first-match-wins ordering, the record threshold, bounded file reloading,
- * invalid-grammar rejection and the legacy accesslist upgrade. No sockets,
+ * Exercises the `filterDefinition` grammar
+ * (default/explicit/file/record),
+ * first-match-wins ordering, the record threshold, bounded file
+ * reloading,
+ * invalid-grammar rejection and the legacy accesslist upgrade. No
+ * sockets,
  * threads or timers are used.
  *
  */
@@ -114,8 +117,8 @@ int main ()
 		assert (!Allows (filter, other, now)); // 127.9.9.9
 	}
 
-	// record allow N: the first N connections match, later ones fall through to
-	// the default.
+	// record allow N: the first N connections match, later ones fall
+	// through to the default.
 	{
 		std::string error;
 		auto definition = FilterDefinition::Parse ("default=deny;record allow 2", error);
@@ -143,7 +146,8 @@ int main ()
 		assert (Allows (filter, allowed, now));
 	}
 
-	// File entries: parsed, cached and reloaded when the size/mtime changes.
+	// File entries: parsed, cached and reloaded when the size/mtime
+	// changes.
 	{
 		auto path = std::filesystem::temp_directory_path () / "openi2pd-filter-test.txt";
 		{
@@ -161,8 +165,8 @@ int main ()
 		assert (Allows (filter, allowed, now));
 		assert (!Allows (filter, other, now));
 
-		// A longer file changes the size, so the reload does not depend on the
-		// filesystem timestamp resolution.
+		// A longer file changes the size, so the reload does not depend on
+		// the filesystem timestamp resolution.
 		{
 			std::ofstream out (path, std::ofstream::binary | std::ofstream::trunc);
 			out << other.ToBase32 () << "\n";
@@ -170,7 +174,8 @@ int main ()
 		}
 		assert (Allows (filter, other, now));
 		std::filesystem::remove (path);
-		// A missing file deactivates its entries instead of matching everyone.
+		// A missing file deactivates its entries instead of matching
+		// everyone.
 		assert (!Allows (filter, other, now));
 	}
 
@@ -205,7 +210,8 @@ int main ()
 		MakeDefinition ("default=allow;\n  # comment\n explicit deny 127.5.0.* ");
 	}
 
-	// Peek never consumes a record count and never matches an unknown peer.
+	// Peek never consumes a record count and never matches an unknown
+	// peer.
 	{
 		std::string error;
 		auto definition = FilterDefinition::Parse ("default=deny;record allow 1", error);

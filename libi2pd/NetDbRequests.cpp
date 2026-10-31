@@ -4,11 +4,11 @@
  *
  * openi2pd: NetDbRequests.
  *
- * Implements requested-destination lookups: request coalescing, tunneled and
- * direct DatabaseLookup dispatch, excluded-peer tracking, retries and
- * timeouts, search-reply processing and exploratory sampling. Requests and
- * callbacks are confined to the service's asio thread, with bounded pending
- * pools and periodic cleanup.
+ * Implements requested-destination lookups: request coalescing,
+ * tunneled and direct DatabaseLookup dispatch, excluded-peer tracking,
+ * retries and timeouts, search-reply processing and exploratory
+ * sampling. Requests and callbacks are confined to the service's asio
+ * thread, with bounded pending pools and periodic cleanup.
  *
  */
 
@@ -69,8 +69,8 @@ namespace data
 	std::shared_ptr<I2NPMessage> RequestedDestination::CreateRequestMessage (const IdentHash & floodfill)
 	{
 		// The direct form must keep the lookup type too. Java ExploreJob sets
-		// Type.EXPL for a real exploration regardless of whether the lookup is
-		// sent directly or through tunnels (I2NP flags bits 3-2: 11 =
+		// Type.EXPL for a real exploration regardless of whether the lookup
+		// is sent directly or through tunnels (I2NP flags bits 3-2: 11 =
 		// exploration, 10 = RouterInfo).
 		auto msg = i2p::CreateRouterInfoDatabaseLookupMsg (
 			m_Destination, i2p::context.GetRouterInfo ().GetIdentHash (), 0, m_IsExploratory, &m_ExcludedPeers);

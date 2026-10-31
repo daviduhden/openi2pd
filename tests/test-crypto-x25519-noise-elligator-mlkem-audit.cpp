@@ -4,7 +4,9 @@
  *
  * openi2pd: test crypto x25519 noise elligator mlkem audit.
  *
- * Covers X25519 low-order peers, HKDF/Noise MixKey/MixHash and AEAD nonce behavior, Elligator2 canonical decoding, and ML-KEM/hybrid type mapping, sizes and round trips.
+ * Covers X25519 low-order peers, HKDF/Noise MixKey/MixHash and AEAD
+ * nonce behavior, Elligator2 canonical decoding, and ML-KEM/hybrid type
+ * mapping, sizes and round trips.
  *
  */
 
@@ -56,8 +58,8 @@ void Sha256 (const uint8_t * a, size_t aLen, const uint8_t * b, size_t bLen, uin
 }
 
 // RFC 5869 with SHA-256, matching net.i2p.crypto.HKDF and
-// SymmetricState.hkdf(). An empty IKM mirrors Java's ZEROLEN expand-only
-// path: PRK = HMAC(salt, empty).
+// SymmetricState.hkdf(). An empty IKM mirrors Java's ZEROLEN
+// expand-only path: PRK = HMAC(salt, empty).
 void RefHKDF (
 	const uint8_t * salt, const uint8_t * ikm, size_t ikmLen, std::string_view info, uint8_t * out, size_t outLen)
 {
@@ -131,7 +133,8 @@ void TestX25519 ()
 	assert (reloaded.HasPrivateKey ());
 	assert (memcmp (reloaded.GetPublicKey (), a.GetPublicKey (), 32) == 0);
 
-	// The two-argument constructor must verify a caller-supplied public key
+	// The two-argument constructor must verify a caller-supplied public
+	// key
 	// against the private key instead of trusting it.
 	i2p::crypto::X25519Keys matched (privateA, a.GetPublicKey ());
 	assert (matched.HasPrivateKey ());
@@ -204,7 +207,8 @@ void TestElligator ()
 		0x19, 0x28, 0xd9, 0x03, 0x65, 0xf2, 0x4a, 0x38, 0xaa, 0x7a, 0xef, 0x1b, 0x97, 0xe2, 0x39, 0x54, 0x10, 0x1b };
 	const uint8_t key2[32] = { 0x79, 0x4f, 0x05, 0xba, 0x3e, 0x3a, 0x72, 0x95, 0x80, 0x22, 0x46, 0x8c, 0x88, 0x98, 0x1e,
 		0x0b, 0xe5, 0x78, 0x2b, 0xe1, 0xe1, 0x14, 0x5c, 0xe2, 0xc3, 0xc6, 0xfd, 0xe1, 0x6d, 0xed, 0x53, 0x63 };
-	// Little endian r = (p - 1) / 2 = 2^254 - 10. Java rejects r >= (p-1)/2.
+	// Little endian r = (p - 1) / 2 = 2^254 - 10. Java rejects r >=
+	// (p-1)/2.
 	const uint8_t boundary[32] = { 0xf6, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
 		0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x3f };
 
@@ -227,8 +231,8 @@ void TestElligator ()
 	assert (memcmp (buf, key1, 32) == 0);
 
 	assert (!el.Decode (boundary, buf));
-	// The representative immediately below the boundary is valid; masking the
-	// two high bits must not turn it into the rejected boundary value.
+	// The representative immediately below the boundary is valid; masking
+	// the two high bits must not turn it into the rejected boundary value.
 	uint8_t boundaryMinusOne[32];
 	memcpy (boundaryMinusOne, boundary, sizeof (boundaryMinusOne));
 	boundaryMinusOne[0] = 0xf5;
@@ -238,7 +242,8 @@ void TestElligator ()
 	boundaryHighBits[31] |= 0xC0;
 	assert (!el.Decode (boundaryHighBits, buf));
 
-	// x = 0 is not invertible. Java forces the non-alternative branch; both
+	// x = 0 is not invertible. Java forces the non-alternative branch;
+	// both
 	// choices must produce the same representative and must not crash.
 	uint8_t zeroKey[32] = { };
 	uint8_t zeroLow[32], zeroHigh[32];
@@ -246,9 +251,9 @@ void TestElligator ()
 	assert (el.Encode (zeroKey, zeroHigh, true, false));
 	assert (memcmp (zeroLow, zeroHigh, 32) == 0);
 
-	// Random sampling: eligibility is a property of the point, so retry with
-	// a new key (as Java does) rather than the same point. Every successful
-	// representative must decode.
+	// Random sampling: eligibility is a property of the point, so retry
+	// with a new key (as Java does) rather than the same point. Every
+	// successful representative must decode.
 	int successfulRepresentatives = 0;
 	for (int attempt = 0; attempt < 64; ++attempt)
 	{
@@ -408,12 +413,13 @@ void TestAEADAndChaCha20 ()
 		tampered, sizeof (msg), nullptr, 0, key, nonce, decrypted, sizeof (decrypted), false));
 	assert (IsAllZero (decrypted, sizeof (decrypted)));
 
-	// Length narrowing is rejected before any EVP call. The output length is
-	// large enough that only the INT_MAX check can reject it.
+	// Length narrowing is rejected before any EVP call. The output length
+	// is large enough that only the INT_MAX check can reject it.
 	assert (!i2p::crypto::AEADChaCha20Poly1305 (
 		msg, (size_t)INT_MAX + 1, nullptr, 0, key, nonce, encrypted, (size_t)INT_MAX + 17, true));
 
-	// In-place ChaCha20 is a stream XOR: applying it twice restores the input.
+	// In-place ChaCha20 is a stream XOR: applying it twice restores the
+	// input.
 	uint8_t buffer[16], original[16];
 	for (size_t i = 0; i < sizeof (buffer); ++i) buffer[i] = (uint8_t)(i * 7 + 3);
 	memcpy (original, buffer, sizeof (buffer));
@@ -444,7 +450,8 @@ void TestCryptoKeyLengthsAndECIES ()
 	assert (GetCryptoPrivateKeyLen ((CryptoKeyType)2) == 0);
 	assert (GetCryptoPublicKeyLen ((CryptoKeyType)8) == 0);
 
-	// Unsupported local key types must stay empty and fail without crashing.
+	// Unsupported local key types must stay empty and fail without
+	// crashing.
 	i2p::crypto::LocalEncryptionKey unsupported ((CryptoKeyType)8);
 	assert (unsupported.pub.empty () && unsupported.priv.empty ());
 	assert (!unsupported.GenerateKeys ());
@@ -458,15 +465,16 @@ void TestCryptoKeyLengthsAndECIES ()
 	local.CreateDecryptor ();
 	assert (local.decryptor);
 
-	// A zeroed private key is the fail-closed result of a failed generation
+	// A zeroed private key is the fail-closed result of a failed
+	// generation
 	// and must never produce a decryptor.
 	i2p::crypto::LocalEncryptionKey empty (CRYPTO_KEY_TYPE_ECIES_X25519_AEAD);
 	assert (IsAllZero (empty.priv.data (), empty.priv.size ()));
 	empty.CreateDecryptor ();
 	assert (!empty.decryptor);
 
-	// PrivateKeys::GenerateCryptoKeyPair() must report a usable pair for every
-	// supported type and fail closed for an unsupported one.
+	// PrivateKeys::GenerateCryptoKeyPair() must report a usable pair for
+	// every supported type and fail closed for an unsupported one.
 	{
 		uint8_t priv[256] = { }, pub[256] = { };
 		for (auto type :
@@ -562,8 +570,9 @@ void CheckMLKEMInit (i2p::data::CryptoKeyType type, const char * name)
 	assert (memcmp (state.m_CK, ck, 32) == 0);
 	assert (memcmp (state.m_H, h, 32) == 0);
 
-	// An unsupported type (or a null peer key) must report failure and leave a
-	// deterministic zero state, so a caller can abort the handshake.
+	// An unsupported type (or a null peer key) must report failure and
+	// leave a deterministic zero state, so a caller can abort the
+	// handshake.
 	i2p::crypto::NoiseSymmetricState unsupported { };
 	assert (!i2p::crypto::InitNoiseIKStateMLKEM (unsupported, i2p::data::CRYPTO_KEY_TYPE_ECIES_X25519_AEAD, pub));
 	assert (IsAllZero (unsupported.m_CK, sizeof (unsupported.m_CK)));
@@ -588,11 +597,12 @@ void TestMLKEM ()
 	assert (GetMLKEMPublicKeyLen ((CryptoKeyType)8) == 0);
 	assert (!CreateMLKEMKeys (CRYPTO_KEY_TYPE_ECIES_X25519_AEAD));
 	assert (!CreateMLKEMKeys ((CryptoKeyType)8));
-	// Support is a cached runtime provider probe, not just the compile-time
-	// OPENSSL_PQ gate. The LibreSSL ML-KEM-512 rank does not exist, so that
-	// type must always report false there. The other results depend on the
-	// active provider; whatever the result, the cached value must be stable
-	// and CreateMLKEMKeys() must agree with it.
+	// Support is a cached runtime provider probe, not just the
+	// compile-time OPENSSL_PQ gate. The LibreSSL ML-KEM-512 rank does not
+	// exist, so that type must always report false there. The other
+	// results depend on the active provider; whatever the result, the
+	// cached value must be stable and CreateMLKEMKeys() must agree with
+	// it.
 #ifdef LIBRESSL_VERSION_NUMBER
 	assert (!IsMLKEMSupported (CRYPTO_KEY_TYPE_ECIES_MLKEM512_X25519_AEAD));
 #endif
@@ -610,9 +620,9 @@ void TestMLKEM ()
 	assert (!IsMLKEMSupported (CRYPTO_KEY_TYPE_ECIES_X25519_AEAD));
 	assert (!IsMLKEMSupported ((CryptoKeyType)8));
 
-	// Provider gating: a hybrid version may only be published when the cached
-	// provider probe succeeds for its parameter set, and versions outside the
-	// hybrid range are never publishable.
+	// Provider gating: a hybrid version may only be published when the
+	// cached provider probe succeeds for its parameter set, and versions
+	// outside the hybrid range are never publishable.
 	for (int version = 0; version <= 6; ++version)
 	{
 		const bool canPublish = CanPublishPQ (version);

@@ -4,7 +4,10 @@
  *
  * openi2pd: test addressbook.
  *
- * Offline checks for address and hosts.txt parsing: Base32 .i2p validation, strict b33 layout, replacement of older entries and rejection of a truncated final line. No address-book storage or network is started.
+ * Offline checks for address and hosts.txt parsing: Base32 .i2p
+ * validation, strict b33 layout, replacement of older entries and
+ * rejection of a truncated final line. No address-book storage or
+ * network is started.
  *
  */
 
@@ -16,10 +19,11 @@
 #include "Blinding.h"
 #include "Identity.h"
 
-// Offline regression checks for Address parsing and hosts.txt parsing. No
-// router, destination, resolver, network or persisted storage is started: the
-// AddressBook instances below are created without Start(), so m_Storage stays
-// null and LoadHostsFromStream only updates the in-memory map.
+// Offline regression checks for Address parsing and hosts.txt parsing.
+// No router, destination, resolver, network or persisted storage is
+// started: the AddressBook instances below are created without Start(),
+// so m_Storage stays null and LoadHostsFromStream only updates the
+// in-memory map.
 
 namespace
 {
@@ -89,7 +93,8 @@ void TestBlindedAddress ()
 	assert (!truncated.IsValid ());
 	assert (truncated.ToBase32 ().empty ());
 
-	// Bytes beyond the exact b33 layout are rejected, not silently ignored.
+	// Bytes beyond the exact b33 layout are rejected, not silently
+	// ignored.
 	const i2p::client::Address overlong (b33 + "aa");
 	assert (!overlong.IsValid ());
 }

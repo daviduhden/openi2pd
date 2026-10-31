@@ -4,9 +4,10 @@
  *
  * openi2pd: test blinding b33 hardening.
  *
- * Checks proposal 149 b33 flag handling: secret-required, two-byte signature-type and
- * undefined flags are rejected, per-client authentication survives re-encoding, and
- * off-curve or identity key encodings are handled fail-closed.
+ * Checks proposal 149 b33 flag handling: secret-required, two-byte
+ * signature-type and undefined flags are rejected, per-client
+ * authentication survives re-encoding, and off-curve or identity key
+ * encodings are handled fail-closed.
  *
  */
 
@@ -134,8 +135,9 @@ void TestOffCurveAndIdentityKeys ()
 	const std::string b33 = original.ToB33 ();
 	assert (!b33.empty ());
 
-	// The all-zero encoding is the order-4 identity point: Java accepts it as
-	// a valid group element, so blinding must not treat it as "invalid".
+	// The all-zero encoding is the order-4 identity point: Java accepts it
+	// as a valid group element, so blinding must not treat it as
+	// "invalid".
 	uint8_t allZero[32] { };
 	assert (i2p::crypto::GetEd25519 ()->IsValidPublicKey (allZero));
 	const std::string identity = Reencode (b33, [] (uint8_t * raw, size_t) { memset (raw + 3, 0, 32); });

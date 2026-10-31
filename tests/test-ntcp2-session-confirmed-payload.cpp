@@ -4,7 +4,9 @@
  *
  * openi2pd: test ntcp2 session confirmed payload.
  *
- * Validates NTCP2 SessionConfirmed block ordering and lengths: RouterInfo first, optional Options, terminal Padding, and rejection of duplicates, unknown blocks and overruns.
+ * Validates NTCP2 SessionConfirmed block ordering and lengths:
+ * RouterInfo first, optional Options, terminal Padding, and rejection
+ * of duplicates, unknown blocks and overruns.
  *
  */
 

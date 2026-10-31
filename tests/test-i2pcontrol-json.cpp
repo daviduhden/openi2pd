@@ -4,10 +4,11 @@
  *
  * openi2pd: test i2pcontrol json.
  *
- * Compile-free regression for the I2PControl request envelope: request-id
- * typing, string escaping (including a SAM nickname that tries to inject a
- * member), the documented JSON-RPC error codes and the bandwidth operand
- * parser. No socket, certificate, router or daemon is created.
+ * Compile-free regression for the I2PControl request envelope:
+ * request-id typing, string escaping (including a SAM nickname that
+ * tries to inject a member), the documented JSON-RPC error codes and
+ * the bandwidth operand parser. No socket, certificate, router or
+ * daemon is created.
  *
  */
 
@@ -98,7 +99,8 @@ std::string BuildError (const std::string & id, int code, std::string_view messa
 
 int main ()
 {
-	// --- request id typing -------------------------------------------------
+	// --- request id typing
+	// -------------------------------------------------
 	{
 		auto id = json::ParseRequestId (R"({"id":1,"method":"Echo","params":{}})");
 		Check (id.kind == json::JSONIdKind::Integer, "integer id is an integer");
@@ -113,7 +115,8 @@ int main ()
 		id = json::ParseRequestId (R"({"id":""})");
 		Check (id.kind == json::JSONIdKind::String && id.value.empty (), "empty string id");
 
-		// The hostile id must be decoded, escaped and re-emitted as one string.
+		// The hostile id must be decoded, escaped and re-emitted as one
+		// string.
 		id = json::ParseRequestId (R"({"id":"\",\"x\":1","method":"Echo"})");
 		Check (id.kind == json::JSONIdKind::String, "hostile id is a string");
 		Check (id.value == "\",\"x\":1", "hostile id is decoded, not split");
@@ -145,7 +148,8 @@ int main ()
 		CheckIdKind (R"({"id":1,})", json::JSONIdKind::Invalid, "trailing comma request");
 	}
 
-	// --- string escaping ---------------------------------------------------
+	// --- string escaping
+	// ---------------------------------------------------
 	{
 		std::string quoted;
 		Check (json::AppendQuoted (quoted, std::string_view ("a\"b\\c\nd\te")), "escaping valid UTF-8");
@@ -175,9 +179,11 @@ int main ()
 		Check (!parsed.get_child_optional ("x"), "SAM nickname cannot inject a member");
 	}
 
-	// --- documented error codes -------------------------------------------
+	// --- documented error codes
+	// -------------------------------------------
 	{
-		// Values from the I2PControl API documentation; a client matches them.
+		// Values from the I2PControl API documentation; a client matches
+		// them.
 		Check (I2P_CONTROL_ERROR_PARSE == -32700, "parse error code");
 		Check (I2P_CONTROL_ERROR_INVALID_REQUEST == -32600, "invalid request code");
 		Check (I2P_CONTROL_ERROR_METHOD_NOT_FOUND == -32601, "method not found code");
@@ -204,7 +210,8 @@ int main ()
 		}
 	}
 
-	// --- API / token operand parsing ---------------------------------------
+	// --- API / token operand parsing
+	// ---------------------------------------
 	{
 		unsigned value = 0;
 		Check (ParseUnsignedDecimal ("1", value) && value == 1, "API 1 parses");
@@ -214,7 +221,8 @@ int main ()
 		Check (!ParseUnsignedDecimal (" 1", value), "leading space rejected");
 	}
 
-	// --- bandwidth operand matrix ------------------------------------------
+	// --- bandwidth operand matrix
+	// ------------------------------------------
 	{
 		CheckBandwidth ("", BandwidthLimitResult::Invalid, "empty bandwidth rejected");
 		CheckBandwidth ("-1", BandwidthLimitResult::Invalid, "negative bandwidth rejected");

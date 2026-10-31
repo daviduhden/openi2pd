@@ -4,16 +4,18 @@
  *
  * openi2pd: test leaseset2 multikey negotiation 2026.
  *
- * Checks LeaseSet2 encryption-key negotiation: publisher order versus client preference, unsupported subsets, repeated types, reserved P-256 and key selection for ratchet validation.
+ * Checks LeaseSet2 encryption-key negotiation: publisher order versus
+ * client preference, unsupported subsets, repeated types, reserved
+ * P-256 and key selection for ratchet validation.
  *
  */
 
 /*
  * Static regression checks for LeaseSet2 encryption-key negotiation:
- * multiple advertised key sections, repeated key types, client preference,
- * publisher (server) order, reserved EC key types, and local key-section
- * publishing. These vectors are self-contained: no netDb, network, tunnel or
- * router state is used.
+ * multiple advertised key sections, repeated key types, client
+ * preference, publisher (server) order, reserved EC key types, and
+ * local key-section publishing. These vectors are self-contained: no
+ * netDb, network, tunnel or router state is used.
  */
 
 #include <cassert>
@@ -67,8 +69,9 @@ void AppendSignature (std::vector<uint8_t> & buffer, const PrivateKeys & keys)
 	buffer.insert (buffer.end (), signature.begin (), signature.end ());
 }
 
-// The returned vector starts with the NetDb store type, which is covered by
-// the LeaseSet2 signature but is not part of LeaseSet2::GetBuffer().
+// The returned vector starts with the NetDb store type, which is
+// covered by the LeaseSet2 signature but is not part of
+// LeaseSet2::GetBuffer().
 std::vector<uint8_t> BuildLeaseSet2 (const PrivateKeys & keys, const std::vector<KeySection> & keySections)
 {
 	auto now = static_cast<uint32_t> (i2p::util::GetMillisecondsSinceEpoch () / 1000);
@@ -103,8 +106,8 @@ LeaseSet2 ParseLeaseSet2 (const std::vector<uint8_t> & buffer, std::shared_ptr<L
 	return LeaseSet2 (buffer[0], buffer.data () + 1, buffer.size () - 1, storeLeases, dest, preferred);
 }
 
-// Minimal LocalDestination that only reports which key types it published.
-// The LeaseSet2 parser never calls Decrypt() on it.
+// Minimal LocalDestination that only reports which key types it
+// published. The LeaseSet2 parser never calls Decrypt() on it.
 class MockLocalDestination : public LocalDestination
 {
 public:
@@ -176,8 +179,8 @@ void TestClientPreferenceAndServerOrder ()
 	}
 #endif
 
-	// If the local preference is not advertised, the first supported key in
-	// the publisher's order wins (proposal 123 server preference).
+	// If the local preference is not advertised, the first supported key
+	// in the publisher's order wins (proposal 123 server preference).
 	{
 		auto x25519First = BuildLeaseSet2 (keys,
 			{ { CRYPTO_KEY_TYPE_ECIES_X25519_AEAD, key4 }, { CRYPTO_KEY_TYPE_ECIES_MLKEM768_X25519_AEAD, key6 } });
@@ -188,8 +191,8 @@ void TestClientPreferenceAndServerOrder ()
 		assert (leaseSet.GetEncryptionType () == CRYPTO_KEY_TYPE_ECIES_X25519_AEAD);
 	}
 
-	// A key type that the publisher did not list is never selected, even if
-	// it is locally preferred and supported.
+	// A key type that the publisher did not list is never selected, even
+	// if it is locally preferred and supported.
 	{
 		auto only4 = BuildLeaseSet2 (keys, { { CRYPTO_KEY_TYPE_ECIES_X25519_AEAD, key4 } });
 		auto leaseSet = ParseLeaseSet2 (only4,
@@ -261,9 +264,9 @@ void TestReservedEcTypeIsNeverSelected ()
 	auto keys = PrivateKeys::CreateRandomKeys (
 		SIGNING_KEY_TYPE_EDDSA_SHA512_ED25519, CRYPTO_KEY_TYPE_ECIES_X25519_AEAD, true);
 	std::vector<uint8_t> p256 (64, 0x33);
-	// P256 is a reserved LS2 type and Java's EncType.isAvailable() is false.
-	// i2pd can parse the section but must not select it: the garlic path
-	// would send a 514-byte ElGamal block to a P256 encryptor.
+	// P256 is a reserved LS2 type and Java's EncType.isAvailable() is
+	// false. i2pd can parse the section but must not select it: the garlic
+	// path would send a 514-byte ElGamal block to a P256 encryptor.
 	auto buffer = BuildLeaseSet2 (keys, { { CRYPTO_KEY_TYPE_ECIES_P256_SHA256_AES256CBC, p256 } });
 	auto leaseSet = ParseLeaseSet2 (buffer, MakeLocal ({ CRYPTO_KEY_TYPE_ECIES_P256_SHA256_AES256CBC }),
 		CRYPTO_KEY_TYPE_ECIES_P256_SHA256_AES256CBC);
@@ -272,8 +275,8 @@ void TestReservedEcTypeIsNeverSelected ()
 	assert (leaseSet.IsIncompatibleCrypto ());
 	assert (leaseSet.GetEncryptionType () == 0);
 
-	// A reserved EC section must not shadow a later usable key, even when it
-	// is the local preference.
+	// A reserved EC section must not shadow a later usable key, even when
+	// it is the local preference.
 	auto key4 = KeyBytes (0x34);
 	auto mixed = BuildLeaseSet2 (
 		keys, { { CRYPTO_KEY_TYPE_ECIES_P256_SHA256_AES256CBC, p256 }, { CRYPTO_KEY_TYPE_ECIES_X25519_AEAD, key4 } });
@@ -313,8 +316,8 @@ void TestMalformedKeySections ()
 		assert (!leaseSet.IsValid ());
 	}
 
-	// A known type with a length that overruns the remaining section data must
-	// be rejected before any signature work.
+	// A known type with a length that overruns the remaining section data
+	// must be rejected before any signature work.
 	{
 		std::vector<uint8_t> buffer;
 		buffer.push_back (NETDB_STORE_TYPE_STANDARD_LEASESET2);
@@ -359,7 +362,8 @@ void TestLocalKeySectionPublishing ()
 	assert (local.GetBuffer () != nullptr);
 	assert (local.GetBufferLen () > 0);
 
-	// key sections start after the LS2 header (identity + published/expires/
+	// key sections start after the LS2 header (identity +
+	// published/expires/
 	// flags), the two-byte properties length and the one-byte key count.
 	size_t offset = keys.GetPublic ()->GetFullLen () + 4 + 2 + 2 + 2;
 	const uint8_t * buf = local.GetBuffer ();
@@ -394,8 +398,8 @@ void TestEncryptedInnerNullHandling ()
 	i2p::data::LocalEncryptedLeaseSet2 encrypted (nullptr, keys, ENCRYPTED_LEASESET_AUTH_TYPE_NONE, nullptr);
 	assert (encrypted.GetBuffer () == nullptr);
 
-	// An inner LeaseSet2 with no usable key is not serialized, so wrapping it
-	// must not publish an empty encrypted payload.
+	// An inner LeaseSet2 with no usable key is not serialized, so wrapping
+	// it must not publish an empty encrypted payload.
 	i2p::data::LocalLeaseSet2::EncryptionKeys empty;
 	std::vector<std::shared_ptr<i2p::tunnel::InboundTunnel>> noTunnels;
 	i2p::data::LocalEncryptedLeaseSet2 wrapped (

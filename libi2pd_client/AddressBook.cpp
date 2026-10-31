@@ -4,33 +4,37 @@
  *
  * openi2pd: AddressBook.
  *
- * Loads hosts.txt, local addresses and HTTP subscriptions, resolves .i2p
- * names locally or through destination lookups, and caches identities plus
- * subscription ETags on disk. Host names are matched ASCII
- * case-insensitively, while b33 labels and base64 destinations keep their
- * exact spelling. A per-destination UDP resolver answers remote name queries
- * on the address resolver ports.
+ * Loads hosts.txt, local addresses and HTTP subscriptions, resolves
+ * .i2p names locally or through destination lookups, and caches
+ * identities plus subscription ETags on disk. Host names are matched
+ * ASCII case-insensitively, while b33 labels and base64 destinations
+ * keep their exact spelling. A per-destination UDP resolver answers
+ * remote name queries on the address resolver ports.
  *
- * Merge precedence: bulk/subscription input never replaces a name that already
- * had a destination when the merge started, so a subscription operator cannot
- * hijack a locally curated .i2p name. Duplicate lines inside one source still
- * follow last-wins (properties-style), and an explicit local add/replace is an
- * operator action that may re-point a name. Declined offers are counted in a
- * saturating in-memory counter and logged at warning level, bounded per merge;
- * no per-conflict file is written.
+ * Merge precedence: bulk/subscription input never replaces a name that
+ * already had a destination when the merge started, so a subscription
+ * operator cannot hijack a locally curated .i2p name. Duplicate lines
+ * inside one source still follow last-wins (properties-style), and an
+ * explicit local add/replace is an operator action that may re-point a
+ * name. Declined offers are counted in a saturating in-memory counter
+ * and logged at warning level, bounded per merge; no per-conflict file
+ * is written.
  *
- * Feed retraction: a subscription may ask for the removal of a name it created
- * with the Java advanced form "&lt;name&gt;=&lt;destination&gt;#!action=delete". The origin
- * of every feed-supplied entry is remembered in memory and in the bounded
- * entry-sources.txt sidecar, so the index keeps its legacy "name,destination" columns
- * and old readers stay compatible. A name without a recorded origin (locally
- * added, loaded from hosts.txt or restored from an index whose sidecar is
- * missing) is never deleted by a feed. Deletion is persistent: it records the
- * same tombstone as an administrative remove.
+ * Feed retraction: a subscription may ask for the removal of a name it
+ * created with the Java advanced form
+ * "&lt;name&gt;=&lt;destination&gt;#!action=delete". The origin of
+ * every feed-supplied entry is remembered in memory and in the bounded
+ * entry-sources.txt sidecar, so the index keeps its legacy
+ * "name,destination" columns and old readers stay compatible. A name
+ * without a recorded origin (locally added, loaded from hosts.txt or
+ * restored from an index whose sidecar is missing) is never deleted by
+ * a feed. Deletion is persistent: it records the same tombstone as an
+ * administrative remove.
  *
- * Every persisted artifact (identity files, the address index, the hosts.txt
- * dump, the subscription ETags, deleted.txt and entry-sources.txt) is replaced
- * through i2p::fs::AtomicWrite/AtomicWritePrivate, which never opens the target
+ * Every persisted artifact (identity files, the address index, the
+ * hosts.txt dump, the subscription ETags, deleted.txt and
+ * entry-sources.txt) is replaced through
+ * i2p::fs::AtomicWrite/AtomicWritePrivate, which never opens the target
  * path for truncation and never follows a symlink placed at it.
  *
  */
@@ -77,27 +81,29 @@ namespace client
 		constexpr size_t MAX_SUBSCRIPTION_BODY = 5 * 1024 * 1024;
 		constexpr size_t MAX_SUBSCRIPTION_ENTRIES = 10000;
 		// Conflict diagnostics are bounded: a hostile source may offer a
-		// conflicting destination for every entry, and per-entry warnings would
-		// flood the log.
+		// conflicting destination for every entry, and per-entry warnings
+		// would flood the log.
 		constexpr size_t MAX_CONFLICT_LOG_LINES = 8;
 		// subscriptions.txt is a small operator file: cap the bytes and lines
 		// read so a corrupt or hostile file cannot force a large allocation.
 		constexpr size_t MAX_SUBSCRIPTION_FILE = 64 * 1024;
 		constexpr size_t MAX_SUBSCRIPTION_FILE_LINES = 4096;
-		// An operator-initiated add/remove should be fetched promptly, but the
-		// timer belongs to the destination's io_context and must not be armed
-		// with a zero delay from another thread.
+		// An operator-initiated add/remove should be fetched promptly, but
+		// the timer belongs to the destination's io_context and must not be
+		// armed with a zero delay from another thread.
 		constexpr std::chrono::seconds SUBSCRIPTION_RELOAD_DELAY { 1 };
-		// The advanced hosts.txt form appends "#!key=value,key=value" pairs. Only
-		// a bounded number of short pairs is honoured; an over-long block is
-		// ignored as comment text so a hostile source cannot spend parser time.
+		// The advanced hosts.txt form appends "#!key=value,key=value" pairs.
+		// Only a bounded number of short pairs is honoured; an over-long
+		// block is ignored as comment text so a hostile source cannot spend
+		// parser time.
 		constexpr size_t MAX_ACTION_PAIRS = 8;
 		constexpr size_t MAX_ACTION_KEY_LENGTH = 24;
 		constexpr size_t MAX_ACTION_VALUE_LENGTH = 128;
 		constexpr size_t MAX_ACTION_BLOCK_LENGTH = 256;
-		// entry-sources.txt is written by the book itself: one "name&lt;TAB&gt;origin" line
-		// per entry that a subscription supplied. The bounds follow the merge
-		// entry cap (10000 addresses) with room for the origin column.
+		// entry-sources.txt is written by the book itself: one
+		// "name&lt;TAB&gt;origin" line per entry that a subscription
+		// supplied. The bounds follow the merge entry cap (10000 addresses)
+		// with room for the origin column.
 		constexpr size_t MAX_ADDRESS_SOURCE_FILE = 1024 * 1024;
 		constexpr size_t MAX_ADDRESS_SOURCE_ENTRIES = 20000;
 
@@ -114,8 +120,9 @@ namespace client
 		}
 
 		// Diagnostic label for a subscription source: scheme, host and port
-		// only. Paths and queries are operator-chosen and may carry credentials
-		// or tokens, so they never reach a log line or an error string.
+		// only. Paths and queries are operator-chosen and may carry
+		// credentials or tokens, so they never reach a log line or an error
+		// string.
 		std::string SubscriptionLabel (std::string_view url)
 		{
 			auto schemeEnd = url.find ("://");
@@ -140,8 +147,9 @@ namespace client
 			return true;
 		}
 
-		// A blinded (b33) name is decoded locally and is never resolved through
-		// the address book, so a resolver miss for it must not be remembered.
+		// A blinded (b33) name is decoded locally and is never resolved
+		// through the address book, so a resolver miss for it must not be
+		// remembered.
 		bool IsBlindedHostName (std::string_view normalized)
 		{
 			std::string_view host = normalized;
@@ -159,10 +167,11 @@ namespace client
 			bool deleteRequested = false;
 		};
 
-		// Parses the "#!..." tail of a hosts.txt line. Unknown keys, malformed
-		// pairs and the "action=update" no-op are ignored; only a well-formed
-		// "action=delete" has an effect. The result is false when the block
-		// exceeds its bounds, in which case the whole block is ignored.
+		// Parses the "#!..." tail of a hosts.txt line. Unknown keys,
+		// malformed pairs and the "action=update" no-op are ignored; only a
+		// well-formed "action=delete" has an effect. The result is false when
+		// the block exceeds its bounds, in which case the whole block is
+		// ignored.
 		bool ParseSubscriptionAction (std::string_view block, SubscriptionLineAction & action)
 		{
 			action = SubscriptionLineAction { };
@@ -189,8 +198,8 @@ namespace client
 			return true;
 		}
 
-		// One persisted "name&lt;TAB&gt;origin" line. Names and origins are host
-		// names, so a tab (which neither can contain) is an unambiguous
+		// One persisted "name&lt;TAB&gt;origin" line. Names and origins are
+		// host names, so a tab (which neither can contain) is an unambiguous
 		// separator.
 		bool ParseAddressSourceLine (std::string_view line, std::string & name, std::string & origin)
 		{
@@ -204,10 +213,11 @@ namespace client
 			return true;
 		}
 
-		// A persisted artifact is replaced by rename, so a regular file is the
-		// only shape it can legitimately have. A pre-placed symlink (or any
-		// other non-regular entry) is refused instead of being read through, so
-		// an unrelated file can never be imported as address-book state.
+		// A persisted artifact is replaced by rename, so a regular file is
+		// the only shape it can legitimately have. A pre-placed symlink (or
+		// any other non-regular entry) is refused instead of being read
+		// through, so an unrelated file can never be imported as address-book
+		// state.
 		bool IsRegularArtifact (const std::string & path)
 		{
 			std::error_code error;
@@ -246,9 +256,10 @@ namespace client
 	{
 		// A blinded destination label is URL-safe base64 and therefore
 		// case-sensitive. It is either the final label of ".i2p" (the Address
-		// parser treats a label longer than B33_ADDRESS_THRESHOLD this way) or
-		// the label immediately before an explicit ".b33.i2p" suffix. Preserve
-		// that label verbatim and fold the suffix and any subdomain prefix.
+		// parser treats a label longer than B33_ADDRESS_THRESHOLD this way)
+		// or the label immediately before an explicit ".b33.i2p" suffix.
+		// Preserve that label verbatim and fold the suffix and any subdomain
+		// prefix.
 		constexpr std::string_view b33Suffix = ".b33.i2p";
 		constexpr std::string_view b33AltSuffix = ".b33.i2p.alt";
 		bool explicitB33 = HasSuffixIgnoreCase (name, b33AltSuffix) && name.size () > b33AltSuffix.size ();
@@ -297,13 +308,14 @@ namespace client
 			if (finalLabel) labelEnd = core.size ();
 			auto label = core.substr (labelStart, labelEnd - labelStart);
 			if (label.empty () || label.front () == '-' || label.back () == '-') return false;
-			// IDNA reserves the doubled hyphen (the "xn--" prefix position) and no
-			// I2P name needs one, so it is refused instead of letting a name
+			// IDNA reserves the doubled hyphen (the "xn--" prefix position) and
+			// no I2P name needs one, so it is refused instead of letting a name
 			// imitate a punycode prefix.
 			if (label.find ("--") != std::string_view::npos) return false;
 			// A final label of exactly the base32-hash length is the
-			// "&lt;hash&gt;.i2p" lookalike of "&lt;hash&gt;.b32.i2p": a name like that would
-			// never resolve as a destination and can only mislead.
+			// "&lt;hash&gt;.i2p" lookalike of "&lt;hash&gt;.b32.i2p": a name
+			// like that would never resolve as a destination and can only
+			// mislead.
 			if (finalLabel)
 			{
 				if (label.size () == B32_HASH_LABEL_LENGTH) return false;
@@ -331,8 +343,8 @@ namespace client
 			error = "subscription url length is out of range";
 			return false;
 		}
-		// A source URL is one line of subscriptions.txt: whitespace or control
-		// bytes would split it or inject a second source.
+		// A source URL is one line of subscriptions.txt: whitespace or
+		// control bytes would split it or inject a second source.
 		for (char ch : url)
 		{
 			const auto byte = static_cast<unsigned char> (ch);
@@ -364,7 +376,8 @@ namespace client
 			return false;
 		}
 		// User information would be sent to a peer-chosen destination and
-		// echoed by diagnostics; refuse it instead of persisting a credential.
+		// echoed by diagnostics; refuse it instead of persisting a
+		// credential.
 		if (authority.find ('@') != std::string_view::npos)
 		{
 			error = "subscription url must not contain user information";
@@ -505,8 +518,8 @@ namespace client
 		if (it == m_AddressSources.end ()) return;
 		m_AddressSources.erase (it);
 		LogPrint (eLogDebug, "Addressbook: Forgot the subscription origin of ", name);
-		// Persisting here keeps a later feed from being able to retract a name
-		// after an administrative add took it over.
+		// Persisting here keeps a later feed from being able to retract a
+		// name after an administrative add took it over.
 		if (m_Storage && !SaveAddressSourcesLocked ())
 			LogPrint (eLogWarning, "Addressbook: Could not persist entry origins");
 	}
@@ -524,9 +537,9 @@ namespace client
 			return false;
 		}
 		// The retraction is persistent: the same tombstone an administrative
-		// remove records keeps another feed from resurrecting the name. A full
-		// tombstone list only means the record is not kept; the removal still
-		// applies.
+		// remove records keeps another feed from resurrecting the name. A
+		// full tombstone list only means the record is not kept; the removal
+		// still applies.
 		if (!IsDeletedHostLocked (key) && m_DeletedHosts.size () < 256)
 		{
 			m_DeletedHosts.push_back (std::string (key));
@@ -619,7 +632,8 @@ namespace client
 		std::lock_guard<std::mutex> l (m_Mutex);
 		Prune (now);
 		auto it = m_Requests.find (nonce);
-		// An unrelated authenticated sender must not consume the real request.
+		// An unrelated authenticated sender must not consume the real
+		// request.
 		if (it == m_Requests.end () || it->second.Resolver != resolver) return std::nullopt;
 		auto name = std::move (it->second.Name);
 		m_Requests.erase (it);
@@ -663,8 +677,8 @@ namespace client
 	void detail::NegativeAddressCache::Insert (std::string_view name, uint64_t now)
 	{
 		auto key = NormalizeHostName (name);
-		// A b33 label is decoded locally, so caching its "miss" would suppress a
-		// later valid decode for a whole lifetime.
+		// A b33 label is decoded locally, so caching its "miss" would
+		// suppress a later valid decode for a whole lifetime.
 		if (!IsCacheable (key)) return;
 		std::lock_guard<std::mutex> l (m_Mutex);
 		Prune (now);
@@ -823,8 +837,8 @@ namespace client
 		}
 		auto address = std::make_shared<i2p::data::IdentityEx> (buf.data (), length);
 		// The file name is the base32 of this identity hash, so content that
-		// belongs to another identity is refused instead of being handed out as
-		// the key material of the requested hash.
+		// belongs to another identity is refused instead of being handed out
+		// as the key material of the requested hash.
 		if (address->GetFullLen () != length || address->GetIdentHash () != ident)
 		{
 			LogPrint (eLogError, "Addressbook: Identity file does not match its name: ", filename);
@@ -853,9 +867,10 @@ namespace client
 		if (m_IsPersist && !buf.empty ())
 		{
 			std::string path = storage.Path (address->GetIdentHash ().ToBase32 ());
-			// A same-directory atomic replacement never opens the target path for
-			// truncation and never follows a symlink placed at it. The identity is
-			// a per-destination file, so it is written with private permissions.
+			// A same-directory atomic replacement never opens the target path
+			// for truncation and never follows a symlink placed at it. The
+			// identity is a per-destination file, so it is written with private
+			// permissions.
 			if (!i2p::fs::AtomicWritePrivate (
 					path, std::string_view (reinterpret_cast<const char *> (buf.data ()), len)))
 				LogPrint (eLogError, "Addressbook: Could not write identity file ", path);
@@ -1258,9 +1273,9 @@ namespace client
 	{
 		// Reject queued subscription re-arms before the timer and the source
 		// objects are released; a reload posted by the administration thread
-		// must not touch stopped state. The client context is stopped while the
-		// router io_context may still run, so the same lock also serializes
-		// this teardown against RearmSubscriptionsTimer().
+		// must not touch stopped state. The client context is stopped while
+		// the router io_context may still run, so the same lock also
+		// serializes this teardown against RearmSubscriptionsTimer().
 		{
 			std::lock_guard<std::mutex> l (m_SubscriptionsMutex);
 			if (m_ReloadAlive) m_ReloadAlive->store (false, std::memory_order_release);
@@ -1535,9 +1550,9 @@ namespace client
 		if (!m_Storage) return AddressBookMutationResult::Unavailable;
 		if (std::find (m_DeletedHosts.begin (), m_DeletedHosts.end (), key) != m_DeletedHosts.end ())
 			return AddressBookMutationResult::Ok;
-		// A wildcard may already cover this name. Record the exact pattern too
-		// so the blocked list can unblock this specific name without deleting
-		// the wildcard.
+		// A wildcard may already cover this name. Record the exact pattern
+		// too so the blocked list can unblock this specific name without
+		// deleting the wildcard.
 		if (m_DeletedHosts.size () >= 256) return AddressBookMutationResult::Unavailable;
 		m_DeletedHosts.push_back (key);
 		if (!SaveDeletedHostsLocked ())
@@ -1572,8 +1587,9 @@ namespace client
 	AddressAddResult AddressBook::AddAddressChecked (std::string_view name, std::string_view destination, bool replace)
 	{
 		if (!IsValidHostName (name)) return AddressAddResult::InvalidName;
-		// Java bounds the base64 destination string before decoding it. The value
-		// is an identity, so a rejection logs the length, never the value.
+		// Java bounds the base64 destination string before decoding it. The
+		// value is an identity, so a rejection logs the length, never the
+		// value.
 		if (!IsValidDestinationLength (destination))
 		{
 			LogPrint (eLogWarning, "Addressbook: Rejected destination for ", name, " of length ", destination.size (),
@@ -1644,8 +1660,9 @@ namespace client
 				}
 			if (!referenced) m_Storage->RemoveAddress (previous->identHash);
 		}
-		// An explicit add is local authority: the name is no longer retractable
-		// by the feed that may have supplied the previous destination.
+		// An explicit add is local authority: the name is no longer
+		// retractable by the feed that may have supplied the previous
+		// destination.
 		ForgetAddressSourceLocked (key);
 		m_NegativeCache.Clear ();
 		if (RemoveDeletedMatchesLocked (key) && !SaveDeletedHostsLocked ())
@@ -1753,7 +1770,8 @@ namespace client
 			m_IsLoaded = true;
 		}
 
-		// reset eTags, because we don’t know how old hosts.txt is or can't load addressbook
+		// reset eTags, because we don’t know how old hosts.txt is or can't
+		// load addressbook
 		m_Storage->ResetEtags ();
 	}
 
@@ -1764,24 +1782,23 @@ namespace client
 
 	// Parse and merge one hosts.txt-shaped stream.
 	//
-	// Rules that must survive a change:
-	// - name keys are normalised, `b32.i2p` names and non-`.i2p` names are
-	//   skipped, and the destination must be a full base64 identity of a valid
-	//   length; a rejected value is never logged because it is an identity;
-	// - an automatic merge never re-points a name that already had a
-	//   destination before the stream started; only an explicit local
-	//   add/replace may do that, and a conflict is counted and logged at most a
-	//   few times;
-	// - inside one source a later line may refine an earlier one (last value
-	//   wins), but never for an entry that predates the stream, and a DSA
-	//   destination never replaces an existing non-DSA one;
-	// - the `#!action=delete` form retracts a name only when `source` is the
-	//   recorded origin of that entry and this is an update; a name without an
-	//   origin, a local name or another feed's name is kept;
-	// - tombstones are honoured before the entry is added.
+	// Rules that must survive a change: - name keys are normalised,
+	// `b32.i2p` names and non-`.i2p` names are skipped, and the
+	// destination must be a full base64 identity of a valid length; a
+	// rejected value is never logged because it is an identity; - an
+	// automatic merge never re-points a name that already had a
+	// destination before the stream started; only an explicit local
+	// add/replace may do that, and a conflict is counted and logged at
+	// most a few times; - inside one source a later line may refine an
+	// earlier one (last value wins), but never for an entry that predates
+	// the stream, and a DSA destination never replaces an existing non-DSA
+	// one; - the `#!action=delete` form retracts a name only when `source`
+	// is the recorded origin of that entry and this is an update; a name
+	// without an origin, a local name or another feed's name is kept; -
+	// tombstones are honoured before the entry is added.
 	//
-	// Returns false when the stream ended in the middle of an entry or the read
-	// failed, so a truncated download is not marked as loaded.
+	// Returns false when the stream ended in the middle of an entry or the
+	// read failed, so a truncated download is not marked as loaded.
 	bool AddressBook::LoadHostsFromStream (std::istream && f, bool is_update, std::string_view source)
 	{
 		std::unique_lock<std::mutex> l (m_AddressBookMutex);
@@ -1790,10 +1807,10 @@ namespace client
 		bool sourcesChanged = false;
 		bool incomplete = false;
 		// Precedence: an automatic merge never overwrites a name that already
-		// had a destination when the stream started. Duplicate lines inside one
-		// source may refine each other (last value wins, like a properties
-		// file), because a source that controls both values cannot gain
-		// authority over a locally curated name that way.
+		// had a destination when the stream started. Duplicate lines inside
+		// one source may refine each other (last value wins, like a
+		// properties file), because a source that controls both values cannot
+		// gain authority over a locally curated name that way.
 		std::unordered_set<std::string> batchNames;
 		size_t conflicts = 0;
 		size_t conflictLogs = 0;
@@ -2058,8 +2075,8 @@ namespace client
 			contents.append (url);
 			contents.push_back ('\n');
 		}
-		// Same-directory, no-follow replacement from i2p::fs: the list is never
-		// written by chmod()ing a pathname and reopening it.
+		// Same-directory, no-follow replacement from i2p::fs: the list is
+		// never written by chmod()ing a pathname and reopening it.
 		if (!i2p::fs::AtomicWrite (i2p::fs::DataDirPath ("subscriptions.txt"), contents))
 		{
 			error = "could not write subscriptions.txt";
@@ -2117,8 +2134,8 @@ namespace client
 			}
 			auto previous = m_SubscriptionURLs;
 			m_SubscriptionURLs.push_back (cleaned);
-			// The atomic rewrite is bounded (<= 64 KiB) and the mutex is not held
-			// across network IO; the administration thread may wait for it.
+			// The atomic rewrite is bounded (<= 64 KiB) and the mutex is not
+			// held across network IO; the administration thread may wait for it.
 			if (!SaveSubscriptionsLocked (error))
 			{
 				m_SubscriptionURLs = std::move (previous);
@@ -2162,8 +2179,8 @@ namespace client
 
 	void AddressBook::RecordMergeConflict ()
 	{
-		// Saturating: the counter is a diagnostic and must not overflow after a
-		// hostile source offers millions of conflicting names.
+		// Saturating: the counter is a diagnostic and must not overflow after
+		// a hostile source offers millions of conflicting names.
 		uint64_t current = m_MergeConflicts.load (std::memory_order_relaxed);
 		while (current != std::numeric_limits<uint64_t>::max ()
 			&& !m_MergeConflicts.compare_exchange_weak (
@@ -2203,9 +2220,9 @@ namespace client
 			LogPrint (eLogWarning, "Addressbook: Subscription list changed without a local destination");
 			return;
 		}
-		// Runs on the destination's io_context. The lock is shared with Stop(),
-		// which invalidates the token and releases the timer, so a re-arm that
-		// loses the shutdown race cannot touch stopped state.
+		// Runs on the destination's io_context. The lock is shared with
+		// Stop(), which invalidates the token and releases the timer, so a
+		// re-arm that loses the shutdown race cannot touch stopped state.
 		std::lock_guard<std::mutex> l (m_SubscriptionsMutex);
 		if (!m_ReloadAlive || !m_ReloadAlive->load (std::memory_order_relaxed)) return;
 		if (m_Subscriptions.empty () && m_IsLoaded) return;
@@ -2282,9 +2299,10 @@ namespace client
 			nextUpdateTimeout = CONTINIOUS_SUBSCRIPTION_UPDATE_TIMEOUT;
 		if (succeeded)
 		{
-			// "Not Modified" is not a failure: the source answered and the cached
-			// book is current, so the retry ladder is reset and the normal cadence
-			// continues. The stored ETag/Last-Modified are kept as they are.
+			// "Not Modified" is not a failure: the source answered and the
+			// cached book is current, so the retry ladder is reset and the
+			// normal cadence continues. The stored ETag/Last-Modified are kept
+			// as they are.
 			m_NumRetries = 0;
 			if (m_DefaultSubscription) m_DefaultSubscription = nullptr;
 			if (m_IsLoaded)
@@ -2295,8 +2313,9 @@ namespace client
 				m_Storage->SaveEtag (subscription, etag, lastModified);
 		}
 		// A download completes on the async worker thread, so the re-arm is
-		// handed to the destination's io_context rather than touching its timer
-		// (or a reload posted from the administration thread) from here.
+		// handed to the destination's io_context rather than touching its
+		// timer (or a reload posted from the administration thread) from
+		// here.
 		PostSubscriptionsRearm (std::chrono::minutes (nextUpdateTimeout));
 	}
 
@@ -2335,18 +2354,18 @@ namespace client
 
 	void AddressBook::ResetTimers ()
 	{
-		// both timers run on the shared local destination's service, so they must be
-		// created anew when that destination is replaced
+		// both timers run on the shared local destination's service, so they
+		// must be created anew when that destination is replaced
 		auto dest = i2p::client::context.GetSharedLocalDestination ();
-		// A replaced destination invalidates pending lookups, so a cached miss is
-		// no longer trustworthy either.
+		// A replaced destination invalidates pending lookups, so a cached
+		// miss is no longer trustworthy either.
 		m_NegativeCache.Clear ();
 		{
-			// ReloadConfig() runs on the daemon-owned administration thread while
-			// the timer handler and RearmSubscriptionsTimer() run on the shared
-			// destination's io_context. Serialize the pointer replacement and
-			// respect the shutdown token so a reload cannot resurrect a stopped
-			// subscription timer.
+			// ReloadConfig() runs on the daemon-owned administration thread
+			// while the timer handler and RearmSubscriptionsTimer() run on the
+			// shared destination's io_context. Serialize the pointer replacement
+			// and respect the shutdown token so a reload cannot resurrect a
+			// stopped subscription timer.
 			std::lock_guard<std::mutex> l (m_SubscriptionsMutex);
 			if (m_SubscriptionsUpdateTimer)
 			{

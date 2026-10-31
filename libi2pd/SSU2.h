@@ -4,11 +4,11 @@
  *
  * openi2pd: SSU2.
  *
- * Declares SSU2Server, the UDP transport manager: socket receive queue, session
- * and pending-handshake tables, bounded token, relay and peer-test caches, and
- * timers for termination, cleanup, resends and introducer updates. It also owns
- * ChaCha20-Poly1305 helpers, MTU/firewall bookkeeping and the SOCKS5
- * UDP-associate proxy path.
+ * Declares SSU2Server, the UDP transport manager: socket receive queue,
+ * session and pending-handshake tables, bounded token, relay and
+ * peer-test caches, and timers for termination, cleanup, resends and
+ * introducer updates. It also owns ChaCha20-Poly1305 helpers,
+ * MTU/firewall bookkeeping and the SOCKS5 UDP-associate proxy path.
  *
  */
 
@@ -62,29 +62,30 @@ namespace transport
 	const int SSU2_MIN_HOLE_PUNCH_EXPIRATION = 30; // in seconds
 	const int SSU2_MAX_HOLE_PUNCH_EXPIRATION = 160; // in seconds
 	const size_t SSU2_MAX_NUM_PACKETS_PER_BATCH = 64;
-	// Untrusted endpoints can create token cache entries before the handshake
-	// authenticates them. Java keeps these caches bounded; do the same so a
-	// spoofed SessionRequest/TokenRequest flood cannot grow the maps until the
-	// periodic cleanup timer runs.
+	// Untrusted endpoints can create token cache entries before the
+	// handshake authenticates them. Java keeps these caches bounded; do
+	// the same so a spoofed SessionRequest/TokenRequest flood cannot grow
+	// the maps until the periodic cleanup timer runs.
 	const size_t SSU2_MAX_INCOMING_TOKENS = 4096;
 	const size_t SSU2_MAX_OUTGOING_TOKENS = 4096;
-	// Recently-connected endpoints are used for hole punching. They are also
-	// populated when a session terminates, so keep that cache bounded too.
+	// Recently-connected endpoints are used for hole punching. They are
+	// also populated when a session terminates, so keep that cache bounded
+	// too.
 	const size_t SSU2_MAX_CONNECTED_RECENTLY = 4096;
-	// Peer-test nonces are also provided by the remote side (msg 1). Keep the
-	// bookkeeping bounded like the Java establishment manager.
+	// Peer-test nonces are also provided by the remote side (msg 1). Keep
+	// the bookkeeping bounded like the Java establishment manager.
 	const size_t SSU2_MAX_PEER_TESTS = 64;
 	const size_t SSU2_MAX_REQUESTED_PEER_TESTS = 64;
 
 	/// UDP transport manager and socket owner for SSU2.
 	///
-	/// It owns the v4/v6 sockets, the session and pending-handshake maps, the
-	/// token/relay/peer-test caches and the periodic termination, cleanup,
-	/// resend and introducer-update timers. Unless a
-	/// method documents otherwise, entries in `m_Sessions` are created, mutated
-	/// and removed on the SSU2 service thread only; administrative readers must
-	/// use `GetSSU2Sessions()`, which posts the copy onto that thread. The
-	/// receive service only parses and queues packets.
+	/// It owns the v4/v6 sockets, the session and pending-handshake maps,
+	/// the token/relay/peer-test caches and the periodic termination,
+	/// cleanup, resend and introducer-update timers. Unless a method
+	/// documents otherwise, entries in `m_Sessions` are created, mutated
+	/// and removed on the SSU2 service thread only; administrative readers
+	/// must use `GetSSU2Sessions()`, which posts the copy onto that
+	/// thread. The receive service only parses and queues packets.
 	class SSU2Server : private i2p::util::RunnableServiceWithWork
 	{
 		struct Packet
@@ -161,12 +162,12 @@ namespace transport
 		// insertion.
 		bool AllowPeerTestMessage (const boost::asio::ip::address & source, uint64_t now);
 		// Admission for out-of-session PeerTest pseudo-sessions, counted from
-		// m_Sessions. Alice's test start and Charlie's msg 2 handler must check
-		// it before creating a session. Service thread only.
+		// m_Sessions. Alice's test start and Charlie's msg 2 handler must
+		// check it before creating a session. Service thread only.
 		size_t GetNumPeerTestSessions () const;
 		bool IsPeerTestSessionAdmissionAllowed () const;
-		// Charlie-side RelayIntro anti-amplification: one HolePunch per target
-		// within a five-second window and a bounded number of targets.
+		// Charlie-side RelayIntro anti-amplification: one HolePunch per
+		// target within a five-second window and a bounded number of targets.
 		bool AllowRelayHolePunch (const boost::asio::ip::udp::endpoint & ep);
 
 		bool AddRequestedPeerTest (uint32_t nonce, std::shared_ptr<SSU2PeerTestSession> session, uint64_t ts);
@@ -255,15 +256,16 @@ namespace transport
 
 	private:
 		ReceiveService m_ReceiveService;
-		// Residual threading hazard (not fixed here): these sockets are shared
-		// by the SSU2 service (synchronous send_to in Send()/SendThroughProxy())
-		// and the receive service (async_receive_from and the error path that
-		// calls OpenSocket()). A socket error on the receive service can
-		// close()/open() the object while the other thread is inside send_to().
-		// Removing it requires a dedicated send socket, or posting every send
-		// onto the receive service and changing Send() to an asynchronous API;
-		// neither is safe as a local patch because senders currently rely on
-		// the synchronous result and buffer lifetime.
+		// Residual threading hazard (not fixed here): these sockets are
+		// shared by the SSU2 service (synchronous send_to in
+		// Send()/SendThroughProxy()) and the receive service
+		// (async_receive_from and the error path that calls OpenSocket()). A
+		// socket error on the receive service can close()/open() the object
+		// while the other thread is inside send_to(). Removing it requires a
+		// dedicated send socket, or posting every send onto the receive
+		// service and changing Send() to an asynchronous API; neither is safe
+		// as a local patch because senders currently rely on the synchronous
+		// result and buffer lifetime.
 		boost::asio::ip::udp::socket m_SocketV4, m_SocketV6;
 		boost::asio::ip::address m_AddressV4, m_AddressV6;
 		SSU2Sessions m_Sessions;
@@ -315,17 +317,18 @@ namespace transport
 
 		// proxy
 		bool m_IsThroughProxy;
-		// SOCKS5 handshake/associate scratch buffer. It is owned by the receive
-		// service (ConnectToProxy..ReadUDPAssociateReply) and is never used to
-		// compose outgoing UDP datagrams; SendThroughProxy builds its request
-		// header on its own stack frame.
+		// SOCKS5 handshake/associate scratch buffer. It is owned by the
+		// receive service (ConnectToProxy..ReadUDPAssociateReply) and is
+		// never used to compose outgoing UDP datagrams; SendThroughProxy
+		// builds its request header on its own stack frame.
 		uint8_t m_ProxyHandshakeBuffer[SOCKS5_UDP_IPV6_REQUEST_HEADER_SIZE];
-		// Draining the SOCKS UDP-associate socket must not reuse any handshake
-		// buffer: the receive service has a pending read there.
+		// Draining the SOCKS UDP-associate socket must not reuse any
+		// handshake buffer: the receive service has a pending read there.
 		uint8_t m_ProxyUDPAssociateBuffer[1];
-		// m_ProxyRelayEndpoint is published by the receive service and consumed
-		// by SendThroughProxy on the SSU2 service. Copy it under this lock before
-		// dereferencing so a reconnect cannot free it mid-send.
+		// m_ProxyRelayEndpoint is published by the receive service and
+		// consumed by SendThroughProxy on the SSU2 service. Copy it under
+		// this lock before dereferencing so a reconnect cannot free it
+		// mid-send.
 		std::mutex m_ProxyRelayEndpointMutex;
 		std::unique_ptr<boost::asio::ip::tcp::endpoint> m_ProxyEndpoint;
 		std::unique_ptr<boost::asio::ip::tcp::socket> m_UDPAssociateSocket;
@@ -333,16 +336,16 @@ namespace transport
 		std::unique_ptr<boost::asio::steady_timer> m_ProxyConnectRetryTimer;
 
 	public:
-		// for HTTP/I2PControl
-		// Safe form: the caller owns the returned copy and does not need to keep
-		// a reference alive until the future completes.
+		// for HTTP/I2PControl Safe form: the caller owns the returned copy
+		// and does not need to keep a reference alive until the future
+		// completes.
 		std::future<SSU2Sessions> GetSSU2Sessions ()
 		{
 			return boost::asio::post (GetService (), boost::asio::use_future ([this] () { return m_Sessions; }));
 		};
 
-		// Legacy reference form. The caller must keep `sessions` alive until the
-		// future is waited on; prefer the no-argument overload above.
+		// Legacy reference form. The caller must keep `sessions` alive until
+		// the future is waited on; prefer the no-argument overload above.
 		std::future<void> GetSSU2Sessions (SSU2Sessions & sessions)
 		{
 			return boost::asio::post (

@@ -4,7 +4,8 @@
  *
  * openi2pd: test gost.
  *
- * Validates GOST R 34.11-2012 256- and 512-bit digests against known-answer vectors for two message lengths.
+ * Validates GOST R 34.11-2012 256- and 512-bit digests against
+ * known-answer vectors for two message lengths.
  *
  */
 

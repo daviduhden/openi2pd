@@ -4,10 +4,10 @@
  *
  * openi2pd: test addressbook case-insensitivity.
  *
- * Offline checks that .i2p and .b32.i2p host names resolve regardless of
- * ASCII case, that mixed-case hosts.txt entries share one lookup key, and
- * that normalisation does not touch base64 destinations. No storage,
- * resolver, destination or network is started.
+ * Offline checks that .i2p and .b32.i2p host names resolve regardless
+ * of ASCII case, that mixed-case hosts.txt entries share one lookup
+ * key, and that normalisation does not touch base64 destinations. No
+ * storage, resolver, destination or network is started.
  *
  */
 
@@ -45,8 +45,8 @@ void TestNormalizeHostName ()
 	assert (NormalizeHostName ("AbC.b32.i2P") == "abc.b32.i2p");
 	assert (NormalizeHostName ("site.i2p") == "site.i2p");
 	assert (NormalizeHostName ("") == "");
-	// Only ASCII letters are folded, so non-ASCII bytes and digits are kept
-	// byte-for-byte.
+	// Only ASCII letters are folded, so non-ASCII bytes and digits are
+	// kept byte-for-byte.
 	assert (NormalizeHostName ("caf\303\251.i2p") == "caf\303\251.i2p");
 	assert (NormalizeHostName ("host-01.I2P") == "host-01.i2p");
 
@@ -197,7 +197,8 @@ void TestLookupReplyAuthority ()
 	const auto resolver = MakeDestinationKeys ().GetPublic ()->GetIdentHash ();
 	const auto stranger = MakeDestinationKeys ().GetPublic ()->GetIdentHash ();
 	assert (requests.Insert (42, "Host.Domain.I2P", resolver, 100));
-	// A valid signature from a different destination does not authorize this
+	// A valid signature from a different destination does not authorize
+	// this
 	// nonce and must leave the real request available to its resolver.
 	assert (!requests.Take (42, stranger, 100));
 	assert (!requests.Take (43, resolver, 100));
@@ -221,10 +222,12 @@ void TestLookupBoundsAndExpiry ()
 	for (size_t i = 0; i < Requests::MAX_PENDING; ++i)
 		assert (requests.Insert (static_cast<uint32_t> (i), std::to_string (i) + ".domain.i2p", resolver, 100));
 	assert (!requests.Insert (1000, "overflow.domain.i2p", resolver, 100));
-	// Just before the deadline, the original slot still belongs to its name.
+	// Just before the deadline, the original slot still belongs to its
+	// name.
 	auto name = requests.Take (0, resolver, 100 + Requests::TIMEOUT_SECONDS - 1);
 	assert (name && *name == "0.domain.i2p");
-	// At the deadline, neither an authenticated late reply nor stale requests
+	// At the deadline, neither an authenticated late reply nor stale
+	// requests
 	// may retain authority or prevent a new lookup from acquiring a slot.
 	assert (!requests.Take (1, resolver, 100 + Requests::TIMEOUT_SECONDS));
 	assert (requests.Insert (1000, "new.domain.i2p", resolver, 100 + Requests::TIMEOUT_SECONDS));

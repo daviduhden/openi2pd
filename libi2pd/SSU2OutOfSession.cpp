@@ -4,9 +4,9 @@
  *
  * openi2pd: SSU2OutOfSession.
  *
- * Implements SSU2 peer-test message exchange with endpoint validation, adoption
- * of the externally observed address and bounded resends, plus hole-punch
- * construction and retransmission for relayed introductions.
+ * Implements SSU2 peer-test message exchange with endpoint validation,
+ * adoption of the externally observed address and bounded resends, plus
+ * hole-punch construction and retransmission for relayed introductions.
  *
  */
 
@@ -23,10 +23,11 @@ namespace transport
 {
 	namespace
 	{
-		// Mirrors Java TransportUtil.isValidPort(): the SSU2 random port range
-		// is always acceptable; outside it, privileged and well-known service
-		// ports are not. Deliberately not the local port-selection blacklist,
-		// which also excludes ports a Java peer may legitimately bind.
+		// Mirrors Java TransportUtil.isValidPort(): the SSU2 random port
+		// range is always acceptable; outside it, privileged and well-known
+		// service ports are not. Deliberately not the local port-selection
+		// blacklist, which also excludes ports a Java peer may legitimately
+		// bind.
 		bool IsValidPeerTestPort (uint16_t port)
 		{
 			if (port < 1024) return false;
@@ -96,14 +97,14 @@ namespace transport
 
 	bool SSU2PeerTestSession::ProcessPeerTest (uint8_t * buf, size_t len)
 	{
-		// Order matters here: the source endpoint is validated against the reserved
-		// range, blocklist and ban list first, so no state or AEAD work happens for
-		// an excluded peer; then the long header is unmasked and the source
-		// connection ID is checked against the one derived from the test nonce
-		// before the payload is authenticated with the intro key. Only an
-		// authenticated payload is parsed, and a payload carrying an unknown or
-		// invalid block fails the whole test instead of partially applying it.
-		// we are Alice or Charlie, msgs 5,6,7
+		// Order matters here: the source endpoint is validated against the
+		// reserved range, blocklist and ban list first, so no state or AEAD
+		// work happens for an excluded peer; then the long header is unmasked
+		// and the source connection ID is checked against the one derived
+		// from the test nonce before the payload is authenticated with the
+		// intro key. Only an authenticated payload is parsed, and a payload
+		// carrying an unknown or invalid block fails the whole test instead
+		// of partially applying it. we are Alice or Charlie, msgs 5,6,7
 		const auto & sender = GetRemoteEndpoint ();
 		if (!IsValidPeerTestEndpoint (sender))
 		{
@@ -210,8 +211,8 @@ namespace transport
 	{
 		// The Address block in msgs 5/7 reports our apparent endpoint. Java
 		// never adopts it from msg 5 (Charlie's first contact) and only
-		// completes the test when msg 7 comes from the Charlie learned in
-		// msg 4, so a spoofed source cannot rewrite our external host. A single
+		// completes the test when msg 7 comes from the Charlie learned in msg
+		// 4, so a spoofed source cannot rewrite our external host. A single
 		// test result also must not publish a port: only the host observation
 		// is applied here.
 		if (!AllowPeerTestExternalAddressUpdate (msg, GetRemoteEndpoint () == m_CharlieEndpoint))
@@ -226,8 +227,8 @@ namespace transport
 		i2p::context.UpdateAddress (ep.address ());
 		if (ep.port () == GetServer ().GetPort (v4)) return;
 		// A different external port is reported for NAT analysis, but the
-		// published port and host stay unchanged until a separate test supplies
-		// corroborating evidence.
+		// published port and host stay unchanged until a separate test
+		// supplies corroborating evidence.
 		LogPrint (eLogInfo, "SSU2: PeerTest observed external port ", ep.port (), " (local ", GetServer ().GetPort (v4),
 			") kept unpublished");
 	}
@@ -237,11 +238,12 @@ namespace transport
 		// msgs 5-7. This session type is deliberately not "established": the
 		// out-of-session PeerTest exchange is authenticated by the test nonce
 		// and the connection IDs derived from it, not by a Noise handshake.
-		// m_MsgNumReceived is a monotonic watermark: a repeated or out-of-order
-		// message number is ignored outright, which is what makes the resend timers
-		// safe to cancel from any branch without risking a second delivery of the
-		// same step. The timestamp check is the Java +/-120 s window, applied before
-		// the nonce is compared so an old capture cannot drive the NAT assessment.
+		// m_MsgNumReceived is a monotonic watermark: a repeated or
+		// out-of-order message number is ignored outright, which is what
+		// makes the resend timers safe to cancel from any branch without
+		// risking a second delivery of the same step. The timestamp check is
+		// the Java +/-120 s window, applied before the nonce is compared so
+		// an old capture cannot drive the NAT assessment.
 		if (len < 13)
 		{
 			LogPrint (eLogWarning, "SSU2: PeerTest block is too short ", len);
@@ -490,9 +492,10 @@ namespace transport
 		SetRemoteEndpoint (remoteEndpoint);
 		SetAddress (addr);
 		// A HolePunch header is always SSU2 version 2 (SSU2 spec, Hole Punch,
-		// "ver :: 2"), even when Alice will follow it with a PQ SessionRequest.
-		// The incoming SessionRequest selects its own version in
-		// ProcessFirstIncomingMessage(), so do not pre-set a PQ version here.
+		// "ver :: 2"), even when Alice will follow it with a PQ
+		// SessionRequest. The incoming SessionRequest selects its own version
+		// in ProcessFirstIncomingMessage(), so do not pre-set a PQ version
+		// here.
 		SetVersion (SSU2_HOLE_PUNCH_VERSION);
 		SetTerminationTimeout (SSU2_RELAY_NONCE_EXPIRATION_TIMEOUT);
 		AdjustMaxPayloadSize (SSU2_MIN_PACKET_SIZE);

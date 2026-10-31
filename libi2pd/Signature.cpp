@@ -4,10 +4,11 @@
  *
  * openi2pd: Signature.
  *
- * Implements the I2P signature suites, including ECDSA DER-to-fixed signature
- * conversion, raw RSA PKCS#1 v1.5 verification, Ed25519/Ed25519ph and RedDSA
- * handling, and GOST R 34.10 variants, with OpenSSL 3 and LibreSSL code paths
- * and scoped EVP resource ownership.
+ * Implements the I2P signature suites, including ECDSA DER-to-fixed
+ * signature conversion, raw RSA PKCS#1 v1.5 verification,
+ * Ed25519/Ed25519ph and RedDSA handling, and GOST R 34.10 variants,
+ * with OpenSSL 3 and LibreSSL code paths and scoped EVP resource
+ * ownership.
  *
  */
 
@@ -26,8 +27,8 @@
 namespace
 {
 // Digest contexts owned by the verifier/signer entry points. OpenSSL's
-// EVP_MD_CTX is release-only, so a scoped owner removes the early-return
-// and exception paths that previously leaked it.
+// EVP_MD_CTX is release-only, so a scoped owner removes the
+// early-return and exception paths that previously leaked it.
 struct MDCtxDeleter
 {
 	void operator() (EVP_MD_CTX * ctx) const { EVP_MD_CTX_free (ctx); }
@@ -36,8 +37,9 @@ struct MDCtxDeleter
 using MDCtxPtr = std::unique_ptr<EVP_MD_CTX, MDCtxDeleter>;
 
 // Encode an ECDSA_SIG into a buffer that is sized from the DER length
-// reported by OpenSSL. A fixed keyLen + 8 buffer is too small for P-521:
-// two 66-byte integers with their high bit set need 141 bytes, not 140.
+// reported by OpenSSL. A fixed keyLen + 8 buffer is too small for
+// P-521: two 66-byte integers with their high bit set need 141 bytes,
+// not 140.
 [[maybe_unused]] bool EncodeDSASignature (const DSA_SIG * sig, std::vector<uint8_t> & der)
 {
 	if (!sig) return false;
@@ -722,9 +724,10 @@ namespace crypto
 		if (!signature) return false;
 		auto pkey = GetPkey ();
 		MDCtxPtr ctx (EVP_MD_CTX_new ());
-		// Java SigType 8 uses EdDSAEngine over the supplied bytes; it does not
-		// apply RFC 8032 dom2/prehash. Use the same plain Ed25519 primitive as
-		// SigType 7. (SU3 callers prehash the payload themselves.)
+		// Java SigType 8 uses EdDSAEngine over the supplied bytes; it does
+		// not apply RFC 8032 dom2/prehash. Use the same plain Ed25519
+		// primitive as SigType 7. (SU3 callers prehash the payload
+		// themselves.)
 		return pkey && ctx && EVP_DigestVerifyInit (ctx.get (), nullptr, nullptr, nullptr, pkey) == 1
 			&& EVP_DigestVerify (ctx.get (), signature, 64, buf, len) == 1;
 	}

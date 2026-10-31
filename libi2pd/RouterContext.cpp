@@ -7,9 +7,9 @@
  * Implements the process-wide router context: key/identity loading or
  * generation, RouterInfo construction with NTCP2 and SSU2 addresses,
  * capabilities, family and congestion data, publication and router.info
- * persistence. Status, bandwidth and reachability updates are made safe for
- * concurrent transport/tunnel access under locks and atomics, with timers on
- * the context's asio service.
+ * persistence. Status, bandwidth and reachability updates are made safe
+ * for concurrent transport/tunnel access under locks and atomics, with
+ * timers on the context's asio service.
  *
  */
 
@@ -50,16 +50,18 @@ namespace
 	 * One retained fixed-file write after a failed isolated persistence
 	 * attempt.
 	 *
-	 * `router.keys`, `ntcp2.keys` and `ssu2.keys` are only written when the
-	 * material is (re)generated, so a dropped write would silently leave the
-	 * process running with key material that is not durable. Exactly one
-	 * serialized record is retained; the next save tick retries it and a
-	 * successful write wipes the copy. The slot is process-wide because the
-	 * network process owns one router context; a second context in the same
-	 * process (tests) is sequential and only ever sees an empty slot.
+	 * `router.keys`, `ntcp2.keys` and `ssu2.keys` are only written when
+	 * the material is (re)generated, so a dropped write would silently
+	 * leave the process running with key material that is not durable.
+	 * Exactly one serialized record is retained; the next save tick
+	 * retries it and a successful write wipes the copy. The slot is
+	 * process-wide because the network process owns one router context; a
+	 * second context in the same process (tests) is sequential and only
+	 * ever sees an empty slot.
 	 *
-	 * This is deliberately not a general write queue: it never grows, never
-	 * retries in a loop and never falls back to a local filesystem write.
+	 * This is deliberately not a general write queue: it never grows,
+	 * never retries in a loop and never falls back to a local filesystem
+	 * write.
 	 */
 	class PendingFixedWrite
 	{
@@ -87,9 +89,9 @@ namespace
 		}
 
 		/**
-		 * Drop the retained record without writing. Used when initialization is
-		 * rolled back: no later tick may publish key material from a failed
-		 * start attempt.
+		 * Drop the retained record without writing. Used when initialization
+		 * is rolled back: no later tick may publish key material from a
+		 * failed start attempt.
 		 */
 		void Discard ()
 		{
@@ -113,9 +115,9 @@ namespace
 	}
 
 	/**
-	 * Write one fixed router file through the installed persistence authority.
-	 * A failure is retained for one later retry; it never becomes a local
-	 * write in the network process.
+	 * Write one fixed router file through the installed persistence
+	 * authority. A failure is retained for one later retry; it never
+	 * becomes a local write in the network process.
 	 */
 	bool WriteRetainedFixedFile (i2p::data::RouterPersistentFile file, std::span<const uint8_t> bytes)
 	{
@@ -132,12 +134,13 @@ RouterContext context;
 namespace
 {
 	// Origin of the garlic currently being decrypted on this thread.
-	// RouterContext::ProcessGarlicMessage() posts to the router service and
-	// PostGarlicMessage() decrypts synchronously there, so every clove
+	// RouterContext::ProcessGarlicMessage() posts to the router service
+	// and PostGarlicMessage() decrypts synchronously there, so every clove
 	// callback of that garlic runs on the same thread before the enclosing
-	// call returns. A nested garlic is posted again, never decrypted inline,
-	// so the value cannot leak into an unrelated garlic. Java makes the same
-	// distinction between HandleGarlicMessageJob and InboundMessageDistributor.
+	// call returns. A nested garlic is posted again, never decrypted
+	// inline, so the value cannot leak into an unrelated garlic. Java
+	// makes the same distinction between HandleGarlicMessageJob and
+	// InboundMessageDistributor.
 	thread_local bool g_IncomingGarlicFromTunnel = false;
 }
 
@@ -181,7 +184,8 @@ RouterContext::~RouterContext ()
 
 void RouterContext::Init ()
 {
-	// Randomness comes from the CSPRNG-backed helpers; no process-global seed.
+	// Randomness comes from the CSPRNG-backed helpers; no process-global
+	// seed.
 	m_StartupTime.store (i2p::util::GetMonotonicSeconds (), std::memory_order_relaxed);
 
 	if (!Load ()) CreateNewRouter ();
@@ -195,8 +199,8 @@ void RouterContext::Init ()
 void RouterContext::ResetAfterFailedInit ()
 {
 	// Init() may have submitted an asynchronous router.info write before a
-	// later phase failed. Join it before Daemon rollback changes or stops the
-	// persistence writer and its storage authority.
+	// later phase failed. Join it before Daemon rollback changes or stops
+	// the persistence writer and its storage authority.
 	if (m_SavingRouterInfo.valid ())
 	{
 		try
@@ -217,8 +221,8 @@ void RouterContext::ResetAfterFailedInit ()
 		m_SaveBuffer.reset ();
 	}
 	m_IsSaving.clear ();
-	// A rolled-back initialization must not retry identity or transport key
-	// material from the failed attempt on a later tick.
+	// A rolled-back initialization must not retry identity or transport
+	// key material from the failed attempt on a later tick.
 	RetainedFixedWrite ().Discard ();
 	Stop ();
 	m_ECIESSession.reset ();
@@ -226,8 +230,9 @@ void RouterContext::ResetAfterFailedInit ()
 	m_TunnelDecryptor.reset ();
 	m_InitialNoiseState = i2p::crypto::NoiseSymmetricState { };
 	// Do not discard persisted identity or transport keys. Init may have
-	// generated them successfully before a later phase failed; these durable
-	// files remain authoritative for a retry against the same data directory.
+	// generated them successfully before a later phase failed; these
+	// durable files remain authoritative for a retry against the same data
+	// directory.
 }
 
 void RouterContext::Start ()
@@ -238,8 +243,8 @@ void RouterContext::Start ()
 	m_PublishTimer.reset (new boost::asio::steady_timer (service->GetService ()));
 	m_CongestionUpdateTimer.reset (new boost::asio::steady_timer (service->GetService ()));
 	m_CleanupTimer.reset (new boost::asio::steady_timer (service->GetService ()));
-	// Publish the service before scheduling so timer handlers that run once
-	// the worker starts observe a consistent object.
+	// Publish the service before scheduling so timer handlers that run
+	// once the worker starts observe a consistent object.
 	m_Service.Store (service);
 	ScheduleInitialPublish ();
 	ScheduleCongestionUpdate ();
@@ -472,8 +477,8 @@ void RouterContext::UpdateRouterInfoLocked ()
 	auto buffer = m_RouterInfo.CopyBuffer ();
 	{
 		// Empty the save slot and hand the latest snapshot to the writer. The
-		// lock order is m_RouterInfoMutex -> m_SaveBufferMutex; the save worker
-		// never takes m_RouterInfoMutex, so this cannot deadlock.
+		// lock order is m_RouterInfoMutex -> m_SaveBufferMutex; the save
+		// worker never takes m_RouterInfoMutex, so this cannot deadlock.
 		std::lock_guard<std::mutex> l (m_SaveBufferMutex);
 		m_SaveBuffer = buffer;
 	}
@@ -1531,10 +1536,10 @@ void RouterContext::SetMTU (int mtu, bool v4)
 			updated = true;
 		}
 	}
-	// The MTU controls the published "mtu" option and whether "pq" may offer
-	// ML-KEM-768. Persist it now: Start() sets the MTU after the last
-	// RouterInfo rebuild, so without this the first published RI would still
-	// advertise the old (or absent) MTU.
+	// The MTU controls the published "mtu" option and whether "pq" may
+	// offer ML-KEM-768. Persist it now: Start() sets the MTU after the
+	// last RouterInfo rebuild, so without this the first published RI
+	// would still advertise the old (or absent) MTU.
 	if (updated) UpdateRouterInfoLocked ();
 }
 
@@ -1560,8 +1565,8 @@ void RouterContext::UpdateStats ()
 	if (m_IsFloodfill.load (std::memory_order_relaxed))
 	{
 		// Update the properties under the same mutex used by CreateBuffer();
-		// otherwise a transport-thread address update can serialize a map while
-		// these properties are being inserted.
+		// otherwise a transport-thread address update can serialize a map
+		// while these properties are being inserted.
 		std::lock_guard<std::mutex> l (m_RouterInfoMutex);
 		m_RouterInfo.SetProperty (
 			i2p::data::ROUTER_INFO_PROPERTY_LEASESETS, std::to_string (i2p::data::netdb.GetNumLeaseSets ()));
@@ -1720,7 +1725,8 @@ bool RouterContext::Load ()
 
 void RouterContext::SaveKeys ()
 {
-	// Preserve the exact existing key serialization; only IO authority changes.
+	// Preserve the exact existing key serialization; only IO authority
+	// changes.
 	std::vector<uint8_t> buffer (m_Keys.GetFullLen ());
 	m_Keys.ToBuffer (buffer.data (), buffer.size ());
 	const bool saved = WriteRetainedFixedFile (i2p::data::RouterPersistentFile::RouterKeys, buffer);
@@ -1765,9 +1771,9 @@ bool RouterContext::HandleCloveI2NPMessage (I2NPMessageType typeID, const uint8_
 {
 	if (typeID == eI2NPTunnelTest)
 	{
-		// TunnelTest payloads carry msgID and timestamp; a garlic clove can be
-		// shorter than the fixed offsets and the generic clove header does not
-		// guarantee the payload length.
+		// TunnelTest payloads carry msgID and timestamp; a garlic clove can
+		// be shorter than the fixed offsets and the generic clove header does
+		// not guarantee the payload length.
 		if (len < TUNNEL_TEST_SIZE) return false;
 		// try tunnel test
 		auto pool = GetTunnelPool ();
@@ -1817,10 +1823,10 @@ void RouterContext::PostGarlicMessage (std::shared_ptr<I2NPMessage> msg)
 	}
 	buf += 4;
 	// Publish the enclosing garlic's delivery path for the clove callbacks
-	// below. Direct transport garlic has no InboundTunnel; a tunnel-delivered
-	// one is marked so a clove cannot be mistaken for a direct message. A
-	// garlic clove can itself contain a garlic message, so the marker has to
-	// survive that nesting as well.
+	// below. Direct transport garlic has no InboundTunnel; a
+	// tunnel-delivered one is marked so a clove cannot be mistaken for a
+	// direct message. A garlic clove can itself contain a garlic message,
+	// so the marker has to survive that nesting as well.
 	const bool previousOrigin = g_IncomingGarlicFromTunnel;
 	g_IncomingGarlicFromTunnel = msg->from != nullptr || msg->fromTunnel;
 	auto restoreOrigin = i2p::modern::ScopeExit ([previousOrigin] { g_IncomingGarlicFromTunnel = previousOrigin; });
@@ -1904,8 +1910,8 @@ bool RouterContext::DecryptTunnelBuildRecord (
 bool RouterContext::DecryptECIESTunnelBuildRecord (
 	const uint8_t * encrypted, uint8_t * data, size_t clearTextSize, i2p::crypto::NoiseSymmetricState & noiseState)
 {
-	// The caller owns this scratch state; never share it between concurrent
-	// build records arriving on different transport threads.
+	// The caller owns this scratch state; never share it between
+	// concurrent build records arriving on different transport threads.
 	noiseState = m_InitialNoiseState;
 	noiseState.MixHash (encrypted, 32); // h = SHA256(h || sepk)
 	uint8_t sharedSecret[32];

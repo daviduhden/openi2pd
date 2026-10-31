@@ -4,9 +4,9 @@
  *
  * openi2pd: TunnelPool.
  *
- * Implements tunnel creation, selection and expiration, peer selection including
- * custom selectors and peer ordering, tunnel testing, garlic and delivery-status
- * handling, and pool reconfiguration.
+ * Implements tunnel creation, selection and expiration, peer selection
+ * including custom selectors and peer ordering, tunnel testing, garlic
+ * and delivery-status handling, and pool reconfiguration.
  *
  */
 
@@ -65,8 +65,8 @@ namespace tunnel
 		int requested = configured - established - pending;
 		if (requested <= 0) return 0;
 		// Java-like ladder: the first failure threshold halves the round, the
-		// second reduces it to a single request. The count never reaches zero,
-		// so a recovering network is always given another chance.
+		// second reduces it to a single request. The count never reaches
+		// zero, so a recovering network is always given another chance.
 		int maximum = TUNNEL_POOL_MAX_NUM_BUILD_REQUESTS;
 		if (consecutiveFailures >= 2 * TUNNEL_POOL_BUILD_FAILURES_TO_REDUCE)
 			maximum = 1;
@@ -86,12 +86,12 @@ namespace tunnel
 		return std::min (delay, TUNNEL_POOL_BUILD_BACKOFF_MAX);
 	}
 
-	// Per-path test deadline. A test leaves through the outbound tunnel and
-	// returns through the inbound one, so the budget is twice the one-way
-	// estimate: TUNNEL_POOL_TEST_TIMEOUT_PER_HOP (2.5 s) per hop plus the locally
-	// measured transport delay. The result is clamped to 7.5..15 s so a zero-hop
-	// pair still gets a usable deadline and a long path cannot hold a test entry
-	// open for minutes. Units: milliseconds.
+	// Per-path test deadline. A test leaves through the outbound tunnel
+	// and returns through the inbound one, so the budget is twice the
+	// one-way estimate: TUNNEL_POOL_TEST_TIMEOUT_PER_HOP (2.5 s) per hop
+	// plus the locally measured transport delay. The result is clamped to
+	// 7.5..15 s so a zero-hop pair still gets a usable deadline and a long
+	// path cannot hold a test entry open for minutes. Units: milliseconds.
 	uint64_t GetTunnelTestTimeout (int numHops, int localDelayMs)
 	{
 		if (numHops < 0) numHops = 0;
@@ -122,22 +122,24 @@ namespace tunnel
 		const auto & hash = router.GetIdentHash ();
 		if (router.IsHidden ()) return false;
 		if (!router.IsECIES ()) return false;
-		// Operator blocklist and in-memory runtime bans: a reused identity must
-		// not bypass an entry that arrived after the tunnel was built.
+		// Operator blocklist and in-memory runtime bans: a reused identity
+		// must not bypass an entry that arrived after the tunnel was built.
 		if (i2p::data::IsOperatorBlockedRouter (hash) || i2p::data::IsRuntimeRouterBanned (hash)) return false;
 		if (router.IsUnreachable ()) return false;
 		// A descriptor with no usable transport can never carry a tunnel hop.
 		if (!router.HasValidAddresses ()) return false;
-		// Never create or load a profile from the selection path. The bad-peer
-		// rule matches SelectNextHop(); profile-level unreachability is a short
-		// lived transport signal and is deliberately left to the connection
-		// layer so a transient outage does not empty every candidate set.
+		// Never create or load a profile from the selection path. The
+		// bad-peer rule matches SelectNextHop(); profile-level unreachability
+		// is a short lived transport signal and is deliberately left to the
+		// connection layer so a transient outage does not empty every
+		// candidate set.
 		if (auto profile = router.GetProfileIfExists ())
 		{
 			if (profile->IsBad ()) return false;
 		}
 		// General version floor identical to NetDb random selection; a
-		// high-bandwidth peer is exempt, exactly as in NetDb::ManageRouterInfos.
+		// high-bandwidth peer is exempt, exactly as in
+		// NetDb::ManageRouterInfos.
 		if (router.GetVersion () < i2p::data::NETDB_MIN_ALLOWED_VERSION && !router.IsHighBandwidth ()) return false;
 		if (router.IsHighCongestion (clientTunnel)) return false;
 		switch (role)
@@ -183,9 +185,9 @@ namespace tunnel
 	{
 		if (!m_Selector) return Result::NoSelector;
 		if (!m_HasOwner) return m_Selector->SelectPeers (path, hops, inbound) ? Result::Accepted : Result::Rejected;
-		// Pin the owner for the whole call. A plain expired()/lock() test before
-		// the call would still race with the last owner release and leave the
-		// selector dangling while SelectPeers() runs.
+		// Pin the owner for the whole call. A plain expired()/lock() test
+		// before the call would still race with the last owner release and
+		// leave the selector dangling while SelectPeers() runs.
 		auto owner = m_Owner.lock ();
 		if (!owner) return Result::OwnerGone;
 		return m_Selector->SelectPeers (path, hops, inbound) ? Result::Accepted : Result::Rejected;
@@ -590,9 +592,9 @@ namespace tunnel
 		}
 
 		// Phase one: decide under the pool locks, without ever creating a
-		// tunnel. CreateInboundTunnel()/CreateOutboundTunnel() publish zero-hop
-		// tunnels synchronously through TunnelCreated(), which takes the same
-		// container mutex, so calling them here would self-deadlock.
+		// tunnel. CreateInboundTunnel()/CreateOutboundTunnel() publish
+		// zero-hop tunnels synchronously through TunnelCreated(), which takes
+		// the same container mutex, so calling them here would self-deadlock.
 		bool createOutbound = false, createInbound = false, inboundRemoved = false;
 		for (auto & test : expiredTests)
 		{
@@ -677,8 +679,8 @@ namespace tunnel
 		auto destination = GetLocalDestination ();
 		if (!destination) return;
 		std::vector<std::pair<std::shared_ptr<OutboundTunnel>, std::shared_ptr<InboundTunnel>>> newTests;
-		// Snapshots: the containers can be mutated by tunnel build replies and
-		// by DetachTunnels() while this thread works.
+		// Snapshots: the containers can be mutated by tunnel build replies
+		// and by DetachTunnels() while this thread works.
 		std::vector<std::shared_ptr<OutboundTunnel>> outboundTunnels;
 		{
 			std::unique_lock<std::mutex> l (m_OutboundTunnelsMutex);
@@ -823,12 +825,12 @@ namespace tunnel
 			int numHops = 0;
 			if (test.outbound) numHops += test.outbound->GetNumHops ();
 			if (test.inbound) numHops += test.inbound->GetNumHops ();
-			// The round trip covers both paths, so each tunnel is charged only its
-			// share of the measured time (hops of that tunnel over the total hops).
-			// A zero-hop tunnel has no share, hence the dlt/2 fallback, and the
-			// sample is added to the tunnel's mean rather than replacing it.
-			// A successful test clears the strike ladder and restores a tunnel
-			// that an earlier test had demoted.
+			// The round trip covers both paths, so each tunnel is charged only
+			// its share of the measured time (hops of that tunnel over the total
+			// hops). A zero-hop tunnel has no share, hence the dlt/2 fallback,
+			// and the sample is added to the tunnel's mean rather than replacing
+			// it. A successful test clears the strike ladder and restores a
+			// tunnel that an earlier test had demoted.
 			if (test.outbound)
 			{
 				test.outbound->ResetTestStrikes ();
@@ -860,13 +862,14 @@ namespace tunnel
 	}
 
 	// Hop selection first tries the client-tunnel candidate set (the
-	// high-bandwidth variant when this pool serves a high-bandwidth router), then
-	// falls back once to the general random set, so one exhausted filter cannot
-	// fail an entire path build. The pool's peer ordering key keeps the
-	// per-pool peer order stable across builds without pinning the same peers
-	// forever. When the previous hop is this router - the first hop of the path -
-	// a peer whose subnet already has too many established connections is
-	// refused; only the transport layer can decide that.
+	// high-bandwidth variant when this pool serves a high-bandwidth
+	// router), then falls back once to the general random set, so one
+	// exhausted filter cannot fail an entire path build. The pool's peer
+	// ordering key keeps the per-pool peer order stable across builds
+	// without pinning the same peers forever. When the previous hop is
+	// this router - the first hop of the path - a peer whose subnet
+	// already has too many established connections is refused; only the
+	// transport layer can decide that.
 	std::shared_ptr<const i2p::data::RouterInfo> TunnelPool::SelectNextHop (
 		std::shared_ptr<const i2p::data::RouterInfo> prevHop, bool reverse, bool endpoint)
 	{
@@ -1028,10 +1031,10 @@ namespace tunnel
 		if (numHops > maxHops) numHops = maxHops;
 		// peers is empty
 		if (numHops <= 0) return true;
-		// custom peer selector in use? Copy the registration under the lock and
-		// call it outside: a selector is allowed to call back into the pool
-		// without self-deadlocking on m_CustomPeerSelectorMutex, and the handle
-		// pins its owner for the duration of the call.
+		// custom peer selector in use? Copy the registration under the lock
+		// and call it outside: a selector is allowed to call back into the
+		// pool without self-deadlocking on m_CustomPeerSelectorMutex, and the
+		// handle pins its owner for the duration of the call.
 		const auto selector = GetCustomPeerSelector ();
 		switch (selector.TrySelectPeers (path, numHops, isInbound))
 		{
@@ -1137,7 +1140,8 @@ namespace tunnel
 		Path path;
 		if (SelectPeers (path, true))
 		{
-			// if we are out of inbound tunnels and last outbound was not create recently most like it's dead
+			// if we are out of inbound tunnels and last outbound was not create
+			// recently most like it's dead
 			bool hasInbound = false, recentOutbound = false;
 			{
 				std::unique_lock<std::mutex> l (m_InboundTunnelsMutex);
@@ -1201,7 +1205,8 @@ namespace tunnel
 		Path path;
 		if (SelectPeers (path, false))
 		{
-			// if we are out of outbound tunnels and last inbound was not create recently most like it's dead
+			// if we are out of outbound tunnels and last inbound was not create
+			// recently most like it's dead
 			bool hasOutbound = false, recentInbound = false;
 			{
 				std::unique_lock<std::mutex> l (m_OutboundTunnelsMutex);

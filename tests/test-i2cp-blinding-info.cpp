@@ -4,10 +4,10 @@
  *
  * openi2pd: test i2cp blinding info.
  *
- * Offline checks for the BlindingInfo (type 42) wire parser, the bounded
- * registry reader (store, prune/expiry, lookup), the client-auth secret
- * selection and the HostReply payload/result encoding. No socket, session or
- * router is started.
+ * Offline checks for the BlindingInfo (type 42) wire parser, the
+ * bounded registry reader (store, prune/expiry, lookup), the
+ * client-auth secret selection and the HostReply payload/result
+ * encoding. No socket, session or router is started.
  *
  */
 
@@ -128,7 +128,8 @@ void TestDestinationEndpoints (const i2p::data::IdentityEx & identity)
 		assert (secret[0] == 0x10);
 	}
 
-	// authType PSK (2): only the secret flag carries material, no auth key.
+	// authType PSK (2): only the secret flag carries material, no auth
+	// key.
 	{
 		auto buf = MakeDestinationMessage (0x10 | eI2CPBlindingAuthPSK, identity, 0);
 		AppendSecret (buf, Secret32 ('a'));
@@ -140,8 +141,9 @@ void TestDestinationEndpoints (const i2p::data::IdentityEx & identity)
 		assert (GetI2CPBlindingAuthSecret (info) == std::vector<uint8_t> (info.secret.begin (), info.secret.end ()));
 	}
 
-	// authType DH+PSK (3): both present, the private key wins as the usable
-	// secret (either one decrypts, the key is the stronger material).
+	// authType DH+PSK (3): both present, the private key wins as the
+	// usable secret (either one decrypts, the key is the stronger
+	// material).
 	{
 		auto buf = MakeDestinationMessage (0x10 | eI2CPBlindingAuthDHAndPSK, identity, 0);
 		AppendAuthKey (buf, 0x20);
@@ -172,7 +174,8 @@ void TestDestinationEndpoints (const i2p::data::IdentityEx & identity)
 		assert (!error.empty ());
 	}
 
-	// Truncation at every length must fail without reading past the buffer.
+	// Truncation at every length must fail without reading past the
+	// buffer.
 	{
 		auto full = MakeDestinationMessage (0x10 | eI2CPBlindingAuthDHAndPSK, identity, 0);
 		AppendAuthKey (full, 0x30);
@@ -349,8 +352,8 @@ void TestHostReplyEncoding (const i2p::data::IdentityEx & identity)
 		assert (payload[payload.size () - 2] == 0 && payload[payload.size () - 1] == 0);
 	}
 
-	// Every failure is the 7-byte layout with the Java result code; an identity
-	// passed alongside a failure result is dropped.
+	// Every failure is the 7-byte layout with the Java result code; an
+	// identity passed alongside a failure result is dropped.
 	const uint8_t failures[]
 		= { eI2CPHostReplySecretRequired, eI2CPHostReplyKeyRequired, eI2CPHostReplySecretAndKeyRequired,
 			  eI2CPHostReplyDecryptionFailure, eI2CPHostReplyLeaseSetLookupFailure, eI2CPHostReplyFailure };
@@ -415,7 +418,8 @@ void TestSendMessageSeams (const i2p::data::IdentityEx & identity)
 		assert (CheckI2CPSendMessage (request, 0x0102, false, 1000) == I2CPSendMessageCheck::BadSession);
 	}
 
-	// SEND MESSAGE EXPIRES: expiration is milliseconds since epoch, 0 = never.
+	// SEND MESSAGE EXPIRES: expiration is milliseconds since epoch, 0 =
+	// never.
 	{
 		auto buf = makeRequest (true, 5000);
 		I2CPSendMessageRequest request;
@@ -431,7 +435,8 @@ void TestSendMessageSeams (const i2p::data::IdentityEx & identity)
 		assert (CheckI2CPSendMessage (request, 0x0102, true, 6000) == I2CPSendMessageCheck::Ok);
 	}
 
-	// Malformed layouts are rejected and the session identifier is preserved.
+	// Malformed layouts are rejected and the session identifier is
+	// preserved.
 	{
 		auto buf = makeRequest (false, 0);
 		I2CPSendMessageRequest request;
