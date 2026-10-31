@@ -1,18 +1,18 @@
 #!/sbin/openrc-run
-# See the LICENSE file at the top of the project tree for copyright
-# and license details.
+# See the LICENSE file at the top of the project tree for copyright and
+# license details.
 #
 # openi2pd: i2pd.openrc.
 #
-# OpenRC runscript that keeps i2pd in the foreground under supervise-daemon.
-# The service uses the packaged configuration, a private data directory and a
-# private runtime directory. The daemon creates, locks and removes its own
-# pidfile; OpenRC keeps its supervisor state separately.
+# OpenRC runscript that keeps i2pd in the foreground under
+# supervise-daemon. The service uses the packaged configuration, a
+# private data directory and a private runtime directory. The daemon
+# creates, locks and removes its own pidfile; OpenRC keeps its
+# supervisor state separately.
 #
+# OpenRC consumes these variables; this shell fragment does
+# not use them directly.
 # shellcheck disable=SC2034
-# The command_*, supervisor, respawn_*, stopsig, retry, umask and description
-# assignments below are consumed by the OpenRC runscript framework, not by
-# this shell fragment directly.
 #
 
 : "${I2PD_USER:=i2pd}"
@@ -37,14 +37,14 @@ directory="${I2PD_DATADIR}"
 supervisor="supervise-daemon"
 respawn_delay=5
 respawn_max=5
-# Match the packaged systemd StartLimitIntervalSec=300/StartLimitBurst=5 so a
-# crash loop is treated the same way on both managers.
+# Match the packaged systemd StartLimitIntervalSec=300/StartLimitBurst=5
+# so a crash loop is treated the same way on both managers.
 respawn_period=300
-# Keep the stop signal and its retry budget in one knob. supervise-daemon's
-# --retry grammar is SIGNAL/TIMEOUT (the man page uses SIGTERM/5), so the
-# SIG-prefixed form is the canonical one; INT/660 is accepted as well. SIGINT
-# selects the daemon's ten-minute transit-tunnel drain, SIGTERM the prompt
-# ordered shutdown.
+# Keep the stop signal and its retry budget in one knob.
+# supervise-daemon's --retry grammar is SIGNAL/TIMEOUT (the man page
+# uses SIGTERM/5), so the SIG-prefixed form is the canonical one;
+# INT/660 is accepted as well. SIGINT selects the daemon's ten-minute
+# transit-tunnel drain, SIGTERM the prompt ordered shutdown.
 : "${stopsig:=SIGTERM}"
 case "${stopsig}" in
 	SIGINT|INT) : "${retry:=SIGINT/660}" ;;
@@ -56,22 +56,23 @@ esac
 # directory modes are additionally set explicitly by start_pre.
 umask=0077
 # OpenRC applies rc_ulimit through the shell's ulimit built-in before it
-# starts the supervised process. Keep the same descriptor budget as the other
-# managers; a non-root invocation can only raise it within the inherited hard
-# limit.
+# starts the supervised process. Keep the same descriptor budget as the
+# other managers; a non-root invocation can only raise it within the
+# inherited hard limit.
 : "${rc_ulimit:=-n 8192}"
-# required_files and required_dirs are preconditions checked by OpenRC as part
-# of the start action; the runscript creates the data/runtime/log paths but never
-# the packaged configuration or tunnel directory. A missing entry fails the start
-# with OpenRC's own diagnostic instead of a daemon parsing error.
+# required_files and required_dirs are preconditions checked by OpenRC
+# as part of the start action; the runscript creates the
+# data/runtime/log paths but never the packaged configuration or tunnel
+# directory. A missing entry fails the start with OpenRC's own
+# diagnostic instead of a daemon parsing error.
 required_files="${I2PD_CONF} ${I2PD_TUNCONF}"
 required_dirs="${I2PD_TUNNELSDIR}"
 
-# The command line is expanded into one string and split on whitespace by the
-# runscript framework, so a path or value containing spaces would become two
-# arguments. I2PD_OPTS is appended unquoted and is therefore word-split as well;
-# use it only for additional options, never for secrets (it is visible in the
-# process list).
+# The command line is expanded into one string and split on whitespace
+# by the runscript framework, so a path or value containing spaces would
+# become two arguments. I2PD_OPTS is appended unquoted and is therefore
+# word-split as well; use it only for additional options, never for
+# secrets (it is visible in the process list).
 command_args="--service --foreground --conf=${I2PD_CONF} --tunconf=${I2PD_TUNCONF} --tunnelsdir=${I2PD_TUNNELSDIR} --certsdir=${I2PD_CERTSDIR} --datadir=${I2PD_DATADIR} --pidfile=${I2PD_PIDFILE} --log=${I2PD_LOG}"
 case "${I2PD_LOG}" in
 	file)
@@ -141,8 +142,9 @@ description_reopenlogs="Reopen log files (SIGUSR1)"
 
 reload() {
 	ebegin "Reloading ${name}"
-	# --signal must stay before the service name: supervise-daemon is a musl
-	# binary, and musl's argument parser does not permute options after operands.
+	# --signal must stay before the service name: supervise-daemon is a
+	# musl binary, and musl's argument parser does not permute options
+	# after operands.
 	supervise-daemon --signal HUP "${RC_SVCNAME}"
 	eend $?
 }

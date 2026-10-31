@@ -4,25 +4,26 @@
 #
 # openi2pd: package.
 #
-# Packages prebuilt static per-architecture i2pd binaries into Debian or RPM
-# packages inside a matching container. Usage is `package.sh deb|rpm BIN OUT`,
-# with VERSION, RPM_VERSION and RPM_RELEASE supplied through the environment.
+# Package prebuilt static i2pd binaries as Debian or RPM packages in a
+# matching container. Usage: `package.sh deb|rpm BIN OUT`; set VERSION,
+# RPM_VERSION and RPM_RELEASE in the environment.
 #
 
-# Run inside a Debian or RPM build container with permission to install the
-# packaging tools. BIN contains i2pd-static-<Alpine-arch>/i2pd; OUT receives
+# Run in a Debian or RPM build container with permission to install
+# packaging tools. BIN contains i2pd-static-<Alpine-arch>/i2pd; OUT gets
 # the resulting packages. VERSION is needed for Debian and output names;
 # RPM_VERSION and RPM_RELEASE also select the RPM version and release.
-# Architectures without an input binary are skipped rather than treated as an
-# error. The mktemp workspace is not removed by this script; the container or
-# caller owns its cleanup and must not assume every architecture was packaged.
+# Architectures without an input binary are skipped, not treated as
+# errors. This script leaves its mktemp workspace in place; the
+# container or caller owns cleanup and must not assume every
+# architecture was packaged.
 #
-# Requires root (apt-get/dnf install and dpkg-buildpackage/rpmbuild), network
-# access for those package managers, and a host whose tools can target the
-# requested architectures. `dpkg-buildpackage -d` skips Build-Depends checks
-# because nothing is compiled here; lintian runs only on the amd64 Debian
-# output and aborts on errors. Output names use linux-all plus the target
-# architecture, and an unsupported FORMAT prints the usage line and exits 1.
+# Requires root for apt-get/dnf and package tools, network access for
+# those managers, and tools that target the requested architectures.
+# `dpkg-buildpackage -d` skips Build-Depends checks because nothing is
+# compiled; lintian runs only on amd64 Debian output and aborts on
+# errors. Output names use linux-all plus the target architecture.
+# Unsupported FORMAT prints usage and exits 1.
 set -e
 
 FORMAT=$1

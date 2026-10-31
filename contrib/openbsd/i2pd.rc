@@ -4,41 +4,42 @@
 #
 # openi2pd: i2pd.
 #
-# OpenBSD rc.d script that runs i2pd as the _i2pd user with packaged config,
+# OpenBSD rc.d script that runs i2pd as _i2pd with packaged config,
 # tunnel and certificate paths. It delegates start/stop/status/reload to
 # /etc/rc.d/rc.subr.
 #
 # The ${TRUEPREFIX}, ${SYSCONFDIR} and ${LOCALSTATEDIR} references are
-# substituted by the port's SUBST_VARS when this file is installed; do not
-# hard-code the rendered paths here. The script creates no directory and sets
-# no resource limit: the port's @sample tree owns /var/i2pd as _i2pd, the
+# substituted by the port's SUBST_VARS at install; do not hard-code the
+# rendered paths here. The script creates no directories or sets
+# resource limits. The port's @sample tree owns /var/i2pd as _i2pd; the
 # configuration stays root-owned, and the open-file limit comes from the
-# i2pd login class (contrib/openbsd/i2pd.login). It needs root to switch to
-# daemon_user and writes no router state itself.
+# i2pd login class (contrib/openbsd/i2pd.login). It needs root to switch
+# to daemon_user and writes no router state itself.
 #
-# daemon_class is not assigned: rc.subr derives it from the script name and the
-# template must not override it, so the `i2pd` entry from login.conf.d supplies
-# the 8192 open-file limits and the 0077 mask. Start returns once rc.subr
-# forked the foreground daemon (no readiness pipe); stop sends SIGINT and
-# waits up to daemon_timeout for the ordered stop and the 600 s transit-tunnel
-# drain, and reload signals SIGHUP, which re-reads tunnel configuration only.
+# daemon_class is not assigned: rc.subr derives it from the script name.
+# The template must not override it, so login.conf.d supplies the
+# 8192 open-file limits and 0077 mask. Start returns once rc.subr
+# forks the foreground daemon; there is no readiness pipe. Stop sends
+# SIGINT and waits up to daemon_timeout for shutdown and the 600 s
+# transit-tunnel drain. Reload sends SIGHUP, which re-reads tunnel
+# configuration only.
 #
 
 daemon="${TRUEPREFIX}/bin/i2pd"
 daemon_user="_i2pd"
-# The daemon runs with --foreground and does not chdir() itself; rc.subr enters
+# The daemon runs with --foreground and does not chdir() itself; rc.subr
 # daemon_execdir before starting it, so relative keys/logfile values in
 # i2pd.conf resolve here. Keep it aligned with --datadir.
 daemon_execdir="${LOCALSTATEDIR}/i2pd"
 pidfile="${LOCALSTATEDIR}/i2pd/i2pd.pid"
-# rc_bg starts the foreground daemon in the background; start therefore proves
+# rc_bg starts the foreground daemon in the background; start proves
 # only that rc.subr forked it, not that the router joined the network.
 rc_bg=YES
-# rc.subr redirects the daemon's stdout/stderr to syslog at this facility; the
-# daemon's own --log=syslog below is the second, independent output path.
+# rc.subr redirects daemon stdout/stderr to syslog at this facility.
+# The daemon's --log=syslog below is a second, independent output path.
 daemon_logger="daemon.info"
-# rc_stop_signal is the default rc_stop signal. SIGINT selects the daemon's
-# ordered shutdown plus the transit-tunnel drain; daemon_timeout bounds the
+# rc_stop_signal is the default rc_stop signal. SIGINT selects ordered
+# shutdown and the transit-tunnel drain; daemon_timeout bounds the
 # stop/reload wait. SIGTERM (the rc.subr default) would stop promptly.
 rc_stop_signal=INT
 daemon_timeout=660
@@ -53,7 +54,7 @@ daemon_flags="--foreground --service \
 
 . /etc/rc.d/rc.subr
 
-# Match the packaged binary rather than a full argument list. This process
+# Match the packaged binary rather than a full argument list. This
 # pattern does not uniquely distinguish multiple invocations of the same
 # binary, so it is not an instance identity or a readiness check.
 pexp="${TRUEPREFIX}/bin/i2pd"

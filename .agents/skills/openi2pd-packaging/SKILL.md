@@ -106,6 +106,12 @@ Ask for exact paths and package names. Do not let them run `dpkg-buildpackage`,
 
 ## Known issues and decisions
 
+- Debian `dh_compress` can compress Markdown documentation under
+  `/usr/share/doc` (including nested branding files) to `.md.gz`. Keep source
+  install manifests uncompressed, but make installed-package smoke checks and
+  file-list assertions match the generated package path confirmed from its
+  exact-run `.deb` artifact.
+
 - Torrent-enabled Docker runtimes require `boost-json` and `boost-url` shared
   libraries as well as `boost-program_options`; JSON/URL are compiled
   dependencies, not automatically header-only implementations.

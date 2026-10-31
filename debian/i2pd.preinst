@@ -1,19 +1,21 @@
 #!/bin/sh
-# See the LICENSE file at the top of the project tree for copyright
-# and license details.
+# See the LICENSE file at the top of the project tree for copyright and
+# license details.
 #
 # openi2pd: preinst.
 #
-# The package exposes the read-only certificate tree at the daemon's default
-# /var/lib/i2pd/certificates path with a symlink. An older installation may
-# have created a real directory there. Move it aside before dpkg unpacks the
-# symlink so an upgrade neither fails nor loses locally added certificates.
+# The package exposes the read-only certificate tree at the daemon's
+# default /var/lib/i2pd/certificates path with a symlink. An older
+# installation may have created a real directory there. Move it aside
+# before dpkg unpacks the symlink so an upgrade neither fails nor loses
+# locally added certificates.
 #
-# The move happens before unpack and is not reverted: if the upgrade later
-# aborts, the directory stays at the .dpkg-old name and the administrator moves
-# it back after inspecting it. A rename inside /var/lib/i2pd is atomic, so an
-# interrupted upgrade cannot leave a half-moved certificate tree. Only install
-# and upgrade are handled; remove and purge never touch the directory.
+# The move happens before unpack and is not reverted: if the upgrade
+# later aborts, the directory stays at the .dpkg-old name and the
+# administrator moves it back after inspecting it. A rename inside
+# /var/lib/i2pd is atomic, so an interrupted upgrade cannot leave a
+# half-moved certificate tree. Only install and upgrade are handled;
+# remove and purge never touch the directory.
 #
 
 set -e
@@ -27,9 +29,9 @@ case "$1" in
       if rmdir "$CERTDIR" 2>/dev/null; then
         :
       else
-        # Preserve a previous backup by choosing a timestamped destination.
-        # With set -e, a failed move stops the upgrade before unpacking the
-        # replacement symlink.
+        # Preserve a previous backup by choosing a timestamped
+        # destination. With set -e, a failed move stops the upgrade
+        # before unpacking the replacement symlink.
         if [ -e "$LEGACY" ]; then
           LEGACY="$CERTDIR.dpkg-old.$(date +%Y%m%d%H%M%S)"
         fi

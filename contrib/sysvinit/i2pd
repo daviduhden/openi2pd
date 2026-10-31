@@ -1,12 +1,13 @@
 #!/bin/sh
-# See the LICENSE file at the top of the project tree for copyright
-# and license details.
+# See the LICENSE file at the top of the project tree for copyright and
+# license details.
 #
 # openi2pd: i2pd.
 #
-# LSB SysV init script that runs the foreground i2pd daemon in the background
-# with packaged configuration, a private runtime/data directory and optional
-# file, syslog or stdout logging. Settings are overridden in /etc/default/i2pd.
+# LSB SysV init script that runs the foreground i2pd daemon in the
+# background with packaged configuration, a private runtime/data
+# directory and optional file, syslog or stdout logging. Settings are
+# overridden in /etc/default/i2pd.
 #
 
 ### BEGIN INIT INFO
@@ -18,10 +19,10 @@
 # Default-Start:     2 3 4 5
 # Default-Stop:      0 1 6
 # Short-Description: openi2pd I2P router
-# Description:       Start the openi2pd I2P router as the i2pd user. The
-#                    router keeps its state in /var/lib/i2pd and its pidfile
-#                    in /run/i2pd. SIGINT stops it gracefully, SIGHUP reloads
-#                    tunnels and SIGUSR1 reopens log files.
+# Description:       Start the openi2pd I2P router as the i2pd user.
+#                    Router state is stored in /var/lib/i2pd and the
+#                    pidfile in /run/i2pd. SIGINT stops it gracefully;
+#                    SIGHUP reloads tunnels; SIGUSR1 reopens log files.
 ### END INIT INFO
 
 PATH=/sbin:/usr/sbin:/bin:/usr/bin
@@ -45,10 +46,11 @@ I2PD_LOGFILE=/var/log/i2pd/i2pd.log
 I2PD_LOG="file"
 I2PD_NOFILE=8192
 
-# $DEFAULT_FILE is sourced as root, so it must stay root-owned and not writable
-# by the service account: it is shell code, not a key/value parser. Its values
-# are expanded into the daemon command line and are visible in the process list,
-# so it must never contain credentials. Empty overrides are repaired below.
+# $DEFAULT_FILE is sourced as root, so it must stay root-owned and not
+# writable by the service account: it is shell code, not a key/value
+# parser. Its values are expanded into the daemon command line and are
+# visible in the process list, so it must never contain credentials.
+# Empty overrides are repaired below.
 if [ -r "$DEFAULT_FILE" ]; then
 	# shellcheck disable=SC1090
 	. "$DEFAULT_FILE"
@@ -66,23 +68,25 @@ fi
 [ -n "$I2PD_LOGFILE" ] || I2PD_LOGFILE=/var/log/i2pd/i2pd.log
 [ -n "$I2PD_LOG" ] || I2PD_LOG="file"
 
-# Accept the common boolean spellings, then reduce to one internal value.
+# Accept the common boolean spellings, then reduce to one internal
+# value.
 case "$(printf '%s' "$I2PD_ENABLED" | tr '[:upper:]' '[:lower:]')" in
 	1|true|yes) I2PD_ENABLED=yes ;;
 	*) I2PD_ENABLED=no ;;
 esac
 
-# LSB helpers are the normal implementation. A minimal SysV host without the
-# lsb-base package (for example a chkconfig-only system) still has to run this
-# script, so define stand-ins rather than failing at the first log_* call.
+# LSB helpers are the normal implementation. A minimal SysV host without
+# the lsb-base package (for example a chkconfig-only system) still has
+# to run this script, so define stand-ins rather than failing at the
+# first log_* call.
 if [ -r /lib/lsb/init-functions ]; then
 	# shellcheck source=/dev/null
 	. /lib/lsb/init-functions
 else
 	log_daemon_msg() { printf '%s' "${1:-}: ${2:-}"; }
 	log_end_msg() { [ "${1:-0}" -eq 0 ] && printf '.\n' || printf ' failed!\n'; }
-	# Compatibility shim mirroring /lib/lsb/init-functions; this script has no
-	# success call site, so ShellCheck reports SC2317 for the definition.
+	# Keep the LSB compatibility helper although this script has no
+	# success-message call site.
 	# shellcheck disable=SC2317,SC2329
 	log_success_msg() { printf '%s\n' "$*"; }
 	log_warning_msg() { printf '%s\n' "$*" >&2; }
@@ -98,7 +102,8 @@ case "$I2PD_LOG" in
 		;;
 esac
 
-# The daemon creates its own files 0600; keep directories created here private.
+# The daemon creates its own files 0600; keep directories created here
+# private.
 umask 0077
 
 HAVE_START_STOP_DAEMON=0
@@ -115,8 +120,9 @@ read_pid()
 {
 	[ -r "$I2PD_PIDFILE" ] || return 1
 	_pid=$(sed -n '1p' "$I2PD_PIDFILE" 2>/dev/null)
-	# The daemon writes canonical positive decimal PIDs. Reject zero, including
-	# leading-zero forms: kill with PID 0 targets the caller's process group.
+	# The daemon writes canonical positive decimal PIDs. Reject zero,
+	# including leading-zero forms: kill with PID 0 targets the caller's
+	# process group.
 	case "$_pid" in
 		''|*[!0-9]*|0*) return 1 ;;
 	esac
@@ -124,10 +130,11 @@ read_pid()
 }
 
 # A stale pidfile can name a recycled PID. When its procfs executable is
-# readable, compare it with the resolved daemon path before signalling; a
-# failed resolution rejects the match. Without a readable procfs entry, the
-# no-helper fallback can only trust the pidfile. The comparison and signal are
-# separate operations and do not eliminate a concurrent PID-reuse race.
+# readable, compare it with the resolved daemon path before signalling;
+# a failed resolution rejects the match. Without a readable procfs
+# entry, the no-helper fallback can only trust the pidfile. The
+# comparison and signal are separate operations and do not eliminate a
+# concurrent PID-reuse race.
 pid_matches_daemon()
 {
 	_pid=$1
@@ -237,8 +244,8 @@ wait_for_stop()
 	while [ "$_count" -lt "$_limit" ]; do
 		kill -0 "$_pid" 2>/dev/null || return 0
 		# A recycled PID must not keep this loop alive (and must never be
-		# SIGKILLed by the caller). If /proc shows a different executable,
-		# the daemon we signalled is already gone.
+		# SIGKILLed by the caller). If /proc shows a different executable, the
+		# daemon we signalled is already gone.
 		if [ -r "/proc/$_pid/exe" ] && ! pid_matches_daemon "$_pid"; then
 			return 0
 		fi
@@ -287,8 +294,8 @@ do_start()
 			log_warning_msg "Ignoring invalid I2PD_NOFILE '$I2PD_NOFILE'"
 			;;
 		*)
-			# ulimit -n is the portable-enough XSI form used by LSB init
-			# scripts; dash, ksh and bash all provide it.
+			# ulimit -n is the XSI form used by LSB init scripts and is
+			# supported by dash, ksh and bash.
 			# shellcheck disable=SC3045
 			if ! ulimit -n "$I2PD_NOFILE" 2>/dev/null; then
 				log_warning_msg "Could not raise the open-file limit to $I2PD_NOFILE"
@@ -296,8 +303,9 @@ do_start()
 			;;
 	esac
 
-	# The daemon stays in the foreground; --background is a process-supervisor
-	# option, never an i2pd option. The self-daemonizing mode is not used.
+	# The daemon stays in the foreground; --background is a
+	# process-supervisor option, never an i2pd option. The self-daemonizing
+	# mode is not used.
 	set -- \
 		--conf="$I2PD_CONF" \
 		--tunconf="$I2PD_TUNCONF" \
@@ -317,9 +325,8 @@ do_start()
 			set -- "$@" --log=syslog
 			;;
 	esac
-	# DAEMON_OPTS is intentionally split into words as an administrator might
-	# supply several separate options. Disable pathname expansion for the split
-	# so a literal * or ? in an option value is not silently globbed.
+	# DAEMON_OPTS is intentionally split into words. Disable pathname
+	# expansion so literal * and ? characters in an option are not globbed.
 	# shellcheck disable=SC2086
 	if [ -n "$DAEMON_OPTS" ]; then
 		set -f
@@ -372,8 +379,8 @@ do_stop()
 		return 0
 	fi
 
-	# SIGINT gives the router the same ten-minute tunnel grace period as the
-	# systemd unit; SIGKILL follows only if it does not exit.
+	# SIGINT gives the router the same ten-minute tunnel grace period as
+	# the systemd unit; SIGKILL follows only if it does not exit.
 	kill -INT "$_pid" 2>/dev/null
 	if ! wait_for_stop "$_pid" 660; then
 		kill -KILL "$_pid" 2>/dev/null

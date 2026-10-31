@@ -1,10 +1,10 @@
-# See the LICENSE file at the top of the project tree for copyright
-# and license details.
+# See the LICENSE file at the top of the project tree for copyright and
+# license details.
 #
 # openi2pd: i2pd.spec.
 #
-# RPM spec for the prebuilt static musl i2pd binary, packaging certificates,
-# configuration, systemd unit and service scriptlets.
+# RPM spec for the prebuilt static musl i2pd binary, packaging
+# certificates, configuration, systemd unit and service scriptlets.
 #
 
 %global debug_package %{nil}

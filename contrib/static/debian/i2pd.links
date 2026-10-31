@@ -1,11 +1,12 @@
-# See the LICENSE file at the top of the project tree for copyright
-# and license details.
+# See the LICENSE file at the top of the project tree for copyright and
+# license details.
 #
 # openi2pd: i2pd.links.
 #
-# Debian package compatibility link exposing the packaged certificates at the
-# daemon's default <datadir>/certificates path. Configuration and tunnels are
-# not linked into /var/lib/i2pd; the service passes /etc/i2pd explicitly.
+# Debian package compatibility link exposing the packaged certificates
+# at the daemon's default <datadir>/certificates path. Configuration and
+# tunnels are not linked into /var/lib/i2pd; the service passes
+# /etc/i2pd explicitly.
 #
 
 usr/share/i2pd/certificates var/lib/i2pd/certificates

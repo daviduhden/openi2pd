@@ -1,11 +1,12 @@
-# See the LICENSE file at the top of the project tree for copyright
-# and license details.
+# See the LICENSE file at the top of the project tree for copyright and
+# license details.
 #
 # openi2pd: openi2pd.desktop.
 #
-# Desktop launcher for the openi2pd terminal user interface. The launcher must
-# not start a second unmanaged router; it opens the TUI client in a terminal
-# and the packaged service remains the only router process.
+# Desktop launcher for the openi2pd terminal user interface. The
+# launcher must not start a second unmanaged router; it opens the TUI
+# client in a terminal and the packaged service remains the only router
+# process.
 #
 
 [Desktop Entry]

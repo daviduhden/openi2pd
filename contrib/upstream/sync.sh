@@ -4,19 +4,20 @@
 #
 # openi2pd: sync.
 #
-# Manual upstream comparison helper: it shallow-clones pinned i2pd_docs_en and
-# i2pd-tools commits into a temporary directory and prints diffs against local
-# files. It verifies documentation inventory coverage, never writes tracked
+# Manual upstream comparison helper: shallow-clone pinned i2pd_docs_en
+# and i2pd-tools commits to a temporary directory, then print diffs
+# against local files. It verifies documentation inventory coverage
+# and never writes tracked
 # files, and exits non-zero on unclassified or HTML upstream pages.
 #
 # Usage: sync.sh [--docs|--tools|--all]. With no argument only the
-# documentation comparison runs; --tools (as the first or second argument)
-# compares the tool sources; --all runs both. Requires network access to GitHub
-# and the git, diff, find and grep commands. The working tree is cloned below
-# ${TMPDIR:-/tmp} and removed by the EXIT/HUP/INT/TERM trap, so a hard kill can
-# leave that directory behind. Exit status is 1 when coverage fails (HTML page,
-# untracked upstream file, stale path map or missing local target) and 0 when
-# the diffs were merely printed; differing files are reported, not applied.
+# documentation comparison runs. --tools (first or second argument)
+# compares tool sources; --all runs both. Requires network access to
+# GitHub and git, diff, find and grep. The working tree is cloned under
+# ${TMPDIR:-/tmp} and removed by EXIT/HUP/INT/TERM traps; a hard kill
+# can leave it behind. Exit 1 means coverage failed (HTML page,
+# untracked upstream file, stale path map, or missing local target).
+# Exit 0 means comparison completed; diffs are reported, not applied.
 # Review every hunk by hand before importing anything.
 #
 
@@ -33,7 +34,8 @@ trap 'rm -rf "$TMP"' EXIT HUP INT TERM
 mkdir -p "$TMP"
 
 # A few upstream pages have a different local path to keep the fork tree
-# navigable (currently the nested BitTorrent guide and RPC reference). The map
+# navigable (currently the nested BitTorrent guide and RPC reference).
+# The map
 # is tab-separated: upstream path <TAB> local path.
 resolve_docs_local() {
 	upstream=$1

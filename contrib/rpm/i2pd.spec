@@ -1,11 +1,11 @@
-# See the LICENSE file at the top of the project tree for copyright
-# and license details.
+# See the LICENSE file at the top of the project tree for copyright and
+# license details.
 #
 # openi2pd: i2pd.spec.
 #
 # RPM spec for Fedora and compatible distributions that builds i2pd with
-# CMake/Ninja including the TUI and tools, then packages the daemon, utilities,
-# configuration, systemd unit and certificates.
+# CMake/Ninja including the TUI and tools, then packages the daemon,
+# utilities, configuration, systemd unit and certificates.
 #
 
 Name:          i2pd
@@ -36,8 +36,9 @@ BuildRequires: systemd-rpm-macros
 BuildRequires: ncurses-devel
 
 # Fedora packages Boost.JSON/URL separately. The default torrent client
-# requires both at build time (see build/CMakeLists.txt); the requirement is
-# unconditional so a newer Fedora release cannot silently lose it.
+# requires both at build time (see build/CMakeLists.txt); the
+# requirement is unconditional so a newer Fedora release cannot silently
+# lose it.
 %if 0%{?fedora}
 BuildRequires: boost-json
 BuildRequires: boost-url

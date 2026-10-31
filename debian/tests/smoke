@@ -4,18 +4,27 @@
 #
 # openi2pd: smoke.
 #
-# Bounded, non-destructive autopkgtest for the installed packages. It checks
+# Bounded, non-destructive autopkgtest for the installed packages. It
+# checks
 # the package split, conffiles, service/init/tmpfiles wiring, user and
-# directories, and static syntax only. It never starts the router or uses the
+# directories, and static syntax only. It never starts the router or
+# uses the
 # network.
 #
-# Invocation: run by autopkgtest after the built packages are installed, with
-# the dpkg database and both packages available; it reads the installed paths
-# and changes no file. Optional validators (systemd-analyze, apparmor_parser,
-# desktop-file-validate) run only when installed. Each check prints FAIL: on
-# stderr and exits 1 at the first mismatch; the final line is the pass marker. A
-# package install may already have started the router through invoke-rc.d, so
-# the test inspects the installation and leaves any running instance and its
+# Invocation: run by autopkgtest after the built packages are installed,
+# with
+# the dpkg database and both packages available; it reads the installed
+# paths
+# and changes no file. Optional validators (systemd-analyze,
+# apparmor_parser,
+# desktop-file-validate) run only when installed. Each check prints
+# FAIL: on
+# stderr and exits 1 at the first mismatch; the final line is the pass
+# marker. A
+# package install may already have started the router through
+# invoke-rc.d, so
+# the test inspects the installation and leaves any running instance and
+# its
 # state untouched.
 #
 
@@ -40,7 +49,8 @@ require_manpage() {
     fi
 }
 
-# The daemon package owns the router, i2pdctl and all fifteen native tools.
+# The daemon package owns the router, i2pdctl and all fifteen native
+# tools.
 for binary in i2pd i2pdctl autoconf_i2pd b33address b33offlinekeys famtool \
               i2pbase64 keygen keyinfo offlinekeys regaddr regaddr_3ld \
               regaddralias routerinfo vain verifyhost x25519; do
@@ -81,7 +91,8 @@ dpkg-query -W -f='${Depends}' i2pd-tui | grep -F "i2pd (= " >/dev/null \
 dpkg-query -W -f='${Depends}' i2pd | grep -F "adduser" >/dev/null \
     || fail "i2pd does not depend on adduser"
 
-# Configuration is installed as conffiles, so upgrades preserve local edits.
+# Configuration is installed as conffiles, so upgrades preserve local
+# edits.
 require_file /etc/i2pd/i2pd.conf
 require_file /etc/i2pd/subscriptions.txt
 require_file /etc/i2pd/tunnels.conf
@@ -99,7 +110,8 @@ if printf '%s\n' "$conffiles" | grep -F ' /var/' >/dev/null; then
     fail "a /var path is registered as a conffile"
 fi
 
-# Service integration: one native unit, one executable SysV fallback and a
+# Service integration: one native unit, one executable SysV fallback and
+# a
 # tmpfiles policy for non-systemd managers.
 unit=
 for candidate in /lib/systemd/system/i2pd.service \
@@ -131,8 +143,10 @@ grep -qE '^d /var/log/i2pd 0700 i2pd i2pd ' "$tmpfiles" \
 grep -qE '^d /run/i2pd 0700 i2pd i2pd ' "$tmpfiles" \
     || fail "$tmpfiles lacks the runtime directory"
 
-# A native systemd unit plus a SysV script must not start the daemon twice.
-# The unit has exactly one ExecStart and the maintainer script must not issue
+# A native systemd unit plus a SysV script must not start the daemon
+# twice.
+# The unit has exactly one ExecStart and the maintainer script must not
+# issue
 # a manual systemctl/invoke-rc.d start.
 execstart_count=$(grep -c '^ExecStart=' "$unit" || true)
 [ "$execstart_count" -eq 1 ] || fail "$unit must have exactly one ExecStart"
@@ -146,7 +160,8 @@ sh -n "$postrm" || fail "postrm has invalid shell syntax"
 if grep -qE '(^|[;&|[:space:]])systemctl[[:space:]]+start' "$postinst"; then
     fail "postinst issues a manual systemctl start"
 fi
-# debhelper may emit one invoke-rc.d start; it must not emit a second action.
+# debhelper may emit one invoke-rc.d start; it must not emit a second
+# action.
 start_count=$(grep -cE 'invoke-rc\.d[[:space:]]+i2pd[[:space:]]+start' "$postinst" || true)
 [ "$start_count" -le 1 ] || fail "postinst starts i2pd more than once"
 
@@ -173,16 +188,20 @@ if command -v systemd-analyze >/dev/null 2>&1; then
     fi
 fi
 
-# Optional OpenRC/runit installation paths are checked statically when present.
-# OpenRC reuses /etc/init.d/i2pd on Debian-derived systems, so the syntax check
-# above covers it; runit/s6 paths are tested if a local package supplies them.
+# Optional OpenRC/runit installation paths are checked statically when
+# present.
+# OpenRC reuses /etc/init.d/i2pd on Debian-derived systems, so the
+# syntax check
+# above covers it; runit/s6 paths are tested if a local package supplies
+# them.
 for runit_run in /etc/sv/i2pd/run /etc/s6/sv/i2pd/run; do
     if [ -e "$runit_run" ]; then
         sh -n "$runit_run" || fail "invalid runit script: $runit_run"
     fi
 done
 
-# User, group and writable state/log paths created by the maintainer script.
+# User, group and writable state/log paths created by the maintainer
+# script.
 getent passwd i2pd >/dev/null || fail "missing i2pd user"
 getent group i2pd >/dev/null || fail "missing i2pd group"
 [ -d /var/lib/i2pd ] || fail "missing /var/lib/i2pd"
@@ -203,7 +222,7 @@ require_file /usr/share/doc/i2pd/LICENSE
 require_file /usr/share/doc/i2pd/README.md.gz
 require_file /usr/share/doc/i2pd/docs/LICENSE
 require_file /usr/share/doc/i2pd/docs/i18n.md
-require_file /usr/share/doc/i2pd/assets/branding/colors.md
+require_file /usr/share/doc/i2pd/assets/branding/colors.md.gz
 require_file /usr/share/doc/i2pd/copyright
 grep -q '^Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/' \
     /usr/share/doc/i2pd/copyright || fail "copyright is not DEP-5 formatted"
@@ -230,10 +249,12 @@ dpkg-query -L i2pd | grep -qE '/usr/share/man/man1/i2pdctl\.1(\.gz)?$' \
     || fail "i2pdctl.1 is not owned by i2pd"
 dpkg-query -L i2pd-tui | grep -qE '/usr/share/man/man1/i2pd-tui\.1(\.gz)?$' \
     || fail "i2pd-tui.1 is not owned by i2pd-tui"
-# A package installation may have started the router through invoke-rc.d;
+# A package installation may have started the router through
+# invoke-rc.d;
 # this test does not stop or restart it and never touches router state.
 
-# i2pdctl is Perl with an openssl fallback; syntax-check it without executing
+# i2pdctl is Perl with an openssl fallback; syntax-check it without
+# executing
 # a request.
 perl -c /usr/bin/i2pdctl >/dev/null 2>&1 || fail "i2pdctl failed perl -c"
 command -v openssl >/dev/null 2>&1 || fail "missing openssl command"

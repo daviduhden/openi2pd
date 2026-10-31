@@ -1,12 +1,12 @@
 #!/bin/sh
-# See the LICENSE file at the top of the project tree for copyright
-# and license details.
+# See the LICENSE file at the top of the project tree for copyright and
+# license details.
 #
 # openi2pd: i2pd.prerm.
 #
-# Debian pre-remove hook for the static package. The debhelper insertion point
-# supplies the service actions selected by the package rules; this source
-# script does not itself invoke a service manager.
+# Debian pre-remove hook for the static package. The debhelper insertion
+# point supplies the service actions selected by the package rules; this
+# source script does not itself invoke a service manager.
 #
 
 set -e

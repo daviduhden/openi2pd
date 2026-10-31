@@ -1,12 +1,13 @@
-# See the LICENSE file at the top of the project tree for copyright
-# and license details.
+# See the LICENSE file at the top of the project tree for copyright and
+# license details.
 #
 # openi2pd: i2pd.links.
 #
-# The router's compiled-in certificate directory is /var/lib/i2pd/certificates.
-# CMake installs the packaged certificates read-only under /usr/share/i2pd, so
-# keep only this compatibility link. Configuration and tunnels are passed
-# explicitly from /etc/i2pd by the systemd and SysV service definitions.
+# The router's compiled-in certificate directory is
+# /var/lib/i2pd/certificates. CMake installs the packaged certificates
+# read-only under /usr/share/i2pd, so keep only this compatibility link.
+# Configuration and tunnels are passed explicitly from /etc/i2pd by the
+# systemd and SysV service definitions.
 #
 
 usr/share/i2pd/certificates var/lib/i2pd/certificates

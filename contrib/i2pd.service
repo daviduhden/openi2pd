@@ -1,11 +1,12 @@
-# See the LICENSE file at the top of the project tree for copyright
-# and license details.
+# See the LICENSE file at the top of the project tree for copyright and
+# license details.
 #
 # openi2pd: i2pd.service.
 #
-# Native systemd unit that runs i2pd in the foreground as the i2pd user with
-# packaged configuration, tunnel directory and runtime/data paths. Logging goes
-# to the journal; the daemon never forks and no readiness protocol is used.
+# Native systemd unit that runs i2pd in the foreground as the i2pd user
+# with packaged configuration, tunnel directory and runtime/data paths.
+# Logging goes to the journal; the daemon never forks and no readiness
+# protocol is used.
 #
 
 [Unit]
@@ -18,19 +19,20 @@ StartLimitIntervalSec=300
 StartLimitBurst=5
 
 [Service]
-# The exec service type reports success once the packaged argv was executed; it is not a
-# readiness or network-join signal and no notification socket is configured.
+# The exec service type reports success once the packaged argv was
+# executed; it is not a readiness or network-join signal and no
+# notification socket is configured.
 Type=exec
 User=i2pd
 Group=i2pd
-# The daemon keeps its router keys, netDb and default TUI/torrent IPC socket
-# under StateDirectory; the pidfile lives in RuntimeDirectory.
+# The daemon keeps its router keys, netDb and default TUI/torrent IPC
+# socket under StateDirectory; the pidfile lives in RuntimeDirectory.
 StateDirectory=i2pd
 StateDirectoryMode=0700
 RuntimeDirectory=i2pd
 RuntimeDirectoryMode=0700
-# ExecStart explicitly selects stdout. To use `log = file` and
-# `logfile = /var/log/i2pd/i2pd.log`, an administrator must also override
+# ExecStart explicitly selects stdout. To use `log = file` and `logfile
+# = /var/log/i2pd/i2pd.log`, an administrator must also override
 # ExecStart to remove or replace --log=stdout. LogsDirectory creates the
 # target directory for the service account under ProtectSystem=strict.
 LogsDirectory=i2pd
@@ -42,46 +44,52 @@ ExecStart=/usr/bin/i2pd --conf=/etc/i2pd/i2pd.conf --tunconf=/etc/i2pd/tunnels.c
 # SIGHUP reloads tunnel configuration without restarting the router.
 ExecReload=/bin/kill -HUP $MAINPID
 
-# SIGINT performs the slower graceful shutdown: the router stops accepting new
-# transit tunnels and gives them up to ten minutes (600 s) to expire, then runs
-# its ordered stop (flush state, stop the IPC workers). SIGKILL is only a last
-# resort inside the 60-second shutdown margin.
+# SIGINT performs the slower graceful shutdown: the router stops
+# accepting new transit tunnels and gives them up to ten minutes (600 s)
+# to expire, then runs its ordered stop (flush state, stop the IPC
+# workers). SIGKILL is only a last resort inside the 60-second shutdown
+# margin.
 #
-# KillMode=mixed sends the stop signal to the main process only and SIGKILL to
-# the whole cgroup at the deadline. That is the required split: signalling the
-# workers directly would terminate a storage worker in the middle of a write
-# while the router still believes it owns the operation. The main process owns
-# worker shutdown; do not widen the stop signal to the whole cgroup.
+# KillMode=mixed sends the stop signal to the main process only and
+# SIGKILL to the whole cgroup at the deadline. That is the required
+# split:
+# signalling the workers directly would terminate a storage worker in
+# the middle of a write while the router still believes it owns the
+# operation. The main process owns worker shutdown; do not widen the
+# stop signal to the whole cgroup.
 KillSignal=SIGINT
 KillMode=mixed
 TimeoutStopSec=660
 SendSIGKILL=yes
-# A graceful ordered stop exits 0, so on-failure restarts a crash or a failed
-# start but not an operator stop. Restart/upgrade reuse KillSignal and
-# TimeoutStopSec below, so a `systemctl restart` and a package upgrade wait
-# for the same drain; StartLimitIntervalSec/StartLimitBurst in [Unit] bound
-# the retry rate.
+# A graceful ordered stop exits 0, so on-failure restarts a crash or a
+# failed start but not an operator stop. Restart/upgrade reuse
+# KillSignal and TimeoutStopSec below, so a `systemctl restart` and a
+# package upgrade wait for the same drain;
+# StartLimitIntervalSec/StartLimitBurst in [Unit] bound the retry rate.
 Restart=on-failure
 RestartSec=5s
 LimitNOFILE=8192
 
 StandardOutput=journal
 StandardError=journal
-# `open-i2pd` is a frozen compatibility identifier for journal filtering and
-# rsyslog rules; it is not the product name. The product is `openi2pd` and the
-# unit is `i2pd.service`. Change this only with a journal-filter migration note.
+# `open-i2pd` is a frozen compatibility identifier for journal filtering
+# and rsyslog rules; it is not the product name. The product is
+# `openi2pd` and the unit is `i2pd.service`. Change this only with a
+# journal-filter migration note.
 SyslogIdentifier=open-i2pd
 
-# Hardening. The local TUI/torrent IPC socket lives in the data directory and
-# must remain usable, so no PrivateNetwork and no filesystem filtering of
-# AF_UNIX are applied. No RestrictAddressFamilies rule is used either: the
-# router needs AF_INET and AF_INET6 and interface discovery uses netlink.
+# Hardening. The local TUI/torrent IPC socket lives in the data
+# directory and must remain usable, so no PrivateNetwork and no
+# filesystem filtering of AF_UNIX are applied. No
+# RestrictAddressFamilies rule is used either:
+# the router needs AF_INET and AF_INET6 and interface discovery uses
+# netlink.
 NoNewPrivileges=yes
 ProtectSystem=strict
-# Add any overridden datadir, pidfile directory or TUI socket directory here.
-# StateDirectory/RuntimeDirectory/LogsDirectory add their paths automatically;
-# keep the TUI socket outside /tmp: PrivateTmp makes that directory
-# namespace-private.
+# Add any overridden datadir, pidfile directory or TUI socket directory
+# here. StateDirectory/RuntimeDirectory/LogsDirectory add their paths
+# automatically; keep the TUI socket outside /tmp: PrivateTmp makes that
+# directory namespace-private.
 ReadWritePaths=/var/lib/i2pd /run/i2pd
 ProtectHome=yes
 PrivateTmp=yes
@@ -95,12 +103,14 @@ RestrictRealtime=yes
 RestrictSUIDSGID=yes
 LockPersonality=yes
 SystemCallArchitectures=native
-# The router runs unprivileged and needs no capabilities. Binding a privileged
-# port requires an explicit override: add CAP_NET_BIND_SERVICE to both
-# CapabilityBoundingSet and AmbientCapabilities.
+# The router runs unprivileged and needs no capabilities. Binding a
+# privileged port requires an explicit override: add
+# CAP_NET_BIND_SERVICE to both CapabilityBoundingSet and
+# AmbientCapabilities.
 CapabilityBoundingSet=
 # Do not add a SystemCallFilter without a tested allow-list for OpenSSL,
-# networking and the IPC worker; a partial filter would break the router.
+# networking and the IPC worker; a partial filter would break the
+# router.
 
 [Install]
 WantedBy=multi-user.target

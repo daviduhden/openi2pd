@@ -1,20 +1,21 @@
 #!/bin/sh
-# See the LICENSE file at the top of the project tree for copyright
-# and license details.
+# See the LICENSE file at the top of the project tree for copyright and
+# license details.
 #
 # openi2pd: i2pd.postinst.
 #
-# Debian post-install script that creates the i2pd system user and private
-# data/log directories. The debhelper-generated service snippets own the single
-# init/systemd action.
+# Debian post-install script that creates the i2pd system user and
+# private data/log directories. The debhelper-generated service snippets
+# own the single init/systemd action.
 #
-# Maintainer phases: configure/reconfigure create the account and repair only
-# missing paths; abort-upgrade/abort-remove/abort-deconfigure leave the system
-# unchanged. The script runs as root, is idempotent and aborts on the first
-# failing command (set -e). It never starts or stops the router and performs no
-# network operation; service integration happens at the DEBHELPER marker. Only
-# root-owned, otherwise empty directories are repaired, so any ownership or mode
-# set by the administrator survives an upgrade.
+# Maintainer phases: configure/reconfigure create the account and repair
+# only missing paths; abort-upgrade/abort-remove/abort-deconfigure leave
+# the system unchanged. The script runs as root, is idempotent and
+# aborts on the first failing command (set -e). It never starts or stops
+# the router and performs no network operation; service integration
+# happens at the DEBHELPER marker. Only root-owned, otherwise empty
+# directories are repaired, so any ownership or mode set by the
+# administrator survives an upgrade.
 #
 
 set -e
@@ -25,9 +26,9 @@ I2PDUSER='i2pd'
 
 case "$1" in
   configure|reconfigure)
-    # Older versions of adduser created the home directory.
-    # The version of adduser in Debian unstable does not.
-    # Create user and group as a system user.
+    # Older versions of adduser created the home directory. The version
+    # of adduser in Debian unstable does not. Create user and group as a
+    # system user.
     if getent passwd $I2PDUSER > /dev/null 2>&1; then
       groupadd -f $I2PDUSER || true
     else
@@ -35,9 +36,9 @@ case "$1" in
     fi
 
     # Preserve an administrator's ownership/mode on upgrade; create only
-    # missing paths with the packaged 0700/0600 policy. The certificate link
-    # can make dpkg create /var/lib/i2pd as root:root before this script, so
-    # repair only an otherwise empty root-owned directory.
+    # missing paths with the packaged 0700/0600 policy. The certificate
+    # link can make dpkg create /var/lib/i2pd as root:root before this
+    # script, so repair only an otherwise empty root-owned directory.
     if [ ! -d /var/log/i2pd ]; then
       install -d -m 0700 -o ${I2PDUSER} -g ${I2PDUSER} /var/log/i2pd
     elif [ ! -L /var/log/i2pd ] && [ "$(stat -c %u /var/log/i2pd)" = 0 ] \

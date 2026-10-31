@@ -1,10 +1,10 @@
-# See the LICENSE file at the top of the project tree for copyright
-# and license details.
+# See the LICENSE file at the top of the project tree for copyright and
+# license details.
 #
 # openi2pd: i2pd git.spec.
 #
-# RPM spec for a rolling i2pd-git snapshot built from the main branch and
-# versioned by the current Git hash.
+# RPM spec for a rolling i2pd-git snapshot built from the main branch
+# and versioned by the current Git hash.
 #
 
 %define git_hash %(git rev-parse HEAD | cut -c -7)
@@ -37,8 +37,9 @@ BuildRequires: systemd-rpm-macros
 BuildRequires: ncurses-devel
 
 # Fedora packages Boost.JSON/URL separately. The default torrent client
-# requires both at build time (see build/CMakeLists.txt); the requirement is
-# unconditional so a newer Fedora release cannot silently lose it.
+# requires both at build time (see build/CMakeLists.txt); the
+# requirement is unconditional so a newer Fedora release cannot silently
+# lose it.
 %if 0%{?fedora}
 BuildRequires: boost-json
 BuildRequires: boost-url
