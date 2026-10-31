@@ -1,14 +1,15 @@
 /*
- * See the LICENSE file at the top of the project tree for copyright
- * and license details.
+ * See the LICENSE file at the top of the project tree for copyright and
+ * license details.
  *
  * openi2pd: AutoStartController.
  *
  * Stores the boot-autostart preference as the existence of an empty,
- * fsynced marker in {@code filesDir}, migrating a legacy {@code cacheDir}
- * marker once. Enabling optionally opens a known manufacturer autostart screen
- * on the main thread; the class never starts the router itself and tolerates
- * missing vendor activities or refused background activity starts.
+ * fsynced marker in {@code filesDir}, migrating a legacy {@code
+ * cacheDir} marker once. Enabling optionally opens a known manufacturer
+ * autostart screen on the main thread; the class never starts the
+ * router itself and tolerates missing vendor activities or refused
+ * background activity starts.
  *
  */
 
@@ -30,12 +31,12 @@ import java.util.Objects;
 /**
  * Autostart preference and its app-private marker file.
  *
- * <p>The marker's existence is the setting. It lives in {@code filesDir} so
- * the system cannot clear it as cache; a marker left by older versions in
- * {@code cacheDir} is migrated once. Enabling also opens the manufacturer's
- * autostart screen when a known component exists. That is a user-visible
- * action, but this class itself never needs an Activity and never starts the
- * router.</p>
+ * <p>The marker's existence is the setting. It lives in {@code
+ * filesDir} so the system cannot clear it as cache; a marker left by
+ * older versions in {@code cacheDir} is migrated once. Enabling also
+ * opens the manufacturer's autostart screen when a known component
+ * exists. That is a user-visible action, but this class itself never
+ * needs an Activity and never starts the router.</p>
  */
 public final class AutoStartController {
     private static final String TAG = "AutoStartController";
@@ -81,18 +82,19 @@ public final class AutoStartController {
     }
 
     /**
-     * Read the autostart preference. Only the app-private marker is inspected,
-     * apart from the one-time legacy migration in {@link #getMarker(Context)},
-     * so a worker thread may call it.
+     * Read the autostart preference. Only the app-private marker is
+     * inspected, apart from the one-time legacy migration in {@link
+     * #getMarker(Context)}, so a worker thread may call it.
      */
     public static boolean isEnabled(Context context) {
         return getMarker(context).isFile();
     }
 
     /**
-     * Enable/disable boot autostart and, when enabling, open a known vendor
-     * autostart screen for the user. See {@link #setEnabled(Context, boolean,
-     * boolean)} for a variant that keeps the marker write off the main thread.
+     * Enable/disable boot autostart and, when enabling, open a known
+     * vendor autostart screen for the user. See {@link
+     * #setEnabled(Context, boolean, boolean)} for a variant that keeps
+     * the marker write off the main thread.
      */
     public static boolean setEnabled(Context context, boolean enabled) {
         return setEnabled(context, enabled, true);
@@ -101,12 +103,15 @@ public final class AutoStartController {
     /**
      * Enable/disable boot autostart.
      *
-     * @param showVendorSettings when {@code true}, enabling also starts a known
-     *                           vendor autostart screen. The caller must be on
-     *                           the main thread in that case. When {@code false}
-     *                           the method only touches the app-private marker,
-     *                           so it is safe to call on a worker thread.
-     * @return {@code false} only when the marker itself could not be changed
+     * @param showVendorSettings when {@code true}, enabling also starts
+     *                           a known vendor autostart screen. The
+     *                           caller must be on the main thread in
+     *                           that case. When {@code false} the
+     *                           method only touches the app-private
+     *                           marker, so it is safe to call on a
+     *                           worker thread.
+     * @return {@code false} only when the marker itself could not be
+     *                changed
      */
     public static boolean setEnabled(Context context, boolean enabled, boolean showVendorSettings) {
         Objects.requireNonNull(context, "context");
@@ -147,7 +152,10 @@ public final class AutoStartController {
         return true;
     }
 
-    /** Open a known vendor autostart screen; must be called on the main thread. */
+    /**
+     * Open a known vendor autostart screen; must be called on the main
+     * thread.
+     */
     public static void openVendorAutostartSettings(Context context) {
         if (context == null) {
             return;
@@ -200,14 +208,16 @@ public final class AutoStartController {
         Intent intent = new Intent().setComponent(component);
         intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
         try {
-            // Do not pre-resolve: package visibility can hide the vendor
-            // activity even though it is launchable by an explicit intent.
+            // Do not pre-resolve: package visibility can hide the
+            // vendor activity even though it is launchable by an
+            // explicit intent.
             context.startActivity(intent);
         } catch (ActivityNotFoundException e) {
             Log.d(TAG, "autostart settings activity not available on this device");
         } catch (RuntimeException e) {
-            // Android 10+ may refuse an activity start from the background;
-            // the marker is still valid and the service can be started later.
+            // Android 10+ may refuse an activity start from the
+            // background; the marker is still valid and the service can
+            // be started later.
             Log.w(TAG, "unable to open autostart settings", e);
         }
     }

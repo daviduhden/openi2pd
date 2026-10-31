@@ -1,13 +1,13 @@
 /*
- * See the LICENSE file at the top of the project tree for copyright
- * and license details.
+ * See the LICENSE file at the top of the project tree for copyright and
+ * license details.
  *
  * openi2pd: UiFormat.
  *
  * Pure presentation helpers mapping snapshots to state labels, colours,
  * addresses, rates, durations, byte counts and percentages with
- * English-pinned number formatting. They never call JNI or perform I/O and
- * only rewrite a TextView when its text actually changes.
+ * English-pinned number formatting. They never call JNI or perform I/O
+ * and only rewrite a TextView when its text actually changes.
  *
  */
 
@@ -28,13 +28,14 @@ import java.util.Locale;
 /**
  * Presentation helpers for router snapshots.
  *
- * <p>This class never calls JNI and never performs I/O. It only converts the
- * immutable snapshot published by {@link RouterViewModel} into text that is
- * safe to show on the UI thread.</p>
+ * <p>This class never calls JNI and never performs I/O. It only
+ * converts the immutable snapshot published by {@link RouterViewModel}
+ * into text that is safe to show on the UI thread.</p>
  */
 public final class UiFormat {
     private static final int MAX_ERROR_LENGTH = 240;
 
+    /** Presentation states derived from router lifecycle and status. */
     public enum RouterState { UNKNOWN, STOPPED, STARTING, CONNECTED, DEGRADED, STOPPING, ERROR }
 
     private UiFormat() {
@@ -60,8 +61,8 @@ public final class UiFormat {
     }
 
     /**
-     * Colour role for the router state. The status title is the primary state
-     * cue, so it must not rely on text alone.
+     * Colour role for the router state. The status title is the primary
+     * state cue, so it must not rely on text alone.
      */
     @ColorRes
     public static int stateColorRes(@NonNull RouterState state) {
@@ -74,7 +75,10 @@ public final class UiFormat {
         };
     }
 
-    /** Native status name plus the router error, or empty when not parsed. */
+    /**
+     * Native status name plus the router error, or empty when not
+     * parsed.
+     */
     @NonNull
     public static String routerDetail(@Nullable RouterSnapshot snapshot) {
         if (snapshot == null || !snapshot.hasStatus())
@@ -86,7 +90,10 @@ public final class UiFormat {
         return error.isEmpty() ? status : status + " · " + error;
     }
 
-    /** True only when live counters from a parsed native status are available. */
+    /**
+     * True only when live counters from a parsed native status are
+     * available.
+     */
     public static boolean hasLiveMetrics(@Nullable RouterSnapshot snapshot) {
         return snapshot != null && snapshot.hasLiveMetrics();
     }
@@ -132,8 +139,9 @@ public final class UiFormat {
     }
 
     /**
-     * Stop is based on the real daemon lifecycle, not on presentation text. A
-     * started router whose status snapshot failed must still be stoppable.
+     * Stop is based on the real daemon lifecycle, not on presentation
+     * text. A started router whose status snapshot failed must still be
+     * stoppable.
      */
     public static boolean canStop(@Nullable RouterSnapshot snapshot) {
         if (snapshot == null || snapshot.state() == null) {
@@ -149,7 +157,10 @@ public final class UiFormat {
         return snapshot != null && snapshot.state() == DaemonWrapper.State.startedOkay;
     }
 
-    /** Begin (or cancel) a graceful stop only for a normally started router. */
+    /**
+     * Begin (or cancel) a graceful stop only for a normally started
+     * router.
+     */
     public static boolean canGraceful(@Nullable RouterSnapshot snapshot) {
         return canRestart(snapshot);
     }
@@ -402,9 +413,10 @@ public final class UiFormat {
     }
 
     /**
-     * Avoids re-layout when a one-second snapshot carries an unchanged field.
-     * All text still comes from the immutable snapshot; this only skips the
-     * redundant {@link TextView#setText(CharSequence)} call.
+     * Avoids re-layout when a one-second snapshot carries an unchanged
+     * field. All text still comes from the immutable snapshot; this
+     * only skips the redundant {@link TextView#setText(CharSequence)}
+     * call.
      */
     public static void setTextIfChanged(@NonNull TextView view, @NonNull CharSequence text) {
         if (!TextUtils.equals(view.getText(), text)) {
@@ -450,9 +462,9 @@ public final class UiFormat {
 
     @NonNull
     private static Locale locale(@NonNull Context context) {
-        // Use the active per-app UI locale, not the device default. Token
-        // classification elsewhere still uses Locale.ROOT because protocol
-        // names and log levels are not user text.
+        // Use the active per-app UI locale, not the device default.
+        // Token classification elsewhere still uses Locale.ROOT because
+        // protocol names and log levels are not user text.
         android.content.res.Configuration configuration = context.getResources().getConfiguration();
         if (configuration.getLocales().isEmpty()) {
             return Locale.ENGLISH;

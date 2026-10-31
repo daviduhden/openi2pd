@@ -1,14 +1,14 @@
 /*
- * See the LICENSE file at the top of the project tree for copyright
- * and license details.
+ * See the LICENSE file at the top of the project tree for copyright and
+ * license details.
  *
  * openi2pd: LogAdapter.
  *
- * RecyclerView adapter for log rows with sequence-based diffing, local time
- * formatting and severity colouring derived from the level text. It is
- * read-only: message text is already sanitised and bounded by {@link LogEntry}
- * and the native ring, and row-level content descriptions are avoided to keep
- * TalkBack output usable.
+ * RecyclerView adapter for log rows with sequence-based diffing, local
+ * time formatting and severity colouring derived from the level text.
+ * It is read-only: message text is already sanitised and bounded by
+ * {@link LogEntry} and the native ring, and row-level content
+ * descriptions are avoided to keep TalkBack output usable.
  *
  */
 
@@ -35,8 +35,8 @@ import java.util.Locale;
 import java.util.Objects;
 
 /**
- * Recycled log list. The adapter is read-only: log text is sanitised by the
- * native logger and is only formatted for display here.
+ * Recycled log list. The adapter is read-only: log text is sanitised by
+ * the native logger and is only formatted for display here.
  */
 public class LogAdapter extends ListAdapter<LogEntry, LogAdapter.Holder> {
     private static final int MAX_LEVEL_LENGTH = 12;
@@ -120,10 +120,11 @@ public class LogAdapter extends ListAdapter<LogEntry, LogAdapter.Holder> {
             level.setText(levelText);
             message.setText(messageText);
             level.setTextColor(colorFor(rawLevel));
-            // The row is one screen-reader stop. The child TextViews are
-            // excluded from the accessibility tree (item_log.xml) so TalkBack
-            // does not announce the timestamp, level and message separately,
-            // and the combined description preserves the reading order.
+            // The row is one screen-reader stop. The child TextViews
+            // are excluded from the accessibility tree (item_log.xml)
+            // so TalkBack does not announce the timestamp, level and
+            // message separately, and the combined description
+            // preserves the reading order.
             itemView.setContentDescription(context.getString(
                     R.string.log_row_description, timeText, levelText, messageText));
         }

@@ -15,22 +15,20 @@ Defines native Android application resources.
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-    <!--
-        The router is not a short-lived data transfer. Android 15 limits
-        dataSync foreground services to six hours per 24 hours and blocks them
-        from BOOT_COMPLETED, so the long-running router uses specialUse (with
-        dataSync retained for API 29..33, where specialUse does not exist).
-    -->
+    <!-- The router is not a short-lived data transfer. Android 15
+        limits dataSync foreground services to six hours per 24 hours
+        and blocks them from BOOT_COMPLETED, so the long-running router
+        uses specialUse (with dataSync retained for API 29..33, where
+        specialUse does not exist). -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
-    <!--
-        UPnP/SSDP discovers the local gateway and therefore needs multicast on
-        Wi-Fi. Android 17 (API 37) also requires the runtime local-network
-        permission before an app may access LAN devices.
-    -->
+    <!-- UPnP/SSDP discovers the local gateway and therefore needs
+        multicast on Wi-Fi. Android 17 (API 37) also requires the
+        runtime local-network permission before an app may access LAN
+        devices. -->
     <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />
     <uses-permission android:name="android.permission.ACCESS_LOCAL_NETWORK" />
 
@@ -46,14 +44,13 @@ Defines native Android application resources.
         android:supportsRtl="true"
         android:theme="@style/Theme.OpenI2Pd">
 
-        <!--
-            Separate-process SAF payload broker. It is non-exported and shares
-            the application UID, so the extra process is crash/IO containment,
-            not an Android permission boundary. Every root, handle, operation
-            and export token is additionally bound to the creating (uid, pid),
-            and no ParcelFileDescriptor ever crosses Binder. The process claims
-            the storage-broker role once and installs its own sandbox.
-        -->
+        <!-- Separate-process SAF payload broker. It is non-exported and
+            shares the application UID, so the extra process is crash/IO
+            containment, not an Android permission boundary. Every root,
+            handle, operation and export token is additionally bound to
+            the creating (uid, pid), and no ParcelFileDescriptor ever
+            crosses Binder. The process claims the storage-broker role
+            once and installs its own sandbox. -->
         <service android:name=".TorrentSafStorageService" android:process=":torrent_storage"
             android:exported="false" android:stopWithTask="false" />
 
@@ -66,13 +63,12 @@ Defines native Android application resources.
                 android:value="true" />
         </service>
 
-        <!--
-            Same-process, non-exported router owner. The foreground
-            notification and the graceful-stop deadline live here, not in an
-            Activity, and task removal does not stop it. A future
-            isolated-process design would add a separate process plus an AIDL
-            IRouterControl interface; the local binder must never be exported.
-        -->
+        <!-- Same-process, non-exported router owner. The foreground
+            notification and the graceful-stop deadline live here, not
+            in an Activity, and task removal does not stop it. A future
+            isolated-process design would add a separate process plus an
+            AIDL IRouterControl interface; the local binder must never
+            be exported. -->
         <service
             android:name=".RouterService"
             android:enabled="true"
@@ -84,11 +80,10 @@ Defines native Android application resources.
                 android:value="i2p_router" />
         </service>
 
-        <!--
-            The only exported components are the launcher Activity and the QS
-            tile. The tile is protected by the system BIND_QUICK_SETTINGS_TILE
-            permission; both launch no admin interface.
-        -->
+        <!-- The only exported components are the launcher Activity and
+            the QS tile. The tile is protected by the system
+            BIND_QUICK_SETTINGS_TILE permission; both launch no admin
+            interface. -->
         <activity
             android:name=".MainActivity"
             android:exported="true"
@@ -111,10 +106,9 @@ Defines native Android application resources.
             </intent-filter>
         </service>
 
-        <!--
-            Boot and package-replace only resume an already requested run
-            intent; they never start a router that the operator stopped.
-        -->
+        <!-- Boot and package-replace only resume an already requested
+            run intent; they never start a router that the operator
+            stopped. -->
         <receiver
             android:name="org.openi2pd.router.receivers.BootUpReceiver"
             android:enabled="true"

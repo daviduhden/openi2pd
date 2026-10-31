@@ -1,15 +1,16 @@
 /*
- * See the LICENSE file at the top of the project tree for copyright
- * and license details.
+ * See the LICENSE file at the top of the project tree for copyright and
+ * license details.
  *
  * openi2pd: Java25Probe.
  *
- * Standalone compile-time probe for the Java 25 language features used by the
- * application: records, sealed interfaces with exhaustive pattern switches,
- * record deconstruction, guarded {@code when} labels, unnamed patterns and
- * flexible constructor bodies with statements before {@code super(...)}. It
- * deliberately avoids preview features and Java 25-only library APIs so the
- * class can also be dexed at the app's minimum API level.
+ * Standalone compile-time probe for the Java 25 language features used
+ * by the application: records, sealed interfaces with exhaustive
+ * pattern switches, record deconstruction, guarded {@code when} labels,
+ * unnamed patterns and flexible constructor bodies with statements
+ * before {@code super(...)}. It deliberately avoids preview features
+ * and Java 25-only library APIs so the class can also be dexed at the
+ * app's minimum API level.
  *
  */
 
@@ -28,7 +29,8 @@ public final class Java25Probe {
     static String describe(Event event) {
         return switch (event) {
             case Started(String name, long at) when at > 0 -> "started " + name;
-            // The timestamp is not used here: `_` is an unnamed pattern.
+            // The timestamp is not used here: `_` is an unnamed
+            // pattern.
             case Started(var name, _) -> "started " + name;
             case Stopped(long at, String reason) -> "stopped " + reason;
         };

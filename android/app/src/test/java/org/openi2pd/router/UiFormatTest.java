@@ -1,12 +1,12 @@
 /*
- * See the LICENSE file at the top of the project tree for copyright
- * and license details.
+ * See the LICENSE file at the top of the project tree for copyright and
+ * license details.
  *
  * openi2pd: UiFormatTest.
  *
  * Pure-JVM tests for the state derivation and formatting helpers, using
- * hand-built {@link RouterSnapshot} instances. The helpers do not touch Android
- * resources, so no emulator or Robolectric is needed.
+ * hand-built {@link RouterSnapshot} instances. The helpers do not touch
+ * Android resources, so no emulator or Robolectric is needed.
  *
  */
 
@@ -22,8 +22,8 @@ import org.junit.Test;
 import java.util.Collections;
 
 /**
- * Pure-JVM tests for the state/format helpers. These methods do not touch
- * Android resources, so no emulator or Robolectric is required.
+ * Pure-JVM tests for the state/format helpers. These methods do not
+ * touch Android resources, so no emulator or Robolectric is required.
  */
 public class UiFormatTest {
     private static RouterSnapshot snapshot(DaemonWrapper.State state, boolean online) {
@@ -48,9 +48,10 @@ public class UiFormatTest {
                 UiFormat.stateOf(snapshot(DaemonWrapper.State.starting, false)));
         assertEquals(UiFormat.RouterState.ERROR,
                 UiFormat.stateOf(snapshot(DaemonWrapper.State.startFailed, false)));
-        // Online alone is not enough: CONNECTED requires a parsed native
-        // status. An online daemon whose status bridge has not answered yet
-        // remains DEGRADED rather than showing zero-initialised metrics.
+        // Online alone is not enough: CONNECTED requires a parsed
+        // native status. An online daemon whose status bridge has not
+        // answered yet remains DEGRADED rather than showing
+        // zero-initialised metrics.
         assertEquals(UiFormat.RouterState.DEGRADED,
                 UiFormat.stateOf(snapshot(DaemonWrapper.State.startedOkay, true)));
         assertEquals(UiFormat.RouterState.CONNECTED,

@@ -1,14 +1,15 @@
 /*
- * See the LICENSE file at the top of the project tree for copyright
- * and license details.
+ * See the LICENSE file at the top of the project tree for copyright and
+ * license details.
  *
  * openi2pd: build.
  *
- * Configures the single application module: Java 25 source and target with an
- * exact JDK 25 toolchain, compileSdk/targetSdk 37 at minSdk 29 (Android 10), pinned
- * AndroidX/Material versions, per-ABI version codes and the in-tree CMake JNI
- * build. Release builds are unminified and contain no signing material; unit
- * and instrumentation tests are prepared but run only when invoked.
+ * Configures the single application module: Java 25 source and target
+ * with an exact JDK 25 toolchain, compileSdk/targetSdk 37 at minSdk 29
+ * (Android 10), pinned AndroidX/Material versions, per-ABI version
+ * codes and the in-tree CMake JNI build. Release builds are unminified
+ * and contain no signing material; unit and instrumentation tests are
+ * prepared but run only when invoked.
  *
  */
 
@@ -16,17 +17,19 @@ plugins {
     id 'com.android.application'
 }
 
-// Dependency prefixes are built for arm64-v8a by default. A builder that also
-// produces the other ABI prefixes can pass -Pi2pd.abis=arm64-v8a,armeabi-v7a.
-// Keeping the default aligned with the available prefix avoids configuring
-// native targets whose dependencies do not exist.
+// Dependency prefixes are built for arm64-v8a by default. A builder
+// that also produces the other ABI prefixes can pass
+// -Pi2pd.abis=arm64-v8a,armeabi-v7a. Keeping the default aligned with
+// the available prefix avoids configuring native targets whose
+// dependencies do not exist.
 def i2pdAbis = (project.findProperty("i2pd.abis") ?: "arm64-v8a")
         .split(",").collect { it.trim() }.findAll { it }
 
 dependencies {
-    // Stable AndroidX/Material releases used by the modernized UI. Versions
-    // were checked against Google Maven on 2026-10-19 and are pinned so the
-    // build does not depend on dynamic version resolution.
+    // Stable AndroidX/Material releases used by the modernized UI.
+    // Versions were checked against Google Maven on 2026-10-19 and are
+    // pinned so the build does not depend on dynamic version
+    // resolution.
     implementation 'androidx.core:core:1.19.1'
     implementation 'androidx.appcompat:appcompat:1.8.0'
     implementation 'androidx.activity:activity:1.13.0'
@@ -37,9 +40,10 @@ dependencies {
     implementation 'androidx.recyclerview:recyclerview:1.4.0'
     implementation 'com.google.android.material:material:1.14.0'
 
-    // Prepared tests. They are not wired into a build type and do not run
-    // automatically; run them explicitly with :i2pd:testDebugUnitTest or
-    // :i2pd:connectedDebugAndroidTest when an emulator/device is available.
+    // Prepared tests. They are not wired into a build type and do not
+    // run automatically; run them explicitly with
+    // :i2pd:testDebugUnitTest or :i2pd:connectedDebugAndroidTest when
+    // an emulator/device is available.
     testImplementation 'junit:junit:4.13.2'
     androidTestImplementation 'androidx.test:core:1.7.0'
     androidTestImplementation 'androidx.test:runner:1.7.0'
@@ -51,18 +55,19 @@ dependencies {
 android {
     namespace 'org.openi2pd.router'
     compileSdk 37
-    // NDK r30 LTS provides the current Clang/C++23 toolchain and getifaddrs
-    // at the API 29 baseline. ndkVersion belongs to the Android extension,
-    // not DefaultConfig.
+    // NDK r30 LTS provides the current Clang/C++23 toolchain and
+    // getifaddrs at the API 29 baseline. ndkVersion belongs to the
+    // Android extension, not DefaultConfig.
     ndkVersion = project.findProperty("i2pd.ndkVersion") ?: "30.0.16248370"
-    // AGP 9.4's supported default; CI installs this exact package rather than
-    // relying on an SDK-manager side effect.
+    // AGP 9.4's supported default; CI installs this exact package
+    // rather than relying on an SDK-manager side effect.
     buildToolsVersion = '36.0.0'
 
-    // Official UI locales. Keep per-app locale metadata and resource splits
-    // aligned with values/, values-es/, values-ru/ and values-zh-rCN/. The
-    // language-level "zh" filter leaves Traditional Chinese to fall back to
-    // English until a verified values-zh-rTW catalog exists.
+    // Official UI locales. Keep per-app locale metadata and resource
+    // splits aligned with values/, values-es/, values-ru/ and
+    // values-zh-rCN/. The language-level "zh" filter leaves Traditional
+    // Chinese to fall back to English until a verified values-zh-rTW
+    // catalog exists.
     androidResources {
         localeFilters += ["en", "es", "ru", "zh"]
     }
@@ -70,8 +75,9 @@ android {
     defaultConfig {
         applicationId "org.openi2pd.router"
         targetSdk 37
-        // Android 10 (API 29) is the supported floor. It provides the modern
-        // ART/libc surface and avoids obsolete Android 7/8 compatibility paths.
+        // Android 10 (API 29) is the supported floor. It provides the
+        // modern ART/libc surface and avoids obsolete Android 7/8
+        // compatibility paths.
         minSdk 29
         versionCode 2610000
         versionName "2.61.0"
@@ -85,9 +91,10 @@ android {
 
         externalNativeBuild {
             cmake {
-                // vcpkg builds its dependencies against c++_shared. Keep the
-                // JNI library on the same STL instead of the AGP c++_static
-                // default, which would mix two libc++ copies.
+                // vcpkg builds its dependencies against c++_shared.
+                // Keep the JNI library on the same STL instead of the
+                // AGP c++_static default, which would mix two libc++
+                // copies.
                 arguments "-DI2PD_BUILD_JNI=ON", "-DANDROID_STL=c++_shared", "-DI2PD_OPENSSL_EXPECT=OpenSSL"
                 def extraArgs = project.findProperty("i2pd.cmakeArgs")
                 if (extraArgs) arguments extraArgs.split("\\s+")
@@ -111,8 +118,9 @@ android {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-project.txt'
             ndk {
-                // Keep a symbol artifact for native crash triage even though
-                // release packaging remains unsigned and unminified.
+                // Keep a symbol artifact for native crash triage even
+                // though release packaging remains unsigned and
+                // unminified.
                 debugSymbolLevel 'FULL'
             }
         }
@@ -123,26 +131,29 @@ android {
 
     externalNativeBuild {
         cmake {
-            // The SDK CMake package is explicit: the project requires 3.24+
-            // and must not silently fall back to the older bundled default.
+            // The SDK CMake package is explicit: the project requires
+            // 3.24+ and must not silently fall back to the older
+            // bundled default.
             version "3.31.6"
             path "src/main/cpp/CMakeLists.txt"
         }
     }
 
     compileOptions {
-        // Java 25 is the real source and target language level, matching the
-        // project toolchain. These flags select javac language/class-file
-        // level 69; they do not put a JDK into the APK and do not change the
-        // ART/API level. Android-only APIs must still come from android.jar,
-        // so Java 25-only library APIs (see docs/android-java25.md) stay
-        // unavailable to app code.
+        // Java 25 is the real source and target language level,
+        // matching the project toolchain. These flags select javac
+        // language/class-file level 69; they do not put a JDK into the
+        // APK and do not change the ART/API level. Android-only APIs
+        // must still come from android.jar, so Java 25-only library
+        // APIs (see docs/android-java25.md) stay unavailable to app
+        // code.
         sourceCompatibility = JavaVersion.VERSION_25
         targetCompatibility = JavaVersion.VERSION_25
     }
 
     buildFeatures {
-        // DaemonWrapper uses BuildConfig.VERSION_NAME for the asset cache key.
+        // DaemonWrapper uses BuildConfig.VERSION_NAME for the asset
+        // cache key.
         buildConfig true
         aidl true
     }
@@ -156,9 +167,9 @@ android {
 
     testOptions {
         unitTests {
-            // RouterConfigStore touches android.util.Log; pure-JVM tests must
-            // observe the documented default-value behaviour instead of
-            // failing with "Method not mocked".
+            // RouterConfigStore touches android.util.Log; pure-JVM
+            // tests must observe the documented default-value behaviour
+            // instead of failing with "Method not mocked".
             returnDefaultValues = true
         }
     }
@@ -166,15 +177,15 @@ android {
 
 java {
     toolchain {
-        // Compile with an exact JDK 25 toolchain. The Gradle JVM only has to
-        // be >= 25 (checked in android/build.gradle); the compiler is JDK 25.
-        // Neither JDK is packaged in the APK.
+        // Compile with an exact JDK 25 toolchain. The Gradle JVM only
+        // has to be >= 25 (checked in android/build.gradle); the
+        // compiler is JDK 25. Neither JDK is packaged in the APK.
         languageVersion = JavaLanguageVersion.of(25)
     }
 }
 
-// Capture these values in locals: AndroidComponents callbacks must not read
-// project.ext under the Gradle configuration cache.
+// Capture these values in locals: AndroidComponents callbacks must not
+// read project.ext under the Gradle configuration cache.
 def i2pdAbiCodes = ['armeabi-v7a': 1, 'x86': 2, 'arm64-v8a': 3, 'x86_64': 4]
 def i2pdBaseVersionCode = 2610000
 
@@ -188,17 +199,19 @@ androidComponents {
             if (baseAbiVersionCode != null) {
                 output.versionCode.set(i2pdBaseVersionCode + baseAbiVersionCode)
             } else {
-                // The universal APK must be installable over any split. Give
-                // it the highest version code so it is never a downgrade.
+                // The universal APK must be installable over any split.
+                // Give it the highest version code so it is never a
+                // downgrade.
                 output.versionCode.set(i2pdBaseVersionCode + i2pdAbiCodes.values().max() + 1)
             }
         }
     }
 }
 
-// Optional manual-CI API documentation. Reuse the debug javac classpath and
-// output so AndroidX, generated R/BuildConfig and AIDL types resolve exactly as
-// they do for the application; the JDK itself is never packaged in the APK.
+// Optional manual-CI API documentation. Reuse the debug javac classpath
+// and output so AndroidX, generated R/BuildConfig and AIDL types
+// resolve exactly as they do for the application; the JDK itself is
+// never packaged in the APK.
 tasks.register('sourceJavadoc', Javadoc) {
     def debugJava = tasks.named('compileDebugJavaWithJavac', JavaCompile)
     dependsOn debugJava
@@ -212,8 +225,9 @@ tasks.register('sourceJavadoc', Javadoc) {
     options.encoding = 'UTF-8'
     options.addStringOption('source', '25')
     options.addBooleanOption('private', true)
-    // Missing Javadoc remains a tracked coverage task; malformed tags and
-    // broken references in existing comments must fail the documentation job.
+    // Missing Javadoc remains a tracked coverage task; malformed tags
+    // and broken references in existing comments must fail the
+    // documentation job.
     options.addBooleanOption('Xdoclint:all,-missing', true)
     options.addBooleanOption('Werror', true)
 }

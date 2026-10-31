@@ -1,13 +1,13 @@
 #!/usr/bin/env perl
-# See the LICENSE file at the top of the project tree for copyright
-# and license details.
+# See the LICENSE file at the top of the project tree for copyright and
+# license details.
 #
 # openi2pd: check Android JNI declarations.
 #
-# Compile-free parity check between the Java native declarations and the C++
-# Java_* definitions. It catches a renamed or
-# missing native method before a device reports UnsatisfiedLinkError. It never
-# builds, loads a library, runs a device or downloads anything.
+# Compile-free parity check between the Java native declarations and the
+# C++ Java_* definitions. It catches a renamed or missing native method
+# before a device reports UnsatisfiedLinkError. It never builds, loads a
+# library, runs a device or downloads anything.
 #
 # usage: check-android-jni-symbols.pl [--root DIR]
 
@@ -54,9 +54,9 @@ sub usage {
 
 my $java_text = slurp($java);
 
-# A commented-out native declaration is not a symbol. Strip block and line
-# comments before harvesting so a stale comment cannot create a phantom
-# mismatch.
+# A commented-out native declaration is not a symbol. Strip block and
+# line comments before harvesting so a stale comment cannot create a
+# phantom mismatch.
 $java_text =~ s{/\*.*?\*/}{}gs;
 $java_text =~ s{//[^\n]*}{}g;
 my $native_text = slurp($native);
@@ -68,9 +68,10 @@ while ( $java_text =~ /(?:^|\s)native\s+[\w\.\[\]<>?]+\s+(\w+)\s*\(/mg ) {
 my %java = map { $_ => 1 } @java_names;
 
 my %native;
-# JNI mangles package/class separators as '_' and escapes a literal underscore
-# as '_1', so I2PD_JNI appears as I2PD_1JNI. Only method names are compared:
-# arguments, return types and overloads are outside this check.
+# JNI mangles package/class separators as '_' and escapes a literal
+# underscore as '_1', so I2PD_JNI appears as I2PD_1JNI. Only method
+# names are compared: arguments, return types and overloads are outside
+# this check.
 while ( $native_text =~ /Java_org_openi2pd_router_I2PD_1JNI_(\w+)\s*\(/g ) {
     $native{$1} = 1;
 }

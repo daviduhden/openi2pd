@@ -4,11 +4,11 @@
  *
  * openi2pd: test Android daemon lifecycle transition.
  *
- * Exercises the production lifecycle owner with injected daemon operations,
- * without starting the router or touching the network. It also pins the
- * process-role contract (one irreversible claim per process) and the
- * start-cancellation ordering that lets a stop abort a start which still owns
- * the native-call guard.
+ * Exercises the production lifecycle owner with injected daemon
+ * operations, without starting the router or touching the network. It
+ * also pins the process-role contract (one irreversible claim per
+ * process) and the start-cancellation ordering that lets a stop abort a
+ * start which still owns the native-call guard.
  *
  */
 
@@ -29,14 +29,18 @@ using i2p::android::ProcessRole;
 using i2p::android::START_CANCELED_RESULT;
 using i2p::android::StartDaemonLifecycle;
 
-/** Process-role contract: one claim per process, irreversible, non-secret. */
+/**
+ * Process-role contract: one claim per process, irreversible,
+ * non-secret.
+ */
 static void TestProcessRoles ()
 {
 	using namespace std::string_view_literals;
 	assert (std::string_view (PROCESS_ROLE_CONFLICT) == "process-role-conflict"sv);
 	assert (std::string_view (START_CANCELED_RESULT) == "start-canceled"sv);
 
-	// An unclaimed process serves no role and can claim none of the sentinels.
+	// An unclaimed process serves no role and can claim none of the
+	// sentinels.
 	assert (CurrentProcessRole () == ProcessRole::None);
 	assert (!HasProcessRole (ProcessRole::Router));
 	assert (!HasProcessRole (ProcessRole::StorageBroker));
@@ -44,8 +48,8 @@ static void TestProcessRoles ()
 	assert (!ClaimProcessRole (static_cast<ProcessRole> (99)));
 	assert (CurrentProcessRole () == ProcessRole::None);
 
-	// The first accepted claim is the process role; a repeat is idempotent and
-	// a different role is refused without changing the claimed one.
+	// The first accepted claim is the process role; a repeat is idempotent
+	// and a different role is refused without changing the claimed one.
 	assert (ClaimProcessRole (ProcessRole::Router));
 	assert (ClaimProcessRole (ProcessRole::Router));
 	assert (HasProcessRole (ProcessRole::Router));
@@ -225,10 +229,11 @@ int main ()
 	assert (stopCalls == 2);
 	assert (lifecycle.load () == DaemonLifecycle::Stopping);
 
-	// A stop request that arrives while the packaged assets are still being
-	// awaited aborts the transition before the daemon is initialised: the
-	// start callback never runs, no rollback stop is needed, the lifecycle is
-	// back to Stopped, and the token can be cleared for the next attempt.
+	// A stop request that arrives while the packaged assets are still
+	// being awaited aborts the transition before the daemon is
+	// initialised: the start callback never runs, no rollback stop is
+	// needed, the lifecycle is back to Stopped, and the token can be
+	// cleared for the next attempt.
 	std::atomic<DaemonLifecycle> cancelLifecycle { DaemonLifecycle::Stopped };
 	std::atomic<bool> cancelRequested { false };
 	int cancelInitializeCalls = 0;
@@ -278,10 +283,11 @@ int main ()
 	assert (cancelStopCalls == 0);
 	assert (cancelLifecycle.load () == DaemonLifecycle::Running);
 
-	// A stop request that arrives between initialization and start makes the
-	// production start callback return false, so the lifecycle owner rolls the
-	// initialized daemon back with exactly one stop and publishes Stopped. The
-	// JNI layer reports this as the distinct START_CANCELED_RESULT token.
+	// A stop request that arrives between initialization and start makes
+	// the production start callback return false, so the lifecycle owner
+	// rolls the initialized daemon back with exactly one stop and
+	// publishes Stopped. The JNI layer reports this as the distinct
+	// START_CANCELED_RESULT token.
 	cancelLifecycle.store (DaemonLifecycle::Stopped);
 	cancelRequested.store (false);
 	const auto canceledBeforeStart = StartDaemonLifecycle (
@@ -310,7 +316,8 @@ int main ()
 	assert (cancelLifecycle.load () == DaemonLifecycle::Stopped);
 
 	// The canceled transition leaves the owner restartable: the next claim
-	// succeeds once the request is cleared, and it still needs no rollback.
+	// succeeds once the request is cleared, and it still needs no
+	// rollback.
 	cancelRequested.store (false);
 	const auto recovered = StartDaemonLifecycle (
 		cancelLifecycle,

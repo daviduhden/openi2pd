@@ -18,9 +18,10 @@ import java.util.function.Consumer;
 
 /**
  * Fences callbacks and worker submissions retained by an obsolete
- * RouterService instance after a destroy/recreate cycle. The owner-scoped
- * executor serializes Java service work through one process-local FIFO; the
- * native daemon-call guard remains responsible for JNI serialization.
+ * RouterService instance after a destroy/recreate cycle. The
+ * owner-scoped executor serializes Java service work through one
+ * process-local FIFO; the native daemon-call guard remains responsible
+ * for JNI serialization.
  */
 final class ServiceOwnerEpoch {
     private static final ExecutorService PROCESS_WORKER =
@@ -50,9 +51,10 @@ final class ServiceOwnerEpoch {
     }
 
     /**
-     * Run an owner callback only if its epoch is current. The check and action
-     * share the epoch monitor with acquisition and retirement, so the callback
-     * must remain short and must not enter JNI or wait for worker completion.
+     * Run an owner callback only if its epoch is current. The check and
+     * action share the epoch monitor with acquisition and retirement,
+     * so the callback must remain short and must not enter JNI or wait
+     * for worker completion.
      *
      * @return {@code true} if the callback ran
      */
@@ -65,10 +67,11 @@ final class ServiceOwnerEpoch {
     }
 
     /**
-     * Create an owner-scoped submission view over the process FIFO. Submission
-     * and retirement share this monitor, so accepted work is queued before the
-     * owner's final stop barrier; execution is then allowed only while that
-     * owner is active or draining ahead of its barrier.
+     * Create an owner-scoped submission view over the process FIFO.
+     * Submission and retirement share this monitor, so accepted work is
+     * queued before the owner's final stop barrier; execution is then
+     * allowed only while that owner is active or draining ahead of its
+     * barrier.
      */
     static Executor ownerExecutor(long epoch) {
         return command -> {
@@ -86,9 +89,10 @@ final class ServiceOwnerEpoch {
     }
 
     /**
-     * Retire an owner and append its mandatory stop atomically with respect to
-     * owner submissions/acquisition. The bookkeeping callback must not block
-     * or call JNI; the stop itself runs later, outside this monitor.
+     * Retire an owner and append its mandatory stop atomically with
+     * respect to owner submissions/acquisition. The bookkeeping
+     * callback must not block or call JNI; the stop itself runs later,
+     * outside this monitor.
      */
     static synchronized void retireAndQueueStop(
             long epoch, Consumer<Boolean> onRetired, Runnable stop) {

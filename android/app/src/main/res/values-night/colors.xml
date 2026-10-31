@@ -34,7 +34,8 @@ Defines native Android application resources.
     <color name="brand_secondary_container">#004A73</color>
     <color name="brand_on_secondary_container">#D3E9FF</color>
 
-    <!-- Tertiary roles (strong secondary text and neutral containers). -->
+    <!-- Tertiary roles (strong secondary text and neutral
+        containers). -->
     <color name="brand_tertiary">#B7C7D6</color>
     <color name="brand_on_tertiary">#1B2B3A</color>
     <color name="brand_tertiary_container">#273746</color>
@@ -63,17 +64,20 @@ Defines native Android application resources.
     <color name="brand_disabled">#4A5A69</color>
     <color name="brand_error">#FFB4AB</color>
     <color name="brand_on_error">#690005</color>
-    <!-- Material 3 error containers; the palette defines the error foreground. -->
+    <!-- Material 3 error containers; the palette defines the error
+        foreground. -->
     <color name="brand_error_container">#93000A</color>
     <color name="brand_on_error_container">#FFDAD6</color>
     <color name="brand_warning">#FFD48A</color>
     <color name="brand_success">#7ADFA0</color>
 
-    <!-- Charts use semantic accents, never the low-contrast raw logo accents. -->
+    <!-- Charts use semantic accents, never the low-contrast raw logo
+        accents. -->
     <color name="chart_download">#59D8D4</color>
     <color name="chart_upload">#7CC7FF</color>
     <color name="chart_grid">#273746</color>
 
-    <!-- Launcher/splash plate. The master mark uses white negative space. -->
+    <!-- Launcher/splash plate. The master mark uses white negative
+        space. -->
     <color name="ic_launcher_background">#FFFFFF</color>
 </resources>

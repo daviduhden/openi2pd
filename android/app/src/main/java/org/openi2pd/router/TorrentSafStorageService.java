@@ -1,15 +1,16 @@
 /*
- * See the LICENSE file at the top of the project tree for copyright
- * and license details.
+ * See the LICENSE file at the top of the project tree for copyright and
+ * license details.
  *
  * openi2pd: capability-based SAF payload broker (protocol v2).
  *
- * Owns document descriptors in a separate process and never exports raw FDs.
- * Authorization is the application UID plus the exact (uid, pid) owner recorded
- * on every root, handle, operation and export token. Admission is bounded and
- * answers with a typed failure instead of throwing across Binder. Data
- * operations escalate in two stages: cancel the provider call first, retire the
- * process only when the same operation is still registered afterwards.
+ * Owns document descriptors in a separate process and never exports raw
+ * FDs. Authorization is the application UID plus the exact (uid, pid)
+ * owner recorded on every root, handle, operation and export token.
+ * Admission is bounded and answers with a typed failure instead of
+ * throwing across Binder. Data operations escalate in two stages:
+ * cancel the provider call first, retire the process only when the same
+ * operation is still registered afterwards.
  */
 package org.openi2pd.router;
 
@@ -43,21 +44,26 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
- * Owns provider descriptors and serves the app-private SAF Binder interface.
- * The separate process runs under the application UID; it is containment, not
- * an independent Android permission boundary. Each root, file, operation and
- * export grant additionally belongs to the creating caller's UID and PID.
+ * Owns provider descriptors and serves the app-private SAF Binder
+ * interface. The separate process runs under the application UID; it is
+ * containment, not an independent Android permission boundary. Each
+ * root, file, operation and export grant additionally belongs to the
+ * creating caller's UID and PID.
  *
- * <p>Provider work is serialized by {@code ioLock}. Cancellation and retirement
- * remain available through a separate control path, and the watchdog is armed
- * only once an admitted operation reaches the provider. Descriptor ownership
- * stays in this service; no descriptor is transferred to the router process.</p>
+ * <p>Provider work is serialized by {@code ioLock}. Cancellation and
+ * retirement remain available through a separate control path, and the
+ * watchdog is armed only once an admitted operation reaches the
+ * provider. Descriptor ownership stays in this service; no descriptor
+ * is transferred to the router process.</p>
  */
 public final class TorrentSafStorageService extends Service {
-    /** Wire contract version reported by {@link ITorrentSafStorage#apiVersion()}. */
+    /**
+     * Wire contract version reported by {@link
+     * ITorrentSafStorage#apiVersion()}.
+     */
     static final int API_VERSION = 2;
-    // Admission bounds. An over-limit request returns its typed failure and
-    // never retires the broker process.
+    // Admission bounds. An over-limit request returns its typed failure
+    // and never retires the broker process.
     static final int MAX_OPERATIONS = 8;
     static final int MAX_HANDLES = 4096;
     static final int MAX_ROOTS = 128;
@@ -70,9 +76,14 @@ public final class TorrentSafStorageService extends Service {
     private static final int MAX_CHILDREN = 20000;
     /** One-shot lifetime of a prepared export capability. */
     static final long EXPORT_TTL_MS = 30_000;
-    /** First watchdog stage: abort the provider call, keep every other handle. */
+    /**
+     * First watchdog stage: abort the provider call, keep every other
+     * handle.
+     */
     static final long CANCEL_DEADLINE_MS = 15_000;
-    /** Second stage: fence only a provider that ignored cancellation. */
+    /**
+     * Second stage: fence only a provider that ignored cancellation.
+     */
     static final long KILL_DEADLINE_MS = 30_000;
 
     /** Exact process identity of one Binder caller. */
@@ -84,10 +95,11 @@ public final class TorrentSafStorageService extends Service {
             String documentId, Caller owner) {}
 
     /**
-     * Broker process identity. The generation is a non-zero CSPRNG value chosen
-     * at service creation; retirement is a one-shot latch so a duplicated,
-     * stale or replayed retire(generation) cannot fence a replacement broker.
-     * Framework-free so JVM tests can pin the contract.
+     * Broker process identity. The generation is a non-zero CSPRNG
+     * value chosen at service creation; retirement is a one-shot latch
+     * so a duplicated, stale or replayed retire(generation) cannot
+     * fence a replacement broker. Framework-free so JVM tests can pin
+     * the contract.
      */
     static final class BrokerIdentity {
         private final long generation;
@@ -106,21 +118,27 @@ public final class TorrentSafStorageService extends Service {
             return retired.get();
         }
 
-        /** One-shot process fence used by the internal watchdog escalation. */
+        /**
+         * One-shot process fence used by the internal watchdog
+         * escalation.
+         */
         boolean firstRetirement() {
             return retired.compareAndSet(false, true);
         }
 
-        /** One-shot retirement requested by a client for this exact generation. */
+        /**
+         * One-shot retirement requested by a client for this exact
+         * generation.
+         */
         boolean claimRetirement(long requested) {
             return requested > 0 && requested == generation && firstRetirement();
         }
     }
 
     /**
-     * Bounded, framework-free operation registry shared with JVM tests. It
-     * performs no synchronization of its own: every caller holds the broker's
-     * operation lock.
+     * Bounded, framework-free operation registry shared with JVM tests.
+     * It performs no synchronization of its own: every caller holds the
+     * broker's operation lock.
      */
     static final class Admission<T> {
         record Slot<T>(long operation, Caller owner, T value) {}
@@ -159,9 +177,10 @@ public final class TorrentSafStorageService extends Service {
     }
 
     /**
-     * One-shot export capabilities. A token authorizes exactly one truncating
-     * open of exactly one document identity by exactly one caller. Guarded by
-     * the broker's io lock; it performs no synchronization of its own.
+     * One-shot export capabilities. A token authorizes exactly one
+     * truncating open of exactly one document identity by exactly one
+     * caller. Guarded by the broker's io lock; it performs no
+     * synchronization of its own.
      */
     static final class ExportGrants {
         record Grant(Caller owner, String uri, long length, String documentId, long expiresAt) {}
@@ -181,8 +200,9 @@ public final class TorrentSafStorageService extends Service {
         }
 
         /**
-         * Consumes one token. Returns null for an unknown, expired or foreign
-         * token; a foreign presentation does not burn the owner's capability.
+         * Consumes one token. Returns null for an unknown, expired or
+         * foreign token; a foreign presentation does not burn the
+         * owner's capability.
          */
         Grant consume(long token, Caller caller, long now) {
             prune(now);
@@ -230,8 +250,9 @@ public final class TorrentSafStorageService extends Service {
         return thread;
     };
 
-    // Lock order: ioLock may take operationLock; nothing takes ioLock while
-    // holding operationLock. Control transactions never take ioLock.
+    // Lock order: ioLock may take operationLock; nothing takes ioLock
+    // while holding operationLock. Control transactions never take
+    // ioLock.
     private final Object ioLock = new Object(), operationLock = new Object();
     private final SecureRandom random = new SecureRandom();
     private final BrokerIdentity identity = new BrokerIdentity(random.nextLong());
@@ -240,8 +261,8 @@ public final class TorrentSafStorageService extends Service {
     private final ExportGrants exports = new ExportGrants();
     private final Map<Long, Root> roots = new HashMap<>();
     private final Map<Long, File> files = new ConcurrentHashMap<>();
-    // Two watchdog threads so a provider listener that blocks inside cancel()
-    // cannot delay the second stage that fences the process.
+    // Two watchdog threads so a provider listener that blocks inside
+    // cancel() cannot delay the second stage that fences the process.
     private final ScheduledThreadPoolExecutor watchdog =
             new ScheduledThreadPoolExecutor(2, WATCHDOG_THREADS);
     private final ExecutorService reaper = Executors.newSingleThreadExecutor(runnable -> {
@@ -255,23 +276,26 @@ public final class TorrentSafStorageService extends Service {
         return owner != null && owner.equals(caller);
     }
 
-    /** One-shot latch plus process death; death fences every old writer. */
+    /**
+     * One-shot latch plus process death; death fences every old writer.
+     */
     private void retireProcess() {
         identity.firstRetirement();
         android.os.Process.killProcess(android.os.Process.myPid());
     }
 
     /**
-     * Registers one bounded operation. Returns null when the broker is already
-     * retiring, the token is invalid or duplicated, or every slot is taken;
-     * the caller then answers with its typed failure.
+     * Registers one bounded operation. Returns null when the broker is
+     * already retiring, the token is invalid or duplicated, or every
+     * slot is taken; the caller then answers with its typed failure.
      *
      * <p>The two provider deadlines are deliberately NOT armed here. An
-     * operation that is still queued behind another one has not touched any
-     * document, so charging it would let a single stalled provider abort or
-     * fence every later operation. {@link #armWatchdog} starts the deadlines
-     * once this operation owns {@code ioLock}, immediately before it can query,
-     * open, read, write, sync or delete.
+     * operation that is still queued behind another one has not touched
+     * any document, so charging it would let a single stalled provider
+     * abort or fence every later operation. {@link #armWatchdog} starts
+     * the deadlines once this operation owns {@code ioLock},
+     * immediately before it can query, open, read, write, sync or
+     * delete.
      */
     private Operation begin(long token, Caller owner) {
         synchronized (operationLock) {
@@ -285,27 +309,30 @@ public final class TorrentSafStorageService extends Service {
     }
 
     /**
-     * A provider deadline may only be charged once the operation owns the
-     * provider lock. Framework-free so the ordering contract is testable.
+     * A provider deadline may only be charged once the operation owns
+     * the provider lock. Framework-free so the ordering contract is
+     * testable.
      */
     static boolean providerDeadlineApplies(boolean holdsProviderLock, boolean registered) {
         return holdsProviderLock && registered;
     }
 
     /**
-     * Arms the 15 s cancel and 30 s fence stages for one admitted operation.
-     * Called under {@code ioLock}, i.e. only when the operation is about to hold
-     * the provider; returns false when the broker is retiring or the operation
-     * is no longer registered, and the caller then answers with its typed
-     * fallback instead of entering a provider call.
+     * Arms the 15 s cancel and 30 s fence stages for one admitted
+     * operation. Called under {@code ioLock}, i.e. only when the
+     * operation is about to hold the provider; returns false when the
+     * broker is retiring or the operation is no longer registered, and
+     * the caller then answers with its typed fallback instead of
+     * entering a provider call.
      */
     private boolean armWatchdog(Operation operation) {
         synchronized (operationLock) {
             if (operation.cancelDeadline != null || operation.killDeadline != null)
                 return true;
-            // Reached only from inside `synchronized (ioLock)`, so the provider
-            // lock is held by construction; the predicate keeps that ordering an
-            // explicit, testable contract instead of an implicit convention.
+            // Reached only from inside `synchronized (ioLock)`, so the
+            // provider lock is held by construction; the predicate
+            // keeps that ordering an explicit, testable contract
+            // instead of an implicit convention.
             Admission.Slot<Operation> slot = admission.find(operation.token);
             if (!providerDeadlineApplies(true, slot != null && slot.value() == operation))
                 return false;
@@ -323,7 +350,10 @@ public final class TorrentSafStorageService extends Service {
         }
     }
 
-    /** Cancels both watchdog stages; a completed operation is never escalated. */
+    /**
+     * Cancels both watchdog stages; a completed operation is never
+     * escalated.
+     */
     private void end(Operation operation) {
         if (operation == null)
             return;
@@ -337,8 +367,9 @@ public final class TorrentSafStorageService extends Service {
     }
 
     /**
-     * First stage: abort the provider call. This never retires the broker, so a
-     * single slow document cannot drop every unrelated torrent descriptor.
+     * First stage: abort the provider call. This never retires the
+     * broker, so a single slow document cannot drop every unrelated
+     * torrent descriptor.
      */
     private void escalateCancel(Operation operation) {
         try {
@@ -348,9 +379,9 @@ public final class TorrentSafStorageService extends Service {
     }
 
     /**
-     * Second stage: fence the process only when the same operation is still
-     * registered 15 s after cancellation, because a provider that ignored
-     * cancellation may still be writing the descriptor.
+     * Second stage: fence the process only when the same operation is
+     * still registered 15 s after cancellation, because a provider that
+     * ignored cancellation may still be writing the descriptor.
      */
     private void escalateRetire(Operation operation) {
         synchronized (operationLock) {
@@ -369,7 +400,8 @@ public final class TorrentSafStorageService extends Service {
         return new Caller(uid, Binder.getCallingPid());
     }
 
-    // Unique among roots, handles and live export tokens. Called under ioLock.
+    // Unique among roots, handles and live export tokens. Called under
+    // ioLock.
     private long id() {
         long value;
         do {
@@ -379,13 +411,17 @@ public final class TorrentSafStorageService extends Service {
         return value;
     }
 
-    /** Releases one handle without any caller check; internal transitions only. */
+    /**
+     * Releases one handle without any caller check; internal
+     * transitions only.
+     */
     private void releaseHandle(long handle) {
         File file = files.remove(handle);
         if (file == null)
             return;
-        // Return promptly; close after any in-flight data operation releases
-        // ioLock. Closing one handle must not block the control plane.
+        // Return promptly; close after any in-flight data operation
+        // releases ioLock. Closing one handle must not block the
+        // control plane.
         try {
             reaper.execute(() -> {
                 synchronized (ioLock) {
@@ -396,12 +432,15 @@ public final class TorrentSafStorageService extends Service {
                 }
             });
         } catch (RejectedExecutionException gone) {
-            // onDestroy already stopped the reaper; the descriptor dies with the
-            // process and never left it.
+            // onDestroy already stopped the reaper; the descriptor dies
+            // with the process and never left it.
         }
     }
 
-    /** Releases every handle of this owner that aliases a deleted document. */
+    /**
+     * Releases every handle of this owner that aliases a deleted
+     * document.
+     */
     private void releaseAliases(Uri uri, Caller owner) {
         for (long key : new ArrayList<>(files.keySet())) {
             File alias = files.get(key);
@@ -414,9 +453,9 @@ public final class TorrentSafStorageService extends Service {
         @Override
         public long handshake() {
             Caller owner = caller();
-            // The most recent handshake holds retirement authority, so a broker
-            // process that outlives an application restart still follows the
-            // client that currently owns the binding.
+            // The most recent handshake holds retirement authority, so
+            // a broker process that outlives an application restart
+            // still follows the client that currently owns the binding.
             primaryCaller = owner;
             return identity.generation();
         }
@@ -424,8 +463,8 @@ public final class TorrentSafStorageService extends Service {
         @Override
         public int apiVersion() {
             caller();
-            // Qualified so the value is the broker constant, not the generated
-            // interface field of the same name.
+            // Qualified so the value is the broker constant, not the
+            // generated interface field of the same name.
             return TorrentSafStorageService.API_VERSION;
         }
 
@@ -450,9 +489,9 @@ public final class TorrentSafStorageService extends Service {
                     if (documentId == null || documentId.isEmpty())
                         return 0;
                     long token = id();
-                    // The grant binds caller, URI, declared length and the
-                    // document identity observed now; it authorizes one
-                    // truncating open and nothing else.
+                    // The grant binds caller, URI, declared length and
+                    // the document identity observed now; it authorizes
+                    // one truncating open and nothing else.
                     return exports.prepare(token, owner, text, length, documentId,
                                    SystemClock.elapsedRealtime())
                             ? token
@@ -477,8 +516,9 @@ public final class TorrentSafStorageService extends Service {
                         return 0;
                     ExportGrants.Grant grant =
                             exports.consume(token, owner, SystemClock.elapsedRealtime());
-                    // Unknown, expired, already used or another caller's token:
-                    // nothing is opened and nothing is truncated.
+                    // Unknown, expired, already used or another
+                    // caller's token: nothing is opened and nothing is
+                    // truncated.
                     if (grant == null || files.size() >= MAX_HANDLES)
                         return 0;
                     Uri uri = Uri.parse(grant.uri());
@@ -494,10 +534,11 @@ public final class TorrentSafStorageService extends Service {
                             return 0;
                         current.signal.throwIfCanceled();
                         Os.lseek(fd.getFileDescriptor(), 0, OsConstants.SEEK_SET);
-                        // Only the prepared document is truncated, and only after
-                        // the caller, the grant, the identity and the length
-                        // matched. Start empty rather than pre-sizing: a failed
-                        // first write must not leave a full-length zero file.
+                        // Only the prepared document is truncated, and
+                        // only after the caller, the grant, the
+                        // identity and the length matched. Start empty
+                        // rather than pre-sizing: a failed first write
+                        // must not leave a full-length zero file.
                         Os.ftruncate(fd.getFileDescriptor(), 0);
                         long key = id();
                         files.put(key,
@@ -628,8 +669,8 @@ public final class TorrentSafStorageService extends Service {
                                 doc, create ? "rw" : "r", current.signal);
                         if (fd == null)
                             return 0;
-                        // Reject pipes and providers without random access. No
-                        // unbounded staging fallback.
+                        // Reject pipes and providers without random
+                        // access. No unbounded staging fallback.
                         Os.lseek(fd.getFileDescriptor(), 0, OsConstants.SEEK_SET);
                         StructStat stat = Os.fstat(fd.getFileDescriptor());
                         if (!OsConstants.S_ISREG(stat.st_mode))
@@ -640,9 +681,10 @@ public final class TorrentSafStorageService extends Service {
                         if (create && actual > length)
                             throw new IOException("Document exceeds declared length");
                         if (TorrentSafPolicy.canExtendExisting(create, actual, length)) {
-                            // A write-mode open may extend an existing shorter
-                            // document. Existing bytes remain unverified and are
-                            // rehashed before availability is published.
+                            // A write-mode open may extend an existing
+                            // shorter document. Existing bytes remain
+                            // unverified and are rehashed before
+                            // availability is published.
                             Os.ftruncate(fd.getFileDescriptor(), length);
                         }
                         current.signal.throwIfCanceled();
@@ -761,14 +803,16 @@ public final class TorrentSafStorageService extends Service {
                         return false;
                     current.signal.throwIfCanceled();
                     File file = files.get(handle);
-                    // A read-only descriptor may authorize deletion only when the
-                    // persisted root grant also grants write. Never delete a tree
-                    // and never delete a user-chosen single-document export.
+                    // A read-only descriptor may authorize deletion
+                    // only when the persisted root grant also grants
+                    // write. Never delete a tree and never delete a
+                    // user-chosen single-document export.
                     if (file == null || file.root == 0 || !sameOwner(file.owner, owner)
                             || !authorized(file, true, current.signal))
                         return false;
                     try {
-                        // Reject directories even if a provider changes document type.
+                        // Reject directories even if a provider changes
+                        // document type.
                         try (Cursor cursor = getContentResolver().query(file.uri,
                                      new String[] {DocumentsContract.Document.COLUMN_MIME_TYPE},
                                      null, null, null, current.signal)) {
@@ -777,8 +821,9 @@ public final class TorrentSafStorageService extends Service {
                                             cursor.getString(0)))
                                 return false;
                         }
-                        // A provider may replace an existing document ID. Compare
-                        // a freshly opened descriptor with the registered object.
+                        // A provider may replace an existing document
+                        // ID. Compare a freshly opened descriptor with
+                        // the registered object.
                         try (ParcelFileDescriptor fresh = getContentResolver().openFileDescriptor(
                                      file.uri, "r", current.signal)) {
                             if (fresh == null)
@@ -791,7 +836,8 @@ public final class TorrentSafStorageService extends Service {
                         boolean removed =
                                 DocumentsContract.deleteDocument(getContentResolver(), file.uri);
                         if (removed)
-                            // Invalidate aliases to the same document before later IO.
+                            // Invalidate aliases to the same document
+                            // before later IO.
                             releaseAliases(file.uri, owner);
                         return removed;
                     } catch (Exception failure) {
@@ -823,9 +869,10 @@ public final class TorrentSafStorageService extends Service {
                     Uri doc = resolve(root.uri, relative, false, current.signal);
                     if (doc == null || !regularDocument(doc, current.signal))
                         return false;
-                    // Identity must survive the resolution: a provider may rebind
-                    // the display name to a different document between the two
-                    // opens, so compare device/inode across both descriptors.
+                    // Identity must survive the resolution: a provider
+                    // may rebind the display name to a different
+                    // document between the two opens, so compare
+                    // device/inode across both descriptors.
                     try (ParcelFileDescriptor opened = getContentResolver().openFileDescriptor(
                                  doc, "r", current.signal)) {
                         if (opened == null)
@@ -873,8 +920,9 @@ public final class TorrentSafStorageService extends Service {
                             || !validPath(relative))
                         return false;
                     Uri doc = resolve(root.uri, relative, false, current.signal);
-                    // Only an empty directory may be removed: a provider is
-                    // allowed to delete recursively, so enumerate first.
+                    // Only an empty directory may be removed: a
+                    // provider is allowed to delete recursively, so
+                    // enumerate first.
                     if (doc == null || !emptyDirectory(root.uri, doc, current.signal))
                         return false;
                     current.signal.throwIfCanceled();
@@ -915,7 +963,8 @@ public final class TorrentSafStorageService extends Service {
                     }
                 }
             } catch (RuntimeException ignored) {
-                // A revocation is best effort; the grant is already revoked.
+                // A revocation is best effort; the grant is already
+                // revoked.
             }
         }
 
@@ -927,13 +976,14 @@ public final class TorrentSafStorageService extends Service {
                 Admission.Slot<Operation> slot = admission.find(operation);
                 current = slot == null ? null : slot.value();
             }
-            // Cancellation is scoped to one operation and to the exact process
-            // that registered it. A slow export or close must not kill every
-            // torrent's descriptors, and a sibling component cannot abort ours.
+            // Cancellation is scoped to one operation and to the exact
+            // process that registered it. A slow export or close must
+            // not kill every torrent's descriptors, and a sibling
+            // component cannot abort ours.
             if (current == null || !current.owner.equals(owner))
                 return;
-            // Oneway: no caller waits for this, and the broker's provider call
-            // is unwound by its own cancellation signal.
+            // Oneway: no caller waits for this, and the broker's
+            // provider call is unwound by its own cancellation signal.
             try {
                 current.signal.cancel();
             } catch (RuntimeException ignored) {
@@ -944,8 +994,8 @@ public final class TorrentSafStorageService extends Service {
         public void retire(long generation) {
             Caller owner = caller();
             Caller primary = primaryCaller;
-            // Only the process that performed the handshake may retire the
-            // broker, and only for the generation it was given.
+            // Only the process that performed the handshake may retire
+            // the broker, and only for the generation it was given.
             if (primary != null && !primary.equals(owner))
                 return;
             if (!identity.claimRetirement(generation))
@@ -955,10 +1005,10 @@ public final class TorrentSafStorageService extends Service {
     };
 
     /**
-     * Resolves (and optionally creates) every component of a bounded relative
-     * path below the tree root. Each created component is validated before it
-     * becomes a parent, so a provider that returns another name or type cannot
-     * redirect the walk.
+     * Resolves (and optionally creates) every component of a bounded
+     * relative path below the tree root. Each created component is
+     * validated before it becomes a parent, so a provider that returns
+     * another name or type cannot redirect the walk.
      */
     private Uri resolve(Uri tree, String relative, boolean create, CancellationSignal signal)
             throws IOException {
@@ -1002,8 +1052,9 @@ public final class TorrentSafStorageService extends Service {
     }
 
     static boolean validPath(String path) {
-        // Display names may legally contain ':' and '\\' on Android; they are
-        // not POSIX path separators here and must not be treated as traversal.
+        // Display names may legally contain ':' and '\\' on Android;
+        // they are not POSIX path separators here and must not be
+        // treated as traversal.
         if (path == null || path.isEmpty() || path.length() > MAX_TEXT)
             return false;
         String[] parts = path.split("/", -1);
@@ -1084,7 +1135,9 @@ public final class TorrentSafStorageService extends Service {
         }
     }
 
-    /** True when the resolved document exists and is not a directory. */
+    /**
+     * True when the resolved document exists and is not a directory.
+     */
     private boolean regularDocument(Uri doc, CancellationSignal signal) {
         try (Cursor cursor = getContentResolver().query(doc,
                      new String[] {DocumentsContract.Document.COLUMN_MIME_TYPE}, null, null, null,
@@ -1096,7 +1149,9 @@ public final class TorrentSafStorageService extends Service {
         }
     }
 
-    /** True only for an existing directory whose child listing is empty. */
+    /**
+     * True only for an existing directory whose child listing is empty.
+     */
     private boolean emptyDirectory(Uri tree, Uri doc, CancellationSignal signal) {
         try (Cursor cursor = getContentResolver().query(doc,
                      new String[] {DocumentsContract.Document.COLUMN_MIME_TYPE}, null, null, null,
@@ -1155,10 +1210,10 @@ public final class TorrentSafStorageService extends Service {
     }
 
     /**
-     * Size-independent identity check used by deletion: a failed or partial
-     * write legitimately changes the length, but the device/inode pair and the
-     * regular-file type must still match the document that was opened twice
-     * under the same grant.
+     * Size-independent identity check used by deletion: a failed or
+     * partial write legitimately changes the length, but the
+     * device/inode pair and the regular-file type must still match the
+     * document that was opened twice under the same grant.
      */
     static boolean sameDocumentIdentity(StructStat opened, StructStat current) {
         return opened.st_dev == current.st_dev && opened.st_ino == current.st_ino
@@ -1175,12 +1230,14 @@ public final class TorrentSafStorageService extends Service {
     private boolean restricted;
 
     /**
-     * Claim the storage-broker process role before serving any Binder call.
+     * Claim the storage-broker process role before serving any Binder
+     * call.
      *
-     * <p>The claim is irreversible and installs the broker sandbox. When the
-     * library cannot be loaded, or this process already owns the router role,
-     * the service stops itself here so {@link #onBind} never exposes a broker
-     * that could perform document IO inside a router process.</p>
+     * <p>The claim is irreversible and installs the broker sandbox.
+     * When the library cannot be loaded, or this process already owns
+     * the router role, the service stops itself here so {@link #onBind}
+     * never exposes a broker that could perform document IO inside a
+     * router process.</p>
      */
     @Override
     public void onCreate() {
@@ -1192,10 +1249,11 @@ public final class TorrentSafStorageService extends Service {
     }
 
     /**
-     * Serve the app-private broker interface, or {@code null} when the role
-     * claim in {@link #onCreate()} failed. The service is not exported, and each
-     * transaction is additionally authenticated against the exact
-     * {@code (uid, pid)} recorded when its root, handle or token was created.
+     * Serve the app-private broker interface, or {@code null} when the
+     * role claim in {@link #onCreate()} failed. The service is not
+     * exported, and each transaction is additionally authenticated
+     * against the exact {@code (uid, pid)} recorded when its root,
+     * handle or token was created.
      */
     @Override
     public IBinder onBind(Intent intent) {
@@ -1203,9 +1261,10 @@ public final class TorrentSafStorageService extends Service {
     }
 
     /**
-     * Fence the broker when the last client unbinds. Retirement is process
-     * death, so a later client must rebind, repeat the handshake and receive a
-     * new generation instead of reusing any earlier handle or export token.
+     * Fence the broker when the last client unbinds. Retirement is
+     * process death, so a later client must rebind, repeat the
+     * handshake and receive a new generation instead of reusing any
+     * earlier handle or export token.
      */
     @Override
     public boolean onUnbind(Intent intent) {
@@ -1214,10 +1273,10 @@ public final class TorrentSafStorageService extends Service {
     }
 
     /**
-     * Release the process-owned resources: pending watchdog stages and queued
-     * descriptor closes are dropped, and the process is fenced. A close that
-     * was still queued is abandoned, but the descriptor dies with the process
-     * and never left it.
+     * Release the process-owned resources: pending watchdog stages and
+     * queued descriptor closes are dropped, and the process is fenced.
+     * A close that was still queued is abandoned, but the descriptor
+     * dies with the process and never left it.
      */
     @Override
     public void onDestroy() {

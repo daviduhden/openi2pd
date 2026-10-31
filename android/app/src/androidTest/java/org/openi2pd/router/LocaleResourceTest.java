@@ -1,13 +1,14 @@
 /*
- * See the LICENSE file at the top of the project tree for copyright
- * and license details.
+ * See the LICENSE file at the top of the project tree for copyright and
+ * license details.
  *
  * openi2pd: LocaleResourceTest.
  *
- * Instrumentation test that builds locale-overridden contexts for supported
- * Spanish, Russian and Simplified Chinese catalogs, checks unsupported locales
- * fall back to English, and verifies the active UI locale without mutating the
- * process locale. It is intended for the manual device job.
+ * Instrumentation test that builds locale-overridden contexts for
+ * supported Spanish, Russian and Simplified Chinese catalogs, checks
+ * unsupported locales fall back to English, and verifies the active UI
+ * locale without mutating the process locale. It is intended for the
+ * manual device job.
  *
  */
 
@@ -28,11 +29,11 @@ import org.junit.runner.RunWith;
 import java.util.Locale;
 
 /**
- * The Android product ships English, Spanish, Russian and Simplified Chinese
- * UI catalogs. Unsupported locales must fall back to English; supported
- * locales must resolve a translated catalog. The test uses
- * createConfigurationContext rather than changing the process/device default
- * locale and is prepared for the manual device job.
+ * The Android product ships English, Spanish, Russian and Simplified
+ * Chinese UI catalogs. Unsupported locales must fall back to English;
+ * supported locales must resolve a translated catalog. The test uses
+ * createConfigurationContext rather than changing the process/device
+ * default locale and is prepared for the manual device job.
  */
 @RunWith(AndroidJUnit4.class)
 public final class LocaleResourceTest {
@@ -86,9 +87,9 @@ public final class LocaleResourceTest {
             assertTrue("locale " + tag + " did not select a translated catalog", translated);
         }
 
-        // Traditional Chinese is deliberately not shipped: a zh-TW or zh-Hant
-        // device must fall back to English rather than show Simplified text as
-        // if it were Traditional.
+        // Traditional Chinese is deliberately not shipped: a zh-TW or
+        // zh-Hant device must fall back to English rather than show
+        // Simplified text as if it were Traditional.
         for (String tag : new String[] {"zh-TW", "zh-Hant", "zh-HK"}) {
             Configuration configuration = new Configuration(base.getResources().getConfiguration());
             configuration.setLocale(Locale.forLanguageTag(tag));
@@ -121,7 +122,8 @@ public final class LocaleResourceTest {
         String many = ru.getResources().getQuantityString(R.plurals.torrent_count, 5, 5);
         assertTrue("Russian one/few forms must differ: " + one + " / " + few, !one.equals(few));
         assertTrue("Russian few/many forms must differ: " + few + " / " + many, !few.equals(many));
-        // Spanish has one/other and Simplified Chinese uses one form text.
+        // Spanish has one/other and Simplified Chinese uses one form
+        // text.
         Configuration esConfig = new Configuration(base.getResources().getConfiguration());
         esConfig.setLocale(Locale.forLanguageTag("es-ES"));
         Context es = base.createConfigurationContext(esConfig);

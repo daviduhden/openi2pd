@@ -10,7 +10,8 @@ Defines native Android application resources.
 -->
 
 <resources>
-    <!-- The rail layout is selected at w600dp; keep the programmatic column
-         cap aligned with that qualifier, not only with smallestWidth. -->
+    <!-- The rail layout is selected at w600dp; keep the programmatic
+        column cap aligned with that qualifier, not only with
+        smallestWidth. -->
     <dimen name="content_max_width">1000dp</dimen>
 </resources>

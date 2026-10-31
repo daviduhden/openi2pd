@@ -1,11 +1,11 @@
 /*
- * See the LICENSE file at the top of the project tree for copyright
- * and license details.
+ * See the LICENSE file at the top of the project tree for copyright and
+ * license details.
  *
  * openi2pd: TorrentMetadataJniTest.
  *
- * Device regressions for the native metadata bridge used by SAF creation.
- * Execution is reserved for manual Android CI.
+ * Device regressions for the native metadata bridge used by SAF
+ * creation. Execution is reserved for manual Android CI.
  */
 package org.openi2pd.router;
 

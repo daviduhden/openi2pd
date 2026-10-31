@@ -1,11 +1,12 @@
 /*
- * See the LICENSE file at the top of the project tree for copyright
- * and license details.
+ * See the LICENSE file at the top of the project tree for copyright and
+ * license details.
  *
  * openi2pd: TorrentSafCreator.
  *
- * Brokers bounded SAF enumeration and incremental hashing. Native C++ owns
- * metadata serialization. Source documents are never converted into paths.
+ * Brokers bounded SAF enumeration and incremental hashing. Native C++
+ * owns metadata serialization. Source documents are never converted
+ * into paths.
  */
 package org.openi2pd.router;
 
@@ -25,25 +26,29 @@ import java.util.List;
 import java.util.function.LongConsumer;
 
 /**
- * Builds v1 metainfo from provider streams without converting a content URI
- * into a filesystem path. The caller owns the worker and cancellation signal;
- * cursors, descriptors and streams opened here are closed before return.
+ * Builds v1 metainfo from provider streams without converting a content
+ * URI into a filesystem path. The caller owns the worker and
+ * cancellation signal; cursors, descriptors and streams opened here are
+ * closed before return.
  *
- * <p><b>Execution.</b> This performs blocking provider I/O and hashing, so it
- * must run on the torrent worker, never on the main thread. Progress is
- * reported to the caller's consumer on that same thread and is throttled to
- * roughly four updates per second; it is a hint, not a completion signal.</p>
+ * <p><b>Execution.</b> This performs blocking provider I/O and hashing,
+ * so it must run on the torrent worker, never on the main thread.
+ * Progress is reported to the caller's consumer on that same thread and
+ * is throttled to roughly four updates per second; it is a hint, not a
+ * completion signal.</p>
  *
- * <p><b>Bounds.</b> At most {@value #MAX_FILES} files, {@value #MAX_BYTES} total
- * source bytes, 32 tracker URLs, 32 directory levels, 20000 enumerated document
- * ids, 5 MiB of accumulated piece hashes, a 16 KiB..4 MiB power-of-two piece
- * size and 255-character path components. A source whose provider-reported
- * length disagrees with the bytes actually read fails the whole creation, so
- * metainfo never describes content that is no longer there.</p>
+ * <p><b>Bounds.</b> At most {@value #MAX_FILES} files, {@value
+ * #MAX_BYTES} total source bytes, 32 tracker URLs, 32 directory levels,
+ * 20000 enumerated document ids, 5 MiB of accumulated piece hashes, a
+ * 16 KiB..4 MiB power-of-two piece size and 255-character path
+ * components. A source whose provider-reported length disagrees with
+ * the bytes actually read fails the whole creation, so metainfo never
+ * describes content that is no longer there.</p>
  *
- * <p><b>Ownership.</b> The result is serialized metadata only. It is not a
- * persisted grant: seeding the created torrent still needs a selected tree or
- * document authority, and the caller must persist that separately.</p>
+ * <p><b>Ownership.</b> The result is serialized metadata only. It is
+ * not a persisted grant: seeding the created torrent still needs a
+ * selected tree or document authority, and the caller must persist that
+ * separately.</p>
  */
 final class TorrentSafCreator {
     private record Source(Uri uri, String path, long length) {}
@@ -54,26 +59,32 @@ final class TorrentSafCreator {
     }
 
     /**
-     * Enumerate a document or tree in stable path order and hash the byte
-     * stream across file boundaries. Provider-reported lengths, when present,
-     * are checked against bytes actually read before metainfo is encoded.
+     * Enumerate a document or tree in stable path order and hash the
+     * byte stream across file boundaries. Provider-reported lengths,
+     * when present, are checked against bytes actually read before
+     * metainfo is encoded.
      *
      * @param resolver resolver with a read grant for {@code uri}
      * @param uri selected content document or tree
      * @param tree whether {@code uri} identifies a document tree
      * @param cancel signal checked during enumeration and reading
-     * @param progress receives cumulative source bytes on the calling thread
-     * @param pieceLength v1 piece size, a power of two from 16 KiB to 4 MiB
+     * @param progress receives cumulative source bytes on the calling
+     *                 thread
+     * @param pieceLength v1 piece size, a power of two from 16 KiB to 4
+     *                    MiB
      * @param trackers tracker URLs checked by the native encoder
      * @param privateTorrent whether to mark the metainfo private
-     * @return serialized metainfo, not a persistent grant to seed the sources
-     * @throws Exception if provider access, validation, hashing or encoding fails
+     * @return serialized metainfo, not a persistent grant to seed the
+     *                    sources
+     * @throws Exception if provider access, validation, hashing or
+     *                   encoding fails
      * @implNote Cancellation is observed at the next read boundary; the
-     *           descriptor is never closed from the signal callback, because
-     *           that listener runs on the cancelling thread while this thread
-     *           may be inside {@code read()}. A provider that ignores
-     *           cancellation can therefore stay blocked past the caller's
-     *           deadline.
+     *                        descriptor is never closed from the signal
+     *                        callback, because that listener runs on
+     *                        the cancelling thread while this thread
+     *                        may be inside {@code read()}. A provider
+     *                        that ignores cancellation can therefore
+     *                        stay blocked past the caller's deadline.
      */
     static byte[] create(ContentResolver resolver, Uri uri, boolean tree, CancellationSignal cancel,
             LongConsumer progress, int pieceLength, String[] trackers, boolean privateTorrent)
@@ -118,15 +129,16 @@ final class TorrentSafCreator {
             try (var descriptor = resolver.openAssetFileDescriptor(source.uri(), "r", cancel)) {
                 if (descriptor == null)
                     throw new IOException("Source unavailable");
-                // Never close the descriptor from the CancellationSignal
-                // callback: that listener runs on the thread requesting the
-                // cancel, while this thread may be inside read(). The engine
-                // already refuses that cross-thread descriptor close for
-                // import (fd reuse could return unrelated bytes). Cancellation
-                // is observed at the next throwIfCanceled()/read boundary.
+                // Never close the descriptor from the
+                // CancellationSignal callback: that listener runs on
+                // the thread requesting the cancel, while this thread
+                // may be inside read(). The engine already refuses that
+                // cross-thread descriptor close for import (fd reuse
+                // could return unrelated bytes). Cancellation is
+                // observed at the next throwIfCanceled()/read boundary.
                 // This direct provider stream does not use the broker's
-                // watchdog; a provider that ignores cancellation can remain
-                // blocked after the caller's deadline.
+                // watchdog; a provider that ignores cancellation can
+                // remain blocked after the caller's deadline.
                 try (var input = descriptor.createInputStream()) {
                     for (;;) {
                         cancel.throwIfCanceled();

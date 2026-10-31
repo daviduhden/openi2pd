@@ -1,12 +1,12 @@
 /*
- * See the LICENSE file at the top of the project tree for copyright
- * and license details.
+ * See the LICENSE file at the top of the project tree for copyright and
+ * license details.
  *
  * openi2pd: ServiceStates.
  *
  * Immutable flags for the optional HTTP proxy, SOCKS, BOB, SAM and I2CP
- * services, with {@link #NONE} used before the daemon starts and on error. It
- * deliberately carries no sockets, keys or file paths.
+ * services, with {@link #NONE} used before the daemon starts and on
+ * error. It deliberately carries no sockets, keys or file paths.
  *
  */
 
@@ -15,18 +15,21 @@ package org.openi2pd.router;
 /**
  * Snapshot of the optional client services exposed by the router.
  *
- * <p>This is a presentation record only. It deliberately contains booleans,
- * never listening sockets, keys or file paths.</p>
+ * <p>This is a presentation record only. It deliberately contains
+ * booleans, never listening sockets, keys or file paths.</p>
  *
- * <p>A {@code false} component is only meaningful together with a snapshot that
- * has live metrics: {@link #NONE} is what the service publishes before the
- * daemon has reported, so screens gate on
- * {@link RouterSnapshot#hasLiveMetrics()} and render "unknown" instead of
- * claiming a service is disabled. The flags describe configured/running state,
- * not reachability from an I2P client.</p>
+ * <p>A {@code false} component is only meaningful together with a
+ * snapshot that has live metrics: {@link #NONE} is what the service
+ * publishes before the daemon has reported, so screens gate on {@link
+ * RouterSnapshot#hasLiveMetrics()} and render "unknown" instead of
+ * claiming a service is disabled. The flags describe configured/running
+ * state, not reachability from an I2P client.</p>
  */
 public record ServiceStates(
         boolean httpProxy, boolean socksProxy, boolean bob, boolean sam, boolean i2cp) {
-    /** All services disabled; used before the daemon is started or on error. */
+    /**
+     * All services disabled; used before the daemon is started or on
+     * error.
+     */
     public static final ServiceStates NONE = new ServiceStates(false, false, false, false, false);
 }

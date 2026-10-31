@@ -1,14 +1,14 @@
 /*
- * See the LICENSE file at the top of the project tree for copyright
- * and license details.
+ * See the LICENSE file at the top of the project tree for copyright and
+ * license details.
  *
  * openi2pd: RouterViewModel.
  *
- * {@link AndroidViewModel} that owns one {@link RouterRepository} and exposes
- * its LiveData, forwarding start/stop/reload/log, reseed, runtime log-level and
- * torrent commands. All public methods are main-thread safe, first-launch
- * auto-start consults persisted run state, and {@code onCleared} releases the
- * service binding.
+ * {@link AndroidViewModel} that owns one {@link RouterRepository} and
+ * exposes its LiveData, forwarding start/stop/reload/log, reseed,
+ * runtime log-level and torrent commands. All public methods are
+ * main-thread safe, first-launch auto-start consults persisted run
+ * state, and {@code onCleared} releases the service binding.
  *
  */
 
@@ -25,12 +25,13 @@ import java.util.List;
 /**
  * Activity/Fragment-facing state holder.
  *
- * <p>All public methods are main-thread safe. The native calls happen in
- * {@link RouterService}'s worker; this class only observes LiveData and sends
- * binder/intent commands.</p>
+ * <p>All public methods are main-thread safe. The native calls happen
+ * in {@link RouterService}'s worker; this class only observes LiveData
+ * and sends binder/intent commands.</p>
  */
 public class RouterViewModel extends AndroidViewModel {
     private final RouterRepository repository;
+    /** Terminal control response paired with the selected tunnel. */
     public record TorrentImportResult(int tunnel, String response) {}
     private final MutableLiveData<TorrentImportResult> torrentImportResult =
             new MutableLiveData<>();
@@ -54,7 +55,10 @@ public class RouterViewModel extends AndroidViewModel {
         return repository.getServiceConnected();
     }
 
-    /** Pause/resume service observation when the activity leaves the foreground. */
+    /**
+     * Pause/resume service observation when the activity leaves the
+     * foreground.
+     */
     public void setUiVisible(boolean visible) {
         repository.setUiVisible(visible);
     }
@@ -102,9 +106,10 @@ public class RouterViewModel extends AndroidViewModel {
     /**
      * Start a bounded SAF import and publish its single result.
      *
-     * <p>Main-thread only. A second import is ignored while one is running, and
-     * the previous result is cleared so the UI cannot act on a stale response.
-     * The repository posts the completion back on the main thread.</p>
+     * <p>Main-thread only. A second import is ignored while one is
+     * running, and the previous result is cleared so the UI cannot act
+     * on a stale response. The repository posts the completion back on
+     * the main thread.</p>
      */
     public void importTorrent(int tunnel, android.net.Uri document) {
         if (importingTorrent)
@@ -117,19 +122,25 @@ public class RouterViewModel extends AndroidViewModel {
         });
     }
 
-    /** Progress and final metadata of the one SAF creation in progress. */
+    /**
+     * Progress or terminal result for one SAF metainfo creation.
+     * Running values report hashed bytes; terminal values carry encoded
+     * metainfo or a localized error, never payload authority.
+     */
     public record SafCreation(boolean running, long bytes, byte[] metadata, String error) {}
     private final MutableLiveData<SafCreation> safCreation = new MutableLiveData<>();
     public LiveData<SafCreation> getSafCreation() {
         return safCreation;
     }
     /**
-     * Hash a user-selected SAF source into metainfo on the service's SAF lane.
+     * Hash a user-selected SAF source into metainfo on the service's
+     * SAF lane.
      *
-     * <p>Main-thread only. Progress is published as it is hashed and exactly
-     * one terminal {@link SafCreation} follows; a null result carries a
-     * localized error. The result is metadata only and grants no payload
-     * authority, and a second creation is ignored while one runs.</p>
+     * <p>Main-thread only. Progress is published as it is hashed and
+     * exactly one terminal {@link SafCreation} follows; a null result
+     * carries a localized error. The result is metadata only and grants
+     * no payload authority, and a second creation is ignored while one
+     * runs.</p>
      */
     public void createSafTorrent(android.net.Uri source, boolean tree, int pieceLength,
             String[] trackers, boolean privateTorrent) {
@@ -158,16 +169,19 @@ public class RouterViewModel extends AndroidViewModel {
         repository.exportTorrent(target, state.metadata(), result);
     }
 
-    /** Persist or release a SAF payload grant away from the UI thread. */
+    /**
+     * Persist or release a SAF payload grant away from the UI thread.
+     */
     public void selectPayloadTree(String tunnel, String hash, android.net.Uri tree,
             java.util.function.Consumer<Boolean> callback) {
         repository.selectPayloadTree(tunnel, hash, tree, callback);
     }
 
     /**
-     * Release the payload grant for one torrent on the service's SAF lane.
-     * The callback runs on the main thread and may arrive after the calling
-     * view is gone, so callers must fence it with their own generation.
+     * Release the payload grant for one torrent on the service's SAF
+     * lane. The callback runs on the main thread and may arrive after
+     * the calling view is gone, so callers must fence it with their own
+     * generation.
      */
     public void detachPayload(
             String tunnel, String hash, java.util.function.Consumer<Boolean> callback) {
@@ -198,12 +212,18 @@ public class RouterViewModel extends AndroidViewModel {
         repository.reloadTunnels();
     }
 
-    /** Request a bounded, non-blocking NetDb reseed; the callback runs on the main thread. */
+    /**
+     * Request a bounded, non-blocking NetDb reseed; the callback runs
+     * on the main thread.
+     */
     public void requestReseed(java.util.function.Consumer<String> callback) {
         repository.requestReseed(callback);
     }
 
-    /** Bounded reseed phase/attempt/error record; empty when the router is stopped. */
+    /**
+     * Bounded reseed phase/attempt/error record; empty when the router
+     * is stopped.
+     */
     public void readReseedStatus(java.util.function.Consumer<String> callback) {
         repository.readReseedStatus(callback);
     }
@@ -235,7 +255,10 @@ public class RouterViewModel extends AndroidViewModel {
         repository.banCommand(hash, ban, callback);
     }
 
-    /** Apply a runtime log level to the running logger; the file is written separately. */
+    /**
+     * Apply a runtime log level to the running logger; the file is
+     * written separately.
+     */
     public void applyRuntimeLogLevel(String level, java.util.function.Consumer<Boolean> callback) {
         repository.applyRuntimeLogLevel(level, callback);
     }
@@ -245,11 +268,12 @@ public class RouterViewModel extends AndroidViewModel {
     }
 
     /**
-     * First-launch policy: auto-start only before any run state has been
-     * persisted. The Activity calls this only for a genuinely fresh task
-     * (savedInstanceState == null), so rotation cannot respawn a daemon and a
-     * router stopped explicitly (or with the Quick Settings tile) stays
-     * stopped across task recreation and process restarts.
+     * First-launch policy: auto-start only before any run state has
+     * been persisted. The Activity calls this only for a genuinely
+     * fresh task (savedInstanceState == null), so rotation cannot
+     * respawn a daemon and a router stopped explicitly (or with the
+     * Quick Settings tile) stays stopped across task recreation and
+     * process restarts.
      */
     public void startOnFirstLaunchIfNeeded() {
         if (repository.shouldStartOnFirstLaunch()) {
@@ -263,9 +287,9 @@ public class RouterViewModel extends AndroidViewModel {
     }
 
     /**
-     * Clear the service binding when the ViewModel is destroyed. The daemon is
-     * not stopped here: the foreground service owns it, so a rotated or
-     * finished Activity never changes router state.
+     * Clear the service binding when the ViewModel is destroyed. The
+     * daemon is not stopped here: the foreground service owns it, so a
+     * rotated or finished Activity never changes router state.
      */
     @Override
     protected void onCleared() {

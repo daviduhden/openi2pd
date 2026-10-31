@@ -1,13 +1,14 @@
 #!/usr/bin/env perl
-# See the LICENSE file at the top of the project tree for copyright
-# and license details.
+# See the LICENSE file at the top of the project tree for copyright and
+# license details.
 #
 # openi2pd: check android locales.
 #
 # Compile-free locale contract check. Verifies the supported resource
-# directories, locales_config, Gradle filters, Fastlane allowlist, catalog key
-# parity, positional placeholder parity, non-translatable identifier handling
-# and the per-app locale override boundary. It never runs Gradle or a device.
+# directories, locales_config, Gradle filters, Fastlane allowlist,
+# catalog key parity, positional placeholder parity, non-translatable
+# identifier handling and the per-app locale override boundary. It never
+# runs Gradle or a device.
 #
 
 use strict;
@@ -24,8 +25,9 @@ my %language_dir = (
     'zh-CN' => 'values-zh-rCN'
 );
 my %allowed_store = map { $_ => 1 } qw(en-US es-ES ru-RU zh-CN);
-# The checker is run from the repository root by CI and from android/ by hand.
-# Probe the known layout instead of trusting the current directory.
+# The checker is run from the repository root by CI and from android/ by
+# hand. Probe the known layout instead of trusting the current
+# directory.
 my $root          = -d 'android/app/src/main' ? 'android' : '.';
 my $res           = File::Spec->catdir( $root, qw(app src main res) );
 my @errors;
@@ -38,8 +40,8 @@ sub read_file {
     local $/;
     my $text = <$fh>;
     close($fh);
-    # Encoding defects are recorded instead of aborting so one run reports
-    # every affected file rather than only the first.
+    # Encoding defects are recorded instead of aborting so one run
+    # reports every affected file rather than only the first.
     fail("BOM in $path")  if $text =~ /^\xEF\xBB\xBF/;
     fail("CRLF in $path") if $text =~ /\r\n/;
     return $text;
@@ -90,7 +92,8 @@ my @value_dirs = grep { /^values(?:-|$)/ } readdir($dh);
 closedir($dh);
 for my $dir ( sort @value_dirs ) {
     next if $dir eq 'values';
-    # Configuration qualifiers are not locales and are legitimate siblings.
+    # Configuration qualifiers are not locales and are legitimate
+    # siblings.
     next if $dir =~ /^values-(?:night|sw\d+dp|w\d+dp|v\d+)$/;
     fail("unsupported locale resource directory: res/$dir")
       unless $dir eq 'values-es'
@@ -124,7 +127,8 @@ for my $tag (qw(es ru zh-CN)) {
 }
 
 # Plural resources must exist in every catalog with the quantities the
-# language actually uses, and keep the same placeholders as the base form.
+# language actually uses, and keep the same placeholders as the base
+# form.
 my $base_plurals  = plurals($base_path);
 my %plural_counts = (
     es      => [qw(one other)],
@@ -155,10 +159,11 @@ for my $tag (qw(es ru zh-CN)) {
     }
 }
 
-# Android formatting is positional so a translated word order is safe. A bare
-# %s/%d would bind to the first argument regardless of the sentence, so any
-# non-positional conversion in the source catalog or a translation is a defect
-# even when the current word order happens to work.
+# Android formatting is positional so a translated word order is safe. A
+# bare %s/%d would bind to the first argument regardless of the
+# sentence, so any non-positional conversion in the source catalog or a
+# translation is a defect even when the current word order happens to
+# work.
 for my $name ( keys %$base ) {
     fail("non-positional placeholder in values string $name")
       if $base->{$name} =~ /%(?!%|\d+\$)[-+ 0#]*\d*(?:\.\d+)?[sdif]/;
@@ -221,11 +226,11 @@ for my $array (
       /<string-array\s+name="$array"[^>]*translatable="false"/s;
 }
 
-# A process-wide locale override would change every activity and defeat the
-# per-app AppCompat selection, so it is rejected in production sources.
-# Whole-line comments are skipped and trailing // comments stripped so a
-# documented example cannot fail the check; text inside a block comment that
-# also carries code is still inspected.
+# A process-wide locale override would change every activity and defeat
+# the per-app AppCompat selection, so it is rejected in production
+# sources. Whole-line comments are skipped and trailing // comments
+# stripped so a documented example cannot fail the check; text inside a
+# block comment that also carries code is still inspected.
 find(
     {
         no_chdir => 1,
@@ -247,9 +252,10 @@ find(
     "$root/app/src/main"
 );
 
-# Every XML/Java string reference must resolve in the source catalog. The
-# lookbehind keeps framework resources such as android.R.string.ok out of the
-# check, since only the app's own catalog is authoritative here.
+# Every XML/Java string reference must resolve in the source catalog.
+# The lookbehind keeps framework resources such as android.R.string.ok
+# out of the check, since only the app's own catalog is authoritative
+# here.
 find(
     {
         no_chdir => 1,
@@ -277,8 +283,8 @@ find(
     "$root/app/src/main"
 );
 
-# Instrumentation and JVM tests also reference resources; a removed id would
-# only fail on the device lane otherwise.
+# Instrumentation and JVM tests also reference resources; a removed id
+# would only fail on the device lane otherwise.
 for my $tree ( "$root/app/src/androidTest", "$root/app/src/test" ) {
     next unless -d $tree;
     find(

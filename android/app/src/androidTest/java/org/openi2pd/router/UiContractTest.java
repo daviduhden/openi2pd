@@ -1,11 +1,12 @@
 /*
- * See the LICENSE file at the top of the project tree for copyright
- * and license details.
+ * See the LICENSE file at the top of the project tree for copyright and
+ * license details.
  *
  * openi2pd: UiContractTest.
  *
- * Read-only layout/accessibility contracts for the native Material screens.
- * Prepared for the manual device lane; no daemon or service is started.
+ * Read-only layout/accessibility contracts for the native Material
+ * screens. Prepared for the manual device lane; no daemon or service is
+ * started.
  */
 
 package org.openi2pd.router;
@@ -35,10 +36,11 @@ import org.junit.runner.RunWith;
  * Read-only contract checks for the native Material 3 screens.
  *
  * <p>Asserts one-screen-reader-stop rows, visible touch targets, the
- * `w600dp` navigation rail, the semantic brand color roles in both light and
- * dark themes and the log filter/summary wiring. The daemon and the service are
- * never started, so this says nothing about live router behaviour; device and
- * TalkBack evidence remains the manual UI lane.</p>
+ * `w600dp` navigation rail, the semantic brand color roles in both
+ * light and dark themes and the log filter/summary wiring. The daemon
+ * and the service are never started, so this says nothing about live
+ * router behaviour; device and TalkBack evidence remains the manual UI
+ * lane.</p>
  */
 @RunWith(AndroidJUnit4.class)
 public final class UiContractTest {

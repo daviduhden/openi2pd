@@ -1,12 +1,12 @@
 /*
- * See the LICENSE file at the top of the project tree for copyright
- * and license details.
+ * See the LICENSE file at the top of the project tree for copyright and
+ * license details.
  *
  * openi2pd: RuntimeAdminPolicyTest.
  *
- * Pure-JVM tests for the runtime-administration argument bounds, the bounded
- * tunnel/reseed/subscription decoders and the closed typed outcome sets. No
- * Android API, emulator or native library is involved.
+ * Pure-JVM tests for the runtime-administration argument bounds, the
+ * bounded tunnel/reseed/subscription decoders and the closed typed
+ * outcome sets. No Android API, emulator or native library is involved.
  *
  */
 
@@ -23,9 +23,9 @@ import java.util.List;
 /**
  * Pins the Java side of the runtime-administration JNI contract.
  *
- * <p>Every bound here is applied twice: Java rejects an oversized value before
- * it becomes a UTF-8 string and native code re-checks it. The outcome tokens
- * are protocol vocabulary and must match the daemon's
+ * <p>Every bound here is applied twice: Java rejects an oversized value
+ * before it becomes a UTF-8 string and native code re-checks it. The
+ * outcome tokens are protocol vocabulary and must match the daemon's
  * {@code AdminOutcome}/{@code AdminResultCode} spellings exactly.</p>
  */
 public class RuntimeAdminPolicyTest {
@@ -41,7 +41,8 @@ public class RuntimeAdminPolicyTest {
         assertFalse(RuntimeAdminPolicy.isValidTunnelName("tab\tname"));
         assertFalse(RuntimeAdminPolicy.isValidTunnelName("line\nbreak"));
         assertFalse(RuntimeAdminPolicy.isValidTunnelName("ctrl\u0001name"));
-        // Names are opaque protocol tokens; a slash does not make this path authority.
+        // Names are opaque protocol tokens; a slash does not make this
+        // path authority.
         assertTrue(RuntimeAdminPolicy.isValidTunnelName("/etc/i2pd/tunnels.conf"));
     }
 
@@ -112,7 +113,8 @@ public class RuntimeAdminPolicyTest {
         assertEquals("site.i2p", services.get(0).destination());
         assertFalse(services.get(1).running());
 
-        // Malformed, unnamed and short rows are skipped instead of shown.
+        // Malformed, unnamed and short rows are skipped instead of
+        // shown.
         assertTrue(RuntimeAdminPolicy.parseTunnelServices("").isEmpty());
         assertTrue(RuntimeAdminPolicy.parseTunnelServices(null).isEmpty());
         assertTrue(RuntimeAdminPolicy.parseTunnelServices("only|four|fields|here").isEmpty());
@@ -144,7 +146,8 @@ public class RuntimeAdminPolicyTest {
         assertFalse(RuntimeAdminPolicy.parseReseedStatus("").isKnown());
         assertFalse(RuntimeAdminPolicy.parseReseedStatus(null).isKnown());
         assertFalse(RuntimeAdminPolicy.parseReseedStatus("failed|1|3").isKnown());
-        // Values are bounded: an oversized phase or error cannot grow the view.
+        // Values are bounded: an oversized phase or error cannot grow
+        // the view.
         RuntimeAdminPolicy.ReseedStatus bounded = RuntimeAdminPolicy.parseReseedStatus(
                 repeat('p', 100) + "|1|1|0|0|0|" + repeat('e', 500));
         assertTrue(bounded.isKnown());

@@ -1,14 +1,14 @@
 /*
- * See the LICENSE file at the top of the project tree for copyright
- * and license details.
+ * See the LICENSE file at the top of the project tree for copyright and
+ * license details.
  *
  * openi2pd: TorrentDocumentReader.
  *
- * Reads a torrent document supplied by a SAF provider into memory under the
- * 8 MiB import limit, tolerating unknown or dishonest provider lengths by
- * reading one byte past the cap only to detect overflow. Empty, oversized,
- * stalled or interrupted streams surface as {@link java.io.IOException} rather
- * than partial metadata.
+ * Reads a torrent document supplied by a SAF provider into memory under
+ * the 8 MiB import limit, tolerating unknown or dishonest provider
+ * lengths by reading one byte past the cap only to detect overflow.
+ * Empty, oversized, stalled or interrupted streams surface as {@link
+ * java.io.IOException} rather than partial metadata.
  *
  */
 
@@ -18,7 +18,10 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 
-/** Binary SAF metadata reader: neither a provider path nor a display name is trusted. */
+/**
+ * Binary SAF metadata reader: neither a provider path nor a display
+ * name is trusted.
+ */
 final class TorrentDocumentReader {
     private TorrentDocumentReader() {
     }
@@ -28,23 +31,27 @@ final class TorrentDocumentReader {
     }
 
     /**
-     * Read a complete torrent document under a caller-selected cap. The caller
-     * retains ownership of {@code input} and must close it, including on error.
+     * Read a complete torrent document under a caller-selected cap. The
+     * caller retains ownership of {@code input} and must close it,
+     * including on error.
      *
      * <p>The cap is enforced by reading one byte past it: reaching
-     * {@code maximum + 1} bytes is an overflow, while exactly {@code maximum}
-     * bytes followed by EOF is accepted. A provider that reports a wrong length,
-     * or none at all, therefore cannot smuggle metadata past the limit, and a
-     * zero-length read is treated as a stall rather than as EOF.</p>
+     * {@code maximum + 1} bytes is an overflow, while exactly {@code
+     * maximum} bytes followed by EOF is accepted. A provider that
+     * reports a wrong length, or none at all, therefore cannot smuggle
+     * metadata past the limit, and a zero-length read is treated as a
+     * stall rather than as EOF.</p>
      *
-     * <p>Cancellation is cooperative: the calling thread's interrupt flag is
-     * checked between reads. The stream is never closed here, so the caller
-     * decides when the provider capability is released.</p>
+     * <p>Cancellation is cooperative: the calling thread's interrupt
+     * flag is checked between reads. The stream is never closed here,
+     * so the caller decides when the provider capability is
+     * released.</p>
      *
      * @param input stream from a user-selected document provider
      * @param maximum accepted byte count, up to the import limit
      * @return nonempty bytes read through EOF
-     * @throws IOException on invalid bounds, overflow, observed interruption or stalled input
+     * @throws IOException on invalid bounds, overflow, observed
+     *                     interruption or stalled input
      */
     static byte[] read(InputStream input, int maximum) throws IOException {
         if (input == null || maximum < 1 || maximum > TorrentControl.MAX_IMPORT_BYTES) {
@@ -54,8 +61,9 @@ final class TorrentDocumentReader {
         byte[] buffer = new byte[Math.min(maximum, 8192)];
         int total = 0;
         for (;;) {
-            // Read one additional byte at the cap so exact-cap documents are
-            // accepted only at EOF; a dishonest/unknown provider length is safe.
+            // Read one additional byte at the cap so exact-cap
+            // documents are accepted only at EOF; a dishonest/unknown
+            // provider length is safe.
             int length = input.read(buffer, 0, Math.min(buffer.length, maximum - total + 1));
             if (length == -1)
                 break;

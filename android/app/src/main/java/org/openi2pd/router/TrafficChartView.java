@@ -1,13 +1,13 @@
 /*
- * See the LICENSE file at the top of the project tree for copyright
- * and license details.
+ * See the LICENSE file at the top of the project tree for copyright and
+ * license details.
  *
  * openi2pd: TrafficChartView.
  *
- * Custom view with a fixed 120-sample ring buffer for download and upload
- * rates. It draws the grid plus a solid download and dashed upload series with
- * theme colours, so the two remain distinguishable without relying on hue, and
- * never calls native code or performs I/O.
+ * Custom view with a fixed 120-sample ring buffer for download and
+ * upload rates. It draws the grid plus a solid download and dashed
+ * upload series with theme colours, so the two remain distinguishable
+ * without relying on hue, and never calls native code or performs I/O.
  *
  */
 
@@ -29,9 +29,9 @@ import androidx.core.content.ContextCompat;
  * Compact, allocation-bounded traffic chart.
  *
  * <p>The view owns a fixed-size ring buffer. Samples are supplied by
- * {@link StatisticsFragment} from the router snapshot; the view itself never
- * calls native code and never performs I/O. Drawing is a simple canvas pass
- * over at most {@link #MAX_SAMPLES} points.</p>
+ * {@link StatisticsFragment} from the router snapshot; the view itself
+ * never calls native code and never performs I/O. Drawing is a simple
+ * canvas pass over at most {@link #MAX_SAMPLES} points.</p>
  */
 public class TrafficChartView extends View {
     public static final int MAX_SAMPLES = 120;
@@ -87,8 +87,9 @@ public class TrafficChartView extends View {
         uploadPaint.setStrokeWidth(dp(2f));
         uploadPaint.setStrokeCap(Paint.Cap.ROUND);
         uploadPaint.setStrokeJoin(Paint.Join.ROUND);
-        // A dashed upload line keeps the two series distinguishable without
-        // relying on colour alone (grayscale, colour-vision deficiency).
+        // A dashed upload line keeps the two series distinguishable
+        // without relying on colour alone (grayscale, colour-vision
+        // deficiency).
         uploadPaint.setPathEffect(new DashPathEffect(new float[] {dp(6f), dp(4f)}, 0f));
 
         downloadFillPaint.setColor(downloadColor);
@@ -101,8 +102,8 @@ public class TrafficChartView extends View {
     }
 
     /**
-     * Add one sample. Negative values are clamped to zero. The oldest sample
-     * is discarded once the ring is full.
+     * Add one sample. Negative values are clamped to zero. The oldest
+     * sample is discarded once the ring is full.
      */
     public void addSample(long downloadBytesPerSecond, long uploadBytesPerSecond) {
         downloadHistory[nextIndex] = Math.max(0L, downloadBytesPerSecond);
@@ -120,7 +121,9 @@ public class TrafficChartView extends View {
         invalidate();
     }
 
-    /** Actual peak across the retained download/upload samples, or zero. */
+    /**
+     * Actual peak across the retained download/upload samples, or zero.
+     */
     public long getPeakBytesPerSecond() {
         long peak = 0L;
         for (int i = 0; i < sampleCount; i++) {

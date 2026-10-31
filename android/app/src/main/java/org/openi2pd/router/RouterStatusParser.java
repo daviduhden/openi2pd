@@ -1,13 +1,14 @@
 /*
- * See the LICENSE file at the top of the project tree for copyright
- * and license details.
+ * See the LICENSE file at the top of the project tree for copyright and
+ * license details.
  *
  * openi2pd: RouterStatusParser.
  *
- * Parsers for the native status snapshot and log stream; both inputs are
- * treated as untrusted even though they come from the in-process library.
- * Fields are length-limited, numeric values range-checked and addresses capped
- * at 32 entries, so malformed input degrades to defaults instead of throwing.
+ * Parsers for the native status snapshot and log stream; both inputs
+ * are treated as untrusted even though they come from the in-process
+ * library. Fields are length-limited, numeric values range-checked and
+ * addresses capped at 32 entries, so malformed input degrades to
+ * defaults instead of throwing.
  *
  */
 
@@ -23,23 +24,24 @@ import java.util.Map;
 /**
  * Parsers for the two bounded native text formats.
  *
- * <p>Both formats are line oriented and are treated as untrusted input even
- * though they come from the in-process native library: values are length
- * bounded, numeric fields are range checked and no value is ever interpreted
- * as a path, command or format string.</p>
+ * <p>Both formats are line oriented and are treated as untrusted input
+ * even though they come from the in-process native library: values are
+ * length bounded, numeric fields are range checked and no value is ever
+ * interpreted as a path, command or format string.</p>
  *
- * <p>The parsers are pure and static: they perform no I/O, hold no state and
- * never throw for malformed input, so they run on the service worker thread
- * that fetched the text rather than on the main thread. The enforced limits are
- * {@value #MAX_ADDRESSES} addresses, {@value #MAX_RAW_LENGTH} characters of
- * input, a 64-character key and status field, a 128-character host and error
- * field and {@value #MAX_LOG_TEXT_LENGTH} characters of log text; a value
- * beyond its bound is truncated or ignored, never trusted.</p>
+ * <p>The parsers are pure and static: they perform no I/O, hold no
+ * state and never throw for malformed input, so they run on the service
+ * worker thread that fetched the text rather than on the main thread.
+ * The enforced limits are {@value #MAX_ADDRESSES} addresses, {@value
+ * #MAX_RAW_LENGTH} characters of input, a 64-character key and status
+ * field, a 128-character host and error field and {@value
+ * #MAX_LOG_TEXT_LENGTH} characters of log text; a value beyond its
+ * bound is truncated or ignored, never trusted.</p>
  *
  * <p>Every numeric or boolean field falls back to a default rather than
- * propagating an exception. A snapshot without a parsable {@code statusCode}
- * keeps the negative sentinel, so it is never reported as observed state even
- * though the remaining fields may have parsed.</p>
+ * propagating an exception. A snapshot without a parsable {@code
+ * statusCode} keeps the negative sentinel, so it is never reported as
+ * observed state even though the remaining fields may have parsed.</p>
  */
 final class RouterStatusParser {
     private static final int MAX_ADDRESSES = 32;
@@ -51,24 +53,25 @@ final class RouterStatusParser {
     }
 
     /**
-     * Parse the newline-separated {@code key=value} snapshot produced by
-     * {@code I2PD_JNI.getStatusSnapshot()}.
+     * Parse the newline-separated {@code key=value} snapshot produced
+     * by {@code I2PD_JNI.getStatusSnapshot()}.
      *
-     * <p>A missing {@code statusCode} stays {@code -1} (the native error
-     * snapshot value); {@code 0} is a valid code and must not be used as a
-     * sentinel, because {@link RouterSnapshot#hasStatus()} would then report the
-     * online state incorrectly. {@code online} defaults to "state started and
-     * statusCode >= 0", so a truncated snapshot cannot make a failed router look
-     * reachable.</p>
+     * <p>A missing {@code statusCode} stays {@code -1} (the native
+     * error snapshot value); {@code 0} is a valid code and must not be
+     * used as a sentinel, because {@link RouterSnapshot#hasStatus()}
+     * would then report the online state incorrectly. {@code online}
+     * defaults to "state started and statusCode >= 0", so a truncated
+     * snapshot cannot make a failed router look reachable.</p>
      *
-     * <p>The returned record is display input only and carries no native handle.
-     * Addresses are appended from the {@code ipv4}/{@code ipv6} fields in that
-     * order and truncated to {@value #MAX_ADDRESSES}; entries without a
-     * transport, host or positive port are dropped.</p>
+     * <p>The returned record is display input only and carries no
+     * native handle. Addresses are appended from the {@code
+     * ipv4}/{@code ipv6} fields in that order and truncated to {@value
+     * #MAX_ADDRESSES}; entries without a transport, host or positive
+     * port are dropped.</p>
      *
-     * <p>Runs on the service worker thread; the {@code state}, {@code services},
-     * grace deadline and diagnostic strings are supplied by the caller rather
-     * than parsed from the text.</p>
+     * <p>Runs on the service worker thread; the {@code state}, {@code
+     * services}, grace deadline and diagnostic strings are supplied by
+     * the caller rather than parsed from the text.</p>
      */
     static RouterSnapshot parseStatus(String raw, DaemonWrapper.State state, ServiceStates services,
             long graceRemainingMillis, String errorText, String startResult) {
@@ -81,9 +84,10 @@ final class RouterStatusParser {
         int statusCode = intValue(values.get("statusCode"), -1, true);
         String routerError = normalizeError(values.get("error"));
         long uptime = longValue(values.get("uptime"), 0L);
-        // The native error snapshot uses statusCode=-1. If a key is missing
-        // from a malformed snapshot, do not report a failed router as online
-        // just because the Java state says the native process started.
+        // The native error snapshot uses statusCode=-1. If a key is
+        // missing from a malformed snapshot, do not report a failed
+        // router as online just because the Java state says the native
+        // process started.
         boolean online = booleanValue(values.get("online"), started && statusCode >= 0);
         boolean ntcp2 = booleanValue(values.get("ntcp2"), false);
         boolean ssu2 = booleanValue(values.get("ssu2"), false);
@@ -113,21 +117,25 @@ final class RouterStatusParser {
     }
 
     /**
-     * Parse records of the form {@code sequence|timestampSeconds|level|text}.
-     * The text field may contain {@code |}, so the split is limited to four
-     * fields. Records at or below {@code afterSequence} are ignored.
+     * Parse records of the form {@code
+     * sequence|timestampSeconds|level|text}. The text field may contain
+     * {@code |}, so the split is limited to four fields. Records at or
+     * below {@code afterSequence} are ignored.
      *
-     * <p>The sequence cursor is the only ordering contract: entries are returned
-     * in input order and the caller advances its cursor to the highest returned
-     * sequence. Text is truncated to {@value #MAX_LOG_TEXT_LENGTH} characters,
-     * the batch is rejected entirely above {@value #MAX_RAW_LENGTH} characters,
-     * the line split stops at 512 records and an unparsable or negative sequence
-     * drops that record instead of failing the batch. The level is normalised to
-     * the textual native names; an unknown level is preserved verbatim so the
-     * display filter can show it rather than silently reclassifying it.</p>
+     * <p>The sequence cursor is the only ordering contract: entries are
+     * returned in input order and the caller advances its cursor to the
+     * highest returned sequence. Text is truncated to {@value
+     * #MAX_LOG_TEXT_LENGTH} characters, the batch is rejected entirely
+     * above {@value #MAX_RAW_LENGTH} characters, the line split stops
+     * at 512 records and an unparsable or negative sequence drops that
+     * record instead of failing the batch. The level is normalised to
+     * the textual native names; an unknown level is preserved verbatim
+     * so the display filter can show it rather than silently
+     * reclassifying it.</p>
      *
-     * <p>Runs on the service worker thread; log text is untrusted display data
-     * and must not be logged again or interpreted as a format string.</p>
+     * <p>Runs on the service worker thread; log text is untrusted
+     * display data and must not be logged again or interpreted as a
+     * format string.</p>
      */
     static List<LogEntry> parseLogs(String raw, long afterSequence) {
         if (raw == null || raw.isEmpty() || raw.length() > MAX_RAW_LENGTH) {
@@ -229,9 +237,9 @@ final class RouterStatusParser {
 
     /**
      * The native ring currently serialises its numeric {@code LogLevel}
-     * (0 none, 1 critical, 2 error, 3 warn, 4 info, 5 debug). Textual levels
-     * are accepted too so the parser also works with the documented
-     * sequence|timestamp|level|text variant.
+     * (0 none, 1 critical, 2 error, 3 warn, 4 info, 5 debug). Textual
+     * levels are accepted too so the parser also works with the
+     * documented sequence|timestamp|level|text variant.
      */
     private static String normalizeLevel(String raw) {
         String level = raw == null ? "" : raw.trim().toLowerCase(Locale.ROOT);

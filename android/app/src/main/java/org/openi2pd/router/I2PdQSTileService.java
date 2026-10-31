@@ -1,14 +1,14 @@
 /*
- * See the LICENSE file at the top of the project tree for copyright
- * and license details.
+ * See the LICENSE file at the top of the project tree for copyright and
+ * license details.
  *
  * openi2pd: I2PdQSTileService.
  *
- * Quick Settings tile that sends the same explicit start/stop service intents
- * as the UI, gated behind an unlock prompt on the lock screen, and refreshes
- * from the process-wide router flag when listening starts. A command the
- * system refuses is logged and the tile keeps the previous state instead of
- * showing an optimistic one.
+ * Quick Settings tile that sends the same explicit start/stop service
+ * intents as the UI, gated behind an unlock prompt on the lock screen,
+ * and refreshes from the process-wide router flag when listening
+ * starts. A command the system refuses is logged and the tile keeps the
+ * previous state instead of showing an optimistic one.
  *
  */
 
@@ -21,10 +21,10 @@ import android.util.Log;
 /**
  * Quick Settings tile.
  *
- * <p>The tile sends the same explicit start/stop commands as the UI. It never
- * creates daemon state itself, never touches native code and does not need an
- * Activity. A tile click is a user interaction, so starting a foreground
- * service from it is permitted on modern Android.</p>
+ * <p>The tile sends the same explicit start/stop commands as the UI. It
+ * never creates daemon state itself, never touches native code and does
+ * not need an Activity. A tile click is a user interaction, so starting
+ * a foreground service from it is permitted on modern Android.</p>
  */
 public class I2PdQSTileService extends TileService {
     private static final String TAG = "I2PdQSTileService";
@@ -33,7 +33,8 @@ public class I2PdQSTileService extends TileService {
     public void onClick() {
         super.onClick();
         if (isLocked()) {
-            // Do not expose router start/stop controls on the lock screen.
+            // Do not expose router start/stop controls on the lock
+            // screen.
             unlockAndRun(this::toggleRouter);
             return;
         }
@@ -45,15 +46,15 @@ public class I2PdQSTileService extends TileService {
         boolean delivered =
                 wasRunning ? RouterService.requestStop(this) : RouterService.requestStart(this);
         if (!delivered) {
-            // Do not show a state the service never accepted (Android 12+
-            // background-start restrictions and Android 15 BOOT_COMPLETED
-            // limits can reject the command).
+            // Do not show a state the service never accepted (Android
+            // 12+ background-start restrictions and Android 15
+            // BOOT_COMPLETED limits can reject the command).
             Log.w(TAG, "unable to deliver router command from tile");
             updateTile(wasRunning);
             return;
         }
-        // Optimistic UI; onStartListening() refreshes from the real service
-        // state once the command has been applied.
+        // Optimistic UI; onStartListening() refreshes from the real
+        // service state once the command has been applied.
         updateTile(!wasRunning);
     }
 

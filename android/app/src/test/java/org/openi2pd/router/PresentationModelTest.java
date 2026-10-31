@@ -1,12 +1,12 @@
 /*
- * See the LICENSE file at the top of the project tree for copyright
- * and license details.
+ * See the LICENSE file at the top of the project tree for copyright and
+ * license details.
  *
  * openi2pd: PresentationModelTest.
  *
- * Pure-JVM tests for the immutable presentation records and their defensive
- * bounds: null normalisation, port clamping and message truncation. No Android
- * Context, JNI call or emulator is involved.
+ * Pure-JVM tests for the immutable presentation records and their
+ * defensive bounds: null normalisation, port clamping and message
+ * truncation. No Android Context, JNI call or emulator is involved.
  *
  */
 

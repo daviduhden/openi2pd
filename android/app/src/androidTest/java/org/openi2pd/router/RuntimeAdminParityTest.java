@@ -1,13 +1,14 @@
 /*
- * See the LICENSE file at the top of the project tree for copyright
- * and license details.
+ * See the LICENSE file at the top of the project tree for copyright and
+ * license details.
  *
  * openi2pd: RuntimeAdminParityTest.
  *
- * Instrumentation checks for the bounded runtime router-admin parity surface:
- * the log-level preference values must equal the exact closed set accepted by
- * the native logger, and unknown values must be rejected before any native
- * call. No daemon is started and no socket or network is used.
+ * Instrumentation checks for the bounded runtime router-admin parity
+ * surface: the log-level preference values must equal the exact closed
+ * set accepted by the native logger, and unknown values must be
+ * rejected before any native call. No daemon is started and no socket
+ * or network is used.
  *
  */
 
@@ -27,12 +28,14 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 
 /**
- * Static-consistency regressions for reseed and runtime log-level parity.
+ * Static-consistency regressions for reseed and runtime log-level
+ * parity.
  *
- * <p>The preference array is the UI source of the level values; the native
- * setter accepts only the same closed set. This test pins the two together so
- * a future list edit cannot silently make a value unappliable at runtime. It is
- * prepared for the manual Android CI job and is not run locally.</p>
+ * <p>The preference array is the UI source of the level values; the
+ * native setter accepts only the same closed set. This test pins the
+ * two together so a future list edit cannot silently make a value
+ * unappliable at runtime. It is prepared for the manual Android CI job
+ * and is not run locally.</p>
  */
 @RunWith(AndroidJUnit4.class)
 public final class RuntimeAdminParityTest {
@@ -61,11 +64,13 @@ public final class RuntimeAdminParityTest {
 
     @Test
     public void stoppedRouterRejectsRuntimeAdminCalls() {
-        // No test in this suite starts the daemon; skip instead of failing if a
-        // future test leaves one running in the shared instrumentation process.
+        // No test in this suite starts the daemon; skip instead of
+        // failing if a future test leaves one running in the shared
+        // instrumentation process.
         org.junit.Assume.assumeFalse("router already running", RouterService.isRouterRunning());
-        // The library is loaded here only to prove the JNI entry points fail
-        // closed while no daemon is running; nothing is initialised or started.
+        // The library is loaded here only to prove the JNI entry points
+        // fail closed while no daemon is running; nothing is
+        // initialised or started.
         I2PD_JNI.loadLibraries();
         assertEquals("unavailable", I2PD_JNI.requestReseed());
         assertEquals("", I2PD_JNI.getReseedStatus());
@@ -80,15 +85,17 @@ public final class RuntimeAdminParityTest {
                 "unavailable", I2PD_JNI.banRouter("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="));
         assertEquals("unavailable",
                 I2PD_JNI.unbanRouter("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="));
-        // Even a valid level is rejected: the daemon, not the name, is missing.
+        // Even a valid level is rejected: the daemon, not the name, is
+        // missing.
         assertFalse(I2PD_JNI.setRuntimeLogLevel("debug"));
         assertFalse(I2PD_JNI.setRuntimeLogLevel("verbose"));
     }
 
     @Test
     public void oversizedArgumentsAreRejectedBeforeAnyNativeWork() {
-        // The length caps are checked on the Java side before conversion, and
-        // again in native code; an oversized value can never become a command.
+        // The length caps are checked on the Java side before
+        // conversion, and again in native code; an oversized value can
+        // never become a command.
         org.junit.Assume.assumeFalse("router already running", RouterService.isRouterRunning());
         I2PD_JNI.loadLibraries();
         StringBuilder tunnelName = new StringBuilder();
@@ -99,9 +106,9 @@ public final class RuntimeAdminParityTest {
         for (int i = 0; i < 45; ++i) {
             hash.append('A');
         }
-        // The native entry points reject an oversized value with "invalid" (or
-        // "unavailable" when the router is stopped) but never with a token that
-        // reports success.
+        // The native entry points reject an oversized value with
+        // "invalid" (or "unavailable" when the router is stopped) but
+        // never with a token that reports success.
         assertNotEquals("started", I2PD_JNI.startTunnel(tunnelName.toString()));
         assertNotEquals("stopped", I2PD_JNI.stopTunnel(tunnelName.toString()));
         assertNotEquals("ok", I2PD_JNI.banRouter(hash.toString()));

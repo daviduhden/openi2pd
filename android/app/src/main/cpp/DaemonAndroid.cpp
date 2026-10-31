@@ -1,15 +1,16 @@
 /*
- * See the LICENSE file at the top of the project tree for copyright
- * and license details.
+ * See the LICENSE file at the top of the project tree for copyright and
+ * license details.
  *
  * openi2pd: DaemonAndroid.
  *
  * Implements the native daemon lifecycle behind JNI: it waits for the
- * assets.ready marker, initialises and starts i2p::Daemon and returns a
- * bounded error string on failure. A mutex serialises control and status
- * calls, and an atomic lifecycle mirror is published before each transition
- * so a torn-down router is never touched. A separate lock-free cancellation
- * token aborts a start that currently owns that mutex.
+ * assets.ready marker, initializes and starts i2p::Daemon and returns a
+ * bounded error string on failure. A mutex serializes control and
+ * status calls, and an atomic lifecycle mirror is published before each
+ * transition so a torn-down router is never touched. A separate
+ * lock-free cancellation token aborts a start that currently owns that
+ * mutex.
  *
  */
 
@@ -125,25 +126,26 @@ namespace android
 	static char * argv[] = { programName, nullptr };
 
 	/**
-	 * Run one complete start transition: wait for the packaged assets, set the
-	 * application data directory, Daemon.init(), then Daemon.start().
+	 * Run one complete start transition: wait for the packaged assets, set
+	 * the application data directory, Daemon.init(), then Daemon.start().
 	 *
-	 * The caller must already hold a NativeCallGuard. A start-cancellation token
-	 * is cleared first, so only a request that arrives after this point aborts
-	 * this attempt. Cancellation is observed during the bounded asset wait and
-	 * between init and start; an aborted transition returns
-	 * START_CANCELED_RESULT and the lifecycle helper rolls the already
-	 * initialized daemon back exactly once.
+	 * The caller must already hold a NativeCallGuard. A start-cancellation
+	 * token is cleared first, so only a request that arrives after this
+	 * point aborts this attempt. Cancellation is observed during the
+	 * bounded asset wait and between init and start; an aborted transition
+	 * returns START_CANCELED_RESULT and the lifecycle helper rolls the
+	 * already initialized daemon back exactly once.
 	 *
 	 * @return "ok" after initialization and start succeeded, a bounded
-	 *         diagnostic on failure, or START_CANCELED_RESULT when a stop
-	 *         request won the race
+	 * diagnostic on failure, or START_CANCELED_RESULT when a stop request
+	 * won the race
 	 */
 	std::string start (/*int argc, char* argv[]*/)
 	{
 		// A token left behind by an earlier stop belongs to the previous
 		// lifecycle. Only a request that arrives after this point aborts this
-		// start; the packaged-asset wait and the init/start boundary observe it.
+		// start; the packaged-asset wait and the init/start boundary observe
+		// it.
 		startCancelRequested.store (false, std::memory_order_release);
 		std::string setupFailure;
 		bool canceled = false;
@@ -175,9 +177,9 @@ namespace android
 							break;
 						}
 						numAttempts++;
-						// Sleep in bounded slices so a stop request that
-						// arrives during the wait is observed within ~100 ms
-						// instead of after the whole second.
+						// Sleep in bounded slices so a stop request that arrives during
+						// the wait is observed within ~100 ms instead of after the whole
+						// second.
 						for (int slice = 0; slice < 10 && !IsStartCancelRequested (); ++slice)
 							std::this_thread::sleep_for (std::chrono::milliseconds (100));
 					} while (numAttempts <= 10); // 10 seconds max
@@ -204,9 +206,9 @@ namespace android
 				},
 				[&] ()
 				{
-					// Between init and start: an aborted start returns false so
-					// the lifecycle owner rolls the initialized daemon back
-					// (exactly one stop) before publishing Stopped.
+					// Between init and start: an aborted start returns false so the
+					// lifecycle owner rolls the initialized daemon back (exactly one
+					// stop) before publishing Stopped.
 					if (IsStartCancelRequested ())
 					{
 						canceled = true;

@@ -1,14 +1,15 @@
 /*
- * See the LICENSE file at the top of the project tree for copyright
- * and license details.
+ * See the LICENSE file at the top of the project tree for copyright and
+ * license details.
  *
  * openi2pd: SettingsFragment.
  *
- * {@link PreferenceFragmentCompat} over a validated subset of {@code i2pd.conf};
- * keys naming key material or passwords are deliberately absent. File reads
- * and writes run on a single daemon background executor with results applied
- * back on the main thread, and each change reports whether it is hot, needs a
- * restart or needs a tunnel reload.
+ * {@link PreferenceFragmentCompat} over a validated subset of {@code
+ * i2pd.conf}; keys naming key material or passwords are deliberately
+ * absent. File reads and writes run on a single daemon background
+ * executor with results applied back on the main thread, and each
+ * change reports whether it is hot, needs a restart or needs a tunnel
+ * reload.
  *
  */
 
@@ -48,13 +49,14 @@ import java.util.concurrent.Executors;
 /**
  * Grouped, validated settings backed by {@link RouterConfigStore}.
  *
- * <p>Only configuration keys are shown. Key files, passwords and other secret
- * material are intentionally not exposed. Changes report whether they are hot,
- * require a restart, or require a tunnel reload.</p>
+ * <p>Only configuration keys are shown. Key files, passwords and other
+ * secret material are intentionally not exposed. Changes report whether
+ * they are hot, require a restart, or require a tunnel reload.</p>
  *
- * <p>The configuration file is read and written on one background executor.
- * Preferences are only updated back on the main thread, so opening or editing
- * settings never performs file I/O on the UI thread.</p>
+ * <p>The configuration file is read and written on one background
+ * executor. Preferences are only updated back on the main thread, so
+ * opening or editing settings never performs file I/O on the UI
+ * thread.</p>
  */
 public class SettingsFragment extends PreferenceFragmentCompat {
     private static final ExecutorService CONFIG_IO = Executors.newSingleThreadExecutor(runnable -> {
@@ -73,10 +75,10 @@ public class SettingsFragment extends PreferenceFragmentCompat {
     private boolean restartDialogShown;
     private boolean viewDestroyed;
     /**
-     * View generation. Every asynchronous configuration load or save captures
-     * the current value and is applied only while it still matches and the view
-     * exists, so a result that arrives after {@link #onDestroyView()} cannot
-     * touch a detached view.
+     * View generation. Every asynchronous configuration load or save
+     * captures the current value and is applied only while it still
+     * matches and the view exists, so a result that arrives after
+     * {@link #onDestroyView()} cannot touch a detached view.
      */
     private int loadGeneration;
 
@@ -320,9 +322,10 @@ public class SettingsFragment extends PreferenceFragmentCompat {
     }
 
     /**
-     * Per-app language selection. AppCompat stores the choice without touching
-     * the device locale; an empty locale list follows the system. This is the
-     * only runtime locale override allowed in the app.
+     * Per-app language selection. AppCompat stores the choice without
+     * touching the device locale; an empty locale list follows the
+     * system. This is the only runtime locale override allowed in the
+     * app.
      */
     private void bindLanguagePreference() {
         ListPreference preference = findPreference("uiLanguagePreference");
@@ -364,11 +367,12 @@ public class SettingsFragment extends PreferenceFragmentCompat {
     /**
      * Runtime apply control for the log level.
      *
-     * <p>The preference file keeps the value for the next start; a running
-     * router is updated through the service's typed worker action so the new
-     * level takes effect without a restart. The accepted values come from the
-     * same {@code pref_loglevel_values} array used by the list, which mirrors
-     * the exact closed set the native logger accepts.</p>
+     * <p>The preference file keeps the value for the next start; a
+     * running router is updated through the service's typed worker
+     * action so the new level takes effect without a restart. The
+     * accepted values come from the same {@code pref_loglevel_values}
+     * array used by the list, which mirrors the exact closed set the
+     * native logger accepts.</p>
      */
     private void bindLogLevel() {
         ListPreference preference = findPreference("logLevelPreference");
@@ -408,15 +412,16 @@ public class SettingsFragment extends PreferenceFragmentCompat {
     }
 
     /**
-     * Hand the saved level to the running logger. A stopped router keeps the
-     * value in the file and applies it on the next start; a running router
-     * that rejects it is reported as a failure instead of looking applied.
+     * Hand the saved level to the running logger. A stopped router
+     * keeps the value in the file and applies it on the next start; a
+     * running router that rejects it is reported as a failure instead
+     * of looking applied.
      */
     private void applyRuntimeLogLevel(@NonNull String level) {
         RouterViewModel local = viewModel;
         if (local == null) {
-            // Without a view model there is no service bridge, so the saved
-            // value can only take effect at the next start.
+            // Without a view model there is no service bridge, so the
+            // saved value can only take effect at the next start.
             Toast.makeText(requireContext(), R.string.pref_apply_restart, Toast.LENGTH_SHORT)
                     .show();
             return;

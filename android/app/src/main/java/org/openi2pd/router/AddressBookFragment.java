@@ -1,13 +1,13 @@
 /*
- * See the LICENSE file at the top of the project tree for copyright
- * and license details.
+ * See the LICENSE file at the top of the project tree for copyright and
+ * license details.
  *
  * openi2pd: AddressBookFragment.
  *
- * Native Material address-book list, add-or-replace dialogs and subscription
- * source administration. The screen talks only through RouterViewModel's
- * worker-backed JNI bridge; it never reads address-book files, key material or
- * storage paths.
+ * Native Material address-book list, add-or-replace dialogs and
+ * subscription source administration. The screen talks only through
+ * RouterViewModel's worker-backed JNI bridge; it never reads
+ * address-book files, key material or storage paths.
  */
 
 package org.openi2pd.router;
@@ -30,25 +30,28 @@ import com.google.android.material.textfield.TextInputEditText;
 import com.google.android.material.textfield.TextInputLayout;
 
 /**
- * Bounded address-book administration; no files or native handles reach the UI.
+ * Bounded address-book administration; no files or native handles reach
+ * the UI.
  *
- * <p>Every read and mutation is a request to {@link RouterViewModel}, which owns
- * the worker hop into the daemon-owned administrative queue; this fragment never
- * touches native code, address-book files, key material or storage paths, and
- * the returned strings are treated as untrusted display text.</p>
+ * <p>Every read and mutation is a request to {@link RouterViewModel},
+ * which owns the worker hop into the daemon-owned administrative queue;
+ * this fragment never touches native code, address-book files, key
+ * material or storage paths, and the returned strings are treated as
+ * untrusted display text.</p>
  *
- * <p><b>Lifecycle and async results.</b> All work runs on the main thread
- * except the bridge call itself. Each bridge callback captures
- * {@link #generation}; {@code onDestroyView} increments it, so a late result
- * is discarded instead of addressing a released row list. {@link #busy} makes
- * each mutation single-flight: while one request is outstanding every other
- * action returns early, so a double tap cannot enqueue two mutations for the
- * same name.</p>
+ * <p><b>Lifecycle and async results.</b> All work runs on the main
+ * thread except the bridge call itself. Each bridge callback captures
+ * {@link #generation}; {@code onDestroyView} increments it, so a late
+ * result is discarded instead of addressing a released row list. {@link
+ * #busy} makes each mutation single-flight: while one request is
+ * outstanding every other action returns early, so a double tap cannot
+ * enqueue two mutations for the same name.</p>
  *
- * <p><b>Bounds.</b> The length filters mirror the native JNI limits published by
- * {@link RuntimeAdminPolicy}, and at most 200 address rows and 200 blocked
- * patterns are materialised as views; the lists are display views of daemon
- * state, never an authority that is edited in place.</p>
+ * <p><b>Bounds.</b> The length filters mirror the native JNI limits
+ * published by {@link RuntimeAdminPolicy}, and at most 200 address rows
+ * and 200 blocked patterns are materialised as views; the lists are
+ * display views of daemon state, never an authority that is edited in
+ * place.</p>
  */
 public final class AddressBookFragment extends Fragment {
     /** Bounds enforced by the native JNI entry points. */
@@ -62,10 +65,11 @@ public final class AddressBookFragment extends Fragment {
     private TextView status;
     private boolean busy;
     /**
-     * View generation. Bridge callbacks are asynchronous, so the ones that
-     * rebuild a row list capture the current value and discard their result
-     * once {@link #onDestroyView()} has incremented it; a late result must never
-     * address a released list or a detached view.
+     * View generation. Bridge callbacks are asynchronous, so the ones
+     * that rebuild a row list capture the current value and discard
+     * their result once {@link #onDestroyView()} has incremented it; a
+     * late result must never address a released list or a detached
+     * view.
      */
     private int generation;
 
@@ -122,14 +126,16 @@ public final class AddressBookFragment extends Fragment {
     }
 
     /**
-     * Reload address rows and subscription sources, then rebuild both lists.
+     * Reload address rows and subscription sources, then rebuild both
+     * lists.
      *
-     * <p>Main thread. Single-flight through {@link #busy}; the two bridge
-     * callbacks are independent, so either list can render before the other.
-     * Both capture {@link #generation} and discard a result that arrives after
-     * the view was destroyed. Row text is the daemon's {@code name|destination|
-     * blinded} line and is used verbatim for display only; a row click opens a
-     * removal confirmation instead of mutating the book.</p>
+     * <p>Main thread. Single-flight through {@link #busy}; the two
+     * bridge callbacks are independent, so either list can render
+     * before the other. Both capture {@link #generation} and discard a
+     * result that arrives after the view was destroyed. Row text is the
+     * daemon's {@code name|destination| blinded} line and is used
+     * verbatim for display only; a row click opens a removal
+     * confirmation instead of mutating the book.</p>
      */
     private void refresh() {
         if (busy || status == null)
@@ -204,8 +210,8 @@ public final class AddressBookFragment extends Fragment {
                 new android.text.InputFilter.LengthFilter(MAX_DESTINATION)});
         destinationLayout.addView(destination);
         form.addView(destinationLayout);
-        // The daemon never re-points an existing name for a plain add; the
-        // checkbox is the explicit overwrite request.
+        // The daemon never re-points an existing name for a plain add;
+        // the checkbox is the explicit overwrite request.
         MaterialCheckBox replace = new MaterialCheckBox(requireContext());
         replace.setText(R.string.address_book_replace_hint);
         form.addView(replace);
@@ -224,13 +230,14 @@ public final class AddressBookFragment extends Fragment {
     /**
      * Validate and submit one add-or-replace request.
      *
-     * <p>The name and destination are trimmed and checked against the native
-     * bounds before any request is queued; an invalid pair is reported locally
-     * and never reaches the daemon. {@code replace} is the explicit operator
-     * overwrite: a plain add never re-points an existing name, and an
-     * {@code Exists} outcome is answered with a separate confirmation rather
-     * than a silent second write. Outcome tokens are matched against
-     * {@link RuntimeAdminPolicy}; nothing is assumed about their text.</p>
+     * <p>The name and destination are trimmed and checked against the
+     * native bounds before any request is queued; an invalid pair is
+     * reported locally and never reaches the daemon. {@code replace} is
+     * the explicit operator overwrite: a plain add never re-points an
+     * existing name, and an {@code Exists} outcome is answered with a
+     * separate confirmation rather than a silent second write. Outcome
+     * tokens are matched against {@link RuntimeAdminPolicy}; nothing is
+     * assumed about their text.</p>
      */
     private void submitAdd(String name, String destination, boolean replace) {
         if (busy || status == null)
@@ -254,8 +261,9 @@ public final class AddressBookFragment extends Fragment {
                         replace ? R.string.address_book_replaced : R.string.address_book_added);
                 refresh();
             } else if (RuntimeAdminPolicy.isExists(outcome)) {
-                // The daemon reports the existing name instead of silently
-                // overwriting it; offer the explicit replacement.
+                // The daemon reports the existing name instead of
+                // silently overwriting it; offer the explicit
+                // replacement.
                 status.setText(R.string.address_book_exists);
                 confirmReplace(cleanName, cleanDestination);
             } else if ("invalid".equals(outcome)) {

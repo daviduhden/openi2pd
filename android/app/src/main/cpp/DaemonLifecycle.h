@@ -1,12 +1,13 @@
 /*
- * See the LICENSE file at the top of the project tree for copyright
- * and license details.
+ * See the LICENSE file at the top of the project tree for copyright and
+ * license details.
  *
  * openi2pd: Android daemon lifecycle transition.
  *
- * Provides the owner-side start transition shared by Android JNI and its
- * deterministic native regression. The caller serializes lifecycle
- * operations; this helper also rejects re-entry through the atomic state.
+ * Provides the owner-side start transition shared by Android JNI and
+ * its deterministic native regression. The caller serializes lifecycle
+ * operations; this helper also rejects re-entry through the atomic
+ * state.
  *
  */
 
@@ -37,19 +38,24 @@ enum class DaemonStartResult
 	Stopping
 };
 
-/// Own one start transition after atomically claiming the stopped lifecycle.
-/// Initialization failure returns to Stopped without calling stop; the
-/// initializer owns rollback of any partially acquired phases. After a
-/// successful initialization, a failed or throwing start attempts stop once.
-/// Stop exceptions during rollback are suppressed to preserve the failure.
-/// @pre The caller holds the native-call serialization guard. The atomic
-/// claim rejects re-entry but does not serialize other daemon operations.
+/// Own one start transition after atomically claiming the stopped
+/// lifecycle. Initialization failure returns to Stopped without calling
+/// stop; the initializer owns rollback of any partially acquired
+/// phases. After a successful initialization, a failed or throwing
+/// start attempts stop once. Stop exceptions during rollback are
+/// suppressed to preserve the failure.
+/// @pre The caller holds the native-call serialization guard. The
+/// atomic claim rejects re-entry but does not serialize other daemon
+/// operations.
 /// @param lifecycle Atomic lifecycle state owned by the caller.
-/// @param initialize Callable returning whether initialization succeeded.
+/// @param initialize Callable returning whether initialization
+/// succeeded.
 /// @param start Callable returning whether the daemon started.
-/// @param stop Cleanup callable after a successfully initialized start fails.
+/// @param stop Cleanup callable after a successfully initialized start
+/// fails.
 /// @return The result of the transition or the already-active state.
-/// Exceptions from initialization or start propagate after lifecycle reset.
+/// Exceptions from initialization or start propagate after lifecycle
+/// reset.
 template <typename Initialize, typename Start, typename Stop>
 DaemonStartResult StartDaemonLifecycle (
 	std::atomic<DaemonLifecycle> & lifecycle, Initialize && initialize, Start && start, Stop && stop)

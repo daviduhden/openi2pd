@@ -1,20 +1,21 @@
 #!/bin/sh
-# See the LICENSE file at the top of the project tree for copyright
-# and license details.
+# See the LICENSE file at the top of the project tree for copyright and
+# license details.
 #
 # openi2pd: check config.
 #
-# Also asserts that the certificates asset, the bundled-Kotlin workaround and
-# the RouterService-owned graceful-stop path are present, and fails on any
-# app-source reference to a JDK-only API that ART does not provide.
+# Also asserts that the certificates asset, the bundled-Kotlin
+# workaround and the RouterService-owned graceful-stop path are present,
+# and fails on any app-source reference to a JDK-only API that ART does
+# not provide.
 #
-# Contract: a static, grep-only audit of the checked-in Android and native build
-# configuration. It needs no JDK, Android SDK/NDK, Gradle or network access, and
-# it is run from the manual Android job on a clean checkout. Every path it reads
-# is derived from this script's location, so it is safe to invoke from any
-# working directory. It writes nothing and fails on the first violated contract
-# with exit 1 and a diagnostic on stderr; it does not build, dex or run on a
-# device.
+# Contract: a static, grep-only audit of the checked-in Android and
+# native build configuration. It needs no JDK, Android SDK/NDK, Gradle
+# or network access, and it is run from the manual Android job on a
+# clean checkout. Every path it reads is derived from this script's
+# location, so it is safe to invoke from any working directory. It
+# writes nothing and fails on the first violated contract with exit 1
+# and a diagnostic on stderr; it does not build, dex or run on a device.
 #
 
 set -eu
@@ -93,8 +94,8 @@ grep -Fq "versionCode $expected_code" "$app_gradle" ||
 grep -Fq "i2pdBaseVersionCode = $expected_code" "$app_gradle" ||
 	fail 'per-ABI base versionCode does not match the project version'
 
-# Any older release is a silent regression: Java 25 is the project target,
-# not a best-effort option that may fall back to 17/21.
+# Any older release is a silent regression: Java 25 is the project
+# target, not a best-effort option that may fall back to 17/21.
 for older in 8 11 17 21 23 24; do
 	if grep -Fq "JavaVersion.VERSION_$older" "$app_gradle" ||
 		grep -Fq "JavaLanguageVersion.of($older)" "$app_gradle" ||
@@ -107,8 +108,8 @@ grep -Fq 'android.builtInKotlin=false' "$properties" ||
 grep -Fq -- '--min-api 29' "$root/android/tools/java25-probe/verify-java25.sh" ||
 	fail 'Java 25 D8/R8 probe does not match minSdk 29'
 
-# The graceful-stop deadline must be owned by RouterService and enqueued on
-# its worker; a java.util.Timer would call JNI from a timer thread.
+# The graceful-stop deadline must be owned by RouterService and enqueued
+# on its worker; a java.util.Timer would call JNI from a timer thread.
 if grep -RInE 'java\.util\.Timer|TimerTask' "$root/android/app/src/main/java"; then
 	fail 'graceful shutdown uses a java.util.Timer instead of the service worker'
 fi
@@ -117,16 +118,18 @@ grep -Fq 'State.stopping' "$root/android/app/src/main/java/org/openi2pd/router/D
 grep -Fq 'gracefulStopExpired' "$root/android/app/src/main/java/org/openi2pd/router/RouterService.java" ||
 	fail 'RouterService does not schedule the graceful-stop deadline'
 
-# These JDK APIs are not provided by Android's java.* bootclasspath. Keep them
-# out of app and instrumentation source; the Java 25 probe is outside this scan.
+# These JDK APIs are not provided by Android's java.* bootclasspath.
+# Keep them out of app and instrumentation source; the Java 25 probe is
+# outside this scan.
 for source_dir in "$root/android/app/src/main/java" "$root/android/app/src/androidTest/java"; do
 	if grep -RInE 'java\.lang\.foreign|java\.lang\.invoke|java\.lang\.classfile|java\.lang\.ScopedValue|java\.lang\.StableValue|java\.util\.Sequenced|javax\.crypto\.KDF|java\.security\.PEMEncoder|java\.security\.PEMDecoder|Thread\.ofVirtual|Thread\.startVirtualThread|Thread\.ofPlatform|Executors\.newVirtualThreadPerTaskExecutor|StructuredTaskScope|java\.util\.concurrent\.Flow|HexFormat|java\.lang\.MatchException|jdk\.incubator\.vector' \
 		"$source_dir"; then
 		fail 'app or instrumentation source references a JDK-only API that is unavailable on ART'
 	fi
-	# Collection/String convenience APIs exist only on newer Android releases.
-	# Unit tests under src/test run on the build JDK and are intentionally
-	# exempt; main and instrumentation sources run on the API 29 floor.
+	# Collection/String convenience APIs exist only on newer Android
+	# releases. Unit tests under src/test run on the build JDK and are
+	# intentionally exempt; main and instrumentation sources run on the API
+	# 29 floor.
 	if grep -RInE '(List|Map|Set)\.(of|copyOf)\(|Stream\.toList\(|\.toList\(\)|Optional\.isEmpty\(|String\.(repeat|isBlank|strip|lines|formatted)\(' \
 		"$source_dir"; then
 		fail 'app or instrumentation source uses a collection/String API above the API 29 floor'

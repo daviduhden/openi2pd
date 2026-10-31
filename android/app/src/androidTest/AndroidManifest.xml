@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- See the LICENSE file at the top of the project tree for copyright
-     and license details. openi2pd: manual SAF provider regression fixture. -->
+    and license details. openi2pd: manual SAF provider regression
+    fixture. -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <application>
         <provider android:name="org.openi2pd.router.TorrentSafFixtureProvider"

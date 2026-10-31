@@ -1,13 +1,14 @@
 /*
- * See the LICENSE file at the top of the project tree for copyright
- * and license details.
+ * See the LICENSE file at the top of the project tree for copyright and
+ * license details.
  *
  * openi2pd: MainActivityNavigationTest.
  *
- * Espresso smoke test that pins the persisted run flag to false, launches
- * {@link MainActivity}, opens the log screen from the dashboard and verifies
- * that Back returns home. The empty-state assertion guards a former
- * View/TextView cast crash; no native daemon is started.
+ * Espresso smoke test that pins the persisted run flag to false,
+ * launches {@link MainActivity}, opens the log screen from the
+ * dashboard and verifies that Back returns home. The empty-state
+ * assertion guards a former View/TextView cast crash; no native daemon
+ * is started.
  *
  */
 
@@ -36,11 +37,12 @@ import org.junit.runner.RunWith;
 
 /**
  * Instrumentation navigation smoke test. It deliberately persists
- * {@code should_run=false} before launch so opening the activity exercises the
- * service binding and screen transitions without starting the native daemon.
+ * {@code should_run=false} before launch so opening the activity
+ * exercises the service binding and screen transitions without starting
+ * the native daemon.
  *
- * <p>This test is prepared for a device/emulator CI job; it is not executed by
- * the static local workflow.</p>
+ * <p>This test is prepared for a device/emulator CI job; it is not
+ * executed by the static local workflow.</p>
  */
 @RunWith(AndroidJUnit4.class)
 @SdkSuppress(minSdkVersion = 33)
@@ -65,7 +67,8 @@ public final class MainActivityNavigationTest {
 
             onView(withId(R.id.button_dashboard_logs)).perform(click());
             onView(withId(R.id.logs_search)).check(matches(isDisplayed()));
-            // Regression guard for the former View/TextView empty-state crash.
+            // Regression guard for the former View/TextView empty-state
+            // crash.
             onView(withId(R.id.logs_empty_text)).check(matches(isDisplayed()));
 
             pressBack();

@@ -19,7 +19,8 @@ public final class TorrentSafStorageTest {
             assertFalse(path, TorrentSafStorageService.validPath(path));
         assertTrue(TorrentSafStorageService.validPath("torrent/subdirectory/file.bin"));
         assertTrue(TorrentSafStorageService.validPath("日本語/part.bin"));
-        // Android display names may legally contain these; they are not POSIX separators here.
+        // Android display names may legally contain these; they are not
+        // POSIX separators here.
         assertTrue(TorrentSafStorageService.validPath("Album/Track 1: Intro.flac"));
         assertTrue(TorrentSafStorageService.validPath("weird\\name.bin"));
     }
@@ -72,7 +73,8 @@ public final class TorrentSafStorageTest {
     }
     @Test
     public void nestedFixturePathsFollowThePathPolicy() {
-        // The multi-file fixture layout is exactly what the engine opens.
+        // The multi-file fixture layout is exactly what the engine
+        // opens.
         for (String path : new String[] {
                      "torrent/part-00001.bin", "torrent/sub/part-00002.bin", "torrent/empty.bin"})
             assertTrue(path, TorrentSafStorageService.validPath(path));
@@ -84,8 +86,8 @@ public final class TorrentSafStorageTest {
     }
     @Test
     public void exactSizeRulesAreEnforcedOnOpen() {
-        // A read-only open must match the declared length exactly; only a
-        // write-mode open may extend an existing shorter document.
+        // A read-only open must match the declared length exactly; only
+        // a write-mode open may extend an existing shorter document.
         assertFalse(TorrentSafPolicy.canExtendExisting(false, 0, 16384));
         assertTrue(TorrentSafPolicy.canExtendExisting(true, 0, 16384));
         assertTrue(TorrentSafPolicy.canExtendExisting(true, 12000, 16384));
@@ -102,7 +104,8 @@ public final class TorrentSafStorageTest {
         assertFalse(TorrentSafStorageService.validRange(0, 0, 1));
         assertFalse(TorrentSafStorageService.validRange(0, 1, 0));
     }
-    // String.repeat is API 33; instrumentation must still run on API 29.
+    // String.repeat is API 33; instrumentation must still run on API
+    // 29.
     private static String repeat(String value, int count) {
         StringBuilder result = new StringBuilder(value.length() * count);
         for (int i = 0; i < count; ++i)

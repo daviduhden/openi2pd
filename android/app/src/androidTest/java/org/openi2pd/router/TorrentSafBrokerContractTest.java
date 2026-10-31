@@ -1,29 +1,31 @@
 /*
- * See the LICENSE file at the top of the project tree for copyright
- * and license details.
- * openi2pd: end-to-end contract regressions for the real SAF broker process.
+ * See the LICENSE file at the top of the project tree for copyright and
+ * license details. openi2pd: end-to-end contract regressions for the
+ * real SAF broker process.
  *
- * Manual device CI only. The broker is hosted in ":torrent_storage", so these
- * cases exercise the generated Binder stubs, the caller binding, generation
- * fenced retirement and a real rebind after process death.
+ * Manual device CI only. The broker is hosted in ":torrent_storage", so
+ * these cases exercise the generated Binder stubs, the caller binding,
+ * generation fenced retirement and a real rebind after process death.
  *
  * Deliberately not automated here:
- * - A foreign-UID denial needs a helper APK with a different UID; the test app
- *   shares the application UID with the broker by construction.
- * - Payload IO through a granted tree needs a real DocumentsProvider grant.
- *   The in-tree fixture is declared by the instrumentation APK under
- *   android.permission.MANAGE_DOCUMENTS, so neither this process nor the broker
- *   can obtain a URI grant for it; multi-file nested open/read/write, deleted
- *   documents, same-length replacement, no-seek providers and revocation after
- *   open are therefore exercised at the provider boundary by
- *   TorrentSafProviderCancellationTest. The broker-side scenario stays manual:
- *   select a real tree, then run the same nested sequence across a broker
- *   retirement.
- * - A slow provider that ignores cancellation needs the same real grant. The
- *   15 s cancel / 30 s fence stages are pinned by TorrentSafProtocolTest; the
- *   device scenario stays manual: open a handle through a granted tree, start a
- *   blocking provider call and verify that an unrelated handle still answers
- *   after 16 s and that the process has not been replaced.
+ * - A foreign-UID denial needs a helper APK with a different UID; the
+ *   test app shares the application UID with the broker by
+ *   construction.
+ * - Payload IO through a granted tree needs a real DocumentsProvider
+ *   grant. The in-tree fixture is declared by the instrumentation APK
+ *   under android.permission.MANAGE_DOCUMENTS, so neither this process
+ *   nor the broker can obtain a URI grant for it; multi-file nested
+ *   open/read/write, deleted documents, same-length replacement,
+ *   no-seek providers and revocation after open are therefore exercised
+ *   at the provider boundary by TorrentSafProviderCancellationTest. The
+ *   broker-side scenario stays manual: select a real tree, then run the
+ *   same nested sequence across a broker retirement.
+ * - A slow provider that ignores cancellation needs the same real
+ *   grant. The 15 s cancel / 30 s fence stages are pinned by
+ *   TorrentSafProtocolTest; the device scenario stays manual: open a
+ *   handle through a granted tree, start a blocking provider call and
+ *   verify that an unrelated handle still answers after 16 s and that
+ *   the process has not been replaced.
  */
 package org.openi2pd.router;
 
@@ -53,13 +55,14 @@ import org.junit.runner.RunWith;
 /**
  * Manual device-CI contract for the real SAF broker process.
  *
- * <p>Hosts nothing itself: it binds {@code :torrent_storage}, checks the
- * reported generation/API version, that a foreign operation id or wrong owner
- * is refused, that retirement is one-shot and generation-fenced, and that a
- * rebind after broker death reaches a fresh generation. Payload IO through a
- * real tree grant, foreign-UID denial and a provider that ignores cancellation
- * stay manual scenarios; the provider-boundary cases live in
- * {@link TorrentSafProviderCancellationTest}.</p>
+ * <p>Hosts nothing itself: it binds {@code :torrent_storage}, checks
+ * the reported generation/API version, that a foreign operation id or
+ * wrong owner is refused, that retirement is one-shot and
+ * generation-fenced, and that a rebind after broker death reaches a
+ * fresh generation. Payload IO through a real tree grant, foreign-UID
+ * denial and a provider that ignores cancellation stay manual
+ * scenarios; the provider-boundary cases live in {@link
+ * TorrentSafProviderCancellationTest}.</p>
  */
 @RunWith(AndroidJUnit4.class)
 public final class TorrentSafBrokerContractTest {
@@ -92,7 +95,9 @@ public final class TorrentSafBrokerContractTest {
         broker = null;
     }
 
-    /** Binds the real broker or skips when this build cannot host it. */
+    /**
+     * Binds the real broker or skips when this build cannot host it.
+     */
     private void bind() throws InterruptedException {
         final CountDownLatch connected = new CountDownLatch(1);
         final AtomicReference<IBinder> result = new AtomicReference<>();
@@ -123,8 +128,9 @@ public final class TorrentSafBrokerContractTest {
         assertTrue("Broker did not connect within the budget",
                 connected.await(BIND_TIMEOUT_MS, TimeUnit.MILLISECONDS));
         binder = result.get();
-        // The broker stops itself when the native sandbox restriction is
-        // unavailable, which is a device capability issue, not a regression.
+        // The broker stops itself when the native sandbox restriction
+        // is unavailable, which is a device capability issue, not a
+        // regression.
         Assume.assumeNotNull("Broker refused to start (native restriction unavailable)", binder);
         broker = ITorrentSafStorage.Stub.asInterface(binder);
         assertNotNull(broker);
@@ -158,8 +164,9 @@ public final class TorrentSafBrokerContractTest {
     public void foreignGenerationsCannotRetireTheBroker() throws Exception {
         bind();
         long generation = broker.handshake();
-        // Zero, stale and negative generations are typed no-ops: a delayed or
-        // replayed oneway frame must never fence a live broker.
+        // Zero, stale and negative generations are typed no-ops: a
+        // delayed or replayed oneway frame must never fence a live
+        // broker.
         broker.retire(0L);
         broker.retire(generation + 1);
         broker.retire(-generation);
@@ -209,8 +216,9 @@ public final class TorrentSafBrokerContractTest {
         tearDown();
         long start = SystemClock.elapsedRealtime();
         bind();
-        // The client bounds the retiring state at 5 s per check; a cold broker
-        // process start on a slow device still has to fit the bind budget.
+        // The client bounds the retiring state at 5 s per check; a cold
+        // broker process start on a slow device still has to fit the
+        // bind budget.
         assertTrue("Rebind exceeded the bind budget",
                 SystemClock.elapsedRealtime() - start <= BIND_TIMEOUT_MS);
         long replacement = broker.handshake();
@@ -230,11 +238,12 @@ public final class TorrentSafBrokerContractTest {
         bind();
         long replacement = broker.handshake();
         assertNotEquals("A resumed generation was reused", generation, replacement);
-        // A resumed payload read/write would need a persisted tree grant for a
-        // provider both processes can reach; the in-tree fixture is served by
-        // the instrumentation APK under MANAGE_DOCUMENTS. The typed surface,
-        // including the multi-file nested paths the engine uses, is what this
-        // bounded case can pin.
+        // A resumed payload read/write would need a persisted tree
+        // grant for a provider both processes can reach; the in-tree
+        // fixture is served by the instrumentation APK under
+        // MANAGE_DOCUMENTS. The typed surface, including the multi-file
+        // nested paths the engine uses, is what this bounded case can
+        // pin.
         assertEquals(0L,
                 broker.openFile(UNKNOWN, TorrentSafFixtureProvider.PART_ONE,
                         TorrentSafFixtureProvider.PART_ONE_SIZE, false, next()));

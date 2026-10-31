@@ -1,12 +1,12 @@
 /*
- * See the LICENSE file at the top of the project tree for copyright
- * and license details.
+ * See the LICENSE file at the top of the project tree for copyright and
+ * license details.
  *
  * openi2pd: RouterStatusParserTest.
  *
- * Pure-JVM tests for the native snapshot and log parsers: valid fields, missing
- * keys, malformed numbers, address caps and log framing. No JNI call or
- * emulator is required.
+ * Pure-JVM tests for the native snapshot and log parsers: valid fields,
+ * missing keys, malformed numbers, address caps and log framing. No JNI
+ * call or emulator is required.
  *
  */
 
@@ -21,8 +21,8 @@ import org.junit.Test;
 import java.util.List;
 
 /**
- * Pure-JVM tests for the native snapshot and log parsers. They do not call JNI
- * and do not require an emulator.
+ * Pure-JVM tests for the native snapshot and log parsers. They do not
+ * call JNI and do not require an emulator.
  */
 public class RouterStatusParserTest {
     private static RouterSnapshot parse(String text) {

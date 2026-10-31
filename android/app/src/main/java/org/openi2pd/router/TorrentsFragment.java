@@ -1,14 +1,15 @@
 /*
- * See the LICENSE file at the top of the project tree for copyright
- * and license details.
+ * See the LICENSE file at the top of the project tree for copyright and
+ * license details.
  *
  * openi2pd: TorrentsFragment.
  *
  * Administrative torrent screen that talks only through the bounded
- * {@link RouterViewModel} control commands: discovery, magnet add, SAF import,
- * DHT, creation status, priorities, trackers and comments. Closing the screen
- * never stops the service or the torrents, and picker state survives Activity
- * or Fragment recreation through a registered result launcher.
+ * {@link RouterViewModel} control commands: discovery, magnet add, SAF
+ * import, DHT, creation status, priorities, trackers and comments.
+ * Closing the screen never stops the service or the torrents, and
+ * picker state survives Activity or Fragment recreation through a
+ * registered result launcher.
  *
  */
 
@@ -36,14 +37,17 @@ import java.util.Map;
 import java.util.function.Consumer;
 
 /**
- * Material Views for torrent administration through {@link RouterViewModel}.
- * The fragment owns only its view and picker state; the service owns torrent
- * operations and continues when the screen closes. LiveData observers use the
- * view lifecycle, and selected asynchronous completions compare a view
- * generation before updating controls after recreation.
+ * Material Views for torrent administration through {@link
+ * RouterViewModel}. The fragment owns only its view and picker state;
+ * the service owns torrent operations and continues when the screen
+ * closes. LiveData observers use the view lifecycle, and selected
+ * asynchronous completions compare a view generation before updating
+ * controls after recreation.
  */
 public final class TorrentsFragment extends Fragment {
-    /** Highest comment record offset TORRENT-DETAIL accepts (0..255). */
+    /**
+     * Highest comment record offset TORRENT-DETAIL accepts (0..255).
+     */
     private static final int MAX_COMMENT_OFFSET = 255;
     /** Records a torrent retains, including hidden entries. */
     private static final int MAX_COMMENT_TOTAL = 256;
@@ -61,9 +65,10 @@ public final class TorrentsFragment extends Fragment {
                 if (uri == null || !isAdded())
                     return;
                 final int expected = generation;
-                // The grant map commit and the provider round trip run on the
-                // service's SAF worker; the fragment only renders the typed
-                // result and ignores it after its view is gone.
+                // The grant map commit and the provider round trip run
+                // on the service's SAF worker; the fragment only
+                // renders the typed result and ignores it after its
+                // view is gone.
                 model.selectPayloadTree(storageTunnel, storageHash, uri, saved -> {
                     if (expected != generation || status == null || !isAdded())
                         return;
@@ -71,8 +76,9 @@ public final class TorrentsFragment extends Fragment {
                                          : R.string.torrent_storage_permission_required);
                 });
             });
-    // Registration is unconditional and precedes STARTED, so the registry
-    // restores picker results across Activity/Fragment recreation.
+    // Registration is unconditional and precedes STARTED, so the
+    // registry restores picker results across Activity/Fragment
+    // recreation.
     private final ActivityResultLauncher<String[]> openTorrent =
             registerForActivityResult(new ActivityResultContracts.OpenDocument(), document -> {
                 if (document == null || status == null || !isAdded())
@@ -183,8 +189,9 @@ public final class TorrentsFragment extends Fragment {
         rows.setOrientation(LinearLayout.VERTICAL);
         content.addView(rows);
         if (state != null) {
-            // Restore the selected session so a rotation or a process restart
-            // does not reopen the session picker or show another tunnel's rows.
+            // Restore the selected session so a rotation or a process
+            // restart does not reopen the session picker or show
+            // another tunnel's rows.
             tunnel = Math.max(0, state.getInt("torrent_tunnel", 0));
             importTunnel = Math.max(0, state.getInt("torrent_import_tunnel", tunnel));
             storageTunnel = safeTunnelName(state.getString("torrent_storage_tunnel"));
@@ -203,8 +210,8 @@ public final class TorrentsFragment extends Fragment {
     public void onResume() {
         super.onResume();
         // Do not re-open the session picker on every rotation/return. A
-        // restored selection refreshes its session; discover() is only for a
-        // first entry or after the session disappeared.
+        // restored selection refreshes its session; discover() is only
+        // for a first entry or after the session disappeared.
         if (currentTunnelName.isEmpty())
             discover();
         else
@@ -284,9 +291,9 @@ public final class TorrentsFragment extends Fragment {
     }
 
     /**
-     * Session-wide removal, confirmed like a single-torrent removal. The two
-     * variants map to the closed TORRENT-REMOVE-ALL verb; deleting local data
-     * keeps its separate destructive confirmation.
+     * Session-wide removal, confirmed like a single-torrent removal.
+     * The two variants map to the closed TORRENT-REMOVE-ALL verb;
+     * deleting local data keeps its separate destructive confirmation.
      */
     private void removeAllTorrents() {
         if (busy || status == null)
@@ -337,9 +344,10 @@ public final class TorrentsFragment extends Fragment {
     }
 
     /**
-     * True when a new control request may be started. A dialog action that
-     * cannot be sent is reported instead of being dropped silently, so the
-     * dialog never implies a moderation decision the engine never received.
+     * True when a new control request may be started. A dialog action
+     * that cannot be sent is reported instead of being dropped
+     * silently, so the dialog never implies a moderation decision the
+     * engine never received.
      */
     private boolean ready() {
         if (!busy)
@@ -518,10 +526,11 @@ public final class TorrentsFragment extends Fragment {
                                                     }
                                                 })
                                         .show();
-                            // 12/13: explicit single-torrent lifecycle verbs. They
-                            // are typed TORRENT-START/TORRENT-STOP commands built by
-                            // TorrentControl.single(); pause/resume above remain the
-                            // state toggle.
+                            // 12/13: explicit single-torrent lifecycle
+                            // verbs. They are typed
+                            // TORRENT-START/TORRENT-STOP commands built
+                            // by TorrentControl.single(); pause/resume
+                            // above remain the state toggle.
                             case 12 -> single(id, TorrentControl.Action.START);
                             case 13 -> single(id, TorrentControl.Action.STOP);
                             default -> {
@@ -688,8 +697,9 @@ public final class TorrentsFragment extends Fragment {
                                     return;
                                 }
                                 dialog.dismiss();
-                                // Validate/add first. If it fails, preserve the old
-                                // tracker; an interrupted replacement keeps both.
+                                // Validate/add first. If it fails,
+                                // preserve the old tracker; an
+                                // interrupted replacement keeps both.
                                 request(command, result -> {
                                     if (previous == null)
                                         refresh();
@@ -852,9 +862,11 @@ public final class TorrentsFragment extends Fragment {
                                             getString(R.string.torrent_private_tracker_required));
                                 for (int i = 0; i < addresses.length; ++i) {
                                     addresses[i] = addresses[i].trim();
-                                    // A SAF creation has no engine torrent id yet,
-                                    // so the creation-scoped validator applies the
-                                    // same I2P-only URL rules without one.
+                                    // A SAF creation has no engine
+                                    // torrent id yet, so the
+                                    // creation-scoped validator applies
+                                    // the same I2P-only URL rules
+                                    // without one.
                                     TorrentControl.creationTracker(addresses[i]);
                                 }
                                 model.createSafTorrent(source, tree, pieceLength[0], addresses,
@@ -951,9 +963,9 @@ public final class TorrentsFragment extends Fragment {
     }
 
     /**
-     * Comment page size the daemon emits per TORRENT-DETAIL response. The
-     * daemon retains up to 256 records (64 hidden) and the dialog pages
-     * explicitly instead of expecting one unbounded reply.
+     * Comment page size the daemon emits per TORRENT-DETAIL response.
+     * The daemon retains up to 256 records (64 hidden) and the dialog
+     * pages explicitly instead of expecting one unbounded reply.
      */
     private void comments(String id, Map<String, String> fields) {
         boolean enabled = "1".equals(fields.get("comments.enabled"))
@@ -1005,8 +1017,9 @@ public final class TorrentsFragment extends Fragment {
             button(content,
                     enabled ? R.string.torrent_comments_disable : R.string.torrent_comments_enable,
                     ignored -> {
-                        // A dropped moderation request would leave the dialog
-                        // showing a state the engine does not have.
+                        // A dropped moderation request would leave the
+                        // dialog showing a state the engine does not
+                        // have.
                         if (!ready())
                             return;
                         if (enabled) {
@@ -1066,9 +1079,9 @@ public final class TorrentsFragment extends Fragment {
             String when = commentAge(fields.getOrDefault(prefix + "time", "0"));
             if (!when.isEmpty())
                 label.append(" \u00b7 ").append(when);
-            // Hidden records keep the same preview as visible ones: the local
-            // store already ships owner, rating, time and text, and an
-            // operator needs them to decide whether to unhide.
+            // Hidden records keep the same preview as visible ones: the
+            // local store already ships owner, rating, time and text,
+            // and an operator needs them to decide whether to unhide.
             label.append("\n").append(fields.getOrDefault(prefix + "text", ""));
             entry.setText(label.toString());
             final boolean unhide = hidden;
@@ -1086,8 +1099,9 @@ public final class TorrentsFragment extends Fragment {
                                             String command = TorrentControl.commentId(
                                                     tunnel, id, localId, !unhide);
                                             dialog.dismiss();
-                                            // Keep the operator on the same page
-                                            // after a moderation decision.
+                                            // Keep the operator on the
+                                            // same page after a
+                                            // moderation decision.
                                             request(command,
                                                     result
                                                     -> request(TorrentControl.commentPage(tunnel,
@@ -1129,9 +1143,9 @@ public final class TorrentsFragment extends Fragment {
     private String commentAge(String seconds) {
         try {
             long epoch = Long.parseLong(seconds);
-            // Reject non-positive and implausible times: a hostile or broken
-            // peer-supplied record must not overflow the millisecond value or
-            // render as a date decades away.
+            // Reject non-positive and implausible times: a hostile or
+            // broken peer-supplied record must not overflow the
+            // millisecond value or render as a date decades away.
             if (epoch <= 0 || epoch > 4102444800L)
                 return "";
             return android.text.format.DateUtils
@@ -1193,8 +1207,9 @@ public final class TorrentsFragment extends Fragment {
                                 String command = TorrentControl.comment(tunnel, id, rating[0],
                                         String.valueOf(owner.getText()).trim(),
                                         String.valueOf(text.getText()).trim());
-                                // Keep the form open with a visible reason
-                                // instead of discarding the composed comment.
+                                // Keep the form open with a visible
+                                // reason instead of discarding the
+                                // composed comment.
                                 if (!ready())
                                     return;
                                 dialog.dismiss();
@@ -1211,8 +1226,8 @@ public final class TorrentsFragment extends Fragment {
     }
 
     /**
-     * A validation failure that names a resource is already localized; a wire
-     * diagnostic keeps its daemon-provided English text.
+     * A validation failure that names a resource is already localized;
+     * a wire diagnostic keeps its daemon-provided English text.
      */
     private String errorText(IllegalArgumentException error) {
         if (error instanceof TorrentControl.UserMessageException typed) {
@@ -1233,8 +1248,9 @@ public final class TorrentsFragment extends Fragment {
     private void detachStorage(String hash) {
         if (hash == null || !hash.matches("[0-9a-fA-F]{40}") || currentTunnelName.isEmpty())
             return;
-        // The torrrent is already gone; a failed grant release is reported but
-        // never resurrects the row. The operation is off the main thread.
+        // The torrrent is already gone; a failed grant release is
+        // reported but never resurrects the row. The operation is off
+        // the main thread.
         final int expected = generation;
         model.detachPayload(currentTunnelName, hash, released -> {
             if (expected != generation || status == null || !isAdded())

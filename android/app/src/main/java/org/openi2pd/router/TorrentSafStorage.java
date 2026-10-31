@@ -18,14 +18,16 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
- * Client-side SAF capability registry and Binder adapter for torrent payloads.
- * Local root and file IDs survive a broker replacement, while the remote IDs
- * cached in each entry are valid only for one client binding generation.
- * Paths remain relative to an authorized tree and are resolved by the broker.
+ * Client-side SAF capability registry and Binder adapter for torrent
+ * payloads. Local root and file IDs survive a broker replacement, while
+ * the remote IDs cached in each entry are valid only for one client
+ * binding generation. Paths remain relative to an authorized tree and
+ * are resolved by the broker.
  *
- * <p>Binder transactions use a bounded worker queue and typed fallbacks.
- * Calls that can wait for a binding or a provider belong on a worker thread;
- * the main-thread binding check returns unavailable rather than waiting.</p>
+ * <p>Binder transactions use a bounded worker queue and typed
+ * fallbacks. Calls that can wait for a binding or a provider belong on
+ * a worker thread; the main-thread binding check returns unavailable
+ * rather than waiting.</p>
  */
 final class TorrentSafStorage {
     private static final Object lock = new Object();
@@ -34,23 +36,28 @@ final class TorrentSafStorage {
     private static volatile Context context;
     private static ITorrentSafStorage remote;
     private static long generation, nextId = 1, nextOperation = 1;
-    // Broker generation returned by handshake(). It is deliberately separate
-    // from `generation`, which fences this client's own bindings: a broker
-    // replacement never reuses the previous process generation.
+    // Broker generation returned by handshake(). It is deliberately
+    // separate from `generation`, which fences this client's own
+    // bindings: a broker replacement never reuses the previous process
+    // generation.
     private static volatile long brokerGeneration;
-    // The one metadata export in progress, if any. Only this token may be
-    // cancelled administratively; payload IO belongs to the native engine.
+    // The one metadata export in progress, if any. Only this token may
+    // be cancelled administratively; payload IO belongs to the native
+    // engine.
     private static volatile long exportOperation;
     private static final AtomicBoolean exportCanceled = new AtomicBoolean();
     private static volatile IBinder retiringBinder;
     private static final int REQUIRED_API = 2; // ITorrentSafStorage.API_VERSION
-    // A bind is awaited at most this long before the typed fallback is returned.
+    // A bind is awaited at most this long before the typed fallback is
+    // returned.
     private static final long BIND_WAIT_MS = 5000;
-    // Client deadline for one transaction. The broker has its own 15 s cancel
-    // and 30 s fence stages; the client never kills the broker for a deadline.
+    // Client deadline for one transaction. The broker has its own 15 s
+    // cancel and 30 s fence stages; the client never kills the broker
+    // for a deadline.
     private static final long OPERATION_TIMEOUT_MS = 5000;
-    // Upper bound on the "retiring" state: a lost oneway retire() or a provider
-    // that keeps the broker unresponsive must not prevent rebinding forever.
+    // Upper bound on the "retiring" state: a lost oneway retire() or a
+    // provider that keeps the broker unresponsive must not prevent
+    // rebinding forever.
     private static final long RETIREMENT_BOUND_MS = 5000;
     private static final int RETIREMENT_CHECKS = 2;
     // Bounded bind-retry state. Guarded by `lock`.
@@ -58,22 +65,27 @@ final class TorrentSafStorage {
     private static boolean bound, retryScheduled;
     private static final java.util.Map<String, Long> authorized = new java.util.HashMap<>();
     /**
-     * Framework-free bind-retry budget. A permanently broken policy must not
-     * spawn and kill the broker process forever, while a transient crash must
-     * not disable SAF storage until the application restarts. Guarded by the
-     * enclosing client lock; it performs no synchronization of its own.
+     * Framework-free bind-retry budget. A permanently broken policy
+     * must not spawn and kill the broker process forever, while a
+     * transient crash must not disable SAF storage until the
+     * application restarts. Guarded by the enclosing client lock; it
+     * performs no synchronization of its own.
      */
     static final class BindBudget {
         static final int MAX_ATTEMPTS = 6;
-        // A binding that lived less than this is not evidence of a healthy
-        // broker, and an explicit re-arm is honoured at most once per window.
+        // A binding that lived less than this is not evidence of a
+        // healthy broker, and an explicit re-arm is honoured at most
+        // once per window.
         static final long STABLE_BINDING_MS = 30_000;
         private static final long BASE_DELAY_MS = 250, MAX_DELAY_MS = 10_000;
         private int attempts;
         private long connectedAt, retriedAt;
         private boolean connected, retried, exhausted;
 
-        /** Charges one attempt and returns its backoff; -1 means exhausted. */
+        /**
+         * Charges one attempt and returns its backoff; -1 means
+         * exhausted.
+         */
         long charge() {
             if (exhausted)
                 return -1;
@@ -93,9 +105,10 @@ final class TorrentSafStorage {
         }
 
         /**
-         * Records a successful connection. The latch is always cleared; the
-         * attempt budget is restored only when the previous binding was stable,
-         * so a broker that connects and immediately dies stays bounded.
+         * Records a successful connection. The latch is always cleared;
+         * the attempt budget is restored only when the previous binding
+         * was stable, so a broker that connects and immediately dies
+         * stays bounded.
          */
         void connected(long now) {
             exhausted = false;
@@ -106,8 +119,9 @@ final class TorrentSafStorage {
         }
 
         /**
-         * A completed transaction is proof of a usable binding, but it restores
-         * the budget only for a binding past the stability floor.
+         * A completed transaction is proof of a usable binding, but it
+         * restores the budget only for a binding past the stability
+         * floor.
          */
         void answered(long now) {
             if (!connected || now - connectedAt < STABLE_BINDING_MS)
@@ -117,8 +131,9 @@ final class TorrentSafStorage {
         }
 
         /**
-         * Explicit recovery: clears the exhausted latch at most once per
-         * stability window. Returns true when a bind attempt may be scheduled.
+         * Explicit recovery: clears the exhausted latch at most once
+         * per stability window. Returns true when a bind attempt may be
+         * scheduled.
          */
         boolean rearm(long now) {
             if (!exhausted)
@@ -132,7 +147,9 @@ final class TorrentSafStorage {
             return true;
         }
 
-        /** An explicit selection or daemon start begins a fresh episode. */
+        /**
+         * An explicit selection or daemon start begins a fresh episode.
+         */
         void reset() {
             attempts = 0;
             exhausted = false;
@@ -168,7 +185,10 @@ final class TorrentSafStorage {
         T run(Session session) throws Exception;
     }
 
-    /** Why a transaction produced its fallback; the caller decides what to do. */
+    /**
+     * Why a transaction produced its fallback; the caller decides what
+     * to do.
+     */
     private enum Failure { NONE, UNAVAILABLE, BUSY, TIMEOUT, PROTOCOL }
 
     private record Outcome<T>(T value, Failure failure) {
@@ -182,8 +202,9 @@ final class TorrentSafStorage {
                 || failure == Failure.UNAVAILABLE;
     }
 
-    // A blocked Binder transaction can occupy only this single thread. Recovery
-    // never creates a replacement executor or accumulates queued operations.
+    // A blocked Binder transaction can occupy only this single thread.
+    // Recovery never creates a replacement executor or accumulates
+    // queued operations.
     private static final ThreadPoolExecutor calls =
             new ThreadPoolExecutor(1, 1, 0, TimeUnit.SECONDS, new ArrayBlockingQueue<>(1), task -> {
                 Thread thread = new Thread(task, "torrent-saf-ipc");
@@ -200,18 +221,20 @@ final class TorrentSafStorage {
                 if (remote != null) {
                     if (remote.asBinder() == binder)
                         return;
-                    // A replacement callback is not proof that the previous
-                    // process has stopped touching its authorized documents.
+                    // A replacement callback is not proof that the
+                    // previous process has stopped touching its
+                    // authorized documents.
                     replaced = new Session(remote, generation, 0);
                 } else {
                     remote = ITorrentSafStorage.Stub.asInterface(binder);
                     generation++;
                     brokerGeneration = 0;
-                    // A successful connection ends the failed-bind episode: a
-                    // provider/service crash must never disable SAF storage
-                    // until the application restarts. The budget is restored
-                    // only for a binding that stayed up, so a connect/crash
-                    // loop is still bounded by MAX_ATTEMPTS.
+                    // A successful connection ends the failed-bind
+                    // episode: a provider/service crash must never
+                    // disable SAF storage until the application
+                    // restarts. The budget is restored only for a
+                    // binding that stayed up, so a connect/crash loop
+                    // is still bounded by MAX_ATTEMPTS.
                     budget.connected(android.os.SystemClock.elapsedRealtime());
                     long current = generation;
                     try {
@@ -250,8 +273,9 @@ final class TorrentSafStorage {
             }
             lost = new Session(remote, generation, 0);
         }
-        // Lifecycle callbacks alone do not prove death. Retire and fence the
-        // actual binder; only its death recipient permits a replacement.
+        // Lifecycle callbacks alone do not prove death. Retire and
+        // fence the actual binder; only its death recipient permits a
+        // replacement.
         retire(lost);
         if (!lost.remote.asBinder().isBinderAlive())
             brokerDied(lost.generation, lost.remote.asBinder());
@@ -266,21 +290,23 @@ final class TorrentSafStorage {
         }
     }
     /**
-     * Binds the broker identity (apiVersion + generation) on the single IPC
-     * thread so the service main thread never waits for a saturated broker. The
-     * next transaction re-checks it, so a rejected submission only defers it.
+     * Binds the broker identity (apiVersion + generation) on the single
+     * IPC thread so the service main thread never waits for a saturated
+     * broker. The next transaction re-checks it, so a rejected
+     * submission only defers it.
      */
     private static void authenticate(Session session) {
         try {
             calls.execute(() -> ensureBroker(session));
         } catch (java.util.concurrent.RejectedExecutionException busy) {
-            // The IPC thread is occupied; the next call resolves it first.
+            // The IPC thread is occupied; the next call resolves it
+            // first.
         }
     }
     /**
-     * Resolves the broker generation for this binding exactly once and refuses
-     * a broker from another build, for example a process that survived an
-     * in-place update and does not implement protocol v2.
+     * Resolves the broker generation for this binding exactly once and
+     * refuses a broker from another build, for example a process that
+     * survived an in-place update and does not implement protocol v2.
      */
     private static boolean ensureBroker(Session session) {
         synchronized (lock) {
@@ -296,15 +322,17 @@ final class TorrentSafStorage {
             brokerDied(session.generation, session.remote.asBinder());
             return false;
         } catch (RuntimeException broken) {
-            // An unmarshallable answer means this process does not speak the v2
-            // contract. The generation is unknown, so retire(0) is a no-op by
-            // contract and the bounded retirement watch replaces the process.
+            // An unmarshallable answer means this process does not
+            // speak the v2 contract. The generation is unknown, so
+            // retire(0) is a no-op by contract and the bounded
+            // retirement watch replaces the process.
             retire(session);
             return false;
         }
         if (api != REQUIRED_API || generation == 0) {
-            // The generation is unknown, so retire(0) is a no-op by contract; the
-            // bounded retirement watch replaces the process by unbinding it.
+            // The generation is unknown, so retire(0) is a no-op by
+            // contract; the bounded retirement watch replaces the
+            // process by unbinding it.
             retire(session);
             return false;
         }
@@ -328,8 +356,9 @@ final class TorrentSafStorage {
             generation++;
             lock.notifyAll();
         }
-        // The retire request is generation-fenced and one-shot, so a delayed or
-        // duplicated frame cannot fence a replacement broker process.
+        // The retire request is generation-fenced and one-shot, so a
+        // delayed or duplicated frame cannot fence a replacement broker
+        // process.
         try {
             session.remote.retire(broker);
         } catch (android.os.RemoteException | RuntimeException dead) {
@@ -339,10 +368,11 @@ final class TorrentSafStorage {
         watchRetirement(session.remote.asBinder());
     }
     /**
-     * Bounds the retiring state. If the broker is still alive the binding is
-     * dropped so the process is destroyed and a fresh broker can be bound; a
-     * dead binder is normally resolved by its death recipient, which is given
-     * one extra check before the transition is forced.
+     * Bounds the retiring state. If the broker is still alive the
+     * binding is dropped so the process is destroyed and a fresh broker
+     * can be bound; a dead binder is normally resolved by its death
+     * recipient, which is given one extra check before the transition
+     * is forced.
      */
     private static void watchRetirement(IBinder binder) {
         main.postDelayed(() -> checkRetirement(binder, 1), RETIREMENT_BOUND_MS);
@@ -361,7 +391,10 @@ final class TorrentSafStorage {
         }
         dropStaleBinding();
     }
-    /** Unbinds a binding whose broker ignored (or never received) retirement. */
+    /**
+     * Unbinds a binding whose broker ignored (or never received)
+     * retirement.
+     */
     private static void dropStaleBinding() {
         boolean unbind;
         synchronized (lock) {
@@ -391,15 +424,17 @@ final class TorrentSafStorage {
         }
     }
     private static void scheduleBind() {
-        // A stale retiringBinder is cleared by the bounded retirement watch, so
-        // this never returns forever on an unresolved retirement.
+        // A stale retiringBinder is cleared by the bounded retirement
+        // watch, so this never returns forever on an unresolved
+        // retirement.
         if (context == null || retryScheduled || retiringBinder != null)
             return;
         long delay = budget.charge();
         if (delay < 0)
-            // The budget is closed: a permanently failing policy or service
-            // must not spawn and kill the broker process every few seconds
-            // forever. initialize()/select()/status() can re-arm it explicitly.
+            // The budget is closed: a permanently failing policy or
+            // service must not spawn and kill the broker process every
+            // few seconds forever. initialize()/select()/status() can
+            // re-arm it explicitly.
             return;
         retryScheduled = true;
         main.postDelayed(() -> {
@@ -426,11 +461,12 @@ final class TorrentSafStorage {
         }, delay);
     }
     /**
-     * Explicit, bounded recovery from a transient bind failure. Called by
-     * {@link #initialize}, by an explicit tree selection and by the status
-     * refresh the UI performs; a permanently broken policy still stops after
-     * {@link BindBudget#MAX_ATTEMPTS} attempts plus at most one manual re-arm per
-     * stability window, so no unbounded spawn/kill loop is possible.
+     * Explicit, bounded recovery from a transient bind failure. Called
+     * by {@link #initialize}, by an explicit tree selection and by the
+     * status refresh the UI performs; a permanently broken policy still
+     * stops after {@link BindBudget#MAX_ATTEMPTS} attempts plus at most
+     * one manual re-arm per stability window, so no unbounded
+     * spawn/kill loop is possible.
      */
     static void retryBinding() {
         synchronized (lock) {
@@ -448,29 +484,32 @@ final class TorrentSafStorage {
     /**
      * Install the application context and begin a fresh bind episode.
      *
-     * <p>Called from {@link RouterService#onCreate()} on the main thread. It
-     * only records the context and schedules a broker bind; library loading and
-     * the native bridge installation stay on the daemon start worker. Resetting
-     * the retry budget here means a transient bind failure cannot keep SAF
-     * storage disabled for the rest of the process lifetime.</p>
+     * <p>Called from {@link RouterService#onCreate()} on the main
+     * thread. It only records the context and schedules a broker bind;
+     * library loading and the native bridge installation stay on the
+     * daemon start worker. Resetting the retry budget here means a
+     * transient bind failure cannot keep SAF storage disabled for the
+     * rest of the process lifetime.</p>
      */
     static void initialize(Context app) {
         synchronized (lock) {
             if (context == null)
                 context = app.getApplicationContext();
-            // Every daemon start begins a fresh bind episode, so a transient
-            // bind failure never keeps SAF storage disabled for the rest of the
-            // process lifetime.
+            // Every daemon start begins a fresh bind episode, so a
+            // transient bind failure never keeps SAF storage disabled
+            // for the rest of the process lifetime.
             budget.reset();
         }
         retryBinding();
-        // Library load and bridge installation run on the daemon start worker,
-        // not on the service main thread. Binding alone only starts the broker.
+        // Library load and bridge installation run on the daemon start
+        // worker, not on the service main thread. Binding alone only
+        // starts the broker.
     }
     /**
-     * Persist a torrent-to-tree mapping after obtaining at least read access.
-     * A read-only grant may seed existing content, but cannot authorize writes.
-     * Existing mappings sharing a URI keep their grant when this one changes.
+     * Persist a torrent-to-tree mapping after obtaining at least read
+     * access. A read-only grant may seed existing content, but cannot
+     * authorize writes. Existing mappings sharing a URI keep their
+     * grant when this one changes.
      *
      * @return whether the grant and mapping were stored successfully
      */
@@ -486,9 +525,10 @@ final class TorrentSafStorage {
             try {
                 app.getContentResolver().takePersistableUriPermission(tree, flags);
             } catch (SecurityException writeDenied) {
-                // A provider may expose a read-only tree. Seeding existing
-                // documents only needs read authority; creation/download then
-                // fails closed at the broker's writable-root check.
+                // A provider may expose a read-only tree. Seeding
+                // existing documents only needs read authority;
+                // creation/download then fails closed at the broker's
+                // writable-root check.
                 flags = readFlag;
                 app.getContentResolver().takePersistableUriPermission(tree, flags);
             }
@@ -522,8 +562,9 @@ final class TorrentSafStorage {
             }
             synchronized (lock) {
                 authorized.remove(key);
-                // An explicit selection is the operator's recovery action: it
-                // begins a fresh bind episode without an application restart.
+                // An explicit selection is the operator's recovery
+                // action: it begins a fresh bind episode without an
+                // application restart.
                 budget.reset();
             }
             retryBinding();
@@ -547,9 +588,9 @@ final class TorrentSafStorage {
     }
 
     /**
-     * Remove one persisted mapping and release its tree permission only when
-     * no remaining mapping references that URI. A failed preference commit
-     * leaves the permission intact.
+     * Remove one persisted mapping and release its tree permission only
+     * when no remaining mapping references that URI. A failed
+     * preference commit leaves the permission intact.
      *
      * @return whether removal of the mapping was committed
      */
@@ -560,8 +601,8 @@ final class TorrentSafStorage {
         var prefs = app.getSharedPreferences("torrent-saf-grants", Context.MODE_PRIVATE);
         String previous = prefs.getString(key, null);
         boolean saved = prefs.edit().remove(key).commit();
-        // A failed commit means the key still points at this tree; never
-        // revoke the permission underneath it.
+        // A failed commit means the key still points at this tree;
+        // never revoke the permission underneath it.
         if (!saved)
             return false;
         if (previous != null && !TorrentSafGrants.referenced(prefs.getAll(), previous, key)) {
@@ -577,15 +618,17 @@ final class TorrentSafStorage {
         }
         return saved;
     }
-    // Called only from native disk workers, never the main thread. A selected but
-    // revoked/unavailable mapping remains selected and fails closed.
+    // Called only from native disk workers, never the main thread. A
+    // selected but revoked/unavailable mapping remains selected and
+    // fails closed.
     /**
      * True when any torrent-to-tree mapping is persisted.
      *
-     * <p>Called from {@link DaemonWrapper}'s start worker through the native
-     * bridge, never from the main thread. A mapping counts even when its grant
-     * was revoked or the broker is unavailable: the torrent stays selected and
-     * fails closed instead of reverting to private filesystem storage.</p>
+     * <p>Called from {@link DaemonWrapper}'s start worker through the
+     * native bridge, never from the main thread. A mapping counts even
+     * when its grant was revoked or the broker is unavailable: the
+     * torrent stays selected and fails closed instead of reverting to
+     * private filesystem storage.</p>
      */
     static boolean hasAnyGrant() {
         return context != null
@@ -594,22 +637,24 @@ final class TorrentSafStorage {
                             .isEmpty();
     }
     /**
-     * Whether the native backend must treat this torrent as provider-backed.
+     * Whether the native backend must treat this torrent as
+     * provider-backed.
      *
-     * <p>This is the fail-closed answer for native callers: a missing context
-     * reports {@code true} because claiming "not configured" would let a
-     * selected torrent fall back to an ordinary filesystem path. A missing
-     * grant then makes {@link #root(String, String)} return zero, so the
-     * payload stays unavailable rather than silently changing storage
-     * authority.</p>
+     * <p>This is the fail-closed answer for native callers: a missing
+     * context reports {@code true} because claiming "not configured"
+     * would let a selected torrent fall back to an ordinary filesystem
+     * path. A missing grant then makes {@link #root(String, String)}
+     * return zero, so the payload stays unavailable rather than
+     * silently changing storage authority.</p>
      *
      * @param tunnel tunnel index as a decimal string
-     * @param hash   lowercase or uppercase 40-character infohash
+     * @param hash lowercase or uppercase 40-character infohash
      */
     public static boolean configured(String tunnel, String hash) {
-        // A missing context must fail closed for the native backend: claiming
-        // "not configured" would let a selected torrent fall back to an
-        // ordinary filesystem path. SafPayload.root() then returns zero.
+        // A missing context must fail closed for the native backend:
+        // claiming "not configured" would let a selected torrent fall
+        // back to an ordinary filesystem path. SafPayload.root() then
+        // returns zero.
         if (context == null)
             return true;
         return tunnel != null && hash != null
@@ -617,13 +662,14 @@ final class TorrentSafStorage {
                            .contains(tunnel + ":" + hash.toLowerCase(java.util.Locale.ROOT));
     }
     /**
-     * Create or return the local tree capability for one torrent's grant.
+     * Create or return the local tree capability for one torrent's
+     * grant.
      *
-     * <p>A local ID is stable across broker replacements; the remote root ID is
-     * cached per binding generation and re-authorized after a reconnect. The
-     * cap {@link TorrentSafStorageService#MAX_ROOTS} and an exhausted ID space
-     * both answer zero, and a torrent without a persisted grant gets no
-     * capability at all.</p>
+     * <p>A local ID is stable across broker replacements; the remote
+     * root ID is cached per binding generation and re-authorized after
+     * a reconnect. The cap {@link TorrentSafStorageService#MAX_ROOTS}
+     * and an exhausted ID space both answer zero, and a torrent without
+     * a persisted grant gets no capability at all.</p>
      *
      * @return a non-zero local tree ID, or {@code 0} when unavailable
      */
@@ -687,12 +733,15 @@ final class TorrentSafStorage {
         return result;
     }
     /**
-     * Create a local file capability and open it through the current broker.
+     * Create a local file capability and open it through the current
+     * broker.
      *
-     * @param root local tree capability returned by {@link #root(String, String)}
+     * @param root local tree capability returned by {@link
+     *             #root(String, String)}
      * @param relative path below that tree, validated by the broker
      * @param length expected file length in bytes
-     * @param create whether the broker may create or extend the document
+     * @param create whether the broker may create or extend the
+     *               document
      * @return a nonzero local handle, or zero if opening fails
      */
     public static long open(long root, String relative, long length, boolean create) {
@@ -714,7 +763,8 @@ final class TorrentSafStorage {
     }
     /**
      * Read an exact bounded range through the broker.
-     * @return exactly {@code count} bytes, or {@code null} on refusal or failure
+     * @return exactly {@code count} bytes, or {@code null} on refusal
+     *                 or failure
      */
     public static byte[] read(long handle, long offset, int count) {
         if (offset < 0 || count < 0 || count > 16384)
@@ -727,25 +777,27 @@ final class TorrentSafStorage {
         if (result != null && result.length == count)
             return result;
         if (result == null && retryable(outcome.failure()))
-            // Busy queue or client deadline: keep the capability and let the
-            // caller retry. Native invalidation remains caller-driven, so a
-            // queued read never destroys a piece.
+            // Busy queue or client deadline: keep the capability and
+            // let the caller retry. Native invalidation remains
+            // caller-driven, so a queued read never destroys a piece.
             return null;
         invalidate(handle);
         return null;
     }
     /**
-     * Write a bounded range; the copied buffer belongs to this transaction.
-     * Ambiguous failed writes are reported to the engine and are not replayed.
+     * Write a bounded range; the copied buffer belongs to this
+     * transaction. Ambiguous failed writes are reported to the engine
+     * and are not replayed.
      * @return whether the broker completed the write
      */
     public static boolean write(long handle, long offset, byte[] bytes) {
         if (offset < 0 || bytes == null || bytes.length > 16384)
             return false;
         byte[] owned = bytes.clone();
-        // A write interrupted by death or a broker-side deadline is ambiguous:
-        // return failure and let the engine invalidate/reverify the piece. Never
-        // replay it here, and never invalidate it for a busy local queue.
+        // A write interrupted by death or a broker-side deadline is
+        // ambiguous: return failure and let the engine
+        // invalidate/reverify the piece. Never replay it here, and
+        // never invalidate it for a busy local queue.
         Outcome<Boolean> outcome = run(session -> {
             long id = fileId(session, handle);
             return id != 0 && session.remote.write(id, offset, owned, session.operation);
@@ -763,11 +815,12 @@ final class TorrentSafStorage {
             return false;
         byte[] owned = metadata.clone();
         exportCanceled.set(false);
-        // Each chunk is its own bounded Binder operation. A multi-megabyte
-        // export must not consume one broker deadline and then destroy every
-        // unrelated torrent handle.
-        // The truncating open is authorized by a one-shot capability that binds
-        // this caller, this URI, this length and this document identity.
+        // Each chunk is its own bounded Binder operation. A
+        // multi-megabyte export must not consume one broker deadline
+        // and then destroy every unrelated torrent handle. The
+        // truncating open is authorized by a one-shot capability that
+        // binds this caller, this URI, this length and this document
+        // identity.
         long token = exportCall(session
                 -> session.remote.prepareExport(target.toString(), owned.length, session.operation),
                 0L);
@@ -805,9 +858,10 @@ final class TorrentSafStorage {
         }
     }
     /**
-     * Cancels the metadata export in progress and nothing else. Payload reads
-     * and writes belong to the native engine, which owns their invalidation, so
-     * an administrative "cancel export" must never abort a piece transfer.
+     * Cancels the metadata export in progress and nothing else. Payload
+     * reads and writes belong to the native engine, which owns their
+     * invalidation, so an administrative "cancel export" must never
+     * abort a piece transfer.
      */
     static void cancelPending() {
         exportCanceled.set(true);
@@ -829,19 +883,21 @@ final class TorrentSafStorage {
     public static boolean remove(long root, String path, long length) {
         if (!TorrentSafStorageService.validPath(path) || length < 0)
             return false;
-        // Deletion is size-independent: after a failed or partial export/write
-        // the document no longer matches the declared size and openFile() would
-        // refuse to resolve it. The relative resolution still requires the
-        // persisted tree grant, the exact document identity and the same caller.
-        // `length` remains part of the native call contract; it is not trusted.
+        // Deletion is size-independent: after a failed or partial
+        // export/write the document no longer matches the declared size
+        // and openFile() would refuse to resolve it. The relative
+        // resolution still requires the persisted tree grant, the exact
+        // document identity and the same caller. `length` remains part
+        // of the native call contract; it is not trusted.
         return Boolean.TRUE.equals(run(session -> {
             long id = rootId(session, root);
             return id != 0 && session.remote.deleteByRelative(id, path, session.operation);
         }, false).value());
     }
     /**
-     * Removes one empty directory below a tree root. Prepared for engine cleanup
-     * of a fully removed torrent; the broker refuses a directory with children.
+     * Removes one empty directory below a tree root. Prepared for
+     * engine cleanup of a fully removed torrent; the broker refuses a
+     * directory with children.
      */
     static boolean removeEmptyDirectory(long root, String path) {
         if (!TorrentSafStorageService.validPath(path))
@@ -854,12 +910,13 @@ final class TorrentSafStorage {
     /**
      * Human-readable payload-storage state for the torrent list.
      *
-     * <p>Strings are fixed diagnostics (no URI, document name or account data)
-     * and double as the bounded UI recovery path: an exhausted bind budget is
-     * re-armed at most once per stability window, so a refresh can recover a
-     * transient failure without letting a broken provider spawn and kill a
-     * broker on every tick. Reports "native private storage" when the torrent
-     * has no mapping.</p>
+     * <p>Strings are fixed diagnostics (no URI, document name or
+     * account data) and double as the bounded UI recovery path: an
+     * exhausted bind budget is re-armed at most once per stability
+     * window, so a refresh can recover a transient failure without
+     * letting a broken provider spawn and kill a broker on every tick.
+     * Reports "native private storage" when the torrent has no
+     * mapping.</p>
      */
     static String status(String tunnel, String hash) {
         synchronized (lock) {
@@ -885,10 +942,11 @@ final class TorrentSafStorage {
             if (retiringBinder != null)
                 return "Storage provider cancellation pending; waiting for broker termination";
             if (budget.exhausted()) {
-                // A status refresh is the bounded UI recovery path: a transient
-                // bind failure must not require an application restart, while
-                // the stability floor keeps a broken policy from spawning and
-                // killing a broker on every refresh.
+                // A status refresh is the bounded UI recovery path: a
+                // transient bind failure must not require an
+                // application restart, while the stability floor keeps
+                // a broken policy from spawning and killing a broker on
+                // every refresh.
                 retryBindingLocked();
                 if (budget.exhausted())
                     return "Storage broker unavailable; reselect the directory or restart the app.";
@@ -899,9 +957,10 @@ final class TorrentSafStorage {
         }
     }
     /**
-     * Drops a local capability whose broker descriptor can no longer be used.
-     * Only an authoritative failure reaches this path: a busy local queue or a
-     * client deadline keeps the capability and leaves the piece to the caller.
+     * Drops a local capability whose broker descriptor can no longer be
+     * used. Only an authoritative failure reaches this path: a busy
+     * local queue or a client deadline keeps the capability and leaves
+     * the piece to the caller.
      */
     private static void invalidate(long handle) {
         File file;
@@ -928,8 +987,9 @@ final class TorrentSafStorage {
         long remoteId;
         synchronized (lock) {
             File file = files.remove(handle);
-            // Local teardown must never wait for a broker which no longer owns
-            // this descriptor, or trigger recovery just to close a dead token.
+            // Local teardown must never wait for a broker which no
+            // longer owns this descriptor, or trigger recovery just to
+            // close a dead token.
             if (file == null || remote == null || file.generation != generation
                     || file.remoteId == 0)
                 return;
@@ -965,7 +1025,8 @@ final class TorrentSafStorage {
             return true;
         }, false, android.os.SystemClock.elapsedRealtime() + OPERATION_TIMEOUT_MS, false);
     }
-    // Caller holds lock. Tokens are never reused, including across generations.
+    // Caller holds lock. Tokens are never reused, including across
+    // generations.
     private static Session sessionLocked() {
         if (nextOperation == Long.MAX_VALUE)
             return null;
@@ -975,8 +1036,9 @@ final class TorrentSafStorage {
         return run(action, fallback).value();
     }
     /**
-     * Runs one metadata-export transaction and publishes its token so that
-     * cancelPending() can abort exactly this export and nothing else.
+     * Runs one metadata-export transaction and publishes its token so
+     * that cancelPending() can abort exactly this export and nothing
+     * else.
      */
     private static <T> T exportCall(Operation<T> action, T fallback) {
         return call(session -> {
@@ -1020,9 +1082,10 @@ final class TorrentSafStorage {
                 android.os.SystemClock.elapsedRealtime() + OPERATION_TIMEOUT_MS, true);
     }
     /**
-     * One bounded transaction on the single IPC thread. Only death or an
-     * unusable frame may replace the broker: a busy local queue, a slow provider
-     * and a client deadline return a typed retryable fallback.
+     * One bounded transaction on the single IPC thread. Only death or
+     * an unusable frame may replace the broker: a busy local queue, a
+     * slow provider and a client deadline return a typed retryable
+     * fallback.
      */
     private static <T> Outcome<T> execute(
             Session session, Operation<T> action, T fallback, long deadline, boolean recover) {
@@ -1035,8 +1098,8 @@ final class TorrentSafStorage {
                     if (generation != session.generation || remote != session.remote)
                         return Outcome.of(fallback, Failure.UNAVAILABLE);
                 }
-                // Never send a payload frame before the broker identity for this
-                // binding has been authenticated.
+                // Never send a payload frame before the broker identity
+                // for this binding has been authenticated.
                 if (!ensureBroker(session))
                     return Outcome.of(fallback, Failure.PROTOCOL);
                 return Outcome.of(action.run(session), Failure.NONE);
@@ -1052,14 +1115,16 @@ final class TorrentSafStorage {
             }
             return outcome;
         } catch (java.util.concurrent.RejectedExecutionException busy) {
-            // The IPC thread is occupied by an earlier call. Answer with the
-            // typed fallback and let the caller retry; nothing is retired.
+            // The IPC thread is occupied by an earlier call. Answer
+            // with the typed fallback and let the caller retry; nothing
+            // is retired.
             return Outcome.of(fallback, Failure.BUSY);
         } catch (java.util.concurrent.TimeoutException timeout) {
             if (future != null)
                 future.cancel(true);
-            // Advisory cancellation only. The broker owns its own deadlines and
-            // process lifetime; the client must not retire over a slow provider.
+            // Advisory cancellation only. The broker owns its own
+            // deadlines and process lifetime; the client must not
+            // retire over a slow provider.
             cancelOperation(session);
             return Outcome.of(fallback, Failure.TIMEOUT);
         } catch (java.util.concurrent.ExecutionException failed) {
@@ -1069,8 +1134,9 @@ final class TorrentSafStorage {
             boolean ambiguous = cause instanceof android.os.RemoteException
                     || !session.remote.asBinder().isBinderAlive();
             if (ambiguous && recover)
-                // Death or an unmarshallable frame is the only ambiguity that
-                // justifies replacing the broker process.
+                // Death or an unmarshallable frame is the only
+                // ambiguity that justifies replacing the broker
+                // process.
                 retire(session);
             return Outcome.of(fallback, ambiguous ? Failure.PROTOCOL : Failure.UNAVAILABLE);
         } catch (InterruptedException interrupted) {

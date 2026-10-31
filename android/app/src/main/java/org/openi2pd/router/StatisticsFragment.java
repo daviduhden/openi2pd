@@ -1,13 +1,14 @@
 /*
- * See the LICENSE file at the top of the project tree for copyright
- * and license details.
+ * See the LICENSE file at the top of the project tree for copyright and
+ * license details.
  *
  * openi2pd: StatisticsFragment.
  *
- * Traffic chart and lifetime counters fed only by published snapshots, with
- * sample history preserved across configuration changes. A sample is appended
- * once per uptime value and the chart is cleared when uptime moves backwards,
- * so a restarted daemon does not inherit stale history.
+ * Traffic chart and lifetime counters fed only by published snapshots,
+ * with sample history preserved across configuration changes. A sample
+ * is appended once per uptime value and the chart is cleared when
+ * uptime moves backwards, so a restarted daemon does not inherit stale
+ * history.
  *
  */
 
@@ -26,21 +27,23 @@ import androidx.fragment.app.Fragment;
 import androidx.lifecycle.ViewModelProvider;
 
 /**
- * Traffic history and lifetime counters. The chart is a bounded custom view;
- * samples are appended only when the service publishes a snapshot.
+ * Traffic history and lifetime counters. The chart is a bounded custom
+ * view; samples are appended only when the service publishes a
+ * snapshot.
  *
- * <p>Sample rule: one chart point per distinct observed uptime value, so a
- * faster poll interval cannot manufacture fake history and a repeated snapshot
- * is a no-op. A snapshot whose uptime is lower than the last sample means the
- * daemon restarted (or the counter wrapped), so the chart is cleared first
- * instead of appending a stale point to the new run.</p>
+ * <p>Sample rule: one chart point per distinct observed uptime value,
+ * so a faster poll interval cannot manufacture fake history and a
+ * repeated snapshot is a no-op. A snapshot whose uptime is lower than
+ * the last sample means the daemon restarted (or the counter wrapped),
+ * so the chart is cleared first instead of appending a stale point to
+ * the new run.</p>
  *
- * <p>Main thread only: {@link #lastSampleUptime} and the chart history are
- * plain fields with no synchronization. They survive a configuration change
- * through {@code onSaveInstanceState} (two long arrays bounded by
- * {@code TrafficChartView.MAX_SAMPLES} plus the last uptime), not through a
- * process death. Every value is display-only; nothing here authors router
- * state and no JNI is called.</p>
+ * <p>Main thread only: {@link #lastSampleUptime} and the chart history
+ * are plain fields with no synchronization. They survive a
+ * configuration change through {@code onSaveInstanceState} (two long
+ * arrays bounded by {@code TrafficChartView.MAX_SAMPLES} plus the last
+ * uptime), not through a process death. Every value is display-only;
+ * nothing here authors router state and no JNI is called.</p>
  */
 public class StatisticsFragment extends Fragment {
     private static final String STATE_CHART_DOWNLOAD = "chart_download";
@@ -102,10 +105,11 @@ public class StatisticsFragment extends Fragment {
     /**
      * Render one snapshot and extend the chart history.
      *
-     * <p>Main thread, attached view only (it calls {@code requireContext()}).
-     * Without live metrics every counter is replaced by "unknown" and no sample
-     * is appended, so an unavailable status bridge cannot flatten the chart to
-     * zero. {@link #lastSampleUptime} is only advanced when a sample was
+     * <p>Main thread, attached view only (it calls {@code
+     * requireContext()}). Without live metrics every counter is
+     * replaced by "unknown" and no sample is appended, so an
+     * unavailable status bridge cannot flatten the chart to zero.
+     * {@link #lastSampleUptime} is only advanced when a sample was
      * actually appended.</p>
      */
     private void render(@Nullable RouterSnapshot snapshot) {
@@ -133,8 +137,8 @@ public class StatisticsFragment extends Fragment {
 
         if (hasData) {
             if (snapshot.uptimeSeconds() < lastSampleUptime) {
-                // The daemon restarted or the counter wrapped; do not append a
-                // stale-history sample to the new run.
+                // The daemon restarted or the counter wrapped; do not
+                // append a stale-history sample to the new run.
                 trafficChart.clear();
                 lastSampleUptime = -1L;
             }

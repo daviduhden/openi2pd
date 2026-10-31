@@ -1,13 +1,14 @@
 /*
- * See the LICENSE file at the top of the project tree for copyright
- * and license details.
+ * See the LICENSE file at the top of the project tree for copyright and
+ * license details.
  *
  * openi2pd: AboutFragment.
  *
- * Renders application identity: version name and code, device ABI list, build
- * type, the app-specific daemon data directory and a license summary, plus
- * buttons that open the repository and license pages. Failed package lookups
- * or browser launches degrade to placeholders and a toast instead of crashing.
+ * Renders application identity: version name and code, device ABI list,
+ * build type, the app-specific daemon data directory and a license
+ * summary, plus buttons that open the repository and license pages.
+ * Failed package lookups or browser launches degrade to placeholders
+ * and a toast instead of crashing.
  *
  */
 
@@ -36,9 +37,10 @@ import androidx.fragment.app.Fragment;
 import java.io.File;
 
 /**
- * Application identity and license information. No secrets, keys or native
- * pointers are displayed. The ABI shown is the device ABI; the daemon data
- * directory follows the application-specific storage layout.
+ * Application identity and license information. No secrets, keys or
+ * native pointers are displayed. The ABI shown is the device ABI; the
+ * daemon data directory follows the application-specific storage
+ * layout.
  */
 public class AboutFragment extends Fragment {
     private static final String DATA_DIRECTORY_NAME = "open-i2pd";

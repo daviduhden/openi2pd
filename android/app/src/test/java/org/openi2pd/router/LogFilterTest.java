@@ -1,11 +1,12 @@
 /*
- * See the LICENSE file at the top of the project tree for copyright
- * and license details.
+ * See the LICENSE file at the top of the project tree for copyright and
+ * license details.
  *
  * openi2pd: LogFilterTest.
  *
- * Pure JVM minimum-severity, native-token classification and query filter
- * regressions. No Android class is loaded, so no emulator is required.
+ * Pure JVM minimum-severity, native-token classification and query
+ * filter regressions. No Android class is loaded, so no emulator is
+ * required.
  *
  */
 
@@ -138,8 +139,9 @@ public class LogFilterTest {
     public void classificationAndQueryIgnoreTheDefaultLocale() {
         Locale previous = Locale.getDefault();
         try {
-            // A Turkish default lowercases "I" to a dotless i; Locale.ROOT
-            // must still classify and match the native ASCII tokens.
+            // A Turkish default lowercases "I" to a dotless i;
+            // Locale.ROOT must still classify and match the native
+            // ASCII tokens.
             Locale.setDefault(Locale.forLanguageTag("tr"));
             assertSame(LogLevel.ERROR, LogLevel.classify("CRITICAL"));
             assertSame(LogLevel.INFO, LogLevel.classify("INFO"));

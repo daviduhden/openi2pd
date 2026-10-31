@@ -1,13 +1,14 @@
 /*
- * See the LICENSE file at the top of the project tree for copyright
- * and license details.
+ * See the LICENSE file at the top of the project tree for copyright and
+ * license details.
  *
  * openi2pd: RuntimeAdminFragment.
  *
- * Material runtime-administration screen: per-tunnel start/stop, the bounded
- * NetDb reseed status with a "reseed now" action, and in-memory router
- * ban/unban. Every action is a closed typed command through RouterViewModel's
- * worker-backed bridge; the screen never reads keys, filesystem paths or URLs.
+ * Material runtime-administration screen: per-tunnel start/stop, the
+ * bounded NetDb reseed status with a "reseed now" action, and in-memory
+ * router ban/unban. Every action is a closed typed command through
+ * RouterViewModel's worker-backed bridge; the screen never reads keys,
+ * filesystem paths or URLs.
  *
  */
 
@@ -36,12 +37,12 @@ import com.google.android.material.textfield.TextInputLayout;
 /**
  * Bounded runtime administration.
  *
- * <p>Each control maps to one typed native command: {@code startTunnel}/
- * {@code stopTunnel}, {@code requestReseed} plus {@code getReseedStatus}, and
- * {@code banRouter}/{@code unbanRouter}. There is no generic admin entry point,
- * no free-form option, and no path or URL argument. Results arrive as the
- * closed outcome tokens produced by the native protocol and are shown as
- * localized text.</p>
+ * <p>Each control maps to one typed native command: {@code
+ * startTunnel}/ {@code stopTunnel}, {@code requestReseed} plus {@code
+ * getReseedStatus}, and {@code banRouter}/{@code unbanRouter}. There is
+ * no generic admin entry point, no free-form option, and no path or URL
+ * argument. Results arrive as the closed outcome tokens produced by the
+ * native protocol and are shown as localized text.</p>
  */
 public final class RuntimeAdminFragment extends Fragment {
     /** Bounds shared with the native bridge. */
@@ -53,10 +54,11 @@ public final class RuntimeAdminFragment extends Fragment {
     private LinearLayout rows;
     private boolean busy;
     /**
-     * View generation. Command and read callbacks run after their JNI call has
-     * returned, so each one captures the current value and is dropped once
-     * {@link #onDestroyView()} has incremented it; a stale outcome is therefore
-     * never shown on a detached view or applied to a recreated screen.
+     * View generation. Command and read callbacks run after their JNI
+     * call has returned, so each one captures the current value and is
+     * dropped once {@link #onDestroyView()} has incremented it; a stale
+     * outcome is therefore never shown on a detached view or applied to
+     * a recreated screen.
      */
     private int generation;
 

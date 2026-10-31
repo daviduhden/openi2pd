@@ -1,13 +1,14 @@
 /*
- * See the LICENSE file at the top of the project tree for copyright
- * and license details.
+ * See the LICENSE file at the top of the project tree for copyright and
+ * license details.
  *
  * openi2pd: RouterServiceLifecycleTest.
  *
- * Instrumentation test that binds the non-exported {@link RouterService}
- * through {@code ServiceTestRule}, checks the binder is the in-process
- * {@code LocalBinder} and unbinds again. It clears the persisted run flag first
- * so binding never starts the daemon or opens sockets.
+ * Instrumentation test that binds the non-exported {@link
+ * RouterService} through {@code ServiceTestRule}, checks the binder is
+ * the in-process {@code LocalBinder} and unbinds again. It clears the
+ * persisted run flag first so binding never starts the daemon or opens
+ * sockets.
  *
  */
 
@@ -30,13 +31,15 @@ import org.junit.runner.RunWith;
 
 /**
  * Instrumentation lifecycle smoke test. It intentionally only binds and
- * unbinds the non-exported service; it does not start the native daemon, open
- * sockets or require a network. A device/emulator must still run it in CI.
+ * unbinds the non-exported service; it does not start the native
+ * daemon, open sockets or require a network. A device/emulator must
+ * still run it in CI.
  *
- * <p>The test clears the persisted run flag before binding so a previous test
- * or manual session cannot make {@link RouterService#onCreate()} start the
- * router. The literal key matches the service's private preference contract;
- * this is test-only and does not expose the service to UI code.</p>
+ * <p>The test clears the persisted run flag before binding so a
+ * previous test or manual session cannot make {@link
+ * RouterService#onCreate()} start the router. The literal key matches
+ * the service's private preference contract; this is test-only and does
+ * not expose the service to UI code.</p>
  */
 @RunWith(AndroidJUnit4.class)
 public final class RouterServiceLifecycleTest {

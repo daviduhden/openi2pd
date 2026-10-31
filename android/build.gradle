@@ -1,12 +1,13 @@
 /*
- * See the LICENSE file at the top of the project tree for copyright
- * and license details.
+ * See the LICENSE file at the top of the project tree for copyright and
+ * license details.
  *
  * openi2pd: build.
  *
- * Declares the buildscript repositories and the pinned AGP classpath shared by
- * the Android module, and aborts configuration when the Gradle JVM is older
- * than JDK 25. A root clean task deletes the root build directory.
+ * Declares the buildscript repositories and the pinned AGP classpath
+ * shared by the Android module, and aborts configuration when the
+ * Gradle JVM is older than JDK 25. A root clean task deletes the root
+ * build directory.
  *
  */
 

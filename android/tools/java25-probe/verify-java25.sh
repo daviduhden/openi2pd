@@ -1,21 +1,23 @@
 #!/bin/sh
-# See the LICENSE file at the top of the project tree for copyright
-# and license details.
+# See the LICENSE file at the top of the project tree for copyright and
+# license details.
 #
 # openi2pd: verify java25.
 #
 # Runs the compiled probe on the build JDK and, when both R8_JAR and
-# ANDROID_JAR are set, dexes the classes with D8 and R8 at --min-api 29 and
-# prints the DEX magic; supplying only one of the two jars is an error.
+# ANDROID_JAR are set, dexes the classes with D8 and R8 at --min-api 29
+# and prints the DEX magic; supplying only one of the two jars is an
+# error.
 #
-# Contract: JAVAC, JAVA and JAVAP override the tools; otherwise they are taken
-# from JAVA_HOME (when it contains bin/javac) and then from PATH. The probe must
-# compile with --release 25 and produce class-file major 69, but it runs on the
-# build JDK, so a successful run is not ART evidence. All artefacts stay in a
-# temporary directory below TMPDIR (default /tmp) that the EXIT/HUP/INT/TERM
-# trap removes; the source tree is never written. Any failed check exits 1, the
-# D8/R8 stage is skipped when neither jar is supplied, and the script itself
-# verifies the DEX version bytes (039) instead of trusting the tool exit status.
+# Contract: JAVAC, JAVA and JAVAP override the tools; otherwise they are
+# taken from JAVA_HOME (when it contains bin/javac) and then from PATH.
+# The probe must compile with --release 25 and produce class-file major
+# 69, but it runs on the build JDK, so a successful run is not ART
+# evidence. All artefacts stay in a temporary directory below TMPDIR
+# (default /tmp) that the EXIT/HUP/INT/TERM trap removes; the source
+# tree is never written. Any failed check exits 1, the D8/R8 stage is
+# skipped when neither jar is supplied, and the script itself verifies
+# the DEX version bytes (039) instead of trusting the tool exit status.
 #
 
 set -eu
@@ -75,11 +77,12 @@ if [ -n "${R8_JAR:-}" ] || [ -n "${ANDROID_JAR:-}" ]; then
 		exit 1
 	fi
 
-	# Dex every probe class, including the nested record/sealed classes. Passing
-	# only the outer class left the record and type-switch lowering paths
-	# untested while the keep rule referenced classes D8 never saw.
-	# Probe class names cannot contain newlines; split only on the find output
-	# line separator and disable pathname expansion so spaces stay within paths.
+	# Dex every probe class, including the nested record/sealed classes.
+	# Passing only the outer class left the record and type-switch lowering
+	# paths untested while the keep rule referenced classes D8 never saw.
+	# Probe class names cannot contain newlines; split only on the find
+	# output line separator and disable pathname expansion so spaces stay
+	# within paths.
 	class_files=$(find "$classes_dir" -name '*.class' -print)
 	class_files_ifs=$IFS
 	IFS='

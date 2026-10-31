@@ -1,14 +1,14 @@
 /*
- * See the LICENSE file at the top of the project tree for copyright
- * and license details.
+ * See the LICENSE file at the top of the project tree for copyright and
+ * license details.
  *
  * openi2pd: RouterCommandTest.
  *
- * Pure-JVM tests for the sealed RouterCommand action decoder. They pin every
- * public action string, the null sticky-restore mapping, the unknown fallback
- * and the runtime log-level record. The RouterService action fields are
- * compile-time String constants, so javac inlines them; no Android class or
- * native library is loaded by these tests.
+ * Pure-JVM tests for the sealed RouterCommand action decoder. They pin
+ * every public action string, the null sticky-restore mapping, the
+ * unknown fallback and the runtime log-level record. The RouterService
+ * action fields are compile-time String constants, so javac inlines
+ * them; no Android class or native library is loaded by these tests.
  *
  */
 
@@ -23,8 +23,8 @@ import org.junit.Test;
 import java.util.Locale;
 
 /**
- * Pure-JVM tests for {@link RouterCommand#fromAction(String)}. No Android API,
- * Robolectric, emulator or native library is involved.
+ * Pure-JVM tests for {@link RouterCommand#fromAction(String)}. No
+ * Android API, Robolectric, emulator or native library is involved.
  */
 public class RouterCommandTest {
     private static final String ACTION_START = "org.openi2pd.router.action.START";
@@ -69,7 +69,8 @@ public class RouterCommandTest {
         assertEquals(new RouterCommand.Unknown(lowerCase), RouterCommand.fromAction(lowerCase));
         assertEquals(new RouterCommand.Unknown(ACTION_START + " "),
                 RouterCommand.fromAction(ACTION_START + " "));
-        // A level extra must not turn an unknown action into a log-level command.
+        // A level extra must not turn an unknown action into a
+        // log-level command.
         assertEquals(new RouterCommand.Unknown(ACTION_START + " "),
                 RouterCommand.fromAction(ACTION_START + " ", "debug"));
     }
@@ -98,8 +99,9 @@ public class RouterCommandTest {
 
     @Test
     public void stringsMatchTheServiceConstants() {
-        // RouterService.ACTION_* are constant variables, so javac substitutes
-        // their values here and RouterService is not loaded at test runtime.
+        // RouterService.ACTION_* are constant variables, so javac
+        // substitutes their values here and RouterService is not loaded
+        // at test runtime.
         assertEquals(RouterService.ACTION_START, ACTION_START);
         assertEquals(RouterService.ACTION_STOP, ACTION_STOP);
         assertEquals(RouterService.ACTION_RESTART, ACTION_RESTART);
@@ -114,9 +116,10 @@ public class RouterCommandTest {
     public void noGenericAdministrativeActionExists() {
         // Runtime administration is a closed set of binder methods
         // (startTunnel/stopTunnel, requestReseed, addAddressWithResult,
-        // addSubscription/removeSubscription, banRouter/unbanRouter). No intent
-        // action may carry a free-form verb, name, path or URL, so any attempt
-        // to smuggle one through the started-service path stays Unknown.
+        // addSubscription/removeSubscription, banRouter/unbanRouter).
+        // No intent action may carry a free-form verb, name, path or
+        // URL, so any attempt to smuggle one through the
+        // started-service path stays Unknown.
         for (String action : new String[] {"org.openi2pd.router.action.ADMIN",
                      "org.openi2pd.router.action.ADMIN_TUNNEL_START",
                      "org.openi2pd.router.action.TUNNEL_START",

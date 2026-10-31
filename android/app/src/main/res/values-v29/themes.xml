@@ -10,7 +10,8 @@ Defines native Android application resources.
 -->
 
 <resources>
-    <!-- Android 10 minimum: forceDarkAllowed and light navigation bar. -->
+    <!-- Android 10 minimum: forceDarkAllowed and light navigation
+        bar. -->
     <style name="Theme.OpenI2Pd" parent="Theme.OpenI2Pd.Base">
         <item name="android:windowLightNavigationBar">@bool/window_light_navigation_bar</item>
         <item name="android:forceDarkAllowed">false</item>

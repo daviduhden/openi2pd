@@ -4,8 +4,8 @@
  *
  * openi2pd: capi.
  *
- * Implements the C entry points by forwarding to i2p::api, keeping C++ types out
- * of the exported ABI and discarding the optional log stream in C_StartI2P.
+ * Forwards the C entry points to i2p::api, keeping C++ types out of the
+ * exported ABI. C_StartI2P does not accept the optional log stream.
  *
  */
 

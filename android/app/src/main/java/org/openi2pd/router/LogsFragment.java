@@ -1,13 +1,13 @@
 /*
- * See the LICENSE file at the top of the project tree for copyright
- * and license details.
+ * See the LICENSE file at the top of the project tree for copyright and
+ * license details.
  *
  * openi2pd: LogsFragment.
  *
- * Log screen with debounced local search, severity chips and a capped visible
- * list so a noisy daemon cannot exhaust the heap. Filtering, empty-state and
- * summary updates run on the main thread from LiveData, and clearing retained
- * logs requires a bound service.
+ * Log screen with debounced local search, severity chips and a capped
+ * visible list so a noisy daemon cannot exhaust the heap. Filtering,
+ * empty-state and summary updates run on the main thread from LiveData,
+ * and clearing retained logs requires a bound service.
  *
  */
 
@@ -43,27 +43,27 @@ import java.util.List;
 import java.util.Locale;
 
 /**
- * Recycler-backed log screen with local search and severity filters. The list
- * is capped so a noisy native log stream cannot exhaust heap.
+ * Recycler-backed log screen with local search and severity filters.
+ * The list is capped so a noisy native log stream cannot exhaust heap.
  *
- * <p>Filtering and search are presentation only: they select from the retained
- * entries the view model publishes and never change the native log ring or its
- * level. Search input is debounced on the main looper so a keystroke does not
- * re-diff the list, and the pending debounce is cancelled in
- * {@code onDestroyView} so a retained {@link Handler} cannot touch a released
- * adapter.</p>
+ * <p>Filtering and search are presentation only: they select from the
+ * retained entries the view model publishes and never change the native
+ * log ring or its level. Search input is debounced on the main looper
+ * so a keystroke does not re-diff the list, and the pending debounce is
+ * cancelled in {@code onDestroyView} so a retained {@link Handler}
+ * cannot touch a released adapter.</p>
  *
- * <p>Bounds: at most {@value #MAX_VISIBLE_LOGS} entries are retained from a
- * published batch and the same cap is applied again after filtering, so both
- * the model list and the adapter input stay bounded no matter how large the
- * published batch was. Clearing is the only mutating action; it needs a bound
- * service because the retained list belongs to the service, and the button
- * stays disabled otherwise.</p>
+ * <p>Bounds: at most {@value #MAX_VISIBLE_LOGS} entries are retained
+ * from a published batch and the same cap is applied again after
+ * filtering, so both the model list and the adapter input stay bounded
+ * no matter how large the published batch was. Clearing is the only
+ * mutating action; it needs a bound service because the retained list
+ * belongs to the service, and the button stays disabled otherwise.</p>
  *
- * <p>View updates and callbacks run on the main thread; only the adapter's own
- * diff is computed off it. Search text and the selected filter id are the only
- * saved state, so a recreated view restores the filter without replaying any
- * log content.</p>
+ * <p>View updates and callbacks run on the main thread; only the
+ * adapter's own diff is computed off it. Search text and the selected
+ * filter id are the only saved state, so a recreated view restores the
+ * filter without replaying any log content.</p>
  */
 public class LogsFragment extends Fragment {
     private static final String STATE_QUERY = "log_query";
@@ -207,17 +207,20 @@ public class LogsFragment extends Fragment {
     }
 
     /**
-     * Recompute the visible list from the retained entries and submit it.
+     * Recompute the visible list from the retained entries and submit
+     * it.
      *
-     * <p>Main thread. Applies the severity filter and the query, keeps the
-     * newest {@value #MAX_VISIBLE_LOGS} matches and posts the empty-state,
-     * summary and clear-button updates from the diff completion callback, so the
-     * summary always describes the list the adapter actually holds. That
-     * callback re-checks {@code isAdded()} and the view because a diff can
-     * complete after the view was destroyed.</p>
+     * <p>Main thread. Applies the severity filter and the query, keeps
+     * the newest {@value #MAX_VISIBLE_LOGS} matches and posts the
+     * empty-state, summary and clear-button updates from the diff
+     * completion callback, so the summary always describes the list the
+     * adapter actually holds. That callback re-checks {@code isAdded()}
+     * and the view because a diff can complete after the view was
+     * destroyed.</p>
      *
-     * @param scrollToNewest follow the tail when the user was already at the
-     *                       bottom; a scrolled-up reader is never yanked away
+     * @param scrollToNewest follow the tail when the user was already
+     *                       at the bottom; a scrolled-up reader is
+     *                       never yanked away
      */
     private void applyFilters(boolean scrollToNewest) {
         if (!isAdded() || adapter == null) {
@@ -322,7 +325,8 @@ public class LogsFragment extends Fragment {
 
     private void updateClearButton() {
         if (clearLogs != null) {
-            // Without a bound service there is no retained list to clear.
+            // Without a bound service there is no retained list to
+            // clear.
             clearLogs.setEnabled(serviceConnected && !allLogs.isEmpty());
         }
     }

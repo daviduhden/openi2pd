@@ -1,16 +1,17 @@
 /*
- * See the LICENSE file at the top of the project tree for copyright
- * and license details.
+ * See the LICENSE file at the top of the project tree for copyright and
+ * license details.
  *
  * openi2pd: i2pd android.
  *
- * JNI entry points for daemon control, bounded status and log snapshots,
- * transport and client-service probes, and the byte-array torrent commands.
- * UTF-8 is converted to UTF-16 explicitly instead of using NewStringUTF,
- * pending JNI exceptions are cleared and turned into fallbacks, and every
- * returned string is bounded. Each process claims exactly one role (router or
- * SAF storage broker) before reaching a router- or document-capable entry
- * point, and a lock-free cancel token lets a stop abort an in-progress start.
+ * JNI entry points for daemon control, bounded status and log
+ * snapshots, transport and client-service probes, and the byte-array
+ * torrent commands. UTF-8 is converted to UTF-16 explicitly instead of
+ * using NewStringUTF, pending JNI exceptions are cleared and turned
+ * into fallbacks, and every returned string is bounded. Each process
+ * claims exactly one role (router or SAF storage broker) before
+ * reaching a router- or document-capable entry point, and a lock-free
+ * cancel token lets a stop abort an in-progress start.
  *
  */
 
@@ -52,8 +53,8 @@ namespace
 {
 /**
 	 * Exception-safe owner of the VM-owned UTF-16 buffer. JNI requires
-	 * ReleaseStringChars on every path, including a C++ allocation failure in
-	 * the decoder loop; a raw pointer made that path leak the VM copy.
+	 * ReleaseStringChars on every path, including a C++ allocation failure
+	 * in the decoder loop; a raw pointer made that path leak the VM copy.
 	 */
 class ScopedJStringChars
 {
@@ -79,7 +80,7 @@ private:
 	const jchar * m_Chars;
 };
 
-/** Decode Java UTF-16 into ordinary UTF-8, rejecting NUL and unpaired surrogates. */
+/** Decode Java UTF-16; reject NUL and unpaired surrogates. */
 bool Utf8FromJavaString (JNIEnv * env, jstring text, std::string & output, size_t maxChars = SIZE_MAX)
 {
 	if (!env || !text) return false;
@@ -102,16 +103,16 @@ bool Utf8FromJavaString (JNIEnv * env, jstring text, std::string & output, size_
 	if (!chars)
 	{
 		// GetStringChars reports allocation failure as a pending
-		// OutOfMemoryError; clear it before returning the documented
-		// "not convertible" fallback to the caller.
+		// OutOfMemoryError; clear it before returning the documented "not
+		// convertible" fallback to the caller.
 		if (env->ExceptionCheck ()) env->ExceptionClear ();
 		return false;
 	}
 	output.clear ();
-	// UTF-8 can need at most three bytes per UTF-16 code unit for BMP input;
-	// reserve a bounded prefix instead of growing from zero for every call.
-	// Compute the cap before multiplying so a 32-bit size_t cannot wrap on a
-	// hostile or accidentally huge Java string.
+	// UTF-8 can need at most three bytes per UTF-16 code unit for BMP
+	// input; reserve a bounded prefix instead of growing from zero for
+	// every call. Compute the cap before multiplying so a 32-bit size_t
+	// cannot wrap on a hostile or accidentally huge Java string.
 	constexpr size_t MAX_RESERVE = 64 * 1024;
 	const auto units = static_cast<size_t> (length);
 	output.reserve (units > MAX_RESERVE / 3 ? MAX_RESERVE : units * 3);
@@ -187,10 +188,11 @@ private:
 };
 
 /**
- * RAII local reference. One owner deletes the reference exactly once, also
- * when the enclosing operation throws or returns early after a failed JNI
- * array/object access. Deleting a local reference is legal while no exception
- * is pending; every failure path below clears the JNI exception first.
+ * RAII local reference. One owner deletes the reference exactly once,
+ * also when the enclosing operation throws or returns early after a
+ * failed JNI array/object access. Deleting a local reference is legal
+ * while no exception is pending; every failure path below clears the
+ * JNI exception first.
  */
 template <typename T> class ScopedLocalRef
 {
@@ -224,17 +226,19 @@ private:
 };
 
 /**
-	 * Convert ordinary UTF-8 to UTF-16 and call JNI NewString. NewStringUTF
-	 * expects modified UTF-8 (CESU-8 plus 0xC0 0x80 for NUL), which is not the
-	 * encoding used by C++ log/config/error strings. Decoding here preserves
-	 * embedded NUL, supplementary characters and arbitrary log text, and
-	 * replaces malformed sequences with U+FFFD instead of failing the call.
+	 * Convert ordinary UTF-8 to UTF-16 and call JNI NewString.
+	 * NewStringUTF expects modified UTF-8 (CESU-8 plus 0xC0 0x80 for NUL),
+	 * which is not the encoding used by C++ log/config/error strings.
+	 * Decoding here preserves embedded NUL, supplementary characters and
+	 * arbitrary log text, and replaces malformed sequences with U+FFFD
+	 * instead of failing the call.
 	 *
 	 * A VM allocation failure or a native conversion failure clears the
-	 * pending JNI exception and returns nullptr; Java must treat a null result
-	 * as "no snapshot available". The JNI boundary below retries with a small
-	 * fixed fallback, but under a permanent OOM that fallback can also be
-	 * null: no C++ code can manufacture a Java string without allocating one.
+	 * pending JNI exception and returns nullptr; Java must treat a null
+	 * result as "no snapshot available". The JNI boundary below retries
+	 * with a small fixed fallback, but under a permanent OOM that fallback
+	 * can also be null: no C++ code can manufacture a Java string without
+	 * allocating one.
 	 */
 inline jstring NewStringChecked (JNIEnv * env, std::string_view value) noexcept
 {
@@ -310,8 +314,8 @@ inline jstring NewStringChecked (JNIEnv * env, std::string_view value) noexcept
 		if (utf16.size () > static_cast<size_t> (std::numeric_limits<jsize>::max ())) return nullptr;
 		// A zero-length NewString must never receive a null jchar pointer:
 		// the JNI specification only allows a null pointer for a zero length
-		// on some VMs and CheckJNI aborts on it. A stable static element makes
-		// the empty case explicit instead of relying on that ambiguity.
+		// on some VMs and CheckJNI aborts on it. A stable static element
+		// makes the empty case explicit instead of relying on that ambiguity.
 		static constexpr jchar kEmptyUtf16 = 0;
 		jstring result
 			= env->NewString (utf16.empty () ? &kEmptyUtf16 : utf16.data (), static_cast<jsize> (utf16.size ()));
@@ -325,9 +329,10 @@ inline jstring NewStringChecked (JNIEnv * env, std::string_view value) noexcept
 }
 
 /**
-	 * Drop a pending java.lang.OutOfMemoryError or other JNI exception before
-	 * returning a fallback. Returning to ART with an exception pending while
-	 * also returning a value would be a JNI protocol violation.
+	 * Drop a pending java.lang.OutOfMemoryError or other JNI exception
+	 * before returning a fallback. Returning to ART with an exception
+	 * pending while also returning a value would be a JNI protocol
+	 * violation.
 	 */
 inline void ClearJniException (JNIEnv * env) noexcept
 {
@@ -349,9 +354,10 @@ template <typename Callback> void JniVoidCall (JNIEnv * env, Callback && callbac
 
 /**
 	 * Common try/catch frontier for JNI entries returning a string. A null
-	 * result from the callback (for example NewString OOM) is retried with the
-	 * bounded fallback text. If even that allocation fails the return is null;
-	 * Java treats that as "unavailable" rather than as a valid snapshot.
+	 * result from the callback (for example NewString OOM) is retried with
+	 * the bounded fallback text. If even that allocation fails the return
+	 * is null; Java treats that as "unavailable" rather than as a valid
+	 * snapshot.
 	 */
 template <typename Callback>
 jstring JniStringCall (JNIEnv * env, Callback && callback, std::string_view fallback) noexcept
@@ -393,10 +399,10 @@ template <typename T, typename Callback> T JniScalarCall (JNIEnv * env, Callback
 constexpr size_t MAX_RECENT_LOG_RECORDS = 256;
 
 /**
-	 * UTF-16 bounds applied before any Java string is converted to UTF-8. A
-	 * value longer than its operation's bound is rejected without allocating
-	 * its UTF-8 form; the address-book and protocol layers apply the same
-	 * limits again on their side of the boundary.
+	 * UTF-16 bounds applied before any Java string is converted to UTF-8.
+	 * A value longer than its operation's bound is rejected without
+	 * allocating its UTF-8 form; the address-book and protocol layers
+	 * apply the same limits again on their side of the boundary.
 	 */
 constexpr size_t MAX_TUNNEL_NAME_UNITS = 64;
 constexpr size_t MAX_ADDRESS_NAME_UNITS = 255;
@@ -405,9 +411,9 @@ constexpr size_t MAX_SUBSCRIPTION_UNITS = 512;
 constexpr size_t MAX_ROUTER_HASH_UNITS = 44; // base64 of a 32-byte hash
 
 /**
-	 * True when `text` is a non-empty Java string of at most `maximum` UTF-16
-	 * units. The length is read from the VM, so an oversized value never
-	 * reaches the UTF-8 conversion.
+	 * True when `text` is a non-empty Java string of at most `maximum`
+	 * UTF-16 units. The length is read from the VM, so an oversized value
+	 * never reaches the UTF-8 conversion.
 	 */
 bool JavaStringWithin (JNIEnv * env, jstring text, size_t maximum) noexcept
 {
@@ -436,11 +442,11 @@ std::string_view ReseedPhaseToken (i2p::data::ReseedPhase phase) noexcept
 }
 
 /**
-	 * Submit one typed administrative command and translate its result into
-	 * the closed outcome vocabulary Java consumes. This is the only place the
-	 * app boundary touches the daemon-owned admin queue, and it can only build
-	 * the fixed command kinds listed by the JNI entry points; there is no
-	 * generic request/verb string.
+	 * Submit one typed administrative command and translate its result
+	 * into the closed outcome vocabulary Java consumes. This is the only
+	 * place the app boundary touches the daemon-owned admin queue, and it
+	 * can only build the fixed command kinds listed by the JNI entry
+	 * points; there is no generic request/verb string.
 	 */
 std::string SubmitAdminOutcome (
 	i2p::tui::AdminCommandKind kind, std::string_view name, std::string_view destination, bool enabled)
@@ -468,10 +474,11 @@ std::string SubmitAdminOutcome (
 }
 
 /**
-	 * Exact, case-sensitive closed set of runtime log level names accepted by
-	 * the in-process logger. Log::SetLogLevel() lowercases its argument and
-	 * only logs an unknown name, so validating here keeps an invalid value from
-	 * reaching native state at all and lets Java report a definite rejection.
+	 * Exact, case-sensitive closed set of runtime log level names accepted
+	 * by the in-process logger. Log::SetLogLevel() lowercases its argument
+	 * and only logs an unknown name, so validating here keeps an invalid
+	 * value from reaching native state at all and lets Java report a
+	 * definite rejection.
 	 */
 inline bool IsRuntimeLogLevelName (std::string_view level) noexcept
 {
@@ -482,8 +489,8 @@ inline bool IsRuntimeLogLevelName (std::string_view level) noexcept
 /**
 	 * Fixed, bounded snapshot returned when collecting the real snapshot
 	 * throws or while the router is not running. It has the same keys and
-	 * ordering as a normal snapshot so that Java can parse it with the same
-	 * code.
+	 * ordering as a normal snapshot so that Java can parse it with the
+	 * same code.
 	 */
 constexpr const char * ERROR_SNAPSHOT = "status=Error\n"
 										"statusCode=-1\n"
@@ -541,10 +548,10 @@ constexpr const char * STOPPED_SNAPSHOT = "status=Stopped\n"
 										  "ipv6=";
 
 /**
-	 * Snapshot published while stop() has set DaemonLifecycle::Stopping but
-	 * the native-call lock is still held by the stop itself. A poll can read
-	 * this without waiting for the router to finish tearing down and without
-	 * touching RouterContext.
+	 * Snapshot published while stop() has set DaemonLifecycle::Stopping
+	 * but the native-call lock is still held by the stop itself. A poll
+	 * can read this without waiting for the router to finish tearing down
+	 * and without touching RouterContext.
 	 */
 constexpr const char * STOPPING_SNAPSHOT = "status=Stopping\n"
 										   "statusCode=-1\n"
@@ -642,11 +649,12 @@ const char * TransportName (i2p::data::RouterInfo::TransportStyle style)
 }
 
 /**
-	 * Immutable copy of one address. RouterInfo::GetAddresses() returns the
-	 * live local addresses; the Address objects and the array can be replaced
-	 * concurrently under RouterContext::m_RouterInfoMutex. Copying the fields
-	 * while that lock is held (through CopyRouterInfoBuffer and a private
-	 * RouterInfo parse) keeps JNI from iterating live state.
+	 * Immutable copy of one address. RouterInfo::GetAddresses() returns
+	 * the live local addresses; the Address objects and the array can be
+	 * replaced concurrently under RouterContext::m_RouterInfoMutex.
+	 * Copying the fields while that lock is held (through
+	 * CopyRouterInfoBuffer and a private RouterInfo parse) keeps JNI from
+	 * iterating live state.
 	 */
 struct AddressSnapshot
 {
@@ -659,11 +667,11 @@ struct AddressSnapshot
 };
 
 /**
-	 * Build an immutable address list from the same signed RouterInfo buffer
-	 * the router publishes. The buffer copy is taken under the RouterInfo
-	 * mutex by RouterContext::CopyRouterInfoBuffer(); parsing it into a local
-	 * RouterInfo means no reference into the router's live Address objects is
-	 * retained after this function returns.
+	 * Build an immutable address list from the same signed RouterInfo
+	 * buffer the router publishes. The buffer copy is taken under the
+	 * RouterInfo mutex by RouterContext::CopyRouterInfoBuffer(); parsing
+	 * it into a local RouterInfo means no reference into the router's live
+	 * Address objects is retained after this function returns.
 	 */
 std::vector<AddressSnapshot> CopyAddressSnapshot ()
 {
@@ -698,10 +706,10 @@ std::vector<AddressSnapshot> CopyAddressSnapshot ()
 }
 
 /**
-	 * Append one address record as transport|host|port|published. IPv6 hosts
-	 * are enclosed in brackets so the value stays unambiguous. Unspecified
-	 * hosts (0.0.0.0 / ::) are omitted: they are local bindings, not observed
-	 * addresses.
+	 * Append one address record as transport|host|port|published. IPv6
+	 * hosts are enclosed in brackets so the value stays unambiguous.
+	 * Unspecified hosts (0.0.0.0 / ::) are omitted: they are local
+	 * bindings, not observed addresses.
 	 */
 void AppendAddress (std::string & value, bool & first, const AddressSnapshot & address)
 {
@@ -801,8 +809,8 @@ std::string BuildStatusSnapshot ()
 }
 
 /**
-	 * Copy recent log records. The text field is the bounded, sanitized copy
-	 * made by Log::Append. Each record is sequence|timestampSeconds|
+	 * Copy recent log records. The text field is the bounded, sanitized
+	 * copy made by Log::Append. Each record is sequence|timestampSeconds|
 	 * numericLevel|text and records are separated by a single newline.
 	 */
 std::string BuildRecentLogs (uint64_t after, size_t limit)
@@ -825,12 +833,12 @@ std::string BuildRecentLogs (uint64_t after, size_t limit)
 }
 
 /**
-	 * Release every still-live SAF document handle and tree capability while
-	 * the daemon and this JNI thread are alive. Defined by the SAF section
-	 * below; it is a no-op when the torrent engine is compiled out. Calling it
-	 * after the daemon has stopped keeps document cleanup off the payload
-	 * destructors, which may run on a native worker thread or during process
-	 * teardown where no JNI attachment is permitted.
+	 * Release every still-live SAF document handle and tree capability
+	 * while the daemon and this JNI thread are alive. Defined by the SAF
+	 * section below; it is a no-op when the torrent engine is compiled
+	 * out. Calling it after the daemon has stopped keeps document cleanup
+	 * off the payload destructors, which may run on a native worker thread
+	 * or during process teardown where no JNI attachment is permitted.
 	 */
 void DetachSafPayloads () noexcept;
 }
@@ -875,13 +883,14 @@ JNIEXPORT jstring JNICALL Java_org_openi2pd_router_I2PD_1JNI_getABICompiledWith 
 /**
  * Start the daemon for a process that already claimed the router role.
  *
- * A SAF storage-broker process that reaches this entry point is refused with
- * the fixed PROCESS_ROLE_CONFLICT token before any router state exists. The
- * whole transition runs under the native-call guard; a start-cancellation
- * request may still abort it because that token is lock-free.
+ * A SAF storage-broker process that reaches this entry point is refused
+ * with the fixed PROCESS_ROLE_CONFLICT token before any router state
+ * exists. The whole transition runs under the native-call guard; a
+ * start-cancellation request may still abort it because that token is
+ * lock-free.
  *
- * @return "ok", a bounded diagnostic, START_CANCELED_RESULT, or the fixed
- *         role-conflict token
+ * @return "ok", a bounded diagnostic, START_CANCELED_RESULT, or the
+ * fixed role-conflict token
  */
 JNIEXPORT jstring JNICALL Java_org_openi2pd_router_I2PD_1JNI_startDaemon (JNIEnv * env, jclass clazz)
 {
@@ -903,9 +912,10 @@ JNIEXPORT jstring JNICALL Java_org_openi2pd_router_I2PD_1JNI_startDaemon (JNIEnv
 }
 
 /**
-	 * Claim this process role. A claim is accepted once and is irreversible;
-	 * a conflicting or unknown role returns false and must keep the caller
-	 * from starting a router or obtaining document authority.
+	 * Claim this process role. A claim is accepted once and is
+	 * irreversible; a conflicting or unknown role returns false and must
+	 * keep the caller from starting a router or obtaining document
+	 * authority.
 	 */
 extern "C" JNIEXPORT jboolean JNICALL Java_org_openi2pd_router_I2PD_1JNI_claimProcessRole (
 	JNIEnv * env, jclass, jint role) noexcept
@@ -922,16 +932,16 @@ extern "C" JNIEXPORT jboolean JNICALL Java_org_openi2pd_router_I2PD_1JNI_claimPr
 	}
 }
 
-/** Currently claimed process role (0 = none, 1 = router, 2 = storage broker). */
+/** Process role: 0 none, 1 router, 2 storage broker. */
 extern "C" JNIEXPORT jint JNICALL Java_org_openi2pd_router_I2PD_1JNI_processRole (JNIEnv *, jclass) noexcept
 {
 	return static_cast<jint> (i2p::android::CurrentProcessRole ());
 }
 
 /**
-	 * Publish a start-cancellation request. This deliberately takes no native
-	 * lock: a start transition owns the native-call guard for its whole
-	 * duration, so a guarded stop request could never reach it.
+	 * Publish a start-cancellation request. This deliberately takes no
+	 * native lock: a start transition owns the native-call guard for its
+	 * whole duration, so a guarded stop request could never reach it.
 	 */
 extern "C" JNIEXPORT void JNICALL Java_org_openi2pd_router_I2PD_1JNI_requestStopNative (JNIEnv *, jclass) noexcept
 {
@@ -941,8 +951,9 @@ extern "C" JNIEXPORT void JNICALL Java_org_openi2pd_router_I2PD_1JNI_requestStop
 /**
  * Recorded application data directory of the router.
  *
- * Reads only the stateMutex-protected string, so the settings editor can ask
- * for it without waiting behind a start that is copying packaged assets.
+ * Reads only the stateMutex-protected string, so the settings editor
+ * can ask for it without waiting behind a start that is copying
+ * packaged assets.
  */
 JNIEXPORT jstring JNICALL Java_org_openi2pd_router_I2PD_1JNI_getDataDir (JNIEnv * env, jclass clazz)
 {
@@ -950,10 +961,10 @@ JNIEXPORT jstring JNICALL Java_org_openi2pd_router_I2PD_1JNI_getDataDir (JNIEnv 
 		env,
 		[&] ()
 		{
-			// Only reads the stateMutex-protected string. It deliberately
-			// does not take the native-call lock: the settings editor may ask
-			// for it on the UI thread while startDaemon() is waiting for the
-			// packaged assets.
+			// Only reads the stateMutex-protected string. It deliberately does
+			// not take the native-call lock: the settings editor may ask for it
+			// on the UI thread while startDaemon() is waiting for the packaged
+			// assets.
 			return NewStringChecked (env, i2p::android::GetDataDir ());
 		},
 		"");
@@ -962,27 +973,27 @@ JNIEXPORT jstring JNICALL Java_org_openi2pd_router_I2PD_1JNI_getDataDir (JNIEnv 
 /**
  * Ordered native stop under the native-call guard.
  *
- * Java publishes its own "stopping" state first and calls this only from the
- * RouterService worker. A repeated stop is a no-op, and the remaining SAF
- * payload capabilities are released on this attached JNI thread so no JNI runs
- * from a payload destructor.
+ * Java publishes its own "stopping" state first and calls this only
+ * from the RouterService worker. A repeated stop is a no-op, and the
+ * remaining SAF payload capabilities are released on this attached JNI
+ * thread so no JNI runs from a payload destructor.
  */
 JNIEXPORT void JNICALL Java_org_openi2pd_router_I2PD_1JNI_stopDaemon (JNIEnv * env, jclass clazz)
 {
 	JniVoidCall (env,
 		[] ()
 		{
-			// The guard serialises this against start/status. Java is expected
-			// to publish its own "stopping" state and to call this only from
-			// the RouterService worker; the native lifecycle mirror cannot
-			// enforce the Java thread.
+			// The guard serializes this against start/status. Java is expected
+			// to publish its own "stopping" state and to call this only from the
+			// RouterService worker; the native lifecycle mirror cannot enforce
+			// the Java thread.
 			i2p::android::NativeCallGuard call;
 			i2p::android::stop ();
 			// The daemon just joined its torrent workers, so no tunnel is using
 			// a document handle any more. Releasing the remaining SAF
 			// capabilities here, on this attached JNI thread, keeps JNI out of
-			// the payload destructors, which may run later on a worker thread
-			// or during process teardown.
+			// the payload destructors, which may run later on a worker thread or
+			// during process teardown.
 			DetachSafPayloads ();
 		});
 }
@@ -1021,14 +1032,15 @@ JNIEXPORT void JNICALL Java_org_openi2pd_router_I2PD_1JNI_reloadTunnelsConfigs (
 }
 
 /**
-	 * Ask the running netDb to reseed. Never blocks: NetDb::RequestReseed()
-	 * starts the owned, cancellable job and returns immediately, so the service
-	 * worker (and therefore the UI) is not held for the length of a bootstrap.
+	 * Ask the running netDb to reseed. Never blocks:
+	 * NetDb::RequestReseed() starts the owned, cancellable job and returns
+	 * immediately, so the service worker (and therefore the UI) is not
+	 * held for the length of a bootstrap.
 	 *
-	 * @return one of the closed outcome tokens {@code started},
-	 *         {@code already-running}, {@code disabled}, {@code accepted},
-	 *         {@code busy} or {@code unavailable}. No URL, path or option is
-	 *         accepted from Java.
+	 * @return one of the closed outcome tokens {@code started}, {@code
+	 * already-running}, {@code disabled}, {@code accepted}, {@code busy}
+	 * or {@code unavailable}. No URL, path or option is accepted from
+	 * Java.
 	 */
 JNIEXPORT jstring JNICALL Java_org_openi2pd_router_I2PD_1JNI_requestReseed (JNIEnv * env, jclass clazz)
 {
@@ -1044,9 +1056,11 @@ JNIEXPORT jstring JNICALL Java_org_openi2pd_router_I2PD_1JNI_requestReseed (JNIE
 }
 
 /**
-	 * Bounded, non-secret reseed status:
-	 * {@code phase|enabled|attempts|succeeded|lastAttemptMs|lastSuccessMs|lastError}.
-	 * The record never waits for the job and never carries a URL or credential.
+	 * Bounded, non-secret reseed status: {@code
+	 * Fields are phase, enabled, attempts, succeeded, lastAttemptMs,
+	 * lastSuccessMs and lastError, separated by {@code |}.
+	 * The record never waits for the job and never carries a URL or
+	 * credential.
 	 */
 JNIEXPORT jstring JNICALL Java_org_openi2pd_router_I2PD_1JNI_getReseedStatus (JNIEnv * env, jclass clazz)
 {
@@ -1081,8 +1095,9 @@ JNIEXPORT jstring JNICALL Java_org_openi2pd_router_I2PD_1JNI_getReseedStatus (JN
 
 /**
 	 * Configured client and server tunnels, one bounded record per line:
-	 * {@code name|kind|running|localEndpoint|destination}. Only public labels
-	 * cross the boundary; no private key, identity file or storage path.
+	 * {@code name|kind|running|localEndpoint|destination}. Only public
+	 * labels cross the boundary; no private key, identity file or storage
+	 * path.
 	 */
 JNIEXPORT jstring JNICALL Java_org_openi2pd_router_I2PD_1JNI_getTunnelServices (JNIEnv * env, jclass clazz)
 {
@@ -1162,10 +1177,10 @@ JNIEXPORT jstring JNICALL Java_org_openi2pd_router_I2PD_1JNI_stopTunnel (JNIEnv 
 /**
 	 * Add or replace one address-book name.
 	 *
-	 * @param replace {@code false} never re-points an existing name and reports
-	 *                {@code exists}; {@code true} is the explicit overwrite.
-	 * @return {@code ok}, {@code exists}, {@code invalid}, {@code unavailable}
-	 *         or {@code failed}
+	 * @param replace {@code false} never re-points an existing name and
+	 * reports {@code exists}; {@code true} is the explicit overwrite.
+	 * @return {@code ok}, {@code exists}, {@code invalid}, {@code
+	 * unavailable} or {@code failed}
 	 */
 JNIEXPORT jstring JNICALL Java_org_openi2pd_router_I2PD_1JNI_addAddressWithResult (
 	JNIEnv * env, jclass clazz, jstring name, jstring destination, jboolean replace)
@@ -1218,7 +1233,7 @@ JNIEXPORT jstring JNICALL Java_org_openi2pd_router_I2PD_1JNI_getSubscriptions (J
 		"");
 }
 
-/** Add one validated subscription source through the typed daemon verb. */
+/** Add a validated subscription source through a typed daemon verb. */
 JNIEXPORT jstring JNICALL Java_org_openi2pd_router_I2PD_1JNI_addSubscription (JNIEnv * env, jclass clazz, jstring url)
 {
 	return JniStringCall (
@@ -1294,10 +1309,10 @@ JNIEXPORT jstring JNICALL Java_org_openi2pd_router_I2PD_1JNI_unbanRouter (JNIEnv
 /**
 	 * Apply one runtime log level to the running logger.
 	 *
-	 * Only the exact closed set IsRuntimeLogLevelName() accepts is forwarded;
-	 * the value is validated before the native-call lock is taken so an
-	 * unknown name cannot change any router state. Nothing is written to
-	 * i2pd.conf and no restart is required.
+	 * Only the exact closed set IsRuntimeLogLevelName() accepts is
+	 * forwarded; the value is validated before the native-call lock is
+	 * taken so an unknown name cannot change any router state. Nothing is
+	 * written to i2pd.conf and no restart is required.
 	 */
 JNIEXPORT jboolean JNICALL Java_org_openi2pd_router_I2PD_1JNI_setRuntimeLogLevel (
 	JNIEnv * env, jclass clazz, jstring jlevel)
@@ -1327,8 +1342,9 @@ JNIEXPORT jboolean JNICALL Java_org_openi2pd_router_I2PD_1JNI_setRuntimeLogLevel
  * Publish the platform connectivity state to the transports.
  *
  * Java calls this from the ConnectivityManager callback rather than the
- * service worker, so the guard is the defensive boundary: it serialises the
- * update against start/stop and ignores it once the router is not Running.
+ * service worker, so the guard is the defensive boundary: it serializes
+ * the update against start/stop and ignores it once the router is not
+ * Running.
  */
 JNIEXPORT void JNICALL Java_org_openi2pd_router_I2PD_1JNI_onNetworkStateChanged (
 	JNIEnv * env, jclass clazz, jboolean isConnected)
@@ -1336,10 +1352,10 @@ JNIEXPORT void JNICALL Java_org_openi2pd_router_I2PD_1JNI_onNetworkStateChanged 
 	JniVoidCall (env,
 		[isConnected] ()
 		{
-			// Java invokes this from the ConnectivityManager callback, not
-			// from the RouterService worker. The native guard is the
-			// defensive boundary: it serialises the update against start/stop
-			// and ignores it once the router is no longer Running.
+			// Java invokes this from the ConnectivityManager callback, not from
+			// the RouterService worker. The native guard is the defensive
+			// boundary: it serializes the update against start/stop and ignores
+			// it once the router is no longer Running.
 			i2p::android::NativeCallGuard call;
 			if (!call.IsRunning ()) return;
 			i2p::transport::transports.SetOnline (isConnected != JNI_FALSE);
@@ -1349,9 +1365,9 @@ JNIEXPORT void JNICALL Java_org_openi2pd_router_I2PD_1JNI_onNetworkStateChanged 
 /**
  * Record the application data directory for the next start.
  *
- * State-only, bounded to 4096 UTF-16 units by ScopedUtfChars, and deliberately
- * outside the native-call lock: the daemon start worker sets it while the
- * router may still be waiting for packaged assets.
+ * State-only, bounded to 4096 UTF-16 units by ScopedUtfChars, and
+ * deliberately outside the native-call lock: the daemon start worker
+ * sets it while the router may still be waiting for packaged assets.
  */
 JNIEXPORT void JNICALL Java_org_openi2pd_router_I2PD_1JNI_setDataDir (JNIEnv * env, jclass clazz, jstring jdataDir)
 {
@@ -1390,8 +1406,8 @@ JNIEXPORT jstring JNICALL Java_org_openi2pd_router_I2PD_1JNI_getStatusSummary (J
 		[&] () -> jstring
 		{
 			// Do not wait behind a stop that already published Stopping: the
-			// status must be observable even though the native-call lock is
-			// held by the teardown.
+			// status must be observable even though the native-call lock is held
+			// by the teardown.
 			const auto lifecycle = i2p::android::GetDaemonLifecycle ();
 			if (lifecycle == i2p::android::DaemonLifecycle::Stopping) return NewStringChecked (env, STOPPING_SUMMARY);
 			if (lifecycle == i2p::android::DaemonLifecycle::Starting) return NewStringChecked (env, STARTING_SUMMARY);
@@ -1573,11 +1589,12 @@ JNIEXPORT jstring JNICALL Java_org_openi2pd_router_I2PD_1JNI_getBlockedAddresses
  * Run one torrent-only control request from the Android UI.
  *
  * The request is a bounded standard-UTF-8 I2PDTUI/1 line, parsed by the
- * daemon-owned admin queue. Only the torrent types allowed in the switch below
- * are accepted: filesystem import and router-wide administration are excluded
- * because SAF import has its own storage broker and the Android surface must
- * stay a closed typed set. A refused or unknown request is answered with a
- * protocol error, never an exception, and the router must be Running.
+ * daemon-owned admin queue. Only the torrent types allowed in the
+ * switch below are accepted: filesystem import and router-wide
+ * administration are excluded because SAF import has its own storage
+ * broker and the Android surface must stay a closed typed set. A
+ * refused or unknown request is answered with a protocol error, never
+ * an exception, and the router must be Running.
  */
 JNIEXPORT jstring JNICALL Java_org_openi2pd_router_I2PD_1JNI_torrentCommand (JNIEnv * env, jclass, jbyteArray request)
 {
@@ -1594,8 +1611,9 @@ JNIEXPORT jstring JNICALL Java_org_openi2pd_router_I2PD_1JNI_torrentCommand (JNI
 			env->GetByteArrayRegion (request, 0, length, reinterpret_cast<jbyte *> (line.data ()));
 			if (env->ExceptionCheck ()) return nullptr;
 			auto parsed = i2p::tui::ParseRequest (line);
-			// This embedded bridge deliberately excludes filesystem import and all
-			// router-wide administration. SAF import needs its own storage broker.
+			// This embedded bridge deliberately excludes filesystem import and
+			// all router-wide administration. SAF import needs its own storage
+			// broker.
 			if (!parsed) return NewStringChecked (env, "I2PDTUI/1 ERR 4 15\ninvalid request");
 			switch (parsed->type)
 			{
@@ -1640,9 +1658,10 @@ JNIEXPORT jstring JNICALL Java_org_openi2pd_router_I2PD_1JNI_torrentCommand (JNI
 /**
  * Import already-read metainfo bytes into one torrent tunnel.
  *
- * The Java side reads the provider document; only the bytes cross here, never a
- * path or display name. The size is bounded to 8 MiB, a stopped router is
- * refused with the fixed protocol error, and the result is a protocol response.
+ * The Java side reads the provider document; only the bytes cross here,
+ * never a path or display name. The size is bounded to 8 MiB, a stopped
+ * router is refused with the fixed protocol error, and the result is a
+ * protocol response.
  */
 JNIEXPORT jstring JNICALL Java_org_openi2pd_router_I2PD_1JNI_importTorrent (
 	JNIEnv * env, jclass, jint tunnelIndex, jbyteArray metadata)
@@ -1744,9 +1763,10 @@ extern "C" JNIEXPORT jbyteArray JNICALL Java_org_openi2pd_router_I2PD_1JNI_build
 			return nullptr;
 		}
 		if (count < 1 || count > 10000 || env->GetArrayLength (lengths) != count) return nullptr;
-		// Every failure below clears a pending JNI exception before it returns
-		// or throws: Java treats a null result as "metadata creation failed",
-		// so the entry point must never leave ART with an exception pending.
+		// Every failure below clears a pending JNI exception before it
+		// returns or throws: Java treats a null result as "metadata creation
+		// failed", so the entry point must never leave ART with an exception
+		// pending.
 		auto bytes = [&] (jbyteArray value, size_t maximum) -> std::string
 		{
 			if (!value) throw std::runtime_error ("missing field");
@@ -1862,10 +1882,11 @@ extern "C" JNIEXPORT jbyteArray JNICALL Java_org_openi2pd_router_I2PD_1JNI_build
 namespace
 {
 /**
-	 * True while JNI may still be used from this process. It is flipped once by
-	 * a guard constructed when the SAF bridge is installed, so it is destroyed
-	 * before the program-initialised statics that can own payloads. A payload
-	 * destructor that runs after that point performs no JNI work at all.
+	 * True while JNI may still be used from this process. It is flipped
+	 * once by a guard constructed when the SAF bridge is installed, so it
+	 * is destroyed before the program-initialized statics that can own
+	 * payloads. A payload destructor that runs after that point performs
+	 * no JNI work at all.
 	 */
 std::atomic<bool> safJniLifetimeActive { true };
 
@@ -1876,9 +1897,10 @@ struct SafJniLifetimeGuard
 
 /**
 	 * One bridge call's JNI environment. `Attach::Never` is the destructor
-	 * policy: a destructor must never attach a thread, because it can run on a
-	 * native worker or during process teardown. Without an existing attachment
-	 * the scope reports "no VM" and the caller falls back to its error string.
+	 * policy: a destructor must never attach a thread, because it can run
+	 * on a native worker or during process teardown. Without an existing
+	 * attachment the scope reports "no VM" and the caller falls back to
+	 * its error string.
 	 */
 struct SafEnv
 {
@@ -1895,8 +1917,8 @@ struct SafEnv
 		: vm (value)
 	{
 		// Document callbacks are a router-process capability only. A process
-		// bound to the SAF storage broker, or one that has not claimed a role,
-		// never obtains document authority through this helper.
+		// bound to the SAF storage broker, or one that has not claimed a
+		// role, never obtains document authority through this helper.
 		if (i2p::android::CurrentProcessRole () != i2p::android::ProcessRole::Router)
 		{
 			failed = true;
@@ -1923,8 +1945,9 @@ struct SafEnv
 		}
 		// Each bridge call is one local-reference scope. PopLocalFrame also
 		// releases a reference that a throwing provider made hard to inspect.
-		// PushLocalFrame throws OutOfMemoryError on failure; clear it here so a
-		// pending exception never leaks into the next JNI call on this thread.
+		// PushLocalFrame throws OutOfMemoryError on failure; clear it here so
+		// a pending exception never leaks into the next JNI call on this
+		// thread.
 		if (env)
 		{
 			frame = env->PushLocalFrame (32) == 0;
@@ -1959,10 +1982,11 @@ struct SafEnv
 /**
 	 * Process-lifetime JNI bridge to the SAF storage service.
 	 *
-	 * The bridge owns one JNI global class reference that is deliberately never
-	 * released: deleting it from a static destructor or an arbitrary stop
-	 * thread is not a legal JNI operation, and process exit reclaims it with
-	 * the VM. The destructor therefore performs no JNI work at all.
+	 * The bridge owns one JNI global class reference that is deliberately
+	 * never released: deleting it from a static destructor or an arbitrary
+	 * stop thread is not a legal JNI operation, and process exit reclaims
+	 * it with the VM. The destructor therefore performs no JNI work at
+	 * all.
 	 */
 struct SafBridge
 {
@@ -1996,10 +2020,11 @@ public:
 class SafPayload;
 
 /**
-	 * Live payload backends, owned by the torrent engine. The registry holds
-	 * weak references only; it exists so the daemon stop path can release
-	 * documents on the attached JNI thread instead of leaving that work to a
-	 * destructor that may run on a worker thread or during teardown.
+	 * Live payload backends, owned by the torrent engine. The registry
+	 * holds weak references only; it exists so the daemon stop path can
+	 * release documents on the attached JNI thread instead of leaving that
+	 * work to a destructor that may run on a worker thread or during
+	 * teardown.
 	 */
 struct SafPayloadRegistry
 {
@@ -2007,7 +2032,7 @@ struct SafPayloadRegistry
 	std::vector<std::weak_ptr<SafPayload>> slots;
 };
 
-/** Upper bound on tracked backends; one per configured torrent tunnel. */
+/** Upper bound: one tracked backend per configured torrent tunnel. */
 constexpr size_t MAX_SAF_PAYLOADS = 256;
 
 SafPayloadRegistry & PayloadRegistry ()
@@ -2019,9 +2044,10 @@ SafPayloadRegistry & PayloadRegistry ()
 void RegisterSafPayload (const std::shared_ptr<SafPayload> & payload);
 
 /// Adapts one torrent's payload operations to Java SAF capabilities.
-/// The shared bridge keeps JNI method IDs and the class reference alive;
-/// `lock` serializes the cached root and handles with reads, writes and detach.
-/// The paths passed to Java are relative to the selected tree, not local paths.
+/// The shared bridge keeps JNI method IDs and the class reference
+/// alive; `lock` serializes the cached root and handles with reads,
+/// writes and detach. The paths passed to Java are relative to the
+/// selected tree, not local paths.
 class SafPayload final : public i2p::torrents::TorrentPayloadStorage
 {
 	std::shared_ptr<SafBridge> bridge;
@@ -2083,12 +2109,13 @@ public:
 	 * Best-effort document release that never attaches a thread and never
 	 * pushes a local frame: a destructor may run on a native torrent/disk
 	 * worker thread or while the process tears down its statics, where a
-	 * thread attach/detach pair is not a legal operation.
-	 * When the destroying thread is not already attached to a live VM this
-	 * returns immediately and the provider reclaims the document when the
-	 * broker or the process ends. The daemon calls Detach() through
-	 * DetachSafPayloads() on the attached JNI thread after Daemon.stop(), so
-	 * this is only the fallback for a torrent that disappears while running.
+	 * thread attach/detach pair is not a legal operation. When the
+	 * destroying thread is not already attached to a live VM this returns
+	 * immediately and the provider reclaims the document when the broker
+	 * or the process ends. The daemon calls Detach() through
+	 * DetachSafPayloads() on the attached JNI thread after Daemon.stop(),
+	 * so this is only the fallback for a torrent that disappears while
+	 * running.
 	 */
 	void ReleaseWithoutAttach () noexcept
 	{
@@ -2126,10 +2153,10 @@ public:
 
 	/**
 	 * Release every cached document handle and the tree capability. Called
-	 * while the daemon is stopping and this thread is attached to the VM, so
-	 * the objects can be dropped without JNI work in a destructor. It is
-	 * idempotent and keeps working afterwards: a later Open() re-resolves the
-	 * root and reopens the document.
+	 * while the daemon is stopping and this thread is attached to the VM,
+	 * so the objects can be dropped without JNI work in a destructor. It
+	 * is idempotent and keeps working afterwards: a later Open()
+	 * re-resolves the root and reopens the document.
 	 */
 	void Detach () noexcept
 	{
@@ -2283,18 +2310,19 @@ void RegisterSafPayload (const std::shared_ptr<SafPayload> & payload)
 	if (!payload) return;
 	auto & registry = PayloadRegistry ();
 	std::lock_guard guard (registry.lock);
-	// Reclaim slots whose backend is already gone, then respect the bound. An
-	// untracked payload still works; it only loses the explicit detach hint and
-	// falls back to its best-effort destructor.
+	// Reclaim slots whose backend is already gone, then respect the bound.
+	// An untracked payload still works; it only loses the explicit detach
+	// hint and falls back to its best-effort destructor.
 	std::erase_if (registry.slots, [] (const auto & slot) { return slot.expired (); });
 	if (registry.slots.size () >= MAX_SAF_PAYLOADS) return;
 	registry.slots.push_back (payload);
 }
 
 /**
-	 * Release every live payload's document handles and tree capability. Runs
-	 * on the JNI thread that is already attached to the VM; it never attaches
-	 * one and never runs under the registry lock while calling a provider.
+	 * Release every live payload's document handles and tree capability.
+	 * Runs on the JNI thread that is already attached to the VM; it never
+	 * attaches one and never runs under the registry lock while calling a
+	 * provider.
 	 */
 void DetachSafPayloads () noexcept
 {
@@ -2329,17 +2357,19 @@ extern "C" JNIEXPORT jboolean JNICALL Java_org_openi2pd_router_I2PD_1JNI_install
 #ifndef NO_TORRENTS
 	try
 	{
-		// Document authority is a router-process capability. A process bound to
-		// the SAF storage broker must never install a bridge (it would then be
-		// able to drive document IO from the process that is supposed to expose
-		// no router state) and an unclaimed process must first claim Router.
+		// Document authority is a router-process capability. A process bound
+		// to the SAF storage broker must never install a bridge (it would
+		// then be able to drive document IO from the process that is supposed
+		// to expose no router state) and an unclaimed process must first
+		// claim Router.
 		if (!i2p::android::HasProcessRole (i2p::android::ProcessRole::Router)) return JNI_FALSE;
 		// Construct the JNI lifetime guard late (once), so it is destroyed
-		// before program-initialised statics that may own payload backends.
+		// before program-initialized statics that may own payload backends.
 		static SafJniLifetimeGuard lifetimeGuard;
 		(void)lifetimeGuard;
-		// Install denial before any JNI allocation/lookup. Failed setup cannot
-		// leave a selected document torrent on the native filesystem backend.
+		// Install denial before any JNI allocation/lookup. Failed setup
+		// cannot leave a selected document torrent on the native filesystem
+		// backend.
 		i2p::torrents::SetTorrentPayloadStorageFactory (
 			[] (const std::string &, const std::string &) { return std::make_shared<SafUnavailable> (); });
 		auto fail = [] () -> jboolean
@@ -2349,14 +2379,15 @@ extern "C" JNIEXPORT jboolean JNICALL Java_org_openi2pd_router_I2PD_1JNI_install
 			i2p::torrents::SetTorrentPayloadStorageFactory ({ });
 			return JNI_FALSE;
 		};
-		// Reclaim document handles from a previous incarnation before replacing
-		// the backend on a restart.
+		// Reclaim document handles from a previous incarnation before
+		// replacing the backend on a restart.
 		DetachSafPayloads ();
 		// The bridge is a deliberate process-lifetime object: its destructor
-		// performs no JNI work, so one bridge is reused across daemon restarts.
-		// Creating a new global class reference on every start leaked one ref
-		// per restart. A class identity change (in-place update/test) creates a
-		// second bridge; the old holder stays alive for its payloads.
+		// performs no JNI work, so one bridge is reused across daemon
+		// restarts. Creating a new global class reference on every start
+		// leaked one ref per restart. A class identity change (in-place
+		// update/test) creates a second bridge; the old holder stays alive
+		// for its payloads.
 		static std::mutex bridgeMutex;
 		static std::shared_ptr<SafBridge> processBridge;
 		JavaVM * vm = nullptr;
@@ -2401,8 +2432,8 @@ extern "C" JNIEXPORT jboolean JNICALL Java_org_openi2pd_router_I2PD_1JNI_install
 			if (processBridge && processBridge->vm == vm && processBridge->type
 				&& env->IsSameObject (processBridge->type, type))
 			{
-				// A concurrent install won the race. Keep its bridge; the
-				// candidate holds no factory yet and its global ref is freed.
+				// A concurrent install won the race. Keep its bridge; the candidate
+				// holds no factory yet and its global ref is freed.
 				env->DeleteGlobalRef (candidate->type);
 				candidate->type = nullptr;
 				bridge = processBridge;
@@ -2420,9 +2451,9 @@ extern "C" JNIEXPORT jboolean JNICALL Java_org_openi2pd_router_I2PD_1JNI_install
 				SafEnv e (bridge->vm);
 				if (!e.env || e.failed)
 				{
-					// No VM, no role, or an unusable local frame: fail closed with
-					// an explicit unavailable backend instead of handing back a
-					// payload that can never open a document.
+					// No VM, no role, or an unusable local frame: fail closed with an
+					// explicit unavailable backend instead of handing back a payload
+					// that can never open a document.
 					return std::make_shared<SafUnavailable> ();
 				}
 				auto t = NewStringChecked (e.env, tunnel), h = NewStringChecked (e.env, hash);
@@ -2435,14 +2466,14 @@ extern "C" JNIEXPORT jboolean JNICALL Java_org_openi2pd_router_I2PD_1JNI_install
 				if (h) e.env->DeleteLocalRef (h);
 				if (!good || !strings)
 				{
-					// The configured() query failed (provider exception or OOM):
-					// the grant state is unknown, so do not create a backend that
-					// would write through a half-trusted path.
+					// The configured() query failed (provider exception or OOM): the
+					// grant state is unknown, so do not create a backend that would
+					// write through a half-trusted path.
 					return std::make_shared<SafUnavailable> ();
 				}
 				// configured() == false is a definite "this torrent is not backed
-				// by a selected document tree"; the engine keeps its native
-				// storage for it.
+				// by a selected document tree"; the engine keeps its native storage
+				// for it.
 				if (!configured) return nullptr;
 				auto payload = std::make_shared<SafPayload> (bridge, tunnel, hash);
 				RegisterSafPayload (payload);
@@ -2457,8 +2488,8 @@ extern "C" JNIEXPORT jboolean JNICALL Java_org_openi2pd_router_I2PD_1JNI_install
 		return JNI_FALSE;
 	}
 #else
-	// The torrent engine is absent; claiming a usable SAF bridge would make
-	// Java believe payload storage exists. Report failure instead.
+	// The torrent engine is absent; claiming a usable SAF bridge would
+	// make Java believe payload storage exists. Report failure instead.
 	return JNI_FALSE;
 #endif
 }
@@ -2480,22 +2511,24 @@ extern "C" JNIEXPORT jboolean JNICALL Java_org_openi2pd_router_I2PD_1JNI_install
 extern "C" JNIEXPORT jboolean JNICALL Java_org_openi2pd_router_I2PD_1JNI_restrictSafStorageProcess (
 	JNIEnv * env, jclass)
 {
-	// This is the storage broker's first and only router-capable native call.
-	// Claim the broker role here, before the sandbox, so a process that already
-	// claimed Router (for example a router that was asked to restrict itself)
-	// fails closed instead of being sandboxed as a broker: the Java caller stops
-	// the service when this returns false. The claim is irreversible.
+	// This is the storage broker's first and only router-capable native
+	// call. Claim the broker role here, before the sandbox, so a process
+	// that already claimed Router (for example a router that was asked to
+	// restrict itself) fails closed instead of being sandboxed as a
+	// broker: the Java caller stops the service when this returns false.
+	// The claim is irreversible.
 	if (!i2p::android::ClaimProcessRole (i2p::android::ProcessRole::StorageBroker))
 	{
 		ClearJniException (env);
 		return JNI_FALSE;
 	}
 #ifdef __ANDROID__
-	// Applied TSYNC before publishing Binder. Binder document-provider IPC is
-	// retained; creating or using external sockets and privilege-recovery APIs
-	// is denied for every current and future thread. No router runs here.
-	// Zygote/ART infrastructure may retain Unix sockets. Only close inherited
-	// external-network sockets; do not disturb Binder or local runtime FDs.
+	// Applied TSYNC before publishing Binder. Binder document-provider IPC
+	// is retained; creating or using external sockets and
+	// privilege-recovery APIs is denied for every current and future
+	// thread. No router runs here. Zygote/ART infrastructure may retain
+	// Unix sockets. Only close inherited external-network sockets; do not
+	// disturb Binder or local runtime FDs.
 	DIR * descriptors = opendir ("/proc/self/fd");
 	if (!descriptors) return JNI_FALSE;
 	while (auto * entry = readdir (descriptors))

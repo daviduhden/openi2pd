@@ -1,14 +1,15 @@
 /*
- * See the LICENSE file at the top of the project tree for copyright
- * and license details.
+ * See the LICENSE file at the top of the project tree for copyright and
+ * license details.
  *
  * openi2pd: RouterRepository.
  *
- * Main-thread bridge between {@link RouterViewModel} and {@link RouterService}:
- * it binds with the application context, exposes immutable LiveData snapshots
- * and logs, and forwards commands as explicit service intents rather than
- * direct native calls. Listener registration follows UI visibility so polling
- * stops in the background, and closing the repository releases the binding.
+ * Main-thread bridge between {@link RouterViewModel} and {@link
+ * RouterService}: it binds with the application context, exposes
+ * immutable LiveData snapshots and logs, and forwards commands as
+ * explicit service intents rather than direct native calls. Listener
+ * registration follows UI visibility so polling stops in the
+ * background, and closing the repository releases the binding.
  *
  */
 
@@ -36,15 +37,16 @@ import java.util.Locale;
  *
  * <p>Binds with the application context, exposes immutable LiveData and
  * forwards commands through the in-process binder. It never touches
- * {@link DaemonWrapper} or {@link I2PD_JNI}. A ViewModel owns one instance, so
- * an Activity recreation keeps the binding and the daemon without restarting
- * anything.</p>
+ * {@link DaemonWrapper} or {@link I2PD_JNI}. A ViewModel owns one
+ * instance, so an Activity recreation keeps the binding and the daemon
+ * without restarting anything.</p>
  *
- * <p>Commands that must create/maintain the started foreground service are
- * delivered as explicit service intents (the same paths the Quick Settings
- * tile and boot receiver use). Observation uses the binder. When a future
- * isolated-process AIDL service replaces the local binder, this class is the
- * only UI-facing piece that needs a transport change.</p>
+ * <p>Commands that must create/maintain the started foreground service
+ * are delivered as explicit service intents (the same paths the Quick
+ * Settings tile and boot receiver use). Observation uses the binder.
+ * When a future isolated-process AIDL service replaces the local
+ * binder, this class is the only UI-facing piece that needs a transport
+ * change.</p>
  */
 public final class RouterRepository implements RouterService.Listener {
     private static final String TAG = "RouterRepository";
@@ -62,7 +64,10 @@ public final class RouterRepository implements RouterService.Listener {
     private boolean binding;
     private boolean bound;
     private boolean closed;
-    /** UI visibility gates the service listener so polling stops in background. */
+    /**
+     * UI visibility gates the service listener so polling stops in
+     * background.
+     */
     private boolean uiVisible;
     private boolean listening;
     private RouterSnapshot lastSnapshot;
@@ -76,9 +81,10 @@ public final class RouterRepository implements RouterService.Listener {
                     binder instanceof RouterService.LocalBinder local ? local.getService() : null;
             if (connected == null || closed) {
                 if (closed) {
-                    // close() may have run before this callback was delivered.
-                    // Drop the callback's binding instead of retaining a
-                    // service connection no owner will release.
+                    // close() may have run before this callback was
+                    // delivered. Drop the callback's binding instead of
+                    // retaining a service connection no owner will
+                    // release.
                     try {
                         appContext.unbindService(connection);
                     } catch (RuntimeException e) {
@@ -112,7 +118,10 @@ public final class RouterRepository implements RouterService.Listener {
         this.appContext = app == null ? context : app;
     }
 
-    /** Bind once; safe to call repeatedly and after a configuration change. */
+    /**
+     * Bind once; safe to call repeatedly and after a configuration
+     * change.
+     */
     public void bind() {
         runOnMain(this::ensureBound);
     }
@@ -130,9 +139,10 @@ public final class RouterRepository implements RouterService.Listener {
     }
 
     /**
-     * Start or stop observation of the bound service. Keeping the binding while
-     * the UI is not visible lets commands still use the binder, but stops the
-     * service's JNI polling and the fragment render pipeline in background.
+     * Start or stop observation of the bound service. Keeping the
+     * binding while the UI is not visible lets commands still use the
+     * binder, but stops the service's JNI polling and the fragment
+     * render pipeline in background.
      */
     public void setUiVisible(boolean visible) {
         runOnMain(() -> {
@@ -167,11 +177,12 @@ public final class RouterRepository implements RouterService.Listener {
      * Run one bounded torrent control request through the service.
      *
      * <p>{@code request} is the typed {@code I2PDTUI/1} line built by
-     * {@link TorrentControl}; the service validates it and the native side
-     * re-validates it again. The callback always runs on the main thread and
-     * receives a protocol response, including the fixed
-     * {@code I2PDTUI/1 ERR 6 14 router stopped} refusal when no service is
-     * bound, so a caller never has to distinguish "no answer" from failure.</p>
+     * {@link TorrentControl}; the service validates it and the native
+     * side re-validates it again. The callback always runs on the main
+     * thread and receives a protocol response, including the fixed
+     * {@code I2PDTUI/1 ERR 6 14 router stopped} refusal when no service
+     * is bound, so a caller never has to distinguish "no answer" from
+     * failure.</p>
      */
     public void torrentCommand(String request, java.util.function.Consumer<String> callback) {
         RouterService local = service;
@@ -254,9 +265,10 @@ public final class RouterRepository implements RouterService.Listener {
     }
 
     /**
-     * Import bounded metainfo from a user-granted {@code content} URI. Only the
-     * bytes cross into the engine; a provider path and display name are never
-     * trusted or converted, and the result is a typed control response.
+     * Import bounded metainfo from a user-granted {@code content} URI.
+     * Only the bytes cross into the engine; a provider path and display
+     * name are never trusted or converted, and the result is a typed
+     * control response.
      */
     public void importTorrent(
             int tunnel, android.net.Uri document, java.util.function.Consumer<String> callback) {
@@ -268,7 +280,9 @@ public final class RouterRepository implements RouterService.Listener {
         local.importTorrent(tunnel, document, callback);
     }
 
-    /** Persist a selected SAF payload tree on the service's SAF worker. */
+    /**
+     * Persist a selected SAF payload tree on the service's SAF worker.
+     */
     public void selectPayloadTree(String tunnel, String hash, android.net.Uri tree,
             java.util.function.Consumer<Boolean> callback) {
         RouterService local = service;
@@ -279,7 +293,10 @@ public final class RouterRepository implements RouterService.Listener {
         local.selectPayloadTree(tunnel, hash, tree, callback);
     }
 
-    /** Release a persisted SAF payload grant on the service's SAF worker. */
+    /**
+     * Release a persisted SAF payload grant on the service's SAF
+     * worker.
+     */
     public void detachPayload(
             String tunnel, String hash, java.util.function.Consumer<Boolean> callback) {
         RouterService local = service;
@@ -291,9 +308,9 @@ public final class RouterRepository implements RouterService.Listener {
     }
 
     /**
-     * Start the router. Always goes through startForegroundService() so the
-     * service is in the started (START_STICKY) state even if it is currently
-     * only bound.
+     * Start the router. Always goes through startForegroundService() so
+     * the service is in the started (START_STICKY) state even if it is
+     * currently only bound.
      */
     public void startRouter() {
         bind();
@@ -338,10 +355,11 @@ public final class RouterRepository implements RouterService.Listener {
     }
 
     /**
-     * Ask the running router to reseed. The service starts the non-blocking
-     * native job on its worker and reports the typed outcome token on the main
-     * thread. A missing binding is reported as {@code unavailable} rather than
-     * an intent fallback because the result is part of the contract.
+     * Ask the running router to reseed. The service starts the
+     * non-blocking native job on its worker and reports the typed
+     * outcome token on the main thread. A missing binding is reported
+     * as {@code unavailable} rather than an intent fallback because the
+     * result is part of the contract.
      */
     public void requestReseed(java.util.function.Consumer<String> callback) {
         RouterService local = service;
@@ -352,7 +370,10 @@ public final class RouterRepository implements RouterService.Listener {
         local.requestReseed(callback);
     }
 
-    /** Bounded reseed status record; empty when the router is not running. */
+    /**
+     * Bounded reseed status record; empty when the router is not
+     * running.
+     */
     public void readReseedStatus(java.util.function.Consumer<String> callback) {
         RouterService local = service;
         if (closed || local == null) {
@@ -421,8 +442,8 @@ public final class RouterRepository implements RouterService.Listener {
     }
 
     /**
-     * Apply one runtime log level to the running logger. Persisting the value
-     * is the caller's explicit, separate step.
+     * Apply one runtime log level to the running logger. Persisting the
+     * value is the caller's explicit, separate step.
      */
     public void applyRuntimeLogLevel(String level, java.util.function.Consumer<Boolean> callback) {
         RouterService local = service;
@@ -433,7 +454,10 @@ public final class RouterRepository implements RouterService.Listener {
         local.applyRuntimeLogLevel(level, callback);
     }
 
-    /** True only when no run state has ever been persisted by the service. */
+    /**
+     * True only when no run state has ever been persisted by the
+     * service.
+     */
     public boolean shouldStartOnFirstLaunch() {
         return !RouterService.hasPersistedRunState(appContext);
     }
@@ -447,8 +471,9 @@ public final class RouterRepository implements RouterService.Listener {
 
     /**
      * Optional presentation filter. {@code null} or "all" shows every
-     * retained record; "debug", "info", "warn" and "error" apply a minimum
-     * severity. The service always retains the full bounded list.
+     * retained record; "debug", "info", "warn" and "error" apply a
+     * minimum severity. The service always retains the full bounded
+     * list.
      */
     public void setLogFilterLevel(String level) {
         String normalized = normalizeFilter(level);
@@ -458,8 +483,8 @@ public final class RouterRepository implements RouterService.Listener {
 
     /**
      * Release the service binding and stop observation. Idempotent and
-     * main-thread safe; {@link RouterViewModel#onCleared()} calls it so a
-     * finished UI never leaks a connection.
+     * main-thread safe; {@link RouterViewModel#onCleared()} calls it so
+     * a finished UI never leaks a connection.
      */
     public void close() {
         runOnMain(() -> {
@@ -488,7 +513,8 @@ public final class RouterRepository implements RouterService.Listener {
         });
     }
 
-    // RouterService.Listener -------------------------------------------------
+    // RouterService.Listener
+    // -------------------------------------------------
 
     @Override
     public void onRouterSnapshot(RouterSnapshot value) {
@@ -517,7 +543,8 @@ public final class RouterRepository implements RouterService.Listener {
         }
     }
 
-    // Internals -------------------------------------------------------------
+    // Internals
+    // -------------------------------------------------------------
 
     private void ensureBound() {
         if (closed || bound || binding) {

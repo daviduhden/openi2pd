@@ -1,15 +1,16 @@
 /*
- * See the LICENSE file at the top of the project tree for copyright
- * and license details.
+ * See the LICENSE file at the top of the project tree for copyright and
+ * license details.
  *
  * openi2pd: DaemonWrapper.
  *
- * Process-wide owner of the native daemon: asset extraction into app-specific
- * storage, start on a dedicated thread, stop, restart, tunnel reload, netDb
- * reseed, runtime log level, the graceful-shutdown deadline and connectivity
- * callbacks forwarded to JNI.
- * State transitions are lock-guarded and listeners are invoked after the
- * monitor is released. The owner must unregister its listener when destroyed.
+ * Process-wide owner of the native daemon: asset extraction into
+ * app-specific storage, start on a dedicated thread, stop, restart,
+ * tunnel reload, netDb reseed, runtime log level, the graceful-shutdown
+ * deadline and connectivity callbacks forwarded to JNI. State
+ * transitions are lock-guarded and listeners are invoked after the
+ * monitor is released. The owner must unregister its listener when
+ * destroyed.
  *
  */
 
@@ -44,12 +45,13 @@ import android.util.Log;
 /**
  * Process-wide owner of the native i2pd daemon.
  *
- * <p>The wrapper uses application-owned resources rather than storing an
- * Activity. Listener registrations are strong references; their owner must
- * remove them, as {@link RouterService} does on destruction. State transitions
- * and the listener set use {@link #lock}, while cancellation and selected
- * observations use atomics or volatile fields. Listeners are copied under the
- * lock and invoked after it is released.</p>
+ * <p>The wrapper uses application-owned resources rather than storing
+ * an Activity. Listener registrations are strong references; their
+ * owner must remove them, as {@link RouterService} does on destruction.
+ * State transitions and the listener set use {@link #lock}, while
+ * cancellation and selected observations use atomics or volatile
+ * fields. Listeners are copied under the lock and invoked after it is
+ * released.</p>
  */
 public class DaemonWrapper {
     private static final String TAG = "open-i2pd";
@@ -57,27 +59,30 @@ public class DaemonWrapper {
     private static final int COPY_BUFFER_SIZE = 8192;
 
     /**
-     * Runtime log levels accepted by the native logger, in severity order.
-     * The native {@code setRuntimeLogLevel} entry point validates the same
-     * exact, case-sensitive closed set before it changes any state.
+     * Runtime log levels accepted by the native logger, in severity
+     * order. The native {@code setRuntimeLogLevel} entry point
+     * validates the same exact, case-sensitive closed set before it
+     * changes any state.
      */
     private static final String[] RUNTIME_LOG_LEVELS = {
             "none", "critical", "error", "warn", "info", "debug"};
 
     /**
-     * Time transit tunnels are given to drain during a graceful shutdown.
+     * Time transit tunnels are given to drain during a graceful
+     * shutdown.
      */
     public static final long GRACEFUL_STOP_DELAY_MILLIS = 10L * 60L * 1000L;
 
     /**
      * Receives lifecycle transitions of the native daemon.
      *
-     * <p>A callback runs on whichever thread performed the transition (the main
-     * thread, the dedicated start thread or a control worker) and is invoked
-     * after the state monitor has been released, so it must be short,
-     * thread-safe and must not re-enter this wrapper or block on a native call.
-     * The registration is a strong reference: the owner calls
-     * {@link DaemonWrapper#removeStateChangeListener} before it is destroyed.</p>
+     * <p>A callback runs on whichever thread performed the transition
+     * (the main thread, the dedicated start thread or a control worker)
+     * and is invoked after the state monitor has been released, so it
+     * must be short, thread-safe and must not re-enter this wrapper or
+     * block on a native call. The registration is a strong reference:
+     * the owner calls {@link DaemonWrapper#removeStateChangeListener}
+     * before it is destroyed.</p>
      */
     public interface StateUpdateListener {
         void daemonStateUpdate(State oldValue, State newValue);
@@ -89,10 +94,11 @@ public class DaemonWrapper {
     /**
      * Lifecycle state published to listeners.
      *
-     * <p>{@link #isStartedOkay()} switches over every constant on purpose, so a
-     * new state is a compile error instead of an implicit "assume stopped" or
-     * "assume running" branch. {@code gracefulShutdownInProgress} still counts
-     * as started because the router is draining, not gone.</p>
+     * <p>{@link #isStartedOkay()} switches over every constant on
+     * purpose, so a new state is a compile error instead of an implicit
+     * "assume stopped" or "assume running" branch. {@code
+     * gracefulShutdownInProgress} still counts as started because the
+     * router is draining, not gone.</p>
      */
     public enum State {
         uninitialized(R.string.uninitialized),
@@ -114,8 +120,9 @@ public class DaemonWrapper {
         }
 
         public boolean isStartedOkay() {
-            // Exhaustive on purpose: adding a state must be a compile error
-            // rather than silently falling into a false/default branch.
+            // Exhaustive on purpose: adding a state must be a compile
+            // error rather than silently falling into a false/default
+            // branch.
             return switch (this) {
                 case startedOkay, gracefulShutdownInProgress -> true;
                 case uninitialized, starting, startFailed, stopping, stopped -> false;
@@ -135,12 +142,13 @@ public class DaemonWrapper {
     private final AtomicLong gracefulStopDeadlineMillis = new AtomicLong(0L);
 
     /**
-     * Connectivity callbacks are delivered on the main thread, while the native
-     * update takes the native-call lock that start, stop and reseed hold. This
-     * dispatcher keeps that JNI call off the UI thread and preserves callback
-     * order, so a reseed that runs for minutes cannot turn a network change
-     * into an ANR. {@link RouterService} passes its serial control worker; the
-     * inline fallback preserves the previous behaviour for other callers.
+     * Connectivity callbacks are delivered on the main thread, while
+     * the native update takes the native-call lock that start, stop and
+     * reseed hold. This dispatcher keeps that JNI call off the UI
+     * thread and preserves callback order, so a reseed that runs for
+     * minutes cannot turn a network change into an ANR. {@link
+     * RouterService} passes its serial control worker; the inline
+     * fallback preserves the previous behaviour for other callers.
      */
     private final Executor networkStateExecutor;
 
@@ -183,10 +191,10 @@ public class DaemonWrapper {
     }
 
     /**
-     * @param autoStart when {@code false} the wrapper stays in
-     *                  {@link State#stopped} until the owner calls
-     *                  {@link #startDaemon()}. {@link RouterService} uses
-     *                  this so a stopped router does not spring back to life
+     * @param autoStart when {@code false} the wrapper stays in {@link
+     *                  State#stopped} until the owner calls {@link
+     *                  #startDaemon()}. {@link RouterService} uses this
+     *                  so a stopped router does not spring back to life
      *                  merely because the UI bound the service.
      */
     public DaemonWrapper(Context context, AssetManager assetManager,
@@ -195,12 +203,14 @@ public class DaemonWrapper {
     }
 
     /**
-     * @param networkStateExecutor serial executor for the connectivity update.
-     *                             Connectivity callbacks arrive on the main
-     *                             thread; {@link RouterService} passes its
-     *                             control worker so the blocking native call
-     *                             never runs on the UI thread. {@code null}
-     *                             keeps the inline behaviour for other callers.
+     * @param networkStateExecutor serial executor for the connectivity
+     *                             update. Connectivity callbacks arrive
+     *                             on the main thread; {@link
+     *                             RouterService} passes its control
+     *                             worker so the blocking native call
+     *                             never runs on the UI thread. {@code
+     *                             null} keeps the inline behaviour for
+     *                             other callers.
      */
     public DaemonWrapper(Context context, AssetManager assetManager,
             ConnectivityManager connectivityManager, boolean autoStart,
@@ -240,8 +250,9 @@ public class DaemonWrapper {
     }
 
     /**
-     * Default app-private data directory. Shared with {@link RouterConfigStore}
-     * so configuration edits and the native router always agree on the path.
+     * Default app-private data directory. Shared with {@link
+     * RouterConfigStore} so configuration edits and the native router
+     * always agree on the path.
      */
     static File defaultDataDir(Context context) {
         Objects.requireNonNull(context, "context");
@@ -293,8 +304,8 @@ public class DaemonWrapper {
     }
 
     /**
-     * Resolve a file inside the daemon data directory, refusing paths that
-     * escape the application's own storage.
+     * Resolve a file inside the daemon data directory, refusing paths
+     * that escape the application's own storage.
      */
     public static File resolveDataFile(Context context, String fileName) throws IOException {
         Objects.requireNonNull(context, "context");
@@ -342,8 +353,8 @@ public class DaemonWrapper {
     }
 
     /**
-     * Change the native data directory. Only app-specific storage is accepted.
-     * Returns {@code false} when the path is rejected.
+     * Change the native data directory. Only app-specific storage is
+     * accepted. Returns {@code false} when the path is rejected.
      */
     public boolean changeDataDir(String newDataDir, Boolean updateAssets) {
         if (newDataDir == null || newDataDir.trim().isEmpty()) {
@@ -392,18 +403,20 @@ public class DaemonWrapper {
     /**
      * Stop the daemon.
      *
-     * <p>The start-cancellation token is published before any monitor is
-     * acquired. Native startup holds the native-call guard, while the Java
-     * state lock is released before entering it. Publishing
+     * <p>The start-cancellation token is published before any monitor
+     * is acquired. Native startup holds the native-call guard, while
+     * the Java state lock is released before entering it. Publishing
      * {@link I2PD_JNI#requestStop()} first allows startup to observe
      * cancellation without waiting for the native guard.</p>
      *
-     * <p>{@link #stopLock} still serialises two concurrent stop calls, so the
-     * native teardown is never entered twice for the same router.</p>
+     * <p>{@link #stopLock} still serialises two concurrent stop calls,
+     * so the native teardown is never entered twice for the same
+     * router.</p>
      */
     public void stopDaemon() {
-        // Publish cancellation before waiting for either state or native
-        // teardown. Startup can hold the native guard for its entire transition.
+        // Publish cancellation before waiting for either state or
+        // native teardown. Startup can hold the native guard for its
+        // entire transition.
         stopRequested.set(true);
         I2PD_JNI.requestStop();
 
@@ -416,9 +429,10 @@ public class DaemonWrapper {
                 callNative = state.isStartedOkay();
                 beginChange = setStateLocked(callNative ? State.stopping : State.stopped);
             }
-            // Publish Stopping before entering native teardown. A status poll
-            // that cannot take the native-call lock can then say that the router
-            // is going away instead of reading a stale Running state.
+            // Publish Stopping before entering native teardown. A
+            // status poll that cannot take the native-call lock can
+            // then say that the router is going away instead of reading
+            // a stale Running state.
             notifyListeners(beginChange);
             if (callNative) {
                 try {
@@ -436,24 +450,27 @@ public class DaemonWrapper {
     }
 
     /**
-     * Request a start and return immediately; the native initialisation runs on
-     * the dedicated {@code i2pdDaemonStart} thread.
+     * Request a start and return immediately; the native initialisation
+     * runs on the dedicated {@code i2pdDaemonStart} thread.
      *
-     * <p>A call while a start thread is still running, or while the daemon is
-     * already past {@link State#stopped}/{@link State#startFailed}, is ignored
-     * rather than queued. Callers therefore observe the published state and the
-     * listener callbacks instead of assuming that this call performed a start.</p>
+     * <p>A call while a start thread is still running, or while the
+     * daemon is already past {@link State#stopped}/{@link
+     * State#startFailed}, is ignored rather than queued. Callers
+     * therefore observe the published state and the listener callbacks
+     * instead of assuming that this call performed a start.</p>
      */
     public void startDaemon() {
         startDaemonInternal();
     }
 
     /**
-     * Stop and start the native router in order. Used by the service's restart
-     * command. The start thread is allowed to finish unwinding before a new
-     * start is requested so two native initialisations can never overlap.
+     * Stop and start the native router in order. Used by the service's
+     * restart command. The start thread is allowed to finish unwinding
+     * before a new start is requested so two native initialisations can
+     * never overlap.
      *
-     * @return {@code false} if a previous start thread did not finish in time
+     * @return {@code false} if a previous start thread did not finish
+     *                in time
      */
     public boolean restartDaemon() {
         stopDaemon();
@@ -486,8 +503,9 @@ public class DaemonWrapper {
             }
             startThreadRunning = true;
             stopRequested.set(false);
-            // Do not let a previous successful result mask a failure in this
-            // start attempt (for example an asset or library load error).
+            // Do not let a previous successful result mask a failure in
+            // this start attempt (for example an asset or library load
+            // error).
             daemonStartResult = "N/A";
             change = setStateLocked(State.starting);
         }
@@ -505,10 +523,11 @@ public class DaemonWrapper {
             processAssets();
             prepareTorrentSession();
             I2PD_JNI.loadLibraries();
-            // Claim the router process role before the first router-capable
-            // native entry point. A process already bound to the SAF storage
-            // broker throws here and this start fails closed instead of
-            // initialising a second router.
+            // Claim the router process role before the first
+            // router-capable native entry point. A process already
+            // bound to the SAF storage broker throws here and this
+            // start fails closed instead of initialising a second
+            // router.
             I2PD_JNI.claimRouterProcessRole();
             if (!I2PD_JNI.installSafStorageBridge(TorrentSafStorage.class)
                     && TorrentSafStorage.hasAnyGrant())
@@ -526,10 +545,11 @@ public class DaemonWrapper {
         boolean started = false;
         boolean stopAfterCanceledStart = false;
         try {
-            // Do not hold the state monitor across the native start: a stop must
-            // be able to publish its token and its state while this thread is
-            // still waiting for assets or inside Daemon.init(). The token, not
-            // the monitor, is what excludes a start that is still running.
+            // Do not hold the state monitor across the native start: a
+            // stop must be able to publish its token and its state
+            // while this thread is still waiting for assets or inside
+            // Daemon.init(). The token, not the monitor, is what
+            // excludes a start that is still running.
             final boolean proceed;
             synchronized (lock) {
                 proceed = !stopRequested.get();
@@ -544,8 +564,8 @@ public class DaemonWrapper {
                         stopRequested.get() || I2PD_JNI.START_CANCELED.equals(result);
                 final boolean ok = "ok".equals(result);
                 started = ok && !canceled;
-                // A router that did start but lost the race with a stop request
-                // is torn down below, outside the monitor.
+                // A router that did start but lost the race with a stop
+                // request is torn down below, outside the monitor.
                 stopAfterCanceledStart = ok && !started;
                 if (result != null) {
                     daemonStartResult = result;
@@ -560,8 +580,9 @@ public class DaemonWrapper {
                 change = setStateLocked(stopRequested.get() ? State.stopped : State.startFailed);
             }
         } finally {
-            // Tear down a started-but-cancelled router before the thread is
-            // reported idle, so restartDaemon() cannot overlap the teardown.
+            // Tear down a started-but-cancelled router before the
+            // thread is reported idle, so restartDaemon() cannot
+            // overlap the teardown.
             if (stopAfterCanceledStart) {
                 try {
                     I2PD_JNI.stopDaemon();
@@ -586,7 +607,9 @@ public class DaemonWrapper {
         }
     }
 
-    /** Bounded address-book rows; empty when the daemon is not running. */
+    /**
+     * Bounded address-book rows; empty when the daemon is not running.
+     */
     public String getAddressBook() {
         synchronized (lock) {
             if (!state.isStartedOkay())
@@ -657,9 +680,9 @@ public class DaemonWrapper {
     }
 
     /**
-     * Exact, case-sensitive check against the closed runtime log level set.
-     * Shared by {@link RouterService}'s binder and intent paths so an invalid
-     * value is rejected before any native call is attempted.
+     * Exact, case-sensitive check against the closed runtime log level
+     * set. Shared by {@link RouterService}'s binder and intent paths so
+     * an invalid value is rejected before any native call is attempted.
      */
     public static boolean isRuntimeLogLevel(String level) {
         if (level == null) {
@@ -674,16 +697,17 @@ public class DaemonWrapper {
     }
 
     /**
-     * Ask the running netDb to reseed from the configured reseed servers.
+     * Ask the running netDb to reseed from the configured reseed
+     * servers.
      *
-     * <p>This is only valid while the daemon is started. The native call is
-     * non-blocking: it starts the owned NetDb job and returns the typed
-     * outcome, so the service worker is not held for the length of a
-     * bootstrap.</p>
+     * <p>This is only valid while the daemon is started. The native
+     * call is non-blocking: it starts the owned NetDb job and returns
+     * the typed outcome, so the service worker is not held for the
+     * length of a bootstrap.</p>
      *
-     * @return {@code started}, {@code already-running}, {@code disabled},
-     *         {@code accepted}, {@code busy}, {@code unavailable} or
-     *         {@code failed}
+     * @return {@code started}, {@code already-running}, {@code
+     *                disabled}, {@code accepted}, {@code busy}, {@code
+     *                unavailable} or {@code failed}
      */
     public String requestReseed() {
         synchronized (lock) {
@@ -701,8 +725,9 @@ public class DaemonWrapper {
     }
 
     /**
-     * Bounded reseed phase/attempt/error record, or an empty string while the
-     * router is not running. It never waits for the job and carries no URL.
+     * Bounded reseed phase/attempt/error record, or an empty string
+     * while the router is not running. It never waits for the job and
+     * carries no URL.
      */
     public String getReseedStatus() {
         synchronized (lock) {
@@ -719,7 +744,10 @@ public class DaemonWrapper {
         }
     }
 
-    /** Configured client/server tunnels as bounded {@code name|kind|running|...} rows. */
+    /**
+     * Configured client/server tunnels as bounded {@code
+     * name|kind|running|...} rows.
+     */
     public String getTunnelServices() {
         synchronized (lock) {
             if (!state.isStartedOkay()) {
@@ -766,8 +794,8 @@ public class DaemonWrapper {
     /**
      * Add or replace one address-book name with the typed result.
      *
-     * @return {@code ok}, {@code exists}, {@code invalid}, {@code unavailable}
-     *         or {@code failed}
+     * @return {@code ok}, {@code exists}, {@code invalid}, {@code
+     *                unavailable} or {@code failed}
      */
     public String addAddressChecked(String name, String destination, boolean replace) {
         if (!RuntimeAdminPolicy.isValidAddressName(name)
@@ -804,7 +832,10 @@ public class DaemonWrapper {
         }
     }
 
-    /** Add one validated subscription source; returns the typed outcome token. */
+    /**
+     * Add one validated subscription source; returns the typed outcome
+     * token.
+     */
     public String addSubscription(String url) {
         return subscriptionCommand(url, true);
     }
@@ -861,12 +892,13 @@ public class DaemonWrapper {
     }
 
     /**
-     * Apply a runtime log level to the running logger without restarting the
-     * daemon. The value is validated here and again in native code; this path
-     * never writes {@code i2pd.conf}, so persisting a preference stays a
-     * separate, explicit step.
+     * Apply a runtime log level to the running logger without
+     * restarting the daemon. The value is validated here and again in
+     * native code; this path never writes {@code i2pd.conf}, so
+     * persisting a preference stays a separate, explicit step.
      *
-     * @return {@code true} only when the running logger accepted the level
+     * @return {@code true} only when the running logger accepted the
+     *                level
      */
     public boolean applyRuntimeLogLevel(String level) {
         if (!isRuntimeLogLevel(level)) {
@@ -889,9 +921,9 @@ public class DaemonWrapper {
     /**
      * Transit tunnel count used by the graceful-shutdown decision.
      *
-     * <p>Returns {@code 0} when the native library is unavailable: the graceful
-     * path must degrade to an immediate stop instead of throwing
-     * {@link LinkageError} out of a lifecycle method.</p>
+     * <p>Returns {@code 0} when the native library is unavailable: the
+     * graceful path must degrade to an immediate stop instead of
+     * throwing {@link LinkageError} out of a lifecycle method.</p>
      */
     public int getTransitTunnelsCount() {
         try {
@@ -903,13 +935,13 @@ public class DaemonWrapper {
     }
 
     /**
-     * Start a graceful shutdown: stop accepting transit tunnels and give the
-     * remaining ones time to drain. Scheduling belongs to RouterService so the
-     * eventual native stop is enqueued on its worker; this wrapper owns only
-     * the state and the deadline.
+     * Start a graceful shutdown: stop accepting transit tunnels and
+     * give the remaining ones time to drain. Scheduling belongs to
+     * RouterService so the eventual native stop is enqueued on its
+     * worker; this wrapper owns only the state and the deadline.
      *
-     * @return the delay that the caller must schedule, or {@code 0} when the
-     *         stop was already performed immediately
+     * @return the delay that the caller must schedule, or {@code 0}
+     *             when the stop was already performed immediately
      */
     public long beginGracefulShutdown(long delayMillis) {
         StateChange change = null;
@@ -945,12 +977,13 @@ public class DaemonWrapper {
 
     /**
      * Cancel a scheduled graceful shutdown and resume accepting transit
-     * tunnels. Only a {@link State#gracefulShutdownInProgress} router changes;
-     * the deadline is cleared either way.
+     * tunnels. Only a {@link State#gracefulShutdownInProgress} router
+     * changes; the deadline is cleared either way.
      *
-     * <p>The delayed native stop is scheduled by {@link RouterService}, so
-     * cancelling the deadline here is not enough on its own: the service also
-     * drops its pending stop when it handles the cancel command.</p>
+     * <p>The delayed native stop is scheduled by {@link RouterService},
+     * so cancelling the deadline here is not enough on its own: the
+     * service also drops its pending stop when it handles the cancel
+     * command.</p>
      */
     public void cancelGracefulShutdown() {
         StateChange change = null;
@@ -1014,13 +1047,15 @@ public class DaemonWrapper {
     }
 
     private void notifyNetworkState(boolean connected) {
-        // Do not call into JNI before the daemon is up or after it stopped.
+        // Do not call into JNI before the daemon is up or after it
+        // stopped.
         if (!state.isStartedOkay()) {
             return;
         }
-        // The callback arrives on the main thread; hand the blocking JNI call
-        // to the serial dispatcher described above. The state is re-checked
-        // there so a queued update cannot reach a router that has just stopped.
+        // The callback arrives on the main thread; hand the blocking
+        // JNI call to the serial dispatcher described above. The state
+        // is re-checked there so a queued update cannot reach a router
+        // that has just stopped.
         try {
             networkStateExecutor.execute(() -> {
                 if (!state.isStartedOkay()) {
@@ -1072,7 +1107,10 @@ public class DaemonWrapper {
         }
     }
 
-    /** Install a native session once, without enabling JSON-RPC or a web listener. */
+    /**
+     * Install a native session once, without enabling JSON-RPC or a web
+     * listener.
+     */
     private void prepareTorrentSession() throws IOException {
         synchronized (assetsLock) {
             File directory = new File(dataDir, "tunnels.d");
@@ -1082,8 +1120,9 @@ public class DaemonWrapper {
             if (isSymbolicLink(directory) || !isInsideDataDir(directory)) {
                 throw new IOException("Unsafe torrent configuration directory");
             }
-            // Piece storage stays app-private. SAF export/import requires a
-            // separate bounded storage broker and is not emulated with paths.
+            // Piece storage stays app-private. SAF export/import
+            // requires a separate bounded storage broker and is not
+            // emulated with paths.
             File downloads = torrentStorage;
             if (!downloads.exists() && !downloads.mkdirs()) {
                 throw new IOException("Unable to create torrent storage directory");
@@ -1111,7 +1150,8 @@ public class DaemonWrapper {
                 if (existing.errno != android.system.OsConstants.EEXIST) {
                     throw new IOException("Unable to install torrent configuration", existing);
                 }
-                // Preserve user changes, including a deliberately disabled session.
+                // Preserve user changes, including a deliberately
+                // disabled session.
                 try {
                     if (!android.system.OsConstants.S_ISREG(
                                 android.system.Os.lstat(config.getAbsolutePath()).st_mode)) {
@@ -1134,15 +1174,15 @@ public class DaemonWrapper {
     }
 
     /**
-     * Install the bundled configuration and asset trees once per application
-     * version.
+     * Install the bundled configuration and asset trees once per
+     * application version.
      *
-     * <p>{@code assets.ready} holding the current version name is the marker.
-     * Existing files are never overwritten, so operator edits survive an
-     * upgrade; only the regenerated {@code certificates} tree is replaced.
-     * Asset failures are logged and leave a partial tree instead of aborting
-     * the start. Runs on the daemon start thread or on the caller of
-     * {@link #changeDataDir}.</p>
+     * <p>{@code assets.ready} holding the current version name is the
+     * marker. Existing files are never overwritten, so operator edits
+     * survive an upgrade; only the regenerated {@code certificates}
+     * tree is replaced. Asset failures are logged and leave a partial
+     * tree instead of aborting the start. Runs on the daemon start
+     * thread or on the caller of {@link #changeDataDir}.</p>
      */
     private void processAssets() {
         synchronized (assetsLock) {
@@ -1179,7 +1219,8 @@ public class DaemonWrapper {
                 }
                 deleteRecursive(new File(appPath, "certificates"));
 
-                // Copy assets. Existing user-modified files are never overwritten.
+                // Copy assets. Existing user-modified files are never
+                // overwritten.
                 copyAsset("addressbook");
                 copyAsset("certificates");
                 copyAsset("tunnels.d");
@@ -1196,8 +1237,8 @@ public class DaemonWrapper {
     }
 
     /**
-     * Copy the asset at the specified path to the app data directory. If the
-     * asset is a directory, its contents are also copied.
+     * Copy the asset at the specified path to the app data directory.
+     * If the asset is a directory, its contents are also copied.
      */
     private void copyAsset(String path) {
         if (path == null || path.contains("..")) {
@@ -1207,7 +1248,8 @@ public class DaemonWrapper {
         try {
             String[] contents = assetManager.list(path);
 
-            // AssetManager.list() returns an empty array for files, not null.
+            // AssetManager.list() returns an empty array for files, not
+            // null.
             if (contents == null || contents.length == 0) {
                 copyFileAsset(path);
                 return;

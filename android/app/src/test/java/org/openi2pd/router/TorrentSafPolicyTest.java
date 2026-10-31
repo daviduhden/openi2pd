@@ -1,10 +1,11 @@
 /*
- * See the LICENSE file at the top of the project tree for copyright
- * and license details.
+ * See the LICENSE file at the top of the project tree for copyright and
+ * license details.
  *
  * openi2pd: TorrentSafPolicyTest.
  *
- * JVM-only SAF bounds used by the broker; no provider or device is required.
+ * JVM-only SAF bounds used by the broker; no provider or device is
+ * required.
  */
 
 package org.openi2pd.router;
@@ -52,8 +53,9 @@ public class TorrentSafPolicyTest {
 
     @Test
     public void exactLengthsAndExtensionsRejectDegenerateInput() {
-        // A short multi-file document (the nested fixture's 12000-byte part) is
-        // extended only by a write open; a read open must match exactly.
+        // A short multi-file document (the nested fixture's 12000-byte
+        // part) is extended only by a write open; a read open must
+        // match exactly.
         assertTrue(TorrentSafPolicy.canExtendExisting(true, 12000, 16384));
         assertFalse(TorrentSafPolicy.canExtendExisting(false, 12000, 16384));
         // Zero-length documents never need an extension or a fragment.
@@ -66,7 +68,8 @@ public class TorrentSafPolicyTest {
         assertFalse(TorrentSafPolicy.exportSizeAllowed(16384, -1));
         assertFalse(TorrentSafPolicy.exportSizeAllowed(0, 0));
         assertFalse(TorrentSafPolicy.exportSizeAllowed(-1, 0));
-        // Only the final export commit requires the exact declared size.
+        // Only the final export commit requires the exact declared
+        // size.
         assertTrue(TorrentSafPolicy.exportSizeAllowed(16384, 0));
         assertTrue(TorrentSafPolicy.exportSizeAllowed(16384, 1));
         assertTrue(TorrentSafPolicy.exportSizeAllowed(16384, 16384));
@@ -75,7 +78,8 @@ public class TorrentSafPolicyTest {
 
     @Test
     public void transfersNeverExceedTheChunkBound() {
-        // The final block of the nested 12000-byte part is a short transfer.
+        // The final block of the nested 12000-byte part is a short
+        // transfer.
         assertEquals(16384, TorrentSafPolicy.MAX_TRANSFER);
         assertTrue(TorrentSafPolicy.validRange(12000, 11000, 1000));
         assertFalse(TorrentSafPolicy.validRange(12000, 11000, 1001));

@@ -1,14 +1,15 @@
 /*
- * See the LICENSE file at the top of the project tree for copyright
- * and license details.
+ * See the LICENSE file at the top of the project tree for copyright and
+ * license details.
  *
  * openi2pd: TorrentRow.
  *
- * Typed, bounded view of one TORRENTS snapshot row. The desktop-compatible
- * control protocol returns a flat key/value map; parsing it in the fragment
- * mixed bounds checks, presentation and accessibility text. A record makes the
- * field set explicit, rejects an out-of-range value once and lets the JVM test
- * the decoder without an Activity, a device or the native library.
+ * Typed, bounded view of one TORRENTS snapshot row. The
+ * desktop-compatible control protocol returns a flat key/value map;
+ * parsing it in the fragment mixed bounds checks, presentation and
+ * accessibility text. A record makes the field set explicit, rejects an
+ * out-of-range value once and lets the JVM test the decoder without an
+ * Activity, a device or the native library.
  *
  */
 
@@ -19,8 +20,8 @@ import java.util.regex.Pattern;
 
 /**
  * Immutable torrent summary. Every string is capped, every counter is
- * non-negative and a malformed identifier is rejected rather than replaced by
- * an invented value.
+ * non-negative and a malformed identifier is rejected rather than
+ * replaced by an invented value.
  */
 record TorrentRow(String id, String name, String status, String error, String hash, String magnet,
         long total, long wanted, long have, boolean privateTorrent, long downloaded, long uploaded,
@@ -36,15 +37,15 @@ record TorrentRow(String id, String name, String status, String error, String ha
     /**
      * Decode one {@code <prefix>key} snapshot row.
      *
-     * <p>The engine id is mandatory: it must be one to ten ASCII digits,
-     * otherwise the row is rejected so no later command can be aimed at the
-     * wrong torrent.
-     * Optional fields degrade instead of failing: a malformed hash or magnet is
-     * dropped, counters and the percentage are clamped, and an absent or
-     * negative ETA stays at {@code -1}.</p>
+     * <p>The engine id is mandatory: it must be one to ten ASCII
+     * digits, otherwise the row is rejected so no later command can be
+     * aimed at the wrong torrent. Optional fields degrade instead of
+     * failing: a malformed hash or magnet is dropped, counters and the
+     * percentage are clamped, and an absent or negative ETA stays at
+     * {@code -1}.</p>
      *
-     * @throws IllegalArgumentException when the id is absent, non-numeric or too
-     *                                  long
+     * @throws IllegalArgumentException when the id is absent,
+     *                                  non-numeric or too long
      */
     static TorrentRow from(Map<String, String> fields, String prefix) {
         String id = fields.getOrDefault(prefix + "id", "");
@@ -86,8 +87,9 @@ record TorrentRow(String id, String name, String status, String error, String ha
     }
 
     /**
-     * Two-line row label. The private badge is a caller-supplied localized
-     * string, so this record never carries UI text of its own.
+     * Two-line row label. The private badge is a caller-supplied
+     * localized string, so this record never carries UI text of its
+     * own.
      */
     String displayLabel(String privateBadge) {
         StringBuilder label = new StringBuilder(name.length() + status.length() + 48);
@@ -98,7 +100,10 @@ record TorrentRow(String id, String name, String status, String error, String ha
         return label.toString();
     }
 
-    /** TalkBack description: name, state and percentage in one utterance. */
+    /**
+     * TalkBack description: name, state and percentage in one
+     * utterance.
+     */
     String accessibilityLabel(String privateBadge) {
         StringBuilder label = new StringBuilder(name.length() + status.length() + 48);
         label.append(name).append(", ").append(status).append(", ").append(percent).append('%');
@@ -146,10 +151,10 @@ record TorrentRow(String id, String name, String status, String error, String ha
     }
 
     /**
-     * The daemon emits the percentage as {@code std::to_string(double)}, for
-     * example {@code 42.500000}. Integer parsing returned 0 for every row and
-     * would silently blank the whole list, so parse a bounded double and round
-     * it for display.
+     * The daemon emits the percentage as {@code
+     * std::to_string(double)}, for example {@code 42.500000}. Integer
+     * parsing returned 0 for every row and would silently blank the
+     * whole list, so parse a bounded double and round it for display.
      */
     private static int percent(Map<String, String> fields, String key) {
         String value = fields.getOrDefault(key, "0");

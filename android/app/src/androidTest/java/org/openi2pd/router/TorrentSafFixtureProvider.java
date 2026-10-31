@@ -1,12 +1,13 @@
 /*
- * See the LICENSE file at the top of the project tree for copyright
- * and license details.
- * openi2pd: bounded manual-CI DocumentsProvider fault fixture.
+ * See the LICENSE file at the top of the project tree for copyright and
+ * license details. openi2pd: bounded manual-CI DocumentsProvider fault
+ * fixture.
  *
- * The catalog mirrors the multi-file layout the native engine opens by relative
- * path (`torrent/part-00001.bin`, `torrent/sub/part-00002.bin`, a zero-length
- * document) and every fault is an explicit mode, so a regression never depends
- * on a real provider. Documents live in this app's cache directory only; the
+ * The catalog mirrors the multi-file layout the native engine opens by
+ * relative path (`torrent/part-00001.bin`,
+ * `torrent/sub/part-00002.bin`, a zero-length document) and every fault
+ * is an explicit mode, so a regression never depends on a real
+ * provider. Documents live in this app's cache directory only; the
  * fixture never accepts a host path and its catalog is bounded.
  */
 package org.openi2pd.router;
@@ -31,37 +32,59 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
- * In-process {@link DocumentsProvider} used only by the manual device lane.
+ * In-process {@link DocumentsProvider} used only by the manual device
+ * lane.
  *
- * <p>Its catalog mirrors the multi-file layout the engine opens by relative
- * path and every fault is an explicit mode switch, so a regression never
- * depends on a real provider. Documents live in this app's private cache
- * directory, the catalog is bounded and no host path is ever accepted. Because
- * the instrumentation APK declares the provider under
- * {@code android.permission.MANAGE_DOCUMENTS}, neither the test process nor the
- * broker can obtain a persisted URI grant for it; these cases therefore cover
- * the provider boundary, not broker authorization.</p>
+ * <p>Its catalog mirrors the multi-file layout the engine opens by
+ * relative path and every fault is an explicit mode switch, so a
+ * regression never depends on a real provider. Documents live in this
+ * app's private cache directory, the catalog is bounded and no host
+ * path is ever accepted. Because the instrumentation APK declares the
+ * provider under {@code android.permission.MANAGE_DOCUMENTS}, neither
+ * the test process nor the broker can obtain a persisted URI grant for
+ * it; these cases therefore cover the provider boundary, not broker
+ * authorization.</p>
  */
 public final class TorrentSafFixtureProvider extends DocumentsProvider {
     /** Healthy provider: no injected fault. */
     static final int NORMAL = 0;
-    /** Blocks inside openDocument and honours the CancellationSignal. */
+    /**
+     * Blocks inside openDocument and honours the CancellationSignal.
+     */
     static final int COOPERATIVE = 1;
-    /** Blocks inside openDocument and ignores the CancellationSignal. */
+    /**
+     * Blocks inside openDocument and ignores the CancellationSignal.
+     */
     static final int IGNORE_CANCELLATION = 2;
     /** Returns a non-seekable pipe instead of a document. */
     static final int PIPE = 3;
-    /** Every operation fails as if the persisted grant had been revoked. */
+    /**
+     * Every operation fails as if the persisted grant had been revoked.
+     */
     static final int REVOKED = 4;
-    /** The first open succeeds and the document is gone immediately afterwards. */
+    /**
+     * The first open succeeds and the document is gone immediately
+     * afterwards.
+     */
     static final int DELETED_AFTER_OPEN = 5;
-    /** Every open returns a new inode with the same length and other bytes. */
+    /**
+     * Every open returns a new inode with the same length and other
+     * bytes.
+     */
     static final int REPLACED_SAME_LENGTH = 6;
-    /** Returns a sequential socket: lseek fails and fstat is not a regular file. */
+    /**
+     * Returns a sequential socket: lseek fails and fstat is not a
+     * regular file.
+     */
     static final int NO_SEEK = 7;
-    /** Returns a read-only descriptor for a write open, so pwrite fails. */
+    /**
+     * Returns a read-only descriptor for a write open, so pwrite fails.
+     */
     static final int FAILS_WRITE = 8;
-    /** The first open succeeds and every later operation reports a lost grant. */
+    /**
+     * The first open succeeds and every later operation reports a lost
+     * grant.
+     */
     static final int REVOKE_AFTER_OPEN = 9;
 
     static final String AUTHORITY = "org.openi2pd.router.test.saf";
@@ -243,9 +266,10 @@ public final class TorrentSafFixtureProvider extends DocumentsProvider {
                 return pipe[0];
             }
             case NO_SEEK: {
-                // Bidirectional but non-seekable: lseek fails with ESPIPE and
-                // fstat is not a regular file, so the broker rejects the
-                // document before any transfer or temporary copy.
+                // Bidirectional but non-seekable: lseek fails with
+                // ESPIPE and fstat is not a regular file, so the broker
+                // rejects the document before any transfer or temporary
+                // copy.
                 ParcelFileDescriptor[] pair = ParcelFileDescriptor.createSocketPair();
                 closeQuietly(pair[1]);
                 return pair[0];
@@ -253,8 +277,8 @@ public final class TorrentSafFixtureProvider extends DocumentsProvider {
             case FAILS_WRITE:
                 // A read-only descriptor for a write open is the
                 // deterministic, signal-free stand-in for a provider
-                // ENOSPC: pwrite and fsync fail instead of a partial write
-                // being reported as success.
+                // ENOSPC: pwrite and fsync fail instead of a partial
+                // write being reported as success.
                 return ParcelFileDescriptor.open(
                         document(entry), ParcelFileDescriptor.MODE_READ_ONLY);
             case REPLACED_SAME_LENGTH:
@@ -264,8 +288,9 @@ public final class TorrentSafFixtureProvider extends DocumentsProvider {
                 ParcelFileDescriptor fd = ParcelFileDescriptor.open(
                         document(entry), ParcelFileDescriptor.parseMode(access));
                 if (configured == DELETED_AFTER_OPEN)
-                    // The descriptor still names the old inode, exactly as a
-                    // provider that removed the document after the open.
+                    // The descriptor still names the old inode, exactly
+                    // as a provider that removed the document after the
+                    // open.
                     discard(entry);
                 return fd;
             }
@@ -367,7 +392,10 @@ public final class TorrentSafFixtureProvider extends DocumentsProvider {
         return new File(directory, "doc-" + (sequence++));
     }
 
-    /** Bounded fixture pattern; consecutive inodes carry different bytes. */
+    /**
+     * Bounded fixture pattern; consecutive inodes carry different
+     * bytes.
+     */
     private void pattern(RandomAccessFile data, long size) throws IOException {
         if (size <= 0)
             return;

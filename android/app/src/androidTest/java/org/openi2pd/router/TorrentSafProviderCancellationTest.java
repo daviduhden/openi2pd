@@ -36,8 +36,9 @@ public final class TorrentSafProviderCancellationTest {
         provider.attachInfo(InstrumentationRegistry.getInstrumentation().getTargetContext(), info);
         return provider;
     }
-    // These tests exercise real DocumentsProvider cancellation and descriptor behavior.
-    // Persistable-grant acquisition and broker death/rebind remain separate end-to-end CI cases.
+    // These tests exercise real DocumentsProvider cancellation and
+    // descriptor behavior. Persistable-grant acquisition and broker
+    // death/rebind remain separate end-to-end CI cases.
     @Test
     public void cooperativeProviderObservesCancellation() throws Exception {
         TorrentSafFixtureProvider provider = provider();
@@ -113,8 +114,8 @@ public final class TorrentSafProviderCancellationTest {
             } catch (ErrnoException unsupported) {
                 assertEquals(OsConstants.ESPIPE, unsupported.errno);
             }
-            // The broker's regular-file check fails too, so no temporary copy is
-            // ever attempted for this provider.
+            // The broker's regular-file check fails too, so no
+            // temporary copy is ever attempted for this provider.
             assertFalse(OsConstants.S_ISREG(Os.fstat(fd.getFileDescriptor()).st_mode));
         }
     }
@@ -139,7 +140,8 @@ public final class TorrentSafProviderCancellationTest {
         assertTrue(hasChild(provider, TorrentSafFixtureProvider.TORRENT, "sub"));
         assertTrue(hasChild(provider, TorrentSafFixtureProvider.TORRENT, "empty.bin"));
         assertTrue(hasChild(provider, TorrentSafFixtureProvider.SUBDIRECTORY, "part-00002.bin"));
-        // Document IDs round-trip through the tree URI exactly as resolve() uses them.
+        // Document IDs round-trip through the tree URI exactly as
+        // resolve() uses them.
         for (String id : new String[] {TorrentSafFixtureProvider.PART_ONE,
                      TorrentSafFixtureProvider.PART_TWO, TorrentSafFixtureProvider.EMPTY})
             assertEquals(id,
@@ -154,8 +156,9 @@ public final class TorrentSafProviderCancellationTest {
                      TorrentSafFixtureProvider.PART_TWO, "rw", new CancellationSignal())) {
             assertEquals(TorrentSafFixtureProvider.PART_TWO_SIZE,
                     Os.fstat(fd.getFileDescriptor()).st_size);
-            // The final block of a file whose length is not a chunk multiple is
-            // written at the exact range the engine computes.
+            // The final block of a file whose length is not a chunk
+            // multiple is written at the exact range the engine
+            // computes.
             int finalBlock = 1000;
             long offset = TorrentSafFixtureProvider.PART_TWO_SIZE - finalBlock;
             byte[] tail = new byte[finalBlock];
@@ -169,8 +172,8 @@ public final class TorrentSafProviderCancellationTest {
                 done += Os.pread(
                         fd.getFileDescriptor(), read, done, read.length - done, offset + done);
             assertArrayEquals(tail, read);
-            // A transfer past the declared end is refused by the shared range
-            // rule before the provider is reached.
+            // A transfer past the declared end is refused by the shared
+            // range rule before the provider is reached.
             assertTrue(TorrentSafStorageService.validRange(
                     TorrentSafFixtureProvider.PART_TWO_SIZE, offset, finalBlock));
             assertFalse(TorrentSafStorageService.validRange(
@@ -184,7 +187,8 @@ public final class TorrentSafProviderCancellationTest {
         try (ParcelFileDescriptor fd = provider.openDocument(
                      TorrentSafFixtureProvider.EMPTY, "r", new CancellationSignal())) {
             assertEquals(0, Os.fstat(fd.getFileDescriptor()).st_size);
-            // Empty documents emit no fragment and can never serve one byte.
+            // Empty documents emit no fragment and can never serve one
+            // byte.
             assertFalse(TorrentSafStorageService.validRange(0, 0, 1));
             assertTrue(TorrentSafStorageService.validRange(0, 0, 0));
         }
@@ -196,9 +200,10 @@ public final class TorrentSafProviderCancellationTest {
         try (ParcelFileDescriptor fd = provider.openDocument(
                      TorrentSafFixtureProvider.LEGACY, "r", new CancellationSignal())) {
             assertNotNull(fd);
-            // The open descriptor still names the unlinked inode, but the
-            // broker's authorized() recheck resolves the document again and
-            // must now fail: the piece is invalidated, never served stale.
+            // The open descriptor still names the unlinked inode, but
+            // the broker's authorized() recheck resolves the document
+            // again and must now fail: the piece is invalidated, never
+            // served stale.
             assertDocumentGone(provider, TorrentSafFixtureProvider.LEGACY);
         }
     }
@@ -248,7 +253,8 @@ public final class TorrentSafProviderCancellationTest {
         provider.configure(TorrentSafFixtureProvider.NORMAL, "open");
         provider.deleteDocument(TorrentSafFixtureProvider.PART_TWO);
         assertFalse(hasChild(provider, TorrentSafFixtureProvider.SUBDIRECTORY, "part-00002.bin"));
-        // Deletion is not a recursive tree removal: the sibling part survives.
+        // Deletion is not a recursive tree removal: the sibling part
+        // survives.
         assertTrue(hasChild(provider, TorrentSafFixtureProvider.TORRENT, "part-00001.bin"));
         assertDocumentGone(provider, TorrentSafFixtureProvider.PART_TWO);
     }

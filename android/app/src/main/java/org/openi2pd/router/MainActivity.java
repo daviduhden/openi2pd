@@ -1,13 +1,14 @@
 /*
- * See the LICENSE file at the top of the project tree for copyright
- * and license details.
+ * See the LICENSE file at the top of the project tree for copyright and
+ * license details.
  *
  * openi2pd: MainActivity.
  *
- * Single-activity host for the router screens. Screens, back-stack titles and
- * the service banner follow {@link RouterViewModel} state, so rotation or a
- * theme change never restarts the daemon; the first auto-start waits for the
- * notification and Android 17 local-network permission result.
+ * Single-activity host for the router screens. Screens, back-stack
+ * titles and the service banner follow {@link RouterViewModel} state,
+ * so rotation or a theme change never restarts the daemon; the first
+ * auto-start waits for the notification and Android 17 local-network
+ * permission result.
  *
  */
 
@@ -57,12 +58,13 @@ import java.util.List;
 /**
  * Single-activity host for the router screens.
  *
- * <p>State is owned by {@link RouterViewModel} and the router service, so
- * recreating the activity (rotation, theme change, font-scale change) never
- * restarts the daemon. The activity renders snapshots and forwards user
- * actions; its start/stop callbacks enable or pause UI observation, rather
- * than stopping the router. The first autostart waits for the startup
- * permission result before requesting service startup.</p>
+ * <p>State is owned by {@link RouterViewModel} and the router service,
+ * so recreating the activity (rotation, theme change, font-scale
+ * change) never restarts the daemon. The activity renders snapshots and
+ * forwards user actions; its start/stop callbacks enable or pause UI
+ * observation, rather than stopping the router. The first autostart
+ * waits for the startup permission result before requesting service
+ * startup.</p>
  */
 public class MainActivity extends AppCompatActivity {
     private static final String STATE_SELECTED_NAV = "selected_nav";
@@ -95,19 +97,23 @@ public class MainActivity extends AppCompatActivity {
     private int lastActionMask = -1;
     private boolean everServiceConnected;
     private boolean serviceBannerTimedOut;
-    /** Defer the very first auto-start until the permission dialog resolves. */
+    /**
+     * Defer the very first auto-start until the permission dialog
+     * resolves.
+     */
     private boolean startAfterPermissionResult;
     private boolean pendingAutostart;
 
     /**
-     * Build the single-activity shell and decide whether a first launch may
-     * auto-start the router.
+     * Build the single-activity shell and decide whether a first launch
+     * may auto-start the router.
      *
      * <p>Main thread. The activity only wires the Material 3 toolbar,
-     * navigation bar/rail and service banner to the ViewModel; it never owns
-     * the daemon or native state. A fresh task asks for the startup
-     * permissions first and defers the auto-start until the result arrives,
-     * while a recreated task restores the selected destination instead.</p>
+     * navigation bar/rail and service banner to the ViewModel; it never
+     * owns the daemon or native state. A fresh task asks for the
+     * startup permissions first and defers the auto-start until the
+     * result arrives, while a recreated task restores the selected
+     * destination instead.</p>
      */
     @Override
     protected void onCreate(@Nullable Bundle savedInstanceState) {
@@ -154,9 +160,10 @@ public class MainActivity extends AppCompatActivity {
         FragmentManager fragments = getSupportFragmentManager();
         if (savedInstanceState == null) {
             showDestination(R.id.nav_home);
-            // Do not start the router until the permission result is known:
-            // Android 17 would otherwise reject SSDP before the user grants
-            // local-network access, leaving UPnP disabled for the session.
+            // Do not start the router until the permission result is
+            // known: Android 17 would otherwise reject SSDP before the
+            // user grants local-network access, leaving UPnP disabled
+            // for the session.
             startAfterPermissionResult = requestStartupPermissions();
             if (startAfterPermissionResult) {
                 pendingAutostart = true;
@@ -206,8 +213,9 @@ public class MainActivity extends AppCompatActivity {
             }
             updateServiceBanner(isConnected);
         });
-        // A failed bind does not publish a transition, so surface the stale
-        // state once without waiting forever. A later successful bind hides it.
+        // A failed bind does not publish a transition, so surface the
+        // stale state once without waiting forever. A later successful
+        // bind hides it.
         if (toolbar != null) {
             toolbar.postDelayed(() -> {
                 if (isFinishing() || isDestroyed()) {
@@ -238,9 +246,9 @@ public class MainActivity extends AppCompatActivity {
     }
 
     /**
-     * Keep the toolbar title and Up affordance in sync with the top of the
-     * back stack. The title is not part of Fragment state, so it must be
-     * derived after rotation and after every detail push/pop.
+     * Keep the toolbar title and Up affordance in sync with the top of
+     * the back stack. The title is not part of Fragment state, so it
+     * must be derived after rotation and after every detail push/pop.
      */
     private void updateNavigationState() {
         FragmentManager fragments = getSupportFragmentManager();
@@ -338,13 +346,15 @@ public class MainActivity extends AppCompatActivity {
     }
 
     /**
-     * Show one destination as a single hidden-or-resumed fragment transaction.
+     * Show one destination as a single hidden-or-resumed fragment
+     * transaction.
      *
-     * <p>Every known tag is hidden and capped at {@code CREATED} before the
-     * target is added or resumed, so exactly one screen (including a secondary
-     * detail such as logs or I2PSnark) can be visible and only the visible one
-     * keeps a started lifecycle. {@code commitNow} keeps the selection and the
-     * navigation widget consistent within this main-thread call.</p>
+     * <p>Every known tag is hidden and capped at {@code CREATED} before
+     * the target is added or resumed, so exactly one screen (including
+     * a secondary detail such as logs or I2PSnark) can be visible and
+     * only the visible one keeps a started lifecycle. {@code commitNow}
+     * keeps the selection and the navigation widget consistent within
+     * this main-thread call.</p>
      */
     private void showDestination(int itemId) {
         String tag = tagFor(itemId);
@@ -437,7 +447,9 @@ public class MainActivity extends AppCompatActivity {
         openDetail(new LogsFragment(), TAG_LOGS, R.string.logs_title);
     }
 
-    /** Switch to the settings destination from a dashboard quick action. */
+    /**
+     * Switch to the settings destination from a dashboard quick action.
+     */
     public void openSettings() {
         showDestination(R.id.nav_settings);
     }
@@ -453,8 +465,9 @@ public class MainActivity extends AppCompatActivity {
                 .replace(R.id.fragment_container, fragment, tag)
                 .addToBackStack(tag)
                 .commit();
-        // The back-stack listener updates the title; setting it here avoids a
-        // visible stale title until the asynchronous commit completes.
+        // The back-stack listener updates the title; setting it here
+        // avoids a visible stale title until the asynchronous commit
+        // completes.
         toolbar.setTitle(title);
         ActionBar actionBar = getSupportActionBar();
         if (actionBar != null) {
@@ -477,8 +490,9 @@ public class MainActivity extends AppCompatActivity {
         MenuItem stop = menu.findItem(R.id.action_stop);
 
         boolean detail = getSupportFragmentManager().getBackStackEntryCount() > 0;
-        // Secondary destinations are entries, not tabs: showing them while a
-        // detail is open would replace that detail and lose the back target.
+        // Secondary destinations are entries, not tabs: showing them
+        // while a detail is open would replace that detail and lose the
+        // back target.
         for (int id : new int[] {R.id.action_logs, R.id.action_about, R.id.action_torrents,
                      R.id.action_address_book, R.id.action_runtime_admin}) {
             MenuItem entry = menu.findItem(id);
@@ -497,8 +511,9 @@ public class MainActivity extends AppCompatActivity {
             reload.setEnabled(UiFormat.isConnected(lastSnapshot));
         }
         if (reseed != null) {
-            // A reseed downloads SU3 bundles, so require a connected router and
-            // block a second request while the native bootstrap is active.
+            // A reseed downloads SU3 bundles, so require a connected
+            // router and block a second request while the native
+            // bootstrap is active.
             reseed.setEnabled(UiFormat.isConnected(lastSnapshot)
                     && !(lastSnapshot != null && lastSnapshot.reseeding()));
         }
@@ -565,11 +580,11 @@ public class MainActivity extends AppCompatActivity {
     }
 
     /**
-     * Reseeding contacts the configured reseed servers over HTTPS, so it is
-     * confirmed first. The native call returns immediately with a typed
-     * outcome; the bootstrap itself runs in the NetDb background job. Both
-     * Toasts use the application context, so a rotation during the reseed
-     * cannot retain the Activity.
+     * Reseeding contacts the configured reseed servers over HTTPS, so
+     * it is confirmed first. The native call returns immediately with a
+     * typed outcome; the bootstrap itself runs in the NetDb background
+     * job. Both Toasts use the application context, so a rotation
+     * during the reseed cannot retain the Activity.
      */
     void confirmReseed() {
         final Context appContext = getApplicationContext();
@@ -650,9 +665,10 @@ public class MainActivity extends AppCompatActivity {
     }
 
     /**
-     * Ask once for the runtime permissions that affect a running router.
-     * Notifications are separate from routing; local-network access is
-     * required by Android 17 before UPnP/SSDP may reach the gateway.
+     * Ask once for the runtime permissions that affect a running
+     * router. Notifications are separate from routing; local-network
+     * access is required by Android 17 before UPnP/SSDP may reach the
+     * gateway.
      */
     private boolean requestStartupPermissions() {
         List<String> missing = new ArrayList<>(2);
@@ -674,14 +690,15 @@ public class MainActivity extends AppCompatActivity {
     }
 
     /**
-     * Resolve the startup permission dialog and then release the deferred
-     * first-launch start exactly once.
+     * Resolve the startup permission dialog and then release the
+     * deferred first-launch start exactly once.
      *
-     * <p>Main thread. A denied notification or local-network permission is
-     * reported with a localized toast but never blocks the router: the deferred
-     * start runs after the dialog resolves, so Android 17 does not reject SSDP
-     * before local-network access was decided. The pending flag is cleared from
-     * preferences so a process restart cannot replay it.</p>
+     * <p>Main thread. A denied notification or local-network permission
+     * is reported with a localized toast but never blocks the router:
+     * the deferred start runs after the dialog resolves, so Android 17
+     * does not reject SSDP before local-network access was decided. The
+     * pending flag is cleared from preferences so a process restart
+     * cannot replay it.</p>
      */
     @Override
     public void onRequestPermissionsResult(
@@ -738,10 +755,11 @@ public class MainActivity extends AppCompatActivity {
     }
 
     /**
-     * Persist the navigation selection and the permission hand-off flag before
-     * the UI is recreated, so the same destination is shown and the
-     * first-launch auto-start is not replayed. Router state is not saved here;
-     * it belongs to the service and lives in {@link RouterRunState}.
+     * Persist the navigation selection and the permission hand-off flag
+     * before the UI is recreated, so the same destination is shown and
+     * the first-launch auto-start is not replayed. Router state is not
+     * saved here; it belongs to the service and lives in {@link
+     * RouterRunState}.
      */
     @Override
     protected void onSaveInstanceState(@NonNull Bundle outState) {

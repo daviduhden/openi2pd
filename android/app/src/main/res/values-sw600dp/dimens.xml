@@ -14,6 +14,7 @@ Defines native Android application resources.
     <dimen name="screen_padding_bottom">32dp</dimen>
     <dimen name="metric_min_height">88dp</dimen>
     <dimen name="chart_height">280dp</dimen>
-    <!-- Large screens keep a readable measure while the rail owns the edge. -->
+    <!-- Large screens keep a readable measure while the rail owns the
+        edge. -->
     <dimen name="content_max_width">1000dp</dimen>
 </resources>

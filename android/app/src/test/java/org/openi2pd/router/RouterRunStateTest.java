@@ -1,13 +1,14 @@
 /*
- * See the LICENSE file at the top of the project tree for copyright
- * and license details.
+ * See the LICENSE file at the top of the project tree for copyright and
+ * license details.
  *
  * openi2pd: RouterRunStateTest.
  *
- * Pure-JVM regression for the persisted run intent: legacy boolean migration,
- * drain expiry and clamping, corrupt deadlines, generation monotonicity and the
- * "stopped never starts" rule. A tiny in-memory SharedPreferences is used so no
- * Android framework method is ever called.
+ * Pure-JVM regression for the persisted run intent: legacy boolean
+ * migration, drain expiry and clamping, corrupt deadlines, generation
+ * monotonicity and the "stopped never starts" rule. A tiny in-memory
+ * SharedPreferences is used so no Android framework method is ever
+ * called.
  *
  */
 
@@ -30,21 +31,24 @@ import java.util.Set;
 /**
  * Pure-JVM checks for {@link RouterRunState}.
  *
- * <p>These tests replace the emulator for everything the run state decides:
- * which phase survives a process death, whether a drain deadline is still
- * inside its window and whether a corrupt deadline fails closed. They
- * deliberately do not touch {@code RouterService}, a Handler, a
- * NotificationManager or a Context.</p>
+ * <p>These tests replace the emulator for everything the run state
+ * decides: which phase survives a process death, whether a drain
+ * deadline is still inside its window and whether a corrupt deadline
+ * fails closed. They deliberately do not touch {@code RouterService}, a
+ * Handler, a NotificationManager or a Context.</p>
  *
- * <p>The {@code onTaskRemoved}/{@code onDestroy} contract cannot be expressed
- * here: both are lifecycle callbacks on an Android {@code Service} instance and
- * need instrumentation (a bound service plus a task-removal simulation). The
- * unit-testable half of that contract is that task removal must not modify the
- * persisted state, which this file pins by asserting that a load/save round trip
- * is the only mutation path.</p>
+ * <p>The {@code onTaskRemoved}/{@code onDestroy} contract cannot be
+ * expressed here: both are lifecycle callbacks on an Android {@code
+ * Service} instance and need instrumentation (a bound service plus a
+ * task-removal simulation). The unit-testable half of that contract is
+ * that task removal must not modify the persisted state, which this
+ * file pins by asserting that a load/save round trip is the only
+ * mutation path.</p>
  */
 public final class RouterRunStateTest {
-    /** Fixed wall clock so every deadline assertion is deterministic. */
+    /**
+     * Fixed wall clock so every deadline assertion is deterministic.
+     */
     private static final long NOW = 1_700_000_000_000L;
 
     private static final long MAX = RouterRunState.MAX_DRAIN_WINDOW_MILLIS;
@@ -69,8 +73,8 @@ public final class RouterRunStateTest {
     @Test
     public void missingLegacyFlagFailsClosedEvenWithAStalePhase() {
         MemoryPreferences preferences = new MemoryPreferences();
-        // A partial write, a cleared preference or an older test that removes
-        // only should_run must never restore a router.
+        // A partial write, a cleared preference or an older test that
+        // removes only should_run must never restore a router.
         preferences.edit()
                 .putString("run_phase", "running")
                 .putLong("graceful_deadline_epoch_ms", NOW + 60_000L)
@@ -155,7 +159,8 @@ public final class RouterRunStateTest {
         assertTrue(cancelled.shouldRun());
         assertFalse(cancelled.isDrainExpired(NOW + 600_000L));
 
-        // A repeated cancel is a no-op and can never resurrect a stopped router.
+        // A repeated cancel is a no-op and can never resurrect a
+        // stopped router.
         assertEquals(cancelled, cancelled.cancelGraceful());
         assertEquals(
                 RouterRunState.Phase.Stopped, RouterRunState.stopped().cancelGraceful().phase());
@@ -173,8 +178,8 @@ public final class RouterRunStateTest {
         assertEquals(0L, stopped.remainingDrainMs(NOW));
         assertFalse(stopped.isDrainExpired(NOW));
 
-        // Repeating the stop still advances the generation, so a stale writer
-        // cannot win a read-modify-write race.
+        // Repeating the stop still advances the generation, so a stale
+        // writer cannot win a read-modify-write race.
         assertEquals(stopped.generation() + 1L, stopped.stop().generation());
     }
 
@@ -193,7 +198,8 @@ public final class RouterRunStateTest {
         MemoryPreferences deepPast = drainingPreferences(NOW - 2L * MAX);
         assertEquals(RouterRunState.Phase.Stopped, RouterRunState.load(deepPast, NOW).phase());
 
-        // Absurdly far in the future: clamped to the configured maximum.
+        // Absurdly far in the future: clamped to the configured
+        // maximum.
         long absurdDeadline = NOW + 365L * MAX;
         MemoryPreferences absurd = drainingPreferences(absurdDeadline);
         RouterRunState clamped = RouterRunState.load(absurd, NOW);
@@ -204,8 +210,9 @@ public final class RouterRunStateTest {
                 RouterRunState.isPlausibleDeadline(absurdDeadline, NOW));
         assertTrue(RouterRunState.isPlausibleDeadline(clamped.gracefulDeadlineEpochMs(), NOW));
 
-        // Sanitisation itself is total: non-positive and deeply past values
-        // become 0, a future value inside the window is preserved.
+        // Sanitisation itself is total: non-positive and deeply past
+        // values become 0, a future value inside the window is
+        // preserved.
         assertEquals(0L, RouterRunState.sanitizeDeadline(0L, NOW));
         assertEquals(0L, RouterRunState.sanitizeDeadline(-1L, NOW));
         assertEquals(0L, RouterRunState.sanitizeDeadline(NOW - 2L * MAX, NOW));
@@ -263,13 +270,14 @@ public final class RouterRunStateTest {
         assertEquals(0L, stopped.remainingDrainMs(NOW));
         assertEquals(RouterRunState.Phase.Stopped, stopped.phase());
 
-        // A draining record without a usable deadline is the terminal stop it
-        // was heading for, not an unbounded run.
+        // A draining record without a usable deadline is the terminal
+        // stop it was heading for, not an unbounded run.
         assertEquals(RouterRunState.Phase.Stopped,
                 new RouterRunState(RouterRunState.Phase.Draining, 0L, 1L).phase());
         assertEquals(RouterRunState.Phase.Stopped,
                 new RouterRunState(RouterRunState.Phase.Draining, -1L, 1L).phase());
-        // A null phase and a negative generation are normalised, not thrown.
+        // A null phase and a negative generation are normalised, not
+        // thrown.
         RouterRunState normalised = new RouterRunState(null, NOW + 1000L, -9L);
         assertEquals(RouterRunState.Phase.Stopped, normalised.phase());
         assertEquals(0L, normalised.gracefulDeadlineEpochMs());
@@ -314,9 +322,9 @@ public final class RouterRunStateTest {
      * Minimal in-memory {@link SharedPreferences}.
      *
      * <p>Only the methods {@link RouterRunState} uses do real work; the
-     * listener bookkeeping is intentionally ignored because the run state has
-     * no observers. Nothing here calls an Android framework method, so the
-     * test runs on a plain JVM.</p>
+     * listener bookkeeping is intentionally ignored because the run
+     * state has no observers. Nothing here calls an Android framework
+     * method, so the test runs on a plain JVM.</p>
      */
     private static final class MemoryPreferences implements SharedPreferences {
         private final Map<String, Object> values = new HashMap<>();
@@ -388,7 +396,10 @@ public final class RouterRunStateTest {
             // The run state has no observers.
         }
 
-        /** Buffered editor that publishes on apply()/commit() like the framework. */
+        /**
+         * Buffered editor that publishes on apply()/commit() like the
+         * framework.
+         */
         private final class MemoryEditor implements Editor {
             private final Map<String, Object> pending = new HashMap<>();
             private final Set<String> removed = new HashSet<>();

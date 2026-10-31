@@ -1,13 +1,14 @@
 /*
- * See the LICENSE file at the top of the project tree for copyright
- * and license details.
+ * See the LICENSE file at the top of the project tree for copyright and
+ * license details.
  *
  * openi2pd: RouterConfigStore.
  *
- * Singleton accessor for the app-private {@code i2pd.conf} with size-bounded
- * reads and atomic write + fsync + rename updates. The editor is line based so
- * comments and unknown options survive, and keys or values that name secrets
- * or could inject a section or option are rejected.
+ * Singleton accessor for the app-private {@code i2pd.conf} with
+ * size-bounded reads and atomic write + fsync + rename updates. The
+ * editor is line based so comments and unknown options survive, and
+ * keys or values that name secrets or could inject a section or option
+ * are rejected.
  *
  */
 
@@ -29,16 +30,16 @@ import java.util.Objects;
 /**
  * Central safe access to the daemon's {@code i2pd.conf}.
  *
- * <p>Only app-specific storage is accepted. Reads are size bounded and writes
- * are atomic (write + fsync + rename). The editor is line based so comments and
- * unknown options are preserved; it never serialises the whole INI through a
- * object model that could drop keys.</p>
+ * <p>Only app-specific storage is accepted. Reads are size bounded and
+ * writes are atomic (write + fsync + rename). The editor is line based
+ * so comments and unknown options are preserved; it never serialises
+ * the whole INI through a object model that could drop keys.</p>
  *
- * <p>Keys and values are validated to prevent section/option injection. Keys
- * that name key material, passwords or other secrets are refused outright:
- * this class must never become a secret store. The resulting configuration is
- * not used to launch an external process; only the in-process router reads
- * it.</p>
+ * <p>Keys and values are validated to prevent section/option injection.
+ * Keys that name key material, passwords or other secrets are refused
+ * outright: this class must never become a secret store. The resulting
+ * configuration is not used to launch an external process; only the
+ * in-process router reads it.</p>
  */
 public final class RouterConfigStore {
     private static final String TAG = "RouterConfigStore";
@@ -50,6 +51,7 @@ public final class RouterConfigStore {
 
     private static volatile RouterConfigStore instance;
 
+    /** How a changed option becomes active in the running router. */
     public enum ApplyMode {
         /** Takes effect without restarting the router. */
         HOT,
@@ -75,13 +77,13 @@ public final class RouterConfigStore {
     }
 
     /**
-     * Process-wide store for the daemon's {@code i2pd.conf}, created once under
-     * the class lock and bound to the application context.
+     * Process-wide store for the daemon's {@code i2pd.conf}, created
+     * once under the class lock and bound to the application context.
      *
-     * <p>The returned instance is a file-backed cache: reads and writes go to
-     * the configuration file, so call them from a worker. The settings screen
-     * keeps all access on one background executor and only touches views back
-     * on the main thread.</p>
+     * <p>The returned instance is a file-backed cache: reads and writes
+     * go to the configuration file, so call them from a worker. The
+     * settings screen keeps all access on one background executor and
+     * only touches views back on the main thread.</p>
      */
     public static RouterConfigStore get(Context context) {
         Objects.requireNonNull(context, "context");
@@ -119,8 +121,8 @@ public final class RouterConfigStore {
 
     /**
      * Parse the INI boolean spellings accepted by i2pd. Kept static and
-     * Android-free so the settings loader can parse values off the main thread
-     * and so the rule is covered by a pure-JVM test.
+     * Android-free so the settings loader can parse values off the main
+     * thread and so the rule is covered by a pure-JVM test.
      */
     public static boolean parseBoolean(String value, boolean def) {
         if (value == null) {
@@ -134,9 +136,9 @@ public final class RouterConfigStore {
     }
 
     /**
-     * Validate and write one option. Existing comments, sections and unknown
-     * keys are preserved. Returns {@code false} for unsafe input, oversized
-     * files or I/O failure.
+     * Validate and write one option. Existing comments, sections and
+     * unknown keys are preserved. Returns {@code false} for unsafe
+     * input, oversized files or I/O failure.
      */
     public synchronized boolean setOption(String key, String value) {
         if (!isSafeKey(key) || !isSafeValue(value) || isSecretKey(key) || configFile == null) {
@@ -149,9 +151,9 @@ public final class RouterConfigStore {
             return false;
         }
         if (text.isEmpty() && !configFile.isFile()) {
-            // First edit before the service copied the bundled assets. Seed
-            // from the asset so the write does not hide the entire default
-            // configuration from the router.
+            // First edit before the service copied the bundled assets.
+            // Seed from the asset so the write does not hide the entire
+            // default configuration from the router.
             String seed = readBundledConfig();
             if (seed != null) {
                 text = seed;
@@ -179,11 +181,12 @@ public final class RouterConfigStore {
     /**
      * How a changed option becomes visible to the running router.
      *
-     * <p>The log level is hot: {@link SettingsFragment} writes the exact same
-     * closed value to the file and also hands it to the running logger through
-     * {@link RouterService}'s typed worker action, so no restart is needed.
-     * Every other option is conservatively {@link ApplyMode#RESTART} except
-     * tunnel configuration files.</p>
+     * <p>The log level is hot: {@link SettingsFragment} writes the
+     * exact same closed value to the file and also hands it to the
+     * running logger through {@link RouterService}'s typed worker
+     * action, so no restart is needed. Every other option is
+     * conservatively {@link ApplyMode#RESTART} except tunnel
+     * configuration files.</p>
      */
     public ApplyMode applyModeFor(String key) {
         if (key == null || key.isEmpty()) {
@@ -203,9 +206,9 @@ public final class RouterConfigStore {
      * Value validation shared by settings and direct callers.
      *
      * <p>Rejects empty values, control characters and the INI injection
-     * characters {@code = # ;}. Whitespace at either end is rejected so a
-     * value cannot accidentally become a different option. Brackets remain
-     * legal inside a value so IPv6 literals can be written.</p>
+     * characters {@code = # ;}. Whitespace at either end is rejected so
+     * a value cannot accidentally become a different option. Brackets
+     * remain legal inside a value so IPv6 literals can be written.</p>
      */
     public static boolean isSafeValue(String value) {
         if (value == null || value.isEmpty() || value.length() > MAX_VALUE_LENGTH) {
@@ -219,8 +222,8 @@ public final class RouterConfigStore {
         for (int i = 0; i < value.length(); i++) {
             char c = value.charAt(i);
             // '[' and ']' are allowed inside a value (IPv6 literals); a
-            // section header would have to start the line, which the writer
-            // never produces for a value.
+            // section header would have to start the line, which the
+            // writer never produces for a value.
             if (c == '\r' || c == '\n' || c == '=' || c == '#' || c == ';'
                     || Character.isISOControl(c)) {
                 return false;
@@ -230,9 +233,10 @@ public final class RouterConfigStore {
     }
 
     /**
-     * Legacy settings used {@code log} for the router's {@code loglevel}
-     * option. Keep that alias so an existing PreferenceFragment key continues
-     * to edit the real INI key instead of adding an ignored {@code log} line.
+     * Legacy settings used {@code log} for the router's {@code
+     * loglevel} option. Keep that alias so an existing
+     * PreferenceFragment key continues to edit the real INI key instead
+     * of adding an ignored {@code log} line.
      */
     private static String canonicalKey(String key) {
         return "log".equals(key) ? "loglevel" : key;
@@ -259,7 +263,10 @@ public final class RouterConfigStore {
         return true;
     }
 
-    /** Refuse to read or write key material/passwords through this store. */
+    /**
+     * Refuse to read or write key material/passwords through this
+     * store.
+     */
     private static boolean isSecretKey(String key) {
         if (key == null) {
             return true;
@@ -329,9 +336,9 @@ public final class RouterConfigStore {
 
     /**
      * Return the last assignment for {@code flatKey}, matching both
-     * {@code key = value} at top level and {@code [section] key = value}.
-     * Boost.Program_options uses the last duplicate, so the same rule is used
-     * here.
+     * {@code key = value} at top level and {@code [section] key =
+     * value}. Boost.Program_options uses the last duplicate, so the
+     * same rule is used here.
      */
     private static String findLastValue(String text, String flatKey) {
         String[] lines = text.split("\n", -1);
@@ -405,10 +412,11 @@ public final class RouterConfigStore {
             return result.toString();
         }
 
-        // New options must not be appended blindly at EOF: if the file ends
-        // inside [section], the line would silently become section.key. Insert
-        // before the first section (dotted keys are valid at top level), or at
-        // EOF only when the file has no section.
+        // New options must not be appended blindly at EOF: if the file
+        // ends inside [section], the line would silently become
+        // section.key. Insert before the first section (dotted keys are
+        // valid at top level), or at EOF only when the file has no
+        // section.
         int insertAt = lines.length;
         for (int i = 0; i < lines.length; i++) {
             if (isSectionHeader(lines[i].trim())) {
@@ -458,8 +466,9 @@ public final class RouterConfigStore {
                 out.flush();
                 out.getFD().sync();
             }
-            // rename(2) is atomic and replaces an existing target on Android
-            // app-private filesystems. Do not fall back to a non-atomic copy.
+            // rename(2) is atomic and replaces an existing target on
+            // Android app-private filesystems. Do not fall back to a
+            // non-atomic copy.
             if (!temporary.renameTo(file)) {
                 Log.e(TAG, "atomic configuration replace failed");
                 return false;

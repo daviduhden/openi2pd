@@ -10,11 +10,9 @@ Defines native Android application resources.
 -->
 
 <resources>
-    <!--
-        Base theme carries the branded Material 3 roles. Theme.OpenI2Pd is a
-        small alias so values-v31 can add the platform splash-screen attributes
-        without duplicating the role table.
-    -->
+    <!-- Base theme carries the branded Material 3 roles. Theme.OpenI2Pd
+        is a small alias so values-v31 can add the platform
+        splash-screen attributes without duplicating the role table. -->
     <style name="Theme.OpenI2Pd.Base" parent="Theme.Material3.DayNight.NoActionBar">
         <item name="colorPrimary">@color/brand_primary</item>
         <item name="colorOnPrimary">@color/brand_on_primary</item>

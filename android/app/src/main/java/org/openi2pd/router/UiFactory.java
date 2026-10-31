@@ -1,12 +1,13 @@
 /*
- * See the LICENSE file at the top of the project tree for copyright
- * and license details.
+ * See the LICENSE file at the top of the project tree for copyright and
+ * license details.
  *
  * openi2pd: shared Material 3 view factory.
  *
- * The programmatic screens (torrents, address book and runtime admin) build
- * their rows in Java. Centralizing the touch-target and padding contract here
- * keeps them from drifting away from the XML screens, which already use
+ * The programmatic screens (torrents, address book and runtime admin)
+ * build their rows in Java. Centralizing the touch-target and padding
+ * contract here keeps them from drifting away from the XML screens,
+ * which already use
  * @dimen/touch_target and logical (RTL-aware) padding.
  */
 
@@ -24,19 +25,19 @@ import androidx.core.view.ViewCompat;
 import com.google.android.material.button.MaterialButton;
 
 /**
- * Shared Material Views construction for programmatic screens. Callers create
- * and update these views on the Android main thread and retain them only for
- * the owning Fragment's view lifecycle.
+ * Shared Material Views construction for programmatic screens. Callers
+ * create and update these views on the Android main thread and retain
+ * them only for the owning Fragment's view lifecycle.
  */
 final class UiFactory {
     private UiFactory() {
     }
 
     /**
-     * Scroll container plus its centred, width-capped column. The programmatic
-     * screens previously duplicated this block with a hard-coded 16dp inset and
-     * no width cap, so they stretched edge to edge on a tablet while the XML
-     * screens did not.
+     * Scroll container plus its centred, width-capped column. The
+     * programmatic screens previously duplicated this block with a
+     * hard-coded 16dp inset and no width cap, so they stretched edge to
+     * edge on a tablet while the XML screens did not.
      */
     record Column(ScrollView scroll, LinearLayout content) {}
 
@@ -68,11 +69,12 @@ final class UiFactory {
     }
 
     /**
-     * One-speech-utterance semantics for a programmatic row. A multi-line
-     * button otherwise makes TalkBack read the label, the separator and the
-     * badge as unrelated fragments. {@code ViewCompat.setStateDescription}
-     * degrades gracefully below API 30 while the content description remains
-     * available on every supported level.
+     * One-speech-utterance semantics for a programmatic row. A
+     * multi-line button otherwise makes TalkBack read the label, the
+     * separator and the badge as unrelated fragments. {@code
+     * ViewCompat.setStateDescription} degrades gracefully below API 30
+     * while the content description remains available on every
+     * supported level.
      */
     static void applyRowSemantics(View view, CharSequence description) {
         view.setContentDescription(description);

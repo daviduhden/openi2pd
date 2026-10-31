@@ -1,15 +1,16 @@
 /*
- * See the LICENSE file at the top of the project tree for copyright
- * and license details.
+ * See the LICENSE file at the top of the project tree for copyright and
+ * license details.
  *
  * openi2pd: TorrentSafProtocolTest.
  *
- * JVM-only contracts of the SAF broker protocol: caller binding, one-shot
- * export capabilities, one-shot generation retirement, bounded admission,
- * handle ownership, range overflow, path bounds and the watchdog arming order.
- * It also pins the client bind-retry budget, which is framework-free. No
- * provider, Binder stub or device is required. Generated stubs, provider IO and
- * process death are covered by the instrumentation suite or manual device CI.
+ * JVM-only contracts of the SAF broker protocol: caller binding,
+ * one-shot export capabilities, one-shot generation retirement, bounded
+ * admission, handle ownership, range overflow, path bounds and the
+ * watchdog arming order. It also pins the client bind-retry budget,
+ * which is framework-free. No provider, Binder stub or device is
+ * required. Generated stubs, provider IO and process death are covered
+ * by the instrumentation suite or manual device CI.
  */
 
 package org.openi2pd.router;
@@ -23,12 +24,12 @@ import static org.junit.Assert.assertTrue;
 import org.junit.Test;
 
 /**
- * JVM regressions for the SAF broker's admission, ownership and deadline
- * rules. Everything exercised here is framework-free broker state (one-shot
- * export grants, the `(uid, pid)` owner binding, the bounded admission table,
- * transfer/path caps and the two watchdog stages), so the AIDL v2 contract can
- * be pinned without a device. Device evidence is still required for real
- * providers.
+ * JVM regressions for the SAF broker's admission, ownership and
+ * deadline rules. Everything exercised here is framework-free broker
+ * state (one-shot export grants, the `(uid, pid)` owner binding, the
+ * bounded admission table, transfer/path caps and the two watchdog
+ * stages), so the AIDL v2 contract can be pinned without a device.
+ * Device evidence is still required for real providers.
  */
 public class TorrentSafProtocolTest {
     private static final int APP_UID = 10123;
@@ -43,12 +44,14 @@ public class TorrentSafProtocolTest {
     @Test
     public void wireContractIsPinnedToVersionTwo() {
         assertEquals(2, TorrentSafStorageService.API_VERSION);
-        // Admission, handle and root bounds are part of the wire contract.
+        // Admission, handle and root bounds are part of the wire
+        // contract.
         assertEquals(8, TorrentSafStorageService.MAX_OPERATIONS);
         assertEquals(4096, TorrentSafStorageService.MAX_HANDLES);
         assertEquals(128, TorrentSafStorageService.MAX_ROOTS);
         assertEquals(8, TorrentSafStorageService.MAX_EXPORTS);
-        // One export cannot live longer than one truncated open attempt.
+        // One export cannot live longer than one truncated open
+        // attempt.
         assertTrue(TorrentSafStorageService.EXPORT_TTL_MS > 0);
         // A provider is cancelled first and fenced only afterwards.
         assertTrue(TorrentSafStorageService.CANCEL_DEADLINE_MS
@@ -66,7 +69,8 @@ public class TorrentSafProtocolTest {
         assertEquals(16384, grant.length());
         assertEquals("doc:1", grant.documentId());
         assertEquals(OWNER, grant.owner());
-        // The capability is consumed exactly once; a replay opens nothing.
+        // The capability is consumed exactly once; a replay opens
+        // nothing.
         assertNull(grants.consume(77, OWNER, 1001));
         assertEquals(0, grants.size());
     }
@@ -75,8 +79,8 @@ public class TorrentSafProtocolTest {
     public void exportTokenIsBoundToTheRegisteringProcess() {
         TorrentSafStorageService.ExportGrants grants = new TorrentSafStorageService.ExportGrants();
         assertTrue(grants.prepare(11, OWNER, URI, 4096, "doc:1", 0));
-        // A sibling process of the same UID cannot spend the capability, and the
-        // refusal does not burn the owner's token.
+        // A sibling process of the same UID cannot spend the
+        // capability, and the refusal does not burn the owner's token.
         assertNull(grants.consume(11, SIBLING, 0));
         assertNull(grants.consume(11, FOREIGN_UID, 0));
         assertEquals(1, grants.size());
@@ -90,7 +94,8 @@ public class TorrentSafProtocolTest {
         long ttl = TorrentSafStorageService.EXPORT_TTL_MS;
         assertNotNull(grants.consume(5, OWNER, ttl - 1));
         assertTrue(grants.prepare(6, OWNER, URI, 1024, "doc:1", 0));
-        // Expiry prunes on access: the token is gone before the identity check.
+        // Expiry prunes on access: the token is gone before the
+        // identity check.
         assertNull(grants.consume(6, OWNER, ttl));
         assertEquals(0, grants.size());
     }
@@ -102,7 +107,8 @@ public class TorrentSafProtocolTest {
             assertTrue("token " + i, grants.prepare(i, OWNER, URI, 1024, "doc:1", 0));
         assertFalse(grants.prepare(99, OWNER, URI, 1024, "doc:1", 0));
         assertFalse(grants.prepare(1, OWNER, URI, 1024, "doc:1", 0));
-        // Invalid arguments never allocate a capability or truncate anything.
+        // Invalid arguments never allocate a capability or truncate
+        // anything.
         assertFalse(grants.prepare(0, OWNER, URI, 1024, "doc:1", 0));
         assertFalse(grants.prepare(101, OWNER, URI, 0, "doc:1", 0));
         assertFalse(grants.prepare(
@@ -129,15 +135,17 @@ public class TorrentSafProtocolTest {
                 new TorrentSafStorageService.BrokerIdentity(0x1234);
         long generation = identity.generation();
         assertFalse(identity.retired());
-        // A stale, zero or unrelated generation cannot fence the process.
+        // A stale, zero or unrelated generation cannot fence the
+        // process.
         assertFalse(identity.claimRetirement(0));
         assertFalse(identity.claimRetirement(generation + 1));
         assertFalse(identity.claimRetirement(-generation));
         assertFalse(identity.retired());
         assertTrue(identity.claimRetirement(generation));
         assertTrue(identity.retired());
-        // A duplicated retirement frame is ignored, so a delayed oneway call
-        // cannot fence a replacement broker that reused the same object.
+        // A duplicated retirement frame is ignored, so a delayed oneway
+        // call cannot fence a replacement broker that reused the same
+        // object.
         assertFalse(identity.claimRetirement(generation));
         assertFalse(identity.firstRetirement());
     }
@@ -221,9 +229,10 @@ public class TorrentSafProtocolTest {
 
     @Test
     public void providerDeadlinesStartOnlyWhileHoldingTheProvider() {
-        // An operation that is still queued behind ioLock has not touched a
-        // document; charging it would let one stalled provider abort or fence
-        // every later caller. The stages therefore arm only after the lock.
+        // An operation that is still queued behind ioLock has not
+        // touched a document; charging it would let one stalled
+        // provider abort or fence every later caller. The stages
+        // therefore arm only after the lock.
         assertFalse(TorrentSafStorageService.providerDeadlineApplies(false, true));
         assertFalse(TorrentSafStorageService.providerDeadlineApplies(true, false));
         assertFalse(TorrentSafStorageService.providerDeadlineApplies(false, false));
@@ -247,8 +256,9 @@ public class TorrentSafProtocolTest {
         assertFalse(budget.exhausted());
         assertEquals(-1, budget.charge());
         assertTrue("a permanently broken policy must stop", budget.exhausted());
-        // A successful connection clears the latch, so a transient crash never
-        // disables SAF storage until the application restarts.
+        // A successful connection clears the latch, so a transient
+        // crash never disables SAF storage until the application
+        // restarts.
         budget.connected(1_000);
         assertFalse(budget.exhausted());
         assertEquals("the first connection is a fresh episode", 0, budget.attempts());
@@ -256,8 +266,9 @@ public class TorrentSafProtocolTest {
             assertTrue(budget.charge() > 0);
         assertEquals(-1, budget.charge());
         assertTrue(budget.exhausted());
-        // A rapid reconnect does not restore the budget: a crash loop stays
-        // bounded instead of spawning and killing a broker forever.
+        // A rapid reconnect does not restore the budget: a crash loop
+        // stays bounded instead of spawning and killing a broker
+        // forever.
         budget.connected(2_000);
         assertFalse(budget.exhausted());
         assertEquals(TorrentSafStorage.BindBudget.MAX_ATTEMPTS, budget.attempts());
@@ -275,7 +286,8 @@ public class TorrentSafProtocolTest {
         assertTrue(budget.exhausted());
         assertTrue(budget.rearm(3_000 + TorrentSafStorage.BindBudget.STABLE_BINDING_MS));
         assertFalse(budget.exhausted());
-        // An explicit selection or daemon start always begins a new episode.
+        // An explicit selection or daemon start always begins a new
+        // episode.
         budget.reset();
         assertEquals(0, budget.attempts());
         assertFalse(budget.exhausted());
@@ -300,16 +312,17 @@ public class TorrentSafProtocolTest {
 
     @Test
     public void exportAndFileBoundsAreRetained() {
-        // A failed export legitimately changes the size, so deletion must be
-        // size-independent; these are the declared-length bounds that still
-        // apply to a prepared export.
+        // A failed export legitimately changes the size, so deletion
+        // must be size-independent; these are the declared-length
+        // bounds that still apply to a prepared export.
         assertTrue(TorrentSafStorageService.MAX_EXPORT > 0);
         assertTrue(TorrentSafStorageService.MAX_FILE >= TorrentSafStorageService.MAX_EXPORT);
         assertEquals(1L << 40, TorrentSafStorageService.MAX_FILE);
         assertEquals(8L * 1024 * 1024, TorrentSafStorageService.MAX_EXPORT);
     }
 
-    // String.repeat is not available on the API 29 floor this test mirrors.
+    // String.repeat is not available on the API 29 floor this test
+    // mirrors.
     private static String repeat(String value, int count) {
         StringBuilder result = new StringBuilder(value.length() * count);
         for (int i = 0; i < count; ++i)

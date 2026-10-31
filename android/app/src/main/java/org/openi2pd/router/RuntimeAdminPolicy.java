@@ -1,13 +1,14 @@
 /*
- * See the LICENSE file at the top of the project tree for copyright
- * and license details.
+ * See the LICENSE file at the top of the project tree for copyright and
+ * license details.
  *
  * openi2pd: RuntimeAdminPolicy.
  *
- * Pure-JVM argument bounds, bounded tunnel-service row decoding and typed
- * outcome sets for the runtime administration bridge. Deliberately free of
- * Android imports so a plain JUnit test can pin every limit and spelling
- * without a device, an emulator or the native library.
+ * Pure-JVM argument bounds, bounded tunnel-service row decoding and
+ * typed outcome sets for the runtime administration bridge.
+ * Deliberately free of Android imports so a plain JUnit test can pin
+ * every limit and spelling without a device, an emulator or the native
+ * library.
  *
  */
 
@@ -18,17 +19,21 @@ import java.util.Collections;
 import java.util.List;
 
 /**
- * Closed bounds and decoders shared by the runtime-administration bridge.
+ * Closed bounds and decoders shared by the runtime-administration
+ * bridge.
  *
- * <p>These values are the Java side of the JNI contract: native code applies
- * the same limits before converting a string to UTF-8, and the daemon applies
- * them again when it parses the typed protocol verb. Keeping one source avoids
- * a UI field that accepts more than the boundary will forward.</p>
+ * <p>These values are the Java side of the JNI contract: native code
+ * applies the same limits before converting a string to UTF-8, and the
+ * daemon applies them again when it parses the typed protocol verb.
+ * Keeping one source avoids a UI field that accepts more than the
+ * boundary will forward.</p>
  */
 final class RuntimeAdminPolicy {
     /** Unique configured tunnel service name. */
     static final int MAX_TUNNEL_NAME = 64;
-    /** Address-book name (stored names and the add/replace host label). */
+    /**
+     * Address-book name (stored names and the add/replace host label).
+     */
     static final int MAX_ADDRESS_NAME = 255;
     /** Full base64 destination. */
     static final int MAX_DESTINATION = 1024;
@@ -50,8 +55,9 @@ final class RuntimeAdminPolicy {
     }
 
     /**
-     * A tunnel service name is one printable, whitespace-free token. The native
-     * parser rejects a space outright, so the UI must not offer one either.
+     * A tunnel service name is one printable, whitespace-free token.
+     * The native parser rejects a space outright, so the UI must not
+     * offer one either.
      */
     static boolean isValidTunnelName(String name) {
         if (name == null || name.isEmpty() || name.length() > MAX_TUNNEL_NAME) {
@@ -67,9 +73,9 @@ final class RuntimeAdminPolicy {
     }
 
     /**
-     * A host label of at most {@link #MAX_ADDRESS_NAME} characters with no
-     * space. The native boundary re-applies the same limit, and the address
-     * book applies the full host-name and destination rules.
+     * A host label of at most {@link #MAX_ADDRESS_NAME} characters with
+     * no space. The native boundary re-applies the same limit, and the
+     * address book applies the full host-name and destination rules.
      */
     static boolean isValidAddressName(String name) {
         return name != null && !name.isEmpty() && name.length() <= MAX_ADDRESS_NAME
@@ -77,22 +83,28 @@ final class RuntimeAdminPolicy {
     }
 
     /**
-     * A full base64 destination of at most {@link #MAX_DESTINATION} characters.
-     * Only the size and the absent space are checked here; the daemon verifies
-     * the base64 identity itself.
+     * A full base64 destination of at most {@link #MAX_DESTINATION}
+     * characters. Only the size and the absent space are checked here;
+     * the daemon verifies the base64 identity itself.
      */
     static boolean isValidDestination(String destination) {
         return destination != null && !destination.isEmpty()
                 && destination.length() <= MAX_DESTINATION && destination.indexOf(' ') < 0;
     }
 
-    /** The address book performs the scheme/host validation; bound the size here. */
+    /**
+     * The address book performs the scheme/host validation; bound the
+     * size here.
+     */
     static boolean isValidSubscriptionUrl(String url) {
         return url != null && !url.isEmpty() && url.length() <= MAX_SUBSCRIPTION_URL
                 && url.indexOf(' ') < 0;
     }
 
-    /** A router hash is exactly one base64 identity hash; the daemon re-verifies it. */
+    /**
+     * A router hash is exactly one base64 identity hash; the daemon
+     * re-verifies it.
+     */
     static boolean isValidRouterHash(String hash) {
         if (hash == null || hash.isEmpty() || hash.length() > MAX_ROUTER_HASH) {
             return false;
@@ -109,7 +121,9 @@ final class RuntimeAdminPolicy {
         return true;
     }
 
-    /** True only for the exact success token of an administrative verb. */
+    /**
+     * True only for the exact success token of an administrative verb.
+     */
     static boolean isOk(String outcome) {
         return "ok".equals(outcome);
     }
@@ -119,12 +133,17 @@ final class RuntimeAdminPolicy {
         return "exists".equals(outcome);
     }
 
-    /** True only for the two tokens that mean a reseed job is now running. */
+    /**
+     * True only for the two tokens that mean a reseed job is now
+     * running.
+     */
     static boolean isReseedActive(String outcome) {
         return "started".equals(outcome) || "already-running".equals(outcome);
     }
 
-    /** True only for the tokens that report a real tunnel state change. */
+    /**
+     * True only for the tokens that report a real tunnel state change.
+     */
     static boolean isTunnelStateChange(String outcome) {
         return "started".equals(outcome) || "stopped".equals(outcome)
                 || "already-running".equals(outcome) || "already-stopped".equals(outcome);
@@ -133,9 +152,9 @@ final class RuntimeAdminPolicy {
     /**
      * Decode {@code name|kind|running|endpoint|destination} rows.
      *
-     * <p>Malformed, over-long and unnamed rows are skipped rather than shown
-     * as partial state; the caller never sees more than {@link #MAX_TUNNEL_ROWS}
-     * entries.</p>
+     * <p>Malformed, over-long and unnamed rows are skipped rather than
+     * shown as partial state; the caller never sees more than {@link
+     * #MAX_TUNNEL_ROWS} entries.</p>
      */
     static List<TunnelService> parseTunnelServices(String raw) {
         if (raw == null || raw.isEmpty()) {
@@ -161,9 +180,10 @@ final class RuntimeAdminPolicy {
 
     /**
      * Typed reseed snapshot. The fields stay strings because the daemon
-     * protocol is textual and deliberately bounded; the UI converts the two
-     * counters itself. {@link #UNKNOWN} is the explicit absent value instead
-     * of a seven-element list whose size the caller must remember to check.
+     * protocol is textual and deliberately bounded; the UI converts the
+     * two counters itself. {@link #UNKNOWN} is the explicit absent
+     * value instead of a seven-element list whose size the caller must
+     * remember to check.
      */
     record ReseedStatus(String phase, String enabled, String attempts, String succeeded,
             String lastAttemptMs, String lastSuccessMs, String lastError) {
@@ -175,9 +195,10 @@ final class RuntimeAdminPolicy {
     }
 
     /**
-     * Decode {@code phase|enabled|attempts|succeeded|lastAttemptMs|lastSuccessMs|lastError}.
-     * An empty or malformed record yields {@link ReseedStatus#UNKNOWN} so the
-     * UI shows the unknown state instead of invented counters.
+     * Decode the ordered fields phase, enabled, attempts, succeeded,
+     * lastAttemptMs, lastSuccessMs and lastError.
+     * An empty or malformed record yields {@link ReseedStatus#UNKNOWN}
+     * so the UI shows the unknown state instead of invented counters.
      */
     static ReseedStatus parseReseedStatus(String raw) {
         if (raw == null || raw.isEmpty()) {
@@ -192,7 +213,10 @@ final class RuntimeAdminPolicy {
                 bound(fields[6], 128));
     }
 
-    /** Decode bounded subscription rows, skipping empty or over-long values. */
+    /**
+     * Decode bounded subscription rows, skipping empty or over-long
+     * values.
+     */
     static List<String> parseSubscriptions(String raw) {
         if (raw == null || raw.isEmpty()) {
             return Collections.emptyList();

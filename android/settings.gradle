@@ -1,12 +1,12 @@
 /*
- * See the LICENSE file at the top of the project tree for copyright
- * and license details.
+ * See the LICENSE file at the top of the project tree for copyright and
+ * license details.
  *
  * openi2pd: settings.
  *
- * Includes the single :app module and renames its Gradle project to i2pd, so
- * task paths and the APK name match the daemon binary without changing the
- * application ID.
+ * Includes the single :app module and renames its Gradle project to
+ * i2pd, so task paths and the APK name match the daemon binary without
+ * changing the application ID.
  *
  */
 

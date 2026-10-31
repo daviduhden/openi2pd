@@ -115,6 +115,22 @@ run Gradle, install an APK or run a device test.
 
 ## Known issues and decisions
 
+- Torrent SAF creation reports progress bytes separately from its terminal
+  result. The terminal value carries encoded torrent metadata or a localized
+  error; it does not grant authority over the stored payload. Keep comments
+  aligned with that distinction when changing the ViewModel or broker.
+
+- AGP may place ABI-split and universal APKs below variant-specific output
+  directories, with names that vary across plugin versions. CI should inspect
+  all discovered app APKs, exclude instrumentation APKs, select debug/release
+  variants from their output metadata/path and confirm the expected arm64
+  library and app assets by archive contents. Reuse the selected debug APK
+  for package-content and DEX checks, export its exact path to later steps and
+  print discovered APK paths when selection fails. `GITHUB_ENV` values are
+  available to later runner steps but not interpolated into an action's
+  `with:` expression; stage APKs to a fixed workspace directory before
+  uploading artifacts.
+
 - ANDROID-019 uses ownerExecutor views over one process FIFO for all service
   worker submissions. Retire and append mandatory stop atomically; drain
   previously accepted work before stop and new-owner work. Reject stale submit

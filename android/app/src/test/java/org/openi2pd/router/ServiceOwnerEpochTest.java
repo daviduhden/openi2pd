@@ -100,7 +100,8 @@ public final class ServiceOwnerEpochTest {
                 oldExecutor.execute(() -> order.add("stale-work"));
                 fail("retired owner submissions must be rejected");
             } catch (RejectedExecutionException expected) {
-                // The old service cannot append work beyond its stop barrier.
+                // The old service cannot append work beyond its stop
+                // barrier.
             }
             newExecutor.execute(() -> order.add("new-start"));
 

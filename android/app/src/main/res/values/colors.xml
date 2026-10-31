@@ -10,11 +10,10 @@ Defines native Android application resources.
 -->
 
 <resources>
-    <!--
-        Canonical openi2pd palette. Values come from assets/branding/colors.md.
-        The brand_* resource prefix is kept so existing view code and themes do
-        not depend on window/theme state; it is not a second color source.
-    -->
+    <!-- Canonical openi2pd palette. Values come from
+        assets/branding/colors.md. The brand_* resource prefix is kept
+        so existing view code and themes do not depend on window/theme
+        state; it is not a second color source. -->
 
     <!-- Core logo palette (graphic accents, not text colors). -->
     <color name="brand_teal">#00B2B4</color>
@@ -50,11 +49,10 @@ Defines native Android application resources.
     <color name="brand_outline">#5C6E7E</color>
     <color name="brand_outline_variant">#DCE7EF</color>
 
-    <!--
-        Material 3 surface containers. The palette has no extra container
-        tokens; these map to surface, background and surface-variant so the
-        theme never invents independent brand values.
-    -->
+    <!-- Material 3 surface containers. The palette has no extra
+        container tokens; these map to surface, background and
+        surface-variant so the theme never invents independent brand
+        values. -->
     <color name="brand_surface_container_lowest">#FFFFFF</color>
     <color name="brand_surface_container_low">#FFFFFF</color>
     <color name="brand_surface_container">#F7FAFC</color>
@@ -67,17 +65,20 @@ Defines native Android application resources.
     <color name="brand_disabled">#A7B5C0</color>
     <color name="brand_error">#B3261E</color>
     <color name="brand_on_error">#FFFFFF</color>
-    <!-- Material 3 error containers; the palette defines the error foreground. -->
+    <!-- Material 3 error containers; the palette defines the error
+        foreground. -->
     <color name="brand_error_container">#FFDAD6</color>
     <color name="brand_on_error_container">#410002</color>
     <color name="brand_warning">#8A5A00</color>
     <color name="brand_success">#1E6B45</color>
 
-    <!-- Charts use semantic accents, never the low-contrast raw logo accents. -->
+    <!-- Charts use semantic accents, never the low-contrast raw logo
+        accents. -->
     <color name="chart_download">#007C7A</color>
     <color name="chart_upload">#0067B1</color>
     <color name="chart_grid">#DCE7EF</color>
 
-    <!-- Launcher/splash plate. The master mark uses white negative space. -->
+    <!-- Launcher/splash plate. The master mark uses white negative
+        space. -->
     <color name="ic_launcher_background">#FFFFFF</color>
 </resources>

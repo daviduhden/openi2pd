@@ -1,7 +1,7 @@
 /*
- * See the LICENSE file at the top of the project tree for copyright
- * and license details.
- * openi2pd: out-of-band SAF cancellation IPC regressions for manual device CI.
+ * See the LICENSE file at the top of the project tree for copyright and
+ * license details. openi2pd: out-of-band SAF cancellation IPC
+ * regressions for manual device CI.
  */
 package org.openi2pd.router;
 
@@ -34,7 +34,8 @@ public final class TorrentSafCancellationWireTest {
                 return true;
             }
         };
-        // An un-attached Binder deliberately forces the generated remote proxy path.
+        // An un-attached Binder deliberately forces the generated
+        // remote proxy path.
         ITorrentSafStorage proxy = ITorrentSafStorage.Stub.asInterface(endpoint);
         proxy.cancel(74231L);
         proxy.retire(9L);

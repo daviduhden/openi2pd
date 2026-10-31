@@ -1,15 +1,16 @@
 /*
- * See the LICENSE file at the top of the project tree for copyright
- * and license details.
+ * See the LICENSE file at the top of the project tree for copyright and
+ * license details.
  *
  * openi2pd: TorrentControl.
  *
- * Decoder and command builder for the bounded desktop-compatible torrent
- * control protocol. Responses are checked against their declared UTF-8 length,
- * field counts and key lengths are capped, duplicate fields are rejected and
- * magnet links are validated before being embedded in a command. Tracker
- * hints for a not-yet-created SAF torrent use a creation-scoped validator that
- * applies the same I2P-only URL rules without an engine id.
+ * Decoder and command builder for the bounded desktop-compatible
+ * torrent control protocol. Responses are checked against their
+ * declared UTF-8 length, field counts and key lengths are capped,
+ * duplicate fields are rejected and magnet links are validated before
+ * being embedded in a command. Tracker hints for a not-yet-created SAF
+ * torrent use a creation-scoped validator that applies the same
+ * I2P-only URL rules without an engine id.
  *
  */
 
@@ -19,12 +20,16 @@ import java.nio.charset.StandardCharsets;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
-/** Bounded desktop-compatible torrent snapshots; no engine handles reach the UI. */
+/**
+ * Bounded desktop-compatible torrent snapshots; no engine handles reach
+ * the UI.
+ */
 final class TorrentControl {
     /**
-     * A validation failure whose text is a UI resource. Diagnostic exceptions
-     * keep their English message because they describe wire data; only the
-     * cases an operator can fix carry a translated message id.
+     * A validation failure whose text is a UI resource. Diagnostic
+     * exceptions keep their English message because they describe wire
+     * data; only the cases an operator can fix carry a translated
+     * message id.
      */
     static final class UserMessageException extends IllegalArgumentException {
         private final int messageRes;
@@ -48,13 +53,16 @@ final class TorrentControl {
     }
 
     /**
-     * Decode a bounded {@code I2PDTUI/1} response into immutable fields.
-     * The frame length is a UTF-8 byte count, not a Java character count;
-     * enforcing it before splitting fields detects truncated or extra payloads.
+     * Decode a bounded {@code I2PDTUI/1} response into immutable
+     * fields. The frame length is a UTF-8 byte count, not a Java
+     * character count; enforcing it before splitting fields detects
+     * truncated or extra payloads.
      *
-     * @param response complete header and payload from the native control path
+     * @param response complete header and payload from the native
+     *                 control path
      * @return parsed key/value fields, preserving their wire order
-     * @throws IllegalArgumentException if the frame, fields or operation fail
+     * @throws IllegalArgumentException if the frame, fields or
+     *                                  operation fail
      */
     static Map<String, String> fields(String response) {
         if (response == null || response.length() > 262272) {
@@ -114,10 +122,11 @@ final class TorrentControl {
     }
 
     /**
-     * Decode the control protocol's field escaping: {@code \n}, {@code \r} and
-     * {@code \\} become their literal characters and any other backslash
-     * sequence is preserved verbatim, so an unknown escape never loses bytes.
-     * The result is still untrusted display text; callers bound and sanitise it.
+     * Decode the control protocol's field escaping: {@code \n}, {@code
+     * \r} and {@code \\} become their literal characters and any other
+     * backslash sequence is preserved verbatim, so an unknown escape
+     * never loses bytes. The result is still untrusted display text;
+     * callers bound and sanitise it.
      */
     static String unescape(String value) {
         StringBuilder text = new StringBuilder(value.length());
@@ -148,9 +157,9 @@ final class TorrentControl {
     }
 
     /**
-     * Single-torrent lifecycle verbs. The selection is validated with the same
-     * bounded id rules as pause/resume/recheck, so no request can name the
-     * engine's "not found" sentinel or a non-numeric id.
+     * Single-torrent lifecycle verbs. The selection is validated with
+     * the same bounded id rules as pause/resume/recheck, so no request
+     * can name the engine's "not found" sentinel or a non-numeric id.
      */
     enum Action { START, STOP, REANNOUNCE }
 
@@ -165,13 +174,17 @@ final class TorrentControl {
         };
     }
 
-    /** A torrent id must be a positive engine id bound to the selected tunnel. */
+    /**
+     * A torrent id must be a positive engine id bound to the selected
+     * tunnel.
+     */
     private static void selection(int tunnel, String torrentId) {
         if (tunnel < 0 || torrentId == null || !torrentId.matches("[0-9]{1,10}"))
             throw new IllegalArgumentException("Invalid torrent selection");
         try {
-            // Torrent ids start at 1 in the native engine; 0 is the "not
-            // found" sentinel and must never be sent as a command target.
+            // Torrent ids start at 1 in the native engine; 0 is the
+            // "not found" sentinel and must never be sent as a command
+            // target.
             if (Integer.parseInt(torrentId) <= 0)
                 throw new IllegalArgumentException("Invalid torrent selection");
         } catch (NumberFormatException error) {
@@ -206,10 +219,11 @@ final class TorrentControl {
     }
 
     /**
-     * Creation-scoped tracker hint. A torrent created from a SAF document has
-     * no engine id yet, so the administrative selection check cannot apply;
-     * the I2P-only URL, length and control-character rules are still enforced
-     * by the shared validator.
+     * Creation-scoped tracker hint. A torrent created from a SAF
+     * document has no engine id yet, so the administrative selection
+     * check cannot apply; the I2P-only URL, length and
+     * control-character rules are still enforced by the shared
+     * validator.
      */
     static void creationTracker(String tracker) {
         validateTracker(tracker);
@@ -247,13 +261,14 @@ final class TorrentControl {
     }
 
     /**
-     * Bounded comment page request. The daemon retains up to 256 comment
-     * records (64 of them hidden) but emits at most {@link #COMMENT_PAGE}
-     * records per TORRENT-DETAIL response, so paging is an explicit request:
-     * offset is the first retained record (0..255) and limit the page size
-     * (1..16). Anything else is rejected here exactly as the daemon rejects
-     * it, so an out-of-range page never reaches the wire. Offset 0 with the
-     * default page keeps the historic `TORRENT-DETAIL <tunnel> <id>` line.
+     * Bounded comment page request. The daemon retains up to 256
+     * comment records (64 of them hidden) but emits at most {@link
+     * #COMMENT_PAGE} records per TORRENT-DETAIL response, so paging is
+     * an explicit request: offset is the first retained record (0..255)
+     * and limit the page size (1..16). Anything else is rejected here
+     * exactly as the daemon rejects it, so an out-of-range page never
+     * reaches the wire. Offset 0 with the default page keeps the
+     * historic `TORRENT-DETAIL <tunnel> <id>` line.
      */
     static String commentPage(int tunnel, String torrentId, int offset, int limit) {
         selection(tunnel, torrentId);
@@ -304,8 +319,9 @@ final class TorrentControl {
             case START_ALL -> "TORRENT-START-ALL " + tunnel;
             case STOP_ALL -> "TORRENT-STOP-ALL " + tunnel;
             case REANNOUNCE_ALL -> "TORRENT-REANNOUNCE-ALL " + tunnel;
-            // Session-wide removal is addressed by the tunnel index only; the
-            // delete-data variant appends the exact "files" token.
+            // Session-wide removal is addressed by the tunnel index
+            // only; the delete-data variant appends the exact "files"
+            // token.
             case REMOVE_ALL -> "TORRENT-REMOVE-ALL " + tunnel;
             case REMOVE_ALL_FILES -> "TORRENT-REMOVE-ALL " + tunnel + " files";
         };

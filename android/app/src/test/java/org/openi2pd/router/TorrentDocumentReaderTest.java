@@ -1,13 +1,13 @@
 /*
- * See the LICENSE file at the top of the project tree for copyright
- * and license details.
+ * See the LICENSE file at the top of the project tree for copyright and
+ * license details.
  *
  * openi2pd: TorrentDocumentReaderTest.
  *
- * Pure-JVM tests for the SAF metadata reader: acceptance at the exact limit and
- * rejection of empty, oversized and non-progressing streams. Plain
- * {@code ByteArrayInputStream} and {@code InputStream} stand-ins replace a real
- * content provider.
+ * Pure-JVM tests for the SAF metadata reader: acceptance at the exact
+ * limit and rejection of empty, oversized and non-progressing streams.
+ * Plain {@code ByteArrayInputStream} and {@code InputStream} stand-ins
+ * replace a real content provider.
  *
  */
 

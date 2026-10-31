@@ -1,13 +1,14 @@
 /*
- * See the LICENSE file at the top of the project tree for copyright
- * and license details.
+ * See the LICENSE file at the top of the project tree for copyright and
+ * license details.
  *
  * openi2pd: TunnelsFragment.
  *
- * Shows inbound, outbound and transit tunnel counts from the snapshot plus
- * configuration reload and the graceful-stop countdown. Reload and graceful
- * stop are enabled only from live state, and the accept-transit flag is not
- * exposed because the snapshot does not report it.
+ * Shows inbound, outbound and transit tunnel counts from the snapshot
+ * plus configuration reload and the graceful-stop countdown. Reload and
+ * graceful stop are enabled only from live state, and the
+ * accept-transit flag is not exposed because the snapshot does not
+ * report it.
  *
  */
 
@@ -34,8 +35,8 @@ import com.google.android.material.progressindicator.LinearProgressIndicator;
  * Tunnel counts, configuration reload and graceful stop.
  *
  * <p>Transit tunnels are configured by the {@code notransit} option in
- * Settings. The daemon's accept-transit flag is not exposed by
- * {@link RouterSnapshot}, so this screen deliberately shows no switch that
+ * Settings. The daemon's accept-transit flag is not exposed by {@link
+ * RouterSnapshot}, so this screen deliberately shows no switch that
  * would pretend to report or toggle the live value.</p>
  */
 public class TunnelsFragment extends Fragment {
