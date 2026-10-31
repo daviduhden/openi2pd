@@ -273,7 +273,8 @@ public final class RuntimeAdminFragment extends Fragment {
     }
 
     private void transitDialog(boolean enabled) {
-        if (busy || status == null) return;
+        if (busy || status == null)
+            return;
         new MaterialAlertDialogBuilder(requireContext())
                 .setTitle(enabled ? R.string.runtime_admin_transit_action
                                   : R.string.runtime_admin_nontransit_action)
@@ -281,56 +282,63 @@ public final class RuntimeAdminFragment extends Fragment {
                 .setNegativeButton(R.string.action_cancel, null)
                 .setPositiveButton(enabled ? R.string.runtime_admin_transit_action
                                            : R.string.runtime_admin_nontransit_action,
-                        (dialog, which) -> submitControl(
-                                callback -> model.setTransit(enabled, callback)))
+                        (dialog, which)
+                                -> submitControl(callback -> model.setTransit(enabled, callback)))
                 .show();
     }
 
     private void bandwidthDialog() {
-        if (busy || status == null) return;
+        if (busy || status == null)
+            return;
         String[] options = getResources().getStringArray(R.array.runtime_admin_bandwidth_options);
         String[] classes = {"K", "L", "M", "N", "O", "P", "X"};
         new MaterialAlertDialogBuilder(requireContext())
                 .setTitle(R.string.runtime_admin_bandwidth_action)
-                .setSingleChoiceItems(options, -1, (dialog, which) -> {
-                    dialog.dismiss();
-                    submitControl(callback -> model.setBandwidth(classes[which], callback));
-                })
+                .setSingleChoiceItems(options, -1,
+                        (dialog, which) -> {
+                            dialog.dismiss();
+                            submitControl(callback -> model.setBandwidth(classes[which], callback));
+                        })
                 .setNegativeButton(R.string.action_cancel, null)
                 .show();
     }
 
     private void shareDialog() {
-        if (busy || status == null) return;
+        if (busy || status == null)
+            return;
         TextInputLayout layout = new TextInputLayout(requireContext());
         layout.setHint(R.string.runtime_admin_share_hint);
         TextInputEditText input = new TextInputEditText(requireContext());
         input.setInputType(android.text.InputType.TYPE_CLASS_NUMBER);
-        input.setFilters(new android.text.InputFilter[] {
-                new android.text.InputFilter.LengthFilter(3)});
+        input.setFilters(
+                new android.text.InputFilter[] {new android.text.InputFilter.LengthFilter(3)});
         layout.addView(input);
         new MaterialAlertDialogBuilder(requireContext())
                 .setTitle(R.string.runtime_admin_share_action)
                 .setView(layout)
                 .setNegativeButton(R.string.action_cancel, null)
-                .setPositiveButton(R.string.address_book_save, (dialog, which) -> {
-                    int percent = RuntimeAdminPolicy.parseShareRatio(
-                            input.getText() == null ? "" : input.getText().toString());
-                    if (percent < 0) {
-                        status.setText(R.string.runtime_admin_share_invalid);
-                        return;
-                    }
-                    submitControl(callback -> model.setShareRatio(percent, callback));
-                })
+                .setPositiveButton(R.string.address_book_save,
+                        (dialog, which) -> {
+                            int percent = RuntimeAdminPolicy.parseShareRatio(
+                                    input.getText() == null ? "" : input.getText().toString());
+                            if (percent < 0) {
+                                status.setText(R.string.runtime_admin_share_invalid);
+                                return;
+                            }
+                            submitControl(callback -> model.setShareRatio(percent, callback));
+                        })
                 .show();
     }
 
-    private void submitControl(java.util.function.Consumer<java.util.function.Consumer<String>> submit) {
-        if (busy || status == null) return;
+    private void submitControl(
+            java.util.function.Consumer<java.util.function.Consumer<String>> submit) {
+        if (busy || status == null)
+            return;
         busy = true;
         int expected = generation;
         submit.accept(outcome -> {
-            if (expected != generation || status == null || !isAdded()) return;
+            if (expected != generation || status == null || !isAdded())
+                return;
             busy = false;
             status.setText(controlOutcomeLabel(outcome));
         });

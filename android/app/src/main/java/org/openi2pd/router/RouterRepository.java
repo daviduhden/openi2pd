@@ -379,8 +379,7 @@ public final class RouterRepository implements RouterService.Listener {
         local.setTransit(enabled, callback);
     }
 
-    public void setBandwidth(String bandwidthClass,
-            java.util.function.Consumer<String> callback) {
+    public void setBandwidth(String bandwidthClass, java.util.function.Consumer<String> callback) {
         RouterService local = service;
         if (closed || local == null) {
             mainHandler.post(() -> callback.accept("unavailable"));

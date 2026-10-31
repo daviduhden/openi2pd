@@ -159,17 +159,16 @@ public final class AddressBookFragment extends Fragment {
                 MaterialButton row = UiFactory.button(requireContext());
                 if (blinded) {
                     String qualifier = getString(R.string.address_book_blinded);
-                    row.setText(getString(R.string.address_book_entry_row_blinded,
-                            name, destination, qualifier));
+                    row.setText(getString(
+                            R.string.address_book_entry_row_blinded, name, destination, qualifier));
                     UiFactory.applyRowSemantics(row,
-                            getString(R.string.address_book_entry_accessibility_blinded,
-                                    name, destination, qualifier));
+                            getString(R.string.address_book_entry_accessibility_blinded, name,
+                                    destination, qualifier));
                 } else {
-                    row.setText(getString(R.string.address_book_entry_row,
-                            name, destination));
+                    row.setText(getString(R.string.address_book_entry_row, name, destination));
                     UiFactory.applyRowSemantics(row,
-                            getString(R.string.address_book_entry_accessibility,
-                                    name, destination));
+                            getString(
+                                    R.string.address_book_entry_accessibility, name, destination));
                 }
                 row.setOnClickListener(ignored -> removeDialog(name));
                 rows.addView(row);

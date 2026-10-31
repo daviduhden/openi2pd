@@ -126,8 +126,8 @@ public final class RuntimeAdminParityTest {
     @Test
     public void bandwidthPickerMatchesNativeClosedSet() {
         Context context = ApplicationProvider.getApplicationContext();
-        String[] options = context.getResources()
-                .getStringArray(R.array.runtime_admin_bandwidth_options);
+        String[] options =
+                context.getResources().getStringArray(R.array.runtime_admin_bandwidth_options);
         String[] classes = {"K", "L", "M", "N", "O", "P", "X"};
         assertEquals(classes.length, options.length);
         for (String value : classes) {

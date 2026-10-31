@@ -449,9 +449,8 @@ std::string_view ReseedPhaseToken (i2p::data::ReseedPhase phase) noexcept
 	 * can only build the fixed command kinds listed by the JNI entry
 	 * points; there is no generic request/verb string.
 	 */
-std::string SubmitAdminOutcome (
-	i2p::tui::AdminCommandKind kind, std::string_view name, std::string_view destination, bool enabled,
-	int32_t value = 0)
+std::string SubmitAdminOutcome (i2p::tui::AdminCommandKind kind, std::string_view name, std::string_view destination,
+	bool enabled, int32_t value = 0)
 {
 	i2p::tui::AdminCommand command;
 	command.kind = kind;
@@ -492,8 +491,8 @@ inline bool IsRuntimeLogLevelName (std::string_view level) noexcept
 /** Only the classes accepted by the daemon's typed BANDWIDTH verb. */
 inline bool IsRuntimeBandwidthClass (std::string_view bandwidth) noexcept
 {
-	return bandwidth == "K" || bandwidth == "L" || bandwidth == "M" || bandwidth == "N"
-		|| bandwidth == "O" || bandwidth == "P" || bandwidth == "X";
+	return bandwidth == "K" || bandwidth == "L" || bandwidth == "M" || bandwidth == "N" || bandwidth == "O"
+		|| bandwidth == "P" || bandwidth == "X";
 }
 
 /**
@@ -1066,8 +1065,7 @@ JNIEXPORT jstring JNICALL Java_org_openi2pd_router_I2PD_1JNI_requestReseed (JNIE
 }
 
 /** Change transit acceptance through the daemon-owned typed queue. */
-JNIEXPORT jstring JNICALL Java_org_openi2pd_router_I2PD_1JNI_setTransit (
-	JNIEnv * env, jclass clazz, jboolean enabled)
+JNIEXPORT jstring JNICALL Java_org_openi2pd_router_I2PD_1JNI_setTransit (JNIEnv * env, jclass clazz, jboolean enabled)
 {
 	return JniStringCall (
 		env,
@@ -1076,8 +1074,8 @@ JNIEXPORT jstring JNICALL Java_org_openi2pd_router_I2PD_1JNI_setTransit (
 			if (enabled != JNI_TRUE && enabled != JNI_FALSE) return NewStringChecked (env, "invalid");
 			i2p::android::NativeCallGuard call;
 			if (!call.IsRunning ()) return NewStringChecked (env, "unavailable");
-			return NewStringChecked (env,
-				SubmitAdminOutcome (i2p::tui::AdminCommandKind::Transit, { }, { }, enabled == JNI_TRUE));
+			return NewStringChecked (
+				env, SubmitAdminOutcome (i2p::tui::AdminCommandKind::Transit, { }, { }, enabled == JNI_TRUE));
 		},
 		"failed");
 }
@@ -1090,23 +1088,21 @@ JNIEXPORT jstring JNICALL Java_org_openi2pd_router_I2PD_1JNI_setBandwidth (
 		env,
 		[&] () -> jstring
 		{
-			if (!JavaStringWithin (env, bandwidth, MAX_BANDWIDTH_CLASS_UNITS))
-				return NewStringChecked (env, "invalid");
+			if (!JavaStringWithin (env, bandwidth, MAX_BANDWIDTH_CLASS_UNITS)) return NewStringChecked (env, "invalid");
 			ScopedUtfChars bandwidthUtf8 (env, bandwidth);
 			if (!bandwidthUtf8 || !IsRuntimeBandwidthClass (bandwidthUtf8.view ()))
 				return NewStringChecked (env, "invalid");
 			i2p::android::NativeCallGuard call;
 			if (!call.IsRunning ()) return NewStringChecked (env, "unavailable");
 			const auto token = static_cast<int32_t> (bandwidthUtf8.view ().front ());
-			return NewStringChecked (env,
-				SubmitAdminOutcome (i2p::tui::AdminCommandKind::Bandwidth, { }, { }, false, token));
+			return NewStringChecked (
+				env, SubmitAdminOutcome (i2p::tui::AdminCommandKind::Bandwidth, { }, { }, false, token));
 		},
 		"failed");
 }
 
 /** Apply a bounded share ratio without writing config. */
-JNIEXPORT jstring JNICALL Java_org_openi2pd_router_I2PD_1JNI_setShareRatio (
-	JNIEnv * env, jclass clazz, jint percent)
+JNIEXPORT jstring JNICALL Java_org_openi2pd_router_I2PD_1JNI_setShareRatio (JNIEnv * env, jclass clazz, jint percent)
 {
 	return JniStringCall (
 		env,
@@ -1115,8 +1111,9 @@ JNIEXPORT jstring JNICALL Java_org_openi2pd_router_I2PD_1JNI_setShareRatio (
 			if (percent < 0 || percent > 100) return NewStringChecked (env, "invalid");
 			i2p::android::NativeCallGuard call;
 			if (!call.IsRunning ()) return NewStringChecked (env, "unavailable");
-			return NewStringChecked (env, SubmitAdminOutcome (
-				i2p::tui::AdminCommandKind::Share, { }, { }, false, static_cast<int32_t> (percent)));
+			return NewStringChecked (env,
+				SubmitAdminOutcome (
+					i2p::tui::AdminCommandKind::Share, { }, { }, false, static_cast<int32_t> (percent)));
 		},
 		"failed");
 }

@@ -224,8 +224,7 @@ public class RouterViewModel extends AndroidViewModel {
         repository.setTransit(enabled, callback);
     }
 
-    public void setBandwidth(String bandwidthClass,
-            java.util.function.Consumer<String> callback) {
+    public void setBandwidth(String bandwidthClass, java.util.function.Consumer<String> callback) {
         repository.setBandwidth(bandwidthClass, callback);
     }
 

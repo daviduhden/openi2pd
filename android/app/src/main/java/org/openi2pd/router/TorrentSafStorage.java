@@ -939,7 +939,7 @@ final class TorrentSafStorage {
                 return "Document permission revoked. Select the directory again.";
             if (!writePermission)
                 return "SAF storage is read-only; existing data can seed but downloads need write "
-                       + "access.";
+                        + "access.";
             if (retiringBinder != null)
                 return "Storage provider cancellation pending; waiting for broker termination";
             if (budget.exhausted()) {
