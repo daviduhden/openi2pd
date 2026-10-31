@@ -219,7 +219,8 @@ tasks.register('sourceJavadoc', Javadoc) {
         languageVersion = JavaLanguageVersion.of(25)
     })
     source = android.sourceSets.main.java.srcDirs
-    classpath = files(android.bootClasspath) + debugJava.get().classpath +
+    classpath = files(androidComponents.sdkComponents.bootClasspath) +
+            debugJava.get().classpath +
             files(debugJava.flatMap { it.destinationDirectory })
     destinationDir = layout.buildDirectory.dir('docs/javadoc').get().asFile
     options.encoding = 'UTF-8'

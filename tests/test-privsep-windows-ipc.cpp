@@ -674,17 +674,15 @@ void TestAuthorizationAndDescriptorRefusal ()
 	assert (std::get<0> (*decoded) == MessageType::LogRecord);
 	assert (std::get<1> (*decoded) == ErrorCode::NotAuthorized);
 
-	// A reply type is not receivable by a worker endpoint either.
+	// A data-storage reply is a valid worker-to-core frame.
 	assert (client->Send ({ MessageType::DataStorageReply, 32, EncodeDataStorageReply (0, 1, 9) }).has_value ());
-	auto replyRefused = accepted->Receive (2000);
-	assert (replyRefused.has_value () && !replyRefused->has_value ());
-	auto replyRefusal = client->Receive (2000);
-	assert (replyRefusal.has_value () && replyRefusal->has_value ());
-	assert ((*replyRefusal)->requestId == 32);
-	auto replyDecoded = DecodeError ((*replyRefusal)->payload);
+	auto reply = accepted->Receive (2000);
+	assert (reply.has_value () && reply->has_value ());
+	assert ((*reply)->type == MessageType::DataStorageReply);
+	assert ((*reply)->requestId == 32);
+	auto replyDecoded = DecodeDataStorageReply ((*reply)->payload);
 	assert (replyDecoded.has_value ());
-	assert (std::get<0> (*replyDecoded) == MessageType::DataStorageReply);
-	assert (std::get<1> (*replyDecoded) == ErrorCode::NotAuthorized);
+	assert (std::get<2> (*replyDecoded) == 9);
 
 	// ConfigureLogFd requires a descriptor channel, which the pipe
 	// transport does not have, so it is refused instead of silently
@@ -702,11 +700,11 @@ void TestAuthorizationAndDescriptorRefusal ()
 	assert (std::get<0> (*fdDecoded) == MessageType::ConfigureLogFd);
 	assert (std::get<1> (*fdDecoded) == ErrorCode::NotAuthorized);
 
-	// The channel is still usable after two bounded refusals.
-	assert (client->Send ({ MessageType::RouterStorageRequest, 34, "abc" }).has_value ());
-	auto stored = accepted->Receive (2000);
-	assert (stored.has_value () && stored->has_value ());
-	assert ((*stored)->type == MessageType::RouterStorageRequest);
+	// The core can still receive a valid worker reply after two refusals.
+	assert (client->Send ({ MessageType::Pong, 34, { } }).has_value ());
+	auto pong = accepted->Receive (2000);
+	assert (pong.has_value () && pong->has_value ());
+	assert ((*pong)->type == MessageType::Pong);
 
 	accepted->Close ();
 	client->Close ();

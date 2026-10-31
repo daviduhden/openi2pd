@@ -221,6 +221,17 @@ assert_contains("${debian_tui_lintian}" "i2pd-tui: possible-gpl-code-linked-with
   "TUI Lintian override must be in the TUI package file")
 assert_contains("${packaging_workflow}" "grep -Eq 'static(-pie)? linked' static-file.txt"
   "static-musl verification must accept static PIE file descriptions")
+foreach(required IN ITEMS
+    "Checking that remove preserves administrator data"
+    "FAIL: remove deleted /etc/i2pd/i2pd.conf"
+    "FAIL: remove deleted /var/lib/i2pd"
+    "Purging packages and checking owned state cleanup"
+    "FAIL: purge retained /etc/i2pd/i2pd.conf"
+    "FAIL: purge retained /var/lib/i2pd"
+    "Checking the dpkg database after purge")
+  assert_contains("${packaging_workflow}" "${required}"
+    "Debian remove/purge lifecycle diagnostics must identify each failed check")
+endforeach()
 foreach(absent IN ITEMS
     "${PROJECT_ROOT}/debian/i2pd.1"
     "${PROJECT_ROOT}/debian/i2pd-tui.manpages")

@@ -51,6 +51,13 @@ my %skip_directory = map { $_ => 1 } qw(
   .git .cache .gradle .venv __pycache__ build-output dist node_modules
   out target venv
 );
+# AGENTS.md requires this shared checker and its contract suite to stay
+# byte-identical across adopters. They are the only Python exceptions.
+my @shared_python_contract = (
+    'scripts/validate-agent-knowledge.py',
+    'tests/agent_knowledge_validator/test_validator.py',
+);
+my %shared_python_contract = map { $_ => 1 } @shared_python_contract;
 # Generated and dependency trees are not project sources; scanning them would
 # report third-party files that the project does not maintain.
 my ( @python_files, @python_shebang );
@@ -65,11 +72,15 @@ find(
             my $path = $File::Find::name;
             return if -d $path;
             my $name = basename($path);
+            my $relative = join '/',
+              File::Spec->splitdir( File::Spec->abs2rel( $path, $root ) );
+            my $is_shared_python_contract = $shared_python_contract{$relative};
             push @python_files, $path
-              if $name =~ /\.(?:py|pyw|pyi|pyx|pxd|ipynb)\z/i
-              || $name =~ /\.py\.in\z/i
-              || $name =~
-/\A(?:SConstruct|SConscript|wscript|pyproject\.toml|setup\.cfg|requirements[^\/]*\.txt)\z/i;
+              if !$is_shared_python_contract
+              && ( $name =~ /\.(?:py|pyw|pyi|pyx|pxd|ipynb)\z/i
+                || $name =~ /\.py\.in\z/i
+                || $name =~
+                /\A(?:SConstruct|SConscript|wscript|pyproject\.toml|setup\.cfg|requirements[^\/]*\.txt)\z/i );
 
             my $prefix = first_line($path);
             if ( defined $prefix ) {
@@ -79,8 +90,9 @@ find(
                 my @head    = split /\n/, $prefix;
                 my $shebang = join "\n",
                   @head[ 0 .. ( $#head < 2 ? $#head : 2 ) ];
-                if (   $shebang =~ /^#!.*\b(?:python|pypy)[0-9.]*\b/im
-                    || $shebang =~ /^#!.*\b(?:python|pypy)[0-9.]*\b/i )
+                if ( !$is_shared_python_contract
+                    && ( $shebang =~ /^#!.*\b(?:python|pypy)[0-9.]*\b/im
+                      || $shebang =~ /^#!.*\b(?:python|pypy)[0-9.]*\b/i ) )
                 {
                     push @python_shebang, $path;
                 }
@@ -90,8 +102,12 @@ find(
     $root
 );
 
-is_deeply( \@python_files,   [], 'no project-maintained Python source files' );
-is_deeply( \@python_shebang, [], 'no Python shebang in maintained files' );
+for my $relative (@shared_python_contract) {
+    ok( -f File::Spec->catfile( $root, split m{/}, $relative ),
+        "$relative exists" );
+}
+is_deeply( \@python_files, [], 'no other project-maintained Python sources' );
+is_deeply( \@python_shebang, [], 'no other Python shebangs in maintained files' );
 
 my @scripts = (
     'tools/scripts/i2pdctl',
@@ -271,7 +287,9 @@ compiling or running the project. It asserts that:
 =item *
 
 no project-maintained Python source, SCons/setuptools metadata or Python
-shebang exists outside the generated and dependency trees;
+shebang exists outside the generated and dependency trees, except for the
+canonical validator and byte-identical contract tests required by
+F<AGENTS.md>;
 
 =item *
 

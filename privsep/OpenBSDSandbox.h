@@ -96,13 +96,10 @@ struct OpenBSDPolicyConfig
 	bool logToSyslog = false;
 	bool preopenedLog = false;
 
-	/**
-	 * Network worker may request mcast only for the explicit UPnP
-	 * feature. */
+	/** Network worker may request mcast only for explicit UPnP support. */
 	bool upnp = false;
 	/** Future transport worker receives sockets over SCM_RIGHTS. */
 	bool socketHandoff = false;
-	/**
 	/** Worker needs route/interface data for MTU/address probing. */
 	bool routeInfo = false;
 	/**
@@ -126,7 +123,6 @@ struct OpenBSDPolicy
 	std::string pledge;
 	std::vector<OpenBSDUnveilRule> unveil;
 
-	/**
 	/** True for inet/dns/mcast/route-style network promises. */
 	bool HasExternalNetwork () const;
 	/** True for wpath/cpath/fattr. */
@@ -192,7 +188,6 @@ enum class OpenBSDPledgePhase : uint8_t
  */
 struct OpenBSDPledgeWindow
 {
-	/**
 	/** The core installs unveil rules here during startup. */
 	bool unveil = false;
 	/** Multicast discovery is enabled for UPnP (both windows). */

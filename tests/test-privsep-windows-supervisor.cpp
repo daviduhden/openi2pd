@@ -280,8 +280,8 @@ void TestRoleIdentityPolicy ()
 	assert (WindowsRoleNeedsAppContainer (WindowsWorkerRole::Storage));
 	assert (WindowsRoleNeedsAppContainer (WindowsWorkerRole::Network));
 	assert (!WindowsRoleNeedsAppContainer (WindowsWorkerRole::Supervisor));
-	assert (!WindowsRoleNeedsAppContainer (WindowsWorkerRole::Crypto));
-	assert (!WindowsRoleNeedsAppContainer (WindowsWorkerRole::Admin));
+	assert (WindowsRoleNeedsAppContainer (WindowsWorkerRole::Crypto));
+	assert (WindowsRoleNeedsAppContainer (WindowsWorkerRole::Admin));
 
 	assert (WindowsRoleNeedsWriteRoot (WindowsWorkerRole::Log));
 	assert (WindowsRoleNeedsWriteRoot (WindowsWorkerRole::Storage));

@@ -317,12 +317,27 @@ jobs:
       - name: Remove and preserve, then purge
         run: |
           set -euo pipefail
+          echo 'Checking that remove preserves administrator data'
           sudo env DEBIAN_FRONTEND=noninteractive apt-get remove -y i2pd i2pd-tui
-          test -f /etc/i2pd/i2pd.conf
-          test -d /var/lib/i2pd
+          if [ ! -f /etc/i2pd/i2pd.conf ]; then
+            echo 'FAIL: remove deleted /etc/i2pd/i2pd.conf' >&2
+            exit 1
+          fi
+          if [ ! -d /var/lib/i2pd ]; then
+            echo 'FAIL: remove deleted /var/lib/i2pd' >&2
+            exit 1
+          fi
+          echo 'Purging packages and checking owned state cleanup'
           sudo env DEBIAN_FRONTEND=noninteractive apt-get purge -y i2pd i2pd-tui
-          test ! -e /etc/i2pd/i2pd.conf
-          test ! -d /var/lib/i2pd
+          if [ -e /etc/i2pd/i2pd.conf ]; then
+            echo 'FAIL: purge retained /etc/i2pd/i2pd.conf' >&2
+            exit 1
+          fi
+          if [ -d /var/lib/i2pd ]; then
+            echo 'FAIL: purge retained /var/lib/i2pd' >&2
+            exit 1
+          fi
+          echo 'Checking the dpkg database after purge'
           dpkg --audit
       - name: Stage Debian evidence
         if: always()

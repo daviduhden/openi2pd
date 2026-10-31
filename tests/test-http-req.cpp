@@ -183,8 +183,7 @@ int main ()
 	assert (req->GetHeader ("content-type") == "text/html");
 	delete req;
 
-	/* test: incremental delivery reports "incomplete" until the final
-	/* chunk
+	// Incremental delivery stays incomplete until the final chunk.
 	{
 		static constexpr const char * parts[]
 			= { "GET /incremental HTTP/1.1\r\n", "Host: example.i2p\r\n", "Accept: */*\r\n", "\r\n" };
@@ -232,8 +231,7 @@ int main ()
 	req->AddHeader ("X-Forwarded-Host", "proxy.i2p");
 	req->AddHeader ("Accept", "*/*");
 	assert (req->GetNumHeaders () == 3);
-	/* remove headers starting with "x-forwarded" (case-insensitive),
-	/* exempt "X-Forwarded-Host"
+	// Remove x-forwarded headers case-insensitively, except the host.
 	req->RemoveHeader ("X-Forwarded", "x-forwarded-host");
 	assert (req->GetNumHeaders () == 2);
 	assert (req->GetHeader ("X-Forwarded-Host") == "proxy.i2p");

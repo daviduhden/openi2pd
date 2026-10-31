@@ -52,6 +52,11 @@ compile or link failure.
 | [40594549892](https://github.com/daviduhden/openi2pd/actions/runs/40594549892) | OpenBSD | `b34b2e79` | failure (shared test compile) |
 | [40594560248](https://github.com/daviduhden/openi2pd/actions/runs/40594560248) | Packaging and service validation | `b34b2e79` | failure (Debian smoke path assertion) |
 | [40594555055](https://github.com/daviduhden/openi2pd/actions/runs/40594555055) | Fuzzing | `b34b2e79` | success |
+| [41207325363](https://github.com/daviduhden/openi2pd/actions/runs/41207325363) | Linux and Android | `46738ddf` | cancelled after failed Linux, Android and docs jobs |
+| [41207324984](https://github.com/daviduhden/openi2pd/actions/runs/41207324984) | Windows | `46738ddf` | failure (shared test compile; MSVC CTest) |
+| [41207325119](https://github.com/daviduhden/openi2pd/actions/runs/41207325119) | OpenBSD | `46738ddf` | failure (shared test compile) |
+| [41207325136](https://github.com/daviduhden/openi2pd/actions/runs/41207325136) | Fuzzing | `46738ddf` | success |
+| [41207325472](https://github.com/daviduhden/openi2pd/actions/runs/41207325472) | Packaging and service validation | `46738ddf` | failure (Debian remove/purge check) |
 
 The `b25d0c3a` batch was dispatched on 2026-10-27 between 15:34:52 and
 15:35:02 UTC. Each run above is on branch `main`; the full SHA is
@@ -86,6 +91,50 @@ exported static libraries. The Debian `.deb` contains
 Lint results but no APK, so its APK output location was not proven by the
 artifact. The full Android arm64 native build, JVM tests, Lint and Gradle APK
 assembly succeeded before the workflow's output-path assertion failed.
+
+The 2026-10-31 batch ran on `main` at published SHA
+`46738ddf6f0f9b8e01e31d7c28bc6396215f82e8`, identical to local `HEAD` at audit
+start. Runs were dispatched at 13:49:47 UTC: Linux and Android 41207325363,
+Windows 41207324984, OpenBSD 41207325119, Fuzzing 41207325136 and Packaging
+and service validation 41207325472. The Linux/Android run was cancelled at
+the user's prior stop request after its failed jobs completed; its API 29 UI
+job was cancelled and provides no result. Exact failed job IDs:
+
+| Run | Job ID / matrix | First failing stage |
+|---|---|---|
+| 41207325363 | `124554970150` Linux GCC; `124554970086` Linux Clang; `124554970159` OpenSSL 3.x; `124554970256` OpenSSL 4.0.0; `124554970131` OpenSSL 4.0.3; `124554970125` ASan/UBSan; `124554970194` UBSan; `124554970200` TSan | `tests/test-http-req.cpp:190`, then `tests/test-http-res.cpp:108` while building test targets |
+| 41207325363 | `124554969967` Android arm64, JDK 25 / AGP 9.4.1 | Javadoc task configuration after native build, JVM tests, Lint and APK assembly succeeded |
+| 41207325363 | `124554970104` C++ source API documentation | Doxygen parsing `privsep/OpenBSDSandbox.h:286` |
+| 41207325363 | `124554970154` Perl quality | `tools/tests/perl-portability.t`, assertions 1-2 |
+| 41207324984 | `124554970047` Windows MSYS2/Clang64 | Same HTTP test sources as Linux/OpenBSD |
+| 41207324984 | `124554969879` Windows Server 2022/MSVC | Selected targets built; two Windows CTest assertions failed |
+| 41207325119 | `124554970347` OpenBSD 8.0 x86_64 Clang/LibreSSL | Same HTTP test sources after 141/490 build steps |
+| 41207325472 | `124554971078` Debian packages / Ubuntu | Build, Lintian, install, remove-preserve and DEP-8 passed; final remove/purge step exits 1 without naming the failing command |
+
+The Linux GCC log reached `[60/500]` linking `libi2pd.a`, compiled the
+I2PSnark sources and linked `libi2pdclient.a` by `[90/500]`, then began TUI
+and tool sources before malformed HTTP tests stopped Ninja. The installed
+component consumer (`124554970262`) passed; its exact artifact contains all
+four exported archives (`i2pd_privsep.a`, `libi2pd.a`, `libi2pdclient.a`,
+`libi2pdlang.a`). OpenSSL 3/4 capability probes passed before the shared test
+failure, so these logs show no crypto API or production-link diagnostic at
+that point. Targets skipped after the test parse errors remain unvalidated.
+
+Compared diagnostic files at this SHA with `git show` and the local worktree:
+the HTTP tests, `OpenBSDSandbox.h`, Android Gradle file, Perl inventory test
+and Windows assertion tests had no pre-existing local diff. Corrections below
+are local-only and have no post-fix CI result. Other local edits in `SSU2.h`,
+`Streaming.{h,cpp}` and `HTTPProxy.cpp` are absent from this published SHA;
+these runs do not validate them. Earlier batch 405945* stopped at CE-031
+before the HTTP tests, so it neither confirms nor disproves this newly
+observed test failure. The current MSVC assertions also differ from
+historical CE-035/CE-036.
+
+Artifacts were downloaded with `gh run download` to
+`/tmp/openi2pd-ci/{41207325363,41207324984,41207325472}`. The exact Debian
+`.deb` control archive was inspected without installing it. OpenBSD had no
+downloadable artifact; its exact job log was retrieved with `gh`. No logs
+containing credentials are retained in the repository.
 
 ## Confirmed causes
 
@@ -852,3 +901,133 @@ workflow was run.
 - **Files:** `privsep/WindowsIpc.cpp`, `privsep/WindowsIpc.h`,
   `tests/test-privsep-windows-ipc.cpp` (existing regression).
 - **State:** Corrected by static analysis; **Pending CI tests**.
+
+### CE-038 — Nested comments break shared HTTP parser regression sources
+
+- **Workflows/jobs:** Linux and Android 41207325363 (GCC 124554970150,
+  Clang 124554970086, OpenSSL 3/4 124554970159/124554970256/124554970131,
+  ASan/UBSan/TSan 124554970125/124554970194/124554970200); Windows
+  41207324984 MSYS2/Clang64 124554970047; OpenBSD 41207325119
+  124554970347.
+- **Commit/platform:** 46738ddf6f0f9b8e01e31d7c28bc6396215f82e8; Linux
+  GCC/Clang, OpenSSL 3.x/4.x, sanitizers, Windows Clang64 and OpenBSD 8.0
+  Clang/libc++.
+- **First diagnostic:** tests/test-http-req.cpp:190, expected expression
+  (Clang) / stray backslash (GCC), at the Accept: */* sample; later numParts,
+  parts and req errors cascade. A second parse break in tests/test-http-res.cpp
+  reports response undeclared at line 108.
+- **Cause:** four explanatory comments reopen /* without closing the prior
+  block. The */ sequence in the HTTP wildcard sample ends the open comment;
+  subsequent statements are parsed outside their intended function/block.
+- **Correction:** convert the four explanations to concise // comments;
+  retain all test statements and HTTP values. The failing source files matched
+  the published SHA before correction.
+- **Files:** tests/test-http-req.cpp, tests/test-http-res.cpp.
+- **State:** Detected in CI; corrected by static analysis; **Pending CI
+  compilation** and **Pending CI tests**. Downstream targets remain
+  unverified where the test parse failure stopped the build.
+
+### CE-039 — Doxygen reaches EOF inside OpenBSD policy comments
+
+- **Workflow/job:** Linux and Android 41207325363, C++ source API
+  documentation job 124554970104.
+- **Commit/platform:** 46738ddf6f0f9b8e01e31d7c28bc6396215f82e8; Doxygen.
+- **First diagnostic:** privsep/OpenBSDSandbox.h:286: reached EOF inside a
+  nested comment, nesting level 3 (probable opener lines 195, 129 and 105).
+- **Cause:** four duplicate /** openers left policy declaration comments
+  nested and unclosed.
+- **Correction:** remove extra openers; keep the contracts attached to their
+  declarations.
+- **Files:** privsep/OpenBSDSandbox.h.
+- **State:** Detected in CI; corrected by static analysis; **Pending CI source
+  documentation validation**. No local Doxygen run was performed.
+
+### CE-040 — Android sourceJavadoc uses removed AGP bootClasspath property
+
+- **Workflow/job:** Linux and Android 41207325363, Android 124554969967,
+  Generate and check Android Javadoc.
+- **Commit/platform:** 46738ddf6f0f9b8e01e31d7c28bc6396215f82e8; JDK 25,
+  AGP 9.4.1, Android arm64.
+- **First diagnostic:** task creation fails at android/app/build.gradle:222:
+  unknown property bootClasspath on ApplicationExtensionImpl.
+- **Cause:** the custom Javadoc task reads android.bootClasspath, absent from
+  the pinned AGP application DSL.
+- **Correction:** use the documented androidComponents.sdkComponents.bootClasspath
+  provider; retain the debug Java classpath, Java 25 toolchain, doclint and
+  warnings-as-errors.
+- **Files:** android/app/build.gradle, .agents/skills/openi2pd-android/SKILL.md.
+- **State:** Detected in CI; corrected by static analysis; **Pending CI
+  Javadoc validation**. Native build, JVM tests, Lint and APK assembly passed
+  on the recorded SHA; no post-fix Gradle run exists.
+
+### CE-041 — Perl portability guard rejects its required shared validator
+
+- **Workflow/job:** Linux and Android 41207325363, Perl quality 124554970154.
+- **Commit/platform:** 46738ddf6f0f9b8e01e31d7c28bc6396215f82e8; Ubuntu,
+  Perl Test::More.
+- **First diagnostic:** tools/tests/perl-portability.t:93-94 fails only the
+  no-project-maintained-Python-source and no-Python-shebang assertions,
+  identifying scripts/validate-agent-knowledge.py.
+- **Cause:** the portability guard predates the canonical Python validator
+  and its black-box contract suite, which AGENTS.md requires byte-identical
+  across adopters. Other Perl quality subtests passed.
+- **Correction:** allowlist only the canonical validator and its mandated
+  contract test; retain rejection of all other Python sources/shebangs.
+  Clarify the narrow exception in AGENTS.md and the tooling Skill.
+- **Files:** tools/tests/perl-portability.t, AGENTS.md,
+  .agents/skills/openi2pd-tooling/SKILL.md.
+- **State:** Detected in CI; corrected by static analysis; **Pending CI tests**.
+  No Perl suite was run locally.
+
+### CE-042 — Windows role test contradicts AppContainer policy
+
+- **Workflow/job:** Windows 41207324984, MSVC job 124554969879,
+  test-privsep-windows-supervisor CTest.
+- **Commit/platform:** 46738ddf6f0f9b8e01e31d7c28bc6396215f82e8; Windows/MSVC.
+- **First diagnostic:** assertion !WindowsRoleNeedsAppContainer(Crypto) at
+  tests/test-privsep-windows-supervisor.cpp:283.
+- **Cause:** the test expected Crypto and Admin not to require AppContainer,
+  contradicting the current role isolation table and security policy.
+- **Correction:** assert AppContainer is required for both roles; production
+  policy is unchanged.
+- **Files:** tests/test-privsep-windows-supervisor.cpp.
+- **State:** Detected in CI; corrected by static analysis; **Pending CI tests**.
+  Selected MSVC targets built before CTest; no local test run exists.
+
+### CE-043 — Windows IPC test reverses the accepted channel direction
+
+- **Workflow/job:** Windows 41207324984, MSVC job 124554969879,
+  test-privsep-windows-ipc CTest.
+- **Commit/platform:** 46738ddf6f0f9b8e01e31d7c28bc6396215f82e8; Windows
+  named-pipe IPC.
+- **First diagnostic:** replyRefused.has_value() && !replyRefused->has_value()
+  fails at tests/test-privsep-windows-ipc.cpp:680.
+- **Cause:** AcceptBound() returns the core-side channel, which receives
+  worker replies. The old test rejected DataStorageReply there and then
+  expected a worker request on the core endpoint.
+- **Correction:** assert valid DataStorageReply receipt and keep the channel
+  usable with Pong after expected LogRecord/ConfigureLogFd refusals.
+  Production authorization is unchanged.
+- **Files:** tests/test-privsep-windows-ipc.cpp,
+  .agents/skills/openi2pd-linux-windows/SKILL.md,
+  .agents/skills/openi2pd-privsep/SKILL.md.
+- **State:** Detected in CI; corrected by static analysis; **Pending CI tests**.
+  This is a runtime test failure, not a compile/link failure.
+
+### CE-044 — Debian remove/purge step exits without naming its failing check
+
+- **Workflow/job:** Packaging and service validation 41207325472, Debian
+  packages 124554971078, final Remove and preserve, then purge step.
+- **Commit/platform:** 46738ddf6f0f9b8e01e31d7c28bc6396215f82e8; Ubuntu 24.04.
+- **First diagnostic:** step exits 1 after purge; the log does not distinguish
+  apt-get purge, either silent path assertion or dpkg --audit.
+- **Cause:** In investigation. The exact run .deb control archive was
+  inspected: generated postrm removes /etc/i2pd and /var/lib/i2pd only in
+  purge, and preceding remove-preservation checks are reached. The available
+  evidence does not justify changing package hooks or guessing the assertion.
+- **Correction:** none yet. Add labeled diagnostics for each purge assertion
+  and retain exact-run postrm inspection before changing hooks.
+- **Files:** .github/workflows/packaging.yml; package scripts only if later
+  evidence points there.
+- **State:** Detected in CI; En investigación. A manual package run must
+  identify the failing command before a lifecycle correction is claimed.
