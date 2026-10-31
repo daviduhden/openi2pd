@@ -1234,7 +1234,10 @@ namespace torrents
 		// MIN_TRACKER_REQUESTS_INTERVAL for the first failure, doubling up to
 		// MAX_TRACKER_FAILURE_BACKOFF (30 min). The tracker-advertised
 		// interval is left untouched, so a retry is never delayed to the
-		// 15-minute announce floor.
+		// 15-minute announce floor. A response that carries both a
+		// `failure reason` and an `interval` field keeps this ladder: the
+		// next request is only rescheduled from the advertised interval
+		// after a successful response.
 		void ReportTrackerFailure (size_t trackerID, std::string_view reason);
 		// Drops tracker peers after the tracker has not produced a successful
 		// response for max(2*interval, 30 min), capped at two hours.

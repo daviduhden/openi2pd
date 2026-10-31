@@ -2486,9 +2486,12 @@ namespace torrents
 						sawInterval = true;
 						// Seconds on the wire; floored at 15 minutes like Java's
 						// TrackerClient and raised to a larger "min interval".
+						// Only the advertised value is recorded here: the next
+						// request is scheduled once the whole response is known,
+						// because a `failure reason` field must keep the retry
+						// ladder instead of a hostile or stale interval,
+						// wherever the two keys appear in the dictionary.
 						SetInterval (trackerID, TrackerSchedule::AdvertisedInterval (value));
-						std::get<2> (m_TrackerStats[trackerID])
-							= i2p::util::GetMonotonicMilliseconds () + GetInterval (trackerID); // reset next request
 					}
 					return l;
 				}
@@ -2500,14 +2503,12 @@ namespace torrents
 						SetMinInterval (trackerID, TrackerSchedule::AdvertisedMinInterval (value));
 						// A tracker that publishes a larger minimum interval must
 						// not be polled faster than that, whichever of the two
-						// keys the response listed first.
+						// keys the response listed first. The next request is
+						// scheduled after the response is fully parsed, so a
+						// failure response keeps its retry ladder.
 						auto & interval = std::get<1> (m_TrackerStats[trackerID]);
 						const int effective = TrackerSchedule::EffectiveInterval (interval, GetMinInterval (trackerID));
-						if (effective != interval)
-						{
-							interval = effective;
-							std::get<2> (m_TrackerStats[trackerID]) = i2p::util::GetMonotonicMilliseconds () + interval;
-						}
+						if (effective != interval) interval = effective;
 					}
 					return l;
 				}
@@ -2551,14 +2552,15 @@ namespace torrents
 			return;
 		}
 		if (failed) return;
-		// A successful response ends the consecutive-failure ladder.
+		// A successful response ends the consecutive-failure ladder and is the
+		// only case that may schedule the next request from the advertised
+		// interval. A failure response keeps the ladder that
+		// ReportTrackerFailure() installed, whatever other fields it carried.
 		std::get<8> (m_TrackerStats[trackerID]) = 0;
 		if (!sawInterval)
-		{
-			auto & interval = std::get<1> (m_TrackerStats[trackerID]);
-			interval = TrackerSchedule::DefaultInterval (GetMinInterval (trackerID));
-			std::get<2> (m_TrackerStats[trackerID]) = i2p::util::GetMonotonicMilliseconds () + interval;
-		}
+			std::get<1> (m_TrackerStats[trackerID]) = TrackerSchedule::DefaultInterval (GetMinInterval (trackerID));
+		std::get<2> (m_TrackerStats[trackerID])
+			= i2p::util::GetMonotonicMilliseconds () + std::get<1> (m_TrackerStats[trackerID]);
 		std::get<5> (m_TrackerStats[trackerID]) = i2p::util::GetSecondsSinceEpoch ();
 	}
 
