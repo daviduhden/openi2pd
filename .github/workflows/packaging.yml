@@ -329,7 +329,10 @@ jobs:
             echo 'FAIL: remove deleted /etc/i2pd/i2pd.conf' >&2
             exit 1
           fi
-          if [ ! -f /var/lib/i2pd/netDb/.ci-remove-preservation ]; then
+          # /var/lib/i2pd is mode 0700 and owned by the service account, so
+          # the unprivileged runner cannot stat a file inside it; testing
+          # without sudo reports a permission error as a missing file.
+          if ! sudo test -f /var/lib/i2pd/netDb/.ci-remove-preservation; then
             echo 'FAIL: remove deleted persistent netDb state under /var/lib/i2pd' >&2
             exit 1
           fi
@@ -339,7 +342,7 @@ jobs:
             echo 'FAIL: purge retained /etc/i2pd/i2pd.conf' >&2
             exit 1
           fi
-          if [ -d /var/lib/i2pd ]; then
+          if sudo test -d /var/lib/i2pd; then
             echo 'FAIL: purge retained /var/lib/i2pd' >&2
             exit 1
           fi

@@ -226,9 +226,11 @@ foreach(required IN ITEMS
     "FAIL: remove deleted /etc/i2pd/i2pd.conf"
     "install -d -o i2pd -g i2pd -m 0700 /var/lib/i2pd/netDb"
     "install -o i2pd -g i2pd -m 0600 /dev/null /var/lib/i2pd/netDb/.ci-remove-preservation"
+    "if ! sudo test -f /var/lib/i2pd/netDb/.ci-remove-preservation; then"
     "FAIL: remove deleted persistent netDb state under /var/lib/i2pd"
     "Purging packages and checking owned state cleanup"
     "FAIL: purge retained /etc/i2pd/i2pd.conf"
+    "if sudo test -d /var/lib/i2pd; then"
     "FAIL: purge retained /var/lib/i2pd"
     "Checking the dpkg database after purge")
   assert_contains("${packaging_workflow}" "${required}"
