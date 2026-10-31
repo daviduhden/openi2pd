@@ -381,6 +381,47 @@ foreach(payload IN ITEMS
     message(FATAL_ERROR "CMake install graph is missing ${payload}")
   endif()
 endforeach()
+
+# Every executable component owns its man page on every platform that has
+# components, not only on UNIX: the Windows/MSVC install builds the same
+# Runtime/Tui/Tools components and tools/test-perl-install.cmake checks
+# share/man/man1/i2pdctl.1 in the Tools component there. A UNIX-only guard
+# is therefore a defect, and Android (an APK, no man tree) is the single
+# exclusion. The component is read from the install rule itself, so a page
+# cannot drift to another package.
+foreach(page_owner IN ITEMS
+    "man/i2pd.1|Runtime"
+    "man/i2pd-tui.1|Tui"
+    "man/i2pdctl.1|Tools")
+  string(REPLACE "|" ";" page_pair "${page_owner}")
+  list(GET page_pair 0 page_name)
+  list(GET page_pair 1 page_component)
+  string(FIND "${top_cmake_text}" "${page_name}" page_position)
+  if(page_position EQUAL -1)
+    message(FATAL_ERROR "CMake install graph is missing ${page_name}")
+  endif()
+  string(SUBSTRING "${top_cmake_text}" ${page_position} 220 page_rule)
+  string(FIND "${page_rule}" "COMPONENT ${page_component}" page_component_position)
+  if(page_component_position EQUAL -1)
+    message(FATAL_ERROR
+      "${page_name} must be installed by the ${page_component} component")
+  endif()
+  # The 400 characters before the rule are its guard context: a UNIX-only
+  # condition there would silently drop the page from a Windows install.
+  set(context_start 0)
+  if(page_position GREATER 400)
+    math(EXPR context_start "${page_position} - 400")
+  endif()
+  math(EXPR context_length "${page_position} - ${context_start}")
+  string(SUBSTRING "${top_cmake_text}" ${context_start} ${context_length}
+    page_context)
+  string(FIND "${page_context}" "if(UNIX AND NOT ANDROID)" unix_page_guard)
+  if(NOT unix_page_guard EQUAL -1)
+    message(FATAL_ERROR
+      "${page_name} is installed under a UNIX-only guard; man pages belong to "
+      "every platform component and only Android is excluded")
+  endif()
+endforeach()
 # The sample configuration is a hard prerequisite of the packaged
 # services.
 string(FIND "${top_cmake_text}"

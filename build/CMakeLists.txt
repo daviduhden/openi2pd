@@ -1207,8 +1207,11 @@ endif()
 # Man pages describe the binary that owns them and must not disappear
 # when a packager disables the optional documentation tree (for example
 # the static build or the OpenBSD port). Keep the component aligned with
-# the executable.
-if(UNIX AND NOT ANDROID)
+# the executable. The rule is deliberately not restricted to UNIX: a
+# Windows/MSVC install has the same components, and the Tools install
+# contract (tools/test-perl-install.cmake) checks the i2pdctl page on
+# every platform. Android ships an APK and never installs man pages.
+if(NOT ANDROID)
   if(WITH_BINARY)
     install(FILES "${PROJECT_ROOT}/man/i2pd.1"
       DESTINATION ${CMAKE_INSTALL_MANDIR}/man1
