@@ -510,6 +510,37 @@ browser-console changes, obsolete GNU-make/Jammy packaging and the unvalidated
 RHEL 9 toolset path remain deliberately excluded. Until then this is static-only
 work.
 
+## Selective upstream openssl synchronization (static, 2026-10-31)
+
+Reviewed all 40 objects in `5bcf6101..ba38945e` against local baseline
+`46738ddf`; per-SHA decisions and merge treatment are in
+`docs/upstream-sync.md`. Three adaptations address pool destruction order,
+stream reorder packet lifetime and proxy Referer privacy. Other torrent, DHT,
+reseed, I2CP and lifecycle changes are already present or superseded by stricter
+fork checks; Haiku, browser UI, legacy Makefiles and newer optional Boost
+optimizations are not imported. Source review and diff checks only; manual CI
+compilation and focused tests remain pending.
+
+## I2P Java 2.14.0 functional parity continuation (static, 2026-10-31)
+
+Read-only subagent reviews covered router/transports/netDb, client services,
+administration, address-book/reseed and I2PSnark/Android against the pinned
+official source and relevant specifications. `docs/FEATURE-PARITY.md` §18 and
+`tests/interop/FIXTURES.md` §10b record exact source links and regression
+scenarios. Corrected stale claims: subscription source edits and per-tunnel
+start/stop already have typed TUI and Android surfaces; selected-file torrent
+promotion is implemented statically.
+
+Remaining substantive gaps are Proposal 112 feed `sig`/`oldsig` verification,
+Java's `router.floodfillParticipant=auto` monitor, netDb go-away/pdrop/stale-RI
+semantics, NTCP2 caps/options/socket ownership, manual URL/file reseed input,
+durable Snark magnets and uploader/rate scheduling. Keep arbitrary reseed
+paths/URLs and unsigned feed actions out of generic admin APIs. Android live
+transit/bandwidth/share controls are implemented statically through dedicated
+service-worker/JNI methods and the existing typed queue. No local build, Java
+execution, test, device run or CI validation was performed; manual CI remains
+pending.
+
 ## netDb and LeaseSet continuation (static, 2026-10-26)
 
 A four-way audit of the LeaseSet family, DatabaseLookup reply keys and
@@ -953,7 +984,7 @@ announce intervals at 15 minutes and caps the internal failure ladder at 30.
 Deferred with explicit reasons: server-tunnel `filterDefinition` (needs a
 streaming-level pre-accept reject seam shared with `limitAction`), HTTP Digest,
 `targetForPort`/`spoofedHost`/user-agent rejection, per-tunnel runtime
-start/stop and Android live transit, go-away RouterInfo/store-cap/stale-RI
+go-away RouterInfo/store-cap/stale-RI
 netDb work, and Snark session rate limits/uploader slots/durable magnets.
 
 Exit criteria: manual CI compiles the new blocklist, netDb, address-book, TUI
@@ -1759,3 +1790,35 @@ Reviewing the comment-only diff also found a local Doxygen delimiter
 regression in 15 wrapped comments across eight native test sources. The
 comments are repaired and tracked as CE-037/DOCS-015; because no CI run used
 this revision, native compilation and the source-doc lane remain pending.
+
+## Latest CI compile, docs and package failure pass (2026-10-31, static)
+
+Read GitHub Actions first with gh: runs 41207325363 (Linux/Android),
+41207324984 (Windows), 41207325119 (OpenBSD), 41207325136 (Fuzzing) and
+41207325472 (Packaging), all on published main SHA
+46738ddf6f0f9b8e01e31d7c28bc6396215f82e8, which matched local HEAD at audit
+start. The first Linux/OpenBSD/Windows MSYS2 failure was malformed nested
+comments in test-http-req.cpp and test-http-res.cpp; downstream build targets
+were not reached. The source API Doxygen run also found unclosed blocks in
+OpenBSDSandbox.h. Android native build, JVM tests, Lint and APK assembly passed,
+then Javadoc configuration failed on the removed AGP bootClasspath property.
+The Perl suite exposed an overly broad Python ban conflicting with the
+mandatory shared agent-knowledge validator. MSVC built selected targets but
+two Windows IPC/supervisor tests had stale role/channel expectations. The
+Debian remove/purge job remains under investigation because the exact run log
+does not name which silent assertion or command failed.
+
+Static fixes are in place for the shared HTTP test syntax, Doxygen comments,
+AGP Javadoc classpath, Perl allowlist and Windows test expectations. The Debian
+package workflow now prints a distinct message for each remove/purge
+assertion; the generated postrm was inspected from the exact run artifact and
+no hook change was justified. The installed CMake consumer and all four
+exported archives passed on the published SHA; Linux GCC reached libi2pd and
+libi2pdclient links before test compilation stopped. OpenSSL capability probes
+passed, so no platform-specific crypto root was observed before that stop.
+These results do not prove downstream targets or current local-only changes.
+
+CE-038..CE-044 and BUILD-028 track the causes and statuses. A new manual CI
+revision must validate the corrections and disambiguate the Debian lifecycle
+failure. No local build, compiler, CTest, Gradle, Doxygen, Perl tests, package
+install, commit or push was performed.

@@ -163,10 +163,22 @@ run Gradle, install an APK or run a device test.
   a null argument matches both a platform `Bundle` and a helper `String`.
   Cast null to the intended overload type in instrumentation tests rather than
   changing the provider API or hiding the ambiguity through a test wrapper.
+- AGP 9.4.1 does not expose `android.bootClasspath` on the application DSL.
+  The manual `sourceJavadoc` task gets platform classes from
+  `androidComponents.sdkComponents.bootClasspath`, kept as a task input
+  provider alongside the debug Java classpath.
 - `RouterCommand` is a sealed interface of nested records decoded by
   `fromAction`; `RouterService.onStartCommand` must keep an exhaustive switch
   with no `default`. Adding an action requires a record, mapping, service case
   and `RouterCommandTest` update.
+- Address-book subscription add/remove, router ban/unban and live
+  transit/bandwidth/share controls use dedicated bounded JNI calls through
+  `RouterService`'s worker; keep them separate from the torrent command
+  allowlist. Validate accepted values in Java and native code, reject a
+  stopped router, and keep JNI off the main thread. Runtime controls enqueue
+  typed daemon operations and do not update restart-required preferences.
+  Fragment callbacks must be invalidated by the view generation and release
+  the busy state when the view is destroyed.
 - `LogLevel`/`LogFilter` use minimum-severity views (`WARN` includes errors;
   `ALL`/`DEBUG` are unfiltered). Classify native tokens with `Locale.ROOT`.
   Keep native `none/critical/error/warn/info/debug` synchronized with

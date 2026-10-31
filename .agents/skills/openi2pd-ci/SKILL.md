@@ -133,6 +133,10 @@ workflow, run `gh`, build or test.
   changing source hooks. The regular and static Debian package trees have
   distinct postrm files; `dh_installinit` can add its own `update-rc.d` purge
   call at `#DEBHELPER#` expansion.
+- A `set -e` workflow step with several silent `test` assertions can report
+  only exit 1, not which lifecycle condition failed. Label destructive package
+  phases and emit a specific failure message for each preservation/removal
+  assertion before changing hooks based on ambiguous logs.
 
 - The manual packaging service-contract job ShellChecks maintenance scripts
   as well as init scripts. Its fake-`nc` SAM regression checks mismatch exit

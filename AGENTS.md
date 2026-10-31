@@ -487,7 +487,16 @@ CI. Update the feature matrix in `docs/cpp23-migration.md` and
 - The torrent console is native ncursesw on POSIX and a Win32 console/VT
   backend over a local named pipe on Windows. No HTML/CSS/JS console,
   Node/V8/QuickJS, browser bridge or cleartext torrent path.
-- Project-maintained Python is replaced by Perl; no CPAN/runtime downloads.
+- Functional-parity reviews compare the pinned official Java source and
+  applicable specifications against the complete native/TUI/Android paths.
+  Record exact source revisions and distinguish static source comparison from
+  dynamic interoperability; preserve the native UI and typed control boundary.
+- Product, build and maintenance code remains Perl-native. The only Python
+  exception is the canonical shared agent-knowledge validator and its
+  byte-identical black-box contract suite, required by the Shared Agent
+  Knowledge Validation Contract; keep those exact files synchronized across
+  adopters and reject any other maintained Python source. No CPAN/runtime
+  downloads.
   Perl ownership includes `tools/**` (including `tools/scripts/*.pl` and
   `i2pdctl`), `android/tools/*.pl`, `i18n/*.pl`, `tests/interop/*.pl` and their
   tests/docs.

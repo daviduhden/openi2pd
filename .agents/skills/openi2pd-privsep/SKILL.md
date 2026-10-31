@@ -277,9 +277,11 @@ report that limitation; do not substitute local execution. Ask for:
   includes the header for the worker-identity declarations.
 
 
-- `CONC-029` records that a core-side Windows channel refuses the `Send` used
-  for the attributable-fault `Error`. Do not assume a rejected peer always
-  receives a typed reply until the direction/ownership path is corrected.
+- The earlier `CONC-029` Windows test expectation was misoriented:
+  `AcceptBound()` returns a core-side channel, which may receive worker replies
+  such as `DataStorageReply`; the connecting worker side receives requests
+  only after `SetRole()`. Core-side typed `Error` refusals are an explicit
+  send exception, not evidence that general core replies are allowed.
 
 ## Do not
 

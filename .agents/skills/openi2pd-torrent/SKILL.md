@@ -167,6 +167,13 @@ Do not let them edit, build or run tests.
 - `DATAGRAM_TRACKER_DEFAULT_PORT` (6969) is applied when sending/connecting,
   never written back into `m_Trackers`; `IsTorrentTracker` compares the exact
   `URL::to_string()` identity of the stored announce URL.
+- Java 2.14.0 persists unresolved magnet state in
+  `SnarkManager.saveMagnetStatus()` and owns eight-uploader admission plus
+  global/torrent/peer bandwidth queues (`PeerCoordinator`/
+  `BandwidthManager`). Local `TorrentsState` does not persist unresolved
+  magnets, and peer-rate reporting is not rate enforcement. Keep these as
+  separate engine and persistence gaps (`SNARK-012`); do not claim them from
+  tracker `left`/`completed` parity alone.
 - `PeerConnection::TorrentComplete()` owns end-of-torrent peer state: close
   seeds, reset stats, release outgoing requests and send *not interested*.
   `GetNextBlockToRequest` keeps interest while the peer still advertises
@@ -174,6 +181,11 @@ Do not let them edit, build or run tests.
 - `StopTorrent` closes every `TorrentFile` on the disk worker before
   `SaveTorrentResumeFile`; paused torrents must not hold payload/SAF handles
   until the inactivity sweep.
+- Preserve the fork's requested-block admission checks for late torrent data:
+  a block must match an active request epoch, aligned offset and exact expected
+  length. Do not import upstream behavior that accepts unsolicited late
+  blocks. Likewise, local verification remains piece-bounded and DHT
+  transaction IDs use `RAND_bytes`, not a weaker convenience RNG.
 
 - Tracker announces separate local selection from swarm accounting: `left` and
   `event=completed` come from `Torrent::GetAnnounceProgress ()` (whole torrent,

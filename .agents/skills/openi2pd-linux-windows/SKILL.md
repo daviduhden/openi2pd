@@ -159,6 +159,10 @@ execution. Ask for:
   accepted channel as the core endpoint. Reject any later `WorkerHello` there;
   send its typed `Error` response through the narrow reply-direction exception
   while keeping ordinary core sends request-direction only.
+- Keep IPC test expectations aligned with that endpoint orientation:
+  `AcceptBound()` returns the core side, which receives worker replies such as
+  `Pong` and storage replies. Bind the connecting peer with `SetRole()` when a
+  test needs to exercise the worker's request-only receive policy.
 - `WindowsIsolation.cpp` is the role authority: storage/log/crypto/admin are
   low-privilege AppContainers with no `internetClient`; network has Internet
   capability and no write root; supervisor uses a restricted token. Never

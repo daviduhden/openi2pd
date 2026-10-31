@@ -147,6 +147,11 @@ branding validators or a build.
   `en/es/ru/zh-Hans`, Android `en/es/ru/zh-CN`, English fallback, `zh-TW`/
   `zh-Hant` fallback, plural arity and the translated/identifier boundary.
   README, the docs index and the configuration table must link it.
+- `docs/FEATURE-PARITY.md` compares behavior, not UI architecture. Pin every
+  Java source claim to the official revision and pair wire claims with the
+  normative spec. Reconcile current-state rows when later native work closes
+  an older gap; preserve dated history as historical evidence. Source review
+  is not a Java/native differential result.
 - Documentation stays Markdown/MkDocs-compatible and English-only. The
   `assets/branding/` tree is mirrored at `docs/assets/branding/`; update both
   and let `validate-branding.pl` compare them. Do not replace the official

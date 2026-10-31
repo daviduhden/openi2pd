@@ -20,7 +20,11 @@ Use this skill for `tools/**`, `tools/scripts/**`, `tools/tests/**`, the
 the Python-to-Perl migration. Use `openi2pd-packaging` for install manifests.
 
 Read [`../../../AGENTS.md`](../../../AGENTS.md) first. Project-maintained
-Python is replaced by Perl; do not add Python, CPAN or runtime downloads.
+product and maintenance scripts use Perl; do not add Python, CPAN or runtime
+downloads. The shared agent-knowledge validator and its byte-identical
+contract tests are the narrow Python exception required by `AGENTS.md`.
+`tools/tests/perl-portability.t` exempts only those two exact paths and rejects
+other maintained Python sources.
 
 ## Inspect first
 
@@ -108,12 +112,14 @@ a TUI client.
 - Preserve upstream provenance/license notices for imported tools.
 - Keep tool names, CLI behavior and install paths unless a migration is
   approved.
-- `scripts/validate-agent-knowledge.py` is the canonical Python gate for
-  synchronization: local mode inspects staged/unstaged plus untracked paths;
-  PR mode accepts explicit `--base`/`--head` commit SHAs. Its substantive-text
-  heuristic and link/section checks are structural only; a reviewer must still
-  assess whether the update records useful knowledge. Keep it core-Perl and
-  never let it execute repository code.
+- `scripts/validate-agent-knowledge.py` and
+  `tests/agent_knowledge_validator/test_validator.py` are the only Python
+  files exempted by `perl-portability.t`; keep this shared validator contract
+  byte-identical across adopters. Local mode inspects staged/unstaged plus
+  untracked paths; PR mode accepts explicit `--base`/`--head` commit SHAs. Its
+  substantive-text heuristic and link/section checks are structural only; a
+  reviewer must still assess whether the update records useful knowledge.
+  Never let it execute repository code.
 
 ## Known issues and decisions
 

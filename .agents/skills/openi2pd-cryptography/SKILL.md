@@ -145,6 +145,12 @@ executing project code, or inspect a real private key.
   NEXT_KEY, SessionID, ACK and unknown blocks are rejected before side effects.
   `crypto.ratchet.inboundTags` is capped at 320; the anonymous one-time NS
   path is gone (router-N is `32+payload+16`).
+- Address-book subscription actions are signed protocol commands under I2P
+  Proposal 112, not trusted merely because a feed URL owns the entry. The
+  current native `action=delete` path checks source origin but does not verify
+  `sig`/`oldsig`; before implementing signed actions, verify canonical
+  preimages and old-destination authority against the proposal and pinned Java
+  vectors, then retain the local cross-feed ownership restriction.
 - X25519 key generation is fallible end-to-end: never persist, publish or pool
   an all-zero private/public pair; `X25519Keys` is non-copyable and derives the
   public key. Ed25519 secret scalars and nonces use `BN_clear_free`, the

@@ -144,6 +144,20 @@ peer or add a hidden external checkout. The reference is for reading only.
   `min interval`; the internal failure ladder is capped at 30 minutes.
 - Address-book merges keep pre-existing destinations (Java `Daemon.java`);
   last-wins applies only to duplicate lines inside one source.
+- Address-book feed origin is not command authenticity. Proposal 112 requires
+  canonical `sig`/`oldsig` verification for signed actions; the current native
+  `action=delete` path checks source ownership but has no signature verifier.
+  Keep the local origin restriction and do not add signed actions until their
+  exact preimages, authority transitions, replay behavior and Java vectors are
+  verified.
+- Java floodfill configuration is a runtime policy: `router.floodfillParticipant`
+  accepts `true`, `false` and `auto`, defaults to `auto`, and hidden mode
+  overrides it. The local false-default boolean is not an equivalent alias;
+  implementing the monitor is a separate policy task.
+- Durable magnets, eight-slot upload admission and layered torrent bandwidth
+  queues are Java I2PSnark behavior (`SnarkManager`, `PeerCoordinator`,
+  `BandwidthManager`), not consequences of tracker-wire parity. Track restart,
+  admission and fairness separately from protocol serialization.
 
 - NTCP2 padding has **two** columns: SessionRequest 880/1264/1648 and
   SessionCreated 848/1168/1648 for v2/v3/v4/v5; v5 requires

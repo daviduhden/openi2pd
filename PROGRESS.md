@@ -5447,3 +5447,54 @@ remain in the same worktree. The source-aware width scan found no overlong
 prose comments. It retained only copyable commented config/Telegram URL values
 and RPM changelog records; three additional long-line matches are C++ expression
 continuations rather than comments.
+
+## Upstream openssl synchronization continuation (2026-10-31, static)
+
+Fetched and reviewed every commit object after the previously audited
+`5bcf6101a456dc991e44d3d79cb69994c7bae484` through branch tip
+`ba38945eefe28eec8d02d63241d4903a8c5145b1`: 40 objects, including six
+merges. Subagents separately reviewed torrent/DHT, C++ security/lifecycle and
+platform/service/build changes; their findings were checked against local
+implementations. Per-SHA classifications, omissions and merge relationships
+are recorded in `docs/upstream-sync.md`.
+
+Applied three source adaptations: declare SSU2 pools before the receive
+service so they outlive it during destruction; clear the borrowed ratchet
+session pointer before storing reordered stream packets; and rewrite a
+same-origin HTTP `Referer` to path/query form. The other changes are already
+integrated, superseded by stricter local bounds/ownership, or incompatible
+with removed web/legacy-build/Haiku targets and the declared Boost floor. The
+stream reorder pointer case still lacks a focused regression seam. Updated
+UPSTREAM-009, the roadmap and upstream, torrent and memory-security skills.
+Only static inspection was performed; no build, test or CI workflow was run,
+so all three source changes await manual CI validation.
+
+## I2P Java 2.14.0 functional parity continuation (2026-10-31, static)
+
+Launched independent read-only audits for router/transports/netDb, client
+services/admin/address book/reseed and I2PSnark/Android. Agents inspected the
+official Java source pin `3c98503c5f14efe7bdd783528ba7f621f12d8081` via
+read-only `gh api` and checked local call paths plus the applicable I2P
+specifications. No Java code was copied or executed.
+
+Updated `docs/FEATURE-PARITY.md` with source-linked 2.14.0 evidence and
+functional gaps, and `tests/interop/FIXTURES.md` with planned manual
+differential scenarios. Reconciled stale entries: subscription source CRUD
+and router bans already have typed Android service/JNI/UI paths, per-tunnel
+start/stop exists in TUI and Android, and selected-file torrent verification/
+promotion is implemented statically. Android live transit/bandwidth/share
+controls are implemented statically via dedicated service-worker/JNI methods
+and the existing typed daemon queue; they do not modify saved preferences or
+configuration.
+
+Confirmed unresolved work: Proposal 112 feed command signatures (`sig`/
+`oldsig`) and signed actions, Java floodfill `auto` policy, netDb go-away and
+probabilistic admission/stale-RI selection, NTCP2 caps/options/socket
+ownership, user-selected reseed URL/file authority, and durable Snark magnets
+plus uploader/rate scheduling. Added `AB-107`, `RS-108`, `PARITY-020` detail,
+`PARITY-022`, and the Java evidence to SNARK-012. Updated AGENTS and the
+interop, cryptography, Android, documentation and torrent Skills with reusable
+parity invariants.
+
+No build, compiler, Java runtime, test, Gradle/device run or workflow was
+executed. All implementation and regression work remains subject to manual CI.

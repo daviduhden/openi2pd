@@ -111,6 +111,10 @@ Ask for exact paths and package names. Do not let them run `dpkg-buildpackage`,
   install manifests uncompressed, but make installed-package smoke checks and
   file-list assertions match the generated package path confirmed from its
   exact-run `.deb` artifact.
+- Package lifecycle workflow steps should identify each remove/purge
+  preservation assertion in the log. When an exact run exits after a silent
+  `test`, inspect that run's generated maintainer scripts and add labeled
+  diagnostics before changing package hooks.
 
 - Torrent-enabled Docker runtimes require `boost-json` and `boost-url` shared
   libraries as well as `boost-program_options`; JSON/URL are compiled

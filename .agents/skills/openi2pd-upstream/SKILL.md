@@ -109,6 +109,18 @@ run tests.
   `m_IsFast` gate. Upstream `Makefile.linux` and the Debian quilt series have no
   local target (CMake components and no GNU make), so their fixes are recorded
   as omitted rather than ported.
+- Check optional Boost container optimizations against the exact declared
+  floor before adapting them: `unordered_flat_map` needs the relevant newer
+  Boost API, and `dynamic_bitset::find_first_off` is a Boost 1.90 facility.
+  Do not raise the supported dependency floor for an optimization without a
+  separately justified compatibility decision.
+- Upstream OpenRC `command_args_background` assumes daemonizing command
+  semantics. The local service uses foreground mode with `supervise-daemon`,
+  and helper commands rely on `${name}`; assess both before porting init-file
+  edits.
+- Clearing `Packet::from` is required before retaining a reordered streaming
+  packet: it is borrowed ratchet-session state, not packet-owned lifetime.
+  The stream reorder queue currently lacks an isolated regression seam.
 - No upstream change is validated until the corresponding manual CI lane and
   provenance/vectors are updated.
 

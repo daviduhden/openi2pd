@@ -118,6 +118,10 @@ Do not let reconnaissance agents edit, compile, execute tests or run scripts.
   message and 32 incomplete messages per session; keep them together and reset
   the counters when a pooled `SSU2IncompleteMessage` starts a new first
   fragment. Do not collapse the per-message and per-session limits.
+- `SSU2Server` declares its packet/message pools before `ReceiveService` so
+  reverse member destruction stops/destroys the service before releasing the
+  storage its handlers may reference. Preserve this order when adding or
+  moving members.
 - `RouterInfo::SSUExt` owns `mutex`; `GetIntroducers()`/`HasIntroducers()` are
   the only cross-thread readers. Do not iterate or index the live vector from
   SSU2, and do not call `UsesIntroducer()` while already holding the SSUExt
