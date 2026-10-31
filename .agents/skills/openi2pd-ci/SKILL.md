@@ -135,6 +135,27 @@ workflow, run `gh`, build or test.
   releases or secrets.
 
 ## Known issues and decisions
+- A failed `assert()` aborts without unwinding, so a ring-based log dump at
+  the end of a test is never reached. Every `i2pd_add_test()` target therefore
+  links `tests/log-support.cpp`, which installs a synchronous stderr echo on
+  the product logger (`SetSynchronousSink`) before `main`. Keep the sink
+  non-throwing and lock-free with respect to logger mutexes, and keep fuzz
+  targets out of it. `test-log-diagnostic-sink` pins the contract and
+  `tests/check-build-system.cmake` pins the linkage; the level is selected by
+  `OPENI2PD_TEST_LOG_LEVEL` (default `info`).
+
+- The first batch that actually executed the new suites is more informative
+  than any earlier green build: see `docs/ci/TEST-FAILURES.md` TF-001..TF-035.
+  A lane that stopped at compile time proves nothing about its CTest targets.
+- A Windows GUI-subsystem binary launched by headless CTest can block with no
+  output. Use `tests/check-binary-version.cmake` (bounded wait, captured
+  output, exit status authoritative) instead of `add_test(... i2pd --version)`.
+- Child-output capture on Windows must merge stderr into one stream; Win32
+  `select()` accepts sockets only. Repository-relative path comparisons need
+  one `/`-normalising helper (case-fold on Windows), and `.gitattributes` must
+  pin LF or a runner's `core.autocrlf` turns the catalogs into CRLF.
+- An existence check inside a 0700 service-owned directory needs `sudo`;
+  permission denied is not "file deleted".
 
 - Retained run logs may outlive neither the run metadata nor its artifacts.
   Record inaccessible job IDs and artifact retention explicitly; missing

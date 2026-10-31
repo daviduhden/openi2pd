@@ -93,6 +93,15 @@ executing project code, or inspect a real private key.
 
 ## Known issues and decisions
 
+- An all-zero X25519 scalar is rejected by the constructor and
+  `SetPrivateKey`; it is not a secret. `CreateECIESX25519AEADRatchetRandomKeys`
+  wipes every non-null output buffer when it fails, so tests must pass scratch
+  buffers or they silently build a key from zeros.
+- A router-N ratchet payload is AEAD-protected: a test that inspects inner
+  blocks must mirror `RouterIncomingRatchetSession` (InitNoiseNState, MixHash
+  of the ephemeral key, MixKey of the X25519 agreement, Decrypt) before
+  parsing. Parsing ciphertext as `[type][size]` headers cannot be valid.
+
 - Signing-key wire sizes are one compile-time table in `Identity.cpp`
   (`public/private/signature`); unknown types return `false`, and callers keep
   their documented fallback. RSA-4096 excess signing data is bounded.

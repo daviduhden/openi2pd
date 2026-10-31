@@ -1883,3 +1883,36 @@ packaging/source-docs batch compiles, runs the Windows IPC/supervisor tests,
 preserves Debian state on remove and emits no first-party warning. No local
 compiler, CTest, Gradle, Doxygen or package validation exists for this
 revision.
+
+## CI audit: first executed suites (63c42ca4, 2026-10-31, static)
+
+This batch reached CTest on Windows and exposed a shared compile blocker plus
+a large first-execution backlog. CE-055..CE-064 record the compile, Doxygen,
+Javadoc, checker-portability, man-page, CRLF, CLI, reserved-range and Debian
+permission defects. RT-004/RT-005 record the null transports context and the
+unguarded checksum-IV suffix; TF-001..TF-035 record the assertions, including
+the product fixes for zero-hop tunnels, b33 labels, upgrade tokens, origin
+forms, tracker failure scheduling, X25519 zero scalars, IPC direction and the
+restart budget.
+
+Exit criteria: a manual batch on the corrected revision must compile every
+Linux/OpenSSL/OpenBSD/Windows/Android target, run the previously unexecuted
+suites without assertion failures or sanitizer reports, install the man pages
+on Windows, pass the static Perl/CMake contracts on a CRLF-free checkout,
+preserve Debian state across remove, and pass the bounded `i2pd-version`
+driver. Two tests and the Windows launch hang remain `CI failure` with
+diagnostics.
+
+## Test diagnostics continuation (2026-10-31, static)
+
+A test process that never starts the logger keeps its records only in the
+administrative ring, and an `assert()` abort never unwinds to a dump. Every
+`i2pd_add_test()` target now links `tests/log-support.cpp`, which installs a
+synchronous stderr sink before `main`; `OPENI2PD_TEST_LOG_LEVEL` selects the
+level and fuzz targets are excluded for throughput. `test-log-diagnostic-sink`
+and `tests/check-build-system.cmake` pin the contract.
+
+Exit criteria: the next manual batch shows `[test-log ...]` lines for the
+product diagnostics of every C++ test, including a deliberately failing
+assertion in CI, without changing any test result. No local compiler or CTest
+run exists.

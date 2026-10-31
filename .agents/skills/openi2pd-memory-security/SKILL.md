@@ -103,6 +103,14 @@ Do not let reconnaissance agents edit, compile, execute tests or run scripts.
 
 ## Known issues and decisions
 
+- Any singleton that owns a service/context must reject work before that
+  context exists: `Transports::SendMessage`/`SendMessages` return an invalid
+  future when `m_Service` is null. The online flag defaults to true, so a
+  pre-start send would otherwise dereference null.
+- A checksum/IV suffix written next to a fixed-size cell needs a capacity
+  check before the copy (`TunnelEndpoint`), not only a documented
+  precondition.
+
 - Streaming lifetimes are now two-sided: a `Stream` holds a strong
   `StreamingDestination` (so pending timers still find valid packet pools) and
   `StreamingDestination::Stop()` marshals `StopInternal()` onto the owner's

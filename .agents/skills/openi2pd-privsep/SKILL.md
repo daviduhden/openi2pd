@@ -105,6 +105,20 @@ report that limitation; do not substitute local execution. Ask for:
 
 ## Known issues and decisions
 
+- Direction is a compile-time registry property. A request is received by
+  workers only (the Windows pre-dispatch `WorkerHello` is the single
+  exception); a reply reaches the requesting side and never a pure worker;
+  the typed `Error` is receivable by every endpoint so a refused frame can be
+  read instead of refused again. Only the core sends `Ping`.
+  `ValidateDirectionInvariants()` must iterate the whole table.
+- The shared restart ladder's eight waits total 61.75 s (the eighth is the
+  30 s cap), so it spans more than one stable period. It is a count budget
+  with a terminal state, not a rolling window; `NoteStable()` must not revive
+  an exhausted budget.
+- When the accepting side rejects a hello on PID/session it disconnects
+  before reading, so the client's write may fail. The test tolerates that
+  race and asserts only the server-side rejection; keep the early reject.
+
 - Do not claim global privilege separation. The log worker has historical Linux
   evidence; payload storage, router storage and the Android SAF broker are
   static boundaries pending CI/device validation. Network, router and verifier

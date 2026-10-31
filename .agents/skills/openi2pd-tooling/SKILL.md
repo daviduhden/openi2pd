@@ -123,6 +123,17 @@ a TUI client.
 
 ## Known issues and decisions
 
+- `keyinfo` validates every section before the first stdout byte: an optional
+  b33 offline-key batch is a successful summary with a stderr note, while
+  structural corruption still fails. `-h` is stdout/0; usage and runtime
+  errors are stderr/non-zero. The same split applies to `famtool`,
+  `i2pbase64`, `regaddr_3ld`, `b33address` and `b33offlinekeys`; `verifyhost`'s
+  verdict and `vain`'s prefix diagnostic are documented stdout exceptions.
+- `routerinfo` disables the transports reserved-range admission for its own
+  process (it never dials) and reports published addresses; firewall mode
+  skips a well-formed non-public endpoint and fails only on a malformed one.
+  `tools/common/key.hpp` owns `IsBlindableSigningKeyType()`.
+
 - Maintenance scripts that capture a directory must clear `CDPATH` before
   `cd`; diagnostic output must not contaminate the path. SAM version mismatches
   must fail the script, not only print a diagnostic. The manual packaging CI

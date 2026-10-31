@@ -111,6 +111,10 @@ build.
 
 ## Known issues and decisions
 
+- Man pages belong to their component on every non-Android platform. The
+  install rules are guarded by `NOT ANDROID`, not `UNIX`, and
+  `tests/check-build-system.cmake` rejects a UNIX-only guard.
+
 - In `install(TARGETS ...)`, assign named components on each `ARCHIVE`,
   `LIBRARY` and `RUNTIME` artifact group when consumers install components
   separately. The exported target can otherwise refer to a static archive

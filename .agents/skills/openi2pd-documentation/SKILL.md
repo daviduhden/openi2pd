@@ -118,6 +118,11 @@ branding validators or a build.
 
 ## Known issues and decisions
 
+- Javadoc parses `<tunnel>` as HTML and rejects JDK-internal tags such as
+  `@implNote`. Put protocol shapes in `{@code ...}` and use plain paragraphs
+  for implementation notes; `android/tools/check-android-javadoc.pl`
+  (`android-javadoc-static`) enforces it with negative fixtures.
+
 - Reflowing a one-line Doxygen block can remove its closing delimiter if the
   wrapper treats `/** ... */` as ordinary prose. Preserve one opener, `*`
   continuation lines and one closer; scan changed C/C++ sources for repeated

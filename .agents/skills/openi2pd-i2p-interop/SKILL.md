@@ -99,6 +99,20 @@ peer or add a hidden external checkout. The reference is for reading only.
 
 ## Known issues and decisions
 
+- A signature-valid RouterInfo whose only address is unusable is parseable and
+  storable for the Java 54-minute grace. Tests assert
+  `!HasValidAddresses()`, `!IsPublished()`, `!IsReachableBy()`; never
+  `IsUnreachable()` (DB-119, corroborated by `test-routerinfo-rsa-reject`).
+- An origin-form `Host` without a port is valid and defaults to 80; only
+  CONNECT requires an explicit port. `Connection` option tokens are
+  case-insensitive, so websocket upgrade detection uses
+  `HasConnectionUpgradeToken()` in both the tunnel parser and `HTTPProxy`.
+- The default `i2cp.leaseSetEncType` (`6,4`, `4,0` without ML-KEM) makes
+  hybrid+X25519 valid; only two hybrids or hybrid+ElGamal are invalid.
+- `AddressBook::GetAddress()` must strip an explicit `.b33` before reading the
+  final label; otherwise `<b32>.b33.i2p` yields the literal `b33` and every
+  explicit b33 name fails closed.
+
 - LeaseSet2 encryption selection uses `IsSelectableLS2EncryptionKeyType`:
   ElGamal and ECIES-X25519 are universal, EC_P256/P384/P521 are never
   selectable, and hybrid types require the runtime ML-KEM probe. `i2cp.leaseSetEncType`

@@ -116,6 +116,13 @@ Do not let them edit, build or run tests.
 
 ## Known issues and decisions
 
+- A tracker response that carries both `failure reason` and `interval` keeps
+  the failure retry ladder: schedule the next request only in the success tail
+  of `ParseTrackerResponse`, whatever the field order.
+- Read `CreateBitfield()`'s Boost tribool with `indeterminate()` plus an
+  explicit `static_cast<bool>`; `!=`/`!` yield another tribool and hide an
+  indeterminate state.
+
 - Asio/Beast completion callbacks must keep the required parameter types and
   lifetime captures, but omit names for values their body does not consume.
   Preserve a transferred-byte count when it is forwarded to another handler;

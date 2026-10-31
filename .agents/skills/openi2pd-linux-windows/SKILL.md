@@ -101,6 +101,12 @@ execution. Ask for:
 
 ## Known issues and decisions
 
+- `i2pd` is a GUI-subsystem (`WIN32`) executable. A headless CTest launch can
+  block with no console; bound the wait and use the exit status, and keep man
+  pages installed for the Windows components.
+- A server-side rejection may race the client write (`ERROR_NO_DATA`); do not
+  treat that as a channel defect or read an unauthenticated frame to avoid it.
+
 - `AtomicWritePrivate` gives POSIX staging mode 0600 and Windows staging a
   protected effective-user/SYSTEM DACL, with reparse-target rejection and
   write-through replacement. Win32 pathname traversal retains a hostile-parent

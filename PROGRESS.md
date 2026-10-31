@@ -5613,3 +5613,88 @@ scripts/validate-agent-knowledge.py --scope worktree` passes (AK004 warning is
 the expected manual-relevance review). Static checks pass. No compiler,
 CMake, CTest, Gradle, Doxygen, package, workflow, commit or push was
 performed; all fixes remain Pending CI.
+
+## Fifth batch: first executed test suites (63c42ca4, 2026-10-31, static)
+
+The five manual workflows for `63c42ca4` were dispatched and read with `gh`.
+Fuzzing passed; Linux/Android and OpenBSD stopped at a shared compile error;
+Windows MSYS2 executed 210 CTest entries with 38 failures; MSVC ran 7 IPC/TUI
+tests with one abort and one skip; Debian failed only the remove/purge check.
+
+- **CE-055:** `test-i2pcontrol-socket.cpp` called `.c_str()` on the
+  `mkdtemp` `char[]`. This single error blocked every Linux, OpenBSD and
+  sanitizer lane before any test ran; the array is passed directly now.
+- **CE-056:** Doxygen `WARN_AS_ERROR` rejected the undocumented
+  `streamRequestComplete` parameter; a scan fixed the same class in seven
+  other headers.
+- **CE-057:** Android Javadoc parsed `<tunnel>` as HTML and rejected
+  `@implNote`/`@dimen`; `{@code}` and plain prose replace them, and a new
+  `android-javadoc-static` checker pins the pattern.
+- **CE-058:** `i18n-static` re-ran `find_program(perl)` at test time and
+  silently skipped; it now receives the configure-time interpreter and fails
+  closed.
+- **CE-059/CE-061:** the Windows checkers compared native path separators and
+  used `select()` for two pipes; both are fixed. `.gitattributes` now pins LF
+  for text and marks binary payloads.
+- **CE-060:** man pages were installed only under `UNIX`; the guard is now
+  `NOT ANDROID`.
+- **CE-062/CE-063:** `keyinfo` printed partial output and failed on an
+  optional batch; `routerinfo` filtered documentation ranges through the
+  dialing admission policy. Both tools and their documented stream/exit
+  contracts were corrected, including `famtool`, `i2pbase64`,
+  `regaddr_3ld`, `b33address` and `b33offlinekeys`.
+- **CE-064:** the Debian remove assertion stat inside a 0700 state directory
+  without `sudo`, reading EACCES as a deletion. The generated postrm only
+  removes state on purge; the check now uses `sudo test`.
+- **RT-004/RT-005:** three tunnel tests segfaulted because
+  `Transports::SendMessages` posted through a null `io_context` before
+  `Start()`. The transport guards both send paths and the endpoint validates
+  its checksum-IV suffix capacity.
+- **RT-006/TF-029:** MSVC lost the race between the client hello write and the
+  server's identity-based rejection; the test tolerates the write failure and
+  keeps asserting the rejection.
+- **TF-001..TF-035:** 25 assertions were root-caused. Product fixes include
+  zero-hop outbound creation, the explicit `.b33` label, case-insensitive
+  HTTP upgrade tokens, origin-form `Host` defaults, tracker failure-ladder
+  scheduling, all-zero X25519 rejection, IPC direction invariants and the
+  terminal restart budget. Test fixes include canonical artifact names,
+  `DetectDataDir` in the direct-fallback fixture, address-validity instead of
+  `IsUnreachable`, tribool reads, digest nonce ordering and shared-identity
+  retention.
+- **Open:** `test-ssu2-control-plane` and `test-leaseset-encrypted-freshness`
+  now dump the bounded product log before their failing assertion, but the
+  exact rule is not provable statically; the Windows `i2pd --version` launch
+  hang has a bounded diagnostic driver but no proven fix.
+
+Static checks pass (all `check-*.cmake`, Perl suites, docs links/nav,
+`git diff --check`, agent-knowledge validator with the expected AK004
+warning). No compiler, CMake, CTest, Gradle, Doxygen, package, workflow,
+commit or push was performed for this increment.
+
+## Test log diagnostics for every C++ test (2026-10-31, static)
+
+`tests/log-support.cpp` is now linked into every target created by
+`i2pd_add_test()`. Its static initializer installs a synchronous sink on the
+product logger before `main`, so each sanitized record reaches stderr while the
+test is running and is still available after an `assert()` abort. The ring
+alone was insufficient: abort does not unwind, so a dump at the end of the test
+(or in a destructor) never runs, and the two ad-hoc dumps added during the
+`63c42ca4` triage only covered one assertion each; those local helpers are
+removed.
+
+The sink is fed the logger's sanitized and size-bounded copy, writes one line
+per record under its own mutex, flushes, and swallows every exception so a
+diagnostic cannot change the result. The logger copies the callback under its
+destination lock and invokes it after releasing it, so a callback cannot
+deadlock the logging path. `OPENI2PD_TEST_LOG_LEVEL` selects the level (aliases
+`warning`→`warn`; default the product `info`). Fuzz targets are excluded:
+per-input stderr output would dominate their throughput and a sanitizer report
+already names the failing input.
+
+`test-log-diagnostic-sink` pins synchronous delivery, the C0-control and
+512-byte sanitization, ring preservation and removal. `tests/check-build-system.cmake`
+pins the support linkage, the logger API and the documentation paragraph in
+`docs/testing.md`; the `openi2pd-ci` skill records why a ring dump cannot work
+for an aborting test. Static checks pass. No compiler, CTest, Gradle or
+workflow run exists for this increment; it remains Implemented / static,
+Pending CI compilation and Pending CI tests.

@@ -106,6 +106,11 @@ Ask for exact paths and package names. Do not let them run `dpkg-buildpackage`,
 
 ## Known issues and decisions
 
+- A lifecycle check inside `/var/lib/i2pd` (0700, owned by `i2pd`) must run
+  through `sudo`; an unprivileged `test -f` reports EACCES as missing. Read
+  the generated `control.tar.*` postrm before suspecting a maintainer script:
+  the current scripts remove state only on purge.
+
 - Debian `dh_compress` can compress Markdown documentation under
   `/usr/share/doc` (including nested branding files) to `.md.gz`. Keep source
   install manifests uncompressed, but make installed-package smoke checks and

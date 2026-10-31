@@ -2425,6 +2425,18 @@ parallel-safety decision. `-UNDEBUG` is mandatory for every assert-based
 executable, including `test-tools-getopt` and libFuzzer harnesses built with
 `RelWithDebInfo`.
 
+Every C++ test target created by `i2pd_add_test()` also links
+`tests/log-support.cpp`, which installs a synchronous diagnostic sink on the
+product logger so its records are written to stderr as they happen. An
+`assert()` abort skips the ring dump and any final callback, so this echo is
+the only reliable way for a failed test to explain itself in CTest:
+`test-log-diagnostic-sink` pins the sink contract and
+`tests/check-build-system.cmake` pins the linkage. `OPENI2PD_TEST_LOG_LEVEL`
+selects the level (default `info`). Fuzz targets are excluded because
+per-input stderr output would dominate their throughput. The sink must never
+throw, call `LogPrint()` or retain its `string_view`, and it must not run
+while a logger mutex is held.
+
 Every executing CTest call in a workflow uses `-j` where safe,
 `--no-tests=error` and `--output-junit`; the JUnit/`Testing` evidence is
 uploaded. A skipped stub returns 77 with a registered `SKIP_RETURN_CODE`; it
@@ -2561,3 +2573,72 @@ not a crash to suppress; a package-remove fixture must use a realistic
 subdirectory that dpkg does not prune. A jobs that stops at compile time is
 not evidence for skipped targets. No compiler, CTest, Gradle, Doxygen, package
 or workflow was run for this note.
+
+## Fifth CI batch: first executed test suites (`63c42ca4`, 2026-10-31, static)
+
+Runs 41232673150 (Linux/Android), 41232676139 (Windows), 41232678782
+(OpenBSD), 41232681811 (Fuzzing, success) and 41232685065 (Packaging) were
+read with `gh`. CE-055..CE-064 and TF-001..TF-035 in `docs/ci/` record the
+evidence. This is the first batch that executed most of the suites added by
+the static continuations, and it exposed defects that no compiler could catch.
+
+Load-bearing lessons:
+
+- `Transports::SendMessage`/`SendMessages` must not dereference `m_Service`
+  before `Start()`; the online flag defaults to true, so any component that
+  sends during startup would crash. A tunnel test that claims "no transport"
+  must call `transports.SetOnline(false)`.
+- A zero-hop outbound path is built and recreated without an inbound tunnel;
+  `OutboundPathNeedsInboundTunnel()` is the single predicate for both call
+  sites.
+- A signature-valid RouterInfo with no usable address is parseable and
+  storable for the Java 54-minute grace; tests must assert the address
+  contract (`HasValidAddresses`/`IsPublished`/`IsReachableBy`), not
+  `IsUnreachable`.
+- Cache fixtures use the canonical artifact name (`<shard>/routerInfo-<b64>.dat`,
+  `profile-<b64>.txt`, `destinations/<b32>.<type>.dat`); a prefix-less name is
+  `Foreign` and must never be loaded or deleted.
+- Boost `tribool` is read with `indeterminate()` plus an explicit boolean
+  conversion, never with `!=`/`!`.
+- HTTP `Connection` option tokens are case-insensitive: websocket upgrade
+  detection goes through `HasConnectionUpgradeToken()` in both the tunnel
+  parser and `HTTPProxy`, never a byte-exact `pgrade` search. An origin-form
+  `Host` without a port is valid and defaults to 80; only CONNECT requires an
+  explicit port.
+- A tracker response carrying `failure reason` keeps its retry ladder; the
+  next request is scheduled only in the success tail of
+  `ParseTrackerResponse`.
+- `AddressBook::GetAddress()` strips an explicit `.b33` before reading the
+  final label; reading it after only `.i2p` yields the literal `b33` and makes
+  every explicit b33 name unresolvable.
+- An all-zero X25519 scalar is not key material; the load paths fail closed,
+  and `CreateECIESX25519AEADRatchetRandomKeys` wipes every non-null output
+  buffer on failure, so callers must use scratch buffers.
+- IPC direction is a compile-time registry property: a request is received by
+  workers only (the Windows pre-dispatch `WorkerHello` is the sole exception),
+  a reply by the requesting side, and the typed `Error` is receivable by any
+  endpoint. `ValidateDirectionInvariants()` must keep covering the whole table.
+- The restart ladder's eight waits total 61.75 s (the eighth is the 30 s cap),
+  so it spans more than one stable period. It is a count budget with a
+  terminal state, not a rolling window, and a late stability observation must
+  not revive a spent budget.
+- Tool CLI streams: every section is validated before the first stdout byte;
+  `-h` is stdout/0, usage/runtime errors are stderr/non-zero, and an optional
+  file section succeeds with a stderr note. `routerinfo` disables the
+  transports reserved-range admission for its own inspection process but keeps
+  the public-endpoint policy for generated rules.
+- Repository-relative path comparisons in Perl/CMake normalise separators (and
+  case-fold on Windows) in one helper; Win32 `select()` is sockets-only, so a
+  two-pipe child capture merges stderr instead. `.gitattributes` pins LF for
+  text so a Windows checkout cannot turn the catalogs into CRLF.
+- Man pages belong to their component on every non-Android platform. A
+  workflow check against a 0700 service directory needs `sudo`; EACCES is not
+  "missing". A GUI-subsystem Windows binary under headless CTest must be
+  launched by a bounded driver that reports its exit status and output.
+
+Two tests remain `CI failure` with diagnostics rather than a proven fix:
+`test-ssu2-control-plane` (locally produced RouterInfo fails its own re-parse)
+and `test-leaseset-encrypted-freshness` (hand-rolled sealed fixture does not
+parse), plus the Windows `i2pd-version` launch hang. No compiler, CTest,
+Gradle, Doxygen, package or workflow was run for this note; every entry is
+Implemented / static until the corrected revision passes a manual dispatch.
