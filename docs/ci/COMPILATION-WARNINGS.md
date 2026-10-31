@@ -169,6 +169,9 @@ compiler output and successful sibling Fuzzing/container/static-musl builds
 still expose the warning families above. No partial or failed job establishes
 that skipped downstream targets are warning-free.
 
+| Direct Asio address formatting (`strcat` linker warning) | OpenBSD run `41229377388`, `libi2pdclient.a(SOCKS.cpp)` referencing `boost::asio::detail::socket_ops::inet_ntop`; historical warning in `SSU2.cpp` and `SOCKS.cpp`. | `LogPrint` excludes Asio endpoint types and SOCKS uses `i2p::util::net::FormatAddress`; direct `to_string()` calls must be searched globally. Pending OpenBSD CI. |
+| Windows core-side typed Error send | MSVC run `41229371203`, `test-privsep-windows-ipc` direction assertion. | `WindowsChannel::Send` already permitted `Error` from both directions; the frame-bound test was corrected to send requests from the core. Pending Windows CI. |
+
 ## Warning-policy status
 
 `i2pd_warnings` currently uses GCC/Clang `-Wall -Wextra -Wpedantic` and MSVC
@@ -182,3 +185,45 @@ would currently obscure classification by turning every warning into an
 untriaged build failure. Reassess after a full matrix reports zero owned
 warnings, then enable strict enforcement without applying it to third-party
 headers.
+
+## Third/fourth batch current warnings (`00929cd1`)
+
+- **SOCKS Asio formatter:** OpenBSD run 41229377388 reported `strcat()` from
+  `libi2pdclient.a(SOCKS.cpp)`'s Boost.Asio `inet_ntop`; two direct
+  `address_v4/address_v6::to_string()` calls now use
+  `i2p::util::net::FormatAddress`. Pending OpenBSD CI.
+- **MSVC D9025 (`/DNDEBUG` overridden by `/UNDEBUG`):** intentional for the
+  assert-based Windows test lane; not a source defect. The test target keeps
+  assertions and documents the override.
+- **Lintian `no-manual-page` for native tools:** observed in Debian run
+  41229383879 for the fifteen tools. These are real documentation gaps, not
+  suppressed: track them as packaging documentation debt and add man pages or
+  an explicit release decision before declaring the packaging lane
+  warning-free.
+- **Static package changelog warnings:** `wrong-name-for-upstream-changelog`
+  and `syntax-error-in-debian-changelog` come from shipping the repository
+  `ChangeLog` in the standalone package. The static-package override now
+  records this intentional upstream-changelog choice.
+- **`shared-library-lacks-prerequisites` on the static binary:** the workflow
+  verifies `statically linked`; the static-package override now records the
+  self-contained-binary classification. Revisit if the artifact inspection
+  shows a real missing dependency.
+- **Autopkgtest `--force-yes` deprecation:** external tool output from the
+  released autopkgtest, not a project source warning. Track the runner/tool
+  upgrade rather than changing package behavior.
+
+No current compiler warning is claimed fixed by CI until a new manual dispatch
+reports it absent. Lintian and autopkgtest messages are kept in the packaging
+category.
+
+### CE-053 — Remaining MSVC narrowing/macro warnings
+
+- **Run/job:** Windows 41229371203, MSVC job 124620132332.
+- **Diagnostics:** `std::tuple<uint32_t,uint32_t,uint32_t>` initialized from
+  `size_t` in `Torrents.cpp:3082`; `uint64_t` to `uint8_t` for
+  `SetFilePriority`; `int64_t` to `long` in `tui/main.cpp`; `wchar_t` to
+  `char` in `test-privsep-windows-ipc.cpp`; `WIN32_LEAN_AND_MEAN`/`NOMINMAX`
+  redefinition in `test-tui-win32-pipe.cpp`.
+- **Correction:** explicit bounded casts at the wire/test sites, `NarrowHex`
+  for ASCII nonce hex, `long` for `time_t`, and macro guards.
+- **State:** corrected by static analysis; Pending Windows CI.

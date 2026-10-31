@@ -62,13 +62,20 @@ compile or link failure.
 | [41226173721](https://github.com/daviduhden/openi2pd/actions/runs/41226173721) | OpenBSD | `abe09136` | failure (shared test compile) |
 | [41226176399](https://github.com/daviduhden/openi2pd/actions/runs/41226176399) | Fuzzing | `abe09136` | success (contains compiler warnings) |
 | [41226179732](https://github.com/daviduhden/openi2pd/actions/runs/41226179732) | Packaging and service validation | `abe09136` | failure (Debian remove-preservation assertion) |
+| [41229374061](https://github.com/daviduhden/openi2pd/actions/runs/41229374061) | Linux and Android | `00929cd1` | failure (shared test compile; Android R8 probe) |
+| [41229377388](https://github.com/daviduhden/openi2pd/actions/runs/41229377388) | OpenBSD | `00929cd1` | failure (shared test compile) |
+| [41229371203](https://github.com/daviduhden/openi2pd/actions/runs/41229371203) | Windows | `00929cd1` | failure (MinGW compile; MSVC test assertions) |
+| [41229380998](https://github.com/daviduhden/openi2pd/actions/runs/41229380998) | Fuzzing | `00929cd1` | success |
+| [41229383879](https://github.com/daviduhden/openi2pd/actions/runs/41229383879) | Packaging and service validation | `00929cd1` | failure (Debian remove-preservation assertion) |
 
-The five newest runs used branch `main` at full SHA
-`abe09136c84d1a4df487306dad6a7eb8e2034806`. The paginated Actions API
+The newest five runs used branch `main` at full SHA
+`00929cd177a981357b73de172ed7c7406a5e397e`. The previous five used
+`abe09136c84d1a4df487306dad6a7eb8e2034806`; the paginated Actions API
 returned 206 retained runs across 11 workflow names and 43 SHAs. The Linux,
-OpenBSD, MSYS2 and Debian job logs and available artifacts were inspected;
-OpenBSD had no downloadable artifact. The Android job stopped before Gradle,
-and its locale failure is separate from the shared C++ test compile error.
+OpenBSD, MSYS2, Android and Debian job logs and available artifacts were
+inspected. In the newest batch Android built the APK but its D8/R8 cache probe
+could not find the AGP-resolved R8 jar; that tooling failure is separate from
+the shared C++ test compile error.
 
 The `b25d0c3a` batch was dispatched on 2026-10-27 between 15:34:52 and
 15:35:02 UTC. Each run above is on branch `main`; the full SHA is
@@ -469,7 +476,7 @@ observed. No local compile or test was run.
   stability per generation.
 - **Files:** `tests/test-privsep-windows-ipc.cpp`,
   `tests/test-privsep-windows-supervisor.cpp`.
-- **State:** Corregido mediante análisis estático; **Pending CI tests**. The
+- **State:** Corrected by static analysis; **Pending CI tests**. The
   MSVC compile/link step succeeded on the recorded SHA; no runtime result on
   the corrected source exists.
 
@@ -486,7 +493,7 @@ observed. No local compile or test was run.
 - **Correction:** pin the existing native parity by expecting that bounded
   opaque name to pass; do not use the name as filesystem authority.
 - **Files:** `android/app/src/test/java/org/openi2pd/router/RuntimeAdminPolicyTest.java`.
-- **State:** Corregido mediante análisis estático; **Pending CI tests**. JNI
+- **State:** Corrected by static analysis; **Pending CI tests**. JNI
   compilation passed in this job; Java unit failure stopped later Gradle
   steps. The earlier `string_view` JNI compilation diagnostic in run
   40416816523 is obsolete after direct `std::string` initialization.
@@ -503,7 +510,7 @@ observed. No local compile or test was run.
   but omitted the source byte-count parameter.
 - **Correction:** document `len1` as the number of available source bytes.
 - **Files:** `libi2pd/I2NPProtocol.h`.
-- **State:** Corregido mediante análisis estático; **Pending CI tests**.
+- **State:** Corrected by static analysis; **Pending CI tests**.
 
 ### CE-019 — ShellCheck SC2015 in the Java 25 configuration probe
 
@@ -518,7 +525,7 @@ observed. No local compile or test was run.
   diagnostic as a failure.
 - **Correction:** use an explicit `if` testing each missing version component.
 - **Files:** `android/tools/java25-probe/check-config.sh`.
-- **State:** Corregido mediante análisis estático; **Pending CI tests**.
+- **State:** Corrected by static analysis; **Pending CI tests**.
 
 ### CE-020 — Static-PIE verification rejects the `file` description
 
@@ -534,7 +541,7 @@ observed. No local compile or test was run.
   requirement remains a static binary.
 - **Files:** `.github/workflows/packaging.yml`,
   `tests/check-packaging.cmake`.
-- **State:** Corregido mediante análisis estático; **Pending CI tests**.
+- **State:** Corrected by static analysis; **Pending CI tests**.
   This is a verification-script failure, not a compiler or linker failure.
 
 ### CE-021 — Debian override file names a different binary package
@@ -553,7 +560,7 @@ observed. No local compile or test was run.
   pin package ownership in the static packaging contract.
 - **Files:** `debian/i2pd.lintian-overrides`,
   `debian/i2pd-tui.lintian-overrides`, `tests/check-packaging.cmake`.
-- **State:** Corregido mediante análisis estático; **Pending CI tests**.
+- **State:** Corrected by static analysis; **Pending CI tests**.
 
 The historical `b33offlinekeys` namespace error from SHA `88ac1e92` is
 obsolete: current source qualifies `i2p::tools::LoadPrivateKeys`, and the
@@ -1080,3 +1087,84 @@ workflow was run.
 - **Correction:** The checker now requires only `other` for zh-CN and rejects extra Chinese quantities. An isolated fixture covers acceptance, missing `other` and unused `one`; locale matrix and Android/i18n guidance are synchronized.
 - **Files:** `android/tools/check-android-locales.pl`, `tools/tests/maintenance-checkers.t`, `tests/check-i18n.cmake`, locale documentation and Android/i18n skills.
 - **State:** Corrected locally by static analysis; static locale/i18n contracts pass. Fixture, Gradle/JNI/Lint/APK and full Android matrix remain pending CI.
+
+## Third batch (`00929cd1`, 2026-10-31)
+
+Runs: Linux/Android [41229374061](https://github.com/daviduhden/openi2pd/actions/runs/41229374061), OpenBSD [41229377388](https://github.com/daviduhden/openi2pd/actions/runs/41229377388), Windows [41229371203](https://github.com/daviduhden/openi2pd/actions/runs/41229371203), Fuzzing [41229380998](https://github.com/daviduhden/openi2pd/actions/runs/41229380998) (success) and Packaging [41229383879](https://github.com/daviduhden/openi2pd/actions/runs/41229383879).
+
+### CE-048 — Shared test misses the `i2p::client` garlic/DataMessage contract
+
+- **Diagnostic:** `tests/test-i2np-dispatch-policy.cpp:289` uses
+  `IsValidDataMessageLength` unqualified; lines 298-301 use
+  `MAX_INCOMING_GARLIC_QUEUE`/`IsIncomingGarlicQueueFull`.
+- **Cause:** the declarations live in `i2p::client::Destination.h`; the test
+  imported only `i2p`.
+- **Correction:** include `Destination.h` and import `i2p::client`; no test
+  logic changed.
+- **State:** Corrected by static analysis; Pending CI compilation.
+
+### CE-049 — Windows IPC direction rejected the core's typed Error
+
+- **Diagnostics:** MSVC `test-privsep-windows-ipc` assertion at line 735,
+  `delivered.has_value() && delivered->has_value()`; the test sent a request
+  from an unbound worker-side channel and the core refused it, then could not
+  send the promised `Error` because core-side `Send` allowed only request
+  types.
+- **Correction:** the channel already allowed the core to send `Error` for
+  attributable refusals; the max-payload case was sending a request from the
+  worker side and expecting the core to deliver it. The test now sends that
+  request from the core to the worker, while the oversized-frame case keeps
+  exercising the typed Error path.
+- **State:** Corrected by static analysis; Pending CI tests.
+
+### CE-050 — Windows supervisor created the AppContainer before root validation
+
+- **Diagnostic:** MSVC `test-privsep-windows-supervisor` assertion at line 344,
+  handle count above baseline after a Storage role with no delegated root.
+- **Cause:** `Start()` created the AppContainer profile before checking
+  `persistentWriteRoot`; the one-time profile/runtime allocations survived the
+  terminal failure, violating the test's fail-closed/no-handle contract.
+- **Correction:** validate the root before creating the container; the
+  container is released on the remaining failure paths as before.
+- **State:** Corrected by static analysis; Pending CI tests.
+
+### CE-051 — Debian remove fixture used an unowned root-level marker
+
+- **Diagnostic:** Packaging 41229383879, Debian job, `FAIL: remove deleted
+  persistent state under /var/lib/i2pd` after `apt-get remove`.
+- **Cause:** the test seeded a root-level file in the package-owned
+  `/var/lib/i2pd`; the package/dpkg removal of the package-owned directory can
+  prune an otherwise empty tree, so the fixture did not represent router state.
+- **Correction:** seed a real `netDb/.ci-remove-preservation` file under the
+  state directory, assert it before removal, and assert it (and the conffile)
+  after remove; purge still requires the state tree to disappear. The checker
+  pin follows the new paths.
+- **State:** Corrected by static analysis; Pending CI package
+  validation.
+
+### CE-052 — OpenBSD linker warning from SOCKS Asio address formatting
+
+- **Diagnostic:** OpenBSD 41229377388, linker warning
+  `strcat() is almost always misused` in
+  `boost::asio::detail::socket_ops::inet_ntop` from `SOCKS.cpp`.
+- **Cause:** two `address_v4/address_v6::to_string()` calls instantiated
+  Boost's POSIX scope-ID formatter; the generic `LogPrint` fix does not cover
+  direct `to_string` calls.
+- **Correction:** use `i2p::util::net::FormatAddress` for both address results.
+- **State:** Corrected by static analysis; Pending OpenBSD CI.
+
+### CE-054 — Android R8 probe assumed one Gradle cache layout
+
+- **Run/job:** Linux and Android `41229374061`, Android job `124620143074`.
+- **First diagnostic:** `AGP-resolved R8 jar not found in the Gradle cache
+  after assembleDebug`; `assembleDebug` itself succeeded and produced the APK.
+- **Cause:** the probe searched only
+  `~/.gradle/caches/modules-2/files-2.1/com.android.tools/**/r8/*`. AGP 9.4
+  may resolve R8 under `com.android.tools.build` or reuse a cache restored
+  without that artifact; the failure was tooling discovery, not Java/R8
+  lowering.
+- **Correction:** search the entire Gradle user home for `r8-*.jar`/`r8.jar`,
+  then fall back to the SDK build-tools `r8*.jar`/`d8.jar`; print found paths
+  on failure. The D8/R8 `--min-api 29` probe itself is unchanged.
+- **Files:** `.github/workflows/build.yml`.
+- **State:** Corrected by static analysis; **Pending Android CI**.
