@@ -48,9 +48,8 @@ namespace data
 			// X509_NAME_oneline() text format, which truncates long names and
 			// confuses escaped separators.
 			std::array<char, 256> name { };
-			const int length
-				= i2p::crypto::GetX509NameTextByNID (
-					X509_get_issuer_name (cert), NID_commonName, name.data (), static_cast<int> (name.size ()));
+			const int length = i2p::crypto::GetX509NameTextByNID (
+				X509_get_issuer_name (cert), NID_commonName, name.data (), static_cast<int> (name.size ()));
 			if (length <= 0) return { };
 			std::string_view view (name.data (), static_cast<size_t> (length));
 			const auto suffix = view.find (".family");

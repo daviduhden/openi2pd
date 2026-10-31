@@ -69,8 +69,8 @@ namespace transport
 	{
 	public:
 		virtual ~ITransportConnector () = default;
-		[[nodiscard]] virtual bool TryConnect (
-			const TransportConnectContext & connectContext, i2p::data::RouterInfo::SupportedTransports transport) const = 0;
+		[[nodiscard]] virtual bool TryConnect (const TransportConnectContext & connectContext,
+			i2p::data::RouterInfo::SupportedTransports transport) const = 0;
 	};
 
 	class NTCP2Connector final : public ITransportConnector

@@ -1104,9 +1104,8 @@ namespace data
 		// X509_NAME_oneline() format truncates long or escaped names and is
 		// not a stable parser.
 		char name[256] = { };
-		const int cnLength
-			= i2p::crypto::GetX509NameTextByNID (
-				X509_get_issuer_name (cert.get ()), NID_commonName, name, static_cast<int> (sizeof (name)));
+		const int cnLength = i2p::crypto::GetX509NameTextByNID (
+			X509_get_issuer_name (cert.get ()), NID_commonName, name, static_cast<int> (sizeof (name)));
 		char * cn = cnLength > 0 ? name : nullptr;
 
 		// Extract the signing key. RSA keeps the modulus only (e = 65537).

@@ -74,8 +74,10 @@ namespace tunnel
 				else
 				{
 					auto delivery = static_cast<TunnelDeliveryType> ((flag >> 5) & 0x03);
-					if (delivery == eDeliveryTypeTunnel) headerSize += 4 + 32;
-					else if (delivery == eDeliveryTypeRouter) headerSize += 32;
+					if (delivery == eDeliveryTypeTunnel)
+						headerSize += 4 + 32;
+					else if (delivery == eDeliveryTypeRouter)
+						headerSize += 32;
 					if (flag & 0x08) headerSize += 4; // fragmented first message ID
 				}
 				if (static_cast<size_t> (end - fragment) < headerSize)
