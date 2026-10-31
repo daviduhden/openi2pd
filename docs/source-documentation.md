@@ -34,6 +34,17 @@ instead of claiming the target design.
 Every change updates the comments it invalidates. A comment that contradicts
 the code is a defect, not legacy noise.
 
+When reflowing a C-style or Doxygen block, preserve its single opening
+delimiter and matching `*/`. Continuation lines begin with `*`; do not emit a
+new `/*` marker for each wrapped line.
+
+Write for a human maintainer in technical American English; use ASCII unless
+an identifier or source format requires otherwise. Keep comment lines to 72
+characters or fewer, except where a tool or format imposes a documented
+constraint. Explain verified intent and contracts, not the next statement.
+Inspect behavior before adding prose. Remove or correct comments that are
+stale, ambiguous, duplicated or contradicted by the implementation.
+
 ## C++23
 
 Use Doxygen for public headers and non-obvious implementation helpers:
@@ -43,10 +54,10 @@ Use Doxygen for public headers and non-obvious implementation helpers:
  * @brief Apply one authenticated tunnel-layer block.
  * @param iv 16-byte IV; the caller retains ownership.
  * @param data decrypted payload, possibly empty.
- * @return false when the AEAD tag or length check fails; @a data is then
+ * @return false when the AEAD tag or length check fails; @a data is
  *         cleared and must not be forwarded.
  * @pre The layer key has been installed by the tunnel-build path.
- * @warning Runs on the transport thread; never call with a netDb lock held.
+ * @warning Runs on the transport thread; do not hold a netDb lock.
  */
 bool ProcessBlock (const uint8_t * iv, std::span<uint8_t> data);
 ```
@@ -152,6 +163,10 @@ and unresolved warnings as `Pending CI` until the manual lane passes.
 - Bounds, deadlines and failure cleanup are explicit.
 - Trust-boundary and secret-handling statements are accurate.
 - No `*/` appears inside comment prose.
+- Comment lines are at most 72 characters, except documented format/tool
+  constraints.
+- Wording is concise, technically precise, American English and ASCII by
+  default; it adds information instead of narrating code.
 - No TODO/FIXME marker is added without a tracked task or an explicit
   "unfinished" statement.
 - The change contains comments only, unless a separately reviewed defect fix

@@ -88,6 +88,10 @@ branding validators or a build.
 
 - Coordinate source comments and optional API documentation with the owning
   subsystem under the [source documentation policy](../../../AGENTS.md#source-documentation-policy).
+- Inspect the implementation before writing source comments. Prefer concise
+  technical American English and ASCII; keep comment lines within 72 columns
+  unless the source format or documentation tool requires otherwise. Review
+  existing comments for correctness as well as additions.
 
 - Use the short project license reference for first-party source/config/script
   headers:
@@ -113,6 +117,11 @@ branding validators or a build.
   than rewriting history without cause.
 
 ## Known issues and decisions
+
+- Reflowing a one-line Doxygen block can remove its closing delimiter if the
+  wrapper treats `/** ... */` as ordinary prose. Preserve one opener, `*`
+  continuation lines and one closer; scan changed C/C++ sources for repeated
+  block openers before review.
 
 - Claims must distinguish static implementation, pending CI compilation,
   pending CI tests and validated-by-CI. Historical local-run rows in

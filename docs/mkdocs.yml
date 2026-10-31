@@ -1,14 +1,15 @@
-# See the LICENSE file at the top of the project tree for copyright
-# and license details.
+# See the LICENSE file at the top of the project tree for copyright and
+# license details.
 #
 # openi2pd: mkdocs.
 #
 # MkDocs configuration that publishes the documentation tree to
-# build-output/docs with fixed navigation and the openi2pd brand stylesheet.
+# build-output/docs with fixed navigation and the openi2pd brand
+# stylesheet.
 #
 
-# Optional static-publication configuration. The daemon, CMake build, TUI and
-# tests do not invoke MkDocs or require it at runtime.
+# Optional static-publication configuration. The daemon, CMake build,
+# TUI and tests do not invoke MkDocs or require it at runtime.
 ---
 site_name: openi2pd documentation
 site_description: Documentation for the openi2pd router, libraries, TUI and tools

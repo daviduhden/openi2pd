@@ -84,6 +84,11 @@ the current tree before applying a fix; group cascading messages by root cause
 and separate source errors from warnings-as-errors, test failures, packaging
 checks and runner/dependency failures. A run that stopped before a target is
 not evidence that the skipped target links successfully.
+When a diagnostic recurs, compare earlier runs and record every affected lane
+under one root-cause entry in `docs/ci/COMPILATION-ERRORS.md`; distinguish
+compile/link failures from CTest failures and output-path/package assertions.
+For component-consumer or package-install failures, inspect the exact-run
+uploaded install/package artifact before changing install manifests.
 For package errors in generated maintainer scripts, download the artifact for
 that exact run and inspect the generated control archive before changing
 packaging hooks; related regular/static package trees can have different
@@ -357,10 +362,21 @@ executor for blocking calls, deadlines and admission quotas.
   describe current guarantees and track unfinished protections separately.
 - Update affected comments whenever implementation or interfaces change.
   Do not retain comments that contradict the code or claim unverified behavior.
-- Write comments in English, explaining intent and non-obvious constraints
-  rather than restating instructions. Use Doxygen for public C++ interfaces,
-  Javadoc for relevant Java interfaces, idiomatic Perl comments/POD and POSIX
-  shell comments as appropriate; avoid boilerplate for trivial operations.
+- Analyze the implementation before documenting it. Write comments for human
+  maintainers in technical American English, using ASCII by default. Keep
+  comment lines at or below 72 characters unless the source format or tool
+  imposes a documented exception. Explain intent, contracts and non-obvious
+  constraints rather than restating instructions. Use Doxygen for public C++
+  interfaces, Javadoc for relevant Java interfaces, idiomatic Perl comments/
+  POD and POSIX shell comments as appropriate; avoid trivial or generated
+  boilerplate.
+- Correct or remove stale, ambiguous, duplicated or misleading comments.
+  Functional changes require review of nearby comments and public API docs;
+  documentation-only passes must not change executable statements or
+  configuration values.
+- When reflowing C-style or Doxygen blocks, preserve one opening delimiter
+  and the matching closing delimiter; continuation lines use `*`, not a new
+  `/*` opener.
 - Documentation generation and validation run only in manual CI. Document
   source-level findings and retain pending CI states until that revision passes.
   The language-specific checklist and the current `source_docs` lane live in

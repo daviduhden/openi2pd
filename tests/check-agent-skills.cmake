@@ -1,11 +1,11 @@
-# See the LICENSE file at the top of the project tree for copyright
-# and license details.
+# See the LICENSE file at the top of the project tree for copyright and
+# license details.
 #
 # openi2pd: check Agent Skills.
 #
-# Static CTest check of the .agents/skills contract. It reads the checked-in
-# SKILL.md files and references only; it does not execute a skill, build a
-# target, run a workflow or call an external validator.
+# Static CTest check of the .agents/skills contract. It reads the
+# checked-in SKILL.md files and references only; it does not execute a
+# skill, build a target, run a workflow or call an external validator.
 #
 # It verifies:
 # - every expected openi2pd-* directory has a SKILL.md;
@@ -21,8 +21,8 @@ if(NOT PROJECT_ROOT)
   message(FATAL_ERROR "PROJECT_ROOT is required")
 endif()
 
-# Script mode does not inherit the project's minimum version, so enable the
-# in-list operator used by the README inventory check explicitly.
+# Script mode does not inherit the project's minimum version, so enable
+# the in-list operator used by the README inventory check explicitly.
 cmake_policy(SET CMP0057 NEW)
 
 set(skills_root "${PROJECT_ROOT}/.agents/skills")
@@ -103,8 +103,8 @@ foreach(expected IN LISTS expected_skills)
     message(FATAL_ERROR "README inventory does not list ${expected}")
   endif()
 endforeach()
-# file(READ) keeps semicolons that would split a list; iterate real lines so
-# every referenced skill is validated independently.
+# file(READ) keeps semicolons that would split a list; iterate real
+# lines so every referenced skill is validated independently.
 file(STRINGS "${readme_file}" readme_lines)
 foreach(line IN LISTS readme_lines)
   if(line MATCHES "`(openi2pd-[a-z0-9-]+)`")
@@ -115,7 +115,8 @@ foreach(line IN LISTS readme_lines)
   endif()
 endforeach()
 
-# The inventory is bidirectional: no unlisted openi2pd-* directory may hide.
+# The inventory is bidirectional: no unlisted openi2pd-* directory may
+# hide.
 file(GLOB skill_entries LIST_DIRECTORIES true "${skills_root}/*")
 set(actual_skills)
 foreach(entry IN LISTS skill_entries)

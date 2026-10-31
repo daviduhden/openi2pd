@@ -77,7 +77,7 @@ class Change:
 
 
 class ValidationError(Exception):
-    """A repository, Git, or configuration error that prevents validation."""
+    """A repository, Git, or config error that prevents validation."""
 
 
 def run_git(root: Path, *args: str, check: bool = True) -> str:
@@ -97,7 +97,8 @@ def run_git(root: Path, *args: str, check: bool = True) -> str:
 
 
 def find_repository_root(cwd: Path) -> Path:
-    """Return the current worktree root; do not infer it from this script's path."""
+    """Return the worktree root without inferring it from this script.
+    """
     output = run_git(cwd, "rev-parse", "--show-toplevel")
     return Path(output.strip()).resolve()
 
@@ -240,7 +241,7 @@ def parse_config(root: Path) -> dict[str, Any]:
 
 
 def is_instruction(path: str, extra_globs: Sequence[str] = ()) -> bool:
-    """Classify supported agent, skill, and tool instruction documents."""
+    """Classify supported agent, skill, and tool instruction files."""
     posix = PurePosixPath(path)
     if posix.name in INSTRUCTION_NAMES or posix.name.endswith(INSTRUCTION_SUFFIXES):
         return True
@@ -276,7 +277,9 @@ def parse_name_status(raw: str) -> list[Change]:
 def discover_changes(
     root: Path, scope: str, base: str | None, head: str | None
 ) -> list[Change]:
-    """Find tracked, untracked, staged, unstaged, renamed, and deleted paths."""
+    """Find tracked, untracked, staged, unstaged, renamed, and deleted
+    paths.
+    """
     if scope == "worktree":
         tracked = run_git(root, "diff", "--name-status", "-z", "--no-renames", "HEAD")
         changes = parse_name_status(tracked)
@@ -307,7 +310,7 @@ def _deduplicate_changes(changes: Sequence[Change]) -> list[Change]:
 
 
 def resolve_commit(root: Path, revision: str) -> str:
-    """Resolve a Git revision to a commit or raise a configuration error."""
+    """Resolve a Git revision or raise a configuration error."""
     result = subprocess.run(
         ["git", "-C", str(root), "rev-parse", "--verify", f"{revision}^{{commit}}"],
         text=True,
@@ -377,7 +380,8 @@ def changed_content(
 
 
 def normalize_knowledge_line(line: str) -> str:
-    """Ignore whitespace, headings, comments, and metadata-only edits."""
+    """Ignore whitespace, headings, comments, and metadata-only edits.
+    """
     content = line.strip()
     if not content or content.startswith(("#", "<!--", "-->")):
         return ""
@@ -389,7 +393,8 @@ def normalize_knowledge_line(line: str) -> str:
 
 
 def update_metrics(added: Sequence[str], removed: Sequence[str]) -> tuple[int, int]:
-    """Count effective changed lines and characters after canceling formatting edits."""
+    """Count effective lines and characters after edits cancel.
+    """
     remaining_added = list(added)
     remaining_removed: list[str] = []
     for old in removed:
@@ -405,7 +410,8 @@ def update_metrics(added: Sequence[str], removed: Sequence[str]) -> tuple[int, i
 def substantive_update(
     added: Sequence[str], removed: Sequence[str], minimum_lines: int
 ) -> bool:
-    """Reject whitespace-only edits and require meaningful content changes."""
+    """Reject whitespace-only edits; require meaningful content changes.
+    """
     line_count, effective_chars = update_metrics(added, removed)
     return line_count >= minimum_lines and effective_chars >= 24
 
@@ -435,7 +441,8 @@ def validate_structure(
     required_headings: dict[str, list[str]],
     required_phrases: dict[str, list[str]],
 ) -> list[tuple[str, str]]:
-    """Validate recognized instruction conventions using partial frontmatter checks."""
+    """Validate instruction conventions with partial frontmatter checks.
+    """
     errors: list[tuple[str, str]] = []
     for relative in paths:
         path = root / relative
@@ -509,7 +516,7 @@ def validate_extensions(
     config: dict[str, Any],
     skill_names: set[str],
 ) -> list[tuple[str, str]]:
-    """Run explicitly configured repository-specific checks under AKX001."""
+    """Run explicitly configured repository checks under AKX001."""
     errors: list[tuple[str, str]] = []
     for relative in paths:
         try:
@@ -578,7 +585,9 @@ def validate_extensions(
 
 
 def parse_frontmatter_fields(text: str) -> dict[str, str] | None:
-    """Read simple top-level frontmatter fields; this is not a YAML parser."""
+    """Read simple top-level frontmatter fields; this is not a YAML
+    parser.
+    """
     match = re.match(r"\A---\s*\n(.*?)\n---\s*(?:\n|$)", text, re.DOTALL)
     if not match:
         return None
@@ -633,7 +642,9 @@ def validate_references(root: Path, paths: Sequence[str]) -> list[tuple[str, str
 def find_duplicate_or_conflicting(
     paths: Sequence[str], root: Path
 ) -> tuple[list[str], list[str]]:
-    """Find exact duplicate instruction files and literal modal contradictions."""
+    """Find exact duplicate instructions and literal modal
+    contradictions.
+    """
     duplicates: list[str] = []
     conflicts: list[str] = []
     by_content: dict[str, list[str]] = defaultdict(list)
