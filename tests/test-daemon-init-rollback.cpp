@@ -25,6 +25,7 @@ int main ()
 	int loggingResources = 0;
 	int cryptoResources = 0;
 	int storageResources = 0;
+	int dataStorageResources = 0;
 	int contextResources = 0;
 
 	const auto failedAttempt = [&] (bool throwAfterContext, bool throwDuringCleanup)
@@ -41,12 +42,14 @@ int main ()
 					--storageResources;
 					if (throwDuringCleanup) throw std::runtime_error ("injected cleanup failure");
 					break;
+				case DaemonInitPhase::DataStorage: --dataStorageResources; break;
 				case DaemonInitPhase::Crypto: --cryptoResources; break;
 				}
 			});
 		transaction.Run (DaemonInitPhase::Logging, [&] { ++loggingResources; });
 		transaction.Run (DaemonInitPhase::Crypto, [&] { ++cryptoResources; });
 		transaction.Run (DaemonInitPhase::RouterStorage, [&] { ++storageResources; });
+		transaction.Run (DaemonInitPhase::DataStorage, [&] { ++dataStorageResources; });
 		transaction.Run (DaemonInitPhase::RouterContext, [&] { ++contextResources; });
 		if (throwAfterContext) throw std::runtime_error ("injected init failure");
 		return false;
@@ -54,12 +57,14 @@ int main ()
 
 	const bool reportedFailure = failedAttempt (false, false);
 	assert (!reportedFailure);
-	assert (loggingResources == 0 && cryptoResources == 0 && storageResources == 0 && contextResources == 0);
-	assert (released.size () == 4);
+	assert (loggingResources == 0 && cryptoResources == 0 && storageResources == 0 && dataStorageResources == 0
+		&& contextResources == 0);
+	assert (released.size () == 5);
 	assert (released[0] == DaemonInitPhase::RouterContext);
-	assert (released[1] == DaemonInitPhase::RouterStorage);
-	assert (released[2] == DaemonInitPhase::Crypto);
-	assert (released[3] == DaemonInitPhase::Logging);
+	assert (released[1] == DaemonInitPhase::DataStorage);
+	assert (released[2] == DaemonInitPhase::RouterStorage);
+	assert (released[3] == DaemonInitPhase::Crypto);
+	assert (released[4] == DaemonInitPhase::Logging);
 
 	released.clear ();
 	bool originalErrorPreserved = false;
@@ -72,12 +77,14 @@ int main ()
 		originalErrorPreserved = std::string (error.what ()) == "injected init failure";
 	}
 	assert (originalErrorPreserved);
-	assert (loggingResources == 0 && cryptoResources == 0 && storageResources == 0 && contextResources == 0);
-	assert (released.size () == 4);
+	assert (loggingResources == 0 && cryptoResources == 0 && storageResources == 0 && dataStorageResources == 0
+		&& contextResources == 0);
+	assert (released.size () == 5);
 	assert (released[0] == DaemonInitPhase::RouterContext);
-	assert (released[1] == DaemonInitPhase::RouterStorage);
-	assert (released[2] == DaemonInitPhase::Crypto);
-	assert (released[3] == DaemonInitPhase::Logging);
+	assert (released[1] == DaemonInitPhase::DataStorage);
+	assert (released[2] == DaemonInitPhase::RouterStorage);
+	assert (released[3] == DaemonInitPhase::Crypto);
+	assert (released[4] == DaemonInitPhase::Logging);
 
 	// The unsupported isolated-storage path returns false before the
 	// router context phase begins; only phases already acquired are
@@ -105,6 +112,7 @@ int main ()
 		transaction.Run (DaemonInitPhase::Logging, [] { });
 		transaction.Run (DaemonInitPhase::Crypto, [] { });
 		transaction.Run (DaemonInitPhase::RouterStorage, [] { });
+		transaction.Run (DaemonInitPhase::DataStorage, [] { });
 		transaction.Run (DaemonInitPhase::RouterContext, [] { });
 		transaction.Commit ();
 	}
