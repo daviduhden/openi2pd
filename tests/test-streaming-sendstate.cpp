@@ -47,7 +47,10 @@ struct SendResult
 	bool called = false;
 };
 
-// Queues one write and runs the posted send work deterministically.
+// Queues one write and runs the posted send work. AsyncSend() posts the
+// buffer onto the stream's io_context, so the completion is delivered
+// from a handler, never from the call itself. Drain until the handler
+// ran instead of assuming one poll() pass reaches it.
 void Write (boost::asio::io_context & service, i2p::stream::Stream & stream, SendResult & result)
 {
 	stream.AsyncSend (TEST_PAYLOAD, sizeof (TEST_PAYLOAD),
@@ -57,7 +60,7 @@ void Write (boost::asio::io_context & service, i2p::stream::Stream & stream, Sen
 			result.transferred = len;
 			result.called = true;
 		});
-	service.poll ();
+	for (int pass = 0; pass < 4 && !result.called; ++pass) service.poll ();
 }
 } // namespace
 

@@ -225,7 +225,7 @@ void TestDuplicateParameter ()
 {
 	// A repeated key is reported, whatever the value form is (Java
 	// SAMUtils.parseParams throws, which closes the control connection).
-	assert (!ParseSAMParams ("ID=a ID=b").duplicate);
+	assert (ParseSAMParams ("ID=a ID=b").duplicate);
 	assert (ParseSAMParams ("ID=a id=b").duplicate);
 	assert (ParseSAMParams ("STYLE=RAW STYLE=STREAM").duplicate);
 	assert (ParseSAMParams ("SILENT SILENT").duplicate);
