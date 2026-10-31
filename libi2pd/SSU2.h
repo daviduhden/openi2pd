@@ -255,6 +255,12 @@ namespace transport
 		void ReadUDPAssociateSocket (); // handle if closed by peer
 
 	private:
+		// The receive service may drain handlers that use pool-backed data.
+		// Declare pools first so they outlive the service during destruction.
+		i2p::util::MemoryPoolMt<Packet> m_PacketsPool;
+		i2p::util::MemoryPool<SSU2SentPacket> m_SentPacketsPool;
+		i2p::util::MemoryPool<SSU2IncompleteMessage> m_IncompleteMessagesPool;
+		i2p::util::MemoryPool<SSU2IncompleteMessage::Fragment> m_FragmentsPool;
 		ReceiveService m_ReceiveService;
 		// Residual threading hazard (not fixed here): these sockets are
 		// shared by the SSU2 service (synchronous send_to in
@@ -280,10 +286,6 @@ namespace transport
 			m_PeerTests; // nonce->(Alice, timestamp). We are Bob
 		std::list<std::pair<i2p::data::IdentHash, uint32_t>> m_Introducers,
 			m_IntroducersV6; // introducers we are connected to
-		i2p::util::MemoryPoolMt<Packet> m_PacketsPool;
-		i2p::util::MemoryPool<SSU2SentPacket> m_SentPacketsPool;
-		i2p::util::MemoryPool<SSU2IncompleteMessage> m_IncompleteMessagesPool;
-		i2p::util::MemoryPool<SSU2IncompleteMessage::Fragment> m_FragmentsPool;
 		boost::asio::steady_timer m_TerminationTimer, m_CleanupTimer, m_ResendTimer, m_IntroducersUpdateTimer,
 			m_IntroducersUpdateTimerV6;
 		std::shared_ptr<SSU2Session> m_LastSession;

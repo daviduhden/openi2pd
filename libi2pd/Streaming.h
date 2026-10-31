@@ -112,10 +112,9 @@ namespace stream
 
 	/// Buffered streaming wire packet. Header accessors assume the caller
 	/// has checked len, the NACK count and option length before accessing
-	/// fields. `from` is a borrowed ratchet session pointer. The
-	/// destination-level queue clears it for packets saved before SYN;
-	/// stream-level reordering requires separate lifetime review because
-	/// it retains packets without clearing it.
+	/// fields. `from` is a borrowed ratchet session pointer used during
+	/// incoming stream admission. Both destination-level pre-SYN buffering
+	/// and stream-level reordering clear it before retaining a packet.
 	/// @see https://i2p.net/en/docs/specs/streaming/
 	struct Packet
 	{

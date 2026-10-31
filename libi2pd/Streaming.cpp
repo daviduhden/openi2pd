@@ -568,6 +568,8 @@ namespace stream
 
 	void Stream::SavePacket (Packet * packet)
 	{
+		// Reordered packets may outlive the ratchet session that delivered them.
+		packet->from = nullptr;
 		if (!m_SavedPackets.insert (packet).second) m_LocalDestination.DeletePacket (packet);
 	}
 

@@ -1720,6 +1720,8 @@ namespace proxy
 			if (!boost::iequals (reqURL.schema, refURL.schema) || !boost::iequals (reqURL.host, refURL.host)
 				|| reqURL.port != refURL.port)
 				req.RemoveHeader ("Referer");
+			else
+				req.UpdateHeader ("Referer", refURL.to_string (true));
 		}
 
 		/* add headers */

@@ -10,6 +10,68 @@ Documents project documentation.
 
 # Upstream provenance and synchronization
 
+## Reviewed router-source commits (2026-10-25..31 continuation)
+
+The `openssl` branch advanced from the last audited source commit
+`5bcf6101a456dc991e44d3d79cb69994c7bae484` to
+`ba38945eefe28eec8d02d63241d4903a8c5145b1`. The range contains 40 commit
+objects (34 non-merge changes and six merge commits). The local comparison
+baseline was `46738ddf6f0f9b8e01e31d7c28bc6396215f82e8`; changes below were
+reviewed against the clean worktree at that revision. No upstream commit was
+merged or cherry-picked.
+
+| Upstream SHA | Subject | Decision and local result |
+|---|---|---|
+| `6083b362c332e65782453fad47cf6025257b51ba` | OpenRC `command_args_background` | Incompatible: upstream assumes daemonizing OpenRC commands; local `supervise-daemon` uses the foreground daemon. |
+| `e4ae3b0fc4e6c9cfbf3f681993a55f3696cc92c3` | OpenRC remove `name` | Incompatible: local reload/reopen-log helper messages interpolate `${name}`. |
+| `5c11f1adf9a8e8ab72747b4d6e2d0b99c3100e36` | Move Haiku daemon source | Incompatible: Haiku is outside the supported local platform matrix. |
+| `8b7ebc6e774b2f64435b5233ff6d0a45e7e547ad` | Torrent verification | Already superseded: local verification is bounded to one piece per job rather than scanning whole torrents asynchronously. |
+| `57d9087150cc29eda40e6d4fe625faf26497b63c` | Merge Haiku PR #2614 | Merge-only; its tree changes are represented by `5c11f1ad` and `58f44b0`. |
+| `028d53dd331bc44fd6044416e909b8af5bf42149` | Check SU3 signature stream errors | Already integrated: reseed reads validate exact byte counts and stream state for content and signatures. |
+| `58f44b06591239f2d87549405282cac852cf8a2b` | Fix Haiku build | Incompatible: Haiku remains unsupported by the local platform matrix. |
+| `9d3825624474783126619cdbd6a0cb939b0a315d` | Merge reseed stream-error PR #2615 | Merge-only; disposition is carried by `028d53dd`. |
+| `34e7dfd27d79103b6f17423d2fece2e5f52faf73` | Check torrent file read/write and reopen | Already superseded: serialized positional fd IO and exact IO results replace shared `fstream` recovery. |
+| `bd2be5cd1c7e2e7a94f0a91b40bd9584026479d0` | Close torrent stream on error | Already superseded by the local fd/storage-worker ownership model and fail-closed IO results. |
+| `8ca8189a9e5466a0be13cc68bdd625f95b7db4dc` | Report failed flush on next IO | Already superseded: local writes check completion directly and publish filesystem failure atomically. |
+| `ab018c7cb5e938fc339c716334086acd1a1b924b` | Fix Makefile typo | Not applicable: no corresponding maintained upstream Makefile target. |
+| `3042fe9d664d72aad65e3de85ecc711cfcb40dcb` | Web torrent table behavior | Incompatible: the browser console is deliberately removed; native TUI is maintained instead. |
+| `c4ad7f2de74565593e9b8b71d7e33399272d81e5` | Merge OpenRC remove-name PR #2324 | Merge-only integration of `e4ae3b0f` (and web behavior from `3042fe9d`); the OpenRC hunk is incompatible because local helpers interpolate `${name}`. |
+| `09c465d9df55a12cec25b6cf79c7b5a5d6c29a19` | Merge OpenRC command args PR #2265 | Merge-only; disposition is carried by `6083b362`. |
+| `f879d4124b24fe8b303dd53cd4a498d2f8e97737` | Do not reannounce stopped torrent | Already integrated: `RequestTorrentTrackers` rejects stopped torrents. |
+| `36c060fba39546534986d61999d8d4e225f6247f` | Send relative path in Referer | Applied: after same-origin validation, HTTP proxy rewrites `Referer` to `URL::to_string(true)`, which emits only path/query and avoids origin disclosure. |
+| `398cd5b144171754d5f7440f958333480c4fea4a` | Parse DHT arguments as a field map | Already superseded: bounded `DecodeDHTFrame` validates the complete envelope and fields. |
+| `4ac60de964745111702c8f0e2950238167710dcb` | Parse DHT response as a field map | Already superseded by the same strict local KRPC decoder and response validation. |
+| `274e1518b79dde6cac311735989f73af465eb87c` | Destroy memory pools after messages | Applied: SSU2 pool members now precede `ReceiveService`, so reverse member destruction destroys the service before its backing pools. |
+| `9a449ba7f788afc2e9e2c184f3ff427cc93ecf4e` | Delete SSU2/NTCP2 servers after transport thread | Already stronger locally: transport service and servers stop, peers clear while contexts live, then server owners reset. |
+| `8dec29963d028ffb68ccc0285c5fbb04d9eb8eed` | Update legacy Makefiles | Not applicable: local build uses CMake/Ninja and a POSIX front-end; these legacy files are not maintained. |
+| `67714be7efeeba8e7f54bb99e7a5666ca38ff70f` | Enable torrent RPC on Android | Already integrated: Android builds the native torrent RPC surface. |
+| `bbfd34856fd8ec8a4fd0b401a650a256aa05a617` | Reset `from` before saving packet | Applied: stream-level reorder buffering clears the borrowed ratchet-session pointer before retaining a packet. |
+| `0c52fc3116955748dd182c6e9ac75c3b55da49c0` | Merge torrent save-error PR #2616 | Merge-only; its torrent IO changes are represented by `34e7dfd`, `bd2be5cd` and `8ca8189a`. |
+| `ac3ecb88152ecfe76853681144610d98f49662f8` | Use 64-bit RNG for DHT transaction IDs | Already stronger locally: transaction IDs and tokens use `RAND_bytes`. |
+| `7761d85409bd508909f130f95815d575aa18b9f2` | Share KRPC parser for datagrams | Already superseded by the common bounded `DecodeDHTFrame` path. |
+| `7bd4c2f43c999212429f2758e3c46c21b11f035d` | Pass infoHash instead of magnet | Incompatible/not needed: this extends the upstream browser-oriented RPC input; the fork has no browser console and retains its typed native control contract. |
+| `6ba5fd5c1456f92b4ffb030dbc448bf0b9b7064d` | Return torrentHashes on request | Incompatible/not needed: browser-console statistics extension with no current native consumer. |
+| `523c6a68de763edaaa931b8fcea6012b82c22a52` | Web context menu, hotkeys and selection | Incompatible: browser UI was deliberately removed. |
+| `e81ffe8b593bb139cdcf2886b7860b92b19ecd12` | Erase previous tag before next message | Already integrated safely: tag/index are copied and erased under lock before callback dispatch. |
+| `6ec6e320d8d73bb09a02fc46d18302e08b07daf7` | Use Boost flat map from 1.81 | Not applicable: local dependency declarations do not provide this API at the supported floor; no dependency bump for this optional optimization. |
+| `5ddb01175083b9ca907ae3781c4920630d8695f3` | Require Boost 1.83 for flat map | Incompatible with the deliberately supported lower Boost floor; no required behavior depends on flat-map. |
+| `7979231279bba9af4318211abc5e810c381731f0` | Dynamic bitset and reset request on reject | Already superseded by explicit request epochs and block state, which release rejected requests without adding a dependency. |
+| `8208b890fb14499f004a6ccdbb26f98a1d8f4da6` | Handle late blocks | Incompatible as implemented upstream: fork rejects unsolicited/stale blocks using active request epoch, alignment and exact-length checks. |
+| `f43cde419f3860ad2f6676557d52d6c0060b7437` | Revert I2CP reconfigure fix | Already reflected in local reconfigure behavior; absent options preserve current publication state. |
+| `95d16ec8b72e32b0ff8b36b47ae00c1ee82f4216` | Merge I2CP revert PR #2623 | Merge-only; disposition is carried by `f43cde41` and `8971381b`. |
+| `8971381bfa4611b233baa8825744d094746634d2` | Correct `dontPublishLeaseSet` reconfigure use | Already integrated: publication state changes only when the option is present and applied successfully. |
+| `6b214f74d2c1b9d892cda29119f0942097cbfd85` | Avoid re-request after reject without replacement | Already superseded by local outgoing-request release and exact availability/request state checks. |
+| `ba38945eefe28eec8d02d63241d4903a8c5145b1` | Use `find_first_off` with Boost 1.90 | Not applicable: optimization requires a newer Boost floor and its dynamic-bitset representation is not used locally. |
+
+The three applied changes are source-level adaptations, not copied commits.
+The torrent reorder fix has no isolated regression seam without exposing
+private queue behavior; record this as a CI review item and add focused
+coverage if the queue can be exercised without widening the public API.
+All source changes remain pending manual CI compilation and relevant tests.
+This range contains no distinct OpenSSL/LibreSSL, Java/Android, C++23
+language-floor, or protocol wire-format change. No local build or tests were
+run.
+
 ## Imported sources
 
 | Project | URL | Branch | Commit | Imported into |
