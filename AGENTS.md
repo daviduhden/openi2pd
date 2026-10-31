@@ -2542,3 +2542,22 @@ protocol-specific or CMake configure/link root failure was observed; early
 compile stops leave later Linux targets unverified. State: Implemented / static;
 Pending CI compilation; Pending CI tests. No compile, link, configure, test,
 Gradle, Doxygen, ShellCheck, Lintian or packaging command was run locally.
+
+## Fourth CI batch and test/runtime inventories (`00929cd1`, 2026-10-31, static)
+
+Runs 41229374061 (Linux/Android), 41229377388 (OpenBSD), 41229371203
+(Windows), 41229380998 (Fuzzing, success) and 41229383879 (Packaging) were
+read with `gh`. `BUILD-030` and CE-048..CE-054 record the corrections:
+`Destination.h`/`i2p::client` import for the shared dispatch test; Windows IPC
+max-payload test direction corrected to core-to-worker (the channel already
+allowed the core-side `Error`); Windows supervisor root validation before
+AppContainer creation; realistic `netDb` state for the Debian remove/purge
+fixture; `FormatAddress` instead of direct Asio `to_string` to avoid the
+OpenBSD `strcat` linker path; and an AGP-cache-independent Android R8 probe.
+
+The inventories now separate compile, warning, runtime, test and regression
+evidence in `docs/ci/`. A Windows MSVC fail-fast assertion is a test diagnosis,
+not a crash to suppress; a package-remove fixture must use a realistic
+subdirectory that dpkg does not prune. A jobs that stops at compile time is
+not evidence for skipped targets. No compiler, CTest, Gradle, Doxygen, package
+or workflow was run for this note.

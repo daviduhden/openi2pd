@@ -5582,3 +5582,34 @@ search repository-wide for equivalent patterns after every CI diagnostic; no
 duplicate policy text was added. Static checks and exact artifact/log review
 only; no build, test, workflow dispatch or package installation was run.
 Corrections remain Pending CI compilation, tests and package validation.
+
+## 2026-10-31 Third CI-driven audit (static)
+
+Reviewed the `00929cd1` manual batch with `gh`: Linux/Android 41229374061,
+OpenBSD 41229377388, Windows 41229371203 and Packaging 41229383879 failed;
+Fuzzing 41229380998 succeeded. First causes and fixes:
+
+- **CE-048:** `test-i2np-dispatch-policy` used `i2p::client` garlic/DataMessage
+  helpers without including `Destination.h` or importing `i2p::client`.
+- **CE-049/RT-001:** the Windows max-payload test sent a request from the
+  worker side and expected the core to deliver it; the channel already
+  permitted the core-side typed `Error`. The test now sends from core to
+  worker.
+- **CE-050/RT-002:** the Windows supervisor validated a delegated write root
+  only after creating the AppContainer, leaking one-time handles on the
+  fail-closed path; root validation now runs first.
+- **CE-051/RT-003:** the Debian remove fixture used an unowned root marker;
+  it now seeds realistic `netDb` state and asserts it before/after remove.
+- **CE-052:** SOCKS used direct Asio `address::to_string`, instantiating the
+  OpenBSD `strcat` scope-ID path; both calls now use `FormatAddress`.
+- **CE-053:** remaining MSVC tuple/narrowing, `time_t` and wide-to-narrow test
+  warnings, and duplicate Windows macros were corrected with bounded casts,
+  `NarrowHex`, a `long` timestamp and macro guards.
+
+Added `docs/ci/{RUNTIME-ERRORS,TEST-FAILURES,REGRESSION-PATTERNS}.md`, updated
+the warning/pattern inventories and navigation, and synchronized the CI,
+Linux/Windows, privsep and packaging skills. `python3
+scripts/validate-agent-knowledge.py --scope worktree` passes (AK004 warning is
+the expected manual-relevance review). Static checks pass. No compiler,
+CMake, CTest, Gradle, Doxygen, package, workflow, commit or push was
+performed; all fixes remain Pending CI.

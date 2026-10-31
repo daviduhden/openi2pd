@@ -234,6 +234,14 @@ workflow, run `gh`, build or test.
   `if`. Static-musl verification must recognize `file`'s `static-pie linked`
   wording without dropping the static-link requirement.
 
+
+- Windows MSVC fail-fast exits (`0xc0000409`) from assertions are test
+  failures, not crashes to suppress: read the assertion line and the exact
+  run/job, then fix the direction/fixture/handle contract. Debian remove
+  fixtures must seed realistic state in a non-package-owned subdirectory
+  (`netDb/...`), not an unowned root-level file that dpkg may prune with an
+  empty package-owned directory.
+
 ## Do not
 
 - Do not compile, configure, run CTest, sanitizers, fuzzers, Gradle or dynamic

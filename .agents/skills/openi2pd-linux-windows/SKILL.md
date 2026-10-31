@@ -202,6 +202,14 @@ execution. Ask for:
   and `_wsopen_s` with `_SH_DENYNO`; cast only after the existing bound check.
   Do not add `_CRT_SECURE_NO_WARNINGS` to hide the family wholesale.
 
+
+- `WindowsChannel` direction checks must allow the typed `Error` reply in
+  both directions: the core emits it for an attributable refusal of a worker
+  frame. Keep requests core-to-worker and ordinary replies worker-to-core;
+  test both directions. `WindowsWorkerSupervisor::Start` must validate a
+  delegated write root before creating an AppContainer, otherwise a
+  fail-closed test leaves one-time profile/runtime handles.
+
 ## Do not
 
 - Do not compile, run CTest, sanitizers, console/pipe tests or validators

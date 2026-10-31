@@ -231,6 +231,12 @@ Ask for exact paths and package names. Do not let them run `dpkg-buildpackage`,
   survive an upgrade. Do not describe modes as preserved until this is
   reconciled and tested.
 
+
+- The Debian remove/purge regression must seed `netDb/.ci-remove-preservation`
+  and verify it before and after `remove`; a root-level unowned marker in the
+  package-owned state directory does not represent router state and can be
+  pruned with the empty directory. Purge still removes the whole tree.
+
 ## Do not
 
 - Do not compile, build a package, run `lintian`, `autopkgtest`, `systemctl`,

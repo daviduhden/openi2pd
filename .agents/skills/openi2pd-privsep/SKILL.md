@@ -283,6 +283,12 @@ report that limitation; do not substitute local execution. Ask for:
   only after `SetRole()`. Core-side typed `Error` refusals are an explicit
   send exception, not evidence that general core replies are allowed.
 
+
+- A Windows core-side channel must be able to send the typed `Error` refusal;
+  `Send` therefore permits `Error` in either direction. A supervisor
+  configuration failure is handle-neutral only if it validates the delegated
+  root before creating a profile/token/job.
+
 ## Do not
 
 - Do not compile, run CTest, sanitizers, process tests or project validators

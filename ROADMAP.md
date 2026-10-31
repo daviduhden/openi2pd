@@ -1868,3 +1868,18 @@ CW-006/007; the OpenBSD Boost.Asio linker warning remains an external finding
 (CW-004). These local changes are static only and await CI on a revision that
 contains them. The earlier Android locale failure is fixed in the current
 worktree but likewise remains unvalidated remotely.
+
+## Third CI audit (00929cd1, 2026-10-31, static)
+
+The third batch exposed a shared test namespace error, a Windows IPC
+request/typed-Error direction defect, a Windows supervisor fail-closed handle
+leak, a Debian remove fixture that did not represent real router state, and an
+OpenBSD linker warning from direct Asio address formatting. All are corrected
+locally (CE-048..CE-054, BUILD-030); dedicated runtime, test-failure and
+regression inventories now accompany the compile/warning inventories.
+
+Exit criteria: the next manual Linux/OpenSSL/Windows/OpenBSD/Android/fuzz/
+packaging/source-docs batch compiles, runs the Windows IPC/supervisor tests,
+preserves Debian state on remove and emits no first-party warning. No local
+compiler, CTest, Gradle, Doxygen or package validation exists for this
+revision.

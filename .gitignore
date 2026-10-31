@@ -273,3 +273,7 @@ android/app/build/
 android/local.properties
 android/**/*.jks
 android/**/*.keystore
+
+# Python bytecode from the shared agent-knowledge validator
+__pycache__/
+*.pyc
