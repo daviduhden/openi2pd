@@ -318,14 +318,19 @@ jobs:
         run: |
           set -euo pipefail
           echo 'Checking that remove preserves administrator data'
-          sudo install -o i2pd -g i2pd -m 0600 /dev/null /var/lib/i2pd/.ci-remove-preservation
+          # Use a realistic router state directory rather than an unowned
+          # root-level file; /var/lib/i2pd is package-owned and may be pruned
+          # when it becomes empty, while netDb/ is administrator/router state.
+          sudo install -d -o i2pd -g i2pd -m 0700 /var/lib/i2pd/netDb
+          sudo install -o i2pd -g i2pd -m 0600 /dev/null /var/lib/i2pd/netDb/.ci-remove-preservation
+          sudo test -f /var/lib/i2pd/netDb/.ci-remove-preservation
           sudo env DEBIAN_FRONTEND=noninteractive apt-get remove -y i2pd i2pd-tui
           if [ ! -f /etc/i2pd/i2pd.conf ]; then
             echo 'FAIL: remove deleted /etc/i2pd/i2pd.conf' >&2
             exit 1
           fi
-          if [ ! -f /var/lib/i2pd/.ci-remove-preservation ]; then
-            echo 'FAIL: remove deleted persistent state under /var/lib/i2pd' >&2
+          if [ ! -f /var/lib/i2pd/netDb/.ci-remove-preservation ]; then
+            echo 'FAIL: remove deleted persistent netDb state under /var/lib/i2pd' >&2
             exit 1
           fi
           echo 'Purging packages and checking owned state cleanup'
