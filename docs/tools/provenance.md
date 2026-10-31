@@ -55,7 +55,7 @@ the working tree.
 | `regaddr` | `tools/regaddr.cpp` | regressions plus `verifyhost` cross-check |
 | `regaddr_3ld` | `tools/regaddr_3ld.cpp` | three-step records plus `verifyhost` cross-check |
 | `regaddralias` | `tools/regaddralias.cpp` | alias records plus `verifyhost` cross-check |
-| `routerinfo` | `tools/routerinfo.cpp` | `test-routerinfo-firewall` (iptables/ip6tables, nftables comments, Windows stable names and PF labels), `tools-smoke` CLI conflicts and legacy `-f` |
+| `routerinfo` | `tools/routerinfo.cpp` | `test-routerinfo-firewall` (iptables/ip6tables, nftables comments, Windows stable names, PF labels and endpoint classification), `tools-smoke` positive listing (documented-range endpoints, `-6` family selection), CLI conflicts and legacy `-f` |
 | `vain` | `tools/vain.cpp` | regressions: CLI bounds only; no long search |
 | `verifyhost` | `tools/verifyhost.cpp` | regressions: valid, tampered and malformed records |
 | `x25519` | `tools/x25519.cpp` | `tools-smoke`: key-pair output and unknown-option rejection |

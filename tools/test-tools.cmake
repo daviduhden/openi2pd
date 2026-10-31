@@ -118,6 +118,22 @@ foreach(expected
   endif()
 endforeach()
 
+# The listing reports published addresses even when they are outside
+# public address space: it inspects a file, so the transports
+# reserved-range admission policy must not hide the documentation ranges
+# the fixture uses. -6 alone selects the IPv6 entries.
+run_tool(routerinfo -p valid-routerinfo.dat)
+foreach(expected "NTCP2: 192.0.2.10:12345" "SSU2: 198.51.100.20:12346")
+  string(FIND "${LAST_TOOL_OUTPUT}" "${expected}" position)
+  if(position EQUAL -1)
+    message(FATAL_ERROR "routerinfo -p omitted '${expected}': ${LAST_TOOL_OUTPUT}")
+  endif()
+endforeach()
+string(FIND "${LAST_TOOL_OUTPUT}" "2001:db8::" listing_ipv6)
+if(NOT listing_ipv6 EQUAL -1)
+  message(FATAL_ERROR "routerinfo listing selected IPv6 without -6: ${LAST_TOOL_OUTPUT}")
+endif()
+
 run_tool(routerinfo -6 -f valid-routerinfo.dat)
 foreach(expected
     " -A OUTPUT -p tcp -d 192.0.2.10 --dport 12345 -j ACCEPT"

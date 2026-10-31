@@ -6,8 +6,10 @@
  *
  * Reads RouterInfo files and prints their NTCP2/SSU2 addresses,
  * optionally rendered as outbound firewall rules for iptables,
- * nftables, Windows or pf. It deduplicates endpoints, requires public
- * numeric addresses, and only writes text; no firewall is modified.
+ * nftables, Windows or pf. The listing reports published addresses as
+ * they appear in the file; rule generation further requires a public
+ * numeric endpoint. It deduplicates endpoints and only writes text; no
+ * firewall is modified.
  *
  */
 
@@ -26,6 +28,7 @@
 
 #include "Crypto.h"
 #include "RouterInfo.h"
+#include "Transports.h"
 #include "common/file.hpp"
 #include "common/crypto.hpp"
 #include "firewall.hpp"
@@ -127,26 +130,34 @@ bool PrintRules (const std::string & hash,
 		// them instead of treating the whole file as malformed.
 		if (address->host.is_unspecified () || address->port <= 0) continue;
 
-		auto endpoint = i2p::tools::firewall::MakeEndpoint (
-			i2p::util::net::FormatAddress (address->host), address->port, *transport);
-		if (!endpoint)
+		i2p::tools::firewall::Endpoint endpoint { };
+		const auto endpointResult = i2p::tools::firewall::ValidateEndpoint (
+			i2p::util::net::FormatAddress (address->host), address->port, *transport, endpoint);
+		if (endpointResult != i2p::tools::firewall::EndpointRejection::None)
 		{
-			std::cerr << "routerinfo: invalid endpoint for " << hash << std::endl;
-			valid = false;
+			// A non-public endpoint is a policy decision, not a malformed
+			// RouterInfo: skip it like the router's reserved-range policy
+			// would. Only an unparsable endpoint is a diagnostic and a
+			// non-zero exit.
+			if (endpointResult == i2p::tools::firewall::EndpointRejection::Malformed)
+			{
+				std::cerr << "routerinfo: invalid endpoint for " << hash << std::endl;
+				valid = false;
+			}
 			continue;
 		}
 		RenderOptions render = options.render;
 		render.ruleTag = hash.substr (0, 8);
-		if (!i2p::tools::firewall::IsSelectedByFamily (*endpoint, render)) continue;
-		auto rule = i2p::tools::firewall::Render (*endpoint, render);
+		if (!i2p::tools::firewall::IsSelectedByFamily (endpoint, render)) continue;
+		auto rule = i2p::tools::firewall::Render (endpoint, render);
 		if (!rule)
 		{
-			std::cerr << "routerinfo: cannot render endpoint " << endpoint->address << ":" << endpoint->port << " for "
+			std::cerr << "routerinfo: cannot render endpoint " << endpoint.address << ":" << endpoint.port << " for "
 					  << hash << std::endl;
 			valid = false;
 			continue;
 		}
-		const auto key = i2p::tools::firewall::EndpointKey (*endpoint);
+		const auto key = i2p::tools::firewall::EndpointKey (endpoint);
 		if (!seen.insert (key).second) continue;
 		if (++total > MAX_ENDPOINTS)
 		{
@@ -171,6 +182,17 @@ bool PrintRules (const std::string & hash,
 /// (default), or firewall text for iptables (legacy fragment or full
 /// command), nftables, Windows PowerShell or OpenBSD pf. Nothing is
 /// executed; the tool only writes text.
+///
+/// The tool reports what an input file publishes, so it disables the
+/// transports reserved-range admission policy for its own process. That
+/// policy exists to stop the router dialing or storing endpoints outside
+/// public address space; leaving it enabled also hides the documentation
+/// ranges (`192.0.2.0/24`, `198.51.100.0/24`, `2001:db8::/32`) that the
+/// signed CI fixture uses, which would silence the documented listing.
+/// Firewall mode is unaffected by that: it classifies every endpoint and
+/// skips a well-formed non-public one under the public-endpoint policy
+/// instead of emitting a rule, while an unparsable endpoint is still a
+/// diagnostic and a non-zero exit.
 ///
 /// The whole run is buffered and written to stdout only after every
 /// input file has been parsed. That is deliberate: a generator that
@@ -299,6 +321,17 @@ int main (int argc, char * argv[])
 	}
 
 	i2p::tools::CryptoGuard cryptoGuard;
+
+	// Inspect addresses exactly as the file publishes them, in both modes:
+	// RouterInfo parsing consults the transports reserved-range policy,
+	// which is an admission rule for dialing peers, and the documentation
+	// ranges used by signed test RouterInfos are reserved. Leaving it
+	// enabled would hide every address from the listing and suppress the
+	// documented fixture rules. The setting is process-local and this tool
+	// never starts a transport. Firewall mode still skips any non-public
+	// endpoint through ValidateEndpoint(), so a private, loopback,
+	// link-local, multicast or reserved endpoint never becomes a rule.
+	i2p::transport::transports.SetCheckReserved (false);
 
 	std::set<std::string> seen;
 	size_t total = 0;

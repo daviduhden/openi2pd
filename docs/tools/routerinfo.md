@@ -61,7 +61,18 @@ NTCP2: 192.0.2.10:12345
 SSU2: 198.51.100.20:4567
 ```
 
-The address listing is unchanged from the original tool.
+The listing reports the addresses the file publishes, including the
+documentation ranges (`192.0.2.0/24`, `198.51.100.0/24`, `2001:db8::/32`) the
+signed test fixture uses. RouterInfo parsing normally consults the transports
+reserved-range admission policy, which stops the router from dialing or
+storing endpoints outside public address space; this one-shot tool disables it
+for its own process so a published address is never hidden. Firewall mode
+still classifies every endpoint: a well-formed but non-public endpoint
+(private, loopback, link-local, multicast, special-purpose or otherwise
+reserved) is skipped under the public-endpoint policy and does not change the
+exit status, while an endpoint that cannot be parsed is reported and makes
+generation exit non-zero. The address listing is otherwise unchanged from the
+original tool.
 
 ## Legacy iptables output (`-f`)
 
@@ -221,7 +232,9 @@ pfctl -nf candidate.conf
   `240.0.0.0/4`, IPv6 ULA (`fc00::/7`), deprecated IPv6 site-local
   (`fec0::/10`), IPv4-mapped IPv6, deprecated IPv4-compatible IPv6, NAT64
   (`64:ff9b::/96`), 6to4 (`2002::/16`), Teredo (`2001::/32`), discard
-  (`100::/64`) and the `3fff::/20` documentation prefix are rejected.
+  (`100::/64`) and the `3fff::/20` documentation prefix are non-public and
+  never become a rule. They are skipped as a policy decision, without a
+  diagnostic and without changing the exit status.
   The `192.0.2.0/24`, `198.51.100.0/24`, `203.0.113.0/24` and
   `2001:db8::/32` documentation ranges remain selectable because the signed
   test fixture uses them.
@@ -240,9 +253,11 @@ pfctl -nf candidate.conf
   chain, Windows `-Direction Outbound`, and PF `pass out`.
 - The total distinct emitted endpoint count is capped at 4096; endpoints
   filtered by the nftables family or rejected by a renderer are not charged.
-  Invalid endpoints are skipped with a diagnostic and make generation exit
-  non-zero. If a valid run selects no endpoint for the backend/family, a
-  diagnostic is written to stderr and the exit status remains zero.
+  An unparsable endpoint (bad address text or port) is skipped with a
+  diagnostic and makes generation exit non-zero, while a non-public endpoint
+  is skipped silently as described above. If a valid run selects no endpoint
+  for the backend/family, a diagnostic is written to stderr and the exit
+  status remains zero.
 - Output is buffered and written only when every input file parsed. A malformed
   later file leaves stdout empty and exits 1, so a pipeline cannot apply a
   partial rule set. Usage errors go to stderr; `--help` uses stdout.
@@ -272,7 +287,8 @@ compatible/IPv4-mapped/broadcast addresses, invalid nftables families and
 chains, outbound-only output, display-name tag validation, port boundaries
 and rendering-boundary endpoint revalidation.
 `tools-smoke` creates a valid signed RouterInfo through the production
-serializer and checks positive `-6 -p`, `-6 -f`, and explicit iptables CLI
+serializer and checks positive `-6 -p` (all four endpoints), `-p` listing
+without `-6` (IPv4 only), `-6 -f`, and explicit iptables CLI
 output for both address families. It also checks CLI help for every backend,
 legacy `-f`, family selection without `-6`, invalid backends, unsafe table
 names, conflicting options, nftables options without a backend, an invalid nft

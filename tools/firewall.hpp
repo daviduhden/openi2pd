@@ -86,20 +86,51 @@ inline bool IsNumericAddressText (std::string_view text)
 		});
 }
 
-inline std::optional<Endpoint> MakeEndpoint (std::string_view addressText, int port, Transport transport)
+/**
+	 * Why an address/port/transport tuple cannot become an endpoint.
+	 *
+	 * `Malformed` is input the tool cannot interpret: an unknown
+	 * transport, an out-of-range port, or a non-numeric/unparsable
+	 * address. `NonPublic` is a well-formed numeric address that the
+	 * public-endpoint policy excludes; callers skip it like the router's
+	 * own reserved-range admission policy would, instead of treating the
+	 * RouterInfo as invalid.
+	 */
+enum class EndpointRejection
 {
-	if (transport != Transport::NTCP2 && transport != Transport::SSU2) return std::nullopt;
-	if (port < 1 || port > 65535) return std::nullopt;
-	if (addressText.empty () || addressText.size () > 64) return std::nullopt;
+	None, ///< accepted and written to the endpoint argument
+	NonPublic, ///< numeric but outside the public address policy
+	Malformed ///< unparsable or structurally invalid tuple
+};
+
+/**
+	 * Parse and validate an address/port/transport tuple.
+	 * Numeric addresses only: RouterInfo files are untrusted, and a
+	 * hostname would make the generated rules depend on DNS.
+	 * @param addressText Published host text.
+	 * @param port Published port.
+	 * @param transport RouterInfo transport style.
+	 * @param endpoint Receives the canonical endpoint when the result is
+	 * `EndpointRejection::None`; left untouched otherwise.
+	 * @return Why the tuple was rejected, or `None` when it was accepted.
+	 */
+inline EndpointRejection ValidateEndpoint (
+	std::string_view addressText, int port, Transport transport, Endpoint & endpoint)
+{
+	if (transport != Transport::NTCP2 && transport != Transport::SSU2) return EndpointRejection::Malformed;
+	if (port < 1 || port > 65535) return EndpointRejection::Malformed;
+	if (addressText.empty () || addressText.size () > 64) return EndpointRejection::Malformed;
 
 	// Keep the grammar numeric. This also rejects IPv6 scope identifiers
 	// ("fe80::1%eth0"), bracketed literals and whitespace before the
 	// address parser can normalise them into rule text.
-	if (!IsNumericAddressText (addressText)) return std::nullopt;
+	if (!IsNumericAddressText (addressText)) return EndpointRejection::Malformed;
 
 	boost::system::error_code ec;
 	auto address = boost::asio::ip::make_address (std::string (addressText), ec);
-	if (ec || address.is_unspecified () || address.is_multicast () || address.is_loopback ()) return std::nullopt;
+	if (ec) return EndpointRejection::Malformed;
+	if (address.is_unspecified () || address.is_multicast () || address.is_loopback ())
+		return EndpointRejection::NonPublic;
 
 	// A v4-mapped v6 address would bypass the IPv4 checks above and is not
 	// a valid RouterInfo endpoint. IPv4-compatible (::a.b.c.d) and
@@ -108,13 +139,13 @@ inline std::optional<Endpoint> MakeEndpoint (std::string_view addressText, int p
 	if (address.is_v6 ())
 	{
 		const auto bytes = address.to_v6 ().to_bytes ();
-		if (address.to_v6 ().is_v4_mapped ()) return std::nullopt;
+		if (address.to_v6 ().is_v4_mapped ()) return EndpointRejection::NonPublic;
 		const bool ipv4Compatible
 			= std::all_of (bytes.begin (), bytes.begin () + 12, [] (unsigned char byte) { return byte == 0; });
-		if (ipv4Compatible) return std::nullopt;
-		if (bytes[0] == 0xfe && (bytes[1] & 0xc0) == 0x80) return std::nullopt; // fe80::/10
-		if ((bytes[0] & 0xfe) == 0xfc) return std::nullopt; // fc00::/7 ULA
-		if (bytes[0] == 0xfe && (bytes[1] & 0xc0) == 0xc0) return std::nullopt; // fec0::/10 site-local
+		if (ipv4Compatible) return EndpointRejection::NonPublic;
+		if (bytes[0] == 0xfe && (bytes[1] & 0xc0) == 0x80) return EndpointRejection::NonPublic; // fe80::/10
+		if ((bytes[0] & 0xfe) == 0xfc) return EndpointRejection::NonPublic; // fc00::/7 ULA
+		if (bytes[0] == 0xfe && (bytes[1] & 0xc0) == 0xc0) return EndpointRejection::NonPublic; // fec0::/10
 		// Special-purpose IPv6 prefixes that never name a public I2P peer.
 		const bool nat64 = bytes[0] == 0x00 && bytes[1] == 0x64 && bytes[2] == 0xff && bytes[3] == 0x9b
 			&& std::all_of (bytes.begin () + 4, bytes.begin () + 12, [] (unsigned char b) { return b == 0; });
@@ -123,12 +154,12 @@ inline std::optional<Endpoint> MakeEndpoint (std::string_view addressText, int p
 		const bool discard = bytes[0] == 0x01 && bytes[1] == 0x00
 			&& std::all_of (bytes.begin () + 2, bytes.begin () + 8, [] (unsigned char b) { return b == 0; });
 		const bool documentation = bytes[0] == 0x3f && bytes[1] == 0xff && (bytes[2] & 0xf0) == 0;
-		if (nat64 || sixToFour || teredo || discard || documentation) return std::nullopt;
+		if (nat64 || sixToFour || teredo || discard || documentation) return EndpointRejection::NonPublic;
 	}
 	else
 	{
 		const auto bytes = address.to_v4 ().to_bytes ();
-		if (bytes[0] == 169 && bytes[1] == 254) return std::nullopt; // 169.254.0.0/16
+		if (bytes[0] == 169 && bytes[1] == 254) return EndpointRejection::NonPublic; // 169.254.0.0/16
 		// Do not turn a private, CGNAT or reserved address from an untrusted
 		// RouterInfo into a firewall rule. Documentation/benchmark ranges are
 		// intentionally left to the caller because the unit tests use them.
@@ -142,14 +173,27 @@ inline std::optional<Endpoint> MakeEndpoint (std::string_view addressText, int p
 			|| (value & 0xffffff00u) == 0xc0586300u // 192.88.99.0/24 6to4 relay
 			|| (value & 0xff000000u) == 0x00000000u // 0.0.0.0/8
 			|| (value & 0xf0000000u) == 0xf0000000u) // 240.0.0.0/4
-			return std::nullopt;
+			return EndpointRejection::NonPublic;
 		// The limited broadcast address is neither unicast nor useful as a
 		// destination; emitting it would create an over-broad rule.
-		if (address.to_v4 () == boost::asio::ip::address_v4::broadcast ()) return std::nullopt;
+		if (address.to_v4 () == boost::asio::ip::address_v4::broadcast ()) return EndpointRejection::NonPublic;
 	}
 
-	return Endpoint { i2p::util::net::FormatAddress (address), static_cast<uint16_t> (port), transport,
+	endpoint = Endpoint { i2p::util::net::FormatAddress (address), static_cast<uint16_t> (port), transport,
 		address.is_v6 () };
+	return EndpointRejection::None;
+}
+
+/**
+	 * @brief Parse and validate an address/port/transport tuple.
+	 * @return The canonical endpoint, or std::nullopt when
+	 * `ValidateEndpoint()` rejects it for any reason.
+	 */
+inline std::optional<Endpoint> MakeEndpoint (std::string_view addressText, int port, Transport transport)
+{
+	Endpoint endpoint { };
+	if (ValidateEndpoint (addressText, port, transport, endpoint) != EndpointRejection::None) return std::nullopt;
+	return endpoint;
 }
 
 /**
@@ -182,9 +226,15 @@ inline char AsciiLower (unsigned char ch)
 
 inline bool IsReservedNftWord (std::string_view value)
 {
-	static constexpr std::array<std::string_view, 24> reserved { { "add", "chain", "comment", "counter", "ct", "delete",
-		"drop", "flush", "handle", "hook", "inet", "insert", "ip", "ip6", "list", "meta", "policy", "priority", "queue",
-		"reject", "rule", "table", "tcp", "type" } };
+	// nft keywords and verdicts that would change the meaning of a
+	// rendered rule if a configured table or chain used them as a name.
+	// `accept` is a verdict, not an identifier: allowing it here let a
+	// chain name terminate the rule early. Keep this list lexical
+	// (case-folded), not a parser.
+	static constexpr std::array<std::string_view, 37> reserved { { "accept", "add", "chain", "comment", "continue",
+		"counter", "ct", "delete", "dnat", "drop", "dup", "flush", "fwd", "goto", "handle", "hook", "inet", "insert", "ip",
+		"ip6", "jump", "limit", "list", "log", "masquerade", "meta", "policy", "priority", "queue", "redirect", "reject",
+		"return", "rule", "snat", "table", "tcp", "type" } };
 	std::string lower (value.begin (), value.end ());
 	std::transform (lower.begin (), lower.end (), lower.begin (), [] (unsigned char ch) { return AsciiLower (ch); });
 	return std::find (reserved.begin (), reserved.end (), std::string_view (lower)) != reserved.end ();
