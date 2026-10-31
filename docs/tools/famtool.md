@@ -29,6 +29,14 @@ famtool -s -n i2pfam -k myfam.pem -i router.keys -f router.info
 famtool -V -c myfam.crt -f router.info
 ```
 
+## Streams and status
+
+The verdict (`family <name> made`, `signed`, `verified`) and `-v` progress
+lines go to stdout; `-h` prints its help on stdout with status 0. Usage errors
+and every diagnostic (missing operand, unreadable or invalid certificate or
+RouterInfo, family mismatch, bad signature) go to stderr. The status is 0 on
+success and 1 on any failure, so a failing invocation leaves stdout empty.
+
 ## Security
 
 - `-g` writes an **unencrypted** private key PEM. OpenSSL builds use the

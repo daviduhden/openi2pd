@@ -250,6 +250,11 @@ assert_output_matches("b33 address: [a-z2-7]+\\.b32\\.i2p" "keyinfo -b Ed25519 b
 assert_output_matches("Today's store hash: [-A-Za-z0-9~]+=*" "keyinfo -b store hash")
 extract_last_output("b33 address: ([a-z2-7]+)\\.b32\\.i2p" ED_B33 "keyinfo -b Ed25519")
 assert_value_matches("${ED_B33}" "^[a-z2-7]+$" "keyinfo -b b33 encoding")
+# The offline-key batch is optional: a keygen key carries none, so the
+# summary succeeds and reports the absence as a stderr note instead of
+# failing with a data error.
+assert_contains("${LAST_TOOL_ERROR}" "b33 offline keys: no batch" "keyinfo -b absent batch is a stderr note")
+assert_contains("${LAST_TOOL_OUTPUT}" "b33 address: " "keyinfo -b summary stays on stdout")
 
 run_tool(keyinfo TRUE -v -b ed25519.keys)
 assert_output_contains("Signature Type: ED25519-SHA512" "keyinfo combined -v -b signature")
@@ -268,6 +273,9 @@ run_tool(keyinfo TRUE -v p256.keys)
 assert_output_matches("Signature Type: ECDSA-P256" "keyinfo -v P-256 signature type")
 run_tool(keyinfo FALSE -b p256.keys)
 assert_output_matches("Invalid signature type ECDSA-P256" "keyinfo -b rejects non-blindable P-256")
+if(NOT "${LAST_TOOL_OUTPUT}" STREQUAL "")
+  fail("keyinfo -b wrote to stdout before rejecting a non-blindable key:\n${LAST_TOOL_OUTPUT}")
+endif()
 
 run_tool(keyinfo TRUE -h)
 assert_output_contains("usage:" "keyinfo -h")
@@ -349,6 +357,8 @@ assert_output_contains("Transient Signature Type: ED25519-SHA512" "keyinfo b33 t
 assert_output_contains("Expires: " "keyinfo b33 expiry")
 run_tool(keyinfo TRUE -b b33-batch.dat)
 assert_output_contains("b33 offline keys: 30 days" "keyinfo parses the b33 offline batch")
+# A present batch is data: the day-count summary belongs to stdout.
+assert_contains("${LAST_TOOL_OUTPUT}" "b33 offline keys: 30 days" "keyinfo b33 batch summary is stdout data")
 
 run_tool(b33offlinekeys TRUE b33-default.dat ed25519.keys)
 assert_output_matches("Address [a-z2-7]+\\.b32\\.i2p, 365 days" "b33offlinekeys default days")

@@ -151,14 +151,14 @@ int main (int argc, char * argv[])
 	}
 	if (keys.IsOfflineSignature ())
 	{
-		std::cout << "the destination's own keys are required, " << fname << " holds offline keys" << std::endl;
+		std::cerr << "the destination's own keys are required, " << fname << " holds offline keys" << std::endl;
 		return 4;
 	}
 	// only a blindable destination has a b33 address at all
 	if (!i2p::data::BlindedPublicKey (keys.GetPublic ()).IsValid ())
 	{
-		std::cout << fname << " is a " << SigTypeToName (keys.GetPublic ()->GetSigningKeyType ())
-				  << " destination and has no b33 address; ED25519-SHA512 or RED25519-SHA512 is required" << std::endl;
+		std::cerr << fname << " is a " << SigTypeToName (keys.GetPublic ()->GetSigningKeyType ())
+				   << " destination and has no b33 address; ED25519-SHA512 or RED25519-SHA512 is required" << std::endl;
 		return 5;
 	}
 
@@ -180,7 +180,7 @@ int main (int argc, char * argv[])
 	auto b33Keys = createB33OfflineKeys (keys, type, days);
 	if (b33Keys.empty ())
 	{
-		std::cout << "Can't create b33 offline keys" << std::endl;
+		std::cerr << "Can't create b33 offline keys" << std::endl;
 		return 7;
 	}
 	// the transient of the inner LeaseSet lasts exactly as long as the
@@ -200,7 +200,7 @@ int main (int argc, char * argv[])
 	{
 		i2p::tools::Wipe (out);
 		i2p::tools::Wipe (b33Keys);
-		std::cout << "Can't serialize online keys" << std::endl;
+		std::cerr << "Can't serialize online keys" << std::endl;
 		return 8;
 	}
 	memcpy (out.data () + l, b33Keys.data (), b33Keys.size ());

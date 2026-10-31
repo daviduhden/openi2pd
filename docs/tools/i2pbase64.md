@@ -24,6 +24,11 @@ stdin/stdout to binary mode so CRLF translation cannot corrupt decoded data.
 If no filename is given, stdin is
 used; output is always stdout.
 
+`-h` prints the usage synopsis on stdout with status 0. A usage error (unknown
+option or more than one filename) prints it on stderr with status 1, so a
+failing invocation leaves stdout empty; decode and read/write diagnostics also
+go to stderr.
+
 ## Example
 
 ```sh

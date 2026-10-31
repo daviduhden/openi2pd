@@ -50,7 +50,7 @@ the working tree.
 | `famtool` | `tools/famtool.cpp` | `tools-regressions`: generation, family-name bounds, negative options |
 | `i2pbase64` | `tools/i2pbase64.cpp` | smoke and regressions: binary, UTF-8, NUL, I2P alphabet and malformed input |
 | `keygen` | `tools/keygen.cpp` | smoke and regressions: Ed25519, RedDSA and P-256; unsupported generators and `--help` fail without writing |
-| `keyinfo` | `tools/keyinfo.cpp` | regressions: all output modes, offline batches and malformed keys |
+| `keyinfo` | `tools/keyinfo.cpp` | regressions: all output modes, optional/absent and present offline batches, stream split and malformed keys |
 | `offlinekeys` | `tools/offlinekeys.cpp` | regressions: defaults, bounds, output parsed by `keyinfo` |
 | `regaddr` | `tools/regaddr.cpp` | regressions plus `verifyhost` cross-check |
 | `regaddr_3ld` | `tools/regaddr_3ld.cpp` | three-step records plus `verifyhost` cross-check |

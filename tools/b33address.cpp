@@ -84,18 +84,22 @@ int main (int argc, char * argv[])
 	auto ident = std::make_shared<i2p::data::IdentityEx> ();
 	if (ident->FromBase64 (base64))
 	{
-		if (ident->GetSigningKeyType () == i2p::data::SIGNING_KEY_TYPE_REDDSA_SHA512_ED25519
-			|| ident->GetSigningKeyType () == i2p::data::SIGNING_KEY_TYPE_EDDSA_SHA512_ED25519)
+		const auto sigType = ident->GetSigningKeyType ();
+		if (!IsBlindableSigningKeyType (sigType))
 		{
-			i2p::data::BlindedPublicKey blindedKey (ident);
-			std::cout << "b33 address: " << blindedKey.ToB33 () << ".b32.i2p" << std::endl;
-			std::cout << "Today's store hash: " << blindedKey.GetStoreHash ().ToBase64 () << std::endl;
-		}
-		else
-		{
-			std::cerr << "Invalid signature type " << SigTypeToName (ident->GetSigningKeyType ()) << std::endl;
+			std::cerr << "Invalid signature type " << SigTypeToName (sigType) << std::endl;
 			return 1;
 		}
+		i2p::data::BlindedPublicKey blindedKey (ident);
+		if (!blindedKey.IsValid ())
+		{
+			// A blindable type with unusable key material: report the data
+			// problem instead of mislabelling the signature type.
+			std::cerr << "Invalid blinded public key" << std::endl;
+			return 1;
+		}
+		std::cout << "b33 address: " << blindedKey.ToB33 () << ".b32.i2p" << std::endl;
+		std::cout << "Today's store hash: " << blindedKey.GetStoreHash ().ToBase64 () << std::endl;
 	}
 	else
 	{

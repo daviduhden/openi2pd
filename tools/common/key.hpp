@@ -72,6 +72,21 @@ inline std::string SigTypeToName (uint16_t keytype)
 }
 
 /**
+ * @brief whether a signing key type has the b33 blinded form
+ *
+ * An encrypted LeaseSet blinds only Ed25519 and RedDSA destinations, so
+ * every other type is a usage error for a tool that has to report a b33
+ * address. The predicate is about the declared type only: callers must
+ * still check `BlindedPublicKey::IsValid()` before printing an address,
+ * because that also rejects unusable key material.
+ */
+inline bool IsBlindableSigningKeyType (i2p::data::SigningKeyType type)
+{
+	return type == i2p::data::SIGNING_KEY_TYPE_REDDSA_SHA512_ED25519
+		|| type == i2p::data::SIGNING_KEY_TYPE_EDDSA_SHA512_ED25519;
+}
+
+/**
  * A registration record is `name=destination#!sig=...`; a name carrying
  * a separator, control byte or whitespace could forge extra fields. The
  * check is deliberately about the record grammar, not DNS policy.

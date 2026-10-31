@@ -28,12 +28,15 @@
 
 namespace
 {
-void Help ()
+/// @brief Print the step grammar to an explicit stream.
+/// The tool has no help option, so every call is a usage error: the text
+/// goes to stderr and stdout stays empty for a rejected invocation.
+void Help (std::ostream & out)
 {
-	std::cout << "Usage:" << std::endl
-			  << "\tregaddr_3ld step1 privkey address" << std::endl
-			  << "\tregaddr_3ld step2 step1file oldprivkey oldaddress" << std::endl
-			  << "\tregaddr_3ld step3 step2file privkey" << std::endl;
+	out << "Usage:" << std::endl
+		<< "\tregaddr_3ld step1 privkey address" << std::endl
+		<< "\tregaddr_3ld step2 step1file oldprivkey oldaddress" << std::endl
+		<< "\tregaddr_3ld step3 step2file privkey" << std::endl;
 }
 
 bool LoadKeys (const char * path, i2p::data::PrivateKeys & keys)
@@ -95,7 +98,7 @@ int main (int argc, char * argv[])
 {
 	if (argc < 3)
 	{
-		Help ();
+		Help (std::cerr);
 		return 1;
 	}
 
@@ -108,7 +111,7 @@ int main (int argc, char * argv[])
 	{
 		if (argc != 4)
 		{
-			Help ();
+			Help (std::cerr);
 			result = 1;
 		}
 		else if (!IsValidRecordName (argv[3]))
@@ -130,7 +133,7 @@ int main (int argc, char * argv[])
 	{
 		if (argc != 5)
 		{
-			Help ();
+			Help (std::cerr);
 			result = 1;
 		}
 		else if (!IsValidRecordName (argv[4]))
@@ -165,7 +168,7 @@ int main (int argc, char * argv[])
 	{
 		if (argc != 4)
 		{
-			Help ();
+			Help (std::cerr);
 			result = 1;
 		}
 		else
@@ -187,7 +190,7 @@ int main (int argc, char * argv[])
 	}
 	else
 	{
-		Help ();
+		Help (std::cerr);
 		result = 1;
 	}
 

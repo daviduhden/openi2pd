@@ -21,7 +21,11 @@ b33offlinekeys <output-keys-file> <destination-keys-file> [<days>]
 
 The destination must be Ed25519 or RedDSA. `<output-keys-file>` is the file
 handed to the router; it must differ from the destination key file. Days
-default to 365 and are bounded by `kMaxDays` (1..65535).
+default to 365 and are bounded by `kMaxDays` (1..65535). The address and day
+count of a created batch are printed on stdout; every rejection (unusable
+argument, offline-key input, non-blindable destination, generation or write
+failure) is reported on stderr with its documented non-zero status, so a
+failed run leaves stdout empty.
 
 ## Example
 

@@ -32,10 +32,12 @@ namespace
 {
 constexpr size_t CHUNK_SIZE = 4096;
 
-int printHelp (const char * exe, int exitcode)
+/// @brief Print the usage synopsis to an explicit stream.
+/// `-h` writes it to stdout; a usage error writes it to stderr, so a
+/// failing invocation never leaves a synopsis on stdout.
+void printUsage (const char * exe, std::ostream & out)
 {
-	std::cout << "usage: " << exe << " [-d] [filename]" << std::endl;
-	return exitcode;
+	out << "usage: " << exe << " [-d] [filename]" << std::endl;
 }
 
 void SetBinaryStdio ()
@@ -178,13 +180,21 @@ int main (int argc, char * argv[])
 	{
 		switch (opt)
 		{
-		case 'h': return printHelp (argv[0], 0);
+		case 'h':
+			printUsage (argv[0], std::cout);
+			return 0;
 		case 'd': decode = true; break;
-		default: return printHelp (argv[0], 1);
+		default:
+			printUsage (argv[0], std::cerr);
+			return 1;
 		}
 	}
 
-	if (argc - optind > 1) return printHelp (argv[0], 1);
+	if (argc - optind > 1)
+	{
+		printUsage (argv[0], std::cerr);
+		return 1;
+	}
 	std::ifstream file;
 	std::istream * input = &std::cin;
 	if (optind < argc)

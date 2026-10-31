@@ -120,18 +120,40 @@ expect_code(3 "keyinfo -b non-blindable")
 expect_contains("${err}" "Invalid signature type" "keyinfo -b stderr")
 expect_empty("${out}" "keyinfo -b non-blindable stdout")
 
+# A rejected request must not publish the private key material of a
+# request the tool is about to refuse.
+run_cli(keyinfo out err -p -b p256.keys)
+expect_code(3 "keyinfo -p -b non-blindable")
+expect_contains("${err}" "Invalid signature type" "keyinfo -p -b stderr")
+expect_empty("${out}" "keyinfo -p -b non-blindable stdout")
+
+# Explicit help stays on stdout with status 0; a usage error is stderr
+# only and keeps the documented non-zero status. The synopsis starts
+# with the executable path, so only its fixed part is compared.
+run_cli(keyinfo out err -h)
+expect_code(0 "keyinfo -h")
+expect_contains("${out}" "usage:" "keyinfo -h stdout")
+expect_contains("${out}" "[-v] [-d] [-p] [-b]" "keyinfo -h synopsis")
+expect_empty("${err}" "keyinfo -h stderr")
+
+run_cli(keyinfo out err)
+expect_code(2 "keyinfo without arguments")
+expect_empty("${out}" "keyinfo usage stdout")
+expect_contains("${err}" "usage:" "keyinfo usage stderr")
+
 # --------------------------------------------------------------------
 # routerinfo: help on stdout, usage errors on stderr, no partial stdout.
 # --------------------------------------------------------------------
 run_cli(routerinfo out err --help)
 expect_code(0 "routerinfo --help")
-expect_contains("${out}" "usage: routerinfo" "routerinfo help stdout")
+expect_contains("${out}" "usage:" "routerinfo help stdout")
+expect_contains("${out}" "--firewall=iptables" "routerinfo synopsis")
 expect_empty("${err}" "routerinfo help stderr")
 
 run_cli(routerinfo out err)
 expect_code(1 "routerinfo without operands")
 expect_empty("${out}" "routerinfo usage stdout")
-expect_contains("${err}" "usage: routerinfo" "routerinfo usage stderr")
+expect_contains("${err}" "usage:" "routerinfo usage stderr")
 
 run_cli(routerinfo out err --firewall=bogus)
 expect_code(1 "routerinfo unknown backend")
@@ -177,7 +199,7 @@ endif()
 
 # --------------------------------------------------------------------
 # i2pbase64: padding terminates the stream, even across a chunk
-# boundary.
+# boundary. A usage error is stderr only; -h stays on stdout.
 # --------------------------------------------------------------------
 file(WRITE "${WORK}/padding.txt" "AA==\nAAAA\n")
 set(TOOL_STDIN "${WORK}/padding.txt")
@@ -186,17 +208,44 @@ unset(TOOL_STDIN)
 expect_code(1 "i2pbase64 data after padding")
 expect_contains("${err}" "after padding" "i2pbase64 padding stderr")
 
+run_cli(i2pbase64 out err -h)
+expect_code(0 "i2pbase64 -h")
+expect_contains("${out}" "usage:" "i2pbase64 -h stdout")
+expect_empty("${err}" "i2pbase64 -h stderr")
+
+run_cli(i2pbase64 out err -x plain.bin)
+expect_code(1 "i2pbase64 unknown option")
+expect_empty("${out}" "i2pbase64 usage stdout")
+expect_contains("${err}" "usage:" "i2pbase64 usage stderr")
+
 # --------------------------------------------------------------------
-# famtool: a mode is required.
+# famtool: a mode is required, and usage errors stay on stderr.
 # --------------------------------------------------------------------
 run_cli(famtool out err -n family)
 expect_code(1 "famtool missing mode")
+expect_empty("${out}" "famtool missing mode stdout")
 expect_contains("${err}" "no mode selected" "famtool missing mode stderr")
+
+run_cli(famtool out err)
+expect_code(1 "famtool without arguments")
+expect_empty("${out}" "famtool usage stdout")
+expect_contains("${err}" "usage:" "famtool usage stderr")
+
+run_cli(famtool out err -h)
+expect_code(0 "famtool -h")
+expect_contains("${out}" "usage:" "famtool -h stdout")
+expect_empty("${err}" "famtool -h stderr")
 
 # --------------------------------------------------------------------
 # regaddr_3ld: a CRLF step file signs exactly one LF-only record and the
-# paired verifier accepts it.
+# paired verifier accepts it. The tool has no help option, so its step
+# grammar is a usage error and belongs on stderr.
 # --------------------------------------------------------------------
+run_cli(regaddr_3ld out err)
+expect_code(1 "regaddr_3ld without arguments")
+expect_empty("${out}" "regaddr_3ld usage stdout")
+expect_contains("${err}" "Usage:" "regaddr_3ld usage stderr")
+
 run_cli(keygen out err reg.keys EDDSA-SHA512-ED25519)
 expect_code(0 "keygen registration key")
 run_cli(regaddr_3ld out err step1 reg.keys example.i2p)

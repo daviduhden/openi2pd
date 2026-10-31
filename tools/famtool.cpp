@@ -87,17 +87,20 @@ struct FileCloser
 using FilePtr = std::unique_ptr<FILE, FileCloser>;
 }
 
-static void usage (const std::string & name)
+/// @brief Print the one-line usage synopsis to an explicit stream.
+/// `--help` writes it to stdout; a usage error writes it to stderr, so a
+/// failing invocation never leaves a synopsis on stdout.
+static void usage (const std::string & name, std::ostream & out)
 {
-	std::cout << "usage: " << name
-			  << " [-h] [-v] [-g -n family -c family.crt -k family.pem] [-s -n family -k family.pem -i router.keys -f "
-				 "router.info] [-V -c family.crt -f router.info]"
-			  << std::endl;
+	out << "usage: " << name
+		<< " [-h] [-v] [-g -n family -c family.crt -k family.pem] [-s -n family -k family.pem -i router.keys -f "
+		   "router.info] [-V -c family.crt -f router.info]"
+		<< std::endl;
 }
 
 static void printhelp (const std::string & name)
 {
-	usage (name);
+	usage (name, std::cout);
 	std::cout << std::endl;
 	std::cout << "generate a new family signing key for family called ``i2pfam''" << std::endl;
 	std::cout << name << " -g -n i2pfam -c myfam.crt -k myfam.pem" << std::endl << std::endl;
@@ -254,15 +257,17 @@ static bool CreateFamilySignature (
 /// was installed leaves that certificate in place without a matching
 /// key file.
 /// `-o` is accepted for compatibility with the historical tool and
-/// ignored; `-v` only enables progress lines on stdout. Diagnostics
-/// stay on stderr.
+/// ignored; `-v` only enables progress lines on stdout. The verdict
+/// (`signed`, `verified`) and progress lines are stdout data; usage
+/// errors and every diagnostic go to stderr, so a failing invocation
+/// leaves stdout empty.
 /// @return 0 on success, 1 for usage, mode, key/certificate or write
 /// failures.
 int main (int argc, char * argv[])
 {
 	if (argc == 1)
 	{
-		usage (argv[0]);
+		usage (argv[0], std::cerr);
 		return 1;
 	}
 	int opt;
@@ -287,7 +292,7 @@ int main (int argc, char * argv[])
 		case 'n':
 			if (!optarg)
 			{
-				usage (argv[0]);
+				usage (argv[0], std::cerr);
 				return 1;
 			}
 			fam = optarg;
@@ -301,7 +306,7 @@ int main (int argc, char * argv[])
 		case 'f':
 			if (!optarg)
 			{
-				usage (argv[0]);
+				usage (argv[0], std::cerr);
 				return 1;
 			}
 			infofile = optarg;
@@ -309,7 +314,7 @@ int main (int argc, char * argv[])
 		case 'i':
 			if (!optarg)
 			{
-				usage (argv[0]);
+				usage (argv[0], std::cerr);
 				return 1;
 			}
 			infile = optarg;
@@ -317,7 +322,7 @@ int main (int argc, char * argv[])
 		case 'o':
 			if (!optarg)
 			{
-				usage (argv[0]);
+				usage (argv[0], std::cerr);
 				return 1;
 			}
 			outfile = optarg;
@@ -325,7 +330,7 @@ int main (int argc, char * argv[])
 		case 'c':
 			if (!optarg)
 			{
-				usage (argv[0]);
+				usage (argv[0], std::cerr);
 				return 1;
 			}
 			certfile = optarg;
@@ -333,14 +338,14 @@ int main (int argc, char * argv[])
 		case 'k':
 			if (!optarg)
 			{
-				usage (argv[0]);
+				usage (argv[0], std::cerr);
 				return 1;
 			}
 			privkey = optarg;
 			break;
 		case 'V': verify = true; break;
 		case 's': sign = true; break;
-		default: usage (argv[0]); return 1;
+		default: usage (argv[0], std::cerr); return 1;
 		}
 	}
 	if (help)
@@ -353,7 +358,7 @@ int main (int argc, char * argv[])
 	if (optind < argc)
 	{
 		std::cerr << "unexpected argument: " << argv[optind] << std::endl;
-		usage (argv[0]);
+		usage (argv[0], std::cerr);
 		return 1;
 	}
 
@@ -368,7 +373,7 @@ int main (int argc, char * argv[])
 	if (!gen && !sign && !verify)
 	{
 		std::cerr << "no mode selected: use -g, -s or -V" << std::endl;
-		usage (argv[0]);
+		usage (argv[0], std::cerr);
 		return 1;
 	}
 	// generate family key code
@@ -580,18 +585,18 @@ int main (int argc, char * argv[])
 	{
 		if (!infofile.size ())
 		{
-			std::cout << "no router info file specified" << std::endl;
+			std::cerr << "no router info file specified" << std::endl;
 			return 1;
 		}
 		if (!certfile.size ())
 		{
-			std::cout << "no family certificate specified" << std::endl;
+			std::cerr << "no family certificate specified" << std::endl;
 			return 1;
 		}
 		auto v = LoadCertificate (certfile);
 		if (!v)
 		{
-			std::cout << "invalid certificate" << std::endl;
+			std::cerr << "invalid certificate" << std::endl;
 			return 1;
 		}
 
@@ -614,21 +619,21 @@ int main (int argc, char * argv[])
 		ri.SetRouterIdentity (identity);
 		if (!ri.Update (routerInfo->GetBuffer (), routerInfo->GetBufferLen ()) || ri.IsUnreachable ())
 		{
-			std::cout << "invalid router info " << infofile << std::endl;
+			std::cerr << "invalid router info " << infofile << std::endl;
 			return 1;
 		}
 
 		auto sig = ri.GetProperty (ROUTER_INFO_PROPERTY_FAMILY_SIG);
 		if (ri.GetProperty (ROUTER_INFO_PROPERTY_FAMILY) != fam)
 		{
-			std::cout << infofile << " does not belong to " << fam << std::endl;
+			std::cerr << infofile << " does not belong to " << fam << std::endl;
 			return 1;
 		}
 		auto ident = ri.GetIdentHash ();
 
 		if (fam.size () + IdentHash::len > MAX_FAMILY_SIGNATURE_INPUT)
 		{
-			std::cout << "family name too long" << std::endl;
+			std::cerr << "family name too long" << std::endl;
 			return 1;
 		}
 
@@ -641,7 +646,7 @@ int main (int argc, char * argv[])
 		if (sig.empty () || sigbuf.empty () || i2p::data::Base64ToByteStream (sig, sigbuf) != sigbuf.size ()
 			|| !v->Verify (message.data (), message.size (), sigbuf.data ()))
 		{
-			std::cout << "invalid signature" << std::endl;
+			std::cerr << "invalid signature" << std::endl;
 			return 1;
 		}
 		std::cout << "verified" << std::endl;
