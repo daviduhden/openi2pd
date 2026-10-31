@@ -244,6 +244,7 @@ set(I2PD_TESTS
   test-i2pcontrol-socket
   test-bob-command
   test-upnp-mapping
+  test-transports-prestart-send
 )
 
 if(WITH_TORRENTS)
