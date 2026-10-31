@@ -8,7 +8,10 @@
  * Tunnel::Build (a path longer than the record table must fail without
  * sending) and the fail-closed record writer plus the exact
  * build-response count/length checks. Deterministic: no sockets,
- * threads or sleeps.
+ * threads or sleeps. The transports are switched to their offline state
+ * explicitly: a tunnel build still hands its request to
+ * i2p::transport::transports, whose io_context only exists after
+ * Transports::Start(), and this test never starts it.
  *
  */
 
@@ -19,6 +22,7 @@
 #include <vector>
 
 #include "Identity.h"
+#include "Transports.h"
 #include "Tunnel.h"
 #include "TunnelConfig.h"
 
@@ -167,6 +171,11 @@ void TestTooManyRecordsRejected ()
 
 int main ()
 {
+	// Build() delivers the request through the transports singleton. Nothing
+	// in this test starts them, so establish the documented offline state
+	// first; Transports::SendMessage() then drops the message instead of
+	// posting to the io_context that Start() would have created.
+	i2p::transport::transports.SetOnline (false);
 	TestRecordPlan ();
 	TestOversizedBuildFailsClosed ();
 	TestValidBuildStoresRecordCount ();

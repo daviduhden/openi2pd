@@ -9,7 +9,8 @@
  * survive longer than the 8 s I2NP lifetime (45 s, Java
  * FragmentHandler). Deterministic: the decrypted tunnel message is
  * crafted in memory and delivery is a no-op while the transports are
- * offline.
+ * offline, which this test establishes explicitly because the router
+ * endpoint dispatches through i2p::transport::transports.
  *
  */
 
@@ -23,6 +24,7 @@
 #include "Crypto.h"
 #include "I2PEndian.h"
 #include "I2NPProtocol.h"
+#include "Transports.h"
 #include "TunnelBase.h"
 #include "TunnelEndpoint.h"
 
@@ -158,7 +160,9 @@ void TestStaleFollowOnFragmentIsDropped ()
 		assert (craft.HasRoomForTerminal ());
 		endpoint.HandleDecryptedTunnelDataMsg (craft.Finish ());
 	}
-	assert (endpoint.GetNumIncompleteMessages () >= 1);
+	// Both first fragments are held: message 9 is never completed by this
+	// test and must stay in the table until it expires.
+	assert (endpoint.GetNumIncompleteMessages () == 2);
 	assert (endpoint.GetNumOutOfSequenceFragments () == 0);
 
 	// Fragment #1 of message 7 is consumed, so #2 is next.
@@ -178,7 +182,7 @@ void TestStaleFollowOnFragmentIsDropped ()
 		endpoint.HandleDecryptedTunnelDataMsg (craft.Finish ());
 	}
 	assert (endpoint.GetNumOutOfSequenceFragments () == 0);
-	assert (endpoint.GetNumIncompleteMessages () >= 1);
+	assert (endpoint.GetNumIncompleteMessages () == 2);
 
 	// The remaining fragment still completes the message, so the stale
 	// duplicate did not corrupt the reassembly state.
@@ -188,7 +192,8 @@ void TestStaleFollowOnFragmentIsDropped ()
 		assert (craft.HasRoomForTerminal ());
 		endpoint.HandleDecryptedTunnelDataMsg (craft.Finish ());
 	}
-	assert (endpoint.GetNumIncompleteMessages () == 0);
+	// Message 7 is delivered and erased; message 9 is still incomplete.
+	assert (endpoint.GetNumIncompleteMessages () == 1);
 	assert (endpoint.GetNumOutOfSequenceFragments () == 0);
 }
 
@@ -229,10 +234,11 @@ void TestIncompleteExpiry ()
 	assert (craft.HasRoomForTerminal ());
 	const uint64_t now = i2p::util::GetMillisecondsSinceEpoch ();
 	endpoint.HandleDecryptedTunnelDataMsg (craft.Finish ());
-	assert (endpoint.GetNumIncompleteMessages () >= 1);
+	// Both first fragments are pending; neither was completed.
+	assert (endpoint.GetNumIncompleteMessages () == 2);
 
 	endpoint.Cleanup (now + 30 * 1000);
-	assert (endpoint.GetNumIncompleteMessages () >= 1);
+	assert (endpoint.GetNumIncompleteMessages () == 2);
 	endpoint.Cleanup (now + 60 * 1000);
 	assert (endpoint.GetNumIncompleteMessages () == 0);
 }
@@ -290,14 +296,60 @@ void TestTruncatedFragmentHeaders ()
 		}
 	}
 }
+
+void TestCellWithoutIvSuffixIsRejected ()
+{
+	// The checksum pass copies the 16-byte IV directly after the cell, so a
+	// buffer that ends at the payload would become a 16-byte heap overflow.
+	// The endpoint must reject the message before touching that suffix; the
+	// sanitizer lanes make the difference visible.
+	constexpr size_t prefix = 2 + I2NP_HEADER_SIZE;
+	std::vector<uint8_t> storage (prefix + TUNNEL_DATA_MSG_SIZE, 1); // no IV suffix
+	auto msg = std::make_shared<I2NPMessage> ();
+	msg->buf = storage.data ();
+	msg->len = prefix + TUNNEL_DATA_MSG_SIZE;
+	msg->maxLen = storage.size ();
+	auto payload = msg->GetPayload ();
+	// A plausible cell: the fragment area starts right after the checksum.
+	payload[24] = 0;
+	payload[25] = 0;
+
+	TunnelEndpoint endpoint (false);
+	endpoint.HandleDecryptedTunnelDataMsg (msg);
+	assert (endpoint.GetNumReceivedBytes () == 0); // dropped before parsing
+	assert (endpoint.GetNumIncompleteMessages () == 0);
+	assert (endpoint.GetNumOutOfSequenceFragments () == 0);
+
+	// The contract boundary itself still parses: exactly 16 writable bytes
+	// after the cell are enough. The checksum then fails because this is not
+	// an authentic cell, which is visible through the receive counter.
+	std::vector<uint8_t> suffixed (prefix + TUNNEL_DATA_MSG_SIZE + 16, 1);
+	auto accepted = std::make_shared<I2NPMessage> ();
+	accepted->buf = suffixed.data ();
+	accepted->len = prefix + TUNNEL_DATA_MSG_SIZE;
+	accepted->maxLen = suffixed.size ();
+	auto acceptedPayload = accepted->GetPayload ();
+	acceptedPayload[24] = 0;
+	acceptedPayload[25] = 0;
+	endpoint.HandleDecryptedTunnelDataMsg (accepted);
+	assert (endpoint.GetNumReceivedBytes () == TUNNEL_DATA_MSG_SIZE);
+	assert (endpoint.GetNumIncompleteMessages () == 0);
+	assert (endpoint.GetNumOutOfSequenceFragments () == 0);
+}
 }
 
 int main ()
 {
+	// The outbound endpoint delivers router-bound messages through the
+	// transports singleton. Nothing here starts them, so establish the
+	// documented offline state first: Transports::SendMessage() then drops
+	// the message instead of posting to the io_context Start() creates.
+	i2p::transport::transports.SetOnline (false);
 	TestStaleFollowOnFragmentIsDropped ();
 	TestOutOfSequenceExpiry ();
 	TestIncompleteExpiry ();
 	TestFragmentTimeoutConstant ();
 	TestTruncatedFragmentHeaders ();
+	TestCellWithoutIvSuffixIsRejected ();
 	return 0;
 }

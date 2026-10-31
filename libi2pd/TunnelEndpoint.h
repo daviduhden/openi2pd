@@ -87,11 +87,14 @@ namespace tunnel
 
 		/// Parse a decrypted cell after its owning tunnel has checked its
 		/// size.
-		/// @pre The message contains a full TUNNEL_DATA_MSG_SIZE payload and
-		///      has 16 writable bytes after it for the checksum's IV suffix.
-		/// @param msg Shared message whose backing storage must
-		///            remain alive while retained; the final fragment may
-		///            reuse this buffer.
+		/// @param msg Shared message containing a full TUNNEL_DATA_MSG_SIZE
+		///            payload whose backing storage has at least 16 writable
+		///            bytes after it for the checksum's IV suffix. A message
+		///            that does not satisfy both bounds is dropped with an
+		///            error instead of being parsed, so a caller can never
+		///            turn the IV copy into a heap overflow.
+		/// @pre The message is not null; the buffer must remain alive while
+		///      retained, because the final fragment may reuse it.
 		void HandleDecryptedTunnelDataMsg (std::shared_ptr<I2NPMessage> msg);
 		void FlushI2NPMsgs ();
 

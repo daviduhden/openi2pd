@@ -147,6 +147,22 @@ namespace tunnel
 	bool ShouldSkipTunnelTest (uint64_t nowMs, uint64_t lastReceiveMs);
 
 	/**
+	 * True when an outbound path of @a numPeers peers needs an existing
+	 * inbound tunnel.
+	 *
+	 * A non-empty outbound path configures its reply hop from an inbound
+	 * tunnel (reply tunnel ID and hash). A zero-hop outbound path is
+	 * delivered locally and has no reply hop at all, so building or
+	 * recreating it must not depend on one: requiring an inbound tunnel
+	 * left a zero-hop pool empty once its last inbound tunnel failed its
+	 * tests.
+	 */
+	inline bool OutboundPathNeedsInboundTunnel (size_t numPeers)
+	{
+		return numPeers > 0;
+	}
+
+	/**
 	 * Lifetime-safe registration of a custom tunnel peer selector.
 	 *
 	 * The pool never owns the selector. A registration may carry an owner,

@@ -6,11 +6,16 @@
  *
  * Injects a tunnel test that expired on its last strike and runs
  * TestTunnels(), requiring synchronous replacement publication without
- * self-deadlock and non-empty inbound/outbound pools.
+ * self-deadlock and non-empty inbound/outbound pools. A zero-hop
+ * outbound path configures no reply hop, so its replacement must not
+ * wait for an inbound tunnel: after the failed inbound tunnel is
+ * erased from the pool no established inbound tunnel is reachable from
+ * the global registry either.
  *
  */
 
 #include <atomic>
+#include <cassert>
 #include <chrono>
 #include <cstdint>
 #include <cstdlib>
@@ -69,6 +74,11 @@ int main ()
 {
 	using namespace i2p::tunnel;
 
+	// The path shape decides whether an inbound tunnel is required at all.
+	assert (!OutboundPathNeedsInboundTunnel (0));
+	assert (OutboundPathNeedsInboundTunnel (1));
+	assert (OutboundPathNeedsInboundTunnel (MAX_NUM_RECORDS));
+
 	auto pool = std::make_shared<TunnelPool> (0, 0, 1, 1, 0, 0, false);
 
 	auto inbound = tunnels.CreateInboundTunnel (nullptr, pool, nullptr);
@@ -98,7 +108,9 @@ int main ()
 
 	worker.join ();
 
-	if (TunnelPoolTestAccess::InboundSize (*pool) == 0 || TunnelPoolTestAccess::OutboundSize (*pool) == 0)
+	// Exactly one replacement of each direction: the failed pair was erased
+	// and one zero-hop tunnel was published for it.
+	if (TunnelPoolTestAccess::InboundSize (*pool) != 1 || TunnelPoolTestAccess::OutboundSize (*pool) != 1)
 	{
 		std::cerr << "zero-hop replacement tunnels were not published" << std::endl;
 		return 1;

@@ -1205,6 +1205,17 @@ namespace tunnel
 		Path path;
 		if (SelectPeers (path, false))
 		{
+			// A zero-hop outbound path delivers locally and configures no
+			// reply hop, so it does not need an inbound tunnel. Requiring one
+			// kept a zero-hop pool empty after its last inbound tunnel failed
+			// its tests, even though nothing was missing to build the path.
+			if (!OutboundPathNeedsInboundTunnel (path.peers.size ()))
+			{
+				auto tunnel = tunnels.CreateOutboundTunnel (nullptr, shared_from_this ());
+				if (tunnel && tunnel->IsEstablished ()) // zero hops
+					TunnelCreated (tunnel);
+				return;
+			}
 			// if we are out of outbound tunnels and last inbound was not create
 			// recently most like it's dead
 			bool hasOutbound = false, recentInbound = false;
@@ -1228,10 +1239,10 @@ namespace tunnel
 				return;
 			}
 
-			std::shared_ptr<TunnelConfig> config;
-			if (!path.peers.empty ())
-				config = std::make_shared<TunnelConfig> (path.peers, inboundTunnel->GetNextTunnelID (),
-					inboundTunnel->GetNextIdentHash (), path.farEndTransports);
+			// The early zero-hop branch above guarantees a non-empty path
+			// here: only a real outbound path configures a reply hop.
+			auto config = std::make_shared<TunnelConfig> (path.peers, inboundTunnel->GetNextTunnelID (),
+				inboundTunnel->GetNextIdentHash (), path.farEndTransports);
 
 			std::shared_ptr<OutboundTunnel> tunnel;
 			// TODO: implement it better
@@ -1254,30 +1265,40 @@ namespace tunnel
 			CreateOutboundTunnel (i2p::util::GetSecondsSinceEpoch ());
 			return;
 		}
+		auto peers = tunnel->GetPeers ();
+		// Same rule as CreateOutboundTunnel(): a zero-hop outbound path has
+		// no reply hop to configure, so it is replaced even when no inbound
+		// tunnel exists. Otherwise a zero-hop pool loses its outbound tunnel
+		// for good once the inbound replacement is not yet published.
+		if (!OutboundPathNeedsInboundTunnel (peers.size ()))
+		{
+			auto newTunnel = tunnels.CreateOutboundTunnel (nullptr, shared_from_this ());
+			if (newTunnel)
+			{
+				newTunnel->SetTunnelPool (shared_from_this ());
+				if (newTunnel->IsEstablished ()) // zero hops
+					TunnelCreated (newTunnel);
+			}
+			return;
+		}
 		auto inboundTunnel = GetNextInboundTunnel (nullptr, tunnel->GetFarEndTransports ());
 		if (!inboundTunnel) inboundTunnel = tunnels.GetNextInboundTunnel ();
 		if (inboundTunnel)
 		{
 			LogPrint (eLogDebug, "Tunnels: Re-creating destination outbound tunnel...");
-			std::shared_ptr<TunnelConfig> config;
-			auto peers = tunnel->GetPeers ();
-			if (!peers.empty () && !ValidatePeers (peers, false))
+			if (!ValidatePeers (peers, false))
 			{
 				CreateOutboundTunnel (i2p::util::GetSecondsSinceEpoch ());
 				return;
 			}
-			if (!peers.empty ())
-				config = std::make_shared<TunnelConfig> (peers, inboundTunnel->GetNextTunnelID (),
-					inboundTunnel->GetNextIdentHash (), tunnel->GetFarEndTransports ());
-			if (peers.empty () || config)
+			auto config = std::make_shared<TunnelConfig> (peers, inboundTunnel->GetNextTunnelID (),
+				inboundTunnel->GetNextIdentHash (), tunnel->GetFarEndTransports ());
+			auto newTunnel = tunnels.CreateOutboundTunnel (config, inboundTunnel->GetTunnelPool ());
+			if (newTunnel)
 			{
-				auto newTunnel = tunnels.CreateOutboundTunnel (config, inboundTunnel->GetTunnelPool ());
-				if (newTunnel)
-				{
-					newTunnel->SetTunnelPool (shared_from_this ());
-					if (newTunnel->IsEstablished ()) // zero hops
-						TunnelCreated (newTunnel);
-				}
+				newTunnel->SetTunnelPool (shared_from_this ());
+				if (newTunnel->IsEstablished ()) // zero hops
+					TunnelCreated (newTunnel);
 			}
 		}
 		else

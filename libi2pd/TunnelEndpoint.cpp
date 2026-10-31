@@ -28,6 +28,19 @@ namespace tunnel
 
 	void TunnelEndpoint::HandleDecryptedTunnelDataMsg (std::shared_ptr<I2NPMessage> msg)
 	{
+		// The checksum pass copies the 16-byte IV directly after the cell so
+		// that one contiguous SHA256 range covers the fragment area and the
+		// IV. Verify that the caller's backing storage holds both before
+		// anything is written: a buffer that ends at the payload would turn
+		// that suffix into a 16-byte heap overflow.
+		if (!msg || msg->offset > msg->maxLen
+			|| msg->len < msg->offset + I2NP_HEADER_SIZE + TUNNEL_DATA_MSG_SIZE
+			|| msg->maxLen - msg->offset < I2NP_HEADER_SIZE + TUNNEL_DATA_MSG_SIZE + 16)
+		{
+			LogPrint (
+				eLogError, "TunnelMessage: Buffer too small for a tunnel cell and its checksum IV, dropped");
+			return;
+		}
 		// One decrypted cell is: a 4-byte tunnel ID, a 16-byte IV, a 4-byte
 		// truncated checksum and then the decrypted data area, which starts
 		// with a 4-byte clock/sequence header. The fragment walk therefore

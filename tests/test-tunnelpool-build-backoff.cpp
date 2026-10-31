@@ -8,7 +8,10 @@
  * the per-tunnel test deadline and the in-progress build accounting
  * that stops a pool from oversubscribing a slow build round.
  * Deterministic: the pending map is inspected directly and no
- * transport, socket or thread runs.
+ * transport, socket or thread runs. The transports are switched to
+ * their offline state explicitly, because a real build still hands its
+ * request to i2p::transport::transports, whose io_context only exists
+ * after Transports::Start().
  *
  */
 
@@ -17,6 +20,7 @@
 #include <memory>
 
 #include "Identity.h"
+#include "Transports.h"
 #include "Tunnel.h"
 #include "TunnelPool.h"
 
@@ -214,6 +218,10 @@ void TestPoolAccounting ()
 
 int main ()
 {
+	// A real build sends through the transports singleton, which this test
+	// never starts; use the documented offline state so the request is
+	// dropped instead of being posted to a non-existent io_context.
+	i2p::transport::transports.SetOnline (false);
 	TestClampTunnelLength ();
 	TestReconfigureClamp ();
 	TestBuildRequestLadder ();

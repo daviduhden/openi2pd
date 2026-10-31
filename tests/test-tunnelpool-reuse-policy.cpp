@@ -160,8 +160,9 @@ void TestAdmissionPredicate ()
 	assert (!IsRouterUsableForTunnel (*unreachable, nullptr, TunnelPeerRole::Middle, true, false));
 
 	// Old routers: the general floor is waived only for a high-bandwidth
-	// peer.
-	auto old = MakeRouter (MakeEciesKeys (), "0.9.1");
+	// peer. "O" is the 128-256 KBps high-bandwidth cap, so an old router that
+	// has to fail the floor must declare a low tier: "L" is 12-48 KBps.
+	auto old = MakeRouter (MakeEciesKeys (), "0.9.1", "L");
 	assert (!old->IsHighBandwidth ());
 	assert (!IsRouterUsableForTunnel (*old, nullptr, TunnelPeerRole::Middle, true, false));
 
