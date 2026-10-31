@@ -112,9 +112,21 @@ run Gradle, install an APK or run a device test.
   for Binder death/rebind and do not replay ambiguous writes.
 - Remove pre-API-29 compatibility branches and legacy launcher fallbacks when
   touching resources.
+- When Lint flags resources or layout variants, inspect every locale and
+  qualifier, accessibility description and actual resource reference before
+  editing. Preserve brand vector geometry and intentional compact/wide
+  layouts. Keep any `tools:ignore` narrowly scoped to the specific view.
+- An ABI filter warning requires a complete native dependency prefix and
+  artifact path, not an extra ABI filter alone.
 
 ## Known issues and decisions
 
+- The 2026-10-31 Lint report found 51 warnings across 17 issue IDs. Local
+  resource/UI edits address 34 instances by static review; the remaining
+  ChromeOS ABI, branded vector-path, nested-weight and background-overdraw
+  findings need dependency or design review. The exact run and unresolved
+  groups are tracked in `docs/ci/COMPILATION-WARNINGS.md`; none is validated
+  until Android Lint runs on the corrected revision.
 - Torrent SAF creation reports progress bytes separately from its terminal
   result. The terminal value carries encoded torrent metadata or a localized
   error; it does not grant authority over the stored payload. Keep comments
@@ -194,6 +206,22 @@ run Gradle, install an APK or run a device test.
   and the language/bandwidth/loglevel value arrays are deliberately exempt. Use `openi2pd-i18n` for new visible
   strings. Per-app selection uses `AppCompatDelegate`, never the device locale.
   Do not translate protocol/status tokens, config values or user data.
+- Lint cleanup from run 41222227216 at SHA 45f5f739 was source-level
+  evidence only. Keep the Application instance (not generic Context) as the static
+  SAF registry owner, localize address-book row and accessibility formats,
+  and use locale catalogs for count-bearing session labels. Since SAF byte
+  progress is a `long`, keep its resource wording noun-before-number rather
+  than narrowing it to Android plural APIs' `int` quantity. `values-v29` is
+  redundant at minSdk 29; API-33 manifest attributes remain annotated, and
+  only the API-33 launcher variant owns the monochrome layer. Keep the 48dp
+  log empty-state glyph separate from the 24dp toolbar glyph. The compact
+  bottom bar and wide navigation rail intentionally replace one another; keep
+  the `InconsistentLayout` annotation scoped to those two views. Do not add an
+  APK ABI unless the Gradle/vcpkg dependency prefix for that ABI is packaged.
+  The brand vectors intentionally retain their path geometry; lint's vector
+  complexity warning is not permission to redraw them. Recheck these decisions
+  against the complete Lint report after manual CI runs.
+
 - Java 25 source features are not Android library APIs. Virtual threads,
   scoped values and structured concurrency remain guarded; D8/R8, Lint,
   APK and device evidence are pending.

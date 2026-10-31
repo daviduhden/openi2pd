@@ -98,12 +98,14 @@ Defines native Android application resources.
         android:layout_height="1dp"
         android:background="?attr/colorOutlineVariant" />
 
+    <!-- Compact uses bottom navigation; wide uses the navigation rail. -->
     <com.google.android.material.bottomnavigation.BottomNavigationView
         android:id="@+id/nav_bottom"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:minHeight="@dimen/nav_bar_height"
         android:background="?attr/colorSurface"
+        tools:ignore="InconsistentLayout"
         app:labelVisibilityMode="labeled"
         app:menu="@menu/navigation_main" />
 </LinearLayout>

@@ -18,6 +18,7 @@ package org.openi2pd.router;
 import static android.app.PendingIntent.FLAG_IMMUTABLE;
 import static android.app.PendingIntent.FLAG_UPDATE_CURRENT;
 
+import android.app.Application;
 import android.app.Notification;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
@@ -404,7 +405,7 @@ public class RouterService extends Service {
     public void onCreate() {
         super.onCreate();
         ownerEpoch = ServiceOwnerEpoch.acquire();
-        Context appContext = getApplicationContext();
+        Application appContext = getApplication();
         TorrentSafStorage.initialize(appContext);
         notificationManager =
                 (NotificationManager) appContext.getSystemService(NOTIFICATION_SERVICE);

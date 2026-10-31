@@ -129,34 +129,21 @@ Defines native Android application resources.
             android:paddingBottom="@dimen/margin_small"
             android:scrollbars="vertical" />
 
-        <LinearLayout
-            android:id="@+id/logs_empty"
+        <TextView
+            android:id="@+id/logs_empty_text"
             android:layout_width="match_parent"
             android:layout_height="match_parent"
+            android:accessibilityLiveRegion="polite"
+            android:drawablePadding="@dimen/margin_small"
+            android:drawableTint="?attr/colorOnSurfaceVariant"
+            android:drawableTop="@drawable/ic_logs_empty"
             android:gravity="center"
-            android:orientation="vertical"
             android:padding="@dimen/margin_large"
+            android:text="@string/logs_empty"
+            android:textAppearance="@style/TextAppearance.OpenI2Pd.Body"
+            android:textColor="?attr/colorOnSurfaceVariant"
             android:visibility="gone"
-            tools:visibility="visible">
-
-            <ImageView
-                android:layout_width="48dp"
-                android:layout_height="48dp"
-                android:importantForAccessibility="no"
-                android:src="@drawable/ic_logs"
-                app:tint="?attr/colorOnSurfaceVariant" />
-
-            <TextView
-                android:id="@+id/logs_empty_text"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="@dimen/margin_small"
-                android:accessibilityLiveRegion="polite"
-                android:gravity="center"
-                android:text="@string/logs_empty"
-                android:textAppearance="@style/TextAppearance.OpenI2Pd.Body"
-                android:textColor="?attr/colorOnSurfaceVariant" />
-        </LinearLayout>
+            tools:visibility="visible" />
     </FrameLayout>
 
     <com.google.android.material.button.MaterialButton

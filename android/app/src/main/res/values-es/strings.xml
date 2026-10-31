@@ -20,8 +20,8 @@ Defines native Android application resources.
 
     <string name="gracefulShutdownInProgress">Detención gradual en curso</string>
 
-    <string name="uninitialized">Inicializando la aplicación...</string>
-    <string name="starting">Iniciando la aplicación...</string>
+    <string name="uninitialized">Inicializando la aplicación…</string>
+    <string name="starting">Iniciando la aplicación…</string>
     <string name="startedOkay">Aplicación iniciada</string>
     <string name="startFailed">Error al iniciar</string>
     <string name="stopped">Aplicación detenida</string>
@@ -34,7 +34,7 @@ Defines native Android application resources.
     <string name="battery_optimizations_enabled_dialog">Tu Android está aplicando optimizaciones de batería agresivas a openi2pd, lo que puede provocar que el daemon se cierre sin ninguna otra causa.\n\nAhora se te pedirá permiso para desactivarlas.</string>
     <string name="os_version_does_not_support_battery_optimizations_show_os_dialog_api">La versión de Android de este dispositivo no permite mostrar el diálogo de optimización de batería para aplicaciones.</string>
 
-    <string name="tunnels_reloading">Recargando la configuración de túneles...</string>
+    <string name="tunnels_reloading">Recargando la configuración de túneles…</string>
 
     <string name="autostart_enabled">Iniciar al arrancar</string>
 
@@ -82,7 +82,7 @@ Defines native Android application resources.
     <string name="metric_peers">Pares</string>
     <string name="metric_routers">Routers conocidos</string>
     <string name="metric_tunnels_label">Túneles (entrada / salida / tránsito)</string>
-    <string name="metric_tunnels_value">%1$d entrada / %2$d salida / %3$d tránsito</string>
+    <string name="metric_tunnels_value">Entrada: %1$d · Salida: %2$d · Tránsito: %3$d</string>
     <string name="metric_reseed">Reseed</string>
     <string name="metric_download">Descarga</string>
     <string name="metric_upload">Subida</string>
@@ -119,7 +119,6 @@ Defines native Android application resources.
     <string name="confirm_reseed_title">¿Hacer un reseed de la base de datos de red?</string>
     <string name="confirm_reseed_message">El router contactará por HTTPS con los servidores de reseed configurados para actualizar la información de los routers. Esto consume tráfico de red y puede tardar unos minutos con una conexión deficiente; las solicitudes de estado y de detención pueden retrasarse hasta que termine.</string>
     <string name="toast_reseed_started">Solicitando un reseed de NetDb…</string>
-    <string name="toast_reseed_finished">El reseed de NetDb ha finalizado.</string>
     <string name="toast_reseed_failed">No se inició el reseed. Es posible que el router esté detenido o que ya haya otro reseed en curso.</string>
     <string name="toast_starting">Iniciando el router…</string>
     <string name="toast_stopping">Deteniendo el router…</string>
@@ -190,6 +189,7 @@ Defines native Android application resources.
     <plurals name="logs_summary">
         <item quantity="one">%1$d mostrado de %2$d conservado</item>
         <item quantity="other">%1$d mostrados de %2$d conservados</item>
+        <item quantity="many">%1$d mostrados de %2$d conservados</item>
     </plurals>
     <string name="logs_cleared">Entradas de registro borradas.</string>
     <string name="tile_state_format">%1$s: %2$s</string>
@@ -355,7 +355,13 @@ Defines native Android application resources.
     <string name="torrent_create_saf_folder">Carpeta SAF</string>
     <string name="torrent_export_generated">Exportar torrent generado</string>
     <string name="torrent_cancel_saf_creation">Cancelar creación SAF</string>
-    <string name="torrent_creation_progress">Creando torrent: %1$d bytes procesados</string>
+
+    <plurals name="torrent_session_count">
+        <item quantity="one">Sesión %1$s · %2$d torrent</item>
+        <item quantity="other">Sesión %1$s · %2$d torrents</item>
+        <item quantity="many">Sesión %1$s · %2$d torrents</item>
+    </plurals>
+    <string name="torrent_creation_progress">Creando torrent: bytes procesados %1$d</string>
     <string name="torrent_metadata_ready">Metadatos listos. Elige Exportar torrent generado. La siembra desde orígenes SAF no está disponible.</string>
     <string name="torrent_payload_action">Descargar / sembrar árbol de documentos</string>
     <string name="torrent_payload_message">%1$s\n\nSelecciona un árbol de carga útil existente o un directorio de descarga vacío. Las piezas existentes se verificarán; los manejadores en ejecución se sustituyen tras un fallo de acceso.</string>
@@ -380,8 +386,9 @@ Defines native Android application resources.
     <plurals name="torrent_count">
         <item quantity="one">Torrent: %1$d</item>
         <item quantity="other">Torrents: %1$d</item>
+        <item quantity="many">Torrents: %1$d</item>
     </plurals>
-    <string name="torrent_session_count">Sesión %1$s · %2$d torrents</string>
+
     <string name="torrent_private_badge">privado</string>
     <string name="torrent_private_summary_yes">Enjambre privado (DHT, PEX y comentarios desactivados)</string>
     <string name="torrent_private_summary_no">Enjambre público</string>
@@ -400,7 +407,6 @@ Defines native Android application resources.
     <string name="torrent_meta_failed">Se rechazó la edición de los metadatos del torrent. Pausa el torrent y usa texto UTF-8 dentro de los límites.</string>
     <string name="torrent_remove_files">Eliminar torrent y borrar datos</string>
     <string name="torrent_remove_files_confirm">¿Eliminar %1$s y borrar permanentemente su carga útil descargada? Esta acción no se puede deshacer.</string>
-    <string name="torrent_removed_files">Se ha encolado la eliminación del torrent con sus datos locales.</string>
     <string name="address_book_title">Libreta de direcciones</string>
     <string name="address_book_refresh">Actualizar libreta de direcciones</string>
     <string name="address_book_add">Añadir o sustituir dirección</string>
@@ -419,8 +425,11 @@ Defines native Android application resources.
     <string name="address_book_block">Bloquear nombre de suscripción</string>
     <string name="address_book_blocked_list">Nombres de suscripción bloqueados</string>
     <string name="address_book_block_hint">Nombre o comodín terminado en .i2p</string>
-    <string name="address_book_block_confirm">¿Bloquear %1$s en las actualizaciones de suscripciones? Eliminar una dirección ya añade un bloqueo exacto.</string>
     <string name="address_book_blinded">ofuscada</string>
+    <string name="address_book_entry_row">%1$s\n%2$s</string>
+    <string name="address_book_entry_row_blinded">%1$s\n%2$s (%3$s)</string>
+    <string name="address_book_entry_accessibility">%1$s, %2$s</string>
+    <string name="address_book_entry_accessibility_blinded">%1$s, %2$s, %3$s</string>
     <string name="address_book_blocked">Nombre de suscripción bloqueado.</string>
     <string name="address_book_unblocked">Bloqueo de suscripción eliminado.</string>
     <string name="address_book_blocked_empty">No hay nombres de suscripción bloqueados.</string>
@@ -482,6 +491,7 @@ Defines native Android application resources.
     <plurals name="runtime_admin_reseed_status">
         <item quantity="one">Fase %1$s · %2$d intento · %3$d correcto</item>
         <item quantity="other">Fase %1$s · %2$d intentos · %3$d correctos</item>
+        <item quantity="many">Fase %1$s · %2$d intentos · %3$d correctos</item>
     </plurals>
     <string name="runtime_admin_reseed_error">Último error: %1$s</string>
     <string name="runtime_admin_reseed_started">Reseed iniciado.</string>

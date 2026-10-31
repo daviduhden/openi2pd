@@ -307,6 +307,5 @@ public class RouterViewModel extends AndroidViewModel {
     @Override
     protected void onCleared() {
         repository.close();
-        super.onCleared();
     }
 }

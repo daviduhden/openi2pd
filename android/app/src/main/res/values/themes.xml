@@ -58,5 +58,8 @@ Defines native Android application resources.
         <item name="android:windowContentTransitions">true</item>
     </style>
 
-    <style name="Theme.OpenI2Pd" parent="Theme.OpenI2Pd.Base" />
+    <style name="Theme.OpenI2Pd" parent="Theme.OpenI2Pd.Base">
+        <item name="android:windowLightNavigationBar">@bool/window_light_navigation_bar</item>
+        <item name="android:forceDarkAllowed">false</item>
+    </style>
 </resources>

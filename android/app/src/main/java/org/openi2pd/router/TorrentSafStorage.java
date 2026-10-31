@@ -5,6 +5,7 @@
  */
 package org.openi2pd.router;
 
+import android.app.Application;
 import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
@@ -33,7 +34,7 @@ final class TorrentSafStorage {
     private static final Object lock = new Object();
     private static final android.os.Handler main =
             new android.os.Handler(android.os.Looper.getMainLooper());
-    private static volatile Context context;
+    private static volatile Application context;
     private static ITorrentSafStorage remote;
     private static long generation, nextId = 1, nextOperation = 1;
     // Broker generation returned by handshake(). It is deliberately
@@ -491,10 +492,10 @@ final class TorrentSafStorage {
      * transient bind failure cannot keep SAF storage disabled for the
      * rest of the process lifetime.</p>
      */
-    static void initialize(Context app) {
+    static void initialize(Application app) {
         synchronized (lock) {
             if (context == null)
-                context = app.getApplicationContext();
+                context = app;
             // Every daemon start begins a fresh bind episode, so a
             // transient bind failure never keeps SAF storage disabled
             // for the rest of the process lifetime.

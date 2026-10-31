@@ -82,7 +82,7 @@ Defines native Android application resources.
     <string name="metric_peers">对等节点</string>
     <string name="metric_routers">已知路由器</string>
     <string name="metric_tunnels_label">隧道（入站 / 出站 / 中转）</string>
-    <string name="metric_tunnels_value">%1$d 入站 / %2$d 出站 / %3$d 中转</string>
+    <string name="metric_tunnels_value">入站：%1$d · 出站：%2$d · 中转：%3$d</string>
     <string name="metric_reseed">重新播种</string>
     <string name="metric_download">下载</string>
     <string name="metric_upload">上传</string>
@@ -119,7 +119,6 @@ Defines native Android application resources.
     <string name="confirm_reseed_title">重新播种网络数据库？</string>
     <string name="confirm_reseed_message">路由器将通过 HTTPS 联系已配置的重新播种服务器以刷新路由器信息。此操作会消耗网络流量，在连接较差时可能需要几分钟；在完成之前，状态和停止请求可能会被延迟。</string>
     <string name="toast_reseed_started">正在请求 NetDb 重新播种…</string>
-    <string name="toast_reseed_finished">NetDb 重新播种已完成。</string>
     <string name="toast_reseed_failed">未启动重新播种。路由器可能已停止，或者已有另一个重新播种正在进行。</string>
     <string name="toast_starting">正在启动路由器…</string>
     <string name="toast_stopping">正在停止路由器…</string>
@@ -188,7 +187,6 @@ Defines native Android application resources.
     <string name="logs_empty_filtered">没有条目匹配当前筛选条件</string>
     <string name="logs_loading">正在等待路由器服务…</string>
     <plurals name="logs_summary">
-        <item quantity="one">已显示 %1$d 条，共保留 %2$d 条</item>
         <item quantity="other">已显示 %1$d 条，共保留 %2$d 条</item>
     </plurals>
     <string name="logs_cleared">日志条目已清除。</string>
@@ -363,7 +361,11 @@ Defines native Android application resources.
     <string name="torrent_create_saf_folder">SAF 文件夹</string>
     <string name="torrent_export_generated">导出生成的种子</string>
     <string name="torrent_cancel_saf_creation">取消 SAF 创建</string>
-    <string name="torrent_creation_progress">正在创建种子：已计算 %1$d 字节哈希</string>
+
+    <plurals name="torrent_session_count">
+        <item quantity="other">会话 %1$s · %2$d 个种子任务</item>
+    </plurals>
+    <string name="torrent_creation_progress">正在创建种子：已计算哈希的字节数 %1$d</string>
     <string name="torrent_metadata_ready">元信息已就绪。请选择“导出生成的种子”。暂不支持从 SAF 来源做种。</string>
     <string name="torrent_payload_action">下载 / 为数据树做种</string>
     <string name="torrent_payload_message">%1$s\n\n请选择现有的数据树或空的下载目录。将校验现有分片；访问失败后，使用中的句柄会被替换。</string>
@@ -386,10 +388,9 @@ Defines native Android application resources.
     <string name="torrent_no_session">未配置种子会话。请在 tunnels.conf 中添加 torrents 段，然后重启路由器。</string>
     <string name="torrent_session">选择种子会话</string>
     <plurals name="torrent_count">
-        <item quantity="one">种子任务：%1$d</item>
         <item quantity="other">种子任务：%1$d</item>
     </plurals>
-    <string name="torrent_session_count">会话 %1$s · %2$d 个种子任务</string>
+
     <string name="torrent_private_badge">私有</string>
     <string name="torrent_private_summary_yes">私有种子群（已禁用 DHT、PEX 和评论）</string>
     <string name="torrent_private_summary_no">公开种子群</string>
@@ -408,7 +409,6 @@ Defines native Android application resources.
     <string name="torrent_meta_failed">种子元信息编辑被拒绝。请暂停种子任务，并使用在限制范围内的 UTF-8 文本。</string>
     <string name="torrent_remove_files">移除种子任务并删除数据</string>
     <string name="torrent_remove_files_confirm">要移除 %1$s 并永久删除其已下载的数据吗？此操作无法撤销。</string>
-    <string name="torrent_removed_files">已排队执行移除种子任务并删除本地数据。</string>
     <string name="address_book_title">地址簿</string>
     <string name="address_book_refresh">刷新地址簿</string>
     <string name="address_book_add">添加或替换地址</string>
@@ -427,8 +427,11 @@ Defines native Android application resources.
     <string name="address_book_block">屏蔽订阅名称</string>
     <string name="address_book_blocked_list">已屏蔽的订阅名称</string>
     <string name="address_book_block_hint">以 .i2p 结尾的名称或通配符</string>
-    <string name="address_book_block_confirm">要在订阅刷新中屏蔽 %1$s 吗？移除地址时已经会添加精确屏蔽。</string>
     <string name="address_book_blinded">已盲化</string>
+    <string name="address_book_entry_row">%1$s\n%2$s</string>
+    <string name="address_book_entry_row_blinded">%1$s\n%2$s（%3$s）</string>
+    <string name="address_book_entry_accessibility">%1$s，%2$s</string>
+    <string name="address_book_entry_accessibility_blinded">%1$s，%2$s，%3$s</string>
     <string name="address_book_blocked">订阅名称已屏蔽。</string>
     <string name="address_book_unblocked">订阅屏蔽已移除。</string>
     <string name="address_book_blocked_empty">没有已屏蔽的订阅名称。</string>
@@ -488,7 +491,6 @@ Defines native Android application resources.
     <string name="runtime_admin_reseed_now">立即重新种子</string>
     <string name="runtime_admin_reseed_confirm">现在联系已配置的种子服务器？这可能需要数分钟并在后台运行。</string>
     <plurals name="runtime_admin_reseed_status">
-        <item quantity="one">阶段 %1$s · 尝试 %2$d 次 · 成功 %3$d 次</item>
         <item quantity="other">阶段 %1$s · 尝试 %2$d 次 · 成功 %3$d 次</item>
     </plurals>
     <string name="runtime_admin_reseed_error">上次错误：%1$s</string>

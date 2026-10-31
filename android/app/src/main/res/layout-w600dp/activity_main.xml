@@ -94,11 +94,13 @@ Defines native Android application resources.
         android:layout_weight="1"
         android:orientation="horizontal">
 
+        <!-- Compact uses bottom navigation; wide uses the navigation rail. -->
         <com.google.android.material.navigationrail.NavigationRailView
             android:id="@+id/nav_rail"
             android:layout_width="wrap_content"
             android:layout_height="match_parent"
             android:background="?attr/colorSurface"
+            tools:ignore="InconsistentLayout"
             app:menu="@menu/navigation_main"
             app:menuGravity="center" />
 

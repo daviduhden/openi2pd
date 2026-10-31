@@ -76,7 +76,6 @@ public class LogsFragment extends Fragment {
     private RecyclerView logsList;
     private TextInputEditText search;
     private ChipGroup filterGroup;
-    private View emptyState;
     private TextView emptyText;
     private TextView summary;
     private LinearProgressIndicator progress;
@@ -105,7 +104,6 @@ public class LogsFragment extends Fragment {
         logsList = view.findViewById(R.id.logs_list);
         search = view.findViewById(R.id.logs_search);
         filterGroup = view.findViewById(R.id.logs_filter_group);
-        emptyState = view.findViewById(R.id.logs_empty);
         emptyText = view.findViewById(R.id.logs_empty_text);
         summary = view.findViewById(R.id.logs_summary);
         progress = view.findViewById(R.id.logs_progress);
@@ -284,11 +282,11 @@ public class LogsFragment extends Fragment {
     }
 
     private void updateEmptyState() {
-        if (!isAdded() || emptyState == null) {
+        if (!isAdded() || emptyText == null) {
             return;
         }
         boolean empty = adapter == null || adapter.getItemCount() == 0;
-        emptyState.setVisibility(empty ? View.VISIBLE : View.GONE);
+        emptyText.setVisibility(empty ? View.VISIBLE : View.GONE);
         if (empty && emptyText != null) {
             if (allLogs.isEmpty() && !serviceConnected) {
                 emptyText.setText(R.string.logs_loading);

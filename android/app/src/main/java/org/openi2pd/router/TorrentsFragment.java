@@ -225,7 +225,8 @@ public final class TorrentsFragment extends Fragment {
             if (creation == null)
                 return;
             if (creation.running())
-                status.setText(getString(R.string.torrent_creation_progress, creation.bytes()));
+                status.setText(getString(R.string.torrent_creation_progress,
+                        creation.bytes()));
             else if (creation.error() != null)
                 status.setText(creation.error());
             else
@@ -405,7 +406,9 @@ public final class TorrentsFragment extends Fragment {
             status.setText(currentTunnelName.isEmpty()
                             ? getResources().getQuantityString(
                                       R.plurals.torrent_count, count, count)
-                            : getString(R.string.torrent_session_count, currentTunnelName, count));
+                            : getResources().getQuantityString(
+                                      R.plurals.torrent_session_count, count,
+                                      currentTunnelName, count));
             for (int i = 0; i < count; ++i) {
                 TorrentRow row = TorrentRow.from(fields, "torrent." + i + ".");
                 String badge = getString(R.string.torrent_private_badge);

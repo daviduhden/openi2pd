@@ -17,10 +17,6 @@ Defines native Android application resources.
     -->
 
     <!-- Core logo palette (graphic accents, not text colors). -->
-    <color name="brand_teal">#00B2B4</color>
-    <color name="brand_blue">#078DE4</color>
-    <color name="brand_navy">#162737</color>
-    <color name="brand_white">#FFFFFF</color>
 
     <!-- Primary roles. -->
     <color name="brand_primary">#59D8D4</color>
@@ -60,8 +56,6 @@ Defines native Android application resources.
 
     <!-- Interaction and semantic state roles. -->
     <color name="brand_selected">#123B3A</color>
-    <color name="brand_focus">#7CC7FF</color>
-    <color name="brand_disabled">#4A5A69</color>
     <color name="brand_error">#FFB4AB</color>
     <color name="brand_on_error">#690005</color>
     <!-- Material 3 error containers; the palette defines the error
