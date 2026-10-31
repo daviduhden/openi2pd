@@ -23,6 +23,41 @@ namespace i2p::client
 inline constexpr size_t I2P_TUNNEL_HTTP_MAX_HEADER_SIZE = 8192;
 inline constexpr size_t I2P_TUNNEL_MAX_NUM_HTTP_HEADERS = 100;
 
+/// True when a `Connection` header value lists the RFC 7230 `upgrade`
+/// option token.
+///
+/// Connection option tokens are case-insensitive, and the token may be
+/// one of a comma-separated list, so `Upgrade`, `upgrade`, `uPgRaDe`
+/// and `keep-alive, Upgrade` all request an upgrade. A byte-exact
+/// search for "pgrade" only recognised two of those spellings and
+/// rewrote a legitimate websocket handshake to `Connection: close`,
+/// which breaks the upgrade while looking like a keep-alive decision.
+///
+/// This is a syntax check only: whether the upgrade is then honoured is
+/// the caller's policy decision.
+inline bool HasConnectionUpgradeToken (std::string_view value) noexcept
+{
+	// ASCII-only, locale-independent folding: the option is a short
+	// literal token, never a user-visible string.
+	constexpr std::string_view token = "upgrade";
+	const auto fold = [] (char ch) noexcept -> char
+	{ return ch >= 'A' && ch <= 'Z' ? static_cast<char> (ch + ('a' - 'A')) : ch; };
+	for (size_t i = 0; i + token.size () <= value.size (); ++i)
+	{
+		// Require a token boundary so `xupgrade` and `upgrader` are not
+		// mistaken for the option itself.
+		const char before = i ? fold (value[i - 1]) : '\0';
+		const char after = i + token.size () < value.size () ? fold (value[i + token.size ()]) : '\0';
+		const bool letterBefore = before >= 'a' && before <= 'z';
+		const bool letterAfter = after >= 'a' && after <= 'z';
+		if (letterBefore || letterAfter) continue;
+		bool match = true;
+		for (size_t j = 0; j < token.size () && match; ++j) match = fold (value[i + j]) == token[j];
+		if (match) return true;
+	}
+	return false;
+}
+
 /// Bounded, incremental HTTP header transformer for one tunnel
 /// direction.
 ///
@@ -34,13 +69,14 @@ inline constexpr size_t I2P_TUNNEL_MAX_NUM_HTTP_HEADERS = 100;
 ///
 /// Invariants that must survive a change here: - an obsolete obs-fold
 /// continuation line (leading SP/HTAB) is rejected, because it can
-/// smuggle a header-name lookalike past a prefix filter; - `Connection`
-/// is normalised to `close`, except a websocket `Upgrade` which is
-/// forwarded and remembered so no second `Connection` line is
-/// synthesised; - a ClientResponse transformation removes hop-by-hop
-/// and proxy-only headers but never rewrites `Transfer-Encoding` or any
-/// other framing header, so the body is still interpreted exactly as
-/// the peer sent it.
+/// smuggle a header-name lookalike past a prefix filter; - the
+/// `Connection` option is normalised to `close`, except a websocket
+/// `upgrade` option (compared case-insensitively through
+/// HasConnectionUpgradeToken()) which is forwarded and remembered so no
+/// second `Connection` line is synthesised; - a ClientResponse
+/// transformation removes hop-by-hop and proxy-only headers but never
+/// rewrites `Transfer-Encoding` or any other framing header, so the
+/// body is still interpreted exactly as the peer sent it.
 ///
 /// @post On Result::Complete the Output() view stays valid until this
 ///       object is destroyed, so an asynchronous write may borrow it.
@@ -159,8 +195,7 @@ private:
 				m_Connection = true;
 				// A websocket upgrade answer must reach the client unchanged;
 				// every other connection directive collapses to "close".
-				const auto pos = m_Line.find ("pgrade");
-				if (pos != std::string::npos && pos && Lower (m_Line[pos - 1]) == 'u')
+				if (HasConnectionUpgradeToken (m_Line.substr (11)))
 					m_Output += m_Line + '\n';
 				else
 					m_Output += "Connection: close\r\n";
@@ -182,8 +217,7 @@ private:
 			{
 				m_Connection = true;
 				// Retain websocket Upgrade handling across fragmented input.
-				const auto pos = m_Line.find ("pgrade");
-				if (pos != std::string::npos && pos && Lower (m_Line[pos - 1]) == 'u')
+				if (HasConnectionUpgradeToken (m_Line.substr (11)))
 					m_Output += m_Line + '\n';
 				else
 					m_Output += "Connection: close\r\n";

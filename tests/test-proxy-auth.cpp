@@ -514,16 +514,24 @@ void TestDigestRejections ()
 							  RFC7616_OPAQUE),
 				"GET", DIGEST_NOW)
 		== ProxyDigestResult::StaleNonce);
-	// Expired nonce (one hour plus one millisecond).
-	const std::string expired
-		= header (RFC7616_USER, RFC7616_REALM, RFC7616_NONCE, "00000001", "MD5", RFC7616_MD5_RESPONSE, RFC7616_OPAQUE);
-	assert (auth->Verify (expired, "GET", DIGEST_NOW + PROXY_DIGEST_NONCE_LIFETIME_MS + 1)
-		== ProxyDigestResult::StaleNonce);
-	// Wrong opaque value for a known nonce.
+	// Wrong opaque value for a known nonce. This must be checked while the
+	// nonce is still live: an expired nonce is erased and reports
+	// StaleNonce first, because the client has to retry with a fresh
+	// challenge rather than a corrected opaque value.
 	assert (auth->Verify (header (RFC7616_USER, RFC7616_REALM, RFC7616_NONCE, "00000001", "MD5", RFC7616_MD5_RESPONSE,
 							  "wrong-opaque"),
 				"GET", DIGEST_NOW)
 		== ProxyDigestResult::BadNonce);
+	// Expired nonce (one hour plus one millisecond). The entry is dropped,
+	// so a later request with the same nonce is stale as well.
+	const std::string expired
+		= header (RFC7616_USER, RFC7616_REALM, RFC7616_NONCE, "00000001", "MD5", RFC7616_MD5_RESPONSE, RFC7616_OPAQUE);
+	assert (auth->Verify (expired, "GET", DIGEST_NOW + PROXY_DIGEST_NONCE_LIFETIME_MS + 1)
+		== ProxyDigestResult::StaleNonce);
+	assert (auth->Verify (header (RFC7616_USER, RFC7616_REALM, RFC7616_NONCE, "00000001", "MD5", RFC7616_MD5_RESPONSE,
+							  "wrong-opaque"),
+				"GET", DIGEST_NOW)
+		== ProxyDigestResult::StaleNonce);
 	// Algorithms the proxy does not advertise.
 	for (const char * algorithm : { "SHA-512-256", "MD5-sess", "SHA-256-sess" })
 		assert (auth->Verify (header (RFC7616_USER, RFC7616_REALM, RFC7616_NONCE, "00000001", algorithm,

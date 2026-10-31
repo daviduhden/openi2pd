@@ -41,11 +41,15 @@ int main ()
 	const std::string body ("a\0b\r\n", 6);
 	EverySplit (Parser::Mode::ClientRequest, "GET / HTTP/1.1\r\nHost: peer\r\nConnection: Upgrade\r\n\r\n" + body,
 		"GET / HTTP/1.1\r\nHost: peer\r\nConnection: Upgrade\r\nProxy-Connection: close\r\n\r\n" + body);
+	// A request without `Connection` keeps the synthesised
+	// `Connection: close` even when it already carried the proxy-scoped
+	// `Proxy-Connection` header: the two headers are independent, and the
+	// tunnel handles exactly one request per connection.
 	EverySplit (Parser::Mode::ClientRequest,
 		"GET / HTTP/1.1\r\nConnection: keep-alive\r\nProxy-Connection: keep-alive\r\n\r\n",
 		"GET / HTTP/1.1\r\nConnection: close\r\nProxy-Connection: close\r\n\r\n");
 	EverySplit (Parser::Mode::ClientRequest, "GET / HTTP/1.1\r\npRoXy-CoNnEcTiOn: keep-alive\r\n\r\n",
-		"GET / HTTP/1.1\r\nProxy-Connection: close\r\n\r\n");
+		"GET / HTTP/1.1\r\nProxy-Connection: close\r\nConnection: close\r\n\r\n");
 	EverySplit (Parser::Mode::ServerRequest,
 		"GET / HTTP/1.1\r\nHost: peer\r\nConnection: Upgrade\r\nKeep-Alive: 10\r\nX-I2P-DestHash: forged\r\n\r\n"
 			+ body,
@@ -65,6 +69,18 @@ int main ()
 		"X-I2P-DestHash: trusted\r\n");
 	EverySplit (Parser::Mode::ServerRequest, "GET / HTTP/1.1\r\nconnection: upgrade\r\n\r\n",
 		"GET / HTTP/1.1\r\nconnection: upgrade\r\n\r\n");
+	// Connection option tokens are case-insensitive, so a mixed-case
+	// spelling of a websocket upgrade is forwarded rather than being
+	// rewritten to `close`.
+	using i2p::client::HasConnectionUpgradeToken;
+	assert (HasConnectionUpgradeToken ("Upgrade"));
+	assert (HasConnectionUpgradeToken ("upgrade"));
+	assert (HasConnectionUpgradeToken ("uPgRaDe"));
+	assert (HasConnectionUpgradeToken ("keep-alive, Upgrade"));
+	assert (!HasConnectionUpgradeToken (""));
+	assert (!HasConnectionUpgradeToken ("keep-alive"));
+	assert (!HasConnectionUpgradeToken ("xupgrade"));
+	assert (!HasConnectionUpgradeToken ("upgrader"));
 
 	// Request output is borrowed by async_write while independent TCP
 	// response

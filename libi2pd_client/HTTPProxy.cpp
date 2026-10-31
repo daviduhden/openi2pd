@@ -307,6 +307,7 @@ namespace proxy
 						return false;
 					}
 					port = 0;
+					error = ProxyTargetError::None;
 					return true;
 				}
 				if (rest.front () != ':') return false;
@@ -317,19 +318,22 @@ namespace proxy
 				const auto colon = authority.find (':');
 				if (colon == std::string_view::npos)
 				{
+					// Origin form supplies the host without a port; the caller
+					// defaults it (80). Only CONNECT requires an explicit port.
 					if (requirePort)
 					{
 						error = ProxyTargetError::BadPort;
 						return false;
 					}
 					host.assign (authority);
+					if (!IsValidHostName (host)) return false;
+					port = 0;
+					error = ProxyTargetError::None;
+					return true;
 				}
-				else
-				{
-					if (authority.find (':', colon + 1) != std::string_view::npos) return false;
-					host.assign (authority.substr (0, colon));
-					portText = authority.substr (colon + 1);
-				}
+				if (authority.find (':', colon + 1) != std::string_view::npos) return false;
+				host.assign (authority.substr (0, colon));
+				portText = authority.substr (colon + 1);
 				if (!IsValidHostName (host)) return false;
 			}
 
@@ -1681,9 +1685,9 @@ namespace proxy
 		 * normalised form.
 		 */
 		const std::string connection = req.GetHeader ("Connection");
-		const auto upgrade = connection.find ("pgrade");
-		const bool preserveUpgrade = upgrade != std::string::npos && upgrade
-			&& std::tolower (static_cast<unsigned char> (connection[upgrade - 1])) == 'u';
+		// RFC 7230 connection options are case-insensitive tokens; a
+		// mixed-case `uPgRaDe` is the same option as `Upgrade`.
+		const bool preserveUpgrade = i2p::client::HasConnectionUpgradeToken (connection);
 		StripHopByHopHeaders (req);
 
 		// NTLM authenticates the upstream connection, not the request, so a
