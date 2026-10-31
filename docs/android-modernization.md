@@ -456,7 +456,7 @@ visual results remain manual evidence.
 Android ships `values`, `values-es`, `values-ru` and `values-zh-rCN` with exact
 key parity. Counts use `<plurals>` (`logs_summary`, `torrent_count`,
 `runtime_admin_reseed_status`) and `getQuantityString`; Russian supplies
-one/few/many/other and Simplified Chinese one/other. Placeholders are
+one/few/many/other and Simplified Chinese `other` only. Placeholders are
 positional, and `android/tools/check-android-locales.pl` now validates plural
 arity, per-quantity placeholders, non-positional conversions and references
 from `src/test`/`src/androidTest` as well as `src/main`.

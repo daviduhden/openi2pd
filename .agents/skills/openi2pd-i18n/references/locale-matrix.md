@@ -11,11 +11,12 @@ openi2pd locale matrix.
 | English | `en` | `i18n/English.cpp` | `res/values/strings.xml` | `en` | one/other | one/other |
 | Spanish | `es` | `i18n/Spanish.cpp` | `res/values-es/strings.xml` | `es` | one/other | one/other |
 | Russian | `ru` | `i18n/Russian.cpp` | `res/values-ru/strings.xml` | `ru` | one/few/many | one/few/many/other |
-| Simplified Chinese | `zh-Hans` | `i18n/ChineseSimplified.cpp` | `res/values-zh-rCN/strings.xml` | `zh-CN` | one form | one/other (identical text) |
+| Simplified Chinese | `zh-Hans` | `i18n/ChineseSimplified.cpp` | `res/values-zh-rCN/strings.xml` | `zh-CN` | one form | other |
 
-Native plural arity is es 2, ru 3 and zh 1; Android always needs `one` plus
-`other` for these catalogs, with Russian adding `few`/`many`. Do not "fix" the
-Chinese Android `one` entry by deleting it.
+Native plural arity is es 2, ru 3 and zh 1. Android uses `one`/`other` for
+English and Spanish, `one`/`few`/`many`/`other` for Russian, and `other` only
+for Simplified Chinese. Do not add a synthetic Chinese `one` item: Android
+Lint reports it as unused.
 
 Traditional Chinese (`zh-Hant`/`zh-TW`) is optional. Add `values-zh-rTW` only
 with verified Traditional translations; otherwise it must fall back to English,

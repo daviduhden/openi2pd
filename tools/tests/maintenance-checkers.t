@@ -77,6 +77,81 @@ my $nav_checker =
   File::Spec->catfile( $root, 'tools', 'scripts', 'check-doc-nav.pl' );
 my $jni_checker = File::Spec->catfile( $root, 'android', 'tools',
     'check-android-jni-symbols.pl' );
+my $locale_checker = File::Spec->catfile( $root, 'android', 'tools',
+    'check-android-locales.pl' );
+
+# --- check-android-locales.pl plural categories ---------------------------
+{
+    my $tmp     = tempdir( CLEANUP => 1 );
+    my $android = File::Spec->catdir( $tmp, 'android' );
+    my $res = File::Spec->catdir( $android, 'app', 'src', 'main', 'res' );
+    my %dirs = (
+        en => 'values', es => 'values-es', ru => 'values-ru',
+        'zh-CN' => 'values-zh-rCN'
+    );
+    my %quantities = (
+        en => [qw(one other)], es => [qw(one other)],
+        ru => [qw(one few many other)], 'zh-CN' => [qw(other)]
+    );
+    for my $tag (qw(en es ru zh-CN)) {
+        my $items = join '', map {
+            qq{<item quantity="$_">%1\$d items</item>}
+        } @{ $quantities{$tag} };
+        my $xml =
+            qq{<resources><string name="probe">%1\$d items</string>}
+          . qq{<plurals name="probe">$items</plurals></resources>};
+        write_file( File::Spec->catfile( $res, $dirs{$tag}, 'strings.xml' ),
+            $xml );
+    }
+    write_file(
+        File::Spec->catfile( $res, 'xml', 'locales_config.xml' ),
+        '<locale-config><locale android:name="en" />'
+          . '<locale android:name="es" /><locale android:name="ru" />'
+          . '<locale android:name="zh-CN" /></locale-config>'
+    );
+    write_file(
+        File::Spec->catfile( $res, 'values', 'preferences_i2pd_options.xml' ),
+        '<resources>'
+          . join( '', map {
+            qq{<string-array name="$_" translatable="false" />}
+          } qw(pref_language_values pref_bandwidth_values pref_loglevel_values) )
+          . '</resources>'
+    );
+    write_file(
+        File::Spec->catfile( $android, 'app', 'src', 'main',
+            'AndroidManifest.xml' ),
+        '<manifest android:localeConfig="@xml/locales_config">'
+          . '<service android:name="AppLocalesMetadataHolderService" />'
+          . '</manifest>'
+    );
+    write_file( File::Spec->catfile( $android, 'app', 'build.gradle' ),
+        'androidResources { localeFilters += ["en", "es", "ru", "zh"] }' );
+    make_path( File::Spec->catdir( $android, 'fastlane', 'metadata',
+        'android', $_ ) ) for qw(en-US es-ES ru-RU zh-CN);
+
+    my ( $code, $out ) = run_checker( $locale_checker, '--root', $android );
+    is( $code, 0, 'locale checker accepts other-only Chinese plurals' );
+
+    my $zh_path = File::Spec->catfile( $res, $dirs{'zh-CN'}, 'strings.xml' );
+    write_file( $zh_path,
+        '<resources><string name="probe">%1$d items</string>'
+          . '<plurals name="probe"><item quantity="zero">%1$d items'
+          . '</item></plurals></resources>' );
+    ( $code, $out ) = run_checker( $locale_checker, '--root', $android );
+    is( $code, 1, 'locale checker rejects Chinese catalog missing other' );
+    like( $out, qr/missing zh-CN plurals probe quantity=other/,
+        'Chinese plural category failure is explicit' );
+
+    write_file( $zh_path,
+        '<resources><string name="probe">%1$d items</string>'
+          . '<plurals name="probe"><item quantity="one">%1$d item'
+          . '</item><item quantity="other">%1$d items</item>'
+          . '</plurals></resources>' );
+    ( $code, $out ) = run_checker( $locale_checker, '--root', $android );
+    is( $code, 1, 'locale checker rejects unused Chinese one quantity' );
+    like( $out, qr/unsupported zh-CN plurals probe quantity=one/,
+        'unused Chinese quantity diagnostic is explicit' );
+}
 
 # --- check-doc-links.pl ----------------------------------------------------
 {

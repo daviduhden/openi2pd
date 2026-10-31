@@ -341,6 +341,10 @@ run Gradle, install an APK or run a device test.
 
 - Counts use `<plurals>` in all four locales (ru one/few/many/other) and
   `getQuantityString`; never concatenate a number with an English plural.
+  The locale guard models Android quantity categories per locale: English and
+  Spanish use one/other, Russian uses one/few/many/other, and Simplified
+  Chinese uses other only. Do not restore Chinese `one` entries to appease a
+  checker; Android Lint treats them as unused.
   Placeholders are positional (`%1$s`). User-visible validation errors use
   resource ids (`TorrentControl.UserMessageException`), and the log row,
   notification channel and torrent labels are resources. `zh-TW`/`zh-Hant`

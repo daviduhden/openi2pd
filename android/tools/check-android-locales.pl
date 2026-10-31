@@ -16,6 +16,7 @@ use warnings;
 use 5.016;
 use File::Find qw(find);
 use File::Spec;
+use Getopt::Long qw(GetOptions);
 
 my @languages    = qw(en es ru zh-CN);
 my %language_dir = (
@@ -29,7 +30,13 @@ my %allowed_store = map { $_ => 1 } qw(en-US es-ES ru-RU zh-CN);
 # The checker is run from the repository root by CI and from android/ by
 # hand. Probe the known layout instead of trusting the current
 # directory.
-my $root = -d 'android/app/src/main' ? 'android' : '.';
+my $root_arg;
+GetOptions( 'root=s' => \$root_arg )
+  or die "usage: $0 [--root ANDROID_DIRECTORY]\n";
+die "usage: $0 [--root ANDROID_DIRECTORY]\n" if @ARGV;
+my $root = defined $root_arg ? $root_arg
+  : -d 'android/app/src/main' ? 'android'
+  : '.';
 my $res  = File::Spec->catdir( $root, qw(app src main res) );
 my @errors;
 
@@ -131,12 +138,13 @@ for my $tag (qw(es ru zh-CN)) {
 
 # Plural resources must exist in every catalog with the quantities the
 # language actually uses, and keep the same placeholders as the base
-# form.
+# form. Android selects only `other` for Chinese cardinal plurals; requiring
+# a synthetic `one` entry creates an unused-resource Lint warning.
 my $base_plurals  = plurals($base_path);
 my %plural_counts = (
     es      => [qw(one other)],
     ru      => [qw(one few many other)],
-    'zh-CN' => [qw(one other)]
+    'zh-CN' => [qw(other)]
 );
 for my $tag (qw(es ru zh-CN)) {
     my $path = File::Spec->catfile( $res, $language_dir{$tag}, 'strings.xml' );
@@ -151,6 +159,8 @@ for my $tag (qw(es ru zh-CN)) {
         }
         my $want = placeholders( $base_plurals->{$name}{other} );
         for my $quantity ( keys %{ $translated->{$name} } ) {
+            fail("unsupported $tag plurals $name quantity=$quantity")
+              if $tag eq 'zh-CN' && $quantity ne 'other';
             my $got = placeholders( $translated->{$name}{$quantity} );
             fail(
 "placeholder mismatch for $tag plurals $name:$quantity ($want != $got)"
@@ -334,9 +344,10 @@ check-android-locales.pl - verify the Android locale catalogs and policy
 
     perl android/tools/check-android-locales.pl
 
-No arguments. The script uses F<android/app/src/main> when it exists and the
-current directory otherwise, so it runs either from the repository root or
-from F<android/>.
+The script uses F<android/app/src/main> when it exists and the current
+directory otherwise, so it runs either from the repository root or from
+F<android/>. C<--root> selects an Android directory explicitly and is used by
+the isolated checker regression fixtures.
 
 =head1 DESCRIPTION
 

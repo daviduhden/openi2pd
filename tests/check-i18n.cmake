@@ -107,6 +107,8 @@ assert_present("${locales_text}" "zh-CN" "Android Simplified Chinese locale")
 assert_present("${guard_text}" "placeholder" "Android placeholder parity guard")
 assert_absent("${guard_text}" "English-only" "legacy English-only guard")
 assert_present("${guard_text}" "values-zh-rCN" "Simplified Chinese catalog check")
+assert_present("${guard_text}" "'zh-CN' => [qw(other)]"
+  "Chinese Android plural category")
 
 # The four-language policy is documented once and linked from the entry
 # pages.

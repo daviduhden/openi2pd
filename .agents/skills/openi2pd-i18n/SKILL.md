@@ -80,8 +80,10 @@ the text crosses a protocol/IPC boundary.
 - English source strings are the native catalog keys; translations must preserve
   every printf conversion in count and type. Use positional Android tokens
   (`%1$s`, `%2$d`) and never add a bare `%s`.
-- Russian has one/few/many plural forms; Spanish two; Simplified Chinese one.
-  Do not fake a missing plural with concatenated counts.
+- Native catalogs use Russian one/few/many forms, Spanish two forms and one
+  Simplified Chinese form. Android uses one/other for English and Spanish,
+  one/few/many/other for Russian, and other only for Simplified Chinese.
+  Do not add a synthetic Chinese `one` item: Lint reports it as unused.
 - UTF-8 without BOM, LF endings and natural target-language terminology.
   Product/protocol identifiers and file names stay verbatim.
 - Android uses `values/` (English source), `values-es`, `values-ru`,
@@ -173,9 +175,10 @@ the text crosses a protocol/IPC boundary.
   fall back to **English**; never present Simplified text as Traditional.
   `docs/i18n.md` is the single policy page and must be linked from README,
   `docs/index.md` and the configuration table.
-- Native plurals: es 2, ru 3, zh 1 form. Android requires `one`+`other` for
-  every locale (Russian adds `few`/`many`); the Chinese `one` and `other` texts
-  are identical. Do not "fix" the Android `one` entry by removing it.
+- Native plural arity differs from Android quantity categories. The locale
+  checker enforces `one`/`other` for en/es, `one`/`few`/`many`/`other` for ru,
+  and `other` only for zh-CN. Keep Chinese catalogs free of synthetic
+  quantities that Android Lint reports as unused.
 - Documentation is English-only; store metadata is English-only unless a
   reviewed translation is added. UI catalogs and protocol identifiers remain
   separate.
