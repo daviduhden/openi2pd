@@ -115,9 +115,13 @@ nav:
   - Developer:
       - Guide: developer-guide/README.md
       - Source documentation: source-documentation.md
+      - Agent knowledge validation: agent-knowledge-validation.md
       - Compilation errors: ci/COMPILATION-ERRORS.md
       - Compilation warnings: ci/COMPILATION-WARNINGS.md
-      - Diagnostic search patterns: ci/COMPILATION-PATTERNS.md
+      - Compilation patterns: ci/COMPILATION-PATTERNS.md
+      - Runtime errors: ci/RUNTIME-ERRORS.md
+      - Test failures: ci/TEST-FAILURES.md
+      - Regression patterns: ci/REGRESSION-PATTERNS.md
       - Requirements: devs/building/requirements.md
       - Linux and OpenBSD: devs/building/unix.md
       - Windows: devs/building/windows.md
