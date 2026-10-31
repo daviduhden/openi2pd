@@ -94,6 +94,14 @@ build.
   checkouts or absolute install prefixes.
 - Preserve dependency floors and fail with a clear message when a required
   version is absent. No silent fallback to an old API.
+- When a toolchain warning names an inlined standard-library operation,
+  inspect the originating project call and its size/lifetime invariants before
+  classifying it as a toolchain false positive. For a warning-policy change,
+  remove suppressions only by diagnosing newly exposed warnings; do not add a
+  global warnings-as-errors gate while supported first-party lanes still have
+  unresolved warnings. Keep the run/SHA and disposition in
+  `docs/ci/COMPILATION-WARNINGS.md` and follow the repo-wide search procedure
+  in `docs/ci/COMPILATION-PATTERNS.md`.
 - Install exactly one service manager through the `Service` component; do not
   let packaging install competing definitions.
 

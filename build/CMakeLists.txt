@@ -727,7 +727,7 @@ if(MSVC)
   endif()
 else()
   target_compile_options(i2pd_warnings INTERFACE
-    -Wall -Wextra -Wpedantic -Wno-unused-parameter -Wno-uninitialized
+    -Wall -Wextra -Wpedantic
   )
   if(WITH_HARDENING)
     target_compile_options(i2pd_warnings INTERFACE
