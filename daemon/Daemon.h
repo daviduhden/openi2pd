@@ -4,10 +4,10 @@
  *
  * openi2pd: Daemon.
  *
- * Declares the platform-neutral Daemon_Singleton lifecycle (init, start, run
- * and stop), the per-platform daemon singletons and the optional
- * privilege-separated log supervisor. The private implementation owns the
- * TUI, I2PControl, UPnP and NTP helpers.
+ * Declares the platform-neutral Daemon_Singleton lifecycle (init,
+ * start, run and stop), the per-platform daemon singletons and the
+ * optional privilege-separated log supervisor. The private
+ * implementation owns the TUI, I2PControl, UPnP and NTP helpers.
  *
  */
 
@@ -27,19 +27,22 @@ namespace util
 {
 	class Daemon_Singleton_Private;
 	/// Process-wide router lifecycle shared by platform daemon front ends.
-	/// init() prepares configuration and core state, start() starts services,
-	/// and stop() tears them down in dependency order. Platform run() owns the
-	/// main wait loop; requesting shutdown does not itself perform teardown.
+	/// init() prepares configuration and core state, start() starts
+	/// services, and stop() tears them down in dependency order. Platform
+	/// run() owns the main wait loop; requesting shutdown does not itself
+	/// perform teardown.
 	class Daemon_Singleton
 	{
 	public:
-		/// Initialize router state, rolling back completed initialization phases
-		/// when a later phase fails. The optional log stream remains shared.
+		/// Initialize router state, rolling back completed initialization
+		/// phases when a later phase fails. The optional log stream remains
+		/// shared.
 		virtual bool init (int argc, char * argv[], std::shared_ptr<std::ostream> logstream);
 		virtual bool init (int argc, char * argv[]);
 		/// Start the initialized router and auxiliary services.
 		virtual bool start ();
-		/// Stop control clients and service threads before router state and logging.
+		/// Stop control clients and service threads before router state and
+		/// logging.
 		virtual bool stop ();
 		virtual void run () { };
 
@@ -71,7 +74,8 @@ namespace util
 		/**
 		 * Spawn privilege-separated workers before the parent runtime sandbox
 		 * is installed. On OpenBSD fork/exec must happen while the startup
-		 * pledge still contains proc/exec; the runtime policy then drops both.
+		 * pledge still contains proc/exec; the runtime policy then drops
+		 * both.
 		 */
 		bool PreparePrivsepWorkers ();
 		/** Stop prepared workers during a startup rollback. */

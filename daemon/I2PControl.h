@@ -4,9 +4,9 @@
  *
  * openi2pd: I2PControl.
  *
- * Declares the TLS I2PControl service: an asynchronous JSON-RPC dispatcher
- * over TCP or a local stream socket, with bounded request buffers, expiring
- * tokens and the RouterManager method tables.
+ * Declares the TLS I2PControl service: an asynchronous JSON-RPC
+ * dispatcher over TCP or a local stream socket, with bounded request
+ * buffers, expiring tokens and the RouterManager method tables.
  *
  */
 
@@ -59,12 +59,12 @@ namespace client
 	const char I2P_CONTROL_CERTIFICATE_ORGANIZATION[] = "openi2pd";
 
 	/**
-	 * A method handler failure that must reach the client as a JSON-RPC error
-	 * object instead of an empty successful result.
+	 * A method handler failure that must reach the client as a JSON-RPC
+	 * error object instead of an empty successful result.
 	 *
-	 * Handlers throw before writing any member, so the dispatcher can discard
-	 * the partial result and publish the exact code and message. The message is
-	 * never built from a password or token.
+	 * Handlers throw before writing any member, so the dispatcher can
+	 * discard the partial result and publish the exact code and message.
+	 * The message is never built from a password or token.
 	 */
 	class I2PControlError : public std::runtime_error
 	{
@@ -84,11 +84,11 @@ namespace client
 	/*
 	 * AF_UNIX listener path hygiene.
 	 *
-	 * These helpers are header-only so the compile-free socket regression can
-	 * exercise the real policy without linking the daemon: only an owned stale
-	 * socket is replaced, the path is restricted to 0600 after bind, the path
-	 * is removed only while it is still the socket this process created, and a
-	 * connected peer must belong to this user.
+	 * These helpers are header-only so the compile-free socket regression
+	 * can exercise the real policy without linking the daemon: only an
+	 * owned stale socket is replaced, the path is restricted to 0600 after
+	 * bind, the path is removed only while it is still the socket this
+	 * process created, and a connected peer must belong to this user.
 	 */
 	namespace localcontrol
 	{
@@ -180,12 +180,13 @@ namespace client
 	}
 #endif
 
-	/// TLS JSON-RPC service with bounded connection, token and request state.
-	/// A per-connection token owns registry admission until its async chain ends;
-	/// timers and close callbacks let Stop() cancel accepted connections.
-	/// @warning The service owns the event loop and must outlive its callbacks.
-	/// A Stop() invoked on its own service thread does not explicitly drain the
-	/// queued cancellation handlers before returning.
+	/// TLS JSON-RPC service with bounded connection, token and request
+	/// state. A per-connection token owns registry admission until its
+	/// async chain ends; timers and close callbacks let Stop() cancel
+	/// accepted connections.
+	/// @warning The service owns the event loop and must outlive its
+	/// callbacks. A Stop() invoked on its own service thread does not
+	/// explicitly drain the queued cancellation handlers before returning.
 	class I2PControlService : public I2PControlHandlers
 	{
 	public:
@@ -196,8 +197,9 @@ namespace client
 		void Stop ();
 
 	private:
-		/// Shared with connection-token deleters, so registry cleanup does not
-		/// depend on the lifetime of an individual socket or deadline timer.
+		/// Shared with connection-token deleters, so registry cleanup does
+		/// not depend on the lifetime of an individual socket or deadline
+		/// timer.
 		struct ConnectionRegistry
 		{
 			std::mutex mutex;

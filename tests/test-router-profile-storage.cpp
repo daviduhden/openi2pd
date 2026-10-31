@@ -4,8 +4,10 @@
  *
  * openi2pd: test router profile storage.
  *
- * Exercises isolated profile persistence, immutable storage-root authority,
- * and serialization between profile replacement and obsolete-file cleanup.
+ * Exercises isolated profile persistence, immutable storage-root
+ * authority,
+ * and serialization between profile replacement and obsolete-file
+ * cleanup.
  *
  */
 
@@ -139,7 +141,8 @@ int main ()
 
 	const auto staleTime = std::filesystem::file_time_type::clock::now ()
 		- std::chrono::seconds (i2p::data::PEER_PROFILE_EXPIRATION_TIMEOUT + 60);
-	// Cleanup must neither claim unknown leaves nor follow profile symlinks.
+	// Cleanup must neither claim unknown leaves nor follow profile
+	// symlinks.
 	const auto unrelated = profilePath.parent_path () / "administrator-notes.txt";
 	const auto malformedName = profilePath.parent_path () / "profile-invalid.txt";
 	const auto wrongShard = root / "peerProfiles" / "pA" / profilePath.filename ();
@@ -182,7 +185,8 @@ int main ()
 	dirty.Load (ident);
 	assert (dirty.IsUpdated ());
 
-	// A delegated writer receives the profile instead of the data directory.
+	// A delegated writer receives the profile instead of the data
+	// directory.
 	RecordedWrite write;
 	RecordedRemove remove;
 	i2p::data::InstallArtifactStorage (RecordingWriter (write, true), RecordingRemover (remove, true));

@@ -79,8 +79,9 @@ int main ()
 	assert (released[2] == DaemonInitPhase::Crypto);
 	assert (released[3] == DaemonInitPhase::Logging);
 
-	// The unsupported isolated-storage path returns false before the router
-	// context phase begins; only phases already acquired are unwound.
+	// The unsupported isolated-storage path returns false before the
+	// router context phase begins; only phases already acquired are
+	// unwound.
 	released.clear ();
 	const auto unsupportedStorageFailure = [&] ()
 	{
@@ -96,7 +97,8 @@ int main ()
 	assert (released[1] == DaemonInitPhase::Crypto);
 	assert (released[2] == DaemonInitPhase::Logging);
 
-	// A clean retry commits the same acquired phases without invoking rollback.
+	// A clean retry commits the same acquired phases without invoking
+	// rollback.
 	released.clear ();
 	{
 		DaemonInitTransaction transaction ([&] (DaemonInitPhase phase) { released.push_back (phase); });

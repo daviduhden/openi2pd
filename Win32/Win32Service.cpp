@@ -4,12 +4,12 @@
  *
  * openi2pd: Win32Service.
  *
- * Implements the Windows service lifecycle: registers the control handler,
- * reports pending, running and stopped states, and starts the router on a
- * worker thread that Stop waits for with a bounded budget. A failed start
- * unwinds the daemon before it reports a real exit code, and stop, shutdown and
- * start-pending states carry a non-zero SCM wait hint. No callback throws a
- * C++ exception across the SCM boundary.
+ * Implements the Windows service lifecycle: registers the control
+ * handler, reports pending, running and stopped states, and starts the
+ * router on a worker thread that Stop waits for with a bounded budget.
+ * A failed start unwinds the daemon before it reports a real exit code,
+ * and stop, shutdown and start-pending states carry a non-zero SCM wait
+ * hint. No callback throws a C++ exception across the SCM boundary.
  *
  */
 
@@ -26,9 +26,9 @@
 namespace
 {
 /**
-	 * The service stop flag is published with Interlocked operations so the
-	 * monitor thread and the control handler never race on a plain BOOL. The
-	 * value is 0 (running) or 1 (stopping).
+	 * The service stop flag is published with Interlocked operations so
+	 * the monitor thread and the control handler never race on a plain
+	 * BOOL. The value is 0 (running) or 1 (stopping).
 	 */
 BOOL IsStopping (volatile LONG * flag)
 {
@@ -38,11 +38,12 @@ BOOL IsStopping (volatile LONG * flag)
 /**
 	 * Drain the router and join its bounded monitor thread.
 	 *
-	 * Order is load-bearing: `Daemon.stop()` tears down router subsystems on
-	 * this thread, then the flag is published so the monitor leaves its sleep,
-	 * then the event is awaited with a bounded budget (never INFINITE) and the
-	 * thread joined. The monitor observes the flag within one sleep slice, so
-	 * the join is bounded even when the event wait expires.
+	 * Order is load-bearing: `Daemon.stop()` tears down router subsystems
+	 * on this thread, then the flag is published so the monitor leaves its
+	 * sleep, then the event is awaited with a bounded budget (never
+	 * INFINITE) and the thread joined. The monitor observes the flag
+	 * within one sleep slice, so the join is bounded even when the event
+	 * wait expires.
 	 */
 void DrainDaemonAndJoinWorker (volatile LONG * stopping, HANDLE stoppedEvent, std::thread *& worker, DWORD budgetMs)
 {
@@ -69,11 +70,11 @@ I2PService * I2PService::s_service = NULL;
 
 BOOL I2PService::isService ()
 {
-	// The SCM starts a service on a non-visible window station, so the process
-	// can detect service mode without an extra Registry dependency. This is a
-	// startup-mode heuristic for choosing console/file defaults only: it is not
-	// an authentication boundary and a caller that can choose its window station
-	// can influence it.
+	// The SCM starts a service on a non-visible window station, so the
+	// process can detect service mode without an extra Registry
+	// dependency. This is a startup-mode heuristic for choosing
+	// console/file defaults only: it is not an authentication boundary and
+	// a caller that can choose its window station can influence it.
 	BOOL bIsService = FALSE;
 	HWINSTA hWinStation = GetProcessWindowStation ();
 	if (hWinStation != NULL)
@@ -97,8 +98,9 @@ BOOL I2PService::Run (I2PService & service)
 
 void WINAPI I2PService::ServiceMain (DWORD dwArgc, PSTR * pszArgv)
 {
-	// Nothing may escape this callback: an exception thrown out of ServiceMain
-	// terminates the process before the service can report an exit code.
+	// Nothing may escape this callback: an exception thrown out of
+	// ServiceMain terminates the process before the service can report an
+	// exit code.
 	try
 	{
 		if (s_service == NULL) return;
@@ -150,9 +152,10 @@ I2PService::I2PService (PSTR pszServiceName, BOOL fCanStop, BOOL fCanShutdown, B
 	m_status.dwWaitHint = 0;
 	m_fStopping = FALSE;
 	_worker = NULL;
-	// Create a manual-reset event that is not signaled at first to indicate
-	// the stopped signal of the service. A failure here is reported instead of
-	// thrown: the drain falls back to its bounded wait and join.
+	// Create a manual-reset event that is not signaled at first to
+	// indicate the stopped signal of the service. A failure here is
+	// reported instead of thrown: the drain falls back to its bounded wait
+	// and join.
 	m_hStoppedEvent = CreateEvent (NULL, TRUE, FALSE, NULL);
 	if (m_hStoppedEvent == NULL)
 	{
@@ -225,8 +228,9 @@ void I2PService::OnStart (DWORD /*dwArgc*/, PSTR * /*pszArgv*/)
 
 void I2PService::WorkerThread ()
 {
-	// The flag is read with an interlocked compare so the control handler's
-	// write is visible immediately instead of relying on a cached BOOL.
+	// The flag is read with an interlocked compare so the control
+	// handler's write is visible immediately instead of relying on a
+	// cached BOOL.
 	while (!IsStopping (reinterpret_cast<volatile LONG *> (&m_fStopping)))
 	{
 		::Sleep (1000); // Monitor slice; the drain waits no longer than one tick.
@@ -318,8 +322,8 @@ void I2PService::Shutdown ()
 	if (m_status.dwCurrentState == SERVICE_STOPPED || m_status.dwCurrentState == SERVICE_STOP_PENDING) return;
 	try
 	{
-		// A machine shutdown is a stop request: report pending with a real hint,
-		// drain the daemon, and only then report stopped.
+		// A machine shutdown is a stop request: report pending with a real
+		// hint, drain the daemon, and only then report stopped.
 		SetServiceStatus (SERVICE_STOP_PENDING, NO_ERROR,
 			i2p::privsep::NonZeroWaitHint (i2p::privsep::WINDOWS_SERVICE_STOP_WAIT_HINT_MS));
 		OnShutdown ();
@@ -339,9 +343,10 @@ void I2PService::Shutdown ()
 
 void I2PService::OnShutdown ()
 {
-	// The default shutdown hook stops the daemon. It delegates to OnStop so a
-	// subclass that owns the drain keeps exactly one implementation; without
-	// this the service reported STOPPED while the router kept running.
+	// The default shutdown hook stops the daemon. It delegates to OnStop
+	// so a subclass that owns the drain keeps exactly one implementation;
+	// without this the service reported STOPPED while the router kept
+	// running.
 	LogPrint (eLogInfo, "Win32Service: in OnShutdown (", EVENTLOG_INFORMATION_TYPE, ")");
 	OnStop ();
 }
@@ -352,8 +357,8 @@ void I2PService::SetServiceStatus (DWORD dwCurrentState, DWORD dwWin32ExitCode, 
 	m_status.dwServiceType = SERVICE_WIN32_OWN_PROCESS;
 	m_status.dwCurrentState = dwCurrentState;
 	m_status.dwWin32ExitCode = dwWin32ExitCode;
-	// Running and stopped are terminal observations and carry no hint; every
-	// pending state needs a non-zero hint.
+	// Running and stopped are terminal observations and carry no hint;
+	// every pending state needs a non-zero hint.
 	m_status.dwWaitHint = (dwCurrentState == SERVICE_RUNNING || dwCurrentState == SERVICE_STOPPED)
 		? 0
 		: i2p::privsep::NonZeroWaitHint (dwWaitHint);
@@ -366,7 +371,7 @@ void I2PService::SetServiceStatus (DWORD dwCurrentState, DWORD dwWin32ExitCode, 
 	::SetServiceStatus (m_statusHandle, &m_status);
 }
 
-//*****************************************************************************
+//**********************************************************************
 
 void FreeHandles (SC_HANDLE schSCManager, SC_HANDLE schService)
 {

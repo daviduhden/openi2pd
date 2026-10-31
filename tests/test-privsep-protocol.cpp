@@ -4,7 +4,10 @@
  *
  * openi2pd: test privsep protocol.
  *
- * Checks privilege-separation framing and field bounds: magic/version/type/length validation, exact maximum sizes, log-record string limits and SOCK_SEQPACKET channel behavior with peer credentials.
+ * Checks privilege-separation framing and field bounds:
+ * magic/version/type/length validation, exact maximum sizes, log-record
+ * string limits and SOCK_SEQPACKET channel behavior with peer
+ * credentials.
  *
  */
 
@@ -64,7 +67,8 @@ int main ()
 	assert (std::get<1> (*record) == 123456789);
 	assert (std::get<2> (*record) == "hello\nworld");
 
-	// Header validation: magic, version, type and length are checked before
+	// Header validation: magic, version, type and length are checked
+	// before
 	// the payload is dispatched.
 	ExpectDecodeError (Header (0, PROTOCOL_VERSION, 2, 0, 0), ErrorCode::Malformed);
 	ExpectDecodeError (Header (PROTOCOL_MAGIC, PROTOCOL_VERSION + 1, 2, 0, 0), ErrorCode::UnsupportedVersion);
@@ -79,21 +83,22 @@ int main ()
 	assert (Decode (Header (PROTOCOL_MAGIC, PROTOCOL_VERSION, 17, 0, 0)).has_value ());
 	assert (Decode (Header (PROTOCOL_MAGIC, PROTOCOL_VERSION, 18, 0, 0)).has_value ());
 	assert (Decode (Header (PROTOCOL_MAGIC, PROTOCOL_VERSION, 19, 0, 0)).has_value ());
-	// Cancel is the version-4 type; the same header at version 3 is refused
-	// instead of being interpreted with older semantics.
+	// Cancel is the version-4 type; the same header at version 3 is
+	// refused instead of being interpreted with older semantics.
 	assert (Decode (Header (PROTOCOL_MAGIC, PROTOCOL_VERSION, 20, 0, 0)).has_value ());
 	ExpectDecodeError (Header (PROTOCOL_MAGIC, 3, 20, 0, 0), ErrorCode::UnsupportedVersion);
-	// The Windows worker handshake is the version-5 type and is refused by an
-	// older header and at the boundary above it.
+	// The Windows worker handshake is the version-5 type and is refused by
+	// an older header and at the boundary above it.
 	assert (Decode (Header (PROTOCOL_MAGIC, PROTOCOL_VERSION, 21, 0, 0)).has_value ());
 	ExpectDecodeError (Header (PROTOCOL_MAGIC, 4, 21, 0, 0), ErrorCode::UnsupportedVersion);
 	assert (MAX_MESSAGE_TYPE == 21);
 	ExpectDecodeError (Header (PROTOCOL_MAGIC, PROTOCOL_VERSION, MAX_MESSAGE_TYPE + 1, 0, 0), ErrorCode::UnknownType);
 	ExpectDecodeError (Header (PROTOCOL_MAGIC, PROTOCOL_VERSION, 0xffff, 0, 0), ErrorCode::UnknownType);
 
-	// Configuration and supervisor types are accepted by framing; role-specific
-	// payload and descriptor authorization belongs to dispatch. Empty payload is legal for
-	// control messages, so the boundary is accepted before dispatch.
+	// Configuration and supervisor types are accepted by framing;
+	// role-specific payload and descriptor authorization belongs to
+	// dispatch. Empty payload is legal for control messages, so the
+	// boundary is accepted before dispatch.
 	{
 		auto fdConfig
 			= Encode (Message { MessageType::ConfigureLogFd, 8, LogConfig (false, "/tmp/router.log", "test") });
@@ -124,26 +129,27 @@ int main ()
 	// between the declared and actual length is a framing error.
 	ExpectDecodeError (
 		Header (PROTOCOL_MAGIC, PROTOCOL_VERSION, 2, 0, static_cast<uint32_t> (MAX_MESSAGE_SIZE)), ErrorCode::TooLarge);
-	// Off-by-one on the documented limit: the largest legal declared length
-	// is MAX_MESSAGE_SIZE - HEADER_SIZE; one more byte is rejected as a size
-	// error even though the frame is short.
+	// Off-by-one on the documented limit: the largest legal declared
+	// length is MAX_MESSAGE_SIZE - HEADER_SIZE; one more byte is rejected
+	// as a size error even though the frame is short.
 	ExpectDecodeError (
 		Header (PROTOCOL_MAGIC, PROTOCOL_VERSION, 2, 0, static_cast<uint32_t> (MAX_MESSAGE_SIZE - HEADER_SIZE + 1)),
 		ErrorCode::TooLarge);
 	ExpectDecodeError (
 		Header (PROTOCOL_MAGIC, PROTOCOL_VERSION, 2, 0, std::numeric_limits<uint32_t>::max ()), ErrorCode::TooLarge);
 	// A type-2 frame above its own ceiling is a size error even when the
-	// declared length would fit the global frame maximum: the per-type bound,
-	// not the transport maximum, is what authorizes the payload.
+	// declared length would fit the global frame maximum: the per-type
+	// bound, not the transport maximum, is what authorizes the payload.
 	ExpectDecodeError (
 		Header (PROTOCOL_MAGIC, PROTOCOL_VERSION, 2, 0, static_cast<uint32_t> (MAX_MESSAGE_SIZE - HEADER_SIZE)),
 		ErrorCode::TooLarge);
-	// A header-only record one byte over the type ceiling is a size error too.
+	// A header-only record one byte over the type ceiling is a size error
+	// too.
 	ExpectDecodeError (Header (PROTOCOL_MAGIC, PROTOCOL_VERSION, 2, 0,
 						   static_cast<uint32_t> (MaxPayloadFor (MessageType::LogRecord) + 1)),
 		ErrorCode::TooLarge);
-	// A header that declares the per-type maximum but carries no payload is a
-	// framing error: the length is legal for the type but absent.
+	// A header that declares the per-type maximum but carries no payload
+	// is a framing error: the length is legal for the type but absent.
 	ExpectDecodeError (
 		Header (PROTOCOL_MAGIC, PROTOCOL_VERSION, 2, 0, static_cast<uint32_t> (MaxPayloadFor (MessageType::LogRecord))),
 		ErrorCode::Malformed);
@@ -184,7 +190,8 @@ int main ()
 	assert (!unknownFrame.has_value ());
 	assert (unknownFrame.error ().code == ErrorCode::UnknownType);
 
-	// Log-record field bounds: truncation on encode and rejection on decode.
+	// Log-record field bounds: truncation on encode and rejection on
+	// decode.
 	std::string oversized (MAX_TEXT_SIZE + 100, 'a');
 	auto oversizedPayload = EncodeLogRecord (5, 1, oversized);
 	auto oversizedRecord = DecodeLogRecord (oversizedPayload);
@@ -320,7 +327,8 @@ int main ()
 	assert (!AllowsOperation (EndpointRole::Log, MessageType::DataStorageRequest));
 	assert (!AllowsOperation (EndpointRole::Supervisor, MessageType::DataStorageReply));
 
-	// Channel behavior: SOCK_SEQPACKET only, peer credentials, timeout versus
+	// Channel behavior: SOCK_SEQPACKET only, peer credentials, timeout
+	// versus
 	// peer close, and use after close.
 	auto pair = Channel::CreatePair ();
 	if (!pair)
@@ -345,8 +353,8 @@ int main ()
 	assert ((*received)->type == MessageType::LogRecord);
 	assert ((*received)->requestId == 42);
 
-	// Closing the peer is reported as an error, never as a timeout: a worker
-	// that treats EOF as a timeout would spin forever.
+	// Closing the peer is reported as an error, never as a timeout: a
+	// worker that treats EOF as a timeout would spin forever.
 	pair->first.Close ();
 	auto closed = pair->second.Receive (1000);
 	assert (!closed.has_value ());

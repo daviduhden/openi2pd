@@ -4,12 +4,13 @@
  *
  * openi2pd: test privsep worker credentials.
  *
- * Checks the worker service identity contract on Linux and OpenBSD: bounded account and
- * group resolution, refusal of the superuser, refusal of a group without a
- * user, bounded rejection of malformed names, the fixed non-secret diagnostic,
- * and the forked credential drop (empty supplementary groups, real/effective
- * ids equal to the requested pair). The test never depends on a second system
- * account: every case uses the current non-root identity or a name that cannot
+ * Checks the worker service identity contract on Linux and OpenBSD:
+ * bounded account and group resolution, refusal of the superuser,
+ * refusal of a group without a user, bounded rejection of malformed
+ * names, the fixed non-secret diagnostic, and the forked credential
+ * drop (empty supplementary groups, real/effective ids equal to the
+ * requested pair). The test never depends on a second system account:
+ * every case uses the current non-root identity or a name that cannot
  * exist. It skips with 77 on another platform or when running as root.
  * Prepared for manual CI only; this file must not be executed locally.
  */
@@ -55,8 +56,8 @@ int main ()
 	// A root test runner would exercise the privilege-raising path and can
 	// never reach the unprivileged expectations below.
 	if (::geteuid () == 0) return 77;
-	// Skip rather than guessing when the account database cannot describe the
-	// identity the test itself runs as.
+	// Skip rather than guessing when the account database cannot describe
+	// the identity the test itself runs as.
 	const struct passwd * self = ::getpwuid (::geteuid ());
 	if (!self || !self->pw_name || !*self->pw_name) return 77;
 	const struct group * selfGroup = ::getgrgid (::getegid ());
@@ -64,8 +65,8 @@ int main ()
 	const std::string user (self->pw_name);
 	const std::string selfGroupName (selfGroup->gr_name);
 
-	// No override keeps the daemon's own effective identity and is explicitly
-	// unconfigured, so no privilege call is attempted at all.
+	// No override keeps the daemon's own effective identity and is
+	// explicitly unconfigured, so no privilege call is attempted at all.
 	{
 		const auto resolved = ResolveWorkerCredentials ("", "");
 		assert (resolved.has_value ());
@@ -74,7 +75,8 @@ int main ()
 		assert (resolved->gid == static_cast<uint32_t> (::getegid ()));
 	}
 
-	// The current account resolves to itself and its primary group is used when
+	// The current account resolves to itself and its primary group is used
+	// when
 	// no group is configured.
 	{
 		const auto resolved = ResolveWorkerCredentials (user, "");
@@ -93,7 +95,8 @@ int main ()
 		assert (resolved->gid == static_cast<uint32_t> (selfGroup->gr_gid));
 	}
 
-	// Unknown names, a group without a user and malformed names fail closed.
+	// Unknown names, a group without a user and malformed names fail
+	// closed.
 	// The diagnostics are fixed strings: the account name never appears.
 	{
 		const std::string missing = NonexistentName ("account");
@@ -128,8 +131,9 @@ int main ()
 		assert (DescribeWorkerCredentials (credentials) == "uid=1234 gid=5678");
 	}
 
-	// A different identity cannot be adopted by an unprivileged process: the
-	// setuid must fail and the drop must report it instead of continuing.
+	// A different identity cannot be adopted by an unprivileged process:
+	// the setuid must fail and the drop must report it instead of
+	// continuing.
 	{
 		const uint32_t foreignUid = static_cast<uint32_t> (::geteuid ()) + 1;
 		if (foreignUid != 0)
@@ -144,9 +148,9 @@ int main ()
 		}
 	}
 
-	// The drop verifies the real/effective ids and an empty supplementary set.
-	// An unprivileged process cannot clear supplementary groups, so the check
-	// only runs when the set is already empty.
+	// The drop verifies the real/effective ids and an empty supplementary
+	// set. An unprivileged process cannot clear supplementary groups, so
+	// the check only runs when the set is already empty.
 	if (::getgroups (0, nullptr) != 0)
 	{
 		std::fprintf (

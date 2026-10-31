@@ -4,9 +4,9 @@
  *
  * openi2pd: Resource.
  *
- * Defines the VERSIONINFO block embedded in Windows binaries, deriving file
- * and product versions from version.h and identifying openi2pd as the
- * product.
+ * Defines the VERSIONINFO block embedded in Windows binaries, deriving
+ * file and product versions from version.h and identifying openi2pd as
+ * the product.
  *
  */
 

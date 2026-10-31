@@ -4,10 +4,10 @@
  *
  * openi2pd: Channel.
  *
- * Implements the UNIX seqpacket channel: atomic framed sends and receives
- * with absolute deadlines, peer credential checks and at most one
- * SCM_RIGHTS descriptor per message. Endpoints are close-on-exec and Linux
- * validates credentials on every delivered record.
+ * Implements the UNIX seqpacket channel: atomic framed sends and
+ * receives with absolute deadlines, peer credential checks and at most
+ * one SCM_RIGHTS descriptor per message. Endpoints are close-on-exec
+ * and Linux validates credentials on every delivered record.
  *
  */
 
@@ -37,9 +37,9 @@
 #endif
 
 #ifndef MSG_DONTWAIT
-// Every supported target provides MSG_DONTWAIT. Keep the build alive on an
-// exotic UNIX whose headers omit it; the deadline is then enforced by poll()
-// plus the socket's own send/receive timeout only.
+// Every supported target provides MSG_DONTWAIT. Keep the build alive on
+// an exotic UNIX whose headers omit it; the deadline is then enforced
+// by poll() plus the socket's own send/receive timeout only.
 #define MSG_DONTWAIT 0
 #endif
 
@@ -50,10 +50,11 @@ namespace
 	using SteadyClock = std::chrono::steady_clock;
 
 	/**
- * Enforce the registry's descriptor classification. The caller has already
- * confirmed there is at most one descriptor, so this decides presence and
- * kind only. A missing required descriptor and a forbidden one are both a
- * `BadField` fault; the caller closes the descriptor (if any) before replying.
+ * Enforce the registry's descriptor classification. The caller has
+ * already confirmed there is at most one descriptor, so this decides
+ * presence and kind only. A missing required descriptor and a forbidden
+ * one are both a `BadField` fault; the caller closes the descriptor (if
+ * any) before replying.
  */
 	bool ValidateRegistryDescriptor (MessageType type, int fd, std::string & why)
 	{
@@ -148,8 +149,9 @@ Channel & Channel::operator= (Channel && other) noexcept
 Channel Channel::Adopt (int fd)
 {
 	Channel channel (fd);
-	// A worker is spawned by the core/supervisor and may be a different uid
-	// after the credential drop. It accepts its own uid or the root core.
+	// A worker is spawned by the core/supervisor and may be a different
+	// uid after the credential drop. It accepts its own uid or the root
+	// core.
 	channel.m_PeerExpectation
 		= PeerExpectation { static_cast<uint32_t> (::geteuid ()), 0, 0, false, false, true, true };
 	return channel;
@@ -234,9 +236,9 @@ i2p::expected<Channel, std::string> Channel::AdoptValidated (int fd, uint32_t ex
 		channel.Close ();
 		return i2p::unexpected ("adopted channel peer has an unexpected uid");
 	}
-	// A broker must not hand over a socket with a frame already queued: its
-	// kernel credentials would carry the broker's uid and could impersonate
-	// the worker before the first genuine reply.
+	// A broker must not hand over a socket with a frame already queued:
+	// its kernel credentials would carry the broker's uid and could
+	// impersonate the worker before the first genuine reply.
 	int pending = 0;
 	if (::ioctl (fd, FIONREAD, &pending) != 0 || pending != 0)
 	{
@@ -244,8 +246,9 @@ i2p::expected<Channel, std::string> Channel::AdoptValidated (int fd, uint32_t ex
 		return i2p::unexpected ("adopted channel has a pending record");
 	}
 	channel.m_PeerExpectation = PeerExpectation { expectedUid, 0, 0, false, false, false, true };
-	// An adopted channel is a request/reply endpoint: enforce the registry's
-	// descriptor policy and answer attributable faults with a typed Error.
+	// An adopted channel is a request/reply endpoint: enforce the
+	// registry's descriptor policy and answer attributable faults with a
+	// typed Error.
 	channel.SetEnforcementPolicy (EnforcementPolicy::Endpoint);
 	return channel;
 }
@@ -294,9 +297,9 @@ i2p::expected<std::pair<Channel, Channel>, std::string> Channel::CreatePair ()
 		}
 #endif
 	}
-	// Both ends are created by this process. The parent overrides the child
-	// end with the post-drop worker identity after fork; a test that keeps
-	// both ends in one process matches itself.
+	// Both ends are created by this process. The parent overrides the
+	// child end with the post-drop worker identity after fork; a test that
+	// keeps both ends in one process matches itself.
 	const PeerExpectation expectation { static_cast<uint32_t> (::geteuid ()), static_cast<uint32_t> (::getegid ()), 0,
 		true, false, false, true };
 	Channel first (fds[0]);
@@ -318,8 +321,9 @@ i2p::expected<void, std::string> Channel::SendWithFd (const Message & message, i
 		return i2p::unexpected (std::string ("invalid descriptor: ") + strerror (errno));
 	auto header = EncodeHeader (message);
 	if (!header) return i2p::unexpected (std::string (header.error ().text));
-	// Two iovecs: the header is built once and the payload is referenced in
-	// place. sendmsg on SOCK_SEQPACKET queues one atomic record either way.
+	// Two iovecs: the header is built once and the payload is referenced
+	// in place. sendmsg on SOCK_SEQPACKET queues one atomic record either
+	// way.
 	struct iovec iov[2] { };
 	iov[0].iov_base = header->data ();
 	iov[0].iov_len = header->size ();
@@ -327,12 +331,13 @@ i2p::expected<void, std::string> Channel::SendWithFd (const Message & message, i
 	iov[1].iov_len = message.payload.size ();
 	const size_t frameSize = header->size () + message.payload.size ();
 
-	// SOCK_SEQPACKET is atomic: one sendmsg either queues the whole record or
-	// fails with EAGAIN. A poll(POLLOUT) followed by a blocking sendmsg is NOT
-	// bounded, because another writer (or a consumer of the advertised space)
-	// can take the free slot between the two calls. Send with MSG_DONTWAIT and
-	// retry until one absolute deadline, so the timeout always holds even on
-	// BSD-derived sockets that report readiness conservatively.
+	// SOCK_SEQPACKET is atomic: one sendmsg either queues the whole record
+	// or fails with EAGAIN. A poll(POLLOUT) followed by a blocking sendmsg
+	// is NOT bounded, because another writer (or a consumer of the
+	// advertised space) can take the free slot between the two calls. Send
+	// with MSG_DONTWAIT and retry until one absolute deadline, so the
+	// timeout always holds even on BSD-derived sockets that report
+	// readiness conservatively.
 	const bool infinite = IsInfiniteTimeout (timeoutMs);
 	const auto deadline = MakeDeadline (timeoutMs);
 	while (true)
@@ -415,9 +420,10 @@ i2p::expected<std::optional<Message>, std::string> Channel::Receive (int timeout
 i2p::expected<std::optional<ReceivedMessage>, std::string> Channel::ReceiveWithFd (int timeoutMs)
 {
 	if (!IsOpen ()) return i2p::unexpected ("channel is closed");
-	// A SOCK_SEQPACKET record is delivered to exactly one reader. Concurrent
-	// Receive/ReceiveWithFd callers therefore steal records from each other;
-	// every endpoint must have a single reader (see the header contract).
+	// A SOCK_SEQPACKET record is delivered to exactly one reader.
+	// Concurrent Receive/ReceiveWithFd callers therefore steal records
+	// from each other; every endpoint must have a single reader (see the
+	// header contract).
 	const bool infinite = IsInfiniteTimeout (timeoutMs);
 	const auto deadline = MakeDeadline (timeoutMs);
 
@@ -484,8 +490,8 @@ i2p::expected<std::optional<ReceivedMessage>, std::string> Channel::ReceiveWithF
 		}
 
 		// Parse ancillary data before treating the record as accepted. A
-		// truncated or duplicated descriptor set is a protocol violation; close
-		// every descriptor the kernel delivered so it cannot leak.
+		// truncated or duplicated descriptor set is a protocol violation;
+		// close every descriptor the kernel delivered so it cannot leak.
 		int receivedFd = -1;
 #if defined(__linux__)
 		bool receivedCredentials = false;
@@ -543,8 +549,8 @@ i2p::expected<std::optional<ReceivedMessage>, std::string> Channel::ReceiveWithF
 				::close (receivedFd);
 				return i2p::unexpected ("descriptor on an empty record");
 			}
-			// A zero-length record is still a peer send and must satisfy the same
-			// per-record credential rule as a data frame.
+			// A zero-length record is still a peer send and must satisfy the
+			// same per-record credential rule as a data frame.
 #if defined(__linux__)
 			if (!receivedCredentials) return i2p::unexpected ("missing SCM_CREDENTIALS on an empty record");
 			if (m_PeerExpectation.configured)
@@ -622,12 +628,13 @@ i2p::expected<std::optional<ReceivedMessage>, std::string> Channel::ReceiveWithF
 			}
 		}
 #if defined(__linux__)
-		// SO_PASSCRED makes SCM_CREDENTIALS mandatory on every received record.
-		// SO_PEERCRED reports the credentials captured when the socket was
-		// created: after a root core drops the worker to `privsep.user`, the
-		// worker's frames carry the worker uid and the creator record is stale.
-		// Production channels therefore carry an explicit expectation set by
-		// the spawner; only a raw test channel falls back to SO_PEERCRED.
+		// SO_PASSCRED makes SCM_CREDENTIALS mandatory on every received
+		// record. SO_PEERCRED reports the credentials captured when the
+		// socket was created: after a root core drops the worker to
+		// `privsep.user`, the worker's frames carry the worker uid and the
+		// creator record is stale. Production channels therefore carry an
+		// explicit expectation set by the spawner; only a raw test channel
+		// falls back to SO_PEERCRED.
 		if (!receivedCredentials)
 		{
 			if (receivedFd >= 0) ::close (receivedFd);

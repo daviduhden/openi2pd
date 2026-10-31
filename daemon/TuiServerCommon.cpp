@@ -4,11 +4,11 @@
  *
  * openi2pd: TuiServerCommon.
  *
- * Implements the shared TUI dispatcher: parses and validates each request
- * line, rejects oversized responses and builds snapshots of router,
- * transport, tunnel, NetDb, destination, log, configuration and torrent
- * state. Exceptions become internal-error frames so a failed snapshot cannot
- * unwind the IPC thread.
+ * Implements the shared TUI dispatcher: parses and validates each
+ * request line, rejects oversized responses and builds snapshots of
+ * router, transport, tunnel, NetDb, destination, log, configuration and
+ * torrent state. Exceptions become internal-error frames so a failed
+ * snapshot cannot unwind the IPC thread.
  *
  */
 
@@ -54,15 +54,15 @@ namespace i2p
 {
 namespace tui
 {
-	// The protocol parser and the address book validate the same URL bound; a
-	// change in one without the other would let the IPC side accept a value the
-	// book then rejects (or vice versa).
+	// The protocol parser and the address book validate the same URL
+	// bound; a change in one without the other would let the IPC side
+	// accept a value the book then rejects (or vice versa).
 	static_assert (i2p::tui::MAX_SUBSCRIPTION_URL_LENGTH == i2p::client::MAX_SUBSCRIPTION_URL_LENGTH,
 		"TUI and address-book subscription URL bounds must match");
 #ifndef NO_TORRENTS
-	// The comment page size is declared once by the protocol and once by the
-	// snapshot helper; a page larger than the wire bound would truncate
-	// silently and a smaller one would waste responses.
+	// The comment page size is declared once by the protocol and once by
+	// the snapshot helper; a page larger than the wire bound would
+	// truncate silently and a smaller one would waste responses.
 	static_assert (i2p::torrents::MAX_COMMENT_PAGE == MAX_TORRENT_COMMENT_RECORDS_PER_REQUEST,
 		"TUI and torrent comment page bounds must match");
 #endif
@@ -909,9 +909,10 @@ namespace tui
 			AppendField (payload, "comments.hidden", torrent.commentHiddenCount);
 			AppendField (payload, "comments.local", torrent.commentLocalCount);
 			// One response emits at most MAX_TORRENT_COMMENT_RECORDS_PER_REQUEST
-			// records. Clients page with TORRENT-DETAIL &lt;tunnel&gt; &lt;id&gt; &lt;offset&gt;
-			// &lt;limit&gt;; without the page arguments this is the newest page,
-			// which is exactly the response earlier clients already parse.
+			// records. Clients page with TORRENT-DETAIL &lt;tunnel&gt;
+			// &lt;id&gt; &lt;offset&gt; &lt;limit&gt;; without the page
+			// arguments this is the newest page, which is exactly the response
+			// earlier clients already parse.
 			const auto page = i2p::torrents::SliceCommentPage (torrent.comments.size (), commentOffset, commentLimit);
 			// comments.offset/count describe the emitted slice; comments.total
 			// remains the retained count, so clients must not iterate count

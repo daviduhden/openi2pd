@@ -4,25 +4,26 @@
  *
  * openi2pd: network-denied torrent storage process.
  *
- * Opens descendants by descriptor and serves serialized bounded IO requests.
- *
- * Every path is interpreted relative to the validated root descriptor with
- * openat()/fstatat() plus O_NOFOLLOW, and each traversed directory must be owned
- * by the worker identity without group/world write permission. A final payload
- * object must be a single-link regular file of the declared size, so a symlink,
- * hardlink or foreign-owned replacement is refused rather than repaired.
- *
- * Atomicity: a promotion links the staging inode into place (atomic no-replace
- * on Linux and OpenBSD) and only then removes staging, so an interrupted
- * link/unlink pair can resume for that same inode and never for a new one.
- * Metadata uses a fixed eight-slot staging namespace with an 8 MiB ceiling
- * instead of unbounded temporary names. Removal is never recursive.
- *
- * Requests are single-flight and strictly increasing in id; a duplicate or
- * stale id is refused so a replay cannot re-execute a mutation. `Cancel` only
- * suppresses a request that has not started, because the worker cannot roll back
- * an IO it already performed. The sandbox is applied after the root is
- * validated and before the first operation reply.
+ * Opens descendants by descriptor and serves serialized bounded IO
+ * requests.
+ * Every path is interpreted relative to the validated root descriptor
+ * with openat()/fstatat() plus O_NOFOLLOW, and each traversed directory
+ * must be owned by the worker identity without group/world write
+ * permission. A final payload object must be a single-link regular file
+ * of the declared size, so a symlink, hardlink or foreign-owned
+ * replacement is refused rather than repaired.
+ * Atomicity: a promotion links the staging inode into place (atomic
+ * no-replace on Linux and OpenBSD) and only then removes staging, so an
+ * interrupted link/unlink pair can resume for that same inode and never
+ * for a new one. Metadata uses a fixed eight-slot staging namespace
+ * with an 8 MiB ceiling instead of unbounded temporary names. Removal
+ * is never recursive.
+ * Requests are single-flight and strictly increasing in id; a duplicate
+ * or stale id is refused so a replay cannot re-execute a mutation.
+ * `Cancel` only suppresses a request that has not started, because the
+ * worker cannot roll back an IO it already performed. The sandbox is
+ * applied after the root is validated and before the first operation
+ * reply.
  */
 #include "TorrentStorage.h"
 #include "Channel.h"
@@ -75,8 +76,9 @@ namespace
 		uint64_t length;
 		bool writable;
 	};
-	// Walks only existing owned directories. The returned descriptor pins the
-	// parent even if its pathname changes; final operations never follow links.
+	// Walks only existing owned directories. The returned descriptor pins
+	// the parent even if its pathname changes; final operations never
+	// follow links.
 	int OpenParent (int root, std::string_view path, std::string & leaf)
 	{
 		if (!SafeStoragePath (path)) return -1;
@@ -137,15 +139,17 @@ namespace
 		if (file.fd < 0 || ::fstat (file.fd, &original) || !ValidPayload (original, length) || original.st_nlink < 1
 			|| original.st_nlink > 2 || ::fsync (file.fd))
 			return false;
-		// linkat has atomic no-replace semantics on both Linux and OpenBSD. An
-		// interrupted link/unlink transaction may be resumed only for this same inode.
+		// linkat has atomic no-replace semantics on both Linux and OpenBSD.
+		// An interrupted link/unlink transaction may be resumed only for this
+		// same inode.
 		if (::linkat (sourceParent.fd, from.c_str (), targetParent.fd, to.c_str (), 0) && errno != EEXIST) return false;
 		if (::fstatat (targetParent.fd, to.c_str (), &destination, AT_SYMLINK_NOFOLLOW)
 			|| !SameFile (original, destination) || !ValidPayload (destination, length) || destination.st_nlink != 2
 			|| ::fstatat (sourceParent.fd, from.c_str (), &current, AT_SYMLINK_NOFOLLOW)
 			|| !SameFile (original, current))
 			return false;
-		// Commit the destination entry before removing staging, then sync removal.
+		// Commit the destination entry before removing staging, then sync
+		// removal.
 		if (::fsync (targetParent.fd) || ::unlinkat (sourceParent.fd, from.c_str (), 0)) return false;
 		return ::fsync (sourceParent.fd) == 0;
 	}
@@ -159,7 +163,8 @@ namespace
 		if (status.st_uid != ::geteuid ()) return false;
 		if (directory ? !S_ISDIR (status.st_mode) : (!ValidPayload (status, length) || status.st_nlink != 1))
 			return false;
-		// Directories must be empty. Never traverse recursively on a delete request.
+		// Directories must be empty. Never traverse recursively on a delete
+		// request.
 		return ::unlinkat (parent.fd, leaf.c_str (), directory ? AT_REMOVEDIR : 0) == 0 && ::fsync (parent.fd) == 0;
 	}
 	constexpr uint64_t MetadataLimit = 8 * 1024 * 1024;
@@ -216,9 +221,10 @@ namespace
 				Clear ();
 				return false;
 			}
-			// A killed worker can leave staging behind. A fixed eight-slot namespace
-			// bounds orphan storage to 64 MiB per metadata directory, independent of
-			// restart count; never overwrite an unknown or concurrently active slot.
+			// A killed worker can leave staging behind. A fixed eight-slot
+			// namespace bounds orphan storage to 64 MiB per metadata directory,
+			// independent of restart count; never overwrite an unknown or
+			// concurrently active slot.
 			for (unsigned slot = 0; slot < 8; ++slot)
 			{
 				temporary = ".openi2pd-pending-" + std::to_string (slot);
@@ -298,7 +304,8 @@ namespace
 					|| static_cast<uint64_t> (status.st_size) > length
 					|| (!create && static_cast<uint64_t> (status.st_size) != length))
 					return -1;
-				// Existing contents are retained; sparse extension does not mark pieces verified.
+				// Existing contents are retained; sparse extension does not mark
+				// pieces verified.
 				if (create && static_cast<uint64_t> (status.st_size) < length
 					&& ::ftruncate (file.fd, static_cast<off_t> (length)))
 					return -1;
@@ -326,8 +333,8 @@ int RunTorrentStorageWorker (int fd, int inheritedRoot)
 	Channel channel = Channel::Adopt (fd);
 	channel.SetEnforcementPolicy (EnforcementPolicy::Endpoint);
 #if defined(__linux__)
-	// The socket/capability boundary does not need the delegated root and is
-	// installed before the first Configure frame is parsed.
+	// The socket/capability boundary does not need the delegated root and
+	// is installed before the first Configure frame is parsed.
 	if (auto lockdown = ApplyLinuxIpcLockdown (GetLinuxSandboxProfile (WorkerClass::Storage)); !lockdown) return 1;
 #endif
 	auto first = channel.ReceiveWithFd (5000);
@@ -335,16 +342,18 @@ int RunTorrentStorageWorker (int fd, int inheritedRoot)
 	auto & config = **first;
 	const bool supervised = config.message.type == MessageType::ConfigureTorrentStorageSupervised;
 #if defined(__OpenBSD__)
-	// The supervisor inherited the broker data root through exec, not sendfd
-	// (which permits only sockets, pipes and regular files under pledge).
+	// The supervisor inherited the broker data root through exec, not
+	// sendfd (which permits only sockets, pipes and regular files under
+	// pledge).
 	if (!supervised || inheritedRoot != 4 || config.fd >= 0)
 	{
 		if (config.fd >= 0) ::close (config.fd);
 		return 1;
 	}
 #elif defined(__linux__) && !defined(__ANDROID__)
-	// Linux delivers the already-opened delegated directory as one SCM_RIGHTS
-	// descriptor and must not use the OpenBSD broker configuration.
+	// Linux delivers the already-opened delegated directory as one
+	// SCM_RIGHTS descriptor and must not use the OpenBSD broker
+	// configuration.
 	if (supervised || inheritedRoot >= 0 || config.fd < 0) return 1;
 #endif
 	Fd root { inheritedRoot >= 0 ? inheritedRoot : config.fd };
@@ -376,9 +385,10 @@ int RunTorrentStorageWorker (int fd, int inheritedRoot)
 		return 1;
 	if (supervised)
 	{
-		// The broker passed its immutable data root at fd4. Walk the delegated
-		// relative path here, before applying the policy, and replace fd4 with the
-		// validated subdirectory. The broker itself must not openat() after pledge.
+		// The broker passed its immutable data root at fd4. Walk the
+		// delegated relative path here, before applying the policy, and
+		// replace fd4 with the validated subdirectory. The broker itself must
+		// not openat() after pledge.
 		auto relative = setup.ReadString ();
 		auto expectedDevice = setup.ReadU64BE ();
 		auto expectedInode = setup.ReadU64BE ();
@@ -401,9 +411,9 @@ int RunTorrentStorageWorker (int fd, int inheritedRoot)
 			|| (delegated.st_mode & 0022) || static_cast<uint64_t> (delegated.st_dev) != *expectedDevice
 			|| static_cast<uint64_t> (delegated.st_ino) != *expectedInode)
 			return 1;
-		// The pathname passed to unveil must still resolve to the capability we
-		// just walked. Any replacement between the broker and this check fails
-		// closed before the worker exposes a path-based policy.
+		// The pathname passed to unveil must still resolve to the capability
+		// we just walked. Any replacement between the broker and this check
+		// fails closed before the worker exposes a path-based policy.
 		Fd named { ::open (std::string (*rootPath).c_str (), O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC) };
 		struct stat namedStatus { };
 		if (named.fd < 0 || ::fstat (named.fd, &namedStatus) || namedStatus.st_dev != delegated.st_dev
@@ -432,18 +442,21 @@ int RunTorrentStorageWorker (int fd, int inheritedRoot)
 		::close (root.fd);
 		root.fd = relocated;
 	}
-	// Never retain inherited terminal/log descriptors: they could be sockets.
+	// Never retain inherited terminal/log descriptors: they could be
+	// sockets.
 	::close (0);
 	::close (1);
 	::close (2);
 #if defined(__linux__) && !defined(__ANDROID__)
 	auto profile = GetLinuxSandboxProfile (WorkerClass::Storage);
 	profile.restrictFilesystemReads = true;
-	// Bind Landlock to the actual delegated directory, not a replaceable pathname.
+	// Bind Landlock to the actual delegated directory, not a replaceable
+	// pathname.
 	profile.writablePaths = { "/proc/self/fd/" + std::to_string (root.fd) };
 	if (!ApplyLinuxSandbox (profile)) return 1;
 #elif defined(__OpenBSD__)
-	// Descriptor traversal remains the authority; unveil also limits pathname IO.
+	// Descriptor traversal remains the authority; unveil also limits
+	// pathname IO.
 	OpenBSDPolicyConfig policyConfig;
 	policyConfig.preopenedStorageIpc = true;
 	policyConfig.dataDir = std::string (*rootPath);
@@ -532,9 +545,10 @@ int RunTorrentStorageWorker (int fd, int inheritedRoot)
 				return 1;
 			continue;
 		}
-		// The worker is the security boundary: a duplicate or replayed request
-		// must not re-execute a mutation. The reply is an operation failure so the
-		// channel remains usable for a later legitimate request.
+		// The worker is the security boundary: a duplicate or replayed
+		// request must not re-execute a mutation. The reply is an operation
+		// failure so the channel remains usable for a later legitimate
+		// request.
 		if (request.requestId <= lastRequest)
 		{
 			if (!channel.Send ({ MessageType::Error, request.requestId,
@@ -573,8 +587,9 @@ int RunTorrentStorageWorker (int fd, int inheritedRoot)
 		else if (operation && *operation == static_cast<uint8_t> (StorageOperation::AuthorizeDHTMetadata))
 		{
 			auto path = reader.ReadString ();
-			// This operation is sent only from trusted tunnel configuration, never
-			// from peer filenames. It grants one flat DHT state leaf, not a directory.
+			// This operation is sent only from trusted tunnel configuration,
+			// never from peer filenames. It grants one flat DHT state leaf, not
+			// a directory.
 			if (path && reader.Done () && SafeStoragePath (*path) && path->find ('/') == std::string_view::npos
 				&& !path->starts_with (".openi2pd") && !path->starts_with (".i2pd")
 				&& (authorizedDHT.contains (*path) || authorizedDHT.size () < 16))
@@ -681,7 +696,8 @@ int RunTorrentStorageWorker (int fd, int inheritedRoot)
 					auto length = reader.ReadU32 ();
 					const bool writing = *operation == static_cast<uint8_t> (StorageOperation::Write);
 					const bool reading = *operation == static_cast<uint8_t> (StorageOperation::Read);
-					// Data follows the fixed 17-byte request header; never allocate from unchecked lengths.
+					// Data follows the fixed 17-byte request header; never allocate
+					// from unchecked lengths.
 					constexpr size_t header = 1 + 4 + 8 + 4;
 					if (offset && length && *length <= TorrentStorageBlock && *offset <= found->second.length
 						&& *length <= found->second.length - *offset
@@ -702,7 +718,8 @@ int RunTorrentStorageWorker (int fd, int inheritedRoot)
 							done += static_cast<size_t> (count);
 						}
 						success = done == *length;
-						// A successful write acknowledgement is durable, not merely copied into page cache.
+						// A successful write acknowledgement is durable, not merely
+						// copied into page cache.
 						if (success && writing && ::fsync (found->second.fd)) success = false;
 					}
 				}

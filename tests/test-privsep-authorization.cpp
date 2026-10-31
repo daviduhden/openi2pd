@@ -5,10 +5,11 @@
  * openi2pd: privsep authorization.
  *
  * Compile-free authorization contract: the message registry is the only
- * authority for which role may receive which type, a worker never accepts a
- * reply and the request-issuing side never accepts a request, per-type version
- * and payload ceilings hold, the descriptor policy is explicit, and a
- * malformed or downgraded frame is refused without being reinterpreted.
+ * authority for which role may receive which type, a worker never
+ * accepts a reply and the request-issuing side never accepts a request,
+ * per-type version and payload ceilings hold, the descriptor policy is
+ * explicit, and a malformed or downgraded frame is refused without
+ * being reinterpreted.
  *
  */
 
@@ -70,16 +71,16 @@ void TestRoleDirections ()
 					|| type == MessageType::TorrentStorageSupervisorReply);
 				continue;
 			}
-			// A pure worker receives requests and notifications, never a
-			// reply: a worker cannot inject a reply into the core.
+			// A pure worker receives requests and notifications, never a reply:
+			// a worker cannot inject a reply into the core.
 			assert (IsRequestType (type));
 		}
 		if (AllowsOperation (EndpointRole::Core, type))
 		{
-			// The requesting side receives replies only; a request type on
-			// the core would let a worker drive the router. WorkerHello is
-			// the one pre-dispatch spawn proof the server must read before
-			// a role exists (Windows named-pipe backend).
+			// The requesting side receives replies only; a request type on the
+			// core would let a worker drive the router. WorkerHello is the one
+			// pre-dispatch spawn proof the server must read before a role exists
+			// (Windows named-pipe backend).
 			assert (IsReplyType (type) || type == MessageType::WorkerHello);
 		}
 	}

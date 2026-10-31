@@ -4,15 +4,16 @@
  *
  * openi2pd: UnixDaemon.
  *
- * Implements the UNIX daemon lifecycle: optional fork/setsid daemonisation
- * with a readiness pipe, pidfile locking and rlimit setup, signal-driven
- * reload and shutdown, and graceful tunnel draining. On OpenBSD it installs
- * the startup pledge, spawns privilege-separated workers before the sandbox,
- * then applies validated unveil rules and the fixed runtime pledge. The
- * runtime promise set is built from the same table as the startup set and must
- * be a subset of it; `openbsd.pledge_file` may only select from that set and
- * may never add process, identity or privilege promises at runtime.
- *
+ * Implements the UNIX daemon lifecycle: optional fork/setsid
+ * daemonisation with a readiness pipe, pidfile locking and rlimit
+ * setup, signal-driven reload and shutdown, and graceful tunnel
+ * draining. On OpenBSD it installs the startup pledge, spawns
+ * privilege-separated workers before the sandbox, then applies
+ * validated unveil rules and the fixed runtime pledge. The runtime
+ * promise set is built from the same table as the startup set and must
+ * be a subset of it; `openbsd.pledge_file` may only select from that
+ * set and may never add process, identity or privilege promises at
+ * runtime.
  */
 
 #include "Daemon.h"
@@ -56,8 +57,8 @@
 #include "util.h"
 #ifdef __OpenBSD__
 // These declarations are platform-free and remain available in an
-// I2PD_NO_PRIVSEP build: the runtime pledge, the promise table and the worker
-// identity are still part of the core's own sandbox contract.
+// I2PD_NO_PRIVSEP build: the runtime pledge, the promise table and the
+// worker identity are still part of the core's own sandbox contract.
 #include "../privsep/Credentials.h"
 #include "../privsep/OpenBSDSandbox.h"
 #include "../privsep/Supervisor.h"
@@ -65,9 +66,10 @@
 
 namespace
 {
-// Owns a short-lived file descriptor for the daemon startup paths. It is
-// local to this translation unit: the daemon only needs deterministic
-// close-on-return, not a general-purpose global descriptor type.
+// Owns a short-lived file descriptor for the daemon startup paths. It
+// is local to this translation unit: the daemon only needs
+// deterministic close-on-return, not a general-purpose global
+// descriptor type.
 class UniqueFd
 {
 public:
@@ -121,8 +123,8 @@ static bool SignalError (const char * operation, int error)
 	return false;
 }
 
-// Bounded, non-secret startup notice. The logger thread has not started yet, so
-// stderr and syslog are the only destinations available.
+// Bounded, non-secret startup notice. The logger thread has not started
+// yet, so stderr and syslog are the only destinations available.
 static void WarnBeforeLogger (const std::string & message)
 {
 	std::cerr << message << std::endl;
@@ -132,17 +134,19 @@ static void WarnBeforeLogger (const std::string & message)
 
 const int GRACEFUL_SHUTDOWN_INTERVAL = 10 * 60; // in seconds
 
-// a handler may only touch volatile sig_atomic_t, everything else is done by the daemon loop
+// a handler may only touch volatile sig_atomic_t, everything else is
+// done by the daemon loop
 static volatile sig_atomic_t g_PendingSignals[NSIG] = { };
 
 /**
- * Async-signal-safe handler shared by the daemon's installed dispositions.
- *
- * The handler only records the signal number in a `volatile sig_atomic_t` table
- * and restores errno; every effect (reload, log reopen, graceful drain, exit) is
- * executed by HandlePendingSignals() on the daemon loop. Coalescing repeated
- * signals into one slot is intentional: a signal storm must not queue unbounded
- * work, and the loop re-checks router state before acting.
+ * Async-signal-safe handler shared by the daemon's installed
+ * dispositions.
+ * The handler only records the signal number in a `volatile
+ * sig_atomic_t` table and restores errno; every effect (reload, log
+ * reopen, graceful drain, exit) is executed by HandlePendingSignals()
+ * on the daemon loop. Coalescing repeated signals into one slot is
+ * intentional: a signal storm must not queue unbounded work, and the
+ * loop re-checks router state before acting.
  */
 void handle_signal (int sig)
 {
@@ -212,11 +216,12 @@ static void HandlePendingSignals ()
 	}
 }
 
-// The self-daemonizing parent waits for a single status byte from the child.
-// The child only reports success after the pidfile lock, sandbox setup, logger
-// startup and Daemon_Singleton::start() have all completed. The first NetDb
-// start can synchronously reseed, so the timeout must cover a slow network
-// download rather than killing a healthy but still-starting router.
+// The self-daemonizing parent waits for a single status byte from the
+// child. The child only reports success after the pidfile lock, sandbox
+// setup, logger startup and Daemon_Singleton::start() have all
+// completed. The first NetDb start can synchronously reseed, so the
+// timeout must cover a slow network download rather than killing a
+// healthy but still-starting router.
 static constexpr int DAEMON_READY_TIMEOUT_MS = 5 * 60 * 1000;
 
 enum class DaemonReadyStatus
@@ -273,9 +278,10 @@ static DaemonReadyStatus WaitForDaemonReady (int fd)
 	}
 }
 
-// Writes a failure status unless the child reaches the successful ready point.
-// This makes every early return in start() propagate to the waiting parent.
-// The notifier owns the write end, so closing it is not duplicated elsewhere.
+// Writes a failure status unless the child reaches the successful ready
+// point. This makes every early return in start() propagate to the
+// waiting parent. The notifier owns the write end, so closing it is not
+// duplicated elsewhere.
 class DaemonReadyNotifier
 {
 public:
@@ -363,10 +369,11 @@ namespace util
 			readEnd.Reset ();
 			readyFd = std::move (writeEnd);
 		}
-		// A daemon child only reports success after Daemon_Singleton::start().
-		// The notifier is created before the remaining daemonization steps, so
-		// a setsid(), chdir() or freopen() failure also reaches the waiting
-		// parent instead of leaving it to time out.
+		// A daemon child only reports success after
+		// Daemon_Singleton::start(). The notifier is created before the
+		// remaining daemonization steps, so a setsid(), chdir() or freopen()
+		// failure also reaches the waiting parent instead of leaving it to
+		// time out.
 		DaemonReadyNotifier ready (std::move (readyFd));
 
 		if (isDaemon)
@@ -452,11 +459,13 @@ namespace util
 		}
 
 		// Pidfile
-		// The descriptor must stay open for the lifetime of the daemon because
-		// lockf(3)/fcntl(2) ownership is tied to the open file description.
+		// The descriptor must stay open for the lifetime of the daemon
+		// because lockf(3)/fcntl(2) ownership is tied to the open file
+		// description.
 
-		// Until startup succeeds the pidfile descriptor is owned by this guard;
-		// every early return closes it without duplicating close() calls.
+		// Until startup succeeds the pidfile descriptor is owned by this
+		// guard; every early return closes it without duplicating close()
+		// calls.
 		UniqueFd pidFile;
 
 		// Close and remove the PID file if startup fails after locking it.
@@ -618,10 +627,11 @@ namespace util
 		// installs its own policy after exec instead of inheriting this one.
 		if (!PreparePrivsepWorkers ()) return abortStart ();
 #if !defined(I2PD_NO_PRIVSEP) && !defined(NO_TORRENTS)
-		// The separate broker is created before the runtime pledge removes exec.
-		// Its root authority is immutable and roots outside datadir are rejected.
-		// A root core can only start it when a worker identity is configured: the
-		// broker and its workers run as that identity, never as root.
+		// The separate broker is created before the runtime pledge removes
+		// exec. Its root authority is immutable and roots outside datadir are
+		// rejected. A root core can only start it when a worker identity is
+		// configured: the broker and its workers run as that identity, never
+		// as root.
 		if (::geteuid () != 0 || i2p::privsep::GetWorkerCredentials ().configured)
 		{
 			std::string storageError;
@@ -650,10 +660,11 @@ namespace util
 		i2p::config::GetOption ("privsep.log", privsepLog);
 		bool upnp;
 		i2p::config::GetOption ("upnp.enabled", upnp);
-		// The runtime window is built from the same table as the startup window
-		// in Daemon::init(): stdio/rpath/wpath/cpath/fattr/inet/dns/unix/flock/
-		// recvfd, plus proc only for reaping/signalling an owned supervisor. It
-		// never contains exec, id, chown, unveil or any privileged ioctl promise.
+		// The runtime window is built from the same table as the startup
+		// window in Daemon::init():
+		// stdio/rpath/wpath/cpath/fattr/inet/dns/unix/flock/ recvfd, plus
+		// proc only for reaping/signalling an owned supervisor. It never
+		// contains exec, id, chown, unveil or any privileged ioctl promise.
 		i2p::privsep::OpenBSDPledgeWindow runtimeWindow;
 		runtimeWindow.upnp = upnp;
 		runtimeWindow.reapChildren = privsepEnabled && privsepLog;
@@ -863,19 +874,20 @@ namespace util
 				return abortStart ();
 			}
 		}
-		// fork/setsid/setrlimit, PID locking, unveil and every worker spawn are
-		// complete. The runtime set therefore has no exec, no id and no unveil;
-		// proc survives only for reaping an owned supervisor.
+		// fork/setsid/setrlimit, PID locking, unveil and every worker spawn
+		// are complete. The runtime set therefore has no exec, no id and no
+		// unveil; proc survives only for reaping an owned supervisor.
 		std::string pledgePromises;
 		for (const auto & promise : promises)
 		{
 			if (!pledgePromises.empty ()) pledgePromises += ' ';
 			pledgePromises += promise;
 		}
-		// Pledge can only remove promises. A runtime promise that the startup set
-		// never contained is silently ignored by the kernel, and the first use of
-		// that subsystem aborts the core. Recompute the startup window from the
-		// same table rather than trusting that the two call sites stayed in sync.
+		// Pledge can only remove promises. A runtime promise that the startup
+		// set never contained is silently ignored by the kernel, and the
+		// first use of that subsystem aborts the core. Recompute the startup
+		// window from the same table rather than trusting that the two call
+		// sites stayed in sync.
 		i2p::privsep::OpenBSDPledgeWindow startupWindow;
 		startupWindow.unveil = useUnveil;
 		startupWindow.upnp = upnp;
@@ -891,9 +903,10 @@ namespace util
 				  "startup set");
 			return abortStart ();
 		}
-		// Every allowed worker already exists. Fail closed in-process as well, so
-		// a future code path cannot fork/exec merely because the platform sandbox
-		// lets it; the spawn helpers refuse from this point on.
+		// Every allowed worker already exists. Fail closed in-process as
+		// well, so a future code path cannot fork/exec merely because the
+		// platform sandbox lets it; the spawn helpers refuse from this point
+		// on.
 		i2p::privsep::ForbidProcessCreation ();
 		if (usePledge && pledge (pledgePromises.c_str (), i2p::privsep::OPENBSD_PLEDGE_EXECPROMISES) == -1)
 		{

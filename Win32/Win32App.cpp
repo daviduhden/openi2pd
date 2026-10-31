@@ -4,12 +4,12 @@
  *
  * openi2pd: Win32App.
  *
- * Implements the Win32 desktop shell: a hidden main window with tray icon and
- * popup menu, About, exit, reload, transit and datadir actions, and a
- * periodically repainted status window. Timers drive frame updates and
- * graceful shutdown, which stops accepting tunnels and exits when transit
- * tunnels drain or ten minutes elapse; COM network-state monitoring starts
- * only outside service mode.
+ * Implements the Win32 desktop shell: a hidden main window with tray
+ * icon and popup menu, About, exit, reload, transit and datadir
+ * actions, and a periodically repainted status window. Timers drive
+ * frame updates and graceful shutdown, which stops accepting tunnels
+ * and exits when transit tunnels drain or ten minutes elapse; COM
+ * network-state monitoring starts only outside service mode.
  *
  */
 
@@ -56,9 +56,9 @@ namespace win32
 	// InsertMenu appends the new item when uPosition is (UINT)-1.
 	static constexpr UINT MENU_APPEND_POSITION = static_cast<UINT> (-1);
 
-	// Copy the fixed notification texts with an explicit bound. This avoids the
-	// deprecated strcpy without depending on the optional MSVC _s extensions in
-	// the MinGW build.
+	// Copy the fixed notification texts with an explicit bound. This
+	// avoids the deprecated strcpy without depending on the optional MSVC
+	// _s extensions in the MinGW build.
 	static void CopyFixedString (char * dest, size_t size, const char * src)
 	{
 		if (!size) return;
@@ -135,11 +135,11 @@ namespace win32
 	/**
 	 * Window procedure for the hidden main window.
 	 *
-	 * All router interaction from outside this thread is expressed as a posted
-	 * command (ID_EXIT, ID_GRACEFUL_SHUTDOWN, ...), never as a direct call into
-	 * the daemon from another thread. WM_CLOSE kills every timer and posts the
-	 * quit message, so the message loop - not the window procedure - decides when
-	 * run() returns.
+	 * All router interaction from outside this thread is expressed as a
+	 * posted command (ID_EXIT, ID_GRACEFUL_SHUTDOWN, ...), never as a
+	 * direct call into the daemon from another thread. WM_CLOSE kills
+	 * every timer and posts the quit message, so the message loop - not
+	 * the window procedure - decides when run() returns.
 	 */
 	static LRESULT CALLBACK WndProc (HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 	{
@@ -375,7 +375,8 @@ namespace win32
 			MessageBox (NULL, "Failed to create main window", TEXT ("Warning!"), MB_ICONERROR | MB_OK | MB_TOPMOST);
 			return false;
 		}
-		// COM requires message loop to work, which is not implemented in service mode
+		// COM requires message loop to work, which is not implemented in
+		// service mode
 		if (!g_isWinService) SubscribeToEvents ();
 		return true;
 	}

@@ -5,17 +5,17 @@
  * openi2pd: UPnP.
  *
  * Declares the optional miniupnpc-backed IGD discovery and port-mapping
- * helper, with a compile-time stub when USE_UPNP is disabled. The active
- * interface exposes a threaded start/stop lifecycle and IPv4 mapping for
- * router addresses.
+ * helper, with a compile-time stub when USE_UPNP is disabled. The
+ * active interface exposes a threaded start/stop lifecycle and IPv4
+ * mapping for router addresses.
  *
  */
 
 #ifndef __UPNP_H__
 #define __UPNP_H__
 
-// The compile-time stub logs through LogPrint; include the logger directly so
-// the header does not depend on the includer's order.
+// The compile-time stub logs through LogPrint; include the logger
+// directly so the header does not depend on the includer's order.
 #include "Log.h"
 
 #include <cstdint>
@@ -27,12 +27,12 @@ namespace i2p
 namespace transport
 {
 	/*
-	 * Mapping policy shared by the active implementation and its regression.
-	 *
-	 * An IGD lease is a decimal number of seconds; a mapping added without one
-	 * is permanent and survives this process, so every mapping is time-limited
-	 * and renewed by the periodic pass. A same-host IGD (one whose external
-	 * address is this machine) is refused outright.
+	 * Mapping policy shared by the active implementation and its
+	 * regression.
+	 * An IGD lease is a decimal number of seconds; a mapping added without
+	 * one is permanent and survives this process, so every mapping is
+	 * time-limited and renewed by the periodic pass. A same-host IGD (one
+	 * whose external address is this machine) is refused outright.
 	 */
 	inline constexpr unsigned UPNP_LEASE_DURATION_SECONDS = 3 * 60 * 60; // 3 hours
 	inline constexpr unsigned UPNP_MAX_LEASE_DURATION_SECONDS = 7 * 24 * 60 * 60;
@@ -63,8 +63,8 @@ namespace transport
 		return !local.empty () && external == local;
 	}
 
-	// True when an existing mapping already points at this exact target, i.e.
-	// it can be renewed in place instead of being deleted first.
+	// True when an existing mapping already points at this exact target,
+	// i.e. it can be renewed in place instead of being deleted first.
 	inline bool IsOwnUPnPMapping (std::string_view mappingClient, std::string_view mappingPort,
 		std::string_view ourAddress, std::string_view ourPort)
 	{
@@ -134,8 +134,9 @@ namespace transport
 		void SetStatus (bool mapped, int error);
 
 	public:
-		// Bounded administrative view: enabled, whether a mapping is currently
-		// believed to be installed, and the last miniupnpc/UPnP result code.
+		// Bounded administrative view: enabled, whether a mapping is
+		// currently believed to be installed, and the last miniupnpc/UPnP
+		// result code.
 		UPnPStatus GetStatus () const;
 
 	private:

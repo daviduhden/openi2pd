@@ -5,10 +5,10 @@
  * openi2pd: TuiServerWin32.
  *
  * Implements the Windows TUI transport as a single-instance byte-mode
- * named pipe with a protected DACL admitting only the daemon user, SYSTEM and
- * Administrators, and rejects remote clients. Overlapped reads and writes
- * share the UNIX transport's request, idle and connection-duration budgets.
- *
+ * named pipe with a protected DACL admitting only the daemon user,
+ * SYSTEM and Administrators, and rejects remote clients. Overlapped
+ * reads and writes share the UNIX transport's request, idle and
+ * connection-duration budgets.
  */
 
 #include "TuiServer.h"

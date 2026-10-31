@@ -155,6 +155,10 @@ execution. Ask for:
   nonce) after `ConnectBound`; the server impersonates the client and checks
   user SID, PID/session, AppContainer SID and nonce before binding the role.
   `Accept()` is test-only; the nonce is not a secret on the command line.
+- `AcceptBound()` consumes the initial `WorkerHello` before binding the
+  accepted channel as the core endpoint. Reject any later `WorkerHello` there;
+  send its typed `Error` response through the narrow reply-direction exception
+  while keeping ordinary core sends request-direction only.
 - `WindowsIsolation.cpp` is the role authority: storage/log/crypto/admin are
   low-privilege AppContainers with no `internetClient`; network has Internet
   capability and no write root; supervisor uses a restricted token. Never

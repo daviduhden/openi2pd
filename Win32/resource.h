@@ -4,9 +4,9 @@
  *
  * openi2pd: resource.
  *
- * Defines the resource identifiers used by the Windows build, currently the
- * MAINICON icon (101), plus the App Studio placeholder values used when the
- * resource files are edited in Visual Studio.
+ * Defines the resource identifiers used by the Windows build, currently
+ * the MAINICON icon (101), plus the App Studio placeholder values used
+ * when the resource files are edited in Visual Studio.
  *
  */
 

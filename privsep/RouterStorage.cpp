@@ -5,19 +5,20 @@
  * openi2pd: atomic router-key and RouterInfo storage process.
  *
  * Only four fixed filenames are writable (router.keys, router.info,
- * ntcp2.keys, ssu2.keys); a write request carries no path field, so the worker
- * cannot be pointed at another object. The worker has no network capability.
- * Each write stages into one fixed same-directory slot, fsyncs it, renames it
- * over the target and fsyncs the directory, and refuses a symlink, hardlink,
- * directory or foreign-owned target at every step.
- *
- * The client is single-flight and generation-fenced: a reply is applied only
- * when both its generation and its request id match the outstanding request, so
- * a reply from a replaced worker cannot be mistaken for the current one. A lost
- * reply leaves the write's outcome unknown; it is reported as a failure and is
- * never replayed. Restarts use the shared bounded ladder and fail closed without
- * a core-side filesystem fallback. On OpenBSD the worker cannot be re-exec'ed
- * after the runtime pledge, so a lost worker stays terminal until the daemon
+ * ntcp2.keys, ssu2.keys); a write request carries no path field, so the
+ * worker cannot be pointed at another object. The worker has no network
+ * capability. Each write stages into one fixed same-directory slot,
+ * fsyncs it, renames it over the target and fsyncs the directory, and
+ * refuses a symlink, hardlink, directory or foreign-owned target at
+ * every step.
+ * The client is single-flight and generation-fenced: a reply is applied
+ * only when both its generation and its request id match the
+ * outstanding request, so a reply from a replaced worker cannot be
+ * mistaken for the current one. A lost reply leaves the write's outcome
+ * unknown; it is reported as a failure and is never replayed. Restarts
+ * use the shared bounded ladder and fail closed without a core-side
+ * filesystem fallback. On OpenBSD the worker cannot be re-exec'ed after
+ * the runtime pledge, so a lost worker stays terminal until the daemon
  * restarts.
  */
 #include "RouterStorage.h"
@@ -72,8 +73,9 @@ namespace
 		}
 		else if (errno != ENOENT)
 			return false;
-		// A fixed staging slot bounds leftovers. Only remove an owned regular slot;
-		// never open/truncate an existing inode that might have gained another link.
+		// A fixed staging slot bounds leftovers. Only remove an owned regular
+		// slot; never open/truncate an existing inode that might have gained
+		// another link.
 		if (::fstatat (root, temporary.c_str (), &current, AT_SYMLINK_NOFOLLOW) == 0)
 		{
 			if (!S_ISREG (current.st_mode) || current.st_uid != ::geteuid () || current.st_nlink != 1
@@ -117,14 +119,17 @@ struct RouterStorageClient::Impl
 	std::mutex mutex;
 	ChildProcess child;
 	/** Validated root capability retained so a restart reuses the same
-	 *  directory object instead of re-resolving an attacker-controlled path. */
+	 * directory object instead of re-resolving an attacker-controlled
+	 * path. */
 	std::string rootPath;
 	uint64_t device = 0;
 	uint64_t inode = 0;
 	int rootFd = -1;
 	uint32_t next = 0;
-	/** Bumped by every successful Start/configuration. Request ids are fenced
-	 *  per generation so a reply from a replaced worker can never be applied. */
+	/**
+	 * Bumped by every successful Start/configuration. Request ids are
+	 * fenced per generation so a reply from a replaced worker can never
+	 * be applied. */
 	uint32_t generation = 0;
 	State state = State::Stopped;
 	StorageClientRestart restart;
@@ -134,8 +139,8 @@ struct RouterStorageClient::Impl
 	Impl ()
 	{
 #if defined(__OpenBSD__)
-		// The core has no fork/exec authority after the runtime pledge, and no
-		// broker path exists for this role yet. A lost worker is terminal
+		// The core has no fork/exec authority after the runtime pledge, and
+		// no broker path exists for this role yet. A lost worker is terminal
 		// until the daemon restarts; writes fail closed instead of falling
 		// back to a local key/RouterInfo file.
 		restartPermitted = false;
@@ -262,8 +267,8 @@ struct RouterStorageClient::Impl
 		auto & channel = child.ChannelFd ();
 		// Request ids are fenced per generation: a reply is accepted only for
 		// the generation that issued it and for the request still in flight.
-		// Ids are monotonic across restarts, so an abandoned request can never
-		// collide with a newer one.
+		// Ids are monotonic across restarts, so an abandoned request can
+		// never collide with a newer one.
 		const auto requestGeneration = generation;
 		const auto id = ++next;
 		if (!channel.Send ({ type, id, std::move (payload) }, 5000))
@@ -278,8 +283,9 @@ struct RouterStorageClient::Impl
 			return false;
 		}
 		auto & reply = **result;
-		// A worker-level write rejection (status '\1', for example ENOSPC or a
-		// symlink/ownership check) is a failed operation, not a broken channel.
+		// A worker-level write rejection (status '\1', for example ENOSPC or
+		// a symlink/ownership check) is a failed operation, not a broken
+		// channel.
 		const bool valid = reply.fd < 0 && reply.message.type == MessageType::RouterStorageReply
 			&& reply.message.requestId == id && requestGeneration == generation
 			&& (reply.message.payload == std::string (1, '\0') || reply.message.payload == std::string (1, '\1'));
@@ -306,8 +312,8 @@ void RouterStorageClient::Stop ()
 {
 	std::lock_guard lock (m_Impl->mutex);
 	m_Impl->state = Impl::State::Stopped;
-	// Detached OpenBSD workers are owned only through channel EOF: no kill or
-	// waitpid after runtime pledge. Linux owns/reaps its regular child.
+	// Detached OpenBSD workers are owned only through channel EOF: no kill
+	// or waitpid after runtime pledge. Linux owns/reaps its regular child.
 	m_Impl->CloseWorker ();
 	if (m_Impl->rootFd >= 0)
 	{
@@ -333,8 +339,8 @@ bool RouterStorageClient::Start (const std::filesystem::path & root, std::string
 		error = "invalid router storage root";
 		return false;
 	}
-	// Keep O_RDONLY rather than O_PATH: AtomicWrite performs fsync() on the
-	// directory descriptor, which an O_PATH descriptor cannot satisfy.
+	// Keep O_RDONLY rather than O_PATH: AtomicWrite performs fsync() on
+	// the directory descriptor, which an O_PATH descriptor cannot satisfy.
 	Fd directory { ::open (absolute.c_str (), O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC) };
 	struct stat status { };
 	if (directory.value < 0 || ::fstat (directory.value, &status) || status.st_uid != workerUid
@@ -363,8 +369,9 @@ bool RouterStorageClient::Write (i2p::data::RouterPersistentFile file, std::span
 	std::lock_guard lock (m_Impl->mutex);
 	if (!FileName (static_cast<uint8_t> (file)) || bytes.empty () || bytes.size () > 32768) return false;
 	if (m_Impl->state == Impl::State::Stopped || m_Impl->state == Impl::State::Failed) return false;
-	// A backoff delay or a failed respawn is a Busy refusal. It must not be
-	// reported as a completed write and must not fall back to a local file.
+	// A backoff delay or a failed respawn is a Busy refusal. It must not
+	// be reported as a completed write and must not fall back to a local
+	// file.
 	if (!m_Impl->EnsureReady ()) return false;
 	if (m_Impl->next == std::numeric_limits<uint32_t>::max ())
 	{
@@ -386,9 +393,9 @@ int RunRouterStorageWorker (int fd, int inheritedRoot)
 	Channel channel = Channel::Adopt (fd);
 	channel.SetEnforcementPolicy (EnforcementPolicy::Endpoint);
 #if defined(__linux__)
-	// The socket/capability boundary does not need the delegated root and is
-	// installed before the first Configure frame is parsed. This runs in the
-	// worker, never in the socket-owning core.
+	// The socket/capability boundary does not need the delegated root and
+	// is installed before the first Configure frame is parsed. This runs
+	// in the worker, never in the socket-owning core.
 	if (auto lockdown = ApplyLinuxIpcLockdown (GetLinuxSandboxProfile (WorkerClass::Storage)); !lockdown) return 1;
 #endif
 	auto first = channel.ReceiveWithFd (5000);

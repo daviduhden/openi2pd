@@ -4,10 +4,11 @@
  *
  * openi2pd: test privsep windows ipc.
  *
- * Windows-only checks for the worker pipe transport: role authorization,
- * private DACL derivation with an optional AppContainer SID, spawn-nonce and
- * WorkerHello binding, identity-bound accept with rejection and re-arm, frame
- * bounds, descriptor refusal, cancellation delivery and reconnect behavior.
+ * Windows-only checks for the worker pipe transport: role
+ * authorization, private DACL derivation with an optional AppContainer
+ * SID, spawn-nonce and WorkerHello binding, identity-bound accept with
+ * rejection and re-arm, frame bounds, descriptor refusal, cancellation
+ * delivery and reconnect behavior.
  *
  */
 
@@ -48,7 +49,9 @@ using namespace i2p::privsep;
 
 namespace
 {
-/** A nonce-shaped 32-byte pattern; the value never has to be secret here. */
+/**
+ * A nonce-shaped 32-byte pattern; the value never has to be secret here.
+ */
 std::string TestNonce ()
 {
 	std::string nonce (WINDOWS_WORKER_NONCE_SIZE, '\0');
@@ -80,7 +83,8 @@ std::string NarrowHex (const std::wstring & hex)
 DWORD CurrentSessionId ()
 {
 	DWORD session = 0;
-	// The query has a side effect, so it must never live inside the assertion.
+	// The query has a side effect, so it must never live inside the
+	// assertion.
 	const BOOL resolved = ProcessIdToSessionId (GetCurrentProcessId (), &session);
 	(void)resolved;
 	assert (resolved);
@@ -109,9 +113,10 @@ bool IsWellKnown (const void * sid, WELL_KNOWN_SID_TYPE type)
 }
 
 /**
- * The DACL must stay protected, must not contain a world/authenticated/anonymous
- * ACE and must contain exactly the expected number of allow ACEs, with
- * `expectedSid` present when it is not empty.
+ * The DACL must stay protected, must not contain a
+ * world/authenticated/anonymous ACE and must contain exactly the
+ * expected number of allow ACEs, with `expectedSid` present when it is
+ * not empty.
  */
 void CheckDacl (HANDLE pipe, const std::wstring & expectedSid, DWORD expectedAces)
 {
@@ -154,7 +159,9 @@ void CheckDacl (HANDLE pipe, const std::wstring & expectedSid, DWORD expectedAce
 	LocalFree (descriptor);
 }
 
-/** Connect as the (trusted) test process and run `handshake` on the channel. */
+/**
+ * Connect as the trusted test process and run `handshake` on the channel.
+ */
 std::thread StartTestWorker (const std::wstring & pipeName, std::function<void (WindowsChannel &)> handshake,
 	std::unique_ptr<WindowsChannel> & channel)
 {
@@ -231,7 +238,8 @@ void TestPolicyAndRoles ()
 	assert (!WindowsAllowsOperation (WindowsWorkerRole::Log, MessageType::ConfigureLogFd));
 	assert (!WindowsAllowsOperation (WindowsWorkerRole::Log, MessageType::TorrentStorageRequest));
 
-	// The supervisor configures the log worker but owns no storage operation.
+	// The supervisor configures the log worker but owns no storage
+	// operation.
 	assert (WindowsAllowsOperation (WindowsWorkerRole::Supervisor, MessageType::ConfigureLog));
 	assert (!WindowsAllowsOperation (WindowsWorkerRole::Supervisor, MessageType::ConfigureLogFd));
 	assert (!WindowsAllowsOperation (WindowsWorkerRole::Supervisor, MessageType::DataStorageRequest));
@@ -306,7 +314,8 @@ void TestWorkerHelloCodec ()
 		writer.WriteRaw (nonce);
 		assert (!DecodeWorkerHelloFrame ({ MessageType::WorkerHello, 6, writer.Data () }).has_value ());
 	}
-	// Wrong nonce length, truncated nonce, trailing data and an all-zero nonce.
+	// Wrong nonce length, truncated nonce, trailing data and an all-zero
+	// nonce.
 	{
 		PayloadWriter writer;
 		writer.WriteU8 (static_cast<uint8_t> (WindowsWorkerRole::Storage));
@@ -336,7 +345,8 @@ void TestWorkerHelloCodec ()
 		writer.WriteRaw (std::string (WINDOWS_WORKER_NONCE_SIZE, '\0'));
 		assert (!DecodeWorkerHelloFrame ({ MessageType::WorkerHello, 6, writer.Data () }).has_value ());
 	}
-	// The whole frame is bounded by the registry, not by the 64 KiB maximum.
+	// The whole frame is bounded by the registry, not by the 64 KiB
+	// maximum.
 	assert (Encode (Message {
 						MessageType::WorkerHello, 1, std::string (MaxPayloadFor (MessageType::WorkerHello) + 1, 'x') })
 				.error ()
@@ -357,7 +367,8 @@ void TestPrivatePipeNameAndSquatting ()
 	assert (*randomOne != *randomTwo);
 	assert (randomOne->rfind (L"\\\\.\\pipe\\openi2pd-worker-", 0) == 0);
 
-	// A name that is already listening must not be joined: the worker would
+	// A name that is already listening must not be joined: the worker
+	// would
 	// otherwise connect to a squatted listener instead of its supervisor.
 	const std::wstring squatted = MakeTestPipeName (L"squatted");
 	HANDLE squatter = CreateNamedPipeW (squatted.c_str (), PIPE_ACCESS_DUPLEX,
@@ -382,8 +393,8 @@ void TestDaclWithExtraSid ()
 	assert (plain.has_value ());
 	CheckDacl (plain->Native (), std::wstring { }, 2);
 
-	// An SDDL injection must never reach ConvertStringSecurityDescriptor and a
-	// value that is not a SID string is refused outright.
+	// An SDDL injection must never reach ConvertStringSecurityDescriptor
+	// and a value that is not a SID string is refused outright.
 	auto injected = WindowsServer::Create (MakeTestPipeName (L"dacl-inject"), L"S-1-5-21-1)(A;;GA;;;WD");
 	assert (!injected.has_value ());
 	auto notSid = WindowsServer::Create (MakeTestPipeName (L"dacl-notsid"), L"WD");
@@ -434,7 +445,8 @@ void TestAcceptBoundHappyPath ()
 	assert (accepted->IsOpen ());
 	assert (accepted->RoleSet ());
 	assert (accepted->Role () == WindowsWorkerRole::Storage);
-	// The test connector sent the worker hello, so bind it to the worker side
+	// The test connector sent the worker hello, so bind it to the worker
+	// side
 	// of the same request/reply direction enforced by production workers.
 	client->SetRole (WindowsWorkerRole::Storage);
 
@@ -461,8 +473,9 @@ void TestHelloRejectionsAndRearm ()
 	const std::wstring nonceHex = TestNonceHexA ();
 	const std::wstring otherNonce = OtherNonceHex ();
 
-	// A handshake with the wrong nonce is rejected and the listener re-arms for
-	// the real worker, so an impostor can never starve the spawn.
+	// A handshake with the wrong nonce is rejected and the listener
+	// re-arms for the real worker, so an impostor can never starve the
+	// spawn.
 	{
 		const std::wstring name = MakeTestPipeName (L"bad-nonce");
 		auto server = WindowsServer::Create (name);
@@ -608,7 +621,8 @@ void TestDuplicateHelloIsRefused ()
 	assert (accepted.has_value ());
 	assert (client);
 
-	// The duplicate is not dispatchable: it is answered with one typed refusal
+	// The duplicate is not dispatchable: it is answered with one typed
+	// refusal
 	// and the channel stays open.
 	auto duplicate = accepted->Receive (2000);
 	assert (duplicate.has_value ());
@@ -672,8 +686,9 @@ void TestAuthorizationAndDescriptorRefusal ()
 	assert (std::get<0> (*replyDecoded) == MessageType::DataStorageReply);
 	assert (std::get<1> (*replyDecoded) == ErrorCode::NotAuthorized);
 
-	// ConfigureLogFd requires a descriptor channel, which the pipe transport
-	// does not have, so it is refused instead of silently dropping the sink.
+	// ConfigureLogFd requires a descriptor channel, which the pipe
+	// transport does not have, so it is refused instead of silently
+	// dropping the sink.
 	auto logConfig = EncodeLogConfig (false, "C:\\openi2pd\\router.log", "openi2pd");
 	assert (logConfig.has_value ());
 	assert (client->Send ({ MessageType::ConfigureLogFd, 33, *logConfig }).has_value ());
@@ -722,8 +737,8 @@ void TestFrameBounds ()
 	assert (delivered.has_value () && delivered->has_value ());
 	assert ((*delivered)->payload.size () == ceiling);
 
-	// One byte above the per-type ceiling is a size fault: it is answered with
-	// one typed Error and the channel survives.
+	// One byte above the per-type ceiling is a size fault: it is answered
+	// with one typed Error and the channel survives.
 	PayloadWriter oversized;
 	oversized.WriteU32 (PROTOCOL_MAGIC);
 	oversized.WriteU16 (PROTOCOL_VERSION);
@@ -784,8 +799,8 @@ void TestLegacyAcceptRoundTripAndTimeout ()
 	assert (accepted.has_value ());
 	assert (client);
 
-	// A quiet pipe is a timeout, not a failure, and the same channel is reused
-	// for the next record.
+	// A quiet pipe is a timeout, not a failure, and the same channel is
+	// reused for the next record.
 	auto idle = accepted->Receive (25);
 	assert (idle.has_value ());
 	assert (!idle->has_value ());
@@ -804,8 +819,9 @@ void TestLegacyAcceptRoundTripAndTimeout ()
 	assert (!peer->userSid.empty ());
 	assert (!peer->appContainer);
 
-	// A frame with an unattributable header (bad magic) is terminal: it cannot
-	// even be answered, because a corrupt header must not choose a request id.
+	// A frame with an unattributable header (bad magic) is terminal: it
+	// cannot even be answered, because a corrupt header must not choose a
+	// request id.
 	PayloadWriter bogus;
 	bogus.WriteU32 (0xdeadbeef);
 	bogus.WriteU16 (PROTOCOL_VERSION);
@@ -838,9 +854,9 @@ void TestCompletedRecordDuringCancel ()
 	assert (accepted.has_value ());
 	assert (client);
 
-	// A record that completes while the deadline is cancelling the read must be
-	// delivered: the cancellation only wins when no bytes arrived. The window is
-	// swept because it is inherently a race.
+	// A record that completes while the deadline is cancelling the read
+	// must be delivered: the cancellation only wins when no bytes arrived.
+	// The window is swept because it is inherently a race.
 	bool delivered = false;
 	bool failed = false;
 	for (int attempt = 0; attempt < 64 && !delivered; ++attempt)

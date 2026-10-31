@@ -4,21 +4,21 @@
  *
  * openi2pd: Protocol.
  *
- * Defines the versioned worker frame, bounded payload and text codecs, the
- * typed log/storage/status encodings shared by every transport and the
- * per-endpoint operation allowlist. Decoders reject bad magic, versions,
- * types, oversized lengths, truncation, trailing bytes and embedded NULs in
- * path fields. Encoders are fallible for path fields so a value is never
- * silently truncated to a different filesystem object.
- *
- * Version 3 adds the data-storage frame family (configure/request/reply) for
- * hash-named runtime artifacts. Version 4 adds the shared MessageSpec registry
- * (per-type roles, direction, minimum version, payload ceiling and descriptor
- * policy) and the advisory Cancel frame. Version 5 adds Windows WorkerHello.
- * Version 1..4 frames remain decodable;
- * a type whose minimum version is newer than the frame is rejected rather than
- * interpreted with different semantics.
- *
+ * Defines the versioned worker frame, bounded payload and text codecs,
+ * the typed log/storage/status encodings shared by every transport and
+ * the per-endpoint operation allowlist. Decoders reject bad magic,
+ * versions, types, oversized lengths, truncation, trailing bytes and
+ * embedded NULs in path fields. Encoders are fallible for path fields
+ * so a value is never silently truncated to a different filesystem
+ * object.
+ * Version 3 adds the data-storage frame family
+ * (configure/request/reply) for hash-named runtime artifacts. Version 4
+ * adds the shared MessageSpec registry (per-type roles, direction,
+ * minimum version, payload ceiling and descriptor policy) and the
+ * advisory Cancel frame. Version 5 adds Windows WorkerHello. Version
+ * 1..4 frames remain decodable; a type whose minimum version is newer
+ * than the frame is rejected rather than interpreted with different
+ * semantics.
  */
 
 #ifndef I2PD_PRIVSEP_PROTOCOL_H__
@@ -40,28 +40,29 @@
 namespace i2p::privsep
 {
 inline constexpr uint32_t PROTOCOL_MAGIC = 0x49503250; // "IP2P"
-// Version 2 adds the typed Error message and the shared role allowlist, while
-// version 3 adds the data-storage frames. Version 4 adds the advisory Cancel
-// and version 5 the Windows worker identity handshake. Older frames stay
-// readable so a worker from an earlier build cannot be silently starved of its
-// own protocol.
+// Version 2 adds the typed Error message and the shared role allowlist,
+// while version 3 adds the data-storage frames. Version 4 adds the
+// advisory Cancel and version 5 the Windows worker identity handshake.
+// Older frames stay readable so a worker from an earlier build cannot
+// be silently starved of its own protocol.
 inline constexpr uint16_t MIN_PROTOCOL_VERSION = 1;
 inline constexpr uint16_t PROTOCOL_VERSION = 5;
 /// Header fields are big-endian: magic at 0 (u32), version at 4 (u16),
-/// type at 6 (u16), request id at 8 (u32), and payload length at 12 (u32).
-/// One transport record carries exactly this header and its declared payload;
-/// see docs/security/ipc-protocol.md for per-type authority and descriptor rules.
+/// type at 6 (u16), request id at 8 (u32), and payload length at 12
+/// (u32). One transport record carries exactly this header and its
+/// declared payload; see docs/security/ipc-protocol.md for per-type
+/// authority and descriptor rules.
 inline constexpr size_t HEADER_SIZE = 16;
 inline constexpr size_t MAX_MESSAGE_SIZE = 64 * 1024;
 inline constexpr size_t MAX_TEXT_SIZE = 8 * 1024;
 inline constexpr size_t MAX_PATH_SIZE = 4096;
 inline constexpr size_t MAX_ERROR_DETAIL = 256;
 /**
- * Artifact names and payloads for the data-storage worker. A name is either a
- * 44-character canonical I2P-base64 identity hash or a 52-character canonical
- * base32 identity plus ".keyType", so 80 bytes is a generous fixed ceiling. The
- * payload bound matches the 16 KiB metadata chunk the router already uses for
- * isolated persistence.
+ * Artifact names and payloads for the data-storage worker. A name is
+ * either a 44-character canonical I2P-base64 identity hash or a
+ * 52-character canonical base32 identity plus ".keyType", so 80 bytes
+ * is a generous fixed ceiling. The payload bound matches the 16 KiB
+ * metadata chunk the router already uses for isolated persistence.
  */
 inline constexpr size_t MAX_ARTIFACT_NAME_SIZE = 80;
 inline constexpr size_t MAX_ARTIFACT_PAYLOAD_SIZE = 16 * 1024;
@@ -89,75 +90,79 @@ enum class MessageType : uint16_t
 	RouterStorageReply = 14,
 	/**
 	 * Typed rejection/status reply. The frame requestId identifies the
-	 * rejected request; the payload is u16 offending-type, u8 ErrorCode and
-	 * one bounded UTF-8/byte detail string. It never carries a descriptor.
+	 * rejected request; the payload is u16 offending-type, u8 ErrorCode
+	 * and one bounded UTF-8/byte detail string. It never carries a
+	 * descriptor.
 	 */
 	Error = 15,
 	/**
-	 * OpenBSD broker configuration for a delegated storage subdirectory. The
-	 * worker inherits the broker data root at fd 4 and walks the relative
-	 * path itself before applying its policy. Payload: absolute delegated
-	 * root path, relative path, expected dev, expected ino.
+	 * OpenBSD broker configuration for a delegated storage subdirectory.
+	 * The worker inherits the broker data root at fd 4 and walks the
+	 * relative path itself before applying its policy. Payload: absolute
+	 * delegated root path, relative path, expected dev, expected ino.
 	 */
 	ConfigureTorrentStorageSupervised = 16,
 	/**
 	 * Data-storage configuration. Payload: absolute delegated root path,
 	 * expected dev, expected ino, u32 client generation. On the Linux
-	 * transport exactly one SCM_RIGHTS descriptor for the validated root is
-	 * attached; the OpenBSD worker receives the root as inherited fd 4.
+	 * transport exactly one SCM_RIGHTS descriptor for the validated root
+	 * is attached; the OpenBSD worker receives the root as inherited fd 4.
 	 */
 	ConfigureDataStorage = 17,
 	/**
 	 * One artifact operation. Payload: u8 kind, u8 nameLen, name bytes,
-	 * u32 payloadLen, payload bytes. A zero payloadLen is a removal request;
-	 * a zero-length write is not representable and is not meaningful.
+	 * u32 payloadLen, payload bytes. A zero payloadLen is a removal
+	 * request; a zero-length write is not representable and is not
+	 * meaningful.
 	 */
 	DataStorageRequest = 18,
 	/**
 	 * Reply to ConfigureDataStorage or DataStorageRequest. Payload:
 	 * u8 status (0 ok, 1 rejected, 2 busy), u8 artifact kind (0 for the
 	 * configuration reply) and u32 generation echoed from the configure
-	 * request so a client can fence replies that belong to an older worker.
+	 * request so a client can fence replies that belong to an older
+	 * worker.
 	 */
 	DataStorageReply = 19,
 	/**
 	 * Abort one in-flight request. Payload: u32 requestId. It is advisory:
-	 * the worker may have completed the side effect already, so a client must
-	 * never treat a cancel as a rollback and must never replay an ambiguous
-	 * write. `Busy`/`Error` remain the only replies.
+	 * the worker may have completed the side effect already, so a client
+	 * must never treat a cancel as a rollback and must never replay an
+	 * ambiguous write. `Busy`/`Error` remain the only replies.
 	 */
 	Cancel = 20,
 	/**
-	 * First frame a Windows worker sends after connecting to its supervisor.
-	 * Payload: u8 worker role, u8 nonce length (32), 32 CSPRNG nonce bytes that
-	 * the spawner generated and passed on the worker command line. The nonce
-	 * binds the accepted pipe connection to a spawn. It is passed on the command
-	 * line and is not secret from a same-user process; PID/session and SID checks
-	 * remain part of authorization. The receiver is always the core: no worker
-	 * endpoint may receive a handshake.
+	 * First frame a Windows worker sends after connecting to its
+	 * supervisor. Payload: u8 worker role, u8 nonce length (32), 32 CSPRNG
+	 * nonce bytes that the spawner generated and passed on the worker
+	 * command line. The nonce binds the accepted pipe connection to a
+	 * spawn. It is passed on the command line and is not secret from a
+	 * same-user process; PID/session and SID checks remain part of
+	 * authorization. The receiver is always the core: no worker endpoint
+	 * may receive a handshake.
 	 */
 	WorkerHello = 21
 };
 
 inline constexpr uint16_t MAX_MESSAGE_TYPE = static_cast<uint16_t> (MessageType::WorkerHello);
 
-/// Range check only: it answers "this build has a row for the type", never
-/// "this endpoint may receive it". Authorization is `AllowsOperation`, which
-/// reads the registry below.
+/// Range check only: it answers "this build has a row for the type",
+/// never "this endpoint may receive it". Authorization is
+/// `AllowsOperation`, which reads the registry below.
 inline bool IsKnownMessageType (uint16_t type)
 {
 	return type >= static_cast<uint16_t> (MessageType::ConfigureLog) && type <= MAX_MESSAGE_TYPE;
 }
 
 /**
- * One decoded frame. `payload` owns its bytes, so a handler may keep a Message
- * after the wire buffer is released; the field accessors of `PayloadReader`
- * only borrow, so a decoded sub-field must be copied to outlive it.
- *
- * `requestId` is echoed unchanged in the reply: a reply whose id does not match
- * the request the sender is waiting for is dropped (or refused) by the client,
- * and `0` is reserved for fire-and-forget frames such as `Shutdown` and
- * `LogRecord`.
+ * One decoded frame. `payload` owns its bytes, so a handler may keep a
+ * Message after the wire buffer is released; the field accessors of
+ * `PayloadReader` only borrow, so a decoded sub-field must be copied to
+ * outlive it.
+ * `requestId` is echoed unchanged in the reply: a reply whose id does
+ * not match the request the sender is waiting for is dropped (or
+ * refused) by the client, and `0` is reserved for fire-and-forget
+ * frames such as `Shutdown` and `LogRecord`.
  */
 struct Message
 {
@@ -187,9 +192,9 @@ inline bool IsKnownErrorCode (uint8_t code)
 }
 
 /**
- * Per-endpoint operation allowlist. It is deliberately defined next to the
- * frame type so a role cannot silently gain an operation because a dispatch
- * switch changed. Clients use their own reply checks.
+ * Per-endpoint operation allowlist. It is deliberately defined next to
+ * the frame type so a role cannot silently gain an operation because a
+ * dispatch switch changed. Clients use their own reply checks.
  */
 enum class EndpointRole : uint8_t
 {
@@ -212,9 +217,9 @@ enum class MessageDirection : uint8_t
 };
 
 /**
- * Kind and requiredness of a side-channel descriptor. A descriptor is part of
- * the capability boundary, so it is declared per message type here instead of
- * being re-derived by each handler.
+ * Kind and requiredness of a side-channel descriptor. A descriptor is
+ * part of the capability boundary, so it is declared per message type
+ * here instead of being re-derived by each handler.
  */
 enum class DescriptorPolicy : uint8_t
 {
@@ -238,11 +243,12 @@ constexpr uint16_t kAllWorkersMask = RoleBit (EndpointRole::Supervisor) | RoleBi
 constexpr uint16_t kAnyReceiverMask = kAllWorkersMask | RoleBit (EndpointRole::Core);
 
 /**
- * One row of the protocol registry. It is the single authority for whether a
- * type exists, which role may receive it, its direction, the minimum protocol
- * version that may carry it, its payload ceiling (never the global 64 KiB) and
- * the descriptor kind it may carry. Encoders, decoders, channel descriptor
- * checks, worker loops and tests all read this table.
+ * One row of the protocol registry. It is the single authority for
+ * whether a type exists, which role may receive it, its direction, the
+ * minimum protocol version that may carry it, its payload ceiling
+ * (never the global 64 KiB) and the descriptor kind it may carry.
+ * Encoders, decoders, channel descriptor checks, worker loops and tests
+ * all read this table.
  */
 struct MessageSpec
 {
@@ -274,8 +280,9 @@ inline constexpr MessageSpec kMessageSpecs[] = {
 	{ MessageType::SpawnTorrentStorage, 1, MessageDirection::Request, RoleBit (EndpointRole::StorageBroker), 4116,
 		DescriptorPolicy::None },
 	// Dual use: the broker acknowledges its own configuration without a
-	// descriptor, and the supervisor hands one accepted worker socket to the
-	// core. The core requires the descriptor itself before adopting it.
+	// descriptor, and the supervisor hands one accepted worker socket to
+	// the core. The core requires the descriptor itself before adopting
+	// it.
 	{ MessageType::TorrentStorageSupervisorReply, 1, MessageDirection::Reply,
 		RoleBit (EndpointRole::Core) | RoleBit (EndpointRole::StorageBroker), 0, DescriptorPolicy::OptionalSocket },
 	{ MessageType::ConfigureRouterStorage, 1, MessageDirection::Request, RoleBit (EndpointRole::RouterStorage), 4116,
@@ -345,9 +352,9 @@ constexpr DescriptorPolicy DescriptorPolicyFor (MessageType type)
 }
 
 /**
- * Presence half of the descriptor policy, exposed so tests and backends can
- * assert it without an OS call. Kind validation (regular file, directory,
- * socket) stays in the transport because it needs `fstat`.
+ * Presence half of the descriptor policy, exposed so tests and backends
+ * can assert it without an OS call. Kind validation (regular file,
+ * directory, socket) stays in the transport because it needs `fstat`.
  */
 constexpr bool DescriptorPresenceAllowed (MessageType type, bool present)
 {
@@ -365,9 +372,10 @@ constexpr bool DescriptorPresenceAllowed (MessageType type, bool present)
 }
 
 /**
- * Authorize one received frame for a receiving role. A sender cannot claim a
- * different role on the wire, and a reply type is never accepted by a worker
- * role because the registry gives replies to the requesting side only.
+ * Authorize one received frame for a receiving role. A sender cannot
+ * claim a different role on the wire, and a reply type is never
+ * accepted by a worker role because the registry gives replies to the
+ * requesting side only.
  */
 constexpr bool AllowsOperation (EndpointRole role, MessageType type)
 {
@@ -399,9 +407,9 @@ struct ProtocolError
 	std::string_view text;
 };
 
-/// Owns encoded payload bytes. Multi-byte integers use network byte order.
-/// Data() borrows the string; later writes change its contents and can
-/// invalidate views or iterators into its storage.
+/// Owns encoded payload bytes. Multi-byte integers use network byte
+/// order. Data() borrows the string; later writes change its contents
+/// and can invalidate views or iterators into its storage.
 class PayloadWriter
 {
 public:
@@ -437,25 +445,27 @@ public:
 		m_Data.append (value);
 		return true;
 	}
-	/** Path fields carry no embedded NUL and are bounded before framing. */
+	/**
+	/** Path fields have no embedded NUL and are bounded before framing. */
 	bool WritePath (std::string_view value)
 	{
 		return value.find ('\0') == std::string_view::npos && WriteStringBounded (value, MAX_PATH_SIZE);
 	}
 	/**
 	 * Raw bytes with no length prefix. Used by the data-storage request
-	 * family, whose name/payload lengths are already explicit u8/u32 fields.
-	 * The caller is responsible for the bound; the encoder checks it.
+	 * family, whose name/payload lengths are already explicit u8/u32
+	 * fields. The caller is responsible for the bound; the encoder checks
+	 * it.
 	 */
 	void WriteBytes (std::span<const uint8_t> bytes)
 	{
 		m_Data.append (reinterpret_cast<const char *> (bytes.data ()), bytes.size ());
 	}
 	/**
-	 * Unchecked append for values whose length prefix was written separately.
-	 * Nothing here enforces a bound, so the caller must have validated the size
-	 * against the type's registry ceiling first; a wrong count desynchronises
-	 * the decoder instead of being reported.
+	 * Unchecked append for values whose length prefix was written
+	 * separately. Nothing here enforces a bound, so the caller must have
+	 * validated the size against the type's registry ceiling first; a
+	 * wrong count desynchronises the decoder instead of being reported.
 	 */
 	void WriteRaw (std::string_view bytes) { m_Data.append (bytes); }
 	const std::string & Data () const { return m_Data; }
@@ -464,9 +474,10 @@ private:
 	std::string m_Data;
 };
 
-/// Cursor over a borrowed frame or payload. Views returned by ReadString and
-/// ReadRaw borrow the original buffer, which must outlive both reader and view.
-/// A failed multi-byte read can advance the cursor; abandon the reader on error.
+/// Cursor over a borrowed frame or payload. Views returned by
+/// ReadString and ReadRaw borrow the original buffer, which must
+/// outlive both reader and view. A failed multi-byte read can advance
+/// the cursor; abandon the reader on error.
 class PayloadReader
 {
 public:
@@ -513,7 +524,9 @@ public:
 		m_Pos += *size;
 		return value;
 	}
-	/** Raw bytes of an explicitly declared length, never beyond the buffer. */
+	/**
+	 * Raw bytes of an explicitly declared length, never beyond the
+	 * buffer. */
 	i2p::expected<std::string_view, ProtocolError> ReadRaw (size_t length)
 	{
 		if (length > Remaining ()) return Bad ("truncated field");
@@ -534,10 +547,10 @@ private:
 };
 
 /**
- * Encode only the 16-byte header. A transport that can scatter/gather sends
- * the header and the caller-owned payload as two iovecs, so the hot path does
- * not concatenate a second copy of every frame. `Encode` remains the
- * contiguous form used by tests and the native adapters.
+ * Encode only the 16-byte header. A transport that can scatter/gather
+ * sends the header and the caller-owned payload as two iovecs, so the
+ * hot path does not concatenate a second copy of every frame. `Encode`
+ * remains the contiguous form used by tests and the native adapters.
  */
 inline i2p::expected<std::string, ProtocolError> EncodeHeader (const Message & message)
 {
@@ -567,11 +580,11 @@ inline i2p::expected<std::string, ProtocolError> Encode (const Message & message
 }
 
 /**
- * Header-level view of a received record. It exists so a transport can answer a
- * recoverable framing fault with a typed `Error` reply - correlated by
- * `requestId` - instead of tearing down the channel. Only a record whose magic,
- * version and declared length are consistent may be answered; anything else is
- * unattributable and stays fatal.
+ * Header-level view of a received record. It exists so a transport can
+ * answer a recoverable framing fault with a typed `Error` reply -
+ * correlated by `requestId` - instead of tearing down the channel. Only
+ * a record whose magic, version and declared length are consistent may
+ * be answered; anything else is unattributable and stays fatal.
  */
 struct FrameInspection
 {
@@ -606,10 +619,10 @@ inline FrameInspection InspectFrame (std::string_view frame)
 }
 
 /**
- * True for a decode failure that describes the frame rather than the peer
- * connection. A transport may answer it once, keep the channel, and apply a
- * bounded violation budget; a credential or ancillary-data failure is never
- * recoverable.
+ * True for a decode failure that describes the frame rather than the
+ * peer connection. A transport may answer it once, keep the channel,
+ * and apply a bounded violation budget; a credential or ancillary-data
+ * failure is never recoverable.
  */
 inline bool IsRecoverableFrameFault (const ProtocolError & error)
 {
@@ -642,9 +655,9 @@ inline i2p::expected<Message, ProtocolError> Decode (std::string_view frame)
 		return i2p::unexpected (ProtocolError { ErrorCode::UnsupportedVersion, "bad version" });
 	const auto * spec = FindMessageSpec (*type);
 	if (!spec) return i2p::unexpected (ProtocolError { ErrorCode::UnknownType, "unknown type" });
-	// A type introduced in a later version must not arrive in an older frame:
-	// accepting it would let a peer downgrade the header while using the new
-	// semantics.
+	// A type introduced in a later version must not arrive in an older
+	// frame: accepting it would let a peer downgrade the header while
+	// using the new semantics.
 	if (*version < spec->minVersion)
 		return i2p::unexpected (ProtocolError { ErrorCode::UnsupportedVersion, "type requires a newer version" });
 	if (*length > spec->maxPayload)
@@ -660,9 +673,9 @@ inline i2p::expected<Message, ProtocolError> Decode (std::string_view frame)
 
 /**
  * Log-record payload: `u8 level | u64 timestamp (Unix seconds) | text`.
- * The text is bounded and truncated by `WriteString`, so an encoder can never
- * produce a record above the registry ceiling; the level is a transport value
- * that the worker validates, not a translated label.
+ * The text is bounded and truncated by `WriteString`, so an encoder can
+ * never produce a record above the registry ceiling; the level is a
+ * transport value that the worker validates, not a translated label.
  */
 inline std::string EncodeLogRecord (uint8_t level, int64_t timestamp, std::string_view text)
 {
@@ -673,8 +686,8 @@ inline std::string EncodeLogRecord (uint8_t level, int64_t timestamp, std::strin
 	return writer.Data ();
 }
 
-/// Decode one log record. Trailing bytes are a framing fault, so a decoder
-/// never silently drops part of a record.
+/// Decode one log record. Trailing bytes are a framing fault, so a
+/// decoder never silently drops part of a record.
 inline i2p::expected<std::tuple<uint8_t, int64_t, std::string>, ProtocolError> DecodeLogRecord (
 	std::string_view payload)
 {
@@ -721,11 +734,11 @@ inline i2p::expected<std::tuple<bool, std::string, std::string>, ProtocolError> 
 	return std::tuple { *syslog != 0, std::string (*path), std::string (*tag) };
 }
 /**
- * Typed error payload: `u16 offending type | u8 ErrorCode | bounded detail`.
- * The detail is clipped to MAX_ERROR_DETAIL by the encoder, so a caller cannot
- * put a path, a payload or a credential operand of arbitrary length on the
- * wire; the request id of the frame is the correlation key, and the frame never
- * carries a descriptor.
+ * Typed error payload: `u16 offending type | u8 ErrorCode | bounded
+ * detail`. The detail is clipped to MAX_ERROR_DETAIL by the encoder, so
+ * a caller cannot put a path, a payload or a credential operand of
+ * arbitrary length on the wire; the request id of the frame is the
+ * correlation key, and the frame never carries a descriptor.
  */
 inline std::string EncodeError (MessageType offendingType, ErrorCode code, std::string_view detail)
 {
@@ -736,9 +749,9 @@ inline std::string EncodeError (MessageType offendingType, ErrorCode code, std::
 	return writer.Data ();
 }
 
-/// Decode a typed error. An unknown offending type, an unknown code, a detail
-/// above the bound or trailing bytes are rejected, because a receiver must not
-/// act on a refusal it cannot attribute or classify.
+/// Decode a typed error. An unknown offending type, an unknown code, a
+/// detail above the bound or trailing bytes are rejected, because a
+/// receiver must not act on a refusal it cannot attribute or classify.
 inline i2p::expected<std::tuple<MessageType, ErrorCode, std::string>, ProtocolError> DecodeError (
 	std::string_view payload)
 {
@@ -757,9 +770,10 @@ inline i2p::expected<std::tuple<MessageType, ErrorCode, std::string>, ProtocolEr
 }
 
 /**
- * Wire status of one data-storage operation. `Busy` never means the worker is
- * dead: it is a bounded local or worker-side refusal that leaves the channel
- * usable (request-id space exhausted, single-flight slot busy).
+ * Wire status of one data-storage operation. `Busy` never means the
+ * worker is dead: it is a bounded local or worker-side refusal that
+ * leaves the channel usable (request-id space exhausted, single-flight
+ * slot busy).
  */
 enum class DataStorageStatus : uint8_t
 {
@@ -813,8 +827,8 @@ inline i2p::expected<std::tuple<std::string, uint64_t, uint64_t, uint32_t>, Prot
 
 /**
  * Encode one artifact operation. Structural bounds only: the canonical
- * name/kind semantics belong to the data-storage layer so the framing codec
- * stays independent of the libi2p artifact enum.
+ * name/kind semantics belong to the data-storage layer so the framing
+ * codec stays independent of the libi2p artifact enum.
  */
 inline i2p::expected<std::string, ProtocolError> EncodeDataStorageRequest (
 	uint8_t kind, std::string_view name, std::span<const uint8_t> payload)
@@ -854,7 +868,8 @@ inline i2p::expected<DataStorageRequestFrame, ProtocolError> DecodeDataStorageRe
 	if (*payloadLength > MAX_ARTIFACT_PAYLOAD_SIZE)
 		return i2p::unexpected (ProtocolError { ErrorCode::TooLarge, "artifact payload too large" });
 	// Exact-length: the declared payload must be the whole remainder, so a
-	// truncated or trailing-byte request is a framing error, not a short write.
+	// truncated or trailing-byte request is a framing error, not a short
+	// write.
 	if (reader.Remaining () != *payloadLength)
 		return i2p::unexpected (ProtocolError { ErrorCode::BadField, "artifact length mismatch" });
 	auto bytes = reader.ReadRaw (*payloadLength);
@@ -864,9 +879,10 @@ inline i2p::expected<DataStorageRequestFrame, ProtocolError> DecodeDataStorageRe
 }
 
 /// Fixed six-byte reply: `u8 status | u8 kind | u32 generation`. The
-/// generation is echoed from the configure request so a client can fence a
-/// reply that belongs to a replaced worker; the decoder rejects generation 0,
-/// so the encoder must never be called with an unset generation.
+/// generation is echoed from the configure request so a client can
+/// fence a reply that belongs to a replaced worker; the decoder rejects
+/// generation 0, so the encoder must never be called with an unset
+/// generation.
 inline std::string EncodeDataStorageReply (uint8_t status, uint8_t kind, uint32_t generation)
 {
 	PayloadWriter writer;

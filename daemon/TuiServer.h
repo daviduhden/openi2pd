@@ -4,10 +4,10 @@
  *
  * openi2pd: TuiServer.
  *
- * Declares the pimpl facade for the daemon-side local administrative server
- * used by i2pd-tui. Platform implementations own the listening socket or
- * named pipe, while the shared dispatcher validates and executes requests.
- *
+ * Declares the pimpl facade for the daemon-side local administrative
+ * server used by i2pd-tui. Platform implementations own the listening
+ * socket or named pipe, while the shared dispatcher validates and
+ * executes requests.
  */
 
 #ifndef TUI_SERVER_H__
@@ -28,14 +28,14 @@ namespace tui
 	 * without affecting the daemon: every request is bounded, handled
 	 * sequentially and written with a send timeout.
 	 *
-	 * On UNIX the endpoint is a 0600 AF_UNIX socket and only a peer with the
-	 * daemon's effective UID is accepted. On Windows the endpoint is mapped
-	 * to a named pipe whose explicit DACL admits only the daemon user,
-	 * SYSTEM and Administrators; remote clients are rejected. In both cases
-	 * every request is validated by the shared TuiServerCommon dispatcher.
-	 *
-	 * The transport state is private to the platform implementation so this
-	 * header does not expose file descriptors or HANDLE values.
+	 * On UNIX the endpoint is a 0600 AF_UNIX socket and only a peer with
+	 * the daemon's effective UID is accepted. On Windows the endpoint is
+	 * mapped to a named pipe whose explicit DACL admits only the daemon
+	 * user, SYSTEM and Administrators; remote clients are rejected. In
+	 * both cases every request is validated by the shared TuiServerCommon
+	 * dispatcher.
+	 * The transport state is private to the platform implementation so
+	 * this header does not expose file descriptors or HANDLE values.
 	 */
 	class Server
 	{

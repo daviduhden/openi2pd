@@ -4,7 +4,8 @@
  *
  * openi2pd: test RunnableService lifecycle.
  *
- * Exercises self-stop from a posted handler and a normal Start/Stop cycle
+ * Exercises self-stop from a posted handler and a normal Start/Stop
+ * cycle
  * without a router, network socket or project daemon.
  */
 
@@ -47,7 +48,8 @@ int main ()
 			stopped.set_value ();
 		});
 	assert (future.wait_for (std::chrono::seconds (5)) == std::future_status::ready);
-	// The self-stop detaches the run loop by design; give it a bounded chance
+	// The self-stop detaches the run loop by design; give it a bounded
+	// chance
 	// to observe the cleared running flag before the service is destroyed.
 	std::this_thread::sleep_for (std::chrono::milliseconds (100));
 	service.Stop ();

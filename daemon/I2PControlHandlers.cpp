@@ -5,10 +5,10 @@
  * openi2pd: I2PControlHandlers.
  *
  * Implements the JSON-RPC handler families for router info, network
- * settings, client-service info and local destinations, reading live router,
- * transport, tunnel and NetDb state. NetworkSetting applies bandwidth
- * changes, while destination lookups resolve address-book entries and report
- * their leasesets and streams.
+ * settings, client-service info and local destinations, reading live
+ * router, transport, tunnel and NetDb state. NetworkSetting applies
+ * bandwidth changes, while destination lookups resolve address-book
+ * entries and report their leasesets and streams.
  *
  */
 
@@ -126,7 +126,8 @@ namespace client
 		}
 		InsertParam (results, "destination", addressBook.ToAddress (dest->GetIdentHash ()));
 
-		// arrays are written by hand: write_json makes an array only below the root
+		// arrays are written by hand: write_json makes an array only below
+		// the root
 		results << ",\"leasesets\":[";
 		bool first = true;
 		for (const auto & it : dest->GetLeaseSetsList ())
@@ -359,10 +360,10 @@ namespace client
 		}
 	}
 
-	// Both directions accept the same bounded operand. i2pd keeps one router
-	// bandwidth limit (RouterContext::SetBandwidth), so the two keys are
-	// validated and applied independently but converge on that single value;
-	// the reply reports the limit the router actually holds.
+	// Both directions accept the same bounded operand. i2pd keeps one
+	// router bandwidth limit (RouterContext::SetBandwidth), so the two
+	// keys are validated and applied independently but converge on that
+	// single value; the reply reports the limit the router actually holds.
 	static unsigned ParseNetworkSettingBandwidth (const std::string & value)
 	{
 		unsigned limit = 0;
@@ -429,8 +430,9 @@ namespace client
 		boost::property_tree::ptree pt;
 		boost::property_tree::ptree client_tunnels, server_tunnels;
 
-		// The control thread must not iterate the live containers: ReloadConfig()
-		// and Stop() replace them while this handler runs. Snapshot them first.
+		// The control thread must not iterate the live containers:
+		// ReloadConfig() and Stop() replace them while this handler runs.
+		// Snapshot them first.
 		for (const auto & entry : i2p::client::context.GetClientTunnelsSnapshot ())
 		{
 			const auto & service = entry.second;

@@ -4,13 +4,13 @@
  *
  * openi2pd: LogWorker.
  *
- * Implements LogSink configuration and reattachment plus the log worker: the
- * sink sends configuration (optionally with a pre-opened descriptor) and
- * records, while the worker applies its role sandbox, redacts secrets,
- * sanitises records and writes to one O_NOFOLLOW file or syslog. Control
- * characters are neutralised so a record cannot forge extra physical log lines
- * and the file sink stops appending at a fixed byte budget.
- *
+ * Implements LogSink configuration and reattachment plus the log
+ * worker: the sink sends configuration (optionally with a pre-opened
+ * descriptor) and records, while the worker applies its role sandbox,
+ * redacts secrets, sanitises records and writes to one O_NOFOLLOW file
+ * or syslog. Control characters are neutralised so a record cannot
+ * forge extra physical log lines and the file sink stops appending at a
+ * fixed byte budget.
  */
 
 #include "LogWorker.h"
@@ -43,10 +43,10 @@ namespace i2p::privsep
 namespace
 {
 	/**
-	 * Validate one UTF-8 sequence at @a pos and report its length plus code
-	 * point. Returns 0 for invalid input: a bad lead or continuation byte, a
-	 * truncated sequence, an overlong form, a surrogate or a value above
-	 * U+10FFFF. Never reads past the end of @a text.
+	 * Validate one UTF-8 sequence at @a pos and report its length plus
+	 * code point. Returns 0 for invalid input: a bad lead or continuation
+	 * byte, a truncated sequence, an overlong form, a surrogate or a value
+	 * above U+10FFFF. Never reads past the end of @a text.
 	 */
 	size_t DecodeUtf8 (std::string_view text, size_t pos, uint32_t & codePoint)
 	{
@@ -92,9 +92,10 @@ namespace
 	}
 
 	/**
-	 * Code points that must not reach a file, syslog or a terminal verbatim.
-	 * Tab is the only C0 control kept; C1 contains the single-byte CSI (0x9B)
-	 * that some terminals still honour inside an otherwise UTF-8 stream.
+	 * Code points that must not reach a file, syslog or a terminal
+	 * verbatim. Tab is the only C0 control kept; C1 contains the
+	 * single-byte CSI (0x9B) that some terminals still honour inside an
+	 * otherwise UTF-8 stream.
 	 */
 	bool IsUnsafeLogCodePoint (uint32_t codePoint)
 	{
@@ -107,8 +108,8 @@ namespace
 
 std::string SanitizeLogText (std::string_view text)
 {
-	// The marker is inside the bound so one sanitised fragment never exceeds
-	// MAX_TEXT_SIZE and a truncated record is visibly truncated.
+	// The marker is inside the bound so one sanitised fragment never
+	// exceeds MAX_TEXT_SIZE and a truncated record is visibly truncated.
 	const std::string_view marker = LOG_TRUNCATION_MARKER;
 	const size_t payloadBudget = MAX_TEXT_SIZE > marker.size () ? MAX_TEXT_SIZE - marker.size () : 0;
 	const std::string_view bounded = text.substr (0, std::min (text.size (), MAX_TEXT_SIZE));
@@ -174,7 +175,9 @@ namespace
 		return true;
 	}
 
-	/** A key must start a token: the preceding byte must not be alphanumeric. */
+	/**
+	 * A key must start a token: the preceding byte must not be
+	 * alphanumeric. */
 	bool IsKeyBoundary (std::string_view text, size_t pos)
 	{
 		if (pos == 0) return true;
@@ -189,7 +192,9 @@ namespace
 		return ch == ' ' || ch == '\t' || ch == ',' || ch == ';' || ch == '}' || ch == ']' || ch == ')';
 	}
 
-	/** A quoted value ends after its closing quote; an unquoted one at a separator. */
+	/**
+	 * A quoted value ends after its closing quote; an unquoted one at a
+	 * separator. */
 	size_t FindValueEnd (std::string_view text, size_t start)
 	{
 		if (start >= text.size ()) return start;
@@ -210,8 +215,9 @@ namespace
 
 std::string RedactLogSecrets (std::string_view text)
 {
-	// The whole sensitive-name set is compiled in: no configuration file, no
-	// network input and no operator can change what counts as a secret name.
+	// The whole sensitive-name set is compiled in: no configuration file,
+	// no network input and no operator can change what counts as a secret
+	// name.
 	static constexpr std::array<std::string_view, 6> SENSITIVE_KEYS { "privatekey", "private key", "passphrase",
 		"password", "secret", "token" };
 	std::string out;
@@ -267,11 +273,12 @@ namespace
 	}
 
 	/**
-	 * Bind a pre-opened log descriptor to the configured path. Without this
-	 * check the sender could hand over any same-UID writable regular file and
-	 * turn the log worker into a write primitive for it. The comparison is
-	 * dev/inode identity plus owner and link count, so a replaced path, a
-	 * symlink or a hard link is rejected before the sandbox is applied.
+	 * Bind a pre-opened log descriptor to the configured path. Without
+	 * this check the sender could hand over any same-UID writable regular
+	 * file and turn the log worker into a write primitive for it. The
+	 * comparison is dev/inode identity plus owner and link count, so a
+	 * replaced path, a symlink or a hard link is rejected before the
+	 * sandbox is applied.
 	 */
 	i2p::expected<void, std::string> ValidateLogDescriptorIdentity (int fd, const std::string & path)
 	{
@@ -351,18 +358,19 @@ namespace
 
 	/**
 	 * The single text pipeline: redact first (it can grow the text) and
-	 * sanitise last, so the fragment written to the sink is bounded and never
-	 * ends inside a multi-byte sequence.
+	 * sanitise last, so the fragment written to the sink is bounded and
+	 * never ends inside a multi-byte sequence.
 	 */
 	std::string PrepareRecordText (std::string_view text)
 	{
 		return SanitizeLogText (RedactLogSecrets (text));
 	}
 
-	/// Render one sink line. The level is clamped to the documented table so an
-	/// out-of-range transport value can never index past it, and the text runs
-	/// through the single redaction/sanitisation pipeline, which is what keeps a
-	/// terminal escape or a secret operand out of the file and syslog sinks.
+	/// Render one sink line. The level is clamped to the documented table
+	/// so an out-of-range transport value can never index past it, and the
+	/// text runs through the single redaction/sanitisation pipeline, which
+	/// is what keeps a terminal escape or a secret operand out of the file
+	/// and syslog sinks.
 	std::string FormatRecord (uint8_t level, std::time_t timestamp, std::string_view text)
 	{
 		static constexpr const char * levels[] = { "none", "critical", "error", "warn", "info", "debug" };
@@ -377,7 +385,9 @@ namespace
 		return line;
 	}
 
-	/** Bytes already in the attached sink, or 0 when it cannot be measured. */
+	/**
+	 * Bytes already in the attached sink, or 0 when it cannot be
+	 * measured. */
 	uint64_t CurrentSinkSize (FILE * file)
 	{
 		struct stat info { };
@@ -387,11 +397,11 @@ namespace
 	}
 }
 
-/// Wait for the `Pong` that proves a freshly configured worker is alive.
-/// A stale pong for an earlier request id is ignored (the worker answers in
-/// order, but a reattach may race a late reply), any other frame is a protocol
-/// fault, and the deadline is absolute across the whole wait rather than
-/// restarted per poll.
+/// Wait for the `Pong` that proves a freshly configured worker is
+/// alive. A stale pong for an earlier request id is ignored (the worker
+/// answers in order, but a reattach may race a late reply), any other
+/// frame is a protocol fault, and the deadline is absolute across the
+/// whole wait rather than restarted per poll.
 i2p::expected<void, std::string> LogSink::WaitForPong (Channel & channel, uint32_t expected, int timeoutMs)
 {
 	auto deadline = std::chrono::steady_clock::now () + std::chrono::milliseconds (timeoutMs);
@@ -422,21 +432,22 @@ i2p::expected<void, std::string> LogSink::ConfigureChannel (
 	Message message { type, configureId, *encoded };
 	auto sent = fd >= 0 ? channel.SendWithFd (message, fd) : channel.Send (message);
 	if (!sent) return sent;
-	// Configure is ordered before Ping on SOCK_SEQPACKET/message pipes. The
-	// matching Pong therefore proves that the worker decoded and attached the
-	// configuration before startup reports success.
+	// Configure is ordered before Ping on SOCK_SEQPACKET/message pipes.
+	// The matching Pong therefore proves that the worker decoded and
+	// attached the configuration before startup reports success.
 	const uint32_t pingId = ++m_NextRequest;
 	if (!channel.Send (Message { MessageType::Ping, pingId, { } }, 5000))
 		return i2p::unexpected ("cannot probe configured log worker");
 	return WaitForPong (channel, pingId, 5000);
 }
 
-// Configure() is the only sink entry point that opens the path locally. The
-// descriptor is opened O_NOFOLLOW/O_CLOEXEC/0600, transferred once over
-// SCM_RIGHTS and closed here on every path; the worker validates it against the
-// configured path before it may write. m_Mutex stays held across the whole
-// handshake (configure frame plus Pong), so a concurrent Write either sees an
-// unconfigured sink or a proven one, never a half-attached channel.
+// Configure() is the only sink entry point that opens the path locally.
+// The descriptor is opened O_NOFOLLOW/O_CLOEXEC/0600, transferred once
+// over SCM_RIGHTS and closed here on every path; the worker validates
+// it against the configured path before it may write. m_Mutex stays
+// held across the whole handshake (configure frame plus Pong), so a
+// concurrent Write either sees an unconfigured sink or a proven one,
+// never a half-attached channel.
 i2p::expected<void, std::string> LogSink::Configure (bool useSyslog, std::string_view path, std::string_view tag)
 {
 	std::lock_guard<std::mutex> lock (m_Mutex);
@@ -482,11 +493,12 @@ i2p::expected<void, std::string> LogSink::ConfigureProxy (bool useSyslog, std::s
 	return { };
 }
 
-// Reattach() keeps the previous channel until the replacement answered the
-// configuration probe. Closing the old descriptor first would leave the sink
-// detached while the new worker is still unproven, and adopting the new one
-// early would allow two sinks to write the same file. The local descriptor is
-// opened per reattach because the restored worker needs its own capability.
+// Reattach() keeps the previous channel until the replacement answered
+// the configuration probe. Closing the old descriptor first would leave
+// the sink detached while the new worker is still unproven, and
+// adopting the new one early would allow two sinks to write the same
+// file. The local descriptor is opened per reattach because the
+// restored worker needs its own capability.
 i2p::expected<void, std::string> LogSink::Reattach (Channel channel)
 {
 	std::lock_guard<std::mutex> lock (m_Mutex);
@@ -555,19 +567,19 @@ void LogSink::Write (uint8_t level, std::time_t timestamp, std::string_view text
 		}
 	}
 	Message message { MessageType::LogRecord, 0, EncodeLogRecord (level, static_cast<int64_t> (timestamp), text) };
-	// The send is deliberately outside m_Mutex: a wedged worker must cost one
-	// bounded slow record, never the router's logger thread and every other
-	// sink reader for up to the send timeout.
+	// The send is deliberately outside m_Mutex: a wedged worker must cost
+	// one bounded slow record, never the router's logger thread and every
+	// other sink reader for up to the send timeout.
 	const auto sent = channel->Send (message, 1000);
 	if (sent) return;
 	std::lock_guard<std::mutex> lock (m_Mutex);
 	CountDroppedLocked (true); // drop logs; never fall back to a local file
 	if (m_Channel == channel)
 	{
-		// Detach without closing: a send still in flight on another thread keeps
-		// the object, and therefore its descriptor number, alive until it
-		// returns. Closing here could hand the number to an unrelated open()
-		// underneath that send.
+		// Detach without closing: a send still in flight on another thread
+		// keeps the object, and therefore its descriptor number, alive until
+		// it returns. Closing here could hand the number to an unrelated
+		// open() underneath that send.
 		m_ChannelFailed = true;
 		m_Channel.reset ();
 	}
@@ -585,11 +597,12 @@ uint64_t LogSink::GetWorkerDroppedCount () const
 	return m_WorkerDropped;
 }
 
-// Shutdown() is a single advisory frame plus a local close: it never waits for
-// or reaps the worker process, because the spawn owner owns the child. The sink
-// is marked shut down first so a concurrent Write counts a drop instead of
-// racing a half-closed channel, and a failed send is still returned to the
-// caller while the descriptor is closed regardless.
+// Shutdown() is a single advisory frame plus a local close: it never
+// waits for or reaps the worker process, because the spawn owner owns
+// the child. The sink is marked shut down first so a concurrent Write
+// counts a drop instead of racing a half-closed channel, and a failed
+// send is still returned to the caller while the descriptor is closed
+// regardless.
 i2p::expected<void, std::string> LogSink::Shutdown ()
 {
 	std::lock_guard<std::mutex> lock (m_Mutex);
@@ -617,16 +630,18 @@ bool LogSink::IsShutdown () const
 /**
  * Log-worker body.
  *
- * Ordering and failure classification: on Linux the role sandbox for the socket
- * and capability boundary is applied before the first frame, the peer uid is
- * checked against `IsAllowedParentUid`, exactly one configuration frame is
- * accepted (a duplicate is a bounded refusal that keeps the original sink), a
- * pre-opened file descriptor is validated against the configured path before the
- * mode is restricted, and the storage/log sandbox is installed only after that
- * descriptor is known good. A malformed record, an unexpected descriptor or an
- * unconsumed descriptor exits non-zero so the parent's restart policy sees a
- * real failure; `Shutdown` flushes and exits 0. Records keep being drained after
- * the sink byte budget is reached, so a capped sink never wedges the channel.
+ * Ordering and failure classification: on Linux the role sandbox for
+ * the socket and capability boundary is applied before the first frame,
+ * the peer uid is checked against `IsAllowedParentUid`, exactly one
+ * configuration frame is accepted (a duplicate is a bounded refusal
+ * that keeps the original sink), a pre-opened file descriptor is
+ * validated against the configured path before the mode is restricted,
+ * and the storage/log sandbox is installed only after that descriptor
+ * is known good. A malformed record, an unexpected descriptor or an
+ * unconsumed descriptor exits non-zero so the parent's restart policy
+ * sees a real failure; `Shutdown` flushes and exits 0. Records keep
+ * being drained after the sink byte budget is reached, so a capped sink
+ * never wedges the channel.
  */
 int RunLogWorker (int fd)
 {
@@ -646,9 +661,9 @@ int RunLogWorker (int fd)
 
 	LogConfig config;
 	FILE * file = nullptr;
-	// Bytes already appended to the file sink. The budget is a compile-time
-	// policy: the configuration frame has no spare field and adding one would
-	// change the wire format for every existing worker.
+	// Bytes already appended to the file sink. The budget is a
+	// compile-time policy: the configuration frame has no spare field and
+	// adding one would change the wire format for every existing worker.
 	uint64_t sinkBytes = 0;
 	bool sinkCapped = false;
 	unsigned violations = 0;
@@ -666,9 +681,10 @@ int RunLogWorker (int fd)
 		if (!received->has_value ()) continue;
 		const Message & message = (*received)->message;
 		// Descriptor ownership for one iteration: the receiver hands over at
-		// most one optional descriptor, which must either be consumed into the
-		// sink stream or closed explicitly. The end-of-loop check below turns a
-		// forgotten close into a protocol error instead of a leaked descriptor.
+		// most one optional descriptor, which must either be consumed into
+		// the sink stream or closed explicitly. The end-of-loop check below
+		// turns a forgotten close into a protocol error instead of a leaked
+		// descriptor.
 		int messageFd = (*received)->fd;
 		auto closeMessageFd = [&messageFd] ()
 		{

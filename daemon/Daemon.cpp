@@ -4,13 +4,13 @@
  *
  * openi2pd: Daemon.
  *
- * Implements router initialisation, subsystem sequencing, shutdown and the
- * optional privilege-separated log path. Startup parses configuration,
- * installs the OpenBSD startup pledge and starts NetDB, transports, tunnels,
- * clients, TUI IPC, I2PControl, UPnP and NTP; shutdown stops observers before
- * the state they read. A monitor thread replaces a dead log supervisor with
- * bounded backoff where exec remains available, and logging never falls back
- * to a local file.
+ * Implements router initialisation, subsystem sequencing, shutdown and
+ * the optional privilege-separated log path. Startup parses
+ * configuration, installs the OpenBSD startup pledge and starts NetDB,
+ * transports, tunnels, clients, TUI IPC, I2PControl, UPnP and NTP;
+ * shutdown stops observers before the state they read. A monitor thread
+ * replaces a dead log supervisor with bounded backoff where exec
+ * remains available, and logging never falls back to a local file.
  *
  */
 
@@ -89,8 +89,9 @@ namespace i2p
 namespace util
 {
 #ifdef __OpenBSD__
-	// Keep paths stable across DaemonUnix::start()'s chdir(). The leaf need
-	// not exist yet (log files, for example), so realpath() is unsuitable.
+	// Keep paths stable across DaemonUnix::start()'s chdir(). The leaf
+	// need not exist yet (log files, for example), so realpath() is
+	// unsuitable.
 	static std::string AbsolutePath (const std::string & path)
 	{
 		// reseed.file may be an HTTPS URL, not a filesystem path.
@@ -162,9 +163,10 @@ namespace util
 		 *
 		 * This runs on the daemon-owned administrative thread started by
 		 * Daemon_Singleton::start(), never on the local-IPC thread. Reseed is
-		 * already single-flight in NetDb; ReloadConfig is the same path SIGHUP
-		 * uses; bandwidth, share and transit only touch atomic RouterContext
-		 * state; the log level only touches the logger's atomic threshold.
+		 * already single-flight in NetDb; ReloadConfig is the same path
+		 * SIGHUP uses; bandwidth, share and transit only touch atomic
+		 * RouterContext state; the log level only touches the logger's atomic
+		 * threshold.
 		 */
 		void ExecuteAdminCommand (const i2p::tui::AdminCommand & command, i2p::tui::AdminCommandResult & result)
 		{
@@ -525,7 +527,9 @@ namespace util
 		constexpr auto LOG_WORKER_STABLE_PERIOD = std::chrono::milliseconds (60000);
 		constexpr unsigned LOG_RESTART_MAX_ATTEMPTS = 8;
 
-		/** Sleep in bounded slices so shutdown never waits for a full backoff. */
+		/**
+		 * Sleep in bounded slices so shutdown never waits for a full
+		 * backoff. */
 		bool SleepUnlessStopping (const std::atomic<bool> & stop, std::chrono::milliseconds total)
 		{
 			const auto deadline = std::chrono::steady_clock::now () + total;
@@ -543,9 +547,9 @@ namespace util
 #endif
 
 	/**
-	 * Spawn, configure and install one worker. Any previous worker is stopped
-	 * and reaped first, so at most one live child exists at any time even when
-	 * a caller skips the supervisor's reap step.
+	 * Spawn, configure and install one worker. Any previous worker is
+	 * stopped and reaped first, so at most one live child exists at any
+	 * time even when a caller skips the supervisor's reap step.
 	 */
 	bool Daemon_Singleton::PreparePrivsepWorkers ()
 	{
@@ -754,13 +758,14 @@ namespace util
 	namespace
 	{
 		/**
-		 * A torrent tunnel may request isolated payload storage. The option is
-		 * per tunnel section in tunnels.conf and tunnels.d (one .conf per tunnel) and is parsed by
-		 * ClientContext much later, so the credential gate - which must run
-		 * before the startup pledge and the first spawn - needs a bounded
-		 * pre-scan. Only an explicit true counts; ClientContext remains the
-		 * authority for the value that is actually used, and the storage broker
-		 * re-validates the delegated root independently.
+		 * A torrent tunnel may request isolated payload storage. The option
+		 * is per tunnel section in tunnels.conf and tunnels.d (one .conf per
+		 * tunnel) and is parsed by ClientContext much later, so the
+		 * credential gate - which must run before the startup pledge and the
+		 * first spawn - needs a bounded pre-scan. Only an explicit true
+		 * counts; ClientContext remains the authority for the value that is
+		 * actually used, and the storage broker re-validates the delegated
+		 * root independently.
 		 */
 		constexpr size_t MAX_TUNNEL_SCAN_FILES = 64;
 		constexpr size_t MAX_TUNNEL_SCAN_BYTES = 256 * 1024;
@@ -832,12 +837,12 @@ namespace util
 		 * The isolation switches that require a worker identity.
 		 *
 		 * They are read independently: `privsep.enabled` selects the log
-		 * supervisor (still gated by `privsep.log`), `privsep.routerstorage` the
-		 * fixed-file writer, `privsep.artifacts` the hash-named artifact writer,
-		 * and an installed tunnel that requests `isolatedstorage` the torrent
-		 * payload worker. Any() therefore decides whether a root core without a
-		 * configured `privsep.user` must refuse startup, not whether a specific
-		 * worker is configured.
+		 * supervisor (still gated by `privsep.log`), `privsep.routerstorage`
+		 * the fixed-file writer, `privsep.artifacts` the hash-named artifact
+		 * writer, and an installed tunnel that requests `isolatedstorage` the
+		 * torrent payload worker. Any() therefore decides whether a root core
+		 * without a configured `privsep.user` must refuse startup, not
+		 * whether a specific worker is configured.
 		 */
 		struct PrivsepFeatures
 		{
@@ -867,7 +872,8 @@ namespace util
 		 * spawn. A root core with any isolation feature enabled and no
 		 * configured `privsep.user` fails startup: silently continuing would
 		 * give the workers root's ambient authority while claiming isolation.
-		 * No chroot is attempted; credential drop happens in the forked child.
+		 * No chroot is attempted; credential drop happens in the forked
+		 * child.
 		 */
 		bool PreparePrivsepIdentity ()
 		{
@@ -996,7 +1002,8 @@ namespace util
 		i2p::config::Finalize ();
 
 #ifdef __OpenBSD__
-		// A datadir in the configuration is not available during config lookup.
+		// A datadir in the configuration is not available during config
+		// lookup.
 		std::string configuredDataDir = DaemonDataDir;
 		if (configuredDataDir.empty ()) i2p::config::GetOption ("datadir", configuredDataDir);
 		i2p::fs::DetectDataDir (configuredDataDir, IsService ());
@@ -1018,15 +1025,16 @@ namespace util
 		bool foreground = false;
 		i2p::config::GetOption ("foreground", foreground);
 		// A service manager must retain the process. --foreground overrides a
-		// daemon=true directive that a local administrator may have left in the
-		// configuration file.
+		// daemon=true directive that a local administrator may have left in
+		// the configuration file.
 		if (foreground) isDaemon = false;
 
 #if !defined(_WIN32) && !defined(I2PD_NO_PRIVSEP)
-		// The worker identity must be resolved and installed before the startup
-		// pledge (name-service lookups), before the logger thread starts and
-		// before any spawn helper runs. A root core with isolation requested and
-		// no configured `privsep.user` fails here instead of degrading silently.
+		// The worker identity must be resolved and installed before the
+		// startup pledge (name-service lookups), before the logger thread
+		// starts and before any spawn helper runs. A root core with isolation
+		// requested and no configured `privsep.user` fails here instead of
+		// degrading silently.
 		if (!PreparePrivsepIdentity ()) return false;
 #endif
 
@@ -1137,8 +1145,9 @@ namespace util
 #if defined(__OpenBSD__) && !defined(I2PD_NO_PRIVSEP)
 		// Keep startup-only promises until fork/setsid/setrlimit, unveil and
 		// the first worker spawn. This window is the widest set the core ever
-		// holds; UnixDaemon::start() later builds the runtime set from the same
-		// table and verifies it is a subset (pledge can only drop promises).
+		// holds; UnixDaemon::start() later builds the runtime set from the
+		// same table and verifies it is a subset (pledge can only drop
+		// promises).
 		bool usePledge, useUnveil;
 		i2p::config::GetOption ("openbsd.pledge_enabled", usePledge);
 		i2p::config::GetOption ("openbsd.unveil_enabled", useUnveil);
@@ -1153,7 +1162,8 @@ namespace util
 			// and the torrent storage broker) is forked/exec'ed before the
 			// runtime sandbox. exec exists only in this window.
 			window.execWorkers = true;
-			// Supervised storage hands a worker channel or root back to the core.
+			// Supervised storage hands a worker channel or root back to the
+			// core.
 			window.descriptorReception = true;
 			// The forked child drops supplementary groups, gid and uid.
 			window.credentialDrop = i2p::privsep::GetWorkerCredentials ().configured;
@@ -1535,9 +1545,9 @@ namespace util
 			LogPrint (eLogWarning, "Daemon: Admin command queue unavailable");
 
 #if !defined(__ANDROID__)
-		// Android has no AF_UNIX TUI client. The in-app bridge calls the shared
-		// request dispatcher directly; do not start an unused local listener
-		// inside the app sandbox.
+		// Android has no AF_UNIX TUI client. The in-app bridge calls the
+		// shared request dispatcher directly; do not start an unused local
+		// listener inside the app sandbox.
 		bool tuiEnabled;
 		i2p::config::GetOption ("tui.enabled", tuiEnabled);
 		if (tuiEnabled)

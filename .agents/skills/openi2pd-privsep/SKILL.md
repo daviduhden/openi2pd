@@ -159,6 +159,10 @@ report that limitation; do not substitute local execution. Ask for:
   only. `Pong` is the worker-to-core reply; a non-core endpoint may receive
   `Error` and `TorrentStorageSupervisorReply` (the supervisor/broker issue
   their own requests).
+- The Windows server consumes the spawn `WorkerHello` inside `AcceptBound()`
+  before setting the channel's core role. A later hello is a bounded typed
+  refusal, not another identity transition; the core endpoint may send only
+  that refusal's typed `Error` in addition to normal requests.
 - Versioning is per type: `DataStorage*` requires v3, `Cancel` requires v4,
   `PROTOCOL_VERSION = 5` adds the Windows `WorkerHello` spawn proof, and a
   newer type in an older header is `UnsupportedVersion`. Never reinterpret it

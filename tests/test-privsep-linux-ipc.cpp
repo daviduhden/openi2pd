@@ -4,7 +4,9 @@
  *
  * openi2pd: test privsep linux ipc.
  *
- * Linux IPC checks for the private worker channel: SO_PEERCRED, mandatory SCM_CREDENTIALS, single-descriptor SCM_RIGHTS transfer, CLOEXEC and recovery after rejected frames.
+ * Linux IPC checks for the private worker channel: SO_PEERCRED,
+ * mandatory SCM_CREDENTIALS, single-descriptor SCM_RIGHTS transfer,
+ * CLOEXEC and recovery after rejected frames.
  *
  */
 
@@ -36,10 +38,11 @@ int main ()
 namespace
 {
 /**
- * Count the descriptors owned by this process. The directory descriptor used
- * for the scan is included in every measurement, so equal values mean equal
- * ownership. Returns -1 when /proc is unavailable; callers then skip the
- * comparison instead of failing on a non-procfs Linux environment.
+ * Count the descriptors owned by this process. The directory descriptor
+ * used for the scan is included in every measurement, so equal values
+ * mean equal ownership. Returns -1 when /proc is unavailable; callers
+ * then skip the comparison instead of failing on a non-procfs Linux
+ * environment.
  */
 int CountOpenFds ()
 {
@@ -73,7 +76,8 @@ std::string BuildHeader (uint16_t type, uint32_t requestId, uint32_t length)
 }
 
 /**
- * Send a raw record, optionally with SCM_RIGHTS descriptors. This bypasses
+ * Send a raw record, optionally with SCM_RIGHTS descriptors. This
+ * bypasses
  * Encode() on purpose: the receiver is the component under test.
  */
 bool SendRawWithFds (int socketFd, std::string_view frame, const int * descriptors, size_t count)
@@ -107,7 +111,8 @@ bool SendRaw (int socketFd, std::string_view frame)
 
 /**
  * A rejected record must be fully consumed. The next valid frame has to
- * arrive intact, otherwise a framing error would desynchronise the channel.
+ * arrive intact, otherwise a framing error would desynchronise the
+ * channel.
  */
 void ExpectReusable (Channel & sender, Channel & receiver, uint32_t requestId)
 {
@@ -139,7 +144,8 @@ void TestPeerCredentials ()
 	assert (peer->uid == credentials->uid);
 	assert (peer->gid == credentials->gid);
 
-	// Credentials are unavailable once the local descriptor is gone, rather
+	// Credentials are unavailable once the local descriptor is gone,
+	// rather
 	// than silently returning a cached (stale) identity.
 	pair->first.Close ();
 	assert (!pair->first.Credentials ().has_value ());
@@ -169,8 +175,8 @@ void TestEmptyRecordIsNotEof ()
 	if (before >= 0) assert (CountOpenFds () == before);
 	ExpectReusable (pair->first, pair->second, 202);
 
-	// A peer that floods empty records must be bounded, not allowed to spin
-	// the receive loop for the caller's whole timeout.
+	// A peer that floods empty records must be bounded, not allowed to
+	// spin the receive loop for the caller's whole timeout.
 	for (int i = 0; i < 9; ++i) assert (SendRaw (pair->first.Fd (), ""));
 	auto flood = pair->second.ReceiveWithFd (500);
 	assert (!flood.has_value ());
@@ -226,12 +232,12 @@ void TestAdoptValidatedEnablesPasscred ()
 
 void TestMissingCredentialsRejected ()
 {
-	// SO_PASSCRED is what makes SCM_CREDENTIALS mandatory. A socketpair that
-	// never enabled it models a peer that sends without credentials: the
-	// channel must reject the record instead of accepting unauthenticated
-	// input. This is the only credential-negative case reachable without
-	// root, because the kernel refuses to let an unprivileged sender forge a
-	// different uid/gid in SCM_CREDENTIALS.
+	// SO_PASSCRED is what makes SCM_CREDENTIALS mandatory. A socketpair
+	// that never enabled it models a peer that sends without credentials:
+	// the channel must reject the record instead of accepting
+	// unauthenticated input. This is the only credential-negative case
+	// reachable without root, because the kernel refuses to let an
+	// unprivileged sender forge a different uid/gid in SCM_CREDENTIALS.
 	int fds[2] = { -1, -1 };
 	assert (::socketpair (AF_UNIX, SOCK_SEQPACKET, 0, fds) == 0);
 	Channel receiver = Channel::Adopt (fds[1]);
@@ -257,7 +263,8 @@ void TestPeerExpectation ()
 	const uint32_t uid = static_cast<uint32_t> (geteuid ());
 	const uint32_t gid = static_cast<uint32_t> (getegid ());
 
-	// A frame from a different uid is rejected and the channel stays usable.
+	// A frame from a different uid is rejected and the channel stays
+	// usable.
 	pair->second.ExpectPeer (PeerExpectation { uid + 1, gid, 0, true, false, false, true });
 	assert (pair->first.Send (Message { MessageType::Ping, 401, { } }).has_value ());
 	auto rejected = pair->second.Receive (1000);
@@ -270,15 +277,16 @@ void TestPeerExpectation ()
 	assert (accepted.has_value () && accepted->has_value ());
 	assert ((*accepted)->requestId == 402);
 
-	// A same-uid sender with a different pid is rejected when pid binding is
-	// requested (the core binds the direct child pid).
+	// A same-uid sender with a different pid is rejected when pid binding
+	// is requested (the core binds the direct child pid).
 	pair->second.ExpectPeer (
 		PeerExpectation { uid, gid, static_cast<uint32_t> (getpid ()) + 1, true, true, false, true });
 	assert (pair->first.Send (Message { MessageType::Ping, 403, { } }).has_value ());
 	auto wrongPid = pair->second.Receive (1000);
 	assert (!wrongPid.has_value ());
 
-	// The predicate, independent of the kernel: an unprivileged worker accepts
+	// The predicate, independent of the kernel: an unprivileged worker
+	// accepts
 	// the root core as its spawner only when allowRoot is set.
 	if (uid != 0)
 	{
@@ -323,7 +331,8 @@ void TestDescriptorTransfer ()
 	assert ((*received)->message.type == MessageType::Ping);
 	assert ((*received)->message.requestId == 11);
 	assert ((*received)->fd >= 0);
-	// The receiver must set FD_CLOEXEC regardless of MSG_CMSG_CLOEXEC support.
+	// The receiver must set FD_CLOEXEC regardless of MSG_CMSG_CLOEXEC
+	// support.
 	const int descriptorFlags = fcntl ((*received)->fd, F_GETFD);
 	assert (descriptorFlags >= 0);
 	assert ((descriptorFlags & FD_CLOEXEC) != 0);
@@ -353,7 +362,8 @@ void TestMultipleDescriptorRejection ()
 	auto pair = Channel::CreatePair ();
 	assert (pair.has_value ());
 
-	// The public API authorises at most one descriptor per operation. A peer
+	// The public API authorises at most one descriptor per operation. A
+	// peer
 	// that smuggles two must have both duplicates closed by the receiver.
 	int descriptors[2] = { OpenDescriptor ("/dev/null", O_RDONLY), OpenDescriptor ("/dev/null", O_RDONLY) };
 	auto frame = Encode (Message { MessageType::Ping, 21, { } });
@@ -380,9 +390,9 @@ void TestDescriptorWithMalformedFrame ()
 	auto pair = Channel::CreatePair ();
 	assert (pair.has_value ());
 
-	// The descriptor arrives before Decode() runs. If the frame is invalid,
-	// the received duplicate must still be closed; a leak here would survive
-	// every malformed-frame flood.
+	// The descriptor arrives before Decode() runs. If the frame is
+	// invalid, the received duplicate must still be closed; a leak here
+	// would survive every malformed-frame flood.
 	auto frame = Encode (Message { MessageType::Ping, 41, { } });
 	assert (frame.has_value ());
 	std::string malformed = *frame;
@@ -410,8 +420,8 @@ void TestMalformedFrames ()
 	Channel & receiver = pair->second;
 
 	// A maximum frame must be sendable even when the host lowered
-	// net.core.wmem_default. The kernel clamps the request to wmem_max, which
-	// is still far above one 64 KiB record.
+	// net.core.wmem_default. The kernel clamps the request to wmem_max,
+	// which is still far above one 64 KiB record.
 	int sendBuffer = 1 << 20;
 	assert (setsockopt (sender.Fd (), SOL_SOCKET, SO_SNDBUF, &sendBuffer, sizeof (sendBuffer)) == 0);
 
@@ -452,8 +462,8 @@ void TestMalformedFrames ()
 		ExpectReusable (sender, receiver, 104);
 	}
 
-	// A declared length above the frame limit is a size error even when the
-	// record itself is short.
+	// A declared length above the frame limit is a size error even when
+	// the record itself is short.
 	{
 		assert (SendRaw (sender.Fd (), BuildHeader (2, 5, static_cast<uint32_t> (MAX_MESSAGE_SIZE))));
 		auto received = receiver.Receive (1000);
@@ -489,8 +499,9 @@ void TestMalformedFrames ()
 		ExpectReusable (sender, receiver, 108);
 	}
 
-	// A declared length inside the type ceiling but one byte shorter than the
-	// record is a framing error, so a peer cannot smuggle a second frame.
+	// A declared length inside the type ceiling but one byte shorter than
+	// the record is a framing error, so a peer cannot smuggle a second
+	// frame.
 	{
 		std::string mismatched = BuildHeader (2, 8, 10);
 		mismatched.append (11, 'z');
@@ -501,8 +512,8 @@ void TestMalformedFrames ()
 		ExpectReusable (sender, receiver, 109);
 	}
 
-	// The largest legal per-type frame still fits the receive buffer, and the
-	// next frame is read cleanly (no off-by-one in the headroom).
+	// The largest legal per-type frame still fits the receive buffer, and
+	// the next frame is read cleanly (no off-by-one in the headroom).
 	{
 		const size_t ceiling = MaxPayloadFor (MessageType::RouterStorageRequest);
 		auto maximum = Encode (Message { MessageType::RouterStorageRequest, 7, std::string (ceiling, 'm') });
@@ -598,7 +609,8 @@ void TestClosedChannel ()
 		assert (again.error ().find ("closed") != std::string::npos);
 	}
 
-	// A locally closed channel reports a local error rather than a timeout.
+	// A locally closed channel reports a local error rather than a
+	// timeout.
 	auto local = Channel::CreatePair ();
 	assert (local.has_value ());
 	local->second.Close ();
@@ -610,10 +622,11 @@ void TestClosedChannel ()
 
 void TestSendDeadlineAfterDrain ()
 {
-	// A poll(POLLOUT) result can become stale before sendmsg() runs: another
-	// writer, or the consumer side of the advertised space, can take the slot
-	// in between. The timeout must still hold, and freeing exactly one record
-	// slot must let a bounded send proceed without spinning or blocking.
+	// A poll(POLLOUT) result can become stale before sendmsg() runs:
+	// another writer, or the consumer side of the advertised space, can
+	// take the slot in between. The timeout must still hold, and freeing
+	// exactly one record slot must let a bounded send proceed without
+	// spinning or blocking.
 	auto pair = Channel::CreatePair ();
 	assert (pair.has_value ());
 	int sendBuffer = 4096;
@@ -636,9 +649,9 @@ void TestSendDeadlineAfterDrain ()
 	assert (queued > 0);
 	assert (queued < 1000);
 
-	// Release one slot, leaving residual queue space smaller than the whole
-	// socket buffer. A sender that ignores EAGAIN after a stale poll would
-	// block here instead of respecting its deadline.
+	// Release one slot, leaving residual queue space smaller than the
+	// whole socket buffer. A sender that ignores EAGAIN after a stale poll
+	// would block here instead of respecting its deadline.
 	auto first = pair->second.Receive (1000);
 	assert (first.has_value ());
 	assert (first->has_value ());
@@ -700,10 +713,11 @@ void TestReceiveDeadline ()
 
 void TestSendQueueSaturation ()
 {
-	// Simulate a wedged peer without any network: shrink the sender's socket
-	// buffer, queue records until the kernel refuses more, then check that a
-	// bounded Channel::Send fails promptly instead of blocking forever. This
-	// models backpressure; it does not model a worker that is slow to parse.
+	// Simulate a wedged peer without any network: shrink the sender's
+	// socket buffer, queue records until the kernel refuses more, then
+	// check that a bounded Channel::Send fails promptly instead of
+	// blocking forever. This models backpressure; it does not model a
+	// worker that is slow to parse.
 	auto pair = Channel::CreatePair ();
 	assert (pair.has_value ());
 	int sendBuffer = 4096;
@@ -733,8 +747,9 @@ void TestSendQueueSaturation ()
 	// Either poll times out or sendmsg returns EAGAIN; both are bounded.
 	assert (elapsed < std::chrono::seconds (2));
 
-	// Drain exactly the records that were accepted. Every record must decode
-	// and arrive in order, proving the failed send did not corrupt framing.
+	// Drain exactly the records that were accepted. Every record must
+	// decode and arrive in order, proving the failed send did not corrupt
+	// framing.
 	for (int index = 0; index < queued; ++index)
 	{
 		auto received = pair->second.Receive (1000);

@@ -4,9 +4,12 @@
  *
  * openi2pd: test data-storage protocol.
  *
- * Checks the version-3 data-storage frame family, the canonical artifact name
- * matrix, payload/name bounds, exact-length framing, the endpoint allowlist,
- * the generation-fenced reply predicate and the restart backoff schedule.
+ * Checks the version-3 data-storage frame family, the canonical
+ * artifact name
+ * matrix, payload/name bounds, exact-length framing, the endpoint
+ * allowlist,
+ * the generation-fenced reply predicate and the restart backoff
+ * schedule.
  * No socket, worker process or live router is involved.
  * Prepared for manual CI only; this file must not be executed locally.
  */
@@ -127,8 +130,9 @@ int main ()
 		assert (base32.size () == 52);
 		assert (IsCanonicalArtifactName (StorageArtifact::RouterInfoCache, base64));
 		assert (IsCanonicalArtifactName (StorageArtifact::PeerProfile, base64));
-		// The fields of a canonical name are fixed: a name of the wrong length,
-		// an upper-case base32 identity, path syntax, ':' and NUL are refused.
+		// The fields of a canonical name are fixed: a name of the wrong
+		// length, an upper-case base32 identity, path syntax, ':' and NUL are
+		// refused.
 		assert (!IsCanonicalArtifactName (StorageArtifact::RouterInfoCache, base64.substr (0, 43)));
 		assert (!IsCanonicalArtifactName (StorageArtifact::RouterInfoCache, base64 + "A"));
 		assert (!IsCanonicalArtifactName (StorageArtifact::RouterInfoCache, ""));
@@ -206,7 +210,8 @@ int main ()
 		assert (tooLargePayload.error ().code == ErrorCode::TooLarge);
 	}
 
-	// Decoder framing: truncation, trailing bytes, mismatched lengths, zero
+	// Decoder framing: truncation, trailing bytes, mismatched lengths,
+	// zero
 	// kind/name and an oversized declared payload are all rejected.
 	{
 		const auto base64 = Base64Name (9);
@@ -271,7 +276,8 @@ int main ()
 		assert (!DecodeDataStorageReply (EncodeDataStorageReply (0, 1, 0)).has_value ());
 	}
 
-	// Configuration codec: absolute path, identity and a non-zero generation.
+	// Configuration codec: absolute path, identity and a non-zero
+	// generation.
 	{
 		auto encoded = EncodeConfigureDataStorage ("/var/lib/openi2pd", 12, 34, 7);
 		assert (encoded.has_value ());
@@ -307,7 +313,8 @@ int main ()
 	assert (!IsCurrentDataStorageReply (4, 10, 4, 11)); // abandoned request
 	assert (!IsCurrentDataStorageReply (0, 11, 4, 11));
 
-	// Restart backoff: 250 ms doubling to a 30 s cap, 8 attempts per window.
+	// Restart backoff: 250 ms doubling to a 30 s cap, 8 attempts per
+	// window.
 	{
 		const auto start = std::chrono::steady_clock::time_point (std::chrono::seconds (1000));
 		StorageClientRestart policy;
@@ -328,8 +335,8 @@ int main ()
 			delay = std::min (delay * 2, std::chrono::milliseconds (30000));
 			assert (policy.Backoff () == delay);
 		}
-		// The eighth failure exhausts the window budget: no further attempt is
-		// allowed even after the delay has elapsed.
+		// The eighth failure exhausts the window budget: no further attempt
+		// is allowed even after the delay has elapsed.
 		const auto now = start + std::chrono::seconds (9);
 		assert (!policy.RecordFailure (now));
 		assert (policy.Attempts () == 8);

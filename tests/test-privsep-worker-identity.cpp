@@ -4,13 +4,14 @@
  *
  * openi2pd: test privsep worker identity.
  *
- * Checks the per-spawn identity record that binds the exec'ed role and its
- * uid/gid to the process that forked it: the fixed 25-byte layout, codec
- * bounds, a missing/short/duplicated/oversized record, an all-zero nonce, a
- * uid-0 or mismatched identity, a role that disagrees with argv, the pinned
- * standard descriptors, the one-way process-creation barrier and the frozen
- * executable path. A valid record must still serve a Ping. Prepared for manual
- * CI only; this file must not be executed locally.
+ * Checks the per-spawn identity record that binds the exec'ed role and
+ * its uid/gid to the process that forked it: the fixed 25-byte layout,
+ * codec bounds, a missing/short/duplicated/oversized record, an
+ * all-zero nonce, a uid-0 or mismatched identity, a role that disagrees
+ * with argv, the pinned standard descriptors, the one-way
+ * process-creation barrier and the frozen executable path. A valid
+ * record must still serve a Ping. Prepared for manual CI only; this
+ * file must not be executed locally.
  */
 
 #include <cassert>
@@ -43,7 +44,10 @@ using namespace i2p::privsep;
 
 namespace
 {
-/** Hello field offsets: [role u8 | nonce 16 | uid u32 BE | gid u32 BE]. */
+/**
+ * Hello field offsets: [role u8 | nonce 16 | uid u32 BE | gid u32
+ * BE].
+ */
 constexpr size_t UID_OFFSET = 1 + WORKER_HELLO_NONCE_SIZE;
 constexpr size_t GID_OFFSET = UID_OFFSET + 4;
 
@@ -108,10 +112,10 @@ std::string ReadAll (int fd)
 }
 
 /**
- * The test binary's own absolute path. It is used both as the frozen spawn
- * path and as the exec target of the hand-started worker scenarios; the
- * production resolver is deliberately not used because it must not search
- * $PATH or fall back to /proc.
+ * The test binary's own absolute path. It is used both as the frozen
+ * spawn path and as the exec target of the hand-started worker
+ * scenarios; the production resolver is deliberately not used because
+ * it must not search $PATH or fall back to /proc.
  */
 std::string SelfExecutable (const char * argv0)
 {
@@ -129,7 +133,10 @@ std::string SelfExecutable (const char * argv0)
 	return { };
 }
 
-/** Build a raw hello with an arbitrary role/identity, bypassing the codec. */
+/**
+ * Build a raw hello with an arbitrary role/identity, bypassing the
+ * codec.
+ */
 std::vector<uint8_t> RawHello (uint8_t role, const std::vector<uint8_t> & nonce, uint32_t uid, uint32_t gid)
 {
 	std::vector<uint8_t> record (WORKER_HELLO_SIZE, 0);
@@ -161,7 +168,8 @@ struct ScenarioResult
 };
 
 /**
- * Run the production RunWorker in a child whose descriptor 5 carries @a hello
+ * Run the production RunWorker in a child whose descriptor 5 carries @a
+ * hello
  * (or no descriptor at all) and whose argv names @a argvRole.
  */
 ScenarioResult RunHelloScenario (
@@ -334,10 +342,11 @@ int main (int argc, char ** argv)
 		spawned->Stop (2000);
 	}
 
-	// A role that disagrees with argv, and every malformed record, must exit 1
-	// before any frame is served. A worker pins its standard descriptors, so
-	// an inherited stderr pipe must stay empty: neither the record nor its
-	// nonce can reach the terminal or a service-manager log pipe.
+	// A role that disagrees with argv, and every malformed record, must
+	// exit 1 before any frame is served. A worker pins its standard
+	// descriptors, so an inherited stderr pipe must stay empty: neither
+	// the record nor its nonce can reach the terminal or a service-manager
+	// log pipe.
 	{
 		const auto nonce = Nonce (0x40);
 		auto hello = EncodeWorkerHello (WorkerRole::DataStorage, nonce, uid, gid);
@@ -411,8 +420,8 @@ int main (int argc, char ** argv)
 		assert (result.error.empty ());
 	}
 	{
-		// A well-formed record that names a different identity must not serve:
-		// the spawner did not drop to the identity it claims.
+		// A well-formed record that names a different identity must not
+		// serve: the spawner did not drop to the identity it claims.
 		const auto nonce = Nonce (0x30);
 		const auto wrongUid = RawHello (static_cast<uint8_t> (WorkerRole::Log), nonce, uid + 1, gid);
 		const auto uidResult = RunHelloScenario (frozen, "log", wrongUid, true);
@@ -424,9 +433,9 @@ int main (int argc, char ** argv)
 		assert (gidResult.error.empty ());
 	}
 
-	// Process creation is a one-way process-wide barrier, so a child process
-	// owns the flag: every spawn helper must then fail closed with the same
-	// fixed error while the parent's spawn path stays usable.
+	// Process creation is a one-way process-wide barrier, so a child
+	// process owns the flag: every spawn helper must then fail closed with
+	// the same fixed error while the parent's spawn path stays usable.
 	{
 		assert (!IsProcessCreationForbidden ());
 		const int code = RunChildScenario (
@@ -456,7 +465,8 @@ int main (int argc, char ** argv)
 		spawned->Stop (2000);
 	}
 
-	// An unusable executable path is refused instead of being resolved through
+	// An unusable executable path is refused instead of being resolved
+	// through
 	// $PATH or /proc, and the spawn fails closed with a fixed error.
 	{
 		const int code = RunChildScenario (

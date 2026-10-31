@@ -4,11 +4,11 @@
  *
  * openi2pd: Credentials.
  *
- * Resolves the worker service identity once, before any sandbox is installed,
- * publishes it for the spawn helpers and drops to it in the forked child.
- * Only fixed, non-secret diagnostics leave this translation unit: an account
- * name, a password field, a home directory or a group list is never echoed,
- * formatted, logged or retained.
+ * Resolves the worker service identity once, before any sandbox is
+ * installed, publishes it for the spawn helpers and drops to it in the
+ * forked child. Only fixed, non-secret diagnostics leave this
+ * translation unit: an account name, a password field, a home directory
+ * or a group list is never echoed, formatted, logged or retained.
  *
  */
 
@@ -30,7 +30,9 @@ namespace i2p::privsep
 {
 namespace
 {
-	/** Account and group names are bounded well below any NSS record size. */
+	/**
+	 * Account and group names are bounded well below any NSS record
+	 * size. */
 	constexpr size_t MAX_IDENTITY_NAME_SIZE = 256;
 	/**
 	 * Fixed NSS scratch buffer. The first attempt uses half of it and one
@@ -41,7 +43,8 @@ namespace
 
 	/**
 	 * Reject NUL, an embedded control character and an oversized name. A
-	 * truncated account name would silently resolve to a different identity.
+	 * truncated account name would silently resolve to a different
+	 * identity.
 	 */
 	bool IsValidIdentityName (std::string_view name)
 	{
@@ -54,7 +57,9 @@ namespace
 		return true;
 	}
 
-	/** Run one bounded NSS lookup (getpwnam_r/getgrnam_r share this shape). */
+	/**
+	 * Run one bounded NSS lookup (getpwnam_r/getgrnam_r share this
+	 * shape). */
 	template <typename Lookup> int LookupBounded (Lookup && lookup)
 	{
 		std::array<char, LOOKUP_BUFFER_SIZE> buffer { };
@@ -70,11 +75,12 @@ i2p::expected<WorkerCredentials, std::string> ResolveWorkerCredentials (std::str
 	credentials.uid = static_cast<uint32_t> (::geteuid ());
 	credentials.gid = static_cast<uint32_t> (::getegid ());
 	credentials.configured = false;
-	// No override: keep the effective identity of the daemon. Such a daemon
-	// cannot raise or lower privilege and needs no account database lookup.
+	// No override: keep the effective identity of the daemon. Such a
+	// daemon cannot raise or lower privilege and needs no account database
+	// lookup.
 	if (user.empty () && group.empty ()) return credentials;
-	// A group without a user would change the group while keeping the daemon's
-	// uid, which is never a coherent service identity.
+	// A group without a user would change the group while keeping the
+	// daemon's uid, which is never a coherent service identity.
 	if (user.empty ()) return i2p::unexpected (std::string ("privsep.group requires privsep.user"));
 	if (!IsValidIdentityName (user)) return i2p::unexpected (std::string ("privsep.user is not a valid account name"));
 	if (!group.empty () && !IsValidIdentityName (group))
@@ -91,8 +97,8 @@ i2p::expected<WorkerCredentials, std::string> ResolveWorkerCredentials (std::str
 		});
 	if (userError != 0) return i2p::unexpected (std::string ("cannot resolve privsep.user"));
 	if (!userResult) return i2p::unexpected (std::string ("privsep.user does not exist"));
-	// A worker must never run as the superuser: every sandbox bypass would then
-	// be a full privilege compromise.
+	// A worker must never run as the superuser: every sandbox bypass would
+	// then be a full privilege compromise.
 	if (userEntry.pw_uid == 0) return i2p::unexpected (std::string ("privsep.user must not be the superuser"));
 	credentials.uid = static_cast<uint32_t> (userEntry.pw_uid);
 	credentials.gid = static_cast<uint32_t> (userEntry.pw_gid);
@@ -133,9 +139,9 @@ void SetWorkerCredentials (const WorkerCredentials & credentials)
 const WorkerCredentials & GetWorkerCredentials ()
 {
 	// The declaration returns a reference, so every thread keeps its own
-	// snapshot: a concurrent Set cannot torn-read the struct and the returned
-	// reference stays valid for the caller's expression. The value is
-	// process-wide and installed once, before the first spawn.
+	// snapshot: a concurrent Set cannot torn-read the struct and the
+	// returned reference stays valid for the caller's expression. The
+	// value is process-wide and installed once, before the first spawn.
 	thread_local WorkerCredentials snapshot;
 	{
 		std::lock_guard lock (g_CredentialsMutex);
@@ -162,43 +168,44 @@ bool IsAllowedParentUid (uint32_t peerUid)
 {
 	const uint32_t self = static_cast<uint32_t> (::geteuid ());
 	if (peerUid == self) return true;
-	// A root core that keeps its authority and delegates only the worker role
-	// is a valid parent for an unprivileged worker.
+	// A root core that keeps its authority and delegates only the worker
+	// role is a valid parent for an unprivileged worker.
 	return self != 0 && peerUid == 0;
 }
 
 bool DropWorkerCredentialsInChild (const WorkerCredentials & credentials)
 {
 	if (!credentials.configured) return true;
-	// Already at the requested identity with no supplementary groups: there is
-	// nothing to drop. Skipping the calls keeps a worker that is already past
-	// its pledge (the supervisor) working, because setgroups needs superuser
-	// authority and, on OpenBSD, every one of these calls needs the id promise.
+	// Already at the requested identity with no supplementary groups:
+	// there is nothing to drop. Skipping the calls keeps a worker that is
+	// already past its pledge (the supervisor) working, because setgroups
+	// needs superuser authority and, on OpenBSD, every one of these calls
+	// needs the id promise.
 	if (static_cast<uint32_t> (::geteuid ()) == credentials.uid
 		&& static_cast<uint32_t> (::getegid ()) == credentials.gid && ::getgroups (0, nullptr) == 0)
 		return true;
 	// setgroups(2) is restricted to the superuser. A child that is already
-	// unprivileged cannot clear supplementary groups; the verification below
-	// still fails closed when any remain.
+	// unprivileged cannot clear supplementary groups; the verification
+	// below still fails closed when any remain.
 	if (::geteuid () == 0 && ::setgroups (0, nullptr) != 0) return false;
-	// gid before uid: dropping the uid first would remove the authority that
-	// the group change needs.
+	// gid before uid: dropping the uid first would remove the authority
+	// that the group change needs.
 	if (::setgid (static_cast<gid_t> (credentials.gid)) != 0) return false;
 	if (::setuid (static_cast<uid_t> (credentials.uid)) != 0) return false;
 	if (static_cast<uint32_t> (::getuid ()) != credentials.uid) return false;
 	if (static_cast<uint32_t> (::geteuid ()) != credentials.uid) return false;
 	if (static_cast<uint32_t> (::getgid ()) != credentials.gid) return false;
 	if (static_cast<uint32_t> (::getegid ()) != credentials.gid) return false;
-	// getgroups(0, nullptr) returns the count, so any value other than zero
-	// (including -1 for a lookup failure) is a mismatch.
+	// getgroups(0, nullptr) returns the count, so any value other than
+	// zero (including -1 for a lookup failure) is a mismatch.
 	if (::getgroups (0, nullptr) != 0) return false;
 	return true;
 }
 
 std::string DescribeWorkerCredentials (const WorkerCredentials & credentials)
 {
-	// Identity numbers only: no name, no password field, no home directory and
-	// no supplementary group list.
+	// Identity numbers only: no name, no password field, no home directory
+	// and no supplementary group list.
 	return "uid=" + std::to_string (credentials.uid) + " gid=" + std::to_string (credentials.gid);
 }
 }
@@ -210,13 +217,14 @@ std::string DescribeWorkerCredentials (const WorkerCredentials & credentials)
 namespace i2p::privsep
 {
 /*
- * Windows stub set. The Windows backend has no uid/gid worker identity: a
- * worker is proved by the named-pipe peer token, the spawn PID/session and the
- * WorkerHello nonce (see privsep/WindowsIpc.h). Every function here therefore
- * reports the absence of POSIX credentials instead of a permissive default:
- * `WorkerUid()` is 0 and `DropWorkerCredentialsInChild()` is false, so callers
- * that require a real unprivileged identity (for example the storage clients)
- * refuse to start rather than run unseparated.
+ * Windows stub set. The Windows backend has no uid/gid worker identity:
+ * a worker is proved by the named-pipe peer token, the spawn
+ * PID/session and the WorkerHello nonce (see privsep/WindowsIpc.h).
+ * Every function here therefore reports the absence of POSIX
+ * credentials instead of a permissive default: `WorkerUid()` is 0 and
+ * `DropWorkerCredentialsInChild()` is false, so callers that require a
+ * real unprivileged identity (for example the storage clients) refuse
+ * to start rather than run unseparated.
  */
 i2p::expected<WorkerCredentials, std::string> ResolveWorkerCredentials (std::string_view, std::string_view)
 {

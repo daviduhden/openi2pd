@@ -4,12 +4,12 @@
  *
  * openi2pd: Supervisor.
  *
- * Implements the privilege-separated supervisor: verifies the control peer's
- * UID, applies its platform sandbox and starts or restarts a log worker while
- * forwarding decoded records. It also implements the pre-pledge OpenBSD
- * torrent-storage broker that inherits the data root as fd4 and delegates
- * bounded storage workers. The log path is never opened here; shutdown or a
- * malformed frame exits fail-closed.
+ * Implements the privilege-separated supervisor: verifies the control
+ * peer's UID, applies its platform sandbox and starts or restarts a log
+ * worker while forwarding decoded records. It also implements the
+ * pre-pledge OpenBSD torrent-storage broker that inherits the data root
+ * as fd4 and delegates bounded storage workers. The log path is never
+ * opened here; shutdown or a malformed frame exits fail-closed.
  *
  */
 
@@ -52,9 +52,9 @@ namespace
 		IsRoleCapabilitySafe (ProcessRole::Supervisor), "the supervisor capability mask violates the role invariant");
 	static_assert (ValidateCapabilityMatrix ().valid, "the capability matrix is inconsistent");
 
-	// Admission gate for worker creation. It is a process-local flag, not a
-	// policy builder: a set flag makes every spawn helper fail closed before
-	// fork(), independently of the platform sandbox.
+	// Admission gate for worker creation. It is a process-local flag, not
+	// a policy builder: a set flag makes every spawn helper fail closed
+	// before fork(), independently of the platform sandbox.
 	std::atomic<bool> processCreationForbidden { false };
 }
 
@@ -149,10 +149,10 @@ bool PrepareTorrentStorageSupervisor (const std::string & root, std::string & er
 		return false;
 	}
 	// The broker and every worker it spawns run as the configured worker
-	// identity (the forked child drops uid/gid before execve). The core may
-	// still be root, so a configured identity replaces the old "never root"
-	// test; the broker re-checks its own euid after the drop. Without a
-	// configured identity the core must already be unprivileged.
+	// identity (the forked child drops uid/gid before execve). The core
+	// may still be root, so a configured identity replaces the old "never
+	// root" test; the broker re-checks its own euid after the drop.
+	// Without a configured identity the core must already be unprivileged.
 	const auto & credentials = GetWorkerCredentials ();
 	if (!credentials.configured && ::geteuid () == 0)
 	{
@@ -168,9 +168,10 @@ bool PrepareTorrentStorageSupervisor (const std::string & root, std::string & er
 		error = "invalid storage supervisor root";
 		return false;
 	}
-	// Open and validate the immutable root before spawning. The broker receives
-	// it as inherited fd4, so it never re-resolves a path after the startup
-	// sandbox and cannot be redirected by a path replacement/rename.
+	// Open and validate the immutable root before spawning. The broker
+	// receives it as inherited fd4, so it never re-resolves a path after
+	// the startup sandbox and cannot be redirected by a path
+	// replacement/rename.
 	int rootFd = ::open (absolute.c_str (), O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
 	if (rootFd < 0)
 	{
@@ -186,9 +187,9 @@ bool PrepareTorrentStorageSupervisor (const std::string & root, std::string & er
 		}
 	} guard { rootFd };
 	struct stat rootStatus { };
-	// The delegated root must belong to the identity that will walk it, not to
-	// the (possibly root) core that opens it, and must not be group/world
-	// writable.
+	// The delegated root must belong to the identity that will walk it,
+	// not to the (possibly root) core that opens it, and must not be
+	// group/world writable.
 	if (::fstat (rootFd, &rootStatus) || !S_ISDIR (rootStatus.st_mode) || rootStatus.st_uid != workerUid
 		|| (rootStatus.st_mode & 0022))
 	{
@@ -266,8 +267,8 @@ i2p::expected<Channel, std::string> SpawnSupervisedTorrentStorage (int rootFd, s
 		}
 		if (!*received)
 		{
-			// A slow broker is not a dead broker. Keep the channel; the next request
-			// drains a late reply by request id before matching.
+			// A slow broker is not a dead broker. Keep the channel; the next
+			// request drains a late reply by request id before matching.
 			return i2p::unexpected (std::string ("storage supervisor busy"));
 		}
 		auto & candidate = **received;
@@ -301,7 +302,8 @@ i2p::expected<Channel, std::string> SpawnSupervisedTorrentStorage (int rootFd, s
 			storageSupervisor.reset ();
 			return i2p::unexpected (std::string ("storage supervisor sent a malformed error"));
 		}
-		// A per-request rejection must not destroy the broker or other workers.
+		// A per-request rejection must not destroy the broker or other
+		// workers.
 		return i2p::unexpected (std::string ("storage supervisor rejected request: ") + std::get<2> (*decoded));
 	}
 	if (reply.message.type != MessageType::TorrentStorageSupervisorReply || reply.message.requestId != id
@@ -311,8 +313,8 @@ i2p::expected<Channel, std::string> SpawnSupervisedTorrentStorage (int rootFd, s
 		storageSupervisor.reset ();
 		return i2p::unexpected (std::string ("storage supervisor rejected worker capability"));
 	}
-	// The passed socket is the worker's endpoint, so its peer is the worker
-	// identity, not the root core that adopted the broker reply.
+	// The passed socket is the worker's endpoint, so its peer is the
+	// worker identity, not the root core that adopted the broker reply.
 	auto adopted = Channel::AdoptValidated (reply.fd, WorkerUid ());
 	if (!adopted) return i2p::unexpected (adopted.error ());
 	return std::move (*adopted);
@@ -326,17 +328,18 @@ int RunTorrentStorageSupervisor (int fd)
 #else
 	Channel control = Channel::Adopt (fd);
 	control.SetEnforcementPolicy (EnforcementPolicy::Endpoint);
-	// The broker runs as the unprivileged worker identity while the core may
-	// still be privileged (privilege separation does not drop the core). The
-	// peer must therefore be either our own identity or the root that spawned
-	// us; a broker that somehow kept euid 0 refuses to run at all.
+	// The broker runs as the unprivileged worker identity while the core
+	// may still be privileged (privilege separation does not drop the
+	// core). The peer must therefore be either our own identity or the
+	// root that spawned us; a broker that somehow kept euid 0 refuses to
+	// run at all.
 	auto uid = control.PeerUid ();
 	if (!uid || (*uid != ::geteuid () && *uid != 0) || ::geteuid () == 0) return 1;
-	// Pin descriptors 0/1/2 to /dev/null instead of closing them. Closing them
-	// would let Channel::CreatePair() (and any file it opens) allocate a stdio
-	// descriptor, so a worker could inherit a "stdio" slot that is actually the
-	// control or worker channel. /dev/null is reachable under the stdio promise
-	// through __pledge_open.
+	// Pin descriptors 0/1/2 to /dev/null instead of closing them. Closing
+	// them would let Channel::CreatePair() (and any file it opens)
+	// allocate a stdio descriptor, so a worker could inherit a "stdio"
+	// slot that is actually the control or worker channel. /dev/null is
+	// reachable under the stdio promise through __pledge_open.
 	const int devNull = ::open ("/dev/null", O_RDWR);
 	if (devNull < 0) return 1;
 	for (int stdio = 0; stdio <= 2; ++stdio)
@@ -366,8 +369,9 @@ int RunTorrentStorageSupervisor (int fd)
 	struct RootOwner unexpectedRequestFd { initial.fd };
 	PayloadReader setup (initial.message.payload);
 	auto configuredRoot = setup.ReadString ();
-	// Kept for wire compatibility only. It is never executed: the broker resolves
-	// its own executable below and freezes that path before pledge.
+	// Kept for wire compatibility only. It is never executed: the broker
+	// resolves its own executable below and freezes that path before
+	// pledge.
 	auto configuredExecutable = setup.ReadString ();
 	if (initial.message.type != MessageType::ConfigureTorrentStorage || initial.message.requestId != 1
 		|| initial.fd >= 0 || !configuredRoot || !configuredExecutable || !setup.Done () || configuredRoot->empty ()
@@ -381,18 +385,18 @@ int RunTorrentStorageSupervisor (int fd)
 	if (executable.empty () || executable.front () != '/' || executable.find ('\0') != std::string::npos
 		|| ::access (executable.c_str (), X_OK))
 		return 1;
-	// fd4 is the only directory authority. The configured path is used solely
-	// to construct each child's storage policy; it cannot widen that authority.
-	// ApplyOpenBSDPolicy installs unveil(executable,"x"), locks the list and
-	// only then calls pledge("stdio proc exec sendfd"): no rpath/wpath/cpath,
-	// no unix and no recvfd.
+	// fd4 is the only directory authority. The configured path is used
+	// solely to construct each child's storage policy; it cannot widen
+	// that authority. ApplyOpenBSDPolicy installs unveil(executable,"x"),
+	// locks the list and only then calls pledge("stdio proc exec sendfd"):
+	// no rpath/wpath/cpath, no unix and no recvfd.
 	//
 	// recvfd is deliberately absent. A frame that carries a descriptor is
-	// rejected by the kernel before this code can inspect it, so an unexpected
-	// capability can never enter the broker: that is the fail-closed outcome.
-	// The broker never needs to receive one - the client sends the setup frame
-	// without a descriptor, and every worker channel leaves this process once,
-	// with sendfd.
+	// rejected by the kernel before this code can inspect it, so an
+	// unexpected capability can never enter the broker: that is the
+	// fail-closed outcome. The broker never needs to receive one - the
+	// client sends the setup frame without a descriptor, and every worker
+	// channel leaves this process once, with sendfd.
 	OpenBSDPolicyConfig brokerConfig;
 	brokerConfig.executablePath = executable;
 	brokerConfig.dropCredentials = GetWorkerCredentials ().configured;
@@ -403,13 +407,14 @@ int RunTorrentStorageSupervisor (int fd)
 	uint32_t lastRequest = 1, violations = 0;
 	std::vector<pid_t> detachedWorkers;
 	// Forwarded workers are owned by the core after handoff, so the broker
-	// cannot observe their liveness. Bound churn with a replenished one-minute
-	// launch window rather than a permanent lifetime counter. Every attempt is
-	// charged, including a child that never becomes ready or is stopped again.
+	// cannot observe their liveness. Bound churn with a replenished
+	// one-minute launch window rather than a permanent lifetime counter.
+	// Every attempt is charged, including a child that never becomes ready
+	// or is stopped again.
 	constexpr uint32_t MAX_LAUNCHES_PER_WINDOW = 32;
-	// Per-phase budgets: the configure write and the readiness reply each get
-	// their own bounded wait, and a readiness failure stops the child before
-	// the next request is served.
+	// Per-phase budgets: the configure write and the readiness reply each
+	// get their own bounded wait, and a readiness failure stops the child
+	// before the next request is served.
 	constexpr int CONFIGURE_TIMEOUT_MS = 5000;
 	constexpr int READY_TIMEOUT_MS = 5000;
 	uint32_t launches = 0;
@@ -475,8 +480,8 @@ int RunTorrentStorageSupervisor (int fd)
 		}
 		if (request.message.requestId <= lastRequest)
 		{
-			// Dropping a replay/duplicate avoids executing it and avoids confusing a
-			// live client with a second reply for the same ID.
+			// Dropping a replay/duplicate avoids executing it and avoids
+			// confusing a live client with a second reply for the same ID.
 			if (++violations > Channel::MAX_PROTOCOL_VIOLATIONS) return 1;
 			continue;
 		}
@@ -499,19 +504,21 @@ int RunTorrentStorageSupervisor (int fd)
 				return 1;
 			continue;
 		}
-		// A dedicated `&lt;datadir&gt;/torrents` payload root is required before the
-		// "." case can be rejected; today the torrent tunnel may request the
-		// whole data directory. Do not widen this fallback to a future router or
-		// data-storage role: those already own a narrower root.
+		// A dedicated `&lt;datadir&gt;/torrents` payload root is required
+		// before the "." case can be rejected; today the torrent tunnel may
+		// request the whole data directory. Do not widen this fallback to a
+		// future router or data-storage role: those already own a narrower
+		// root.
 		const std::string relative (*path);
 		if (relative != "." && !SafeStoragePath (relative))
 		{
 			if (!sendError (id, MessageType::SpawnTorrentStorage, ErrorCode::BadField, "unsafe storage path")) return 1;
 			continue;
 		}
-		// The worker inherits the immutable broker root at fd4 and performs the
-		// relative walk itself before applying its own policy. The broker must not
-		// use openat() here: it has no rpath promise and its unveil list is locked.
+		// The worker inherits the immutable broker root at fd4 and performs
+		// the relative walk itself before applying its own policy. The broker
+		// must not use openat() here: it has no rpath promise and its unveil
+		// list is locked.
 		PayloadWriter workerSetup;
 		const std::string delegatedRoot = relative == "." ? rootPath : rootPath + "/" + relative;
 		if (!workerSetup.WritePath (delegatedRoot) || !workerSetup.WriteStringBounded (relative, MAX_PATH_SIZE))
@@ -523,9 +530,9 @@ int RunTorrentStorageSupervisor (int fd)
 		}
 		workerSetup.WriteU64BE (*expectedDevice);
 		workerSetup.WriteU64BE (*expectedInode);
-		// Charge the attempt before it happens: a fork that fails, a child that
-		// never becomes ready and a child this loop stops again all consume the
-		// same bounded launch budget.
+		// Charge the attempt before it happens: a fork that fails, a child
+		// that never becomes ready and a child this loop stops again all
+		// consume the same bounded launch budget.
 		++launches;
 		auto child = SpawnWorkerWithRoot ("torrent-storage-inherited", executable, root.fd);
 		if (!child)
@@ -560,9 +567,9 @@ int RunTorrentStorageSupervisor (int fd)
 				{ MessageType::TorrentStorageSupervisorReply, id, { } }, child->ChannelFd ().Fd (), 5000))
 			return 1;
 		child->ChannelFd ().Close (); // Do not keep the client endpoint alive.
-		// The core now owns the worker channel. Do not SIGTERM/SIGKILL it when the
-		// broker exits: a broker shutdown must not corrupt an in-flight fsync. Keep
-		// the PID only for non-blocking reaping.
+		// The core now owns the worker channel. Do not SIGTERM/SIGKILL it
+		// when the broker exits: a broker shutdown must not corrupt an
+		// in-flight fsync. Keep the PID only for non-blocking reaping.
 		const pid_t workerPid = child->Pid ();
 		child->Disown ();
 		if (workerPid > 0) detachedWorkers.push_back (workerPid);
@@ -571,23 +578,24 @@ int RunTorrentStorageSupervisor (int fd)
 }
 
 /**
- * Serve the supervisor endpoint: own one log worker, forward framed records and
- * replace that worker under the shared restart ladder.
+ * Serve the supervisor endpoint: own one log worker, forward framed
+ * records and replace that worker under the shared restart ladder.
  *
- * The supervisor never opens the log path itself; the sink descriptor or the
- * syslog destination is the log worker's capability. On OpenBSD the executable
- * is resolved and frozen before the x-only unveil and the `stdio proc exec`
- * pledge, because neither realpath() nor a PATH lookup can succeed afterwards.
- * On Linux only no-new-privs and the capability drop are applied for the same
- * inheritance reason as ApplyLinuxSupervisorSandbox().
+ * The supervisor never opens the log path itself; the sink descriptor
+ * or the syslog destination is the log worker's capability. On OpenBSD
+ * the executable is resolved and frozen before the x-only unveil and
+ * the `stdio proc exec` pledge, because neither realpath() nor a PATH
+ * lookup can succeed afterwards. On Linux only no-new-privs and the
+ * capability drop are applied for the same inheritance reason as
+ * ApplyLinuxSupervisorSandbox().
+ * Progress is published only in this process's SupervisorStatus
+ * snapshot; no message type was added to expose it, so the core
+ * observes the supervisor via its channel and process liveness.
  *
- * Progress is published only in this process's SupervisorStatus snapshot; no
- * message type was added to expose it, so the core observes the supervisor via
- * its channel and process liveness.
- *
- * @param fd inherited worker channel (descriptor 3 in the exec'ed process).
- * @return 0 on a requested Shutdown, 1 on any protocol, credential or spawn
- *         failure; the caller must treat both as the end of this worker.
+ * @param fd inherited worker channel (descriptor 3 in the exec'ed
+ * process).
+ * @return 0 on a requested Shutdown, 1 on any protocol, credential or
+ * spawn failure; the caller must treat both as the end of this worker.
  */
 int RunSupervisor (int fd)
 {
@@ -603,10 +611,10 @@ int RunSupervisor (int fd)
 
 	std::string workerExecutable;
 #if defined(__OpenBSD__)
-	// Resolve the executable before installing the supervisor sandbox: after
-	// the x-only unveil lock and a pledge without rpath, neither the PATH
-	// lookup nor realpath() can succeed. This frozen path is reused for every
-	// replacement spawn.
+	// Resolve the executable before installing the supervisor sandbox:
+	// after the x-only unveil lock and a pledge without rpath, neither the
+	// PATH lookup nor realpath() can succeed. This frozen path is reused
+	// for every replacement spawn.
 	workerExecutable = ExecutablePath ();
 	if (workerExecutable.empty () || workerExecutable.front () != '/'
 		|| workerExecutable.find ('\0') != std::string::npos)
@@ -615,11 +623,12 @@ int RunSupervisor (int fd)
 		return 1;
 	}
 	OpenBSDPolicyConfig policyConfig;
-	// The supervisor only needs proc/exec for bounded log-worker replacement.
-	// The policy unveils exactly the frozen executable path with "x", locks the
-	// list and then pledges "stdio proc exec": no unix, no pathname read/write,
-	// no descriptor reception and no external network. pledge(2) is called
-	// without execpromises, so the log worker installs its own unveil+pledge.
+	// The supervisor only needs proc/exec for bounded log-worker
+	// replacement. The policy unveils exactly the frozen executable path
+	// with "x", locks the list and then pledges "stdio proc exec": no
+	// unix, no pathname read/write, no descriptor reception and no
+	// external network. pledge(2) is called without execpromises, so the
+	// log worker installs its own unveil+pledge.
 	policyConfig.executablePath = workerExecutable;
 	// The forked child drops the configured worker identity before execve.
 	policyConfig.dropCredentials = GetWorkerCredentials ().configured;
@@ -637,21 +646,23 @@ int RunSupervisor (int fd)
 	}
 #endif
 
-	// Configuration is read only after the one ambient-privilege step allowed on
-	// this endpoint - the peer identity check - and, on OpenBSD, after the
-	// sandbox. A frame that carries a descriptor now fails at recvmsg instead of
-	// reaching the explicit descriptor check below: the log worker owns that
-	// file capability, so this is a fail-closed refusal.
+	// Configuration is read only after the one ambient-privilege step
+	// allowed on this endpoint - the peer identity check - and, on
+	// OpenBSD, after the sandbox. A frame that carries a descriptor now
+	// fails at recvmsg instead of reaching the explicit descriptor check
+	// below: the log worker owns that file capability, so this is a
+	// fail-closed refusal.
 	bool useSyslog = false;
 	std::string path, tag;
 	if (!ReadLogConfig (control, useSyslog, path, tag)) return 1;
 
 #if defined(__linux__)
-	// Landlock/seccomp/network namespaces are inherited across fork+exec and a
-	// child can only become stricter. Installing the supervisor's write-deny
-	// or AF_INET-deny domain here would permanently prevent storage/network
-	// children from using their delegated capability. Drop capabilities and
-	// set no_new_privs; each exec'ed worker applies its own role policy.
+	// Landlock/seccomp/network namespaces are inherited across fork+exec
+	// and a child can only become stricter. Installing the supervisor's
+	// write-deny or AF_INET-deny domain here would permanently prevent
+	// storage/network children from using their delegated capability. Drop
+	// capabilities and set no_new_privs; each exec'ed worker applies its
+	// own role policy.
 	auto sandbox = ApplyLinuxSupervisorSandbox ();
 	if (!sandbox)
 	{
@@ -662,18 +673,19 @@ int RunSupervisor (int fd)
 
 	std::unique_ptr<ChildProcess> worker;
 	std::unique_ptr<LogSink> sink;
-	// The supervisor process owns exactly one worker, so the status snapshot
-	// has exactly one entry. It is published under SupervisorStatus' mutex and
-	// read only through const getters.
+	// The supervisor process owns exactly one worker, so the status
+	// snapshot has exactly one entry. It is published under
+	// SupervisorStatus' mutex and read only through const getters.
 	auto & status = GetSupervisorStatus ();
 	constexpr std::string_view LOG_WORKER = "log";
 	uint32_t generation = 0;
 	LogWorkerRestartBudget budget;
 	/**
-	 * Spawn a replacement worker and configure it through a fresh sink. The
-	 * supervisor never reattaches: the previous sink is released before this
-	 * call, so every spawn starts from an unconfigured channel. ReattachProxy
-	 * exists for the core-side restart monitor in Daemon, not for this loop.
+	 * Spawn a replacement worker and configure it through a fresh sink.
+	 * The supervisor never reattaches: the previous sink is released
+	 * before this call, so every spawn starts from an unconfigured
+	 * channel. ReattachProxy exists for the core-side restart monitor in
+	 * Daemon, not for this loop.
 	 */
 	auto startWorker = [&] () -> bool
 	{
@@ -803,8 +815,8 @@ int RunSupervisor (int fd)
 			break;
 		}
 		sink->Write (std::get<0> (*record), static_cast<std::time_t> (std::get<1> (*record)), std::get<2> (*record));
-		// Publish the client-side drop counter only when it moved, so the status
-		// mutex is not taken for every record.
+		// Publish the client-side drop counter only when it moved, so the
+		// status mutex is not taken for every record.
 		const auto dropped = sink->GetWorkerDroppedCount ();
 		if (dropped != publishedDropped)
 		{

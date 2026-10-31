@@ -4,7 +4,9 @@
  *
  * openi2pd: test privsep log.
  *
- * Exercises the isolated log worker: bounded text sanitization, descriptor-based configuration with exactly one regular file, malformed records, level bounds and bounded child shutdown.
+ * Exercises the isolated log worker: bounded text sanitization,
+ * descriptor-based configuration with exactly one regular file,
+ * malformed records, level bounds and bounded child shutdown.
  *
  */
 
@@ -63,8 +65,8 @@ bool WaitForExit (pid_t pid, int & status, int timeoutMs)
 
 /**
 	 * Fork one worker, run the parent-side exchange and wait for exit. The
-	 * worker is a plain fork of the test process so the credential check is
-	 * exercised for the current uid (cross-uid rejection needs root).
+	 * worker is a plain fork of the test process so the credential check
+	 * is exercised for the current uid (cross-uid rejection needs root).
 	 */
 template <typename Exchange> int RunScenario (Exchange exchange, int expectedExit)
 {
@@ -92,7 +94,8 @@ template <typename Exchange> int RunScenario (Exchange exchange, int expectedExi
 		return 0;
 	}
 	// A sandbox may terminate a forbidden operation with SIGSYS instead of
-	// letting the worker print a protocol error. Both are valid rejections.
+	// letting the worker print a protocol error. Both are valid
+	// rejections.
 	assert (!WIFEXITED (status) || WEXITSTATUS (status) != 0);
 	return WIFEXITED (status) ? WEXITSTATUS (status) : 128 + WTERMSIG (status);
 }
@@ -143,9 +146,10 @@ int OpenLogDescriptor (const std::string & path)
 
 #ifdef __linux__
 /**
- * Count descriptors owned by this process. The directory descriptor used for
- * the scan is included in every measurement. Returns -1 without /proc so a
- * non-procfs Linux build skips the comparison instead of failing.
+ * Count descriptors owned by this process. The directory descriptor
+ * used for the scan is included in every measurement. Returns -1
+ * without /proc so a non-procfs Linux build skips the comparison
+ * instead of failing.
  */
 int CountOpenFds ()
 {
@@ -182,7 +186,10 @@ void TestLogTextSanitization ()
 	assert (SanitizeLogText (oversized).size () == MAX_TEXT_SIZE);
 }
 
-/** The sanitizer matrix: UTF-8 awareness, C1 neutralisation and the bound. */
+/**
+ * The sanitizer matrix: UTF-8 awareness, C1 neutralisation and the
+ * bound.
+ */
 void TestLogSanitizerMatrix ()
 {
 	// C0 controls other than tab, DEL and NUL are neutralised one for one.
@@ -201,7 +208,8 @@ void TestLogSanitizerMatrix ()
 	assert (sanitized[1] == '\t');
 	assert (sanitized[2] == 'b');
 
-	// The single-byte C1 CSI (0x9B) is not valid UTF-8 and must not survive.
+	// The single-byte C1 CSI (0x9B) is not valid UTF-8 and must not
+	// survive.
 	std::string csi;
 	csi.push_back ('\x9b');
 	csi += "[31mred";
@@ -209,7 +217,8 @@ void TestLogSanitizerMatrix ()
 	assert (csiSanitized.find ('\x9b') == std::string::npos);
 	assert (csiSanitized == "?[31mred");
 
-	// U+009B (bytes C2 9B) is the encoded C1 CSI. The whole sequence becomes
+	// U+009B (bytes C2 9B) is the encoded C1 CSI. The whole sequence
+	// becomes
 	// one space so the output stays valid UTF-8 and no sequence is split.
 	const std::string encodedCsi = "\xC2\x9B"
 								   "[31mred";
@@ -228,8 +237,8 @@ void TestLogSanitizerMatrix ()
 	assert (SanitizeLogText ("a\xED\xA0\x80") == "a???"); // surrogate
 	assert (SanitizeLogText ("a\xF0\x9F\x98") == "a???"); // truncated 4-byte sequence
 
-	// Cutting at the bound happens on a sequence boundary and is marked, with
-	// the marker inside the bound.
+	// Cutting at the bound happens on a sequence boundary and is marked,
+	// with the marker inside the bound.
 	const std::string oversized = std::string (MAX_TEXT_SIZE, 'a') + "\xF0\x9F\x98\x80";
 	const std::string truncated = SanitizeLogText (oversized);
 	assert (truncated.size () == MAX_TEXT_SIZE);
@@ -247,7 +256,10 @@ void TestLogSanitizerMatrix ()
 	assert (SanitizeLogText ("short").find (LOG_TRUNCATION_MARKER) == std::string::npos);
 }
 
-/** The compiled-in sensitive-key list and its bounded, exact redaction. */
+/**
+ * The compiled-in sensitive-key list and its bounded, exact
+ * redaction.
+ */
 void TestLogRedaction ()
 {
 	assert (RedactLogSecrets ("password=hunter2") == "password=<redacted>");
@@ -266,7 +278,8 @@ void TestLogRedaction ()
 		assert (RedactLogSecrets (plain) == plain);
 	}
 
-	// A key inside a longer identifier is not a key, but a separated prefix is.
+	// A key inside a longer identifier is not a key, but a separated
+	// prefix is.
 	assert (RedactLogSecrets ("sessiontoken=abc") == "sessiontoken=abc");
 	assert (RedactLogSecrets ("auth_token=abc") == "auth_token=<redacted>");
 	assert (RedactLogSecrets ("client_secret:abc") == "client_secret:<redacted>");
@@ -287,7 +300,10 @@ void TestLogRedaction ()
 	assert (redactions == MAX_LOG_REDACTIONS);
 }
 
-/** The file-sink byte budget decision, independent of the 64 MiB default. */
+/**
+ * The file-sink byte budget decision, independent of the 64 MiB
+ * default.
+ */
 void TestLogSinkBudget ()
 {
 	assert (MAX_LOG_SINK_BYTES == 64u * 1024u * 1024u);
@@ -303,9 +319,10 @@ void TestLogSinkBudget ()
 }
 
 /**
- * A minimal log peer that acknowledges one configuration and then drains one
- * record every 400 ms. The slow drain keeps the sender's queue full so a send
- * has to wait, without ever hitting the sink's one-second send timeout.
+ * A minimal log peer that acknowledges one configuration and then
+ * drains one record every 400 ms. The slow drain keeps the sender's
+ * queue full so a send has to wait, without ever hitting the sink's
+ * one-second send timeout.
  */
 void RunSlowLogPeer (int fd)
 {
@@ -327,10 +344,10 @@ void RunSlowLogPeer (int fd)
 
 void TestBoundedChildStop ()
 {
-	// A child that ignores SIGTERM must not make the production wait helper
-	// perform an unbounded waitpid. The helper is header-inline so this test
-	// exercises the exact logic ChildProcess::WaitForExit uses without
-	// linking the daemon-only Worker.cpp.
+	// A child that ignores SIGTERM must not make the production wait
+	// helper perform an unbounded waitpid. The helper is header-inline so
+	// this test exercises the exact logic ChildProcess::WaitForExit uses
+	// without linking the daemon-only Worker.cpp.
 	{
 		pid_t pid = fork ();
 		assert (pid >= 0);
@@ -403,9 +420,9 @@ int main ()
 		unlink (path.c_str ());
 	}
 
-	// ConfigureLogFd is the production path used by LogSink: the parent opens
-	// the sink and transfers exactly one descriptor. The worker must adopt it,
-	// and the parent must keep (and close) its own copy.
+	// ConfigureLogFd is the production path used by LogSink: the parent
+	// opens the sink and transfers exactly one descriptor. The worker must
+	// adopt it, and the parent must keep (and close) its own copy.
 	{
 		const std::string path = std::string (dir) + "/preopened.log";
 		RunScenario (
@@ -454,8 +471,8 @@ int main ()
 			{
 				const Message configure { MessageType::ConfigureLog, 1, LogConfig (false, path, "test") };
 				assert (channel.Send (configure).has_value ());
-				// Wait until the worker has opened the file, which proves the
-				// first configuration was processed before the duplicate is sent.
+				// Wait until the worker has opened the file, which proves the first
+				// configuration was processed before the duplicate is sent.
 				assert (WaitForFile (path, 1000));
 				assert (channel.Send (configure).has_value ());
 			},
@@ -480,12 +497,13 @@ int main ()
 	}
 
 	// Descriptor policy: ConfigureLogFd requires exactly one regular-file
-	// descriptor for a file sink, legacy ConfigureLog must not carry one, and
-	// a non-file sink must not carry one either. Most of these are now rejected
-	// by the channel's endpoint enforcement (registry DescriptorPolicy) with a
-	// typed Error, before the worker switch runs; the worker's own checks remain
-	// as defence in depth. Either way the descriptor is closed and a closed
-	// control channel then terminates the worker with a non-zero status.
+	// descriptor for a file sink, legacy ConfigureLog must not carry one,
+	// and a non-file sink must not carry one either. Most of these are now
+	// rejected by the channel's endpoint enforcement (registry
+	// DescriptorPolicy) with a typed Error, before the worker switch runs;
+	// the worker's own checks remain as defence in depth. Either way the
+	// descriptor is closed and a closed control channel then terminates
+	// the worker with a non-zero status.
 	{
 		// 1. Descriptor mode without a descriptor.
 		const std::string path = std::string (dir) + "/missing-fd.log";
@@ -564,7 +582,8 @@ int main ()
 		unlink (path.c_str ());
 	}
 
-	// A descriptor attached to a log record is a protocol violation: records
+	// A descriptor attached to a log record is a protocol violation:
+	// records
 	// carry no descriptors, and the worker must close and reject it.
 	{
 		const std::string path = std::string (dir) + "/record-fd.log";
@@ -587,7 +606,8 @@ int main ()
 		unlink (path.c_str ());
 	}
 
-	// Oversized text is truncated at the protocol bound; control characters
+	// Oversized text is truncated at the protocol bound; control
+	// characters
 	// (including newline) are flattened so one record cannot inject lines.
 	{
 		const std::string path = std::string (dir) + "/oversized.log";
@@ -614,8 +634,8 @@ int main ()
 		unlink (path.c_str ());
 	}
 
-	// A NUL byte in the configured path is rejected before it can truncate a
-	// C path argument in the worker.
+	// A NUL byte in the configured path is rejected before it can truncate
+	// a C path argument in the worker.
 	{
 		RunScenario (
 			[] (Channel & channel)
@@ -630,7 +650,8 @@ int main ()
 	}
 
 	// Control messages are safe before configuration: Ping gets a Pong and
-	// Shutdown before Configure is a clean exit rather than a protocol error.
+	// Shutdown before Configure is a clean exit rather than a protocol
+	// error.
 	{
 		RunScenario (
 			[] (Channel & channel)
@@ -669,7 +690,8 @@ int main ()
 		unlink (path.c_str ());
 	}
 
-	// A descriptor on a control probe is not part of any defined operation:
+	// A descriptor on a control probe is not part of any defined
+	// operation:
 	// it is closed and the worker fails closed instead of answering Pong.
 	{
 		RunScenario (
@@ -684,8 +706,8 @@ int main ()
 	}
 
 	// Reattach: the sink keeps its configuration and can replace a dead
-	// worker's channel without constructing a second sink object. This is the
-	// primitive the bounded restart monitor uses.
+	// worker's channel without constructing a second sink object. This is
+	// the primitive the bounded restart monitor uses.
 	{
 		const std::string path = std::string (dir) + "/reattach.log";
 		auto first = Channel::CreatePair ();
@@ -751,9 +773,9 @@ int main ()
 		unlink (path.c_str ());
 	}
 
-	// Redaction and C1 neutralisation happen before a record reaches the sink.
-	// A secret value must never be written, and the C1 CSI byte must not reach
-	// the file or a terminal that later displays it.
+	// Redaction and C1 neutralisation happen before a record reaches the
+	// sink. A secret value must never be written, and the C1 CSI byte must
+	// not reach the file or a terminal that later displays it.
 	{
 		const std::string path = std::string (dir) + "/redacted.log";
 		RunScenario (
@@ -779,10 +801,10 @@ int main ()
 		unlink (path.c_str ());
 	}
 
-	// The file sink stops appending at its byte budget. The test presents the
-	// file already at the cap (a sparse file, so no real bytes are written) and
-	// the worker must discard the record instead of growing it. There is no
-	// rotation and no rewrite of existing content.
+	// The file sink stops appending at its byte budget. The test presents
+	// the file already at the cap (a sparse file, so no real bytes are
+	// written) and the worker must discard the record instead of growing
+	// it. There is no rotation and no rewrite of existing content.
 	{
 		const std::string path = std::string (dir) + "/capped.log";
 		{
@@ -810,9 +832,9 @@ int main ()
 		unlink (path.c_str ());
 	}
 
-	// The proxy path is what the supervisor uses: the sink never opens the log
-	// path locally, the worker opens it itself, and a replacement worker is
-	// attached with ReattachProxy.
+	// The proxy path is what the supervisor uses: the sink never opens the
+	// log path locally, the worker opens it itself, and a replacement
+	// worker is attached with ReattachProxy.
 	{
 		const std::string path = std::string (dir) + "/proxy.log";
 		auto first = Channel::CreatePair ();
@@ -864,10 +886,10 @@ int main ()
 		unlink (path.c_str ());
 	}
 
-	// A slow worker must not hold the router's log mutex: Write() snapshots the
-	// channel under the lock and performs the bounded send outside it. A port
-	// that kept the send inside the lock would make this counter read wait for
-	// the whole send.
+	// A slow worker must not hold the router's log mutex: Write()
+	// snapshots the channel under the lock and performs the bounded send
+	// outside it. A port that kept the send inside the lock would make
+	// this counter read wait for the whole send.
 	{
 		auto pair = Channel::CreatePair ();
 		assert (pair.has_value ());
@@ -893,9 +915,9 @@ int main ()
 			sink.Write (4, 1, record);
 			waited = std::chrono::steady_clock::now () - started >= std::chrono::milliseconds (100);
 		}
-		// The peer drains one record per 400 ms, so a full queue makes the send
-		// wait well past the threshold while still completing under the sink's
-		// one-second timeout.
+		// The peer drains one record per 400 ms, so a full queue makes the
+		// send wait well past the threshold while still completing under the
+		// sink's one-second timeout.
 		assert (waited);
 		assert (sink.IsOpen ());
 		assert (sink.GetDroppedCount () == 0);

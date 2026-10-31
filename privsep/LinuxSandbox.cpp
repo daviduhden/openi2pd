@@ -5,10 +5,10 @@
  * openi2pd: LinuxSandbox.
  *
  * Implements least-privilege Linux sandboxing: no-new-privs, capability
- * drop, optional network namespace, Landlock path and network rules, a seccomp
- * socket filter for AF_INET/AF_INET6 or all socket creation, and optional
- * cgroup-v2 limits. Non-Linux targets return explicit unavailability errors.
- *
+ * drop, optional network namespace, Landlock path and network rules, a
+ * seccomp socket filter for AF_INET/AF_INET6 or all socket creation,
+ * and optional cgroup-v2 limits. Non-Linux targets return explicit
+ * unavailability errors.
  */
 
 #ifndef _GNU_SOURCE
@@ -98,24 +98,28 @@ namespace i2p::privsep
 #ifndef CGROUP2_SUPER_MAGIC
 #define CGROUP2_SUPER_MAGIC 0x63677270
 #endif
-// Landlock ABI 10 adds UDP access rights. Only request the bits exposed by the
-// build headers; older distribution headers can otherwise make the kernel
-// reject the whole ruleset with EINVAL. Profiles that need UDP confinement
-// additionally deny socket creation/Internet sockets through seccomp.
+// Landlock ABI 10 adds UDP access rights. Only request the bits exposed
+// by the build headers; older distribution headers can otherwise make
+// the kernel reject the whole ruleset with EINVAL. Profiles that need
+// UDP confinement additionally deny socket creation/Internet sockets
+// through seccomp.
 #if defined(LANDLOCK_ACCESS_NET_BIND_UDP) && defined(LANDLOCK_ACCESS_NET_CONNECT_SEND_UDP)
 #define I2PD_LANDLOCK_HAS_UDP 1
 #endif
 namespace
 {
-	/** A process installs its socket filter at most once (filters stack). */
+	/**
+	 * A process installs its socket filter at most once (filters
+	 * stack). */
 	bool g_SeccompInstalled = false;
 #ifdef I2PD_LANDLOCK_HEADERS_AVAILABLE
 	// Linux UAPI linux/landlock.h: ABI 2 adds REFER (bit 13), ABI 3 adds
-	// TRUNCATE (bit 14), and ABI 4 appends handled_access_net with TCP bits
-	// 0 (bind) and 1 (connect). Keep the exact extensible syscall layout here
-	// so older distribution headers do not dictate the running kernel's policy.
-	// The kernel accepts a zero extension on older ABIs; masks below include
-	// each right only when the probed kernel ABI supports it.
+	// TRUNCATE (bit 14), and ABI 4 appends handled_access_net with TCP
+	// bits 0 (bind) and 1 (connect). Keep the exact extensible syscall
+	// layout here so older distribution headers do not dictate the running
+	// kernel's policy. The kernel accepts a zero extension on older ABIs;
+	// masks below include each right only when the probed kernel ABI
+	// supports it.
 	struct LandlockRulesetAttributes
 	{
 		uint64_t handled_access_fs = 0;
@@ -185,9 +189,10 @@ namespace
 	{
 		// Only rights understood by the running ABI are requested. Including
 		// an unknown bit makes landlock_create_ruleset fail with EINVAL.
-		// EXECUTE is handled but no worker rule grants it: a Landlock-restricted
-		// worker must not exec a helper binary. It is excluded from the rule
-		// mask below so writable roots do not become executable.
+		// EXECUTE is handled but no worker rule grants it: a
+		// Landlock-restricted worker must not exec a helper binary. It is
+		// excluded from the rule mask below so writable roots do not become
+		// executable.
 		uint64_t mask = LANDLOCK_ACCESS_FS_EXECUTE | LANDLOCK_ACCESS_FS_WRITE_FILE | LANDLOCK_ACCESS_FS_REMOVE_DIR
 			| LANDLOCK_ACCESS_FS_REMOVE_FILE | LANDLOCK_ACCESS_FS_MAKE_CHAR | LANDLOCK_ACCESS_FS_MAKE_DIR
 			| LANDLOCK_ACCESS_FS_MAKE_REG | LANDLOCK_ACCESS_FS_MAKE_SOCK | LANDLOCK_ACCESS_FS_MAKE_FIFO
@@ -223,11 +228,11 @@ namespace
 			if (errno != EPERM) return i2p::unexpected (std::string ("capset: ") + strerror (errno));
 		}
 #ifdef PR_CAPBSET_DROP
-		// Clearing the effective/permitted set is not enough for a root worker:
-		// remove every capability from the bounding set as well so a future
-		// exec/file capability cannot restore it. EPERM is normal for an
-		// unprivileged process; EINVAL means the capability number is unknown
-		// on this kernel.
+		// Clearing the effective/permitted set is not enough for a root
+		// worker: remove every capability from the bounding set as well so a
+		// future exec/file capability cannot restore it. EPERM is normal for
+		// an unprivileged process; EINVAL means the capability number is
+		// unknown on this kernel.
 		for (int capability = 0; capability <= 63; ++capability)
 		{
 			if (prctl (PR_CAPBSET_DROP, capability, 0, 0, 0) != 0 && errno != EPERM && errno != EINVAL)
@@ -289,7 +294,8 @@ namespace
 			filter.push_back (BPF_STMT (BPF_RET | BPF_K, deny));
 		};
 		// Block the descriptor/process-memory side channels that could undo
-		// a storage worker's filesystem/network split against a same-UID core.
+		// a storage worker's filesystem/network split against a same-UID
+		// core.
 #ifdef SYS_process_vm_readv
 		denySyscall (SYS_process_vm_readv);
 #endif
@@ -327,7 +333,8 @@ namespace
 			filter.push_back (BPF_JUMP (BPF_JMP | BPF_JEQ | BPF_K, SYS_socketpair, 0, 1));
 			filter.push_back (BPF_STMT (BPF_RET | BPF_K, deny));
 			// A storage worker has no new peer: deny the connection lifecycle on
-			// any inherited or later-received socket as well as process creation.
+			// any inherited or later-received socket as well as process
+			// creation.
 #ifdef SYS_connect
 			denySyscall (SYS_connect);
 #endif
@@ -390,7 +397,8 @@ namespace
 #ifndef I2PD_LANDLOCK_HEADERS_AVAILABLE
 		(void)profile;
 		// Missing build headers must never turn a requested boundary into an
-		// unenforced success, even when optional kernel probing was requested.
+		// unenforced success, even when optional kernel probing was
+		// requested.
 		return i2p::unexpected ("Landlock build headers are unavailable");
 #else
 		const long abi = LandlockCreateRuleset (nullptr, 0, LANDLOCK_CREATE_RULESET_VERSION);
@@ -489,8 +497,9 @@ LinuxSandboxProfile GetLinuxSandboxProfile (WorkerClass workerClass)
 		// A storage worker reads only the delegated root and the files inside
 		// it; do not leave this to each call site.
 		profile.restrictFilesystemReads = true;
-		// The namespace, when available, is installed by the spawn child while
-		// it is still privileged. It is best-effort; seccomp is the boundary.
+		// The namespace, when available, is installed by the spawn child
+		// while it is still privileged. It is best-effort; seccomp is the
+		// boundary.
 		profile.isolateNetworkNamespace = false;
 		break;
 	case WorkerClass::Network:
@@ -567,14 +576,15 @@ i2p::expected<void, std::string> VerifyWorkerPrivileges ()
 }
 
 /**
- * Install the pre-configuration half of a worker profile: no-new-privs, an
- * empty capability set and the role's socket/Internet seccomp filter. It is
- * called before the first frame is parsed because it needs no delegated root;
- * Landlock, which does, is installed later by ApplyLinuxSandbox().
- *
- * The two mutual-exclusion checks are policy assertions, not runtime probes:
- * a profile that asks for both network and persistent writes, or for both
- * "all sockets" and "Internet sockets only", is a programming error.
+ * Install the pre-configuration half of a worker profile: no-new-privs,
+ * an empty capability set and the role's socket/Internet seccomp
+ * filter. It is called before the first frame is parsed because it
+ * needs no delegated root; Landlock, which does, is installed later by
+ * ApplyLinuxSandbox().
+ * The two mutual-exclusion checks are policy assertions, not runtime
+ * probes: a profile that asks for both network and persistent writes,
+ * or for both "all sockets" and "Internet sockets only", is a
+ * programming error.
  */
 i2p::expected<void, std::string> ApplyLinuxIpcLockdown (const LinuxSandboxProfile & profile)
 {
@@ -594,16 +604,16 @@ i2p::expected<void, std::string> ApplyLinuxIpcLockdown (const LinuxSandboxProfil
 }
 
 /**
- * Install a complete worker profile. The order is deliberate: no-new-privs
- * first (so nothing later can regain privilege), then the optional empty
- * network namespace, then the capability drop, then Landlock (which needs the
- * delegated paths to exist), then seccomp. A seccomp filter cannot be removed
- * and Landlock can only tighten, so a partially applied profile fails closed by
- * returning an error rather than serving with the remaining steps skipped.
- *
- * A best-effort namespace is not a boundary claim: when unshare(CLONE_NEWNET)
- * fails without requireNetworkNamespace, seccomp remains the enforced network
- * policy for that worker.
+ * Install a complete worker profile. The order is deliberate:
+ * no-new-privs first (so nothing later can regain privilege), then the
+ * optional empty network namespace, then the capability drop, then
+ * Landlock (which needs the delegated paths to exist), then seccomp. A
+ * seccomp filter cannot be removed and Landlock can only tighten, so a
+ * partially applied profile fails closed by returning an error rather
+ * than serving with the remaining steps skipped.
+ * A best-effort namespace is not a boundary claim: when
+ * unshare(CLONE_NEWNET) fails without requireNetworkNamespace, seccomp
+ * remains the enforced network policy for that worker.
  */
 i2p::expected<void, std::string> ApplyLinuxSandbox (const LinuxSandboxProfile & profile)
 {
@@ -635,12 +645,13 @@ i2p::expected<void, std::string> ApplyLinuxSandbox (const LinuxSandboxProfile & 
 /**
  * Confine a supervisor that will fork/exec workers.
  *
- * Only no-new-privs and the capability drop are applied. Landlock, seccomp
- * socket filters and a network namespace are intentionally absent: they are
- * inherited across fork+exec and cannot be relaxed by the child, so installing
- * a supervisor-level filesystem or socket domain here would permanently deny a
- * storage or network child its delegated capability. Each exec'ed worker applies
- * its own role profile instead.
+ * Only no-new-privs and the capability drop are applied. Landlock,
+ * seccomp socket filters and a network namespace are intentionally
+ * absent: they are inherited across fork+exec and cannot be relaxed by
+ * the child, so installing a supervisor-level filesystem or socket
+ * domain here would permanently deny a storage or network child its
+ * delegated capability. Each exec'ed worker applies its own role
+ * profile instead.
  */
 i2p::expected<void, std::string> ApplyLinuxSupervisorSandbox ()
 {

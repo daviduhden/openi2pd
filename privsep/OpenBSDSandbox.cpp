@@ -4,12 +4,12 @@
  *
  * openi2pd: OpenBSDSandbox.
  *
- * Builds least-privilege pledge and unveil policies per worker role, merges
- * duplicate path rules by unioning their permissions, then applies unveil
- * (locking the list) before pledge. Also builds the router core's startup and
- * runtime pledge windows, parses the operator pledge file, and reports whether
- * a policy grants network, persistent-write or process-creation capability.
- *
+ * Builds least-privilege pledge and unveil policies per worker role,
+ * merges duplicate path rules by unioning their permissions, then
+ * applies unveil (locking the list) before pledge. Also builds the
+ * router core's startup and runtime pledge windows, parses the operator
+ * pledge file, and reports whether a policy grants network,
+ * persistent-write or process-creation capability.
  */
 
 #include "OpenBSDSandbox.h"
@@ -71,17 +71,19 @@ namespace
 		return i2p::unexpected (std::string (message));
 	}
 
-	/** Promise names accepted by the supported OpenBSD release (pledge(2)). */
+	/**
+	 * Promise names accepted by the supported OpenBSD release
+	 * (pledge(2)). */
 	constexpr std::string_view KNOWN_PLEDGE_PROMISES[]
 		= { "audio", "bpf", "chown", "cpath", "disklabel", "dns", "dpath", "drm", "error", "exec", "fattr", "flock",
 			  "getpw", "id", "inet", "mcast", "pf", "proc", "prot_exec", "ps", "recvfd", "route", "rpath", "sendfd",
 			  "settime", "stdio", "tape", "tty", "unix", "unveil", "video", "vminfo", "vmm", "wpath", "wroute" };
 
 	/**
-	 * Promises a runtime policy file may never add, even when the runtime base
-	 * set already contains one of them. They either re-open process creation
-	 * (proc/exec), change process identity (id/chown), or grant privileged
-	 * kernel interfaces the router never needs.
+	 * Promises a runtime policy file may never add, even when the runtime
+	 * base set already contains one of them. They either re-open process
+	 * creation (proc/exec), change process identity (id/chown), or grant
+	 * privileged kernel interfaces the router never needs.
 	 */
 	constexpr std::string_view RUNTIME_FORBIDDEN_PLEDGE_PROMISES[] = { "proc", "exec", "id", "chown", "dpath",
 		"prot_exec", "pf", "bpf", "vmm", "tty", "audio", "video", "tape", "disklabel", "drm", "wroute", "settime" };
@@ -173,11 +175,12 @@ i2p::expected<OpenBSDPolicy, std::string> BuildOpenBSDPolicy (
 		// installs its own unveil rules and pledge immediately after execve
 		// and before it serves a frame.
 		//
-		// unveil is forced on for this role even when the operator disabled it:
-		// an unlocked unveil list would let the supervisor execve an arbitrary
-		// binary (the exec promise does not need rpath). Exactly one rule is
-		// added - the frozen executable path with "x" - and nothing else, so
-		// the supervisor can neither read/write a path nor exec a second image.
+		// unveil is forced on for this role even when the operator disabled
+		// it: an unlocked unveil list would let the supervisor execve an
+		// arbitrary binary (the exec promise does not need rpath). Exactly
+		// one rule is added - the frozen executable path with "x" - and
+		// nothing else, so the supervisor can neither read/write a path nor
+		// exec a second image.
 		policy.useUnveil = true;
 		if (config.executablePath.empty () || config.executablePath.front () != '/'
 			|| config.executablePath.find ('\0') != std::string::npos)
@@ -188,23 +191,24 @@ i2p::expected<OpenBSDPolicy, std::string> BuildOpenBSDPolicy (
 		AppendPromise (policy.pledge, "proc");
 		AppendPromise (policy.pledge, "exec");
 		// No "unix": stdio already permits socketpair(2), which is all the
-		// supervisor needs to build a worker channel. "unix" would additionally
-		// allow connect/bind at any pathname without rpath or cpath.
-		// "id" is present only when a worker identity is configured: the forked
-		// child drops supplementary groups, gid and uid immediately before
-		// execve, in this process, so the promise is required here and nowhere
-		// else.
+		// supervisor needs to build a worker channel. "unix" would
+		// additionally allow connect/bind at any pathname without rpath or
+		// cpath. "id" is present only when a worker identity is configured:
+		// the forked child drops supplementary groups, gid and uid
+		// immediately before execve, in this process, so the promise is
+		// required here and nowhere else.
 		if (config.dropCredentials) AppendPromise (policy.pledge, "id");
 		break;
 
 	case OpenBSDWorkerRole::StorageBroker:
-		// The broker is spawned before the router runtime pledge, forwards one
-		// channel descriptor per worker with sendfd, and never receives one.
-		// recvfd is deliberately absent: a setup/replacement frame that carries
-		// an unexpected descriptor fails at recvmsg before the payload is
-		// parsed, which is the fail-closed outcome for this role. "unix" is
-		// absent for the same reason as the supervisor: socketpair(2) is part
-		// of stdio and the broker never resolves a pathname.
+		// The broker is spawned before the router runtime pledge, forwards
+		// one channel descriptor per worker with sendfd, and never receives
+		// one. recvfd is deliberately absent: a setup/replacement frame that
+		// carries an unexpected descriptor fails at recvmsg before the
+		// payload is parsed, which is the fail-closed outcome for this role.
+		// "unix" is absent for the same reason as the supervisor:
+		// socketpair(2) is part of stdio and the broker never resolves a
+		// pathname.
 		policy.useUnveil = true;
 		if (config.executablePath.empty () || config.executablePath.front () != '/'
 			|| config.executablePath.find ('\0') != std::string::npos)
@@ -215,8 +219,9 @@ i2p::expected<OpenBSDPolicy, std::string> BuildOpenBSDPolicy (
 		AppendPromise (policy.pledge, "proc");
 		AppendPromise (policy.pledge, "exec");
 		AppendPromise (policy.pledge, "sendfd");
-		// Same reason as the supervisor: the forked child drops uid/gid before
-		// execve, so a configured worker identity needs the id promise.
+		// Same reason as the supervisor: the forked child drops uid/gid
+		// before execve, so a configured worker identity needs the id
+		// promise.
 		if (config.dropCredentials) AppendPromise (policy.pledge, "id");
 		break;
 
@@ -303,8 +308,8 @@ i2p::expected<OpenBSDPolicy, std::string> BuildOpenBSDPolicy (
 
 	case OpenBSDWorkerRole::Crypto:
 		// Long-term keys must be loaded before this policy is installed, or
-		// supplied through a pre-opened descriptor. There is no network and no
-		// pathname write capability. Operations use bounded key handles.
+		// supplied through a pre-opened descriptor. There is no network and
+		// no pathname write capability. Operations use bounded key handles.
 		AppendPromise (policy.pledge, "stdio");
 		AppendPromise (policy.pledge, "unix");
 		break;
@@ -333,17 +338,17 @@ i2p::expected<void, std::string> ApplyOpenBSDPolicy (const OpenBSDPolicy & polic
 		}
 		if (unveil (nullptr, nullptr) == -1) return i2p::unexpected (std::string ("unveil lock: ") + strerror (errno));
 	}
-	// OPENBSD_PLEDGE_EXECPROMISES is always null: an exec'ed image starts with
-	// no promise at all and must install its own unveil+pledge. Never replace
-	// this with a promise string; the value is pinned in the header and in the
-	// statically checked policy test.
+	// OPENBSD_PLEDGE_EXECPROMISES is always null: an exec'ed image starts
+	// with no promise at all and must install its own unveil+pledge. Never
+	// replace this with a promise string; the value is pinned in the
+	// header and in the statically checked policy test.
 	if (policy.usePledge && pledge (policy.pledge.c_str (), OPENBSD_PLEDGE_EXECPROMISES) == -1)
 		return i2p::unexpected ("pledge " + policy.pledge + ": " + std::string (strerror (errno)));
 	return { };
 #else
-	// Deliberate fail-closed stub: an unavailable sandbox is an error, never a
-	// successful no-op, so no caller can silently continue unconfined on a
-	// platform that does not implement pledge/unveil.
+	// Deliberate fail-closed stub: an unavailable sandbox is an error,
+	// never a successful no-op, so no caller can silently continue
+	// unconfined on a platform that does not implement pledge/unveil.
 	(void)policy;
 	return i2p::unexpected ("OpenBSD sandbox is not available on this platform");
 #endif
@@ -372,10 +377,11 @@ i2p::expected<int, std::string> OpenPreopenedDirectory (std::string_view path)
 	return fd;
 }
 
-// Validation is performed on the descriptor, not on the path it was addressed
-// with, so a rename or replacement between sendfd and this call cannot redirect
-// the authority. CLOEXEC is required as well: an inherited descriptor that
-// survives execve would bypass the exec'ed worker's own descriptor contract.
+// Validation is performed on the descriptor, not on the path it was
+// addressed with, so a rename or replacement between sendfd and this
+// call cannot redirect the authority. CLOEXEC is required as well: an
+// inherited descriptor that survives execve would bypass the exec'ed
+// worker's own descriptor contract.
 i2p::expected<void, std::string> ValidatePreopenedDescriptor (int fd, bool directory)
 {
 	if (fd < 0) return i2p::unexpected ("invalid pre-opened descriptor");
@@ -436,8 +442,8 @@ std::vector<std::string> OpenBSDPledgePromiseList (OpenBSDPledgePhase phase, con
 
 	// Both phases: the router core always needs its own queue, sockets and
 	// already-open descriptors, its data/certificate reads and writes, its
-	// signing-key chmod, the transports, the resolver and local IPC (worker
-	// channels and /dev/log).
+	// signing-key chmod, the transports, the resolver and local IPC
+	// (worker channels and /dev/log).
 	add ("stdio"); // queue, sockets, signals and already-open descriptors
 	add ("rpath"); // read router data, certificates and configuration
 	add ("wpath"); // write router data and logs
@@ -504,10 +510,11 @@ bool IsPledgePromiseSubset (std::string_view subset, std::string_view superset)
 	return true;
 }
 
-// Reading the operator policy file needs rpath, so it belongs to the startup
-// phase: after the runtime pledge has removed path opening, the same call would
-// abort the core instead of returning an error. The accepted list is only
-// intersected with the phase base set; nothing here can widen a promise.
+// Reading the operator policy file needs rpath, so it belongs to the
+// startup phase: after the runtime pledge has removed path opening, the
+// same call would abort the core instead of returning an error. The
+// accepted list is only intersected with the phase base set; nothing
+// here can widen a promise.
 i2p::expected<std::vector<std::string>, std::string> ParseOpenBSDPledgeFile (
 	const std::string & path, std::span<const std::string_view> allowedPromises, OpenBSDPledgePhase phase)
 {

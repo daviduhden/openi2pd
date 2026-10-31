@@ -4,11 +4,11 @@
  *
  * openi2pd: DaemonWin32.
  *
- * Implements the Win32 daemon hooks around the shared Daemon singleton: locale
- * and console code-page setup, service dispatch when running as a service, and
- * GUI start, stop and message-loop handling when built with WIN32_APP. It also
- * applies the insomnia execution-state request and hides standard handles when
- * file logging is active.
+ * Implements the Win32 daemon hooks around the shared Daemon singleton:
+ * locale and console code-page setup, service dispatch when running as
+ * a service, and GUI start, stop and message-loop handling when built
+ * with WIN32_APP. It also applies the insomnia execution-state request
+ * and hides standard handles when file logging is active.
  *
  */
 
@@ -45,8 +45,8 @@ namespace util
 		if (!Daemon_Singleton::init (argc, argv)) return false;
 
 		// Service mode hands the process to the SCM dispatcher, which blocks
-		// until the service stops; reporting success here would let main() call
-		// start() on a router the service already owns.
+		// until the service stops; reporting success here would let main()
+		// call start() on a router the service already owns.
 		if (isDaemon)
 		{
 			LogPrint (eLogDebug, "Daemon: running as service");
@@ -82,8 +82,8 @@ namespace util
 		}
 		bool insomnia;
 		i2p::config::GetOption ("insomnia", insomnia);
-		// Execution-state request, not a security control: it may be ignored by
-		// the OS or overridden by a later power policy.
+		// Execution-state request, not a security control: it may be ignored
+		// by the OS or overridden by a later power policy.
 		if (insomnia) SetThreadExecutionState (ES_CONTINUOUS | ES_SYSTEM_REQUIRED);
 		return ret;
 	}

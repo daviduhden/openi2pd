@@ -4,18 +4,19 @@
  *
  * openi2pd: WindowsIsolation.
  *
- * Implements the Windows role-isolation model: the per-role AppContainer
- * profile with its derived SID and capability SIDs, and the delegated-root DACL
- * grant. AppContainer membership is the filesystem/network boundary; the
- * restricted token, the Job Object and the pipe DACL are separate layers owned
- * by WindowsIpc. A profile is created once per role and reused; it is never
- * deleted here because it is a durable operator-owned object.
- *
+ * Implements the Windows role-isolation model: the per-role
+ * AppContainer profile with its derived SID and capability SIDs, and
+ * the delegated-root DACL grant. AppContainer membership is the
+ * filesystem/network boundary; the restricted token, the Job Object and
+ * the pipe DACL are separate layers owned by WindowsIpc. A profile is
+ * created once per role and reused; it is never deleted here because it
+ * is a durable operator-owned object.
  */
 
 #ifdef _WIN32
-// Self-sufficient TU: the project build defines these, but the AppContainer
-// declarations in userenv.h are selected by WINVER, so pin them here too.
+// Self-sufficient TU: the project build defines these, but the
+// AppContainer declarations in userenv.h are selected by WINVER, so pin
+// them here too.
 #ifndef WINVER
 #define WINVER 0x0A00
 #endif
@@ -56,9 +57,9 @@ namespace
 	constexpr size_t WINDOWS_ROLE_COUNT = static_cast<size_t> (WindowsWorkerRole::Admin) + 1;
 
 	// The Windows vocabulary is duplicated in the platform-free capability
-	// header so the mapping can be reviewed and tested everywhere. Pin the two
-	// enumerations together: a reordering or a new role must not silently
-	// shift a capability row.
+	// header so the mapping can be reviewed and tested everywhere. Pin the
+	// two enumerations together: a reordering or a new role must not
+	// silently shift a capability row.
 	static_assert (WINDOWS_ROLE_COUNT == WINDOWS_ISOLATION_ROLE_COUNT,
 		"the Windows worker roles drifted from the capability mapping");
 	static_assert (
@@ -160,11 +161,11 @@ namespace
 	}
 
 	/**
-	 * A delegated root is resolved by the caller and handed in as an absolute
-	 * local or UNC path. A relative path would depend on the worker's current
-	 * directory, and the device namespace would let the caller name a device
-	 * object instead of a filesystem directory: both are refused before any
-	 * security API is called.
+	 * A delegated root is resolved by the caller and handed in as an
+	 * absolute local or UNC path. A relative path would depend on the
+	 * worker's current directory, and the device namespace would let the
+	 * caller name a device object instead of a filesystem directory: both
+	 * are refused before any security API is called.
 	 */
 	bool IsAbsoluteFilesystemPath (const std::wstring & path)
 	{
@@ -178,9 +179,9 @@ namespace
 	}
 
 	/**
-	 * One capability SID, owned by the caller's SID_AND_ATTRIBUTES entry. The
-	 * SID is a LocalAlloc block because the profile/token APIs consume a PSID
-	 * and every owner in this file frees with LocalFree.
+	 * One capability SID, owned by the caller's SID_AND_ATTRIBUTES entry.
+	 * The SID is a LocalAlloc block because the profile/token APIs consume
+	 * a PSID and every owner in this file frees with LocalFree.
 	 */
 	bool AppendCapability (
 		WELL_KNOWN_SID_TYPE type, std::vector<SID_AND_ATTRIBUTES> & capabilities, std::string & error)
@@ -200,8 +201,8 @@ namespace
 		SID_AND_ATTRIBUTES entry { };
 		entry.Sid = sid.get ();
 		entry.Attributes = SE_GROUP_ENABLED;
-		// A vector growth failure must not leak the SID: push_back first, then
-		// transfer ownership to the vector.
+		// A vector growth failure must not leak the SID: push_back first,
+		// then transfer ownership to the vector.
 		try
 		{
 			capabilities.push_back (entry);
@@ -221,11 +222,12 @@ namespace
 		WindowsRoleIsolation isolation { };
 		isolation.appContainer = appContainer;
 		isolation.lowPrivilegeAppContainer = appContainer && lowPrivilege;
-		// An AppContainer worker also receives a restricted token: the token is
-		// a second reduction, never the boundary on its own.
+		// An AppContainer worker also receives a restricted token: the token
+		// is a second reduction, never the boundary on its own.
 		isolation.restrictedToken = true;
 		// An AppContainer token already carries Low integrity; a plain
-		// restricted token keeps the caller's level (reduced by LUA_TOKEN only).
+		// restricted token keeps the caller's level (reduced by LUA_TOKEN
+		// only).
 		isolation.lowIntegrity = appContainer;
 		isolation.internetClient = appContainer && internetClient;
 		isolation.privateNetworkClientServer = appContainer && privateNetworkClientServer;
@@ -234,18 +236,18 @@ namespace
 	}
 
 	/**
-	 * The Windows isolation authority. Every OS policy for a Windows worker role
-	 * must be reviewable against exactly one row.
+	 * The Windows isolation authority. Every OS policy for a Windows
+	 * worker role must be reviewable against exactly one row.
 	 *
-	 * A row is a policy, not a backend. The supervisor can spawn any role, but
-	 * RunWindowsWorker serves control frames only: no Windows role executes
-	 * router, storage or network work yet, so these rows never justify a claim
-	 * that Windows privilege separation is wired.
+	 * A row is a policy, not a backend. The supervisor can spawn any role,
+	 * but RunWindowsWorker serves control frames only: no Windows role
+	 * executes router, storage or network work yet, so these rows never
+	 * justify a claim that Windows privilege separation is wired.
 	 */
 	constexpr std::array<WindowsRoleIsolation, WINDOWS_ROLE_COUNT> WINDOWS_ROLE_ISOLATION_TABLE {
 		// Supervisor: it must spawn workers, so it cannot be an AppContainer
-		// child of its own profile. Restricted token only, no network, no write
-		// root; the spawned worker is what receives the container.
+		// child of its own profile. Restricted token only, no network, no
+		// write root; the spawned worker is what receives the container.
 		MakeIsolation (false, false, false, false, false),
 		// Log: writes one delegated log root, no capability and no network.
 		MakeIsolation (true, true, false, false, true),
@@ -296,18 +298,20 @@ WindowsRoleIsolation GetWindowsRoleIsolation (WindowsWorkerRole role)
 	const auto index = static_cast<size_t> (role);
 	if (index >= WINDOWS_ROLE_ISOLATION_TABLE.size ())
 	{
-		// Unknown role: deny everything that can be denied. The default row has
-		// no container, no network, no write root and no low-privilege claim.
+		// Unknown role: deny everything that can be denied. The default row
+		// has no container, no network, no write root and no low-privilege
+		// claim.
 		return WindowsRoleIsolation { };
 	}
 	return WINDOWS_ROLE_ISOLATION_TABLE[index];
 }
 
 /**
- * The owned AppContainer identity: the profile name, the derived package SID,
- * its string form and the capability SID array handed to the token. Every SID
- * is a LocalAlloc block freed by this object, including on a partially
- * constructed (error) instance, so no error path can leak one.
+ * The owned AppContainer identity: the profile name, the derived
+ * package SID, its string form and the capability SID array handed to
+ * the token. Every SID is a LocalAlloc block freed by this object,
+ * including on a partially constructed (error) instance, so no error
+ * path can leak one.
  */
 struct WindowsAppContainer::Impl
 {
@@ -319,9 +323,10 @@ struct WindowsAppContainer::Impl
 			error = std::string ("worker role '") + NarrowAscii (RoleToken (role)) + "' must not use an AppContainer";
 			return;
 		}
-		// The probe is the single authority for availability; without it the call
-		// fails closed instead of silently producing a weaker restricted-token
-		// worker for a role that requires the container boundary.
+		// The probe is the single authority for availability; without it the
+		// call fails closed instead of silently producing a weaker
+		// restricted-token worker for a role that requires the container
+		// boundary.
 		if (!ProbeWindowsIsolation ().appContainer)
 		{
 			error = std::string ("AppContainer profiles are unavailable on this Windows build; role '")
@@ -337,8 +342,9 @@ struct WindowsAppContainer::Impl
 			return;
 
 		// A low-privilege AppContainer is capability-free by definition; the
-		// spawner applies the LPAC attribute to the token. Refuse a contradiction
-		// rather than creating a profile that cannot satisfy the policy.
+		// spawner applies the LPAC attribute to the token. Refuse a
+		// contradiction rather than creating a profile that cannot satisfy
+		// the policy.
 		if (lowPrivilege && !capabilities.empty ())
 		{
 			error = std::string ("role '") + NarrowAscii (RoleToken (role))
@@ -354,9 +360,10 @@ struct WindowsAppContainer::Impl
 			&profileSid);
 		if (result == HRESULT_FROM_WIN32 (ERROR_ALREADY_EXISTS) || result == S_FALSE)
 		{
-			// The profile is durable and operator-owned. Reuse it by deriving its
-			// SID; never delete or recreate it here (DeleteAppContainerProfile is
-			// an explicit operator action after decommissioning every worker).
+			// The profile is durable and operator-owned. Reuse it by deriving
+			// its SID; never delete or recreate it here
+			// (DeleteAppContainerProfile is an explicit operator action after
+			// decommissioning every worker).
 			if (profileSid)
 			{
 				LocalFree (profileSid);
@@ -389,9 +396,10 @@ struct WindowsAppContainer::Impl
 		}
 		sidString.assign (sidText);
 		LocalFree (sidText);
-		// An AppContainer package SID is S-1-15-2-&lt;hash&gt;. Any other shape means
-		// the deterministic name resolved to something this component did not
-		// create, so the token would be built against an unrelated identity.
+		// An AppContainer package SID is S-1-15-2-&lt;hash&gt;. Any other
+		// shape means the deterministic name resolved to something this
+		// component did not create, so the token would be built against an
+		// unrelated identity.
 		if (sidString.rfind (L"S-1-15-2-", 0) != 0)
 		{
 			error = std::string ("AppContainer profile for role '") + NarrowAscii (RoleToken (role))
@@ -495,17 +503,18 @@ i2p::expected<WindowsAppContainer, std::string> CreateWindowsAppContainer (Windo
 	return container;
 }
 
-// The grant is additive and scoped to one object: SetEntriesInAcl merges the
-// container ACE into the existing DACL, so an administrator's entries survive
-// and nothing is granted to Everyone, Authenticated Users or ALL APPLICATION
-// PACKAGES. Inheriting ACEs are added only for a directory, so a delegated root
-// stays usable for its children.
-//
-// Known limitation: the path is resolved by name here, so a hostile ancestor
-// that can rename or reparse between the attribute query and
-// SetNamedSecurityInfoW can redirect the grant. Callers must pass a root whose
-// ancestors are already trusted (see the Windows notes in the platform skill);
-// this helper does not turn a hostile path into a safe one.
+// The grant is additive and scoped to one object: SetEntriesInAcl
+// merges the container ACE into the existing DACL, so an
+// administrator's entries survive and nothing is granted to Everyone,
+// Authenticated Users or ALL APPLICATION PACKAGES. Inheriting ACEs are
+// added only for a directory, so a delegated root stays usable for its
+// children.
+// Known limitation: the path is resolved by name here, so a hostile
+// ancestor that can rename or reparse between the attribute query and
+// SetNamedSecurityInfoW can redirect the grant. Callers must pass a
+// root whose ancestors are already trusted (see the Windows notes in
+// the platform skill); this helper does not turn a hostile path into a
+// safe one.
 i2p::expected<void, std::string> GrantAppContainerPath (
 	const WindowsAppContainer & container, const std::wstring & path, bool write)
 {
@@ -516,15 +525,15 @@ i2p::expected<void, std::string> GrantAppContainerPath (
 		return i2p::unexpected ("AppContainer grant path contains an embedded NUL");
 	if (!IsAbsoluteFilesystemPath (path))
 		return i2p::unexpected ("AppContainer grant path is not an absolute local/UNC path");
-	// Never create the path: a grant on a path the caller does not already own
-	// would let a worker be pointed at an arbitrary directory.
+	// Never create the path: a grant on a path the caller does not already
+	// own would let a worker be pointed at an arbitrary directory.
 	const DWORD attributes = GetFileAttributesW (path.c_str ());
 	if (attributes == INVALID_FILE_ATTRIBUTES)
 		return i2p::unexpected ("AppContainer grant path does not exist: " + Win32ErrorText (GetLastError ()));
 
-	// A local copy keeps the const API of this function while still matching
-	// the non-const parameter of the security APIs. They do not modify the
-	// buffer.
+	// A local copy keeps the const API of this function while still
+	// matching the non-const parameter of the security APIs. They do not
+	// modify the buffer.
 	std::wstring target = path;
 	PACL existing = nullptr;
 	PSECURITY_DESCRIPTOR descriptor = nullptr;
@@ -536,17 +545,17 @@ i2p::expected<void, std::string> GrantAppContainerPath (
 	if (!existing) return i2p::unexpected ("AppContainer grant path has a null DACL; refusing to grant on it");
 
 	EXPLICIT_ACCESS_W access { };
-	// Only the container SID is added: no Everyone, no Authenticated Users and
-	// no ALL APPLICATION PACKAGES. The existing entries are preserved by
-	// SetEntriesInAcl.
+	// Only the container SID is added: no Everyone, no Authenticated Users
+	// and no ALL APPLICATION PACKAGES. The existing entries are preserved
+	// by SetEntriesInAcl.
 	access.grfAccessPermissions = write
 		? static_cast<DWORD> (FILE_GENERIC_READ | FILE_GENERIC_WRITE | FILE_GENERIC_EXECUTE | DELETE)
 		: static_cast<DWORD> (FILE_GENERIC_READ | FILE_GENERIC_EXECUTE);
 	access.grfAccessMode = GRANT_ACCESS;
 	access.grfInheritance = 0;
 	if ((attributes & FILE_ATTRIBUTE_DIRECTORY) != 0)
-		// The delegated root is a directory: children must be usable without a
-		// second grant.
+		// The delegated root is a directory: children must be usable without
+		// a second grant.
 		access.grfInheritance = static_cast<DWORD> (CONTAINER_INHERIT_ACE | OBJECT_INHERIT_ACE);
 	access.Trustee.TrusteeForm = TRUSTEE_IS_SID;
 	access.Trustee.TrusteeType = TRUSTEE_IS_UNKNOWN;

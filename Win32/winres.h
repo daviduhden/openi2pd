@@ -4,8 +4,8 @@
  *
  * openi2pd: winres.
  *
- * Provides the winres.h include shim expected by the Visual Studio resource
- * files, forwarding to the Windows SDK winresrc.h.
+ * Provides the winres.h include shim expected by the Visual Studio
+ * resource files, forwarding to the Windows SDK winresrc.h.
  *
  */
 

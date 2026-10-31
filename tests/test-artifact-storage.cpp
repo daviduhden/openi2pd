@@ -4,13 +4,14 @@
  *
  * openi2pd: artifact storage dispatch.
  *
- * Checks the delegated-artifact contract: an installed writer receives the
- * artifact kind, canonical name and exact bytes; a writer failure is returned
- * to the caller and never retried through the filesystem; the direct
- * data-directory backend is used only while privsep.artifacts is disabled; a
- * delegated but uninstalled backend fails closed; and destination key material
- * keeps the exact pub||priv layout the load path expects. Uses a temporary
- * directory only; no sockets, threads or sleeps.
+ * Checks the delegated-artifact contract: an installed writer receives
+ * the artifact kind, canonical name and exact bytes; a writer failure
+ * is returned to the caller and never retried through the filesystem;
+ * the direct data-directory backend is used only while
+ * privsep.artifacts is disabled; a delegated but uninstalled backend
+ * fails closed; and destination key material keeps the exact pub||priv
+ * layout the load path expects. Uses a temporary directory only; no
+ * sockets, threads or sleeps.
  *
  */
 
@@ -58,8 +59,9 @@ fs::path MakeRoot (const char * tag)
 	return root;
 }
 
-// The option registry is global and defaults are applied by Finalize(), so a
-// second Init()/ParseConfig()/Finalize() round selects a new value.
+// The option registry is global and defaults are applied by Finalize(),
+// so a second Init()/ParseConfig()/Finalize() round selects a new
+// value.
 void InitialiseConfig (const fs::path & root, bool artifactsDelegated)
 {
 	i2p::config::Init ();
@@ -99,7 +101,8 @@ fs::path DirectPath (const fs::path & root, StorageArtifact kind, const std::str
 	return { };
 }
 
-// The direct backend never creates shard directories; the daemon's storage
+// The direct backend never creates shard directories; the daemon's
+// storage
 // classes do, so the fixture prepares them.
 void PrepareDirectRoot (const fs::path & root, StorageArtifact kind, const std::string & name)
 {
@@ -154,7 +157,8 @@ void TestCapabilityInvariant ()
 	static_assert (IsCapabilitySetCompatible (network));
 	static_assert (IsCapabilitySetCompatible (artifactWrite));
 	static_assert (!IsCapabilitySetCompatible (network | artifactWrite));
-	// The artifact writer is the only write path while the option is enabled.
+	// The artifact writer is the only write path while the option is
+	// enabled.
 	static_assert (IsDirectArtifactFallbackAllowed (false));
 	static_assert (!IsDirectArtifactFallbackAllowed (true));
 	assert (!IsCapabilitySetCompatible (network | artifactWrite));
@@ -200,8 +204,8 @@ void TestWriterReceivesArtifact ()
 	const auto name = MakeIdent (0x31).ToBase64 ();
 	InitialiseConfig (root, false);
 
-	// A direct file exists before the delegation is installed, so it proves
-	// that a delegated write never touches the data directory.
+	// A direct file exists before the delegation is installed, so it
+	// proves that a delegated write never touches the data directory.
 	PrepareDirectRoot (root, StorageArtifact::PeerProfile, name);
 	const auto path = DirectPath (root, StorageArtifact::PeerProfile, name);
 	std::ofstream (path) << "previous profile";
@@ -246,7 +250,8 @@ void TestNoFallbackOnWriterFailure ()
 	PrepareDirectRoot (root, StorageArtifact::DestinationKeys, keyName);
 	const auto directPath = DirectPath (root, StorageArtifact::RouterInfoCache, name);
 
-	// An installed writer that fails is never retried through the filesystem.
+	// An installed writer that fails is never retried through the
+	// filesystem.
 	RecordedWrite write;
 	RecordedRemove remove;
 	InstallArtifactStorage (RecordingWriter (write, false), RecordingRemover (remove, false));
@@ -260,7 +265,8 @@ void TestNoFallbackOnWriterFailure ()
 		assert (remove.called);
 	}
 
-	// Delegated without an installed writer fails closed and writes nothing.
+	// Delegated without an installed writer fails closed and writes
+	// nothing.
 	ClearArtifactStorage ();
 	InitialiseConfig (root, true);
 	assert (!IsArtifactStorageInstalled ());
@@ -353,9 +359,9 @@ void TestDirectFallback ()
 	fs::remove_all (root);
 }
 
-// Destination key persistence: "<b32 identity>.<decimal keyType>" carrying
-// exactly pub||priv, which is what the unchanged loader in Destination.cpp
-// reads back.
+// Destination key persistence: "<b32 identity>.<decimal keyType>"
+// carrying exactly pub||priv, which is what the unchanged loader in
+// Destination.cpp reads back.
 void TestDestinationKeyArtifact ()
 {
 	const auto root = MakeRoot ("destkeys");
@@ -368,8 +374,10 @@ void TestDestinationKeyArtifact ()
 	const auto base32 = ident.ToBase32 ();
 	assert (base32.size () == 52);
 	i2p::crypto::LocalEncryptionKey keys (CRYPTO_KEY_TYPE_ECIES_X25519_AEAD);
-	// A deterministic pair keeps the test independent of the crypto provider:
-	// only the storage layout is under test. The size must not be 512, because
+	// A deterministic pair keeps the test independent of the crypto
+	// provider:
+	// only the storage layout is under test. The size must not be 512,
+	// because
 	// that length selects the ElGamal pub||priv branch in the loader.
 	assert (keys.pub.size () != 512 && keys.pub.size () == keys.priv.size ());
 	for (size_t i = 0; i < keys.pub.size (); i++) keys.pub[i] = static_cast<uint8_t> (0x40 + i);
@@ -391,7 +399,8 @@ void TestDestinationKeyArtifact ()
 		== fs::perms::none);
 #endif
 
-	// The loader reads pub and priv at their exact sizes from the same file.
+	// The loader reads pub and priv at their exact sizes from the same
+	// file.
 	{
 		std::ifstream input (path, std::ifstream::binary);
 		std::vector<uint8_t> pub (keys.pub.size ()), priv (keys.priv.size ());

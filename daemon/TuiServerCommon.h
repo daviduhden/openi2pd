@@ -4,10 +4,10 @@
  *
  * openi2pd: TuiServerCommon.
  *
- * Declares the transport-independent TUI request dispatcher and its result
- * type. Both the UNIX socket and Windows named-pipe servers must pass every
- * request line through this entry point, including embedded torrent import.
- *
+ * Declares the transport-independent TUI request dispatcher and its
+ * result type. Both the UNIX socket and Windows named-pipe servers must
+ * pass every request line through this entry point, including embedded
+ * torrent import.
  */
 
 #ifndef TUI_SERVER_COMMON_H__
@@ -27,9 +27,10 @@ namespace tui
 	/**
 	 * Closed set of router-wide administrative operations.
 	 *
-	 * Every variant carries only bounded, typed data. There is deliberately no
-	 * generic option name, path, URL or command string: adding an operation is
-	 * a source change reviewed at the local-IPC trust boundary.
+	 * Every variant carries only bounded, typed data. There is
+	 * deliberately no generic option name, path, URL or command string:
+	 * adding an operation is a source change reviewed at the local-IPC
+	 * trust boundary.
 	 */
 	enum class AdminCommandKind : uint8_t
 	{
@@ -62,11 +63,11 @@ namespace tui
 	};
 
 	/**
-	 * Discrete outcome of a verb that can report more than success/failure.
-	 *
-	 * Only the operations listed below publish one; every other verb reports
-	 * through AdminResultCode alone. The spellings are protocol tokens and are
-	 * never translated.
+	 * Discrete outcome of a verb that can report more than
+	 * success/failure.
+	 * Only the operations listed below publish one; every other verb
+	 * reports through AdminResultCode alone. The spellings are protocol
+	 * tokens and are never translated.
 	 */
 	enum class AdminOutcome : uint8_t
 	{
@@ -103,8 +104,8 @@ namespace tui
 		// LogLevel: zero-based index into the fixed level table.
 		int32_t value = 0;
 		// Transit: requested acceptance state.
-		// AddressAdd: true re-points an existing name (ADDRESS-REPLACE); false
-		// reports `exists` instead of overwriting.
+		// AddressAdd: true re-points an existing name (ADDRESS-REPLACE);
+		// false reports `exists` instead of overwriting.
 		bool enabled = false;
 		// Address add/remove: validated, NUL-terminated fixed storage. NetDb
 		// ban/unban store the base64 router hash in `name`; subscription
@@ -151,15 +152,16 @@ namespace tui
 		// after the command.
 		bool enabled = false;
 		// Fixed storage: the IPC thread only copies, never allocates, this.
-		// messageLength makes the valid prefix explicit so serialization never
-		// performs an unbounded strlen on the fixed array.
+		// messageLength makes the valid prefix explicit so serialization
+		// never performs an unbounded strlen on the fixed array.
 		char message[96] = { };
 		size_t messageLength = 0;
 	};
 
 	/**
 	 * Executes one command on the daemon-owned administrative thread. The
-	 * callback must not block the IPC transport and must fill a typed result.
+	 * callback must not block the IPC transport and must fill a typed
+	 * result.
 	 */
 	using AdminCommandExecutor = void (*) (const AdminCommand &, AdminCommandResult &);
 
@@ -167,17 +169,18 @@ namespace tui
 	inline constexpr auto ADMIN_COMMAND_TIMEOUT = std::chrono::milliseconds (2000);
 
 	// Start/stop the single daemon-owned executor. Start fails if it is
-	// already running or the executor is null. The queue is fixed-capacity and
-	// Submit never allocates.
+	// already running or the executor is null. The queue is fixed-capacity
+	// and Submit never allocates.
 	bool StartAdminCommandQueue (AdminCommandExecutor executor);
 	void StopAdminCommandQueue ();
 
 	/**
 	 * Enqueue one typed command and wait up to timeout for its result.
 	 *
-	 * A timeout does not cancel an accepted command: it returns Accepted while
-	 * the daemon-owned thread continues. QueueFull and Unavailable are reported
-	 * without waiting. This call is made by the local-IPC thread.
+	 * A timeout does not cancel an accepted command: it returns Accepted
+	 * while the daemon-owned thread continues. QueueFull and Unavailable
+	 * are reported without waiting. This call is made by the local-IPC
+	 * thread.
 	 */
 	AdminCommandResult SubmitAdminCommand (const AdminCommand & command, std::chrono::milliseconds timeout);
 
@@ -198,13 +201,13 @@ namespace tui
 	 * Validate and execute one newline-free request line.
 	 *
 	 * This is the only protocol entry point. Both the UNIX-domain socket
-	 * and the Windows named-pipe transports must call it; neither may build
-	 * snapshots or execute commands itself.
+	 * and the Windows named-pipe transports must call it; neither may
+	 * build snapshots or execute commands itself.
 	 *
 	 * All exceptions are translated into an Internal error frame here. The
 	 * transports must nevertheless wrap their own per-client buffering and
-	 * send loop in catch(...): a bad_alloc in transport state must close one
-	 * client, not unwind through std::thread and terminate the router.
+	 * send loop in catch(...): a bad_alloc in transport state must close
+	 * one client, not unwind through std::thread and terminate the router.
 	 */
 	DispatchResult Dispatch (std::string_view line);
 	// Embedded administration only: caller must establish the same local

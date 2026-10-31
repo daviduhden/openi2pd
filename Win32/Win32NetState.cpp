@@ -4,10 +4,10 @@
  *
  * openi2pd: Win32NetState.
  *
- * Subscribes to INetworkListManagerEvents through COM and drives the transport
- * online state from connectivity and internet-capability changes. It performs
- * one initial connectivity probe and releases the connection point and COM
- * objects when unsubscribing.
+ * Subscribes to INetworkListManagerEvents through COM and drives the
+ * transport online state from connectivity and internet-capability
+ * changes. It performs one initial connectivity probe and releases the
+ * connection point and COM objects when unsubscribing.
  *
  */
 

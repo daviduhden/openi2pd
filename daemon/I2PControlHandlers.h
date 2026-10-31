@@ -4,13 +4,13 @@
  *
  * openi2pd: I2PControlHandlers.
  *
- * Declares the I2PControl method handlers that expose router status, tunnel,
- * transport, NetDb and client-destination data and apply bandwidth settings.
- * Handlers append JSON fields through type-specific InsertParam overloads.
- * The header also owns the header-only JSON-RPC envelope and parameter
- * helpers, so escaping, request-id typing and bandwidth validation have one
- * implementation shared by the service and its compile-free regression.
- *
+ * Declares the I2PControl method handlers that expose router status,
+ * tunnel, transport, NetDb and client-destination data and apply
+ * bandwidth settings. Handlers append JSON fields through type-specific
+ * InsertParam overloads. The header also owns the header-only JSON-RPC
+ * envelope and parameter helpers, so escaping, request-id typing and
+ * bandwidth validation have one implementation shared by the service
+ * and its compile-free regression.
  */
 
 #ifndef I2P_CONTROL_HANDLERS_H__
@@ -59,8 +59,8 @@ namespace client
 		/*
 		 * Kind of the request id. JSON-RPC allows a string, a number or null;
 		 * property_tree discards the distinction, so the bounded request body
-		 * is scanned separately to keep an integer id an integer and to escape
-		 * a string id instead of emitting it verbatim.
+		 * is scanned separately to keep an integer id an integer and to
+		 * escape a string id instead of emitting it verbatim.
 		 */
 		enum class JSONIdKind : uint8_t
 		{
@@ -82,8 +82,9 @@ namespace client
 		};
 
 		/*
-		 * Validates and copies one UTF-8 sequence. Rejects a lone continuation
-		 * byte, an overlong form, a UTF-16 surrogate and a value above U+10FFFF.
+		 * Validates and copies one UTF-8 sequence. Rejects a lone
+		 * continuation byte, an overlong form, a UTF-16 surrogate and a value
+		 * above U+10FFFF.
 		 */
 		inline bool AppendUTF8Sequence (std::string & output, std::string_view value, size_t & index)
 		{
@@ -133,8 +134,9 @@ namespace client
 		 * Appends one quoted, escaped JSON string.
 		 *
 		 * Returns false for invalid UTF-8 (a lone continuation byte, an
-		 * overlong form, a UTF-16 surrogate or a value above U+10FFFF) without
-		 * modifying `output`, so a caller never publishes malformed JSON.
+		 * overlong form, a UTF-16 surrogate or a value above U+10FFFF)
+		 * without modifying `output`, so a caller never publishes malformed
+		 * JSON.
 		 */
 		inline bool AppendQuoted (std::string & output, std::string_view value)
 		{
@@ -193,7 +195,8 @@ namespace client
 			return true;
 		}
 
-		// Quoted string, or the JSON literal null when the bytes are not UTF-8.
+		// Quoted string, or the JSON literal null when the bytes are not
+		// UTF-8.
 		inline std::string Quote (std::string_view value)
 		{
 			std::string result;
@@ -466,7 +469,8 @@ namespace client
 		}
 	}
 
-	// Strict unsigned decimal parser: no sign, no whitespace, no trailing bytes.
+	// Strict unsigned decimal parser: no sign, no whitespace, no trailing
+	// bytes.
 	inline bool ParseUnsignedDecimal (std::string_view text, unsigned & value)
 	{
 		value = 0;
@@ -481,9 +485,10 @@ namespace client
 	}
 
 	/*
-	 * Bandwidth-setting operands are in KiB/s, the unit RouterContext stores.
-	 * Zero is accepted and leaves the router default in force; the upper bound
-	 * is the value RouterContext itself uses for "unlimited" ('X', 1 GiB/s).
+	 * Bandwidth-setting operands are in KiB/s, the unit RouterContext
+	 * stores. Zero is accepted and leaves the router default in force; the
+	 * upper bound is the value RouterContext itself uses for "unlimited"
+	 * ('X', 1 GiB/s).
 	 */
 	constexpr unsigned I2P_CONTROL_MAX_BANDWIDTH_LIMIT = 1000000;
 

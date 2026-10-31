@@ -4,13 +4,13 @@
  *
  * openi2pd: Supervisor.
  *
- * Declares the supervisor entry point plus the process-local status snapshot,
- * the single log-worker restart budget, the storage-broker reply classifier and
- * the process-creation admission gate. The supervisor owns the log-worker
- * process, forwards framed log records and never opens the log file itself. The
- * status and policy types are header inline and platform-free so the unit tests
- * exercise the exact production state machine without spawning a worker.
- *
+ * Declares the supervisor entry point plus the process-local status
+ * snapshot, the single log-worker restart budget, the storage-broker
+ * reply classifier and the process-creation admission gate. The
+ * supervisor owns the log-worker process, forwards framed log records
+ * and never opens the log file itself. The status and policy types are
+ * header inline and platform-free so the unit tests exercise the exact
+ * production state machine without spawning a worker.
  */
 
 #ifndef I2PD_PRIVSEP_SUPERVISOR_H__
@@ -32,45 +32,46 @@
 namespace i2p::privsep
 {
 /**
- * Entry point for the supervisor process. The core owns the other endpoint
- * of the control socketpair. The supervisor owns the log worker process and
- * forwards structured records; it never opens the log file, so it has no
- * persistent-write capability of its own.
+ * Entry point for the supervisor process. The core owns the other
+ * endpoint of the control socketpair. The supervisor owns the log
+ * worker process and forwards structured records; it never opens the
+ * log file, so it has no persistent-write capability of its own.
  */
 int RunSupervisor (int fd);
 
 /**
  * Process-wide admission gate for worker creation.
  *
- * The daemon calls `ForbidProcessCreation()` immediately before it installs
- * the runtime pledge, which is the last moment at which every allowed worker
- * is already running. Every spawn helper must consult
- * `IsProcessCreationForbidden()` before it forks, so the kernel policy is not
- * the only barrier against re-opening process creation: a code path that
- * tries to spawn after this point fails closed with a bounded error instead of
- * depending on pledge(2)/seccomp/Landlock to abort it.
+ * The daemon calls `ForbidProcessCreation()` immediately before it
+ * installs the runtime pledge, which is the last moment at which every
+ * allowed worker is already running. Every spawn helper must consult
+ * `IsProcessCreationForbidden()` before it forks, so the kernel policy
+ * is not the only barrier against re-opening process creation: a code
+ * path that tries to spawn after this point fails closed with a bounded
+ * error instead of depending on pledge(2)/seccomp/Landlock to abort it.
  *
- * The flag is inherited across fork and reset by execve; an exec'ed worker
- * therefore starts with creation allowed by default and is expected to set its
- * own gate before serving frames.
+ * The flag is inherited across fork and reset by execve; an exec'ed
+ * worker therefore starts with creation allowed by default and is
+ * expected to set its own gate before serving frames.
  */
 void ForbidProcessCreation ();
 bool IsProcessCreationForbidden ();
 
-// Prepared by the daemon before runtime pledge. The immutable root bounds all
-// later worker delegation; this supervisor never has persistent-write access.
+// Prepared by the daemon before runtime pledge. The immutable root
+// bounds all later worker delegation; this supervisor never has
+// persistent-write access.
 bool PrepareTorrentStorageSupervisor (const std::string & root, std::string & error);
-// The broker's immutable data root is installed before spawn and inherited as
-// fd 4. For each worker, only the relative path and fstat identity travel over
-// IPC; the caller's rootFd stays local. OpenBSD sendfd/recvfd explicitly
-// exclude directory descriptors.
+// The broker's immutable data root is installed before spawn and
+// inherited as fd 4. For each worker, only the relative path and fstat
+// identity travel over IPC; the caller's rootFd stays local. OpenBSD
+// sendfd/recvfd explicitly exclude directory descriptors.
 i2p::expected<Channel, std::string> SpawnSupervisedTorrentStorage (int rootFd, std::string_view rootPath);
 int RunTorrentStorageSupervisor (int fd);
 
 /**
- * Lifecycle state of one worker owned by the supervisor. `Failed` is terminal
- * for the current spawn budget: the supervisor stops replacing that worker and
- * reports the state once instead of retrying forever.
+ * Lifecycle state of one worker owned by the supervisor. `Failed` is
+ * terminal for the current spawn budget: the supervisor stops replacing
+ * that worker and reports the state once instead of retrying forever.
  */
 enum class SupervisorWorkerState : uint8_t
 {
@@ -104,17 +105,19 @@ struct SupervisorWorkerSnapshot
 	/** Records the client gave up on; 0 when the caller cannot know. */
 	uint64_t droppedRecords = 0;
 	/**
-	 * Last non-secret reason. Callers must pass static text only: a reason is
-	 * never derived from a payload, a path, a log record or a credential.
+	 * Last non-secret reason. Callers must pass static text only: a reason
+	 * is never derived from a payload, a path, a log record or a
+	 * credential.
 	 */
 	std::string reason;
 };
 
 /**
  * Bounded, mutex-published snapshot of the workers the supervisor owns.
- * Readers take a copy; they never hold a reference into the container. The
- * insertion order is stable and the container stops growing at MAX_WORKERS, so
- * a compromised or confused caller cannot make it allocate without bound.
+ * Readers take a copy; they never hold a reference into the container.
+ * The insertion order is stable and the container stops growing at
+ * MAX_WORKERS, so a compromised or confused caller cannot make it
+ * allocate without bound.
  */
 class SupervisorStatus
 {
@@ -130,9 +133,10 @@ public:
 		if (!entry) return;
 		entry->state = SupervisorWorkerState::Starting;
 		entry->generation = generation;
-		// The restart count is owned by LogWorkerRestartBudget; it is published
-		// by NoteRestarting/NoteReady so a replacement does not silently reset
-		// the history a reader uses to judge the worker's health.
+		// The restart count is owned by LogWorkerRestartBudget; it is
+		// published by NoteRestarting/NoteReady so a replacement does not
+		// silently reset the history a reader uses to judge the worker's
+		// health.
 		entry->droppedRecords = 0;
 		SetReason (*entry, reason);
 	}
@@ -159,7 +163,9 @@ public:
 		SetReason (*entry, reason);
 	}
 
-	/** Terminal: the restart budget is exhausted. Repeated calls stay one entry. */
+	/**
+	 * Terminal: the restart budget is exhausted. Repeated calls stay
+	 * one entry. */
 	void NoteFailed (std::string_view worker, uint32_t generation, uint32_t restarts, std::string_view reason)
 	{
 		std::lock_guard<std::mutex> lock (m_Mutex);
@@ -226,11 +232,11 @@ private:
 };
 
 /**
- * Process-local status of the running supervisor. It is a diagnostic snapshot,
- * not a wire protocol: another process cannot read this memory, and exposing it
- * over IPC would require a new message type that has deliberately not been
- * added. The daemon therefore sees supervisor progress only through its own
- * liveness checks and stderr.
+ * Process-local status of the running supervisor. It is a diagnostic
+ * snapshot, not a wire protocol: another process cannot read this
+ * memory, and exposing it over IPC would require a new message type
+ * that has deliberately not been added. The daemon therefore sees
+ * supervisor progress only through its own liveness checks and stderr.
  */
 inline SupervisorStatus & GetSupervisorStatus ()
 {
@@ -241,16 +247,16 @@ inline SupervisorStatus & GetSupervisorStatus ()
 /**
  * The single restart policy for the supervisor's log worker.
  *
- * Initial delay 250 ms, doubling to a 30 s cap, reset after 60 s of stable
- * service, and at most 8 restarts before the supervisor gives up. The
- * exponential ladder spends 250+500+1000+2000+4000+8000+16000 ms on the waits
- * before the eighth replacement, so eight restarts all happen inside one 60 s
- * window; the ninth failure can only follow a fresh window and is refused. That
- * makes "max 8 in 60 s" a property of these four constants rather than a second
- * counter that could drift away from the delay schedule.
- *
- * The caller supplies `now`, so the progression is deterministic in tests and
- * identical in production.
+ * Initial delay 250 ms, doubling to a 30 s cap, reset after 60 s of
+ * stable service, and at most 8 restarts before the supervisor gives
+ * up. The exponential ladder spends 250+500+1000+2000+4000+8000+16000
+ * ms on the waits before the eighth replacement, so eight restarts all
+ * happen inside one 60 s window; the ninth failure can only follow a
+ * fresh window and is refused. That makes "max 8 in 60 s" a property of
+ * these four constants rather than a second counter that could drift
+ * away from the delay schedule.
+ * The caller supplies `now`, so the progression is deterministic in
+ * tests and identical in production.
  */
 class LogWorkerRestartBudget
 {
@@ -281,7 +287,8 @@ public:
 
 	/**
 	 * Account one worker failure at @a now and return the bounded delay to
-	 * honour before the next spawn, or nullopt when the budget is exhausted.
+	 * honour before the next spawn, or nullopt when the budget is
+	 * exhausted.
 	 */
 	std::optional<std::chrono::milliseconds> NoteFailure (std::chrono::steady_clock::time_point now)
 	{
@@ -318,17 +325,21 @@ private:
 	bool m_Exhausted = false;
 };
 
-/** How one received frame relates to the request the client is waiting for. */
+/**
+ * How one received frame relates to the request the client is
+ * waiting for. */
 enum class SupervisorReplyKind : uint8_t
 {
-	/** A reply for an earlier request that this client already abandoned. */
+	/**
+	 * A reply for an earlier request that this client already
+	 * abandoned. */
 	Stale,
 	Matching,
 	/**
-	 * A reply for a request id this client has not sent yet. It cannot answer
-	 * the pending request, so it is a bounded protocol fault: the reply and its
-	 * descriptor are discarded and the request is rejected, but the broker
-	 * channel and every worker behind it stay alive.
+	 * A reply for a request id this client has not sent yet. It cannot
+	 * answer the pending request, so it is a bounded protocol fault: the
+	 * reply and its descriptor are discarded and the request is rejected,
+	 * but the broker channel and every worker behind it stay alive.
 	 */
 	OutOfOrder
 };

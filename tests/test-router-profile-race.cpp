@@ -4,7 +4,8 @@
  *
  * openi2pd: test router profile synchronization.
  *
- * Exercises concurrent profile mutation/read access and canonical profile
+ * Exercises concurrent profile mutation/read access and canonical
+ * profile
  * publication when several callers observe the same uncached identity.
  *
  */

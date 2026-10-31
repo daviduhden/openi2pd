@@ -4,7 +4,8 @@
  *
  * openi2pd: test privsep openbsd imsg.
  *
- * Checks the OpenBSD imsg transport against the versioned frame allowlist and payload decoding, including rejection of unknown types.
+ * Checks the OpenBSD imsg transport against the versioned frame
+ * allowlist and payload decoding, including rejection of unknown types.
  *
  */
 
@@ -52,7 +53,8 @@ int main ()
 		assert (!ImsgChannel::AdoptValidated (regular, geteuid ()).has_value ());
 	}
 
-	// A failed oversized compose keeps caller descriptor ownership; storage
+	// A failed oversized compose keeps caller descriptor ownership;
+	// storage
 	// callers must be able to close their own descriptor exactly once.
 	{
 		int local[2] = { -1, -1 };
@@ -70,8 +72,9 @@ int main ()
 		channel->Close ();
 	}
 
-	// A bounded payload survives the imsg envelope unchanged. Ping is empty by
-	// registry policy, so a storage request type is used for the payload case.
+	// A bounded payload survives the imsg envelope unchanged. Ping is
+	// empty by registry policy, so a storage request type is used for the
+	// payload case.
 	assert (left->Send (Message { MessageType::TorrentStorageRequest, 7, "hello" }).has_value ());
 	auto received = right->Receive (1000);
 	assert (received.has_value ());
@@ -81,7 +84,8 @@ int main ()
 	assert ((*received)->message.payload == "hello");
 	assert ((*received)->fd < 0);
 
-	// The encoder, not the transport, is the type authority: an unknown type
+	// The encoder, not the transport, is the type authority: an unknown
+	// type
 	// is refused before a frame is queued and the channel stays usable.
 	auto unknownType = left->Send (Message { static_cast<MessageType> (0xffff), 9, { } });
 	assert (!unknownType.has_value ());
@@ -90,8 +94,8 @@ int main ()
 	assert (stillUsable.has_value () && stillUsable->has_value ());
 	assert ((*stillUsable)->message.requestId == 9);
 
-	// imsgbuf_read may buffer several complete messages in one read. They must
-	// all be consumed from the user buffer before polling again.
+	// imsgbuf_read may buffer several complete messages in one read. They
+	// must all be consumed from the user buffer before polling again.
 	assert (left->Send (Message { MessageType::Ping, 20, { } }).has_value ());
 	assert (left->Send (Message { MessageType::Ping, 21, { } }).has_value ());
 	assert (left->Send (Message { MessageType::Ping, 22, { } }).has_value ());
@@ -106,10 +110,11 @@ int main ()
 
 	const int fd = open ("/dev/null", O_RDONLY | O_CLOEXEC);
 	assert (fd >= 0);
-	// imsg_compose(3) closes a successfully composed descriptor in the sender.
-	// ConfigureLogFd is the registry type that may carry a file descriptor; the
-	// imsg adapter is test-only and does not yet enforce the registry kind, so
-	// this exercises descriptor transport rather than policy.
+	// imsg_compose(3) closes a successfully composed descriptor in the
+	// sender. ConfigureLogFd is the registry type that may carry a file
+	// descriptor; the imsg adapter is test-only and does not yet enforce
+	// the registry kind, so this exercises descriptor transport rather
+	// than policy.
 	assert (left->Send (Message { MessageType::ConfigureLogFd, 8, { } }, fd).has_value ());
 	auto withFd = right->Receive (1000);
 	assert (withFd.has_value ());

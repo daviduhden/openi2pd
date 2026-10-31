@@ -5,12 +5,12 @@
  * openi2pd: test privsep openbsd policy.
  *
  * OpenBSD policy and negative-capability checks: per-role pledge/unveil
- * separation, the supervisor's x-only executable unveil rule, the broker's
- * sendfd-only descriptor contract, the startup/runtime promise relationship,
- * the single pledge-file parser and preopened descriptor validation. Forked
- * children prove that storage cannot use the network or fork, that the
- * supervisor cannot exec an arbitrary image, and that unveil cannot be
- * re-opened after the lock.
+ * separation, the supervisor's x-only executable unveil rule, the
+ * broker's sendfd-only descriptor contract, the startup/runtime promise
+ * relationship, the single pledge-file parser and preopened descriptor
+ * validation. Forked children prove that storage cannot use the network
+ * or fork, that the supervisor cannot exec an arbitrary image, and that
+ * unveil cannot be re-opened after the lock.
  *
  */
 
@@ -44,13 +44,17 @@ using namespace i2p::privsep;
 #if !defined(__OpenBSD__)
 int main ()
 {
-	// The sandbox primitives exist only on OpenBSD; CTest treats 77 as SKIP.
+	// The sandbox primitives exist only on OpenBSD; CTest treats 77 as
+	// SKIP.
 	return 77;
 }
 #else
 namespace
 {
-/** A fixed absolute path under an existing directory; the leaf need not exist. */
+/**
+ * A fixed absolute path under an existing directory; the leaf need
+ * not exist.
+ */
 constexpr const char * PROBE_EXECUTABLE = "/tmp/openi2pd-supervisor-probe";
 
 OpenBSDPolicyConfig BaseConfig ()
@@ -92,13 +96,14 @@ template <typename Action> void ExpectPledgeViolation (OpenBSDWorkerRole role, A
 	do reaped = waitpid (pid, &status, 0);
 	while (reaped < 0 && errno == EINTR);
 	assert (reaped == pid);
-	// The policy was applied (the child got past the exit codes above) and the
-	// forbidden operation was a pledge violation: an uncatchable SIGABRT.
+	// The policy was applied (the child got past the exit codes above) and
+	// the forbidden operation was a pledge violation: an uncatchable
+	// SIGABRT.
 	assert (WIFSIGNALED (status));
 	assert (WTERMSIG (status) == SIGABRT);
 }
 
-/** Run @a body in a child that applied @a policy; assert a clean exit. */
+/** Run @a body under @a policy in a child and assert a clean exit. */
 template <typename Body> void ExpectPolicyExit (const OpenBSDPolicy & policy, Body body)
 {
 	const pid_t pid = fork ();
@@ -177,12 +182,13 @@ void TestPolicySeparation ()
 	assert (!supervisor->HasExternalNetwork ());
 	assert (!supervisor->HasPersistentWrite ());
 	assert (supervisor->HasProcessCreation ());
-	// "unix" would allow AF_UNIX connect/bind at any pathname without rpath or
-	// cpath; stdio already provides socketpair(2) for the worker channel.
+	// "unix" would allow AF_UNIX connect/bind at any pathname without
+	// rpath or cpath; stdio already provides socketpair(2) for the worker
+	// channel.
 	assert (!supervisor->HasLocalIpc ());
 	assert (supervisor->pledge == "stdio proc exec");
-	// Unveil is forced on for this role and carries exactly one "x" rule for the
-	// frozen executable path, so no second image can be exec'ed.
+	// Unveil is forced on for this role and carries exactly one "x" rule
+	// for the frozen executable path, so no second image can be exec'ed.
 	assert (supervisor->useUnveil);
 	assert (supervisor->unveil.size () == 1);
 	assert (supervisor->unveil[0].path == PROBE_EXECUTABLE);
@@ -199,8 +205,10 @@ void TestPolicySeparation ()
 	assert (broker->useUnveil && broker->unveil.size () == 1);
 	assert (broker->unveil[0].path == PROBE_EXECUTABLE && broker->unveil[0].permissions == "x");
 
-	// A configured worker identity adds "id" only to the two process-creation
-	// roles: the forked child drops supplementary groups, gid and uid there
+	// A configured worker identity adds "id" only to the two
+	// process-creation
+	// roles: the forked child drops supplementary groups, gid and uid
+	// there
 	// immediately before execve. Leaf workers never gain it.
 	OpenBSDPolicyConfig credentialed = BaseConfig ();
 	credentialed.dropCredentials = true;
@@ -223,8 +231,9 @@ void TestPolicySeparation ()
 	assert (!admin->HasPersistentWrite ());
 	assert (!admin->HasProcessCreation ());
 
-	// The single cross-role invariant: external network and persistent writes
-	// never coexist in one process, for every role this builder can produce.
+	// The single cross-role invariant: external network and persistent
+	// writes never coexist in one process, for every role this builder can
+	// produce.
 	const OpenBSDWorkerRole roles[] = { OpenBSDWorkerRole::Supervisor, OpenBSDWorkerRole::Log,
 		OpenBSDWorkerRole::Storage, OpenBSDWorkerRole::Network, OpenBSDWorkerRole::Crypto, OpenBSDWorkerRole::Admin,
 		OpenBSDWorkerRole::StorageBroker };
@@ -241,7 +250,8 @@ void TestPolicySeparation ()
 			assert (!policy->HasProcessCreation ());
 	}
 
-	// A log worker that owns its file has no process-creation or network power.
+	// A log worker that owns its file has no process-creation or network
+	// power.
 	OpenBSDPolicyConfig logConfig;
 	logConfig.useUnveil = true;
 	logConfig.logToSyslog = true;
@@ -263,7 +273,8 @@ void TestPolicySeparation ()
 	assert (fdPolicy->unveil.size () == 1);
 	assert (fdPolicy->unveil[0].path == "/etc/localtime");
 
-	// The executable path is the only thing the supervisor and broker unveil;
+	// The executable path is the only thing the supervisor and broker
+	// unveil;
 	// an empty, relative or NUL-carrying value fails closed at build time.
 	auto rejectConfig = BaseConfig ();
 	rejectConfig.executablePath.clear ();
@@ -299,7 +310,8 @@ void TestPledgeWindows ()
 		const auto runtime = BuildOpenBSDPledgePromises (OpenBSDPledgePhase::Runtime, window);
 		// A promise can only be dropped: the runtime set is always a subset.
 		assert (IsPledgePromiseSubset (runtime, startup));
-		// The runtime window never regains process creation, identity changes,
+		// The runtime window never regains process creation, identity
+		// changes,
 		// unveil or descriptor sending.
 		assert (!HasPromiseText (runtime, "exec"));
 		assert (!HasPromiseText (runtime, "id"));
@@ -319,8 +331,10 @@ void TestPledgeWindows ()
 		if (window.execWorkers) assert (HasPromiseText (startup, "proc") && HasPromiseText (startup, "exec"));
 	}
 
-	// The daemon's exact windows: startup is the widest, runtime keeps recvfd
-	// for the supervised storage handoff and proc only for the log supervisor.
+	// The daemon's exact windows: startup is the widest, runtime keeps
+	// recvfd
+	// for the supervised storage handoff and proc only for the log
+	// supervisor.
 	OpenBSDPledgeWindow startup;
 	startup.unveil = true;
 	startup.execWorkers = true;
@@ -394,8 +408,9 @@ void TestPledgeFileParser ()
 	auto duplicated = check ("stdio\nstdio stdio\n", runtimeAllowed, OpenBSDPledgePhase::Runtime);
 	assert (duplicated.has_value () && duplicated->size () == 1);
 
-	// Comments, blank lines, unknown names and oversized tokens are refused so
-	// a malformed file can never be read as a silently different policy.
+	// Comments, blank lines, unknown names and oversized tokens are
+	// refused so a malformed file can never be read as a silently
+	// different policy.
 	assert (!check ("# stdio\n", runtimeAllowed, OpenBSDPledgePhase::Runtime).has_value ());
 	assert (!check ("\n", runtimeAllowed, OpenBSDPledgePhase::Runtime).has_value ());
 	assert (!check ("  \n", runtimeAllowed, OpenBSDPledgePhase::Runtime).has_value ());
@@ -403,7 +418,8 @@ void TestPledgeFileParser ()
 	assert (!check ("frobnicate\n", runtimeAllowed, OpenBSDPledgePhase::Runtime).has_value ());
 	assert (!check (std::string (40, 'x') + "\n", runtimeAllowed, OpenBSDPledgePhase::Runtime).has_value ());
 
-	// A runtime file may not add process/identity/privilege promises even when
+	// A runtime file may not add process/identity/privilege promises even
+	// when
 	// the runtime base set contains proc for reaping the log supervisor.
 	assert (HasPromiseText (BuildOpenBSDPledgePromises (OpenBSDPledgePhase::Runtime, runtimeWindow), "proc"));
 	assert (!check ("proc\n", runtimeAllowed, OpenBSDPledgePhase::Runtime).has_value ());
@@ -411,7 +427,8 @@ void TestPledgeFileParser ()
 	assert (!check ("id\n", startupAllowed, OpenBSDPledgePhase::Runtime).has_value ());
 	assert (!check ("settime\n", startupAllowed, OpenBSDPledgePhase::Runtime).has_value ());
 
-	// A startup file may not add anything outside the startup base set either.
+	// A startup file may not add anything outside the startup base set
+	// either.
 	assert (!check ("mcast\n", startupAllowed, OpenBSDPledgePhase::Startup).has_value ());
 	auto startupSelected = check ("exec unveil\n", startupAllowed, OpenBSDPledgePhase::Startup);
 	assert (startupSelected.has_value () && startupSelected->size () == 2);
@@ -494,11 +511,11 @@ void TestNetworkCannotWritePersistentFile ()
 }
 
 /**
- * The supervisor holds proc/exec but unveils exactly one path with "x" and
- * nothing else. Executing any other image therefore fails with ENOENT (unveil
- * reports ENOENT for a path with no qualifying permission) while the frozen
- * executable path still runs. The exec'ed probe writes no stamp file: "x" does
- * not grant write or read access.
+ * The supervisor holds proc/exec but unveils exactly one path with "x"
+ * and nothing else. Executing any other image therefore fails with
+ * ENOENT (unveil reports ENOENT for a path with no qualifying
+ * permission) while the frozen executable path still runs. The exec'ed
+ * probe writes no stamp file: "x" does not grant write or read access.
  */
 void TestSupervisorExecUnveil (const std::string & executable)
 {
@@ -524,7 +541,10 @@ void TestSupervisorExecUnveil (const std::string & executable)
 		});
 }
 
-/** The supervisor pledge has no unveil promise: re-opening unveil aborts. */
+/**
+ * The supervisor pledge has no unveil promise: re-opening unveil
+ * aborts.
+ */
 void TestSupervisorCannotReopenUnveil ()
 {
 	ExpectPledgeViolation (OpenBSDWorkerRole::Supervisor, [] { (void)unveil ("/etc", "r"); });
@@ -545,9 +565,10 @@ void TestUnveilLockIsFinal ()
 			if (errno != EPERM) return 4;
 			return 0;
 		});
-	// The log worker's own policy has no unveil promise at all, which is the
-	// stronger form of the same guarantee: it cannot widen its rules after
-	// ApplyOpenBSDPolicy returned, because any unveil call is a violation.
+	// The log worker's own policy has no unveil promise at all, which is
+	// the stronger form of the same guarantee: it cannot widen its rules
+	// after ApplyOpenBSDPolicy returned, because any unveil call is a
+	// violation.
 	ExpectPledgeViolation (OpenBSDWorkerRole::Log, [] { (void)unveil ("/etc", "r"); });
 }
 

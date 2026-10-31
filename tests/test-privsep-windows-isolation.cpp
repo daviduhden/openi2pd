@@ -4,15 +4,17 @@
  *
  * openi2pd: test privsep windows isolation.
  *
- * Windows-only checks for the per-role AppContainer isolation model: the role
- * table invariant (never an Internet capability together with a persistent
- * write root), the capability mapping back onto the platform-free capability
- * matrix, profile/SID derivation and reuse, and the delegated-root DACL grant
- * (one container-SID entry, never Everyone or ALL APPLICATION PACKAGES).
+ * Windows-only checks for the per-role AppContainer isolation model:
+ * the role table invariant (never an Internet capability together with
+ * a persistent write root), the capability mapping back onto the
+ * platform-free capability matrix, profile/SID derivation and reuse,
+ * and the delegated-root DACL grant (one container-SID entry, never
+ * Everyone or ALL APPLICATION PACKAGES).
  *
- * The test creates the durable `openi2pd.storage` and `openi2pd.network`
- * profiles on the host. They are intentionally not deleted: profile removal is
- * an explicit operator action after every worker of that role is decommissioned.
+ * The test creates the durable `openi2pd.storage` and
+ * `openi2pd.network` profiles on the host. They are intentionally not
+ * deleted: profile removal is an explicit operator action after every
+ * worker of that role is decommissioned.
  *
  */
 
@@ -34,7 +36,8 @@ int main ()
 #ifndef _WIN32_WINNT
 #define _WIN32_WINNT 0x0A00
 #endif
-// The CMake target already supplies these as compile definitions; only provide
+// The CMake target already supplies these as compile definitions; only
+// provide
 // them when the test is compiled standalone.
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
@@ -60,9 +63,9 @@ using namespace i2p::privsep;
 
 namespace
 {
-// Concrete (non-generic) write rights. FILE_GENERIC_WRITE cannot be used as a
-// probe mask: it shares STANDARD_RIGHTS_WRITE and SYNCHRONIZE with
-// FILE_GENERIC_READ, so a read-only ACE would look writable.
+// Concrete (non-generic) write rights. FILE_GENERIC_WRITE cannot be
+// used as a probe mask: it shares STANDARD_RIGHTS_WRITE and SYNCHRONIZE
+// with FILE_GENERIC_READ, so a read-only ACE would look writable.
 constexpr DWORD WRITE_ACCESS_MASK
 	= static_cast<DWORD> (FILE_WRITE_DATA | FILE_APPEND_DATA | FILE_WRITE_EA | FILE_WRITE_ATTRIBUTES | DELETE);
 
@@ -81,7 +84,9 @@ struct DaclSummary
 	bool containerWrites = false;
 	/** Everyone (S-1-1-0) must never be added by this component. */
 	bool everyone = false;
-	/** ALL [RESTRICTED] APPLICATION PACKAGES must never gain write access. */
+	/**
+	 * ALL [RESTRICTED] APPLICATION PACKAGES must never gain write access.
+	 */
 	bool anyPackageWrites = false;
 };
 
@@ -111,7 +116,8 @@ DaclSummary InspectDacl (const std::wstring & path, PSID containerSid)
 			continue;
 		}
 		if (MatchesStringSid (sid, L"S-1-1-0")) summary.everyone = true;
-		// S-1-15-2-1 is ALL APPLICATION PACKAGES, S-1-15-2-2 is ALL RESTRICTED
+		// S-1-15-2-1 is ALL APPLICATION PACKAGES, S-1-15-2-2 is ALL
+		// RESTRICTED
 		// APPLICATION PACKAGES.
 		if ((MatchesStringSid (sid, L"S-1-15-2-1") || MatchesStringSid (sid, L"S-1-15-2-2"))
 			&& (ace->Mask & WRITE_ACCESS_MASK) != 0)
@@ -148,8 +154,8 @@ void TestRoleTableInvariant ()
 		// write root never coexist in one worker.
 		assert (!(isolation.internetClient && isolation.persistentWrites));
 		assert (!(isolation.privateNetworkClientServer && isolation.persistentWrites));
-		// Network access or durable writes require the AppContainer boundary; a
-		// restricted token alone is not a filesystem/network boundary.
+		// Network access or durable writes require the AppContainer boundary;
+		// a restricted token alone is not a filesystem/network boundary.
 		if (isolation.internetClient || isolation.privateNetworkClientServer || isolation.persistentWrites)
 			assert (isolation.appContainer);
 		// Privileges are dropped with and without the container.
@@ -159,8 +165,8 @@ void TestRoleTableInvariant ()
 			assert (!isolation.internetClient && !isolation.privateNetworkClientServer);
 	}
 
-	// The supervisor spawns workers, so it must not be an AppContainer child of
-	// its own profile; it has no network and no delegated root.
+	// The supervisor spawns workers, so it must not be an AppContainer
+	// child of its own profile; it has no network and no delegated root.
 	const auto supervisor = GetWindowsRoleIsolation (WindowsWorkerRole::Supervisor);
 	assert (!supervisor.appContainer);
 	assert (!supervisor.internetClient && !supervisor.privateNetworkClientServer);
@@ -176,8 +182,9 @@ void TestRoleTableInvariant ()
 		assert (!isolation.internetClient && !isolation.privateNetworkClientServer);
 	}
 
-	// The network worker has both client capabilities and no write root, and it
-	// needs a capability, so it cannot be a low-privilege AppContainer.
+	// The network worker has both client capabilities and no write root,
+	// and it needs a capability, so it cannot be a low-privilege
+	// AppContainer.
 	const auto network = GetWindowsRoleIsolation (WindowsWorkerRole::Network);
 	assert (network.appContainer);
 	assert (!network.lowPrivilegeAppContainer);
@@ -210,8 +217,8 @@ void TestCapabilityMapping ()
 
 		const auto mapped = WindowsRoleToProcessRole (windowsRole);
 		if (!mapped) continue;
-		// Every mapped Windows role names a documented target row that keeps the
-		// project invariant.
+		// Every mapped Windows role names a documented target row that keeps
+		// the project invariant.
 		assert (IsRoleCapabilitySafe (*mapped));
 		const auto mask = TargetMask (*mapped);
 		assert (mask.has_value ());
@@ -223,8 +230,8 @@ void TestCapabilityMapping ()
 		assert (isolation.persistentWrites == mask->Has (Capability::PersistentWrite));
 	}
 
-	// The admin worker has no process capability row yet; the gap is explicit
-	// instead of being hidden by a default.
+	// The admin worker has no process capability row yet; the gap is
+	// explicit instead of being hidden by a default.
 	assert (!WindowsRoleToProcessRole (WindowsIsolationRole::Admin).has_value ());
 }
 
@@ -248,7 +255,8 @@ void TestAppContainerCreation ()
 	assert (storage->Name () == L"openi2pd.storage");
 	assert (storage->SidString ().rfind (L"S-1-15-2-", 0) == 0);
 	assert (storage->LowPrivilege ());
-	// Capability-free: a low-privilege AppContainer must not carry capability
+	// Capability-free: a low-privilege AppContainer must not carry
+	// capability
 	// SIDs.
 	assert (storage->Capabilities ().empty ());
 
@@ -258,8 +266,8 @@ void TestAppContainerCreation ()
 	assert (!network->LowPrivilege ());
 	assert (network->Name () == L"openi2pd.network");
 	assert (network->SidString () != storage->SidString ());
-	// The network role carries exactly the Internet client and private-network
-	// capability SIDs from the role table.
+	// The network role carries exactly the Internet client and
+	// private-network capability SIDs from the role table.
 	assert (network->Capabilities ().size () == 2);
 	for (const auto & capability : network->Capabilities ())
 	{
@@ -275,14 +283,16 @@ void TestAppContainerCreation ()
 	assert (CreateWellKnownSid (WinCapabilityPrivateNetworkClientServerSid, nullptr, buffer, &size));
 	assert (EqualSid (network->Capabilities ()[1].Sid, buffer));
 
-	// A second call reuses the durable profile instead of creating another one:
+	// A second call reuses the durable profile instead of creating another
+	// one:
 	// the derived SID is identical.
 	const auto storageAgain = CreateWindowsAppContainer (WindowsWorkerRole::Storage);
 	assert (storageAgain.has_value ());
 	assert (storageAgain->IsValid ());
 	assert (storageAgain->SidString () == storage->SidString ());
 
-	// The supervisor must not receive an AppContainer: it has to spawn workers.
+	// The supervisor must not receive an AppContainer: it has to spawn
+	// workers.
 	const auto supervisor = CreateWindowsAppContainer (WindowsWorkerRole::Supervisor);
 	assert (!supervisor.has_value ());
 	assert (!supervisor.error ().empty ());
@@ -301,11 +311,13 @@ void TestPathGrant ()
 	const auto writable = InspectDacl (directory, storage->Sid ());
 	assert (writable.containerAce);
 	assert (writable.containerWrites);
-	// Exactly one container entry was added; no broad group was introduced.
+	// Exactly one container entry was added; no broad group was
+	// introduced.
 	assert (!writable.everyone);
 	assert (!writable.anyPackageWrites);
 
-	// The grant is idempotent: a repeated call merges into the existing DACL.
+	// The grant is idempotent: a repeated call merges into the existing
+	// DACL.
 	assert (GrantAppContainerPath (*storage, directory, true).has_value ());
 	const auto repeated = InspectDacl (directory, storage->Sid ());
 	assert (repeated.containerAce);
@@ -327,8 +339,8 @@ void TestPathGrant ()
 	// The device namespace is not a delegated filesystem root.
 	const auto device = GrantAppContainerPath (*storage, L"\\\\.\\PhysicalDrive0", true);
 	assert (!device.has_value ());
-	// A container that was never created for a requested role is invalid and
-	// cannot authorize a grant.
+	// A container that was never created for a requested role is invalid
+	// and cannot authorize a grant.
 	const WindowsAppContainer unbuilt;
 	assert (!unbuilt.IsValid ());
 	assert (!unbuilt.Sid ());

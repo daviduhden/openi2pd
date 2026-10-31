@@ -5,11 +5,12 @@
  * openi2pd: test privsep supervisor.
  *
  * Exercises the supervisor's pure state machines: the single log-worker
- * restart budget (initial delay, doubling, cap, stable reset, exhaustion), the
- * bounded status snapshot (start/ready/restarting/failed transitions and the
- * dropping-count publication) and the storage-broker reply classifier that
- * rejects a future request id without tearing the channel down. No child
- * process, socket or broker is started.
+ * restart budget (initial delay, doubling, cap, stable reset,
+ * exhaustion), the bounded status snapshot
+ * (start/ready/restarting/failed transitions and the dropping-count
+ * publication) and the storage-broker reply classifier that rejects a
+ * future request id without tearing the channel down. No child process,
+ * socket or broker is started.
  *
  */
 
@@ -62,8 +63,8 @@ void TestRestartBudgetSchedule ()
 		assert (budget.Restarts () == index + 1);
 		assert (!budget.Exhausted ());
 	}
-	// All eight waits happen inside one 60 s window, which is why the budget is
-	// expressible as "at most eight restarts per stable period".
+	// All eight waits happen inside one 60 s window, which is why the
+	// budget is expressible as "at most eight restarts per stable period".
 	assert (elapsed < LogWorkerRestartBudget::STABLE_PERIOD.count () * 1000);
 	// The cap holds instead of doubling past 30 s.
 	assert (budget.NextDelay () == LogWorkerRestartBudget::MAXIMUM_DELAY);
@@ -155,8 +156,10 @@ void TestStatusTransitions ()
 
 void TestStatusExhaustionIsPublishedOnce ()
 {
-	// Drive the production sequence for a worker that never gets stable: each
-	// failure consumes one restart, and the first refusal publishes Failed.
+	// Drive the production sequence for a worker that never gets stable:
+	// each
+	// failure consumes one restart, and the first refusal publishes
+	// Failed.
 	LogWorkerRestartBudget budget;
 	SupervisorStatus status;
 	status.NoteStarting ("log", 1);
@@ -192,7 +195,8 @@ void TestStatusExhaustionIsPublishedOnce ()
 	assert (entry->restarts == LogWorkerRestartBudget::MAX_RESTARTS);
 	assert (status.Size () == 1);
 
-	// A repeated publication stays a single failed entry, so a caller cannot
+	// A repeated publication stays a single failed entry, so a caller
+	// cannot
 	// observe two states for the same worker.
 	status.NoteFailed ("log", generation, budget.Restarts (), "restart budget exhausted");
 	assert (status.Size () == 1);
@@ -212,7 +216,8 @@ void TestStatusBounds ()
 	assert (entries.front ().reason.size () == SupervisorStatus::MAX_REASON);
 	assert (entries.front ().generation == 7);
 
-	// The snapshot is a copy: mutating it cannot change the published state.
+	// The snapshot is a copy: mutating it cannot change the published
+	// state.
 	auto copy = status.Snapshot ();
 	copy.front ().state = SupervisorWorkerState::Failed;
 	copy.front ().reason = "tampered";
@@ -244,9 +249,9 @@ void TestReplyClassifier ()
 	assert (decision.kind == SupervisorReplyKind::Stale);
 	assert (decision.code == ErrorCode::None);
 
-	// A future id cannot answer this request. It is a typed BadField rejection
-	// of one call, not a reason to tear the broker channel down: the caller
-	// keeps the channel and every worker behind it.
+	// A future id cannot answer this request. It is a typed BadField
+	// rejection of one call, not a reason to tear the broker channel down:
+	// the caller keeps the channel and every worker behind it.
 	for (const uint32_t future : { 6u, 7u, 1000u, UINT32_MAX })
 	{
 		decision = ClassifySupervisorReply (5, future);
@@ -255,8 +260,8 @@ void TestReplyClassifier ()
 		assert (decision.detail == "storage supervisor replied out of order");
 	}
 
-	// Request id zero is a legal pending id: the first spawn reply is id 2 in
-	// production, so exercises the boundary rather than skipping it.
+	// Request id zero is a legal pending id: the first spawn reply is id 2
+	// in production, so exercises the boundary rather than skipping it.
 	decision = ClassifySupervisorReply (0, 0);
 	assert (decision.kind == SupervisorReplyKind::Matching);
 	decision = ClassifySupervisorReply (0, 1);
@@ -265,8 +270,8 @@ void TestReplyClassifier ()
 
 void TestProcessStatusStartsEmpty ()
 {
-	// No supervisor runs in this test process, so the published snapshot is
-	// empty; the type is exercised above with local instances.
+	// No supervisor runs in this test process, so the published snapshot
+	// is empty; the type is exercised above with local instances.
 	assert (GetSupervisorStatus ().Size () == 0);
 }
 }

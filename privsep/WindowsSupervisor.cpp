@@ -4,14 +4,14 @@
  *
  * openi2pd: WindowsSupervisor.
  *
- * Implements the Windows worker supervisor: per-role identity validation and
- * AppContainer setup, a fresh private listener per generation, spawn and
- * authenticated accept bound to the spawned PID/session/role/nonce, restart
- * under the shared ladder with a bounded backoff, and a stop that sends the
- * advisory Shutdown frame, closes the channel, terminates the Job Object and
- * waits with the caller's budget. Every failure releases its handles before it
+ * Implements the Windows worker supervisor: per-role identity
+ * validation and AppContainer setup, a fresh private listener per
+ * generation, spawn and authenticated accept bound to the spawned
+ * PID/session/role/nonce, restart under the shared ladder with a
+ * bounded backoff, and a stop that sends the advisory Shutdown frame,
+ * closes the channel, terminates the Job Object and waits with the
+ * caller's budget. Every failure releases its handles before it
  * returns, so a refused spawn leaves no process and no handle behind.
- *
  */
 
 #include "WindowsSupervisor.h"
@@ -120,12 +120,12 @@ i2p::expected<void, std::string> WindowsWorkerSupervisor::Start ()
 	return SpawnGeneration (generation);
 }
 
-// One generation owns exactly one listener and one nonce: the pipe is created
-// here (random per spawn unless a test pins the name), the DACL carries the
-// role's AppContainer SID, and the accept is bound to this child's PID, session,
-// role and nonce. After a successful accept the server object is dropped because
-// the single pipe instance now belongs to the channel; the next generation
-// creates a new one.
+// One generation owns exactly one listener and one nonce: the pipe is
+// created here (random per spawn unless a test pins the name), the DACL
+// carries the role's AppContainer SID, and the accept is bound to this
+// child's PID, session, role and nonce. After a successful accept the
+// server object is dropped because the single pipe instance now belongs
+// to the channel; the next generation creates a new one.
 i2p::expected<void, std::string> WindowsWorkerSupervisor::SpawnGeneration (uint32_t generation)
 {
 	m_State.store (SupervisorWorkerState::Starting, std::memory_order_release);
@@ -146,7 +146,8 @@ i2p::expected<void, std::string> WindowsWorkerSupervisor::SpawnGeneration (uint3
 	m_Server.emplace (std::move (*server));
 	m_PipeName = pipeName;
 
-	// The WindowsIpc helper owns the 32-byte CSPRNG nonce and its hex codec.
+	// The WindowsIpc helper owns the 32-byte CSPRNG nonce and its hex
+	// codec.
 	auto nonce = GenerateWindowsWorkerNonce ();
 	if (!nonce) return FailTerminal (WindowsWorkerFailureKind::Spawn, generation, nonce.error ());
 
@@ -154,9 +155,9 @@ i2p::expected<void, std::string> WindowsWorkerSupervisor::SpawnGeneration (uint3
 		CurrentProcessSessionId (), *nonce, container, GetWindowsWorkerPolicy (m_Config.role));
 	if (!spawned)
 	{
-		// A nested-job topology is the usual cause of a rejected assignment, so
-		// report it with the spawn error instead of leaving the operator with a
-		// bare Win32 code.
+		// A nested-job topology is the usual cause of a rejected assignment,
+		// so report it with the spawn error instead of leaving the operator
+		// with a bare Win32 code.
 		std::string detail = spawned.error ();
 		if (m_InsideJob)
 		{
@@ -176,13 +177,14 @@ i2p::expected<void, std::string> WindowsWorkerSupervisor::SpawnGeneration (uint3
 		m_Config.role, acceptedNonce, container);
 	if (!accepted)
 	{
-		// The child exists but never authenticated: terminate the Job Object and
-		// wait for the process before returning, so nothing outlives this call.
+		// The child exists but never authenticated: terminate the Job Object
+		// and wait for the process before returning, so nothing outlives this
+		// call.
 		return FailTerminal (WindowsWorkerFailureKind::Accept, generation, accepted.error ());
 	}
 	m_Channel = std::make_unique<WindowsChannel> (std::move (*accepted));
-	// The accepted instance is consumed; the listener handle now lives in the
-	// channel and the server object must not try to close it again.
+	// The accepted instance is consumed; the listener handle now lives in
+	// the channel and the server object must not try to close it again.
 	m_Server.reset ();
 
 	m_Policy.NoteReady (Clock::now ());
@@ -254,19 +256,20 @@ bool WindowsWorkerSupervisor::PumpOnce (uint32_t maxWaitMs)
 		HandleWorkerExit ();
 		return !IsTerminal ();
 	}
-	// The stop event was signalled (or an unexpected index arrived): the caller
-	// observes StopRequested() and leaves the loop.
+	// The stop event was signalled (or an unexpected index arrived): the
+	// caller observes StopRequested() and leaves the loop.
 	return false;
 }
 
 void WindowsWorkerSupervisor::HandleWorkerExit ()
 {
-	// The exit code is diagnostic only (never a secret operand). It comes from
-	// the retained process handle, not from the PID.
+	// The exit code is diagnostic only (never a secret operand). It comes
+	// from the retained process handle, not from the PID.
 	DWORD exitCode = ERROR_PROCESS_ABORTED;
 	if (m_Worker && m_Worker->process.IsValid ()) (void)GetExitCodeProcess (m_Worker->process.Native (), &exitCode);
-	// Release the dead generation first: the next spawn needs the pipe name and
-	// the Job Object back, and the handles must be closed only after the wait.
+	// Release the dead generation first: the next spawn needs the pipe
+	// name and the Job Object back, and the handles must be closed only
+	// after the wait.
 	ReleaseWorker (m_Config.stopBudgetMs);
 	if (StopRequested ()) return;
 
@@ -300,16 +303,17 @@ void WindowsWorkerSupervisor::ReleaseWorker (uint32_t budgetMs)
 {
 	if (m_Channel)
 	{
-		// Close the channel before the job is released: the peer must never see
-		// a channel whose process is already being torn down.
+		// Close the channel before the job is released: the peer must never
+		// see a channel whose process is already being torn down.
 		m_Channel->Close ();
 		m_Channel.reset ();
 	}
 	if (m_Worker)
 	{
-		// Terminate the whole Job Object first so no grandchild survives, then
-		// reap and wait on the process handle. The handles stay alive until the
-		// wait returns; closing the job is the KILL_ON_JOB_CLOSE backstop.
+		// Terminate the whole Job Object first so no grandchild survives,
+		// then reap and wait on the process handle. The handles stay alive
+		// until the wait returns; closing the job is the KILL_ON_JOB_CLOSE
+		// backstop.
 		if (m_Worker->job.IsValid ()) (void)TerminateJobObject (m_Worker->job.Native (), ERROR_PROCESS_ABORTED);
 		(void)m_Worker->Stop (budgetMs);
 		m_Worker.reset ();
@@ -318,17 +322,19 @@ void WindowsWorkerSupervisor::ReleaseWorker (uint32_t budgetMs)
 	m_Running.store (false, std::memory_order_release);
 }
 
-// Every terminal path funnels through here so the object ends handle-neutral:
-// worker, channel, listener, stop event and container are released before the
-// single Failed snapshot is published, and the detail is kept only in the
-// bounded diagnostic (it may contain a path, never a secret operand). The
-// supervisor stays terminal for its lifetime; only a new object may try again.
+// Every terminal path funnels through here so the object ends
+// handle-neutral: worker, channel, listener, stop event and container
+// are released before the single Failed snapshot is published, and the
+// detail is kept only in the bounded diagnostic (it may contain a path,
+// never a secret operand). The supervisor stays terminal for its
+// lifetime; only a new object may try again.
 i2p::expected<void, std::string> WindowsWorkerSupervisor::FailTerminal (
 	WindowsWorkerFailureKind kind, uint32_t generation, std::string detail)
 {
 	ReleaseWorker (m_Config.stopBudgetMs);
-	// The listener, the stop event and the container are not needed after a
-	// terminal failure; releasing them keeps a failed spawn handle-neutral.
+	// The listener, the stop event and the container are not needed after
+	// a terminal failure; releasing them keeps a failed spawn
+	// handle-neutral.
 	m_Server.reset ();
 	m_StopEvent.Reset ();
 	if (m_Container) m_Container.reset ();
@@ -356,13 +362,14 @@ void WindowsWorkerSupervisor::PublishFailedOnce (const WindowsWorkerFailureOutco
 		m_Status, m_Name, SupervisorWorkerState::Failed, outcome.generation, outcome.restarts, outcome.reason);
 }
 
-// Stop supports two callers at once (a control thread and the monitor loop)
-// and is idempotent: the stop flag is published and the stop event signalled
-// before anything else, so a monitor waiting on it leaves its slice. The
-// ordering is intentional: advisory Shutdown frame, short graceful window with
-// the channel still open, channel close, Job Object termination, bounded wait.
-// The Job Object remains the authority; a worker that ignores the frame is
-// terminated, and the caller's budget bounds the whole sequence.
+// Stop supports two callers at once (a control thread and the monitor
+// loop) and is idempotent: the stop flag is published and the stop
+// event signalled before anything else, so a monitor waiting on it
+// leaves its slice. The ordering is intentional: advisory Shutdown
+// frame, short graceful window with the channel still open, channel
+// close, Job Object termination, bounded wait. The Job Object remains
+// the authority; a worker that ignores the frame is terminated, and the
+// caller's budget bounds the whole sequence.
 bool WindowsWorkerSupervisor::Stop (uint32_t budgetMs)
 {
 	std::lock_guard<std::mutex> lock (m_LifecycleMutex);
@@ -372,8 +379,9 @@ bool WindowsWorkerSupervisor::Stop (uint32_t budgetMs)
 	const auto started = Clock::now ();
 	bool clean = true;
 
-	// One bounded, advisory Shutdown frame. The worker may already be gone; a
-	// failed send is not an error because the Job Object is the authority.
+	// One bounded, advisory Shutdown frame. The worker may already be
+	// gone; a failed send is not an error because the Job Object is the
+	// authority.
 	if (m_Channel && m_Channel->IsOpen ())
 	{
 		const uint32_t sendBudget
@@ -383,8 +391,8 @@ bool WindowsWorkerSupervisor::Stop (uint32_t budgetMs)
 	if (m_Worker)
 	{
 		// Graceful window: an authenticated worker normally leaves on the
-		// Shutdown frame. The channel stays open for it, and the wait uses the
-		// process handle (never the PID).
+		// Shutdown frame. The channel stays open for it, and the wait uses
+		// the process handle (never the PID).
 		const uint32_t remaining = RemainingBudgetMs (ElapsedMs (started), budgetMs);
 		if (remaining > WINDOWS_WORKER_GRACEFUL_STOP_MS && m_Worker->process.IsValid ())
 			(void)WaitForSingleObject (m_Worker->process.Native (), WINDOWS_WORKER_GRACEFUL_STOP_MS);
@@ -396,11 +404,11 @@ bool WindowsWorkerSupervisor::Stop (uint32_t budgetMs)
 	}
 	if (m_Worker)
 	{
-		// Forced path: terminate the whole Job Object (no grandchild survives),
-		// then reap and wait with what is left of the caller's budget. Closing
-		// the job afterwards is the KILL_ON_JOB_CLOSE backstop. A worker that
-		// already left is a clean stop even if the forced reap reports nothing
-		// left to terminate.
+		// Forced path: terminate the whole Job Object (no grandchild
+		// survives), then reap and wait with what is left of the caller's
+		// budget. Closing the job afterwards is the KILL_ON_JOB_CLOSE
+		// backstop. A worker that already left is a clean stop even if the
+		// forced reap reports nothing left to terminate.
 		const bool alreadyExited
 			= m_Worker->process.IsValid () && WaitForSingleObject (m_Worker->process.Native (), 0) == WAIT_OBJECT_0;
 		const uint32_t remaining = RemainingBudgetMs (ElapsedMs (started), budgetMs);

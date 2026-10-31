@@ -4,7 +4,9 @@
  *
  * openi2pd: test routercontext service lifecycle.
  *
- * Overlaps SubmitECIESx25519Key() and uptime reads with repeated idempotent Start()/Stop() cycles, requiring posts to observe a live or null service and never a reset pointer.
+ * Overlaps SubmitECIESx25519Key() and uptime reads with repeated
+ * idempotent Start()/Stop() cycles, requiring posts to observe a live
+ * or null service and never a reset pointer.
  *
  */
 

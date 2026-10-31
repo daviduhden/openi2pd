@@ -5,12 +5,12 @@
  * openi2pd: UPnP.
  *
  * Implements IGD discovery, external-address publication and IPv4 port
- * mapping every 20 minutes on a dedicated Boost.Asio thread. Mapping iterates
- * an immutable RouterInfo snapshot so transport address updates cannot race,
- * every mapping is added with a three-hour lease and renewed by the periodic
- * pass, a same-host IGD is refused, and Start/Stop support a clean restart.
- * A small status snapshot is published for administrative readers.
- *
+ * mapping every 20 minutes on a dedicated Boost.Asio thread. Mapping
+ * iterates an immutable RouterInfo snapshot so transport address
+ * updates cannot race, every mapping is added with a three-hour lease
+ * and renewed by the periodic pass, a same-host IGD is refused, and
+ * Start/Stop support a clean restart. A small status snapshot is
+ * published for administrative readers.
  */
 
 #ifdef USE_UPNP
@@ -224,8 +224,9 @@ namespace transport
 		i2p::config::GetOption ("upnp.name", strDesc);
 
 		// Inspect the current mapping. A lease-bound mapping is renewed by
-		// re-adding it, but a mapping that points at another host or port must
-		// be deleted first so this router never inherits a stale forward.
+		// re-adding it, but a mapping that points at another host or port
+		// must be deleted first so this router never inherits a stale
+		// forward.
 		char intClient[16] = { 0 }, intPort[6] = { 0 }, description[80] = { 0 }, enabled[4] = { 0 };
 		char leaseDuration[16] = { 0 };
 		int err = UPNP_GetSpecificPortMappingEntry (m_upnpUrls.controlURL, m_upnpData.first.servicetype,

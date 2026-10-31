@@ -4,7 +4,10 @@
  *
  * openi2pd: test privsep linux sandbox.
  *
- * Runs forked children under the Linux worker profiles to verify Landlock/capability separation: storage cannot use the network, network cannot write persistent files, and log/supervisor policies stay minimal.
+ * Runs forked children under the Linux worker profiles to verify
+ * Landlock/capability separation: storage cannot use the network,
+ * network cannot write persistent files, and log/supervisor policies
+ * stay minimal.
  *
  */
 
@@ -232,10 +235,10 @@ int ExpectSupervisorAllowsUnixSocketpair ()
 
 int ExpectSupervisorBootstrapPreservesDelegation ()
 {
-	// The supervisor must drop capabilities without installing an inherited
-	// Landlock/seccomp/netns domain: exec'ed storage and network workers can
-	// only become stricter, so a supervisor restriction here would silently
-	// break their delegated capability.
+	// The supervisor must drop capabilities without installing an
+	// inherited Landlock/seccomp/netns domain: exec'ed storage and network
+	// workers can only become stricter, so a supervisor restriction here
+	// would silently break their delegated capability.
 	if (ExpectNoEffectiveCapabilities () != 0) return 2;
 	if (ExpectSupervisorAllowsUnixSocketpair () != 0) return 3;
 	if (ExpectNetworkCanCreateSocket () != 0) return 4;
@@ -268,7 +271,8 @@ void RequireExitZero (ChildResult result, const char * name)
 {
 	// A 77 from the supervisor-bootstrap child is an unsupported-kernel
 	// failure, not a skip: the parent already made the explicit filesystem
-	// capability probe and this helper is only used for the negative policy
+	// capability probe and this helper is only used for the negative
+	// policy
 	// checks that must run when the kernel supports them.
 	assert (WIFEXITED (result.status));
 	assert (WEXITSTATUS (result.status) == 0);
@@ -307,7 +311,8 @@ int main ()
 	auto rejected = ApplyLinuxSandbox (contradictory);
 	assert (!rejected.has_value ());
 
-	// The supervisor bootstrap is capability-only. Its exec'ed children apply
+	// The supervisor bootstrap is capability-only. Its exec'ed children
+	// apply
 	// their own role policy, so it must not install an inherited domain.
 	RequireExitZero (RunSupervisorBootstrapChild (), "supervisor bootstrap");
 
@@ -315,8 +320,8 @@ int main ()
 	if (!support.filesystem)
 	{
 		// The static policy assertions above ran, but the negative Landlock
-		// enforcement body cannot. Report SKIP so CI does not mistake this for
-		// a completed sandbox test.
+		// enforcement body cannot. Report SKIP so CI does not mistake this
+		// for a completed sandbox test.
 		return 77;
 	}
 
@@ -324,8 +329,10 @@ int main ()
 	char * created = mkdtemp (directory);
 	assert (created);
 	const std::string writable = std::string (created) + "/inside";
-	// Keep the denied path outside the delegated directory; a sibling under
-	// `created` would correctly be writable and would make the negative test
+	// Keep the denied path outside the delegated directory; a sibling
+	// under
+	// `created` would correctly be writable and would make the negative
+	// test
 	// meaningless.
 	const std::string outside = std::string (created) + "-outside";
 
@@ -344,7 +351,8 @@ int main ()
 	RequireExitZero (RunChild (storageProfile, &ExpectNoEffectiveCapabilities), "storage capabilities");
 	RequireExitZero (RunChild (storageProfile, [] () { return 0; }), "storage start");
 
-	// A socket created before the sandbox must not be usable to connect either:
+	// A socket created before the sandbox must not be usable to connect
+	// either:
 	// seccomp denies the connection lifecycle, not only socket creation.
 	{
 		pid_t connectPid = fork ();
@@ -374,7 +382,8 @@ int main ()
 	supervisorProfile.requireLandlock = false;
 	RequireExitZero (RunChild (supervisorProfile, &ExpectSupervisorAllowsUnixSocketpair), "supervisor socketpair");
 
-	// A writable directory is allowed for storage; write into it in a child.
+	// A writable directory is allowed for storage; write into it in a
+	// child.
 	LinuxSandboxProfile storageWrite = storage;
 	storageWrite.writablePaths = { created };
 	pid_t writePid = fork ();

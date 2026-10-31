@@ -4,11 +4,11 @@
  *
  * openi2pd: TuiServer.
  *
- * Implements the UNIX TUI transport: a 0600 AF_UNIX listener that accepts
- * only same-UID peers, enforces per-operation and whole-connection budgets,
- * and dispatches newline-delimited requests sequentially. The socket path is
- * replaced only after stale-owner checks and is removed only while the
- * recorded inode still matches.
+ * Implements the UNIX TUI transport: a 0600 AF_UNIX listener that
+ * accepts only same-UID peers, enforces per-operation and
+ * whole-connection budgets, and dispatches newline-delimited requests
+ * sequentially. The socket path is replaced only after stale-owner
+ * checks and is removed only while the recorded inode still matches.
  *
  */
 

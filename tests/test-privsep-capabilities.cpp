@@ -4,10 +4,11 @@
  *
  * openi2pd: test privsep capabilities.
  *
- * Pins the role/capability matrix: the "no external network together with
- * persistent writes" invariant, the documented per-role masks, the recorded
- * migration state of the core, and the structural self-check used by the
- * supervisor at startup. No process, sandbox or socket is involved.
+ * Pins the role/capability matrix: the "no external network together
+ * with persistent writes" invariant, the documented per-role masks, the
+ * recorded migration state of the core, and the structural self-check
+ * used by the supervisor at startup. No process, sandbox or socket is
+ * involved.
  *
  */
 
@@ -83,8 +84,8 @@ void TestEveryTargetRejectsNetworkPlusWrite ()
 
 void TestCoreMigrationState ()
 {
-	// The target is network + control only: every durable write must move to a
-	// storage role, so the target mask has no persistent-write bit.
+	// The target is network + control only: every durable write must move
+	// to a storage role, so the target mask has no persistent-write bit.
 	const auto target = TargetMask (ProcessRole::Core);
 	assert (target.has_value ());
 	assert (*target == CORE_TARGET_CAPABILITIES);
@@ -102,7 +103,8 @@ void TestCoreMigrationState ()
 	assert (!SatisfiesCapabilityInvariant (*legacy));
 	assert (!(*legacy == *target));
 
-	// Only the core carries a legacy row; every other role is already declared
+	// Only the core carries a legacy row; every other role is already
+	// declared
 	// at its target.
 	for (size_t index = 0; index < PROCESS_ROLE_COUNT; ++index)
 	{
@@ -124,7 +126,8 @@ void TestNetworkFreeRoles ()
 		assert (!mask->Has (Capability::ExternalNetwork));
 	}
 
-	// The network worker may not write anything durably, and the crypto worker
+	// The network worker may not write anything durably, and the crypto
+	// worker
 	// holds IPC only.
 	const auto network = TargetMask (ProcessRole::Network);
 	assert (network.has_value ());
@@ -135,7 +138,8 @@ void TestNetworkFreeRoles ()
 	assert (*crypto == CRYPTO_CAPABILITIES);
 	assert (crypto->Bits () == CapabilityMask::Bit (Capability::Ipc));
 
-	// Storage workers write only a delegated root, so they carry the write bit
+	// Storage workers write only a delegated root, so they carry the write
+	// bit
 	// and never the network bit.
 	for (const auto role : { ProcessRole::RouterStorage, ProcessRole::DataStorage, ProcessRole::TorrentStorage })
 	{
@@ -174,13 +178,14 @@ void TestMasksAreDistinctAndDocumented ()
 		}
 		if (!known) distinct.push_back (row.mask.Bits ());
 	}
-	// core-legacy, core-target, supervisor, log, storage, broker, network and
-	// crypto are eight distinct capability sets. The three storage roles share
-	// one on purpose: they differ in their delegated root and protocol, not in
-	// what they may do.
+	// core-legacy, core-target, supervisor, log, storage, broker, network
+	// and crypto are eight distinct capability sets. The three storage
+	// roles share one on purpose: they differ in their delegated root and
+	// protocol, not in what they may do.
 	assert (distinct.size () == 8);
 
-	// No capability is dead, and every capability except the universal framed
+	// No capability is dead, and every capability except the universal
+	// framed
 	// IPC channel is withheld from at least one role.
 	for (size_t index = 0; index < CAPABILITY_COUNT; ++index)
 	{

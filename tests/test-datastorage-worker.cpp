@@ -4,11 +4,12 @@
  *
  * openi2pd: test data-storage worker.
  *
- * Exercises the isolated artifact worker end to end against a temporary root:
- * canonical path layout, mode 0600, replacement, removal, rejection of
- * symlink/hardlink/directory/foreign targets, staging-slot cleanup and
- * restart. Skipped when the kernel cannot provide the storage sandbox or the
- * process is privileged. Prepared for manual CI only.
+ * Exercises the isolated artifact worker end to end against a temporary
+ * root: canonical path layout, mode 0600, replacement, removal,
+ * rejection of symlink/hardlink/directory/foreign targets, staging-slot
+ * cleanup and restart. Skipped when the kernel cannot provide the
+ * storage sandbox or the process is privileged. Prepared for manual CI
+ * only.
  */
 
 #include <array>
@@ -95,8 +96,8 @@ int main (int argc, char ** argv)
 	const auto profileName = Identity (2);
 	const auto destinationName = Base32Identity (3) + ".3";
 
-	// Every kind lands on the path the core already reads, with mode 0600 and
-	// exactly the submitted bytes.
+	// Every kind lands on the path the core already reads, with mode 0600
+	// and exactly the submitted bytes.
 	struct Expectation
 	{
 		StorageArtifact kind;
@@ -134,8 +135,8 @@ int main (int argc, char ** argv)
 			assert (entry.path ().filename ().string ().find (".openi2pd-artifact-") == std::string::npos);
 	}
 
-	// Non-canonical names, unknown kinds and empty payloads are refused by the
-	// client before they reach the worker.
+	// Non-canonical names, unknown kinds and empty payloads are refused by
+	// the client before they reach the worker.
 	{
 		assert (!client.Write (StorageArtifact::RouterInfoCache, "not-a-name", Bytes (1, 4)));
 		assert (!client.Write (StorageArtifact::RouterInfoCache, "../" + infoName, Bytes (1, 4)));
@@ -148,7 +149,8 @@ int main (int argc, char ** argv)
 		assert (client.Write (StorageArtifact::RouterInfoCache, infoName, Bytes (3, 16)));
 	}
 
-	// Symlink, hardlink and directory targets are refused; the outside object
+	// Symlink, hardlink and directory targets are refused; the outside
+	// object
 	// is never touched and the worker stays usable.
 	{
 		const auto path = root / ArtifactRelativePath (StorageArtifact::RouterInfoCache, infoName);
@@ -178,8 +180,8 @@ int main (int argc, char ** argv)
 		assert (client.Write (StorageArtifact::RouterInfoCache, infoName, Bytes (7, 16)));
 	}
 
-	// A stale staging slot left by a killed worker is cleaned up by the next
-	// write of the same artifact family, without touching the target.
+	// A stale staging slot left by a killed worker is cleaned up by the
+	// next write of the same artifact family, without touching the target.
 	{
 		const auto path = root / ArtifactRelativePath (StorageArtifact::PeerProfile, profileName);
 		const auto directory = path.parent_path ();
@@ -205,8 +207,8 @@ int main (int argc, char ** argv)
 		std::filesystem::remove (path);
 	}
 
-	// Restart: requests from the previous generation are gone, the generation
-	// advances and writes keep working.
+	// Restart: requests from the previous generation are gone, the
+	// generation advances and writes keep working.
 	{
 		const auto generation = client.Generation ();
 		client.Stop ();

@@ -4,12 +4,12 @@
  *
  * openi2pd: I2PControl.
  *
- * Implements the asynchronous Boost.Asio TLS control service, accepting TCP
- * or UNIX stream connections and parsing bounded HTTP/JSON-RPC requests.
- * Passwords are compared in constant time, issued tokens expire after one
- * hour and every non-Authenticate method requires a valid token. A
- * self-signed certificate is generated when the configured files are missing
- * or unreadable.
+ * Implements the asynchronous Boost.Asio TLS control service, accepting
+ * TCP or UNIX stream connections and parsing bounded HTTP/JSON-RPC
+ * requests. Passwords are compared in constant time, issued tokens
+ * expire after one hour and every non-Authenticate method requires a
+ * valid token. A self-signed certificate is generated when the
+ * configured files are missing or unreadable.
  *
  */
 
@@ -82,10 +82,11 @@ std::string GetOpenSSLError ()
 }
 
 #if defined(BOOST_ASIO_HAS_LOCAL_SOCKETS)
-// The TCP path is unchanged; a local stream peer must belong to this process'
-// user where the platform provides a peer-credential call for local sockets.
-// Elsewhere the constructor requires a non-default password instead, so the
-// listener is not left with file mode as its only gate.
+// The TCP path is unchanged; a local stream peer must belong to this
+// process' user where the platform provides a peer-credential call for
+// local sockets. Elsewhere the constructor requires a non-default
+// password instead, so the listener is not left with file mode as its
+// only gate.
 template <typename Socket> bool AcceptLocalControlPeer (const Socket &)
 {
 	return true;
@@ -97,7 +98,8 @@ constexpr bool I2P_CONTROL_LOCAL_PEER_AUTH = i2p::client::localcontrol::HAS_PEER
 	return i2p::client::localcontrol::IsSameUserPeer (socket.native_handle ());
 }
 #else
-// No per-user credential call exists for a local socket on this platform.
+// No per-user credential call exists for a local socket on this
+// platform.
 constexpr bool I2P_CONTROL_LOCAL_PEER_AUTH = false;
 [[maybe_unused]] bool AcceptLocalControlPeer (const boost::asio::local::stream_protocol::socket &)
 {
@@ -105,7 +107,8 @@ constexpr bool I2P_CONTROL_LOCAL_PEER_AUTH = false;
 }
 #endif
 #else
-// No local listener is available, so the credential policy is not consulted.
+// No local listener is available, so the credential policy is not
+// consulted.
 [[maybe_unused]] constexpr bool I2P_CONTROL_LOCAL_PEER_AUTH = false;
 #endif
 
@@ -136,8 +139,8 @@ namespace client
 		, m_SSLContext (boost::asio::ssl::context::tls_server)
 		, m_ShutdownTimer (m_Service)
 	{
-		// Validate the credentials before binding anything: a rejected startup
-		// must not leave a socket behind.
+		// Validate the credentials before binding anything: a rejected
+		// startup must not leave a socket behind.
 		i2p::config::GetOption ("i2pcontrol.password", m_Password);
 		if (m_Password.empty ()) throw std::invalid_argument ("I2PControl password must not be empty");
 		if (port && m_Password == I2P_CONTROL_DEFAULT_PASSWORD)
@@ -147,8 +150,8 @@ namespace client
 				throw std::invalid_argument ("I2PControl refuses a non-loopback listener with the default password");
 		}
 		// A local socket is protected by its mode and its peer-user check. If
-		// the platform provides neither, the password is the only gate. This is
-		// only enforced when a local listener can actually be created.
+		// the platform provides neither, the password is the only gate. This
+		// is only enforced when a local listener can actually be created.
 #if defined(BOOST_ASIO_HAS_LOCAL_SOCKETS)
 		if (!port && !I2P_CONTROL_LOCAL_PEER_AUTH && m_Password == I2P_CONTROL_DEFAULT_PASSWORD)
 			throw std::invalid_argument (
@@ -289,14 +292,14 @@ namespace client
 		{
 			std::vector<std::function<void ()>> closeConnections;
 			std::vector<std::shared_ptr<boost::asio::steady_timer>> deadlines;
-			// Stop the io_context and join first: Asio shared objects must not be
-			// closed while a handler is running on them. The queued cancellation
-			// handlers are drained after the sockets are closed.
+			// Stop the io_context and join first: Asio shared objects must not
+			// be closed while a handler is running on them. The queued
+			// cancellation handlers are drained after the sockets are closed.
 			m_Service.stop ();
 			// A shutdown request can originate in a control handler, i.e. on the
-			// io_context thread itself. Joining there would self-deadlock; detach
-			// instead, because Run() observes m_IsRunning == false as soon as the
-			// current handler returns.
+			// io_context thread itself. Joining there would self-deadlock;
+			// detach instead, because Run() observes m_IsRunning == false as
+			// soon as the current handler returns.
 			const bool onServiceThread = m_Service.get_executor ().running_in_this_thread ();
 			if (m_Thread)
 			{
@@ -337,7 +340,8 @@ namespace client
 			m_ShutdownTimer.cancel ();
 			// Do not re-enter run() from a handler that is still on the stack.
 			// In that path cancellation handlers remain queued on the stopped
-			// context until it is restarted and run, or the context is destroyed.
+			// context until it is restarted and run, or the context is
+			// destroyed.
 			if (!onServiceThread)
 			{
 				m_Service.restart ();
@@ -478,8 +482,9 @@ namespace client
 			std::lock_guard lock (m_Connections->mutex);
 			m_Connections->deadlines[connectionID] = deadline;
 		}
-		// The same handler serves TCP and local stream sockets; remote_endpoint()
-		// throwing on a disconnected peer must not skip the handshake deadline.
+		// The same handler serves TCP and local stream sockets;
+		// remote_endpoint() throwing on a disconnected peer must not skip the
+		// handshake deadline.
 		LogPrint (eLogDebug, "I2PControl: New request accepted");
 		Handshake (newSocket, deadline, connection);
 	}
@@ -999,9 +1004,10 @@ namespace client
 
 	void I2PControlService::ReseedHandler (std::ostringstream & results)
 	{
-		// RequestReseed() starts the owned reseed job and returns immediately.
-		// Calling the blocking NetDb::Reseed() here would stall the control
-		// thread (and every other control client) for the whole transfer.
+		// RequestReseed() starts the owned reseed job and returns
+		// immediately. Calling the blocking NetDb::Reseed() here would stall
+		// the control thread (and every other control client) for the whole
+		// transfer.
 		const bool accepted = i2p::data::netdb.RequestReseed ();
 		const auto state = i2p::data::netdb.GetReseedState ();
 		LogPrint (
@@ -1037,8 +1043,9 @@ namespace client
 		rsa.release (); // pkey owns the RSA key now
 #endif
 
-		// The certificate is released after it has been written and before the
-		// private key is saved, matching the previous explicit free order.
+		// The certificate is released after it has been written and before
+		// the private key is saved, matching the previous explicit free
+		// order.
 		{
 			std::unique_ptr<X509, decltype (&X509_free)> x509 (X509_new (), X509_free);
 			if (!x509)

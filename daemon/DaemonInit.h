@@ -4,11 +4,11 @@
  *
  * openi2pd: daemon initialization rollback.
  *
- * Records daemon initialization phases before acquisition so false returns
- * and exceptions unwind completed or partially completed phases in reverse.
- * The ledger covers process-owned resources only; it cannot undo config or
- * filesystem changes, nor can it relax OpenBSD pledge/unveil policy.
- *
+ * Records daemon initialization phases before acquisition so false
+ * returns and exceptions unwind completed or partially completed phases
+ * in reverse. The ledger covers process-owned resources only; it cannot
+ * undo config or filesystem changes, nor can it relax OpenBSD
+ * pledge/unveil policy.
  */
 
 #ifndef I2PD_DAEMON_INIT_H
@@ -24,17 +24,22 @@ namespace i2p::util
 {
 enum class DaemonInitPhase : uint8_t
 {
-	/** Log destination/sink setup; rollback stops the logger and resets it. */
+	/**
+	 * Log destination/sink setup; rollback stops the logger and resets
+	 * it. */
 	Logging,
-	/** Crypto provider initialization; rollback terminates the provider. */
+	/** Crypto provider initialization; rollback terminates it. */
 	Crypto,
 	/**
-	 * Fixed router-file write authority (router.keys/info, ntcp2/ssu2 keys).
-	 * Rollback first replaces the persistence writer with a refusing callback so
-	 * a failed isolated setup can never fall back to core filesystem writes.
+	 * Fixed router-file write authority (router.keys/info, ntcp2/ssu2
+	 * keys). Rollback first replaces the persistence writer with a
+	 * refusing callback so a failed isolated setup can never fall back to
+	 * core filesystem writes.
 	 */
 	RouterStorage,
-	/** Hash-named artifact write authority (netDb, peer profiles, destination keys). */
+	/**
+	 * Hash-named artifact write authority (netDb, peer profiles,
+	 * destination keys). */
 	DataStorage,
 	/** Router context and its identity/configuration state. */
 	RouterContext
@@ -43,17 +48,18 @@ enum class DaemonInitPhase : uint8_t
 /**
  * LIFO rollback ledger for daemon initialization.
  *
- * A phase is recorded with Begin() *before* the resource is acquired, so a
- * later false return or exception unwinds every completed or partially
- * completed phase in reverse order. A rollback callback must tolerate a partially
- * completed phase, because acquisition can fail after it created part of its
- * state, and it must not throw: Rollback() swallows a failing callback so the
- * original initialization error is the one the caller sees.
- *
- * Commit() happens once, at the end of a successful init; it clears the ledger
- * and makes the destructor a no-op. The ledger cannot undo configuration or
- * filesystem changes and cannot relax an already installed pledge/unveil
- * policy; it only releases process-owned resources.
+ * A phase is recorded with Begin() *before* the resource is acquired,
+ * so a later false return or exception unwinds every completed or
+ * partially completed phase in reverse order. A rollback callback must
+ * tolerate a partially completed phase, because acquisition can fail
+ * after it created part of its state, and it must not throw: Rollback()
+ * swallows a failing callback so the original initialization error is
+ * the one the caller sees.
+ * Commit() happens once, at the end of a successful init; it clears the
+ * ledger and makes the destructor a no-op. The ledger cannot undo
+ * configuration or filesystem changes and cannot relax an already
+ * installed pledge/unveil policy; it only releases process-owned
+ * resources.
  */
 template <typename RollbackFunction> class DaemonInitTransaction
 {
@@ -90,8 +96,8 @@ public:
 	}
 
 	/**
-	 * Unwind recorded phases in reverse order. Safe to call repeatedly and from
-	 * the destructor; a committed transaction does nothing.
+	 * Unwind recorded phases in reverse order. Safe to call repeatedly and
+	 * from the destructor; a committed transaction does nothing.
 	 */
 	void Rollback () noexcept
 	{

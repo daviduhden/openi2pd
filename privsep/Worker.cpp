@@ -4,16 +4,16 @@
  *
  * openi2pd: Worker.
  *
- * Implements worker spawning via fork/exec with the inherited descriptor 3,
- * close-on-exec cleanup and async-signal-safe child setup. ChildProcess
- * tracks the PID and optional pidfd so liveness checks, bounded
- * SIGTERM/SIGKILL escalation and reaping avoid PID reuse and unbounded waits.
- * The executable is a frozen, validated absolute path (no $PATH search and no
- * /proc fallback), the forked child drops to the configured service identity
- * and pins its standard descriptors, and the dedicated descriptor 5 carries a
- * CSPRNG nonce plus the child's post-drop uid/gid so the exec'ed worker can
- * prove both the spawner and the identity it was started with.
- *
+ * Implements worker spawning via fork/exec with the inherited
+ * descriptor 3, close-on-exec cleanup and async-signal-safe child
+ * setup. ChildProcess tracks the PID and optional pidfd so liveness
+ * checks, bounded SIGTERM/SIGKILL escalation and reaping avoid PID
+ * reuse and unbounded waits. The executable is a frozen, validated
+ * absolute path (no $PATH search and no /proc fallback), the forked
+ * child drops to the configured service identity and pins its standard
+ * descriptors, and the dedicated descriptor 5 carries a CSPRNG nonce
+ * plus the child's post-drop uid/gid so the exec'ed worker can prove
+ * both the spawner and the identity it was started with.
  */
 
 #ifndef _GNU_SOURCE
@@ -93,9 +93,9 @@ namespace
 
 	/**
 	 * Retrieve CSPRNG bytes without depending on an OpenSSL symbol in this
-	 * archive. getrandom(2) is the kernel CSPRNG on Linux; arc4random_buf(3)
-	 * is the base-system CSPRNG on OpenBSD. Any short or failed read is a
-	 * failure: a truncated nonce must never be used.
+	 * archive. getrandom(2) is the kernel CSPRNG on Linux;
+	 * arc4random_buf(3) is the base-system CSPRNG on OpenBSD. Any short or
+	 * failed read is a failure: a truncated nonce must never be used.
 	 */
 	bool PlatformRandomBytes (uint8_t * buffer, size_t size)
 	{
@@ -149,8 +149,8 @@ namespace
 	 * Format a hello record into a fixed buffer.
 	 *
 	 * Async-signal-safe (no allocation), so the forked child can build the
-	 * record it writes after its credential drop. An unknown role, an all-zero
-	 * nonce and uid 0 are refused.
+	 * record it writes after its credential drop. An unknown role, an
+	 * all-zero nonce and uid 0 are refused.
 	 */
 	bool FormatWorkerHello (std::array<uint8_t, WORKER_HELLO_SIZE> & record, WorkerRole role,
 		const std::array<uint8_t, WORKER_HELLO_NONCE_SIZE> & nonce, uint32_t uid, uint32_t gid) noexcept
@@ -187,11 +187,11 @@ namespace
 	 * Post-fork: create the one-shot identity pipe and write the record.
 	 *
 	 * The pipe is created in the process that execs, and only that process
-	 * holds the write end, so the worker reads exactly one record and observes
-	 * EOF: no other process can append a second record or hold the pipe open.
-	 * The nonce arrives through the fork from the parent, which generated it
-	 * before forking; the uid/gid are the child's own post-drop identity.
-	 *
+	 * holds the write end, so the worker reads exactly one record and
+	 * observes EOF: no other process can append a second record or hold
+	 * the pipe open. The nonce arrives through the fork from the parent,
+	 * which generated it before forking; the uid/gid are the child's own
+	 * post-drop identity.
 	 * Async-signal-safe only (pipe/fcntl/dup2/write/close), no allocation.
 	 */
 	bool WriteWorkerHelloRecord (
@@ -210,7 +210,8 @@ namespace
 		}
 #endif
 		// Keep both ends above the worker's fixed descriptors 3 (channel),
-		// 4 (inherited root) and 5 (record), so a later dup2 cannot alias them.
+		// 4 (inherited root) and 5 (record), so a later dup2 cannot alias
+		// them.
 		const int readEnd = ::fcntl (fds[0], F_DUPFD_CLOEXEC, 6);
 		const int writeEnd = ::fcntl (fds[1], F_DUPFD_CLOEXEC, 6);
 		::close (fds[0]);
@@ -243,15 +244,15 @@ namespace
 			}
 			done += static_cast<size_t> (count);
 		}
-		// Closing the only write end is what makes the worker's oversized-record
-		// peek observe EOF instead of a live writer.
+		// Closing the only write end is what makes the worker's
+		// oversized-record peek observe EOF instead of a live writer.
 		::close (writeEnd);
 		WipeBytes (record.data (), record.size ());
 		return written;
 	}
 
-	// Forward declarations: the child setup below runs before the definitions
-	// at the bottom of this translation unit.
+	// Forward declarations: the child setup below runs before the
+	// definitions at the bottom of this translation unit.
 	bool RoleWantsNetworkNamespace (WorkerRole role);
 	extern dev_t g_ExecutableDevice;
 	extern ino_t g_ExecutableInode;
@@ -260,17 +261,17 @@ namespace
 	/**
 	 * Post-fork child setup shared by the direct and detached spawn paths.
 	 *
-	 * Async-signal-safe only: no allocation, no stdio, no setenv and no C++
-	 * objects that can take a lock. Never returns: every failure is `_exit`
-	 * so no half-configured worker can reach execve.
+	 * Async-signal-safe only: no allocation, no stdio, no setenv and no
+	 * C++ objects that can take a lock. Never returns: every failure is
+	 * `_exit` so no half-configured worker can reach execve.
 	 */
 	[[noreturn]] void ExecWorkerChild (WorkerRole role, const std::string & executable, int channelFd,
 		int parentChannelFd, int inheritedRootFd, const std::array<uint8_t, WORKER_HELLO_NONCE_SIZE> & nonce,
 		const WorkerCredentials & credentials)
 	{
-		// Restarts fork from the multi-threaded router. Drop to the configured
-		// service identity first, so every later descriptor operation already
-		// runs without the daemon's privilege.
+		// Restarts fork from the multi-threaded router. Drop to the
+		// configured service identity first, so every later descriptor
+		// operation already runs without the daemon's privilege.
 		sigset_t empty;
 		sigemptyset (&empty);
 		sigprocmask (SIG_SETMASK, &empty, nullptr);
@@ -302,9 +303,9 @@ namespace
 		if (!ClearCapabilitiesAfterCredentialDrop ()) _exit (127);
 #endif
 		// The socketpair may have been allocated below descriptor 3 if the
-		// caller inherited closed standard descriptors. Install the fixed slots
-		// before pinning stdio, so a low-numbered channel cannot be overwritten
-		// by /dev/null.
+		// caller inherited closed standard descriptors. Install the fixed
+		// slots before pinning stdio, so a low-numbered channel cannot be
+		// overwritten by /dev/null.
 		if (parentChannelFd >= 0 && parentChannelFd != channelFd) ::close (parentChannelFd);
 		if (channelFd != 3)
 		{
@@ -319,24 +320,26 @@ namespace
 		}
 		else
 		{
-			// A later dup2 or CloseFrom(6) would not remove an inherited fd4, and
-			// a role without a storage root must not receive one.
+			// A later dup2 or CloseFrom(6) would not remove an inherited fd4,
+			// and a role without a storage root must not receive one.
 			::close (4);
 		}
-		// A terminal, service-manager log pipe or socket-activation descriptor
-		// must never be writable by a worker.
+		// A terminal, service-manager log pipe or socket-activation
+		// descriptor must never be writable by a worker.
 		if (!PinStandardDescriptors ()) _exit (127);
-		// The record carries the identity the worker actually has, so a partial
-		// drop cannot be hidden from the exec'ed process.
+		// The record carries the identity the worker actually has, so a
+		// partial drop cannot be hidden from the exec'ed process.
 		if (!WriteWorkerHelloRecord (
 				role, nonce, static_cast<uint32_t> (::geteuid ()), static_cast<uint32_t> (::getegid ())))
 			_exit (127);
-		// dup2 cleared FD_CLOEXEC on fd3/fd4/fd5; everything above is foreign.
+		// dup2 cleared FD_CLOEXEC on fd3/fd4/fd5; everything above is
+		// foreign.
 		CloseFrom (6);
 #if defined(__linux__)
-		// Close the freeze/exec gap: a path replacement between SetExecutablePath
-		// and this spawn must not execute a different image. OpenBSD uses an
-		// x-only unveil of the frozen path and has no rpath at this point.
+		// Close the freeze/exec gap: a path replacement between
+		// SetExecutablePath and this spawn must not execute a different
+		// image. OpenBSD uses an x-only unveil of the frozen path and has no
+		// rpath at this point.
 		struct stat frozenStatus { };
 		if (::stat (executable.c_str (), &frozenStatus) != 0 || !S_ISREG (frozenStatus.st_mode)
 			|| frozenStatus.st_dev != g_ExecutableDevice || frozenStatus.st_ino != g_ExecutableInode
@@ -344,7 +347,8 @@ namespace
 			_exit (127);
 #endif
 		// argv[0] is the frozen absolute path, so an exec'ed worker (the
-		// supervisor) can freeze the same path without a PATH or /proc lookup.
+		// supervisor) can freeze the same path without a PATH or /proc
+		// lookup.
 		char fdText[] = "3";
 		char * const argv[] = { const_cast<char *> (executable.c_str ()), const_cast<char *> ("--privsep-worker"),
 			const_cast<char *> (WorkerRoleName (role)), fdText, nullptr };
@@ -355,8 +359,8 @@ namespace
 
 bool PinStandardDescriptors ()
 {
-	// Opened without O_CLOEXEC: whichever descriptor ends up on 0, 1 or 2 must
-	// survive execve, and dup2 only clears the flag on the target.
+	// Opened without O_CLOEXEC: whichever descriptor ends up on 0, 1 or 2
+	// must survive execve, and dup2 only clears the flag on the target.
 	const int nullFd = ::open ("/dev/null", O_RDWR);
 	if (nullFd < 0) return false;
 	for (int fd = 0; fd <= 2; ++fd)
@@ -393,7 +397,9 @@ bool WorkerRoleTakesInheritedRoot (WorkerRole role)
 
 namespace
 {
-	/** Roles that benefit from an empty network namespace when one is available. */
+	/**
+	 * Roles that benefit from an empty network namespace when one is
+	 * available. */
 	[[maybe_unused]] bool RoleWantsNetworkNamespace (WorkerRole role)
 	{
 		switch (role)
@@ -516,9 +522,10 @@ std::optional<WorkerHelloRecord> ReadWorkerHello (int fd)
 		::close (fd);
 		return std::nullopt;
 	}
-	// Peek one byte without blocking. The spawn path creates the pipe in the
-	// exec'ing child only, so a valid record is followed by EOF. A byte, or a
-	// writer that is still open, means a duplicated or oversized hello.
+	// Peek one byte without blocking. The spawn path creates the pipe in
+	// the exec'ing child only, so a valid record is followed by EOF. A
+	// byte, or a writer that is still open, means a duplicated or
+	// oversized hello.
 	const int statusFlags = ::fcntl (fd, F_GETFL);
 	bool exactlyOne = false;
 	if (statusFlags >= 0 && ::fcntl (fd, F_SETFL, statusFlags | O_NONBLOCK) == 0)
@@ -551,8 +558,9 @@ namespace
 
 	std::mutex g_ExecutableMutex;
 	std::string g_ExecutablePath;
-	// Identity of the frozen image. Re-checked in the Linux child immediately
-	// before execve so a replacement between freeze and spawn is refused.
+	// Identity of the frozen image. Re-checked in the Linux child
+	// immediately before execve so a replacement between freeze and spawn
+	// is refused.
 	dev_t g_ExecutableDevice = 0;
 	ino_t g_ExecutableInode = 0;
 	off_t g_ExecutableSize = 0;
@@ -561,17 +569,17 @@ namespace
 	 * Validate a candidate executable before it is frozen.
 	 *
 	 * Absolute, free of NUL, a regular file owned by root or this process,
-	 * without group/world write permission, executable and of bounded size.
-	 * `realpath()` stores the canonical value so a later relative-path or
-	 * symlink ambiguity cannot redirect a spawn.
+	 * without group/world write permission, executable and of bounded
+	 * size. `realpath()` stores the canonical value so a later
+	 * relative-path or symlink ambiguity cannot redirect a spawn.
 	 */
 	bool ValidateExecutablePath (const std::string & candidate, std::string & canonical)
 	{
 		canonical.clear ();
 		if (candidate.empty () || candidate.size () >= MAX_EXECUTABLE_PATH_SIZE) return false;
 		if (candidate.find ('\0') != std::string::npos) return false;
-		// A bare program name would require a $PATH search, which is exactly the
-		// substitution surface this function removes.
+		// A bare program name would require a $PATH search, which is exactly
+		// the substitution surface this function removes.
 		if (candidate.front () != '/') return false;
 		char resolved[MAX_EXECUTABLE_PATH_SIZE] = { };
 		if (!realpath (candidate.c_str (), resolved)) return false;
@@ -675,8 +683,8 @@ ChildProcess ChildProcess::Adopt (pid_t pid, Channel channel)
 	process.m_Pid = pid;
 	process.m_Channel = std::move (channel);
 #if defined(__linux__) && defined(SYS_pidfd_open)
-	// Open eagerly so a later restart decision can never be confused by PID
-	// reuse after the child has exited.
+	// Open eagerly so a later restart decision can never be confused by
+	// PID reuse after the child has exited.
 	if (pid > 0)
 	{
 		auto pidFd = syscall (SYS_pidfd_open, pid, 0);
@@ -688,9 +696,9 @@ ChildProcess ChildProcess::Adopt (pid_t pid, Channel channel)
 
 bool ChildProcess::WaitForExit (int timeoutMs)
 {
-	// WaitForChildExitBounded() already reaps the child. A second waitpid()
-	// here could consume a newly forked child that reused the PID, so only
-	// clear the local handle.
+	// WaitForChildExitBounded() already reaps the child. A second
+	// waitpid() here could consume a newly forked child that reused the
+	// PID, so only clear the local handle.
 	if (!WaitForChildExitBounded (m_Pid, m_PidFd, timeoutMs)) return false;
 	m_Pid = -1;
 	ClosePidFd ();
@@ -817,8 +825,8 @@ static i2p::expected<ChildProcess, std::string> SpawnWorkerInternal (
 	if (!IsSpawnableExecutablePath (executable))
 		return i2p::unexpected (std::string ("worker executable path is not frozen"));
 	// Bind the exec'ed role to this spawn. The nonce is generated here and
-	// travels to the child through fork memory; only the child, which knows its
-	// post-drop identity, writes the record.
+	// travels to the child through fork memory; only the child, which
+	// knows its post-drop identity, writes the record.
 	std::array<uint8_t, WORKER_HELLO_NONCE_SIZE> nonce { };
 	if (!PlatformRandomBytes (nonce.data (), nonce.size ()))
 		return i2p::unexpected (std::string ("cannot obtain spawn identity randomness"));
@@ -827,8 +835,9 @@ static i2p::expected<ChildProcess, std::string> SpawnWorkerInternal (
 	auto & parent = pair->first;
 	auto & child = pair->second;
 	// https://man.openbsd.org/pledge.2: sendfd/recvfd exclude directories.
-	// Preserve the validated root through exec as fd4, never through SCM_RIGHTS.
-	// Keep it above descriptor 5 so it cannot alias the identity record.
+	// Preserve the validated root through exec as fd4, never through
+	// SCM_RIGHTS. Keep it above descriptor 5 so it cannot alias the
+	// identity record.
 	const int inheritedRoot = rootFd >= 0 ? ::fcntl (rootFd, F_DUPFD_CLOEXEC, 6) : -1;
 	if (rootFd >= 0 && inheritedRoot < 0) return i2p::unexpected (std::string ("cannot duplicate inherited root"));
 	const int channelFd = child.Fd ();
@@ -850,9 +859,9 @@ static i2p::expected<ChildProcess, std::string> SpawnWorkerInternal (
 	WipeBytes (nonce.data (), nonce.size ());
 	if (inheritedRoot >= 0) ::close (inheritedRoot);
 	child.Close ();
-	// The worker runs as `credentials.uid` and, for a direct fork, is exactly
-	// `pid`. Binding both closes the stale-creator ambiguity of SO_PEERCRED and
-	// the same-uid frame-injection window.
+	// The worker runs as `credentials.uid` and, for a direct fork, is
+	// exactly `pid`. Binding both closes the stale-creator ambiguity of
+	// SO_PEERCRED and the same-uid frame-injection window.
 	parent.ExpectPeer (
 		PeerExpectation { credentials.uid, credentials.gid, static_cast<uint32_t> (pid), true, true, false, true });
 	return ChildProcess::Adopt (pid, std::move (parent));
@@ -914,8 +923,9 @@ static i2p::expected<Channel, std::string> SpawnDetachedWorkerInternal (const ch
 	}
 	if (intermediate == 0)
 	{
-		// Async-signal-safe only between forks and exec. The intermediate is reaped
-		// before pledge; init subsequently reaps the broker when its channel closes.
+		// Async-signal-safe only between forks and exec. The intermediate is
+		// reaped before pledge; init subsequently reaps the broker when its
+		// channel closes.
 		const pid_t broker = ::fork ();
 		if (broker < 0) _exit (127);
 		if (broker > 0) _exit (0);

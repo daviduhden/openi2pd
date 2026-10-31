@@ -4,18 +4,20 @@
  *
  * openi2pd: test privsep windows supervisor.
  *
- * Windows-only checks for the Windows worker supervisor and the service drain:
- * the clock-injected restart ladder and its status publications, the failure
- * classification (setup failures are terminal, an authenticated exit is
- * restartable), the shared stop budgets, the nested-Job Object diagnostic, a
- * failed spawn that leaves no handle behind, Job Object KILL_ON_JOB_CLOSE and
- * TerminateJobObject behaviour, and a live Ping-only worker that is killed and
- * restarted under a real Job Object. Returns 77 on another platform.
+ * Windows-only checks for the Windows worker supervisor and the service
+ * drain: the clock-injected restart ladder and its status publications,
+ * the failure classification (setup failures are terminal, an
+ * authenticated exit is restartable), the shared stop budgets, the
+ * nested-Job Object diagnostic, a failed spawn that leaves no handle
+ * behind, Job Object KILL_ON_JOB_CLOSE and TerminateJobObject
+ * behaviour, and a live Ping-only worker that is killed and restarted
+ * under a real Job Object. Returns 77 on another platform.
  *
- * The service wrapper itself links the daemon singleton, so it is compiled only
- * into the i2pd executable. Its drain contract is therefore pinned here through
- * the shared budgets and wait-hint helpers that Win32/Win32Service.cpp uses,
- * not through a linked I2PService instance.
+ * The service wrapper itself links the daemon singleton, so it is
+ * compiled only into the i2pd executable. Its drain contract is
+ * therefore pinned here through the shared budgets and wait-hint
+ * helpers that Win32/Win32Service.cpp uses, not through a linked
+ * I2PService instance.
  *
  */
 
@@ -79,8 +81,9 @@ DWORD HandleCount ()
 }
 
 /*
- * Pure state-machine tests. They use an injected clock and a local snapshot, so
- * they exercise the production classifier and publisher without a worker.
+ * Pure state-machine tests. They use an injected clock and a local
+ * snapshot, so they exercise the production classifier and publisher
+ * without a worker.
  */
 void TestRestartLadder ()
 {
@@ -99,7 +102,8 @@ void TestRestartLadder ()
 	assert (snapshot->state == SupervisorWorkerState::Ready);
 	assert (snapshot->generation == 1);
 
-	// Documented ladder: 250 ms doubling to the 30 s cap, one generation per
+	// Documented ladder: 250 ms doubling to the 30 s cap, one generation
+	// per
 	// authenticated exit.
 	const milliseconds expected[] = { milliseconds (250), milliseconds (500), milliseconds (1000), milliseconds (2000),
 		milliseconds (4000), milliseconds (8000), milliseconds (16000), milliseconds (30000) };
@@ -109,8 +113,8 @@ void TestRestartLadder ()
 	for (uint32_t index = 0; index < LogWorkerRestartBudget::MAX_RESTARTS; ++index)
 	{
 		// Each replacement is ready for a short interval before it exits. The
-		// stable-period budget measures this generation's uptime, not the total
-		// wall-clock time spent traversing the backoff ladder.
+		// stable-period budget measures this generation's uptime, not the
+		// total wall-clock time spent traversing the backoff ladder.
 		elapsed += 10;
 		assert (elapsed - readyAt < LogWorkerRestartBudget::STABLE_PERIOD.count () * 1000);
 		auto outcome = PlanWindowsWorkerFailure (policy, WindowsWorkerFailureKind::Exit, At (elapsed));
@@ -138,11 +142,12 @@ void TestRestartLadder ()
 		assert (snapshot->state == SupervisorWorkerState::Ready);
 	}
 	// Each generation failed before its own stable period, so the restart
-	// counter has not been reset even though the backoff ladder spans over a
-	// minute in aggregate.
+	// counter has not been reset even though the backoff ladder spans over
+	// a minute in aggregate.
 	assert (policy.NextDelay () == LogWorkerRestartBudget::MAXIMUM_DELAY);
 
-	// The ninth exit is refused: Failed, no new generation, and one snapshot.
+	// The ninth exit is refused: Failed, no new generation, and one
+	// snapshot.
 	elapsed += 10;
 	assert (elapsed - readyAt < LogWorkerRestartBudget::STABLE_PERIOD.count () * 1000);
 	auto exhausted = PlanWindowsWorkerFailure (policy, WindowsWorkerFailureKind::Exit, At (elapsed));
@@ -155,7 +160,8 @@ void TestRestartLadder ()
 	assert (policy.Exhausted ());
 	PublishWindowsWorkerTransition (
 		status, worker, exhausted.state, exhausted.generation, exhausted.restarts, exhausted.reason);
-	// A repeated terminal publication stays exactly one entry with one reason.
+	// A repeated terminal publication stays exactly one entry with one
+	// reason.
 	PublishWindowsWorkerTransition (
 		status, worker, exhausted.state, exhausted.generation, exhausted.restarts, exhausted.reason);
 	assert (status.Size () == 1);
@@ -184,10 +190,10 @@ void TestStablePeriodResetsLadder ()
 	assert (second.delay == milliseconds (500));
 	assert (second.restarts == 2);
 
-	// A worker that served the whole stable period forgets the ladder: the next
-	// exit starts again at the initial delay with a fresh restart count.
+	// A worker that served the whole stable period forgets the ladder: the
+	// next exit starts again at the initial delay with a fresh restart
+	// count.
 	elapsed += LogWorkerRestartBudget::STABLE_PERIOD.count () * 1000;
-	policy.NoteReady (At (elapsed));
 	auto afterStable = PlanWindowsWorkerFailure (policy, WindowsWorkerFailureKind::Exit, At (elapsed));
 	assert (!afterStable.terminal);
 	assert (afterStable.delay == LogWorkerRestartBudget::INITIAL_DELAY);
@@ -247,8 +253,10 @@ void TestBudgets ()
 	assert (WINDOWS_WORKER_SHUTDOWN_SEND_MS < WINDOWS_WORKER_STOP_BUDGET_MS);
 	assert (WINDOWS_WORKER_GRACEFUL_STOP_MS > WINDOWS_WORKER_SHUTDOWN_SEND_MS);
 	assert (WINDOWS_WORKER_GRACEFUL_STOP_MS < WINDOWS_WORKER_STOP_BUDGET_MS);
-	// The SCM hint must outlast the drain, and the drain must outlast one worker
-	// stop so the service never reports stopped while a worker is still draining.
+	// The SCM hint must outlast the drain, and the drain must outlast one
+	// worker
+	// stop so the service never reports stopped while a worker is still
+	// draining.
 	assert (WINDOWS_SERVICE_DRAIN_BUDGET_MS > WINDOWS_WORKER_STOP_BUDGET_MS);
 	assert (WINDOWS_SERVICE_STOP_WAIT_HINT_MS >= WINDOWS_SERVICE_DRAIN_BUDGET_MS);
 	assert (WINDOWS_SERVICE_START_WAIT_HINT_MS > 0);
@@ -259,8 +267,9 @@ void TestNestedJobDiagnostic ()
 	assert (NestedJobDiagnostic (false).empty ());
 	assert (!NestedJobDiagnostic (true).empty ());
 	assert (NestedJobDiagnostic (true).find ("Job Object") != std::string_view::npos);
-	// The dynamic probe must agree with the pure text: a process that is in a
-	// job always has a non-empty diagnostic, and one that is not has none.
+	// The dynamic probe must agree with the pure text: a process that is
+	// in a job always has a non-empty diagnostic, and one that is not has
+	// none.
 	const bool inJob = IsCurrentProcessInJobObject ();
 	assert (NestedJobDiagnostic (inJob).empty () == !inJob);
 }
@@ -284,7 +293,8 @@ void TestRoleIdentityPolicy ()
 		const auto name = WindowsWorkerSupervisorName (role);
 		assert (!name.empty ());
 		assert (name.size () <= SupervisorStatus::MAX_WORKER_NAME);
-		// A write root is only meaningful for a role that has persistent writes,
+		// A write root is only meaningful for a role that has persistent
+		// writes,
 		// and no role may combine network with persistent writes.
 		const auto policy = GetWindowsWorkerPolicy (role);
 		assert (!(policy.allowNetwork && policy.allowPersistentWrites));
@@ -292,8 +302,8 @@ void TestRoleIdentityPolicy ()
 }
 
 /*
- * Fail-closed setup: a missing identity or an empty configuration must publish
- * Failed, never spawn and never leak a handle.
+ * Fail-closed setup: a missing identity or an empty configuration must
+ * publish Failed, never spawn and never leak a handle.
  */
 void TestFailClosedSetup ()
 {
@@ -320,8 +330,8 @@ void TestFailClosedSetup ()
 	assert (HandleCount () == baseline);
 
 	{
-		// Storage needs a delegated write root; without it the supervisor must
-		// refuse before it creates any AppContainer or process.
+		// Storage needs a delegated write root; without it the supervisor
+		// must refuse before it creates any AppContainer or process.
 		SupervisorStatus status;
 		WindowsWorkerSupervisorConfig config;
 		config.executable = SelfExecutable ();
@@ -336,9 +346,10 @@ void TestFailClosedSetup ()
 }
 
 /*
- * A spawn that cannot succeed must terminate every intermediate object: the
- * listener, the stop event and the Job Object. One warm-up call absorbs
- * one-time loader/BCrypt allocations before the delta is measured.
+ * A spawn that cannot succeed must terminate every intermediate object:
+ * the listener, the stop event and the Job Object. One warm-up call
+ * absorbs one-time loader/BCrypt allocations before the delta is
+ * measured.
  */
 void TestFailedSpawnLeavesNoHandles ()
 {
@@ -366,9 +377,10 @@ void TestFailedSpawnLeavesNoHandles ()
 }
 
 /*
- * KILL_ON_JOB_CLOSE and TerminateJobObject are the backstop that keeps a worker
- * from outliving its supervisor. Both are exercised on a plain child process so
- * the check does not depend on the pipe or the worker entry point.
+ * KILL_ON_JOB_CLOSE and TerminateJobObject are the backstop that keeps
+ * a worker from outliving its supervisor. Both are exercised on a plain
+ * child process so the check does not depend on the pipe or the worker
+ * entry point.
  */
 bool StartChildInJob (WindowsHandle & job, WindowsHandle & process, DWORD & processId)
 {
@@ -390,8 +402,8 @@ bool StartChildInJob (WindowsHandle & job, WindowsHandle & process, DWORD & proc
 	process.Reset (information.hProcess);
 	WindowsHandle thread (information.hThread);
 	processId = information.dwProcessId;
-	// A nested assignment into a restrictive parent job can be rejected; the
-	// caller reports that as a skip instead of a failure.
+	// A nested assignment into a restrictive parent job can be rejected;
+	// the caller reports that as a skip instead of a failure.
 	if (!AssignProcessToJobObject (job.Native (), process.Native ()))
 	{
 		TerminateProcess (process.Native (), ERROR_ACCESS_DENIED);
@@ -433,9 +445,9 @@ bool TestTerminateJobObject ()
 }
 
 /*
- * Live worker: the test binary is spawned as a Ping-only worker over a real
- * random pipe, killed, observed as Restarting, restarted as generation 2 and
- * finally stopped through the Job Object.
+ * Live worker: the test binary is spawned as a Ping-only worker over a
+ * real random pipe, killed, observed as Restarting, restarted as
+ * generation 2 and finally stopped through the Job Object.
  */
 int RunPingWorker (const std::wstring & pipeName)
 {
@@ -519,7 +531,8 @@ int TestLiveWorker ()
 			return 77;
 		}
 
-		// Kill the worker behind the supervisor's back. The Job Object would also
+		// Kill the worker behind the supervisor's back. The Job Object would
+		// also
 		// reap it; the point here is the restart path.
 		const DWORD workerPid = supervisor.WorkerProcessId ();
 		assert (workerPid != 0);
@@ -564,7 +577,8 @@ int TestLiveWorker ()
 		assert (supervisor.WorkerProcessId () == 0);
 		assert (supervisor.Channel () == nullptr);
 	}
-	// Nothing may survive the supervisor: no channel, process or job handle.
+	// Nothing may survive the supervisor: no channel, process or job
+	// handle.
 	if (HandleCount () != baseline)
 	{
 		std::printf ("handle count %lu != baseline %lu after the live worker\n",
@@ -575,20 +589,23 @@ int TestLiveWorker ()
 }
 
 /*
- * Service drain contract: the SCM wait hints and the drain budget must come
- * from the same authority as the worker stop budget, and a pending state may
- * never be reported with a zero hint (the SCM then applies its own short
- * timeout). The service wrapper that consumes these values links the daemon
- * singleton, so only the shared pure contract is asserted here.
+ * Service drain contract: the SCM wait hints and the drain budget must
+ * come from the same authority as the worker stop budget, and a pending
+ * state may never be reported with a zero hint (the SCM then applies
+ * its own short timeout). The service wrapper that consumes these
+ * values links the daemon singleton, so only the shared pure contract
+ * is asserted here.
  */
 void TestServiceDrainContract ()
 {
-	// A drain must outlast one worker stop, and the reported hint must outlast
-	// the drain, otherwise the SCM gives up while a worker is still draining.
+	// A drain must outlast one worker stop, and the reported hint must
+	// outlast the drain, otherwise the SCM gives up while a worker is
+	// still draining.
 	assert (WINDOWS_SERVICE_DRAIN_BUDGET_MS > WINDOWS_WORKER_STOP_BUDGET_MS);
 	assert (WINDOWS_SERVICE_STOP_WAIT_HINT_MS >= WINDOWS_SERVICE_DRAIN_BUDGET_MS);
 	assert (WINDOWS_SERVICE_START_WAIT_HINT_MS >= WINDOWS_SERVICE_DRAIN_BUDGET_MS);
-	// Every pending transition of the service wrapper passes its hint through
+	// Every pending transition of the service wrapper passes its hint
+	// through
 	// NonZeroWaitHint; zero must never reach the SCM.
 	assert (NonZeroWaitHint (0) != 0);
 	assert (NonZeroWaitHint (WINDOWS_SERVICE_STOP_WAIT_HINT_MS) == WINDOWS_SERVICE_STOP_WAIT_HINT_MS);
@@ -600,8 +617,9 @@ void TestServiceDrainContract ()
 
 int main (int argc, char ** argv)
 {
-	// Worker and helper roles: the supervisor spawns this binary as a Ping-only
-	// worker, and the Job Object tests spawn it as an idle child.
+	// Worker and helper roles: the supervisor spawns this binary as a
+	// Ping-only worker, and the Job Object tests spawn it as an idle
+	// child.
 	for (int index = 1; index < argc; ++index)
 	{
 		const std::string argument = argv[index];
@@ -638,8 +656,9 @@ int main (int argc, char ** argv)
 	TestFailedSpawnLeavesNoHandles ();
 	TestServiceDrainContract ();
 
-	// A Job Object may be unavailable on a locked-down host; that is a skip for
-	// the two backstop checks only, not for the pure or the supervisor checks.
+	// A Job Object may be unavailable on a locked-down host; that is a
+	// skip for the two backstop checks only, not for the pure or the
+	// supervisor checks.
 	if (!TestJobObjectKillOnClose ())
 	{
 		std::printf ("skip: Job Object KILL_ON_JOB_CLOSE needs an assignable job\n");

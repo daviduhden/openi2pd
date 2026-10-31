@@ -4,13 +4,13 @@
  *
  * openi2pd: Capabilities.
  *
- * Declares the capability model for every openi2pd process role and the single
- * invariant that no role may combine external network access with persistent
- * writes. This header is deliberately platform-free: it is the declaration and
- * the compile-time contract, not the enforcement. Enforcement lives in the
- * per-platform sandbox (Landlock/seccomp, pledge/unveil, Windows tokens) and a
- * backend must never grant more than the mask declared here.
- *
+ * Declares the capability model for every openi2pd process role and the
+ * single invariant that no role may combine external network access
+ * with persistent writes. This header is deliberately platform-free: it
+ * is the declaration and the compile-time contract, not the
+ * enforcement. Enforcement lives in the per-platform sandbox
+ * (Landlock/seccomp, pledge/unveil, Windows tokens) and a backend must
+ * never grant more than the mask declared here.
  */
 
 #ifndef I2PD_PRIVSEP_CAPABILITIES_H__
@@ -25,18 +25,18 @@
 namespace i2p::privsep
 {
 /**
- * Coarse capabilities. They are intentionally few: each one is a capability a
- * compromised worker could abuse, so the model must stay small enough to audit
- * against every backend policy.
+ * Coarse capabilities. They are intentionally few: each one is a
+ * capability a compromised worker could abuse, so the model must stay
+ * small enough to audit against every backend policy.
  */
 enum class Capability : uint8_t
 {
 	/** Sockets outside the process: TCP/UDP to the external network. */
 	ExternalNetwork = 0,
 	/**
-	 * Durable writes (create/replace/delete/fsync). Always scoped to a root
-	 * that was delegated and validated before the sandbox is installed; there
-	 * is no ambient "write anywhere" capability.
+	 * Durable writes (create/replace/delete/fsync). Always scoped to a
+	 * root that was delegated and validated before the sandbox is
+	 * installed; there is no ambient "write anywhere" capability.
 	 */
 	PersistentWrite,
 	/** Read regular files/directories, including a delegated root. */
@@ -55,7 +55,9 @@ enum class Capability : uint8_t
 };
 
 inline constexpr size_t CAPABILITY_COUNT = static_cast<size_t> (Capability::Count);
-/** Every declared bit; used to reject a mask with an unknown capability. */
+/**
+ * Every declared bit; used to reject a mask with an unknown
+ * capability. */
 inline constexpr uint32_t ALL_CAPABILITY_BITS = (1u << CAPABILITY_COUNT) - 1;
 
 constexpr const char * CapabilityName (Capability capability)
@@ -76,9 +78,9 @@ constexpr const char * CapabilityName (Capability capability)
 }
 
 /**
- * Process roles that own (or will own) an isolated capability set. The enum is
- * the vocabulary of the matrix below; it is not a claim that every role is
- * already split into its own process.
+ * Process roles that own (or will own) an isolated capability set. The
+ * enum is the vocabulary of the matrix below; it is not a claim that
+ * every role is already split into its own process.
  */
 enum class ProcessRole : uint8_t
 {
@@ -145,9 +147,9 @@ constexpr CapabilityMask operator| (CapabilityMask left, CapabilityMask right)
 }
 
 /**
- * One documented row of the matrix. `legacy` marks a set that exists today but
- * is not the target: it is recorded so the migration state is explicit instead
- * of being silently assumed to be compliant.
+ * One documented row of the matrix. `legacy` marks a set that exists
+ * today but is not the target: it is recorded so the migration state is
+ * explicit instead of being silently assumed to be compliant.
  */
 struct RoleCapabilityRow
 {
@@ -158,9 +160,9 @@ struct RoleCapabilityRow
 };
 
 /**
- * The single authority for the role/capability contract. Every backend policy
- * is reviewable against exactly one row, and the invariant below is enforced
- * for every non-legacy (target) row.
+ * The single authority for the role/capability contract. Every backend
+ * policy is reviewable against exactly one row, and the invariant below
+ * is enforced for every non-legacy (target) row.
  */
 inline constexpr CapabilityMask CORE_TARGET_CAPABILITIES = CapabilityMask ()
 															   .With (Capability::ExternalNetwork)
@@ -168,10 +170,11 @@ inline constexpr CapabilityMask CORE_TARGET_CAPABILITIES = CapabilityMask ()
 															   .With (Capability::Signal)
 															   .With (Capability::Ipc);
 /**
- * Migration state, not compliance: the router core still performs netDb,
- * profile, destination-key and configuration persistence in-process. This row
- * documents reality, and it deliberately violates the invariant so the gap
- * cannot be mistaken for a satisfied requirement.
+ * Migration state, not compliance: the router core still performs
+ * netDb, profile, destination-key and configuration persistence
+ * in-process. This row documents reality, and it deliberately violates
+ * the invariant so the gap cannot be mistaken for a satisfied
+ * requirement.
  */
 inline constexpr CapabilityMask CORE_LEGACY_CAPABILITIES = CORE_TARGET_CAPABILITIES.With (Capability::PersistentWrite);
 
@@ -179,8 +182,9 @@ inline constexpr CapabilityMask SUPERVISOR_CAPABILITIES
 	= CapabilityMask ().With (Capability::Exec).With (Capability::Signal).With (Capability::Ipc);
 inline constexpr CapabilityMask LOG_CAPABILITIES
 	= CapabilityMask ().With (Capability::PersistentWrite).With (Capability::Ipc);
-// The three storage roles differ in their delegated root and their protocol,
-// not in capability: each writes and reads only the root it was handed.
+// The three storage roles differ in their delegated root and their
+// protocol, not in capability: each writes and reads only the root it
+// was handed.
 inline constexpr CapabilityMask STORAGE_CAPABILITIES
 	= CapabilityMask ().With (Capability::PersistentWrite).With (Capability::FilesystemRead).With (Capability::Ipc);
 inline constexpr CapabilityMask STORAGE_BROKER_CAPABILITIES = CapabilityMask ()
@@ -223,7 +227,9 @@ inline constexpr std::array<RoleCapabilityRow, 10> ROLE_CAPABILITY_MATRIX {
 
 inline constexpr size_t ROLE_CAPABILITY_ROW_COUNT = ROLE_CAPABILITY_MATRIX.size ();
 
-/** The target (non-legacy) mask of @a role, or nullopt when it has no row. */
+/**
+ * The target (non-legacy) mask of @a role, or nullopt when it has no
+ * row. */
 constexpr std::optional<CapabilityMask> TargetMask (ProcessRole role)
 {
 	for (const auto & row : ROLE_CAPABILITY_MATRIX)
@@ -244,9 +250,10 @@ constexpr std::optional<CapabilityMask> LegacyMask (ProcessRole role)
 }
 
 /**
- * The invariant: external network access and durable writes never coexist in
- * one process. A process that can both reach the network and rewrite durable
- * state can exfiltrate or corrupt that state without crossing another boundary.
+ * The invariant: external network access and durable writes never
+ * coexist in one process. A process that can both reach the network and
+ * rewrite durable state can exfiltrate or corrupt that state without
+ * crossing another boundary.
  */
 constexpr bool SatisfiesCapabilityInvariant (CapabilityMask mask)
 {
@@ -254,9 +261,9 @@ constexpr bool SatisfiesCapabilityInvariant (CapabilityMask mask)
 }
 
 /**
- * Whether the declared target of @a role satisfies the invariant. Only target
- * rows are judged: a legacy row may still violate it while the migration is
- * pending, and calling that "safe" would be a false claim.
+ * Whether the declared target of @a role satisfies the invariant. Only
+ * target rows are judged: a legacy row may still violate it while the
+ * migration is pending, and calling that "safe" would be a false claim.
  */
 constexpr bool IsRoleCapabilitySafe (ProcessRole role)
 {
@@ -271,9 +278,10 @@ struct CapabilityValidation
 };
 
 /**
- * Structural validation of the matrix itself. Used by the unit test and by a
- * startup-time assertion in the supervisor, so a future edit that makes a
- * target row unsafe (or drops a role) fails instead of being published.
+ * Structural validation of the matrix itself. Used by the unit test and
+ * by a startup-time assertion in the supervisor, so a future edit that
+ * makes a target row unsafe (or drops a role) fails instead of being
+ * published.
  */
 constexpr CapabilityValidation ValidateCapabilityMatrix ()
 {
@@ -310,11 +318,11 @@ static_assert (!SatisfiesCapabilityInvariant (NETWORK_CAPABILITIES.With (Capabil
 	"the invariant must reject a network role with durable writes");
 
 /**
- * Windows worker roles. The names and order mirror `WindowsWorkerRole` in
- * privsep/WindowsIpc.h; that header is Windows-only, while this one stays
- * platform-free so the mapping below is reviewable and unit-testable on every
- * build host. The Windows isolation translation unit pins the two
- * enumerations together with static assertions.
+ * Windows worker roles. The names and order mirror `WindowsWorkerRole`
+ * in privsep/WindowsIpc.h; that header is Windows-only, while this one
+ * stays platform-free so the mapping below is reviewable and
+ * unit-testable on every build host. The Windows isolation translation
+ * unit pins the two enumerations together with static assertions.
  */
 enum class WindowsIsolationRole : uint8_t
 {
@@ -345,10 +353,10 @@ constexpr const char * WindowsIsolationRoleName (WindowsIsolationRole role)
 }
 
 /**
- * Which documented capability row a Windows worker must be reviewable against.
- * This is a mapping, not a new capability: the Windows role table
- * (privsep/WindowsIsolation.cpp) is the enforcement authority and the mask
- * here is the contract that table may not exceed.
+ * Which documented capability row a Windows worker must be reviewable
+ * against. This is a mapping, not a new capability: the Windows role
+ * table (privsep/WindowsIsolation.cpp) is the enforcement authority and
+ * the mask here is the contract that table may not exceed.
  */
 constexpr std::optional<ProcessRole> WindowsRoleToProcessRole (WindowsIsolationRole role)
 {
@@ -356,13 +364,15 @@ constexpr std::optional<ProcessRole> WindowsRoleToProcessRole (WindowsIsolationR
 	{
 	case WindowsIsolationRole::Supervisor: return ProcessRole::Supervisor;
 	case WindowsIsolationRole::Log: return ProcessRole::Log;
-	// The Windows storage worker covers the router, data and torrent storage
-	// roles; all three declare the same capability mask, so one row is enough.
+	// The Windows storage worker covers the router, data and torrent
+	// storage roles; all three declare the same capability mask, so one
+	// row is enough.
 	case WindowsIsolationRole::Storage: return ProcessRole::RouterStorage;
 	case WindowsIsolationRole::Network: return ProcessRole::Network;
 	case WindowsIsolationRole::Crypto: return ProcessRole::Crypto;
 	// The administration worker has no documented process row yet: it is
-	// control-plane only. Report that instead of inventing a capability set.
+	// control-plane only. Report that instead of inventing a capability
+	// set.
 	case WindowsIsolationRole::Admin: return std::nullopt;
 	case WindowsIsolationRole::Count: break;
 	}
@@ -372,7 +382,9 @@ constexpr std::optional<ProcessRole> WindowsRoleToProcessRole (WindowsIsolationR
 struct WindowsRoleMapping
 {
 	WindowsIsolationRole role;
-	/** Target capability row, or nullopt when no process role exists yet. */
+	/**
+	 * Target capability row, or nullopt when no process role exists
+	 * yet. */
 	std::optional<ProcessRole> processRole;
 	std::string_view rationale;
 };
@@ -393,9 +405,9 @@ inline constexpr std::array<WindowsRoleMapping, WINDOWS_ISOLATION_ROLE_COUNT> WI
 };
 
 /**
- * Structural validation of the Windows mapping. Every Windows worker role has
- * exactly one row, and every mapped row must be a target row that satisfies the
- * external-network/persistent-write invariant.
+ * Structural validation of the Windows mapping. Every Windows worker
+ * role has exactly one row, and every mapped row must be a target row
+ * that satisfies the external-network/persistent-write invariant.
  */
 constexpr CapabilityValidation ValidateWindowsRoleMapping ()
 {
@@ -423,8 +435,9 @@ constexpr CapabilityValidation ValidateWindowsRoleMapping ()
 }
 
 static_assert (ValidateWindowsRoleMapping ().valid, "the Windows role mapping is not internally consistent");
-// The admin worker is the single documented mapping gap; pin it so a later
-// ProcessRole addition is a deliberate change and not a silent default.
+// The admin worker is the single documented mapping gap; pin it so a
+// later ProcessRole addition is a deliberate change and not a silent
+// default.
 static_assert (!WindowsRoleToProcessRole (WindowsIsolationRole::Admin).has_value (),
 	"the admin worker mapping must stay explicit until a process role exists");
 static_assert (WindowsRoleToProcessRole (WindowsIsolationRole::Network) == ProcessRole::Network,

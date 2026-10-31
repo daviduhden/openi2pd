@@ -4,12 +4,13 @@
  *
  * openi2pd: test data-storage client restart behaviour.
  *
- * Simulates worker death with a real child: the failing write is reported and
- * never replayed, the retry is scheduled by the injected clock (250 ms then
- * 500 ms), the replacement worker gets a new generation, stale replies are
- * dropped, and request-id exhaustion is a Busy refusal that keeps the client
- * usable. Skipped when the kernel cannot provide the storage sandbox or the
- * process is privileged. Prepared for manual CI only.
+ * Simulates worker death with a real child: the failing write is
+ * reported and never replayed, the retry is scheduled by the injected
+ * clock (250 ms then 500 ms), the replacement worker gets a new
+ * generation, stale replies are dropped, and request-id exhaustion is a
+ * Busy refusal that keeps the client usable. Skipped when the kernel
+ * cannot provide the storage sandbox or the process is privileged.
+ * Prepared for manual CI only.
  */
 
 #include <array>
@@ -59,7 +60,10 @@ bool ReadBack (const std::filesystem::path & path, std::vector<uint8_t> & bytes)
 	return true;
 }
 
-/** Wait until a request observes the dead worker; never advances the clock. */
+/**
+ * Wait until a request observes the dead worker; never advances the
+ * clock.
+ */
 bool WaitForFailure (DataStorageClient & client, StorageArtifact kind, std::string_view name)
 {
 	for (int attempt = 0; attempt < 100; ++attempt)
@@ -109,8 +113,8 @@ int main (int argc, char ** argv)
 	assert (client.Write (StorageArtifact::RouterInfoCache, name, baseline));
 	assert (client.LastStatus () == DataStorageStatus::Ok);
 
-	// Worker death: the in-flight write fails and is never replayed, so the
-	// artifact still holds the last durable content.
+	// Worker death: the in-flight write fails and is never replayed, so
+	// the artifact still holds the last durable content.
 	const long firstWorker = client.WorkerPid ();
 	assert (firstWorker > 0);
 	assert (::kill (static_cast<pid_t> (firstWorker), SIGKILL) == 0);
@@ -123,7 +127,8 @@ int main (int argc, char ** argv)
 	}
 	const auto firstFailure = now;
 	assert (client.Generation () == 1);
-	// The client reaps the dead child and owns no worker while it is restarting.
+	// The client reaps the dead child and owns no worker while it is
+	// restarting.
 	assert (client.WorkerPid () <= 0);
 
 	// Before the 250 ms backoff expires no replacement is spawned and the
@@ -139,8 +144,8 @@ int main (int argc, char ** argv)
 		assert (read == baseline);
 	}
 
-	// At the deadline the client respawns, reconfigures with generation 2 and
-	// serves the new request; the abandoned one is gone.
+	// At the deadline the client respawns, reconfigures with generation 2
+	// and serves the new request; the abandoned one is gone.
 	now = firstFailure + std::chrono::milliseconds (250);
 	const auto secondContent = Bytes (3, 24);
 	assert (client.Write (StorageArtifact::RouterInfoCache, name, secondContent));
@@ -153,8 +158,8 @@ int main (int argc, char ** argv)
 		assert (read == secondContent);
 	}
 
-	// A second failure backs off twice as long: the retry is refused at 250 ms
-	// and allowed at 500 ms, again with a new generation.
+	// A second failure backs off twice as long: the retry is refused at
+	// 250 ms and allowed at 500 ms, again with a new generation.
 	const long secondWorker = client.WorkerPid ();
 	assert (secondWorker > 0);
 	assert (::kill (static_cast<pid_t> (secondWorker), SIGKILL) == 0);
@@ -168,14 +173,17 @@ int main (int argc, char ** argv)
 	assert (client.Write (StorageArtifact::RouterInfoCache, name, Bytes (5, 16)));
 	assert (client.Generation () == 3);
 
-	// Stale-generation replies are dropped, so a reply from an older worker
+	// Stale-generation replies are dropped, so a reply from an older
+	// worker
 	// can never be applied to the current request.
 	assert (IsCurrentDataStorageReply (3, 42, 3, 42));
 	assert (!IsCurrentDataStorageReply (2, 42, 3, 42));
 	assert (!IsCurrentDataStorageReply (3, 41, 3, 42));
 
-	// Request-id exhaustion is a local Busy refusal: the client stays usable
-	// and a later request with an id the worker has not seen still succeeds.
+	// Request-id exhaustion is a local Busy refusal: the client stays
+	// usable
+	// and a later request with an id the worker has not seen still
+	// succeeds.
 	client.SetRequestIdForTesting (std::numeric_limits<uint32_t>::max ());
 	assert (!client.Write (StorageArtifact::RouterInfoCache, name, Bytes (6, 8)));
 	assert (client.LastStatus () == DataStorageStatus::Busy);

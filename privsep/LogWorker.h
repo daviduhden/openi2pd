@@ -4,10 +4,10 @@
  *
  * openi2pd: LogWorker.
  *
- * Declares the parent-side LogSink and the isolated log-worker entry point.
- * The sink serialises bounded records and supports reattachment after a
- * restart, while the worker owns log-file or syslog output, secret redaction,
- * text sanitisation and the sink byte budget.
+ * Declares the parent-side LogSink and the isolated log-worker entry
+ * point. The sink serialises bounded records and supports reattachment
+ * after a restart, while the worker owns log-file or syslog output,
+ * secret redaction, text sanitisation and the sink byte budget.
  *
  */
 
@@ -26,27 +26,33 @@
 namespace i2p::privsep
 {
 /**
- * Appended to a log fragment that had to be cut at the text bound. The marker
- * lives inside the bound, so one sanitised record never exceeds MAX_TEXT_SIZE.
+ * Appended to a log fragment that had to be cut at the text bound. The
+ * marker lives inside the bound, so one sanitised record never exceeds
+ * MAX_TEXT_SIZE.
  */
 inline constexpr std::string_view LOG_TRUNCATION_MARKER = "...[truncated]";
-/** Replacement for the value of a sensitive `&lt;key&gt;=&lt;value&gt;` pair. */
+/**
+ * Replacement for the value of a sensitive
+ * `&lt;key&gt;=&lt;value&gt;` pair. */
 inline constexpr std::string_view LOG_REDACTED_VALUE = "<redacted>";
-/** Bound on redactions per record; keeps the pass cheap for hostile input. */
+/**
+ * Bound on redactions per record; keeps the pass cheap for hostile
+ * input. */
 inline constexpr size_t MAX_LOG_REDACTIONS = 64;
 
 /**
- * Byte budget for the log file sink. Reaching it stops appends; there is no
- * rotation and existing content is never truncated or rewritten. The
- * ConfigureLog payload has no spare field (and its decoder requires the exact
- * frame length), so this is a compile-time policy rather than a wire field; a
- * future protocol version may carry it explicitly.
+ * Byte budget for the log file sink. Reaching it stops appends; there
+ * is no rotation and existing content is never truncated or rewritten.
+ * The ConfigureLog payload has no spare field (and its decoder requires
+ * the exact frame length), so this is a compile-time policy rather than
+ * a wire field; a future protocol version may carry it explicitly.
  */
 inline constexpr uint64_t MAX_LOG_SINK_BYTES = 64 * 1024 * 1024;
 
 /**
- * Whether one more record still fits the file-sink budget. Pure so the bound
- * can be tested without writing 64 MiB; the worker passes its own counters.
+ * Whether one more record still fits the file-sink budget. Pure so the
+ * bound can be tested without writing 64 MiB; the worker passes its own
+ * counters.
  */
 constexpr bool FitsLogSinkBudget (uint64_t currentBytes, uint64_t recordBytes, uint64_t cap = MAX_LOG_SINK_BYTES)
 {
@@ -54,17 +60,18 @@ constexpr bool FitsLogSinkBudget (uint64_t currentBytes, uint64_t recordBytes, u
 }
 
 /**
- * Parent-side log sink. It only serializes structured records to the log
- * worker; the router process never opens or writes the log file itself.
+ * Parent-side log sink. It only serializes structured records to the
+ * log worker; the router process never opens or writes the log file
+ * itself.
+ * The sink object stays alive for the router lifetime so the logger's
+ * sink callback never points at a replaced object. The in-process
+ * restart monitor swaps the underlying channel with Reattach() instead.
  *
- * The sink object stays alive for the router lifetime so the logger's sink
- * callback never points at a replaced object. The in-process restart
- * monitor swaps the underlying channel with Reattach() instead.
- *
- * Concurrency: every field is guarded by m_Mutex, but Write() only snapshots
- * the channel under the lock and performs the bounded send outside it. A wedged
- * worker therefore costs one slow record instead of stalling the router's
- * logger thread (and every other sink reader) for the send timeout.
+ * Concurrency: every field is guarded by m_Mutex, but Write() only
+ * snapshots the channel under the lock and performs the bounded send
+ * outside it. A wedged worker therefore costs one slow record instead
+ * of stalling the router's logger thread (and every other sink reader)
+ * for the send timeout.
  */
 class LogSink
 {
@@ -85,42 +92,51 @@ public:
 	/**
 	 * Attach a freshly spawned worker after re-sending the configuration.
 	 *
-	 * The replacement is proven before it is adopted: the old channel is closed
-	 * only after the new one answered the configuration probe. A failed
-	 * reattach closes the candidate and leaves the previous channel and its
-	 * failed state untouched, so the caller may retry or accept the documented
-	 * record drops; it never leaves two sinks attached.
+	 * The replacement is proven before it is adopted: the old channel is
+	 * closed only after the new one answered the configuration probe. A
+	 * failed reattach closes the candidate and leaves the previous channel
+	 * and its failed state untouched, so the caller may retry or accept
+	 * the documented record drops; it never leaves two sinks attached.
 	 */
 	i2p::expected<void, std::string> Reattach (Channel channel);
-	/** Reattach a proxy-owned worker without opening the log file locally. */
+	/**
+	 * Reattach a proxy-owned worker without opening the log file
+	 * locally. */
 	i2p::expected<void, std::string> ReattachProxy (Channel channel);
 	void Write (uint8_t level, std::time_t timestamp, std::string_view text);
 	i2p::expected<void, std::string> Shutdown ();
 	bool IsOpen () const;
 	bool IsShutdown () const;
-	/** Records dropped because the sink was closed, detached or a send failed. */
+	/**
+	 * Records dropped because the sink was closed, detached or a send
+	 * failed. */
 	uint64_t DroppedCount () const;
-	/** Documented alias of DroppedCount(); records this process discarded. */
+	/**
+	 * Documented alias of DroppedCount(); records this process
+	 * discarded. */
 	uint64_t GetDroppedCount () const { return DroppedCount (); }
 	/**
-	 * The subset of the drop counter caused by worker unavailability (closed
-	 * channel, detached worker or a failed send) rather than by a rejected
-	 * level or a shutdown. The worker cannot report its own drops because the
-	 * protocol has no such message, so this stays a client-side attribution.
+	 * The subset of the drop counter caused by worker unavailability
+	 * (closed channel, detached worker or a failed send) rather than by a
+	 * rejected level or a shutdown. The worker cannot report its own drops
+	 * because the protocol has no such message, so this stays a
+	 * client-side attribution.
 	 */
 	uint64_t GetWorkerDroppedCount () const;
 
 private:
-	/** Send one configuration frame and prove the worker is live/configured. */
+	/**
+	 * Send one configuration frame and prove the worker is
+	 * live/configured. */
 	i2p::expected<void, std::string> ConfigureChannel (
 		Channel & channel, MessageType type, bool useSyslog, std::string_view path, std::string_view tag, int fd);
 	i2p::expected<void, std::string> WaitForPong (Channel & channel, uint32_t expected, int timeoutMs);
 	void CountDroppedLocked (bool workerUnavailable);
 	mutable std::mutex m_Mutex;
 	/**
-	 * Shared so a concurrent Write can keep the channel alive while it sends
-	 * outside the lock: the descriptor is only closed when the last in-flight
-	 * sender releases it.
+	 * Shared so a concurrent Write can keep the channel alive while it
+	 * sends outside the lock: the descriptor is only closed when the last
+	 * in-flight sender releases it.
 	 */
 	std::shared_ptr<Channel> m_Channel;
 	uint32_t m_NextRequest = 0;
@@ -128,7 +144,9 @@ private:
 	uint64_t m_WorkerDropped = 0;
 	bool m_Configured = false;
 	bool m_Shutdown = false;
-	/** A send failed; the channel is unusable until a reattach replaces it. */
+	/**
+	 * A send failed; the channel is unusable until a reattach replaces
+	 * it. */
 	bool m_ChannelFailed = false;
 	bool m_Syslog = false;
 	std::string m_Path;
@@ -138,36 +156,38 @@ private:
 /**
  * Entry point for the isolated log worker process.
  *
- * @param fd Channel descriptor adopted as descriptor 3; the worker takes
- *        ownership and closes it on every exit path.
- * @return 0 only after a `Shutdown` frame flushed the sink. 1 is returned for
- *         a role/sandbox failure, a peer uid that is not an allowed parent, a
- *         malformed or out-of-order frame, an unusable log descriptor and a
- *         write/flush error, so the parent's restart policy sees a real
- *         failure instead of a silent stop.
+ * @param fd Channel descriptor adopted as descriptor 3; the worker
+ * takes ownership and closes it on every exit path.
+ * @return 0 only after a `Shutdown` frame flushed the sink. 1 is
+ * returned for a role/sandbox failure, a peer uid that is not an
+ * allowed parent, a malformed or out-of-order frame, an unusable log
+ * descriptor and a write/flush error, so the parent's restart policy
+ * sees a real failure instead of a silent stop.
  */
 int RunLogWorker (int fd);
 
 /**
- * Bound one log text fragment and neutralise anything that could forge a
- * physical line or drive a terminal. C0 controls other than tab, DEL and the C1
- * block (U+0080..U+009F, which contains the single-byte CSI of several legacy
- * 8-bit encodings) become spaces; invalid UTF-8, or a sequence cut by the text
- * bound, becomes '?'. A multi-byte sequence is never split, and text longer
- * than the bound is cut at a sequence boundary and marked with
- * LOG_TRUNCATION_MARKER.
+ * Bound one log text fragment and neutralise anything that could forge
+ * a physical line or drive a terminal. C0 controls other than tab, DEL
+ * and the C1 block (U+0080..U+009F, which contains the single-byte CSI
+ * of several legacy 8-bit encodings) become spaces; invalid UTF-8, or a
+ * sequence cut by the text bound, becomes '?'. A multi-byte sequence is
+ * never split, and text longer than the bound is cut at a sequence
+ * boundary and marked with LOG_TRUNCATION_MARKER.
  */
 std::string SanitizeLogText (std::string_view text);
 
 /**
- * Replace the value of a `&lt;sensitive key&gt;&lt;separator&gt;&lt;value&gt;` pair with
- * LOG_REDACTED_VALUE. The key set is compiled in (password, private key,
- * privatekey, passphrase, token, secret), matched case-insensitively at an
- * identifier boundary, with '=' or ':' as separator. Everything that is not a
- * matched pair is copied byte for byte. The pass is linear in the input and the
- * redaction count is capped at MAX_LOG_REDACTIONS, so the output is bounded by
- * the input plus MAX_LOG_REDACTIONS × (LOG_REDACTED_VALUE.size () - 1) bytes and
- * hostile input cannot make the pass expensive.
+ * Replace the value of a `&lt;sensitive
+ * key&gt;&lt;separator&gt;&lt;value&gt;` pair with LOG_REDACTED_VALUE.
+ * The key set is compiled in (password, private key, privatekey,
+ * passphrase, token, secret), matched case-insensitively at an
+ * identifier boundary, with '=' or ':' as separator. Everything that is
+ * not a matched pair is copied byte for byte. The pass is linear in the
+ * input and the redaction count is capped at MAX_LOG_REDACTIONS, so the
+ * output is bounded by the input plus MAX_LOG_REDACTIONS ×
+ * (LOG_REDACTED_VALUE.size () - 1) bytes. Hostile input cannot make the
+ * pass expensive.
  */
 std::string RedactLogSecrets (std::string_view text);
 }

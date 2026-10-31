@@ -53,8 +53,9 @@ int main (int argc, char ** argv)
 	}
 	assert (!client.Write (static_cast<File> (255), bytes));
 	assert (!client.Write (File::RouterKeys, { }));
-	// A worker-level rejection (here an unsafe symlink target) must not poison
-	// the channel: the following request uses the same ready worker.
+	// A worker-level rejection (here an unsafe symlink target) must not
+	// poison the channel: the following request uses the same ready
+	// worker.
 	std::filesystem::remove (root / "router.keys");
 	std::filesystem::create_symlink ("/etc/passwd", root / "router.keys");
 	assert (!client.Write (File::RouterKeys, bytes));
@@ -62,7 +63,8 @@ int main (int argc, char ** argv)
 	assert (client.Write (File::RouterKeys, bytes));
 	client.Stop ();
 	assert (!client.Write (File::RouterKeys, bytes));
-	// A failed transport must not cause core dispatch to write a local key file.
+	// A failed transport must not cause core dispatch to write a local key
+	// file.
 	i2p::data::InstallRouterPersistenceWriter ([] (File, std::span<const uint8_t>) { return false; });
 	assert (!i2p::data::WriteRouterPersistentFile (File::RouterKeys, bytes));
 	i2p::data::InstallRouterPersistenceWriter ({ });

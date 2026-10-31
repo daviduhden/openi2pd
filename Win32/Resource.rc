@@ -4,9 +4,9 @@
  *
  * openi2pd: Resource.
  *
- * Defines the English (United States) resources for the Windows build: the
- * MAINICON application and tray icon plus inclusion of the version resource
- * when not editing in App Studio.
+ * Defines the English (United States) resources for the Windows build:
+ * the MAINICON application and tray icon plus inclusion of the version
+ * resource when not editing in App Studio.
  *
  */
 
