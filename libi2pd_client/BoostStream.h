@@ -113,7 +113,7 @@ namespace boost::beast
 {
 // for websockets over BoostAsyncStream
 template <typename TeardownHandler>
-void async_teardown (boost::beast::role_type role, i2p::client::BoostAsyncStream & stream, TeardownHandler && handler)
+void async_teardown (boost::beast::role_type, i2p::client::BoostAsyncStream & stream, TeardownHandler && handler)
 {
 	auto s = stream.GetStream ();
 	if (s) s->Close ();

@@ -116,6 +116,9 @@ the console.
   both `KEY_F` and `KEY_F1..KEY_F12` before returning native key codes; curses
   implementations differ on which names are macros.
 - TUI IPC regressions are prepared but no manual CI/live console run exists.
+- Win32 console callbacks must retain their ABI parameter types. If an event
+  argument is intentionally irrelevant to the shared stop behavior, omit its
+  parameter name rather than suppressing `-Wunused-parameter`.
 
 - New read verbs `ADDRESSBOOK-SUBSCRIPTIONS [limit]` and `BLOCKLIST [limit]`
   plus typed writes `ADMIN ADDRESS-SUB-ADD/REMOVE` and `ADMIN NETDB-BAN/UNBAN`.

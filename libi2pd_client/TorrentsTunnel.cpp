@@ -2910,9 +2910,9 @@ namespace torrents
 		return index;
 	}
 
-	void TorrentsTunnel::TrackerRequestSent (const boost::beast::error_code & ecode, size_t bytes_transferred,
+	void TorrentsTunnel::TrackerRequestSent (const boost::beast::error_code & ecode, size_t,
 		std::shared_ptr<i2p::client::BoostAsyncStream> httpStream, std::shared_ptr<Torrent> torrent,
-		std::shared_ptr<boost::beast::http::request<boost::beast::http::string_body>> req,
+		std::shared_ptr<boost::beast::http::request<boost::beast::http::string_body>>,
 		const TrackerRequestKey & key)
 	{
 		const size_t trackerID = key.trackerID;
@@ -2947,7 +2947,7 @@ namespace torrents
 			std::weak_ptr<i2p::client::I2PService> weakSelf = weak_from_this ();
 			boost::beast::http::async_read (*httpStream, *buf, *parser,
 				[weakSelf, httpStream, torrent, buf, parser, key] (
-					const boost::beast::error_code & ecode, size_t bytes_transferred)
+					const boost::beast::error_code & ecode, size_t)
 				{
 					auto self = std::static_pointer_cast<TorrentsTunnel> (weakSelf.lock ());
 					if (!self) return;

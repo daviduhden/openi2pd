@@ -116,6 +116,11 @@ Do not let them edit, build or run tests.
 
 ## Known issues and decisions
 
+- Asio/Beast completion callbacks must keep the required parameter types and
+  lifetime captures, but omit names for values their body does not consume.
+  Preserve a transferred-byte count when it is forwarded to another handler;
+  removing that name can turn a warning cleanup into an undeclared identifier.
+
 - `TorrentFile` now owns `m_Mutex`: `Save`/`Load`, `Open`/`Close`,
   `Complete`, path/root updates and payload-authority replacement all
   serialize. Keep the locked `OpenLocked`/`CloseLocked` helpers private and

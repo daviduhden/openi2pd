@@ -32,14 +32,15 @@ namespace fs = std::filesystem;
 
 namespace
 {
-constexpr const char * VICTIM_CONTENT = "keep-this-file-intact\n";
-
 std::string ReadFile (const fs::path & path)
 {
 	std::ifstream f (path, std::ios::binary);
 	assert (f.is_open ());
 	return std::string (std::istreambuf_iterator<char> (f), std::istreambuf_iterator<char> ());
 }
+
+#ifndef _WIN32
+constexpr const char * VICTIM_CONTENT = "keep-this-file-intact\n";
 
 void WriteFile (const fs::path & path, const std::string & contents)
 {
@@ -50,7 +51,6 @@ void WriteFile (const fs::path & path, const std::string & contents)
 	assert (f);
 }
 
-#ifndef _WIN32
 // A symlink is only meaningful where the test platform allows creating
 // one
 // unprivileged; the rest of the checks run everywhere.

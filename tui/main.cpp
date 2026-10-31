@@ -65,7 +65,7 @@ volatile std::sig_atomic_t g_Stop = 0;
 // Console close, logoff, shutdown, Ctrl-C and Ctrl-Break arrive on a
 // helper thread. Only the stop flag is touched; the main loop restores
 // the console through the normal shutdown path.
-BOOL WINAPI HandleConsoleEvent (DWORD type)
+BOOL WINAPI HandleConsoleEvent (DWORD)
 {
 	g_Stop = 1;
 	return TRUE;

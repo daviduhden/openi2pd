@@ -22,6 +22,8 @@
 namespace
 {
 using namespace i2p::tunnel;
+using i2p::SHORT_TUNNEL_BUILD_RECORD_SIZE;
+using i2p::TUNNEL_BUILD_RECORD_SIZE;
 
 std::array<uint8_t, 32> MakeKey (uint8_t fill)
 {

@@ -1113,7 +1113,7 @@ namespace torrents
 			boost::beast::bind_front_handler (&TorrentsRPCSession::HandleRequest, shared_from_this ()));
 	}
 
-	void TorrentsRPCSession::HandleRequest (const boost::system::error_code & ecode, size_t bytes_transferred)
+	void TorrentsRPCSession::HandleRequest (const boost::system::error_code & ecode, size_t)
 	{
 		if (ecode)
 		{
@@ -1197,7 +1197,7 @@ namespace torrents
 		m_Response.body () = data;
 		m_Response.prepare_payload ();
 		boost::beast::http::async_write (m_Socket, m_Response,
-			[s = shared_from_this ()] (const boost::system::error_code & ecode, size_t bytes_transferred)
+			[s = shared_from_this ()] (const boost::system::error_code & ecode, size_t)
 			{
 				if (ecode) LogPrint (eLogWarning, "TorrentsRPC: Failed to send response: ", ecode.message ());
 			});
@@ -1215,7 +1215,7 @@ namespace torrents
 		m_Response.body () = "Unauthorized";
 		m_Response.prepare_payload ();
 		boost::beast::http::async_write (m_Socket, m_Response,
-			[s = shared_from_this ()] (const boost::system::error_code & ecode, size_t bytes_transferred)
+			[s = shared_from_this ()] (const boost::system::error_code & ecode, size_t)
 			{
 				if (ecode) LogPrint (eLogWarning, "TorrentsRPC: Failed to send response: ", ecode.message ());
 			});
