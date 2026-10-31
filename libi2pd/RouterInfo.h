@@ -290,7 +290,12 @@ namespace data
 				: Buffer (other.data (), other.m_BufferLen) { };
 
 			size_t GetBufferLen () const { return m_BufferLen; };
-			void SetBufferLen (size_t len) { m_BufferLen = len; };
+			/// The stored length never leaves the fixed array. A caller
+			/// passing more than MAX_RI_BUFFER_SIZE would otherwise make
+			/// GetBufferLen() report bytes past the end of the allocation
+			/// to every consumer (persistence, hand-off to a peer and the
+			/// parser's own slicing), so clamp instead.
+			void SetBufferLen (size_t len) { m_BufferLen = len <= size () ? len : size (); };
 
 		private:
 			size_t m_BufferLen = 0;
