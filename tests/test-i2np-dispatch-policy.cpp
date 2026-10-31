@@ -23,6 +23,7 @@
 
 #include "I2NPProtocol.h"
 #include "NetDb.hpp"
+#include "Destination.h"
 #include "Timestamp.h"
 
 namespace i2p::data
@@ -48,6 +49,7 @@ struct NetDbLifecycleTestAccess
 namespace
 {
 using namespace i2p;
+using namespace i2p::client; // garlic queue bound and DataMessage length helpers
 
 void ResetDispatchState ()
 {
