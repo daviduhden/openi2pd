@@ -4140,7 +4140,7 @@ void App::DrawStatus (int top, int height, int width)
 	show ("Daemon log level", m_DaemonLogLevel);
 	show ("Log queue drops", Field ("log.dropped"));
 	show ("Max bandwidth", HumanBytes (ToLong (Field ("router.bandwidth_limit")) * 1024) + "/s");
-	show ("Local time", Timestamp (static_cast<int64_t> (std::time (nullptr))));
+	show ("Local time", Timestamp (static_cast<long> (std::time (nullptr))));
 	if (scroll == 0) DrawRateHistory (row, top, height, width);
 }
 

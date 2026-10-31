@@ -267,7 +267,7 @@ void TestNonceCodec ()
 	const std::string nonce = TestNonce ();
 	const std::wstring hex = EncodeWindowsWorkerNonce (nonce);
 	assert (hex.size () == WINDOWS_WORKER_NONCE_SIZE * 2);
-	const std::string text (hex.begin (), hex.end ());
+	const std::string text = NarrowHex (hex);
 	auto decoded = DecodeWindowsWorkerNonce (text);
 	assert (decoded.has_value ());
 	assert (*decoded == nonce);
@@ -275,7 +275,7 @@ void TestNonceCodec ()
 	auto generated = GenerateWindowsWorkerNonce ();
 	assert (generated.has_value ());
 	assert (generated->size () == WINDOWS_WORKER_NONCE_SIZE * 2);
-	const std::string generatedText (generated->begin (), generated->end ());
+	const std::string generatedText = NarrowHex (*generated);
 	auto generatedBytes = DecodeWindowsWorkerNonce (generatedText);
 	assert (generatedBytes.has_value ());
 	assert (generatedBytes->size () == WINDOWS_WORKER_NONCE_SIZE);

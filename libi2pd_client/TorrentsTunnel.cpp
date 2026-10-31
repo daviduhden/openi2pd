@@ -1685,7 +1685,7 @@ namespace torrents
 				if (split == std::string_view::npos || !number (argument.substr (0, split), index)
 					|| !number (argument.substr (split + 1), priority) || priority > 2
 					|| index > std::numeric_limits<size_t>::max ()
-					|| !torrent->SetFilePriority (static_cast<size_t> (index), priority))
+					|| !torrent->SetFilePriority (static_cast<size_t> (index), static_cast<uint8_t> (priority)))
 					return { false, "expected file index and priority 0, 1 or 2", command.torrentId };
 			}
 			else

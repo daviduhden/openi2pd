@@ -3079,7 +3079,9 @@ namespace torrents
 				&& conn->IsPieceAvailable (lastIndex) && GetPiecePriority (lastIndex) >= highest)
 			{
 				auto [offset, len] = m_Pieces[lastIndex].GetNextBlockToRequest ();
-				if (len > 0) return { static_cast<uint32_t> (lastIndex), offset, len };
+				if (len > 0)
+					return { static_cast<uint32_t> (lastIndex), static_cast<uint32_t> (offset),
+						static_cast<uint32_t> (len) };
 			}
 			// BEP6 suggestions must not override priority or rarity policy.
 			conn->ResetSuggestedPieceIndex ();
@@ -3108,7 +3110,8 @@ namespace torrents
 			{
 				const uint32_t pieceIndex = std::get<0> (it);
 				auto [offset, len] = m_Pieces[pieceIndex].GetNextBlockToRequest ();
-				if (len > 0) return { pieceIndex, offset, len };
+				if (len > 0)
+					return { pieceIndex, static_cast<uint32_t> (offset), static_cast<uint32_t> (len) };
 			}
 		}
 		return { 0, 0, 0 };
