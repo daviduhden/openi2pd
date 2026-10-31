@@ -1,5 +1,5 @@
-# See the LICENSE file at the top of the project tree for copyright
-# and license details.
+# See the LICENSE file at the top of the project tree for copyright and
+# license details.
 #
 # openi2pd: build.
 #
@@ -9,9 +9,9 @@
 ---
 name: Linux and Android
 
-# All runs are manual. Do not add push, pull_request, schedule or workflow_call
-# triggers: this repository validates every revision only when a maintainer
-# explicitly dispatches the workflow.
+# All runs are manual. Do not add push, pull_request, schedule or
+# workflow_call triggers: this repository validates every revision only
+# when a maintainer explicitly dispatches the workflow.
 on:
   workflow_dispatch:
     inputs:
@@ -104,8 +104,9 @@ jobs:
 
   perl-quality:
     name: Perl quality (Test::More and Perl::Critic)
-    # Opt-in at dispatch time. libperl-critic-perl is a distribution package,
-    # not a CPAN download; the job never runs for a normal dispatch.
+    # Opt-in at dispatch time. libperl-critic-perl is a distribution
+    # package, not a CPAN download; the job never runs for a normal
+    # dispatch.
     if: ${{ inputs.perl_style == true }}
     runs-on: ubuntu-24.04
     timeout-minutes: 20
@@ -177,7 +178,8 @@ jobs:
             --output-junit "$PWD/ctest-client.xml" \
             -R '^test-(i2ptunnel-http|addressbook-case|torrents-security)$'
       - name: Run profile, Android lifecycle and firewall regressions
-        # The native Android seam runs on the host; JNI/device evidence is separate.
+        # The native Android seam runs on the host; JNI/device evidence
+        # is separate.
         run: |
           ctest --test-dir build-output -j 2 --output-on-failure --no-tests=error \
             --output-junit "$PWD/ctest-profile.xml" \
@@ -474,8 +476,9 @@ jobs:
           fi
           test -x "$SDKMANAGER"
           # `yes` receives SIGPIPE when sdkmanager closes stdin; disable
-          # pipefail only for this pipeline so the sdkmanager status stays
-          # authoritative instead of masking a real license failure.
+          # pipefail only for this pipeline so the sdkmanager status
+          # stays authoritative instead of masking a real license
+          # failure.
           set +o pipefail
           yes | "$SDKMANAGER" --licenses >/dev/null
           set -o pipefail
@@ -485,9 +488,10 @@ jobs:
             "cmake;3.31.6" \
             "ndk;30.0.16248370"
           echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/30.0.16248370" >> "$GITHUB_ENV"
-          # AGP may resolve compileSdk 37 to android-37 or the minor-versioned
-          # android-37.0 package. Accept either installed directory and export
-          # the resolved android.jar for the D8/R8 probe.
+          # AGP may resolve compileSdk 37 to android-37 or the
+          # minor-versioned android-37.0 package. Accept either
+          # installed directory and export the resolved android.jar for
+          # the D8/R8 probe.
           PLATFORM_DIR=$(find "$ANDROID_HOME/platforms" -maxdepth 1 -type d -name 'android-37*' | sort | head -1)
           test -n "$PLATFORM_DIR"
           test -f "$PLATFORM_DIR/android.jar"
@@ -566,8 +570,30 @@ jobs:
             -Pi2pd.abis=arm64-v8a \
             -Pandroid.injected.build.abi=arm64-v8a \
             -Pi2pd.cmakeArgs="$I2PD_ANDROID_CMAKE_ARGS"
-          apk=$(find app/build/outputs/apk/debug -name '*.apk' -print -quit)
-          test -n "$apk"
+          find_application_apk() {
+            variant=$1
+            while IFS= read -r -d '' candidate; do
+              case "$candidate" in
+                *androidTest*) continue ;;
+                *"$variant"*|*"${variant^}"*) ;;
+                *) continue ;;
+              esac
+              contents=$(unzip -Z1 "$candidate" 2>/dev/null) || continue
+              if grep -Fxq 'lib/arm64-v8a/libi2pd.so' <<<"$contents" \
+                && grep -Fxq 'assets/i2pd.conf' <<<"$contents" \
+                && grep -Eq '^classes([0-9]+)?\.dex$' <<<"$contents"; then
+                printf '%s\n' "$candidate"
+                return 0
+              fi
+            done < <(find "$GITHUB_WORKSPACE" -type f -name '*.apk' -print0)
+            return 1
+          }
+          apk=$(find_application_apk debug) || {
+            echo "debug app APK with arm64 JNI library not found; APK outputs present:" >&2
+            find "$GITHUB_WORKSPACE" -type f -name '*.apk' -print >&2
+            exit 1
+          }
+          printf 'I2PD_DEBUG_APK=%s\n' "$apk" >> "$GITHUB_ENV"
           listing=$(unzip -l "$apk")
           printf '%s\n' "$listing" | grep -q 'lib/arm64-v8a/libi2pd.so' \
             || { echo "debug APK does not package lib/arm64-v8a/libi2pd.so" >&2; exit 1; }
@@ -588,12 +614,17 @@ jobs:
           nm -D --defined-only "$native" | grep -q 'Java_org_openi2pd_router_I2PD' \
             || { echo "packaged libi2pd.so exports no JNI entry points" >&2; exit 1; }
           rm -f "$native"
-          test -n "$(find app/build/outputs/apk/release -name '*.apk' -print -quit)"
+          if ! find_application_apk release >/dev/null; then
+            echo "release app APK with arm64 JNI library not found; APK outputs present:" >&2
+            find "$GITHUB_WORKSPACE" -type f -name '*.apk' -print >&2
+            exit 1
+          fi
       - name: Probe Java 25 D8/R8 dexing
         run: |
-          # assembleDebug above invokes AGP's D8 and resolves the exact R8
-          # artifact selected by AGP 9.4.1. Unit tests and lint alone do not
-          # necessarily resolve it, so discover it only after app dexing.
+          # assembleDebug above invokes AGP's D8 and resolves the exact
+          # R8 artifact selected by AGP 9.4.1. Unit tests and lint alone
+          # do not necessarily resolve it, so discover it only after app
+          # dexing.
           R8_JAR=$(find "$HOME/.gradle/caches/modules-2/files-2.1/com.android.tools" \
             -path '*/r8/*' -name 'r8-*.jar' ! -name '*-sources.jar' ! -name '*-javadoc.jar' -print -quit)
           if [ -z "$R8_JAR" ]; then
@@ -613,16 +644,16 @@ jobs:
         run: perl android/tools/check-android-jni-symbols.pl
       - name: Verify Java 25 dex lowering
         run: |
-          apk=$(find android/app/build/outputs/apk/debug -name '*.apk' -print -quit)
-          test -n "$apk" || { echo "debug APK missing" >&2; exit 1; }
+          apk="$I2PD_DEBUG_APK"
           dex=$(mktemp)
           unzip -p "$apk" classes.dex > "$dex"
           version=$(od -An -t u1 -j4 -N3 "$dex" | tr -d ' \n')
           test "$version" = "485157" \
             || { echo "APK classes.dex is not DEX 039 (got $version)" >&2; exit 1; }
           # D8 must remove the record superclass, record ObjectMethods
-          # bootstrap and the sealed type-switch/MatchException references at
-          # minSdk 29. A surviving reference would fail on ART 10.
+          # bootstrap and the sealed type-switch/MatchException
+          # references at minSdk 29. A surviving reference would fail on
+          # ART 10.
           strings_out=$(mktemp)
           strings "$dex" > "$strings_out"
           if grep -Eq 'java/lang/Record|ObjectMethods|SwitchBootstraps|MatchException' "$strings_out"; then
@@ -631,6 +662,17 @@ jobs:
             exit 1
           fi
           rm -f "$strings_out" "$dex"
+      - name: Stage Android APK artifacts
+        if: always()
+        run: |
+          mkdir -p android-apk-artifacts
+          find "$GITHUB_WORKSPACE" -type f -name '*.apk' \
+            ! -path "$GITHUB_WORKSPACE/android-apk-artifacts/*" -print0 |
+            while IFS= read -r -d '' apk; do
+              relative=${apk#"$GITHUB_WORKSPACE"/}
+              mkdir -p "android-apk-artifacts/$(dirname "$relative")"
+              cp "$apk" "android-apk-artifacts/$relative"
+            done
       - name: Upload Android reports and APKs
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
@@ -639,17 +681,18 @@ jobs:
           path: |
             android/app/build/reports
             android/app/build/test-results
-            android/app/build/outputs/apk
+            android-apk-artifacts
+            android/**/build/outputs/apk
             android/app/build/docs/javadoc
           if-no-files-found: warn
           retention-days: 7
 
   android-ui:
     name: Android API 29 UI and accessibility
-    # Opt-in at dispatch time. This lane needs an x86_64 native build plus an
-    # API 29 system image, so a normal Android dispatch stays arm64-only. It
-    # exercises the prepared Espresso/contract tests on a real ART image; it
-    # is not evidence for the arm64 device matrix.
+    # Opt-in at dispatch time. This lane needs an x86_64 native build
+    # plus an API 29 system image, so a normal Android dispatch stays
+    # arm64-only. It exercises the prepared Espresso/contract tests on a
+    # real ART image; it is not evidence for the arm64 device matrix.
     if: ${{ inputs.android_ui == true }}
     runs-on: ubuntu-24.04
     timeout-minutes: 90

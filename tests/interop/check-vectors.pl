@@ -4,7 +4,9 @@
 #
 # openi2pd: check vectors.
 #
-# Validates checked-in interoperability fixtures and provenance references, and can optionally run a user-supplied C++ harness per case; it never downloads, writes the reference tree or builds Java.
+# Validates checked-in interoperability fixtures and provenance
+# references, and can optionally run a user-supplied C++ harness per
+# case; it never downloads, writes the reference tree or builds Java.
 #
 
 use strict;
@@ -18,8 +20,8 @@ use File::Spec;
 use File::Basename qw(dirname);
 use Cwd            ();
 
-# These pins describe the existing corpus provenance, not the current Java
-# compatibility target (2.14.0). Do not relabel unchecked fixtures.
+# These pins describe the existing corpus provenance, not the current
+# Java compatibility target (2.14.0). Do not relabel unchecked fixtures.
 my $TAG        = 'i2p-2.13.0';
 my $COMMIT     = '9134f808337b401e8e53c73734c81fab04280c9d';
 my $SCRIPT_DIR = dirname( File::Spec->rel2abs($0) );
@@ -76,9 +78,9 @@ sub find_git {
         return Cwd::abs_path( $ENV{GIT} );
     }
     for my $directory ( File::Spec->path ) {
-        # Only absolute PATH entries are trusted: a relative entry (including
-        # the implicit empty one) could resolve to an unrelated program in the
-        # current directory.
+        # Only absolute PATH entries are trusted: a relative entry
+        # (including the implicit empty one) could resolve to an
+        # unrelated program in the current directory.
         next
           unless length $directory
           && File::Spec->file_name_is_absolute($directory);
@@ -96,7 +98,8 @@ sub run_git {
     return ( undef, 'git not found in an absolute PATH directory' )
       unless defined $git;
     # List-form pipe open: the argument vector is handed to the process
-    # directly, so no shell interprets the reference path or the git options.
+    # directly, so no shell interprets the reference path or the git
+    # options.
     open my $fh, '-|', $git, '-C', $reference, @args
       or return ( undef, "git: $!" );
     local $/;
@@ -263,9 +266,10 @@ sub static_checks {
             push @errors, 'shorter than the 16-byte I2NP header';
         }
         else {
-            # I2NP header: type, message id, expiration, payload size, then a
-            # one-byte checksum. Java defines that byte as the first SHA-256
-            # byte of the payload, so the fixture must agree with its header.
+            # I2NP header: type, message id, expiration, payload size,
+            # then a one-byte checksum. Java defines that byte as the
+            # first SHA-256 byte of the payload, so the fixture must
+            # agree with its header.
             my ( $type, $msgid, $exp, $size, $chk ) = unpack 'C N Q> n C',
               substr( $bytes, 0, 16 );
             my $payload = substr( $bytes, 16 );
@@ -328,8 +332,8 @@ sub static_checks {
 
 sub canonical {
     my ($data) = @_;
-    # Sorted keys make the comparison independent of hash order, which the
-    # pretty-printed expectation in a case file does not control.
+    # Sorted keys make the comparison independent of hash order, which
+    # the pretty-printed expectation in a case file does not control.
     return JSON::PP->new->canonical->encode($data);
 }
 
@@ -339,8 +343,8 @@ sub run_binary {
       or return ( undef, "cannot execute $bin: $!" );
     my $out       = '';
     my $too_large = 0;
-    # Cap the collected output so a runaway harness cannot exhaust memory; a
-    # truncated case is reported instead of being compared.
+    # Cap the collected output so a runaway harness cannot exhaust
+    # memory; a truncated case is reported instead of being compared.
     while (1) {
         my $chunk;
         my $read = read( $ph, $chunk, 65536 );

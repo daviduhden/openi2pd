@@ -114,6 +114,14 @@ workflow, run `gh`, build or test.
   name, ref, run id and revision.
 - Download logs to a private temporary path; classify failures by job/step and
   first error. Do not paste secrets or full logs into tracking files.
+- For each relevant run, capture the full SHA and job IDs with `gh run view
+  RUN_ID --json headSha,headBranch,createdAt,conclusion,jobs,url`; use
+  `gh run view RUN_ID --job JOB_ID --log` for one job and
+  `gh run download RUN_ID -D /tmp/openi2pd-ci/RUN_ID` for artifacts. Compare a
+  repeated diagnostic with earlier SHAs, and inspect install/package artifacts
+  before changing CMake component assignments or Debian file expectations.
+  Keep generated-output assertions tied to discovered artifacts rather than
+  assuming a build-tool output directory.
 - Fix causes, not symptoms. Re-run after the correction only when authorized.
 - Use `gh` for reading runs/logs only after authorization; never for commits,
   releases or secrets.

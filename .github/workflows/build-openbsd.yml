@@ -1,5 +1,5 @@
-# See the LICENSE file at the top of the project tree for copyright
-# and license details.
+# See the LICENSE file at the top of the project tree for copyright and
+# license details.
 #
 # openi2pd: build openbsd.
 #
@@ -9,8 +9,9 @@
 ---
 name: OpenBSD
 
-# Automatic runs are intentionally suspended during the refactoring. Only a
-# maintainer may start this workflow manually from the Actions tab.
+# Automatic runs are intentionally suspended during the refactoring.
+# Only a maintainer may start this workflow manually from the Actions
+# tab.
 on:
   workflow_dispatch:
 

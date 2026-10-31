@@ -4,16 +4,18 @@
 #
 # openi2pd: check reference.
 #
-# Verifies the current I2P Java 2.14.0 target checkout; historical fixture
-# provenance remains pinned separately by check-vectors.pl. Does not build.
+# Verifies the current I2P Java 2.14.0 target checkout; historical
+# fixture provenance remains pinned separately by check-vectors.pl. Does
+# not build.
 #
-# Contract: I2P_JAVA_REFERENCE must name the root of a read-only i2p-2.14.0 git
-# checkout, because this script only inspects git metadata. It exits 2 when the
-# variable is missing or empty (usage on stderr), 1 for a non-repository, a
-# different tag/commit/annotated tag object or a dirty worktree, and 0 when the
-# expected refs match. It needs git but no network, compiler or test runner, and
-# it never writes into the reference tree. A writable reference checkout is
-# reported as a warning, not an error.
+# Contract: I2P_JAVA_REFERENCE must name the root of a read-only
+# i2p-2.14.0 git checkout, because this script only inspects git
+# metadata. It exits 2 when the variable is missing or empty (usage on
+# stderr), 1 for a non-repository, a different tag/commit/annotated tag
+# object or a dirty worktree, and 0 when the expected refs match. It
+# needs git but no network, compiler or test runner, and it never writes
+# into the reference tree. A writable reference checkout is reported as
+# a warning, not an error.
 #
 
 set -eu

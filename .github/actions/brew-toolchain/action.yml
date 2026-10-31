@@ -1,11 +1,12 @@
-# See the LICENSE file at the top of the project tree for copyright
-# and license details.
+# See the LICENSE file at the top of the project tree for copyright and
+# license details.
 #
 # openi2pd: latest Homebrew toolchain.
 #
-# Installs the newest GCC, LLVM, CMake, Ninja, Perl, Boost, OpenSSL, zlib,
-# MiniUPnPc and ncurses available from Homebrew on Linux. Stable command names
-# and CMake/runtime hints are exposed through a per-run file.
+# Installs the newest GCC, LLVM, CMake, Ninja, Perl, Boost, OpenSSL,
+# zlib, MiniUPnPc and ncurses available from Homebrew on Linux. Stable
+# command names and CMake/runtime hints are exposed through a per-run
+# file.
 #
 ---
 name: Latest Homebrew toolchain
@@ -44,10 +45,10 @@ runs:
           packages="$packages boost openssl@4 miniupnpc ncurses zlib"
         fi
 
-        # Install first, then upgrade so a formula preinstalled in the runner
-        # image is replaced with the current Homebrew bottle. Query each
-        # formula explicitly: an unconditional upgrade exits non-zero when a
-        # selected package is already current.
+        # Install first, then upgrade so a formula preinstalled in the
+        # runner image is replaced with the current Homebrew bottle.
+        # Query each formula explicitly: an unconditional upgrade exits
+        # non-zero when a selected package is already current.
         brew install $packages
         for package in $packages; do
           if brew outdated --quiet "$package" | grep -qx "$package"; then
@@ -63,9 +64,10 @@ runs:
         if [ -x "${prefix}/bin/pkg-config" ]; then
           ln -sfn "${prefix}/bin/pkg-config" "${toolchain_bin}/pkg-config"
         fi
-        # Use the Homebrew Perl in every job that tests the latest Homebrew
-        # dependency set. CMake's find_package(Perl) and the shell steps then
-        # agree, and prove runs with the same interpreter as perl.
+        # Use the Homebrew Perl in every job that tests the latest
+        # Homebrew dependency set. CMake's find_package(Perl) and the
+        # shell steps then agree, and prove runs with the same
+        # interpreter as perl.
         perl_prefix="$(brew --prefix perl)"
         for tool in perl prove; do
           if [ -x "${perl_prefix}/bin/${tool}" ]; then
@@ -90,8 +92,8 @@ runs:
           ln -sfn "${gcc_prefix}/bin/g++-${gcc_version}" "${toolchain_bin}/g++"
           ln -sfn "${llvm_prefix}/bin/clang" "${toolchain_bin}/clang"
           ln -sfn "${llvm_prefix}/bin/clang++" "${toolchain_bin}/clang++"
-          # GCC 16 emits newer assembler directives than the Ubuntu binutils;
-          # keep the matching Homebrew binutils first on PATH.
+          # GCC 16 emits newer assembler directives than the Ubuntu
+          # binutils; keep the matching Homebrew binutils first on PATH.
           for tool in as ld ar ranlib nm objcopy strip; do
             if [ -x "${binutils_prefix}/bin/${tool}" ]; then
               ln -sfn "${binutils_prefix}/bin/${tool}" "${toolchain_bin}/${tool}"

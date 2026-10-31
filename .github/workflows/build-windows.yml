@@ -1,5 +1,5 @@
-# See the LICENSE file at the top of the project tree for copyright
-# and license details.
+# See the LICENSE file at the top of the project tree for copyright and
+# license details.
 #
 # openi2pd: build windows.
 #
@@ -9,8 +9,9 @@
 ---
 name: Windows
 
-# Automatic runs are intentionally suspended during the refactoring. Only a
-# maintainer may start this workflow manually from the Actions tab.
+# Automatic runs are intentionally suspended during the refactoring.
+# Only a maintainer may start this workflow manually from the Actions
+# tab.
 on:
   workflow_dispatch:
 
@@ -22,8 +23,8 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  # MSYS2/Clang64 validates the full dependency set and the Win32 TUI backend
-  # with the same toolchain used for the distribution helper.
+  # MSYS2/Clang64 validates the full dependency set and the Win32 TUI
+  # backend with the same toolchain used for the distribution helper.
   build:
     runs-on: windows-2022
     timeout-minutes: 45
@@ -70,10 +71,11 @@ jobs:
           if-no-files-found: warn
           retention-days: 7
 
-  # Native MSVC uses the runner's vcpkg for third-party dependencies. It builds
-  # the default feature set, including torrents, while the reduced TUI/API
-  # configuration remains available explicitly through -DWITH_TORRENTS=OFF.
-  # No runtime download is part of the product build.
+  # Native MSVC uses the runner's vcpkg for third-party dependencies. It
+  # builds the default feature set, including torrents, while the
+  # reduced TUI/API configuration remains available explicitly through
+  # -DWITH_TORRENTS=OFF. No runtime download is part of the product
+  # build.
   build-msvc:
     # windows-latest moved past the VS 2022 image used by the project's
     # documented MSVC generator. Pin the image that provides it.

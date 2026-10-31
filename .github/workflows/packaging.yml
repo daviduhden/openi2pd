@@ -1,11 +1,11 @@
-# See the LICENSE file at the top of the project tree for copyright
-# and license details.
+# See the LICENSE file at the top of the project tree for copyright and
+# license details.
 #
 # openi2pd: packaging.
 #
-# Manual validation of native init-system definitions and the Debian binary
-# packages. Static contract checks run without compiling; the Debian job builds
-# and tests packages in a disposable Ubuntu runner.
+# Manual validation of native init-system definitions and the Debian
+# binary packages. Static contract checks run without compiling; the
+# Debian job builds and tests packages in a disposable Ubuntu runner.
 #
 
 ---
@@ -97,9 +97,10 @@ jobs:
             --no-install-recommends cmake ninja-build \
             libboost-program-options-dev libboost-json-dev libboost-url-dev \
             libssl-dev zlib1g-dev libminiupnpc-dev libncurses-dev
-      # Install only the Service component: the router is not built, but the
-      # selected manager's files must land in the documented directories. This
-      # is a packaging-layout check, not a service start.
+      # Install only the Service component: the router is not built, but
+      # the selected manager's files must land in the documented
+      # directories. This is a packaging-layout check, not a service
+      # start.
       - name: Install each selected manager into a staging prefix
         run: |
           set -euo pipefail
@@ -153,8 +154,8 @@ jobs:
                 test -x "$prefix/etc/init.d/i2pd"
                 ;;
             esac
-            # A manager that is not selectable must be rejected rather than
-            # silently installing nothing.
+            # A manager that is not selectable must be rejected rather
+            # than silently installing nothing.
             if grep -q "^bin/" <(find "$prefix" -type f -printf '%P\n'); then
               echo "Service component installed an unexpected binary" >&2
               exit 1
@@ -292,7 +293,7 @@ jobs:
             exit 1
           fi
           grep -q /usr/share/doc/i2pd/docs/i18n.md /tmp/i2pd-files
-          grep -q /usr/share/doc/i2pd/assets/branding/colors.md /tmp/i2pd-files
+          grep -q /usr/share/doc/i2pd/assets/branding/colors.md.gz /tmp/i2pd-files
           grep -qE '/usr/share/man/man1/i2pd\.1(\.gz)?$' /tmp/i2pd-files
           grep -qE '/usr/share/man/man1/i2pdctl\.1(\.gz)?$' /tmp/i2pd-files
           grep -qE '/usr/share/man/man1/i2pd-tui\.1(\.gz)?$' /tmp/i2pd-tui-files
