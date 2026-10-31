@@ -41,6 +41,8 @@ namespace util
 		/// Format a raw address plus scope ID without Boost.Asio's POSIX
 		/// scope-ID formatter (which uses an unsafe sprintf/strcat path).
 		/// @pre source is null or points to 4 (IPv4) / 16 (IPv6) bytes.
+		/// @param ipv6 True when @a source holds an IPv6 address.
+		/// @param source Raw address bytes, or null for an empty result.
 		/// @param scopeId IPv6 zone index; for link-local and link-local
 		/// multicast addresses an interface name is emitted when one can be
 		/// resolved, otherwise the numeric index is appended.

@@ -43,6 +43,8 @@ void ReportUnknown (const char * argv0, int option)
 /// suppressing the diagnostic. `optind`/`optarg` are process-wide like
 /// the POSIX pair, so this must not be called concurrently.
 ///
+/// @param argc Argument count.
+/// @param argv Argument vector; processing starts at `optind`.
 /// @param optstring Short option letters; a trailing ':' means one
 /// argument.
 /// @return The option letter, '?' (or ':' when optstring starts with
@@ -122,6 +124,10 @@ extern "C" int getopt (int argc, char * const argv[], const char * optstring)
 /// no_argument option is an error. `optstring` remains the fallback for
 /// the tools that mix both forms, and a bare `--` terminates
 /// processing.
+/// @param argc Argument count.
+/// @param argv Argument vector whose next element is inspected.
+/// @param optstring Short option fallback definition.
+/// @param longOptions Null-terminated long-option table.
 /// @param optionIndex Receives the matched long-option index, or -1.
 /// @return The option value, 0 when `flag` was set, '?' on error, -1 at
 /// end.

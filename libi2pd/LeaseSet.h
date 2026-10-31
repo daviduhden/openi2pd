@@ -267,11 +267,15 @@ namespace data
 		uint64_t ExtractExpirationTimestamp (const uint8_t * buf, size_t len) const override;
 		uint64_t ExtractPublishedTimestamp (const uint8_t * buf, size_t len, uint64_t & expiration) const;
 		/// Build the encrypted-LeaseSet2 client-auth block (Proposal 123).
+		/// @param buf Outer plaintext beginning with the layer-1 flags byte.
+		/// @param len Valid bytes in @a buf.
 		/// @param secret 32-byte DH private key or PSK supplied
 		///               by the caller; it is a credential and must never be
 		///               logged, stored in the object or reused as a nonce.
 		/// @param subcredential Subcredential extended with the LeaseSet
 		///                      timestamp.
+		/// @param authCookie Receives the client auth cookie; untouched when
+		///                   the publisher requested no per-client auth.
 		/// @return Length of the auth data without its leading flag;
 		///         0 means the publisher requested no per-client auth.
 		///         Malformed auth data, a missing secret or a failed

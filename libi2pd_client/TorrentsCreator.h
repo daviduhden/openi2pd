@@ -31,6 +31,7 @@ struct TorrentCreateOptions
 	std::function<void (uint64_t, uint64_t, size_t, size_t)> progress;
 };
 /// Select a valid power-of-two v1 piece size within engine budgets.
+/// @param totalBytes Total payload size in bytes.
 /// @param requested Explicit size, or 0 for the automatic target of
 ///                  <=2048 pieces.
 /// @return The selected size, or 0 for an invalid input or exceeded
@@ -41,6 +42,8 @@ size_t SelectTorrentPieceLength (uint64_t totalBytes, size_t requested = 0);
 /// @param root Administrator-authorized directory used as the traversal
 ///             anchor.
 /// @param relativePath Safe path beneath that anchor.
+/// @param options Creation policy: piece length, tracker tiers, privacy,
+///                cancellation and progress callbacks.
 /// @param error Receives a failure reason; cleared on entry.
 /// @return The new torrent, or nullptr on invalid input, cancellation
 ///         or IO error.

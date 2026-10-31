@@ -31,6 +31,9 @@ namespace crypto
 		~Elligator2 ();
 
 		/// Map a 32-byte X25519 public key to a 32-byte representative.
+		/// @param key 32-byte X25519 public key to encode.
+		/// @param encoded Receives the 32-byte representative; written only
+		///                when the function returns true.
 		/// @param highY Selects which of the two curve points with the same
 		/// x-coordinate the receiver should use.
 		/// @param random Draw the remaining ambiguity from the CSPRNG instead
@@ -42,6 +45,9 @@ namespace crypto
 		///         X25519Keys::SetElligatorIneligible().
 		bool Encode (const uint8_t * key, uint8_t * encoded, bool highY = false, bool random = true) const;
 		/// Recover the public key from a representative.
+		/// @param encoded 32-byte representative produced by Encode().
+		/// @param key Receives the 32-byte X25519 public key; written only
+		///            when the function returns true.
 		/// @return False when the input is not a canonical
 		///         representative, so a failed decode must abort the
 		///         handshake and never be retried as if it were a plain key.

@@ -925,6 +925,8 @@ namespace transport
 		virtual bool ProcessPeerTest (uint8_t * buf, size_t len);
 		/// Handle one data packet; the payload is authenticated by the AEAD
 		/// tag before any handler runs.
+		/// @param buf Packet bytes, including the authenticated header.
+		/// @param len Number of valid bytes in @a buf.
 		/// @param from Sender endpoint of this datagram. It is
 		///             the only source accepted for the PathResponse that
 		///             completes a pending connection migration, so a

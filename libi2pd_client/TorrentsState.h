@@ -34,12 +34,15 @@ struct TorrentLocalState
 /// Encode the local v1 bencode dictionary: comments, priorities (binary
 /// values 0..2), stopped (0/1) and version (1). This is not an I2PSnark
 /// state format and must not replace metainfo or a .resume bitfield.
+/// @param state Validated state snapshot to encode.
 /// @param error Cleared on entry and set if validation or size checks
 ///              fail.
 /// @return Encoded state, or an empty string on failure.
 std::string EncodeTorrentLocalState (const TorrentLocalState & state, std::string & error);
 /// Decode exactly one bounded v1 dictionary, rejecting unknown keys or
 /// version.
+/// @param encoded Bencoded dictionary, consumed only when it validates
+///                completely.
 /// @param now Local epoch seconds used when restoring comment
 ///            timestamps.
 /// @param state Replaced only after the entire input passes validation.

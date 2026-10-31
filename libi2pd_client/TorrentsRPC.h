@@ -72,9 +72,13 @@ namespace torrents
 		void Stop ();
 
 		/// Register (or replace) the tunnel served at one loopback path.
+		/// @param path Loopback path that selects the tunnel.
+		/// @param tunnel Tunnel exposed at that path; the registry keeps
+		///               only a weak reference.
 		/// @param auth Require HTTP Basic authentication for that path.
-		/// @param user/pass Bounded non-empty credentials; an empty pair with
-		/// @a auth set is rejected and no entry is installed.
+		/// @param user Bounded non-empty user name; an empty pair with
+		///             @a auth set is rejected and no entry is installed.
+		/// @param pass Bounded non-empty password paired with @a user.
 		/// @warning The registry holds a weak tunnel reference, so
 		///          the caller owns the tunnel lifetime. The credential is
 		///          stored as a Basic header value and must never be logged

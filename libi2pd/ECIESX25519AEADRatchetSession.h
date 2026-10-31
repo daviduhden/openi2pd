@@ -108,6 +108,7 @@ namespace garlic
 		const uint8_t * GetNextRootKey () const { return m_NextRootKey; };
 		int GetNextIndex () const { return m_NextIndex; };
 		/// Derive or consume a cached key for the 16-bit message index.
+		/// @param index Message index; an out-of-range value fails closed.
 		/// @param key Writable 32-byte output.
 		/// @return False for an invalid index, null output or missing cached
 		///         key.

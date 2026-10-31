@@ -596,6 +596,7 @@ int CodePointWidth (std::uint32_t codePoint)
 /// and the backend's clipping disagree too, and the result is a torn
 /// right-hand column plus misaligned selection highlighting.
 ///
+/// @param text UTF-8 text being rendered.
 /// @param offset Byte offset into `text`; must be before text.size().
 /// @return Consumed bytes (at least 1, so callers always progress) and
 /// width.
@@ -790,6 +791,7 @@ std::string SanitizeCommentText (std::string_view text)
 /// ellipsis is counted in columns before the body, so the returned
 /// width never exceeds `maxWidth`.
 ///
+/// @param text Input text.
 /// @param maxWidth Column budget (not bytes).
 /// @param ellipsis Append "..." when at least three columns are
 /// available.
@@ -3924,6 +3926,8 @@ void App::CycleTorrentTunnel (int delta)
 /// Composition of runtime values happens before this call and is
 /// intentionally not looked up, so a translated sentence can never be
 /// matched against a partially formatted string.
+/// @param row Terminal row to draw; it must be inside the screen.
+/// @param text Untrusted text to sanitize, translate and fit.
 /// @param width Column budget for the whole line; wide glyphs count as
 /// two.
 /// @param attributes Theme attribute word; 0 keeps the current

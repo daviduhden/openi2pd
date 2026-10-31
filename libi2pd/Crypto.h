@@ -337,12 +337,21 @@ namespace crypto
 	};
 
 	/// ChaCha20-Poly1305 with a 32-byte key and 12-byte nonce.
+	/// @param msg Plaintext (encrypt) or ciphertext followed by its tag
+	///            (decrypt).
 	/// @param msgLen Plaintext/ciphertext length excluding the 16-byte
 	///               tag.
+	/// @param ad Additional authenticated data; may be null when adLen is 0.
+	/// @param adLen Number of bytes in @a ad.
+	/// @param key 32-byte key.
+	/// @param nonce 12-byte nonce; it must never repeat under one key.
+	/// @param buf Output buffer, distinct from @a msg.
 	/// @param len Capacity of buf: at least msgLen + 16 for
 	///            encryption and at least msgLen for decryption. For
 	///            decryption msg must also contain the tag immediately
 	///            after its msgLen ciphertext bytes.
+	/// @param encrypt Selects encryption when true and tag-verified
+	///                decryption when false.
 	/// @return True only when encryption or tag-verified decryption
 	///         succeeds.
 	/// @warning Discard output on false, including argument-validation
@@ -368,11 +377,14 @@ namespace crypto
 	// HKDF
 
 	/// RFC 5869 HKDF-SHA256 over a 32-byte salt.
+	/// @param salt 32-byte salt.
 	/// @param key Input keying material; a null pointer
 	///            together with keyLen 0 selects the expand-only form,
 	///            where HMAC-SHA256(salt, empty) is used as the PRK
 	///            because the handshake already produced a pseudorandom
 	///            key.
+	/// @param keyLen Number of bytes in @a key; it is ignored when key is
+	///               null and must be 0 in the expand-only form.
 	/// @param info Protocol context string; it separates
 	///             otherwise identical derivations and must never carry
 	///             secret material.

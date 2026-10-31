@@ -38,6 +38,8 @@ public:
 	/// must be owned by the worker uid and free of group/world write
 	/// permission; a core without a configured worker identity is refused
 	/// instead of falling back to an unseparated writer.
+	/// @param root Administrator-selected storage root; it must be an
+	///             absolute, non-symlink directory owned by the worker uid.
 	/// @param error Receives a non-secret failure description; cleared on
 	/// entry.
 	/// @return true only when the worker accepted its configuration.
