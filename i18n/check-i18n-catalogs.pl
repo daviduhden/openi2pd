@@ -4,10 +4,14 @@
 #
 # openi2pd: check i18n catalogs.
 #
-# Compile-free contract for the native Spanish, Russian and Simplified Chinese
-# catalogs. It verifies key parity, placeholder and trailing-space parity,
-# UTF-8/locale hygiene, plural-form arity, that every translatable source
-# literal has an entry, and that protocol/configuration identifiers are never
+# Compile-free contract for the native Spanish, Russian and Simplified
+# Chinese
+# catalogs. It verifies key parity, placeholder and trailing-space
+# parity,
+# UTF-8/locale hygiene, plural-form arity, that every translatable
+# source
+# literal has an entry, and that protocol/configuration identifiers are
+# never
 # translated. It never compiles, runs a binary or writes a file.
 #
 # usage: check-i18n-catalogs.pl [--root DIR]
@@ -86,7 +90,8 @@ sub parse_strings {
     while (
         $block =~ /\{\s*$literal_run\s*,\s*$literal_run\s*\}/g )
     {
-        # A nested match below resets $1/$2, so snapshot both literal runs
+        # A nested match below resets $1/$2, so snapshot both literal
+        # runs
         # before extracting the individual string fragments from them.
         my ( $key_run, $value_run ) = ( $1, $2 );
         my @key_parts = $key_run =~ /"((?:[^"\\]|\\.)*)"/g;
@@ -125,9 +130,11 @@ sub parse_plurals {
 
 sub placeholders {
     my ($value) = @_;
-    # Conversions are compared as a sorted multiset, never by position: a
+    # Conversions are compared as a sorted multiset, never by position:
+    # a
     # translation may reorder a sentence, but the set of %s/%d/%i/%u/%f
-    # conversions (with widths, flags and positional indexes ignored) must stay
+    # conversions (with widths, flags and positional indexes ignored)
+    # must stay
     # identical. "%%" is a literal percent sign and never counts.
     my @found;
     while ( $value =~ /%(?!%)(?:\d+\$)?[-+ 0#]*\d*(?:\.\d+)?([sdiuf])/g ) {
@@ -140,7 +147,8 @@ sub valid_utf8 {
     my ($value) = @_;
     # Reject overlong encodings, UTF-16 surrogates and code points above
     # U+10FFFF. The catalogs are compiled as UTF-8 literals and the TUI
-    # measures display columns, so an invalid sequence would corrupt output
+    # measures display columns, so an invalid sequence would corrupt
+    # output
     # long before any build step noticed it.
     return $value !~ /[\x80-\xFF]/ || $value =~ /^(?:
         [\x00-\x7F]|
@@ -176,9 +184,12 @@ for my $catalog (@catalogs) {
         fail(
 "placeholder mismatch for '$key' in $catalog->{path} ($want != $got)"
         ) if $want ne $got;
-        # A trailing space in the English key is a word separator in a composed
-        # TUI line. If a translation stores its last word without it, the next
-        # label runs into the sentence, so treat a lost space as a defect.
+        # A trailing space in the English key is a word separator in a
+        # composed
+        # TUI line. If a translation stores its last word without it,
+        # the next
+        # label runs into the sentence, so treat a lost space as a
+        # defect.
         if ( $key =~ / $/ && $value =~ /[A-Za-z0-9:;,.!?)]$/ ) {
             fail("trailing space lost for '$key' in $catalog->{path}");
         }
@@ -207,7 +218,8 @@ for my $catalog ( @catalogs[ 1 .. $#catalogs ] ) {
     }
 }
 
-# Plural arity: Spanish two forms, Russian three, Simplified Chinese one.
+# Plural arity: Spanish two forms, Russian three, Simplified Chinese
+# one.
 my %expected = ( es => 2, ru => 3, zh => 1 );
 for my $catalog (@catalogs) {
     my $plurals = $catalog->{plurals};
@@ -242,8 +254,10 @@ sub harvest {
     my $text = read_file($path);
     my %keys;
 
-    # Adjacent string literals are concatenated by the C++ compiler before the
-    # lookup, so the catalog key is the whole argument, not its first fragment.
+    # Adjacent string literals are concatenated by the C++ compiler
+    # before the
+    # lookup, so the catalog key is the whole argument, not its first
+    # fragment.
     my $literal_run = qr/((?:"(?:[^"\\]|\\.)*"\s*)+)/;
     while ( $text =~ /\btr\s*\(\s*$literal_run/g ) {
         my @lits = $1 =~ /"((?:[^"\\]|\\.)*)"/g;
@@ -258,7 +272,8 @@ sub harvest {
         $keys{ unescape( join( '', @lits ) ) } = 1;
     }
 
-    # Label helpers in the TUI translate internally; harvest literal labels so
+    # Label helpers in the TUI translate internally; harvest literal
+    # labels so
     # a missing catalog entry cannot silently fall back to English.
     if ( $path =~ m{/tui/main\.cpp$} ) {
         while ( $text =~ /\b(?:show|add)\s*\(\s*$literal_run/g ) {

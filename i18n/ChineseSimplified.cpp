@@ -4,8 +4,8 @@
  *
  * openi2pd: Chinese (Simplified).
  *
- * Built-in Simplified Chinese UI catalog. No Traditional Chinese text is
- * presented as Simplified Chinese.
+ * Built-in Simplified Chinese UI catalog. No Traditional Chinese text
+ * is presented as Simplified Chinese.
  *
  */
 

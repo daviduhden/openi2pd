@@ -4,10 +4,10 @@
  *
  * openi2pd: I18N.
  *
- * Implements process-local language selection, string and plural translation,
- * environment fallback and LC_NUMERIC pinning. The registry is independent of
- * the router client context so the TUI and tools can translate without
- * linking libi2pdclient.
+ * Implements process-local language selection, string and plural
+ * translation, environment fallback and LC_NUMERIC pinning. The
+ * registry is independent of the router client context so the TUI and
+ * tools can translate without linking libi2pdclient.
  *
  */
 

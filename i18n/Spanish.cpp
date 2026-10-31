@@ -4,8 +4,8 @@
  *
  * openi2pd: Spanish.
  *
- * Built-in Spanish UI catalog. Keys are the English source strings; formatting
- * placeholders and HTML markup are preserved byte-for-byte.
+ * Built-in Spanish UI catalog. Keys are the English source strings;
+ * formatting placeholders and HTML markup are preserved byte-for-byte.
  *
  */
 

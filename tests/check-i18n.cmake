@@ -1,11 +1,11 @@
-# See the LICENSE file at the top of the project tree for copyright
-# and license details.
+# See the LICENSE file at the top of the project tree for copyright and
+# license details.
 #
 # openi2pd: check i18n.
 #
-# Compile-free check of native catalog registration, process-local language
-# selection, TUI linkage and Android locale metadata. It never invokes a
-# compiler, Gradle, CTest or a project binary.
+# Compile-free check of native catalog registration, process-local
+# language selection, TUI linkage and Android locale metadata. It never
+# invokes a compiler, Gradle, CTest or a project binary.
 #
 
 if(NOT PROJECT_ROOT)
@@ -96,8 +96,9 @@ assert_absent("${i18n_text}" "ClientContext.h" "I18N must not depend on the rout
 assert_present("${cmake_text}" "Threads::Threads \${I2PD_EXTRA_LIBS} libi2pdlang" "TUI catalog linkage")
 assert_present("${tui_text}" "SetLanguage" "TUI language selection")
 assert_present("${tui_text}" "i2p::i18n::tr" "TUI translation boundary")
-# tr() returns std::string_view; C++23 has no operator+(std::string, string_view).
-# Every concatenated translation must be materialised as std::string first.
+# tr() returns std::string_view; C++23 has no operator+(std::string,
+# string_view). Every concatenated translation must be materialised as
+# std::string first.
 assert_absent("${tui_text}" "+ i2p::i18n::tr (" "TUI translation concatenation must materialise std::string")
 assert_present("${tui_client_text}" "--lang" "TUI language option")
 assert_present("${gradle_text}" "localeFilters += [\"en\", \"es\", \"ru\", \"zh\"]"
@@ -107,7 +108,8 @@ assert_present("${guard_text}" "placeholder" "Android placeholder parity guard")
 assert_absent("${guard_text}" "English-only" "legacy English-only guard")
 assert_present("${guard_text}" "values-zh-rCN" "Simplified Chinese catalog check")
 
-# The four-language policy is documented once and linked from the entry pages.
+# The four-language policy is documented once and linked from the entry
+# pages.
 foreach(tag IN ITEMS "en" "es" "ru" "zh-Hans" "zh-CN" "zh-TW" "zh-Hant")
   assert_present("${language_policy_text}" "${tag}" "language policy tag ${tag}")
 endforeach()
@@ -117,15 +119,17 @@ assert_present("${config_doc_text}" "en, es, ru, zh-Hans" "configuration languag
 assert_present("${sample_config_text}" "docs/i18n.md" "sample configuration language reference")
 assert_absent("${sample_config_text}" "built-in web/proxy" "removed web-console language wording")
 
-# Localized confirmation hints must match the parser: the catalogs advertise
-# [s/N] and [д/Н], so the TUI has to accept those letters as well.
+# Localized confirmation hints must match the parser: the catalogs
+# advertise [s/N] and [д/Н], so the TUI has to accept those letters as
+# well.
 assert_present("${spanish_text}" "[s/N]" "Spanish confirm hint")
 assert_present("${russian_text}" "[д/Н]" "Russian confirm hint")
 assert_present("${tui_text}" "IsAffirmative" "localized confirmation parser")
 assert_present("${tui_text}" "answer == \"sí\"" "Spanish affirmative token")
 
-# Status and prompt strings are translated at their boundary; rendering a
-# prefixed status line through PutLine alone never matched a catalog key.
+# Status and prompt strings are translated at their boundary; rendering
+# a prefixed status line through PutLine alone never matched a catalog
+# key.
 assert_present("${tui_text}" "void App::SetStatus (std::string message, bool error)"
   "SetStatus definition")
 assert_present("${tui_text}" "i2p::i18n::tr (std::string_view (message))"

@@ -4,8 +4,10 @@
  *
  * openi2pd: test i18n locale.
  *
- * Exercises the process-local language registry, fallback, UTF-8 catalog
- * values, formatting and plural fallback. It does not test terminal rendering
+ * Exercises the process-local language registry, fallback, UTF-8
+ * catalog
+ * values, formatting and plural fallback. It does not test terminal
+ * rendering
  * or Android resources.
  */
 
@@ -28,7 +30,8 @@ int main ()
 	assert (i2p::i18n::tr ("Status") == "Статус");
 	assert (i2p::i18n::tr ("Tunnels") == "Туннели");
 	assert (i2p::i18n::tr ("Uptime") == "Время работы");
-	// Russian must use one/few/many rather than the English two-form fallback.
+	// Russian must use one/few/many rather than the English two-form
+	// fallback.
 	assert (i2p::i18n::ntr ("node", "nodes", 1) == "узел");
 	assert (i2p::i18n::ntr ("node", "nodes", 2) == "узла");
 	assert (i2p::i18n::ntr ("node", "nodes", 5) == "узлов");
@@ -54,16 +57,19 @@ int main ()
 	assert (i2p::i18n::ntr ("one item", "%d items", 1) == "one item");
 	assert (i2p::i18n::ntr ("one item", "%d items", 2) == "%d items");
 	assert (i2p::i18n::tr ("%s/%d%%", "x", 5) == "x/5%");
-	// Historical global helpers and qualified UI helpers share one overload set.
+	// Historical global helpers and qualified UI helpers share one
+	// overload set.
 	assert (::tr ("Status") == i2p::i18n::tr ("Status"));
 	assert (::tr ("%s/%d%%", "x", 5) == "x/5%");
 	assert (::ntr ("one item", "%d items", 2, 2) == "2 items");
 
-	// Catalog values are UTF-8 literals, not locale-converted byte strings.
+	// Catalog values are UTF-8 literals, not locale-converted byte
+	// strings.
 	i2p::i18n::SetLanguage ("es");
 	assert (i2p::i18n::tr ("Uptime") == "Tiempo activo");
 	assert (i2p::i18n::tr ("unknown-key") == "unknown-key");
-	// A localized placeholder string must keep the exact printf conversions.
+	// A localized placeholder string must keep the exact printf
+	// conversions.
 	i2p::i18n::SetLanguage ("es");
 	assert (i2p::i18n::tr ("Remove \"%s\"? [y/N] ", "x") == "¿Eliminar \"x\"? [s/N] ");
 	i2p::i18n::SetLanguage ("ru");

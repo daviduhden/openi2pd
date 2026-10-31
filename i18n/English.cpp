@@ -4,9 +4,9 @@
  *
  * openi2pd: English.
  *
- * Defines the built-in English locale, which returns source strings unchanged
- * and supplies fallback plural forms keyed by singular and plural text.
- *
+ * Defines the built-in English locale, which returns source strings
+ * unchanged and supplies fallback plural forms keyed by singular and
+ * plural text.
  */
 
 #include <map>
@@ -28,7 +28,7 @@ namespace i18n
 		static std::string language = "english";
 
 		// See for language plural forms here:
-		// https://localization-guide.readthedocs.io/en/latest/l10n/pluralforms.html
+		// Reference: Localization guide, plural forms and categories.
 		static int plural (int n)
 		{
 			return n != 1 ? 1 : 0;

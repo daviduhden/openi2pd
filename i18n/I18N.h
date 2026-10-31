@@ -5,8 +5,8 @@
  * openi2pd: I18N.
  *
  * Declares the Locale container (string table, plural table and plural
- * formula), the translation helpers, and current-language accessors used by
- * configuration, daemon and TUI code.
+ * formula), the translation helpers, and current-language accessors
+ * used by configuration, daemon and TUI code.
  *
  */
 
@@ -80,10 +80,10 @@ namespace i18n
 	};
 
 	/**
-	 * Select the active UI language. Accepts BCP-47/locale tags such as `en`,
-	 * `es`, `ru`, `zh-Hans`, `zh_CN` and `es_ES`; an empty tag consults
-	 * LC_ALL/LC_MESSAGES/LANG. Unknown or unsupported languages fall back to
-	 * English, and LC_NUMERIC is pinned to C after selection.
+	 * Select the active UI language. Accepts BCP-47/locale tags such as
+	 * `en`, `es`, `ru`, `zh-Hans`, `zh_CN` and `es_ES`; an empty tag
+	 * consults LC_ALL/LC_MESSAGES/LANG. Unknown or unsupported languages
+	 * fall back to English, and LC_NUMERIC is pinned to C after selection.
 	 */
 	void SetLanguage (const std::string & tag);
 	/** Active normalized tag (`en`, `es`, `ru` or `zh-Hans`). */
@@ -159,8 +159,9 @@ namespace i18n
 } // i18n
 } // i2p
 
-// Preserve the historical unqualified helpers while exposing the namespace
-// used by standalone UI consumers. These are the same overload sets.
+// Preserve the historical unqualified helpers while exposing the
+// namespace used by standalone UI consumers. These are the same
+// overload sets.
 using i2p::i18n::ntr;
 using i2p::i18n::tr;
 
