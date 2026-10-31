@@ -7,8 +7,8 @@
  * The programmatic screens (torrents, address book and runtime admin)
  * build their rows in Java. Centralizing the touch-target and padding
  * contract here keeps them from drifting away from the XML screens,
- * which already use
- * @dimen/touch_target and logical (RTL-aware) padding.
+ * which already use {@code @dimen/touch_target} and logical
+ * (RTL-aware) padding.
  */
 
 package org.openi2pd.router;

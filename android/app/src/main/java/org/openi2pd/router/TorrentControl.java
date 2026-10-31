@@ -268,7 +268,7 @@ final class TorrentControl {
      * and limit the page size (1..16). Anything else is rejected here
      * exactly as the daemon rejects it, so an out-of-range page never
      * reaches the wire. Offset 0 with the default page keeps the
-     * historic `TORRENT-DETAIL <tunnel> <id>` line.
+     * historic {@code TORRENT-DETAIL <tunnel> <id>} line.
      */
     static String commentPage(int tunnel, String torrentId, int offset, int limit) {
         selection(tunnel, torrentId);

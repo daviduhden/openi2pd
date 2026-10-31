@@ -228,7 +228,11 @@ tasks.register('sourceJavadoc', Javadoc) {
     options.addBooleanOption('private', true)
     // Missing Javadoc remains a tracked coverage task; malformed tags
     // and broken references in existing comments must fail the
-    // documentation job.
+    // documentation job. JDK-internal tags (@implNote, @implSpec,
+    // @apiNote) stay unregistered, so an implementation note is plain
+    // prose and an angle-bracket protocol shape belongs in {@code ...}
+    // instead of raw text. android-javadoc-static checks the same
+    // classes of comment defect without running Gradle.
     options.addBooleanOption('Xdoclint:all,-missing', true)
     options.addBooleanOption('Werror', true)
 }

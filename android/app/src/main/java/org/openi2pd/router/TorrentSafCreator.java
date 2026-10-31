@@ -64,6 +64,13 @@ final class TorrentSafCreator {
      * when present, are checked against bytes actually read before
      * metainfo is encoded.
      *
+     * <p><b>Cancellation.</b> Cancellation is observed at the next read
+     * boundary; the descriptor is never closed from the signal
+     * callback, because that listener runs on the cancelling thread
+     * while this thread may be inside {@code read()}. A provider that
+     * ignores cancellation can therefore stay blocked past the caller's
+     * deadline.
+     *
      * @param resolver resolver with a read grant for {@code uri}
      * @param uri selected content document or tree
      * @param tree whether {@code uri} identifies a document tree
@@ -78,13 +85,6 @@ final class TorrentSafCreator {
      *                    sources
      * @throws Exception if provider access, validation, hashing or
      *                   encoding fails
-     * @implNote Cancellation is observed at the next read boundary; the
-     *                        descriptor is never closed from the signal
-     *                        callback, because that listener runs on
-     *                        the cancelling thread while this thread
-     *                        may be inside {@code read()}. A provider
-     *                        that ignores cancellation can therefore
-     *                        stay blocked past the caller's deadline.
      */
     static byte[] create(ContentResolver resolver, Uri uri, boolean tree, CancellationSignal cancel,
             LongConsumer progress, int pieceLength, String[] trackers, boolean privateTorrent)
