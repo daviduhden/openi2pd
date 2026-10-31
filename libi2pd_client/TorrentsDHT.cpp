@@ -1384,7 +1384,8 @@ namespace torrents
 		bool issued = false;
 		for (int attempt = 0; attempt < 4 && !issued; attempt++)
 		{
-			if (RAND_bytes (reinterpret_cast<unsigned char *> (token.data ()), static_cast<int> (token.size ())) != 1) return;
+			if (RAND_bytes (reinterpret_cast<unsigned char *> (token.data ()), static_cast<int> (token.size ())) != 1)
+				return;
 			DHTIncomingToken entry;
 			entry.token = token;
 			entry.nodeID = from->id;
@@ -1676,10 +1677,10 @@ namespace torrents
 		uint64_t transactionID;
 		do
 		{
-			if (RAND_bytes (reinterpret_cast<unsigned char *> (&transactionID),
-				static_cast<int> (sizeof (transactionID)))
+			if (RAND_bytes (
+					reinterpret_cast<unsigned char *> (&transactionID), static_cast<int> (sizeof (transactionID)))
 				!= 1)
-			return;
+				return;
 		} while (m_Queries.contains (transactionID));
 		auto msg = CreateDictionary ({ { "a", arguments }, { "q", CreateByteString (KRPCQueryStr[query]) },
 			{ "t", CreateByteString (std::string_view ((const char *)&transactionID, sizeof (transactionID))) },

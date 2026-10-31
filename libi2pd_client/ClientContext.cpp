@@ -1194,8 +1194,8 @@ namespace client
 								}
 								else
 								{
-					// Reconfigure the running destination in place; no restart
-					// is needed.
+									// Reconfigure the running destination in place; no restart
+									// is needed.
 									localDestination->Reconfigure (options);
 									if (keys != "transient") destinations[keys] = localDestination;
 								}

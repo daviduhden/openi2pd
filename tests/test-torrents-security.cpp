@@ -499,8 +499,8 @@ void TestUnsafeTorrentPaths ()
 	// path.
 	const auto invalidFile = Dict ({ { "length", "i16384e" }, { "path", "l3:subi1e8:file.bine" } });
 	const auto invalidMeta = Dict ({ { "info",
-		Dict ({ { "files", "l" + invalidFile + "e" }, { "name", Bytes ("root") },
-			{ "piece length", "i16384e" }, { "pieces", Bytes (std::string (SHA_DIGEST_LENGTH, 'A')) } }) } });
+		Dict ({ { "files", "l" + invalidFile + "e" }, { "name", Bytes ("root") }, { "piece length", "i16384e" },
+			{ "pieces", Bytes (std::string (SHA_DIGEST_LENGTH, 'A')) } }) } });
 	Torrent invalidComponent (invalidMeta);
 	assert (invalidComponent.GetError () == eTorrentErrorMalformedMetaInfo);
 

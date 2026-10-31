@@ -566,7 +566,8 @@ namespace torrents
 		if (root.empty () || !IsSafeRelativePath (relativePath) || (len && !data))
 			return fail ("invalid atomic write target");
 		std::array<uint8_t, 16> random;
-		if (RAND_bytes (random.data (), static_cast<int> (random.size ())) != 1) return fail ("cannot randomize temporary name");
+		if (RAND_bytes (random.data (), static_cast<int> (random.size ())) != 1)
+			return fail ("cannot randomize temporary name");
 		static constexpr char hex[] = "0123456789abcdef";
 		std::string temporary = ".openi2pd-";
 		for (auto byte : random)
@@ -1244,8 +1245,9 @@ namespace torrents
 			m_FileWritable = false;
 			errno = EINVAL;
 		}
-		if (m_File < 0) LogPrint (eLogError, "Torrents: Can't open file ", filePath, " : ",
-			std::generic_category ().message (errno));
+		if (m_File < 0)
+			LogPrint (
+				eLogError, "Torrents: Can't open file ", filePath, " : ", std::generic_category ().message (errno));
 		m_LastAccessTime = i2p::util::GetMonotonicSeconds ();
 	}
 
@@ -4463,8 +4465,7 @@ namespace torrents
 		const std::vector<std::pair<const uint8_t *, size_t>> buffers { { header.data (), header.size () },
 			{ data, len } };
 		auto sendBuffer = std::make_shared<i2p::stream::SendBuffer> (buffers, header.size () + len,
-			[s = shared_from_this (), blockLength = len] (
-				const boost::system::error_code & ecode, size_t)
+			[s = shared_from_this (), blockLength = len] (const boost::system::error_code & ecode, size_t)
 			{
 				if (s->m_NumPieces > 0) s->m_NumPieces--;
 				if (!ecode && s->m_Stream)

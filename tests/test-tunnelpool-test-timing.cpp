@@ -98,8 +98,8 @@ EstablishedPair MakeEstablishedPair ()
 	auto outbound = std::make_shared<OutboundTunnel> (std::make_shared<TunnelConfig> (peers, 1, IdentHash { }));
 	outbound->SetState (eTunnelStateEstablished);
 	auto inboundPeers = peers;
-	auto inbound = std::make_shared<InboundTunnel> (std::make_shared<TunnelConfig> (
-		inboundPeers, i2p::data::RouterInfo::eAllTransports));
+	auto inbound = std::make_shared<InboundTunnel> (
+		std::make_shared<TunnelConfig> (inboundPeers, i2p::data::RouterInfo::eAllTransports));
 	inbound->SetState (eTunnelStateEstablished);
 	return { outbound, inbound };
 }

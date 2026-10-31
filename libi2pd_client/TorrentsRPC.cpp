@@ -720,8 +720,7 @@ namespace torrents
 				[] (std::shared_ptr<Torrent> torrent)
 				{
 					float ratio = torrent->GetDownloaded ()
-						? static_cast<float> (torrent->GetUploaded ())
-							/ static_cast<float> (torrent->GetDownloaded ())
+						? static_cast<float> (torrent->GetUploaded ()) / static_cast<float> (torrent->GetDownloaded ())
 						: 1.0f;
 					return boost::json::value (ratio);
 				} },
@@ -747,8 +746,7 @@ namespace torrents
 			{ "seedRatioMode", [] (std::shared_ptr<Torrent>) { return boost::json::value (0); } },
 			{ "seedRatioLimit", [] (std::shared_ptr<Torrent>) { return boost::json::value (0); } },
 
-			{ "downloadDir",
-				[] (std::shared_ptr<Torrent>) { return boost::json::value (""); } }, // TODO: torrentsdir
+			{ "downloadDir", [] (std::shared_ptr<Torrent>) { return boost::json::value (""); } }, // TODO: torrentsdir
 			{ "webseedsSendingToUs",
 				[] (std::shared_ptr<Torrent>) { return boost::json::value (0); } }, // not webseeds in i2p yet
 			{ "peers", &JSONRPCHandler::GetPeers },

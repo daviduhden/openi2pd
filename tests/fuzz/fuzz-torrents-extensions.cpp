@@ -101,8 +101,8 @@ extern "C" int LLVMFuzzerTestOneInput (const uint8_t * data, size_t size)
 			for (size_t i = 0; i < 8; ++i) clock = (clock << 8) | data[i];
 		if (size >= 12)
 			for (size_t i = 8; i < 12; ++i) failures = (failures << 8) | data[i];
-		constexpr std::array origins {
-			i2p::torrents::ePeerConnectionOriginPEX, i2p::torrents::ePeerConnectionOriginDHT };
+		constexpr std::array origins { i2p::torrents::ePeerConnectionOriginPEX,
+			i2p::torrents::ePeerConnectionOriginDHT };
 		for (auto origin : origins)
 		{
 			(void)i2p::torrents::PeerCandidatePolicy::IsUsable (1000, 0, failures, clock, origin);
