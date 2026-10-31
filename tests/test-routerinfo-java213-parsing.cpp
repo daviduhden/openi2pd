@@ -227,6 +227,32 @@ void ExpectUnreachable (const PrivateKeys & keys, const RouterSpec & spec)
 	RouterInfo router (buffer.data (), buffer.size ());
 	assert (router.IsUnreachable ());
 }
+
+// A signature-valid RouterInfo may carry only an address block that this
+// build cannot use (for example NTCP2 without the "i" IV, or an SSU2 MTU
+// below the spec minimum). Java RouterInfo.readBytes() still accepts the
+// descriptor: the transports simply refuse the address, and netDb keeps a
+// fresh entry without a usable address storable-but-unselectable for 54
+// minutes (DB-119, Java RouterInfo.validate()). Rejecting the whole
+// descriptor would discard a valid peer identity, so only the address is
+// dropped and the entry must never look selectable or published.
+void ExpectUnusableAddress (const PrivateKeys & keys, const RouterSpec & spec)
+{
+	const auto buffer = SignRouterInfo (keys, BuildBody (spec));
+	RouterInfo router (buffer.data (), buffer.size ());
+	assert (!router.IsUnreachable ());
+	assert (!router.HasValidAddresses ());
+	assert (router.GetNTCP2V4Address () == nullptr);
+	assert (router.GetNTCP2V6Address () == nullptr);
+	assert (router.GetSSU2V4Address () == nullptr);
+	assert (router.GetSSU2V6Address () == nullptr);
+	const auto everyTransport
+		= RouterInfo::eNTCP2V4 | RouterInfo::eNTCP2V6 | RouterInfo::eSSU2V4 | RouterInfo::eSSU2V6;
+	assert (!router.IsReachableBy (everyTransport));
+	assert (!router.IsPublished (true));
+	assert (!router.IsPublished (false));
+	assert (router.GetPublishedTransports () == 0);
+}
 }
 
 int main ()
@@ -305,8 +331,9 @@ int main ()
 	}
 
 	// NTCP2 published addresses require v containing "2" and the "i" IV
-	// (Java NTCPTransport.getNTCP2Version). Without both they must not be
-	// advertised as published.
+	// (Java NTCPTransport.getNTCP2Version). Without both the address is not
+	// usable and must not be advertised as published; the descriptor itself
+	// stays parseable (DB-119).
 	{
 		RouterSpec spec;
 		spec.addresses = { { "NTCP2", 3, 0, NTCP2PublishedOptions (true, true) } };
@@ -321,13 +348,13 @@ int main ()
 		RouterSpec spec;
 		spec.addresses = { { "NTCP2", 14, 0, NTCP2PublishedOptions (false, true) } };
 		spec.properties = StandardProperties ();
-		ExpectUnreachable (keys, spec);
+		ExpectUnusableAddress (keys, spec);
 	}
 	{
 		RouterSpec spec;
 		spec.addresses = { { "NTCP2", 14, 0, NTCP2PublishedOptions (true, false) } };
 		spec.properties = StandardProperties ();
-		ExpectUnreachable (keys, spec);
+		ExpectUnusableAddress (keys, spec);
 	}
 
 	// Proposal 133: iexp is optional. A firewalled SSU2 address with a
@@ -397,14 +424,13 @@ int main ()
 	// needs 1318 bytes on IPv4 and 1338 on IPv6; pq=3 is the fallback.
 	// openi2pd keeps a stricter policy than Java UDPAddress here: an SSU2
 	// address whose published MTU is below the spec minimum is not usable
-	// at all (see test-ssu2-address-negotiation), so the RI is rejected.
+	// at all (see test-ssu2-address-negotiation), so the address is dropped
+	// while the signature-valid descriptor stays parseable (DB-119).
 	{
 		RouterSpec spec;
 		spec.addresses = { { "SSU2", 8, 0, SSU2V4Options ("1000", "4,3") } };
 		spec.properties = StandardProperties ();
-		const auto buffer = SignRouterInfo (keys, BuildBody (spec));
-		RouterInfo router (buffer.data (), buffer.size ());
-		assert (router.IsUnreachable ());
+		ExpectUnusableAddress (keys, spec);
 	}
 	{
 		auto address = ParseWithAddress (keys, { "SSU2", 8, 0, SSU2V4Options ("1317", "4") });

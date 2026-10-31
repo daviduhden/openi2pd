@@ -234,13 +234,38 @@ int main ()
 		assert (!router.Update (netIdBuffer.data (), netIdBuffer.size ()));
 		ExpectSameState (router, timestamp + 10, 22222, 25000);
 
-		// A body with no usable transport is rejected too.
+		// A signature-valid body whose only address is unusable must not be
+		// treated as malformed: Java keeps a fresh zero-usable-address
+		// RouterInfo storable-but-unselectable for 54 minutes (DB-119), so
+		// Update() installs it and the entry simply stops being selectable.
+		// A body that is genuinely malformed still has to leave the cached
+		// snapshot untouched, which the duplicate-address-option case below
+		// pins.
 		RouterSpec empty;
 		empty.timestamp = timestamp + 40;
 		empty.properties = StandardProperties ();
 		const auto emptyBuffer = SignRouterInfo (keys, BuildBody (empty));
-		assert (!router.Update (emptyBuffer.data (), emptyBuffer.size ()));
-		ExpectSameState (router, timestamp + 10, 22222, 25000);
+		assert (router.Update (emptyBuffer.data (), emptyBuffer.size ()));
+		assert (!router.IsUnreachable ());
+		assert (!router.HasValidAddresses ());
+		assert (router.GetSSU2V4Address () == nullptr);
+		assert (!router.IsReachableBy (RouterInfo::eSSU2V4));
+		assert (router.GetBufferLen () == emptyBuffer.size ());
+
+		// Re-install the selectable snapshot, then verify that a body with a
+		// duplicate address option is refused and leaves it intact.
+		const auto restored = SignRouterInfo (keys, BuildBody (MakeSpec (timestamp + 50, "22222", "OP")));
+		assert (router.Update (restored.data (), restored.size ()));
+		ExpectSameState (router, timestamp + 50, 22222, 25000);
+		router.SetUpdated (false);
+		auto duplicateOption = MakeSpec (timestamp + 60, "33333");
+		duplicateOption.addresses[0].options.emplace_back ("v", "2");
+		const auto malformedAddress = SignRouterInfo (keys, BuildBody (duplicateOption));
+		assert (!router.Update (malformedAddress.data (), malformedAddress.size ()));
+		assert (!router.IsUpdated ());
+		ExpectSameState (router, timestamp + 50, 22222, 25000);
+		assert (router.GetBufferLen () == restored.size ());
+		assert (std::memcmp (router.GetBuffer (), restored.data (), restored.size ()) == 0);
 	}
 
 	// Signature/identity binding: a valid RouterInfo for another identity

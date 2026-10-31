@@ -138,8 +138,18 @@ void ExpectRejected (
 	const i2p::data::PrivateKeys & keys, const std::string & mtu, const std::string & v, const std::string & pq)
 {
 	auto router = Parse (keys, mtu, v, pq);
-	assert (router->IsUnreachable ());
+	// The descriptor itself stays valid: Java RouterInfo.readBytes() accepts
+	// a signature-valid RouterInfo whose only address is unusable, the
+	// address is simply not selectable, and netDb keeps a fresh
+	// zero-usable-address entry storable-but-unselectable for 54 minutes
+	// (DB-119). Only the address must disappear.
+	assert (!router->IsUnreachable ());
 	assert (router->GetSSU2V4Address () == nullptr);
+	assert (router->GetSSU2V6Address () == nullptr);
+	assert (!router->HasValidAddresses ());
+	assert (!router->IsReachableBy (i2p::data::RouterInfo::eSSU2V4));
+	assert (!router->IsPublished (true));
+	assert (!router->IsPublished (false));
 }
 
 bool HasPQ (int version)

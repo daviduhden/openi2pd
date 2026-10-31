@@ -147,27 +147,34 @@ std::filesystem::path MakeTempDir (const char * tag)
 void TestFileNameBinding ()
 {
 	std::string ident;
+	// The cache name is canonical: the shard directory plus
+	// "routerInfo-<identity hash>.dat" (NetDb::m_Storage). A bare
+	// "<hash>.dat" is not this storage's file and must never be loaded or
+	// deleted.
 	const char * hash = "AbCdEfGhIjKlMnOpQrStUvWxYz0123456789-~abcd=";
+	const std::string cache = std::string ("routerInfo-") + hash + ".dat";
 
-	assert (ClassifyRouterInfoFile (std::string ("/data/netDb/r/") + hash + ".dat", ident) == RouterInfoFileKind::Load);
+	assert (ClassifyRouterInfoFile (std::string ("/data/netDb/r/") + cache, ident) == RouterInfoFileKind::Load);
 	assert (ident == hash);
 
 	// Both the retired ".tmp" name and AtomicWrite's unique staging name
 	// are leftovers of this storage and may be removed.
 	ident.clear ();
-	assert (ClassifyRouterInfoFile (std::string ("/data/netDb/r/") + hash + ".dat.tmp", ident)
+	assert (ClassifyRouterInfoFile (std::string ("/data/netDb/r/") + cache + ".tmp", ident)
 		== RouterInfoFileKind::Staging);
 	assert (ident.empty ());
-	assert (ClassifyRouterInfoFile (std::string ("/data/netDb/r/") + hash + ".dat.tmp-4711-3", ident)
+	assert (ClassifyRouterInfoFile (std::string ("/data/netDb/r/") + cache + ".tmp-4711-3", ident)
 		== RouterInfoFileKind::Staging);
 	assert (ident.empty ());
 
 	// Windows-style separators are classified the same way.
-	assert (ClassifyRouterInfoFile (std::string ("C:\\data\\netDb\\r\\") + hash + ".dat", ident)
-		== RouterInfoFileKind::Load);
+	assert (ClassifyRouterInfoFile (std::string ("C:\\data\\netDb\\r\\") + cache, ident) == RouterInfoFileKind::Load);
 	assert (ident == hash);
 
-	// Unknown names are never loaded and never deleted by the loader.
+	// Unknown names are never loaded and never deleted by the loader. A
+	// prefix-less name is another program's file in the same directory.
+	assert (ClassifyRouterInfoFile (std::string ("/data/netDb/r/") + hash + ".dat", ident)
+		== RouterInfoFileKind::Foreign);
 	assert (ClassifyRouterInfoFile ("/data/netDb/r/other.dat", ident) == RouterInfoFileKind::Foreign);
 	assert (ClassifyRouterInfoFile ("/data/netDb/r/routerInfo-.dat", ident) == RouterInfoFileKind::Foreign);
 	assert (ClassifyRouterInfoFile ("/data/netDb/r/routerInfo-.dat.tmp-1-1", ident) == RouterInfoFileKind::Staging);

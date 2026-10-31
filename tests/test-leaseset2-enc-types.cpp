@@ -126,13 +126,32 @@ void TestEncTypeOptionGrammar ()
 	}
 
 	// More than one hybrid type is rejected (Java ClientConnectionRunner),
-	// as is a hybrid combined with ElGamal.
-	for (const char * mixed : { "4,6", "6,4", "6,7", "6,6", "0,6", "6,0", "0,4,6", "5,6" })
+	// as is a hybrid combined with ElGamal. A hybrid next to plain X25519
+	// is the shipped default ("6,4") and stays valid; it is covered below.
+	for (const char * mixed : { "6,7", "6,6", "0,6", "6,0", "0,4,6", "5,6" })
 	{
 		const auto parsed = ParseLeaseSetEncryptionTypes (mixed);
 		assert (parsed.specified);
 		assert (!parsed.valid);
 		assert (parsed.types.empty ());
+	}
+
+	// The default list pairs the strongest hybrid type with X25519. Both
+	// orders are well formed; the preferred type is the first selectable
+	// entry of the list, so a provider without ML-KEM falls back to
+	// X25519 instead of failing the configuration.
+	const bool hybridSelectable = IsSelectableLS2EncryptionKeyType (CRYPTO_KEY_TYPE_ECIES_MLKEM768_X25519_AEAD);
+	for (const char * hybridAndX25519 : { "6,4", "4,6" })
+	{
+		const auto parsed = ParseLeaseSetEncryptionTypes (hybridAndX25519);
+		assert (parsed.specified && parsed.valid);
+		assert (parsed.types.count (CRYPTO_KEY_TYPE_ECIES_X25519_AEAD));
+		assert (parsed.types.count (CRYPTO_KEY_TYPE_ECIES_MLKEM768_X25519_AEAD) == hybridSelectable);
+		const bool hybridFirst = hybridAndX25519[0] == '6';
+		const auto expected = (hybridFirst && hybridSelectable) ? CRYPTO_KEY_TYPE_ECIES_MLKEM768_X25519_AEAD
+															   : CRYPTO_KEY_TYPE_ECIES_X25519_AEAD;
+		assert (parsed.preferred == expected);
+		if (!hybridSelectable) assert (parsed.types.size () == 1);
 	}
 
 	// Unavailable-but-well-formed types keep the configuration valid; the

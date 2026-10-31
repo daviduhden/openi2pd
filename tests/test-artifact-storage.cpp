@@ -203,6 +203,9 @@ void TestWriterReceivesArtifact ()
 	const auto root = MakeRoot ("writer");
 	const auto name = MakeIdent (0x31).ToBase64 ();
 	InitialiseConfig (root, false);
+	// Point the direct backend at the fixture so "the delegated write did
+	// not touch the data directory" is a real assertion.
+	i2p::fs::DetectDataDir (root.string (), false);
 
 	// A direct file exists before the delegation is installed, so it
 	// proves that a delegated write never touches the data directory.
@@ -246,6 +249,7 @@ void TestNoFallbackOnWriterFailure ()
 	const auto name = ident.ToBase64 ();
 	const auto keyName = ident.ToBase32 () + ".4";
 	InitialiseConfig (root, false);
+	i2p::fs::DetectDataDir (root.string (), false);
 	PrepareDirectRoot (root, StorageArtifact::RouterInfoCache, name);
 	PrepareDirectRoot (root, StorageArtifact::DestinationKeys, keyName);
 	const auto directPath = DirectPath (root, StorageArtifact::RouterInfoCache, name);
@@ -306,6 +310,11 @@ void TestDirectFallback ()
 	const auto name = ident.ToBase64 ();
 	const auto keyName = ident.ToBase32 () + ".4";
 	InitialiseConfig (root, false);
+	// The direct backend resolves every artifact below the process data
+	// directory (i2p::fs::DataDirPath). Without this the write targets the
+	// autodetected system/home directory and fails before the fixture can
+	// observe it.
+	i2p::fs::DetectDataDir (root.string (), false);
 	ClearArtifactStorage ();
 	assert (!IsArtifactStorageInstalled ());
 	assert (!AreArtifactWritesDelegated ());
