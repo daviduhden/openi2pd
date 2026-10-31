@@ -599,7 +599,7 @@ namespace proxy
 		// SOCKS4/5 IP-literal handling.
 		if (m_addrtype == ADDR_IPV4)
 		{
-			auto value = boost::asio::ip::address_v4 (m_address.ip).to_string ();
+			auto value = i2p::util::net::FormatAddress (boost::asio::ip::address_v4 (m_address.ip));
 			if (!m_address.dns.SetString (value))
 			{
 				SocksRequestFailed (SOCKS5_ADDR_UNSUP);
@@ -611,7 +611,7 @@ namespace proxy
 		{
 			boost::asio::ip::address_v6::bytes_type bytes;
 			memcpy (bytes.data (), m_address.ipv6, bytes.size ());
-			auto value = boost::asio::ip::address_v6 (bytes).to_string ();
+			auto value = i2p::util::net::FormatAddress (boost::asio::ip::address_v6 (bytes));
 			if (!m_address.dns.SetString (value))
 			{
 				SocksRequestFailed (SOCKS5_ADDR_UNSUP);
