@@ -5362,3 +5362,88 @@ The IPC reconnaissance separately found an unsynchronized Windows supervisor
 start/stop surface and mutable raw getters. This is a lifecycle/concurrency
 finding, not a compile/link diagnostic; it remains pending under WIN-010 and
 is now called out in the Linux/Windows skill before production wiring.
+
+## Sixth CI-driven compile/link and CTest audit (2026-10-31, static)
+
+I first used `gh auth status`, `gh repo view`, `gh workflow list` and
+`gh run list --limit 100`, then retrieved job details, failed logs and
+diagnostic artifacts for the latest Linux/Android run 40594540028, Windows
+40594544850, OpenBSD 40594549892, Fuzzing 40594555055 and Packaging
+40594560248. These runs all used `main` at
+`b34b2e79546c929f1f5f788d4905b41c9a92d45d`, matching the initial clean local
+HEAD. Older runs 40532383635/40532389857/40532395786/40532412220 and
+40504357198/40504361287/40504365634/40504369803/40504374509 were compared to
+identify recurrent failures and confirm that older corrected errors are not
+attributed to this revision.
+
+The latest compile root was one unqualified nested enumerator in
+`tests/test-tunnelpool-test-timing.cpp:100`, repeated across GCC, Clang,
+OpenSSL 3/4, MSYS2 and OpenBSD; the GCC aggregate conversion after it is
+cascading. The component consumer compiled and linked its 133 build steps but
+failed because the exported `i2pd::libi2pd` target referenced an archive omitted
+from the selected CMake component. Debian's smoke check expected uncompressed
+`colors.md` although the exact `.deb` contains `colors.md.gz`. Android native
+arm64 compilation, JVM tests, Lint and APK assembly succeeded; workflow checks
+then failed to find an APK in the assumed fixed directory, so package-content
+and DEX validation did not run. MSVC compiled selected targets but repeated
+two Windows CTest assertions already present on earlier SHAs: stable-period
+reset timing and duplicate `WorkerHello` refusal.
+
+Static corrections now qualify the test enum, explicitly assign archive and
+shared-library install components, correct the Debian compressed-doc paths,
+select Android app APKs by variant and archive contents and reuse the chosen
+debug artifact; a runner step stages APKs into a fixed artifact directory
+because action inputs cannot interpolate a later-step `GITHUB_ENV` value.
+Other fixes remove the late `NoteReady` call in the supervisor fixture and
+refuse duplicate Windows handshakes while allowing typed Error replies. Added
+CE-031..CE-036 in
+`docs/ci/COMPILATION-ERRORS.md`, BUILD-027 in `TODO.md`, and reusable C++23,
+CMake, packaging, Android and CI guidance. The requested seven areas were
+reviewed by subagents; no distinct current compile/link diagnostic was found
+in protocol, Torrent/TUI/tools, OpenBSD/crypto or remaining source interfaces.
+
+No local build, compiler, CTest, Gradle, package or workflow dispatch was run.
+Fuzzing passed only on the uncorrected SHA. Corrected sources remain Pending
+CI compilation/tests/package validation; all omitted downstream matrix targets
+remain unvalidated.
+
+The compile-free contract sweep found one checker mismatch:
+`check-build-system.cmake` expected the `Expected.h lives in libi2pd` marker
+on one line after the comment audit reflowed it. The CMake include interface
+it describes was intact; I restored the concise explanatory sentence, then
+reran the checker successfully. This was not a CI compiler diagnostic or a
+build-graph defect. The build skill now records the marker/checker coupling.
+The other selected CMake contracts (language, services, packaging, tools,
+legal metadata, upstream pins, i18n, control security and agent skills) passed.
+
+The same static audit found a separate local source-comment regression after
+the recorded SHA: comment reflow had repeated Doxygen block openers without
+closing delimiters in 15 comments across eight native test files. I restored
+the delimiters and recorded the finding as CE-037/DOCS-015. No CI run includes
+this comment revision, so compilation and source-doc generation remain
+pending; no compiler or Doxygen generator was run locally.
+
+## Source comment audit continuation (2026-10-31, static)
+
+The comment-only pass inventoried 1,079 repository files and split review
+across native core/protocols, daemon/IPC/TUI/tools, native tests, Android,
+platform and packaging/configuration files. Maintained C++, Java, AIDL, XML,
+Perl, Python, shell, CMake, Gradle, YAML, service, package and sample-config
+comments were reviewed against their implementation or configuration meaning.
+Comments were reflowed or clarified where useful; contracts now explain
+non-obvious ownership, result payloads, lifecycle, bounds, platform choices
+and packaging assumptions. Strict JSON and non-text/generated/vendor assets
+were excluded where they do not support comments or are not project-authored.
+
+`AGENTS.md`, `docs/source-documentation.md` and the documentation, C++23 and
+Android skills now record the reusable review rules and subsystem-specific
+facts. Earlier independent CI fixes remain in the worktree and were not
+rewritten as part of this comments-only pass. No compiler, generator, build,
+test, Gradle, package or runtime validation was performed; generated source
+documentation remains pending manual CI. Static consistency checks are
+reported in the completion summary. The diff contains comment edits in 619
+tracked paths; 644 tracked paths differ overall because earlier local CI fixes
+remain in the same worktree. The source-aware width scan found no overlong
+prose comments. It retained only copyable commented config/Telegram URL values
+and RPM changelog records; three additional long-line matches are C++ expression
+continuations rather than comments.

@@ -9,10 +9,14 @@ Tracks compile/configure/link failures reported by manual GitHub Actions.
 
 # Compilation error inventory
 
-This inventory links each confirmed manual-CI failure to its first diagnostic,
-root cause, local correction and validation state. A local correction is not a
-CI result: rows stay **Pending CI compilation** until a manual run on the
-corrected revision passes.
+This inventory links manual-CI failures and statically found compile risks to
+their first diagnostic, root cause, local correction and validation state.
+A local correction is not a CI result: rows stay **Pending CI compilation**
+until a manual run on the corrected revision passes.
+
+Compile-free contract failures are recorded separately from compiler
+diagnostics. They can expose stale source assumptions, but do not establish a
+compile or link failure.
 
 ## Runs reviewed
 
@@ -43,6 +47,11 @@ corrected revision passes.
 | [40532395786](https://github.com/daviduhden/openi2pd/actions/runs/40532395786) | Windows | `b25d0c3a` | failure (MinGW compile; MSVC CTest) |
 | [40532402554](https://github.com/daviduhden/openi2pd/actions/runs/40532402554) | Fuzzing | `b25d0c3a` | success |
 | [40532412220](https://github.com/daviduhden/openi2pd/actions/runs/40532412220) | Packaging and service validation | `b25d0c3a` | failure (Debian smoke; static-package Lintian) |
+| [40594540028](https://github.com/daviduhden/openi2pd/actions/runs/40594540028) | Linux and Android | `b34b2e79` | failure (shared test compile, component consumer, Android APK path assertion) |
+| [40594544850](https://github.com/daviduhden/openi2pd/actions/runs/40594544850) | Windows | `b34b2e79` | failure (shared MinGW compile; two MSVC CTest assertions) |
+| [40594549892](https://github.com/daviduhden/openi2pd/actions/runs/40594549892) | OpenBSD | `b34b2e79` | failure (shared test compile) |
+| [40594560248](https://github.com/daviduhden/openi2pd/actions/runs/40594560248) | Packaging and service validation | `b34b2e79` | failure (Debian smoke path assertion) |
+| [40594555055](https://github.com/daviduhden/openi2pd/actions/runs/40594555055) | Fuzzing | `b34b2e79` | success |
 
 The `b25d0c3a` batch was dispatched on 2026-10-27 between 15:34:52 and
 15:35:02 UTC. Each run above is on branch `main`; the full SHA is
@@ -61,6 +70,22 @@ For the latest SHA, artifacts downloaded with `gh run download` were:
 downloadable artifacts. First-failure compile logs were retrieved directly
 with `gh run view --log-failed` and job logs; no complete credential-bearing
 or secret-bearing logs are stored here.
+
+The 2026-10-27 batch at full SHA
+`b34b2e79546c929f1f5f788d4905b41c9a92d45d` ran on `main`. The latest Linux
+and Android run's relevant jobs were Linux GCC (`122506989737`), Linux Clang
+(`122506989824`), Linux OpenSSL 3.x (`122506989994`), Linux OpenSSL 4.0.0
+(`122506989946`), Linux OpenSSL 4.0.3 (`122506989829`), Android
+(`122506989902`) and installed-component consumer (`122506989963`). Windows
+MSYS2/MinGW and MSVC jobs were `122507016243` and `122507015934`; OpenBSD's
+build job was `122507021850`; Debian packaging job was `122507055854`.
+Logs and exact-run artifacts were downloaded to `/tmp/openi2pd-ci/`; the
+`install-components` artifact showed only `libi2pd_privsep.a` among the
+exported static libraries. The Debian `.deb` contains
+`assets/branding/colors.md.gz`. The Android report artifact contains test and
+Lint results but no APK, so its APK output location was not proven by the
+artifact. The full Android arm64 native build, JVM tests, Lint and Gradle APK
+assembly succeeded before the workflow's output-path assertion failed.
 
 ## Confirmed causes
 
@@ -584,6 +609,35 @@ targets.
   `.agents/skills/openi2pd-packaging/SKILL.md`.
 - **State:** Corrected by static analysis; **Pending CI tests**.
 
+### CE-037 — Comment reflow removed Doxygen block terminators
+
+- **Evidence:** Static review of the uncommitted comment-only worktree after
+  the 2026-10-31 run batch. No CI run compiled this comment revision; run IDs
+  40594540028/40594544850/40594549892 use their recorded `b34b2e79` commit,
+  before these local comment edits.
+- **Commit/platform:** Base `HEAD` is
+  `b34b2e79546c929f1f5f788d4905b41c9a92d45d`; affected local C++ test
+  translation units span Linux, Windows and OpenBSD build configurations.
+- **First diagnostic:** No compiler diagnostic is attributed because this
+  worktree revision was not run in CI. Static inspection found one-line
+  `/** ... */` comments reflowed as repeated `/*` openers without a matching
+  closer, causing the remainder of each translation unit to be comment text.
+- **Cause:** The comment reflow treated a Doxygen block as ordinary prose and
+  emitted an opener for each wrapped line while dropping the original closer.
+- **Correction:** Restore one `/**` opener, ` *` continuation lines and one
+  ` */` closer for each affected block. A repository-wide source scan now
+  finds no repeated `/* *` opener pattern.
+- **Files:** `tests/test-android-daemon-lifecycle.cpp:32`,
+  `tests/test-datastorage-client.cpp:63`,
+  `tests/test-http-proxy-limits.cpp:30,241,331`,
+  `tests/test-privsep-log.cpp:189,259,303`,
+  `tests/test-privsep-openbsd-policy.cpp:54,544`,
+  `tests/test-privsep-worker-identity.cpp:47,136`,
+  `tests/test-privsep-windows-ipc.cpp:52,115`,
+  `tests/test-privsep-windows-isolation.cpp:87`.
+- **State:** Corrected by static analysis; **Pending CI compilation and
+  source documentation validation**. No local compilation was run.
+
 ### CE-027 — Lintian reports duplicate updaterc calls in generated postrm
 
 - **Workflow/runs:** Packaging 40504374509 and 40532412220, static musl package
@@ -675,3 +729,126 @@ downstream configurations and tests remain unproven. CE-022..CE-030 and the
 CE-027 correction remain pending validation on a newer SHA. No local compiler,
 CMake configure/build, CTest, Gradle, fuzzer, Lintian, package runtime or
 workflow was run.
+
+### CE-031 — Test uses an unqualified nested transport enumerator
+
+- **Workflows/jobs:** Linux and Android 40594540028 (GCC, Clang, OpenSSL 3.x,
+  OpenSSL 4.0.0/4.0.3 and sanitizer lanes); Windows 40594544850 (MSYS2/MinGW);
+  OpenBSD 40594549892.
+- **Commit/platform:** `b34b2e79546c929f1f5f788d4905b41c9a92d45d`; Ubuntu 24.04,
+  MSYS2/Clang64 and OpenBSD Clang/libc++.
+- **First diagnostic:** `tests/test-tunnelpool-test-timing.cpp:100`,
+  `eAllTransports` undeclared; Clang suggests a different nested enumerator.
+  `libi2pd/RouterInfo.h:125` declares the correct value as
+  `i2p::data::RouterInfo::eAllTransports`.
+- **Cause:** importing `i2p::data` does not import enumerators nested inside
+  `RouterInfo`. GCC's later `EstablishedPair` brace-conversion diagnostic is
+  cascading from the unresolved constructor argument.
+- **Correction:** qualify the enumerator in the test fixture; no production
+  interface or wire value changes.
+- **Files:** `tests/test-tunnelpool-test-timing.cpp`;
+  `libi2pd/RouterInfo.h` (declaration only).
+- **State:** Corrected by static analysis; **Pending CI compilation and tests**.
+
+### CE-032 — Named Libraries component omits exported archives
+
+- **Workflow/job:** Linux and Android 40594540028, job
+  `Install components and consumer package` (`122506989963`), package consumer
+  configure after all 133 build steps completed.
+- **Commit/platform:** `b34b2e79546c929f1f5f788d4905b41c9a92d45d`; Ubuntu 24.04,
+  Clang and CMake package consumer.
+- **First diagnostic:** generated `i2pd-targets.cmake:112` reports that imported
+  target `i2pd::libi2pd` references `/tmp/.../lib/libi2pd.a`, which does not
+  exist. The exact-run `install-components` artifact contains
+  `lib/i2pd_privsep.a` but omits the other exported static archives.
+- **Cause:** the target install assigned a general component after the
+  artifact groups; selecting `Libraries` did not install the archive and
+  library artifacts referenced by the export.
+- **Correction:** assign `Libraries` explicitly to each ARCHIVE and LIBRARY
+  group, and `Runtime` to the RUNTIME group; pin this contract in the
+  compile-free build-system checker.
+- **Files:** `build/CMakeLists.txt`, `tests/check-build-system.cmake`,
+  `.agents/skills/openi2pd-build/SKILL.md`.
+- **State:** Corrected by static analysis; **Pending CI compilation and
+  installed-consumer validation**.
+
+### CE-033 — Debian compresses the branding palette Markdown
+
+- **Workflow/job:** Packaging and service validation 40594560248, Debian
+  packages (`122507055854`), install and DEP-8 smoke step.
+- **Commit/platform:** `b34b2e79546c929f1f5f788d4905b41c9a92d45d`; Debian package.
+- **First diagnostic:** `debian/tests/smoke:206` reports the absent
+  `/usr/share/doc/i2pd/assets/branding/colors.md`. The downloaded `.deb`
+  includes `assets/branding/colors.md.gz`.
+- **Cause:** debhelper compresses Markdown documentation installed under
+  `/usr/share/doc`; the source manifest is correct and the generated package
+  path is compressed.
+- **Correction:** update installed-package smoke and file-list assertions to
+  expect `.md.gz`, retaining the uncompressed source install path; add the
+  package-path assertion to the compile-free packaging contract.
+- **Files:** `debian/tests/smoke`, `.github/workflows/packaging.yml`,
+  `tests/check-packaging.cmake`, `.agents/skills/openi2pd-packaging/SKILL.md`.
+- **State:** Corrected by static analysis; **Pending CI package validation**.
+
+### CE-034 — Android APK verification assumes a fixed output directory
+
+- **Workflow/job:** Linux and Android 40594540028, Android job
+  (`122506989902`), `Build debug APK for arm64` step.
+- **Commit/platform:** `b34b2e79546c929f1f5f788d4905b41c9a92d45d`; Java 25,
+  AGP 9.4.1, Android arm64.
+- **First diagnostic:** after Gradle reports `BUILD SUCCESSFUL` for
+  `assembleDebug`, `assembleDebugAndroidTest`, `assembleRelease` and lint,
+  `find app/build/outputs/apk/debug` fails because that directory is absent.
+  The uploaded report artifact has no APK, so the concrete output location is
+  not known from this run.
+- **Cause:** workflow assertions assume the APK resides in a single fixed
+  variant directory; the assertion cannot discover ABI-split or universal
+  outputs under the AGP output tree.
+- **Correction:** search discovered APKs by debug/release variant, exclude
+  instrumentation APKs, select app artifacts by their arm64 library/assets and
+  DEX contents rather than exact filenames, print all discovered paths on
+  selection failure, and reuse the selected debug APK for later checks. A
+  dedicated staging step copies discovered APKs into a fixed workspace
+  directory for artifact upload; action `with:` expressions cannot consume
+  paths exported to later steps through `GITHUB_ENV`.
+- **Files:** `.github/workflows/build.yml`,
+  `.agents/skills/openi2pd-android/SKILL.md`.
+- **State:** Corrected by static analysis; **Pending CI Android APK/D8/R8/JNI
+  artifact validation**. Native compilation, JVM tests, Lint and APK assembly
+  succeeded on the recorded SHA; package-content and dex-lowering checks did
+  not run.
+
+### CE-035 — Windows stable-period regression resets readiness too late
+
+- **Workflow/job:** Windows 40594544850, `build-msvc` (`122507015934`), CTest.
+- **Commit/platform:** `b34b2e79546c929f1f5f788d4905b41c9a92d45d`; Windows/MSVC.
+- **First diagnostic:**
+  `tests/test-privsep-windows-supervisor.cpp:193`,
+  `afterStable.delay == LogWorkerRestartBudget::INITIAL_DELAY` assertion fails.
+  The same assertion failed on runs 40532395786 (`b25d0c3a`) and 40504365634
+  (`cec24388`).
+- **Cause:** the fixture called `NoteReady` at the end of the elapsed stable
+  period, moving the readiness origin to the failure instant and preventing
+  `NoteStable` from observing the full period.
+- **Correction:** keep the original ready timestamp and let failure planning
+  evaluate the elapsed stable interval.
+- **Files:** `tests/test-privsep-windows-supervisor.cpp`.
+- **State:** Corrected by static analysis; **Pending CI tests**.
+
+### CE-036 — Windows accepts a second WorkerHello after binding
+
+- **Workflow/job:** Windows 40594544850, `build-msvc` (`122507015934`), CTest.
+- **Commit/platform:** `b34b2e79546c929f1f5f788d4905b41c9a92d45d`; Windows named pipe.
+- **First diagnostic:** `tests/test-privsep-windows-ipc.cpp:615`,
+  `!duplicate->has_value()` fails. The same assertion failed on runs
+  40532395786 (`b25d0c3a`) and 40504365634 (`cec24388`).
+- **Cause:** the accepted core endpoint authorized `WorkerHello` through the
+  generic role registry even after `AcceptBound` had consumed the handshake
+  and bound the channel. Its refusal path also tried to send a reply-direction
+  `Error` through a request-only send gate.
+- **Correction:** refuse `WorkerHello` explicitly on a bound core endpoint and
+  allow typed `Error` replies through the Windows direction gate. The existing
+  regression verifies a refusal while preserving subsequent ping/pong traffic.
+- **Files:** `privsep/WindowsIpc.cpp`, `privsep/WindowsIpc.h`,
+  `tests/test-privsep-windows-ipc.cpp` (existing regression).
+- **State:** Corrected by static analysis; **Pending CI tests**.

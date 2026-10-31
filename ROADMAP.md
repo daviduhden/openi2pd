@@ -1678,6 +1678,18 @@ failure behavior; no code changed. Findings are tracked in CONC-029, SEC-034,
 TUI-014, ANDROID-036, TOOL-019 and PKG-029; DOCS-013 remains the coverage
 umbrella.
 
+## Source comment audit continuation (2026-10-31, static)
+
+The audit expanded across maintained native, Android, test, tool, platform,
+build, service and package files. Comments were inspected against actual
+behavior and configuration; useful wording was clarified or wrapped without
+changing executable statements or configuration values. Third-party,
+generated, binary and strict JSON resources were excluded. The reusable style
+policy is now owned by `AGENTS.md` and `docs/source-documentation.md`, with
+implementation-specific notes in the documentation, C++23 and Android skills.
+DOCS-013 remains open for existing tracked design findings and manual
+Doxygen/Javadoc validation; this static pass is not dynamic validation.
+
 Exit criteria: the manual source-docs lane generates Doxygen/Javadoc with
 warnings as errors, the remaining files are reviewed, and the tracked findings
 are fixed with regressions or explicitly accepted. No local generator,
@@ -1717,3 +1729,33 @@ OpenSSL 3/4, OpenBSD, Windows MSYS2/MSVC, Android Java/JNI/APK, Doxygen,
 sanitizer/fuzzer, static-musl and Debian package/Lintian lanes. No such run was
 performed on these local changes; compilation, tests and packaging remain
 pending CI.
+
+## CI compile, package and CTest continuation (2026-10-31, static)
+
+The latest read-only GitHub Actions audit collected runs 40594540028,
+40594544850, 40594549892, 40594555055 and 40594560248 on published SHA
+`b34b2e79546c929f1f5f788d4905b41c9a92d45d`. CE-031..CE-036 record and
+correct the common nested-enumerator test compile error, omitted CMake library
+component artifacts, Debian's compressed branding palette, the Android APK
+output-path assertion and two recurrent Windows CTest failures. Protocol,
+Torrent/TUI/tools and platform reconnaissance found no other distinct current
+compile/link root; several downstream targets remain unobserved because their
+jobs stopped at earlier failures.
+
+The compile-free contract sweep also caught a wrapped `Expected.h` comment
+marker in `check-build-system.cmake`; the explanatory CMake comment was
+restored and the checker now passes. This was checker drift, not a compiler
+failure or broken include interface. Other selected CMake contracts passed;
+all dynamic validation remains pending manual CI on a revision containing the
+local changes.
+
+All corrections are static only. The test, Windows IPC and CMake package fixes
+need a fresh manual CI run; Android package-content/D8/R8/JNI checks and Debian
+smoke need to complete after their path assertions. Fuzzing passed on the
+uncorrected SHA. Do not treat that success or any earlier SHA as validation of
+the local corrections.
+
+Reviewing the comment-only diff also found a local Doxygen delimiter
+regression in 15 wrapped comments across eight native test sources. The
+comments are repaired and tracked as CE-037/DOCS-015; because no CI run used
+this revision, native compilation and the source-doc lane remain pending.
