@@ -57,6 +57,18 @@ compile or link failure.
 | [41207325119](https://github.com/daviduhden/openi2pd/actions/runs/41207325119) | OpenBSD | `46738ddf` | failure (shared test compile) |
 | [41207325136](https://github.com/daviduhden/openi2pd/actions/runs/41207325136) | Fuzzing | `46738ddf` | success |
 | [41207325472](https://github.com/daviduhden/openi2pd/actions/runs/41207325472) | Packaging and service validation | `46738ddf` | failure (Debian remove/purge check) |
+| [41226171242](https://github.com/daviduhden/openi2pd/actions/runs/41226171242) | Linux and Android | `abe09136` | failure (shared test compile; Android locale gate before Gradle) |
+| [41226168239](https://github.com/daviduhden/openi2pd/actions/runs/41226168239) | Windows | `abe09136` | MSYS2 failure (shared test compile); MSVC still running at review time |
+| [41226173721](https://github.com/daviduhden/openi2pd/actions/runs/41226173721) | OpenBSD | `abe09136` | failure (shared test compile) |
+| [41226176399](https://github.com/daviduhden/openi2pd/actions/runs/41226176399) | Fuzzing | `abe09136` | success (contains compiler warnings) |
+| [41226179732](https://github.com/daviduhden/openi2pd/actions/runs/41226179732) | Packaging and service validation | `abe09136` | failure (Debian remove-preservation assertion) |
+
+The five newest runs used branch `main` at full SHA
+`abe09136c84d1a4df487306dad6a7eb8e2034806`. The paginated Actions API
+returned 206 retained runs across 11 workflow names and 43 SHAs. The Linux,
+OpenBSD, MSYS2 and Debian job logs and available artifacts were inspected;
+OpenBSD had no downloadable artifact. The Android job stopped before Gradle,
+and its locale failure is separate from the shared C++ test compile error.
 
 The `b25d0c3a` batch was dispatched on 2026-10-27 between 15:34:52 and
 15:35:02 UTC. Each run above is on branch `main`; the full SHA is
@@ -1019,18 +1031,24 @@ workflow was run.
 - **Workflow/job:** Packaging and service validation 41207325472, Debian
   packages 124554971078, final Remove and preserve, then purge step.
 - **Commit/platform:** 46738ddf6f0f9b8e01e31d7c28bc6396215f82e8; Ubuntu 24.04.
-- **First diagnostic:** step exits 1 after purge; the log does not distinguish
-  apt-get purge, either silent path assertion or dpkg --audit.
-- **Cause:** In investigation. The exact run .deb control archive was
-  inspected: generated postrm removes /etc/i2pd and /var/lib/i2pd only in
-  purge, and preceding remove-preservation checks are reached. The available
-  evidence does not justify changing package hooks or guessing the assertion.
-- **Correction:** none yet. Add labeled diagnostics for each purge assertion
-  and retain exact-run postrm inspection before changing hooks.
+- **First diagnostic:** run 41207325472 was ambiguous. Follow-up Packaging run
+  [41226179732](https://github.com/daviduhden/openi2pd/actions/runs/41226179732),
+  Debian job `124610688820`, identifies
+  `FAIL: remove deleted /var/lib/i2pd` after package removal.
+- **Cause:** Exact artifact `i2pd_2.61.0-5_amd64.deb` owns the directory and a
+  certificates symlink below it. `remove` unlinks the last package-owned child;
+  dpkg prunes the now-empty directory. The step tested empty-directory survival,
+  not whether real administrator data survives. The package `postrm` removes
+  persistent paths only for `purge`.
+- **Correction:** Seed a harmless mode-0600 marker owned by `i2pd` before
+  `remove`, assert the marker and conffile survive, then retain the explicit
+  purge assertion. No maintainer script or package data-removal behavior is
+  changed.
 - **Files:** .github/workflows/packaging.yml; package scripts only if later
   evidence points there.
-- **State:** Detected in CI; En investigación. A manual package run must
-  identify the failing command before a lifecycle correction is claimed.
+- **State:** Detected in CI; cause identified; regression corrected by static
+  analysis; **Pending CI tests/package validation** on a revision containing
+  the marker fixture.
 
 ### CE-045 — Base64 regression source has an unterminated block comment
 
@@ -1044,3 +1062,21 @@ workflow was run.
 - **Local status:** corrected by static analysis; regression prepared. CI on this exact SHA is not validation of the local correction.
 - **Validation pending:** next manual Windows/Linux/OpenBSD/Fuzzing builds and the compile-free comment-integrity CI step. The latest MSVC job was canceled during dependency installation; it did not validate MSVC.
 - **Related warning inventory:** `docs/ci/COMPILATION-WARNINGS.md` CW-001; reusable pattern and search procedure: `docs/ci/COMPILATION-PATTERNS.md`.
+
+### CE-046 — Transit tunnel test uses unqualified protocol constants
+
+- **Workflows/jobs:** Linux and Android [41226171242](https://github.com/daviduhden/openi2pd/actions/runs/41226171242), Linux OpenSSL 3 job `124610663647`; OpenBSD [41226173721](https://github.com/daviduhden/openi2pd/actions/runs/41226173721), job `124610671636`; Windows [41226168239](https://github.com/daviduhden/openi2pd/actions/runs/41226168239), MSYS2 job `124610655800`. All ran SHA `abe09136c84d1a4df487306dad6a7eb8e2034806`.
+- **First diagnostic:** `tests/test-transit-tunnel-build-replay.cpp:35` uses `SHORT_TUNNEL_BUILD_RECORD_SIZE` without `i2p::`; Clang/GCC suggest `i2p::SHORT_TUNNEL_BUILD_RECORD_SIZE`. The later unqualified `TUNNEL_BUILD_RECORD_SIZE` uses are the same namespace cause.
+- **Cause/search:** Both constants are declared in `i2p` by `libi2pd/I2NPProtocol.h`; the test imports only `i2p::tunnel`. Repository search found no other unqualified use of these constants in this test.
+- **Correction:** Import both constants explicitly from `i2p`; numeric test cases and protocol behavior are unchanged.
+- **Files:** `tests/test-transit-tunnel-build-replay.cpp`.
+- **State:** Corrected by static analysis; Linux, OpenBSD and Windows compilation pending CI. Do not attribute the published failing run to the local edit.
+
+### CE-047 — Android locale guard required an unused Chinese plural quantity
+
+- **Workflow/job:** Linux and Android [41226171242](https://github.com/daviduhden/openi2pd/actions/runs/41226171242), Android job `124610663799`, SHA `abe09136c84d1a4df487306dad6a7eb8e2034806`.
+- **First diagnostic:** `check-android-locales.pl` reported missing `quantity="one"` for four zh-CN plurals at `Validate Android Gradle toolchain`; Java 25 configuration passed, but Android SDK setup, native/Gradle compilation, lint and APK steps were skipped.
+- **Cause/search:** The checker required English `one`/`other` for Chinese resources even though the maintained `values-zh-rCN` catalogs correctly use `other` only. Restoring synthetic `one` entries would recreate the Lint unused-quantity finding.
+- **Correction:** The checker now requires only `other` for zh-CN and rejects extra Chinese quantities. An isolated fixture covers acceptance, missing `other` and unused `one`; locale matrix and Android/i18n guidance are synchronized.
+- **Files:** `android/tools/check-android-locales.pl`, `tools/tests/maintenance-checkers.t`, `tests/check-i18n.cmake`, locale documentation and Android/i18n skills.
+- **State:** Corrected locally by static analysis; static locale/i18n contracts pass. Fixture, Gradle/JNI/Lint/APK and full Android matrix remain pending CI.

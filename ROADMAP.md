@@ -191,7 +191,8 @@ recorded separately from static review. No "compatible" claim without evidence.
 
 1. Use CI JDK 25, Android SDK 37 and NDK r30 LTS+ (local builds are frozen). The
    Android UI ships en/es/ru/zh-CN; `locales_config.xml`/`localeFilters` and the
-   four resource catalogs must stay synchronized.
+   four resource catalogs must stay synchronized. Android plural categories
+   are one/other for en/es, one/few/many/other for ru, and other only for zh-CN.
 2. Validate Gradle 9.8.1/AGP 9.4.1 and toolchain 25 in CI.
 3. Build APK/DEX; run Android Lint, unit tests and JNI/device tests.
 4. Continue Java 25 source refactor (records, sealed types, pattern matching,
@@ -1825,9 +1826,10 @@ install, commit or push was performed.
 
 ## Compiler and warning prevention pass (2026-10-31, static)
 
-The retained Actions history currently covers 201 runs across 11 workflow
-names; logs were available for 198, while three expired job logs returned
-`log not found`. The latest dispatched platform batch on published SHA
+The retained Actions history currently covers 206 runs across 11 workflow
+names and 43 SHAs; logs were available for 202 completed runs, while three
+expired job logs returned `log not found` and the newest MSVC job was still
+running at review time. The prior dispatched platform batch on published SHA
 `45f5f739aa47ed87aa7462e9b040c0db601bc667` exposed a shared malformed comment
 in the Base64 test on Linux, Windows and OpenBSD, plus repeated `-Wcomment`
 warnings in shared headers. `docs/ci/COMPILATION-ERRORS.md` records CE-045;
@@ -1851,3 +1853,18 @@ old published SHA does not validate them. Fresh manual Linux, Windows,
 OpenBSD, Android, fuzz and packaging runs on the corrected revision must
 establish compile/link status and enumerate warnings beyond targets blocked
 by the first syntax failure.
+
+The next retained batch ran on `abe09136c84d1a4df487306dad6a7eb8e2034806`.
+Linux/OpenBSD/MSYS2 exposed the `i2p` namespace constants in
+`test-transit-tunnel-build-replay.cpp`; successful Fuzzing, container and
+static-musl builds exposed first-party unused asynchronous parameters.
+Windows Clang also reported an unused Win32 callback parameter and POSIX-only
+address-book test helpers compiled outside their platform guard. The
+Debian package built and passed Lintian/DEP-8 but its remove assertion failed
+because it checked an empty package-owned directory; the workflow now seeds a
+private marker to test actual state preservation. Debian configure also
+reported unset CMake CMP0167. Corrections are recorded as CE-044/046/047 and
+CW-006/007; the OpenBSD Boost.Asio linker warning remains an external finding
+(CW-004). These local changes are static only and await CI on a revision that
+contains them. The earlier Android locale failure is fixed in the current
+worktree but likewise remains unvalidated remotely.

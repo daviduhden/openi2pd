@@ -92,6 +92,10 @@ file named by the diagnostic. Keep observed diagnostics distinct from static
 risks and third-party/toolchain messages in
 `docs/ci/COMPILATION-ERRORS.md`, `COMPILATION-WARNINGS.md` and
 `COMPILATION-PATTERNS.md`.
+Retrieve successful sibling job logs as well as failed logs: an early compile
+failure can hide later warnings, while a successful lane can expose them. Do
+not infer that a skipped target or platform is clean from another job's
+success.
 When a diagnostic recurs, compare earlier runs and record every affected lane
 under one root-cause entry in `docs/ci/COMPILATION-ERRORS.md`; distinguish
 compile/link failures from CTest failures and output-path/package assertions.

@@ -5528,3 +5528,57 @@ AGENTS and the CI/build/C++23/Android Skills. Static source review and
 diff/resource inspection only; no compiler, build, CTest, Perl test, Gradle,
 Lint, package, sanitizer, fuzz run or new workflow dispatch was performed.
 All local corrections await manual CI on a revision containing them.
+
+## Android locale workflow pre-build failure (2026-10-31, static)
+
+Android job `124610663799` in [run 41226171242](https://github.com/daviduhden/openi2pd/actions/runs/41226171242)
+failed at the locale catalog guard before Gradle or native compilation. It ran
+commit `abe09136c84d1a4df487306dad6a7eb8e2034806`; the log reported missing
+`quantity="one"` in `logs_summary`, `runtime_admin_reseed_status`,
+`torrent_count` and `torrent_session_count` for zh-CN. Those resources already
+contain the valid Chinese `other` category only. The checker incorrectly
+required English's `one` category for every language, conflicting with the
+catalog and the Android Lint finding that synthetic Chinese `one` items are
+unused.
+
+Updated `check-android-locales.pl` to require `other` for zh-CN, added an
+isolated regression fixture that accepts other-only Chinese and rejects a
+missing `other`, and synchronized the i18n/Android skills, locale matrix,
+Android modernization guide, TODO and roadmap. No resource contents or app
+behavior changed. The live locale guard, i18n static contract, diff check and
+agent-knowledge validator pass. The new isolated fixture suite has not been
+run; Android CI rerun remains pending on a revision carrying the fix.
+
+## Compiler warning and failure follow-up (2026-10-31, static)
+
+Paginated `gh api` history now reports 206 retained runs, 11 workflow names
+and 43 SHAs (2026-10-17..2026-10-31); three expired logs remain unavailable
+as recorded above. The latest five-run batch used published `main` SHA
+`abe09136c84d1a4df487306dad6a7eb8e2034806`: Linux/Android 41226171242,
+Windows 41226168239, OpenBSD 41226173721, Fuzzing 41226176399 and Packaging
+41226179732. Linux/OpenBSD/MSYS2 share the root compile error in
+`test-transit-tunnel-build-replay.cpp`: two `i2p` constants were unqualified.
+The local test imports now name the namespace explicitly. CI's successful
+Fuzzing, Container and static-musl builds also exposed unused completion
+parameters in TorrentsRPC, TorrentsTunnel and BoostStream; Windows Clang
+additionally flagged the Win32 TUI event value and POSIX-only address-book
+fixture helpers. Only unused names were removed, the tracker byte count
+forwarded to its next handler was preserved, and fixture helpers now share the
+POSIX guard of their consumers.
+
+The Debian run passed build, Lintian, install, reinstall and DEP-8, then found
+that `remove` pruned an empty package-owned `/var/lib/i2pd` directory after
+unlinking its last child. The workflow now seeds a harmless private marker and
+checks that real state survives remove before checking purge cleanup. The
+Debian configure log also exposed an unset CMP0167 developer warning; CMake
+now selects Boost config mode only when that policy is available. The OpenBSD
+linker warning is confirmed in Boost.Asio's `inet_ntop` implementation, so it
+remains dependency-owned and unsuppressed.
+
+Updated the compilation error/warning/pattern inventories, BUILD-029, relevant
+build/torrent/OpenBSD/packaging Skills and the build-system/i18n/packaging
+static contracts. AGENTS.md already contains the permanent requirement to
+search repository-wide for equivalent patterns after every CI diagnostic; no
+duplicate policy text was added. Static checks and exact artifact/log review
+only; no build, test, workflow dispatch or package installation was run.
+Corrections remain Pending CI compilation, tests and package validation.

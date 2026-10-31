@@ -106,6 +106,11 @@ limitation; do not substitute local execution. Ask for:
   pending.
 - Preserve pledge/unveil ordering, fd4 root handoff, post-pledge `sendfd`/
   `recvfd` restrictions and LibreSSL 4.0+/OpenSSL 4.x compatibility.
+- The OpenBSD linker warning for `strcat()` originates in Boost.Asio's
+  `socket_ops::inet_ntop` implementation included by `SOCKS.cpp`, not a direct
+  first-party call. Keep it dependency-owned in the warning inventory; do not
+  suppress the linker warning or patch an installed Boost tree. Revisit only
+  with a maintained upstream fix or a narrow supported adaptation.
 - Unsupported sandbox paths must return CTest SKIP (77), never a false pass.
 - OpenBSD compilation, service lifecycle, TUI and storage-broker runtime
   evidence remain pending manual CI.

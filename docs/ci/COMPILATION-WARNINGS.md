@@ -8,18 +8,22 @@ about later targets.
 
 ## History coverage
 
-On 2026-10-31, GitHub Actions retained 201 runs across 11 current and former
-workflow names, dated 2026-10-17 through 2026-10-31. Complete logs were
-retrieved for 198 runs. Logs for job IDs `39058841124`, `39058430980` and
+On 2026-10-31, GitHub Actions retained 206 runs across 11 current and former
+workflow names, 43 distinct commit SHAs, dated 2026-10-17 through
+2026-10-31. Complete logs were retrieved for 202 completed runs. Logs for
+job IDs `39058841124`, `39058430980` and
 `39058346321` were no longer available (`log not found`); the remaining three
-log retrievals completed without timeout. The artifact API listed 54
+older log retrievals completed without timeout. The newest Windows run
+`41226168239` was still in progress at review time. The artifact API listed 54
 unexpired artifacts from 30 runs. Relevant Android, source-documentation,
 Windows CTest, Debian and fuzz artifacts were downloaded for inspection under
 `/tmp/openi2pd-history/diagnostics/`; no CI artifacts are stored in the
 repository.
 
-The current warning comparison is against published `main` SHA
-`45f5f739aa47ed87aa7462e9b040c0db601bc667`. Local changes below that SHA have
+The prior 201-run history is retained below. The five newest runs all used
+published `main` SHA `abe09136c84d1a4df487306dad6a7eb8e2034806`: Linux and
+Android `41226171242`, Windows `41226168239`, OpenBSD `41226173721`, Fuzzing
+`41226176399` and Packaging `41226179732`. Local changes below that SHA have
 only static review; the recorded runs do not validate them.
 
 ## Current project warnings
@@ -85,7 +89,7 @@ only static review; the recorded runs do not validate them.
 
 ### CW-004 — OpenBSD linker reports Boost.Asio `strcat`
 
-- **Evidence:** OpenBSD run [41222229438](https://github.com/daviduhden/openi2pd/actions/runs/41222229438), job `124599019529`, SHA `45f5f739aa47ed87aa7462e9b040c0db601bc667`.
+- **Evidence:** OpenBSD runs [41222229438](https://github.com/daviduhden/openi2pd/actions/runs/41222229438), job `124599019529`, SHA `45f5f739aa47ed87aa7462e9b040c0db601bc667`, and [41226173721](https://github.com/daviduhden/openi2pd/actions/runs/41226173721), job `124610671636`, SHA `abe09136c84d1a4df487306dad6a7eb8e2034806`.
 - **Diagnostic:** `ld` reports `strcat()` in
   `boost::asio::detail::socket_ops::inet_ntop`, instantiated in `SOCKS.cpp.o`.
 - **Classification:** external dependency implementation included into a
@@ -93,6 +97,39 @@ only static review; the recorded runs do not validate them.
   call. Investigate a maintained Boost fix or supported platform adaptation;
   do not attribute the warning to project code or suppress it globally.
 - **Status:** External warning; solution pending dependency/toolchain review.
+
+### CW-006 — Unused asynchronous completion parameters
+
+- **Evidence:** Linux and Android [41226171242](https://github.com/daviduhden/openi2pd/actions/runs/41226171242), Linux OpenSSL 3 job `124610663647`; Windows [41226168239](https://github.com/daviduhden/openi2pd/actions/runs/41226168239), MSYS2 job `124610655800`; OpenBSD [41226173721](https://github.com/daviduhden/openi2pd/actions/runs/41226173721), job `124610671636`; successful Fuzzing [41226176399](https://github.com/daviduhden/openi2pd/actions/runs/41226176399); successful Debian, static-musl and Container build jobs in Packaging [41226179732](https://github.com/daviduhden/openi2pd/actions/runs/41226179732). All used SHA `abe09136c84d1a4df487306dad6a7eb8e2034806`.
+- **Diagnostics:** `-Wunused-parameter` in `TorrentsRPC.cpp:1116,1200,1218`, `TorrentsTunnel.cpp:2913,2915,2950`; OpenBSD also reports `BoostStream.h:116` (`role`).
+- **Cause/search:** Asio/Beast completion signatures require these parameter types, but the handler bodies do not consume these values. The tracker write count at `TorrentsTunnel.cpp:2828` is consumed by a downstream completion and must remain named; do not remove it while fixing adjacent callbacks.
+- **Correction:** Omit only unused parameter names while preserving callback types, captures, shared ownership and the one forwarded byte count.
+- **Status:** Corrected by static analysis in the current worktree; pending CI compilation on Linux, OpenBSD, Windows, fuzz and package lanes.
+
+### CW-007 — CMake warns that CMP0167 is unset
+
+- **Evidence:** Debian build job `124610688820` in Packaging [41226179732](https://github.com/daviduhden/openi2pd/actions/runs/41226179732), SHA `abe09136c84d1a4df487306dad6a7eb8e2034806`; configure log at `build/CMakeLists.txt:255`.
+- **Diagnostic:** The Debian runner's CMake emits a developer warning because policy CMP0167 is unset around `find_package(Boost)`; CMP0167 removes the legacy `FindBoost` module in favor of Boost's config package.
+- **Cause:** The project minimum is CMake 3.24, predating the policy, while current Debian CI uses a newer CMake.
+- **Correction:** Set CMP0167 to NEW only when the policy exists. Old supported CMake versions retain their bundled module; newer versions use Boost's maintained config package.
+- **Status:** Corrected by static analysis; pending CMake configure validation across Debian, OpenBSD, Windows and Android dependency environments.
+
+### CW-008 — Unused Win32 console callback argument
+
+- **Evidence:** Windows [41226168239](https://github.com/daviduhden/openi2pd/actions/runs/41226168239), MSYS2 job `124610655800`, SHA `abe09136c84d1a4df487306dad6a7eb8e2034806`.
+- **Diagnostic:** Clang `-Wunused-parameter` at `tui/main.cpp:68` for the `DWORD type` argument to `HandleConsoleEvent`.
+- **Cause/search:** Win32 requires the callback's `DWORD` signature, but the handler intentionally treats every console event identically and only sets the stop flag. Other Win32 service callbacks consume their event codes in dispatch.
+- **Correction:** Keep the ABI-required parameter type and omit only its unused name.
+- **Status:** Corrected by static analysis; pending Windows CI compilation and TUI validation.
+
+### CW-009 — POSIX-only address-book test helpers compiled on Windows
+
+- **Evidence:** Windows [41226168239](https://github.com/daviduhden/openi2pd/actions/runs/41226168239), MSYS2 job `124610655800`, SHA `abe09136c84d1a4df487306dad6a7eb8e2034806`.
+- **Historical recurrence:** MSYS2 runs [40532395786](https://github.com/daviduhden/openi2pd/actions/runs/40532395786) and [40594544850](https://github.com/daviduhden/openi2pd/actions/runs/40594544850) reported the same unused `VICTIM_CONTENT`/`WriteFile` definitions in earlier revisions. The current guard correction addresses that repeated platform-conditional pattern.
+- **Diagnostics:** Clang reports `VICTIM_CONTENT` as an unused constant and `WriteFile` as an unused function in `tests/test-addressbook-persistence.cpp:35,44`.
+- **Cause/search:** These helpers only support POSIX symlink checks but were outside the existing `_WIN32` guard, so the Windows test translation unit compiled unused definitions. No equivalent fixture helper outside this test was found.
+- **Correction:** Place both helpers under the same non-Windows guard as their symlink-only consumers; shared persistence coverage remains enabled on Windows.
+- **Status:** Corrected by static analysis; pending Windows and POSIX CTest validation.
 
 ### CW-005 — Toolchain and runner messages
 
@@ -103,6 +140,15 @@ OpenBSD SSH host-key notices, Debian `update-alternatives` and
 not compiler warnings from project sources. Keep them classified by their
 origin; update pinned actions or runner configuration only when a supported
 replacement is available and the message is actionable.
+
+### Static first-party string API sweep (2026-10-31)
+
+The source scan for `strcat`, `strcpy`, `sprintf` and `strncpy` found no direct
+first-party C/C++ calls to the first three. The only match was
+`std::strncpy` in `tests/test-privsep-linux-sandbox.cpp:368`, which copies a
+short fixed test socket path into a value-initialized `sockaddr_un` buffer with
+an explicit `sizeof - 1` bound. No corresponding CI warning was observed, and
+the path fits supported POSIX `sun_path` sizes; no behavior change is justified.
 
 ## Historical project warnings and disposition
 
@@ -117,9 +163,11 @@ replacement is available and the message is actionable.
 
 Older logs also report unused helpers/captures and an unused HTTP reverse-match
 helper. Keep these historical until each exact-SHA source comparison is
-complete; do not count repeated inclusions as separate warnings. The latest
-failed build stops at a test comment, so it cannot establish that downstream
-source and link targets are warning-free.
+complete; do not count repeated inclusions as separate warnings. The newest
+Linux/OpenBSD/MSYS2 builds stop at a shared test namespace error; their earlier
+compiler output and successful sibling Fuzzing/container/static-musl builds
+still expose the warning families above. No partial or failed job establishes
+that skipped downstream targets are warning-free.
 
 ## Warning-policy status
 
