@@ -14,6 +14,7 @@
  */
 
 #include <stdio.h>
+#include <cstring>
 #include <string.h>
 #include "I2PEndian.h"
 #include <fstream>
@@ -1255,9 +1256,11 @@ namespace data
 			return false;
 		}
 		const size_t identityLen = GetIdentityBufferLen (buf->data (), len);
-		IdentHash actual { };
-		if (identityLen) SHA256 (buf->data (), identityLen, actual.data ());
-		if (!identityLen || actual != expected)
+		// SHA256() writes through its third argument, and IdentHash exposes
+		// only a const data() view, so hash into a local array and compare.
+		uint8_t actual[IdentHash::len] { };
+		if (identityLen) SHA256 (buf->data (), identityLen, actual);
+		if (!identityLen || std::memcmp (actual, expected.data (), IdentHash::len) != 0)
 		{
 			LogPrint (eLogError, "RouterInfo: Refusing to store a descriptor under a foreign identity hash");
 			return false;
