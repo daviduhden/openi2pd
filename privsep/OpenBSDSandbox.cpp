@@ -523,16 +523,29 @@ i2p::expected<std::vector<std::string>, std::string> ParseOpenBSDPledgeFile (
 	std::ifstream file (path);
 	if (!file) return i2p::unexpected ("cannot open pledge policy file");
 	const std::string_view phaseName = phase == OpenBSDPledgePhase::Startup ? "startup" : "runtime";
+	// The file is read into one bounded buffer before any line is
+	// split. std::getline() would materialise an arbitrarily long first
+	// line before the size check, which turns a malformed policy file
+	// into unbounded allocation. The extra byte detects an oversized
+	// file without reading it whole.
+	std::string contents (MAX_PLEDGE_FILE_BYTES + 1, '\0');
+	file.read (contents.data (), static_cast<std::streamsize> (contents.size ()));
+	const std::streamsize read = file.gcount ();
+	if (file.bad ()) return i2p::unexpected ("cannot read the pledge policy file");
+	if (read > static_cast<std::streamsize> (MAX_PLEDGE_FILE_BYTES))
+		return i2p::unexpected ("pledge policy file exceeds the size bound");
+	contents.resize (static_cast<size_t> (read));
 	std::vector<std::string> accepted;
 	std::string line;
-	size_t consumed = 0;
 	size_t lineNumber = 0;
-	while (std::getline (file, line))
+	size_t lineOffset = 0;
+	while (lineOffset < contents.size ())
 	{
 		++lineNumber;
-		if (line.size () > MAX_PLEDGE_FILE_BYTES || consumed + line.size () > MAX_PLEDGE_FILE_BYTES)
-			return i2p::unexpected ("pledge policy file exceeds the size bound");
-		consumed += line.size ();
+		const auto newline = contents.find ('\n', lineOffset);
+		const size_t lineEnd = newline == std::string::npos ? contents.size () : newline;
+		line.assign (contents, lineOffset, lineEnd - lineOffset);
+		lineOffset = newline == std::string::npos ? contents.size () : newline + 1;
 		if (line.find ('#') != std::string::npos)
 			return i2p::unexpected ("comment on line " + std::to_string (lineNumber) + " of the pledge policy file");
 		const auto trimmed = TrimPledgeText (line);
@@ -563,7 +576,6 @@ i2p::expected<std::vector<std::string>, std::string> ParseOpenBSDPledgeFile (
 				accepted.push_back (promise);
 		}
 	}
-	if (file.bad ()) return i2p::unexpected ("cannot read the pledge policy file");
 	return accepted;
 }
 }

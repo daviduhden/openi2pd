@@ -417,6 +417,9 @@ void TestPledgeFileParser ()
 	assert (!check ("stdio # trailing\n", runtimeAllowed, OpenBSDPledgePhase::Runtime).has_value ());
 	assert (!check ("frobnicate\n", runtimeAllowed, OpenBSDPledgePhase::Runtime).has_value ());
 	assert (!check (std::string (40, 'x') + "\n", runtimeAllowed, OpenBSDPledgePhase::Runtime).has_value ());
+	// A single line above the 64 KiB file bound is refused without
+	// materialising it first: the reader is bounded, not post-checked.
+	assert (!check (std::string (64 * 1024 + 1, 'x'), runtimeAllowed, OpenBSDPledgePhase::Runtime).has_value ());
 
 	// A runtime file may not add process/identity/privilege promises even
 	// when
