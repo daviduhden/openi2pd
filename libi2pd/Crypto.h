@@ -307,33 +307,37 @@ namespace crypto
 
 	// AEAD/ChaCha20/Poly1305
 
+	/// ChaCha20-Poly1305 convenience wrappers that keep one provider
+	/// context per thread instead of one per object.
+	///
+	/// An OpenSSL/LibreSSL cipher context is stateful: key, nonce, AAD and
+	/// tag belong to the context, not to the call. A wrapper object that
+	/// owned a single context would therefore corrupt any frame sent
+	/// concurrently through the same object with a different key. That is
+	/// a real configuration: a destination keeps one encryptor and one
+	/// decryptor for all of its ratchet sessions, while streaming,
+	/// datagram, torrent and I2CP threads can wrap messages to different
+	/// peers at the same time. Keeping the context in thread-local storage
+	/// makes these objects stateless and safe to share; every call
+	/// re-initializes the context, so two calls on one thread never
+	/// interleave. A per-connection user (NTCP2, SSU2) is unaffected.
 	class AEADChaCha20Poly1305Encryptor
 	{
 	public:
-		AEADChaCha20Poly1305Encryptor ();
-		~AEADChaCha20Poly1305Encryptor ();
-
 		bool Encrypt (const uint8_t * msg, size_t msgLen, const uint8_t * ad, size_t adLen, const uint8_t * key,
 			const uint8_t * nonce, uint8_t * buf, size_t len); // msgLen is len without tag
 
 		bool Encrypt (const std::vector<std::pair<uint8_t *, size_t>> & bufs, const uint8_t * key,
 			const uint8_t * nonce, uint8_t * mac); // encrypt multiple buffers with zero ad; false = write must abort
-
-	private:
-		EVP_CIPHER_CTX * m_Ctx;
 	};
 
+	/// Decryption counterpart of AEADChaCha20Poly1305Encryptor with the
+	/// same per-thread context contract.
 	class AEADChaCha20Poly1305Decryptor
 	{
 	public:
-		AEADChaCha20Poly1305Decryptor ();
-		~AEADChaCha20Poly1305Decryptor ();
-
 		bool Decrypt (const uint8_t * msg, size_t msgLen, const uint8_t * ad, size_t adLen, const uint8_t * key,
 			const uint8_t * nonce, uint8_t * buf, size_t len); // msgLen is len without tag
-
-	private:
-		EVP_CIPHER_CTX * m_Ctx;
 	};
 
 	/// ChaCha20-Poly1305 with a 32-byte key and 12-byte nonce.

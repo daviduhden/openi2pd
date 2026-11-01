@@ -25,6 +25,7 @@
 #include <limits>
 #include <map>
 #include <string>
+#include <string_view>
 #include <openssl/crypto.h>
 #include "Crypto.h"
 #include "RouterContext.h"
@@ -51,6 +52,9 @@ namespace garlic
 	// request up to 800 ECIES tags in one NEXT_KEY block.
 	constexpr size_t MAX_INCOMING_ELGAMAL_TAGS = 4096;
 	constexpr size_t MAX_INCOMING_ECIES_TAGS = 8192;
+	// On-disk form of one incoming ElGamal/AES session tag: a 4-byte
+	// creation time in host order, the 32-byte tag and its 32-byte AES key.
+	constexpr size_t TAG_RECORD_SIZE = 4 + 32 + 32;
 
 	namespace
 	{
@@ -1532,23 +1536,38 @@ namespace garlic
 
 	void GarlicDestination::SaveTags ()
 	{
-		std::lock_guard<std::mutex> l (m_TagsMutex);
-		if (m_Tags.empty ()) return;
 		std::string ident = GetIdentHash ().ToBase32 ();
 		std::string path = i2p::fs::DataDirPath ("tags", (ident + ".tags"));
-		std::ofstream f (
-			i2p::fs::CreatePrivateFile (path), std::ofstream::binary | std::ofstream::out | std::ofstream::trunc);
-		uint32_t ts = static_cast<uint32_t> (i2p::util::GetSecondsSinceEpoch ());
-		// 4 bytes timestamp, 32 bytes tag, 32 bytes key
-		for (auto it : m_Tags)
+		// A session tag authorises exactly one message, so the tag file is
+		// secret material. Build the records under the lock and replace the
+		// file with one private atomic write outside it: opening the final
+		// path, chmod-ing the name and reopening it for truncation would let
+		// a replacement in between redirect the secrets. This also keeps
+		// file I/O out of a lock that the tag receive path needs.
+		std::vector<uint8_t> contents;
 		{
-			if (ts < it.first.creationTime + INCOMING_TAGS_EXPIRATION_TIMEOUT)
+			std::lock_guard<std::mutex> l (m_TagsMutex);
+			if (m_Tags.empty ()) return;
+			contents.reserve (m_Tags.size () * TAG_RECORD_SIZE);
+			const uint32_t ts = static_cast<uint32_t> (i2p::util::GetSecondsSinceEpoch ());
+			// 4 bytes timestamp, 32 bytes tag, 32 bytes key. The timestamp is
+			// written in host order, which is the on-disk form LoadTags()
+			// reads back.
+			auto append = [&contents] (const uint8_t * data, size_t len)
+			{ contents.insert (contents.end (), data, data + len); };
+			for (const auto & it : m_Tags)
 			{
-				f.write ((char *)&it.first.creationTime, 4);
-				f.write ((char *)it.first.data (), 32);
-				f.write ((char *)it.second->GetKey ().data (), 32);
+				if (ts >= it.first.creationTime + INCOMING_TAGS_EXPIRATION_TIMEOUT) continue;
+				if (!it.second) continue;
+				append (reinterpret_cast<const uint8_t *> (&it.first.creationTime), sizeof (it.first.creationTime));
+				append (it.first.data (), i2p::data::Tag<32>::len);
+				append (it.second->GetKey ().data (), i2p::crypto::AESKey::len);
 			}
 		}
+		if (contents.empty ()) return;
+		if (!i2p::fs::AtomicWritePrivate (
+				path, std::string_view (reinterpret_cast<const char *> (contents.data ()), contents.size ())))
+			LogPrint (eLogWarning, "Garlic: Can't save the incoming tag set for ", ident);
 	}
 
 	void GarlicDestination::LoadTags ()

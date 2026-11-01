@@ -10,7 +10,10 @@
  * and Noise symmetric state operations. Lengths are checked before
  * conversion to OpenSSL's int-sized interfaces, failed tunnel/Noise
  * authentication clears its output, and process-wide crypto
- * initialisation and locking are managed here.
+ * initialisation and locking are managed here. The reusable AEAD
+ * wrappers keep their provider context in thread-local storage, so one
+ * instance can serve concurrent sessions without mixing key, nonce or
+ * tag state.
  *
  */
 
@@ -1294,20 +1297,40 @@ namespace crypto
 		return ret;
 	}
 
-	AEADChaCha20Poly1305Encryptor::AEADChaCha20Poly1305Encryptor ()
+	namespace
 	{
-		m_Ctx = EVP_CIPHER_CTX_new ();
-	}
+		/// Owns a provider cipher context for the life of one thread.
+		using AeadContextOwner = std::unique_ptr<EVP_CIPHER_CTX, decltype (&EVP_CIPHER_CTX_free)>;
 
-	AEADChaCha20Poly1305Encryptor::~AEADChaCha20Poly1305Encryptor ()
-	{
-		if (m_Ctx) EVP_CIPHER_CTX_free (m_Ctx);
-	}
+		/// @brief Return this thread's context for AEAD encryption.
+		///
+		/// A context is stateful and not reentrant, so it must never be
+		/// shared between threads. It is created on first use and released
+		/// when the thread exits; every call re-initializes it, so the
+		/// previous key, nonce and AAD cannot leak into the next one.
+		EVP_CIPHER_CTX * GetThreadLocalAeadEncryptContext ()
+		{
+			thread_local AeadContextOwner ctx (EVP_CIPHER_CTX_new (), &EVP_CIPHER_CTX_free);
+			return ctx.get ();
+		}
+
+		/// @brief Return this thread's context for AEAD decryption.
+		///
+		/// Kept separate from the encryption context so one thread can
+		/// interleave both directions without depending on the provider
+		/// forbidding a direction switch on a single context.
+		EVP_CIPHER_CTX * GetThreadLocalAeadDecryptContext ()
+		{
+			thread_local AeadContextOwner ctx (EVP_CIPHER_CTX_new (), &EVP_CIPHER_CTX_free);
+			return ctx.get ();
+		}
+	} // namespace
 
 	bool AEADChaCha20Poly1305Encryptor::Encrypt (const uint8_t * msg, size_t msgLen, const uint8_t * ad, size_t adLen,
 		const uint8_t * key, const uint8_t * nonce, uint8_t * buf, size_t len)
 	{
-		return AEADChaCha20Poly1305 (m_Ctx, msg, msgLen, ad, adLen, key, nonce, buf, len, true);
+		return AEADChaCha20Poly1305 (
+			GetThreadLocalAeadEncryptContext (), msg, msgLen, ad, adLen, key, nonce, buf, len, true);
 	}
 
 	bool AEADChaCha20Poly1305Encryptor::Encrypt (const std::vector<std::pair<uint8_t *, size_t>> & bufs,
@@ -1325,10 +1348,11 @@ namespace crypto
 			LogPrint (eLogError, "AEAD: multi-buffer encryption failed");
 			return false;
 		};
-		if (bufs.empty () || !m_Ctx || !key || !nonce || !mac) return fail ();
-		bool ok = EVP_EncryptInit_ex (m_Ctx, EVP_chacha20_poly1305 (), nullptr, nullptr, nullptr) == 1
-			&& EVP_CIPHER_CTX_ctrl (m_Ctx, EVP_CTRL_AEAD_SET_IVLEN, 12, nullptr) == 1
-			&& EVP_EncryptInit_ex (m_Ctx, nullptr, nullptr, key, nonce) == 1;
+		EVP_CIPHER_CTX * ctx = GetThreadLocalAeadEncryptContext ();
+		if (bufs.empty () || !ctx || !key || !nonce || !mac) return fail ();
+		bool ok = EVP_EncryptInit_ex (ctx, EVP_chacha20_poly1305 (), nullptr, nullptr, nullptr) == 1
+			&& EVP_CIPHER_CTX_ctrl (ctx, EVP_CTRL_AEAD_SET_IVLEN, 12, nullptr) == 1
+			&& EVP_EncryptInit_ex (ctx, nullptr, nullptr, key, nonce) == 1;
 		for (const auto & it : bufs)
 		{
 			if (!ok) break;
@@ -1339,33 +1363,24 @@ namespace crypto
 				break;
 			}
 			int outlen = 0;
-			ok = EVP_EncryptUpdate (m_Ctx, it.first, &outlen, it.first, (int)it.second) == 1
+			ok = EVP_EncryptUpdate (ctx, it.first, &outlen, it.first, (int)it.second) == 1
 				&& outlen == (int)it.second;
 		}
 		if (ok)
 		{
 			uint8_t finalBuf[16];
 			int outlen = 0;
-			ok = EVP_EncryptFinal_ex (m_Ctx, finalBuf, &outlen) == 1 && outlen == 0
-				&& EVP_CIPHER_CTX_ctrl (m_Ctx, EVP_CTRL_AEAD_GET_TAG, 16, mac) == 1;
+			ok = EVP_EncryptFinal_ex (ctx, finalBuf, &outlen) == 1 && outlen == 0
+				&& EVP_CIPHER_CTX_ctrl (ctx, EVP_CTRL_AEAD_GET_TAG, 16, mac) == 1;
 		}
 		return ok ? true : fail ();
-	}
-
-	AEADChaCha20Poly1305Decryptor::AEADChaCha20Poly1305Decryptor ()
-	{
-		m_Ctx = EVP_CIPHER_CTX_new ();
-	}
-
-	AEADChaCha20Poly1305Decryptor::~AEADChaCha20Poly1305Decryptor ()
-	{
-		if (m_Ctx) EVP_CIPHER_CTX_free (m_Ctx);
 	}
 
 	bool AEADChaCha20Poly1305Decryptor::Decrypt (const uint8_t * msg, size_t msgLen, const uint8_t * ad, size_t adLen,
 		const uint8_t * key, const uint8_t * nonce, uint8_t * buf, size_t len)
 	{
-		return AEADChaCha20Poly1305 (m_Ctx, msg, msgLen, ad, adLen, key, nonce, buf, len, false);
+		return AEADChaCha20Poly1305 (
+			GetThreadLocalAeadDecryptContext (), msg, msgLen, ad, adLen, key, nonce, buf, len, false);
 	}
 
 	static bool ChaCha20 (EVP_CIPHER_CTX * ctx, const uint8_t * msg, size_t msgLen, const uint8_t * key,

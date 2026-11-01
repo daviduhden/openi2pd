@@ -275,6 +275,11 @@ namespace garlic
 			}
 		}
 		LogPrint (eLogError, "Garlic: Can't generate elligator eligible x25519 keys");
+		// Every attempted pair has been returned to the transport pool, so
+		// the member must not keep pointing at one of them: the pool may hand
+		// that object to another handshake, which would replace its key
+		// material under this session.
+		m_EphemeralKeys = nullptr;
 		return false;
 	}
 

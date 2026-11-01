@@ -559,7 +559,10 @@ namespace garlic
 		// twice. The filter is per destination and has its own lock, so no
 		// global lock is taken on the clove path.
 		I2NPDuplicateFilter m_CloveReplayFilter;
-		// encryption
+		// encryption. One pair serves every session of this destination, so
+		// the wrappers must stay stateless: they hold their provider
+		// context per thread (see Crypto.h) and are called from the client,
+		// streaming, datagram and transport threads concurrently.
 		i2p::crypto::AEADChaCha20Poly1305Encryptor m_Encryptor;
 		i2p::crypto::AEADChaCha20Poly1305Decryptor m_Decryptor;
 

@@ -6,17 +6,21 @@
  *
  * Covers X25519 low-order peers, HKDF/Noise MixKey/MixHash and AEAD
  * nonce behavior, Elligator2 canonical decoding, and ML-KEM/hybrid type
- * mapping, sizes and round trips.
+ * mapping, sizes and round trips. The AEAD wrappers are also exercised
+ * from several threads at once because a garlic destination shares one
+ * encryptor and one decryptor between all of its sessions.
  *
  */
 
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <cassert>
 #include <climits>
 #include <cstdint>
 #include <cstring>
 #include <string_view>
+#include <thread>
 #include <type_traits>
 #include <utility>
 #include <vector>
@@ -429,6 +433,57 @@ void TestAEADAndChaCha20 ()
 	assert (memcmp (buffer, original, sizeof (buffer)) == 0);
 }
 
+// One encryptor/decryptor pair belongs to a whole garlic destination, so
+// streaming, datagram, torrent and I2CP threads can use it at the same
+// time for different sessions and keys. A wrapper that owned a single
+// provider context would let one call's key, nonce or tag overwrite
+// another's; the frame would then fail authentication or, worse, be
+// encrypted under a key its recipient does not have.
+void TestSharedAeadEncryptorAcrossThreads ()
+{
+	using i2p::crypto::AEADChaCha20Poly1305Decryptor;
+	using i2p::crypto::AEADChaCha20Poly1305Encryptor;
+
+	AEADChaCha20Poly1305Encryptor encryptor;
+	AEADChaCha20Poly1305Decryptor decryptor;
+	constexpr int THREADS = 4;
+	constexpr int ROUNDS = 64;
+	std::atomic<int> failures { 0 };
+	std::vector<std::thread> workers;
+	workers.reserve (THREADS);
+	for (int thread = 0; thread < THREADS; ++thread)
+		workers.emplace_back (
+			[&encryptor, &decryptor, &failures, thread] ()
+			{
+				for (int round = 0; round < ROUNDS; ++round)
+				{
+					uint8_t key[32], nonce[12], plain[48], cipher[64], recovered[48];
+					for (size_t i = 0; i < sizeof (key); ++i)
+						key[i] = static_cast<uint8_t> (thread * 37 + round + i);
+					for (size_t i = 0; i < sizeof (nonce); ++i)
+						nonce[i] = static_cast<uint8_t> (thread * 11 + round * 3 + i);
+					for (size_t i = 0; i < sizeof (plain); ++i)
+						plain[i] = static_cast<uint8_t> (thread + i * 5 + round);
+					if (!encryptor.Encrypt (
+							plain, sizeof (plain), nullptr, 0, key, nonce, cipher, sizeof (cipher)))
+					{
+						++failures;
+						continue;
+					}
+					memset (recovered, 0, sizeof (recovered));
+					if (!decryptor.Decrypt (
+							cipher, sizeof (plain), nullptr, 0, key, nonce, recovered, sizeof (recovered)))
+					{
+						++failures;
+						continue;
+					}
+					if (memcmp (recovered, plain, sizeof (plain)) != 0) ++failures;
+				}
+			});
+	for (auto & worker : workers) worker.join ();
+	assert (failures.load () == 0);
+}
+
 void TestCryptoKeyLengthsAndECIES ()
 {
 	using namespace i2p::data;
@@ -789,6 +844,7 @@ int main ()
 	TestElligator ();
 	TestHKDFAndNoise ();
 	TestAEADAndChaCha20 ();
+	TestSharedAeadEncryptorAcrossThreads ();
 	TestCryptoKeyLengthsAndECIES ();
 #if OPENSSL_PQ
 	TestMLKEM ();

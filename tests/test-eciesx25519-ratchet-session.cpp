@@ -648,6 +648,11 @@ int main ()
 
 	InteropLoop (i2p::data::CRYPTO_KEY_TYPE_ECIES_X25519_AEAD, "ECIES-X25519");
 	TagsetExhaustion (i2p::data::CRYPTO_KEY_TYPE_ECIES_X25519_AEAD);
+	// A missing algorithm is missing coverage, not a passing check. Report
+	// the omission with its own wording: a "skip:" line followed by exit 0
+	// reads exactly like the registered SKIP_RETURN_CODE 77 stub, and the
+	// final banner below must not claim that every check ran.
+	bool pqChecksOmitted = false;
 #if OPENSSL_PQ
 	if (i2p::crypto::IsMLKEMSupported (i2p::data::CRYPTO_KEY_TYPE_ECIES_MLKEM768_X25519_AEAD))
 	{
@@ -655,8 +660,19 @@ int main ()
 		TagsetExhaustion (i2p::data::CRYPTO_KEY_TYPE_ECIES_MLKEM768_X25519_AEAD);
 	}
 	else
-		std::printf ("skip: ML-KEM-768 not supported by this OpenSSL\n");
+	{
+		std::printf ("note: ML-KEM-768 is unavailable in this OpenSSL; the hybrid "
+			"session checks were not exercised\n");
+		pqChecksOmitted = true;
+	}
+#else
+	// Built without provider PQ support: the hybrid variant is absent from
+	// this run as well, and the final banner says so.
+	pqChecksOmitted = true;
 #endif
-	std::printf ("all ECIES-X25519-AEAD-Ratchet session checks passed\n");
+	if (pqChecksOmitted)
+		std::printf ("ECIES-X25519-AEAD-Ratchet session checks passed without the ML-KEM-768 variant\n");
+	else
+		std::printf ("all ECIES-X25519-AEAD-Ratchet session checks passed\n");
 	return 0;
 }
