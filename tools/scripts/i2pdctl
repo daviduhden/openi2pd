@@ -188,7 +188,10 @@ sub _humanize_size {
     # part.
     return int($size) . $SUFFIXES[$index] if $index == 0;
 
-    my $text = sprintf("%.${precision}f", $size);
+    # `%.*f` keeps the precision out of the format string: no caller value
+    # is ever interpolated into a format, so a future parameter cannot turn
+    # into a conversion specifier.
+    my $text = sprintf('%.*f', $precision, $size);
     # Match Python's str(round(value, precision)): keep one decimal
     # place for integral values ("2.0"), but drop redundant trailing
     # zeros ("1.5").

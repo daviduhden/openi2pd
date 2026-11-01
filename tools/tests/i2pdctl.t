@@ -444,6 +444,60 @@ ok( $server_port > 0, 'fake I2PControl server is listening' );
     is( $code, 2, 'unknown command exits 2' );
     like( $err, qr/invalid choice: bogus/, 'unknown command is reported' );
     like( $err, qr/usage: i2pdctl/, 'usage is printed on argument error' );
+    is( $out, '', 'an unknown command writes nothing to stdout' );
+}
+
+# Per-subcommand help is a success on stdout, and every usage error is
+# stderr-only with status 2, so a caller can never mistake a diagnostic
+# for data.
+{
+    my ( $out, $err, $code ) = run_i2pdctl( 'exec', '-h' );
+    is( $code, 0, 'exec -h exits 0' );
+    like( $out, qr/usage: i2pdctl exec/, 'exec usage is printed on stdout' );
+    is( $err, '', 'exec -h writes nothing to stderr' );
+}
+
+{
+    my ( $out, $err, $code ) = run_i2pdctl( 'raw_info', '--help' );
+    is( $code, 0, 'raw_info --help exits 0' );
+    like(
+        $out,
+        qr/Supported methods: RouterInfo, ClientServicesInfo/,
+        'raw_info help lists the supported methods'
+    );
+}
+
+{
+    my ( $out, $err, $code ) = run_i2pdctl( 'info', '-h' );
+    is( $code, 0, 'info -h exits 0' );
+    like( $out, qr/usage: i2pdctl info/, 'info usage is printed on stdout' );
+}
+
+{
+    my ( $out, $err, $code ) =
+      run_i2pdctl( 'exec', '--bogus', 'Echo', '{}' );
+    is( $code, 2, 'unknown subcommand option exits 2' );
+    like( $err, qr/Unknown option: bogus/i,
+        'unknown option is reported on stderr' );
+    like( $err, qr/usage: i2pdctl exec/, 'usage is printed for a bad option' );
+    is( $out, '', 'a bad option writes nothing to stdout' );
+}
+
+{
+    my ( $out, $err, $code ) =
+      run_i2pdctl( 'exec', 'Echo', '{}', 'extra' );
+    is( $code, 2, 'extra exec arguments exit 2' );
+    like( $err, qr/unrecognized arguments: extra/,
+        'extra exec arguments are reported' );
+    is( $out, '', 'extra arguments write nothing to stdout' );
+}
+
+{
+    my ( $out, $err, $code ) = run_i2pdctl( 'info', 'extra' );
+    is( $code, 2, 'info with arguments exits 2' );
+    like( $err, qr/unrecognized arguments: extra/,
+        'info arguments are reported' );
+    is( $out, '', 'info arguments write nothing to stdout' );
 }
 
 {
@@ -957,7 +1011,9 @@ Coverage:
 
 plain C<http://> path: authentication, C<exec>, C<raw_info>, C<info>,
 terminal escaping, malformed URL rejection, wrong password, non-ASCII
-password, connection failure and exit statuses;
+password, connection failure and exit statuses, including the usage-error
+contract (per-subcommand help on stdout with status 0, and
+unknown-option/missing/extra-argument diagnostics on stderr with status 2);
 
 =item *
 
