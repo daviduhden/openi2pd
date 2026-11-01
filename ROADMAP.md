@@ -1929,3 +1929,21 @@ corrected, and `doxygen-static` (a compile-free scanner over the
 Exit criteria: the next source-docs dispatch compiles the API documentation
 without a `WARN_AS_ERROR` abort, and the static Perl step keeps
 `doxygen-static` green. No local Doxygen or compiler run exists.
+
+## Executed-suite audit and Windows containment (2026-11-01, static)
+
+Fuzzing and Packaging pass on `dc5540ae`. The remaining lanes expose a test
+compile blocker, two first-run protocol defects (SSU2 `pq` wire encoding,
+ELS2 fixture geometry), a tunnel-endpoint guard that rejected pool cells, a
+tracker parser that committed partial peers, stale SAM/digest tool
+expectations, Windows process-attribute lifetime and SID allocator defects,
+nested-Job UI restrictions, and the GUI `--version` hang. All are corrected
+under CE-066/CE-067, RT-007..RT-010 and TF-036..TF-043, and the per-test log
+echo is what made the two previously open tests diagnosable.
+
+Exit criteria: the next manual batch compiles every Linux/OpenBSD/sanitizer
+target, runs the corrected suites without assertions, MSVC isolation and
+supervisor spawn under the runner's existing Job Object without heap
+corruption, the Windows version/help probes terminate with the banner, and
+the source-docs lane completes without a duplicate-`@param` abort. No local
+dynamic validation exists.

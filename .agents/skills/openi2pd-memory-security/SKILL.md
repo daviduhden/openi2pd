@@ -102,6 +102,12 @@ Do not let reconnaissance agents edit, compile, execute tests or run scripts.
   the audit is complete.
 
 ## Known issues and decisions
+- For a fixed cell, capacity (`maxLen - offset`) is the memory-safety bound.
+  A declared length may reserve a gateway header; give it a separate floor
+  instead of rejecting a valid transit message.
+- Parsers that commit into live containers must stage their result and swap
+  only after full validation, so a truncated document cannot publish a
+  partial state.
 
 - Any singleton that owns a service/context must reject work before that
   context exists: `Transports::SendMessage`/`SendMessages` return an invalid

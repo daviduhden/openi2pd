@@ -98,6 +98,15 @@ peer or add a hidden external checkout. The reference is for reading only.
   protocol requirement justifies it.
 
 ## Known issues and decisions
+- A RouterInfo option value is one length-prefixed string, so commas stay
+  inside it (`pq=4,3`); two strings around a raw comma make the descriptor
+  unparseable. Assert the sealed bytes.
+- SAM `MIN`/`MAX` use Java `VersionComparator`: any dotted depth is legal and
+  `3.0.0...0.1` is `3.0`; only a non-digit component is malformed. An RFC
+  7616 digest response is bound to `nc`.
+- An encrypted LeaseSet2 layer-1 plaintext is one region of
+  `1 + 32 + lenInner` inside the declared `lenOuterCiphertext`; the signature
+  prefix must equal what the reader reconstructs.
 
 - A signature-valid RouterInfo whose only address is unusable is parseable and
   storable for the Java 54-minute grace. Tests assert

@@ -100,6 +100,13 @@ execution. Ask for:
   datadir ACL as the Windows equivalent.
 
 ## Known issues and decisions
+- A GUI-subsystem router answers `--version`/`--help` before `Daemon.init`,
+  from `GetCommandLineW()`, through the inherited handle or `AttachConsole`,
+  then `_Exit`; never rely on CRT `__argc/__argv` or console code pages.
+- `UpdateProcThreadAttribute` stores a pointer: every value must live until
+  `CreateProcess` returns. AppContainer profile SIDs are `FreeSid`-owned.
+  A nested job cannot set UI limits; keep containment/resource limits, drop
+  only UI restrictions, and retry without `JOB_LIST` once for a rejected job.
 
 - `i2pd` is a GUI-subsystem (`WIN32`) executable. A headless CTest launch can
   block with no console; bound the wait and use the exit status, and keep man

@@ -5719,3 +5719,58 @@ blocks) and is registered as `doxygen-static`, executed by the workflow Perl
 step, covered by negative fixtures in `maintenance-checkers.t` and pinned by
 `check-build-system.cmake`. CE-065 records the evidence. Static checks pass;
 no Doxygen run exists, so the manual source-docs lane remains pending.
+
+## Sixth batch: executed suites and Windows containment (2026-11-01, static)
+
+The five workflows for `dc5540ae` and the `c1125a75` documentation rerun were
+read. Fuzzing and Packaging now pass. Linux, OpenBSD and the sanitizers stop
+at a new test compile error before CTest; MSYS2 runs 213 tests with 10
+failures; MSVC runs 7 with two heap-corruption exits; the source-docs job
+reaches the next Doxygen defect.
+
+- **CE-066:** `test-privsep-worker-identity` called `subspan` on a
+  `std::vector` and had platform-only unused locals. Fixed with a span view
+  and branch-scoped declarations; this unblocks every Linux/OpenBSD/sanitizer
+  lane.
+- **CE-067:** Doxygen merges declaration and definition docs, so the
+  `SetPrivateKey` block in both `Crypto.h`/`Crypto.cpp` produced a duplicate
+  `@param`. Removed from the definitions for `SetPrivateKey`, `ParseCmdline`
+  and `ExtractClientAuthData`; `doxygen-static` now rejects in-block repeats
+  and header/definition duplicates with new fixtures.
+- **TF-038:** the SSU2 `pq` list was written as two length-prefixed strings
+  around a raw comma, so the router's own RouterInfo was unparseable. One
+  `WriteString("4,3")` now matches Java; the wire bytes are pinned.
+- **TF-039:** the hand-sealed ELS2 fixture appended the inner salt and
+  plaintext outside the declared `lenOuterCiphertext`, so the signature
+  prefix differed from the reader's reconstruction. The fixture now indexes
+  inside the reserved region and has a negative control.
+- **TF-040:** the new endpoint guard compared a declared length to a full
+  cell, but a pool message reserves `TUNNEL_GATEWAY_HEADER_SIZE`. Capacity
+  remains the memory-safety bound and a separate floor admits the reserved
+  header; a pool-cell regression covers it.
+- **TF-041:** `ParsePeers` mutated the live tracker slot before the bencode
+  document validated. It now stages into a scratch set and commits only on a
+  fully valid, non-failure response.
+- **TF-036/TF-037:** the SAM long-version and digest-`nc` cases encoded
+  retired/incorrect expectations; both are corrected against Java
+  `VersionComparator` and RFC 7616 (`nc` is part of the response).
+- **TF-042:** `i2pbase64` now decodes per quartet so `=` terminates the
+  stream and `data after padding` survives a read boundary; the routerinfo
+  usage needle is path-independent; writer-error regressions use stderr and
+  each tool's exit status (including latent famtool cases).
+- **RT-007..RT-009/TF-043:** Windows spawn attribute values were stack locals
+  that died before `CreateProcess`; AppContainer profile SIDs were freed with
+  `LocalFree` instead of `FreeSid`; a nested Job Object cannot carry UI
+  limits. Values now live in the attribute owner, SIDs use `FreeSid`, the UI
+  restrictions are conditional and reported, and a rejected job attribute
+  gets one suspended-process retry that still assigns containment before
+  resuming.
+- **RT-010/TF-034:** the Windows GUI image answered `--version` only after
+  daemon initialization and emitted nothing before blocking. Informational
+  flags are now classified from `GetCommandLineW()` and answered before
+  `Daemon.init`, through the inherited handle or `AttachConsole`, then
+  `std::_Exit`; the driver requires the banner on every platform.
+
+Static checks pass, including the enhanced Doxygen scanner and the 43
+maintenance fixtures. No compiler, CTest, Gradle, Doxygen, package, workflow,
+commit or push was performed; all entries remain Pending CI.

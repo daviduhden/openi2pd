@@ -135,6 +135,12 @@ workflow, run `gh`, build or test.
   releases or secrets.
 
 ## Known issues and decisions
+- The per-test stderr echo (`tests/log-support.cpp`) is what named the
+  SSU2 `pq` writer and ELS2 fixture defects. Keep it; an aborting assert
+  otherwise leaves only the signal.
+- `doxygen-static` now also rejects duplicate `@param` from a member's
+  declaration plus definition; the source-docs lane aborts on the first such
+  warning.
 - `doxygen-static` (`tools/scripts/check-doxygen-params.pl`) runs in the
   static Perl block and the workflow Perl step. It catches the recurring
   partial-`@param` source-docs failure without invoking Doxygen; the manual

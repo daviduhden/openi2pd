@@ -115,6 +115,9 @@ Do not let them edit, build or run tests.
   filesystem paths cross IPC.
 
 ## Known issues and decisions
+- Tracker `peers` parsing is transactional: parse into a scratch set and
+  commit only after the complete bencode document validates and the response
+  carried no failure. A truncated document keeps the last known good list.
 
 - A tracker response that carries both `failure reason` and `interval` keeps
   the failure retry ladder: schedule the next request only in the success tail

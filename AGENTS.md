@@ -2661,3 +2661,45 @@ the `Doxyfile.source` roots and reports file, line and missing names; it is
 a compile-free guard, not a replacement for the manual Doxygen lane. A new
 partially documented function must fail that check, and a `@param a/b`
 spelling is not a substitute for separate `@param a` and `@param b` entries.
+
+## Sixth CI batch: executed suites and Windows containment (`dc5540ae`, 2026-11-01, static)
+
+Runs 41248772071 (Linux/Android), 41248774956 (Windows), 41248777820
+(OpenBSD), 41248780574 (Fuzzing, success), 41248783388 (Packaging, success)
+and the documentation rerun 41249881405 on `c1125a75` were read with `gh`.
+CE-066/CE-067, RT-007..RT-010 and TF-036..TF-043 record the evidence. The
+per-test log echo added in `tests/log-support.cpp` named the cause of both
+previously open tests, so keep it: a failed `assert` must keep printing the
+product's own diagnostics.
+
+Load-bearing lessons:
+
+- A RouterInfo option is one length-prefixed value. `pq=4,3` is
+  `0x03 '4' ',' '3'`; two strings around a raw comma make the RouterInfo
+  unparseable. Assert the wire bytes, not only the round trip.
+- Capacity (`maxLen - offset`) is the memory-safety bound for a tunnel cell;
+  a declared length may reserve `TUNNEL_GATEWAY_HEADER_SIZE`, so it needs its
+  own floor. Never reject a pool cell because it declares six bytes less.
+- A parser must not mutate live state before the enclosing document
+  validates. Tracker `peers` parse into scratch storage and commit only on a
+  fully valid, non-failure response.
+- SAM version bounds are compared with Java `VersionComparator` semantics:
+  the dotted depth is not fixed and `3.0.0...0.1` is `3.0`, not malformed. An
+  RFC 7616 response is bound to its `nc`, so tests need one vector per count.
+- Windows `PROC_THREAD_ATTRIBUTE_*` values must outlive `CreateProcess`; a
+  block local is a dangling pointer that yields `ERROR_INVALID_PARAMETER` for
+  every image. AppContainer profile SIDs from userenv are `FreeSid`-owned.
+  A nested Job Object cannot carry UI limits: keep
+  `KILL_ON_JOB_CLOSE`/resource limits, drop only the UI restrictions, and
+  report the reduction; retry once without `JOB_LIST` only for a rejected job
+  attribute, assigning the suspended child before it runs.
+- A GUI-subsystem Windows image answers `--version`/`--help` before
+  `Daemon.init`: authoritative `GetCommandLineW()` argv, inherited handle or
+  `AttachConsole` for the banner, `std::_Exit`, and no dialog. The exit status
+  is authoritative when no console exists.
+- `i2pbase64` decodes per quartet so padding terminates the stream;
+  `data after padding` is a distinct diagnostic across read boundaries. CLI
+  tests never grep an `argv[0]`-bearing usage line.
+- Doxygen merges declaration and definition documentation: `@param` belongs on
+  the declaration only. The static `doxygen-static` checker also rejects
+  in-block repeats and header/definition duplicates.

@@ -117,6 +117,10 @@ branding validators or a build.
   than rewriting history without cause.
 
 ## Known issues and decisions
+- Doxygen merges a member's declaration and definition documentation.
+  Put `@param` on the declaration only; a repeat in the `.cpp` is fatal
+  under `WARN_AS_ERROR`. The static checker rejects both in-block repeats
+  and header/definition duplicates (scope + name + arity).
 - Doxygen `WARN_IF_DOC_ERROR` fails a function that names some `@param`s
   and omits others, for both `/** */` and `///` blocks. `WARN_NO_PARAMDOC` is
   off, so a block with no `@param` is accepted; do not over-correct. Run

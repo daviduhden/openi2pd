@@ -122,6 +122,12 @@ a TUI client.
   Never let it execute repository code.
 
 ## Known issues and decisions
+- `i2pbase64` decodes one quartet at a time so `=` terminates the stream and
+  `data after padding` stays distinct across reads; unwritable key output is
+  `Can't create <path>: the path must be a writable regular file` on stderr
+  with each tool's documented exit status.
+- Never assert an `argv[0]`-bearing usage line; assert `usage: ` plus a
+  synopsis token.
 
 - `keyinfo` validates every section before the first stdout byte: an optional
   b33 offline-key batch is a successful summary with a stderr note, while

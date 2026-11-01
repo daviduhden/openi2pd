@@ -104,6 +104,11 @@ report that limitation; do not substitute local execution. Ask for:
   worker is not global separation.
 
 ## Known issues and decisions
+- Windows spawn attributes are pointer-valued and must outlive
+  `CreateProcess`; a block-local mitigation/capability struct yields
+  `ERROR_INVALID_PARAMETER`. Profile SIDs from userenv use `FreeSid`.
+  Nested jobs keep every containment/resource limit but cannot carry the UI
+  restrictions; report the reduction and never fail a contained worker for it.
 
 - Direction is a compile-time registry property. A request is received by
   workers only (the Windows pre-dispatch `WorkerHello` is the single
