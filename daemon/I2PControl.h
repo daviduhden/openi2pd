@@ -185,8 +185,11 @@ namespace client
 	/// async chain ends; timers and close callbacks let Stop() cancel
 	/// accepted connections.
 	/// @warning The service owns the event loop and must outlive its
-	/// callbacks. A Stop() invoked on its own service thread does not
-	/// explicitly drain the queued cancellation handlers before returning.
+	/// callbacks. Stop() joins the control thread on every caller that is
+	/// not itself running on it; a Stop() issued by a control handler
+	/// leaves the thread object in place, so the owner's Stop() or the
+	/// destructor completes the join and destruction on the control
+	/// thread itself remains unsupported.
 	class I2PControlService : public I2PControlHandlers
 	{
 	public:

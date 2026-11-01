@@ -132,8 +132,6 @@ static void WarnBeforeLogger (const std::string & message)
 }
 #endif
 
-const int GRACEFUL_SHUTDOWN_INTERVAL = 10 * 60; // in seconds
-
 // a handler may only touch volatile sig_atomic_t, everything else is
 // done by the daemon loop
 static volatile sig_atomic_t g_PendingSignals[NSIG] = { };
@@ -188,9 +186,11 @@ static void HandlePendingSignals ()
 		case SIGINT:
 			if (i2p::context.AcceptsTunnels () && Daemon.gracefulShutdownInterval.load () == 0)
 			{
-				i2p::context.SetAcceptsTunnels (false);
-				Daemon.gracefulShutdownInterval.store (GRACEFUL_SHUTDOWN_INTERVAL);
-				LogPrint (eLogInfo, "Graceful shutdown after ", Daemon.gracefulShutdownInterval.load (), " seconds");
+				// Route the signal-driven drain through the shared entry point so
+				// the transit policy that was in force is recorded: a later
+				// ADMIN SHUTDOWN CANCEL then restores it instead of leaving
+				// transit acceptance disabled for the rest of the run.
+				if (!Daemon.BeginGracefulShutdown ()) Daemon.running = 0; // Exit loop
 			}
 			else
 				Daemon.running = 0;

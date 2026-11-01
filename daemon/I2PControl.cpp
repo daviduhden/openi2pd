@@ -199,7 +199,11 @@ namespace client
 #endif
 		}
 #else
-			LogPrint (eLogError, "I2PControl: Local sockets are not supported");
+			// Without local stream socket support this build cannot create the
+			// configured endpoint. Starting anyway would leave Start() with no
+			// listener at all: Run() would then spin on an io_context that has no
+			// outstanding work instead of blocking for a connection.
+			throw std::runtime_error ("I2PControl local sockets are not supported by this build");
 #endif
 
 		// certificate / keys
@@ -246,8 +250,15 @@ namespace client
 					boost::system::errc::invalid_argument, boost::system::generic_category ());
 			}
 			if (ec)
-				// give up
-				LogPrint (eLogError, "I2PControl: Can't load certificates");
+			{
+				// A listener whose certificate and key cannot be loaded cannot
+				// complete one TLS handshake: every control client would be
+				// rejected after the endpoint was published as working. Fail the
+				// construction so the caller stops the start instead of running
+				// a control service that never answers.
+				LogPrint (eLogError, "I2PControl: Can't load certificates: ", ec.message ());
+				throw std::runtime_error ("I2PControl cannot load its TLS certificate and key");
+			}
 		}
 
 		// handlers
@@ -278,6 +289,27 @@ namespace client
 	{
 		bool expected = false;
 		if (!m_IsRunning.compare_exchange_strong (expected, true, std::memory_order_acq_rel)) return;
+		// A Stop() issued by a control handler defers the join to the owner, so
+		// a restart must reclaim that thread object before replacing it:
+		// destroying a joinable std::thread terminates the process. Joining the
+		// calling thread itself is impossible, so that re-entrant restart is
+		// refused instead of deadlocking.
+		if (m_Thread)
+		{
+			if (!m_Thread->joinable ())
+				m_Thread = nullptr;
+			else if (m_Service.get_executor ().running_in_this_thread ())
+			{
+				m_IsRunning.store (false, std::memory_order_release);
+				LogPrint (eLogError, "I2PControl: Refusing to restart from the control thread");
+				return;
+			}
+			else
+			{
+				m_Thread->join ();
+				m_Thread = nullptr;
+			}
+		}
 		// Stop() leaves the io_context stopped; a restart must restart it
 		// before registering the accept operation.
 		m_Service.restart ();
@@ -287,28 +319,23 @@ namespace client
 
 	void I2PControlService::Stop ()
 	{
+		// A shutdown request can originate in a control handler, i.e. on the
+		// io_context thread itself, where joining would self-deadlock. The thread
+		// object is nevertheless kept: the owner's Stop() (normal shutdown) or
+		// the destructor completes the join. Detaching it instead would let this
+		// object be destroyed while the detached thread still reads m_IsRunning
+		// and executes handlers that capture this.
+		const bool onServiceThread = m_Service.get_executor ().running_in_this_thread ();
 		bool expected = true;
 		if (m_IsRunning.compare_exchange_strong (expected, false, std::memory_order_acq_rel))
 		{
 			std::vector<std::function<void ()>> closeConnections;
 			std::vector<std::shared_ptr<boost::asio::steady_timer>> deadlines;
-			// Stop the io_context and join first: Asio shared objects must not
-			// be closed while a handler is running on them. The queued
-			// cancellation handlers are drained after the sockets are closed.
+			// Stop the io_context first: Asio shared objects must not be closed
+			// while a handler is running on them. The queued cancellation
+			// handlers are drained after the sockets are closed, and both steps
+			// complete before the join below.
 			m_Service.stop ();
-			// A shutdown request can originate in a control handler, i.e. on the
-			// io_context thread itself. Joining there would self-deadlock;
-			// detach instead, because Run() observes m_IsRunning == false as
-			// soon as the current handler returns.
-			const bool onServiceThread = m_Service.get_executor ().running_in_this_thread ();
-			if (m_Thread)
-			{
-				if (onServiceThread)
-					m_Thread->detach ();
-				else
-					m_Thread->join ();
-				m_Thread = nullptr;
-			}
 			if (m_Acceptor) m_Acceptor->cancel ();
 #if defined(BOOST_ASIO_HAS_LOCAL_SOCKETS)
 			if (m_LocalAcceptor)
@@ -348,6 +375,16 @@ namespace client
 				m_Service.run ();
 				m_Service.stop ();
 			}
+		}
+		// The join is not part of the one-shot block: every non-control-thread
+		// caller completes it, including the Stop() that follows a control
+		// handler's own Stop(). Run() observes m_IsRunning == false and leaves
+		// after the current handler returns, so this wait is bounded by one
+		// handler invocation.
+		if (m_Thread && !onServiceThread)
+		{
+			m_Thread->join ();
+			m_Thread = nullptr;
 		}
 	}
 

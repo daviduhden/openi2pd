@@ -1583,8 +1583,28 @@ namespace util
 			}
 			catch (std::exception & ex)
 			{
+				// ThrowFatal only forwards to a platform throw function, which
+				// exists in the Windows build alone. A configured control service
+				// that cannot bind its endpoint, resolve its address or load its
+				// certificate must therefore fail the start explicitly: skipping
+				// it would run the router without the administration channel the
+				// operator asked for and still report a successful start.
 				LogPrint (eLogCritical, "Daemon: Failed to start I2PControl: ", ex.what ());
 				ThrowFatal ("Unable to start I2PControl service at ", i2pcpAddr, ":", i2pcpPort, ": ", ex.what ());
+				d->m_I2PControlService.reset ();
+				// Everything started above this point is live (TUI IPC, the
+				// administrative queue, client/router contexts, tunnels,
+				// transports and NetDb). Tear it down in the normal order; the
+				// caller turns the failed start into a nonzero exit.
+				//
+				// Android is the exception: its lifecycle helper owns exactly
+				// one rollback stop after a failed start, so stopping here would
+				// violate that contract and run teardown twice.
+#if !defined(__ANDROID__)
+				LogPrint (eLogError, "Daemon: Startup failed, stopping the services that already started");
+				stop ();
+#endif
+				return false;
 			}
 		}
 #if !defined(_WIN32) && !defined(I2PD_NO_PRIVSEP)
