@@ -12,8 +12,9 @@
  *
  */
 
-#include <thread>
+#include <chrono>
 #include <clocale>
+#include <thread>
 #include "Config.h"
 #include "Daemon.h"
 #include "util.h"

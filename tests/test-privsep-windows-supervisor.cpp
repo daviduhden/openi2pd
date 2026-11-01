@@ -103,6 +103,29 @@ std::string SystemErrorText (DWORD error)
 }
 
 /*
+ * Read one published snapshot.
+ *
+ * Publishing a transition always leaves exactly one entry for that worker,
+ * so an absent entry means the publisher and the reader disagree about the
+ * worker name (or the MAX_WORKERS bound was reached) rather than that the
+ * state is legitimately unknown. Reading the optional without checking it
+ * would be undefined behaviour, and a build without the assertions would
+ * reach the same dereference silently, so the helper reports the missing
+ * entry and stops before any field is read.
+ */
+SupervisorWorkerSnapshot RequireSnapshot (const SupervisorStatus & status, const std::string & worker)
+{
+	const auto snapshot = status.Get (worker);
+	assert (snapshot.has_value ());
+	if (!snapshot)
+	{
+		std::printf ("missing supervisor snapshot for %s\n", worker.c_str ());
+		std::abort ();
+	}
+	return *snapshot;
+}
+
+/*
  * Pure state-machine tests. They use an injected clock and a local
  * snapshot, so they exercise the production classifier and publisher
  * without a worker.
@@ -119,10 +142,9 @@ void TestRestartLadder ()
 	PublishWindowsWorkerTransition (status, worker, SupervisorWorkerState::Starting, first, 0);
 	policy.NoteReady (At (0));
 	PublishWindowsWorkerTransition (status, worker, SupervisorWorkerState::Ready, first, 0);
-	auto snapshot = status.Get (worker);
-	assert (snapshot.has_value ());
-	assert (snapshot->state == SupervisorWorkerState::Ready);
-	assert (snapshot->generation == 1);
+	const auto published = RequireSnapshot (status, worker);
+	assert (published.state == SupervisorWorkerState::Ready);
+	assert (published.generation == 1);
 
 	// Documented ladder: 250 ms doubling to the 30 s cap, one generation
 	// per
@@ -151,17 +173,17 @@ void TestRestartLadder ()
 		PublishWindowsWorkerTransition (
 			status, worker, outcome.state, outcome.generation, outcome.restarts, outcome.reason);
 		generation = outcome.generation;
-		snapshot = status.Get (worker);
-		assert (snapshot->state == SupervisorWorkerState::Restarting);
-		assert (snapshot->generation == generation);
-		assert (snapshot->restarts == index + 1);
+		const auto restarting = RequireSnapshot (status, worker);
+		assert (restarting.state == SupervisorWorkerState::Restarting);
+		assert (restarting.generation == generation);
+		assert (restarting.restarts == index + 1);
 
 		elapsed += outcome.delay.count ();
 		readyAt = elapsed;
 		policy.NoteReady (At (elapsed));
 		PublishWindowsWorkerTransition (status, worker, SupervisorWorkerState::Ready, generation, outcome.restarts);
-		snapshot = status.Get (worker);
-		assert (snapshot->state == SupervisorWorkerState::Ready);
+		const auto recovered = RequireSnapshot (status, worker);
+		assert (recovered.state == SupervisorWorkerState::Ready);
 	}
 	// Each generation failed before its own stable period, so the restart
 	// counter has not been reset even though the backoff ladder spans over
@@ -192,9 +214,9 @@ void TestRestartLadder ()
 		status, worker, exhausted.state, exhausted.generation, exhausted.restarts, exhausted.reason);
 	assert (status.Size () == 1);
 	assert (status.Snapshot ().size () == 1);
-	snapshot = status.Get (worker);
-	assert (snapshot->state == SupervisorWorkerState::Failed);
-	assert (snapshot->reason == exhausted.reason);
+	const auto failed = RequireSnapshot (status, worker);
+	assert (failed.state == SupervisorWorkerState::Failed);
+	assert (failed.reason == exhausted.reason);
 	assert (policy.Generation () == generation);
 }
 
@@ -259,7 +281,11 @@ void TestFailureClassification ()
 	assert (!policy.Exhausted ());
 	PublishWindowsWorkerTransition (status, worker, SupervisorWorkerState::Failed, generation, 0,
 		WindowsWorkerFailureReason (WindowsWorkerFailureKind::Accept));
-	assert (status.Get (worker)->state == SupervisorWorkerState::Failed);
+	// The lookup contract the helper depends on: an unknown worker has no
+	// entry at all, so a missing snapshot is never confused with a default
+	// state and a name mismatch cannot read uninitialised storage.
+	assert (!status.Get ("never-published").has_value ());
+	assert (RequireSnapshot (status, worker).state == SupervisorWorkerState::Failed);
 }
 
 void TestBudgets ()
@@ -629,7 +655,7 @@ int TestLiveWorker ()
 		assert (supervisor.Generation () == 1);
 		assert (supervisor.Channel () != nullptr);
 		assert (!supervisor.PipeName ().empty ());
-		assert (status.Get ("test-live-worker")->state == SupervisorWorkerState::Ready);
+		assert (RequireSnapshot (status, "test-live-worker").state == SupervisorWorkerState::Ready);
 
 		if (!PingPong (supervisor, 7, 5000))
 		{
@@ -661,10 +687,10 @@ int TestLiveWorker ()
 		}
 		assert (!supervisor.IsRunning ());
 		assert (supervisor.Generation () == 2);
-		const auto restarting = status.Get ("test-live-worker");
-		assert (restarting->state == SupervisorWorkerState::Restarting);
-		assert (restarting->generation == 2);
-		assert (restarting->restarts == 1);
+		const auto restarting = RequireSnapshot (status, "test-live-worker");
+		assert (restarting.state == SupervisorWorkerState::Restarting);
+		assert (restarting.generation == 2);
+		assert (restarting.restarts == 1);
 
 		if (!PumpUntil (supervisor, SupervisorWorkerState::Ready, 10000))
 		{
@@ -674,9 +700,9 @@ int TestLiveWorker ()
 		}
 		assert (supervisor.IsRunning ());
 		assert (supervisor.Generation () == 2);
-		const auto ready = status.Get ("test-live-worker");
-		assert (ready->state == SupervisorWorkerState::Ready);
-		assert (ready->generation == 2);
+		const auto ready = RequireSnapshot (status, "test-live-worker");
+		assert (ready.state == SupervisorWorkerState::Ready);
+		assert (ready.generation == 2);
 		assert (PingPong (supervisor, 8, 5000));
 
 		assert (supervisor.Stop (10000));

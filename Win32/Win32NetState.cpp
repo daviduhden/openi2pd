@@ -13,6 +13,7 @@
 
 #include "Win32NetState.h"
 #include <windows.h>
+#include <exception>
 #include "Log.h"
 
 IUnknown * pUnknown = nullptr;

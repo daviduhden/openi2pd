@@ -217,7 +217,8 @@ void TestStatusExhaustionIsPublishedOnce ()
 	// observe two states for the same worker.
 	status.NoteFailed ("log", generation, budget.Restarts (), "restart budget exhausted");
 	assert (status.Size () == 1);
-	assert (status.Get ("log")->state == SupervisorWorkerState::Failed);
+	const auto logSnapshot = status.Get ("log");
+	assert (logSnapshot && logSnapshot->state == SupervisorWorkerState::Failed);
 }
 
 void TestStatusBounds ()

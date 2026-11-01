@@ -15,6 +15,8 @@
 
 #include <stdio.h>
 #include <string.h>
+#include <sstream>
+#include <string>
 #include <windows.h>
 #include <shellapi.h>
 #include "ClientContext.h"
@@ -117,7 +119,6 @@ namespace win32
 		nid.hWnd = hWnd;
 		nid.uID = ID_TRAY_ICON;
 		nid.uFlags = notify ? NIF_ICON | NIF_MESSAGE | NIF_TIP | NIF_INFO : NIF_ICON | NIF_MESSAGE | NIF_TIP;
-		nid.uFlags = NIF_ICON | NIF_MESSAGE | NIF_TIP | NIF_INFO;
 		nid.uCallbackMessage = WM_TRAYICON;
 		nid.hIcon = LoadIcon (GetModuleHandle (NULL), MAKEINTRESOURCE (MAINICON));
 		CopyFixedString (nid.szTip, sizeof (nid.szTip), "openi2pd");
