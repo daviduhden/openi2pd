@@ -30,6 +30,25 @@ Use the output as `keys =` in a tunnel/server configuration. The router can sign
 with the transient key while the main destination key stays offline until the
 expiry.
 
+## Output
+
+On success the destination's base32 hash, the signature type and the day count
+are printed on stdout. Usage errors, an unreadable or structurally invalid key
+file, an unsupported signature type or an out-of-range day count are written to
+stderr and never touch stdout.
+
+The batch is installed through the owner-only atomic writer, so the output path
+must be a regular file that can be created or replaced. A directory, a
+device, a path below a missing directory or another non-writable target is
+refused with `Can't create <path>: the path must be a writable regular file`
+on stderr and status 3; the input key file and any existing output file are
+left unchanged.
+
+Exit status: 0 success, 1 usage or an output path that resolves to the input,
+2 an unreadable key file or a bad signature-type/day argument, 3 an invalid key
+file or a failed write, 4 the core cannot create offline keys for the requested
+type.
+
 ## Security
 
 The input and output files both contain private material. Native output is

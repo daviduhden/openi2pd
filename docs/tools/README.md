@@ -80,9 +80,12 @@ CTest registers three native-tool tests plus the library-level firewall test:
   day count; `regaddr`, `regaddr_3ld` and `regaddralias` cross-checked with
   `verifyhost`, including tamper rejection; `famtool` generation, the family
   name boundary and negative argument paths; `i2pbase64` text, UTF-8, control
-  bytes, embedded NULs, whitespace and malformed input; `offlinekeys` defaults,
-  limits and output parseability; and `vain` thread, pattern, signature and
-  regex bounds. It never starts a vanity search or contacts the network.
+  bytes, embedded NULs, whitespace, malformed input and padding that terminates
+  the stream in the same or a later read; `offlinekeys` defaults, limits and
+  output parseability; the atomic-writer refusal of an unwritable output path in
+  `keygen`, `b33offlinekeys` and `offlinekeys`; and `vain` thread, pattern,
+  signature and regex bounds. It never starts a vanity search or contacts the
+  network.
 - `tools-inventory`: every built native artifact is present, the pinned
   upstream manifest is checked for missing files, and an unregistered
   top-level `tools/*.cpp` fails the check.

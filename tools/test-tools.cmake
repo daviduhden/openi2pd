@@ -221,6 +221,9 @@ foreach(expected
 endforeach()
 
 # Usage errors go to stderr only; explicit help stays on stdout.
+# The synopsis starts with argv[0], so compare only its fixed part: a
+# needle containing the bare tool name would fail whenever the binary is
+# addressed through a build path (Windows ".exe", MSYS2 prefix).
 execute_process(COMMAND "${TOOLS_DIR}/routerinfo${EXE}"
   RESULT_VARIABLE usage_result OUTPUT_VARIABLE usage_output ERROR_VARIABLE usage_error)
 if(NOT usage_result EQUAL 1)
@@ -229,9 +232,13 @@ endif()
 if(NOT usage_output STREQUAL "")
   message(FATAL_ERROR "routerinfo usage error wrote to stdout: ${usage_output}")
 endif()
-string(FIND "${usage_error}" "usage: routerinfo" usage_position)
+string(FIND "${usage_error}" "usage: " usage_position)
 if(usage_position EQUAL -1)
   message(FATAL_ERROR "routerinfo usage error did not reach stderr: ${usage_error}")
+endif()
+string(FIND "${usage_error}" "[-6] [-p] [-y] [--firewall=BACKEND] [NFT OPTIONS]" usage_synopsis)
+if(usage_synopsis EQUAL -1)
+  message(FATAL_ERROR "routerinfo usage error is missing the synopsis: ${usage_error}")
 endif()
 
 # A later invalid file must not leave earlier rules on stdout.

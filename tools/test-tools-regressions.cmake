@@ -210,6 +210,20 @@ if(EXISTS "${WORK}/rsa-fallback.keys")
   fail("keygen wrote a fallback key for an unsupported signature type")
 endif()
 
+# The atomic private writer is the only write path: a target that cannot
+# become a regular file is refused with the path and reason on stderr,
+# exit 3 and an empty stdout, so a rejected generation never looks like
+# a created key.
+run_tool(keygen FALSE "${WORK}" EDDSA-SHA512-ED25519)
+if(NOT "${LAST_TOOL_RESULT}" EQUAL 3)
+  fail("keygen unwritable output exited ${LAST_TOOL_RESULT}, expected 3")
+endif()
+if(NOT "${LAST_TOOL_OUTPUT}" STREQUAL "")
+  fail("keygen unwritable output wrote to stdout:\n${LAST_TOOL_OUTPUT}")
+endif()
+assert_contains("${LAST_TOOL_ERROR}" "Can't create " "keygen unwritable output")
+assert_contains("${LAST_TOOL_ERROR}" "writable regular file" "keygen unwritable output reason")
+
 run_tool(keygen TRUE reddsa.keys RED25519-SHA512)
 assert_output_contains("Signature type: RED25519-SHA512" "keygen RedDSA")
 restrict_secret("${WORK}/reddsa.keys")
@@ -387,6 +401,17 @@ run_tool(b33offlinekeys FALSE bad.dat malformed.keys 1)
 assert_output_contains("bad keys file format" "b33offlinekeys malformed key file")
 run_tool(b33offlinekeys FALSE bad.dat empty.keys 1)
 assert_output_contains("bad keys file format" "b33offlinekeys empty key file")
+# Same atomic-writer contract as the other key tools: stderr diagnostic,
+# documented non-zero status and no stdout data.
+run_tool(b33offlinekeys FALSE "${WORK}" ed25519.keys 1)
+if(NOT "${LAST_TOOL_RESULT}" EQUAL 9)
+  fail("b33offlinekeys unwritable output exited ${LAST_TOOL_RESULT}, expected 9")
+endif()
+if(NOT "${LAST_TOOL_OUTPUT}" STREQUAL "")
+  fail("b33offlinekeys unwritable output wrote to stdout:\n${LAST_TOOL_OUTPUT}")
+endif()
+assert_contains("${LAST_TOOL_ERROR}" "Can't create " "b33offlinekeys unwritable output")
+assert_contains("${LAST_TOOL_ERROR}" "writable regular file" "b33offlinekeys unwritable output reason")
 
 # --------------------------------------------------------------------
 # offlinekeys: defaults, limits, output parseability and invalid
@@ -432,8 +457,18 @@ run_tool(offlinekeys FALSE bad.dat malformed.keys)
 assert_output_contains("bad keys file format" "offlinekeys malformed key file")
 run_tool(offlinekeys FALSE bad.dat empty.keys)
 assert_output_contains("bad keys file format" "offlinekeys empty key file")
+# A directory cannot be replaced by the owner-only atomic writer. The
+# diagnostic names the path and the rejected reason on stderr and nothing
+# reaches stdout, so a failed write never resembles a created key file.
 run_tool(offlinekeys FALSE "${WORK}" ed25519.keys EDDSA-SHA512-ED25519 1)
-assert_output_contains("Can't create file" "offlinekeys unwritable output")
+if(NOT "${LAST_TOOL_RESULT}" EQUAL 3)
+  fail("offlinekeys unwritable output exited ${LAST_TOOL_RESULT}, expected 3")
+endif()
+if(NOT "${LAST_TOOL_OUTPUT}" STREQUAL "")
+  fail("offlinekeys unwritable output wrote to stdout:\n${LAST_TOOL_OUTPUT}")
+endif()
+assert_contains("${LAST_TOOL_ERROR}" "Can't create " "offlinekeys unwritable output")
+assert_contains("${LAST_TOOL_ERROR}" "writable regular file" "offlinekeys unwritable output reason")
 
 # --------------------------------------------------------------------
 # regaddr / regaddr_3ld / regaddralias: records must verify with
@@ -570,7 +605,14 @@ restrict_secret("${WORK}/family18.pem")
 
 string(REPEAT "a" 19 FAMILY_19)
 run_tool(famtool FALSE -g -n "${FAMILY_19}" -c family19.crt -k family19.pem)
-assert_output_contains("family name too long" "famtool rejects a 19-byte family name")
+# Generation validates the name before any certificate is built, so a
+# 19-byte name is rejected by the charset/length guard (the signed family
+# blob is 50 bytes: 32-byte identity hash + name).
+assert_contains("${LAST_TOOL_ERROR}" "family name must use letters" "famtool rejects a 19-byte family name")
+assert_contains("${LAST_TOOL_ERROR}" "fit 18 bytes" "famtool 19-byte family name length bound")
+if(EXISTS "${WORK}/family19.crt")
+  fail("famtool wrote a certificate for a rejected family name")
+endif()
 
 run_tool(famtool FALSE -V -n testfam -c testfam.crt)
 assert_output_contains("no router info file specified" "famtool verify without RouterInfo")
@@ -594,8 +636,15 @@ assert_output_contains("no router info file specified" "famtool sign without Rou
 run_tool(famtool FALSE -s -n testfam -i missing.keys -k testfam.pem -f bogus.info)
 run_tool(famtool FALSE -n testfam extra)
 assert_output_contains("unexpected argument" "famtool unexpected positional argument")
+# Certificate and key are installed through the in-memory atomic
+# writers, so a path below a missing directory fails at the write, not
+# at an fopen(): the diagnostic names the rejected write on stderr and
+# stdout stays empty.
 run_tool(famtool FALSE -g -n testfam -c "${WORK}/missing-dir/testfam.crt" -k "${WORK}/testfam.pem")
-assert_output_contains("cannot open" "famtool unwritable certificate path")
+if(NOT "${LAST_TOOL_OUTPUT}" STREQUAL "")
+  fail("famtool unwritable certificate path wrote to stdout:\n${LAST_TOOL_OUTPUT}")
+endif()
+assert_contains("${LAST_TOOL_ERROR}" "cannot write family key/certificate" "famtool unwritable certificate path")
 
 # --------------------------------------------------------------------
 # i2pbase64: text, UTF-8, control bytes, embedded NULs and malformed
