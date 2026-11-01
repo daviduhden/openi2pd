@@ -8,14 +8,19 @@
  * from argv[0] before any spawn, then a validated --privsep-worker
  * invocation is dispatched to the isolated worker runner (a Windows
  * worker is dispatched to the pipe transport with its spawn nonce);
- * normal execution runs the Daemon init/start/run/stop sequence. The
- * Windows WinMain wrapper forwards to main.
+ * informational command-line requests are answered before any daemon
+ * state exists, and normal execution runs the Daemon init/start/run/stop
+ * sequence. The Windows WinMain wrapper obtains the authoritative
+ * command line and forwards to the same runner.
  */
 
+#include <cstdlib>
 #include <exception>
 #include <iostream>
 #include <stdlib.h>
+#include <string>
 #include <string_view>
+#include <vector>
 #ifndef _WIN32
 #include <climits>
 #include <cstring>
@@ -27,7 +32,14 @@
 // an inherited socket.
 #include "privsep/WindowsIpc.h"
 #endif
+#include "Config.h"
 #include "Daemon.h"
+
+#ifdef _WIN32
+#include <windows.h>
+// CommandLineToArgvW: the authoritative GUI-subsystem command line.
+#include <shellapi.h>
+#endif
 
 namespace
 {
@@ -50,10 +62,93 @@ void FreezeWorkerExecutable (const char * argv0)
 	if (!realpath (argv0, resolved)) return;
 	i2p::privsep::SetExecutablePath (resolved);
 }
+#else
+/**
+ * Never let the operating system block an unattended start on a modal
+ * dialog.
+ *
+ * SEM_FAILCRITICALERRORS turns a hard error into a failure this process
+ * reports through its exit status, SEM_NOGPFAULTERRORBOX suppresses the
+ * fault dialog and SEM_NOOPENFILEERRORBOX suppresses the "insert disk"
+ * style file-error dialog nobody can dismiss on a headless runner or in
+ * the services session. This is a presentation policy, not a security
+ * control: the failing operation still fails closed.
+ */
+void SuppressInteractiveErrorDialogs ()
+{
+	SetErrorMode (SEM_FAILCRITICALERRORS | SEM_NOGPFAULTERRORBOX | SEM_NOOPENFILEERRORBOX);
+}
+
+/**
+ * Authoritative UTF-8 argument vector for the GUI entry point.
+ *
+ * The router links as a GUI-subsystem image, which has no console and
+ * for which the C runtime's __argc/__argv are not a documented contract.
+ * A CRT release that leaves them untouched turns every command line,
+ * "--version" included, into an argument-less router start that never
+ * returns, so the Win32 command line obtained with GetCommandLineW() is
+ * the source of truth and __argc/__argv remain only the fallback used
+ * when its conversion fails.
+ *
+ * The conversion is UTF-8 because every consumer of argv (the option
+ * parser, path handling) treats arguments as UTF-8; an unrepresentable
+ * wide character becomes U+FFFD instead of failing the conversion.
+ */
+class WindowsCommandLine
+{
+public:
+	WindowsCommandLine ()
+	{
+		int count = 0;
+		LPWSTR * wide = CommandLineToArgvW (GetCommandLineW (), &count);
+		if (!wide || count <= 0)
+		{
+			if (wide) LocalFree (wide);
+			return;
+		}
+		m_Storage.reserve (static_cast<size_t> (count));
+		for (int i = 0; i < count; ++i)
+		{
+			// -1 includes the terminating NUL, which the vector must not
+			// keep: capacity is length bytes and the stored string is one
+			// byte shorter.
+			const int length = wide[i] ? WideCharToMultiByte (CP_UTF8, 0, wide[i], -1, nullptr, 0, nullptr, nullptr) : 0;
+			if (length <= 0)
+			{
+				m_Storage.clear ();
+				break;
+			}
+			std::string argument (static_cast<size_t> (length), '\0');
+			WideCharToMultiByte (CP_UTF8, 0, wide[i], -1, argument.data (), length, nullptr, nullptr);
+			argument.pop_back ();
+			m_Storage.push_back (std::move (argument));
+		}
+		LocalFree (wide);
+		// Build the pointer array only after the last string exists: a
+		// reallocation would otherwise invalidate an earlier pointer.
+		m_Arguments.reserve (m_Storage.size ());
+		for (auto & argument : m_Storage) m_Arguments.push_back (argument.data ());
+	}
+
+	/// True when every argument was converted; false falls back to the CRT.
+	bool Valid () const { return !m_Arguments.empty (); }
+	int argc () const { return static_cast<int> (m_Arguments.size ()); }
+	char ** argv () { return m_Arguments.data (); }
+
+private:
+	std::vector<std::string> m_Storage;
+	std::vector<char *> m_Arguments;
+};
 #endif
 
 int RunI2PD (int argc, char * argv[])
 {
+#ifdef _WIN32
+	// In place before the first operation of this runner that can fail, so
+	// a failure is reported through the exit status instead of a dialog
+	// nobody dismisses on a headless runner.
+	SuppressInteractiveErrorDialogs ();
+#endif
 #ifndef _WIN32
 	// Runs in the daemon and in every exec'ed worker: a worker re-freezes
 	// its own path from argv[0], which the spawner sets to the frozen
@@ -71,6 +166,22 @@ int RunI2PD (int argc, char * argv[])
 	if (argc == 7 && std::string_view (argv[1]) == "--privsep-worker")
 		return i2p::privsep::RunWindowsWorker (argv[2], argv[3], argv[4], argv[5], argv[6]);
 #endif
+	// Answer --version and --help here, before the daemon installs its
+	// fatal-error reporter, changes the console code page, resolves the
+	// worker identity or acquires any service. The banner must not depend
+	// on console, GUI or teardown state, and these flags must never start
+	// a router.
+	const auto informational = i2p::config::ClassifyInformationalRequest (argc, argv);
+	if (informational != i2p::config::CmdlineOutcome::Proceed)
+	{
+		// Nothing has been acquired: no logger, worker, socket, console
+		// code page or GUI window exists. There is therefore nothing to
+		// tear down, and skipping exit-time destructors keeps the answer
+		// independent of router teardown that could wait on state this
+		// process never started.
+		std::_Exit (i2p::config::PublishInformationalResponse (informational));
+	}
+
 	if (!Daemon.init (argc, argv)) return EXIT_FAILURE;
 	if (!Daemon.start ()) return EXIT_FAILURE;
 	Daemon.run ();
@@ -102,11 +213,14 @@ int main (int argc, char * argv[])
 }
 
 #ifdef _WIN32
-#include <windows.h>
-
 int CALLBACK WinMain (
 	_In_ HINSTANCE /*hInstance*/, _In_ HINSTANCE /*hPrevInstance*/, _In_ LPSTR /*lpCmdLine*/, _In_ int /*nCmdShow*/)
 {
+	// The argument vector must come from the Win32 command line rather than
+	// from the GUI-subsystem C runtime, which does not guarantee the CRT
+	// globals this entry point used to rely on.
+	WindowsCommandLine commandLine;
+	if (commandLine.Valid ()) return RunI2PD (commandLine.argc (), commandLine.argv ());
 	return RunI2PD (__argc, __argv);
 }
 #endif

@@ -42,6 +42,59 @@ namespace config
 	 */
 	void Init ();
 
+	/// Informational command-line request answered without starting a
+	/// router, proxy or other service.
+	enum class CmdlineOutcome
+	{
+		/// No informational flag: the caller continues with startup.
+		Proceed,
+		/// ``version`` was given: print the version banner.
+		Version,
+		/// ``help`` or ``h`` was given: print the banner and the option
+		/// table.
+		Help
+	};
+
+	/**
+	 * @brief Answer a command-line request for version or help text.
+	 * @param outcome request to render, never @c CmdlineOutcome::Proceed
+	 * @return 0 after the response was published, non-zero when @a outcome
+	 *         is @c CmdlineOutcome::Proceed (a caller error)
+	 *
+	 * The text is rendered from the same option table that ParseCmdline()
+	 * parses, so the two entry points cannot drift apart, and it is
+	 * published with one synchronous write. On Windows the router is a
+	 * GUI-subsystem executable: an inherited standard-output handle (a
+	 * pipe from a test driver or a shell redirection) is used as is, and a
+	 * start without one borrows the parent console through
+	 * AttachConsole(ATTACH_PARENT_PROCESS) for this banner only. No
+	 * console window is allocated and no dialog is opened; when neither
+	 * exists the status is the only signal, so a headless caller must not
+	 * rely on reading the text.
+	 *
+	 * This function does not change configuration state and never starts
+	 * a service, so it is safe to call before any daemon initialization.
+	 */
+	int PublishInformationalResponse (CmdlineOutcome outcome);
+
+	/**
+	 * @brief Detect a version or help request without side effects.
+	 * @param argc Cmdline arguments count, should be passed from main().
+	 * @param argv Cmdline parameters array, should be passed from main()
+	 * @return the requested informational response, or
+	 *         @c CmdlineOutcome::Proceed
+	 *
+	 * The probe shares the option table and the parser style with
+	 * ParseCmdline(), but it stores into a local option map and reports
+	 * nothing. A malformed, unknown or otherwise rejected command line
+	 * therefore returns Proceed and the normal parse produces the
+	 * platform-appropriate diagnostic (on Windows the GUI build keeps its
+	 * fatal-error dialog). An entry point uses this to answer
+	 * ``--version``/``--help`` before it installs any console, locale,
+	 * GUI or service state.
+	 */
+	CmdlineOutcome ClassifyInformationalRequest (int argc, char * argv[]);
+
 	/**
 	 * @brief Parse cmdline parameters, and show help if requested
 	 * @param argc Cmdline arguments count, should be passed from main().
@@ -52,6 +105,12 @@ namespace config
 	 *
 	 * If --help is given in parameters, shows its list with description
 	 * and terminates the program with exitcode 0.
+	 *
+	 * An informational request is answered through
+	 * PublishInformationalResponse() and terminated with std::_Exit():
+	 * nothing has been acquired at that point, so exit-time teardown of
+	 * router globals would only be able to wait on state this process
+	 * never started.
 	 *
 	 * In case of parameter misuse boost throws an exception.
 	 * We internally handle type boost::program_options::unknown_option,

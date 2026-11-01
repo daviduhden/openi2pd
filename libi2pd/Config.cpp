@@ -13,11 +13,20 @@
  *
  */
 
+#include <algorithm>
+#include <cstdio>
 #include <cstdlib>
 #include <iostream>
 #include <fstream>
 #include <map>
+#include <sstream>
 #include <string>
+#if defined(_WIN32)
+// AttachConsole/CreateFileW/WriteFile and SetErrorMode for the
+// GUI-subsystem informational path; the SDK macros come from the
+// libi2pd compile contract.
+#include <windows.h>
+#endif
 #include <boost/program_options/cmdline.hpp>
 #include <boost/program_options/options_description.hpp>
 #include <boost/program_options/parsers.hpp>
@@ -526,29 +535,191 @@ namespace config
 			;
 	}
 
+	namespace
+	{
+		/**
+		 * Command-line parsing style shared by every parse site.
+		 *
+		 * Guessing of long option names is disabled so a typo cannot
+		 * silently select a different option; long-option disguise is kept
+		 * for the single-dash long options operators and init scripts use.
+		 */
+		int CommandLineStyle ()
+		{
+			auto style = boost::program_options::command_line_style::unix_style
+				| boost::program_options::command_line_style::allow_long_disguise;
+			style &= ~boost::program_options::command_line_style::allow_guessing;
+			return style;
+		}
+
+		/**
+		 * Whether the parsed command line carries proxy credentials.
+		 *
+		 * Credentials are configuration-file only: a command-line value
+		 * would be visible in process listings and shell history. The one
+		 * list is shared by the informational probe and the real parse so
+		 * a version/help request cannot bypass the rejection by being
+		 * answered earlier.
+		 */
+		bool HasCommandLineCredential (const variables_map & options)
+		{
+			const char * secretOptions[] = { "httpproxy.auth.username", "httpproxy.auth.password",
+				"socksproxy.auth.username", "socksproxy.auth.password" };
+			for (const char * secret : secretOptions)
+			{
+				if (options.count (secret)) return true;
+			}
+			return false;
+		}
+
+		/**
+		 * Render the text of an informational request.
+		 *
+		 * One authority for both the early entry-point path and
+		 * ParseCmdline(), so the banner and the option table cannot drift
+		 * between them. The caller has already registered the option
+		 * table with Init().
+		 */
+		std::string RenderInformationalResponse (CmdlineOutcome outcome)
+		{
+			std::ostringstream text;
+			text << "openi2pd version " << I2PD_VERSION << " (" << I2P_VERSION << ")\n";
+			if (outcome == CmdlineOutcome::Help)
+			{
+				text << m_OptionsDesc;
+				return text.str ();
+			}
+			text << "Boost version " << BOOST_VERSION / 100000 << "." // maj. version
+				 << BOOST_VERSION / 100 % 1000 << "." // min. version
+				 << BOOST_VERSION % 100 // patch version
+				 << "\n";
+#if defined(OPENSSL_VERSION_TEXT)
+			text << OPENSSL_VERSION_TEXT << "\n";
+#endif
+#if defined(LIBRESSL_VERSION_TEXT)
+			text << LIBRESSL_VERSION_TEXT << "\n";
+#endif
+			return text.str ();
+		}
+
+#if defined(_WIN32)
+		/**
+		 * Write @a text completely to @a handle.
+		 * @return false on the first failed or empty write.
+		 *
+		 * A synchronous write keeps the banner ahead of process
+		 * termination without relying on CRT buffering or iostreams.
+		 */
+		bool WriteAll (HANDLE handle, const std::string & text)
+		{
+			size_t offset = 0;
+			while (offset < text.size ())
+			{
+				const DWORD chunk = static_cast<DWORD> (std::min<size_t> (text.size () - offset, 0x4000));
+				DWORD written = 0;
+				if (!WriteFile (handle, text.data () + offset, chunk, &written, nullptr) || written == 0)
+					return false;
+				offset += written;
+			}
+			return true;
+		}
+#endif
+
+		/**
+		 * Publish @a text to the process standard output.
+		 *
+		 * The informational text is ASCII, so it renders identically under
+		 * any console code page; this path runs before the Windows
+		 * code-page setup in the daemon on purpose and must not depend on
+		 * it.
+		 *
+		 * A POSIX console build writes through stdio and flushes, because
+		 * a caller may terminate without running exit-time flushes. On
+		 * Windows the router is a GUI-subsystem image: an inherited
+		 * standard-output handle is used directly (a test driver, a shell
+		 * redirection or a service manager provides one), and a start
+		 * without a usable handle borrows the parent console through
+		 * AttachConsole() for this banner only. Neither path allocates a
+		 * window or opens a dialog, so a headless caller without any
+		 * console observes the exit status alone.
+		 */
+		void WriteStandardOutput (const std::string & text)
+		{
+#if defined(_WIN32)
+			const HANDLE output = GetStdHandle (STD_OUTPUT_HANDLE);
+			if (output != nullptr && output != INVALID_HANDLE_VALUE)
+			{
+				// FILE_TYPE_UNKNOWN with a clear last error is a device we
+				// can still write to; anything else is a stale handle left
+				// behind by a console-less start.
+				if (GetFileType (output) != FILE_TYPE_UNKNOWN || GetLastError () == NO_ERROR)
+				{
+					if (WriteAll (output, text)) return;
+				}
+			}
+			if (!AttachConsole (ATTACH_PARENT_PROCESS)) return;
+			const HANDLE console = CreateFileW (
+				L"CONOUT$", FILE_APPEND_DATA, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_EXISTING, 0, nullptr);
+			if (console == INVALID_HANDLE_VALUE) return;
+			WriteAll (console, text);
+			CloseHandle (console);
+#else
+			std::fwrite (text.data (), 1, text.size (), stdout);
+			std::fflush (stdout);
+#endif
+		}
+	} // namespace
+
+	int PublishInformationalResponse (CmdlineOutcome outcome)
+	{
+		// Proceed is not an informational request: answering it with
+		// success and no text would be a silent no-op, so report the
+		// programming error through the exit status instead.
+		if (outcome == CmdlineOutcome::Proceed) return EXIT_FAILURE;
+		WriteStandardOutput (RenderInformationalResponse (outcome));
+		return EXIT_SUCCESS;
+	}
+
+	CmdlineOutcome ClassifyInformationalRequest (int argc, char * argv[])
+	{
+		// A local option map: this probe never mutates the process
+		// configuration. An unrecognized or malformed command line, and one
+		// that carries credentials, is the normal parser's business, so it
+		// reports Proceed here.
+		Init ();
+		try
+		{
+			variables_map options;
+			store (parse_command_line (argc, argv, m_OptionsDesc, CommandLineStyle ()), options);
+			if (HasCommandLineCredential (options)) return CmdlineOutcome::Proceed;
+			if (options.count ("help") || options.count ("h")) return CmdlineOutcome::Help;
+			if (options.count ("version")) return CmdlineOutcome::Version;
+		}
+		catch (const boost::program_options::error &)
+		{
+			// ParseCmdline() reports it with the platform-appropriate
+			// diagnostic.
+		}
+		return CmdlineOutcome::Proceed;
+	}
+
 	/**
 	 * @brief Parse the command line into the global option map.
-	 * @param argc argument count supplied by the process entry point.
-	 * @param argv argument vector supplied by the process entry point.
-	 * @param ignoreUnknown accept unregistered
-	 *                      options instead of failing (used by front-ends
-	 *                      that forward arguments to another component).
 	 *
 	 * Guessing of long option names is disabled so a typo cannot silently
 	 * select a different option. Proxy credentials are rejected here on
 	 * purpose: a command line value is visible in the process list and in
 	 * shell history and may also be echoed by a fatal parse diagnostic, so
 	 * the credential options are configuration-file only. Help and version
-	 * print to stdout and exit, and a parse error is fatal because a
-	 * partially applied configuration is worse than a failed start.
+	 * are answered and terminated without acquiring process state, and a
+	 * parse error is fatal because a partially applied configuration is
+	 * worse than a failed start.
 	 */
 	void ParseCmdline (int argc, char * argv[], bool ignoreUnknown)
 	{
 		try
 		{
-			auto style = boost::program_options::command_line_style::unix_style
-				| boost::program_options::command_line_style::allow_long_disguise;
-			style &= ~boost::program_options::command_line_style::allow_guessing;
+			const int style = CommandLineStyle ();
 			if (ignoreUnknown)
 				store (
 					command_line_parser (argc, argv).options (m_OptionsDesc).style (style).allow_unregistered ().run (),
@@ -565,36 +736,20 @@ namespace config
 
 		// Credentials are configuration-file only: a command-line value would
 		// be visible in process listings and shell history.
-		const char * secretOptions[] = { "httpproxy.auth.username", "httpproxy.auth.password",
-			"socksproxy.auth.username", "socksproxy.auth.password" };
-		for (const char * secret : secretOptions)
-		{
-			if (m_Options.count (secret))
-				ThrowFatal (
-					"Proxy authentication credentials must be set in the configuration file, not on the command line");
-		}
+		if (HasCommandLineCredential (m_Options))
+			ThrowFatal (
+				"Proxy authentication credentials must be set in the configuration file, not on the command line");
 
 		if (!ignoreUnknown && (m_Options.count ("help") || m_Options.count ("h")))
 		{
-			std::cout << "openi2pd version " << I2PD_VERSION << " (" << I2P_VERSION << ")" << std::endl;
-			std::cout << m_OptionsDesc;
-			exit (EXIT_SUCCESS);
+			// Nothing is acquired before this point, so skipping exit-time
+			// teardown cannot leak a service or a worker; the publisher has
+			// already written the response synchronously.
+			std::_Exit (PublishInformationalResponse (CmdlineOutcome::Help));
 		}
 		else if (m_Options.count ("version"))
 		{
-			std::cout << "openi2pd version " << I2PD_VERSION << " (" << I2P_VERSION << ")" << std::endl;
-			std::cout << "Boost version " << BOOST_VERSION / 100000 << "." // maj. version
-					  << BOOST_VERSION / 100 % 1000 << "." // min. version
-					  << BOOST_VERSION % 100 // patch version
-					  << std::endl;
-#if defined(OPENSSL_VERSION_TEXT)
-			std::cout << OPENSSL_VERSION_TEXT << std::endl;
-#endif
-#if defined(LIBRESSL_VERSION_TEXT)
-			std::cout << LIBRESSL_VERSION_TEXT << std::endl;
-#endif
-
-			exit (EXIT_SUCCESS);
+			std::_Exit (PublishInformationalResponse (CmdlineOutcome::Version));
 		}
 	}
 
