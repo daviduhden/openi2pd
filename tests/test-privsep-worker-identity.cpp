@@ -117,10 +117,10 @@ std::string ReadAll (int fd)
  * scenarios; the production resolver is deliberately not used because
  * it must not search $PATH or fall back to /proc.
  */
-std::string SelfExecutable (const char * argv0)
+std::string SelfExecutable ([[maybe_unused]] const char * argv0)
 {
-	char buffer[4096] = { };
 #if defined(__linux__)
+	char buffer[4096] = { };
 	const auto length = readlink ("/proc/self/exe", buffer, sizeof (buffer) - 1);
 	if (length > 0 && static_cast<size_t> (length) < sizeof (buffer)) return std::string (buffer, length);
 #else
@@ -321,7 +321,8 @@ int main (int argc, char ** argv)
 		assert (!DecodeWorkerHello (RawHello (static_cast<uint8_t> (WorkerRole::Log), nonce, 0, gid)).has_value ());
 		assert (!EncodeWorkerHello (WorkerRole::Log, nonce, 0, gid).has_value ());
 		assert (!EncodeWorkerHello (WorkerRole::Log, std::span<const uint8_t> (), uid, gid).has_value ());
-		assert (!EncodeWorkerHello (WorkerRole::Log, nonce.subspan (0, 15), uid, gid).has_value ());
+		assert (!EncodeWorkerHello (WorkerRole::Log,
+			std::span<const uint8_t> (nonce).subspan (0, 15), uid, gid).has_value ());
 		const auto generated = CreateWorkerHello (WorkerRole::Log, uid, gid);
 		assert (generated.has_value ());
 		const auto generatedRecord = DecodeWorkerHello (*generated);
