@@ -68,9 +68,8 @@ namespace garlic
 	const size_t ECIESX25519_MAX_PENDING_REPLY_TAGSETS = 8;
 	const uint64_t ECIESX25519_PENDING_REPLY_TAGSET_TIMEOUT = 180; // seconds
 
-	const size_t ECIESX25519_OPTIMAL_PAYLOAD_SIZE = 1912; // 1912 = 1956 /* to fit 2 tunnel messages */
-	// - 16 /* I2NP header */ - 16 /* poly hash */ - 8 /* tag */ - 4 /*
-	//   garlic length */
+	const size_t ECIESX25519_OPTIMAL_PAYLOAD_SIZE = 1912; // 1912 = 1956 to fit 2 tunnel messages
+	// - 16 (I2NP header) - 16 (poly hash) - 8 (tag) - 4 (garlic length)
 
 	// Payload-size normalisation status: this implementation pads a
 	// payload to the optimal size above and keeps a New Session out of the
