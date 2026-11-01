@@ -363,6 +363,41 @@ my $doxygen_checker = File::Spec->catfile( $root, 'tools', 'scripts',
     );
     ( $code, $out ) = run_checker( $doxygen_checker, '--root', $tmp );
     is( $code, 0, 'Doxygen checker accepts complete and undocumented blocks' );
+
+    # A documented name that the declaration does not have is the inverse
+    # defect: Doxygen reports "argument ... is not found in the argument
+    # list", and array parameters must still yield their identifier.
+    write_file(
+        $header,
+        "class Probe {\n"
+          . "public:\n"
+          . "    /// Encode.\n"
+          . "    /// \@param key wrong name.\n"
+          . "    /// \@param encoded output bytes.\n"
+          . "    bool Encode (uint8_t * encoded);\n"
+          . "    /// Load.\n"
+          . "    /// \@param argc count.\n"
+          . "    /// \@param argv vector.\n"
+          . "    bool Load (int argc, char * argv[]);\n"
+          . "};\n"
+    );
+    ( $code, $out ) = run_checker( $doxygen_checker, '--root', $tmp );
+    is( $code, 1, 'Doxygen checker rejects a documented name not in the declaration' );
+    like( $out, qr/not in the declaration: key/,
+        'undeclared-parameter diagnostic names the parameter' );
+
+    write_file(
+        $header,
+        "class Probe {\n"
+          . "public:\n"
+          . "    /// Load.\n"
+          . "    /// \@param argc count.\n"
+          . "    /// \@param argv vector.\n"
+          . "    bool Load (int argc, char * argv[]);\n"
+          . "};\n"
+    );
+    ( $code, $out ) = run_checker( $doxygen_checker, '--root', $tmp );
+    is( $code, 0, 'Doxygen checker accepts an array parameter identifier' );
 }
 
 # --- Doxygen duplicated parameter documentation ----------------------------
@@ -471,6 +506,91 @@ my $doxygen_checker = File::Spec->catfile( $root, 'tools', 'scripts',
         qr/duplicate \@param 'key' in one documentation block/,
         'in-block duplicate names the parameter'
     );
+}
+
+# --- Doxygen unresolved cross-references -----------------------------------
+# Doxygen reports an unknown \ref target as a doc error and WARN_AS_ERROR
+# makes it fatal. A type, namespace, macro or callable resolves; a generic
+# data-member name such as `mutex` does not and must stay in backticks.
+{
+    my $tmp    = tempdir( CLEANUP => 1 );
+    my $header = File::Spec->catfile( $tmp, 'libi2pd', 'probe.h' );
+
+    write_file(
+        $header,
+        "enum class StorageArtifact { A };\n"
+          . "class Probe\n{\npublic:\n"
+          . "    /// Writes under \@ref mutex.\n"
+          . "    bool Operate (int value);\n"
+          . "};\n"
+    );
+    my ( $code, $out ) = run_checker( $doxygen_checker, '--root', $tmp );
+    is( $code, 1, 'Doxygen checker rejects an unresolved \@ref target' );
+    like(
+        $out,
+        qr/unresolved \@ref target 'mutex'/,
+        'unresolved-reference diagnostic names the target'
+    );
+
+    write_file(
+        $header,
+        "enum class StorageArtifact { A };\n"
+          . "class Probe\n{\npublic:\n"
+          . "    /// Uses \@ref StorageArtifact and \@ref Operate; the member"
+          . " \`mutex\` stays in backticks.\n"
+          . "    bool Operate (int value);\n"
+          . "};\n"
+    );
+    ( $code, $out ) = run_checker( $doxygen_checker, '--root', $tmp );
+    is( $code, 0,
+        'Doxygen checker accepts type and callable references' );
+}
+
+# --- Doxygen command balance and Javadoc inline tags -----------------------
+# `{\@code x}` is Javadoc syntax; Doxygen reads the `@code` as an opening
+# block and aborts at the end of the comment. A real @code/@endcode pair is
+# accepted, and an unclosed @verbatim is rejected.
+{
+    my $tmp    = tempdir( CLEANUP => 1 );
+    my $header = File::Spec->catfile( $tmp, 'libi2pd', 'probe.h' );
+
+    write_file(
+        $header,
+        "class Probe\n{\npublic:\n"
+          . "    /// Returns {\@code ok}.\n"
+          . "    bool Run ();\n"
+          . "};\n"
+    );
+    my ( $code, $out ) = run_checker( $doxygen_checker, '--root', $tmp );
+    is( $code, 1, 'Doxygen checker rejects a Javadoc inline tag' );
+    like( $out, qr/Javadoc inline tag in a C\/C\+\+ comment/,
+        'inline-tag diagnostic names the correct replacement' );
+
+    write_file(
+        $header,
+        "class Probe\n{\npublic:\n"
+          . "    /// Returns `ok`.\n"
+          . "    /// \@code\n"
+          . "    /// value = 1;\n"
+          . "    /// \@endcode\n"
+          . "    bool Run ();\n"
+          . "};\n"
+    );
+    ( $code, $out ) = run_checker( $doxygen_checker, '--root', $tmp );
+    is( $code, 0, 'Doxygen checker accepts a balanced code block' );
+
+    write_file(
+        $header,
+        "class Probe\n{\npublic:\n"
+          . "    /// \@verbatim\n"
+          . "    /// text\n"
+          . "    bool Run ();\n"
+          . "};\n"
+    );
+    ( $code, $out ) = run_checker( $doxygen_checker, '--root', $tmp );
+    is( $code, 1, 'Doxygen checker rejects an unclosed verbatim block' );
+    like( $out, qr/unbalanced \@verbatim/,
+        'unbalanced-verbatim diagnostic names the block' );
 }
 
 # --- CRLF catalogs and nested documentation paths --------------------------

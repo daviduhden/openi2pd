@@ -40,7 +40,7 @@ invocation returns to a maintained build consumer.
 | `tools/scripts/check-workflows.pl` | manual-only workflow and empty-CTest guard | syntax, `workflow-static`, `skills-static` |
 | `scripts/validate-agent-knowledge.py` | substantive instruction synchronization, section and local-link gate | syntax and `agent-maintenance.yml` PR gate |
 | `tools/scripts/check-doc-nav.pl` | MkDocs navigation/unlisted-page checker | syntax, `docs-nav-static`, portability |
-| `tools/scripts/check-doxygen-params.pl` | compile-free `@param` guard: partial blocks, repeated names and header/definition duplicates under Doxygen's `WARN_IF_DOC_ERROR` | syntax, `doxygen-static`, negative fixture |
+| `tools/scripts/check-doxygen-params.pl` | compile-free `@param`, `@ref` and command-balance guard: partial blocks, repeated names, header/definition duplicates, unresolved reference targets and Javadoc inline tags in C/C++ comments under Doxygen's `WARN_IF_DOC_ERROR` | syntax, `doxygen-static`, negative fixtures |
 | `tools/scripts/validate-branding.pl` | static branding/palette validator | syntax, `prove` wrapper, portability |
 | `tools/tests/i2pdctl.t` | Test::More client/transport regressions | `perl-i2pdctl` |
 | `tools/tests/validate-branding.t` | Test::More branding wrapper | `perl-validate-branding` |

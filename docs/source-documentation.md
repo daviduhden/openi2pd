@@ -185,6 +185,20 @@ The checker reads the same input roots and file patterns as
 affected names. It does not replace the manual lane, which remains the only
 dynamic Doxygen evidence.
 
+It also rejects Javadoc inline tags (`{@code ...}`, `{@link ...}`,
+`{@literal ...}`, `{@inheritDoc}`) in a C/C++ comment: Doxygen reads the
+`@code` as an opening block and aborts at the end of the comment, so those
+values belong in backticks. `@code`/`@endcode` and
+`@verbatim`/`@endverbatim` must balance for the same reason.
+
+The same checker also requires every `@ref`/`\ref` target to name a class,
+struct, union, enum, namespace, typedef, using, macro or callable collected
+from the scanned tree. Doxygen only resolves extracted symbols, so a generic
+data member or an ordinary word is an unresolved reference and aborts
+`WARN_AS_ERROR`; write those in backticks. The rule caught `@ref mutex` and
+`@ref uid`, and the negative fixtures keep both the rejected and accepted
+forms covered.
+
 `android-javadoc-static` (`android/tools/check-android-javadoc.pl`) is the
 compile-free guard for the comment defects that doclint rejects only after
 the whole Android job has configured and compiled: unregistered block tags,

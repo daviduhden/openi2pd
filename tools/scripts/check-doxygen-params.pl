@@ -31,9 +31,16 @@
 # scope cannot be told apart without a full C++ parser and stay a known
 # limit.
 #
-# Contract: exit 0 when every block is complete and declared once, 1
-# when a defect is found, and 2 on an execution error. The diagnostics
-# go to stderr; the success summary goes to stdout.
+# A @ref/\ref target must name a symbol collected from the tree: a
+# class, struct, union, enum, namespace, typedef, using, macro or
+# callable. A data member or an ordinary word is not extracted for
+# every build configuration and belongs in backticks instead; Doxygen
+# reports it as an unresolved reference and the lane aborts.
+#
+# Contract: exit 0 when every block is complete, declared once and
+# every reference resolves, 1 when a defect is found, and 2 on an
+# execution error. The diagnostics go to stderr; the success summary
+# goes to stdout.
 #
 
 use strict;
@@ -164,6 +171,9 @@ sub param_name
 	}
 	$param = substr ($param, 0, $cut) if $cut >= 0;
 	$param =~ s/^\s+|\s+$//g;
+	# Array parameters are declared as `char * argv[]`; the brackets are
+	# part of the type, not part of the name.
+	$param =~ s/\[\s*\]\s*$//;
 
 	if ($param =~ /\(\s*\*\s*([A-Za-z_]\w*)\s*\)/) { return $1; }
 	return undef unless $param =~ /([A-Za-z_]\w*)\s*$/;
@@ -353,6 +363,21 @@ for my $path (@files) {
 	};
 }
 
+# Symbols a documentation reference may resolve to. Data members are
+# deliberately absent: Doxygen extracts them only when they carry their
+# own documentation, so a generic member name is not a stable target.
+my %referenced_symbols;
+for my $document (@documents) {
+	my $masked = $document->{masked};
+	while ($masked =~ /\b(?:class|struct|union|namespace|typedef|using)\s+([A-Za-z_]\w*)/g)
+	{
+		$referenced_symbols{$1} = 1;
+	}
+	while ($masked =~ /\benum(?:\s+class)?\s+([A-Za-z_]\w*)/g) { $referenced_symbols{$1} = 1; }
+	while ($masked =~ /\b([A-Za-z_]\w*)\s*\(/g) { $referenced_symbols{$1} = 1; }
+	while ($masked =~ /^\s*#\s*define\s+([A-Za-z_]\w*)/mg) { $referenced_symbols{$1} = 1; }
+}
+
 # Pass 1: every header declaration that documents parameters. Rule 3
 # keeps a definition from repeating that contract; the first declaration
 # owns it.
@@ -399,6 +424,14 @@ for my $document (@documents) {
 		my $info = declaration_info ($masked, $block->{end});
 		next unless $info;
 
+		my %declared = map { $_ => 1 } @{ $info->{names} };
+		my @undeclared = grep { !$declared{$_} } sort keys %documented;
+		if (@undeclared) {
+			print STDERR "$display:$line: documented parameter(s) not in the ",
+				"declaration: ", join (', ', @undeclared), "\n";
+			$failures++;
+		}
+
 		my @missing = grep { !$documented{$_} } @{ $info->{names} };
 		if (@missing) {
 			print STDERR "$display:$line: undocumented parameter(s): ",
@@ -416,11 +449,60 @@ for my $document (@documents) {
 	}
 }
 
+# Pass 3: a cross-reference must name an extractable symbol. Doxygen
+# reports an unknown target as a doc error and WARN_AS_ERROR makes it
+# fatal; a generic member name such as `mutex` is exactly the case this
+# rejects, while types, namespaces, macros and callables resolve.
+for my $document (@documents) {
+	my $source = $document->{source};
+	for my $block (doc_blocks ($source)) {
+		while ($block->{text} =~ /(?:\@ref|\\ref)\s+#?([A-Za-z_]\w*(?:::[A-Za-z_]\w*)*)/g)
+		{
+			my $target = $1;
+			my $simple = $target;
+			$simple = $1 if $target =~ /::([A-Za-z_]\w*)$/;
+			next if $referenced_symbols{$simple};
+			my $line = block_line ($source, $block->{start});
+			print STDERR display_path ($document->{path}) . ":$line: unresolved "
+				. "\@ref target '$target'; use backticks for a word or a data "
+				. "member\n";
+			$failures++;
+		}
+	}
+}
+
+# Pass 4: Doxygen command blocks must balance, and Javadoc-only inline
+# tags are not Doxygen syntax. `{@code x}` in a C/C++ comment looks like
+# an opening `@code` block with no `@endcode`, so Doxygen aborts at the
+# end of the comment; use backticks instead. The same balance rule covers
+# a forgotten @endverbatim.
+for my $document (@documents) {
+	my $source = $document->{source};
+	for my $block (doc_blocks ($source)) {
+		my $text = $block->{text};
+		my $line = block_line ($source, $block->{start});
+		my $display = display_path ($document->{path});
+		if ($text =~ /\{\@(?:code|link|literal|inheritDoc)\b/) {
+			print STDERR "$display:$line: Javadoc inline tag in a C/C++ "
+				. "comment; use backticks\n";
+			$failures++;
+		}
+		my $balanced = $text;
+		$balanced =~ s/\{\@(?:code|link|literal|inheritDoc)\b[^}]*\}//g;
+		for my $kind (qw(code verbatim)) {
+			my $opened = () = $balanced =~ /(?:\@${kind}|\\${kind})\b/g;
+			my $closed = () = $balanced =~ /(?:\@end${kind}|\\end${kind})\b/g;
+			next if $opened == $closed;
+			print STDERR "$display:$line: unbalanced \@$kind/\@end$kind\n";
+			$failures++;
+		}
+	}
+}
+
 if ($failures) {
-	print STDERR "check-doxygen-params: $failures parameter documentation "
-		. "defect(s)\n";
+	print STDERR "check-doxygen-params: $failures documentation defect(s)\n";
 	exit 1;
 }
-print "check-doxygen-params: parameter documentation is complete and "
-	. "declared once\n";
+print "check-doxygen-params: parameter documentation is complete, declared "
+	. "once and every reference resolves\n";
 exit 0;
