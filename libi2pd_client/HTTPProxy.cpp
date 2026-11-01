@@ -123,6 +123,16 @@ namespace proxy
 		if (address.to_v6 ().is_loopback () || address.to_v6 ().is_unspecified () || address.to_v6 ().is_multicast ()
 			|| (b[0] == 0xfe && (b[1] & 0xc0) == 0x80) || (b[0] & 0xfe) == 0xfc)
 			return true;
+		// NAT64 well-known prefix 64:ff9b::/96 embeds an IPv4 address in the
+		// last four bytes; the local-use 64:ff9b:1::/48 has an
+		// operator-defined embedding, so refuse it entirely.
+		if (b[0] == 0x00 && b[1] == 0x64 && b[2] == 0xff && b[3] == 0x9b)
+		{
+			if (b[4] == 0x00 && b[5] == 0x01) return true;
+			bool wellKnown = b[4] == 0 && b[5] == 0 && b[6] == 0 && b[7] == 0 && b[8] == 0 && b[9] == 0
+				&& b[10] == 0 && b[11] == 0;
+			if (wellKnown) return IsBlockedIpv4Bytes (b.data () + 12);
+		}
 		// An IPv4-embedded IPv6 spelling reaches the same host as the plain
 		// IPv4 address, but Asio classifies only the 16-byte form, so
 		// `::ffff:127.0.0.1` and `::127.0.0.1` used to pass this check while

@@ -1181,7 +1181,9 @@ namespace client
 	{
 		if (b32.length () <= B33_ADDRESS_THRESHOLD)
 		{
-			if (identHash.FromBase32 (b32) > 0) addressType = eAddressIndentHash;
+			// A partial decode leaves the rest of the tag indeterminate and is
+			// not a destination; require the exact 32-byte length.
+			if (identHash.FromBase32 (b32) == identHash.len) addressType = eAddressIndentHash;
 		}
 		else
 		{

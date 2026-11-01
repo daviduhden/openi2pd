@@ -323,10 +323,16 @@ void TestBlockedClearnetTargets ()
 			 "::ffff:169.254.169.254", "::127.0.0.1", "[::ffff:127.0.0.1]" })
 		assert (i2p::proxy::IsBlockedClearnetTarget (host));
 
+	// The NAT64 well-known prefix embeds IPv4 in the last four bytes; the
+	// local-use prefix has an operator-defined embedding and is refused
+	// entirely.
+	for (const char * host : { "64:ff9b::127.0.0.1", "64:ff9b::c0a8:101", "64:ff9b:1::1" })
+		assert (i2p::proxy::IsBlockedClearnetTarget (host));
+
 	// Globally reachable literals and plain names stay allowed; a name is
 	// resolved by the outproxy, so it cannot be classified here.
 	for (const char * host : { "1.1.1.1", "8.8.8.8", "93.184.216.34", "2606:4700:4700::1111", "::ffff:8.8.8.8",
-			 "example.com", "example.i2p", "", "not-an-address", "8.8.8.8:80" })
+			 "64:ff9b::808:808", "example.com", "example.i2p", "", "not-an-address", "8.8.8.8:80" })
 		assert (!i2p::proxy::IsBlockedClearnetTarget (host));
 }
 

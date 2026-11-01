@@ -1433,7 +1433,9 @@ namespace client
 		auto session = m_Owner.FindSession (m_ID);
 		if (session && session->Type == SAMSessionType::eSAMSessionTypeMaster)
 		{
-			LogPrint (eLogDebug, "SAM: Subsession add: ", buf);
+			// The parameter list can carry DESTINATION=<private keys>; it is
+			// refused below, but only after this point has already logged.
+			LogPrint (eLogDebug, "SAM: Subsession add request, ", static_cast<int> (buf.size ()), " bytes");
 			auto masterSession = std::static_pointer_cast<SAMMasterSession> (session);
 			if (id.empty ())
 			{
@@ -1646,7 +1648,7 @@ namespace client
 		auto session = m_Owner.FindSession (m_ID);
 		if (session && session->Type == SAMSessionType::eSAMSessionTypeMaster)
 		{
-			LogPrint (eLogDebug, "SAM: Subsession remove: ", buf);
+			LogPrint (eLogDebug, "SAM: Subsession remove request, ", static_cast<int> (buf.size ()), " bytes");
 			auto masterSession = std::static_pointer_cast<SAMMasterSession> (session);
 			// An identifier SESSION ADD refuses can never name a subsession.
 			// The reply helper keeps an unrepresentable ID out of the quoted
@@ -1667,7 +1669,9 @@ namespace client
 
 	void SAMSocket::ProcessPing (std::string_view text)
 	{
-		LogPrint (eLogDebug, "SAM: Ping ", text);
+		// The ping payload is arbitrary client input and never needed in a
+		// diagnostic.
+		LogPrint (eLogDebug, "SAM: Ping request, ", static_cast<int> (text.size ()), " bytes");
 		SendMessageReply (MakeSAMControlReply (SAMControlCommand::eSAMControlCommandPing, SAM_PING, text), false);
 	}
 

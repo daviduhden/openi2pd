@@ -230,6 +230,15 @@ void TestInvalidJumpLinkIsNeverStored ()
 	assert (!book.FindAddress ("broken.i2p"));
 	assert (fake->saveCount == 0);
 
+	// A short label decodes only a prefix of the hash; storing it would
+	// publish the remaining bytes from an uninitialised tag.
+	for (const char * partial : { "aaaa", "aaaaaaaa", "aaaaaaaaaaaaaaaa" })
+	{
+		book.InsertAddress ("partial.i2p", std::string (partial) + ".b32.i2p");
+		assert (!book.FindAddress ("partial.i2p"));
+		assert (fake->saveCount == 0);
+	}
+
 	// The canonical spelling still works and is persisted once.
 	book.InsertAddress ("good.i2p", destination.ToBase32 () + ".b32.i2p");
 	const auto stored = book.FindAddress ("good.i2p");
