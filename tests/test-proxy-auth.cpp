@@ -390,6 +390,14 @@ constexpr char RFC7616_CNONCE[] = "f2/wE4q74E6zIJEtWaHKaf5wv/H5QzzpXusqGemxURZJ"
 constexpr char RFC7616_OPAQUE[] = "FQhe/qaU925kfnzjCev0ciny7QMkPqMAFRtzCUYo5tdS";
 constexpr char RFC7616_SHA256_RESPONSE[] = "753927fa0e85d155564e2e272a28d1802ca10daf4496794697cf8db5856cb6c1";
 constexpr char RFC7616_MD5_RESPONSE[] = "8ca523f5e9506fed4657c9700eebdbec";
+// The RFC 7616 response binds the nonce count into the digest
+// (KD = H(HA1:nonce:nc:cnonce:qop:HA2)), so these are the same published
+// vector recomputed for another `nc`. The nc=00000001 constant above is
+// the published value and pins the derivation: the nonce, cnonce and
+// H(A1)/H(A2) are unchanged.
+constexpr char RFC7616_MD5_RESPONSE_NC2[] = "4b5d595ecf2db9df612ea5b45cd97101";
+constexpr char RFC7616_MD5_RESPONSE_NC3[] = "ae9021af17d1b5989d5577585d60a598";
+constexpr char RFC7616_MD5_RESPONSE_NC5[] = "8883ee8aed13b620c8eab4068f899459";
 constexpr std::int64_t DIGEST_NOW = 1'700'000'000'000; // fixed millisecond base
 
 std::unique_ptr<ProxyDigestAuth> MakeDigestAuth (std::string user, std::string password, std::string realm)
@@ -494,14 +502,17 @@ void TestDigestRejections ()
 							  "0123456789abcdef0123456789abcdef", RFC7616_OPAQUE),
 				"GET", DIGEST_NOW)
 		== ProxyDigestResult::BadCredentials);
-	// Wrong username with the correct response for the configured user.
-	assert (auth->Verify (header ("mufasa", RFC7616_REALM, RFC7616_NONCE, "00000002", "MD5", RFC7616_MD5_RESPONSE,
-							  RFC7616_OPAQUE),
+	// Wrong username with the correct response for the configured user. The
+	// response matches this nc, so only the username comparison can reject
+	// the request.
+	assert (auth->Verify (header ("mufasa", RFC7616_REALM, RFC7616_NONCE, "00000002", "MD5",
+							  RFC7616_MD5_RESPONSE_NC2, RFC7616_OPAQUE),
 				"GET", DIGEST_NOW)
 		== ProxyDigestResult::BadCredentials);
-	// A different method changes H(A2).
-	assert (auth->Verify (header (RFC7616_USER, RFC7616_REALM, RFC7616_NONCE, "00000003", "MD5", RFC7616_MD5_RESPONSE,
-							  RFC7616_OPAQUE),
+	// A different method changes H(A2); the response is the one for GET, so
+	// the method alone makes it invalid.
+	assert (auth->Verify (header (RFC7616_USER, RFC7616_REALM, RFC7616_NONCE, "00000003", "MD5",
+							  RFC7616_MD5_RESPONSE_NC3, RFC7616_OPAQUE),
 				"POST", DIGEST_NOW)
 		== ProxyDigestResult::BadCredentials);
 	// Wrong realm is rejected before the digest is evaluated.
@@ -573,20 +584,32 @@ void TestDigestNonceCount ()
 	auth->SeedNonce (RFC7616_NONCE, RFC7616_OPAQUE, DIGEST_NOW);
 	assert (auth->NonceCount () == 1);
 
-	const auto header = [&] (std::string_view nc)
+	// The response digest includes the nonce count, so every accepted case
+	// needs the vector for its own nc; a mismatched response would be
+	// rejected as bad credentials before the counter is updated.
+	const auto header = [&] (std::string_view nc, std::string_view response)
 	{
 		return DigestHeader (RFC7616_USER, RFC7616_REALM, RFC7616_URI, "MD5", RFC7616_NONCE, nc, RFC7616_CNONCE,
-			RFC7616_MD5_RESPONSE, RFC7616_OPAQUE);
+			response, RFC7616_OPAQUE);
 	};
 
-	assert (auth->Verify (header ("00000001"), "GET", DIGEST_NOW) == ProxyDigestResult::Accepted);
+	assert (auth->Verify (header ("00000001", RFC7616_MD5_RESPONSE), "GET", DIGEST_NOW)
+		== ProxyDigestResult::Accepted);
 	// Replaying the same nc is rejected even with a valid digest.
-	assert (auth->Verify (header ("00000001"), "GET", DIGEST_NOW) == ProxyDigestResult::Replayed);
+	assert (auth->Verify (header ("00000001", RFC7616_MD5_RESPONSE), "GET", DIGEST_NOW)
+		== ProxyDigestResult::Replayed);
 	// Going backwards is rejected: nc is monotonic per nonce.
-	assert (auth->Verify (header ("00000000"), "GET", DIGEST_NOW) == ProxyDigestResult::Malformed);
+	assert (auth->Verify (header ("00000000", RFC7616_MD5_RESPONSE), "GET", DIGEST_NOW)
+		== ProxyDigestResult::Malformed);
 	// A higher count is accepted.
-	assert (auth->Verify (header ("00000002"), "GET", DIGEST_NOW) == ProxyDigestResult::Accepted);
-	assert (auth->Verify (header ("00000002"), "GET", DIGEST_NOW) == ProxyDigestResult::Replayed);
+	assert (auth->Verify (header ("00000002", RFC7616_MD5_RESPONSE_NC2), "GET", DIGEST_NOW)
+		== ProxyDigestResult::Accepted);
+	assert (auth->Verify (header ("00000002", RFC7616_MD5_RESPONSE_NC2), "GET", DIGEST_NOW)
+		== ProxyDigestResult::Replayed);
+	// A valid response for an older nc is still a replay once a newer count
+	// has been accepted.
+	assert (auth->Verify (header ("00000001", RFC7616_MD5_RESPONSE), "GET", DIGEST_NOW)
+		== ProxyDigestResult::Replayed);
 
 	// A rejected digest must not consume an nc value.
 	auto fresh = MakeDigestAuth (RFC7616_USER, RFC7616_PASSWORD, RFC7616_REALM);
@@ -596,7 +619,7 @@ void TestDigestNonceCount ()
 				"GET", DIGEST_NOW)
 		== ProxyDigestResult::BadCredentials);
 	assert (fresh->Verify (DigestHeader (RFC7616_USER, RFC7616_REALM, RFC7616_URI, "MD5", RFC7616_NONCE, "00000005",
-							   RFC7616_CNONCE, RFC7616_MD5_RESPONSE, RFC7616_OPAQUE),
+							   RFC7616_CNONCE, RFC7616_MD5_RESPONSE_NC5, RFC7616_OPAQUE),
 				"GET", DIGEST_NOW)
 		== ProxyDigestResult::Accepted);
 }
