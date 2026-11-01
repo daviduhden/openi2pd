@@ -433,6 +433,8 @@ namespace client
 	// SAM version components are compared numerically, component by
 	// component, like Java's VersionComparator. Concatenating the digits
 	// (the previous approach) mis-orders versions such as "3.2.1".
+	// The dotted depth is not fixed, as in Java: a bound with more than
+	// two components keeps every component for the comparison.
 	inline bool ParseSAMVersionComponents (std::string_view ver, std::vector<uint64_t> & components)
 	{
 		components.clear ();
@@ -448,7 +450,10 @@ namespace client
 			{
 				auto ch = ver[i];
 				if (ch < '0' || ch > '9') return false;
-				if (value > MAX_SAM_VERSION_VALUE) return false; // absurd component
+				// No supported version has a component this large, and
+				// checking before the multiply keeps a long digit run
+				// from overflowing the accumulator.
+				if (value > MAX_SAM_VERSION_VALUE) return false;
 				value = value * 10 + (ch - '0');
 			}
 			components.push_back (value);

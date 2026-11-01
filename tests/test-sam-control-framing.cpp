@@ -270,10 +270,20 @@ void TestHandshakeNegotiation ()
 		NegotiateSAMHandshake ("HELLO VERSION MIN=3.3 MAX=3.0", version) == SAMHandshakeResult::eSAMHandshakeNoVersion);
 	assert (
 		NegotiateSAMHandshake ("HELLO VERSION MIN=2.0 MAX=2.9", version) == SAMHandshakeResult::eSAMHandshakeNoVersion);
-	// A component above 3.3.x is still a well-formed range, not a syntax
-	// error.
-	assert (NegotiateSAMHandshake ("HELLO VERSION MIN=3.0.0.0.0.0.0.0.0.0.0.0.1", version)
+	// A component above the newest version is a well-formed range that
+	// selects nothing, not a syntax error.
+	assert (
+		NegotiateSAMHandshake ("HELLO VERSION MIN=3.3.1", version) == SAMHandshakeResult::eSAMHandshakeNoVersion);
+	assert (NegotiateSAMHandshake ("HELLO VERSION MIN=3.3.0.0.0.1", version)
 		== SAMHandshakeResult::eSAMHandshakeNoVersion);
+	// An arbitrarily long but in-range bound is not malformed. Java's
+	// SAMHandlerFactory.chooseBestVersion() compares MIN/MAX with
+	// net.i2p.util.VersionComparator, which reads every dotted component
+	// numerically, so "3.0.0...0.1" is 3.0 and a MIN-only handshake answers
+	// OK VERSION=3.3.
+	assert (NegotiateSAMHandshake ("HELLO VERSION MIN=3.0.0.0.0.0.0.0.0.0.0.0.1", version)
+		== SAMHandshakeResult::eSAMHandshakeOk);
+	assert (version == MAX_SAM_VERSION);
 
 	// Malformed HELLO lines (not a HELLO VERSION command at all, or a
 	// duplicate parameter key) get I2P_ERROR, as SAMHandlerFactory throws
@@ -286,8 +296,9 @@ void TestHandshakeNegotiation ()
 	// A present but unparsable/empty bound matches no supported version.
 	// SAMHandlerFactory does not validate the syntax either; it answers
 	// NOVERSION rather than I2P_ERROR. The numeric comparison here is
-	// stricter than Java's lexicographic VersionComparator (which happens
-	// to accept a negative bound), a deliberate and documented divergence.
+	// stricter than Java: VersionComparator ignores non-digit characters
+	// inside a component (so it reads "3.x" as 3 and "-1" as 1), while a
+	// local component must be plain decimal digits.
 	for (const char * line : { "HELLO VERSION MIN=x", "HELLO VERSION MAX=3.x", "HELLO VERSION MIN= 3.0",
 			 "HELLO VERSION MIN=-1", "HELLO VERSION MAX=" })
 	{
@@ -300,9 +311,16 @@ void TestHandshakeNegotiation ()
 	assert (NegotiateSAMHandshake ("HELLO VERSION", version) == SAMHandshakeResult::eSAMHandshakeOk);
 	assert (version == MAX_SAM_VERSION);
 
-	// Trailing components beyond the 3.x pair still compare numerically.
+	// Trailing components still compare numerically: 3.1.5 lies between
+	// 3.1 and 3.2, so the newest selectable version stays 3.1
+	// (VersionComparator.comp("3.2", "3.1.5") is positive).
 	assert (
 		NegotiateSAMHandshake ("HELLO VERSION MIN=3.0.0 MAX=3.1.5", version) == SAMHandshakeResult::eSAMHandshakeOk);
+	assert (version == MAKE_SAM_VERSION_NUMBER (3, 1));
+	// A trailing component above the minor version lifts the bound to the
+	// next candidate.
+	assert (
+		NegotiateSAMHandshake ("HELLO VERSION MIN=3.0.0 MAX=3.2.5", version) == SAMHandshakeResult::eSAMHandshakeOk);
 	assert (version == SAM_VERSION_32);
 }
 
