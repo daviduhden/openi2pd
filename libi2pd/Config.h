@@ -64,18 +64,47 @@ namespace config
 	 * The text is rendered from the same option table that ParseCmdline()
 	 * parses, so the two entry points cannot drift apart, and it is
 	 * published with one synchronous write. On Windows the router is a
-	 * GUI-subsystem executable: an inherited standard-output handle (a
-	 * pipe from a test driver or a shell redirection) is used as is, and a
-	 * start without one borrows the parent console through
-	 * AttachConsole(ATTACH_PARENT_PROCESS) for this banner only. No
-	 * console window is allocated and no dialog is opened; when neither
-	 * exists the status is the only signal, so a headless caller must not
-	 * rely on reading the text.
+	 * GUI-subsystem executable: the inherited standard-output handle (a
+	 * pipe from a test driver or a shell redirection) is used as is, the
+	 * inherited standard-error handle is the fallback, and a start with
+	 * neither publishes nothing. No console is attached or allocated and
+	 * no dialog is opened, so a headless caller must not rely on reading
+	 * the text and uses the exit status.
 	 *
 	 * This function does not change configuration state and never starts
 	 * a service, so it is safe to call before any daemon initialization.
 	 */
 	int PublishInformationalResponse (CmdlineOutcome outcome);
+
+#if defined(_WIN32)
+	/**
+	 * @brief Answer an informational request from the raw command line.
+	 * @param commandLine NUL-terminated Windows command line.
+	 * @param exitCode receives the status the caller must exit with.
+	 * @return true when the banner was published; false to continue.
+	 *
+	 * A GUI-subsystem image has no documented CRT argument vector, and a
+	 * start with an empty vector would run a router instead of answering,
+	 * so the flag is read directly from GetCommandLineW(). The scan reads
+	 * wide characters only: it allocates nothing, performs no I/O and
+	 * cannot block. Only unquoted, exactly spelled `--version`/`-version`
+	 * and `--help`/`-help` tokens count; a quoted value keeps its value
+	 * even when it spells a flag, while an unquoted value that exactly
+	 * spells one is indistinguishable from the flag without parsing the
+	 * full option table. A command line the scan does not recognize still
+	 * reaches ClassifyInformationalRequest() through the converted
+	 * argument vector.
+	 *
+	 * When a flag matches, the option table is registered (if it is not
+	 * yet) because the `--help` answer renders it; nothing else is
+	 * acquired.
+	 *
+	 * The caller must exit immediately with @a exitCode after a true
+	 * return, because this call runs before any daemon state or resource
+	 * exists.
+	 */
+	bool TryPublishRawWindowsInformationalRequest (const wchar_t * commandLine, int & exitCode);
+#endif
 
 	/**
 	 * @brief Detect a version or help request without side effects.
@@ -88,10 +117,11 @@ namespace config
 	 * ParseCmdline(), but it stores into a local option map and reports
 	 * nothing. A malformed, unknown or otherwise rejected command line
 	 * therefore returns Proceed and the normal parse produces the
-	 * platform-appropriate diagnostic (on Windows the GUI build keeps its
-	 * fatal-error dialog). An entry point uses this to answer
+	 * platform-appropriate diagnostic. An entry point uses this to answer
 	 * ``--version``/``--help`` before it installs any console, locale,
-	 * GUI or service state.
+	 * GUI or service state; a Windows entry point answers from the raw
+	 * command line first, through
+	 * TryPublishRawWindowsInformationalRequest().
 	 */
 	CmdlineOutcome ClassifyInformationalRequest (int argc, char * argv[]);
 

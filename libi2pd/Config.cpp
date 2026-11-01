@@ -21,10 +21,12 @@
 #include <map>
 #include <sstream>
 #include <string>
+#include <string_view>
 #if defined(_WIN32)
-// AttachConsole/CreateFileW/WriteFile and SetErrorMode for the
-// GUI-subsystem informational path; the SDK macros come from the
-// libi2pd compile contract.
+// GetStdHandle/GetFileType/SetLastError/WriteFile for the inherited
+// standard-handle informational path; the SDK macros come from the
+// libi2pd compile contract. The raw command line itself is read by the
+// WinMain wrapper, which passes the answer request here.
 #include <windows.h>
 #endif
 #include <boost/program_options/cmdline.hpp>
@@ -608,7 +610,9 @@ namespace config
 		 * @return false on the first failed or empty write.
 		 *
 		 * A synchronous write keeps the banner ahead of process
-		 * termination without relying on CRT buffering or iostreams.
+		 * termination without relying on CRT buffering or iostreams. The
+		 * text is written in 16 KiB chunks, and only handle operations are
+		 * used: no window, dialog or console state is touched.
 		 */
 		bool WriteAll (HANDLE handle, const std::string & text)
 		{
@@ -623,6 +627,32 @@ namespace config
 			}
 			return true;
 		}
+
+		/**
+		 * Write @a text to one inherited standard handle.
+		 * @param which STD_OUTPUT_HANDLE or STD_ERROR_HANDLE.
+		 * @param text complete banner text to publish.
+		 * @return true when the handle accepted the whole text.
+		 *
+		 * A handle the caller did not provide is treated as absent: a
+		 * console-less start can leave a stale console handle behind, and
+		 * writing to it fails with a non-zero last error. Nothing is
+		 * attached, allocated or reopened, so a missing or invalid handle
+		 * cannot block the answer.
+		 */
+		bool WriteStandardHandle (DWORD which, const std::string & text)
+		{
+			const HANDLE handle = GetStdHandle (which);
+			if (handle == nullptr || handle == INVALID_HANDLE_VALUE) return false;
+			// GetFileType() does not clear the last error on success, so a
+			// stale value from any earlier call must not decide this: only
+			// an error this call sets marks the handle as unusable. A
+			// FILE_TYPE_UNKNOWN with a clear error is a device we can still
+			// write to.
+			SetLastError (NO_ERROR);
+			if (GetFileType (handle) == FILE_TYPE_UNKNOWN && GetLastError () != NO_ERROR) return false;
+			return WriteAll (handle, text);
+		}
 #endif
 
 		/**
@@ -633,41 +663,109 @@ namespace config
 		 * code-page setup in the daemon on purpose and must not depend on
 		 * it.
 		 *
-		 * A POSIX console build writes through stdio and flushes, because
-		 * a caller may terminate without running exit-time flushes. On
-		 * Windows the router is a GUI-subsystem image: an inherited
-		 * standard-output handle is used directly (a test driver, a shell
-		 * redirection or a service manager provides one), and a start
-		 * without a usable handle borrows the parent console through
-		 * AttachConsole() for this banner only. Neither path allocates a
-		 * window or opens a dialog, so a headless caller without any
-		 * console observes the exit status alone.
+		 * Only handles the caller inherited are used. A POSIX console build
+		 * writes through stdio and flushes, because a caller may terminate
+		 * without running exit-time flushes. The Windows router is a
+		 * GUI-subsystem image: it writes synchronously to the inherited
+		 * standard-output handle (a test-driver pipe, a shell redirection or
+		 * a service manager provides one) and falls back to the inherited
+		 * standard-error handle. It never attaches to or allocates a console
+		 * and never opens CONOUT$: borrowing a console sends the answer to an
+		 * invisible sink the caller cannot read, and console attachment is
+		 * the one step that can wait on console state. A start with neither
+		 * handle therefore publishes nothing, and the exit status is the
+		 * only signal.
 		 */
 		void WriteStandardOutput (const std::string & text)
 		{
 #if defined(_WIN32)
-			const HANDLE output = GetStdHandle (STD_OUTPUT_HANDLE);
-			if (output != nullptr && output != INVALID_HANDLE_VALUE)
-			{
-				// FILE_TYPE_UNKNOWN with a clear last error is a device we
-				// can still write to; anything else is a stale handle left
-				// behind by a console-less start.
-				if (GetFileType (output) != FILE_TYPE_UNKNOWN || GetLastError () == NO_ERROR)
-				{
-					if (WriteAll (output, text)) return;
-				}
-			}
-			if (!AttachConsole (ATTACH_PARENT_PROCESS)) return;
-			const HANDLE console = CreateFileW (
-				L"CONOUT$", FILE_APPEND_DATA, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_EXISTING, 0, nullptr);
-			if (console == INVALID_HANDLE_VALUE) return;
-			WriteAll (console, text);
-			CloseHandle (console);
+			if (WriteStandardHandle (STD_OUTPUT_HANDLE, text)) return;
+			WriteStandardHandle (STD_ERROR_HANDLE, text);
 #else
 			std::fwrite (text.data (), 1, text.size (), stdout);
 			std::fflush (stdout);
 #endif
 		}
+
+#if defined(_WIN32)
+		/**
+		 * Map one unquoted raw command-line token to a request.
+		 * @param token first character of the token.
+		 * @param length token length in wide characters.
+		 * @return the requested answer, or CmdlineOutcome::Proceed.
+		 *
+		 * Only the spellings the option table accepts are recognized,
+		 * including the single-dash long form that allow_long_disguise
+		 * enables. A quoted token never reaches this function, so a
+		 * `--version` used as an option value stays a value.
+		 */
+		CmdlineOutcome ClassifyRawToken (const wchar_t * token, size_t length)
+		{
+			static constexpr std::wstring_view version = L"--version";
+			static constexpr std::wstring_view disguisedVersion = L"-version";
+			static constexpr std::wstring_view help = L"--help";
+			static constexpr std::wstring_view disguisedHelp = L"-help";
+			const std::wstring_view value (token, length);
+			if (value == version || value == disguisedVersion) return CmdlineOutcome::Version;
+			if (value == help || value == disguisedHelp) return CmdlineOutcome::Help;
+			return CmdlineOutcome::Proceed;
+		}
+
+		/**
+		 * Scan a raw Windows command line for an informational flag.
+		 * @param commandLine NUL-terminated line from GetCommandLineW().
+		 * @return the requested answer, or CmdlineOutcome::Proceed.
+		 *
+		 * A GUI-subsystem image has no documented CRT argument vector, and
+		 * an empty argument vector starts a router instead of answering,
+		 * so the flag is read from the raw command line. The scan reads
+		 * wide characters only, allocates nothing, performs no I/O and
+		 * cannot block. A token that contains a quote is never matched,
+		 * which keeps a quoted option value a value even when the value
+		 * spells a flag; the authoritative parser still decides every
+		 * command line the scan does not recognize. An unquoted `--` ends
+		 * the scan because every later token is positional.
+		 */
+		CmdlineOutcome ScanRawCommandLine (const wchar_t * commandLine)
+		{
+			if (!commandLine) return CmdlineOutcome::Proceed;
+			size_t offset = 0;
+			while (commandLine[offset])
+			{
+				if (commandLine[offset] == L' ' || commandLine[offset] == L'\t')
+				{
+					++offset;
+					continue;
+				}
+				const size_t start = offset;
+				bool quoted = false;
+				while (commandLine[offset])
+				{
+					const wchar_t current = commandLine[offset];
+					if (current == L'"')
+					{
+						// A quote makes the token a value, whether it opens a
+						// quoted argument or was escaped by a backslash: only
+						// a bare spelling names an option.
+						quoted = true;
+						++offset;
+						continue;
+					}
+					if (current == L' ' || current == L'\t') break;
+					++offset;
+				}
+				const size_t length = offset - start;
+				if (!quoted)
+				{
+					if (length == 2 && commandLine[start] == L'-' && commandLine[start + 1] == L'-')
+						return CmdlineOutcome::Proceed;
+					const auto outcome = ClassifyRawToken (commandLine + start, length);
+					if (outcome != CmdlineOutcome::Proceed) return outcome;
+				}
+			}
+			return CmdlineOutcome::Proceed;
+		}
+#endif
 	} // namespace
 
 	int PublishInformationalResponse (CmdlineOutcome outcome)
@@ -679,6 +777,23 @@ namespace config
 		WriteStandardOutput (RenderInformationalResponse (outcome));
 		return EXIT_SUCCESS;
 	}
+
+#if defined(_WIN32)
+	bool TryPublishRawWindowsInformationalRequest (const wchar_t * commandLine, int & exitCode)
+	{
+		const auto outcome = ScanRawCommandLine (commandLine);
+		if (outcome == CmdlineOutcome::Proceed) return false;
+		// The renderer prints the registered option table for --help, so
+		// the table must exist even though nothing parsed the command line.
+		// Init() only registers options and drops previously stored values.
+		Init ();
+		// Nothing else has been acquired on this path, so the caller may
+		// exit at once: there is no teardown that could wait on state this
+		// process never created.
+		exitCode = PublishInformationalResponse (outcome);
+		return true;
+	}
+#endif
 
 	CmdlineOutcome ClassifyInformationalRequest (int argc, char * argv[])
 	{
