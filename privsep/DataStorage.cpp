@@ -944,7 +944,7 @@ struct DataStorageClient::Impl
 	}
 
 	/**
-	 * Single-flight write or removal under @ref mutex.
+	 * Single-flight write or removal under the client's `mutex`.
 	 *
 	 * Validation (kind, canonical name, payload bound) happens before any
 	 * worker contact, so a refused request cannot change the worker's
@@ -1026,8 +1026,16 @@ struct DataStorageClient::Impl
 		const auto & message = **reply;
 		if (message.type == MessageType::Error)
 		{
-			// A typed per-request refusal keeps the channel alive: framing was
-			// valid, the operation was simply not allowed.
+			// A typed per-request refusal keeps the channel alive only when it
+			// answers this request. An uncorrelated Error cannot be the answer
+			// to the pending operation, and accepting it would leave the real
+			// reply queued and desynchronise every later operation.
+			if (message.requestId != id)
+			{
+				lastStatus.store (DataStorageStatus::Busy);
+				MarkRestart ("uncorrelated worker error");
+				return false;
+			}
 			lastStatus.store (DataStorageStatus::Rejected);
 			return false;
 		}

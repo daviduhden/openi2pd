@@ -543,10 +543,13 @@ public:
 	 * Raw bytes with no length prefix. Used by the data-storage request
 	 * family, whose name/payload lengths are already explicit u8/u32
 	 * fields. The caller is responsible for the bound; the encoder checks
-	 * it.
+	 * it. An empty span writes nothing: a removal request has no bytes, and
+	 * appending a zero-length range from a null pointer must not be
+	 * expressed as a string operation at all.
 	 */
 	void WriteBytes (std::span<const uint8_t> bytes)
 	{
+		if (bytes.empty ()) return;
 		m_Data.append (reinterpret_cast<const char *> (bytes.data ()), bytes.size ());
 	}
 	/**

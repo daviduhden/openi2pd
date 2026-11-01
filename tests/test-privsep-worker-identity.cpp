@@ -434,6 +434,24 @@ int main (int argc, char ** argv)
 		assert (gidResult.error.empty ());
 	}
 
+	// A broker reply is classified against the pending request. A late reply
+	// for an already answered request is drained, but only a bounded number
+	// of them: an endless run is a fault of the run, not a slow broker, and
+	// must not hold one call forever. The channel is kept either way, so the
+	// classification never tears the broker down.
+	{
+		assert (ClassifySupervisorReply (5, 4, 0).kind == SupervisorReplyKind::Stale);
+		assert (ClassifySupervisorReply (5, 4, MAX_DRAINED_STALE_REPLIES - 1).kind == SupervisorReplyKind::Stale);
+		const auto flood = ClassifySupervisorReply (5, 4, MAX_DRAINED_STALE_REPLIES);
+		assert (flood.kind == SupervisorReplyKind::OutOfOrder);
+		assert (flood.code == ErrorCode::Busy);
+		assert (!flood.detail.empty ());
+		// The drain budget only applies to stale replies: a matching answer
+		// and a future id keep their own classification.
+		assert (ClassifySupervisorReply (5, 5, MAX_DRAINED_STALE_REPLIES).kind == SupervisorReplyKind::Matching);
+		assert (ClassifySupervisorReply (5, 6, MAX_DRAINED_STALE_REPLIES).code == ErrorCode::BadField);
+	}
+
 	// Process creation is a one-way process-wide barrier, so a child
 	// process owns the flag: every spawn helper must then fail closed with
 	// the same fixed error while the parent's spawn path stays usable.

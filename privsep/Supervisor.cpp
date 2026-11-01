@@ -257,6 +257,7 @@ i2p::expected<Channel, std::string> SpawnSupervisedTorrentStorage (int rootFd, s
 		return i2p::unexpected (sent.error ());
 	}
 	std::optional<ReceivedMessage> selected;
+	unsigned drainedStale = 0;
 	while (true)
 	{
 		auto received = channel.ReceiveWithFd (5000);
@@ -272,21 +273,25 @@ i2p::expected<Channel, std::string> SpawnSupervisedTorrentStorage (int rootFd, s
 			return i2p::unexpected (std::string ("storage supervisor busy"));
 		}
 		auto & candidate = **received;
-		const auto decision = ClassifySupervisorReply (id, candidate.message.requestId);
+		const auto decision = ClassifySupervisorReply (id, candidate.message.requestId, drainedStale);
 		if (decision.kind == SupervisorReplyKind::Stale)
 		{
 			// A reply for an earlier, already answered request is drained and
 			// ignored so a late duplicate cannot be mistaken for this one.
+			// The drain itself is bounded: an endless run of them is a fault,
+			// not a slow broker, and must not hold this call forever.
 			if (candidate.fd >= 0) ::close (candidate.fd);
+			++drainedStale;
 			continue;
 		}
 		if (decision.kind == SupervisorReplyKind::OutOfOrder)
 		{
-			// A future request id cannot answer this request. It is a bounded
-			// protocol fault: discard the frame and its descriptor and reject
-			// only this call. Tearing the broker down here would also destroy
+			// A future request id, or a run of stale replies past the drain
+			// budget, cannot answer this request. It is a bounded protocol
+			// fault: discard the frame and its descriptor and reject only
+			// this call. Tearing the broker down here would also destroy
 			// every worker channel the core already owns.
-			(void)decision.code; // ErrorCode::BadField: a misordered field, not a teardown
+			(void)decision.code; // BadField for a misordered id, Busy for a stale flood; not a teardown
 			if (candidate.fd >= 0) ::close (candidate.fd);
 			return i2p::unexpected (std::string (decision.detail));
 		}

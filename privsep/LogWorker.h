@@ -81,7 +81,14 @@ public:
 	{
 	}
 
-	/** Send the one-time configuration and remember it for restarts. */
+	/**
+	 * Send the one-time configuration and remember it for restarts.
+	 *
+	 * A real log file is opened here and transferred as one descriptor
+	 * (`ConfigureLogFd`); a syslog or foreground sink has no file
+	 * capability to hand over and uses the descriptor-free `ConfigureLog`
+	 * frame.
+	 */
 	i2p::expected<void, std::string> Configure (bool useSyslog, std::string_view path, std::string_view tag);
 	/**
 	 * Configure the next process without opening the path locally. Used by
@@ -127,9 +134,16 @@ public:
 private:
 	/**
 	 * Send one configuration frame and prove the worker is
-	 * live/configured. */
+	 * live/configured.
+	 *
+	 * The frame type is derived from @a fd: a non-negative descriptor is
+	 * a `ConfigureLogFd` capability hand-off, and the absence of one is
+	 * the descriptor-free `ConfigureLog`. The registry makes the first a
+	 * `RequiredFile` type, so choosing it without a descriptor would be
+	 * refused before the payload is read.
+	 */
 	i2p::expected<void, std::string> ConfigureChannel (
-		Channel & channel, MessageType type, bool useSyslog, std::string_view path, std::string_view tag, int fd);
+		Channel & channel, bool useSyslog, std::string_view path, std::string_view tag, int fd);
 	i2p::expected<void, std::string> WaitForPong (Channel & channel, uint32_t expected, int timeoutMs);
 	void CountDroppedLocked (bool workerUnavailable);
 	mutable std::mutex m_Mutex;

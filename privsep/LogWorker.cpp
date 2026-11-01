@@ -423,8 +423,15 @@ i2p::expected<void, std::string> LogSink::WaitForPong (Channel & channel, uint32
 }
 
 i2p::expected<void, std::string> LogSink::ConfigureChannel (
-	Channel & channel, MessageType type, bool useSyslog, std::string_view path, std::string_view tag, int fd)
+	Channel & channel, bool useSyslog, std::string_view path, std::string_view tag, int fd)
 {
+	// The frame type follows the capability, not the call site: the
+	// registry declares ConfigureLogFd as RequiredFile, so a frame of that
+	// type without a descriptor is refused by the worker's descriptor
+	// policy before the payload is parsed. A syslog or foreground sink has
+	// nothing to hand over and must use the descriptor-free ConfigureLog
+	// frame instead of failing the handshake.
+	const MessageType type = fd >= 0 ? MessageType::ConfigureLogFd : MessageType::ConfigureLog;
 	auto encoded = EncodeLogConfig (useSyslog, path, tag);
 	if (!encoded)
 		return i2p::unexpected (std::string ("invalid log configuration: ") + std::string (encoded.error ().text));
@@ -459,7 +466,7 @@ i2p::expected<void, std::string> LogSink::Configure (bool useSyslog, std::string
 		logFd = OpenLogFile (path);
 		if (logFd < 0) return i2p::unexpected (std::string ("open log file: ") + strerror (errno));
 	}
-	auto configured = ConfigureChannel (*m_Channel, MessageType::ConfigureLogFd, useSyslog, path, tag, logFd);
+	auto configured = ConfigureChannel (*m_Channel, useSyslog, path, tag, logFd);
 	if (logFd >= 0) close (logFd);
 	if (!configured)
 	{
@@ -479,7 +486,7 @@ i2p::expected<void, std::string> LogSink::ConfigureProxy (bool useSyslog, std::s
 	std::lock_guard<std::mutex> lock (m_Mutex);
 	if (m_Configured) return i2p::unexpected ("log sink already configured");
 	if (!m_Channel || !m_Channel->IsOpen ()) return i2p::unexpected ("log sink channel is not open");
-	auto configured = ConfigureChannel (*m_Channel, MessageType::ConfigureLog, useSyslog, path, tag, -1);
+	auto configured = ConfigureChannel (*m_Channel, useSyslog, path, tag, -1);
 	if (!configured)
 	{
 		if (m_Channel) m_Channel->Close ();
@@ -515,7 +522,7 @@ i2p::expected<void, std::string> LogSink::Reattach (Channel channel)
 		if (logFd >= 0) close (logFd);
 		return i2p::unexpected ("invalid replacement channel");
 	}
-	auto configured = ConfigureChannel (channel, MessageType::ConfigureLogFd, m_Syslog, m_Path, m_Tag, logFd);
+	auto configured = ConfigureChannel (channel, m_Syslog, m_Path, m_Tag, logFd);
 	if (logFd >= 0) close (logFd);
 	if (!configured)
 	{
@@ -534,7 +541,7 @@ i2p::expected<void, std::string> LogSink::ReattachProxy (Channel channel)
 	if (!m_Configured) return i2p::unexpected ("log sink is not configured");
 	if (m_Shutdown) return i2p::unexpected ("log sink is shut down");
 	if (!channel.IsOpen ()) return i2p::unexpected ("invalid replacement channel");
-	auto configured = ConfigureChannel (channel, MessageType::ConfigureLog, m_Syslog, m_Path, m_Tag, -1);
+	auto configured = ConfigureChannel (channel, m_Syslog, m_Path, m_Tag, -1);
 	if (!configured)
 	{
 		channel.Close ();

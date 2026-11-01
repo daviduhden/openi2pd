@@ -59,7 +59,7 @@ struct PeerExpectation
 	bool requireGid = false;
 	bool requirePid = false;
 	/**
-	 * Accept uid 0 in addition to @ref uid (unprivileged worker + root
+	 * Accept uid 0 in addition to `uid` (unprivileged worker + root
 	 * core). */
 	bool allowRoot = false;
 	bool configured = false;
@@ -78,6 +78,13 @@ struct PeerExpectation
  * id instead of dropping the connection, and accounts every tolerated
  * violation against `MAX_PROTOCOL_VIOLATIONS`. Credential and
  * ancillary-data failures stay fatal in both modes.
+ *
+ * "Attributable" means magic, version, declared length and message type
+ * all agree with the registry: the typed Error names the offending type,
+ * so a frame whose type has no registry row (and a frame with a corrupt
+ * header) is fatal rather than answered. A refusal the peer cannot
+ * decode is worse than a closed channel, because it leaves the peer
+ * waiting for a reply that will never come.
  */
 enum class EnforcementPolicy : uint8_t
 {
@@ -199,7 +206,10 @@ public:
 private:
 	/**
 	 * Reply with a typed Error and account the violation; false means
-	 * "close". */
+	 * "close". `frame.type` must be a type that has a registry row: the
+	 * payload's offending-type field is decoded with the same registry, so
+	 * an unknown value would make the refusal unreadable.
+	 */
 	bool RejectFrame (const Message & frame, ErrorCode code, std::string_view detail, int timeoutMs);
 
 	int m_Fd = -1;

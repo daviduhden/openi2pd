@@ -429,6 +429,10 @@ i2p::expected<std::optional<ReceivedMessage>, std::string> Channel::ReceiveWithF
 
 	// Deliberately one buffer slot larger than a maximum frame so a
 	// truncated SOCK_SEQPACKET record can never look like a valid frame.
+	// The capacity is fixed for the whole call: every record of this loop
+	// is received into the same storage, so a tolerated refusal that
+	// continues the loop must not shrink it to the refused record's
+	// length.
 	std::string frame (HEADER_SIZE + MAX_MESSAGE_SIZE, '\0');
 	alignas (struct cmsghdr) char control[256] { };
 	int flags = MSG_DONTWAIT;
@@ -589,8 +593,13 @@ i2p::expected<std::optional<ReceivedMessage>, std::string> Channel::ReceiveWithF
 				return i2p::unexpected (std::string ("fcntl(received FD_CLOEXEC): ") + strerror (errno));
 			}
 		}
-		frame.resize (static_cast<size_t> (received));
-		auto message = Decode (frame);
+		// Never shrink the receive buffer: the next recvmsg() of this
+		// channel (a tolerated refusal below continues the loop) must still
+		// have the full frame capacity, or a later legitimate record is
+		// truncated and reported as a fatal ancillary-data fault. Decode a
+		// view of this record instead of resizing the storage.
+		const std::string_view record (frame.data (), static_cast<size_t> (received));
+		auto message = Decode (record);
 		if (!message)
 		{
 			if (receivedFd >= 0) ::close (receivedFd);
@@ -599,10 +608,15 @@ i2p::expected<std::optional<ReceivedMessage>, std::string> Channel::ReceiveWithF
 				// Only a record whose magic, version and declared length are
 				// consistent can be attributed to a request id; answering a
 				// corrupt header would let a peer claim an arbitrary one.
-				const auto inspection = InspectFrame (frame);
+				// The type must also have a registry row: the typed Error
+				// names the offending type, and its decoder rejects an
+				// unknown one, so an answer to a frame nobody can name would
+				// be unreadable by the very peer it is addressed to. Such a
+				// frame is therefore fatal instead of answered.
+				const auto inspection = InspectFrame (record);
 				const bool attributable = inspection.headerPresent && inspection.magicValid
 					&& inspection.version >= MIN_PROTOCOL_VERSION && inspection.version <= PROTOCOL_VERSION
-					&& inspection.lengthConsistent;
+					&& inspection.lengthConsistent && IsKnownMessageType (inspection.rawType);
 				if (attributable)
 				{
 					const Message offending { static_cast<MessageType> (inspection.rawType), inspection.requestId,

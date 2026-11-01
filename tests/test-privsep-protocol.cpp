@@ -6,16 +6,21 @@
  *
  * Checks privilege-separation framing and field bounds:
  * magic/version/type/length validation, exact maximum sizes, log-record
- * string limits and SOCK_SEQPACKET channel behavior with peer
- * credentials.
+ * string limits, SOCK_SEQPACKET channel behavior with peer credentials,
+ * the per-type descriptor authority and the endpoint refusal rules: an
+ * attributable fault is answered once with a decodable typed Error, while
+ * a frame this build cannot name stays fatal.
  *
  */
 
 #include <cassert>
 #include <cstdint>
+#include <fcntl.h>
 #include <limits>
+#include <poll.h>
 #include <string>
 #include <string_view>
+#include <sys/socket.h>
 #include <unistd.h>
 
 #include "privsep/Channel.h"
@@ -327,6 +332,16 @@ int main ()
 	assert (!AllowsOperation (EndpointRole::Log, MessageType::DataStorageRequest));
 	assert (!AllowsOperation (EndpointRole::Supervisor, MessageType::DataStorageReply));
 
+	// Descriptor authority is per type, and a sink must choose its frame
+	// type by capability: ConfigureLogFd transfers a file and therefore
+	// requires one, while ConfigureLog never carries one. Sending
+	// ConfigureLogFd without a descriptor is refused before the payload is
+	// parsed, which is why a syslog/foreground LogSink uses ConfigureLog.
+	assert (!DescriptorPresenceAllowed (MessageType::ConfigureLogFd, false));
+	assert (DescriptorPresenceAllowed (MessageType::ConfigureLogFd, true));
+	assert (DescriptorPresenceAllowed (MessageType::ConfigureLog, false));
+	assert (!DescriptorPresenceAllowed (MessageType::ConfigureLog, true));
+
 	// Channel behavior: SOCK_SEQPACKET only, peer credentials, timeout
 	// versus
 	// peer close, and use after close.
@@ -340,6 +355,85 @@ int main ()
 	auto uid = pair->first.PeerUid ();
 	assert (uid.has_value ());
 	assert (*uid == geteuid ());
+
+	// A frame whose type has no registry row cannot be answered: the typed
+	// Error names the offending type, and DecodeError rejects an unknown
+	// one, so the refusal would be unreadable by the peer it is addressed
+	// to. Such a frame is fatal, and the peer receives no answer at all.
+	{
+		auto unknown = Channel::CreatePair ();
+		assert (unknown.has_value ());
+		unknown->second.SetEnforcementPolicy (EnforcementPolicy::Endpoint);
+		const std::string raw = Header (PROTOCOL_MAGIC, PROTOCOL_VERSION,
+			static_cast<uint16_t> (MAX_MESSAGE_TYPE + 1), 900, 0);
+		assert (::send (unknown->first.Fd (), raw.data (), raw.size (), 0) == static_cast<ssize_t> (raw.size ()));
+		auto received = unknown->second.ReceiveWithFd (500);
+		assert (!received.has_value ());
+		pollfd pending { unknown->first.Fd (), POLLIN, 0 };
+		assert (::poll (&pending, 1, 0) == 0);
+		unknown->first.Close ();
+		unknown->second.Close ();
+	}
+
+	// A known type carrying a forbidden descriptor is attributable, so the
+	// endpoint answers it once with a typed Error that the far side can
+	// decode and correlate by request id, and the channel stays usable.
+	{
+		auto attributable = Channel::CreatePair ();
+		assert (attributable.has_value ());
+		attributable->second.SetEnforcementPolicy (EnforcementPolicy::Endpoint);
+		auto config = EncodeLogConfig (false, "/tmp/openi2pd-channel.log", "test");
+		assert (config.has_value ());
+		const int fd = ::open ("/dev/null", O_RDONLY);
+		assert (fd >= 0);
+		assert (attributable->first.SendWithFd (Message { MessageType::ConfigureLog, 4, *config }, fd).has_value ());
+		::close (fd);
+		auto idle = attributable->second.ReceiveWithFd (200);
+		assert (idle.has_value () && !idle->has_value ());
+		auto refusal = attributable->first.Receive (1000);
+		assert (refusal.has_value () && refusal->has_value ());
+		assert ((*refusal)->type == MessageType::Error);
+		assert ((*refusal)->requestId == 4);
+		auto decodedError = DecodeError ((*refusal)->payload);
+		assert (decodedError.has_value ());
+		assert (std::get<0> (*decodedError) == MessageType::ConfigureLog);
+		assert (std::get<1> (*decodedError) == ErrorCode::BadField);
+		attributable->second.Close ();
+		attributable->first.Close ();
+	}
+
+	// A tolerated refusal must not shrink the receive buffer: the frame
+	// storage keeps its full capacity for the whole call, so the next
+	// legitimate record is still delivered intact instead of being
+	// truncated into a fatal ancillary-data fault. The refused frame here
+	// is header-only (a descriptor on a zero-payload Ping), so a shrunk
+	// buffer would be sixteen bytes.
+	{
+		auto recovery = Channel::CreatePair ();
+		assert (recovery.has_value ());
+		recovery->second.SetEnforcementPolicy (EnforcementPolicy::Endpoint);
+		const int refusedFd = ::open ("/dev/null", O_RDONLY);
+		assert (refusedFd >= 0);
+		assert (recovery->first.SendWithFd (Message { MessageType::Ping, 11, { } }, refusedFd).has_value ());
+		::close (refusedFd);
+		auto refused = recovery->second.ReceiveWithFd (200);
+		assert (refused.has_value () && !refused->has_value ());
+		auto refusal = recovery->first.Receive (1000);
+		assert (refusal.has_value () && refusal->has_value ());
+		assert ((*refusal)->type == MessageType::Error);
+		assert ((*refusal)->requestId == 11);
+		Message large { MessageType::RouterStorageRequest, 12,
+			std::string (MaxPayloadFor (MessageType::RouterStorageRequest), 'v') };
+		assert (recovery->first.Send (large).has_value ());
+		auto delivered = recovery->second.ReceiveWithFd (2000);
+		assert (delivered.has_value () && delivered->has_value ());
+		assert ((*delivered)->fd < 0);
+		assert ((*delivered)->message.type == MessageType::RouterStorageRequest);
+		assert ((*delivered)->message.requestId == 12);
+		assert ((*delivered)->message.payload == large.payload);
+		recovery->second.Close ();
+		recovery->first.Close ();
+	}
 
 	auto timeout = pair->second.Receive (50);
 	assert (timeout.has_value ());

@@ -383,7 +383,9 @@ enum class SupervisorReplyKind : uint8_t
 	 * A reply for a request id this client has not sent yet. It cannot
 	 * answer the pending request, so it is a bounded protocol fault: the
 	 * reply and its descriptor are discarded and the request is rejected,
-	 * but the broker channel and every worker behind it stay alive.
+	 * but the broker channel and every worker behind it stay alive. The
+	 * same kind is returned for an unbounded run of stale replies, which
+	 * is a fault of the run rather than of one frame.
 	 */
 	OutOfOrder
 };
@@ -395,16 +397,35 @@ struct SupervisorReplyDecision
 	std::string_view detail;
 };
 
-constexpr SupervisorReplyDecision ClassifySupervisorReply (uint32_t pendingRequest, uint32_t receivedRequest)
+/**
+ * Stale replies one request may drain before the run is itself treated as
+ * a fault.
+ *
+ * A late duplicate for an already answered request is legitimate and is
+ * drained so it cannot be mistaken for the pending answer. An endless
+ * stream of them is not: draining it would let the broker keep one call
+ * blocked forever, which is exactly what the per-frame deadline cannot
+ * prevent. The channel is kept in both cases; only the call is rejected.
+ */
+inline constexpr unsigned MAX_DRAINED_STALE_REPLIES = 4;
+
+constexpr SupervisorReplyDecision ClassifySupervisorReply (
+	uint32_t pendingRequest, uint32_t receivedRequest, unsigned drainedStaleReplies = 0)
 {
 	if (receivedRequest < pendingRequest)
+	{
+		if (drainedStaleReplies >= MAX_DRAINED_STALE_REPLIES)
+			return SupervisorReplyDecision { SupervisorReplyKind::OutOfOrder, ErrorCode::Busy,
+				"storage supervisor reply flood" };
 		return SupervisorReplyDecision { SupervisorReplyKind::Stale, ErrorCode::None,
 			"stale storage supervisor reply" };
+	}
 	if (receivedRequest > pendingRequest)
 		return SupervisorReplyDecision { SupervisorReplyKind::OutOfOrder, ErrorCode::BadField,
 			"storage supervisor replied out of order" };
 	return SupervisorReplyDecision { };
 }
+static_assert (MAX_DRAINED_STALE_REPLIES >= 1, "a request must be able to drain at least one late duplicate");
 }
 
 #endif

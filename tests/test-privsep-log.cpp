@@ -832,6 +832,37 @@ int main ()
 		unlink (path.c_str ());
 	}
 
+	// A sink that owns no file capability must use the descriptor-free
+	// ConfigureLog frame. ConfigureLogFd is declared RequiredFile, so the
+	// worker refuses that type without a descriptor before the payload is
+	// read (see the descriptor-policy block above); a syslog sink would
+	// therefore never complete the handshake if the sink always chose the
+	// descriptor form. Both configuration entry points derive the frame
+	// type from the capability actually attached.
+	{
+		auto syslogPair = Channel::CreatePair ();
+		assert (syslogPair.has_value ());
+		pid_t syslogPid = fork ();
+		assert (syslogPid >= 0);
+		if (syslogPid == 0)
+		{
+			syslogPair->first.Close ();
+			_exit (RunLogWorker (syslogPair->second.Fd ()));
+		}
+		syslogPair->second.Close ();
+		{
+			LogSink sink (std::move (syslogPair->first));
+			assert (sink.Configure (true, "", "open-i2pd-test").has_value ());
+			assert (sink.IsOpen ());
+			assert (sink.Shutdown ().has_value ());
+			assert (!sink.IsOpen ());
+		}
+		int syslogStatus = 0;
+		assert (WaitForExit (syslogPid, syslogStatus, 5000));
+		assert (WIFEXITED (syslogStatus));
+		assert (WEXITSTATUS (syslogStatus) == 0);
+	}
+
 	// The proxy path is what the supervisor uses: the sink never opens the
 	// log path locally, the worker opens it itself, and a replacement
 	// worker is attached with ReattachProxy.

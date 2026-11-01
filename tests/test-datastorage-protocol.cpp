@@ -19,6 +19,7 @@
 #include <cassert>
 #include <chrono>
 #include <cstdint>
+#include <span>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -33,6 +34,21 @@ using i2p::data::StorageArtifact;
 
 namespace
 {
+/**
+ * Borrow the bytes of @a bytes as an unsigned byte span.
+ *
+ * The payload parameter of EncodeDataStorageRequest is a byte span, so a
+ * char-based container must be reinterpreted instead of converted. No
+ * copy is made: the caller must keep @a bytes alive until the whole
+ * expression that consumes the span completes. That includes a
+ * temporary argument, whose lifetime ends after the enclosing full
+ * expression has been evaluated.
+ */
+std::span<const uint8_t> Bytes (const std::string & bytes)
+{
+	return std::span<const uint8_t> (reinterpret_cast<const uint8_t *> (bytes.data ()), bytes.size ());
+}
+
 std::string Header (uint32_t magic, uint16_t version, uint16_t type, uint32_t requestId, uint32_t length)
 {
 	PayloadWriter writer;
@@ -106,7 +122,15 @@ int main ()
 	assert (!AllowsOperation (EndpointRole::DataStorage, MessageType::RouterStorageRequest));
 	assert (!AllowsOperation (EndpointRole::DataStorage, MessageType::ConfigureRouterStorage));
 	assert (!AllowsOperation (EndpointRole::DataStorage, MessageType::TorrentStorageRequest));
-	assert (!AllowsOperation (EndpointRole::DataStorage, MessageType::Error));
+	// The typed Error refusal is the one reply every endpoint may receive,
+	// this one included: a worker whose own frame was refused has to be
+	// able to read the refusal that names it (see test-privsep-authorization
+	// and the kAnyReceiverMask row in privsep/Protocol.h). Every other reply
+	// stays unreachable here, so a worker cannot inject another client's
+	// answer, and the requesting side never receives an artifact request.
+	assert (AllowsOperation (EndpointRole::DataStorage, MessageType::Error));
+	assert (!AllowsOperation (EndpointRole::DataStorage, MessageType::DataStorageReply));
+	assert (!AllowsOperation (EndpointRole::Core, MessageType::DataStorageRequest));
 	assert (!AllowsOperation (EndpointRole::Log, MessageType::DataStorageRequest));
 	assert (!AllowsOperation (EndpointRole::RouterStorage, MessageType::DataStorageRequest));
 	assert (!AllowsOperation (EndpointRole::Supervisor, MessageType::ConfigureDataStorage));
@@ -185,27 +209,33 @@ int main ()
 		const auto base64 = Base64Name (7);
 		const std::string payload (32, 'x');
 		auto encoded
-			= EncodeDataStorageRequest (static_cast<uint8_t> (StorageArtifact::RouterInfoCache), base64, payload);
+			= EncodeDataStorageRequest (static_cast<uint8_t> (StorageArtifact::RouterInfoCache), base64, Bytes (payload));
 		assert (encoded.has_value ());
 		auto decoded = DecodeDataStorageRequest (*encoded);
 		assert (decoded.has_value ());
 		assert (decoded->kind == static_cast<uint8_t> (StorageArtifact::RouterInfoCache));
 		assert (decoded->name == base64);
 		assert (decoded->payload == payload);
-		// Zero payload is the removal form.
+		// Zero payload is the removal form: the encoder must emit exactly
+		// the header fields and a zero u32 length, with no payload bytes.
 		auto removal = EncodeDataStorageRequest (static_cast<uint8_t> (StorageArtifact::DestinationKeys), base64, { });
 		assert (removal.has_value ());
+		assert (removal->size () == 1 + 1 + base64.size () + 4);
 		auto removed = DecodeDataStorageRequest (*removal);
 		assert (removed.has_value () && removed->payload.empty ());
 		// Name bounds: empty is refused, the documented maximum is inclusive.
-		assert (!EncodeDataStorageRequest (1, "", payload).has_value ());
-		assert (EncodeDataStorageRequest (1, std::string (MAX_ARTIFACT_NAME_SIZE, 'a'), payload).has_value ());
-		assert (!EncodeDataStorageRequest (1, std::string (MAX_ARTIFACT_NAME_SIZE + 1, 'a'), payload).has_value ());
-		assert (!EncodeDataStorageRequest (0, base64, payload).has_value ());
-		assert (!EncodeDataStorageRequest (1, std::string ("bad\0name", 8), payload).has_value ());
+		assert (!EncodeDataStorageRequest (1, "", Bytes (payload)).has_value ());
+		assert (EncodeDataStorageRequest (1, std::string (MAX_ARTIFACT_NAME_SIZE, 'a'), Bytes (payload)).has_value ());
+		assert (
+			!EncodeDataStorageRequest (1, std::string (MAX_ARTIFACT_NAME_SIZE + 1, 'a'), Bytes (payload)).has_value ());
+		assert (!EncodeDataStorageRequest (0, base64, Bytes (payload)).has_value ());
+		assert (!EncodeDataStorageRequest (1, std::string ("bad\0name", 8), Bytes (payload)).has_value ());
 		// Payload cap: the limit is accepted, one byte more is TooLarge.
-		assert (EncodeDataStorageRequest (1, base64, std::string (MAX_ARTIFACT_PAYLOAD_SIZE, 'p')).has_value ());
-		auto tooLargePayload = EncodeDataStorageRequest (1, base64, std::string (MAX_ARTIFACT_PAYLOAD_SIZE + 1, 'p'));
+		// The temporary string outlives the call, so the borrowed span is
+		// valid for the whole full expression.
+		assert (EncodeDataStorageRequest (1, base64, Bytes (std::string (MAX_ARTIFACT_PAYLOAD_SIZE, 'p'))).has_value ());
+		auto tooLargePayload
+			= EncodeDataStorageRequest (1, base64, Bytes (std::string (MAX_ARTIFACT_PAYLOAD_SIZE + 1, 'p')));
 		assert (!tooLargePayload.has_value ());
 		assert (tooLargePayload.error ().code == ErrorCode::TooLarge);
 	}
