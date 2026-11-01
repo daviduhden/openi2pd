@@ -86,9 +86,15 @@ int main ()
 		CreateDictionary ({ { "filter", CreateInteger (5) }, { "msg_type", CreateInteger (0) } }), now));
 	auto invalid = original;
 	invalid.text = "\033[31mterminal";
-	assert (DecodeTorrentComments (EncodeTorrentComments ({ invalid }, now), now)->comments.empty ());
+	// The reply itself must still decode: only the invalid entry is
+	// dropped. Dereferencing the optional without this check is undefined
+	// behaviour when the whole message is rejected, which would hide the
+	// loss of the valid peers.
+	auto rejectedTerminal = DecodeTorrentComments (EncodeTorrentComments ({ invalid }, now), now);
+	assert (rejectedTerminal && rejectedTerminal->comments.empty ());
 	invalid.text = std::string ("\xC0\xAF", 2); // overlong UTF-8
-	assert (DecodeTorrentComments (EncodeTorrentComments ({ invalid }, now), now)->comments.empty ());
+	auto rejectedOverlong = DecodeTorrentComments (EncodeTorrentComments ({ invalid }, now), now);
+	assert (rejectedOverlong && rejectedOverlong->comments.empty ());
 	// Independent Java wire field vector: timestamp 10 means age ten
 	// seconds.
 	auto javaFields = std::string ("d8:commentsld4:likei5e5:owner1:x4:text1:y9:timestampi10eee8:msg_typei1ee");
@@ -97,10 +103,12 @@ int main ()
 	assert (javaReply->comments[0].time == now - 10 && javaReply->comments[0].rating == 5);
 	invalid = original;
 	invalid.owner = std::string (33, 'x');
-	assert (DecodeTorrentComments (EncodeTorrentComments ({ invalid }, now), now)->comments.empty ());
+	auto rejectedOwner = DecodeTorrentComments (EncodeTorrentComments ({ invalid }, now), now);
+	assert (rejectedOwner && rejectedOwner->comments.empty ());
 	invalid = original;
 	invalid.text = std::string (513, 'x');
-	assert (DecodeTorrentComments (EncodeTorrentComments ({ invalid }, now), now)->comments.empty ());
+	auto rejectedText = DecodeTorrentComments (EncodeTorrentComments ({ invalid }, now), now);
+	assert (rejectedText && rejectedText->comments.empty ());
 
 	TorrentComment anonymousRating { "", "", 5, now, false };
 	auto ratingOnly = DecodeTorrentComments (EncodeTorrentComments ({ anonymousRating }, now), now);
@@ -156,16 +164,23 @@ int main ()
 	// space before validation, so a Java-style reply stays usable; every
 	// other
 	// C0/DEL/C1 control remains rejected for terminal safety.
-	assert (DecodeTorrentComments (CommentReply ("plain", "plain text"), now)->comments.size () == 1);
+	auto plainReply = DecodeTorrentComments (CommentReply ("plain", "plain text"), now);
+	assert (plainReply && plainReply->comments.size () == 1);
 	auto tabbed = DecodeTorrentComments (CommentReply ("a\tb\t", "x\ty\tz"), now);
 	assert (tabbed && tabbed->comments.size () == 1);
 	assert (tabbed->comments[0].owner == "a b " && tabbed->comments[0].text == "x y z");
 	auto crlf = DecodeTorrentComments (CommentReply ("a\rb", "x\n\r y"), now);
 	assert (crlf && crlf->comments.size () == 1 && crlf->comments[0].text == "x   y");
-	assert (DecodeTorrentComments (CommentReply ("negative", "bad \x01"), now)->comments.empty ());
-	assert (DecodeTorrentComments (CommentReply ("negative", "bad \x7F"), now)->comments.empty ());
-	assert (DecodeTorrentComments (CommentReply ("negative", "bad \xC2\x9B"), now)->comments.empty ());
-	assert (DecodeTorrentComments (CommentReply ("negative\xC2\x9B", "text"), now)->comments.empty ());
+	// A rejected entry leaves the reply decodable and empty; check the
+	// optional before dereferencing it.
+	auto controlReply = DecodeTorrentComments (CommentReply ("negative", "bad \x01"), now);
+	assert (controlReply && controlReply->comments.empty ());
+	auto delReply = DecodeTorrentComments (CommentReply ("negative", "bad \x7F"), now);
+	assert (delReply && delReply->comments.empty ());
+	auto c1TextReply = DecodeTorrentComments (CommentReply ("negative", "bad \xC2\x9B"), now);
+	assert (c1TextReply && c1TextReply->comments.empty ());
+	auto c1OwnerReply = DecodeTorrentComments (CommentReply ("negative\xC2\x9B", "text"), now);
+	assert (c1OwnerReply && c1OwnerReply->comments.empty ());
 
 	// The same pseudonym/text cannot inflate ratings by replaying 0..5.
 	TorrentCommentStore rated;

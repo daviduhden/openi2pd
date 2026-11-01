@@ -11,6 +11,7 @@
  */
 
 #include <cassert>
+#include <chrono>
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
@@ -54,7 +55,12 @@ std::vector<uint8_t> HeaderPrefix ()
 
 int main ()
 {
-	const auto directory = std::filesystem::temp_directory_path () / "openi2pd-su3-bounds";
+	// A per-run directory name keeps two concurrent CTest workers (or a
+	// leftover fixture from an aborted run) from sharing this tree; the
+	// fixed name is what the openi2pd-fixed-tmp resource lock exists for.
+	const auto directory = std::filesystem::temp_directory_path ()
+		/ ("openi2pd-su3-bounds-"
+			+ std::to_string (std::chrono::steady_clock::now ().time_since_epoch ().count ()));
 	std::error_code error;
 	std::filesystem::remove_all (directory, error);
 	std::filesystem::create_directories (directory, error);

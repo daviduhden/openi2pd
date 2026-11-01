@@ -328,7 +328,9 @@ void TestEndpointPoolCellIsAccepted ()
 	assert (craft.HasRoomForTerminal ());
 	endpoint.HandleDecryptedTunnelDataMsg (craft.Finish ());
 	assert (endpoint.GetNumReceivedBytes () == TUNNEL_DATA_MSG_SIZE);
-	assert (endpoint.GetNumIncompleteMessages () == 0); // still the current message
+	// The crafted first fragment is a fragmented router-delivery message:
+	// it stays incomplete until a follow-on arrives, so the table holds it.
+	assert (endpoint.GetNumIncompleteMessages () == 1);
 	assert (endpoint.GetNumOutOfSequenceFragments () == 0);
 
 	// A buffer with ample room but a shorter declared length is still not a

@@ -8,6 +8,11 @@
  * payload limits, config snapshot/write restrictions and torrent
  * command bounds.
  *
+ * The parser is the only place in the console path where an integer
+ * read from a request line reaches a container index (the
+ * TORRENT-CREATE-V1 tracker tier) and where a validated argument
+ * reaches fixed daemon storage, so both seams are pinned here.
+ *
  */
 
 #include <cassert>
@@ -37,7 +42,8 @@ static void TestRequests ()
 	assert (advanced && advanced->type == RequestType::TorrentCreateV1 && advanced->createPrivate);
 	assert (!advanced->createPieceLength && advanced->argument == "payload");
 	assert (advanced->createTrackers.size () == 2 && advanced->createTrackers.front ().size () == 2);
-	assert (ParseRequest ("I2PDTUI/1 TORRENT-CREATE-CANCEL 0")->type == RequestType::TorrentCreateCancel);
+	auto cancelCreate = ParseRequest ("I2PDTUI/1 TORRENT-CREATE-CANCEL 0");
+	assert (cancelCreate && cancelCreate->type == RequestType::TorrentCreateCancel);
 	assert (!ParseRequest ("I2PDTUI/1 TORRENT-CREATE-V1 0 16385 public 0 payload"));
 	assert (!ParseRequest ("I2PDTUI/1 TORRENT-CREATE-V1 0 0 private 1 1:http://a.i2p/a payload"));
 	assert (!ParseRequest ("I2PDTUI/1 TORRENT-CREATE-V1 0 0 private 101 payload"));
@@ -160,6 +166,94 @@ static void TestRequests ()
 	assert (ParseRequest ("I2PDTUI/1  STATE").has_value ());
 	assert (!ParseRequest ("I2PDTUI/1 STATE ").has_value ());
 	assert (!ParseRequest (std::string (MAX_REQUEST_LINE + 1, 'A')).has_value ());
+}
+
+static void TestBoundedContainerWrites ()
+{
+	// Two seams connect an untrusted request line to a write that is not
+	// simply a std::string append, and both are pinned here.
+	//
+	// 1. TORRENT-CREATE-V1 is the only request whose wire integer selects
+	//    a container element: the tracker tier addresses an existing
+	//    createTrackers entry or appends the next one. A tier above the
+	//    current size must be refused before the index is formed, so the
+	//    parser can never read or write an element that does not exist.
+	// 2. A validated ADMIN argument is copied into fixed daemon storage.
+	//    The protocol limit plus its terminator must fit that array,
+	//    because the daemon copies with snprintf and a larger wire limit
+	//    would silently truncate the value instead of rejecting it.
+	const std::string_view prefix = "I2PDTUI/1 TORRENT-CREATE-V1 0 0 public 1 ";
+	const auto refused = [prefix] (std::string_view tracker)
+	{
+		return !ParseRequest (std::string (prefix) + std::string (tracker) + " payload").has_value ();
+	};
+
+	// Absent, empty, non-numeric, signed, out-of-range and over-long
+	// tiers are all rejected rather than clamped.
+	assert (!ParseRequest ("I2PDTUI/1 TORRENT-CREATE-V1 0 0 public 1").has_value ());
+	assert (refused (":"));
+	assert (refused ("0:"));
+	assert (refused ("x:http://a.i2p/a"));
+	assert (refused ("-1:http://a.i2p/a"));
+	assert (refused ("2:http://a.i2p/a")); // tier above the empty table
+	assert (refused ("4294967296:http://a.i2p/a"));
+	assert (refused ("18446744073709551616:http://a.i2p/a"));
+	assert (refused (std::string (MAX_TORRENT_ARGUMENT_LENGTH + 1, 'a')));
+	// A gap is not filled in: one accepted tier is never "skipped over".
+	assert (!ParseRequest (std::string ("I2PDTUI/1 TORRENT-CREATE-V1 0 0 public 2 0:a 2:b payload")).has_value ());
+
+	// An accepted tier is always < createTrackers.size() after the append,
+	// and a repeated tier addresses the entry it already created.
+	auto tiers = ParseRequest ("I2PDTUI/1 TORRENT-CREATE-V1 0 0 public 3 0:a 0:b 1:c payload");
+	assert (tiers.has_value ());
+	assert (tiers->createTrackers.size () == 2);
+	assert (tiers->createTrackers[0].size () == 2);
+	assert (tiers->createTrackers[0][0] == "a" && tiers->createTrackers[0][1] == "b");
+	assert (tiers->createTrackers[1].size () == 1 && tiers->createTrackers[1][0] == "c");
+	assert (tiers->argument == "payload");
+
+	// The table can only grow to the declared tracker-record bound, one
+	// entry per tier, and the last accepted tier is its size minus one.
+	std::string many = "I2PDTUI/1 TORRENT-CREATE-V1 0 0 public "
+		+ std::to_string (MAX_TORRENT_TRACKER_RECORDS_PER_REQUEST) + " ";
+	for (size_t tier = 0; tier < MAX_TORRENT_TRACKER_RECORDS_PER_REQUEST; ++tier)
+	{
+		many.append (std::to_string (tier));
+		many.append (":a ");
+	}
+	many.append ("payload");
+	auto expanded = ParseRequest (many);
+	assert (expanded.has_value ());
+	assert (expanded->createTrackers.size () == MAX_TORRENT_TRACKER_RECORDS_PER_REQUEST);
+	for (const auto & entries : expanded->createTrackers)
+		assert (entries.size () == 1 && entries.front () == "a");
+	assert (expanded->argument == "payload");
+
+	// The daemon's fixed admin storage: name[256] and destination[1025].
+	// Every accepted admin argument, plus its terminator, has to fit.
+	static_assert (MAX_ADDRESS_NAME_LENGTH + 1 <= sizeof (AdminCommand::name),
+		"ADDRESS-REMOVE/BLOCK/UNBLOCK name must fit AdminCommand::name");
+	static_assert (MAX_ADDRESS_ADD_NAME_LENGTH + 1 <= sizeof (AdminCommand::name),
+		"ADDRESS-ADD/REPLACE name must fit AdminCommand::name");
+	static_assert (MAX_TUNNEL_SERVICE_NAME_LENGTH + 1 <= sizeof (AdminCommand::name),
+		"TUNNEL-START/STOP service name must fit AdminCommand::name");
+	static_assert (MAX_ROUTER_HASH_TEXT_LENGTH + 1 <= sizeof (AdminCommand::name),
+		"NETDB-BAN/UNBAN router hash must fit AdminCommand::name");
+	static_assert (MAX_ADDRESS_DESTINATION_LENGTH + 1 <= sizeof (AdminCommand::destination),
+		"ADDRESS destination must fit AdminCommand::destination");
+	static_assert (MAX_SUBSCRIPTION_URL_LENGTH + 1 <= sizeof (AdminCommand::destination),
+		"subscription URL must fit AdminCommand::destination");
+
+	// Every documented argument bound has to be expressible inside one
+	// request line. A bound at or above MAX_REQUEST_LINE would be
+	// unreachable, so the rejection it documents would silently become
+	// dead code.
+	static_assert (MAX_TORRENT_ARGUMENT_LENGTH < MAX_REQUEST_LINE);
+	static_assert (MAX_ADDRESS_DESTINATION_LENGTH < MAX_REQUEST_LINE);
+	static_assert (MAX_SUBSCRIPTION_URL_LENGTH < MAX_REQUEST_LINE);
+	static_assert (MAX_TUNNEL_SERVICE_NAME_LENGTH < MAX_REQUEST_LINE);
+	static_assert (MAX_ROUTER_HASH_TEXT_LENGTH < MAX_REQUEST_LINE);
+	static_assert (MAX_FIELD_NAME < MAX_REQUEST_LINE);
 }
 
 static void TestResponseHeader ()
@@ -770,6 +864,7 @@ static void TestCommentPageBounds ()
 int main ()
 {
 	TestRequests ();
+	TestBoundedContainerWrites ();
 	TestAdminCommands ();
 	TestTunnelAndReseedAdminVerbs ();
 	TestAddressReplaceVerbs ();
