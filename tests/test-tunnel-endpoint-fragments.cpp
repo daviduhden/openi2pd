@@ -12,6 +12,13 @@
  * offline, which this test establishes explicitly because the router
  * endpoint dispatches through i2p::transport::transports.
  *
+ * The crafted cells use the tunnel endpoint pool layout, the same one
+ * TransitTunnelEndpoint produces: NewI2NPTunnelMessage(true) reserves
+ * TUNNEL_GATEWAY_HEADER_SIZE bytes ahead of the I2NP header, so the
+ * declared payload is that much shorter than the complete cell its
+ * buffer holds. A guard that compares the declared length against a
+ * full cell would drop every transit cell at the last hop.
+ *
  */
 
 #include <array>
@@ -297,6 +304,42 @@ void TestTruncatedFragmentHeaders ()
 	}
 }
 
+void TestEndpointPoolCellIsAccepted ()
+{
+	// TransitTunnelEndpoint decrypts every cell into CreateEmptyTunnelDataMsg
+	// (true). That message reserves TUNNEL_GATEWAY_HEADER_SIZE bytes ahead of
+	// its I2NP header so a later TunnelGateway rewrite can prepend its header
+	// in place, which makes the declared payload exactly that much shorter
+	// than the complete cell its buffer holds.
+	auto probe = CreateEmptyTunnelDataMsg (true);
+	assert (probe->GetPayloadLength () >= TUNNEL_DATA_MSG_SIZE - TUNNEL_GATEWAY_HEADER_SIZE);
+	assert (probe->maxLen - probe->offset >= I2NP_HEADER_SIZE + TUNNEL_DATA_MSG_SIZE + 16);
+
+	// Rejecting that layout as "too small" would drop every cell of a transit
+	// tunnel another router built through this hop. The receive counter only
+	// advances after the guard, so a nonzero value proves the cell was parsed
+	// instead of rejected.
+	TunnelEndpoint endpoint (false);
+	auto body = MakeI2NPBody ();
+	uint8_t toHash[32];
+	std::memset (toHash, 0x55, sizeof (toHash));
+	TunnelDataCraft craft;
+	craft.AddFirstFragment (31, eDeliveryTypeRouter, toHash, body.data (), static_cast<uint16_t> (body.size ()));
+	assert (craft.HasRoomForTerminal ());
+	endpoint.HandleDecryptedTunnelDataMsg (craft.Finish ());
+	assert (endpoint.GetNumReceivedBytes () == TUNNEL_DATA_MSG_SIZE);
+	assert (endpoint.GetNumIncompleteMessages () == 0); // still the current message
+	assert (endpoint.GetNumOutOfSequenceFragments () == 0);
+
+	// A buffer with ample room but a shorter declared length is still not a
+	// complete cell.
+	auto truncated = CreateEmptyTunnelDataMsg (true);
+	truncated->len = truncated->offset + I2NP_HEADER_SIZE + TUNNEL_DATA_MSG_SIZE - TUNNEL_GATEWAY_HEADER_SIZE - 1;
+	TunnelEndpoint rejected (false);
+	rejected.HandleDecryptedTunnelDataMsg (truncated);
+	assert (rejected.GetNumReceivedBytes () == 0);
+}
+
 void TestCellWithoutIvSuffixIsRejected ()
 {
 	// The checksum pass copies the 16-byte IV directly after the cell, so a
@@ -350,6 +393,7 @@ int main ()
 	TestIncompleteExpiry ();
 	TestFragmentTimeoutConstant ();
 	TestTruncatedFragmentHeaders ();
+	TestEndpointPoolCellIsAccepted ();
 	TestCellWithoutIvSuffixIsRejected ();
 	return 0;
 }

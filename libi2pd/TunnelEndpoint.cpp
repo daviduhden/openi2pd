@@ -33,12 +33,28 @@ namespace tunnel
 		// IV. Verify that the caller's backing storage holds both before
 		// anything is written: a buffer that ends at the payload would turn
 		// that suffix into a 16-byte heap overflow.
+		//
+		// Capacity, not the declared length, is the memory-safety bound, so it
+		// is tested first. The declared length is a weaker statement about the
+		// same buffer and needs its own rule: a received cell declares the
+		// whole payload, while an endpoint message from the tunnel pool
+		// (NewI2NPTunnelMessage (true)) reserves TUNNEL_GATEWAY_HEADER_SIZE
+		// bytes ahead of the I2NP header for a later TunnelGateway rewrite and
+		// therefore declares exactly that much less than the cell its buffer
+		// holds. Both layouts are complete cells; anything declaring less is
+		// rejected before parsing rather than read past its own message.
 		if (!msg || msg->offset > msg->maxLen
-			|| msg->len < msg->offset + I2NP_HEADER_SIZE + TUNNEL_DATA_MSG_SIZE
 			|| msg->maxLen - msg->offset < I2NP_HEADER_SIZE + TUNNEL_DATA_MSG_SIZE + 16)
 		{
 			LogPrint (
 				eLogError, "TunnelMessage: Buffer too small for a tunnel cell and its checksum IV, dropped");
+			return;
+		}
+		const size_t declaredLength = (msg->len > msg->offset) ? msg->len - msg->offset : 0;
+		if (declaredLength < I2NP_HEADER_SIZE + TUNNEL_DATA_MSG_SIZE - TUNNEL_GATEWAY_HEADER_SIZE)
+		{
+			LogPrint (eLogError, "TunnelMessage: Declared length of ", declaredLength,
+				" bytes does not hold a tunnel cell, dropped");
 			return;
 		}
 		// One decrypted cell is: a 4-byte tunnel ID, a 16-byte IV, a 4-byte
