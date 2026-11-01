@@ -94,22 +94,25 @@ public final class TorrentsFragment extends Fragment {
 
     private final ActivityResultLauncher<String[]> createDocumentSource =
             registerForActivityResult(new ActivityResultContracts.OpenDocument(), uri -> {
-                if (uri != null)
+                if (uri != null && isAdded())
                     configureSafCreation(uri, false);
             });
     private final ActivityResultLauncher<android.net.Uri> createTreeSource =
             registerForActivityResult(new ActivityResultContracts.OpenDocumentTree(), uri -> {
-                if (uri != null)
+                if (uri != null && isAdded())
                     configureSafCreation(uri, true);
             });
     private final ActivityResultLauncher<String> exportMetadata = registerForActivityResult(
             new ActivityResultContracts.CreateDocument("application/x-bittorrent"), uri -> {
-                if (uri != null)
-                    model.exportTorrent(uri, success -> {
-                        if (status != null)
-                            status.setText(success ? R.string.torrent_exported
-                                                   : R.string.torrent_export_failed);
-                    });
+                if (uri == null || status == null || !isAdded())
+                    return;
+                final int expected = generation;
+                model.exportTorrent(uri, success -> {
+                    if (expected != generation || status == null || !isAdded())
+                        return;
+                    status.setText(success ? R.string.torrent_exported
+                                           : R.string.torrent_export_failed);
+                });
             });
 
     @Override
@@ -493,20 +496,14 @@ public final class TorrentsFragment extends Fragment {
                             }
                             case 9 ->
                                 request("TORRENT-DETAIL " + tunnel + " " + id, fields -> {
-                                    storageTunnel = currentTunnelName;
-                                    storageHash = fields.getOrDefault("detail.hash", "");
-                                    if (storageTunnel.isEmpty()
-                                            || !storageHash.matches("[0-9a-fA-F]{40}"))
+                                    String selectedTunnel = currentTunnelName;
+                                    String selectedHash = fields.getOrDefault("detail.hash", "");
+                                    if (selectedTunnel.isEmpty()
+                                            || !selectedHash.matches("[0-9a-fA-F]{40}"))
                                         return;
-                                    new MaterialAlertDialogBuilder(requireContext())
-                                            .setMessage(getString(R.string.torrent_payload_message,
-                                                    TorrentSafStorage.status(
-                                                            storageTunnel, storageHash)))
-                                            .setNegativeButton(R.string.action_cancel, null)
-                                            .setPositiveButton(R.string.torrent_select_directory,
-                                                    (confirmation, which)
-                                                            -> selectPayloadTree.launch(null))
-                                            .show();
+                                    storageTunnel = selectedTunnel;
+                                    storageHash = selectedHash;
+                                    showPayloadDialog(selectedTunnel, selectedHash, generation);
                                 });
                             case 10 -> editMetadata(id);
                             case 11 ->
@@ -548,6 +545,37 @@ public final class TorrentsFragment extends Fragment {
             if (status != null)
                 status.setText(getString(R.string.torrent_error, errorText(error)));
         }
+    }
+
+    /**
+     * Show the payload-storage dialog for one torrent.
+     *
+     * <p>The persisted grant map and the live URI permissions are read
+     * on the service's SAF worker, so this screen never performs that
+     * system call on the main thread. The callback captures {@link
+     * #generation} and is dropped once the view is gone.</p>
+     *
+     * @param selectedTunnel tunnel name the dialog will grant against
+     * @param hash           40-character torrent infohash
+     * @param expected       view generation captured by the caller
+     */
+    private void showPayloadDialog(String selectedTunnel, String hash, int expected) {
+        model.readTorrentStorageStatus(selectedTunnel, hash, storageStatus -> {
+            if (expected != generation || status == null || !isAdded())
+                return;
+            // An unavailable service owner answers with an empty
+            // diagnostic; render the shared "unknown" value instead of
+            // an empty line inside the explanation.
+            String text = storageStatus == null || storageStatus.isEmpty()
+                    ? getString(R.string.value_unknown)
+                    : storageStatus;
+            new MaterialAlertDialogBuilder(requireContext())
+                    .setMessage(getString(R.string.torrent_payload_message, text))
+                    .setNegativeButton(R.string.action_cancel, null)
+                    .setPositiveButton(R.string.torrent_select_directory,
+                            (confirmation, which) -> selectPayloadTree.launch(null))
+                    .show();
+        });
     }
 
     private void editMetadata(String id) {

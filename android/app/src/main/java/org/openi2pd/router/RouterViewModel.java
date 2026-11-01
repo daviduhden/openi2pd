@@ -188,6 +188,18 @@ public class RouterViewModel extends AndroidViewModel {
         repository.detachPayload(tunnel, hash, callback);
     }
 
+    /**
+     * Bounded payload-storage diagnostic for one torrent. It is read on
+     * the service's SAF worker because it consults the live URI
+     * permissions and may re-arm a bounded broker bind; the callback
+     * runs on the main thread and must be fenced by the caller's view
+     * generation.
+     */
+    public void readTorrentStorageStatus(
+            String tunnel, String hash, java.util.function.Consumer<String> callback) {
+        repository.readTorrentStorageStatus(tunnel, hash, callback);
+    }
+
     public void startRouter() {
         repository.startRouter();
     }

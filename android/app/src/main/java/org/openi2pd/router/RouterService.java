@@ -1355,10 +1355,30 @@ public class RouterService extends Service {
 
     /**
      * Deliver a start intent from a caller that cannot bind its own
-     * service.
+     * service. A user action (the Quick Settings tile) always requests a
+     * run, so it persists the running intent before the daemon starts.
      */
     public static boolean requestStart(Context context) {
         return sendCommand(context, ACTION_START, true);
+    }
+
+    /**
+     * Deliver the sticky-restore command from a caller that cannot bind
+     * its own service (the boot and package-replace receiver).
+     *
+     * <p>The intent deliberately carries no action, so the service runs
+     * {@link #reconcilePersistedRunState()} exactly as a {@code
+     * START_STICKY} restart does: a stopped router is never started, an
+     * expired drain becomes the terminal stop it was already heading
+     * for and a live drain is re-armed with its remaining wall-clock
+     * delay. A broadcast therefore cannot turn a persisted stop, or a
+     * finished drain, into a fresh run: only an explicit start action
+     * may do that.</p>
+     *
+     * @return whether the platform accepted the service start
+     */
+    public static boolean requestRestore(Context context) {
+        return sendCommand(context, null, true);
     }
 
     public static boolean requestStop(Context context) {
@@ -1418,9 +1438,14 @@ public class RouterService extends Service {
             // that do not enter the foreground themselves: that would
             // create a five-second startForeground() obligation for a
             // no-op command.
-            Log.w(TAG, "unable to deliver service command " + action, e);
+            Log.w(TAG, "unable to deliver service command " + describeCommand(action), e);
             return false;
         }
+    }
+
+    /** Non-secret label for one command action in a diagnostic. */
+    private static String describeCommand(String action) {
+        return action == null ? "RESTORE" : action;
     }
 
     // -----------------------------------------------------------------
@@ -1947,6 +1972,45 @@ public class RouterService extends Service {
                 () -> TorrentSafStorage.detach(getApplicationContext(), tunnel, hash), callback);
     }
 
+    /**
+     * Read the bounded payload-storage diagnostic for one torrent on the
+     * SAF worker.
+     *
+     * <p>{@link TorrentSafStorage#status} reads the persisted grant map,
+     * asks the system for the live URI permissions and may re-arm a
+     * bounded broker bind, so it must never run on the main thread. The
+     * callback runs on the main thread, receives a fixed diagnostic
+     * string (never a URI, document name or account identifier) and is
+     * dropped once this owner is destroyed.</p>
+     */
+    public void readTorrentStorageStatus(
+            String tunnel, String hash, java.util.function.Consumer<String> callback) {
+        if (callback == null) {
+            return;
+        }
+        if (destroyed || tunnel == null || tunnel.isEmpty() || hash == null
+                || !hash.matches("[0-9a-fA-F]{40}")) {
+            mainHandler.post(() -> callback.accept(""));
+            return;
+        }
+        try {
+            safWorker.execute(() -> {
+                String status = "";
+                try {
+                    status = TorrentSafStorage.status(tunnel, hash);
+                } catch (RuntimeException error) {
+                    status = "";
+                }
+                String result = status;
+                if (!destroyed) {
+                    mainHandler.post(() -> callback.accept(result));
+                }
+            });
+        } catch (RejectedExecutionException error) {
+            mainHandler.post(() -> callback.accept(""));
+        }
+    }
+
     private void runSafGrantOperation(java.util.concurrent.Callable<Boolean> operation,
             java.util.function.Consumer<Boolean> callback) {
         if (destroyed || callback == null) {
@@ -2069,11 +2133,15 @@ public class RouterService extends Service {
 
     /**
      * Hash a selected SAF source and produce metadata on the SAF
-     * worker. Progress and the final byte array are posted to the main
-     * handler; a null result denotes failure. The 30-minute deadline
-     * requests cancellation but cannot force a provider that ignores
-     * cancellation to return. The result is metadata only and does not
-     * establish payload seeding authority.
+     * worker. Byte progress, when the caller supplies a consumer, and
+     * the final byte array are posted to the main handler; a null result
+     * denotes failure. The 30-minute deadline requests cancellation but
+     * cannot force a provider that ignores cancellation to return. The
+     * result is metadata only and does not establish payload seeding
+     * authority.
+     *
+     * @param progress optional hashed-byte reporter; {@code null} is a
+     *                 valid request that simply reports no progress
      */
     public void createSafTorrent(android.net.Uri source, boolean tree, int pieceLength,
             String[] trackers, boolean privateTorrent, java.util.function.LongConsumer progress,
@@ -2081,6 +2149,13 @@ public class RouterService extends Service {
         if (destroyed || !torrentInFlight.compareAndSet(false, true)) {
             mainHandler.post(() -> callback.accept(null));
             return;
+        }
+        // Progress is optional reporting, not a precondition for the
+        // creation itself: a caller that does not want it must not turn
+        // an otherwise valid request into a failure on the SAF worker.
+        java.util.function.LongConsumer sink = progress;
+        if (sink == null) {
+            sink = ignored -> {};
         }
         var cancel = new android.os.CancellationSignal();
         cancelTorrentImport = cancel::cancel;
@@ -2105,7 +2180,7 @@ public class RouterService extends Service {
                     }
                     metadata = TorrentSafCreator.create(resolver, source, tree, cancel,
                             value
-                            -> mainHandler.post(() -> progress.accept(value)),
+                            -> mainHandler.post(() -> sink.accept(value)),
                             pieceLength, trackers, privateTorrent);
                 } catch (Throwable ignored) {
                     // Provider diagnostics may disclose document names

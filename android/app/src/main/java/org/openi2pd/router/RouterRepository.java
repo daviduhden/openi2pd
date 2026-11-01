@@ -308,6 +308,20 @@ public final class RouterRepository implements RouterService.Listener {
     }
 
     /**
+     * Bounded payload-storage diagnostic for one torrent, produced on
+     * the service's SAF worker. The callback runs on the main thread.
+     */
+    public void readTorrentStorageStatus(
+            String tunnel, String hash, java.util.function.Consumer<String> callback) {
+        RouterService local = service;
+        if (closed || local == null) {
+            mainHandler.post(() -> callback.accept(""));
+            return;
+        }
+        local.readTorrentStorageStatus(tunnel, hash, callback);
+    }
+
+    /**
      * Start the router. Always goes through startForegroundService() so
      * the service is in the started (START_STICKY) state even if it is
      * currently only bound.

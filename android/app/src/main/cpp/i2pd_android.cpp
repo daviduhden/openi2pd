@@ -16,6 +16,10 @@
  */
 
 #include <jni.h>
+// The checked-in declaration header is the signature contract. Including it
+// makes a changed return/parameter type or a missing `noexcept` a compile
+// error; the compile-free symbol checker can only compare names.
+#include "org_openi2pd_router_I2PD_JNI.h"
 #include <atomic>
 #include <cstddef>
 #include <algorithm>
@@ -1046,10 +1050,9 @@ JNIEXPORT void JNICALL Java_org_openi2pd_router_I2PD_1JNI_reloadTunnelsConfigs (
 	 * immediately, so the service worker (and therefore the UI) is not
 	 * held for the length of a bootstrap.
 	 *
-	 * @return one of the closed outcome tokens {@code started}, {@code
-	 * already-running}, {@code disabled}, {@code accepted}, {@code busy}
-	 * or {@code unavailable}. No URL, path or option is accepted from
-	 * Java.
+	 * @return one of the closed outcome tokens `started`, `already-running`,
+	 * `disabled`, `accepted`, `busy` or `unavailable`. No URL, path or
+	 * option is accepted from Java.
 	 */
 JNIEXPORT jstring JNICALL Java_org_openi2pd_router_I2PD_1JNI_requestReseed (JNIEnv * env, jclass clazz)
 {
@@ -1119,9 +1122,9 @@ JNIEXPORT jstring JNICALL Java_org_openi2pd_router_I2PD_1JNI_setShareRatio (JNIE
 }
 
 /**
-	 * Bounded, non-secret reseed status: {@code
-	 * Fields are phase, enabled, attempts, succeeded, lastAttemptMs,
-	 * lastSuccessMs and lastError, separated by {@code |}.
+	 * Bounded, non-secret reseed status record. Fields are phase, enabled,
+	 * attempts, succeeded, lastAttemptMs, lastSuccessMs and lastError,
+	 * separated by `|`.
 	 * The record never waits for the job and never carries a URL or
 	 * credential.
 	 */
@@ -1158,7 +1161,7 @@ JNIEXPORT jstring JNICALL Java_org_openi2pd_router_I2PD_1JNI_getReseedStatus (JN
 
 /**
 	 * Configured client and server tunnels, one bounded record per line:
-	 * {@code name|kind|running|localEndpoint|destination}. Only public
+	 * `name|kind|running|localEndpoint|destination`. Only public
 	 * labels cross the boundary; no private key, identity file or storage
 	 * path.
 	 */
@@ -1248,10 +1251,9 @@ JNIEXPORT jstring JNICALL Java_org_openi2pd_router_I2PD_1JNI_stopTunnel (JNIEnv 
 	 * never re-pointed unless @a replace is true.
 	 * @param destination full base64 destination for @a name, bounded
 	 * and validated by the native address book.
-	 * @param replace {@code false} never re-points an existing name and
-	 * reports {@code exists}; {@code true} is the explicit overwrite.
-	 * @return {@code ok}, {@code exists}, {@code invalid}, {@code
-	 * unavailable} or {@code failed}
+	 * @param replace `false` never re-points an existing name and reports
+	 * `exists`; `true` is the explicit overwrite.
+	 * @return `ok`, `exists`, `invalid`, `unavailable` or `failed`
 	 */
 JNIEXPORT jstring JNICALL Java_org_openi2pd_router_I2PD_1JNI_addAddressWithResult (
 	JNIEnv * env, jclass clazz, jstring name, jstring destination, jboolean replace)

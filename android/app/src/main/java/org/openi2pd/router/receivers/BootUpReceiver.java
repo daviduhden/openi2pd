@@ -4,10 +4,12 @@
  *
  * openi2pd: BootUpReceiver.
  *
- * BOOT_COMPLETED receiver that starts the foreground router service
- * only when the autostart marker exists, using the same start command
- * the UI handles. It never launches an Activity and treats a refused
- * background start as a logged, user-recoverable failure.
+ * BOOT_COMPLETED and MY_PACKAGE_REPLACED receiver that resumes the
+ * persisted run intent. It never sends an explicit start command, so a
+ * router the operator stopped, or a drain whose deadline already
+ * passed, cannot be resurrected by a broadcast. It never launches an
+ * Activity and treats a refused background start as a logged,
+ * user-recoverable failure.
  *
  */
 
@@ -22,27 +24,23 @@ import org.openi2pd.router.AutoStartController;
 import org.openi2pd.router.RouterService;
 
 /**
- * Boot autostart.
+ * Boot and package-replacement resume.
  *
- * <p>The receiver starts the foreground router service; it never
- * launches an Activity from the background. On Android 10+ a background
- * Activity start would be refused anyway, and Android 12+ restricts
- * some background foreground-service starts. The router uses the {@code
- * specialUse} service type, which is not one of the types Android 15
- * blocks from BOOT_COMPLETED; the attempt is still fail-closed: failure
- * is logged and the user can start the router from the launcher.</p>
- *
- * <p>Two actions are handled and they are not equivalent: {@code
- * BOOT_COMPLETED} starts only when the user's autostart preference is
- * set, while {@code MY_PACKAGE_REPLACED} resumes only a router whose
- * start was already requested, because the package update killed the
- * process. Any other action is ignored. A refused or failed start logs
- * the action category only — never keys, paths or configuration — and
- * leaves recovery to the user.</p>
+ * <p>Neither action starts a router by itself. The receiver only
+ * delivers the service's sticky-restore command, so {@code
+ * RouterService} reconciles the durable run state exactly as after a
+ * {@code START_STICKY} restart: nothing is started for a persisted
+ * stop, an expired graceful drain becomes its terminal stop and a live
+ * drain is re-armed. {@code BOOT_COMPLETED} additionally requires the
+ * operator's boot-autostart marker, while {@code MY_PACKAGE_REPLACED}
+ * resumes only because the package update killed a router that was
+ * already requested. Any other action is ignored.</p>
  *
  * <p>{@code onReceive} runs on the main thread under the broadcast
- * timeout, so it only decides and forwards one start request; the
- * daemon lifecycle stays in {@link RouterService}.</p>
+ * timeout, so it only decides and forwards one restore request; the
+ * daemon lifecycle stays in {@link RouterService}. A refused or failed
+ * start logs the action category only, never keys, paths or
+ * configuration, and leaves recovery to the user.</p>
  */
 public class BootUpReceiver extends BroadcastReceiver {
     private static final String TAG = "i2pdBoot";
@@ -51,25 +49,47 @@ public class BootUpReceiver extends BroadcastReceiver {
     public void onReceive(Context context, Intent intent) {
         if (intent == null)
             return;
-        String action = intent.getAction();
-        boolean packageReplaced = Intent.ACTION_MY_PACKAGE_REPLACED.equals(action);
-        boolean bootCompleted = Intent.ACTION_BOOT_COMPLETED.equals(action);
-        if (!packageReplaced && !bootCompleted)
-            return;
         if (context == null)
             return;
-        // A package update kills the process. Resume only a router that
-        // was explicitly running before the update; boot still requires
-        // the user's autostart preference.
-        if (!packageReplaced && !AutoStartController.isEnabled(context))
+        String action = intent.getAction();
+        boolean bootCompleted = Intent.ACTION_BOOT_COMPLETED.equals(action);
+        boolean packageReplaced = Intent.ACTION_MY_PACKAGE_REPLACED.equals(action);
+        if (!bootCompleted && !packageReplaced)
             return;
-        if (packageReplaced && !RouterService.isStartRequested(context))
+        // The marker is read only for the boot action; a package
+        // replacement is not gated on the boot preference.
+        boolean autostartEnabled = bootCompleted && AutoStartController.isEnabled(context);
+        if (!mayResume(action, autostartEnabled, RouterService.isStartRequested(context)))
             return;
-        if (!RouterService.requestStart(context)) {
+        if (!RouterService.requestRestore(context)) {
             Log.w(TAG,
-                    "unable to start router service after "
-                            + (packageReplaced ? "package replacement" : "boot")
+                    "unable to restore router service after "
+                            + (bootCompleted ? "boot" : "package replacement")
                             + "; Android may require a user-initiated start");
         }
+    }
+
+    /**
+     * Pure decision for one broadcast, without a {@code Context}, so a
+     * JVM test can pin the rule that a broadcast never starts a router
+     * the operator stopped.
+     *
+     * @param action            broadcast action; any other action is
+     *                          ignored
+     * @param autostartEnabled  boot-autostart marker, read only for
+     *                          {@code BOOT_COMPLETED}
+     * @param runIntentRequested whether the persisted run intent is
+     *                          anything other than a stopped router
+     * @return whether the restore command may be delivered
+     */
+    public static boolean mayResume(String action, boolean autostartEnabled,
+            boolean runIntentRequested) {
+        // A stopped run intent is terminal for both actions: only an
+        // explicit start command may begin a new run.
+        if (!runIntentRequested)
+            return false;
+        if (Intent.ACTION_MY_PACKAGE_REPLACED.equals(action))
+            return true;
+        return Intent.ACTION_BOOT_COMPLETED.equals(action) && autostartEnabled;
     }
 }

@@ -911,6 +911,12 @@ final class TorrentSafStorage {
     /**
      * Human-readable payload-storage state for the torrent list.
      *
+     * <p>Worker threads only. It reads the persisted grant map, queries
+     * the live {@code UriPermission} set through the system service and
+     * may re-arm a bounded broker bind, so a main-thread caller would
+     * block on IPC: {@link RouterService#readTorrentStorageStatus} is
+     * the UI-facing entry point that runs this on the SAF lane.</p>
+     *
      * <p>Strings are fixed diagnostics (no URI, document name or
      * account data) and double as the bounded UI recovery path: an
      * exhausted bind budget is re-armed at most once per stability

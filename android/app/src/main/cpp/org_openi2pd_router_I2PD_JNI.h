@@ -52,6 +52,12 @@ extern "C"
 
 	JNIEXPORT jstring JNICALL Java_org_openi2pd_router_I2PD_1JNI_requestReseed (JNIEnv *, jclass);
 
+	JNIEXPORT jstring JNICALL Java_org_openi2pd_router_I2PD_1JNI_setTransit (JNIEnv *, jclass, jboolean);
+
+	JNIEXPORT jstring JNICALL Java_org_openi2pd_router_I2PD_1JNI_setBandwidth (JNIEnv *, jclass, jstring);
+
+	JNIEXPORT jstring JNICALL Java_org_openi2pd_router_I2PD_1JNI_setShareRatio (JNIEnv *, jclass, jint);
+
 	JNIEXPORT jstring JNICALL Java_org_openi2pd_router_I2PD_1JNI_getReseedStatus (JNIEnv *, jclass);
 
 	JNIEXPORT jstring JNICALL Java_org_openi2pd_router_I2PD_1JNI_getTunnelServices (JNIEnv *, jclass);

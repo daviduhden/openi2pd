@@ -96,6 +96,14 @@ RouterService (started + bound, non-exported, same process)
   only while the service has never persisted a run state; an explicit stop (in
   the dashboard, the exit action or the Quick Settings tile) remains stopped
   across task recreation and relaunch until the user starts it again.
+- `BOOT_COMPLETED` and `MY_PACKAGE_REPLACED` deliver the service's
+  sticky-restore command, never an explicit start command. The service
+  reconciles the durable run state exactly as after a `START_STICKY` restart,
+  so a persisted stop stays stopped, an expired graceful drain becomes its
+  terminal stop instead of a fresh run, and a live drain is re-armed.
+  `BOOT_COMPLETED` additionally requires the boot-autostart marker;
+  `MY_PACKAGE_REPLACED` resumes a run the package update interrupted. Only a
+  user action (the tile or an Activity) may persist a new running intent.
 - The service uses an in-process `LocalBinder`. It is deliberately not
   exported. A future isolated router process would require AIDL plus
   Parcelable snapshots and a new security review; that is not claimed here.
@@ -334,6 +342,12 @@ use UTF-16→UTF-8 decoding with NUL/surrogate rejection; start diagnostics are
 bounded. The SAF broker still maps the full native library before applying its
 seccomp filter; moving that helper to a minimal library and adding a session-scoped
 AIDL contract remain pending.
+
+Every read of the payload-storage state is service-owned too. The grant map,
+the live `UriPermission` query and the bounded broker re-arm happen on
+`RouterService`'s SAF lane (`readTorrentStorageStatus`); the torrent screen only
+renders the fixed diagnostic it receives on the main thread, fenced by its view
+generation. The UI never asks the system for URI permissions itself.
 
 ## Manual Android CI matrix (prepared)
 

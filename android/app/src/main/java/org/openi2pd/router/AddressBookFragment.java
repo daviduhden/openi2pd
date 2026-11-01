@@ -382,8 +382,14 @@ public final class AddressBookFragment extends Fragment {
     }
 
     private void blockedDialog() {
+        if (status == null)
+            return;
+        // This read does not gate on busy (it is a pure listing), but it
+        // is still asynchronous, so it must not open a dialog for a
+        // released view.
+        final int expected = generation;
         model.readBlockedAddresses(response -> {
-            if (status == null || !isAdded())
+            if (expected != generation || status == null || !isAdded())
                 return;
             java.util.ArrayList<String> patterns = new java.util.ArrayList<>();
             for (String line : response.split("\\n")) {

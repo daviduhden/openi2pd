@@ -122,15 +122,17 @@ grep -Fq 'gracefulStopExpired' "$root/android/app/src/main/java/org/openi2pd/rou
 # Keep them out of app and instrumentation source; the Java 25 probe is
 # outside this scan.
 for source_dir in "$root/android/app/src/main/java" "$root/android/app/src/androidTest/java"; do
-	if grep -RInE 'java\.lang\.foreign|java\.lang\.invoke|java\.lang\.classfile|java\.lang\.ScopedValue|java\.lang\.StableValue|java\.util\.Sequenced|javax\.crypto\.KDF|java\.security\.PEMEncoder|java\.security\.PEMDecoder|Thread\.ofVirtual|Thread\.startVirtualThread|Thread\.ofPlatform|Executors\.newVirtualThreadPerTaskExecutor|StructuredTaskScope|java\.util\.concurrent\.Flow|HexFormat|java\.lang\.MatchException|jdk\.incubator\.vector' \
+	if grep -RInE 'java\.lang\.foreign|java\.lang\.invoke|java\.lang\.classfile|java\.lang\.ScopedValue|java\.lang\.StableValue|java\.util\.Sequenced|javax\.crypto\.KDF|java\.security\.PEMEncoder|java\.security\.PEMDecoder|Thread\.ofVirtual|Thread\.startVirtualThread|Thread\.ofPlatform|Executors\.newVirtualThreadPerTaskExecutor|StructuredTaskScope|java\.util\.concurrent\.Flow|HexFormat|java\.lang\.MatchException|java\.util\.random\.RandomGenerator|jdk\.incubator\.vector' \
 		"$source_dir"; then
 		fail 'app or instrumentation source references a JDK-only API that is unavailable on ART'
 	fi
 	# Collection/String convenience APIs exist only on newer Android
 	# releases. Unit tests under src/test run on the build JDK and are
 	# intentionally exempt; main and instrumentation sources run on the API
-	# 29 floor.
-	if grep -RInE '(List|Map|Set)\.(of|copyOf)\(|Stream\.toList\(|\.toList\(\)|Optional\.isEmpty\(|String\.(repeat|isBlank|strip|lines|formatted)\(' \
+	# 29 floor. The list is per method name because the class-level factory
+	# names (`Map.of` vs `Map.ofEntries`) and the String strip variants are
+	# different API levels.
+	if grep -RInE '(List|Map|Set)\.(of|ofEntries|copyOf)\(|Stream\.(toList|ofNullable|takeWhile|dropWhile|mapMulti)\(|\.toList\(\)|Optional\.(isEmpty|or|stream)\(|Collectors\.toUnmodifiable|Objects\.requireNonNullElse(Get)?\(|String\.(repeat|isBlank|strip|stripLeading|stripTrailing|indent|transform|translateEscapes|lines|formatted)\(' \
 		"$source_dir"; then
 		fail 'app or instrumentation source uses a collection/String API above the API 29 floor'
 	fi
