@@ -333,12 +333,27 @@ set(I2PD_OPENSSL_EXPECT "" CACHE STRING
   "Optional CI guard: require OpenSSL or LibreSSL")
 set(I2PD_OPENSSL_EXPECT_VERSION "" CACHE STRING
   "Optional CI guard: require this exact selected version")
+set(I2PD_OPENSSL_EXPECT_MAJOR "" CACHE STRING
+  "Optional CI guard: require this OpenSSL/LibreSSL major version")
 if(I2PD_OPENSSL_EXPECT AND NOT I2PD_OPENSSL_KIND STREQUAL I2PD_OPENSSL_EXPECT)
   message(FATAL_ERROR "Expected ${I2PD_OPENSSL_EXPECT}, selected ${I2PD_OPENSSL_KIND}")
 endif()
 if(I2PD_OPENSSL_EXPECT_VERSION AND NOT I2PD_OPENSSL_VERSION VERSION_EQUAL I2PD_OPENSSL_EXPECT_VERSION)
   message(FATAL_ERROR
     "Expected ${I2PD_OPENSSL_EXPECT_VERSION}, selected ${I2PD_OPENSSL_KIND} ${I2PD_OPENSSL_VERSION}")
+endif()
+# A branch lane ("latest 3.x", "latest 4.x") cannot pin an exact version,
+# so it guards the major instead. Without this the kind check alone would
+# accept any OpenSSL that find_package() resolved, and a lane that claims
+# 3.x could build and pass against 4.x.
+if(I2PD_OPENSSL_EXPECT_MAJOR)
+  string(REGEX MATCH "^[0-9]+" _i2pd_openssl_major "${I2PD_OPENSSL_VERSION}")
+  if(NOT _i2pd_openssl_major STREQUAL I2PD_OPENSSL_EXPECT_MAJOR)
+    message(FATAL_ERROR
+      "Expected ${I2PD_OPENSSL_KIND} ${I2PD_OPENSSL_EXPECT_MAJOR}.x, selected "
+      "${I2PD_OPENSSL_KIND} ${I2PD_OPENSSL_VERSION}")
+  endif()
+  unset(_i2pd_openssl_major)
 endif()
 message(STATUS "OpenSSL library    : ${I2PD_OPENSSL_KIND} ${I2PD_OPENSSL_VERSION}")
 message(STATUS "OpenSSL headers    : ${OPENSSL_INCLUDE_DIR}")

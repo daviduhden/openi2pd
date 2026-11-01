@@ -1,0 +1,56 @@
+# See the LICENSE file at the top of the project tree for copyright
+# and license details.
+#
+# openi2pd: build Linux OpenSSL 3.x.
+#
+# Manual Linux build and CTest lane pinned to the latest Homebrew
+# openssl@3 bottle. Compiler coverage stays gcc and clang; the two
+# OpenSSL branch workflows replace the former ad-hoc 3.x and source-built
+# 4.0.0/4.0.3 jobs.
+#
+
+---
+name: Linux OpenSSL 3.x
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Linux (${{ matrix.name }}, OpenSSL 3.x)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 50
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: clang
+            cc: clang
+            cxx: clang++
+          - name: gcc
+            cc: gcc
+            cxx: g++
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
+        with:
+          persist-credentials: false
+      - name: Install latest build tools from Homebrew
+        timeout-minutes: 20
+        uses: ./.github/actions/brew-toolchain
+        with:
+          openssl: openssl@3
+      - name: Build and test the latest OpenSSL 3.x branch
+        uses: ./.github/actions/linux-openssl-build
+        with:
+          name: ${{ matrix.name }}
+          cc: ${{ matrix.cc }}
+          cxx: ${{ matrix.cxx }}
+          openssl_branch: '3'
+          openssl_formula: openssl@3

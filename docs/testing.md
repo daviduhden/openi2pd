@@ -167,14 +167,23 @@ or platform filesystem execution in manual CI.
 
 ### Manual CI execution matrix
 
-`.github/workflows/build.yml` now runs, on `workflow_dispatch` only:
+The Linux builds are split by OpenSSL branch and run on `workflow_dispatch`
+only:
 
-- Linux Clang and GCC: complete build, full CTest, per-label inventory
-  (`i2p`, `security`, `memory`, `ipc`, `tui`, `torrent`, `tools`, `perl`,
-  `interop`, `platform`, `android`), version, Perl, branding and static
-  interoperability checks. GCC, LLVM, CMake, Ninja, Boost, OpenSSL, zlib,
-  MiniUPnPc and ncurses come from Homebrew so the manual runs compile against
-  the current releases.
+- `.github/workflows/build-linux-openssl3.yml`: Clang and GCC against the
+  latest Homebrew `openssl@3` bottle. The action verifies that the installed
+  keg reports the same 3.x version as the formula, then runs the complete
+  build, full CTest, per-label inventory (`i2p`, `security`, `memory`, `ipc`,
+  `tui`, `torrent`, `tools`, `perl`, `interop`, `platform`, `android`),
+  version, Perl, branding and static interoperability checks.
+- `.github/workflows/build-linux-openssl4.yml`: the same sequence against the
+  latest Homebrew `openssl@4` bottle.
+
+Both use precompiled Homebrew bottles for GCC, LLVM, CMake, Ninja, Boost,
+OpenSSL, zlib, MiniUPnPc and ncurses, so a dispatch does not compile the
+toolchain or OpenSSL. `.github/workflows/build.yml` keeps the Android,
+install-components, interop, sanitizer, source-docs, skills-static and opt-in
+Perl-quality jobs.
 - Android: Java 25 guard, en/es/ru/zh-CN resource/locale static check, Gradle unit tests, debug/release Lint, class-file-69 assertion, native arm64 JNI link with hardening, debug APK packaging assertion and unsigned release APK. ABI/API/device matrices remain documented but not executed.
 - Interop: pinned Java tag/commit/read-only check plus fixture provenance.
 - Sanitizers: separate ASan+UBSan and TSan builds with the full CTest suite,
@@ -183,8 +192,9 @@ or platform filesystem execution in manual CI.
 `.github/workflows/fuzz.yml` uses the current Homebrew Clang, Boost, OpenSSL
 and zlib, builds all fifteen libFuzzer targets and runs a bounded smoke pass for
 each. `.github/workflows/build-windows.yml` runs the
-complete MSYS2/Clang64 target graph and CTest suite; the MSVC job remains
-TUI/API-focused. `.github/workflows/build-openbsd.yml` runs the complete
+complete MSYS2/Clang64 target graph and CTest suite, plus a bounded
+`--version`/`--help` probe and PE-subsystem/import/`ldd` diagnostics before
+CTest; the MSVC job remains TUI/API-focused. `.github/workflows/build-openbsd.yml` runs the complete
 OpenBSD CTest suite.
 
 None of these workflow results may be attributed to uncommitted local work.
@@ -813,9 +823,9 @@ None of these tests has run.
 
 The OpenSSL 4 continuation adds `test-openssl-capabilities` (provider fetch
 probing and the runtime PQ version gate) and `test-tunnelconfig-ownership`
-(the remaining owned tunnel-hop chain). The manual workflow now has separate
-OpenSSL 3.x, pinned OpenSSL 4.0.0/4.0.3 and Homebrew-latest lanes; the OpenBSD
-job asserts LibreSSL via `I2PD_OPENSSL_EXPECT=LibreSSL`. The `famtool` positive
+(the remaining owned tunnel-hop chain). The manual matrix now has two dedicated Linux workflows for the latest
+Homebrew OpenSSL 3.x and 4.x bottles; the OpenBSD job asserts LibreSSL via
+`I2PD_OPENSSL_EXPECT=LibreSSL`. The `famtool` positive
 sign/verify round trip is still not exercised by `test-tools-regressions`; a
 real RouterInfo fixture is required before claiming that path dynamically
 tested.

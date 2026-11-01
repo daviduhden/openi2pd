@@ -1,0 +1,153 @@
+# See the LICENSE file at the top of the project tree for copyright
+# and license details.
+#
+# openi2pd: Linux OpenSSL build.
+#
+# Shared build and test sequence for the two OpenSSL branch workflows.
+# The caller installs the Homebrew toolchain with the matching openssl@3
+# or openssl@4 bottle first; this action verifies that the selected keg
+# really is that branch, then configures, builds, runs the full CTest
+# suite plus the focused subsystem selections and uploads the evidence.
+#
+---
+name: Linux OpenSSL build
+description: Build and test one Linux compiler against the selected Homebrew OpenSSL branch.
+inputs:
+  name:
+    description: Short compiler label used in artifact names (clang or gcc).
+    required: true
+  cc:
+    description: C compiler command.
+    required: true
+  cxx:
+    description: C++ compiler command.
+    required: true
+  openssl_branch:
+    description: Expected OpenSSL major branch (3 or 4).
+    required: true
+  openssl_formula:
+    description: Homebrew formula installed by the caller (openssl@3 or openssl@4).
+    required: true
+runs:
+  using: composite
+  steps:
+    - name: Verify the installed OpenSSL branch
+      shell: bash
+      env:
+        OPENSSL_FORMULA: ${{ inputs.openssl_formula }}
+        OPENSSL_BRANCH: ${{ inputs.openssl_branch }}
+      run: |
+        set -euo pipefail
+        if [ -z "${OPENSSL_ROOT_DIR:-}" ] || [ ! -x "$OPENSSL_ROOT_DIR/bin/openssl" ]; then
+          echo "OPENSSL_ROOT_DIR does not contain an openssl binary: ${OPENSSL_ROOT_DIR:-unset}" >&2
+          exit 1
+        fi
+        formula_version="$(brew list --versions "$OPENSSL_FORMULA" 2>/dev/null | awk '{print $2}' || true)"
+        if [ -z "$formula_version" ]; then
+          echo "Homebrew formula is not installed: $OPENSSL_FORMULA" >&2
+          exit 1
+        fi
+        formula_version="${formula_version%%_*}"
+        binary_version="$("$OPENSSL_ROOT_DIR/bin/openssl" version 2>/dev/null | awk '{print $2}' || true)"
+        if [ -z "$binary_version" ]; then
+          echo "the openssl binary in $OPENSSL_ROOT_DIR did not report a version" >&2
+          exit 1
+        fi
+        binary_version="${binary_version%%-*}"
+        case "$binary_version" in
+          "$OPENSSL_BRANCH".*) ;;
+          *)
+            echo "$OPENSSL_FORMULA installed $binary_version, expected the $OPENSSL_BRANCH.x branch" >&2
+            exit 1
+            ;;
+        esac
+        if [ "$binary_version" != "$formula_version" ]; then
+          echo "$OPENSSL_FORMULA reports $formula_version but its binary reports $binary_version" >&2
+          exit 1
+        fi
+        # The bottle is installed by brew-toolchain; this line makes the
+        # selected latest-of-branch version visible in the job log.
+        echo "OpenSSL $binary_version from Homebrew $OPENSSL_FORMULA"
+
+    - name: Build and run all CTest targets
+      shell: bash
+      run: |
+        cmake -S build -B build-output -G Ninja \
+          -DCMAKE_C_COMPILER=${{ inputs.cc }} \
+          -DCMAKE_CXX_COMPILER=${{ inputs.cxx }} \
+          -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON \
+          -DI2PD_REQUIRE_PERL=ON \
+          -DI2PD_BUILD_TUI=ON -DI2PD_OPENSSL_EXPECT=OpenSSL \
+          -DI2PD_OPENSSL_EXPECT_MAJOR=${{ inputs.openssl_branch }}
+        cmake --build build-output --parallel 2
+        ctest --test-dir build-output -j 2 --output-on-failure \
+          --no-tests=error --output-junit "$PWD/ctest-${{ inputs.name }}.xml"
+        ./build-output/i2pd --version
+
+    - name: Run I2PSnark compatibility regressions
+      shell: bash
+      run: |
+        ctest --test-dir build-output -j 2 --output-on-failure --no-tests=error \
+          --output-junit "$PWD/ctest-torrents.xml" \
+          -R '^test-(torrents-(magnet|engine-interop|dht-interop|dht-protocol|pex|comments|creator|state|priorities)|torrent-payload-storage)$'
+
+    - name: Run client parsing and persistence regressions
+      shell: bash
+      run: |
+        ctest --test-dir build-output -j 2 --output-on-failure --no-tests=error \
+          --output-junit "$PWD/ctest-client.xml" \
+          -R '^test-(i2ptunnel-http|addressbook-case|torrents-security)$'
+
+    - name: Run profile, Android lifecycle and firewall regressions
+      shell: bash
+      run: |
+        ctest --test-dir build-output -j 2 --output-on-failure --no-tests=error \
+          --output-junit "$PWD/ctest-profile.xml" \
+          -R '^(test-(datagram-receiver-lifecycle|netdb-stop-admission|tunnels-restart|router-profile-(race|storage)|daemon-init-rollback|android-daemon-lifecycle|routerinfo-firewall)|tools-smoke)$'
+
+    - name: Verify CTest subsystem labels
+      shell: bash
+      run: |
+        for label in i2p security memory ipc tui torrent tools perl docs interop platform android ci static packaging services unit install smoke cli integration; do
+          ctest --test-dir build-output -N -L "$label" --no-tests=error
+        done
+
+    - name: Validate Perl and static interoperability fixtures
+      shell: bash
+      run: |
+        perl -c tools/scripts/i2pdctl
+        perl -c tools/scripts/validate-branding.pl
+        perl -c tools/scripts/check-doc-links.pl
+        perl -c tools/scripts/check-doc-nav.pl
+        perl -c tools/scripts/check-doxygen-params.pl
+        perl -c tests/interop/check-vectors.pl
+        perl -c android/tools/check-android-locales.pl
+        perl -c android/tools/check-android-jni-symbols.pl
+        perl -c i18n/check-i18n-catalogs.pl
+        perl tools/scripts/validate-branding.pl
+        perl tools/scripts/check-doc-links.pl docs
+        perl tools/scripts/check-doc-nav.pl .
+        perl tools/scripts/check-doxygen-params.pl
+        perl tests/interop/check-vectors.pl
+        if command -v prove >/dev/null 2>&1; then
+          prove -v tools/tests/i2pdctl.t
+          prove -v tools/tests/validate-branding.t
+          prove -v tools/tests/perl-portability.t
+          prove -v tools/tests/maintenance-checkers.t
+        else
+          perl tools/tests/i2pdctl.t
+          perl tools/tests/validate-branding.t
+          perl tools/tests/perl-portability.t
+          perl tools/tests/maintenance-checkers.t
+        fi
+
+    - name: Upload Linux CTest evidence
+      if: always()
+      uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
+      with:
+        name: linux-openssl-${{ inputs.openssl_branch }}-${{ inputs.name }}-ctest
+        path: |
+          build-output/Testing
+          ctest-*.xml
+        if-no-files-found: warn
+        retention-days: 7

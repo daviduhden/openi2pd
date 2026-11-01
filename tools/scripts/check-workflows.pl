@@ -15,6 +15,7 @@ use strict;
 use warnings;
 use 5.016;
 
+use File::Find ();
 use File::Spec;
 use FindBin qw($Bin);
 
@@ -116,13 +117,93 @@ for my $file (@files) {
     }
 }
 
+# Composite actions under .github/actions can execute ctest too, so the
+# same empty-selection and JUnit contract must cover them; they have no
+# trigger block to inspect.
+my $actions_dir = File::Spec->catdir( $root, '.github', 'actions' );
+my @action_files;
+if ( -d $actions_dir ) {
+    File::Find::find(
+        {
+            no_chdir => 1,
+            wanted   => sub {
+                push @action_files, $_
+                  if -f $_ && $_ =~ /\.ya?ml\z/;
+            },
+        },
+        $actions_dir
+    );
+}
+for my $path ( sort @action_files ) {
+    open my $fh, '<', $path or die "cannot read $path: $!\n";
+    local $/;
+    my $text = <$fh>;
+    close $fh;
+    ( my $joined = $text ) =~ s/\\\n\s*/ /g;
+    $joined =~ s/`\n\s*/ /g;
+    for my $line ( split /\n/, $joined ) {
+        next if $line =~ /^\s*#/;
+        if ( $line =~ /^\s*continue-on-error\s*:/ ) {
+            push @errors, "$path: continue-on-error is forbidden";
+        }
+        if (   $line =~ /(?:^|\s)ctest\s+--/
+            && $line !~ /\s-N(?:\s|$)/
+            && $line !~ /--print-labels/ )
+        {
+            push @errors, "$path: ctest invocation lacks --no-tests=error"
+              unless $line =~ /--no-tests=error/;
+            push @errors, "$path: ctest invocation lacks --output-junit"
+              unless $line =~ /--output-junit/;
+        }
+    }
+}
+
+# The two Linux OpenSSL branch lanes are the only Linux build workflows.
+# They must consume the Homebrew precompiled bottle for the branch they
+# claim (openssl@3 / openssl@4) and must not reintroduce a source-built
+# pinned OpenSSL download: the split exists to keep the matrix small and
+# fast while still exercising the latest version of each branch.
+my %branch_formula = (
+    'build-linux-openssl3.yml' => 'openssl@3',
+    'build-linux-openssl4.yml' => 'openssl@4',
+);
+for my $file ( sort keys %branch_formula ) {
+    my $path = File::Spec->catfile( $dir, $file );
+    if ( !-f $path ) {
+        push @errors, "$file: missing Linux OpenSSL branch workflow";
+        next;
+    }
+    open my $fh, '<', $path or die "cannot read $path: $!\n";
+    local $/;
+    my $text = <$fh>;
+    close $fh;
+    my $formula = $branch_formula{$file};
+    if ( index( $text, $formula ) < 0 ) {
+        push @errors, "$file: does not select the $formula Homebrew bottle";
+    }
+    if ( $text =~ /openssl\.org\/source|OPENSSL_SHA256|OPENSSL_PIN/ ) {
+        push @errors, "$file: must use the Homebrew $formula bottle, not a source build";
+    }
+}
+for my $file (@files) {
+    next if exists $branch_formula{$file};
+    my $path = File::Spec->catfile( $dir, $file );
+    open my $fh, '<', $path or die "cannot read $path: $!\n";
+    local $/;
+    my $text = <$fh>;
+    close $fh;
+    if ( $text =~ /openssl\.org\/source|OPENSSL_SHA256|OPENSSL_PIN/ ) {
+        push @errors, "$file: OpenSSL source builds moved to the Homebrew branch workflows";
+    }
+}
+
 if (@errors) {
     print STDERR "$_\n" for @errors;
     exit 1;
 }
 
 print
-"workflow-static: $checked workflow(s) obey the manual-build/PR-maintenance trigger policy and fail on empty CTest selections\n";
+"workflow-static: $checked workflow(s) and " . scalar (@action_files) . " action file(s) obey the manual-build/PR-maintenance trigger policy and fail on empty CTest selections\n";
 exit 0;
 
 =head1 NAME
@@ -139,7 +220,8 @@ aborts because the workflow directory cannot be opened.
 
 =head1 DESCRIPTION
 
-Read-only contract check for everything under F<.github/workflows/>:
+Read-only contract check for everything under F<.github/workflows/> and the
+composite action files under F<.github/actions/>:
 
 =over 4
 
@@ -157,9 +239,18 @@ failure is not a valid way to make a lane green;
 
 =item *
 
-every C<ctest> invocation must pass C<--no-tests=error> and
-C<--output-junit>; C<-N> and C<--print-labels> are exempt because they only
-list tests or labels and never execute a selection.
+every C<ctest> invocation, in a workflow or in a composite action, must pass
+C<--no-tests=error> and C<--output-junit>; C<-N> and C<--print-labels> are
+exempt because they only list tests or labels and never execute a selection.
+C<continue-on-error> is likewise refused in both.
+
+=item *
+
+F<build-linux-openssl3.yml> and F<build-linux-openssl4.yml> must exist and
+select the matching Homebrew C<openssl@3>/C<openssl@4> bottle. A pinned
+source build (C<openssl.org/source>, C<OPENSSL_SHA256>, C<OPENSSL_PIN>) is
+refused so the reduced Linux matrix cannot silently return to compiling
+OpenSSL itself.
 
 =back
 

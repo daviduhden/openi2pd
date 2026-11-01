@@ -15,6 +15,14 @@ The sole automatic gate is `.github/workflows/agent-maintenance.yml`, which
 runs compile-free agent/skill synchronization checks on pull requests. No build
 or test workflow runs automatically; no `push` or schedule trigger is allowed.
 
+The Linux build matrix is two workflows, one per OpenSSL branch:
+`build-linux-openssl3.yml` and `build-linux-openssl4.yml`. Each installs the
+latest Homebrew `openssl@3`/`openssl@4` bottle plus the precompiled GCC, LLVM,
+CMake, Ninja, Boost, zlib, MiniUPnPc and ncurses bottles, verifies that the
+installed keg reports the same version as the formula, and then builds and
+tests with both GCC and Clang. Do not reintroduce a source-built OpenSSL
+download; `tools/scripts/check-workflows.pl` refuses one.
+
 The optional `source_docs` input on **Linux and Android** generates C++ API
 HTML with `docs/Doxyfile.source` and Android Javadoc with the debug Java
 compiler's Android SDK, dependency and generated-class paths, using JDK 25
@@ -138,6 +146,8 @@ actionlint .github/workflows/*.yml
 Manual dispatch and log collection use the published revision only:
 
 ```sh
+gh workflow run "Linux OpenSSL 3.x" --ref main
+gh workflow run "Linux OpenSSL 4.x" --ref main
 gh workflow run "Linux and Android" --ref main
 gh workflow run "Windows" --ref main
 gh workflow run "OpenBSD" --ref main
