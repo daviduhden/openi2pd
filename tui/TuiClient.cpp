@@ -18,6 +18,7 @@
 
 #include <algorithm>
 #include <cerrno>
+#include <chrono>
 #include <cstdlib>
 #include <cstring>
 #include <fcntl.h>
@@ -25,6 +26,7 @@
 #include <sys/socket.h>
 #include <sys/stat.h>
 #include <sys/un.h>
+#include <thread>
 #include <unistd.h>
 #include <utility>
 
@@ -119,6 +121,12 @@ namespace tui
 			if (getcwd (cwd, sizeof (cwd))) return std::string (cwd) + "/" + path;
 			return path;
 		}
+
+		// Budget of the bounded connect attempt. It only has to cover a
+		// listener whose accept queue is momentarily full; the daemon-absent
+		// case fails immediately with ECONNREFUSED.
+		constexpr auto CONNECT_TIMEOUT = std::chrono::seconds (2);
+		constexpr auto CONNECT_RETRY_INTERVAL = std::chrono::milliseconds (20);
 	}
 
 	i2p::expected<ClientOptions, std::string> ParseOptions (int argc, char * argv[])
@@ -251,9 +259,10 @@ namespace tui
 		// One attempt, no retry loop: App::ConnectIfNeeded owns the reconnect
 		// cadence (two seconds while disconnected) and keeps the failure text
 		// on screen, so retrying here would hide a missing daemon behind a
-		// blocked event loop. AF_UNIX connect() is blocking and has no
-		// timeout of its own, so a daemon that stops accepting can stall this
-		// call until the address queue drains; nothing here can interrupt it.
+		// blocked event loop. The console runs this on its only thread, so the
+		// connect itself is bounded: a blocking AF_UNIX connect() waits while
+		// the listener's accept queue is full, which would freeze the whole
+		// user interface with no way to interrupt it.
 		//
 		// A path that does not fit sun_path (including the terminating NUL)
 		// is rejected before the socket exists rather than truncated.
@@ -266,15 +275,58 @@ namespace tui
 		if (fd < 0) return i2p::unexpected (std::string ("socket: ") + strerror (errno));
 		int flags = fcntl (fd, F_GETFD);
 		if (flags >= 0) fcntl (fd, F_SETFD, flags | FD_CLOEXEC);
+		const int statusFlags = fcntl (fd, F_GETFL);
+		if (statusFlags < 0 || fcntl (fd, F_SETFL, statusFlags | O_NONBLOCK) != 0)
+		{
+			int error = errno;
+			close (fd);
+			return i2p::unexpected (std::string ("fcntl: ") + strerror (error));
+		}
 
 		sockaddr_un address { };
 		address.sun_family = AF_UNIX;
 		std::memcpy (address.sun_path, m_Path.c_str (), m_Path.size () + 1);
-		if (::connect (fd, reinterpret_cast<sockaddr *> (&address), sizeof (address)) != 0)
+		// AF_UNIX completes or refuses a connect synchronously: with a full
+		// accept queue the kernel answers EAGAIN and the socket stays
+		// unconnected, so the attempt is repeated until the deadline. An
+		// asynchronous completion (EINPROGRESS/EALREADY) is treated the same
+		// way; it cannot hang here because every pass is bounded.
+		const auto deadline = std::chrono::steady_clock::now () + CONNECT_TIMEOUT;
+		int error = 0;
+		bool connected = false;
+		for (;;)
 		{
-			int error = errno;
+			if (::connect (fd, reinterpret_cast<sockaddr *> (&address), sizeof (address)) == 0)
+			{
+				connected = true;
+				break;
+			}
+			error = errno;
+			if (error == EINTR) continue;
+			// EAGAIN and EWOULDBLOCK are the same constant on this POSIX
+			// target; spelling both would trip -Wlogical-op when a stricter
+			// lane enables it.
+			const bool retryable = error == EAGAIN || error == EINPROGRESS || error == EALREADY;
+			if (!retryable) break;
+			if (std::chrono::steady_clock::now () >= deadline)
+			{
+				error = ETIMEDOUT;
+				break;
+			}
+			std::this_thread::sleep_for (CONNECT_RETRY_INTERVAL);
+		}
+		if (!connected)
+		{
 			close (fd);
 			return i2p::unexpected (std::string ("connect: ") + strerror (error));
+		}
+		// The request path relies on blocking reads whose deadline comes from
+		// SO_RCVTIMEO/SO_SNDTIMEO, not from the socket status flags.
+		if (fcntl (fd, F_SETFL, statusFlags) != 0)
+		{
+			error = errno;
+			close (fd);
+			return i2p::unexpected (std::string ("fcntl: ") + strerror (error));
 		}
 
 		timeval timeout { 3, 0 };

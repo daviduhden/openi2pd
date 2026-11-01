@@ -19,6 +19,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <memory>
 #include <string>
 #include <string_view>
 #include <sys/socket.h>
@@ -27,6 +28,7 @@
 #include <sys/un.h>
 #include <thread>
 #include <unistd.h>
+#include <vector>
 
 #include "TuiProtocol.h"
 #include "daemon/TuiServer.h"
@@ -358,6 +360,57 @@ void TestAdminQueueBounds ()
 	assert (stopped.code == i2p::tui::AdminResultCode::Unavailable);
 }
 
+void TestAdminQueueStopReleasesWaiter ()
+{
+	// A caller waiting for a queued command must be released by the queue
+	// stopping, not by its own timeout: the daemon stops the queue during
+	// shutdown and the local-IPC thread must not linger behind a command that
+	// was already retired.
+	g_AdminExecutorCount.store (0, std::memory_order_relaxed);
+	g_AdminExecutorStarted.store (false, std::memory_order_relaxed);
+	g_ReleaseAdminExecutor.store (false, std::memory_order_relaxed);
+	g_BlockAdminExecutor.store (true, std::memory_order_relaxed);
+	assert (i2p::tui::StartAdminCommandQueue (&FakeAdminExecutor));
+
+	// Occupy the single executor so the next command has to stay queued.
+	i2p::tui::AdminCommand blockingCommand { i2p::tui::AdminCommandKind::Reseed, 0, false };
+	auto blockingResult = i2p::tui::SubmitAdminCommand (blockingCommand, std::chrono::milliseconds (100));
+	assert (blockingResult.code == i2p::tui::AdminResultCode::Accepted);
+	for (int i = 0; i < 2000 && !g_AdminExecutorStarted.load (std::memory_order_relaxed); ++i)
+		std::this_thread::sleep_for (std::chrono::milliseconds (1));
+	assert (g_AdminExecutorStarted.load (std::memory_order_relaxed));
+
+	i2p::tui::AdminResultCode waiterCode = i2p::tui::AdminResultCode::Ok;
+	std::chrono::steady_clock::duration waited { };
+	std::thread waiter (
+		[&waiterCode, &waited]
+		{
+			i2p::tui::AdminCommand queuedCommand { i2p::tui::AdminCommandKind::Share, 50, false };
+			const auto started = std::chrono::steady_clock::now ();
+			// Deliberately far longer than the stop needs: a returned result
+			// must come from the stop, never from this timeout expiring.
+			auto result = i2p::tui::SubmitAdminCommand (queuedCommand, std::chrono::seconds (30));
+			waited = std::chrono::steady_clock::now () - started;
+			waiterCode = result.code;
+		});
+	// Let the waiter observe the running executor and queue its command.
+	std::this_thread::sleep_for (std::chrono::milliseconds (50));
+
+	// The stop blocks until the blocked executor is released, so it runs on
+	// its own thread while the waiter is observed.
+	std::thread stopper ([] { i2p::tui::StopAdminCommandQueue (); });
+	waiter.join ();
+	assert (waiterCode == i2p::tui::AdminResultCode::Unavailable);
+	// Released by the stop, not by the thirty-second timeout: the outcome above
+	// already proves the command was retired rather than accepted, and this
+	// bound keeps a "wait for the timeout" regression obvious.
+	assert (waited < std::chrono::seconds (10));
+
+	g_ReleaseAdminExecutor.store (true, std::memory_order_relaxed);
+	stopper.join ();
+	g_BlockAdminExecutor.store (false, std::memory_order_relaxed);
+}
+
 void TestBoundedStop (const std::string & directory)
 {
 	const std::string path = directory + "/stop.sock";
@@ -380,6 +433,90 @@ void TestBoundedStop (const std::string & directory)
 	struct stat info { };
 	assert (lstat (path.c_str (), &info) != 0 && errno == ENOENT);
 }
+
+void TestConnectIsBounded (const std::string & path)
+{
+	// The console runs Connect() on its only thread, so a listener whose
+	// accept queue is saturated must fail the bounded attempt instead of
+	// freezing the whole interface. The server serves one client at a time
+	// and listen(fd, 4) queues the rest.
+	i2p::tui::Client served (path);
+	assert (served.Connect ().has_value ());
+	auto pong = served.Request ("PING");
+	assert (pong.has_value ());
+	assert (pong->starts_with ("pong="));
+
+	// Fill the accept queue. The attempt that cannot complete is the proof:
+	// a blocking connect would never return, so the loop itself is the
+	// regression for the bounded attempt.
+	std::vector<std::unique_ptr<i2p::tui::Client>> queued;
+	std::chrono::steady_clock::duration blockedFor { };
+	bool queueFull = false;
+	for (int attempt = 0; attempt < 16 && !queueFull; ++attempt)
+	{
+		auto client = std::make_unique<i2p::tui::Client> (path);
+		const auto started = std::chrono::steady_clock::now ();
+		auto connected = client->Connect ();
+		blockedFor = std::chrono::steady_clock::now () - started;
+		if (connected)
+		{
+			// The connection is queued and stays open, so the next attempt
+			// has one slot fewer.
+			queued.emplace_back (std::move (client));
+			continue;
+		}
+		assert (connected.error ().find ("connect:") != std::string::npos);
+		assert (!client->IsConnected ());
+		queueFull = true;
+	}
+	assert (queueFull);
+	assert (!queued.empty ());
+	// Two seconds of budget plus scheduling slack, and far below the
+	// thirty-minute lifetime of one served connection.
+	assert (blockedFor < std::chrono::seconds (6));
+
+	// Releasing the served and queued clients lets the accept loop drain and
+	// serve again; a failed bounded attempt leaves nothing behind.
+	queued.clear ();
+	served.Disconnect ();
+
+	i2p::tui::Client recovered (path);
+	assert (recovered.Connect ().has_value ());
+	auto ping = recovered.Request ("PING");
+	assert (ping.has_value ());
+	assert (ping->starts_with ("pong="));
+	recovered.Disconnect ();
+}
+
+void TestIdempotentLifecycle (const std::string & directory)
+{
+	// Start()/Stop() are single-owner lifecycle calls: a repeated Start() must
+	// not bind a second listener or replace the worker, a repeated Stop() must
+	// stay harmless, and a restart must rebind and serve the same path again.
+	const std::string path = directory + "/lifecycle.sock";
+	i2p::tui::Server server (path);
+	assert (server.Start ());
+	assert (server.Start ());
+
+	struct stat info { };
+	assert (lstat (path.c_str (), &info) == 0);
+	assert (S_ISSOCK (info.st_mode));
+
+	server.Stop ();
+	server.Stop ();
+	assert (lstat (path.c_str (), &info) != 0 && errno == ENOENT);
+
+	assert (server.Start ());
+	i2p::tui::Client client (path);
+	assert (client.Connect ().has_value ());
+	auto pong = client.Request ("PING");
+	assert (pong.has_value ());
+	assert (pong->starts_with ("pong="));
+	client.Disconnect ();
+
+	server.Stop ();
+	assert (lstat (path.c_str (), &info) != 0 && errno == ENOENT);
+}
 }
 
 int main ()
@@ -388,6 +525,7 @@ int main ()
 	assert (mkdtemp (directory) != nullptr);
 
 	TestAdminQueueBounds ();
+	TestAdminQueueStopReleasesWaiter ();
 	assert (i2p::tui::StartAdminCommandQueue (&FakeAdminExecutor));
 
 	const std::string socketPath = std::string (directory) + "/tui.sock";
@@ -404,6 +542,7 @@ int main ()
 		TestRawFraming (socketPath);
 		TestOverlongLine (socketPath);
 		TestAbortedClient (socketPath);
+		TestConnectIsBounded (socketPath);
 
 		server.Stop ();
 		assert (lstat (socketPath.c_str (), &info) != 0 && errno == ENOENT);
@@ -411,6 +550,7 @@ int main ()
 
 	i2p::tui::StopAdminCommandQueue ();
 	TestBoundedStop (directory);
+	TestIdempotentLifecycle (directory);
 
 	assert (rmdir (directory) == 0);
 	return 0;

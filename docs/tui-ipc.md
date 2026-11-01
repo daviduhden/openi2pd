@@ -648,3 +648,14 @@ catalogs.
 - [service management](service-management.md)
 - [ipc protocol](security/ipc-protocol.md)
 - [TUI WINDOWS](TUI-WINDOWS.md)
+
+## Admin queue stop semantics
+
+`SubmitAdminCommand` waits until the command publishes its result, the queue
+retires the slot, or the queue reports that it is stopping. A stop releases a
+waiting caller with `Unavailable`; a command that was still queued is dropped
+and is never reported as accepted. A command the executor already took still
+runs to its own bounded completion, and a plain timeout keeps the "accepted;
+still running" result. `StartAdminCommandQueue`/`StopAdminCommandQueue` and
+the local `Server::Start`/`Stop` are single-owner and restartable; a repeated
+start does not bind a second listener and a repeated stop is harmless.

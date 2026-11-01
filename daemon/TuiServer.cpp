@@ -183,7 +183,20 @@ namespace tui
 		}
 
 		m_ListenFd = fd;
-		m_Thread = std::jthread ([this] (std::stop_token token) { Run (token); });
+		try
+		{
+			m_Thread = std::jthread ([this] (std::stop_token token) { Run (token); });
+		}
+		catch (...)
+		{
+			// A listener without a worker is never served, and an escaping
+			// exception would abort the whole daemon start for an optional
+			// channel. Release the endpoint and report the failure; Stop() is
+			// safe here because no thread was created.
+			Stop ();
+			LogPrint (eLogError, "TUI: Can't start the IPC thread");
+			return false;
+		}
 		LogPrint (eLogInfo, "TUI: Listening on ", m_Path);
 		return true;
 	}

@@ -1174,21 +1174,42 @@ namespace tui
 		queue.changed.notify_all ();
 
 		auto & slot = queue.slots[index];
-		if (!queue.changed.wait_for (lock, timeout, [&slot] { return slot.state == QueueSlotState::Done; }))
-		{
-			// Stop() may have retired the queued command while we waited.
-			if (slot.state == QueueSlotState::Free) return unavailable;
-			// The command is still queued or executing. Do not cancel it:
-			// record that the result is no longer wanted and let the daemon
-			// thread finish at its own bounded pace.
-			if (slot.state != QueueSlotState::Done)
+		// The wait ends when the result is published, when the slot was retired
+		// by a stop (free again), or when the queue reported its stop. Waiting
+		// for the full timeout after the queue retired the command would hold
+		// the local-IPC caller for two seconds for an outcome that is already
+		// known.
+		const bool signalled = queue.changed.wait_for (lock, timeout,
+			[&slot, &queue]
 			{
-				slot.discard = true;
-				AdminCommandResult accepted { };
-				accepted.code = AdminResultCode::Accepted;
-				SetAdminMessage (accepted, "command accepted; still running");
-				return accepted;
-			}
+				return slot.state == QueueSlotState::Done || slot.state == QueueSlotState::Free
+					|| queue.stopping.load (std::memory_order_relaxed);
+			});
+		if (!signalled)
+		{
+			// Only a plain timeout reaches here, so the command is still queued
+			// or executing. Do not cancel it: record that the result is no
+			// longer wanted and let the daemon thread finish at its own bounded
+			// pace.
+			slot.discard = true;
+			AdminCommandResult accepted { };
+			accepted.code = AdminResultCode::Accepted;
+			SetAdminMessage (accepted, "command accepted; still running");
+			return accepted;
+		}
+
+		if (slot.state == QueueSlotState::Free) return unavailable;
+		if (slot.state != QueueSlotState::Done)
+		{
+			// The queue is stopping. A command that was still queued is dropped
+			// by the stop instead of executed, so the caller must not be told it
+			// was accepted; a command the executor already took still runs. In
+			// both cases the slot belongs to the executor or to the stopping
+			// thread, which frees it: record that the result is unwanted so it is
+			// not published to a caller that already left, and never free the
+			// slot here.
+			slot.discard = true;
+			return unavailable;
 		}
 
 		auto result = slot.result;
