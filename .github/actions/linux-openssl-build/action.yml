@@ -42,7 +42,19 @@ runs:
           echo "OPENSSL_ROOT_DIR does not contain an openssl binary: ${OPENSSL_ROOT_DIR:-unset}" >&2
           exit 1
         fi
-        formula_version="$(brew list --versions "$OPENSSL_FORMULA" 2>/dev/null | awk '{print $2}' || true)"
+        # brew is installed but not guaranteed on PATH: the toolchain
+        # action evaluates `brew shellenv` only inside its own shell, so
+        # invoking plain `brew` here would be "command not found" and the
+        # empty version would be misreported as a missing formula.
+        brew_bin="/home/linuxbrew/.linuxbrew/bin/brew"
+        if [ ! -x "$brew_bin" ]; then
+          brew_bin="$(command -v brew || true)"
+        fi
+        if [ -z "$brew_bin" ] || [ ! -x "$brew_bin" ]; then
+          echo "Homebrew is not available; cannot verify $OPENSSL_FORMULA" >&2
+          exit 1
+        fi
+        formula_version="$("$brew_bin" list --versions "$OPENSSL_FORMULA" 2>/dev/null | awk '{print $2}' || true)"
         if [ -z "$formula_version" ]; then
           echo "Homebrew formula is not installed: $OPENSSL_FORMULA" >&2
           exit 1
