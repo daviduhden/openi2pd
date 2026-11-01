@@ -585,6 +585,48 @@ namespace client
 		return ParseSAMNumber (params[SAM_PARAM_LISTEN_PORT], listenPort);
 	}
 
+	// SESSION CREATE, SESSION ADD and SESSION REMOVE echo the
+	// client-chosen session identifier in the quoted `ID="..."` field of
+	// SESSION STATUS. An identifier that cannot be represented there would
+	// split the reply line, so it is refused before it can be registered:
+	// the characters SAMv3Handler's session handling rejects plus every C0
+	// control byte, which a tab/fixed-width tokenizer can leave inside a
+	// value. Whitespace cannot appear because parameters are
+	// space-separated.
+	inline bool IsAcceptableSAMSessionName (std::string_view str)
+	{
+		for (char ch : str)
+		{
+			if (ch == '<' || ch == '>' || ch == '"' || ch == '\'' || ch == '/') return false;
+			if (static_cast<unsigned char> (ch) < 0x20) return false;
+		}
+		return true;
+	}
+
+	// Non-secret summary of a control line that names no known command.
+	// The whole line is client input: a mistyped or tab-separated SESSION
+	// CREATE still carries DESTINATION (base64 private keys) and an AUTH
+	// line carries credentials, so only the size and the field count are
+	// reported and the content never reaches a log record.
+	inline std::string MakeSAMUnexpectedMessageLogLine (std::string_view line)
+	{
+		auto isSeparator = [] (char ch) { return ch == ' ' || ch == '\t' || ch == '\f'; };
+		size_t fields = 0, pos = 0;
+		while (pos < line.size ())
+		{
+			while (pos < line.size () && isSeparator (line[pos])) ++pos;
+			if (pos >= line.size ()) break;
+			++fields;
+			while (pos < line.size () && !isSeparator (line[pos])) ++pos;
+		}
+		std::string result ("SAM: Unexpected message, ");
+		result.append (std::to_string (line.size ()));
+		result.append (" bytes, ");
+		result.append (std::to_string (fields));
+		result.append (" field(s)");
+		return result;
+	}
+
 	// Non-secret summary of SESSION CREATE for the log: the canonical
 	// style name and the ID presence only. DESTINATION is a base64
 	// private-key blob and never reaches the log; an unrecognized STYLE is
@@ -781,6 +823,9 @@ namespace client
 		void ResetAllDatagramReceivers ();
 		void ProcessPing (std::string_view text);
 		void SendReplyWithMessage (const char * reply, const std::string & msg, bool close);
+		// SESSION STATUS for a subsession. The identifier is client input
+		// and is placed in a quoted field: one that cannot be represented
+		// there is reported empty rather than splitting the reply line.
 		void SendSubsessionStatusOk (std::string_view id);
 		void SendSubsessionError (std::string_view id, std::string_view msg);
 		void SendSessionI2PError (const std::string & msg);

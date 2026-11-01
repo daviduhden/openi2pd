@@ -508,7 +508,10 @@ namespace client
 		}
 		else
 		{
-			LogPrint (eLogError, "SAM: Unexpected message ", line);
+			// The whole line is client input (see
+			// MakeSAMUnexpectedMessageLogLine): it may carry DESTINATION
+			// private keys or HELLO/AUTH credentials, so it is never logged.
+			LogPrint (eLogError, MakeSAMUnexpectedMessageLogLine (line));
 			Terminate ("SAM: unexpected message");
 		}
 	}
@@ -604,18 +607,6 @@ namespace client
 		}
 	}
 
-	static bool IsAcceptableSessionName (std::string_view str)
-	{
-		auto itr = str.begin ();
-		while (itr != str.end ())
-		{
-			char ch = *itr;
-			++itr;
-			if (ch == '<' || ch == '>' || ch == '"' || ch == '\'' || ch == '/') return false;
-		}
-		return true;
-	}
-
 	// .i2p host names are case-insensitive, unlike base64 destinations.
 	// Java lowercases the name before its ".b32.i2p" check and the naming
 	// service matches case-insensitively.
@@ -639,7 +630,7 @@ namespace client
 		std::string_view destination = params[SAM_PARAM_DESTINATION];
 		LogPrint (eLogDebug, MakeSAMSessionCreateLogLine (style, !id.empty ()));
 
-		if (id.empty () || !IsAcceptableSessionName (id))
+		if (id.empty () || !IsAcceptableSAMSessionName (id))
 		{
 			// Java SAMv3Handler requires the ID property.
 			SendMessageReply (SAM_SESSION_CREATE_INVALID_ID, true);
@@ -796,8 +787,11 @@ namespace client
 			i2p::data::SigningKeyType signatureType;
 			if (!m_Owner.ResolveSignatureType (params[SAM_PARAM_SIGNATURE_TYPE], signatureType))
 			{
-				SendSessionI2PError (
-					"SIGNATURE_TYPE " + std::string (params[SAM_PARAM_SIGNATURE_TYPE]) + " unsupported");
+				// The selected SIGNATURE_TYPE is client input. It is never
+				// echoed into the quoted MESSAGE field: a quote or a control
+				// byte there would make the reply unparsable, and the reason
+				// does not need the value.
+				SendSessionI2PError ("Unsupported SIGNATURE_TYPE");
 				return;
 			}
 		}
@@ -1446,6 +1440,14 @@ namespace client
 				SendSubsessionError (id, "ID not specified");
 				return;
 			}
+			if (!IsAcceptableSAMSessionName (id))
+			{
+				// The identifier is echoed in the quoted ID field of SESSION
+				// STATUS; an identifier that cannot be represented there is
+				// refused before it is registered and is not echoed back.
+				SendSubsessionError ({ }, "Invalid ID");
+				return;
+			}
 			if (params.Contains (SAM_PARAM_DESTINATION))
 			{
 				SendSubsessionError (id, "SESSION ADD may not contain DESTINATION");
@@ -1646,9 +1648,13 @@ namespace client
 		{
 			LogPrint (eLogDebug, "SAM: Subsession remove: ", buf);
 			auto masterSession = std::static_pointer_cast<SAMMasterSession> (session);
-			if (id.empty () || !masterSession->subsessions.erase (id))
+			// An identifier SESSION ADD refuses can never name a subsession.
+			// The reply helper keeps an unrepresentable ID out of the quoted
+			// field, so it is passed through unchanged here.
+			const bool acceptable = !id.empty () && IsAcceptableSAMSessionName (id);
+			if (!acceptable || !masterSession->subsessions.erase (id))
 			{
-				SendSubsessionError (id, "ID " + id + " not found");
+				SendSubsessionError (id, "ID not found");
 				return;
 			}
 			ResetDatagramReceivers (id);
@@ -1675,7 +1681,11 @@ namespace client
 
 	void SAMSocket::SendSubsessionStatusOk (std::string_view id)
 	{
-		const std::string value (id);
+		// The identifier is client input and lands in a quoted SESSION STATUS
+		// field. One that cannot be represented there (it can only come from
+		// a command SESSION ADD refused) is reported empty instead of
+		// splitting the reply line.
+		const std::string value (IsAcceptableSAMSessionName (id) ? id : std::string_view ());
 		const int formatted
 			= std::snprintf (m_Buffer, SAM_SOCKET_BUFFER_SIZE, SAM_SUBSESSION_STATUS_OK, value.c_str ());
 		const size_t len
@@ -1685,7 +1695,7 @@ namespace client
 
 	void SAMSocket::SendSubsessionError (std::string_view id, std::string_view msg)
 	{
-		const std::string idValue (id), message (msg);
+		const std::string idValue (IsAcceptableSAMSessionName (id) ? id : std::string_view ()), message (msg);
 		const int formatted = std::snprintf (
 			m_Buffer, SAM_SOCKET_BUFFER_SIZE, SAM_SUBSESSION_STATUS_ERROR, idValue.c_str (), message.c_str ());
 		const size_t len

@@ -10,8 +10,9 @@
  * buffer limits, PING/PONG/HELP/AUTH/QUIT classification, the exact
  * reply lines
  * of SAMv3Handler, the HELLO VERSION negotiation, duplicate-parameter
- * rejection, bare boolean tokens and the non-secret SESSION CREATE log
- * summary.
+ * rejection, bare boolean tokens, the non-secret SESSION CREATE log
+ * summary, the non-secret unexpected-message summary and the session
+ * identifier rule that keeps the quoted ID field parsable.
  * No socket, router or session is created.
  *
  */
@@ -368,6 +369,51 @@ void TestSecretRedaction ()
 	assert (std::string_view (SAM_HANDSHAKE_NOVERSION) == "HELLO REPLY RESULT=NOVERSION\n");
 }
 
+void TestUnexpectedMessageLogLine ()
+{
+	// A control line that names no known command is never logged verbatim:
+	// a tab-separated or mistyped SESSION CREATE still carries DESTINATION
+	// (base64 private keys) and an AUTH line carries credentials.
+	const std::string keys = "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAprivatekeymaterial";
+	const std::string create = "SESSION\tCREATE\tid\tDESTINATION=" + keys;
+	auto summary = MakeSAMUnexpectedMessageLogLine (create);
+	assert (summary.find (keys) == std::string::npos);
+	assert (summary.find ("DESTINATION") == std::string::npos);
+	assert (summary.find ("SESSION") == std::string::npos);
+	assert (summary.find ('\n') == std::string::npos);
+	assert (summary.find ('\t') == std::string::npos);
+	assert (summary == "SAM: Unexpected message, " + std::to_string (create.size ()) + " bytes, 4 field(s)");
+
+	auto auth = MakeSAMUnexpectedMessageLogLine ("AUTH USER=alice PASSWORD=hunter2");
+	assert (auth.find ("alice") == std::string::npos);
+	assert (auth.find ("hunter2") == std::string::npos);
+	assert (auth.find ("PASSWORD") == std::string::npos);
+
+	// Control bytes are counted, never reproduced: a log line stays one
+	// line whatever the client sent.
+	auto escaped = MakeSAMUnexpectedMessageLogLine ("XYZ\x1b[31m");
+	assert (escaped.find ('\x1b') == std::string::npos);
+	assert (MakeSAMUnexpectedMessageLogLine ("") == "SAM: Unexpected message, 0 bytes, 0 field(s)");
+	assert (MakeSAMUnexpectedMessageLogLine ("   ") == "SAM: Unexpected message, 3 bytes, 0 field(s)");
+}
+
+void TestSessionNameRule ()
+{
+	// The identifier is echoed in the quoted ID="..." field of SESSION
+	// STATUS, so only names that cannot split that line are registered by
+	// SESSION CREATE, SESSION ADD and SESSION REMOVE.
+	assert (IsAcceptableSAMSessionName ("my-session_1"));
+	assert (IsAcceptableSAMSessionName (""));
+	assert (!IsAcceptableSAMSessionName ("a\"b"));
+	assert (!IsAcceptableSAMSessionName ("a<b"));
+	assert (!IsAcceptableSAMSessionName ("a>b"));
+	assert (!IsAcceptableSAMSessionName ("a/b"));
+	assert (!IsAcceptableSAMSessionName ("a'b"));
+	// A C0 byte can survive the tab/space tokenizer inside a value.
+	assert (!IsAcceptableSAMSessionName (std::string_view ("a\rb", 3)));
+	assert (!IsAcceptableSAMSessionName (std::string_view ("a\nb", 3)));
+}
+
 void TestControlGrammar ()
 {
 	using Command = SAMControlCommand;
@@ -470,6 +516,8 @@ int main ()
 	TestHandshakeNegotiation ();
 	TestHandshakePrecedesCommands ();
 	TestSecretRedaction ();
+	TestUnexpectedMessageLogLine ();
+	TestSessionNameRule ();
 	TestControlGrammar ();
 	TestControlReplies ();
 	TestSendCommandDetection ();
