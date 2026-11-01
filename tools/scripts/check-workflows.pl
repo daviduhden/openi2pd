@@ -196,6 +196,52 @@ for my $file (@files) {
         push @errors, "$file: OpenSSL source builds moved to the Homebrew branch workflows";
     }
 }
+# The manual lanes are split by concern: Linux builds and packaging
+# checks, Android, and the validation lanes (Doxygen, compile-free agent
+# checks, Perl quality, sanitizers and fuzzing). A job must live in its
+# owning workflow, and the former aggregate names must not return.
+my %split_jobs = (
+    'build-linux.yml'   => [qw(install-components interop)],
+    'build-android.yml' => [qw(android android-ui)],
+    'validation.yml'    => [qw(source-docs skills-static perl-quality sanitizers fuzz-smoke)],
+);
+my %job_owner;
+for my $file ( sort keys %split_jobs ) {
+    my $path = File::Spec->catfile( $dir, $file );
+    if ( !-f $path ) {
+        push @errors, "$file: missing split workflow";
+        next;
+    }
+    open my $fh, '<', $path or die "cannot read $path: $!\n";
+    local $/;
+    my $text = <$fh>;
+    close $fh;
+    for my $job ( @{ $split_jobs{$file} } ) {
+        if ( $text !~ /^  \Q$job\E:\s*$/m ) {
+            push @errors, "$file: missing job '$job'";
+        }
+        $job_owner{$job} = $file;
+    }
+}
+for my $legacy (qw(build.yml fuzz.yml)) {
+    if ( -f File::Spec->catfile( $dir, $legacy ) ) {
+        push @errors, "$legacy: the aggregate workflow was split by concern";
+    }
+}
+for my $job ( sort keys %job_owner ) {
+    for my $file (@files) {
+        next if $file eq $job_owner{$job};
+        my $path = File::Spec->catfile( $dir, $file );
+        open my $fh, '<', $path or die "cannot read $path: $!\n";
+        local $/;
+        my $text = <$fh>;
+        close $fh;
+        if ( $text =~ /^  \Q$job\E:\s*$/m ) {
+            push @errors,
+              "$file: job '$job' belongs to $job_owner{$job}";
+        }
+    }
+}
 
 if (@errors) {
     print STDERR "$_\n" for @errors;

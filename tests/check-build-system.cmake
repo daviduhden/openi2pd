@@ -55,7 +55,7 @@ set(upnp_source "${PROJECT_ROOT}/daemon/UPnP.cpp")
 set(rpm_spec "${PROJECT_ROOT}/contrib/rpm/i2pd.spec")
 set(rpm_git_spec "${PROJECT_ROOT}/contrib/rpm/i2pd-git.spec")
 set(presets_file "${PROJECT_ROOT}/build/CMakePresets.json")
-set(fuzz_workflow "${PROJECT_ROOT}/.github/workflows/fuzz.yml")
+set(fuzz_workflow "${PROJECT_ROOT}/.github/workflows/validation.yml")
 set(openbsd_imsg_source "${PROJECT_ROOT}/privsep/OpenBSDImsg.cpp")
 
 read_required("${root_makefile}" root_make)
@@ -509,7 +509,7 @@ foreach(_source IN LISTS _i2pd_fuzz_sources)
   list(LENGTH _fuzz_workflow_matches _fuzz_workflow_count)
   if(_fuzz_workflow_count LESS 2)
     message(FATAL_ERROR
-      ".github/workflows/fuzz.yml must list ${_fuzzer_name} in both the build and run loops")
+      ".github/workflows/validation.yml must list ${_fuzzer_name} in both the build and run loops")
   endif()
   string(FIND "${testing_doc_text}" "${_fuzzer_name}" _fuzz_doc_position)
   if(_fuzz_doc_position EQUAL -1)
@@ -794,7 +794,7 @@ foreach(probe_name IN LISTS crypto_probe_names)
   endif()
 endforeach()
 
-file(READ "${PROJECT_ROOT}/.github/workflows/build.yml" build_workflow_text)
+file(READ "${PROJECT_ROOT}/.github/workflows/validation.yml" build_workflow_text)
 assert_present("${build_workflow_text}" "mkdir -p docs/generated/source-api"
   "source-docs job must create the gitignored Doxygen output directory")
 

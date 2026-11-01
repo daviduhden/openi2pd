@@ -1,0 +1,164 @@
+# See the LICENSE file at the top of the project tree for copyright and
+# license details.
+#
+# openi2pd: build Linux.
+#
+# Configures build and manual CI integration.
+#
+
+---
+name: Linux
+
+# All runs are manual. Do not add push, pull_request, schedule or
+# workflow_call triggers: this repository validates every revision only
+# when a maintainer explicitly dispatches the workflow.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  install-components:
+    name: Install components and consumer package
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
+        with:
+          persist-credentials: false
+      - name: Install latest build tools from Homebrew
+        timeout-minutes: 20
+        uses: ./.github/actions/brew-toolchain
+      - name: Build, install components and consume package
+        run: |
+          set -euo pipefail
+          cmake -S build -B build-install -G Ninja \
+            -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ \
+            -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF \
+            -DWITH_LIBRARY=ON -DWITH_BINARY=ON \
+            -DI2PD_BUILD_TUI=ON -DI2PD_BUILD_TOOLS=ON \
+            -DI2PD_SERVICE_MANAGER=systemd \
+            -DI2PD_OPENSSL_EXPECT=OpenSSL
+          cmake --build build-install --parallel 2
+          prefix="$RUNNER_TEMP/openi2pd-install"
+          for component in Runtime Tui Libraries Development Tools Documentation Service; do
+            cmake --install build-install --prefix "$prefix" --component "$component"
+          done
+          test -f "$prefix/lib/systemd/system/i2pd.service"
+          test -f "$prefix/lib/sysusers.d/openi2pd.conf"
+          test -f "$prefix/lib/tmpfiles.d/openi2pd.conf"
+          test -f "$prefix/include/privsep/Protocol.h"
+          # Exercise DESTDIR independently of the configured prefix.
+          dest="$RUNNER_TEMP/openi2pd-dest"
+          DESTDIR="$dest" cmake --install build-install --prefix /usr --component Runtime >/dev/null
+          test -x "$dest/usr/bin/i2pd"
+          test -x "$prefix/bin/i2pd"
+          test -x "$prefix/bin/i2pd-tui"
+          test -f "$prefix/include/libi2pd/Log.h"
+          test -f "$prefix/lib/cmake/i2pd/i2pdConfig.cmake"
+          test -f "$prefix/etc/i2pd/i2pd.conf"
+          test -f "$prefix/share/i2pd/certificates/reseed/acetone_at_mail.i2p.crt"
+          test -f "$prefix/share/i2pd/certificates/family/i2p-dev.crt"
+          test -f "$prefix/share/doc/i2pd/LICENSE"
+          test -f "$prefix/share/doc/i2pd/NOTICE"
+          test -f "$prefix/share/doc/i2pd/ChangeLog"
+          test -f "$prefix/share/doc/i2pd/README.md"
+          test -f "$prefix/share/doc/i2pd/LICENSE.i2pd-tools"
+          test -f "$prefix/share/doc/i2pd/docs/LICENSE"
+          test ! -e "$prefix/share/doc/i2pd/CC-BY-SA-4.0"
+          test ! -e "$prefix/share/doc/i2pd/docs/CC-BY-SA-4.0"
+          test -f "$prefix/share/doc/i2pd/docs/i18n.md"
+          test -f "$prefix/share/doc/i2pd/assets/branding/colors.md"
+          test -f "$prefix/share/man/man1/i2pd.1"
+          test -f "$prefix/share/man/man1/i2pd-tui.1"
+          test -f "$prefix/share/man/man1/i2pdctl.1"
+          test -x "$prefix/bin/i2pdctl"
+          perl -c "$prefix/bin/i2pdctl"
+          test -f "$prefix/share/doc/i2pd/LICENSE.i2pd-tools"
+          test -f "$prefix/share/applications/openi2pd.desktop"
+          grep -q '^Exec=i2pd-tui$' "$prefix/share/applications/openi2pd.desktop"
+          test -f "$prefix/share/icons/hicolor/scalable/apps/openi2pd.svg"
+          test -f "$prefix/share/icons/hicolor/256x256/apps/openi2pd.png"
+          for tool in autoconf_i2pd b33address b33offlinekeys famtool i2pbase64 keygen keyinfo offlinekeys regaddr regaddr_3ld regaddralias routerinfo vain verifyhost x25519; do
+            test -x "$prefix/bin/$tool"
+          done
+          consumer="$RUNNER_TEMP/openi2pd-consumer"
+          mkdir -p "$consumer"
+          cat > "$consumer/CMakeLists.txt" <<'EOF'
+          cmake_minimum_required(VERSION 3.24)
+          project(openi2pd_consumer CXX)
+          set(CMAKE_CXX_STANDARD 23)
+          find_package(i2pd CONFIG REQUIRED COMPONENTS Libraries Development)
+          add_executable(consumer main.cpp)
+          target_link_libraries(consumer PRIVATE i2pd::libi2pdclient)
+          EOF
+          cat > "$consumer/main.cpp" <<'EOF'
+          #include <boost/json.hpp>
+          #include <boost/url.hpp>
+          int main() {
+            const auto value = boost::json::parse("{}");
+            const auto url = boost::urls::parse_uri("http://tracker.i2p/announce");
+            return value.is_object() && url ? 0 : 1;
+          }
+          EOF
+          cmake -S "$consumer" -B "$consumer/build" -G Ninja \
+            -DCMAKE_PREFIX_PATH="$prefix" -DCMAKE_BUILD_TYPE=Release
+          cmake --build "$consumer/build" --parallel 2
+          "$consumer/build/consumer"
+      - name: Stage installed component tree
+        if: always()
+        run: |
+          rm -rf install-output
+          cp -a "$RUNNER_TEMP/openi2pd-install" install-output 2>/dev/null || true
+          find install-output -maxdepth 3 -type f | sort | sed -n '1,120p'
+      - name: Upload installed component tree
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
+        with:
+          name: install-components
+          path: install-output
+          if-no-files-found: warn
+          retention-days: 7
+
+  interop:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
+        with:
+          persist-credentials: false
+      - name: Install Perl
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends perl git
+      - name: Clone current I2P Java comparison reference
+        run: |
+          git -c init.defaultBranch=main init --quiet "$RUNNER_TEMP/i2p-java"
+          git -C "$RUNNER_TEMP/i2p-java" remote add origin https://github.com/i2p/i2p.i2p.git
+          git -C "$RUNNER_TEMP/i2p-java" fetch --depth 1 origin \
+            refs/tags/i2p-2.14.0:refs/tags/i2p-2.14.0
+          git -C "$RUNNER_TEMP/i2p-java" checkout --detach refs/tags/i2p-2.14.0
+          chmod -R a-w "$RUNNER_TEMP/i2p-java"
+      - name: Validate current comparison reference
+        env:
+          I2P_JAVA_REFERENCE: ${{ runner.temp }}/i2p-java
+        run: |
+          tests/interop/check-reference.sh
+      - name: Clone historical fixture provenance reference
+        run: |
+          git -c init.defaultBranch=main init --quiet "$RUNNER_TEMP/i2p-java-fixtures"
+          git -C "$RUNNER_TEMP/i2p-java-fixtures" remote add origin https://github.com/i2p/i2p.i2p.git
+          git -C "$RUNNER_TEMP/i2p-java-fixtures" fetch --depth 1 origin \
+            refs/tags/i2p-2.13.0:refs/tags/i2p-2.13.0
+          git -C "$RUNNER_TEMP/i2p-java-fixtures" checkout --detach refs/tags/i2p-2.13.0
+          chmod -R a-w "$RUNNER_TEMP/i2p-java-fixtures"
+      - name: Validate historical interoperability fixtures
+        env:
+          I2P_JAVA_FIXTURE_REFERENCE: ${{ runner.temp }}/i2p-java-fixtures
+        run: |
+          perl tests/interop/check-vectors.pl --require-reference
