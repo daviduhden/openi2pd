@@ -7,8 +7,9 @@
  * Offline checks that an automatic subscription merge never replaces a
  * name that already had a destination, that duplicate lines inside one
  * source still follow last-wins, that declined entries are counted,
- * that tombstones still block a merge and that the .i2p.alt alias and
- * www. fallback are unaffected. No storage directory, resolver,
+ * that tombstones still block a merge, that a jump link whose base32
+ * label does not decode is never stored, and that the .i2p.alt alias
+ * and www. fallback are unaffected. No storage directory, resolver,
  * destination, socket, thread or timer is started; the merge helper is
  * exercised directly.
  */
@@ -207,6 +208,37 @@ void TestAliasAndWwwFallbackUnaffected ()
 	assert (book.FindAddress ("other.example.i2p"));
 }
 
+void TestInvalidJumpLinkIsNeverStored ()
+{
+	auto keys = MakeKeys ();
+	const auto destination = Hash (keys);
+
+	auto storage = std::make_unique<MemoryStorage> ();
+	auto * fake = storage.get ();
+	i2p::client::AddressBook book (std::move (storage));
+
+	// A jump-link value that does not decode to a destination must not
+	// publish an unusable index row, and must not rewrite the index.
+	book.InsertAddress ("broken.i2p", "not-a-base32-hash.b32.i2p");
+	assert (!book.FindAddress ("broken.i2p"));
+	assert (fake->saveCount == 0);
+	assert (fake->identities.empty ());
+
+	// An over-long base32 label is refused for the same reason: the final
+	// label of a b32 name is exactly 52 characters.
+	book.InsertAddress ("broken.i2p", std::string (200, 'a') + ".b32.i2p");
+	assert (!book.FindAddress ("broken.i2p"));
+	assert (fake->saveCount == 0);
+
+	// The canonical spelling still works and is persisted once.
+	book.InsertAddress ("good.i2p", destination.ToBase32 () + ".b32.i2p");
+	const auto stored = book.FindAddress ("good.i2p");
+	assert (stored);
+	assert (stored->IsIdentHash ());
+	assert (stored->identHash == destination);
+	assert (fake->saveCount == 1);
+}
+
 void TestConflictCounterIsPerEntry ()
 {
 	auto local = MakeKeys ();
@@ -235,6 +267,7 @@ int main ()
 	TestSourceAddsAndRefinesItsOwnNames ();
 	TestTombstoneBlocksMerge ();
 	TestAliasAndWwwFallbackUnaffected ();
+	TestInvalidJumpLinkIsNeverStored ();
 	TestConflictCounterIsPerEntry ();
 	return 0;
 }

@@ -6,9 +6,10 @@
  *
  * Exercises local HTTP proxy Basic and Digest authentication (parsing,
  * bounds, constant time comparison, 407 challenges, nonce
- * replay/staleness and no credential forwarding) and the SOCKS5 RFC
- * 1929 authenticator with its method-selection state machine. No
- * socket, listener or peer is used.
+ * replay/staleness and no credential forwarding), the shared
+ * loopback/private clearnet target classifier and the SOCKS5 RFC 1929
+ * authenticator with its method-selection state machine. No socket,
+ * listener or peer is used.
  *
  */
 
@@ -298,6 +299,35 @@ void TestNoCredentialForwarding ()
 
 	// Idempotent on a request without proxy headers.
 	assert (HTTPProxyStripCredentials (req) == 0);
+}
+
+void TestBlockedClearnetTargets ()
+{
+	// The HTTP and SOCKS proxies share one classifier, so a target the
+	// outproxy would reach on the local network is refused in both.
+	// Non-globally-reachable IPv4 destinations.
+	for (const char * host : { "0.0.0.0", "10.1.2.3", "100.64.0.1", "127.0.0.1", "127.1.2.3", "169.254.169.254",
+			 "172.16.0.1", "172.31.255.255", "192.0.0.1", "192.168.1.1", "198.18.0.1", "224.0.0.1",
+			 "255.255.255.255", "localhost", "app.localhost", "LOCALHOST" })
+		assert (i2p::proxy::IsBlockedClearnetTarget (host));
+
+	// IPv6 loopback, unspecified, link-local, unique-local and multicast,
+	// with and without the URL brackets.
+	for (const char * host : { "::1", "::", "fe80::1", "fc00::1", "fd12:3456::1", "ff02::1", "[::1]", "[fe80::1]" })
+		assert (i2p::proxy::IsBlockedClearnetTarget (host));
+
+	// IPv4-embedded IPv6 spellings reach the same host as the plain IPv4
+	// address. A second, divergent classifier used to accept these while
+	// the outproxy connected to loopback.
+	for (const char * host : { "::ffff:127.0.0.1", "::ffff:10.0.0.1", "::ffff:192.168.0.1",
+			 "::ffff:169.254.169.254", "::127.0.0.1", "[::ffff:127.0.0.1]" })
+		assert (i2p::proxy::IsBlockedClearnetTarget (host));
+
+	// Globally reachable literals and plain names stay allowed; a name is
+	// resolved by the outproxy, so it cannot be classified here.
+	for (const char * host : { "1.1.1.1", "8.8.8.8", "93.184.216.34", "2606:4700:4700::1111", "::ffff:8.8.8.8",
+			 "example.com", "example.i2p", "", "not-an-address", "8.8.8.8:80" })
+		assert (!i2p::proxy::IsBlockedClearnetTarget (host));
 }
 
 void TestSocksFieldBounds ()
@@ -800,6 +830,7 @@ int main ()
 	TestHttpNotConfiguredAndFailClosed ();
 	TestChallengeResponse ();
 	TestNoCredentialForwarding ();
+	TestBlockedClearnetTargets ();
 	TestSocksFieldBounds ();
 	TestSocksUserPass ();
 	TestSocksMethodSelection ();

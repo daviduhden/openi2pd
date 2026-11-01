@@ -512,6 +512,11 @@ namespace client
 	private:
 		std::shared_ptr<ClientDestination> m_LocalDestination;
 		i2p::datagram::DatagramDestination::ReceiverRegistration m_RequestReceiver;
+		// The receiver is registered by the constructor and then runs on the
+		// destination's service thread, while AddAddress() is called by the
+		// address-book owner (startup and reload). The map is therefore read
+		// and written from two threads and must be guarded.
+		std::mutex m_LocalAddressesMutex;
 		std::map<std::string, i2p::data::IdentHash> m_LocalAddresses;
 	};
 }

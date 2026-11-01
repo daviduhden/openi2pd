@@ -1466,7 +1466,16 @@ namespace client
 		auto pos = jump.find (".b32.i2p");
 		if (pos != std::string::npos)
 		{
-			m_Addresses[key] = std::make_shared<Address> (jump.substr (0, pos));
+			// The label is decoded, never stored as text: a jump link whose
+			// base32 does not decode to a destination must not persist an
+			// unusable index row that later lookups would treat as a hit.
+			auto candidate = std::make_shared<Address> (std::string_view (jump).substr (0, pos));
+			if (!candidate->IsValid ())
+			{
+				LogPrint (eLogError, "Addressbook: Rejected jump-link base32 destination for ", address);
+				return;
+			}
+			m_Addresses[key] = candidate;
 			LogPrint (eLogInfo, "Addressbook: Added ", address, " -> ", jump);
 		}
 		else
@@ -2750,14 +2759,30 @@ namespace client
 		char address[256];
 		memcpy (address, buf + 9, l);
 		address[l] = 0;
-		LogPrint (eLogDebug, "Addressbook: Address request ", address);
+		// The requested name comes from an unauthenticated peer. Log only the
+		// operation and its length: the bytes may carry control characters
+		// and are never needed for diagnosis.
+		LogPrint (eLogDebug, "Addressbook: Address request for a ", static_cast<int> (l), "-byte name");
 		// send response
 		uint8_t response[44];
 		memset (response, 0, 4); // reserved
 		memcpy (response + 4, buf + 4, 4); // nonce
-		auto it = m_LocalAddresses.find (NormalizeHostName (std::string_view (address, l)));
-		if (it != m_LocalAddresses.end ())
-			memcpy (response + 8, it->second, 32); // ident
+		i2p::data::IdentHash ident;
+		bool found = false;
+		{
+			// AddAddress() runs on the address-book owner while this callback
+			// runs on the destination service: the lookup must be guarded and
+			// the answer copied out before the datagram is sent.
+			std::lock_guard<std::mutex> lock (m_LocalAddressesMutex);
+			auto it = m_LocalAddresses.find (NormalizeHostName (std::string_view (address, l)));
+			if (it != m_LocalAddresses.end ())
+			{
+				ident = it->second;
+				found = true;
+			}
+		}
+		if (found)
+			memcpy (response + 8, ident, 32); // ident
 		else
 			memset (response + 8, 0, 32); // not found
 		memset (response + 40, 0, 4); // set expiration time to zero
@@ -2767,6 +2792,7 @@ namespace client
 
 	void AddressResolver::AddAddress (const std::string & name, const i2p::data::IdentHash & ident)
 	{
+		std::lock_guard<std::mutex> lock (m_LocalAddressesMutex);
 		m_LocalAddresses[NormalizeHostName (name)] = ident;
 	}
 

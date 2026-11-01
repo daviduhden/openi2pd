@@ -87,7 +87,25 @@ namespace proxy
 		  "  </style>\r\n"
 		  "</head>\r\n";
 
-	static bool IsBlockedClearnetTarget (std::string_view host)
+	namespace
+	{
+		/**
+		 * Non-globally-reachable IPv4 destinations: this host (0/8),
+		 * private (10/8, 172.16/12, 192.168/16), loopback (127/8),
+		 * carrier-grade NAT (100.64/10), link-local (169.254/16), IETF
+		 * protocol assignments (192.0.0/24), benchmarking (198.18/15),
+		 * multicast (224/4) and the reserved 240/4 block.
+		 */
+		bool IsBlockedIpv4Bytes (const std::uint8_t * b) noexcept
+		{
+			return b[0] == 0 || b[0] == 10 || b[0] == 127 || (b[0] == 169 && b[1] == 254)
+				|| (b[0] == 172 && b[1] >= 16 && b[1] <= 31) || (b[0] == 192 && b[1] == 168)
+				|| (b[0] == 100 && b[1] >= 64 && b[1] <= 127) || (b[0] == 192 && b[1] == 0 && b[2] == 0)
+				|| (b[0] == 198 && (b[1] & 0xfe) == 18) || b[0] >= 224;
+		}
+	} // namespace
+
+	bool IsBlockedClearnetTarget (std::string_view host)
 	{
 		std::string value (host);
 		if (value.size () >= 2 && value.front () == '[' && value.back () == ']')
@@ -98,19 +116,28 @@ namespace proxy
 		if (ec) return false;
 		if (address.is_v4 ())
 		{
-			auto b = address.to_v4 ().to_bytes ();
-			if (b[0] == 0 || b[0] == 10 || b[0] == 127 || (b[0] == 169 && b[1] == 254)
-				|| (b[0] == 172 && b[1] >= 16 && b[1] <= 31) || (b[0] == 192 && b[1] == 168)
-				|| address.to_v4 ().is_multicast ())
-				return true;
+			const auto v4 = address.to_v4 ().to_bytes ();
+			return IsBlockedIpv4Bytes (v4.data ());
 		}
-		else
-		{
-			auto b = address.to_v6 ().to_bytes ();
-			if (address.to_v6 ().is_loopback () || address.to_v6 ().is_unspecified ()
-				|| address.to_v6 ().is_multicast () || (b[0] == 0xfe && (b[1] & 0xc0) == 0x80) || (b[0] & 0xfe) == 0xfc)
-				return true;
-		}
+		auto b = address.to_v6 ().to_bytes ();
+		if (address.to_v6 ().is_loopback () || address.to_v6 ().is_unspecified () || address.to_v6 ().is_multicast ()
+			|| (b[0] == 0xfe && (b[1] & 0xc0) == 0x80) || (b[0] & 0xfe) == 0xfc)
+			return true;
+		// An IPv4-embedded IPv6 spelling reaches the same host as the plain
+		// IPv4 address, but Asio classifies only the 16-byte form, so
+		// `::ffff:127.0.0.1` and `::127.0.0.1` used to pass this check while
+		// the outproxy connected to loopback. Decode the embedded address and
+		// apply the IPv4 rules to it. `::` and `::1` are already refused above.
+		bool zeroPrefix = true;
+		for (unsigned int i = 0; i < 10; ++i)
+			if (b[i] != 0)
+			{
+				zeroPrefix = false;
+				break;
+			}
+		if (!zeroPrefix) return false;
+		// ::ffff:a.b.c.d (v4-mapped) and ::a.b.c.d (v4-compatible).
+		if ((b[10] == 0xff && b[11] == 0xff) || (b[10] == 0 && b[11] == 0)) return IsBlockedIpv4Bytes (b.data () + 12);
 		return false;
 	}
 

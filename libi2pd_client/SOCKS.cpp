@@ -143,27 +143,14 @@ namespace proxy
 			SOCKS4 = 4, // SOCKS4
 			SOCKS5 = 5 // SOCKS5
 		};
+		// A stream/UDP target that the outproxy would resolve on the local
+		// network is refused here. Port 0 is never a valid SOCKS5 target, and
+		// the address classification is the shared HTTP/SOCKS predicate so a
+		// second copy cannot drop the IPv4-embedded IPv6 spellings.
 		bool IsDeniedSocksTarget (std::string_view host, uint16_t port)
 		{
 			if (!port) return true;
-			std::string value (host);
-			if (value.size () >= 2 && value.front () == '[' && value.back () == ']')
-				value = value.substr (1, value.size () - 2);
-			if (boost::iequals (value, "localhost") || i2p::client::HasSuffixIgnoreCase (value, ".localhost"))
-				return true;
-			boost::system::error_code ec;
-			auto address = boost::asio::ip::make_address (value, ec);
-			if (ec) return false;
-			if (address.is_v4 ())
-			{
-				auto b = address.to_v4 ().to_bytes ();
-				return b[0] == 0 || b[0] == 10 || b[0] == 127 || (b[0] == 169 && b[1] == 254)
-					|| (b[0] == 172 && b[1] >= 16 && b[1] <= 31) || (b[0] == 192 && b[1] == 168)
-					|| address.to_v4 ().is_multicast ();
-			}
-			auto b = address.to_v6 ().to_bytes ();
-			return address.to_v6 ().is_loopback () || address.to_v6 ().is_unspecified ()
-				|| address.to_v6 ().is_multicast () || (b[0] == 0xfe && (b[1] & 0xc0) == 0x80) || (b[0] & 0xfe) == 0xfc;
+			return i2p::proxy::IsBlockedClearnetTarget (host);
 		}
 
 		union address

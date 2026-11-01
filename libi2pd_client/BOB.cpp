@@ -155,12 +155,19 @@ namespace client
 		else
 		{
 			// send destination first like received from I2P
-			std::string dest = GetStream ()->GetRemoteIdentity ()->ToBase64 ();
-			dest += "\n";
-			if (dest.size () <= I2P_TUNNEL_CONNECTION_BUFFER_SIZE)
-				memcpy (GetStreamBuffer (), dest.c_str (), dest.size ());
-			else
-				memset (GetStreamBuffer (), 0, I2P_TUNNEL_CONNECTION_BUFFER_SIZE);
+			const std::string dest = GetStream ()->GetRemoteIdentity ()->ToBase64 () + "\n";
+			// The guard must cover the buffer that is actually filled and
+			// forwarded: the identity line is copied into m_StreamBuffer
+			// (I2P_TUNNEL_CONNECTION_STREAM_BUFFER_SIZE bytes), not into the
+			// smaller socket receive buffer. Forwarding dest.size() after a
+			// skipped copy would publish stale bytes from the stream buffer.
+			if (dest.size () > I2P_TUNNEL_CONNECTION_STREAM_BUFFER_SIZE)
+			{
+				LogPrint (eLogError, "BOB: Remote identity does not fit the stream buffer");
+				Terminate ();
+				return;
+			}
+			memcpy (GetStreamBuffer (), dest.data (), dest.size ());
 			HandleStreamReceive (boost::system::error_code (), dest.size ());
 		}
 		Receive ();
