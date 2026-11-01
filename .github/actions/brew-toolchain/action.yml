@@ -56,12 +56,23 @@ runs:
         # Install first, then upgrade so a formula preinstalled in the
         # runner image is replaced with the current Homebrew bottle.
         # Query each formula explicitly: an unconditional upgrade exits
-        # non-zero when a selected package is already current.
+        # non-zero when a selected package is already current. The
+        # outdated list is captured instead of piped into `grep -q`:
+        # under `set -o pipefail` the early reader exit could hand brew
+        # a SIGPIPE and be misread as "already current", and a genuine
+        # `brew outdated` failure must not be swallowed.
         brew install $packages
         for package in $packages; do
-          if brew outdated --quiet "$package" | grep -qx "$package"; then
-            brew upgrade "$package"
+          if ! outdated="$(brew outdated --quiet "$package")"; then
+            echo "brew outdated failed for $package" >&2
+            exit 1
           fi
+          for outdated_formula in $outdated; do
+            if [ "$outdated_formula" = "$package" ]; then
+              brew upgrade "$package"
+              break
+            fi
+          done
         done
 
         prefix="$(brew --prefix)"

@@ -98,7 +98,7 @@ endforeach()
 sorted_unique(rpm_tools ${rpm_tools})
 
 # The manual install assertion in the workflow.
-read_required("${PROJECT_ROOT}/.github/workflows/build.yml" workflow_text)
+read_required("${PROJECT_ROOT}/.github/workflows/build-linux.yml" workflow_text)
 string(REGEX MATCH "for tool in ([A-Za-z0-9_ ]+); do" workflow_loop "${workflow_text}")
 if(workflow_loop STREQUAL "")
   message(FATAL_ERROR "the manual install job has no tool inventory loop")

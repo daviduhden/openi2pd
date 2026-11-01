@@ -30,6 +30,7 @@ die "no workflow files in $dir\n" unless @files;
 
 my @errors;
 my $checked = 0;
+my %texts;
 for my $file (@files) {
     my $path = File::Spec->catfile( $dir, $file );
     open my $fh, '<', $path or die "cannot read $path: $!\n";
@@ -37,6 +38,7 @@ for my $file (@files) {
     my $text = <$fh>;
     close $fh;
     $checked++;
+    $texts{$file} = $text;
 
     # Join shell/command continuations so a ctest invocation split
     # across lines is checked as one logical command.
@@ -115,6 +117,70 @@ for my $file (@files) {
               unless grep { $_ eq 'workflow_dispatch' } @triggers;
         }
     }
+
+    # Every `inputs.NAME` reference must be declared by this workflow's own
+    # `workflow_dispatch` inputs. GitHub evaluates an undeclared input as an
+    # empty value instead of failing the dispatch, so a stale reference (the
+    # removed `source_docs` gate is the historical example) would silently
+    # disable a job or run it unconditionally.
+    my %declared = map { $_ => 1 } declared_dispatch_inputs( \@lines );
+    ( my $without_comments = $text ) =~ s/^[ \t]*#.*$//mg;
+    my %referenced;
+    while ( $without_comments =~ /\binputs\.([A-Za-z_][A-Za-z0-9_-]*)/g ) {
+        $referenced{$1} = 1;
+    }
+    for my $name ( sort keys %referenced ) {
+        push @errors,
+          "$file: inputs.$name is not declared under workflow_dispatch"
+          unless $declared{$name};
+    }
+}
+
+# Discover every job id so the split-ownership and opt-in-gate checks work
+# on real `jobs:` keys rather than any two-space mapping key elsewhere in
+# the file (`permissions:` children are the common false positive).
+sub job_blocks {
+    my ($lines) = @_;
+    my ( %blocks, $current, $in_jobs );
+    for my $line (@$lines) {
+        if ( $line =~ /^jobs:\s*$/ ) {
+            $in_jobs = 1;
+            next;
+        }
+        next unless $in_jobs;
+        if ( $line =~ /^\S/ ) {
+            $in_jobs  = 0;
+            $current = undef;
+            next;
+        }
+        if ( $line =~ /^ {2}([A-Za-z0-9_-]+):\s*$/ ) {
+            $current          = $1;
+            $blocks{$current} = '';
+            next;
+        }
+        $blocks{$current} .= "$line\n" if defined $current;
+    }
+    return \%blocks;
+}
+
+# The input ids declared directly below `on.workflow_dispatch.inputs`.
+sub declared_dispatch_inputs {
+    my ($lines) = @_;
+    my ( @names, $in_inputs );
+    for my $line (@$lines) {
+        next if $line =~ /^\s*#/;
+        if ( !$in_inputs ) {
+            $in_inputs = 1 if $line =~ /^ {4}inputs:\s*$/;
+            next;
+        }
+        if ( $line =~ /^ {6}([A-Za-z0-9_-]+):/ ) {
+            push @names, $1;
+            next;
+        }
+        next if $line =~ /^\s*$/;
+        last if $line =~ /^ {0,5}\S/;    # dedented out of the inputs map
+    }
+    return @names;
 }
 
 # Composite actions under .github/actions can execute ctest too, so the
@@ -173,10 +239,7 @@ for my $file ( sort keys %branch_formula ) {
         push @errors, "$file: missing Linux OpenSSL branch workflow";
         next;
     }
-    open my $fh, '<', $path or die "cannot read $path: $!\n";
-    local $/;
-    my $text = <$fh>;
-    close $fh;
+    my $text    = $texts{$file};
     my $formula = $branch_formula{$file};
     if ( index( $text, $formula ) < 0 ) {
         push @errors, "$file: does not select the $formula Homebrew bottle";
@@ -187,12 +250,7 @@ for my $file ( sort keys %branch_formula ) {
 }
 for my $file (@files) {
     next if exists $branch_formula{$file};
-    my $path = File::Spec->catfile( $dir, $file );
-    open my $fh, '<', $path or die "cannot read $path: $!\n";
-    local $/;
-    my $text = <$fh>;
-    close $fh;
-    if ( $text =~ /openssl\.org\/source|OPENSSL_SHA256|OPENSSL_PIN/ ) {
+    if ( $texts{$file} =~ /openssl\.org\/source|OPENSSL_SHA256|OPENSSL_PIN/ ) {
         push @errors, "$file: OpenSSL source builds moved to the Homebrew branch workflows";
     }
 }
@@ -206,18 +264,17 @@ my %split_jobs = (
     'validation.yml'    => [qw(source-docs skills-static perl-quality sanitizers fuzz-smoke)],
 );
 my %job_owner;
+my %blocks_for;
+for my $file (@files) {
+    $blocks_for{$file} = job_blocks( [ split /\n/, $texts{$file} ] );
+}
 for my $file ( sort keys %split_jobs ) {
-    my $path = File::Spec->catfile( $dir, $file );
-    if ( !-f $path ) {
+    if ( !exists $blocks_for{$file} ) {
         push @errors, "$file: missing split workflow";
         next;
     }
-    open my $fh, '<', $path or die "cannot read $path: $!\n";
-    local $/;
-    my $text = <$fh>;
-    close $fh;
     for my $job ( @{ $split_jobs{$file} } ) {
-        if ( $text !~ /^  \Q$job\E:\s*$/m ) {
+        if ( !exists $blocks_for{$file}{$job} ) {
             push @errors, "$file: missing job '$job'";
         }
         $job_owner{$job} = $file;
@@ -231,14 +288,31 @@ for my $legacy (qw(build.yml fuzz.yml)) {
 for my $job ( sort keys %job_owner ) {
     for my $file (@files) {
         next if $file eq $job_owner{$job};
-        my $path = File::Spec->catfile( $dir, $file );
-        open my $fh, '<', $path or die "cannot read $path: $!\n";
-        local $/;
-        my $text = <$fh>;
-        close $fh;
-        if ( $text =~ /^  \Q$job\E:\s*$/m ) {
+        if ( exists $blocks_for{$file}{$job} ) {
             push @errors,
               "$file: job '$job' belongs to $job_owner{$job}";
+        }
+    }
+}
+
+# The expensive opt-in lanes stay opt-in: an Android API 29 emulator boot or
+# a Perl::Critic run on every dispatch is a cost regression, and an
+# accidental `if:` removal is otherwise invisible until the job starts.
+my %input_gate = (
+    'build-android.yml' => { 'android-ui' => 'android_ui' },
+    'validation.yml'    => { 'perl-quality' => 'perl_style' },
+);
+for my $file ( sort keys %input_gate ) {
+    next unless exists $blocks_for{$file};
+    for my $job ( sort keys %{ $input_gate{$file} } ) {
+        my $input = $input_gate{$file}{$job};
+        if ( !exists $blocks_for{$file}{$job} ) {
+            push @errors, "$file: missing opt-in job '$job'";
+            next;
+        }
+        if ( $blocks_for{$file}{$job} !~ /\binputs\.\Q$input\E\b/ ) {
+            push @errors,
+              "$file: job '$job' must stay gated on inputs.$input";
         }
     }
 }
@@ -298,6 +372,23 @@ source build (C<openssl.org/source>, C<OPENSSL_SHA256>, C<OPENSSL_PIN>) is
 refused so the reduced Linux matrix cannot silently return to compiling
 OpenSSL itself.
 
+=item *
+
+every C<inputs.NAME> reference must be declared by that workflow's own
+C<on.workflow_dispatch.inputs>. GitHub substitutes an empty value for an
+undeclared input instead of rejecting the dispatch, so a stale reference
+silently disables a job or removes its gate;
+
+=item *
+
+the lanes are split by concern and the owning workflow is pinned for
+F<build-linux.yml> (C<install-components>, C<interop>), F<build-android.yml>
+(C<android>, C<android-ui>) and F<validation.yml> (C<source-docs>,
+C<skills-static>, C<perl-quality>, C<sanitizers>, C<fuzz-smoke>). A pinned
+job that appears in another workflow fails, and F<build.yml>/F<fuzz.yml> must
+not return. The expensive opt-in jobs C<android-ui> and C<perl-quality> must
+keep referencing their C<android_ui>/C<perl_style> input gate.
+
 =back
 
 =head1 FILE FORMAT
@@ -306,7 +397,9 @@ Workflows are scanned as text, not parsed as YAML: a third-party YAML module
 would be a non-core dependency. Shell/backtick continuations are joined first
 so a C<ctest> call split over several lines is still seen as one command, and
 lines whose first non-blank character is C<#> are ignored. A trigger list may
-be written as a block or as an inline bracketed list.
+be written as a block or as an inline bracketed list. Job ids are read only
+from the C<jobs:> mapping at two-space indentation, so a C<permissions:>
+child such as C<contents: read> is never mistaken for a job.
 
 =head1 OUTPUT AND EXIT STATUS
 

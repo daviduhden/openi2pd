@@ -64,6 +64,10 @@ jobs:
         run: |
           sh android/tools/java25-probe/check-config.sh
           perl android/tools/check-android-locales.pl
+          # The compile-free Javadoc guard fails in seconds on a comment
+          # defect that the mandatory :i2pd:sourceJavadoc step (-Werror)
+          # would only reach after the native and JVM build.
+          perl android/tools/check-android-javadoc.pl
           cd android
           ./gradlew --version --no-daemon
       - name: Install Android platform used by the app
@@ -196,25 +200,36 @@ jobs:
           }
           printf 'I2PD_DEBUG_APK=%s\n' "$apk" >> "$GITHUB_ENV"
           listing=$(unzip -l "$apk")
-          printf '%s\n' "$listing" | grep -q 'lib/arm64-v8a/libi2pd.so' \
+          # Query a here-string: a pipe into `grep -q` lets the reader exit
+          # after the first match, and under `pipefail` the producer's
+          # SIGPIPE would then be reported instead of the assertion result.
+          grep -q 'lib/arm64-v8a/libi2pd.so' <<<"$listing" \
             || { echo "debug APK does not package lib/arm64-v8a/libi2pd.so" >&2; exit 1; }
-          printf '%s\n' "$listing" | grep -q 'lib/arm64-v8a/libc++_shared.so' \
+          grep -q 'lib/arm64-v8a/libc++_shared.so' <<<"$listing" \
             || { echo "debug APK does not package libc++_shared.so" >&2; exit 1; }
-          printf '%s\n' "$listing" | grep -q 'assets/i2pd.conf' \
+          grep -q 'assets/i2pd.conf' <<<"$listing" \
             || { echo "debug APK does not package the bundled i2pd.conf" >&2; exit 1; }
           expected_certs=$(find ../contrib/certificates -type f -name '*.crt' | wc -l | tr -d ' ')
-          actual_certs=$(printf '%s\n' "$listing" | grep -cE 'assets/certificates/.*\.crt$' || true)
+          actual_certs=$(grep -cE 'assets/certificates/.*\.crt$' <<<"$listing" || true)
           test "$actual_certs" -eq "$expected_certs" \
             || { echo "APK has $actual_certs certificates, expected $expected_certs" >&2; exit 1; }
-          unzip -p "$apk" classes.dex | od -An -t x1 -N4 | grep -q '64 65 78 0a' \
+          # Extract before reading: `unzip -p | od -N4 | grep -q` stops the
+          # reader after four bytes, so the producer's SIGPIPE would fail
+          # the step wherever `pipefail` is active.
+          dex_file=$(mktemp)
+          unzip -p "$apk" classes.dex > "$dex_file"
+          magic=$(od -An -t x1 -N4 "$dex_file" | tr -d ' \n')
+          rm -f "$dex_file"
+          test "$magic" = "6465780a" \
             || { echo "debug APK classes.dex has no dex magic" >&2; exit 1; }
           native=$(mktemp)
           unzip -p "$apk" lib/arm64-v8a/libi2pd.so > "$native"
           file "$native" | grep -q 'ARM aarch64' \
             || { echo "packaged libi2pd.so is not aarch64" >&2; exit 1; }
-          nm -D --defined-only "$native" | grep -q 'Java_org_openi2pd_router_I2PD' \
-            || { echo "packaged libi2pd.so exports no JNI entry points" >&2; exit 1; }
+          symbols=$(nm -D --defined-only "$native")
           rm -f "$native"
+          grep -q 'Java_org_openi2pd_router_I2PD' <<<"$symbols" \
+            || { echo "packaged libi2pd.so exports no JNI entry points" >&2; exit 1; }
           if ! find_application_apk release >/dev/null; then
             echo "release app APK with arm64 JNI library not found; APK outputs present:" >&2
             find "$GITHUB_WORKSPACE" -type f -name '*.apk' -print >&2

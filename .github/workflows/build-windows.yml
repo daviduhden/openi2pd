@@ -88,7 +88,10 @@ jobs:
         run: |
           ctest --test-dir build-output -j 2 --output-on-failure \
             --no-tests=error --output-junit "$PWD/ctest-msys2.xml"
-          ./build-output/i2pd-tui.exe --version
+          # Bound the console-image probe: an informational flag that
+          # blocks must fail with its own status inside the step budget
+          # instead of cancelling the whole job at timeout-minutes.
+          timeout 30 ./build-output/i2pd-tui.exe --version
       - name: Upload Windows MSYS2 evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
@@ -160,11 +163,12 @@ jobs:
           cmake --build build-msvc --config Release --parallel 2 `
             --target i2pd i2pd-tui test-tui-protocol test-tui-terminal `
               test-tui-pipe-name test-tui-win32-pipe test-privsep-windows-ipc `
-              test-privsep-windows-isolation test-privsep-windows-supervisor
+              test-privsep-windows-isolation test-privsep-windows-supervisor `
+              test-win32-shutdown-deadline
       - name: Run TUI and worker IPC tests
         run: |
           ctest --test-dir build-msvc -C Release -j 2 --output-on-failure `
-            -R '^(test-(tui-protocol|tui-terminal|tui-pipe-name|tui-win32-pipe|privsep-windows-(ipc|isolation|supervisor)))$' `
+            -R '^(test-(tui-protocol|tui-terminal|tui-pipe-name|tui-win32-pipe|privsep-windows-(ipc|isolation|supervisor)|win32-shutdown-deadline))$' `
             --no-tests=error --output-junit "$PWD/ctest-msvc.xml"
       - name: Verify runtime install
         run: |

@@ -187,7 +187,11 @@ jobs:
 
   fuzz-smoke:
     runs-on: ubuntu-24.04
-    timeout-minutes: 60
+    # The step budgets below (20 toolchain + 30 build + 10 CTest smoke +
+    # 25 bounded run + 5 upload) exceed 60 minutes, so the job cap must
+    # not be smaller than their sum: a killed job would otherwise be
+    # misread as a fuzz failure.
+    timeout-minutes: 90
     env:
       ASAN_OPTIONS: "detect_leaks=0:halt_on_error=1:abort_on_error=1:quarantine_size_mb=64:thread_local_quarantine_size_kb=256"
       UBSAN_OPTIONS: "halt_on_error=1:print_stacktrace=1"
