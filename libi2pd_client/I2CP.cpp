@@ -544,7 +544,7 @@ namespace client
 		ResetOwner ();
 	}
 
-	std::shared_ptr<I2CPSession> I2CPDestination::GetOwner () const
+	std::shared_ptr<I2CPSession> I2CPDestination::GetSessionOwner () const
 	{
 		std::lock_guard<std::mutex> l (m_OwnerMutex);
 		return m_Owner;
@@ -752,7 +752,7 @@ namespace client
 		}
 		uint32_t length = bufbe32toh (buf);
 		if (length > len - 4) length = static_cast<uint32_t> (len - 4);
-		if (auto owner = GetOwner ()) owner->SendMessagePayloadMessage (buf + 4, length);
+		if (auto owner = GetSessionOwner ()) owner->SendMessagePayloadMessage (buf + 4, length);
 	}
 
 	void I2CPDestination::CreateNewLeaseSet (const std::vector<std::shared_ptr<i2p::tunnel::InboundTunnel>> & tunnels)
@@ -787,7 +787,7 @@ namespace client
 		m_LeaseSetExpirationTime = ls.GetExpirationTime ();
 		uint8_t * leases = ls.GetLeases ();
 		int numLeases = leases[-1];
-		auto owner = GetOwner ();
+		auto owner = GetSessionOwner ();
 		if (owner && numLeases)
 		{
 			uint16_t sessionID = owner->GetSessionID ();
@@ -805,7 +805,7 @@ namespace client
 						if (ecode != boost::asio::error::operation_aborted)
 						{
 							LogPrint (eLogInfo, "I2CP: LeaseSet creation timeout expired. Terminate");
-							if (auto stopped = s->GetOwner ()) stopped->Stop ();
+							if (auto stopped = s->GetSessionOwner ()) stopped->Stop ();
 						}
 					});
 			}
@@ -843,14 +843,14 @@ namespace client
 		if (!payload || len > I2NP_MAX_MESSAGE_SIZE - 4)
 		{
 			LogPrint (eLogError, "I2CP: I2NP Data payload is too large ", len);
-			if (auto owner = GetOwner ())
+			if (auto owner = GetSessionOwner ())
 				owner->SendMessageStatusMessage (nonce, eI2CPMessageStatusGuaranteedFailure);
 			return;
 		}
 		auto msg = m_I2NPMsgsPool.AcquireSharedMt ();
 		if (!msg)
 		{
-			if (auto owner = GetOwner ())
+			if (auto owner = GetSessionOwner ())
 				owner->SendMessageStatusMessage (nonce, eI2CPMessageStatusGuaranteedFailure);
 			return;
 		}
@@ -866,7 +866,7 @@ namespace client
 			{
 				// send right a way
 				bool sent = SendMsg (msg, remote);
-				if (auto owner = GetOwner ())
+				if (auto owner = GetSessionOwner ())
 					owner->SendMessageStatusMessage (
 						nonce, sent ? eI2CPMessageStatusGuaranteedSuccess : eI2CPMessageStatusGuaranteedFailure);
 			}
@@ -878,7 +878,7 @@ namespace client
 					[s, msg, remote, nonce] ()
 					{
 						bool sent = s->SendMsg (msg, remote);
-						if (auto owner = s->GetOwner ())
+						if (auto owner = s->GetSessionOwner ())
 							owner->SendMessageStatusMessage (nonce,
 								sent ? eI2CPMessageStatusGuaranteedSuccess : eI2CPMessageStatusGuaranteedFailure);
 					});
@@ -893,11 +893,11 @@ namespace client
 					if (ls)
 					{
 						bool sent = s->SendMsg (msg, ls);
-						if (auto owner = s->GetOwner ())
+						if (auto owner = s->GetSessionOwner ())
 							owner->SendMessageStatusMessage (nonce,
 								sent ? eI2CPMessageStatusGuaranteedSuccess : eI2CPMessageStatusGuaranteedFailure);
 					}
-					else if (auto owner = s->GetOwner ())
+					else if (auto owner = s->GetSessionOwner ())
 						owner->SendMessageStatusMessage (nonce, eI2CPMessageStatusNoLeaseSet);
 				});
 		}
@@ -960,7 +960,7 @@ namespace client
 		// that slice with a different public key and select another
 		// destination's routing session. A stopped session has no owner left
 		// to cache for; the message is still sent on the path above.
-		if (auto owner = GetOwner ()) owner->AddRoutingSession (remote->GetIdentHash (), remoteSession);
+		if (auto owner = GetSessionOwner ()) owner->AddRoutingSession (remote->GetIdentHash (), remoteSession);
 		return SendMsg (garlic, outboundTunnel, remoteLease);
 	}
 
@@ -1032,7 +1032,7 @@ namespace client
 	void I2CPDestination::CleanupDestination ()
 	{
 		m_I2NPMsgsPool.CleanUpMt ();
-		if (auto owner = GetOwner ()) owner->CleanupRoutingSessions ();
+		if (auto owner = GetSessionOwner ()) owner->CleanupRoutingSessions ();
 	}
 
 	RunnableI2CPDestination::RunnableI2CPDestination (std::shared_ptr<I2CPSession> owner,

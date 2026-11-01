@@ -344,7 +344,7 @@ namespace client
 		// use takes a copy under the mutex: a plain shared_ptr must never be
 		// read while it is reset, and a late callback then sees a null owner
 		// instead of dereferencing a cleared one.
-		std::shared_ptr<I2CPSession> GetOwner () const;
+		std::shared_ptr<I2CPSession> GetSessionOwner () const;
 		void ResetOwner ();
 
 	private:
