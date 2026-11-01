@@ -11,8 +11,9 @@
  * nested-Job Object and nested-UI-restriction diagnostics, the
  * mandatory containment limits of the created worker job, a failed
  * spawn that leaves no handle behind, Job Object KILL_ON_JOB_CLOSE and
- * TerminateJobObject behaviour, and a live Ping-only worker that is
- * killed and restarted under a real Job Object. Returns 77 on another
+ * TerminateJobObject behaviour, and a live worker started through the
+ * production `RunWindowsWorker` entry point that is killed and
+ * restarted under a real Job Object. Returns 77 on another
  * platform.
  *
  * The service wrapper itself links the daemon singleton, so it is
@@ -399,12 +400,18 @@ void TestFailClosedSetup ()
 		assert (supervisor.Generation () == 0);
 		assert (supervisor.State () == SupervisorWorkerState::Failed);
 		assert (!supervisor.Diagnostic ().empty ());
+		// A terminal failure owns no generation: no listener, no pipe name
+		// and no process id may survive it, otherwise the next supervisor
+		// would collide with a name this one still believes it owns.
+		assert (supervisor.PipeName ().empty ());
+		assert (supervisor.WorkerProcessId () == 0);
 		auto snapshot = status.Get ("test-empty-exe");
 		assert (snapshot.has_value ());
 		assert (snapshot->state == SupervisorWorkerState::Failed);
 		assert (snapshot->generation == 0);
 		// Failed is published once even when the object is stopped again.
 		assert (supervisor.Stop (100));
+		assert (supervisor.PipeName ().empty ());
 		assert (status.Size () == 1);
 	}
 	assert (HandleCount () == baseline);
@@ -447,6 +454,11 @@ void TestFailedSpawnLeavesNoHandles ()
 		assert (supervisor.IsTerminal ());
 		const std::string diagnostic = supervisor.Diagnostic ();
 		assert (!diagnostic.empty ());
+		// The failed generation must not keep a listener or a pipe name: the
+		// next spawn has to allocate a fresh one instead of joining a name
+		// this supervisor already owns.
+		assert (supervisor.PipeName ().empty ());
+		assert (supervisor.WorkerProcessId () == 0);
 		// The kernel validates the process attribute list before it looks
 		// for the image, so a dangling or malformed attribute value fails
 		// with ERROR_INVALID_PARAMETER for any path. A host that cannot
@@ -542,31 +554,7 @@ bool TestTerminateJobObject ()
 	return true;
 }
 
-/*
- * Live worker: the test binary is spawned as a Ping-only worker over a
- * real random pipe, killed, observed as Restarting, restarted as
- * generation 2 and finally stopped through the Job Object.
- */
-int RunPingWorker (const std::wstring & pipeName)
-{
-	auto connected = WindowsChannel::Connect (pipeName, 10000);
-	if (!connected) return 3;
-	auto & channel = *connected;
-	while (true)
-	{
-		auto received = channel.Receive (1000);
-		if (!received) return 4;
-		if (!received->has_value ()) continue;
-		const Message & message = **received;
-		if (message.type == MessageType::Ping)
-		{
-			if (!channel.Send ({ MessageType::Pong, message.requestId, { } })) return 5;
-			continue;
-		}
-		if (message.type == MessageType::Shutdown) return 0;
-	}
-}
-
+/* One request/reply round trip on the authenticated channel. */
 bool PingPong (WindowsWorkerSupervisor & supervisor, uint32_t requestId, uint32_t deadlineMs)
 {
 	if (!supervisor.Send ({ MessageType::Ping, requestId, { } })) return false;
@@ -594,6 +582,14 @@ bool PumpUntil (WindowsWorkerSupervisor & supervisor, SupervisorWorkerState stat
 	return supervisor.State () == state;
 }
 
+/*
+ * Live worker: the test binary is spawned as a real worker through the
+ * production entry point (`RunWindowsWorker`), so the spawn nonce
+ * handshake, the role binding and the Ping/Pong/Shutdown loop are the
+ * same code the daemon uses. The worker is killed, observed as
+ * Restarting, restarted as generation 2 and finally stopped through the
+ * Job Object.
+ */
 int TestLiveWorker ()
 {
 	const std::wstring self = SelfExecutable ();
@@ -602,13 +598,25 @@ int TestLiveWorker ()
 	SupervisorStatus status;
 	WindowsWorkerSupervisorConfig config;
 	config.executable = self;
-	config.role = WindowsWorkerRole::Admin;
+	// The role decides how the child is isolated, and that decides whether
+	// this check can run at all. Every role except the supervisor is an
+	// AppContainer, and a runner whose test image is not readable from an
+	// AppContainer-visible path makes the child exit before it can connect.
+	// That turned a real spawn/accept defect into a silent skip for whole
+	// batches. The supervisor role uses the restricted-token path, so the
+	// live worker (connect, nonce handshake, Ping, restart) is exercised
+	// instead of skipped.
+	config.role = WindowsWorkerRole::Supervisor;
 	config.acceptTimeoutMs = 10000;
 	config.stopBudgetMs = 10000;
 	config.pollIntervalMs = 100;
 
 	const DWORD baseline = HandleCount ();
-	int result = 0;
+	// The supervisor scope is inside the lambda so that every outcome,
+	// including the 77 skip, still reaches the handle-count check below: a
+	// skip that returned early could not detect a leaked listener, job or
+	// process handle.
+	const int outcome = [&] () -> int
 	{
 		WindowsWorkerSupervisor supervisor ("test-live-worker", config, status);
 		auto started = supervisor.Start ();
@@ -620,6 +628,7 @@ int TestLiveWorker ()
 		assert (supervisor.IsRunning ());
 		assert (supervisor.Generation () == 1);
 		assert (supervisor.Channel () != nullptr);
+		assert (!supervisor.PipeName ().empty ());
 		assert (status.Get ("test-live-worker")->state == SupervisorWorkerState::Ready);
 
 		if (!PingPong (supervisor, 7, 5000))
@@ -674,16 +683,20 @@ int TestLiveWorker ()
 		assert (!supervisor.IsRunning ());
 		assert (supervisor.WorkerProcessId () == 0);
 		assert (supervisor.Channel () == nullptr);
-	}
+		// The stopped supervisor owns no listener and no pipe name either.
+		assert (supervisor.PipeName ().empty ());
+		return 0;
+	} ();
+
 	// Nothing may survive the supervisor: no channel, process or job
-	// handle.
+	// handle. This runs for a pass and for a skip alike.
 	if (HandleCount () != baseline)
 	{
 		std::printf ("handle count %lu != baseline %lu after the live worker\n",
 			static_cast<unsigned long> (HandleCount ()), static_cast<unsigned long> (baseline));
-		result = 1;
+		return 1;
 	}
-	return result;
+	return outcome;
 }
 
 /*
@@ -715,9 +728,12 @@ void TestServiceDrainContract ()
 
 int main (int argc, char ** argv)
 {
-	// Worker and helper roles: the supervisor spawns this binary as a
-	// Ping-only worker, and the Job Object tests spawn it as an idle
-	// child.
+	// Helper roles: the supervisor spawns this binary as a real worker and
+	// the Job Object tests spawn it as an idle child. The worker role is
+	// forwarded to the production entry point instead of a local
+	// re-implementation: a hand-rolled loop would silently skip the
+	// `WorkerHello` spawn proof that `AcceptBound` requires, which made the
+	// live-worker check unreachable while still reporting a skip.
 	for (int index = 1; index < argc; ++index)
 	{
 		const std::string argument = argv[index];
@@ -729,18 +745,10 @@ int main (int argc, char ** argv)
 		}
 		if (argument == "--privsep-worker")
 		{
-			std::wstring pipeName;
-			for (int rest = index + 1; rest < argc; ++rest)
-			{
-				const std::string token = argv[rest];
-				if (token.rfind ("\\\\.\\pipe\\", 0) != 0) continue;
-				pipeName.clear ();
-				for (char character : token)
-					pipeName.push_back (static_cast<wchar_t> (static_cast<unsigned char> (character)));
-				break;
-			}
-			if (pipeName.empty ()) return 2;
-			return RunPingWorker (pipeName);
+			// role pipe parentPid parentSession nonce
+			if (index + 5 >= argc) return 2;
+			return RunWindowsWorker (argv[index + 1], argv[index + 2], argv[index + 3], argv[index + 4],
+				argv[index + 5]);
 		}
 	}
 

@@ -756,6 +756,19 @@ void TestAuthorizationAndDescriptorRefusal ()
 	assert (std::get<0> (*boundDecoded) == MessageType::LogRecord);
 	assert (std::get<1> (*boundDecoded) == ErrorCode::NotAuthorized);
 
+	// Receiving the refusal must not kill the worker side either: the
+	// worker answers the next request on the same channel. A refusal that
+	// closed the channel would turn one bad frame into a dead worker.
+	assert (accepted->Send ({ MessageType::Ping, 36, { } }).has_value ());
+	auto stillPing = client->Receive (2000);
+	assert (stillPing.has_value () && stillPing->has_value ());
+	assert ((*stillPing)->type == MessageType::Ping);
+	assert ((*stillPing)->requestId == 36);
+	assert (client->Send ({ MessageType::Pong, 36, { } }).has_value ());
+	auto stillPong = accepted->Receive (2000);
+	assert (stillPong.has_value () && stillPong->has_value ());
+	assert ((*stillPong)->type == MessageType::Pong);
+
 	accepted->Close ();
 	client->Close ();
 }
@@ -807,10 +820,13 @@ void TestFrameBounds ()
 	assert (sizeDecoded.has_value ());
 	assert (std::get<1> (*sizeDecoded) == ErrorCode::TooLarge);
 
-	// One record larger than any legal frame is terminal.
+	// One record larger than any legal frame is terminal. The handle is
+	// snapshotted before the writer thread starts: the channel object must
+	// not be read from two threads even when only the handle value is used.
+	const HANDLE clientPipe = client->Native ();
 	std::vector<char> beyond (HEADER_SIZE + MAX_MESSAGE_SIZE + 64, 'x');
 	std::thread writer (
-		[&]
+		[&beyond, clientPipe]
 		{
 			HANDLE writerEvent = CreateEventW (nullptr, TRUE, FALSE, nullptr);
 			assert (writerEvent != nullptr);
@@ -818,9 +834,9 @@ void TestFrameBounds ()
 			overlapped.hEvent = writerEvent;
 			DWORD count = 0;
 			BOOL result = WriteFile (
-				client->Native (), beyond.data (), static_cast<DWORD> (beyond.size ()), &count, &overlapped);
+				clientPipe, beyond.data (), static_cast<DWORD> (beyond.size ()), &count, &overlapped);
 			if (!result && GetLastError () == ERROR_IO_PENDING)
-				GetOverlappedResult (client->Native (), &overlapped, &count, TRUE);
+				GetOverlappedResult (clientPipe, &overlapped, &count, TRUE);
 			CloseHandle (writerEvent);
 		});
 	auto terminal = accepted->Receive (2000);

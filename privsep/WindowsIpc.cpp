@@ -782,10 +782,20 @@ WindowsServer::~WindowsServer ()
 {
 	if (m_Pipe != INVALID_HANDLE_VALUE)
 	{
-		DisconnectNamedPipe (m_Pipe);
+		DisarmListener ();
 		CloseHandle (m_Pipe);
 	}
 	if (m_Security) LocalFree (m_Security);
+}
+
+// The listener handle has exactly one owner: this object. Disconnecting it
+// is what re-arms the single instance after a rejected connection, so every
+// caller goes through this one place instead of repeating the call and
+// leaving the ownership of a mid-handshake pipe to the reader.
+void WindowsServer::DisarmListener ()
+{
+	if (m_Pipe == INVALID_HANDLE_VALUE) return;
+	(void)DisconnectNamedPipe (m_Pipe);
 }
 
 WindowsServer::WindowsServer (WindowsServer && other) noexcept
@@ -804,8 +814,9 @@ WindowsServer & WindowsServer::operator= (WindowsServer && other) noexcept
 	{
 		if (m_Pipe != INVALID_HANDLE_VALUE)
 		{
-			DisconnectNamedPipe (m_Pipe);
+			DisarmListener ();
 			CloseHandle (m_Pipe);
+			m_Pipe = INVALID_HANDLE_VALUE;
 		}
 		if (m_Security) LocalFree (m_Security);
 		m_Pipe = other.m_Pipe;
@@ -867,7 +878,7 @@ i2p::expected<bool, std::string> WindowsServer::WaitForConnection (DWORD timeout
 		const auto outcome = WaitOverlapped (m_Pipe, overlapped, timeoutMs, true /* a connect transfers no bytes */);
 		if (!outcome.completed)
 		{
-			DisconnectNamedPipe (m_Pipe);
+			DisarmListener ();
 			if (outcome.cancelled) return false;
 			return i2p::unexpected ("worker pipe accept: " + Win32ErrorText (outcome.error));
 		}
@@ -899,8 +910,10 @@ i2p::expected<WindowsChannel, std::string> WindowsServer::Accept (DWORD timeoutM
 		auto peer = candidate.Peer ();
 		if (!peer)
 		{
+			// The candidate must never close the listener: it only detaches
+			// its own view of the instance, which stays owned here.
 			candidate.Release ();
-			DisconnectNamedPipe (m_Pipe);
+			DisarmListener ();
 			return i2p::unexpected (peer.error ());
 		}
 		if (peer->userSid != m_UserSid)
@@ -909,7 +922,7 @@ i2p::expected<WindowsChannel, std::string> WindowsServer::Accept (DWORD timeoutM
 			// worker; a hostile same-user connect must not be a DoS, and the
 			// rejection budget bounds the work it can cause.
 			candidate.Release ();
-			DisconnectNamedPipe (m_Pipe);
+			DisarmListener ();
 			if (++rejected >= MAX_REJECTED_CONNECTIONS) return i2p::unexpected ("too many rejected worker connections");
 			Sleep (REJECTED_CONNECTION_BACKOFF_MS);
 			continue;
@@ -973,7 +986,7 @@ i2p::expected<WindowsChannel, std::string> WindowsServer::AcceptBound (DWORD tim
 				// The thread could not leave the client identity, so this
 				// listener cannot continue safely.
 				candidate.Release ();
-				DisconnectNamedPipe (m_Pipe);
+				DisarmListener ();
 				return i2p::unexpected (peer.error ());
 			}
 			rejection = peer.error ();
@@ -996,7 +1009,7 @@ i2p::expected<WindowsChannel, std::string> WindowsServer::AcceptBound (DWORD tim
 		if (!rejection.empty ())
 		{
 			candidate.Release ();
-			DisconnectNamedPipe (m_Pipe);
+			DisarmListener ();
 			if (++rejected >= MAX_REJECTED_CONNECTIONS) return i2p::unexpected (rejection);
 			Sleep (REJECTED_CONNECTION_BACKOFF_MS);
 			continue;
@@ -1059,13 +1072,17 @@ void WindowsChannel::Close ()
 {
 	if (m_Pipe != INVALID_HANDLE_VALUE)
 	{
-		// Do not call FlushFileBuffers() here: it can block indefinitely if a
-		// peer stops reading. The channel is bounded by its I/O deadlines and
-		// is closed directly; DisconnectNamedPipe is a no-op on the client
-		// end.
-		DisconnectNamedPipe (m_Pipe);
-		CloseHandle (m_Pipe);
+		// Take ownership first: the handle is closed exactly once even when
+		// Close() is reached twice (an explicit close after a failed send,
+		// then the destructor).
+		const HANDLE pipe = m_Pipe;
 		m_Pipe = INVALID_HANDLE_VALUE;
+		// DisconnectNamedPipe is a server-side operation. It is a no-op on
+		// the client end, so only the accepting side disconnects before
+		// closing; neither side calls FlushFileBuffers, which can block
+		// indefinitely against a peer that stopped reading.
+		if (m_ServerSide) (void)DisconnectNamedPipe (pipe);
+		CloseHandle (pipe);
 	}
 	m_ReadEvent.Reset ();
 	m_ReadBuffer.clear ();
@@ -1264,7 +1281,7 @@ i2p::expected<std::optional<Message>, std::string> WindowsChannel::Receive (DWOR
 		const auto inspection = InspectFrame (frame);
 		const bool attributable = inspection.headerPresent && inspection.magicValid
 			&& inspection.version >= MIN_PROTOCOL_VERSION && inspection.version <= PROTOCOL_VERSION
-			&& inspection.lengthConsistent;
+			&& inspection.lengthConsistent && IsKnownMessageType (inspection.rawType);
 		if (attributable && IsRecoverableFrameFault (decoded.error ())
 			&& ++m_ProtocolViolations <= MAX_WINDOWS_PROTOCOL_VIOLATIONS)
 		{
@@ -1575,6 +1592,11 @@ i2p::expected<WindowsWorkerProcess, std::string> SpawnWindowsWorker (const std::
 		return i2p::unexpected ("unknown or unusable worker role");
 	if (parentProcessId == 0 || parentSessionId == 0)
 		return i2p::unexpected ("worker spawn requires the supervisor PID and session");
+	// Containment is not an option: a worker outside a Job Object cannot be
+	// stopped as a tree, cannot be bounded and is not covered by
+	// KILL_ON_JOB_CLOSE. Refuse the policy instead of spawning an
+	// uncontained process.
+	if (!policy.useJobObject) return i2p::unexpected ("worker spawn requires a Job Object");
 
 	std::wstring nonce = nonceHex;
 	if (nonce.empty ())
@@ -1615,13 +1637,17 @@ i2p::expected<WindowsWorkerProcess, std::string> SpawnWindowsWorker (const std::
 	}
 	const bool lowPrivilege = useContainer && (container->LowPrivilege () || isolation.lowPrivilegeAppContainer);
 
-	// Every Windows worker is contained by a Job Object unless the policy
-	// explicitly disables it. The flag reports the nested-topology variant
-	// (no UI restrictions) so the caller can publish it.
+	// Every Windows worker is contained by a Job Object; the policy check
+	// above makes that unconditional, so the only acceptable outcome here
+	// is a valid Job Object handle. The flag reports the nested-topology
+	// variant (no UI restrictions) so the caller can publish it.
 	bool jobUiRestrictions = true;
-	auto job = policy.useJobObject ? CreateWorkerJobObject (policy, &jobUiRestrictions)
-								   : i2p::expected<WindowsHandle, std::string> (WindowsHandle ());
+	auto job = CreateWorkerJobObject (policy, &jobUiRestrictions);
 	if (!job) return i2p::unexpected (job.error ());
+	// A job handle that is not valid would silently skip both the atomic
+	// JOB_LIST attribute and the fallback assignment, so the worker would
+	// run outside its containment boundary. Fail closed instead.
+	if (!job->IsValid ()) return i2p::unexpected ("worker Job Object is not valid");
 	WindowsHandle token;
 	if (!useContainer)
 	{
@@ -1632,8 +1658,6 @@ i2p::expected<WindowsWorkerProcess, std::string> SpawnWindowsWorker (const std::
 
 	const std::wstring commandLine = L"\"" + executable + L"\" --privsep-worker " + RoleName (role) + L" " + pipeName
 		+ L" " + std::to_wstring (parentProcessId) + L" " + std::to_wstring (parentSessionId) + L" " + nonce;
-	std::vector<wchar_t> mutableCommandLine (commandLine.begin (), commandLine.end ());
-	mutableCommandLine.push_back (L'\0');
 
 	// Standard handles are pinned to NUL so a service manager's console or
 	// log
@@ -1820,6 +1844,15 @@ i2p::expected<WindowsWorkerProcess, std::string> SpawnWindowsWorker (const std::
 		std::string attributeError;
 		if (!buildAttributeList (attributes, includeJob, attributeError))
 			return i2p::unexpected (attributeError);
+
+		// CreateProcessW is documented to modify the mutable command-line
+		// buffer it is given, so every attempt builds its own copy from the
+		// immutable string. Reusing one buffer would let a rejected first
+		// attempt hand a truncated or rewritten command line to the second,
+		// which would start the wrong process arguments while still
+		// reporting a successful spawn.
+		std::vector<wchar_t> mutableCommandLine (commandLine.begin (), commandLine.end ());
+		mutableCommandLine.push_back (L'\0');
 
 		const bool extended = attributes.list != nullptr;
 		// STARTUPINFOEXW.cb must be sizeof(STARTUPINFO) unless

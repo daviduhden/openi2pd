@@ -403,6 +403,11 @@ public:
 	 * it. */
 	const WindowsWorkerRestartPolicy & Policy () const { return m_Policy; }
 	const std::string & Name () const { return m_Name; }
+	/**
+	 * Pipe name of the current generation. It is cleared together with the
+	 * worker, so an empty value means no generation owns a listener (a
+	 * failed spawn, a released generation or a completed stop).
+	 */
 	const std::wstring & PipeName () const { return m_PipeName; }
 	DWORD WorkerProcessId () const { return m_ProcessId; }
 	bool IsInsideJobObject () const { return m_InsideJob; }

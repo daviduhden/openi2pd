@@ -331,6 +331,11 @@ void WindowsWorkerSupervisor::ReleaseWorker (uint32_t budgetMs)
 		(void)m_Worker->Stop (budgetMs);
 		m_Worker.reset ();
 	}
+	// A listener that was never consumed belongs to the same generation as
+	// the worker: dropping it here means a released generation cannot leave
+	// an armed pipe name behind for the next spawn to join or collide with.
+	m_Server.reset ();
+	m_PipeName.clear ();
 	m_ProcessId = 0;
 	m_Running.store (false, std::memory_order_release);
 }
@@ -437,6 +442,7 @@ bool WindowsWorkerSupervisor::Stop (uint32_t budgetMs)
 	m_Server.reset ();
 	m_StopEvent.Reset ();
 	if (m_Container) m_Container.reset ();
+	m_PipeName.clear ();
 	m_ProcessId = 0;
 	m_RestartPending = false;
 	m_PendingGeneration = 0;

@@ -302,7 +302,10 @@ struct WindowsWorkerProcess
  * once without it and the still-suspended process is assigned with
  * AssignProcessToJobObject before its initial thread runs. A failed
  * assignment terminates the child: a worker never runs outside its Job
- * Object.
+ * Object. A policy with `useJobObject == false` is therefore refused
+ * instead of silently producing an uncontained worker, and each attempt
+ * rebuilds its own command-line and attribute storage because
+ * CreateProcessW may modify the mutable command line it is given.
  *
  * An empty `nonceHex` makes the helper generate one (returned in
  * `WindowsWorkerProcess::nonceHex`); a supplied value must be 64 hex
@@ -396,6 +399,13 @@ private:
 
 	/** One bounded ConnectNamedPipe() on the armed instance. */
 	i2p::expected<bool, std::string> WaitForConnection (DWORD timeoutMs);
+	/**
+	 * Disconnect the armed listener so the one instance can be re-armed
+	 * after a rejected connection or a cancelled accept. The handle stays
+	 * owned and open: only the destructor closes it, exactly once. Safe
+	 * for an instance that is already disconnected.
+	 */
+	void DisarmListener ();
 
 	HANDLE m_Pipe = INVALID_HANDLE_VALUE;
 	std::wstring m_Name;
