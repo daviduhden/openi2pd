@@ -121,7 +121,10 @@ namespace fs
 #endif
 	}
 
-	void DetectDataDir (const std::string & cmdline_param, bool isService)
+	// Android has no service mode: the entire isService branch below is
+	// compiled out, so the shared signature marks the parameter as
+	// intentionally unused on that platform.
+	void DetectDataDir (const std::string & cmdline_param, [[maybe_unused]] bool isService)
 	{
 		// with 'datadir' option
 		if (cmdline_param != "")
