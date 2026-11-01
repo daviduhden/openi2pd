@@ -1973,6 +1973,19 @@ namespace client
 			if (SupportsEncryptionType (i2p::data::CRYPTO_KEY_TYPE_ELGAMAL))
 			{
 				auto it = m_EncryptionKeys.find (i2p::data::CRYPTO_KEY_TYPE_ELGAMAL);
+				// The LS1 wire signature field is sized by the identity's
+				// signing key, but Sign() uses the b33/offline transient
+				// signer when one is present. If the two lengths differ, the
+				// signature write would run past the buffer and no peer could
+				// verify the record either; refuse the LS1 instead of
+				// publishing an invalid one.
+				if (m_Keys.GetSignatureLen () != GetIdentity ()->GetSignatureLen ()
+					|| m_Keys.IsOfflineSignature ())
+				{
+					LogPrint (eLogError,
+						"Destination: The LS1 signature length does not match the identity; refusing to publish it");
+					return;
+				}
 				leaseSet
 					= std::make_shared<i2p::data::LocalLeaseSet> (GetIdentity (), it->second->pub.data (), tunnels);
 				// Sign this concrete LS1 object through the base accessors.

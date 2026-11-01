@@ -6,8 +6,9 @@
  *
  * Static checks for the encrypted LeaseSet2 client replay guard: the
  * signed outer published timestamp survives the outer-only and the
- * decrypted parse, and only a strictly newer reply may replace the
- * cached entry.
+ * decrypted parse, only a strictly newer reply may replace the cached
+ * entry, and a decrypted object keeps using the outer layout for later
+ * Update()/IsNewer() calls.
  *
  */
 
@@ -266,11 +267,44 @@ void TestOlderReplyDoesNotReplaceNewer ()
 	store (ParseOuterEncrypted (newerStill));
 	assert (cached->GetPublishedTimestamp () == now - 30);
 }
+
+void TestDecryptedLeaseSetKeepsOuterLayout ()
+{
+	auto keys = PrivateKeys::CreateRandomKeys (
+		SIGNING_KEY_TYPE_EDDSA_SHA512_ED25519, CRYPTO_KEY_TYPE_ECIES_X25519_AEAD, true);
+	auto now = static_cast<uint32_t> (i2p::util::GetMillisecondsSinceEpoch () / 1000);
+	auto inner = BuildStandardLeaseSet2 (keys, now - 300, 1200, now + 600);
+	auto olderBuffer = SealEncryptedLeaseSet2 (keys, inner, now - 120, 900);
+	auto newerBuffer = SealEncryptedLeaseSet2 (keys, inner, now - 60, 900);
+
+	auto blindedKey = std::make_shared<BlindedPublicKey> (keys.GetPublic ());
+	LeaseSet2 decrypted (olderBuffer.data () + 1, olderBuffer.size () - 1, blindedKey, nullptr, nullptr);
+	assert (decrypted.IsValid ());
+	// A successful decryption replaces the store type with the inner one,
+	// but the object keeps receiving type-5 buffers for the blinded store
+	// hash. The freshness comparison must therefore decode the candidate
+	// with the encrypted outer layout, not with the inner type it reports.
+	assert (decrypted.GetStoreType () == NETDB_STORE_TYPE_STANDARD_LEASESET2);
+	assert (decrypted.IsNewer (newerBuffer.data () + 1, newerBuffer.size () - 1));
+	assert (!decrypted.IsNewer (olderBuffer.data () + 1, olderBuffer.size () - 1));
+
+	// The same object updated with another type-5 buffer must be re-parsed
+	// as an outer layer (outer-only, no blinded key available), keeping the
+	// type-5 identity and the signed outer timestamp. Parsing it with the
+	// standard LeaseSet2 parser reads the ciphertext as a header and leaves
+	// the object invalid.
+	decrypted.Update (newerBuffer.data () + 1, newerBuffer.size () - 1, nullptr, true);
+	assert (decrypted.IsValid ());
+	assert (decrypted.GetStoreType () == NETDB_STORE_TYPE_ENCRYPTED_LEASESET2);
+	assert (decrypted.GetPublishedTimestamp () == now - 60);
+	assert (decrypted.GetExpirationTime () == static_cast<uint64_t> (now + 840) * 1000);
+}
 }
 
 int main ()
 {
 	TestOuterTimestampSurvivesBothParses ();
 	TestOlderReplyDoesNotReplaceNewer ();
+	TestDecryptedLeaseSetKeepsOuterLayout ();
 	return 0;
 }

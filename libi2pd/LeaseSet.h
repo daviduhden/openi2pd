@@ -301,6 +301,12 @@ namespace data
 		uint8_t m_StoreType;
 		uint32_t m_PublishedTimestamp = 0; // seconds
 		bool m_IsPublic = true, m_IsPublishedEncrypted = false;
+		// True when this object was parsed as an encrypted LeaseSet2 outer
+		// layer. A successful decryption replaces m_StoreType with the
+		// inner type, so the remaining outer-layer entry points (Update,
+		// IsNewer/ExtractPublishedTimestamp) must not infer the layout of
+		// their candidate buffer from GetStoreType().
+		bool m_IsEncryptedOuter = false;
 		std::shared_ptr<i2p::crypto::Verifier> m_TransientVerifier;
 		CryptoKeyType m_EncryptionType;
 		const CryptoKeyType m_PreferredEncryptionType;

@@ -82,6 +82,11 @@ namespace data
 	// many address properties is not rejected by the C++ parser. NTCP2's
 	// on-wire handshake still limits its own RI payload independently.
 	const size_t MAX_RI_BUFFER_SIZE = 4096;
+	// Largest defined I2P signature (RSA-4096). LocalRouterInfo signs its
+	// re-serialized body into a scratch buffer of this size before the
+	// bytes are installed, so the reserved space does not depend on which
+	// key actually signed.
+	const size_t MAX_RI_SIGNATURE_SIZE = 512;
 	// I2P Java RouterInfo.MAX_ADDRESSES is 16 (RouterInfo.java, 2.13.0).
 	// Reject excess address entries before parsing rather than relying on
 	// the RouterInfo byte cap to bound the loop.
@@ -213,7 +218,11 @@ namespace data
 
 		struct Address
 		{
-			TransportStyle transportStyle;
+			// Address objects are pooled and created by NewAddress(), so
+			// every scalar is initialized: a reader must never observe an
+			// indeterminate transport style, port or capability mask from
+			// an object the parser has not filled in yet.
+			TransportStyle transportStyle = eTransportUnknown;
 			boost::asio::ip::address host;
 			Tag<32> s { }, i { }; // keys, i is first 16 bytes for NTCP2 and 32 bytes intro key for SSU
 			int v = 2; // version
@@ -221,9 +230,9 @@ namespace data
 			// comma-separated "pq" address option. The base "v" option must
 			// still contain 2; "pq" only selects the hybrid extension.
 			uint8_t pqVersions = 0;
-			int port;
-			uint64_t date;
-			uint8_t caps;
+			int port = 0;
+			uint64_t date = 0;
+			uint8_t caps = 0;
 			bool published = false;
 			std::unique_ptr<SSUExt> ssu; // not null for SSU
 
@@ -463,8 +472,11 @@ namespace data
 		/**
 		 * Persist a cached descriptor through the artifact writer. The
 		 * artifact name is the canonical base64 identity hash, so the cache
-		 * file stays netDb/routerInfo-&lt;b64&gt;.dat with identical bytes. A
-		 * failed write keeps the previous file intact and returns false.
+		 * file stays netDb/routerInfo-&lt;b64&gt;.dat with identical bytes. The
+		 * name is bound to the descriptor: a buffer whose identity prefix
+		 * does not hash to @a identBase64 is refused, because the loader
+		 * would otherwise reject the file as foreign. A failed write keeps
+		 * the previous file intact and returns false.
 		 */
 		static bool SaveToArtifact (const std::string & identBase64, std::shared_ptr<Buffer> buf);
 

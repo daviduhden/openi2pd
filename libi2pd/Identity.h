@@ -123,8 +123,9 @@ namespace data
 
 		/// Replace the identity from a bounded serialized input.
 		/// @return Bytes consumed, or zero on malformed/truncated
-		///         input; on failure IsValid() is false and the previous
-		///         parsed identity is lost.
+		///         input; on failure IsValid() is false, the previous
+		///         parsed identity including its key bytes is cleared and
+		///         the hash is zero.
 		size_t FromBuffer (const uint8_t * buf, size_t len);
 		/// Write the complete serialized identity without partial output.
 		/// @return Bytes written, or zero if invalid or the buffer is too

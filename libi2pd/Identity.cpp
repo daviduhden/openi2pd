@@ -345,7 +345,14 @@ namespace data
 		if (m_ExtendedLen > MAX_EXTENDED_BUFFER_SIZE)
 		{
 			m_ExtendedBufferPtr = std::move (extended);
-			if (!m_ExtendedBufferPtr) m_IsValid = false;
+			if (!m_ExtendedBufferPtr)
+			{
+				// GetExtendedBuffer() would hand a null pointer to
+				// GetSigningKeyType()/GetCryptoKeyType(). Drop the length
+				// together with the missing storage.
+				m_IsValid = false;
+				m_ExtendedLen = 0;
+			}
 		}
 		else
 		{
@@ -401,6 +408,11 @@ namespace data
 		memset (m_ExtendedBuffer, 0, sizeof (m_ExtendedBuffer));
 		m_IdentHash.Fill (0);
 		m_Verifier = nullptr;
+		// The fixed part is only copied once the length check passed, so a
+		// rejected buffer used to leave the previous identity's public and
+		// signing keys readable through GetStandardIdentity() without any
+		// validity flag. Clear it with the rest of the state.
+		m_StandardIdentity = Identity ();
 
 		if (!buf || len < DEFAULT_IDENTITY_SIZE)
 		{

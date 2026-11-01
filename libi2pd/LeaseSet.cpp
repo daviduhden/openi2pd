@@ -483,7 +483,11 @@ namespace data
 		const uint8_t * buf, size_t len, std::shared_ptr<LocalDestination> dest, bool verifySignature)
 	{
 		SetBuffer (buf, len);
-		if (GetStoreType () != NETDB_STORE_TYPE_ENCRYPTED_LEASESET2)
+		// The layout of the new buffer follows this object's outer layer,
+		// not GetStoreType(): after a successful decryption that accessor
+		// reports the inner type while the object still receives type-5
+		// buffers keyed by the blinded store hash.
+		if (!m_IsEncryptedOuter)
 			ReadFromBuffer (GetBuffer (), GetBufferLen (), dest, false, verifySignature);
 		else
 			// A floodfill cannot decrypt type 5 and has no secret/blinded key
@@ -896,6 +900,10 @@ namespace data
 		SetExpirationTime (0);
 		SetIdentity (nullptr); // an encrypted outer layer has no Destination
 		m_StoreType = NETDB_STORE_TYPE_ENCRYPTED_LEASESET2;
+		// Recorded before any field is read so Update()/IsNewer() keep using
+		// the outer layout even after a successful decryption replaces
+		// m_StoreType with the inner type.
+		m_IsEncryptedOuter = true;
 		m_TransientVerifier = nullptr;
 		m_HasStoreHash = false;
 		m_IsPublic = true;
@@ -1282,9 +1290,11 @@ namespace data
 	uint64_t LeaseSet2::ExtractPublishedTimestamp (const uint8_t * buf, size_t len, uint64_t & expiration) const
 	{
 		if (!buf || len < 8) return 0;
-		if (m_StoreType == NETDB_STORE_TYPE_ENCRYPTED_LEASESET2)
+		if (m_IsEncryptedOuter)
 		{
-			// encrypted LS2
+			// encrypted LS2. The object's buffer may already hold the
+			// decrypted inner layer, so this is decided by the outer layer
+			// this object was created for, not by GetStoreType().
 			size_t offset = 0;
 			uint16_t blindedKeyType = bufbe16toh (buf + offset);
 			offset += 2;

@@ -1242,6 +1242,26 @@ namespace data
 		if (!buf) return false;
 		const size_t len = buf->GetBufferLen ();
 		if (!len) return false;
+		// The artifact name is the cache key. A name that does not encode
+		// this descriptor's own identity hash would publish these bytes
+		// under another router's hash, and the loader would then reject or
+		// (worse) serve them as that router. Bind the two rather than
+		// trusting the caller: the name must decode to a 32-byte hash and
+		// the descriptor's identity prefix must hash to it.
+		IdentHash expected { };
+		if (expected.FromBase64 (identBase64) != IdentHash::len)
+		{
+			LogPrint (eLogError, "RouterInfo: Artifact name is not an identity hash");
+			return false;
+		}
+		const size_t identityLen = GetIdentityBufferLen (buf->data (), len);
+		IdentHash actual { };
+		if (identityLen) SHA256 (buf->data (), identityLen, actual.data ());
+		if (!identityLen || actual != expected)
+		{
+			LogPrint (eLogError, "RouterInfo: Refusing to store a descriptor under a foreign identity hash");
+			return false;
+		}
 		// The artifact writer replaces the previous cache file atomically, so
 		// a failure keeps the last valid RouterInfo on disk. The bytes and
 		// the name are unchanged from the direct writer.
@@ -1903,16 +1923,44 @@ namespace data
 	 *
 	 * The previous timestamp is restored when serialisation, buffer
 	 * allocation or the size bound fails, so a failed rebuild never leaves
-	 * a timestamp newer than the retained bytes. The signature is written
-	 * directly after the body with exactly GetSignatureLen() bytes; len +
-	 * signatureLen is checked against MAX_RI_BUFFER_SIZE before the buffer
-	 * is created, which is what makes the narrowing cast of len to int
-	 * safe.
+	 * a timestamp newer than the retained bytes. The signature is signed
+	 * into a bounded scratch buffer and copied directly after the body
+	 * with exactly the identity's GetSignatureLen() bytes; len +
+	 * signatureLen is checked against MAX_RI_BUFFER_SIZE before the body
+	 * is installed.
+	 *
+	 * A RouterInfo carries exactly one trailing signature, and every
+	 * reader derives its length from the identity's signing key type. An
+	 * offline (transient) signer signs with another key and another
+	 * length, so signing with it would write past the reserved space and
+	 * produce a descriptor that no peer can verify; such keys are refused
+	 * before a byte is written. A provider failure is only observable as
+	 * an all-zero signature because PrivateKeys::Sign() is still `void`
+	 * (CRY-236), so the scratch signature is validated before it becomes
+	 * part of the published descriptor.
 	 */
 	void LocalRouterInfo::CreateBuffer (const PrivateKeys & privateKeys)
 	{
 		auto publicKeys = privateKeys.GetPublic ();
 		if (!publicKeys) return;
+		const auto signatureLen = publicKeys->GetSignatureLen ();
+		if (privateKeys.IsOfflineSignature () || privateKeys.GetSignatureLen () != signatureLen)
+		{
+			// The trailing signature is interpreted with the identity's own
+			// length. Refusing here keeps the previous descriptor intact
+			// instead of writing a transient signature into a slot sized for
+			// the primary key.
+			LogPrint (eLogError, "RouterInfo: Offline signing keys cannot sign our RouterInfo");
+			return;
+		}
+		if (!signatureLen || signatureLen > MAX_RI_SIGNATURE_SIZE)
+		{
+			// Unreachable for the supported key types (the largest defined
+			// signature is RSA-4096). Refuse instead of sizing the scratch
+			// signature buffer below what Sign() writes.
+			LogPrint (eLogError, "RouterInfo: Unsupported signature length ", signatureLen);
+			return;
+		}
 		const uint64_t previousTimestamp = GetTimestamp ();
 		RefreshTimestamp ();
 		std::stringstream s;
@@ -1924,7 +1972,6 @@ namespace data
 			SetTimestamp (previousTimestamp);
 			return;
 		}
-		auto signatureLen = publicKeys->GetSignatureLen ();
 		s.write ((char *)ident, identLen);
 		WriteToStream (s);
 		// Keep one copy; s.str() returns a temporary and was previously
@@ -1933,17 +1980,36 @@ namespace data
 		size_t len = body.size ();
 		if (len + signatureLen <= MAX_RI_BUFFER_SIZE)
 		{
-			UpdateBuffer ((const uint8_t *)body.data (), len);
-			auto buffer = GetSharedBuffer ();
-			if (buffer && buffer->GetBufferLen () == len)
+			// Sign before installing the body: the signature covers exactly
+			// the bytes that UpdateBuffer() will store, and a rejected
+			// signature must leave the previously published descriptor
+			// untouched rather than a body without a usable signature.
+			std::array<uint8_t, MAX_RI_SIGNATURE_SIZE> signature { };
+			privateKeys.Sign (reinterpret_cast<const uint8_t *> (body.data ()), static_cast<int> (len),
+				signature.data ());
+			bool isSigned = false;
+			for (size_t i = 0; i < signatureLen; i++)
+				if (signature[i])
+				{
+					isSigned = true;
+					break;
+				}
+			if (isSigned)
 			{
-				// signature
-				// len is bounded by MAX_RI_BUFFER_SIZE above.
-				privateKeys.Sign (buffer->data (), static_cast<int> (len), buffer->data () + len);
-				SetBufferLen (len + signatureLen);
-				return;
+				UpdateBuffer ((const uint8_t *)body.data (), len);
+				auto buffer = GetSharedBuffer ();
+				if (buffer && buffer->GetBufferLen () == len)
+				{
+					// len + signatureLen is bounded by MAX_RI_BUFFER_SIZE
+					// above and the signature has exactly signatureLen bytes.
+					memcpy (buffer->data () + len, signature.data (), signatureLen);
+					SetBufferLen (len + signatureLen);
+					return;
+				}
+				LogPrint (eLogError, "RouterInfo: Can't allocate buffer for our RouterInfo");
 			}
-			LogPrint (eLogError, "RouterInfo: Can't allocate buffer for our RouterInfo");
+			else
+				LogPrint (eLogError, "RouterInfo: Signing our RouterInfo failed");
 		}
 		else
 			LogPrint (eLogError, "RouterInfo: Our RouterInfo is too long ", len + signatureLen);

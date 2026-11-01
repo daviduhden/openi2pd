@@ -7,7 +7,8 @@
  * Exercises RouterInfo update atomicity: only a newer, correctly
  * signed, same-identity body replaces state, while malformed,
  * wrong-netId or file-loaded bodies leave the old snapshot intact. Also
- * checks local v4/v6 address serialization.
+ * checks local v4/v6 address serialization and that an offline
+ * (transient) signer cannot sign our own descriptor.
  *
  */
 
@@ -337,6 +338,32 @@ int main ()
 		std::filesystem::remove (path);
 	}
 
+	// The cache artifact name is the identity hash of the bytes being
+	// stored. A descriptor written under another router's name would be
+	// classified as a foreign cache file by the loader, so the writer binds
+	// the two and refuses a mismatched pair before touching the
+	// filesystem (no data directory is configured in this test, which is
+	// why only the refusal paths are exercised here).
+	{
+		const auto buffer = SignRouterInfo (keys, BuildBody (MakeSpec (timestamp, "12345")));
+		auto shared = std::make_shared<RouterInfo::Buffer> (buffer.data (), buffer.size ());
+		assert (shared->GetBufferLen () == buffer.size ());
+		const auto ownName = keys.GetPublic ()->GetIdentHash ().ToBase64 ();
+		assert (ownName.size () == 44);
+
+		auto otherKeys
+			= PrivateKeys::CreateRandomKeys (SIGNING_KEY_TYPE_EDDSA_SHA512_ED25519, CRYPTO_KEY_TYPE_ECIES_X25519_AEAD);
+		assert (otherKeys.GetPublic ());
+		auto foreignName = otherKeys.GetPublic ()->GetIdentHash ().ToBase64 ();
+		assert (foreignName != ownName);
+		assert (!RouterInfo::SaveToArtifact (foreignName, shared)); // name of another identity
+		assert (!RouterInfo::SaveToArtifact ("", shared));
+		assert (!RouterInfo::SaveToArtifact (std::string (44, 'A'), shared)); // canonical shape, wrong hash
+		assert (!RouterInfo::SaveToArtifact ("not-a-hash", shared));
+		assert (!RouterInfo::SaveToArtifact (ownName, nullptr));
+		assert (!RouterInfo::SaveToArtifact (ownName, std::make_shared<RouterInfo::Buffer> ()));
+	}
+
 	// File round-trip: the constructor now verifies the signature on load
 	// (Java PersistentDataStore.readBytes(in, true)). A corrupted file
 	// must be rejected instead of being inserted into the netDb.
@@ -484,6 +511,63 @@ int main ()
 		assert (address);
 		assert (address->ssu);
 		assert (address->ssu->introducers.size () == MAX_RI_INTRODUCERS);
+	}
+
+	// A RouterInfo has exactly one trailing signature, and every reader
+	// takes its length from the identity's own signing key type. A
+	// router.keys file may carry an offline (transient) section of another
+	// type, whose signer writes a different number of bytes; CreateBuffer()
+	// must refuse that instead of writing past the fixed-size buffer and
+	// publishing a descriptor no peer can verify.
+	{
+		const auto primarySignatureLen = keys.GetPublic ()->GetSignatureLen ();
+		auto offlineKeys = keys.CreateOfflineKeys (
+			SIGNING_KEY_TYPE_ECDSA_SHA512_P521,
+			static_cast<uint32_t> (i2p::util::GetSecondsSinceEpoch () + 3600));
+		assert (offlineKeys.IsOfflineSignature ());
+		assert (offlineKeys.GetSignatureLen () != primarySignatureLen);
+		assert (offlineKeys.GetSignatureLen () > primarySignatureLen); // would overrun the slot
+
+		// Round-trip through the wire layout a router.keys file uses, so the
+		// test covers the parsed object and not only the generated one.
+		std::vector<uint8_t> encoded (offlineKeys.GetFullLen ());
+		assert (!encoded.empty ());
+		assert (offlineKeys.ToBuffer (encoded.data (), encoded.size ()) == encoded.size ());
+		PrivateKeys reloaded;
+		assert (reloaded.FromBuffer (encoded.data (), encoded.size ()) == encoded.size ());
+		assert (reloaded.IsOfflineSignature ());
+		assert (reloaded.GetPublic ()->GetIdentHash () == keys.GetPublic ()->GetIdentHash ());
+
+		LocalRouterInfo local;
+		local.SetRouterIdentity (keys.GetPublic ());
+		const uint8_t staticKey[32] = { 0x11 };
+		const uint8_t iv[16] = { 0x22 };
+		local.AddNTCP2Address (staticKey, iv, 12345, RouterInfo::AddressCaps::eV4);
+		local.SetProperty ("netId", std::to_string (i2p::context.GetNetID ()));
+		local.SetProperty ("router.version", "2.50.0");
+		local.SetProperty ("caps", "L");
+
+		// Nothing is installed by a refused signer.
+		local.CreateBuffer (reloaded);
+		assert (local.GetBufferLen () == 0);
+		assert (local.GetBuffer () == nullptr);
+
+		// The primary signer still produces a descriptor that a reader
+		// accepts, and a later refusal leaves it byte-identical.
+		local.CreateBuffer (keys);
+		const size_t goodLen = local.GetBufferLen ();
+		assert (goodLen > 0);
+		const uint64_t goodTimestamp = local.GetTimestamp ();
+		{
+			const auto buffer = local.GetSharedBuffer ();
+			assert (buffer);
+			RouterInfo parsed (buffer->data (), buffer->GetBufferLen ());
+			assert (!parsed.IsUnreachable ());
+			assert (parsed.GetIdentHash () == keys.GetPublic ()->GetIdentHash ());
+		}
+		local.CreateBuffer (reloaded);
+		assert (local.GetBufferLen () == goodLen);
+		assert (local.GetTimestamp () == goodTimestamp);
 	}
 
 	return 0;
