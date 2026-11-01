@@ -307,9 +307,10 @@ namespace stream
 	/// only the `Async*` helpers may be called from another thread, and
 	/// they post onto that context. `Receive()` blocks the calling thread
 	/// until such a posted read completes, so it must never run on the
-	/// service thread itself. `Packet` objects come from and return to the
-	/// destination's pool, and `m_LocalDestinationOwner` keeps the
-	/// destination alive for handlers that outlive its map entry.
+	/// service thread itself; its completion state is heap-owned because the
+	/// posted read may outlive the wait. `Packet` objects come from and
+	/// return to the destination's pool, and `m_LocalDestinationOwner` keeps
+	/// the destination alive for handlers that outlive its map entry.
 	class Stream : public std::enable_shared_from_this<Stream>
 	{
 	public:
@@ -352,6 +353,15 @@ namespace stream
 		template <typename Buffer, typename ReceiveHandler>
 		void AsyncReceive (const Buffer & buffer, ReceiveHandler && handler, int timeout = 0, size_t minSize = 0);
 		size_t ReadSome (uint8_t * buf, size_t len) { return ConcatenatePackets (buf, len); };
+		/// Blocking read for callers outside the destination service.
+		///
+		/// `timeout` bounds the wait in seconds. The read itself is posted
+		/// onto the destination io_context and its result lives in a
+		/// heap-owned state object, so a completion that arrives after this
+		/// call returned can never touch the caller's frame or `buf`; the
+		/// bytes such an abandoned read already dequeued are returned to the
+		/// front of the receive queue. Must not be called from the service
+		/// thread: it would wait for a handler that can only run there.
 		size_t Receive (uint8_t * buf, size_t len, int timeout);
 
 		void AsyncClose () { boost::asio::post (m_Service, std::bind (&Stream::Close, shared_from_this ())); };
@@ -411,6 +421,10 @@ namespace stream
 		void SendUpdatedLeaseSet ();
 
 		void SavePacket (Packet * packet);
+		// Puts bytes that an abandoned blocking read already dequeued back at
+		// the front of the receive queue, preserving their order. Service
+		// thread only.
+		void PushBackReceived (const uint8_t * data, size_t len);
 		void ProcessPacket (Packet * packet);
 		bool ProcessOptions (uint16_t flags, Packet * packet);
 		void ProcessAck (Packet * packet);

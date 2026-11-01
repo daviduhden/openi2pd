@@ -44,6 +44,71 @@ namespace stream
 			size_t optionsSize = bufbe16toh (packet->buf + optionsOffset);
 			return optionsSize <= packet->len - optionsOffset - 2;
 		}
+
+		// Shared state of one blocking Stream::Receive() call. The posted
+		// receive handler owns it, so a completion that arrives after the
+		// caller's deadline has expired writes into live heap storage
+		// instead of a dead stack frame, and Complete() reports that the
+		// caller is no longer interested.
+		class SyncReceiveState
+		{
+		public:
+			explicit SyncReceiveState (size_t size)
+				: m_Buffer (size)
+			{
+			}
+
+			uint8_t * Data () { return m_Buffer.data (); }
+			size_t Size () const { return m_Buffer.size (); }
+
+			// Publishes one completion. Returns true when the waiting caller
+			// still owns the result; false when it already abandoned the
+			// wait, in which case nothing may be reported to it.
+			bool Complete (size_t received)
+			{
+				std::lock_guard<std::mutex> lock (m_Mutex);
+				if (m_Abandoned) return false;
+				m_Received = received;
+				m_Completed = true;
+				m_Changed.notify_all ();
+				return true;
+			}
+
+			// Bounded wait for the completion. A non-positive timeout returns
+			// immediately, matching the previous deadline semantics.
+			bool Wait (int timeout)
+			{
+				std::unique_lock<std::mutex> lock (m_Mutex);
+				auto ready = [this] () { return m_Completed; };
+				if (timeout > 0) return m_Changed.wait_for (lock, std::chrono::seconds (timeout), ready);
+				return m_Completed;
+			}
+
+			// Gives up the wait. Returns false when the completion already
+			// arrived, so the caller must consume the result under its own
+			// ownership.
+			bool Abandon ()
+			{
+				std::lock_guard<std::mutex> lock (m_Mutex);
+				if (m_Completed) return false;
+				m_Abandoned = true;
+				return true;
+			}
+
+			size_t Received () const
+			{
+				std::lock_guard<std::mutex> lock (m_Mutex);
+				return m_Completed ? m_Received : 0;
+			}
+
+		private:
+			std::vector<uint8_t> m_Buffer;
+			mutable std::mutex m_Mutex;
+			std::condition_variable m_Changed;
+			size_t m_Received = 0;
+			bool m_Completed = false;
+			bool m_Abandoned = false;
+		};
 	} // namespace
 
 	std::optional<i2p::data::IdentHash> ExtractSynPeerIdentity (const Packet * packet)
@@ -1143,44 +1208,62 @@ namespace stream
 
 	size_t Stream::Receive (uint8_t * buf, size_t len, int timeout)
 	{
-		if (!len) return 0;
-		size_t ret = 0;
-		volatile bool done = false;
-		std::condition_variable newDataReceived;
-		std::mutex newDataReceivedMutex;
+		if (!len || !buf) return 0;
+		// The posted read owns the destination buffer and its completion
+		// state: when the destination service is busy or stopped, the
+		// handler runs after this frame is gone, and it must not write into
+		// a dead buffer, condition variable or flag.
+		auto state = std::make_shared<SyncReceiveState> (len);
+		auto s = shared_from_this ();
 		AsyncReceive (
-			boost::asio::buffer (buf, len),
-			[&ret, &done, &newDataReceived, &newDataReceivedMutex] (
-				const boost::system::error_code & ecode, std::size_t bytes_transferred)
+			boost::asio::mutable_buffer (state->Data (), state->Size ()),
+			[s, state] (const boost::system::error_code & ecode, std::size_t bytes_transferred)
 			{
-				if (ecode == boost::asio::error::timed_out)
-					ret = 0;
-				else
-					ret = bytes_transferred;
-				std::unique_lock<std::mutex> l (newDataReceivedMutex);
-				newDataReceived.notify_all ();
-				done = true;
+				const size_t received = (ecode == boost::asio::error::timed_out) ? 0 : bytes_transferred;
+				if (state->Complete (received)) return;
+				// The caller already gave up after its own deadline. The
+				// bytes are out of the receive queue now, so hand them back
+				// instead of dropping stream data.
+				if (received) s->PushBackReceived (state->Data (), received);
 			},
 			timeout);
-		if (!done)
+		const bool completed = state->Wait (timeout);
+		if (!completed && state->Abandon ())
 		{
-			std::unique_lock<std::mutex> l (newDataReceivedMutex);
-			if (!done && newDataReceived.wait_for (l, std::chrono::seconds (timeout)) == std::cv_status::timeout)
-				ret = 0;
+			// The wait lost the race with its handler; the handler publishes
+			// its result later and this read reports the deadline.
+			return 0;
 		}
-		if (!done)
+		const size_t received = std::min<size_t> (state->Received (), len);
+		if (received) memcpy (buf, state->Data (), received);
+		return received;
+	}
+
+	void Stream::PushBackReceived (const uint8_t * data, size_t len)
+	{
+		if (!data || !len) return;
+		// The abandoned read may complete after the stream was terminated or
+		// reset. Re-adding bytes to a dead stream would keep pooled packets
+		// alive until destruction and could make a later recycled stream
+		// object serve data from a previous connection.
+		if (m_Status == eStreamStatusTerminated || m_Status == eStreamStatusReset) return;
+		// One pooled packet holds at most MAX_PACKET_SIZE payload bytes, so a
+		// read that spanned several packets is split again. The pieces are
+		// spliced in front of whatever arrived meanwhile, in their original
+		// order, so a later read observes the stream byte-for-byte.
+		std::list<Packet *> pieces;
+		while (len)
 		{
-			// make sure that AsyncReceive complete
-			auto s = shared_from_this ();
-			boost::asio::post (m_Service, [s] () { s->m_ReceiveTimer.cancel (); });
-			int i = 0;
-			while (!done && i < 100) // 1 sec
-			{
-				std::this_thread::sleep_for (std::chrono::milliseconds (10));
-				i++;
-			}
+			const size_t chunk = std::min (len, MAX_PACKET_SIZE);
+			Packet * packet = m_LocalDestination.NewPacket ();
+			packet->offset = 0;
+			memcpy (packet->buf, data, chunk);
+			packet->len = chunk;
+			pieces.emplace_back (packet);
+			data += chunk;
+			len -= chunk;
 		}
-		return ret;
+		m_ReceiveQueue.splice (m_ReceiveQueue.begin (), pieces);
 	}
 
 	size_t Stream::Send (const uint8_t * buf, size_t len)
@@ -2976,6 +3059,13 @@ namespace stream
 			std::lock_guard<std::mutex> l (m_AcceptorMutex);
 			m_PendingIncomingStreams.clear ();
 		}
+		// Packets buffered before their SYN belong to the generation that is
+		// being stopped. Keeping them would hand data from before the stop
+		// to a stream created after a restart, and their expiry timers hold
+		// a reference to this destination for no purpose.
+		for (auto & it : m_SavedPackets)
+			for (auto it1 : it.second) DeletePacket (it1);
+		m_SavedPackets.clear ();
 		{
 			std::lock_guard<std::mutex> l (m_StreamsMutex);
 			for (auto it : m_Streams) it.second->Terminate (false); // we delete here
@@ -3154,13 +3244,23 @@ namespace stream
 					DeletePacket (packet);
 					return;
 				}
-				auto it1 = m_IncomingStreams.find (receiveStreamID);
-				if (it1 != m_IncomingStreams.end ())
+				// m_IncomingStreams is guarded by m_StreamsMutex; take the
+				// reference and release the lock before dispatching, because
+				// the stream can re-enter DeleteStream while handling the
+				// packet.
+				std::shared_ptr<Stream> incomingStream;
+				{
+					std::lock_guard<std::mutex> l (m_StreamsMutex);
+					auto it1 = m_IncomingStreams.find (receiveStreamID);
+					if (it1 != m_IncomingStreams.end ()) incomingStream = it1->second;
+				}
+				if (incomingStream)
 				{
 					// found
-					it1->second->HandleNextPacket (packet);
+					incomingStream->HandleNextPacket (packet);
 					return;
 				}
+
 				// save follow on packet
 				packet->from = nullptr; // session might be invalid when saved packet gets handled
 				auto it = m_SavedPackets.find (receiveStreamID);

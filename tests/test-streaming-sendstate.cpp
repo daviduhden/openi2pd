@@ -8,12 +8,15 @@
  * RESET and that a write queued in that state fails with
  * operation_aborted instead of being silently accepted. A still-open
  * control stream must keep building packets, so the assertion is not
- * vacuous.
+ * vacuous. It also pins the blocking-read lifetime rule: a read whose
+ * deadline expires before the destination service runs must complete
+ * into heap-owned state, never into the caller's frame.
  *
  */
 
 #include <cassert>
 #include <cstdint>
+#include <cstring>
 #include <memory>
 
 #include <boost/asio.hpp>
@@ -126,6 +129,42 @@ int main ()
 		assert (result.ecode != boost::asio::error::operation_aborted);
 		assert (!result.called || !result.ecode);
 		assert (stream->GetSendBufferSize () == 0 || stream->GetSendBufferSize () == sizeof (TEST_PAYLOAD));
+	}
+
+	// A blocking read whose deadline expires while the destination service
+	// is not running must not leave a handler pointing at the caller's
+	// stack. The posted read owns its buffer and completion state on the
+	// heap, so the later invocation is harmless; before that it wrote
+	// through a dead frame (condition variable, flags and buffer).
+	{
+		auto stream = std::make_shared<Stream> (f.service, f.destination);
+		struct Probe
+		{
+			uint8_t guard[64];
+			uint8_t buffer[8];
+		} probe;
+		std::memset (probe.guard, 0xAA, sizeof (probe.guard));
+		std::memset (probe.buffer, 0xBB, sizeof (probe.buffer));
+
+		// The service is intentionally idle: the read cannot complete and
+		// the caller's deadline is the only way out.
+		assert (stream->Receive (probe.buffer, sizeof (probe.buffer), 1) == 0);
+
+		// Run the abandoned read, then drop its timer so the stream does not
+		// outlive this block through a pending handler.
+		for (int pass = 0; pass < 8; ++pass) f.service.poll ();
+		stream->Cancel ();
+		for (int pass = 0; pass < 8; ++pass) f.service.poll ();
+
+		for (auto value : probe.guard) assert (value == 0xAA);
+		for (auto value : probe.buffer) assert (value == 0xBB);
+
+		// The stream still accepts a new blocking read after an abandoned
+		// one; a repeated call is not a permanently armed read.
+		assert (stream->Receive (probe.buffer, sizeof (probe.buffer), 1) == 0);
+		for (int pass = 0; pass < 8; ++pass) f.service.poll ();
+		stream->Cancel ();
+		for (int pass = 0; pass < 8; ++pass) f.service.poll ();
 	}
 
 	return 0;
