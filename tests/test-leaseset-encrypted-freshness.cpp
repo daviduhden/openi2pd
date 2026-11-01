@@ -120,7 +120,7 @@ std::vector<uint8_t> SealEncryptedLeaseSet2 (
 	AppendBe32 (buffer, published);
 	AppendBe16 (buffer, expires);
 	AppendBe16 (buffer, 0); // flags
-	size_t lenInnerPlaintext = inner.size () + 1;
+	size_t lenInnerPlaintext = inner.size (); // store type + LeaseSet2 body
 	size_t lenOuterPlaintext = lenInnerPlaintext + 32 + 1; // inner salt + layer 1 flags
 	size_t lenOuterCiphertext = lenOuterPlaintext + 32; // outer salt
 	assert (lenOuterCiphertext <= 0xFFFF);
@@ -133,25 +133,35 @@ std::vector<uint8_t> SealEncryptedLeaseSet2 (
 	htobe32buf (subcredential + 32, published);
 	uint8_t outerKeys[64], innerKeys[64];
 	i2p::crypto::HKDF (buffer.data () + outerSaltPos, subcredential, 36, "ELS2_L1K", outerKeys);
+	// The layer 1 plaintext is one region: the flags byte, the inner
+	// salt and the inner plaintext. Reserve it once and index inside it.
+	// Appending the inner salt and plaintext after an already reserved
+	// region makes the sealed buffer longer than the length that its own
+	// header declares, so the reader verifies a shorter prefix and the
+	// outer signature fails.
 	size_t outerPlaintextPos = buffer.size ();
 	buffer.resize (buffer.size () + lenOuterPlaintext);
 	buffer[outerPlaintextPos] = 0; // layer 1 flags: no per-client auth
-	size_t innerSaltPos = buffer.size ();
-	buffer.resize (buffer.size () + 32);
+	size_t innerSaltPos = outerPlaintextPos + 1;
 	assert (RAND_bytes (buffer.data () + innerSaltPos, 32) == 1);
 	i2p::crypto::HKDF (buffer.data () + innerSaltPos, subcredential, 36, "ELS2_L2K", innerKeys);
-	size_t innerPlaintextPos = buffer.size ();
-	buffer.resize (buffer.size () + lenInnerPlaintext);
+	size_t innerPlaintextPos = innerSaltPos + 32;
+	assert (innerPlaintextPos + lenInnerPlaintext == outerPlaintextPos + lenOuterPlaintext);
 	buffer[innerPlaintextPos] = inner.front (); // inner store type
 	memcpy (buffer.data () + innerPlaintextPos + 1, inner.data () + 1, inner.size () - 1);
 	i2p::crypto::ChaCha20 (buffer.data () + innerPlaintextPos, lenInnerPlaintext, innerKeys, innerKeys + 32,
 		buffer.data () + innerPlaintextPos);
 	i2p::crypto::ChaCha20 (buffer.data () + outerPlaintextPos, lenOuterPlaintext, outerKeys, outerKeys + 32,
 		buffer.data () + outerPlaintextPos);
+	// The outer ciphertext starts at its salt and must end exactly where
+	// the header says it does. The trailing signature is the only
+	// remaining data.
+	assert (buffer.size () == outerSaltPos + lenOuterCiphertext);
 	// The signature covers the store type and everything before it.
 	std::vector<uint8_t> signature (i2p::crypto::EDDSA25519_SIGNATURE_LENGTH);
 	signer->Sign (buffer.data (), static_cast<int> (buffer.size ()), signature.data ());
 	buffer.insert (buffer.end (), signature.begin (), signature.end ());
+	assert (buffer.size () == outerSaltPos + lenOuterCiphertext + signature.size ());
 	return buffer;
 }
 
@@ -182,6 +192,16 @@ void TestOuterTimestampSurvivesBothParses ()
 	assert (olderOuter->GetStoreType () == NETDB_STORE_TYPE_ENCRYPTED_LEASESET2);
 	assert (olderOuter->GetPublishedTimestamp () == now - 120);
 	assert (newerOuter->GetPublishedTimestamp () == now - 60);
+
+	// The sealer must not merely be well formed: one changed byte in the
+	// signed prefix has to break the outer signature. This is the
+	// negative control for the fixture above, which used to append the
+	// inner salt and plaintext outside the region declared by
+	// lenOuterCiphertext and so signed a longer prefix than the reader
+	// verified.
+	auto tampered = olderBuffer;
+	tampered[tampered.size () - 65] ^= 0x01; // last ciphertext byte, before the signature
+	assert (!ParseOuterEncrypted (tampered)->IsValid ());
 
 	// A client decrypts the inner layer. The inner header must not replace
 	// the outer timestamp, and the signed outer expiry stays
