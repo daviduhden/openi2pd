@@ -8,8 +8,9 @@
  * the role table invariant (never an Internet capability together with
  * a persistent write root), the capability mapping back onto the
  * platform-free capability matrix, profile/SID derivation and reuse,
- * and the delegated-root DACL grant (one container-SID entry, never
- * Everyone or ALL APPLICATION PACKAGES).
+ * SID ownership across reuse, heap churn and moves, and the
+ * delegated-root DACL grant (one container-SID entry, never Everyone or
+ * ALL APPLICATION PACKAGES).
  *
  * The test creates the durable `openi2pd.storage` and
  * `openi2pd.network` profiles on the host. They are intentionally not
@@ -53,6 +54,7 @@ int main ()
 #include <cassert>
 #include <cstdio>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "privsep/Capabilities.h"
@@ -298,6 +300,75 @@ void TestAppContainerCreation ()
 	assert (!supervisor.error ().empty ());
 }
 
+/*
+ * The AppContainer profile SID is owned by the WindowsAppContainer and
+ * released with FreeSid, which is what CreateAppContainerProfile and
+ * DeriveAppContainerSidFromAppContainerName document. Releasing it with
+ * LocalFree (or reading a SID whose owner is already gone) looks
+ * harmless because both allocators reach the process heap, but the
+ * resulting corruption is only reported later, typically as
+ * STATUS_HEAP_CORRUPTION when the process exits. The checks below keep
+ * the SID alive across sibling destruction, container reuse, heap
+ * churn, a move and a kernel-side DACL grant, so a wrong deallocator or
+ * a dangling SID is reported here instead of at process teardown.
+ */
+void TestAppContainerSidOwnership ()
+{
+	if (!ProbeWindowsIsolation ().appContainer) return;
+
+	std::wstring storageSid;
+	{
+		const auto storage = CreateWindowsAppContainer (WindowsWorkerRole::Storage);
+		assert (storage.has_value ());
+		storageSid = storage->SidString ();
+		assert (!storageSid.empty ());
+	}
+
+	for (int iteration = 0; iteration < 16; ++iteration)
+	{
+		auto reused = CreateWindowsAppContainer (WindowsWorkerRole::Storage);
+		assert (reused.has_value ());
+		// The durable profile keeps returning the same identity.
+		assert (reused->SidString () == storageSid);
+		assert (IsValidSid (reused->Sid ()));
+		// The SID is consumed by the kernel here: a released or dangling
+		// SID would make the grant fail.
+		const std::wstring suffix = L"sid-" + std::to_wstring (iteration);
+		const std::wstring directory = MakeFixtureDirectory (suffix.c_str ());
+		assert (GrantAppContainerPath (*reused, directory, false).has_value ());
+		const auto granted = InspectDacl (directory, reused->Sid ());
+		assert (granted.containerAce);
+		assert (!granted.everyone);
+		assert (RemoveDirectoryW (directory.c_str ()));
+
+		// Heap churn between two profile lookups: a wrong deallocator
+		// corrupts the heap and the next allocation is the one that
+		// notices.
+		std::vector<std::wstring> churn;
+		for (int index = 0; index < 64; ++index) churn.emplace_back (64, L'x');
+		assert (churn.size () == 64);
+	}
+
+	// Moving a container must transfer the SID and the capability storage,
+	// not copy or free them.
+	auto network = CreateWindowsAppContainer (WindowsWorkerRole::Network);
+	assert (network.has_value ());
+	assert (network->Capabilities ().size () == 2);
+	const PSID networkSid = network->Sid ();
+	WindowsAppContainer moved = std::move (*network);
+	assert (moved.IsValid ());
+	assert (moved.Sid () == networkSid);
+	assert (IsValidSid (moved.Sid ()));
+	assert (moved.Capabilities ().size () == 2);
+	for (const auto & capability : moved.Capabilities ())
+	{
+		assert (capability.Sid != nullptr);
+		assert (IsValidSid (capability.Sid));
+	}
+	assert (!network->IsValid ());
+	assert (!network->Sid ());
+}
+
 void TestPathGrant ()
 {
 	if (!ProbeWindowsIsolation ().appContainer) return;
@@ -359,6 +430,7 @@ int main ()
 	TestRoleTableInvariant ();
 	TestCapabilityMapping ();
 	TestAppContainerCreation ();
+	TestAppContainerSidOwnership ();
 	TestPathGrant ();
 	std::puts ("test-privsep-windows-isolation: ok");
 	return 0;

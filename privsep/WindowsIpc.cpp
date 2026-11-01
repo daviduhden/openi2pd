@@ -86,9 +86,6 @@
 #ifndef PROC_THREAD_ATTRIBUTE_JOB_LIST
 #define PROC_THREAD_ATTRIBUTE_JOB_LIST ProcThreadAttributeValue (13, FALSE, TRUE, FALSE)
 #endif
-#ifndef PROC_THREAD_ATTRIBUTE_HANDLE_LIST
-#define PROC_THREAD_ATTRIBUTE_HANDLE_LIST ProcThreadAttributeValue (2, FALSE, TRUE, FALSE)
-#endif
 #ifndef PROC_THREAD_ATTRIBUTE_SECURITY_CAPABILITIES
 #define PROC_THREAD_ATTRIBUTE_SECURITY_CAPABILITIES ProcThreadAttributeValue (9, FALSE, TRUE, FALSE)
 #endif
@@ -1488,16 +1485,18 @@ i2p::expected<WindowsHandle, std::string> CreateRestrictedWorkerToken (const Win
 	return WindowsHandle (restricted);
 }
 
-// Creation fails closed: a job that cannot carry the limits or the UI
-// restrictions is closed and reported instead of being used as a bare
-// container. KILL_ON_JOB_CLOSE is the stop backstop (closing the last
-// job
-// handle terminates the tree), DIE_ON_UNHANDLED_EXCEPTION turns a
-// worker crash
+// Creation fails closed: a job that cannot carry the limits is closed
+// and reported instead of being used as a bare container.
+// KILL_ON_JOB_CLOSE is the stop backstop (closing the last job handle
+// terminates the tree), DIE_ON_UNHANDLED_EXCEPTION turns a worker crash
 // into a diagnosable exit, and the active-process limit is what makes
 // "this role never spawns a child" enforceable rather than
-// conventional.
-i2p::expected<WindowsHandle, std::string> CreateWorkerJobObject (const WindowsWorkerPolicy & policy)
+// conventional. The UI restrictions are conditional: a nested job may
+// not carry them (see the nesting rule below), and dropping the whole
+// job for that reason would trade a mandatory containment boundary for
+// an optional anti-interference one.
+i2p::expected<WindowsHandle, std::string> CreateWorkerJobObject (
+	const WindowsWorkerPolicy & policy, bool * uiRestrictionsApplied)
 {
 	HANDLE job = CreateJobObjectW (nullptr, nullptr);
 	if (!job) return i2p::unexpected ("CreateJobObject: " + Win32ErrorText (GetLastError ()));
@@ -1524,30 +1523,44 @@ i2p::expected<WindowsHandle, std::string> CreateWorkerJobObject (const WindowsWo
 		CloseHandle (job);
 		return i2p::unexpected ("SetInformationJobObject: " + Win32ErrorText (error));
 	}
-	JOBOBJECT_BASIC_UI_RESTRICTIONS ui { };
-	ui.UIRestrictionsClass = JOB_OBJECT_UILIMIT_DESKTOP | JOB_OBJECT_UILIMIT_DISPLAYSETTINGS
-		| JOB_OBJECT_UILIMIT_EXITWINDOWS | JOB_OBJECT_UILIMIT_GLOBALATOMS | JOB_OBJECT_UILIMIT_HANDLES
-		| JOB_OBJECT_UILIMIT_READCLIPBOARD | JOB_OBJECT_UILIMIT_SYSTEMPARAMETERS | JOB_OBJECT_UILIMIT_WRITECLIPBOARD;
-	if (!SetInformationJobObject (job, JobObjectBasicUIRestrictions, &ui, sizeof (ui)))
+	// Nesting rule: a process that is already in a Job Object can only
+	// join another job when neither job sets UI limits. A service host
+	// (the SCM, a CI runner, a container runtime) usually owns the
+	// router in a job already, so demanding UI restrictions there makes
+	// the spawn impossible. The containment flags above
+	// (KILL_ON_JOB_CLOSE, DIE_ON_UNHANDLED_EXCEPTION, memory and process
+	// limits) are unaffected and are never dropped; only the
+	// anti-interference UI restrictions are skipped, and the caller
+	// reports that reduction.
+	BOOL insideJob = FALSE;
+	const bool nested = IsProcessInJob (GetCurrentProcess (), nullptr, &insideJob) && insideJob != FALSE;
+	const bool uiRestricted = !nested;
+	if (uiRestricted)
 	{
-		const DWORD error = GetLastError ();
-		CloseHandle (job);
-		return i2p::unexpected ("SetInformationJobObject(UI): " + Win32ErrorText (error));
+		JOBOBJECT_BASIC_UI_RESTRICTIONS ui { };
+		ui.UIRestrictionsClass = JOB_OBJECT_UILIMIT_DESKTOP | JOB_OBJECT_UILIMIT_DISPLAYSETTINGS
+			| JOB_OBJECT_UILIMIT_EXITWINDOWS | JOB_OBJECT_UILIMIT_GLOBALATOMS | JOB_OBJECT_UILIMIT_HANDLES
+			| JOB_OBJECT_UILIMIT_READCLIPBOARD | JOB_OBJECT_UILIMIT_SYSTEMPARAMETERS | JOB_OBJECT_UILIMIT_WRITECLIPBOARD;
+		if (!SetInformationJobObject (job, JobObjectBasicUIRestrictions, &ui, sizeof (ui)))
+		{
+			const DWORD error = GetLastError ();
+			CloseHandle (job);
+			return i2p::unexpected ("SetInformationJobObject(UI): " + Win32ErrorText (error));
+		}
 	}
+	if (uiRestrictionsApplied) *uiRestrictionsApplied = uiRestricted;
 	return WindowsHandle (job);
 }
 
 // Failure handling: every handle here is RAII-owned, so a rejected
-// attribute or
-// a failed CreateProcess leaves no process and no handle behind, while
-// a
-// failure after creation terminates the job, terminates the process and
-// waits
-// before returning. The child is created suspended and resumed only
-// after the
-// Job Object attribute or its fallback assignment succeeded, so no
-// worker
-// instruction runs outside the job.
+// attribute or a failed CreateProcess leaves no process and no handle
+// behind, while a failure after creation terminates the job, terminates
+// the process and waits before returning. The child is created
+// suspended and resumed only after the Job Object attribute or its
+// fallback assignment succeeded, so no worker instruction runs outside
+// the job. The attribute list is rebuilt for the one retry, so no
+// deleted list or dangling attribute value can reach a second
+// CreateProcess call.
 i2p::expected<WindowsWorkerProcess, std::string> SpawnWindowsWorker (const std::wstring & executable,
 	WindowsWorkerRole role, const std::wstring & pipeName, DWORD parentProcessId, DWORD parentSessionId,
 	const std::wstring & nonceHex, const WindowsAppContainer * container, const WindowsWorkerPolicy & policy)
@@ -1602,7 +1615,11 @@ i2p::expected<WindowsWorkerProcess, std::string> SpawnWindowsWorker (const std::
 	}
 	const bool lowPrivilege = useContainer && (container->LowPrivilege () || isolation.lowPrivilegeAppContainer);
 
-	auto job = policy.useJobObject ? CreateWorkerJobObject (policy)
+	// Every Windows worker is contained by a Job Object unless the policy
+	// explicitly disables it. The flag reports the nested-topology variant
+	// (no UI restrictions) so the caller can publish it.
+	bool jobUiRestrictions = true;
+	auto job = policy.useJobObject ? CreateWorkerJobObject (policy, &jobUiRestrictions)
 								   : i2p::expected<WindowsHandle, std::string> (WindowsHandle ());
 	if (!job) return i2p::unexpected (job.error ());
 	WindowsHandle token;
@@ -1632,131 +1649,210 @@ i2p::expected<WindowsWorkerProcess, std::string> SpawnWindowsWorker (const std::
 	if (!nullInput || !nullOutput || !nullError)
 		return i2p::unexpected ("CreateFile(NUL): " + Win32ErrorText (GetLastError ()));
 
-	// One attribute for the empty handle list, plus every mechanism
-	// actually
-	// requested. The count is computed, never hard-coded.
-	DWORD attributeCount = 1;
-	if (policy.useMitigationPolicy) ++attributeCount;
-	if (job->IsValid ()) ++attributeCount;
-	if (useContainer) ++attributeCount;
-	if (lowPrivilege) ++attributeCount;
+	// Attribute-list ownership: each attempt owns one buffer, freed
+	// exactly once. Every value handed to UpdateProcThreadAttribute must
+	// stay alive until DeleteProcThreadAttributeList, because the API
+	// stores the pointer and the kernel reads the value during the
+	// CreateProcess call. Keeping the value storage in this object (and
+	// not in the builder's stack frame) is load-bearing: a dangling
+	// attribute value is undefined behavior, and for
+	// PROC_THREAD_ATTRIBUTE_SECURITY_CAPABILITIES it makes CreateProcess
+	// fail with ERROR_INVALID_PARAMETER for every image.
+	struct AttributeList
+	{
+		std::vector<BYTE> buffer;
+		LPPROC_THREAD_ATTRIBUTE_LIST list = nullptr;
+		HANDLE jobHandle = nullptr;
+		DWORD64 mitigation = 0;
+		SECURITY_CAPABILITIES capabilities { };
+		DWORD allApplicationPackages = 0;
+		/** True when JOB_LIST was accepted by UpdateProcThreadAttribute. */
+		bool jobAttributeAdded = false;
+
+		AttributeList () = default;
+		AttributeList (const AttributeList &) = delete;
+		AttributeList & operator= (const AttributeList &) = delete;
+		~AttributeList ()
+		{
+			if (list) DeleteProcThreadAttributeList (list);
+		}
+	};
 
 	STARTUPINFOEXW startup { };
-	startup.StartupInfo.cb = sizeof (startup);
 	startup.StartupInfo.dwFlags |= STARTF_USESTDHANDLES;
 	startup.StartupInfo.hStdInput = nullInput.get ();
 	startup.StartupInfo.hStdOutput = nullOutput.get ();
 	startup.StartupInfo.hStdError = nullError.get ();
 
-	std::vector<BYTE> attributeBuffer;
-	struct AttributeListReleaser
+	// Build one attribute list. `includeJob` selects the atomic job
+	// attribute; every other mechanism is mandatory for this spawn and a
+	// failure to add it aborts the attempt instead of silently spawning a
+	// weaker worker. There is deliberately no handle list: bInheritHandles
+	// is FALSE and no handle in this function is inheritable, so a
+	// zero-length PROC_THREAD_ATTRIBUTE_HANDLE_LIST would add no
+	// restriction while adding one more attribute the kernel can reject.
+	auto buildAttributeList = [&] (
+		AttributeList & attributes, bool includeJob, std::string & error) -> bool
 	{
-		LPPROC_THREAD_ATTRIBUTE_LIST list = nullptr;
-		~AttributeListReleaser ()
+		DWORD attributeCount = 0;
+		if (policy.useMitigationPolicy) ++attributeCount;
+		if (includeJob && job->IsValid ()) ++attributeCount;
+		if (useContainer) ++attributeCount;
+		if (lowPrivilege) ++attributeCount;
+		// No mechanism requested: create the process with a plain
+		// STARTUPINFO instead of an empty attribute list, which
+		// InitializeProcThreadAttributeList refuses.
+		if (attributeCount == 0) return true;
+
+		SIZE_T attributeSize = 0;
+		// The first call is expected to fail with ERROR_INSUFFICIENT_BUFFER
+		// and reports the required size; only a zero size is an error.
+		(void)InitializeProcThreadAttributeList (nullptr, attributeCount, 0, &attributeSize);
+		if (attributeSize == 0)
 		{
-			if (list) DeleteProcThreadAttributeList (list);
+			error = "InitializeProcThreadAttributeList: " + Win32ErrorText (GetLastError ());
+			return false;
 		}
-	} attributeGuard;
-	SIZE_T attributeSize = 0;
-	// The first call is expected to fail with ERROR_INSUFFICIENT_BUFFER
-	// and
-	// reports the required size; only a zero size is an error.
-	(void)InitializeProcThreadAttributeList (nullptr, attributeCount, 0, &attributeSize);
-	if (attributeSize == 0)
-		return i2p::unexpected ("InitializeProcThreadAttributeList: " + Win32ErrorText (GetLastError ()));
-	attributeBuffer.resize (attributeSize);
-	startup.lpAttributeList = reinterpret_cast<LPPROC_THREAD_ATTRIBUTE_LIST> (attributeBuffer.data ());
-	if (!InitializeProcThreadAttributeList (startup.lpAttributeList, attributeCount, 0, &attributeSize))
-		return i2p::unexpected ("InitializeProcThreadAttributeList: " + Win32ErrorText (GetLastError ()));
-	attributeGuard.list = startup.lpAttributeList;
-
-	// Inheriting is already disabled, so the empty handle list is explicit
-	// defence in depth. If the kernel rejects a zero-length list, the
-	// spawn
-	// continues with bInheritHandles=FALSE rather than failing a worker
-	// for an
-	// attribute that adds no restriction.
-	(void)UpdateProcThreadAttribute (
-		startup.lpAttributeList, 0, PROC_THREAD_ATTRIBUTE_HANDLE_LIST, nullptr, 0, nullptr, nullptr);
-
-	if (policy.useMitigationPolicy)
-	{
-		// Keep DEP, SEHOP, mandatory ASLR, heap termination and strict handle
-		// checks enabled, disable legacy extension points and dynamic code
-		// (every Windows worker is a native image, none of them is Python or
-		// a
-		// JIT host), and require CFG for the images that support it. The
-		// DEP-ATL
-		// compatibility emulation bit is deliberately not set; it would
-		// weaken
-		// DEP and is not defined by the MinGW headers.
-		DWORD64 mitigation = PROCESS_CREATION_MITIGATION_POLICY_DEP_ENABLE
-			| PROCESS_CREATION_MITIGATION_POLICY_SEHOP_ENABLE
-			| PROCESS_CREATION_MITIGATION_POLICY_FORCE_RELOCATE_IMAGES_ALWAYS_ON
-			| PROCESS_CREATION_MITIGATION_POLICY_HEAP_TERMINATE_ALWAYS_ON
-			| PROCESS_CREATION_MITIGATION_POLICY_BOTTOM_UP_ASLR_ALWAYS_ON
-			| PROCESS_CREATION_MITIGATION_POLICY_HIGH_ENTROPY_ASLR_ALWAYS_ON
-			| PROCESS_CREATION_MITIGATION_POLICY_STRICT_HANDLE_CHECKS_ALWAYS_ON
-			| PROCESS_CREATION_MITIGATION_POLICY_EXTENSION_POINT_DISABLE_ALWAYS_ON
-			| PROCESS_CREATION_MITIGATION_POLICY_PROHIBIT_DYNAMIC_CODE_ALWAYS_ON
-			| PROCESS_CREATION_MITIGATION_POLICY_CONTROL_FLOW_GUARD_ALWAYS_ON;
-		if (!UpdateProcThreadAttribute (startup.lpAttributeList, 0, PROC_THREAD_ATTRIBUTE_MITIGATION_POLICY,
-				&mitigation, sizeof (mitigation), nullptr, nullptr))
-			return i2p::unexpected ("UpdateProcThreadAttribute(mitigation): " + Win32ErrorText (GetLastError ()));
-	}
-
-	bool jobInAttributeList = false;
-	if (job->IsValid ())
-	{
-		HANDLE jobHandle = job->Native ();
-		// The process is created suspended either way, so the fallback
-		// assignment below also happens before the first instruction runs.
-		jobInAttributeList = UpdateProcThreadAttribute (startup.lpAttributeList, 0, PROC_THREAD_ATTRIBUTE_JOB_LIST,
-								 &jobHandle, sizeof (jobHandle), nullptr, nullptr)
-			!= FALSE;
-	}
-
-	if (useContainer)
-	{
-		if (!container->Sid ()) return i2p::unexpected ("worker AppContainer has no SID");
-		SECURITY_CAPABILITIES capabilities { };
-		capabilities.AppContainerSid = container->Sid ();
-		capabilities.Capabilities = const_cast<SID_AND_ATTRIBUTES *> (container->Capabilities ().data ());
-		capabilities.CapabilityCount = static_cast<DWORD> (container->Capabilities ().size ());
-		capabilities.Reserved = 0;
-		if (!UpdateProcThreadAttribute (startup.lpAttributeList, 0, PROC_THREAD_ATTRIBUTE_SECURITY_CAPABILITIES,
-				&capabilities, sizeof (capabilities), nullptr, nullptr))
-			return i2p::unexpected (
-				"UpdateProcThreadAttribute(security capabilities): " + Win32ErrorText (GetLastError ()));
-
-		if (lowPrivilege)
+		// std::vector storage comes from operator new, so the buffer is
+		// aligned for LPPROC_THREAD_ATTRIBUTE_LIST without extra work.
+		attributes.buffer.resize (attributeSize);
+		attributes.list = reinterpret_cast<LPPROC_THREAD_ATTRIBUTE_LIST> (attributes.buffer.data ());
+		if (!InitializeProcThreadAttributeList (attributes.list, attributeCount, 0, &attributeSize))
 		{
-			// A low-privilege AppContainer is the same profile without the
-			// implicit all-application-packages capability.
-			DWORD allPackages = PROCESS_CREATION_ALL_APPLICATION_PACKAGES_OPT_OUT;
-			if (!UpdateProcThreadAttribute (startup.lpAttributeList, 0,
-					PROC_THREAD_ATTRIBUTE_ALL_APPLICATION_PACKAGES_POLICY, &allPackages, sizeof (allPackages), nullptr,
-					nullptr))
-				return i2p::unexpected (
-					"UpdateProcThreadAttribute(low privilege): " + Win32ErrorText (GetLastError ()));
+			error = "InitializeProcThreadAttributeList: " + Win32ErrorText (GetLastError ());
+			attributes.list = nullptr;
+			return false;
 		}
-	}
 
-	const DWORD creationFlags
-		= CREATE_NO_WINDOW | CREATE_SUSPENDED | EXTENDED_STARTUPINFO_PRESENT | CREATE_UNICODE_ENVIRONMENT;
+		if (policy.useMitigationPolicy)
+		{
+			// Keep DEP, SEHOP, mandatory ASLR, heap termination and strict
+			// handle checks enabled, disable legacy extension points and
+			// dynamic code (every Windows worker is a native image, none of
+			// them is Python or a JIT host), and require CFG for the images
+			// that support it. The DEP-ATL compatibility emulation bit is
+			// deliberately not set; it would weaken DEP and is not defined by
+			// the MinGW headers.
+			attributes.mitigation = PROCESS_CREATION_MITIGATION_POLICY_DEP_ENABLE
+				| PROCESS_CREATION_MITIGATION_POLICY_SEHOP_ENABLE
+				| PROCESS_CREATION_MITIGATION_POLICY_FORCE_RELOCATE_IMAGES_ALWAYS_ON
+				| PROCESS_CREATION_MITIGATION_POLICY_HEAP_TERMINATE_ALWAYS_ON
+				| PROCESS_CREATION_MITIGATION_POLICY_BOTTOM_UP_ASLR_ALWAYS_ON
+				| PROCESS_CREATION_MITIGATION_POLICY_HIGH_ENTROPY_ASLR_ALWAYS_ON
+				| PROCESS_CREATION_MITIGATION_POLICY_STRICT_HANDLE_CHECKS_ALWAYS_ON
+				| PROCESS_CREATION_MITIGATION_POLICY_EXTENSION_POINT_DISABLE_ALWAYS_ON
+				| PROCESS_CREATION_MITIGATION_POLICY_PROHIBIT_DYNAMIC_CODE_ALWAYS_ON
+				| PROCESS_CREATION_MITIGATION_POLICY_CONTROL_FLOW_GUARD_ALWAYS_ON;
+			if (!UpdateProcThreadAttribute (attributes.list, 0, PROC_THREAD_ATTRIBUTE_MITIGATION_POLICY,
+					&attributes.mitigation, sizeof (attributes.mitigation), nullptr, nullptr))
+			{
+				error = "UpdateProcThreadAttribute(mitigation): " + Win32ErrorText (GetLastError ());
+				return false;
+			}
+		}
+
+		if (includeJob && job->IsValid ())
+		{
+			attributes.jobHandle = job->Native ();
+			// The process is created suspended either way, so the fallback
+			// assignment below also happens before the first instruction
+			// runs. A rejected update simply leaves the attribute out.
+			attributes.jobAttributeAdded = UpdateProcThreadAttribute (attributes.list, 0,
+											  PROC_THREAD_ATTRIBUTE_JOB_LIST, &attributes.jobHandle,
+											  sizeof (attributes.jobHandle), nullptr, nullptr)
+				!= FALSE;
+		}
+
+		if (useContainer)
+		{
+			if (!container->Sid ())
+			{
+				error = "worker AppContainer has no SID";
+				return false;
+			}
+			attributes.capabilities.AppContainerSid = container->Sid ();
+			attributes.capabilities.Capabilities
+				= const_cast<SID_AND_ATTRIBUTES *> (container->Capabilities ().data ());
+			attributes.capabilities.CapabilityCount = static_cast<DWORD> (container->Capabilities ().size ());
+			attributes.capabilities.Reserved = 0;
+			// The container owns the SID and the capability array, and it
+			// outlives this call, so only the descriptors need to persist.
+			if (!UpdateProcThreadAttribute (attributes.list, 0, PROC_THREAD_ATTRIBUTE_SECURITY_CAPABILITIES,
+					&attributes.capabilities, sizeof (attributes.capabilities), nullptr, nullptr))
+			{
+				error = "UpdateProcThreadAttribute(security capabilities): " + Win32ErrorText (GetLastError ());
+				return false;
+			}
+
+			if (lowPrivilege)
+			{
+				// A low-privilege AppContainer is the same profile without
+				// the implicit all-application-packages capability.
+				attributes.allApplicationPackages = PROCESS_CREATION_ALL_APPLICATION_PACKAGES_OPT_OUT;
+				if (!UpdateProcThreadAttribute (attributes.list, 0,
+						PROC_THREAD_ATTRIBUTE_ALL_APPLICATION_PACKAGES_POLICY, &attributes.allApplicationPackages,
+						sizeof (attributes.allApplicationPackages), nullptr, nullptr))
+				{
+					error = "UpdateProcThreadAttribute(low privilege): " + Win32ErrorText (GetLastError ());
+					return false;
+				}
+			}
+		}
+		return true;
+	};
+
+	// Two bounded attempts. The first asks the kernel to place the
+	// suspended child in the Job Object atomically; a service host that
+	// already owns this process in a Job Object can refuse a nested job,
+	// which surfaces as ERROR_INVALID_PARAMETER (or ERROR_ACCESS_DENIED /
+	// ERROR_NOT_SUPPORTED) from CreateProcess. The second attempt creates
+	// the same suspended process without that attribute and assigns it
+	// below, still before the first instruction runs. Containment is
+	// identical: a process that cannot be assigned is terminated and the
+	// spawn fails.
 	PROCESS_INFORMATION processInfo { };
 	BOOL created = FALSE;
-	if (useContainer)
-		created = CreateProcessW (executable.c_str (), mutableCommandLine.data (), nullptr, nullptr, FALSE,
-			creationFlags, nullptr, nullptr, &startup.StartupInfo, &processInfo);
-	else
-		created = CreateProcessAsUserW (token.Native (), executable.c_str (), mutableCommandLine.data (), nullptr,
-			nullptr, FALSE, creationFlags, nullptr, nullptr, &startup.StartupInfo, &processInfo);
-	if (!created)
+	bool jobInAttributeList = false;
+	std::string lastCreateError;
+	for (const bool includeJob : { true, false })
 	{
+		AttributeList attributes;
+		std::string attributeError;
+		if (!buildAttributeList (attributes, includeJob, attributeError))
+			return i2p::unexpected (attributeError);
+
+		const bool extended = attributes.list != nullptr;
+		// STARTUPINFOEXW.cb must be sizeof(STARTUPINFO) unless
+		// EXTENDED_STARTUPINFO_PRESENT is set, so the two values always move
+		// together.
+		startup.StartupInfo.cb = static_cast<DWORD> (extended ? sizeof (startup) : sizeof (STARTUPINFOW));
+		startup.lpAttributeList = attributes.list;
+		const DWORD creationFlags = CREATE_NO_WINDOW | CREATE_SUSPENDED | CREATE_UNICODE_ENVIRONMENT
+			| (extended ? EXTENDED_STARTUPINFO_PRESENT : 0u);
+		if (useContainer)
+			created = CreateProcessW (executable.c_str (), mutableCommandLine.data (), nullptr, nullptr, FALSE,
+				creationFlags, nullptr, nullptr, &startup.StartupInfo, &processInfo);
+		else
+			created = CreateProcessAsUserW (token.Native (), executable.c_str (), mutableCommandLine.data (), nullptr,
+				nullptr, FALSE, creationFlags, nullptr, nullptr, &startup.StartupInfo, &processInfo);
+		// The list dies with this iteration; CreateProcess has copied what
+		// it needs by the time it returns.
+		startup.lpAttributeList = nullptr;
+		if (created)
+		{
+			jobInAttributeList = attributes.jobAttributeAdded;
+			break;
+		}
 		const DWORD error = GetLastError ();
-		return i2p::unexpected ("CreateProcess(worker): " + Win32ErrorText (error));
+		lastCreateError = "CreateProcess(worker): " + Win32ErrorText (error);
+		// Only a rejected job attribute is worth a second attempt: an
+		// inaccessible image, a token problem or a policy rejection would
+		// fail identically.
+		const bool jobRejected = includeJob && job->IsValid ()
+			&& (error == ERROR_INVALID_PARAMETER || error == ERROR_ACCESS_DENIED || error == ERROR_NOT_SUPPORTED);
+		if (!jobRejected) return i2p::unexpected (lastCreateError);
 	}
+	if (!created) return i2p::unexpected (lastCreateError);
 
 	WindowsWorkerProcess worker;
 	worker.process.Reset (processInfo.hProcess);
@@ -1764,9 +1860,10 @@ i2p::expected<WindowsWorkerProcess, std::string> SpawnWindowsWorker (const std::
 	worker.job = std::move (*job);
 	worker.processId = processInfo.dwProcessId;
 	worker.nonceHex = nonce;
+	worker.jobUiRestrictions = jobUiRestrictions;
 	// PROC_THREAD_ATTRIBUTE_JOB_LIST already placed the suspended process
-	// in
-	// the job; the fallback assigns it before the first instruction runs.
+	// in the job; the fallback assigns it before the first instruction
+	// runs.
 	if (!jobInAttributeList && worker.job.IsValid ()
 		&& !AssignProcessToJobObject (worker.job.Native (), worker.process.Native ()))
 	{

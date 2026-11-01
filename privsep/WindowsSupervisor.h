@@ -92,6 +92,21 @@ constexpr std::string_view NestedJobDiagnostic (bool insideJobObject)
 	return insideJobObject ? WINDOWS_NESTED_JOB_DIAGNOSTIC : std::string_view { };
 }
 
+/**
+ * Static, non-secret note for a worker Job Object created inside an
+ * existing job hierarchy. A nested job may not set UI limits, so the
+ * worker job is created without JobObjectBasicUIRestrictions; process
+ * containment, KILL_ON_JOB_CLOSE and every resource limit are unchanged
+ * and the spawn is never failed for this reduction.
+ */
+inline constexpr std::string_view WINDOWS_NESTED_JOB_UI_DIAGNOSTIC
+	= "the worker Job Object is nested inside an existing job; its UI restrictions cannot be applied";
+
+constexpr std::string_view NestedJobUiDiagnostic (bool uiRestrictionsApplied)
+{
+	return uiRestrictionsApplied ? std::string_view { } : WINDOWS_NESTED_JOB_UI_DIAGNOSTIC;
+}
+
 /** Why the current worker generation ended. */
 enum class WindowsWorkerFailureKind : uint8_t
 {

@@ -231,8 +231,16 @@ i2p::expected<WindowsHandle, std::string> CreateRestrictedWorkerToken (const Win
  * that is
  * allowed to spawn a child (the supervisor) must not set a process
  * limit of one.
+ *
+ * A process that already belongs to a Job Object can only be joined to
+ * a nested job when neither job sets UI limits, so on such a host the
+ * worker job is created without JobObjectBasicUIRestrictions. Process
+ * containment, KILL_ON_JOB_CLOSE and every resource limit are
+ * unchanged; @a uiRestrictionsApplied reports which variant was created
+ * (false for the nested variant, untouched when the parameter is null).
  */
-i2p::expected<WindowsHandle, std::string> CreateWorkerJobObject (const WindowsWorkerPolicy & policy);
+i2p::expected<WindowsHandle, std::string> CreateWorkerJobObject (
+	const WindowsWorkerPolicy & policy, bool * uiRestrictionsApplied = nullptr);
 
 struct WindowsWorkerProcess
 {
@@ -246,6 +254,15 @@ struct WindowsWorkerProcess
 	 * hand the same value to WindowsServer::AcceptBound().
 	 */
 	std::wstring nonceHex;
+	/**
+	 * False when the worker Job Object had to be created without
+	 * JobObjectBasicUIRestrictions because this process is already in a
+	 * job (a nested job may not set UI limits). Containment,
+	 * KILL_ON_JOB_CLOSE and the resource limits are unaffected; the
+	 * caller reports the reduced mitigation instead of failing the
+	 * spawn.
+	 */
+	bool jobUiRestrictions = true;
 
 	/** Bounded wait; false on timeout or an invalid handle. */
 	bool Wait (DWORD timeoutMs) const;
@@ -277,6 +294,15 @@ struct WindowsWorkerProcess
  * an unseparated token, and every failure terminates the child and
  * closes its
  * handles.
+ *
+ * Job membership is attempted atomically through
+ * PROC_THREAD_ATTRIBUTE_JOB_LIST. When the kernel rejects that
+ * attribute (a service host that already owns this process in a Job
+ * Object can refuse a nested job at creation time) the spawn is retried
+ * once without it and the still-suspended process is assigned with
+ * AssignProcessToJobObject before its initial thread runs. A failed
+ * assignment terminates the child: a worker never runs outside its Job
+ * Object.
  *
  * An empty `nonceHex` makes the helper generate one (returned in
  * `WindowsWorkerProcess::nonceHex`); a supplied value must be 64 hex

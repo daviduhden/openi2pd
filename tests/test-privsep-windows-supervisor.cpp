@@ -8,10 +8,12 @@
  * drain: the clock-injected restart ladder and its status publications,
  * the failure classification (setup failures are terminal, an
  * authenticated exit is restartable), the shared stop budgets, the
- * nested-Job Object diagnostic, a failed spawn that leaves no handle
- * behind, Job Object KILL_ON_JOB_CLOSE and TerminateJobObject
- * behaviour, and a live Ping-only worker that is killed and restarted
- * under a real Job Object. Returns 77 on another platform.
+ * nested-Job Object and nested-UI-restriction diagnostics, the
+ * mandatory containment limits of the created worker job, a failed
+ * spawn that leaves no handle behind, Job Object KILL_ON_JOB_CLOSE and
+ * TerminateJobObject behaviour, and a live Ping-only worker that is
+ * killed and restarted under a real Job Object. Returns 77 on another
+ * platform.
  *
  * The service wrapper itself links the daemon singleton, so it is
  * compiled only into the i2pd executable. Its drain contract is
@@ -78,6 +80,25 @@ DWORD HandleCount ()
 	DWORD count = 0;
 	if (!GetProcessHandleCount (GetCurrentProcess (), &count)) return 0xffffffffu;
 	return count;
+}
+
+/*
+ * The system text of one Win32 error, trimmed the way the product's
+ * diagnostic trims it. It lets a check name a failure class without
+ * hard-coding English.
+ */
+std::string SystemErrorText (DWORD error)
+{
+	char * message = nullptr;
+	const DWORD length = FormatMessageA (
+		FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS, nullptr, error,
+		MAKELANGID (LANG_NEUTRAL, SUBLANG_DEFAULT), reinterpret_cast<LPSTR> (&message), 0, nullptr);
+	if (!length || !message) return { };
+	std::string text (message, length);
+	LocalFree (message);
+	while (!text.empty () && (text.back () == '\r' || text.back () == '\n' || text.back () == ' '))
+		text.pop_back ();
+	return text;
 }
 
 /*
@@ -276,6 +297,56 @@ void TestNestedJobDiagnostic ()
 	// none.
 	const bool inJob = IsCurrentProcessInJobObject ();
 	assert (NestedJobDiagnostic (inJob).empty () == !inJob);
+
+	// The nested-topology note is the inverse: it is reported exactly when
+	// the worker job could not carry UI restrictions. Containment is not
+	// affected, so the text never claims the spawn failed.
+	assert (NestedJobUiDiagnostic (true).empty ());
+	assert (!NestedJobUiDiagnostic (false).empty ());
+	assert (NestedJobUiDiagnostic (false) == WINDOWS_NESTED_JOB_UI_DIAGNOSTIC);
+	assert (NestedJobUiDiagnostic (false).find ("Job Object") != std::string_view::npos);
+}
+
+/*
+ * The worker Job Object is the containment boundary. Its kill/die flags
+ * and the per-role limits are always applied; the UI restrictions are
+ * applied only when this process is not already inside a job, because a
+ * nested job may not set UI limits. Querying the created job pins both
+ * halves, so a future "make the spawn work" change cannot silently
+ * trade KILL_ON_JOB_CLOSE for the UI restrictions.
+ */
+void TestWorkerJobContainment ()
+{
+	const auto policy = GetWindowsWorkerPolicy (WindowsWorkerRole::Admin);
+	bool uiRestricted = false;
+	auto job = CreateWorkerJobObject (policy, &uiRestricted);
+	assert (job.has_value ());
+	assert (job->IsValid ());
+	assert (uiRestricted == !IsCurrentProcessInJobObject ());
+
+	JOBOBJECT_EXTENDED_LIMIT_INFORMATION limits { };
+	assert (QueryInformationJobObject (
+		job->Native (), JobObjectExtendedLimitInformation, &limits, sizeof (limits), nullptr));
+	assert ((limits.BasicLimitInformation.LimitFlags & JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE) != 0);
+	assert ((limits.BasicLimitInformation.LimitFlags & JOB_OBJECT_LIMIT_DIE_ON_UNHANDLED_EXCEPTION) != 0);
+	assert ((limits.BasicLimitInformation.LimitFlags & JOB_OBJECT_LIMIT_ACTIVE_PROCESS) != 0);
+	assert ((limits.BasicLimitInformation.LimitFlags & JOB_OBJECT_LIMIT_PROCESS_MEMORY) != 0);
+	assert (limits.BasicLimitInformation.ActiveProcessLimit == policy.processLimit);
+	assert (limits.ProcessMemoryLimit == static_cast<SIZE_T> (policy.memoryLimit));
+
+	JOBOBJECT_BASIC_UI_RESTRICTIONS ui { };
+	assert (QueryInformationJobObject (job->Native (), JobObjectBasicUIRestrictions, &ui, sizeof (ui), nullptr));
+	if (uiRestricted)
+		assert ((ui.UIRestrictionsClass & JOB_OBJECT_UILIMIT_HANDLES) != 0);
+	else
+		assert (ui.UIRestrictionsClass == 0);
+	assert (NestedJobUiDiagnostic (uiRestricted).empty () == uiRestricted);
+
+	// A null out-parameter is allowed: the caller that only wants the job
+	// must not be forced to observe the variant.
+	auto plain = CreateWorkerJobObject (policy);
+	assert (plain.has_value ());
+	assert (plain->IsValid ());
 }
 
 void TestRoleIdentityPolicy ()
@@ -316,6 +387,11 @@ void TestFailClosedSetup ()
 		SupervisorStatus status;
 		WindowsWorkerSupervisorConfig config;
 		WindowsWorkerSupervisor supervisor ("test-empty-exe", config, status);
+		// The topology probe is published at construction, so an operator
+		// reading the diagnostic knows whether a nested job is possible
+		// before the first spawn.
+		assert (supervisor.JobDiagnostic ().empty () == !supervisor.IsInsideJobObject ());
+		assert (supervisor.IsInsideJobObject () == IsCurrentProcessInJobObject ());
 		auto started = supervisor.Start ();
 		assert (!started.has_value ());
 		assert (supervisor.IsTerminal ());
@@ -353,7 +429,8 @@ void TestFailClosedSetup ()
  * A spawn that cannot succeed must terminate every intermediate object:
  * the listener, the stop event and the Job Object. One warm-up call
  * absorbs one-time loader/BCrypt allocations before the delta is
- * measured.
+ * measured. The diagnostic must also not be a process-attribute
+ * rejection, which the kernel reports before it looks for the image.
  */
 void TestFailedSpawnLeavesNoHandles ()
 {
@@ -368,7 +445,15 @@ void TestFailedSpawnLeavesNoHandles ()
 		auto started = supervisor.Start ();
 		if (started.has_value ()) return true;
 		assert (supervisor.IsTerminal ());
-		assert (!supervisor.Diagnostic ().empty ());
+		const std::string diagnostic = supervisor.Diagnostic ();
+		assert (!diagnostic.empty ());
+		// The kernel validates the process attribute list before it looks
+		// for the image, so a dangling or malformed attribute value fails
+		// with ERROR_INVALID_PARAMETER for any path. A host that cannot
+		// create the AppContainer fails earlier; in every case this
+		// diagnostic must not be the parameter-rejection text.
+		const std::string badParameter = SystemErrorText (ERROR_INVALID_PARAMETER);
+		assert (badParameter.empty () || diagnostic.find (badParameter) == std::string::npos);
 		return false;
 	};
 
@@ -390,7 +475,8 @@ bool StartChildInJob (WindowsHandle & job, WindowsHandle & process, DWORD & proc
 {
 	const std::wstring self = SelfExecutable ();
 	if (self.empty ()) return false;
-	auto jobHandle = CreateWorkerJobObject (GetWindowsWorkerPolicy (WindowsWorkerRole::Admin));
+	bool uiRestricted = false;
+	auto jobHandle = CreateWorkerJobObject (GetWindowsWorkerPolicy (WindowsWorkerRole::Admin), &uiRestricted);
 	if (!jobHandle) return false;
 	job = std::move (*jobHandle);
 
@@ -402,16 +488,24 @@ bool StartChildInJob (WindowsHandle & job, WindowsHandle & process, DWORD & proc
 	PROCESS_INFORMATION information { };
 	if (!CreateProcessW (self.c_str (), mutableCommandLine.data (), nullptr, nullptr, FALSE,
 			CREATE_SUSPENDED | CREATE_NO_WINDOW, nullptr, nullptr, &startup, &information))
+	{
+		std::printf ("skip: cannot create the helper child (Win32 error %lu)\n",
+			static_cast<unsigned long> (GetLastError ()));
 		return false;
+	}
 	process.Reset (information.hProcess);
 	WindowsHandle thread (information.hThread);
 	processId = information.dwProcessId;
 	// A nested assignment into a restrictive parent job can be rejected;
-	// the caller reports that as a skip instead of a failure.
+	// the caller reports that as a skip instead of a failure. The reason
+	// is printed so a skip is diagnosable rather than silent.
 	if (!AssignProcessToJobObject (job.Native (), process.Native ()))
 	{
+		const DWORD error = GetLastError ();
 		TerminateProcess (process.Native (), ERROR_ACCESS_DENIED);
 		WaitForSingleObject (process.Native (), 5000);
+		std::printf ("skip: cannot assign the helper child to a worker job (Win32 error %lu)\n",
+			static_cast<unsigned long> (error));
 		return false;
 	}
 	if (ResumeThread (thread.Native ()) == static_cast<DWORD> (-1)) return false;
@@ -655,6 +749,7 @@ int main (int argc, char ** argv)
 	TestFailureClassification ();
 	TestBudgets ();
 	TestNestedJobDiagnostic ();
+	TestWorkerJobContainment ();
 	TestRoleIdentityPolicy ();
 	TestFailClosedSetup ();
 	TestFailedSpawnLeavesNoHandles ();

@@ -81,6 +81,7 @@ WindowsWorkerSupervisor::WindowsWorkerSupervisor (
 {
 	BOOL insideJob = FALSE;
 	if (IsProcessInJob (GetCurrentProcess (), nullptr, &insideJob)) m_InsideJob = insideJob != FALSE;
+	m_JobDiagnostic = std::string (NestedJobDiagnostic (m_InsideJob));
 	HANDLE stopEvent = CreateEventW (nullptr, TRUE, FALSE, nullptr);
 	if (!stopEvent)
 		SetDiagnostic ("CreateEvent(stop): " + Win32ErrorText (GetLastError ()));
@@ -174,6 +175,14 @@ i2p::expected<void, std::string> WindowsWorkerSupervisor::SpawnGeneration (uint3
 
 	m_Worker = std::make_unique<WindowsWorkerProcess> (std::move (*spawned));
 	m_ProcessId = m_Worker->processId;
+	if (!m_Worker->jobUiRestrictions)
+	{
+		// The worker is contained by its Job Object, but a nested job
+		// cannot also carry the anti-interference UI restrictions. Report
+		// the reduction once instead of failing a worker that is still
+		// inside KILL_ON_JOB_CLOSE and the resource limits.
+		std::cerr << "windows worker supervisor (" << m_Name << "): " << NestedJobUiDiagnostic (false) << std::endl;
+	}
 	// The spawn helper is authoritative for the value the child actually
 	// received; fall back to the requested value when it reports none.
 	const std::wstring acceptedNonce = m_Worker->nonceHex.empty () ? *nonce : m_Worker->nonceHex;

@@ -155,6 +155,28 @@ namespace
 	};
 	using LocalPtr = std::unique_ptr<void, LocalFreeDeleter>;
 
+	/**
+	 * Releases an AppContainer profile SID.
+	 *
+	 * CreateAppContainerProfile() and
+	 * DeriveAppContainerSidFromAppContainerName() both document that
+	 * their SID "must be freed using the FreeSid function". LocalFree()
+	 * looks interchangeable because both reach the process heap, but the
+	 * two allocators do not use the same block layout: releasing a
+	 * profile SID with LocalFree() corrupts the heap, and the corruption
+	 * is only reported much later (typically as STATUS_HEAP_CORRUPTION
+	 * when the process exits). Capability SIDs stay LocalAlloc blocks
+	 * because the profile/token APIs consume them as plain SIDs.
+	 */
+	struct SidDeleter
+	{
+		void operator() (void * sid) const
+		{
+			if (sid) FreeSid (static_cast<PSID> (sid));
+		}
+	};
+	using SidPtr = std::unique_ptr<void, SidDeleter>;
+
 	bool IsAsciiLetter (wchar_t ch)
 	{
 		return (ch >= L'A' && ch <= L'Z') || (ch >= L'a' && ch <= L'z');
@@ -180,8 +202,10 @@ namespace
 
 	/**
 	 * One capability SID, owned by the caller's SID_AND_ATTRIBUTES entry.
-	 * The SID is a LocalAlloc block because the profile/token APIs consume
-	 * a PSID and every owner in this file frees with LocalFree.
+	 * A capability SID is a LocalAlloc block because the profile/token
+	 * APIs consume it as a plain PSID and its owner releases it with
+	 * LocalFree. Profile SIDs returned by userenv are different: they are
+	 * FreeSid-owned (see SidDeleter).
 	 */
 	bool AppendCapability (
 		WELL_KNOWN_SID_TYPE type, std::vector<SID_AND_ATTRIBUTES> & capabilities, std::string & error)
@@ -354,39 +378,45 @@ struct WindowsAppContainer::Impl
 
 		const std::wstring displayName = ProfileDisplayName (role);
 		const std::wstring description = ProfileDescription (role);
-		PSID profileSid = nullptr;
-		HRESULT result = CreateAppContainerProfile (name.c_str (), displayName.c_str (), description.c_str (),
-			capabilities.empty () ? nullptr : capabilities.data (), static_cast<DWORD> (capabilities.size ()),
-			&profileSid);
-		if (result == HRESULT_FROM_WIN32 (ERROR_ALREADY_EXISTS) || result == S_FALSE)
+		// The SID comes back from one of two userenv functions and is
+		// owned by SidPtr from the moment it exists, so every early
+		// return below releases it with the matching deallocator.
+		SidPtr profileSid;
 		{
-			// The profile is durable and operator-owned. Reuse it by deriving
-			// its SID; never delete or recreate it here
-			// (DeleteAppContainerProfile is an explicit operator action after
-			// decommissioning every worker).
-			if (profileSid)
+			PSID created = nullptr;
+			HRESULT result = CreateAppContainerProfile (name.c_str (), displayName.c_str (), description.c_str (),
+				capabilities.empty () ? nullptr : capabilities.data (), static_cast<DWORD> (capabilities.size ()),
+				&created);
+			if (result == HRESULT_FROM_WIN32 (ERROR_ALREADY_EXISTS) || result == S_FALSE)
 			{
-				LocalFree (profileSid);
-				profileSid = nullptr;
+				// The profile is durable and operator-owned. Reuse it by
+				// deriving its SID; never delete or recreate it here
+				// (DeleteAppContainerProfile is an explicit operator action
+				// after decommissioning every worker).
+				profileSid.reset (created);
+				created = nullptr;
+				result = DeriveAppContainerSidFromAppContainerName (name.c_str (), &created);
+				profileSid.reset (created);
 			}
-			result = DeriveAppContainerSidFromAppContainerName (name.c_str (), &profileSid);
+			else
+				profileSid.reset (created);
+			if (FAILED (result))
+			{
+				error = std::string ("AppContainer profile for role '") + NarrowAscii (RoleToken (role))
+					+ "': " + HResultText (result);
+				return;
+			}
 		}
-		if (FAILED (result))
-		{
-			error = std::string ("AppContainer profile for role '") + NarrowAscii (RoleToken (role))
-				+ "': " + HResultText (result);
-			if (profileSid) LocalFree (profileSid);
-			return;
-		}
-		if (!profileSid || !IsValidSid (profileSid) || GetLengthSid (profileSid) == 0)
+		if (!profileSid || !IsValidSid (static_cast<PSID> (profileSid.get ()))
+			|| GetLengthSid (static_cast<PSID> (profileSid.get ())) == 0)
 		{
 			error = std::string ("AppContainer profile for role '") + NarrowAscii (RoleToken (role))
 				+ "' returned no valid SID";
-			if (profileSid) LocalFree (profileSid);
 			return;
 		}
-		// Ownership moves to this object; every later early return frees it.
-		sid = profileSid;
+		// Ownership moves to this object; every later early return frees
+		// it with FreeSid.
+		sid = profileSid.release ();
 
 		LPWSTR sidText = nullptr;
 		if (!ConvertSidToStringSidW (sid, &sidText))
@@ -416,7 +446,8 @@ struct WindowsAppContainer::Impl
 			if (capability.Sid) LocalFree (capability.Sid);
 		}
 		capabilities.clear ();
-		if (sid) LocalFree (sid);
+		// The profile SID is not a LocalAlloc block: see SidDeleter.
+		if (sid) FreeSid (sid);
 		sid = nullptr;
 		valid = false;
 	}
