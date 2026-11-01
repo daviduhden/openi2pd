@@ -41,6 +41,7 @@ depends on a console. Both backends speak the same bounded protocol:
 | Semantic terminal attributes | `tui/Theme.h` | ncursesw roles | Win32/VT attributes |
 | Wire format and limits | `libi2pd/TuiProtocol.h` | same | same |
 | Terminal setup/input/output | — | `tui/TerminalUnix.cpp` | `tui/TerminalWin32.cpp` |
+| UTF-8 unit/column policy | — | locale `mbrtowc`/`wcwidth` | `tui/TerminalText.h` |
 | Client transport | — | `tui/TuiClient.cpp` | `tui/TuiClientWin32.cpp` |
 | Transport plumbing | — | — | `tui/TuiWin32Ipc.cpp/.h` |
 | Snapshot collection and dispatch | `daemon/TuiServerCommon.cpp/.h` | same | same |
@@ -83,6 +84,20 @@ Requirements:
 The backend does not write raw ANSI sequences outside `TerminalWin32.cpp`, and
 does not assume truecolor. If extended colour is unavailable it falls back to
 the same 16/8/monochrome roles as the Unix theme.
+
+### Text measurement
+
+`Terminal.h` defines `Put(text, limit)` as a **terminal-column** budget, not a
+byte budget. The Unix backend measures with `mbrtowc`/`wcwidth`; the Windows
+backend and the shared layout arithmetic both use `tui/TerminalText.h`, which
+owns one strict UTF-8 decoder and one width table. A combining mark counts
+zero columns and an East Asian wide or emoji code point two, so a Cyrillic or
+Chinese label occupies the same cells on both platforms. The decoder rejects
+overlong forms, encoded surrogates, values above U+10FFFF and truncated tails
+as one U+FFFD unit, which keeps the cursor advancing without forwarding a
+non-scalar to the console. Do not add a second width table in `main.cpp` or in
+the backend: a drift between layout and clipping tears the right-hand column.
+`tests/test-tui-terminal.cpp` pins the shared helper on every host.
 
 ### IPC transport
 

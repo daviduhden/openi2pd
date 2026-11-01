@@ -66,6 +66,13 @@ namespace tui
 		// hold the single IPC instance forever or issue unlimited requests.
 		constexpr size_t PIPE_MAX_REQUESTS_PER_CONNECTION = 4096;
 		constexpr auto PIPE_MAX_CONNECTION_DURATION = std::chrono::minutes (30);
+		// Recreation budget. A local squatter, a rejected instance or a
+		// transient close can leave the name unowned; retry with a bounded
+		// 250 ms -> 5 s backoff and report one diagnostic per streak, not
+		// one per second, so a permanently denied name cannot flood the log
+		// while the console keeps reconnecting every two seconds.
+		constexpr DWORD PIPE_REOPEN_MIN_MS = 250;
+		constexpr DWORD PIPE_REOPEN_MAX_MS = 5000;
 
 		struct LocalFreeDeleter
 		{
@@ -412,6 +419,9 @@ namespace tui
 	{
 		i2p::util::SetThreadName ("i2pd-tui-ipc");
 		HANDLE pipe = firstPipe;
+		DWORD reopenDelay = PIPE_REOPEN_MIN_MS;
+		size_t reopenFailures = 0;
+		std::string lastReopenError;
 		while (!m_Stop.load (std::memory_order_relaxed))
 		{
 			if (pipe == INVALID_HANDLE_VALUE)
@@ -421,10 +431,24 @@ namespace tui
 				if (pipe == INVALID_HANDLE_VALUE)
 				{
 					if (m_Stop.load (std::memory_order_relaxed)) break;
-					LogPrint (eLogWarning, "TUI: Can't recreate named pipe: ", error);
-					WaitForSingleObject (m_StopEvent, 1000);
+					++reopenFailures;
+					// The same failure repeating is one condition, not a
+					// stream of events: report it when it starts or changes,
+					// then wait the backoff before trying again.
+					if (error != lastReopenError)
+					{
+						lastReopenError = error;
+						LogPrint (eLogWarning, "TUI: Can't recreate named pipe: ", error);
+					}
+					WaitForSingleObject (m_StopEvent, reopenDelay);
+					reopenDelay = std::min (reopenDelay * 2, PIPE_REOPEN_MAX_MS);
 					continue;
 				}
+				if (reopenFailures)
+					LogPrint (eLogInfo, "TUI: Named pipe serving again after ", reopenFailures, " failed attempts");
+				reopenFailures = 0;
+				lastReopenError.clear ();
+				reopenDelay = PIPE_REOPEN_MIN_MS;
 			}
 
 			bool connected = ConnectClient (pipe);

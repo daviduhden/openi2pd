@@ -29,6 +29,7 @@
 #endif
 
 #include "Terminal.h"
+#include "TerminalText.h"
 
 #include <algorithm>
 #include <array>
@@ -258,105 +259,19 @@ namespace tui
 				return sequence;
 			}
 
-			bool DecodeNext (std::string_view text, std::size_t offset, std::uint32_t & codePoint, std::size_t & length)
-			{
-				const auto byte = static_cast<unsigned char> (text[offset]);
-				if (byte < 0x80)
-				{
-					codePoint = byte;
-					length = 1;
-					return true;
-				}
-				std::size_t needed = 0;
-				std::uint32_t value = 0;
-				if ((byte & 0xE0) == 0xC0)
-				{
-					needed = 1;
-					value = byte & 0x1F;
-				}
-				else if ((byte & 0xF0) == 0xE0)
-				{
-					needed = 2;
-					value = byte & 0x0F;
-				}
-				else if ((byte & 0xF8) == 0xF0)
-				{
-					needed = 3;
-					value = byte & 0x07;
-				}
-				else
-				{
-					codePoint = 0xFFFD;
-					length = 1;
-					return true;
-				}
-				if (offset + needed >= text.size ())
-				{
-					codePoint = 0xFFFD;
-					length = 1;
-					return true;
-				}
-				for (std::size_t i = 1; i <= needed; ++i)
-				{
-					const auto next = static_cast<unsigned char> (text[offset + i]);
-					if ((next & 0xC0) != 0x80)
-					{
-						codePoint = 0xFFFD;
-						length = 1;
-						return true;
-					}
-					value = (value << 6) | (next & 0x3F);
-				}
-				codePoint = value;
-				length = needed + 1;
-				return true;
-			}
-
-			std::string EncodeUtf8 (std::uint32_t codePoint)
-			{
-				std::string result;
-				if (codePoint < 0x80)
-					result.push_back (static_cast<char> (codePoint));
-				else if (codePoint < 0x800)
-				{
-					result.push_back (static_cast<char> (0xC0 | (codePoint >> 6)));
-					result.push_back (static_cast<char> (0x80 | (codePoint & 0x3F)));
-				}
-				else if (codePoint < 0x10000)
-				{
-					result.push_back (static_cast<char> (0xE0 | (codePoint >> 12)));
-					result.push_back (static_cast<char> (0x80 | ((codePoint >> 6) & 0x3F)));
-					result.push_back (static_cast<char> (0x80 | (codePoint & 0x3F)));
-				}
-				else
-				{
-					result.push_back (static_cast<char> (0xF0 | (codePoint >> 18)));
-					result.push_back (static_cast<char> (0x80 | ((codePoint >> 12) & 0x3F)));
-					result.push_back (static_cast<char> (0x80 | ((codePoint >> 6) & 0x3F)));
-					result.push_back (static_cast<char> (0x80 | (codePoint & 0x3F)));
-				}
-				return result;
-			}
-
-			int CodePointWidth (std::uint32_t codePoint)
-			{
-				if ((codePoint >= 0x0300 && codePoint <= 0x036F) || (codePoint >= 0x1AB0 && codePoint <= 0x1AFF)
-					|| (codePoint >= 0x1DC0 && codePoint <= 0x1DFF) || (codePoint >= 0x20D0 && codePoint <= 0x20FF)
-					|| (codePoint >= 0xFE00 && codePoint <= 0xFE0F) || (codePoint >= 0xFE20 && codePoint <= 0xFE2F))
-					return 0;
-				if ((codePoint >= 0x1100 && codePoint <= 0x115F) || codePoint == 0x2329 || codePoint == 0x232A
-					|| (codePoint >= 0x2E80 && codePoint <= 0xA4CF && codePoint != 0x303F)
-					|| (codePoint >= 0xAC00 && codePoint <= 0xD7A3) || (codePoint >= 0xF900 && codePoint <= 0xFAFF)
-					|| (codePoint >= 0xFE10 && codePoint <= 0xFE19) || (codePoint >= 0xFE30 && codePoint <= 0xFE6F)
-					|| (codePoint >= 0xFF00 && codePoint <= 0xFF60) || (codePoint >= 0xFFE0 && codePoint <= 0xFFE6)
-					|| (codePoint >= 0x1F300 && codePoint <= 0x1FAFF) || (codePoint >= 0x20000 && codePoint <= 0x3FFFD))
-					return 2;
-				return 1;
-			}
+			// Decoding, encoding, column width and the column-budget walk
+			// live in TerminalText.h so the Windows backend and the
+			// compile-free regression apply exactly one policy. Terminal.h
+			// defines Put()'s limit as a column budget, and these helpers
+			// reject malformed UTF-8 as one replacement unit instead of
+			// handing an unrepresentable code point to the VT stream.
+			using text::Decode;
+			using text::Encode;
+			using text::Unit;
 
 			int QueueUtf8 (std::uint32_t codePoint)
 			{
-				const std::string encoded = EncodeUtf8 (codePoint);
+				const std::string encoded = Encode (codePoint);
 				for (std::size_t i = 1; i < encoded.size (); ++i)
 					g_PendingKeys.push_back (static_cast<unsigned char> (encoded[i]));
 				return static_cast<unsigned char> (encoded[0]);
@@ -376,6 +291,15 @@ namespace tui
 				const bool control = (state & (LEFT_CTRL_PRESSED | RIGHT_CTRL_PRESSED)) != 0;
 				const bool alt = (state & (LEFT_ALT_PRESSED | RIGHT_ALT_PRESSED)) != 0;
 				const WORD virtualKey = key.wVirtualKeyCode;
+				const wchar_t character = key.uChar.UnicodeChar;
+				const bool lowSurrogate = character >= 0xDC00 && character <= 0xDFFF;
+
+				// "Cleared by any other key" is a property of the event, not
+				// of the branches below: an arrow, function or control key
+				// returns from the switch before the character is examined,
+				// so the clear has to happen here or the pending half would
+				// survive until an unrelated orphaned low surrogate arrives.
+				if (!lowSurrogate) g_HighSurrogate = 0;
 
 				switch (virtualKey)
 				{
@@ -412,18 +336,14 @@ namespace tui
 				// Ctrl-letter arrives as the matching C0 byte.  Ctrl-C is
 				// therefore 3 and is handled by the shared main loop.
 				if (control && !alt && virtualKey >= 'A' && virtualKey <= 'Z')
-				{
-					g_HighSurrogate = 0;
 					return static_cast<int> (virtualKey - 'A' + 1);
-				}
 
-				const wchar_t character = key.uChar.UnicodeChar;
 				if (character >= 0xD800 && character <= 0xDBFF)
 				{
 					g_HighSurrogate = character;
 					return KEY_NONE;
 				}
-				if (character >= 0xDC00 && character <= 0xDFFF)
+				if (lowSurrogate)
 				{
 					if (!g_HighSurrogate) return KEY_NONE;
 					const std::uint32_t codePoint = 0x10000
@@ -432,7 +352,6 @@ namespace tui
 					g_HighSurrogate = 0;
 					return QueueUtf8 (codePoint);
 				}
-				g_HighSurrogate = 0;
 				if (character == 0) return KEY_NONE;
 				if (character < 0x80) return static_cast<int> (character);
 				return QueueUtf8 (static_cast<std::uint32_t> (character));
@@ -577,26 +496,37 @@ namespace tui
 			// filter, this is the backstop that stops router data from injecting
 			// an escape sequence.
 			//
+			// `limit` is a terminal-column budget, not a byte count (Terminal.h):
+			// counting the UTF-8 byte length here charged a Russian or Spanish
+			// label twice its width and a CJK glyph three columns for two, so
+			// every translated header, footer and label column was truncated
+			// early while the ncurses backend rendered it in full. `columns`
+			// tracks the spent budget and a glyph that would exceed it is
+			// dropped whole instead of being split.
+			//
 			// Writing past the last column wraps to the next row, and a wide
 			// glyph that would straddle the right edge wraps as a whole; text
 			// that runs past the last row is dropped, not scrolled.
 			if (!g_Initialized || text.empty () || g_Width <= 0 || g_Height <= 0) return;
+			int columns = 0;
 			std::size_t offset = 0;
 			while (offset < text.size ())
 			{
-				if (limit >= 0 && offset >= static_cast<std::size_t> (limit)) break;
-				std::uint32_t codePoint = 0;
-				std::size_t length = 1;
-				DecodeNext (text, offset, codePoint, length);
-				offset += length;
+				if (limit >= 0 && columns >= limit) break;
+				const Unit unit = Decode (text, offset);
+				if (limit >= 0 && columns + unit.width > limit) break;
+				offset += unit.length;
+				columns += unit.width;
+
+				std::uint32_t codePoint = unit.codePoint;
 
 				// Never pass control bytes from router data into the VT
 				// stream.  SanitizeText() already does this upstream; this
 				// is the terminal-level backstop against escape injection.
 				if (codePoint < 0x20 || codePoint == 0x7F) codePoint = '?';
 
-				const int width = CodePointWidth (codePoint);
-				const std::string encoded = EncodeUtf8 (codePoint);
+				const int width = unit.width;
+				const std::string encoded = Encode (codePoint);
 				if (width == 0)
 				{
 					if (g_CursorColumn <= 0 || g_CursorRow >= g_Height) continue;

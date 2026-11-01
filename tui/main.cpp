@@ -48,6 +48,7 @@
 #include "I18N.h"
 #include "Log.h"
 #include "Terminal.h"
+#include "TerminalText.h"
 #include "Theme.h"
 #include "TuiProtocol.h"
 #include "version.h"
@@ -562,27 +563,6 @@ struct Utf8Character
 	int width = 1;
 };
 
-#ifdef _WIN32
-int CodePointWidth (std::uint32_t codePoint)
-{
-	// MSVC does not provide POSIX wcwidth().  Mirror the terminal
-	// backend's conservative Unicode width table instead of treating UTF-8
-	// byte length as a terminal cell width.
-	if ((codePoint >= 0x0300 && codePoint <= 0x036F) || (codePoint >= 0x1AB0 && codePoint <= 0x1AFF)
-		|| (codePoint >= 0x1DC0 && codePoint <= 0x1DFF) || (codePoint >= 0x20D0 && codePoint <= 0x20FF)
-		|| (codePoint >= 0xFE00 && codePoint <= 0xFE0F) || (codePoint >= 0xFE20 && codePoint <= 0xFE2F))
-		return 0;
-	if ((codePoint >= 0x1100 && codePoint <= 0x115F) || codePoint == 0x2329 || codePoint == 0x232A
-		|| (codePoint >= 0x2E80 && codePoint <= 0xA4CF && codePoint != 0x303F)
-		|| (codePoint >= 0xAC00 && codePoint <= 0xD7A3) || (codePoint >= 0xF900 && codePoint <= 0xFAFF)
-		|| (codePoint >= 0xFE10 && codePoint <= 0xFE19) || (codePoint >= 0xFE30 && codePoint <= 0xFE6F)
-		|| (codePoint >= 0xFF00 && codePoint <= 0xFF60) || (codePoint >= 0xFFE0 && codePoint <= 0xFFE6)
-		|| (codePoint >= 0x1F300 && codePoint <= 0x1FAFF) || (codePoint >= 0x20000 && codePoint <= 0x3FFFD))
-		return 2;
-	return 1;
-}
-#endif
-
 /// @brief Advance one character and report its byte length and cell
 /// width.
 /// POSIX uses mbrtowc/wcwidth in the locale established by main(). The
@@ -590,11 +570,10 @@ int CodePointWidth (std::uint32_t codePoint)
 /// renderer never carries shift state across characters, so a malformed
 /// sequence cannot poison the following rows.
 ///
-/// Windows has no wcwidth(), so the same conservative width table the
-/// Win32 terminal backend uses is mirrored here. It must stay in sync
-/// with TerminalWin32.cpp: if the two disagree, the layout arithmetic
-/// and the backend's clipping disagree too, and the result is a torn
-/// right-hand column plus misaligned selection highlighting.
+/// Windows has no wcwidth(), so the strict decoder and conservative
+/// width table in TerminalText.h are used for both the layout arithmetic
+/// here and the Win32 backend's clipping. Keeping one owner is what makes
+/// the two agree byte-for-byte; a second local table drifted before.
 ///
 /// @param text UTF-8 text being rendered.
 /// @param offset Byte offset into `text`; must be before text.size().
@@ -607,35 +586,11 @@ Utf8Character NextCharacter (std::string_view text, size_t offset)
 {
 	if (offset >= text.size ()) return { 1, 0 };
 #ifdef _WIN32
-	const auto first = static_cast<unsigned char> (text[offset]);
-	if (first < 0x80) return { 1, CodePointWidth (first) };
-	size_t length = 0;
-	std::uint32_t codePoint = 0;
-	if ((first & 0xE0) == 0xC0)
-	{
-		length = 2;
-		codePoint = first & 0x1F;
-	}
-	else if ((first & 0xF0) == 0xE0)
-	{
-		length = 3;
-		codePoint = first & 0x0F;
-	}
-	else if ((first & 0xF8) == 0xF0)
-	{
-		length = 4;
-		codePoint = first & 0x07;
-	}
-	else
-		return { 1, 1 };
-	if (offset + length > text.size ()) return { 1, 1 };
-	for (size_t i = 1; i < length; ++i)
-	{
-		const auto next = static_cast<unsigned char> (text[offset + i]);
-		if ((next & 0xC0) != 0x80) return { 1, 1 };
-		codePoint = (codePoint << 6) | (next & 0x3F);
-	}
-	return { length, CodePointWidth (codePoint) };
+	// The backend and the renderer must agree byte-for-byte on the UTF-8
+	// unit and its columns, or clipping and layout drift apart. Use the
+	// shared strict decoder instead of a second copy of the rules.
+	const auto unit = terminal::text::Decode (text, offset);
+	return { unit.length, unit.width };
 #else
 	wchar_t character = 0;
 	std::mbstate_t state { };
