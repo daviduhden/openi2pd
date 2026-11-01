@@ -8,6 +8,12 @@
 # globs, hardcoded prefixes and removed compatibility branches.
 #
 
+# Standalone scripts run with `cmake -P` have no
+# cmake_minimum_required(). CMP0012 OLD treats TRUE/FALSE as
+# variable names, so a boolean-valued condition would silently
+# take the wrong branch on a CMake 3.x host.
+cmake_policy(SET CMP0012 NEW)
+
 if(NOT PROJECT_ROOT)
   message(FATAL_ERROR "PROJECT_ROOT is required")
 endif()
@@ -580,7 +586,7 @@ string(LENGTH "${_properties_prefix}" _properties_prefix_length)
 set(_add_test_offset 0)
 set(_add_test_search "${tests_cmake_text}")
 set(_add_test_count 0)
-while(TRUE)
+while(1)
   string(FIND "${_add_test_search}" "${_add_test_prefix}" _add_test_relative)
   if(_add_test_relative EQUAL -1)
     break()
@@ -683,7 +689,7 @@ foreach(_test_source IN LISTS _cpp_test_sources)
   # for `root = temp_directory_path () / ("per-run" + ...)` and flag the
   # per-run fixtures.
   set(_temp_base_rest "${_test_source_text}")
-  while(TRUE)
+  while(1)
     string(REGEX MATCH
       "([A-Za-z_][A-Za-z0-9_]*) = (std::filesystem::|fs::|)temp_directory_path \\(\\)[ \t\r\n]*;"
       _temp_base "${_temp_base_rest}")

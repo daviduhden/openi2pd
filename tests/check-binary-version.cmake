@@ -26,6 +26,12 @@
 # a defect. Truncation is never tolerated.
 #
 
+# Standalone scripts run with `cmake -P` have no
+# cmake_minimum_required(). CMP0012 OLD treats TRUE/FALSE as
+# variable names, so a boolean-valued condition would silently
+# take the wrong branch on a CMake 3.x host.
+cmake_policy(SET CMP0012 NEW)
+
 if(NOT BINARY)
   message(FATAL_ERROR "BINARY is required")
 endif()
