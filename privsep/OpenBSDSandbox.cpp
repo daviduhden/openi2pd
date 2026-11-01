@@ -9,7 +9,10 @@
  * applies unveil (locking the list) before pledge. Also builds the
  * router core's startup and runtime pledge windows, parses the operator
  * pledge file, and reports whether a policy grants network,
- * persistent-write or process-creation capability.
+ * persistent-write or process-creation capability. A rule path that is
+ * not absolute, carries NUL or names the filesystem root is refused:
+ * unveiling "/" would grant a whole tree to a role that was built to
+ * hold only its delegated one.
  */
 
 #include "OpenBSDSandbox.h"
@@ -51,6 +54,11 @@ namespace
 	{
 		if (path.empty ()) return true;
 		if (path.front () != '/') return false; // configuration paths must be resolved before the sandbox
+		// An all-slash path names the filesystem root. Unveiling it would
+		// grant the whole tree and turn a least-privilege role into an
+		// unsandboxed one, so a caller that resolves a root of "/" fails
+		// the build instead of publishing that rule.
+		if (path.find_first_not_of ('/') == std::string_view::npos) return false;
 		if (path.find ('\0') != std::string_view::npos || permissions.find ('\0') != std::string_view::npos)
 			return false;
 		for (auto & rule : policy.unveil)
@@ -92,13 +100,6 @@ namespace
 	constexpr size_t MAX_PLEDGE_TOKEN_LENGTH = 32;
 	constexpr size_t MAX_PLEDGE_TOKENS = 64;
 
-	bool IsKnownPledgePromise (std::string_view name)
-	{
-		for (const auto known : KNOWN_PLEDGE_PROMISES)
-			if (name == known) return true;
-		return false;
-	}
-
 	bool IsRuntimeForbiddenPledge (std::string_view name)
 	{
 		for (const auto forbidden : RUNTIME_FORBIDDEN_PLEDGE_PROMISES)
@@ -120,6 +121,14 @@ namespace
 		const auto last = text.find_last_not_of (" \t\r");
 		return text.substr (first, last - first + 1);
 	}
+}
+
+bool IsKnownPledgePromiseName (std::string_view name)
+{
+	if (name.empty ()) return false;
+	for (const auto known : KNOWN_PLEDGE_PROMISES)
+		if (name == known) return true;
+	return false;
 }
 
 const char * OpenBSDWorkerRoleName (OpenBSDWorkerRole role)
@@ -322,6 +331,20 @@ i2p::expected<OpenBSDPolicy, std::string> BuildOpenBSDPolicy (
 		break;
 	}
 
+	// Review the generated text before it can reach the kernel: pledge(2)
+	// answers EINVAL for an unknown name, which aborts a worker without
+	// naming the malformed promise.
+	size_t pos = 0;
+	while (pos < policy.pledge.size ())
+	{
+		while (pos < policy.pledge.size () && policy.pledge[pos] == ' ') ++pos;
+		const size_t begin = pos;
+		while (pos < policy.pledge.size () && policy.pledge[pos] != ' ') ++pos;
+		if (begin == pos) continue;
+		const std::string_view token = std::string_view (policy.pledge).substr (begin, pos - begin);
+		if (!IsKnownPledgePromiseName (token))
+			return PolicyError ("unknown pledge promise \"" + std::string (token) + "\"");
+	}
 	return policy;
 }
 
@@ -332,7 +355,13 @@ i2p::expected<void, std::string> ApplyOpenBSDPolicy (const OpenBSDPolicy & polic
 	{
 		for (const auto & rule : policy.unveil)
 		{
+			// A policy object can be assembled by a caller, so the applied
+			// boundary re-checks the two rules that make an unveil entry
+			// meaningful: a non-empty permission set and an absolute path
+			// that is not the filesystem root.
 			if (rule.path.empty () || rule.permissions.empty ()) return i2p::unexpected ("empty unveil rule");
+			if (rule.path.front () != '/' || rule.path.find_first_not_of ('/') == std::string::npos)
+				return i2p::unexpected ("unveil rule is not a path below the filesystem root");
 			if (unveil (rule.path.c_str (), rule.permissions.c_str ()) == -1)
 				return i2p::unexpected ("unveil " + rule.path + ": " + std::string (strerror (errno)));
 		}
@@ -561,7 +590,7 @@ i2p::expected<std::vector<std::string>, std::string> ParseOpenBSDPledgeFile (
 			const auto token = trimmed.substr (begin, pos - begin);
 			if (token.size () > MAX_PLEDGE_TOKEN_LENGTH)
 				return i2p::unexpected ("oversized token in the pledge policy file");
-			if (!IsKnownPledgePromise (token))
+			if (!IsKnownPledgePromiseName (token))
 				return i2p::unexpected ("unknown pledge promise \"" + std::string (token) + "\"");
 			if (phase == OpenBSDPledgePhase::Runtime && IsRuntimeForbiddenPledge (token))
 				return i2p::unexpected ("runtime pledge policy may not add \"" + std::string (token) + "\"");

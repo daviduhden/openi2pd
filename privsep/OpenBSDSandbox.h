@@ -138,10 +138,26 @@ struct OpenBSDPolicy
 const char * OpenBSDWorkerRoleName (OpenBSDWorkerRole role);
 
 /**
+ * True when @a name is a pledge(2) promise of a supported OpenBSD
+ * release.
+ *
+ * The promise table is the authority for every generated policy and for
+ * an operator `openbsd.pledge_file`. An unknown token is not a harmless
+ * extra: pledge(2) answers EINVAL, so the caller aborts startup without
+ * either promise, and a worker would reach its service loop with no
+ * kernel policy at all. Builders and CI review code therefore check the
+ * generated text (which is a plain space-separated list) against this
+ * predicate instead of assuming the hand-written names are valid.
+ */
+bool IsKnownPledgePromiseName (std::string_view name);
+
+/**
  * Build a least-privilege policy for a role.
  *
  * The caller supplies only paths it actually owns. `BuildOpenBSDPolicy`
- * rejects NUL/empty rules and never adds an implicit "." or "/" rule.
+ * rejects NUL/empty rules, every path that is not absolute and every
+ * all-slash path, so it never adds an implicit "." or "/" rule: an
+ * unveiled filesystem root would defeat the role's promise set.
  */
 i2p::expected<OpenBSDPolicy, std::string> BuildOpenBSDPolicy (
 	OpenBSDWorkerRole role, const OpenBSDPolicyConfig & config);
@@ -155,6 +171,10 @@ i2p::expected<OpenBSDPolicy, std::string> BuildOpenBSDPolicy (
  * own unveil rules and pledge before it serves a frame. This code never
  * relies on pledge or unveil state surviving execve, and it never sets
  * execpromises.
+ * Each rule is checked again here before unveil(2) sees it: a policy
+ * object can be assembled by the caller, so an empty permission set, a
+ * relative path or an all-slash (the filesystem root) path is refused
+ * rather than applied.
  * @return An error when any rule or the pledge itself fails, and on a
  *         non-OpenBSD build. A caller must abort the worker; continuing
  *         would mean serving frames with no sandbox at all.

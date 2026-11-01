@@ -8,9 +8,12 @@
  * separation, the supervisor's x-only executable unveil rule, the
  * broker's sendfd-only descriptor contract, the startup/runtime promise
  * relationship, the single pledge-file parser and preopened descriptor
- * validation. Forked children prove that storage cannot use the network
- * or fork, that the supervisor cannot exec an arbitrary image, and that
- * unveil cannot be re-opened after the lock.
+ * validation. Every role/configuration pair must also emit only known
+ * pledge(2) promise names and absolute, non-root unveil rules, since a
+ * typo is otherwise an EINVAL at run time on the target only. Forked
+ * children prove that storage cannot use the network or fork, that the
+ * supervisor cannot exec an arbitrary image, and that unveil cannot be
+ * re-opened after the lock.
  *
  */
 
@@ -77,6 +80,37 @@ bool HasPromiseText (std::string_view list, std::string_view name)
 		if (begin != pos && list.substr (begin, pos - begin) == name) return true;
 	}
 	return false;
+}
+
+/**
+ * Every generated token must be reviewable without applying the policy:
+ * a promise name from the pledge(2) table, and an unveil rule naming an
+ * absolute path below the filesystem root with a permission subset of
+ * "rwcx". A typo or a widened root is otherwise caught only at run time
+ * on OpenBSD, where pledge(2) is EINVAL and unveil grants too much.
+ */
+void ExpectReviewablePolicy (const OpenBSDPolicy & policy)
+{
+	size_t pos = 0;
+	while (pos < policy.pledge.size ())
+	{
+		while (pos < policy.pledge.size () && policy.pledge[pos] == ' ') ++pos;
+		const size_t begin = pos;
+		while (pos < policy.pledge.size () && policy.pledge[pos] != ' ') ++pos;
+		if (begin == pos) continue;
+		const std::string_view token (policy.pledge.data () + begin, pos - begin);
+		assert (IsKnownPledgePromiseName (token));
+	}
+	for (const auto & rule : policy.unveil)
+	{
+		assert (!rule.path.empty ());
+		assert (rule.path.front () == '/');
+		assert (rule.path.find_first_not_of ('/') != std::string::npos);
+		assert (rule.path.find ('\0') == std::string::npos);
+		assert (!rule.permissions.empty ());
+		for (char permission : rule.permissions)
+			assert (std::string_view ("rwcx").find (permission) != std::string_view::npos);
+	}
 }
 
 template <typename Action> void ExpectPledgeViolation (OpenBSDWorkerRole role, Action action)
@@ -249,6 +283,57 @@ void TestPolicySeparation ()
 		if (role != OpenBSDWorkerRole::Supervisor && role != OpenBSDWorkerRole::StorageBroker)
 			assert (!policy->HasProcessCreation ());
 	}
+
+	// The promise table itself is the authority for both a generated
+	// policy and an operator pledge file.
+	assert (IsKnownPledgePromiseName ("stdio"));
+	assert (IsKnownPledgePromiseName ("sendfd"));
+	assert (IsKnownPledgePromiseName ("recvfd"));
+	assert (!IsKnownPledgePromiseName (""));
+	assert (!IsKnownPledgePromiseName ("stdio "));
+	assert (!IsKnownPledgePromiseName ("STDIO"));
+	assert (!IsKnownPledgePromiseName ("execve"));
+
+	// Every role, with and without unveil, must produce only reviewable
+	// tokens: known promise names and absolute non-root rules. The pair
+	// loop is exhaustive so a new role or flag cannot silently emit an
+	// untested promise.
+	for (const auto role : roles)
+	{
+		for (int unveiled = 0; unveiled < 2; ++unveiled)
+		{
+			OpenBSDPolicyConfig config = BaseConfig ();
+			config.useUnveil = unveiled != 0;
+			config.dataDir = "/var/i2pd";
+			config.certsDir = "/var/i2pd/certificates";
+			config.logPath = "/var/i2pd/i2pd.log";
+			config.extraReadPaths = { "/etc/ssl" };
+			config.extraWritePaths = { "/var/i2pd/torrents" };
+			auto policy = BuildOpenBSDPolicy (role, config);
+			assert (policy.has_value ());
+			ExpectReviewablePolicy (*policy);
+		}
+	}
+
+	// An all-slash path is the filesystem root, not a delegated root: the
+	// builder refuses it instead of unveiling every tree to the role.
+	auto rootConfig = BaseConfig ();
+	rootConfig.useUnveil = true;
+	rootConfig.dataDir = "/";
+	assert (!BuildOpenBSDPolicy (OpenBSDWorkerRole::Storage, rootConfig).has_value ());
+	rootConfig.dataDir = "///";
+	assert (!BuildOpenBSDPolicy (OpenBSDWorkerRole::Storage, rootConfig).has_value ());
+	rootConfig.dataDir = "/var/i2pd";
+	rootConfig.certsDir = "/";
+	assert (!BuildOpenBSDPolicy (OpenBSDWorkerRole::Storage, rootConfig).has_value ());
+	rootConfig.certsDir = "/var/i2pd/certificates";
+	rootConfig.extraReadPaths = { "/" };
+	assert (!BuildOpenBSDPolicy (OpenBSDWorkerRole::Storage, rootConfig).has_value ());
+	rootConfig.extraReadPaths.clear ();
+	rootConfig.extraWritePaths = { "//" };
+	assert (!BuildOpenBSDPolicy (OpenBSDWorkerRole::Storage, rootConfig).has_value ());
+	rootConfig.extraWritePaths.clear ();
+	assert (BuildOpenBSDPolicy (OpenBSDWorkerRole::Storage, rootConfig).has_value ());
 
 	// A log worker that owns its file has no process-creation or network
 	// power.
