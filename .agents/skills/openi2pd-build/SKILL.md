@@ -273,11 +273,11 @@ build.
   own 600 s budget and `tools-inventory` 30 s, so the 120 s default is not a
   universal cap.
 - The fuzzer inventory is a four-way contract: `tests/fuzz/*.cpp`,
-  `tests/CMakeLists.txt`, `.github/workflows/fuzz.yml` and the target list in
+  `tests/CMakeLists.txt`, `.github/workflows/validation.yml` and the target list in
   `docs/testing.md` (enforced by `check-build-system.cmake`). Fifteen targets
   are current; adding one requires all four places plus a CTest smoke entry,
   a checked-in `tests/fuzz/corpus/<target>/` seed (<=64 KiB, non-secret), a
-  per-target `-max_len`/`-artifact_prefix` and a `fuzz.yml` run-loop entry.
+  per-target `-max_len`/`-artifact_prefix` and a `validation.yml` run-loop entry.
   The manual workflow applies one global `-max_len=65536`; do not treat it as
   a substitute for the per-target CTest bound (notably `fuzz-signature-der`).
 

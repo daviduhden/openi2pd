@@ -190,5 +190,6 @@ windows and stop/remove purge). `fuzz-torrents-krpc` drives the envelope and
 compact decoders plus the token/limiter helpers; `fuzz-torrents-extensions`
 drives the PEX/hint decoders and candidate policy. Both fuzzers are registered
 in `tests/CMakeLists.txt` under `WITH_FUZZERS` and in both target lists of the
-manual `fuzz.yml` workflow; both tests are in the focused torrent selection of
-`build.yml`. These sources are registered but have not been compiled or run.
+manual `validation.yml` fuzzing lane; both tests are in the focused torrent
+selection of the Linux OpenSSL branch workflows. These sources are registered
+but have not been compiled or run.

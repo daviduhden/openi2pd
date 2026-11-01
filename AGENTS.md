@@ -2452,7 +2452,7 @@ added only with an actual reusable consumer and an explicit policy update.
 `--no-tests=error`/`--output-junit`.
 
 The fuzzer inventory is a four-way contract: `tests/fuzz/*.cpp`,
-`tests/CMakeLists.txt`, `.github/workflows/fuzz.yml` and `docs/testing.md`
+`tests/CMakeLists.txt`, `.github/workflows/validation.yml` and `docs/testing.md`
 (enforced by `check-build-system.cmake`). Fifteen targets are current; each has
 checked-in `tests/fuzz/corpus/<target>/` seeds (<=64 KiB, non-secret), a
 per-target `-max_len`/`-artifact_prefix` in CTest and a global manual-workflow
@@ -2725,9 +2725,13 @@ and that its major is the claimed branch before configuring; the bottle is
 selected by `.github/actions/brew-toolchain`'s `openssl` input. Do not add a
 source-built OpenSSL download back to any workflow: `check-workflows.pl`
 requires both branch workflows, their formula selection, and rejects
-`openssl.org/source`/`OPENSSL_SHA256`/`OPENSSL_PIN`. `build.yml` keeps the
-Android, install-components, interop, sanitizer, source-docs, skills-static
-and opt-in Perl-quality jobs.
+`openssl.org/source`/`OPENSSL_SHA256`/`OPENSSL_PIN`. The manual lanes are
+split by concern: `build-linux.yml` owns the component-install and interop
+jobs, `build-android.yml` owns the arm64 and opt-in API 29 UI jobs, and
+`validation.yml` owns C++ documentation, the compile-free agent checks,
+opt-in Perl quality, the sanitizer matrix and the bounded fuzzing smoke.
+Do not recreate an aggregate `build.yml` or `fuzz.yml`: `check-workflows.pl`
+requires each job to stay in its owning workflow.
 
 ## Seventh CI batch: spans, containment and Windows diagnostics (`4e776a39`, 2026-11-01, static)
 

@@ -214,7 +214,7 @@ the text crosses a protocol/IPC boundary.
   `cmake -P tests/check-i18n.cmake` and text/XML parsing are allowed. Do not
   run Gradle, AAPT2, Lint, CTest, a device or the full manual workflow.
 - Keep the Android guard path in `tools/CMakeLists.txt`, `tools/tests/`,
-  `tests/CMakeLists.txt` and `.github/workflows/build.yml` synchronized.
+  `tests/CMakeLists.txt` and `.github/workflows/build-android.yml` synchronized.
 - Record Android translation coverage as prepared until AAPT2/Lint/device
   evidence exists.
 

@@ -439,7 +439,7 @@ Prepared regressions: `test-tunnel-build-records`,
 `test-tunnels-inbound-queue`, `test-i2np-dispatch-policy`,
 `test-garlic-clove-policy`, extended `test-tunnel-dsm-policy` and
 `test-tunnelpool-zero-hop`, the new `fuzz-i2np-policy` fuzzer (registered in
-`tests/CMakeLists.txt` and `.github/workflows/fuzz.yml`) and the extended
+`tests/CMakeLists.txt` and `.github/workflows/validation.yml`) and the extended
 `control-security-static` pins. No compiler, CTest, sanitizer, fuzzer, Java peer
 or live tunnel run exists for them.
 

@@ -23,10 +23,23 @@ installed keg reports the same version as the formula, and then builds and
 tests with both GCC and Clang. Do not reintroduce a source-built OpenSSL
 download; `tools/scripts/check-workflows.pl` refuses one.
 
-The optional `source_docs` input on **Linux and Android** generates C++ API
-HTML with `docs/Doxyfile.source` and Android Javadoc with the debug Java
-compiler's Android SDK, dependency and generated-class paths, using JDK 25
-and including package-private APIs. Doxygen checks
+The remaining manual lanes are split by concern so a dispatch does not pay
+for unrelated jobs:
+
+- `build-linux.yml` runs the component install/consumer check and the pinned
+  Java interop-reference validation.
+- `build-android.yml` runs the arm64 unit/Lint/APK lane and, opt-in through
+  `android_ui`, the API 29 emulator UI/accessibility lane.
+- `validation.yml` merges C++ source documentation, the compile-free agent
+  skills, opt-in Perl quality, the ASan+UBSan/UBSan/TSan matrix and the
+  bounded libFuzzer smoke pass. `check-workflows.pl` requires each job to
+  stay in its owning workflow and refuses a reintroduced aggregate
+  `build.yml` or `fuzz.yml`.
+
+`validation.yml` always generates C++ API HTML with `docs/Doxyfile.source`;
+Android Javadoc runs with the Android lane, which already provides the debug
+Java compiler's Android SDK, dependency and generated-class paths, JDK 25 and
+package-private APIs. Doxygen checks
 documented parameter and reference syntax, and Javadoc runs doclint with
 warnings treated as errors. Missing comments are not counted as successful
 coverage: the documentation audit remains open until each subsystem is
@@ -91,7 +104,7 @@ the component-install lane checks every tool binary, `i2pdctl` and
   Skills, language-policy, translation-catalog or service-definition drift
   fails without a compiler or service. Its failure still fails the workflow but does not cancel
   or block parallel build jobs.
-- The separate `Fuzzing` workflow builds all fifteen libFuzzer targets, runs
+- The `Validation` workflow's fuzzing job builds all fifteen libFuzzer targets, runs
   the one-input `ctest -L fuzz` entries, then runs a bounded per-target pass
   (dispatch input `fuzz_seconds`, default 30) from the checked-in corpus. Every executing CTest call uses `-j` where safe, `--no-tests=error`
   and `--output-junit`, and uploads the JUnit/CTest logs as evidence. Fuzzers are not part of the default build; the generated corpora and
@@ -148,7 +161,9 @@ Manual dispatch and log collection use the published revision only:
 ```sh
 gh workflow run "Linux OpenSSL 3.x" --ref main
 gh workflow run "Linux OpenSSL 4.x" --ref main
-gh workflow run "Linux and Android" --ref main
+gh workflow run "Linux" --ref main
+gh workflow run "Android" --ref main
+gh workflow run "Validation" --ref main
 gh workflow run "Windows" --ref main
 gh workflow run "OpenBSD" --ref main
 gh run watch <run-id> --compact --exit-status

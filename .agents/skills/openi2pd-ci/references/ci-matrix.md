@@ -14,10 +14,11 @@ Use with `SKILL.md`. All jobs are manual; no result here validates a revision.
 |---|---|---|
 | `build-linux-openssl3.yml` | Linux Clang/GCC | latest Homebrew `openssl@3` bottle, full graph/CTest + labels; branch/version verified before build |
 | `build-linux-openssl4.yml` | Linux Clang/GCC | latest Homebrew `openssl@4` bottle, full graph/CTest + labels; branch/version verified before build |
-| `build.yml` | skills-static, perl-quality (opt-in), install-components, Android (arm64), android-ui (opt-in), interop, sanitizers, source-docs | compile-free skills/workflow/service/packaging/legal/upstream checks; optional Perl::Critic; component staging/consumer; Java 25/JNI/APK; pinned Java reference; ASan+UBSan, UBSan-only and TSan; Doxygen |
+| `build-linux.yml` | install-components, interop | component staging/consumer; pinned Java reference |
+| `build-android.yml` | android (arm64), android-ui (opt-in) | Java 25/JNI/APK, unit/Lint, Javadoc; API 29 emulator UI/accessibility |
+| `validation.yml` | source-docs, skills-static, perl-quality (opt-in), sanitizers, fuzz-smoke | Doxygen; compile-free skills/workflow/service/packaging/legal/upstream checks; optional Perl::Critic; ASan+UBSan, UBSan-only and TSan; fifteen libFuzzer targets + bounded smoke |
 | `build-openbsd.yml` | OpenBSD | LibreSSL build, full CTest, platform tests |
 | `build-windows.yml` | MSYS2/Clang64, MSVC | full Windows graph/CTest; TUI/API/install |
-| `fuzz.yml` | fuzzing | fifteen libFuzzer targets + bounded smoke; `--no-tests=error`/JUnit smoke |
 | `packaging.yml` | service-contracts, service-install-matrix, static-musl, container-image, Debian | static contracts; seven-manager Service staging; static Debian/RPM-style package; container image; Debian lintian/autopkgtest, conffile reinstall, remove/purge |
 
 Build/test/package workflows use `workflow_dispatch`; the compile-free

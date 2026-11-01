@@ -193,7 +193,7 @@ Prepared but **not executed** for this pass:
   `test-timestamp-offset`, `test-ntp-timesync-lifecycle` and the
   `tools-regressions` CMake test.
 - ASan+UBSan, TSan and the fifteen libFuzzer targets (including
-  `fuzz-signature-der`) through the manual `build.yml`/`fuzz.yml` workflows.
+  `fuzz-signature-der`) through the manual `validation.yml` workflow.
 - OpenBSD/LibreSSL, Windows, Android Unit/Lint/APK/instrumentation and live
   Java/I2P peer tests.
 

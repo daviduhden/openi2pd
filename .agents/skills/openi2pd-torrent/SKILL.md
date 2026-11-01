@@ -310,7 +310,7 @@ Do not let them edit, build or run tests.
   for new parser surfaces. A new fuzzer needs a checked-in
   `tests/fuzz/corpus/<target>/` seed (<=64 KiB, non-secret), a per-target
   `-max_len`/`-artifact_prefix`, and registration in `tests/CMakeLists.txt`,
-  `fuzz.yml` and `docs/testing.md`. The manual workflow uses a global
+  `validation.yml` and `docs/testing.md`. The manual workflow uses a global
   `-max_len=65536`; the CTest per-target cap is authoritative for smoke.
 - Every new test states its label, timeout (120 s; 300 s under sanitizers) and
   parallel-safety decision; forked sandbox/storage tests use `RUN_SERIAL`,

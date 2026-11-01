@@ -66,7 +66,7 @@ ctest --test-dir <build-dir> -R build-system-static --output-on-failure
 
 It also checks that every `tests/test-*.cpp` and `tests/fuzz/*.cpp` source is
 named in `tests/CMakeLists.txt`, and that every fuzz source/CMake target is
-also wired into `.github/workflows/fuzz.yml`, so a new subsystem test or fuzzer
+also wired into `.github/workflows/validation.yml`, so a new subsystem test or fuzzer
 cannot be added without registration.
 
 Executed on 2026-10-18: **48/48 passed**. This includes the new
@@ -181,17 +181,21 @@ only:
 
 Both use precompiled Homebrew bottles for GCC, LLVM, CMake, Ninja, Boost,
 OpenSSL, zlib, MiniUPnPc and ncurses, so a dispatch does not compile the
-toolchain or OpenSSL. `.github/workflows/build.yml` keeps the Android,
-install-components, interop, sanitizer, source-docs, skills-static and opt-in
-Perl-quality jobs.
+toolchain or OpenSSL. The remaining manual lanes are split by concern:
+`build-linux.yml` runs the component-install/consumer and interop jobs,
+`build-android.yml` runs the arm64 APK/unit/Lint lane and the opt-in API 29
+emulator lane, and `validation.yml` runs C++ Doxygen, the compile-free agent
+checks, opt-in Perl quality, the sanitizer matrix and the bounded fuzzing
+smoke. Android Javadoc runs with the Android lane because it needs the Android
+toolchain.
 - Android: Java 25 guard, en/es/ru/zh-CN resource/locale static check, Gradle unit tests, debug/release Lint, class-file-69 assertion, native arm64 JNI link with hardening, debug APK packaging assertion and unsigned release APK. ABI/API/device matrices remain documented but not executed.
 - Interop: pinned Java tag/commit/read-only check plus fixture provenance.
 - Sanitizers: separate ASan+UBSan and TSan builds with the full CTest suite,
   using the current Homebrew Clang, Boost, OpenSSL, zlib and MiniUPnPc.
 
-`.github/workflows/fuzz.yml` uses the current Homebrew Clang, Boost, OpenSSL
-and zlib, builds all fifteen libFuzzer targets and runs a bounded smoke pass for
-each. `.github/workflows/build-windows.yml` runs the
+`.github/workflows/validation.yml` uses the current Homebrew Clang, Boost,
+OpenSSL and zlib, builds all fifteen libFuzzer targets and runs a bounded smoke
+pass for each. `.github/workflows/build-windows.yml` runs the
 complete MSYS2/Clang64 target graph and CTest suite, plus a bounded
 `--version`/`--help` probe and PE-subsystem/import/`ldd` diagnostics before
 CTest; the MSVC job remains TUI/API-focused. `.github/workflows/build-openbsd.yml` runs the complete

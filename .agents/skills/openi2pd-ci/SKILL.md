@@ -27,9 +27,10 @@ not dispatch, compile, run CTest, invoke sanitizers/fuzzers or call
 
 ## Inspect first
 
-- `.github/workflows/build.yml`, `build-openbsd.yml`, `build-windows.yml`,
-  `fuzz.yml`, `packaging.yml`; the local composite actions under
-  `.github/actions/`.
+- `.github/workflows/build-linux.yml`, `build-android.yml`,
+  `validation.yml`, `build-linux-openssl3.yml`, `build-linux-openssl4.yml`,
+  `build-openbsd.yml`, `build-windows.yml`, `packaging.yml`; the local
+  composite actions under `.github/actions/`.
 - `tests/CMakeLists.txt` as a read-only input for registration/labels;
   `openi2pd-build` owns CMake-side edits. Also inspect `tests/fuzz/`,
   `tests/check-*.cmake`, `.agents/skills/README.md`, `tools/*test*.cmake`,
@@ -139,10 +140,14 @@ workflow, run `gh`, build or test.
   tools-regressions/tunnel-endpoint/i2pd-version, and MSVC at intermittent
   access violations (the same-SHA rerun passed). A preventive audit then added
   RT-013..RT-021; none has CI evidence yet.
-- `build.yml` no longer contains Linux build jobs; the Linux matrix lives in
+- Manual CI is split by concern: `build-linux.yml` (install/consumer and
+  interop), `build-android.yml` (arm64 and opt-in API 29 UI), and
+  `validation.yml` (Doxygen, skills-static, opt-in Perl quality, sanitizers,
+  fuzzing). The Linux compiler/CTest matrix stays in
   `build-linux-openssl3.yml`/`build-linux-openssl4.yml`, each passing
-  `I2PD_OPENSSL_EXPECT_MAJOR`. `check-workflows.pl` scans composite actions and
-  rejects source-built OpenSSL.
+  `I2PD_OPENSSL_EXPECT_MAJOR`. `check-workflows.pl` requires each job to stay
+  in its owning workflow, refuses a reintroduced aggregate `build.yml`/
+  `fuzz.yml`, scans composite actions and rejects source-built OpenSSL.
 - Latest batch `4e776a39`: Fuzzing/Packaging pass; Linux/OpenBSD stop at
   CE-069; Windows MSYS2 leaves tools-regressions (Win32 `nul.*` fixture),
   tunnel-endpoint count and i2pd-version; MSVC leaves TUI/privsep access
@@ -243,7 +248,7 @@ workflow, run `gh`, build or test.
   interpreter must unregister tests loudly, not silently turn a lane green.
   OpenBSD base Perl satisfies the same requirement.
 - The fuzzer inventory is fifteen targets across `tests/fuzz/*.cpp`,
-  `tests/CMakeLists.txt`, `fuzz.yml` and `docs/testing.md`; the doc list,
+  `tests/CMakeLists.txt`, `validation.yml` and `docs/testing.md`; the doc list,
   checked-in corpus, per-target cap and dual build/run registration are
   enforced by `check-build-system.cmake`. The sanitizer matrix is ASan+UBSan,
   UBSan-only and TSan; the fuzz job runs from `tests/fuzz/corpus/<target>/`

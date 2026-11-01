@@ -392,7 +392,7 @@ Do not let reconnaissance agents edit, compile, execute tests or run scripts.
   target has a small non-secret seed (≤64 KiB), a per-target `-max_len` and a
   per-target `-artifact_prefix`. CTest uses 1024 bytes for
   `fuzz-signature-der`, 16384 for `fuzz-(http|tui|sam|i2cp|privsep)` and 65536
-  otherwise; the manual `fuzz.yml` loop currently passes one global
+  otherwise; the manual `validation.yml` fuzz loop currently passes one global
   `-max_len=65536`, so the per-target CTest bound is authoritative for the
   smoke pass. The static checker rejects an empty/orphan corpus,
   credential-like seed names and a target missing from either the build or run

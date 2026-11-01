@@ -46,7 +46,7 @@ outside an explicitly assigned temporary output path.
 - `tools/test-perl-install.cmake` checks the installed script/notice layout.
 - `tools/test-tools-inventory.cmake` fails on missing upstream manifests or
   unregistered top-level tool sources.
-- `build.yml` runs syntax, portability, link/nav, branding, Android policy and
+- `validation.yml` runs syntax, portability, link/nav, branding, Android policy and
   install-layout checks in the Linux lane. The same interpreter must be used
   for CMake discovery and shell/prove checks.
 - `agent-skills-static` validates this reference; it does not execute Perl.

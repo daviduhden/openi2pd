@@ -92,5 +92,5 @@ I2PSnark exchange. All are manual; none is implied by a static review.
 Each torrent fuzzer needs one checked-in seed under
 `tests/fuzz/corpus/<target>/` (<=64 KiB, no key/credential material), a
 per-target `-max_len`/`-artifact_prefix`, and registration in
-`tests/CMakeLists.txt`, `fuzz.yml` and `docs/testing.md`. The manual workflow
+`tests/CMakeLists.txt`, `validation.yml` and `docs/testing.md`. The manual workflow
 runs a global `-max_len=65536`; do not rely on that as the target bound.
