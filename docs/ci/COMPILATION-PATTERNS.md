@@ -83,3 +83,21 @@ This document provides the diagnostic-family search procedure only.
 | Reserved word missing from a renderer allow-list | Every lexical guard that decides whether caller text may enter generated command/router text. | An nft verdict such as `accept` must never be usable as a table/chain name. |
 | Privilege-dependent existence check in a workflow | Every `test -f`/`-d`/`ls` against a service-owned 0700 path and the `sudo` usage around it. | Either run the check as root or test a path the runner can traverse; do not read EACCES as "missing". |
 | GUI-subsystem binary under headless CTest | Every CTest that launches a `WIN32` executable. | Bound the wait, print captured output and keep the exit status authoritative; a modal dialog must be a diagnostic, not a 30 s timeout. |
+
+## Patterns from the `dc5540ae` / `c1125a75` batch
+
+| Pattern | Search | Contract |
+|---|---|---|
+| Span member on a container | Every `.subspan(`/`.first(`/`.last(` call: is the receiver a `std::span` or a `std::vector`/`std::string`? | Wrap the container in `std::span` before a span operation; a vector has no `subspan`. |
+| Platform-only local or parameter | Every `#if` in a test/source: is a local or parameter used only in one branch? | Move the declaration into the branch or mark the parameter `[[maybe_unused]]`; never add a warning suppression. |
+| `@param` in both declaration and definition | Every member with a documentation block in a header and another block on its `.cpp` definition. | Parameters belong on the declaration only; Doxygen merges both and reports duplicate sections. |
+| RouterInfo option list encoding | Every `WriteString (key)` followed by a raw delimiter and another `WriteString`. | One length-prefixed value per option; commas stay inside the value (`pq=4,3`). |
+| Declared length vs backing capacity | Every guard that compares `len` to a protocol size before reading a fixed cell. | Capacity (`maxLen - offset`) is the memory-safety bound; a declared length may reserve a header and must get its own floor. |
+| Parser mutating live state before validation | Every tracker/metainfo/peer parser: is the destination container cleared/filled before the enclosing document validates? | Parse into scratch storage and commit only after full validation; a malformed document keeps the last good state. |
+| GUI-subsystem informational flags | Every Windows entry point that answers `--help`/`--version`; CRT `__argc/__argv`, console code page, MessageBox, `exit()` teardown. | Answer before any console/GUI/daemon state, take `GetCommandLineW()` as authority, write the inherited handle (or borrow the parent console), and `_Exit`. |
+| `PROC_THREAD_ATTRIBUTE_*` value lifetime | Every `UpdateProcThreadAttribute` call. | The value storage must live until `CreateProcess` returns; block locals are a dangling pointer. |
+| Userenv profile SID ownership | Every `CreateAppContainerProfile`/`DeriveAppContainerSidFromAppContainerName` result. | Release with `FreeSid`; only `LocalAlloc` capability SIDs use `LocalFree`. |
+| Nested Job Object | Every `CreateJobObject`/`JOB_LIST`/`AssignProcessToJobObject` path. | A nested job cannot set UI limits; containment and resource limits are mandatory, UI restrictions are optional and must be reported when dropped. |
+| `argv[0]` in a CLI test needle | Every CMake tool test that greps for a usage line. | Assert `usage: ` plus a synopsis token, never the executable path. |
+| Base64 padding across reads | Every streaming base64 decoder and its `=` latch. | Decode per quartet so padding terminates the stream; report `data after padding` distinctly, including across a read boundary. |
+| Dotted version comparison | Every SAM/version parser and test. | Follow Java `VersionComparator`: the depth is not fixed, any in-range dotted bound is legal, only non-digit components are malformed; a response vector is bound to the nonce count. |

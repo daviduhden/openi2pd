@@ -1387,3 +1387,48 @@ Runs: Linux/Android [41229374061](https://github.com/daviduhden/openi2pd/actions
   `.github/workflows/build.yml`, `docs/source-documentation.md`,
   `docs/development/perl-migration.md`.
 - **State:** Corrected by static analysis; **Pending source-docs CI**.
+
+### CE-066 — `std::vector` used as a span, plus unused platform locals
+
+- **Run/job:** Linux and Android `41248772071`/`41249881405` (all Linux and
+  sanitizer jobs) and OpenBSD `41248777820`.
+- **First diagnostic:** `tests/test-privsep-worker-identity.cpp:324: error:
+  'const class std::vector<unsigned char>' has no member named 'subspan'`;
+  also `warning: unused parameter 'argv0'` (Linux) and `warning: unused
+  variable 'buffer'` (OpenBSD).
+- **Cause:** the short-nonce case called `subspan` on the vector returned by
+  `Nonce()`; `SelfExecutable(argv0)` reads the parameter only in the
+  non-Linux branch, and the 4096-byte `buffer` was declared outside the Linux
+  `#if` that uses it. One compile error stopped every Linux/OpenBSD/sanitizer
+  job before CTest, so the whole matrix was blocked.
+- **Correction:** `std::span<const uint8_t> (nonce).subspan (0, 15)` keeps the
+  rejected 15-byte nonce; `[[maybe_unused]]` on `argv0`; the buffer moved into
+  the Linux branch. The same array/vector-vs-span and platform-branch search
+  found no second instance in the test tree.
+- **Files:** `tests/test-privsep-worker-identity.cpp`.
+- **State:** Corrected by static analysis; **Pending CI compilation**.
+
+### CE-067 — Doxygen rejected duplicate `@param` from declaration + definition
+
+- **Run/job:** Linux and Android `41249881405` (SHA `c1125a75`), job
+  `C++ source API documentation`.
+- **First diagnostic:** `libi2pd/Crypto.cpp:545: error: argument 'priv' from
+  the argument list of i2p::crypto::X25519Keys::SetPrivateKey has multiple
+  @param documentation sections`.
+- **Cause:** Doxygen merges a member's declaration documentation with its
+  definition documentation. After CE-056/CE-065 both `Crypto.h` and
+  `Crypto.cpp` documented `priv`/`calculatePublic`; the same shape existed
+  for `ParseCmdline` and `LeaseSet2::ExtractClientAuthData`. The static
+  checker detected missing parameters but not duplicates.
+- **Correction:** keep the parameter contract on the header declaration and
+  behavioural prose on the definition; remove the duplicated `@param` blocks.
+  `tools/scripts/check-doxygen-params.pl` now also rejects an in-block repeat
+  and a definition that repeats a header's parameter docs (scope + name +
+  arity match), with fixtures and a registration pin. The `AEADChaCha20Poly1305`
+  public function / file-local 10-argument helper pair is the deliberate
+  arity witness.
+- **Files:** `libi2pd/{Crypto.cpp,Config.cpp,LeaseSet.cpp}`,
+  `tools/scripts/check-doxygen-params.pl`, `tools/tests/*`,
+  `tests/check-build-system.cmake`, `docs/source-documentation.md`,
+  `docs/development/perl-migration.md`.
+- **State:** Corrected by static analysis; **Pending source-docs CI**.

@@ -80,3 +80,28 @@ target or a build that stopped early is not a pass.
 - **Restart ladder arithmetic:** quote the ladder total from one
   `TotalLadderDelay()` authority and pin the bounds; never hand-sum the
   constants in a test or a comment.
+
+## Patterns added by the `dc5540ae` / `c1125a75` batch
+
+- **Wire-form, not only round-trip:** a RouterInfo regression should assert the
+  exact length-prefixed option bytes (`pq=4,3` as one value), so a future
+  reader that tolerates a split encoding cannot hide a writer regression.
+- **Fixture geometry:** a hand-sealed lease-set fixture asserts
+  `buffer.size() == header + lenOuterCiphertext` before signing and includes a
+  negative control that flips a ciphertext byte.
+- **Capacity vs declared length:** a cell test covers the pool layout
+  (`TUNNEL_GATEWAY_HEADER_SIZE` reserved), the received full-cell layout and a
+  short declared length, so a guard cannot reject a legitimate transit cell.
+- **Transactional parsers:** a truncated tracker response must leave the last
+  known good peer list, and a fresh slot must stay empty; assert both.
+- **Windows attribute ownership:** a spawn regression runs under an existing
+  Job Object and pins that kill/die/process/memory limits are always set,
+  that a missing root/image fails closed, that the SID survives reuse, heap
+  churn, a move and a DACL grant, and that the reduced UI mitigation is
+  reported rather than silently accepted.
+- **Informational flags:** the version driver checks both `--version` and
+  `--help`, requires the banner on every platform, and keeps each probe's
+  budget below the CTest timeout.
+- **Digest nonce count:** every expected RFC 7616 response is computed for the
+  `nc` it is used with, and an older `nc` with a valid digest is asserted
+  `Replayed`.

@@ -26,9 +26,9 @@ tests**.
 | TF-008 | `test-netdb-persistence` | `ClassifyRouterInfoFile ("/data/netDb/r/<hash>.dat") == Load` | the fixture omitted the canonical `routerInfo-` prefix | test uses the canonical name; a prefix-less name is now asserted `Foreign` |
 | TF-009 | `test-artifact-storage` | `WriteArtifact (RouterInfoCache, ...)` | the direct fallback had no data directory, so the no-follow write failed before the fixture | test initialises `i2p::fs::DetectDataDir`; three delegated-write cases were previously vacuous |
 | TF-010 | `test-ssu2-address-negotiation` | `router->IsUnreachable ()` | test expected whole-descriptor rejection for an unusable SSU2 address/MTU | test asserts the address-level contract; descriptor stays parseable |
-| TF-011 | `test-ssu2-control-plane` | `!parsed.IsUnreachable ()` | locally produced RouterInfo fails its own re-parse; the exact rule is not visible in the unit test | **open**: bounded recent-log dump added before the assertion; `CI failure` |
+| TF-011 | `test-ssu2-control-plane` | `!parsed.IsUnreachable ()` | the test log echo showed `Unexpected character , instead ';' after 4`: the SSU2 `pq` preference list was serialized as two length-prefixed values around a raw comma, so every reader rejected the RouterInfo | product: one `WriteString("4,3")` value; wire form pinned (TF-038) |
 | TF-012 | `test-leaseset2-enc-types` | `!parsed.valid` for `"4,6"` | hybrid+X25519 (`6,4`/`4,6`) is the shipped default and valid; only two hybrids or hybrid+ElGamal are invalid | test moved those to the positive block |
-| TF-013 | `test-leaseset-encrypted-freshness` | `olderOuter->IsValid ()` | hand-rolled inner sealer; the product path works for product-sealed buffers | **open**: bounded recent-log dump added; `CI failure` |
+| TF-013 | `test-leaseset-encrypted-freshness` | `olderOuter->IsValid ()` | the fixture appended the inner salt/plaintext outside the region `lenOuterCiphertext` declared, so the signature covered a longer prefix than the reader reconstructs (`LeaseSet2: Verification failed`) | test: reserve the layer-1 region; negative control (TF-039) |
 | TF-014 | `test-i2cp-b33-lookup` | `addr` null | `AddressBook::GetAddress()` read the final label after the `.i2p` suffix only, so `<b32>.b33.i2p` yielded the literal `b33` | product: strip an explicit `.b33` before `GetFinalLabel` |
 | TF-015 | `test-i2ptunnel-http` | `parser.Output () == expected` | (a) `pgrade` byte search missed mixed-case `uPgRaDe`; (b) the `Proxy-Connection`-only expectation omitted the synthesised `Connection: close` | product: `HasConnectionUpgradeToken()` in the tunnel parser and `HTTPProxy`; test pins both |
 | TF-016 | `test-sam-control-framing` | `!ParseSAMParams ("ID=a ID=b").duplicate` | assertion was inverted; `Mapping::Insert` already reports the duplicate | test |
@@ -49,7 +49,7 @@ tests**.
 | TF-031 | `android-locale-policy` | `CRLF in ...` | CE-061 | `.gitattributes` LF pinning |
 | TF-032 | `perl-install-layout` | missing `i2pdctl.1` | CE-060 | man-page guard widened to non-Android |
 | TF-033 | `tools-cli` / `tools-smoke` / `tools-regressions` | CE-062, CE-063 | product CLI output and reserved-range filtering | tools and docs corrected |
-| TF-034 | `i2pd-version` | `***Timeout 30.02 sec` | a headless CTest launch of the Windows GUI-subsystem router produced no output and no exit | **open**: bounded `check-binary-version.cmake` driver reports exit status/output and fails a real hang; the underlying Windows launch behaviour remains `CI failure` |
+| TF-034 | `i2pd-version` | `***Timeout 30.02 sec`; then `did not terminate within 20 s` | `--version` was answered only after GUI/daemon initialization; a GUI-subsystem image has no guaranteed CRT argv or console, so the probe emitted nothing and never exited | product: classify/answer `--version`/`--help` before `Daemon.init`, authoritative `GetCommandLineW` argv, inherited-handle/`AttachConsole` banner, `_Exit`; driver now requires the banner on every platform (RT-010) |
 | TF-035 | Debian `Remove and preserve, then purge` | CE-064 | unprivileged `test -f` inside a 0700 state directory | workflow and static contract use `sudo test` |
 
 Executed evidence for this batch: MSYS2 passed 172/210 tests, MSVC passed 6/7
@@ -84,3 +84,25 @@ Older test failures (Windows IPC restart assertions, Debian remove/purge,
 shared test namespace errors) remain in `COMPILATION-ERRORS.md` and
 `COMPILATION-WARNINGS.md` with their run IDs. They are not evidence for the
 current local corrections and must not be counted as current passes.
+
+## Batch `dc5540ae` / `c1125a75` (runs 4124877xxxx and 41249881405)
+
+The code revision `dc5540ae` is the first with the per-test log echo. Fuzzing
+and Packaging passed; Linux/OpenBSD/sanitizers stopped at CE-066 before CTest;
+Windows MSYS2 ran 213 tests with 10 failures, and MSVC ran 7 with two heap
+corruption exits. `c1125a75` changes only documentation and the static
+checker, so its code behaviour is the same for these entries except where
+noted. The echo produced the root cause of the two previously open tests.
+
+| ID | Test | First diagnostic | Root cause | Correction |
+|---|---|---|---|---|
+| TF-036 | `test-sam-control-framing` | long `MIN=3.0.0...0.1` expected `NOVERSION` | Java `VersionComparator` reads that as 3.0, so `OK VERSION=3.3` is correct; the case was written for the retired digit-concatenation comparator, and a sibling `MAX=3.1.5` case wrongly expected 3.2 | test: pin `OK/3.3`, genuine above-range `NOVERSION`, `3.1`/`3.2` for trailing bounds |
+| TF-037 | `test-proxy-auth` | `header("00000002") == Accepted` | an RFC 7616 response is bound to `nc`; the test reused the published `nc=1` vector for 2, 3 and 5, so `BadCredentials` was correct and the count was not consumed | test: per-`nc` vectors plus an older-`nc` `Replayed` case |
+| TF-038 | `test-ssu2-control-plane` | `Unexpected character , instead ';' after 4` | product wrote the SSU2 PQ preference list as two value strings around a raw comma; Java and `ExtractParam` require one length-prefixed value `"4,3"` | product: one `WriteString`; wire-form assertions |
+| TF-039 | `test-leaseset-encrypted-freshness` | `LeaseSet2: Verification failed` | the hand-sealed fixture appended 32+lenInner bytes after the region its `lenOuterCiphertext` declared, so the signature prefix was longer than the reader's reconstruction | test: index inside the reserved region; negative control flips a ciphertext byte |
+| TF-040 | `test-tunnel-endpoint-fragments` | `GetNumIncompleteMessages () == 2`; log `Buffer too small ... dropped` | the new endpoint guard compared the *declared* length to a full cell, but `NewI2NPTunnelMessage(true)` reserves the gateway header and declares 6 bytes less; every transit cell was dropped. Capacity is the memory-safety bound | product: capacity first, then a declared-length floor that allows the reserved header; pool-cell regression |
+| TF-041 | `test-torrents-verify-parity` | `GetNumPeers (1) == 0` | `ParsePeers` mutated the live tracker slot before the whole bencode document validated, so a truncated response committed a partial list | product: parse into a scratch set and commit only on success; test asserts retained last-good list |
+| TF-042 | `tools-cli`/`tools-smoke`/`tools-regressions` | `i2pbase64 ... after padding`; `routerinfo usage ... stderr`; `offlinekeys ... Can't create file` | `i2pbase64` decoded all complete quartets at once so `=` in the same chunk failed with the generic message; the routerinfo test searched for `argv[0]`-bearing text; two regression needles were stale after the stream/atomic-write changes | tools/tests: quartet-by-quartet decode with `data after padding`; path-independent usage assert; stderr/exit-code asserts for every writer; latent famtool cases corrected |
+| TF-043 | MSVC `test-privsep-windows-isolation`, `test-privsep-windows-supervisor` | `Exit code 0xc0000374`; supervisor logs `CreateProcess ... ERROR_INVALID_PARAMETER` | attribute *values* were block locals that died before `CreateProcess` read them; AppContainer profile SIDs were freed with `LocalFree` instead of `FreeSid`; nested jobs cannot carry UI restrictions | product: value storage owned by the attribute list, `FreeSid`, conditional UI restrictions and one bounded job-less retry (RT-007..RT-009) |
+
+Status: Implemented / static; Pending CI compilation; Pending CI tests.

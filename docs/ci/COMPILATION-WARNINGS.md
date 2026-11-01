@@ -240,3 +240,13 @@ category.
 - **OpenBSD (`41232678782`):** stopped at the same error.
 - No new warning class was observed in the inspected logs; this is a
   "nothing new observed" statement, not a warning-free proof.
+
+## Batch `dc5540ae` (2026-11-01)
+
+- `test-privsep-worker-identity.cpp` produced `-Wunused-parameter` (`argv0`,
+  Linux) and `-Wunused-variable` (`buffer`, OpenBSD) because the platform
+  branch that uses each was not the only place it existed. Both are fixed in
+  CE-066; no suppression was added.
+- The MSYS2 build log contains no first-party warning. Linux/OpenBSD did not
+  reach the compiler for later targets (CE-066), so their warning summaries
+  are not evidence.
