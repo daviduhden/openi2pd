@@ -137,15 +137,16 @@ grep for before the next dispatch.
 | Byte length used as a column budget | UTF-8 text must be measured with `terminal::text::Width`/`DisplayWidth`; a byte budget truncates Cyrillic/CJK labels and tears the layout. | every `Put(text, limit)` caller and every width computation |
 | Duplicate platform table | Two copies of a width table or address classifier drift. Keep one owner and include it from both branches. | `tui/main.cpp` vs `TerminalWin32.cpp`; `HTTPProxy` vs `SOCKS` |
 | `GetFileType`/`GetLastError` sequence | `GetFileType` does not reset the last error on success; set `SetLastError(NO_ERROR)` before the probe or a stale code rejects a valid handle. | every Win32 handle probe |
-| Missing direct include for a new standard type | Transitive Asio/Boost includes can disappear; each changed TU must name the headers it uses (`<chrono>`, `<cctype>`, `<span>`, `<thread>`). | new helper in a large TU |
+| Missing direct include for a new standard type | Transitive Asio/Boost includes can disappear; each changed TU must name the headers it uses (`<chrono>`, `<cctype>`, `<span>`, `<thread>`, `<functional>`, `<sys/time.h>`). `daemon/UPnP.cpp` relied on `Log.h` for `std::bind`, and `tui/TuiClient.cpp` on a transitive `struct timeval`. | new helper in a large TU |
 | `defined(DOXYGEN)` without a Doxyfile `PREDEFINED` | The declaration is stripped from the generated API docs. Add the predicate or drop the branch. | `docs/Doxyfile.source` against `DOXYGEN`/`_WIN32` guards |
 
 ## Warnings that would appear under a stricter lane
 
 - `Torrents.cpp::ParseTrackerResponse`'s lambda parameter `buf` shadows the
   function parameter (only `-Wshadow`).
-- `TuiClient.cpp` compares `EAGAIN` and `EWOULDBLOCK`, the same constant on
-  Linux (only `-Wlogical-op`).
+- `daemon/TuiServer.cpp` compared `EAGAIN` and `EWOULDBLOCK`, the same
+  constant on Linux (only `-Wlogical-op`); the duplicate spelling is removed
+  from both sites.
 - No `-Werror` exists in the tree today; these are recorded rather than
   suppressed, and a stricter lane must fix or justify them first.
 
@@ -154,3 +155,16 @@ grep for before the next dispatch.
 | Raw client line in a diagnostic | A tab-separated/mistyped control command can carry `DESTINATION=<private keys>` or `PASSWORD=`. Log only length/field count, never the line. | every `LogPrint` that receives a request buffer |
 | Shared `shared_ptr` member reset across threads | `if (m_X)` is not synchronization. Guard with a leaf mutex and take a shared copy per use. | `I2CPDestination::m_Owner`, `I2PServerTunnel::m_Resolver`, service members touched from admin threads |
 | Fail-open configuration upgrade | An old-format whitelist whose entries all fail to parse must deny, not open. | `accesslist` migration, `filterDefinition`, `targetForPort` |
+
+## Patterns from the `4f76f65f` batch
+
+| Pattern | Why it matters | Search |
+|---|---|---|
+| `.data()` on a const view passed as a writable out-parameter | `Tag`/`IdentHash` expose only a const `data()`, while the OpenSSL `SHA*` functions write through their third argument. The implicit `Tag` conversion is non-const; selecting `.data()` is ill-formed. Use a mutable array or the object conversion. | every `SHA256`/`SHA1`/`SHA512` call whose output is a `Tag`, `IdentHash` or `.data()` |
+| CMake script relies on a policy default | `cmake -P` has no `cmake_minimum_required()`, so CMP0012 OLD makes `while(TRUE)` false and re-reads a TRUE-valued variable as an undefined name, silently skipping or inverting a check. Use `while(1)`/`if(1)` and set `cmake_policy(SET CMP0012 NEW)` in any script that branches on a boolean variable. | `tests/*.cmake`, `tools/*.cmake` invoked with `-P` |
+| Tool installed by one composite action used in the next | A shell-local `brew shellenv`, virtualenv or exported PATH does not survive into another composite step. Resolve the binary by absolute path or re-establish the environment, and do not suppress the lookup error. | every `brew`, `python`, `perl` or tool invocation in a follow-up action |
+| Platform guard removes the only use of a parameter | Android/Windows branches can turn a shared signature into an unused parameter warning. Mark it `[[maybe_unused]]` with the platform reason instead of deleting the parameter. | `#if !defined(ANDROID)`, `#ifdef _WIN32`, `WITH_BINARY=OFF` paths |
+
+| Guard added after an early `return` | The new branch is unreachable and its regression fails. Place the check before every early exit and keep a positive control that proves the guard is reached. | every new `if` in a classifier/parser with preceding `return false`/`return` |
+| Optional snapshot dereferenced in a test | `status.Get(...)->field` is UB when the publisher did not create the entry and stays green in a `/UNDEBUG` build. Use a checked accessor. | every `->` on `std::optional`/`i2p::expected` in tests |
+| All-slash path accepted as a policy root | `unveil("/", "rwc")` grants the whole filesystem. Reject `//`, `///` and `/` in both the builder and the applier. | unveil/root construction and hand-assembled policy objects |

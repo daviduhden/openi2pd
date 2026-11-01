@@ -510,3 +510,70 @@ Each remains Implemented / static, Pending CI compilation and Pending CI tests.
   `CancelResolver()`, and a stale completion cannot clear a newer resolver.
 - **Files:** `libi2pd_client/{SAM.*,I2CP.*,I2PTunnel.*,I2PTunnelAccessFilter.*,ClientContext.cpp}`,
   `tests/{test-sam-control-framing,test-i2ptunnel-filter,test-i2ptunnel-stop}.cpp`.
+
+### RT-025 — recognized SAM commands, partial base32 and NAT64
+
+These were found by the static audit that followed the compile correction;
+none was observed in CI.
+
+- **SAM parameter logging:** `SESSION ADD`/`SESSION REMOVE` logged the whole
+  parameter list before the `DESTINATION` refusal, so a request carrying
+  `DESTINATION=<private keys>` reached the debug log; `PING` echoed arbitrary
+  client text. Both now log only the request length. This extends the
+  unknown-command rule to recognized commands.
+- **Partial base32 jump link:** `Address` accepted any non-zero decode, so a
+  short `.b32.i2p` label published an index row whose remaining hash bytes
+  were indeterminate. The constructor now requires exactly 32 decoded bytes;
+  the merge regression covers 4/8/16-character labels.
+- **NAT64:** the proxy contract promised to refuse NAT64 spellings of private
+  hosts but the classifier only decoded `::/96` and `::ffff:0:0/96`.
+  `64:ff9b::/96` now applies the IPv4 table to its embedded address and the
+  local-use `64:ff9b:1::/48` is refused entirely; public NAT64 literals stay
+  allowed. The first placement was below the `zeroPrefix` early return, so it
+  was unreachable and the new test would have failed; the guard now runs
+  before that return. `test-proxy-auth` pins both directions.
+- **Accessor hiding:** `I2CPDestination::GetOwner()` hid
+  `GarlicDestination::GetOwner()` with a different return type. Renamed to
+  `GetSessionOwner()` so a future `destination->GetOwner()` cannot silently
+  select the session.
+- **Comment hygiene:** the ECIES optimal-payload comment used `/*` inside
+  `//` lines; replaced with plain parentheses.
+- **Files:** `libi2pd_client/{SAM.cpp,AddressBook.cpp,HTTPProxy.cpp,I2CP.*}`,
+  `libi2pd/ECIESX25519AEADRatchetSession.h`,
+  `tests/{test-addressbook-merge,test-proxy-auth}.cpp`.
+- **State:** Implemented / static; **Pending CI compilation and tests**.
+
+### RT-026 — platform-audit corrections for Windows and OpenBSD
+
+Found by the static audit that followed CE-070; none was observed in CI.
+
+- **OpenBSD unveil root:** `BuildOpenBSDPolicy` accepted an all-slash root
+  (`/`, `//`, `///`) and emitted `unveil("/", "rwc")`, granting a storage
+  worker the whole filesystem. It now refuses any all-slash path, and
+  `ApplyOpenBSDPolicy` re-checks a hand-assembled policy before `unveil(2)`.
+- **Pledge promise authority:** `IsKnownPledgePromiseName()` is exported and
+  used by `BuildOpenBSDPolicy`, `ParseOpenBSDPledgeFile` and the regression,
+  so an unknown promise fails before `pledge(2)` aborts a worker without a
+  diagnostic. `test-privsep-openbsd-policy` walks the exhaustive
+  role × unveil matrix and rejects a root/unbounded unveil rule.
+- **Supervisor snapshot reads:** the Windows supervisor test dereferenced
+  `SupervisorStatus::Get()` without checking the optional in seven places;
+  a checked accessor makes a missing publication a diagnostic instead of
+  undefined behaviour. The generic supervisor test received the same guard.
+- **Win32 tray flags:** `AddTrayIcon` assigned `nid.uFlags` twice, so the
+  `notify` branch was dead. The unconditional assignment is removed.
+- **Missing direct includes:** `Win32App.cpp` (`<sstream>`, `<string>`),
+  `DaemonWin32.cpp` (`<chrono>`), `Win32NetState.cpp` (`<exception>`),
+  `daemon/UPnP.cpp` (`<chrono>`, `<exception>`, `<functional>`) and
+  `tui/TuiClient.cpp` (`<sys/time.h>` for `struct timeval`) now name what they
+  use. `daemon/TuiServer.cpp` also spells only `EAGAIN`, removing the
+  duplicate `EWOULDBLOCK` comparison that a `-Wlogical-op` lane reports.
+- **MSVC lane coverage:** `test-win32-shutdown-deadline` is now built and
+  selected by the MSVC job.
+- **Files:** `privsep/OpenBSDSandbox.{h,cpp}`, `contrib/openbsd/i2pd.rc`,
+  `tests/test-privsep-openbsd-policy.cpp`, `tests/test-privsep-*-supervisor.cpp`,
+  `Win32/{Win32App,DaemonWin32,Win32NetState}.cpp`, `daemon/UPnP.cpp`,
+  `.github/workflows/build-windows.yml`.
+- **State:** Implemented / static; **Pending CI compilation and tests**. The
+  `imsg_free` descriptor ownership and the `recvfd` control-buffer question
+  remain open until a live OpenBSD run.

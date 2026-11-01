@@ -1477,3 +1477,102 @@ Runs: Linux/Android [41229374061](https://github.com/daviduhden/openi2pd/actions
   other string-to-span call site.
 - **Files:** `tests/test-datastorage-protocol.cpp`.
 - **State:** Corrected by static analysis; **Pending CI compilation**.
+
+### CE-070 — `SHA256()` out-parameter written through a const view
+
+- **Run/job:** Android `41359794983`; sanitizers `41359794983` (asan-ubsan,
+  tsan, ubsan); install components; OpenBSD `41359799518`; Fuzzing
+  `41359802036`; Packaging `41359804259` (Debian, static musl, container);
+  Windows MSYS2 `41359797195`.
+- **SHA:** `4f76f65f`.
+- **First diagnostic:** `libi2pd/RouterInfo.cpp:1259: error: no matching
+  function for call to 'SHA256'` (Clang/NDK) and `invalid conversion from
+  'const uint8_t*' to 'unsigned char*'` (GCC); the candidate is OpenSSL
+  `SHA256(const unsigned char*, size_t, unsigned char*)`.
+- **Cause:** `RouterInfo::SaveToArtifact` hashed into
+  `IdentHash::data()`. `Tag::data()` is a const-only accessor, so the third
+  argument was `const uint8_t*`; the non-const implicit conversion exists on
+  the `Tag` object but not on `.data()`. This blocked every target that
+  compiles `libi2pd`, and hidden later diagnostics remain unverified.
+- **Correction:** hash into a local `uint8_t[IdentHash::len]` and compare
+  with `std::memcmp`; `<cstring>` is included directly.
+- **Files:** `libi2pd/RouterInfo.cpp`.
+- **State:** Corrected by static analysis; **Pending CI compilation**.
+
+### CE-071 — CMake script used `while(TRUE)` under the old policy
+
+- **Run/job:** Packaging `41359804259`, `Service contracts`, on the Debian
+  package's CMake 3.x.
+- **SHA:** `4f76f65f`.
+- **First diagnostic:** `tests/check-build-system.cmake:634 (message):
+  tests/CMakeLists.txt registers no tests`, after
+  `while() given incorrect arguments: "TRUE"` and the CMP0012 warning.
+- **Cause:** a script run with `cmake -P` has no
+  `cmake_minimum_required()`; with CMP0012 unset, `while(TRUE)` treats
+  `TRUE` as an undefined variable, so the registration scan never ran. The
+  local CMake 4.4 defaults the policy to NEW, which is why static runs did
+  not reproduce it.
+- **Correction:** use `while(1)` in both scans and declare
+  `cmake_policy(SET CMP0012 NEW)` in the standalone scripts that branch on a
+  boolean-valued variable (`check-build-system`, `check-binary-version` and
+  `test-tools-regressions`). Without the policy, a TRUE-valued variable is
+  re-read as an undefined variable name under a CMake 3.x host, which would
+  silently skip the fixed-temporary-path check or invert an optional-banner
+  or positive-tool expectation.
+- **Files:** `tests/check-build-system.cmake`, `tests/check-binary-version.cmake`,
+  `tools/test-tools-regressions.cmake`.
+- **State:** Corrected by static analysis; **Pending CI tests**.
+
+### CI-003 — branch verifier lost the Homebrew environment
+
+- **Run/job:** Linux OpenSSL 3.x `41359789894` and 4.x `41359792345`,
+  both compiler jobs.
+- **SHA:** `4f76f65f`.
+- **First diagnostic:** `Homebrew formula is not installed: openssl@3`
+  (and `openssl@4`) immediately after the toolchain job logged
+  `openssl@3 3.5.9` / `openssl@4 4.1.0`.
+- **Cause:** `brew-toolchain` evaluates `brew shellenv` only inside its own
+  step. The follow-up composite action called plain `brew`, which is not on
+  the runner PATH without that evaluation; stderr was suppressed and the
+  empty version was classified as a missing formula. The build never ran.
+- **Correction:** resolve `/home/linuxbrew/.linuxbrew/bin/brew` with a PATH
+  fallback, fail explicitly when it is absent, and use that binary for the
+  version query.
+- **Files:** `.github/actions/linux-openssl-build/action.yml`.
+- **State:** Corrected by static analysis; **Pending CI tests**.
+
+### CI-004 — workflow split broke compile-free consumers and pipefail checks
+
+- **Run/job:** `4f76f65f` and the split revision; Windows MSVC
+  `41359797195` completed with only CE-070, confirming no second MSVC
+  compile error at that point.
+- **Cause and corrections:**
+  - `tests/check-tools-inventory.cmake` still read the deleted
+    `.github/workflows/build.yml`; the `tools-inventory` CTest and the
+    `skills-static` step would fail before any build. It now reads
+    `build-linux.yml`, where the install tool loop lives.
+  - `tools/tests/perl-portability.t` listed `build.yml` and `fuzz.yml` in
+    its Python-consumer scan; both are gone. The list now names
+    `build-linux.yml`, `build-android.yml`, `validation.yml` and the two
+    OpenSSL branch workflows.
+  - APK assertions piped multi-megabyte `unzip`/`nm` output into `grep -q`
+    under `pipefail`; the producer's `SIGPIPE` could report a valid APK as
+    broken. Extract to a file or use a here-string.
+  - `brew outdated --quiet "$package" | grep -qx` could skip the bottle the
+    branch lane exists to test, and swallowed a real `brew outdated`
+    failure. Capture the list, check its status, then compare names.
+  - The merged fuzz job kept `timeout-minutes: 60` while its step budgets
+    sum to 90, so a slow healthy run could be cancelled as a fuzz failure.
+    Raised to 90.
+  - `check-workflows.pl` now validates that every `inputs.NAME` reference is
+    declared, parses job ownership from the real `jobs:` block, and pins the
+    `android_ui`/`perl_style` opt-in gates.
+  - The mandatory Android Javadoc gained its compile-free
+    `check-android-javadoc.pl` counterpart, and the Windows
+    `i2pd-tui.exe --version` probe is bounded like the router probe.
+- **Files:** `tests/check-tools-inventory.cmake`,
+  `tools/tests/perl-portability.t`, `.github/workflows/{build-android,
+  build-windows,validation}.yml`, `.github/actions/brew-toolchain/action.yml`,
+  `tools/scripts/check-workflows.pl`.
+- **State:** Corrected by static analysis; **Pending CI tests**. No build was
+  performed.

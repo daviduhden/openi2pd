@@ -262,8 +262,28 @@ those lanes.
 
 No new first-party warning is known, but the audit found warning-adjacent
 risks that a stricter lane would report: a missing direct `<chrono>` include
-in `SSU2.cpp` (fixed), a `-Wshadow` lambda parameter in
-`Torrents.cpp::ParseTrackerResponse`, and `EAGAIN`/`EWOULDBLOCK` in
-`TuiClient.cpp` (identical on Linux, only `-Wlogical-op`). No suppression or
+in `SSU2.cpp` (fixed), missing `<functional>` in `daemon/UPnP.cpp` and
+`<sys/time.h>` in `tui/TuiClient.cpp` (fixed), a `-Wshadow` lambda parameter
+in `Torrents.cpp::ParseTrackerResponse`, and `EAGAIN`/`EWOULDBLOCK` in
+`daemon/TuiServer.cpp` (now reduced to `EAGAIN`; identical on Linux, only
+`-Wlogical-op`). No suppression or
 cast was added. The Windows `-W4` lane and the GCC/Clang `-Wall -Wextra
 -Wpedantic` contract remain the evidence; nothing in this entry is compiled.
+
+## Batch `4f76f65f` (2026-11-02)
+
+### CW-010 — Android compiled out the only use of `isService`
+
+- **Run/job:** Linux and Android `41359794983`, `android` job, before the
+  CE-070 stop: `libi2pd/FS.cpp:124: warning: unused parameter 'isService'`.
+- **Cause:** `DetectDataDir` guards the entire service branch with
+  `#if !defined(ANDROID)`, so the parameter has no use in an Android build.
+  The shared signature is required, and no suppression is appropriate.
+- **Correction:** mark the parameter `[[maybe_unused]]` with the platform
+  reason. The non-Android path still uses it.
+- **Files:** `libi2pd/FS.cpp`.
+- **State:** Corrected by static analysis; **Pending CI compilation**. This
+  is a warning only: the tree has no `-Werror` (only
+  `-Werror=format-security`), so it did not stop the build. A compiler
+  stopped by CE-070 reported no later warnings, so Android targets after
+  `FS.cpp` remain unverified.

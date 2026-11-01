@@ -80,9 +80,9 @@ whose declaration lives in a third-party header.
 Public C++ APIs are collected by `docs/Doxyfile.source` (input:
 `libi2pd`, `libi2pd_client`, `privsep`, `daemon`, `tui`, `tools` and the
 Android JNI sources). `WARN_AS_ERROR`, `WARN_IF_DOC_ERROR` and the undocumented
-warnings are part of the manual `source_docs` lane, so a `@param` name that
-does not match the declaration (or a `@param` on an unnamed parameter) fails
-that lane. A literal `*/` inside comment prose closes the block early; write
+warnings are part of the manual `source-docs` job in `validation.yml`, so a
+`@param` name that does not match the declaration (or a `@param` on an
+unnamed parameter) fails that job. A literal `*/` inside comment prose closes the block early; write
 `X-Forwarded-* and *-IP`, not `X-Forwarded-*/`.
 
 `Doxyfile` (without `.source`) is the legacy template and has an empty
@@ -102,7 +102,7 @@ Document:
 - Java 25 source features versus D8/R8 and ART API availability.
 
 Javadoc runs with the debug Android classpath, package-private APIs and
-doclint warnings as errors in the manual `source_docs`/Android lanes.
+doclint warnings as errors in the manual Android lane.
 Do not lower the Java source level to silence a doc or toolchain warning.
 
 ## Perl
@@ -157,8 +157,9 @@ Generation is manual-only and never part of a local build or default install:
   path before `docs/Doxyfile.source` generates C++ API HTML;
 - the Android Javadoc command uses the debug Java compiler and Android SDK
   classpath;
-- Doxygen and Javadoc failures (including doclint and undocumented-parameter
-  warnings) fail the `source_docs` job.
+- Doxygen failures (including undocumented-parameter warnings) fail the
+  `source-docs` job in `validation.yml`; Javadoc failures fail the Android
+  job.
 
 `doxygen-static` (`tools/scripts/check-doxygen-params.pl`) is the
 compile-free C++ counterpart. Doxygen reports these defects under
