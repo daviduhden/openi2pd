@@ -479,6 +479,18 @@ foreach(_marker IN ITEMS "doxygen-static" "check-doxygen-params.pl")
   endif()
 endforeach()
 
+# The duplicate-@param rules (one block, and a definition repeating its
+# header declaration) are proven only by the Perl fixture suite. Markers
+# avoid a backslash escape for the tag itself in this CMake string.
+file(READ "${PROJECT_ROOT}/tools/tests/maintenance-checkers.t" _doxygen_fixtures)
+foreach(_marker IN ITEMS "documentation for Load" "in one documentation block")
+  string(FIND "${_doxygen_fixtures}" "${_marker}" _doxygen_fixture)
+  if(_doxygen_fixture EQUAL -1)
+    message(FATAL_ERROR
+      "tools/tests/maintenance-checkers.t must keep the doxygen duplicate check for '${_marker}'")
+  endif()
+endforeach()
+
 # The fuzzer inventory is also explicit: adding a source without wiring
 # it to the manual Fuzzing workflow must fail the static check.
 file(GLOB _i2pd_fuzz_sources RELATIVE "${PROJECT_ROOT}/tests/fuzz" "${PROJECT_ROOT}/tests/fuzz/*.cpp")

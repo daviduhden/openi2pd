@@ -365,6 +365,114 @@ my $doxygen_checker = File::Spec->catfile( $root, 'tools', 'scripts',
     is( $code, 0, 'Doxygen checker accepts complete and undocumented blocks' );
 }
 
+# --- Doxygen duplicated parameter documentation ----------------------------
+# Doxygen merges a member's declaration and definition documentation, so a
+# parameter documented on both sides is reported twice and aborts the
+# source-docs lane, and the same name twice in one block is a defect too.
+{
+    my $tmp    = tempdir( CLEANUP => 1 );
+    my $header = File::Spec->catfile( $tmp, 'libi2pd', 'probe.h' );
+    my $source = File::Spec->catfile( $tmp, 'libi2pd', 'probe.cpp' );
+
+    write_file(
+        $header,
+        "namespace i2p\n{\nclass Probe\n{\npublic:\n"
+          . "    /// Load.\n"
+          . "    /// \@param priv input scalar.\n"
+          . "    /// \@param force re-derive.\n"
+          . "    bool Load (const uint8_t * priv, bool force) const;\n"
+          . "};\n}\n"
+    );
+    write_file(
+        $source,
+        "namespace i2p\n{\n"
+          . "/**\n"
+          . " * \@brief Load the scalar.\n"
+          . " * \@param priv input scalar.\n"
+          . " * \@param force re-derive.\n"
+          . " */\n"
+          . "bool Probe::Load (const uint8_t * priv, bool force) const\n"
+          . "{\n"
+          . "    return priv && force;\n"
+          . "}\n}\n"
+    );
+
+    my ( $code, $out ) = run_checker( $doxygen_checker, '--root', $tmp );
+    is( $code, 1,
+        'Doxygen checker rejects a definition repeating header @param docs' );
+    like(
+        $out,
+        qr/duplicate \@param documentation for Load/,
+        'declaration/definition duplicate names the function'
+    );
+    like(
+        $out,
+        qr/probe\.h:\d+ already documents it/,
+        'duplicate diagnostic points at the declaration'
+    );
+
+    # The definition owns the parameter contract when the declaration has
+    # none: this is the supported split and must stay accepted.
+    write_file(
+        $header,
+        "namespace i2p\n{\nclass Probe\n{\npublic:\n"
+          . "    bool Load (const uint8_t * priv, bool force) const;\n"
+          . "};\n}\n"
+    );
+    ( $code, $out ) = run_checker( $doxygen_checker, '--root', $tmp );
+    is( $code, 0,
+        'Doxygen checker accepts a definition that owns the @param docs' );
+
+    # A same-named local helper with another parameter count is a different
+    # entity, so its @param block is not a duplicate of the declaration.
+    write_file(
+        $header,
+        "namespace i2p\n{\n"
+          . "/// Free helper.\n"
+          . "/// \@param priv input scalar.\n"
+          . "/// \@param force re-derive.\n"
+          . "bool Load (const uint8_t * priv, bool force);\n}\n"
+    );
+    write_file(
+        $source,
+        "namespace i2p\n{\n"
+          . "/**\n"
+          . " * \@brief Local helper with an extra context.\n"
+          . " * \@param ctx provider context.\n"
+          . " * \@param priv input scalar.\n"
+          . " * \@param force re-derive.\n"
+          . " */\n"
+          . "static bool Load (int ctx, const uint8_t * priv, bool force)\n"
+          . "{\n"
+          . "    return ctx != 0 && priv && force;\n"
+          . "}\n}\n"
+    );
+    ( $code, $out ) = run_checker( $doxygen_checker, '--root', $tmp );
+    is( $code, 0,
+        'Doxygen checker accepts a same-named helper with another arity' );
+
+    # The same parameter documented twice inside one block is fatal even
+    # without a second declaration to merge with.
+    write_file(
+        $header,
+        "class Probe\n{\npublic:\n"
+          . "    /// Encode.\n"
+          . "    /// \@param key input key.\n"
+          . "    /// \@param key repeated entry.\n"
+          . "    bool Encode (const uint8_t * key) const;\n"
+          . "};\n"
+    );
+    write_file( $source, "// no definition\n" );
+    ( $code, $out ) = run_checker( $doxygen_checker, '--root', $tmp );
+    is( $code, 1,
+        'Doxygen checker rejects the same @param name twice in one block' );
+    like(
+        $out,
+        qr/duplicate \@param 'key' in one documentation block/,
+        'in-block duplicate names the parameter'
+    );
+}
+
 # --- CRLF catalogs and nested documentation paths --------------------------
 # A CRLF checkout is the failure mode a Windows runner without the
 # repository .gitattributes rule reproduces, and a nested documentation page
@@ -537,6 +645,15 @@ same placeholder inside C<{@code}>.
 F<android/tools/check-android-jni-symbols.pl> must accept matching
 declarations, reject a Java native method without a C++ definition, and
 reject a C++ definition without a Java declaration.
+
+=item *
+
+F<tools/scripts/check-doxygen-params.pl> must reject a documented function
+that leaves a parameter out, a parameter documented twice in one block, and a
+C<.cpp> definition that repeats the C<@param> block its header declaration
+already carries; it must accept a block with no C<@param>, a definition that
+owns the parameter contract, and a same-named local helper with a different
+parameter count.
 
 =back
 

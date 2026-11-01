@@ -67,6 +67,16 @@ Use `///` for short declarations, `@brief`, `@param`, `@return`, `@pre`,
 comments for algorithms, and explain the invariant rather than narrating each
 line. Keep identifiers, line structure and clang-format conventions unchanged.
 
+`@param` belongs to the declaration only. Doxygen merges a member's
+declaration and definition documentation, and it aborts on the same parameter
+documented twice, so a `.cpp` definition keeps its behavioural prose and
+repeats no parameter contract. A class is declared in the header and defined
+out of line in the source: document `@param` next to the in-class declaration
+and describe the algorithm, ownership and failure path in the definition.
+Document `@param` on the definition only when the declaration carries no
+parameter documentation at all, for example a file-local helper or a class
+whose declaration lives in a third-party header.
+
 Public C++ APIs are collected by `docs/Doxyfile.source` (input:
 `libi2pd`, `libi2pd_client`, `privsep`, `daemon`, `tui`, `tools` and the
 Android JNI sources). `WARN_AS_ERROR`, `WARN_IF_DOC_ERROR` and the undocumented
@@ -151,14 +161,29 @@ Generation is manual-only and never part of a local build or default install:
   warnings) fail the `source_docs` job.
 
 `doxygen-static` (`tools/scripts/check-doxygen-params.pl`) is the
-compile-free C++ counterpart. Doxygen reports a partially documented
-function under `WARN_IF_DOC_ERROR`, and `WARN_AS_ERROR` makes it fatal; the
-checker accepts a block with no `@param` at all (because
-`WARN_NO_PARAMDOC` is disabled) and rejects a documented function that names
-some parameters but leaves others out. It reads the same input roots and
-file patterns as `docs/Doxyfile.source`, skips `tools/tests`, and reports the
-file, line and missing names. It does not replace the manual lane, which
-remains the only dynamic Doxygen evidence.
+compile-free C++ counterpart. Doxygen reports these defects under
+`WARN_IF_DOC_ERROR`, and `WARN_AS_ERROR` makes them fatal; the checker accepts
+a block with no `@param` at all (because `WARN_NO_PARAMDOC` is disabled) and
+rejects three shapes:
+
+- a documented function that names some parameters but leaves others out;
+- the same parameter documented twice inside one block;
+- a `.c`/`.cpp` definition that documents parameters while the matching
+  declaration in a header already documents them, which Doxygen reports as
+  `argument 'x' ... has multiple @param documentation sections`.
+
+The third rule identifies the entity by its enclosing namespace/class chain,
+its unqualified name and its parameter count, so a same-named helper with a
+different arity or a function in another scope is not reported. Two same-arity
+overloads in one scope cannot be distinguished without a C++ parser and remain
+a reviewed limit rather than a checker guarantee. A definition whose
+declaration is not visible in the scanned roots (a third-party header, or a
+declaration inside a function body) is not flagged.
+
+The checker reads the same input roots and file patterns as
+`docs/Doxyfile.source`, skips `tools/tests`, and reports the file, line and
+affected names. It does not replace the manual lane, which remains the only
+dynamic Doxygen evidence.
 
 `android-javadoc-static` (`android/tools/check-android-javadoc.pl`) is the
 compile-free guard for the comment defects that doclint rejects only after
@@ -182,6 +207,8 @@ and unresolved warnings as `Pending CI` until the manual lane passes.
 
 - The comment states a contract that the code actually enforces.
 - Parameter names and return/void semantics match the declaration.
+- Each `@param` appears once for the member, on the declaration or on the
+  definition, never on both.
 - Ownership, locking and thread affinity are named where they matter.
 - Bounds, deadlines and failure cleanup are explicit.
 - Trust-boundary and secret-handling statements are accurate.

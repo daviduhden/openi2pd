@@ -542,8 +542,6 @@ namespace crypto
 
 	/**
 	 * @brief Load an existing private scalar and derive its public key.
-	 * @param priv 32-byte private scalar, or null to leave the holder empty.
-	 * @param calculatePublic Ignored; retained for source compatibility.
 	 *
 	 * The public key is always derived. Leaving m_PublicKey untouched when
 	 * the caller passed calculatePublic=false used to expose uninitialised

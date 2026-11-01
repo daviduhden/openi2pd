@@ -1116,14 +1116,6 @@ namespace data
 	/**
 	 * @brief Decode per-client authorization data and derive the auth
 	 *        cookie.
-	 * @param buf encrypted-LeaseSet tail that follows the header.
-	 * @param len bytes available.
-	 * @param secret caller-supplied client secret: X25519
-	 *               private key for the DH scheme (flag bits 3-1 = 0) or
-	 *               the 32-byte PSK for scheme 2.
-	 * @param subcredential 36-byte subcredential for this blinded
-	 *                      destination.
-	 * @param authCookie 32-byte output, written only on success.
 	 * @return bytes consumed, 0 when the message declares no client auth,
 	 *         or size_t(-1) on any validation failure.
 	 *
