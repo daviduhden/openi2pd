@@ -293,7 +293,7 @@ namespace tui
 			auto sent = ::send (fd, data.data (), data.size (), MSG_NOSIGNAL | MSG_DONTWAIT);
 			if (sent < 0)
 			{
-				if (errno == EINTR || errno == EAGAIN || errno == EWOULDBLOCK) continue;
+				if (errno == EINTR || errno == EAGAIN) continue;
 				return false;
 			}
 			if (!sent) return false;
@@ -354,7 +354,7 @@ namespace tui
 				auto received = ::recv (clientFd, buffer.data (), buffer.size (), MSG_DONTWAIT);
 				if (received < 0)
 				{
-					if (errno == EINTR || errno == EAGAIN || errno == EWOULDBLOCK) continue;
+					if (errno == EINTR || errno == EAGAIN) continue;
 					return;
 				}
 				if (received == 0) return;
