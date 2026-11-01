@@ -59,6 +59,12 @@ namespace transport
 	const int SSU2_KEEP_ALIVE_INTERVAL = 15; // in seconds
 	const int SSU2_KEEP_ALIVE_INTERVAL_VARIANCE = 4; // in seconds
 	const int SSU2_PROXY_CONNECT_RETRY_TIMEOUT = 30; // in seconds
+	// Bound on one full SOCKS5 control exchange (TCP connect, method
+	// negotiation, UDP ASSOCIATE request and its reply). The proxy is an
+	// untrusted peer: without a deadline a proxy that accepts the socket and
+	// then stops reading or writing would leave the UDP transport disabled
+	// forever. NTCP2 bounds the same exchange with its connect timer.
+	const int SSU2_PROXY_HANDSHAKE_TIMEOUT = 30; // in seconds
 	const int SSU2_MIN_HOLE_PUNCH_EXPIRATION = 30; // in seconds
 	const int SSU2_MAX_HOLE_PUNCH_EXPIRATION = 160; // in seconds
 	const size_t SSU2_MAX_NUM_PACKETS_PER_BATCH = 64;
@@ -253,6 +259,10 @@ namespace transport
 		void SendUDPAssociateRequest ();
 		void ReadUDPAssociateReply ();
 		void ReadUDPAssociateSocket (); // handle if closed by peer
+		// One per SOCKS5 control exchange: a timer that has been replaced
+		// belongs to a previous attempt and must not tear down the new one.
+		void ScheduleProxyHandshakeDeadline ();
+		void CancelProxyHandshakeDeadline ();
 
 	private:
 		// The receive service may drain handlers that use pool-backed data.
@@ -336,6 +346,11 @@ namespace transport
 		std::unique_ptr<boost::asio::ip::tcp::socket> m_UDPAssociateSocket;
 		std::unique_ptr<boost::asio::ip::udp::endpoint> m_ProxyRelayEndpoint;
 		std::unique_ptr<boost::asio::steady_timer> m_ProxyConnectRetryTimer;
+		// Deadline for the SOCKS5 control exchange. Owned by the receive
+		// service, like every other proxy control object; replaced (not
+		// cancelled) per attempt so a stale handler is recognisable by
+		// identity.
+		std::shared_ptr<boost::asio::steady_timer> m_ProxyHandshakeDeadline;
 
 	public:
 		// for HTTP/I2PControl Safe form: the caller owns the returned copy

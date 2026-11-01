@@ -11,6 +11,7 @@
  *
  */
 
+#include <chrono>
 #include <mutex>
 #include <random>
 #include <cstring>
@@ -201,6 +202,10 @@ namespace transport
 			m_UDPAssociateSocket->close ();
 			m_UDPAssociateSocket.reset (nullptr);
 		}
+		// The receive service is joined above, so no proxy handler can run
+		// concurrently with these resets.
+		CancelProxyHandshakeDeadline ();
+		if (m_ProxyConnectRetryTimer) m_ProxyConnectRetryTimer->cancel ();
 		{
 			std::lock_guard<std::mutex> l (m_ProxyRelayEndpointMutex);
 			m_ProxyRelayEndpoint.reset (nullptr);
@@ -2027,6 +2032,7 @@ namespace transport
 	{
 		if (!m_ProxyEndpoint) return;
 		m_UDPAssociateSocket.reset (new boost::asio::ip::tcp::socket (m_ReceiveService.GetService ()));
+		ScheduleProxyHandshakeDeadline ();
 		m_UDPAssociateSocket->async_connect (*m_ProxyEndpoint,
 			[this] (const boost::system::error_code & ecode)
 			{
@@ -2039,6 +2045,40 @@ namespace transport
 				else
 					HandshakeWithProxy ();
 			});
+	}
+
+	void SSU2Server::ScheduleProxyHandshakeDeadline ()
+	{
+		// Replace the previous deadline. The old timer keeps its own handler
+		// alive until it expires and then finds itself no longer current, so
+		// a reconnect cannot be torn down by the previous attempt's timer.
+		auto timer = std::make_shared<boost::asio::steady_timer> (m_ReceiveService.GetService ());
+		m_ProxyHandshakeDeadline = timer;
+		timer->expires_after (std::chrono::seconds (SSU2_PROXY_HANDSHAKE_TIMEOUT));
+		timer->async_wait (
+			[this, timer] (const boost::system::error_code & ecode)
+			{
+				if (ecode == boost::asio::error::operation_aborted) return;
+				if (timer != m_ProxyHandshakeDeadline) return; // a newer attempt owns the state
+				m_ProxyHandshakeDeadline.reset ();
+				LogPrint (eLogError, "SSU2: Proxy handshake did not complete in ", SSU2_PROXY_HANDSHAKE_TIMEOUT,
+					" seconds");
+				m_UDPAssociateSocket.reset (nullptr);
+				{
+					std::lock_guard<std::mutex> l (m_ProxyRelayEndpointMutex);
+					m_ProxyRelayEndpoint.reset (nullptr);
+				}
+				ReconnectToProxy ();
+			});
+	}
+
+	void SSU2Server::CancelProxyHandshakeDeadline ()
+	{
+		if (m_ProxyHandshakeDeadline)
+		{
+			m_ProxyHandshakeDeadline->cancel ();
+			m_ProxyHandshakeDeadline.reset ();
+		}
 	}
 
 	void SSU2Server::HandshakeWithProxy ()
@@ -2083,6 +2123,10 @@ namespace transport
 						SendUDPAssociateRequest ();
 					else
 					{
+						// Deliberately not retried: the local method list only
+						// offers "no authentication", so a proxy that selects
+						// anything else is misconfigured and would otherwise
+						// reconnect (and log) every retry interval forever.
 						LogPrint (eLogError, "SSU2: Invalid proxy reply");
 						m_UDPAssociateSocket.reset (nullptr);
 					}
@@ -2144,6 +2188,9 @@ namespace transport
 								m_ProxyRelayEndpoint.reset (
 									new boost::asio::ip::udp::endpoint (boost::asio::ip::address_v4 (bytes), port));
 							}
+							// The control exchange is complete; only now may
+							// the socket be used as a data path.
+							CancelProxyHandshakeDeadline ();
 							m_SocketV4.open (boost::asio::ip::udp::v4 ());
 							Receive (m_SocketV4);
 							ReadUDPAssociateSocket ();
@@ -2153,12 +2200,17 @@ namespace transport
 							LogPrint (eLogError, "SSU2: Proxy UDP associate unsupported ATYP ",
 								(int)m_ProxyHandshakeBuffer[3]);
 							m_UDPAssociateSocket.reset (nullptr);
+							// A reply we cannot parse is a broken proxy, not a
+							// terminal configuration error: retry instead of
+							// leaving the UDP transport disabled forever.
+							ReconnectToProxy ();
 						}
 					}
 					else
 					{
 						LogPrint (eLogError, "SSU2: Proxy UDP associate error ", (int)m_ProxyHandshakeBuffer[1]);
 						m_UDPAssociateSocket.reset (nullptr);
+						ReconnectToProxy ();
 					}
 				}
 			});
@@ -2191,6 +2243,10 @@ namespace transport
 
 	void SSU2Server::ReconnectToProxy ()
 	{
+		// A retry starts a new control exchange: the failed attempt's
+		// handshake deadline must not fire into it, and ConnectToProxy()
+		// arms a fresh one.
+		CancelProxyHandshakeDeadline ();
 		LogPrint (eLogInfo, "SSU2: Reconnect to proxy after ", SSU2_PROXY_CONNECT_RETRY_TIMEOUT, " seconds");
 		if (m_ProxyConnectRetryTimer)
 			m_ProxyConnectRetryTimer->cancel ();

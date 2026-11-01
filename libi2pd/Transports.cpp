@@ -287,7 +287,10 @@ namespace transport
 		i2p::config::GetOption ("ipv6", ipv6);
 		i2p::config::GetOption ("nat", m_IsNAT);
 		m_X25519KeysPairSupplier.Start ();
-		m_Thread = std::make_unique<std::thread> (std::bind (&Transports::Run, this));
+		// Publish the generation before any deferred handler of the previous
+		// instance can run again (the io_context below is restarted, not
+		// rebuilt, so its queued handlers survive Stop()).
+		m_RunGeneration.fetch_add (1, std::memory_order_acq_rel);
 		std::string ntcp2proxy;
 		i2p::config::GetOption ("ntcp2.proxy", ntcp2proxy);
 		int ntcp2version = 2, ssu2version = 2;
@@ -426,6 +429,13 @@ namespace transport
 					m_NTCP2Server->SetLocalAddress (addr);
 			}
 		}
+
+		// Every member a handler can observe (both servers, the bound
+		// addresses and the MTU) is published before the transports thread
+		// exists. A handler left over from the previous instance therefore
+		// never races the unique_ptr assignment or reads a half configured
+		// server.
+		m_Thread = std::make_unique<std::thread> (std::bind (&Transports::Run, this));
 
 		// start servers
 		if (m_NTCP2Server) m_NTCP2Server->Start ();
@@ -958,6 +968,13 @@ namespace transport
 	{
 		if (RoutesRestricted () || i2p::context.IsLimitedConnectivity () || !m_SSU2Server || m_SSU2Server->UsesProxy ())
 			return;
+		// The stagger timers below are bound to the transports io_context,
+		// which Stop() only stops and Start() restarts. Capture the run
+		// generation so a wait handler that survived a stop/start cycle is
+		// discarded instead of starting a peer test on the new instance
+		// (whose SSU2 server may not exist yet, or at all).
+		const uint64_t generation = m_RunGeneration.load (std::memory_order_acquire);
+		const std::weak_ptr<void> lifetime = m_LifetimeToken;
 		if (ipv4 && i2p::context.SupportsV4 ())
 		{
 			LogPrint (eLogInfo, "Transports: Started peer test IPv4");
@@ -983,10 +1000,15 @@ namespace transport
 							auto delayTimer = std::make_shared<boost::asio::steady_timer> (*m_Service);
 							delayTimer->expires_after (std::chrono::milliseconds (testDelay));
 							delayTimer->async_wait (
-								[this, router, delayTimer] (const boost::system::error_code & ecode)
+								[this, router, generation, lifetime, delayTimer] (const boost::system::error_code & ecode)
 								{
-									if (ecode != boost::asio::error::operation_aborted)
-										m_SSU2Server->StartPeerTest (router, true);
+									if (ecode == boost::asio::error::operation_aborted) return;
+									if (lifetime.expired ()) return;
+									if (!IsPeerTestRunCurrent (generation,
+											m_RunGeneration.load (std::memory_order_acquire),
+											m_IsRunning.load (std::memory_order_acquire), m_SSU2Server != nullptr))
+										return;
+									m_SSU2Server->StartPeerTest (router, true);
 								});
 						}
 					}
@@ -1020,10 +1042,15 @@ namespace transport
 							auto delayTimer = std::make_shared<boost::asio::steady_timer> (*m_Service);
 							delayTimer->expires_after (std::chrono::milliseconds (testDelay));
 							delayTimer->async_wait (
-								[this, router, delayTimer] (const boost::system::error_code & ecode)
+								[this, router, generation, lifetime, delayTimer] (const boost::system::error_code & ecode)
 								{
-									if (ecode != boost::asio::error::operation_aborted)
-										m_SSU2Server->StartPeerTest (router, false);
+									if (ecode == boost::asio::error::operation_aborted) return;
+									if (lifetime.expired ()) return;
+									if (!IsPeerTestRunCurrent (generation,
+											m_RunGeneration.load (std::memory_order_acquire),
+											m_IsRunning.load (std::memory_order_acquire), m_SSU2Server != nullptr))
+										return;
+									m_SSU2Server->StartPeerTest (router, false);
 								});
 						}
 					}
@@ -1612,10 +1639,13 @@ namespace transport
 
 	bool Transports::IsTrustedRouter (const i2p::data::IdentHash & ih) const
 	{
-		if (m_TrustedRouters.empty ()) return false;
+		// The trusted-router set is replaced by RestrictRoutesToRouters() on
+		// the daemon startup thread while the netDb, tunnel and transport
+		// threads query it. Take the lock before the emptiness test; an
+		// unsynchronised empty() reads the container's size concurrently
+		// with clear()/insert().
 		std::lock_guard<std::mutex> l (m_TrustedRoutersMutex);
-		if (m_TrustedRouters.contains (ih)) return true;
-		return false;
+		return m_TrustedRouters.contains (ih);
 	}
 
 	bool Transports::IsRestrictedPeer (const i2p::data::IdentHash & ih) const
@@ -1638,7 +1668,27 @@ namespace transport
 		{
 			m_IsOnline = online;
 			if (online)
-				PeerTest ();
+			{
+				// Callers are the admin queue and the signal thread (SIGCONT),
+				// never the transports thread. PeerTest() creates timers on and
+				// reads transport state from the service, so marshal it there.
+				// The posted handler holds the lifetime authority and the run
+				// generation: it may run after Stop() (or never, if the owner
+				// is destroyed with the queue still populated).
+				if (m_Service)
+				{
+					const uint64_t generation = m_RunGeneration.load (std::memory_order_acquire);
+					const std::weak_ptr<void> lifetime = m_LifetimeToken;
+					boost::asio::post (*m_Service,
+						[this, generation, lifetime] ()
+						{
+							if (lifetime.expired ()) return;
+							if (!m_IsRunning.load (std::memory_order_acquire)) return;
+							if (generation != m_RunGeneration.load (std::memory_order_acquire)) return;
+							PeerTest ();
+						});
+				}
+			}
 			else
 				i2p::context.SetError (eRouterErrorOffline);
 		}

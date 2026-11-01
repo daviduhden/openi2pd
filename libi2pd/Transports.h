@@ -169,6 +169,25 @@ namespace transport
 	const int NUM_X25519_PRE_GENERATED_KEYS = 25; // pre-generated x25519 keys pairs
 	const int MAX_NUM_CONNECTIONS_FROM_SUBNET_FOR_PEER = 3; // for first hop selection
 
+	/// Whether a deferred peer-test action still belongs to the running
+	/// transport instance.
+	///
+	/// `PeerTest()` spreads its attempts over short-lived steady timers
+	/// bound to the transports io_context. `Transports::Stop()` stops that
+	/// context but keeps the object, so `Start()` only restarts it: a wait
+	/// handler that had not fired yet survives the restart and would run
+	/// against the *next* instance. At that point `m_SSU2Server` may be
+	/// replaced (never assign it from another thread while such a handler
+	/// can run) or absent because SSU2 is disabled in the new
+	/// configuration. A handler therefore verifies the generation it was
+	/// scheduled in plus the current running/SSU2 state before touching
+	/// server state.
+	constexpr bool IsPeerTestRunCurrent (
+		uint64_t scheduledGeneration, uint64_t currentGeneration, bool isRunning, bool hasSSU2Server)
+	{
+		return isRunning && hasSSU2Server && scheduledGeneration == currentGeneration;
+	}
+
 	const int IP_BAN_TIME = 1800; // in seconds
 	const int IP_BAN_TIME_VARIANCE = 540; // in seconds
 	const int BAN_LIST_CLEANUP_INTERVAL = 66; // in seconds
@@ -308,6 +327,16 @@ namespace transport
 	private:
 		std::atomic<bool> m_IsOnline { true };
 		std::atomic<bool> m_IsRunning { false };
+		// Incremented by every Start(). Deferred peer-test timers capture it
+		// so a wait handler that survived Stop()/Start() (the io_context is
+		// restarted, not rebuilt) cannot act on the new instance's servers.
+		std::atomic<uint64_t> m_RunGeneration { 0 };
+		// Lifetime authority for deferred handlers. A stopped io_context
+		// can still hold a completion that runs after Stop(), and the
+		// generation check alone does not prove the owner still exists.
+		// Handlers hold a weak reference and return once it expires, so a
+		// destroyed Transports can never be reached through a raw `this`.
+		std::shared_ptr<void> m_LifetimeToken { std::make_shared<int> (0) };
 		std::atomic<bool> m_HasSSU2 { false };
 		std::atomic<bool> m_HasNTCP2 { false };
 		bool m_IsNAT, m_CheckReserved;
