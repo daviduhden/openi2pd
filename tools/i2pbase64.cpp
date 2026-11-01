@@ -65,11 +65,17 @@ bool WriteAll (std::ostream & output, std::string_view data)
 /// @brief Streaming base64 decoder for I2P base64 on stdin or one file.
 ///
 /// Decoding is chunked, so `=padding` can arrive in a later read than
-/// the data it terminates. Only whole four-character quads are decoded
-/// at a time, and once a decoded quad contained `=` the `sawPadding`
-/// latch rejects every later non-whitespace byte, so a second encoded
-/// value cannot be appended to the same stream. A trailing partial quad
-/// is reported as truncated rather than padded implicitly.
+/// the data it terminates. Whole four-character quads are decoded one
+/// at a time, because the core decoder only accepts padding at the end
+/// of its input: handing it a buffer that already contains a second
+/// quartet would hide the padding position from this state machine and
+/// collapse a distinct protocol violation into the generic alphabet
+/// diagnostic. Once a decoded quad contained `=`, the `sawPadding`
+/// latch rejects every later non-whitespace byte, in the same chunk or
+/// in a later one, with `invalid base64 input: data after padding`, so
+/// a second encoded value cannot be appended to the same stream. A
+/// trailing partial quad without preceding padding is reported as
+/// truncated rather than padded implicitly.
 ///
 /// Whitespace (space, tab, CR, LF, VT, FF) is ignored anywhere;
 /// anything else outside the alphabet is an error from the core
@@ -107,17 +113,35 @@ int Decode (std::istream & input, std::ostream & output)
 			const size_t complete = pending.size () - pending.size () % 4;
 			if (complete)
 			{
-				const auto decoded
-					= i2p::data::Base64ToByteStream (std::string_view (pending).substr (0, complete), outbuf);
-				if (!decoded)
+				// Decode quartet by quartet: Base64ToByteStream accepts
+				// padding only at the end of its input, so a buffer that
+				// holds the padded quartet and a following one would fail
+				// with the generic alphabet diagnostic instead of naming
+				// the actual violation.
+				size_t decodedBytes = 0;
+				for (size_t offset = 0; offset < complete; offset += 4)
 				{
-					std::cerr << "invalid base64 input" << std::endl;
-					return 1;
+					if (sawPadding)
+					{
+						// A whole quartet after the padded one is a second
+						// encoded value appended to the same stream.
+						std::cerr << "invalid base64 input: data after padding" << std::endl;
+						return 1;
+					}
+					const std::string_view quartet = std::string_view (pending).substr (offset, 4);
+					const auto decoded = i2p::data::Base64ToByteStream (
+						quartet, std::span<uint8_t> (outbuf).subspan (decodedBytes));
+					if (!decoded)
+					{
+						std::cerr << "invalid base64 input" << std::endl;
+						return 1;
+					}
+					decodedBytes += decoded;
+					sawPadding = quartet.find ('=') != std::string_view::npos;
 				}
-				if (!WriteAll (output, std::span<const uint8_t> (outbuf).first (decoded))) return 1;
-				// Padding is only legal in the final quad; remember it so the
-				// next chunk cannot extend the stream.
-				sawPadding = pending.substr (0, complete).find ('=') != std::string::npos;
+				// A complete quartet needs at most three output bytes, so
+				// one chunk of quartets always fits outbuf.
+				if (!WriteAll (output, std::span<const uint8_t> (outbuf).first (decodedBytes))) return 1;
 				pending.erase (0, complete);
 			}
 		}
@@ -135,6 +159,13 @@ int Decode (std::istream & input, std::ostream & output)
 	}
 	if (!pending.empty ())
 	{
+		// Padding already terminated the value, so a partial quartet after
+		// it is a stray byte, not an incomplete stream.
+		if (sawPadding)
+		{
+			std::cerr << "invalid base64 input: data after padding" << std::endl;
+			return 1;
+		}
 		std::cerr << "truncated base64 input" << std::endl;
 		return 1;
 	}

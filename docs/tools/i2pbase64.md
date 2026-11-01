@@ -43,6 +43,15 @@ The alphabet is I2P's (`A-Z a-z 0-9 - ~`) with `=` padding. Decoding rejects
 non-alphabet characters and truncated quartets rather than silently producing
 corrupt bytes.
 
+`=` terminates the encoded value: after the padded quartet only ASCII
+whitespace may follow. A second encoded value appended to the same stream is
+rejected with `invalid base64 input: data after padding` on stderr and status
+1, even when the padding and the extra characters arrive in different reads.
+A partial quartet that is not preceded by padding is `truncated base64 input`;
+any other malformed quartet is `invalid base64 input`. Decoded bytes already
+written before a later chunk is rejected stay on stdout, so always check the
+exit status.
+
 ## Security
 
 Do not paste private keys into shell history or terminal logs. Base64 is an

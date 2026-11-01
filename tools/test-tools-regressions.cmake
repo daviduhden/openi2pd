@@ -691,7 +691,22 @@ run_tool(i2pbase64 FALSE -d leading-padding.b64)
 assert_output_contains("invalid base64 input" "i2pbase64 rejects leading padding")
 file(WRITE "${WORK}/after-padding.b64" "AA==AAAA")
 run_tool(i2pbase64 FALSE -d after-padding.b64)
-assert_output_contains("invalid base64 input" "i2pbase64 rejects data after padding")
+# The specific protocol violation is named, not collapsed into the
+# generic alphabet diagnostic: '=' terminates the value and a second
+# quartet in the same read must not be decoded.
+assert_contains("${LAST_TOOL_ERROR}" "data after padding" "i2pbase64 rejects data after padding")
+# Streaming boundary: padding ends the first 4096-byte read and the
+# extra characters arrive only in the second one, so the sawPadding
+# latch, not the quartet loop, must produce the diagnostic.
+string(REPEAT "A" 4092 PAD_PREFIX)
+file(WRITE "${WORK}/after-padding-chunked.b64" "${PAD_PREFIX}AA==AAAA")
+run_tool(i2pbase64 FALSE -d after-padding-chunked.b64)
+assert_contains("${LAST_TOOL_ERROR}" "data after padding" "i2pbase64 rejects data after padding across reads")
+# A stray character after a complete padded quartet in the final read is
+# data after padding, not a truncated value.
+file(WRITE "${WORK}/after-padding-partial.b64" "AA==A")
+run_tool(i2pbase64 FALSE -d after-padding-partial.b64)
+assert_contains("${LAST_TOOL_ERROR}" "data after padding" "i2pbase64 stray byte after padding")
 run_tool(i2pbase64 FALSE missing.bin)
 run_tool(i2pbase64 FALSE text.bin extra.bin)
 assert_output_contains("usage:" "i2pbase64 rejects extra arguments")

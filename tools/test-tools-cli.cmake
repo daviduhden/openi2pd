@@ -207,6 +207,9 @@ run_cli(i2pbase64 out err -d)
 unset(TOOL_STDIN)
 expect_code(1 "i2pbase64 data after padding")
 expect_contains("${err}" "after padding" "i2pbase64 padding stderr")
+# The padded quartet and the trailing quartet arrive in the same read, so
+# the violation is detected before any decoded byte is flushed.
+expect_empty("${out}" "i2pbase64 data after padding stdout")
 
 run_cli(i2pbase64 out err -h)
 expect_code(0 "i2pbase64 -h")
