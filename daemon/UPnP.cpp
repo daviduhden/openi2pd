@@ -14,6 +14,9 @@
  */
 
 #ifdef USE_UPNP
+#include <chrono>
+#include <exception>
+#include <functional>
 #include <string>
 #include <thread>
 
