@@ -356,6 +356,10 @@ namespace client
 
 	private:
 		bool Resolve (std::shared_ptr<i2p::stream::Stream> stream);
+		// Cancels and releases the in-flight address resolver. Its completion
+		// handler runs on the destination's io_context and clears the same
+		// member, so both paths serialize through m_ResolverMutex.
+		void CancelResolver ();
 		void HandleResolve (const boost::system::error_code & ecode,
 			boost::asio::ip::tcp::resolver::results_type endpoints, std::shared_ptr<i2p::stream::Stream> stream);
 		// Registers the acceptor and admission predicate on one streaming
@@ -393,6 +397,9 @@ namespace client
 		std::atomic<uint64_t> m_Generation;
 		std::unique_ptr<boost::asio::ip::address> m_LocalAddress;
 		std::shared_ptr<boost::asio::ssl::context> m_SSLCtx;
+		// Guarded by m_ResolverMutex: Stop() runs on the caller's thread
+		// while the resolver completion runs on the destination's io_context.
+		mutable std::mutex m_ResolverMutex;
 		std::shared_ptr<boost::asio::ip::tcp::resolver> m_Resolver;
 	};
 

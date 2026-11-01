@@ -181,6 +181,14 @@ namespace client
 	bool ParseFilterTarget (std::string_view target, std::vector<i2p::data::IdentHash> & destinations,
 		std::vector<FilterDefinition::AddressMask> & masks, bool & matchesAny, std::string & error);
 
+	// Parses the legacy comma-separated `accesslist`/`whitelist` value and
+	// returns the deny-by-default definition the server tunnel installs.
+	// `invalidEntries` counts the comma-separated entries that are not a
+	// base32 destination hash; they are reported and never widened into an
+	// open tunnel. The caller must not call this for an absent or empty
+	// value, which means "no whitelist at all".
+	std::shared_ptr<const FilterDefinition> ParseLegacyAccessList (std::string_view value, size_t & invalidEntries);
+
 	// True when `mask` matches the loopback-mapped IPv4 address of `peer`.
 	bool MatchesAddressMask (const FilterDefinition::AddressMask & mask, const i2p::data::IdentHash & peer);
 }

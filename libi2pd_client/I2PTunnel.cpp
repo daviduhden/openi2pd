@@ -848,11 +848,7 @@ namespace client
 		I2PService::Stop ();
 		++m_Generation; // invalidates every outstanding completion
 		DetachAcceptor ();
-		if (m_Resolver)
-		{
-			m_Resolver->cancel ();
-			m_Resolver = nullptr;
-		}
+		CancelResolver ();
 		for (const auto & resolver : m_TargetResolvers)
 			if (resolver) resolver->cancel ();
 		m_TargetResolvers.clear ();
@@ -869,11 +865,16 @@ namespace client
 
 	bool I2PServerTunnel::Resolve (std::shared_ptr<i2p::stream::Stream> stream)
 	{
-		if (m_Resolver) return false; // already resolving
-		m_Resolver = std::make_shared<boost::asio::ip::tcp::resolver> (GetService ());
+		std::shared_ptr<boost::asio::ip::tcp::resolver> resolver;
+		{
+			std::lock_guard<std::mutex> lock (m_ResolverMutex);
+			if (m_Resolver) return false; // already resolving
+			resolver = std::make_shared<boost::asio::ip::tcp::resolver> (GetService ());
+			m_Resolver = resolver;
+		}
 		std::weak_ptr<I2PServerTunnel> weakSelf = std::static_pointer_cast<I2PServerTunnel> (weak_from_this ().lock ());
 		const auto generation = m_Generation.load ();
-		m_Resolver->async_resolve (m_Address, "",
+		resolver->async_resolve (m_Address, "",
 			[weakSelf, generation, stream] (
 				const boost::system::error_code & ecode, boost::asio::ip::tcp::resolver::results_type endpoints)
 			{
@@ -884,10 +885,27 @@ namespace client
 		return true;
 	}
 
+	void I2PServerTunnel::CancelResolver ()
+	{
+		std::shared_ptr<boost::asio::ip::tcp::resolver> resolver;
+		{
+			std::lock_guard<std::mutex> lock (m_ResolverMutex);
+			resolver = std::move (m_Resolver);
+			m_Resolver = nullptr;
+		}
+		// Cancelled outside the lock: the aborted completion is posted to the
+		// destination's io_context, which may invoke it while this call still
+		// runs on the stopping thread.
+		if (resolver) resolver->cancel ();
+	}
+
 	void I2PServerTunnel::HandleResolve (const boost::system::error_code & ecode,
 		boost::asio::ip::tcp::resolver::results_type endpoints, std::shared_ptr<i2p::stream::Stream> stream)
 	{
-		m_Resolver = nullptr;
+		{
+			std::lock_guard<std::mutex> lock (m_ResolverMutex);
+			m_Resolver = nullptr;
+		}
 		if (!ecode)
 		{
 			bool found = false;

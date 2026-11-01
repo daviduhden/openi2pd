@@ -338,8 +338,18 @@ namespace client
 
 		void PostCreateNewLeaseSet (std::vector<std::shared_ptr<i2p::tunnel::InboundTunnel>> tunnels);
 
+		// The session reference is cleared by Stop(), which can run on the
+		// I2CP server thread while a destination callback, a posted send or
+		// an incoming garlic message still reads it on another thread. Every
+		// use takes a copy under the mutex: a plain shared_ptr must never be
+		// read while it is reset, and a late callback then sees a null owner
+		// instead of dereferencing a cleared one.
+		std::shared_ptr<I2CPSession> GetOwner () const;
+		void ResetOwner ();
+
 	private:
-		std::shared_ptr<I2CPSession> m_Owner;
+		mutable std::mutex m_OwnerMutex;
+		std::shared_ptr<I2CPSession> m_Owner; // guarded by m_OwnerMutex
 		std::shared_ptr<const i2p::data::IdentityEx> m_Identity;
 		std::map<i2p::data::CryptoKeyType, std::shared_ptr<i2p::crypto::LocalEncryptionKey>>
 			m_EncryptionKeys; // last is most preferable
@@ -410,13 +420,22 @@ namespace client
 		std::shared_ptr<const I2CPDestination> GetDestination () const { return m_Destination; };
 
 		// called from I2CPDestination
-		/// Queue one I2CP message to the client. The four-byte big-endian
-		/// length covers the payload only (the type byte is not counted) and
-		/// the whole frame is copied into a caller-independent buffer before
-		/// it is queued, so the caller may release @a payload immediately and
-		/// a caller on any thread is safe. An oversized message is dropped
-		/// with an error log instead of being truncated.
-		void SendI2CPMessage (uint8_t type, const uint8_t * payload, size_t len);
+		/// Queue one I2CP message to the client.
+		///
+		/// The four-byte big-endian length covers the payload only (the type
+		/// byte is not counted) and the whole frame is copied into a
+		/// caller-independent buffer before it is queued, so the caller may
+		/// release the payload immediately and any caller thread is safe.
+		/// An oversized message is dropped with an error log instead of
+		/// being truncated.
+		/// @param type I2CP message type byte
+		/// @param payload body bytes; may be null when @a len is zero
+		/// @param len body length, at most I2CP_MAX_MESSAGE_LENGTH
+		/// @param closeAfterFlush close the connection only after this frame
+		///        has been written, so a terminal SESSION STATUS is not
+		///        aborted by the teardown; a stalled client is bounded by the
+		///        reply deadline
+		void SendI2CPMessage (uint8_t type, const uint8_t * payload, size_t len, bool closeAfterFlush = false);
 		void SendMessagePayloadMessage (const uint8_t * payload, size_t len);
 		// `sessionID` defaults to this session's identifier; a BAD_SESSION
 		// status echoes the identifier the client used instead.
@@ -458,11 +477,11 @@ namespace client
 		void Terminate ();
 		void TerminateInOwnerThread ();
 
-		void QueueI2CPMessage (std::shared_ptr<i2p::stream::SendBuffer> && sendBuf, size_t len);
+		void QueueI2CPMessage (std::shared_ptr<i2p::stream::SendBuffer> && sendBuf, size_t len, bool closeAfterFlush);
 		void StartNextI2CPWrite (size_t len);
 		void HandleI2CPMessageSent (const boost::system::error_code & ecode, std::size_t bytes_transferred);
 
-		void SendSessionStatusMessage (I2CPSessionStatus status);
+		void SendSessionStatusMessage (I2CPSessionStatus status, bool closeAfterFlush = false);
 		// Shared SEND MESSAGE / SEND MESSAGE EXPIRES path.
 		void SendMessageRequest (const uint8_t * buf, size_t len, bool withExpiration);
 		void SendHostReplyMessage (uint32_t requestID, uint16_t sessionID,
@@ -502,6 +521,9 @@ namespace client
 		// idle connection is legal and header waits are not timed out.
 		bool m_HandshakeComplete = false;
 		boost::asio::steady_timer m_ReadTimer;
+		// Set when a terminal reply must reach the client before the socket
+		// closes (DESTROY SESSION). Only the service thread sets it.
+		std::atomic<bool> m_CloseAfterFlush { false };
 		std::atomic<bool> m_ConnectionReleased { false };
 		// True only when the server charged this session against the
 		// concurrent-connection budget (HandleAccept). A session built

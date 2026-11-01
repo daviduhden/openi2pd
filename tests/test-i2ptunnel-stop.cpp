@@ -7,9 +7,10 @@
  * Proves that stopping a server tunnel actually terminates and removes
  * every registered handler (the base Terminate used to poison m_Dead
  * before the derived teardown ran), that Stop(bool) distinguishes the
- * forced and in-use cases, that a restart accepts again and that a
+ * forced and in-use cases, that a restart accepts again, that a
  * port-specific tunnel never takes the default streaming acceptor away
- * from another tunnel.
+ * from another tunnel, and that a stop/start cycle cancels and re-arms
+ * the address resolver.
  *
  */
 
@@ -166,5 +167,34 @@ int main ()
 	assert (!defaultDestination->IsAcceptorSet ());
 	tunnel->Stop ();
 	assert (tunnel->GetNumHandlers () == 0);
+
+	// A named upstream arms the address resolver during Start(). A stop
+	// must cancel and release it, and a following start must arm a fresh
+	// one: a stale completion must not be able to clear the new
+	// registration. Nothing runs the service here, so the resolver
+	// completion itself stays pending; only the ownership transitions are
+	// observed.
+	{
+		auto namedTunnel
+			= std::make_shared<I2PServerTunnel> ("named", "localhost", 8082, fixture.destination, 9091, false);
+		namedTunnel->Start ();
+		assert (namedTunnel->IsRunning ());
+		auto namedDestination = destination.GetStreamingDestination (9091);
+		assert (namedDestination);
+		assert (namedDestination->IsAcceptorSet ());
+
+		namedTunnel->Stop ();
+		assert (!namedTunnel->IsRunning ());
+		assert (!namedDestination->IsAcceptorSet ());
+
+		// Restart after the cancelled resolve still arms an acceptor and
+		// remains stoppable.
+		namedTunnel->Start ();
+		assert (namedTunnel->IsRunning ());
+		assert (namedDestination->IsAcceptorSet ());
+		namedTunnel->Stop ();
+		assert (!namedDestination->IsAcceptorSet ());
+	}
+
 	return 0;
 }

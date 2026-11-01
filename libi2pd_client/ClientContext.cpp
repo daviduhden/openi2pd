@@ -1581,39 +1581,15 @@ namespace client
 							// installed for an invalid value and then matched
 							// nothing, silently dropping every peer. The list is
 							// upgraded to an explicit filter so a denied peer is
-							// refused before the SYNACK instead of after it.
-							std::vector<i2p::data::IdentHash> idents;
+							// refused before the SYNACK instead of after it, and a
+							// value whose every entry is invalid denies every peer
+							// rather than disabling the whitelist.
 							size_t invalid = 0;
-							size_t pos = 0, comma = 0;
-							do
-							{
-								comma = accessList.find (',', pos);
-								auto entry = accessList.substr (
-									pos, comma != std::string::npos ? comma - pos : std::string::npos);
-								auto begin = entry.find_first_not_of (" \t");
-								auto end = entry.find_last_not_of (" \t");
-								if (begin != std::string::npos)
-								{
-									entry = entry.substr (begin, end - begin + 1);
-									i2p::data::IdentHash ident;
-									if (ident.FromBase32 (entry) == ident.len)
-										idents.push_back (ident);
-									else
-										++invalid;
-								}
-								pos = comma + 1;
-							} while (comma != std::string::npos);
+							auto definition = ParseLegacyAccessList (accessList, invalid);
 							if (invalid)
 								LogPrint (eLogWarning, "Clients: ", invalid, " accesslist entries of ", name,
 									" are invalid and were skipped");
-							if (!idents.empty ())
-								serverTunnel->SetAccessFilter (FilterDefinition::FromAccessList (idents), limitAction);
-							else
-							{
-								LogPrint (eLogWarning, "Clients: accesslist of ", name,
-									" has no valid entry; no whitelist was installed");
-								serverTunnel->SetLimitAction (limitAction);
-							}
+							serverTunnel->SetAccessFilter (definition, limitAction);
 						}
 						else
 							serverTunnel->SetLimitAction (limitAction);

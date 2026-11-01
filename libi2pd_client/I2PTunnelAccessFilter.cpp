@@ -213,6 +213,35 @@ namespace client
 		return definition;
 	}
 
+	std::shared_ptr<const FilterDefinition> ParseLegacyAccessList (std::string_view value, size_t & invalidEntries)
+	{
+		invalidEntries = 0;
+		std::vector<i2p::data::IdentHash> destinations;
+		size_t pos = 0, comma = 0;
+		do
+		{
+			comma = value.find (',', pos);
+			auto entry = value.substr (pos, comma == std::string_view::npos ? std::string_view::npos : comma - pos);
+			auto begin = entry.find_first_not_of (" \t");
+			auto end = entry.find_last_not_of (" \t");
+			if (begin != std::string_view::npos)
+			{
+				entry = entry.substr (begin, end - begin + 1);
+				i2p::data::IdentHash destination;
+				if (destination.FromBase32 (entry) == destination.len)
+					destinations.push_back (destination);
+				else
+					++invalidEntries;
+			}
+			pos = comma + 1;
+		} while (comma != std::string_view::npos);
+		// An operator-supplied whitelist is a trust boundary: a value whose
+		// every entry is invalid still denies every peer instead of falling
+		// back to an open tunnel, which FromAccessList() already expresses
+		// for an empty list.
+		return FilterDefinition::FromAccessList (destinations);
+	}
+
 	std::shared_ptr<const FilterDefinition> FilterDefinition::Parse (std::string_view definition, std::string & error)
 	{
 		error.clear ();

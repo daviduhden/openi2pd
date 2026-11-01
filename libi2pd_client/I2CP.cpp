@@ -541,7 +541,24 @@ namespace client
 		m_LeaseSetCreationTimer.cancel ();
 		m_ReadinessCheckTimer.cancel ();
 		LeaseSetDestination::Stop ();
-		m_Owner = nullptr;
+		ResetOwner ();
+	}
+
+	std::shared_ptr<I2CPSession> I2CPDestination::GetOwner () const
+	{
+		std::lock_guard<std::mutex> l (m_OwnerMutex);
+		return m_Owner;
+	}
+
+	void I2CPDestination::ResetOwner ()
+	{
+		std::shared_ptr<I2CPSession> owner;
+		{
+			std::lock_guard<std::mutex> l (m_OwnerMutex);
+			owner = std::move (m_Owner);
+		}
+		// The copy above is released here, outside the lock, so a session
+		// destructor can never run while the owner mutex is held.
 	}
 
 	void I2CPDestination::SetEncryptionPrivateKey (i2p::data::CryptoKeyType keyType, const uint8_t * key, size_t keyLen)
@@ -735,7 +752,7 @@ namespace client
 		}
 		uint32_t length = bufbe32toh (buf);
 		if (length > len - 4) length = static_cast<uint32_t> (len - 4);
-		if (m_Owner) m_Owner->SendMessagePayloadMessage (buf + 4, length);
+		if (auto owner = GetOwner ()) owner->SendMessagePayloadMessage (buf + 4, length);
 	}
 
 	void I2CPDestination::CreateNewLeaseSet (const std::vector<std::shared_ptr<i2p::tunnel::InboundTunnel>> & tunnels)
@@ -770,15 +787,16 @@ namespace client
 		m_LeaseSetExpirationTime = ls.GetExpirationTime ();
 		uint8_t * leases = ls.GetLeases ();
 		int numLeases = leases[-1];
-		if (m_Owner && numLeases)
+		auto owner = GetOwner ();
+		if (owner && numLeases)
 		{
-			uint16_t sessionID = m_Owner->GetSessionID ();
+			uint16_t sessionID = owner->GetSessionID ();
 			if (sessionID != 0xFFFF)
 			{
 				m_IsCreatingLeaseSet = true;
 				htobe16buf (leases - 3, sessionID);
 				size_t l = 2 /*sessionID*/ + 1 /*num leases*/ + i2p::data::LEASE_SIZE * numLeases;
-				m_Owner->SendI2CPMessage (I2CP_REQUEST_VARIABLE_LEASESET_MESSAGE, leases - 3, l);
+				owner->SendI2CPMessage (I2CP_REQUEST_VARIABLE_LEASESET_MESSAGE, leases - 3, l);
 				m_LeaseSetCreationTimer.expires_after (std::chrono::seconds (I2CP_LEASESET_CREATION_TIMEOUT));
 				auto s = GetSharedFromThis ();
 				m_LeaseSetCreationTimer.async_wait (
@@ -787,7 +805,7 @@ namespace client
 						if (ecode != boost::asio::error::operation_aborted)
 						{
 							LogPrint (eLogInfo, "I2CP: LeaseSet creation timeout expired. Terminate");
-							if (s->m_Owner) s->m_Owner->Stop ();
+							if (auto stopped = s->GetOwner ()) stopped->Stop ();
 						}
 					});
 			}
@@ -825,13 +843,15 @@ namespace client
 		if (!payload || len > I2NP_MAX_MESSAGE_SIZE - 4)
 		{
 			LogPrint (eLogError, "I2CP: I2NP Data payload is too large ", len);
-			if (m_Owner) m_Owner->SendMessageStatusMessage (nonce, eI2CPMessageStatusGuaranteedFailure);
+			if (auto owner = GetOwner ())
+				owner->SendMessageStatusMessage (nonce, eI2CPMessageStatusGuaranteedFailure);
 			return;
 		}
 		auto msg = m_I2NPMsgsPool.AcquireSharedMt ();
 		if (!msg)
 		{
-			if (m_Owner) m_Owner->SendMessageStatusMessage (nonce, eI2CPMessageStatusGuaranteedFailure);
+			if (auto owner = GetOwner ())
+				owner->SendMessageStatusMessage (nonce, eI2CPMessageStatusGuaranteedFailure);
 			return;
 		}
 		uint8_t * buf = msg->GetPayload ();
@@ -846,8 +866,8 @@ namespace client
 			{
 				// send right a way
 				bool sent = SendMsg (msg, remote);
-				if (m_Owner)
-					m_Owner->SendMessageStatusMessage (
+				if (auto owner = GetOwner ())
+					owner->SendMessageStatusMessage (
 						nonce, sent ? eI2CPMessageStatusGuaranteedSuccess : eI2CPMessageStatusGuaranteedFailure);
 			}
 			else
@@ -858,8 +878,8 @@ namespace client
 					[s, msg, remote, nonce] ()
 					{
 						bool sent = s->SendMsg (msg, remote);
-						if (s->m_Owner)
-							s->m_Owner->SendMessageStatusMessage (nonce,
+						if (auto owner = s->GetOwner ())
+							owner->SendMessageStatusMessage (nonce,
 								sent ? eI2CPMessageStatusGuaranteedSuccess : eI2CPMessageStatusGuaranteedFailure);
 					});
 			}
@@ -873,12 +893,12 @@ namespace client
 					if (ls)
 					{
 						bool sent = s->SendMsg (msg, ls);
-						if (s->m_Owner)
-							s->m_Owner->SendMessageStatusMessage (nonce,
+						if (auto owner = s->GetOwner ())
+							owner->SendMessageStatusMessage (nonce,
 								sent ? eI2CPMessageStatusGuaranteedSuccess : eI2CPMessageStatusGuaranteedFailure);
 					}
-					else if (s->m_Owner)
-						s->m_Owner->SendMessageStatusMessage (nonce, eI2CPMessageStatusNoLeaseSet);
+					else if (auto owner = s->GetOwner ())
+						owner->SendMessageStatusMessage (nonce, eI2CPMessageStatusNoLeaseSet);
 				});
 		}
 	}
@@ -938,8 +958,9 @@ namespace client
 		// last key bytes, but type-specific padding or a key fragment for
 		// every other signature type); a crafted identity could reproduce
 		// that slice with a different public key and select another
-		// destination's routing session.
-		m_Owner->AddRoutingSession (remote->GetIdentHash (), remoteSession);
+		// destination's routing session. A stopped session has no owner left
+		// to cache for; the message is still sent on the path above.
+		if (auto owner = GetOwner ()) owner->AddRoutingSession (remote->GetIdentHash (), remoteSession);
 		return SendMsg (garlic, outboundTunnel, remoteLease);
 	}
 
@@ -1011,7 +1032,7 @@ namespace client
 	void I2CPDestination::CleanupDestination ()
 	{
 		m_I2NPMsgsPool.CleanUpMt ();
-		if (m_Owner) m_Owner->CleanupRoutingSessions ();
+		if (auto owner = GetOwner ()) owner->CleanupRoutingSessions ();
 	}
 
 	RunnableI2CPDestination::RunnableI2CPDestination (std::shared_ptr<I2CPSession> owner,
@@ -1161,6 +1182,14 @@ namespace client
 			// not defer another termination.
 			return;
 		}
+		if (m_CloseAfterFlush.load ())
+		{
+			// The client stopped reading while a terminal reply was being
+			// flushed, so the bounded close is due now.
+			LogPrint (eLogWarning, "I2CP: Terminal reply flush timed out");
+			Terminate ();
+			return;
+		}
 		LogPrint (eLogWarning, "I2CP: Read timeout on control connection");
 		// Runs on the owner service thread, and TerminateInOwnerThread closes
 		// the socket, which aborts the pending read.
@@ -1189,6 +1218,10 @@ namespace client
 
 	void I2CPSession::ReceiveHeader ()
 	{
+		// A session that is closing after its terminal reply reads nothing
+		// more: the armed reply deadline bounds the flush and then
+		// terminates.
+		if (m_CloseAfterFlush.load ()) return;
 		auto socket = m_Socket;
 		if (!socket)
 		{
@@ -1343,12 +1376,24 @@ namespace client
 		if (m_ConnectionAdmitted && !m_ConnectionReleased.exchange (true)) m_Owner.ReleaseConnection ();
 	}
 
-	void I2CPSession::SendI2CPMessage (uint8_t type, const uint8_t * payload, size_t len)
+	void I2CPSession::SendI2CPMessage (uint8_t type, const uint8_t * payload, size_t len, bool closeAfterFlush)
 	{
 		auto l = len + I2CP_HEADER_SIZE;
 		if (l > I2CP_MAX_MESSAGE_LENGTH)
 		{
 			LogPrint (eLogError, "I2CP: Message to send is too long ", l);
+			if (closeAfterFlush)
+			{
+				// Nothing can be flushed, so the caller's teardown must not be
+				// skipped because the terminal frame was dropped.
+				if (m_Owner.IsInServiceThread ())
+					TerminateInOwnerThread ();
+				else
+				{
+					auto s = shared_from_this ();
+					boost::asio::post (m_Owner.GetService (), [s] () { s->TerminateInOwnerThread (); });
+				}
+			}
 			return;
 		}
 		// Build a complete, caller-independent buffer. The service thread is
@@ -1361,17 +1406,27 @@ namespace client
 		if (len) memcpy (buf + I2CP_HEADER_SIZE, payload, len);
 
 		if (m_Owner.IsInServiceThread ())
-			QueueI2CPMessage (std::move (sendBuf), l);
+			QueueI2CPMessage (std::move (sendBuf), l, closeAfterFlush);
 		else
 		{
 			auto s = shared_from_this ();
-			boost::asio::post (m_Owner.GetService (),
-				[s, sendBuf = std::move (sendBuf), l] () mutable { s->QueueI2CPMessage (std::move (sendBuf), l); });
+			boost::asio::post (m_Owner.GetService (), [s, sendBuf = std::move (sendBuf), l, closeAfterFlush] () mutable
+				{ s->QueueI2CPMessage (std::move (sendBuf), l, closeAfterFlush); });
 		}
 	}
 
-	void I2CPSession::QueueI2CPMessage (std::shared_ptr<i2p::stream::SendBuffer> && sendBuf, size_t len)
+	void I2CPSession::QueueI2CPMessage (
+		std::shared_ptr<i2p::stream::SendBuffer> && sendBuf, size_t len, bool closeAfterFlush)
 	{
+		if (closeAfterFlush)
+		{
+			// Recorded before the queue decision so a frame that cannot be
+			// queued still tears the session down once the current write is
+			// done. The reply deadline bounds the flush: a client that stops
+			// reading must not pin a session that is already closing.
+			m_CloseAfterFlush.store (true);
+			ArmReadTimeout (I2CP_BODY_TIMEOUT);
+		}
 		std::lock_guard<std::mutex> l (m_SendMutex);
 		if (m_Terminated.load () || !m_Socket) return;
 		if (m_IsSending)
@@ -1416,19 +1471,29 @@ namespace client
 			}
 			return;
 		}
-		std::lock_guard<std::mutex> l (m_SendMutex);
-		if (m_Terminated.load () || !m_Socket)
+		bool terminate = false;
 		{
-			m_IsSending = false;
-			return;
+			std::lock_guard<std::mutex> l (m_SendMutex);
+			if (m_Terminated.load () || !m_Socket)
+			{
+				m_IsSending = false;
+				return;
+			}
+			if (!m_SendQueue.IsEmpty ())
+			{
+				auto len = m_SendQueue.Get (m_SendBuffer, I2CP_MAX_MESSAGE_LENGTH);
+				StartNextI2CPWrite (len);
+			}
+			else
+			{
+				m_IsSending = false;
+				// The queue is drained: a terminal reply has been written, so
+				// the teardown may now close the connection. Terminate cannot
+				// run under m_SendMutex because it cleans the same queue.
+				terminate = m_CloseAfterFlush.load ();
+			}
 		}
-		if (!m_SendQueue.IsEmpty ())
-		{
-			auto len = m_SendQueue.Get (m_SendBuffer, I2CP_MAX_MESSAGE_LENGTH);
-			StartNextI2CPWrite (len);
-		}
-		else
-			m_IsSending = false;
+		if (terminate) TerminateInOwnerThread ();
 	}
 
 	void I2CPSession::GetDateMessageHandler (const uint8_t *, size_t)
@@ -1624,9 +1689,12 @@ namespace client
 
 	void I2CPSession::DestroySessionMessageHandler (const uint8_t *, size_t)
 	{
-		SendSessionStatusMessage (eI2CPSessionStatusDestroyed); // destroy
 		LogPrint (eLogDebug, "I2CP: Session ", m_SessionID.load (), " destroyed");
-		Terminate ();
+		// The SESSION STATUS DESTROYED reply is terminal: the connection is
+		// closed only after the frame has been written (Java writes the
+		// status before it stops the reader), and the reply deadline bounds
+		// a client that stops reading.
+		SendSessionStatusMessage (eI2CPSessionStatusDestroyed, true);
 	}
 
 	void I2CPSession::ReconfigureSessionMessageHandler (const uint8_t * buf, size_t len)
@@ -1693,12 +1761,12 @@ namespace client
 		SendSessionStatusMessage (status);
 	}
 
-	void I2CPSession::SendSessionStatusMessage (I2CPSessionStatus status)
+	void I2CPSession::SendSessionStatusMessage (I2CPSessionStatus status, bool closeAfterFlush)
 	{
 		uint8_t buf[3];
 		htobe16buf (buf, m_SessionID.load ());
 		buf[2] = (uint8_t)status;
-		SendI2CPMessage (I2CP_SESSION_STATUS_MESSAGE, buf, 3);
+		SendI2CPMessage (I2CP_SESSION_STATUS_MESSAGE, buf, 3, closeAfterFlush);
 	}
 
 	void I2CPSession::SendMessageStatusMessage (uint32_t nonce, I2CPMessageStatus status, uint16_t sessionID)
@@ -2368,12 +2436,12 @@ namespace client
 		if (len) memcpy (buf + I2CP_HEADER_SIZE + 10, payload, len);
 
 		if (m_Owner.IsInServiceThread ())
-			QueueI2CPMessage (std::move (sendBuf), l);
+			QueueI2CPMessage (std::move (sendBuf), l, false);
 		else
 		{
 			auto s = shared_from_this ();
 			boost::asio::post (m_Owner.GetService (),
-				[s, sendBuf = std::move (sendBuf), l] () mutable { s->QueueI2CPMessage (std::move (sendBuf), l); });
+				[s, sendBuf = std::move (sendBuf), l] () mutable { s->QueueI2CPMessage (std::move (sendBuf), l, false); });
 		}
 	}
 

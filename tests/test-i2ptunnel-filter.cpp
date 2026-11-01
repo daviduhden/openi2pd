@@ -25,6 +25,7 @@
 namespace
 {
 using i2p::client::FilterDefinition;
+using i2p::client::ParseLegacyAccessList;
 using i2p::client::TunnelAccessFilter;
 
 i2p::data::IdentHash MakeIdentity (uint8_t first, uint8_t second, uint8_t third)
@@ -191,6 +192,36 @@ int main ()
 		auto empty = FilterDefinition::FromAccessList ({ });
 		TunnelAccessFilter denyFilter (empty);
 		assert (!Allows (denyFilter, allowed, now));
+	}
+
+	// The comma-separated configuration value keeps that contract: entries
+	// that are not base32 destinations are counted, and a value whose
+	// every entry is unusable still denies every peer instead of falling
+	// back to an open tunnel.
+	{
+		size_t invalid = 0;
+		auto parsed = ParseLegacyAccessList (
+			" " + allowed.ToBase32 () + " , " + other.ToBase32 () + " ", invalid);
+		assert (parsed && !parsed->IsDefaultAllow ());
+		assert (invalid == 0);
+		TunnelAccessFilter legacy (parsed);
+		assert (Allows (legacy, allowed, now));
+		assert (Allows (legacy, other, now));
+		assert (!Allows (legacy, MakeIdentity (7, 7, 7), now));
+
+		invalid = 0;
+		auto allInvalid = ParseLegacyAccessList ("not-a-hash,also-not", invalid);
+		assert (allInvalid && !allInvalid->IsDefaultAllow ());
+		assert (invalid == 2);
+		TunnelAccessFilter denyAll (allInvalid);
+		assert (!Allows (denyAll, allowed, now));
+
+		invalid = 0;
+		auto blank = ParseLegacyAccessList (" , ", invalid);
+		assert (blank && !blank->IsDefaultAllow ());
+		assert (invalid == 0);
+		TunnelAccessFilter denyBlank (blank);
+		assert (!Allows (denyBlank, allowed, now));
 	}
 
 	// Invalid grammar is rejected at parse time without a definition.
