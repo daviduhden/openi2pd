@@ -2214,11 +2214,17 @@ namespace data
 				const bool allow3 = address.v >= 3 && i2p::crypto::CanPublishPQ (3);
 				if (allow4 || allow3)
 				{
+					// The whole preference list is one length-prefixed value;
+					// the commas separate entries inside that value (Java
+					// DataHelper.writeProperties() writes one string per
+					// value). Emitting two strings around a raw comma instead
+					// produced 0x01 '4' ',' 0x01 '3', which every reader -
+					// including our own ExtractParam() - rejects as a
+					// malformed mapping.
+					const std::string preferenceList = allow4 ? (allow3 ? "4,3" : "4") : "3";
 					WriteString ("pq", properties);
 					properties << '=';
-					if (allow4) WriteString ("4", properties);
-					if (allow4 && allow3) properties << ',';
-					if (allow3) WriteString ("3", properties);
+					WriteString (preferenceList, properties);
 					properties << ';';
 				}
 			}

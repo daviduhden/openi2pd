@@ -10,6 +10,7 @@
  *
  */
 
+#include <algorithm>
 #include <cassert>
 #include <cstdint>
 #include <cstring>
@@ -60,6 +61,25 @@ void AppendParam (std::string & out, std::string_view key, std::string_view valu
 	out.push_back (static_cast<char> (value.size ()));
 	out.append (value);
 	out.push_back (';');
+}
+
+// True when the serialized mapping contains `key=value;` with both
+// strings length-prefixed exactly as ExtractParam()/Java
+// DataHelper.readProperties() expect. A value that was split into
+// several length-prefixed strings (0x01 '4' ',' 0x01 '3') is not the
+// same wire form as one value (0x03 '4' ',' '3'), which is what the
+// regression below pins.
+bool ContainsSealedParam (const uint8_t * buf, size_t len, std::string_view key, std::string_view value)
+{
+	assert (buf && key.size () <= 255 && value.size () <= 255);
+	std::vector<uint8_t> pattern;
+	pattern.push_back (static_cast<uint8_t> (key.size ()));
+	pattern.insert (pattern.end (), key.begin (), key.end ());
+	pattern.push_back ('=');
+	pattern.push_back (static_cast<uint8_t> (value.size ()));
+	pattern.insert (pattern.end (), value.begin (), value.end ());
+	pattern.push_back (';');
+	return std::search (buf, buf + len, pattern.begin (), pattern.end ()) != buf + len;
 }
 
 std::string NonPublishedSSU2Options (std::string_view caps, bool withIntroducer)
@@ -187,6 +207,14 @@ void TestPQPublicationUsesPerFamilyMTU (const i2p::data::PrivateKeys & keys)
 	assert (v4->IsV4 () && !v4->IsV6 ());
 	assert (v6->IsV6 () && !v6->IsV4 ());
 
+	// The provider decides which advertised parameter sets can be
+	// selected.
+	bool has3 = false, has4 = false;
+#if OPENSSL_PQ
+	has3 = i2p::crypto::CanPublishPQ (3);
+	has4 = i2p::crypto::CanPublishPQ (4);
+#endif
+
 	// Simulate PublishSSU2Address(): pq=4 requested for both families, but
 	// only the IPv4 interface has a low MTU. ML-KEM-768 needs 1318 bytes
 	// on IPv4 (PeerState2.MIN_MLKEM768_IPV4_MTU).
@@ -203,19 +231,24 @@ void TestPQPublicationUsesPerFamilyMTU (const i2p::data::PrivateKeys & keys)
 	local.CreateBuffer (keys);
 	assert (local.GetBuffer () && local.GetBufferLen ());
 
-	i2p::data::RouterInfo parsed (local.GetBuffer (), local.GetBufferLen ());
+	// The published preference list is one length-prefixed value whose
+	// commas separate entries ("4,3"), exactly like Java
+	// DataHelper.writeProperties(). Splitting it into two values around
+	// a raw comma desynchronizes every reader, including our own
+	// ExtractParam(), and made this RouterInfo unparseable.
+	const auto * sealed = local.GetBuffer ();
+	const auto sealedLen = local.GetBufferLen ();
+	// IPv4 has a low MTU, so it advertises ML-KEM-512 only; IPv6 has an
+	// unknown MTU and keeps the Java-compatible "4,3" preference list.
+	if (has3) assert (ContainsSealedParam (sealed, sealedLen, "pq", "3"));
+	if (has4) assert (ContainsSealedParam (sealed, sealedLen, "pq", has3 ? "4,3" : "4"));
+	if (!has3 && !has4) assert (!ContainsSealedParam (sealed, sealedLen, "pq", "3"));
+
+	i2p::data::RouterInfo parsed (sealed, sealedLen);
 	assert (!parsed.IsUnreachable ());
 	auto pv4 = parsed.GetSSU2V4Address ();
 	auto pv6 = parsed.GetSSU2V6Address ();
 	assert (pv4 && pv6 && pv4 != pv6);
-
-	// The provider decides which advertised parameter sets can be
-	// selected.
-	bool has3 = false, has4 = false;
-#if OPENSSL_PQ
-	has3 = i2p::crypto::CanPublishPQ (3);
-	has4 = i2p::crypto::CanPublishPQ (4);
-#endif
 
 	// IPv4: published "pq=3". A low MTU prevents ML-KEM-768, so use
 	// version 3
