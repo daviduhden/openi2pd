@@ -198,7 +198,18 @@ static void TestBoundedContainerWrites ()
 	assert (refused ("2:http://a.i2p/a")); // tier above the empty table
 	assert (refused ("4294967296:http://a.i2p/a"));
 	assert (refused ("18446744073709551616:http://a.i2p/a"));
-	assert (refused (std::string (MAX_TORRENT_ARGUMENT_LENGTH + 1, 'a')));
+	// The record bound covers the tier, its separator and the address, so a
+	// record of exactly the limit is accepted. Without the positive control
+	// the rejection below could come from any earlier rule: an over-long
+	// token without a ':' is refused for the missing separator, not for its
+	// length.
+	const std::string longestRecord = "0:" + std::string (MAX_TORRENT_ARGUMENT_LENGTH - 2, 'a');
+	auto longest = ParseRequest (std::string (prefix) + longestRecord + " payload");
+	assert (longest.has_value ());
+	assert (longest->createTrackers.size () == 1);
+	assert (longest->createTrackers[0].size () == 1);
+	assert (longest->createTrackers[0][0].size () == MAX_TORRENT_ARGUMENT_LENGTH - 2);
+	assert (refused (longestRecord + "a"));
 	// A gap is not filled in: one accepted tier is never "skipped over".
 	assert (!ParseRequest (std::string ("I2PDTUI/1 TORRENT-CREATE-V1 0 0 public 2 0:a 2:b payload")).has_value ());
 

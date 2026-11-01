@@ -192,11 +192,15 @@ static void TestColumnBudget ()
 	assert (text::FitLength (wide, 3) == 3);
 	assert (text::FitLength (wide, 4) == 6);
 
-	// A combining mark costs no column but is still emitted with its base
-	// character.
+	// A combining mark costs no column. The budget is still checked before
+	// each unit, exactly like the ncurses backend's `columns < limit` loop,
+	// so a mark that follows its base at the exact budget is dropped: the
+	// base character has already consumed the columns. With room for two
+	// columns both units are emitted.
 	const std::string_view combining = "e\xCC\x81";
 	assert (text::FitLength (combining, 0) == 0);
-	assert (text::FitLength (combining, 1) == 3);
+	assert (text::FitLength (combining, 1) == 1);
+	assert (text::FitLength (combining, 2) == 3);
 
 	// A malformed byte occupies one column, so a hostile sequence cannot
 	// stall the row by costing zero.
