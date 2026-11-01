@@ -62,6 +62,8 @@ read_file("${PROJECT_ROOT}/.github/workflows/packaging.yml" packaging_workflow)
 read_file("${PROJECT_ROOT}/debian/rules" debian_rules)
 read_file("${PROJECT_ROOT}/debian/copyright" debian_copyright)
 read_file("${PROJECT_ROOT}/debian/i2pd.preinst" debian_preinst)
+read_file("${PROJECT_ROOT}/debian/postinst" debian_postinst)
+read_file("${PROJECT_ROOT}/debian/postrm" debian_postrm)
 read_file("${PROJECT_ROOT}/debian/i2pd.sysusers" debian_sysusers)
 read_file("${PROJECT_ROOT}/debian/tests/control" debian_tests_control)
 read_file("${PROJECT_ROOT}/debian/tests/smoke" debian_tests_smoke)
@@ -90,6 +92,18 @@ assert_contains("${package_config}" "check_required_components(i2pd)"
 assert_contains("${top_cmake}" "lib/systemd/system" "systemd units need a non-multiarch path")
 assert_absent("${top_cmake}" "CMAKE_INSTALL_LIBDIR}/systemd/system"
   "systemd units must not use multiarch LIBDIR")
+
+# A selected service manager must ship the configuration its units read
+# and the router binary they start, and it is not offered on Windows or
+# Android. CMake rejects the mismatches at configure time; pin those
+# guards so a package cannot install a service that never starts.
+assert_contains("${top_cmake}"
+  "I2PD_INSTALL_CONFIG=ON; the packaged service reads /etc/i2pd/i2pd.conf."
+  "service selection must require the installed configuration")
+assert_contains("${top_cmake}" "requires WITH_BINARY=ON;"
+  "service selection must require the router binary")
+assert_contains("${top_cmake}" "Windows and Android are managed by their native"
+  "service selection must be rejected on Windows and Android")
 
 foreach(spec IN ITEMS "${rpm}" "${rpm_git}")
   assert_contains("${spec}" "BuildRequires: cmake >= 3.24" "RPM must require CMake 3.24")
@@ -213,6 +227,27 @@ assert_absent("${debian_i2pd_install}" "assets/branding usr/share/doc/i2pd"
   "daemon manifest must not copy the unfiltered source branding tree")
 assert_contains("${debian_tui_install}" "usr/share/man/man1/i2pd-tui.1"
   "TUI package must own its man page")
+assert_absent("${debian_i2pd_install}" "i2pd-tui.1"
+  "daemon manifest must not claim the TUI man page")
+
+# Man pages belong to the binary component that ships the program, not to
+# the optional documentation tree, so a package built with
+# -DI2PD_INSTALL_DOCS=OFF still installs them.
+foreach(man_page IN ITEMS
+    "man/i2pd[.]1|Runtime"
+    "man/i2pd-tui[.]1|Tui"
+    "man/i2pdctl[.]1|Tools")
+  string(REPLACE "|" ";" man_parts "${man_page}")
+  list(GET man_parts 0 man_path)
+  list(GET man_parts 1 man_component)
+  string(REGEX MATCH "${man_path}\"[^)]*COMPONENT ${man_component}[)]"
+    man_rule "${top_cmake}")
+  if(man_rule STREQUAL "")
+    message(FATAL_ERROR
+      "CMake must install ${man_path} with COMPONENT ${man_component}: "
+      "man pages are not part of the optional documentation tree")
+  endif()
+endforeach()
 assert_contains("${debian_i2pd_lintian}" "i2pd: possible-gpl-code-linked-with-openssl"
   "daemon Lintian override must be package-scoped")
 assert_absent("${debian_i2pd_lintian}" "i2pd-tui:"
@@ -265,6 +300,57 @@ assert_contains("${debian_preinst}" ".dpkg-old"
   "preinst must preserve an existing certificate directory")
 assert_contains("${debian_sysusers}" "u i2pd"
   "Debian sysusers policy must create the service account")
+
+# Maintainer-script contracts. The scripts must create only missing
+# paths with the packaged policy, never reset an administrator's
+# ownership or mode, and never delete state outside purge.
+foreach(required IN ITEMS
+    "configure|reconfigure)"
+    "abort-upgrade|abort-remove|abort-deconfigure|triggered)"
+    "-mindepth 1 -maxdepth 1"
+    "! -name certificates"
+    "-m 0700"
+    "-m 0600")
+  assert_contains("${debian_postinst}" "${required}"
+    "postinst must create or repair the packaged paths idempotently")
+endforeach()
+foreach(forbidden IN ITEMS
+    "chmod -R"
+    "rm -rf"
+    "systemctl start"
+    "invoke-rc.d")
+  assert_absent("${debian_postinst}" "${forbidden}"
+    "postinst must not reset directories, delete state or start the service")
+endforeach()
+assert_contains("${debian_postrm}" "  purge)"
+  "postrm must remove state only in the purge branch")
+assert_contains("${debian_postrm}" "rm -rf /var/lib/i2pd"
+  "postrm must remove the private state directory on purge")
+assert_contains("${debian_postrm}" "rm -f /etc/default/i2pd"
+  "postrm must remove the SysV defaults file on purge")
+assert_absent("${debian_postrm}" "chmod"
+  "postrm must not modify permissions of surviving paths")
+string(REGEX MATCHALL "rm -rf /var/lib/i2pd" postrm_state_removals "${debian_postrm}")
+list(LENGTH postrm_state_removals postrm_state_removal_count)
+if(NOT postrm_state_removal_count EQUAL 1)
+  message(FATAL_ERROR
+    "postrm must remove /var/lib/i2pd exactly once, in the purge branch; "
+    "found ${postrm_state_removal_count} occurrences")
+endif()
+assert_contains("${debian_preinst}" "install|upgrade)"
+  "preinst must act on install and upgrade only")
+assert_absent("${debian_preinst}" "purge)"
+  "preinst must never run the certificate migration during purge")
+assert_absent("${debian_preinst}" "chmod"
+  "preinst must rename the legacy certificate directory, never chmod it")
+foreach(required IN ITEMS
+    "dh_installtmpfiles"
+    "dh_installsystemd --no-start"
+    "dh_installinit")
+  assert_contains("${debian_rules}" "${required}"
+    "debian/rules must keep the service, tmpfiles and sysusers integration")
+endforeach()
+
 assert_contains("${debian_tests_control}" "systemd"
   "autopkgtest must install the unit validator")
 foreach(required IN ITEMS
@@ -350,6 +436,38 @@ assert_contains("${openbsd_plist}" "share/examples/var/i2pd/subscriptions.txt"
   "OpenBSD PLIST must package the subscriptions sample")
 assert_contains("${openbsd_plist}" "@sample \${LOCALSTATEDIR}/i2pd/subscriptions.txt"
   "OpenBSD PLIST must sample subscriptions.txt")
+
+# Derived @sample contract: pkg_add resolves every "@sample <absolute
+# path>" against share/examples/<absolute path>, so each target must have
+# a packaged mirror in the PLIST and in the port's post-install recipe. A
+# missing mirror installs no configuration or login class at all, which
+# the rc.d script cannot detect at start.
+string(REPLACE "\n" ";" openbsd_plist_lines "${openbsd_plist}")
+set(openbsd_sample_count 0)
+foreach(plist_line IN LISTS openbsd_plist_lines)
+  if(NOT plist_line MATCHES "^@sample ")
+    continue()
+  endif()
+  math(EXPR openbsd_sample_count "${openbsd_sample_count} + 1")
+  string(REGEX REPLACE "^@sample " "" sample_target "${plist_line}")
+  string(STRIP "${sample_target}" sample_target)
+  string(REPLACE "\${LOCALSTATEDIR}" "var" sample_path "${sample_target}")
+  string(REPLACE "\${SYSCONFDIR}" "etc" sample_path "${sample_path}")
+  string(REPLACE "\${TRUEPREFIX}" "local" sample_path "${sample_path}")
+  string(REGEX REPLACE "[/]+$" "" sample_path "${sample_path}")
+  assert_contains("${openbsd_plist}" "share/examples/${sample_path}"
+    "OpenBSD PLIST must package the mirror of @sample ${sample_target}")
+  assert_contains("${openbsd_port_make}" "share/examples/${sample_path}"
+    "OpenBSD port must install the mirror of @sample ${sample_target}")
+endforeach()
+if(openbsd_sample_count LESS 5)
+  message(FATAL_ERROR
+    "OpenBSD PLIST must sample the state directory, subscriptions, the "
+    "router and tunnel configuration, the tunnel README and the login "
+    "class; found ${openbsd_sample_count} @sample entries")
+endif()
+assert_contains("${openbsd_plist}" "@sample \${SYSCONFDIR}/login.conf.d/i2pd"
+  "OpenBSD PLIST must sample the i2pd login class")
 assert_contains("${openbsd_plist}" "man/man1/i2pd.1"
   "OpenBSD PLIST must claim the router man page")
 assert_contains("${openbsd_plist}" "man/man1/i2pd-tui.1"

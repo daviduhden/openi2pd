@@ -30,9 +30,9 @@ I2PD_PIDFILE="/run/i2pd/i2pd.pid"
 #   syslog - i2pd uses the system logger; no log file or log directory is
 #            created and the service is ordered after logger when present
 #   stdout - supervise-daemon captures stdout/stderr into I2PD_LOGFILE
-# I2PD_LOGDIR must be a dedicated directory; it is forced to mode 0750.
-# I2PD_LOGFILE should be inside it and is forced to 0640 for file logging or
-# 0600 for captured stdout.
+# I2PD_LOGDIR must be a dedicated directory; it is forced to mode 0700 like
+# the data and runtime directories. I2PD_LOGFILE should be inside it and is
+# forced to 0600 for both file logging and captured stdout.
 I2PD_LOG="file"
 I2PD_LOGDIR="/var/log/i2pd"
 I2PD_LOGFILE="/var/log/i2pd/i2pd.log"

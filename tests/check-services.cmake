@@ -337,7 +337,7 @@ foreach(required IN ITEMS
     "required_files=\"\${I2PD_CONF} \${I2PD_TUNCONF}\""
     "required_dirs=\"\${I2PD_TUNNELSDIR}\""
     "checkpath -d -m 0700"
-    "checkpath -f -m 0640"
+    "checkpath -f -m 0600"
     "output_log="
     "error_log="
     "need localmount"
@@ -348,6 +348,19 @@ foreach(required IN ITEMS
     "--foreground"
     "--service")
   require_text("${openrc_text}" "${required}" "OpenRC script")
+endforeach()
+# The log directory and file carry the same 0700/0600 policy as the
+# systemd LogsDirectoryMode=, the tmpfiles entry, the Debian maintainer
+# script and the SysV script. A group-readable log directory would
+# contradict every other definition.
+foreach(required IN ITEMS
+    "checkpath -d -m 0700 -o \"\${I2PD_USER}:\${I2PD_GROUP}\" \"\${I2PD_LOGDIR}\""
+    "checkpath -f -m 0600 -o \"\${I2PD_USER}:\${I2PD_GROUP}\" \"\${I2PD_LOGFILE}\"")
+  require_text("${openrc_text}" "${required}" "OpenRC log path policy")
+endforeach()
+foreach(forbidden IN ITEMS "0750" "0640")
+  forbid_text("${openrc_text}" "${forbidden}" "OpenRC log path policy")
+  forbid_text("${openrc_conf_text}" "${forbidden}" "OpenRC conf.d log path policy")
 endforeach()
 foreach(forbidden IN ITEMS "command_background=true")
   forbid_text("${openrc_text}" "${forbidden}" "OpenRC script")
@@ -379,6 +392,14 @@ require_text("${runit_finish_text}" "/bin/sleep 5" "runit finish")
 forbid_text("${runit_finish_text}" "rm " "runit finish")
 require_text("${runit_log_text}" "svlogd -tt" "runit log/run")
 require_text("${runit_log_text}" "chpst" "runit log/run")
+# The logger runs with the same 0700/0600 policy as every other manager,
+# so `current` and rotated files are never group- or world-readable.
+require_text("${runit_log_text}" "umask 077" "runit log/run")
+require_text("${runit_log_text}" "/usr/bin/install -d -m 0700 -o i2pd -g i2pd /var/log/i2pd"
+  "runit log/run")
+foreach(forbidden IN ITEMS "umask 027" "-m 0750" "-m 0640")
+  forbid_text("${runit_log_text}" "${forbidden}" "runit log/run log policy")
+endforeach()
 require_text("${runit_log_config_text}" "s1000000" "runit log config")
 require_text("${runit_log_config_text}" "n10" "runit log config")
 # Stock runsv has no per-service stop timeout or down-signal file.
@@ -602,6 +623,149 @@ foreach(manager IN ITEMS systemd sysvinit openrc runit s6 s6-rc)
   require_any("${manager_text}" "${manager} pidfile"
     "/run/i2pd/i2pd.pid" "I2PD_RUNDIR:=/run/i2pd")
   require_text("${manager_text}" "--foreground" "${manager} foreground")
+endforeach()
+
+# Every daemon option that a service definition passes must exist in the
+# daemon's own option table. A typo such as --tunneldir would otherwise
+# fail only when a manager actually starts the router. Flags consumed by
+# start-stop-daemon/supervise-daemon are supervisor options, not daemon
+# options, and are listed separately.
+read_required("${PROJECT_ROOT}/libi2pd/Config.cpp" daemon_config_text)
+string(REGEX MATCHALL "[(][ \t\r\n]*\"[A-Za-z0-9_.]+\"[ \t\r\n]*,"
+  daemon_option_entries "${daemon_config_text}")
+set(daemon_options)
+foreach(entry IN LISTS daemon_option_entries)
+  string(REGEX REPLACE ".*\"([A-Za-z0-9_.]+)\".*" "\\1" option_name "${entry}")
+  list(APPEND daemon_options "${option_name}")
+endforeach()
+list(REMOVE_DUPLICATES daemon_options)
+if(NOT daemon_options)
+  message(FATAL_ERROR "no daemon options were found in libi2pd/Config.cpp")
+endif()
+set(supervisor_options start stop background quiet oknodo chuid chdir exec
+    test signal retry)
+
+# Compare one definition's command-line options with the daemon table.
+# list(FIND) is used instead of IN_LIST so the check does not depend on
+# the CMP0057 policy in script mode.
+function(require_known_daemon_options definition_name definition_text)
+  string(REGEX MATCHALL "--[A-Za-z0-9_]+([.][A-Za-z0-9_]+)*" passed_options
+    "${definition_text}")
+  foreach(token IN LISTS passed_options)
+    string(REGEX REPLACE "^--" "" option_name "${token}")
+    list(FIND supervisor_options "${option_name}" supervisor_index)
+    if(NOT supervisor_index EQUAL -1)
+      continue()
+    endif()
+    list(FIND daemon_options "${option_name}" daemon_index)
+    if(daemon_index EQUAL -1)
+      message(FATAL_ERROR
+        "${definition_name} passes '--${option_name}', which is not an "
+        "option in libi2pd/Config.cpp")
+    endif()
+  endforeach()
+endfunction()
+
+require_known_daemon_options("systemd unit" "${systemd_text}")
+require_known_daemon_options("sysvinit script" "${sysvinit_text}")
+require_known_daemon_options("OpenRC script" "${openrc_text}")
+require_known_daemon_options("runit run" "${runit_run_text}")
+require_known_daemon_options("s6 run" "${s6_run_text}")
+require_known_daemon_options("s6-rc run" "${s6rc_run_text}")
+require_known_daemon_options("shepherd script" "${shepherd_text}")
+require_known_daemon_options("upstart job" "${upstart_text}")
+require_known_daemon_options("dinit service" "${dinit_text}")
+require_known_daemon_options("openbsd rc.d" "${openbsd_rc_text}")
+
+# Cross-manager stop budget. The daemon drains transit tunnels for at
+# most 600 s and then runs its ordered stop inside a 60 s margin, so
+# every definition that owns a configurable window must request the same
+# 660 s / 660000 ms. A single manager with a shorter window would cut an
+# ordered stop in the middle of a state flush.
+read_required("${s6_timeout_kill}" s6_timeout_kill_text)
+read_required("${s6rc_timeout_kill}" s6rc_timeout_kill_text)
+
+function(extract_stop_budget definition_name text pattern out_var)
+  string(REGEX MATCH "${pattern}" matched "${text}")
+  if(matched STREQUAL "")
+    message(FATAL_ERROR
+      "${definition_name}: stop budget pattern '${pattern}' did not match")
+  endif()
+  string(REGEX REPLACE "${pattern}" "\\1" value "${matched}")
+  set(${out_var} "${value}" PARENT_SCOPE)
+endfunction()
+
+extract_stop_budget("systemd unit" "${systemd_text}"
+  "TimeoutStopSec=([0-9]+)" systemd_stop_seconds)
+extract_stop_budget("sysvinit script" "${sysvinit_text}"
+  "retry=INT/([0-9]+)/KILL/5" sysvinit_stop_seconds)
+extract_stop_budget("OpenRC script" "${openrc_text}"
+  "SIGINT/([0-9]+)" openrc_stop_seconds)
+extract_stop_budget("shepherd script" "${shepherd_text}"
+  "grace-period ([0-9]+)" shepherd_stop_seconds)
+extract_stop_budget("openbsd rc.d" "${openbsd_rc_text}"
+  "daemon_timeout=([0-9]+)" openbsd_stop_seconds)
+extract_stop_budget("upstart job" "${upstart_text}"
+  "kill timeout ([0-9]+)" upstart_stop_seconds)
+extract_stop_budget("dinit service" "${dinit_text}"
+  "stop-timeout = ([0-9]+)" dinit_stop_seconds)
+extract_stop_budget("s6 timeout-kill" "${s6_timeout_kill_text}"
+  "([0-9]+)" s6_stop_milliseconds)
+extract_stop_budget("s6-rc timeout-kill" "${s6rc_timeout_kill_text}"
+  "([0-9]+)" s6rc_stop_milliseconds)
+math(EXPR s6_stop_seconds "${s6_stop_milliseconds} / 1000")
+math(EXPR s6rc_stop_seconds "${s6rc_stop_milliseconds} / 1000")
+
+foreach(budget IN ITEMS
+    "systemd unit=${systemd_stop_seconds}"
+    "sysvinit script=${sysvinit_stop_seconds}"
+    "OpenRC script=${openrc_stop_seconds}"
+    "shepherd script=${shepherd_stop_seconds}"
+    "openbsd rc.d=${openbsd_stop_seconds}"
+    "upstart job=${upstart_stop_seconds}"
+    "dinit service=${dinit_stop_seconds}"
+    "s6=${s6_stop_seconds}"
+    "s6-rc=${s6rc_stop_seconds}")
+  string(REGEX REPLACE ".*=([0-9]+)$" "\\1" budget_seconds "${budget}")
+  if(NOT budget_seconds EQUAL 660)
+    message(FATAL_ERROR
+      "${budget} must use the same 660-second stop budget as every other "
+      "definition (600 s transit drain plus a 60 s shutdown margin)")
+  endif()
+endforeach()
+
+# The contrib and Debian tmpfiles policies describe the same three
+# directories; both files state that they must stay in step, and a drift
+# would give one path two modes depending on the installation path.
+function(extract_tmpfiles_entries text out_var)
+  set(entries)
+  string(REGEX MATCHALL "d /[^ \t\r\n]+ [0-7]+ [^ \t\r\n]+ [^ \t\r\n]+"
+    entries "${text}")
+  if(entries)
+    list(SORT entries)
+  endif()
+  set(${out_var} "${entries}" PARENT_SCOPE)
+endfunction()
+
+extract_tmpfiles_entries("${systemd_tmpfiles_text}" contrib_tmpfiles_entries)
+extract_tmpfiles_entries("${debian_tmpfiles_text}" debian_tmpfiles_entries)
+list(LENGTH contrib_tmpfiles_entries contrib_tmpfiles_count)
+if(NOT contrib_tmpfiles_count EQUAL 3)
+  message(FATAL_ERROR
+    "tmpfiles policy must declare exactly the three service directories, "
+    "found ${contrib_tmpfiles_count}")
+endif()
+if(NOT "${contrib_tmpfiles_entries}" STREQUAL "${debian_tmpfiles_entries}")
+  message(FATAL_ERROR
+    "contrib/tmpfiles.d/i2pd.conf and debian/i2pd.tmpfiles differ:\n"
+    "  contrib: ${contrib_tmpfiles_entries}\n"
+    "  debian:  ${debian_tmpfiles_entries}")
+endif()
+foreach(entry IN LISTS contrib_tmpfiles_entries)
+  if(NOT entry MATCHES " 0700 ")
+    message(FATAL_ERROR
+      "tmpfiles entry '${entry}' must use the private 0700 directory mode")
+  endif()
 endforeach()
 
 # Documentation: the manager matrix, the exit-code contract and the

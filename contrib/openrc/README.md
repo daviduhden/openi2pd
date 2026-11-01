@@ -26,8 +26,8 @@ owns:
 |---|---|---|---|
 | `/run/i2pd` | `0700` | `i2pd:i2pd` | runtime directory |
 | `/var/lib/i2pd` | `0700` | `i2pd:i2pd` | router data and keys |
-| `/var/log/i2pd` | `0750` | `i2pd:i2pd` | log directory (file logging only) |
-| `/var/log/i2pd/i2pd.log` | `0640` | `i2pd:i2pd` | log file (file logging only) |
+| `/var/log/i2pd` | `0700` | `i2pd:i2pd` | log directory (file or captured stdout logging) |
+| `/var/log/i2pd/i2pd.log` | `0600` | `i2pd:i2pd` | log file (file or captured stdout logging) |
 
 `checkpath` performs the preparation in `start_pre` and aborts the start on
 any failure. The pidfile at `/run/i2pd/i2pd.pid` is deliberately not created
@@ -99,18 +99,21 @@ and extra options:
 | `I2PD_RUNDIR` | `/run/i2pd` | private runtime directory |
 | `I2PD_PIDFILE` | `/run/i2pd/i2pd.pid` | daemon-owned pidfile |
 | `I2PD_LOG` | `file` | `file`, `syslog` or `stdout` |
-| `I2PD_LOGDIR` | `/var/log/i2pd` | dedicated directory, forced to `0750` |
+| `I2PD_LOGDIR` | `/var/log/i2pd` | dedicated directory, forced to `0700` |
 | `I2PD_LOGFILE` | `/var/log/i2pd/i2pd.log` | used by `file` and captured `stdout` |
 | `I2PD_OPTS` | empty | extra command-line options |
 | `rc_ulimit` | `-n 8192` | descriptor limit applied by the runscript |
 
 When `I2PD_LOG=file`, the runscript passes `--log=file --logfile=...` and
-prepares the file with mode `0640`. When it is `syslog`, no log directory or
+prepares the file with mode `0600`. When it is `syslog`, no log directory or
 file is touched, `--log=syslog` is passed, and the weak `use logger` dependency
 orders the service after the system logger when one is present. With
 `I2PD_LOG=stdout`, `supervise-daemon` captures the output into
 `I2PD_LOGFILE` with mode `0600`, so logs are not discarded when there is no
-attached terminal. Other values are rejected during `start_pre`. Use `/etc/i2pd/i2pd.conf` or `I2PD_OPTS` for the daemon's
+attached terminal. The `0700`/`0600` pair matches the systemd
+`LogsDirectoryMode=0700`, the tmpfiles entry, the Debian maintainer script and
+the SysV script: router logs are never group- or world-accessible under any
+manager. Other values are rejected during `start_pre`. Use `/etc/i2pd/i2pd.conf` or `I2PD_OPTS` for the daemon's
 own log level; do not set a second `--log` option.
 
 If an external rotator moves the file instead of using `copytruncate`, run

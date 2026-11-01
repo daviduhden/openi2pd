@@ -105,8 +105,10 @@ the external ports tree; it is not installed or built by CMake.
 Install it as `/etc/rc.d/i2pd` (or let the port's PLIST `@rcscript` do so).
 The ports framework may substitute `TRUEPREFIX`, `LOCALSTATEDIR` and
 `SYSCONFDIR`, so compare the rendered file rather than the template. Install
-`i2pd.login` as `/etc/login.conf.d/i2pd`; `rc.subr` selects the `i2pd` login
-class automatically when that file exists:
+`i2pd.login` as `/etc/login.conf.d/i2pd`. The class is selected by the
+account's class field, not by the drop-in file: the PLIST `@newuser` line binds
+`_i2pd` to class `i2pd`, and `useradd -class i2pd` does the same for a manual
+setup. The drop-in only supplies the class definition, so both are required:
 
 ```sh
 install -m 0644 i2pd.login /etc/login.conf.d/i2pd
@@ -120,8 +122,8 @@ The port must create `_i2pd` with login class `i2pd` and install
 `login.conf.d/i2pd`; the PLIST `@newuser` line binds the class explicitly.
 If the class is missing, `rc.subr` falls back to the `daemon` class and the
 8192-descriptor/umask policy is not applied. Verify it with
-`getcap -f /etc/login.conf.d/i2pd i2pd`, not `id -c` (the password database has
-no login-class field). A minimal manual account setup is:
+`getcap -f /etc/login.conf.d/i2pd i2pd`; `id -c` reports the class of the
+calling shell, not of the service account. A minimal manual account setup is:
 
 ```sh
 useradd -class i2pd -s /sbin/nologin -d /var/i2pd _i2pd

@@ -55,8 +55,10 @@ The service uses the packaged paths:
 - `/var/log/i2pd` for `svlogd`
 
 `run` creates `/run/i2pd` and `/var/lib/i2pd` with mode `0700` and ownership
-`i2pd:i2pd`. `log/run` creates `/var/log/i2pd` with mode `0750` and runs
-`svlogd` with umask `027`, so `current` is created with mode `0640`. Both
+`i2pd:i2pd`. `log/run` creates `/var/log/i2pd` with mode `0700` and runs
+`svlogd` with umask `077`, so `current` and every rotated file are created with
+mode `0600`. That is the same log policy as the systemd `LogsDirectoryMode=`,
+the tmpfiles entry, the Debian maintainer script and the SysV script. Both
 scripts must remain root-owned and must not be writable by the `i2pd` account,
 because they perform their preparation before dropping privileges.
 

@@ -118,17 +118,22 @@ start_pre() {
 	checkpath -d -m 0700 -o "${I2PD_USER}:${I2PD_GROUP}" "${I2PD_DATADIR}" \
 		|| { eerror "Cannot create or own ${I2PD_DATADIR}"; return 1; }
 
+	# The log directory keeps the same 0700 policy as the data and runtime
+	# directories, the systemd LogsDirectory=, the tmpfiles entry and the
+	# Debian/SysV paths: no group or world access to router logs. The log
+	# file is 0600 for both the directly written and the captured-stdout
+	# case, so the mode does not depend on I2PD_LOG.
 	case "${I2PD_LOG}" in
 		file)
-			checkpath -d -m 0750 -o "${I2PD_USER}:${I2PD_GROUP}" "${I2PD_LOGDIR}" \
+			checkpath -d -m 0700 -o "${I2PD_USER}:${I2PD_GROUP}" "${I2PD_LOGDIR}" \
 				|| { eerror "Cannot create or own ${I2PD_LOGDIR}"; return 1; }
-			checkpath -f -m 0640 -o "${I2PD_USER}:${I2PD_GROUP}" "${I2PD_LOGFILE}" \
+			checkpath -f -m 0600 -o "${I2PD_USER}:${I2PD_GROUP}" "${I2PD_LOGFILE}" \
 				|| { eerror "Cannot create or own ${I2PD_LOGFILE}"; return 1; }
 			;;
 		syslog)
 			;;
 		*)
-			checkpath -d -m 0750 -o "${I2PD_USER}:${I2PD_GROUP}" "${I2PD_LOGDIR}" \
+			checkpath -d -m 0700 -o "${I2PD_USER}:${I2PD_GROUP}" "${I2PD_LOGDIR}" \
 				|| { eerror "Cannot create or own ${I2PD_LOGDIR}"; return 1; }
 			checkpath -f -m 0600 -o "${I2PD_USER}:${I2PD_GROUP}" "${I2PD_LOGFILE}" \
 				|| { eerror "Cannot create or own ${I2PD_LOGFILE}"; return 1; }
