@@ -1247,7 +1247,16 @@ namespace torrents
 		Torrent ();
 		void InitPeerID ();
 		size_t ParsePieces (std::string_view buf);
-		size_t ParsePeers (size_t trackerID, std::string_view buf);
+		/// Parse one tracker "peers" value into @a peers.
+		///
+		/// The peers are not committed to the tracker slot here:
+		/// ParseTrackerResponse() installs the result only after the whole
+		/// response validated and carried no failure, so a truncated or
+		/// otherwise malformed document cannot erase the last known good list
+		/// or replace it with the entries read before the truncation. A
+		/// malformed list leaves @a peers empty and returns 0.
+		/// @return Bytes consumed, or 0 when the value is not usable.
+		size_t ParsePeers (std::string_view buf, std::unordered_set<i2p::data::IdentHash> & peers);
 		size_t ParseFiles (std::string_view buf);
 		static std::string AdjustName (
 			std::string_view name); // name field from torrent file before to become file path

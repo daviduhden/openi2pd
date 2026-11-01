@@ -388,9 +388,18 @@ static void TestTrackerPeerForms ()
 	torrent.ParseTrackerResponse (1, Dict ({ { "peers", peers } }));
 	assert (torrent.GetNumPeers (1) == 2);
 
-	// A malformed list is rejected without keeping partial peer state.
+	// A peer list that is truncated inside a larger document is not a
+	// successful announce: the whole response fails to parse, so nothing from
+	// it is committed. The previous good list for that tracker survives
+	// instead of being replaced by the entries read before the truncation
+	// (the same rule as the oversized and non-bencode bodies below).
 	torrent.ParseTrackerResponse (1, Dict ({ { "peers", "l" + PeerEntry (encoded0) } }));
-	assert (torrent.GetNumPeers (1) == 0);
+	assert (torrent.GetNumPeers (1) == 2);
+	assert (!torrent.GetTrackerError (1).empty ());
+	// A tracker without an earlier list cannot show a partial commit either.
+	torrent.ParseTrackerResponse (5, Dict ({ { "peers", "l" + PeerEntry (encoded0) } }));
+	assert (torrent.GetNumPeers (5) == 0);
+	assert (!torrent.GetTrackerError (5).empty ());
 
 	// Peer cap: entries above the engine bound are ignored, not buffered.
 	std::string many = "l";

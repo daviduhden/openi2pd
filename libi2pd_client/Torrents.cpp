@@ -2475,8 +2475,15 @@ namespace torrents
 			return;
 		}
 		bool sawInterval = false, failed = false;
+		// Peer lists are parsed into a scratch set and committed only with the
+		// final success below, so a response that turns out to be malformed
+		// keeps the tracker's last known good list instead of erasing it or
+		// leaving the entries read before the truncation behind.
+		std::unordered_set<i2p::data::IdentHash> parsedPeers;
+		bool parsedPeerList = false;
 		const auto parsed = ParseDictionary (buf,
-			[this, trackerID, &sawInterval, &failed] (std::string_view key, std::string_view buf) -> size_t
+			[this, trackerID, &sawInterval, &failed, &parsedPeers, &parsedPeerList] (
+				std::string_view key, std::string_view buf) -> size_t
 			{
 				if (key == "interval")
 				{
@@ -2520,7 +2527,11 @@ namespace torrents
 					return l;
 				}
 				else if (key == "peers")
-					return ParsePeers (trackerID, buf);
+				{
+					const auto len = ParsePeers (buf, parsedPeers);
+					if (len) parsedPeerList = true;
+					return len;
+				}
 				else if (key == "complete")
 				{
 					auto [seeders, l] = ExtractInteger (buf);
@@ -2552,6 +2563,8 @@ namespace torrents
 			return;
 		}
 		if (failed) return;
+		// Only a fully validated, non-failure response may replace the list.
+		if (parsedPeerList) std::get<0> (m_TrackerStats[trackerID]) = std::move (parsedPeers);
 		// A successful response ends the consecutive-failure ladder and is the
 		// only case that may schedule the next request from the advertised
 		// interval. A failure response keeps the ladder that
@@ -2564,9 +2577,8 @@ namespace torrents
 		std::get<5> (m_TrackerStats[trackerID]) = i2p::util::GetSecondsSinceEpoch ();
 	}
 
-	size_t Torrent::ParsePeers (size_t trackerID, std::string_view buf)
+	size_t Torrent::ParsePeers (std::string_view buf, std::unordered_set<i2p::data::IdentHash> & peers)
 	{
-		auto & peers = std::get<0> (m_TrackerStats[trackerID]);
 		peers.clear ();
 		if (buf.empty ()) return 0;
 		if (buf.front () == 'l')
@@ -2595,7 +2607,7 @@ namespace torrents
 			if (!len)
 			{
 				LogPrint (eLogWarning, "Torrents: Malformed tracker peers list");
-				peers.clear ();
+				peers.clear (); // never expose entries read before the failure
 			}
 			return len;
 		}
