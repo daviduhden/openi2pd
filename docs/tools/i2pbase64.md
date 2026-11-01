@@ -61,3 +61,13 @@ encoding, not encryption.
 
 Matches `ByteStreamToBase64`/`Base64ToByteStream` in `libi2pd`; the streaming
 decoder buffers quartets across read boundaries.
+
+On Windows the filename is resolved by Win32 rules, where a base name that
+is a DOS device name is the device in every directory and with any
+extension: `nul`, `con`, `aux`, `prn`, `com1`..`com9` and `lpt1`..`lpt9`.
+`i2pbase64 -d nul.b64` therefore reads an empty stream from the null device
+and exits 0 with no output, even if a file of that name exists. Pass a
+`\\?\`-prefixed absolute path, or a name that is not a device name, when
+the input really is such a file. The same rule applies to file redirects in
+the tool's regressions, so their fixtures use `nul-byte.b64` and
+`nul-byte.bin`.

@@ -35,6 +35,22 @@ function(restrict_secret path)
   endif()
 endfunction()
 
+# Windows resolves a DOS device name (NUL, CON, AUX, PRN, COM1..COM9,
+# LPT1..LPT9) in every directory and with any extension, so a fixture
+# called "nul.b64" is the null device rather than a file. A tool that
+# opens such a name reads EOF, exits 0 and writes nothing, which looks
+# exactly like a product defect that loses decoded bytes. Reject the name
+# before a run so the fixture itself is the suspect. Fixtures whose whole
+# point is a NUL payload need a compound stem ("nul-byte.b64").
+function(assert_fixture_name path)
+  get_filename_component(name "${path}" NAME)
+  string(TOLOWER "${name}" lowered)
+  string(REGEX REPLACE "\\..*$" "" stem "${lowered}")
+  if("${stem}" MATCHES "^(nul|con|aux|prn|com[1-9]|lpt[1-9])$")
+    fail("${path} uses the Win32 reserved device name '${stem}': every path with that stem is the device, not a file in ${WORK}")
+  endif()
+endfunction()
+
 # Run one tool. TOOL_STDIN, when set to a non-empty path in the caller's
 # scope, is connected to the process stdin. A per-process timeout keeps
 # a regression from hanging a CI job even if a tool starts waiting for
@@ -80,6 +96,7 @@ endfunction()
 # binary comparisons so CMake never has to carry arbitrary bytes in a
 # variable.
 function(run_tool_to_file name output_file expect_success)
+  assert_fixture_name("${output_file}")
   execute_process(
     COMMAND "${TOOLS_DIR}/${name}${EXE}" ${ARGN}
     WORKING_DIRECTORY "${WORK}"
@@ -692,11 +709,35 @@ file(WRITE "${WORK}/binary.b64" "${BINARY_B64}")
 run_tool_to_file(i2pbase64 "${WORK}/binary.out" TRUE -d binary.b64)
 assert_file_hex("${WORK}/binary.out" "${BINARY_HEX}" "i2pbase64 binary round trip")
 
-file(WRITE "${WORK}/nul.b64" "AA==")
-run_tool_to_file(i2pbase64 "${WORK}/nul.bin" TRUE -d nul.b64)
-assert_file_hex("${WORK}/nul.bin" "00" "i2pbase64 decodes NUL")
-run_tool(i2pbase64 TRUE nul.bin)
+# A single padded quartet must decode to exactly one 0x00 byte. The
+# fixture name must not be a Win32 reserved device name: "nul.b64" and
+# "nul.bin" are the null device there, so the tool reads EOF, exits 0 and
+# writes nothing. The written fixture is pinned so a discarded write
+# cannot masquerade as a decode failure.
+assert_fixture_name("${WORK}/nul-byte.b64")
+assert_fixture_name("${WORK}/nul-byte.bin")
+file(WRITE "${WORK}/nul-byte.b64" "AA==")
+assert_file_hex("${WORK}/nul-byte.b64" "41413d3d" "i2pbase64 NUL fixture content")
+run_tool_to_file(i2pbase64 "${WORK}/nul-byte.bin" TRUE -d nul-byte.b64)
+assert_file_hex("${WORK}/nul-byte.bin" "00" "i2pbase64 decodes NUL")
+file(SIZE "${WORK}/nul-byte.bin" NUL_DECODED_SIZE)
+if(NOT NUL_DECODED_SIZE EQUAL 1)
+  fail("i2pbase64 decoded 'AA==' to ${NUL_DECODED_SIZE} bytes, expected exactly one")
+endif()
+run_tool(i2pbase64 TRUE nul-byte.bin)
 assert_stripped_output_equals("AA==" "i2pbase64 encodes NUL")
+
+# Cross-read padding: the quartet that carries '=' straddles the 4096-byte
+# read boundary, so the decoder must carry "AA" in its pending buffer and
+# join it with the "==" of the next read. Every prefix quartet is "qg=="
+# (0xaa), so the output is 1023 x 0xaa followed by the single 0x00 of the
+# padded quartet.
+string(REPEAT "qg==" 1023 SPLIT_PREFIX)
+file(WRITE "${WORK}/split-padding.b64" "${SPLIT_PREFIX}\n\nAA==\n")
+run_tool_to_file(i2pbase64 "${WORK}/split-padding.bin" TRUE -d split-padding.b64)
+string(REPEAT "aa" 1023 SPLIT_HEX)
+string(APPEND SPLIT_HEX "00")
+assert_file_hex("${WORK}/split-padding.bin" "${SPLIT_HEX}" "i2pbase64 decodes padding split across reads")
 
 file(WRITE "${WORK}/spaced.b64" "aGVs\n bG8g\td29y bGQ=\n")
 file(WRITE "${WORK}/spaced.expected" "hello world")
@@ -746,11 +787,18 @@ run_tool(i2pbase64 FALSE -d after-padding.b64)
 assert_contains("${LAST_TOOL_ERROR}" "data after padding" "i2pbase64 rejects data after padding")
 # Streaming boundary: padding ends the first 4096-byte read and the
 # extra characters arrive only in the second one, so the sawPadding
-# latch, not the quartet loop, must produce the diagnostic.
+# latch, not the quartet loop, must produce the diagnostic. Decoded
+# stdout is redirected to a file because the 3072 NUL bytes written
+# before the violation must never pass through a CMake string.
 string(REPEAT "A" 4092 PAD_PREFIX)
 file(WRITE "${WORK}/after-padding-chunked.b64" "${PAD_PREFIX}AA==AAAA")
-run_tool(i2pbase64 FALSE -d after-padding-chunked.b64)
+run_tool_to_file(i2pbase64 "${WORK}/after-padding-chunked.out" FALSE -d after-padding-chunked.b64)
 assert_contains("${LAST_TOOL_ERROR}" "data after padding" "i2pbase64 rejects data after padding across reads")
+# A single stray byte, not a whole quartet, arriving only in the read
+# after the padding was accepted is the same violation.
+file(WRITE "${WORK}/after-padding-stray.b64" "${PAD_PREFIX}AA==\nA")
+run_tool_to_file(i2pbase64 "${WORK}/after-padding-stray.out" FALSE -d after-padding-stray.b64)
+assert_contains("${LAST_TOOL_ERROR}" "data after padding" "i2pbase64 rejects a stray byte after padding across reads")
 # A stray character after a complete padded quartet in the final read is
 # data after padding, not a truncated value.
 file(WRITE "${WORK}/after-padding-partial.b64" "AA==A")
