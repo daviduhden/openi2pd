@@ -535,6 +535,40 @@ void TestUnsafeTorrentPaths ()
 	assert (!valid.GetFiles ().empty ());
 }
 
+// Win32 resolves a DOS device name whatever extension follows and after
+// stripping the trailing spaces and dots of the part before the first
+// dot. A peer-supplied metainfo component may not name one, because the
+// write would leave the download root. The predicate is checked here on
+// every platform so the Windows name rule has a regression that runs in
+// the POSIX lanes too.
+void TestReservedDeviceNames ()
+{
+	assert (IsWindowsReservedDeviceName ("CON"));
+	assert (IsWindowsReservedDeviceName ("con"));
+	assert (IsWindowsReservedDeviceName ("NUL"));
+	assert (IsWindowsReservedDeviceName ("com1"));
+	assert (IsWindowsReservedDeviceName ("LPT9"));
+	assert (IsWindowsReservedDeviceName ("CON.txt"));
+	assert (IsWindowsReservedDeviceName ("aux.tar.gz"));
+	// Win32 strips the trailing spaces and dots before resolving the
+	// name, so these address the same devices as the plain spellings.
+	assert (IsWindowsReservedDeviceName ("CON .txt"));
+	assert (IsWindowsReservedDeviceName ("AUX..txt"));
+	assert (IsWindowsReservedDeviceName ("NUL  .bin"));
+	assert (IsWindowsReservedDeviceName ("PRN..."));
+	// Ordinary names, and names that merely start with a device prefix.
+	assert (!IsWindowsReservedDeviceName ("conifer.bin"));
+	assert (!IsWindowsReservedDeviceName ("console"));
+	assert (!IsWindowsReservedDeviceName ("COM10"));
+	assert (!IsWindowsReservedDeviceName ("LPT"));
+	assert (!IsWindowsReservedDeviceName ("file.bin"));
+	assert (!IsWindowsReservedDeviceName (""));
+	// A metainfo component that only becomes a device after AdjustName
+	// neutralises a separator is not one; the raw component decides.
+	assert (!IsWindowsReservedDeviceName ("CON|x"));
+	assert (!IsWindowsReservedDeviceName ("CON:"));
+}
+
 void TestStrictBencodedStringList ()
 {
 	const auto valid = ParseStringList ("l0:1:xe");
@@ -898,6 +932,7 @@ int main ()
 	TestTorrentFileIO ();
 	TestUnsafeTorrentPaths ();
 	TestStrictBencodedStringList ();
+	TestReservedDeviceNames ();
 	TestPathContainment ();
 #ifndef _WIN32
 	TestTorrentFileSymlinkRejection ();

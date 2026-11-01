@@ -262,6 +262,29 @@ static void TestRequiredName ()
 	assert (!emptyName.IsValid ());
 }
 
+// A v2-only info dictionary is structurally valid but unsupported. The
+// engine must record the version error instead of accepting a torrent
+// with an empty piece table; both the add path and the ut_metadata
+// install path refuse any torrent whose error is not "no error".
+static void TestUnsupportedVersionMetadata ()
+{
+	auto v2Only = Dict ({ { "length", Int (16384) }, { "meta version", Int (2) }, { "name", Bytes ("file.bin") },
+		{ "piece length", Int (16384) } });
+	Torrent torrent (MakeTorrentFile (v2Only));
+	assert (torrent.GetError () == eTorrentErrorNonSupportedVersion);
+	assert (torrent.GetFiles ().empty ());
+	assert (torrent.GetNumPieces () == 0);
+
+	// The hybrid form stays supported: a "pieces" value makes the info
+	// dictionary v1-identifiable whatever "meta version" claims.
+	auto hybrid = Dict ({ { "length", Int (16384) }, { "meta version", Int (2) }, { "name", Bytes ("file.bin") },
+		{ "piece length", Int (16384) }, { "pieces", Bytes (Pieces (1)) } });
+	Torrent hybridTorrent (MakeTorrentFile (hybrid));
+	assert (hybridTorrent.GetError () == eTorrentErrorNoError);
+	assert (hybridTorrent.GetFiles ().size () == 1);
+	assert (hybridTorrent.GetNumPieces () == 1);
+}
+
 static std::filesystem::path MakeTempDir ()
 {
 	auto base = std::filesystem::temp_directory_path ();
@@ -341,6 +364,7 @@ int main ()
 	TestPathSanitisation ();
 	TestCollidingPaths ();
 	TestRequiredName ();
+	TestUnsupportedVersionMetadata ();
 	TestReadTorrentFileBounded ();
 	return 0;
 }

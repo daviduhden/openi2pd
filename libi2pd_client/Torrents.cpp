@@ -19,6 +19,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <charconv>
+#include <cctype>
 #include <deque>
 #include <sstream>
 #include <algorithm>
@@ -315,6 +316,30 @@ namespace torrents
 			if (native.find (static_cast<std::filesystem::path::value_type> ('\0')) != native.npos) return false;
 		}
 		return true;
+	}
+
+	bool IsWindowsReservedDeviceName (std::string_view component)
+	{
+		static constexpr std::array<std::string_view, 22> reserved { "CON", "PRN", "AUX", "NUL", "COM1", "COM2",
+			"COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9", "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6",
+			"LPT7", "LPT8", "LPT9" };
+		// Win32 resolves only the part before the first '.', after removing
+		// the trailing spaces and dots it ignores, so "CON .txt" and
+		// "AUX..txt" address the same devices as "CON.txt" and "AUX.txt".
+		auto stem = component.substr (0, component.find ('.'));
+		while (!stem.empty () && (stem.back () == ' ' || stem.back () == '.')) stem.remove_suffix (1);
+		if (stem.empty () || stem.size () > 4) return false; // longest reserved name
+		char upper[4] { };
+		for (size_t i = 0; i < stem.size (); ++i)
+		{
+			const auto ch = static_cast<unsigned char> (stem[i]);
+			// Only ASCII letters can name a device; anything else is not
+			// one of the fixed entries above.
+			if (ch < 0x20 || ch >= 0x7F) return false;
+			upper[i] = static_cast<char> (std::toupper (ch));
+		}
+		const std::string_view name (upper, stem.size ());
+		return std::find (reserved.begin (), reserved.end (), name) != reserved.end ();
 	}
 
 	bool IsPathLexicallyWithinRoot (const std::filesystem::path & root, const std::filesystem::path & target)
@@ -2227,11 +2252,11 @@ namespace torrents
 		}
 
 #ifdef _WIN32
-		static constexpr std::array reserved { "CON", "PRN", "AUX", "NUL", "COM1", "COM2", "COM3", "COM4", "COM5",
-			"COM6", "COM7", "COM8", "COM9", "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9" };
-		std::string stem (name.substr (0, name.find ('.')));
-		boost::to_upper (stem);
-		if (std::find (reserved.begin (), reserved.end (), stem) != reserved.end ()) return "";
+		// A reserved device name addresses the device in every directory
+		// and with any extension, so it can never be a payload component.
+		// AdjustName uses the shared predicate, which also covers the
+		// trailing-space/dot spellings Win32 resolves the same way.
+		if (IsWindowsReservedDeviceName (name)) return "";
 #endif
 		return adjustedName;
 	}
@@ -2475,15 +2500,20 @@ namespace torrents
 			return;
 		}
 		bool sawInterval = false, failed = false;
-		// Peer lists are parsed into a scratch set and committed only with the
-		// final success below, so a response that turns out to be malformed
-		// keeps the tracker's last known good list instead of erasing it or
-		// leaving the entries read before the truncation behind.
+		// Every field is parsed into a scratch value and committed only after
+		// the whole document validated. A response that turns out to be
+		// truncated or otherwise malformed therefore cannot keep the entries,
+		// interval, tracker id or swarm counts read before the failure, which
+		// is the same rule the peer list below follows.
 		std::unordered_set<i2p::data::IdentHash> parsedPeers;
-		bool parsedPeerList = false;
+		bool parsedPeerList = false, sawMinInterval = false, sawTrackerID = false;
+		bool sawSeeders = false, sawLeechers = false;
+		int advertisedInterval = 0, advertisedMinInterval = 0, seeders = 0, leechers = 0;
+		std::string parsedTrackerID, failureReason;
 		const auto parsed = ParseDictionary (buf,
-			[this, trackerID, &sawInterval, &failed, &parsedPeers, &parsedPeerList] (
-				std::string_view key, std::string_view buf) -> size_t
+			[this, &sawInterval, &failed, &parsedPeers, &parsedPeerList, &sawMinInterval, &sawTrackerID,
+				&sawSeeders, &sawLeechers, &advertisedInterval, &advertisedMinInterval, &seeders, &leechers,
+				&parsedTrackerID, &failureReason] (std::string_view key, std::string_view buf) -> size_t
 			{
 				if (key == "interval")
 				{
@@ -2493,12 +2523,12 @@ namespace torrents
 						sawInterval = true;
 						// Seconds on the wire; floored at 15 minutes like Java's
 						// TrackerClient and raised to a larger "min interval".
-						// Only the advertised value is recorded here: the next
-						// request is scheduled once the whole response is known,
-						// because a `failure reason` field must keep the retry
-						// ladder instead of a hostile or stale interval,
-						// wherever the two keys appear in the dictionary.
-						SetInterval (trackerID, TrackerSchedule::AdvertisedInterval (value));
+						// The next request is scheduled once the whole response
+						// is known, because a `failure reason` field must keep
+						// the retry ladder instead of a hostile or stale
+						// interval, wherever the two keys appear in the
+						// dictionary.
+						advertisedInterval = TrackerSchedule::AdvertisedInterval (value);
 					}
 					return l;
 				}
@@ -2507,15 +2537,13 @@ namespace torrents
 					auto [value, l] = ExtractInteger (buf);
 					if (l)
 					{
-						SetMinInterval (trackerID, TrackerSchedule::AdvertisedMinInterval (value));
+						sawMinInterval = true;
 						// A tracker that publishes a larger minimum interval must
 						// not be polled faster than that, whichever of the two
-						// keys the response listed first. The next request is
-						// scheduled after the response is fully parsed, so a
-						// failure response keeps its retry ladder.
-						auto & interval = std::get<1> (m_TrackerStats[trackerID]);
-						const int effective = TrackerSchedule::EffectiveInterval (interval, GetMinInterval (trackerID));
-						if (effective != interval) interval = effective;
+						// keys the response listed first. The raise is applied
+						// with the commit below, after the whole document
+						// validated.
+						advertisedMinInterval = TrackerSchedule::AdvertisedMinInterval (value);
 					}
 					return l;
 				}
@@ -2523,7 +2551,11 @@ namespace torrents
 				{
 					auto [id, l] = ExtractByteString (buf);
 					// Opaque, echoed back verbatim; drop anything unusable.
-					if (l && id.size () <= MAX_TRACKER_ID_LENGTH && !id.empty ()) SetTrackerID (trackerID, id);
+					if (l && id.size () <= MAX_TRACKER_ID_LENGTH && !id.empty ())
+					{
+						sawTrackerID = true;
+						parsedTrackerID.assign (id);
+					}
 					return l;
 				}
 				else if (key == "peers")
@@ -2534,14 +2566,22 @@ namespace torrents
 				}
 				else if (key == "complete")
 				{
-					auto [seeders, l] = ExtractInteger (buf);
-					if (l) std::get<3> (m_TrackerStats[trackerID]) = ClampTrackerCount (seeders);
+					auto [value, l] = ExtractInteger (buf);
+					if (l)
+					{
+						sawSeeders = true;
+						seeders = ClampTrackerCount (value);
+					}
 					return l;
 				}
 				else if (key == "incomplete")
 				{
-					auto [leechers, l] = ExtractInteger (buf);
-					if (l) std::get<4> (m_TrackerStats[trackerID]) = ClampTrackerCount (leechers);
+					auto [value, l] = ExtractInteger (buf);
+					if (l)
+					{
+						sawLeechers = true;
+						leechers = ClampTrackerCount (value);
+					}
 					return l;
 				}
 				else if (key == "failure reason")
@@ -2550,9 +2590,11 @@ namespace torrents
 					failed = true;
 					// A tracker-level failure is a consecutive failure: retry on
 					// the same bounded ladder as a transport failure instead of
-					// polling the tracker more often than it asked.
-					ReportTrackerFailure (trackerID, reason);
-					LogPrint (eLogError, "Torrents: Tracker error: ", std::get<6> (m_TrackerStats[trackerID]));
+					// polling the tracker more often than it asked. The error is
+					// recorded after the whole document validated, so a
+					// truncated answer cannot install a prefix of its reason or
+					// escalate the ladder twice.
+					failureReason.assign (reason.substr (0, 512));
 					return l;
 				}
 				return 0;
@@ -2562,7 +2604,34 @@ namespace torrents
 			ReportTrackerFailure (trackerID, "malformed response");
 			return;
 		}
-		if (failed) return;
+		// A validated document may update the tracker fields it carried, even
+		// when it also carried a failure reason; only the retry schedule
+		// differs then. Apply a published minimum interval before the
+		// interval itself, so the stored interval is raised exactly once and
+		// the key order inside the response cannot change the result.
+		if (sawTrackerID) SetTrackerID (trackerID, parsedTrackerID);
+		if (sawSeeders) std::get<3> (m_TrackerStats[trackerID]) = seeders;
+		if (sawLeechers) std::get<4> (m_TrackerStats[trackerID]) = leechers;
+		if (sawMinInterval) SetMinInterval (trackerID, advertisedMinInterval);
+		if (sawInterval)
+			SetInterval (trackerID, advertisedInterval);
+		else if (sawMinInterval)
+		{
+			// The minimum alone still raises the stored interval, also on
+			// the failure path below.
+			auto & interval = std::get<1> (m_TrackerStats[trackerID]);
+			const int effective = TrackerSchedule::EffectiveInterval (interval, GetMinInterval (trackerID));
+			if (effective != interval) interval = effective;
+		}
+		if (failed)
+		{
+			// A tracker-level failure is a consecutive failure: retry on the
+			// same bounded ladder as a transport failure instead of polling
+			// the tracker more often than it asked.
+			ReportTrackerFailure (trackerID, failureReason);
+			LogPrint (eLogError, "Torrents: Tracker error: ", std::get<6> (m_TrackerStats[trackerID]));
+			return;
+		}
 		// Only a fully validated, non-failure response may replace the list.
 		if (parsedPeerList) std::get<0> (m_TrackerStats[trackerID]) = std::move (parsedPeers);
 		// A successful response ends the consecutive-failure ladder and is the

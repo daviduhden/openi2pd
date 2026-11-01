@@ -2585,7 +2585,17 @@ namespace torrents
 	{
 		if (!torrent || torrent->IsRemoved () || torrent->IsStopped ()) return;
 		torrent->ParseInfo (info);
-		if (torrent->IsValid () && !torrent->GetError ()) LoadTorrentAdminState (torrent);
+		// The info hash was already verified, but a hash-valid document can
+		// still be unusable: an unsupported version or a broken file layout
+		// records an error instead of building a file list. Persisting it or
+		// creating payload files for a torrent that can never run would leave
+		// half-initialised state behind, so stop before either step.
+		if (torrent->GetError () != eTorrentErrorNoError)
+		{
+			LogPrint (eLogError, "TorrentsTunnel: Rejecting unusable magnet metadata: ", torrent->GetErrorStr ());
+			return;
+		}
+		if (torrent->IsValid ()) LoadTorrentAdminState (torrent);
 		if (torrent->IsPrivate ())
 		{
 			// Metadata may reveal a private swarm after trackerless discovery.

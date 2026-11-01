@@ -332,6 +332,21 @@ namespace torrents
 	// root.
 	bool IsSafeRelativePath (const std::filesystem::path & path);
 
+	/// True when one path component, taken on its own, names a Win32 DOS
+	/// device instead of a file.
+	///
+	/// Win32 resolves CON, PRN, AUX, NUL, COM1..COM9 and LPT1..LPT9
+	/// whatever extension follows, and it strips the trailing spaces and
+	/// dots of the part before the first '.' before doing so: "CON .txt",
+	/// "AUX..txt" and "NUL ." all address the device. A peer-supplied
+	/// metainfo path component may not, because writing to it would leave
+	/// the download root. The predicate is platform independent so its
+	/// regression runs everywhere; only the Windows metainfo name check
+	/// (AdjustName) rejects on it, since a POSIX filesystem has no device
+	/// names of this shape. A future Windows storage backend must apply
+	/// the same predicate to every relative payload component.
+	bool IsWindowsReservedDeviceName (std::string_view component);
+
 	// Purely lexical containment check for callers on the network/control
 	// thread. It performs no filesystem access (no symlink or existence
 	// checks); the storage service must still call IsPathWithinRoot and
@@ -877,10 +892,16 @@ namespace torrents
 		std::string CreateTorrentFileContent () const;
 		/// Parse one bounded HTTP tracker response: interval/min interval,
 		/// peer list, seeder/leecher counts and the opaque tracker id.
-		/// @warning A malformed, oversized or error-status response
-		///          is not applied as a partial update; it records a tracker
-		///          failure so the retry ladder, not the advertised interval,
-		///          schedules the next attempt.
+		/// @warning A malformed or oversized response is never applied as a
+		///          partial update. Every field is staged and committed only
+		///          after the whole document validated, so a truncated
+		///          answer leaves the interval, the minimum, the tracker id,
+		///          the swarm counts and the peer list at their last good
+		///          values and only records the failure. A response that
+		///          validates but carries a `failure reason` records the
+		///          failure and keeps the bounded retry ladder for the next
+		///          attempt instead of scheduling from the advertised
+		///          interval.
 		void ParseTrackerResponse (size_t trackerID, std::string_view buf);
 		/// Apply a BEP 15 announce result: advertised interval, bounded peer
 		/// hashes and swarm counts. Datagram announces stay outside the HTTP

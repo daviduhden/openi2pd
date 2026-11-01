@@ -480,6 +480,35 @@ static void TestTrackerIntervalAndTrackerID ()
 	assert (torrent.GetNumPeers (4) == 1);
 	torrent.ExpireTrackerPeers (torrent.GetLastTrackerUpdateTime (4) + 2 * 3600 + 1);
 	assert (torrent.GetNumPeers (4) == 0);
+
+	// Every field follows the peer-list rule: a document that is truncated
+	// after several valid keys applies none of them. The interval, the
+	// minimum, the opaque tracker id and the swarm counts keep the values
+	// of the last fully valid answer, and the failure is recorded instead.
+	torrent.ParseTrackerResponse (6,
+		Dict ({ { "complete", "i42e" }, { "incomplete", "i43e" }, { "interval", "i60e" },
+			{ "min interval", "i600e" }, { "tracker id", Bytes ("good-id") } }));
+	assert (torrent.GetNumSeeders (6) == 42 && torrent.GetNumLeechers (6) == 43);
+	assert (torrent.GetTrackerID (6) == "good-id");
+	assert (torrent.GetInterval (6) == MIN_TRACKER_ANNOUNCE_INTERVAL * 1000);
+	assert (torrent.GetMinInterval (6) == 600 * 1000);
+	auto truncated = Dict ({ { "complete", "i7e" }, { "incomplete", "i3e" }, { "interval", "i1800e" },
+		{ "min interval", "i30e" }, { "tracker id", Bytes ("hostile-id") } });
+	truncated.pop_back (); // drop the dictionary terminator
+	torrent.ParseTrackerResponse (6, truncated);
+	assert (!torrent.GetTrackerError (6).empty ());
+	assert (torrent.GetNumSeeders (6) == 42 && torrent.GetNumLeechers (6) == 43);
+	assert (torrent.GetTrackerID (6) == "good-id");
+	assert (torrent.GetInterval (6) == MIN_TRACKER_ANNOUNCE_INTERVAL * 1000);
+	assert (torrent.GetMinInterval (6) == 600 * 1000);
+	// The failure reason of a truncated answer is not installed either; a
+	// partial reason must not become the recorded tracker error.
+	auto truncatedFailure
+		= Dict ({ { "failure reason", Bytes ("temporarily unavailable") }, { "interval", "i86400e" } });
+	truncatedFailure.pop_back ();
+	torrent.ParseTrackerResponse (6, truncatedFailure);
+	assert (torrent.GetTrackerError (6) == "malformed response");
+	assert (torrent.GetInterval (6) == MIN_TRACKER_ANNOUNCE_INTERVAL * 1000);
 }
 
 // Query values (peer id, tracker id) must be percent-encoded because
