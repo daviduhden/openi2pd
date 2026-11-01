@@ -250,3 +250,20 @@ category.
 - The MSYS2 build log contains no first-party warning. Linux/OpenBSD did not
   reach the compiler for later targets (CE-066), so their warning summaries
   are not evidence.
+
+## Batch `4e776a39` (2026-11-01)
+
+No first-party compiler warning was observed: the Windows MSYS2 build is
+clean and the Linux/OpenBSD/sanitizer lanes stopped at CE-069 before the
+compiler could report later targets. This is not a warning-free proof for
+those lanes.
+
+## Preventive review of the uncommitted 2026-11-01 tree
+
+No new first-party warning is known, but the audit found warning-adjacent
+risks that a stricter lane would report: a missing direct `<chrono>` include
+in `SSU2.cpp` (fixed), a `-Wshadow` lambda parameter in
+`Torrents.cpp::ParseTrackerResponse`, and `EAGAIN`/`EWOULDBLOCK` in
+`TuiClient.cpp` (identical on Linux, only `-Wlogical-op`). No suppression or
+cast was added. The Windows `-W4` lane and the GCC/Clang `-Wall -Wextra
+-Wpedantic` contract remain the evidence; nothing in this entry is compiled.

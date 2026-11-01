@@ -105,6 +105,13 @@ Ask for exact paths and package names. Do not let them run `dpkg-buildpackage`,
   duplicate action.
 
 ## Known issues and decisions
+- The service checker derives the daemon option allowlist from
+  `libi2pd/Config.cpp` and requires the 660 s stop budget across managers;
+  OpenRC and runit log paths use `0700`/`0600` with `umask 077`. Every
+  OpenBSD `@sample <absolute>` needs its `share/examples/<absolute>` mirror.
+- Debian maintainer scripts are pinned by phase: preinst `install|upgrade`
+  only, postinst repairs only root-owned empty dirs, postrm removes data only
+  on `purge)`. Man pages belong to Runtime/Tui/Tools components.
 
 - A lifecycle check inside `/var/lib/i2pd` (0700, owned by `i2pd`) must run
   through `sudo`; an unprivileged `test -f` reports EACCES as missing. Read

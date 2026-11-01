@@ -110,6 +110,15 @@ build.
   let packaging install competing definitions.
 
 ## Known issues and decisions
+- `tests/check-build-system.cmake` anchors each `add_test(NAME)` to its own
+  `set_tests_properties` call, detects the two-statement
+  `temp_directory_path()` form, accepts `RUN_SERIAL` as well as the shared
+  resource lock, and pins `I2PD_OPENSSL_EXPECT_MAJOR`. `string(FIND)` has no
+  start offset; slice the suffix and convert the relative match.
+- The manual Linux platform lanes are two branch workflows: latest Homebrew
+  `openssl@3` and `openssl@4`, each with GCC and Clang. They consume bottled
+  dependencies and verify the installed OpenSSL matches the formula; there is
+  no pinned source-built OpenSSL lane anymore.
 
 - Man pages belong to their component on every non-Android platform. The
   install rules are guarded by `NOT ANDROID`, not `UNIX`, and

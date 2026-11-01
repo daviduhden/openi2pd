@@ -100,9 +100,27 @@ execution. Ask for:
   datadir ACL as the Windows equivalent.
 
 ## Known issues and decisions
-- A GUI-subsystem router answers `--version`/`--help` before `Daemon.init`,
-  from `GetCommandLineW()`, through the inherited handle or `AttachConsole`,
-  then `_Exit`; never rely on CRT `__argc/__argv` or console code pages.
+- Configured I2PControl must fail the daemon start on POSIX (`ThrowFatal` has
+  no throw function there) and on an unusable certificate/key pair; Android's
+  lifecycle helper owns the single rollback stop. `SIGINT` drain goes through
+  `BeginGracefulShutdown()` so `ADMIN SHUTDOWN CANCEL` restores the recorded
+  transit policy.
+- A GUI-subsystem router answers informational flags from the raw command
+  line at the first `WinMain` instruction; inherited handles only, no
+  `AttachConsole`, no CRT `__argc/__argv` fallback. Set `SetLastError(NO_ERROR)`
+  before a `GetFileType` probe, which does not reset the last error.
+- A GUI-subsystem router answers informational flags from
+  `GetCommandLineW()` at the first `WinMain` instruction, never from CRT
+  `__argc/__argv`; do not attach to a console, and fall back only to the
+  inherited stderr. A repeated empty-output hang means the block is before
+  `WinMain`; inspect subsystem/imports/ldd.
+- `CreateProcessW` may rewrite the mutable command-line buffer: build a fresh
+  one per attempt. Containment is unconditional; refuse a policy without a
+  Job Object and an invalid job handle.
+- A GUI-subsystem router answers `--version`/`--help` at the first
+  `WinMain` instruction from the raw command line, before any argv or
+  `Daemon.init`; write only to inherited handles (no `AttachConsole`), never
+  fall back to CRT `__argc/__argv`, then `_Exit`.
 - `UpdateProcThreadAttribute` stores a pointer: every value must live until
   `CreateProcess` returns. AppContainer profile SIDs are `FreeSid`-owned.
   A nested job cannot set UI limits; keep containment/resource limits, drop

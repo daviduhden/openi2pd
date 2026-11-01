@@ -116,6 +116,17 @@ compile, run tests or run project scripts.
   relevant manual CI lane reruns.
 
 ## Known issues and decisions
+- `std::span<T>` only range-constructs from a contiguous range of the same
+  element type; a `char` container passed to `std::span<const uint8_t>` needs a
+  borrowing `reinterpret_cast` helper with full-expression lifetime.
+- `std::span` parameters that reach a receive loop must not be resized from a
+  record length: keep one fixed-capacity storage and decode a `string_view` of
+  each record.
+- `std::span<T>` only range-constructs from a contiguous range of the same
+  element type. Passing `std::string`/`std::string_view` to
+  `std::span<const uint8_t>` is ill-formed; use one borrowing
+  `reinterpret_cast` helper per test and keep the source alive for the full
+  expression (CE-069).
 
 - Legacy BOB tunnels are shared through `I2PService`; do not add a second
   `enable_shared_from_this`. Derive weak tunnel pointers from the inherited

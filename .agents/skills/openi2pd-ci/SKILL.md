@@ -135,6 +135,25 @@ workflow, run `gh`, build or test.
   releases or secrets.
 
 ## Known issues and decisions
+- The `4e776a39` batch leaves Linux/OpenBSD/sanitizers at CE-069, MSYS2 at
+  tools-regressions/tunnel-endpoint/i2pd-version, and MSVC at intermittent
+  access violations (the same-SHA rerun passed). A preventive audit then added
+  RT-013..RT-021; none has CI evidence yet.
+- `build.yml` no longer contains Linux build jobs; the Linux matrix lives in
+  `build-linux-openssl3.yml`/`build-linux-openssl4.yml`, each passing
+  `I2PD_OPENSSL_EXPECT_MAJOR`. `check-workflows.pl` scans composite actions and
+  rejects source-built OpenSSL.
+- Latest batch `4e776a39`: Fuzzing/Packaging pass; Linux/OpenBSD stop at
+  CE-069; Windows MSYS2 leaves tools-regressions (Win32 `nul.*` fixture),
+  tunnel-endpoint count and i2pd-version; MSVC leaves TUI/privsep access
+  violations. The Windows workflow now prints subsystem/imports/ldd and a
+  pre-CTest version probe before CTest.
+- Linux builds are split into `build-linux-openssl3.yml` and
+  `build-linux-openssl4.yml` (GCC/Clang matrix), sharing
+  `.github/actions/linux-openssl-build`. They install the latest Homebrew
+  bottle via `brew-toolchain`'s `openssl` input, verify formula == binary and
+  the branch, and must not source-build OpenSSL; `check-workflows.pl` pins
+  both files and rejects the old pinned-download markers.
 - The per-test stderr echo (`tests/log-support.cpp`) is what named the
   SSU2 `pq` writer and ELS2 fixture defects. Keep it; an aborting assert
   otherwise leaves only the signal.

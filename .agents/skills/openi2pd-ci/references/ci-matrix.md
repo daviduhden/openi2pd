@@ -12,7 +12,9 @@ Use with `SKILL.md`. All jobs are manual; no result here validates a revision.
 
 | Workflow | Jobs | Main coverage |
 |---|---|---|
-| `build.yml` | skills-static, perl-quality (opt-in), Linux Clang/GCC, Linux OpenSSL 3.x, pinned OpenSSL, install-components, Android (arm64), android-ui (opt-in), interop, sanitizers | compile-free skills/workflow/service/packaging/legal/upstream checks; optional Perl::Critic; full graph/CTest; component staging/consumer; Java 25/JNI/APK; pinned Java reference; ASan+UBSan, UBSan-only and TSan |
+| `build-linux-openssl3.yml` | Linux Clang/GCC | latest Homebrew `openssl@3` bottle, full graph/CTest + labels; branch/version verified before build |
+| `build-linux-openssl4.yml` | Linux Clang/GCC | latest Homebrew `openssl@4` bottle, full graph/CTest + labels; branch/version verified before build |
+| `build.yml` | skills-static, perl-quality (opt-in), install-components, Android (arm64), android-ui (opt-in), interop, sanitizers, source-docs | compile-free skills/workflow/service/packaging/legal/upstream checks; optional Perl::Critic; component staging/consumer; Java 25/JNI/APK; pinned Java reference; ASan+UBSan, UBSan-only and TSan; Doxygen |
 | `build-openbsd.yml` | OpenBSD | LibreSSL build, full CTest, platform tests |
 | `build-windows.yml` | MSYS2/Clang64, MSVC | full Windows graph/CTest; TUI/API/install |
 | `fuzz.yml` | fuzzing | fifteen libFuzzer targets + bounded smoke; `--no-tests=error`/JUnit smoke |
@@ -49,7 +51,7 @@ Platform-only tests register only on their host:
 
 ## Before dispatch
 
-The manual Linux job also explicitly selects `test-i2ptunnel-http`,
+The Linux OpenSSL branch action also explicitly selects `test-i2ptunnel-http`,
 `test-addressbook-case` and `test-torrents-security` for the 2026-10-21
 client/persistence continuation. These remain in the full CTest and sanitizer
 suites; `fuzz-http-parser` also feeds the production HTTP tunnel transformer

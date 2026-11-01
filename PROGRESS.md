@@ -5774,3 +5774,171 @@ reaches the next Doxygen defect.
 Static checks pass, including the enhanced Doxygen scanner and the 43
 maintenance fixtures. No compiler, CTest, Gradle, Doxygen, package, workflow,
 commit or push was performed; all entries remain Pending CI.
+
+## Linux OpenSSL branch workflows (2026-11-01, static)
+
+The Linux build matrix is now two manual workflows, one per OpenSSL branch:
+
+- `build-linux-openssl3.yml` and `build-linux-openssl4.yml` each run a
+  GCC/Clang matrix and install the latest Homebrew `openssl@3`/`openssl@4`
+  bottle, plus the precompiled GCC, LLVM, CMake, Ninja, Boost, zlib,
+  MiniUPnPc and ncurses bottles.
+- `.github/actions/brew-toolchain` gained an `openssl` input (default
+  `openssl@4`) used for both the install list and the exported
+  `OPENSSL_ROOT_DIR`.
+- `.github/actions/linux-openssl-build` owns the shared sequence: verify the
+  installed binary equals the formula version and belongs to the claimed
+  major, configure, build, run full CTest, the focused subsets, the label
+  inventory and the Perl checks, and upload the evidence.
+- `build.yml` no longer contains the `linux`, `linux-openssl-3` or
+  source-built `openssl-pinned` jobs; it keeps Android, install-components,
+  interop, sanitizers, source-docs, skills-static and opt-in Perl quality.
+- `check-workflows.pl` requires both branch workflows, their Homebrew formula
+  and rejects a reintroduced `openssl.org/source`/`OPENSSL_SHA256`/
+  `OPENSSL_PIN` download.
+
+`actionlint` and `yamllint` are clean for the new files; `check-workflows.pl`
+reports 8 workflows. No workflow was dispatched and no build exists: the two
+branch lanes remain Pending CI compilation and Pending CI tests.
+
+## Doxygen reference guard (2026-11-01, static)
+
+The `41320539612` source-docs job stopped at `privsep/DataStorage.cpp:947`
+because `@ref mutex` named a data member, which Doxygen does not extract, and
+`WARN_AS_ERROR` treats the unresolved reference as fatal; `Channel.h` used the
+same form for `uid`. Both are backticks now. `check-doxygen-params.pl` resolves
+`@ref`/`\ref` targets against the classes, enums, namespaces, typedefs,
+usings, macros and callables collected from the Doxyfile roots and reports
+`unresolved @ref target` for a data member or ordinary word; three fixtures
+and a build-system marker pin the rule. CE-068 records the evidence. Static
+checks pass; no Doxygen run exists.
+
+## Doxygen command and parameter-name guard (2026-11-01, static)
+
+Continuing after the `@ref` abort, a static scan of every Doxygen input found
+Javadoc inline tags in a C++ comment: `android/app/src/main/cpp/i2pd_android.cpp`
+used `{@code ...}`/`{@link ...}`, which Doxygen can read as an opening `@code`
+block with no matching `@endcode`. Those values are backticks now.
+`check-doxygen-params.pl` additionally rejects Javadoc inline tags in C/C++
+comments, unbalanced `@code`/`@endcode` and `@verbatim`/`@endverbatim`, and a
+documented `@param` name absent from the declaration; array parameters
+(`char * argv[]`) are parsed as `argv`, so `main`-style signatures stay valid.
+The `41320539612` lane aborted before these files, so this is preventive
+static evidence, not a CI diagnostic. Three fixtures (Javadoc tag, balanced
+code, unclosed verbatim, undeclared name, array parameter) and the
+build-system markers pin the rules. `doxygen-static`, the 54-fixture suite,
+all static checks and the agent validator pass; no Doxygen run exists.
+
+## Eighth batch: spans, Windows containment and version diagnostics (2026-11-01, static)
+
+Runs 41320539612/41320545934/41320542948/41320548839/41320551977 were read.
+Fuzzing and Packaging pass; Linux/OpenBSD/sanitizers stop at CE-069; MSYS2
+leaves three failures; MSVC leaves three access violations.
+
+- **CE-069:** `test-datastorage-protocol` passed `std::string` to
+  `std::span<const uint8_t>`; a borrowing `Bytes()` helper fixes every payload
+  site and keeps the size-cap temporaries alive for the full expression.
+- **TF-044:** the `nul.b64`/`nul.bin` fixtures are the Win32 NUL device, so
+  `i2pbase64` read EOF and the `b33address` NUL case passed vacuously. Renamed
+  to compound stems, pinned fixture bytes, added a reserved-device guard and
+  split-padding coverage; binary stdout stays in a file.
+- **TF-045:** the new pool-cell case legitimately leaves a fragmented router
+  message incomplete; expect 1.
+- **RT-011:** the live supervisor test never sent `WorkerHello`, so
+  `AcceptBound` timed out and the test skipped. It now uses
+  `RunWindowsWorker` with the restricted-token supervisor role. Product holes
+  fixed alongside: per-attempt mutable command line, unconditional Job
+  containment (invalid handle fails closed), listener/pipe-name cleanup, and
+  exactly-once channel close.
+- **RT-010/TF-034:** `--version` still hangs with empty output. The new path
+  answers from the raw command line at the first `WinMain` instruction, never
+  attaches a console, falls back to inherited stderr, and never uses CRT
+  `__argc/__argv`; the driver requires the banner only when captured. The
+  Windows workflow prints subsystem, imports, `ldd` and a pre-CTest probe so a
+  loader-level hang is distinguishable.
+- **TF-046/RT-012/TEST-039:** the MSVC TUI heap corruption and privsep
+  SEGFAULTs remain unexplained; the audited ownership chains are clean and
+  the TUI sources are unchanged. PageHeap/minidump is the next evidence, not a
+  speculative code change.
+- **TF-047:** the datastorage protocol test compile fix above.
+- TUI bounded-container seams (tracker tier index, protocol-limit vs fixed
+  `AdminCommand` storage) and the unguarded `expected` dereference are pinned.
+
+Static checks pass; no compiler, CTest, sanitizer, Gradle or workflow was run,
+and no commit or push was made.
+
+## Preventive subsystem audit (2026-11-01, static)
+
+No new batch was dispatched for this increment. The R9 worktree (now 100+
+entries) was reviewed area by area for the defect classes that the previous
+runs exposed; the corrections are recorded as RT-013..RT-021 and every one is
+static-only.
+
+- **Privilege separation (RT-013):** channel receive buffer no longer shrinks
+  on a tolerated refusal; unknown-type frames are fatal instead of answered
+  with an undecodable `Error` (POSIX and Windows); a log sink derives
+  `ConfigureLogFd`/`ConfigureLog` from the descriptor it actually has; the
+  stale broker drain is bounded; an empty removal payload writes nothing.
+- **Daemon/control (RT-014):** a control-thread `Stop()` defers the join to
+  its owner instead of detaching; a configured control service that cannot
+  bind or load its certificate fails the start; `SIGINT` records the transit
+  policy so `ADMIN SHUTDOWN CANCEL` can restore it; the admin queue releases a
+  waiter on stop; an optional TUI thread failure no longer aborts the router.
+- **Transports (RT-015):** peer-test timers carry a run generation and weak
+  lifetime token; `Start()` publishes members before creating the thread;
+  `IsTrustedRouter` locks before reading; `SetOnline` posts `PeerTest()`; the
+  SSU2 SOCKS5 exchange has a 30 s deadline and reconnects on dead ends.
+- **Streaming/crypto/garlic (RT-016/RT-017):** `Stream::Receive` completion
+  state is heap-owned, not the caller's stack; a terminated stream rejects
+  re-queued bytes; the shared garlic AEAD pair is thread-local; the tag file
+  is atomically replaced.
+- **Torrents (RT-018):** tracker interval/minimum/id/counts commit only after
+  the document validates; Win32 device names include trailing space/dot
+  spellings and are rejected platform-independently.
+- **Client services (RT-019):** one clearnet predicate rejects IPv4-embedded
+  IPv6 and the extended private ranges; the resolver map is mutex-guarded; an
+  undecodable jump link is never persisted; BOB's bound matches its buffer;
+  SAM no longer reflects `SIGNATURE_TYPE`.
+- **Windows TUI (RT-020):** column-budget `Put`, strict UTF-8, surrogate
+  clearing, shared `TerminalText.h`, bounded pipe-reopen logging.
+- **Android (RT-021):** broadcasts only restore a non-stopped intent, SAF
+  status runs on `safWorker`, picker/dialog results are fenced, a null
+  progress consumer is tolerated.
+- **Deployment (SERVICE-015):** derived option/budget/tmpfiles/@sample/
+  maintainer-script/man-page contracts; OpenRC and runit log modes unified.
+- **Checkers (BUILD-035):** per-registration TIMEOUT anchoring, two-statement
+  temp paths, `RUN_SERIAL` acceptance, `I2PD_OPENSSL_EXPECT_MAJOR`, action
+  scanning, Windows diagnostic ordering.
+
+Checks: all compile-free checkers, 60+ maintenance fixtures, Perl suites,
+Doxygen scanner, docs links/nav, workflow policy, actionlint, yamllint,
+Android locale/Javadoc/JNI checks and `validate-agent-knowledge.py` pass. No
+compiler, CTest, sanitizer, Gradle/device, Doxygen, package build or workflow
+dispatch was performed; no commit or push.
+
+## Preventive audit continuation: signing and session ownership (2026-11-01, static)
+
+- **RouterInfo/Identity (RT-022):** the RouterInfo signature is sized by the
+  identity but was signed by the offline/transient key, so a longer transient
+  wrote past the 4096-byte buffer. Offline/foreign signers are refused, the
+  signature is produced in scratch storage and validated before the body is
+  installed, `SaveToArtifact` binds the name to the parsed identity hash, and
+  `IdentityEx` clears stale keys/hash and drops the extended length with its
+  storage. The same rule now refuses an offline/mismatched LS1 signer in
+  `CreateNewLeaseSet`.
+- **LeaseSet2 (RT-023):** an immutable outer-layer marker (not the overwritten
+  store type) drives `Update()` and `ExtractPublishedTimestamp()`.
+- **SAM/I2CP/tunnel (RT-024):** unrecognised SAM lines log only length/field
+  count (private keys could previously reach the error log); subsession IDs
+  share the session-name rule and are sanitized in quoted replies; an
+  all-invalid legacy `accesslist` denies; `I2CPDestination::m_Owner` is
+  mutex-guarded with shared copies (and the unguarded `AddRoutingSession` is
+  skipped); `DESTROY SESSION` flushes its terminal status before closing;
+  `I2PServerTunnel::m_Resolver` is mutex-guarded with a generation fence.
+
+Tests prepared: routerinfo offline-signer/artifact negatives, LeaseSet2
+outer-layout freshness, SAM diagnostic/name rule, legacy accesslist, tunnel
+resolver stop/start. Open: acceptor ownership tokens (`CONC-031`), access-filter
+file I/O on the SYN path, `RunnableI2CPDestination::Stop` double-stop/detach,
+nonce 0 status. No compiler, CTest, sanitizer or workflow run; no commit or
+push.

@@ -172,12 +172,18 @@ Absence of a sanitizer report in these logs is not sanitizer evidence.
   (`DaemonWin32::init` console code page, fatal-error reporter, CRT
   `__argc/__argv` in a `SUBSYSTEM:WINDOWS` image, router teardown). The child
   emitted no byte before blocking, so the failure was before the banner.
-- **Correction:** `ClassifyInformationalRequest`/`PublishInformationalResponse`
-  answer `--version`/`--help` before `Daemon.init`, from the authoritative
-  `GetCommandLineW()` vector, writing to the inherited standard handle (or
-  `AttachConsole` for this banner only) and terminating with `std::_Exit`.
-  `SetErrorMode` suppresses unattended error dialogs for later failures. The
-  driver now requires the banner on every platform.
+- **Correction (first attempt):** `ClassifyInformationalRequest`/
+  `PublishInformationalResponse` answered `--version`/`--help` before
+  `Daemon.init` from the `GetCommandLineW()` vector and terminated with
+  `std::_Exit`. The `41320542948` run still timed out with empty output, so
+  the block is before that path.
+- **Correction (second attempt):** `WinMain` now answers from a raw wide
+  command-line scan before any argv, `Init`, console or daemon state; the
+  write path uses only inherited `STD_OUTPUT_HANDLE`/`STD_ERROR_HANDLE` (no
+  `AttachConsole`/`CONOUT$`), and the CRT `__argc/__argv` fallback is gone.
+  The Windows driver requires termination and exit status, and the banner
+  only when output was captured. The Windows workflow prints the PE
+  subsystem, imports, `ldd` and a bounded pre-CTest probe.
 - **State:** Implemented / static; Pending Windows CI.
 
 ### Residual findings (not corrected in this batch)
@@ -201,3 +207,306 @@ Absence of a sanitizer report in these logs is not sanitizer evidence.
   impossible; the worker fails closed instead of running outside its job.
 - LPAC live-worker cases may still report 77 where the runner cannot read the
   image from the test path; the skip is reported, not hidden.
+
+### RT-011 — Windows live-worker test never proved its identity
+
+- **Diagnostic:** MSVC `test-privsep-windows-supervisor` spends 10 s and then
+  fails authentication (`worker pipe accept timeout`); the process later
+  exits with an access violation.
+- **Cause:** the test's `RunPingWorker` connected and answered Ping but never
+  sent the `WorkerHello` spawn proof or bound a role, while `AcceptBound`
+  requires both. The live-worker case was therefore unreachable on every host
+  (the same 10 s in the clang lane ends in a skip), and the early `return 77`
+  bypassed the handle-leak assertion. The `Admin` AppContainer role also
+  cannot read the test image from the runner path. Related product holes were
+  found in the spawn path: `CreateProcessW` may rewrite its mutable command
+  line, so reusing one buffer for the job-less retry could start the wrong
+  arguments; `useJobObject=false` or an invalid job handle silently skipped
+  both `JOB_LIST` and `AssignProcessToJobObject`; and a released generation
+  kept its pipe name and listener.
+- **Correction:** the live worker now enters through the production
+  `RunWindowsWorker` with the restricted-token supervisor role and a fresh
+  command line per attempt; containment is unconditional (an uncontained
+  policy or invalid job fails closed); `ReleaseWorker`/`Stop` drop the
+  listener and pipe name; `WindowsChannel::Close` closes its handle exactly
+  once and only the server side disconnects.
+- **State:** Implemented / static; Pending Windows CI.
+
+### RT-012 — MSVC privsep and TUI access violations after teardown
+
+- **Diagnostic:** MSVC run `41320542948`: `test-privsep-windows-ipc` and
+  `test-privsep-windows-supervisor` SEGFAULT, and `test-tui-protocol` exits
+  `0xc0000374` (heap corruption). The isolation test now passes.
+- **Evidence:** the TUI test sources and the TUI parser are byte-identical to
+  the revision where the test passed; its executable links only `Log.o` from
+  the product. The privsep ownership audit found no double-close or
+  use-after-free in the spawn, server or supervisor chains. The previous
+  `FreeSid`/`LocalFree` mismatch (RT-008) showed this lane converting a heap
+  corruption into a crash in whichever allocation ran next, so a single
+  process-wide fault across these binaries cannot be excluded from static
+  evidence alone.
+- **Correction:** containment/ownership defects above are fixed; the TUI
+  test now guards its one unguarded `expected` dereference and pins the
+  wire-integer-to-container and wire-limit-to-fixed-storage seams. The crash
+  itself is **not root-caused**.
+- **Rerun evidence:** the MSVC job of `41325980409` (same SHA `4e776a39`,
+  same runner image) **passed all seven tests**, including the three that had
+  crashed. The failure is intermittent/nondeterministic, consistent with a
+  process-wide corruption whose detection depends on heap layout and runner
+  timing rather than a deterministic TUI/privsep defect.
+- **Next evidence:** if it recurs, enable PageHeap
+  (`gflags /p /enable <test>.exe /full`) or collect a minidump from the
+  runner and upload it; do not change product code from the exit code alone.
+- **State:** Intermittent; `CI failure` on the first run, pass on the rerun.
+  Correction pending a PageHeap/minidump reproduction.
+
+## Preventive static audit (2026-11-01)
+
+The entries below were **not observed in a CI run**. They were found by the
+subsystem audits that follow every batch, are corrected in the worktree, and
+are recorded here so a future failure can be matched to a known root cause.
+Each remains Implemented / static, Pending CI compilation and Pending CI tests.
+
+### RT-013 — privilege-separation channel and sink contract
+
+- **Frame buffer shrink:** `Channel::ReceiveWithFd` resized its receive
+  storage to the refused record's length and continued the loop after a
+  tolerated violation. Every later record was truncated by the kernel
+  (`MSG_TRUNC`) and reported as a fatal ancillary-data fault, so one bad frame
+  made the endpoint deaf to all larger frames. The storage now keeps its
+  fixed capacity and the record is decoded through a `string_view`.
+- **Undecodable refusal:** an attributable frame whose type had no registry
+  row was answered with a typed `Error` naming that unknown type. The peer's
+  `DecodeError` rejects an unknown offending type, so the refusal could never
+  be read; attributability now also requires `IsKnownMessageType`, otherwise
+  the frame is fatal.
+- **LogSink frame type:** `LogSink::Configure` always sent `ConfigureLogFd`,
+  a `RequiredFile` type, even for a syslog or foreground sink. The worker's
+  descriptor policy refused it before parsing, so the sink never configured.
+  The frame type now follows the descriptor actually attached.
+- **Stale-reply drain:** the broker reply drain reset a fresh 5 s deadline on
+  every stale frame, so an endless run of stale ids blocked a torrent-tunnel
+  start forever. It is bounded by `MAX_DRAINED_STALE_REPLIES` and classified
+  as a run fault.
+- **Removal frame:** `PayloadWriter::WriteBytes` passed a null pointer with a
+  zero count to `std::string::append` for the empty removal payload; it now
+  writes nothing.
+- **Files:** `privsep/Channel.{h,cpp}`, `privsep/LogWorker.{h,cpp}`,
+  `privsep/Protocol.h`, `privsep/Supervisor.{h,cpp}`,
+  `tests/test-privsep-{protocol,log,worker-identity}.cpp`,
+  `tests/test-datastorage-protocol.cpp`.
+
+### RT-014 — daemon, control channel and admin queue lifecycle
+
+- **`I2PControlService::Stop` detached its own thread** when called from a
+  control handler, then dropped the thread object. The daemon destroyed the
+  service while the detached thread still read `m_IsRunning` and executed
+  raw-`this` handlers. A control-thread `Stop()` now keeps the thread object
+  and the owner's `Stop()`/destructor performs the join; `Start()` reclaims a
+  deferred thread and refuses a re-entrant restart.
+- **Configured I2PControl failure was skipped** on POSIX: `ThrowFatal` has no
+  throw function there, so a bind/address/certificate failure logged one line
+  and the router started without the administration channel while reporting
+  success. The daemon now tears the started services down and returns false.
+  On Android the lifecycle helper owns the single rollback stop.
+- **Unusable TLS certificate:** a control listener whose certificate/key could
+  not be loaded still bound and accepted, so every handshake failed while the
+  service looked started. Construction now fails.
+- **SIGINT drain bypassed the shared bookkeeping:** a later
+  `ADMIN SHUTDOWN CANCEL` restored the default transit policy instead of the
+  policy in force. The signal now calls `BeginGracefulShutdown()`.
+- **Admin queue stop did not wake a waiter:** a caller waited the full 2 s
+  timeout after its queued command had already been retired. The wait now
+  observes the retired slot and the stopping flag, returns `Unavailable`, and
+  never reports a dropped queued command as accepted.
+- **Optional TUI thread failure escaped:** a `std::jthread` construction error
+  propagated out of the daemon start and aborted the router while leaving the
+  listener bound. It now releases the endpoint and continues without TUI IPC.
+- **Files:** `daemon/I2PControl.{h,cpp}`, `daemon/Daemon.cpp`,
+  `daemon/UnixDaemon.cpp`, `daemon/TuiServer.cpp`,
+  `daemon/TuiServerCommon.cpp`, `tests/test-tui-ipc-regression.cpp`.
+
+### RT-015 — transports deferred timers, trusted set and SSU2 proxy
+
+- **Peer-test timers survived restart:** `Transports::Stop()` stops the
+  io_context and `Start()` restarts it, so queued stagger timers ran against
+  the next instance and dereferenced a replaced or absent `m_SSU2Server`.
+  Every handler now captures the run generation, a weak lifetime token and
+  checks running/SSU2 state; `Start()` publishes all handler-visible members
+  before creating the transports thread.
+- **Unsynchronised trusted-router read:** `IsTrustedRouter` tested
+  `m_TrustedRouters.empty()` before taking the mutex while the startup/admin
+  thread replaced the set. It now locks first.
+- **SSU2 SOCKS5 control exchange had no deadline:** a proxy that accepted the
+  socket and stopped reading disabled the SSU2 UDP transport forever. A 30 s
+  deadline now covers connect plus all four control reads/writes, cancelled
+  on success and in `Stop()`, with reconnect on the dead-end branches.
+- **`SetOnline` ran `PeerTest()` on a foreign thread:** the admin queue and
+  the `SIGCONT` handler called it directly. It is now posted to the service
+  with the generation/lifetime fence.
+- **Files:** `libi2pd/Transports.{h,cpp}`, `libi2pd/SSU2.{h,cpp}`,
+  `tests/test-transports-prestart-send.cpp`.
+
+### RT-016 — streaming blocking read lifetime
+
+- **`Stream::Receive` posted an async read into the caller's stack frame** and
+  waited with a bounded sleep. If the service thread was busy or the context
+  stopped, the handler later wrote into a destroyed mutex/condition variable
+  and copied stream bytes into the returned buffer. Completion state is now
+  heap-owned by the stream and the abandoned-read handler hands bytes back
+  only while the stream is live.
+- **Files:** `libi2pd/Streaming.{h,cpp}`, `tests/test-streaming-sendstate.cpp`.
+
+### RT-017 — shared AEAD context and garlic tag file
+
+- **One cipher context served every garlic session:** `GarlicDestination`
+  keeps one encryptor and one decryptor for all of its ratchet sessions, and
+  each wrapper owned a single stateful `EVP_CIPHER_CTX` with no lock. Two
+  threads wrapping to different peers corrupted each other's key/nonce/tag.
+  The wrappers are now stateless and use a thread-local context that every
+  call re-initializes.
+- **Garlic tag file was not atomically replaced:** the secret tag set was
+  written through `CreatePrivateFile` with truncation, which chmods a
+  pathname and reopens it. It is now built under the tag lock and replaced by
+  one private atomic write.
+- **Files:** `libi2pd/Crypto.{h,cpp}`, `libi2pd/Garlic.{h,cpp}`,
+  `tests/test-crypto-x25519-noise-elligator-mlkem-audit.cpp`,
+  `tests/test-eciesx25519-ratchet-session.cpp`.
+
+### RT-018 — tracker transactionality and payload names
+
+- **Tracker fields committed before validation:** interval, minimum interval,
+  tracker id and swarm counts were written from the dictionary callback, so a
+  truncated response kept a prefix of hostile values. Every field is staged
+  and committed only after the whole document validates; a validated
+  failure response still updates the fields it carried.
+- **Win32 device-name spellings:** the reserved-device check missed the
+  trailing-space/dot forms Win32 resolves (`CON .txt`, `AUX..txt`). One
+  shared predicate now covers them and is pinned platform-independently.
+- **Files:** `libi2pd_client/Torrents.{h,cpp}`,
+  `tests/test-torrents-verify-parity.cpp`, `tests/test-torrents-security.cpp`.
+
+### RT-019 — proxy target classification and client parsers
+
+- **IPv4-embedded IPv6 bypass:** `::ffff:127.0.0.1` and `::ffff:10.0.0.5`
+  passed both proxy checks because Asio classifies only the 16-byte form, so
+  the outproxy could connect to its own loopback/RFC 1918 host. One shared
+  predicate now decodes v4-mapped/v4-compatible spellings and adds CGNAT,
+  `192.0.0/24`, benchmarking and `240/4`.
+- **Address-resolver map race:** the constructor registers a datagram
+  receiver on the destination thread while startup/admin adds local names to
+  the same map. A leaf mutex now guards both and the answer is copied before
+  send; the peer-supplied name is no longer logged.
+- **Invalid jump link persisted:** a `.b32.i2p` jump link was stored without
+  checking that it decoded to a destination. It must be valid before it
+  replaces the entry or rewrites the index.
+- **BOB buffer contract:** the identity copy was bounded by the stream buffer
+  size instead of the destination buffer size and overflowed into a stale
+  forward. The guard now matches the buffer that is filled and closes on
+  overflow.
+- **SAM reflected client input:** one `RESULT=I2P_ERROR MESSAGE="…"` quoted
+  the client-supplied `SIGNATURE_TYPE`, breaking the reply grammar. The
+  reason is now fixed text.
+- **Files:** `libi2pd_client/{HTTPProxy,SOCKS,AddressBook,BOB,SAM}.*`,
+  `tests/test-proxy-auth.cpp`, `tests/test-addressbook-merge.cpp`.
+
+### RT-020 — Windows console text and pipe recovery
+
+- **`Put` charged UTF-8 bytes as terminal columns:** with es/ru/zh-Hans
+  catalogs, Cyrillic and CJK labels truncated and misaligned on Windows while
+  ncurses rendered them fully. The documented column budget is now applied.
+- **UTF-8 decoder accepted non-scalars:** overlong forms, encoded surrogates
+  and values above U+10FFFF were forwarded to the console. A strict decoder
+  yields one U+FFFD unit for each.
+- **High surrogate survived an intervening key:** arrows/F-keys/Esc returned
+  before the clear, so a later orphaned low surrogate could pair into a wrong
+  code point. The clear is now a property of every event.
+- **Unbounded pipe-recreation logging:** a squatted derived pipe name logged a
+  warning every second forever. A 250 ms→5 s backoff logs one warning per
+  distinct failure and one recovery line.
+- **Files:** `tui/TerminalText.h` (new), `tui/TerminalWin32.cpp`,
+  `tui/main.cpp`, `daemon/TuiServerWin32.cpp`,
+  `tests/test-tui-terminal.cpp`, `tests/test-tui-win32-pipe.cpp`.
+
+### RT-021 — Android boot intent and SAF threading
+
+- **Boot broadcast resurrected a stopped router:** `BOOT_COMPLETED` persisted
+  `Running` before reconciling, overwriting an operator stop and turning an
+  expired graceful drain into a fresh run. A broadcast now only requests a
+  restore when the persisted intent is non-stopped (and, for boot, the
+  autostart marker is set).
+- **SAF status read on the main thread:** the torrents screen read grants,
+  persisted URI permissions and broker retry state on the main handler. A
+  service-owned `safWorker` lane now delivers the status.
+- **Unfenced picker results:** export/create results and the blocked-address
+  dialog touched fragments without a generation or `isAdded()` check.
+- **Null progress consumer:** a SAF creation with no progress callback failed
+  a valid request by dereferencing it on the worker.
+- **Files:** `android/app/src/main/java/**`,
+  `android/app/src/test/java/**`, `android/app/src/androidTest/**`,
+  `docs/android-modernization.md`, `.agents/skills/openi2pd-android/**`.
+
+### RT-022 — RouterInfo/Identity signature length and artifact binding
+
+- **Offline signer overflow:** `LocalRouterInfo::CreateBuffer` reserved the
+  trailing signature with the identity's `GetSignatureLen()` but signed with
+  `PrivateKeys::Sign()`, which uses the offline/transient signer when the keys
+  file carries one. An Ed25519 `router.keys` without a transient fits; a
+  `router.keys` with a longer transient (for example P-521) wrote the
+  transient signature past the 4096-byte buffer. The buffer now refuses an
+  offline or foreign signature length, signs into a scratch buffer and
+  rejects an all-zero signature before installing the body.
+  `ClientDestination::CreateNewLeaseSet` applies the same rule to LS1: the
+  wire signature field is sized by the identity, so an offline signer or a
+  length mismatch refuses the LS1 instead of publishing an unverifiable one.
+- **Artifact name binding:** `RouterInfo::SaveToArtifact` now decodes the
+  requested name and compares it with the parsed identity hash before writing,
+  so a caller cannot store one router's descriptor under another router's key.
+- **Identity invalidation:** `IdentityEx::FromBuffer` clears the previous
+  standard-identity keys and hash on every parse, and `operator=` drops the
+  extended length together with its storage, so an invalid object cannot
+  expose old keys or a null extended buffer.
+- **Files:** `libi2pd/RouterInfo.{h,cpp}`, `libi2pd/Identity.{h,cpp}`,
+  `libi2pd/LeaseSet.cpp`, `libi2pd/Destination.cpp`,
+  `tests/test-routerinfo-update-transaction.cpp`.
+
+### RT-023 — LeaseSet2 encrypted outer layout
+
+- **Wrong parser after decryption:** a successful decryption overwrites
+  `m_StoreType` with the inner type, while `Update()` and
+  `ExtractPublishedTimestamp()` keyed the outer layout on that value. A
+  decrypted type-5 record could therefore be re-parsed with the standard
+  layout (invalid) and its published time read from ciphertext (arbitrary
+  replay decision). An explicit immutable outer-layer marker now answers both
+  questions; readers must still check `IsValid()` before touching
+  `GetBuffer()`/`GetStoreType()`.
+- **Files:** `libi2pd/LeaseSet.{h,cpp}`,
+  `tests/test-leaseset-encrypted-freshness.cpp`.
+
+### RT-024 — SAM/I2CP/tunnel session lifecycle
+
+- **SAM leaked secrets:** an unrecognised control line was logged verbatim.
+  A tab-separated or mistyped `SESSION CREATE ... DESTINATION=<private keys>`
+  therefore wrote the private keys to the error log; the diagnostic now
+  reports only the line length and field count.
+- **SAM subsession identifiers:** `SESSION ADD`/`REMOVE` did not apply the
+  `SESSION CREATE` name rule and `SESSION STATUS ... ID="%s"` reflected the
+  raw value. The name rule is now shared, and both reply helpers sanitize
+  defensively; error text no longer repeats the identifier.
+- **Legacy `accesslist` opened the tunnel:** a value whose every entry failed
+  to parse installed no filter, turning an operator typo into an open server
+  tunnel. `ParseLegacyAccessList` now always returns the deny-by-default
+  definition; only an absent value means "no whitelist".
+- **I2CP owner race:** `I2CPDestination::m_Owner` was a `shared_ptr` reset by
+  `Stop()` while garlic/destination/posted handlers read it, and one
+  `AddRoutingSession` call was unguarded. `GetOwner()`/`ResetOwner()` use a
+  leaf mutex and every caller takes a shared copy; a missing owner skips the
+  routing-session cache but still sends.
+- **Terminal I2CP status:** `DESTROY SESSION` closed the socket before the
+  terminal `SESSION STATUS` write completed. `closeAfterFlush` drains the
+  queue and closes once, bounded by the existing reply deadline.
+- **Tunnel resolver race:** `I2PServerTunnel::m_Resolver` was assigned by
+  `Stop()` and the destination thread. It is now mutex-guarded with
+  `CancelResolver()`, and a stale completion cannot clear a newer resolver.
+- **Files:** `libi2pd_client/{SAM.*,I2CP.*,I2PTunnel.*,I2PTunnelAccessFilter.*,ClientContext.cpp}`,
+  `tests/{test-sam-control-framing,test-i2ptunnel-filter,test-i2ptunnel-stop}.cpp`.

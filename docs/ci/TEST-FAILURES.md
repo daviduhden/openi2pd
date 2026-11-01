@@ -49,7 +49,7 @@ tests**.
 | TF-031 | `android-locale-policy` | `CRLF in ...` | CE-061 | `.gitattributes` LF pinning |
 | TF-032 | `perl-install-layout` | missing `i2pdctl.1` | CE-060 | man-page guard widened to non-Android |
 | TF-033 | `tools-cli` / `tools-smoke` / `tools-regressions` | CE-062, CE-063 | product CLI output and reserved-range filtering | tools and docs corrected |
-| TF-034 | `i2pd-version` | `***Timeout 30.02 sec`; then `did not terminate within 20 s` | `--version` was answered only after GUI/daemon initialization; a GUI-subsystem image has no guaranteed CRT argv or console, so the probe emitted nothing and never exited | product: classify/answer `--version`/`--help` before `Daemon.init`, authoritative `GetCommandLineW` argv, inherited-handle/`AttachConsole` banner, `_Exit`; driver now requires the banner on every platform (RT-010) |
+| TF-034 | `i2pd-version` | `did not terminate within 12 s` again on 4e776a39, empty output | the GetCommandLineW rewrite did not fix the hang: no byte reached either pipe, so the block is before the handler (pre-main/loader or an unobservable console path) | product: raw-command-line answer at the first WinMain instruction, no AttachConsole, stderr fallback, no CRT argv fallback; driver requires the banner only when captured; Windows workflow adds objdump/ldd/probe diagnostics (RT-010, Pending CI) |
 | TF-035 | Debian `Remove and preserve, then purge` | CE-064 | unprivileged `test -f` inside a 0700 state directory | workflow and static contract use `sudo test` |
 
 Executed evidence for this batch: MSYS2 passed 172/210 tests, MSVC passed 6/7
@@ -103,6 +103,22 @@ noted. The echo produced the root cause of the two previously open tests.
 | TF-040 | `test-tunnel-endpoint-fragments` | `GetNumIncompleteMessages () == 2`; log `Buffer too small ... dropped` | the new endpoint guard compared the *declared* length to a full cell, but `NewI2NPTunnelMessage(true)` reserves the gateway header and declares 6 bytes less; every transit cell was dropped. Capacity is the memory-safety bound | product: capacity first, then a declared-length floor that allows the reserved header; pool-cell regression |
 | TF-041 | `test-torrents-verify-parity` | `GetNumPeers (1) == 0` | `ParsePeers` mutated the live tracker slot before the whole bencode document validated, so a truncated response committed a partial list | product: parse into a scratch set and commit only on success; test asserts retained last-good list |
 | TF-042 | `tools-cli`/`tools-smoke`/`tools-regressions` | `i2pbase64 ... after padding`; `routerinfo usage ... stderr`; `offlinekeys ... Can't create file` | `i2pbase64` decoded all complete quartets at once so `=` in the same chunk failed with the generic message; the routerinfo test searched for `argv[0]`-bearing text; two regression needles were stale after the stream/atomic-write changes | tools/tests: quartet-by-quartet decode with `data after padding`; path-independent usage assert; stderr/exit-code asserts for every writer; latent famtool cases corrected |
-| TF-043 | MSVC `test-privsep-windows-isolation`, `test-privsep-windows-supervisor` | `Exit code 0xc0000374`; supervisor logs `CreateProcess ... ERROR_INVALID_PARAMETER` | attribute *values* were block locals that died before `CreateProcess` read them; AppContainer profile SIDs were freed with `LocalFree` instead of `FreeSid`; nested jobs cannot carry UI restrictions | product: value storage owned by the attribute list, `FreeSid`, conditional UI restrictions and one bounded job-less retry (RT-007..RT-009) |
+| TF-043 | MSVC `test-privsep-windows-isolation`, `test-privsep-windows-supervisor`, `test-privsep-windows-ipc` | isolation now passes; supervisor/IPC SEGFAULT; TUI `0xc0000374` | live-worker test never sent `WorkerHello`; spawn reuse/containment/stale-pipe holes; the remaining access violations are not explained by the audited ownership chains | product: production worker entry, per-attempt command line, unconditional containment, listener/pipe cleanup; crash needs PageHeap/minidump (RT-011, RT-012) |
 
 Status: Implemented / static; Pending CI compilation; Pending CI tests.
+
+## Batch `4e776a39` (runs 41320539612/45934/42948, 2026-11-01)
+
+| ID | Test | Diagnostic | Root cause | Correction |
+|---|---|---|---|---|
+| TF-044 | `tools-regressions` | `i2pbase64 decodes NUL: expected hex '00', got ''` | the fixture names `nul.b64`/`nul.bin` are the Win32 NUL device in every directory, so the tool read EOF and wrote nothing; the same trap made the `b33address` NUL case pass vacuously | test: rename to `nul-byte.*`/`nul-input.b64`, pin the fixture bytes, add a reserved-device-name guard, split padding across reads |
+| TF-045 | `test-tunnel-endpoint-fragments` | `GetNumIncompleteMessages () == 0`, line 331 | the new pool-cell case crafts a fragmented router-delivery first fragment, which legitimately stays in the incomplete table until a follow-on arrives | test: expect 1 |
+| TF-046 | MSVC `test-tui-protocol` | `Exit code 0xc0000374` | unresolved; sources and parser are unchanged from the passing revision, the binary links only `Log.o` | test: guard the unguarded `expected` dereference and pin both bounded-container seams; crash needs PageHeap/minidump (RT-012) |
+| TF-047 | `test-datastorage-protocol` | compile error CE-069 | `std::string` passed to a byte span | test: borrowing `Bytes()` helper |
+
+The per-test log echo again identified causes without a debugger. The Windows
+version hang remains open with explicit diagnostics. The MSVC access
+violations did **not** reproduce on the `41325980409` rerun of the same SHA
+(the whole MSVC job passed), so they are recorded as intermittent and still
+need PageHeap/minidump evidence if they return. No local build, CTest,
+sanitizer or workflow dispatch exists.

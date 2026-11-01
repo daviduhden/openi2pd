@@ -39,9 +39,8 @@ desktop supervisor.
 
 | Lane | Configure/build consumer | Tests |
 |---|---|---|
-| Linux Clang/GCC | full graph, `BUILD_TESTING=ON`, TUI | full CTest + labels |
-| Linux OpenSSL 3.x | distribution OpenSSL 3 | full CTest |
-| Linux pinned OpenSSL | `I2PD_OPENSSL_EXPECT`/version pin | build + full CTest |
+| Linux OpenSSL 3.x | Homebrew latest `openssl@3` bottle, Clang/GCC, full graph, `BUILD_TESTING=ON`, TUI | full CTest + labels |
+| Linux OpenSSL 4.x | Homebrew latest `openssl@4` bottle, Clang/GCC, full graph, `BUILD_TESTING=ON`, TUI | full CTest + labels |
 | Install components | Runtime/Tui/Libraries/Development/Tools/Documentation/Service | staged tree, DESTDIR, consumer package |
 | Linux ASan+UBSan | full graph, sanitizer option | full CTest |
 | Linux UBSan-only | full graph, `WITH_UNDEFSANITIZER` | full CTest |

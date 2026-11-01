@@ -98,6 +98,14 @@ peer or add a hidden external checkout. The reference is for reading only.
   protocol requirement justifies it.
 
 ## Known issues and decisions
+- SAM: an unrecognised control line is never logged verbatim (it can carry
+  `DESTINATION=` private keys or `PASSWORD=`); report length/field count.
+  `SESSION ADD`/`REMOVE` share the `SESSION CREATE` name rule, and quoted
+  `ID="…"` replies are sanitized. `DESTROY SESSION` flushes the terminal
+  status before closing, bounded by the reply deadline.
+- A decrypted LeaseSet2 keeps an immutable outer-layer marker for layout and
+  freshness; never decide the wire layout from the overwritten store type or
+  read the buffer without `IsValid()`.
 - A RouterInfo option value is one length-prefixed string, so commas stay
   inside it (`pq=4,3`); two strings around a raw comma make the descriptor
   unparseable. Assert the sealed bytes.

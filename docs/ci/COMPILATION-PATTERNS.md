@@ -101,3 +101,56 @@ This document provides the diagnostic-family search procedure only.
 | `argv[0]` in a CLI test needle | Every CMake tool test that greps for a usage line. | Assert `usage: ` plus a synopsis token, never the executable path. |
 | Base64 padding across reads | Every streaming base64 decoder and its `=` latch. | Decode per quartet so padding terminates the stream; report `data after padding` distinctly, including across a read boundary. |
 | Dotted version comparison | Every SAM/version parser and test. | Follow Java `VersionComparator`: the depth is not fixed, any in-range dotted bound is legal, only non-digit components are malformed; a response vector is bound to the nonce count. |
+
+## Additional Doxygen patterns from the `41320539612` continuation
+
+| Pattern | Search | Contract |
+|---|---|---|
+| Javadoc inline tag in a C/C++ comment | Search `{@code`, `{@link`, `{@literal`, `{@inheritDoc}` in every Doxyfile input; Doxygen may read `@code` as an opening block with no `@endcode`. | Use backticks in C/C++ comments; Javadoc inline tags are Java-only. |
+| Unbalanced command block | Count `@code`/`@endcode` and `@verbatim`/`@endverbatim` per documentation block. | Every opening command needs its closing command; an unbalanced block aborts at the end of the comment. |
+| Documented name not in the declaration | For every `@param` name, check the following declaration's parameter list; array parameters (`char * argv[]`) must yield `argv`, not be dropped. | Doxygen reports "argument ... is not found in the argument list"; document only names that exist. |
+
+## Patterns from the `4e776a39` batch
+
+| Pattern | Search | Contract |
+|---|---|---|
+| `char` container passed as a byte span | Every `std::span<const uint8_t>`/`std::span<uint8_t>` parameter and caller; `std::string`, `std::string_view`, `std::array<char,N>`, literals. | `std::span` only converts from the same element type: use a borrowing `reinterpret_cast` helper with full-expression lifetime, never an implicit conversion. |
+| Win32 device name as a fixture | Every test fixture basename whose stem is `NUL`, `CON`, `AUX`, `PRN`, `COM1-9` or `LPT1-9`, with any extension. | Such a path is the device in every directory, so the tool reads EOF and writes nothing; use a compound stem and pin the fixture bytes. |
+| Reused `CreateProcess` mutable buffer | Every `CreateProcessW`/`CreateProcessAsUserW` retry path. | The API may modify the command-line buffer; build one buffer per attempt. |
+| Containment disabled by policy | Every spawn path that conditions Job Object creation/assignment on a flag or handle validity. | A worker must never run outside its Job Object; refuse the policy or fail closed on an invalid handle. |
+| Test worker bypassing the production entry | Every supervisor/IPC test that implements its own worker loop. | The worker must go through `RunWindowsWorker` (handshake, nonce, role bind) or the test can silently skip the required protocol. |
+| GUI-subsystem informational flags | Windows entry points, CRT `__argc/__argv`, console attach, `exit()` teardown. | Answer from the raw command line before any argv/console state; never fall back to an empty CRT vector and start a router. |
+
+## Preventive patterns from the 2026-11-01 subsystem audit
+
+These were found by static review, not by a compiler. Each is a pattern to
+grep for before the next dispatch.
+
+| Pattern | Why it matters | Search |
+|---|---|---|
+| Deferred handler holds raw `this` on an io_context that survives `Stop()` | `io_context::restart()` replays the queue, and destruction can precede it. Ownership must be a weak/shared token plus a generation/stopped check. | `boost::asio::post`, `async_wait`, `steady_timer` in `Transports`, `I2PControl`, streaming/session code |
+| Buffer resized inside a receive loop | A tolerated refusal that continues the loop shrinks the next `recvmsg()` capacity and turns a later valid record into a fatal truncation. Keep one fixed-capacity storage and decode a view. | every `ReceiveWithFd`/loop-local `std::string`/vector used as a `msghdr`/`iovec` target |
+| Refusal that names an unknown enum | A typed `Error` whose offending-type field has no registry row cannot be decoded by the peer. Attributability requires type validity, not just magic/version/length. | `RejectFrame`, `EncodeError`, both POSIX and Windows channels |
+| Frame type chosen independently of the capability | A `RequiredFile` type sent without a descriptor is refused before parsing. Derive the type from whether a descriptor is attached. | `ConfigureLogFd`/`ConfigureLog`, any `RequiredFile`/`RequiredSocket` message |
+| `std::string`/`string_view`/`char[]` passed to `std::span<uint8_t>` | No element-type conversion exists; the error blocks every platform. Use one borrowing helper with full-expression lifetime. | every byte-span parameter |
+| Interpolated format string | `sprintf("%.${n}f", …)` becomes a conversion bug when the value changes; use `%.*f`. | all Perl/shell format calls that embed a variable in the template |
+| Byte length used as a column budget | UTF-8 text must be measured with `terminal::text::Width`/`DisplayWidth`; a byte budget truncates Cyrillic/CJK labels and tears the layout. | every `Put(text, limit)` caller and every width computation |
+| Duplicate platform table | Two copies of a width table or address classifier drift. Keep one owner and include it from both branches. | `tui/main.cpp` vs `TerminalWin32.cpp`; `HTTPProxy` vs `SOCKS` |
+| `GetFileType`/`GetLastError` sequence | `GetFileType` does not reset the last error on success; set `SetLastError(NO_ERROR)` before the probe or a stale code rejects a valid handle. | every Win32 handle probe |
+| Missing direct include for a new standard type | Transitive Asio/Boost includes can disappear; each changed TU must name the headers it uses (`<chrono>`, `<cctype>`, `<span>`, `<thread>`). | new helper in a large TU |
+| `defined(DOXYGEN)` without a Doxyfile `PREDEFINED` | The declaration is stripped from the generated API docs. Add the predicate or drop the branch. | `docs/Doxyfile.source` against `DOXYGEN`/`_WIN32` guards |
+
+## Warnings that would appear under a stricter lane
+
+- `Torrents.cpp::ParseTrackerResponse`'s lambda parameter `buf` shadows the
+  function parameter (only `-Wshadow`).
+- `TuiClient.cpp` compares `EAGAIN` and `EWOULDBLOCK`, the same constant on
+  Linux (only `-Wlogical-op`).
+- No `-Werror` exists in the tree today; these are recorded rather than
+  suppressed, and a stricter lane must fix or justify them first.
+
+| Record signature length is the identity's, not the signer's | An offline/transient signer of a different type writes past a buffer sized by the identity. Refuse an offline signer (or a length mismatch) for RouterInfo/LS1 instead of publishing an unverifiable record. | `GetSignatureLen()`/`Sign()` pairs; `LocalRouterInfo::CreateBuffer`, `CreateNewLeaseSet`, `LocalLeaseSet` |
+| Mutable store type selects a wire layout | A decrypted record overwrites `m_StoreType`, so a layout decision based on it reads ciphertext. Keep an immutable outer-layer marker and never read `GetBuffer()`/`GetStoreType()` without `IsValid()`. | `LeaseSet2::Update`, `ExtractPublishedTimestamp`, `ReadFromBufferEncrypted` |
+| Raw client line in a diagnostic | A tab-separated/mistyped control command can carry `DESTINATION=<private keys>` or `PASSWORD=`. Log only length/field count, never the line. | every `LogPrint` that receives a request buffer |
+| Shared `shared_ptr` member reset across threads | `if (m_X)` is not synchronization. Guard with a leaf mutex and take a shared copy per use. | `I2CPDestination::m_Owner`, `I2PServerTunnel::m_Resolver`, service members touched from admin threads |
+| Fail-open configuration upgrade | An old-format whitelist whose entries all fail to parse must deny, not open. | `accesslist` migration, `filterDefinition`, `targetForPort` |

@@ -297,3 +297,30 @@ still discovers files on the disk worker and mutates `Torrent` state there;
 per-file handle operations are serialized but the phase split remains open.
 
 No compiler, CTest, sanitizer, fuzzer, workflow, commit or push was performed.
+
+## Preventive pass (2026-11-01, static)
+
+The subsystem audit added these lifetime corrections; the operational
+evidence is RT-013..RT-021 in `docs/ci/RUNTIME-ERRORS.md`.
+
+- `Stream::Receive` no longer posts a read into the caller's stack frame. The
+  completion state is heap-owned by the stream, the abandoned-read handler
+  returns bytes only while the stream is live, and a terminated/reset stream
+  rejects re-queued data instead of retaining pooled packets.
+- `I2PControlService::Stop` never detaches its thread. A control-thread stop
+  keeps the thread object and the owner joins it, so handlers that capture
+  raw `this` cannot run against a destroyed service.
+- Deferred transports handlers carry a weak lifetime token and the run
+  generation. `Transports::Start` publishes both servers, addresses and MTU
+  before creating the transports thread.
+- One `AEADChaCha20Poly1305Encryptor`/`Decryptor` serves every ratchet session
+  of a garlic destination; the provider context is thread-local and every call
+  re-initializes it. The incoming tag file is replaced by one private atomic
+  write.
+- `Channel::ReceiveWithFd` keeps one fixed-capacity record buffer for the whole
+  call; a tolerated refusal decodes a view instead of resizing the storage.
+
+Still open and unchanged: SSU2 send/receive socket sharing, the missing
+established-session cap (`NET-172`), the undeadlined NTCP2 2-byte length read,
+`ThrowFatal` on the SSU2 receive-error path, ratchet context serialization,
+`RouterInfo` address-slot copy-on-write and the netDb throttle eviction.

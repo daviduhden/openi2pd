@@ -102,6 +102,28 @@ Do not let reconnaissance agents edit, compile, execute tests or run scripts.
   the audit is complete.
 
 ## Known issues and decisions
+- A `shared_ptr` member read from a second thread is guarded by a leaf mutex
+  and copied per use; `if (m_X)` is not synchronization. A stale resolver or
+  completion must not clear a newer registration.
+- A legacy whitelist that fails to parse must deny, not open the tunnel.
+  Treat every configuration migration as fail-closed and pin it with a test.
+- A `Stop()` that runs on its own event-loop thread keeps the thread object
+  and lets the owner join; detaching is a lifetime defect. A deferred handler
+  on an io_context that survives Stop/Start (only `Transports`) needs a weak
+  lifetime token plus the run generation and must never see a replaced
+  `unique_ptr`.
+- A stateful provider cipher context is never shared between threads. The
+  garlic destination keeps one AEAD encryptor/decryptor for all sessions, so
+  the wrappers are stateless and use a thread-local context; secret tag files
+  are replaced by one private atomic write.
+- `Terminal.h`'s `Put(text, limit)` is a column budget. UTF-8 decoding and
+  width live in `tui/TerminalText.h`; a second table in `main.cpp` or the
+  backend drifts and tears the layout.
+- `0xc0000374`/SEGFAULT in a test whose sources and linked product units are
+  unchanged, with clean audited ownership chains, needs PageHeap or a
+  minidump before a fix is claimed. The Windows lane previously turned a
+  `FreeSid`/`LocalFree` mismatch into a crash in whichever binary allocated
+  next, so treat process-wide faults as one class (RT-012).
 - For a fixed cell, capacity (`maxLen - offset`) is the memory-safety bound.
   A declared length may reserve a gateway header; give it a separate floor
   instead of rejecting a valid transit message.

@@ -100,8 +100,93 @@ target or a build that stopped early is not a pass.
   churn, a move and a DACL grant, and that the reduced UI mitigation is
   reported rather than silently accepted.
 - **Informational flags:** the version driver checks both `--version` and
-  `--help`, requires the banner on every platform, and keeps each probe's
-  budget below the CTest timeout.
+  `--help`, requires termination and exit status on every platform, requires
+  a captured banner to be complete, documents the Windows empty-answer
+  observability limit, and keeps each probe's budget below the CTest
+  timeout.
 - **Digest nonce count:** every expected RFC 7616 response is computed for the
   `nc` it is used with, and an older `nc` with a valid digest is asserted
   `Replayed`.
+
+## Doxygen comment regressions from the `41320539612` continuation
+
+- A C/C++ documentation fixture now covers Javadoc inline tags
+  (`{@code ...}` must be rejected, backticks accepted), balanced and
+  unbalanced `@code`/`@verbatim` blocks, and a documented parameter name that
+  the declaration does not have.
+- Array parameters are a positive fixture (`char * argv[]` yields `argv`), so
+  the completeness and undeclared-name rules stay compatible with `main`-like
+  signatures.
+- `check-build-system.cmake` pins the fixture markers, so the rules cannot lose
+  their only static proof.
+
+## Patterns added by the `4e776a39` batch
+
+- **Byte-span helper:** a test that calls a byte-span API from string data
+  keeps one borrowing helper and uses it at every call site, including
+  temporaries, so the element-type boundary is explicit.
+- **Fixture-name guard:** `test-tools-regressions` rejects a Win32 reserved
+  device stem before running a tool, and every written fixture is pinned with
+  `assert_file_hex` so a discarded write cannot look like a decode failure.
+  Binary tool stdout goes to a file, never into a CMake variable.
+- **Bounded container seams:** `test-tui-protocol` pins the wire-integer to
+  tracker-tier index, the maximum tier table, and every protocol limit plus
+  its terminator against the daemon's fixed `AdminCommand` arrays.
+- **Live Windows worker:** the supervisor test spawns the test binary through
+  `RunWindowsWorker` with the restricted-token supervisor role, exercises
+  the nonce/role handshake, and checks the handle count on pass *and* skip.
+- **Windows informational path:** the version driver probes both flags with
+  bounded budgets; the Windows workflow prints subsystem/imports/ldd and a
+  pre-CTest probe so a loader-level hang is distinguishable from a router
+  start.
+
+## Preventive regressions added by the 2026-11-01 audit
+
+- **Channel refusal recovery:** `test-privsep-protocol` sends a header-only
+  frame with a forbidden descriptor, requires a decodable request-id-correlated
+  `Error`, then sends a maximum-size request and asserts it arrives intact
+  (the old code shrank its buffer to 16 bytes). It also pins that an
+  unknown-type frame is fatal with no answer.
+- **Descriptor-free log sink:** `test-privsep-log` configures a real forked
+  worker through `LogSink::Configure(true, "", …)` and requires the handshake
+  to succeed, which fails if the sink sends `ConfigureLogFd` without a file.
+- **Bounded stale drain:** `test-privsep-worker-identity` feeds
+  `ClassifySupervisorReply` more stale ids than the budget and requires a
+  `Busy` fault instead of an unbounded loop.
+- **Remove-frame shape:** `test-datastorage-protocol` pins the exact 50-byte
+  removal frame and that `Error` is receivable by the worker while a reply or
+  a core-side request is not.
+- **Transports lifecycle:** `test-transports-prestart-send` pins the
+  generation truth table and drives a two-thread
+  `RestrictRoutesToRouters`/`IsTrustedRouter` loop so TSan sees a
+  re-introduced unsynchronised emptiness test.
+- **Admin queue stop:** `test-tui-ipc-regression` blocks the executor, queues
+  a second command, stops the queue, and requires the waiter to be released
+  with `Unavailable` in under 10 s of a deliberately 30 s budget; it also
+  pins `Start`/`Stop` idempotence and restart.
+- **Windows text policy:** `test-tui-terminal` pins strict UTF-8 rejection,
+  encoding and the column budget through the portable `TerminalText.h`, so
+  the rule is checkable on every host, not only Windows.
+- **Proxy classification:** `test-proxy-auth` pins v4-mapped/compatible IPv6
+  spellings, the extended private table, and allowed public literals/names.
+- **Jump-link validation:** `test-addressbook-merge` requires an undecodable
+  `.b32.i2p` jump link to be neither stored nor persisted.
+- **Android boot policy:** `BootResumePolicyTest` pins that a broadcast never
+  resumes a stopped intent and that package-replace ignores the autostart
+  marker; the instrumentation test sends an explicit `BOOT_COMPLETED` and
+  requires the persisted intent to stay stopped.
+
+- **Record signature authority:** the routerinfo transaction test round-trips
+  an offline P-521 `router.keys`, requires `CreateBuffer` to install nothing,
+  and requires `SaveToArtifact` to refuse a foreign/empty/non-hash name
+  before touching the filesystem.
+- **Encrypted outer layout:** the encrypted-freshness test keeps a decrypted
+  type-5 object's outer marker, asserts freshness against the outer published
+  time, and re-parses a new type-5 buffer as an outer layer.
+- **SAM input secrecy:** the control-framing test pins the unexpected-message
+  diagnostic (length/field count only) and the shared session-name rule.
+- **Legacy accesslist:** the filter test requires an all-invalid value to
+  produce the deny-by-default definition and a blank value to stay absent.
+- **Tunnel resolver lifecycle:** the stop test arms a named upstream, stops,
+  and restarts while checking that a stale completion cannot clear the new
+  resolver.

@@ -99,6 +99,16 @@ the console.
   restoration on quit/error.
 
 ## Known issues and decisions
+- `Put(text, limit)` is a terminal-column budget, not a byte count. The
+  Windows backend and the layout arithmetic share `tui/TerminalText.h`; the
+  strict decoder rejects overlong/surrogate/out-of-range UTF-8 as one U+FFFD
+  unit. Never add another width table.
+- `StopAdminCommandQueue()` releases a waiting `SubmitAdminCommand` with
+  `Unavailable`; a still-queued command is dropped and never reported as
+  accepted. Local `Server::Start`/`Stop` are single-owner and restartable, and
+  a worker-creation failure must not escape into the daemon start.
+- A squatted derived pipe name retries with 250 ms→5 s backoff and logs one
+  warning per distinct failure; do not log once per second forever.
 
 - `TuiServer` owns a `std::jthread` and stop token. `Stop()` = `request_stop()`
   + `join()`, then close the listener and unlink only after device/inode

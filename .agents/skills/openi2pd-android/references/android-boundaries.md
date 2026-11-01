@@ -25,6 +25,9 @@ Use with `SKILL.md`. This is a static boundary map.
 
 - Rotation/task recreation must not create a second daemon.
 - An explicit stop remains stopped across recreation until the user starts it.
+- `BOOT_COMPLETED`/`MY_PACKAGE_REPLACED` deliver the action-free restore
+  command (`RouterService.requestRestore`), never `ACTION_START`; the service
+  reconciles the persisted phase, so a stop or an expired drain stays terminal.
 - JNI/status/log polling runs on one worker executor, not the main thread.
 - The service owns graceful-stop deadline; publish `stopping` before native
   teardown.
@@ -50,6 +53,8 @@ Use with `SKILL.md`. This is a static boundary map.
    writes.
 9. Deletion is exact document or selected tree authority; close cached
    descriptors and verify identity/size; no recursive deletion.
+10. Grant mutation and status reads (`select`/`detach`/`status`) run on the
+    service SAF lane; a Fragment never queries live URI permissions.
 
 ## Test map
 
@@ -59,6 +64,7 @@ Use with `SKILL.md`. This is a static boundary map.
 | `RouterConfigStoreTest`, `TorrentControlTest`, `TorrentDocumentReaderTest` | JVM unit |
 | `TorrentMetadataJniTest`, `RuntimeAdminParityTest` | instrumentation |
 | `MainActivityNavigationTest`, `RouterServiceLifecycleTest` | instrumentation |
+| `BootResumePolicyTest` | JVM boot/package-replace resume matrix |
 | `TorrentSafStorageTest`, `TorrentSafCancellationWireTest`, `TorrentSafProviderCancellationTest`, `TorrentSafFixtureProvider` | instrumentation/provider |
 | `LocaleResourceTest`, `check-android-locales.pl` | static/device |
 | Java 25 guard / JNI link / APK | Android CI job |

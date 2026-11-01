@@ -92,6 +92,10 @@ executing project code, or inspect a real private key.
 - Document a deliberate incompatibility; do not silently normalize it.
 
 ## Known issues and decisions
+- RouterInfo and LS1 carry exactly one signature whose length is the
+  identity's. An offline/transient signer of another type must be refused,
+  not written into a slot sized for the primary key (RT-022). Keep
+  `Signer::Sign` fallibility open (CRY-236).
 
 - An all-zero X25519 scalar is rejected by the constructor and
   `SetPrivateKey`; it is not a secret. `CreateECIESX25519AEADRatchetRandomKeys`

@@ -2661,6 +2661,13 @@ the `Doxyfile.source` roots and reports file, line and missing names; it is
 a compile-free guard, not a replacement for the manual Doxygen lane. A new
 partially documented function must fail that check, and a `@param a/b`
 spelling is not a substitute for separate `@param a` and `@param b` entries.
+The same guard resolves `@ref`/`\ref` targets against the classes, enums,
+namespaces, typedefs, macros and callables collected from the tree; a data
+member or ordinary word (`@ref mutex`, `@ref uid`) is not extractable and
+belongs in backticks instead. Javadoc inline tags (`{@code ...}`,
+`{@link ...}`) are not Doxygen syntax in C/C++ comments: `@code` opens a
+block with no matching `@endcode`, so use backticks. `@code`/`@endcode` and
+`@verbatim`/`@endverbatim` must balance.
 
 ## Sixth CI batch: executed suites and Windows containment (`dc5540ae`, 2026-11-01, static)
 
@@ -2693,13 +2700,165 @@ Load-bearing lessons:
   `KILL_ON_JOB_CLOSE`/resource limits, drop only the UI restrictions, and
   report the reduction; retry once without `JOB_LIST` only for a rejected job
   attribute, assigning the suspended child before it runs.
-- A GUI-subsystem Windows image answers `--version`/`--help` before
-  `Daemon.init`: authoritative `GetCommandLineW()` argv, inherited handle or
-  `AttachConsole` for the banner, `std::_Exit`, and no dialog. The exit status
-  is authoritative when no console exists.
+- A GUI-subsystem Windows image answers `--version`/`--help` at the first
+  `WinMain` instruction from the raw `GetCommandLineW()` line, before any
+  argv or daemon state, writing only to inherited handles (never
+  `AttachConsole`) and using no CRT `__argc/__argv` fallback. An empty
+  captured answer is an observability limit; the exit status and termination
+  remain mandatory.
 - `i2pbase64` decodes per quartet so padding terminates the stream;
   `data after padding` is a distinct diagnostic across read boundaries. CLI
   tests never grep an `argv[0]`-bearing usage line.
 - Doxygen merges declaration and definition documentation: `@param` belongs on
   the declaration only. The static `doxygen-static` checker also rejects
   in-block repeats and header/definition duplicates.
+
+## Linux OpenSSL branch workflows (2026-11-01, static)
+
+Linux builds are two `workflow_dispatch` workflows:
+`build-linux-openssl3.yml` and `build-linux-openssl4.yml`. Each runs a
+GCC/Clang matrix against the latest Homebrew `openssl@3`/`openssl@4` bottle
+and reuses `.github/actions/linux-openssl-build` for the build, full CTest,
+focused subset, label inventory, Perl checks and artifact upload. The shared
+action verifies that the installed keg's version equals the formula version
+and that its major is the claimed branch before configuring; the bottle is
+selected by `.github/actions/brew-toolchain`'s `openssl` input. Do not add a
+source-built OpenSSL download back to any workflow: `check-workflows.pl`
+requires both branch workflows, their formula selection, and rejects
+`openssl.org/source`/`OPENSSL_SHA256`/`OPENSSL_PIN`. `build.yml` keeps the
+Android, install-components, interop, sanitizer, source-docs, skills-static
+and opt-in Perl-quality jobs.
+
+## Seventh CI batch: spans, containment and Windows diagnostics (`4e776a39`, 2026-11-01, static)
+
+Runs 41320539612 (Linux/Android), 41320545934 (OpenBSD), 41320542948
+(Windows), 41320548839 (Fuzzing, success) and 41320551977 (Packaging,
+success) were read with `gh`. CE-069, RT-011/RT-012 and TF-034/TF-043..TF-047
+record the evidence.
+
+Load-bearing lessons:
+
+- `std::span<const uint8_t>` converts only from `uint8_t` ranges. A
+  `std::string` payload needs one borrowing helper with
+  `reinterpret_cast` and full-expression lifetime; it blocked every Linux,
+  OpenBSD and sanitizer target.
+- A Windows fixture basename whose stem is `NUL`, `CON`, `AUX`, `PRN`,
+  `COM1-9` or `LPT1-9` is the device in every directory and with any
+  extension. Use a compound stem and pin the written bytes; a tool that reads
+  EOF and exits 0 is not evidence of a lost-output defect.
+- A supervisor test must start its worker through the production
+  `RunWindowsWorker`; a hand-rolled Ping loop skips the `WorkerHello` and role
+  binding that `AcceptBound` requires and silently turns a real spawn test
+  into a skip.
+- `CreateProcessW` may modify its command-line buffer, so every retry builds a
+  fresh copy. Containment is unconditional: refuse `useJobObject=false` or an
+  invalid job handle instead of spawning an uncontained worker, and drop the
+  listener/pipe name with the released generation.
+- The Windows `--version` hang survived the `GetCommandLineW` rewrite: with
+  empty output the block is before the handler. Answer from the raw command
+  line at the first `WinMain` instruction, never attach to a console, never
+  fall back to CRT `__argc/__argv`, and keep loader/import diagnostics in the
+  Windows workflow. A GUI image may make the banner unobservable; the driver
+  requires it only when captured and still fails a real hang.
+- MSVC `0xc0000374`/SEGFAULT in unchanged TUI or privsep tests with clean
+  audited ownership chains is a process-wide memory fault until a PageHeap or
+  minidump shows otherwise; do not invent a fix.
+
+## Preventive subsystem audit (2026-11-01, static)
+
+This increment did not wait for a new CI failure: it reviewed the areas that
+the previous batches touched and the ones their fixes could have left unsafe.
+No compiler, CTest, sanitizer, Gradle, device, package or workflow was run;
+every correction is Implemented / static, Pending CI compilation and Pending CI
+tests. The evidence is RT-013..RT-021 and the new regression list.
+
+Load-bearing invariants:
+
+- A receive loop keeps one fixed-capacity record buffer for the whole call. A
+  tolerated refusal that continues the loop must decode a `string_view` of the
+  record, never `resize` the storage; otherwise the next record is truncated
+  by the kernel and reported as a fatal ancillary-data fault. A typed `Error`
+  may only name a type that has a registry row, in both the POSIX and Windows
+  channels, or the peer cannot decode its own refusal.
+- A frame type is derived from the capability actually attached, not from the
+  call site. `ConfigureLogFd` is `RequiredFile`; a syslog or foreground sink
+  has no descriptor and must use `ConfigureLog`. The stale-reply drain before
+  a supervisor reply is bounded, and `Cancel` remains advisory.
+- A `Stop()` that runs on its own event-loop thread keeps the thread object
+  and lets the owner join it. Detaching is a lifetime defect, not a shutdown
+  strategy. A failed configured service must fail the start; on POSIX
+  `ThrowFatal` has no throw function, and on Android the lifecycle helper owns
+  exactly one rollback stop.
+- A deferred handler on an io_context that survives `Stop()`/`Start()` holds a
+  weak lifetime token plus the run generation (if any), checks the stopped
+  state and never dereferences a replaced `unique_ptr`. Publish every
+  handler-visible member before creating the thread. `Transports` is the only
+  object with such a surviving context; do not copy the pattern to
+  `SSU2Server`/`NTCP2Server`, which are destroyed with the context.
+- A stateful provider cipher context is never shared between threads or
+  sessions. One `GarlicDestination` serves every ratchet session from several
+  threads, so the AEAD wrappers stay stateless and use a thread-local context
+  that every call re-initializes. Secret tag files are replaced by one private
+  atomic write, not chmod-then-reopen.
+- Untrusted parser fields are staged and committed only after the whole
+  document validates, even when the document also carries a failure reason.
+  Win32 device names are recognised with their trailing-space/dot spellings
+  and rejected as payload components. The reserved-device fixture trap applies
+  to tests too.
+- Clearnet reachability has one predicate. IPv4-embedded IPv6 spellings must
+  be decoded to their IPv4 bytes before the private/loopback table is applied;
+  a per-proxy copy of the table is how the bypass reappeared. A protocol error
+  reply never echoes a client-supplied parameter into a quoted field.
+- `Put(text, limit)` is a terminal-column budget. UTF-8 policy lives in
+  `tui/TerminalText.h` and is shared by the Windows backend, the layout
+  arithmetic and the portable regression; never add a second width table. The
+  decoder rejects overlong forms, surrogates and values above U+10FFFF as one
+  U+FFFD unit.
+- A broadcast never persists a router run. `BOOT_COMPLETED` may only request a
+  restore of a persisted non-stopped intent (plus the autostart marker), so it
+  cannot overwrite an operator stop or revive an expired drain. SAF grant
+  status is read on the service's `safWorker`, never on the main thread, and
+  every picker result carries a generation plus `isAdded()`.
+- Deployment definitions are one contract: the service checker derives the
+  daemon option allowlist from `libi2pd/Config.cpp`, the 660 s stop budget must
+  match across managers, OpenRC/runit log paths use `0700`/`0600`, and every
+  OpenBSD `@sample` has its `share/examples` mirror. `services-static` and
+  `packaging-static` enforce these without a package build.
+- A fixed test path scanner must anchor each registration on its own
+  `set_tests_properties` call, accept `RUN_SERIAL` as well as the shared
+  resource lock, and recognise the two-statement `temp_directory_path()`
+  form. `string(FIND)` has no start offset: search the remaining suffix and
+  convert the relative match back to an absolute position.
+
+Open items reported by this audit and tracked in TODO: SSU2 send/receive
+socket sharing and the missing established-session cap (`NET-172`), the
+undeadlined 2-byte NTCP2 length read, `ThrowFatal` on the SSU2 receive-error
+path, the OpenBSD pledge-file line bound, the netDb throttle eviction, the
+removal of unused unsafe session accessors, the RPM in-source `%cmake`
+question, and the OpenRC default stop signal.
+
+### Preventive audit continuation: record signing and session ownership
+
+- A record's signature length is the identity's, never the signer's. An
+  offline/transient `PrivateKeys` signer of a different type writes past a
+  buffer sized by `GetSignatureLen()`; refuse it for RouterInfo and LS1
+  instead of publishing an unverifiable record. A cache artifact name is
+  bound to the parsed identity hash before any write.
+- A decrypted LeaseSet2 overwrites `m_StoreType` with its inner type. Keep an
+  immutable outer-layer marker for layout and freshness decisions, and never
+  read `GetBuffer()`/`GetStoreType()` without `IsValid()`.
+- A control line that matches no known command is never logged verbatim: a
+  tab-separated or mistyped `SESSION CREATE` can carry `DESTINATION=` private
+  keys or `PASSWORD=`. Log the length and field count instead. Session
+  identifiers echoed in a quoted SAM field pass the same name rule as
+  `SESSION CREATE`.
+- A `shared_ptr` member read from more than one thread is guarded by a leaf
+  mutex and copied per use; `if (m_X)` is not synchronization. A stale
+  resolver/completion carries an identity check and cannot clear a newer
+  registration.
+- A fail-open configuration migration is a defect: a legacy `accesslist`
+  whose entries all fail to parse denies every peer. Only an absent value
+  means "no whitelist".
+- A terminal protocol frame is written before the socket closes; the flush is
+  bounded by the reply deadline, and every dropped/oversized/queue-full path
+  still terminates.

@@ -251,6 +251,16 @@ run Gradle, install an APK or run a device test.
   `should_run` mirror; an expired drain is terminal across START_STICKY/boot, a
   live drain re-arms only after `startedOkay`, and corrupt deadlines fail closed.
   `onTaskRemoved` keeps the daemon; `onDestroy` purges callbacks.
+- A broadcast never persists a run. `BootUpReceiver` requires the persisted
+  non-stopped intent for both actions (plus the boot-autostart marker for
+  `BOOT_COMPLETED`) and then delivers `RouterService.requestRestore(context)`,
+  which is an intent with **no action** so `onStartCommand` reconciles exactly
+  like `START_STICKY`. Sending `ACTION_START` from a receiver re-persists
+  `Running` before the service sees the state, which resurrects a stopped
+  router and converts a finished drain into a fresh run. The decision is the
+  pure `BootUpReceiver.mayResume(action, autostartEnabled, runIntentRequested)`
+  seam; `BootResumePolicyTest` (JVM) pins the matrix and
+  `RouterServiceLifecycleTest` adds a device-side negative broadcast case.
 - SAF AIDL v2: `handshake` generation, one-shot owner-bound `prepareExport` →
   `openExport(token)`, `retire(generation)`, `(uid,pid)` ownership on every
   handle/root/operation/token, owner-scoped cancel/close/revoke, typed admission
@@ -326,9 +336,12 @@ run Gradle, install an APK or run a device test.
   `content_max_width` cap; secondary destinations stay hidden while a detail is
   open and every fragment tag must be hidden on destination change.
 - SAF grant mutation is service-owned: `RouterService.selectPayloadTree` /
-  `detachPayload` run on `safWorker` and report a typed boolean on the main
-  thread. Never call `TorrentSafStorage.select/detach` from a picker or row
-  callback: they commit the grant map and may round-trip to the provider.
+  `detachPayload` / `readTorrentStorageStatus` run on `safWorker` and report a
+  typed result on the main thread. Never call
+  `TorrentSafStorage.select/detach/status` from a picker, row or request
+  callback: they commit the grant map, query live URI permissions and may
+  re-arm a bounded broker bind, so the UI must neither block on them nor drive
+  the bind sequencing itself.
 - I2PSnark snapshots are decoded by the bounded `TorrentRow` record, not by
   direct map lookups in the fragment. A non-numeric id is rejected, a bad
   hash/magnet is dropped and counters/percent are clamped; `TorrentRowTest`
@@ -360,7 +373,11 @@ run Gradle, install an APK or run a device test.
 - `ANDROID-036` records address-book generation/single-flight gaps and a null
   progress-consumer assumption in `TorrentSafCreator`. New UI callbacks must
   capture the view generation and check the busy gate; do not copy the
-  affected pattern.
+  affected pattern. The blocked-list read, the metadata-export picker result
+  and the SAF creation-source pickers now fence the view generation, and
+  `RouterService.createSafTorrent` treats a null progress consumer as "no
+  progress". `removeSubscription`'s single-flight and the blocked list's busy
+  gate remain open.
 
 
 - `ReseedPhaseToken()` and similar helpers return `std::string_view`;

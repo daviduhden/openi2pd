@@ -104,6 +104,23 @@ report that limitation; do not substitute local execution. Ask for:
   worker is not global separation.
 
 ## Known issues and decisions
+- A receive loop owns one fixed-capacity record buffer: a tolerated refusal
+  continues the loop and must decode a `string_view` of the record. Never
+  `resize` the storage, or the next frame is truncated and reported as a fatal
+  ancillary-data fault. A typed `Error` may only name a type with a registry
+  row (POSIX and Windows), otherwise the peer cannot decode its refusal.
+- Derive the frame type from the capability actually attached:
+  `ConfigureLogFd` is `RequiredFile`, so a syslog/foreground sink must send the
+  descriptor-free `ConfigureLog` or the worker rejects the frame before parsing
+  it. The supervisor stale-reply drain is bounded; `Cancel` stays advisory.
+- A Windows worker is always inside its Job Object: refuse
+  `useJobObject=false` and a non-valid job handle instead of skipping both
+  `JOB_LIST` and assignment. Build one mutable command line per
+  `CreateProcess` attempt, and release the listener/pipe name with the
+  generation.
+- A supervisor test must spawn through `RunWindowsWorker`; a hand-written
+  Ping loop never sends `WorkerHello`, so `AcceptBound` times out and the
+  test degrades to a skip.
 - Windows spawn attributes are pointer-valued and must outlive
   `CreateProcess`; a block-local mitigation/capability struct yields
   `ERROR_INVALID_PARAMETER`. Profile SIDs from userenv use `FreeSid`.

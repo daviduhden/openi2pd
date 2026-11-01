@@ -1432,3 +1432,48 @@ Runs: Linux/Android [41229374061](https://github.com/daviduhden/openi2pd/actions
   `tests/check-build-system.cmake`, `docs/source-documentation.md`,
   `docs/development/perl-migration.md`.
 - **State:** Corrected by static analysis; **Pending source-docs CI**.
+
+### CE-068 — Doxygen rejected an unresolved `@ref` target
+
+- **Run/job:** Linux and Android `41320539612`, job `C++ source API
+  documentation`.
+- **First diagnostic:** `privsep/DataStorage.cpp:947: error: unable to resolve
+  reference to 'mutex' for \ref command`.
+- **Cause:** `@ref mutex` and `@ref uid` were used for data members (or plain
+  words). Doxygen resolves a `\ref` only to an extracted symbol; `mutex` is a
+  data member and `uid` a struct field, so both are reported under
+  `WARN_IF_DOC_ERROR` and abort the lane.
+- **Correction:** write the two words in backticks and extend
+  `tools/scripts/check-doxygen-params.pl` with a reference rule: a target must
+  be a class, struct, union, enum, namespace, typedef, using, macro or
+  callable collected from the Doxyfile roots, otherwise the checker reports
+  `unresolved @ref target` before the manual lane runs. Negative/positive
+  fixtures cover a rejected member name and an accepted enum plus callable;
+  the registration pin keeps the fixtures under `build-system-static`.
+- **Files:** `privsep/DataStorage.cpp`, `privsep/Channel.h`,
+  `tools/scripts/check-doxygen-params.pl`, `tools/tests/maintenance-checkers.t`,
+  `tests/check-build-system.cmake`, `docs/source-documentation.md`,
+  `docs/development/perl-migration.md`, `AGENTS.md`.
+- **State:** Corrected by static analysis; **Pending source-docs CI**.
+
+### CE-069 — `std::string` passed to a byte-span parameter
+
+- **Run/job:** Linux and Android `41320539612` (gcc, clang, OpenSSL 3.x,
+  OpenSSL 4.0.0/4.0.3), OpenBSD `41320545934` and the sanitizer jobs.
+- **First diagnostic:** `tests/test-datastorage-protocol.cpp:188: error:
+  could not convert 'payload' from 'const std::string' to
+  'std::span<const unsigned char>'` (also lines 201..208, including
+  temporaries).
+- **Cause:** `EncodeDataStorageRequest` deliberately takes a byte span
+  (`privsep/Protocol.h:921`), but the test passed `std::string` values.
+  `std::span` has no conversion from a `char`-element contiguous range, so
+  every payload argument was ill-formed. This blocked all Linux, OpenBSD and
+  sanitizer targets before CTest.
+- **Correction:** a file-local borrowing helper `Bytes(const std::string &)`
+  reinterprets the characters as `const uint8_t *` and keeps the full-expression
+  lifetime; every payload site uses it, including the two size-cap
+  temporaries. Names (already `std::string_view`) and the empty removal span
+  are unchanged. A tree-wide scan of the 104 byte-span declarations found no
+  other string-to-span call site.
+- **Files:** `tests/test-datastorage-protocol.cpp`.
+- **State:** Corrected by static analysis; **Pending CI compilation**.

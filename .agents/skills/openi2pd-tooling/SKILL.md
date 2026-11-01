@@ -122,6 +122,14 @@ a TUI client.
   Never let it execute repository code.
 
 ## Known issues and decisions
+- A Perl/CMake format string never interpolates a caller value into the
+  template; use `sprintf('%.*f', $precision, $size)`. Closed Win32 device
+  names (`NUL`, `CON`, `COM1`..) are the device in every directory, including
+  test fixtures.
+- Win32 resolves `NUL`, `CON`, `AUX`, `PRN`, `COM1-9` and `LPT1-9` (any
+  extension) as devices in every directory. A fixture named `nul.b64` reads
+  EOF, the tool exits 0 and writes nothing, and the test can pass vacuously.
+  Use compound stems, pin fixture bytes, and keep binary stdout in a file.
 - `i2pbase64` decodes one quartet at a time so `=` terminates the stream and
   `data after padding` stays distinct across reads; unwritable key output is
   `Can't create <path>: the path must be a writable regular file` on stderr

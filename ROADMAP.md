@@ -123,8 +123,8 @@ earlier revisions, not validation of current uncommitted changes.
 - CMake owns the build graph and now exposes `i2pd_privsep` as a separate
   component; POSIX Make targets cover configure/build/router/TUI/tools/tests/
   install, default to Ninja, and no maintained front-end uses GNU-only syntax.
-  The manual Linux workflow has OpenSSL 3.x, OpenSSL 4.0.0/4.0.3 pinned and
-  Homebrew-latest lanes; the OpenBSD job asserts LibreSSL. The static
+  The manual Linux matrix is two branch workflows (latest Homebrew OpenSSL
+  3.x and 4.x bottles, gcc and clang); the OpenBSD job asserts LibreSSL. The static
   CMake/Make audit (`build-system-static`) passed; configure, build, install
   and CTest remain pending manual CI.
 - Static-review passes for Torrent/TUI, I2P, Perl, tools/firewall, IPC,
@@ -1947,3 +1947,82 @@ supervisor spawn under the runner's existing Job Object without heap
 corruption, the Windows version/help probes terminate with the banner, and
 the source-docs lane completes without a duplicate-`@param` abort. No local
 dynamic validation exists.
+
+## Linux OpenSSL branch workflows (2026-11-01, static)
+
+The five older Linux lanes (two compiler jobs, a distribution OpenSSL 3.x job
+and two source-built 4.0.0/4.0.3 jobs) are replaced by two manual workflows:
+`build-linux-openssl3.yml` and `build-linux-openssl4.yml`. Each uses the
+latest Homebrew bottle for its branch and the precompiled toolchain bottles,
+verifies that the installed OpenSSL matches the formula and branch, and runs
+the full CTest/label/Perl sequence for GCC and Clang. `build.yml` keeps the
+Android, install, interop, sanitizer, documentation and static jobs.
+
+Exit criteria: both branch workflows dispatch cleanly and complete the full
+suite with the Homebrew bottles, with no source-built OpenSSL and no
+`push`/schedule trigger. No local dynamic validation exists.
+
+## Doxygen reference guard (2026-11-01, static)
+
+The source-docs lane rejects an unresolved `@ref`/`\ref` under
+`WARN_AS_ERROR`, and Doxygen only resolves extracted symbols. The two
+data-member references are backticks, and the static checker now validates a
+reference target against types, namespaces, macros and callables collected
+from the scanned tree.
+
+Exit criteria: the next source-docs dispatch completes without an unresolved
+reference, and `doxygen-static` stays green with its negative fixtures. No
+local Doxygen run exists.
+
+## Doxygen command and parameter-name guard (2026-11-01, static)
+
+After the unresolved-reference fix, the static continuation found Javadoc
+inline tags in a C++ comment; `{@code` may open a Doxygen code block that is
+never closed. The file uses backticks now, and the checker rejects Javadoc
+inline tags, unbalanced `@code`/`@verbatim`, and documented parameter names
+absent from the declaration, while accepting array parameters.
+
+Exit criteria: the next source-docs dispatch reaches and passes the Android
+JNI translation unit and every later file without a command-balance or
+parameter-name abort. No local Doxygen run exists.
+
+## Span, containment and Windows diagnostics (2026-11-01, static)
+
+The `4e776a39` batch surfaces a cross-platform span compile blocker, a Win32
+device-name fixture trap, an unreachable live-worker test, product containment
+holes and a Windows informational hang that survived the argv rewrite. All are
+corrected statically; the MSVC access violations need PageHeap/minidump
+evidence (TEST-039) rather than a guessed change.
+
+Exit criteria: Linux/OpenBSD/sanitizer compile and run; MSYS2 passes
+tools-regressions, tunnel-endpoint and the version probe; the MSVC lane either
+passes or produces a PageHeap/minidump that names the corrupting allocation;
+the Windows probe logs subsystem/imports and a bounded `--version` result. No
+local dynamic validation exists.
+
+## Preventive subsystem audit (2026-11-01, static)
+
+The audit moves the project from reactive CI repair to invariant ownership:
+one receive-buffer contract, one descriptor/type authority, one deferred
+handler lifetime rule, one clearnet predicate, one UTF-8 column policy, one
+Android run-intent policy and one deployment contract. Each is expressed as a
+compile-free checker or regression where the seam allows, and as an explicit
+residual where it needs a device, a package build or a live peer.
+
+Exit criteria: the Linux OpenSSL 3/4 lanes, OpenBSD, Windows MSYS2, the
+sanitizer matrix and Android instrumentation execute the prepared regressions
+(RT-013..RT-021, TEST-040); the MSVC intermittent fault either passes
+consistently or yields a PageHeap/minidump; the open SSU2/NTCP2 admission and
+socket-sharing items (`NET-172`) close without weakening transport bounds; the
+OpenBSD pledge-file bound and RPM `%cmake` question are settled with evidence.
+No local dynamic validation exists.
+
+### Signing and session ownership
+
+Closes a signature-length overflow that an offline `router.keys` could reach,
+makes LeaseSet2 layout immutable after decryption, and turns SAM/I2CP/tunnel
+defects into explicit contracts (no secret-bearing log line, shared name rule,
+fail-closed accesslist, mutex-guarded owner and resolver, flush-before-close).
+Acceptance requires the prepared regressions to run on the Linux/OpenBSD/
+Windows/sanitizer lanes and a decision on the streaming acceptor ownership
+token (`CONC-031`).
