@@ -141,7 +141,7 @@ endforeach()
 # maintained contract. These are compile-free source checks.
 foreach(required IN ITEMS "OpenSSL 3.0.2" "LibreSSL 4.0" "cmake_minimum_required(VERSION 3.24)" "I2PD_LIBRESSL_VERSION" "LIBRESSL_VERSION_TEXT"
     "cmake_policy(SET CMP0167 NEW)"
-    "I2PD_OPENSSL_EXPECT" "I2PD_HAVE_EVP_PKEY_IS_A" "I2PD_HAVE_EVP_KDF_FETCH"
+    "I2PD_OPENSSL_EXPECT" "I2PD_OPENSSL_EXPECT_MAJOR" "I2PD_HAVE_EVP_PKEY_IS_A" "I2PD_HAVE_EVP_KDF_FETCH"
     "I2PD_HAVE_EVP_EC_GEN" "I2PD_HAVE_SSL_SET1_DNSNAME" "I2PD_HAVE_SSL_SET1_HOST"
     "I2PD_HAVE_OPENSSL_MLKEM_H" "I2PD_OPENSSL_PROBE_STAMP" "I2PD_OPENSSL_LINK_OK"
     "check_language(RC)" "enable_language(RC)" "CMAKE_RC_COMPILER"
@@ -483,7 +483,9 @@ endforeach()
 # header declaration) are proven only by the Perl fixture suite. Markers
 # avoid a backslash escape for the tag itself in this CMake string.
 file(READ "${PROJECT_ROOT}/tools/tests/maintenance-checkers.t" _doxygen_fixtures)
-foreach(_marker IN ITEMS "documentation for Load" "in one documentation block")
+foreach(_marker IN ITEMS "documentation for Load" "in one documentation block"
+    "unresolved \\@ref target" "Javadoc inline tag in a C"
+    "unbalanced \\@verbatim")
   string(FIND "${_doxygen_fixtures}" "${_marker}" _doxygen_fixture)
   if(_doxygen_fixture EQUAL -1)
     message(FATAL_ERROR
@@ -552,6 +554,171 @@ foreach(_source IN LISTS _registered_fuzzers)
   string(REGEX REPLACE "\\.cpp$" "" _fuzzer "${_source}")
   if(NOT IS_DIRECTORY "${PROJECT_ROOT}/tests/fuzz/corpus/${_fuzzer}")
     message(FATAL_ERROR "fuzzer has no checked-in corpus directory: ${_fuzzer}")
+  endif()
+endforeach()
+
+# Test-registration contract. AGENTS.md requires an explicit TIMEOUT for
+# every registered test and a parallel-safety decision for every fixture:
+# `i2pd_add_test()` owns the shared budget while each direct
+# registration states its own. A test that creates a fixed path below the
+# system temporary directory (no per-run suffix and no mkdtemp template)
+# must also be serialised through RUN_SERIAL or the shared
+# openi2pd-fixed-tmp resource lock, otherwise two CTest workers race for
+# the same tree.
+#
+# Each registration is anchored on its own name and on the
+# set_tests_properties() call for that name, because a positional window
+# would let the next registration's TIMEOUT mask a test that states none.
+set(_add_test_prefix "add_test(NAME ")
+string(LENGTH "${_add_test_prefix}" _add_test_prefix_length)
+set(_properties_prefix "set_tests_properties(")
+string(LENGTH "${_properties_prefix}" _properties_prefix_length)
+# Offsets: (1) the first character after "add_test(NAME " starts the
+# registered name, and (2) string(FIND) has no start offset, so each
+# iteration searches the remaining suffix and converts the relative match
+# back to an absolute position.
+set(_add_test_offset 0)
+set(_add_test_search "${tests_cmake_text}")
+set(_add_test_count 0)
+while(TRUE)
+  string(FIND "${_add_test_search}" "${_add_test_prefix}" _add_test_relative)
+  if(_add_test_relative EQUAL -1)
+    break()
+  endif()
+  math(EXPR _add_test_position "${_add_test_offset} + ${_add_test_relative}")
+  math(EXPR _add_test_name_offset "${_add_test_position} + ${_add_test_prefix_length}")
+  # A length of -1 is not "up to the last byte": it returns the remainder
+  # of the string, which is exactly the suffix this scan needs.
+  string(SUBSTRING "${tests_cmake_text}" ${_add_test_name_offset} -1 _add_test_name_tail)
+  string(REGEX MATCH "^[^ \t\r\n)]+" _add_test_name "${_add_test_name_tail}")
+  if(_add_test_name STREQUAL "")
+    message(FATAL_ERROR
+      "tests/CMakeLists.txt has an add_test(NAME) registration without a name")
+  endif()
+  math(EXPR _add_test_count "${_add_test_count} + 1")
+  string(FIND "${tests_cmake_text}" "${_properties_prefix}${_add_test_name}"
+    _add_test_properties)
+  if(_add_test_properties EQUAL -1)
+    message(FATAL_ERROR
+      "tests/CMakeLists.txt registers '${_add_test_name}' without "
+      "set_tests_properties(); every registration must state its own TIMEOUT")
+  endif()
+  # The property call ends where the next statement starts; cutting the
+  # slice there keeps a neighbouring registration or property call from
+  # supplying the TIMEOUT.
+  math(EXPR _add_test_properties_body "${_add_test_properties} + ${_properties_prefix_length}")
+  string(SUBSTRING "${tests_cmake_text}" ${_add_test_properties_body} -1
+    _add_test_properties_tail)
+  set(_add_test_properties_length -1)
+  foreach(_boundary IN ITEMS "${_properties_prefix}" "${_add_test_prefix}")
+    string(FIND "${_add_test_properties_tail}" "${_boundary}" _boundary_offset)
+    if(NOT _boundary_offset EQUAL -1)
+      if(_add_test_properties_length EQUAL -1 OR _boundary_offset LESS _add_test_properties_length)
+        set(_add_test_properties_length ${_boundary_offset})
+      endif()
+    endif()
+  endforeach()
+  string(SUBSTRING "${_add_test_properties_tail}" 0 ${_add_test_properties_length}
+    _add_test_properties_call)
+  string(FIND "${_add_test_properties_call}" "TIMEOUT" _add_test_timeout)
+  if(_add_test_timeout EQUAL -1)
+    message(FATAL_ERROR
+      "tests/CMakeLists.txt registers '${_add_test_name}' without an "
+      "explicit TIMEOUT in its set_tests_properties() call; do not fall back "
+      "to the CTest default")
+  endif()
+  math(EXPR _add_test_offset "${_add_test_position} + ${_add_test_prefix_length}")
+  string(SUBSTRING "${tests_cmake_text}" ${_add_test_offset} -1 _add_test_search)
+endwhile()
+if(_add_test_count EQUAL 0)
+  message(FATAL_ERROR "tests/CMakeLists.txt registers no tests")
+endif()
+
+string(FIND "${tests_cmake_text}" "RESOURCE_LOCK openi2pd-fixed-tmp" _fixed_tmp_lock)
+if(_fixed_tmp_lock EQUAL -1)
+  message(FATAL_ERROR
+    "tests/CMakeLists.txt must keep the openi2pd-fixed-tmp RESOURCE_LOCK assignment")
+endif()
+# Collect the text around both isolation mechanisms, because either makes a
+# fixed-fixture test safe: RUN_SERIAL keeps a test out of every parallel
+# slot, and the resource lock excludes the tests that are already known to
+# share one. A slice around only the lock would reject a test that chose
+# the other mechanism.
+set(_serialised_text "")
+foreach(_marker IN ITEMS "RESOURCE_LOCK openi2pd-fixed-tmp" "RUN_SERIAL TRUE")
+  string(FIND "${tests_cmake_text}" "${_marker}" _marker_position)
+  if(_marker_position EQUAL -1)
+    continue()
+  endif()
+  math(EXPR _serialised_begin "${_marker_position} - 1400")
+  if(_serialised_begin LESS 0)
+    set(_serialised_begin 0)
+  endif()
+  math(EXPR _serialised_length "${_marker_position} - ${_serialised_begin}")
+  string(SUBSTRING "${tests_cmake_text}" ${_serialised_begin} ${_serialised_length} _serialised_slice)
+  string(APPEND _serialised_text "\n${_serialised_slice}")
+endforeach()
+
+file(GLOB _cpp_test_sources RELATIVE "${PROJECT_ROOT}/tests" "${PROJECT_ROOT}/tests/test-*.cpp")
+foreach(_test_source IN LISTS _cpp_test_sources)
+  file(READ "${PROJECT_ROOT}/tests/${_test_source}" _test_source_text)
+  set(_fixed_fixture FALSE)
+  string(REGEX MATCHALL "temp_directory_path \\(\\)[^;]*" _temp_calls "${_test_source_text}")
+  foreach(_temp_call IN LISTS _temp_calls)
+    if(_temp_call MATCHES "to_string|getpid|GetCurrentProcessId")
+      continue()
+    endif()
+    if(_temp_call MATCHES "\"")
+      set(_fixed_fixture TRUE)
+    endif()
+  endforeach()
+  # A bare `auto base = temp_directory_path ();` carries no per-run suffix,
+  # so a later `base / "name"` is the same fixed path in a second
+  # statement. A computed leaf (`base / ("name" + std::to_string (...))`)
+  # is intentionally not matched here.
+  #
+  # The scan advances manually with REGEX MATCH instead of collecting a
+  # MATCHALL list: a match that ends at the statement's semicolon would be
+  # split into two list elements, so the "bare statement" test would pass
+  # for `root = temp_directory_path () / ("per-run" + ...)` and flag the
+  # per-run fixtures.
+  set(_temp_base_rest "${_test_source_text}")
+  while(TRUE)
+    string(REGEX MATCH
+      "([A-Za-z_][A-Za-z0-9_]*) = (std::filesystem::|fs::|)temp_directory_path \\(\\)[ \t\r\n]*;"
+      _temp_base "${_temp_base_rest}")
+    if(_temp_base STREQUAL "")
+      break()
+    endif()
+    string(REGEX REPLACE "^([A-Za-z_][A-Za-z0-9_]*) = .*$" "\\1" _temp_base_name "${_temp_base}")
+    if(NOT _temp_base_name STREQUAL "")
+      string(FIND "${_test_source_text}" "${_temp_base_name} / \"" _temp_base_leaf)
+      if(NOT _temp_base_leaf EQUAL -1)
+        set(_fixed_fixture TRUE)
+      endif()
+    endif()
+    string(LENGTH "${_temp_base}" _temp_base_length)
+    string(FIND "${_temp_base_rest}" "${_temp_base}" _temp_base_position)
+    if(_temp_base_position EQUAL -1)
+      break()
+    endif()
+    math(EXPR _temp_base_next "${_temp_base_position} + ${_temp_base_length}")
+    string(SUBSTRING "${_temp_base_rest}" ${_temp_base_next} -1 _temp_base_rest)
+  endwhile()
+  string(REGEX MATCHALL "char [A-Za-z0-9_]+\\[\\] = \"/tmp/[^\"]*\"" _tmp_buffers "${_test_source_text}")
+  foreach(_tmp_buffer IN LISTS _tmp_buffers)
+    if(NOT _tmp_buffer MATCHES "XXXXXX")
+      set(_fixed_fixture TRUE)
+    endif()
+  endforeach()
+  if(_fixed_fixture)
+    string(REGEX REPLACE "\\.cpp$" "" _fixed_test_name "${_test_source}")
+    string(FIND "${_serialised_text}" "${_fixed_test_name}" _serialised_test)
+    if(_serialised_test EQUAL -1)
+      message(FATAL_ERROR
+        "${_fixed_test_name} creates a fixed temporary path but is neither RUN_SERIAL "
+        "nor locked by openi2pd-fixed-tmp; use a per-run name or add the lock")
+    endif()
   endif()
 endforeach()
 
