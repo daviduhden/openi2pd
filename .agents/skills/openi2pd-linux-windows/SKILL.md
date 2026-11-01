@@ -100,6 +100,10 @@ execution. Ask for:
   datadir ACL as the Windows equivalent.
 
 ## Known issues and decisions
+- A Windows test must not dereference `SupervisorStatus::Get()` (or any
+  `std::optional`) without a check; `/UNDEBUG` keeps the assertion live but
+  an empty optional is undefined behaviour. Use one checked accessor.
+  `test-win32-shutdown-deadline` belongs in the MSVC target and `-R` lists.
 - Configured I2PControl must fail the daemon start on POSIX (`ThrowFatal` has
   no throw function there) and on an unusable certificate/key pair; Android's
   lifecycle helper owns the single rollback stop. `SIGINT` drain goes through

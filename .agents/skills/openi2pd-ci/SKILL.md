@@ -136,6 +136,11 @@ workflow, run `gh`, build or test.
   releases or secrets.
 
 ## Known issues and decisions
+- The branch verifier must not call plain `brew`: `brew-toolchain` evaluates
+  `brew shellenv` only in its own shell. Resolve
+  `/home/linuxbrew/.linuxbrew/bin/brew` with a PATH fallback and fail
+  explicitly; a suppressed stderr turns a PATH miss into a false "formula
+  not installed" and skips the whole build (CI-003).
 - The `4e776a39` batch leaves Linux/OpenBSD/sanitizers at CE-069, MSYS2 at
   tools-regressions/tunnel-endpoint/i2pd-version, and MSVC at intermittent
   access violations (the same-SHA rerun passed). A preventive audit then added

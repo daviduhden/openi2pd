@@ -92,6 +92,10 @@ executing project code, or inspect a real private key.
 - Document a deliberate incompatibility; do not silently normalize it.
 
 ## Known issues and decisions
+- `Tag`/`IdentHash` expose only a const `data()`, while OpenSSL
+  `SHA256`/`SHA1`/`SHA512` write through their third argument. Hash into a
+  mutable array (or pass the object, whose non-const conversion exists) and
+  compare with `std::memcmp`; `actual.data()` is ill-formed (CE-070).
 - RouterInfo and LS1 carry exactly one signature whose length is the
   identity's. An offline/transient signer of another type must be refused,
   not written into a slot sized for the primary key (RT-022). Keep

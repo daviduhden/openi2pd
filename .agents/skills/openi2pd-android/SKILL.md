@@ -120,6 +120,10 @@ run Gradle, install an APK or run a device test.
   artifact path, not an extra ABI filter alone.
 
 ## Known issues and decisions
+- A guard such as `#if !defined(ANDROID)` can compile out the only use of a
+  shared parameter. Mark it `[[maybe_unused]]` with the platform reason
+  (`DetectDataDir(..., [[maybe_unused]] bool isService)`) instead of
+  changing the signature or adding a suppression flag (CW-010).
 
 - The 2026-10-31 Lint report found 51 warnings across 17 issue IDs. Local
   resource/UI edits address 34 instances by static review; the remaining

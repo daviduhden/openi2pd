@@ -110,6 +110,12 @@ build.
   let packaging install competing definitions.
 
 ## Known issues and decisions
+- A checker run with `cmake -P` has no `cmake_minimum_required()`. With
+  CMP0012 OLD, `while(TRUE)`/`if(TRUE)` treats `TRUE` as an undefined
+  variable and a TRUE-valued variable as an undefined name; use
+  `while(1)`/`if(1)` and declare `cmake_policy(SET CMP0012 NEW)` before any
+  boolean-valued branch. A Debian CMake 3.x packaging job can fail or
+  silently weaken a checker that passes under a newer local CMake (CE-071).
 - `tests/check-build-system.cmake` anchors each `add_test(NAME)` to its own
   `set_tests_properties` call, detects the two-statement
   `temp_directory_path()` form, accepts `RUN_SERIAL` as well as the shared

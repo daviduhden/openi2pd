@@ -5942,3 +5942,65 @@ resolver stop/start. Open: acceptor ownership tokens (`CONC-031`), access-filter
 file I/O on the SYN path, `RunnableI2CPDestination::Stop` double-stop/detach,
 nonce 0 status. No compiler, CTest, sanitizer or workflow run; no commit or
 push.
+
+## Ninth batch: record hashing, script policy and branch verification (2026-11-02, static)
+
+The seven runs dispatched on `4f76f65f` were read. Fuzzing, Packaging, Linux
+OpenSSL 3.x/4.x, OpenBSD, Android and the sanitizer/install jobs stop at one
+compile error; the branch lanes fail even earlier in their verifier.
+
+- **CE-070:** `RouterInfo::SaveToArtifact` hashed into `IdentHash::data()`,
+  which is const-only, so the OpenSSL `SHA256` out-parameter was
+  ill-formed on GCC, Clang, NDK and musl. Hash into a local array and
+  compare with `std::memcmp`.
+- **CE-071:** `check-build-system.cmake` used `while(TRUE)`. Under
+  `cmake -P` with CMP0012 OLD (the Debian package's CMake 3.x), `TRUE` is an
+  undefined variable, so the registration scan never ran and the packaging
+  service job reported "registers no tests". Use `while(1)`.
+- **CI-003:** `linux-openssl-build` invoked plain `brew` after the toolchain
+  action had evaluated `brew shellenv` only in its own step. Both branch
+  lanes reported the just-installed formula as missing and skipped the
+  build. Resolve the Homebrew binary by absolute path with a PATH fallback.
+- **CW-010:** Android compiles out the entire service branch of
+  `DetectDataDir`, so `isService` was unused; mark it `[[maybe_unused]]`.
+
+Hidden later failures remain possible: each compile job stopped at CE-070 and
+the Windows run was still finishing when this note was written. No compiler,
+CTest, sanitizer, fuzzer, package or workflow was run; no commit or push.
+
+## Tenth batch: platform classification and follow-up defects (2026-11-02, static)
+
+The Windows run `41359797195` completed: MSVC and MSYS2 both report only
+CE-070, confirming the RouterInfo const-out-parameter error as the sole
+Windows compile blocker. Every target after `libi2pd` remains uncompiled.
+
+- **Windows/MSVC audit:** no second diagnostic; direct includes added to
+  `Win32App.cpp`, `DaemonWin32.cpp`, `Win32NetState.cpp` and `daemon/UPnP.cpp`;
+  the duplicated `nid.uFlags` assignment is removed; the Windows supervisor
+  test reads `SupervisorStatus::Get()` through a checked accessor; the generic
+  supervisor test is guarded too; `test-win32-shutdown-deadline` is now built
+  and selected by the MSVC lane. The Win32 shell remains ANSI-only (`TEXT()`
+  operands are literals), which is the supported configuration.
+- **OpenBSD/LibreSSL audit:** the lane configured cleanly with LibreSSL 4.4.0
+  and the privsep objects compiled with zero warnings; only CE-070 stopped it.
+  `BuildOpenBSDPolicy` now rejects `/`, `//`, `///` unveil roots and
+  `ApplyOpenBSDPolicy` re-checks a hand-assembled policy;
+  `IsKnownPledgePromiseName()` is the single exported promise authority. The
+  `imsg_free` descriptor ownership and `recvfd`-with-offered-control-buffer
+  questions remain open for a live run.
+- **CMake/link audit:** 189 test names, 15 tools and 7 libraries are each in
+  one target; headers, link propagation, components and the relocated
+  reseed certificates are consistent; no edit was required. The audit found
+  the new NAT64 guard placed below the `zeroPrefix` early return in
+  `HTTPProxy.cpp` (unreachable); it now runs before that return, and the
+  proxy regression covers blocked and allowed NAT64 literals.
+- **Daemon/TUI/tools audit:** two direct-include gaps were fixed
+  (`daemon/UPnP.cpp` lacked `<functional>`, `tui/TuiClient.cpp` lacked
+  `<sys/time.h>`), and `daemon/TuiServer.cpp` now spells only `EAGAIN`.
+- **Preventive fixes:** SAM `SESSION ADD`/`REMOVE`/`PING` log only a length
+  (a request can carry `DESTINATION` private keys); a short `.b32.i2p` label
+  must decode to exactly 32 bytes; `I2CPDestination::GetOwner` is renamed
+  `GetSessionOwner` to stop hiding the garlic accessor.
+
+No compiler, CTest, sanitizer, Gradle, package or workflow was run; no commit
+or push.

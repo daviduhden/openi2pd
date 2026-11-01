@@ -102,6 +102,9 @@ Do not let reconnaissance agents edit, compile, execute tests or run scripts.
   the audit is complete.
 
 ## Known issues and decisions
+- A guard placed after an early `return` is unreachable and its regression
+  fails; move it before every exit and add a positive control that proves
+  the branch is reached (the NAT64 classifier case in RT-025).
 - A `shared_ptr` member read from a second thread is guarded by a leaf mutex
   and copied per use; `if (m_X)` is not synchronization. A stale resolver or
   completion must not clear a newer registration.

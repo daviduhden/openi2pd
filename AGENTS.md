@@ -2866,3 +2866,59 @@ question, and the OpenRC default stop signal.
 - A terminal protocol frame is written before the socket closes; the flush is
   bounded by the reply deadline, and every dropped/oversized/queue-full path
   still terminates.
+
+## Eighth CI batch: record hashing, script policy and branch verification (`4f76f65f`, 2026-11-02, static)
+
+Runs 41359789894/41359792345 (Linux OpenSSL 3.x/4.x), 41359794983
+(Linux and Android), 41359799518 (OpenBSD), 41359802036 (Fuzzing),
+41359804259 (Packaging) and 41359797195 (Windows) were read on `4f76f65f`.
+CE-070, CE-071, CI-003 and CW-010 carry the evidence.
+
+- `Tag`/`IdentHash` expose only a const `data()`; the non-const conversion
+  is on the object. An OpenSSL `SHA*` call writes through its third
+  argument, so pass a mutable array (or the object), never `.data()`.
+- A CMake script run with `cmake -P` has no `cmake_minimum_required()`.
+  CMP0012 OLD makes `while(TRUE)`/`if(TRUE)` see an undefined variable,
+  silently skipping the body, and re-reads a TRUE-valued variable as an
+  undefined name; use `while(1)`/`if(1)` and declare
+  `cmake_policy(SET CMP0012 NEW)` before branching on a boolean variable. A
+  packaging-only CMake 3.x can therefore fail or silently weaken a checker
+  that passes under a newer local CMake.
+- A composite action does not inherit another action's `brew shellenv`,
+  virtualenv or exported PATH. Resolve the tool by absolute path with a
+  PATH fallback, and never suppress the lookup error into a misleading
+  "package missing" diagnostic.
+- A platform guard that compiles out the only use of a shared parameter
+  produces an unused-parameter warning on that platform. Mark it
+  `[[maybe_unused]]` with the reason; do not change the signature or add a
+  suppression flag.
+- A job stopped by the first compile error says nothing about later targets
+  in that job. Do not upgrade Android, OpenBSD, Windows, sanitizer, fuzzer or
+  packaging status until a run compiles past the reported point.
+
+Manual CI is now split by concern (`build-linux.yml`, `build-android.yml`,
+`validation.yml`, the two OpenSSL branch workflows, Windows, OpenBSD,
+packaging); each job must stay in its owning workflow.
+
+### Platform audit continuation (`4f76f65f`, 2026-11-02, static)
+
+The completed Windows run (`41359797195`) reports only CE-070 in both MSYS2
+and MSVC; no second Windows diagnostic exists, but every target after
+`libi2pd` is still uncompiled. The OpenBSD lane configured with LibreSSL
+4.4.0 and compiled the privsep objects with zero warnings before CE-070.
+
+- A platform test reads `SupervisorStatus::Get()` (or any `std::optional`)
+  through a checked accessor; `->` on an empty optional is undefined
+  behaviour and stays green in the `/UNDEBUG` test build.
+- An unveil/policy root of `/`, `//` or `///` is refused by both the policy
+  builder and the applier. `IsKnownPledgePromiseName()` is the single promise
+  authority; an unknown token must fail before `pledge(2)` aborts a worker.
+- The OpenBSD `imsg_free` descriptor ownership and the `recvfd`-with-offered
+  control-buffer interaction are unproven until a live run. Do not "fix" them
+  from memory.
+- A security guard added below an early `return` is dead code and its
+  regression fails: the NAT64 branch in `IsBlockedClearnetTarget` had to move
+  above the zero-prefix return. Every new classifier branch needs a positive
+  control that reaches it.
+- The MSVC lane must build and select every Windows-only test it claims;
+  `test-win32-shutdown-deadline` was missing from both lists.

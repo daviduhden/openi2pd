@@ -94,6 +94,14 @@ limitation; do not substitute local execution. Ask for:
   unsupported type.
 
 ## Known issues and decisions
+- `BuildOpenBSDPolicy` and `ApplyOpenBSDPolicy` refuse an unveil root of
+  `/`, `//` or `///`; a hand-assembled policy is re-checked. An unknown
+  pledge token is rejected by `IsKnownPledgePromiseName()` before `pledge(2)`
+  can abort a worker. The exhaustive role × unveil regression covers every
+  generated rule (RT-026).
+- `imsg_free` descriptor ownership and `recvfd` when a control buffer is
+  merely offered are unproven; confirm from the OpenBSD 8.0 tree before
+  changing the adapter or the storage receive path.
 
 - Profile staging cleanup must not probe arbitrary PIDs after runtime pledge
   drops `proc`. Process-local mutexes do not prove cross-process data-directory
