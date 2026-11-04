@@ -144,7 +144,13 @@ namespace client
 #ifdef __linux__
 			if (isUniqueLocal && m_RemoteEndpoint.address ().is_loopback ())
 			{
-				auto ident = m_Stream->GetRemoteIdentity ()->GetIdentHash ();
+				auto identity = m_Stream ? m_Stream->GetRemoteIdentity () : nullptr;
+				if (!identity)
+				{
+					Terminate ();
+					return;
+				}
+				auto ident = identity->GetIdentHash ();
 				if (m_RemoteEndpoint.address ().is_v4 ())
 				{
 					m_Socket->open (boost::asio::ip::tcp::v4 ());
@@ -488,7 +494,7 @@ namespace client
 		std::shared_ptr<i2p::stream::Stream> stream, const boost::asio::ip::tcp::endpoint & target,
 		const std::string & webircpass, std::shared_ptr<boost::asio::ssl::context> sslCtx)
 		: I2PTunnelConnection (owner, stream, target, sslCtx)
-		, m_From (stream->GetRemoteIdentity ())
+		, m_From (stream ? stream->GetRemoteIdentity () : nullptr)
 		, m_NeedsWebIrc (webircpass.length () ? true : false)
 		, m_WebircPass (webircpass)
 	{
@@ -496,6 +502,13 @@ namespace client
 
 	void I2PTunnelConnectionIRC::Write (const uint8_t * buf, size_t len)
 	{
+		// Identity is required before formatting any upstream data, including
+		// the WEBIRC credential. Never attribute an anonymous stream locally.
+		if (!m_From)
+		{
+			Terminate ();
+			return;
+		}
 		m_OutPacket.str ("");
 		if (m_NeedsWebIrc)
 		{
@@ -1299,6 +1312,7 @@ namespace client
 	std::shared_ptr<I2PTunnelConnection> I2PServerTunnelIRC::CreateI2PConnection (
 		std::shared_ptr<i2p::stream::Stream> stream, const boost::asio::ip::tcp::endpoint & target)
 	{
+		if (!stream || !stream->GetRemoteIdentity ()) return nullptr;
 		return std::make_shared<I2PTunnelConnectionIRC> (
 			shared_from_this (), stream, target, m_WebircPass, GetSSLCtx ());
 	}

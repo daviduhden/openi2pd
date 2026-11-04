@@ -172,6 +172,8 @@ namespace client
 	/// hostname field of a `USER` line with the peer destination, so the
 	/// upstream ircd attributes the session to the I2P identity instead of
 	/// the tunnel's local address.
+	/// A missing remote identity closes the connection before formatting
+	/// or writing a WEBIRC credential or a rewritten USER command.
 	/// @warning The WEBIRC password is a credential. It is
 	///          written only into that outbound line and must never reach
 	///          a log, an error page or a diagnostic string.

@@ -15,6 +15,7 @@
  */
 
 #include <cassert>
+#include <initializer_list>
 #include <memory>
 #include <string>
 
@@ -24,6 +25,7 @@
 #include "I2PService.h"
 #include "I2PTunnel.h"
 #include "Identity.h"
+#include "Streaming.h"
 
 namespace
 {
@@ -43,6 +45,28 @@ public:
 	}
 
 	int terminations = 0;
+};
+
+class InspectableIRCConnection : public i2p::client::I2PTunnelConnectionIRC
+{
+public:
+	using I2PTunnelConnectionIRC::I2PTunnelConnectionIRC;
+	using I2PTunnelConnectionIRC::Write;
+	using I2PTunnelConnection::GetSocket;
+};
+
+class InspectableTunnelConnection : public i2p::client::I2PTunnelConnection
+{
+public:
+	using I2PTunnelConnection::I2PTunnelConnection;
+	using I2PTunnelConnection::GetSocket;
+};
+
+class InspectableIRCTunnel : public i2p::client::I2PServerTunnelIRC
+{
+public:
+	using I2PServerTunnelIRC::I2PServerTunnelIRC;
+	using I2PServerTunnelIRC::CreateI2PConnection;
 };
 
 struct Fixture
@@ -94,6 +118,35 @@ int main ()
 	if (!defaultDestination) defaultDestination = destination.CreateStreamingDestination (0);
 	assert (defaultDestination);
 	assert (!defaultDestination->IsAcceptorSet ());
+
+	// Missing peer identity must fail before WEBIRC formatting (including
+	// local_endpoint()) or USER rewriting, and before an upstream connect.
+	{
+		auto owner = std::make_shared<i2p::client::I2PService> (fixture.destination);
+		auto stream = std::make_shared<i2p::stream::Stream> (fixture.service, defaultDestination);
+		assert (!stream->GetRemoteIdentity ());
+		const boost::asio::ip::tcp::endpoint target (boost::asio::ip::address_v4::loopback (), 8083);
+		const uint8_t user[] = "USER test local server :test\r\n";
+		for (const auto & password : { std::string {}, std::string { "fixture-only" } })
+		{
+			auto connection = std::make_shared<InspectableIRCConnection> (owner, stream, target, password);
+			owner->AddHandler (connection);
+			connection->GetSocket ()->open (boost::asio::ip::tcp::v4 ());
+			connection->Write (user, sizeof (user) - 1);
+			assert (!connection->GetSocket ()->is_open ());
+			assert (owner->GetNumHandlers () == 0);
+		}
+		auto irc = std::make_shared<InspectableIRCTunnel> (
+			"identity-test", "127.0.0.1", 8083, fixture.destination, "fixture-only", 0, false);
+		assert (!irc->CreateI2PConnection (stream, target));
+#ifdef __linux__
+		auto connection = std::make_shared<InspectableTunnelConnection> (owner, stream, target);
+		owner->AddHandler (connection);
+		connection->Connect (true);
+		assert (!connection->GetSocket ()->is_open ());
+		assert (owner->GetNumHandlers () == 0);
+#endif
+	}
 
 	auto tunnel = std::make_shared<I2PServerTunnel> ("stop-test", "127.0.0.1", 8080, fixture.destination, 0, false);
 	tunnel->Start ();
