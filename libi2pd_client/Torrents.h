@@ -50,6 +50,12 @@ namespace i2p
 {
 namespace torrents
 {
+	/// Validate bounded UTF-8 metainfo display/edit text. Tab and LF are
+	/// allowed; other C0 controls, DEL and malformed encodings are refused.
+	/// Imported byte strings remain unchanged; presentation code can omit
+	/// values that do not satisfy this contract.
+	bool IsValidTorrentMetaText (std::string_view text, size_t maxBytes);
+
 	/// Bencode readers parse one value from the front of @a buf and return
 	/// the consumed byte count, or 0 for a malformed value. A successful
 	/// prefix can leave trailing bytes; callers requiring a complete frame
@@ -262,6 +268,45 @@ namespace torrents
 	// extensions
 	constexpr std::string_view EXTENSION_NAME_UT_METADATA { "ut_metadata" };
 	constexpr uint8_t EXTENSION_MSGID_UT_METADATA = 1;
+	/// BEP 9 transfers only info bytes, bounded independently of peer count.
+	constexpr size_t MAX_PEER_METADATA_SIZE = 8 * 1024 * 1024;
+
+	/// Service-thread BEP 9 assembly shared by all peers of one magnet.
+	/// Numeric owners identify connection lifetimes without borrowing peers.
+	/// Each owner may reserve one block for 30 seconds. Only that live lease
+	/// may fill the block, with exactly the advertised total and block length.
+	/// Full info-hash verification precedes TakeVerified; failures clear all
+	/// leases and back off for 30..300 seconds. No paths or files are touched.
+	class MetadataDownload
+	{
+	public:
+		using Owner = uint64_t;
+		enum class Result { Rejected, Accepted, Complete, HashMismatch };
+		static constexpr uint64_t REQUEST_TIMEOUT = 30;
+		std::optional<size_t> Request (Owner owner, size_t totalSize, uint64_t now);
+		Result Receive (Owner owner, size_t piece, size_t totalSize, std::span<const uint8_t> data,
+			const std::array<uint8_t, SHA_DIGEST_LENGTH> & infoHash, uint64_t now);
+		bool Reject (Owner owner, size_t piece, uint64_t now);
+		void Release (Owner owner);
+		/// Explicit owner stop/removal starts a fresh download, including retry.
+		void Reset ();
+		/// Move out verified bytes; empty until the complete hash matches.
+		std::vector<uint8_t> TakeVerified ();
+		size_t Size () const { return m_Data.size (); }
+		size_t Received () const { return m_Received; }
+
+	private:
+		struct Block { Owner owner = 0; uint64_t deadline = 0; bool received = false; };
+		void Expire (uint64_t now);
+		void ClearAssembly ();
+		std::vector<uint8_t> m_Data;
+		std::vector<Block> m_Blocks;
+		size_t m_Received = 0;
+		uint64_t m_LastProgress = 0, m_RetryAt = 0, m_FailureDelay = 30;
+		size_t m_AlternateSize = 0, m_PreferredSize = 0;
+		uint64_t m_PreferredUntil = 0;
+		bool m_Verified = false;
+	};
 	constexpr std::string_view EXTENSION_NAME_I2P_PEX { "i2p_pex" };
 	constexpr uint8_t EXTENSION_MSGID_I2P_PEX = 2;
 	constexpr std::string_view EXTENSION_NAME_I2P_DHT { "i2p_dht" };
@@ -860,6 +905,9 @@ namespace torrents
 		// Per-torrent random peer id. Never derived from the tunnel identity.
 		using PeerID = std::array<uint8_t, 20>;
 		using TrackerTiers = std::vector<std::vector<std::string>>;
+		/// Service-thread metadata authority; IDs never repeat in this torrent.
+		MetadataDownload::Owner AllocateMetadataOwner ();
+		MetadataDownload & GetMetadataDownload () { return m_MetadataDownload; }
 		// Pure metadata builder for the storage/hash worker. Piece hashes
 		// cover concatenated files in the supplied order, including file
 		// boundaries. Empty relative paths denote a single file; otherwise
@@ -1312,6 +1360,8 @@ namespace torrents
 		size_t m_Length, m_PieceLength;
 		std::vector<uint8_t> m_Info; // for BEP9
 		InfoHash m_InfoHash; // SHA1
+		MetadataDownload m_MetadataDownload;
+		MetadataDownload::Owner m_NextMetadataOwner = 0;
 		std::vector<Piece> m_Pieces;
 		std::vector<uint8_t> m_FilePriorities, m_PiecePriorities;
 		std::vector<TrackerStats> m_TrackerStats;
@@ -1532,7 +1582,7 @@ namespace torrents
 		CommentAdmissionWindow m_CommentEntryWindow;
 		// BEP9
 		size_t m_RemoteMetadataSize;
-		std::vector<uint8_t> m_RemoteMetadata;
+		MetadataDownload::Owner m_MetadataOwner = 0;
 		// BEP6
 		bool m_IsFast;
 		int m_SuggestedPieceIndex;

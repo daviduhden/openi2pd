@@ -318,3 +318,21 @@ admission/normalization behavior; none of it is a Java interoperability claim.
 Prepared regressions are the extended `test-torrents-comments`,
 `test-torrents-state` and `test-tui-protocol`; they have not been compiled or
 executed.
+
+## Shared metadata continuation (2026-11-02, static)
+
+BEP 9 metadata is assembled once per torrent from disjoint peer-owned block
+leases, rather than in one full buffer per peer. The bound remains 8 MiB of
+info bytes with 16 KiB blocks. Each response must match its live numeric owner,
+requested index, negotiated total and exact final/non-final length. Only a
+complete SHA-1 match and whole info dictionary reach publication. Disconnect
+releases leases, service-thread stop clears assembly, and failed hashes reset
+with 30..300-second cooldown. A stalled size gives one competing offer a
+bounded opportunity so renewal order cannot pin the original size forever.
+
+Reference: [BEP 9](https://www.bittorrent.org/beps/bep_0009.html), revision
+`cfd7cd53addbea7e87363ae1a52e2e4b397df3a9`; selective upstream adaptation
+`9b3e9b3218fe4bb80d92a56045a78be27f645c9f`. Engine regressions cover concurrent
+owners, malformed lengths, expiry, disconnect, size disagreement and hash
+failure. Compilation, sanitizer execution and live Java I2PSnark exchange
+remain pending. Endgame/CANCEL and queue/magnet persistence remain separate.

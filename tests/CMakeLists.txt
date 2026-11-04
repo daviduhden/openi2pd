@@ -414,6 +414,9 @@ foreach(test IN LISTS I2PD_TESTS)
       OR test STREQUAL "test-streaming-recently-closed"
       OR test STREQUAL "test-streaming-overlimit-reset"
       OR test STREQUAL "test-streaming-sendstate"
+      OR test STREQUAL "test-torrents-engine-interop"
+      OR test STREQUAL "test-torrents-state"
+      OR test STREQUAL "test-sam-stream-lifecycle"
       OR test STREQUAL "test-i2cp-b33-lookup"
       OR test STREQUAL "test-i2cp-blinding-info")
     set_property(TEST ${test} APPEND PROPERTY LABELS "security;memory")

@@ -780,7 +780,7 @@ namespace torrents
 		return (int)std::clamp<int64_t> (value, 0, std::numeric_limits<int>::max ());
 	}
 
-	static bool ValidMetaText (std::string_view text, size_t maxBytes)
+	bool IsValidTorrentMetaText (std::string_view text, size_t maxBytes)
 	{
 		if (text.size () > maxBytes) return false;
 		for (size_t i = 0; i < text.size ();)
@@ -1757,6 +1757,140 @@ namespace torrents
 		}
 	}
 
+	void MetadataDownload::ClearAssembly ()
+	{
+		std::vector<uint8_t> { }.swap (m_Data);
+		std::vector<Block> { }.swap (m_Blocks);
+		m_Received = 0;
+		m_LastProgress = 0;
+		m_Verified = false;
+		m_AlternateSize = 0;
+	}
+
+	void MetadataDownload::Reset ()
+	{
+		ClearAssembly ();
+		m_RetryAt = 0;
+		m_FailureDelay = 30;
+		m_PreferredSize = 0;
+		m_PreferredUntil = 0;
+	}
+
+	void MetadataDownload::Expire (uint64_t now)
+	{
+		for (auto & block : m_Blocks)
+			if (block.owner && now >= block.deadline) block.owner = 0;
+	}
+
+	std::optional<size_t> MetadataDownload::Request (Owner owner, size_t totalSize, uint64_t now)
+	{
+		if (!owner || !totalSize || totalSize > MAX_PEER_METADATA_SIZE || now < m_RetryAt || m_Verified)
+			return std::nullopt;
+		Expire (now);
+		if (!m_Data.empty () && totalSize != m_Data.size () && !m_AlternateSize)
+			m_AlternateSize = totalSize;
+		if (!m_Data.empty () && m_AlternateSize && now >= m_LastProgress
+			&& now - m_LastProgress >= REQUEST_TIMEOUT)
+		{
+			// Remember one competing size before discarding stalled work.
+			// Otherwise the first peer visited on each timer tick could renew
+			// its lease forever and starve every differently sized offer.
+			m_PreferredSize = m_AlternateSize;
+			m_PreferredUntil = now > std::numeric_limits<uint64_t>::max () - REQUEST_TIMEOUT
+				? std::numeric_limits<uint64_t>::max () : now + REQUEST_TIMEOUT;
+			ClearAssembly ();
+		}
+		if (m_PreferredSize && now < m_PreferredUntil && totalSize != m_PreferredSize)
+			return std::nullopt;
+		if (!m_Data.empty () && totalSize != m_Data.size ())
+		{
+			// A size disagreement cannot replace an active transfer. Once every
+			// lease expired and progress stalled, another size may be tried.
+			if (now < m_LastProgress || now - m_LastProgress < REQUEST_TIMEOUT
+				|| std::any_of (m_Blocks.begin (), m_Blocks.end (), [] (const Block & block) { return block.owner; }))
+				return std::nullopt;
+			ClearAssembly ();
+		}
+		if (m_Data.empty ())
+		{
+			std::vector<uint8_t> data (totalSize);
+			std::vector<Block> blocks ((totalSize + REQUEST_BLOCK_SIZE - 1) / REQUEST_BLOCK_SIZE);
+			m_Data.swap (data);
+			m_Blocks.swap (blocks);
+			m_LastProgress = now;
+			m_PreferredSize = 0;
+			m_PreferredUntil = 0;
+		}
+		if (std::any_of (m_Blocks.begin (), m_Blocks.end (),
+			[owner] (const Block & block) { return block.owner == owner; })) return std::nullopt;
+		for (size_t piece = 0; piece < m_Blocks.size (); ++piece)
+		{
+			auto & block = m_Blocks[piece];
+			if (block.received || block.owner) continue;
+			block.owner = owner;
+			block.deadline = now > std::numeric_limits<uint64_t>::max () - REQUEST_TIMEOUT
+				? std::numeric_limits<uint64_t>::max () : now + REQUEST_TIMEOUT;
+			return piece;
+		}
+		return std::nullopt;
+	}
+
+	MetadataDownload::Result MetadataDownload::Receive (Owner owner, size_t piece, size_t totalSize,
+		std::span<const uint8_t> data, const std::array<uint8_t, SHA_DIGEST_LENGTH> & infoHash, uint64_t now)
+	{
+		Expire (now);
+		if (!owner || m_Verified || totalSize != m_Data.size () || piece >= m_Blocks.size ()) return Result::Rejected;
+		auto & block = m_Blocks[piece];
+		if (block.received || block.owner != owner) return Result::Rejected;
+		const auto offset = piece * REQUEST_BLOCK_SIZE;
+		if (data.size () != std::min (REQUEST_BLOCK_SIZE, totalSize - offset)) return Result::Rejected;
+		std::copy (data.begin (), data.end (), m_Data.begin () + offset);
+		block.received = true;
+		block.owner = 0;
+		m_Received += data.size ();
+		m_LastProgress = now;
+		if (m_Received != totalSize) return Result::Accepted;
+		std::array<uint8_t, SHA_DIGEST_LENGTH> digest { };
+		if (!SHA1 (m_Data.data (), m_Data.size (), digest.data ()) || digest != infoHash)
+		{
+			ClearAssembly ();
+			m_RetryAt = now > std::numeric_limits<uint64_t>::max () - m_FailureDelay
+				? std::numeric_limits<uint64_t>::max () : now + m_FailureDelay;
+			m_FailureDelay = std::min<uint64_t> (m_FailureDelay * 2, 300);
+			return Result::HashMismatch;
+		}
+		m_Verified = true;
+		return Result::Complete;
+	}
+
+	bool MetadataDownload::Reject (Owner owner, size_t piece, uint64_t now)
+	{
+		Expire (now);
+		if (!owner || piece >= m_Blocks.size () || m_Blocks[piece].owner != owner) return false;
+		m_Blocks[piece].owner = 0;
+		return true;
+	}
+
+	void MetadataDownload::Release (Owner owner)
+	{
+		for (auto & block : m_Blocks)
+			if (block.owner == owner) block.owner = 0;
+	}
+
+	std::vector<uint8_t> MetadataDownload::TakeVerified ()
+	{
+		if (!m_Verified) return { };
+		auto result = std::move (m_Data);
+		Reset ();
+		return result;
+	}
+
+	MetadataDownload::Owner Torrent::AllocateMetadataOwner ()
+	{
+		if (m_NextMetadataOwner == std::numeric_limits<MetadataDownload::Owner>::max ()) return 0;
+		return ++m_NextMetadataOwner;
+	}
+
 	Torrent::Torrent ()
 		: m_AnnounceTrackerID (-1)
 		, m_Length (0)
@@ -2124,7 +2258,7 @@ namespace torrents
 	bool Torrent::SetMetaComment (std::string_view comment)
 	{
 		if (!m_MetaInfoComplete) return false;
-		if (!ValidMetaText (comment, 1024)) return false;
+		if (!IsValidTorrentMetaText (comment, 1024)) return false;
 		m_MetaComment.assign (comment);
 		return true;
 	}
@@ -2132,7 +2266,7 @@ namespace torrents
 	bool Torrent::SetCreatedBy (std::string_view createdBy)
 	{
 		if (!m_MetaInfoComplete) return false;
-		if (!ValidMetaText (createdBy, 255)) return false;
+		if (!IsValidTorrentMetaText (createdBy, 255)) return false;
 		m_CreatedBy.assign (createdBy);
 		return true;
 	}
@@ -3548,7 +3682,11 @@ namespace torrents
 		m_IsStopped = stopped;
 		// A stopped torrent refuses dials, so remembered candidates would
 		// only accumulate and survive into the next start.
-		if (stopped) ClearPeerCandidates ();
+		if (stopped)
+		{
+			ClearPeerCandidates ();
+			m_MetadataDownload.Reset ();
+		}
 	}
 
 	void Torrent::MarkRemoved ()
@@ -3814,6 +3952,7 @@ namespace torrents
 		if (Kill ()) return;
 		if (m_Torrent)
 		{
+			m_Torrent->GetMetadataDownload ().Release (m_MetadataOwner);
 			ReleaseOutgoingRequests ();
 			m_Torrent->RemoveConnection (shared_from_this ());
 		}
@@ -3938,6 +4077,7 @@ namespace torrents
 
 	void PeerConnection::CheckKeepAlive (uint64_t ts)
 	{
+		if (m_IsEstablished && m_Torrent && !m_Torrent->IsValid ()) RequestUtMetadata ();
 		if (m_IsEstablished) RequestComments ();
 		// Incremental PEX refresh. Private swarms are suppressed inside
 		// NotifyPEXPeers(), and the announcement set is bounded.
@@ -4954,8 +5094,8 @@ namespace torrents
 			for (const auto & [extension, id] : handshake.extensions) AddExtendedMsgHandler (extension, id);
 			if (handshake.hasMetadataSize)
 			{
-				if (handshake.metadataSize < 0
-					|| (size_t)handshake.metadataSize > MAX_NUM_TORRENT_PIECES * SHA_DIGEST_LENGTH)
+				if (handshake.metadataSize <= 0
+					|| static_cast<uint64_t> (handshake.metadataSize) > MAX_PEER_METADATA_SIZE)
 				{
 					LogPrint (eLogError, "Torrents: Invalid metadata_size ", handshake.metadataSize);
 					m_RemoteMetadataSize = 0;
@@ -4973,7 +5113,7 @@ namespace torrents
 			if (handshake.hasClientVersion) m_RemoteName = handshake.clientVersion;
 			// trigger extensions
 			// BEP9
-			if (!m_Torrent->GetLength ()) // magnet without info
+			if (!m_Torrent->IsValid ()) // magnet without usable info
 			{
 				if (m_RemoteMsgIDUtMetadata && m_RemoteMetadataSize) // peer supports BEP9
 					// request first piece of info
@@ -5185,111 +5325,104 @@ namespace torrents
 		}
 	}
 
+
 	void PeerConnection::HandleUtMetadataExtension (const uint8_t * buf, size_t len)
 	{
-		if (!m_Torrent) return;
-		int64_t msgType = -1, piece = -1;
+		if (!m_Torrent || m_Torrent->IsStopped () || m_Torrent->IsRemoved ()) return;
+		int64_t msgType = -1, piece = -1, totalSize = -1;
+		bool seenType = false, seenPiece = false, seenTotal = false, duplicate = false;
 		auto payloadLen = ParseDictionary (std::string_view ((const char *)buf, len),
-			[&msgType, &piece] (std::string_view key, std::string_view buf) -> size_t
+			[&] (std::string_view key, std::string_view value) -> size_t
 			{
-				if (key == "msg_type")
+				int64_t * target = nullptr;
+				bool * seen = nullptr;
+				if (key == "msg_type") { target = &msgType; seen = &seenType; }
+				else if (key == "piece") { target = &piece; seen = &seenPiece; }
+				else if (key == "total_size") { target = &totalSize; seen = &seenTotal; }
+				else return 0;
+				auto [number, consumed] = ExtractInteger (value);
+				if (consumed)
 				{
-					auto [value, l] = ExtractInteger (buf);
-					if (l) msgType = value;
-					return l;
+					if (*seen) duplicate = true;
+					*seen = true;
+					*target = number;
 				}
-				else if (key == "piece")
-				{
-					auto [value, l] = ExtractInteger (buf);
-					if (l) piece = value;
-					return l;
-				}
-				// ignore total_szie
-				return 0;
+				return consumed;
 			});
-		if (msgType >= 0 && piece >= 0)
+		if (!payloadLen || payloadLen > len || duplicate || !seenType || !seenPiece || msgType < 0 || piece < 0)
+			return;
+		// BEP 9 requires unknown message kinds to be ignored.
+		if (msgType > 2) return;
+		if (static_cast<uint64_t> (piece) > std::numeric_limits<size_t>::max () / REQUEST_BLOCK_SIZE) return;
+		const auto index = static_cast<size_t> (piece);
+		const auto now = i2p::util::GetMonotonicSeconds ();
+		auto & download = m_Torrent->GetMetadataDownload ();
+		if (msgType == 0)
 		{
-			if (!payloadLen || payloadLen > len) return; // malformed metadata dictionary
-			// The peer chooses the piece number. Bound it before multiplying so
-			// that a hostile value cannot overflow size_t.
-			if ((uint64_t)piece > std::numeric_limits<size_t>::max () / REQUEST_BLOCK_SIZE)
+			if (payloadLen != len || (m_Torrent->IsPrivate () && m_Torrent->IsValid ())) return;
+			const auto & info = m_Torrent->GetInfo ();
+			const auto offset = index * REQUEST_BLOCK_SIZE;
+			if (m_Torrent->IsValid () && offset < info.size ())
 			{
-				LogPrint (eLogWarning, "Torrents: ut_metadata piece number ", piece, " is out of range");
-				return;
+				SendExtendedMsg (m_RemoteMsgIDUtMetadata,
+					CreateDictionary ({ { "msg_type", CreateInteger (1) }, { "piece", CreateInteger (piece) },
+						{ "total_size", CreateInteger (info.size ()) } }),
+					std::string_view ((const char *)info.data () + offset, std::min (info.size () - offset, REQUEST_BLOCK_SIZE)));
 			}
-			size_t pieceOffset = (size_t)piece * REQUEST_BLOCK_SIZE;
-			switch (msgType)
+			else
+				SendExtendedMsg (m_RemoteMsgIDUtMetadata,
+					CreateDictionary ({ { "msg_type", CreateInteger (2) }, { "piece", CreateInteger (piece) } }));
+			return;
+		}
+		if (m_Torrent->IsValid ()) return;
+		if (msgType == 2)
+		{
+			if (payloadLen == len && download.Reject (m_MetadataOwner, index, now))
+				Terminate (); // another source must supply the released block
+			return;
+		}
+		if (!seenTotal || totalSize <= 0 || static_cast<uint64_t> (totalSize) != m_RemoteMetadataSize) return;
+		const auto result = download.Receive (m_MetadataOwner, index, m_RemoteMetadataSize,
+			std::span<const uint8_t> (buf + payloadLen, len - payloadLen), m_Torrent->GetInfoHash (), now);
+		if (result == MetadataDownload::Result::Accepted)
+			RequestUtMetadata ();
+		else if (result == MetadataDownload::Result::HashMismatch)
+		{
+			LogPrint (eLogWarning, "Torrents: Downloaded metadata failed info-hash verification");
+			// Shared input cannot identify the corrupt contributor. Retain the
+			// peers and retry only after the torrent's bounded cooldown.
+		}
+		else if (result == MetadataDownload::Result::Complete)
+		{
+			auto info = download.TakeVerified ();
+			const auto bytes = std::string_view (reinterpret_cast<const char *> (info.data ()), info.size ());
+			// A matching hash does not make trailing bytes a valid dictionary.
+			const auto consumed = ParseDictionary (bytes, [] (std::string_view, std::string_view) -> size_t { return 0; });
+			if (consumed == bytes.size ())
 			{
-			case 0: // request
+				if (auto tunnel = GetTorrentsTunnel ()) tunnel->UpdateTorrentInfo (m_Torrent, bytes);
+			}
+			else
 			{
-				if (m_Torrent->IsPrivate () && m_Torrent->IsValid ()) break;
-				auto & info = m_Torrent->GetInfo ();
-				size_t offset = pieceOffset;
-				if (offset < info.size ())
-				{
-					size_t pieceSize = std::min (info.size () - offset, REQUEST_BLOCK_SIZE);
-					SendExtendedMsg (m_RemoteMsgIDUtMetadata,
-						CreateDictionary ({ { "msg_type", CreateInteger (1) }, { "piece", CreateInteger (piece) },
-							{ "total_size", CreateInteger (m_Torrent->GetInfo ().size ()) } }),
-						std::string_view ((const char *)info.data () + offset, pieceSize));
-				}
-				else
-					SendExtendedMsg (m_RemoteMsgIDUtMetadata,
-						CreateDictionary ({ { "msg_type", CreateInteger (2) }, { "piece", CreateInteger (piece) } }));
-				break;
+				m_Torrent->SetError (eTorrentErrorMalformedMetaInfo);
+				m_Torrent->SetStopped (true);
 			}
-			case 1: // data
-			{
-				if (m_Torrent->GetLength ())
-				{
-					// we have info
-					if (m_RemoteMetadata.size () < m_RemoteMetadataSize) // response to our request
-						Terminate (); // reconnect
-					// otherwise unsolicited data, ignore
-					break;
-				}
-				size_t offset = pieceOffset;
-				if (offset > m_RemoteMetadataSize) break;
-				size_t size = m_RemoteMetadataSize - offset;
-				if (size > REQUEST_BLOCK_SIZE) size = REQUEST_BLOCK_SIZE;
-				if (payloadLen + size > len) break;
-				if (offset == m_RemoteMetadata.size () && size)
-				{
-					m_RemoteMetadata.resize (m_RemoteMetadata.size () + size);
-					memcpy (m_RemoteMetadata.data () + offset, buf + payloadLen, size);
-					if (m_RemoteMetadata.size () < m_RemoteMetadataSize)
-						// request next piece
-						SendExtendedMsg (m_RemoteMsgIDUtMetadata,
-							CreateDictionary (
-								{ { "msg_type", CreateInteger (0) }, { "piece", CreateInteger (piece + 1) } }));
-					else
-					{
-						// all info received
-						LogPrint (eLogDebug, "Torrents: ut_metadata ", m_RemoteMetadataSize, " bytes of info received");
-						uint8_t digest[SHA_DIGEST_LENGTH];
-						SHA1 (m_RemoteMetadata.data (), m_RemoteMetadata.size (), digest);
-						if (!memcmp (m_Torrent->GetInfoHash ().data (), digest, SHA_DIGEST_LENGTH))
-							GetTorrentsTunnel ()->UpdateTorrentInfo (m_Torrent,
-								std::string_view ((const char *)m_RemoteMetadata.data (), m_RemoteMetadata.size ()));
-						else
-							LogPrint (eLogError, "Torrents: ut_metadata info doesn't match infoHash");
-						Terminate (); // we need to reconnect to receive bitfield
-					}
-				}
-				break;
-			}
-			case 2: // reject
-				LogPrint (eLogError, "Torrents: ut_metadata piece ", piece, " request rejected");
-				break;
-			default: LogPrint (eLogInfo, "Torrents: ut_metadata msg_type ", msgType, " is not supported");
-			}
+			// Reconnect metadata-era peers to receive correctly sized bitfields.
+			for (const auto & connection : m_Torrent->GetConnections ()) connection->Close ();
+			Terminate ();
 		}
 	}
 
 	void PeerConnection::RequestUtMetadata ()
 	{
-		SendExtendedMsg (m_RemoteMsgIDUtMetadata,
-			CreateDictionary ({ { "msg_type", CreateInteger (0) }, { "piece", CreateInteger (0) } }));
+		if (!m_Torrent || m_Torrent->IsValid () || m_Torrent->IsStopped () || m_Torrent->IsRemoved ()
+			|| !m_RemoteMsgIDUtMetadata || !m_RemoteMetadataSize) return;
+		if (!m_MetadataOwner) m_MetadataOwner = m_Torrent->AllocateMetadataOwner ();
+		auto piece = m_Torrent->GetMetadataDownload ().Request (
+			m_MetadataOwner, m_RemoteMetadataSize, i2p::util::GetMonotonicSeconds ());
+		if (piece)
+			SendExtendedMsg (m_RemoteMsgIDUtMetadata,
+				CreateDictionary ({ { "msg_type", CreateInteger (0) }, { "piece", CreateInteger (*piece) } }));
 	}
 
 	void PeerConnection::HandleI2PPEXExtension (const uint8_t * buf, size_t len)

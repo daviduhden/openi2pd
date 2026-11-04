@@ -11,15 +11,116 @@
  *
  */
 
+#include <algorithm>
 #include <cassert>
+#include <array>
+#include <limits>
+#include <span>
 #include <string>
 #include <vector>
 #include "Torrents.h"
 
 #ifndef NO_TORRENTS
+namespace
+{
+void TestSharedMetadata ()
+{
+	using namespace i2p::torrents;
+	using Result = MetadataDownload::Result;
+	std::vector<uint8_t> info (2 * REQUEST_BLOCK_SIZE + 7);
+	for (size_t i = 0; i < info.size (); ++i) info[i] = static_cast<uint8_t> (i * 17 + 3);
+	std::array<uint8_t, SHA_DIGEST_LENGTH> hash { };
+	assert (SHA1 (info.data (), info.size (), hash.data ()));
+	const auto first = std::span<const uint8_t> (info).first (REQUEST_BLOCK_SIZE);
+	const auto second = std::span<const uint8_t> (info).subspan (REQUEST_BLOCK_SIZE, REQUEST_BLOCK_SIZE);
+	const auto last = std::span<const uint8_t> (info).last (7);
+	MetadataDownload download;
+	assert (!download.Request (0, info.size (), 0));
+	assert (!download.Request (1, 0, 0));
+	assert (!download.Request (1, MAX_PEER_METADATA_SIZE + 1, 0));
+	assert (download.TakeVerified ().empty ());
+	assert (download.Request (1, info.size (), 0) == 0);
+	assert (!download.Request (1, info.size (), 0)); // one lease per peer
+	assert (download.Request (2, info.size (), 0) == 1);
+	assert (!download.Request (3, info.size () + 1, 0)); // size disagreement
+	assert (download.Size () == info.size ());
+	assert (download.Receive (2, 0, info.size (), first, hash, 1) == Result::Rejected);
+	assert (download.Receive (1, 0, info.size () + 1, first, hash, 1) == Result::Rejected);
+	assert (download.Receive (1, 0, info.size (), first.first (REQUEST_BLOCK_SIZE - 1), hash, 1) == Result::Rejected);
+	assert (download.Receive (1, 0, info.size (), std::span<const uint8_t> (info), hash, 1) == Result::Rejected);
+	assert (download.Receive (1, std::numeric_limits<size_t>::max (), info.size (), first, hash, 1) == Result::Rejected);
+	assert (download.Received () == 0);
+	// Different peers can deliver disjoint blocks in either order.
+	assert (download.Receive (2, 1, info.size (), second, hash, 1) == Result::Accepted);
+	assert (download.Request (2, info.size (), 1) == 2);
+	assert (download.Receive (2, 2, info.size (), last.first (6), hash, 2) == Result::Rejected);
+	assert (download.Receive (2, 2, info.size (), last, hash, 2) == Result::Accepted);
+	assert (download.Receive (2, 2, info.size (), last, hash, 2) == Result::Rejected);
+	assert (download.Receive (1, 0, info.size (), first, hash, 2) == Result::Complete);
+	assert (!download.Request (3, info.size (), 2));
+	assert (download.TakeVerified () == info);
+	assert (download.Size () == 0);
+	assert (download.TakeVerified ().empty ());
+
+	assert (download.Request (1, info.size (), 0) == 0);
+	assert (download.Request (2, info.size (), 0) == 1);
+	download.Release (1); // disconnect releases only its own outstanding block
+	assert (download.Request (3, info.size (), 1) == 0);
+	assert (!download.Reject (1, 1, 1));
+	assert (download.Reject (2, 1, 1));
+	assert (download.Request (4, info.size (), 2) == 1);
+	assert (download.Receive (3, 0, info.size (), first, hash, 31) == Result::Rejected);
+	assert (download.Request (5, info.size (), 31) == 0); // expired exactly at deadline
+	download.Reset ();
+	assert (download.Request (1, info.size (), 0) == 0);
+	assert (!download.Request (2, info.size () + 1, 29));
+	assert (download.Request (2, info.size () + 1, 30) == 0); // stalled wrong-size candidate retired
+	assert (download.Size () == info.size () + 1);
+	download.Reset ();
+	assert (download.Request (1, info.size (), 0) == 0);
+	assert (!download.Request (2, info.size () + 1, 1));
+	assert (!download.Request (1, info.size (), 30)); // renewal cannot starve the alternate offer
+	assert (download.Request (2, info.size () + 1, 30) == 0);
+	download.Reset ();
+	assert (download.Request (1, info.size (), 0) == 0);
+	assert (!download.Request (2, info.size () + 1, 1));
+	assert (!download.Request (1, info.size (), 30));
+	assert (download.Request (1, info.size (), 60) == 0); // vanished alternate cannot pin preference forever
+	download.Reset ();
+
+	const std::array<uint8_t, 1> byte { 7 };
+	std::array<uint8_t, SHA_DIGEST_LENGTH> oneHash { };
+	assert (SHA1 (byte.data (), byte.size (), oneHash.data ()));
+	const std::array<uint8_t, SHA_DIGEST_LENGTH> wrongHash { };
+	uint64_t now = 0, delay = 30;
+	for (unsigned failure = 0; failure < 6; ++failure)
+	{
+		assert (download.Request (1, 1, now) == 0);
+		assert (download.Receive (1, 0, 1, byte, wrongHash, now) == Result::HashMismatch);
+		assert (download.Size () == 0 && download.TakeVerified ().empty ());
+		assert (!download.Request (2, 1, now + delay - 1));
+		now += delay;
+		delay = std::min<uint64_t> (delay * 2, 300);
+	}
+	assert (download.Request (2, 1, now) == 0);
+	assert (download.Receive (2, 0, 1, byte, oneHash, now) == Result::Complete);
+	assert (download.TakeVerified () == std::vector<uint8_t> (byte.begin (), byte.end ()));
+	assert (download.Request (1, MAX_PEER_METADATA_SIZE, now) == 0);
+	assert (download.Size () == MAX_PEER_METADATA_SIZE);
+	download.Reset ();
+	Torrent magnet (hash);
+	auto owner = magnet.AllocateMetadataOwner ();
+	assert (owner && magnet.GetMetadataDownload ().Request (owner, info.size (), 0) == 0);
+	magnet.SetStopped (true);
+	assert (magnet.GetMetadataDownload ().Size () == 0);
+	assert (magnet.AllocateMetadataOwner () > owner); // old connection IDs never reappear
+}
+}
+
 int main ()
 {
 	using namespace i2p::torrents;
+	TestSharedMetadata ();
 	assert (CreateByteString ("") == "0:");
 	assert (CreateDictionary ({ { "z", "i1e" }, { "a", "0:" } }) == "d1:a0:1:zi1ee");
 	assert (CreateDictionary ({ { "a", "i1e" }, { "a", "i2e" } }).empty ());
