@@ -701,6 +701,7 @@ namespace transport
 		, m_Server (server)
 		, m_Socket (m_Server.GetService ())
 		, m_ReadTimer (m_Server.GetService ())
+		, m_InitialReadTimer (m_Server.GetService ())
 		, m_IsEstablished (false)
 		, m_IsTerminated (false)
 		, m_IsClockSkew (false)
@@ -773,6 +774,7 @@ namespace transport
 		if (!isTerminated)
 		{
 			m_IsEstablished = false;
+			CancelInitialReadDeadline ();
 			// A data-phase failure drain and the per-frame read deadline must
 			// not outlive the session; the handlers are idempotent but the timer
 			// keeps a shared reference to this session.
@@ -806,6 +808,7 @@ namespace transport
 
 	void NTCP2Session::Close ()
 	{
+		CancelInitialReadDeadline ();
 		m_FailureDrain.Reset ();
 		m_ReadTimer.cancel ();
 		m_Socket.close ();
@@ -851,7 +854,7 @@ namespace transport
 		transports.PeerConnected (shared_from_this ());
 	}
 
-	// The AEAD nonce is the 64-bit frame sequence number in big-endian
+	// The AEAD nonce is the 64-bit frame sequence number in little-endian
 	// order with a zeroed 4-byte prefix (spec/ntcp2 framing). The counter
 	// is per-direction and only increments after the AEAD operation
 	// succeeded, so a failed frame never advances the expected nonce.
@@ -954,6 +957,10 @@ namespace transport
 	void NTCP2Session::HandleSessionRequestReceived (
 		const boost::system::error_code & ecode, std::size_t bytes_transferred)
 	{
+		// Retire the service-owned deadline before handing work to the
+		// separate establisher. That executor still owns later handshake IO.
+		CancelInitialReadDeadline ();
+		if (IsTerminated ()) return;
 		if (ecode)
 		{
 			LogPrint (eLogWarning, "NTCP2: SessionRequest read error: ", ecode.message ());
@@ -1547,13 +1554,56 @@ namespace transport
 
 	void NTCP2Session::ServerLogin (int version)
 	{
+		if (IsTerminated ()) return;
 		if (m_Establisher) m_Establisher->SetVersion (version);
 		SetTerminationTimeout (NTCP2_ESTABLISH_TIMEOUT);
 		SetLastActivityTimestamp (i2p::util::GetSecondsSinceEpoch ());
+		ScheduleInitialReadDeadline ();
+		const auto generation = m_InitialReadGeneration.load (std::memory_order_relaxed);
 		boost::asio::async_read (m_Socket, boost::asio::buffer (m_Establisher->m_Buffer, 64),
 			boost::asio::transfer_all (),
-			std::bind (&NTCP2Session::HandleSessionRequestReceived, shared_from_this (), std::placeholders::_1,
-				std::placeholders::_2));
+			[self = shared_from_this (), generation] (const boost::system::error_code & ecode, size_t transferred)
+			{
+				if (generation == self->m_InitialReadGeneration.load (std::memory_order_relaxed))
+					self->HandleSessionRequestReceived (ecode, transferred);
+			});
+	}
+
+	void NTCP2Session::ScheduleInitialReadDeadline ()
+	{
+		const auto generation = m_InitialReadGeneration.fetch_add (1, std::memory_order_relaxed) + 1;
+		m_InitialReadTimer.expires_after (std::chrono::seconds (NTCP2_ESTABLISH_TIMEOUT));
+		m_InitialReadTimer.async_wait (
+			[weak = weak_from_this (), generation] (const boost::system::error_code & ecode)
+			{
+				if (auto self = weak.lock ()) self->HandleInitialReadDeadline (ecode, generation);
+			});
+	}
+
+	void NTCP2Session::CancelInitialReadDeadline ()
+	{
+		// Later handshake paths may terminate from the establisher thread.
+		// Revoke callbacks immediately, but mutate the timer only on its
+		// executor. A delayed cancellation must not cancel a newer arm.
+		const auto generation = m_InitialReadGeneration.fetch_add (1, std::memory_order_relaxed) + 1;
+		boost::asio::dispatch (m_Server.GetService (),
+			[weak = weak_from_this (), generation] ()
+			{
+				if (auto self = weak.lock ();
+					self && generation == self->m_InitialReadGeneration.load (std::memory_order_relaxed))
+					self->m_InitialReadTimer.cancel ();
+			});
+	}
+
+	void NTCP2Session::HandleInitialReadDeadline (const boost::system::error_code & ecode, uint64_t generation)
+	{
+		if (ecode == boost::asio::error::operation_aborted
+			|| generation != m_InitialReadGeneration.load (std::memory_order_relaxed)) return;
+		if (IsTerminated () || IsEstablished ()) return;
+		// No protocol keys exist yet. Close silently rather than emit a
+		// termination frame or retain the prefix until the 28-33 s sweep.
+		LogPrint (eLogWarning, "NTCP2: Initial SessionRequest read timed out");
+		Terminate ();
 	}
 
 	bool NTCP2Session::HasPendingIncomingData ()
@@ -2628,7 +2678,15 @@ namespace transport
 	bool NTCP2Server::AddNTCP2Session (std::shared_ptr<NTCP2Session> session, bool incoming)
 	{
 		if (!session || !m_IsReady || session->IsTerminated ()) return false;
-		if (incoming) m_PendingIncomingSessions.erase (session->GetRemoteEndpoint ().address ());
+		if (incoming)
+		{
+			// A delayed handshake completion must not release a newer
+			// session's admission slot for the same source prefix.
+			const auto key = NTCP2AdmissionAddress (session->GetRemoteEndpoint ().address ());
+			auto pending = m_PendingIncomingSessions.find (key);
+			if (pending != m_PendingIncomingSessions.end () && pending->second == session)
+				m_PendingIncomingSessions.erase (pending);
+		}
 		if (!session->GetRemoteIdentity ())
 		{
 			LogPrint (eLogWarning, "NTCP2: Unknown identity for ", session->GetRemoteEndpoint ());
@@ -2662,13 +2720,13 @@ namespace transport
 	void NTCP2Server::RemoveNTCP2Session (std::shared_ptr<NTCP2Session> session)
 	{
 		if (!session) return;
-		// Release a per-address pending handshake slot immediately, so a peer
+		// Release a per-prefix pending handshake slot immediately, so a peer
 		// that failed or closed a handshake can reconnect without waiting for
 		// the 28-33 second termination sweep.
 		const auto & address = session->GetRemoteEndpoint ().address ();
 		if (!address.is_unspecified ())
 		{
-			auto pending = m_PendingIncomingSessions.find (address);
+			auto pending = m_PendingIncomingSessions.find (NTCP2AdmissionAddress (address));
 			if (pending != m_PendingIncomingSessions.end () && pending->second == session)
 				m_PendingIncomingSessions.erase (pending);
 		}
@@ -2777,14 +2835,14 @@ namespace transport
 				{
 					if (m_PendingIncomingSessions.size () >= NTCP2_MAX_PENDING_INCOMING_SESSIONS)
 						LogPrint (eLogWarning, "NTCP2: Too many pending incoming sessions");
-					else if (m_PendingIncomingSessions.emplace (ep.address (), conn).second)
+					else if (m_PendingIncomingSessions.emplace (NTCP2AdmissionAddress (ep.address ()), conn).second)
 					{
 						conn->SetRemoteEndpoint (ep);
 						conn->ServerLogin (m_Version);
 						conn = nullptr;
 					}
 					else
-						LogPrint (eLogInfo, "NTCP2: Incoming session from ", ep.address (), " is already pending");
+						LogPrint (eLogInfo, "NTCP2: Incoming source prefix already has a pending session");
 				}
 				else
 					LogPrint (eLogError, "NTCP2: Incoming connection from invalid or banned IP ", ep.address ());
@@ -2815,7 +2873,7 @@ namespace transport
 
 	void NTCP2Server::HandleAcceptV6 (std::shared_ptr<NTCP2Session> conn, const boost::system::error_code & error)
 	{
-		if (!error && conn)
+		if (!error && conn && m_IsReady)
 		{
 			boost::system::error_code ec;
 			auto ep = conn->GetSocket ().remote_endpoint (ec);
@@ -2829,7 +2887,7 @@ namespace transport
 				{
 					if (m_PendingIncomingSessions.size () >= NTCP2_MAX_PENDING_INCOMING_SESSIONS)
 						LogPrint (eLogWarning, "NTCP2: Too many pending incoming sessions");
-					else if (m_PendingIncomingSessions.emplace (ep.address (), conn).second)
+					else if (m_PendingIncomingSessions.emplace (NTCP2AdmissionAddress (ep.address ()), conn).second)
 					{
 						conn->SetRemoteEndpoint (ep);
 						conn->ServerLogin (i2p::util::net::IsYggdrasilAddress (ep.address ())
@@ -2838,7 +2896,7 @@ namespace transport
 						conn = nullptr;
 					}
 					else
-						LogPrint (eLogInfo, "NTCP2: Incoming session from ", ep.address (), " is already pending");
+						LogPrint (eLogInfo, "NTCP2: Incoming source prefix already has a pending session");
 				}
 				else
 					LogPrint (eLogError, "NTCP2: Incoming connection from invalid or banned IP ", ep.address ());

@@ -98,6 +98,21 @@ peer or add a hidden external checkout. The reference is for reading only.
   protocol requirement justifies it.
 
 ## Known issues and decisions
+- NTCP2's first 64 inbound SessionRequest bytes have a dedicated 10 s
+  service-owned read deadline. Cancel it before crypto handoff; atomic
+  generation revocation plus weak executor dispatch protects cancellation
+  from later handshake threads. A delayed cancel must not cancel a successor.
+  Padding, PQ bytes and SessionConfirmed still depend on the sweep until
+  socket ownership across the establisher/service executors is resolved.
+- NTCP2 pending admission keys canonicalize IPv4 as /32, IPv6 as /64 and
+  mapped IPv4 as its native address. Use the same function in both acceptors,
+  promotion and removal; original remote endpoints remain unmodified. The
+  policy serializes simultaneous handshakes within a /64, so it needs live
+  shared-prefix compatibility coverage. It does not bound established peers.
+- Pending NTCP2 handshake slots are keyed by address but owned by a specific
+  session. Completion and removal must compare the stored shared owner before
+  erasing; a delayed completion must not release a successor's admission slot.
+  This is a local lifecycle invariant and changes no handshake bytes.
 
 - NTCP2 body reads always enter `Receive()`, including buffered data, so the
   body deadline and shared callback ownership have one path. Never restore

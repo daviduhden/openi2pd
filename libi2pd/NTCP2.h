@@ -8,7 +8,7 @@
  * exchange, SessionRequest/Created/Confirmed processing,
  * AEAD-ChaCha20-Poly1305 data framing, SipHash obfuscation and padding
  * policy. The server bounds handshake allocation, enforces replay
- * caches and per-address pending-session limits, and uses
+ * caches and per-prefix pending-session limits, and uses
  * Java-compatible termination timers.
  *
  */
@@ -57,11 +57,25 @@ namespace transport
 	// NTCPTransport); the spec requires a cache lifetime of at least 2*D.
 	const int NTCP2_HANDSHAKE_REPLAY_TIMEOUT = 10 * 60; // in seconds
 	const size_t NTCP2_MAX_HANDSHAKE_REPLAY_ENTRIES = 8192;
-	// Bound the number of distinct source addresses that can occupy a
-	// pending inbound handshake slot at once. One pending handshake per
-	// address is already enforced by
-	// NTCP2Server::m_PendingIncomingSessions.
+	// Bound simultaneous pending source prefixes. One pending handshake
+	// per IPv4 address or IPv6 /64 is enforced by the admission map.
 	const size_t NTCP2_MAX_PENDING_INCOMING_SESSIONS = 512;
+
+	/// Canonical pending-handshake key: IPv4 /32 or IPv6 /64.
+	/// Mapped IPv4 shares its native IPv4 key; IPv6 scope IDs do not
+	/// grant extra slots. This is admission policy, not a wire address.
+	/// Established sessions no longer occupy a pending-prefix slot.
+	inline boost::asio::ip::address NTCP2AdmissionAddress (const boost::asio::ip::address & address)
+	{
+		if (address.is_v4 ()) return address;
+		const auto v6 = address.to_v6 ();
+		auto bytes = v6.to_bytes ();
+		if (v6.is_v4_mapped ())
+			return boost::asio::ip::address_v4 (
+				boost::asio::ip::address_v4::bytes_type { bytes[12], bytes[13], bytes[14], bytes[15] });
+		for (size_t i = 8; i < bytes.size (); ++i) bytes[i] = 0;
+		return boost::asio::ip::address_v6 (bytes);
+	}
 
 	// spec/ntcp2-hybrid, table "Maximum Padding": the maximum cleartext
 	// padding a peer may send in SessionRequest (message 1) and
@@ -387,6 +401,14 @@ namespace transport
 		void MoveSendQueue (std::shared_ptr<NTCP2Session> other);
 
 	private:
+		friend struct NTCP2InitialReadTestAccess;
+		// Arming belongs to the socket service. Cancellation revokes the
+		// atomic generation immediately and dispatches timer mutation there.
+		// Later handshake phases still use the periodic timeout sweep.
+		void ScheduleInitialReadDeadline ();
+		void CancelInitialReadDeadline ();
+		void HandleInitialReadDeadline (const boost::system::error_code & ecode, uint64_t generation);
+
 		void Established ();
 
 		void CreateNonce (uint64_t seqn, uint8_t * nonce);
@@ -454,6 +476,10 @@ namespace transport
 		// after a failure, the bounded drain deadline. Both are cancelled on
 		// close/Stop.
 		boost::asio::steady_timer m_ReadTimer;
+		// Independent of data-phase deadlines; generation rejects an
+		// already-queued expiry after close/reuse of an accept session.
+		boost::asio::steady_timer m_InitialReadTimer;
+		std::atomic<uint64_t> m_InitialReadGeneration { 0 };
 		boost::asio::ip::tcp::endpoint m_RemoteEndpoint;
 		std::atomic<bool> m_IsEstablished, m_IsTerminated;
 		// SessionRequest carried a tsA outside ±NTCP2_CLOCK_SKEW. Bob still
@@ -600,6 +626,7 @@ namespace transport
 		boost::asio::steady_timer m_TerminationTimer;
 		std::unique_ptr<boost::asio::ip::tcp::acceptor> m_NTCP2Acceptor, m_NTCP2V6Acceptor;
 		std::map<i2p::data::IdentHash, std::shared_ptr<NTCP2Session>> m_NTCP2Sessions;
+		// Canonical NTCP2AdmissionAddress keys; endpoint addresses stay intact.
 		std::map<boost::asio::ip::address, std::shared_ptr<NTCP2Session>> m_PendingIncomingSessions;
 
 		std::mutex m_HandshakeReplayMutex;

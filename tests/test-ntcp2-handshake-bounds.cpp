@@ -12,10 +12,29 @@
 
 #include <cassert>
 #include <cstdint>
+#include <map>
+#include <memory>
 #include <vector>
 
 #include "I2PEndian.h"
 #include "NTCP2.h"
+
+namespace i2p::transport
+{
+struct NTCP2InitialReadTestAccess
+{
+	static uint64_t Arm (NTCP2Session & session)
+	{
+		session.ScheduleInitialReadDeadline ();
+		return session.m_InitialReadGeneration.load (std::memory_order_relaxed);
+	}
+	static size_t CancelPendingWait (NTCP2Session & session) { return session.m_InitialReadTimer.cancel (); }
+	static void Complete (NTCP2Session & session, const boost::system::error_code & error, uint64_t generation)
+	{
+		session.HandleInitialReadDeadline (error, generation);
+	}
+};
+}
 
 namespace
 {
@@ -40,10 +59,74 @@ bool Validate (const Payload & payload)
 	size_t ignored = 0;
 	return i2p::transport::ValidateNTCP2SessionConfirmedPayload (payload.data (), payload.size (), ignored);
 }
+
+void TestAdmissionPrefixes ()
+{
+	using boost::asio::ip::make_address;
+	using i2p::transport::NTCP2AdmissionAddress;
+	const auto v4 = make_address ("192.0.2.1");
+	assert (NTCP2AdmissionAddress (v4) == v4);
+	assert (NTCP2AdmissionAddress (make_address ("::ffff:192.0.2.1")) == v4);
+	assert (NTCP2AdmissionAddress (make_address ("192.0.2.2")) != v4);
+	const auto first = make_address ("2001:db8:1234:5678::1");
+	const auto prefix = NTCP2AdmissionAddress (first);
+	assert (prefix == make_address ("2001:db8:1234:5678::"));
+	assert (NTCP2AdmissionAddress (make_address ("2001:db8:1234:5678:ffff:ffff:ffff:ffff")) == prefix);
+	assert (NTCP2AdmissionAddress (make_address ("2001:db8:1234:5679::1")) != prefix);
+	assert (NTCP2AdmissionAddress (prefix) == prefix);
+	assert (NTCP2AdmissionAddress (boost::asio::ip::address_v6 (first.to_v6 ().to_bytes (), 7)) == prefix);
+
+	// Rotating every host identifier in one subnet cannot consume the
+	// global pending budget. Release from another address in the same
+	// prefix must find the same slot, and a later handshake can reuse it.
+	std::map<boost::asio::ip::address, int> pending;
+	for (size_t i = 0; i < i2p::transport::NTCP2_MAX_PENDING_INCOMING_SESSIONS; ++i)
+	{
+		auto bytes = first.to_v6 ().to_bytes ();
+		bytes[14] = static_cast<uint8_t> (i >> 8);
+		bytes[15] = static_cast<uint8_t> (i);
+		assert (pending.emplace (NTCP2AdmissionAddress (boost::asio::ip::address_v6 (bytes)), 1).second == (i == 0));
+	}
+	assert (pending.size () == 1);
+	assert (pending.erase (NTCP2AdmissionAddress (make_address ("2001:db8:1234:5678::ffff"))) == 1);
+	assert (pending.emplace (NTCP2AdmissionAddress (first), 2).second);
+	assert (pending.at (prefix) == 2);
+	assert (pending.emplace (NTCP2AdmissionAddress (v4), 3).second);
+	assert (!pending.emplace (NTCP2AdmissionAddress (make_address ("::ffff:192.0.2.1")), 4).second);
+}
+
+void TestInitialReadDeadlineLifetime ()
+{
+	using namespace i2p::transport;
+	NTCP2Server server;
+	auto session = std::make_shared<NTCP2Session> (server);
+	const auto previous = NTCP2InitialReadTestAccess::Arm (*session);
+	session->Close ();
+	const auto current = NTCP2InitialReadTestAccess::Arm (*session);
+	assert (current != previous);
+	// An expiry already queued before cancellation cannot close a reused
+	// session; cancellation of the current generation is inert too.
+	NTCP2InitialReadTestAccess::Complete (*session, { }, previous);
+	assert (!session->IsTerminated ());
+	NTCP2InitialReadTestAccess::Complete (*session, boost::asio::error::operation_aborted, current);
+	assert (!session->IsTerminated ());
+	// Close queued its cancellation without a running executor. It must
+	// skip the successor armed above when the executor finally runs.
+	server.GetService ().poll ();
+	assert (NTCP2InitialReadTestAccess::CancelPendingWait (*session) == 1);
+	session->Close ();
+	std::weak_ptr<NTCP2Session> weak = session;
+	session.reset ();
+	assert (weak.expired ()); // timer callbacks must not own the session
+	if (server.GetService ().stopped ()) server.GetService ().restart ();
+	server.GetService ().poll ();
+}
 }
 
 int main ()
 {
+	TestAdmissionPrefixes ();
+	TestInitialReadDeadlineLifetime ();
 	// spec/ntcp2-hybrid Maximum Padding: message 1 (SessionRequest).
 	static_assert (i2p::transport::NTCP2GetMaxHandshakePadding (2, false) == 880);
 	static_assert (i2p::transport::NTCP2GetMaxHandshakePadding (3, false) == 880);
