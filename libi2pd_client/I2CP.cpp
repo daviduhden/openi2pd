@@ -713,14 +713,17 @@ namespace client
 		if (!session || !session->ArmResponseTimer ()) return;
 		auto timer = std::make_shared<boost::asio::steady_timer> (GetService ());
 		timer->expires_after (std::chrono::milliseconds (I2CP_RATCHETS_RESPONSE_TIMEOUT));
+		std::weak_ptr<I2CPDestination> weak = GetSharedFromThis ();
 		timer->async_wait (
-			[session, s = GetSharedFromThis (), timer] (const boost::system::error_code & ecode)
+			[session, weak, timer] (const boost::system::error_code & ecode)
 			{
 				session->DisarmResponseTimer ();
 				if (ecode != boost::asio::error::operation_aborted && !session->IsTerminated ()
 					&& session->IsResponseRequired () && // response still required
 					session->GetDestinationPtr ()) // we know ident hash
 				{
+					auto s = weak.lock ();
+					if (!s) return;
 					auto pool = s->GetTunnelPool ();
 					if (!pool) return;
 					auto ls = s->FindLeaseSet (*session->GetDestinationPtr ());
@@ -757,8 +760,11 @@ namespace client
 
 	void I2CPDestination::CreateNewLeaseSet (const std::vector<std::shared_ptr<i2p::tunnel::InboundTunnel>> & tunnels)
 	{
-		boost::asio::post (
-			GetService (), std::bind (&I2CPDestination::PostCreateNewLeaseSet, GetSharedFromThis (), tunnels));
+		std::weak_ptr<I2CPDestination> weak = GetSharedFromThis ();
+		boost::asio::post (GetService (), [weak, tunnels]
+			{
+				if (auto self = weak.lock ()) self->PostCreateNewLeaseSet (tunnels);
+			});
 	}
 
 	void I2CPDestination::PostCreateNewLeaseSet (std::vector<std::shared_ptr<i2p::tunnel::InboundTunnel>> tunnels)
@@ -774,10 +780,12 @@ namespace client
 		{
 			// try again later
 			m_ReadinessCheckTimer.expires_after (std::chrono::seconds (I2CP_DESTINATION_READINESS_CHECK_INTERVAL));
+			std::weak_ptr<I2CPDestination> weak = GetSharedFromThis ();
 			m_ReadinessCheckTimer.async_wait (
-				[s = GetSharedFromThis (), tunnels = std::move (tunnels)] (const boost::system::error_code & ecode)
+				[weak, tunnels = std::move (tunnels)] (const boost::system::error_code & ecode)
 				{
-					if (ecode != boost::asio::error::operation_aborted) s->PostCreateNewLeaseSet (tunnels);
+					if (ecode == boost::asio::error::operation_aborted) return;
+					if (auto self = weak.lock ()) self->PostCreateNewLeaseSet (tunnels);
 				});
 			return;
 		}
@@ -798,14 +806,15 @@ namespace client
 				size_t l = 2 /*sessionID*/ + 1 /*num leases*/ + i2p::data::LEASE_SIZE * numLeases;
 				owner->SendI2CPMessage (I2CP_REQUEST_VARIABLE_LEASESET_MESSAGE, leases - 3, l);
 				m_LeaseSetCreationTimer.expires_after (std::chrono::seconds (I2CP_LEASESET_CREATION_TIMEOUT));
-				auto s = GetSharedFromThis ();
+				std::weak_ptr<I2CPDestination> weak = GetSharedFromThis ();
 				m_LeaseSetCreationTimer.async_wait (
-					[s] (const boost::system::error_code & ecode)
+					[weak] (const boost::system::error_code & ecode)
 					{
-						if (ecode != boost::asio::error::operation_aborted)
+						if (ecode == boost::asio::error::operation_aborted) return;
+						if (auto self = weak.lock ())
 						{
 							LogPrint (eLogInfo, "I2CP: LeaseSet creation timeout expired. Terminate");
-							if (auto stopped = s->GetSessionOwner ()) stopped->Stop ();
+							if (auto stopped = self->GetSessionOwner ()) stopped->Stop ();
 						}
 					});
 			}
@@ -873,10 +882,12 @@ namespace client
 			else
 			{
 				// send in destination's thread
-				auto s = GetSharedFromThis ();
+				std::weak_ptr<I2CPDestination> weak = GetSharedFromThis ();
 				boost::asio::post (GetService (),
-					[s, msg, remote, nonce] ()
+					[weak, msg, remote, nonce] ()
 					{
+					auto s = weak.lock ();
+					if (!s) return;
 						bool sent = s->SendMsg (msg, remote);
 						if (auto owner = s->GetSessionOwner ())
 							owner->SendMessageStatusMessage (nonce,
@@ -886,10 +897,12 @@ namespace client
 		}
 		else
 		{
-			auto s = GetSharedFromThis ();
+			std::weak_ptr<I2CPDestination> weak = GetSharedFromThis ();
 			RequestDestination (ident,
-				[s, msg, nonce] (std::shared_ptr<i2p::data::LeaseSet> ls)
+				[weak, msg, nonce] (std::shared_ptr<i2p::data::LeaseSet> ls)
 				{
+					auto s = weak.lock ();
+					if (!s) return;
 					if (ls)
 					{
 						bool sent = s->SendMsg (msg, ls);
@@ -1085,13 +1098,13 @@ namespace client
 
 	void RunnableI2CPDestination::Stop ()
 	{
+		if (m_StopRequested.exchange (true)) return;
 		if (!IsRunning ())
 		{
 			I2CPDestination::Stop ();
 			m_Self.reset ();
 			return;
 		}
-		if (m_StopRequested.exchange (true)) return;
 
 		if (IsInServiceThread ())
 		{
@@ -1122,7 +1135,9 @@ namespace client
 
 	I2CPSession::I2CPSession (
 		I2CPServer & owner, std::shared_ptr<boost::asio::ip::tcp::socket> socket, bool connectionAdmitted)
-		: m_Owner (owner)
+		: m_ExecutorAuthority (owner.m_Service)
+		, m_OwnerAuthority (owner.m_Lifetime)
+		, m_Owner (owner)
 		, m_Socket (socket)
 		, m_SessionID (0xFFFF)
 		, m_MessageID (0)
@@ -1142,6 +1157,21 @@ namespace client
 		TerminateInOwnerThread ();
 	}
 
+	std::unique_lock<std::mutex> I2CPSession::LockOwner () const
+	{
+		std::unique_lock authority (m_OwnerAuthority->lifetime, std::defer_lock);
+		// A worker or exclusive drain owns the facade until its dispatch
+		// finishes. External calls pin retirement and queue publication.
+		if (!m_ExecutorAuthority->get_executor ().running_in_this_thread ()) authority.lock ();
+		return authority;
+	}
+
+	bool I2CPSession::IsOwnerStopping () const
+	{
+		auto authority = LockOwner ();
+		return !m_OwnerAuthority->owner || m_OwnerAuthority->owner->IsStopping ();
+	}
+
 	void I2CPSession::Start ()
 	{
 		if (m_Socket)
@@ -1159,9 +1189,9 @@ namespace client
 
 	void I2CPSession::ArmReadTimeout (int seconds)
 	{
-		// basic_waitable_timer has no error_code cancel overload on the
-		// supported Boost range; cancel() is safe without a pending wait and
-		// each arm replaces the previous deadline.
+		// Use non-deprecated cancel() across supported Boost versions; newer
+		// releases remove its error_code overload. Each arm replaces the
+		// previous deadline, including when no wait is currently pending.
 		m_ReadTimer.cancel ();
 		m_ReadTimer.expires_after (std::chrono::seconds (seconds));
 		m_ReadTimer.async_wait (
@@ -1170,7 +1200,8 @@ namespace client
 
 	void I2CPSession::CancelReadTimeout ()
 	{
-		m_ReadTimer.cancel ();
+		try { m_ReadTimer.cancel (); }
+		catch (const boost::system::system_error &) { }
 	}
 
 	void I2CPSession::HandleReadTimeout (const boost::system::error_code & ecode)
@@ -1198,6 +1229,7 @@ namespace client
 
 	void I2CPSession::ReadProtocolByte ()
 	{
+		if (m_Terminated.load () || IsOwnerStopping ()) return;
 		auto socket = m_Socket;
 		if (socket)
 		{
@@ -1208,6 +1240,7 @@ namespace client
 			socket->async_read_some (boost::asio::buffer (m_Header, 1),
 				[s, socket] (const boost::system::error_code & ecode, std::size_t bytes_transferred)
 				{
+					if (s->m_Terminated.load () || s->IsOwnerStopping ()) return;
 					if (!ecode && bytes_transferred > 0 && s->m_Header[0] == I2CP_PROTOCOL_BYTE)
 						s->ReceiveHeader ();
 					else
@@ -1218,6 +1251,7 @@ namespace client
 
 	void I2CPSession::ReceiveHeader ()
 	{
+		if (m_Terminated.load () || IsOwnerStopping ()) return;
 		// A session that is closing after its terminal reply reads nothing
 		// more: the armed reply deadline bounds the flush and then
 		// terminates.
@@ -1244,6 +1278,7 @@ namespace client
 		socket->async_read_some (boost::asio::buffer (m_Header + m_HeaderReceived, I2CP_HEADER_SIZE - m_HeaderReceived),
 			[s = shared_from_this (), socket] (const boost::system::error_code & ecode, std::size_t bytes_transferred)
 			{
+				if (s->m_Terminated.load () || s->IsOwnerStopping ()) return;
 				if (ecode)
 				{
 					s->Terminate ();
@@ -1262,6 +1297,7 @@ namespace client
 
 	void I2CPSession::HandleReceivedHeader ()
 	{
+		if (m_Terminated.load () || IsOwnerStopping ()) return;
 		m_PayloadLen = bufbe32toh (m_Header + I2CP_HEADER_LENGTH_OFFSET);
 		if (m_PayloadLen > I2CP_MAX_MESSAGE_LENGTH)
 		{
@@ -1284,6 +1320,7 @@ namespace client
 
 	void I2CPSession::ReceivePayload ()
 	{
+		if (m_Terminated.load () || IsOwnerStopping ()) return;
 		auto socket = m_Socket;
 		if (!socket)
 		{
@@ -1301,6 +1338,7 @@ namespace client
 
 	void I2CPSession::HandleReceivedPayload (const boost::system::error_code & ecode, std::size_t)
 	{
+		if (m_Terminated.load () || IsOwnerStopping ()) return;
 		if (ecode)
 		{
 			Terminate ();
@@ -1316,6 +1354,7 @@ namespace client
 
 	void I2CPSession::HandleMessage ()
 	{
+		if (m_Terminated.load () || IsOwnerStopping ()) return;
 		auto handler = m_Owner.GetMessagesHandlers ()[m_Header[I2CP_HEADER_TYPE_OFFSET]];
 		if (handler)
 			(this->*handler) (m_Payload, m_PayloadLen);
@@ -1325,9 +1364,17 @@ namespace client
 
 	void I2CPSession::Terminate ()
 	{
+		auto authority = LockOwner ();
 		if (m_Terminated.load ()) return;
+		if (!m_OwnerAuthority->owner)
+		{
+			if (authority.owns_lock ()) authority.unlock ();
+			TerminateInOwnerThread ();
+			return;
+		}
 		if (!m_Owner.IsInServiceThread ())
 		{
+			if (m_Owner.IsStopping ()) return;
 			// The socket and the send queue are owned by the I2CP service
 			// thread. A timer or a destination worker reaching this path must
 			// not close them (or join the destination) from its own thread.
@@ -1363,8 +1410,11 @@ namespace client
 			if (!m_SendQueue.IsEmpty ()) m_SendQueue.CleanUp ();
 			m_IsSending = false;
 		}
+		// No lifetime lock is held while stopping a destination: its worker
+		// may be finishing an external send that needs the same authority.
+		auto authority = LockOwner ();
 		auto sessionID = m_SessionID.exchange (0xFFFF);
-		if (sessionID != 0xFFFF)
+		if (sessionID != 0xFFFF && m_OwnerAuthority->owner)
 		{
 			// Remove exactly the identifier that was inserted, even if a second
 			// CREATE SESSION arrived in the meantime.
@@ -1373,11 +1423,14 @@ namespace client
 		}
 		// The admission slot is released exactly once, and only when this
 		// session was actually charged for one.
-		if (m_ConnectionAdmitted && !m_ConnectionReleased.exchange (true)) m_Owner.ReleaseConnection ();
+		if (m_ConnectionAdmitted && !m_ConnectionReleased.exchange (true) && m_OwnerAuthority->owner)
+			m_Owner.ReleaseConnection (this);
 	}
 
 	void I2CPSession::SendI2CPMessage (uint8_t type, const uint8_t * payload, size_t len, bool closeAfterFlush)
 	{
+		auto authority = LockOwner ();
+		if (m_Terminated.load () || !m_OwnerAuthority->owner || m_Owner.IsStopping ()) return;
 		auto l = len + I2CP_HEADER_SIZE;
 		if (l > I2CP_MAX_MESSAGE_LENGTH)
 		{
@@ -1418,6 +1471,7 @@ namespace client
 	void I2CPSession::QueueI2CPMessage (
 		std::shared_ptr<i2p::stream::SendBuffer> && sendBuf, size_t len, bool closeAfterFlush)
 	{
+		if (m_Terminated.load () || IsOwnerStopping ()) return;
 		if (closeAfterFlush)
 		{
 			// Recorded before the queue decision so a frame that cannot be
@@ -2246,14 +2300,12 @@ namespace client
 							}
 						}
 					}
-					auto s = shared_from_this ();
-					auto complete = [s, requestID, sessionID, blinded, requestOptions, secret] (
+					std::weak_ptr<I2CPSession> weak = shared_from_this ();
+					auto complete = [weak, requestID, sessionID, blinded, requestOptions] (
 										std::shared_ptr<i2p::data::LeaseSet> leaseSet)
 					{
-						// The captured secret keeps the client-auth bytes alive for
-						// the whole pending request, so no future asynchronous copy
-						// can read a released buffer.
-						(void)secret;
+						auto s = weak.lock ();
+						if (!s) return;
 						uint8_t result = eI2CPHostReplySuccess;
 						// A b33 LeaseSet is stored under the blinded store key.
 						// Its inner identity is necessarily different from the
@@ -2382,11 +2434,13 @@ namespace client
 			}
 			else
 			{
-				auto s = shared_from_this ();
+				std::weak_ptr<I2CPSession> weak = shared_from_this ();
 				i2p::data::IdentHash ident (buf);
 				m_Destination->RequestDestination (ident,
-					[s, ident] (std::shared_ptr<i2p::data::LeaseSet> leaseSet)
+					[weak, ident] (std::shared_ptr<i2p::data::LeaseSet> leaseSet)
 					{
+						auto s = weak.lock ();
+						if (!s) return;
 						if (leaseSet) // found
 						{
 							auto l = leaseSet->GetIdentity ()->GetFullLen ();
@@ -2419,6 +2473,8 @@ namespace client
 
 	void I2CPSession::SendMessagePayloadMessage (const uint8_t * payload, size_t len)
 	{
+		auto authority = LockOwner ();
+		if (m_Terminated.load () || !m_OwnerAuthority->owner || m_Owner.IsStopping ()) return;
 		// we don't use SendI2CPMessage to eliminate additional copy
 		auto l = len + 10 + I2CP_HEADER_SIZE;
 		if (l > I2CP_MAX_MESSAGE_LENGTH)
@@ -2446,11 +2502,14 @@ namespace client
 	}
 
 	I2CPServer::I2CPServer (const std::string & interface, uint16_t port, bool isSingleThread)
-		: RunnableService ("I2CP")
+		: m_Service (std::make_shared<boost::asio::io_context> ())
+		, m_Lifetime (std::make_shared<I2CPServerLifetime> ())
 		, m_IsSingleThread (isSingleThread)
 		, m_AdmissionPolicy (ReadI2CPAdmissionPolicy ())
-		, m_Acceptor (GetIOService (), boost::asio::ip::tcp::endpoint (boost::asio::ip::make_address (interface), port))
+		, m_Acceptor (*m_Service, boost::asio::ip::tcp::endpoint (boost::asio::ip::make_address (interface), port))
+		, m_Endpoint (m_Acceptor.local_endpoint ())
 	{
+		m_Lifetime->owner = this;
 		memset (m_MessagesHandlers, 0, sizeof (m_MessagesHandlers));
 		m_MessagesHandlers[I2CP_GET_DATE_MESSAGE] = &I2CPSession::GetDateMessageHandler;
 		m_MessagesHandlers[I2CP_CREATE_SESSION_MESSAGE] = &I2CPSession::CreateSessionMessageHandler;
@@ -2468,68 +2527,177 @@ namespace client
 
 	I2CPServer::~I2CPServer ()
 	{
-		if (IsRunning ()) Stop ();
+		Stop ();
+		std::lock_guard lock (m_Lifetime->lifetime);
+		m_Lifetime->owner = nullptr;
 	}
 
 	void I2CPServer::Start ()
 	{
-		// Record the owner thread before any handler can ask for a deferred
-		// termination. The posted callback runs first on the new worker.
-		boost::asio::post (GetIOService (),
-			[this] ()
+		// A handler may request Stop, but restarting requires its controller
+		// to join that generation first. Never self-join or replace the thread.
+		if (IsInServiceThread ()) return;
+		std::lock_guard lifecycle (m_LifecycleMutex);
+		{
+			std::lock_guard admission (m_Lifetime->admission);
+			if (m_Lifetime->accepting) return;
+		}
+		if (m_Thread.joinable ()) StopAndDrain ();
+		std::unique_lock owner (m_Lifetime->lifetime);
+		std::unique_lock admission (m_Lifetime->admission);
+		try
+		{
+			if (!m_Acceptor.is_open ())
 			{
-				std::lock_guard<std::mutex> l (m_ServiceThreadMutex);
-				m_ServiceThreadID = std::this_thread::get_id ();
+				m_Acceptor.open (m_Endpoint.protocol ());
+				m_Acceptor.set_option (boost::asio::socket_base::reuse_address (true));
+				m_Acceptor.bind (m_Endpoint);
+				m_Acceptor.listen ();
+			}
+			m_Service->restart ();
+			++m_Lifetime->generation;
+			m_Lifetime->accepting = true;
+			m_StopRequested.store (false);
+			Accept ();
+			m_Thread = std::jthread ([authority = m_Lifetime, service = m_Service] (std::stop_token token)
+			{
+				i2p::util::SetThreadName ("I2CP");
+				{
+					std::lock_guard lock (authority->admission);
+					if (!authority->owner || !authority->accepting) return;
+					authority->owner->SetServiceThread (std::this_thread::get_id ());
+				}
+				// The controller joins this worker before retiring its authority
+				// or touching executor-owned objects. No callback owns the facade.
+				while (!token.stop_requested () && !service->stopped ())
+				{
+					try { service->run (); }
+					catch (const std::exception &)
+					{
+						LogPrint (eLogError, "I2CP: Service handler failed");
+					}
+				}
+				std::lock_guard lock (authority->admission);
+				if (authority->owner) authority->owner->SetServiceThread ({ });
 			});
-		Accept ();
-		StartIOService ();
+		}
+		catch (...)
+		{
+			m_Lifetime->accepting = false;
+			m_StopRequested.store (true);
+			admission.unlock ();
+			owner.unlock ();
+			StopAndDrain ();
+			throw;
+		}
 	}
 
 	void I2CPServer::StopSessions ()
 	{
+		// Accepted connections include peers still waiting to send a protocol
+		// byte. They are not yet members of the assigned-session registry.
+		decltype (m_Connections) connections;
+		{
+			std::lock_guard lock (m_ConnectionsMutex);
+			connections.swap (m_Connections);
+		}
 		decltype (m_Sessions) sessions;
 		{
 			std::lock_guard<std::mutex> l (m_SessionsMutex);
 			m_Sessions.swap (sessions);
 		}
+		for (auto & entry : connections) entry.second->Stop ();
 		for (auto & it : sessions) it.second->Stop ();
+	}
+
+	void I2CPServer::SetServiceThread (std::thread::id id)
+	{
+		std::lock_guard lock (m_ServiceThreadMutex);
+		m_ServiceThreadID = id;
+	}
+
+	void I2CPServer::CloseAdmission ()
+	{
+		std::lock_guard owner (m_Lifetime->lifetime);
+		std::lock_guard admission (m_Lifetime->admission);
+		m_Lifetime->accepting = false;
+		++m_Lifetime->generation;
+		m_StopRequested.store (true);
+	}
+
+	void I2CPServer::StopAndDrain ()
+	{
+		// Called only by the control thread under m_LifecycleMutex. Joining
+		// is mandatory: a timeout must not race the old socket-owning thread.
+		m_Service->stop ();
+		if (m_Thread.joinable ())
+		{
+			m_Thread.request_stop ();
+			m_Thread.join ();
+		}
+		// The old worker is gone. Transfer executor ownership for this drain
+		// so session teardown still runs inside its own io_context.
+		SetServiceThread (std::this_thread::get_id ());
+		m_Service->restart ();
+		boost::asio::post (*m_Service, [authority = m_Lifetime]
+			{
+				std::lock_guard admission (authority->admission);
+				if (!authority->owner) return;
+				auto & owner = *authority->owner;
+				boost::system::error_code ignored;
+				owner.m_Acceptor.cancel (ignored);
+				owner.m_Acceptor.close (ignored);
+				owner.StopSessions ();
+			});
+		m_Service->poll ();
+		m_Service->stop ();
+		SetServiceThread ({ });
 	}
 
 	void I2CPServer::Stop ()
 	{
-		m_Acceptor.cancel ();
-
-		// Session sockets and send queues belong to the service thread. Run
-		// the teardown there, then join from this (non-owner) thread. When
-		// the server was never started there is no owner thread to marshal
-		// to.
-		if (IsRunning () && !IsInServiceThread ())
+		if (IsInServiceThread ())
 		{
-			auto done = std::make_shared<std::promise<void>> ();
-			auto future = done->get_future ();
-			boost::asio::post (GetIOService (),
-				[this, done] ()
-				{
-					StopSessions ();
-					done->set_value ();
-				});
-			if (future.wait_for (std::chrono::seconds (STOP_DESTINATIONS_TIMEOUT)) != std::future_status::ready)
-			{
-				LogPrint (eLogError, "I2CP: Service didn't stop sessions in time");
-				StopSessions ();
-			}
-		}
-		else
+			// A controller may already be draining this executor. A queued
+			// duplicate Stop must not stop that drain before cleanup runs.
+			if (m_StopRequested.load ()) return;
+			// A handler can request shutdown without joining itself or racing
+			// a controller already waiting for this generation to leave.
+			CloseAdmission ();
+			boost::system::error_code ignored;
+			m_Acceptor.cancel (ignored);
+			m_Acceptor.close (ignored);
 			StopSessions ();
-
-		StopIOService ();
+			m_Service->stop ();
+			return;
+		}
+		std::lock_guard lifecycle (m_LifecycleMutex);
+		CloseAdmission ();
+		StopAndDrain ();
 	}
 
 	void I2CPServer::Accept ()
 	{
-		auto newSocket = std::make_shared<boost::asio::ip::tcp::socket> (GetIOService ());
-		m_Acceptor.async_accept (
-			*newSocket, std::bind (&I2CPServer::HandleAccept, this, std::placeholders::_1, newSocket));
+		// Start and the previous accept hold the admission barrier here.
+		if (!m_Lifetime->accepting) return;
+		const auto generation = m_Lifetime->generation;
+		std::weak_ptr<I2CPServerLifetime> weak = m_Lifetime;
+		auto newSocket = std::make_shared<boost::asio::ip::tcp::socket> (*m_Service);
+		m_Acceptor.async_accept (*newSocket,
+			[weak, generation, newSocket] (const boost::system::error_code & error)
+			{
+				if (auto authority = weak.lock ())
+				{
+					std::lock_guard admission (authority->admission);
+					if (authority->owner && authority->accepting && authority->generation == generation)
+					{
+						authority->owner->HandleAccept (error, newSocket);
+						return;
+					}
+				}
+				boost::system::error_code ignored;
+				newSocket->close (ignored);
+			});
 	}
 
 	void I2CPServer::HandleAccept (
@@ -2542,8 +2710,24 @@ namespace client
 			if (!ec && TryAcquireConnection ())
 			{
 				LogPrint (eLogDebug, "I2CP: New connection from ", ep);
-				auto session = std::make_shared<I2CPSession> (*this, socket, true);
-				session->Start ();
+				std::shared_ptr<I2CPSession> session;
+				try
+				{
+					session = std::make_shared<I2CPSession> (*this, socket, true);
+					{
+						std::lock_guard lock (m_ConnectionsMutex);
+						m_Connections.emplace (session.get (), session);
+					}
+					session->Start ();
+				}
+				catch (const std::exception &)
+				{
+					if (session) session->Stop ();
+					else ReleaseConnection (nullptr);
+					boost::system::error_code ignored;
+					socket->close (ignored);
+					LogPrint (eLogError, "I2CP: Connection initialization failed");
+				}
 			}
 			else
 			{
@@ -2579,8 +2763,12 @@ namespace client
 		return true;
 	}
 
-	void I2CPServer::ReleaseConnection ()
+	void I2CPServer::ReleaseConnection (I2CPSession * session)
 	{
+		{
+			std::lock_guard lock (m_ConnectionsMutex);
+			m_Connections.erase (session);
+		}
 		size_t current = m_NumConnections.load ();
 		while (current > 0 && !m_NumConnections.compare_exchange_weak (current, current - 1))
 		{
@@ -2589,6 +2777,8 @@ namespace client
 
 	bool I2CPServer::InsertSession (std::shared_ptr<I2CPSession> session, uint16_t sessionID)
 	{
+		std::lock_guard admission (m_Lifetime->admission);
+		if (m_StopRequested.load ()) return false;
 		if (!session || sessionID == 0xFFFF) return false;
 		std::lock_guard<std::mutex> l (m_SessionsMutex);
 		if (!m_AdmissionPolicy.AcceptSession (m_Sessions.size ()))

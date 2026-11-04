@@ -388,10 +388,23 @@ namespace client
 	};
 
 	class I2CPServer;
+	/// Shared callback authority; the controller retires owner after joining
+	/// and draining its executor. External session calls pin lifetime before
+	/// admission closes; executor-owned teardown needs no second lifetime pin.
+	struct I2CPServerLifetime
+	{
+		std::mutex lifetime;
+		std::mutex admission;
+		I2CPServer * owner = nullptr;
+		uint64_t generation = 0;
+		bool accepting = false;
+	};
 	/// One I2CP control connection. Socket and send queue belong to the
 	/// server's service thread; cross-thread Stop() posts teardown with
-	/// shared ownership. The referenced server must outlive this session
-	/// and pending callbacks.
+	/// shared ownership. Accepted or registered sessions stop before server
+	/// retirement and retain their executor, so stopped snapshots can outlive
+	/// the facade. Stop cannot revive a session. A directly constructed,
+	/// unregistered session must finish its work before its owner retires.
 	class I2CPSession : public std::enable_shared_from_this<I2CPSession>
 	{
 	public:
@@ -489,6 +502,11 @@ namespace client
 			std::shared_ptr<const i2p::data::LeaseSet> leaseSet = nullptr, uint8_t result = eI2CPHostReplySuccess);
 
 	private:
+		std::unique_lock<std::mutex> LockOwner () const;
+		bool IsOwnerStopping () const;
+		// Retained stopped snapshots keep timer/socket executor services alive.
+		std::shared_ptr<boost::asio::io_context> m_ExecutorAuthority;
+		std::shared_ptr<I2CPServerLifetime> m_OwnerAuthority;
 		I2CPServer & m_Owner;
 		std::shared_ptr<boost::asio::ip::tcp::socket> m_Socket;
 		uint8_t m_Header[I2CP_HEADER_SIZE], m_Payload[I2CP_MAX_MESSAGE_LENGTH];
@@ -535,8 +553,13 @@ namespace client
 
 	/// I2CP listener and session registry. Connection and session
 	/// admission are separately bounded, while the session map is
-	/// protected by its mutex.
-	class I2CPServer : private i2p::util::RunnableService
+	/// protected by its mutex. The control thread serializes lifecycle
+	/// transitions; Stop joins the worker before taking exclusive executor
+	/// ownership for teardown and cancellation draining. A service-thread
+	/// Stop only requests shutdown; a later control-thread Stop or Start joins.
+	/// Destruction requires the control thread. Registered sessions retained
+	/// by snapshots are terminated and keep their executor alive independently.
+	class I2CPServer
 	{
 	public:
 		I2CPServer (const std::string & interface, uint16_t port, bool isSingleThread);
@@ -544,7 +567,11 @@ namespace client
 
 		void Start ();
 		void Stop ();
-		auto & GetService () { return GetIOService (); };
+		/// Borrow the executor for posting; callers must not dispatch it
+		/// concurrently with the owned worker or control-thread drain.
+		auto & GetService () { return *m_Service; };
+		boost::asio::ip::tcp::endpoint GetEndpoint () const { return m_Endpoint; }
+		bool IsStopping () const { return m_StopRequested.load (); }
 		bool IsSingleThread () const { return m_IsSingleThread; };
 
 		// Inserts with an explicit, already validated identifier. The
@@ -558,13 +585,12 @@ namespace client
 		// owner-thread teardown, so a refused or failed connection cannot
 		// leak a slot.
 		bool TryAcquireConnection ();
-		void ReleaseConnection ();
+		void ReleaseConnection (I2CPSession * session);
 		size_t GetNumConnections () const { return m_NumConnections.load (); };
 		const I2CPAdmissionPolicy & GetAdmissionPolicy () const { return m_AdmissionPolicy; };
 
-		// The I2CP service runs on one worker thread. This is the local
-		// equivalent of RunnableService::IsInServiceThread(), which is not
-		// part of the public utility interface.
+		// One worker owns normal dispatch. This identity also covers the
+		// exclusive post-join drain executor on the control thread.
 		bool IsInServiceThread () const
 		{
 			std::lock_guard<std::mutex> l (m_ServiceThreadMutex);
@@ -572,6 +598,10 @@ namespace client
 		}
 
 	private:
+		friend class I2CPSession;
+		void CloseAdmission ();
+		void StopAndDrain ();
+		void SetServiceThread (std::thread::id id);
 		void Accept ();
 		void StopSessions ();
 
@@ -579,6 +609,12 @@ namespace client
 			const boost::system::error_code & ecode, std::shared_ptr<boost::asio::ip::tcp::socket> socket);
 
 	private:
+		// The executor outlives every socket, timer, session and worker.
+		std::shared_ptr<boost::asio::io_context> m_Service;
+		std::mutex m_LifecycleMutex;
+		std::jthread m_Thread;
+		std::shared_ptr<I2CPServerLifetime> m_Lifetime;
+		std::atomic<bool> m_StopRequested { false };
 		bool m_IsSingleThread;
 		I2CPMessageHandler m_MessagesHandlers[256];
 		mutable std::mutex m_SessionsMutex;
@@ -587,8 +623,11 @@ namespace client
 		std::thread::id m_ServiceThreadID;
 		I2CPAdmissionPolicy m_AdmissionPolicy;
 		std::atomic<size_t> m_NumConnections { 0 };
+		std::mutex m_ConnectionsMutex;
+		std::unordered_map<I2CPSession *, std::shared_ptr<I2CPSession>> m_Connections;
 
 		boost::asio::ip::tcp::acceptor m_Acceptor;
+		const boost::asio::ip::tcp::endpoint m_Endpoint;
 
 	public:
 		const decltype (m_MessagesHandlers) & GetMessagesHandlers () const { return m_MessagesHandlers; };
