@@ -10,6 +10,30 @@ Documents project documentation.
 
 # Upstream provenance and synchronization
 
+## Reviewed router-source commits (2026-11-02 continuation)
+
+Read-only `git ls-remote` and GitHub's compare/commit API identified eight
+commits after `ba38945eefe28eec8d02d63241d4903a8c5145b1`, through
+`e485e138c713dff2ff81bfba112c086da3fe7793`. No merge or cherry-pick was run.
+The local worktree already contained unrelated changes, which were preserved.
+
+| Upstream SHA | Subject | Decision and local result |
+|---|---|---|
+| `7aeec49e27107fc4a586ac65a5b91ed7b3941d4a` | Implement endgame | Partially implemented locally; deferred adaptation. Native request epochs and active-request validation must retain duplicate ownership and CANCEL semantics before adopting duplicate requests for the last piece. |
+| `62c013003233df3cc8ab6563563848ff3c316330` | Find the first missing block | Not directly applicable: fixes the dynamic-bitset endgame representation introduced by the preceding commit; local request state uses a different representation. |
+| `b0ef3616a31a37321ef571f8d2d15414ba16a57e` | Flat map for tunnels | Not applicable: optional container optimization does not justify a dependency-floor change or a second version-dependent container API. |
+| `152b59f8b450f878203e879452dc9564dbce3dc7` | DHT stats arguments | Incompatible/not needed: repairs the browser-oriented `torrentHashes` extension previously omitted by this fork; no corresponding native consumer is introduced. |
+| `9b3e9b3218fe4bb80d92a56045a78be27f645c9f` | Metadata from multiple peers | Adapted independently: per-torrent `MetadataDownload`, numeric connection leases, exact block/total-size checks, hash-checked completion, bounded retry and alternate-size recovery. Prepared engine-interop regressions cover ownership, expiry, invalid lengths and hash failure. No upstream shared-buffer code was copied; compilation and live wire exchange remain pending CI. |
+| `b760e40209ed2d28035751c93a2e4f6b1485db52` | Web sorting and metadata progress | Incompatible: changes only the deliberately removed browser assets. |
+| `cca605c044d56d722689abd94abc2b02e6cb732b` | IPv6 host without port or path | Adapted: `URL::parse` slices the host using the closing-bracket position; regression covers authority-only literals with and without credentials and exact round-trip serialization. |
+| `e485e138c713dff2ff81bfba112c086da3fe7793` | Merge IPv6 URL fix | Merge-only; behavior represented by `cca605c0`. |
+
+The IPv6 correction is Implemented / static; compilation and tests remain
+pending manual CI. Query/fragment-only authorities and malformed suffixes
+need a separate full URI grammar review. GitHub's latest I2P Java release
+endpoint still reported `i2p-2.14.0`; historical comparison provenance is
+unchanged. These observations do not establish dynamic interoperability.
+
 ## Reviewed router-source commits (2026-10-25..31 continuation)
 
 The `openssl` branch advanced from the last audited source commit

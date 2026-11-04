@@ -138,6 +138,8 @@ grep for before the next dispatch.
 | Duplicate platform table | Two copies of a width table or address classifier drift. Keep one owner and include it from both branches. | `tui/main.cpp` vs `TerminalWin32.cpp`; `HTTPProxy` vs `SOCKS` |
 | `GetFileType`/`GetLastError` sequence | `GetFileType` does not reset the last error on success; set `SetLastError(NO_ERROR)` before the probe or a stale code rejects a valid handle. | every Win32 handle probe |
 | Missing direct include for a new standard type | Transitive Asio/Boost includes can disappear; each changed TU must name the headers it uses (`<chrono>`, `<cctype>`, `<span>`, `<thread>`, `<functional>`, `<sys/time.h>`). `daemon/UPnP.cpp` relied on `Log.h` for `std::bind`, and `tui/TuiClient.cpp` on a transitive `struct timeval`. | new helper in a large TU |
+| MSVC C4996 from test-only CRT calls | A source linked by many test executables can repeat one warning across the matrix; inspect the shared translation unit once, then search sibling test helpers for the same deprecated CRT use. | Use the supported secure CRT API with explicit ownership on Windows and retain the portable API on POSIX; do not globally disable C4996. |
+| Hardening option accepted without equivalent platform flags | Compare workflow options against every compiler branch; do not silently omit hardening on a supported platform or apply ELF flags to PE images. | Keep compiler and linker mitigations paired, architecture guards explicit, and a compile-free contract for the intended option set. |
 | `defined(DOXYGEN)` without a Doxyfile `PREDEFINED` | The declaration is stripped from the generated API docs. Add the predicate or drop the branch. | `docs/Doxyfile.source` against `DOXYGEN`/`_WIN32` guards |
 
 ## Warnings that would appear under a stricter lane
@@ -168,3 +170,23 @@ grep for before the next dispatch.
 | Guard added after an early `return` | The new branch is unreachable and its regression fails. Place the check before every early exit and keep a positive control that proves the guard is reached. | every new `if` in a classifier/parser with preceding `return false`/`return` |
 | Optional snapshot dereferenced in a test | `status.Get(...)->field` is UB when the publisher did not create the entry and stays green in a `/UNDEBUG` build. Use a checked accessor. | every `->` on `std::optional`/`i2p::expected` in tests |
 | All-slash path accepted as a policy root | `unveil("/", "rwc")` grants the whole filesystem. Reject `//`, `///` and `/` in both the builder and the applier. | unveil/root construction and hand-assembled policy objects |
+
+## Published revision `56f17c0f` (2026-11-02)
+
+| Pattern | Why it matters | Search |
+|---|---|---|
+| Parser returns `string_view` into caller-owned input | A temporary concatenation can die at the end of the call while a parsed result still exposes views. Keep the input in a named owner for the full result lifetime; distinguish this test-fixture defect from production consumers that parse and consume synchronously. | parser APIs and results containing `string_view`, especially blocklist, DHT, IPC and config tests |
+| Convert untrusted integers to enums before validating the domain | Loading an arbitrary integer directly into an enum can trigger UBSan and lets invalid values reach switch logic. Validate as an integer and return an optional/expected enum only for supported values. | integer config parsing, wire/parser conversions, `static_cast<enum>` and enum lookup APIs |
+| Reopen a security-sensitive path after a separate chmod/create step | Path replacement between validation and open can redirect secret output. Use the single validated atomic no-follow writer and inspect all fallbacks, not only the normal path. | private key/router state creation and every `CreatePrivateFile`/ofstream fallback |
+| Index a normalized identity before checking it is non-empty | Public storage helpers can receive an empty value through a future caller even when current identity producers are canonical. Return a defined failure value before indexing and pin the empty-input contract. | `HashedStorage::Path` and all shard/path helpers indexing caller-provided strings |
+| Dependency policy differs between build and installed consumers | A clean configure does not guarantee a clean `find_package()` consumer. Set policies only when available in the project and repeat dependency-discovery policy in the exported config include; preserve the consumer's surrounding scope. | every generated/exported `*Config.cmake` that calls `find_dependency()` |
+
+### Timer cancellation and minimum-version assumptions
+
+CE-008's deprecated timer error-code overload reappeared in local RPC/SOCKS
+changes. Boost 1.74 documents it as deprecated, while current Asio exposes
+parameterless cancel only. The API present at the minimum version is not
+necessarily portable across the complete supported range. Use cancel() for
+timers, retaining socket error-code overloads. The expanded source contract
+covers I2CP, SAM, SOCKS and RPC. These static corrections await compilation;
+no old remote run validates them.

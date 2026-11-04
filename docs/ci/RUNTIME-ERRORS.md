@@ -577,3 +577,98 @@ Found by the static audit that followed CE-070; none was observed in CI.
 - **State:** Implemented / static; **Pending CI compilation and tests**. The
   `imsg_free` descriptor ownership and the `recvfd` control-buffer question
   remain open until a live OpenBSD run.
+
+## Current exact-SHA observations (`56f17c0f`, 2026-11-02)
+
+### RT-027 — ASan EdDSA stack-buffer underflow; undersized fixture found
+
+- **Run/job:** Validation [41364867079](https://github.com/daviduhden/openi2pd/actions/runs/41364867079), ASan+UBSan job `125022771190`.
+- **Test/platform:** `test-eddsa`, Ubuntu Linux, Clang 23.1.4 with ASan/UBSan.
+- **Diagnostic:** one-byte read at stack offset 2175, immediately before stack object `point` at offsets 2176..2208 in `tests/test-eddsa.cpp:166`. Raw frames are `test-eddsa+0xbe98e7`, `+0xbe41bd`, `+0xbd56da`, and `+0xae25b4`; no symbolizer path was configured. Three expected invalid-point logs precede it; the valid canonical-signature assertion also fails on Linux/OpenSSL 3/4 and OpenBSD.
+- **Artifacts:** the exact run uploaded CTest XML and `Testing` logs, but not the executable, DWARF or core. Sibling UBSan job `125022771171` and TSan job `125022771257` passed this test on the same SHA; they do not clear the ASan finding.
+- **Static follow-up:** the exact-SHA fixture declares `digest` as a
+  32-byte array, passes it to SHA-512 (64-byte output), then passes it to
+  `Ed25519::Verify`, whose `DecodeBN<64>` reads 64 bytes. This is a
+  confirmed fixture write/read bounds defect. The helper now returns an
+  owning 64-byte array. Global SHA-512 searches reviewed the other
+  Ed25519 digest buffers and generic signature hash sizing; no equivalent
+  undersized output was demonstrated there. This defect may explain both
+  reports, but the unsymbolized PC cannot establish that association.
+  **Implemented / static; Pending CI compilation; Pending CI tests.**
+- **Cause/state:** not established. The stack frame identifies the test frame, not the function/expression that read before `point`; do not infer `DecodePoint` as the cause. The manual sanitizer workflow now locates `llvm-symbolizer` and retains the `test-eddsa` executable with its debug information. Re-dispatch a published revision and inspect the symbolized run before changing crypto code. **Correction pending; Pending CI tests.**
+- **Related functional failure:** the same SHA fails the canonical positive-vector assertion at line 170 on GCC/OpenSSL 3 and GCC/OpenSSL 4 and on OpenBSD Clang/LibreSSL 4.4.0; Linux Clang/OpenSSL 3 and 4 pass that assertion. This cross-compiler behavior is a distinct observation from the ASan underflow and is recorded as TF-069. It does not identify the underflowing call or establish a cryptographic root cause.
+
+### RT-028 — invalid DatagramVersion created from configuration
+
+- **Run/job:** Validation `41364867079`, UBSan job `125022771171`.
+- **Diagnostic:** `Datagram.cpp:126` loads enum value 9 in `test-datagram-version-dispatch`.
+- **Cause:** the regression directly cast 9 to `DatagramVersion`; a repository-wide search also found `ClientContext.cpp` casting an arbitrary configured integer before validation.
+- **Correction in current worktree:** add `ParseDatagramVersion(int)` and reject invalid tunnel configuration before enum construction; remove the invalid-enum test and pin invalid raw integers through the parser. **Pending CI compilation/tests.**
+
+### RT-029 — invalid transport enum used by rejection test
+
+- **Run/job:** Validation `41364867079`, UBSan job `125022771171`.
+- **Diagnostic:** `TransportConnector.h:136` reads invalid `SupportedTransports` value 32767 in `test-transport-connector`.
+- **Cause/correction:** the test created an invalid enum merely to exercise the default branch. Current worktree changes lookup to accept the raw integer value and tests `0x7fffU` directly; valid transport values still select the same connector. **Pending CI compilation/tests.**
+
+### RT-030 — test parsers returned views into temporary strings
+
+- **Run/job:** Validation `41364867079`, ASan+UBSan `125022771190` and TSan `125022771257`.
+- **Tests/diagnostics:** `test-blocklist-parse` read `OperatorBlocklistEntry::reason` after passing a temporary concatenated line; ASan and TSan report use-after-free in `memcmp`/`string_view::compare` at test line 150. `test-torrents-dht-protocol` read `DHTFrame::transaction` after decoding a temporary encoded frame at test line 299; ASan reports use-after-free.
+- **Cause:** both APIs intentionally return views into caller-owned input. Their production consumers keep the input packet/string alive for immediate use; the fixtures did not.
+- **Correction in current worktree:** store each encoded input in a named `std::string` for the full view lifetime. Search all parser fixtures that retain a result built from a temporary. **Pending CI tests.**
+
+### RT-031 — sanitizer suite also has leaks and lifecycle failures
+
+- **Run/job:** Validation `41364867079`, ASan+UBSan job `125022771190` and TSan job `125022771257`.
+- **Diagnostics:** LeakSanitizer reports 842,968 bytes/79 allocations in `test-i2ptunnel-stop`, 290,072/63 in `test-i2ptunnel-targets`, and 6,880/24 in `test-eciesx25519-ratchet-session`. TSan separately reports failed completion/timeouts in `test-runnableservice-lifecycle` and `test-i2cp-session-lifecycle`, plus test assertions in logging/streaming.
+- **Cause/state:** allocations and ownership stacks must be mapped from the adjacent complete sanitizer output before assigning a product root. The test failures do not by themselves prove races, but TSan reports are actionable findings. **Correction pending; Pending CI tests.**
+
+### RT-032 — intermittent MSVC heap corruption recurred
+
+- **Run/job:** Windows [41364870388](https://github.com/daviduhden/openi2pd/actions/runs/41364870388), MSVC job `125022780835`, SHA `56f17c0f47a3d1a328be6c54df7b661c480924f8`.
+- **Tests:** `test-tui-protocol`, `test-tui-pipe-name` and `test-privsep-windows-isolation` exit `0xc0000374`; `test-tui-win32-pipe` asserts `GetLastError() == ERROR_ACCESS_DENIED` and exits `0xc0000409`.
+- **Cause/state:** unresolved and intermittent; earlier same-SHA passes do not erase the failures. Obtain exact CTest/minidump/PageHeap evidence before attributing to production code or fixture. **Correction pending; Pending Windows CI tests.**
+
+### RT-033 — I2PControl socket replacement failure came from inode reuse in the fixture
+
+- **Runs/SHA:** Linux/OpenSSL 3 `41364855256`, Linux/OpenSSL 4 `41364858202`, Validation/sanitizers `41364867079`, OpenBSD `41364873438`; all used `56f17c0f47a3d1a328be6c54df7b661c480924f8`.
+- **Test/diagnostic:** `test-i2pcontrol-socket` failed the stale-identity, replacement-survives and own-identity-removes assertions.
+- **Cause:** the fixture closed the original bound listener before unlinking and rebinding its pathname. The filesystem could reuse the device/inode, so the replacement falsely matched the recorded identity. The service keeps its original listener descriptor open during path cleanup.
+- **Correction:** keep the old listener open until replacement cleanup completes, matching production lifetime. Product code was unchanged. **Implemented / static; Pending CI tests.**
+
+## Artifact availability for the 2026-11-02 batch
+
+The OpenBSD run `41364873438` and failed historical Fuzzing run `41359802036`
+have no artifacts in GitHub's artifact API. Validation `41364867079` retains
+ASan/UBSan artifact `13107582638`, TSan `13107507801`, UBSan `13106474670`,
+fuzz corpus/smoke `13106877727` and source docs `13106732442`. The current
+Windows run `41364870388` retains MSVC CTest `13107223402` and MSYS2 CTest
+`13107091983`; Android `41364864089` has none. Linux/packaging artifact IDs
+are recorded in the CI investigation notes. `gh run download` could not
+extract the retained archives because the local temporary filesystem quota
+was exhausted; this is a retrieval limitation, not evidence that GitHub
+expired those artifacts. Exact run logs remain available through `gh run
+view --job JOB_ID --log`.
+
+### Windows exact-artifact continuation (TF-061/TF-062/TF-063)
+
+Run 41364870388, SHA 56f17c0f47a3d1a328be6c54df7b661c480924f8:
+MSVC job 125022780835 artifact 13107223402 has heap-corruption exits for
+TUI protocol, pipe-name and Windows isolation with no stack. MSYS2 job
+125022781025 artifact 13107091983 passes protocol and pipe-name. Do not
+classify these MSVC failures as parser assertions without evidence.
+Both artifact logs retain the pipe first-instance error assertion, but not
+the original numeric GetLastError. The prepared fixture separates capacity
+from exclusivity and prints that error; ERROR_ACCESS_DENIED is still
+required. This is not a proved runtime cause. Heap reports remain open for
+PageHeap/minidump evidence. No local runtime validation was performed.
+
+### Prepared Windows heap reproduction evidence (CONT-012)
+
+TF-062 remains unresolved. The manual Windows workflow now retains optimized
+Release EXE/PDB artifacts and offers heap_diagnostics for code-only CDB/PageHeap
+reproduction of the three affected MSVC images. It does not dump memory or
+request arguments/locals. Missing installed tools fail that optional step;
+ordinary CTest remains authoritative. No new run has executed this revision,
+and no historical status is reclassified as resolved by this preparation.

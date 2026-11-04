@@ -51,6 +51,23 @@ This lane is prepared by static analysis and has not yet run. The
 language-specific comment conventions, Doxygen/Javadoc/POD rules and the
 review checklist are in [source documentation](source-documentation.md).
 
+## Historical diagnostics and regression patterns
+
+The source inventories preserve observed evidence separately from static
+risks and unresolved causes:
+
+- [Compilation errors](ci/COMPILATION-ERRORS.md)
+- [Compiler and tool warnings](ci/COMPILATION-WARNINGS.md)
+- [Runtime and sanitizer findings](ci/RUNTIME-ERRORS.md)
+- [Test and integration failures](ci/TEST-FAILURES.md)
+- [Compilation patterns](ci/COMPILATION-PATTERNS.md)
+- [Regression patterns](ci/REGRESSION-PATTERNS.md)
+
+Each record identifies the published revision and lane, preserves the
+diagnostic, distinguishes cause from hypothesis, and states whether a
+correction has static review or CI evidence. Search semantically related
+callers and platform branches before closing a finding.
+
 ## Hardening applied
 
 - All third-party actions are pinned to commit SHAs with a version comment.

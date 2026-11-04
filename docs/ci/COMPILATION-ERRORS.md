@@ -278,10 +278,10 @@ containing credentials are retained in the repository.
 - **First diagnostic:** `I2CP.cpp(1138,15): error C2660:
   'boost::asio::basic_waitable_timer<...>::cancel': function does not take 1
   argument`, repeated at `I2CP.cpp:1147` and `SAM.cpp:162`.
-- **Cause:** `basic_waitable_timer` exposes `cancel()`/`cancel_one()` but no
-  `error_code` overload on the supported Boost range. The call compiled only
-  where the template was not instantiated before the earlier errors stopped
-  the build.
+- **Cause:** the observed Boost headers expose the non-deprecated
+  `cancel()`/`cancel_one()` API without the old `error_code` overload.
+  Boost 1.74 documented that overload as deprecated; newer releases remove
+  it. Earlier stopped targets do not establish successful instantiation.
 - **Correction:** call `cancel()` directly in `I2CP::ArmReadTimeout`,
   `I2CP::CancelReadTimeout` and `SAM::CancelControlDeadline`; the commented
   contract (safe without a pending wait, aborted handler still runs) is
@@ -1183,7 +1183,7 @@ Runs: Linux/Android [41229374061](https://github.com/daviduhden/openi2pd/actions
   order and the cleanup semantics. Search of every first-party array
   local/member for a member call found no second instance.
 - **Files:** `tests/test-i2pcontrol-socket.cpp`.
-- **State:** Corrected by static analysis; **Pending CI compilation**.
+- **State:** Corrected by static analysis; pending source-documentation validation.
 
 ### CE-056 — Undocumented Doxygen parameters (WARN_AS_ERROR)
 
@@ -1497,7 +1497,7 @@ Runs: Linux/Android [41229374061](https://github.com/daviduhden/openi2pd/actions
 - **Correction:** hash into a local `uint8_t[IdentHash::len]` and compare
   with `std::memcmp`; `<cstring>` is included directly.
 - **Files:** `libi2pd/RouterInfo.cpp`.
-- **State:** Corrected by static analysis; **Pending CI compilation**.
+- **State:** The correction is present at current SHA `56f17c0f`. Linux/OpenSSL 3/4, Android arm64 native, Windows MSYS2/MSVC and OpenBSD builds all compiled the affected library successfully on that SHA, so this translation-unit compile error is **Validated by CI compilation**. The failed Fuzzing run did not reach libFuzzer target construction; fuzz target/link/smoke validation remains pending.
 
 ### CE-071 — CMake script used `while(TRUE)` under the old policy
 
@@ -1576,3 +1576,22 @@ Runs: Linux/Android [41229374061](https://github.com/daviduhden/openi2pd/actions
   `tools/scripts/check-workflows.pl`.
 - **State:** Corrected by static analysis; **Pending CI tests**. No build was
   performed.
+
+## Current HEAD batch `56f17c0f` (2026-11-02)
+
+### CE-072 — Android Java callbacks did not compile
+
+- **Run/job:** Android [41364864089](https://github.com/daviduhden/openi2pd/actions/runs/41364864089), job `125022760915`.
+- **SHA/toolchain:** `56f17c0f47a3d1a328be6c54df7b661c480924f8`; Temurin JDK 25.0.5, Gradle 9.8.1, AGP 9.4.1, NDK r30.
+- **Diagnostics:** `RouterService.java:2183` captured a reassigned local `sink`; `AddressBookFragment.java:411` redeclared `expected` in `blockedDialog()`.
+- **Cause/correction:** callback values were not effectively final and a nested async generation variable shadowed the outer guard. Capture the validated sink in a final `LongConsumer` and name the inner token `unblockGeneration`.
+- **Related pattern:** review nested Java callbacks for effectively-final captures and distinct generation tokens; see the Android skill and regression pattern.
+- **State:** corrected by static analysis; **Pending CI compilation**. Gradle/JNI/native/APK/Lint/device steps did not run after Javac failed.
+
+### CE-073 — current sanitizer and platform batch has multiple independent blockers
+
+- **Runs:** Linux/OpenSSL 3 [41364855256](https://github.com/daviduhden/openi2pd/actions/runs/41364855256), Linux/OpenSSL 4 [41364858202](https://github.com/daviduhden/openi2pd/actions/runs/41364858202), Validation [41364867079](https://github.com/daviduhden/openi2pd/actions/runs/41364867079), Windows [41364870388](https://github.com/daviduhden/openi2pd/actions/runs/41364870388), OpenBSD [41364873438](https://github.com/daviduhden/openi2pd/actions/runs/41364873438). All ran the SHA above.
+- **Evidence:** Linux GCC/Clang and OpenBSD compiled and linked before CTest failures; the Android Javac errors are CE-072. ASan/UBSan reported an EdDSA stack-buffer underflow and invalid enum values; details and remaining test/runtime diagnostics are in `RUNTIME-ERRORS.md` and `TEST-FAILURES.md`.
+- **Platform detail:** Android used Temurin 25.0.5, Gradle 9.8.1, AGP 9.4.1 and NDK r30; native arm64 completed before Javac stopped the job. Windows MSVC 19.44 and MSYS2/MinGW completed compilation/linking, then failed CTest (four of eight MSVC tests, four of 214 MSYS2 tests). OpenBSD 8.0 Clang 22.1.6 / LibreSSL 4.4.0 built all targets before 11 of 220 CTests failed. Linux GCC/Clang OpenSSL 3.x and OpenSSL 4.x likewise compiled/linked before test failures. Successful Linux and packaging jobs on this SHA are separate evidence and do not validate those failing lanes.
+- **Static corrections in this worktree:** the two parser-result fixture lifetime defects are fixed by keeping their input strings alive; UDP datagram-version configuration is validated before enum conversion; transport connector lookup accepts a raw integer so rejection tests do not construct invalid enum values. These changes are not present in the run SHA.
+- **State:** partially corrected by static analysis; **Pending CI compilation** and **Pending CI tests**. The EdDSA sanitizer finding and remaining current CTest failures still need cause-specific investigation.

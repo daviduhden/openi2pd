@@ -88,7 +88,7 @@ namespace util
 		}
 
 		/**
-		 * Typed pool deleter. Replaces the former std::function/std::bind
+		 * Typed pool deleter. Replaces the former std::function/\c std::bind
 		 * erasure: the object still borrows the pool, which must outlive it.
 		 */
 		struct Deleter

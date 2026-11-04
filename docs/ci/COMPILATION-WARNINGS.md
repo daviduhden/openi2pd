@@ -287,3 +287,54 @@ cast was added. The Windows `-W4` lane and the GCC/Clang `-Wall -Wextra
   `-Werror=format-security`), so it did not stop the build. A compiler
   stopped by CE-070 reported no later warnings, so Android targets after
   `FS.cpp` remain unverified.
+
+### CW-011 — CMake package-consumer policy warnings
+
+- **Evidence:** successful Linux workflow [41364861389](https://github.com/daviduhden/openi2pd/actions/runs/41364861389), install/consumer job; same policy warning also appears in Linux/OpenSSL 3/4 runs `41364855256` and `41364858202`, SHA `56f17c0f47a3d1a328be6c54df7b661c480924f8`.
+- **Diagnostic:** project configure reports CMP0144 unset at `build/CMakeLists.txt:262`; the installed-package consumer reports CMP0144 and CMP0167 from `i2pdConfig.cmake`'s Boost dependency lookup.
+- **Cause:** the project and exported dependency config do not select the relevant CMake policy behavior. The consumer still configures and builds successfully, so this is a developer warning, not a compiler failure.
+- **Correction:** set CMP0144 when the project CMake supports it and scope CMP0144/CMP0167 selection to the installed package-config include so Boost discovery matches the project without changing the caller's surrounding policy state. The minimum CMake version remains 3.24.
+- **State:** corrected by static analysis; the build-system static contract pins both policy guards. **Pending CI configure and installed-consumer validation** on the current tree.
+
+### CW-012 — Android DSL option deprecation
+
+- **Evidence:** Android [41364864089](https://github.com/daviduhden/openi2pd/actions/runs/41364864089), job `125022760915`, SHA `56f17c0f47a3d1a328be6c54df7b661c480924f8`.
+- **Diagnostic:** `android.builtInKotlin=false` is deprecated under AGP 9.4.1. Javac failed later with CE-072; no Lint result exists.
+- **Cause/state:** Gradle DSL deprecation, not a Java compiler warning. This option is pinned by two toolchain probes; verify behavior before removing it and update both probes together.
+
+## Batch `56f17c0f` (2026-11-02)
+
+GitHub API pagination returned 247 accessible runs across the retained
+workflow history (160 failures, 60 cancellations, 27 successes), from
+2026-10-17 through 2026-11-02. This is the accessible run count, not a claim
+that every historical job log remains available. Current successful sibling
+logs were inspected alongside failed jobs; local changes after the published
+SHA remain unvalidated.
+
+### CW-013 — MSVC deprecates `getenv` in shared test logging support
+
+- **Evidence:** Windows MSVC run [41364870388](https://github.com/daviduhden/openi2pd/actions/runs/41364870388), job `125022780835`, SHA `56f17c0f47a3d1a328be6c54df7b661c480924f8`; the successful MSVC sibling [41325980409](https://github.com/daviduhden/openi2pd/actions/runs/41325980409), job `124905881821`, SHA `4e776a39ac8498faceda52d1337e16324ae535f4`, also reported it.
+- **Diagnostic:** MSVC C4996 at `tests/log-support.cpp:80` for `std::getenv`, repeated while compiling each test executable that links this shared source.
+- **Cause/search:** the test-only environment setting was read through the portable CRT spelling that MSVC marks deprecated. This helper is common to the C++ test targets, so one source warning fans out across the target matrix; no product call site is implicated.
+- **Correction:** use `_dupenv_s` with `unique_ptr`/`free` ownership on Windows and retain `std::getenv` on POSIX. The selected value and default behavior are unchanged.
+- **State:** Implemented / static; **Pending CI compilation** on MSVC. No local build or test was run.
+
+### CW-014 — MSVC hardening option reports an unsupported implementation
+
+- **Evidence:** Windows MSVC run [41364870388](https://github.com/daviduhden/openi2pd/actions/runs/41364870388), job `125022780835`, SHA `56f17c0f47a3d1a328be6c54df7b661c480924f8`.
+- **Diagnostic:** CMake warns that `WITH_HARDENING` is not implemented for MSVC and asks for explicit MSVC linker flags; the workflow configures this option as ON.
+- **Cause:** the Unix hardening flag set is not compatible with MSVC, and the Windows lane requested the option without an equivalent policy. This was a first-party build/security configuration warning, not a compiler diagnostic.
+- **Correction:** the MSVC branch now adds `/GS`, `/sdl` and `/guard:cf` at compile time, `/guard:cf /DYNAMICBASE /NXCOMPAT` at link time, and `/HIGHENTROPYVA` for 64-bit targets. The compile-free build-system contract pins all three groups.
+- **State:** Implemented / static; **Pending CI compilation** with MSVC 19.35+ and the Windows target matrix. This does not claim binary mitigation verification.
+
+### CW-015 — Successful packaging logs still contain non-compiler warnings
+
+- **Evidence:** successful Packaging [41364876230](https://github.com/daviduhden/openi2pd/actions/runs/41364876230) and Linux [41364861389](https://github.com/daviduhden/openi2pd/actions/runs/41364861389), SHA `56f17c0f47a3d1a328be6c54df7b661c480924f8`.
+- **Diagnostics:** Lintian warns that installed tools lack manual pages and the upstream changelog filename is `ChangeLog.gz`; Debian DEP-8 emits deprecated `apt --force-yes`. GitHub action runtimes report Node 20 and transitive `punycode`/`url.parse` deprecations. The Linux sandbox reports Landlock ABI 8 where full network denial requires ABI 10.
+- **Classification:** package-quality, test-command, action-runtime and runner-capability messages; none is a first-party compiler warning. Lintian findings remain package-quality follow-up; the Landlock result means that runner did not validate the full deny-network policy.
+- **State:** external/tooling findings remain classified; package and sandbox coverage limits must remain visible in CI reports.
+
+Successful Linux/packaging jobs also contain Node.js 20 action-runtime notices
+and Node `punycode`/`url.parse()` deprecations from action tooling. They are
+third-party/runtime notices, not first-party C++ warnings. Do not count them as
+compiler-clean evidence or suppress them in project compiler flags.

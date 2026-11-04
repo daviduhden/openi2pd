@@ -33,6 +33,16 @@ than relying on the original failure to recur.
 - **Sanitizer/fuzzer:** do not mark a suite passed merely because the process
   exited zero; scan the log for sanitizer reports and upload the exact
   artifact.
+- **Shared test-support warning:** a warning in a translation unit linked by
+  every test target can appear repeatedly without representing separate
+  defects. Fix the owning helper once, search equivalent APIs in sibling
+  helpers, and keep the warning pending until the matching compiler lane runs.
+- **Platform hardening matrix:** when a manual job enables `WITH_HARDENING`,
+  assert the compiler and linker mitigations for that platform, with
+  architecture-specific flags guarded explicitly. The Windows contract must
+  distinguish MinGW PE linker flags from MSVC stack/SDL/CFG and ASLR/DEP
+  options; a configure warning indicates a missing security policy even when
+  compilation succeeds.
 
 ## Process
 
@@ -77,6 +87,15 @@ target or a build that stopped early is not a pass.
 - **Windows rejected-handshake race:** when the accepting side rejects on
   identity before reading, the client's write can fail; the test tolerates the
   write and asserts the server-side rejection, not both.
+- **Service start/stop ordering:** serialize duplicate Start, concurrent
+  Start/Stop, accept rearming and owner-thread teardown with one lifecycle
+  state. A timeout must not fall back to mutating socket-owning session state
+  from another thread; regressions should control the interleaving with
+  barriers instead of relying on scheduler timing.
+- **Perl checker subprocesses:** fail `check-vectors.pl` when any
+  `UNEXPECTED-PASS` reveals a stale known-gap marker. Decode `waitpid` with
+  `WIFEXITED`/`WIFSIGNALED`, retry `EINTR`, and report wait errors separately;
+  shifting the status byte alone can map a crashed checker to success.
 - **Restart ladder arithmetic:** quote the ladder total from one
   `TotalLadderDelay()` authority and pin the bounds; never hand-sum the
   constants in a test or a comment.
@@ -190,3 +209,105 @@ target or a build that stopped early is not a pass.
 - **Tunnel resolver lifecycle:** the stop test arms a named upstream, stops,
   and restarts while checking that a stale completion cannot clear the new
   resolver.
+
+## Patterns from the current sanitizer and platform batch (2026-11-02)
+
+- **Borrowed parser results:** if a parser returns `string_view` or spans into
+  its input, fixture storage must outlive every assertion on the parsed
+  result. Keep a named input owner and search all tests retaining parsed
+  objects constructed from temporary strings.
+- **Integer-to-enum validation:** fuzz/configuration and rejection tests must
+  pass the raw integer through a validator before constructing an enum. Do
+  not create an invalid enum merely to reach a default switch branch.
+- **Sanitizer stack triage:** record the first invalid access and complete
+  stack per test. A sanitizer finding in one test does not classify other
+  assertion failures in the same CTest lane; preserve their independent
+  causes and evidence.
+- **TSan lifecycle deadlines:** distinguish a timeout under TSan from a
+  demonstrated data race. Capture lifecycle phases and executor state; do not
+  raise timeout budgets or infer production races from `use_count()` alone.
+- **Sequential `io_context::poll()` fixtures:** `poll()` drains all ready
+  handlers and may leave the context stopped after the last work item. Before
+  posting another operation, call `restart()` only if `stopped()` is true;
+  do not use repeated fixed-count polls as a substitute. Pin completion and
+  cancellation through explicit ready-queue drains (`TF-049`).
+- **Concurrent reader tests:** thread creation does not prove a reader ran.
+  Synchronize after its required snapshot/observation and before the writer
+  mutates shared state or requests shutdown; do not use sleeps or iteration
+  counts to manufacture overlap (`TF-058`).
+- **EdDSA sanitizer failure:** preserve the current one-byte stack
+  underflow as unresolved until a symbolized stack identifies the read and
+  its caller. Keep valid-signature verification as a positive control and
+  malformed-signature cases as separate negative controls.
+- **IPC encode/decode symmetry:** semantic path constraints must be enforced
+  by both the encoder and decoder. Pair positive absolute-path round trips
+  with empty/relative rejection on both sides.
+- **Ancillary data without a frame:** consume zero-length seqpacket records
+  without treating them as EOF, but reject and close any descriptor attached
+  to an empty record. Assert descriptor-count stability and a subsequent
+  valid exchange on the same channel.
+- **SOCK_SEQPACKET recovery bounds:** test frame-buffer restoration with the
+  smallest record that exceeds the protocol header; do not use maximum
+  protocol payloads to assume a kernel's maximum atomic Unix-socket record.
+  Keep maximum encoded-payload checks at the codec layer (`TF-060`).
+- **Append-only log sinks:** validate the opened handle, not a chmod-then-
+  reopen pathname. Reject symlink/reparse, non-regular and multi-link targets;
+  apply private mode/DACL on that same handle, and test rotation by reopening
+  a distinct ordinary file without losing records (`SEC-034`).
+- **Sanitizer source attribution:** retain the exact failing test executable
+  with debug information and configure the matching LLVM symbolizer alongside
+  CTest XML/logs. A stack frame's nearest stack object does not identify the
+  source expression that accessed it; leave the cause unresolved until the
+  exact artifact yields symbols (`RT-027`).
+- **Filesystem identity tests:** keep the old socket descriptor alive while
+  unlinking and rebinding its pathname so inode reuse cannot collapse the
+  old and replacement identities into one fixture state.
+- **Worker crash-loop backoff:** a setup handshake is not a stability
+  interval. Preserve retry count/backoff across successful replacement
+  handshakes; pin successive short-lived worker failures and a quiet-window
+  reset separately.
+
+### SHA-512 fixture output must own 64 bytes
+
+RT-027/TF-069 exposed a test helper accepting an unbounded output pointer
+while its caller grouped the digest with 32-byte public-key arrays. Return
+an algorithm-sized array from reference hash helpers, and inspect both
+provider output and downstream scalar-decoder lengths. An ASan location
+beside a point object can originate in an adjacent undersized digest.
+The corrected EdDSA fixture remains pending manual sanitizer/platform CI.
+
+### Compare restart failures with the executed source revision
+
+TF-068 repeated TF-053 because published `56f17c0f` still reset the restart
+budget during configuration; the removal existed only in the local diff.
+Check `git show SHA:path` before interpreting a repeat as evidence against
+an unpublished fix. Elapsed backoff or an idle dead worker must not earn
+stability credit; matched authenticated replies establish continued service.
+
+### Destructor teardown cannot acquire its final shared owner
+
+CONC-024 found `SocketsPipe` destruction calling `shared_from_this()` through
+Terminate. The equivalent SOCKS destructor also called registry notification
+that way. Split resource release from notification or use optional weak-self
+locking; use error-code descriptor closure on destructor-reachable paths.
+Prepare unstarted destruction and repeated termination coverage. These are
+source findings, distinct from the unsymbolized historical leak reports.
+
+### Isolate named-pipe exclusivity from instance capacity
+
+A first-instance flag regression must leave capacity for a second ordinary
+instance and verify that control succeeds without the flag. Capture the
+failing API error immediately and print its numeric value before asserting
+the documented denial. Do not broaden accepted errors when an exact-run
+artifact omitted the value. Keep MSVC heap-corruption exits separate from
+ordinary assertions; another toolchain passing does not close them.
+
+### A callback queue bound must exist in the executor
+
+The service SAF lane was documented as bounded but used an unbounded
+single-thread executor. A blocked provider could retain arbitrarily many
+URI and callback tasks. The new factory admits one running task and sixteen
+queued tasks, rejects excess work and never runs provider code on the UI
+submitter. The prepared JVM test holds the worker behind a latch and checks
+rejection, recovery and shutdown. Interruption remains a request, not proof
+that a provider stopped.
