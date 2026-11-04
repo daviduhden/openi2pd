@@ -17,6 +17,10 @@ endif()
 foreach(required IN ITEMS
     "weak_ptr<BOBI2PInboundTunnel>"
     "weak_ptr<BOBI2POutboundTunnel>"
+    "weak_ptr<BOBCommandSession>"
+    "weakReceiver"
+    "weakStreaming"
+    "weakSession"
     "m_Stopped"
     "m_AdmissionMutex"
     "m_Receivers")
@@ -93,7 +97,8 @@ foreach(required IN ITEMS
     "m_LocalDestinationOwner"
     "m_AcceptorMutex"
     "running_in_this_thread ()"
-    "StopInternal (")
+    "StopInternal ("
+    "std::weak_ptr<Stream> weak = weak_from_this ()")
   string(FIND "${streaming_header}${streaming}" "${required}" position)
   if(position EQUAL -1)
     message(FATAL_ERROR "Missing streaming lifetime contract: ${required}")
@@ -568,6 +573,14 @@ foreach(required IN ITEMS
     message(FATAL_ERROR "Missing SAM teardown/admission contract: ${required}")
   endif()
 endforeach()
+foreach(required IN ITEMS
+    "weak_ptr<i2p::datagram::DatagramDestination> weakDatagram"
+    "auto datagram = weakDatagram.lock ()")
+  string(FIND "${sam_source}" "${required}" position)
+  if(position EQUAL -1)
+    message(FATAL_ERROR "Missing weak SAM datagram callback ownership: ${required}")
+  endif()
+endforeach()
 # The SESSION CREATE line carries private keys and the HELLO line may
 # carry USER/PASSWORD: neither may ever be passed to a log call.
 string(REGEX MATCH "LogPrint[^\n]*\"SAM: Session create: \"[^\n]*buf" sam_secret_log "${sam_source}")
@@ -630,8 +643,8 @@ foreach(required IN ITEMS
   endif()
 endforeach()
 
-# basic_waitable_timer exposes cancel()/cancel_one() only; an error_code
-# argument fails MSVC and other template instantiations.
+# Use the non-deprecated timer API across supported Boost versions. Newer
+# releases remove the error-code overload; socket overloads are separate.
 foreach(source IN ITEMS i2cp_source sam_source)
   string(FIND "${${source}}" ".cancel (ec)" timer_cancel_ec)
   if(NOT timer_cancel_ec EQUAL -1)
@@ -1421,6 +1434,8 @@ file(READ "${PROJECT_ROOT}/android/app/src/main/java/org/openi2pd/router/RouterR
   android_run_state)
 file(READ "${PROJECT_ROOT}/android/app/src/main/java/org/openi2pd/router/RouterService.java"
   android_router_service)
+file(READ "${PROJECT_ROOT}/android/app/src/main/java/org/openi2pd/router/AddressBookFragment.java"
+  android_address_book)
 file(READ "${PROJECT_ROOT}/android/app/src/main/AndroidManifest.xml" android_manifest)
 
 foreach(required IN ITEMS
@@ -1481,11 +1496,35 @@ if(android_router_stop_with_task STREQUAL "")
   message(FATAL_ERROR "RouterService must declare android:stopWithTask=\"false\"")
 endif()
 
+# Address-book subscription mutations share the view's single-flight gate,
+# and the retained Android log list is bounded before it is published.
+foreach(required IN ITEMS
+    "private void submitSubscription(String url, boolean add)"
+    "if (busy || status == null)"
+    "busy = true;"
+    "model.subscriptionCommand(url, add, outcome ->"
+    "submitSubscription(url, false)")
+  string(FIND "${android_address_book}" "${required}" android_address_contract)
+  if(android_address_contract EQUAL -1)
+    message(FATAL_ERROR "Address-book subscription single-flight contract is missing: ${required}")
+  endif()
+endforeach()
+foreach(required IN ITEMS
+    "MAX_LOG_ENTRIES = 1000"
+    "current.size() > MAX_LOG_ENTRIES"
+    "current.subList(current.size() - MAX_LOG_ENTRIES, current.size())")
+  string(FIND "${android_router_service}" "${required}" android_log_bound)
+  if(android_log_bound EQUAL -1)
+    message(FATAL_ERROR "RouterService retained-log bound is missing: ${required}")
+  endif()
+endforeach()
+
 # Native TUI/daemon separation and console-lifecycle contracts. These
 # are compile-free text pins for behavior that otherwise needs a
 # terminal/runner.
 file(READ "${PROJECT_ROOT}/tui/main.cpp" tui_main)
 file(READ "${PROJECT_ROOT}/tui/TerminalWin32.cpp" tui_terminal_win32)
+file(READ "${PROJECT_ROOT}/tui/TerminalUnix.cpp" tui_terminal_unix)
 file(READ "${PROJECT_ROOT}/daemon/Daemon.cpp" daemon_main)
 file(READ "${PROJECT_ROOT}/daemon/TuiServer.cpp" tui_server_unix)
 file(READ "${PROJECT_ROOT}/daemon/TuiServerWin32.cpp" tui_server_win32)
@@ -1517,3 +1556,244 @@ string(FIND "${tui_terminal_win32}" "VK_CANCEL" tui_win32_cancel)
 if(tui_win32_cancel EQUAL -1)
   message(FATAL_ERROR "Windows terminal does not map VK_CANCEL to the stop path")
 endif()
+foreach(required IN ITEMS "if (consumed == 0)" "copy.push_back ('?')")
+  string(FIND "${tui_terminal_unix}" "${required}" tui_unix_nul)
+  if(tui_unix_nul EQUAL -1)
+    message(FATAL_ERROR "POSIX terminal must render embedded NUL visibly: ${required}")
+  endif()
+endforeach()
+
+# Provider failure must not register or transmit lookup reply material.
+foreach(required IN ITEMS
+    "RAND_bytes (replyKey, sizeof (replyKey)) != 1"
+    "RAND_bytes ((uint8_t *)&replyTag, sizeof (replyTag)) != 1"
+    "RAND_bytes ((uint8_t *)&m_PublishReplyToken, 4) != 1"
+    "OPENSSL_cleanse (replyKey, sizeof (replyKey))")
+  string(FIND "${destination}" "${required}" destination_rng_guard)
+  if(destination_rng_guard EQUAL -1)
+    message(FATAL_ERROR "Destination randomness failure guard missing: ${required}")
+  endif()
+endforeach()
+
+# SAF grant/status delivery must recheck the service epoch on the main lane.
+string(FIND "${android_router_service}" "public void readTorrentStorageStatus(" saf_status_begin)
+string(FIND "${android_router_service}" "public void importTorrent(" saf_status_end)
+if(saf_status_begin EQUAL -1 OR saf_status_end LESS saf_status_begin)
+  message(FATAL_ERROR "Missing SAF grant/status callback region")
+endif()
+math(EXPR saf_status_length "${saf_status_end} - ${saf_status_begin}")
+string(SUBSTRING "${android_router_service}" ${saf_status_begin} ${saf_status_length} saf_status_region)
+string(REGEX MATCHALL "final long requestOwnerEpoch = ownerEpoch" saf_status_epochs "${saf_status_region}")
+list(LENGTH saf_status_epochs saf_status_epoch_count)
+string(REGEX MATCHALL "TorrentSafCallbackPublisher.post\\(requestOwnerEpoch," saf_status_posts "${saf_status_region}")
+list(LENGTH saf_status_posts saf_status_post_count)
+if(NOT saf_status_epoch_count EQUAL 2 OR NOT saf_status_post_count EQUAL 6)
+  message(FATAL_ERROR "SAF grant/status completions must use delivery-time epoch fencing")
+endif()
+
+file(READ "${PROJECT_ROOT}/tests/test-eddsa.cpp" eddsa_fixture)
+foreach(required IN ITEMS "std::array<uint8_t, 64> Sha512" "const auto digest = Sha512")
+  string(FIND "${eddsa_fixture}" "${required}" eddsa_digest_contract)
+  if(eddsa_digest_contract EQUAL -1)
+    message(FATAL_ERROR "EdDSA reference digest must own all 64 output bytes")
+  endif()
+endforeach()
+
+# Event-loop input must not switch to a blocking read after available().
+foreach(async_input_path IN ITEMS libi2pd/NTCP2.cpp libi2pd_client/I2PTunnel.cpp)
+  file(READ "${PROJECT_ROOT}/${async_input_path}" async_input_source)
+  if(async_input_source MATCHES "boost::asio::read[ \t\r\n]*\\(")
+    message(FATAL_ERROR "Blocking read reintroduced in ${async_input_path}")
+  endif()
+endforeach()
+file(READ "${PROJECT_ROOT}/libi2pd/NTCP2.cpp" ntcp2_async_input)
+string(FIND "${ntcp2_async_input}" "ScheduleFrameReadDeadline ();" ntcp2_body_deadline)
+if(ntcp2_body_deadline EQUAL -1)
+  message(FATAL_ERROR "NTCP2 asynchronous body read requires its deadline")
+endif()
+file(READ "${PROJECT_ROOT}/libi2pd_client/I2PTunnel.cpp" tunnel_async_input)
+string(FIND "${tunnel_async_input}" "m_Stream->Send (nullptr, 0);" tunnel_empty_syn)
+if(tunnel_empty_syn EQUAL -1)
+  message(FATAL_ERROR "Tunnel setup must initiate the stream without blocking for payload")
+endif()
+
+file(READ "${PROJECT_ROOT}/libi2pd_client/I2PService.h" socket_pipe_source)
+foreach(required IN ITEMS "~SocketsPipe () { CloseSockets (); }" "void CloseSockets () noexcept"
+    "m_up->close (ignored);" "m_down->close (ignored);")
+  string(FIND "${socket_pipe_source}" "${required}" pipe_cleanup_contract)
+  if(pipe_cleanup_contract EQUAL -1)
+    message(FATAL_ERROR "SocketsPipe destructor-safe resource cleanup missing: ${required}")
+  endif()
+endforeach()
+file(READ "${PROJECT_ROOT}/libi2pd_client/SOCKS.cpp" socks_destructor_source)
+string(FIND "${socks_destructor_source}" "if (auto self = weak_from_this ().lock ()) Done (std::move (self));" socks_weak_done)
+if(socks_weak_done EQUAL -1)
+  message(FATAL_ERROR "SOCKS destructor teardown must not acquire an expired shared owner")
+endif()
+
+# Also cover newly introduced timers, including the optional torrent RPC.
+foreach(timer_source IN ITEMS libi2pd_client/I2CP.cpp libi2pd_client/SAM.cpp
+    libi2pd_client/SOCKS.cpp libi2pd_client/TorrentsRPC.cpp)
+  file(READ "${PROJECT_ROOT}/${timer_source}" timer_contents)
+  if(timer_contents MATCHES "m_[A-Za-z0-9_]*(Timer|Deadline)[.]cancel[ \t]*\\([ \t]*[^ \t)\r\n]")
+    message(FATAL_ERROR "Use non-deprecated timer cancel() in ${timer_source}")
+  endif()
+endforeach()
+
+# Provider work must reject queue saturation, never fall back to the UI.
+file(READ "${PROJECT_ROOT}/android/app/src/main/java/org/openi2pd/router/TorrentSafTaskExecutor.java"
+  saf_executor_source)
+foreach(required IN ITEMS "MAX_QUEUED_TASKS = 16" "new ThreadPoolExecutor(1, 1, 0L"
+    "new ArrayBlockingQueue<>(MAX_QUEUED_TASKS)" "new ThreadPoolExecutor.AbortPolicy()")
+  string(FIND "${saf_executor_source}" "${required}" saf_executor_bound)
+  if(saf_executor_bound EQUAL -1)
+    message(FATAL_ERROR "SAF task admission contract missing: ${required}")
+  endif()
+endforeach()
+if(saf_executor_source MATCHES "CallerRunsPolicy")
+  message(FATAL_ERROR "SAF provider work must never execute on the submitting UI thread")
+endif()
+string(FIND "${android_router_service}"
+  "private final ExecutorService safWorker = TorrentSafTaskExecutor.create();" saf_executor_factory)
+if(saf_executor_factory EQUAL -1)
+  message(FATAL_ERROR "RouterService must use the bounded SAF task executor")
+endif()
+
+# Metainfo remains byte-preserving, while RPC presentation must be valid text.
+file(READ "${PROJECT_ROOT}/libi2pd_client/TorrentsRPC.cpp" torrent_rpc_meta_source)
+foreach(required IN ITEMS
+    "MetainfoTextValue (torrent->GetMetaComment (), 1024)"
+    "MetainfoTextValue (torrent->GetCreatedBy (), 255)"
+    "IsValidTorrentMetaText (text, maxBytes)")
+  string(FIND "${torrent_rpc_meta_source}" "${required}" rpc_meta_contract)
+  if(rpc_meta_contract EQUAL -1)
+    message(FATAL_ERROR "Torrent RPC metainfo ownership/text contract missing: ${required}")
+  endif()
+endforeach()
+
+# Provider/scalar failures must not publish a partial randomized signature.
+file(READ "${PROJECT_ROOT}/libi2pd/Ed25519.cpp" red_dsa_source)
+string(FIND "${red_dsa_source}" "void Ed25519::SignRedDSA" red_dsa_begin)
+string(FIND "${red_dsa_source}" "EDDSAPoint Ed25519::Sum" red_dsa_end)
+if(red_dsa_begin EQUAL -1 OR red_dsa_end LESS red_dsa_begin)
+  message(FATAL_ERROR "Missing RedDSA signing boundary")
+endif()
+math(EXPR red_dsa_length "${red_dsa_end} - ${red_dsa_begin}")
+string(SUBSTRING "${red_dsa_source}" ${red_dsa_begin} ${red_dsa_length} red_dsa_body)
+foreach(required IN ITEMS "ScopeExit cleanup" "BN_clear_free" "RAND_bytes (T, sizeof (T)) != 1"
+    "EVP_DigestInit_ex" "EVP_DigestUpdate" "EVP_DigestFinal_ex" "dl != sizeof (digest)"
+    "BN_mod (" "BN_mod_mul (" "BN_mod_add ("
+    "memset (signature, 0, EDDSA25519_SIGNATURE_LENGTH)" "complete = true")
+  string(FIND "${red_dsa_body}" "${required}" red_dsa_failure_guard)
+  if(red_dsa_failure_guard EQUAL -1)
+    message(FATAL_ERROR "RedDSA fail-closed/cleanup contract missing: ${required}")
+  endif()
+endforeach()
+
+file(READ "${PROJECT_ROOT}/android/app/src/main/java/org/openi2pd/router/DaemonWrapper.java" restart_wrapper)
+file(READ "${PROJECT_ROOT}/android/app/src/main/java/org/openi2pd/router/DeferredRestart.java" restart_continuation)
+foreach(required IN ITEMS "deferredRestart.cancel();" "deferredRestart.ready();"
+    "catch (RuntimeException | Error failure)" "finishStart(failed, false);")
+  string(FIND "${restart_wrapper}" "${required}" restart_failure_guard)
+  if(restart_failure_guard EQUAL -1)
+    message(FATAL_ERROR "Deferred Android restart contract missing: ${required}")
+  endif()
+endforeach()
+if(restart_wrapper MATCHES "Thread[.]sleep" OR restart_wrapper MATCHES "public boolean restartDaemon\\(\\)")
+  message(FATAL_ERROR "Android restart must use completion rather than busy waiting")
+endif()
+foreach(required IN ITEMS "pending != ticket" "ticket.completed"
+    "catch (RejectedExecutionException rejected)")
+  string(FIND "${restart_continuation}" "${required}" restart_ticket_guard)
+  if(restart_ticket_guard EQUAL -1)
+    message(FATAL_ERROR "Android restart ticket fence missing: ${required}")
+  endif()
+endforeach()
+
+# Unix startup abort must reap storage workers installed during init too.
+file(READ "${PROJECT_ROOT}/daemon/Daemon.cpp" daemon_abort_source)
+string(FIND "${daemon_abort_source}" "void Daemon_Singleton::StopPrivsepWorkers" daemon_abort_begin)
+string(FIND "${daemon_abort_source}" "bool Daemon_Singleton::StartPrivsepLogWorker" daemon_abort_end)
+if(daemon_abort_begin EQUAL -1 OR daemon_abort_end LESS daemon_abort_begin)
+  message(FATAL_ERROR "Missing daemon startup worker rollback boundary")
+endif()
+math(EXPR daemon_abort_length "${daemon_abort_end} - ${daemon_abort_begin}")
+string(SUBSTRING "${daemon_abort_source}" ${daemon_abort_begin} ${daemon_abort_length} daemon_abort_body)
+foreach(required IN ITEMS "ClearArtifactStorage ();" "d->dataStorage->Stop ();" "d->dataStorage.reset ();"
+    "InstallRouterPersistenceWriter" "d->routerStorage->Stop ();" "d->routerStorage.reset ();")
+  string(FIND "${daemon_abort_body}" "${required}" daemon_abort_contract)
+  if(daemon_abort_contract EQUAL -1)
+    message(FATAL_ERROR "Startup rollback storage authority missing: ${required}")
+  endif()
+endforeach()
+string(FIND "${daemon_abort_body}" "ClearArtifactStorage ();" daemon_artifact_revoke)
+string(FIND "${daemon_abort_body}" "d->dataStorage->Stop ();" daemon_artifact_stop)
+if(daemon_artifact_revoke GREATER daemon_artifact_stop)
+  message(FATAL_ERROR "Revoke artifact callbacks before stopping the worker")
+endif()
+
+# A failed trust reload must not retain anchors from an earlier pass.
+file(READ "${PROJECT_ROOT}/libi2pd_client/TorrentsTunnel.cpp" recovery_source)
+foreach(required IN ITEMS "bool recoveryPolicyComplete = false;"
+    "if (recoveryPolicyComplete && !self->m_TorrentsDir.empty ()"
+    "if (!record.metainfo || !record.settings || torrent->IsRemoved ()) return;"
+    "record.owner.lock () != torrent"
+    "state.stopped = fallbackStopped;"
+    "MAX_STARTUP_ENTRIES = 256, MAX_STARTUP_VISITS = 4096"
+    "MAX_STARTUP_BYTES = 64 * 1024 * 1024")
+  string(FIND "${recovery_source}" "${required}" recovery_contract)
+  if(recovery_contract EQUAL -1)
+    message(FATAL_ERROR "Magnet recovery authority missing: ${required}")
+  endif()
+endforeach()
+file(READ "${PROJECT_ROOT}/libi2pd_client/SAM.cpp" sam_creation_source)
+string(FIND "${sam_creation_source}" "SAMSessionCreateResult SAMBridge::CreateSession (" sam_creation_start)
+if(sam_creation_start EQUAL -1)
+  message(FATAL_ERROR "SAM creation must return typed registration failures")
+endif()
+string(SUBSTRING "${sam_creation_source}" ${sam_creation_start} -1 sam_creation_body)
+string(FIND "${sam_creation_body}" "if (!ret.second) return i2p::unexpected (SAMSessionCreateError::DuplicateId);" sam_duplicate)
+string(FIND "${sam_creation_body}" "localDestination->Acquire ();" sam_acquire)
+if(sam_duplicate EQUAL -1 OR sam_acquire EQUAL -1 OR sam_duplicate GREATER sam_acquire)
+  message(FATAL_ERROR "SAM must reject duplicate registration before transferring destination ownership")
+endif()
+file(READ "${PROJECT_ROOT}/android/app/src/main/java/org/openi2pd/router/TorrentDocumentReader.java" document_reader)
+string(FIND "${document_reader}" "checkCancellation(canceled);" reader_first_cancel)
+string(FIND "${document_reader}" "int length = input.read" reader_input)
+string(REGEX MATCH "int length = input.read[^;]+;[\n\r ]+checkCancellation\\(canceled\\);" reader_cancel_boundary "${document_reader}")
+if(reader_first_cancel EQUAL -1 OR reader_first_cancel GREATER reader_input
+    OR NOT reader_cancel_boundary OR document_reader MATCHES "Thread.interrupted\\(")
+  message(FATAL_ERROR "SAF import must check cancellation around reads without clearing interruption")
+endif()
+file(READ "${PROJECT_ROOT}/android/app/src/main/java/org/openi2pd/router/TorrentSafStorage.java" grant_source)
+foreach(required IN ITEMS "mutex.isHeldByCurrentThread() || !mutex.tryLock()"
+    "mappingAuthority.run(() -> selectGrantLocked(app, key, tree))"
+    "mappingAuthority.run(() -> detachGrantLocked(app, key))"
+    "Intent.FLAG_GRANT_READ_URI_PERMISSION\n                            | Intent.FLAG_GRANT_WRITE_URI_PERMISSION")
+  string(FIND "${grant_source}" "${required}" grant_contract)
+  if(grant_contract EQUAL -1)
+    message(FATAL_ERROR "SAF grant retirement authority missing: ${required}")
+  endif()
+endforeach()
+file(READ "${PROJECT_ROOT}/libi2pd/Family.cpp" family_source)
+if(family_source MATCHES "numCertificates\\+\\+")
+  message(FATAL_ERROR "Family loader must count inserted identities, not files")
+endif()
+file(READ "${PROJECT_ROOT}/libi2pd/Reseed.cpp" reseed_source)
+string(FIND "${reseed_source}" "size_t Reseeder::LoadCertificates ()" reseed_reload)
+if(reseed_reload EQUAL -1)
+  message(FATAL_ERROR "Reseed reload must report usable signer identities")
+endif()
+string(SUBSTRING "${reseed_source}" ${reseed_reload} -1 reseed_reload_body)
+string(FIND "${reseed_reload_body}" "m_SigningKeys.clear ();" reseed_revoke)
+string(FIND "${reseed_reload_body}" "i2p::fs::ReadDir" reseed_read)
+if(reseed_revoke EQUAL -1 OR reseed_read EQUAL -1 OR reseed_revoke GREATER reseed_read)
+  message(FATAL_ERROR "Revoke old reseed anchors before directory access")
+endif()
+foreach(required IN ITEMS "LoadCertificate (file, loaded);" "m_SigningKeys.swap (loaded);"
+    "return m_SigningKeys.size ();")
+  string(FIND "${reseed_reload_body}" "${required}" reseed_contract)
+  if(reseed_contract EQUAL -1)
+    message(FATAL_ERROR "Reseed staged trust reload missing: ${required}")
+  endif()
+endforeach()
