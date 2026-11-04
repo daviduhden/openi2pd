@@ -119,9 +119,9 @@ int main (int argc, char * argv[])
 			Help (std::cerr);
 			result = 1;
 		}
-		else if (!IsValidRecordName (argv[3]))
+		else if (const auto error = ValidateRecordName (argv[3]))
 		{
-			std::cerr << "address must not be empty or contain whitespace, '#' or '='" << std::endl;
+			std::cerr << "address " << RecordNameErrorMessage (*error) << std::endl;
 			result = 2;
 		}
 		else if (!LoadKeys (argv[2], keys) || !keys.GetPublic ())
@@ -141,9 +141,9 @@ int main (int argc, char * argv[])
 			Help (std::cerr);
 			result = 1;
 		}
-		else if (!IsValidRecordName (argv[4]))
+		else if (const auto error = ValidateRecordName (argv[4]))
 		{
-			std::cerr << "old name must not be empty or contain whitespace, '#' or '='" << std::endl;
+			std::cerr << "old name " << RecordNameErrorMessage (*error) << std::endl;
 			result = 2;
 		}
 		else

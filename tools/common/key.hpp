@@ -86,6 +86,9 @@ inline bool IsBlindableSigningKeyType (i2p::data::SigningKeyType type)
 		|| type == i2p::data::SIGNING_KEY_TYPE_EDDSA_SHA512_ED25519;
 }
 
+/// Grammar-level failure categories; none retains the rejected operand.
+enum class RecordNameError { Empty, TooLong, Control, Separator };
+
 /**
  * A registration record is `name=destination#!sig=...`; a name carrying
  * a separator, control byte or whitespace could forge extra fields. The
@@ -98,15 +101,37 @@ inline bool IsBlindableSigningKeyType (i2p::data::SigningKeyType type)
  * DNS/label rules a registration service applies are a separate, later
  * decision. Callers run this before loading a key file, so a malformed
  * name is refused without touching the key.
+ * The result classifies failure without retaining the rejected operand.
  */
-inline bool IsValidRecordName (std::string_view name)
+constexpr std::optional<RecordNameError> ValidateRecordName (std::string_view name)
 {
-	if (name.empty () || name.size () > 255) return false;
+	if (name.empty ()) return RecordNameError::Empty;
+	if (name.size () > 255) return RecordNameError::TooLong;
 	for (unsigned char ch : name)
 	{
-		if (ch <= 0x20 || ch == 0x7f || ch == '#' || ch == '=' || ch == '\\') return false;
+		if (ch <= 0x20 || ch == 0x7f) return RecordNameError::Control;
+		if (ch == '#' || ch == '=' || ch == '\\') return RecordNameError::Separator;
 	}
-	return true;
+	return std::nullopt;
+}
+
+/// Fixed non-secret diagnostic suffix shared by registration commands.
+constexpr std::string_view RecordNameErrorMessage (RecordNameError error)
+{
+	switch (error)
+	{
+	case RecordNameError::Empty: return "must not be empty";
+	case RecordNameError::TooLong: return "must not exceed 255 bytes";
+	case RecordNameError::Control: return "must not contain whitespace or control bytes (including DEL)";
+	case RecordNameError::Separator: return "must not contain '#', '=' or backslash";
+	}
+	return "is invalid";
+}
+
+/// Compatibility predicate with the same grammar and byte limit.
+constexpr bool IsValidRecordName (std::string_view name)
+{
+	return !ValidateRecordName (name).has_value ();
 }
 
 /**

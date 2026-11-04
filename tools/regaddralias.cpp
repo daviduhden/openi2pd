@@ -39,9 +39,9 @@ int main (int argc, char * argv[])
 		return 1;
 	}
 
-	if (!IsValidRecordName (argv[3]))
+	if (const auto error = ValidateRecordName (argv[3]))
 	{
-		std::cerr << "address must not be empty or contain whitespace, '#' or '='" << std::endl;
+		std::cerr << "address " << RecordNameErrorMessage (*error) << std::endl;
 		return 2;
 	}
 

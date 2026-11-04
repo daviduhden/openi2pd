@@ -29,8 +29,15 @@ verifyhost "$(cat hosts.txt)"
 
 ## Output
 
-Prints `Valid destination`, `Invalid destination signature.`, or a structure
-error. Exit status is 0 for a valid record and non-zero otherwise.
+The verdict `Valid destination` is the only line written to stdout. All
+rejection diagnostics (`Invalid destination record.`, `Invalid destination
+base64.`, `Destination signature not found.`, `Invalid destination signature
+encoding.`, `Invalid destination signature.`, `Invalid old destination
+base64.`, `Old destination signature not found.`, `Invalid old destination
+signature.`), the provider failure `Crypto initialization failed` and the
+usage line are written to stderr. Exit status is 0 for a valid record and
+non-zero otherwise, so a caller may treat empty stdout as "not verified"
+without reading the status.
 
 ## Security
 

@@ -6,8 +6,9 @@
 # Compile-free parity check for the auxiliary tool inventory. The CMake
 # target list, documentation navigation, Debian/RPM packaging and the
 # manual install assertion must all name the same executables, and every
-# source/doc/manifest entry must exist. It never configures, compiles or
-# runs a tool.
+# source/doc/manifest entry must exist. Every provider-initializing tool
+# must also carry the fixed crypto-guard rejection. It never configures,
+# compiles or runs a tool.
 #
 
 if(NOT PROJECT_ROOT)
@@ -122,20 +123,48 @@ foreach(pair IN ITEMS
   endif()
 endforeach()
 
+set(guard_count 0)
 foreach(tool IN LISTS tools_list)
   # A provider rejection must stop each crypto consumer before it can
-  # handle keys or emit results. Keep this source contract independent
-  # of the runner's installed provider configuration.
+  # handle keys or emit results. Detect every guard declaration by
+  # its own identifier: a differently named variable used to skip this
+  # contract silently. Keep the source contract independent of the
+  # runner's installed provider configuration.
   read_required("${PROJECT_ROOT}/tools/${tool}.cpp" tool_source)
-  string(FIND "${tool_source}" "i2p::tools::CryptoGuard cryptoGuard;" guard_position)
-  if(NOT guard_position EQUAL -1)
-    string(FIND "${tool_source}"
-      "i2p::tools::CryptoGuard cryptoGuard;\n\tif (!cryptoGuard)\n\t{\n\t\tstd::cerr << \"Crypto initialization failed\" << std::endl;\n\t\treturn 1;\n\t}"
-      checked_guard_position)
-    if(checked_guard_position EQUAL -1)
-      message(FATAL_ERROR "${tool} must reject crypto initialization failure")
-    endif()
+  # Match the declaration without its terminating semicolon: a CMake
+  # list element cannot carry one, and the canonical block is rebuilt
+  # below.
+  string(REGEX MATCHALL
+    "i2p::tools::CryptoGuard[ \t]+[A-Za-z_][A-Za-z0-9_]*"
+    guard_declarations "${tool_source}")
+  # A declaration the pattern cannot parse must fail instead of silently
+  # escaping the contract.
+  string(REGEX MATCHALL "i2p::tools::CryptoGuard" guard_tokens "${tool_source}")
+  list(LENGTH guard_tokens guard_token_count)
+  list(LENGTH guard_declarations guard_declaration_count)
+  if(NOT guard_token_count EQUAL guard_declaration_count)
+    message(FATAL_ERROR
+      "${tool} has a crypto guard declaration the checker cannot parse")
   endif()
+  foreach(declaration IN LISTS guard_declarations)
+    string(REGEX REPLACE
+      "i2p::tools::CryptoGuard[ \t]+([A-Za-z_][A-Za-z0-9_]*)"
+      "\\1" guard_name "${declaration}")
+    set(checked_guard "i2p::tools::CryptoGuard ${guard_name};")
+    string(APPEND checked_guard "\n\tif (!${guard_name})")
+    string(APPEND checked_guard "\n\t{")
+    string(APPEND checked_guard
+      "\n\t\tstd::cerr << \"Crypto initialization failed\" << std::endl;")
+    string(APPEND checked_guard "\n\t\treturn 1;")
+    string(APPEND checked_guard "\n\t}")
+    string(FIND "${tool_source}" "${checked_guard}" checked_guard_position)
+    if(checked_guard_position EQUAL -1)
+      message(FATAL_ERROR
+        "${tool} must reject crypto initialization failure for '${guard_name}'"
+        " with the fixed stderr diagnostic and exit status 1")
+    endif()
+    math(EXPR guard_count "${guard_count} + 1")
+  endforeach()
   foreach(path IN ITEMS
       "${PROJECT_ROOT}/tools/${tool}.cpp"
       "${PROJECT_ROOT}/docs/tools/${tool}.md")
@@ -200,4 +229,7 @@ foreach(required IN ITEMS "tools/LICENSE" "tools/CMakeLists.txt")
 endforeach()
 
 list(LENGTH tools_list tool_count)
-message(STATUS "tools-inventory-static: ${tool_count} tools consistent across CMake, docs, packaging and CI")
+if(guard_count LESS 1)
+  message(FATAL_ERROR "no crypto guard declaration was found in the tool sources")
+endif()
+message(STATUS "tools-inventory-static: ${tool_count} tools consistent across CMake, docs, packaging and CI; ${guard_count} crypto guards checked")

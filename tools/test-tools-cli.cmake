@@ -312,7 +312,17 @@ if(NOT newline EQUAL -1)
 endif()
 run_cli(verifyhost out err "${step3}")
 expect_code(0 "verifyhost accepts the CRLF-normalized record")
-expect_contains("${out}${err}" "Valid destination" "verifyhost verdict")
+expect_contains("${out}" "Valid destination" "verifyhost verdict is stdout data")
+expect_empty("${err}" "verifyhost acceptance stderr")
+
+# A rejection is a diagnostic, not data: it belongs on stderr so a
+# caller that captures stdout never mistakes an error for a verdict.
+set(tampered "${step3}")
+string(REPLACE "example.i2p" "evil.i2p" tampered "${tampered}")
+run_cli(verifyhost out err "${tampered}")
+expect_code(1 "verifyhost rejects a tampered record")
+expect_empty("${out}" "verifyhost rejection stdout")
+expect_contains("${err}" "Invalid destination signature" "verifyhost rejection stderr")
 
 # --------------------------------------------------------------------
 # Registration names cannot forge extra record fields.
@@ -320,6 +330,58 @@ expect_contains("${out}${err}" "Valid destination" "verifyhost verdict")
 run_cli(regaddr out err reg.keys "bad#name.i2p")
 expect_code(2 "regaddr rejects '#' in the name")
 expect_contains("${err}" "address must not" "regaddr name stderr")
+
+# Rejected record fields must explain every disallowed byte category,
+# refuse before opening nonexistent key files and never echo the operand.
+string(ASCII 127 record_del)
+string(ASCII 92 record_backslash)
+string(REPEAT "a" 256 record_too_long)
+foreach(rejected IN ITEMS
+    "rejected-name-secret-marker${record_del}"
+    "rejected-name-secret-marker${record_backslash}.i2p"
+    "${record_too_long}")
+  if("${rejected}" STREQUAL "${record_too_long}")
+    set(reason "255 bytes")
+  elseif("${rejected}" MATCHES "${record_del}")
+    set(reason "DEL")
+  else()
+    set(reason "backslash")
+  endif()
+  foreach(tool IN ITEMS regaddr regaddralias regaddr_3ld-step1 regaddr_3ld-step2)
+    if(tool STREQUAL "regaddr")
+      run_cli(regaddr out err missing-registration.keys "${rejected}")
+    elseif(tool STREQUAL "regaddralias")
+      run_cli(regaddralias out err missing-old.keys missing-new.keys "${rejected}")
+    elseif(tool STREQUAL "regaddr_3ld-step1")
+      run_cli(regaddr_3ld out err step1 missing-registration.keys "${rejected}")
+    else()
+      run_cli(regaddr_3ld out err step2 missing-step1.txt missing-registration.keys "${rejected}")
+    endif()
+    expect_code(2 "${tool} invalid registration name")
+    expect_empty("${out}" "${tool} rejected-name stdout")
+    expect_contains("${err}" "${reason}" "${tool} rejected-name reason")
+    string(FIND "${err}" "rejected-name-secret-marker" operand)
+    if(NOT operand EQUAL -1 OR "${err}" MATCHES "Failed to (load|read)")
+      fail("${tool} echoed its operand or touched private-key input before rejection")
+    endif()
+  endforeach()
+endforeach()
+
+# Preserve an explicit empty argument instead of expanding the CLI helper.
+execute_process(
+  COMMAND "${TOOLS_DIR}/regaddr${EXE}" missing-registration.keys ""
+  WORKING_DIRECTORY "${WORK}"
+  RESULT_VARIABLE LAST_RESULT OUTPUT_VARIABLE out ERROR_VARIABLE err TIMEOUT 30)
+expect_code(2 "regaddr rejects an explicit empty name")
+expect_empty("${out}" "regaddr empty-name stdout")
+expect_contains("${err}" "must not be empty" "regaddr empty-name reason")
+
+# The maximum byte-length boundary remains accepted by the grammar.
+string(REPEAT "a" 251 record_label)
+run_cli(regaddr out err reg.keys "${record_label}.i2p")
+expect_code(0 "regaddr accepts a 255-byte record name")
+expect_empty("${err}" "regaddr maximum-name stderr")
+expect_contains("${out}" "${record_label}.i2p=" "regaddr maximum-name record")
 
 file(REMOVE_RECURSE "${WORK}")
 message(STATUS "tools-cli: all checks passed")

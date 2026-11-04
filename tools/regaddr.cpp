@@ -30,9 +30,9 @@ int main (int argc, char * argv[])
 		std::cerr << "Usage: regaddr <filename> <address>" << std::endl;
 		return 1;
 	}
-	if (!IsValidRecordName (argv[2]))
+	if (const auto error = ValidateRecordName (argv[2]))
 	{
-		std::cerr << "address must not be empty or contain whitespace, '#' or '='" << std::endl;
+		std::cerr << "address " << RecordNameErrorMessage (*error) << std::endl;
 		return 2;
 	}
 

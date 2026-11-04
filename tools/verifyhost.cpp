@@ -6,8 +6,8 @@
  *
  * Verifies the destination signature of a host-registration record and,
  * when present, the old destination's counter-signature for an
- * `olddest` transition. It prints a validity diagnostic and exits
- * non-zero on any malformed or invalid signature.
+ * `olddest` transition. The `Valid destination` verdict is the only
+ * stdout data; usage and every rejection diagnostic go to stderr.
  *
  */
 
@@ -54,7 +54,10 @@ std::optional<std::string_view> FindValue (std::string_view record, std::string_
 ///
 /// @return 0 when every present signature verifies, 1 on a malformed
 /// record, missing/invalid encoding, or a failed verification.
-/// @post All diagnostics go to stdout, including the success line.
+/// @post `Valid destination` is the only line written to stdout. The
+/// usage line and every rejection diagnostic are written to stderr, so
+/// a caller can treat an empty stdout as "not verified" even when it
+/// ignores the exit status.
 int main (int argc, char * argv[])
 {
 	if (argc < 2 || argc > 2)
@@ -64,6 +67,11 @@ int main (int argc, char * argv[])
 	}
 
 	i2p::tools::CryptoGuard guard;
+	if (!guard)
+	{
+		std::cerr << "Crypto initialization failed" << std::endl;
+		return 1;
+	}
 	i2p::data::IdentityEx identity, oldIdentity;
 	std::string record (argv[1]);
 	// CMake and the Windows text-mode tool chain may hand us CRLF while
@@ -92,13 +100,13 @@ int main (int argc, char * argv[])
 	const auto equals = hostRecord.find ('=');
 	if (equals == std::string_view::npos)
 	{
-		std::cout << "Invalid destination record." << std::endl;
+		std::cerr << "Invalid destination record." << std::endl;
 		return 1;
 	}
 	const auto hostBase64 = hostRecord.substr (equals + 1);
 	if (!identity.FromBase64 (hostBase64))
 	{
-		std::cout << "Invalid destination base64." << std::endl;
+		std::cerr << "Invalid destination base64." << std::endl;
 		return 1;
 	}
 
@@ -106,7 +114,7 @@ int main (int argc, char * argv[])
 	if (sigStart == std::string::npos) sigStart = record.find ("!sig=");
 	if (sigStart == std::string::npos)
 	{
-		std::cout << "Destination signature not found." << std::endl;
+		std::cerr << "Destination signature not found." << std::endl;
 		return 1;
 	}
 	const size_t sigMarkerOffset = (sigStart > 0 && record[sigStart - 1] == '#') ? 1 : 0;
@@ -116,12 +124,12 @@ int main (int argc, char * argv[])
 	std::vector<uint8_t> signature (identity.GetSignatureLen ());
 	if (i2p::data::Base64ToByteStream (signatureText, signature) != signature.size ())
 	{
-		std::cout << "Invalid destination signature encoding." << std::endl;
+		std::cerr << "Invalid destination signature encoding." << std::endl;
 		return 1;
 	}
 	if (!identity.Verify (reinterpret_cast<const uint8_t *> (hostNoSig.data ()), hostNoSig.size (), signature.data ()))
 	{
-		std::cout << "Invalid destination signature." << std::endl;
+		std::cerr << "Invalid destination signature." << std::endl;
 		return 1;
 	}
 
@@ -129,21 +137,21 @@ int main (int argc, char * argv[])
 	{
 		if (!oldIdentity.FromBase64 (*oldDest))
 		{
-			std::cout << "Invalid old destination base64." << std::endl;
+			std::cerr << "Invalid old destination base64." << std::endl;
 			return 1;
 		}
 
 		const auto oldSig = FindValue (record, "oldsig=");
 		if (!oldSig)
 		{
-			std::cout << "Old destination signature not found." << std::endl;
+			std::cerr << "Old destination signature not found." << std::endl;
 			return 1;
 		}
 
 		const auto oldSigStart = record.find ("#oldsig=");
 		if (oldSigStart == std::string::npos)
 		{
-			std::cout << "Old destination signature not found." << std::endl;
+			std::cerr << "Old destination signature not found." << std::endl;
 			return 1;
 		}
 		const std::string_view hostNoOldSig (record.data (), oldSigStart);
@@ -152,7 +160,7 @@ int main (int argc, char * argv[])
 			|| !oldIdentity.Verify (
 				reinterpret_cast<const uint8_t *> (hostNoOldSig.data ()), hostNoOldSig.size (), oldSignature.data ()))
 		{
-			std::cout << "Invalid old destination signature." << std::endl;
+			std::cerr << "Invalid old destination signature." << std::endl;
 			return 1;
 		}
 	}
