@@ -328,7 +328,7 @@ server returns a non-null value. `id` is always present. Unknown/invalid fields 
 | `rateUpload` | size/s | upload rate |
 | `eta` | int (seconds) | estimated seconds remaining, or -2 if not downloading |
 | `error` | int | 3 if a local error (`GetError()!=0`) else 0 |
-| `errorString` | string | error description (first mapping gives `GetErrorStr()`; a second later entry overwrites duplicate key with `""` — effectively empty in the returned JSON) |
+| `errorString` | string | Local error description from `GetErrorStr()` |
 | `isStalled` | bool | false (TODO) |
 | `recheckProgress` | float | 0 (TODO) |
 | `queuePosition` | int | 1 (TODO) |
@@ -336,8 +336,8 @@ server returns a non-null value. `id` is always present. Unknown/invalid fields 
 | `seedRatioMode` | int | 0 (follow global) (TODO) |
 | `seedRatioLimit` | int | 0 (TODO) |
 | `downloadDir` | string | `""` (TODO → torrents dir) |
-| `comment` | string | `""` (TODO) |
-| `creator` | string | `""` (TODO) |
+| `comment` | string | Metainfo `comment`, or empty when absent or invalid display text |
+| `creator` | string | Metainfo `created by`, or empty when absent or invalid display text |
 | `webseedsSendingToUs` | int | 0 (i2p has no web seeds) |
 
 Status enum (`TorrentStatus`):

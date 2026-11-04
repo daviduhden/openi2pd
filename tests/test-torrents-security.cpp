@@ -12,6 +12,7 @@
  */
 
 #include <cassert>
+#include <chrono>
 #include <cstdint>
 #include <cstring>
 #include <filesystem>
@@ -22,13 +23,18 @@
 #include <memory>
 #include <string>
 #include <string_view>
+#include <thread>
 #include <utility>
 #include <vector>
+#include <boost/json.hpp>
 
 #include "Torrents.h"
 #include "TorrentsControl.h"
 #include "TorrentsDHT.h"
 #include "TorrentsTunnel.h"
+#include "TorrentsRPC.h"
+#include "TorrentsState.h"
+#include "Modern.h"
 
 #ifndef NO_TORRENTS
 
@@ -41,6 +47,82 @@ static_assert (MAX_TORRENT_LENGTH > std::numeric_limits<uint32_t>::max (), "limi
 
 namespace
 {
+template<class Predicate>
+void WaitForRPC (Predicate predicate)
+{
+	const auto deadline = std::chrono::steady_clock::now () + std::chrono::seconds (5);
+	while (!predicate ())
+	{
+		assert (std::chrono::steady_clock::now () < deadline);
+		std::this_thread::yield ();
+	}
+}
+
+std::string ReadClosedRPC (boost::asio::ip::tcp::socket & socket)
+{
+	socket.non_blocking (true);
+	std::string response;
+	WaitForRPC ([&] ()
+		{
+			char buffer[1024];
+			boost::system::error_code error;
+			auto count = socket.read_some (boost::asio::buffer (buffer), error);
+			response.append (buffer, count);
+			assert (response.size () < 65536);
+			if (error == boost::asio::error::would_block || error == boost::asio::error::try_again) return false;
+			if (!error) return false;
+			assert (error == boost::asio::error::eof || error == boost::asio::error::connection_reset);
+			return true;
+		});
+	return response;
+}
+
+void TestRPCAdmissionAndRestart ()
+{
+	boost::asio::io_context clientService;
+	TorrentsRPCServer server ("127.0.0.1", 0);
+	server.AddTunnel ("", nullptr, true, "user", "private-marker");
+	assert (server.GetAuth ("/rpc").first && server.GetAuth ("/rpc/").first);
+	server.AddTunnel ("", nullptr, false);
+	assert (!server.GetAuth ("/rpc").first && server.GetAuth ("/rpc/").second.empty ());
+	const auto endpoint = server.GetEndpoint ();
+	server.Start ();
+	server.Start (); // repeated start must not create another accept chain
+	std::vector<boost::asio::ip::tcp::socket> clients;
+	for (size_t i = 0; i < TorrentsRPCServer::MAX_SESSIONS; ++i)
+	{
+		clients.emplace_back (clientService);
+		clients.back ().connect (endpoint);
+		// Count publication, rather than a sleep, synchronizes admission.
+		WaitForRPC ([&] { return server.GetSessionCount () == i + 1; });
+	}
+	boost::asio::ip::tcp::socket excess (clientService);
+	excess.connect (endpoint);
+	assert (ReadClosedRPC (excess).empty ());
+	assert (server.GetSessionCount () == TorrentsRPCServer::MAX_SESSIONS);
+	server.Stop ();
+	assert (server.GetSessionCount () == 0);
+	for (auto & client : clients) assert (ReadClosedRPC (client).empty ());
+	server.Stop ();
+	server.Start ();
+	boost::asio::ip::tcp::socket restarted (clientService);
+	restarted.connect (endpoint);
+	const std::string request = "GET /rpc HTTP/1.1\r\nHost: localhost\r\n\r\n";
+	boost::asio::write (restarted, boost::asio::buffer (request));
+	assert (ReadClosedRPC (restarted).find ("405") != std::string::npos);
+	WaitForRPC ([&] { return server.GetSessionCount () == 0; });
+	server.Stop ();
+
+	boost::asio::ip::tcp::socket orphan (clientService);
+	{
+		TorrentsRPCServer scoped ("127.0.0.1", 0);
+		scoped.Start ();
+		orphan.connect (scoped.GetEndpoint ());
+		WaitForRPC ([&] { return scoped.GetSessionCount () == 1; });
+	} // destruction must close accepted sockets and queued completions
+	assert (ReadClosedRPC (orphan).empty ());
+}
+
 std::string Bytes (std::string_view value)
 {
 	return std::to_string (value.size ()) + ":" + std::string (value);
@@ -742,6 +824,61 @@ void TestRemovedTorrentPersistence ()
 	assert (!std::filesystem::exists (dir.path / "removed.resume"));
 }
 
+void TestRPCMetadataFields ()
+{
+	TempDir dir { MakeTempDir () };
+	boost::asio::io_context service;
+	auto keys = i2p::data::PrivateKeys::CreateRandomKeys (
+		i2p::data::SIGNING_KEY_TYPE_EDDSA_SHA512_ED25519, i2p::data::CRYPTO_KEY_TYPE_ELGAMAL, true);
+	auto destination = std::make_shared<i2p::client::ClientDestination> (service, keys, false);
+	auto tunnel = std::make_shared<TorrentsTunnel> ("rpc-meta", destination, dir.path.string (), "", false);
+	auto [torrent, id] = tunnel->AddTorrent (MakeMultiFileTorrent ("meta", { "file.bin" }, 32768, 2));
+	auto [emptyTorrent, emptyId] = tunnel->AddTorrent (MakeMultiFileTorrent ("empty", { "file.bin" }, 32768, 2));
+	assert (torrent && emptyTorrent && id > 0 && emptyId > 0);
+	auto invalidContent = MakeMultiFileTorrent ("invalid-text", { "file.bin" }, 32768, 2);
+	invalidContent.insert (1, Bytes ("comment") + Bytes (std::string (1, '\xff')));
+	auto [invalidTorrent, invalidId] = tunnel->AddTorrent (invalidContent);
+	assert (invalidTorrent && invalidId > 0);
+	assert (invalidTorrent->GetMetaComment () == std::string (1, '\xff'));
+	const std::string comment = "A quoted \"metainfo\" comment\nsecond line";
+	const std::string creator = "fixture\\creator";
+	assert (torrent->SetMetaComment (comment));
+	assert (torrent->SetCreatedBy (creator));
+	auto work = boost::asio::make_work_guard (service);
+	std::jthread engine ([&] { service.run (); });
+	auto stopEngine = i2p::modern::ScopeExit ([&] { service.stop (); engine.join (); });
+	TorrentsRPCServer server ("127.0.0.1", 0);
+	server.AddTunnel ("", tunnel);
+	server.Start ();
+	boost::asio::io_context clientService;
+	boost::asio::ip::tcp::socket client (clientService);
+	client.connect (server.GetEndpoint ());
+	const std::string body = "{\"method\":\"torrent-get\",\"arguments\":{\"fields\":[\"comment\",\"creator\"],\"ids\":["
+		+ std::to_string (id) + "," + std::to_string (emptyId) + "," + std::to_string (invalidId) + "]}}";
+	const std::string request = "POST /rpc HTTP/1.1\r\nHost: localhost\r\nContent-Type: application/json\r\nContent-Length: "
+		+ std::to_string (body.size ()) + "\r\n\r\n" + body;
+	boost::asio::write (client, boost::asio::buffer (request));
+	const auto response = ReadClosedRPC (client);
+	const auto split = response.find ("\r\n\r\n");
+	assert (split != std::string::npos);
+	const auto json = boost::json::parse (response.substr (split + 4));
+	const auto & entries = json.as_object ().at ("arguments").as_object ().at ("torrents").as_array ();
+	assert (entries.size () == 3);
+	for (const auto & entry : entries)
+	{
+		const auto returnedId = entry.as_object ().at ("id").as_int64 ();
+		const bool populated = returnedId == id;
+		assert (populated || returnedId == emptyId || returnedId == invalidId);
+		const auto & returnedComment = entry.as_object ().at ("comment").as_string ();
+		const auto & returnedCreator = entry.as_object ().at ("creator").as_string ();
+		assert (std::string_view (returnedComment.data (), returnedComment.size ())
+			== (populated ? comment : std::string { }));
+		assert (std::string_view (returnedCreator.data (), returnedCreator.size ())
+			== (populated ? creator : std::string { }));
+	}
+	server.Stop ();
+}
+
 void TestRemovalQueueAndReadd ()
 {
 	TempDir dir { MakeTempDir () };
@@ -918,6 +1055,8 @@ void TestResumeWriteAndRead ()
 
 int main ()
 {
+	TestRPCAdmissionAndRestart ();
+	TestRPCMetadataFields ();
 	TestI2PTrackerHostValidation ();
 	TestPieceBlockBounds ();
 	TestCanAcceptPieceBlock ();

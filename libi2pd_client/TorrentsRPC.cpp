@@ -32,6 +32,7 @@
 #include <type_traits>
 #include <unordered_set>
 #include <utility>
+#include <map>
 #include "Base.h"
 #include "Log.h"
 #include "HTTP.h"
@@ -45,6 +46,27 @@ namespace i2p
 {
 namespace torrents
 {
+	// The callback authority is independent of the public facade. A stopped
+	// generation is drained before this state can admit another session.
+	struct TorrentsRPCState
+	{
+		struct Route
+		{
+			std::weak_ptr<TorrentsTunnel> tunnel;
+			std::string credential;
+		};
+		explicit TorrentsRPCState (boost::asio::io_context & service,
+			const boost::asio::ip::tcp::endpoint & endpoint)
+			: acceptor (service, endpoint), endpoint (acceptor.local_endpoint ()) { }
+		boost::asio::ip::tcp::acceptor acceptor;
+		const boost::asio::ip::tcp::endpoint endpoint;
+		std::mutex mutex;
+		bool running = false;
+		uint64_t nextId = 0;
+		std::map<uint64_t, std::shared_ptr<TorrentsRPCSession>> sessions;
+		std::map<std::string, Route, std::less<>> routes;
+	};
+
 	namespace
 	{
 		// A maximum-size v1 metainfo is MAX_NUM_TORRENT_PIECES *
@@ -66,6 +88,13 @@ namespace torrents
 			return !credential.empty () && credential.size () <= MAX_RPC_CREDENTIAL_LENGTH
 				&& credential.find ('\0') == std::string_view::npos && credential.find ('\r') == std::string_view::npos
 				&& credential.find ('\n') == std::string_view::npos;
+		}
+
+		boost::json::value MetainfoTextValue (std::string_view text, size_t maxBytes)
+		{
+			// Imported bencode strings may contain arbitrary bytes. Keep
+			// those bytes in metainfo, but never emit invalid UTF-8 JSON.
+			return boost::json::value (IsValidTorrentMetaText (text, maxBytes) ? std::string (text) : std::string { });
 		}
 
 		bool SecureEquals (std::string_view a, std::string_view b)
@@ -753,10 +782,12 @@ namespace torrents
 			{ "peersConnected", [] (std::shared_ptr<Torrent> torrent)
 				{ return boost::json::value (torrent->GetConnections ().size ()); } },
 			{ "fileStats", &JSONRPCHandler::GetFileStats },
-			{ "comment", [] (std::shared_ptr<Torrent>)
-				{ return boost::json::value (""); } }, // TODO: extract from "comment" dictionary key
-			{ "creator", [] (std::shared_ptr<Torrent>)
-				{ return boost::json::value (""); } } // TODO: extract from "created by" dictionary key
+			// Copy metainfo strings on the torrent service thread. JSON owns
+			// them after the engine task completes; no borrowed views escape.
+			{ "comment", [] (std::shared_ptr<Torrent> torrent)
+				{ return MetainfoTextValue (torrent->GetMetaComment (), 1024); } },
+			{ "creator", [] (std::shared_ptr<Torrent> torrent)
+				{ return MetainfoTextValue (torrent->GetCreatedBy (), 255); } }
 		};
 		if (torrent)
 		{
@@ -1100,21 +1131,49 @@ namespace torrents
 		return SuccessResponse (GetTag (jsonRequest), std::move (response));
 	}
 
-	TorrentsRPCSession::TorrentsRPCSession (TorrentsRPCServer & server, boost::asio::ip::tcp::socket && s)
-		: m_Server (server)
-		, m_Socket (std::move (s))
+	TorrentsRPCSession::TorrentsRPCSession (const std::shared_ptr<TorrentsRPCState> & state,
+		uint64_t id, boost::asio::ip::tcp::socket && socket)
+		: m_State (state), m_Id (id), m_Socket (std::move (socket)), m_Deadline (m_Socket.get_executor ())
+		, m_ReceiveBuffer (MAX_RPC_BODY_SIZE + 8192)
 	{
 		m_RequestParser.body_limit (MAX_RPC_BODY_SIZE);
+		m_RequestParser.header_limit (8192);
+	}
+
+	void TorrentsRPCSession::Close ()
+	{
+		if (std::exchange (m_Closed, true)) return;
+		boost::system::error_code ignored;
+		m_Socket.cancel (ignored);
+		m_Socket.close (ignored);
+		// cancel() is portable across the supported Boost range. Close the
+		// socket first so a timer-service error cannot strand the resource.
+		try { m_Deadline.cancel (); }
+		catch (const boost::system::system_error &) { }
+		if (auto state = m_State.lock ())
+		{
+			std::lock_guard lock (state->mutex);
+			state->sessions.erase (m_Id);
+		}
+	}
+
+	void TorrentsRPCSession::ArmDeadline ()
+	{
+		m_Deadline.expires_after (std::chrono::seconds (30));
+		m_Deadline.async_wait ([self = shared_from_this ()] (const boost::system::error_code & error)
+			{ if (!error) self->Close (); });
 	}
 
 	void TorrentsRPCSession::ReceiveRequest ()
 	{
+		ArmDeadline ();
 		boost::beast::http::async_read (m_Socket, m_ReceiveBuffer, m_RequestParser,
 			boost::beast::bind_front_handler (&TorrentsRPCSession::HandleRequest, shared_from_this ()));
 	}
 
 	void TorrentsRPCSession::HandleRequest (const boost::system::error_code & ecode, size_t)
 	{
+		if (m_Closed) return;
 		if (ecode)
 		{
 			if (ecode == boost::beast::http::error::body_limit)
@@ -1122,6 +1181,7 @@ namespace torrents
 			else if (ecode != boost::beast::http::error::end_of_stream
 				&& ecode != boost::asio::error::operation_aborted)
 				LogPrint (eLogDebug, "TorrentsRPC: Failed to read request: ", ecode.message ());
+			if (ecode != boost::beast::http::error::body_limit) Close ();
 			return;
 		}
 
@@ -1135,16 +1195,26 @@ namespace torrents
 
 		auto path = request.target ();
 		std::string_view pathView (path.data (), path.size ());
-		auto tunnel = m_Server.GetTunnel (pathView);
+		std::shared_ptr<TorrentsTunnel> tunnel;
+		std::string authString;
+		if (auto state = m_State.lock ())
+		{
+			std::lock_guard lock (state->mutex);
+			if (!state->running) return;
+			if (auto route = state->routes.find (pathView); route != state->routes.end ())
+			{
+				tunnel = route->second.tunnel.lock ();
+				authString = route->second.credential;
+			}
+		}
 		if (!tunnel)
 		{
-			LogPrint (eLogDebug, "TorrentRPC ", pathView, " not found");
+			LogPrint (eLogDebug, "TorrentsRPC: Unknown request path");
 			SendResponse (boost::beast::http::status::not_found);
 			return;
 		}
 
-		auto [authRequired, authString] = m_Server.GetAuth (pathView);
-		if (authRequired)
+		if (!authString.empty ())
 		{
 			auto auth = request[boost::beast::http::field::authorization];
 			std::string_view authView (auth.data (), auth.size ());
@@ -1180,10 +1250,13 @@ namespace torrents
 		JSONRPCHandler jsonHandler (tunnel);
 		auto response = jsonHandler.HandleRequest (request.body ());
 		if (!response.empty ()) SendResponse (boost::beast::http::status::ok, response);
+		else Close ();
 	}
 
 	void TorrentsRPCSession::SendResponse (boost::beast::http::status result, std::string_view data)
 	{
+		if (m_Closed) return;
+		ArmDeadline ();
 		m_Response.version (11); // HTTP/1.1
 		m_Response.result (result);
 		m_Response.keep_alive (false);
@@ -1200,11 +1273,14 @@ namespace torrents
 			[s = shared_from_this ()] (const boost::system::error_code & ecode, size_t)
 			{
 				if (ecode) LogPrint (eLogWarning, "TorrentsRPC: Failed to send response: ", ecode.message ());
+				s->Close ();
 			});
 	}
 
 	void TorrentsRPCSession::SendUnauthorizedResponse ()
 	{
+		if (m_Closed) return;
+		ArmDeadline ();
 		m_Response.version (11); // HTTP/1.1
 		m_Response.result (boost::beast::http::status::unauthorized);
 		m_Response.keep_alive (false);
@@ -1218,31 +1294,94 @@ namespace torrents
 			[s = shared_from_this ()] (const boost::system::error_code & ecode, size_t)
 			{
 				if (ecode) LogPrint (eLogWarning, "TorrentsRPC: Failed to send response: ", ecode.message ());
+				s->Close ();
 			});
 	}
 
 	TorrentsRPCServer::TorrentsRPCServer (std::string_view address, uint16_t port)
 		: RunnableServiceWithWork ("TRPC")
-		, m_Acceptor (GetService (), MakeLoopbackEndpoint (address, port))
+		, m_State (std::make_shared<TorrentsRPCState> (GetService (), MakeLoopbackEndpoint (address, port)))
 	{
+	}
+
+	TorrentsRPCServer::~TorrentsRPCServer () { Stop (); }
+
+	boost::asio::ip::tcp::endpoint TorrentsRPCServer::GetEndpoint () const { return m_State->endpoint; }
+
+	size_t TorrentsRPCServer::GetSessionCount () const
+	{
+		std::lock_guard lock (m_State->mutex);
+		return m_State->sessions.size ();
 	}
 
 	void TorrentsRPCServer::Start ()
 	{
-		if (!IsRunning ())
+		std::lock_guard lifecycle (m_LifecycleMutex);
+		std::unique_lock admission (m_State->mutex);
+		if (m_State->running) return;
+		if (!m_State->acceptor.is_open ())
+		{
+			try
+			{
+				m_State->acceptor.open (m_State->endpoint.protocol ());
+				m_State->acceptor.set_option (boost::asio::socket_base::reuse_address (true));
+				m_State->acceptor.bind (m_State->endpoint);
+				m_State->acceptor.listen ();
+			}
+			catch (...)
+			{
+				boost::system::error_code ignored;
+				m_State->acceptor.close (ignored);
+				throw;
+			}
+		}
+		m_State->running = true;
+		try
 		{
 			StartIOService ();
-			Accept ();
+			Accept (m_State);
+		}
+		catch (...)
+		{
+			m_State->running = false;
+			// No session can publish while admission is locked. Release it
+			// before joining a worker that may be waiting at this barrier.
+			admission.unlock ();
+			StopIOService ();
+			boost::system::error_code ignored;
+			m_State->acceptor.cancel (ignored);
+			m_State->acceptor.close (ignored);
+			GetService ().restart ();
+			GetService ().poll ();
+			GetService ().stop ();
+			throw;
 		}
 	}
 
 	void TorrentsRPCServer::Stop ()
 	{
-		if (IsRunning ())
+		// Lifecycle ownership belongs to the control thread. Closing sockets
+		// after the join avoids concurrent operations on the same Asio object.
+		std::lock_guard lifecycle (m_LifecycleMutex);
 		{
-			m_Acceptor.cancel ();
-			StopIOService ();
+			std::lock_guard admission (m_State->mutex);
+			m_State->running = false;
 		}
+		StopIOService ();
+		std::map<uint64_t, std::shared_ptr<TorrentsRPCSession>> sessions;
+		{
+			std::lock_guard admission (m_State->mutex);
+			sessions.swap (m_State->sessions);
+		}
+		boost::system::error_code ignored;
+		m_State->acceptor.cancel (ignored);
+		m_State->acceptor.close (ignored);
+		for (const auto & entry : sessions) entry.second->Close ();
+		// io_context::stop does not drain handlers. Deliver canceled accepts,
+		// reads, writes and timers while their state and executor still exist.
+		GetService ().restart ();
+		GetService ().poll ();
+		GetService ().stop ();
 	}
 
 	void TorrentsRPCServer::AddTunnel (std::string_view path, std::shared_ptr<TorrentsTunnel> tunnel, bool auth,
@@ -1255,59 +1394,58 @@ namespace torrents
 		}
 		std::string rpcPath ("/");
 		if (!path.empty ()) rpcPath += std::string (path) + "/";
-		// insert both pathes rpc and rpc/
 		rpcPath += "rpc";
-		std::lock_guard<std::mutex> lock (m_TunnelsMutex);
-		m_Tunnels.emplace (rpcPath, tunnel);
-		if (auth) m_Auth.emplace (rpcPath, i2p::http::CreateBasicAuthorizationString (user, pass));
-
-		rpcPath += "/";
-		m_Tunnels.emplace (rpcPath, tunnel);
-		if (auth) m_Auth.emplace (rpcPath, i2p::http::CreateBasicAuthorizationString (user, pass));
+		TorrentsRPCState::Route route { tunnel,
+			auth ? i2p::http::CreateBasicAuthorizationString (user, pass) : std::string { } };
+		std::lock_guard lock (m_State->mutex);
+		m_State->routes.insert_or_assign (rpcPath, route);
+		m_State->routes.insert_or_assign (rpcPath + "/", std::move (route));
 	}
 
 	std::pair<boost::asio::ip::tcp::endpoint, std::string> TorrentsRPCServer::GetTunnelEndpoint (
 		std::shared_ptr<TorrentsTunnel> tunnel) const
 	{
-		std::lock_guard<std::mutex> lock (m_TunnelsMutex);
-		for (const auto & [path, weakTunnel] : m_Tunnels)
-		{
-			if (auto t = weakTunnel.lock (); t == tunnel)
-			{
-				return { m_Acceptor.local_endpoint (), path };
-			}
-		}
+		std::lock_guard lock (m_State->mutex);
+		for (const auto & [path, route] : m_State->routes)
+			if (route.tunnel.lock () == tunnel) return { m_State->endpoint, path };
 		return { };
 	}
 
 	std::shared_ptr<TorrentsTunnel> TorrentsRPCServer::GetTunnel (std::string_view path) const
 	{
-		std::lock_guard<std::mutex> lock (m_TunnelsMutex);
-		auto it = m_Tunnels.find (path);
-		if (it != m_Tunnels.end ()) return it->second.lock ();
-		return nullptr;
+		std::lock_guard lock (m_State->mutex);
+		auto route = m_State->routes.find (path);
+		return route == m_State->routes.end () ? nullptr : route->second.tunnel.lock ();
 	}
 
 	std::pair<bool, std::string> TorrentsRPCServer::GetAuth (std::string_view path) const
 	{
-		std::lock_guard<std::mutex> lock (m_TunnelsMutex);
-		auto it = m_Auth.find (path);
-		if (it == m_Auth.end ()) return { false, "" };
-		return { true, it->second };
+		std::lock_guard lock (m_State->mutex);
+		auto route = m_State->routes.find (path);
+		if (route == m_State->routes.end ()) return { false, { } };
+		return { !route->second.credential.empty (), route->second.credential };
 	}
 
-	void TorrentsRPCServer::Accept ()
+	void TorrentsRPCServer::Accept (const std::shared_ptr<TorrentsRPCState> & state)
 	{
-		m_Acceptor.async_accept (boost::asio::make_strand (GetService ()),
-			[this] (const boost::system::error_code & ecode, boost::asio::ip::tcp::socket socket)
+		state->acceptor.async_accept (
+			[state] (const boost::system::error_code & error, boost::asio::ip::tcp::socket socket)
 			{
-				if (!ecode)
+				std::shared_ptr<TorrentsRPCSession> session;
 				{
-					LogPrint (eLogDebug, "TorrentsRPC: Accepted incoming request");
-					auto session = std::make_shared<TorrentsRPCSession> (*this, std::move (socket));
-					session->ReceiveRequest ();
-					Accept ();
+					// Publication and shutdown admission share this barrier.
+					std::lock_guard admission (state->mutex);
+					if (!state->running) return;
+					if (!error && state->sessions.size () < MAX_SESSIONS)
+					{
+						const auto id = ++state->nextId;
+						session = std::make_shared<TorrentsRPCSession> (state, id, std::move (socket));
+						state->sessions.emplace (id, session);
+					}
+					if (error == boost::asio::error::operation_aborted) return;
+					Accept (state);
 				}
+				if (session) session->ReceiveRequest ();
 			});
 	}
 }

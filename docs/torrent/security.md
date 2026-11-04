@@ -116,6 +116,12 @@ not as the TUI transport:
 - `rpcaddress` must be loopback (`127.0.0.1`/`::1`); non-loopback bind attempts
   are rejected before the acceptor is created;
 - POST + `application/json` only, bounded body (32 MiB) and metadata (24 MiB);
+- at most 16 accepted sessions, 8 KiB headers, and cancellable 30-second
+  read/write timers; Stop closes admission, joins the worker, closes accepted
+  sockets and drains canceled completions before restart;
+- callbacks retain internal state rather than borrowing the server; route
+  replacement publishes the weak tunnel and authentication together, and
+  request handling takes one consistent route snapshot;
 - no wildcard CORS or browser preflight; `Cache-Control: no-store`;
 - Basic authentication if configured, constant-time comparison, bounded
   credentials; authentication is optional only because the listener is local;
@@ -124,6 +130,13 @@ not as the TUI transport:
   (`AddTorrentFromRpc`/`AddMagnetFromRpc`) with a bounded wait, instead of
   mutating the session from an HTTP I/O thread;
 - the same validated engine operations are used as the native TUI.
+
+The RPC lifecycle changes and focused cap/stop/restart/destruction regressions
+are implemented statically, pending manual CI. Timers run on the RPC executor:
+existing synchronous engine-service waits can delay their dispatch and Stop.
+The timers therefore do not establish a hard wall-clock shutdown bound while
+an engine operation is in progress; asynchronous engine completions remain
+follow-up work.
 
 Documented incompatibility: a client that relied on the removed web files, on
 CORS, on non-loopback binding, or on `application/x-www-form-urlencoded` must
@@ -151,3 +164,9 @@ this document as a privilege-separation completion claim.
 - Traffic-capture test proving no clearnet DNS/TCP/UDP.
 - RPC auth/loopback/body-limit integration test and a real Transmission client.
 - TUI delete confirmation and path-containment tests.
+
+RPC metainfo fields `comment` and `creator` are copied into owning JSON
+strings on the torrent executor. They describe the metainfo itself, separate
+from peer comment/rating exchange. Missing values remain empty. The prepared
+loopback regression includes escaped text and absent values; manual CI remains
+pending, and no wire or persisted format was changed.
