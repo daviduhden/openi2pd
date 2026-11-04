@@ -125,6 +125,28 @@ for my $file (@files) {
     # disable a job or run it unconditionally.
     my %declared = map { $_ => 1 } declared_dispatch_inputs( \@lines );
     ( my $without_comments = $text ) =~ s/^[ \t]*#.*$//mg;
+    push @errors, "$file: interpreter policy requires Perl, not an alternate runtime"
+      if $without_comments =~ /\b(?:python[0-9.]*|pypy[0-9.]*|setup-python)\b/i;
+    if ($file eq 'agent-maintenance.yml' || $file eq 'validation.yml') {
+        my @commands = ('prove -v tests/agent_knowledge_validator/test_validator.t',
+            'perl tools/scripts/check-shell-policy.pl');
+        push @commands, $file eq 'agent-maintenance.yml'
+          ? 'perl scripts/validate-agent-knowledge.pl --scope range'
+          : 'perl scripts/validate-agent-knowledge.pl --scope worktree';
+        for my $command (@commands) {
+            push @errors, "$file: Perl knowledge contract missing: $command"
+              if index($without_comments, $command) < 0;
+        }
+    }
+    if ($file eq 'validation.yml') {
+        for my $command (
+            q{while IFS= read -r -d '' file; do},
+            q{mapfile -d '' -t perl_files},
+            q{git ls-files -z '*.pl' '*.pm' '*.t'} ) {
+            push @errors, "$file: NUL-delimited Perl inventory missing: $command"
+              if index($without_comments, $command) < 0;
+        }
+    }
     my %referenced;
     while ( $without_comments =~ /\binputs\.([A-Za-z_][A-Za-z0-9_-]*)/g ) {
         $referenced{$1} = 1;
@@ -209,6 +231,8 @@ for my $path ( sort @action_files ) {
     $joined =~ s/`\n\s*/ /g;
     for my $line ( split /\n/, $joined ) {
         next if $line =~ /^\s*#/;
+        push @errors, "$path: interpreter policy requires Perl, not an alternate runtime"
+          if $line =~ /\b(?:python[0-9.]*|pypy[0-9.]*|setup-python)\b/i;
         if ( $line =~ /^\s*continue-on-error\s*:/ ) {
             push @errors, "$path: continue-on-error is forbidden";
         }
