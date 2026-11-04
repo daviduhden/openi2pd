@@ -26,6 +26,8 @@
 #include "CryptoKey.h"
 #include "Signature.h"
 #include "LeaseSet.h"
+#include "Modern.h"
+#include <openssl/crypto.h>
 
 namespace i2p
 {
@@ -1135,10 +1137,7 @@ namespace data
 	 * bounded by the remaining buffer before it is walked, and a client
 	 * identifier match is the only way the cookie is produced.
 	 *
-	 * The intermediate key material (authInput, okm, okm-derived client
-	 * key and IV) currently remains in local stack buffers after return;
-	 * clearing it is part of the tracked secret-cleansing work
-	 * (`CRY-237`), not something this function claims to do.
+	 * Secret-derived intermediate buffers are cleansed on every return.
 	 */
 	size_t LeaseSet2::ExtractClientAuthData (const uint8_t * buf, size_t len, const uint8_t * secret,
 		const uint8_t * subcredential, uint8_t * authCookie) const
@@ -1184,6 +1183,8 @@ namespace data
 			}
 			i2p::crypto::X25519Keys ck (secret, nullptr); // derive cpk_i from csk_i
 			uint8_t authInput[100];
+			auto cleanseAuthInput = i2p::modern::ScopeExit ([&authInput] ()
+				{ OPENSSL_cleanse (authInput, sizeof (authInput)); });
 			if (!ck.Agree (ephemeralPublicKey, authInput)) // sharedSecret is first 32 bytes of authInput
 			{
 				LogPrint (eLogError, "LeaseSet2: DH auth key agreement failed");
@@ -1192,6 +1193,7 @@ namespace data
 			memcpy (authInput + 32, ck.GetPublicKey (), 32); // cpk_i
 			memcpy (authInput + 64, subcredential, 36);
 			uint8_t okm[64]; // 52 actual data
+			auto cleanseOKM = i2p::modern::ScopeExit ([&okm] () { OPENSSL_cleanse (okm, sizeof (okm)); });
 			i2p::crypto::HKDF (ephemeralPublicKey, authInput, 100, "ELS2_XCA", okm);
 			if (!GetAuthCookie (authClients, numClients, okm, authCookie))
 			{
@@ -1228,9 +1230,12 @@ namespace data
 				return AUTH_DATA_FAILED;
 			}
 			uint8_t authInput[68];
+			auto cleanseAuthInput = i2p::modern::ScopeExit ([&authInput] ()
+				{ OPENSSL_cleanse (authInput, sizeof (authInput)); });
 			memcpy (authInput, secret, 32);
 			memcpy (authInput + 32, subcredential, 36);
 			uint8_t okm[64]; // 52 actual data
+			auto cleanseOKM = i2p::modern::ScopeExit ([&okm] () { OPENSSL_cleanse (okm, sizeof (okm)); });
 			i2p::crypto::HKDF (authSalt, authInput, 68, "ELS2PSKA", okm);
 			if (!GetAuthCookie (authClients, numClients, okm, authCookie))
 			{
@@ -1867,12 +1872,15 @@ namespace data
 			htobe16buf (authData, static_cast<uint16_t> (authKeys->size ()));
 			authData += 2; // num clients
 			uint8_t authInput[100]; // sharedSecret || cpk_i || subcredential || publishedTimestamp
+			auto cleanseAuthInput = i2p::modern::ScopeExit ([&authInput] ()
+				{ OPENSSL_cleanse (authInput, sizeof (authInput)); });
 			memcpy (authInput + 64, subcredential, 36);
 			for (auto & it : *authKeys)
 			{
 				if (!ek.Agree (it, authInput)) return false; // sharedSecret = DH(esk, cpk_i)
 				memcpy (authInput + 32, it, 32);
 				uint8_t okm[64]; // 52 actual data
+				auto cleanseOKM = i2p::modern::ScopeExit ([&okm] () { OPENSSL_cleanse (okm, sizeof (okm)); });
 				i2p::crypto::HKDF (ek.GetPublicKey (), authInput, 100, "ELS2_XCA", okm);
 				memcpy (authData, okm + 44, 8);
 				authData += 8; // clientID_i
@@ -1883,17 +1891,22 @@ namespace data
 		else // assume PSK
 		{
 			uint8_t authSalt[32];
+			auto cleanseAuthSalt = i2p::modern::ScopeExit ([&authSalt] ()
+				{ OPENSSL_cleanse (authSalt, sizeof (authSalt)); });
 			if (RAND_bytes (authSalt, sizeof (authSalt)) != 1) return false;
 			memcpy (authData, authSalt, 32);
 			authData += 32; // authSalt
 			htobe16buf (authData, static_cast<uint16_t> (authKeys->size ()));
 			authData += 2; // num clients
 			uint8_t authInput[68]; // authInput = psk_i || subcredential || publishedTimestamp
+			auto cleanseAuthInput = i2p::modern::ScopeExit ([&authInput] ()
+				{ OPENSSL_cleanse (authInput, sizeof (authInput)); });
 			memcpy (authInput + 32, subcredential, 36);
 			for (auto & it : *authKeys)
 			{
 				memcpy (authInput, it, 32);
 				uint8_t okm[64]; // 52 actual data
+				auto cleanseOKM = i2p::modern::ScopeExit ([&okm] () { OPENSSL_cleanse (okm, sizeof (okm)); });
 				i2p::crypto::HKDF (authSalt, authInput, 68, "ELS2PSKA", okm);
 				memcpy (authData, okm + 44, 8);
 				authData += 8; // clientID_i
