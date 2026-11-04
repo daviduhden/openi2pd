@@ -1191,10 +1191,16 @@ namespace client
 						if (!localDestination) localDestination = GetSharedLocalDestination ();
 
 						bool gzip = section.second.get (I2P_CLIENT_TUNNEL_GZIP, true);
-						int datagramVersion = (i2p::datagram::DatagramVersion)section.second.get (
+						const int configuredVersion = section.second.get (
 							UDP_CLIENT_TUNNEL_DATAGRAM_VERSION, (int)i2p::datagram::eDatagramV3);
+						auto datagramVersion = i2p::datagram::ParseDatagramVersion (configuredVersion);
+						if (!datagramVersion)
+						{
+							LogPrint (eLogError, "Clients: Invalid UDP datagram version in section ", name);
+							continue;
+						}
 						auto clientTunnel = std::make_shared<I2PUDPClientTunnel> (name, dest, end, localDestination,
-							destinationPort, gzip, (i2p::datagram::DatagramVersion)datagramVersion);
+							destinationPort, gzip, *datagramVersion);
 						clientTunnel->SetMaxWindow (GetUDPTunnelMaxWindow (section.second));
 
 						uint32_t keepAlive = section.second.get<uint32_t> (I2P_CLIENT_TUNNEL_KEEP_ALIVE_INTERVAL, 0);

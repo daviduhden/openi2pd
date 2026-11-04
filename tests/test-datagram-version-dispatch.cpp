@@ -163,11 +163,6 @@ void TestPerSendVersion ()
 	assert (fixture.sent.size () == 4);
 	assert (fixture.sent[3].protocol == i2p::client::PROTOCOL_TYPE_DATAGRAM);
 
-	// An unsupported explicit version is logged and dropped, not framed.
-	fixture.destination->SendDatagramTo (
-		payload.data (), payload.size (), remote, 0, 0, static_cast<i2p::datagram::DatagramVersion> (9));
-	assert (fixture.sent.size () == 4);
-
 	fixture.session->SetSendObserverForTesting (nullptr);
 }
 
@@ -206,7 +201,11 @@ void TestVersionHelpers ()
 	assert (IsDatagramVersionSupported (eDatagramV2));
 	assert (IsDatagramVersionSupported (eDatagramV3));
 	assert (!IsDatagramVersionSupported (eDatagramDefault));
-	assert (!IsDatagramVersionSupported (static_cast<DatagramVersion> (4)));
+	assert (ParseDatagramVersion (1) == eDatagramV1);
+	assert (ParseDatagramVersion (2) == eDatagramV2);
+	assert (ParseDatagramVersion (3) == eDatagramV3);
+	assert (!ParseDatagramVersion (0));
+	assert (!ParseDatagramVersion (9));
 }
 }
 

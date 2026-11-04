@@ -23,6 +23,7 @@
 #include <memory>
 #include <functional>
 #include <mutex>
+#include <optional>
 #include <unordered_map>
 #include <utility>
 #include <vector>
@@ -153,6 +154,19 @@ namespace datagram
 		eDatagramV2 = 2,
 		eDatagramV3 = 3,
 	};
+
+	/// Convert a configuration integer only when it names a supported wire
+	/// version. Callers must validate the integer before constructing the enum.
+	constexpr std::optional<DatagramVersion> ParseDatagramVersion (int version)
+	{
+		switch (version)
+		{
+		case eDatagramV1: return eDatagramV1;
+		case eDatagramV2: return eDatagramV2;
+		case eDatagramV3: return eDatagramV3;
+		default: return std::nullopt;
+		}
+	}
 
 	// Resolve the framing version of one send. An explicit request wins,
 	// because a SAM DATAGRAM3 subsession shares the DatagramDestination
