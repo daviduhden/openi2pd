@@ -61,6 +61,11 @@ int main (int argc, char * argv[])
 	// or public material, and the private scalar is owned by the RAII
 	// object.
 	i2p::tools::CryptoGuard cryptoGuard;
+	if (!cryptoGuard)
+	{
+		std::cerr << "Crypto initialization failed" << std::endl;
+		return 1;
+	}
 	i2p::crypto::X25519Keys keys;
 	if (!keys.GenerateKeys () || !keys.HasPrivateKey ())
 	{

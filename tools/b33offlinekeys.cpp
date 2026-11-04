@@ -141,6 +141,11 @@ int main (int argc, char * argv[])
 		return 1;
 	}
 	i2p::tools::CryptoGuard cryptoGuard;
+	if (!cryptoGuard)
+	{
+		std::cerr << "Crypto initialization failed" << std::endl;
+		return 1;
+	}
 
 	std::string fname (argv[2]);
 	i2p::data::PrivateKeys keys;

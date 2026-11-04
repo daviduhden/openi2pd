@@ -321,6 +321,11 @@ int main (int argc, char * argv[])
 	}
 
 	i2p::tools::CryptoGuard cryptoGuard;
+	if (!cryptoGuard)
+	{
+		std::cerr << "Crypto initialization failed" << std::endl;
+		return 1;
+	}
 
 	// Inspect addresses exactly as the file publishes them, in both modes:
 	// RouterInfo parsing consults the transports reserved-range policy,

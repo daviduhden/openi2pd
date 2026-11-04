@@ -673,6 +673,11 @@ int main (int argc, char * argv[])
 	}
 
 	i2p::tools::CryptoGuard cryptoGuard;
+	if (!cryptoGuard)
+	{
+		std::cerr << "Crypto initialization failed" << std::endl;
+		return 1;
+	}
 
 	const std::string defaultOutputPath = options.outputpath;
 	unsigned int attempts = 0;

@@ -29,18 +29,20 @@ namespace i2p::tools
  * hazard; it still keeps the rule true if termination grows. Early
  * returns are covered by the destructor, which is why tools never call
  * `InitCrypto`/`TerminateCrypto()` themselves.
- * Limitation: the constructor discards the `InitCrypto` provider check,
- * so a libcrypto build without a required algorithm is not reported
- * here. A tool that must fail closed still has to treat its own
- * key/sign results as authoritative.
+ * Construction records the provider check. Callers must test the
+ * guard before creating keys, reading credentials or publishing output.
+ * A false guard still owns cleanup; its destruction is unconditional.
  */
 class CryptoGuard
 {
 public:
-	CryptoGuard () { i2p::crypto::InitCrypto (false); }
+	CryptoGuard () : m_Ready (i2p::crypto::InitCrypto (false)) {}
+	[[nodiscard]] explicit operator bool () const noexcept { return m_Ready; }
 	~CryptoGuard () { i2p::crypto::TerminateCrypto (); }
 	CryptoGuard (const CryptoGuard &) = delete;
 	CryptoGuard & operator= (const CryptoGuard &) = delete;
+private:
+	const bool m_Ready;
 };
 }
 

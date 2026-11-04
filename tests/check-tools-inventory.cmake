@@ -123,6 +123,19 @@ foreach(pair IN ITEMS
 endforeach()
 
 foreach(tool IN LISTS tools_list)
+  # A provider rejection must stop each crypto consumer before it can
+  # handle keys or emit results. Keep this source contract independent
+  # of the runner's installed provider configuration.
+  read_required("${PROJECT_ROOT}/tools/${tool}.cpp" tool_source)
+  string(FIND "${tool_source}" "i2p::tools::CryptoGuard cryptoGuard;" guard_position)
+  if(NOT guard_position EQUAL -1)
+    string(FIND "${tool_source}"
+      "i2p::tools::CryptoGuard cryptoGuard;\n\tif (!cryptoGuard)\n\t{\n\t\tstd::cerr << \"Crypto initialization failed\" << std::endl;\n\t\treturn 1;\n\t}"
+      checked_guard_position)
+    if(checked_guard_position EQUAL -1)
+      message(FATAL_ERROR "${tool} must reject crypto initialization failure")
+    endif()
+  endif()
   foreach(path IN ITEMS
       "${PROJECT_ROOT}/tools/${tool}.cpp"
       "${PROJECT_ROOT}/docs/tools/${tool}.md")
@@ -133,6 +146,17 @@ foreach(tool IN LISTS tools_list)
   string(FIND "${nav_text}" "tools/${tool}.md" nav_entry)
   if(nav_entry EQUAL -1)
     message(FATAL_ERROR "tools/${tool}.md is not in docs/mkdocs.yml")
+  endif()
+endforeach()
+
+# The guard must retain the provider outcome instead of discarding it.
+read_required("${PROJECT_ROOT}/tools/common/crypto.hpp" crypto_guard_source)
+foreach(required IN ITEMS
+    "m_Ready (i2p::crypto::InitCrypto (false))"
+    "[[nodiscard]] explicit operator bool () const noexcept { return m_Ready; }")
+  string(FIND "${crypto_guard_source}" "${required}" guard_contract_position)
+  if(guard_contract_position EQUAL -1)
+    message(FATAL_ERROR "CryptoGuard must expose the provider initialization outcome")
   endif()
 endforeach()
 

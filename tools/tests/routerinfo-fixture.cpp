@@ -20,15 +20,7 @@
 #include "Identity.h"
 #include "RouterContext.h"
 #include "RouterInfo.h"
-
-namespace
-{
-struct CryptoGuard
-{
-	CryptoGuard () { i2p::crypto::InitCrypto (false); }
-	~CryptoGuard () { i2p::crypto::TerminateCrypto (); }
-};
-}
+#include "../common/crypto.hpp"
 
 int main (int argc, char * argv[])
 {
@@ -38,7 +30,12 @@ int main (int argc, char * argv[])
 		return 2;
 	}
 
-	CryptoGuard crypto;
+	i2p::tools::CryptoGuard cryptoGuard;
+	if (!cryptoGuard)
+	{
+		std::cerr << "Crypto initialization failed" << std::endl;
+		return 1;
+	}
 	auto keys = i2p::data::PrivateKeys::CreateRandomKeys (
 		i2p::data::SIGNING_KEY_TYPE_EDDSA_SHA512_ED25519, i2p::data::CRYPTO_KEY_TYPE_ECIES_X25519_AEAD);
 	if (!keys.GetPublic ())
