@@ -52,10 +52,13 @@ struct SendResult
 
 // Queues one write and runs the posted send work. AsyncSend() posts the
 // buffer onto the stream's io_context, so the completion is delivered
-// from a handler, never from the call itself. Drain until the handler
-// ran instead of assuming one poll() pass reaches it.
+// from a handler, never from the call itself. poll() drains all handlers
+// ready on this single-threaded service context.
 void Write (boost::asio::io_context & service, i2p::stream::Stream & stream, SendResult & result)
 {
+	// poll() stops the context after its ready queue is drained. Each call
+	// here starts a new asynchronous write after the preceding poll cycle.
+	if (service.stopped ()) service.restart ();
 	stream.AsyncSend (TEST_PAYLOAD, sizeof (TEST_PAYLOAD),
 		[&result] (const boost::system::error_code & ecode, size_t len)
 		{
@@ -63,7 +66,7 @@ void Write (boost::asio::io_context & service, i2p::stream::Stream & stream, Sen
 			result.transferred = len;
 			result.called = true;
 		});
-	for (int pass = 0; pass < 4 && !result.called; ++pass) service.poll ();
+	service.poll ();
 }
 } // namespace
 
@@ -75,6 +78,15 @@ int main ()
 	using i2p::stream::Stream;
 
 	Fixture f;
+	// Tunnel setup may initiate the handshake before any local payload
+	// arrives. An empty send must still build the SYN asynchronously.
+	{
+		auto stream = std::make_shared<Stream> (f.service, f.destination);
+		stream->Send (nullptr, 0);
+		if (f.service.stopped ()) f.service.restart ();
+		f.service.poll ();
+		assert (stream->GetSendQueueSize () == 1);
+	}
 
 	// Control: a stream that is still open keeps building packets, so the
 	// assertions below are not vacuous.
@@ -152,9 +164,11 @@ int main ()
 
 		// Run the abandoned read, then drop its timer so the stream does not
 		// outlive this block through a pending handler.
-		for (int pass = 0; pass < 8; ++pass) f.service.poll ();
+		if (f.service.stopped ()) f.service.restart ();
+		f.service.poll ();
 		stream->Cancel ();
-		for (int pass = 0; pass < 8; ++pass) f.service.poll ();
+		if (f.service.stopped ()) f.service.restart ();
+		f.service.poll ();
 
 		for (auto value : probe.guard) assert (value == 0xAA);
 		for (auto value : probe.buffer) assert (value == 0xBB);
@@ -162,9 +176,11 @@ int main ()
 		// The stream still accepts a new blocking read after an abandoned
 		// one; a repeated call is not a permanently armed read.
 		assert (stream->Receive (probe.buffer, sizeof (probe.buffer), 1) == 0);
-		for (int pass = 0; pass < 8; ++pass) f.service.poll ();
+		if (f.service.stopped ()) f.service.restart ();
+		f.service.poll ();
 		stream->Cancel ();
-		for (int pass = 0; pass < 8; ++pass) f.service.poll ();
+		if (f.service.stopped ()) f.service.restart ();
+		f.service.poll ();
 	}
 
 	return 0;

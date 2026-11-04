@@ -73,9 +73,9 @@ namespace client
 			std::shared_ptr<boost::asio::ssl::context> sslCtx = nullptr); // from I2P
 		~I2PTunnelConnection ();
 		/// Start the stream and bidirectional receive paths.
-		/// @warning Without @a msg, currently available local TCP
-		///          bytes can be read synchronously; that initial read has no
-		///          explicit operation deadline.
+		/// Without @a msg, an empty send starts the streaming handshake.
+		/// Local TCP input uses asynchronous reads with send-buffer
+		/// backpressure; this does not impose an idle-input deadline.
 		void I2PConnect (const uint8_t * msg = nullptr, size_t len = 0);
 		void Connect (bool isUniqueLocal = true);
 		void Connect (const boost::asio::ip::address & localAddress);

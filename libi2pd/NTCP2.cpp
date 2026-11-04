@@ -1578,6 +1578,7 @@ namespace transport
 	void NTCP2Session::HandleReceivedLength (
 		const boost::system::error_code & ecode, std::size_t /* bytes_transferred */)
 	{
+		if (IsTerminated ()) return;
 		if (ecode)
 		{
 			if (ecode != boost::asio::error::operation_aborted)
@@ -1600,23 +1601,9 @@ namespace transport
 			if (m_NextReceivedLen >= 16)
 			{
 				CreateNextReceivedBuffer (m_NextReceivedLen);
-				boost::system::error_code ec;
-				size_t moreBytes = m_Socket.available (ec);
-				if (!ec)
-				{
-					if (moreBytes >= m_NextReceivedLen)
-					{
-						// read and process message immediately if available
-						moreBytes = boost::asio::read (m_Socket,
-							boost::asio::buffer (m_NextReceivedBuffer.get (), m_NextReceivedLen),
-							boost::asio::transfer_all (), ec);
-						HandleReceived (ec, moreBytes);
-					}
-					else
-						Receive ();
-				}
-				else
-					LogPrint (eLogWarning, "NTCP2: Socket error: ", ec.message ());
+				// Even buffered bodies use the asynchronous path, which owns
+				// the read deadline and cannot block this service thread.
+				Receive ();
 			}
 			else
 			{
