@@ -67,7 +67,13 @@ namespace fs
 		const std::string & GetName () const { return name; }
 		/** set directory where to place storage directory */
 		void SetPlace (const std::string & path);
-		/** path to file with given ident */
+		/**
+		 * @brief Return the sharded path for a canonical encoded identity.
+		 * @param ident validated encoded identity; empty input returns an
+		 *        empty path.
+		 * @return path below the configured store root, or empty for empty
+		 *         input. Non-empty identities must already be validated.
+		 */
 		std::string Path (const std::string & ident) const;
 		/** remove file by ident */
 		void Remove (const std::string & ident);

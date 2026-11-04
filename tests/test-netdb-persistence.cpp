@@ -226,6 +226,7 @@ void TestStopFlushesUpdatedRouterInfo ()
 	i2p::fs::DetectDataDir (root.string (), false);
 	NetDb database;
 	i2p::data::NetDbLifecycleTestAccess::InitStorage (database, root.string ());
+	assert (i2p::data::NetDbLifecycleTestAccess::Path (database, {}).empty ());
 	const auto expectedPath = i2p::data::NetDbLifecycleTestAccess::Path (database, ident.ToBase64 ());
 
 	auto buffer = BuildRouterInfo (keys, now - 60 * 1000);

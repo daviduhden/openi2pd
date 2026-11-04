@@ -575,13 +575,7 @@ namespace fs
 		return true;
 	}
 
-	/**
-	 * @brief Map an identity string to a sharded storage path.
-	 * @param ident encoded identity (base64 or base32,
-	 *              already validated by the caller); the first character
-	 *              selects the shard directory.
-	 * @return relative path below the store root.
-	 *
+	/*
 	 * Only the two path separators are replaced, so this function is a
 	 * name normaliser, not a sanitiser: the caller must pass a canonical
 	 * encoded identity and must never pass a peer-controlled file name,
@@ -591,6 +585,7 @@ namespace fs
 	 */
 	std::string HashedStorage::Path (const std::string & ident) const
 	{
+		if (ident.empty ()) return {};
 		std::string safe_ident = ident;
 		std::replace (safe_ident.begin (), safe_ident.end (), '/', '-');
 		std::replace (safe_ident.begin (), safe_ident.end (), '\\', '-');
