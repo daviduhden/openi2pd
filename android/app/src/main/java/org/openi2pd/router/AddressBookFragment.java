@@ -408,9 +408,9 @@ public final class AddressBookFragment extends Fragment {
                                 if (busy)
                                     return;
                                 busy = true;
-                                int expected = generation;
+                                int unblockGeneration = generation;
                                 model.unblockAddress(pattern, unblocked -> {
-                                    if (expected != generation || status == null || !isAdded())
+                                    if (unblockGeneration != generation || status == null || !isAdded())
                                         return;
                                     busy = false;
                                     status.setText(unblocked ? R.string.address_book_unblocked

@@ -492,3 +492,16 @@ No AAPT2, Gradle, Lint or device run exists for these changes.
 - [android jni status](android-jni-status.md)
 - [saf storage](torrent/saf-storage.md)
 - [process capabilities](security/process-capabilities.md)
+
+## Deferred restart continuation
+
+AND-024 replaces restart polling with one cancellable continuation. The wrapper
+signals readiness only after the prior start finishes cleanup; Stop or a newer
+request invalidates the ticket even after it was queued. Service-owner authority
+is checked before taking the wrapper state monitor, and admission is a short
+state transition. Thread launch and completion occur outside that monitor.
+RouterService keeps restart intent pending until completion, preventing the
+intermediate stopped state from retiring the service. Thread-launch failures
+unwind the running flag. Framework-free JVM regressions are prepared; JNI/device
+behavior remains pending. A permanently blocked native start leaves one pending
+request until cancellation instead of manufacturing a timeout failure.

@@ -17,6 +17,7 @@ package org.openi2pd.router;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.function.BooleanSupplier;
 
 /**
  * Binary SAF metadata reader: neither a provider path nor a display
@@ -28,6 +29,11 @@ final class TorrentDocumentReader {
 
     static byte[] read(InputStream input) throws IOException {
         return read(input, TorrentControl.MAX_IMPORT_BYTES);
+    }
+
+    /** Read under the import cap with a caller-owned cancellation signal. */
+    static byte[] read(InputStream input, BooleanSupplier canceled) throws IOException {
+        return read(input, TorrentControl.MAX_IMPORT_BYTES, canceled);
     }
 
     /**
@@ -43,9 +49,9 @@ final class TorrentDocumentReader {
      * stall rather than as EOF.</p>
      *
      * <p>Cancellation is cooperative: the calling thread's interrupt
-     * flag is checked between reads. The stream is never closed here,
-     * so the caller decides when the provider capability is
-     * released.</p>
+     * flag is checked before and after each read, including EOF. The
+     * stream is never closed here, so the caller decides when the
+     * provider capability is released.</p>
      *
      * @param input stream from a user-selected document provider
      * @param maximum accepted byte count, up to the import limit
@@ -54,17 +60,37 @@ final class TorrentDocumentReader {
      *                     interruption or stalled input
      */
     static byte[] read(InputStream input, int maximum) throws IOException {
-        if (input == null || maximum < 1 || maximum > TorrentControl.MAX_IMPORT_BYTES) {
+        return read(input, maximum, () -> false);
+    }
+
+    /**
+     * Read bounded metadata while observing a caller signal and the
+     * thread interrupt flag. Cancellation cannot interrupt a provider
+     * already blocked in read; it prevents the next read and prevents
+     * accepting bytes or EOF returned after cancellation.
+     *
+     * @param input caller-owned document stream, never closed here
+     * @param maximum maximum accepted metadata size
+     * @param canceled nonblocking cancellation observation
+     * @return complete, nonempty metadata within the limit
+     * @throws IOException on invalid bounds, observed cancellation,
+     *                     overflow, empty or stalled input
+     */
+    static byte[] read(InputStream input, int maximum, BooleanSupplier canceled) throws IOException {
+        if (input == null || canceled == null || maximum < 1
+                || maximum > TorrentControl.MAX_IMPORT_BYTES) {
             throw new IOException("Invalid torrent input");
         }
         ByteArrayOutputStream output = new ByteArrayOutputStream(Math.min(maximum, 8192));
         byte[] buffer = new byte[Math.min(maximum, 8192)];
         int total = 0;
         for (;;) {
+            checkCancellation(canceled);
             // Read one additional byte at the cap so exact-cap
             // documents are accepted only at EOF; a dishonest/unknown
             // provider length is safe.
             int length = input.read(buffer, 0, Math.min(buffer.length, maximum - total + 1));
+            checkCancellation(canceled);
             if (length == -1)
                 break;
             if (length == 0)
@@ -73,11 +99,14 @@ final class TorrentDocumentReader {
                 throw new IOException("Torrent exceeds the 8 MiB import limit");
             output.write(buffer, 0, length);
             total += length;
-            if (Thread.currentThread().isInterrupted())
-                throw new IOException("Torrent import cancelled");
         }
         if (total == 0)
             throw new IOException("Empty torrent document");
         return output.toByteArray();
+    }
+
+    private static void checkCancellation(BooleanSupplier canceled) throws IOException {
+        if (Thread.currentThread().isInterrupted() || canceled.getAsBoolean())
+            throw new IOException("Torrent import cancelled");
     }
 }

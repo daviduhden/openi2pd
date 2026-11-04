@@ -158,6 +158,8 @@ public class DaemonWrapper {
     private volatile String daemonStartResult = "N/A";
     private volatile boolean startThreadRunning;
     private volatile boolean networkCallbackRegistered;
+    private final DeferredRestart deferredRestart =
+            new DeferredRestart(lock, () -> !startThreadRunning, this::admitStartLocked);
 
     private final ConnectivityManager.NetworkCallback networkCallback =
             new ConnectivityManager.NetworkCallback() {
@@ -419,12 +421,19 @@ public class DaemonWrapper {
         // entire transition.
         stopRequested.set(true);
         I2PD_JNI.requestStop();
+        deferredRestart.cancel();
 
         StateChange finishChange = null;
         synchronized (stopLock) {
+            // A restart can register its ticket while this call waits
+            // for stopLock. Cancel again inside the serialized gate.
+            deferredRestart.cancel();
             final boolean callNative;
             final StateChange beginChange;
             synchronized (lock) {
+                // A concurrent restart may have admitted a start while
+                // this stop waited for the serialized teardown gate.
+                stopRequested.set(true);
                 cancelGracefulStopLocked();
                 callNative = state.isStartedOkay();
                 beginChange = setStateLocked(callNative ? State.stopping : State.stopped);
@@ -464,56 +473,78 @@ public class DaemonWrapper {
     }
 
     /**
-     * Stop and start the native router in order. Used by the service's
-     * restart command. The start thread is allowed to finish unwinding
-     * before a new start is requested so two native initialisations can
-     * never overlap.
+     * Stop, then queue a start once the previous start has fully
+     * unwound. The control executor is never polled or slept on.
+     * A later stop/restart cancels the pending ticket, even after its
+     * continuation was queued. An already admitted start remains
+     * subject to the normal stop-cancellation token.
      *
-     * @return {@code false} if a previous start thread did not finish
-     *                in time
+     * @param executor owner-scoped serial control executor
+     * @param authority synchronous gate that runs admission at most once
+     *                  for a current owner; it must not retain the action
+     *                  or perform JNI while holding the gate
+     * @param completion nonblocking result consumer; true means a new
+     *                   start thread was launched, not native readiness
      */
-    public boolean restartDaemon() {
-        stopDaemon();
-        long deadline = System.currentTimeMillis() + 10_000L;
-        while (startThreadRunning && System.currentTimeMillis() < deadline) {
-            try {
-                Thread.sleep(25L);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                Log.w(TAG, "interrupted while waiting for daemon start thread");
-                return false;
-            }
+    public void restartDaemon(Executor executor, java.util.function.Predicate<Runnable> authority,
+            java.util.function.Consumer<Boolean> completion) {
+        synchronized (stopLock) {
+            stopDaemon();
+            deferredRestart.request(executor, authority, completion);
         }
-        if (startThreadRunning) {
-            Log.e(TAG, "refusing restart while the previous start is still running");
-            return false;
-        }
-        startDaemon();
-        return true;
     }
 
     private void startDaemonInternal() {
-        StateChange change;
+        java.util.function.BooleanSupplier launch;
         synchronized (lock) {
-            if (startThreadRunning) {
-                return;
-            }
-            if (state != State.stopped && state != State.starting && state != State.startFailed) {
-                return;
-            }
-            startThreadRunning = true;
-            stopRequested.set(false);
-            // Do not let a previous successful result mask a failure in
-            // this start attempt (for example an asset or library load
-            // error).
-            daemonStartResult = "N/A";
-            change = setStateLocked(State.starting);
+            launch = admitStartLocked();
         }
-        notifyListeners(change);
+        if (launch != null)
+            launch.getAsBoolean();
+    }
 
-        Thread thread = new Thread(this::startDaemonBlocking, "i2pdDaemonStart");
-        thread.setDaemon(true);
-        thread.start();
+    // Called only under lock. The returned action publishes and starts
+    // outside it, so listeners cannot run under the state monitor.
+    private java.util.function.BooleanSupplier admitStartLocked() {
+        if (startThreadRunning || (state != State.stopped && state != State.starting
+                                          && state != State.startFailed))
+            return null;
+        startThreadRunning = true;
+        stopRequested.set(false);
+        daemonStartResult = "N/A";
+        StateChange change = setStateLocked(State.starting);
+        return () -> launchStart(change);
+    }
+
+    private boolean launchStart(StateChange change) {
+        notifyListeners(change);
+        try {
+            Thread thread = new Thread(this::startDaemonBlocking, "i2pdDaemonStart");
+            thread.setDaemon(true);
+            thread.start();
+            return true;
+        } catch (RuntimeException | Error failure) {
+            lastThrowable = failure;
+            StateChange failed;
+            synchronized (lock) {
+                failed = setStateLocked(stopRequested.get() ? State.stopped : State.startFailed);
+            }
+            finishStart(failed, false);
+            return false;
+        }
+    }
+
+    private void finishStart(StateChange change, boolean started) {
+        try {
+            notifyListeners(change);
+            if (started)
+                registerNetworkCallback();
+        } finally {
+            synchronized (lock) {
+                startThreadRunning = false;
+            }
+            deferredRestart.ready();
+        }
     }
 
     private void startDaemonBlocking() {
@@ -536,9 +567,8 @@ public class DaemonWrapper {
             lastThrowable = tr;
             synchronized (lock) {
                 change = setStateLocked(stopRequested.get() ? State.stopped : State.startFailed);
-                startThreadRunning = false;
             }
-            notifyListeners(change);
+            finishStart(change, false);
             return;
         }
 
@@ -581,7 +611,7 @@ public class DaemonWrapper {
             }
         } finally {
             // Tear down a started-but-cancelled router before the
-            // thread is reported idle, so restartDaemon() cannot
+            // thread is reported idle, so a deferred restart cannot
             // overlap the teardown.
             if (stopAfterCanceledStart) {
                 try {
@@ -590,15 +620,9 @@ public class DaemonWrapper {
                     Log.e(TAG, "native stop after cancelled start failed", tr);
                 }
             }
-            synchronized (lock) {
-                startThreadRunning = false;
-            }
         }
 
-        notifyListeners(change);
-        if (started) {
-            registerNetworkCallback();
-        }
+        finishStart(change, started);
     }
 
     public void reloadTunnelsConfigs() {

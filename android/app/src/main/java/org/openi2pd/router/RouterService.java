@@ -40,17 +40,15 @@ import android.util.Log;
 import androidx.core.app.NotificationCompat;
 import androidx.core.content.ContextCompat;
 
-import java.io.PrintWriter;
-import java.io.StringWriter;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.UnaryOperator;
 
 /**
@@ -84,10 +82,9 @@ import java.util.function.UnaryOperator;
  * <p><b>Task removal:</b> the manifest declares {@code
  * android:stopWithTask="false"}, so {@link #onTaskRemoved(Intent)} is a
  * UI event and must not stop the daemon or touch the run state; {@link
- * #onDestroy()} removes messages already queued on the main handler,
- * including SAF deadlines. An in-flight provider operation may still
- * complete and post after that removal; destroying the service is not a
- * queue drain.</p>
+ * #onDestroy()} retires this service epoch before removing queued main
+ * handler messages. SAF work may finish provider cleanup after retirement,
+ * but its progress and completion callbacks are fenced at delivery.</p>
  *
  * <p><b>Process model:</b> the service is intentionally same-process
  * and not exported. {@link LocalBinder} is therefore an in-process
@@ -186,13 +183,10 @@ public class RouterService extends Service {
     private final AtomicBoolean reseedInFlight = new AtomicBoolean(false);
     private volatile Runnable cancelTorrentImport;
     private final AtomicBoolean restartInProgress = new AtomicBoolean(false);
+    private final AtomicLong restartRequestGeneration = new AtomicLong();
     private final IBinder binder = new LocalBinder();
 
-    private final ExecutorService safWorker = Executors.newSingleThreadExecutor(runnable -> {
-        Thread thread = new Thread(runnable, "openi2pd-saf");
-        thread.setDaemon(true);
-        return thread;
-    });
+    private final ExecutorService safWorker = TorrentSafTaskExecutor.create();
     private Executor worker;
     private DaemonWrapper daemon;
     private NotificationManager notificationManager;
@@ -555,7 +549,7 @@ public class RouterService extends Service {
             // restart, so a process death cannot leave a non-sticky
             // half-restarted service behind.
             beginRunRequest();
-            enqueueControl(this::performRestart);
+            enqueueRestart();
         }
         case RouterCommand.GracefulStop ignored -> {
             if (!ensureForegroundOrFail(startId)) {
@@ -699,9 +693,9 @@ public class RouterService extends Service {
      * stop are queued atomically, so work already accepted by this
      * owner drains ahead of the stop and no later submission from it
      * can run. The SAF lane is shut down, the pending import cancel
-     * hook is invoked and the main-handler messages are purged: an
-     * in-flight provider call may still post after this point, so
-     * destruction is not a queue drain. The persisted run state is
+     * hook is invoked and the main-handler messages are purged. In-flight
+     * providers may continue cleanup, while epoch-fenced callbacks cannot
+     * publish after retirement. The persisted run state is
      * deliberately kept so {@code START_STICKY} can restore the
      * router.</p>
      */
@@ -745,9 +739,9 @@ public class RouterService extends Service {
         releaseMulticastLock();
         stopForegroundCompat();
         // Destruction only: remove messages currently in this handler,
-        // including SAF deadlines. An in-flight provider call may still
-        // post a completion after this point. A plain stop keeps the
-        // queued callbacks so work can finish and report its outcome.
+        // including SAF deadlines. SAF callback delivery also checks the
+        // retired epoch, covering completions queued after this purge.
+        // A plain stop keeps queued callbacks so work can report.
         mainHandler.removeCallbacksAndMessages(null);
         super.onDestroy();
     }
@@ -878,7 +872,7 @@ public class RouterService extends Service {
                 return;
             }
             beginRunRequest();
-            enqueueControl(this::performRestart);
+            enqueueRestart();
         });
     }
 
@@ -889,30 +883,48 @@ public class RouterService extends Service {
      * set, so stopIfIdle() cannot stop the service between the two
      * phases.
      */
-    private void performRestart() {
+    private void enqueueRestart() {
+        final long requestGeneration = restartRequestGeneration.incrementAndGet();
         restartInProgress.set(true);
+        enqueueControl(() -> performRestart(requestGeneration));
+    }
+
+    private void performRestart(long requestGeneration) {
+        final long requestOwnerEpoch = ownerEpoch;
+        if (requestGeneration != restartRequestGeneration.get() || !readShouldRun())
+            return;
         acquireMulticastLock();
         mainHandler.removeCallbacks(gracefulStopExpired);
         pendingDrainResumeMillis = -1L;
-        boolean restarted = false;
+        java.util.function.Consumer<Boolean> completion = restarted
+                -> TorrentSafCallbackPublisher.post(requestOwnerEpoch,
+                        command -> mainHandler.post(command),
+                        () -> finishRestart(requestGeneration, restarted));
         try {
-            restarted = daemon.restartDaemon();
+            daemon.restartDaemon(worker,
+                    admission -> ServiceOwnerEpoch.runIfCurrent(requestOwnerEpoch, () -> {
+                        if (!destroyed && requestGeneration == restartRequestGeneration.get())
+                            admission.run();
+                    }),
+                    completion);
         } catch (RuntimeException e) {
             Log.e(TAG, "unable to restart the router", e);
-        } finally {
-            restartInProgress.set(false);
-            if (!restarted && daemon.getState() == DaemonWrapper.State.stopped) {
-                releaseMulticastLock();
-            }
+            completion.accept(false);
         }
+    }
+
+    private void finishRestart(long requestGeneration, boolean restarted) {
+        if (requestGeneration != restartRequestGeneration.get())
+            return;
+        restartInProgress.set(false);
         if (!restarted) {
             if (daemon.getState() == DaemonWrapper.State.stopped) {
-                // Do not leave a sticky service whose daemon is stopped
-                // and has no start thread left to complete.
+                releaseMulticastLock();
                 persistStopped();
             }
             Log.w(TAG, "restart did not complete");
         }
+        stopIfIdle();
     }
 
     public void beginGracefulStop() {
@@ -936,10 +948,9 @@ public class RouterService extends Service {
      * keeps its ordering.</p>
      */
     private void beginRunRequest() {
-        RouterRunState previous = readRunState();
+        RouterRunState previous = updateRunState(state -> state.running(wallClockNow()));
         mainHandler.removeCallbacks(gracefulStopExpired);
         pendingDrainResumeMillis = -1L;
-        persistRunState(previous.running(wallClockNow()));
         if (previous.isDraining()) {
             enqueueControl(() -> {
                 DaemonWrapper local = daemon;
@@ -955,13 +966,12 @@ public class RouterService extends Service {
      * deadline.
      */
     private void beginGracefulStopRequest() {
-        if (readRunState().phase() == RouterRunState.Phase.Stopped) {
-            // No router is running: stay sticky only until the native
-            // call decides to stop (or starts a drain); a failed call
-            // ends in the stopped transition, which persists Stopped
-            // again.
-            persistRunning();
-        }
+        // No router is running: stay sticky only until the native call
+        // decides to stop (or starts a drain); a failed call ends in the
+        // stopped transition, which persists Stopped again. The check
+        // and conditional transition share the writer lock.
+        updateRunState(state -> state.phase() == RouterRunState.Phase.Stopped
+                ? state.running(wallClockNow()) : state);
         clearGracefulDeadline();
         beginGracefulStopCommand();
     }
@@ -972,11 +982,8 @@ public class RouterService extends Service {
      * Running.
      */
     private void cancelGracefulStopRequest() {
+        updateRunState(RouterRunState::cancelGraceful);
         clearGracefulDeadline();
-        RouterRunState current = readRunState();
-        if (current.isDraining()) {
-            persistRunState(current.cancelGraceful());
-        }
         enqueueControl(() -> {
             DaemonWrapper local = daemon;
             if (local != null) {
@@ -1985,12 +1992,14 @@ public class RouterService extends Service {
      */
     public void readTorrentStorageStatus(
             String tunnel, String hash, java.util.function.Consumer<String> callback) {
+        final long requestOwnerEpoch = ownerEpoch;
         if (callback == null) {
             return;
         }
         if (destroyed || tunnel == null || tunnel.isEmpty() || hash == null
                 || !hash.matches("[0-9a-fA-F]{40}")) {
-            mainHandler.post(() -> callback.accept(""));
+            TorrentSafCallbackPublisher.post(requestOwnerEpoch,
+                    command -> mainHandler.post(command), () -> callback.accept(""));
             return;
         }
         try {
@@ -2002,20 +2011,28 @@ public class RouterService extends Service {
                     status = "";
                 }
                 String result = status;
-                if (!destroyed) {
-                    mainHandler.post(() -> callback.accept(result));
-                }
+                TorrentSafCallbackPublisher.post(requestOwnerEpoch,
+                        command -> mainHandler.post(command), () -> callback.accept(result));
             });
         } catch (RejectedExecutionException error) {
-            mainHandler.post(() -> callback.accept(""));
+            TorrentSafCallbackPublisher.post(requestOwnerEpoch,
+                    command -> mainHandler.post(command), () -> callback.accept(""));
         }
     }
 
+    /**
+     * Commit one grant mutation on the bounded SAF lane. Queue rejection
+     * and provider failure complete with false while this service owner
+     * remains current; owner retirement suppresses every delivery,
+     * including callbacks already queued on the main handler.
+     */
     private void runSafGrantOperation(java.util.concurrent.Callable<Boolean> operation,
             java.util.function.Consumer<Boolean> callback) {
+        final long requestOwnerEpoch = ownerEpoch;
         if (destroyed || callback == null) {
             if (callback != null) {
-                mainHandler.post(() -> callback.accept(false));
+                TorrentSafCallbackPublisher.post(requestOwnerEpoch,
+                        command -> mainHandler.post(command), () -> callback.accept(false));
             }
             return;
         }
@@ -2029,12 +2046,12 @@ public class RouterService extends Service {
                     // result.
                 }
                 boolean accepted = result;
-                if (!destroyed) {
-                    mainHandler.post(() -> callback.accept(accepted));
-                }
+                TorrentSafCallbackPublisher.post(requestOwnerEpoch,
+                        command -> mainHandler.post(command), () -> callback.accept(accepted));
             });
         } catch (RejectedExecutionException error) {
-            mainHandler.post(() -> callback.accept(false));
+            TorrentSafCallbackPublisher.post(requestOwnerEpoch,
+                    command -> mainHandler.post(command), () -> callback.accept(false));
         }
     }
 
@@ -2047,9 +2064,12 @@ public class RouterService extends Service {
      */
     public void importTorrent(
             int tunnel, android.net.Uri document, java.util.function.Consumer<String> callback) {
+        final long requestOwnerEpoch = ownerEpoch;
         if (destroyed || tunnel < 0 || document == null || !"content".equals(document.getScheme())
                 || !torrentInFlight.compareAndSet(false, true)) {
-            mainHandler.post(() -> callback.accept("I2PDTUI/1 ERR 4 15\ninvalid request"));
+            TorrentSafCallbackPublisher.post(requestOwnerEpoch,
+                    command -> mainHandler.post(command),
+                    () -> callback.accept("I2PDTUI/1 ERR 4 15\ninvalid request"));
             return;
         }
         var cancellation = new android.os.CancellationSignal();
@@ -2098,7 +2118,7 @@ public class RouterService extends Service {
                         }
                         byte[] metadata;
                         try (java.io.InputStream input = opened.createInputStream()) {
-                            metadata = TorrentDocumentReader.read(input);
+                            metadata = TorrentDocumentReader.read(input, cancellation::isCanceled);
                         }
                         cancellation.throwIfCanceled();
                         response = I2PD_JNI.importTorrent(tunnel, metadata);
@@ -2121,13 +2141,16 @@ public class RouterService extends Service {
                     torrentInFlight.set(false);
                 }
                 String result = response;
-                mainHandler.post(() -> callback.accept(result));
+                TorrentSafCallbackPublisher.post(requestOwnerEpoch,
+                        command -> mainHandler.post(command), () -> callback.accept(result));
             });
         } catch (RejectedExecutionException error) {
             mainHandler.removeCallbacks(cancel);
             cancelTorrentImport = null;
             torrentInFlight.set(false);
-            mainHandler.post(() -> callback.accept("I2PDTUI/1 ERR 6 14\nrouter stopped"));
+            TorrentSafCallbackPublisher.post(requestOwnerEpoch,
+                    command -> mainHandler.post(command),
+                    () -> callback.accept("I2PDTUI/1 ERR 6 14\nrouter stopped"));
         }
     }
 
@@ -2146,8 +2169,10 @@ public class RouterService extends Service {
     public void createSafTorrent(android.net.Uri source, boolean tree, int pieceLength,
             String[] trackers, boolean privateTorrent, java.util.function.LongConsumer progress,
             java.util.function.Consumer<byte[]> callback) {
+        final long requestOwnerEpoch = ownerEpoch;
         if (destroyed || !torrentInFlight.compareAndSet(false, true)) {
-            mainHandler.post(() -> callback.accept(null));
+            TorrentSafCallbackPublisher.post(requestOwnerEpoch,
+                    command -> mainHandler.post(command), () -> callback.accept(null));
             return;
         }
         // Progress is optional reporting, not a precondition for the
@@ -2159,6 +2184,7 @@ public class RouterService extends Service {
         }
         var cancel = new android.os.CancellationSignal();
         cancelTorrentImport = cancel::cancel;
+        final java.util.function.LongConsumer statusSink = sink;
         Runnable deadline = cancel::cancel;
         mainHandler.postDelayed(deadline, 30 * 60 * 1000L);
         try {
@@ -2179,8 +2205,9 @@ public class RouterService extends Service {
                         release = true;
                     }
                     metadata = TorrentSafCreator.create(resolver, source, tree, cancel,
-                            value
-                            -> mainHandler.post(() -> sink.accept(value)),
+                            value -> TorrentSafCallbackPublisher.post(requestOwnerEpoch,
+                                    command -> mainHandler.post(command),
+                                    () -> statusSink.accept(value)),
                             pieceLength, trackers, privateTorrent);
                 } catch (Throwable ignored) {
                     // Provider diagnostics may disclose document names
@@ -2197,13 +2224,15 @@ public class RouterService extends Service {
                     torrentInFlight.set(false);
                 }
                 byte[] result = metadata;
-                mainHandler.post(() -> callback.accept(result));
+                TorrentSafCallbackPublisher.post(requestOwnerEpoch,
+                        command -> mainHandler.post(command), () -> callback.accept(result));
             });
         } catch (RejectedExecutionException error) {
             mainHandler.removeCallbacks(deadline);
             cancelTorrentImport = null;
             torrentInFlight.set(false);
-            mainHandler.post(() -> callback.accept(null));
+            TorrentSafCallbackPublisher.post(requestOwnerEpoch,
+                    command -> mainHandler.post(command), () -> callback.accept(null));
         }
     }
 
@@ -2228,10 +2257,12 @@ public class RouterService extends Service {
      */
     public void exportTorrent(android.net.Uri target, byte[] metadata,
             java.util.function.Consumer<Boolean> callback) {
+        final long requestOwnerEpoch = ownerEpoch;
         if (target == null || !"content".equals(target.getScheme()) || metadata == null
                 || metadata.length > TorrentControl.MAX_IMPORT_BYTES || destroyed
                 || !torrentInFlight.compareAndSet(false, true)) {
-            mainHandler.post(() -> callback.accept(false));
+            TorrentSafCallbackPublisher.post(requestOwnerEpoch,
+                    command -> mainHandler.post(command), () -> callback.accept(false));
             return;
         }
         var canceled = new java.util.concurrent.atomic.AtomicBoolean();
@@ -2275,13 +2306,15 @@ public class RouterService extends Service {
                     torrentInFlight.set(false);
                 }
                 boolean result = success;
-                mainHandler.post(() -> callback.accept(result));
+                TorrentSafCallbackPublisher.post(requestOwnerEpoch,
+                        command -> mainHandler.post(command), () -> callback.accept(result));
             });
         } catch (RejectedExecutionException error) {
             mainHandler.removeCallbacks(cancel);
             cancelTorrentImport = null;
             torrentInFlight.set(false);
-            mainHandler.post(() -> callback.accept(false));
+            TorrentSafCallbackPublisher.post(requestOwnerEpoch,
+                    command -> mainHandler.post(command), () -> callback.accept(false));
         }
     }
 
@@ -2433,39 +2466,33 @@ public class RouterService extends Service {
      * increases even when a main-thread command races the daemon state
      * listener.</p>
      */
-    private void updateRunState(UnaryOperator<RouterRunState> transition) {
+    private RouterRunState updateRunState(UnaryOperator<RouterRunState> transition) {
         synchronized (runStateLock) {
-            RouterRunState next = transition.apply(readRunState());
+            RouterRunState previous = readRunState();
+            RouterRunState next = transition.apply(previous);
             SharedPreferences.Editor editor = runStatePreferences().edit();
             next.save(editor);
             editor.apply();
+            return previous;
         }
     }
 
     /**
-     * Persist an already computed state. The lock serializes this
-     * write, but the earlier read occurred outside the lock and no
-     * generation comparison rejects a stale state; callers requiring an
-     * atomic transition must use {@link
-     * #updateRunState(UnaryOperator)}.
+     * Persist an already computed state only if its generation still
+     * follows the latest persisted state. Transitions that need to read
+     * and change a state atomically use {@link
+     * #updateRunState(UnaryOperator)} instead.
      */
     private void persistRunState(RouterRunState state) {
-        if (state == null) {
-            return;
-        }
-        synchronized (runStateLock) {
-            SharedPreferences.Editor editor = runStatePreferences().edit();
-            state.save(editor);
-            editor.apply();
-        }
+        RouterRunState.saveIfNewer(runStatePreferences(), runStateLock, state, wallClockNow());
     }
 
     private void persistStopped() {
+        // Fence a restart already queued behind another control task,
+        // before the asynchronous native stop itself reaches the FIFO.
+        restartRequestGeneration.incrementAndGet();
+        restartInProgress.set(false);
         updateRunState(RouterRunState::stop);
-    }
-
-    private void persistRunning() {
-        updateRunState(state -> state.running(wallClockNow()));
     }
 
     private void persistDraining(long deadlineEpochMs) {
@@ -2626,14 +2653,6 @@ public class RouterService extends Service {
     }
 
     private static String describe(Throwable tr) {
-        if (tr == null) {
-            return "";
-        }
-        StringWriter writer = new StringWriter(1024);
-        try (PrintWriter printWriter = new PrintWriter(writer)) {
-            tr.printStackTrace(printWriter);
-        }
-        String text = writer.toString();
-        return text.length() <= MAX_ERROR_TEXT ? text : text.substring(0, MAX_ERROR_TEXT);
+        return RouterErrorText.describe(tr);
     }
 }

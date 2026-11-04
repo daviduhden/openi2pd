@@ -13,6 +13,107 @@ import org.junit.runner.RunWith;
 @RunWith(AndroidJUnit4.class)
 public final class TorrentSafStorageTest {
     @Test
+    public void replacingTreeReleasesBothOldModesAndPreservesSharedGrants() {
+        String oldTree = "content://org.openi2pd.fixture/tree/old";
+        String newReadOnlyTree = "content://org.openi2pd.fixture/tree/read-only";
+        var grants = new java.util.HashMap<String, String>();
+        grants.put("replaced", newReadOnlyTree);
+        java.util.List<android.net.Uri> released = new java.util.ArrayList<>();
+        java.util.List<Integer> modes = new java.util.ArrayList<>();
+        java.util.function.BiConsumer<android.net.Uri, Integer> release = (uri, flags) -> {
+            released.add(uri);
+            modes.add(flags);
+        };
+
+        grants.put("other-torrent", oldTree);
+        assertFalse(TorrentSafStorage.releaseUnreferencedGrant(
+                () -> grants, oldTree, "replaced", release));
+        assertTrue(released.isEmpty());
+
+        grants.remove("other-torrent");
+        assertTrue(TorrentSafStorage.releaseUnreferencedGrant(
+                () -> grants, oldTree, "replaced", release));
+        assertEquals(java.util.Collections.singletonList(android.net.Uri.parse(oldTree)), released);
+        assertEquals(java.util.Collections.singletonList(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION
+                                             | android.content.Intent.FLAG_GRANT_WRITE_URI_PERMISSION),
+                modes);
+    }
+
+    @Test
+    public void grantReleaseFailureRemainsBoundedAndDoesNotAlterMappings() {
+        String oldTree = "content://org.openi2pd.fixture/tree/old";
+        String newTree = "content://org.openi2pd.fixture/tree/new";
+        var grants = new java.util.HashMap<String, String>();
+        grants.put("replaced", newTree);
+        int[] attempts = {0};
+        assertFalse(TorrentSafStorage.releaseUnreferencedGrant(
+                () -> grants, oldTree, "replaced", (uri, flags) -> {
+                    attempts[0]++;
+                    throw new SecurityException();
+                }));
+        assertEquals(1, attempts[0]);
+        assertEquals(newTree, grants.get("replaced"));
+    }
+
+    @Test
+    public void grantAuthorityRejectsConcurrentAndReentrantMutation() throws Exception {
+        var authority = new TorrentSafStorage.MappingAuthority();
+        assertTrue(authority.run(() -> {
+            assertFalse(authority.run(() -> {
+                fail("reentrant grant mutation must not run");
+                return true;
+            }));
+            return true;
+        }));
+
+        var entered = new java.util.concurrent.CountDownLatch(1);
+        var release = new java.util.concurrent.CountDownLatch(1);
+        var worker = java.util.concurrent.Executors.newSingleThreadExecutor();
+        var active = worker.submit(() -> authority.run(() -> {
+            entered.countDown();
+            try {
+                return release.await(5, java.util.concurrent.TimeUnit.SECONDS);
+            } catch (InterruptedException interrupted) {
+                Thread.currentThread().interrupt();
+                return false;
+            }
+        }));
+        try {
+            assertTrue(entered.await(5, java.util.concurrent.TimeUnit.SECONDS));
+            assertFalse(authority.run(() -> {
+                fail("concurrent grant mutation must not run");
+                return true;
+            }));
+            release.countDown();
+            assertTrue(active.get(5, java.util.concurrent.TimeUnit.SECONDS));
+            assertTrue(authority.run(() -> true));
+        } finally {
+            release.countDown();
+            worker.shutdownNow();
+            assertTrue(worker.awaitTermination(5, java.util.concurrent.TimeUnit.SECONDS));
+        }
+    }
+
+    @Test
+    public void frameworkReleaseCannotReenterWithAStaleSnapshot() {
+        String oldTree = "content://org.openi2pd.fixture/tree/old";
+        var grants = new java.util.HashMap<String, String>();
+        int[] reads = {0}, releases = {0};
+        assertTrue(TorrentSafStorage.releaseUnreferencedGrant(() -> {
+            reads[0]++;
+            return grants;
+        }, oldTree, null, (uri, flags) -> {
+            releases[0]++;
+            assertFalse(TorrentSafStorage.releaseUnreferencedGrant(() -> {
+                fail("a reentrant snapshot read must not run");
+                return grants;
+            }, oldTree, null, (nestedUri, nestedModes) -> fail("nested release must not run")));
+        }));
+        assertEquals(1, reads[0]);
+        assertEquals(1, releases[0]);
+    }
+
+    @Test
     public void rejectsTraversalAndAmbiguousNames() {
         for (String path :
                 new String[] {"", "/file", "a/../file", "a//file", "a/./b", "a\u0000b", "a/"})

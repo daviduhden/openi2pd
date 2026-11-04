@@ -262,6 +262,34 @@ public final class RouterRunStateTest {
     }
 
     @Test
+    public void stalePrecomputedStateCannotReplaceNewerGeneration() {
+        MemoryPreferences preferences = new MemoryPreferences();
+        Object writerLock = new Object();
+        RouterRunState initial = RouterRunState.stopped();
+        SharedPreferences.Editor initialEditor = preferences.edit();
+        initial.save(initialEditor);
+        initialEditor.apply();
+
+        // Both candidates are derived from generation zero. The newer
+        // command has already passed through two transitions before the
+        // older precomputed drain attempts to publish.
+        RouterRunState stale = initial.draining(NOW + 60_000L);
+        RouterRunState newer = initial.running(NOW)
+                .draining(NOW + 30_000L)
+                .cancelGraceful();
+
+        assertTrue(RouterRunState.saveIfNewer(preferences, writerLock, newer, NOW));
+        assertFalse(RouterRunState.saveIfNewer(preferences, writerLock, stale, NOW));
+        assertEquals(newer, RouterRunState.load(preferences, NOW));
+
+        RouterRunState conflictingSameGeneration = new RouterRunState(
+                RouterRunState.Phase.Draining, NOW + 45_000L, newer.generation());
+        assertFalse(RouterRunState.saveIfNewer(
+                preferences, writerLock, conflictingSameGeneration, NOW));
+        assertEquals(newer, RouterRunState.load(preferences, NOW));
+    }
+
+    @Test
     public void stoppedStateNeverRequestsAStart() {
         RouterRunState stopped = RouterRunState.stopped();
         assertFalse(stopped.shouldRun());

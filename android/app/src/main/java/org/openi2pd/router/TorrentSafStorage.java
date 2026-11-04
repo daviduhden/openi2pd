@@ -32,6 +32,30 @@ import java.util.concurrent.atomic.AtomicBoolean;
  */
 final class TorrentSafStorage {
     private static final Object lock = new Object();
+    // Independent of Binder capability state. Grant mutation never
+    // holds the broker lock across framework calls or preference IO.
+    private static final MappingAuthority mappingAuthority = new MappingAuthority();
+
+    /**
+     * One process-local grant mutation. Contention and reentrant calls
+     * are rejected rather than waiting on a provider that might call
+     * back into the application. No callback may extend this authority
+     * beyond the synchronous action.
+     */
+    static final class MappingAuthority {
+        private final java.util.concurrent.locks.ReentrantLock mutex =
+                new java.util.concurrent.locks.ReentrantLock();
+
+        boolean run(java.util.function.BooleanSupplier action) {
+            if (mutex.isHeldByCurrentThread() || !mutex.tryLock())
+                return false;
+            try {
+                return action.getAsBoolean();
+            } finally {
+                mutex.unlock();
+            }
+        }
+    }
     private static final android.os.Handler main =
             new android.os.Handler(android.os.Looper.getMainLooper());
     private static volatile Application context;
@@ -512,13 +536,29 @@ final class TorrentSafStorage {
      * authorize writes. Existing mappings sharing a URI keep their
      * grant when this one changes.
      *
-     * @return whether the grant and mapping were stored successfully
+     * @return whether the grant and mapping were stored successfully;
+     *         false also denotes busy or reentrant grant authority
      */
     static boolean select(Context app, String tunnel, String hash, Uri tree) {
-        if (tunnel == null || tunnel.isEmpty() || tunnel.length() > 1024 || hash == null
+        if (app == null || tunnel == null || tunnel.isEmpty() || tunnel.length() > 1024 || hash == null
                 || !hash.matches("[0-9a-fA-F]{40}") || tree == null
                 || !"content".equals(tree.getScheme()) || !DocumentsContract.isTreeUri(tree))
             return false;
+        String key = tunnel + ":" + hash.toLowerCase(java.util.Locale.ROOT);
+        if (!mappingAuthority.run(() -> selectGrantLocked(app, key, tree)))
+            return false;
+        // Cache invalidation and binding happen after grant authority
+        // is released, so neither lock can be acquired beneath the
+        // other during framework grant operations.
+        synchronized (lock) {
+            authorized.remove(key);
+            budget.reset();
+        }
+        retryBinding();
+        return true;
+    }
+
+    private static boolean selectGrantLocked(Context app, String key, Uri tree) {
         try {
             final int readFlag = Intent.FLAG_GRANT_READ_URI_PERMISSION;
             final int writeFlag = Intent.FLAG_GRANT_WRITE_URI_PERMISSION;
@@ -533,49 +573,38 @@ final class TorrentSafStorage {
                 flags = readFlag;
                 app.getContentResolver().takePersistableUriPermission(tree, flags);
             }
-            boolean read = false, write = false;
+            boolean read = false;
             for (android.content.UriPermission grant :
                     app.getContentResolver().getPersistedUriPermissions()) {
                 if (!grant.getUri().equals(tree))
                     continue;
                 read |= grant.isReadPermission();
-                write |= grant.isWritePermission();
             }
             if (!read) {
-                releaseUnmapped(app, tree, flags);
+                releaseUnmappedLocked(app, tree, flags);
                 return false;
             }
-            String key = tunnel + ":" + hash.toLowerCase(java.util.Locale.ROOT);
             var prefs = app.getSharedPreferences("torrent-saf-grants", Context.MODE_PRIVATE);
             String previous = prefs.getString(key, null);
             boolean saved = prefs.edit().putString(key, tree.toString()).commit();
             if (!saved) {
-                releaseUnmapped(app, tree, flags);
+                releaseUnmappedLocked(app, tree, flags);
                 return false;
             }
-            if (previous != null && !previous.equals(tree.toString())
-                    && !TorrentSafGrants.referenced(prefs.getAll(), previous, key)) {
-                try {
-                    app.getContentResolver().releasePersistableUriPermission(
-                            Uri.parse(previous), flags);
-                } catch (SecurityException ignored) {
-                }
-            }
-            synchronized (lock) {
-                authorized.remove(key);
-                // An explicit selection is the operator's recovery
-                // action: it begins a fresh bind episode without an
-                // application restart.
-                budget.reset();
-            }
-            retryBinding();
+            if (previous != null && !previous.equals(tree.toString()))
+                releaseUnreferencedGrantLocked(prefs.getAll(), previous, key,
+                        (uri, modes) -> app.getContentResolver().releasePersistableUriPermission(
+                                uri, modes));
             return true;
         } catch (Exception failure) {
             return false;
         }
     }
 
-    private static void releaseUnmapped(Context app, Uri tree, int flags) {
+    // Called only within mappingAuthority after failed acquisition or
+    // commit. A concurrent selection cannot add a reference between
+    // this check and the framework release.
+    private static void releaseUnmappedLocked(Context app, Uri tree, int flags) {
         String uri = tree.toString();
         for (Object value : app.getSharedPreferences("torrent-saf-grants", Context.MODE_PRIVATE)
                         .getAll()
@@ -589,16 +618,68 @@ final class TorrentSafStorage {
     }
 
     /**
+     * Release both persisted modes of an obsolete tree only after the
+     * mapping commit and when no other torrent references it. Modes
+     * belong to the old tree: a read-only replacement must not leave
+     * the old write permission behind. Framework failure is best
+     * effort. Snapshot acquisition, reference checking and release
+     * share process-local mapping authority with select and detach;
+     * a concurrent or reentrant mutation is rejected. This does not
+     * synchronize writers in another process or external grant users.
+     *
+     * @param grants reads the committed map while authority is held
+     * @param uri obsolete tree URI, or null when no mapping existed
+     * @param exceptKey replaced or removed mapping
+     * @param release framework permission-release operation
+     * @return whether an unreferenced grant was released successfully;
+     *         false includes busy authority or a framework failure
+     */
+    static boolean releaseUnreferencedGrant(
+            java.util.function.Supplier<java.util.Map<String, ?>> grants, String uri,
+            String exceptKey, java.util.function.BiConsumer<Uri, Integer> release) {
+        if (grants == null)
+            return false;
+        return mappingAuthority.run(() -> releaseUnreferencedGrantLocked(
+                grants.get(), uri, exceptKey, release));
+    }
+
+    // Only callers holding mappingAuthority may supply this snapshot.
+    private static boolean releaseUnreferencedGrantLocked(
+            java.util.Map<String, ?> grants, String uri, String exceptKey,
+            java.util.function.BiConsumer<Uri, Integer> release) {
+        if (grants == null || uri == null || release == null
+                || TorrentSafGrants.referenced(grants, uri, exceptKey))
+            return false;
+        try {
+            release.accept(Uri.parse(uri), Intent.FLAG_GRANT_READ_URI_PERMISSION
+                            | Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
+            return true;
+        } catch (RuntimeException ignored) {
+            return false;
+        }
+    }
+
+    /**
      * Remove one persisted mapping and release its tree permission only
      * when no remaining mapping references that URI. A failed
      * preference commit leaves the permission intact.
      *
-     * @return whether removal of the mapping was committed
+     * @return whether removal of the mapping was committed;
+     *         false also denotes busy or reentrant grant authority
      */
     static boolean detach(Context app, String tunnel, String hash) {
         if (app == null || tunnel == null || hash == null || !hash.matches("[0-9a-fA-F]{40}"))
             return false;
         String key = tunnel + ":" + hash.toLowerCase(java.util.Locale.ROOT);
+        if (!mappingAuthority.run(() -> detachGrantLocked(app, key)))
+            return false;
+        synchronized (lock) {
+            authorized.remove(key);
+        }
+        return true;
+    }
+
+    private static boolean detachGrantLocked(Context app, String key) {
         var prefs = app.getSharedPreferences("torrent-saf-grants", Context.MODE_PRIVATE);
         String previous = prefs.getString(key, null);
         boolean saved = prefs.edit().remove(key).commit();
@@ -606,17 +687,9 @@ final class TorrentSafStorage {
         // never revoke the permission underneath it.
         if (!saved)
             return false;
-        if (previous != null && !TorrentSafGrants.referenced(prefs.getAll(), previous, key)) {
-            try {
-                app.getContentResolver().releasePersistableUriPermission(Uri.parse(previous),
-                        Intent.FLAG_GRANT_READ_URI_PERMISSION
-                                | Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
-            } catch (Exception ignored) {
-            }
-        }
-        synchronized (lock) {
-            authorized.remove(key);
-        }
+        releaseUnreferencedGrantLocked(prefs.getAll(), previous, key,
+                (uri, modes) -> app.getContentResolver().releasePersistableUriPermission(
+                        uri, modes));
         return saved;
     }
     // Called only from native disk workers, never the main thread. A

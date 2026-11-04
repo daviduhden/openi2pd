@@ -25,9 +25,8 @@ import android.content.SharedPreferences;
  * {@code START_STICKY} or the boot receiver resurrected it. This record
  * makes the whole intent durable: the phase says what the operator
  * asked for, the deadline says when a drain ends, and the generation is
- * advanced from the preceding state. The record does not compare
- * generations when saved: callers must serialize the complete
- * read-modify-write if they need to prevent stale updates.</p>
+ * advanced from the preceding state. Writers serialize transitions and
+ * compare precomputed generations before publishing.</p>
  *
  * <p><b>Persisted schema</b> (inside the existing {@code router_state}
  * preference file, so no file name or migration step changes):</p>
@@ -155,6 +154,54 @@ public record RouterRunState(Phase phase, long gracefulDeadlineEpochMs, long gen
         return phase != Phase.Stopped;
     }
 
+    /**
+     * True when this precomputed state follows a strictly newer write
+     * generation than {@code previous}.
+     *
+     * <p>Equal generations are not allowed to replace each other: two
+     * transitions derived from the same state can have the same next
+     * generation, and only the first one may be published.</p>
+     *
+     * @param previous latest state read while holding the writer lock
+     * @return whether this state may replace {@code previous}
+     */
+    boolean supersedes(RouterRunState previous) {
+        return previous != null && generation > previous.generation;
+    }
+
+    /**
+     * Save a state computed before acquiring the writer lock only when
+     * it still follows the latest persisted generation.
+     *
+     * <p>The lock must be the same monitor used by every other writer
+     * for this preference record. Equal generations are rejected so
+     * concurrent transitions derived from the same earlier snapshot
+     * cannot overwrite whichever transition was published first.</p>
+     *
+     * @param preferences store containing the run intent
+     * @param writerLock monitor shared by every writer
+     * @param candidate precomputed state to publish
+     * @param nowMs wall-clock time used to load and sanitize the latest
+     *              state
+     * @return true when the candidate was saved
+     */
+    static boolean saveIfNewer(
+            SharedPreferences preferences, Object writerLock,
+            RouterRunState candidate, long nowMs) {
+        if (preferences == null || writerLock == null || candidate == null) {
+            return false;
+        }
+        synchronized (writerLock) {
+            if (!candidate.supersedes(load(preferences, nowMs))) {
+                return false;
+            }
+            SharedPreferences.Editor editor = preferences.edit();
+            candidate.save(editor);
+            editor.apply();
+            return true;
+        }
+    }
+
     /** True while a graceful stop is draining. */
     public boolean isDraining() {
         return phase == Phase.Draining;
@@ -243,12 +290,9 @@ public record RouterRunState(Phase phase, long gracefulDeadlineEpochMs, long gen
      * should_run} mirror, into {@code editor}. The caller applies or
      * commits exactly once; {@link RouterService} uses {@code apply()}.
      *
-     * <p>This method does not read back, compare generations or
-     * serialize anything: it is the caller's job to hold one writer.
-     * Some service transitions still read the persisted record outside
-     * the write lock, so two concurrent transitions can lose an update;
-     * that stale-state gap is tracked as ANDROID-033, and the record
-     * type deliberately does not pretend to solve it.</p>
+     * <p>This method does not read back or serialize anything: it is
+     * the caller's job to hold one writer and reject a stale generation
+     * before saving a state computed outside that writer lock.</p>
      */
     public void save(SharedPreferences.Editor editor) {
         if (editor == null) {
