@@ -15,6 +15,7 @@
 #define TRANSPORT_CONNECTOR_H__
 
 #include <memory>
+#include <cstdint>
 
 #include "NTCP2.h"
 #include "RouterInfo.h"
@@ -127,19 +128,18 @@ namespace transport
 		}
 	};
 
-	[[nodiscard]] inline const ITransportConnector * FindTransportConnector (
-		i2p::data::RouterInfo::SupportedTransports transport)
+	[[nodiscard]] inline const ITransportConnector * FindTransportConnector (uint32_t transport)
 	{
 		static const NTCP2Connector ntcp2;
 		static const SSU2Connector ssu2;
 		static const YggdrasilNTCP2Connector yggdrasil;
 		switch (transport)
 		{
-		case i2p::data::RouterInfo::eNTCP2V4:
-		case i2p::data::RouterInfo::eNTCP2V6: return &ntcp2;
-		case i2p::data::RouterInfo::eSSU2V4:
-		case i2p::data::RouterInfo::eSSU2V6: return &ssu2;
-		case i2p::data::RouterInfo::eNTCP2V6Mesh: return &yggdrasil;
+		case static_cast<uint32_t> (i2p::data::RouterInfo::eNTCP2V4):
+		case static_cast<uint32_t> (i2p::data::RouterInfo::eNTCP2V6): return &ntcp2;
+		case static_cast<uint32_t> (i2p::data::RouterInfo::eSSU2V4):
+		case static_cast<uint32_t> (i2p::data::RouterInfo::eSSU2V6): return &ssu2;
+		case static_cast<uint32_t> (i2p::data::RouterInfo::eNTCP2V6Mesh): return &yggdrasil;
 		default: return nullptr;
 		}
 	}
