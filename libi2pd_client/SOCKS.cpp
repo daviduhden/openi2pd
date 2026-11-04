@@ -313,6 +313,7 @@ namespace proxy
 
 	void SOCKSHandler::Terminate ()
 	{
+		boost::system::error_code ignored;
 		m_HandshakeTimer.cancel ();
 		// Any decoded credential is dropped before the socket state changes.
 		WipeCredentialFields ();
@@ -325,20 +326,20 @@ namespace proxy
 		if (m_sock)
 		{
 			LogPrint (eLogDebug, "SOCKS: Closing socket");
-			m_sock->close ();
+			m_sock->close (ignored);
 			m_sock = nullptr;
 		}
 		if (m_upstreamSock)
 		{
 			LogPrint (eLogDebug, "SOCKS: Closing upstream socket");
-			m_upstreamSock->close ();
+			m_upstreamSock->close (ignored);
 			m_upstreamSock = nullptr;
 		}
 #if defined(BOOST_ASIO_HAS_LOCAL_SOCKETS)
 		if (m_upstreamLocalSock)
 		{
 			LogPrint (eLogDebug, "SOCKS: Closing upstream local socket");
-			m_upstreamLocalSock->close ();
+			m_upstreamLocalSock->close (ignored);
 			m_upstreamLocalSock = nullptr;
 		}
 #endif
@@ -351,10 +352,13 @@ namespace proxy
 		if (m_UDPTunnel)
 		{
 			m_UDPTunnel->Stop ();
-			GetServer ()->ReleaseLocalUDPPort (m_UDPTunnel->GetLocalEndpoint ().port ());
+			if (auto server = GetServer ())
+				server->ReleaseLocalUDPPort (m_UDPTunnel->GetLocalEndpoint ().port ());
 			m_UDPTunnel = nullptr;
 		}
-		Done (shared_from_this ());
+		// Destruction can reach this path after the final shared owner has
+		// gone. Only active teardown can still notify the owner registry.
+		if (auto self = weak_from_this ().lock ()) Done (std::move (self));
 	}
 
 	boost::asio::const_buffer SOCKSHandler::GenerateSOCKS4Response (

@@ -21,6 +21,7 @@
 #include <functional>
 #include <vector>
 #include <string_view>
+#include <utility>
 #include <boost/asio.hpp>
 #include "Destination.h"
 #include "Identity.h"
@@ -203,9 +204,8 @@ namespace client
 	/// direction. Each read is followed by a complete write before reusing
 	/// that buffer; callbacks retain the pipe and both endpoints while IO
 	/// is in flight.
-	/// @warning Normal termination must precede release of the
-	///          final shared owner: the active teardown path uses
-	///          shared_from_this().
+	/// Destruction closes both endpoints without acquiring a shared owner.
+	/// Active termination also unregisters the handler while an owner exists.
 	template <typename SocketUpstream, typename SocketDownstream>
 	class SocketsPipe : public I2PServiceHandler,
 						public std::enable_shared_from_this<SocketsPipe<SocketUpstream, SocketDownstream>>
@@ -230,7 +230,7 @@ namespace client
 				LogPrint (eLogWarning, "SocketsPipe: ", name, " failed to set receive buffer size: ", ex.what ());
 			}
 		}
-		~SocketsPipe () { Terminate (); }
+		~SocketsPipe () { CloseSockets (); }
 
 		void Start () override
 		{
@@ -242,17 +242,26 @@ namespace client
 		void Terminate () override
 		{
 			if (Kill ()) return;
+			CloseSockets ();
+			if (auto self = SocketsPipe<SocketUpstream, SocketDownstream>::weak_from_this ().lock ())
+				Done (std::move (self));
+		}
+
+		// Also used after the last shared owner has gone. Descriptor close
+		// failures cannot throw through a destructor or strand the peer.
+		void CloseSockets () noexcept
+		{
+			boost::system::error_code ignored;
 			if (m_up)
 			{
-				if (m_up->is_open ()) m_up->close ();
+				m_up->close (ignored);
 				m_up = nullptr;
 			}
 			if (m_down)
 			{
-				if (m_down->is_open ()) m_down->close ();
+				m_down->close (ignored);
 				m_down = nullptr;
 			}
-			Done (SocketsPipe<SocketUpstream, SocketDownstream>::shared_from_this ());
 		}
 
 		template <typename From, typename To>

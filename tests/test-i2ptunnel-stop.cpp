@@ -64,6 +64,25 @@ int main ()
 {
 	using i2p::client::I2PServerTunnel;
 	using i2p::client::I2PServiceHandler;
+	// An unstarted pipe has no completion retaining it. Releasing its
+	// last owner must close both endpoints without shared_from_this().
+	{
+		boost::asio::io_context service;
+		auto up = std::make_shared<boost::asio::ip::tcp::socket> (service);
+		auto down = std::make_shared<boost::asio::ip::tcp::socket> (service);
+		up->open (boost::asio::ip::tcp::v4 ());
+		down->open (boost::asio::ip::tcp::v4 ());
+		auto pipe = i2p::client::CreateSocketsPipe (nullptr, up, down);
+		pipe.reset ();
+		assert (!up->is_open () && !down->is_open ());
+		up->open (boost::asio::ip::tcp::v4 ());
+		down->open (boost::asio::ip::tcp::v4 ());
+		pipe = i2p::client::CreateSocketsPipe (nullptr, up, down);
+		pipe->Terminate ();
+		pipe->Terminate ();
+		assert (!up->is_open () && !down->is_open ());
+		pipe.reset ();
+	}
 
 	Fixture fixture;
 	auto & destination = *fixture.destination;
