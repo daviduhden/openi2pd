@@ -81,6 +81,35 @@ function(secret_hash path out_var)
 endfunction()
 
 # --------------------------------------------------------------------
+# vain: validation must finish without starting a probabilistic search.
+# Help is the only successful invocation exercised by this contract.
+# --------------------------------------------------------------------
+run_cli(vain out err --help)
+expect_code(0 "vain explicit help")
+expect_contains("${out}" "vain pattern" "vain help stdout")
+expect_empty("${err}" "vain help stderr")
+
+run_cli(vain out err)
+expect_code(1 "vain missing pattern")
+expect_empty("${out}" "vain missing pattern stdout")
+expect_contains("${err}" "vain pattern" "vain missing pattern stderr")
+
+run_cli(vain out err -r)
+expect_code(1 "vain regex option without pattern")
+expect_empty("${out}" "vain missing regex stdout")
+expect_contains("${err}" "vain pattern" "vain missing regex stderr")
+
+run_cli(vain out err NOT-BASE32)
+expect_code(1 "vain invalid prefix")
+expect_empty("${out}" "vain invalid prefix stdout")
+expect_contains("${err}" "Not correct prefix" "vain invalid prefix stderr")
+
+run_cli(vain out err -s ECDSA-P256 example)
+expect_code(1 "vain unsupported signature")
+expect_empty("${out}" "vain unsupported signature stdout")
+expect_contains("${err}" "only ED25519-SHA512" "vain signature stderr")
+
+# --------------------------------------------------------------------
 # keygen: explicit help succeeds; a bad invocation is a stderr usage
 # error; a leading-dash filename is never created.
 # --------------------------------------------------------------------

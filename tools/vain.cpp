@@ -14,7 +14,6 @@
 #include <algorithm>
 #include <atomic>
 #include <charconv>
-#include <cstdio>
 #include <cstring>
 #include <exception>
 #include <filesystem>
@@ -485,13 +484,11 @@ Outcome RunSearch (Options & options, std::string_view prefix, const std::regex 
 	// output path is the normal case: clear ENOENT instead of treating it
 	// as an inspection failure.
 	//
-	// Collision policy: an occupied name advances to the next
-	// `PREFIX&lt;N&gt;.dat` for the rest of the run (foundKeys is never
-	// reset), so multiple-address mode cannot overwrite an earlier match
-	// or an operator file. With no `-o` the stored prefix is empty, so the
-	// fallback name is `&lt;N&gt;.dat` rather than
-	// `&lt;address&gt;&lt;N&gt;.dat`. The probe is advisory: it does not
-	// reserve the name, the file is created later by the atomic writer,
+	// Collision policy: an occupied name advances to the next suffix
+	// for the rest of the run. Default names retain the matched address;
+	// explicit prefixes retain their historical numbered spelling.
+	// The probe is advisory: it does not reserve the name. The file is
+	// created later by the atomic writer,
 	// and a directory this user cannot write or a non-regular leaf is
 	// rejected there rather than silently replaced. Run the tool in a
 	// directory no other user can create names in.
@@ -509,9 +506,9 @@ Outcome RunSearch (Options & options, std::string_view prefix, const std::regex 
 			break;
 		}
 		if (!std::filesystem::exists (status)) break;
-		options.outputpath.assign (defaultOutputPath);
-		options.outputpath = options.outputpath + std::to_string (foundKeys) + std::string (".dat");
-		foundKeys++;
+		++foundKeys;
+		const auto & outputPrefix = defaultOutputPath.empty () ? address : defaultOutputPath;
+		options.outputpath = outputPrefix + std::to_string (foundKeys) + ".dat";
 	}
 
 	std::cout << "outpath for a now: " << options.outputpath << std::endl;
@@ -525,7 +522,7 @@ Outcome RunSearch (Options & options, std::string_view prefix, const std::regex 
 	return Outcome::Found;
 }
 
-void usage ()
+void usage (std::ostream & out)
 {
 	constexpr const char * help = "vain pattern [options]\n"
 								  "-h --help help menu\n"
@@ -534,7 +531,7 @@ void usage ()
 								  "-s --signature signature type (only ED25519-SHA512)\n"
 								  "-o --output output file prefix (default <address>.dat)\n"
 								  "--multiplymode -m - multiple addresses search\n";
-	std::puts (help);
+	out << help;
 }
 
 enum class ParseResult
@@ -569,7 +566,7 @@ ParseResult ParseArguments (int argc, char ** argv, Options & options)
 		switch (c)
 		{
 		case 'm': options.multiple = true; break;
-		case 'h': usage (); return ParseResult::Help;
+		case 'h': usage (std::cout); return ParseResult::Help;
 		case 'r': options.reg = true; break;
 		case 't':
 		{
@@ -609,17 +606,12 @@ int main (int argc, char * argv[])
 {
 	// Exit status: 0 for help and for a written key; 1 for every rejected
 	// argument, unsupported signature type, invalid regular expression,
-	// thread-start, path-inspection or write failure. With no operands the
-	// usage text goes to stdout and the status is 0; that differs from the
-	// other key tools, which treat a missing operand as a usage error on
-	// stderr with status 1. Option and pattern errors use stderr so stdout
-	// stays limited to progress and result lines, with one historical
-	// exception: the "not correct prefix" diagnostic for a non-base32
-	// pattern is still printed to stdout.
+	// thread-start, path-inspection or write failure. Only explicit help
+	// prints usage on stdout; rejected invocations use stderr.
 	if (argc < 2)
 	{
-		usage ();
-		return 0;
+		usage (std::cerr);
+		return 1;
 	}
 
 	Options options;
@@ -632,14 +624,14 @@ int main (int argc, char * argv[])
 	// pattern [options]" form and also accepts options before the pattern.
 	if (optind >= argc)
 	{
-		usage ();
+		usage (std::cerr);
 		return 1;
 	}
 	const std::string pattern (argv[optind]);
 
 	if (!options.reg && !IsBase32Prefix (pattern))
 	{
-		std::cout << "Not correct prefix(just string)" << std::endl;
+		std::cerr << "Not correct prefix(just string)" << std::endl;
 		return 1;
 	}
 
@@ -661,7 +653,7 @@ int main (int argc, char * argv[])
 
 	if (options.signature != i2p::data::SIGNING_KEY_TYPE_EDDSA_SHA512_ED25519)
 	{
-		std::cout << "For a while only ED25519-SHA512" << std::endl;
+		std::cerr << "For a while only ED25519-SHA512" << std::endl;
 		return 1;
 	}
 

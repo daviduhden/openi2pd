@@ -51,7 +51,9 @@ expression is reported and exits with status 1.
 ## Output
 
 With no `-o`, a match is written to `<base32-address>.dat` in the current
-directory. With `-o PREFIX`, the historical naming is retained: the first
+directory. An occupied name becomes `<base32-address>1.dat`, then higher
+numbered suffixes; the matched address remains part of the filename.
+With `-o PREFIX`, the historical naming is retained: the first
 candidate is `PREFIX0.dat`, and an existing file makes the tool try
 `PREFIX1.dat`, `PREFIX2.dat`, and so on. The file is an ordinary I2P
 destination key file (`PrivateKeys::ToBuffer` format), **not encrypted**.
@@ -60,6 +62,10 @@ Protect it with a private directory and `umask 077`, and verify it with
 
 The generated key format and the hash/nonce search are unchanged from the
 upstream tool.
+
+Explicit `--help` writes usage to stdout and exits 0. Missing operands,
+invalid prefixes, unsupported signatures and other failures write their
+diagnostics to stderr and exit 1. Progress and successful results use stdout.
 
 ## Example
 
@@ -80,7 +86,7 @@ approximate times on a 2.7 GHz CPU: 4 chars ~0.4 s, 5 chars ~6 s, 6 chars
   `new[]`/`delete[]` arrays remain.
 - Each worker searches its own key buffer; a winning worker publishes its
   nonce and key index through atomic state and a mutex. Worker threads are
-  `std::jthread` objects that are joined before a key file is written, so an
+  `std::thread` objects that are joined before a key file is written, so an
   error while starting threads cannot leave a joinable thread behind.
 - The hashed identity prefix is checked to be the 391-byte Ed25519 layout
   before any worker starts, including the certificate/key-type bytes embedded
@@ -89,9 +95,11 @@ approximate times on a 2.7 GHz CPU: 4 chars ~0.4 s, 5 chars ~6 s, 6 chars
   patched in. Unsupported signature types are refused instead of being
   searched with an out-of-bounds nonce offset.
 - Candidate output paths are checked with `symlink_status()`, so a dangling
-  symlink is treated as an existing file instead of being followed. The final
-  open is not `O_NOFOLLOW`; run the tool in a directory that other users cannot
-  write to.
+  symlink is treated as an existing file instead of being followed. The shared
+  private writer validates the destination and publishes a same-directory
+  staged replacement with private permissions. The parent hierarchy must be
+  trusted; the candidate probe does not reserve a filename against another
+  process creating that name before publication.
 - A failure to write the output is reported and exits with status 1; it is no
   longer reported as success.
 - `-s` is honoured. Previously it was parsed and then silently overwritten
@@ -99,9 +107,9 @@ approximate times on a 2.7 GHz CPU: 4 chars ~0.4 s, 5 chars ~6 s, 6 chars
   exit with status 1.
 - Ctrl-C is not trapped. The default signal action terminates the process
   without running destructors, so key buffers are not wiped in that case and
-  the candidate is not written. The writer checks the stream state; an I/O
-  error can still leave a truncated file, which should be removed after a
-  reported `Can't create file` failure.
+  the candidate is not written. The private writer avoids in-place truncation.
+  A reported failure after publication can mean that directory durability
+  could not be confirmed; inspect the destination before retrying.
 
 ## Compatibility
 
@@ -112,7 +120,9 @@ Ed25519 destinations and standard key-file format. No network access.
 `tools-smoke` checks `vain --help` and the deterministic argument-validation
 error paths (thread count, regex syntax, non-base32 prefix, unsupported
 signature). No search or key generation is executed. Static checks in this
-change were `git diff --check` and documentation review. Dynamic validation
-still needed: build on Linux/OpenBSD/Windows, one-character search with a
+change were `git diff --check` and documentation review. `tools-cli` prepares
+exact exit-status and stream-separation regressions without starting a search.
+Dynamic validation still needed: build on Linux/OpenBSD/Windows,
+one-character search with a
 generated key, `keyinfo` inspection of the result, and a sanitizer run for the
 worker path.

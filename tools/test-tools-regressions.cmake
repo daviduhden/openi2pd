@@ -820,7 +820,7 @@ assert_output_contains("usage:" "i2pbase64 rejects unknown options")
 # vain: bounds and invalid arguments only. A valid search is never
 # started.
 # --------------------------------------------------------------------
-run_tool(vain TRUE)
+run_tool(vain FALSE)
 assert_output_contains("vain pattern" "vain without arguments prints usage")
 run_tool(vain TRUE --help)
 assert_output_contains("--multiplymode" "vain --help multiply mode")
