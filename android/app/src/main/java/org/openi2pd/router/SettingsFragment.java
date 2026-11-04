@@ -74,6 +74,7 @@ public class SettingsFragment extends PreferenceFragmentCompat {
     private Map<String, String> configValues = Collections.emptyMap();
     private boolean restartDialogShown;
     private boolean viewDestroyed;
+    private final UiDialogEpoch dialogs = new UiDialogEpoch();
     /**
      * View generation. Every asynchronous configuration load or save
      * captures the current value and is applied only while it still
@@ -90,6 +91,7 @@ public class SettingsFragment extends PreferenceFragmentCompat {
     @Override
     public void onViewCreated(@NonNull View view, @Nullable Bundle savedInstanceState) {
         super.onViewCreated(view, savedInstanceState);
+        dialogs.openView();
         viewModel = new ViewModelProvider(requireActivity()).get(RouterViewModel.class);
         viewDestroyed = false;
         loadPreferences();
@@ -97,6 +99,7 @@ public class SettingsFragment extends PreferenceFragmentCompat {
 
     @Override
     public void onDestroyView() {
+        dialogs.retireView();
         viewDestroyed = true;
         loadGeneration++;
         restartDialogShown = false;
@@ -581,7 +584,9 @@ public class SettingsFragment extends PreferenceFragmentCompat {
     }
 
     private void showRestartDialog() {
-        if (restartDialogShown || !isAdded() || viewModel == null) {
+        var dialogToken = dialogs.token();
+        if (restartDialogShown || !dialogs.maySubmit(dialogToken,
+                    !viewDestroyed && isAdded() && viewModel != null, false)) {
             return;
         }
         restartDialogShown = true;
@@ -589,9 +594,26 @@ public class SettingsFragment extends PreferenceFragmentCompat {
         builder.setTitle(R.string.pref_restart_required_title);
         builder.setMessage(R.string.pref_restart_required_message);
         builder.setNegativeButton(R.string.pref_later, null);
+        boolean[] submitted = {false};
         builder.setPositiveButton(
-                R.string.pref_restart_now, (dialog, which) -> viewModel.restartRouter());
-        builder.setOnDismissListener(dialog -> restartDialogShown = false);
-        builder.show();
+                R.string.pref_restart_now, (dialog, which) -> {
+                    if (dialogs.maySubmit(dialogToken,
+                                !viewDestroyed && isAdded() && viewModel != null, submitted[0])) {
+                        submitted[0] = true;
+                        viewModel.restartRouter();
+                    }
+                });
+        var dialog = builder.create();
+        var registration = dialogs.replace(dialogToken, dialog::dismiss);
+        if (registration == null) {
+            restartDialogShown = false;
+            return;
+        }
+        dialog.setOnDismissListener(ignored -> {
+            dialogs.dismissed(registration);
+            if (dialogs.isCurrent(dialogToken))
+                restartDialogShown = false;
+        });
+        dialog.show();
     }
 }

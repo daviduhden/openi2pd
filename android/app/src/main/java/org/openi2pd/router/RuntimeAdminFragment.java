@@ -45,6 +45,10 @@ import com.google.android.material.textfield.TextInputLayout;
  * point, free-form option, path or URL argument. Results arrive as the
  * closed outcome tokens produced by the native protocol and are shown
  * as localized text.</p>
+ *
+ * <p>Dialog clicks carry authority from their opening view and recheck
+ * the single-flight mutation gate. Destroying the view revokes that
+ * authority before dismissing its one retained dialog.</p>
  */
 public final class RuntimeAdminFragment extends Fragment {
     /** Bounds shared with the native bridge. */
@@ -55,6 +59,7 @@ public final class RuntimeAdminFragment extends Fragment {
     private TextView reseedStatus;
     private LinearLayout rows;
     private boolean busy;
+    private final UiDialogEpoch dialogs = new UiDialogEpoch();
     /**
      * View generation. Command and read callbacks run after their JNI
      * call has returned, so each one captures the current value and is
@@ -68,6 +73,7 @@ public final class RuntimeAdminFragment extends Fragment {
     @Override
     public View onCreateView(@NonNull LayoutInflater inflater, @Nullable ViewGroup container,
             @Nullable Bundle state) {
+        dialogs.openView();
         model = new ViewModelProvider(requireActivity()).get(RouterViewModel.class);
         UiFactory.Column column = UiFactory.scrollingColumn(requireContext());
         ScrollView scroll = column.scroll();
@@ -146,6 +152,7 @@ public final class RuntimeAdminFragment extends Fragment {
 
     @Override
     public void onDestroyView() {
+        dialogs.retireView();
         ++generation;
         busy = false;
         rows = null;
@@ -249,15 +256,18 @@ public final class RuntimeAdminFragment extends Fragment {
     }
 
     private void confirmReseed() {
-        if (busy || status == null) {
+        var dialogToken = dialogs.token();
+        if (!maySubmitDialog(dialogToken)) {
             return;
         }
-        new MaterialAlertDialogBuilder(requireContext())
+        showDialog(dialogToken, new MaterialAlertDialogBuilder(requireContext())
                 .setTitle(R.string.runtime_admin_reseed_title)
                 .setMessage(R.string.runtime_admin_reseed_confirm)
                 .setNegativeButton(R.string.action_cancel, null)
                 .setPositiveButton(R.string.runtime_admin_reseed_now,
                         (dialog, which) -> {
+                            if (!maySubmitDialog(dialogToken))
+                                return;
                             busy = true;
                             int expected = generation;
                             model.requestReseed(outcome -> {
@@ -268,43 +278,47 @@ public final class RuntimeAdminFragment extends Fragment {
                                 status.setText(reseedOutcomeLabel(outcome));
                                 refresh();
                             });
-                        })
-                .show();
+                        }));
     }
 
     private void transitDialog(boolean enabled) {
-        if (busy || status == null)
+        var dialogToken = dialogs.token();
+        if (!maySubmitDialog(dialogToken))
             return;
-        new MaterialAlertDialogBuilder(requireContext())
+        showDialog(dialogToken, new MaterialAlertDialogBuilder(requireContext())
                 .setTitle(enabled ? R.string.runtime_admin_transit_action
                                   : R.string.runtime_admin_nontransit_action)
                 .setMessage(R.string.runtime_admin_controls_confirm)
                 .setNegativeButton(R.string.action_cancel, null)
                 .setPositiveButton(enabled ? R.string.runtime_admin_transit_action
                                            : R.string.runtime_admin_nontransit_action,
-                        (dialog, which)
-                                -> submitControl(callback -> model.setTransit(enabled, callback)))
-                .show();
+                        (dialog, which) -> {
+                            if (maySubmitDialog(dialogToken))
+                                submitControl(callback -> model.setTransit(enabled, callback));
+                        }));
     }
 
     private void bandwidthDialog() {
-        if (busy || status == null)
+        var dialogToken = dialogs.token();
+        if (!maySubmitDialog(dialogToken))
             return;
         String[] options = getResources().getStringArray(R.array.runtime_admin_bandwidth_options);
         String[] classes = {"K", "L", "M", "N", "O", "P", "X"};
-        new MaterialAlertDialogBuilder(requireContext())
+        showDialog(dialogToken, new MaterialAlertDialogBuilder(requireContext())
                 .setTitle(R.string.runtime_admin_bandwidth_action)
                 .setSingleChoiceItems(options, -1,
                         (dialog, which) -> {
+                            if (!maySubmitDialog(dialogToken))
+                                return;
                             dialog.dismiss();
                             submitControl(callback -> model.setBandwidth(classes[which], callback));
                         })
-                .setNegativeButton(R.string.action_cancel, null)
-                .show();
+                .setNegativeButton(R.string.action_cancel, null));
     }
 
     private void shareDialog() {
-        if (busy || status == null)
+        var dialogToken = dialogs.token();
+        if (!maySubmitDialog(dialogToken))
             return;
         TextInputLayout layout = new TextInputLayout(requireContext());
         layout.setHint(R.string.runtime_admin_share_hint);
@@ -313,12 +327,14 @@ public final class RuntimeAdminFragment extends Fragment {
         input.setFilters(
                 new android.text.InputFilter[] {new android.text.InputFilter.LengthFilter(3)});
         layout.addView(input);
-        new MaterialAlertDialogBuilder(requireContext())
+        showDialog(dialogToken, new MaterialAlertDialogBuilder(requireContext())
                 .setTitle(R.string.runtime_admin_share_action)
                 .setView(layout)
                 .setNegativeButton(R.string.action_cancel, null)
                 .setPositiveButton(R.string.address_book_save,
                         (dialog, which) -> {
+                            if (!maySubmitDialog(dialogToken))
+                                return;
                             int percent = RuntimeAdminPolicy.parseShareRatio(
                                     input.getText() == null ? "" : input.getText().toString());
                             if (percent < 0) {
@@ -326,8 +342,7 @@ public final class RuntimeAdminFragment extends Fragment {
                                 return;
                             }
                             submitControl(callback -> model.setShareRatio(percent, callback));
-                        })
-                .show();
+                        }));
     }
 
     private void submitControl(
@@ -365,17 +380,20 @@ public final class RuntimeAdminFragment extends Fragment {
     }
 
     private void confirmTunnel(String name, boolean start) {
-        if (busy || status == null || !RuntimeAdminPolicy.isValidTunnelName(name)) {
+        var dialogToken = dialogs.token();
+        if (!maySubmitDialog(dialogToken) || !RuntimeAdminPolicy.isValidTunnelName(name)) {
             return;
         }
         int message = start ? R.string.runtime_admin_tunnel_start_confirm
                             : R.string.runtime_admin_tunnel_stop_confirm;
-        new MaterialAlertDialogBuilder(requireContext())
+        showDialog(dialogToken, new MaterialAlertDialogBuilder(requireContext())
                 .setMessage(getString(message, name))
                 .setNegativeButton(R.string.action_cancel, null)
                 .setPositiveButton(start ? R.string.runtime_admin_tunnel_start
                                          : R.string.runtime_admin_tunnel_stop,
                         (dialog, which) -> {
+                            if (!maySubmitDialog(dialogToken))
+                                return;
                             busy = true;
                             int expected = generation;
                             model.tunnelCommand(name, start, outcome -> {
@@ -386,8 +404,7 @@ public final class RuntimeAdminFragment extends Fragment {
                                 status.setText(tunnelOutcomeLabel(outcome));
                                 refresh();
                             });
-                        })
-                .show();
+                        }));
     }
 
     private int tunnelOutcomeLabel(String outcome) {
@@ -404,19 +421,24 @@ public final class RuntimeAdminFragment extends Fragment {
     }
 
     private void banDialog(boolean ban) {
+        var dialogToken = dialogs.token();
+        if (!maySubmitDialog(dialogToken))
+            return;
         TextInputLayout layout = new TextInputLayout(requireContext());
         layout.setHint(R.string.runtime_admin_ban_hint);
         TextInputEditText input = new TextInputEditText(requireContext());
         input.setFilters(new android.text.InputFilter[] {
                 new android.text.InputFilter.LengthFilter(MAX_ROUTER_HASH)});
         layout.addView(input);
-        new MaterialAlertDialogBuilder(requireContext())
+        showDialog(dialogToken, new MaterialAlertDialogBuilder(requireContext())
                 .setTitle(ban ? R.string.runtime_admin_ban_action
                               : R.string.runtime_admin_unban_action)
                 .setView(layout)
                 .setNegativeButton(R.string.action_cancel, null)
                 .setPositiveButton(R.string.address_book_save,
                         (dialog, which) -> {
+                            if (!maySubmitDialog(dialogToken))
+                                return;
                             String hash = input.getText() == null
                                     ? ""
                                     : input.getText().toString().trim();
@@ -445,7 +467,22 @@ public final class RuntimeAdminFragment extends Fragment {
                                 }
                                 refresh();
                             });
-                        })
-                .show();
+                        }));
+    }
+
+    private boolean maySubmitDialog(UiDialogEpoch.Token token) {
+        return dialogs.maySubmit(token, status != null && isAdded(), busy);
+    }
+
+    /** Show one dialog owned by the captured view, never its successor. */
+    private void showDialog(UiDialogEpoch.Token token, MaterialAlertDialogBuilder builder) {
+        if (!maySubmitDialog(token))
+            return;
+        var dialog = builder.create();
+        var registration = dialogs.replace(token, dialog::dismiss);
+        if (registration == null)
+            return;
+        dialog.setOnDismissListener(ignored -> dialogs.dismissed(registration));
+        dialog.show();
     }
 }

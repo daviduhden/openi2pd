@@ -58,11 +58,14 @@ public final class TorrentsFragment extends Fragment {
     private boolean busy;
     private int tunnel;
     private int generation;
+    private final UiDialogEpoch dialogs = new UiDialogEpoch();
+    private final java.util.Map<androidx.appcompat.app.AlertDialog, OwnedDialogBuilder> dialogOwners =
+            new java.util.IdentityHashMap<>();
     private int importTunnel;
     private String storageTunnel = "", storageHash = "", currentTunnelName = "";
     private final ActivityResultLauncher<android.net.Uri> selectPayloadTree =
             registerForActivityResult(new ActivityResultContracts.OpenDocumentTree(), uri -> {
-                if (uri == null || !isAdded())
+                if (uri == null || !ready())
                     return;
                 final int expected = generation;
                 // The grant map commit and the provider round trip run
@@ -104,7 +107,7 @@ public final class TorrentsFragment extends Fragment {
             });
     private final ActivityResultLauncher<String> exportMetadata = registerForActivityResult(
             new ActivityResultContracts.CreateDocument("application/x-bittorrent"), uri -> {
-                if (uri == null || status == null || !isAdded())
+                if (uri == null || !ready())
                     return;
                 final int expected = generation;
                 model.exportTorrent(uri, success -> {
@@ -141,6 +144,7 @@ public final class TorrentsFragment extends Fragment {
     @Override
     public View onCreateView(@NonNull LayoutInflater inflater, @Nullable ViewGroup container,
             @Nullable Bundle state) {
+        dialogs.openView();
         model = new ViewModelProvider(requireActivity()).get(RouterViewModel.class);
         UiFactory.Column column = UiFactory.scrollingColumn(requireContext());
         ScrollView scroll = column.scroll();
@@ -167,7 +171,7 @@ public final class TorrentsFragment extends Fragment {
         button(content, R.string.torrent_dht,
                 ignored -> request("TORRENT-DHT " + tunnel, this::showFields));
         button(content, R.string.torrent_create, ignored -> {
-            new MaterialAlertDialogBuilder(requireContext())
+            dialogBuilder()
                     .setTitle(R.string.torrent_create)
                     .setItems(new String[] {getString(R.string.torrent_create_private_file),
                                       getString(R.string.torrent_create_saf_document),
@@ -254,6 +258,8 @@ public final class TorrentsFragment extends Fragment {
 
     @Override
     public void onDestroyView() {
+        dialogs.retireView();
+        dialogOwners.clear();
         ++generation;
         busy = false;
         rows = null;
@@ -305,7 +311,7 @@ public final class TorrentsFragment extends Fragment {
                 currentTunnelName.isEmpty() ? getString(R.string.torrent_title) : currentTunnelName;
         String[] options = {
                 getString(R.string.torrent_remove), getString(R.string.torrent_remove_files)};
-        new MaterialAlertDialogBuilder(requireContext())
+        dialogBuilder()
                 .setTitle(R.string.torrent_remove)
                 .setItems(options, (dialog, choice) -> confirmRemoveAll(choice == 0, session))
                 .show();
@@ -316,7 +322,7 @@ public final class TorrentsFragment extends Fragment {
                 keepData ? R.string.torrent_remove_confirm : R.string.torrent_remove_files_confirm;
         TorrentControl.Bulk bulk =
                 keepData ? TorrentControl.Bulk.REMOVE_ALL : TorrentControl.Bulk.REMOVE_ALL_FILES;
-        new MaterialAlertDialogBuilder(requireContext())
+        dialogBuilder()
                 .setTitle(R.string.torrent_remove)
                 .setMessage(keepData ? getString(message) : getString(message, session))
                 .setNegativeButton(R.string.action_cancel, null)
@@ -353,11 +359,118 @@ public final class TorrentsFragment extends Fragment {
      * engine never received.
      */
     private boolean ready() {
+        if (status == null || !isAdded() || !dialogs.isCurrent(dialogs.token()))
+            return false;
         if (!busy)
             return true;
         if (status != null)
             status.setText(R.string.torrent_busy);
         return false;
+    }
+
+    /** Capture both view and session authority when opening a dialog. */
+    private OwnedDialogBuilder dialogBuilder() {
+        return new OwnedDialogBuilder();
+    }
+
+    private void showDialog(OwnedDialogBuilder owner, androidx.appcompat.app.AlertDialog dialog) {
+        if (!owner.current() || dialogOwners.containsKey(dialog))
+            return;
+        var registration = dialogs.nest(owner.viewToken, dialog::dismiss);
+        if (registration == null)
+            return;
+        dialogOwners.put(dialog, owner);
+        dialog.setOnDismissListener(ignored -> {
+            dialogOwners.remove(dialog);
+            dialogs.dismissed(registration);
+        });
+        try {
+            dialog.show();
+        } catch (RuntimeException failure) {
+            dialogOwners.remove(dialog);
+            dialogs.dismissed(registration);
+            throw failure;
+        }
+    }
+
+    /**
+     * Guard standard dialog callbacks at their common construction
+     * boundary. Custom view/button callbacks retain the same builder
+     * explicitly. Nested choices retain parent forms, within the
+     * view's bounded dialog registry; no Activity context survives
+     * view teardown through this registry.
+     */
+    private final class OwnedDialogBuilder extends MaterialAlertDialogBuilder {
+        private final UiDialogEpoch.Token viewToken = dialogs.token();
+        private final int selectedTunnel = tunnel;
+        private final String selectedName = currentTunnelName;
+        private androidx.appcompat.app.AlertDialog created;
+
+        OwnedDialogBuilder() {
+            super(TorrentsFragment.this.requireContext());
+        }
+
+        boolean current() {
+            return dialogs.isCurrent(viewToken) && status != null && isAdded()
+                    && selectedTunnel == tunnel && selectedName.equals(currentTunnelName);
+        }
+
+        boolean ready() {
+            return current() && (created == null || dialogOwners.get(created) == this)
+                    && TorrentsFragment.this.ready();
+        }
+
+        private android.content.DialogInterface.OnClickListener guarded(
+                android.content.DialogInterface.OnClickListener listener) {
+            return listener == null ? null : (dialog, which) -> {
+                if (ready())
+                    listener.onClick(dialog, which);
+            };
+        }
+
+        @Override
+        public MaterialAlertDialogBuilder setPositiveButton(int text,
+                android.content.DialogInterface.OnClickListener listener) {
+            return super.setPositiveButton(text, guarded(listener));
+        }
+
+        @Override
+        public MaterialAlertDialogBuilder setNegativeButton(int text,
+                android.content.DialogInterface.OnClickListener listener) {
+            return super.setNegativeButton(text, guarded(listener));
+        }
+
+        @Override
+        public MaterialAlertDialogBuilder setNeutralButton(int text,
+                android.content.DialogInterface.OnClickListener listener) {
+            return super.setNeutralButton(text, guarded(listener));
+        }
+
+        @Override
+        public MaterialAlertDialogBuilder setItems(CharSequence[] items,
+                android.content.DialogInterface.OnClickListener listener) {
+            return super.setItems(items, guarded(listener));
+        }
+
+        @Override
+        public MaterialAlertDialogBuilder setSingleChoiceItems(CharSequence[] items, int selected,
+                android.content.DialogInterface.OnClickListener listener) {
+            return super.setSingleChoiceItems(items, selected, guarded(listener));
+        }
+
+        @Override
+        public androidx.appcompat.app.AlertDialog create() {
+            var dialog = super.create();
+            created = dialog;
+            return dialog;
+        }
+
+        @Override
+        public androidx.appcompat.app.AlertDialog show() {
+            var dialog = create();
+            showDialog(this, dialog);
+            return dialog;
+        }
     }
 
     private int number(Map<String, String> fields, String key, int max) {
@@ -387,7 +500,7 @@ public final class TorrentsFragment extends Fragment {
             String[] names = new String[count];
             for (int i = 0; i < count; ++i)
                 names[i] = fields.getOrDefault("torrent.tunnel." + i + ".name", "");
-            new MaterialAlertDialogBuilder(requireContext())
+            dialogBuilder()
                     .setTitle(R.string.torrent_session)
                     .setItems(names,
                             (dialog, which) -> {
@@ -434,7 +547,7 @@ public final class TorrentsFragment extends Fragment {
                 getString(R.string.torrent_recheck), getString(R.string.torrent_payload_action),
                 getString(R.string.torrent_meta), getString(R.string.torrent_remove_files),
                 getString(R.string.action_start), getString(R.string.action_stop)};
-        new MaterialAlertDialogBuilder(requireContext())
+        dialogBuilder()
                 .setTitle(selection.name())
                 .setItems(labels,
                         (dialog, action) -> {
@@ -456,7 +569,7 @@ public final class TorrentsFragment extends Fragment {
                                         intent, getString(R.string.torrent_share)));
                             }
                             case 4 ->
-                                new MaterialAlertDialogBuilder(requireContext())
+                                dialogBuilder()
                                         .setMessage(R.string.torrent_remove_confirm)
                                         .setNegativeButton(R.string.action_cancel, null)
                                         .setPositiveButton(R.string.torrent_remove,
@@ -507,7 +620,7 @@ public final class TorrentsFragment extends Fragment {
                                 });
                             case 10 -> editMetadata(id);
                             case 11 ->
-                                new MaterialAlertDialogBuilder(requireContext())
+                                dialogBuilder()
                                         .setMessage(getString(
                                                 R.string.torrent_remove_files_confirm, name))
                                         .setNegativeButton(R.string.action_cancel, null)
@@ -569,7 +682,7 @@ public final class TorrentsFragment extends Fragment {
             String text = storageStatus == null || storageStatus.isEmpty()
                     ? getString(R.string.value_unknown)
                     : storageStatus;
-            new MaterialAlertDialogBuilder(requireContext())
+            dialogBuilder()
                     .setMessage(getString(R.string.torrent_payload_message, text))
                     .setNegativeButton(R.string.action_cancel, null)
                     .setPositiveButton(R.string.torrent_select_directory,
@@ -605,7 +718,7 @@ public final class TorrentsFragment extends Fragment {
             createdBy.setText(currentCreatedBy);
             createdLayout.addView(createdBy);
             form.addView(createdLayout);
-            new MaterialAlertDialogBuilder(requireContext())
+            dialogBuilder()
                     .setTitle(R.string.torrent_meta)
                     .setView(form)
                     .setNegativeButton(R.string.action_cancel, null)
@@ -664,11 +777,11 @@ public final class TorrentsFragment extends Fragment {
         for (int i = 0; i < 100 && fields.containsKey("tracker." + i + ".announce"); ++i) {
             addresses.add(fields.get("tracker." + i + ".announce"));
         }
-        new MaterialAlertDialogBuilder(requireContext())
+        dialogBuilder()
                 .setTitle(R.string.torrent_trackers)
                 .setItems(addresses.toArray(new String[0]),
                         (dialog, which)
-                                -> new MaterialAlertDialogBuilder(requireContext())
+                                -> dialogBuilder()
                                         .setMessage(addresses.get(which))
                                         .setPositiveButton(R.string.torrent_tracker_edit,
                                                 (choice, button)
@@ -695,6 +808,9 @@ public final class TorrentsFragment extends Fragment {
     }
 
     private void editTracker(String id, @Nullable String previous) {
+        var dialogOwner = dialogBuilder();
+        if (!dialogOwner.ready())
+            return;
         TextInputLayout layout = new TextInputLayout(requireContext());
         layout.setHelperText(getString(R.string.torrent_tracker_paused));
         TextInputEditText input = new TextInputEditText(layout.getContext());
@@ -706,7 +822,7 @@ public final class TorrentsFragment extends Fragment {
         if (previous != null)
             input.setText(previous);
         layout.addView(input);
-        var dialog = new MaterialAlertDialogBuilder(requireContext())
+        var dialog = dialogOwner
                              .setTitle(previous == null ? R.string.torrent_tracker_add
                                                         : R.string.torrent_tracker_edit)
                              .setView(layout)
@@ -716,6 +832,8 @@ public final class TorrentsFragment extends Fragment {
         dialog.setOnShowListener(ignored
                 -> dialog.getButton(android.content.DialogInterface.BUTTON_POSITIVE)
                         .setOnClickListener(view -> {
+                            if (!dialogOwner.ready())
+                                return;
                             try {
                                 String address = String.valueOf(input.getText()).trim();
                                 String command = TorrentControl.tracker(true, tunnel, id, address);
@@ -740,10 +858,13 @@ public final class TorrentsFragment extends Fragment {
                                 layout.setError(errorText(error));
                             }
                         }));
-        dialog.show();
+        showDialog(dialogOwner, dialog);
     }
 
     private void addMagnet() {
+        var dialogOwner = dialogBuilder();
+        if (!dialogOwner.ready())
+            return;
         TextInputLayout layout = new TextInputLayout(requireContext());
         TextInputEditText input = new TextInputEditText(layout.getContext());
         input.setHint(R.string.torrent_magnet_hint);
@@ -752,7 +873,7 @@ public final class TorrentsFragment extends Fragment {
         input.setFilters(
                 new android.text.InputFilter[] {new android.text.InputFilter.LengthFilter(2048)});
         layout.addView(input);
-        var dialog = new MaterialAlertDialogBuilder(requireContext())
+        var dialog = dialogOwner
                              .setTitle(R.string.torrent_add_magnet)
                              .setView(layout)
                              .setNegativeButton(R.string.action_cancel, null)
@@ -761,6 +882,8 @@ public final class TorrentsFragment extends Fragment {
         dialog.setOnShowListener(ignored
                 -> dialog.getButton(android.content.DialogInterface.BUTTON_POSITIVE)
                         .setOnClickListener(view -> {
+                            if (!dialogOwner.ready())
+                                return;
                             try {
                                 String command = TorrentControl.magnet(
                                         tunnel, String.valueOf(input.getText()).trim());
@@ -772,7 +895,7 @@ public final class TorrentsFragment extends Fragment {
                                 layout.setError(errorText(error));
                             }
                         }));
-        dialog.show();
+        showDialog(dialogOwner, dialog);
     }
 
     private void showFields(Map<String, String> fields) {
@@ -836,7 +959,7 @@ public final class TorrentsFragment extends Fragment {
         body.setTextIsSelectable(true);
         ScrollView scroll = new ScrollView(requireContext());
         scroll.addView(body);
-        new MaterialAlertDialogBuilder(requireContext())
+        dialogBuilder()
                 .setTitle(R.string.torrent_details)
                 .setView(scroll)
                 .setPositiveButton(android.R.string.ok, null)
@@ -844,6 +967,9 @@ public final class TorrentsFragment extends Fragment {
     }
 
     private void configureSafCreation(android.net.Uri source, boolean tree) {
+        var dialogOwner = dialogBuilder();
+        if (!dialogOwner.ready())
+            return;
         LinearLayout options = new LinearLayout(requireContext());
         options.setOrientation(LinearLayout.VERTICAL);
         TextInputLayout trackersLayout = new TextInputLayout(requireContext());
@@ -860,8 +986,10 @@ public final class TorrentsFragment extends Fragment {
         var size = new com.google.android.material.button.MaterialButton(requireContext());
         int[] pieceLength = {1024 * 1024};
         size.setText(getString(R.string.torrent_piece_size_value, 1024));
-        size.setOnClickListener(view
-                -> new MaterialAlertDialogBuilder(requireContext())
+        size.setOnClickListener(view -> {
+            if (!dialogOwner.ready())
+                return;
+            dialogBuilder()
                         .setTitle(R.string.torrent_piece_size_title)
                         .setItems(new String[] {"256 KiB", "512 KiB", "1 MiB", "2 MiB", "4 MiB"},
                                 (dialog, selected) -> {
@@ -869,9 +997,10 @@ public final class TorrentsFragment extends Fragment {
                                     size.setText(getString(R.string.torrent_piece_size_value,
                                             pieceLength[0] / 1024));
                                 })
-                        .show());
+                        .show();
+        });
         options.addView(size);
-        var dialog = new MaterialAlertDialogBuilder(requireContext())
+        var dialog = dialogOwner
                              .setTitle(R.string.torrent_create_saf_title)
                              .setMessage(R.string.torrent_create_saf_message)
                              .setView(options)
@@ -881,6 +1010,8 @@ public final class TorrentsFragment extends Fragment {
         dialog.setOnShowListener(ignored
                 -> dialog.getButton(android.content.DialogInterface.BUTTON_POSITIVE)
                         .setOnClickListener(view -> {
+                            if (!dialogOwner.ready())
+                                return;
                             try {
                                 String value = String.valueOf(trackers.getText()).trim();
                                 String[] addresses =
@@ -905,10 +1036,13 @@ public final class TorrentsFragment extends Fragment {
                                 trackersLayout.setError(errorText(error));
                             }
                         }));
-        dialog.show();
+        showDialog(dialogOwner, dialog);
     }
 
     private void createTorrent() {
+        var dialogOwner = dialogBuilder();
+        if (!dialogOwner.ready())
+            return;
         TextInputLayout layout = new TextInputLayout(requireContext());
         layout.setHelperText(getString(R.string.torrent_create_help));
         TextInputEditText input = new TextInputEditText(layout.getContext());
@@ -916,7 +1050,7 @@ public final class TorrentsFragment extends Fragment {
         input.setFilters(
                 new android.text.InputFilter[] {new android.text.InputFilter.LengthFilter(2048)});
         layout.addView(input);
-        var dialog = new MaterialAlertDialogBuilder(requireContext())
+        var dialog = dialogOwner
                              .setTitle(R.string.torrent_create)
                              .setView(layout)
                              .setNegativeButton(R.string.action_cancel, null)
@@ -925,6 +1059,8 @@ public final class TorrentsFragment extends Fragment {
         dialog.setOnShowListener(ignored
                 -> dialog.getButton(android.content.DialogInterface.BUTTON_POSITIVE)
                         .setOnClickListener(view -> {
+                            if (!dialogOwner.ready())
+                                return;
                             try {
                                 String command = TorrentControl.create(
                                         tunnel, String.valueOf(input.getText()).trim());
@@ -939,7 +1075,7 @@ public final class TorrentsFragment extends Fragment {
                                 layout.setError(errorText(error));
                             }
                         }));
-        dialog.show();
+        showDialog(dialogOwner, dialog);
     }
 
     private void showCreation(Map<String, String> fields) {
@@ -948,7 +1084,7 @@ public final class TorrentsFragment extends Fragment {
         String message = getString(pending ? R.string.torrent_creation_pending
                                            : R.string.torrent_creation_finished)
                 + "\n" + fields.getOrDefault("creation.message", "");
-        new MaterialAlertDialogBuilder(requireContext())
+        dialogBuilder()
                 .setTitle(R.string.torrent_creation_status)
                 .setMessage(message)
                 .setPositiveButton(android.R.string.ok, null)
@@ -961,7 +1097,7 @@ public final class TorrentsFragment extends Fragment {
             String priority = fields.getOrDefault("file." + i + ".priority", "1");
             files.add(fields.get("file." + i + ".name") + " · " + priorityName(priority));
         }
-        new MaterialAlertDialogBuilder(requireContext())
+        dialogBuilder()
                 .setTitle(R.string.torrent_priorities)
                 .setItems(files.toArray(new String[0]),
                         (dialog, index) -> {
@@ -969,7 +1105,7 @@ public final class TorrentsFragment extends Fragment {
                                     getString(R.string.torrent_priority_normal),
                                     getString(R.string.torrent_priority_high)};
                             int selected = number(fields, "file." + index + ".priority", 2);
-                            new MaterialAlertDialogBuilder(requireContext())
+                            dialogBuilder()
                                     .setTitle(files.get(index))
                                     .setSingleChoiceItems(options, selected,
                                             (choice, priority) -> {
@@ -997,6 +1133,9 @@ public final class TorrentsFragment extends Fragment {
      * pages explicitly instead of expecting one unbounded reply.
      */
     private void comments(String id, Map<String, String> fields) {
+        var dialogOwner = dialogBuilder();
+        if (!dialogOwner.ready())
+            return;
         boolean enabled = "1".equals(fields.get("comments.enabled"))
                 || "true".equals(fields.get("comments.enabled"));
         boolean privateTorrent = "1".equals(fields.get("detail.private"));
@@ -1037,7 +1176,7 @@ public final class TorrentsFragment extends Fragment {
             persistence.setText(getString(R.string.torrent_error, failure));
             content.addView(persistence);
         }
-        var dialog = new MaterialAlertDialogBuilder(requireContext())
+        var dialog = dialogOwner
                              .setTitle(R.string.torrent_comments)
                              .setView(scroll)
                              .setNegativeButton(android.R.string.ok, null)
@@ -1049,19 +1188,19 @@ public final class TorrentsFragment extends Fragment {
                         // A dropped moderation request would leave the
                         // dialog showing a state the engine does not
                         // have.
-                        if (!ready())
+                        if (!dialogOwner.ready())
                             return;
                         if (enabled) {
                             dialog.dismiss();
                             request("TORRENT-COMMENTS " + tunnel + " " + id + " OFF",
                                     result -> refresh());
                         } else {
-                            new MaterialAlertDialogBuilder(requireContext())
+                            dialogBuilder()
                                     .setMessage(R.string.torrent_comments_privacy)
                                     .setNegativeButton(R.string.action_cancel, null)
                                     .setPositiveButton(R.string.torrent_comments_enable,
                                             (confirmation, button) -> {
-                                                if (!ready())
+                                                if (!dialogOwner.ready())
                                                     return;
                                                 dialog.dismiss();
                                                 request("TORRENT-COMMENTS " + tunnel + " " + id
@@ -1074,7 +1213,7 @@ public final class TorrentsFragment extends Fragment {
         }
         if (enabled && !privateTorrent)
             button(content, R.string.torrent_comment_add, ignored -> {
-                if (!ready())
+                if (!dialogOwner.ready())
                     return;
                 dialog.dismiss();
                 addComment(id);
@@ -1114,15 +1253,17 @@ public final class TorrentsFragment extends Fragment {
             label.append("\n").append(fields.getOrDefault(prefix + "text", ""));
             entry.setText(label.toString());
             final boolean unhide = hidden;
-            entry.setOnClickListener(ignored
-                    -> new MaterialAlertDialogBuilder(requireContext())
+            entry.setOnClickListener(ignored -> {
+                if (!dialogOwner.ready())
+                    return;
+                dialogBuilder()
                             .setMessage(unhide ? R.string.torrent_comment_unhide_confirm
                                                : R.string.torrent_comment_hide_confirm)
                             .setNegativeButton(R.string.action_cancel, null)
                             .setPositiveButton(unhide ? R.string.torrent_comment_unhide
                                                       : R.string.torrent_comment_hide,
                                     (confirmation, button) -> {
-                                        if (!ready())
+                                        if (!dialogOwner.ready())
                                             return;
                                         try {
                                             String command = TorrentControl.commentId(
@@ -1142,7 +1283,8 @@ public final class TorrentsFragment extends Fragment {
                                                     R.string.torrent_error, errorText(error)));
                                         }
                                     })
-                            .show());
+                            .show();
+            });
             content.addView(entry);
         }
         if (shown == 0) {
@@ -1153,7 +1295,7 @@ public final class TorrentsFragment extends Fragment {
         int next = offset + shown;
         if (truncated && shown > 0 && next > offset && next < total && next <= MAX_COMMENT_OFFSET) {
             button(content, R.string.torrent_comments_more, ignored -> {
-                if (!ready())
+                if (!dialogOwner.ready())
                     return;
                 try {
                     String command = TorrentControl.commentPage(
@@ -1165,7 +1307,7 @@ public final class TorrentsFragment extends Fragment {
                 }
             });
         }
-        dialog.show();
+        showDialog(dialogOwner, dialog);
     }
 
     /** Bounded, localized age for a comment epoch-seconds field. */
@@ -1187,6 +1329,9 @@ public final class TorrentsFragment extends Fragment {
     }
 
     private void addComment(String id) {
+        var dialogOwner = dialogBuilder();
+        if (!dialogOwner.ready())
+            return;
         LinearLayout form = new LinearLayout(requireContext());
         form.setOrientation(LinearLayout.VERTICAL);
         TextView privacy = new TextView(requireContext());
@@ -1210,9 +1355,11 @@ public final class TorrentsFragment extends Fragment {
         MaterialButton chooseRating = UiFactory.button(requireContext());
         chooseRating.setText(R.string.torrent_comment_no_rating);
         chooseRating.setOnClickListener(ignored -> {
+            if (!dialogOwner.ready())
+                return;
             String[] options = {getString(R.string.torrent_comment_no_rating), "1/5", "2/5", "3/5",
                     "4/5", "5/5"};
-            new MaterialAlertDialogBuilder(requireContext())
+            dialogBuilder()
                     .setTitle(R.string.torrent_comment_rating)
                     .setSingleChoiceItems(options, rating[0],
                             (choice, value) -> {
@@ -1223,7 +1370,7 @@ public final class TorrentsFragment extends Fragment {
                     .show();
         });
         form.addView(chooseRating);
-        var dialog = new MaterialAlertDialogBuilder(requireContext())
+        var dialog = dialogOwner
                              .setTitle(R.string.torrent_comment_add)
                              .setView(form)
                              .setNegativeButton(R.string.action_cancel, null)
@@ -1232,6 +1379,8 @@ public final class TorrentsFragment extends Fragment {
         dialog.setOnShowListener(ignored
                 -> dialog.getButton(android.content.DialogInterface.BUTTON_POSITIVE)
                         .setOnClickListener(view -> {
+                            if (!dialogOwner.ready())
+                                return;
                             try {
                                 String command = TorrentControl.comment(tunnel, id, rating[0],
                                         String.valueOf(owner.getText()).trim(),
@@ -1251,7 +1400,7 @@ public final class TorrentsFragment extends Fragment {
                                 textLayout.setError(errorText(error));
                             }
                         }));
-        dialog.show();
+        showDialog(dialogOwner, dialog);
     }
 
     /**

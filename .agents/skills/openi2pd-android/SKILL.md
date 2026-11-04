@@ -121,6 +121,18 @@ run Gradle, install an APK or run a device test.
 
 ## Known issues and decisions
 
+- Dialog callbacks capture `UiDialogEpoch.Token` when the form is created,
+  not when clicked. Recheck current view and mutation admission before work;
+  retire authority before framework dismissal. Nested torrent forms require
+  bounded registrations rather than replacing their parent, and capture the
+  selected session so an old form cannot target a newly selected tunnel.
+  Preserve custom OnShow button validation and SAF picker ownership when
+  changing dialog construction. JVM authority and device lifecycle tests
+  cover different seams; neither substitutes for the other.
+  Register torrent dialogs immediately before showing, after content
+  validation, so malformed pages do not consume retained registrations.
+  Activity-owned confirmation/permission flows remain a separate lifecycle
+  boundary; do not apply Fragment teardown mechanically to MainActivity.
 - SAF creation charges retained provider IDs/URI strings and relative paths
   through `TorrentSafCreationBudget` before collection insertion. Measure
   UTF-8 bytes, reject malformed surrogates, and keep the native 255-byte name

@@ -505,3 +505,31 @@ intermediate stopped state from retiring the service. Thread-launch failures
 unwind the running flag. Framework-free JVM regressions are prepared; JNI/device
 behavior remains pending. A permanently blocked native start leaves one pending
 request until cancellation instead of manufacturing a timeout failure.
+
+## Accessibility and Java 25 guard continuation (2026-11-04, static)
+
+Metric label `TextView`s in the dashboard, statistics, tunnels and network
+layouts now declare `android:labelFor` for their value view, so a screen
+reader announces the label and number together. `UiContractTest` checks the
+association on the manual device lane, and `java25-probe/check-config.sh`
+requires the attribute plus a resolvable target. The same probe rejects Java
+21 `SequencedCollection` methods, `String.stripIndent`, `Math.clamp` and
+`Thread.threadId` in main/instrumentation sources, with a positive/negative
+self-test; unit tests under `src/test` remain on the build JDK. AAPT2, Lint,
+device and TalkBack evidence remains pending.
+
+## Dialog view and selected-tunnel authority
+
+Address-book, runtime administration, settings restart and torrent dialogs
+capture an opaque view token when constructed. Teardown revokes it before
+framework dismissal; clicks recheck current view and mutation admission.
+Torrent forms additionally capture the selected tunnel index/name. Their
+bounded eight-dialog registry preserves parent forms under rating, priority
+and piece-size choices, while administrative forms retain replacement
+semantics. Custom validation buttons use the same captured owner as built-in
+listeners. Pending SAF picker ownership remains separate from dialog lifetime.
+
+`UiDialogEpochTest` prepares stale-view, replacement, nesting and retirement
+controls; `UiDialogLifecycleTest` prepares fragment recreation checks without
+submitting daemon commands. These tests have not run. Android manual CI and
+device validation remain required; the Java 25 source target is unchanged.
