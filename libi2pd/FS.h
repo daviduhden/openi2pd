@@ -176,8 +176,6 @@ namespace fs
 	uint32_t GetLastUpdateTime (const std::string & path); // seconds since epoch
 
 	bool CreateDirectory (const std::string & path);
-	std::filesystem::path CreatePrivateFile (const std::filesystem::path & path);
-
 	template <typename T> void _ExpandPath (std::stringstream & path, T c)
 	{
 		path << i2p::fs::dirSep << c;

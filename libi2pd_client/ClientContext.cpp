@@ -673,11 +673,15 @@ namespace client
 			LogPrint (eLogInfo, "Clients: Can't open file ", fullPath, " Creating new one with signature type ",
 				sigType, " crypto type ", cryptoType);
 			keys = i2p::data::PrivateKeys::CreateRandomKeys (sigType, cryptoType, true);
-			std::ofstream f (i2p::fs::CreatePrivateFile (fullPath), std::ofstream::binary | std::ofstream::out);
 			size_t len = keys.GetFullLen ();
 			std::vector<uint8_t> buf (len);
 			len = keys.ToBuffer (buf.data (), len);
-			f.write ((char *)buf.data (), len);
+			if (!i2p::fs::AtomicWritePrivate (fullPath,
+				std::string_view (reinterpret_cast<const char *> (buf.data ()), len)))
+			{
+				LogPrint (eLogCritical, "Clients: Unable to persist private keys file ", filename);
+				return false;
+			}
 
 			LogPrint (eLogInfo, "Clients: New private keys file ", fullPath, " for ",
 				m_AddressBook.ToAddress (keys.GetPublic ()->GetIdentHash ()), " created");

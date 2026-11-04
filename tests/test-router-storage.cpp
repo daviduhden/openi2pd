@@ -68,6 +68,25 @@ int main (int argc, char ** argv)
 	i2p::data::InstallRouterPersistenceWriter ([] (File, std::span<const uint8_t>) { return false; });
 	assert (!i2p::data::WriteRouterPersistentFile (File::RouterKeys, bytes));
 	i2p::data::InstallRouterPersistenceWriter ({ });
+	// The direct fallback must create a private file atomically. Replacing
+	// a symlink leaf must not write through to its target.
+	i2p::fs::DetectDataDir (root.string (), false);
+	const auto directPath = root / "router.keys";
+	const auto outsidePath = root / "outside-keys";
+	{
+		std::ofstream outside (outsidePath);
+		outside << "unchanged";
+	}
+	std::filesystem::remove (directPath);
+	std::filesystem::create_symlink (outsidePath, directPath);
+	assert (i2p::data::WriteRouterPersistentFile (File::RouterKeys, bytes));
+	assert (!std::filesystem::is_symlink (directPath));
+	std::ifstream outside (outsidePath);
+	std::string outsideContents;
+	outside >> outsideContents;
+	assert (outsideContents == "unchanged");
+	struct stat directStatus { };
+	assert (::stat (directPath.c_str (), &directStatus) == 0 && (directStatus.st_mode & 0777) == 0600);
 	// Link substitution is rejected; the outside object remains unchanged.
 	std::filesystem::remove (root / "router.keys");
 	std::filesystem::create_symlink ("/etc/passwd", root / "router.keys");

@@ -547,33 +547,6 @@ namespace fs
 		return fs_lib::create_directory (path);
 	}
 
-	/**
-	 * @brief Create a private-mode file for a caller that writes it
-	 *        itself.
-	 * @param path file to create or append to.
-	 * @return the same path, so it can be used inline in an ofstream
-	 *         constructor.
-	 *
-	 * This is the legacy helper for callers that need a stream rather than
-	 * a complete buffer. It creates the file with the process umask and
-	 * then applies owner read/write permissions afterwards, which leaves a
-	 * window in which the file is more permissive than intended and
-	 * follows a pre-existing symlink. New secret output should use
-	 * AtomicWritePrivate() instead, which creates a unique no-follow
-	 * temporary and applies the mode before the rename. A failure to
-	 * restrict the mode is only logged, so a caller handling key material
-	 * must not rely on this function alone.
-	 */
-	std::filesystem::path CreatePrivateFile (const std::filesystem::path & path)
-	{
-		std::ofstream f (path, std::ofstream::out | std::ofstream::app);
-		std::error_code ec;
-		std::filesystem::permissions (path, std::filesystem::perms::owner_read | std::filesystem::perms::owner_write,
-			std::filesystem::perm_options::replace, ec);
-		if (ec) LogPrint (eLogWarning, "FS: Can't restrict access to ", path.string (), ": ", ec.message ());
-		return path;
-	}
-
 	void HashedStorage::SetPlace (const std::string & path)
 	{
 		root = path + i2p::fs::dirSep + name;
