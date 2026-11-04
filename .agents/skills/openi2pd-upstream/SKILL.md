@@ -92,6 +92,11 @@ run tests.
 
 ## Known issues and decisions
 
+- Review logging-only upstream changes for operand privacy as well as level.
+  The duplicate torrent RPC warning uses a fixed outcome without its name;
+  browser file-path diagnostics have no native-console equivalent. A merge
+  carrying the same patch is provenance, not a second implementation.
+
 - For authority-only bracketed IPv6 URLs, retain the closing-bracket index
   across the host parser branches and slice only the address inside it.
   A URL without a port or path must round-trip with exactly one bracket pair;
@@ -107,11 +112,9 @@ run tests.
   dropping them.
 - Browser-console, obsolete GNU make and incompatible packaging changes remain
   intentionally omitted.
-- The reviewed `openssl` high-water mark is
-  `5bcf6101a456dc991e44d3d79cb69994c7bae484` (`9725b8b2..5bcf6101`, fifteen
-  commits, seven files). Re-run `git ls-remote` before claiming it is still the
-  tip; the window added no transport, netDb, crypto-primitive, dependency or
-  wire-format change.
+- Reviewed `openssl` windows and their exact high-water marks live in
+  `docs/upstream-sync.md`. Resolve the branch again before claiming the last
+  recorded mark is still the tip; preserve earlier window dispositions.
 - Upstream torrent `cancel` replies are unconditional; keep the fork's
   `m_IsFast` gate. Upstream `Makefile.linux` and the Debian quilt series have no
   local target (CMake components and no GNU make), so their fixes are recorded
@@ -130,6 +133,17 @@ run tests.
   The stream reorder queue currently lacks an isolated regression seam.
 - No upstream change is validated until the corresponding manual CI lane and
   provenance/vectors are updated.
+
+- The current reviewed `openssl` window is
+  `e485e138c713dff2ff81bfba112c086da3fe7793` through
+  `2b92f2d487288304aafcf92d484ff322ec52e62b`. Datagram queue clearing, the
+  120 s resume throttle and `piecesAvailable` are adapted; connection
+  replacement is deferred pending identity-keyed removal; the intrusive
+  receive queue and browser display commit are rejected. Keep
+  `docs/upstream-sync.md`, TODO and this high-water mark together.
+- Browser-console, legacy Makefile and Haiku changes remain incompatible with
+  the fork. Never copy an upstream pooled-packet ownership change without
+  proving the source owner is released.
 
 ## Do not
 

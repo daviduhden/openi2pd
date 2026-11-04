@@ -335,7 +335,7 @@ the remaining backends are migrated; the adapter is not a weaker fallback.
 | Message boundaries | `SOCK_SEQPACKET`; imsg adapter preserves versioned frame | `SOCK_SEQPACKET` | One message-mode pipe message per versioned frame |
 | Descriptor transfer | `SCM_RIGHTS` for `ConfigureLogFd`; torrent-storage broker receives its root as inherited fd 4 (directories are not sent through `sendfd` after pledge) | `SCM_RIGHTS` for `ConfigureLogFd`; Linux router storage passes a validated root descriptor | No inheritance/`DuplicateHandle`; worker reconnects by local pipe name |
 | Process supervision | `waitpid`, signals; separate supervisor process for log worker (implemented) | eager `pidfd` preferred, `waitpid` fallback; separate supervisor process (implemented) | Restricted token + Job Object + mitigation attributes implemented as primitives; supervisor integration pending |
-| OS capability policy | `unveil` + `pledge` per role in `OpenBSDSandbox` (log/supervisor/torrent-storage broker implemented statically; network/crypto/admin backends pending) | `LinuxSandbox`: seccomp socket filters, Landlock write paths, capability drop, optional net namespace and cgroup v2 limits. The log worker applies its full profile; the supervisor uses capability-only bootstrap so exec'ed children can apply delegated roles. Router/torrent storage workers are implemented statically; netDb/profile/key and network backends remain pending | Privileges are deleted from the restricted token and Job UI/exception limits are applied; AppContainer/LPAC and per-role storage/network ACLs remain fail-closed/pending |
+| OS capability policy | `unveil` + `pledge` per role in `OpenBSDSandbox` (log/supervisor implemented statically; storage broker disabled because it required `exec`; network/crypto/admin backends pending) | `LinuxSandbox`: seccomp socket filters, Landlock write paths, capability drop, optional net namespace and cgroup v2 limits. The log worker applies its full profile; the supervisor uses capability-only bootstrap so exec'ed children can apply delegated roles. Router/torrent storage workers are implemented statically; netDb/profile/key and network backends remain pending | Privileges are deleted from the restricted token and Job UI/exception limits are applied; AppContainer/LPAC and per-role storage/network ACLs remain fail-closed/pending |
 | Backpressure | Bounded send timeout (1 s); close and drop on failure; no file fallback; logger queue capped and counted | Same | Overlapped I/O deadlines; oversized message closes the pipe before a tail can become a second frame |
 | Fallback to insecure IPC | None; failure is fatal | None; failure is fatal | None; failure is fatal |
 
@@ -351,3 +351,15 @@ local message-mode Named Pipe with an explicit DACL.
 - [windows worker ipc](windows-worker-ipc.md)
 - [storage worker](../torrent/storage-worker.md)
 - [tui ipc](../tui-ipc.md)
+
+### Single-flight data-storage reply authority
+
+A valid frame envelope does not answer a request by itself. The data-storage
+client correlates reply type, decoded payload, request ID, worker generation
+and artifact kind. Typed Error also names the pending operation. A mismatch
+retires the channel/worker before another request; otherwise the actual reply
+could remain queued and corrupt every subsequent transaction. Ambiguous
+writes/removes are not replayed. A correlated wire Busy keeps a channel usable;
+client LastStatus Busy also covers local admission/transport failure and does
+not establish health. These checks are Implemented / static with a negative
+source contract; malformed-worker live injection remains pending coverage.

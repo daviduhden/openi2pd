@@ -344,3 +344,35 @@ than attempted files. Its retention policy is unchanged: replacing that map
 without coordinating RouterInfo's cached numeric FamilyID could reuse an ID
 for a different family. Family revocation therefore remains a separate
 cache-invalidation task, rather than copying reseed's replacement strategy.
+
+### Transport fail-closed continuation (2026-11-04, static)
+
+SSU2 encryption results now gate transmission and byte accounting in
+PeerTest, HolePunch, TokenRequest and Retry, and the receive parser bounds a
+frame before deriving stack lengths. Ed25519 and RedDSA fold point/scalar
+encoder results into the success flag and zero the complete signature or
+blinded output on failure. The X25519 capability probe performs a real keygen
+and raw-public-key export before startup proceeds. These are source-level
+corrections; no ASan/TSan/provider-matrix or live transport run exists for
+this increment. The remaining SSU2 socket-sharing/pool-lifetime and NTCP2
+admission/option items are tracked separately.
+
+## Cold upload reservation and scratch publication continuation
+
+Static source review found that cold-piece REQUEST handling posted disk work
+before active-send accounting and let CANCEL cover only the wire queue. A
+peer could therefore accumulate uncharged disk work; reconnect churn also
+required reservations to outlive the removed peer. A canceled multifile load
+could leave a partial shared buffer with older verification authority.
+
+UploadLoadLedger now charges before enqueue, retains count/bytes until final
+ticket destruction and closes admission under its leaf mutex. Shared budget
+state outlives queued callbacks. Private complete-piece reads validate exact
+coverage/hash/epoch/cancellation before warming the existing cache; rejected
+reads preserve earlier cache data. Service completions apply invalidation and
+publication, and cached sends use ScopeExit for sending-state cleanup.
+
+Focused in-memory provider and ledger regressions plus source contracts are
+prepared, not executed. Existing cache-wide accounting, physical provider
+cancellation and generic asynchronous close remain distinct limits. This is a
+static correction, not an attribution or closure of historical sanitizer leaks.

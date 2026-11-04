@@ -732,7 +732,7 @@ validation was performed.
 | `privsep/OpenBSDSandbox.{h,cpp}` | Per-role pledge/unveil policies, capability predicates, absolute-path validation, pre-opened descriptor helpers. |
 | `privsep/OpenBSDImsg.{h,cpp}` | OpenBSD `imsg` adapter over the versioned frame, bounded polls, `getpeereid`, one `SCM_RIGHTS` descriptor. |
 | `privsep/LogWorker.cpp`, `privsep/Supervisor.cpp`, `privsep/RunWorker.cpp`, `privsep/Worker.{h,cpp}` | Log worker uses the policy builder; supervisor pre-resolves the executable and applies its own policy; workers reject euid 0; spawn accepts a pre-resolved executable. |
-| `daemon/Daemon.{h,cpp}`, `daemon/UnixDaemon.cpp` | Workers are prepared before the runtime sandbox; startup pledge keeps `proc`/`exec` only for the spawn window; runtime policy cannot re-add them; core log paths are not unveiled when the worker owns the sink. |
+| `daemon/Daemon.{h,cpp}`, `daemon/UnixDaemon.cpp` | Workers are prepared before the first pledge; the first set adds `unveil`, the runtime set drops it, and neither contains `exec`, `error` or `id`; core log paths are not unveiled when the worker owns the sink. |
 | `tests/test-privsep-openbsd-policy.cpp`, `tests/test-privsep-openbsd-imsg.cpp`, `tests/CMakeLists.txt`, `build/CMakeLists.txt` | Prepared OpenBSD negative capability and imsg tests; added the policy source to the daemon build. |
 | `docs/security/{ipc-protocol,process-capabilities,privilege-separation,openbsd-validation}.md`, `contrib/openbsd/{README.md,i2pd.conf}`, `TODO.md`, `ROADMAP.md`, `PROGRESS.md` | Documented the new boundary, stale refusal removed and validation still pending. |
 
@@ -1182,7 +1182,7 @@ run was performed; no commit or push.
 | Paths | Change |
 |---|---|
 | `privsep/LinuxSandbox.*`, `privsep/Supervisor.cpp` | Capability-only supervisor bootstrap; no inherited Landlock/seccomp/netns domain; bounded log-worker restart with exponential backoff, attempt cap and stable reset. |
-| `privsep/Supervisor.*` | OpenBSD torrent-storage broker receives a pre-opened root fd 4, drops `rpath`, and rejects unsafe/inherited descriptors; startup pledge keeps `exec` only for the worker-spawn window. |
+| `privsep/Supervisor.*` | OpenBSD supervisor creates active and reserve log workers before `pledge("stdio proc")` and promotes the reserve without exec; the on-demand broker that required exec is disabled and isolated torrent storage fails closed. |
 | `privsep/RouterStorage.cpp`, `privsep/RunWorker.cpp` | Worker-level write rejection is non-fatal for the channel; malformed frames/request IDs still poison it. Worker channels must be fd 3 so they cannot alias inherited root fd 4. |
 | `libi2pd/Log.*`, `libi2pd/Queue.h` | Bounded 8192-record queue (`PutIfBelow` atomic size check), 8192-byte record truncation and dropped-record accounting. |
 | `tests/test-privsep-linux-sandbox.cpp`, `tests/test-log-lifecycle.cpp`, `tests/test-router-storage.cpp` | Supervisor-bootstrap delegation, queue saturation and transient storage-failure regressions. |

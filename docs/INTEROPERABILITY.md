@@ -1123,3 +1123,41 @@ transfers only on successful insertion. The pinned Java 2.14.0
 `SAMv3Handler` registration similarly rejects an existing ID rather than
 sharing its session. A direct insertion regression is prepared; this source
 comparison does not establish live SAM interoperability.
+
+## Pending-session admission continuation (static)
+
+NET-172 now canonicalizes pending NTCP2 admission to IPv4 /32 and IPv6 /64,
+including native/mapped IPv4 equivalence. Both acceptors and every promotion
+or removal use that key; owner checks protect a successor's slot. Endpoints
+and handshake bytes remain unchanged. Routers sharing one /64 serialize
+pending handshakes, and established sessions release their slot. Address-key
+regressions are prepared; shared-prefix live interoperability, individual
+handshake deadlines and established-session limits remain pending. This is
+local admission policy, not new evidence of Java protocol equivalence.
+
+### Initial NTCP2 request deadline
+
+The first 64 bytes of inbound SessionRequest now have a dedicated 10-second
+read deadline on the socket service. The completion retires the deadline
+before crypto handoff; timeout silently closes the session and releases its
+pending-prefix slot. Atomic generation revocation and weak dispatch keep late
+cancellation from mutating the timer on another executor or canceling a newer
+arm. Canceled/stale-generation/lifetime regressions are prepared. Padding,
+post-quantum payload and SessionConfirmed phases still use the periodic sweep;
+an end-to-end handshake deadline needs the remaining socket ownership split
+resolved first. Wire framing is unchanged; live interoperability is Pending CI.
+
+### Ratchet correlation and native upload fairness (static)
+
+Pending NSR receive-tagset correlation now uses weak ownership while live
+inbound tags continue retaining their session. Lost-reply matching and wire
+derivation stay unchanged; destination teardown regression is prepared.
+
+Native torrent uploads grant at most eight interested peers and rotate fairly
+at the first maintenance/interest event after 30 seconds. Revocation precedes
+replacement grants; Fast peers receive one rejection per newly revoked
+pending request, with disk quotas held through physical completion. This
+local policy does not implement Java's bandwidth/reciprocity ranking. Compare
+the pinned Java `PeerCoordinator`/`PeerCheckerTask` and
+[BEP 6](https://www.bittorrent.org/beps/bep_0006.html) before claiming scheduler
+parity. Compilation, sanitizer and live peer exchange remain Pending CI.

@@ -660,3 +660,60 @@ already blocked inside a read or coordinate external grant writers.
 CONT-018 fixes duplicate SAM registration ownership without adding a new
 protocol facility. These capabilities remain pending manual CI compilation,
 regressions and device/live interoperability evidence.
+
+## Transport fail-closed and torrent availability continuation (2026-11-04, static)
+
+SSU2 PeerTest, HolePunch, TokenRequest and Retry now refuse to transmit after
+an AEAD failure, and the parser rejects a frame larger than
+`SSU2_MAX_PACKET_SIZE` before stack-buffer sizing. Ed25519/RedDSA encoder
+failures zero the complete output. X25519 is a required provider capability
+probed with a real key generation. The native torrent client throttles routine
+resume persistence to 120 seconds while retaining immediate stop, removal,
+completion and shutdown saves, exposes a clamped `piecesAvailable` union, fails
+closed when a promoted `.part` is missing, and the TUI classifies torrent
+status by exact token. Datagram Stop releases queued messages. These changes
+are Implemented / static; manual compilation, CTest, sanitizer, live-peer and
+device evidence remain pending. Endgame/CANCEL, serving slots, BEP 12 tiers,
+bandwidth shaping and DHT announce `port`/`implied_port` remain open.
+
+## Executor, verification and SAF continuation (static)
+
+The native service wrapper now retains idle work until explicit stop and
+supports admitted-work draining across thread startup. NTP publishes work
+before launch and retires stale queued work after join. Torrent recheck uses
+weak queue ownership and computes selected completion on its service thread.
+Data-storage requests retire a channel after uncorrelated replies rather than
+letting later requests consume stale responses.
+
+Android temporary document operations now share bounded process-wide URI
+leases, including overlapping retired/current services and payload detach or
+failed-selection rollback. Existing modes are preserved. These changes are
+Implemented / static with regressions prepared; native compilation, sanitizer,
+JVM and device validation remain pending manual CI. They do not complete
+network/router privilege separation, endgame scheduling or upload-slot parity.
+
+## Bounded serving and creation continuation (static)
+
+Cold torrent serving now reserves disk work before enqueue and retains that
+reservation through logical cancellation/removal. Private whole-piece
+verification protects shared cache state before block publication. This
+advances serving/CANCEL safety while upload-slot choice and download endgame
+remain incomplete. Android creation separately budgets retained UTF-8 paths
+and provider authority text; JNI repeats the aggregate path bound before copy.
+The logger re-arms startup publication for each writer, and NTCP2's first
+64-byte request read now has its own deadline. Native/JVM/device regressions
+are prepared; all changes remain static and pending manual CI evidence.
+
+## Upload fairness and Android form authority (static)
+
+The native engine now limits interested upload peers to eight, fills vacancies
+without displacing incumbents and rotates the cohort after 30 seconds at the
+next service event. This implements bounded native fairness; Java's adaptive
+bandwidth and reciprocity policy, download endgame and global retained-cache
+accounting remain open. Choke cancels queued/read publication and sends Fast
+rejections without prematurely releasing physical load reservations.
+
+Android administrative and torrent forms capture view/session authority when
+opened and revoke it before view teardown. Nested torrent forms retain bounded
+registrations. Prepared JVM/device regressions do not establish device or
+Java 25 toolchain validation; all new behavior remains Pending CI.

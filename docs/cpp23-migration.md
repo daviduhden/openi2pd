@@ -69,6 +69,7 @@ dynamic availability remains a manual-CI claim, never a local inference.
 
 | Facility | Where | Why it improves the code |
 |---|---|---|
+| Optional RAII executor work guard | `libi2pd/util.*` | Owns idle service work per run; Stop releases it for immediate cancellation or an admitted-work drain. Normal completion exits rather than spinning on a stopped context. Pending manual CI. |
 | `std::expected` (portable shim on OpenBSD libc++) | `libi2pd/TuiProtocol.h`, `tui/TuiClient.*` | Parsing and socket operations return typed errors instead of sentinel values or exceptions across the IPC boundary |
 | `std::jthread` / `std::stop_token` | `daemon/TuiServer.*` | RAII thread ownership and cooperative cancellation; `Stop()` requests cancellation and joins |
 | `std::jthread` / shared executor authority | `libi2pd_client/I2CP.*` | Serialized controller lifecycle joins before exclusive cancellation drain; stopped session snapshots retain executor lifetime. Implemented statically, pending platform/sanitizer CI. |
@@ -76,7 +77,7 @@ dynamic availability remains a manual-CI claim, never a local inference.
 | `consteval` table construction | `libi2pd/Base.cpp` | Removes lazy, racy initialization of the base64 reverse table |
 | `constexpr` `std::array`/`std::optional`/ranges registry | `libi2pd/Identity.cpp` | Signing-key wire sizes are one compile-time table instead of a duplicated switch |
 | `std::jthread`/`std::stop_token`/`condition_variable_any` | X25519 key supplier in `libi2pd/Transports.*`, `daemon/TuiServer.cpp` | The supplier owns cooperative cancellation; the TUI listener has no separate stop flag. The main `Transports` thread retains its explicit join/detach path. |
-| Move-only `ScopeExit` guard | `libi2pd/Identity.cpp`, `libi2pd_client/AddressBook.cpp`, `libi2pd/ECIESX25519AEADRatchetSession.cpp` | Replaces the ad-hoc `Defer` and `SaveStateHelper` vocabulary with one move-only RAII guard |
+| Move-only `ScopeExit` guard | `libi2pd/Identity.cpp`, `libi2pd_client/AddressBook.cpp`, `libi2pd/ECIESX25519AEADRatchetSession.cpp`, torrent cached sends | Replaces the ad-hoc `Defer` and `SaveStateHelper` vocabulary; unwinds sending state if allocation/submission fails |
 | Monadic `expected` helpers | `libi2pd/Expected.h`, `tests/test-modern.cpp` | `value_or`/`and_then` compose value-or-error paths without sentinel values |
 | Typed memory-pool deleters | `libi2pd/util.h`, `libi2pd/NetDb.hpp` | Replaces `std::function`/`std::bind` erasure with small nested deleters and removes the member-pointer cast workaround |
 | `constexpr` clove allowlist table | `libi2pd/I2NPProtocol.cpp` | One compile-time membership table instead of a switch, preserving the Java clove policy |

@@ -10,6 +10,26 @@ Documents project documentation.
 
 # Upstream provenance and synchronization
 
+## Reviewed router-source commits (2026-11-04 continuation)
+
+The `openssl` branch advanced from `e485e138c713dff2ff81bfba112c086da3fe7793`
+to `2b92f2d487288304aafcf92d484ff322ec52e62b` (seven linear commits, nine
+files). The comparison was read-only; no merge or cherry-pick was run.
+
+| Upstream SHA | Subject | Decision and local result |
+|---|---|---|
+| `22c76b7eb50e8abc49e308f15fbe3a5fa127e8fc` | pass shared_from_this to RequestDestination | Already integrated and stronger: `DatagramSession` binds `shared_from_this()` and documents the `m_SessionsMutex -> m_Mutex` order. |
+| `bfcb715741c3d26f1fee04c4a676c2bd3e0bd67e` | clear send queue on stop | Applied: `DatagramSession::Stop()` clears the bounded send queue and `~DatagramDestination` stops retained sessions before releasing the map. A test seam covers queued, stopped and externally retained sessions. |
+| `09af6d07a865b6dd62efac6a75a128d9f57d1776` | replace incoming connection by new | Deferred: local connection removal is not identity-keyed, so adopting replacement before an identity-checked erase would let a superseded peer delete its successor. Java replaces only after the inactive-time threshold. |
+| `989983d6dc90a82b2ae16c6d762cf9f1704ee527` | save .resume file with 2 minutes interval | Adapted: routine per-piece persistence uses a 120 s monotonic throttle while stop, removal, completion and final shutdown keep an immediate save. The existing no-follow/existence handling supersedes the upstream guard. |
+| `3dfbc30c5444b69b31ba7a3e033192e0a100fb9b` | display bitfield | Incompatible: changes only the removed browser console. |
+| `ff19d5e6fe4c88bc7123676aae8ba4fc778a2dbd` | boost::intrusive::list for receive queue | Rejected: upstream queues a copy and leaks the pooled source packet; local packets are pool-owned and spliced by pointer. |
+| `2b92f2d487288304aafcf92d484ff322ec52e62b` | piecesAvailable param for torrent-get | Adapted additively: `Torrent::CreateAvailableBitfield()` unions established peers' advertised bitfields with per-peer clamping, and RPC exposes `piecesAvailable` beside the unchanged local `pieces` field. |
+
+The datagram, resume-throttle and availability changes are Implemented / static;
+manual compilation and CTest remain pending. `announce_peer` `port`/
+`implied_port` still needs a verified Java reference before any wire change.
+
 ## Reviewed router-source commits (2026-11-02 continuation)
 
 Read-only `git ls-remote` and GitHub's compare/commit API identified eight
@@ -447,3 +467,42 @@ future interface change rather than a validated fix.
 
 The old "post-high-water verification (2026-10-21)" section below is retained
 as history. Its tip claim is superseded by this continuation.
+
+## Follow-up remote window reviewed on 2026-11-04
+
+Read-only GitHub APIs resolved `openssl` to
+`cbd314921d7a9a9638c749bb740f670def5a6d28`. No merge, cherry-pick or remote
+validation was performed. Java's latest release endpoint still identifies
+`i2p-2.14.0`; its peeled tag matches the pinned
+`3c98503c5f14efe7bdd783528ba7f621f12d8081`.
+
+| SHA | Decision |
+|---|---|
+| `2d67d3c14868267dfeec968823014bb9433c1bd4` | Already implemented: availability excludes peers without an advertised bitfield. Retain the fork's remote-only swarm semantics rather than substituting local completion. |
+| `afcaa91959cc9cd3867cfc798a5c422e0b2a3ef3` | Already implemented: TunnelPool snapshots test state under its mutex and creates replacement tunnels in phase two outside pool locks. |
+| `cbd314921d7a9a9638c749bb740f670def5a6d28` | Omitted container optimization: no demonstrated correctness need justifies changing the SSU2 map and dependency assumptions in this increment. |
+
+The earlier `09af6d07` replacement deferral is narrower now: owner-checked
+registry removal and synchronous idle retirement are implemented statically.
+Incoming duplicate replacement policy itself remains deferred; a safe erase
+alone does not establish Java's inactivity/replacement policy.
+
+Follow-up verification during the executor/lease continuation again resolved
+`openssl` to `cbd314921d7a9a9638c749bb740f670def5a6d28` and Java's latest
+release to `i2p-2.14.0` (published 2026-10-22). No new upstream window or
+additional imported change was found; the dispositions above remain in force.
+
+## RPC diagnostic follow-up (2026-11-04, static)
+
+A later read-only GitHub API lookup resolves `openssl` to
+`4885bedfb490c42f0f831ae12ca4aab776c39021`. Java remains at the pinned
+2.14.0 revision above. This window changes diagnostics only; no wire or
+persisted format changes are imported.
+
+| SHA | Decision |
+|---|---|
+| `328a56947e4821aa92b1abd2b01488afe5e73aae` | Adapted: duplicate torrent RPC requests now produce a warning with a fixed outcome, omitting the user-controlled torrent name. The second hunk reports missing browser files and has no applicable native-console path. |
+| `4885bedfb490c42f0f831ae12ca4aab776c39021` | Merge-only: carries the diagnostic change above, with no separate adaptation. |
+
+The negative source contract pins operand-free duplicate warnings. Compilation
+and manual CI remain pending for the unpublished tree.

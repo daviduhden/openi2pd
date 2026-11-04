@@ -31,7 +31,8 @@ Dependency direction after the change:
 
 ```
 i2pd-tui ──(line protocol over AF_UNIX or a local named pipe)──> i2pd
-i2pd ──> libi2pdclient ──> libi2pd ──> libi2pdlang
+i2pd ──> libi2pdclient ──> libi2pd
+libi2pdclient ──> libi2pdlang
 libi2pd ──> Boost, OpenSSL/LibreSSL, zlib, Threads
 ```
 
