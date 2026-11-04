@@ -92,6 +92,13 @@ run tests.
 
 ## Known issues and decisions
 
+- For authority-only bracketed IPv6 URLs, retain the closing-bracket index
+  across the host parser branches and slice only the address inside it.
+  A URL without a port or path must round-trip with exactly one bracket pair;
+  cover both plain and credential-bearing authorities without logging them.
+  Upstream's fix does not resolve query/fragment-only authority parsing, which
+  needs a separate URI grammar review rather than an inferred behavior claim.
+
 - The current Java comparison target is 2.14.0; earlier 2.13.0 work is
   historical evidence. Upstream OpenSSL review windows use UTC timestamps,
   `%aI %cI`, and merge commits do not carry independent tree changes.

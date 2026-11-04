@@ -115,6 +115,54 @@ Do not let them edit, build or run tests.
   filesystem paths cross IPC.
 
 ## Known issues and decisions
+
+- Shared BEP 9 assembly remembers one competing metadata size. After
+  progress stalls for a request interval, reserve a bounded opportunity
+  for that offer even if the original-size peer renews first. Expire the
+  preference if its advertiser disappears. This prevents timer ordering
+  from pinning an unresponsive size; it does not authenticate a size
+  before final info-hash verification. Keep live wire exchange pending.
+
+- BEP 9 assembly is per torrent (`MetadataDownload`), not per connection.
+  Keep the 8 MiB info-byte cap, 16 KiB blocks, one 30-second numeric-owner
+  lease per peer, exact response lengths and matching negotiated total size.
+  Only a complete SHA-1 match releases bytes for publication; a matching hash
+  still requires one whole info dictionary. Disconnect releases that owner's
+  lease; stop clears assembly on the service thread. `MarkRemoved()` may run
+  on a control thread, so it must not mutate metadata assembly there: queued
+  service-thread Stop performs that cleanup. Size disagreements use a bounded
+  alternate preference after progress stalls. Hash failures clear
+  state and delay another attempt by 30..300 seconds to bound reset abuse.
+  The existing engine-interop target prepares multi-owner, exact-size,
+  expiry/release, disagreement, hash recovery and stop regressions; peer-wire
+  and sanitizer execution remain pending manual CI. Upstream `9b3e9b3` is
+  adapted behavior, not an imported shared-buffer implementation.
+
+- RPC `torrent-get` comment/creator fields use `GetMetaComment()` and
+  `GetCreatedBy()` from metainfo, not peer comment/rating storage. Copy
+  these views into owning JSON values on the torrent service thread.
+  Keep missing metainfo fields empty, and exercise escaping and absence
+  through the existing loopback RPC security regression.
+  Imported bencode byte strings may be invalid display text: share
+  `IsValidTorrentMetaText` with editing validation and omit invalid RPC
+  text without modifying the original metainfo or infohash.
+
+- `TorrentsRPCServer` callbacks own an internal state instead of borrowing
+  the facade. Sessions weakly reference it, admission is capped at 16, and
+  read/write operations carry 30-second cancellable deadlines. Stop closes
+  admission before joining the service, then closes sockets and drains
+  canceled completions before restart; stopping an io_context alone does not
+  drain its handlers. Keep lifecycle methods on the control thread. Routes
+  replace tunnel and authentication together under one mutex; HTTP dispatch
+  must copy both in one snapshot, never in separate lookups. The existing
+  `test-torrents-security` target prepares cap, teardown, destructor and
+  restart regressions; execution remains pending manual CI. Synchronous
+  bounded engine-service waits can still delay timer delivery and shutdown.
+- `TorrentsTunnel` inherits `I2PService`; passing a null destination creates
+  a local destination through the service base. `TorrentsDHT::BuildStateSnapshot`
+  therefore writes the self `NodeInfo` first, then routing-table peers. A
+  persistence regression must check both records and malformed-load retention,
+  not compare the saved bytes only to the peer fixture.
 - Tracker `peers` parsing is transactional: parse into a scratch set and
   commit only after the complete bencode document validates and the response
   carried no failure. A truncated document keeps the last known good list.
@@ -185,10 +233,14 @@ Do not let them edit, build or run tests.
 - Java 2.14.0 persists unresolved magnet state in
   `SnarkManager.saveMagnetStatus()` and owns eight-uploader admission plus
   global/torrent/peer bandwidth queues (`PeerCoordinator`/
-  `BandwidthManager`). Local `TorrentsState` does not persist unresolved
-  magnets, and peer-rate reporting is not rate enforcement. Keep these as
-  separate engine and persistence gaps (`SNARK-012`); do not claim them from
-  tracker `left`/`completed` parity alone.
+  `BandwidthManager`). Native unresolved magnets now use a separate bounded
+  v1 `.magnet` record; peer-rate reporting still is not rate enforcement.
+  Recovery scans pause authority before resolved metainfo and refuses
+  automatic resolved recovery when that policy scan is incomplete. Retire
+  fallback only after disk-domain success for both metainfo and settings,
+  scoped to the same torrent instance. Never infer durability from a read.
+  Keep advanced peer policy and dynamic recovery evidence open (`SNARK-012`);
+  do not claim them from tracker `left`/`completed` parity alone.
 - `PeerConnection::TorrentComplete()` owns end-of-torrent peer state: close
   seeds, reset stats, release outgoing requests and send *not interested*.
   `GetNextBlockToRequest` keeps interest while the peer still advertises

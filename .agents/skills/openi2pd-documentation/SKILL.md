@@ -117,6 +117,16 @@ branding validators or a build.
   than rewriting history without cause.
 
 ## Known issues and decisions
+
+- When documenting a new boundary check in an older helper's header,
+  inspect its existing definition block before adding parameter tags.
+  Keep the API contract in one declaration and the implementation's
+  security rationale in an ordinary comment. Run the compile-free
+  Doxygen parameter checker across the whole tree, because moving the
+  contract can create a duplicate without changing the old definition.
+- In Doxygen prose, mark standard-library identifiers that are not intended
+  as links with `\c` (for example `\c std::bind`). An unresolved explicit
+  link is fatal under `WARN_AS_ERROR`; do not turn off reference checking.
 - Doxygen merges a member's declaration and definition documentation.
   Put `@param` on the declaration only; a repeat in the `.cpp` is fatal
   under `WARN_AS_ERROR`. The static checker rejects both in-block repeats

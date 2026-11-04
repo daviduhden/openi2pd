@@ -116,6 +116,37 @@ compile, run tests or run project scripts.
   relevant manual CI lane reruns.
 
 ## Known issues and decisions
+
+- IRC tunnel forwarding requires a retained peer identity before WEBIRC
+  formatting or USER rewriting. Reject missing identities at the factory
+  and recheck the connection's identity before writing; never substitute a
+  local address or emit a credential first. Linux unique-local source
+  mapping likewise requires an identity before opening/mapping the socket.
+  Fresh-stream negative fixtures intentionally have no remote identity and
+  should verify socket closure and registry removal without an upstream.
+
+- For multi-stage signing, combine owned OpenSSL contexts/scalars with a
+  scoped output-commit guard: cleanse secret arrays on every return and
+  zero the output unless the final encoding succeeded. Preserve overlapping
+  input/output contracts by deferring output writes until hashing is done.
+  A checked outer wrapper is not evidence that nested point arithmetic
+  propagates allocation failures; record that boundary explicitly.
+
+- ClientContext factories return the registry winner, never their local
+  candidate after a failed insertion. The creation mutex serializes factory
+  publication and Start; it precedes the registry mutex, which is released
+  before Start. This is not a global Stop/reload admission barrier. Preserve
+  offline-signature refresh on the winning object. Hash replacement rejects
+  occupied keys and inserts the new key before erasing the old one so an
+  allocation failure cannot remove the registration.
+
+- Split descriptor cleanup from registry notification in shared handlers.
+  `SocketsPipe` destruction closes both endpoints through error-code
+  overloads without acquiring shared ownership; active termination notifies
+  the owner only after locking its weak self. A destructor calling a normal
+  teardown method can otherwise throw `bad_weak_ptr` after the last owner
+  disappears. Prepare both unstarted-destruction and repeated-termination
+  regressions when changing this seam.
 - `std::span<T>` only range-constructs from a contiguous range of the same
   element type; a `char` container passed to `std::span<const uint8_t>` needs a
   borrowing `reinterpret_cast` helper with full-expression lifetime.

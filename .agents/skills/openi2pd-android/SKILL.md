@@ -120,6 +120,11 @@ run Gradle, install an APK or run a device test.
   artifact path, not an extra ABI filter alone.
 
 ## Known issues and decisions
+- Error messages published in `RouterSnapshot` are an information boundary.
+  Map internal exceptions to a closed set of generic categories; never copy
+  `Throwable.getMessage()`, causes, class names or stack traces into snapshots
+  because provider data and local paths can appear in any of them. Keep a
+  pure-JVM negative test with path/secret markers.
 - A guard such as `#if !defined(ANDROID)` can compile out the only use of a
   shared parameter. Mark it `[[maybe_unused]]` with the platform reason
   (`DetectDataDir(..., [[maybe_unused]] bool isService)`) instead of
@@ -154,6 +159,15 @@ run Gradle, install an APK or run a device test.
   the process FIFO from onDestroy. ServiceOwnerEpochTest is JVM seam coverage
   only; platform service recreation/JNI evidence remains pending.
 
+- SAF import/create/export progress and completion use
+  `TorrentSafCallbackPublisher`: capture `ownerEpoch` when accepting the
+  request, queue onto the main handler, and re-check the epoch at delivery.
+  This closes both already-queued and provider-posts-after-purge callbacks;
+  provider cleanup may still finish after retirement. The callback runs under
+  the epoch monitor, so keep it short and never wait for shutdown or JNI there.
+  `TorrentSafCallbackPublisherTest` covers queued-before-retire,
+  post-after-retire and current-owner delivery; Android CI remains pending.
+
 
 - ANDROID-018 uses `daemon/DaemonInit.h` to unwind acquired logging/crypto/
   storage/context phases on failed init. Context persistence drains before
@@ -187,6 +201,12 @@ run Gradle, install an APK or run a device test.
   `fromAction`; `RouterService.onStartCommand` must keep an exhaustive switch
   with no `default`. Adding an action requires a record, mapping, service case
   and `RouterCommandTest` update.
+- Every asynchronous lambda must capture an effectively-final owner/sink
+  reference. If a local is normalised or reassigned before queuing work, copy
+  the validated value into a final local before creating nested callbacks;
+  use a distinct name for each nested generation token. The Android Java 25
+  compile lane caught both patterns in the torrent SAF progress callback and
+  address-book unblock callback.
 - Address-book subscription add/remove, router ban/unban and live
   transit/bandwidth/share controls use dedicated bounded JNI calls through
   `RouterService`'s worker; keep them separate from the torrent command
@@ -194,7 +214,13 @@ run Gradle, install an APK or run a device test.
   stopped router, and keep JNI off the main thread. Runtime controls enqueue
   typed daemon operations and do not update restart-required preferences.
   Fragment callbacks must be invalidated by the view generation and release
-  the busy state when the view is destroyed.
+  the busy state when the view is destroyed. Subscription removal opens a
+  confirmation first, then routes the positive action through
+  `submitSubscription`; that submission-time gate is authoritative because
+  another mutation can begin while the dialog is open. `RouterService` caps
+  merged retained logs before publishing the snapshot list. The
+  `control-security-static` contract pins these source boundaries; it is not
+  a substitute for Android UI/runtime coverage.
 - `LogLevel`/`LogFilter` use minimum-severity views (`WARN` includes errors;
   `ALL`/`DEBUG` are unfiltered). Classify native tokens with `Locale.ROOT`.
   Keep native `none/critical/error/warn/info/debug` synchronized with
@@ -202,6 +228,26 @@ run Gradle, install an APK or run a device test.
 - Service commands use `stopSelfResult(startId)` through
   `ensureForegroundOrFail`/`stopSelfIfIdle`; clear-logs bumps `logsEpoch` but
   keeps the sequence cursor. Do not close a SAF descriptor from the canceller.
+- Restart admission uses `DeferredRestart` and the wrapper state monitor;
+  a pending ticket waits for start cleanup without polling the control FIFO.
+  Stop/replacement invalidates queued tickets, and the owner epoch gates the
+  short admission transition atomically with retirement. Launch and callbacks
+  run outside the wrapper monitor. Acquire the epoch authority before the
+  wrapper monitor; never invoke the external gate while holding that monitor.
+  Completion means thread launch was
+  accepted, not native readiness; keep `restartInProgress` until that result.
+  Explicit Stop invalidates the service restart generation before its native
+  stop reaches the FIFO. A failed Thread construction/start must unwind
+  `startThreadRunning` through the same completion path. The framework-free
+  regression covers deferred admission, cancellation, replacement, retirement,
+  rejection and failed launch; JNI/device restart execution remains pending.
+- Persisted `RouterRunState` transitions are serialized by
+  `RouterService.runStateLock`. Build read/modify/write transitions inside
+  `updateRunState`; for a state computed before taking the lock, use
+  `RouterRunState.saveIfNewer` so the generation comparison and preference
+  write share that monitor. Equal generations must be rejected because two
+  candidates derived from one snapshot can conflict. The JVM regression pins
+  stale/equal rejection without changing persisted keys or format.
 - UI locale catalogs are `values` (English source/fallback),
   `values-es`, `values-ru` and `values-zh-rCN`; `locales_config` and
   `localeFilters` list en/es/ru/zh-CN. Every **translatable** key needs all
@@ -346,6 +392,44 @@ run Gradle, install an APK or run a device test.
   callback: they commit the grant map, query live URI permissions and may
   re-arm a bounded broker bind, so the UI must neither block on them nor drive
   the bind sequencing itself.
+- Replacing a persisted SAF tree releases both modes of the old,
+  unreferenced tree after the mapping commit; never reuse the new tree's
+  acquisition flags, since a read-only replacement can otherwise leave stale
+  write authority. `releaseUnreferencedGrant` is shared by replace/detach and
+  uses the same dedicated `MappingAuthority` as take/commit and failed-commit
+  rollback. Obtain the preference snapshot within that authority and keep
+  reference check plus framework release in one operation. Concurrent or
+  reentrant mutations return false without waiting; cache invalidation and
+  broker binding run after authority is released, never beneath its mutex.
+  This serializes only in-process writers: a future multiprocess preference
+  writer requires a single authoritative IPC owner. Framework release failure
+  is best effort; instrumentation prepares mode/reference/failure, contention
+  and reentrancy regressions.
+- `TorrentDocumentReader` observes both thread interruption and the caller's
+  cancellation supplier before and after every read, including EOF. Import
+  passes its `CancellationSignal`; the reader never clears interrupts or
+  closes caller-owned streams. These checks prevent another read or acceptance
+  after observed cancellation; they cannot interrupt a provider already
+  blocked in read. Pure-JVM regressions cover those boundary cases.
+- The service SAF lane is created by `TorrentSafTaskExecutor`: one active
+  operation and sixteen queued requests, with `AbortPolicy`. A blocked
+  provider must never cause unbounded callback/grant retention or execute
+  provider work on the UI thread. Preserve typed rejection completions and
+  owner-epoch delivery fencing. `shutdownNow` discards pending tasks and
+  requests interruption; it does not prove that a provider has stopped.
+  The framework-free JVM regression pins saturation, recovery and retirement.
+  Other executors need their own admission design: the service-owner FIFO
+  must retain its mandatory final stop, and broker cleanup cannot simply
+  reject descriptor closure when a generic bounded queue fills.
+- SAF grant and status completions use `TorrentSafCallbackPublisher` with
+  the accepting `ownerEpoch`, including invalid-input and executor-rejection
+  paths. Checking `destroyed` before `Handler.post` leaves a retirement race;
+  check the epoch when the queued callback actually runs. A busy SAF queue
+  completes with false (grant) or an empty diagnostic (status) for a current
+  owner; retirement drops delivery. These grant/status operations do not own
+  `torrentInFlight` and must not clear another import/export operation's busy
+  state. `TorrentSafCallbackPublisherTest` covers queued and post-retirement
+  delivery suppression independently of Android framework scheduling.
 - I2PSnark snapshots are decoded by the bounded `TorrentRow` record, not by
   direct map lookups in the fragment. A non-numeric id is rejected, a bad
   hash/magnet is dropped and counters/percent are clamped; `TorrentRowTest`

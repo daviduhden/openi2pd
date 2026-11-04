@@ -6004,3 +6004,388 @@ Windows compile blocker. Every target after `libi2pd` remains uncompiled.
 
 No compiler, CTest, sanitizer, Gradle, package or workflow was run; no commit
 or push.
+
+## Comprehensive CI failure audit (2026-11-02)
+
+- Read published manual workflow results at SHA `56f17c0f47a3d1a328be6c54df7b661c480924f8`, including Linux/OpenSSL 3/4, Android, Validation, Windows, OpenBSD and successful Linux package/install and Packaging runs. Exact job/run IDs and diagnostics are tracked in TODO BUILD-037 and `docs/ci/` inventories. Older `abe09136` run history was also reviewed for the namespaced shared-test compile failure, warning output, MSVC crashes and Android locale guard. Historical evidence is not current-tree validation.
+- Current published failures include Android Java compile errors; Linux/OpenBSD/Windows CTest failures; ASan stack-buffer underflow and fixture lifetime reports; UBSan invalid enum values; LeakSanitizer reports; TSan lifecycle timeouts; and intermittent Windows heap-corruption exits. Unresolved diagnoses remain explicitly open rather than being inferred from a test name.
+- Static corrections made: Java lambda capture/redeclaration errors; two test fixtures now retain backing strings for borrowed parser views; config integers are validated before enum conversion; private key/router state fallback uses atomic private writes and the unsafe helper is removed; LeaseSet DH/PSK intermediate buffers and producer salt are cleansed through scope guards. A focused storage regression was added. These are Implemented / static only.
+- Added current run entries to test, runtime, compile-warning and compile-error records; added reusable pattern notes for borrowed views, enum conversion and sensitive path replacement; updated the preventive root-cause policy and Android, CI and memory-security skills. Updated BUILD-037, SEC-034 and roadmap/progress tracking. Corrected a duplicate task ID introduced in the prior audit.
+- The Doxygen `std::bind` diagnostic was traced to an unmarked code identifier and changed to `\c std::bind`. PerlCritic's old verbosity omitted file names, so `.perlcriticrc` now requests file/line/column/policy fields; the current source findings remain open until CI maps them. CI inventory links were added to `docs/ci.md`; crypto and Perl tooling skills now record these reusable triage decisions.
+- Remaining high-priority work includes symbolized EdDSA sanitizer triage, LeakSanitizer ownership stacks, Windows PageHeap/minidump evidence, failing lifecycle/platform tests, source-documentation and Perl-quality failures, current warnings, and the ordinary log-path security boundary. All require further code/log investigation and manual CI.
+- No local compiler, configure/build, test, sanitizer, Gradle, packaging command or workflow dispatch was run. No commit or push was created. Published CI does not validate this worktree.
+- ANDROID-035 is now implemented statically: SAF import/create/export progress and terminal callbacks are published through `TorrentSafCallbackPublisher`, which checks the captured `ServiceOwnerEpoch` when the main-handler callback is delivered. This fences queued callbacks and provider callbacks posted after `onDestroy()` purges the handler. A pure-JVM regression covers both retire/post orderings and live-owner delivery. Provider cleanup may outlive the service, and callbacks execute under the epoch monitor; Android Java 25/JVM/device CI remains pending.
+- Exact-run RT-027 artifact review found only CTest XML/logs, no executable or DWARF, and no symbolizer configuration; sibling UBSan/TSan runs passed `test-eddsa` but do not resolve ASan. The manual sanitizer lane now points ASan at the LLVM symbolizer when present and uploads the Debug `test-eddsa` binary. This prepares better evidence; the crypto cause remains unresolved pending a published rerun with artifacts.
+- A follow-up pass added a defined empty-input result to `HashedStorage::Path` and a NetDb persistence regression, closing the prior direct `safe_ident[0]` out-of-bounds concern for empty identifiers (SEC-034; pending CI). An Android security subagent also implemented generic snapshot error mapping in `RouterErrorText` and a marker-based pure-JVM regression (ANDROID-034; pending CI). The existing RouterService/Javac edits were preserved.
+- Current CTest diagnosis found two confirmed test/protocol mismatches: the I2PControl fixture allowed inode reuse by closing the old listener too early, and `EncodeConfigureDataStorage` allowed relative/empty roots that its decoder rejects. The fixture now retains the old socket descriptor; the encoder now enforces the decoder's absolute-root contract and the regression covers empty input. Both changes and their reusable skill notes are pending manual CI.
+- `test-privsep-linux-ipc` expected an empty seqpacket carrying `SCM_RIGHTS` to be accepted. Static review confirmed the channel intentionally closes that unauthorised descriptor and returns a protocol error; the regression now asserts the error, descriptor-count stability and later channel reuse. This corrects the fixture expectation without weakening capability checks; pending CI.
+- The second `test-datastorage-client` restart assertion exposed a real crash-loop backoff defect: successful worker configuration reset the retry budget before the replacement had demonstrated stability. Removed those resets from both router-storage and data-storage configure paths; explicit `Start()` and the policy's quiet-window rollover remain reset points. The existing 250 ms then 500 ms regression exercises the intended behavior; static only, pending CI.
+- CW-011's CMake policy warning is corrected statically: guarded CMP0144 selection was added to project configure, and CMP0144/CMP0167 to the installed package config; `check-build-system.cmake` now pins both locations. The root `find_dependency(Boost)` consumer path and minimum CMake 3.24 remain unchanged; installed-consumer configure needs manual CI.
+- `test-torrents-dht-persistence` expected only the peer fixture bytes, but the null `TorrentsTunnel` constructor argument creates a local destination and the DHT snapshot serializes its self record first. The test now checks the self identity/port, peer record and preservation after a malformed reload; product persistence format is unchanged. Torrent skill records this fixture contract; pending CI.
+- TF-048's base64 boundary fixture concatenated 1023 already-padded values; it now uses valid `qqqq` quartets and a single terminal padded quartet while retaining the cross-read boundary. TF-049 reused a stopped Asio context; the streaming fixture now conditionally restarts before subsequent posts and drains ready work without fixed-count loops. TF-058's snapshot counter raced thread scheduling; a barrier now makes each reader's first consistent snapshot precede deletion. Their test failures were fixture issues, not demonstrated product defects. All three regressions are Implemented / static and Pending CI compilation/tests; no local tests ran.
+- TF-057's OpenBSD GOST assertion came from test code calling `BN_CTX_get()` without an active context frame; added balanced start/end calls after checking every direct test-side `BN_CTX_get()` use. This is a fixture/API-lifecycle correction, static only and pending OpenBSD/LibreSSL CI. TF-056 exposed a stopped-context/canceled-handler ownership-cycle risk: strong captures on cancelable destination timers are now weak, `Stop()` is idempotent, and the regression drops its owner and checks weak expiry without changing the 30 s bound. These changes are static and pending CI. A repository-wide timer audit found analogous captures outside this specific ownership cycle; posted callbacks and request-completion closures remain separate open review items.
+- TF-056's continuation also weakens the reviewed Destination/I2CP posted operations and stored request closures, drains no executor-owned map from external `Stop()`, and weakens `GetECIESx25519SessionsList()`'s queued snapshot owner. The lifecycle test now strands a LeaseSet-creation callback in a stopped private context and checks destination expiry. SAM/BOB request consumers and I2CP server start/stop posts remain under audit. All native lifecycle changes await manual CI; no local build or test ran.
+- The SAM/BOB consumer sweep found and corrected destination/request-map cycles through BOB command-session lookup and ping callbacks, retained BOB address receivers after Stop, and SAM b33 datagram send continuations. BOB cached-ping and pong/timeout callbacks were also changed to weak session/streaming owners. `check-control-security.cmake` now pins these source seams; no focused live-channel lifetime test was available, so runtime behavior remains pending manual CI. I2CPServer raw-this lifecycle posts remain separate.
+- Continued the same global callback audit into Streaming: outgoing LeaseSet refresh and incoming SYNACK resolution were stored in the destination request registry with strong stream captures. Both now weak-lock before touching stream state, and the compile-free control-security contract pins that seam. This prevents pending lookup work from extending a closed stream's lifetime; the full test suite and live network behavior remain pending manual CI.
+- A separate read-only I2CPServer lifecycle review confirmed static risks in duplicate Start, concurrent Start/Stop ordering and timeout fallback teardown on a non-owner thread. These are not historical CI findings. Recorded as CONC-032 with a lifecycle barrier and deterministic interleaving regressions required; no partial change to the shared I2CP service lifecycle was made.
+- Reconciled ANDROID-036 against the actual code: a confirmed subscription removal enters `submitSubscription()` and therefore shares its busy and view-generation gate; merged Android log snapshots are already capped at 1000 records in `RouterService.mergeLogs()`. Added compile-free source contracts for both paths and documented that these do not replace Android UI/runtime coverage. Java 25/JVM/device CI remains pending.
+- ANDROID-033 now builds router run-state transitions under `runStateLock` and refuses precomputed saves whose generation is not strictly newer, using the same monitor for compare-and-publish. `RouterRunStateTest` covers stale and equal-generation candidates; persisted keys/schema remain unchanged. Static only, Pending CI; native/listener effect order still relies on `ownerExecutor` FIFO.
+- TOOL-018's vector checker now fails on `UNEXPECTED-PASS`; the Perl maintenance subprocess helper retries `EINTR` and distinguishes signal, wait failure and normal exit. Isolated temporary fixtures cover stale known-gap markers and subprocess status decoding; POSIX-only process cases skip on Win32. Static review only, pending CI. Other TOOL-018 findings remain open.
+- TUI-014's COLORFGBG path now parses the complete decimal `fg;bg[:fg;bg...]` grammar and only marks the background known for valid 0..255 fields. Terminal unit fixtures cover valid sequences and malformed/range cases. The related framing and NUL boundaries were closed in the follow-up below; no terminal test or build was run.
+- Finished the other TUI-014 boundaries: both `ReadLine(128)` implementations accept LF after the full 128-byte header and reject byte 129 without consuming payload; POSIX `Terminal::Put` renders embedded NUL as `?` so ncurses does not truncate the remaining `addnstr` input. Added exact/overflow framing and payload-preservation regressions plus a compile-free source guard for NUL rendering. Static only, Pending CI.
+- TF-060 attempted a 32,785-byte AF_UNIX `SOCK_SEQPACKET` record even though the recovery contract only needs to prove that a receive buffer is larger than the 16-byte header. The exact errno was not retained; the fixture now sends a 17-byte record, while codec tests still pin the maximum payload. This portability correction is static and pending OpenBSD CI; do not state the original transport failure was definitively `EMSGSIZE`.
+- TF-059's OpenBSD `queueFull` test made 16 immediate nonblocking connects against `listen(fd, 4)` and assumed refusal; backlog is advisory and capped by each kernel. Replaced that fixture assumption with a clock/connect/sleep-injected retry policy covering deadline, EINTR and immediate refusal, while retaining real successful connect/request/reconnect checks. Implemented / static; Pending CI; no attempt count or timeout was increased.
+- SEC-034 direct log persistence is now handle-backed. `SendTo(path)` and `Reopen()` use component-wise no-follow opens, validate a regular single-link file owned by the process, and apply 0600 on the POSIX descriptor or a protected user/SYSTEM DACL on the Windows handle. Regressions pin symlink/hardlink/parent-link rejection, privacy and rotated-file append behavior. This is Implemented / static, Pending CI compilation/tests; no local build or test ran.
+
+## 2026-11-02 — GitHub Actions history and warning continuation (static-only)
+
+- `gh` pagination found 247 accessible runs from 2026-10-17 through
+  2026-11-02: 160 failures, 60 cancellations and 27 successes. Exact-SHA
+  diagnostics for Linux/OpenSSL 3/4, Android, Validation, Windows, OpenBSD,
+  Linux install/consumer and Packaging are recorded in the CI inventories.
+- Linux/OpenBSD/Windows builds reached link completion before test failures;
+  Android native arm64 completed but Javac stopped before Lint/JNI/APK/device
+  checks. Validation logs include ASan/UBSan/TSan findings and a separate
+  successful bounded fuzz-smoke job. Historical Fuzzing `41359802036` failed
+  earlier at RouterInfo's SHA256 const-output call; current published HEAD has
+  the mutable local digest buffer, but no later complete libFuzzer-target run
+  proves that lane clean.
+- Successful sibling logs showed Lintian manual-page/changelog warnings,
+  deprecated `apt --force-yes`, action runtime notices and a runner Landlock
+  ABI limitation. These are classified separately from compiler warnings;
+  ABI 8 did not prove full network-denial coverage.
+- Fixed the confirmed MSVC C4996 warning in shared test logging support by
+  using `_dupenv_s` with owned storage on Windows while retaining `getenv` on
+  POSIX. Added the exact-run record and reusable shared-test-unit warning
+  pattern. This is Implemented / static, Pending CI compilation; no local
+  build or test ran.
+- The successful Windows job also showed that `WITH_HARDENING=ON` had no
+  MSVC equivalent. Added `/GS`, `/sdl`, Control Flow Guard, ASLR and DEP flags,
+  plus high-entropy ASLR on 64-bit targets; the compile-free build-system
+  contract pins the option groups. Implemented / static, Pending CI
+  compilation; mitigation behavior and all Windows link targets remain
+  dynamically unverified.
+- Remaining diagnoses include the platform-dependent EdDSA positive-vector
+  failure, an unsymbolized ASan read before the test's `point` object, three
+  LeakSanitizer stacks without source attribution, Windows heap corruption,
+  several platform assertions/timeouts and the repeated 250 ms data-storage
+  backoff assertion. No speculative crypto or lifecycle fix was applied.
+  Sanitizer and test regressions remain
+  open pending exact artifacts/symbolized runs and cause-specific follow-up.
+- Agent & Skills synchronization: reviewed root `AGENTS.md`,
+  `openi2pd-ci`, `openi2pd-build`, and the CI inventory references. Added
+  durable guidance to group shared test-support warnings by source and to
+  retain package/runtime/runner warnings separately from compiler diagnostics.
+  No local configure/build/test/sanitizer/Gradle, workflow dispatch, commit or
+  push was performed.
+
+## 2026-11-02 — Delegated continuation and bounded implementations
+
+- Three real reconnaissance agents covered the nine requested areas in
+  grouped independent reviews, then implemented exclusive URL/upstream,
+  tools/Android and torrent-RPC changes. Existing local changes preserved.
+- Recovered `gh` authentication, repository, workflow and 100-run history;
+  revisited Validation `41364867079`, SHA `56f17c0f`, including failed
+  documentation/Perl/sanitizer output. Existing published results remain
+  historical evidence. A full-log write hit the /tmp quota; streamed job
+  output was used without deleting prior session artifacts.
+- CONT-002 adapts upstream's IPv6 bracket-slicing correction with two
+  authority-only round-trip regressions. Eight commits through `e485e138`
+  have explicit dispositions. Metadata multi-peer changes need adaptation.
+- CONT-003 fixes a demonstrated 32-byte SHA-512 fixture output and reader
+  overrun with a 64-byte owning result. Reviewed SHA-512 references across
+  native code, tools and tests; other Ed25519 digest buffers and generic
+  signature hash arrays use the algorithm size. This does not prove the
+  historical ASan PC cause or close TF-069 before CI. Destination RNG
+  failures now abort lookup before reply-key registration and schedule a
+  publication retry; temporary reply keys are cleansed on all exits.
+- CONT-004 checks tool crypto initialization in all twelve consumers and
+  removes the equivalent unchecked fixture guard; remaining CLI issues stay
+  open. AND-025 now fences grant/status delivery against owner retirement,
+  including queued success/failure and rejection callbacks.
+- Prepared regressions use existing registered targets/manual lanes. No
+  compiler, build configuration, project test, sanitizer, Gradle, workflow
+  dispatch, commit or push was run. Dynamic validation remains pending.
+- CONT-001 implements shared internal RPC callback authority, 16-session
+  admission, 8 KiB headers, 30-second IO timers, stop/join/socket close and
+  canceled-handler drain before restart. Tunnel/auth replacements now use
+  one locked route value. Existing torrent security tests now include cap,
+  excess close, Stop, repeated lifecycle, restart and destructor coverage.
+  Synchronous engine waits can delay timer dispatch and Stop; the documented
+  limitation remains open and no hard shutdown bound is claimed.
+- Agent & Skills Synchronization: reviewed root policy/index and owning
+  crypto/security, CI, upstream, tooling, Android and torrent procedures;
+  no deeper AGENTS/agent-definition files were found. Updated root review
+  seams and the crypto, upstream, tooling, Android and torrent skills with
+  reusable digest sizing, RNG failure, checked initialization, delivery-time
+  authority and RPC lifecycle contracts. Updated TODO/ROADMAP/PROGRESS and
+  runtime/regression inventories. The knowledge validator passed with the
+  expected AK004 relevance-review warning; manual review checked the new
+  rules against code rather than treating structure as semantic proof.
+- Compile-free checks passed: `git diff --check`, control-security,
+  tools-inventory, agent-skills, language-modernization and workflow-static
+  (9 workflows, 2 actions). These do not execute the prepared regressions
+  or establish compilation, interoperability or device evidence.
+
+## 2026-11-02 — Async input, teardown and recovery continuation
+
+- Reused three real subagents for independent reconnaissance across all nine
+  requested areas; assigned exclusive transport/docs, storage recovery and
+  tools/Windows implementation files. Two temporary model-capacity failures
+  succeeded on retry without changing models or simulating execution.
+- Refreshed gh authentication, repository, workflow and 100-run history: no
+  newer published runs than the 56f17c0f batch. Inspected exact failing job
+  output and streamed Windows artifact logs without /tmp writes. No workflow
+  dispatch was needed: existing runs do not validate these local changes.
+- NET-172 partial: removed all three native/client boost::asio::read calls
+  from NTCP2 and tunnel fast paths. The existing asynchronous body deadline,
+  socket ownership captures and tunnel backpressure are retained; empty SYN
+  behavior has an added regression. Updated INTEROPERABILITY, FEATURE-PARITY
+  and the interop skill, keeping admission/options/establisher limits open.
+- CONC-024: SocketsPipe destructor now closes endpoints without acquiring
+  shared ownership; active termination weak-locks before registry removal.
+  Global destructor/Terminate search found equivalent SOCKS shared_from_this
+  notification; it now weak-locks and closes/cancels through error-code APIs.
+  Existing tunnel-stop target covers unstarted destruction and repeated
+  termination; negative source contracts pin the seams. This does not close
+  cross-thread teardown or attribute historical leak stacks.
+- CONT-005: storage recovery policy credits only a matched valid operation
+  reply after 60 seconds in one ready generation. Eight unstable failures
+  cannot recover through elapsed backoff or delayed configuration; explicit
+  Start remains the terminal-budget reset. Failed replacement setup closes
+  worker/channel. Clock and real-client regressions are prepared; shared
+  DataStorage.h API reviewed centrally and added to shared-interface policy.
+- TF-068 evidence corrected against git show 56f17c0f:DataStorage.cpp:
+  successful Configure still reset the budget in the executed SHA. The
+  removal was local only; the published repeat matches TF-053. No result
+  from that run proves or disproves the new local policy.
+- TOOL-019: vain validation/help now uses consistent streams and statuses;
+  collision names retain the address and advance suffixes. Five deterministic
+  CLI cases prepared. Actual key collision execution remains pending CI;
+  writer atomicity/privacy remains intact and its docs now match real code.
+- CONT-006: exact Windows artifacts 13107223402/13107091983 from run
+  41364870388 jobs 125022780835/125022781025 distinguish MSVC heap-corruption
+  exits from the first-instance pipe assertion on both toolchains. The
+  fixture now has spare instance capacity, immediate error capture and a
+  non-FIRST success control; it still requires ERROR_ACCESS_DENIED. The
+  original numeric error was absent, so capacity is not a confirmed cause.
+  The tools-cli embedded-NUL fixture no longer depends on newline spelling;
+  exact MSYS2 output proved CRLF versus expected LF. Heap corruption still
+  requires PageHeap/minidump/source-attributed evidence.
+- No compiler, configure/build, project test, sanitizer, Gradle, package run,
+  workflow dispatch, commit or push was performed. All new regressions use
+  existing registered targets and manual CI lanes; dynamic evidence pending.
+- Agent & Skills Synchronization: reviewed root AGENTS and discovery index,
+  C++23/memory-security, interop, privsep, tooling, TUI and CI procedures.
+  Updated root/index shared-interface ownership and six owning skills with
+  reusable async-input, final-owner cleanup, verified-stability, CLI and
+  pipe-fixture procedures. Reviewed adjacent docs and source consumers;
+  no deeper AGENTS or tool agent-definition files were found. Added the
+  direct utility include required by new move-based handler notification.
+- Compile-free checks passed: git diff --check, control-security,
+  agent-skills, language-modernization, tools-inventory and workflow-static.
+  No test runner was invoked. Semantic review compared the new guidance
+  against the actual APIs and pending limits; structural success alone
+  does not prove runtime correctness.
+
+## 2026-11-02 — Registry, I2CP and bounded SAF continuation
+
+- Refreshed Git status/diff/history and gh auth/repository/workflows/100-run
+  history. No new published results beyond SHA 56f17c0f. Revisited Validation
+  41364867079 job metadata and Perl-quality output; historical diagnostics
+  remain independent of the uncommitted tree.
+- Three real reconnaissance agents covered the nine requested areas in
+  grouped reviews, then owned independent destination registry, I2CP and
+  Android implementations. Existing local changes were preserved.
+- CONC-026: all five ClientContext factories return the registered winner
+  and serialize initialization outside the registry mutex. Hash replacement
+  rejects occupied targets and inserts before deleting the original key.
+  Prepared eight-creator and conflict regressions; documented API exception,
+  Stop/reload and concurrent deletion limits. Coordinator reviewed the header,
+  call sites and creation-before-registry lock order.
+- CONC-032: I2CPServer uses a dedicated jthread and shared executor, generation
+  admission and a pre-session connection registry. Stop closes publication,
+  joins, then dispatches teardown and cancellation drain exclusively. Separate
+  lifetime/admission locks protect external session posts; neither lifetime
+  lock nor recursive mutex spans destination joins. Retained stopped sessions
+  keep the executor alive past facade destruction. Expanded lifecycle target
+  covers duplicate Start/Stop, silent/partial clients, interleaved restart,
+  duplicate Stop during drain, self-stop, retained snapshots and concurrent
+  publication/retirement. Destruction requires controller ownership; external
+  executor dispatch and the old RunnableI2CPDestination lifecycle are outside
+  the guarantee. No local compilation or runtime result is claimed.
+- CONT-007: replaced unbounded RouterService SAF executor with one worker and
+  sixteen queued tasks plus AbortPolicy. Existing queue-rejection outcomes and
+  owner-epoch callback delivery are retained. New framework-free JVM tests
+  prepare blocked-provider saturation, recovery and retirement coverage.
+  Other control/cleanup queues need distinct admission policies; provider
+  interruption is not a hard cancellation guarantee.
+- CONT-008: RPC metainfo comment/creator fields now use owning JSON values
+  copied on the engine executor. Shared IsValidTorrentMetaText validates
+  display/edit text; invalid imported bytes remain unchanged in metainfo and
+  are omitted from JSON. Loopback regressions prepare present/absent fields,
+  escaping and invalid UTF-8 cases. New helper/interface reviewed centrally.
+- CONT-009: corrected timer cancel(error_code) reintroduced in local SOCKS/RPC
+  changes. Official Boost 1.74 docs mark the overload deprecated; current
+  docs expose only cancel(). Corrected inaccurate historical explanations in
+  the build skill, I2CP/SAM comments and CE-008 record. Socket error-code
+  overloads remain. Extended source guards catch this pattern in all four
+  clients. RPC closes its socket even if timer cancellation raises an error.
+- The full compile-free Doxygen parameter check found duplicated Path tags
+  after a prior header contract addition. Consolidated public parameter docs
+  in FS.h and kept security rationale in an ordinary FS.cpp comment; the
+  whole-tree checker then passed. No executable statement changed in that
+  documentation correction; generator CI remains pending.
+- No compiler, configure/build, project test, sanitizer, Gradle, package run,
+  workflow dispatch, commit or push was performed. Existing registered native
+  targets/manual labels and Gradle unit discovery include the prepared tests.
+- Agent & Skills Synchronization: reviewed root AGENTS/discovery index and
+  owning C++23, memory-security, Android, torrent, build and documentation
+  skills; added shared-interface review ownership for ClientContext/I2CP.
+  Knowledge now records factory winner/start lock order, I2CP lifetime versus
+  admission barriers, real bounded SAF queues, metainfo display validation,
+  deprecated Boost API portability and single-owner Doxygen contracts.
+  Reviewed updated source/header consumers, architecture/parity docs, current
+  tracking and manual workflow coverage. No deeper AGENTS/agent definitions
+  were found; preserved all inherited knowledge changes.
+- Compile-free checks passed on the integrated tree: git diff --check,
+  control-security, agent-skills, language-modernization, tools-inventory,
+  workflow-static and the whole-tree Doxygen parameter/reference checker.
+  New regressions have not executed. The final knowledge validator result
+  is reported separately; structural checks cannot prove semantic relevance
+  or runtime behavior.
+
+## 2026-11-02 — Shared metadata, deferred restart and failure cleanup
+
+- Refreshed status/diff/history and gh auth/repository/workflows/100-run
+  history. Latest published evidence remains the 56f17c0f batch. Upstream
+  openssl still points to e485e138c713dff2ff81bfba112c086da3fe7793; official
+  Java release metadata still reports i2p-2.14.0. No old run validates the
+  local changes, and no workflow was dispatched.
+- Three real subagents first covered the nine requested reconnaissance
+  areas, then implemented exclusive crypto, torrent and Android work. Two
+  reached their usage limit during final integration; coordinator continued
+  directly, reviewed current diffs and resolved the remaining issues. No
+  substitute agent execution was simulated and existing work was preserved.
+- CONT-010 adapts upstream 9b3e9b3 independently: per-torrent 8 MiB BEP 9
+  assembly, numeric connection leases, exact 16 KiB/final data lengths,
+  negotiated total_size, expiry/reject/disconnect release and final SHA-1
+  verification. Completion requires a whole dictionary; failed hashes clear
+  state with 30..300 s cooldown without blaming the last contributor. Review
+  found size-renewal ordering could starve competing offers; added one
+  bounded alternate-size preference and expiry with focused regressions.
+  Engine-interop now has security/memory labels. Live peer/Java exchange,
+  endgame and durable magnet recovery remain open.
+- AND-024 replaces the 10 s restart busy-wait with a single cancellable ticket.
+  Old-start cleanup signals readiness; Stop/replacement/retirement fence the
+  queued continuation. Coordinator corrected lock ordering to acquire owner
+  authority before the wrapper monitor; launch/completion remain outside.
+  Thread launch failures restore state and release the running flag. JVM
+  fixtures cover cancellation, replacement, retirement, rejection, launch
+  failure and authority admission. A never-finishing native start retains
+  only one pending request until cancellation; device/JNI CI is pending.
+- CONT-011 checks RedDSA RNG, EVP transcripts, exact digest sizes and scalar
+  operations. RAII owns contexts/scalars; scoped cleanup clears nonce/digest
+  buffers and failed signature output. Positive/overlapping-message controls
+  and missing-input cases are prepared. Shared point helpers still need a
+  fallible allocation/operation interface; this is not a claim of complete
+  allocator-fault safety or dynamic cryptographic validation.
+- CONT-012 adds optional Windows heap_diagnostics after ordinary CTest, using
+  installed CDB/GFlags, per-image PageHeap, process deadlines and finally
+  cleanup. Release EXE/PDB artifacts retain optimized code symbols using
+  CMake 3.25+ CI symbol selection, without changing project floor 3.24. The
+  symbol path is local. A checker command allowlist and negative maintenance
+  fixtures reject memory/argument/local-variable collection. Missing tools
+  fail that optional diagnostic explicitly. TF-062 remains unresolved and
+  no debugger or new target was executed here.
+- CONT-013 fixes a confirmed startup-abort omission: StopPrivsepWorkers now
+  revokes artifact/router callbacks before stopping/resetting workers created
+  during init. Reviewed normal stop and DaemonInit rollback equivalents;
+  both already cover the artifact worker. Prepared negative source contract
+  checks coverage and revocation order. Process rollback CI remains pending.
+- CONC-023 stays Pending: listener generation alone cannot resolve handler
+  publication and reentrant Handle/Stop safely. No partial listener workaround
+  was introduced. Other unresolved CI/platform findings remain tracked.
+- No compiler/configure/build, project test, sanitizer, Gradle, package run,
+  workflow dispatch, commit or push was performed. New regressions extend
+  existing native targets, Android JVM discovery and maintenance-test lanes.
+- Agent & Skills Synchronization: reviewed root AGENTS/discovery index and
+  owning C++23, crypto, torrent, Android, privsep, build, CI and tooling skills,
+  plus adjacent upstream/documentation procedures. Updated eight owning skills
+  and the shared-interface inventory for Torrents.h. Reusable knowledge covers
+  shared metadata leases/fairness, restart authority lock order, RedDSA cleanup
+  limits, startup worker rollback and code-only diagnostic collection. Reviewed
+  interface consumers, source comments, regression labels and manual workflow
+  wiring; no deeper AGENTS or tool agent definitions were found.
+- Compile-free checks passed on the integrated changes: git diff --check,
+  control-security, build-system, agent-skills, language-modernization,
+  tools-inventory, workflow-static, whole-tree Doxygen parameter/reference
+  checks and relative documentation links/anchors (118 Markdown files).
+  Maintenance fixtures, native/Java regressions and debugger reproduction
+  remain prepared rather than executed. Structural checks do not establish
+  semantic relevance or runtime correctness; final knowledge validation is
+  recorded in the task report.
+
+### Trust, SAF and durable queue continuation
+
+- Reused three real specialized agents for independent core/protocol,
+  security/torrent and Android review and implementation, preserving their
+  exclusive file scopes. The previously gathered nine-area reconnaissance
+  remains the baseline; current code and diffs were inspected before edits.
+- GitHub CLI authentication, repository/workflow inventory and the latest
+  100-run history were refreshed. The latest available batch remains at
+  `56f17c0f47a3d1a328be6c54df7b661c480924f8`; no new CI evidence applies
+  to this unpublished tree. No workflow was dispatched for local changes.
+- CONT-014 replaces explicit reseed trust reloads, including directory
+  failures, and counts only usable signer identities. Public-certificate
+  regressions cover malformed/duplicate/removed anchors. Global equivalent
+  search found Family's attempted-file count; it now counts insertions.
+  Family trust revocation remains open because RouterInfo caches FamilyID.
+- CONT-015 rejects missing IRC/unique-local identity before formatting
+  credentials or mapping sockets. Synthetic regressions are prepared.
+  Neighboring SAM/BOB paths inherit Streaming's authenticated acceptance
+  invariant; no network-reachable null fault was demonstrated there.
+- CONT-016 checks import cancellation before and after provider reads,
+  retaining the caller's interrupt flag. Grant acquisition/commit/reference
+  checks/release share nonblocking, nonreentrant process-local authority,
+  separate from Binder/cache locks. Obsolete trees release both persisted
+  modes. Contention, reentry, shared-reference and reader cases are prepared;
+  blocked providers and real permission revocation require device evidence.
+- CONT-017 integrates bounded unresolved magnet records, startup recovery,
+  duplicate hints, pause durability and hash-only removal authority. Its
+  disk/service interface and crash-window review are complete statically.
+  Fallback retirement requires successful durable metainfo and settings
+  writes for the same instance. Policy scan precedes resolved recovery;
+  incomplete scans withhold resolved admission. Prepared regressions cover
+  resolved metainfo without administrative state, malformed recovery policy,
+  duplicate hints retaining pause and display-name deletion refusal.
+- CONT-018 makes SAM duplicate registration fail at insertion with a typed
+  result; only the winning session acquires destination ownership. Existing
+  session/type/reference invariants have a focused regression prepared.
+- No local compiler, build configuration, project test, Gradle, sanitizer,
+  commit or push was performed. Dynamic validation remains pending CI.
+- Subagents reached the environment usage limit during final integration.
+  The coordinator completed crash-ordering fixes, regression preparation,
+  fixture initialization, worker limits and shared-interface review directly.
+  CONT-014 through CONT-018 are Implemented / static; SNARK-012 remains
+  Partially implemented / static because advanced peer policy is separate.
+- Agent & Skills Synchronization: reviewed root policy, discovery index,
+  crypto, C++23, Android, torrent, memory-security, build and interop skills.
+  Updated owning skills for trust/cache distinctions, direct-call identity
+  contracts, cancellation/grant authority, magnet durability and SAM
+  insertion ownership. Root/index now identify the affected shared APIs.
+  Native state/SAM targets carry security/memory labels in existing manual
+  CI; focused source contracts guard cancellation and persistence authority.
+- Compile-free checks passed: diff whitespace, control-security,
+  build-system, agent-skills, language-modernization, tool inventory,
+  workflow policy, Doxygen parameter/reference inspection and relative
+  documentation links/anchors. Knowledge validation passed with the AK004
+  semantic-relevance warning; coordinator review verified that the updates
+  capture reusable authority, cache and durability constraints. Structural
+  success supplies no compilation, runtime, cryptographic or device evidence.
+- Remaining risks include allocator failures inside shared point helpers,
+  Family revocation/cache invalidation, general torrent restart/callback
+  lifecycle (CONC-025), failed metainfo-write retry policy and advanced peer
+  controls. SAF serialization is process-local and cooperative cancellation
+  cannot break a blocked provider read. Keep focused regressions open until
+  the exact published revision passes manual CI.

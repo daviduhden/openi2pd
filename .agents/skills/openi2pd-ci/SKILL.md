@@ -134,8 +134,33 @@ workflow, run `gh`, build or test.
 - Fix causes, not symptoms. Re-run after the correction only when authorized.
 - Use `gh` for reading runs/logs only after authorization; never for commits,
   releases or secrets.
+- A CTest job that reaches the end can still report sanitizer defects in
+  failed tests. Read every named failure and its adjacent stack before
+  classifying the suite; keep assertion failures, ASan/UBSan/TSan findings,
+  test-fixture lifetime bugs, and runner/tool warnings as separate records.
+  The 2026-11-02 SHA `56f17c0f` run demonstrated this: ASan/TSan identified
+  borrowed-view test inputs, while other sanitizer cases remained unresolved.
+- When a warning repeats once per test executable, check whether a shared test
+  support translation unit is linked into every target before filing duplicate
+  findings. MSVC's C4996 on the test logger showed that fixing the shared
+  environment lookup once removes a matrix-wide first-party warning; keep
+  intentional assertion-enabling D9025 separate from source warnings.
+- Read successful packaging and consumer logs for Lintian, CMake policy,
+  action-runtime and runner-capability warnings. A successful package job can
+  still expose package-quality debt, and Landlock ABI below the requested
+  policy is a coverage limitation rather than proof of full sandboxing.
 
 ## Known issues and decisions
+
+- Windows `heap_diagnostics` is an opt-in reproduction after ordinary
+  CTest, using installed x64 CDB/GFlags only. Missing SDK debuggers are
+  infrastructure limitations, not a clean heap result. PageHeap is per
+  allowlisted test image and disabled in `finally`; each debugger process
+  has a deadline. Preserve Release EXE/PDB and code-only traces in the
+  workspace artifact. Do not collect process memory, arguments or locals;
+  `check-workflows.pl` pins the command-file allowlist. A diagnostic rerun
+  never replaces the ordinary CTest result or resolves an unsymbolized
+  historical report by itself.
 - The branch verifier must not call plain `brew`: `brew-toolchain` evaluates
   `brew shellenv` only in its own shell. Resolve
   `/home/linuxbrew/.linuxbrew/bin/brew` with a PATH fallback and fail
@@ -249,6 +274,11 @@ workflow, run `gh`, build or test.
   are uploaded. `tools/scripts/check-workflows.pl` (CTest `workflow-static` and the
   `skills-static` job) rejects other triggers, `continue-on-error` and any ctest
   line without those flags.
+- Sanitizer diagnostics with raw PCs need a symbolizer and the exact test
+  executable with debug information. The validation lane sets
+  `ASAN_SYMBOLIZER_PATH` when `llvm-symbolizer` exists and uploads the EdDSA
+  reproducer binary alongside XML/CTest logs; if symbolization is unavailable,
+  preserve that limitation and do not guess a source-level cause.
 - Linux and sanitizer test builds pass `-DI2PD_REQUIRE_PERL=ON`; a missing
   interpreter must unregister tests loudly, not silently turn a lane green.
   OpenBSD base Perl satisfies the same requirement.

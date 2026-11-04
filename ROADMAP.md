@@ -618,9 +618,12 @@ and no guard against a second router in the storage-broker process.
   reconciles on `onCreate`/`Restore`: an expired drain is terminal, a live drain
   re-arms the remaining wall-clock delay only after start, and corrupt deadlines
   clamp or fail closed. `onTaskRemoved` keeps the daemon; `onDestroy` removes
-  callbacks already queued, but SAF work can still publish later
-  (`ANDROID-035`); persisted transitions also need stale-write fencing
-  (`ANDROID-033`). The notification channel is verified before foregrounding.
+  callbacks already queued. SAF import/create/export progress and completion
+  now carry the accepting service epoch and re-check it at main-handler delivery,
+  including provider posts after the purge (`ANDROID-035`, Implemented / static,
+  Pending CI). Provider cleanup can continue after retirement. Persisted
+  transitions still need stale-write fencing (`ANDROID-033`). The notification
+  channel is verified before foregrounding.
 - AIDL v2: `handshake()` generation, `prepareExport`/`openExport(token)`,
   `retire(generation)`, owner `(uid,pid)` on every root/handle/operation/token,
   owner-scoped cancel/close/revoke, typed admission (no exceptions) and a
@@ -2026,3 +2029,154 @@ fail-closed accesslist, mutex-guarded owner and resolver, flush-before-close).
 Acceptance requires the prepared regressions to run on the Linux/OpenBSD/
 Windows/sanitizer lanes and a decision on the streaming acceptor ownership
 token (`CONC-031`).
+
+## Current published CI audit (2026-11-02, static)
+
+Manual runs on published `56f17c0f` show Linux/OpenSSL 3 and 4 builds
+completing before multiple CTest failures; OpenBSD and Windows CTest failures;
+Android Java compilation errors; and ASan/UBSan/TSan findings. Linux packaging
+and install-consumer workflows passed, as did the fuzz-smoke job, but these
+partial successes do not establish a clean matrix. See BUILD-037 and the
+compile, warning, runtime, test and pattern inventories under `docs/ci/`.
+
+The worktree contains static fixes for Android effectively-final captures,
+two test-only borrowed-view lifetime errors, integer-to-enum validation before
+conversion, sensitive file creation fallbacks, and scoped LeaseSet secret
+cleansing. They remain pending manual CI. EdDSA sanitizer underflow, three
+leak reports, lifecycle timeouts, Windows heap corruption and multiple
+platform assertions remain open. No local dynamic validation was run.
+
+Follow-up static work also makes `HashedStorage::Path` return an empty path
+for an empty identifier and tests that contract; Android snapshot errors now
+use generic categories with a marker-based redaction regression. Both remain
+pending manual CI.
+The failing I2PControl socket fixture now retains the old listener through
+replacement cleanup to prevent inode reuse, and the DataStorage configuration
+encoder enforces the same absolute-root contract as its decoder. Their focused
+regressions remain pending CI.
+The storage supervisors also preserve their bounded restart backoff across
+replacement handshakes so repeated short-lived worker crashes cannot reset
+the retry budget; the existing 250/500 ms client regression covers this
+policy, pending manual CI.
+
+The 2026-11-02 lifecycle audit found static I2CPServer lifecycle risks not
+represented by a historical CI failure: repeated Start can create parallel
+accept chains, concurrent Start/Stop can leave a worker without a listener,
+and timeout fallback tears sessions down outside their owning executor.
+CONC-032 tracks a serialized lifecycle barrier, safe timeout/drain semantics
+and deterministic regressions. The current I2CPServer implementation remains
+under review; no runtime claim is made.
+The same continuation closed two stale portions of ANDROID-036 by pinning the
+existing subscription single-flight gate and the 1000-record retained-log
+cap. TUI-014 now covers strict COLORFGBG parsing, visible POSIX NUL handling
+and the inclusive 128-byte response-header limit on both clients. TOOL-018
+now fails vector checks on unexpected passes and reports subprocess
+signals/wait errors distinctly. ANDROID-033 now serializes run-state
+read/modify/write transitions and rejects stale precomputed generations. These
+are static implementations with regression coverage prepared for manual CI;
+remaining items stay open in `TODO.md`.
+CMake policy warnings from both build and installed-consumer Boost lookup are
+addressed with availability-guarded policy selection and a static contract;
+cross-version configure validation remains pending.
+The DHT persistence regression now accounts for its tunnel's self record
+before routing peers and verifies malformed input leaves the prior snapshot
+intact; no persisted format changed.
+Three more published CTest failures were traced to fixtures: TF-048 used
+concatenated padded base64 values, TF-049 reused a stopped Asio context, and
+TF-058 did not synchronize reader execution before registry deletion. Their
+fixtures now preserve valid base64 framing, restart only stopped contexts,
+and barrier after the required snapshots. CI validation remains pending.
+The OpenBSD GOST fixture also lacked the required `BN_CTX_start()` frame
+around temporary BIGNUMs; it now balances the frame and remains pending
+LibreSSL CI. For the Clang/OpenSSL 4 I2CP lifecycle timeout, destination timer,
+post and stored request callbacks now use weak ownership; the session snapshot
+future is weak as well. The new regression covers a queued callback stranded
+in a stopped private context. Executor-owned request maps are not touched by
+external Stop; callbacks finish in destruction. SAM/BOB request consumers and
+I2CP server lifecycle posts remain under review. All changes await manual CI.
+The OpenBSD IPC recovery fixture now uses a frame one byte larger than the
+16-byte header; maximum payload limits remain covered at the codec layer. The
+historical socket send error was not captured, so the transport portability
+diagnosis and correction await manual OpenBSD CI.
+SEC-034 now hardens the direct logger in addition to atomic private state
+writes: POSIX opens each directory component without following symlinks and
+sets mode 0600 on the validated descriptor; Windows rejects reparse targets
+and installs a protected user/SYSTEM DACL on the validated handle. Regressions
+cover links, permissions and rotation; all changes await manual CI.
+
+## CI audit continuation — 2026-11-02
+
+The current published SHA has been audited across 247 accessible workflow
+runs, including successful sibling jobs. Corrections in the worktree remain
+static until a manual run on a published revision. The open priority is to
+resolve the documented Linux/OpenBSD/Windows CTest and sanitizer findings,
+obtain symbolized EdDSA/LeakSanitizer evidence, and finish Android Java 25
+validation after the two Javac corrections. A shared MSVC test-support C4996
+warning and the missing MSVC `WITH_HARDENING` equivalent now have static local
+corrections, pending Windows CI. Remaining package-quality findings still
+need follow-up. See
+[`docs/ci/COMPILATION-WARNINGS.md`](docs/ci/COMPILATION-WARNINGS.md) and
+[`docs/ci/TEST-FAILURES.md`](docs/ci/TEST-FAILURES.md).
+
+## 2026-11-02 continuation priorities
+
+CONT-001..004 advance bounded torrent RPC, authority-only IPv6 URLs,
+EdDSA fixture bounds, destination RNG failure handling and checked tool
+crypto initialization. AND-025 now reflects the bounded SAF worker and
+callback delivery epoch fence. Implemented portions are **Implemented /
+static**, with **Pending CI compilation** and **Pending CI tests**; none
+have current-tree dynamic evidence. RT-027/TF-069 remain open until the
+corrected 64-byte digest fixture runs on sanitizer and platform lanes.
+Global network/storage separation, NET-172, multi-peer torrent metadata,
+Windows corruption and unresolved leaks remain independent open work.
+
+## Async input and stable-worker continuation
+
+NET-172 now has async-only NTCP2 body and local-tunnel input paths, while
+admission, options and establisher socket ownership remain open. CONC-024
+separates final-owner descriptor cleanup from registry notification, including
+the equivalent SOCKS destructor path. CONT-005 requires a valid operation
+reply from a stable generation before replenishing storage restart attempts.
+TOOL-019 now includes vain CLI errors and collision naming. CONT-006 improves
+Windows fixture isolation and removes irrelevant CRLF dependence; MSVC heap
+corruption remains unresolved. All changes are implemented statically and
+remain Pending CI compilation / Pending CI tests.
+
+## Destination publication, I2CP lifecycle and SAF admission
+
+CONC-026 serializes destination factory selection/start and preserves hash
+registrations on conflicting replacement. CONT-007 bounds SAF queued work;
+CONT-008 connects RPC metainfo fields to engine data; CONT-009 pins portable
+non-deprecated timer cancellation. I2CP lifecycle integration is tracked by
+CONC-032, including pre-session connections, restart generations and executor
+ownership through drain. All implemented changes remain Pending CI
+compilation / Pending CI tests; global Stop/reload and provider cancellation
+limits remain explicit.
+
+## Shared metadata, deferred restart and fail-closed cleanup
+
+CONT-010 shares BEP 9 metadata across peers with exact response validation,
+bounded leases, alternate-size recovery and hash-failure cooldown. AND-024
+replaces polling with a cancellable Android restart continuation. CONT-011
+checks RedDSA wrapper failures and cleans nonce/scalar storage; fallible point
+internals remain open. CONT-012 prepares optional Windows heap traces and
+matching symbols, retaining TF-062 unresolved. CONT-013 completes initialized
+storage-worker coverage on Unix startup abort. These implementations are
+static and Pending CI compilation / Pending CI tests. CONC-023 remains open:
+listener generation alone cannot solve reentrant handler startup/Stop safely.
+
+### Trust, SAF and recovery continuation
+
+CONT-014 replaces explicit reseed trust reloads and fixes usable-identity
+counts, including the equivalent Family counting pattern. Family revocation
+still requires cached FamilyID invalidation. CONT-015 hardens direct IRC and
+unique-local entry points; ordinary authenticated Streaming acceptance already
+supplies identity. CONT-016 integrates cooperative SAF import cancellation and
+serialized mapping/grant retirement. CONT-017 develops durable unresolved
+magnet recovery with bounded startup authority and pause ordering. CONT-018
+corrects duplicate SAM session registration ownership. These increments
+are Implemented / static after integration review and require manual CI
+compilation/tests; no new runtime evidence is attributed to them. SNARK-012
+remains Partially implemented / static for advanced peer policy. Recovery
+withholds resolved admission when pause-policy scanning cannot complete;
+fallback retirement requires durable metainfo and administrative state.

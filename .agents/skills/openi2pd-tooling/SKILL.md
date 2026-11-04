@@ -122,6 +122,17 @@ a TUI client.
   Never let it execute repository code.
 
 ## Known issues and decisions
+
+- The workflow checker reads the literal Windows debugger command file
+  and allows only event description and code-location commands. Its
+  maintenance regression copies workflow/action inputs into a temporary
+  tree and rejects argument, local-variable and dump commands. Keep the
+  checker offline; preparing the fixture is distinct from running the
+  debugger or its regression suite.
+- Perl::Critic's CI output must include the source path, line, column and
+  policy. Numeric verbosity alone omitted filenames in the 2026-11-02 lane;
+  `.perlcriticrc` now uses the named format fields so policy findings can be
+  corrected by source without suppressing broad categories.
 - A Perl/CMake format string never interpolates a caller value into the
   template; use `sprintf('%.*f', $precision, $size)`. Closed Win32 device
   names (`NUL`, `CON`, `COM1`..) are the device in every directory, including
@@ -134,6 +145,11 @@ a TUI client.
   `data after padding` stays distinct across reads; unwritable key output is
   `Can't create <path>: the path must be a writable regular file` on stderr
   with each tool's documented exit status.
+- A cross-read base64-padding fixture must use valid unpadded quartets in its
+  prefix and one terminal padded quartet. Repeating `qg==` concatenates
+  already-terminated values, so the decoder correctly reports data after
+  padding; use a full unpadded quartet such as `qqqq` when sizing a decoded
+  prefix at three output bytes per quartet.
 - Never assert an `argv[0]`-bearing usage line; assert `usage: ` plus a
   synopsis token.
 
@@ -152,6 +168,12 @@ a TUI client.
   `cd`; diagnostic output must not contaminate the path. SAM version mismatches
   must fail the script, not only print a diagnostic. The manual packaging CI
   fake-`nc` lane checks failure propagation; live bridge tests remain pending.
+- Static interoperability vector validation treats `UNEXPECTED-PASS` as a
+  non-zero result so stale `known_gap` markers cannot silently persist.
+  Child-process test helpers must decode `waitpid` status with exit/signal
+  predicates, retry `EINTR`, and fail on wait errors; an exit-byte shift alone
+  can turn a signal death into success. POSIX signal/executable fixtures are
+  skipped on Win32 when that process behavior is not portable.
 
 
 - Signature-name normalization in `tools/common/key.hpp` uses a local ranges
@@ -223,11 +245,21 @@ a TUI client.
   [`docs/source-documentation.md`](../../../docs/source-documentation.md).
 
 
-- `TOOL-019` records that `tools/common/crypto.hpp` ignores `InitCrypto`
-  failure and that `vain`/`regaddr_3ld` usage/error streams and `vain`'s
-  default output name are inconsistent with the CLI contract. Tools must fail
-  closed on provider initialization and keep usage on stderr with a non-zero
-  status.
+- `CryptoGuard` retains the provider initialization outcome and exposes an
+  explicit boolean check. Every consumer must reject a false guard before
+  constructing keys, loading credentials or emitting results; help paths
+  remain independent of provider availability. The guard still owns cleanup
+  after failure. `tools-inventory` pins the guard and every consumer's early
+  rejection without requiring a broken provider on the runner. A real
+  missing-provider invocation remains pending manual CI.
+- `vain` writes explicit help to stdout/0 and rejected invocations to
+  stderr/1, including missing patterns and unsupported signatures. Keep
+  `tools-cli` stream assertions and the `tools-regressions` no-operand status
+  aligned; neither regression may start a probabilistic vanity search.
+  Default collision names retain the winning address before their numeric
+  suffix. Candidate checks do not reserve names: the shared private writer
+  still requires a trusted parent directory, and collision publication needs
+  manual CI coverage separately from deterministic CLI validation.
 
 
 - `LoadPrivateKeys` lives in `i2p::tools` (`tools/common/keys.hpp`); a tool

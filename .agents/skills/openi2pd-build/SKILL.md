@@ -110,6 +110,16 @@ build.
   let packaging install competing definitions.
 
 ## Known issues and decisions
+
+- The MSVC CI lane retains optimized Release symbols using CMP0141 NEW,
+  ProgramDatabase and /DEBUG:FULL with /OPT:REF and /OPT:ICF. That CI
+  symbol property needs CMake 3.25+, independently of the project's 3.24
+  floor. Keep exact test EXE/PDB artifacts with heap reproduction logs;
+  a PDB from a different build is not evidence for a crash address.
+- When dependency-policy warnings appear only in installed consumers, review
+  both the project `find_package()` and exported `find_dependency()` calls.
+  Guard policy selection with `if(POLICY ...)` for the supported minimum and
+  keep package-config policy changes local to the included config scope.
 - A checker run with `cmake -P` has no `cmake_minimum_required()`. With
   CMP0012 OLD, `while(TRUE)`/`if(TRUE)` treats `TRUE` as an undefined
   variable and a TRUE-valued variable as an undefined name; use
@@ -196,7 +206,10 @@ build.
   enabled components. Header discovery alone cannot establish link closure.
   `test-boost-linkage` and the manual installed-consumer lane cover both paths.
 - Windows SDK macros are PUBLIC core usage requirements; `WIN32_APP` remains
-  PRIVATE. MinGW hardening uses PE flags, while Unix uses ELF `-z` flags.
+  PRIVATE. MinGW hardening uses PE flags, MSVC uses `/GS`, `/sdl`, `/guard:cf`,
+  `/DYNAMICBASE`, `/NXCOMPAT` and 64-bit `/HIGHENTROPYVA`, while Unix uses ELF
+  `-z` flags. Keep the supported compiler floor and static build-system
+  contract aligned when changing this matrix.
 - OpenBSD base ncurses is wide-character capable but installs `ncurses.h`
   directly and exposes `libncursesw` as a link to `libcurses`; CMake's
   `CURSES_NEED_WIDE` search only accepts the `ncursesw/` header layout. The
@@ -315,11 +328,17 @@ build.
   `CMAKE_TRY_COMPILE_TARGET_TYPE` around the linked probe. Do not re-read
   variables after unsetting them; later `check_library_exists` must still use
   an executable probe.
-- Boost.Asio API floor: `ip::address` has no `to_string(error_code&)` overload
-  in any supported release, and `basic_waitable_timer` has only
-  `cancel()`/`cancel_one()`, not `cancel(error_code&)`. Use
+- Boost.Asio API floor: use the project's address-format helpers instead
+  of depending on deprecated `to_string(error_code&)` overloads.
+  For `basic_waitable_timer`, use the
+  non-deprecated `cancel()`/`cancel_one()` API: Boost 1.74 documented a
+  deprecated error-code overload, but newer releases remove it. Use
   `i2p::util::net::FormatAddress`/`FormatEndpoint` and `cancel()` directly
   (`CE-002`, `CE-008`).
+  Compare the [1.74 timer reference](https://www.boost.org/doc/libs/1_74_0/doc/html/boost_asio/reference/basic_waitable_timer/cancel.html)
+  with the [current timer reference](https://www.boost.org/doc/libs/latest/doc/html/boost_asio/reference/basic_waitable_timer/cancel.html)
+  when reviewing compatibility. Socket `cancel(error_code&)` remains a
+  separate API; do not remove its nonthrowing error path indiscriminately.
 - The manual source-docs job must create the gitignored
   `docs/generated/source-api` before Doxygen. `WARN_AS_ERROR` turns a missing
   output directory into a job failure (`CE-003`).

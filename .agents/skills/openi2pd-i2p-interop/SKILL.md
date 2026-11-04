@@ -98,6 +98,14 @@ peer or add a hidden external checkout. The reference is for reading only.
   protocol requirement justifies it.
 
 ## Known issues and decisions
+
+- NTCP2 body reads always enter `Receive()`, including buffered data, so the
+  body deadline and shared callback ownership have one path. Never restore
+  `available()` plus a synchronous TCP read as an event-loop optimization.
+  The equivalent tunnel prefetch/coalescing paths are removed: an empty
+  `Stream::Send(nullptr, 0)` initiates the SYN and `Receive()` enforces
+  asynchronous input/backpressure. This does not bound idle length reads or
+  resolve NET-172 establisher ownership, admission and options negotiation.
 - SAM: an unrecognised control line is never logged verbatim (it can carry
   `DESTINATION=` private keys or `PASSWORD=`); report length/field count.
   `SESSION ADD`/`REMOVE` share the `SESSION CREATE` name rule, and quoted

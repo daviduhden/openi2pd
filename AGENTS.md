@@ -92,10 +92,23 @@ file named by the diagnostic. Keep observed diagnostics distinct from static
 risks and third-party/toolchain messages in
 `docs/ci/COMPILATION-ERRORS.md`, `COMPILATION-WARNINGS.md` and
 `COMPILATION-PATTERNS.md`.
+Apply the same process to every failed assertion, crash, exception, timeout,
+deadlock, sanitizer report and fuzz finding. Inspect the complete exact-run
+test output and sanitizer stack, classify product versus fixture versus runner
+causes, search equivalent parser/lifetime/locking/platform seams globally,
+and add a focused regression. A passing rerun or disappearance of the first
+diagnostic does not close related findings; retain unresolved hypotheses and
+their needed artifacts in `RUNTIME-ERRORS.md`, `TEST-FAILURES.md` and
+`REGRESSION-PATTERNS.md` until evidence resolves them.
 Retrieve successful sibling job logs as well as failed logs: an early compile
 failure can hide later warnings, while a successful lane can expose them. Do
 not infer that a skipped target or platform is clean from another job's
 success.
+When a warning repeats across many test targets, inspect whether one shared
+support translation unit is linked into each executable and group the reports
+by source cause. Also classify successful-run package, action-runtime and
+runner-capability diagnostics separately from project compiler warnings; a
+successful job can still disclose package debt or incomplete sandbox coverage.
 When a diagnostic recurs, compare earlier runs and record every affected lane
 under one root-cause entry in `docs/ci/COMPILATION-ERRORS.md`; distinguish
 compile/link failures from CTest failures and output-path/package assertions.
@@ -189,7 +202,11 @@ No two agents edit the same file concurrently. “Typical files” in the table
 are non-exclusive: the area owner edits while adjacent owners review. The
 following shared interfaces require coordinator review before integration:
 `Log.h`, `RouterContext`, CMake, `tests/CMakeLists.txt`, `TuiProtocol.h`,
-`privsep/Protocol.h`, `privsep/TorrentStorage.*`, `daemon/Daemon.*`,
+`privsep/Protocol.h`, `privsep/TorrentStorage.*`, `privsep/DataStorage.h`,
+`libi2pd_client/ClientContext.h`, `libi2pd_client/I2CP.h`,
+`libi2pd_client/Torrents.h`, `libi2pd_client/TorrentsState.h`,
+`libi2pd_client/TorrentsTunnel.h`, `libi2pd_client/SAM.h`, `libi2pd/Reseed.h`,
+`daemon/Daemon.*`,
 `daemon/UnixDaemon.cpp`, the Android JNI CMake graph and SAF AIDL,
 `libi2pd/Modern.h` and `libi2pd/TransportConnector.h`.
 
@@ -2922,3 +2939,14 @@ and MSVC; no second Windows diagnostic exists, but every target after
   control that reaches it.
 - The MSVC lane must build and select every Windows-only test it claims;
   `test-win32-shutdown-deadline` was missing from both lists.
+
+### Continuation review seams
+
+When triaging SHA-512 fixtures, inspect the output buffer's full algorithm
+size and the downstream reader's required length before attributing a stack
+report to an adjacent object. The crypto skill records the EdDSA reference
+helper's fixed-size result contract. For the optional torrent RPC, review
+session publication against the Stop admission barrier and the cancellation
+drain before restart; an executor timer cannot enforce a wall-clock bound
+while that executor waits synchronously on engine work. See the torrent
+skill and `docs/torrent/security.md` for the current boundary.

@@ -104,11 +104,45 @@ report that limitation; do not substitute local execution. Ask for:
   worker is not global separation.
 
 ## Known issues and decisions
+
+- Unix startup abort calls `StopPrivsepWorkers` after init may already
+  have created artifact and router storage workers. Review this abort
+  inventory alongside normal stop and DaemonInit rollback. Revoke each
+  installed callback before reaping/resetting its client; router writes
+  keep a rejecting callback and delegated artifacts fail closed without
+  a backend. Stopping only the log worker leaves initialized authority
+  and children alive after failed startup.
+- A transport-neutral encode helper must enforce semantic path rules at
+  construction as well as decoding. `EncodeConfigureDataStorage` rejects
+  empty and relative roots before framing, matching its decoder's absolute
+  path contract; keep positive and negative producer/consumer tests paired.
+- An empty `SOCK_SEQPACKET` record without descriptors is consumed as an
+  empty record, not EOF. An empty record carrying `SCM_RIGHTS` is invalid:
+  close the received descriptor, return a protocol error, and prove the
+  channel remains usable. Do not accept an untyped capability.
+- A successful worker configuration handshake does not prove the process is
+  stable. Preserve the shared restart backoff across rapid worker deaths;
+  `StorageClientRestart::NoteReady()` starts a generation interval without
+  replenishing its budget. Only a validated operation reply after 60 seconds
+  may call `NoteStable()` to restore it. Failure observation, aggregate uptime
+  across generations, setup latency and backoff waits never establish healthy
+  service. Eight consecutive unstable failures stay terminal until explicit
+  owner `Start()`; `CanAttempt()` is a pure deadline/budget query and cannot
+  revive exhaustion. The same clock-only policy runs on every platform;
+  Windows worker entry points remain fail-closed stubs. Failed replacement
+  setup closes its child/channel before waiting again. Keep deterministic
+  slow-crash, delayed-setup, stable-boundary and terminal-budget cases in
+  `test-datastorage-protocol`, and real client recovery in
+  `test-datastorage-client`; execution remains pending manual CI.
 - A receive loop owns one fixed-capacity record buffer: a tolerated refusal
   continues the loop and must decode a `string_view` of the record. Never
   `resize` the storage, or the next frame is truncated and reported as a fatal
   ancillary-data fault. A typed `Error` may only name a type with a registry
   row (POSIX and Windows), otherwise the peer cannot decode its refusal.
+- Keep `SOCK_SEQPACKET` recovery tests within portable atomic-record sizes.
+  To detect a receive buffer accidentally left at the 16-byte IPC header, a
+  17-byte frame is sufficient; maximum payload boundaries belong in codec
+  tests, not a kernel-dependent socket send assertion (`TF-060`).
 - Derive the frame type from the capability actually attached:
   `ConfigureLogFd` is `RequiredFile`, so a syslog/foreground sink must send the
   descriptor-free `ConfigureLog` or the worker rejects the frame before parsing

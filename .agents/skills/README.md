@@ -39,7 +39,11 @@ Load the smallest set that covers the change:
 Do not load all skills for every task. Combine them when a change crosses
 subsystems, but keep one owner per file. Shared interfaces (`Log.h`,
 `RouterContext`, CMake, `tests/CMakeLists.txt`, `TuiProtocol.h`,
-`privsep/Protocol.h`, `privsep/TorrentStorage.*`, `daemon/Daemon.*`,
+`privsep/Protocol.h`, `privsep/TorrentStorage.*`, `privsep/DataStorage.h`,
+`libi2pd_client/ClientContext.h`, `libi2pd_client/I2CP.h`,
+`libi2pd_client/Torrents.h`, `libi2pd_client/TorrentsState.h`,
+`libi2pd_client/TorrentsTunnel.h`, `libi2pd_client/SAM.h`, `libi2pd/Reseed.h`,
+`daemon/Daemon.*`,
 `daemon/UnixDaemon.cpp`, the Android JNI CMake graph and SAF AIDL) require
 coordinator review. `openi2pd-build` owns CMake-side test registration;
 `openi2pd-ci` owns workflow wiring and label-gate verification. For

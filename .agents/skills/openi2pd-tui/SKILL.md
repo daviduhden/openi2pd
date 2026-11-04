@@ -109,6 +109,16 @@ the console.
   a worker-creation failure must not escape into the daemon start.
 - A squatted derived pipe name retries with 250 ms→5 s backoff and logs one
   warning per distinct failure; do not log once per second forever.
+- First-instance Win32 pipe regressions leave capacity for two instances,
+  require the documented `ERROR_ACCESS_DENIED` for a repeated
+  `FILE_FLAG_FIRST_PIPE_INSTANCE`, then create an ordinary second instance
+  as the capacity/permission control. Capture `GetLastError` immediately and
+  print the numeric result before asserting; a one-instance quota can
+  otherwise confound the namespace-guard check. The API contract is in
+  [Microsoft CreateNamedPipe](https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-createnamedpipea).
+  A bare `0xc0000374` from another test is unresolved heap corruption,
+  not evidence of this pipe-assertion cause; retain the exact artifact and
+  request PageHeap/minidump evidence independently.
 
 - `TuiServer` owns a `std::jthread` and stop token. `Stop()` = `request_stop()`
   + `join()`, then close the listener and unlink only after device/inode
@@ -204,15 +214,29 @@ the console.
   [`docs/source-documentation.md`](../../../docs/source-documentation.md).
 
 
-- `TUI-014` records the remaining boundary defects: Win32 `Put` treats `limit`
-  as bytes, `ReadLine(128)` rejects an inclusive 128-byte header, and an
-  embedded NUL/COLORFGBG edge can mis-size or mis-select colours. Keep new
-  callers on the shared column/UTF-8 contract until the regression lands.
+- `TUI-014` now has a strict `ParseColorFgbgBackground` for complete
+  `fg;bg[:fg;bg...]` values. Malformed fields and indices above 255 do not
+  make the terminal background known or enable default colours; tests cover
+  valid sequences, malformed delimiters and overflow. POSIX `Put` must also
+  replace an embedded NUL visibly: ncurses `addnstr` stops at NUL despite
+  its explicit byte count, so copying the input byte silently drops following
+  text. `ReadLine(limit)` reads one byte at a time, accepts LF after exactly
+  `limit` bytes, and rejects the next non-LF byte without consuming the
+  payload. Preserve that framing rule in both POSIX and Win32 readers. The
+  regressions cover a valid 128-byte header, a 129-byte header and payload
+  alignment; all TUI-014 source changes still require manual CI.
 
 
 - Protocol comments must escape placeholder tags (`&lt;COMMAND&gt;`) because
   Doxygen runs with warnings-as-errors. Prefer entities over raw angle
   brackets in `TuiProtocol.h` and the terminal headers.
+
+- POSIX local-socket connect retry policy lives in
+  `tui/PosixConnectRetry.h` and takes clock/connect/sleep callables. Test the
+  deadline and errno branches with deterministic inputs; `listen()` backlog
+  is advisory and must not be used to force a portable queue-full condition.
+  Keep a real successful connect/request/reconnect path beside the policy
+  regression (`TF-059`).
 
 ## Do not
 

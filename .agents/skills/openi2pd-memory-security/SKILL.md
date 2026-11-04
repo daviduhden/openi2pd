@@ -88,6 +88,10 @@ Do not let reconnaissance agents edit, compile, execute tests or run scripts.
   verification paths; do not invent a replacement.
 - Establish and document lock order. Prefer immutable snapshots for data read
   by another thread; do not add unsynchronised container reads.
+- Concurrency tests must not assume a newly created reader has run before the
+  writer mutates state or requests shutdown. Use a barrier or condition
+  variable to make the required observation deterministic; do not use sleeps
+  or scheduler-speed assumptions as synchronization.
 - Release descriptors, child processes, timers and allocations on every error
   and shutdown path. Wipe secrets with the existing helpers.
 - Treat logs and error strings as persistence boundaries. Never include a
@@ -102,6 +106,14 @@ Do not let reconnaissance agents edit, compile, execute tests or run scripts.
   the audit is complete.
 
 ## Known issues and decisions
+
+- SAM session creation must commit unique ID ownership at map insertion,
+  not only at the socket's preliminary lookup. Return a typed duplicate
+  failure and never the incumbent session to a competing creator. Transfer
+  the destination Acquire only after insertion succeeds, under the registry
+  lock; verify that failed candidate destruction cannot release or stop the
+  incumbent destination. Exercise the insertion seam directly in lifecycle
+  fixtures, including reference counts and the original session type.
 - A guard placed after an early `return` is unreachable and its regression
   fails; move it before every exit and add a positive control that proves
   the branch is reached (the NAT64 classifier case in RT-025).
@@ -119,6 +131,29 @@ Do not let reconnaissance agents edit, compile, execute tests or run scripts.
   garlic destination keeps one AEAD encryptor/decryptor for all sessions, so
   the wrappers are stateless and use a thread-local context; secret tag files
   are replaced by one private atomic write.
+- `Stream::UpdateCurrentRemoteLease()` stores lookup completions in the
+  destination request registry. These closures weakly capture the stream:
+  outgoing LeaseSet refresh and incoming SYNACK resolution may remain pending
+  after stream shutdown. The control-security static contract pins this seam;
+  live network behavior still requires manual CI.
+- `I2CPServer` owns its own `jthread` and shared executor. Lifecycle calls
+  serialize on the control thread; admission and accept generations share a
+  separate barrier. Stop joins before transferring exclusive executor
+  ownership to drain teardown, never racing a live worker after a timeout.
+  Keep an independent accepted-connection registry: clients awaiting their
+  first protocol byte do not yet have assigned sessions. Owner-thread Stop
+  requests shutdown; the controller joins before restart or destruction.
+  Registered session snapshots may outlive the facade only after teardown;
+  their executor authority must be destroyed after all timers and sockets.
+  External session sends/termination pin the separate lifetime barrier through
+  queue publication; shutdown acquires lifetime before admission, then releases
+  both before joining. Executor-owned callbacks need no lifetime lock because
+  the controller joins and drains before retiring the facade. Never hold that
+  lock while stopping a destination: its producer may need it to finish a send.
+  Directly constructed unregistered sessions still borrow their owner's
+  lifetime. `test-i2cp-session-lifecycle` prepares duplicate start, silent
+  connections, concurrent stop/start, queued duplicate stop, self-stop and
+  retained-snapshot regressions. Compilation and execution remain pending CI.
 - `Terminal.h`'s `Put(text, limit)` is a column budget. UTF-8 decoding and
   width live in `tui/TerminalText.h`; a second table in `main.cpp` or the
   backend drifts and tears the layout.
@@ -183,6 +218,11 @@ Do not let reconnaissance agents edit, compile, execute tests or run scripts.
   `running_in_this_thread()` before `join()`; destruction from a control
   handler would self-deadlock. `I2PTunnelInfoHandler` uses lock-copied tunnel
   snapshots, never the legacy reference accessors.
+- The Unix I2PControl socket cleanup compares device/inode while the
+  listener's bound descriptor is still alive. A regression that closes the
+  old descriptor before unlink/rebind can trigger filesystem inode reuse and
+  falsely make the replacement look identical. Keep the original listener
+  open through cleanup when modeling the service's replacement race.
 - SAF `SafEnv` treats a failed `PushLocalFrame` as a failed call and clears the
   pending `OutOfMemoryError`; leaving it set corrupts the next JNI call on the
   same thread. Device evidence is still pending.
@@ -422,15 +462,63 @@ Do not let reconnaissance agents edit, compile, execute tests or run scripts.
   saved-packet cap (`SEC-033`, `libi2pd/Streaming.cpp`).
 
 
-- Open review items `SEC-034` (FS empty-identity/private-file TOCTOU, LeaseSet
-  DH/PSK cleanup) and `CONC-029` (trusted-router vector race, Windows core-side
-  error send, blocking console connect) are documented but not fixed. Do not
-  treat them as resolved when adding a new caller.
+- The `FS::CreatePrivateFile` helper was removed after repository-wide caller
+  review: destination-key creation and router-key fallback now use
+  `AtomicWritePrivate`, and LeaseSet2 DH/PSK derivation buffers use scoped
+  cleansing. `HashedStorage::Path` now returns empty for an empty identifier;
+  callers still must provide canonical encoded identities. Preserve
+  no-follow/private atomic writes for new secrets. Direct log path sinks now
+  use a validated append handle: POSIX walks parent components with
+  `openat`/`O_NOFOLLOW`, validates inode/owner/link count, and applies mode
+  0600 through the descriptor; Windows rejects reparse ancestors and applies
+  a protected owner/SYSTEM DACL to the handle. `test-log-lifecycle` pins
+  symlink/hardlink rejection, file privacy and rotation behavior. This is
+  Implemented / static pending manual CI. Capacity-wide cleansing of secret
+  containers remains open under CRY-237.
+- The 2026-11-02 sanitizer batch found two test-fixture lifetime bugs where a
+  parser/decoder returned `string_view` into a temporary input (blocklist and
+  torrent DHT). Keep backing strings alive for the full lifetime of returned
+  views and search all tests for stored parser results from temporary strings.
+- Boost.Asio `io_context::poll()` drains ready handlers and can leave the
+  context stopped once no work remains. Before posting a later test operation,
+  restart only when `stopped()` is true; avoid fixed poll-count loops as a
+  substitute for executor lifecycle management. Audit every sequential
+  poll-driven fixture when one exposes a missed callback (`TF-049`).
+- A stopped member `io_context` may still own queued cancellation handlers.
+  Member timers must not strongly capture their owning destination: canceling
+  the timer and stopping its executor does not drain that queue. Capture a
+  weak owner, lock it before invoking the callback, and test shutdown by
+  dropping the external owner and observing weak-pointer expiry (`TF-056`).
+  Extend the same ownership-graph review to `post` handlers, `onDrop`
+  continuations, and stored request-completion functions. A pending request
+  owner should be weak when the request map belongs to that owner; request
+  callbacks complete with `nullptr` if the owner expires, and final pending
+  request completion belongs in destruction after weak callbacks can no longer
+  acquire it. Do not mutate an executor-owned request map from an external
+  `Stop()` path. Operation-owned socket handlers may retain their session until
+  actual I/O completion; classify that authority separately from a self-cycle.
+  The `ClientDestination` session snapshot post also uses a weak owner so a
+  queued snapshot cannot dereference a destroyed destination. Remaining I2CP
+  server raw-`this` stop/start posts need a separate lifecycle review; this
+  change does not prove those queues are drained. BOB's stored lookup/ping
+  callbacks must not retain the command session that owns the same destination;
+  BOB inbound lookups also weakly retain removable address receivers. SAM's
+  b33 datagram send continuation must weakly retain `DatagramDestination`,
+  because that destination owns the `LeaseSetDestination` whose request map
+  stores the callback. The BOB cached-ping post and pong/timeout handlers also
+  use weak session/streaming owners so a stopped queue or unanswered ping
+  cannot retain the command session cycle. `check-control-security.cmake` pins
+  these ownership seams; live protocol teardown evidence remains pending.
+- CONC-029's trusted-router vector race and core-side Error response are
+  implemented statically; the Windows console connect issue is still open.
+  Confirm each item against TODO and current source before describing it as
+  unresolved.
 
 ## Do not
 
 - Do not compile, run CTest, sanitizers, fuzzers, Gradle or project validators
-  locally.
+  locally. Run the shared agent-knowledge validator when required by the
+  repository maintenance contract; it does not build or execute product code.
 - Do not weaken bounds, signature/AEAD checks, `pledge`/`unveil`, sandbox
   policy, credential checks or resource limits.
 - Do not add `continue-on-error`, ignore a sanitizer finding or delete a test
@@ -465,3 +553,14 @@ Record the exact AGENTS.md `Tracking states` value and state which validations w
 - [Security audit matrix](references/audit-matrix.md)
 - [Global policy](../../../AGENTS.md)
 - [Memory-safety audit](../../../docs/security/memory-safety-2026.md)
+
+### Destructor-reachable service teardown review
+
+When a handler destructor calls its normal termination method, trace registry
+notification as well as resource closure. `SocketsPipe` and `SOCKSHandler`
+previously reached `shared_from_this()` after the final shared owner could be
+gone. Keep destructor cleanup independent of shared ownership, and guard
+optional owner notification and error-code socket closure. An unstarted pipe
+is a useful regression because no pending callback masks the final-owner
+case. This correction alone does not resolve cross-thread teardown races or
+attribute historical LeakSanitizer stacks.

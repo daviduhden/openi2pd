@@ -92,6 +92,49 @@ executing project code, or inspect a real private key.
 - Document a deliberate incompatibility; do not silently normalize it.
 
 ## Known issues and decisions
+
+- Family certificate loading has a related filename-count pitfall: count
+  successful map insertions, not attempted files. Do not copy reseed map
+  replacement into Families without invalidating RouterInfo's cached
+  FamilyID values; ID reuse could associate a router with another family.
+  Family trust revocation needs a coordinated identity/cache design.
+
+- Reseeder trust reload revokes the previous map before reading the
+  directory and publishes a fresh map of usable signer identities.
+  Malformed files do not count, and an unreadable directory must not
+  preserve removed anchors. Load/import remain serialized by the owner;
+  do not claim concurrent map replacement. NetDb normally constructs a
+  new Reseeder for each job, so distinguish repeated explicit reload
+  behavior from process-wide trust retention when documenting findings.
+
+- RedDSA signing checks both SHA-512 transcripts and their exact lengths,
+  nonce generation, scalar decoding/reduction and scalar arithmetic before
+  committing a signature. Scoped cleanup wipes nonce/digest buffers and
+  clear-frees all scalar intermediates; failure zeroes the output without
+  clobbering an overlapping message before hashing finishes. Preserve positive
+  and overlapping-buffer controls alongside missing-input regressions.
+  This wrapper does not make the shared MulB/Sum/Dbl/Normalize internals
+  allocator-failure safe: those unchecked point-arithmetic seams require a
+  separate fallible-interface refactor and provider/allocation fault tests.
+
+- Reference digest helpers should return fixed-size arrays for their
+  algorithm. The EdDSA fixture formerly passed a 32-byte output to SHA-512
+  and then to the 64-byte scalar decoder. Review both provider writes and
+  verifier reads when an ASan address lies near an adjacent stack object;
+  that object need not own the undersized buffer. Keep cross-platform
+  assertions open until CI reruns the corrected fixture.
+
+- Destination lookup reply keys/tags and publication tokens must check
+  `RAND_bytes` before registration or transmission. Lookup failure returns
+  through the existing completion path; publication failure schedules its
+  existing retry. Cleanse the temporary reply key on every exit, including
+  provider failure. When changing callback captures in the same scope,
+  reuse one weak owner declaration to avoid duplicate local declarations.
+- OpenSSL `BN_CTX_get()` is valid only inside a `BN_CTX_start()`/`BN_CTX_end()`
+  frame. The GOST RFC 7091 edge-case fixture omitted that frame and failed on
+  OpenBSD/LibreSSL; repository-wide search found no other direct test-side
+  `BN_CTX_get()` users. Keep temporary BIGNUM frames balanced before freeing
+  their context (`TF-057`, pending manual CI).
 - `Tag`/`IdentHash` expose only a const `data()`, while OpenSSL
   `SHA256`/`SHA1`/`SHA512` write through their third argument. Hash into a
   mutable array (or pass the object, whose non-const conversion exists) and
@@ -115,6 +158,14 @@ executing project code, or inspect a real private key.
   their documented fallback. RSA-4096 excess signing data is bounded.
 - `PrivateKeys::FromBuffer` uses a `ScopeExit` reset guard and dismisses it only
   on final success. Do not chain an already-offline signing key.
+- LeaseSet2 DH/PSK producer and reader paths use scoped cleansing for
+  `authInput`, HKDF `okm`, and the producer's `authSalt`. This does not cover
+  copied client-key containers or serialized buffers; keep those separate in
+  CRY-237 and review every early return when extending these paths.
+- The current published validation run reported an EdDSA verifier stack
+  underflow with unsymbolized frames. Preserve it as unresolved until exact
+  symbols identify the read; valid-signature verification is a positive
+  control and must remain covered under ASan.
 - Supported crypto floors are OpenSSL 3.0.2–4.0.x and LibreSSL 4.0+ with
   `TLS_method()`; CMake enforces only the **lower** floor (3.0.2 / 4.0), so
   "–4.0.x" is a support statement, not a configure guard. The probe cache is
