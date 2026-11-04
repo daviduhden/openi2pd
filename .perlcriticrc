@@ -13,4 +13,4 @@
 # file list and runs only when perlcritic is already installed.
 severity = 3
 theme = core
-verbose = 8
+verbose = %f:%l:%c: %m (%p)

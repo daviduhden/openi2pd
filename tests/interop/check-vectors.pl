@@ -497,7 +497,7 @@ if ( !defined $binary || !length $binary ) {
 else {
     print "differential cases executed: $executed\n";
 }
-exit( $failed ? 1 : 0 );
+exit( $failed || $unexpected_pass ? 1 : 0 );
 
 =head1 NAME
 
@@ -562,12 +562,12 @@ and checksum, the I2CP length framing, and raw text for SAM.
 =head1 OUTPUT AND EXIT STATUS
 
 One line per case (C<STATIC-OK>, C<PASS>, C<FAIL>, C<KNOWN-GAP> or
-C<UNEXPECTED-PASS>) followed by a summary. Exit 0 when no case failed, 1 when
-at least one case failed, and 2 for bad arguments, a rejected reference
-checkout or a selection that matches no case. A known gap and an unexpected
-pass are counted but do not change the status: removing a stale C<known_gap>
-marker stays a deliberate edit. Without C<--binary> the script states that
-differential cases were not executed.
+C<UNEXPECTED-PASS>) followed by a summary. Exit 0 when no case failed or
+unexpectedly passed, 1 when at least one case failed or unexpectedly passed,
+and 2 for bad arguments, a rejected reference checkout or a selection that
+matches no case. A known gap remains informational, while an unexpected pass
+requires review and removal of the stale C<known_gap> marker. Without
+C<--binary> the script states that differential cases were not executed.
 
 =head1 DEPENDENCIES
 

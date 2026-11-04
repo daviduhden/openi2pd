@@ -66,8 +66,30 @@ sub run_checker {
         $text .= $chunk;
     }
     close $output;
-    waitpid( $pid, 0 );
-    return ( $? >> 8, $text );
+    my $waited;
+    my $wait_error = 0;
+    while (1) {
+        $waited = waitpid( $pid, 0 );
+        $wait_error = 0 + $!;
+        last if $waited == $pid;
+        next if $waited == -1 && $! == EINTR;
+        last;
+    }
+    my ( $code, $kind, $detail ) = decode_wait_status(
+        $pid, $waited, $?, $wait_error
+    );
+    $text .= "run_checker: $kind ($detail)\n" if $kind ne 'exit';
+    return ( $code, $text, $kind, $detail );
+}
+
+sub decode_wait_status {
+    my ( $pid, $waited, $status, $wait_error ) = @_;
+    return ( 255, 'waitpid-error', $wait_error ) if $waited == -1;
+    return ( 255, 'waitpid-error', 0 ) if $waited != $pid;
+    return ( 128 + WTERMSIG($status), 'signal', WTERMSIG($status) )
+      if WIFSIGNALED($status);
+    return ( WEXITSTATUS($status), 'exit', 0 ) if WIFEXITED($status);
+    return ( 255, 'waitpid-error', 0 );
 }
 
 my $link_checker =
@@ -756,6 +778,78 @@ workflow_crash_fixtures($root);
     is( $code, 0, 'doc navigation checker accepts a listed nested page' );
 }
 
+# --- check-vectors unexpected pass exit status ----------------------------
+SKIP: {
+    skip 'the temporary executable harness uses POSIX shebang execution', 3
+      if $^O eq 'MSWin32';
+    my $tmp     = tempdir( CLEANUP => 1 );
+    my $vectors = File::Spec->catdir( $tmp, 'vectors' );
+    my $input   = "SAM fixture\n";
+    my $case_id = 'sam-unexpected-pass';
+    my $case = File::Spec->catfile( $vectors, "$case_id.case.json" );
+    my $payload = File::Spec->catfile( $vectors, 'input.txt' );
+    my $harness = File::Spec->catfile( $tmp, 'vector-harness.pl' );
+    my $vector_checker =
+      File::Spec->catfile( $root, 'tests', 'interop', 'check-vectors.pl' );
+
+    write_file( $payload, $input );
+    write_file(
+        $case,
+        JSON::PP->new->canonical->encode(
+            {
+                id          => $case_id,
+                kind        => 'sam',
+                input       => 'input.txt',
+                format      => 'raw',
+                sha256      => sha256_hex($input),
+                expectation => 'accept',
+                expect      => { status => 'accepted' },
+                provenance  => {
+                    java => [ { path => 'Fixture.java', line => 1,
+                        contains => 'fixture' } ],
+                    spec => ['fixture']
+                },
+                known_gap => 'intentional regression fixture'
+            }
+        ) . "\n"
+    );
+    write_file( $harness,
+        "#!$^X\nprint '{\"status\":\"accepted\"}';\n" );
+    chmod 0700, $harness or die "chmod $harness: $!\n";
+
+    my ( $code, $out, $kind ) = run_checker(
+        $vector_checker, '--vectors', $vectors, '--binary', $harness
+    );
+    is( $code, 1, 'vector checker fails when a known gap unexpectedly passes' );
+    is( $kind, 'exit', 'unexpected pass is a normal checker failure' );
+    like( $out, qr/UNEXPECTED-PASS \Q$case_id\E/,
+        'unexpected pass diagnostic names the fixture' );
+}
+
+# --- child wait status decoding -------------------------------------------
+{
+    my ( $code, $kind, $detail ) =
+      decode_wait_status( 17, -1, 0, ECHILD );
+    is( $code, 255, 'waitpid failure maps to a non-zero status' );
+    is( $kind, 'waitpid-error', 'waitpid failure has its own status kind' );
+    is( $detail, ECHILD, 'waitpid failure retains the errno value' );
+
+    SKIP: {
+        skip 'Perl signal termination status is not portable to Win32', 3
+          if $^O eq 'MSWin32';
+        my $tmp = tempdir( CLEANUP => 1 );
+        my $signal_child = File::Spec->catfile( $tmp, 'signal-child.pl' );
+        write_file( $signal_child, "kill 'TERM', \$\$;\n" );
+        my ( $signal_code, $out, $signal_kind, $signal ) =
+          run_checker($signal_child);
+        isnt( $signal_code, 0,
+            'signal-terminated child is not reported as successful' );
+        is( $signal_kind, 'signal',
+            'run_checker distinguishes signal termination' );
+        cmp_ok( $signal, '>', 0, 'signal number is retained for diagnostics' );
+    }
+}
+
 done_testing();
 
 =head1 NAME
@@ -818,16 +912,29 @@ already carries; it must accept a block with no C<@param>, a definition that
 owns the parameter contract, and a same-named local helper with a different
 parameter count.
 
+=item *
+
+F<tests/interop/check-vectors.pl> must return failure when a differential
+case marked C<known_gap> unexpectedly matches its expected value. A temporary
+SAM fixture and harness isolate this exit-status contract from the checked-in
+vector corpus.
+
+=item *
+
+C<run_checker> must distinguish normal exit, signal termination and
+C<waitpid> failure. The suite uses a signal-terminated Perl child and a
+synthetic C<ECHILD> decoder input to pin both non-normal paths.
+
 =back
 
 =head1 OUTPUT AND EXIT STATUS
 
 TAP on STDOUT; the process exits non-zero when an assertion fails. Each
-checker runs as a child Perl process, and its exit code and combined
-STDOUT/STDERR are captured by C<run_checker>. The exit code is the child's
-status byte, C<<< $? >> 8 >>>, which is 0 for a child that terminated on a
-signal, so a crashing checker can look like a successful one; the diagnostic
-assertion is what catches that case in practice.
+checker runs as a child Perl process, and its status and combined
+STDOUT/STDERR are captured by C<run_checker>. Normal exits retain their exit
+code; signal termination is reported as C<128 + signal>, and wait failures
+return 255 with a distinct status kind and errno detail. Interrupted waits
+retry on C<EINTR>.
 
 The child's STDERR is merged into the captured STDOUT stream, because the
 diagnostics under test are written to STDERR while the summaries go to
@@ -838,7 +945,8 @@ every diagnostic assertion as missing.
 =head1 DEPENDENCIES
 
 Core Perl with Test::More, File::Temp, File::Path, File::Spec, File::Basename,
-FindBin and IPC::Open3. No compiler, build or network access is used; the only
+File::Copy, File::Find, FindBin and IPC::Open3. No compiler, build or network
+access is used; the only
 executed programs are the checkers under test.
 
 =head1 PORTABILITY
