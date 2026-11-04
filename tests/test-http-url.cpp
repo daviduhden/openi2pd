@@ -11,12 +11,26 @@
  */
 
 #include <cassert>
+#include <initializer_list>
 #include "HTTP.h"
 
 using namespace i2p::http;
 
 int main ()
 {
+	// An authority-only IPv6 literal must round-trip without duplicating
+	// its closing bracket, including when user information precedes it.
+	for (const auto input : { "http://[2001:db8::1]", "https://user:pass@[::1]" })
+	{
+		URL literal;
+		assert (literal.parse (input));
+		assert (literal.ipv6);
+		assert (literal.host == (literal.user.empty () ? "2001:db8::1" : "::1"));
+		assert (literal.port == 0);
+		assert (literal.path.empty ());
+		assert (literal.to_string () == input);
+	}
+
 	std::map<std::string, std::string> params;
 	URL * url;
 
