@@ -1798,3 +1798,203 @@ foreach(required IN ITEMS "LoadCertificate (file, loaded);" "m_SigningKeys.swap 
     message(FATAL_ERROR "Reseed staged trust reload missing: ${required}")
   endif()
 endforeach()
+
+# SSU2 encryption results must gate transmission, and every frame must be
+# bounded before a stack buffer is sized from it.
+file(READ "${PROJECT_ROOT}/libi2pd/SSU2OutOfSession.cpp" ssu2_oos_source)
+foreach(required IN ITEMS "if (!i2p::crypto::AEADChaCha20Poly1305 ("
+    "SSU2: PeerTest payload encryption failed" "SSU2: HolePunch payload encryption failed"
+    "sizeof (payload)")
+  string(FIND "${ssu2_oos_source}" "${required}" ssu2_oos_contract)
+  if(ssu2_oos_contract EQUAL -1)
+    message(FATAL_ERROR "SSU2 out-of-session encryption must fail closed: ${required}")
+  endif()
+endforeach()
+file(READ "${PROJECT_ROOT}/libi2pd/SSU2Session.cpp" ssu2_session_source)
+foreach(required IN ITEMS "SSU2: TokenRequest payload encryption failed"
+    "SSU2: Retry payload encryption failed" "sizeof (payload)")
+  string(FIND "${ssu2_session_source}" "${required}" ssu2_session_contract)
+  if(ssu2_session_contract EQUAL -1)
+    message(FATAL_ERROR "SSU2 session encryption must fail closed: ${required}")
+  endif()
+endforeach()
+file(READ "${PROJECT_ROOT}/libi2pd/SSU2.cpp" ssu2_source)
+foreach(required IN ITEMS "if (len > SSU2_MAX_PACKET_SIZE)" "SSU2: Oversized packet")
+  string(FIND "${ssu2_source}" "${required}" ssu2_bound_contract)
+  if(ssu2_bound_contract EQUAL -1)
+    message(FATAL_ERROR "SSU2 must reject an oversized frame before parsing: ${required}")
+  endif()
+endforeach()
+
+# X25519 is mandatory for every transport; a capability row without a
+# real key-generation probe is a false claim.
+file(READ "${PROJECT_ROOT}/libi2pd/Crypto.cpp" crypto_source)
+foreach(required IN ITEMS "bool FetchX25519 ()" "capabilities.x25519 = FetchX25519 ();"
+    "|| !capabilities.x25519")
+  string(FIND "${crypto_source}" "${required}" crypto_x25519_contract)
+  if(crypto_x25519_contract EQUAL -1)
+    message(FATAL_ERROR "X25519 capability probe missing: ${required}")
+  endif()
+endforeach()
+
+# Stopped datagram sessions must release queued I2NP messages.
+file(READ "${PROJECT_ROOT}/libi2pd/Datagram.cpp" datagram_source)
+foreach(required IN ITEMS "void DatagramSession::Stop ()" "m_SendQueue.clear ();")
+  string(FIND "${datagram_source}" "${required}" datagram_stop_contract)
+  if(datagram_stop_contract EQUAL -1)
+    message(FATAL_ERROR "Stopped datagram session must clear its send queue: ${required}")
+  endif()
+endforeach()
+
+# Routine resume persistence is throttled while explicit transitions remain
+# immediate; swarm availability is a clamped union, never a local claim.
+file(READ "${PROJECT_ROOT}/libi2pd_client/Torrents.cpp" torrents_source)
+foreach(required IN ITEMS "void Torrent::UpdateTorrentResumeFile"
+    "current->UpdateTorrentResumeFile ();"
+    "std::vector<uint8_t> Torrent::CreateAvailableBitfield () const"
+    "bool Torrent::InvalidateFilePieces")
+  string(FIND "${torrents_source}" "${required}" torrents_contract)
+  if(torrents_contract EQUAL -1)
+    message(FATAL_ERROR "Torrent persistence/availability contract missing: ${required}")
+  endif()
+endforeach()
+file(READ "${PROJECT_ROOT}/libi2pd_client/Torrents.h" torrents_header_source)
+foreach(required IN ITEMS "inline void MergeAvailableBitfield" "available[index >> 3]")
+  string(FIND "${torrents_header_source}" "${required}" torrents_header_contract)
+  if(torrents_header_contract EQUAL -1)
+    message(FATAL_ERROR "Torrent availability merge contract missing: ${required}")
+  endif()
+endforeach()
+file(READ "${PROJECT_ROOT}/tui/main.cpp" tui_main_source)
+foreach(required IN ITEMS "TorrentRunState ClassifyTorrentStatus (std::string_view status)"
+    "{ \"queued-verify\", TorrentRunState::Queued }" "case TorrentRunState::Unknown:")
+  string(FIND "${tui_main_source}" "${required}" tui_status_contract)
+  if(tui_status_contract EQUAL -1)
+    message(FATAL_ERROR "TUI torrent status must use the closed token classifier: ${required}")
+  endif()
+endforeach()
+
+# OpenBSD pledge policies must never grant exec or error. The names are
+# absent from the promise table and rejected by the builder, parser and
+# applier; the supervisor only promotes pre-created workers.
+file(READ "${PROJECT_ROOT}/privsep/OpenBSDSandbox.cpp" openbsd_policy_source)
+foreach(required IN ITEMS
+    "constexpr std::string_view FORBIDDEN_PLEDGE_PROMISES[] = { \"exec\", \"error\" };"
+    "if (IsForbiddenPledgePromiseName (token))"
+    "storage broker role is disabled: it requires the forbidden exec promise")
+  string(FIND "${openbsd_policy_source}" "${required}" openbsd_forbidden_contract)
+  if(openbsd_forbidden_contract EQUAL -1)
+    message(FATAL_ERROR "OpenBSD pledge must reject exec/error: ${required}")
+  endif()
+endforeach()
+if(openbsd_policy_source MATCHES "AppendPromise \\(policy\\.pledge, \"(exec|error)\"\\)")
+  message(FATAL_ERROR "OpenBSD policy builder must never append exec or error")
+endif()
+if(openbsd_policy_source MATCHES "add \\(\"(exec|error)\"\\)")
+  message(FATAL_ERROR "OpenBSD pledge window must never add exec or error")
+endif()
+file(READ "${PROJECT_ROOT}/privsep/Supervisor.cpp" openbsd_supervisor_source)
+if(openbsd_supervisor_source MATCHES "AppendPromise \\(policy\\.pledge, \"(exec|error)\"")
+  message(FATAL_ERROR "OpenBSD supervisor must never append exec or error")
+endif()
+foreach(required IN ITEMS "reserveWorker" "ForbidProcessCreation ();"
+    "pre-created log reserve exhausted")
+  string(FIND "${openbsd_supervisor_source}" "${required}" supervisor_reserve_contract)
+  if(supervisor_reserve_contract EQUAL -1)
+    message(FATAL_ERROR "OpenBSD supervisor must use a pre-created reserve: ${required}")
+  endif()
+endforeach()
+file(READ "${PROJECT_ROOT}/daemon/UnixDaemon.cpp" openbsd_daemon_source)
+foreach(required IN ITEMS "BuildOpenBSDPledgePromises (i2p::privsep::OpenBSDPledgePhase::Startup"
+    "Daemon: first pledge:" "Daemon: runtime pledge:")
+  string(FIND "${openbsd_daemon_source}" "${required}" openbsd_daemon_contract)
+  if(openbsd_daemon_contract EQUAL -1)
+    message(FATAL_ERROR "OpenBSD first/runtime pledge missing: ${required}")
+  endif()
+endforeach()
+if(openbsd_daemon_source MATCHES "execWorkers|credentialDrop")
+  message(FATAL_ERROR "OpenBSD core must not request exec or credential-drop pledges")
+endif()
+
+# Both core pledge phases use the same pinned null execpromises value.
+foreach(required IN ITEMS
+    "pledge (startupPromises.c_str (), i2p::privsep::OPENBSD_PLEDGE_EXECPROMISES)"
+    "pledge (pledgePromises.c_str (), i2p::privsep::OPENBSD_PLEDGE_EXECPROMISES)")
+  string(FIND "${openbsd_daemon_source}" "${required}" core_pledge_contract)
+  if(core_pledge_contract EQUAL -1)
+    message(FATAL_ERROR "Core pledge must pin null execpromises: ${required}")
+  endif()
+endforeach()
+
+# Promotion must not erase a successor's per-address handshake slot.
+string(FIND "${ntcp2_source}" "bool NTCP2Server::AddNTCP2Session" ntcp2_add_begin)
+string(FIND "${ntcp2_source}" "void NTCP2Server::RemoveNTCP2Session" ntcp2_add_end)
+math(EXPR ntcp2_add_length "${ntcp2_add_end} - ${ntcp2_add_begin}")
+string(SUBSTRING "${ntcp2_source}" ${ntcp2_add_begin} ${ntcp2_add_length} ntcp2_add_source)
+if(NOT ntcp2_add_source MATCHES "pending->second == session"
+    OR ntcp2_add_source MATCHES "m_PendingIncomingSessions.erase \\(session->")
+  message(FATAL_ERROR "NTCP2 promotion must release only its own pending slot")
+endif()
+
+# Reuse this registered source-contract lane for completion ownership.
+include("${PROJECT_ROOT}/tests/check-torrent-completion-lifetime.cmake")
+
+# Retiring a transient document grant must share mapping authority.
+foreach(required IN ITEMS "acquireTemporaryGrant" "releaseTemporaryGrant"
+    "new MappingAuthority(temporaryGrants::drain)"
+    "temporaryGrants.acquire" "temporaryGrants.retire"
+    "temporaryGrants.deferRelease")
+  string(FIND "${grant_source}" "${required}" transient_grant_contract)
+  if(transient_grant_contract EQUAL -1)
+    message(FATAL_ERROR "SAF transient grant authority missing: ${required}")
+  endif()
+endforeach()
+
+file(READ "${PROJECT_ROOT}/android/app/src/main/java/org/openi2pd/router/TorrentSafGrantLeases.java" lease_source)
+foreach(required IN ITEMS "MAX_LEASES = 32" "MAX_URI_LENGTH = 8192"
+    "token.owner == this" "compareAndSet(false, true)"
+    "int missing = requested & ~retained.getAsInt();"
+    "entry.ownedModes |= missing" "entry.ownedModes |= modes"
+    "!entry.mapped.getAsBoolean()" "entry.release.accept(entry.ownedModes)")
+  string(FIND "${lease_source}" "${required}" lease_contract)
+  if(lease_contract LESS 0)
+    message(FATAL_ERROR "SAF lease authority missing: ${required}")
+  endif()
+endforeach()
+
+include("${PROJECT_ROOT}/tests/check-datastorage-reply-authority.cmake")
+
+file(READ "${PROJECT_ROOT}/libi2pd/util.cpp" runnable_source)
+file(READ "${PROJECT_ROOT}/libi2pd/util.h" runnable_header)
+foreach(required IN ITEMS "m_RunWork.emplace (m_Service.get_executor ());"
+    "m_RunWork.reset ();" "m_Service.run ();\n\t\t\t\tbreak;")
+  string(FIND "${runnable_source}" "${required}" runnable_contract)
+  if(runnable_contract LESS 0)
+    message(FATAL_ERROR "RunnableService idle/drain authority missing: ${required}")
+  endif()
+endforeach()
+if(NOT runnable_header MATCHES "std::optional<WorkGuard> m_RunWork")
+  message(FATAL_ERROR "RunnableService must own its per-run work guard")
+endif()
+
+include("${PROJECT_ROOT}/tests/check-ntp-executor-lifecycle.cmake")
+
+foreach(operation IN ITEMS acquireTemporaryGrant releaseTemporaryGrant)
+  string(REGEX MATCHALL "TorrentSafStorage[.]${operation}[(]" lease_calls "${android_router_service}")
+  list(LENGTH lease_calls lease_call_count)
+  if(NOT lease_call_count EQUAL 3)
+    message(FATAL_ERROR "SAF import/create/export must all use ${operation} leases")
+  endif()
+endforeach()
+
+include("${PROJECT_ROOT}/tests/check-log-start-publication.cmake")
+include("${PROJECT_ROOT}/tests/check-ntcp2-initial-deadline.cmake")
+
+include("${PROJECT_ROOT}/tests/check-saf-creation-budget.cmake")
+
+include("${PROJECT_ROOT}/tests/check-torrent-upload-loads.cmake")
+
+include("${PROJECT_ROOT}/tests/check-ratchet-pending-ownership.cmake")
+include("${PROJECT_ROOT}/tests/check-registration-diagnostics.cmake")
+include("${PROJECT_ROOT}/tests/check-torrent-upload-slots.cmake")
+include("${PROJECT_ROOT}/tests/check-android-dialog-authority.cmake")
