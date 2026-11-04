@@ -100,6 +100,10 @@ the text crosses a protocol/IPC boundary.
   represented by an empty locale list.
 
 ## Known issues and decisions
+- Decode harvested C++ escapes in one left-to-right pass. Sequential global
+  replacements can turn a literal backslash-plus-n into a real newline and
+  merge distinct catalog keys. Keep the maintenance-checker positive pair
+  and duplicate-key negative fixture together when changing this decoder.
 
 - In variadic `FormatPrintf`, keep the zero-argument `if constexpr` branch paired
   with an `else` containing every `snprintf` call. Statements after an

@@ -69,10 +69,13 @@ sub read_file {
 
 sub unescape {
     my ($value) = @_;
-    $value =~ s/\\n/\n/g;
-    $value =~ s/\\t/\t/g;
-    $value =~ s/\\"/"/g;
-    $value =~ s/\\\\/\\/g;
+
+    # Decode the C++ escape sequences in one left-to-right pass. Ordered
+    # global substitutions cannot be correct: replacing "\n" first turns
+    # the literal "\\n" (a backslash and an 'n') into a newline, so an
+    # escaped key collides with the key that really carries a newline.
+    my %decode = ( n => "\n", t => "\t", '"' => '"', '\\' => '\\' );
+    $value =~ s/\\([nt"\\])/$decode{$1}/ge;
     return $value;
 }
 
@@ -373,9 +376,11 @@ The catalogs are C++ sources holding a C<LocaleStrings> initialiser and a
 plural map. Entries are read textually: adjacent string literals are
 concatenated before comparison, because the compiler joins them into one key
 and a translation stored against a single fragment would never match.
-Harvested call sites are C<tr(...)>, C<SetStatus(...)>,
-C<BeginPrompt(...)> and, in F<tui/main.cpp> only, the label helpers
-C<show(...)> and C<add(...)>.
+Backslash escapes are decoded in one left-to-right pass, so a key whose
+literal text carries a backslash followed by the letter C<n> stays distinct
+from a key that carries a real newline character. Harvested call sites are
+C<tr(...)>, C<SetStatus(...)>, C<BeginPrompt(...)> and, in F<tui/main.cpp>
+only, the label helpers C<show(...)> and C<add(...)>.
 
 =head1 OUTPUT AND EXIT STATUS
 

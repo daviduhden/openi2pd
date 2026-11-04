@@ -104,6 +104,8 @@ my $javadoc_checker = File::Spec->catfile( $root, 'android', 'tools',
     'check-android-javadoc.pl' );
 my $doxygen_checker = File::Spec->catfile( $root, 'tools', 'scripts',
     'check-doxygen-params.pl' );
+my $i18n_checker = File::Spec->catfile( $root, 'i18n',
+    'check-i18n-catalogs.pl' );
 
 # Crash diagnostics must reject commands that expose process arguments
 # or memory. Reproduce only the checker and its workflow inputs.
@@ -731,6 +733,57 @@ workflow_crash_fixtures($root);
     like( $out, qr{\Q$dirs{ru}\E}, 'CRLF diagnostic names the locale' );
 }
 
+# --- i18n catalog escape decoding -----------------------------------------
+# One left-to-right pass keeps a literal backslash-n key, a key with a
+# real newline and a key with a backslash followed by a newline as three
+# distinct entries. The previous ordered substitutions decoded the first
+# form into a backslash-newline and merged it with the third, so this
+# fixture fails on that implementation and still rejects a duplicate.
+{
+    my $tmp       = tempdir( CLEANUP => 1 );
+    my $backslash = '\\';
+    my $escaped_key =
+      '"probe' . ( $backslash x 2 ) . 'nkey"';
+    my $newline_key = '"probe' . $backslash . 'nkey"';
+    my $backslash_newline_key =
+      '"probe' . ( $backslash x 3 ) . 'nkey"';
+    my $entries =
+        "    { $escaped_key, \"translated\" },\n"
+      . "    { $newline_key, \"translated\" },\n"
+      . "    { $backslash_newline_key, \"translated\" },\n";
+
+    for my $name (qw(Spanish.cpp Russian.cpp ChineseSimplified.cpp)) {
+        write_file(
+            File::Spec->catfile( $tmp, 'i18n', $name ),
+            "static const LocaleStrings strings {\n" . $entries . "};\n"
+        );
+    }
+
+    # The checker also harvests translatable call sites; an empty
+    # source is enough and contributes no keys.
+    for my $source ( 'tui/main.cpp', 'libi2pd_client/HTTPProxy.cpp',
+        'daemon/Daemon.cpp', 'tools/autoconf_i2pd.cpp' )
+    {
+        write_file( File::Spec->catfile( $tmp, split m{/}, $source ),
+            "// no translatable literal\n" );
+    }
+
+    my ( $code, $out ) = run_checker( $i18n_checker, '--root', $tmp );
+    is( $code, 0, 'i18n checker keeps escaped and newline keys distinct' );
+    like( $out, qr/3 keys/, 'i18n checker counts all three distinct keys' );
+
+    write_file(
+        File::Spec->catfile( $tmp, 'i18n', 'Spanish.cpp' ),
+        "static const LocaleStrings strings {\n"
+          . $entries
+          . "    { $escaped_key, \"translated\" },\n"
+          . "};\n"
+    );
+    ( $code, $out ) = run_checker( $i18n_checker, '--root', $tmp );
+    is( $code, 1, 'i18n checker still rejects a duplicate key' );
+    like( $out, qr/duplicate key/, 'duplicate-key diagnostic is emitted' );
+}
+
 # --- nested documentation pages -------------------------------------------
 {
     my $tmp  = tempdir( CLEANUP => 1 );
@@ -911,6 +964,13 @@ C<.cpp> definition that repeats the C<@param> block its header declaration
 already carries; it must accept a block with no C<@param>, a definition that
 owns the parameter contract, and a same-named local helper with a different
 parameter count.
+
+=item *
+
+F<i18n/check-i18n-catalogs.pl> must decode C++ escapes in one pass: a literal
+backslash-n key, a real-newline key and a backslash-newline key stay distinct
+entries (the previous ordered substitutions merged two of them), and a genuine
+duplicate key is still rejected.
 
 =item *
 
