@@ -24,6 +24,10 @@
 #include <boost/asio.hpp>
 
 #include "SAM.h"
+#include "ClientContext.h"
+#include "Config.h"
+#include "Crypto.h"
+#include "Modern.h"
 
 namespace
 {
@@ -44,6 +48,9 @@ struct TestSession : SAMSession
 
 int main ()
 {
+	i2p::config::Init ();
+	if (!i2p::crypto::InitCrypto (false)) return 1;
+	auto cryptoCleanup = i2p::modern::ScopeExit ([] { i2p::crypto::TerminateCrypto (); });
 	// The control buffer must hold the largest SAM RAW SEND frame (32 KiB
 	// payload plus a base64 destination/command), and the receive buffer
 	// must hold a 32 KiB datagram plus its header.
@@ -113,6 +120,40 @@ int main ()
 	// queue must keep the copied bytes alive after the caller's strings
 	// are gone.
 	bridge.Start ();
+	// Exercise the insertion itself rather than the socket's preliminary
+	// ID lookup: a competing creator may win after that lookup. Rejection
+	// must neither acquire an extra reference nor return the incumbent.
+	{
+		auto completed = std::make_shared<std::promise<void>> ();
+		auto finished = completed->get_future ();
+		boost::asio::post (bridge.GetService (), [&bridge, completed]
+			{
+				auto keys = i2p::data::PrivateKeys::CreateRandomKeys (
+					i2p::data::SIGNING_KEY_TYPE_EDDSA_SHA512_ED25519,
+					i2p::data::CRYPTO_KEY_TYPE_ECIES_X25519_AEAD, true);
+				auto destination = context.CreateNewLocalDestination (bridge.GetService (), keys, false);
+				destination->Acquire (); // independent fixture owner
+				const auto baseline = destination->GetRefCounter ();
+				i2p::util::Mapping params;
+				auto first = bridge.CreateSession ("duplicate-create", SAMSessionType::eSAMSessionTypeStream,
+					keys.ToBase64 (), params);
+				assert (first);
+				assert (destination->GetRefCounter () == baseline + 1);
+				auto duplicate = bridge.CreateSession ("duplicate-create", SAMSessionType::eSAMSessionTypeMaster,
+					keys.ToBase64 (), params);
+				assert (!duplicate);
+				assert (duplicate.error () == SAMSessionCreateError::DuplicateId);
+				assert (destination->GetRefCounter () == baseline + 1);
+				assert (bridge.FindSession ("duplicate-create") == *first);
+				assert ((*first)->Type == SAMSessionType::eSAMSessionTypeStream);
+				bridge.CloseSession ("duplicate-create");
+				assert (destination->GetRefCounter () == baseline);
+				assert (destination->Release () == 0);
+				context.DeleteLocalDestination (destination);
+				completed->set_value ();
+			});
+		assert (finished.wait_for (std::chrono::seconds (5)) == std::future_status::ready);
+	}
 	{
 		boost::asio::ip::udp::socket receiver (
 			bridge.GetService (), boost::asio::ip::udp::endpoint (boost::asio::ip::make_address ("127.0.0.1"), 0));

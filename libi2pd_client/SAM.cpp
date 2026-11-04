@@ -159,7 +159,8 @@ namespace client
 	{
 		// cancel() only aborts the wait; the handler still runs and returns
 		// on the aborted error code, so a closed/reused timer cannot fire.
-		// The supported Boost range has no error_code overload on this timer.
+		// Use non-deprecated cancel() across the supported Boost range;
+		// newer versions remove the timer's error-code overload.
 		m_ControlDeadline.cancel ();
 	}
 
@@ -797,10 +798,11 @@ namespace client
 		}
 
 		// create destination
-		auto session = m_Owner.CreateSession (
+		auto created = m_Owner.CreateSession (
 			id, type, SAMCommandEquals (destination, SAM_VALUE_TRANSIENT) ? "" : destination, params);
-		if (session)
+		if (created)
 		{
+			auto session = *created;
 			m_SocketType = SAMSocketType::eSAMSocketTypeSession;
 			session->FromPort = fromPort;
 			session->ToPort = toPort;
@@ -851,7 +853,8 @@ namespace client
 			}
 		}
 		else
-			SendMessageReply (SAM_SESSION_CREATE_DUPLICATED_DEST, true);
+			SendMessageReply (created.error () == SAMSessionCreateError::DuplicateId
+				? SAM_SESSION_CREATE_DUPLICATED_ID : SAM_SESSION_CREATE_DUPLICATED_DEST, true);
 	}
 
 	void SAMSocket::HandleSessionReadinessCheckTimer (const boost::system::error_code & ecode)
@@ -2752,20 +2755,20 @@ namespace client
 		if (ecode != boost::asio::error::operation_aborted) Accept ();
 	}
 
-	std::shared_ptr<SAMSession> SAMBridge::CreateSession (
+	SAMSessionCreateResult SAMBridge::CreateSession (
 		std::string_view id, SAMSessionType type, std::string_view destination, const i2p::util::Mapping & params)
 	{
 		std::shared_ptr<ClientDestination> localDestination = nullptr;
 		if (destination != "")
 		{
 			i2p::data::PrivateKeys keys;
-			if (!keys.FromBase64 (destination)) return nullptr;
+			if (!keys.FromBase64 (destination)) return i2p::unexpected (SAMSessionCreateError::InvalidDestination);
 			localDestination = i2p::client::context.FindLocalDestination (keys.GetPublic ()->GetIdentHash ());
 			if (localDestination && localDestination->GetRefCounter () <= 0)
 			{
 				LogPrint (eLogError, "SAM: Orphaned destination ", keys.GetPublic ()->GetIdentHash ().ToBase32 (),
 					".  Try later");
-				return nullptr;
+				return i2p::unexpected (SAMSessionCreateError::InvalidDestination);
 			}
 			if (!localDestination)
 				localDestination = m_IsSingleThread
@@ -2794,16 +2797,18 @@ namespace client
 		}
 		if (localDestination)
 		{
-			localDestination->Acquire ();
-			auto session = (type == SAMSessionType::eSAMSessionTypeMaster)
+			std::shared_ptr<SAMSession> session = (type == SAMSessionType::eSAMSessionTypeMaster)
 				? std::make_shared<SAMMasterSession> (*this, id, localDestination)
 				: std::make_shared<SAMSingleSession> (*this, id, type, localDestination);
 			std::unique_lock<std::mutex> l (m_SessionsMutex);
 			auto ret = m_Sessions.emplace (id, session);
-			if (!ret.second) LogPrint (eLogWarning, "SAM: Session ", id, " already exists");
-			return ret.first->second;
+			if (!ret.second) return i2p::unexpected (SAMSessionCreateError::DuplicateId);
+			// Transfer one destination reference only after winning insertion.
+			// A losing control socket must never adopt the incumbent session.
+			localDestination->Acquire ();
+			return session;
 		}
-		return nullptr;
+		return i2p::unexpected (SAMSessionCreateError::InvalidDestination);
 	}
 
 	bool SAMBridge::AddSession (std::shared_ptr<SAMSession> session)

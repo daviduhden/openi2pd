@@ -42,6 +42,7 @@
 #include "Destination.h" // PROTOCOL_TYPE_* for the SAM 3.3 style listen protocol
 #include "Datagram.h"
 #include "Destination.h"
+#include "Expected.h"
 
 namespace i2p
 {
@@ -1150,6 +1151,9 @@ namespace client
 		void StopLocalDestination ();
 	};
 
+	enum class SAMSessionCreateError { InvalidDestination, DuplicateId };
+	using SAMSessionCreateResult = i2p::expected<std::shared_ptr<SAMSession>, SAMSessionCreateError>;
+
 	/// Owns the SAM listener, datagram endpoint and session/socket
 	/// registries. Destination callbacks marshal socket work onto the SAM
 	/// service thread.
@@ -1175,13 +1179,13 @@ namespace client
 		/// @param destination base64 private keys, or empty for a transient
 		///   identity created from SIGNATURE_TYPE/CRYPTO_TYPE
 		/// @param params other options, applied only to a new destination
-		/// @return nullptr when the key material does not parse or names an
-		///   orphaned destination; the caller answers SESSION STATUS instead.
+		/// @return a newly registered session, or a typed failure for invalid
+		///   destination material/orphaned state or an occupied session ID.
 		///
 		/// The destination reference of the returned session is acquired here
 		/// and released by SAMSession::StopLocalDestination(). Key material
 		/// and the options mapping are never logged.
-		std::shared_ptr<SAMSession> CreateSession (std::string_view id, SAMSessionType type,
+		SAMSessionCreateResult CreateSession (std::string_view id, SAMSessionType type,
 			std::string_view destination, // empty string means transient
 			const i2p::util::Mapping & params);
 		/// Insert a session under its ID and report whether the ID was free.
