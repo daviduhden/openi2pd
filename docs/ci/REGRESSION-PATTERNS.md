@@ -311,3 +311,12 @@ queued tasks, rejects excess work and never runs provider code on the UI
 submitter. The prepared JVM test holds the worker behind a latch and checks
 rejection, recovery and shutdown. Interruption remains a request, not proof
 that a provider stopped.
+
+## Reused startup publication across generations
+
+A condition-variable predicate left true after join can authorize the next
+worker before its own running state is published. Trace reset, launch,
+publication and first enqueue as separate events. Re-arm only after the old
+worker has joined, under the same lock used by its wait. The logger's TF-070
+fix prepares both repeated restart/destination assertions and a compile-free
+source-order guard; neither substitutes for manual sanitizer execution.

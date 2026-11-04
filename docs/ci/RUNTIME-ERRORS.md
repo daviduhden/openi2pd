@@ -672,3 +672,71 @@ reproduction of the three affected MSVC images. It does not dump memory or
 request arguments/locals. Missing installed tools fail that optional step;
 ordinary CTest remains authoritative. No new run has executed this revision,
 and no historical status is reclassified as resolved by this preparation.
+
+### 2026-11-04 static leak attribution
+
+The ASan `test-i2ptunnel-stop`/`test-i2ptunnel-targets` reports retain
+65,536-byte blocks allocated by `deflateInit2`; those blocks end only in
+`GzipInflator`/`GzipDeflator` destructors. The confirmed structural cycle is
+`StreamingDestination::m_Streams` holding strong `Stream` while
+`Stream::m_LocalDestinationOwner` holds the destination, so an unregistered
+stream keeps both alive to `exit()`. This is a product lifetime defect, not
+only a fixture issue; breaking the reverse edge or unregistering in
+`Stream::CleanUp()` is the durable fix. The three fixture targets must also
+close every connection they open. `test-eciesx25519-ratchet-session` retains
+a separate 6,880-byte/24-allocation owner and is not explained by this cycle.
+No sanitizer run has executed the proposed correction; status remains open.
+
+### RT-031 static executor follow-up (2026-11-04)
+
+Validation run 41364867079, TSan job 125022771257, SHA
+56f17c0f47a3d1a328be6c54df7b661c480924f8 failed
+`test-runnableservice-lifecycle.cpp:50` after five seconds waiting for its
+posted completion. Comparing that exact source with the current tree found
+an unguarded empty-run race: run returns with the context stopped, then the
+outer running loop repeatedly calls run without restart; later posts cannot
+execute. The base now owns a per-run optional work guard and exits on normal
+run completion. Stop releases the guard for cancellation or drain; Run enters
+once even if a draining Stop precedes thread entry. Focused restart, idle-gap,
+exception and drain regressions are prepared. This is a demonstrated source
+cause consistent with the timeout, not new runtime evidence.
+
+Equivalent-wrapper review found NTP launching before posting Sync; that order
+is reversed, normal exhaustion exits, and shutdown drains queued callbacks
+after joining under revoked authority. UPnP already posts before launch and
+breaks on normal return; I2PControl registers Accept before launch; Transports
+owns a work guard. Their broader lifetime and stopped-loop risks remain open.
+Self-destruction/detach and overlapping control-thread lifecycle calls are not
+resolved by the base guard. RT-031's three historical LeakSanitizer reports
+remain unresolved; future manual artifacts retain their exact executables.
+
+The earlier artifact-extraction limitation is historical: Validation
+41364867079 logs and retained artifacts were recovered under
+`/tmp/openi2pd-ci/41364867079` during the continuation. Raw PCs without the
+corresponding historical images still cannot be assigned source frames.
+
+### RT-031 / TF-070 logger publication follow-up
+
+Validation 41364867079, TSan job 125022771257, SHA
+56f17c0f47a3d1a328be6c54df7b661c480924f8 reported the missing
+local-after-sink record at test-log-lifecycle.cpp:144. The unchanged startup
+predicate was reused across generations: Run could pass its wait before the
+new Start published m_IsRunning, drain nothing and terminate before enqueue.
+The local correction resets the predicate before thread creation under its
+startup mutex and preserves the join barrier between generations. Prepared
+restart/destination and negative source regressions remain Pending CI. This
+classification does not attribute or close the historical ratchet/tunnel leaks
+or the separate MSVC heap corruption.
+
+### RT-031 ratchet correlation cycle follow-up
+
+Static review found a concrete ownership cycle: a session's pending reply
+entry strongly retained a receive tagset whose session edge was also strong.
+The pending edge is now weak; the live inbound tag map still retains session
+authority. Successful weak locks outlive the pending mutex so their final
+destructor cannot reenter that lock. A regression prepares destination teardown
+with unanswered replies while retaining lost-first/lost-last reply controls.
+
+This is Implemented / static, Pending CI compilation and Pending CI tests.
+It does not attribute or close the historical 6880-byte/24-allocation report:
+the exact sanitizer image/stack and a fresh manual run are still needed.

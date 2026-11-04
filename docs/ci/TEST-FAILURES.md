@@ -163,3 +163,35 @@ and verifier reader. The fixture now obtains an owning 64-byte result.
 This is a demonstrated fixture defect, not evidence of a primitive failure.
 The assertion and RT-027 remain open pending manual CI on the correction;
 see the RT-027 static follow-up for the equivalent-pattern review.
+
+TF-070 (2026-11-04 static): TSan `test-log-lifecycle` lost
+`local-after-sink` during `SetSink(nullptr)` → `SendTo(stream)` →
+`Start/Stop`; no product defect was demonstrated by inspection. The remaining
+suspects are the 1 s `Queue::Wait` wakeup and the sticky `m_StartRequested`
+flag. TSan `test-runnableservice-lifecycle` and
+`test-i2cp-session-lifecycle` also hit 2–5 s join/`use_count` budgets; the I2CP
+implementation changed after the published run, so they require a rerun before
+classification. No test was executed for this note.
+
+TF-071 (2026-11-04 static): TF-065's `\c std::bind` did not reliably remove
+the Doxygen autolink token. The source comment now says "type-erased deleter"
+with no `std::` token; documentation CI remains the evidence gate.
+
+TF-070 executor follow-up (2026-11-04): source comparison against
+56f17c0f demonstrates an unguarded empty-run race in RunnableService and the
+same launch-before-post ordering in NTP. Per-run work ownership, normal-return
+exit and NTP queue retirement are Implemented / static. Existing registered
+lifecycle targets now prepare idle-gap/restart/drain/exception and deterministic
+empty-run regressions. No timing budget was increased. This does not resolve
+the separate logger assertion, I2CP ownership or historical leaks; see RT-031.
+
+TF-070 logger publication follow-up (2026-11-04): the exact-SHA Log::Start
+never resets m_StartRequested between joined writer generations. A new Run
+can therefore pass its condition wait on the old true bit, observe the still
+false running flag, drain an empty queue and exit before Start publishes true
+and its caller appends local-after-sink. Start now re-arms the signal before
+launch under lifecycle/start locks. Repeated destination-change regressions
+and a source-order contract are prepared. This demonstrated source
+interleaving explains the observed symptom; runtime confirmation is Pending
+CI. The queue wakeup and other lifecycle hypotheses are not declared resolved
+by this static correction.

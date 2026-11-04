@@ -998,6 +998,12 @@ workflow was run.
 - **State:** Detected in CI; corrected by static analysis; **Pending CI tests**.
   No Perl suite was run locally.
 
+  Complete-migration follow-up: PERL-010/011 supersede the narrow Python
+  allowlist with a Perl validator and Test::More contract. The source inventory
+  again rejects every maintained Python file/shebang, including these former
+  exceptions. This is a new static correction, Pending CI tests; the historical
+  run above does not validate the replacement.
+
 ### CE-042 — Windows role test contradicts AppContainer policy
 
 - **Workflow/job:** Windows 41207324984, MSVC job 124554969879,
