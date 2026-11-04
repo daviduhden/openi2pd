@@ -15,11 +15,17 @@ use warnings;
 use 5.016;
 
 use File::Basename qw(dirname);
+use File::Copy qw(copy);
+use File::Find ();
 use File::Path     qw(make_path);
 use File::Spec;
 use File::Temp qw(tempdir);
 use FindBin    qw($Bin);
 use IPC::Open3 qw(open3);
+use Digest::SHA qw(sha256_hex);
+use Errno qw(ECHILD EINTR);
+use POSIX qw(WIFEXITED WEXITSTATUS WIFSIGNALED WTERMSIG);
+use JSON::PP;
 use Test::More;
 
 my $root = File::Spec->rel2abs(
@@ -76,6 +82,43 @@ my $javadoc_checker = File::Spec->catfile( $root, 'android', 'tools',
     'check-android-javadoc.pl' );
 my $doxygen_checker = File::Spec->catfile( $root, 'tools', 'scripts',
     'check-doxygen-params.pl' );
+
+# Crash diagnostics must reject commands that expose process arguments
+# or memory. Reproduce only the checker and its workflow inputs.
+sub workflow_crash_fixtures {
+    my ($fixture_root) = @_;
+    my $tmp = tempdir( CLEANUP => 1 );
+    for my $relative ( '.github/workflows', '.github/actions', 'tools/scripts/check-workflows.pl' ) {
+        File::Find::find( {
+            no_chdir => 1,
+            wanted => sub {
+                return unless -f $File::Find::name;
+                my $path = File::Spec->abs2rel( $File::Find::name, $fixture_root );
+                my $target = File::Spec->catfile( $tmp, $path );
+                make_path( dirname($target) );
+                copy( $File::Find::name, $target ) or BAIL_OUT("copy workflow fixture: $!");
+                return;
+            },
+        }, File::Spec->catfile( $fixture_root, $relative ) );
+    }
+    my $checker = File::Spec->catfile( $tmp, 'tools', 'scripts', 'check-workflows.pl' );
+    my ( $code, $out ) = run_checker($checker);
+    is( $code, 0, 'current workflow crash commands expose code locations only' );
+    my $windows = File::Spec->catfile( $tmp, '.github', 'workflows', 'build-windows.yml' );
+    open my $fh, '<', $windows or BAIL_OUT("read workflow fixture: $!");
+    my $source = do { local $/ = undef; <$fh> };
+    close $fh or BAIL_OUT("close workflow fixture: $!");
+    for my $unsafe ( 'kp 40', '.dump /ma unsafe.dmp', 'dv' ) {
+        my $candidate = $source;
+        $candidate =~ s/kc[ ]40/$unsafe/gx;
+        write_file( $windows, $candidate );
+        ( $code, $out ) = run_checker($checker);
+        is( $code, 1, 'workflow checker rejects memory or argument collection' );
+        like( $out, qr/code[ ]locations[ ]only/x, 'crash evidence privacy diagnostic' );
+    }
+    return;
+}
+workflow_crash_fixtures($root);
 
 # --- check-android-locales.pl plural categories ---------------------------
 {

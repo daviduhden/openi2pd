@@ -224,3 +224,23 @@ uncommitted tree. Logs were downloaded for the completed jobs.
 - [testing](testing.md)
 - [build system](build-system.md)
 - [Developer guide](developer-guide/README.md)
+
+## Targeted Windows heap evidence
+
+The manual Windows workflow accepts `heap_diagnostics=true`. After ordinary
+CTest, its MSVC lane can reproduce three affected test images under installed
+x64 CDB/GFlags with per-image PageHeap and bounded debugger processes. No SDK
+or debugger download is performed; missing tools fail this optional diagnostic
+step explicitly. The ordinary CTest result remains authoritative.
+
+MSVC Release now retains EXE/PDB artifacts through CMP0141/ProgramDatabase
+(CMake 3.25+ in this CI lane) and optimized `/DEBUG:FULL /OPT:REF /OPT:ICF`
+linking. The project floor remains CMake 3.24. The debugger command allowlist
+prints exception events and code locations only, with no memory dumps,
+argument or local-variable commands. The maintenance regression rejects such
+commands. PageHeap is disabled in `finally`; evidence remains pending until a
+published revision actually runs this option.
+
+Procedures follow [Microsoft's PageHeap documentation](https://learn.microsoft.com/en-us/windows-hardware/drivers/debugger/gflags-and-pageheap),
+[CDB command-line reference](https://learn.microsoft.com/en-us/windows-hardware/drivers/debugger/cdb-command-line-options)
+and [CMake's symbol-format reference](https://cmake.org/cmake/help/latest/variable/CMAKE_MSVC_DEBUG_INFORMATION_FORMAT.html).

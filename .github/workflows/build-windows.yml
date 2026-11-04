@@ -14,6 +14,11 @@ name: Windows
 # tab.
 on:
   workflow_dispatch:
+    inputs:
+      heap_diagnostics:
+        description: Run targeted MSVC tests under installed CDB/PageHeap
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -151,6 +156,9 @@ jobs:
       - name: Configure MSVC
         run: |
           cmake -S build -B build-msvc -G "Visual Studio 17 2022" -A x64 `
+            -DCMAKE_POLICY_DEFAULT_CMP0141=NEW `
+            -DCMAKE_MSVC_DEBUG_INFORMATION_FORMAT=ProgramDatabase `
+            '-DCMAKE_EXE_LINKER_FLAGS_RELEASE=/DEBUG:FULL /INCREMENTAL:NO /OPT:REF /OPT:ICF' `
             -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" `
             -DCMAKE_BUILD_TYPE=Release `
             -DBUILD_TESTING=ON `
@@ -177,6 +185,54 @@ jobs:
           if (-not (Test-Path (Join-Path $prefix 'bin\i2pd-tui.exe'))) {
             throw 'i2pd-tui.exe was not installed'
           }
+      - name: Diagnose MSVC heap failures
+        if: ${{ always() && inputs.heap_diagnostics }}
+        timeout-minutes: 8
+        run: |
+          # Use installed SDK tools only. Missing tools are diagnostic
+          # infrastructure failures, not evidence that the tests are clean.
+          $debugTools = Join-Path ${env:ProgramFiles(x86)} 'Windows Kits\10\Debuggers\x64'
+          $cdb = Join-Path $debugTools 'cdb.exe'
+          $gflags = Join-Path $debugTools 'gflags.exe'
+          if (-not (Test-Path $cdb) -or -not (Test-Path $gflags)) {
+            throw 'heap_diagnostics requires installed x64 CDB and GFlags'
+          }
+          $evidence = Join-Path $env:GITHUB_WORKSPACE 'build-msvc/heap-diagnostics'
+          New-Item -ItemType Directory -Force $evidence | Out-Null
+          $commands = Join-Path $evidence 'exceptions.txt'
+          # Print only code locations and function names: no dumps,
+          # memory reads, argument values, locals or register dumps.
+          @'
+          sxe -c ".echo OPENI2PD_CRASH; .lastevent; ln @rip; kc 40; q 1" av
+          sxe -c ".echo OPENI2PD_CRASH; .lastevent; ln @rip; kc 40; q 1" 0xc0000374
+          sxe -c ".echo OPENI2PD_CRASH; .lastevent; ln @rip; kc 40; q 1" 0xc0000409
+          g
+          '@ | Set-Content -Encoding ascii $commands
+          $failures = @()
+          foreach ($test in @('test-tui-protocol', 'test-tui-pipe-name', 'test-privsep-windows-isolation')) {
+            $image = "$test.exe"
+            $binary = Join-Path $env:GITHUB_WORKSPACE "build-msvc/tests/Release/$image"
+            if (-not (Test-Path $binary)) { throw "missing diagnostic target $image" }
+            try {
+              & $gflags /p /enable $image /full
+              if ($LASTEXITCODE -ne 0) { throw "PageHeap enable failed for $image" }
+              $log = Join-Path $evidence "$test.txt"
+              $symbols = Split-Path -Parent $binary
+              $debugArguments = @('-G', '-lines', '-y', "`"$symbols`"", '-logo', "`"$log`"", '-cf', "`"$commands`"", "`"$binary`"")
+              $debugger = Start-Process -FilePath $cdb -ArgumentList $debugArguments -NoNewWindow -PassThru
+              if (-not $debugger.WaitForExit(120000)) {
+                & taskkill.exe /PID $debugger.Id /T /F
+                if ($LASTEXITCODE -ne 0) { throw "debugger process cleanup failed for $image" }
+                $failures += "$test debugger deadline"
+              } elseif ($debugger.ExitCode -ne 0) {
+                $failures += "$test debugger exit $($debugger.ExitCode)"
+              }
+            } finally {
+              & $gflags /p /disable $image
+              if ($LASTEXITCODE -ne 0) { throw "PageHeap cleanup failed for $image" }
+            }
+          }
+          if ($failures.Count) { throw ($failures -join '; ') }
       - name: Upload Windows MSVC evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
@@ -185,5 +241,10 @@ jobs:
           path: |
             build-msvc/Testing
             ctest-msvc.xml
+            build-msvc/heap-diagnostics
+            build-msvc/tests/Release/*.pdb
+            build-msvc/tests/Release/test-tui-protocol.exe
+            build-msvc/tests/Release/test-tui-pipe-name.exe
+            build-msvc/tests/Release/test-privsep-windows-isolation.exe
           if-no-files-found: warn
           retention-days: 7

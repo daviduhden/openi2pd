@@ -317,6 +317,47 @@ for my $file ( sort keys %input_gate ) {
     }
 }
 
+# Crash evidence must not collect process memory or argument values.
+# Keep the opt-in debugger command file to this code-location allowlist.
+push @errors, windows_crash_command_errors( $texts{'build-windows.yml'} )
+  if exists $texts{'build-windows.yml'};
+
+sub windows_crash_command_errors {
+    my ($windows) = @_;
+    my @violations;
+    my ( $inside, $closed ) = ( 0, 0 );
+    my %events = map { $_ => 1 } qw(av 0xc0000374 0xc0000409);
+    my %seen;
+    my %allowed = map { $_ => 1 }
+      ( '.echo OPENI2PD_CRASH', '.lastevent', 'ln @rip', 'kc 40', 'q 1' );
+    for my $line ( split /\n/x, $windows ) {
+        $line =~ s/\A\s+|\s+\z//gx;
+        if ( !$inside && $line eq q{@'} ) {
+            $inside = 1;
+            next;
+        }
+        next unless $inside;
+        if ( $line eq q{'@ | Set-Content -Encoding ascii $commands} ) {
+            $closed = 1;
+            last;
+        }
+        next if !length $line || $line eq 'g';
+        my ( $body, $event ) = $line =~ /\A sxe \s+ -c \s+ "([^"]+)" \s+ (\S+) \z/x;
+        if ( !defined $body || !$events{$event} ) {
+            push @violations, 'build-windows.yml: unsupported crash debugger line';
+            next;
+        }
+        $seen{$event} = 1;
+        for my $command ( split /\s*;\s*/x, $body ) {
+            push @violations, 'build-windows.yml: crash diagnostics may print code locations only'
+              unless $allowed{$command};
+        }
+    }
+    push @violations, 'build-windows.yml: missing bounded crash command file'
+      unless $inside && $closed && keys(%seen) == keys(%events);
+    return @violations;
+}
+
 if (@errors) {
     print STDERR "$_\n" for @errors;
     exit 1;
@@ -388,6 +429,13 @@ C<skills-static>, C<perl-quality>, C<sanitizers>, C<fuzz-smoke>). A pinned
 job that appears in another workflow fails, and F<build.yml>/F<fuzz.yml> must
 not return. The expensive opt-in jobs C<android-ui> and C<perl-quality> must
 keep referencing their C<android_ui>/C<perl_style> input gate.
+
+=item *
+
+the literal Windows crash command file must configure the three bounded
+exception filters using only event descriptions, code symbols and function
+names. Memory dumps, arguments, locals and unsupported commands are refused.
+This text contract does not launch a debugger or establish runtime safety.
 
 =back
 
