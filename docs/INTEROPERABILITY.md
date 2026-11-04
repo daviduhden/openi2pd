@@ -839,6 +839,17 @@ incomplete-message timeout is observed at the 72 s cleanup pass, the socket is
 shared between receive and send threads, and the memory-pool lifetime across
 deferred teardown remains an open SEC-025 item. No dynamic claim is made.
 
+The 2026-11-02 NET-172 continuation removes the synchronous buffered-body
+read: every decoded NTCP2 body now uses `Receive()`, including data already
+queued in the socket, and therefore arms the existing 30-second body
+deadline. A late length completion checks termination before processing.
+The equivalent synchronous prefetch/coalescing reads in `I2PTunnel` were
+removed. An empty streaming send still initiates the SYN; local TCP data
+then uses the existing asynchronous read and send-buffer backpressure.
+This is Implemented / static, with compilation and runtime tests pending
+manual CI. It does not add a deadline to the length read, fix establisher
+socket ownership, or close the remaining NET-172 admission/options work.
+
 ## 2026-10-26 cryptography modernization continuation (static)
 
 Four read-only audits covered the ECIES-X25519-AEAD-Ratchet protocol, Elligator2
@@ -1079,3 +1090,36 @@ Java 2.14.0 target commit above. Earlier 2.13.0 fixtures and results retain thei
 It requires an isolated loopback network and is a test procedure, not a Java
 build/runtime dependency. No result in this document becomes validated until
 the dynamic run is recorded.
+
+## I2CP local lifecycle continuation (2026-11-02, static)
+
+CONC-032 changes native ownership without changing I2CP message formats.
+The listener tracks accepted connections before CREATE SESSION, fences
+admission with a restart generation, and joins its worker before exclusively
+draining socket/session teardown. Stopped snapshots retain executor lifetime;
+external sends pin owner authority during publication. Controller destruction
+and exclusive executor dispatch remain API requirements. The expanded
+lifecycle target is prepared for manual platform and sanitizer CI. These
+source changes do not establish Java client interoperability.
+
+## Shared BEP 9 metadata continuation (static)
+
+The native torrent client now shares one bounded metadata assembly between
+connections, with exact block shape/total-size validation and final info-hash
+verification before dictionary publication. This adapts upstream metadata
+multi-peer behavior without changing BEP 9 framing. See
+[the I2PSnark compatibility continuation](torrent/snark-compatibility.md#shared-metadata-continuation-2026-11-02-static)
+for the pinned specification, request ownership and recovery cases. Static
+implementation is not Java interoperability evidence; live exchange remains
+pending manual CI.
+
+## SAM duplicate registration continuation (static)
+
+CONT-018 makes occupied session ID failure authoritative at insertion, even
+if a competing creator passed the earlier lookup. The result distinguishes
+duplicate ID from invalid destination, so the socket sends `DUPLICATED_ID`
+without adopting the incumbent session. Destination reference ownership
+transfers only on successful insertion. The pinned Java 2.14.0
+`SAMv3Handler` registration similarly rejects an existing ID rather than
+sharing its session. A direct insertion regression is prepared; this source
+comparison does not establish live SAM interoperability.

@@ -58,6 +58,14 @@ applicable, a device or Java-peer run succeeds.
 
 ## 1. Router, identity, transports and netDb
 
+NET-172 remains partial. Buffered NTCP2 frame bodies and native client
+tunnel input now use asynchronous reads; NTCP2 bodies share the existing
+30-second deadline and tunnels preserve send-buffer backpressure. Empty
+streaming sends initiate connection establishment before local data arrives.
+These changes are Implemented / static, pending manual CI compilation and
+tests. NTCP2 admission, options and establisher socket ownership remain open;
+this scheduling change establishes no new Java-peer parity evidence.
+
 | Feature | Java reference | openi2pd implementation | Status | Differences, gaps and interoperability | Files / tests | Priority |
 |---|---|---|---|---|---|---|
 | Router lifecycle and identity | `router/java/src/net/i2p/router/Router.java`, `RouterContext.java`, `data/RouterIdentity.java` | `daemon/Daemon.*`, `libi2pd/RouterContext.*`, `Identity.*` | Compatible, implementation different | Native lifecycle and lock model; config/state paths intentionally differ. No functional wire divergence found. | Router lifecycle tests; manual daemon tests pending | P0 |
@@ -618,3 +626,37 @@ Android Material 3/Java 25. Java source is behavioral evidence only: do not
 add a desktop JVM, copy JSP/HTML/JavaScript, expose an administrative web
 server, or broaden the typed control boundary to arbitrary paths, URLs or
 configuration writes.
+
+## I2CP ownership and native torrent RPC continuation
+
+CONC-032 implements native I2CP listener lifecycle barriers and pre-session
+connection cleanup. Its dedicated jthread/shared executor and retained-session
+regressions are implemented statically, pending CI; no new protocol parity is
+claimed. CONC-026 serializes destination factory selection/start while keeping
+Stop/reload coordination open. CONT-008 makes existing metainfo comment and
+creator values available over optional native RPC, with invalid display text
+omitted while original metainfo bytes remain intact. Peer comment/rating
+exchange remains a separate capability.
+
+## Magnet metadata and Android restart continuation
+
+CONT-010 adds shared multi-peer BEP 9 assembly and bounded ownership/recovery
+instead of retaining a full metadata buffer in each peer. AND-024 replaces the
+Android restart busy-wait with a generation-fenced continuation and cancellation.
+Both are Implemented / static with prepared regressions; manual compilation,
+wire/JNI/device and sanitizer evidence remain pending. This does not close
+endgame/CANCEL, durable magnet recovery, global privilege separation or the
+ServiceAcceptor admission/reentrant-handler lifecycle task CONC-023.
+
+## Durable recovery and control ownership continuation
+
+CONT-017 adds native unresolved magnet recovery records and duplicate hint
+merging while preserving administrative pause. The bounded startup and
+durability protocol is specified in [local state](torrent/local-state.md).
+SNARK-012 remains open for advanced peer policy, shaping, endgame and CI
+evidence. CONT-016 observes cancellation at SAF metadata read boundaries and
+serializes process-local grant retirement; this does not interrupt a provider
+already blocked inside a read or coordinate external grant writers.
+CONT-018 fixes duplicate SAM registration ownership without adding a new
+protocol facility. These capabilities remain pending manual CI compilation,
+regressions and device/live interoperability evidence.

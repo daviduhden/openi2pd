@@ -1024,3 +1024,11 @@ thread, open a file or change filtering in production. `tests/check-build-system
 pins the support source and the API, and `test-log-diagnostic-sink` verifies the
 sink contract (synchronous delivery, sanitization, size bound, ring
 preservation and removal).
+
+The shared BEP 9 assembler regressions remain in the registered
+`test-torrents-engine-interop` target, which now also carries `security` and
+`memory` labels for focused manual selections. Its prepared cases cover
+owner/lease boundaries, exact metadata lengths, hash failure and stalled-size
+recovery. `DeferredRestartTest` is discovered by the existing Android JVM
+lane. Windows `heap_diagnostics` adds code-only CDB/PageHeap evidence after
+CTest; see `docs/ci.md`. None of these additions have executed locally.

@@ -117,6 +117,24 @@ peer policy differ per platform. See
 
 ## Ownership and lifetime notes
 
+- IRC tunnels require a remote identity before creating the forwarding
+  connection or formatting WEBIRC/USER output. A directly constructed
+  connection also refuses to write without its retained identity, closing
+  its socket and removing its registration. Linux unique-local loopback
+  mapping rejects a missing stream identity before opening the source
+  socket. SEC-032 regressions cover these negative paths without an
+  upstream; implementation is static and compilation/tests await manual CI.
+
+- `ClientContext` serializes factory publication and destination startup
+  with a creation mutex, taking the registry mutex only for insertion and
+  winner selection. All factories return that winner; duplicate-key callers
+  cannot receive an unregistered, unstarted candidate. Offline-signature
+  updates apply to the winner. Hash replacement rejects an occupied target
+  key and preserves the old registration until the new insertion succeeds.
+  This CONC-026 change is Implemented / static, pending manual CI compilation
+  and concurrent registry tests. It does not serialize factory creation with
+  Stop or configuration reload, which require a separate lifecycle barrier.
+
 - Router-global singletons (`i2p::context`, `transports`, `netdb`, `tunnels`)
   remain, because they model process-wide protocol state and are referenced by
   the public API. The refactoring does not pretend they are injectable
