@@ -113,6 +113,7 @@ Defines native Android application resources.
                     android:padding="@dimen/card_content_padding">
 
                     <TextView
+                        android:labelFor="@id/stat_download_rate"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:text="@string/statistics_download_rate"
@@ -150,6 +151,7 @@ Defines native Android application resources.
                     android:padding="@dimen/card_content_padding">
 
                     <TextView
+                        android:labelFor="@id/stat_upload_rate"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:text="@string/statistics_upload_rate"
@@ -195,6 +197,7 @@ Defines native Android application resources.
                     android:padding="@dimen/card_content_padding">
 
                     <TextView
+                        android:labelFor="@id/stat_total_received"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:text="@string/statistics_total_received"
@@ -223,6 +226,7 @@ Defines native Android application resources.
                     android:padding="@dimen/card_content_padding">
 
                     <TextView
+                        android:labelFor="@id/stat_total_sent"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:text="@string/statistics_total_sent"
@@ -259,6 +263,7 @@ Defines native Android application resources.
                     android:padding="@dimen/card_content_padding">
 
                     <TextView
+                        android:labelFor="@id/stat_total_transit"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:text="@string/statistics_total_transit"
@@ -287,6 +292,7 @@ Defines native Android application resources.
                     android:padding="@dimen/card_content_padding">
 
                     <TextView
+                        android:labelFor="@id/stat_tunnels"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:text="@string/statistics_tunnels"
@@ -323,6 +329,7 @@ Defines native Android application resources.
                     android:padding="@dimen/card_content_padding">
 
                     <TextView
+                        android:labelFor="@id/stat_uptime"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:text="@string/statistics_uptime"
@@ -351,6 +358,7 @@ Defines native Android application resources.
                     android:padding="@dimen/card_content_padding">
 
                     <TextView
+                        android:labelFor="@id/stat_peers"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:text="@string/statistics_peers"
@@ -379,6 +387,7 @@ Defines native Android application resources.
                 android:padding="@dimen/card_content_padding">
 
                 <TextView
+                    android:labelFor="@id/stat_routers"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:text="@string/statistics_routers"

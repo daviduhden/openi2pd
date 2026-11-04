@@ -99,6 +99,7 @@ Defines native Android application resources.
                     android:textAppearance="@style/TextAppearance.OpenI2Pd.SectionTitle" />
 
                 <TextView
+                    android:labelFor="@id/text_ipv4"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="@dimen/margin_small"
@@ -115,6 +116,7 @@ Defines native Android application resources.
                     android:textIsSelectable="true" />
 
                 <TextView
+                    android:labelFor="@id/text_ipv6"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="@dimen/margin_small"

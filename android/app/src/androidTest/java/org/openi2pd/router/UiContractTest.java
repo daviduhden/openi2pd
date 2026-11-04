@@ -37,10 +37,10 @@ import org.junit.runner.RunWith;
  *
  * <p>Asserts one-screen-reader-stop rows, visible touch targets, the
  * `w600dp` navigation rail, the semantic brand color roles in both
- * light and dark themes and the log filter/summary wiring. The daemon
- * and the service are never started, so this says nothing about live
- * router behaviour; device and TalkBack evidence remains the manual UI
- * lane.</p>
+ * light and dark themes, metric label/value association and the log
+ * filter/summary wiring. The daemon and the service are never
+ * started, so this says nothing about live router behaviour; device
+ * and TalkBack evidence remains the manual UI lane.</p>
  */
 @RunWith(AndroidJUnit4.class)
 public final class UiContractTest {
@@ -124,6 +124,53 @@ public final class UiContractTest {
         UiFactory.applyRowSemantics(button, "example, Seeding, 100%");
         assertEquals("example, Seeding, 100%", button.getContentDescription());
         assertEquals("example, Seeding, 100%", ViewCompat.getStateDescription(button));
+    }
+
+    @Test
+    public void metricLabelsAreAssociatedWithValueViews() {
+        assertLabelFor(inflate(R.layout.fragment_dashboard),
+                R.id.metric_uptime, R.id.metric_peers, R.id.metric_routers,
+                R.id.metric_tunnels, R.id.metric_download, R.id.metric_upload,
+                R.id.metric_reseed);
+        assertLabelFor(inflate(R.layout.fragment_statistics),
+                R.id.stat_download_rate, R.id.stat_upload_rate,
+                R.id.stat_total_received, R.id.stat_total_sent,
+                R.id.stat_total_transit, R.id.stat_tunnels, R.id.stat_uptime,
+                R.id.stat_peers, R.id.stat_routers);
+        assertLabelFor(inflate(R.layout.fragment_tunnels),
+                R.id.text_tunnels_in, R.id.text_tunnels_out,
+                R.id.text_tunnels_transit, R.id.text_tunnels_total);
+        assertLabelFor(inflate(R.layout.fragment_network),
+                R.id.text_ipv4, R.id.text_ipv6);
+    }
+
+    /**
+     * Each label points to its value through labelFor, rather than the
+     * reverse. Labels need no ID, so inspect the complete hierarchy and
+     * require exactly one nonempty TextView label for each value.
+     */
+    private static void assertLabelFor(View root, int... valueIds) {
+        for (int id : valueIds) {
+            View value = root.findViewById(id);
+            assertNotNull("missing metric value view " + id, value);
+            int labels = 0;
+            var pending = new java.util.ArrayDeque<View>();
+            pending.add(root);
+            while (!pending.isEmpty()) {
+                View candidate = pending.remove();
+                if (candidate.getLabelFor() == id) {
+                    assertTrue("a metric must not label itself", candidate != value);
+                    assertTrue("metric label must be a TextView", candidate instanceof TextView);
+                    assertTrue("label text must not be empty",
+                            ((TextView) candidate).getText().toString().trim().length() > 0);
+                    ++labels;
+                }
+                if (candidate instanceof android.view.ViewGroup group)
+                    for (int child = 0; child < group.getChildCount(); ++child)
+                        pending.add(group.getChildAt(child));
+            }
+            assertEquals("expected exactly one android:labelFor for @id/" + id, 1, labels);
+        }
     }
 
     private static Context resolution(int nightMode) {

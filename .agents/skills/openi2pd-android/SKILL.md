@@ -133,6 +133,11 @@ run Gradle, install an APK or run a device test.
   validation, so malformed pages do not consume retained registrations.
   Activity-owned confirmation/permission flows remain a separate lifecycle
   boundary; do not apply Fragment teardown mechanically to MainActivity.
+- API-29 instrumentation fixtures obey the runtime floor too. A class-only
+  `String.method` source pattern misses instance calls such as literal or
+  variable `.repeat(...)`; the guard now checks their member-call shape and
+  preserves unqualified local fixture helpers. Ambiguous names such as
+  `lines`/`transform` require receiver-aware Lint instead of a blanket ban.
 - SAF creation charges retained provider IDs/URI strings and relative paths
   through `TorrentSafCreationBudget` before collection insertion. Measure
   UTF-8 bytes, reject malformed surrogates, and keep the native 255-byte name
@@ -506,6 +511,17 @@ run Gradle, install an APK or run a device test.
   constructor is explicit. Use direct initialization, as in
   `i2pd_android.cpp` (CE-011).
 
+- The Java 25 API-29 denylist must cover inherited `SequencedCollection`
+  methods on `List` (`getFirst/getLast/addFirst/addLast/removeFirst/
+  removeLast/reversed`), `String.stripIndent`, `Math.clamp` and
+  `Thread.threadId`, not only class names and static factories. Keep the
+  call-shape positive/negative self-test in `java25-probe/check-config.sh`.
+- Metric label `TextView`s associate their value with
+  `android:labelFor="@id/<value>"`; the layout checker requires the label
+  immediately before the value and a resolvable id, and `UiContractTest`
+  traverses the hierarchy to require exactly one nonempty label per value.
+  `getLabelFor()` belongs to the label and returns the value ID; querying
+  the value for a label ID reverses the contract. Labels need no view ID.
 - A second same-UID process is not a privilege boundary; keep SAF authority
   and router/presentation split claims separate from Android UID isolation.
 

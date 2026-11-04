@@ -47,6 +47,7 @@ Defines native Android application resources.
                     android:padding="@dimen/card_content_padding">
 
                     <TextView
+                        android:labelFor="@id/text_tunnels_in"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:text="@string/tunnels_inbound"
@@ -75,6 +76,7 @@ Defines native Android application resources.
                     android:padding="@dimen/card_content_padding">
 
                     <TextView
+                        android:labelFor="@id/text_tunnels_out"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:text="@string/tunnels_outbound"
@@ -111,6 +113,7 @@ Defines native Android application resources.
                     android:padding="@dimen/card_content_padding">
 
                     <TextView
+                        android:labelFor="@id/text_tunnels_transit"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:text="@string/tunnels_transit"
@@ -139,6 +142,7 @@ Defines native Android application resources.
                     android:padding="@dimen/card_content_padding">
 
                     <TextView
+                        android:labelFor="@id/text_tunnels_total"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:text="@string/tunnels_total"

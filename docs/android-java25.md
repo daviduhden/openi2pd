@@ -10,10 +10,12 @@ Documents project documentation.
 
 # Java 25 on Android (openi2pd)
 
-Status: toolchain verification and static audit, 2026-10-21. This document covers the Android
+Status: toolchain verification and static audit, 2026-11-04. This document covers the Android
 build toolchain and Java 25 language/class-file compatibility only. It does
 **not** claim that the application APK builds, that Lint passes, or that any
-device/emulator test ran.
+device/emulator test ran. The Java 21 API denylist and the metric
+`android:labelFor` association added on this date are static checks; no
+workflow was dispatched for them.
 
 The Android app is Java source compiled by JDK 25 into class-file version 69,
 then converted by D8/R8 into DEX for Android's ART runtime. No OpenJDK is
@@ -215,8 +217,15 @@ bundled-Kotlin workaround and the certificates asset target. It also rejects
 known JDK-only APIs (`java.lang.foreign`, `java.lang.invoke`,
 `java.lang.classfile`, `ScopedValue`, `StableValue`, `java.util.Sequenced`,
 `javax.crypto.KDF`, PEM encoder/decoder, virtual-thread/structured-concurrency
-APIs and `jdk.incubator.vector`) in app source. It is not a substitute for
-javac, D8/R8, Lint or device testing.
+APIs and `jdk.incubator.vector`) in app source. The Java 21 collection and
+platform additions below are refused by call shape (dot plus opening
+parenthesis), and a negative self-test runs on every invocation so a local
+identifier such as `reversed` or a helper named `getFirstValue()` is not a
+false positive. The script also walks the four metric layouts: the label
+`TextView` must be the element immediately before the value, its
+`android:labelFor` must name that value, and every `labelFor` must resolve
+inside the same layout. It is not a substitute for javac, D8/R8, Lint or
+device testing.
 
 The verifier now passes **all** probe classes (nested records included) to
 D8/R8 and requires DEX version **039** at `--min-api 29`; the historical
@@ -382,12 +391,30 @@ bytecode desugaring** requirements, separate from core-library desugaring.
 |---|---|---|
 | `List.of`/`Map.of`/`Set.of`, `*.copyOf` | no (API 30–31) | use `Collections.unmodifiable*` over a fresh collection |
 | `String.repeat/isBlank/strip/lines/formatted` | no (API 33) | explicit loops/`trim`/`replace` |
+| `String.stripIndent` | no (API 33) | strip each line explicitly; `stripIndent` is an instance method, not a `String.` static form |
+| `List.getFirst/getLast/addFirst/addLast/removeFirst/removeLast/reversed` | no (API 35, `SequencedCollection`) | indexed access; on an existing `Deque` use `peekFirst`/`pollFirst`/`offerFirst`, which do exist on API 29 |
 | `Stream.toList`, `Optional.isEmpty`, `HexFormat` | no (API 33–34) | collectors/`isPresent`, manual hex |
-| `SequencedCollection`/`getFirst`/`getLast` | no | indexed `List` access |
+| `Math.clamp` | no (API 36) | `Math.max(min, Math.min(max, value))` |
+| `Thread.threadId` | no (API 36) | `Thread.getId()` (deprecated but present) or a locally assigned id |
 | `java.util.concurrent.Flow` | no (API 30) | explicit callbacks/executors |
 | virtual threads, `StructuredTaskScope`, `ScopedValue`, `StableValue` | never | platform threads, executors, atomics |
 | `Class.isRecord/getRecordComponents/isSealed`, `MatchException` | no | avoid reflection on these; D8 lowers the switch |
 | `java.lang.classfile`, FFM, PEM/KDF | never | none; keep out of app code |
+
+The Android level in the availability column is the release that introduced
+the method, not a promise that the API 37 `android.jar` in this tree exposes it
+at that level; the table is a static policy and the exact floor still needs a
+device or `android.jar` check. In every case the reason is the same: D8/R8
+desugars language constructs and record/switch bootstraps, it does not
+translate a `java.*` library call, and core library desugaring is disabled.
+The JDK 25 compile classpath makes the call compile, so only the static
+denylist and a future bytecode/API scan keep it out of the APK. A `List`
+receiver is the hazard: `ArrayDeque`, `LinkedList` and `Deque` first/last
+helpers predate API 29, but a variable typed as `List`/`Collection` cannot
+call them there, so the guard refuses the whole call shape and names the
+`peekFirst`-style alternatives above. The scan matches call syntax only: a
+method reference such as `List::getFirst` has no parenthesis and remains a
+review item, not a provable pass.
 
 Core library desugaring remains disabled: it would not add any of these
 platform APIs. The Gradle compile classpath still contains the JDK 25 platform
@@ -400,9 +427,30 @@ contains both `android.jar` and the JDK 25 platform classes (`BOOTSTRAP=null`,
 that will be missing on ART. Source review and a bytecode/API scan are needed;
 Android Lint alone is not a complete check for JDK-only APIs.
 
+## Metric label association
+
+Metric rows in `fragment_dashboard`, `fragment_statistics`,
+`fragment_tunnels` and `fragment_network` pair a label `TextView` with a value
+`TextView`. The label carries `android:labelFor="@id/<value>"` so a screen
+reader announces the unit with the number; no layout structure, dimension or
+theme value changed. `check-config.sh` enforces the pairing statically, and
+`UiContractTest.metricLabelsAreAssociatedWithValueViews` repeats it on an
+inflated layout in the manual device lane. `stat_chart_peak` deliberately has
+no `labelFor`: the preceding text is the chart-window description, not a label
+for the peak value, and pointing it at the peak would misstate the semantics.
+Readers treat `labelFor` on a non-editable value inconsistently, so the
+association is a static contract here, not proof of a TalkBack utterance; the
+device-lane test asserts the platform getter only. A content-description
+fallback was not added because it would duplicate text for readers that do
+honour `labelFor`.
+
 ## Pending dynamic validation
 
 - Run `:i2pd:assembleDebug`, resource linking and `:i2pd:lintDebug` in CI.
+- Dispatch the manual Android lane (`build-android.yml` already runs
+  `check-config.sh`): the new Java 21 denylist self-test and the layout
+  `labelFor` contract have not executed in a workflow. `UiContractTest` needs
+  the opt-in API 29 UI lane.
 - AAPT2: link the adaptive icon, `<monochrome>` layer,
   `values-v31` splash attributes and palette resources; verify the packaged
   resource table and APK contents. This was not run locally.
@@ -414,7 +462,9 @@ Android Lint alone is not a complete check for JDK-only APIs.
 - Exercise AGP's own D8/R8 on the real app (debug and minified release) and
   verify the resulting DEX at `minSdk 29`.
 - Run the prepared pure-JVM tests and the added
-  `RouterServiceLifecycleTest` instrumentation smoke test in CI.
+  `RouterServiceLifecycleTest` instrumentation smoke test in CI. Run
+  `UiContractTest` (including the metric label association case) on an API 29
+  device/emulator lane.
 - Build the native JNI library (NDK/CMake dependency set not exercised here).
 - Test the JNI UTF-8-to-UTF-16 conversion with embedded NUL, supplementary
   characters, malformed sequences and a bounded large log snapshot. The
@@ -442,3 +492,15 @@ tree. Instrumentation remains compile-only where no emulator/device lane exists.
 
 - [android modernization](android-modernization.md)
 - [android jni status](android-jni-status.md)
+
+### Instance API guard coverage
+
+App and instrumentation source guards match instance String calls rather than
+only class-qualified spellings. The JNI metadata fixture uses a local
+StringBuilder repetition helper for the API-29 lane;
+[String.repeat](https://developer.android.com/reference/java/lang/String#repeat(int))
+was added in API 33. Positive/negative source fixtures pin literal, variable
+and compound receivers while allowing unqualified local helpers. Ambiguous
+method names such as BufferedReader.lines and unrelated transform methods
+remain for receiver-aware Android Lint. JVM-only tests still run on the build
+JDK. This source check supplies no DEX/device execution evidence.

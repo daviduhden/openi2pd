@@ -6,8 +6,9 @@
 #
 # Also asserts that the certificates asset, the bundled-Kotlin
 # workaround and the RouterService-owned graceful-stop path are present,
-# and fails on any app-source reference to a JDK-only API that ART does
-# not provide.
+# fails on any app-source reference to a JDK-only API that ART does not
+# provide, and requires every metric label TextView to name its value
+# view through android:labelFor.
 #
 # Contract: a static, grep-only audit of the checked-in Android and
 # native build configuration. It needs no JDK, Android SDK/NDK, Gradle
@@ -16,6 +17,9 @@
 # location, so it is safe to invoke from any working directory. It
 # writes nothing and fails on the first violated contract with exit 1
 # and a diagnostic on stderr; it does not build, dex or run on a device.
+# The denylist self-test pipes literal samples through the same
+# expressions, so it proves the patterns reject the call shape without
+# rejecting local identifiers.
 #
 
 set -eu
@@ -28,6 +32,7 @@ wrapper="$root/android/gradle/wrapper/gradle-wrapper.properties"
 properties="$root/android/gradle.properties"
 native_cmake="$root/android/app/src/main/cpp/CMakeLists.txt"
 version_header="$root/libi2pd/version.h"
+layout_dir="$root/android/app/src/main/res/layout"
 
 fail() {
 	echo "Android Java 25 config check failed: $*" >&2
@@ -121,21 +126,189 @@ grep -Fq 'gracefulStopExpired' "$root/android/app/src/main/java/org/openi2pd/rou
 # These JDK APIs are not provided by Android's java.* bootclasspath.
 # Keep them out of app and instrumentation source; the Java 25 probe is
 # outside this scan.
+jdk_only_pattern='java\.lang\.foreign|java\.lang\.invoke|java\.lang\.classfile|java\.lang\.ScopedValue|java\.lang\.StableValue|java\.util\.Sequenced|javax\.crypto\.KDF|java\.security\.PEMEncoder|java\.security\.PEMDecoder|Thread\.ofVirtual|Thread\.startVirtualThread|Thread\.ofPlatform|Executors\.newVirtualThreadPerTaskExecutor|StructuredTaskScope|java\.util\.concurrent\.Flow|HexFormat|java\.lang\.MatchException|java\.util\.random\.RandomGenerator|jdk\.incubator\.vector'
+# Collection/String convenience APIs exist only on newer Android
+# releases. Unit tests under src/test run on the build JDK and are
+# intentionally exempt; main and instrumentation sources run on the API
+# 29 floor. The list is per method name because the class-level factory
+# names (`Map.of` vs `Map.ofEntries`) and the String strip variants are
+# different API levels.
+collection_pattern='(List|Map|Set)\.(of|ofEntries|copyOf)\(|Stream\.(toList|ofNullable|takeWhile|dropWhile|mapMulti)\(|\.toList\(\)|Optional\.(isEmpty|or|stream)\(|Collectors\.toUnmodifiable|Objects\.requireNonNullElse(Get)?\('
+# These are instance methods: requiring a String class receiver misses
+# real calls such as text.repeat(3) or (prefix + suffix).strip(). Match
+# the member-call shape, including whitespace before the parenthesis;
+# unqualified local helpers such as repeat(text, count) remain valid.
+# This is a conservative source guard, not receiver-type resolution.
+# Leave ambiguous names to Android Lint: BufferedReader.lines() is
+# supported at the API 29 floor, and other types may define transform.
+string_api_pattern='\.(repeat|isBlank|strip|stripLeading|stripTrailing|stripIndent|indent|translateEscapes|formatted)[[:space:]]*\('
+# Java 21 additions that arrive through SequencedCollection when the
+# compile classpath exposes JDK 25, plus Java 19/21 platform methods
+# absent from API 29: List.getFirst/getLast/addFirst/addLast/
+# removeFirst/removeLast/reversed, String.stripIndent, Math.clamp and
+# Thread.threadId. Match the call shape (a dot and an opening
+# parenthesis) so an identifier such as `reversed` or a helper named
+# `getFirstValue()` is not rejected. Android's Deque/ArrayDeque/
+# LinkedList first/last helpers predate API 29, but a receiver typed as
+# List or Collection cannot call them there, so the call shape stays
+# refused and `peekFirst`/`pollFirst`/`offerFirst` are the approved
+# replacements.
+java21_api_pattern='\.(getFirst|getLast|addFirst|addLast|removeFirst|removeLast)\(|\.reversed\(\)|\.stripIndent\(|Math\.clamp\(|\.threadId\('
+
 for source_dir in "$root/android/app/src/main/java" "$root/android/app/src/androidTest/java"; do
-	if grep -RInE 'java\.lang\.foreign|java\.lang\.invoke|java\.lang\.classfile|java\.lang\.ScopedValue|java\.lang\.StableValue|java\.util\.Sequenced|javax\.crypto\.KDF|java\.security\.PEMEncoder|java\.security\.PEMDecoder|Thread\.ofVirtual|Thread\.startVirtualThread|Thread\.ofPlatform|Executors\.newVirtualThreadPerTaskExecutor|StructuredTaskScope|java\.util\.concurrent\.Flow|HexFormat|java\.lang\.MatchException|java\.util\.random\.RandomGenerator|jdk\.incubator\.vector' \
-		"$source_dir"; then
+	if grep -RInE "$jdk_only_pattern" "$source_dir"; then
 		fail 'app or instrumentation source references a JDK-only API that is unavailable on ART'
 	fi
-	# Collection/String convenience APIs exist only on newer Android
-	# releases. Unit tests under src/test run on the build JDK and are
-	# intentionally exempt; main and instrumentation sources run on the API
-	# 29 floor. The list is per method name because the class-level factory
-	# names (`Map.of` vs `Map.ofEntries`) and the String strip variants are
-	# different API levels.
-	if grep -RInE '(List|Map|Set)\.(of|ofEntries|copyOf)\(|Stream\.(toList|ofNullable|takeWhile|dropWhile|mapMulti)\(|\.toList\(\)|Optional\.(isEmpty|or|stream)\(|Collectors\.toUnmodifiable|Objects\.requireNonNullElse(Get)?\(|String\.(repeat|isBlank|strip|stripLeading|stripTrailing|indent|transform|translateEscapes|lines|formatted)\(' \
-		"$source_dir"; then
-		fail 'app or instrumentation source uses a collection/String API above the API 29 floor'
+	if grep -RInE "$collection_pattern" "$source_dir"; then
+		fail 'app or instrumentation source uses a collection API above the API 29 floor'
+	fi
+	if grep -RInE "$string_api_pattern" "$source_dir"; then
+		fail 'app or instrumentation source uses a String instance API above the API 29 floor'
+	fi
+	if grep -RInE "$java21_api_pattern" "$source_dir"; then
+		fail 'app or instrumentation source uses a Java 19/21 API above the API 29 floor'
 	fi
 done
+
+# Negative fixture: the same expressions must stay silent for ordinary
+# identifiers and unrelated methods, so a clean tree is not the only
+# evidence that the denylist is precise.
+denylist_selftest() {
+	pattern=$1
+	expect=$2
+	sample=$3
+	if printf '%s\n' "$sample" | grep -qE "$pattern"; then
+		matched=yes
+	else
+		matched=no
+	fi
+	[ "$matched" = "$expect" ] ||
+		fail "denylist self-test: expected $expect for: $sample"
+}
+
+for sample in \
+	'"x".repeat(3);' \
+	'(prefix + suffix).repeat (3);' \
+	'text.isBlank();' \
+	'text.strip();' \
+	'text.stripLeading();' \
+	'text.stripTrailing();' \
+	'text.stripIndent();' \
+	'text.indent(2);' \
+	'text.translateEscapes();' \
+	'text.formatted(value);'; do
+	denylist_selftest "$string_api_pattern" yes "$sample"
+done
+for sample in \
+	'repeat(text, count);' \
+	'private static String repeat(String text, int count) {' \
+	'text.repeatValue(3);' \
+	'boolean isBlank = false;' \
+	'reader.lines();' \
+	'matrix.transform(point);' \
+	'text.stripIndentation();' \
+	'String.format(pattern, value);'; do
+	denylist_selftest "$string_api_pattern" no "$sample"
+done
+
+for sample in \
+	'orders.getFirst();' \
+	'orders.getLast();' \
+	'queue.addFirst(node);' \
+	'queue.addLast(node);' \
+	'queue.removeFirst();' \
+	'queue.removeLast();' \
+	'orders.reversed();' \
+	'line.stripIndent();' \
+	'Math.clamp(port, 1, 65535);' \
+	'Thread.currentThread().threadId();'; do
+	denylist_selftest "$java21_api_pattern" yes "$sample"
+done
+for sample in \
+	'int reversed = orders.size();' \
+	'String getFirstValue() { return null; }' \
+	'list.reversedOrder();' \
+	'text.stripIndentation();' \
+	'Math.max(port, 1);' \
+	'long threadIdentifier = 0L;'; do
+	denylist_selftest "$java21_api_pattern" no "$sample"
+done
+
+# Every metric label TextView must name its value view, otherwise a
+# screen reader reads a bare number with no unit. The walk requires the
+# label TextView to be the element immediately before the value, that
+# its android:labelFor targets that value and that every labelFor in the
+# layout resolves to an id declared in the same layout. Plain TextViews
+# with no id are unaffected.
+check_label_for() {
+	layout=$1
+	shift
+	awk -v layout="$layout" -v expected="$*" '
+	BEGIN {
+		RS = "<"
+		bad = 0
+		count = split(expected, want, " ")
+		for (i = 1; i <= count; i++) pending[want[i]] = 1
+		previous = ""
+	}
+	{
+		id = ""
+		label = ""
+		if (match($0, /android:id="@\+id\/[A-Za-z0-9_]+"/)) {
+			id = substr($0, RSTART, RLENGTH)
+			sub(/^.*@\+id\//, "", id)
+			sub(/".*$/, "", id)
+			declared[id] = 1
+		}
+		if ($0 ~ /^TextView([ \t\r\n]|$)/ &&
+				match($0, /android:labelFor="@id\/[A-Za-z0-9_]+"/)) {
+			label = substr($0, RSTART, RLENGTH)
+			sub(/^.*@id\//, "", label)
+			sub(/".*$/, "", label)
+			targets[label] = 1
+		}
+		if (id != "" && (id in pending)) {
+			if (previous != id) {
+				printf "%s: @id/%s is not labelled by the preceding TextView\n", layout, id
+				bad = 1
+			}
+			seen[id] = 1
+		}
+		if ($0 ~ /^TextView([ \t\r\n]|$)/)
+			previous = label
+		else
+			previous = ""
+	}
+	END {
+		for (i = 1; i <= count; i++) {
+			if (!(want[i] in seen)) {
+				printf "%s: no android:labelFor for @id/%s\n", layout, want[i]
+				bad = 1
+			}
+		}
+		for (target in targets) {
+			if (!(target in declared)) {
+				printf "%s: android:labelFor=\"@id/%s\" does not resolve\n", layout, target
+				bad = 1
+			}
+		}
+		exit bad
+	}
+	' "$layout"
+}
+
+check_label_for "$layout_dir/fragment_dashboard.xml" \
+	metric_uptime metric_peers metric_routers metric_tunnels \
+	metric_download metric_upload metric_reseed ||
+	fail 'dashboard metric labels are not associated with their values'
+check_label_for "$layout_dir/fragment_statistics.xml" \
+	stat_download_rate stat_upload_rate stat_total_received stat_total_sent \
+	stat_total_transit stat_tunnels stat_uptime stat_peers stat_routers ||
+	fail 'statistics metric labels are not associated with their values'
+check_label_for "$layout_dir/fragment_tunnels.xml" \
+	text_tunnels_in text_tunnels_out text_tunnels_transit text_tunnels_total ||
+	fail 'tunnel metric labels are not associated with their values'
+check_label_for "$layout_dir/fragment_network.xml" text_ipv4 text_ipv6 ||
+	fail 'network address labels are not associated with their values'
 
 echo "Android Java 25 config check passed"
