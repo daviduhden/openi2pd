@@ -7,13 +7,13 @@
  * Implements the UNIX daemon lifecycle: optional fork/setsid
  * daemonisation with a readiness pipe, pidfile locking and rlimit
  * setup, signal-driven reload and shutdown, and graceful tunnel
- * draining. On OpenBSD it installs the startup pledge, spawns
- * privilege-separated workers before the sandbox, then applies
- * validated unveil rules and the fixed runtime pledge. The runtime
- * promise set is built from the same table as the startup set and must
- * be a subset of it; `openbsd.pledge_file` may only select from that
- * set and may never add process, identity or privilege promises at
- * runtime.
+ * draining. On OpenBSD it spawns every privilege-separated worker while
+ * the core is still unpledged, installs a first pledge with "unveil",
+ * applies the validated unveil rules, and then drops to the fixed
+ * runtime pledge. No phase grants "exec" or "error": a restricted
+ * process never executes another image. The runtime promise set is
+ * built from the same table and must be a subset of the first set;
+ * `openbsd.pledge_file` may only select from that set.
  */
 
 #include "Daemon.h"
@@ -59,7 +59,6 @@
 // These declarations are platform-free and remain available in an
 // I2PD_NO_PRIVSEP build: the runtime pledge, the promise table and the
 // worker identity are still part of the core's own sandbox contract.
-#include "../privsep/Credentials.h"
 #include "../privsep/OpenBSDSandbox.h"
 #include "../privsep/Supervisor.h"
 #endif
@@ -622,30 +621,20 @@ namespace util
 #endif
 
 #ifdef __OpenBSD__
-		// Spawn supervisor/log workers while the startup pledge still carries
-		// proc/exec. Pledge and unveil are cleared by execve; every worker
-		// installs its own policy after exec instead of inheriting this one.
+		// Spawn supervisor/log workers while the core is still unpledged.
+		// Pledge and unveil are cleared by execve; every worker installs its
+		// own policy after exec instead of inheriting one. No restricted
+		// process is allowed to create another after this point.
 		if (!PreparePrivsepWorkers ()) return abortStart ();
 #if !defined(I2PD_NO_PRIVSEP) && !defined(NO_TORRENTS)
-		// The separate broker is created before the runtime pledge removes
-		// exec. Its root authority is immutable and roots outside datadir are
-		// rejected. A root core can only start it when a worker identity is
-		// configured: the broker and its workers run as that identity, never
-		// as root.
-		if (::geteuid () != 0 || i2p::privsep::GetWorkerCredentials ().configured)
-		{
-			std::string storageError;
-			if (!i2p::privsep::PrepareTorrentStorageSupervisor (i2p::fs::GetDataDir (), storageError))
-			{
-				std::cerr << "storage supervisor: " << storageError << std::endl;
-				return abortStart ();
-			}
-		}
-		else
-			// Never skip this silently: root without privsep.user cannot run an
-			// unprivileged worker, so isolated torrent storage will fail closed.
-			WarnBeforeLogger ("storage supervisor: not started (root core without privsep.user); "
-							  "isolated torrent storage is unavailable");
+		// The on-demand torrent-storage broker is disabled: it forked and
+		// exec'ed a worker after its own sandbox, which requires the
+		// forbidden pledge(2) "exec" promise. Isolated torrent storage
+		// therefore fails closed until an exec-free worker-provisioning
+		// protocol exists. Do not start a broker that would need exec.
+		WarnBeforeLogger ("storage supervisor: isolated torrent storage is unavailable on OpenBSD "
+						  "(on-demand worker creation requires the forbidden exec promise); "
+						  "tunnels with isolatedstorage=true will fail closed");
 #endif
 		// Resolve/read sandbox policy before the first unveil hides it.
 		bool useUnveil, usePledge;
@@ -719,6 +708,44 @@ namespace util
 					if (std::find (promises.begin (), promises.end (), promise) == promises.end ())
 						promises.push_back (promise);
 			}
+		}
+		// The first pledge is installed after every worker has been created
+		// and before unveil rules are added. It is the runtime set plus
+		// "unveil"; the final pledge then drops that promise. No phase
+		// carries exec or id: spawn helpers ran while the core was still
+		// unpledged, and a restricted process never executes another image.
+		if (useUnveil && !usePledge)
+		{
+			fail ("Daemon: openbsd.unveil_enabled requires openbsd.pledge_enabled");
+			return abortStart ();
+		}
+		std::string pledgePromises;
+		for (const auto & promise : promises)
+		{
+			if (!pledgePromises.empty ()) pledgePromises += ' ';
+			pledgePromises += promise;
+		}
+		i2p::privsep::OpenBSDPledgeWindow startupWindow;
+		startupWindow.unveil = useUnveil;
+		startupWindow.upnp = upnp;
+		startupWindow.reapChildren = runtimeWindow.reapChildren;
+		startupWindow.descriptorReception = runtimeWindow.descriptorReception;
+		const auto startupPromises
+			= i2p::privsep::BuildOpenBSDPledgePromises (i2p::privsep::OpenBSDPledgePhase::Startup, startupWindow);
+		if (!i2p::privsep::IsPledgePromiseSubset (pledgePromises, startupPromises))
+		{
+			fail ("Daemon: internal pledge policy error: the runtime promise set is not a subset of the "
+				  "startup set");
+			return abortStart ();
+		}
+		// Every allowed worker already exists. Fail closed in-process as
+		// well, so a future code path cannot fork/exec merely because the
+		// platform sandbox is not installed yet.
+		i2p::privsep::ForbidProcessCreation ();
+		if (usePledge && pledge (startupPromises.c_str (), i2p::privsep::OPENBSD_PLEDGE_EXECPROMISES) == -1)
+		{
+			fail (std::string ("Daemon: first pledge: ") + strerror (errno));
+			return abortStart ();
 		}
 		if (useUnveil && !readPolicy ("openbsd.unveil_file", extraPaths)) return abortStart ();
 		if (useUnveil)
@@ -874,43 +901,12 @@ namespace util
 				return abortStart ();
 			}
 		}
-		// fork/setsid/setrlimit, PID locking, unveil and every worker spawn
-		// are complete. The runtime set therefore has no exec, no id and no
-		// unveil; proc survives only for reaping an owned supervisor.
-		std::string pledgePromises;
-		for (const auto & promise : promises)
-		{
-			if (!pledgePromises.empty ()) pledgePromises += ' ';
-			pledgePromises += promise;
-		}
-		// Pledge can only remove promises. A runtime promise that the startup
-		// set never contained is silently ignored by the kernel, and the
-		// first use of that subsystem aborts the core. Recompute the startup
-		// window from the same table rather than trusting that the two call
-		// sites stayed in sync.
-		i2p::privsep::OpenBSDPledgeWindow startupWindow;
-		startupWindow.unveil = useUnveil;
-		startupWindow.upnp = upnp;
-		startupWindow.execWorkers = true;
-		startupWindow.reapChildren = runtimeWindow.reapChildren;
-		startupWindow.descriptorReception = true;
-		startupWindow.credentialDrop = i2p::privsep::GetWorkerCredentials ().configured;
-		const auto startupPromises
-			= i2p::privsep::BuildOpenBSDPledgePromises (i2p::privsep::OpenBSDPledgePhase::Startup, startupWindow);
-		if (!i2p::privsep::IsPledgePromiseSubset (pledgePromises, startupPromises))
-		{
-			fail ("Daemon: internal pledge policy error: the runtime promise set is not a subset of the "
-				  "startup set");
-			return abortStart ();
-		}
-		// Every allowed worker already exists. Fail closed in-process as
-		// well, so a future code path cannot fork/exec merely because the
-		// platform sandbox lets it; the spawn helpers refuse from this point
-		// on.
-		i2p::privsep::ForbidProcessCreation ();
+		// unveil is locked and every worker exists. The final runtime
+		// pledge drops "unveil" and any startup-only promise; proc survives
+		// only for reaping an owned supervisor. No phase has exec or id.
 		if (usePledge && pledge (pledgePromises.c_str (), i2p::privsep::OPENBSD_PLEDGE_EXECPROMISES) == -1)
 		{
-			fail (std::string ("Daemon: pledge: ") + strerror (errno));
+			fail (std::string ("Daemon: runtime pledge: ") + strerror (errno));
 			return abortStart ();
 		}
 #endif

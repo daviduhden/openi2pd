@@ -1083,8 +1083,8 @@ foreach(required IN ITEMS
     message(FATAL_ERROR "Missing OpenBSD pledge-window contract: ${required}")
   endif()
 endforeach()
-# No execpromises string may ever be supplied: the exec'ed image must
-# reapply its own unveil and pledge policy. The only accepted second
+# No execpromises string may ever be supplied. No policy names "exec",
+# so a pledged process cannot reach a new image; the only accepted second
 # argument is the compile-time null constant declared in the header.
 string(REGEX MATCH "pledge \\([^,]+,[[:space:]]*\"" openbsd_execpromises "${openbsd_sandbox_source}")
 if(openbsd_execpromises)
@@ -1097,7 +1097,7 @@ endif()
 
 foreach(required IN ITEMS
     "ForbidProcessCreation"
-    "policyConfig.executablePath"
+    "reserveWorker"
     "IsAllowedParentUid")
   string(FIND "${supervisor_source}" "${required}" position)
   if(position EQUAL -1)

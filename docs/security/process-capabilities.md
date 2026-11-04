@@ -16,22 +16,22 @@ Documents project documentation.
 |---|---|---|---|
 | Router core | Existing broad policy (`stdio rpath wpath cpath fattr inet dns unix flock`, optional `mcast`; `/dev/log` `w` only when the core owns syslog). When `privsep.log` owns the sink, `proc` is retained for bounded supervisor reaping/signalling; `exec` is absent | No seccomp/Landlock; normal process. With `privsep.artifacts`, netDb/profile/destination-key writes go to the data-storage worker; the core keeps its direct write capability for the read path and remaining artifacts | Normal process |
 | Log worker | `OpenBSDSandbox` policy: direct file `unveil(/etc/localtime,r)` + `unveil(logfile,rwc)` + `pledge("stdio unix rpath wpath cpath fattr")`; pre-opened descriptor `pledge("stdio unix rpath")` with no log path rule; syslog `unveil(/dev/log,w)` + `pledge("stdio unix")`; stdout `pledge("stdio unix")`. The worker is spawned before the parent runtime sandbox | `LinuxSandbox`: no-new-privs and capability teardown happen in the spawn child before `execve`; Landlock write restriction to the log file and no `EXECUTE`; seccomp AF_INET/AF_INET6 deny (AF_UNIX kept for syslog) is installed **before** the configuration frame; `requireLandlock=false` for pre-opened/stdout compatibility | Low-privilege AppContainer (no `internetClient`) with a delegated log root, protected pipe DACL, PID/session/container/nonce-bound accept and role-bound per-operation IPC; no Windows log backend yet |
-| Supervisor and storage broker | Separate processes; the supervisor owns the log worker, the broker owns storage-worker spawning. Both pre-resolve their own executable, `unveil(exe,"x")` + lock (exactly one `x` rule) and `pledge("stdio proc exec")` / `("stdio proc exec sendfd")`: no `unix`, no `rpath/wpath/cpath`, no descriptor reception, no network, and no way to exec anything except the frozen image. The log worker and every exec'ed storage worker install their own unveil+pledge after `execve` | `ApplyLinuxSupervisorSandbox`: no-new-privs and capability/bounding-set drop only. It deliberately installs no Landlock/seccomp/netns domain because those are inherited and cannot be relaxed for exec'ed storage/network children; each child applies its full role policy | Named-pipe primitives/Job Object policy implemented; supervisor integration pending |
+| Supervisor and storage broker | Separate processes; the supervisor owns one active and one reserve log worker created before its `pledge("stdio proc")`: no `exec`, `error`, `unix`, path read/write, descriptor reception or network. It promotes the reserve without executing. The on-demand storage broker is disabled because it required `exec`; isolated torrent storage fails closed pending an exec-free design | `ApplyLinuxSupervisorSandbox`: no-new-privs and capability/bounding-set drop only. It deliberately installs no Landlock/seccomp/netns domain because those are inherited and cannot be relaxed for exec'ed storage/network children; each child applies its full role policy | Named-pipe primitives/Job Object policy implemented; supervisor integration pending |
 | Network worker | `OpenBSDSandbox` policy builder: `stdio unix inet`, optional `dns`/`recvfd`/`route` (+ `mcast` only with UPnP), no `wpath/cpath/fattr`; backend migration pending | `LinuxSandbox` profile builder: sockets allowed, Landlock persistent-write deny, no seccomp socket deny; backend not migrated | AppContainer with `internetClient` + `privateNetworkClientServer`, no delegated write root and no persistent-write ACL; backend not migrated |
 | Storage workers | Router-storage owns the four fixed router files; the data-storage worker owns `netDb/r*/routerInfo-<b64>.dat`, `peerProfiles/p*/profile-<b64>.txt` and `destinations/<b32>.<type>.dat`. Both use `OpenBSDSandbox`: `stdio rpath wpath cpath` (plus `unix`/`recvfd` only for the non-preopened path), unveiling only the delegated root; no `inet/dns`; torrent storage keeps its broker | Same roles under `LinuxSandbox`: capabilities are emptied in the spawn child; seccomp denies `socket`/`socketpair` **and** `connect`/`bind`/`listen`/`accept*`/`sendto`/`execve*`/`fork`/`clone`, installed before the configure frame; Landlock limits reads and writes to the delegated root and denies `EXECUTE`; an empty network namespace is attempted pre-exec when the core has `CAP_SYS_ADMIN` (best-effort; seccomp is the mandatory boundary); cgroup-v2 limits remain unwired | Low-privilege AppContainer (no `internetClient`) with one delegated write root granted to the container SID; protected pipe DACL; Job Object/mitigations; backend not migrated |
 | Crypto worker | `OpenBSDSandbox` policy builder: `stdio unix`, no network/path write; key handles and backend pending | `LinuxSandbox` profile builder: no sockets, capability drop, Landlock write deny; backend not migrated | `WindowsWorkerPolicy` crypto profile; backend not migrated |
 | TUI | Separate client; local UNIX socket 0600 | Same | Not available |
 
-The supervisor is spawned from the startup phase, while the OpenBSD startup
-pledge still contains `proc`/`exec`. The startup policy always carries `exec`
-in this window so router/torrent storage workers can be spawned even when
-`privsep.log` is disabled. The parent then installs its runtime policy without
-`exec`; `proc` is retained only while `privsep.log` is active so the core can
-reap/signal the supervisor. No worker relies on pledge or unveil state
-surviving `execve`. The supervisor resolves the executable path before it
-applies its own policy and owns bounded log-worker replacement with exponential
-backoff and an eight-attempt cap. A dead supervisor is not replaced by the core
-when the runtime sandbox is active.
+The supervisor is spawned while the core is unpledged. Its active and reserve
+log workers are created and configured before it applies `pledge("stdio
+proc")`; the reserve is promoted without executing a new image. The core then
+installs a first pledge with `unveil` and drops to runtime; `proc` is retained
+only while `privsep.log` is active so the core can reap/signal the supervisor.
+No phase contains `exec` or `error`, and no worker relies on pledge or unveil
+state surviving `execve`. The on-demand storage broker is disabled because it
+required fork/exec after its sandbox; isolated torrent storage fails closed.
+A dead supervisor is not replaced by the core when the runtime sandbox is
+active.
 
 The core no longer unveils a log file or `/dev/log` when the log worker owns
 the sink. The log worker installs its own `/dev/log` rule before pledge; this
@@ -179,17 +179,17 @@ storage/network engines remain in the core; no live Windows worker exists.
 
 ### Supervised start, worker identity and descriptors (2026-10-26)
 
-The core keeps a wide **startup** pledge only until every allowed worker is
-running: `stdio rpath wpath cpath fattr inet dns unix flock recvfd proc exec`
-plus `unveil`/`mcast`/`id` when configured. `recvfd` is present in the startup
-set because pledge can only remove promises; without it the runtime `recvfd`
-would be silently ignored and the first supervised worker handoff would abort
-the core. The **runtime** set is rebuilt from the same table and startup fails
-if it is not a strict subset. It never contains `exec`, `id`, `chown` or
-`unveil`.
+The core installs a **first** pledge after every allowed worker exists:
+`stdio rpath wpath cpath fattr inet dns unix flock recvfd proc` plus
+`unveil`/`mcast` when configured. It contains no `exec`, `error` or `id`.
+`recvfd` is present because pledge can only remove promises; without it the
+runtime `recvfd` would be silently ignored and the first supervised worker
+handoff would abort the core. The **runtime** set is rebuilt from the same
+table and startup fails if it is not a strict subset. It never contains
+`exec`, `error`, `id`, `chown` or `unveil`.
 
 `privsep.user`/`privsep.group` select the worker identity. Names are resolved
-once before the startup pledge (bounded `getpwnam_r`/`getgrnam_r`), uid 0 is
+once before the first pledge (bounded `getpwnam_r`/`getgrnam_r`), uid 0 is
 rejected, and the pair is published process-wide. The forked child calls
 `setgroups(0,nullptr)`, `setgid`, `setuid` before `execve` and verifies the
 real/effective ids and an empty supplementary set; a root core with any
@@ -266,15 +266,15 @@ never resolved through `$PATH` or `/proc`.
 
 ### Supervisor
 
-- **Current:** a separate supervisor process owns the log worker and forwards
-  records. On OpenBSD it pre-resolves the executable, unveils exactly that path
-  with `x`, locks the list and applies `pledge("stdio proc exec")`; it has no
-  `unix`, no pathname read/write and never opens the log file. The storage
-  broker uses `pledge("stdio proc exec sendfd")` with the same single-`x`
-  unveil. It retains fork/exec only to restart the log child, which is why no
-  seccomp/Landlock filter is installed yet. The core does not retain `exec`; it
-  keeps `proc` only for bounded supervisor reaping/signalling and cannot replace
-  a dead supervisor.
+- **Current:** a separate supervisor process owns one active and one reserve
+  log worker and forwards records. On OpenBSD both workers are created and
+  configured before the supervisor applies `pledge("stdio proc")`; it has no
+  `exec`, `error`, `unix`, pathname read/write or descriptor reception and
+  never opens the log file. It promotes the reserve without executing. The
+  on-demand storage broker is disabled because it required `exec`; isolated
+  torrent storage fails closed pending an exec-free design. The core does not
+  retain `exec`; it keeps `proc` only for bounded supervisor reaping/signalling
+  and cannot replace a dead supervisor.
 - **Planned:** move storage/network/crypto workers and core replacement under
   the same supervisor with typed channels and per-role policies. The supervisor
   must never combine network and persistent-write capabilities.

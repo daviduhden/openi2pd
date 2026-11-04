@@ -76,16 +76,18 @@ limitation; do not substitute local execution. Ask for:
 
 ## Conventions
 
-- Configure and spawn workers while startup still has `proc`/`exec`; drop
-  `exec` from the runtime policy. Retain `proc` only for bounded
-  supervisor reaping/signalling where the design requires it.
-- The storage supervisor opens and validates its root before installing its
-  own policy; it forks/execs the worker with the channel at fd3 and root at
-  fd4. The worker applies its own `unveil`/`pledge` before ACK.
+- Create and configure every worker while the core is unpledged, then
+  install a first pledge with `unveil` and drop it at runtime. No policy
+  ever contains `exec` or `error`; retain `proc` only for bounded
+  supervisor reaping/signalling.
+- The supervisor creates one active and one reserve log worker before its
+  `stdio proc` pledge and promotes the reserve without executing. The
+  on-demand storage broker is disabled because it required exec; isolated
+  torrent storage fails closed pending a pre-created pool design.
 - Never send a directory descriptor with `SCM_RIGHTS` after `pledge`;
   `sendfd`/`recvfd` prohibit it. Return only the UNIX socket.
 - Add `recvfd` only where required for the returned socket; do not add
-  `proc`/`exec` to the core runtime policy without a demonstrated need.
+  `proc` to the core runtime policy without a demonstrated need.
 - Use `O_NOFOLLOW`, ownership/device/inode checks and relative `openat` for
   storage bootstrap.
 - Keep the OpenBSD rc.d script usable with a non-default user/datadir and
@@ -94,6 +96,15 @@ limitation; do not substitute local execution. Ask for:
   unsupported type.
 
 ## Known issues and decisions
+- Audit the shared launcher together with its callers: OpenBSD worker exec
+  occurs before the first sandbox, while `ForbidProcessCreation()` fences
+  later launches. Do not describe that startup as execution under an x-only
+  unveil rule. Review both daemon pledge calls and the policy applier;
+  checking only the worker policy misses the core's generated strings.
+- The external port template currently has no `patches/` directory. For a
+  review patch, retain the base revision and generate `Index:` sections with
+  `diff -u -p`; do not install a duplicate patch into the template when the
+  in-tree sources already contain the change.
 - `BuildOpenBSDPolicy` and `ApplyOpenBSDPolicy` refuse an unveil root of
   `/`, `//` or `///`; a hand-assembled policy is re-checked. An unknown
   pledge token is rejected by `IsKnownPledgePromiseName()` before `pledge(2)`
@@ -123,16 +134,18 @@ limitation; do not substitute local execution. Ask for:
 - OpenBSD compilation, service lifecycle, TUI and storage-broker runtime
   evidence remain pending manual CI.
 
-- The supervisor and storage broker are exec authorities: pre-resolve the
-  executable, `unveil(exe,"x")` + lock, pledge `stdio proc exec` /
-  `stdio proc exec sendfd`. No `unix`, path read/write, `recvfd` or network.
-  `OPENBSD_PLEDGE_EXECPROMISES` is `nullptr`; never pass execpromises and never
-  assume pledge/unveil survive `execve`. A new image installs its own policy.
-- The startup pledge must include `recvfd` (and `id` when a worker identity is
-  configured) because pledge only removes promises; the runtime set is a strict
-  subset. `openbsd.pledge_file` is subset-only, rejects comments/blank lines
-  and dangerous runtime tokens. `unveil_file` entries must be absolute and not
-  `/`.
+- No policy may name `exec` or `error`. The supervisor pledges `stdio proc`;
+  its active and reserve log workers are created and configured before the
+  policy and the reserve is promoted without spawning. The on-demand storage
+  broker is disabled: it needed fork/exec after its own sandbox, so isolated
+  torrent storage fails closed until an exec-free provisioning design exists.
+  `OPENBSD_PLEDGE_EXECPROMISES` remains `nullptr`; never pass execpromises and
+  never assume pledge/unveil survive `execve`.
+- The first pledge is installed after every worker exists and adds `unveil`;
+  it must include `recvfd`/`proc` where used because pledge only removes
+  promises. The runtime set is a strict subset and drops `unveil`.
+  `openbsd.pledge_file` is subset-only, rejects comments/blank lines, `exec`
+  and `error`. `unveil_file` entries must be absolute and not `/`.
 - Worker identity: bounded `privsep.user`/`privsep.group` resolution before the
   sandbox, uid 0 rejected, setgroups/setgid/setuid and verification in the
   forked child, 25-byte role/nonce/uid/gid hello on fd 5. Descriptors 3/4/5,

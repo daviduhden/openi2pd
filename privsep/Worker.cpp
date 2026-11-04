@@ -338,8 +338,8 @@ namespace
 #if defined(__linux__)
 		// Close the freeze/exec gap: a path replacement between
 		// SetExecutablePath and this spawn must not execute a different
-		// image. OpenBSD uses an x-only unveil of the frozen path and has no
-		// rpath at this point.
+		// image. OpenBSD creates workers before its first pledge/unveil;
+		// restricted processes cannot use this spawn path afterwards.
 		struct stat frozenStatus { };
 		if (::stat (executable.c_str (), &frozenStatus) != 0 || !S_ISREG (frozenStatus.st_mode)
 			|| frozenStatus.st_dev != g_ExecutableDevice || frozenStatus.st_ino != g_ExecutableInode

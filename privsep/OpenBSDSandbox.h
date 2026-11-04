@@ -30,11 +30,13 @@ namespace i2p::privsep
  * the router core. The policy builder is deliberately independent of
  * the IPC message codec so a worker can apply the policy before
  * entering its service loop.
- * Log, Storage, StorageBroker and Supervisor match processes that exist
- * today (the log worker, the data/router/torrent storage workers and
- * the pre-pledge broker). Network, Crypto and Admin are
- * policy-builder-only: no process claims those roles yet, so a
- * reviewable policy row is not a backend.
+ * Log, Storage and Supervisor match processes that exist today (the
+ * log worker, the data/router/torrent storage workers and the log
+ * supervisor). StorageBroker is retained as a disabled role identifier:
+ * it cannot be built because spawning a worker after its own sandbox
+ * would require the forbidden pledge(2) "exec" promise. Network, Crypto
+ * and Admin are policy-builder-only: no process claims those roles yet,
+ * so a reviewable policy row is not a backend.
  */
 enum class OpenBSDWorkerRole : uint8_t
 {
@@ -45,11 +47,13 @@ enum class OpenBSDWorkerRole : uint8_t
 	Crypto,
 	Admin,
 	/**
-	 * Pre-pledge torrent-storage broker. It forks/execs delegated storage
-	 * workers and forwards exactly one channel descriptor per worker with
-	 * sendfd. It never receives a descriptor, so it holds neither recvfd
-	 * nor unix; an unexpected descriptor is a fatal frame fault
-	 * (fail-closed).
+	 * Disabled torrent-storage broker role identifier.
+	 *
+	 * The former on-demand broker forked and exec'ed a storage worker
+	 * after applying its own sandbox, which required the pledge(2)
+	 * "exec" promise. This project forbids that promise, so the builder
+	 * refuses the role and isolated torrent storage fails closed on
+	 * OpenBSD until an exec-free worker-provisioning protocol exists.
 	 */
 	StorageBroker
 };
@@ -67,25 +71,6 @@ struct OpenBSDPolicyConfig
 	// Configured storage workers need only their inherited channel, no new
 	// UNIX connections or descriptor reception after bootstrap.
 	bool preopenedStorageIpc = false;
-
-	/**
-	 * Absolute path of the executable the supervisor/broker roles may
-	 * execve.
-	 * Supervisor and StorageBroker policies add exactly one unveil rule
-	 * for this path with "x" and nothing else, so a compromised sandbox
-	 * cannot start an arbitrary image. The value is resolved by the caller
-	 * before the policy is built and is reused for every replacement
-	 * spawn.
-	 */
-	std::string executablePath;
-
-	/**
-	 * The spawn helper drops supplementary groups, gid and uid in the
-	 * forked child before execve. Process-creation roles need the "id"
-	 * promise for that single call sequence; it is never part of a leaf
-	 * worker policy.
-	 */
-	bool dropCredentials = false;
 
 	/** Absolute data/certificate roots used by the storage policy. */
 	std::string dataDir;
@@ -127,7 +112,7 @@ struct OpenBSDPolicy
 	bool HasExternalNetwork () const;
 	/** True for wpath/cpath/fattr. */
 	bool HasPersistentWrite () const;
-	/** True for proc/exec. */
+	/** True when the policy carries proc. No policy carries exec. */
 	bool HasProcessCreation () const;
 	/**
 	 * Local UNIX-socket IPC only; this is not external network
@@ -152,6 +137,17 @@ const char * OpenBSDWorkerRoleName (OpenBSDWorkerRole role);
 bool IsKnownPledgePromiseName (std::string_view name);
 
 /**
+ * True for promises this project never permits in a policy.
+ *
+ * "exec" would let a restricted process start a new image; every worker
+ * is created before its first pledge. "error" would turn a policy
+ * violation into a recoverable errno and hide an incompatible
+ * operation. Builders, the pledge-file parser and the applier all
+ * refuse these names before pledge(2) can see them.
+ */
+bool IsForbiddenPledgePromiseName (std::string_view name);
+
+/**
  * Build a least-privilege policy for a role.
  *
  * The caller supplies only paths it actually owns. `BuildOpenBSDPolicy`
@@ -166,11 +162,10 @@ i2p::expected<OpenBSDPolicy, std::string> BuildOpenBSDPolicy (
  * Apply unveil rules, lock the unveil list and then install pledge.
  *
  * pledge(2) is always called with a null execpromises argument, pinned
- * by `OPENBSD_PLEDGE_EXECPROMISES`: an exec'ed image therefore starts
- * without any pledge promise, so every exec'ed worker must install its
- * own unveil rules and pledge before it serves a frame. This code never
- * relies on pledge or unveil state surviving execve, and it never sets
- * execpromises.
+ * by `OPENBSD_PLEDGE_EXECPROMISES`. No policy grants "exec", so a
+ * pledged process cannot reach an exec'ed image at all; a pre-created
+ * worker installs its own unveil rules and pledge after fork/exec and
+ * before it serves a frame.
  * Each rule is checked again here before unveil(2) sees it: a policy
  * object can be assembled by the caller, so an empty permission set, a
  * relative path or an all-slash (the filesystem root) path is refused
@@ -183,8 +178,9 @@ i2p::expected<void, std::string> ApplyOpenBSDPolicy (const OpenBSDPolicy & polic
 
 /**
  * Pin, not a configuration knob: the execpromises argument of every
- * pledge(2) call in this component. A non-null value would let a child
- * inherit promises that no policy builder validated.
+ * pledge(2) call in this component. It is always null, and no policy
+ * may name "exec", so a new image can never inherit a validated-looking
+ * promise set from this process.
  */
 inline constexpr const char * OPENBSD_PLEDGE_EXECPROMISES = nullptr;
 
@@ -192,12 +188,13 @@ inline constexpr const char * OPENBSD_PLEDGE_EXECPROMISES = nullptr;
 enum class OpenBSDPledgePhase : uint8_t
 {
 	/**
-	 * Before the first fork/exec and before unveil rules are installed.
-	 * This window is the widest set the core ever holds; it is installed
-	 * once and can only be reduced afterwards.
+	 * First pledge, installed after every worker has been created and
+	 * before unveil rules are added. It is the widest set the core ever
+	 * holds and can only be reduced afterwards. It never carries exec or
+	 * id: spawn helpers run while the core is still unpledged.
 	 */
 	Startup,
-	/** After every worker is spawned and the unveil list is locked. */
+	/** After the unveil list is locked; drops unveil and any extra. */
 	Runtime
 };
 
@@ -212,18 +209,12 @@ struct OpenBSDPledgeWindow
 	bool unveil = false;
 	/** Multicast discovery is enabled for UPnP (both windows). */
 	bool upnp = false;
-	/** The core forks and execs workers in this window (startup only). */
-	bool execWorkers = false;
 	/**
-	 * The core reaps/signals an owned supervisor without exec (runtime
-	 * only). */
+	 * The core reaps/signals an owned supervisor. No window carries exec;
+	 * every worker is created before this flag is used. */
 	bool reapChildren = false;
 	/** The core receives worker channels/roots by descriptor (recvfd). */
 	bool descriptorReception = false;
-	/**
-	 * A forked child drops uid/gid before execve (startup only, needs
-	 * id). */
-	bool credentialDrop = false;
 };
 
 /**

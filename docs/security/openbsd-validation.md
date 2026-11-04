@@ -154,21 +154,21 @@ Run each case from a fresh configuration copy and record `lastcomm` flags
   is bounded (64 KiB), tokens are space/tab separated, comments and blank
   lines are rejected (a commented-out promise must never look active), unknown
   tokens abort startup, and every token must already be present in that
-  phase's validated base set. Duplicates are ignored. The startup base set is
-  `stdio rpath wpath cpath fattr inet dns unix flock recvfd proc exec` plus
-  `unveil`, `mcast` (UPnP) and `id` when a worker identity is configured; the
-  runtime base set is the same table without process/identity promises, plus
-  `proc` only while the log supervisor is owned and `mcast` with UPnP. Startup
-  fails if the runtime set is not a strict subset, because pledge can only
-  remove promises.
+  phase's validated base set. Duplicates are ignored. The first base set is
+  `stdio rpath wpath cpath fattr inet dns unix flock recvfd proc` plus
+  `unveil` and `mcast` (UPnP); it never contains `exec`, `error` or `id`. The
+  runtime base set is the same table without `unveil`, plus `proc` only while
+  the log supervisor is owned and `mcast` with UPnP. Startup fails if the
+  runtime set is not a strict subset, because pledge can only remove
+  promises. `exec` and `error` are rejected in both phases.
   - Positive case: a custom runtime file containing only `stdio` must start,
     and `ps -o pledge -p "$(cat /var/i2pd/i2pd.pid)"` must still show the
     runtime baseline (and `mcast` with UPnP enabled).
   - Negative case: `stdio;`, `procc`, a comment line, a blank line and a
-    runtime `proc`/`exec`/`id`/`chown`/`dpath` token must each fail startup
-    with a bounded diagnostic in syslog (daemon stderr is `/dev/null`), remove
-    the pidfile and exit nonzero. Repeating a token on several lines must not
-    duplicate it.
+    runtime `proc`/`exec`/`error`/`id`/`chown`/`dpath` token must each fail
+    startup with a bounded diagnostic in syslog (daemon stderr is
+    `/dev/null`), remove the pidfile and exit nonzero. Repeating a token on
+    several lines must not duplicate it.
 - `openbsd.unveil_file` entries are trimmed, must be absolute and NUL-free, and
   may not be `/` either textually or after `realpath()`. A configured datadir
   symlink is intentionally resolved before unveil.
@@ -187,12 +187,13 @@ Run each case from a fresh configuration copy and record `lastcomm` flags
   spawn-bound hello is covered by `test-privsep-worker-identity`: 25-byte
   layout, uid/gid mismatch, uid 0, trailing byte and open writer, pinned stdio
   and the one-way `ForbidProcessCreation()` barrier.
-- Supervisor/broker: `test-privsep-openbsd-policy` requires exactly one `x`
-  unveil rule for the frozen executable, no `unix`/`recvfd` in the broker,
-  no `proc`/`exec` in storage/log roles, and a runtime promise set that is a
-  subset of startup. It probes that a storage worker cannot `socket(AF_INET)`
-  or `fork()`, that `unveil` after lock is `EPERM`, and that `execve("/bin/sh")`
-  fails while the frozen image is still executable.
+- Supervisor/broker: `test-privsep-openbsd-policy` requires a `stdio proc`
+  supervisor with no `exec`/`error`, no `proc` in storage/log roles, and a
+  runtime promise set that is a subset of the first set. The storage-broker
+  builder must fail because the role would require `exec`. The test probes
+  that storage cannot `socket(AF_INET)` or `fork()`, that `unveil` after lock
+  is `EPERM`, and that `execve("/bin/sh")` from the supervisor is a pledge
+  violation.
 
 ## 5. TUI and log worker
 
@@ -202,9 +203,11 @@ Run each case from a fresh configuration copy and record `lastcomm` flags
   or write requests.
 - With `privsep.enabled = true`, `privsep.log = true` and the OpenBSD sandbox
   enabled, startup must now succeed if the service runs as `_i2pd`. The
-  supervisor/log pair is spawned before the runtime pledge; verify both worker
-  processes have their own pledge state, the core has no `exec`, and `proc` is
-  present only for supervisor reaping/signalling.
+  supervisor/log pair is spawned while the core is unpledged; verify the
+  supervisor has `stdio proc`, its active and reserve workers have their own
+  pledge state, the core has no `exec` or `error`, and `proc` is present only
+  for supervisor reaping/signalling. Exhausting the pre-created reserve must
+  drop logging rather than execute a replacement.
 - Run `test-privsep-openbsd-policy`, `test-privsep-credentials`,
   `test-privsep-worker-identity` and `test-privsep-openbsd-imsg` from
   CTest. The policy test forks children and requires a pledge violation when
@@ -339,8 +342,10 @@ CI error rather than weakening the version/type checks.
 
 ## 10. Not covered by this checklist
 
-- Storage, network and crypto worker backends do not exist; the router remains
-  a monolithic process. Their OpenBSD policy profiles are prepared only.
+- Storage backends exist, but the OpenBSD on-demand torrent broker is
+  disabled pending safe pre-created worker provisioning. Network and crypto
+  policy profiles do not establish a running process boundary; the router
+  still combines external networking and persistent storage authority.
 - The log worker can run while the parent sandbox is enabled, but the core
   cannot replace a dead supervisor under the runtime policy.
 - Pledge completeness for long-running workloads (reseeding, many peers,
@@ -353,3 +358,24 @@ CI error rather than weakening the version/type checks.
 - [OpenBSD port template](../../contrib/openbsd/README.md)
 - [service management](../service-management.md)
 - [build system](../build-system.md)
+
+## Static promise review and remaining boundaries
+
+The 2026-11-04 review compares HEAD `38068e8d` with the preserved local
+continuation. This repository contains one OpenBSD port template, not a
+collection of third-party ports. No external ports tree was modified.
+
+| Port / role | Earlier `exec` / `error` | Current static disposition | Required OpenBSD evidence |
+|---|---|---|---|
+| openi2pd core | Startup could grant `exec`; `error` was a known token, with no generated grant found | All children precede first pledge; startup/runtime builders reject both; null execpromises | Startup unwind, reseed, shutdown and long-running workload |
+| Log supervisor | `exec` supported replacement; no generated `error` found | `stdio proc`; one active and one reserve child, both configured before pledge; no replacement exec | Reserve promotion, child reaping and bounded log loss after exhaustion |
+| Torrent storage broker | `stdio proc exec sendfd`; no generated `error` found | Role refused; isolated torrent storage unavailable rather than granting execution | Safe pre-created provisioning remains Pending; no broker completeness claim |
+| Storage/log workers | Neither generated promise found | Typed IPC and role-specific storage/log descriptors; install their own policy after startup exec | Descriptor authority, filesystem confinement and negative capability tests |
+| Network/crypto/admin profiles | Neither generated promise found | Policy definitions only; no complete isolated network/router architecture | Actual worker implementation and capability tests |
+| Linux, Windows, Android | No pledge API in these ports | Existing platform confinement is separate; no pledge promise added | Platform-specific CI/device checks, not OpenBSD evidence |
+
+`proc` still permits process operations at the kernel boundary; retaining it
+for reaping is not proof of fork prohibition. The one-way shared launcher
+barrier is an additional application invariant, not a kernel replacement.
+The core still has networking and persistent write authority. No general
+launcher service or arbitrary executable/path IPC operation was introduced.

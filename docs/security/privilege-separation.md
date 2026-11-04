@@ -15,9 +15,10 @@ Documents project documentation.
 The first production-shaped separation is **logging**:
 
 - The router process prepares the initial supervisor/log worker before
-  `Log::Start()` and before transport/netDb threads. On OpenBSD this happens
-  while the startup pledge still has `proc`/`exec`; the runtime policy then
-  drops both.
+  `Log::Start()` and before transport/netDb threads. On OpenBSD every worker
+  is created while the core is unpledged; the first pledge is installed
+  afterwards and the runtime policy drops `unveil`. No policy contains
+  `exec` or `error`.
 - The worker is a separate process created with `fork()` + `execv()` of the
   same executable (`--privsep-worker log <fd>`), connected by an anonymous
   `AF_UNIX/SOCK_SEQPACKET` socketpair.
@@ -35,20 +36,16 @@ The first production-shaped separation is **logging**:
   it never reopens the log file and never falls back to a weaker transport.
 - Linux evidence from a live run: the core process had no `router.log`
   descriptor; the worker had the only write descriptor.
-- On OpenBSD all startup workers (supervisor/log, router storage and the
-  torrent-storage broker) are spawned while the startup pledge still has
-  `proc`/`exec`. The startup pledge now always carries `exec` for this window,
-  even when `privsep.log` is disabled; otherwise the default build could not
-  exec the storage broker. The parent then installs its runtime policy without
-  `exec`; `proc` is retained only for bounded supervisor reaping/signalling.
-  The log supervisor pre-resolves the executable, unveils exactly that path
-  with `x`, locks the list and applies `pledge("stdio proc exec")`. The
-  torrent-storage broker receives a validated data root as inherited fd 4 and
-  applies `pledge("stdio proc exec sendfd")` with the same single-`x` unveil;
-  it never re-resolves the root path and never receives a descriptor. Neither
-  role has `unix` or a pathname read/write promise. The log/storage workers apply their own policy
-  after `execve` (`unveil` + `pledge`, with no dependency on inherited sandbox
-  state). Failure is fatal.
+- On OpenBSD every worker (supervisor/log and router/data storage) is spawned
+  while the core is unpledged; the first pledge is installed after all spawns
+  and adds `unveil`, then the runtime policy drops it. The log supervisor owns
+  one active and one reserve log worker created before its own `stdio proc`
+  pledge and promotes the reserve without executing a new image. The
+  on-demand torrent-storage broker is disabled because it required fork/exec
+  after its sandbox; isolated torrent storage fails closed until an exec-free
+  provisioning design exists. Neither the supervisor nor any worker has
+  `exec`, `error`, `unix`, a pathname read/write promise or an unvalidated
+  descriptor. Workers apply their own policy after `execve`; failure is fatal.
 - On Linux the log worker applies the full `LinuxSandbox` role policy:
   no-new-privs, capability/bounding-set drop, Landlock write restriction,
   AF_INET/AF_INET6-deny seccomp filter and optional empty network namespace.
@@ -207,23 +204,24 @@ global.
 
 ## OpenBSD supervised start (2026-10-26)
 
-The OpenBSD core keeps `exec`/`proc`/`id` only in its startup pledge window.
-Before the runtime sandbox it spawns the log supervisor, the storage broker and
-the direct router/data storage workers; the broker can then replace storage
-workers without the core ever regaining `exec`. The startup set includes
-`recvfd` because pledge can only remove promises; the runtime set is rebuilt
-from the same table and startup aborts if it is not a strict subset. No
-`execpromises` is ever passed, and no worker relies on pledge or unveil state
-surviving `execve`: each image installs its own policy before serving frames.
+The OpenBSD core creates every worker while it is still unpledged, then
+installs a first pledge with `unveil` and drops it at runtime. No phase
+contains `exec`, `error` or `id`; the supervisor pledges `stdio proc` and
+promotes a pre-created reserve log worker without executing. The first set
+includes `recvfd` because pledge can only remove promises; the runtime set is
+rebuilt from the same table and startup aborts if it is not a strict subset.
+No `execpromises` is ever passed, and no worker relies on pledge or unveil
+state surviving `execve`: each image installs its own policy before serving
+frames. The on-demand torrent-storage broker is disabled because it required
+`exec`; isolated torrent storage fails closed.
 
 Descriptors are fixed: 3 channel, 4 inherited storage root (only for
 `*-inherited` roles), 5 one-shot hello, 0/1/2 `/dev/null`, >=6 closed. A role
 without a root closes fd 4; a terminal, rc.d log pipe or activation socket is
-never writable. The supervisor and broker pre-resolve their own executable,
-unveil exactly that path with `x`, lock the list, then pledge
-`stdio proc exec` / `stdio proc exec sendfd`. A worker accepts a channel peer
-with its own uid or, when unprivileged, uid 0 (the delegating root core); the
-channel is always an anonymous `socketpair`.
+never writable. The supervisor pledges `stdio proc` and owns only
+pre-created workers; no policy names `exec` or `error`. A worker accepts a
+channel peer with its own uid or, when unprivileged, uid 0 (the delegating
+root core); the channel is always an anonymous `socketpair`.
 
 ## Service-manager implications
 
@@ -287,26 +285,24 @@ Foreground stdout worker (empty path, not syslog):
 pledge("stdio unix", NULL)
 ```
 
-Supervisor (executable resolved and unveiled with `x` before this policy):
+Supervisor (active and reserve log workers configured before this policy):
 
 ```text
-unveil("<frozen executable>", "x"); unveil(NULL, NULL);
-pledge("stdio proc exec", NULL)
+pledge("stdio proc", NULL)
 ```
 
-Storage broker (same unveil, plus descriptor sending):
+Storage broker: disabled; the role would require the forbidden `exec` promise.
+Isolated torrent storage fails closed on OpenBSD until an exec-free
+worker-provisioning protocol exists.
 
-```text
-pledge("stdio proc exec sendfd", NULL)
-```
-
-**Current integration limit:** `DaemonUnix::start()` calls
-`PreparePrivsepWorkers()` before applying its runtime sandbox. The startup
-pledge contains `proc`/`exec` only for that window; the runtime policy drops
-`exec` and retains `proc` only while `privsep.log` is active, for bounded
-supervisor reaping/signalling. The core does not exec a replacement supervisor
-after the sandbox is installed. The supervisor owns bounded log-worker
-replacement, and the log worker installs its own `/dev/log` rule for syslog.
+**Current integration limit:** `DaemonUnix::start()` creates every worker
+while the core is unpledged, then installs a first pledge with `unveil` and
+locks the unveil list before dropping to runtime. The first set contains
+`proc` only while `privsep.log` is active, for bounded supervisor
+reaping/signalling; no phase contains `exec`, `error` or `id`. The core does
+not exec a replacement supervisor after the sandbox is installed. The
+supervisor promotes its pre-created reserve; after that reserve is exhausted,
+logging is dropped rather than reopening a weaker path.
 
 The core policy remains broad because storage, network and crypto migration is
 incomplete; this is still not full privilege separation. The parent no longer

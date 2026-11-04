@@ -138,6 +138,15 @@ void TestNetworkFreeRoles ()
 	assert (*crypto == CRYPTO_CAPABILITIES);
 	assert (crypto->Bits () == CapabilityMask::Bit (Capability::Ipc));
 
+	// No role may carry the Exec capability: OpenBSD pledge(2) never
+	// grants exec, and every worker is created before its first pledge.
+	const auto supervisor = TargetMask (ProcessRole::Supervisor);
+	assert (supervisor.has_value ());
+	assert (!supervisor->Has (Capability::Exec));
+	const auto broker = TargetMask (ProcessRole::StorageBroker);
+	assert (broker.has_value ());
+	assert (!broker->Has (Capability::Exec));
+
 	// Storage workers write only a delegated root, so they carry the write
 	// bit
 	// and never the network bit.

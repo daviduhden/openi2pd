@@ -104,6 +104,12 @@ report that limitation; do not substitute local execution. Ask for:
   worker is not global separation.
 
 ## Known issues and decisions
+- Capability target masks are not universal live platform profiles. The
+  exec-free supervisor target is enforced by OpenBSD's pre-created workers;
+  Linux still forks/execs replacement log workers. Its implementation must
+  be inspected separately before claiming target enforcement. The disabled
+  OpenBSD storage-broker row likewise proves no live Linux provisioning
+  boundary. Keep role descriptions explicit when changing either backend.
 
 - A single-flight data-storage response must match type, decodable payload,
   request ID, worker generation and artifact kind. Typed Error must also name
@@ -282,10 +288,14 @@ report that limitation; do not substitute local execution. Ask for:
 - A worker accepts a channel peer with its own uid or, when unprivileged, uid 0
   (the delegating root core). A delegated root must be owned by the worker uid.
   `AdoptValidated` on a broker-forwarded socket uses the worker uid.
-- OpenBSD supervisor/broker pledge is `stdio proc exec` / `stdio proc exec
-  sendfd` with an x-only unveil of the frozen executable and no `unix`/`recvfd`.
-  Keep `OPENBSD_PLEDGE_EXECPROMISES = nullptr`; the startup set must be a
-  superset of the runtime set. No execpromises, no inherited unveil assumption.
+- No OpenBSD policy may name `exec` or `error`. The supervisor pledges
+  `stdio proc` only: one active and one reserve log worker are created and
+  configured before the policy, and the reserve is promoted without exec. The
+  on-demand storage broker is disabled because it needed fork/exec after its
+  own sandbox; isolated torrent storage fails closed pending an exec-free
+  provisioning protocol. Keep `OPENBSD_PLEDGE_EXECPROMISES = nullptr`; the
+  first set adds `unveil` and must be a superset of runtime. No execpromises,
+  no inherited unveil assumption.
 
 - Linux channels use a `PeerExpectation` because `SO_PEERCRED` is the creator's
   snapshot. Set it in `CreatePair`/`Adopt`/`AdoptValidated`/spawn: core side

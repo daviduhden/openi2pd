@@ -42,13 +42,13 @@ int RunSupervisor (int fd);
 /**
  * Process-wide admission gate for worker creation.
  *
- * The daemon calls `ForbidProcessCreation()` immediately before it
- * installs the runtime pledge, which is the last moment at which every
- * allowed worker is already running. Every spawn helper must consult
- * `IsProcessCreationForbidden()` before it forks, so the kernel policy
- * is not the only barrier against re-opening process creation: a code
- * path that tries to spawn after this point fails closed with a bounded
- * error instead of depending on pledge(2)/seccomp/Landlock to abort it.
+ * The daemon calls `ForbidProcessCreation()` after every allowed worker
+ * exists and before it installs the first pledge. Every spawn helper
+ * must consult `IsProcessCreationForbidden()` before it forks, so the
+ * kernel
+ * policy is not the only barrier against re-opening process creation: a
+ * code path that tries to spawn after this point fails closed with a
+ * bounded error instead of depending on pledge(2)/seccomp/Landlock.
  *
  * The flag is inherited across fork and reset by execve; an exec'ed
  * worker therefore starts with creation allowed by default and is

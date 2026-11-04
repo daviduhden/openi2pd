@@ -29,7 +29,7 @@ pledge, inheriting the root at fd4 and IPC at fd3; no directory SCM_RIGHTS or
 execpromises is used. Each worker applies its own policy before accepting state
 writes. Configured OpenBSD storage workers retain only their preopened channel,
 without new UNIX-connection or descriptor-reception promises. EOF closes the
-worker without requiring runtime proc/exec in the parent. Startup rollback and
+worker without requiring runtime exec in the parent; the on-demand broker is disabled because it required exec, so isolated storage fails closed pending an exec-free pre-created pool. Startup rollback and
 normal shutdown close the capability after router shutdown.
 
 The service identity must be unprivileged and own the root, which cannot be

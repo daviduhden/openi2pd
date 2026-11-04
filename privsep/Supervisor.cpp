@@ -141,6 +141,17 @@ namespace
 
 bool PrepareTorrentStorageSupervisor (const std::string & root, std::string & error)
 {
+#if defined(__OpenBSD__)
+	// The on-demand broker forked/exec'ed a storage worker after its own
+	// sandbox, which requires the forbidden pledge(2) "exec" promise.
+	// There is no statically demonstrated exec-free provisioning protocol
+	// yet, so isolated torrent storage fails closed instead of receiving a
+	// broader privilege. The core warns and continues without it.
+	(void)root;
+	error = "isolated torrent storage is unavailable on OpenBSD: "
+			"on-demand worker creation requires the forbidden exec promise";
+	return false;
+#else
 	std::lock_guard lock (storageSupervisorMutex);
 	error.clear ();
 	if (storageSupervisor)
@@ -232,6 +243,7 @@ bool PrepareTorrentStorageSupervisor (const std::string & root, std::string & er
 	storageSupervisorRequest = 1;
 	storageSupervisorRoot = absolute;
 	return true;
+#endif
 }
 
 i2p::expected<Channel, std::string> SpawnSupervisedTorrentStorage (int rootFd, std::string_view rootPath)
@@ -331,6 +343,12 @@ int RunTorrentStorageSupervisor (int fd)
 	(void)fd;
 	return 1; // This broker is used only by the pre-pledge OpenBSD path.
 #else
+	// Disabled: the broker needed fork/exec after its own sandbox. The
+	// retained implementation below is a design reference for a future
+	// exec-free provisioning protocol; it is not compiled or reachable.
+	(void)fd;
+	return 1;
+#if 0
 	Channel control = Channel::Adopt (fd);
 	control.SetEnforcementPolicy (EnforcementPolicy::Endpoint);
 	// The broker runs as the unprivileged worker identity while the core
@@ -384,28 +402,12 @@ int RunTorrentStorageSupervisor (int fd)
 		|| configuredRoot->find ('\0') != std::string_view::npos)
 		return 1;
 	const std::string rootPath (*configuredRoot);
-	// Never exec a path nominated by the peer. Resolve the broker's own
-	// executable before pledge/unveil and freeze it for every replacement.
-	const std::string executable = ExecutablePath ();
-	if (executable.empty () || executable.front () != '/' || executable.find ('\0') != std::string::npos
-		|| ::access (executable.c_str (), X_OK))
-		return 1;
-	// fd4 is the only directory authority. The configured path is used
-	// solely to construct each child's storage policy; it cannot widen
-	// that authority. ApplyOpenBSDPolicy installs unveil(executable,"x"),
-	// locks the list and only then calls pledge("stdio proc exec sendfd"):
-	// no rpath/wpath/cpath, no unix and no recvfd.
-	//
-	// recvfd is deliberately absent. A frame that carries a descriptor is
-	// rejected by the kernel before this code can inspect it, so an
-	// unexpected capability can never enter the broker: that is the
-	// fail-closed outcome. The broker never needs to receive one - the
-	// client sends the setup frame without a descriptor, and every worker
-	// channel leaves this process once, with sendfd.
-	OpenBSDPolicyConfig brokerConfig;
-	brokerConfig.executablePath = executable;
-	brokerConfig.dropCredentials = GetWorkerCredentials ().configured;
-	auto brokerPolicy = BuildOpenBSDPolicy (OpenBSDWorkerRole::StorageBroker, brokerConfig);
+	// Historical reference only. The live broker is disabled: it forked
+	// and exec'ed a worker after its sandbox, which required the now
+	// forbidden pledge promise "exec". Do not enable this block without an
+	// exec-free provisioning protocol; the builder already refuses the
+	// role and this code is not compiled.
+	auto brokerPolicy = BuildOpenBSDPolicy (OpenBSDWorkerRole::StorageBroker, OpenBSDPolicyConfig {});
 	if (!brokerPolicy) return 1;
 	if (!ApplyOpenBSDPolicy (*brokerPolicy)) return 1;
 	if (!control.Send ({ MessageType::TorrentStorageSupervisorReply, 1, { } }, 5000)) return 1;
@@ -579,6 +581,7 @@ int RunTorrentStorageSupervisor (int fd)
 		child->Disown ();
 		if (workerPid > 0) detachedWorkers.push_back (workerPid);
 	}
+#endif // disabled on-demand broker
 #endif
 }
 
@@ -588,11 +591,13 @@ int RunTorrentStorageSupervisor (int fd)
  *
  * The supervisor never opens the log path itself; the sink descriptor
  * or the syslog destination is the log worker's capability. On OpenBSD
- * the executable is resolved and frozen before the x-only unveil and
- * the `stdio proc exec` pledge, because neither realpath() nor a PATH
- * lookup can succeed afterwards. On Linux only no-new-privs and the
+ * the active and one reserve log worker are created and configured
+ * before the `stdio proc` pledge; the supervisor then only forwards
+ * records and promotes the reserve. It never executes another image,
+ * opens a path or receives a descriptor. On Linux no-new-privs and the
  * capability drop are applied for the same inheritance reason as
- * ApplyLinuxSupervisorSandbox().
+ * ApplyLinuxSupervisorSandbox(); fork+exec remains the Linux
+ * supervision mechanism because no pledge(2) policy is involved.
  * Progress is published only in this process's SupervisorStatus
  * snapshot; no message type was added to expose it, so the core
  * observes the supervisor via its channel and process liveness.
@@ -614,53 +619,104 @@ int RunSupervisor (int fd)
 		return 1;
 	}
 
-	std::string workerExecutable;
+	// Configuration is read before the OpenBSD supervisor policy: the
+	// active and reserve log workers are created and configured while the
+	// supervisor is still unpledged. On Linux it is read only after the
+	// supervisor's capability drop.
+	bool useSyslog = false;
+	std::string path, tag;
 #if defined(__OpenBSD__)
-	// Resolve the executable before installing the supervisor sandbox:
-	// after the x-only unveil lock and a pledge without rpath, neither the
-	// PATH lookup nor realpath() can succeed. This frozen path is reused
-	// for every replacement spawn.
-	workerExecutable = ExecutablePath ();
+	if (!ReadLogConfig (control, useSyslog, path, tag)) return 1;
+#endif
+
+	// The supervisor process owns at most the active worker and one
+	// pre-created reserve, so the status snapshot has one log entry. It is
+	// published under SupervisorStatus' mutex and read only through const
+	// getters.
+	auto & status = GetSupervisorStatus ();
+	constexpr std::string_view LOG_WORKER = "log";
+	uint32_t generation = 0;
+	LogWorkerRestartBudget budget;
+	std::unique_ptr<ChildProcess> worker;
+	std::unique_ptr<LogSink> sink;
+
+#if defined(__OpenBSD__)
+	// Two workers are created before the sandbox: one active and one
+	// reserve. A pledged process may not exec, so the reserve is the only
+	// bounded replacement this process can promote.
+	std::unique_ptr<ChildProcess> reserveWorker;
+	std::unique_ptr<LogSink> reserveSink;
+	const std::string workerExecutable = ExecutablePath ();
 	if (workerExecutable.empty () || workerExecutable.front () != '/'
 		|| workerExecutable.find ('\0') != std::string::npos)
 	{
 		std::cerr << "privsep supervisor: cannot resolve executable before sandbox" << std::endl;
 		return 1;
 	}
+	/**
+	 * Spawn and configure one log worker through a fresh sink. Both the
+	 * active and the reserve worker use the same bounded handshake; no
+	 * channel exists before this call.
+	 */
+	auto prepareWorker = [&] (std::unique_ptr<ChildProcess> & process,
+		std::unique_ptr<LogSink> & logSink) -> bool
+	{
+		auto spawned = SpawnLogWorker (workerExecutable);
+		if (!spawned)
+		{
+			std::cerr << "privsep supervisor: cannot spawn log worker: "
+					  << spawned.error () << std::endl;
+			return false;
+		}
+		process = std::make_unique<ChildProcess> (std::move (*spawned));
+		logSink = std::make_unique<LogSink> (std::move (process->ChannelFd ()));
+		auto configured = logSink->ConfigureProxy (useSyslog, path, tag);
+		if (!configured || !logSink->IsOpen ())
+		{
+			std::cerr << "privsep supervisor: cannot configure log worker: "
+					  << (configured ? "sink closed" : configured.error ()) << std::endl;
+			return false;
+		}
+		return true;
+	};
+	++generation;
+	if (!prepareWorker (worker, sink))
+	{
+		if (worker) worker->Stop (500);
+		return 1;
+	}
+	if (!prepareWorker (reserveWorker, reserveSink))
+	{
+		if (sink) (void)sink->Shutdown ();
+		if (worker) worker->Stop (500);
+		if (reserveWorker) reserveWorker->Stop (500);
+		return 1;
+	}
+	// Both workers exist. The supervisor now drops to stdio/proc: it can
+	// forward records, observe and reap its children, but cannot execute
+	// another image, open a path or reach the network.
 	OpenBSDPolicyConfig policyConfig;
-	// The supervisor only needs proc/exec for bounded log-worker
-	// replacement. The policy unveils exactly the frozen executable path
-	// with "x", locks the list and then pledges "stdio proc exec": no
-	// unix, no pathname read/write, no descriptor reception and no
-	// external network. pledge(2) is called without execpromises, so the
-	// log worker installs its own unveil+pledge.
-	policyConfig.executablePath = workerExecutable;
-	// The forked child drops the configured worker identity before execve.
-	policyConfig.dropCredentials = GetWorkerCredentials ().configured;
 	auto policy = BuildOpenBSDPolicy (OpenBSDWorkerRole::Supervisor, policyConfig);
 	if (!policy)
 	{
 		std::cerr << "privsep supervisor: invalid OpenBSD policy: " << policy.error () << std::endl;
+		if (sink) (void)sink->Shutdown ();
+		if (worker) worker->Stop (500);
+		if (reserveWorker) reserveWorker->Stop (500);
 		return 1;
 	}
 	auto applied = ApplyOpenBSDPolicy (*policy);
 	if (!applied)
 	{
 		std::cerr << "privsep supervisor: OpenBSD sandbox: " << applied.error () << std::endl;
+		if (sink) (void)sink->Shutdown ();
+		if (worker) worker->Stop (500);
+		if (reserveWorker) reserveWorker->Stop (500);
 		return 1;
 	}
-#endif
-
-	// Configuration is read only after the one ambient-privilege step
-	// allowed on this endpoint - the peer identity check - and, on
-	// OpenBSD, after the sandbox. A frame that carries a descriptor now
-	// fails at recvmsg instead of reaching the explicit descriptor check
-	// below: the log worker owns that file capability, so this is a
-	// fail-closed refusal.
-	bool useSyslog = false;
-	std::string path, tag;
-	if (!ReadLogConfig (control, useSyslog, path, tag)) return 1;
-
+	ForbidProcessCreation ();
+	status.NoteReady (LOG_WORKER, generation, 0);
+#else
 #if defined(__linux__)
 	// Landlock/seccomp/network namespaces are inherited across fork+exec
 	// and a child can only become stricter. Installing the supervisor's
@@ -675,27 +731,18 @@ int RunSupervisor (int fd)
 		return 1;
 	}
 #endif
-
-	std::unique_ptr<ChildProcess> worker;
-	std::unique_ptr<LogSink> sink;
-	// The supervisor process owns exactly one worker, so the status
-	// snapshot has exactly one entry. It is published under
-	// SupervisorStatus' mutex and read only through const getters.
-	auto & status = GetSupervisorStatus ();
-	constexpr std::string_view LOG_WORKER = "log";
-	uint32_t generation = 0;
-	LogWorkerRestartBudget budget;
+	// Configuration is parsed only after the Linux capability drop and
+	// before any worker exists on this platform.
+	if (!ReadLogConfig (control, useSyslog, path, tag)) return 1;
 	/**
 	 * Spawn a replacement worker and configure it through a fresh sink.
-	 * The supervisor never reattaches: the previous sink is released
-	 * before this call, so every spawn starts from an unconfigured
-	 * channel. ReattachProxy exists for the core-side restart monitor in
-	 * Daemon, not for this loop.
+	 * Linux has no pledge(2): fork+exec is its supervisor mechanism and is
+	 * bounded by the shared restart ladder.
 	 */
 	auto startWorker = [&] () -> bool
 	{
 		++generation;
-		auto spawned = SpawnLogWorker (workerExecutable);
+		auto spawned = SpawnLogWorker (ExecutablePath ());
 		if (!spawned)
 		{
 			std::cerr << "privsep supervisor: cannot spawn log worker: " << spawned.error () << std::endl;
@@ -722,6 +769,7 @@ int RunSupervisor (int fd)
 		if (worker) worker->Stop (500);
 		return 1;
 	}
+#endif
 	budget.NoteReady (std::chrono::steady_clock::now ());
 	uint64_t publishedDropped = 0;
 
@@ -729,13 +777,23 @@ int RunSupervisor (int fd)
 	unsigned violations = 0;
 	while (true)
 	{
+#if defined(__OpenBSD__)
+		// A reserve that died while idle cannot be replaced without exec.
+		// Drop it now so the next active failure is reported as terminal.
+		if (reserveWorker
+			&& (!reserveWorker->IsRunning () || !reserveSink || !reserveSink->IsOpen ()))
+		{
+			reserveWorker->Stop (500);
+			reserveSink.reset ();
+			reserveWorker.reset ();
+		}
+#endif
 		if (!worker || !worker->IsRunning () || !sink || !sink->IsOpen ())
 		{
 			const auto now = std::chrono::steady_clock::now ();
 			// Only a worker that stayed up for STABLE_PERIOD since its own
 			// NoteReady resets the budget. The observation time is the
-			// failure, so the backoff waits never count as service; this is
-			// the only way a busy router avoids the terminal Failed state.
+			// failure, so the backoff waits never count as service.
 			budget.NoteStable (now);
 			if (worker) worker->Stop (500);
 			sink.reset ();
@@ -752,12 +810,35 @@ int RunSupervisor (int fd)
 						  << " ms of backoff); log records are dropped (no local fallback)" << std::endl;
 				return 1;
 			}
+#if defined(__OpenBSD__)
+			if (!reserveWorker || !reserveSink)
+			{
+				// No exec and no reserve: the supervisor cannot create a new
+				// log worker. The core observes the closed channel and the
+				// runtime status remains Failed; no local fallback is allowed.
+				status.NoteFailed (LOG_WORKER, generation, budget.Restarts (),
+					"pre-created log reserve exhausted");
+				std::cerr << "privsep supervisor: pre-created log reserve exhausted; "
+							 "log records are dropped (no exec, no local fallback)" << std::endl;
+				return 1;
+			}
+			// Promote the already-configured reserve. It was created before
+			// the pledge and is not re-opened or reconfigured here.
+			worker = std::move (reserveWorker);
+			sink = std::move (reserveSink);
+			++generation;
+			status.NoteStarting (LOG_WORKER, generation, "promoting reserve log worker");
+			status.NoteReady (LOG_WORKER, generation, budget.Restarts ());
+			publishedDropped = 0;
+			continue;
+#else
 			status.NoteRestarting (LOG_WORKER, generation + 1, budget.Restarts (), "log worker exited");
 			std::this_thread::sleep_for (*delay);
 			if (!startWorker ()) return 1;
 			budget.NoteReady (std::chrono::steady_clock::now ());
 			publishedDropped = 0;
 			continue;
+#endif
 		}
 
 		auto received = control.Receive (500);
@@ -839,6 +920,10 @@ int RunSupervisor (int fd)
 
 	if (sink) (void)sink->Shutdown ();
 	if (worker) worker->Stop (500);
+#if defined(__OpenBSD__)
+	if (reserveSink) (void)reserveSink->Shutdown ();
+	if (reserveWorker) reserveWorker->Stop (500);
+#endif
 	return protocolFailed ? 1 : 0;
 }
 }

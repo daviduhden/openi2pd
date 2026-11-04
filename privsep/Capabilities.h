@@ -178,8 +178,11 @@ inline constexpr CapabilityMask CORE_TARGET_CAPABILITIES = CapabilityMask ()
  */
 inline constexpr CapabilityMask CORE_LEGACY_CAPABILITIES = CORE_TARGET_CAPABILITIES.With (Capability::PersistentWrite);
 
+// Exec-free target enforced by OpenBSD's pre-created log workers.
+// Linux still forks/execs replacements; this target mask does not
+// describe that platform's current process-creation authority.
 inline constexpr CapabilityMask SUPERVISOR_CAPABILITIES
-	= CapabilityMask ().With (Capability::Exec).With (Capability::Signal).With (Capability::Ipc);
+	= CapabilityMask ().With (Capability::Signal).With (Capability::Ipc);
 inline constexpr CapabilityMask LOG_CAPABILITIES
 	= CapabilityMask ().With (Capability::PersistentWrite).With (Capability::Ipc);
 // The three storage roles differ in their delegated root and their
@@ -187,8 +190,10 @@ inline constexpr CapabilityMask LOG_CAPABILITIES
 // was handed.
 inline constexpr CapabilityMask STORAGE_CAPABILITIES
 	= CapabilityMask ().With (Capability::PersistentWrite).With (Capability::FilesystemRead).With (Capability::Ipc);
+// OpenBSD's on-demand broker is disabled because it required exec.
+// This target retains descriptor/signal/IPC authority for a future
+// exec-free provisioning design; it establishes no live Linux broker.
 inline constexpr CapabilityMask STORAGE_BROKER_CAPABILITIES = CapabilityMask ()
-																  .With (Capability::Exec)
 																  .With (Capability::Signal)
 																  .With (Capability::FdPassSend)
 																  .With (Capability::FdPassReceive)
@@ -205,8 +210,8 @@ inline constexpr std::array<RoleCapabilityRow, 10> ROLE_CAPABILITY_MATRIX {
 		"Network and control only. Every durable write must be delegated to a "
 		"storage role, so the target mask carries no persistent-write bit." },
 	RoleCapabilityRow { ProcessRole::Supervisor, false, SUPERVISOR_CAPABILITIES,
-		"Owns and replaces one log worker; never opens the log path and has no "
-		"network access." },
+		"Exec-free target enforced by pre-created workers on OpenBSD. Linux "
+		"replacement still forks/execs; this is not its live authority mask." },
 	RoleCapabilityRow { ProcessRole::Log, false, LOG_CAPABILITIES,
 		"Appends to one delegated log file (or syslog over AF_UNIX); no network "
 		"and no filesystem read." },
@@ -217,8 +222,8 @@ inline constexpr std::array<RoleCapabilityRow, 10> ROLE_CAPABILITY_MATRIX {
 	RoleCapabilityRow { ProcessRole::TorrentStorage, false, STORAGE_CAPABILITIES,
 		"Owns torrent payload and metainfo under its delegated root." },
 	RoleCapabilityRow { ProcessRole::StorageBroker, false, STORAGE_BROKER_CAPABILITIES,
-		"Pre-pledge broker: spawns delegated storage workers and forwards exactly "
-		"one channel descriptor per worker." },
+		"OpenBSD on-demand broker disabled because it required exec. Target "
+		"row for future exec-free provisioning, not a live Linux broker." },
 	RoleCapabilityRow { ProcessRole::Network, false, NETWORK_CAPABILITIES,
 		"Transport worker: external sockets only, no durable write." },
 	RoleCapabilityRow {

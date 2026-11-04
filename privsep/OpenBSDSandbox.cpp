@@ -81,11 +81,23 @@ namespace
 
 	/**
 	 * Promise names accepted by the supported OpenBSD release
-	 * (pledge(2)). */
+	 * (pledge(2)). "exec" and "error" are deliberately absent; see
+	 * FORBIDDEN_PLEDGE_PROMISES.
+	 */
 	constexpr std::string_view KNOWN_PLEDGE_PROMISES[]
-		= { "audio", "bpf", "chown", "cpath", "disklabel", "dns", "dpath", "drm", "error", "exec", "fattr", "flock",
+		= { "audio", "bpf", "chown", "cpath", "disklabel", "dns", "dpath", "drm", "fattr", "flock",
 			  "getpw", "id", "inet", "mcast", "pf", "proc", "prot_exec", "ps", "recvfd", "route", "rpath", "sendfd",
 			  "settime", "stdio", "tape", "tty", "unix", "unveil", "video", "vminfo", "vmm", "wpath", "wroute" };
+
+	/**
+	 * Promises no policy may ever carry.
+	 *
+	 * "exec" would let a restricted process start a new image; every
+	 * worker is created before its first pledge. "error" would turn a
+	 * policy violation into a recoverable errno and hide an operation
+	 * that the sandbox was supposed to refuse.
+	 */
+	constexpr std::string_view FORBIDDEN_PLEDGE_PROMISES[] = { "exec", "error" };
 
 	/**
 	 * Promises a runtime policy file may never add, even when the runtime
@@ -93,8 +105,9 @@ namespace
 	 * creation (proc/exec), change process identity (id/chown), or grant
 	 * privileged kernel interfaces the router never needs.
 	 */
-	constexpr std::string_view RUNTIME_FORBIDDEN_PLEDGE_PROMISES[] = { "proc", "exec", "id", "chown", "dpath",
-		"prot_exec", "pf", "bpf", "vmm", "tty", "audio", "video", "tape", "disklabel", "drm", "wroute", "settime" };
+	constexpr std::string_view RUNTIME_FORBIDDEN_PLEDGE_PROMISES[] = { "proc", "exec", "error", "id", "chown",
+		"dpath", "prot_exec", "pf", "bpf", "vmm", "tty", "audio", "video", "tape", "disklabel", "drm", "wroute",
+		"settime" };
 
 	constexpr size_t MAX_PLEDGE_FILE_BYTES = 64 * 1024;
 	constexpr size_t MAX_PLEDGE_TOKEN_LENGTH = 32;
@@ -131,6 +144,13 @@ bool IsKnownPledgePromiseName (std::string_view name)
 	return false;
 }
 
+bool IsForbiddenPledgePromiseName (std::string_view name)
+{
+	for (const auto forbidden : FORBIDDEN_PLEDGE_PROMISES)
+		if (name == forbidden) return true;
+	return false;
+}
+
 const char * OpenBSDWorkerRoleName (OpenBSDWorkerRole role)
 {
 	switch (role)
@@ -159,7 +179,7 @@ bool OpenBSDPolicy::HasPersistentWrite () const
 
 bool OpenBSDPolicy::HasProcessCreation () const
 {
-	return HasPromise (pledge, "proc") || HasPromise (pledge, "exec");
+	return HasPromise (pledge, "proc");
 }
 
 bool OpenBSDPolicy::HasLocalIpc () const
@@ -178,61 +198,24 @@ i2p::expected<OpenBSDPolicy, std::string> BuildOpenBSDPolicy (
 	switch (role)
 	{
 	case OpenBSDWorkerRole::Supervisor:
-		// The supervisor forks/execs replacement log workers, so it needs
-		// proc/exec. pledge(2) is called with null execpromises, which means
-		// the exec'ed image starts without any pledge; every worker therefore
-		// installs its own unveil rules and pledge immediately after execve
-		// and before it serves a frame.
-		//
-		// unveil is forced on for this role even when the operator disabled
-		// it: an unlocked unveil list would let the supervisor execve an
-		// arbitrary binary (the exec promise does not need rpath). Exactly
-		// one rule is added - the frozen executable path with "x" - and
-		// nothing else, so the supervisor can neither read/write a path nor
-		// exec a second image.
-		policy.useUnveil = true;
-		if (config.executablePath.empty () || config.executablePath.front () != '/'
-			|| config.executablePath.find ('\0') != std::string::npos)
-			return PolicyError ("invalid supervisor executable unveil rule");
-		if (!AddUnveil (policy, config.executablePath, "x"))
-			return PolicyError ("invalid supervisor executable unveil rule");
+		// The supervisor owns pre-created log workers: the active one and
+		// one reserve are configured before this policy is installed. It
+		// never executes a new image, opens a path, connects a socket or
+		// receives a descriptor. "proc" is needed only to waitpid/kill the
+		// children it already owns; "stdio" covers the anonymous
+		// socketpair channels. No unveil rule is required.
+		policy.useUnveil = false; // no path access at all
 		AppendPromise (policy.pledge, "stdio");
 		AppendPromise (policy.pledge, "proc");
-		AppendPromise (policy.pledge, "exec");
-		// No "unix": stdio already permits socketpair(2), which is all the
-		// supervisor needs to build a worker channel. "unix" would
-		// additionally allow connect/bind at any pathname without rpath or
-		// cpath. "id" is present only when a worker identity is configured:
-		// the forked child drops supplementary groups, gid and uid
-		// immediately before execve, in this process, so the promise is
-		// required here and nowhere else.
-		if (config.dropCredentials) AppendPromise (policy.pledge, "id");
 		break;
 
 	case OpenBSDWorkerRole::StorageBroker:
-		// The broker is spawned before the router runtime pledge, forwards
-		// one channel descriptor per worker with sendfd, and never receives
-		// one. recvfd is deliberately absent: a setup/replacement frame that
-		// carries an unexpected descriptor fails at recvmsg before the
-		// payload is parsed, which is the fail-closed outcome for this role.
-		// "unix" is absent for the same reason as the supervisor:
-		// socketpair(2) is part of stdio and the broker never resolves a
-		// pathname.
-		policy.useUnveil = true;
-		if (config.executablePath.empty () || config.executablePath.front () != '/'
-			|| config.executablePath.find ('\0') != std::string::npos)
-			return PolicyError ("invalid storage broker executable unveil rule");
-		if (!AddUnveil (policy, config.executablePath, "x"))
-			return PolicyError ("invalid storage broker executable unveil rule");
-		AppendPromise (policy.pledge, "stdio");
-		AppendPromise (policy.pledge, "proc");
-		AppendPromise (policy.pledge, "exec");
-		AppendPromise (policy.pledge, "sendfd");
-		// Same reason as the supervisor: the forked child drops uid/gid
-		// before execve, so a configured worker identity needs the id
-		// promise.
-		if (config.dropCredentials) AppendPromise (policy.pledge, "id");
-		break;
+		// The former on-demand broker forked/exec'ed a storage worker after
+		// its own sandbox. That requires the forbidden "exec" promise, so
+		// the role is refused until an exec-free provisioning protocol
+		// exists. Isolated torrent storage consequently fails closed on
+		// OpenBSD instead of receiving a broader capability.
+		return PolicyError ("storage broker role is disabled: it requires the forbidden exec promise");
 
 	case OpenBSDWorkerRole::Log:
 		AppendPromise (policy.pledge, "stdio");
@@ -342,6 +325,8 @@ i2p::expected<OpenBSDPolicy, std::string> BuildOpenBSDPolicy (
 		while (pos < policy.pledge.size () && policy.pledge[pos] != ' ') ++pos;
 		if (begin == pos) continue;
 		const std::string_view token = std::string_view (policy.pledge).substr (begin, pos - begin);
+		if (IsForbiddenPledgePromiseName (token))
+			return PolicyError ("forbidden pledge promise \"" + std::string (token) + "\"");
 		if (!IsKnownPledgePromiseName (token))
 			return PolicyError ("unknown pledge promise \"" + std::string (token) + "\"");
 	}
@@ -351,6 +336,27 @@ i2p::expected<OpenBSDPolicy, std::string> BuildOpenBSDPolicy (
 i2p::expected<void, std::string> ApplyOpenBSDPolicy (const OpenBSDPolicy & policy)
 {
 #if defined(__OpenBSD__)
+	if (policy.usePledge)
+	{
+		// Defence in depth for a hand-assembled policy: never let a
+		// forbidden or unknown promise reach the kernel, and never call
+		// pledge(""). The builders and pledge-file parser already reject
+		// these names.
+		if (policy.pledge.empty ()) return i2p::unexpected ("empty pledge policy");
+		size_t pos = 0;
+		while (pos < policy.pledge.size ())
+		{
+			while (pos < policy.pledge.size () && policy.pledge[pos] == ' ') ++pos;
+			const size_t begin = pos;
+			while (pos < policy.pledge.size () && policy.pledge[pos] != ' ') ++pos;
+			if (begin == pos) continue;
+			const std::string_view token = std::string_view (policy.pledge).substr (begin, pos - begin);
+			if (IsForbiddenPledgePromiseName (token))
+				return i2p::unexpected ("forbidden pledge promise \"" + std::string (token) + "\"");
+			if (!IsKnownPledgePromiseName (token))
+				return i2p::unexpected ("unknown pledge promise \"" + std::string (token) + "\"");
+		}
+	}
 	if (policy.useUnveil)
 	{
 		for (const auto & rule : policy.unveil)
@@ -367,10 +373,11 @@ i2p::expected<void, std::string> ApplyOpenBSDPolicy (const OpenBSDPolicy & polic
 		}
 		if (unveil (nullptr, nullptr) == -1) return i2p::unexpected (std::string ("unveil lock: ") + strerror (errno));
 	}
-	// OPENBSD_PLEDGE_EXECPROMISES is always null: an exec'ed image starts
-	// with no promise at all and must install its own unveil+pledge. Never
-	// replace this with a promise string; the value is pinned in the
-	// header and in the statically checked policy test.
+	// OPENBSD_PLEDGE_EXECPROMISES is always null. No policy grants exec,
+	// so a pledged process cannot reach a new image; a pre-created worker
+	// installs its own unveil+pledge after fork/exec. Never replace this
+	// with a promise string; the value is pinned in the header and in the
+	// statically checked policy test.
 	if (policy.usePledge && pledge (policy.pledge.c_str (), OPENBSD_PLEDGE_EXECPROMISES) == -1)
 		return i2p::unexpected ("pledge " + policy.pledge + ": " + std::string (strerror (errno)));
 	return { };
@@ -488,29 +495,18 @@ std::vector<std::string> OpenBSDPledgePromiseList (OpenBSDPledgePhase phase, con
 		// network and grants no pathname authority.
 		add ("recvfd");
 
-	if (phase == OpenBSDPledgePhase::Startup)
-	{
-		// Fork/exec of the supervisor, log, router-storage, data-storage and
-		// torrent-storage processes happens only inside this window. proc is
-		// also needed to reap them.
-		if (window.execWorkers || window.reapChildren) add ("proc");
-		if (window.execWorkers) add ("exec");
-		// unveil(2) itself requires the unveil promise.
-		if (window.unveil) add ("unveil");
-		// miniupnpc multicast discovery.
-		if (window.upnp) add ("mcast");
-		// A forked child drops supplementary groups, gid and uid before
-		// execve; only the startup window may carry the identity promise.
-		if (window.credentialDrop) add ("id");
-	}
-	else
-	{
-		// The runtime window keeps proc only for reaping/signalling an owned
-		// supervisor. It never has exec, id, chown, unveil or any other
-		// capability the core no longer needs after startup.
-		if (window.reapChildren) add ("proc");
-		if (window.upnp) add ("mcast");
-	}
+	if (window.reapChildren)
+		// An owned supervisor is created before the first pledge; proc is
+		// needed afterwards only for bounded waitpid/kill. It is present in
+		// both windows because pledge can only remove promises.
+		add ("proc");
+	if (window.upnp) add ("mcast"); // miniupnpc multicast discovery
+	if (phase == OpenBSDPledgePhase::Startup && window.unveil)
+		// The first pledge is installed after every worker exists. It adds
+		// only "unveil", needed to install and lock the rules; the final
+		// pledge drops it. No window carries exec, id or another
+		// process-creation promise.
+		add ("unveil");
 	return promises;
 }
 
@@ -590,6 +586,8 @@ i2p::expected<std::vector<std::string>, std::string> ParseOpenBSDPledgeFile (
 			const auto token = trimmed.substr (begin, pos - begin);
 			if (token.size () > MAX_PLEDGE_TOKEN_LENGTH)
 				return i2p::unexpected ("oversized token in the pledge policy file");
+			if (IsForbiddenPledgePromiseName (token))
+				return i2p::unexpected ("forbidden pledge promise \"" + std::string (token) + "\"");
 			if (!IsKnownPledgePromiseName (token))
 				return i2p::unexpected ("unknown pledge promise \"" + std::string (token) + "\"");
 			if (phase == OpenBSDPledgePhase::Runtime && IsRuntimeForbiddenPledge (token))

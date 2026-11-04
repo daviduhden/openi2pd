@@ -6,7 +6,7 @@
  *
  * Implements router initialisation, subsystem sequencing, shutdown and
  * the optional privilege-separated log path. Startup parses
- * configuration, installs the OpenBSD startup pledge and starts NetDB,
+ * configuration, starts NetDB,
  * transports, tunnels, clients, TUI IPC, I2PControl, UPnP and NTP;
  * shutdown stops observers before the state they read. A monitor thread
  * replaces a dead log supervisor with bounded backoff where exec
@@ -70,12 +70,11 @@
 #if !defined(_WIN32) && !defined(I2PD_NO_PRIVSEP)
 #include <filesystem>
 #include <fstream>
-#include "privsep/Credentials.h"
 #include "privsep/LogWorker.h"
-#include "privsep/OpenBSDSandbox.h"
 #include "privsep/Worker.h"
 #include "privsep/RouterStorage.h"
 #include "privsep/DataStorage.h"
+#include "privsep/Credentials.h"
 #include "PersistentStorage.h"
 #endif
 #include "ClientContext.h"
@@ -775,7 +774,7 @@ namespace util
 		 * A torrent tunnel may request isolated payload storage. The option
 		 * is per tunnel section in tunnels.conf and tunnels.d (one .conf per
 		 * tunnel) and is parsed by ClientContext much later, so the
-		 * credential gate - which must run before the startup pledge and the
+		 * credential gate - which must run before the first pledge and the
 		 * first spawn - needs a bounded pre-scan. Only an explicit true
 		 * counts; ClientContext remains the authority for the value that is
 		 * actually used, and the storage broker re-validates the delegated
@@ -881,7 +880,7 @@ namespace util
 		/**
 		 * Resolve and install the worker identity.
 		 *
-		 * Runs before the startup pledge (name-service lookups need ambient
+		 * Runs before the first pledge (name-service lookups need ambient
 		 * filesystem access), before the logger thread and before the first
 		 * spawn. A root core with any isolation feature enabled and no
 		 * configured `privsep.user` fails startup: silently continuing would
@@ -1045,7 +1044,7 @@ namespace util
 
 #if !defined(_WIN32) && !defined(I2PD_NO_PRIVSEP)
 		// The worker identity must be resolved and installed before the
-		// startup pledge (name-service lookups), before the logger thread
+		// first pledge (name-service lookups), before the logger thread
 		// starts and before any spawn helper runs. A root core with isolation
 		// requested and no configured `privsep.user` fails here instead of
 		// degrading silently.
@@ -1156,66 +1155,9 @@ namespace util
 		i2p::config::GetOption ("ssu", ssu);
 		if (!ssu && i2p::config::IsDefault ("precomputation.elgamal"))
 			precomputation = false; // we don't elgamal table if no ssu, unless it's specified explicitly
-#if defined(__OpenBSD__) && !defined(I2PD_NO_PRIVSEP)
-		// Keep startup-only promises until fork/setsid/setrlimit, unveil and
-		// the first worker spawn. This window is the widest set the core ever
-		// holds; UnixDaemon::start() later builds the runtime set from the
-		// same table and verifies it is a subset (pledge can only drop
-		// promises).
-		bool usePledge, useUnveil;
-		i2p::config::GetOption ("openbsd.pledge_enabled", usePledge);
-		i2p::config::GetOption ("openbsd.unveil_enabled", useUnveil);
-		if (usePledge)
-		{
-			bool upnp;
-			i2p::config::GetOption ("upnp.enabled", upnp);
-			i2p::privsep::OpenBSDPledgeWindow window;
-			window.unveil = useUnveil;
-			window.upnp = upnp;
-			// Every startup worker (log supervisor, router storage, data storage
-			// and the torrent storage broker) is forked/exec'ed before the
-			// runtime sandbox. exec exists only in this window.
-			window.execWorkers = true;
-			// Supervised storage hands a worker channel or root back to the
-			// core.
-			window.descriptorReception = true;
-			// The forked child drops supplementary groups, gid and uid.
-			window.credentialDrop = i2p::privsep::GetWorkerCredentials ().configured;
-			auto promises = i2p::privsep::OpenBSDPledgePromiseList (i2p::privsep::OpenBSDPledgePhase::Startup, window);
-			std::string policy;
-			i2p::config::GetOption ("openbsd.pledge_file", policy);
-			if (!policy.empty ())
-			{
-				// One parser for both phases: an operator file may select from
-				// the validated base set, never widen it, and must not contain
-				// comments or blank lines that could look like active promises.
-				std::vector<std::string_view> allowed;
-				allowed.reserve (promises.size ());
-				for (const auto & promise : promises) allowed.emplace_back (promise);
-				auto accepted
-					= i2p::privsep::ParseOpenBSDPledgeFile (policy, allowed, i2p::privsep::OpenBSDPledgePhase::Startup);
-				if (!accepted)
-				{
-					std::cerr << "Daemon: openbsd.pledge_file: " << accepted.error () << std::endl;
-					std::exit (EXIT_FAILURE);
-				}
-				for (const auto & promise : *accepted)
-					if (std::find (promises.begin (), promises.end (), promise) == promises.end ())
-						promises.push_back (promise);
-			}
-			std::string joined;
-			for (const auto & promise : promises)
-			{
-				if (!joined.empty ()) joined.push_back (' ');
-				joined += promise;
-			}
-			if (pledge (joined.c_str (), i2p::privsep::OPENBSD_PLEDGE_EXECPROMISES) == -1)
-			{
-				std::cerr << "Daemon: startup pledge: " << strerror (errno) << std::endl;
-				std::exit (EXIT_FAILURE);
-			}
-		}
-#endif
+		// OpenBSD installs its first pledge after every worker has been
+		// created, in UnixDaemon::start(). No window therefore needs exec
+		// or id; a restricted process never executes another image.
 		initTransaction.Run (DaemonInitPhase::Crypto,
 			[&]
 			{

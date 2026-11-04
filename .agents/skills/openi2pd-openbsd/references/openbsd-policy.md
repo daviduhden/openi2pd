@@ -13,10 +13,10 @@ manual CI work.
 
 | Component | File | Rule |
 |---|---|---|
-| Startup/runtime | `daemon/UnixDaemon.cpp` | spawn supervisor/log before runtime pledge; drop `exec` after startup |
-| Core runtime | `daemon/UnixDaemon.cpp` | runtime set must be a strict subset of startup; retain `proc` only for supervisor reaping, `recvfd` only for supervised storage; no `exec`/`id`/`chown`/`unveil` |
-| Supervisor | `privsep/OpenBSDSandbox.*` | `stdio proc exec` + `unveil(exe,"x")` lock for lifecycle; no `unix`, never opens router/log payload |
-| Storage broker | `privsep/Supervisor.cpp` | `stdio proc exec sendfd` + same `x`-only unveil; no `unix`/`recvfd`, never receives a descriptor |
+| Startup/runtime | `daemon/UnixDaemon.cpp` | create every worker unpledged, install first pledge with `unveil`, then drop to runtime; no `exec`/`error`/`id` |
+| Core runtime | `daemon/UnixDaemon.cpp` | runtime set must be a strict subset of first; retain `proc` only for supervisor reaping, `recvfd` only for supervised storage; no `exec`/`error`/`id`/`chown`/`unveil` |
+| Supervisor | `privsep/OpenBSDSandbox.*` | `stdio proc` only; owns one active and one reserve pre-created log worker, promotes without exec; no `unix`, never opens router/log payload |
+| Storage broker | `privsep/Supervisor.cpp` | disabled: worker creation required `exec`; isolated torrent storage fails closed until an exec-free pre-created pool exists |
 | Log worker | `privsep/LogWorker.*` | own `unveil` + `pledge` after exec; only configured sink |
 | Storage supervisor | `privsep/TorrentStorage.*`, `Supervisor.*` | pre-pledge root authorization; fd4 inherited root; socket-only return |
 | Storage worker | `libi2pd_client/TorrentStorageWorker.*` | own storage-only policy before ACK; no network/exec |
@@ -27,7 +27,7 @@ manual CI work.
 - No `SCM_RIGHTS` directory descriptor after `pledge`.
 - No `execpromises` assumption for a child that must install its own policy.
 - No unsandboxed fallback when isolated storage was requested.
-- No generic `proc`/`exec` in the core runtime policy.
+- No `exec` or `error` in any policy; no generic `proc` in the core runtime policy.
 - No new unveiled path without a matching configured capability.
 - No LibreSSL build that advertises an unavailable PQ type.
 

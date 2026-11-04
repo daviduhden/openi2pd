@@ -589,20 +589,20 @@ OpenBSD/Linux/Windows runtime or live-peer run exists.
   capped at 30 s, eight consecutive attempts and a 60 s stable-period reset;
   exhaustion exits the supervisor. The core logger queue is capped at 8192
   records with 8192-byte truncation and a dropped counter.
-- **Storage root handoff**: the OpenBSD torrent-storage broker receives a
-  validated data root as inherited fd4 instead of re-opening a path after
-  pledge. It uses `pledge("stdio proc exec sendfd")` with an `x`-only unveil of its
-  frozen executable (current policy; earlier revisions used
-  `stdio unix proc exec sendfd recvfd`); directory descriptors are never sent
-  through `SCM_RIGHTS`.
+- **Storage root handoff**: the on-demand OpenBSD torrent-storage broker is
+  disabled. It formerly forked/exec'ed a worker after its own sandbox, which
+  required the now-forbidden pledge promise `exec`. Isolated torrent storage
+  fails closed until an exec-free worker-provisioning protocol exists; no
+  directory descriptor is sent through `SCM_RIGHTS` by the core.
 - **Router storage recovery**: a worker-level write rejection (status 1) no
   longer poisons the IPC channel; only malformed frames/request IDs do. This
   prevents one ENOSPC/symlink rejection from disabling later persistence.
   Worker entry now requires the channel at descriptor 3, preventing a manual
   invocation from aliasing inherited root descriptor 4.
-- **Startup pledge**: OpenBSD carries `exec` only during the startup worker
-  window, including when `privsep.log` is disabled; the runtime policy still
-  drops it.
+- **First pledge**: OpenBSD creates every worker while the core is unpledged,
+  then installs a first pledge with `unveil` and drops it at runtime. Neither
+  phase contains `exec`, `error` or `id`; the supervisor pledges only
+  `stdio proc` and promotes a pre-created reserve log worker.
 
 Residual: the core still owns transport sockets, most netDb/profile/
 address-book/destination-key writes and long-term keys. Network and crypto

@@ -5,15 +5,14 @@
  * openi2pd: test privsep openbsd policy.
  *
  * OpenBSD policy and negative-capability checks: per-role pledge/unveil
- * separation, the supervisor's x-only executable unveil rule, the
- * broker's sendfd-only descriptor contract, the startup/runtime promise
- * relationship, the single pledge-file parser and preopened descriptor
- * validation. Every role/configuration pair must also emit only known
- * pledge(2) promise names and absolute, non-root unveil rules, since a
- * typo is otherwise an EINVAL at run time on the target only. Forked
- * children prove that storage cannot use the network or fork, that the
- * supervisor cannot exec an arbitrary image, and that unveil cannot be
- * re-opened after the lock.
+ * separation, the supervisor's pre-created-worker policy, the
+ * disabled storage-broker role, the first/runtime promise relationship,
+ * the single pledge-file parser and preopened descriptor validation.
+ * Every role/configuration pair must emit only known pledge(2) promise
+ * names and absolute, non-root unveil rules; "exec" and "error" are
+ * forbidden. Forked children prove that storage cannot use the network
+ * or fork, that the supervisor cannot exec any image, and that unveil
+ * cannot be re-opened after the lock.
  *
  */
 
@@ -54,18 +53,11 @@ int main ()
 #else
 namespace
 {
-/**
- * A fixed absolute path under an existing directory; the leaf need
- * not exist.
- */
-constexpr const char * PROBE_EXECUTABLE = "/tmp/openi2pd-supervisor-probe";
-
 OpenBSDPolicyConfig BaseConfig ()
 {
 	OpenBSDPolicyConfig config;
 	config.useUnveil = false;
 	config.usePledge = true;
-	config.executablePath = PROBE_EXECUTABLE;
 	return config;
 }
 
@@ -156,21 +148,6 @@ template <typename Body> void ExpectPolicyExit (const OpenBSDPolicy & policy, Bo
 	assert (WEXITSTATUS (status) == 0);
 }
 
-std::string ResolveSelf (const char * argv0)
-{
-	std::string candidate = argv0 ? argv0 : "";
-	if (candidate.empty ()) return candidate;
-	if (candidate.front () != '/')
-	{
-		char cwd[PATH_MAX];
-		if (!getcwd (cwd, sizeof (cwd))) return candidate;
-		candidate = std::string (cwd) + "/" + candidate;
-	}
-	char resolved[PATH_MAX];
-	if (realpath (candidate.c_str (), resolved)) return resolved;
-	return candidate;
-}
-
 void TestPolicySeparation ()
 {
 	auto storage = BuildOpenBSDPolicy (OpenBSDWorkerRole::Storage, BaseConfig ());
@@ -220,38 +197,16 @@ void TestPolicySeparation ()
 	// rpath or cpath; stdio already provides socketpair(2) for the worker
 	// channel.
 	assert (!supervisor->HasLocalIpc ());
-	assert (supervisor->pledge == "stdio proc exec");
-	// Unveil is forced on for this role and carries exactly one "x" rule
-	// for the frozen executable path, so no second image can be exec'ed.
-	assert (supervisor->useUnveil);
-	assert (supervisor->unveil.size () == 1);
-	assert (supervisor->unveil[0].path == PROBE_EXECUTABLE);
-	assert (supervisor->unveil[0].permissions == "x");
+	assert (supervisor->pledge == "stdio proc");
+	assert (!supervisor->useUnveil);
+	assert (supervisor->unveil.empty ());
+	assert (!HasPromiseText (supervisor->pledge, "exec"));
+	assert (!HasPromiseText (supervisor->pledge, "error"));
+	assert (!HasPromiseText (supervisor->pledge, "id"));
 
-	auto broker = BuildOpenBSDPolicy (OpenBSDWorkerRole::StorageBroker, BaseConfig ());
-	assert (broker.has_value ());
-	assert (broker->pledge == "stdio proc exec sendfd");
-	assert (!broker->HasLocalIpc ());
-	assert (broker->HasProcessCreation ());
-	assert (!broker->HasExternalNetwork ());
-	assert (!broker->HasPersistentWrite ());
-	assert (broker->pledge.find ("recvfd") == std::string::npos);
-	assert (broker->useUnveil && broker->unveil.size () == 1);
-	assert (broker->unveil[0].path == PROBE_EXECUTABLE && broker->unveil[0].permissions == "x");
-
-	// A configured worker identity adds "id" only to the two
-	// process-creation
-	// roles: the forked child drops supplementary groups, gid and uid
-	// there
-	// immediately before execve. Leaf workers never gain it.
-	OpenBSDPolicyConfig credentialed = BaseConfig ();
-	credentialed.dropCredentials = true;
-	auto supervisorDrop = BuildOpenBSDPolicy (OpenBSDWorkerRole::Supervisor, credentialed);
-	assert (supervisorDrop.has_value () && supervisorDrop->pledge == "stdio proc exec id");
-	auto brokerDrop = BuildOpenBSDPolicy (OpenBSDWorkerRole::StorageBroker, credentialed);
-	assert (brokerDrop.has_value () && brokerDrop->pledge == "stdio proc exec sendfd id");
-	auto storageDrop = BuildOpenBSDPolicy (OpenBSDWorkerRole::Storage, credentialed);
-	assert (storageDrop.has_value () && !HasPromiseText (storageDrop->pledge, "id"));
+	// The on-demand broker required fork/exec after its own sandbox and is
+	// refused rather than granted the forbidden exec promise.
+	assert (!BuildOpenBSDPolicy (OpenBSDWorkerRole::StorageBroker, BaseConfig ()).has_value ());
 
 	auto crypto = BuildOpenBSDPolicy (OpenBSDWorkerRole::Crypto, BaseConfig ());
 	assert (crypto.has_value ());
@@ -266,11 +221,10 @@ void TestPolicySeparation ()
 	assert (!admin->HasProcessCreation ());
 
 	// The single cross-role invariant: external network and persistent
-	// writes never coexist in one process, for every role this builder can
-	// produce.
+	// writes never coexist in one process, for every buildable role.
 	const OpenBSDWorkerRole roles[] = { OpenBSDWorkerRole::Supervisor, OpenBSDWorkerRole::Log,
-		OpenBSDWorkerRole::Storage, OpenBSDWorkerRole::Network, OpenBSDWorkerRole::Crypto, OpenBSDWorkerRole::Admin,
-		OpenBSDWorkerRole::StorageBroker };
+		OpenBSDWorkerRole::Storage, OpenBSDWorkerRole::Network, OpenBSDWorkerRole::Crypto,
+		OpenBSDWorkerRole::Admin };
 	for (const auto role : roles)
 	{
 		OpenBSDPolicyConfig config = BaseConfig ();
@@ -279,9 +233,11 @@ void TestPolicySeparation ()
 		auto policy = BuildOpenBSDPolicy (role, config);
 		assert (policy.has_value ());
 		assert (!(policy->HasExternalNetwork () && policy->HasPersistentWrite ()));
-		// Only the two process-creation roles may hold proc/exec.
-		if (role != OpenBSDWorkerRole::Supervisor && role != OpenBSDWorkerRole::StorageBroker)
+		// Only the supervisor owns already-created children.
+		if (role != OpenBSDWorkerRole::Supervisor)
 			assert (!policy->HasProcessCreation ());
+		assert (!HasPromiseText (policy->pledge, "exec"));
+		assert (!HasPromiseText (policy->pledge, "error"));
 	}
 
 	// The promise table itself is the authority for both a generated
@@ -293,6 +249,11 @@ void TestPolicySeparation ()
 	assert (!IsKnownPledgePromiseName ("stdio "));
 	assert (!IsKnownPledgePromiseName ("STDIO"));
 	assert (!IsKnownPledgePromiseName ("execve"));
+	assert (!IsKnownPledgePromiseName ("exec"));
+	assert (!IsKnownPledgePromiseName ("error"));
+	assert (IsForbiddenPledgePromiseName ("exec"));
+	assert (IsForbiddenPledgePromiseName ("error"));
+	assert (!IsForbiddenPledgePromiseName ("stdio"));
 
 	// Every role, with and without unveil, must produce only reviewable
 	// tokens: known promise names and absolute non-root rules. The pair
@@ -358,83 +319,88 @@ void TestPolicySeparation ()
 	assert (fdPolicy->unveil.size () == 1);
 	assert (fdPolicy->unveil[0].path == "/etc/localtime");
 
-	// The executable path is the only thing the supervisor and broker
-	// unveil;
-	// an empty, relative or NUL-carrying value fails closed at build time.
-	auto rejectConfig = BaseConfig ();
-	rejectConfig.executablePath.clear ();
-	assert (!BuildOpenBSDPolicy (OpenBSDWorkerRole::Supervisor, rejectConfig).has_value ());
-	assert (!BuildOpenBSDPolicy (OpenBSDWorkerRole::StorageBroker, rejectConfig).has_value ());
-	rejectConfig.executablePath = "i2pd";
-	assert (!BuildOpenBSDPolicy (OpenBSDWorkerRole::Supervisor, rejectConfig).has_value ());
-	assert (!BuildOpenBSDPolicy (OpenBSDWorkerRole::StorageBroker, rejectConfig).has_value ());
-	rejectConfig.executablePath = std::string ("/usr/local/bin/") + '\0' + "i2pd";
-	assert (!BuildOpenBSDPolicy (OpenBSDWorkerRole::Supervisor, rejectConfig).has_value ());
-	assert (!BuildOpenBSDPolicy (OpenBSDWorkerRole::StorageBroker, rejectConfig).has_value ());
+	// The supervisor no longer unveils or executes an image; the broker
+	// is refused above, so there is no executable-path input to validate.
 }
 
 void TestPledgeWindows ()
 {
-	// The execpromises argument is pinned to null: an exec'ed image starts
-	// without any promise and installs its own unveil+pledge.
+	// The execpromises argument is pinned to null, and no policy may name
+	// exec: a pre-created worker installs its own unveil+pledge after
+	// fork/exec.
 	static_assert (OPENBSD_PLEDGE_EXECPROMISES == nullptr, "pledge(2) must never be called with execpromises");
-	assert (!IsPledgePromiseSubset ("recvfd", "stdio proc exec"));
-	assert (IsPledgePromiseSubset ("stdio exec", "stdio proc exec"));
-	assert (IsPledgePromiseSubset ("", "stdio"));
+	assert (!IsPledgePromiseSubset ("recvfd", "stdio proc"));
+	assert (IsPledgePromiseSubset ("stdio proc", "stdio proc"));
 
-	for (unsigned mask = 0; mask < 64; ++mask)
+	for (unsigned mask = 0; mask < 16; ++mask)
 	{
 		OpenBSDPledgeWindow window;
 		window.unveil = (mask & 1) != 0;
 		window.upnp = (mask & 2) != 0;
-		window.execWorkers = (mask & 4) != 0;
-		window.reapChildren = (mask & 8) != 0;
-		window.descriptorReception = (mask & 16) != 0;
-		window.credentialDrop = (mask & 32) != 0;
+		window.reapChildren = (mask & 4) != 0;
+		window.descriptorReception = (mask & 8) != 0;
 		const auto startup = BuildOpenBSDPledgePromises (OpenBSDPledgePhase::Startup, window);
 		const auto runtime = BuildOpenBSDPledgePromises (OpenBSDPledgePhase::Runtime, window);
 		// A promise can only be dropped: the runtime set is always a subset.
 		assert (IsPledgePromiseSubset (runtime, startup));
-		// The runtime window never regains process creation, identity
-		// changes,
-		// unveil or descriptor sending.
-		assert (!HasPromiseText (runtime, "exec"));
-		assert (!HasPromiseText (runtime, "id"));
+		// No window may regain process execution, recoverable policy
+		// violations, identity changes or descriptor sending.
+		for (const auto text : { startup, runtime })
+		{
+			assert (!HasPromiseText (text, "exec"));
+			assert (!HasPromiseText (text, "error"));
+			assert (!HasPromiseText (text, "id"));
+			assert (!HasPromiseText (text, "sendfd"));
+		}
 		assert (!HasPromiseText (runtime, "unveil"));
-		assert (!HasPromiseText (runtime, "sendfd"));
 		if (window.reapChildren)
+		{
 			assert (HasPromiseText (runtime, "proc"));
+			assert (HasPromiseText (startup, "proc"));
+		}
 		else
+		{
 			assert (!HasPromiseText (runtime, "proc"));
+			assert (!HasPromiseText (startup, "proc"));
+		}
 		if (window.descriptorReception)
+		{
 			assert (HasPromiseText (runtime, "recvfd"));
+			assert (HasPromiseText (startup, "recvfd"));
+		}
 		else
+		{
 			assert (!HasPromiseText (runtime, "recvfd"));
+			assert (!HasPromiseText (startup, "recvfd"));
+		}
 		if (window.unveil) assert (HasPromiseText (startup, "unveil"));
-		if (window.upnp) assert (HasPromiseText (startup, "mcast") && HasPromiseText (runtime, "mcast"));
-		if (window.credentialDrop) assert (HasPromiseText (startup, "id"));
-		if (window.execWorkers) assert (HasPromiseText (startup, "proc") && HasPromiseText (startup, "exec"));
+		else assert (!HasPromiseText (startup, "unveil"));
+		assert (HasPromiseText (startup, window.upnp ? "mcast" : "stdio"));
+		if (window.upnp) assert (HasPromiseText (runtime, "mcast"));
 	}
 
-	// The daemon's exact windows: startup is the widest, runtime keeps
-	// recvfd
-	// for the supervised storage handoff and proc only for the log
-	// supervisor.
+	// The daemon's exact windows: the first set adds unveil, the runtime
+	// keeps recvfd for the supervised storage handoff and proc only
+	// for the log supervisor. Neither contains exec, error or id.
 	OpenBSDPledgeWindow startup;
 	startup.unveil = true;
-	startup.execWorkers = true;
 	startup.descriptorReception = true;
-	startup.credentialDrop = true;
+	startup.reapChildren = true;
 	const auto startupPromises = BuildOpenBSDPledgePromises (OpenBSDPledgePhase::Startup, startup);
 	assert (HasPromiseText (startupPromises, "recvfd"));
-	assert (HasPromiseText (startupPromises, "exec"));
-	assert (HasPromiseText (startupPromises, "id"));
+	assert (HasPromiseText (startupPromises, "proc"));
+	assert (HasPromiseText (startupPromises, "unveil"));
+	assert (!HasPromiseText (startupPromises, "exec"));
+	assert (!HasPromiseText (startupPromises, "error"));
+	assert (!HasPromiseText (startupPromises, "id"));
 	OpenBSDPledgeWindow runtime;
 	runtime.descriptorReception = true;
 	runtime.reapChildren = true;
 	const auto runtimePromises = BuildOpenBSDPledgePromises (OpenBSDPledgePhase::Runtime, runtime);
 	assert (HasPromiseText (runtimePromises, "recvfd"));
 	assert (HasPromiseText (runtimePromises, "proc"));
+	assert (!HasPromiseText (runtimePromises, "exec"));
+	assert (!HasPromiseText (runtimePromises, "error"));
 	assert (IsPledgePromiseSubset (runtimePromises, startupPromises));
 }
 
@@ -472,7 +438,6 @@ void TestPledgeFileParser ()
 	const auto runtimeAllowed = Views (runtimeBase);
 	OpenBSDPledgeWindow startupWindow;
 	startupWindow.unveil = true;
-	startupWindow.execWorkers = true;
 	startupWindow.descriptorReception = true;
 	const auto startupBase = OpenBSDPledgePromiseList (OpenBSDPledgePhase::Startup, startupWindow);
 	const auto startupAllowed = Views (startupBase);
@@ -512,14 +477,17 @@ void TestPledgeFileParser ()
 	assert (HasPromiseText (BuildOpenBSDPledgePromises (OpenBSDPledgePhase::Runtime, runtimeWindow), "proc"));
 	assert (!check ("proc\n", runtimeAllowed, OpenBSDPledgePhase::Runtime).has_value ());
 	assert (!check ("exec\n", startupAllowed, OpenBSDPledgePhase::Runtime).has_value ());
+	assert (!check ("error\n", startupAllowed, OpenBSDPledgePhase::Runtime).has_value ());
 	assert (!check ("id\n", startupAllowed, OpenBSDPledgePhase::Runtime).has_value ());
 	assert (!check ("settime\n", startupAllowed, OpenBSDPledgePhase::Runtime).has_value ());
 
-	// A startup file may not add anything outside the startup base set
-	// either.
+	// A startup file may not add anything outside the startup base set,
+	// and may never add exec or error.
 	assert (!check ("mcast\n", startupAllowed, OpenBSDPledgePhase::Startup).has_value ());
-	auto startupSelected = check ("exec unveil\n", startupAllowed, OpenBSDPledgePhase::Startup);
-	assert (startupSelected.has_value () && startupSelected->size () == 2);
+	assert (!check ("exec\n", startupAllowed, OpenBSDPledgePhase::Startup).has_value ());
+	assert (!check ("error\n", startupAllowed, OpenBSDPledgePhase::Startup).has_value ());
+	auto startupSelected = check ("unveil\n", startupAllowed, OpenBSDPledgePhase::Startup);
+	assert (startupSelected.has_value () && startupSelected->size () == 1);
 
 	// A missing file is an error, not an empty policy.
 	auto missing
@@ -599,36 +567,20 @@ void TestNetworkCannotWritePersistentFile ()
 }
 
 /**
- * The supervisor holds proc/exec but unveils exactly one path with "x"
- * and nothing else. Executing any other image therefore fails with
- * ENOENT (unveil reports ENOENT for a path with no qualifying
- * permission) while the frozen executable path still runs. The exec'ed
- * probe writes no stamp file: "x" does not grant write or read access.
+ * The supervisor holds only stdio/proc. With no exec promise,
+ * attempting to execute any image is a pledge violation and aborts
+ * the process.
  */
-void TestSupervisorExecUnveil (const std::string & executable)
+void TestSupervisorCannotExec ()
 {
-	if (executable.empty () || executable.front () != '/') return;
-	OpenBSDPolicyConfig config = BaseConfig ();
-	config.executablePath = executable;
-	auto policy = BuildOpenBSDPolicy (OpenBSDWorkerRole::Supervisor, config);
-	assert (policy.has_value ());
-	ExpectPolicyExit (*policy,
-		[&executable] () -> int
+	ExpectPledgeViolation (OpenBSDWorkerRole::Supervisor,
+		[]
 		{
-			char * const deniedArgv[] = { const_cast<char *> ("/bin/sh"), nullptr };
-			char * const deniedEnv[] = { nullptr };
-			execve ("/bin/sh", deniedArgv, deniedEnv);
-			if (errno != ENOENT) return 4;
-			// The unveiled image itself is executable. The probe argument makes
-			// the re-executed test binary exit immediately.
-			char * const allowedArgv[]
-				= { const_cast<char *> (executable.c_str ()), const_cast<char *> ("--unveil-exec-probe"), nullptr };
-			char * const allowedEnv[] = { nullptr };
-			execve (executable.c_str (), allowedArgv, allowedEnv);
-			return 5;
+			char * const argv[] = { const_cast<char *> ("/bin/sh"), nullptr };
+			char * const env[] = { nullptr };
+			execve ("/bin/sh", argv, env);
 		});
 }
-
 /**
  * The supervisor pledge has no unveil promise: re-opening unveil
  * aborts.
@@ -671,10 +623,8 @@ void TestProcessCreationGate ()
 
 int main (int argc, char * argv[])
 {
-	// Re-executed by TestSupervisorExecUnveil through the unveiled path.
-	if (argc == 2 && std::string_view (argv[1]) == "--unveil-exec-probe") return 0;
-
-	const std::string self = ResolveSelf (argc > 0 ? argv[0] : nullptr);
+	(void)argc;
+	(void)argv;
 	TestPolicySeparation ();
 	TestPledgeWindows ();
 	TestPledgeFileParser ();
@@ -683,7 +633,7 @@ int main (int argc, char * argv[])
 	TestStorageCannotUseExternalNetwork ();
 	TestStorageCannotFork ();
 	TestNetworkCannotWritePersistentFile ();
-	TestSupervisorExecUnveil (self);
+	TestSupervisorCannotExec ();
 	TestSupervisorCannotReopenUnveil ();
 	TestUnveilLockIsFinal ();
 	TestProcessCreationGate ();
