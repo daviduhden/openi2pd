@@ -296,6 +296,11 @@ endif()
 
 foreach(test IN LISTS I2PD_TESTS)
   i2pd_add_test(${test})
+  if(test STREQUAL "test-su3-bounds")
+    # Only public certificate bytes are copied into the reload fixture.
+    target_compile_definitions(${test} PRIVATE
+      I2PD_TEST_RESEED_CERT="${PROJECT_ROOT}/contrib/certificates/reseed/orignal_at_mail.i2p.crt")
+  endif()
   if(test STREQUAL "test-boost-linkage")
     set_property(TEST ${test} APPEND PROPERTY LABELS "ci;torrent")
   endif()

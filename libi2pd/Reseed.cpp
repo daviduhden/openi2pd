@@ -1092,7 +1092,7 @@ namespace data
 		return false;
 	}
 
-	void Reseeder::LoadCertificate (const std::string & filename)
+	void Reseeder::LoadCertificate (const std::string & filename, SigningKeys & keys)
 	{
 		using BioPtr = std::unique_ptr<BIO, decltype (&BIO_free)>;
 		using X509Ptr = std::unique_ptr<X509, decltype (&X509_free)>;
@@ -1134,7 +1134,7 @@ namespace data
 			{
 				if (cn)
 				{
-					m_SigningKeys[cn] = value;
+					keys[cn] = value;
 					stored = true;
 				}
 				else
@@ -1164,7 +1164,7 @@ namespace data
 				{
 					if (cn)
 					{
-						m_SigningKeys[cn] = value;
+						keys[cn] = value;
 						stored = true;
 					}
 					else
@@ -1180,17 +1180,20 @@ namespace data
 			LogPrint (eLogError, "Reseed: Certificate ", filename, " did not provide a usable signing key");
 	}
 
-	void Reseeder::LoadCertificates ()
+	size_t Reseeder::LoadCertificates ()
 	{
+		// Never retain removed anchors after an unreadable or failed reload.
+		// Verification is serialized by the reseeder owner, not this map.
+		m_SigningKeys.clear ();
+		SigningKeys loaded;
 		std::string certDir = i2p::fs::GetCertsDir () + i2p::fs::dirSep + "reseed";
 
 		std::vector<std::string> files;
-		int numCertificates = 0;
 
 		if (!i2p::fs::ReadDir (certDir, files))
 		{
 			LogPrint (eLogWarning, "Reseed: Can't load reseed certificates from ", certDir);
-			return;
+			return 0;
 		}
 
 		for (const std::string & file : files)
@@ -1202,10 +1205,11 @@ namespace data
 				LogPrint (eLogWarning, "Reseed: Ignoring file ", file);
 				continue;
 			}
-			LoadCertificate (file);
-			numCertificates++;
+			LoadCertificate (file, loaded);
 		}
-		LogPrint (eLogInfo, "Reseed: ", numCertificates, " certificates loaded");
+		m_SigningKeys.swap (loaded);
+		LogPrint (eLogInfo, "Reseed: ", m_SigningKeys.size (), " signing identities loaded");
+		return m_SigningKeys.size ();
 	}
 
 	std::string Reseeder::HttpsRequest (const std::string & address, int redirects, const std::stop_token & token)

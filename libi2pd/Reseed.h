@@ -157,11 +157,13 @@ namespace data
 
 		/// Load the SU3 signing certificates into the in-process trust store.
 		/// Only `*.crt` entries are read; unparsable files are logged and
-		/// skipped. The store only grows, so a certificate removed from the
-		/// directory stays trusted until the process restarts, and a bundle
-		/// whose signer is absent from the store is rejected rather than
-		/// imported unverified.
-		void LoadCertificates ();
+		/// skipped. Reload revokes the old store, including on directory
+		/// failure, and publishes only usable signing keys from this pass.
+		/// Call on the owning reseeder thread before imports; concurrent
+		/// reload and verification are unsupported. Unknown signers fail
+		/// verification instead of importing unverified data.
+		/// @return number of distinct usable signer identities loaded.
+		size_t LoadCertificates ();
 
 		void SetFetchHookForTesting (
 			std::function<std::string (const std::string & url, const std::stop_token & token)> hook);
@@ -171,7 +173,8 @@ namespace data
 
 	private:
 		ReseedResult ReseedFromSU3Url (const std::string & url, bool isHttps, const std::stop_token & token);
-		void LoadCertificate (const std::string & filename);
+		using SigningKeys = std::map<std::string, PublicKey>;
+		static void LoadCertificate (const std::string & filename, SigningKeys & keys);
 
 		ReseedResult ProcessSU3Stream (std::istream & s, const std::stop_token & token, bool requireFresh = false);
 		ReseedResult ProcessZIPStream (std::istream & s, uint64_t contentLength, const std::stop_token & token);
@@ -189,7 +192,7 @@ namespace data
 		NetDb & TargetNetDb () const;
 
 	private:
-		std::map<std::string, PublicKey> m_SigningKeys;
+		SigningKeys m_SigningKeys;
 		std::function<std::string (const std::string & url, const std::stop_token & token)> m_FetchHook;
 		std::function<uint64_t ()> m_ClockHook;
 		std::vector<std::string> m_SourceOverride;

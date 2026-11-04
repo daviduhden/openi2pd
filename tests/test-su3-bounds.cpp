@@ -19,10 +19,38 @@
 #include <vector>
 
 #include "Config.h"
+#include "FS.h"
+#include "Modern.h"
 #include "Reseed.h"
 
 namespace
 {
+void TestCertificateReload (const std::filesystem::path & directory)
+{
+	const auto previous = i2p::fs::GetCertsDir ();
+	auto restore = i2p::modern::ScopeExit ([&] { i2p::fs::SetCertsDir (previous); });
+	const auto root = directory / "trust";
+	const auto signers = root / "reseed";
+	std::filesystem::create_directories (signers);
+	i2p::fs::SetCertsDir (root.string ());
+	std::filesystem::copy_file (I2PD_TEST_RESEED_CERT, signers / "usable.crt");
+	{
+		std::ofstream invalid (signers / "invalid.crt");
+		invalid << "not a certificate";
+	}
+	i2p::data::Reseeder reseeder;
+	assert (reseeder.LoadCertificates () == 1); // malformed files do not count
+	std::filesystem::copy_file (I2PD_TEST_RESEED_CERT, signers / "duplicate.crt");
+	assert (reseeder.LoadCertificates () == 1); // one signer, two public certificates
+	std::filesystem::remove (signers / "usable.crt");
+	std::filesystem::remove (signers / "duplicate.crt");
+	assert (reseeder.LoadCertificates () == 0); // removed anchors are revoked
+	std::filesystem::copy_file (I2PD_TEST_RESEED_CERT, signers / "restored.crt");
+	assert (reseeder.LoadCertificates () == 1);
+	std::filesystem::remove_all (signers);
+	assert (reseeder.LoadCertificates () == 0); // unreadable directory revokes too
+}
+
 std::string WriteCase (
 	const std::filesystem::path & directory, const std::string & name, const std::vector<uint8_t> & bytes)
 {
@@ -65,6 +93,7 @@ int main ()
 	std::filesystem::remove_all (directory, error);
 	std::filesystem::create_directories (directory, error);
 	assert (!error);
+	TestCertificateReload (directory);
 
 	std::vector<std::string> cases;
 

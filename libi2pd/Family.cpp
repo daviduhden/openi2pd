@@ -115,7 +115,7 @@ namespace data
 		std::string certDir = i2p::fs::GetCertsDir () + i2p::fs::dirSep + "family";
 
 		std::vector<std::string> files;
-		int numCertificates = 0;
+		const auto previousCount = m_SigningKeys.size ();
 
 		if (!i2p::fs::ReadDir (certDir, files))
 		{
@@ -131,9 +131,9 @@ namespace data
 				continue;
 			}
 			LoadCertificate (file);
-			numCertificates++;
 		}
-		LogPrint (eLogInfo, "Family: ", numCertificates, " certificates loaded");
+		LogPrint (eLogInfo, "Family: ", m_SigningKeys.size () - previousCount,
+			" new signing identities loaded; ", m_SigningKeys.size (), " retained");
 	}
 
 	bool Families::VerifyFamily (

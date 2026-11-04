@@ -324,3 +324,23 @@ Still open and unchanged: SSU2 send/receive socket sharing, the missing
 established-session cap (`NET-172`), the undeadlined NTCP2 2-byte length read,
 `ThrowFatal` on the SSU2 receive-error path, ratchet context serialization,
 `RouterInfo` address-slot copy-on-write and the netDb throttle eviction.
+
+### Reseed trust reload continuation
+
+`Reseeder::LoadCertificates()` now revokes the previous map before reading
+the directory and publishes only usable keys from the completed pass. A
+missing directory therefore leaves no old anchors trusted. Its return value
+and log count distinct usable signer identities, not certificate filenames;
+malformed files and duplicate copies do not inflate that count. Normal netDb
+reseed jobs already construct a fresh reseeder, so the stale-map defect
+concerned explicit reload on one object, not every later job in the process.
+Reload and verification remain owner-thread operations, with no concurrent
+reload guarantee. The existing SU3 bounds target now prepares malformed,
+duplicate, removed and missing-directory cases using a public certificate.
+Implementation and interface review are static; CI execution is pending.
+
+The equivalent Family loader now counts successful new map entries rather
+than attempted files. Its retention policy is unchanged: replacing that map
+without coordinating RouterInfo's cached numeric FamilyID could reuse an ID
+for a different family. Family revocation therefore remains a separate
+cache-invalidation task, rather than copying reseed's replacement strategy.
