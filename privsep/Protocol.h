@@ -889,6 +889,8 @@ inline i2p::expected<std::string, ProtocolError> EncodeConfigureDataStorage (
 	std::string_view path, uint64_t device, uint64_t inode, uint32_t generation)
 {
 	if (generation == 0) return i2p::unexpected (ProtocolError { ErrorCode::BadField, "zero data storage generation" });
+	if (path.empty () || path.front () != '/')
+		return i2p::unexpected (ProtocolError { ErrorCode::BadField, "data storage root must be absolute" });
 	PayloadWriter writer;
 	if (!writer.WritePath (path))
 		return i2p::unexpected (ProtocolError { ErrorCode::BadField, "data storage root too large or NUL" });

@@ -318,6 +318,7 @@ int main ()
 		assert (std::get<2> (*decoded) == 34);
 		assert (std::get<3> (*decoded) == 7);
 		assert (!EncodeConfigureDataStorage ("/var/lib/openi2pd", 12, 34, 0).has_value ());
+		assert (!EncodeConfigureDataStorage ("", 12, 34, 7).has_value ());
 		assert (!EncodeConfigureDataStorage ("relative", 12, 34, 7).has_value ());
 		assert (!DecodeConfigureDataStorage (*encoded + "x").has_value ());
 		// A relative or empty root is refused by the decoder as well.
