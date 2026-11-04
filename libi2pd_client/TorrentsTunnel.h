@@ -434,6 +434,7 @@ namespace torrents
 		TorrentCommandResult QueueTorrentCreation (const TorrentCommand & command);
 		void LoadTorrentAdminState (const std::shared_ptr<Torrent> & torrent);
 		void SaveTorrentAdminState (const std::shared_ptr<Torrent> & torrent, bool final = false);
+		std::pair<std::shared_ptr<Torrent>, int> AddMagnetState (const TorrentMagnetState & state, bool restoring);
 
 		// True when path is lexically inside m_TorrentsDir and neither the
 		// root nor any component in between is a symlink. Existing leaves
@@ -452,9 +453,13 @@ namespace torrents
 		// service. Parsing/insertion is posted back to the network service;
 		// the network thread never walks the directory or opens a file.
 		void LoadInitialTorrents ();
+		// Compile-time fixture access without starting listeners or workers.
+		friend struct TorrentRecoveryTestAccess;
 		bool ReadTorrentFileForControl (
 			const std::filesystem::path & path, std::vector<uint8_t> & content, std::string & error);
-		void SaveTorrentFile (std::shared_ptr<Torrent> torrent, const std::string & content);
+		bool SaveTorrentFile (std::shared_ptr<Torrent> torrent, const std::string & content);
+		// Disk-domain durability, never inferred from a successful read.
+		void RecordResolvedPersistence (const std::shared_ptr<Torrent> & torrent, bool metainfo);
 		/// Prepare one torrent's payload authority after its metainfo is
 		/// inserted or completed by BEP 9 metadata. Runs on the disk service:
 		/// it installs the resume persistence callback, injects the
@@ -599,6 +604,14 @@ namespace torrents
 		TrackerInflightRegistry<TrackerRequestState> m_TrackerRequests;
 		std::unique_ptr<TorrentsDHT> m_DHT;
 		std::atomic<bool> m_Stopping { false };
+		std::atomic<bool> m_StartupRecoveryPending { false };
+		std::map<Torrent::InfoHash, bool> m_MagnetRecoveryPause; // service domain
+		struct ResolvedPersistence
+		{
+			std::weak_ptr<Torrent> owner;
+			bool metainfo = false, settings = false;
+		};
+		std::map<Torrent::InfoHash, ResolvedPersistence> m_ResolvedPersistence; // disk domain
 		// Outbound dials whose stream is still being established. Each entry
 		// expires so a lost completion callback cannot leak a slot, and the
 		// map is bounded by MAX_TOTAL_DIALS before a dial starts.

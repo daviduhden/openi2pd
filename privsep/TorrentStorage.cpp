@@ -168,6 +168,11 @@ namespace
 		return ::unlinkat (parent.fd, leaf.c_str (), directory ? AT_REMOVEDIR : 0) == 0 && ::fsync (parent.fd) == 0;
 	}
 	constexpr uint64_t MetadataLimit = 8 * 1024 * 1024;
+	constexpr uint64_t MetadataPathLimit (std::string_view path)
+	{
+		return path.starts_with (".openi2pd-state/") && path.ends_with (".magnet")
+			? 16 * 1024 : MetadataLimit;
+	}
 	bool SafeMetadata (std::string_view path)
 	{
 		if (!SafeStoragePath (path)) return false;
@@ -175,7 +180,8 @@ namespace
 		if (path.starts_with (prefix))
 		{
 			auto leaf = path.substr (prefix.size ());
-			if (leaf.size () != 46 || !leaf.ends_with (".state")) return false;
+			if (!((leaf.size () == 46 && leaf.ends_with (".state"))
+				|| (leaf.size () == 47 && leaf.ends_with (".magnet")))) return false;
 			for (auto ch : leaf.substr (0, 40))
 				if (!((ch >= '0' && ch <= '9') || (ch >= 'a' && ch <= 'f'))) return false;
 			return true;
@@ -212,7 +218,7 @@ namespace
 		bool Begin (int root, std::string_view path, uint64_t size, bool authorizedDHT = false)
 		{
 			Clear ();
-			if ((!SafeMetadata (path) && !authorizedDHT) || size > MetadataLimit) return false;
+			if ((!SafeMetadata (path) && !authorizedDHT) || size > MetadataPathLimit (path)) return false;
 			if (path.starts_with (".openi2pd-state/"))
 				if (::mkdirat (root, ".openi2pd-state", 0700) && errno != EEXIST) return false;
 			parent = OpenParent (root, path, target);
@@ -612,7 +618,7 @@ int RunTorrentStorageWorker (int fd, int inheritedRoot)
 				struct stat status { };
 				if (opened.fd >= 0 && !::fstat (opened.fd, &status) && S_ISREG (status.st_mode)
 					&& status.st_uid == ::geteuid () && status.st_nlink == 1 && status.st_size >= 0
-					&& static_cast<uint64_t> (status.st_size) <= MetadataLimit)
+					&& static_cast<uint64_t> (status.st_size) <= MetadataPathLimit (*path))
 				{
 					const auto id = ++next;
 					files.emplace (id, File { opened.fd, static_cast<uint64_t> (status.st_size), false });

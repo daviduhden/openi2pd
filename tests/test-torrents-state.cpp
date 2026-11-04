@@ -43,11 +43,60 @@ std::string CommentEntry (int64_t id, std::string_view owner, std::string_view t
 		{ "like", CreateInteger (0) }, { "local", CreateInteger (0) }, { "owner", CreateByteString (owner) },
 		{ "text", CreateByteString (text) }, { "time", CreateInteger (time) } });
 }
+
+void TestMagnetState ()
+{
+	using namespace i2p::torrents;
+	TorrentMagnetState original { { }, "display name", { "http://tracker.i2p/a", "udp://other.i2p:6881/a" }, true };
+	original.infoHash[0] = 0xab;
+	std::string error;
+	const auto encoded = EncodeTorrentMagnetState (original, error);
+	assert (!encoded.empty () && error.empty ());
+	TorrentMagnetState restored;
+	assert (DecodeTorrentMagnetState (encoded, restored, error));
+	assert (restored.infoHash == original.infoHash && restored.name == original.name
+		&& restored.trackers == original.trackers && restored.stopped);
+	const auto reject = [&] (std::string_view bytes)
+	{
+		assert (!DecodeTorrentMagnetState (bytes, restored, error));
+		assert (EncodeTorrentMagnetState (restored, error) == encoded);
+	};
+	reject ("");
+	reject (encoded + "trailing");
+	reject (std::string (MAX_TORRENT_MAGNET_STATE_BYTES + 1, 'x'));
+	const auto record = [] (std::string_view hash, std::string_view name, std::string_view trackers,
+		std::string_view stopped = "i0e", std::string_view version = "i1e")
+	{
+		return CreateDictionary ({ { "hash", CreateByteString (hash) }, { "name", CreateByteString (name) },
+			{ "stopped", stopped }, { "trackers", trackers }, { "version", version } });
+	};
+	const std::string hash (40, 'a');
+	reject (record (hash, "name", "le", "i0e", "i2e"));
+	reject (record (std::string (40, 'A'), "name", "le"));
+	reject (record (std::string (39, 'a'), "name", "le"));
+	reject (record (hash, "name", "le", "i2e"));
+	reject (record (hash, "bad\nname", "le"));
+	reject (record (hash, "name", CreateList ({ CreateByteString ("http://clearnet.example/a") })));
+	reject (record (hash, "name", CreateList ({ CreateByteString ("http://user:private-marker@tracker.i2p/a") })));
+	reject (record (hash, "name", CreateList ({ CreateByteString ("http://tracker.i2p/a"), CreateByteString ("http://tracker.i2p/a") })));
+	TorrentMagnetState invalid = original;
+	invalid.name = std::string (2049, 'x');
+	assert (EncodeTorrentMagnetState (invalid, error).empty ());
+	invalid = original;
+	invalid.trackers.assign (101, "http://tracker.i2p/a");
+	assert (EncodeTorrentMagnetState (invalid, error).empty ());
+	invalid = original;
+	invalid.trackers.clear ();
+	for (unsigned i = 0; i < 20; ++i)
+		invalid.trackers.push_back ("http://tracker.i2p/" + std::to_string (i) + std::string (1000, 'a'));
+	assert (EncodeTorrentMagnetState (invalid, error).empty ());
+}
 }
 
 int main ()
 {
 	using namespace i2p::torrents;
+	TestMagnetState ();
 	constexpr uint64_t now = 1800000000;
 	TorrentLocalState original;
 	original.stopped = true;

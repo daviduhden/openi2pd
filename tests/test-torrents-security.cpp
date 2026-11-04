@@ -40,6 +40,18 @@
 
 using namespace i2p::torrents;
 
+namespace i2p::torrents
+{
+struct TorrentRecoveryTestAccess
+{
+	static void Load (TorrentsTunnel & tunnel)
+	{
+		tunnel.m_StartupRecoveryPending.store (true);
+		tunnel.LoadInitialTorrents ();
+	}
+};
+}
+
 // The size constant must be computed in 64 bits even on ILP32, where
 // the product would otherwise wrap to zero.
 static_assert (MAX_TORRENT_LENGTH == (uint64_t { 256 } << 40), "limit must stay at 256 TiB");
@@ -824,6 +836,104 @@ void TestRemovedTorrentPersistence ()
 	assert (!std::filesystem::exists (dir.path / "removed.resume"));
 }
 
+void TestMagnetRecovery ()
+{
+	for (bool malformed : { false, true })
+	{
+		TempDir dir { MakeTempDir () };
+		const auto content = MakeMultiFileTorrent ("crash-window", { "file.bin" });
+		Torrent metainfo (content);
+		assert (metainfo.IsValid ());
+		const auto hash = ToHexString (metainfo.GetInfoHash ());
+		std::filesystem::create_directories (dir.path / ".openi2pd-state");
+		{
+			std::ofstream file (dir.path / "crash-window.torrent", std::ios::binary);
+			file << content;
+		}
+		std::string error;
+		TorrentMagnetState record { metainfo.GetInfoHash (), "display only", { }, true };
+		const auto recovery = EncodeTorrentMagnetState (record, error);
+		assert (!recovery.empty ());
+		{
+			std::ofstream file (dir.path / ".openi2pd-state" / (hash + ".magnet"), std::ios::binary);
+			file << (malformed ? "unsupported record" : recovery);
+		}
+		boost::asio::io_context service;
+		auto keys = i2p::data::PrivateKeys::CreateRandomKeys (
+			i2p::data::SIGNING_KEY_TYPE_EDDSA_SHA512_ED25519, i2p::data::CRYPTO_KEY_TYPE_ELGAMAL, true);
+		auto destination = std::make_shared<i2p::client::ClientDestination> (service, keys, false);
+		auto tunnel = std::make_shared<TorrentsTunnel> ("recovery", destination, dir.path.string (), "", false);
+		TorrentRecoveryTestAccess::Load (*tunnel);
+		// No listeners, router, peers or background executor are started.
+		for (unsigned pass = 0; pass < 16; ++pass)
+		{
+			tunnel->GetDiskIOService ().restart ();
+			tunnel->GetDiskIOService ().poll ();
+			service.restart ();
+			service.poll ();
+		}
+		auto restored = tunnel->FindTorrent (metainfo.GetInfoHash ());
+		assert (restored && restored->IsValid () && restored->IsStopped ());
+		const auto statePath = dir.path / ".openi2pd-state" / (hash + ".state");
+		std::ifstream saved (statePath, std::ios::binary);
+		const std::string bytes ((std::istreambuf_iterator<char> (saved)), {});
+		TorrentLocalState state;
+		assert (DecodeTorrentLocalState (bytes, i2p::util::GetSecondsSinceEpoch (), state, error));
+		assert (state.stopped);
+		// Both durable replacements complete before fallback retirement.
+		assert (!std::filesystem::exists (dir.path / ".openi2pd-state" / (hash + ".magnet")));
+	}
+	TempDir dir { MakeTempDir () };
+	TorrentMagnetState pending { { }, "display-only", { "http://first.i2p/a" }, true };
+	pending.infoHash[0] = 0xab;
+	const auto hash = ToHexString (pending.infoHash);
+	const auto path = dir.path / ".openi2pd-state" / (hash + ".magnet");
+	std::filesystem::create_directories (path.parent_path ());
+	std::string error;
+	{
+		std::ofstream saved (path, std::ios::binary);
+		saved << EncodeTorrentMagnetState (pending, error);
+	}
+	// A display-name collision must not grant deletion authority.
+	{
+		std::ofstream sentinel (dir.path / pending.name);
+		sentinel << "retain";
+	}
+	boost::asio::io_context service;
+	auto keys = i2p::data::PrivateKeys::CreateRandomKeys (
+		i2p::data::SIGNING_KEY_TYPE_EDDSA_SHA512_ED25519, i2p::data::CRYPTO_KEY_TYPE_ELGAMAL, true);
+	auto destination = std::make_shared<i2p::client::ClientDestination> (service, keys, false);
+	auto tunnel = std::make_shared<TorrentsTunnel> ("pending", destination, dir.path.string (), "", false);
+	auto pump = [&]
+	{
+		for (unsigned pass = 0; pass < 16; ++pass)
+		{
+			tunnel->GetDiskIOService ().restart ();
+			tunnel->GetDiskIOService ().poll ();
+			service.restart ();
+			service.poll ();
+		}
+	};
+	TorrentRecoveryTestAccess::Load (*tunnel);
+	pump ();
+	auto restored = tunnel->FindTorrent (pending.infoHash);
+	assert (restored && !restored->IsValid () && restored->IsStopped ());
+	auto [duplicate, id] = tunnel->AddMagnet (
+		"magnet:?xt=urn:btih:" + hash + "&tr=http%3A%2F%2Fsecond.i2p%2Fa");
+	assert (duplicate == restored && id > 0 && restored->IsStopped ());
+	pump ();
+	std::ifstream saved (path, std::ios::binary);
+	const std::string bytes ((std::istreambuf_iterator<char> (saved)), {});
+	TorrentMagnetState merged;
+	assert (DecodeTorrentMagnetState (bytes, merged, error));
+	assert (merged.stopped && merged.trackers.size () == 2);
+	saved.close ();
+	assert (tunnel->RemoveTorrent (id, true));
+	pump ();
+	assert (!std::filesystem::exists (path));
+	assert (std::filesystem::exists (dir.path / pending.name));
+}
+
 void TestRPCMetadataFields ()
 {
 	TempDir dir { MakeTempDir () };
@@ -1055,6 +1165,7 @@ void TestResumeWriteAndRead ()
 
 int main ()
 {
+	TestMagnetRecovery ();
 	TestRPCAdmissionAndRestart ();
 	TestRPCMetadataFields ();
 	TestI2PTrackerHostValidation ();

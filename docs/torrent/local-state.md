@@ -8,6 +8,58 @@ Specifies the native-only versioned state and bounded persistence boundary.
 -->
 # Local administration state version 1
 
+## Unresolved magnet recovery version 1
+
+The separate `.openi2pd-state/<40-lowercase-hex-infohash>.magnet` record
+recovers an unresolved magnet without turning its display name into a payload
+path. Its canonical bencode dictionary has exactly five keys:
+
+| Key | Type and interpretation |
+|---|---|
+| `version` | Integer `1`; other versions are rejected. |
+| `hash` | Byte string containing the 40 lowercase hexadecimal infohash characters; it must match the filename. |
+| `name` | Nonempty bounded UTF-8 display name without control characters. |
+| `stopped` | Integer `0` or `1`, preserving administrative pause. |
+| `trackers` | Ordered list of bounded, distinct I2P HTTP/UDP tracker hints without userinfo. |
+
+The record limit is 16 KiB, using the existing control argument and tracker
+count limits. Decoding validates a complete candidate before publication;
+unknown keys, trailing bytes, invalid types, unsupported versions and unsafe
+hints are rejected. This is a new native local format: there is no automatic
+import of Java saved state and no change to magnet URIs, BEP 3 metainfo,
+resume bitfields or peer messages. Older binaries ignore these records;
+downgrading loses unresolved-magnet recovery until a supporting binary reads
+them again. Unsupported records are retained for operator recovery.
+
+Startup recovery has a shared budget of 256 loaded records, 4096 directory
+entries visited and 64 MiB read across metainfo and magnet records. Records
+beyond that budget stay on disk with a warning; directory iteration does not
+define a stable admission order. This is a recovery budget, not the IPC
+snapshot page size or an engine-wide torrent limit. Existing resolved
+metainfo takes precedence over duplicate unresolved hints, while pause
+authority must survive a crash during the transition to resolved state.
+The policy directory is scanned first. If it is unsafe, unreadable or cannot
+be completely scanned within the budget, resolved automatic recovery is
+withheld rather than assuming omitted magnets were running. Already admitted
+magnet records retain their own validated pause policy.
+
+Writes use immutable owner snapshots and the existing no-follow atomic
+replacement boundary. A magnet recovery record may be removed only after
+both resolved metainfo and its administrative state are durably written.
+When metainfo exists but administrative state is missing, retained magnet
+pause policy supplies the fallback; malformed hash-bound recovery policy
+must fail closed to paused. Ordinary removal deletes only hash-bound state
+for an unresolved magnet, never files derived from its display name.
+
+Duplicate unresolved additions merge tracker hints while preserving an
+existing operator pause. The isolated worker accepts only exact hash-bound
+`.magnet` paths below the reserved state directory. Android keeps these
+metadata records in app-private storage; SAF remains payload authority and
+does not convert tree URIs into filesystem paths. Implementation review and
+prepared regressions remain static, pending manual CI/device validation.
+
+## Resolved administration state
+
 Status: implemented by static analysis; pending CI compilation and tests.
 This format is local to openi2pd. It is not Java I2PSnark's saved-state format,
 a peer message, or a modification to BEP 3 metainfo or the existing resume

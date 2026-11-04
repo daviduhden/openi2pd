@@ -54,6 +54,20 @@ int main (int argc, char ** argv)
 	auto support = ProbeLinuxIsolation ();
 	if (!support.filesystem || !support.seccompFilter) return 77; // Explicitly unsupported kernels only.
 	assert (worker.Start (root, error));
+	{
+		const auto name = ".openi2pd-state/" + std::string (40, 'a') + ".magnet";
+		const std::array<uint8_t, 3> record { 'd', 'e', '\n' };
+		assert (worker.ReplaceMetadata (name, record, error));
+		std::vector<uint8_t> restored;
+		assert (worker.ReadMetadata (name, restored, error));
+		assert (restored == std::vector<uint8_t> (record.begin (), record.end ()));
+		const std::vector<uint8_t> oversized (16 * 1024 + 1, 'x');
+		assert (!worker.ReplaceMetadata (name, oversized, error));
+		for (const auto & invalid : { ".openi2pd-state/" + std::string (40, 'A') + ".magnet",
+			".openi2pd-state/" + std::string (39, 'a') + ".magnet", name + ".backup", std::string ("arbitrary.magnet") })
+			assert (!worker.ReplaceMetadata (invalid, record, error));
+		assert (worker.RemoveMetadata (name, error));
+	}
 	auto handle = worker.Register ("nested/piece.bin", 8, error, true);
 	assert (handle);
 	assert (!worker.Register ("missing/new.bin", 8, error));

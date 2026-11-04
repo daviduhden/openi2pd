@@ -11,6 +11,7 @@
 #define TORRENTS_STATE_H__
 #ifndef NO_TORRENTS
 #include <cstddef>
+#include <array>
 #include <cstdint>
 #include <string>
 #include <string_view>
@@ -20,6 +21,20 @@
 namespace i2p::torrents
 {
 inline constexpr size_t MAX_TORRENT_LOCAL_STATE_BYTES = 256 * 1024;
+inline constexpr size_t MAX_TORRENT_MAGNET_STATE_BYTES = 16 * 1024;
+/// Native-only unresolved magnet v1. Hash names the record; display name
+/// and ordered I2P tracker hints are not payload paths or credentials.
+struct TorrentMagnetState
+{
+	std::array<uint8_t, 20> infoHash { };
+	std::string name;
+	std::vector<std::string> trackers;
+	bool stopped = false;
+};
+/// Encode one bounded v1 record; invalid hints return empty with error.
+std::string EncodeTorrentMagnetState (const TorrentMagnetState & state, std::string & error);
+/// Decode one complete v1 record; failure leaves state unchanged.
+bool DecodeTorrentMagnetState (std::string_view encoded, TorrentMagnetState & state, std::string & error);
 /// Administrative state kept separately from metainfo and resume
 /// bitfields.
 struct TorrentLocalState

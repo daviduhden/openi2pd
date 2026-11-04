@@ -10,8 +10,11 @@
 #ifndef NO_TORRENTS
 #include "TorrentsState.h"
 #include "Torrents.h"
+#include "TorrentsControl.h"
+#include "HTTP.h"
 #include <algorithm>
 #include <limits>
+#include <unordered_set>
 #include <utility>
 
 namespace i2p::torrents
@@ -34,6 +37,75 @@ namespace
 		value = parsed;
 		return true;
 	}
+}
+
+std::string EncodeTorrentMagnetState (const TorrentMagnetState & state, std::string & error)
+{
+	error.clear ();
+	if (state.name.empty () || !IsValidTorrentMetaText (state.name, MAX_CONTROL_ARGUMENT)
+		|| std::any_of (state.name.begin (), state.name.end (), [] (unsigned char c) { return c < 32 || c == 127; })
+		|| state.trackers.size () > MAX_CONTROL_TRACKERS)
+	{
+		error = "invalid magnet display name or tracker count";
+		return { };
+	}
+	std::vector<std::string> trackers;
+	std::unordered_set<std::string> unique;
+	for (const auto & hint : state.trackers)
+	{
+		i2p::http::URL url (hint);
+		if (hint.empty () || hint.size () > MAX_CONTROL_ARGUMENT
+			|| std::any_of (hint.begin (), hint.end (), [] (unsigned char c) { return c <= 32 || c == 127; })
+			|| (url.schema != "http" && url.schema != "udp") || !IsI2PTrackerHost (url.host)
+			|| !url.user.empty () || !url.pass.empty () || url.ipv6 || !unique.insert (url.to_string ()).second)
+		{
+			error = "invalid magnet tracker hint";
+			return { };
+		}
+		trackers.push_back (CreateByteString (hint));
+	}
+	auto encoded = CreateDictionary ({ { "hash", CreateByteString (ToHexString (state.infoHash)) },
+		{ "name", CreateByteString (state.name) }, { "stopped", CreateInteger (state.stopped) },
+		{ "trackers", CreateList (trackers) }, { "version", CreateInteger (1) } });
+	if (encoded.size () > MAX_TORRENT_MAGNET_STATE_BYTES)
+	{
+		error = "magnet state exceeds size limit";
+		return { };
+	}
+	return encoded;
+}
+
+bool DecodeTorrentMagnetState (std::string_view encoded, TorrentMagnetState & state, std::string & error)
+{
+	error.clear ();
+	auto fail = [&error] () { error = "invalid or unsupported magnet state"; return false; };
+	if (encoded.empty () || encoded.size () > MAX_TORRENT_MAGNET_STATE_BYTES) return fail ();
+	auto [fields, consumed] = ExtractDictionary (encoded);
+	if (consumed != encoded.size () || fields.size () != 5 || !fields.contains ("hash") || !fields.contains ("name")
+		|| !fields.contains ("trackers") || !fields.contains ("stopped") || !fields.contains ("version")) return fail ();
+	int64_t version = 0, stopped = -1;
+	if (!IntegerField (fields, "version", version) || version != 1 || !IntegerField (fields, "stopped", stopped)
+		|| (stopped != 0 && stopped != 1)) return fail ();
+	auto [hash, hashLength] = ExtractByteString (fields.at ("hash"));
+	auto [name, nameLength] = ExtractByteString (fields.at ("name"));
+	auto [trackers, trackersLength] = ParseStringList (fields.at ("trackers"));
+	if (!hashLength || hashLength != fields.at ("hash").size () || hash.size () != 40
+		|| !nameLength || nameLength != fields.at ("name").size ()
+		|| !trackersLength || trackersLength != fields.at ("trackers").size ()) return fail ();
+	TorrentMagnetState candidate;
+	const auto hex = [] (char c) -> int { return c >= '0' && c <= '9' ? c - '0' : c >= 'a' && c <= 'f' ? c - 'a' + 10 : -1; };
+	for (size_t i = 0; i < candidate.infoHash.size (); ++i)
+	{
+		const int high = hex (hash[2 * i]), low = hex (hash[2 * i + 1]);
+		if (high < 0 || low < 0) return fail ();
+		candidate.infoHash[i] = static_cast<uint8_t> (high * 16 + low);
+	}
+	candidate.name = name;
+	candidate.stopped = stopped == 1;
+	for (auto tracker : trackers) candidate.trackers.emplace_back (tracker);
+	if (EncodeTorrentMagnetState (candidate, error).empty ()) return false;
+	state = std::move (candidate);
+	return true;
 }
 
 std::string EncodeTorrentLocalState (const TorrentLocalState & state, std::string & error)
