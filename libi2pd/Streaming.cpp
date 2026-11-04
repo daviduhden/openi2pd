@@ -2491,8 +2491,11 @@ namespace stream
 					m_RemoteLeaseSet ? " expired" : " not found");
 				if (!m_IsIncoming) // outgoing
 				{
-					auto requestCallback = [s = shared_from_this ()] (std::shared_ptr<i2p::data::LeaseSet> ls)
+					std::weak_ptr<Stream> weak = weak_from_this ();
+					auto requestCallback = [weak] (std::shared_ptr<i2p::data::LeaseSet> ls)
 					{
+						auto s = weak.lock ();
+						if (!s) return;
 						if (!ls && s->m_Status == eStreamStatusOpen) // LeaseSet not found
 						{
 							// close the socket without sending FIN or RST
@@ -2523,8 +2526,11 @@ namespace stream
 					if (!m_IsRequestingLeaseSet)
 					{
 						m_IsRequestingLeaseSet = true;
-						auto callback = [s = shared_from_this ()] (std::shared_ptr<i2p::data::LeaseSet> ls)
+						std::weak_ptr<Stream> weak = weak_from_this ();
+						auto callback = [weak] (std::shared_ptr<i2p::data::LeaseSet> ls)
 						{
+							auto s = weak.lock ();
+							if (!s) return;
 							s->m_IsRequestingLeaseSet = false;
 							if (!ls)
 							{

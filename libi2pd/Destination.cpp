@@ -25,6 +25,7 @@
 #include <future>
 #include <cstring>
 #include "Crypto.h"
+#include "Modern.h"
 #include "PostQuantum.h"
 #include "ECIESX25519AEADRatchetSession.h"
 #include "Log.h"
@@ -265,6 +266,9 @@ namespace client
 	LeaseSetDestination::~LeaseSetDestination ()
 	{
 		if (m_Pool) i2p::tunnel::tunnels.DeleteTunnelPool (m_Pool);
+		// The request map belongs to the service executor. Stop() may be
+		// called off-thread, so final completion stays here after weak-owner
+		// callbacks can no longer access the object.
 		for (auto & it : m_LeaseSetRequests) it.second->Complete (nullptr);
 	}
 
@@ -276,8 +280,11 @@ namespace client
 		m_Pool->SetLocalDestination (shared_from_this ());
 		m_Pool->SetActive (true);
 		m_CleanupTimer.expires_after (std::chrono::seconds (DESTINATION_CLEANUP_TIMEOUT));
-		m_CleanupTimer.async_wait (
-			std::bind (&LeaseSetDestination::HandleCleanupTimer, shared_from_this (), std::placeholders::_1));
+		std::weak_ptr<LeaseSetDestination> weak = weak_from_this ();
+		m_CleanupTimer.async_wait ([weak] (const boost::system::error_code & ecode)
+			{
+				if (auto self = weak.lock ()) self->HandleCleanupTimer (ecode);
+			});
 	}
 
 	void LeaseSetDestination::Stop ()
@@ -346,11 +353,12 @@ namespace client
 				{
 					LogPrint (eLogDebug, "Destination: Lease Set expires soon, updating before expire");
 					// update now before expiration for smooth handover
-					auto s = shared_from_this ();
+					std::weak_ptr<LeaseSetDestination> weak = weak_from_this ();
 					RequestDestination (ident,
-						[s, ident] (std::shared_ptr<i2p::data::LeaseSet> ls)
+						[weak, ident] (std::shared_ptr<i2p::data::LeaseSet> ls)
 						{
-							if (ls && !ls->IsExpired ())
+							auto s = weak.lock ();
+							if (s && ls && !ls->IsExpired ())
 							{
 								ls->PopulateLeases ();
 								{
@@ -396,10 +404,12 @@ namespace client
 		i2p::garlic::GarlicDestination::SetLeaseSetUpdated ();
 		if (m_IsPublic)
 		{
-			auto s = shared_from_this ();
+			std::weak_ptr<LeaseSetDestination> weak = weak_from_this ();
 			boost::asio::post (m_Service,
-				[s] (void)
+				[weak] (void)
 				{
+					auto s = weak.lock ();
+					if (!s) return;
 					s->m_PublishVerificationTimer.cancel ();
 					s->Publish ();
 				});
@@ -425,8 +435,11 @@ namespace client
 		} data;
 		memcpy (data.k, key, 32);
 		memcpy (data.t, tag, 32);
-		auto s = shared_from_this ();
-		boost::asio::post (m_Service, [s, data] (void) { s->AddSessionKey (data.k, data.t); });
+		std::weak_ptr<LeaseSetDestination> weak = weak_from_this ();
+		boost::asio::post (m_Service, [weak, data] (void)
+			{
+				if (auto self = weak.lock ()) self->AddSessionKey (data.k, data.t);
+			});
 		return true;
 	}
 
@@ -439,8 +452,11 @@ namespace client
 		} data;
 		memcpy (data.k, key, 32);
 		data.t = tag;
-		auto s = shared_from_this ();
-		boost::asio::post (m_Service, [s, data] (void) { s->AddECIESx25519Key (data.k, data.t); });
+		std::weak_ptr<LeaseSetDestination> weak = weak_from_this ();
+		boost::asio::post (m_Service, [weak, data] (void)
+			{
+				if (auto self = weak.lock ()) self->AddECIESx25519Key (data.k, data.t);
+			});
 	}
 
 	void LeaseSetDestination::ProcessGarlicMessage (std::shared_ptr<I2NPMessage> msg)
@@ -465,9 +481,13 @@ namespace client
 			LogPrint (eLogWarning, "Destination: Incoming garlic queue is full, dropped the oldest message (", dropped,
 				" dropped)");
 		if (post)
+		{
+			std::weak_ptr<LeaseSetDestination> weak = weak_from_this ();
 			boost::asio::post (m_Service,
-				[s = shared_from_this ()] ()
+				[weak] ()
 				{
+					auto s = weak.lock ();
+					if (!s) return;
 					// Drain until the queue stays empty. A producer that pushed
 					// while a previous swap was in progress saw a non-empty
 					// queue and therefore scheduled no handler of its own, so a
@@ -487,6 +507,7 @@ namespace client
 						}
 					}
 				});
+		}
 	}
 
 	void LeaseSetDestination::ProcessDeliveryStatusMessage (std::shared_ptr<I2NPMessage> msg)
@@ -498,8 +519,11 @@ namespace client
 			return;
 		}
 		uint32_t msgID = bufbe32toh (msg->GetPayload () + DELIVERY_STATUS_MSGID_OFFSET);
-		boost::asio::post (
-			m_Service, std::bind (&LeaseSetDestination::HandleDeliveryStatusMessage, shared_from_this (), msgID));
+		std::weak_ptr<LeaseSetDestination> weak = weak_from_this ();
+		boost::asio::post (m_Service, [weak, msgID]
+			{
+				if (auto self = weak.lock ()) self->HandleDeliveryStatusMessage (msgID);
+			});
 	}
 
 	void LeaseSetDestination::HandleI2NPMessage (const uint8_t * buf, size_t len)
@@ -861,8 +885,11 @@ namespace client
 			// schedule verification
 			m_PublishVerificationTimer.expires_after (std::chrono::seconds (
 				PUBLISH_VERIFICATION_TIMEOUT + GetRng () () % PUBLISH_VERIFICATION_TIMEOUT_VARIANCE));
-			m_PublishVerificationTimer.async_wait (std::bind (
-				&LeaseSetDestination::HandlePublishVerificationTimer, shared_from_this (), std::placeholders::_1));
+			std::weak_ptr<LeaseSetDestination> weak = weak_from_this ();
+			m_PublishVerificationTimer.async_wait ([weak] (const boost::system::error_code & ecode)
+				{
+					if (auto self = weak.lock ()) self->HandlePublishVerificationTimer (ecode);
+				});
 		}
 		else
 			i2p::garlic::GarlicDestination::HandleDeliveryStatusMessage (msgID);
@@ -871,7 +898,13 @@ namespace client
 	void LeaseSetDestination::SetLeaseSetUpdated (bool post)
 	{
 		if (post)
-			boost::asio::post (m_Service, [s = shared_from_this ()] () { s->UpdateLeaseSet (); });
+		{
+			std::weak_ptr<LeaseSetDestination> weak = weak_from_this ();
+			boost::asio::post (m_Service, [weak] ()
+				{
+					if (auto self = weak.lock ()) self->UpdateLeaseSet ();
+				});
+		}
 		else
 			UpdateLeaseSet ();
 	}
@@ -904,8 +937,11 @@ namespace client
 				eLogDebug, "Destination: Publishing LeaseSet is too fast. Wait for ", PUBLISH_MIN_INTERVAL, " seconds");
 			m_PublishDelayTimer.cancel ();
 			m_PublishDelayTimer.expires_after (std::chrono::seconds (PUBLISH_MIN_INTERVAL));
-			m_PublishDelayTimer.async_wait (
-				std::bind (&LeaseSetDestination::HandlePublishDelayTimer, shared_from_this (), std::placeholders::_1));
+			std::weak_ptr<LeaseSetDestination> weak = weak_from_this ();
+			m_PublishDelayTimer.async_wait ([weak] (const boost::system::error_code & ecode)
+				{
+					if (auto self = weak.lock ()) self->HandlePublishDelayTimer (ecode);
+				});
 			return;
 		}
 		auto floodfill = i2p::data::netdb.GetClosestFloodfill (leaseSet->GetStoreHash (), m_ExcludedFloodfills);
@@ -954,18 +990,26 @@ namespace client
 		}
 		m_ExcludedFloodfills.insert (floodfill->GetIdentHash ());
 		LogPrint (eLogDebug, "Destination: Publish LeaseSet of ", GetIdentHash ().ToBase32 ());
-		RAND_bytes ((uint8_t *)&m_PublishReplyToken, 4);
+		if (RAND_bytes ((uint8_t *)&m_PublishReplyToken, 4) != 1)
+		{
+			LogPrint (eLogError, "Destination: Publish randomness unavailable");
+			SchedulePublishRetry ();
+			return;
+		}
 		auto msg
 			= WrapMessageForRouter (floodfill, i2p::CreateDatabaseStoreMsg (leaseSet, m_PublishReplyToken, inbound));
-		auto s = shared_from_this ();
-		msg->onDrop = [s] ()
+		std::weak_ptr<LeaseSetDestination> weak = weak_from_this ();
+		msg->onDrop = [weak] ()
 		{
-			boost::asio::post (s->GetService (),
-				[s] ()
-				{
-					s->m_PublishConfirmationTimer.cancel ();
-					s->HandlePublishConfirmationTimer (boost::system::error_code (), 0);
-				});
+			if (auto s = weak.lock ())
+				boost::asio::post (s->GetService (), [weak] ()
+					{
+						if (auto self = weak.lock ())
+						{
+							self->m_PublishConfirmationTimer.cancel ();
+							self->HandlePublishConfirmationTimer (boost::system::error_code (), 0);
+						}
+					});
 		};
 		uint64_t publishConfirmationTimeout = PUBLISH_CONFIRMATION_TIMEOUT;
 		publishConfirmationTimeout += inbound->LatencyIsKnown ()
@@ -975,8 +1019,13 @@ namespace client
 			? (uint64_t)(outbound->GetMeanLatency ()) / 1000LL
 			: outbound->GetNumHops () * (uint64_t)(i2p::tunnel::HIGH_LATENCY_PER_HOP) / 1000LL;
 		m_PublishConfirmationTimer.expires_after (std::chrono::milliseconds (publishConfirmationTimeout));
-		m_PublishConfirmationTimer.async_wait (std::bind (&LeaseSetDestination::HandlePublishConfirmationTimer,
-			shared_from_this (), std::placeholders::_1, publishConfirmationTimeout));
+		std::weak_ptr<LeaseSetDestination> weak = weak_from_this ();
+		m_PublishConfirmationTimer.async_wait (
+			[weak, publishConfirmationTimeout] (const boost::system::error_code & ecode)
+			{
+				if (auto self = weak.lock ())
+					self->HandlePublishConfirmationTimer (ecode, publishConfirmationTimeout);
+			});
 		outbound->SendTunnelDataMsgTo (floodfill->GetIdentHash (), 0, msg);
 		m_LastSubmissionTime = ts;
 	}
@@ -989,8 +1038,11 @@ namespace client
 			"Destination: Can't publish LeaseSet because destination is not ready. Try publishing again after ",
 			PUBLISH_RETRY_INTERVAL, " milliseconds");
 		m_PublishConfirmationTimer.expires_after (std::chrono::milliseconds (PUBLISH_RETRY_INTERVAL));
-		m_PublishConfirmationTimer.async_wait (std::bind (&LeaseSetDestination::HandlePublishConfirmationTimer,
-			shared_from_this (), std::placeholders::_1, PUBLISH_RETRY_INTERVAL));
+		std::weak_ptr<LeaseSetDestination> weak = weak_from_this ();
+		m_PublishConfirmationTimer.async_wait ([weak] (const boost::system::error_code & ecode)
+			{
+				if (auto self = weak.lock ()) self->HandlePublishConfirmationTimer (ecode, PUBLISH_RETRY_INTERVAL);
+			});
 	}
 
 	void LeaseSetDestination::HandlePublishConfirmationTimer (
@@ -1018,10 +1070,12 @@ namespace client
 				LogPrint (eLogWarning, "Destination: Couldn't verify LeaseSet for ", GetIdentHash ().ToBase32 ());
 				return;
 			}
-			auto s = shared_from_this ();
+			std::weak_ptr<LeaseSetDestination> weak = weak_from_this ();
 			RequestLeaseSet (ls->GetStoreHash (),
-				[s, ls] (std::shared_ptr<const i2p::data::LeaseSet> leaseSet)
+				[weak, ls] (std::shared_ptr<const i2p::data::LeaseSet> leaseSet)
 				{
+					auto s = weak.lock ();
+					if (!s) return;
 					if (leaseSet)
 					{
 						if (*ls == *leaseSet)
@@ -1031,8 +1085,11 @@ namespace client
 								s->GetIdentHash ().ToBase32 ());
 							s->m_PublishVerificationTimer.expires_after (
 								std::chrono::seconds (PUBLISH_REGULAR_VERIFICATION_INTERNAL));
-							s->m_PublishVerificationTimer.async_wait (std::bind (
-								&LeaseSetDestination::HandlePublishVerificationTimer, s, std::placeholders::_1));
+							std::weak_ptr<LeaseSetDestination> weak = s;
+							s->m_PublishVerificationTimer.async_wait ([weak] (const boost::system::error_code & ecode)
+								{
+									if (auto self = weak.lock ()) self->HandlePublishVerificationTimer (ecode);
+								});
 							return;
 						}
 						else
@@ -1060,9 +1117,14 @@ namespace client
 			if (requestComplete) boost::asio::post (m_Service, [requestComplete] (void) { requestComplete (nullptr); });
 			return false;
 		}
-		boost::asio::post (m_Service,
-			std::bind (&LeaseSetDestination::RequestLeaseSet, shared_from_this (), dest, requestComplete, nullptr,
-				std::vector<uint8_t> { }));
+		std::weak_ptr<LeaseSetDestination> weak = weak_from_this ();
+		boost::asio::post (m_Service, [weak, dest, requestComplete = std::move (requestComplete)] () mutable
+			{
+				if (auto self = weak.lock ())
+					self->RequestLeaseSet (dest, requestComplete, nullptr, { });
+				else if (requestComplete)
+					requestComplete (nullptr);
+			});
 		return true;
 	}
 
@@ -1089,18 +1151,26 @@ namespace client
 				boost::asio::post (m_Service, [requestComplete, leaseSet] (void) { requestComplete (leaseSet); });
 			return true;
 		}
-		boost::asio::post (m_Service,
-			std::bind (&LeaseSetDestination::RequestLeaseSet, shared_from_this (), storeHash, requestComplete, dest,
-				std::move (authSecret)));
+		std::weak_ptr<LeaseSetDestination> weak = weak_from_this ();
+		boost::asio::post (m_Service, [weak, storeHash, requestComplete = std::move (requestComplete), dest,
+									  authSecret = std::move (authSecret)] () mutable
+			{
+				if (auto self = weak.lock ())
+					self->RequestLeaseSet (storeHash, requestComplete, std::move (dest), std::move (authSecret));
+				else if (requestComplete)
+					requestComplete (nullptr);
+			});
 		return true;
 	}
 
 	void LeaseSetDestination::CancelDestinationRequest (const i2p::data::IdentHash & dest, bool notify)
 	{
-		auto s = shared_from_this ();
+		std::weak_ptr<LeaseSetDestination> weak = weak_from_this ();
 		boost::asio::post (m_Service,
-			[dest, notify, s] (void)
+			[dest, notify, weak] (void)
 			{
+				auto s = weak.lock ();
+				if (!s) return;
 				auto it = s->m_LeaseSetRequests.find (dest);
 				if (it != s->m_LeaseSetRequests.end ())
 				{
@@ -1200,17 +1270,28 @@ namespace client
 
 			uint8_t replyKey[32];
 			uint64_t replyTag;
-			RAND_bytes (replyKey, 32); // random session key
-			RAND_bytes ((uint8_t *)&replyTag, 8); // random session tag
+			auto cleanseReplyKey = i2p::modern::ScopeExit ([&replyKey] ()
+				{ OPENSSL_cleanse (replyKey, sizeof (replyKey)); });
+			// Publish neither key nor tag if the provider cannot supply
+			// fresh randomness. The caller completes the failed request.
+			if (RAND_bytes (replyKey, sizeof (replyKey)) != 1 ||
+				RAND_bytes ((uint8_t *)&replyTag, sizeof (replyTag)) != 1)
+			{
+				LogPrint (eLogError, "Destination: Lookup randomness unavailable");
+				return false;
+			}
 			AddECIESx25519Key (replyKey, replyTag);
 
 			auto msg = WrapMessageForRouter (nextFloodfill,
 				CreateLeaseSetDatabaseLookupMsg (dest, request->excluded, request->replyTunnel, replyKey, replyTag));
-			auto s = shared_from_this ();
-			msg->onDrop = [s, dest, request] ()
+			std::weak_ptr<LeaseSetDestination> weak = weak_from_this ();
+			msg->onDrop = [weak, dest, request] ()
 			{
-				boost::asio::post (
-					s->GetService (), [s, dest, request] () { s->SendNextLeaseSetRequest (dest, request); });
+				if (auto s = weak.lock ())
+					boost::asio::post (s->GetService (), [weak, dest, request] ()
+						{
+							if (auto self = weak.lock ()) self->SendNextLeaseSetRequest (dest, request);
+						});
 			};
 			request->outboundTunnel->SendTunnelDataMsgs ({ i2p::tunnel::TunnelMessageBlock {
 				i2p::tunnel::eDeliveryTypeRouter, nextFloodfill->GetIdentHash (), 0, msg } });
@@ -1223,8 +1304,11 @@ namespace client
 				? (uint64_t)(request->outboundTunnel->GetMeanLatency ()) / 1000LL
 				: request->outboundTunnel->GetNumHops () * (uint64_t)(i2p::tunnel::HIGH_LATENCY_PER_HOP) / 1000LL;
 			request->requestTimeoutTimer.expires_after (std::chrono::milliseconds (requestLeaseSetTimeout));
-			request->requestTimeoutTimer.async_wait (std::bind (
-				&LeaseSetDestination::HandleRequestTimeoutTimer, shared_from_this (), std::placeholders::_1, dest));
+			request->requestTimeoutTimer.async_wait ([weak, dest] (const boost::system::error_code & ecode)
+				{
+					if (ecode == boost::asio::error::operation_aborted) return;
+					if (auto self = weak.lock ()) self->HandleRequestTimeoutTimer (ecode, dest);
+				});
 		}
 		else
 			return false;
@@ -1280,8 +1364,11 @@ namespace client
 			CleanupDestination ();
 			m_CleanupTimer.expires_after (std::chrono::seconds (
 				DESTINATION_CLEANUP_TIMEOUT + GetRng () () % DESTINATION_CLEANUP_TIMEOUT_VARIANCE));
-			m_CleanupTimer.async_wait (
-				std::bind (&LeaseSetDestination::HandleCleanupTimer, shared_from_this (), std::placeholders::_1));
+			std::weak_ptr<LeaseSetDestination> weak = weak_from_this ();
+			m_CleanupTimer.async_wait ([weak] (const boost::system::error_code & timerError)
+				{
+					if (auto self = weak.lock ()) self->HandleCleanupTimer (timerError);
+				});
 		}
 	}
 
@@ -1494,10 +1581,11 @@ namespace client
 			// stack promise would be gone by then
 			auto done = std::make_shared<std::promise<void>> ();
 			auto future = done->get_future ();
+			std::weak_ptr<ClientDestination> weak = GetSharedFromThis ();
 			boost::asio::post (service,
-				[this, done] ()
+				[weak, done] ()
 				{
-					StopInternal ();
+					if (auto self = weak.lock ()) self->StopInternal ();
 					done->set_value ();
 				});
 			if (future.wait_for (std::chrono::seconds (STOP_ON_SERVICE_TIMEOUT)) == std::future_status::ready) return;
@@ -1540,13 +1628,16 @@ namespace client
 		if (!session || !session->ArmResponseTimer ()) return;
 		auto timer = std::make_shared<boost::asio::steady_timer> (GetService ());
 		timer->expires_after (std::chrono::milliseconds (CLIENT_RATCHETS_RESPONSE_TIMEOUT));
+		std::weak_ptr<ClientDestination> weak = GetSharedFromThis ();
 		timer->async_wait (
-			[session, s = GetSharedFromThis (), timer] (const boost::system::error_code & ecode)
+			[session, weak, timer] (const boost::system::error_code & ecode)
 			{
 				session->DisarmResponseTimer ();
 				if (ecode == boost::asio::error::operation_aborted || session->IsTerminated ()
 					|| !session->IsResponseRequired () || !session->GetDestinationPtr ())
 					return;
+				auto s = weak.lock ();
+				if (!s) return;
 				auto pool = s->GetTunnelPool ();
 				if (!pool) return;
 				auto ls = s->FindLeaseSet (*session->GetDestinationPtr ());
@@ -1600,9 +1691,12 @@ namespace client
 		// and stream signing. Only the transient is refreshed, the identity
 		// is unchanged.
 		if (!keys.IsOfflineSignature ()) return;
+		std::weak_ptr<ClientDestination> weak = GetSharedFromThis ();
 		boost::asio::post (GetService (),
-			[s = GetSharedFromThis (), keys] ()
+			[weak, keys] ()
 			{
+				auto s = weak.lock ();
+				if (!s) return;
 				if (!s->m_Keys.IsOfflineSignature ()) return;
 				if (keys.GetPublic ()->GetIdentHash () != s->GetIdentHash ()) return;
 				const auto & next = keys.GetOfflineSignature ();
@@ -1691,11 +1785,12 @@ namespace client
 		}
 		else
 		{
-			auto s = GetSharedFromThis ();
+			std::weak_ptr<ClientDestination> weak = GetSharedFromThis ();
 			RequestDestination (dest,
-				[s, streamRequestComplete, port] (std::shared_ptr<const i2p::data::LeaseSet> ls)
+				[weak, streamRequestComplete, port] (std::shared_ptr<const i2p::data::LeaseSet> ls)
 				{
-					if (ls && !ls->IsIncompatibleCrypto ())
+					auto s = weak.lock ();
+					if (s && ls && !ls->IsIncompatibleCrypto ())
 						streamRequestComplete (s->CreateStream (ls, port));
 					else
 						streamRequestComplete (nullptr);
@@ -1711,11 +1806,12 @@ namespace client
 			LogPrint (eLogError, "Destination: Request callback is not specified in CreateStream");
 			return;
 		}
-		auto s = GetSharedFromThis ();
+		std::weak_ptr<ClientDestination> weak = GetSharedFromThis ();
 		RequestDestinationWithEncryptedLeaseSet (dest,
-			[s, streamRequestComplete, port] (std::shared_ptr<i2p::data::LeaseSet> ls)
+			[weak, streamRequestComplete, port] (std::shared_ptr<i2p::data::LeaseSet> ls)
 			{
-				if (ls && !ls->IsIncompatibleCrypto ())
+				auto s = weak.lock ();
+				if (s && ls && !ls->IsIncompatibleCrypto ())
 					streamRequestComplete (s->CreateStream (ls, port));
 				else
 					streamRequestComplete (nullptr);
@@ -1776,9 +1872,11 @@ namespace client
 			else
 			{
 				RequestDestination (to,
-					[s, fromPort, toPort] (std::shared_ptr<const i2p::data::LeaseSet> ls)
+					[weak = std::weak_ptr<i2p::stream::StreamingDestination> (s), fromPort, toPort] (
+						std::shared_ptr<const i2p::data::LeaseSet> ls)
 					{
-						if (ls) s->SendPing (ls, fromPort, toPort);
+						if (auto streaming = weak.lock (); streaming && ls)
+							streaming->SendPing (ls, fromPort, toPort);
 					});
 			}
 		}
@@ -1790,9 +1888,10 @@ namespace client
 		auto s = GetDefaultStreamingDestination ();
 		if (!s) return;
 		RequestDestinationWithEncryptedLeaseSet (to,
-			[s, fromPort, toPort] (std::shared_ptr<const i2p::data::LeaseSet> ls)
+			[weak = std::weak_ptr<i2p::stream::StreamingDestination> (s), fromPort, toPort] (
+				std::shared_ptr<const i2p::data::LeaseSet> ls)
 			{
-				if (ls) s->SendPing (ls, fromPort, toPort);
+				if (auto streaming = weak.lock (); streaming && ls) streaming->SendPing (ls, fromPort, toPort);
 			});
 	}
 

@@ -290,11 +290,16 @@ namespace client
 					{
 						auto weak = std::weak_ptr<BOBI2PInboundTunnel> (
 							std::static_pointer_cast<BOBI2PInboundTunnel> (I2PService::shared_from_this ()));
+						// Stop() removes and closes pending receivers. Do not
+						// let a lookup keep the socket alive after that cleanup.
+						auto weakReceiver = std::weak_ptr<AddressReceiver> (receiver);
 						GetLocalDestination ()->RequestDestination (addr->identHash,
-							[weak, receiver] (std::shared_ptr<i2p::data::LeaseSet> result)
+							[weak, weakReceiver] (std::shared_ptr<i2p::data::LeaseSet> result)
 							{
-								if (auto self = weak.lock ())
-									self->HandleDestinationRequestComplete (std::move (result), receiver);
+								auto self = weak.lock ();
+								auto pending = weakReceiver.lock ();
+								if (self && pending)
+									self->HandleDestinationRequestComplete (std::move (result), std::move (pending));
 							});
 					}
 				}
@@ -302,11 +307,15 @@ namespace client
 				{
 					auto weak = std::weak_ptr<BOBI2PInboundTunnel> (
 						std::static_pointer_cast<BOBI2PInboundTunnel> (I2PService::shared_from_this ()));
+					// Match the plain lookup's cancellation ownership.
+					auto weakReceiver = std::weak_ptr<AddressReceiver> (receiver);
 					GetLocalDestination ()->RequestDestinationWithEncryptedLeaseSet (addr->blindedPublicKey,
-						[weak, receiver] (std::shared_ptr<i2p::data::LeaseSet> result)
+						[weak, weakReceiver] (std::shared_ptr<i2p::data::LeaseSet> result)
 						{
-							if (auto self = weak.lock ())
-								self->HandleDestinationRequestComplete (std::move (result), receiver);
+							auto self = weak.lock ();
+							auto pending = weakReceiver.lock ();
+							if (self && pending)
+								self->HandleDestinationRequestComplete (std::move (result), std::move (pending));
 						});
 				}
 			}
@@ -1057,18 +1066,23 @@ namespace client
 				}
 			}
 			// trying to request
-			auto s = shared_from_this ();
-			auto requstCallback = [s] (std::shared_ptr<i2p::data::LeaseSet> ls)
+			// The destination stores this callback; BOBCommandSession owns
+			// the destination through m_CurrentDestination.
+			std::weak_ptr<BOBCommandSession> weak = shared_from_this ();
+			auto requestCallback = [weak] (std::shared_ptr<i2p::data::LeaseSet> ls)
 			{
-				if (ls)
-					s->SendReplyOK (ls->GetIdentity ()->ToBase64 ());
-				else
-					s->SendReplyError ("LeaseSet Not found");
+				if (auto s = weak.lock ())
+				{
+					if (ls)
+						s->SendReplyOK (ls->GetIdentity ()->ToBase64 ());
+					else
+						s->SendReplyError ("LeaseSet Not found");
+				}
 			};
 			if (addr->IsIdentHash ())
-				localDestination->RequestDestination (addr->identHash, requstCallback);
+				localDestination->RequestDestination (addr->identHash, requestCallback);
 			else
-				localDestination->RequestDestinationWithEncryptedLeaseSet (addr->blindedPublicKey, requstCallback);
+				localDestination->RequestDestinationWithEncryptedLeaseSet (addr->blindedPublicKey, requestCallback);
 		}
 		else
 			SendReplyError ("empty lookup address");
@@ -1121,17 +1135,25 @@ namespace client
 				if (leaseSet)
 				{
 					boost::asio::post (localDestination->GetService (),
-						std::bind (&BOBCommandSession::SendPing, shared_from_this (), leaseSet));
+						[weak = std::weak_ptr<BOBCommandSession> (shared_from_this ()), leaseSet]
+						{
+							if (auto session = weak.lock ()) session->SendPing (leaseSet);
+						});
 					return;
 				}
 			}
 			// request LeaseSet
+			// Keep the pending request from retaining its owning destination
+			// through this command session.
+			std::weak_ptr<BOBCommandSession> weak = shared_from_this ();
+			auto requestCallback = [weak] (std::shared_ptr<const i2p::data::LeaseSet> leaseSet)
+				{
+					if (auto session = weak.lock ()) session->SendPing (std::move (leaseSet));
+				};
 			if (addr->IsIdentHash ())
-				localDestination->RequestDestination (addr->identHash,
-					std::bind (&BOBCommandSession::SendPing, shared_from_this (), std::placeholders::_1));
+				localDestination->RequestDestination (addr->identHash, requestCallback);
 			else
-				localDestination->RequestDestinationWithEncryptedLeaseSet (addr->blindedPublicKey,
-					std::bind (&BOBCommandSession::SendPing, shared_from_this (), std::placeholders::_1));
+				localDestination->RequestDestinationWithEncryptedLeaseSet (addr->blindedPublicKey, requestCallback);
 		}
 		else
 			SendReplyError ("empty ping address");
@@ -1160,29 +1182,36 @@ namespace client
 		}
 		auto timer = std::make_shared<boost::asio::steady_timer> (localDestination->GetService ());
 		timer->expires_after (std::chrono::milliseconds (BOB_PING_TIMEOUT));
+		std::weak_ptr<i2p::stream::StreamingDestination> weakStreaming = streamingDestination;
+		std::weak_ptr<BOBCommandSession> weakSession = shared_from_this ();
 		timer->async_wait (
-			[streamingDestination, s = shared_from_this ()] (const boost::system::error_code & ecode)
+			[weakStreaming, weakSession] (const boost::system::error_code & ecode)
 			{
 				if (ecode != boost::asio::error::operation_aborted)
 				{
 					LogPrint (eLogDebug, "BOB: Pong not received after ", BOB_PING_TIMEOUT, " millliseconds");
-					streamingDestination->ResetPongHandler ();
-					s->SendReplyError ("timeout");
+					if (auto streaming = weakStreaming.lock ()) streaming->ResetPongHandler ();
+					if (auto session = weakSession.lock ()) session->SendReplyError ("timeout");
 				}
 			});
 		auto ts = i2p::util::GetMillisecondsSinceEpoch ();
 		streamingDestination->SetPongHandler (
-			[streamingDestination, timer, ts, s = shared_from_this ()] (const i2p::data::IdentHash * from)
+			[weakStreaming, weakSession, timer, ts] (const i2p::data::IdentHash * from)
 			{
+				auto streaming = weakStreaming.lock ();
+				if (!streaming) return;
 				int t = static_cast<int> (i2p::util::GetMillisecondsSinceEpoch () - ts);
 				if (t < 0) t = 0;
-				streamingDestination->ResetPongHandler ();
+				streaming->ResetPongHandler ();
 				timer->cancel ();
-				if (from)
-					s->SendReplyOK (
-						{ "pong ", "from ", from->ToBase32 (), ".b32.i2p: time=", std::to_string (t), " ms" });
-				else
-					s->SendReplyOK ({ "pong: time=", std::to_string (t), " ms" });
+				if (auto session = weakSession.lock ())
+				{
+					if (from)
+						session->SendReplyOK (
+							{ "pong ", "from ", from->ToBase32 (), ".b32.i2p: time=", std::to_string (t), " ms" });
+					else
+						session->SendReplyOK ({ "pong: time=", std::to_string (t), " ms" });
+				}
 			});
 		streamingDestination->SendPing (ls);
 	}

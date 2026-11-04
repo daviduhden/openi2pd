@@ -364,8 +364,12 @@ namespace client
 		}
 		std::future<std::vector<i2p::garlic::ECIESX25519AEADRatchetSessionPtr>> GetECIESx25519SessionsList () const
 		{
-			return boost::asio::post (
-				GetService (), boost::asio::use_future ([this] () { return GetECIESx25519SessionsListSync (); }));
+			auto weak = weak_from_this ();
+			return boost::asio::post (GetService (), boost::asio::use_future ([weak] ()
+				{
+					if (auto self = weak.lock ()) return self->GetECIESx25519SessionsListSync ();
+					return std::vector<i2p::garlic::ECIESX25519AEADRatchetSessionPtr> { };
+				}));
 		}
 	};
 

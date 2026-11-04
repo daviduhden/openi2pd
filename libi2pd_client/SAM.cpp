@@ -2485,17 +2485,22 @@ namespace client
 			LogPrint (eLogError, "SAM: Datagram invalid destination ", destination);
 			return;
 		}
-		auto sendTo = [datagramDest, type = Type, version = DatagramVersion, fromPort, toPort, protocol] (
+		// DatagramDestination owns localDest, so retaining it in a callback
+		// stored by localDest's LeaseSet request map would form a cycle.
+		std::weak_ptr<i2p::datagram::DatagramDestination> weakDatagram = datagramDest;
+		auto sendTo = [weakDatagram, type = Type, version = DatagramVersion, fromPort, toPort, protocol] (
 						  const uint8_t * p, size_t l, const i2p::data::IdentHash & ident)
 		{
+			auto datagram = weakDatagram.lock ();
+			if (!datagram) return;
 			if (type == SAMSessionType::eSAMSessionTypeDatagram)
 			{
 				// The session's SAM style selects the I2CP datagram framing:
 				// DATAGRAM3 must never emit Datagram1/Datagram2 payloads.
-				datagramDest->SendDatagramTo (p, l, ident, fromPort, toPort, version);
+				datagram->SendDatagramTo (p, l, ident, fromPort, toPort, version);
 			}
 			else if (type == SAMSessionType::eSAMSessionTypeRaw)
-				datagramDest->SendRawDatagramTo (p, l, ident, fromPort, toPort, protocol);
+				datagram->SendRawDatagramTo (p, l, ident, fromPort, toPort, protocol);
 			else
 				LogPrint (eLogError, "SAM: Unexpected session type ", (int)type, " for datagram send");
 		};
