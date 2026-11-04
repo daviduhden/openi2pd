@@ -76,8 +76,11 @@ bool AcceptsArtifactTarget (bool isRegularFile, uint32_t targetUid, uint32_t cur
  *
  * The policy is shared by the router-storage and data-storage clients
  * so both fail closed at the same rate: 250 ms doubling to a 30 s cap,
- * at most 8 attempts inside a 60 s window, then terminal failure until
- * the owner calls Start() again. No member blocks; callers ask
+ * at most 8 consecutive unstable failures, then terminal failure until
+ * the owner calls Start() again. One successfully configured generation
+ * must answer an operation after 60 s before restoring the budget; time
+ * spent waiting, spawning or configuring never counts as healthy service.
+ * No member blocks; callers ask
  * CanAttempt() and schedule a new attempt when the clock passes
  * NextAttempt().
  * Every member takes the caller's `now` and touches no clock, thread or
@@ -88,20 +91,28 @@ class StorageClientRestart
 {
 public:
 	static constexpr unsigned MAX_ATTEMPTS = 8;
-	static constexpr std::chrono::seconds WINDOW { 60 };
+	static constexpr std::chrono::seconds STABLE_PERIOD { 60 };
 	static constexpr std::chrono::milliseconds MIN_BACKOFF { 250 };
 	static constexpr std::chrono::seconds MAX_BACKOFF { 30 };
 
 	/** Forget every attempt and pending delay. */
 	void Reset (std::chrono::steady_clock::time_point now) noexcept;
+	/** Start measuring the current successfully configured generation. */
+	void NoteReady (std::chrono::steady_clock::time_point now) noexcept;
+	/**
+	 * Credit a stable generation only after its validated operation reply.
+	 * Returns true if the continuous ready interval restores the budget.
+	 * Failure observation and setup replies must not call this method.
+	 */
+	bool NoteStable (std::chrono::steady_clock::time_point now) noexcept;
 	/**
 	 * Record one failed attempt and schedule the next one. Returns false
-	 * when the attempt budget inside the window is exhausted; the caller
+	 * when the consecutive failure budget is exhausted; the caller
 	 * must then stop retrying.
 	 */
 	bool RecordFailure (std::chrono::steady_clock::time_point now) noexcept;
-	/** True when the window allows another attempt at @a now. */
-	bool CanAttempt (std::chrono::steady_clock::time_point now) noexcept;
+	/** True when the remaining budget and delay allow another attempt. */
+	bool CanAttempt (std::chrono::steady_clock::time_point now) const noexcept;
 	std::chrono::steady_clock::time_point NextAttempt () const noexcept { return m_NextAttempt; }
 	unsigned Attempts () const noexcept { return m_Attempts; }
 	std::chrono::milliseconds Backoff () const noexcept { return m_Backoff; }
@@ -109,8 +120,9 @@ public:
 private:
 	unsigned m_Attempts = 0;
 	std::chrono::milliseconds m_Backoff { MIN_BACKOFF };
-	std::chrono::steady_clock::time_point m_WindowStart { };
+	std::chrono::steady_clock::time_point m_ReadyAt { };
 	std::chrono::steady_clock::time_point m_NextAttempt { };
+	bool m_Ready = false;
 };
 
 /**

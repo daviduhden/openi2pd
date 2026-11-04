@@ -17,10 +17,54 @@
 #include "DataStorage.h"
 #include "Credentials.h"
 #include "Protocol.h"
+#include <algorithm>
+
+namespace i2p::privsep
+{
+void StorageClientRestart::Reset (std::chrono::steady_clock::time_point now) noexcept
+{
+	m_Attempts = 0;
+	m_Backoff = MIN_BACKOFF;
+	m_ReadyAt = { };
+	m_NextAttempt = now;
+	m_Ready = false;
+}
+
+void StorageClientRestart::NoteReady (std::chrono::steady_clock::time_point now) noexcept
+{
+	if (m_Attempts >= MAX_ATTEMPTS) return;
+	m_ReadyAt = now;
+	m_Ready = true;
+}
+
+bool StorageClientRestart::NoteStable (std::chrono::steady_clock::time_point now) noexcept
+{
+	if (m_Attempts >= MAX_ATTEMPTS || !m_Ready || now - m_ReadyAt < STABLE_PERIOD) return false;
+	Reset (now);
+	NoteReady (now);
+	return true;
+}
+
+bool StorageClientRestart::RecordFailure (std::chrono::steady_clock::time_point now) noexcept
+{
+	// An exhausted owner cannot be revived by elapsed time or a late reply.
+	if (m_Attempts >= MAX_ATTEMPTS) return false;
+	m_Ready = false;
+	++m_Attempts;
+	m_NextAttempt = now + m_Backoff;
+	const auto cap = std::chrono::duration_cast<std::chrono::milliseconds> (MAX_BACKOFF);
+	m_Backoff = std::min (m_Backoff * 2, cap);
+	return m_Attempts < MAX_ATTEMPTS;
+}
+
+bool StorageClientRestart::CanAttempt (std::chrono::steady_clock::time_point now) const noexcept
+{
+	return m_Attempts < MAX_ATTEMPTS && now >= m_NextAttempt;
+}
+}
 
 #ifndef _WIN32
 
-#include <algorithm>
 #include <array>
 #include <atomic>
 #include <cerrno>
@@ -509,45 +553,6 @@ bool AcceptsArtifactTarget (bool isRegularFile, uint32_t targetUid, uint32_t cur
 	return isRegularFile && targetUid == currentUid && linkCount == 1;
 }
 
-void StorageClientRestart::Reset (std::chrono::steady_clock::time_point now) noexcept
-{
-	m_Attempts = 0;
-	m_Backoff = MIN_BACKOFF;
-	m_WindowStart = now;
-	m_NextAttempt = now;
-}
-
-bool StorageClientRestart::RecordFailure (std::chrono::steady_clock::time_point now) noexcept
-{
-	if (m_Attempts == 0 || now - m_WindowStart > WINDOW)
-	{
-		// A quiet period starts a fresh window so a long-running router is
-		// never disabled forever by one old burst of failures.
-		m_WindowStart = now;
-		m_Attempts = 0;
-		m_Backoff = MIN_BACKOFF;
-	}
-	++m_Attempts;
-	m_NextAttempt = now + m_Backoff;
-	const auto doubled = std::chrono::duration_cast<std::chrono::milliseconds> (m_Backoff) * 2;
-	const auto cap = std::chrono::duration_cast<std::chrono::milliseconds> (MAX_BACKOFF);
-	m_Backoff = std::min (doubled, cap);
-	return m_Attempts < MAX_ATTEMPTS;
-}
-
-bool StorageClientRestart::CanAttempt (std::chrono::steady_clock::time_point now) noexcept
-{
-	if (now - m_WindowStart > WINDOW)
-	{
-		m_Attempts = 0;
-		m_Backoff = MIN_BACKOFF;
-		m_WindowStart = now;
-		m_NextAttempt = now;
-		return true;
-	}
-	return m_Attempts < MAX_ATTEMPTS && now >= m_NextAttempt;
-}
-
 bool IsCurrentDataStorageReply (
 	uint32_t replyGeneration, uint32_t replyRequestId, uint32_t currentGeneration, uint32_t inFlightRequestId)
 {
@@ -917,7 +922,9 @@ struct DataStorageClient::Impl
 		}
 		generation = nextGeneration;
 		publishedGeneration.store (generation);
-		restart.Reset (Now ());
+		// A successful worker handshake is not a stability period: repeated
+		// crash/restart cycles must keep consuming the bounded retry budget.
+		restart.NoteReady (Now ());
 		return true;
 	}
 
@@ -932,6 +939,7 @@ struct DataStorageClient::Impl
 			state = State::Ready;
 			return true;
 		}
+		CloseWorker ();
 		if (restart.RecordFailure (Now ()))
 		{
 			state = State::Restarting;
@@ -1050,6 +1058,7 @@ struct DataStorageClient::Impl
 			return false;
 		}
 		const auto status = static_cast<DataStorageStatus> (std::get<0> (*decoded));
+		restart.NoteStable (Now ());
 		lastStatus.store (cancelledAfterSend ? DataStorageStatus::Busy : status);
 		return !cancelledAfterSend && status == DataStorageStatus::Ok;
 	}
@@ -1189,21 +1198,6 @@ std::string ArtifactRelativePath (i2p::data::StorageArtifact, std::string_view)
 	return { };
 }
 bool AcceptsArtifactTarget (bool, uint32_t, uint32_t, uint32_t)
-{
-	return false;
-}
-void StorageClientRestart::Reset (std::chrono::steady_clock::time_point now) noexcept
-{
-	m_Attempts = 0;
-	m_Backoff = MIN_BACKOFF;
-	m_WindowStart = now;
-	m_NextAttempt = now;
-}
-bool StorageClientRestart::RecordFailure (std::chrono::steady_clock::time_point) noexcept
-{
-	return false;
-}
-bool StorageClientRestart::CanAttempt (std::chrono::steady_clock::time_point) noexcept
 {
 	return false;
 }

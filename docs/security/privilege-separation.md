@@ -340,7 +340,11 @@ tested in the manual OpenBSD job; production worker channels remain
   the only write path; a failure never falls back to a local write and an
   unavailable worker fails closed. Startup reads remain direct.
 - **Recovery:** storage clients are generation-fenced, restart with
-  250 ms→30 s backoff (8 attempts in 60 s, 60 s stable reset), return `Busy` at
+  250 ms→30 s backoff with at most 8 consecutive unstable failures. A matched
+  operation reply after at least 60 s in the same configured generation
+  restores the budget; waiting, configuration and backoff do not. Exhaustion
+  requires an explicit owner restart. These changes remain pending manual CI.
+  Clients return `Busy` at
   request-id exhaustion and never replay an ambiguous write. `router.info` /
   fixed-file save failures retain the last buffer. The supervisor publishes a
   bounded status; OpenBSD has no post-pledge respawn, so a lost worker is

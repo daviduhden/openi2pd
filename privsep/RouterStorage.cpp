@@ -223,7 +223,9 @@ struct RouterStorageClient::Impl
 			return false;
 		}
 		generation = nextGeneration;
-		restart.Reset (std::chrono::steady_clock::now ());
+		// A successful worker handshake is not a stability period: repeated
+		// crash/restart cycles must keep consuming the bounded retry budget.
+		restart.NoteReady (std::chrono::steady_clock::now ());
 		return true;
 	}
 
@@ -252,6 +254,7 @@ struct RouterStorageClient::Impl
 			state = State::Ready;
 			return true;
 		}
+		CloseWorker ();
 		if (restart.RecordFailure (std::chrono::steady_clock::now ()))
 		{
 			state = State::Restarting;
@@ -297,6 +300,7 @@ struct RouterStorageClient::Impl
 			MarkRestart ("malformed reply");
 			return false;
 		}
+		restart.NoteStable (std::chrono::steady_clock::now ());
 		return reply.message.payload == std::string (1, '\0');
 	}
 };

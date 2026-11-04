@@ -343,8 +343,7 @@ int main ()
 	assert (!IsCurrentDataStorageReply (4, 10, 4, 11)); // abandoned request
 	assert (!IsCurrentDataStorageReply (0, 11, 4, 11));
 
-	// Restart backoff: 250 ms doubling to a 30 s cap, 8 attempts per
-	// window.
+	// Restart delays never replenish an unstable-generation budget.
 	{
 		const auto start = std::chrono::steady_clock::time_point (std::chrono::seconds (1000));
 		StorageClientRestart policy;
@@ -352,9 +351,9 @@ int main ()
 		assert (policy.Attempts () == 0);
 		assert (policy.CanAttempt (start));
 		std::chrono::milliseconds delay (250);
+		auto now = start;
 		for (unsigned attempt = 1; attempt <= 7; ++attempt)
 		{
-			const auto now = start + std::chrono::seconds (attempt);
 			assert (policy.RecordFailure (now));
 			assert (policy.Attempts () == attempt);
 			// The recorded failure schedules the retry after the current delay
@@ -364,18 +363,67 @@ int main ()
 			assert (policy.CanAttempt (now + delay));
 			delay = std::min (delay * 2, std::chrono::milliseconds (30000));
 			assert (policy.Backoff () == delay);
+			now = policy.NextAttempt ();
 		}
-		// The eighth failure exhausts the window budget: no further attempt
+		// The eighth failure exhausts the owner budget: no further attempt
 		// is allowed even after the delay has elapsed.
-		const auto now = start + std::chrono::seconds (9);
 		assert (!policy.RecordFailure (now));
 		assert (policy.Attempts () == 8);
 		assert (!policy.CanAttempt (now + std::chrono::seconds (31)));
 		// The cap never exceeds 30 s.
 		assert (policy.Backoff () == std::chrono::milliseconds (30000));
-		// A quiet period starts a new window.
-		assert (policy.CanAttempt (now + std::chrono::seconds (61)));
+		const auto late = now + std::chrono::hours (1);
+		assert (!policy.CanAttempt (late));
+		policy.NoteReady (late);
+		assert (!policy.NoteStable (late + StorageClientRestart::STABLE_PERIOD));
+		assert (!policy.RecordFailure (late));
+		assert (policy.Attempts () == 8);
+		policy.Reset (late); // only explicit owner restart revives exhaustion
 		assert (policy.Attempts () == 0);
+		assert (policy.CanAttempt (late));
+	}
+	{
+		const auto start = std::chrono::steady_clock::time_point (std::chrono::seconds (1000));
+		StorageClientRestart policy;
+		policy.Reset (start);
+		auto now = start;
+		for (unsigned attempt = 1; attempt <= StorageClientRestart::MAX_ATTEMPTS; ++attempt)
+		{
+			policy.NoteReady (now);
+			now += StorageClientRestart::STABLE_PERIOD - std::chrono::milliseconds (1);
+			assert (!policy.NoteStable (now));
+			assert (policy.RecordFailure (now) == (attempt < StorageClientRestart::MAX_ATTEMPTS));
+			assert (policy.Attempts () == attempt);
+			now = policy.NextAttempt ();
+		}
+		// Minutes of aggregate uptime and backoff are not one stable worker.
+		assert (!policy.CanAttempt (now + std::chrono::hours (1)));
+	}
+	{
+		const auto start = std::chrono::steady_clock::time_point (std::chrono::seconds (1000));
+		StorageClientRestart policy;
+		policy.Reset (start);
+		assert (policy.RecordFailure (start));
+		const auto ready = start + std::chrono::minutes (10);
+		assert (policy.CanAttempt (ready));
+		assert (policy.Attempts () == 1);
+		assert (!policy.NoteStable (ready)); // no configured worker yet
+		policy.NoteReady (ready);
+		assert (!policy.NoteStable (ready)); // handshake time is not service
+		assert (!policy.NoteStable (ready - std::chrono::milliseconds (1)));
+		assert (!policy.NoteStable (ready + StorageClientRestart::STABLE_PERIOD - std::chrono::milliseconds (1)));
+		assert (policy.Attempts () == 1);
+		assert (policy.NoteStable (ready + StorageClientRestart::STABLE_PERIOD));
+		assert (policy.Attempts () == 0);
+		assert (policy.Backoff () == StorageClientRestart::MIN_BACKOFF);
+		const auto failure = ready + StorageClientRestart::STABLE_PERIOD + std::chrono::milliseconds (1);
+		assert (policy.RecordFailure (failure));
+		assert (policy.NextAttempt () == failure + StorageClientRestart::MIN_BACKOFF);
+		policy.NoteReady (failure + std::chrono::milliseconds (250));
+		// A worker may have died unnoticed while idle. Failure observation
+		// alone must not credit healthy service, even much later.
+		assert (policy.RecordFailure (failure + std::chrono::hours (1)));
+		assert (policy.Attempts () == 2);
 	}
 	return 0;
 }

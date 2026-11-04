@@ -173,6 +173,20 @@ int main (int argc, char ** argv)
 	assert (client.Write (StorageArtifact::RouterInfoCache, name, Bytes (5, 16)));
 	assert (client.Generation () == 3);
 
+	// Only an operation reply from one generation after a full stable
+	// interval restores the minimum delay, never the replacement handshake.
+	now += StorageClientRestart::STABLE_PERIOD;
+	assert (client.Write (StorageArtifact::RouterInfoCache, name, Bytes (5, 16)));
+	assert (::kill (static_cast<pid_t> (client.WorkerPid ()), SIGKILL) == 0);
+	assert (WaitForFailure (client, StorageArtifact::RouterInfoCache, name));
+	const auto stableFailure = now;
+	now += std::chrono::milliseconds (249);
+	assert (!client.Write (StorageArtifact::RouterInfoCache, name, Bytes (5, 16)));
+	assert (client.LastStatus () == DataStorageStatus::Busy);
+	now = stableFailure + std::chrono::milliseconds (250);
+	assert (client.Write (StorageArtifact::RouterInfoCache, name, Bytes (5, 16)));
+	assert (client.Generation () == 4);
+
 	// Stale-generation replies are dropped, so a reply from an older
 	// worker
 	// can never be applied to the current request.
@@ -188,7 +202,7 @@ int main (int argc, char ** argv)
 	assert (!client.Write (StorageArtifact::RouterInfoCache, name, Bytes (6, 8)));
 	assert (client.LastStatus () == DataStorageStatus::Busy);
 	assert (client.WorkerPid () > 0);
-	assert (client.Generation () == 3);
+	assert (client.Generation () == 4);
 	client.SetRequestIdForTesting (100);
 	const auto lastContent = Bytes (7, 12);
 	assert (client.Write (StorageArtifact::RouterInfoCache, name, lastContent));
