@@ -295,6 +295,25 @@ for my $job ( sort keys %job_owner ) {
     }
 }
 
+# Raw sanitizer PCs require the exact executable, not a later rebuild.
+# Keep the known leak/lifecycle reproducers beside their logs and hashes.
+if ( exists $blocks_for{'validation.yml'}{'sanitizers'} ) {
+    my $sanitizers = $blocks_for{'validation.yml'}{'sanitizers'};
+    for my $image (qw(test-eddsa test-i2ptunnel-stop test-i2ptunnel-targets
+        test-eciesx25519-ratchet-session test-runnableservice-lifecycle
+        test-i2cp-session-lifecycle)) {
+        if ( index( $sanitizers, "build-sanitizers/tests/$image" ) < 0 ) {
+            push @errors, "validation.yml: sanitizer executable evidence missing: $image";
+        }
+    }
+    for my $marker ( 'sha256sum', 'sanitizer-evidence/revision.txt',
+        'sanitizer-evidence/missing-images.txt' ) {
+        if ( index( $sanitizers, $marker ) < 0 ) {
+            push @errors, "validation.yml: sanitizer identity evidence missing: $marker";
+        }
+    }
+}
+
 # The expensive opt-in lanes stay opt-in: an Android API 29 emulator boot or
 # a Perl::Critic run on every dispatch is a cost regression, and an
 # accidental `if:` removal is otherwise invisible until the job starts.

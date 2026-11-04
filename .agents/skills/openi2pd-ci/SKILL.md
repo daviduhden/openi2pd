@@ -152,6 +152,14 @@ workflow, run `gh`, build or test.
 
 ## Known issues and decisions
 
+- Raw sanitizer PCs cannot be attributed using a later rebuild. Preserve the
+  exact failing executable with the run SHA and its SHA-256 digest. The
+  sanitizer artifact includes the EdDSA, tunnel stop/targets, ratchet and
+  service/I2CP lifecycle reproducers; missing binaries are listed explicitly
+  when a build stopped early. These are code artifacts, not memory dumps or
+  credentials. Keep this inventory in the workflow/checker pair synchronized
+  when a new unsymbolized reproducer is investigated.
+
 - Windows `heap_diagnostics` is an opt-in reproduction after ordinary
   CTest, using installed x64 CDB/GFlags only. Missing SDK debuggers are
   infrastructure limitations, not a clean heap result. PageHeap is per

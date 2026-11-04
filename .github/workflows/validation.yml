@@ -190,6 +190,21 @@ jobs:
           cmake --build build-sanitizers --parallel 2
           ctest --test-dir build-sanitizers -j 1 --output-on-failure \
             --no-tests=error --output-junit "$PWD/ctest-sanitizers-${{ matrix.name }}.xml"
+      - name: Record sanitizer reproduction identities
+        if: always()
+        run: |
+          mkdir -p sanitizer-evidence
+          git rev-parse HEAD > sanitizer-evidence/revision.txt
+          for image in test-eddsa test-i2ptunnel-stop test-i2ptunnel-targets \
+            test-eciesx25519-ratchet-session test-runnableservice-lifecycle \
+            test-i2cp-session-lifecycle; do
+            image_path="build-sanitizers/tests/$image"
+            if [ -f "$image_path" ]; then
+              sha256sum "$image_path" >> sanitizer-evidence/images.sha256
+            else
+              echo "$image: not produced" >> sanitizer-evidence/missing-images.txt
+            fi
+          done
       - name: Upload sanitizer test logs
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
@@ -198,6 +213,12 @@ jobs:
           path: |
             build-sanitizers/Testing
             build-sanitizers/tests/test-eddsa
+            build-sanitizers/tests/test-i2ptunnel-stop
+            build-sanitizers/tests/test-i2ptunnel-targets
+            build-sanitizers/tests/test-eciesx25519-ratchet-session
+            build-sanitizers/tests/test-runnableservice-lifecycle
+            build-sanitizers/tests/test-i2cp-session-lifecycle
+            sanitizer-evidence
             ctest-sanitizers-*.xml
           if-no-files-found: warn
           retention-days: 7
