@@ -40,9 +40,12 @@ void AddOrder (uint8_t * littleEndian)
 	}
 }
 
-void Sha512 (const std::array<uint8_t, 32> & r, const std::array<uint8_t, 32> & pub, const uint8_t * msg, size_t len,
-	uint8_t * digest)
+std::array<uint8_t, 64> Sha512 (const std::array<uint8_t, 32> & r,
+	const std::array<uint8_t, 32> & pub, const uint8_t * msg, size_t len)
 {
+	// The result type owns the full SHA-512 output; callers cannot pass
+	// a SHA-256-sized buffer to the provider or verifier.
+	std::array<uint8_t, 64> digest {};
 	EVP_MD_CTX * ctx = EVP_MD_CTX_new ();
 	assert (ctx);
 	assert (EVP_DigestInit_ex (ctx, EVP_sha512 (), nullptr) == 1);
@@ -50,9 +53,10 @@ void Sha512 (const std::array<uint8_t, 32> & r, const std::array<uint8_t, 32> & 
 	assert (EVP_DigestUpdate (ctx, pub.data (), pub.size ()) == 1);
 	assert (EVP_DigestUpdate (ctx, msg, len) == 1);
 	unsigned int dl = 64;
-	assert (EVP_DigestFinal_ex (ctx, digest, &dl) == 1);
+	assert (EVP_DigestFinal_ex (ctx, digest.data (), &dl) == 1);
 	assert (dl == 64);
 	EVP_MD_CTX_free (ctx);
+	return digest;
 }
 } // namespace
 
