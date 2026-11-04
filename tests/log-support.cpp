@@ -31,6 +31,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <ctime>
+#include <memory>
 #include <mutex>
 #include <string_view>
 
@@ -77,7 +78,18 @@ namespace
 
 	void ApplyRequestedLevel () noexcept
 	{
-		const char * requested = std::getenv ("OPENI2PD_TEST_LOG_LEVEL");
+		const char * requested = nullptr;
+#if defined(_MSC_VER)
+		// MSVC deprecates getenv; own the secure CRT's returned copy.
+		char * allocated = nullptr;
+		size_t length = 0;
+		const auto result = _dupenv_s (&allocated, &length, "OPENI2PD_TEST_LOG_LEVEL");
+		const std::unique_ptr<char, decltype (&std::free)> owned { allocated, &std::free };
+		if (result != 0) return;
+		requested = owned.get ();
+#else
+		requested = std::getenv ("OPENI2PD_TEST_LOG_LEVEL");
+#endif
 		if (!requested || !*requested) return;
 		// The product spells the warning level "warn"; accept the common
 		// "warning" spelling without adding it to the production parser.
