@@ -158,6 +158,22 @@ jobs:
       - name: Install latest build tools from Homebrew
         timeout-minutes: 20
         uses: ./.github/actions/brew-toolchain
+      - name: Locate LLVM symbolizer
+        run: |
+          clang_path=$(readlink -f "$(command -v clang)")
+          symbolizer="$(dirname "$clang_path")/llvm-symbolizer"
+          if [ -n "$symbolizer" ]; then
+            if [ -x "$symbolizer" ]; then
+              echo "ASAN_SYMBOLIZER_PATH=$symbolizer" >> "$GITHUB_ENV"
+              exit 0
+            fi
+          fi
+          symbolizer=$(command -v llvm-symbolizer || true)
+          if [ -n "$symbolizer" ] && [ -x "$symbolizer" ]; then
+            echo "ASAN_SYMBOLIZER_PATH=$symbolizer" >> "$GITHUB_ENV"
+          else
+            echo "llvm-symbolizer unavailable; raw sanitizer PCs will be retained"
+          fi
       - name: Build and run sanitizer CTest matrix
         env:
           ASAN_OPTIONS: ${{ matrix.asan_options }}
@@ -181,6 +197,7 @@ jobs:
           name: sanitizer-${{ matrix.name }}-logs
           path: |
             build-sanitizers/Testing
+            build-sanitizers/tests/test-eddsa
             ctest-sanitizers-*.xml
           if-no-files-found: warn
           retention-days: 7
