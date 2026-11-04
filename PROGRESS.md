@@ -6389,3 +6389,479 @@ or push.
   controls. SAF serialization is process-local and cooperative cancellation
   cannot break a blocked provider read. Keep focused regressions open until
   the exact published revision passes manual CI.
+
+## 2026-11-04 — Transport, torrent, tooling and Android continuation (static)
+
+- Recovered the clean tree at `38068e8d` and the latest published CI batch at
+  `56f17c0f`. The new tree is unpublished, so no run validates it. Reconnaissance
+  covered architecture/docs, C++23/build, interop/upstream, crypto/transports,
+  privsep/IPC, torrent/TUI, Android, tools/packaging and current CI failures.
+- Fixed confirmed fail-open paths: SSU2 PeerTest/HolePunch/TokenRequest/Retry
+  now refuse to transmit after AEAD failure and pass real capacity; SSU2
+  rejects oversized frames before stack-buffer sizing; Ed25519 encoders zero
+  the whole signature/blinded output on failure. Added a real X25519 keygen
+  capability probe required at startup and removed the unused AES-256-CTR
+  claim. These are Implemented / static, Pending CI compilation/tests.
+- Adapted the next upstream `openssl` window (`e485e138..2b92f2d4`): datagram
+  send-queue clearing, 120 s routine resume throttling and additive
+  `piecesAvailable`; deferred connection replacement until identity-keyed
+  removal, and rejected the leaking intrusive queue and browser-only changes.
+- Torrent/TUI: routine resume saves are throttled while explicit transitions
+  remain immediate; swarm availability is a clamped union; missing `.part`
+  promotion reports a filesystem error and invalidates covering pieces; the
+  TUI uses an exact closed status classifier for pause/resume and the footer.
+- Tooling: verifyhost now checks CryptoGuard and writes rejection diagnostics
+  to stderr; the inventory checker detects any guard identifier; Perl
+  syntax/critic and comment-integrity registration is complete; i18n escaping
+  is single-pass; static Debian scripts follow the main package phase policy.
+- Android: the Java 25 API-29 guard covers Java 21 collection/String/Math/
+  Thread methods with a negative self-test; metric labels use `labelFor` and
+  the UI contract test checks the association.
+- Agent & Skills Synchronization: updated the crypto, torrent, tooling,
+  Android and upstream skills with the new fail-closed, persistence,
+  availability, CLI/Perl and denylist/label rules; updated AGENTS.md, TODO,
+  ROADMAP and this entry. Compile-free checks passed: `git diff --check`,
+  control-security, build-system, tools-inventory, packaging, workflow,
+  Doxygen parameter/reference, i18n catalogs, Java 25 probe, layout XML,
+  documentation links/navigation and Perl syntax. No compiler, CTest,
+  sanitizer, Gradle/device, workflow dispatch, commit or push was performed.
+- Residual open items: Transports self-stop detach and generation teardown,
+  network-worker separation, NTCP2 admission/options and established-session
+  cap, Streaming destination cycles and LeakSanitizer attribution, torrent
+  serving slots/endgame/CANCEL, DHT `announce_peer` port parity, Windows heap
+  corruption/version timeout, and Perl::Critic findings. These remain
+  unresolved or Pending CI, not validated.
+
+## 2026-11-04 — OpenBSD pledge hardening: no exec, no error (static)
+
+- Audited every `pledge(2)` call, policy builder, generated promise string,
+  `openbsd.pledge_file` parser and `execpromises` argument. Removed `exec` and
+  `error` from the known-promise authority and added a forbidden set rejected
+  by the builder, parser and applier. `RUNTIME_FORBIDDEN` also lists both.
+- The log supervisor no longer resolves/unveils an executable or pledges
+  `exec`. It creates and configures one active and one reserve log worker
+  before applying `pledge("stdio proc")`; on failure it promotes the reserve,
+  and after that reserve is exhausted it drops logging rather than executing a
+  replacement. Linux supervision still uses fork/exec because no pledge policy
+  is involved.
+- The on-demand OpenBSD torrent-storage broker is disabled: it forked/exec'ed
+  a storage worker after its own sandbox, which requires the forbidden `exec`
+  promise. `PrepareTorrentStorageSupervisor` returns a bounded diagnostic and
+  `RunTorrentStorageSupervisor` refuses the role; isolated torrent storage
+  fails closed until an exec-free pre-created worker design exists. The
+  OpenBSD storage-broker test skips with 77.
+- Removed the core's early startup pledge. `DaemonUnix::start()` creates every
+  worker while the core is unpledged, installs a first pledge containing
+  `unveil`, applies/locks unveil, then drops to runtime. No phase contains
+  `exec`, `error` or `id`; `proc` remains only for supervisor reaping.
+- Capability rows no longer grant `Exec` to Supervisor or StorageBroker. The
+  OpenBSD policy tests now assert `stdio proc`, no `exec`/`error`/`id`, a
+  refused broker role, a reserve-worker supervisor and a pledge violation on
+  `execve`. `tests/check-control-security.cmake` pins the forbidden table,
+  builder rejection, reserve promotion and first/runtime pledge.
+- Updated `AGENTS.md`, `ROADMAP.md`, `TODO.md`, `docs/security/privilege-
+  separation.md`, `process-capabilities.md`, `openbsd-validation.md`,
+  `ipc-protocol.md`, `security-audit.md`, `files-changed.md`, `docs/testing.md`
+  and the privsep/OpenBSD skills. Compile-free checks passed: `git diff
+  --check`, control-security, build-system, agent-skills and
+  language-modernization, plus Doxygen parameter/reference inspection.
+- No compiler, CTest, pledge runtime, broker, sanitizer, OpenBSD VM or service
+  run was performed. Remaining: exec-free storage-worker provisioning,
+  reserve-exhaustion log loss, and OpenBSD/LibreSSL CI evidence.
+
+## 2026-11-04 — Registry and capability authority continuation (static)
+
+- Preserved the existing 81-file dirty continuation. Three real subagents
+  independently covered all nine requested reconnaissance areas and then
+  implemented exclusive native registry, torrent completion and Android SAF
+  slices. No existing modification was reverted or published.
+- CONT-025 retires an idle peer's registry entry before asynchronous close;
+  removal checks its current owner. Full-capacity, replacement and stale-close
+  regressions are prepared in the existing verify-parity target.
+- CONT-026 uses weak ownership at every queued torrent-completion boundary,
+  snapshots selection on service admission and rechecks exact instance,
+  selection and verified pieces before publication. NTCP2 pending-slot
+  promotion now compares the stored session owner. Negative source contracts
+  join the existing manual control-security lane.
+- CONT-027 unifies import/create/export grant acquisition and cleanup under
+  mapping authority, preserving prior modes and committed payload adoption.
+  Instrumentation regressions are prepared; overlapping temporary-only
+  borrowers across service generations remain unresolved.
+- Recovered Validation run 41364867079 full logs and artifacts, including
+  successful fuzz/static siblings, at 56f17c0f. Android 41364864089's two Java
+  compile errors are already corrected in current source. Successful Linux
+  41364861389 and packaging 41364876230 expose action-runtime/autopkgtest
+  diagnostics, not current-tree compiler evidence. Existing exact-run CI
+  reports retain unresolved sanitizer/platform findings.
+- Upstream remote tip cbd314921d7a9a9638c749bb740f670def5a6d28 was reviewed:
+  missing-bitfield exclusion and tunnel creation outside locks already exist;
+  the SSU2 container optimization was omitted. Java latest release remains
+  the pinned 2.14.0. No new live interoperability claim is made.
+- CONT-028 reconstructs core/role promises, startup exec and the one-way
+  launcher barrier. Corrected stale x-only-unveil and nonexistent-storage
+  descriptions; expanded null-execpromises contracts. The already-local
+  active/reserve log architecture and disabled on-demand broker were retained.
+  No exec/error grant, arbitrary launcher or weaker sandbox was introduced.
+- Agent & Skills Synchronization: reviewed root/index, CI, C++23, memory,
+  torrent, Android, interop, upstream and OpenBSD skills and adjacent
+  documentation guidance. Updated root, torrent, Android, interop and OpenBSD
+  knowledge with reusable registry, queue, selection, grant-mode and launcher
+  invariants. Tracking distinguishes static work from pending CI. Final
+  compile-free consistency results are recorded separately below.
+- No compiler, build configuration, dynamic tests, sanitizer, Gradle/device,
+  workflow dispatch, commit or push was performed. Remaining risks include
+  in-flight disk effects, adjacent raw-owner callbacks, temporary URI leases,
+  unavailable OpenBSD isolated torrent broker and full network/router/storage
+  process separation. This increment does not complete the global roadmap.
+- Final compile-free checks passed: agent-knowledge validator (AK004 semantic
+  review warning retained), control-security including the new completion
+  contract, agent-skills, language-modernization, workflow policy and
+  `git diff --check`. Semantic review confirms the knowledge changes explain
+  ownership and authority rather than restating status. No contract unittest
+  or product test was executed.
+- Review patch generated outside the tree at
+  `/tmp/openi2pd-review/openbsd-no-exec-error.patch`, based on HEAD 38068e8d,
+  including the preserved earlier OpenBSD changes. It has `Index:` sections,
+  `diff -u -p` context, added comment lines at most 72 characters, and passes
+  reverse-application dry checking against this tree. No duplicate port patch
+  was installed into already-patched source.
+
+## 2026-11-04 — Executor, verification and IPC response authority (static)
+
+- Recovered the unchanged HEAD 38068e8d and preserved the 88 modified files
+  plus untracked completion contract present at turn start. Three actual
+  reconnaissance subagents covered the nine requested areas and implemented
+  exclusive native transport/NTP, torrent/IPC and Android slices.
+- Rechecked auth/repository/workflows and 100 runs. The newest batch remains
+  SHA 56f17c0f; no current uncommitted implementation was tested by it. Full
+  Validation 41364867079 output/artifacts and earlier sibling evidence remain
+  available. The exact TSan timeout at RunnableService test line 50 is
+  consistent with an unguarded empty-run/stopped-context source defect.
+- CONT-029 adds per-run optional RAII executor work ownership, releases it on
+  Stop, exits normal run completion and preserves drain-before-thread-entry.
+  Existing lifecycle regressions cover idle gaps, restart, drain and exception
+  continuation; the obsolete sleep/detach fixture assumption was removed.
+- Equivalent-wrapper search found CONT-030's NTP launch-before-post race.
+  Initial Sync now precedes thread launch; failed launch and post-join stop
+  retire stale queue work under revoked authority; normal exhaustion exits.
+  UPnP already posts then exits; I2PControl accepts before launch; Transports
+  owns work. Their remaining stopped-loop/lifetime concerns stay separate.
+- CONT-031 canonicalizes all pending NTCP2 registry operations to IPv4 /32,
+  IPv6 /64 and mapped IPv4 equivalence, retaining exact owner removal. IPv6
+  admission checks readiness. Tests prepare rotating-host/scope/reuse cases.
+  Shared-/64 routers serialize handshakes; established cap/deadlines/stop
+  admission barrier remain unfinished NET-172 work.
+- CONT-032 makes recheck queues weakly owned, fences exact torrent instance
+  and cancellation, and evaluates mutable selection only on service after
+  disk persistence. CONT-033 retires data-storage worker/channel for any
+  invalid/uncorrelated reply and checks artifact kind plus typed Error's
+  operation. RouterStorage/TorrentStorage equivalents already invalidate.
+  Unknown write/remove completion is never replayed. Source regressions
+  join the registered control-security lane; live malformed-worker injection
+  remains a regression gap.
+- CONT-027 now uses bounded process-wide SAF lease tokens for every borrower,
+  including overlap across service generations, plus mapping-detach/rollback
+  deferral. Failed selection preserves prior modes. New JVM regressions cover
+  overlap, bounds, foreign/double retirement, adoption and provider failures;
+  instrumentation covers contended authority. External-process consumers and
+  cancellation-ignoring providers remain outside its guarantee. Busy cleanup
+  waits for the next authority entry; failed framework cleanup retains a grant
+  without retaining unbounded local retry state.
+- CONT-034 prepares exact sanitizer executable retention and revision/hash/
+  missing-image manifests. Workflow-policy negatives cover removed evidence.
+  Historical leak and heap findings remain unresolved. Remote openssl tip and
+  Java latest release are unchanged; no repeated upstream integration.
+- Agent & Skills Synchronization: reviewed root/index, native C++23, memory,
+  interop, torrent, Android, privsep, CI/tooling, build and documentation
+  responsibilities. Updated AGENTS and owning C++23/interop/torrent/Android/
+  privsep/CI skills with reusable executor work, normalized admission, weak
+  verification, lease and response-correlation procedures. Corrected the stale
+  mask-only grant limitation and Busy semantics. Shared API/header changes
+  were reviewed centrally; new contracts use existing manual CI registration.
+- Compile-free knowledge, control-security (including completion/verification,
+  storage-reply and NTP contracts), agent-skills, language-modernization,
+  workflow-policy and whitespace checks passed. AK004 retains the semantic
+  relevance warning; manual review confirmed the updates explain reusable
+  invariants. No product/contract unittest, compiler, configure, CTest, Gradle,
+  sanitizer, device run, workflow dispatch, commit or push was performed.
+- Native compilation, full CTest/sanitizers, Android JVM/API29 instrumentation
+  and shared-prefix live I2P exchange remain Pending CI. The global roadmap,
+  OpenBSD pre-created torrent worker design, full process separation and
+  I2PSnark endgame/upload-slot functionality remain incomplete. No exec/error
+  pledge promise or generic launcher was introduced.
+
+## 2026-11-04 — Startup publication and bounded serving/creation (static)
+
+- Preserved HEAD 38068e8d, 104 already-modified tracked files and five
+  untracked files present at turn start. Three real reconnaissance agents
+  covered the requested nine areas, then implemented exclusive NTCP2,
+  torrent serving and Android creation slices. A second native review checked
+  upload API/locking/epoch and quota integration independently of its author.
+- Refreshed auth/repository/workflows and 100 runs. The latest batch remains
+  56f17c0f, so no remote result validates these local changes. TF-070's logger
+  diagnostic from Validation 41364867079/TSan 125022771257 was compared with
+  exact-SHA source: reused m_StartRequested could authorize a new writer
+  before publishing m_IsRunning. CONT-035 re-arms the condition before launch
+  under the start/lifecycle locks; restart/destination assertions and a source
+  ordering contract are prepared. Wakeup, leaks and heap hypotheses remain
+  separate rather than declared resolved.
+- CONT-036 adds a service-owned 10-second deadline only for the first 64
+  SessionRequest bytes. Weak timer ownership, strong read-buffer ownership,
+  atomic generation revocation and weak dispatched cancellation protect stale
+  callbacks and successor arms. Later padding/PQ/msg3 ownership/deadlines stay
+  open; shared-prefix/live tests remain pending. No handshake bytes changed.
+- CONT-037 introduces a synchronized upload-load ledger: 32 total peer
+  requests, six active sends/loads, 1200 global jobs and 256 MiB conservative
+  scratch reservations until final ticket destruction, including canceled
+  work from removed peers. Closed admission shares the ledger mutex; Stop
+  revokes tokens without reading plain service-owned stopped state on disk.
+  Exact CANCEL handles queued/loading work and retains negotiated Fast reject
+  behavior. Refusal uses legacy retry/Fast rejection rather than hot retries.
+- Central review expanded the serving correction: independent whole-piece
+  scratch validates full fragment coverage and SHA1 before atomic verified
+  cache warming, avoiding partial trusted cache data and a full-piece reread
+  per wire block. Shared BudgetState outlives tickets; allocation/storage/
+  dispatch failures retire quota. Service applies epoch-checked invalidation.
+  Existing Piece::VerifyHash and metainfo SHA1 failures now fail closed, and
+  cached-send state uses ScopeExit. Scheduler regressions prepare quota,
+  cancellation/close/stale/global lifetime, gap/overlap/short/hash/provider
+  failure, cancellation/epoch and cache-hit cases. Global retained cache
+  accounting, executing provider IO and generic async close remain residuals;
+  full upload-slot choice and download endgame remain incomplete.
+- CONT-038 charges retained SAF paths and provider IDs/URIs with separate 8 MiB
+  UTF-8 budgets before collection insertion. Names use the native 255-byte
+  rule with malformed-surrogate rejection. Full/final hash appends share the
+  existing 5 MiB bound; JNI independently rejects aggregate path amplification
+  before byte copy/native path allocation. JVM/JNI regressions are prepared.
+  Provider cursor allocations and uninterruptible IO remain outside the bound.
+- Integration caught API 33 String.repeat calls in new API 29 instrumentation;
+  replaced them with a local StringBuilder helper. The source guard now checks
+  instance-call shapes rather than only class-qualified String spellings,
+  with negative local-helper cases; ambiguous lines/transform receiver types
+  remain Android Lint's responsibility. Main/instrumentation equivalents were
+  searched. Java source level remains 25; no build or device result is claimed.
+- Upstream openssl remains cbd314921d7a9a9638c749bb740f670def5a6d28 and the
+  latest Java release remains 2.14.0. No repeated integration or new upstream
+  disposition was needed. No pledge exec/error policy or generic launcher was
+  introduced; OpenBSD worker provisioning remains incomplete.
+- Agent & Skills Synchronization: reviewed root/index, C++23, memory security,
+  interop, torrent, Android, CI, privsep and adjacent build/documentation
+  responsibilities. Updated root reservation-authority policy and C++23,
+  interop, torrent and Android knowledge with reusable generation, executor,
+  ledger, scratch and UTF-8/API-floor procedures. Existing registered targets
+  and control-security manual lane cover the prepared source contracts;
+  Gradle discovers the new JVM test. Tracking and parity/security docs reflect
+  static implementation and the remaining compatibility/resource limits.
+- No compiler, configure, CTest, project/contract unittest, sanitizer, Gradle,
+  device run, workflow dispatch, commit or push was performed. Dynamic native,
+  sanitizer, BEP/I2P wire, JVM and API 29 JNI validation remain Pending CI.
+- Final compile-free checks passed: control-security including the new logger,
+  NTCP2 initial-read, upload and SAF creation contracts; build-system,
+  agent-skills, language-modernization, Android Java25 config/source guard,
+  workflow policy, documentation links/anchors, Doxygen parameter/reference
+  source inspection and git diff --check. Knowledge validation passed with
+  AK004's semantic-review warning; manual review confirmed the new knowledge
+  captures authority lifetime and input accounting, not cosmetic tracking.
+  No dynamic regression or generated-documentation run is implied.
+
+## Continuation — ratchet, upload slots, Android forms and RPC diagnostics
+
+- Recovered status/diff/history before editing and preserved the dirty tree.
+  Three real specialists covered all nine reconnaissance areas, then owned
+  independent ratchet, upload-policy and Android implementations. Coordinator
+  reviewed shared interfaces and owns tooling, documentation and integration.
+- Read-only GitHub CLI recovery found no newer runs than the known Nov 2
+  SHA `56f17c0f47a3d1a328be6c54df7b661c480924f8`. No workflow was dispatched;
+  those historical runs do not validate this unpublished tree.
+- CONT-039 changes pending ratchet receive correlation to weak ownership,
+  preserving strong inbound session authority and final destruction outside
+  the pending mutex. Destination teardown regression prepares unanswered NSR
+  cases without removing lost-reply controls. RT-031 remains unresolved.
+- CONT-040 adds eight native fair upload slots with event-driven rotation
+  after 30 seconds, immediate vacancies and choke-before-grant. Newly revoked
+  reads receive Fast rejections once while count/byte quota stays reserved.
+  Scheduler and ledger regressions are prepared; Java bandwidth/reciprocity
+  ranking and live parity remain separate pending work.
+- CONT-041 captures Android form view/session authority, revokes before
+  dismissal and preserves bounded nested torrent forms. JVM authority tests
+  and lifecycle instrumentation are prepared; device execution is pending.
+- CONT-042 gives registration tools typed fixed diagnostics for empty,
+  overlong, control/DEL and separator/backslash names without copying rejected
+  operands. CLI coverage prepares all four entry paths, pre-key rejection,
+  empty input and the accepted 255-byte boundary.
+- CONT-043 reviews upstream 328a56947e4821aa92b1abd2b01488afe5e73aae and
+  merge 4885bedfb490c42f0f831ae12ca4aab776c39021. Duplicate RPC severity is
+  adapted without the torrent name; absent browser-file diagnostics are not
+  restored. Java 2.14.0 remains the pinned comparison target.
+- No local configure, build, compiler, test runner, sanitizer, Gradle, package
+  run, commit or push was performed. New behavior remains Implemented / static
+  (upload-policy parity Partially implemented / static), Pending CI compilation
+  and Pending CI tests. Sandbox promises and spawn authority are unchanged;
+  exec/error remain prohibited and OpenBSD runtime guarantees remain pending.
+- Cross-review found allocation before choke revocation and the equivalent
+  snapshot/policy allocation seam. Both now fail closed by revoking grants
+  and upload admission before propagating; fallback registry traversal does
+  not allocate another snapshot. Source contracts pin both failure boundaries.
+- Android registration moved to the validated show boundary; nested forms do
+  not retain never-shown malformed pages. Static inspection of cached Material
+  and Appcompat signatures found the overridden APIs. MainActivity confirmation
+  lifetime remains a separate CONT-044 finding; permission/autostart flows were
+  not rewritten. The Android source contract was updated with the final seam.
+- Final compile-free consistency passed: control-security (including the four
+  new source contracts), build-system, tools-inventory, agent-skills,
+  language-modernization, Java 25 config, workflow policy, documentation links,
+  Doxygen parameters and git diff --check. The canonical knowledge validator
+  passed with AK004's expected relevance-review warning; coordinator reviewed
+  the new ownership, revocation, dialog nesting and diagnostic procedures for
+  semantic relevance. No unit, instrumentation or contract test runner ran.
+- Agent/skills synchronization: root AGENTS, discovery index and applicable
+  subsystem instructions were reviewed. AGENTS plus crypto, torrent, Android,
+  tooling and upstream skills now retain the reusable decisions above.
+  Tracking and technical matrices distinguish static implementation from
+  pending compilation, sanitizer, live peer and device evidence.
+
+## Complete Python-to-Perl migration — inventory and implementation
+
+- Three real subagents independently audited Python sources, shebangs,
+  embedded interpreters, imports and consumers before exclusive implementation
+  assignments: validator/module port, Test::More contract, CI/CMake/inventory.
+  Coordinator owns policy, migration documentation, tracking and integration.
+- Only two maintained Python files were found: the formerly exempt knowledge
+  validator and its black-box suite. Only the validator has a Python shebang;
+  only agent-maintenance invokes the interpreter. No additional Python build,
+  installation, package, generation or Android consumer was found. Existing
+  Perl i2pdctl and earlier ports were preserved rather than rewritten again.
+- User's complete migration supersedes the prior canonical-Python exception.
+  AGENTS now requires the shared observable contract through Perl, not byte
+  identity with the former Python implementation. No other adopting repository
+  was modified or represented as synchronized by this local work.
+- Original SHA-256 fingerprints, dependencies, compatibility review groups and
+  retained historical/third-party mentions are recorded in
+  docs/development/perl-migration.md. Original sources remain until coordinator
+  static comparison; no runtime equivalence or performance result is claimed.
+- No compiler/configure/build, Perl syntax command, Test::More/unittest/prove,
+  sanitizer, package operation, commit or push has been run for this migration.
+- Source comparison covered every original validator stage and original
+  black-box case. The originals' fingerprints were rechecked unchanged before
+  removal. The new core-only entry point, typed TOML module and Test::More
+  suite now replace both files; no Python bootstrap, runtime shim or CPAN
+  dependency remains. Original source remains recoverable from the recorded
+  Git revision for human review, not executable comparison in maintained CI.
+- Cross-review corrected Unicode filesystem/percent-decoded link boundaries,
+  Win32 pipe capture, dotted/inline TOML redefinition and numeric type handling.
+  Nested values/keys/inline tables have a 64-level guard; impossible-schema
+  numeric magnitudes cannot overflow native integers. Git operands are literal,
+  revision options are fenced, converters/fsmonitor disabled and child cleanup
+  is explicit. Regression fixtures retain original cases and add those seams.
+- A compile-free build-system check rejected the newly introduced module glob.
+  Repository-wide search distinguished source-graph globs from compile-free
+  inventory scans; CMake now lists modules explicitly and the portability
+  guard compares that list against recursive discovery. No guard was weakened.
+- Workflow syntax/critic file discovery now carries NUL-delimited Git paths,
+  avoiding splitting/globbing of filenames. The PR exception and manual-only
+  build/test workflows retain their existing trigger boundaries and SHA pins.
+- The new Perl checker passed the real worktree with seven checks, zero errors
+  and AK004's expected semantic-review warning. This is structural evidence,
+  not a Test::More, syntax-only command, cross-platform or performance result.
+  Source/skills, build-system, modernization, workflows, documentation links,
+  navigation and git diff --check passed after integration corrections.
+- Final independent and coordinator scans found no .py/.pyw/.pyi/.pyx/.pxd/
+  notebook source or Python shebang, embedded executor or active project
+  interpreter consumer. Historical logs/provenance and negative guard strings
+  remain intentionally; optional third-party MkDocs is not a required runtime.
+- Agent/skills synchronization reviewed root AGENTS, discovery index and the
+  tooling/build/CI Skills and reference map. Updated procedures retain typed
+  TOML/JSON/Git/Unicode boundaries, private portable capture, explicit module
+  inventories and the no-exception runtime policy. No Perl::Critic, perl -c,
+  Test::More/prove/unittest, build, package, commit, push or workflow dispatch
+  ran locally. PERL-010/011 remain Pending CI tests for full equivalence.
+- Final coordinator consistency pass: all nine selected compile-free commands
+  passed, including the Perl worktree checker (zero errors, AK004 review
+  warning), skill/build/language/tool inventories, workflows, links/navigation
+  and diff whitespace. Final rg scans returned no matches for Python source/
+  dependency manifests, Python shebangs, or interpreter mentions in active
+  build/CI/Gradle/package consumers. HEAD remains 38068e8d; all migration work
+  is local and no remote result is attributed to it. Full equivalence and
+  performance remain unverified pending the prepared CI runs.
+
+## Shell embedding removal and declarative Make continuation
+
+- Three real specialists independently inspected Shell/workflows, all five
+  Makefiles/rules and equivalent/generated/documentation patterns before
+  exclusive implementation. Existing dirty native, Android and Perl migration
+  work was preserved. The tests Makefile remains a simple forwarding shim.
+- Three active Perl source operands were removed: CI uses the interpreter's
+  metadata banner, and UNIX install-mode checks call discovered POSIX test -x.
+  Named-file syntax checks remain intact. The original two documented corpus/
+  SAM snippets now invoke standalone Perl files; the final scanner found a
+  third redundant Test::More probe, which was removed rather than wrapped.
+- Four Makefiles delegate control flow to Shell helpers. Root dependencies,
+  trailing quoted flag argv, prefix/staging and CMake/Ninja incremental
+  authority remain. Debian flag failures propagate and malformed/duplicate
+  parallel settings fail early. Static Debian copies the helper with its
+  control source directory. OpenBSD passes INSTALL_* as argv and invokes its
+  helper through the external port directory, avoiding reliance on a new file
+  in the already pinned release distfile. Source helpers are not runtime data.
+- Cleanup additionally rejects physical root, source and ancestor aliases;
+  descriptor-level protection against concurrent pathname replacement is not
+  claimed. Checked-in recording/vector/signal/marker fixtures replace generated
+  Perl programs, and prepared tests exercise propagation and failure behavior.
+- The SAM helper preserves visible HELLO result/version and successful-exchange
+  status even for NOVERSION, while rejecting unknown/private fields. Its
+  loopback, total-deadline and size bounds are explicit. Hex input is validated
+  before any binary output; malformed input is no longer silently packed.
+- New source-only shell policy scans 312 host/configuration/documentation
+  sources and now reports zero violations. Combined switches, stdin/heredocs,
+  common wrappers, Make variables and executable Markdown fences are pinned
+  by prepared negative fixtures; dynamically assembled commands still need
+  manual review. Reports redact source operands.
+- ShellCheck initially reported SC1007 for an implicit empty CDPATH assignment.
+  Equivalent-pattern search found only the new driver occurrence; explicit
+  empty quoting fixes it without suppressions. ShellCheck and sh -n passed
+  for all four new helpers. Perl::Critic is not available on PATH; no install
+  was attempted. Perl syntax-only commands and behavioral suites stay pending.
+- Final compile-free checks passed: source policy, workflow policy, CMake
+  build/package/tool inventories, Agent Skills, language policy, documentation
+  links/navigation and diff whitespace. The Perl knowledge checker passed
+  with zero errors and the expected AK004 semantic-review warning.
+- Agent/Skills synchronization reviewed root AGENTS, discovery inventory and
+  tooling/build/packaging/CI/OpenBSD procedures. Updates retain operand-role
+  classification, declarative driver contracts, source/fixture inventories,
+  external port-helper authority and explicit validation boundaries. Tracking
+  and docs distinguish static implementation from pending Make/package/runtime
+  evidence. No local Make, configure/build, test suite, package operation,
+  workflow dispatch, commit or push was executed.
+
+## Authorized signed publication review
+
+- The user explicitly authorized reviewing every uncommitted change, creating
+  cohesive commits and pushing main. This session-specific authorization
+  supersedes the default no-commit/no-push instruction for this publication;
+  it does not authorize local builds, tests or unrelated future publication.
+- Reviewed the tracked modifications/deletions and every untracked source with
+  three specialists. No generated output or credential artifact was
+  selected. Temporary index projections and baseline snapshots stayed outside
+  the repository. Existing source work was preserved through selective staging.
+- Kept native crypto, ratchet, executor, NTCP2, Datagram, IPC, OpenBSD, torrent,
+  tools, i18n and Android concerns separate. Script migration and its mutually
+  dependent helper/workflow/inventory consumers land together. Shared source
+  contracts follow their producers; implementation evidence remains distinct
+  from the final tracking update.
+- Two bounded review corrections were included: capability descriptions now
+  distinguish OpenBSD's enforced exec-free target from Linux replacement
+  behavior, and the Android metric fixture searches labels pointing at values
+  instead of reading the relationship backwards. Equivalent getter uses were
+  inspected; no device result is claimed.
+- Preserved the configured Git author/committer identity and OpenPGP signing.
+  Every created commit's signature and identity were inspected. An index-only
+  executable-mode regression was corrected in a follow-up commit rather than
+  rewriting history; the reviewed workflow gate guards accompany that fix.
+- Compile-free build/package/security/skill/workflow/source/documentation and
+  Java-25 configuration checks passed. Shell syntax and ShellCheck evidence
+  remains recorded above. No compiler, configure/build, Make, behavioral test,
+  sanitizer, Gradle/device or package execution was used for publication.
+- main and origin/main matched at review start (38068e8d). Publication uses a
+  normal push after a fresh remote check; no force or history rewrite is
+  authorized. Commit publication supplies no new CI evidence: compilation,
+  sanitizers, interoperability and device validation remain pending their
+  manual workflows on the resulting published revision.

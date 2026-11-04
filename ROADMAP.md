@@ -2180,3 +2180,95 @@ compilation/tests; no new runtime evidence is attributed to them. SNARK-012
 remains Partially implemented / static for advanced peer policy. Recovery
 withholds resolved admission when pause-policy scanning cannot complete;
 fallback retirement requires durable metainfo and administrative state.
+
+## Transport fail-closed, provider capability and torrent continuity
+
+CONT-019/020 close ignored SSU2 AEAD results, parser frame sizing and the
+missing X25519 provider gate. CONT-021 bounds routine resume persistence,
+exposes swarm availability, makes missing-payload promotion fail closed,
+clears stopped datagram queues and replaces TUI status substring matching with
+an exact token classifier. CONT-022 closes the remaining verifyhost/Perl/i18n
+and static-package contracts. CONT-023 strengthens the Java 25 API-29 guard and
+metric label association. CONT-024 records the `e485e138..2b92f2d4` upstream
+window. All are Implemented / static; manual CI compilation/tests and the
+Android UI/device lane remain the next evidence gates. Open priorities remain
+the Transports self-stop detach lifetime (CONC-002/TODO), network-worker
+separation, NTCP2 admission/options, Streaming destination cycles and
+I2PSnark serving/endgame policy.
+
+## OpenBSD pledge hardening without exec or error
+
+OPENBSD-SBX-13 removes `exec` and `error` from the promise table and every
+policy boundary. The supervisor now owns a pre-created active/reserve log
+worker pair and pledges only `stdio proc`; it never executes a replacement.
+The on-demand torrent-storage broker is disabled because it required exec, and
+isolated torrent storage fails closed until a pre-created worker-pool design is
+proven. The core spawns every worker while unpledged, installs a first pledge
+with `unveil`, then drops to runtime with no `exec`, `error` or `id`.
+Implemented / static; OpenBSD compilation, pledge-runtime, broker and service
+validation remain pending manual CI.
+
+### Registry and capability continuation
+
+CONT-025..CONT-028 add synchronous peer-slot retirement, owner-checked
+teardown, torrent completion authority, NTCP2 pending-slot ownership and SAF
+mode-preserving cleanup. Implementation is static; compilation and tests are
+pending manual CI. Temporary SAF borrowers now share bounded process-wide
+lease accounting; external-process consumers remain outside that boundary.
+The OpenBSD promise review preserves the exec/error prohibition and records
+per-role evidence gaps; pre-created torrent-storage provisioning remains open.
+
+### Executor, verification and IPC response continuation
+
+CONT-029..CONT-034 address the idle-executor timeout cause, equivalent NTP
+startup/restart seam, pending NTCP2 source-prefix exhaustion, torrent recheck
+ownership and single-flight data-storage response corruption. CONT-027 now
+includes bounded process-wide SAF leases and deferred mapping revocation.
+Manual CI retains exact sanitizer reproducers for unresolved leak/lifecycle
+attribution. All new implementations and regressions remain static/pending CI;
+no global privilege-separation or full NET-172 completion is claimed.
+
+### Startup publication, initial reads and creation bounds
+
+CONT-035 repairs reused logger publication authority; CONT-036 covers only
+the first 64 inbound NTCP2 request bytes with a cancellable 10-second deadline.
+CONT-038 bounds SAF creation inputs before retention and JNI copying, with
+UTF-8 component parity and final hash accounting. CONT-037 advances bounded
+cold-piece serving and exact cancellation without claiming upload-slot or
+endgame completion. Static implementations and prepared regressions await
+manual CI; full handshake ownership and provider behavior remain open.
+
+### Reply correlation, native slots and Android dialog authority
+
+CONT-039..CONT-043 remove a ratchet correlation cycle, add bounded fair native
+upload grants, revoke Android form authority across view/session replacement
+and correct private registration/RPC diagnostics. Java reciprocity scheduling,
+endgame, full worker isolation and exact historical sanitizer attribution
+remain open. Implementations and prepared regressions are static; compilation,
+sanitizers, JVM/device behavior and live interoperability await manual CI.
+
+### Complete maintenance-language migration
+
+PERL-010/011 replace the shared validator's former Python exception with a
+core-only Perl implementation and Test::More contract. The project retains the
+shared CLI/report/configuration semantics without requiring Python source
+byte identity. Workflows, CMake inventories and developer instructions use
+Perl; whole-tree source/dependency guards have no Python allowlist. Source and
+security review precede removal; runtime equivalence, performance and platform
+coverage remain pending authorized CI.
+
+### Shell source boundaries and declarative Make
+
+SHELL-001..003 replace interpreter source operands with native operations or
+named Perl helpers and delegate Make control flow to source-controlled Shell.
+The native prerequisite graph, CMake/Ninja incremental authority and Debian/
+OpenBSD framework boundaries remain intact. Source-only guards and prepared
+mock/interop regressions pin the new organization; actual Make, package and
+behavioral execution remain pending manual CI.
+
+### Authorized publication of the accumulated continuation
+
+The reviewed implementation, regression and maintenance increments are split
+into signed subsystem commits under explicit user authorization. Publication
+does not promote static work to Validated by CI; supported compiler, sanitizer,
+package, live-peer and device lanes still need the published revision.
