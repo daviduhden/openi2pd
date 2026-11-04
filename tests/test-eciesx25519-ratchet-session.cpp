@@ -334,6 +334,27 @@ void CheckHandshakePayloadValidation ()
 
 void InteropLoop (CryptoKeyType type, const char * label)
 {
+	// An unanswered reply keeps inbound tagsets live in the destination,
+	// but pending split bookkeeping must not keep itself alive after the
+	// destination and external session owners are released.
+	{
+		Peer initiator = MakePeer (type);
+		Peer responder = MakePeer (type);
+		Establish (initiator, responder, { 0x31, 0x32 });
+		auto firstReply = responder.session->WrapSingleMessage (MakeDataMessage ({ 0x41 }, 0x99110001));
+		auto lostReply = responder.session->WrapSingleMessage (MakeDataMessage ({ 0x42 }, 0x99110002));
+		assert (firstReply && lostReply);
+		assert (responder.session->GetNumPendingReplyTagsets () == 2);
+		std::weak_ptr<ECIESX25519AEADRatchetSession> responderWeak = responder.session;
+		std::weak_ptr<ECIESX25519AEADRatchetSession> initiatorWeak = initiator.session;
+		responder.session.reset ();
+		assert (!responderWeak.expired ()); // inbound map remains authority
+		responder.destination.reset ();
+		assert (responderWeak.expired ());
+		initiator.session.reset ();
+		initiator.destination.reset ();
+		assert (initiatorWeak.expired ());
+	}
 	Peer alice = MakePeer (type);
 	Peer bob = MakePeer (type);
 	const std::vector<uint8_t> first { 1, 2, 3, 4, 5 };

@@ -356,7 +356,10 @@ namespace garlic
 		// tag.
 		struct PendingReplyTagsets
 		{
-			std::shared_ptr<ReceiveRatchetTagSet> receive;
+			// The destination's inbound tag map owns receive tagsets, which
+			// retain this session. Pending correlation must not close that
+			// ownership cycle; the outbound candidate remains owned here.
+			std::weak_ptr<ReceiveRatchetTagSet> receive;
 			std::shared_ptr<RatchetTagSet> send;
 			uint64_t created = 0; // seconds
 		};

@@ -1056,7 +1056,7 @@ namespace garlic
 			m_PendingReplyTagsets.push_back ({ std::move (receive), std::move (send), now });
 		}
 		for (auto & it : dropped)
-			if (it.receive) it.receive->Expire ();
+			if (auto receive = it.receive.lock ()) receive->Expire ();
 	}
 
 	std::shared_ptr<RatchetTagSet> ECIESX25519AEADRatchetSession::TakeMatchingPendingSendTagset (
@@ -1064,11 +1064,18 @@ namespace garlic
 	{
 		std::shared_ptr<RatchetTagSet> send;
 		std::list<PendingReplyTagsets> discarded;
+		// Retain successful weak locks until after the pending mutex is
+		// released: a tagset destructor may call back into its session.
+		std::array<std::shared_ptr<ReceiveRatchetTagSet>, ECIESX25519_MAX_PENDING_REPLY_TAGSETS> receiveOwners;
+		size_t inspected = 0;
 		{
 			std::lock_guard<std::mutex> l (m_PendingReplyTagsetsMutex);
-			for (auto it = m_PendingReplyTagsets.begin (); it != m_PendingReplyTagsets.end (); ++it)
+			for (auto it = m_PendingReplyTagsets.begin ();
+				it != m_PendingReplyTagsets.end () && inspected < receiveOwners.size (); ++it)
 			{
-				if (it->receive.get () == receiveTagset.get ())
+				auto & receive = receiveOwners[inspected++];
+				receive = it->receive.lock ();
+				if (receive && receive == receiveTagset)
 				{
 					send = std::move (it->send);
 					m_PendingReplyTagsets.erase (it);
@@ -1083,7 +1090,7 @@ namespace garlic
 			}
 		}
 		for (auto & it : discarded)
-			if (it.receive) it.receive->Expire ();
+			if (auto receive = it.receive.lock ()) receive->Expire ();
 		if (send) LogPrint (eLogDebug, "Garlic: Promoted pending send tagset ", send->GetTagSetID ());
 		return send;
 	}
@@ -1104,7 +1111,7 @@ namespace garlic
 			}
 		}
 		for (auto & it : discarded)
-			if (it.receive) it.receive->Expire ();
+			if (auto receive = it.receive.lock ()) receive->Expire ();
 		if (send) LogPrint (eLogDebug, "Garlic: Promoted oldest pending send tagset ", send->GetTagSetID ());
 		return send;
 	}
@@ -1117,7 +1124,7 @@ namespace garlic
 			discarded.swap (m_PendingReplyTagsets);
 		}
 		for (auto & it : discarded)
-			if (it.receive) it.receive->Expire ();
+			if (auto receive = it.receive.lock ()) receive->Expire ();
 	}
 
 	void ECIESX25519AEADRatchetSession::ExpirePendingReplyTagsets (uint64_t ts)
@@ -1137,7 +1144,7 @@ namespace garlic
 			}
 		}
 		for (auto & it : expired)
-			if (it.receive) it.receive->Expire ();
+			if (auto receive = it.receive.lock ()) receive->Expire ();
 	}
 
 	bool ECIESX25519AEADRatchetSession::NewOutgoingSessionMessage (

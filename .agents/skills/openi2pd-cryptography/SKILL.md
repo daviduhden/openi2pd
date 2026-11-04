@@ -93,6 +93,13 @@ executing project code, or inspect a real private key.
 
 ## Known issues and decisions
 
+- Pending ratchet reply correlation borrows its receive tagset; the inbound
+  tag map retains the session through that tagset. Making both edges strong
+  creates a session/tagset cycle even after destination teardown. Lock weak
+  references before use, retain successful locks outside the pending mutex,
+  and preserve inbound authority plus lost-reply promotion regressions.
+  The teardown regression is not attribution of historical RT-031 leaks.
+
 - Family certificate loading has a related filename-count pitfall: count
   successful map insertions, not attempted files. Do not copy reseed map
   replacement into Families without invalidating RouterInfo's cached
