@@ -566,7 +566,21 @@ namespace util
 	void Daemon_Singleton::StopPrivsepWorkers ()
 	{
 #if !defined(_WIN32) && !defined(I2PD_NO_PRIVSEP)
-		if (d->routerStorage) d->routerStorage->Stop ();
+		// Unix startup can fail after init() has installed these backends.
+		// Revoke callbacks before reaping their workers; delegated writes
+		// must fail closed rather than retain a stopped storage authority.
+		if (d->dataStorage)
+		{
+			i2p::data::ClearArtifactStorage ();
+			d->dataStorage->Stop ();
+			d->dataStorage.reset ();
+		}
+		if (d->routerStorage)
+		{
+			i2p::data::InstallRouterPersistenceWriter ([] (auto, auto) { return false; });
+			d->routerStorage->Stop ();
+			d->routerStorage.reset ();
+		}
 		if (d->privsepLog) StopPrivsepLogWorker ();
 #endif
 	}

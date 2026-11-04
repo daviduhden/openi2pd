@@ -78,7 +78,9 @@ namespace util
 		 * both.
 		 */
 		bool PreparePrivsepWorkers ();
-		/** Stop prepared workers during a startup rollback. */
+		/** Revoke installed storage callbacks and reap prepared workers
+		 * during Unix startup rollback, including workers started by init().
+		 */
 		void StopPrivsepWorkers ();
 
 		// d-pointer for the optional IPC service and UPnP/NTP helpers
