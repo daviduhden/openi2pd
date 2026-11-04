@@ -261,3 +261,22 @@ published revision actually runs this option.
 Procedures follow [Microsoft's PageHeap documentation](https://learn.microsoft.com/en-us/windows-hardware/drivers/debugger/gflags-and-pageheap),
 [CDB command-line reference](https://learn.microsoft.com/en-us/windows-hardware/drivers/debugger/cdb-command-line-options)
 and [CMake's symbol-format reference](https://cmake.org/cmake/help/latest/variable/CMAKE_MSVC_DEBUG_INFORMATION_FORMAT.html).
+
+### Exact sanitizer reproduction artifacts
+
+The manual sanitizer lane retains the EdDSA, tunnel stop/targets, ratchet and
+RunnableService/I2CP lifecycle executables with its logs. A manifest records
+the tested Git revision and SHA-256 of each available image; an explicit list
+identifies images not produced by a failed build. Use those exact images for
+raw-PC symbolization, never a locally rebuilt replacement. No memory dump or
+credential-bearing runtime snapshot is collected. This artifact extension is
+prepared statically and awaits a published manual run.
+
+The agent-maintenance gate now uses the system Perl interpreter, the shared
+Test::More validator contract and `--scope range` with the PR base/head SHAs.
+There is no setup-python action. The manual Validation skills lane runs the
+same contract plus a worktree structural scan; CMake also registers
+`perl-agent-knowledge-contract` when Perl is available. Syntax and optional
+Critic inventories include the validator's modules. A clean checkout scan
+alone does not exercise changed-file gating; the black-box fixtures do that.
+The Perl migration remains Pending CI tests until a published revision runs.

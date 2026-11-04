@@ -63,17 +63,9 @@ my %skip_directory = map { $_ => 1 } qw(
   out target venv
 );
 
-# AGENTS.md requires this shared checker and its contract suite to stay
-# byte-identical across adopters. They are the only Python exceptions.
-my @shared_python_contract = (
-    'scripts/validate-agent-knowledge.py',
-    'tests/agent_knowledge_validator/test_validator.py',
-);
-my %shared_python_contract = map { $_ => 1 } @shared_python_contract;
-
 # Generated and dependency trees are not project sources; scanning them would
 # report third-party files that the project does not maintain.
-my ( @python_files, @python_shebang );
+my ( @python_files, @python_shebang, @perl_modules );
 
 find(
     {
@@ -86,10 +78,10 @@ find(
             return if -d $path;
             my $name     = basename($path);
             my $relative = repo_relative($path);
-            my $is_shared_python_contract = $shared_python_contract{$relative};
+            push @perl_modules, $relative
+              if $relative =~ m{\Ascripts/lib/.*\.pm\z};
             push @python_files, $relative
-              if !$is_shared_python_contract
-              && ( $name =~ /\.(?:py|pyw|pyi|pyx|pxd|ipynb)\z/i
+              if ( $name =~ /\.(?:py|pyw|pyi|pyx|pxd|ipynb)\z/i
                 || $name =~ /\.py\.in\z/i
                 || $name =~
 /\A(?:SConstruct|SConscript|wscript|pyproject\.toml|setup\.cfg|requirements[^\/]*\.txt)\z/i
@@ -105,8 +97,7 @@ find(
                 my $shebang = join "\n",
                   @head[ 0 .. ( $#head < 2 ? $#head : 2 ) ];
                 if (
-                    !$is_shared_python_contract
-                    && (   $shebang =~ /^#!.*\b(?:python|pypy)[0-9.]*\b/im
+                    (   $shebang =~ /^#!.*\b(?:python|pypy)[0-9.]*\b/im
                         || $shebang =~ /^#!.*\b(?:python|pypy)[0-9.]*\b/i )
                   )
                 {
@@ -118,21 +109,21 @@ find(
     $root
 );
 
-for my $relative (@shared_python_contract) {
-    ok( -f File::Spec->catfile( $root, split m{/}, $relative ),
-        "$relative exists" );
-}
-is_deeply( \@python_files, [], 'no other project-maintained Python sources' );
+is_deeply( \@python_files, [], 'no project-maintained Python sources' );
 is_deeply( \@python_shebang, [],
-    'no other Python shebangs in maintained files' );
+    'no Python shebangs in maintained files' );
 
 my @scripts = (
+    'scripts/validate-agent-knowledge.pl',
+    'tests/agent_knowledge_validator/test_validator.t',
+    'tests/agent_knowledge_validator/fixtures/execution-marker.pl',
     'tools/scripts/i2pdctl',
     'tools/scripts/check-doc-links.pl',
     'tools/scripts/check-doc-nav.pl',
     'tools/scripts/check-doxygen-params.pl',
     'tools/scripts/validate-branding.pl',
     'tools/scripts/check-workflows.pl',
+    'tools/scripts/check-shell-policy.pl',
     'tools/tests/cpp-comment-integrity.t',
     'tools/tests/i2pdctl.t',
     'tools/tests/validate-branding.t',
@@ -143,16 +134,32 @@ my @scripts = (
     'android/tools/check-android-jni-symbols.pl',
     'i18n/check-i18n-catalogs.pl',
     'tools/tests/maintenance-checkers.t',
+    'tools/tests/make-drivers.t',
+    'tools/tests/interop-helpers.t',
+    'tools/tests/fixtures/record-build-command.pl',
+    'tools/tests/fixtures/vector-status-stub.pl',
+    'tools/tests/fixtures/signal-child.pl',
+    'tests/interop/hex-to-binary.pl',
+    'tests/interop/sam-stream-send.pl',
+    sort @perl_modules,
 );
 
 my @discovered = map { repo_relative($_) }
   grep { -f $_ } (
     glob( File::Spec->catfile( $root, 'tools',   'scripts', '*' ) ),
     glob( File::Spec->catfile( $root, 'tools',   'tests',   '*.t' ) ),
+    glob( File::Spec->catfile( $root, 'tools',   'tests', 'fixtures', '*.pl' ) ),
     glob( File::Spec->catfile( $root, 'tests',   'interop', '*.pl' ) ),
     glob( File::Spec->catfile( $root, 'android', 'tools',   '*.pl' ) ),
     glob( File::Spec->catfile( $root, 'i18n',    '*.pl' ) )
   );
+push @discovered, map { repo_relative($_) }
+  grep { -f $_ } (
+    glob( File::Spec->catfile( $root, 'scripts', '*.pl' ) ),
+    glob( File::Spec->catfile( $root, 'tests', 'agent_knowledge_validator', '*.t' ) ),
+    glob( File::Spec->catfile( $root, 'tests', 'agent_knowledge_validator', 'fixtures', '*.pl' ) )
+  );
+push @discovered, @perl_modules;
 is_deeply(
     [ sort @discovered ],
     [ sort @scripts ],
@@ -184,13 +191,21 @@ SKIP: {
 }
 
 # Modules shipped with the Perl core on OpenBSD/Linux. This also rejects
-# accidental CPAN or runtime downloads.
+# accidental CPAN or runtime downloads. Imports of repository modules
+# are permitted only when their namespace resolves to scripts/lib.
 my %allowed_module = map { $_ => 1 } qw(
-  strict warnings
-  Config Cwd Digest::SHA File::Basename File::Find File::Path File::Spec File::Temp
+  strict warnings lib constant utf8
+  Config Cwd Digest::SHA Encode Errno File::Basename File::Copy File::Find File::Path File::Spec File::Temp
   FindBin Getopt::Long HTTP::Tiny IO::Select IO::Socket::INET IPC::Open3
   JSON::PP POSIX Symbol Test::More
 );
+my %maintained_module = map {
+    my $module = $_;
+    $module =~ s{\Ascripts/lib/}{};
+    $module =~ s{\.pm\z}{};
+    $module =~ s{/}{::}g;
+    $module => 1;
+} @perl_modules;
 
 my @dangerous = (
     [ qr/(?<![\w:])system\s*\(/,             'system invocation' ],
@@ -217,7 +232,7 @@ for my $relative (@scripts) {
         $line,
         qr/\A#!\/usr\/bin\/env perl\b/,
         "$relative uses a portable Perl shebang"
-    ) if defined $line;
+    ) if defined $line && $relative !~ /\.pm\z/;
     like( $text, qr/^\s*use\s+strict\s*;/m,   "$relative enables strict" );
     like( $text, qr/^\s*use\s+warnings\s*;/m, "$relative enables warnings" );
     unlike(
@@ -234,6 +249,7 @@ for my $relative (@scripts) {
     if (
         $^O ne 'MSWin32'
         && (   $relative =~ m{\A(?:tools/scripts|android/tools|i18n)/}
+            || $relative eq 'scripts/validate-agent-knowledge.pl'
             || $relative eq 'tests/interop/check-vectors.pl' )
       )
     {
@@ -242,7 +258,8 @@ for my $relative (@scripts) {
 
     while ( $text =~ /^\s*(?:use|require)\s+([A-Za-z_][A-Za-z0-9_:]*)/mg ) {
         my $module = $1;
-        ok( $allowed_module{$module}, "$relative uses core module $module" );
+        ok( $allowed_module{$module} || $maintained_module{$module},
+            "$relative uses core or maintained module $module" );
     }
 
     for my $rule (@dangerous) {
@@ -268,6 +285,59 @@ ok(
     'optional Perl::Critic profile is present'
 );
 
+# Every maintained script except i2pdctl must be compiled by the syntax
+# sweep; i2pdctl has its own perl-i2pdctl-syntax target. The optional
+# critic target names every script, including i2pdctl and its own
+# profile operand. Both lists are compared with the inventory above in
+# both directions, so an omitted or stale entry fails here instead of
+# silently skipping a syntax or style check.
+sub cmake_list_entries {
+    my ( $text, $pattern ) = @_;
+    return () unless $text =~ $pattern;
+    my $block = $1;
+    my $operand =
+      qr/"\$\{(CMAKE_CURRENT_SOURCE_DIR|PROJECT_ROOT)\}\/([^"]+)"/;
+    my @entries;
+    while ( $block =~ /$operand/g ) {
+        my ( $anchor, $tail ) = ( $1, $2 );
+        my $relative =
+          $anchor eq 'CMAKE_CURRENT_SOURCE_DIR' ? "tools/$tail" : $tail;
+
+        # The critic command also names its profile; only script
+        # operands belong to the inventory comparison.
+        push @entries, $relative
+          if $relative =~ /\.(?:pl|pm|t)\z/ || $relative =~ m{/i2pdctl\z};
+    }
+    return @entries;
+}
+
+my @expected_syntax = grep { $_ ne 'tools/scripts/i2pdctl' && !/\.pm\z/ } @scripts;
+my @syntax_entries = cmake_list_entries( $tools_cmake,
+    qr/set\(I2PD_PERL_SYNTAX_SCRIPTS(.*?)\)\n/s );
+is_deeply(
+    [ sort @syntax_entries ],
+    [ sort @expected_syntax ],
+    'the CMake syntax sweep registers every maintained script except i2pdctl'
+);
+
+my @critic_entries =
+  cmake_list_entries( $tools_cmake, qr/add_test\(NAME perl-critic(.*?)\)\n/s );
+is_deeply(
+    [ sort @critic_entries ],
+    [ sort grep { !/\.pm\z/ } @scripts ],
+    'the optional Perl::Critic target registers every maintained script'
+);
+my @cmake_modules = cmake_list_entries($tools_cmake,
+    qr/set\(I2PD_AGENT_KNOWLEDGE_MODULES(.*?)\)\n/s);
+is_deeply([sort @cmake_modules], [sort @perl_modules],
+    'explicit CMake module inventory matches recursive source discovery');
+like($tools_cmake,
+    qr/list\(APPEND I2PD_PERL_SYNTAX_SCRIPTS \$\{I2PD_AGENT_KNOWLEDGE_MODULES\}\)/,
+    'validator modules participate in syntax coverage');
+like($tools_cmake,
+    qr/add_test\(NAME perl-critic.*?\$\{I2PD_AGENT_KNOWLEDGE_MODULES\}/s,
+    'validator modules participate in optional style coverage');
+
 # Build consumers must not regress to Python. Documentation that records the
 # historical migration is intentionally not included in this list.
 my @consumers = (
@@ -284,6 +354,7 @@ my @consumers = (
     '.github/workflows/build-windows.yml',
     '.github/workflows/build-openbsd.yml',
     '.github/workflows/packaging.yml',
+    '.github/workflows/agent-maintenance.yml',
     'debian/rules',
     'debian/control',
     'contrib/rpm/i2pd.spec',
@@ -304,10 +375,9 @@ my @consumers = (
 );
 
 # An ignore file is data, not a command: its '#' lines are documentation
-# and may name the shared Python validator without invoking anything. Only
-# the effective patterns are scanned, so the Python bytecode entries that
-# AGENTS.md requires stay allowed while a real interpreter or package
-# command in a pattern is still rejected.
+# may describe historical tools without invoking anything. Only the
+# effective patterns are scanned; a real interpreter or package command
+# in a pattern is still rejected.
 my %comment_only_consumer = map { $_ => 1 } qw(.gitignore .dockerignore);
 for my $relative (@consumers) {
     my $path = File::Spec->catfile( $root, split m{/}, $relative );
@@ -344,15 +414,16 @@ compiling or running the project. It asserts that:
 =item *
 
 no project-maintained Python source, SCons/setuptools metadata or Python
-shebang exists outside the generated and dependency trees, except for the
-canonical validator and byte-identical contract tests required by
-F<AGENTS.md>;
+shebang exists outside the generated and dependency trees;
 
 =item *
 
 the maintained script inventory equals the scripts discovered under
 F<tools/scripts/>, F<tools/tests/>, F<tests/interop/>, F<android/tools/> and
-F<i18n/>. Adding, renaming or removing a script therefore requires updating
+F<i18n/>, F<scripts/> and F<tests/agent_knowledge_validator/>. Validator
+modules under F<scripts/lib/> are discovered recursively and checked for
+core dependencies and safe source patterns without a program shebang.
+Adding, renaming or removing a script therefore requires updating
 the C<@scripts> list in this file. Both sides are repository-relative paths
 with C</> separators on every platform: C<File::Spec-E<gt>abs2rel> returns the
 native separator, so an unnormalised discovery compares as
@@ -360,10 +431,11 @@ C<android\tools\name.pl> on Windows and never matches the manifest;
 
 =item *
 
-each script has a portable Perl shebang, enables C<strict> and C<warnings>
-without disabling them again, carries no Python shebang, is executable on
-POSIX hosts where the layout requires it, and loads only modules from the core
-allowlist (which is also what rejects a CPAN or runtime download);
+each program has a portable Perl shebang; programs and modules enable
+C<strict> and C<warnings> without disabling them again, carry no Python
+shebang, and are executable on POSIX hosts where the layout requires it.
+Imports must name either a core allowlisted module or a maintained
+C<scripts/lib> namespace; this rejects a CPAN or runtime download;
 
 =item *
 
@@ -373,8 +445,11 @@ helpers, world-writable modes and single-scalar pipe opens;
 =item *
 
 F<tools/CMakeLists.txt> installs C<i2pdctl> as a program and discovers the
-Perl interpreter, the optional F<.perlcriticrc> profile is present, and the
-build, packaging and Android wiring files contain no Python invocation.
+Perl interpreter, the optional F<.perlcriticrc> profile is present, the
+compile-only syntax sweep and the optional Perl::Critic target each register
+exactly the maintained inventory above (the syntax sweep covers everything
+except C<i2pdctl>, which has its own target), and the build, packaging and
+Android wiring files contain no Python invocation.
 
 =back
 

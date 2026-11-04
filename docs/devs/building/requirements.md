@@ -37,7 +37,7 @@ Optional:
   Windows uses the Win32 console/VT backend and needs no Curses library; see
   [TUI on Windows](../../TUI-WINDOWS.md).
 * Perl 5.16+ with core modules for the optional static checks, `i2pdctl` and
-  the Test::More suites; `prove` is used when present and the TAP files run
+  the agent-knowledge validator and Test::More suites; `prove` is used when present and the TAP files run
   directly otherwise. `perlcritic` is optional and never downloaded. Without
   Perl, `BUILD_TESTING` still builds the native tests but skips the Perl
   guards; see [Python-to-Perl migration](../../development/perl-migration.md).

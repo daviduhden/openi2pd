@@ -31,49 +31,38 @@ CMAKE_GENERATOR = Ninja
 CMAKE_FLAGS =
 DESTDIR =
 PREFIX =
+MAKE_DRIVER = sh build/make-driver.sh
+MAKE_DRIVER_ARGS = "${CMAKE}" "${BUILD_DIR}" "${CMAKE_GENERATOR}" "${DESTDIR}" "${PREFIX}"
 
 .PHONY: all configure build router tui tools test check install clean dist
 
 all: build
 
 configure:
-	"${CMAKE}" -S build -B "${BUILD_DIR}" -G "${CMAKE_GENERATOR}" ${CMAKE_FLAGS}
+	${MAKE_DRIVER} configure ${MAKE_DRIVER_ARGS} ${CMAKE_FLAGS}
 
 build: configure
-	"${CMAKE}" --build "${BUILD_DIR}"
+	${MAKE_DRIVER} build ${MAKE_DRIVER_ARGS}
 
 router:
-	"${CMAKE}" -S build -B "${BUILD_DIR}" -G "${CMAKE_GENERATOR}" -DI2PD_BUILD_TUI=OFF ${CMAKE_FLAGS}
-	"${CMAKE}" --build "${BUILD_DIR}" --target i2pd
+	${MAKE_DRIVER} router ${MAKE_DRIVER_ARGS} ${CMAKE_FLAGS}
 
 tui:
-	"${CMAKE}" -S build -B "${BUILD_DIR}" -G "${CMAKE_GENERATOR}" -DI2PD_BUILD_TUI=ON ${CMAKE_FLAGS}
-	"${CMAKE}" --build "${BUILD_DIR}" --target i2pd-tui
+	${MAKE_DRIVER} tui ${MAKE_DRIVER_ARGS} ${CMAKE_FLAGS}
 
 tools:
-	"${CMAKE}" -S build -B "${BUILD_DIR}" -G "${CMAKE_GENERATOR}" -DI2PD_BUILD_TOOLS=ON -DI2PD_BUILD_TUI=OFF ${CMAKE_FLAGS}
-	"${CMAKE}" --build "${BUILD_DIR}"
+	${MAKE_DRIVER} tools ${MAKE_DRIVER_ARGS} ${CMAKE_FLAGS}
 
 test:
-	"${CMAKE}" -S build -B "${BUILD_DIR}" -G "${CMAKE_GENERATOR}" -DBUILD_TESTING=ON -DI2PD_BUILD_TUI=OFF ${CMAKE_FLAGS}
-	"${CMAKE}" --build "${BUILD_DIR}"
-	ctest --test-dir "${BUILD_DIR}" --output-on-failure
+	${MAKE_DRIVER} test ${MAKE_DRIVER_ARGS} ${CMAKE_FLAGS}
 
 check: test
 
 install: build
-	@if [ -n "${PREFIX}" ]; then \
-		DESTDIR="${DESTDIR}" "${CMAKE}" --install "${BUILD_DIR}" --prefix "${PREFIX}"; \
-	else \
-		DESTDIR="${DESTDIR}" "${CMAKE}" --install "${BUILD_DIR}"; \
-	fi
+	@${MAKE_DRIVER} install ${MAKE_DRIVER_ARGS}
 
 clean:
-	@case "${BUILD_DIR}" in ""|"."|".."|"/") echo "refusing to remove unsafe BUILD_DIR" >&2; exit 1;; esac
-	@if [ -f "${BUILD_DIR}/CMakeCache.txt" ]; then \
-		"${CMAKE}" -E remove_directory "${BUILD_DIR}"; \
-	else \
-		echo "refusing to remove ${BUILD_DIR}: no CMakeCache.txt" >&2; exit 1; fi
+	@${MAKE_DRIVER} clean ${MAKE_DRIVER_ARGS}
 
 dist:
-	git archive --format=tar.gz -9 --prefix=openi2pd/ HEAD -o openi2pd.tar.gz
+	${MAKE_DRIVER} dist ${MAKE_DRIVER_ARGS}

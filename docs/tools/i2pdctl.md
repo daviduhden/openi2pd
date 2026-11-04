@@ -99,7 +99,9 @@ git diff --check
 ```
 
 CMake registers `perl-i2pdctl-syntax`, `perl-i2pdctl`, `perl-portability`,
-`perl-validate-branding` and `perl-install-layout` when Perl is available.
+`perl-maintenance-checkers`, `perl-cpp-comment-integrity`,
+`perl-validate-branding`, `perl-install-layout` and a `perl-syntax-*` target
+for every other maintained Perl script when Perl is available.
 `perl-install-layout` installs only the `Tools` component into a private
 prefix and checks the installed file mode, shebang and `perl -c` syntax.
 Test::More is used by the client and branding tests; Perl::Critic remains an

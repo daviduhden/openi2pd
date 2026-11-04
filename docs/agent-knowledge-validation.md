@@ -11,17 +11,18 @@ repository's agent instructions, related skills and tests.
 
 ## Run the validator
 
-Requirements: Python 3.11 or newer and Git. The validator uses only Python's
-standard library. Run it from inside the repository worktree:
+Requirements: Perl 5.16 or newer and Git. The validator uses only core Perl
+modules; no Python interpreter, CPAN installation or runtime download is
+required. Run it from inside the repository worktree:
 
 ```sh
-python3 scripts/validate-agent-knowledge.py --help
-python3 scripts/validate-agent-knowledge.py --scope worktree
-python3 scripts/validate-agent-knowledge.py \
+perl scripts/validate-agent-knowledge.pl --help
+perl scripts/validate-agent-knowledge.pl --scope worktree
+perl scripts/validate-agent-knowledge.pl \
   --scope range --base BASE_REF --head HEAD_REF
-python3 scripts/validate-agent-knowledge.py \
+perl scripts/validate-agent-knowledge.pl \
   --scope range --base BASE_REF --head HEAD_REF --format json
-python3 -m unittest discover -s tests/agent_knowledge_validator -v
+prove -v tests/agent_knowledge_validator/test_validator.t
 ```
 
 `worktree` includes staged and unstaged tracked changes, untracked non-ignored
@@ -103,15 +104,21 @@ traversals, and incompatible contract versions fail with exit code `2`.
 
 ## Extending and replicating the contract
 
-Keep `scripts/validate-agent-knowledge.py` byte-identical across adopting
-repositories. The standard black-box suite at
-`tests/agent_knowledge_validator/test_validator.py` must also remain
-equivalent and pass with `unittest`. Repository-specific config is the only
+Keep `scripts/validate-agent-knowledge.pl`, its module tree under `scripts/lib/`
+and the black-box suite at
+`tests/agent_knowledge_validator/test_validator.t` synchronized across Perl
+adopters. The language migration preserves the CLI, rule identifiers, report
+schema and exit codes, rather than byte identity with the former Python
+source. Other repositories are not changed by this local migration.
+Repository-specific config is the only
 normal way to add deterministic constraints. If a distinct extension needs
 code, give it a stable identifier outside `AK001`–`AK006`, document why it
 cannot be expressed by the shared configuration, and add equivalent tests.
 
 Before changing the contract, update this document, `AGENTS.md`, related
 skills, tests, and each adopted repository's CI invocation. Run the test suite
-and both documented CLI modes. Never auto-edit instruction files to satisfy
-the gate.
+and both documented CLI modes in authorized CI. Under the repository's local
+static-only policy, prepare these runs and report their pending status; do not
+execute the Test::More suite locally. Never auto-edit instruction files to
+satisfy the gate. Migration inventory and source-equivalence limitations live
+in [the Perl migration report](development/perl-migration.md).

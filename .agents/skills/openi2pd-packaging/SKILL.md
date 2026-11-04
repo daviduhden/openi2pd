@@ -105,6 +105,12 @@ Ask for exact paths and package names. Do not let them run `dpkg-buildpackage`,
   duplicate action.
 
 ## Known issues and decisions
+- Package Makefiles delegate procedural work without changing framework
+  authority: Debian build flags and parallel options belong in its driver;
+  the static payload helper travels with the copied `debian/` directory.
+  OpenBSD sample installation receives `INSTALL_*` as actual argv, never
+  command strings to eval. Check staging paths and substitution timing in
+  both Makefiles and helpers; a helper is build-time source, not daemon data.
 - The service checker derives the daemon option allowlist from
   `libi2pd/Config.cpp` and requires the 660 s stop budget across managers;
   OpenRC and runit log paths use `0700`/`0600` with `umask 077`. Every

@@ -212,6 +212,20 @@ following shared interfaces require coordinator review before integration:
 
 ## Workflow
 
+For ownership reviews, distinguish retaining authority from correlation:
+an inbound ratchet tagset must retain its session, while the session's pending
+reply index borrows that tagset. Exercise teardown as well as successful and
+lost-reply matching, and keep final destructors outside correlation mutexes.
+For Android forms, capture view/session authority at creation, revoke before
+dismissal, and preserve bounded nested forms when replacing dialog plumbing.
+
+Publication reviews must inspect the staged snapshot as well as the worktree.
+Worktree consistency checks can see uncommitted dependencies and do not prove
+that a partial commit is self-contained. Preserve executable modes when
+staging projected file content, and pair new script inventories and consumers
+with every referenced helper. Keep temporary index projections outside the
+repository and leave the working files intact.
+
 1. Read `TODO.md`, `ROADMAP.md`, `PROGRESS.md` and relevant technical reports.
 2. Inspect the real code and current diff.
 3. Implement only the assigned task; keep diffs reviewable.
@@ -300,7 +314,7 @@ repeat it only when that review finds an error that is corrected.
 5. Remove obsolete or duplicated instructions, validate local references, and
    update examples and validation commands affected by the implementation. If
    an update cannot be made, document why and report the task incomplete.
-6. Run `python3 scripts/validate-agent-knowledge.py --scope worktree` (with `--base BASE_SHA
+6. Run `perl scripts/validate-agent-knowledge.pl --scope worktree` (with `--base BASE_SHA
    --head HEAD_SHA` in pull-request CI) and the owning compile-free checks. The
    checker verifies structure and substantive text changes, not semantic
    relevance; explain in the final report why the update helps future work.
@@ -314,10 +328,11 @@ manual-only workflow rule. Build, test, packaging and release validation stay
 
 ### Shared Agent Knowledge Validation Contract
 
-Use `python3 scripts/validate-agent-knowledge.py --scope worktree` for local
-changes and `python3 -m unittest discover -s tests/agent_knowledge_validator -v`
-for its contract tests. The validator requires Python 3.11+ and Git, uses only
-the Python standard library, and publishes contract version `1.0.0`. All
+Use `perl scripts/validate-agent-knowledge.pl --scope worktree` for local
+compile-free consistency checks. Prepare the contract suite with
+`prove -v tests/agent_knowledge_validator/test_validator.t`; execution belongs
+to CI under the static-only local policy. The validator requires Perl 5.16+
+and Git, uses only core modules, and publishes contract version `1.0.0`. All
 adopting repositories share the same CLI, AK001-AK006 identifiers, output
 schema, and exit codes (`0` pass, `1` policy failure, `2` execution/configuration
 error). For a pull request, pass both revisions with
@@ -327,8 +342,11 @@ Read [Agent Knowledge Validation Contract](docs/agent-knowledge-validation.md)
 for the complete rules, JSON schema, optional repository configuration,
 warning semantics, and extension process. AK004 and AK006 can require human
 review; their warnings do not prove or disprove semantic correctness. Keep the
-canonical script and black-box unittest suite byte-identical across adopting
-repositories. Repository-specific requirements belong in the documented TOML
+Perl implementation and black-box Test::More suite synchronized across
+adopting repositories; the former Python implementation is historical
+provenance, not a runtime compatibility shim. Preserve the shared observable
+contract rather than byte identity with a different language implementation.
+Repository-specific requirements belong in the documented TOML
 configuration or a stable `AKX...` extension, never in a private fork of the
 shared rules. The GitHub PR workflow runs the same tests and range command;
 it does not edit files or require secrets.
@@ -520,15 +538,22 @@ CI. Update the feature matrix in `docs/cpp23-migration.md` and
   applicable specifications against the complete native/TUI/Android paths.
   Record exact source revisions and distinguish static source comparison from
   dynamic interoperability; preserve the native UI and typed control boundary.
-- Product, build and maintenance code remains Perl-native. The only Python
-  exception is the canonical shared agent-knowledge validator and its
-  byte-identical black-box contract suite, required by the Shared Agent
-  Knowledge Validation Contract; keep those exact files synchronized across
-  adopters and reject any other maintained Python source. No CPAN/runtime
-  downloads.
+- General-purpose auxiliary scripting uses Perl, including the shared
+  agent-knowledge validator and its black-box Test::More contract suite.
+  Native Shell remains appropriate for portable command orchestration.
+  Reject maintained Python sources, shebangs and embedded execution;
+  historical provenance and third-party tool language descriptions do not
+  authorize a runtime dependency. No CPAN/runtime downloads.
   Perl ownership includes `tools/**` (including `tools/scripts/*.pl` and
-  `i2pdctl`), `android/tools/*.pl`, `i18n/*.pl`, `tests/interop/*.pl` and their
-  tests/docs.
+  `i2pdctl`), `scripts/*.pl`, `scripts/lib/**`, `android/tools/*.pl`,
+  `i18n/*.pl`, `tests/interop/*.pl`, `tests/agent_knowledge_validator/*.t` and
+  their tests/docs.
+- Shell, Make recipes and executable configuration must invoke Perl files,
+  not interpreter source operands, stdin programs or heredoc code. Prefer
+  native Shell for simple operations. Keep Make recipes declarative and
+  delegate control flow to source-controlled helpers without eval; preserve
+  prerequisite ordering, overrides and framework-specific install authority.
+  File-based syntax checks are distinct from inline source execution.
 - Build, test, packaging and release-validation workflows are
   `workflow_dispatch`-only; the maintenance PR gate is the sole exception.
   Actions are SHA-pinned and
@@ -702,11 +727,12 @@ death/timeout now retires the old process and recovers through generation-fenced
 rebind; cancellation and fault-provider fixtures are implemented statically. Earlier SAF-export-only statements
 above describe the previous increment.
 
-OpenBSD storage startup now uses a pre-pledge root-authorized supervisor. The
-worker inherits root fd4 at exec and installs its own sandbox before requests;
-only a UNIX socket is returned via SCM_RIGHTS. Never send a directory FD after
-pledge: sendfd/recvfd prohibit it. Core requires recvfd, no additional proc/exec.
-Broker failure needs daemon restart; replacement of a worker is explicit.
+OpenBSD storage startup formerly used a pre-pledge root-authorized broker. It
+is now disabled because replacing a worker required the forbidden `exec`
+promise; isolated torrent storage fails closed. Never send a directory FD after
+pledge: sendfd/recvfd prohibit it. Core requires recvfd only for supervised
+storage; no policy grants exec or error. Any future broker must pre-create its
+workers and use typed IPC, not fork/exec.
 
 Pending writes are withheld from HAVE/bitfield/serving/promotion; failed writes
 invalidate the piece. Isolated native allocation is delegated. Parent router/DHT persistence and network/core/verifier split remain pending;
@@ -1070,12 +1096,13 @@ children retain their delegated capabilities. Log-worker replacement uses
 bounded exponential backoff/cap/stable reset, and the logger queue is bounded
 with a dropped-record counter.
 
-The OpenBSD torrent-storage broker receives a validated root as inherited fd4
-and uses `pledge("stdio unix proc exec sendfd recvfd")` without `rpath`; the
-startup pledge keeps `exec` only for the worker-spawn window. Router storage
-treats worker-level rejection separately from transport failure. Worker
-channels must be descriptor 3, so they cannot alias inherited root descriptor
-4. Prepared regressions cover supervisor bootstrap delegation, queue
+The OpenBSD on-demand torrent-storage broker is disabled because its worker
+creation required `exec` after the broker sandbox. A replacement design must
+pre-create a bounded worker pool before pledge and hand over a validated root
+as inherited fd4 through typed IPC; until then isolated storage fails closed.
+Router storage treats worker-level rejection separately from transport failure.
+Worker channels must be descriptor 3, so they cannot alias inherited root
+descriptor 4. Prepared regressions cover supervisor bootstrap delegation, queue
 saturation and transient storage failure.
 
 Do not claim global privilege separation. The core still owns transport
@@ -1789,27 +1816,37 @@ Implemented / static; Pending CI compilation; Pending CI tests.
 
 ## OpenBSD supervised-start continuation (2026-10-26, static)
 
-The OpenBSD supervisor and storage broker are exec authorities only for a
-frozen image. Both pre-resolve their own executable before the sandbox,
-`unveil(exe,"x")` with exactly one rule, lock the unveil list, and pledge
-`stdio proc exec` (supervisor) or `stdio proc exec sendfd` (broker). They must
-never regain `unix`, pathname read/write, `recvfd` or network. `execve` beyond
-that image must fail; the exec'ed image starts without unveils and installs its
-own policy. Never pass an `execpromises` argument (`OPENBSD_PLEDGE_EXECPROMISES`
-is `nullptr`) and never assume pledge or unveil survive `execve`.
+No OpenBSD policy may contain the pledge(2) promises `exec` or `error`.
+`exec` would let a restricted process start a new image; every worker is
+created before its first pledge. `error` would turn a policy violation into a
+recoverable errno and hide an operation the sandbox must refuse. Both names are
+absent from the promise table and rejected by the builder, pledge-file parser
+and applier, including `openbsd.pledge_file` selections.
 
-The core's startup and runtime promise sets come from one table. The startup
-set includes `recvfd` (pledge can only remove promises; a runtime-only promise
-is ignored and its first use aborts the core) and `id` only when a worker
-identity is configured. The runtime set must be a strict subset and must never
-contain `exec`, `id`, `chown`, `dpath`, `prot_exec`, `unveil` or `sendfd`.
+Review spawn reachability as well as promise text: the shared worker launcher
+must remain unreachable after the one-way process-creation barrier. An
+external ports patch must include `Index:` headers and `diff -u -p` context;
+record its base revision and preserve earlier local changes in the patch.
+
+The log supervisor is a `stdio proc` process. It owns one active and one
+reserve log worker that are created and configured before the supervisor
+pledges; on failure it promotes the already-configured reserve and never
+spawns or executes. The on-demand torrent-storage broker is disabled because
+it required fork/exec after its own sandbox; isolated torrent storage fails
+closed on OpenBSD until an exec-free worker-provisioning protocol exists.
+
+The core's first and runtime promise sets come from one table. The first set
+adds `unveil` and is installed after every worker exists; it includes `recvfd`
+and `proc` only where required. No phase contains `exec`, `error`, `id`,
+`chown`, `dpath`, `prot_exec` or `sendfd`. The runtime set must be a strict
+subset and drops `unveil`.
 `openbsd.pledge_file` is a bounded subset selector: comments and blank lines
 are rejected, every token must already be in the phase base set, and dangerous
 runtime tokens are refused. `openbsd.unveil_file` entries must be absolute,
 NUL-free and neither textually nor resolved `/`.
 
 `privsep.user`/`privsep.group` are the worker identity. Resolve them with the
-bounded resolver before the startup pledge, reject uid 0, and publish the pair.
+bounded resolver before the first pledge, reject uid 0, and publish the pair.
 The forked child clears supplementary groups, sets gid then uid, and verifies
 real/effective ids and an empty supplementary set before `execve`. A root core
 with any isolation feature and no configured identity must fail startup with
@@ -2942,6 +2979,19 @@ and MSVC; no second Windows diagnostic exists, but every target after
 
 ### Continuation review seams
 
+Charge asynchronous resource reservations before publishing work to another
+executor. Logical cancellation does not release a reservation while the
+physical work can still run; otherwise cancel/retry floods bypass the bound.
+Use the owning subsystem's ledger and generation authority rather than a
+second uncoordinated request counter.
+
+Executor and IPC authority require separate review: an empty executor needs
+admitted work or a per-run guard before launch, while a single-flight worker
+reply needs operation, request, generation and artifact correlation. A stopped
+queue is not drained, and a local Busy result is not proof of channel health.
+Keep the focused executor and storage source contracts in the manual
+control-security lane when those implementations move.
+
 When triaging SHA-512 fixtures, inspect the output buffer's full algorithm
 size and the downstream reader's required length before attributing a stack
 report to an adjacent object. The crypto skill records the EdDSA reference
@@ -2950,3 +3000,41 @@ session publication against the Stop admission barrier and the cancellation
 drain before restart; an executor timer cannot enforce a wall-clock bound
 while that executor waits synchronously on engine work. See the torrent
 skill and `docs/torrent/security.md` for the current boundary.
+
+## Transport fail-closed and torrent availability continuation (2026-11-04, static)
+
+- An AEAD return value is a transmission gate: SSU2 PeerTest, HolePunch,
+  TokenRequest and Retry must not increment the payload length, send, or
+  charge sent bytes after a failed encryption. Pass the real fixed-buffer
+  capacity to the helper, not a length derived from attacker-controlled data.
+- Bound the frame before sizing a stack buffer from it. `ProcessNextPacket`
+  and the proxy path reject frames above `SSU2_MAX_PACKET_SIZE`; the UDP
+  receive buffer size is not the parser contract.
+- X25519 is a mandatory provider capability for NTCP2, SSU2 and the ratchet.
+  Probe it with a real key-generation round trip and fail startup when absent.
+  A capability field that no caller reads is a false claim: remove it or wire
+  it to a real decision.
+- Ed25519/RedDSA encoders are part of the success flag. A point or scalar that
+  cannot be encoded must zero the complete signature or blinded output, never
+  return a partial value with success.
+- Routine torrent resume persistence is throttled; stop, removal, completion
+  and final shutdown always save immediately. Promotion of a missing payload
+  is a filesystem error and must invalidate covering pieces on the service
+  thread, never mark the file complete. Swarm availability is a clamped union
+  of established peer bitfields and is never a local completion claim.
+- TUI torrent actions use the exact wire-token classifier from
+  `TorrentStatusToken`, never substring matching. Unknown tokens send no
+  command.
+- A stopped datagram session releases its queued messages; a retained handle
+  may queue again but must not keep shutdown payloads alive.
+- Tool crypto guards are detected by declaration identifier, not a fixed
+  variable name. `verifyhost` keeps the positive verdict on stdout and every
+  rejection on stderr.
+- Android main/instrumentation sources stay on the API-29 floor: the Java 25
+  denylist includes inherited `SequencedCollection` methods, `String.stripIndent`,
+  `Math.clamp` and `Thread.threadId`. Metric labels associate their value view
+  with `android:labelFor`.
+- The current upstream review window is `e485e138..2b92f2d4`; its per-commit
+  dispositions are in `docs/upstream-sync.md`. Do not port the intrusive
+  receive queue or connection replacement without fixing pooled ownership and
+  identity-keyed removal first.

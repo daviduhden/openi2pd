@@ -96,6 +96,13 @@ limitation; do not substitute local execution. Ask for:
   unsupported type.
 
 ## Known issues and decisions
+- The maintained port template delegates sample installation to
+  `contrib/openbsd/port/install-examples.sh`, merged beside the external
+  Makefile and invoked through `${.CURDIR}`. Do not require a new helper in
+  an older release distfile merely to refactor the port's own recipe.
+  Preserve the external port directory for pkg data and pass `INSTALL_*`
+  macros as actual argv. The helper consumes the already substituted rc.d
+  source; it must not bypass ports staging or add a second service authority.
 - Audit the shared launcher together with its callers: OpenBSD worker exec
   occurs before the first sandbox, while `ForbidProcessCreation()` fences
   later launches. Do not describe that startup as execution under an x-only

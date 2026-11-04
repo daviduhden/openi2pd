@@ -21,7 +21,9 @@ their coverage limits. This lane remains pending its first CI run.
 ## Result
 
 - CMake is the single source of build rules, tests, installation and options.
-- No maintained file requires GNU make.
+- The native build and its POSIX front-end do not require GNU make. Debian's
+  two Debhelper rule files retain their packaging framework's GNU dialect;
+  the OpenBSD port template retains BSD ports syntax.
 - The root `Makefile` uses only POSIX make syntax (`=`, variable expansion,
   explicit targets and recipes). It contains no `?=`, `wildcard`, `shell`,
   `patsubst`, `ifeq`, `ifneq`, `include` or multiline variables.
@@ -29,6 +31,12 @@ their coverage limits. This lane remains pending its first CI run.
   root file, so there is only one CMake configuration. Command-line overrides
   still work, for example
   `make BUILD_DIR=build-release CMAKE_FLAGS="-DCMAKE_BUILD_TYPE=Release"`.
+- Make recipes delegate procedural decisions to source-controlled Shell
+  drivers. `build/make-driver.sh` owns native command sequencing and guarded
+  cleanup, `debian/build-driver.sh` owns package flags/parallelism, and the
+  static Debian and OpenBSD port helpers own their installation manifests.
+  The original phony graph remains: builds configure first, installation
+  builds first, and CMake/Ninja retain incremental compilation authority.
 - Platform make fragments (`Makefile.linux`, `Makefile.openbsd`,
   `Makefile.mingw`) and `filelist.mk` were removed.
 

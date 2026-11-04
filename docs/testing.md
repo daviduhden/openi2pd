@@ -583,7 +583,7 @@ protocol corpus seeds and must not call the public I2P network.
 | S-07 constant-time compare | Reviewed; no timing test |
 | S-08 console removal | Build/link check only |
 | S-09 TUI input | `test-tui-protocol`, `test-tui-ipc-regression`; live Windows/client stress pending |
-| S-11 OpenBSD sandbox | `test-privsep-openbsd-policy` (storage/no-AF_INET-no-fork, network/no-persistent-write, supervisor x-only unveil, pledge subset, pre-opened descriptors), `test-privsep-credentials`, `test-privsep-worker-identity` and `test-privsep-openbsd-imsg`; **pending** OpenBSD VM execution |
+| S-11 OpenBSD sandbox | `test-privsep-openbsd-policy` (storage/no-AF_INET-no-fork, network/no-persistent-write, supervisor stdio/proc with no exec/error, disabled exec-requiring broker, pledge subset, pre-opened descriptors), `test-privsep-credentials`, `test-privsep-worker-identity` and `test-privsep-openbsd-imsg`; **pending** OpenBSD VM execution |
 | S-12 SSU2/RouterInfo bounds | `test-ssu2-routerinfo-bounds`, `fuzz-protocol-bounds` |
 | S-13 crypto/b33/reseed bounds | `test-crypto-audit-bounds`, `test-blinding-b33-strict`, `test-reseed-zip-bounds`, `fuzz-base-blinding` |
 | S-14 torrent state/parsers | `test-torrents-security`, `fuzz-torrents-parsers` |
@@ -1032,3 +1032,14 @@ owner/lease boundaries, exact metadata lengths, hash failure and stalled-size
 recovery. `DeferredRestartTest` is discovered by the existing Android JVM
 lane. Windows `heap_diagnostics` adds code-only CDB/PageHeap evidence after
 CTest; see `docs/ci.md`. None of these additions have executed locally.
+
+## Perl agent-knowledge contract
+
+`tests/agent_knowledge_validator/test_validator.t` replaces the former
+interpreter-specific suite with core Test::More fixtures. It runs through
+`prove -v` in the maintenance PR and manual Validation skills lanes, or directly
+through Perl in CTest as `perl-agent-knowledge-contract`. Fixtures copy the
+validator entry point and complete module tree into private temporary Git
+repositories, then check worktree/range changes, configuration and report
+semantics. Syntax, optional Critic, portability and platform execution remain
+Pending CI for the new implementation; no local test run is recorded.

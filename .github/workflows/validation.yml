@@ -98,6 +98,12 @@ jobs:
           cmake -DPROJECT_ROOT="$PWD" -P tests/check-build-system.cmake
       - name: Validate manual workflow contracts without compiling
         run: perl tools/scripts/check-workflows.pl
+      - name: Validate Shell and Make source policy without compiling
+        run: perl tools/scripts/check-shell-policy.pl
+      - name: Validate agent knowledge Perl contract
+        run: |
+          prove -v tests/agent_knowledge_validator/test_validator.t
+          perl scripts/validate-agent-knowledge.pl --scope worktree
 
   perl-quality:
     name: Perl quality (Test::More and Perl::Critic)
@@ -120,14 +126,14 @@ jobs:
           perlcritic --version
       - name: Compile maintained Perl
         run: |
-          for file in $(git ls-files '*.pl' '*.t' 'tools/scripts/i2pdctl'); do
+          while IFS= read -r -d '' file; do
             perl -c "$file"
-          done
+          done < <(git ls-files -z '*.pl' '*.pm' '*.t' 'tools/scripts/i2pdctl')
       - name: Run Test::More suites
-        run: prove -v tools/tests/i2pdctl.t tools/tests/validate-branding.t tools/tests/perl-portability.t tools/tests/maintenance-checkers.t
+        run: prove -v tools/tests/i2pdctl.t tools/tests/validate-branding.t tools/tests/perl-portability.t tools/tests/maintenance-checkers.t tools/tests/make-drivers.t tools/tests/interop-helpers.t tests/agent_knowledge_validator/test_validator.t
       - name: Run Perl::Critic
         run: |
-          mapfile -t perl_files < <(git ls-files '*.pl' '*.t' 'tools/scripts/i2pdctl')
+          mapfile -d '' -t perl_files < <(git ls-files -z '*.pl' '*.pm' '*.t' 'tools/scripts/i2pdctl')
           perlcritic --profile .perlcriticrc "${perl_files[@]}"
 
 

@@ -106,6 +106,92 @@ my $doxygen_checker = File::Spec->catfile( $root, 'tools', 'scripts',
     'check-doxygen-params.pl' );
 my $i18n_checker = File::Spec->catfile( $root, 'i18n',
     'check-i18n-catalogs.pl' );
+my $shell_checker = File::Spec->catfile(
+    $root, 'tools', 'scripts', 'check-shell-policy.pl' );
+
+# Host-language inputs are data fixtures. Never execute their commands;
+# only the source-only policy checker runs in the authorized CI suite.
+{
+    my $tmp = tempdir(CLEANUP => 1);
+    my $source = File::Spec->catfile($tmp, 'probe.sh');
+    my @accepted = (
+        "perl --version\n",
+        "perl tools/helper.pl operand\n",
+        "perl -c tools/helper.pl\n",
+        "perl -cw tools/helper.pl\n",
+        "perl -MEncode -I tree tools/helper.pl\n",
+        "perl -MFile::Spec tools/helper.pl\n",
+        "perl -i.perl tools/helper.pl\n",
+        "grep perl settings.conf\n",
+        "echo 'perl -e sample documentation'\n",
+    );
+    for my $sample (@accepted) {
+        write_file($source, $sample);
+        my ($code, $out) = run_checker($shell_checker, '--root', $tmp);
+        is($code, 0, 'host scanner accepts file-based or non-command operands');
+    }
+    my @rejected = (
+        "perl -e 'print 1'\n",
+        "perl -we 'print 1'\n",
+        "perl -npe 's/a/b/g'\n",
+        "perl -MEncode -e 'print 1'\n",
+        "/usr/bin/perl -E 'say 1'\n",
+        "env MODE=fixture /usr/bin/perl -pe 's/a/b/g'\n",
+        "env -S 'perl -we print'\n",
+        "env --split-string='perl -e print'\n",
+        "command -p perl -e 'print 1'\n",
+        "\@perl -e source\n",
+        "cmd /c perl -e source\n",
+        "call perl -e source\n",
+        "\"C:\\Perl\\bin\\perl.exe\" -e source\n",
+        "perl -x host.sh\n",
+        "perl -M'File::Spec; BEGIN {print 1}' tools/helper.pl\n",
+        "perl -M 'File::Spec; BEGIN {print 1}' tools/helper.pl\n",
+        "perl <<'PROGRAM'\nprint 1;\nPROGRAM\n",
+        "printf source | perl\n",
+        "perl -\n",
+        "perl -c\n",
+        "python3 -c 'print(1)'\n",
+        "env /usr/bin/python3 -Ic 'print(1)'\n",
+        "perl -e 'secret-inline-marker'\n",
+    );
+    for my $sample (@rejected) {
+        write_file($source, $sample);
+        my ($code, $out) = run_checker($shell_checker, '--root', $tmp);
+        is($code, 1, 'host scanner rejects inline or standard-input interpreter source');
+        like($out, qr/probe[.]sh:1:/, 'host violation identifies the source location');
+        unlike($out, qr/secret-inline-marker/, 'host diagnostic never echoes code operands');
+    }
+    write_file($source, "perl -c tools/helper.pl\n");
+    my $make = File::Spec->catfile($tmp, 'Makefile');
+    for my $sample (
+        '$(PERL) -we source', '$(PERL_EXECUTABLE) -e source',
+        '$${PERL} -e source', '$(shell perl -e source)' ) {
+        write_file($make, $sample . "\n");
+        my ($code, $out) = run_checker($shell_checker, '--root', $tmp);
+        is($code, 1, 'Make interpreter variables and command substitution retain source checks');
+    }
+    write_file($make, '$(PERL) -c tools/helper.pl' . "\n");
+    my $cmake = File::Spec->catfile($tmp, 'CMakeLists.txt');
+    write_file($cmake, 'execute_process(COMMAND "${PERL_EXECUTABLE}"' . "\n"
+        . ' -we "print 1")' . "\n");
+    my ($code, $out) = run_checker($shell_checker, '--root', $tmp);
+    is($code, 1, 'host scanner covers multiline CMake interpreter arguments');
+    write_file($cmake, 'execute_process(COMMAND "${PERL_EXECUTABLE}" -c "${script}")' . "\n");
+    my $gradle = File::Spec->catfile($tmp, 'build.gradle');
+    write_file($gradle, "commandLine 'perl', '-we', 'print 1'\n");
+    ($code, $out) = run_checker($shell_checker, '--root', $tmp);
+    is($code, 1, 'Gradle command argument arrays cannot embed interpreter source');
+    write_file($gradle, "commandLine 'perl', '-c', 'helper.pl'\n");
+    my $markdown = File::Spec->catfile($tmp, 'guide.md');
+    write_file($markdown, "Documentation: perl -e is forbidden.\n```perl\nprint 1;\n```\n");
+    ($code, $out) = run_checker($shell_checker, '--root', $tmp);
+    is($code, 0, 'prose and standalone Perl fences are not host commands');
+    write_file($markdown, "```sh\nperl -e 'print 1'\n```\n");
+    ($code, $out) = run_checker($shell_checker, '--root', $tmp);
+    is($code, 1, 'documentation shell fences obey the same embedding policy');
+    like($out, qr/guide[.]md:2:/, 'documentation fence preserves original line numbers');
+}
 
 # Crash diagnostics must reject commands that expose process arguments
 # or memory. Reproduce only the checker and its workflow inputs.
@@ -140,7 +226,60 @@ sub workflow_crash_fixtures {
         is( $code, 1, 'workflow checker rejects memory or argument collection' );
         like( $out, qr/code[ ]locations[ ]only/x, 'crash evidence privacy diagnostic' );
     }
+    write_file( $windows, $source );
+    my $validation = File::Spec->catfile( $tmp, '.github', 'workflows', 'validation.yml' );
+    open my $validation_fh, '<', $validation or BAIL_OUT("read sanitizer fixture: $!");
+    my $validation_source = do { local $/ = undef; <$validation_fh> };
+    close $validation_fh or BAIL_OUT("close sanitizer fixture: $!");
+    for my $missing ( 'build-sanitizers/tests/test-i2ptunnel-stop',
+        'sanitizer-evidence/revision.txt', 'sha256sum' ) {
+        my $candidate = $validation_source;
+        $candidate =~ s/\Q$missing\E/missing-evidence/gx;
+        write_file( $validation, $candidate );
+        ( $code, $out ) = run_checker($checker);
+        is( $code, 1, 'workflow checker rejects missing sanitizer evidence' );
+        like( $out, qr/sanitizer[ ].*evidence[ ]missing/x,
+            'sanitizer evidence diagnostic identifies the gap' );
+    }
+    write_file( $validation, $validation_source );
+    my $newline_inventory = $validation_source;
+    $newline_inventory =~ s/git ls-files -z/git ls-files/g;
+    write_file( $validation, $newline_inventory );
+    ( $code, $out ) = run_checker($checker);
+    is( $code, 1, 'workflow checker rejects newline-delimited source inventory' );
+    like( $out, qr/NUL-delimited Perl inventory missing/,
+        'inventory diagnostic requires filename-safe source handling' );
+    write_file( $validation, $validation_source );
+
+    my $maintenance = File::Spec->catfile(
+        $tmp, '.github', 'workflows', 'agent-maintenance.yml' );
+    my $maintenance_source = read_fixture_file($maintenance);
+    for my $missing (
+        'prove -v tests/agent_knowledge_validator/test_validator.t',
+        'perl scripts/validate-agent-knowledge.pl --scope range' ) {
+        my $candidate = $maintenance_source;
+        $candidate =~ s/\Q$missing\E/echo missing-contract/g;
+        write_file( $maintenance, $candidate );
+        ( $code, $out ) = run_checker($checker);
+        is( $code, 1, 'workflow checker rejects missing Perl knowledge coverage' );
+        like( $out, qr/Perl knowledge contract missing/,
+            'missing Perl gate diagnostic identifies the contract' );
+    }
+    write_file( $maintenance,
+        $maintenance_source . "      - run: python3 obsolete-checker.py\n" );
+    ( $code, $out ) = run_checker($checker);
+    is( $code, 1, 'maintenance gate cannot reintroduce an alternate runtime' );
+    like( $out, qr/interpreter policy requires Perl/,
+        'runtime rejection identifies the interpreter policy' );
     return;
+}
+
+sub read_fixture_file {
+    my ($path) = @_;
+    open my $fh, '<', $path or BAIL_OUT("read workflow fixture: $!");
+    my $text = do { local $/; <$fh> };
+    close $fh or BAIL_OUT("close workflow fixture: $!");
+    return $text;
 }
 workflow_crash_fixtures($root);
 
@@ -866,8 +1005,8 @@ SKIP: {
             }
         ) . "\n"
     );
-    write_file( $harness,
-        "#!$^X\nprint '{\"status\":\"accepted\"}';\n" );
+    copy(File::Spec->catfile($root, 'tools', 'tests', 'fixtures', 'vector-status-stub.pl'),
+        $harness) or BAIL_OUT("copy vector status fixture: $!");
     chmod 0700, $harness or die "chmod $harness: $!\n";
 
     my ( $code, $out, $kind ) = run_checker(
@@ -892,7 +1031,9 @@ SKIP: {
           if $^O eq 'MSWin32';
         my $tmp = tempdir( CLEANUP => 1 );
         my $signal_child = File::Spec->catfile( $tmp, 'signal-child.pl' );
-        write_file( $signal_child, "kill 'TERM', \$\$;\n" );
+        copy(File::Spec->catfile($root, 'tools', 'tests', 'fixtures', 'signal-child.pl'),
+            $signal_child) or BAIL_OUT("copy signal child fixture: $!");
+        chmod 0700, $signal_child or BAIL_OUT("chmod signal child fixture: $!");
         my ( $signal_code, $out, $signal_kind, $signal ) =
           run_checker($signal_child);
         isnt( $signal_code, 0,

@@ -69,7 +69,8 @@ format.
 
 ## Tests
 
-CTest registers three native-tool tests plus the library-level firewall test:
+CTest registers five native-tool tests, the compile-free
+`tools-inventory-static` parity check and the library-level firewall test:
 
 - `tools-smoke`: key generation, key inspection, base64, registration and
   verification, offline keys, X25519 and CLI validation.
@@ -94,24 +95,33 @@ CTest registers three native-tool tests plus the library-level firewall test:
   assertion.
 - `tools-cli`: exact exit codes, stdout/stderr separation, same-file refusal
   and CRLF-normalized registration records.
-- `tools-getopt`: host regression for the MSVC getopt shim. `test-routerinfo-firewall` separately
-  pins the endpoint grammar and renderers.
+- `tools-getopt`: host regression for the MSVC getopt shim.
+- `test-routerinfo-firewall`: library-level test that pins the endpoint grammar
+  and renderers.
 
 The regression test generates ephemeral keys below the build tree, restricts
 them to the owner where the platform supports it, and removes the directory on
 success and on failure. It uses only CMake, has a timeout per tool invocation,
-and does not depend on Perl or Python. The positive `famtool` sign/verify path needs a generated router keys file;
-the fixture that creates the signed RouterInfo now exists. All workflows remain
-manual; dynamic validation of this test is pending the next manual CI run. No
-fuzzing has been run on the imported parsers, and dynamic Windows CLI testing
-also remains pending.
+and does not depend on Perl or Python.
 
-The Perl `i2pdctl` client is covered separately by `perl-i2pdctl-syntax`,
-`perl-portability`, `perl-maintenance-checkers`, `perl-install-layout` and the
-Test::More suites; `android-jni-symbols-static` and `i18n-static` cover the
-compile-free Android/native guards. The install
-test verifies all declared native executables and `LICENSE.i2pd-tools` in the
-`Tools` component; see [i2pdctl](i2pdctl.md).
+The positive `famtool` sign/verify path needs a generated router keys file plus
+a router identity, so `tools-regressions` covers only certificate generation,
+the family-name boundary and the negative argument paths. `routerinfo-fixture`
+(built under `BUILD_TESTING`) creates a signed RouterInfo through the
+production serializer for `tools-smoke`; no binary fixture and no private key is
+checked in. The `famtool` sign/verify run remains pending dynamic validation.
+All workflows remain manual; dynamic validation of this test is pending the
+next manual CI run. No fuzzing has been run on the imported parsers, and
+dynamic Windows CLI testing also remains pending.
+
+The Perl checks are registered separately: `perl-i2pdctl-syntax`, a
+`perl-syntax-*` target for every other maintained Perl script,
+`perl-portability`, `perl-maintenance-checkers`,
+`perl-cpp-comment-integrity`, `perl-install-layout` and the Test::More
+suites; `android-jni-symbols-static` and `i18n-static` cover the compile-free
+Android/native guards. The install test verifies all declared native
+executables and `LICENSE.i2pd-tools` in the `Tools` component; see
+[i2pdctl](i2pdctl.md).
 
 The maintained native tools use C++23 and the in-tree `libi2pd` library;
 `autoconf_i2pd` additionally links `libi2pdlang` for its shared catalogs. `tools/common/getopt.*` provides the small getopt/getopt_long
@@ -119,3 +129,10 @@ compatibility used by MSVC while Unix keeps the system implementation.
 
 See [provenance and inventory](provenance.md) for the pinned upstream commit,
 upstream and fork-only files, licence notices and per-executable test coverage.
+
+Registration-name failures share one typed grammar classifier across
+`regaddr`, `regaddralias` and the first two `regaddr_3ld` steps. Diagnostics
+identify empty names, the 255-byte bound, controls including DEL, and record
+separators including backslash, without printing the rejected name. Validation
+precedes private-key input. This grammar is not a DNS registration policy.
+Boundary and negative CLI regressions are prepared and remain pending CI.

@@ -83,7 +83,8 @@ workflow, run `gh`, build or test.
 
 - Build, test and packaging workflows remain `workflow_dispatch`-only. The
   compile-free `agent-maintenance.yml` PR gate is the sole pull-request
-  exception; it never builds or tests. `check-workflows.pl` enforces this
+  exception; it runs the compile-free Perl validator contract and structural
+  checks, never native/JVM builds or product tests. `check-workflows.pl` enforces this
   exact exception, so any additional automatic trigger needs an explicit
   policy and checker update.
 - Pin third-party actions to commit SHAs with a version comment; set
@@ -151,6 +152,19 @@ workflow, run `gh`, build or test.
   policy is a coverage limitation rather than proof of full sandboxing.
 
 ## Known issues and decisions
+- Interpreter metadata queries and file-based syntax checks do not need
+  embedded programs. The maintenance gate uses the native version banner;
+  its suite and validator still enforce the Perl floor. Source scans cover
+  workflow run blocks and composite actions as well as standalone Shell.
+  Register the shell-policy check separately from its negative Test::More
+  fixtures so structural inspection never launches tests or package builds.
+
+- Agent-maintenance uses the repository Perl validator and Test::More suite,
+  not setup-python or an interpreter bootstrap. Keep the same suite in the
+  manual validation lane; syntax/critic inventories include `scripts/lib/`
+  modules and the contract fixture copies that complete tree. A clean
+  checkout's worktree scan checks structure, while fixture/range cases cover
+  change gating. Do not mistake the former for evidence of the latter.
 
 - Raw sanitizer PCs cannot be attributed using a later rebuild. Preserve the
   exact failing executable with the run SHA and its SHA-256 digest. The

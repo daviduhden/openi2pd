@@ -4,8 +4,9 @@
 # openi2pd: CMakeLists.txt.
 #
 # Defines the auxiliary native tool executables and links them against
-# libi2pd (autoconf_i2pd also against libi2pdlang). It installs i2pdctl and,
-# under BUILD_TESTING with Perl, registers syntax, portability, branding and
+# libi2pd (autoconf_i2pd also against libi2pdlang). It installs
+# i2pdctl and, under BUILD_TESTING with Perl, registers syntax,
+# portability, branding, maintenance, comment-integrity and
 # install-layout tests.
 #
 
@@ -95,24 +96,48 @@ if(BUILD_TESTING AND NOT CMAKE_CROSSCOMPILING)
       COMMAND "${PERL_EXECUTABLE}" -c "${CMAKE_CURRENT_SOURCE_DIR}/scripts/i2pdctl")
     set_tests_properties(perl-i2pdctl-syntax PROPERTIES LABELS "perl;static" TIMEOUT 30)
 
-    # Compile every other maintained Perl program/test without executing it.
-    # This catches stale module names and accidental non-Perl syntax before
-    # the regression tests run.
+    # Compile every other maintained Perl program/test without executing
+    # it. This catches stale module names and accidental non-Perl syntax
+    # before the regression tests run. i2pdctl is covered by the
+    # dedicated target above and is therefore absent here.
     set(I2PD_PERL_SYNTAX_SCRIPTS
+      "${PROJECT_ROOT}/scripts/validate-agent-knowledge.pl"
+      "${PROJECT_ROOT}/tests/agent_knowledge_validator/test_validator.t"
+      "${PROJECT_ROOT}/tests/agent_knowledge_validator/fixtures/execution-marker.pl"
       "${CMAKE_CURRENT_SOURCE_DIR}/scripts/check-doc-links.pl"
       "${CMAKE_CURRENT_SOURCE_DIR}/scripts/check-doc-nav.pl"
+      "${CMAKE_CURRENT_SOURCE_DIR}/scripts/check-doxygen-params.pl"
       "${CMAKE_CURRENT_SOURCE_DIR}/scripts/validate-branding.pl"
       "${CMAKE_CURRENT_SOURCE_DIR}/scripts/check-workflows.pl"
+      "${CMAKE_CURRENT_SOURCE_DIR}/scripts/check-shell-policy.pl"
+      "${CMAKE_CURRENT_SOURCE_DIR}/tests/cpp-comment-integrity.t"
       "${CMAKE_CURRENT_SOURCE_DIR}/tests/i2pdctl.t"
       "${CMAKE_CURRENT_SOURCE_DIR}/tests/validate-branding.t"
       "${CMAKE_CURRENT_SOURCE_DIR}/tests/perl-portability.t"
       "${CMAKE_CURRENT_SOURCE_DIR}/tests/maintenance-checkers.t"
+      "${CMAKE_CURRENT_SOURCE_DIR}/tests/make-drivers.t"
+      "${CMAKE_CURRENT_SOURCE_DIR}/tests/interop-helpers.t"
+      "${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/record-build-command.pl"
+      "${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/vector-status-stub.pl"
+      "${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/signal-child.pl"
       "${PROJECT_ROOT}/tests/interop/check-vectors.pl"
+      "${PROJECT_ROOT}/tests/interop/hex-to-binary.pl"
+      "${PROJECT_ROOT}/tests/interop/sam-stream-send.pl"
       "${PROJECT_ROOT}/android/tools/check-android-locales.pl"
+      "${PROJECT_ROOT}/android/tools/check-android-javadoc.pl"
       "${PROJECT_ROOT}/android/tools/check-android-jni-symbols.pl"
       "${PROJECT_ROOT}/i18n/check-i18n-catalogs.pl")
+    # Keep module build inputs explicit. The portability guard compares
+    # this inventory with recursive source discovery to detect drift.
+    set(I2PD_AGENT_KNOWLEDGE_MODULES
+      "${PROJECT_ROOT}/scripts/lib/Openi2pd/AgentKnowledge/TOML.pm")
+    list(APPEND I2PD_PERL_SYNTAX_SCRIPTS ${I2PD_AGENT_KNOWLEDGE_MODULES})
     foreach(script IN LISTS I2PD_PERL_SYNTAX_SCRIPTS)
       get_filename_component(script_name "${script}" NAME)
+      if(script MATCHES "[.]pm$")
+        file(RELATIVE_PATH script_name "${PROJECT_ROOT}" "${script}")
+        string(REPLACE "/" "-" script_name "${script_name}")
+      endif()
       string(REPLACE "." "-" script_name "${script_name}")
       add_test(NAME "perl-syntax-${script_name}"
         COMMAND "${PERL_EXECUTABLE}" -c "${script}")
@@ -121,6 +146,31 @@ if(BUILD_TESTING AND NOT CMAKE_CROSSCOMPILING)
 
     add_test(NAME perl-portability
       COMMAND "${PERL_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/perl-portability.t")
+    add_test(NAME perl-agent-knowledge-contract
+      COMMAND "${PERL_EXECUTABLE}" "${PROJECT_ROOT}/tests/agent_knowledge_validator/test_validator.t")
+    set_tests_properties(perl-agent-knowledge-contract PROPERTIES
+      WORKING_DIRECTORY "${PROJECT_ROOT}"
+      LABELS "perl;static;docs"
+      TIMEOUT 120)
+    add_test(NAME shell-policy-static
+      COMMAND "${PERL_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/scripts/check-shell-policy.pl")
+    set_tests_properties(shell-policy-static PROPERTIES LABELS "perl;static;ci" TIMEOUT 60)
+    add_test(NAME perl-interop-helpers
+      COMMAND "${PERL_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/interop-helpers.t")
+    set_tests_properties(perl-interop-helpers PROPERTIES LABELS "perl;interop;static" TIMEOUT 120)
+    if(UNIX)
+      find_program(I2PD_POSIX_SHELL NAMES sh REQUIRED)
+      foreach(shell_source IN ITEMS build/make-driver.sh debian/build-driver.sh
+          contrib/static/debian/install-payload.sh contrib/openbsd/port/install-examples.sh)
+        string(REPLACE "/" "-" shell_name "${shell_source}")
+        add_test(NAME "shell-syntax-${shell_name}"
+          COMMAND "${I2PD_POSIX_SHELL}" -n "${PROJECT_ROOT}/${shell_source}")
+        set_tests_properties("shell-syntax-${shell_name}" PROPERTIES LABELS "static;ci" TIMEOUT 30)
+      endforeach()
+      add_test(NAME perl-make-drivers
+        COMMAND "${PERL_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/make-drivers.t")
+      set_tests_properties(perl-make-drivers PROPERTIES LABELS "perl;static;packaging" TIMEOUT 120)
+    endif()
     set_tests_properties(perl-portability PROPERTIES
       WORKING_DIRECTORY "${PROJECT_ROOT}"
       LABELS "perl;static"
@@ -141,6 +191,16 @@ if(BUILD_TESTING AND NOT CMAKE_CROSSCOMPILING)
       WORKING_DIRECTORY "${PROJECT_ROOT}"
       LABELS "perl;static"
       TIMEOUT 120)
+
+    # Compile-free scan of the maintained C/C++ tree for nested and
+    # unterminated block comments. The suite takes no arguments and
+    # derives the repository root from its own location.
+    add_test(NAME perl-cpp-comment-integrity
+      COMMAND "${PERL_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/cpp-comment-integrity.t")
+    set_tests_properties(perl-cpp-comment-integrity PROPERTIES
+      WORKING_DIRECTORY "${PROJECT_ROOT}"
+      LABELS "perl;static"
+      TIMEOUT 300)
 
     if(NOT IS_ABSOLUTE "${CMAKE_INSTALL_BINDIR}")
       add_test(NAME perl-install-layout
@@ -194,16 +254,32 @@ if(BUILD_TESTING AND NOT CMAKE_CROSSCOMPILING)
     add_test(NAME perl-critic
       COMMAND "${PERLCRITIC_EXECUTABLE}"
         --profile "${PROJECT_ROOT}/.perlcriticrc"
+        "${PROJECT_ROOT}/scripts/validate-agent-knowledge.pl"
+        "${PROJECT_ROOT}/tests/agent_knowledge_validator/test_validator.t"
+        "${PROJECT_ROOT}/tests/agent_knowledge_validator/fixtures/execution-marker.pl"
+        ${I2PD_AGENT_KNOWLEDGE_MODULES}
         "${CMAKE_CURRENT_SOURCE_DIR}/scripts/i2pdctl"
         "${CMAKE_CURRENT_SOURCE_DIR}/scripts/check-doc-links.pl"
         "${CMAKE_CURRENT_SOURCE_DIR}/scripts/check-doc-nav.pl"
+        "${CMAKE_CURRENT_SOURCE_DIR}/scripts/check-doxygen-params.pl"
         "${CMAKE_CURRENT_SOURCE_DIR}/scripts/validate-branding.pl"
+        "${CMAKE_CURRENT_SOURCE_DIR}/scripts/check-workflows.pl"
+        "${CMAKE_CURRENT_SOURCE_DIR}/scripts/check-shell-policy.pl"
+        "${CMAKE_CURRENT_SOURCE_DIR}/tests/cpp-comment-integrity.t"
         "${CMAKE_CURRENT_SOURCE_DIR}/tests/i2pdctl.t"
         "${CMAKE_CURRENT_SOURCE_DIR}/tests/validate-branding.t"
         "${CMAKE_CURRENT_SOURCE_DIR}/tests/perl-portability.t"
         "${CMAKE_CURRENT_SOURCE_DIR}/tests/maintenance-checkers.t"
+        "${CMAKE_CURRENT_SOURCE_DIR}/tests/make-drivers.t"
+        "${CMAKE_CURRENT_SOURCE_DIR}/tests/interop-helpers.t"
+        "${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/record-build-command.pl"
+        "${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/vector-status-stub.pl"
+        "${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/signal-child.pl"
         "${PROJECT_ROOT}/tests/interop/check-vectors.pl"
+        "${PROJECT_ROOT}/tests/interop/hex-to-binary.pl"
+        "${PROJECT_ROOT}/tests/interop/sam-stream-send.pl"
         "${PROJECT_ROOT}/android/tools/check-android-locales.pl"
+        "${PROJECT_ROOT}/android/tools/check-android-javadoc.pl"
         "${PROJECT_ROOT}/android/tools/check-android-jni-symbols.pl"
         "${PROJECT_ROOT}/i18n/check-i18n-catalogs.pl")
     set_tests_properties(perl-critic PROPERTIES

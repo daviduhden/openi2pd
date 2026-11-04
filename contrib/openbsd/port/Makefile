@@ -83,29 +83,8 @@ WRKBUILD = ${WRKDIST}/obj
 # directory's template. Notices ship with LICENSE under share/doc/i2pd
 # so the package keeps its attribution after pkg_delete of the source.
 post-install:
-	${INSTALL_DATA_DIR} ${PREFIX}/share/examples/etc/i2pd \
-		${PREFIX}/share/examples/etc/i2pd/tunnels.conf.d \
-		${PREFIX}/share/examples/etc/login.conf.d \
-		${PREFIX}/share/examples/var/i2pd \
-		${PREFIX}/share/doc/i2pd
-	${INSTALL_DATA} ${WRKDIST}/contrib/openbsd/i2pd.conf \
-		${PREFIX}/share/examples/etc/i2pd/i2pd.conf
-	${INSTALL_DATA} ${WRKDIST}/contrib/tunnels.conf \
-		${PREFIX}/share/examples/etc/i2pd/tunnels.conf
-	${INSTALL_DATA} ${WRKDIST}/contrib/tunnels.d/README \
-		${PREFIX}/share/examples/etc/i2pd/tunnels.conf.d/README
-	${INSTALL_DATA} ${WRKDIST}/contrib/openbsd/i2pd.login \
-		${PREFIX}/share/examples/etc/login.conf.d/i2pd
-	${INSTALL_DATA} ${.CURDIR}/pkg/var-i2pd.README \
-		${PREFIX}/share/examples/var/i2pd/README
-	${INSTALL_DATA} ${WRKDIST}/contrib/subscriptions.txt \
-		${PREFIX}/share/examples/var/i2pd/subscriptions.txt
-	${INSTALL_DATA} ${WRKDIST}/LICENSE ${PREFIX}/share/doc/i2pd/LICENSE
-	${INSTALL_DATA} ${WRKDIST}/NOTICE ${PREFIX}/share/doc/i2pd/NOTICE
-	${INSTALL_DATA} ${WRKDIST}/tools/LICENSE \
-		${PREFIX}/share/doc/i2pd/LICENSE.i2pd-tools
-	${INSTALL_DATA_DIR} ${WRKINST}/etc/rc.d
-	${INSTALL_SCRIPT} ${WRKDIST}/contrib/openbsd/i2pd.rc \
-		${WRKINST}/etc/rc.d/i2pd
+	sh "${.CURDIR}/install-examples.sh" dirs "${WRKDIST}" "${PREFIX}" "${WRKINST}" "${.CURDIR}" ${INSTALL_DATA_DIR}
+	sh "${.CURDIR}/install-examples.sh" data "${WRKDIST}" "${PREFIX}" "${WRKINST}" "${.CURDIR}" ${INSTALL_DATA}
+	sh "${.CURDIR}/install-examples.sh" script "${WRKDIST}" "${PREFIX}" "${WRKINST}" "${.CURDIR}" ${INSTALL_SCRIPT}
 
 .include <bsd.port.mk>

@@ -25,6 +25,31 @@ endif()
 # the in-list operator used by the README inventory check explicitly.
 cmake_policy(SET CMP0057 NEW)
 
+# The knowledge gate is maintained Perl, including its black-box suite.
+# Pin the paths without running it from this source-only skill check.
+foreach(required IN ITEMS scripts/validate-agent-knowledge.pl
+    tests/agent_knowledge_validator/test_validator.t
+    scripts/lib/Openi2pd/AgentKnowledge/TOML.pm)
+  if(NOT EXISTS "${PROJECT_ROOT}/${required}")
+    message(FATAL_ERROR "Missing Perl knowledge contract: ${required}")
+  endif()
+endforeach()
+foreach(obsolete IN ITEMS scripts/validate-agent-knowledge.py
+    tests/agent_knowledge_validator/test_validator.py)
+  if(EXISTS "${PROJECT_ROOT}/${obsolete}")
+    message(FATAL_ERROR "Obsolete knowledge contract source remains: ${obsolete}")
+  endif()
+endforeach()
+file(READ "${PROJECT_ROOT}/.github/workflows/agent-maintenance.yml" knowledge_workflow)
+foreach(required IN ITEMS
+    "prove -v tests/agent_knowledge_validator/test_validator.t"
+    "perl scripts/validate-agent-knowledge.pl --scope range")
+  string(FIND "${knowledge_workflow}" "${required}" found)
+  if(found LESS 0)
+    message(FATAL_ERROR "Knowledge gate must consume Perl: ${required}")
+  endif()
+endforeach()
+
 set(skills_root "${PROJECT_ROOT}/.agents/skills")
 if(NOT IS_DIRECTORY "${skills_root}")
   message(FATAL_ERROR "Missing Agent Skills directory: ${skills_root}")

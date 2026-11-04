@@ -41,32 +41,13 @@ export DEB_CXXFLAGS_MAINT_APPEND = -Wall -pedantic
 # integrates contrib/i2pd.service and contrib/sysvinit/i2pd, and installing
 # both owners would create duplicate units and start actions.
 override_dh_auto_configure:
-	cmake -S build -B build-debian -G Ninja \
-		-DCMAKE_BUILD_TYPE=RelWithDebInfo \
-		-DCMAKE_INSTALL_PREFIX=/usr \
-		-DCMAKE_INSTALL_SYSCONFDIR=/etc \
-		-DCMAKE_INSTALL_LOCALSTATEDIR=/var \
-		-DCMAKE_INSTALL_RUNSTATEDIR=/run \
-		-DI2PD_BUILD_TUI=ON \
-		-DI2PD_BUILD_TOOLS=ON \
-		-DWITH_LIBRARY=OFF \
-		-DCMAKE_C_FLAGS="$(shell dpkg-buildflags --get CFLAGS) $(shell dpkg-buildflags --get CPPFLAGS)" \
-		-DCMAKE_CXX_FLAGS="$(shell dpkg-buildflags --get CXXFLAGS) $(shell dpkg-buildflags --get CPPFLAGS)" \
-		-DCMAKE_EXE_LINKER_FLAGS="$(shell dpkg-buildflags --get LDFLAGS)" \
-		-DCMAKE_SHARED_LINKER_FLAGS="$(shell dpkg-buildflags --get LDFLAGS)" \
-		-DCMAKE_MODULE_LINKER_FLAGS="$(shell dpkg-buildflags --get LDFLAGS)" \
-		-DBUILD_TESTING=OFF \
-		-DI2PD_INSTALL_DOCS=ON \
-		-DI2PD_INSTALL_CONFIG=ON \
-		-DI2PD_OPENSSL_EXPECT=OpenSSL \
-		-DI2PD_SERVICE_MANAGER=none
+	sh debian/build-driver.sh configure
 
 # An empty "parallel=" value (the common case) leaves --parallel without a job
 # count, so CMake/Ninja use their own default; a distro-supplied value is passed
 # through unchanged.
 override_dh_auto_build:
-	cmake --build build-debian --parallel \
-		$(patsubst parallel=%,%,$(filter parallel=%,$(DEB_BUILD_OPTIONS)))
+	sh debian/build-driver.sh build
 
 override_dh_auto_test:
 	# Unit tests belong to CI. Router tests need network fixtures and are not
@@ -76,10 +57,10 @@ override_dh_auto_test:
 # Remove only the out-of-tree build directory; the source tree, including the
 # checked-in Gradle wrapper, stays untouched.
 override_dh_auto_clean:
-	cmake -E remove_directory build-debian
+	sh debian/build-driver.sh clean
 
 override_dh_auto_install:
-	DESTDIR=$(CURDIR)/debian/tmp cmake --install build-debian
+	sh debian/build-driver.sh install "$(CURDIR)"
 
 # dh_apparmor installs the local include and reloads the profile. The profile
 # itself is in i2pd.install; running the helper after dh_install keeps the

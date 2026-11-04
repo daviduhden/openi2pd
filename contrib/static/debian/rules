@@ -33,13 +33,7 @@ override_dh_auto_build override_dh_auto_test override_dh_auto_clean override_dh_
 # the daemon writes its state to /var/lib/i2pd at runtime, so no state or
 # runtime directory is pre-created here.
 override_dh_auto_install:
-	install -D -m 0755 bin/i2pd-$(DEB_HOST_ARCH) $(PKG)/usr/bin/i2pd
-	install -D -m 0644 src/contrib/i2pd.conf $(PKG)/etc/i2pd/i2pd.conf
-	install -D -m 0644 src/contrib/tunnels.conf $(PKG)/etc/i2pd/tunnels.conf
-	install -D -m 0644 src/contrib/subscriptions.txt $(PKG)/etc/i2pd/subscriptions.txt
-	install -D -m 0644 src/contrib/tunnels.d/README $(PKG)/etc/i2pd/tunnels.conf.d/README
-	install -d $(PKG)/usr/share/i2pd
-	cp -r src/contrib/certificates $(PKG)/usr/share/i2pd/
+	sh debian/install-payload.sh "$(DEB_HOST_ARCH)" "$(PKG)"
 
 override_dh_installsystemd:
 	dh_installsystemd --no-start

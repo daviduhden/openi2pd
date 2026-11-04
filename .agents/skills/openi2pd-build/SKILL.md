@@ -110,6 +110,19 @@ build.
   let packaging install competing definitions.
 
 ## Known issues and decisions
+- The POSIX Make front-end delegates to `build/make-driver.sh`; preserve the
+  prerequisite graph and pass expanded CMake flags as trailing argv, never
+  reparse an environment string with eval. Keep cleanup refusal and prefix/
+  DESTDIR handling in the helper. Debian and OpenBSD ports retain their own
+  framework dialects; they are not evidence that the native build needs GNU
+  make. Mock-driver regressions must verify argv and ordering without a build.
+
+- Validator syntax/critic registration explicitly lists the entry point, its
+  core module tree and the Test::More contract. Compare the module list with
+  recursive portability discovery; do not introduce CMake source globs.
+  Keep the workflow lane aligned; `.pm` files need strict/warnings
+  and a Perl floor, not an executable shebang. CTest registration must provide
+  a direct Perl fallback when `prove` is unavailable on a base system.
 
 - The MSVC CI lane retains optimized Release symbols using CMP0141 NEW,
   ProgramDatabase and /DEBUG:FULL with /OPT:REF and /OPT:ICF. That CI

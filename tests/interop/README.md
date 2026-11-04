@@ -216,7 +216,7 @@ cmake --build build-fuzz --target fuzz-protocol-bounds fuzz-http-parser fuzz-tui
 # Convert checked-in hex vectors to a raw libFuzzer corpus.
 mkdir -p /tmp/opencode/interop-corpus/protocol-bounds
 for f in tests/interop/vectors/malformed/*.hex; do
-  perl -0777 -ne 's/^[ \t]*#.*$//mg; s/\s+//g; print pack "H*", $_' "$f" \
+  perl tests/interop/hex-to-binary.pl "$f" \
     > "/tmp/opencode/interop-corpus/protocol-bounds/$(basename "$f" .hex)"
 done
 build-fuzz/fuzz-protocol-bounds \
@@ -225,6 +225,10 @@ build-fuzz/fuzz-protocol-bounds \
 ```
 
 Do not add the fuzz targets to the default build or to CTest.
+
+The hex converter rejects odd-length or nonhexadecimal input before writing
+output; it caps source text at 16 MiB rather than silently packing malformed
+bytes.
 
 ### 4. Isolated SAM / I2CP loopback — NOT EXECUTED
 
@@ -250,15 +254,17 @@ Replay the checked-in SAM hello vectors against the local bridge:
 
 ```sh
 for f in tests/interop/vectors/valid/sam-hello-*.txt; do
-  perl -MIO::Socket::INET -e '
-    my ($host,$port,$file)=@ARGV;
-    open my $in,"<",$file or die $!; binmode $in;
-    my $req = do { local $/; <$in> };
-    my $s = IO::Socket::INET->new(PeerAddr=>$host,PeerPort=>$port,Proto=>"tcp") or die $!;
-    print $s $req; my $reply = <$s>; print "$file -> $reply";
-  ' 127.0.0.1 17656 "$f"
+  perl tests/interop/sam-stream-send.pl 127.0.0.1 17656 "$f"
 done
 ```
+
+The sender accepts only `127.0.0.1`, caps requests at 64 KiB and replies at
+8 KiB, and applies a ten-second total deadline. It accepts only HELLO VERSION
+requests and prints the fixture name plus the allowlisted HELLO REPLY result
+and optional numeric version. Unexpected fields, including MESSAGE, fail
+without exposing peer text. Valid exchanges return zero, including NOVERSION
+and I2P_ERROR; inspect the visible result to determine negotiation success.
+Malformed replies, EOF without a reply, and timeouts return nonzero.
 
 For I2CP, connect a client to `127.0.0.1:17654` and send the checked-in
 `i2cp-hostlookup-hash` / `i2cp-blindinginfo-hash` messages. A raw I2CP session

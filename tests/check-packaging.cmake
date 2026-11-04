@@ -35,6 +35,11 @@ function(assert_absent text needle description)
 endfunction()
 
 read_file("${PROJECT_ROOT}/Makefile" root_make)
+read_file("${PROJECT_ROOT}/build/make-driver.sh" make_driver)
+read_file("${PROJECT_ROOT}/debian/build-driver.sh" debian_driver)
+read_file("${PROJECT_ROOT}/contrib/static/debian/install-payload.sh" static_install_driver)
+read_file("${PROJECT_ROOT}/contrib/static/debian/rules" static_debian_rules)
+read_file("${PROJECT_ROOT}/contrib/openbsd/port/install-examples.sh" openbsd_install_driver)
 read_file("${PROJECT_ROOT}/tests/Makefile" test_make)
 read_file("${PROJECT_ROOT}/build/CMakeLists.txt" top_cmake)
 read_file("${PROJECT_ROOT}/build/cmake/i2pdConfig.cmake" package_config)
@@ -80,7 +85,22 @@ assert_contains("${test_make}" "\"\${MAKE}\" -C \"..\" "
 assert_contains("${root_make}" "install: build" "install must build before staging")
 assert_contains("${root_make}" "DESTDIR =" "install must expose DESTDIR")
 assert_contains("${root_make}" "PREFIX =" "install must expose PREFIX")
-assert_contains("${root_make}" "refusing to remove unsafe BUILD_DIR" "clean must guard BUILD_DIR")
+assert_contains("${root_make}" "MAKE_DRIVER = sh build/make-driver.sh" "Make must name the source driver")
+assert_contains("${root_make}" "\${MAKE_DRIVER} clean" "clean must delegate to its guarded driver")
+assert_contains("${make_driver}" "refusing to remove unsafe BUILD_DIR" "clean must guard BUILD_DIR")
+assert_contains("${make_driver}" "refusing to remove source root or its ancestor" "clean must reject physical source aliases")
+assert_contains("${root_make}" "\${MAKE_DRIVER} install" "install must delegate prefix decisions")
+assert_contains("${debian_rules}" "sh debian/build-driver.sh configure" "Debhelper must delegate configure logic")
+assert_contains("${static_debian_rules}" "sh debian/install-payload.sh" "Static packages must delegate payload installation")
+assert_contains("${static_install_driver}" "bin/i2pd-$architecture" "Static payload must retain its architecture identity")
+foreach(phase IN ITEMS dirs data script)
+  assert_contains("${openbsd_port_make}" "install-examples.sh\" ${phase}"
+    "OpenBSD port must delegate each framework install phase")
+endforeach()
+assert_contains("${openbsd_port_make}" "\${.CURDIR}/install-examples.sh"
+  "The port helper must travel with the external port, not an older distfile")
+assert_absent("${openbsd_port_make}" "\${WRKDIST}/contrib/openbsd/port/install-examples.sh"
+  "The existing release distfile must not need a newly added port helper")
 
 assert_contains("${top_cmake}" "COMPONENT Development" "headers/export need a development component")
 assert_contains("${top_cmake}" "configure_package_config_file"
@@ -160,7 +180,7 @@ assert_contains("${openbsd_port_make}" "SEPARATE_BUILD = Yes"
   "OpenBSD port must use a separate build tree")
 assert_contains("${openbsd_port_make}" "WRKBUILD = \${WRKDIST}/obj"
   "OpenBSD port must keep CMake artefacts outside build/")
-assert_contains("${openbsd_port_make}" "share/examples/var/i2pd/subscriptions.txt"
+assert_contains("${openbsd_install_driver}" "share/examples/var/i2pd/subscriptions.txt"
   "OpenBSD port must ship the subscriptions sample")
 assert_contains("${openbsd_port_make}" "-DI2PD_INSTALL_CONFIG=OFF"
   "OpenBSD port should ship only its own configuration samples")
@@ -283,11 +303,17 @@ foreach(required IN ITEMS
     "-DI2PD_INSTALL_DOCS=ON"
     "-DI2PD_INSTALL_CONFIG=ON"
     "-DI2PD_OPENSSL_EXPECT=OpenSSL"
-    "-DI2PD_SERVICE_MANAGER=none"
-    "dh_apparmor --profile-name=usr.bin.i2pd -pi2pd"
-    "dh_missing --fail-missing"
-    "$(filter parallel=%,$(DEB_BUILD_OPTIONS))")
-  assert_contains("${debian_rules}" "${required}" "debian/rules")
+    "-DI2PD_SERVICE_MANAGER=none")
+  assert_contains("${debian_driver}" "${required}" "Debian build driver")
+endforeach()
+foreach(required IN ITEMS "dh_apparmor --profile-name=usr.bin.i2pd -pi2pd"
+    "dh_missing --fail-missing")
+  assert_contains("${debian_rules}" "${required}" "Debhelper authority")
+endforeach()
+foreach(required IN ITEMS "dpkg-buildflags --get CFLAGS" "dpkg-buildflags --get CPPFLAGS"
+    "dpkg-buildflags --get CXXFLAGS" "dpkg-buildflags --get LDFLAGS"
+    "DEB_BUILD_OPTIONS" "parallel=*)" "multiple parallel counts")
+  assert_contains("${debian_driver}" "${required}" "Debian flag/parallel policy")
 endforeach()
 foreach(required IN ITEMS
     "dh-apparmor"
@@ -474,13 +500,13 @@ assert_absent("${docker}" "CC-BY-SA-4.0"
 # OpenBSD @sample targets resolve to share/examples/<absolute path>. The
 # port must install the mirrored trees, create /var/i2pd from a sample,
 # keep the configuration root-owned and ship the mandatory notices.
-assert_contains("${openbsd_port_make}" "share/examples/etc/i2pd"
+assert_contains("${openbsd_install_driver}" "share/examples/etc/i2pd"
   "OpenBSD port must install the /etc sample tree")
-assert_contains("${openbsd_port_make}" "share/examples/var/i2pd"
+assert_contains("${openbsd_install_driver}" "share/examples/var/i2pd"
   "OpenBSD port must install the /var/i2pd sample directory")
-assert_contains("${openbsd_port_make}" "share/doc/i2pd/NOTICE"
+assert_contains("${openbsd_install_driver}" "share/doc/i2pd/NOTICE"
   "OpenBSD port must install NOTICE")
-assert_absent("${openbsd_port_make}" "share/doc/i2pd/CC-BY-SA-4.0"
+assert_absent("${openbsd_install_driver}" "share/doc/i2pd/CC-BY-SA-4.0"
   "OpenBSD port must not install a standalone CC notice")
 assert_contains("${openbsd_plist}" "@sample \${LOCALSTATEDIR}/i2pd/"
   "OpenBSD PLIST must sample the private state directory")
@@ -513,7 +539,7 @@ foreach(plist_line IN LISTS openbsd_plist_lines)
   string(REGEX REPLACE "[/]+$" "" sample_path "${sample_path}")
   assert_contains("${openbsd_plist}" "share/examples/${sample_path}"
     "OpenBSD PLIST must package the mirror of @sample ${sample_target}")
-  assert_contains("${openbsd_port_make}" "share/examples/${sample_path}"
+  assert_contains("${openbsd_install_driver}" "share/examples/${sample_path}"
     "OpenBSD port must install the mirror of @sample ${sample_target}")
 endforeach()
 if(openbsd_sample_count LESS 5)

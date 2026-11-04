@@ -61,6 +61,12 @@ if(IS_ABSOLUTE "${INSTALL_BINDIR}")
 endif()
 set(installed "${WORK_DIR}/${INSTALL_BINDIR}/i2pdctl")
 
+# CMake 3.24 has no IS_EXECUTABLE predicate. Use the POSIX utility on
+# UNIX hosts, passing each pathname as one argument without shell code.
+if(UNIX)
+  find_program(I2PD_POSIX_TEST_EXECUTABLE NAMES test REQUIRED)
+endif()
+
 if(NOT EXISTS "${installed}")
   message(FATAL_ERROR "i2pdctl was not installed at ${installed}")
 endif()
@@ -73,7 +79,7 @@ foreach(tool IN LISTS TOOL_NAMES)
   endif()
   if(UNIX)
     execute_process(
-      COMMAND "${PERL_EXECUTABLE}" -e "exit((-x $ARGV[0]) ? 0 : 1)" "${tool_path}"
+      COMMAND "${I2PD_POSIX_TEST_EXECUTABLE}" -x "${tool_path}"
       RESULT_VARIABLE executable_result)
     if(NOT executable_result EQUAL 0)
       message(FATAL_ERROR "installed tool is not executable: ${tool_path}")
@@ -108,7 +114,7 @@ endif()
 
 if(UNIX)
   execute_process(
-    COMMAND "${PERL_EXECUTABLE}" -e "exit((-x $ARGV[0]) ? 0 : 1)" "${installed}"
+    COMMAND "${I2PD_POSIX_TEST_EXECUTABLE}" -x "${installed}"
     RESULT_VARIABLE executable_result)
   if(NOT executable_result EQUAL 0)
     message(FATAL_ERROR "installed i2pdctl is not executable: ${installed}")

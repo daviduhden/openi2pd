@@ -20,11 +20,11 @@ Use this skill for `tools/**`, `tools/scripts/**`, `tools/tests/**`, the
 the Python-to-Perl migration. Use `openi2pd-packaging` for install manifests.
 
 Read [`../../../AGENTS.md`](../../../AGENTS.md) first. Project-maintained
-product and maintenance scripts use Perl; do not add Python, CPAN or runtime
-downloads. The shared agent-knowledge validator and its byte-identical
-contract tests are the narrow Python exception required by `AGENTS.md`.
-`tools/tests/perl-portability.t` exempts only those two exact paths and rejects
-other maintained Python sources.
+general-purpose auxiliary scripts use Perl, with native Shell orchestration
+where suitable; do not add Python, CPAN or runtime
+downloads. The agent-knowledge validator and its Test::More contract suite
+are Perl-owned too. The portability inventory has no Python-source exception;
+include auxiliary modules under `scripts/lib/` without requiring a shebang.
 
 ## Inspect first
 
@@ -112,16 +112,35 @@ a TUI client.
 - Preserve upstream provenance/license notices for imported tools.
 - Keep tool names, CLI behavior and install paths unless a migration is
   approved.
-- `scripts/validate-agent-knowledge.py` and
-  `tests/agent_knowledge_validator/test_validator.py` are the only Python
-  files exempted by `perl-portability.t`; keep this shared validator contract
-  byte-identical across adopters. Local mode inspects staged/unstaged plus
+- `scripts/validate-agent-knowledge.pl` and
+  `tests/agent_knowledge_validator/test_validator.t` implement the shared
+  validator contract with core Perl dependencies. Local mode inspects staged/unstaged plus
   untracked paths; PR mode accepts explicit `--base`/`--head` commit SHAs. Its
   substantive-text heuristic and link/section checks are structural only; a
   reviewer must still assess whether the update records useful knowledge.
   Never let it execute repository code.
 
 ## Known issues and decisions
+- Audit interpreter execution by operand role, not by a literal `-e` search:
+  combined Perl flags, absolute/env interpreters, stdin/heredocs, generated
+  fixtures and Shell documentation examples need review. `perl -c file`
+  remains file-based validation. Keep executable test doubles in checked-in
+  fixtures and pass paths as data instead of constructing source literals.
+  The shell-policy checker is compile-free; its negative fixtures and helper
+  behavior tests execute only in authorized CI.
+- Cross-language validator reviews must cover Git NUL-delimited paths,
+  staged/unstaged/range merge-base behavior, UTF-8 decoding, JSON null versus
+  boolean/string/number types, TOML quoted path keys and safe child IO. Keep
+  AK001-AK006, AKX001, schema and exit codes stable. Fixtures copy the complete
+  validator module tree. CLI syntax/help wording can identify Perl, but policy
+  results must preserve the contract. Do not restore a Python bootstrap.
+- Registration commands share `ValidateRecordName`'s typed grammar failures
+  and fixed `RecordNameErrorMessage` suffixes. Keep DEL, backslash and the
+  255-byte limit visible in rejection diagnostics without echoing operands;
+  validation precedes key/step-file reads. The boolean compatibility helper
+  delegates to the same classifier. CLI regressions cover every registration
+  consumer and the accepted maximum-length boundary; do not conflate this
+  record grammar with DNS-label policy.
 
 - The workflow checker reads the literal Windows debugger command file
   and allows only event description and code-location commands. Its
@@ -265,6 +284,18 @@ a TUI client.
 - `LoadPrivateKeys` lives in `i2p::tools` (`tools/common/keys.hpp`); a tool
   outside that namespace must qualify the call. The `b33offlinekeys` target
   exposed this only after the earlier build blockers were removed (CE-010).
+
+- Every `CryptoGuard` declaration is a contract, regardless of variable
+  name: the inventory checker derives the identifier and requires the fixed
+  stderr rejection plus exit 1. `verifyhost` keeps `Valid destination` on
+  stdout and every rejection on stderr; empty stdout means "not verified".
+- The Perl syntax sweep and critic target are inventories: every maintained
+  `.pl`/`.t` except `i2pdctl` (dedicated syntax target) must appear in both.
+  `perl-cpp-comment-integrity` is registered by `tools/CMakeLists.txt`.
+- The catalog unescape is one left-to-right pass for `\n`, `\t`, `\"` and
+  `\\`; never apply ordered substitutions that reinterpret a literal
+  backslash. Static Debian scripts follow the main package's phase policy,
+  including a `triggered)` branch and non-zero unknown phase.
 
 ## Do not
 

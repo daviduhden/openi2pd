@@ -108,7 +108,6 @@ tracker/DHT URLs. No public DHT or clearnet fallback is permitted.
 ```sh
 perl -c tools/scripts/i2pdctl
 prove -v tools/tests/i2pdctl.t
-perl -MTest::More -e 1
 ```
 
 - The Test::More suite preserves `exec`, `raw_info` and `info` output and exit
@@ -158,7 +157,7 @@ The new `test-torrent-payload-storage` exercises bounded backend transfers, piec
 crossing files, zero-length-file fragment suppression, failed persistence,
 unavailable capabilities and the saving gate. OpenBSD registers
 `test-torrent-storage-openbsd` for pre-pledge supervision and replacement without
-runtime proc/exec. Android `src/test` now runs framework-free
+runtime exec; the on-demand OpenBSD broker is disabled and its target skips with 77. Android `src/test` now runs framework-free
 `TorrentSafPolicyTest` (range wraparound, export growth/commit, document identity,
 shorter-document extension) and `TorrentSafGrantsTest` (shared-tree reference
 counting) in `testDebugUnitTest`. Instrumentation still includes

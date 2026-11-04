@@ -10,6 +10,11 @@ Merge the files into the ports tree rather than copying them blindly:
     `WRKSRC` points at the project's `build/` CMake source directory and
     `WRKBUILD` at a separate `obj/` tree, so no CMake artefact enters the
     extracted source.
+  * `install-examples.sh` is a build-time port helper. Merge it beside the
+    port Makefile: `${.CURDIR}` owns this script, so the existing release
+    distfile need not contain a newly added helper. It receives the ports
+    `INSTALL_*` commands as argv and installs the same staged samples,
+    notices and substituted rc.d source. It is not a package runtime file.
   * `PLIST` records `_i2pd` with login class `i2pd`, `@rcscript`, the
     `@sample` configuration and login class (resolved from
     `share/examples/etc/...`), the private `@sample` state directory
