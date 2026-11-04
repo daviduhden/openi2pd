@@ -13,10 +13,25 @@
  */
 
 #include <cctype>
+#include <cerrno>
 #include <cstdio>
+#include <filesystem>
+#include <limits>
 #include <time.h>
+#include <vector>
+
+#ifdef _WIN32
+#include <aclapi.h>
+#include <sddl.h>
+#include <windows.h>
+#else
+#include <fcntl.h>
+#include <sys/stat.h>
+#include <unistd.h>
+#endif
 
 #include "Log.h"
+#include "Modern.h"
 #include "util.h"
 
 //for std::transform
@@ -26,6 +41,363 @@ namespace i2p
 {
 namespace log
 {
+	namespace
+	{
+		class NativeLogFile
+		{
+		public:
+#ifdef _WIN32
+			explicit NativeLogFile (HANDLE handle = INVALID_HANDLE_VALUE)
+				: m_Handle (handle) { }
+			NativeLogFile (NativeLogFile && other) noexcept
+				: m_Handle (std::exchange (other.m_Handle, INVALID_HANDLE_VALUE)) { }
+			NativeLogFile & operator= (NativeLogFile && other) noexcept
+			{
+				if (this != &other)
+				{
+					Reset ();
+					m_Handle = std::exchange (other.m_Handle, INVALID_HANDLE_VALUE);
+				}
+				return *this;
+			}
+			~NativeLogFile () { Reset (); }
+			HANDLE Get () const { return m_Handle; }
+			void Reset ()
+			{
+				if (m_Handle != INVALID_HANDLE_VALUE) CloseHandle (std::exchange (m_Handle, INVALID_HANDLE_VALUE));
+			}
+		private:
+			HANDLE m_Handle;
+#else
+			explicit NativeLogFile (int fd = -1)
+				: m_Fd (fd) { }
+			NativeLogFile (NativeLogFile && other) noexcept
+				: m_Fd (std::exchange (other.m_Fd, -1)) { }
+			NativeLogFile & operator= (NativeLogFile && other) noexcept
+			{
+				if (this != &other)
+				{
+					Reset ();
+					m_Fd = std::exchange (other.m_Fd, -1);
+				}
+				return *this;
+			}
+			~NativeLogFile () { Reset (); }
+			int Get () const { return m_Fd; }
+			void Reset ()
+			{
+				if (m_Fd >= 0) close (std::exchange (m_Fd, -1));
+			}
+		private:
+			int m_Fd;
+#endif
+			NativeLogFile (const NativeLogFile &) = delete;
+			NativeLogFile & operator= (const NativeLogFile &) = delete;
+		};
+
+		class AppendLogBuffer final : public std::streambuf
+		{
+		public:
+			explicit AppendLogBuffer (NativeLogFile file)
+				: m_File (std::move (file)) { }
+
+		protected:
+			std::streamsize xsputn (const char * data, std::streamsize size) override
+			{
+				if (size <= 0) return 0;
+				std::streamsize written = 0;
+				while (written < size)
+				{
+#ifdef _WIN32
+					const auto remaining = static_cast<uint64_t> (size - written);
+					const DWORD count = static_cast<DWORD> (std::min<uint64_t> (remaining, MAXDWORD));
+					DWORD actual = 0;
+					if (!WriteFile (m_File.Get (), data + written, count, &actual, nullptr) || !actual) break;
+					written += static_cast<std::streamsize> (actual);
+#else
+					const auto remaining = static_cast<uint64_t> (size - written);
+					const auto count = static_cast<size_t> (
+						std::min<uint64_t> (remaining, static_cast<uint64_t> (std::numeric_limits<ssize_t>::max ())));
+					const ssize_t actual = write (m_File.Get (), data + written, count);
+					if (actual < 0 && errno == EINTR) continue;
+					if (actual <= 0) break;
+					written += static_cast<std::streamsize> (actual);
+#endif
+				}
+				return written;
+			}
+
+			int_type overflow (int_type value) override
+			{
+				if (traits_type::eq_int_type (value, traits_type::eof ())) return traits_type::not_eof (value);
+				const char ch = traits_type::to_char_type (value);
+				return xsputn (&ch, 1) == 1 ? value : traits_type::eof ();
+			}
+
+			int sync () override { return 0; }
+
+		private:
+			NativeLogFile m_File;
+		};
+
+		class AppendLogStream final : public std::ostream
+		{
+		public:
+			explicit AppendLogStream (NativeLogFile file)
+				: std::ostream (nullptr)
+				, m_Buffer (std::move (file))
+			{
+				rdbuf (&m_Buffer);
+			}
+			~AppendLogStream ()
+			{
+				flush ();
+				rdbuf (nullptr);
+			}
+
+		private:
+			AppendLogBuffer m_Buffer;
+		};
+
+#ifdef _WIN32
+		bool CurrentUserSid (std::vector<BYTE> & buffer, PSID & sid)
+		{
+			HANDLE token = nullptr;
+			if (!OpenProcessToken (GetCurrentProcess (), TOKEN_QUERY, &token)) return false;
+			const auto closeToken = i2p::modern::ScopeExit ([&] { CloseHandle (token); });
+			DWORD size = 0;
+			GetTokenInformation (token, TokenUser, nullptr, 0, &size);
+			if (GetLastError () != ERROR_INSUFFICIENT_BUFFER || !size) return false;
+			buffer.resize (size);
+			if (!GetTokenInformation (token, TokenUser, buffer.data (), size, &size)) return false;
+			sid = reinterpret_cast<TOKEN_USER *> (buffer.data ())->User.Sid;
+			return IsValidSid (sid) != FALSE;
+		}
+
+		bool BuildPrivateLogDacl (PSECURITY_DESCRIPTOR & descriptor, PACL & dacl)
+		{
+			std::vector<BYTE> userBuffer;
+			PSID userSid = nullptr;
+			if (!CurrentUserSid (userBuffer, userSid)) return false;
+			LPWSTR sidText = nullptr;
+			if (!ConvertSidToStringSidW (userSid, &sidText)) return false;
+			const auto freeSidText = i2p::modern::ScopeExit ([&] { LocalFree (sidText); });
+			const std::wstring sddl = L"D:P(A;;FA;;;" + std::wstring (sidText) + L")(A;;FA;;;SY)";
+			if (!ConvertStringSecurityDescriptorToSecurityDescriptorW (
+					sddl.c_str (), SDDL_REVISION_1, &descriptor, nullptr))
+				return false;
+			BOOL present = FALSE, defaulted = FALSE;
+			if (!GetSecurityDescriptorDacl (descriptor, &present, &dacl, &defaulted) || !present || !dacl)
+			{
+				LocalFree (descriptor);
+				descriptor = nullptr;
+				return false;
+			}
+			return true;
+		}
+
+		bool IsPrivateLogOwner (HANDLE handle, PSID expectedOwner)
+		{
+			PSID owner = nullptr;
+			PSECURITY_DESCRIPTOR descriptor = nullptr;
+			const DWORD result = GetSecurityInfo (
+				handle, SE_FILE_OBJECT, OWNER_SECURITY_INFORMATION, &owner, nullptr, nullptr, nullptr, &descriptor);
+			const bool valid = result == ERROR_SUCCESS && owner && EqualSid (owner, expectedOwner);
+			if (descriptor) LocalFree (descriptor);
+			return valid;
+		}
+
+		bool IsRegularLogFile (HANDLE handle, BY_HANDLE_FILE_INFORMATION & info)
+		{
+			return GetFileType (handle) == FILE_TYPE_DISK && GetFileInformationByHandle (handle, &info)
+				&& !(info.dwFileAttributes & (FILE_ATTRIBUTE_DIRECTORY | FILE_ATTRIBUTE_REPARSE_POINT))
+				&& info.nNumberOfLinks == 1;
+		}
+
+		bool OpenLogDirectoryNoReparse (const std::filesystem::path & path, NativeLogFile & directory)
+		{
+			HANDLE handle = CreateFileW (path.c_str (), FILE_READ_ATTRIBUTES, FILE_SHARE_READ | FILE_SHARE_WRITE,
+				nullptr, OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT, nullptr);
+			if (handle == INVALID_HANDLE_VALUE) return false;
+			NativeLogFile candidate (handle);
+			BY_HANDLE_FILE_INFORMATION info { };
+			if (!GetFileInformationByHandle (candidate.Get (), &info)
+				|| !(info.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)
+				|| (info.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT))
+				return false;
+			directory = std::move (candidate);
+			return true;
+		}
+
+		bool SameFile (const BY_HANDLE_FILE_INFORMATION & left, const BY_HANDLE_FILE_INFORMATION & right)
+		{
+			return left.dwVolumeSerialNumber == right.dwVolumeSerialNumber
+				&& left.nFileIndexHigh == right.nFileIndexHigh && left.nFileIndexLow == right.nFileIndexLow;
+		}
+#endif
+
+		std::shared_ptr<std::ostream> OpenPrivateAppendLog (const std::string & path, std::string & error)
+		{
+			if (path.empty () || path.find ('\0') != std::string::npos)
+			{
+				error = "invalid path";
+				return nullptr;
+			}
+			std::error_code pathError;
+			auto target = std::filesystem::absolute (std::filesystem::path (path), pathError).lexically_normal ();
+			if (pathError || target.empty () || target.filename ().empty ())
+			{
+				error = "invalid path";
+				return nullptr;
+			}
+#ifdef _WIN32
+			std::vector<NativeLogFile> parentHandles;
+			NativeLogFile directory;
+			auto current = target.root_path ();
+			if (current.empty () || !OpenLogDirectoryNoReparse (current, directory))
+			{
+				error = "can't securely open parent directory";
+				return nullptr;
+			}
+			parentHandles.push_back (std::move (directory));
+			for (const auto & component : target.parent_path ().relative_path ())
+			{
+				if (component.empty () || component == L".") continue;
+				current /= component;
+				NativeLogFile next;
+				if (!OpenLogDirectoryNoReparse (current, next))
+				{
+					error = "parent path contains a non-directory or reparse point";
+					return nullptr;
+				}
+				parentHandles.push_back (std::move (next));
+			}
+
+			PSECURITY_DESCRIPTOR descriptor = nullptr;
+			PACL dacl = nullptr;
+			if (!BuildPrivateLogDacl (descriptor, dacl))
+			{
+				error = "can't build private file security";
+				return nullptr;
+			}
+			const auto freeDescriptor = i2p::modern::ScopeExit ([&] { LocalFree (descriptor); });
+			SECURITY_ATTRIBUTES attributes { sizeof (SECURITY_ATTRIBUTES), descriptor, FALSE };
+			HANDLE handle = CreateFileW (target.c_str (), FILE_APPEND_DATA | FILE_READ_ATTRIBUTES | READ_CONTROL | WRITE_DAC,
+				FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, &attributes, OPEN_ALWAYS,
+				FILE_ATTRIBUTE_NORMAL | FILE_FLAG_OPEN_REPARSE_POINT, nullptr);
+			if (handle == INVALID_HANDLE_VALUE)
+			{
+				error = "can't open file without following reparse points";
+				return nullptr;
+			}
+			NativeLogFile file (handle);
+			std::vector<BYTE> userBuffer;
+			PSID userSid = nullptr;
+			BY_HANDLE_FILE_INFORMATION info { };
+			if (!CurrentUserSid (userBuffer, userSid) || !IsRegularLogFile (file.Get (), info)
+				|| !IsPrivateLogOwner (file.Get (), userSid))
+			{
+				error = "file is not a private regular file owned by this user";
+				return nullptr;
+			}
+			HANDLE namedHandle = CreateFileW (target.c_str (), FILE_READ_ATTRIBUTES,
+				FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr, OPEN_EXISTING,
+				FILE_FLAG_OPEN_REPARSE_POINT, nullptr);
+			NativeLogFile named (namedHandle);
+			BY_HANDLE_FILE_INFORMATION namedInfo { };
+			if (namedHandle == INVALID_HANDLE_VALUE || !GetFileInformationByHandle (named.Get (), &namedInfo)
+				|| (namedInfo.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT) || !SameFile (info, namedInfo))
+			{
+				error = "file path changed during secure open";
+				return nullptr;
+			}
+			if (SetSecurityInfo (file.Get (), SE_FILE_OBJECT,
+					DACL_SECURITY_INFORMATION | PROTECTED_DACL_SECURITY_INFORMATION, nullptr, nullptr, dacl, nullptr)
+				!= ERROR_SUCCESS)
+			{
+				error = "can't apply private file security";
+				return nullptr;
+			}
+			return std::make_shared<AppendLogStream> (std::move (file));
+#else
+			int directoryFlags = O_RDONLY;
+#ifdef O_DIRECTORY
+			directoryFlags |= O_DIRECTORY;
+#else
+			error = "directory no-follow support is unavailable";
+			return nullptr;
+#endif
+#ifdef O_NOFOLLOW
+			directoryFlags |= O_NOFOLLOW;
+#else
+			error = "path no-follow support is unavailable";
+			return nullptr;
+#endif
+#ifdef O_CLOEXEC
+			directoryFlags |= O_CLOEXEC;
+#endif
+			const auto root = target.root_path ();
+			int directory = open (root.c_str (), directoryFlags);
+			if (directory < 0)
+			{
+				error = "can't securely open root directory";
+				return nullptr;
+			}
+			NativeLogFile parent (directory);
+			for (const auto & component : target.parent_path ().relative_path ())
+			{
+				if (component.empty () || component == ".") continue;
+				const auto name = component.string ();
+				const int next = openat (parent.Get (), name.c_str (), directoryFlags);
+				if (next < 0)
+				{
+					error = "parent path contains a non-directory or symlink";
+					return nullptr;
+				}
+				parent = NativeLogFile (next);
+			}
+			int fileFlags = O_WRONLY | O_CREAT | O_APPEND | O_NONBLOCK;
+#ifdef O_NOCTTY
+			fileFlags |= O_NOCTTY;
+#endif
+#ifdef O_CLOEXEC
+			fileFlags |= O_CLOEXEC;
+#endif
+#ifdef O_NOFOLLOW
+			fileFlags |= O_NOFOLLOW;
+#endif
+			const auto leaf = target.filename ().string ();
+			const int fd = openat (parent.Get (), leaf.c_str (), fileFlags, S_IRUSR | S_IWUSR);
+			if (fd < 0)
+			{
+				error = "can't open file without following symlinks";
+				return nullptr;
+			}
+			NativeLogFile file (fd);
+			struct stat descriptor { };
+			struct stat named { };
+			if (fstat (fd, &descriptor) != 0 || !S_ISREG (descriptor.st_mode) || descriptor.st_uid != geteuid ()
+				|| descriptor.st_nlink != 1)
+			{
+				error = "file is not a private regular file owned by this user";
+				return nullptr;
+			}
+			if (fstatat (parent.Get (), leaf.c_str (), &named, AT_SYMLINK_NOFOLLOW) != 0
+				|| !S_ISREG (named.st_mode) || named.st_dev != descriptor.st_dev || named.st_ino != descriptor.st_ino)
+			{
+				error = "file path changed during secure open";
+				return nullptr;
+			}
+			if (fchmod (fd, S_IRUSR | S_IWUSR) != 0)
+			{
+				error = "can't apply private file mode";
+				return nullptr;
+			}
+			return std::make_shared<AppendLogStream> (std::move (file));
+#endif
+		}
+	} // namespace
+
 	/**
 	 * @brief Maps our loglevel to their symbolic name
 	 */
@@ -432,11 +804,11 @@ namespace log
 	{
 		// Open outside the lock: a slow or blocking open must not stall the
 		// signal thread while it is reopening the log.
-		auto flags = std::ofstream::out | std::ofstream::app;
-		auto os = std::make_shared<std::ofstream> (path, flags);
-		if (!os->is_open ())
+		std::string error;
+		auto os = OpenPrivateAppendLog (path, error);
+		if (!os)
 		{
-			LogPrint (eLogCritical, "Log: Can't open file ", path);
+			LogPrint (eLogCritical, "Log: Can't securely open file: ", error);
 			return;
 		}
 		InstallFileStream (path, std::move (os), false);
@@ -501,11 +873,11 @@ namespace log
 		// Open before taking the lock, then re-check the destination so a
 		// concurrent SendTo() is never overwritten by this signal-thread
 		// path.
-		auto flags = std::ofstream::out | std::ofstream::app;
-		auto os = std::make_shared<std::ofstream> (logfile, flags);
-		if (!os->is_open ())
+		std::string error;
+		auto os = OpenPrivateAppendLog (logfile, error);
+		if (!os)
 		{
-			LogPrint (eLogCritical, "Log: Can't reopen file ", logfile);
+			LogPrint (eLogCritical, "Log: Can't securely reopen file: ", error);
 			return;
 		}
 		InstallFileStream (logfile, std::move (os), true);
