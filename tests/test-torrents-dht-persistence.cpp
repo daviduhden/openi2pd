@@ -10,6 +10,7 @@
 #include "TorrentsTunnel.h"
 #include "TorrentStorageWorker.h"
 #include "../privsep/RunWorker.h"
+#include <algorithm>
 #include <cassert>
 #include <cstring>
 #include <fstream>
@@ -55,14 +56,25 @@ int main (int argc, char ** argv)
 	dht.Start ();
 	assert (reads == 1 && dht.GetNumNodes () == 1);
 	dht.Stop ();
-	assert (writes == 1 && saved == source);
+	// Persistence starts with this tunnel's self record, followed by the
+	// retained peer records. A null constructor argument to TorrentsTunnel
+	// creates a local destination through I2PService.
+	assert (writes == 1 && saved.size () == 2 * node.size ());
+	i2p::torrents::NodeInfo selfInfo;
+	std::copy_n (saved.begin (), selfInfo.size (), selfInfo.begin ());
+	i2p::torrents::Node savedSelf (selfInfo);
+	assert (savedSelf.VerifyID ());
+	assert (savedSelf.peer == tunnel.GetLocalDestination ()->GetIdentHash ());
+	assert (savedSelf.port == dht.GetPort ());
+	assert (std::equal (source.begin (), source.end (), saved.begin () + selfInfo.size ()));
+	const auto validSnapshot = saved;
 	// Partial records must not replace the live routing state or node
 	// identity.
 	source.push_back (0);
 	dht.Start ();
 	assert (dht.GetNumNodes () == 1);
 	dht.Stop ();
-	assert (saved.size () == node.size ());
+	assert (writes == 2 && saved == validSnapshot);
 #if defined(__linux__) && !defined(__ANDROID__)
 	if (::geteuid () == 0) return 77;
 	const auto support = i2p::privsep::ProbeLinuxIsolation ();

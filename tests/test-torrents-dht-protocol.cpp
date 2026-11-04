@@ -294,8 +294,9 @@ void TestFrameMalformed ()
 		== DHTFrameKind::Malformed);
 	// The maximum accepted transaction length still decodes.
 	const std::string maxTransaction (MAX_DHT_TRANSACTION_ID, 'x');
-	const auto maxFrame = DecodeDHTFrame (
-		"d1:ade1:q4:ping1:t" + std::to_string (maxTransaction.size ()) + ":" + maxTransaction + "1:y1:qe");
+	const auto maxFramePayload
+		= "d1:ade1:q4:ping1:t" + std::to_string (maxTransaction.size ()) + ":" + maxTransaction + "1:y1:qe";
+	const auto maxFrame = DecodeDHTFrame (maxFramePayload);
 	assert (maxFrame.kind == DHTFrameKind::Query && maxFrame.transaction == maxTransaction);
 
 	// Trailing or leading bytes are not part of the frame.
