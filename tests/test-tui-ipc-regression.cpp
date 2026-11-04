@@ -143,6 +143,73 @@ int ConnectRaw (const std::string & path)
 	return fd;
 }
 
+int ListenRaw (const std::string & path)
+{
+	int fd = ::socket (AF_UNIX, SOCK_STREAM, 0);
+	assert (fd >= 0);
+	sockaddr_un address { };
+	address.sun_family = AF_UNIX;
+	assert (path.size () < sizeof (address.sun_path));
+	std::memcpy (address.sun_path, path.c_str (), path.size () + 1);
+	assert (::bind (fd, reinterpret_cast<sockaddr *> (&address), sizeof (address)) == 0);
+	assert (::listen (fd, 1) == 0);
+	return fd;
+}
+
+void ServeReply (int listener, std::string wire)
+{
+	int peer = ::accept (listener, nullptr, nullptr);
+	assert (peer >= 0);
+	char ch = 0;
+	for (;;)
+	{
+		const auto received = ::recv (peer, &ch, 1, 0);
+		assert (received == 1);
+		if (ch == '\n') break;
+	}
+	assert (SendAll (peer, wire));
+	::close (peer);
+}
+
+void TestClientResponseHeaderBounds (const std::string & directory)
+{
+	const std::string prefix = std::string (i2p::tui::PROTOCOL_NAME) + "/1 OK 1";
+	assert (prefix.size () < 128);
+	std::string maxHeader = prefix;
+	maxHeader.append (128 - maxHeader.size (), ' ');
+	const auto parsed = i2p::tui::ParseResponseHeader (maxHeader);
+	assert (parsed && parsed->payloadSize == 1);
+
+	const auto exercise = [&directory] (const std::string & name, std::string wire, bool accepted)
+	{
+		const std::string path = directory + "/" + name;
+		const int listener = ListenRaw (path);
+		std::thread server ([listener, wire = std::move (wire)] () mutable { ServeReply (listener, std::move (wire)); });
+
+		i2p::tui::Client client (path);
+		assert (client.Connect ().has_value ());
+		const auto result = client.Request ("PING");
+		if (accepted)
+		{
+			assert (result && *result == "x");
+			client.Disconnect ();
+		}
+		else
+		{
+			assert (!result);
+			assert (result.error ().kind == i2p::tui::RequestErrorKind::Protocol);
+			assert (!client.IsConnected ());
+		}
+		server.join ();
+		::close (listener);
+		assert (::unlink (path.c_str ()) == 0);
+	};
+
+	exercise ("max-header.sock", maxHeader + "\nx", true);
+	std::string overlong (129, 'A');
+	exercise ("overlong-header.sock", overlong + "\nx", false);
+}
+
 void TestClientRoundTrip (const std::string & path)
 {
 	i2p::tui::Client client (path);
@@ -541,6 +608,7 @@ int main ()
 		TestClientRoundTrip (socketPath);
 		TestRawFraming (socketPath);
 		TestOverlongLine (socketPath);
+		TestClientResponseHeaderBounds (directory);
 		TestAbortedClient (socketPath);
 		TestConnectIsBounded (socketPath);
 

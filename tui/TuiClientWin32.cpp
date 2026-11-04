@@ -49,6 +49,24 @@ namespace i2p
 {
 namespace tui
 {
+	namespace detail
+	{
+		template <typename ReadByte>
+		i2p::expected<std::string, std::string> ReadLineBounded (size_t limit, ReadByte && readByte)
+		{
+			std::string line;
+			line.reserve (std::min (limit, size_t (128)));
+			for (;;)
+			{
+				auto next = readByte ();
+				if (!next) return i2p::unexpected (std::move (next.error ()));
+				if (*next == '\n') return line;
+				if (line.size () == limit) return i2p::unexpected ("response header too long");
+				line.push_back (*next);
+			}
+		}
+	}
+
 	namespace
 	{
 		constexpr DWORD CLIENT_IO_TIMEOUT_MS = 3000;
@@ -610,13 +628,10 @@ namespace tui
 		// The server creates the pipe in byte mode, so a one-byte read is a
 		// valid request for the next byte rather than a truncated message.
 		// Reading exactly the header leaves the declared payload for
-		// ReadExact, so the frame stays aligned. As in the POSIX client the
-		// loop counts characters before LF, making the effective bound one
-		// byte smaller than the codec's inclusive 128-byte response header.
-		std::string line;
-		line.reserve (std::min (limit, size_t (128)));
-		while (line.size () < limit)
-		{
+		// ReadExact, so the frame stays aligned. The limit counts bytes before
+		// LF, matching ParseResponseHeader's inclusive 128-byte bound.
+		return detail::ReadLineBounded (limit, [this] () -> i2p::expected<char, std::string>
+			{
 			char ch = 0;
 			OVERLAPPED overlapped { };
 			overlapped.hEvent = m_IoEvent;
@@ -634,10 +649,8 @@ namespace tui
 					return i2p::unexpected (std::string ("recv: ") + error);
 			}
 			if (!received) return i2p::unexpected ("connection closed");
-			if (ch == '\n') return line;
-			line.push_back (ch);
-		}
-		return i2p::unexpected ("response header too long");
+			return ch;
+			});
 	}
 
 	i2p::expected<std::string, std::string> Client::Impl::ReadExact (size_t size)

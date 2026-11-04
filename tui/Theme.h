@@ -17,7 +17,9 @@
 #include <array>
 #include <cstddef>
 #include <cstdlib>
+#include <optional>
 #include <string>
+#include <string_view>
 
 #include "Terminal.h"
 
@@ -385,35 +387,46 @@ namespace tui
 #endif
 		}
 
-		inline bool DetectLightBackground ()
+		inline bool ParseColorIndex (std::string_view value, std::size_t & offset, int & index)
 		{
-			// COLORFGBG is "&lt;fg&gt;;&lt;bg&gt;[:&lt;fg&gt;;&lt;bg&gt;...]" as
-			// set by some terminals; only the last numeric field (the background
-			// palette index) is considered, and it must name a palette entry
-			// this module can map to RGB. An unparsable value reports "not
-			// light", which keeps the dark palette; Theme::Init separately
-			// records that the variable was present at all.
-			const std::string value = EnvironmentValue ("COLORFGBG");
-			if (value.empty ()) return false;
-
-			int last = -1;
-			const char * cursor = value.c_str ();
-			while (*cursor)
+			if (offset >= value.size () || value[offset] < '0' || value[offset] > '9') return false;
+			index = 0;
+			while (offset < value.size () && value[offset] >= '0' && value[offset] <= '9')
 			{
-				while (*cursor && (*cursor < '0' || *cursor > '9')) ++cursor;
-				if (!*cursor) break;
-				int number = 0;
-				while (*cursor >= '0' && *cursor <= '9')
-				{
-					if (number < 1000000) number = number * 10 + (*cursor - '0');
-					++cursor;
-				}
-				last = number;
+				const int digit = value[offset] - '0';
+				if (index > (255 - digit) / 10) return false;
+				index = index * 10 + digit;
+				++offset;
 			}
-			if (last < 0 || last > 255) return false;
+			return true;
+		}
 
+		// Parse COLORFGBG's fg;bg[:fg;bg...] form. Reject the complete value
+		// on any malformed field instead of scavenging digits from bad text.
+		inline std::optional<int> ParseColorFgbgBackground (std::string_view value)
+		{
+			if (value.empty ()) return std::nullopt;
+			std::size_t offset = 0;
+			int background = 0;
+			while (offset < value.size ())
+			{
+				int foreground = 0;
+				if (!ParseColorIndex (value, offset, foreground) || offset >= value.size () || value[offset] != ';')
+					return std::nullopt;
+				++offset;
+				if (!ParseColorIndex (value, offset, background)) return std::nullopt;
+				if (offset == value.size ()) return background;
+				if (value[offset] != ':') return std::nullopt;
+				++offset;
+				if (offset == value.size ()) return std::nullopt;
+			}
+			return std::nullopt;
+		}
+
+		inline bool IsLightBackground (int index)
+		{
 			int r = 0, g = 0, b = 0;
-			if (!PaletteRgb (last, r, g, b)) return false;
+			if (!PaletteRgb (index, r, g, b)) return false;
 			const int luminance = (r * 299 + g * 587 + b * 114) / 1000;
 			return luminance >= 140;
 		}
@@ -440,11 +453,9 @@ namespace tui
 		 *
 		 * @post Every role maps either to an allocated pair or to a
 		 *       monochrome attribute; Attributes() is always safe to call.
-		 * @note m_BackgroundKnown records that COLORFGBG was *present*, not
-		 *       that it was understood. An unparsable value is classified as
-		 *       dark, so a light terminal that exports a
-		 *       non-numeric value still receives the dark palette and default
-		 *       colours.
+		 * @note m_BackgroundKnown is true only when every field matches the
+		 *       COLORFGBG grammar and names a palette entry. Invalid hints use
+		 *       the dark palette and explicit background colours.
 		 * @return True when at least one colour pair was installed.
 		 */
 		bool Init ()
@@ -454,9 +465,10 @@ namespace tui
 			m_PairCount = 0;
 			m_DefaultColors = false;
 			m_BackgroundKnown = false;
-			m_LightBackground = theme_detail::DetectLightBackground ();
 			const std::string colorfgbg = theme_detail::EnvironmentValue ("COLORFGBG");
-			m_BackgroundKnown = !colorfgbg.empty ();
+			const auto background = theme_detail::ParseColorFgbgBackground (colorfgbg);
+			m_BackgroundKnown = background.has_value ();
+			m_LightBackground = background && theme_detail::IsLightBackground (*background);
 			m_Mode = Mode::Monochrome;
 
 			if (!terminal::HasColors ()) return false;

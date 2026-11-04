@@ -17,8 +17,36 @@
 
 #include "Terminal.h"
 #include "TerminalText.h"
+#include "Theme.h"
 
 using namespace i2p::tui::terminal;
+
+static void TestColorFgbgParsing ()
+{
+	using i2p::tui::theme_detail::IsLightBackground;
+	using i2p::tui::theme_detail::ParseColorFgbgBackground;
+
+	const auto light = ParseColorFgbgBackground ("0;15");
+	assert (light && *light == 15);
+	assert (IsLightBackground (*light));
+
+	const auto dark = ParseColorFgbgBackground ("15;0");
+	assert (dark && *dark == 0);
+	assert (!IsLightBackground (*dark));
+
+	const auto sequence = ParseColorFgbgBackground ("1;2:3;15");
+	assert (sequence && *sequence == 15);
+	const auto lastPair = ParseColorFgbgBackground ("0;15:15;0");
+	assert (lastPair && *lastPair == 0);
+	const auto highestIndex = ParseColorFgbgBackground ("0;255");
+	assert (highestIndex && *highestIndex == 255);
+
+	const std::string_view malformed[] = {
+		"", "15", ";15", "0;", "0;;15", "0;15;2", "0;15:", ":0;15", "0;15:2", "0;15::2;3",
+		"fg0;15", "0;15tail", " 0;15", "0;15 ", "256;15", "0;256", "999999999999999999999999;15"
+	};
+	for (const auto value : malformed) assert (!ParseColorFgbgBackground (value));
+}
 
 static void TestKeys ()
 {
@@ -246,6 +274,7 @@ static void TestColumnBudget ()
 
 int main ()
 {
+	TestColorFgbgParsing ();
 	TestKeys ();
 	TestAttributes ();
 	TestTextDecoding ();

@@ -357,12 +357,9 @@ namespace tui
 		// the socket buffer: over-reading would consume the next frame and
 		// leave the connection unusable even after a well-formed remote
 		// error.
-		// The loop counts characters before LF, while the codec treats 128
-		// bytes as an inclusive response-header bound, so the client's
-		// effective limit is one byte smaller than the protocol allows.
 		std::string line;
 		line.reserve (std::min (limit, size_t (128)));
-		while (line.size () < limit)
+		for (;;)
 		{
 			char ch = 0;
 			auto received = ::recv (m_Fd, &ch, 1, 0);
@@ -373,9 +370,9 @@ namespace tui
 			}
 			if (received == 0) return i2p::unexpected ("connection closed");
 			if (ch == '\n') return line;
+			if (line.size () == limit) return i2p::unexpected ("response header too long");
 			line.push_back (ch);
 		}
-		return i2p::unexpected ("response header too long");
 	}
 
 	i2p::expected<std::string, std::string> Client::Impl::ReadExact (size_t size)

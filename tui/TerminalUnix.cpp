@@ -225,7 +225,9 @@ namespace tui
 				const size_t consumed = std::mbrtowc (&character, text.data () + offset, text.size () - offset, &state);
 				size_t bytes = consumed;
 				int width = 1;
-				if (consumed == static_cast<size_t> (-1) || consumed == static_cast<size_t> (-2) || consumed == 0)
+				if (consumed == 0)
+					bytes = 1;
+				else if (consumed == static_cast<size_t> (-1) || consumed == static_cast<size_t> (-2))
 					bytes = 1;
 				else
 				{
@@ -233,7 +235,13 @@ namespace tui
 					if (width < 0) width = 1;
 				}
 				if (limit >= 0 && columns + width > limit) break;
-				copy.append (text.substr (offset, bytes));
+				// addnstr stops at NUL even when its explicit byte count is
+				// larger. Render the consumed column visibly so later text is
+				// not silently discarded by ncurses.
+				if (consumed == 0)
+					copy.push_back ('?');
+				else
+					copy.append (text.substr (offset, bytes));
 				columns += width;
 				offset += bytes;
 			}

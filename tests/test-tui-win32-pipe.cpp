@@ -30,8 +30,15 @@
 #include <cstdio>
 #include <cstring>
 #include <string>
+#include <string_view>
 #include <thread>
+#include <utility>
 #include <vector>
+
+// Include the transport unit to exercise its private byte-reader policy
+// without widening the production API or changing test target wiring.
+#include "../tui/TuiClientWin32.cpp"
+#include "../tui/TuiWin32Ipc.cpp"
 
 namespace
 {
@@ -248,6 +255,38 @@ void TestDaclAndRoundTrip ()
 	assert (CloseHandle (server));
 	LocalFree (descriptor);
 }
+
+void TestClientHeaderLimit ()
+{
+	const std::string prefix = std::string (i2p::tui::PROTOCOL_NAME) + "/1 OK 1";
+	assert (prefix.size () < 128);
+	std::string header = prefix;
+	header.append (128 - header.size (), ' ');
+	assert (i2p::tui::ParseResponseHeader (header));
+
+	std::string validInput = header + "\npayload";
+	size_t offset = 0;
+	auto valid = i2p::tui::detail::ReadLineBounded (128, [&] () -> i2p::expected<char, std::string>
+		{
+			if (offset == validInput.size ()) return i2p::unexpected ("end of input");
+			return validInput[offset++];
+		});
+	assert (valid && *valid == header);
+	assert (offset == 129);
+	assert (std::string_view (validInput).substr (offset) == "payload");
+
+	std::string invalidInput (128, 'A');
+	invalidInput += "Xpayload";
+	offset = 0;
+	auto invalid = i2p::tui::detail::ReadLineBounded (128, [&] () -> i2p::expected<char, std::string>
+		{
+			if (offset == invalidInput.size ()) return i2p::unexpected ("end of input");
+			return invalidInput[offset++];
+		});
+	assert (!invalid && invalid.error () == "response header too long");
+	assert (offset == 129);
+	assert (std::string_view (invalidInput).substr (offset) == "payload");
+}
 }
 
 int main ()
@@ -257,5 +296,6 @@ int main ()
 	TestFirstInstanceGuard ();
 	TestOverlappedCancelDrain ();
 	TestByteModeFraming ();
+	TestClientHeaderLimit ();
 	return 0;
 }
