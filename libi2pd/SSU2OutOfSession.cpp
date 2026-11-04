@@ -410,7 +410,18 @@ namespace transport
 		// encrypt
 		uint8_t n[12];
 		CreateNonce (be32toh (header.h.packetNum), n);
-		i2p::crypto::AEADChaCha20Poly1305 (payload, payloadSize, h, 32, addr->i, n, payload, payloadSize + 16, true);
+		// Fail closed. A frame whose AEAD encryption failed still
+		// holds plaintext, so it must never be transmitted or
+		// charged to the sent-byte counter. The output capacity is
+		// the real stack buffer rather than the derived length,
+		// which lets the helper reject an out-of-range payload
+		// before it writes past the buffer.
+		if (!i2p::crypto::AEADChaCha20Poly1305 (
+				payload, payloadSize, h, 32, addr->i, n, payload, sizeof (payload), true))
+		{
+			LogPrint (eLogError, "SSU2: PeerTest payload encryption failed");
+			return;
+		}
 		payloadSize += 16;
 		header.ll[0] ^= CreateHeaderMask (addr->i, payload + (payloadSize - 24));
 		header.ll[1] ^= CreateHeaderMask (addr->i, payload + (payloadSize - 12));
@@ -537,7 +548,15 @@ namespace transport
 		// encrypt
 		uint8_t n[12];
 		CreateNonce (be32toh (header.h.packetNum), n);
-		i2p::crypto::AEADChaCha20Poly1305 (payload, payloadSize, h, 32, addr->i, n, payload, payloadSize + 16, true);
+		// Fail closed, as in SendPeerTest(): never send or
+		// charge a frame whose encryption failed, and let the
+		// helper bound the write by the real stack buffer.
+		if (!i2p::crypto::AEADChaCha20Poly1305 (
+				payload, payloadSize, h, 32, addr->i, n, payload, sizeof (payload), true))
+		{
+			LogPrint (eLogError, "SSU2: HolePunch payload encryption failed");
+			return;
+		}
 		payloadSize += 16;
 		header.ll[0] ^= CreateHeaderMask (addr->i, payload + (payloadSize - 24));
 		header.ll[1] ^= CreateHeaderMask (addr->i, payload + (payloadSize - 12));

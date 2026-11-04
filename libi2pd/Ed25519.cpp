@@ -158,11 +158,15 @@ namespace crypto
 			auto Bs = MulB (signature + EDDSA25519_SIGNATURE_LENGTH / 2, ctx); // B*S;
 			BN_mod (h, h, l, ctx); // public key is multiple of B, but B%l = 0
 			auto PKh = Mul (publicKey, h, ctx); // PK*h
-			uint8_t diff[32];
-			EncodePoint (Normalize (Sum (Bs, -PKh, ctx), ctx), diff); // Bs - PKh encoded
+			// A failed encoder leaves the buffer zero-filled
+			// and fails the comparison instead of being read
+			// uninitialised.
+			uint8_t diff[32] = { };
+			const bool encoded
+				= EncodePoint (Normalize (Sum (Bs, -PKh, ctx), ctx), diff); // Bs - PKh encoded
 			// Constant-time comparison: the expected value must not leak
 			// through an early-exit memcmp().
-			passed = CRYPTO_memcmp (signature, diff, 32) == 0; // R
+			passed = encoded && CRYPTO_memcmp (signature, diff, 32) == 0; // R
 		}
 		if (h) BN_free (h);
 		BN_CTX_free (ctx);
@@ -173,7 +177,17 @@ namespace crypto
 	void Ed25519::Sign (const uint8_t * expandedPrivateKey, const uint8_t * publicKeyEncoded, const uint8_t * buf,
 		size_t len, uint8_t * signature) const
 	{
-		if (!expandedPrivateKey || !publicKeyEncoded || !signature || (!buf && len)) return;
+		if (!signature) return;
+		// Every failure path zeroes the complete signature.
+		// Published records (RouterInfo, LeaseSet1) are signed
+		// through this call, so a partial R or a missing S must
+		// never look like a signature.
+		if (!expandedPrivateKey || !publicKeyEncoded || (!buf && len))
+		{
+			memset (signature, 0, EDDSA25519_SIGNATURE_LENGTH);
+			LogPrint (eLogError, "Ed25519: signing failed");
+			return;
+		}
 		BN_CTX * bnCtx = BN_CTX_new ();
 		EVP_MD_CTX * ctx = nullptr;
 		BIGNUM *r = nullptr, *h = nullptr, *a = nullptr;
@@ -192,8 +206,11 @@ namespace crypto
 		r = ok ? DecodeBN<32> (digest) : nullptr; // DecodeBN<64> (digest) for test vectors
 		// calculate R
 		uint8_t R[EDDSA25519_SIGNATURE_LENGTH / 2] = { }; // signature might overlap buf
+		// The encoder result is part of the success flag: a point that
+		// cannot be encoded would otherwise be published as a signature
+		// with an all-zero R half.
 		if (ok && r)
-			EncodePoint (
+			ok = EncodePoint (
 				Normalize (MulB (digest, bnCtx), bnCtx), R); // EncodePoint (Mul (B, r, bnCtx), R) for test vectors
 		// calculate S
 		ctx = ok ? EVP_MD_CTX_new () : nullptr;
@@ -209,9 +226,11 @@ namespace crypto
 		if (ok)
 		{
 			memcpy (signature, R, EDDSA25519_SIGNATURE_LENGTH / 2);
-			EncodeBN (h, signature + EDDSA25519_SIGNATURE_LENGTH / 2, EDDSA25519_SIGNATURE_LENGTH / 2); // S
+			// Fold the S encoder result in as well, so a failed second
+			// half zeroes the R half that was already copied.
+			ok = EncodeBN (h, signature + EDDSA25519_SIGNATURE_LENGTH / 2, EDDSA25519_SIGNATURE_LENGTH / 2);
 		}
-		else
+		if (!ok)
 		{
 			memset (signature, 0, EDDSA25519_SIGNATURE_LENGTH);
 			LogPrint (eLogError, "Ed25519: signing failed");
@@ -564,7 +583,17 @@ namespace crypto
 		}
 		BN_mod (alpha, alpha, l, ctx); // % l
 		uint8_t priv[32] = { };
-		EncodeBN (alpha, priv, 32); // back to Little Endian
+		// A failed scalar encoding would leave a zero alpha and blind
+		// with the identity element, so it is a failure, not a
+		// degraded result.
+		if (!EncodeBN (alpha, priv, 32)) // back to Little Endian
+		{
+			OPENSSL_cleanse (priv, sizeof (priv));
+			BN_clear_free (alpha);
+			BN_CTX_free (ctx);
+			LogPrint (eLogError, "Ed25519: blinding scalar encoding failed");
+			return false;
+		}
 		// alpha is a secret blinding scalar: wipe it, do not just free it.
 		BN_clear_free (alpha);
 		// A' = BLIND_PUBKEY(A, alpha) = A + DERIVE_PUBLIC(alpha)
@@ -576,7 +605,18 @@ namespace crypto
 			return false;
 		}
 		auto A1 = Sum (A, MulB (priv, ctx), ctx); // pub + B*alpha
-		EncodePublicKey (A1, blinded, ctx);
+		// An unencodable point must fail the blinding instead of
+		// returning a zero store key with a success result.
+		// EncodePoint() writes into blinded only on success, so
+		// zero the buffer on failure.
+		if (!EncodePoint (Normalize (A1, ctx), blinded))
+		{
+			memset (blinded, 0, EDDSA25519_PUBLIC_KEY_LENGTH);
+			OPENSSL_cleanse (priv, sizeof (priv));
+			BN_CTX_free (ctx);
+			LogPrint (eLogError, "Ed25519: blinded public key encoding failed");
+			return false;
+		}
 		OPENSSL_cleanse (priv, sizeof (priv));
 		BN_CTX_free (ctx);
 		return true;
@@ -604,10 +644,32 @@ namespace crypto
 		BN_add (alpha, alpha, p); // alpha = alpha + priv
 		// a' = BLIND_PRIVKEY(a, alpha) = (a + alpha) mod L
 		BN_mod (alpha, alpha, l, ctx); // % l
-		EncodeBN (alpha, blindedPriv, 32);
+		// Both encoders are part of the result: a failed
+		// private-scalar or public-key encoding must not report
+		// success with zero material, because the caller would
+		// derive a store key from it.
+		if (!EncodeBN (alpha, blindedPriv, 32))
+		{
+			OPENSSL_cleanse (blindedPriv, EDDSA25519_PRIVATE_KEY_LENGTH);
+			OPENSSL_cleanse (blindedPub, EDDSA25519_PUBLIC_KEY_LENGTH);
+			BN_clear_free (alpha);
+			BN_clear_free (p);
+			BN_CTX_free (ctx);
+			LogPrint (eLogError, "Ed25519: blinded private key encoding failed");
+			return false;
+		}
 		// A' = DERIVE_PUBLIC(a')
 		auto A1 = MulB (blindedPriv, ctx);
-		EncodePublicKey (A1, blindedPub, ctx);
+		if (!EncodePoint (Normalize (A1, ctx), blindedPub))
+		{
+			OPENSSL_cleanse (blindedPriv, EDDSA25519_PRIVATE_KEY_LENGTH);
+			OPENSSL_cleanse (blindedPub, EDDSA25519_PUBLIC_KEY_LENGTH);
+			BN_clear_free (alpha);
+			BN_clear_free (p);
+			BN_CTX_free (ctx);
+			LogPrint (eLogError, "Ed25519: blinded public key encoding failed");
+			return false;
+		}
 		BN_clear_free (alpha);
 		BN_clear_free (p);
 		BN_CTX_free (ctx);

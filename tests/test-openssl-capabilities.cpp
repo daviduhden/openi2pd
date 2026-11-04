@@ -32,6 +32,9 @@ int main ()
 	assert (capabilities.hkdf);
 	assert (capabilities.sipHash);
 	assert (capabilities.ed25519);
+	// Every transport derives handshake keys with X25519, so a backend
+	// that cannot generate one must fail startup.
+	assert (capabilities.x25519);
 
 #if OPENSSL_PQ
 	// A version may be advertised only when its exact ML-KEM parameter set

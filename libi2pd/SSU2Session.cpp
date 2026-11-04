@@ -2137,8 +2137,17 @@ namespace transport
 		// encrypt
 		uint8_t nonce[12];
 		CreateNonce (be32toh (header.h.packetNum), nonce);
-		i2p::crypto::AEADChaCha20Poly1305 (
-			payload, payloadSize, h, 32, m_Address->i, nonce, payload, payloadSize + 16, true);
+		// Fail closed: an unencrypted TokenRequest must never
+		// reach the peer, and a failed send must not reserve the
+		// pending-outgoing slot below. The capacity argument is
+		// the real stack buffer, so the helper rejects an
+		// out-of-range payload before writing.
+		if (!i2p::crypto::AEADChaCha20Poly1305 (
+				payload, payloadSize, h, 32, m_Address->i, nonce, payload, sizeof (payload), true))
+		{
+			LogPrint (eLogError, "SSU2: TokenRequest payload encryption failed");
+			return;
+		}
 		payloadSize += 16;
 		header.ll[0] ^= CreateHeaderMask (m_Address->i, payload + (payloadSize - 24));
 		header.ll[1] ^= CreateHeaderMask (m_Address->i, payload + (payloadSize - 12));
@@ -2262,8 +2271,15 @@ namespace transport
 		// encrypt
 		uint8_t nonce[12];
 		CreateNonce (be32toh (header.h.packetNum), nonce);
-		i2p::crypto::AEADChaCha20Poly1305 (
-			payload, payloadSize, h, 32, i2p::context.GetSSU2IntroKey (), nonce, payload, payloadSize + 16, true);
+		// Fail closed: Retry carries the new token and, on a
+		// refusal, the termination block, so a frame whose
+		// encryption failed must not be sent with a zero tag.
+		if (!i2p::crypto::AEADChaCha20Poly1305 (
+				payload, payloadSize, h, 32, i2p::context.GetSSU2IntroKey (), nonce, payload, sizeof (payload), true))
+		{
+			LogPrint (eLogError, "SSU2: Retry payload encryption failed");
+			return;
+		}
 		payloadSize += 16;
 		header.ll[0] ^= CreateHeaderMask (i2p::context.GetSSU2IntroKey (), payload + (payloadSize - 24));
 		header.ll[1] ^= CreateHeaderMask (i2p::context.GetSSU2IntroKey (), payload + (payloadSize - 12));
@@ -2635,8 +2651,13 @@ namespace transport
 		uint32_t packetNum = be32toh (header.h.packetNum);
 		uint8_t nonce[12];
 		CreateNonce (packetNum, nonce);
+		// The capacity is the stack buffer, not the derived
+		// plaintext length: the helper then rejects a payload
+		// that would not fit, even if a future caller passes a
+		// longer frame than the ProcessNextPacket() bound
+		// allows.
 		if (!m_Server.AEADChaCha20Poly1305Decrypt (
-				buf + 16, payloadSize, header.buf, 16, m_KeyDataReceive, nonce, payload, payloadSize))
+				buf + 16, payloadSize, header.buf, 16, m_KeyDataReceive, nonce, payload, sizeof (payload)))
 		{
 			LogPrint (eLogWarning, "SSU2: Data AEAD verification failed ");
 			return;

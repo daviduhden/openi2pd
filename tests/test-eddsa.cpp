@@ -121,6 +121,30 @@ int main ()
 	// Blinding must reject a y-encoding whose recovered x is not on the
 	// curve.
 	auto & ed25519 = i2p::crypto::GetEd25519 ();
+	// Every Ed25519::Sign() failure path must zero the complete
+	// signature. A partial R or a missing S is not a signature,
+	// and callers publish the buffer as a RouterInfo or LeaseSet1
+	// signature.
+	{
+		uint8_t expanded[2 * EDDSA25519_PRIVATE_KEY_LENGTH];
+		i2p::crypto::Ed25519::ExpandPrivateKey (key, expanded);
+		uint8_t output[EDDSA25519_SIGNATURE_LENGTH];
+		for (unsigned missing = 0; missing < 3; ++missing)
+		{
+			memset (output, 0xA5, sizeof (output));
+			ed25519->Sign (missing == 0 ? nullptr : expanded, missing == 1 ? nullptr : pub,
+				missing == 2 ? nullptr : msg, 16, output);
+			for (auto byte : output) assert (byte == 0);
+		}
+		// A null output is a documented no-op rather than a crash.
+		ed25519->Sign (expanded, pub, msg, 16, nullptr);
+		// The same expanded key still signs the RFC 8032
+		// message, so the zeroing above is specific to the
+		// rejected inputs.
+		ed25519->Sign (expanded, pub, msg, 1023, output);
+		assert (memcmp (output, sig, sizeof (output)) == 0);
+		memset (expanded, 0, sizeof (expanded));
+	}
 	// RedDSA must preserve a valid randomized signature and overlap, while
 	// missing input zeroes the entire output rather than leaving stale data.
 	{
@@ -144,6 +168,32 @@ int main ()
 			for (auto byte : output) assert (byte == 0);
 		}
 		ed25519->SignRedDSA (scalar, redSigner.GetPublicKey (), msg, 1023, nullptr);
+		// BLIND_PRIVKEY followed by DERIVE_PUBLIC must equal
+		// BLIND_PUBKEY over the unblinded public key, which
+		// also exercises the checked encoder path on the
+		// success branch.
+		uint8_t seed[64];
+		for (size_t i = 0; i < sizeof (seed); ++i) seed[i] = static_cast<uint8_t> (i * 7 + 1);
+		uint8_t blindedPriv[EDDSA25519_PRIVATE_KEY_LENGTH], blindedPub[EDDSA25519_PUBLIC_KEY_LENGTH];
+		uint8_t derivedPub[EDDSA25519_PUBLIC_KEY_LENGTH];
+		assert (ed25519->BlindPrivateKey (scalar, seed, blindedPriv, blindedPub));
+		assert (ed25519->BlindPublicKey (redSigner.GetPublicKey (), seed, derivedPub));
+		assert (memcmp (blindedPub, derivedPub, sizeof (blindedPub)) == 0);
+		// Missing inputs are rejected before any provider work
+		// and leave both outputs zeroed, never partially
+		// written.
+		for (unsigned missing = 0; missing < 4; ++missing)
+		{
+			memset (blindedPriv, 0xA5, sizeof (blindedPriv));
+			memset (blindedPub, 0xA5, sizeof (blindedPub));
+			assert (!ed25519->BlindPrivateKey (missing == 0 ? nullptr : scalar,
+				missing == 1 ? nullptr : seed, missing == 2 ? nullptr : blindedPriv,
+				missing == 3 ? nullptr : blindedPub));
+			if (missing != 2)
+				for (auto byte : blindedPriv) assert (byte == 0);
+			if (missing != 3)
+				for (auto byte : blindedPub) assert (byte == 0);
+		}
 	}
 	assert (ed25519->IsValidPublicKey (pub));
 	uint8_t invalid[32] { };

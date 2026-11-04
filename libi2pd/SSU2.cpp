@@ -979,6 +979,17 @@ namespace transport
 	void SSU2Server::ProcessNextPacket (
 		uint8_t * buf, size_t len, const boost::asio::ip::udp::endpoint & senderEndpoint)
 	{
+		// A frame longer than the receive buffer cannot be
+		// trusted: the header mask and the AEAD helpers index
+		// from both ends of the frame, and every caller sizes a
+		// stack buffer from this length. The UDP path cannot
+		// exceed it today, but the proxy path and any future
+		// caller must be rejected here instead of downstream.
+		if (len > SSU2_MAX_PACKET_SIZE)
+		{
+			LogPrint (eLogWarning, "SSU2: Oversized packet ", len);
+			return;
+		}
 		// All SSU2 state (m_Sessions, m_LastSession,
 		// m_PendingOutgoingSessions) is owned by the SSU2 service thread;
 		// this function runs only there. The connection ID is demultiplexed
@@ -1989,6 +2000,15 @@ namespace transport
 
 	void SSU2Server::ProcessNextPacketFromProxy (uint8_t * buf, size_t len)
 	{
+		// The SOCKS5 UDP request header prefixes the SSU2
+		// frame inside the same receive buffer, so the total
+		// record is bounded by the maximum frame size. Reject
+		// before computing the payload offset.
+		if (len > SSU2_MAX_PACKET_SIZE)
+		{
+			LogPrint (eLogWarning, "SSU2: Oversized proxy packet ", len);
+			return;
+		}
 		if (len < SOCKS5_UDP_IPV4_REQUEST_HEADER_SIZE) return;
 		if (buf[2]) // FRAG
 		{

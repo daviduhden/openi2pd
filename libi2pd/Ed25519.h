@@ -120,9 +120,10 @@ namespace crypto
 		// through such a key. A rejected encoding decodes to an empty point.
 		bool IsValidPublicKey (const uint8_t * buf) const;
 
-		// Both return false when the input point is not on the curve or the
-		// provider fails; the output buffers are then all-zero and the caller
-		// must not derive a blinded store key from them.
+		// Both return false when the input point is not on the
+		// curve, an encoder fails, or the provider fails; the
+		// output buffers are then all-zero and the caller must not
+		// derive a blinded store key from them.
 		bool BlindPublicKey (const uint8_t * pub, const uint8_t * seed,
 			uint8_t * blinded); // for encrypted LeaseSet2, pub - 32, seed - 64, blinded - 32
 		bool BlindPrivateKey (const uint8_t * priv, const uint8_t * seed, uint8_t * blindedPriv,
@@ -132,8 +133,11 @@ namespace crypto
 		/// Produce an Ed25519 signature over the message in buf. The nonce is
 		/// derived deterministically from the expanded key prefix and the
 		/// message, so the expanded key is secret material that the caller
-		/// must cleanse. A missing input or a provider/digest failure zeroes
-		/// the whole signature instead of returning a partial one.
+		/// must cleanse. A missing input, a provider/digest
+		/// failure or a point/scalar encoding failure zeroes the
+		/// whole signature instead of returning a partial one;
+		/// only a null @a signature is left untouched because
+		/// there is no output to clear.
 		void Sign (const uint8_t * expandedPrivateKey, const uint8_t * publicKeyEncoded, const uint8_t * buf,
 			size_t len, uint8_t * signature) const;
 		/// RedDSA variant (Proposal 123) used by LeaseSet2: the nonce is

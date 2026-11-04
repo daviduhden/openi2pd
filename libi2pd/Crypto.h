@@ -454,6 +454,12 @@ namespace crypto
 	// Algorithm names are fetched through the EVP provider API where it
 	// exists; the legacy helpers are only the compatibility branch for
 	// LibreSSL.
+	//
+	// Every field except the informational sha1/sha512 entries is
+	// required by InitCrypto() or read by a caller that must not
+	// advertise a primitive the backend cannot perform. Add a field
+	// only together with such a caller; a probe that nothing reads is
+	// a false capability claim.
 	struct CryptoCapabilities
 	{
 		bool sha1;
@@ -461,12 +467,16 @@ namespace crypto
 		bool sha512;
 		bool aes256Cbc;
 		bool aes256Ecb;
-		bool aes256Ctr;
 		bool chacha20;
 		bool chacha20Poly1305;
 		bool hkdf;
 		bool sipHash;
 		bool ed25519;
+		// X25519 is required by NTCP2, SSU2, the ratchet and
+		// ElGamal transport key exchange, i.e. by every transport.
+		// The probe is a real key-generation round trip, not a name
+		// lookup.
+		bool x25519;
 	};
 
 	const CryptoCapabilities & GetCryptoCapabilities ();

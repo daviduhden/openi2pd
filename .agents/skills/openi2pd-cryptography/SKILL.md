@@ -248,6 +248,18 @@ executing project code, or inspect a real private key.
   `GetX509NameTextByNID` helper const-correct; `ASN1_STRING_to_UTF8` already
   takes a const ASN1 string.
 
+- An AEAD result gates the send: SSU2 PeerTest/HolePunch/TokenRequest/Retry
+  must not increment a length, transmit or charge bytes after encryption
+  failure. Pass the real fixed-buffer capacity to the helper. Bound the SSU2
+  frame before sizing any stack buffer from it.
+- X25519 is mandatory for NTCP2, SSU2, ElGamal transport exchange and the
+  ratchet. Probe it with a keygen/raw-public-key round trip and require it in
+  `InitCrypto`; remove a capability field that no caller reads. Ed25519 and
+  RedDSA encoders are part of the success flag and zero the complete output
+  on failure.
+- The NTCP2 AEAD nonce is little-endian with a zeroed 4-byte prefix; the
+  spec and `htole64buf` agree. Do not "correct" it to big-endian prose.
+
 ## Do not
 
 - Do not compile, run CTest, sanitizers, fuzzers, Java peers or validators

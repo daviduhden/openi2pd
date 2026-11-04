@@ -1821,6 +1821,47 @@ namespace crypto
 #endif
 		}
 
+		/// @brief Probe X25519 with a real key-generation round trip.
+		/// @return true when a key pair was generated and its 32-byte
+		///         public key exported.
+		///
+		/// Every transport (NTCP2, SSU2) derives handshake keys with
+		/// X25519, so a backend that advertises the algorithm name
+		/// but cannot generate a key must fail startup rather than
+		/// fail on the first handshake. OpenSSL 3/4 is probed
+		/// through the provider API; LibreSSL has no
+		/// new_from_name() and is probed through its legacy
+		/// identifier, which is what its key path uses. An absent
+		/// context, a failed keygen or an unexportable or all-zero
+		/// public key is a failure.
+		bool FetchX25519 ()
+		{
+#ifndef LIBRESSL_VERSION_NUMBER
+			EVP_PKEY_CTX * ctx = EVP_PKEY_CTX_new_from_name (nullptr, "X25519", nullptr);
+#else
+			EVP_PKEY_CTX * ctx = EVP_PKEY_CTX_new_id (EVP_PKEY_X25519, nullptr);
+#endif
+			if (!ctx) return false;
+			EVP_PKEY * pkey = nullptr;
+			bool ok = EVP_PKEY_keygen_init (ctx) == 1 && EVP_PKEY_keygen (ctx, &pkey) == 1 && pkey;
+			uint8_t publicKey[32] = { };
+			size_t publicKeyLen = sizeof (publicKey);
+			ok = ok && EVP_PKEY_get_raw_public_key (pkey, publicKey, &publicKeyLen) == 1
+				&& publicKeyLen == sizeof (publicKey);
+			if (ok)
+			{
+				uint8_t anyNonZero = 0;
+				for (auto byte : publicKey) anyNonZero |= byte;
+				ok = anyNonZero != 0;
+			}
+			// The probe key is real key material even though it is
+			// discarded; do not leave it in a freed heap block.
+			OPENSSL_cleanse (publicKey, sizeof (publicKey));
+			EVP_PKEY_free (pkey);
+			EVP_PKEY_CTX_free (ctx);
+			return ok;
+		}
+
 		CryptoCapabilities ProbeCryptoCapabilities ()
 		{
 			CryptoCapabilities capabilities { };
@@ -1836,19 +1877,18 @@ namespace crypto
 #if I2PD_HAVE_EVP_CIPHER_FETCH
 			capabilities.aes256Cbc = FetchCipher ("AES-256-CBC");
 			capabilities.aes256Ecb = FetchCipher ("AES-256-ECB");
-			capabilities.aes256Ctr = FetchCipher ("AES-256-CTR");
 			capabilities.chacha20 = FetchCipher ("ChaCha20");
 			capabilities.chacha20Poly1305 = FetchCipher ("ChaCha20-Poly1305");
 #else
 			capabilities.aes256Cbc = EVP_aes_256_cbc () != nullptr;
 			capabilities.aes256Ecb = EVP_aes_256_ecb () != nullptr;
-			capabilities.aes256Ctr = EVP_aes_256_ctr () != nullptr;
 			capabilities.chacha20 = EVP_chacha20 () != nullptr;
 			capabilities.chacha20Poly1305 = EVP_chacha20_poly1305 () != nullptr;
 #endif
 			capabilities.hkdf = FetchHKDF ();
 			capabilities.sipHash = FetchSipHash ();
 			capabilities.ed25519 = FetchPkeyAlgorithm ("ED25519");
+			capabilities.x25519 = FetchX25519 ();
 			return capabilities;
 		}
 
@@ -1873,9 +1913,10 @@ namespace crypto
 	 * caller must abort instead of running with a construction that cannot
 	 * be completed for some peers. Ed25519 is included because destination
 	 * identity signing and the SU3 reseed trust path both depend on it.
-	 * SipHash is only required when the build expects the provider
-	 * implementation; otherwise the project-owned SipHash is used. The
-	 * capability answer is cached by GetCryptoCapabilities().
+	 * X25519 is included because every transport derives its handshake
+	 * keys from it. SipHash is only required when the build expects the
+	 * provider implementation; otherwise the project-owned SipHash is
+	 * used. The capability answer is cached by GetCryptoCapabilities().
 	 *
 	 * The table allocation is intentionally not thread-safe: it must be
 	 * called once from the startup thread before transports or client
@@ -1890,11 +1931,11 @@ namespace crypto
 		const auto & capabilities = GetCryptoCapabilities ();
 		if (!capabilities.sha256 || !capabilities.aes256Cbc || !capabilities.aes256Ecb || !capabilities.chacha20
 			|| !capabilities.chacha20Poly1305 || !capabilities.hkdf || !capabilities.ed25519
-			|| (OPENSSL_SIPHASH && !capabilities.sipHash))
+			|| !capabilities.x25519 || (OPENSSL_SIPHASH && !capabilities.sipHash))
 		{
 			LogPrint (eLogCritical,
 				"Crypto: active libcrypto provider is missing a required algorithm "
-				"(SHA256/AES-256-CBC/AES-256-ECB/ChaCha20/ChaCha20-Poly1305/HKDF/Ed25519/SipHash)");
+				"(SHA256/AES-256-CBC/AES-256-ECB/ChaCha20/ChaCha20-Poly1305/HKDF/Ed25519/X25519/SipHash)");
 			return false;
 		}
 		if (precomputation)
