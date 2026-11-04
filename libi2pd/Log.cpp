@@ -477,6 +477,13 @@ namespace log
 	{
 		std::lock_guard<std::mutex> l (m_LifecycleMutex);
 		if (m_Thread || m_IsRunning.load (std::memory_order_relaxed)) return;
+		{
+			// The previous writer was joined before this generation starts.
+			// Re-arm publication: a stale true value lets the new writer
+			// drain and exit before Start publishes its running authority.
+			std::lock_guard<std::mutex> start (m_StartMutex);
+			m_StartRequested = false;
+		}
 		// Create the thread first, then publish the running flag. Run() waits
 		// on m_StartCondition so it cannot observe a false flag and exit
 		// early.
@@ -692,8 +699,8 @@ namespace log
 			std::unique_lock<std::mutex> l (m_StartMutex);
 			// A Stop() racing with thread creation must not leave Run() waiting
 			// forever for a running flag that was already cleared. The request
-			// bit is sticky; the loop below observes the cleared running flag
-			// and exits after draining.
+			// bit stays true within this run; a later Start re-arms it only
+			// after this writer has been joined.
 			m_StartCondition.wait (l, [this] () { return m_StartRequested; });
 		}
 

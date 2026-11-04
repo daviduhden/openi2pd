@@ -301,15 +301,21 @@ namespace util
 		m_Service.restart ();
 		try
 		{
+			// Publish initial work before run() can observe an empty queue.
+			// A stopped empty context does not resume when work is posted.
+			boost::asio::post (m_Service, std::bind (&NTPTimeSync::Sync, this));
 			m_Thread = std::make_unique<std::thread> (std::bind (&NTPTimeSync::Run, this));
 		}
 		catch (...)
 		{
 			m_IsRunning.store (false, std::memory_order_relaxed);
+			// No thread was created. Consume the queued initial Sync while
+			// stopped authority makes it inert; a retry must not run it.
+			m_Service.poll ();
+			m_Service.stop ();
 			throw;
 		}
 		LogPrint (eLogInfo, "Timestamp: NTP time sync starting");
-		boost::asio::post (m_Service, std::bind (&NTPTimeSync::Sync, this));
 	}
 
 	void NTPTimeSync::Stop ()
@@ -333,6 +339,12 @@ namespace util
 		// here cannot race. This prevents a stale one-hour wait from firing
 		// after a later Start().
 		m_Timer.cancel ();
+		// stop() does not discard queued handlers. Drain after join while
+		// running authority is false so a later Start cannot revive an old
+		// Sync or cancellation and create duplicate timer chains.
+		m_Service.restart ();
+		m_Service.poll ();
+		m_Service.stop ();
 	}
 
 	void NTPTimeSync::Run ()
@@ -344,6 +356,9 @@ namespace util
 			try
 			{
 				m_Service.run ();
+				// Normal exhaustion is terminal; only a thrown handler may
+				// re-enter run(). Repeating run() on a stopped context spins.
+				break;
 			}
 			catch (std::exception & ex)
 			{

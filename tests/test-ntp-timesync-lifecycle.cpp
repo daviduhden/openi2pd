@@ -18,8 +18,10 @@
 #include <cstdint>
 #include <cstdlib>
 #include <iostream>
+#include <future>
 #include <optional>
 #include <string>
+#include <thread>
 #include <vector>
 
 #include "Timestamp.h"
@@ -35,6 +37,19 @@ namespace util
 			sync.m_NTPServersList = std::move (servers);
 		}
 		static void SetInterval (NTPTimeSync & sync, int hours) { sync.m_SyncInterval = hours; }
+		static bool EmptyRunReturns (NTPTimeSync & sync)
+		{
+			sync.m_Service.restart ();
+			sync.m_IsRunning.store (true);
+			std::promise<void> completed;
+			auto completion = completed.get_future ();
+			std::thread runner ([&] () { sync.Run (); completed.set_value (); });
+			const bool returned = completion.wait_for (std::chrono::seconds (2)) == std::future_status::ready;
+			sync.m_IsRunning.store (false);
+			sync.m_Service.stop ();
+			runner.join ();
+			return returned;
+		}
 	};
 }
 }
@@ -108,6 +123,13 @@ void CheckReply (
 int main ()
 {
 	using namespace i2p::util;
+	// Empty run exhaustion must return even while running authority is
+	// true. The fixture always revokes authority before joining, so the
+	// old spinning implementation reports a failure without hanging CI.
+	{
+		NTPTimeSync empty;
+		Check (NTPTimeSyncTestAccess::EmptyRunReturns (empty), "empty executor returns without spinning");
+	}
 
 	// No configured servers: Start() is a no-op and Stop() is harmless.
 	{

@@ -320,6 +320,24 @@ int main ()
 		assert (out->str ().find ("local-after-sink") != std::string::npos);
 	}
 
+	// Each fresh writer must wait for its own publication even when the
+	// previous run's start signal was true. No sleep authorizes the next
+	// generation, and each destination must receive its own final record.
+	{
+		i2p::log::Log log;
+		for (int generation = 0; generation < 8; ++generation)
+		{
+			auto out = std::make_shared<std::ostringstream> ();
+			log.SendTo (out);
+			log.Start ();
+			const auto record = "generation-" + std::to_string (generation);
+			Append (log, record);
+			log.Stop ();
+			assert (CountLines (out->str ()) == 1);
+			assert (out->str ().find (record) != std::string::npos);
+		}
+	}
+
 	// A logger destroyed without an explicit Stop() must drain, flush and
 	// join instead of terminating on a joinable thread.
 	{

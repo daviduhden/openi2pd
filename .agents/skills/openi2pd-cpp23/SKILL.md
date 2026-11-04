@@ -117,6 +117,29 @@ compile, run tests or run project scripts.
 
 ## Known issues and decisions
 
+- A startup condition predicate belongs to one joined worker generation.
+  `Log::Start` re-arms its publication bit before creating a new writer;
+  otherwise that writer can use the previous true bit and exit before the
+  new running flag and first record are published. Keep reset/launch/publish
+  ordering under lifecycle/start locks. A queue wakeup change cannot repair
+  this interleaving. The logger source contract pins that ordering; runtime
+  restart/sink coverage remains manual CI work.
+
+- `RunnableService` owns an optional per-run executor work guard. Without it,
+  an empty `io_context::run()` stops the context before a later post arrives;
+  retrying `run()` then spins without dispatching. Start installs the guard,
+  Stop releases it, and normal run completion exits the worker. A draining
+  Stop must still enter run once if it won the thread-start race. Lifecycle
+  callers must serialize Start/Stop; self-destruction/detach is a separate
+  unresolved lifetime boundary. The lifecycle regression covers idle gaps,
+  restart, queued drain and exception continuation without timing sleeps.
+- NTP is a separate executor wrapper: publish initial Sync before launching
+  its worker, exit on normal run exhaustion, and drain after join under
+  revoked running authority before restart. Its shared test friend can drive
+  empty-run exhaustion without contacting an NTP server. UPnP already posts
+  initial discovery before launch and exits normally; review independent
+  wrappers rather than assuming the base service fix reaches them.
+
 - IRC tunnel forwarding requires a retained peer identity before WEBIRC
   formatting or USER rewriting. Reject missing identities at the factory
   and recheck the connection's identity before writing; never substitute a

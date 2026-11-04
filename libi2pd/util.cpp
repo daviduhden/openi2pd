@@ -91,6 +91,7 @@ namespace util
 		// StopIOService() leaves the io_context in the stopped state. Restart
 		// it before running a new start/stop cycle.
 		m_Service.restart ();
+		m_RunWork.emplace (m_Service.get_executor ());
 		m_IsRunning.store (true, std::memory_order_relaxed);
 		try
 		{
@@ -98,6 +99,7 @@ namespace util
 		}
 		catch (...)
 		{
+			m_RunWork.reset ();
 			m_IsRunning.store (false, std::memory_order_relaxed);
 			throw;
 		}
@@ -110,6 +112,7 @@ namespace util
 			std::lock_guard<std::mutex> l (m_LifecycleMutex);
 			if (!m_IsRunning.load (std::memory_order_relaxed) && !m_Thread) return;
 			m_IsRunning.store (false, std::memory_order_relaxed);
+			m_RunWork.reset ();
 			if (stopService) m_Service.stop ();
 			thread = std::move (m_Thread);
 		}
@@ -130,11 +133,15 @@ namespace util
 	{
 		SetThreadName (m_Name.c_str ());
 
-		while (m_IsRunning.load (std::memory_order_relaxed))
+		// A normal return means stopped or drained. Running it again would
+		// spin on a stopped context and never dispatch a later post. Enter
+		// once even if a draining Stop won the race with thread startup.
+		for (;;)
 		{
 			try
 			{
 				m_Service.run ();
+				break;
 			}
 			catch (std::exception & ex)
 			{

@@ -111,6 +111,7 @@ namespace log
 		// publish m_IsRunning only after the thread object exists.
 		std::mutex m_LifecycleMutex;
 		std::mutex m_StartMutex;
+		// Reset before each worker is created; true until that run joins.
 		bool m_StartRequested;
 		std::condition_variable m_StartCondition;
 

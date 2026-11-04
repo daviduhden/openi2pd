@@ -20,6 +20,7 @@
 #include <map>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <mutex>
 #include <thread>
 #include <utility>
@@ -88,8 +89,8 @@ namespace util
 		}
 
 		/**
-		 * Typed pool deleter. Replaces the former std::function/\c std::bind
-		 * erasure: the object still borrows the pool, which must outlive it.
+		 * Typed pool deleter. Replaces the former type-erased deleter:
+		 * the object still borrows the pool, which must outlive it.
 		 */
 		struct Deleter
 		{
@@ -252,7 +253,13 @@ namespace util
 		auto & GetIOService () { return m_Service; }
 		bool IsRunning () const { return m_IsRunning.load (std::memory_order_relaxed); }
 
+		/// Keep an idle executor runnable until StopIOService releases work.
+		/// Restart only after the preceding worker has been joined.
+		/// Callers serialize lifecycle operations across control threads.
 		void StartIOService ();
+		/// Stop immediately, or drain admitted work when stopService is false.
+		/// Producers must quiesce before requesting a drain. A self-stop
+		/// leaves the thread joinable for a later external StopIOService.
 		void StopIOService (bool stopService = true);
 
 		void SetName (std::string_view name);
@@ -266,6 +273,9 @@ namespace util
 		std::mutex m_LifecycleMutex;
 		std::unique_ptr<std::thread> m_Thread;
 		boost::asio::io_context m_Service;
+		// Guard mutation is serialized with start/stop, not with handlers.
+		using WorkGuard = boost::asio::executor_work_guard<boost::asio::io_context::executor_type>;
+		std::optional<WorkGuard> m_RunWork;
 	};
 
 	class RunnableServiceWithWork : public RunnableService

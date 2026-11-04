@@ -12,7 +12,8 @@
 #include <cassert>
 #include <chrono>
 #include <future>
-#include <thread>
+#include <atomic>
+#include <stdexcept>
 
 #include "util.h"
 
@@ -28,6 +29,7 @@ public:
 	~TestService () override { StopIOService (); }
 	void Start () { StartIOService (); }
 	void Stop () { StopIOService (); }
+	void Drain () { StopIOService (false); }
 	auto & Service () { return GetIOService (); }
 	bool Running () const { return IsRunning (); }
 };
@@ -48,11 +50,34 @@ int main ()
 			stopped.set_value ();
 		});
 	assert (future.wait_for (std::chrono::seconds (5)) == std::future_status::ready);
-	// The self-stop detaches the run loop by design; give it a bounded
-	// chance
-	// to observe the cleared running flag before the service is destroyed.
-	std::this_thread::sleep_for (std::chrono::milliseconds (100));
+	// External stop joins the retained thread; timing cannot replace it.
 	service.Stop ();
+	assert (!service.Running ());
+
+	// Run out of ready work between two operations. The first barrier
+	// proves the run loop started before the second operation is posted.
+	for (int cycle = 0; cycle < 3; ++cycle)
+	{
+		service.Start ();
+		std::promise<void> first, second;
+		auto firstDone = first.get_future ();
+		auto secondDone = second.get_future ();
+		boost::asio::post (service.Service (), [&first] { first.set_value (); });
+		assert (firstDone.wait_for (std::chrono::seconds (5)) == std::future_status::ready);
+		boost::asio::post (service.Service (), [&second] { second.set_value (); });
+		assert (secondDone.wait_for (std::chrono::seconds (5)) == std::future_status::ready);
+		service.Stop ();
+	}
+
+	// Drain must execute admitted work even if it wins thread startup,
+	// and one throwing handler must not discard the following work.
+	std::atomic<int> completed { 0 };
+	boost::asio::post (service.Service (), [] { throw std::runtime_error ("fixture"); });
+	for (int i = 0; i < 32; ++i)
+		boost::asio::post (service.Service (), [&completed] { ++completed; });
+	service.Start ();
+	service.Drain ();
+	assert (completed == 32);
 	assert (!service.Running ());
 	return 0;
 }
