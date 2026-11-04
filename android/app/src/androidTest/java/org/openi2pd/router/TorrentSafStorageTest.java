@@ -13,6 +13,47 @@ import org.junit.runner.RunWith;
 @RunWith(AndroidJUnit4.class)
 public final class TorrentSafStorageTest {
     @Test
+    public void retiredLeaseDrainsAtNextAuthorityEntryAfterContention() throws Exception {
+        var leases = new TorrentSafGrantLeases();
+        var authority = new TorrentSafStorage.MappingAuthority(leases::drain);
+        int[] released = {0};
+        var token = leases.acquire("content://fixture/document", 1, () -> 0,
+                modes -> {}, () -> false, modes -> released[0]++);
+        var entered = new java.util.concurrent.CountDownLatch(1);
+        var leave = new java.util.concurrent.CountDownLatch(1);
+        var worker = java.util.concurrent.Executors.newSingleThreadExecutor();
+        var operation = worker.submit(() -> authority.run(() -> {
+            entered.countDown();
+            try {
+                return leave.await(5, java.util.concurrent.TimeUnit.SECONDS);
+            } catch (InterruptedException interrupted) {
+                Thread.currentThread().interrupt();
+                return false;
+            }
+        }));
+        try {
+            assertTrue(entered.await(5, java.util.concurrent.TimeUnit.SECONDS));
+            assertTrue(leases.retire(token));
+            assertFalse(authority.run(() -> failUnexpectedGrantMutation()));
+            assertEquals(0, released[0]);
+            leave.countDown();
+            assertTrue(operation.get(5, java.util.concurrent.TimeUnit.SECONDS));
+            assertTrue(authority.run(() -> true));
+            assertEquals(1, released[0]);
+            assertFalse(leases.retire(token));
+        } finally {
+            leave.countDown();
+            worker.shutdownNow();
+            assertTrue(worker.awaitTermination(5, java.util.concurrent.TimeUnit.SECONDS));
+        }
+    }
+
+    private static boolean failUnexpectedGrantMutation() {
+        fail("busy grant authority must not run the mutation");
+        return false;
+    }
+
+    @Test
     public void replacingTreeReleasesBothOldModesAndPreservesSharedGrants() {
         String oldTree = "content://org.openi2pd.fixture/tree/old";
         String newReadOnlyTree = "content://org.openi2pd.fixture/tree/read-only";

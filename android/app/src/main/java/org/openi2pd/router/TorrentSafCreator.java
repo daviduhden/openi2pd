@@ -39,9 +39,11 @@ import java.util.function.LongConsumer;
  *
  * <p><b>Bounds.</b> At most {@value #MAX_FILES} files, {@value
  * #MAX_BYTES} total source bytes, 32 tracker URLs, 32 directory levels,
- * 20000 enumerated document ids, 5 MiB of accumulated piece hashes, a
- * 16 KiB..4 MiB power-of-two piece size and 255-character path
- * components. A source whose provider-reported length disagrees with
+ * 20000 visited directory ids, 5 MiB of accumulated piece hashes, a
+ * 16 KiB..4 MiB power-of-two piece size and 255-byte UTF-8 path
+ * components. Paths and provider authority text are separately bounded
+ * by {@link TorrentSafCreationBudget} before application retention.
+ * A source whose provider-reported length disagrees with
  * the bytes actually read fails the whole creation, so metainfo never
  * describes content that is no longer there.</p>
  *
@@ -91,14 +93,21 @@ final class TorrentSafCreator {
             throws Exception {
         if (uri == null || !"content".equals(uri.getScheme()))
             throw new IOException("Invalid source");
+        TorrentSafCreationBudget.uri(uri.toString());
         if (pieceLength < 16384 || pieceLength > 4 * 1024 * 1024
                 || (pieceLength & (pieceLength - 1)) != 0 || trackers == null
-                || trackers.length > 32)
+                || trackers.length > 32 || (privateTorrent && trackers.length == 0))
             throw new IOException("Invalid creation options");
+        // Reject unusable tracker hints before provider enumeration or
+        // hashing. The native encoder independently checks them again.
+        for (String tracker : trackers)
+            TorrentControl.creationTracker(tracker);
         List<Source> files = new ArrayList<>();
+        var budget = new TorrentSafCreationBudget();
         Uri root = tree ? DocumentsContract.buildDocumentUriUsingTree(
                                   uri, DocumentsContract.getTreeDocumentId(uri))
                         : uri;
+        TorrentSafCreationBudget.uri(root.toString());
         String name;
         try (Cursor cursor = resolver.query(root,
                      new String[] {DocumentsContract.Document.COLUMN_DISPLAY_NAME}, null, null,
@@ -107,11 +116,15 @@ final class TorrentSafCreator {
                 throw new IOException("Source unavailable");
             name = safe(cursor.getString(0));
         }
+        budget.document(tree ? DocumentsContract.getTreeDocumentId(uri)
+                             : "document", name);
         if (tree)
             enumerate(resolver, uri, DocumentsContract.getTreeDocumentId(uri), "", 0, files,
-                    new HashSet<>(), cancel);
-        else
+                    new HashSet<>(), cancel, budget);
+        else {
+            budget.authority(root.toString());
             files.add(new Source(root, "", -1));
+        }
         files.sort(Comparator.comparing(Source::path));
         if (files.isEmpty())
             throw new IOException("Empty source");
@@ -154,9 +167,7 @@ final class TorrentSafCreator {
                         digest.update(buffer, 0, count);
                         remaining -= count;
                         if (remaining == 0) {
-                            if (hashes.size() >= 5 * 1024 * 1024)
-                                throw new IOException(
-                                        "Too many pieces; select a larger piece size");
+                            TorrentSafCreationBudget.hashAppend(hashes.size());
                             hashes.write(digest.digest());
                             remaining = pieceLength;
                             long now = android.os.SystemClock.elapsedRealtime();
@@ -171,8 +182,10 @@ final class TorrentSafCreator {
             if (source.length() >= 0 && lengths[i] != source.length())
                 throw new IOException("Source changed while hashing");
         }
-        if (remaining != pieceLength)
+        if (remaining != pieceLength) {
+            TorrentSafCreationBudget.hashAppend(hashes.size());
             hashes.write(digest.digest());
+        }
         cancel.throwIfCanceled();
         byte[][] trackerBytes = new byte[trackers.length][];
         for (int i = 0; i < trackers.length; ++i)
@@ -186,7 +199,8 @@ final class TorrentSafCreator {
     }
 
     private static void enumerate(ContentResolver resolver, Uri tree, String id, String prefix,
-            int depth, List<Source> files, HashSet<String> visited, CancellationSignal cancel)
+            int depth, List<Source> files, HashSet<String> visited, CancellationSignal cancel,
+            TorrentSafCreationBudget budget)
             throws IOException {
         cancel.throwIfCanceled();
         if (depth > 32 || !visited.add(id) || visited.size() > 20000)
@@ -204,29 +218,27 @@ final class TorrentSafCreator {
             while (cursor.moveToNext()) {
                 cancel.throwIfCanceled();
                 String name = safe(cursor.getString(1));
-                if (!names.add(name))
-                    throw new IOException("Duplicate source name");
                 String child = cursor.getString(0);
                 String path = prefix + name;
+                budget.document(child, path);
+                if (!names.add(name))
+                    throw new IOException("Duplicate source name");
                 if (DocumentsContract.Document.MIME_TYPE_DIR.equals(cursor.getString(2)))
-                    enumerate(resolver, tree, child, path + "/", depth + 1, files, visited, cancel);
+                    enumerate(resolver, tree, child, path + "/", depth + 1, files, visited,
+                            cancel, budget);
                 else {
                     if (files.size() >= MAX_FILES)
                         throw new IOException("Too many files");
-                    files.add(new Source(DocumentsContract.buildDocumentUriUsingTree(tree, child),
-                            path, cursor.isNull(3) ? -1 : cursor.getLong(3)));
+                    Uri document = DocumentsContract.buildDocumentUriUsingTree(tree, child);
+                    budget.authority(document.toString());
+                    files.add(new Source(document, path,
+                            cursor.isNull(3) ? -1 : cursor.getLong(3)));
                 }
             }
         }
     }
 
     private static String safe(String name) throws IOException {
-        if (name == null || name.isEmpty() || name.equals(".") || name.equals("..")
-                || name.length() > 255 || name.indexOf('/') >= 0 || name.indexOf('\\') >= 0)
-            throw new IOException("Invalid source name");
-        for (int i = 0; i < name.length(); ++i)
-            if (Character.isISOControl(name.charAt(i)))
-                throw new IOException("Invalid source name");
-        return name;
+        return TorrentSafCreationBudget.component(name);
     }
 }

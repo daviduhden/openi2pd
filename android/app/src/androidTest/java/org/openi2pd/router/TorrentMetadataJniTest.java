@@ -22,6 +22,14 @@ public final class TorrentMetadataJniTest {
         return value.getBytes(StandardCharsets.UTF_8);
     }
 
+    // String's repeat instance method is unavailable on API 29.
+    private static String repeat(String value, int count) {
+        StringBuilder result = new StringBuilder();
+        for (int i = 0; i < count; ++i)
+            result.append(value);
+        return result.toString();
+    }
+
     @Test
     public void singleFileAndSharedBoundaryMetadata() throws Exception {
         I2PD_JNI.loadLibraries();
@@ -51,5 +59,37 @@ public final class TorrentMetadataJniTest {
                 new long[] {1}, 1024 * 1024, new byte[19], new byte[0][], false));
         assertNull(I2PD_JNI.buildTorrentMetadata(utf8("source"), new byte[][] {utf8("")},
                 new long[] {Long.MAX_VALUE}, 1024 * 1024, digest, new byte[0][], false));
+    }
+
+    @Test
+    public void aggregatePathBudgetRejectsAmplificationFromManyValidPaths() throws Exception {
+        I2PD_JNI.loadLibraries();
+        String prefix = repeat(repeat("a", 255) + "/", 31);
+        byte[][] paths = new byte[1100][];
+        long[] lengths = new long[paths.length];
+        java.util.Arrays.fill(lengths, 1);
+        for (int i = 0; i < paths.length; ++i)
+            paths[i] = utf8(prefix + repeat("b", 250) + i);
+        byte[] digest = MessageDigest.getInstance("SHA-1").digest(new byte[paths.length]);
+        assertNull(I2PD_JNI.buildTorrentMetadata(utf8("folder"), paths, lengths,
+                1024 * 1024, digest, new byte[0][], false));
+        // The individual paths remain valid below the aggregate cap.
+        byte[] smallDigest = MessageDigest.getInstance("SHA-1").digest(new byte[2]);
+        assertNotNull(I2PD_JNI.buildTorrentMetadata(utf8("folder"),
+                new byte[][] {paths[0], paths[1]}, new long[] {1, 1},
+                1024 * 1024, smallDigest, new byte[0][], false));
+    }
+
+    @Test
+    public void supplementaryNamesUseStandardUtf8RatherThanModifiedUtf8() throws Exception {
+        I2PD_JNI.loadLibraries();
+        byte[] digest = MessageDigest.getInstance("SHA-1").digest(utf8("a"));
+        String supplementary = "\uD83D\uDE00";
+        assertNotNull(I2PD_JNI.buildTorrentMetadata(utf8(repeat(supplementary, 63)),
+                new byte[][] {utf8("")}, new long[] {1},
+                1024 * 1024, digest, new byte[0][], false));
+        assertNull(I2PD_JNI.buildTorrentMetadata(utf8(repeat(supplementary, 64)),
+                new byte[][] {utf8("")}, new long[] {1},
+                1024 * 1024, digest, new byte[0][], false));
     }
 }

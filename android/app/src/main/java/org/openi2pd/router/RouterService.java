@@ -2090,24 +2090,15 @@ public class RouterService extends Service {
                 throw new RejectedExecutionException();
             executor.execute(() -> {
                 String response;
-                boolean releaseGrant = false;
+                TorrentSafGrantLeases.Token grantLease = null;
                 try {
                     if (destroyed)
                         throw new java.io.IOException("Service stopped");
                     android.content.ContentResolver resolver = getContentResolver();
-                    boolean alreadyGranted = false;
-                    for (android.content.UriPermission permission :
-                            resolver.getPersistedUriPermissions()) {
-                        if (document.equals(permission.getUri()) && permission.isReadPermission()) {
-                            alreadyGranted = true;
-                            break;
-                        }
-                    }
-                    if (!alreadyGranted) {
-                        resolver.takePersistableUriPermission(
-                                document, Intent.FLAG_GRANT_READ_URI_PERMISSION);
-                        releaseGrant = true;
-                    }
+                    grantLease = TorrentSafStorage.acquireTemporaryGrant(
+                            getApplicationContext(), document, Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                    if (grantLease == null)
+                        throw new java.io.IOException("Document grant unavailable");
                     try (android.content.res.AssetFileDescriptor opened =
                                     resolver.openAssetFileDescriptor(document, "r", cancellation)) {
                         if (opened == null)
@@ -2131,13 +2122,7 @@ public class RouterService extends Service {
                 } finally {
                     mainHandler.removeCallbacks(cancel);
                     cancelTorrentImport = null;
-                    if (releaseGrant) {
-                        try {
-                            getContentResolver().releasePersistableUriPermission(
-                                    document, Intent.FLAG_GRANT_READ_URI_PERMISSION);
-                        } catch (RuntimeException ignored) {
-                        }
-                    }
+                    TorrentSafStorage.releaseTemporaryGrant(grantLease);
                     torrentInFlight.set(false);
                 }
                 String result = response;
@@ -2192,18 +2177,13 @@ public class RouterService extends Service {
                 throw new RejectedExecutionException();
             safWorker.execute(() -> {
                 byte[] metadata = null;
-                boolean release = false;
+                TorrentSafGrantLeases.Token grantLease = null;
                 try {
                     var resolver = getContentResolver();
-                    boolean granted = false;
-                    for (var permission : resolver.getPersistedUriPermissions())
-                        if (source.equals(permission.getUri()) && permission.isReadPermission())
-                            granted = true;
-                    if (!granted) {
-                        resolver.takePersistableUriPermission(
-                                source, Intent.FLAG_GRANT_READ_URI_PERMISSION);
-                        release = true;
-                    }
+                    grantLease = TorrentSafStorage.acquireTemporaryGrant(
+                            getApplicationContext(), source, Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                    if (grantLease == null)
+                        throw new java.io.IOException("Source grant unavailable");
                     metadata = TorrentSafCreator.create(resolver, source, tree, cancel,
                             value -> TorrentSafCallbackPublisher.post(requestOwnerEpoch,
                                     command -> mainHandler.post(command),
@@ -2213,12 +2193,7 @@ public class RouterService extends Service {
                     // Provider diagnostics may disclose document names
                     // or account identifiers.
                 } finally {
-                    if (release)
-                        try {
-                            getContentResolver().releasePersistableUriPermission(
-                                    source, Intent.FLAG_GRANT_READ_URI_PERMISSION);
-                        } catch (RuntimeException ignored) {
-                        }
+                    TorrentSafStorage.releaseTemporaryGrant(grantLease);
                     mainHandler.removeCallbacks(deadline);
                     cancelTorrentImport = null;
                     torrentInFlight.set(false);
@@ -2277,30 +2252,18 @@ public class RouterService extends Service {
                 throw new RejectedExecutionException();
             safWorker.execute(() -> {
                 boolean success = false;
-                boolean releaseGrant = false;
+                TorrentSafGrantLeases.Token grantLease = null;
                 try {
-                    boolean granted = false;
-                    var resolver = getContentResolver();
-                    for (var permission : resolver.getPersistedUriPermissions())
-                        if (target.equals(permission.getUri()) && permission.isWritePermission())
-                            granted = true;
-                    if (!granted) {
-                        resolver.takePersistableUriPermission(target,
-                                Intent.FLAG_GRANT_READ_URI_PERMISSION
-                                        | Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
-                        releaseGrant = true;
-                    }
+                    grantLease = TorrentSafStorage.acquireTemporaryGrant(
+                            getApplicationContext(), target, Intent.FLAG_GRANT_READ_URI_PERMISSION
+                                    | Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
+                    if (grantLease == null)
+                        throw new java.io.IOException("Target grant unavailable");
                     success =
                             TorrentSafStorage.export(target, metadata, canceled) && !canceled.get();
                 } catch (Throwable ignored) {
                 } finally {
-                    if (releaseGrant)
-                        try {
-                            getContentResolver().releasePersistableUriPermission(target,
-                                    Intent.FLAG_GRANT_READ_URI_PERMISSION
-                                            | Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
-                        } catch (RuntimeException ignored) {
-                        }
+                    TorrentSafStorage.releaseTemporaryGrant(grantLease);
                     mainHandler.removeCallbacks(cancel);
                     cancelTorrentImport = null;
                     torrentInFlight.set(false);

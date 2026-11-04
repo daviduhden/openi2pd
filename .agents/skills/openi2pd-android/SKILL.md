@@ -120,6 +120,27 @@ run Gradle, install an APK or run a device test.
   artifact path, not an extra ABI filter alone.
 
 ## Known issues and decisions
+
+- SAF creation charges retained provider IDs/URI strings and relative paths
+  through `TorrentSafCreationBudget` before collection insertion. Measure
+  UTF-8 bytes, reject malformed surrogates, and keep the native 255-byte name
+  rule. Check full and final partial-piece hashes before appending. JNI's
+  byte-array metadata entry independently limits aggregate paths before copy
+  or filesystem-path construction; it does not use Modified UTF-8. These
+  retention budgets exclude allocations internal to provider cursors and do
+  not make a blocked provider cancellable. Keep JVM and JNI multibyte/bounds
+  regressions with the implementation.
+- Import, creation and export hold process-wide `TorrentSafGrantLeases`
+  tokens through provider IO, including borrowers needing no new mode. The
+  registry aggregates acquired modes and defers mapping-detach/rollback
+  revocation until the last borrower retires. All registry/framework work
+  runs under mapping authority; retirement itself is atomic and nonblocking.
+  Busy cleanup drains on the next authority entry. Preserve pre-existing
+  modes on failed selection. JVM regressions cover overlap, cap, ownership,
+  adoption and retirement; instrumentation covers authority contention.
+  External-process consumers and providers ignoring cancellation remain
+  outside this process-local guarantee. Failed framework cleanup retains the
+  permission without an unbounded retry registry.
 - Error messages published in `RouterSnapshot` are an information boundary.
   Map internal exceptions to a closed set of generic categories; never copy
   `Throwable.getMessage()`, causes, class names or stack traces into snapshots
@@ -472,6 +493,9 @@ run Gradle, install an APK or run a device test.
   copy-initializing `std::string` from it is ill-formed because the string
   constructor is explicit. Use direct initialization, as in
   `i2pd_android.cpp` (CE-011).
+
+- A second same-UID process is not a privilege boundary; keep SAF authority
+  and router/presentation split claims separate from Android UID isolation.
 
 ## Do not
 

@@ -1869,6 +1869,11 @@ extern "C" JNIEXPORT jbyteArray JNICALL Java_org_openi2pd_router_I2PD_1JNI_build
 		}
 		std::vector<std::pair<std::filesystem::path, size_t>> files;
 		uint64_t total = 0;
+		// Reject aggregate path amplification before JNI copies or native
+		// path allocation, independently of the Java creator's budget.
+		// Bencoding overhead still counts against the final metainfo cap.
+		constexpr size_t MAX_METADATA_PATH_BYTES = 8 * 1024 * 1024;
+		size_t pathBytes = 0;
 		for (jsize i = 0; i < count; ++i)
 		{
 			if (sizes[i] < 0 || static_cast<uint64_t> (sizes[i]) > 64ULL * 1024 * 1024 * 1024 - total) return nullptr;
@@ -1880,7 +1885,9 @@ extern "C" JNIEXPORT jbyteArray JNICALL Java_org_openi2pd_router_I2PD_1JNI_build
 				return nullptr;
 			}
 			if (!path) return nullptr;
-			const std::string text = bytes (path.get (), 8192);
+			const std::string text = bytes (path.get (),
+				std::min<size_t> (8192, MAX_METADATA_PATH_BYTES - pathBytes));
+			pathBytes += text.size ();
 			if (static_cast<uint64_t> (sizes[i]) > std::numeric_limits<size_t>::max ()) return nullptr;
 			files.emplace_back (std::filesystem::path (text), static_cast<size_t> (sizes[i]));
 		}

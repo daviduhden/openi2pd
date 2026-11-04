@@ -34,7 +34,9 @@ final class TorrentSafStorage {
     private static final Object lock = new Object();
     // Independent of Binder capability state. Grant mutation never
     // holds the broker lock across framework calls or preference IO.
-    private static final MappingAuthority mappingAuthority = new MappingAuthority();
+    private static final TorrentSafGrantLeases temporaryGrants = new TorrentSafGrantLeases();
+    private static final MappingAuthority mappingAuthority =
+            new MappingAuthority(temporaryGrants::drain);
 
     /**
      * One process-local grant mutation. Contention and reentrant calls
@@ -45,11 +47,23 @@ final class TorrentSafStorage {
     static final class MappingAuthority {
         private final java.util.concurrent.locks.ReentrantLock mutex =
                 new java.util.concurrent.locks.ReentrantLock();
+        private final Runnable maintenance;
+
+        MappingAuthority() {
+            this(() -> {});
+        }
+
+        MappingAuthority(Runnable maintenance) {
+            this.maintenance = maintenance;
+        }
 
         boolean run(java.util.function.BooleanSupplier action) {
             if (mutex.isHeldByCurrentThread() || !mutex.tryLock())
                 return false;
             try {
+                // Closed tokens stay bounded when an earlier cleanup
+                // lost authority to a concurrent provider operation.
+                maintenance.run();
                 return action.getAsBoolean();
             } finally {
                 mutex.unlock();
@@ -562,6 +576,15 @@ final class TorrentSafStorage {
         try {
             final int readFlag = Intent.FLAG_GRANT_READ_URI_PERMISSION;
             final int writeFlag = Intent.FLAG_GRANT_WRITE_URI_PERMISSION;
+            int retained = 0;
+            for (var permission : app.getContentResolver().getPersistedUriPermissions()) {
+                if (!tree.equals(permission.getUri()))
+                    continue;
+                if (permission.isReadPermission())
+                    retained |= readFlag;
+                if (permission.isWritePermission())
+                    retained |= writeFlag;
+            }
             int flags = readFlag | writeFlag;
             try {
                 app.getContentResolver().takePersistableUriPermission(tree, flags);
@@ -581,14 +604,14 @@ final class TorrentSafStorage {
                 read |= grant.isReadPermission();
             }
             if (!read) {
-                releaseUnmappedLocked(app, tree, flags);
+                releaseUnmappedLocked(app, tree, flags & ~retained);
                 return false;
             }
             var prefs = app.getSharedPreferences("torrent-saf-grants", Context.MODE_PRIVATE);
             String previous = prefs.getString(key, null);
             boolean saved = prefs.edit().putString(key, tree.toString()).commit();
             if (!saved) {
-                releaseUnmappedLocked(app, tree, flags);
+                releaseUnmappedLocked(app, tree, flags & ~retained);
                 return false;
             }
             if (previous != null && !previous.equals(tree.toString()))
@@ -605,16 +628,69 @@ final class TorrentSafStorage {
     // commit. A concurrent selection cannot add a reference between
     // this check and the framework release.
     private static void releaseUnmappedLocked(Context app, Uri tree, int flags) {
+        if (flags == 0)
+            return;
         String uri = tree.toString();
         for (Object value : app.getSharedPreferences("torrent-saf-grants", Context.MODE_PRIVATE)
                         .getAll()
                         .values())
             if (uri.equals(value))
                 return;
+        if (temporaryGrants.deferRelease(uri, flags))
+            return;
         try {
             app.getContentResolver().releasePersistableUriPermission(tree, flags);
         } catch (RuntimeException ignored) {
         }
+    }
+
+    /**
+     * Acquire an opaque process-wide transient grant lease. Every
+     * borrower gets a token, even if another service owner obtained
+     * all modes earlier. Null means admission or acquisition failed.
+     * Keep the token through provider IO and retire it in finally.
+     * The registry retains only the Application context, never Service.
+     */
+    static TorrentSafGrantLeases.Token acquireTemporaryGrant(
+            Context app, Uri uri, int requested) {
+        if (app == null || uri == null)
+            return null;
+        Context application = app.getApplicationContext();
+        var resolver = application.getContentResolver();
+        TorrentSafGrantLeases.Token[] acquired = {null};
+        mappingAuthority.run(() -> {
+            acquired[0] = temporaryGrants.acquire(uri.toString(), requested, () -> {
+                int retained = 0;
+                for (var permission : resolver.getPersistedUriPermissions()) {
+                    if (!uri.equals(permission.getUri()))
+                        continue;
+                    if (permission.isReadPermission())
+                        retained |= Intent.FLAG_GRANT_READ_URI_PERMISSION;
+                    if (permission.isWritePermission())
+                        retained |= Intent.FLAG_GRANT_WRITE_URI_PERMISSION;
+                }
+                return retained;
+            }, modes -> resolver.takePersistableUriPermission(uri, modes),
+                    () -> TorrentSafGrants.referenced(
+                            application.getSharedPreferences(
+                                    "torrent-saf-grants", Context.MODE_PRIVATE).getAll(),
+                            uri.toString(), null),
+                    modes -> resolver.releasePersistableUriPermission(uri, modes));
+            return acquired[0] != null;
+        });
+        return acquired[0];
+    }
+
+    /**
+     * Retire exactly this operation token on its provider worker. Never
+     * wait for contended grant authority or revoke another borrower:
+     * busy authority defers bounded cleanup until the next operation.
+     * Framework release itself may block. Service retirement does not
+     * retire a token whose provider call is still using its grant.
+     */
+    static void releaseTemporaryGrant(TorrentSafGrantLeases.Token token) {
+        if (temporaryGrants.retire(token))
+            mappingAuthority.run(() -> true);
     }
 
     /**
@@ -650,9 +726,12 @@ final class TorrentSafStorage {
         if (grants == null || uri == null || release == null
                 || TorrentSafGrants.referenced(grants, uri, exceptKey))
             return false;
+        int modes = Intent.FLAG_GRANT_READ_URI_PERMISSION
+                | Intent.FLAG_GRANT_WRITE_URI_PERMISSION;
+        if (temporaryGrants.deferRelease(uri, modes))
+            return false;
         try {
-            release.accept(Uri.parse(uri), Intent.FLAG_GRANT_READ_URI_PERMISSION
-                            | Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
+            release.accept(Uri.parse(uri), modes);
             return true;
         } catch (RuntimeException ignored) {
             return false;

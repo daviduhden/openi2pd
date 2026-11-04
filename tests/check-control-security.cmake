@@ -1769,7 +1769,8 @@ file(READ "${PROJECT_ROOT}/android/app/src/main/java/org/openi2pd/router/Torrent
 foreach(required IN ITEMS "mutex.isHeldByCurrentThread() || !mutex.tryLock()"
     "mappingAuthority.run(() -> selectGrantLocked(app, key, tree))"
     "mappingAuthority.run(() -> detachGrantLocked(app, key))"
-    "Intent.FLAG_GRANT_READ_URI_PERMISSION\n                            | Intent.FLAG_GRANT_WRITE_URI_PERMISSION")
+    "int modes = Intent.FLAG_GRANT_READ_URI_PERMISSION"
+    "| Intent.FLAG_GRANT_WRITE_URI_PERMISSION;")
   string(FIND "${grant_source}" "${required}" grant_contract)
   if(grant_contract EQUAL -1)
     message(FATAL_ERROR "SAF grant retirement authority missing: ${required}")

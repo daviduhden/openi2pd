@@ -180,3 +180,42 @@ truncated back to zero. Unsupported random access fails explicitly. A broker
 death or timeout during the final commit is ambiguous and may leave a partial
 document; it is never automatically replayed. The UI exposes connection,
 cancellation and revoked-permission status.
+
+### Temporary document grant cleanup
+
+Import, creation and export hold opaque process-wide leases through provider
+IO. Every borrower receives a token, including a borrower needing no new
+read/write modes. The bounded registry retains acquired modes until the last
+borrower retires and also defers mapping-detach and failed-selection rollback
+revocation. Pre-existing modes survive rollback. Acquisition, reference checks
+and framework cleanup share payload-map mutation authority; busy retirement
+waits for the next authority entry without blocking or a retry loop.
+
+The registry admits 32 live/pending tokens with URI keys up to 8192
+characters. JVM regressions cover overlapping owners, mode preservation,
+mapping adoption, bounds and retirement; instrumentation covers contended
+authority. These changes are Implemented / static, Pending CI compilation
+and Pending CI tests. External-process grant consumers remain outside this
+boundary. A framework cleanup failure retains the permission but discards
+local cleanup state; a provider may still ignore cancellation or block its
+calling worker.
+
+### Creation input retention budgets
+
+SAF creation bounds text before retaining provider-controlled inputs: relative
+paths have an aggregate 8 MiB UTF-8 budget, and document IDs plus retained URI
+text share another 8 MiB budget. Individual IDs and paths are limited to 8192
+UTF-8 bytes; URI strings are limited to 8192 characters. Names follow the
+native 255-byte UTF-8 component rule, including supplementary characters, and
+unmatched UTF-16 surrogates are rejected instead of replacement-encoded.
+Directory entries are charged as well as files, so these are conservative
+creation-resource limits rather than guarantees that every source tree below
+the final metainfo cap is admitted.
+
+The JNI byte-array encoder independently bounds aggregate paths before byte
+copying or native path allocation. Full and final partial-piece hashes share
+the existing 5 MiB hash bound, while final bencoded metadata still has its
+separate 8 MiB cap. JVM and JNI regressions are prepared; compilation/device
+validation remains pending manual CI. Provider cursors can allocate a row
+before returning it, and provider IO can still ignore cancellation; those
+costs are outside the application's retained-text accounting.
