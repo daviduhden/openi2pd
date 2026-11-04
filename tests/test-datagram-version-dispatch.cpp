@@ -9,7 +9,9 @@
  * asks for it, an unset version keeps the session's version, and the
  * session version is not frozen by an explicit request. The built I2NP
  * Data message is inspected through the DatagramSession send observer,
- * so no routing path, LeaseSet or socket is involved.
+ * so no routing path, LeaseSet or socket is involved. The same fixture
+ * pins the session send-queue lifetime: Stop() and destination
+ * destruction must drop queued datagrams.
  *
  */
 
@@ -186,6 +188,31 @@ void TestSessionVersionSwitch ()
 	fixture.session->SetSendObserverForTesting (nullptr);
 }
 
+void TestStopClearsSendQueue ()
+{
+	auto fixture = MakeFixture ();
+	// No send observer is installed, so SendMsg appends to the bounded
+	// session queue. This fixture has no cached LeaseSet and no routing
+	// path, so the immediate flush defers instead of dropping the message.
+	fixture.session->SendMsg (std::make_shared<i2p::I2NPMessage> ());
+	assert (fixture.session->GetSendQueueSizeForTesting () == 1);
+
+	// Stop() releases queued datagrams so an expired or stopped session
+	// cannot keep payloads alive; the handle itself stays usable.
+	fixture.session->Stop ();
+	assert (fixture.session->GetSendQueueSizeForTesting () == 0);
+
+	// Destroying the destination stops every session it still owns, so a
+	// session retained by a callback or SAM socket cannot keep datagrams
+	// queued after the owner is gone.
+	auto session = fixture.destination->GetSession (fixture.remote);
+	assert (session);
+	session->SendMsg (std::make_shared<i2p::I2NPMessage> ());
+	assert (session->GetSendQueueSizeForTesting () == 1);
+	fixture.destination.reset ();
+	assert (session->GetSendQueueSizeForTesting () == 0);
+}
+
 void TestVersionHelpers ()
 {
 	using namespace i2p::datagram;
@@ -213,6 +240,7 @@ int main ()
 {
 	TestPerSendVersion ();
 	TestSessionVersionSwitch ();
+	TestStopClearsSendQueue ();
 	TestVersionHelpers ();
 	return 0;
 }

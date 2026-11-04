@@ -222,6 +222,15 @@ namespace datagram
 			std::shared_ptr<i2p::client::ClientDestination> localDestination, const i2p::data::IdentHash & remoteIdent);
 
 		void Start ();
+		/// @brief Release the session's pending datagrams.
+		///
+		/// Drops every message still waiting for a routing path, so an
+		/// expired, replaced or shut-down session cannot retain queued
+		/// payloads. The caller keeps any remaining lifecycle decision:
+		/// Stop() does not clear the remote LeaseSet and does not mark the
+		/// object unusable, so a retained handle may queue again.
+		/// @note DatagramDestination calls this for every session under
+		///       its own mutex during destruction.
 		void Stop ();
 
 		/** @brief ack the garlic routing path */
@@ -252,6 +261,9 @@ namespace datagram
 		// peer. The observer is invoked without the session lock and must not
 		// call back into this session. Never installed by the daemon.
 		void SetSendObserverForTesting (std::function<void (const I2NPMessage &)> observer);
+		// Test seam: number of datagrams currently waiting for a routing
+		// path. Never called by the daemon.
+		size_t GetSendQueueSizeForTesting () const;
 		// request LeaseSet update from floodfill in case our copy contains
 		// dead leases
 		void RequestUpdatedLeaseSet ();

@@ -105,6 +105,14 @@ namespace datagram
 
 	DatagramDestination::~DatagramDestination ()
 	{
+		// A session can outlive this destination while a SAM socket or an
+		// outstanding LeaseSet callback still holds it. Stop each one before
+		// the map is released so its bounded send queue does not keep the
+		// queued I2NP messages (and their payloads) alive after shutdown.
+		// m_SessionsMutex -> DatagramSession::m_Mutex is the documented lock
+		// order, so holding the map lock across Stop() is safe.
+		std::lock_guard<std::mutex> lock (m_SessionsMutex);
+		for (auto & item : m_Sessions) item.second->Stop ();
 		m_Sessions.clear ();
 	}
 
@@ -1042,7 +1050,16 @@ namespace datagram
 		m_LastUse.store (i2p::util::GetMillisecondsSinceEpoch (), std::memory_order_relaxed);
 	}
 
-	void DatagramSession::Stop () { }
+	void DatagramSession::Stop ()
+	{
+		// Queued datagrams are dropped with the session: a stopped or
+		// expired session has no routing path to flush them to. Stop() is
+		// also the destructor path of DatagramDestination, so this is the
+		// single place that releases the queue on shutdown; the counters
+		// and the cached LeaseSet stay readable for a retained handle.
+		std::lock_guard<std::mutex> lock (m_Mutex);
+		m_SendQueue.clear ();
+	}
 
 	bool DatagramSession::IsRatchets () const
 	{
@@ -1077,6 +1094,12 @@ namespace datagram
 	{
 		std::lock_guard<std::mutex> lock (m_Mutex);
 		m_SendObserver = std::move (observer);
+	}
+
+	size_t DatagramSession::GetSendQueueSizeForTesting () const
+	{
+		std::lock_guard<std::mutex> lock (m_Mutex);
+		return m_SendQueue.size ();
 	}
 
 	void DatagramSession::SendMsg (std::shared_ptr<I2NPMessage> msg)
