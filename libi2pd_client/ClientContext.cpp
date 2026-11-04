@@ -15,6 +15,7 @@
 #include <fstream>
 #include <iostream>
 #include <sstream>
+#include <utility>
 #include <boost/property_tree/ptree.hpp>
 #include <boost/property_tree/ini_parser.hpp>
 #include "Config.h"
@@ -718,8 +719,7 @@ namespace client
 	{
 		i2p::data::PrivateKeys keys = i2p::data::PrivateKeys::CreateRandomKeys (sigType, cryptoType, true);
 		auto localDestination = std::make_shared<RunnableClientDestination> (keys, isPublic, params);
-		AddLocalDestination (localDestination);
-		return localDestination;
+		return AddLocalDestination (std::move (localDestination));
 	}
 
 	std::shared_ptr<ClientDestination> ClientContext::CreateNewLocalDestination (boost::asio::io_context & service,
@@ -728,26 +728,30 @@ namespace client
 	{
 		i2p::data::PrivateKeys keys = i2p::data::PrivateKeys::CreateRandomKeys (sigType, cryptoType, true);
 		auto localDestination = std::make_shared<ClientDestination> (service, keys, isPublic, params);
-		AddLocalDestination (localDestination);
-		return localDestination;
+		return AddLocalDestination (std::move (localDestination));
 	}
 
 	std::shared_ptr<ClientDestination> ClientContext::CreateNewMatchedTunnelDestination (
 		const i2p::data::PrivateKeys & keys, const std::string & name, const i2p::util::Mapping * params)
 	{
 		auto localDestination = std::make_shared<MatchedTunnelDestination> (keys, name, params);
-		AddLocalDestination (localDestination);
-		return localDestination;
+		return AddLocalDestination (std::move (localDestination), &keys);
 	}
 
-	void ClientContext::AddLocalDestination (std::shared_ptr<ClientDestination> localDestination)
+	std::shared_ptr<ClientDestination> ClientContext::AddLocalDestination (
+		std::shared_ptr<ClientDestination> localDestination, const i2p::data::PrivateKeys * keys)
 	{
-		bool added = false;
+		// Serialize factory starts without holding the registry lock across
+		// destination initialization or service-thread startup.
+		std::lock_guard creationLock (m_DestinationCreationMutex);
 		{
 			std::unique_lock<std::mutex> l (m_DestinationsMutex);
-			added = m_Destinations.emplace (localDestination->GetIdentHash (), localDestination).second;
+			auto [it, added] = m_Destinations.emplace (localDestination->GetIdentHash (), localDestination);
+			if (!added) localDestination = it->second;
 		}
-		if (added) localDestination->Start ();
+		if (keys && keys->IsOfflineSignature ()) localDestination->UpdateOfflineSignature (*keys);
+		localDestination->Start ();
+		return localDestination;
 	}
 
 	void ClientContext::DeleteLocalDestination (std::shared_ptr<ClientDestination> destination)
@@ -787,53 +791,25 @@ namespace client
 		if (it == m_Destinations.end ()) return false;
 		auto dest = it->second;
 		if (!dest) return false;
-		m_Destinations.erase (it);
+		if (oldIdentHash == newIdentHash) return true;
+		if (m_Destinations.contains (newIdentHash)) return false;
 		m_Destinations.emplace (newIdentHash, dest);
+		m_Destinations.erase (it);
 		return true;
 	}
 
 	std::shared_ptr<ClientDestination> ClientContext::CreateNewLocalDestination (
 		const i2p::data::PrivateKeys & keys, bool isPublic, const i2p::util::Mapping * params)
 	{
-		std::shared_ptr<ClientDestination> existing;
-		{
-			std::lock_guard<std::mutex> l (m_DestinationsMutex);
-			auto it = m_Destinations.find (keys.GetPublic ()->GetIdentHash ());
-			if (it != m_Destinations.end ()) existing = it->second;
-		}
-		if (existing)
-		{
-			LogPrint (eLogWarning, "Clients: Local destination ",
-				m_AddressBook.ToAddress (keys.GetPublic ()->GetIdentHash ()), " exists");
-			if (keys.IsOfflineSignature ()) existing->UpdateOfflineSignature (keys);
-			existing->Start (); // make sure to start
-			return existing;
-		}
 		auto localDestination = std::make_shared<RunnableClientDestination> (keys, isPublic, params);
-		AddLocalDestination (localDestination);
-		return localDestination;
+		return AddLocalDestination (std::move (localDestination), &keys);
 	}
 
 	std::shared_ptr<ClientDestination> ClientContext::CreateNewLocalDestination (boost::asio::io_context & service,
 		const i2p::data::PrivateKeys & keys, bool isPublic, const i2p::util::Mapping * params)
 	{
-		std::shared_ptr<ClientDestination> existing;
-		{
-			std::lock_guard<std::mutex> l (m_DestinationsMutex);
-			auto it = m_Destinations.find (keys.GetPublic ()->GetIdentHash ());
-			if (it != m_Destinations.end ()) existing = it->second;
-		}
-		if (existing)
-		{
-			LogPrint (eLogWarning, "Clients: Local destination ",
-				m_AddressBook.ToAddress (keys.GetPublic ()->GetIdentHash ()), " exists");
-			if (keys.IsOfflineSignature ()) existing->UpdateOfflineSignature (keys);
-			existing->Start (); // make sure to start
-			return existing;
-		}
 		auto localDestination = std::make_shared<ClientDestination> (service, keys, isPublic, params);
-		AddLocalDestination (localDestination);
-		return localDestination;
+		return AddLocalDestination (std::move (localDestination), &keys);
 	}
 
 	void ClientContext::CreateNewSharedLocalDestination ()

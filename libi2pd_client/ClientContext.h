@@ -201,6 +201,11 @@ namespace client
 			std::lock_guard<std::mutex> l (m_DestinationsMutex);
 			return m_SharedLocalDestination;
 		};
+		/// Factory overloads return the registered winner for an identity.
+		/// Selection and Start are serialized across factory callers; Start
+		/// runs without the registry mutex. An existing winner keeps its
+		/// service and configuration. Initialization exceptions propagate and
+		/// can leave a registered entry; Stop/reload need separate exclusion.
 		std::shared_ptr<ClientDestination> CreateNewLocalDestination (bool isPublic = false, // transient
 			i2p::data::SigningKeyType sigType = i2p::data::SIGNING_KEY_TYPE_EDDSA_SHA512_ED25519,
 			i2p::data::CryptoKeyType cryptoType = i2p::data::CRYPTO_KEY_TYPE_ELGAMAL,
@@ -220,6 +225,9 @@ namespace client
 		/// when its map key has been replaced. An unregistered object is
 		/// ignored.
 		void DeleteLocalDestination (std::shared_ptr<ClientDestination> destination);
+		/// Atomically change a registered map key. An occupied target or
+		/// missing source returns false without removing either entry.
+		/// Allocation failure propagates while preserving the old key.
 		bool ReplaceLocalDestinationHash (
 			const i2p::data::IdentHash & oldIdentHash, const i2p::data::IdentHash & newIdentHash);
 		std::shared_ptr<ClientDestination> FindLocalDestination (const i2p::data::IdentHash & destination) const;
@@ -292,7 +300,11 @@ namespace client
 		void VisitTunnels (bool clean);
 
 		void CreateNewSharedLocalDestination ();
-		void AddLocalDestination (std::shared_ptr<ClientDestination> localDestination);
+		/// Publish and start the registry winner, serializing factory starts.
+		/// Start runs outside the registry lock. This does not serialize Stop.
+		std::shared_ptr<ClientDestination> AddLocalDestination (
+			std::shared_ptr<ClientDestination> localDestination,
+			const i2p::data::PrivateKeys * keys = nullptr);
 
 #ifndef NO_TORRENTS
 		std::shared_ptr<i2p::torrents::TorrentsRPCServer> CreateTorrentsRPCServer (
@@ -301,6 +313,8 @@ namespace client
 
 	private:
 		mutable std::mutex m_DestinationsMutex;
+		// Factory publication/start lock precedes m_DestinationsMutex.
+		std::mutex m_DestinationCreationMutex;
 		std::map<i2p::data::IdentHash, std::shared_ptr<ClientDestination>> m_Destinations;
 		std::shared_ptr<ClientDestination> m_SharedLocalDestination;
 
