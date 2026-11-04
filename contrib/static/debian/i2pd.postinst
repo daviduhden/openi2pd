@@ -10,12 +10,15 @@
 #
 # Maintainer phases: configure/reconfigure create the account and repair
 # only missing paths; abort-upgrade/abort-remove/abort-deconfigure leave
-# the system unchanged. The script runs as root, is idempotent and
-# aborts on the first failing command (set -e). It never starts or stops
-# the router and performs no network operation; service integration
-# happens at the DEBHELPER marker. Only root-owned, otherwise empty
-# directories are repaired, so any ownership or mode set by the
-# administrator survives an upgrade.
+# the system unchanged; triggered is a no-op because this script owns no
+# trigger state and the debhelper snippets own every service action. An
+# unknown phase is a packaging error and exits non-zero, matching
+# debian/postinst. The script runs as root, is idempotent and aborts on
+# the first failing command (set -e). It never starts or stops the
+# router and performs no network operation; service integration happens
+# at the DEBHELPER marker. Only root-owned, otherwise empty directories
+# are repaired, so any ownership or mode set by the administrator
+# survives an upgrade.
 #
 
 set -e
@@ -28,11 +31,13 @@ case "$1" in
   configure|reconfigure)
     # Older versions of adduser created the home directory. The version
     # of adduser in Debian unstable does not. Create user and group as a
-    # system user.
-    if getent passwd $I2PDUSER > /dev/null 2>&1; then
-      groupadd -f $I2PDUSER || true
+    # system user. Every expansion is quoted so an unusual configured
+    # name cannot word-split under the shell.
+    if getent passwd "$I2PDUSER" > /dev/null 2>&1; then
+      groupadd -f "$I2PDUSER" || true
     else
-      adduser --system --quiet --group --no-create-home --home $I2PDHOME $I2PDUSER
+      adduser --system --quiet --group --no-create-home \
+        --home "$I2PDHOME" "$I2PDUSER"
     fi
 
     # Preserve an administrator's ownership/mode on upgrade; create only
@@ -40,24 +45,24 @@ case "$1" in
     # link can make dpkg create /var/lib/i2pd as root:root before this
     # script, so repair only an otherwise empty root-owned directory.
     if [ ! -d /var/log/i2pd ]; then
-      install -d -m 0700 -o ${I2PDUSER} -g ${I2PDUSER} /var/log/i2pd
+      install -d -m 0700 -o "$I2PDUSER" -g "$I2PDUSER" /var/log/i2pd
     elif [ ! -L /var/log/i2pd ] && [ "$(stat -c %u /var/log/i2pd)" = 0 ] \
       && [ -z "$(find /var/log/i2pd -mindepth 1 -maxdepth 1 -print -quit 2>/dev/null)" ]; then
-      chown ${I2PDUSER}:${I2PDUSER} /var/log/i2pd
+      chown "$I2PDUSER:$I2PDUSER" /var/log/i2pd
       chmod 0700 /var/log/i2pd
     fi
     if [ ! -e "$LOGFILE" ]; then
-      install -m 0600 -o ${I2PDUSER} -g ${I2PDUSER} /dev/null "$LOGFILE"
+      install -m 0600 -o "$I2PDUSER" -g "$I2PDUSER" /dev/null "$LOGFILE"
     elif [ ! -L "$LOGFILE" ] && [ "$(stat -c %u "$LOGFILE")" = 0 ]; then
-      chown ${I2PDUSER}:${I2PDUSER} "$LOGFILE"
+      chown "$I2PDUSER:$I2PDUSER" "$LOGFILE"
       chmod 0600 "$LOGFILE"
     fi
     if [ ! -d "$I2PDHOME" ]; then
-      install -d -m 0700 -o ${I2PDUSER} -g ${I2PDUSER} "$I2PDHOME"
+      install -d -m 0700 -o "$I2PDUSER" -g "$I2PDUSER" "$I2PDHOME"
     elif [ ! -L "$I2PDHOME" ] && [ "$(stat -c %u "$I2PDHOME")" = 0 ] \
       && [ -z "$(find "$I2PDHOME" -mindepth 1 -maxdepth 1 \
         ! -name certificates -print -quit 2>/dev/null)" ]; then
-      chown ${I2PDUSER}:${I2PDUSER} "$I2PDHOME"
+      chown "$I2PDUSER:$I2PDUSER" "$I2PDHOME"
       chmod 0700 "$I2PDHOME"
     fi
   ;;
@@ -65,9 +70,15 @@ case "$1" in
     echo "Aborting upgrade"
     exit 0
   ;;
+  triggered)
+    # A deferred trigger activation is not a configuration step: the
+    # debhelper snippets own the service action and no state here is
+    # trigger-maintained.
+    exit 0
+  ;;
   *)
     echo "postinst called with unknown argument '$1'" >&2
-    exit 0
+    exit 1
   ;;
 esac
 

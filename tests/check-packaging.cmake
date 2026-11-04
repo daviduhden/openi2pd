@@ -373,6 +373,62 @@ read_file("${PROJECT_ROOT}/contrib/static/debian/i2pd.postrm" static_debian_post
 assert_absent("${static_debian_postrm}" "update-rc.d i2pd remove"
   "static package postrm must delegate init cleanup to dh_installinit")
 
+# Static-package maintainer scripts follow the same phase policy as the
+# debhelper package: configure/reconfigure do the work, the abort and
+# triggered phases are no-ops, and an unknown phase is a packaging error
+# instead of a silent success. Every account and home expansion is
+# quoted, which is also the ShellCheck SC2086 contract.
+read_file("${PROJECT_ROOT}/contrib/static/debian/i2pd.postinst"
+  static_debian_postinst)
+read_file("${PROJECT_ROOT}/contrib/static/debian/i2pd.prerm"
+  static_debian_prerm)
+foreach(required IN ITEMS
+    "configure|reconfigure)"
+    "abort-upgrade|abort-remove|abort-deconfigure)"
+    "triggered)"
+    "\"$I2PDUSER\""
+    "\"$I2PDHOME\""
+    "-mindepth 1 -maxdepth 1"
+    "! -name certificates"
+    "-m 0700"
+    "-m 0600")
+  assert_contains("${static_debian_postinst}" "${required}"
+    "static postinst must keep the packaged phase and directory policy")
+endforeach()
+assert_contains("${static_debian_postinst}"
+  "unknown argument '$1'\" >&2\n    exit 1"
+  "static postinst must reject an unknown phase with a non-zero status")
+assert_absent("${static_debian_postinst}" "\${I2PDUSER}"
+  "static postinst must not use an unquoted brace expansion")
+assert_absent("${static_debian_postinst}" "\${I2PDHOME}"
+  "static postinst must not use an unquoted brace expansion")
+foreach(unquoted IN ITEMS
+    "passwd $I2PDUSER"
+    "groupadd -f $I2PDUSER"
+    "--home $I2PDHOME $I2PDUSER"
+    "-o $I2PDUSER"
+    "-g $I2PDUSER"
+    "chown $I2PDUSER")
+  assert_absent("${static_debian_postinst}" "${unquoted}"
+    "static postinst must quote every account and home expansion")
+endforeach()
+assert_absent("${static_debian_postinst}" "systemctl start"
+  "static postinst must not start the service")
+assert_absent("${static_debian_postinst}" "invoke-rc.d"
+  "static postinst must not invoke a service manager")
+assert_contains("${static_debian_postrm}" "if [ \"\$1\" = \"purge\" ]"
+  "static postrm must remove state only during purge")
+assert_absent("${static_debian_postrm}" "systemctl"
+  "static postrm must leave service actions to debhelper")
+assert_absent("${static_debian_postrm}" "invoke-rc.d"
+  "static postrm must leave service actions to debhelper")
+assert_contains("${static_debian_prerm}" "#DEBHELPER#"
+  "static prerm must keep the debhelper insertion point")
+assert_absent("${static_debian_prerm}" "systemctl"
+  "static prerm must leave service actions to debhelper")
+assert_absent("${static_debian_prerm}" "invoke-rc.d"
+  "static prerm must leave service actions to debhelper")
+
 # DEP-5 structure and the documentation licence split.
 assert_contains("${debian_copyright}" "Files: contrib/certificates/*"
   "copyright must describe the bundled trust anchors")
