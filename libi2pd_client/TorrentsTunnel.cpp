@@ -46,20 +46,6 @@ namespace torrents
 	{
 		std::mutex payloadFactoryMutex;
 		TorrentPayloadStorageFactory payloadFactory;
-		std::string_view TorrentStatusName (TorrentStatus status)
-		{
-			switch (status)
-			{
-			case eTorrentStatusStopped: return "stopped";
-			case eTorrentStatusQueuedToVerifyLocalData: return "queued-verify";
-			case eTorrentStatusVerifyingLocalData: return "verifying";
-			case eTorrentStatusQueuedToDownload: return "queued";
-			case eTorrentStatusDownloading: return "downloading";
-			case eTorrentStatusQueuedToSeed: return "queued-seed";
-			case eTorrentStatusSeeding: return "seeding";
-			default: return "unknown";
-			}
-		}
 
 		std::string PeerFlags (const PeerConnection & peer)
 		{
@@ -1149,26 +1135,42 @@ namespace torrents
 
 	void TorrentsTunnel::CompleteTorrent (std::shared_ptr<Torrent> torrent)
 	{
-		boost::asio::post (GetDiskIOService (),
-			[this, torrent] ()
+		auto self = std::static_pointer_cast<TorrentsTunnel> (weak_from_this ().lock ());
+		if (!self || self->m_Stopping || !torrent || torrent->IsRemoved ()
+			|| self->FindTorrent (torrent->GetInfoHash ()) != torrent)
+			return;
+		// Selection belongs to the service thread. Capture its immutable
+		// admission snapshot instead of reading priority vectors on disk.
+		// Recheck both selection and verification before publishing success.
+		if (!torrent->AreAllSelectedPiecesVerified ()) return;
+		const auto priorities = torrent->GetFilePriorities ();
+		std::vector<std::pair<size_t, std::shared_ptr<TorrentFile>>> selectedFiles;
+		size_t fileIndex = 0;
+		for (const auto & file : torrent->GetFiles ())
+		{
+			const auto index = fileIndex++;
+			if (torrent->GetFilePriority (index)) selectedFiles.emplace_back (index, file);
+		}
+		// Queued work must not keep the tunnel and its executor alive in
+		// a cycle when the destination stops without draining its queue.
+		const std::weak_ptr<TorrentsTunnel> weakSelf = self;
+		boost::asio::post (self->GetDiskIOService (),
+			[weakSelf, torrent, priorities, selectedFiles = std::move (selectedFiles)] ()
 			{
-				if (torrent->IsRemoved ()) return;
-				// Never promote .part files based on a resume bitfield. Data
-				// coming from the network is verified in HandlePieceMsg and
-				// reloaded data is verified in the request path, so this gate
-				// only delays promotion until selected pieces are verified.
-				if (!torrent->AreAllSelectedPiecesVerified ())
-				{
-					LogPrint (eLogDebug, "TorrentsTunnel: Deferring completion of ", torrent->GetFullPath (),
-						" until selected local pieces are verified");
+				auto self = weakSelf.lock ();
+				if (!self) return;
+				// FindTorrent serializes its registry lookup with removal.
+				// Exact object identity also rejects a later run's same hash.
+				// This check does not cancel an already executing disk call.
+				if (self->m_Stopping || torrent->IsRemoved ()
+					|| self->FindTorrent (torrent->GetInfoHash ()) != torrent)
 					return;
-				}
 				bool completed = true;
-				size_t fileIndex = 0;
-				for (auto it : torrent->GetFiles ())
+				for (const auto & [currentFile, it] : selectedFiles)
 				{
-					const size_t currentFile = fileIndex++;
-					if (!torrent->GetFilePriority (currentFile)) continue;
+					if (self->m_Stopping || torrent->IsRemoved ()
+						|| self->FindTorrent (torrent->GetInfoHash ()) != torrent)
+						return;
 					if (!it->GetFileLength ())
 					{
 						it->Complete ();
@@ -1186,12 +1188,12 @@ namespace torrents
 					}
 					auto partFilePath = it->GetFullFilePath ();
 					partFilePath += ".part";
-					if (m_StorageWorker)
+					if (self->m_StorageWorker)
 					{
 						it->Close ();
 						std::string error;
-						if (m_StorageWorker->Promote (partFilePath.lexically_relative (m_TorrentsDir),
-								it->GetFullFilePath ().lexically_relative (m_TorrentsDir), it->GetFileLength (), error))
+						if (self->m_StorageWorker->Promote (partFilePath.lexically_relative (self->m_TorrentsDir),
+								it->GetFullFilePath ().lexically_relative (self->m_TorrentsDir), it->GetFileLength (), error))
 							it->Complete ();
 						else
 						{
@@ -1203,7 +1205,7 @@ namespace torrents
 					// Recheck both ends immediately before the rename. A part
 					// file that became a symlink is not a completed download,
 					// and a symlinked final path is never replaced.
-					if (!IsContainedPath (partFilePath, false) || !IsContainedPath (it->GetFullFilePath (), false))
+					if (!self->IsContainedPath (partFilePath, false) || !self->IsContainedPath (it->GetFullFilePath (), false))
 					{
 						completed = false;
 						LogPrint (eLogError, "TorrentsTunnel: Refusing to rename through unsafe path ", partFilePath);
@@ -1222,7 +1224,7 @@ namespace torrents
 							LogPrint (eLogError, "TorrentsTunnel: Can't rename ", partFilePath);
 						}
 					}
-					else if (IsContainedPath (it->GetFullFilePath (), false)
+					else if (self->IsContainedPath (it->GetFullFilePath (), false)
 						&& std::filesystem::exists (it->GetFullFilePath ()))
 					{
 						// The data was already under its final name (for example
@@ -1232,31 +1234,73 @@ namespace torrents
 					}
 					else
 					{
-						LogPrint (eLogError, "TorrentsTunnel: ", partFilePath, " doesn't exist");
-						it->Complete ();
+						// Neither the final name nor its .part payload exists,
+						// so the pieces this file claims cannot be backed by
+						// data on disk. Fail closed: report the storage error
+						// and make the covering pieces downloadable again
+						// instead of publishing the file (and the torrent) as
+						// complete with missing payload.
+						completed = false;
+						LogPrint (eLogError, "TorrentsTunnel: ", partFilePath,
+							" doesn't exist; withholding completion of ", it->GetFullFilePath ());
+						torrent->SetError (eTorrentErrorFilesystem);
+						// Piece state belongs to the service thread; the disk
+						// worker only reports the failure.
+						const auto hash = torrent->GetInfoHash ();
+						boost::asio::post (self->GetService (),
+							[weakSelf, torrent, hash, currentFile] ()
+							{
+								auto self = weakSelf.lock ();
+								if (!self) return;
+								if (self->m_Stopping || self->FindTorrent (hash) != torrent) return;
+								if (torrent->InvalidateFilePieces (currentFile))
+								{
+									LogPrint (eLogError,
+										"TorrentsTunnel: Marked pieces for re-download after a missing payload in ",
+										torrent->GetFullPath ());
+									// Persist the withdrawn pieces, so the stale
+									// bitmap cannot survive a restart even
+									// before the next successful write.
+									boost::asio::post (self->GetDiskIOService (),
+										[weakSelf, torrent, hash] ()
+										{
+											auto self = weakSelf.lock ();
+											if (!self) return;
+											if (self->m_Stopping || self->FindTorrent (hash) != torrent) return;
+											torrent->SaveTorrentResumeFile ();
+										});
+								}
+							});
 					}
 				}
 
 				if (completed)
 				{
-					LogPrint (eLogInfo, "TorrentsTunnel: Download complete ", torrent->GetFullPath ());
-
-					// SetComplete() mutates Torrent (m_IsComplete) and the
-					// piece vector; run it on the service thread, which is the
-					// owner of that state, not on the disk worker.
-					boost::asio::post (GetService (),
-						[this, torrent] ()
+					// Publish only to the same live session and selection.
+					// Piece invalidation or a priority edit during promotion
+					// requires another pass instead of stale completion.
+					boost::asio::post (self->GetService (),
+						[weakSelf, torrent, priorities] ()
 						{
-							if (torrent->IsRemoved () || FindTorrent (torrent->GetInfoHash ()) != torrent) return;
+							auto self = weakSelf.lock ();
+							if (!self) return;
+							if (self->m_Stopping || torrent->IsRemoved ()
+								|| self->FindTorrent (torrent->GetInfoHash ()) != torrent
+								|| priorities != torrent->GetFilePriorities ()
+								|| !torrent->AreAllSelectedPiecesVerified ())
+								return;
+							LogPrint (eLogInfo, "TorrentsTunnel: Download complete ", torrent->GetFullPath ());
 							torrent->SetSelectedComplete ();
 							// The resume bitfield remains for skipped/unwanted
 							// ranges; SaveTorrentResumeFile removes it only when
 							// every piece is complete.
 							const auto hash = torrent->GetInfoHash ();
-							boost::asio::post (GetDiskIOService (),
-								[this, torrent, hash] ()
+							boost::asio::post (self->GetDiskIOService (),
+								[weakSelf, torrent, hash] ()
 								{
-									if (m_Stopping || FindTorrent (hash) != torrent) return;
+									auto self = weakSelf.lock ();
+									if (!self) return;
+									if (self->m_Stopping || self->FindTorrent (hash) != torrent) return;
 									torrent->SaveTorrentResumeFile ();
 								});
 							// Tracker parity: event=completed is a whole-torrent
@@ -1269,7 +1313,7 @@ namespace torrents
 							const auto trackerEvent = torrent->GetAnnounceProgress ().completed
 								? eTrackerAnnounceEventCompleted
 								: eTrackerAnnounceEventNone;
-							RequestTorrentTrackers (torrent, trackerEvent);
+							self->RequestTorrentTrackers (torrent, trackerEvent);
 							// close seed connections, reset stats and tell remaining
 							// peers that we are no longer interested.
 							auto conns = torrent->GetConnections ();
@@ -1289,12 +1333,16 @@ namespace torrents
 	void TorrentsTunnel::VerifyNextLocalPiece (const std::shared_ptr<Torrent> & torrent)
 	{
 		if (!torrent) return;
+		auto self = std::static_pointer_cast<TorrentsTunnel> (weak_from_this ().lock ());
 		const auto infoHash = torrent->GetInfoHash ();
-		if (m_Stopping || FindTorrent (infoHash) != torrent)
+		if (!self || m_Stopping || torrent->IsRemoved () || FindTorrent (infoHash) != torrent)
 		{
 			torrent->EndLocalVerification ();
 			return;
 		}
+		// Only the running handler retains the owner. An abandoned queue
+		// must not keep the tunnel and destination executor alive together.
+		const std::weak_ptr<TorrentsTunnel> weakSelf = self;
 		const int index = torrent->GetNextPieceToVerify ();
 		if (index < 0)
 		{
@@ -1305,20 +1353,25 @@ namespace torrents
 			// which requires every piece to be verified.
 			const auto hash = infoHash;
 			boost::asio::post (GetDiskIOService (),
-				[this, torrent, hash] ()
+				[weakSelf, torrent, hash] ()
 				{
-					if (m_Stopping || FindTorrent (hash) != torrent)
+					auto self = weakSelf.lock ();
+					if (!self || self->m_Stopping || torrent->IsRemoved () || self->FindTorrent (hash) != torrent)
 					{
 						torrent->EndLocalVerification ();
 						return;
 					}
 					torrent->SaveTorrentResumeFile ();
-					bool complete = torrent->AreAllSelectedPiecesVerified ();
-					boost::asio::post (GetService (),
-						[this, torrent, hash, complete] ()
+					boost::asio::post (self->GetService (),
+						[weakSelf, torrent, hash] ()
 						{
-							if (m_Stopping || FindTorrent (hash) != torrent || !complete) return;
-							if (!torrent->IsComplete ()) CompleteTorrent (torrent);
+							auto self = weakSelf.lock ();
+							if (!self || self->m_Stopping || torrent->IsRemoved () || self->FindTorrent (hash) != torrent)
+								return;
+							// Selection can change while persistence is running.
+							// Its priority vectors belong to this service thread.
+							if (!torrent->IsComplete () && torrent->AreAllSelectedPiecesVerified ())
+								self->CompleteTorrent (torrent);
 						});
 				});
 			return;
@@ -1327,10 +1380,14 @@ namespace torrents
 		// (one piece buffer) and the service thread stays responsive between
 		// pieces, so tracker/control/peer work is never blocked by a recheck.
 		boost::asio::post (GetDiskIOService (),
-			[this, torrent, hash = infoHash, index] ()
+			[weakSelf, torrent, hash = infoHash, index] ()
 			{
-				if (m_Stopping || FindTorrent (hash) != torrent)
+				auto self = weakSelf.lock ();
+				if (!self || self->m_Stopping || torrent->IsRemoved () || self->FindTorrent (hash) != torrent)
 				{
+					// EndLocalVerification only clears an atomic activity flag;
+					// pending-piece/cursor state remains service-owned. Removal
+					// is terminal, and a restarted tunnel has another instance.
 					torrent->EndLocalVerification ();
 					return;
 				}
@@ -1350,10 +1407,15 @@ namespace torrents
 				if (!verified)
 					LogPrint (
 						eLogWarning, "TorrentsTunnel: Local piece ", index, " failed verification; marking it corrupt");
-				boost::asio::post (GetService (),
-					[this, torrent, hash, index, verified] ()
+				boost::asio::post (self->GetService (),
+					[weakSelf, torrent, hash, index, verified] ()
 					{
-						if (m_Stopping || FindTorrent (hash) != torrent) return;
+						auto self = weakSelf.lock ();
+						if (!self || self->m_Stopping || torrent->IsRemoved () || self->FindTorrent (hash) != torrent)
+						{
+							torrent->EndLocalVerification ();
+							return;
+						}
 						if (verified)
 						{
 							torrent->FinishPieceVerification (static_cast<size_t> (index));
@@ -1361,7 +1423,7 @@ namespace torrents
 						}
 						else
 							torrent->InvalidatePiece (static_cast<size_t> (index));
-						VerifyNextLocalPiece (torrent);
+						self->VerifyNextLocalPiece (torrent);
 					});
 			});
 	}
@@ -1484,7 +1546,7 @@ namespace torrents
 			TorrentInfo info { };
 			info.id = id;
 			info.name = std::string (torrent->GetName ());
-			info.status = std::string (TorrentStatusName (torrent->GetStatus ()));
+			info.status = std::string (TorrentStatusToken (torrent->GetStatus ()));
 			info.error = std::string (torrent->GetErrorStr ());
 			info.hash = ToHexString (torrent->GetInfoHash ());
 			info.magnet = BuildTorrentMagnet (torrent->GetInfoHash (), info.name);

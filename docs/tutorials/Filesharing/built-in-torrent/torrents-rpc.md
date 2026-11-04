@@ -336,6 +336,8 @@ server returns a non-null value. `id` is always present. Unknown/invalid fields 
 | `seedRatioMode` | int | 0 (follow global) (TODO) |
 | `seedRatioLimit` | int | 0 (TODO) |
 | `downloadDir` | string | `""` (TODO → torrents dir) |
+| `pieces` | string | Base64 bitfield of pieces this client holds |
+| `piecesAvailable` | string | Base64 union of established peers' advertised bitfields, clamped to the local piece count |
 | `comment` | string | Metainfo `comment`, or empty when absent or invalid display text |
 | `creator` | string | Metainfo `created by`, or empty when absent or invalid display text |
 | `webseedsSendingToUs` | int | 0 (i2p has no web seeds) |

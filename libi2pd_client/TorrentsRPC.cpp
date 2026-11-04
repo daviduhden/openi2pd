@@ -500,7 +500,7 @@ namespace torrents
 			else
 			{
 				response["torrent-duplicate"] = torrentInfo;
-				LogPrint (eLogDebug, "TorrentsRPC: duplicate torrent ", torrentInfo["name"].as_string ());
+				LogPrint (eLogWarning, "TorrentsRPC: Duplicate torrent request");
 			}
 			return SuccessResponse (GetTag (jsonRequest), std::move (response));
 		}
@@ -712,6 +712,20 @@ namespace torrents
 					b64pieces.resize (boost::beast::detail::base64::encoded_size (bitfield.size ()));
 					boost::beast::detail::base64::encode (b64pieces.data (), bitfield.data (), bitfield.size ());
 					return boost::json::value (b64pieces);
+				} },
+			// Additive field: the union of the established peers' advertised
+			// bitfields, clamped to the local piece count and encoded exactly
+			// like "pieces". It reports swarm availability only; "pieces"
+			// keeps reporting what this client can serve.
+			{ "piecesAvailable",
+				[] (std::shared_ptr<Torrent> torrent)
+				{
+					auto available = torrent->CreateAvailableBitfield ();
+					std::string b64available;
+					b64available.resize (boost::beast::detail::base64::encoded_size (available.size ()));
+					boost::beast::detail::base64::encode (
+						b64available.data (), available.data (), available.size ());
+					return boost::json::value (b64available);
 				} },
 			{ "wanted",
 				[] (std::shared_ptr<Torrent> torrent)

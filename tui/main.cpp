@@ -1351,19 +1351,44 @@ std::string SortName (TorrentSort sort)
 	return "name";
 }
 
-bool IsStoppedStatus (std::string_view status)
+// Classified run state of one torrent snapshot row.
+//
+// The status is an English wire token, never a translated string, so it
+// is matched exactly instead of by substring: "verifying" contains no
+// "start"/"download"/"seed" and previously fell through to RESUME, while
+// "queued-seed" matched "seed" and was treated as already running.
+enum class TorrentRunState
 {
-	auto lower = ToLowerAscii (status);
-	return lower.find ("stop") != std::string::npos || lower.find ("pause") != std::string::npos
-		|| lower.find ("inactive") != std::string::npos || lower.find ("idle") != std::string::npos;
-}
+	Running, // downloading, seeding, verifying
+	Queued, // queued, queued-verify, queued-seed
+	Stopped, // stopped
+	Unknown // documented token "unknown", or a token this build does not know
+};
 
-bool IsActiveStatus (std::string_view status)
+TorrentRunState ClassifyTorrentStatus (std::string_view status)
 {
-	auto lower = ToLowerAscii (status);
-	return lower.find ("start") != std::string::npos || lower.find ("active") != std::string::npos
-		|| lower.find ("download") != std::string::npos || lower.find ("seed") != std::string::npos
-		|| lower.find ("check") != std::string::npos || lower.find ("announc") != std::string::npos;
+	// Closed table over the tokens owned by TorrentStatusToken()
+	// (libi2pd_client/Torrents.h). Keep the two in step: a new token added
+	// there must be classified here, and an unknown token must never be
+	// guessed from a prefix or substring.
+	struct Entry
+	{
+		std::string_view token;
+		TorrentRunState state;
+	};
+	static constexpr Entry entries[] = {
+		{ "downloading", TorrentRunState::Running },
+		{ "seeding", TorrentRunState::Running },
+		{ "verifying", TorrentRunState::Running },
+		{ "queued", TorrentRunState::Queued },
+		{ "queued-verify", TorrentRunState::Queued },
+		{ "queued-seed", TorrentRunState::Queued },
+		{ "stopped", TorrentRunState::Stopped },
+		{ "unknown", TorrentRunState::Unknown },
+	};
+	for (const auto & entry : entries)
+		if (entry.token == status) return entry.state;
+	return TorrentRunState::Unknown;
 }
 
 // Torrent status is an English wire token shared with Android. The
@@ -3724,9 +3749,30 @@ void App::ToggleSelected ()
 		return;
 	}
 	if (!RequireTorrentTunnel ()) return;
-	bool stop = IsActiveStatus (torrent->status) && !IsStoppedStatus (torrent->status);
-	std::string command = std::string (stop ? "TORRENT-PAUSE " : "TORRENT-RESUME ") + std::to_string (m_TorrentTunnel)
-		+ " " + std::to_string (torrent->id);
+	// The toggle takes the stop-side action for a running torrent and for a
+	// queued one (it has not started, and pausing it must not start it), and
+	// the start-side action only for an explicitly stopped torrent. An
+	// unknown token never sends a command: guessing would either start a
+	// torrent the user stopped or stop one that is downloading.
+	bool pause = true;
+	switch (ClassifyTorrentStatus (torrent->status))
+	{
+	case TorrentRunState::Running:
+	case TorrentRunState::Queued:
+		pause = true;
+		break;
+	case TorrentRunState::Stopped:
+		pause = false;
+		break;
+	case TorrentRunState::Unknown:
+		// Echo the status token the row already shows. The catalogs own
+		// user-facing sentences, and this path must never invent a command
+		// from a token this build does not classify.
+		SetStatus (std::string (i2p::i18n::tr ("unknown")), true);
+		return;
+	}
+	std::string command = std::string (pause ? "TORRENT-PAUSE " : "TORRENT-RESUME ")
+		+ std::to_string (m_TorrentTunnel) + " " + std::to_string (torrent->id);
 	SendTorrentCommand (command);
 }
 
@@ -5135,7 +5181,9 @@ void App::DrawTorrentStatusLine (int height, int width)
 			have += torrent.have;
 			down += torrent.downRate;
 			up += torrent.upRate;
-			if (IsActiveStatus (torrent.status)) ++active;
+			// "active" is the same classification the toggle uses, so a
+			// queued or unknown row is never counted as running.
+			if (ClassifyTorrentStatus (torrent.status) == TorrentRunState::Running) ++active;
 		}
 		std::string line = "  " + std::to_string (m_TorrentView.size ()) + "/" + std::to_string (m_Torrents.size ())
 			+ " shown, " + std::to_string (active) + " active | " + HumanBytes (have) + " / " + HumanBytes (total)

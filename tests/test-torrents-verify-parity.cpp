@@ -10,9 +10,9 @@
  * hashed before availability is published, tracker responses accept
  * both compact and dict-based I2P peer lists with per-entry rejection
  * and a peer cap, min-interval/tracker-id handling, percent-encoded
- * query values and per-torrent random peer ids. Connection limits, PEX
- * scheduling and private swarm announce selection require a running
- * tunnel and are not covered here.
+ * query values and per-torrent random peer ids. Peer registry retirement
+ * is exercised without a service; PEX scheduling and private swarm
+ * announce selection require a running tunnel and are not covered here.
  *
  */
 
@@ -571,6 +571,33 @@ static void TestConnectionLimitRelations ()
 	assert (TorrentCommandKind::Recheck != TorrentCommandKind::AddFile);
 }
 
+// Registry retirement precedes asynchronous Close(). Old completions
+// cannot remove a newer connection for the same authenticated identity.
+static void TestConnectionRetirement ()
+{
+	struct Peer { };
+	std::map<size_t, std::weak_ptr<Peer>> peers;
+	std::vector<std::shared_ptr<Peer>> owners;
+	for (size_t i = 0; i < MAX_PEERS_PER_TORRENT; ++i)
+	{
+		owners.push_back (std::make_shared<Peer> ());
+		peers.emplace (i, owners.back ());
+	}
+	const auto old = owners.front ();
+	assert (RetirePeerConnection (peers, size_t { 0 }, old));
+	assert (peers.size () == MAX_PEERS_PER_TORRENT - 1);
+	// The posted close has not run. A second admission cannot reuse
+	// this victim, and the one free slot can admit one replacement.
+	assert (!RetirePeerConnection (peers, size_t { 0 }, old));
+	auto replacement = std::make_shared<Peer> ();
+	assert (peers.emplace (0, replacement).second);
+	assert (peers.size () == MAX_PEERS_PER_TORRENT);
+	assert (!RetirePeerConnection (peers, size_t { 0 }, old));
+	assert (peers.at (0).lock () == replacement);
+	assert (RetirePeerConnection (peers, size_t { 0 }, replacement));
+	assert (!RetirePeerConnection (peers, size_t { 0 }, replacement));
+}
+
 int main ()
 {
 	TestResumeVerificationGate ();
@@ -581,6 +608,7 @@ int main ()
 	TestQueryValueEncoding ();
 	TestPerTorrentPeerID ();
 	TestConnectionLimitRelations ();
+	TestConnectionRetirement ();
 	return 0;
 }
 

@@ -21,6 +21,9 @@
 
 #include <cassert>
 #include <cstdint>
+#include <algorithm>
+#include <stdexcept>
+#include <set>
 #include <string>
 #include <vector>
 #include "Torrents.h"
@@ -48,10 +51,236 @@ Torrent::InfoHash HashBytes (const char * data, size_t len)
 	SHA1 (reinterpret_cast<const uint8_t *> (data), len, hash.data ());
 	return hash;
 }
+
+class MemoryPayload final : public TorrentPayloadStorage
+{
+public:
+	std::string bytes;
+	size_t reads = 0;
+	bool shortRead = false, throwRead = false;
+	std::function<void ()> onRead;
+	bool UsesFinalNames () const override { return true; }
+	uint64_t Open (const std::filesystem::path &, uint64_t length, bool, std::string &) override
+	{
+		return length == bytes.size () ? 1 : 0;
+	}
+	bool Read (uint64_t handle, uint64_t offset, std::span<uint8_t> out, std::string &) override
+	{
+		++reads;
+		if (throwRead) throw std::runtime_error ("injected provider failure");
+		if (handle != 1 || offset > bytes.size () || out.size () > bytes.size () - offset) return false;
+		const auto count = shortRead ? out.size () / 2 : out.size ();
+		std::copy_n (bytes.begin () + static_cast<size_t> (offset), count, out.begin ());
+		if (onRead) onRead ();
+		return !shortRead;
+	}
+	bool Write (uint64_t, uint64_t, std::span<const uint8_t>, std::string &) override { return false; }
+	bool Close (uint64_t, std::string &) override { return true; }
+};
+
+void TestUploadLoadQuota ()
+{
+	{
+		UploadLoadLedger ledger, other;
+		const RequestedBlock block { 1, 0, 1 };
+		auto ticket = ledger.Acquire (block, 7, 1);
+		assert (ticket && ticket->epoch == 7 && ticket->bytes == 1);
+		assert (!ledger.Acquire (block, 8, 1));
+		assert (!other.Release (ticket));
+		assert (!ledger.Cancel ({ 1, 0, 2 })); // CANCEL length must match.
+		assert (ledger.Cancel (block) && !ledger.Cancel (block));
+		assert (ledger.IsCancelled (block) && ledger.Size () == 1);
+		assert (!ledger.Acquire (block, 8, 1)); // Cancel does not free quota.
+		for (uint32_t index = 2; index <= MAX_INCOMING_REQUESTS_QUEUE_SIZE; ++index)
+			assert (ledger.Acquire ({ index, 0, 1 }, 7, 1));
+		assert (!ledger.Acquire ({ 99, 0, 1 }, 7, 1));
+		assert (ledger.Release (ticket) && !ledger.Release (ticket));
+		auto replacement = ledger.Acquire (block, 8, 1);
+		assert (replacement && !ledger.Release (ticket));
+		ledger.CancelAll ();
+		assert (replacement->cancelled.load () && ledger.Size () == MAX_INCOMING_REQUESTS_QUEUE_SIZE);
+		ledger.Close ();
+		assert (ledger.Release (replacement));
+		assert (!ledger.Acquire ({ 99, 0, 1 }, 8, 1)); // Shutdown never reopens admission.
+	}
+	{
+		// Registry retirement and even owner destruction do not release
+		// global bytes while a queued callback still owns the old ticket.
+		auto ledger = std::make_unique<UploadLoadLedger> ();
+		auto held = ledger->Acquire ({ 1, 0, 1 }, 1, UploadLoadLedger::MaxGlobalBytes);
+		assert (held);
+		UploadLoadLedger next;
+		assert (!next.Acquire ({ 2, 0, 1 }, 1, 1));
+		assert (ledger->Release (held));
+		assert (!next.Acquire ({ 2, 0, 1 }, 1, 1));
+		ledger.reset ();
+		assert (!next.Acquire ({ 2, 0, 1 }, 1, 1));
+		held.reset ();
+		auto abandoned = next.Acquire ({ 2, 0, 1 }, 1, UploadLoadLedger::MaxGlobalBytes);
+		assert (abandoned);
+	}
+	{
+		UploadLoadLedger::Ticket abandoned;
+		{
+			UploadLoadLedger retiring;
+			abandoned = retiring.Acquire ({ 3, 0, 1 }, 1, UploadLoadLedger::MaxGlobalBytes);
+			assert (abandoned);
+		}
+		assert (abandoned->cancelled.load ());
+		UploadLoadLedger next;
+		assert (!next.Acquire ({ 4, 0, 1 }, 1, 1));
+		abandoned.reset ();
+		assert (next.Acquire ({ 4, 0, 1 }, 1, 1));
+	}
+	{
+		std::vector<std::unique_ptr<UploadLoadLedger>> ledgers;
+		for (size_t index = 0; index < UploadLoadLedger::MaxGlobalLoads; ++index)
+		{
+			if (index % MAX_INCOMING_REQUESTS_QUEUE_SIZE == 0)
+				ledgers.push_back (std::make_unique<UploadLoadLedger> ());
+			assert (ledgers.back ()->Acquire ({ static_cast<uint32_t> (index), 0, 1 }, 1, 1));
+		}
+		UploadLoadLedger overflow;
+		assert (!overflow.Acquire ({ 0, 0, 1 }, 1, 1));
+		ledgers.clear ();
+		assert (overflow.Acquire ({ 0, 0, 1 }, 1, 1));
+	}
+}
+
+void TestUploadScratchPublication ()
+{
+	auto storage = std::make_shared<MemoryPayload> ();
+	storage->bytes.assign (8192, 'u');
+	const auto hash = HashBytes (storage->bytes.data (), storage->bytes.size ());
+	Piece piece (storage->bytes.size (), hash.data ());
+	piece.Complete ();
+	auto file = std::make_shared<TorrentFile> ("/virtual/upload", storage->bytes.size ());
+	file->SetPayloadStorage (storage, "/virtual");
+	const std::vector<PieceFileFragment> fragments { { file, 0, 0, 4096 }, { file, 4096, 4096, 4096 } };
+	std::vector<uint8_t> block;
+	std::atomic<bool> cancelled { false };
+	const auto epoch = piece.GetBlockEpoch ();
+	auto read = [&] (std::span<const PieceFileFragment> input)
+	{
+		return piece.ReadVerifiedBlock (input, 0, 4096, epoch, cancelled, block);
+	};
+	const std::vector<PieceFileFragment> shortCoverage { { file, 0, 0, 4096 } };
+	const std::vector<PieceFileFragment> gap { { file, 0, 0, 4096 }, { file, 4096, 4097, 4095 } };
+	const std::vector<PieceFileFragment> overlap { { file, 0, 0, 4096 }, { file, 4096, 4095, 4097 } };
+	assert (!read (shortCoverage) && !read (gap) && !read (overlap));
+	assert (storage->reads == 0 && !piece.HasData () && !piece.IsVerified ());
+	storage->shortRead = true;
+	assert (!read (fragments) && block.empty () && !piece.HasData () && !piece.IsVerified ());
+	storage->shortRead = false;
+	storage->throwRead = true;
+	assert (!read (fragments) && !piece.HasData ());
+	storage->throwRead = false;
+	storage->bytes[0] = 'x';
+	assert (!read (fragments) && !piece.HasData () && !piece.IsVerified ());
+	storage->bytes[0] = 'u';
+	storage->onRead = [&] { cancelled.store (true); };
+	assert (!read (fragments) && !piece.HasData () && !piece.IsVerified ());
+	storage->onRead = { };
+	cancelled.store (false);
+	assert (read (fragments) && piece.HasData () && piece.IsVerified ());
+	assert (block == std::vector<uint8_t> (4096, 'u'));
+	const auto cachedReads = storage->reads;
+	assert (read (fragments) && storage->reads == cachedReads); // No per-block rehash/IO.
+	assert (!read (gap) && piece.IsVerified ()); // Bad input preserves the cache.
+	cancelled.store (true);
+	assert (!read (fragments) && piece.IsVerified ());
+	cancelled.store (false);
+	piece.ReleaseData ();
+	storage->onRead = [&] { piece.MarkPendingVerification (); };
+	assert (!read (fragments) && !piece.HasData () && !piece.IsVerified ());
+}
+
+void TestUploadSlotPolicy ()
+{
+	std::vector<UploadSlotPolicy::Peer> peers;
+	for (uint32_t index = 1; index <= 16; ++index) peers.push_back (MakePeer (index));
+	UploadSlotPolicy policy;
+	assert (policy.Update ({ }, 0).empty ());
+	auto slots = policy.Update (peers, 100);
+	assert (slots.size () == UploadSlotPolicy::MaxSlots);
+	for (uint32_t index = 1; index <= 8; ++index) assert (policy.Selected (MakePeer (index)));
+	assert (!policy.Selected (MakePeer (9)));
+	std::reverse (peers.begin (), peers.end ()); // Registry iteration order is irrelevant.
+	policy.Update (peers, 129);
+	assert (policy.Selected (MakePeer (1)) && !policy.Selected (MakePeer (9)));
+	policy.Update (peers, 130);
+	for (uint32_t index = 9; index <= 16; ++index) assert (policy.Selected (MakePeer (index)));
+	assert (!policy.Selected (MakePeer (1)));
+	policy.Update (peers, 160);
+	assert (policy.Selected (MakePeer (1)) && !policy.Selected (MakePeer (9)));
+
+	// Interest loss/removal frees a slot immediately without restarting
+	// every incumbent. New peers cannot reroll the cohort before expiry.
+	std::erase (peers, MakePeer (1));
+	std::erase (peers, MakePeer (2));
+	policy.Update (peers, 161);
+	assert (!policy.Selected (MakePeer (1)) && !policy.Selected (MakePeer (2)));
+	for (uint32_t index = 3; index <= 10; ++index) assert (policy.Selected (MakePeer (index)));
+	peers.push_back (MakePeer (17));
+	policy.Update (peers, 162);
+	assert (!policy.Selected (MakePeer (17)) && policy.Selected (MakePeer (3)));
+	assert (policy.Update (peers, 189).size () == UploadSlotPolicy::MaxSlots);
+	assert (policy.Selected (MakePeer (3)));
+	policy.Update (peers, 190);
+	assert (policy.Selected (MakePeer (17)));
+
+	// A backward clock sample rebases the next rotation, never underflows.
+	policy.Reset ();
+	policy.Update (peers, 100);
+	auto sample = policy.Update (peers, 80);
+	std::vector<UploadSlotPolicy::Peer> cohort (sample.begin (), sample.end ());
+	auto same = policy.Update (peers, 109);
+	assert (std::equal (cohort.begin (), cohort.end (), same.begin (), same.end ()));
+	policy.Update (peers, 110);
+	assert (!policy.Selected (cohort.back ()));
+
+	// Authenticated identity deduplication does not create extra slots.
+	std::vector<UploadSlotPolicy::Peer> duplicates (MAX_PEERS_PER_TORRENT, MakePeer (7));
+	assert (policy.Update (duplicates, 200).size () == 1);
+	assert (policy.Selected (MakePeer (7)));
+	duplicates.push_back (MakePeer (8));
+	assert (policy.Update (duplicates, 201).empty ()); // Oversized input fails closed.
+	assert (!policy.Selected (MakePeer (7)));
+	assert (policy.Update ({ }, 202).empty ());
+
+	// Stable full capacity eventually serves every eligible identity.
+	peers.clear ();
+	for (uint32_t index = 1; index <= MAX_PEERS_PER_TORRENT; ++index) peers.push_back (MakePeer (index));
+	std::set<UploadSlotPolicy::Peer> seen;
+	for (uint64_t round = 0; round < MAX_PEERS_PER_TORRENT / UploadSlotPolicy::MaxSlots; ++round)
+	{
+		auto selected = policy.Update (peers, round * UploadSlotPolicy::RotationSeconds);
+		assert (selected.size () == UploadSlotPolicy::MaxSlots);
+		seen.insert (selected.begin (), selected.end ());
+	}
+	assert (seen.size () == MAX_PEERS_PER_TORRENT);
+	policy.Reset ();
+	assert (policy.Update (peers, 1).front () == MakePeer (1));
+
+	// Choke revocation acknowledges each still-pending Fast request once.
+	// Previously canceled jobs retain quota but owe no second rejection.
+	UploadLoadLedger ledger;
+	const RequestedBlock first { 1, 0, 1 }, second { 2, 0, 1 };
+	assert (ledger.Acquire (first, 1, 1) && ledger.Acquire (second, 1, 1));
+	assert (ledger.Cancel (first));
+	const auto revoked = ledger.CancelForChoke ();
+	assert (revoked == std::vector<RequestedBlock> ({ second }));
+	assert (ledger.Size () == 2 && ledger.CancelForChoke ().empty ());
+	assert (!ledger.Cancel (second));
+	assert (ledger.Acquire ({ 3, 0, 1 }, 1, 1)); // A later unchoke can admit work.
+}
 } // namespace
 
 int main ()
 {
+	TestUploadLoadQuota ();
+	TestUploadScratchPublication ();
+	TestUploadSlotPolicy ();
 	// --- request expiry boundaries
 	// -----------------------------------------
 	// requestedAt is monotonic seconds; the boundary is inclusive.

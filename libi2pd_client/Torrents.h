@@ -99,6 +99,19 @@ namespace torrents
 	}
 
 	constexpr size_t REQUEST_BLOCK_SIZE = 16384;
+	/// Remove a service-thread registry entry only for its current owner.
+	/// Retire before posting teardown: a delayed close of an older peer
+	/// must not erase a replacement registered under the same identity.
+	template <typename Registry, typename Key, typename Peer>
+	bool RetirePeerConnection (Registry & registry, const Key & key, const std::shared_ptr<Peer> & owner)
+	{
+		if (!owner) return false;
+		const auto it = registry.find (key);
+		if (it == registry.end () || it->second.lock () != owner) return false;
+		registry.erase (it);
+		return true;
+	}
+
 	constexpr size_t MIN_PIECE_LENGTH = 16 * 1024; // 16K
 	constexpr size_t MAX_PIECE_LENGTH = 256 * 1024 * 1024; // 256M
 	constexpr size_t MAX_NUM_TORRENT_PIECES = 1024 * 1024; // 1M
@@ -208,6 +221,12 @@ namespace torrents
 	constexpr int BANDWIDTH_RATE_SAMPLING_INTERVAL = 20; // in milliseconds
 	constexpr int TORRENT_FILE_FLUSH_INTERVAL = 30; // in seconds
 	constexpr int TORRENT_FILE_INACTIVITY_TIMEOUT = 90; // in seconds
+	// Routine per-piece resume persistence is throttled. A fast swarm can
+	// verify many pieces per second, and each update is one atomic replace
+	// plus fsync (or one isolated-storage request) on the disk service.
+	// Explicit transitions (stop, removal, completion, final shutdown) do
+	// not go through this interval.
+	constexpr uint64_t TORRENT_RESUME_UPDATE_INTERVAL = 120 * 1000; // in milliseconds
 
 	constexpr size_t HANDSHAKE_MSG_LENGTH = 68;
 	constexpr size_t INTERESTED_MSG_LENGTH = 5;
@@ -675,6 +694,13 @@ namespace torrents
 		// Copies a validated block under the piece lock. The caller never
 		// retains a pointer into a buffer that another thread can free.
 		bool CopyBlock (size_t offset, size_t len, std::vector<uint8_t> & out) const;
+		/// Read and hash one complete piece into private scratch, returning
+		/// only the requested block. The caller reserves GetSize() bytes
+		/// before dispatching IO. Exact fragment coverage and the captured
+		/// epoch are required. Only complete hash-verified scratch replaces
+		/// the cache under its mutex; failure preserves the existing cache.
+		bool ReadVerifiedBlock (std::span<const PieceFileFragment> fragments, size_t offset, size_t len,
+			uint64_t epoch, const std::atomic<bool> & cancelled, std::vector<uint8_t> & out);
 		size_t GetSize () const { return m_Size; }
 		bool HasBlock (size_t offset) const;
 		std::pair<size_t, size_t>
@@ -735,6 +761,28 @@ namespace torrents
 		eTorrentStatusSeeding = 6
 	};
 
+	/// Convert an engine status to its exact English wire token.
+	///
+	/// This table is the single authority for the status strings that the
+	/// native TUI, the Android client and the torrent RPC expose. The
+	/// token is a protocol value: never translate it, never match it by
+	/// substring in a presentation layer, and never reuse a token for a
+	/// different state. An out-of-range value reports "unknown".
+	constexpr std::string_view TorrentStatusToken (TorrentStatus status)
+	{
+		switch (status)
+		{
+		case eTorrentStatusStopped: return "stopped";
+		case eTorrentStatusQueuedToVerifyLocalData: return "queued-verify";
+		case eTorrentStatusVerifyingLocalData: return "verifying";
+		case eTorrentStatusQueuedToDownload: return "queued";
+		case eTorrentStatusDownloading: return "downloading";
+		case eTorrentStatusQueuedToSeed: return "queued-seed";
+		case eTorrentStatusSeeding: return "seeding";
+		default: return "unknown";
+		}
+	}
+
 	enum TorrentError
 	{
 		eTorrentErrorNoError = 0,
@@ -748,6 +796,88 @@ namespace torrents
 		"Non-supported version", "Filesystem error" };
 
 	using RequestedBlock = std::tuple<uint32_t, uint32_t, uint32_t>; // (index, offset, len)
+
+	/// Service-owned reservations for queued/in-flight upload disk reads.
+	/// Cancellation revokes publication but retains quota until the disk
+	/// completion retires the exact lease. Otherwise CANCEL/re-request
+	/// bursts could enqueue unlimited canceled jobs. A leaf mutex permits
+	/// disk-post failure to retire quota without touching peer wire state.
+	class UploadLoadLedger final
+	{
+		struct BudgetState;
+		static std::shared_ptr<BudgetState> GetBudget ();
+
+	public:
+		static constexpr size_t MaxGlobalLoads = MAX_TOTAL_PEERS * MAX_NUM_PIECES;
+		// At least one maximum legal piece can always fit when idle.
+		static constexpr size_t MaxGlobalBytes = MAX_PIECE_LENGTH;
+		UploadLoadLedger () = default;
+		~UploadLoadLedger () { CancelAll (); }
+		UploadLoadLedger (const UploadLoadLedger &) = delete;
+		UploadLoadLedger & operator= (const UploadLoadLedger &) = delete;
+		struct Lease final
+		{
+			Lease (RequestedBlock block, uint64_t epoch, size_t bytes) : block (block), epoch (epoch), bytes (bytes) { }
+			~Lease ();
+			const RequestedBlock block;
+			const uint64_t epoch;
+			const size_t bytes;
+			std::atomic<bool> cancelled { false };
+
+		private:
+			friend class UploadLoadLedger;
+			std::shared_ptr<BudgetState> m_Budget;
+		};
+		using Ticket = std::shared_ptr<Lease>;
+
+		/// Admit one unique request, or return empty at the existing cap.
+		Ticket Acquire (const RequestedBlock & block, uint64_t epoch, size_t pieceBytes);
+		/// Exact identity retirement; foreign/stale tickets have no effect.
+		bool Release (const Ticket & ticket);
+		/// Revoke one exact request once. Repeated CANCEL is a no-op.
+		bool Cancel (const RequestedBlock & block);
+		/// Revoke every outstanding job without releasing its quota.
+		void CancelAll ();
+		/// Return only newly revoked requests for BEP 6 choke rejections.
+		/// Reservations remain charged until their callbacks retire.
+		std::vector<RequestedBlock> CancelForChoke ();
+		/// Permanently close admission and revoke outstanding work under
+		/// the same mutex as Acquire. A peer ledger is never restarted.
+		void Close ();
+		bool Contains (const RequestedBlock & block) const;
+		bool IsCancelled (const RequestedBlock & block) const;
+		size_t Size () const { std::lock_guard lock (m_Mutex); return m_Leases.size (); }
+
+	private:
+		mutable std::mutex m_Mutex;
+		std::list<Ticket> m_Leases;
+		bool m_Closed = false;
+	};
+
+	/// Pure native upload fairness policy, owned by one service thread.
+	/// At most eight interested peers share slots, rotated every 30 s.
+	/// Eligibility changes fill vacancies immediately without rerolling
+	/// incumbents. Keys are authenticated peer identities, never pointers.
+	/// This is independent of Java's reciprocity/bandwidth scheduling.
+	class UploadSlotPolicy final
+	{
+	public:
+		using Peer = i2p::data::IdentHash;
+		static constexpr size_t MaxSlots = 8;
+		static constexpr uint64_t RotationSeconds = 30;
+		/// Replace the eligible snapshot (at most MAX_PEERS_PER_TORRENT).
+		/// Oversized snapshots fail closed; duplicates consume one slot.
+		/// The returned view lasts until the next Update or Reset call.
+		std::span<const Peer> Update (std::span<const Peer> eligible, uint64_t now);
+		bool Selected (const Peer & peer) const;
+		/// Stop/restart discards rotation and all peer lifetime authority.
+		void Reset ();
+
+	private:
+		std::vector<Peer> m_Selected;
+		std::optional<Peer> m_Cursor;
+		std::optional<uint64_t> m_LastRotation;
+	};
 
 	// Pure tracker announce scheduling arithmetic, shared by the HTTP and
 	// the datagram tracker responses. Wire values are seconds (BEP 3);
@@ -870,6 +1000,32 @@ namespace torrents
 	};
 
 	class PeerConnection;
+
+	/// Merge one peer's advertised bitfield into a wire-form availability
+	/// bitmap.
+	///
+	/// `available` is a placeholder bitmap of `(numPieces + 7) / 8` bytes and
+	/// is only ever ORed, never resized; bits at or above `numPieces` and
+	/// spare bits of the last byte stay clear, so the result is directly
+	/// encodable as the BEP 3 bitfield. Bits are copied individually because
+	/// boost::dynamic_bitset only combines equal-sized sets, and a peer may
+	/// advertise a different piece count than this torrent.
+	/// @param available Destination bitmap; must already have the local
+	///        wire length.
+	/// @param numPieces Local piece count.
+	/// @param remote Peer bitfield of any size.
+	inline void MergeAvailableBitfield (
+		std::vector<uint8_t> & available, size_t numPieces, const boost::dynamic_bitset<> & remote)
+	{
+		if (!numPieces || available.size () != (numPieces + 7) / 8) return;
+		size_t index = remote.find_first ();
+		while (index != boost::dynamic_bitset<>::npos && index < numPieces)
+		{
+			available[index >> 3] |= static_cast<uint8_t> (0x80u >> (index & 7));
+			index = remote.find_next (index);
+		}
+	}
+
 	/// One torrent's metadata, piece map, peer candidates and tracker
 	/// state.
 	///
@@ -961,8 +1117,8 @@ namespace torrents
 		bool IsComplete () const { return m_IsComplete.load (std::memory_order_acquire); }
 		void SetComplete ();
 		bool IsStopped () const { return m_IsStopped; }
-		// Stopping also purges the peer-candidate table: a stopped torrent
-		// must not keep a dialable backlog across a stop/start cycle.
+		/// Service-thread pause/resume. Stopping clears candidates, metadata
+		/// assembly and upload rotation, and revokes every upload slot.
 		void SetStopped (bool stopped);
 		bool IsActive () const { return !m_Connections.empty (); }
 		TorrentStatus GetStatus () const;
@@ -1094,6 +1250,18 @@ namespace torrents
 		// selection is complete by definition.
 		bool AreAllSelectedPiecesVerified () const;
 		bool IsFileComplete (size_t index) const;
+		/// Fail closed on a file whose payload cannot be found.
+		///
+		/// Marks every piece that overlaps the file's byte range as missing
+		/// again and clears completion, so neither HAVE nor an announce can
+		/// claim data that is not on disk. Covering pieces are shared with
+		/// neighbouring files, which therefore become incomplete too; that
+		/// is intended, because the same bytes are missing for both. A piece
+		/// whose write is still in flight is left to its writer, which
+		/// verifies and publishes it.
+		/// Service thread only: callers on the disk service must post this.
+		/// @return True when at least one piece was invalidated.
+		bool InvalidateFilePieces (size_t index);
 		// Best-effort corrupt-peer accounting. A rejected piece may have been
 		// assembled from several peers' blocks, so a hash mismatch can only
 		// charge the connection that delivered the block completing it; a
@@ -1123,6 +1291,17 @@ namespace torrents
 		///         empty bitfield and false.
 		std::pair<std::vector<uint8_t>, boost::logic::tribool>
 		CreateBitfield () const; // (bitfield, true - all false - none)
+		/// Build the swarm-availability bitmap: the union of every
+		/// established peer's advertised bitfield, clamped to the local
+		/// piece count and padded to the exact wire length.
+		///
+		/// Boost's dynamic_bitset only ORs equal-sized sets, and a peer that
+		/// advertises a different piece count must not resize the local
+		/// view, so the merge copies set bits individually through
+		/// MergeAvailableBitfield(). The result describes what the swarm
+		/// claims, not what this torrent holds: it never marks a local piece
+		/// complete or verified and is not persisted.
+		std::vector<uint8_t> CreateAvailableBitfield () const;
 		// Exact wire length and zero spare bits. Separate from ApplyBitfield
 		// because a valid partial resume is not "complete".
 		bool IsBitfieldValid (const std::vector<uint8_t> & bitfield) const;
@@ -1168,6 +1347,10 @@ namespace torrents
 		bool AddConnection (std::shared_ptr<PeerConnection> conn);
 		void RemoveConnection (std::shared_ptr<PeerConnection> conn);
 		std::list<std::shared_ptr<PeerConnection>> GetConnections ();
+		/// Service thread: apply the native fair upload policy, choking
+		/// departed slots before granting replacements. Zero reads the
+		/// monotonic clock; periodic status maintenance passes its sample.
+		void RefreshUploadSlots (uint64_t now = 0);
 		bool IsConnectedToPeer (const i2p::data::IdentHash & peer);
 
 		// Peer-candidate table. Service-thread only, never persisted and
@@ -1255,8 +1438,26 @@ namespace torrents
 		/// is still running, because a mid-pass bitmap would claim fewer
 		/// pieces than the data on disk. With a delegated persistence
 		/// callback there is no direct-write fallback: a failed worker write
-		/// is logged and retried on the next call.
+		/// is logged and retried on the next call. Routine per-piece callers
+		/// use UpdateTorrentResumeFile() so a fast swarm cannot turn every
+		/// verified piece into an fsync.
 		void SaveTorrentResumeFile ();
+		/// Routine per-piece resume update with a monotonic throttle.
+		///
+		/// A verified piece normally wants its bitmap persisted, but doing
+		/// that once per piece means one atomic replace plus fsync (or one
+		/// isolated-storage request) per piece on the disk service. Calls
+		/// inside TORRENT_RESUME_UPDATE_INTERVAL return without touching the
+		/// storage backend; the first call and every call after the interval
+		/// write through SaveTorrentResumeFile().
+		///
+		/// This is only the routine path. Stop, removal, completion and the
+		/// final shutdown snapshot call SaveTorrentResumeFile() directly, so
+		/// the throttle can never lose the last durable state.
+		/// @param nowMilliseconds Monotonic milliseconds; 0 reads the
+		///        monotonic clock. Tests inject the clock through it.
+		/// @note Disk service only in production.
+		void UpdateTorrentResumeFile (uint64_t nowMilliseconds = 0);
 		// Irreversible instance tombstone. IO already running may finish, but
 		// the single disk queue drains it before removal; later jobs must
 		// stop. Also purges the peer-candidate table.
@@ -1339,6 +1540,9 @@ namespace torrents
 
 	private:
 		ResumePersistence m_ResumePersistence;
+		// Monotonic milliseconds of the next routine resume update; disk
+		// service only, never part of any persisted format.
+		uint64_t m_NextResumeUpdateTime = 0;
 		std::atomic<bool> m_Removed { false };
 		std::string m_Name, m_Announce;
 		std::string m_MetaComment, m_CreatedBy;
@@ -1367,6 +1571,8 @@ namespace torrents
 		std::vector<TrackerStats> m_TrackerStats;
 		std::unordered_map<i2p::data::IdentHash, std::weak_ptr<PeerConnection>>
 			m_Connections; // remote ident hash -> connection
+		UploadSlotPolicy m_UploadSlots;
+		bool m_RefreshingUploadSlots = false;
 		// Bounded best-effort corrupt-peer counters (service thread only).
 		std::unordered_map<i2p::data::IdentHash, uint32_t> m_PeerPieceFailures;
 		// Bounded PEX/DHT candidate table and its per-origin admission
@@ -1422,6 +1628,8 @@ namespace torrents
 		void CheckKeepAlive (uint64_t ts);
 		void RefreshComments ();
 		void RefreshFileSelection ();
+		/// Service-thread upload slot eligibility excludes closing peers.
+		bool IsUploadSlotCandidate () const;
 
 		bool IsEstablished () const { return m_IsEstablished; };
 		bool IsPieceAvailable (size_t ind) const;
@@ -1473,6 +1681,10 @@ namespace torrents
 		size_t GetUploaded () const { return m_Uploaded; }
 
 	private:
+		friend class Torrent;
+		/// Owner-only slot grant/revocation. Choke precedes queued/Fast
+		/// rejections; submitted wire frames may finish.
+		void SetUploadAllowed (bool allowed);
 		void Terminate ();
 		void ScheduleHandshakeReceiveTimer ();
 		std::shared_ptr<TorrentsTunnel> GetTorrentsTunnel () const;
@@ -1524,6 +1736,9 @@ namespace torrents
 		std::optional<RequestedBlock> GetNextBlockToRequest ();
 		bool RequestNextBlocks ();
 		bool SendRequestedBlock (const RequestedBlock & requestedBlock);
+		// Service thread: cached sends and disk loads share the same six
+		// active slots and the existing total 32-request admission bound.
+		void ProcessUploadRequests ();
 		void ReleaseOutgoingRequest (uint32_t index, uint32_t offset);
 		void ReleaseOutgoingRequests ();
 		// Releases every outbound request older than PEER_REQUEST_TIMEOUT and
@@ -1558,6 +1773,11 @@ namespace torrents
 		};
 		std::list<OutgoingRequest> m_OutgoingRequests;
 		std::list<RequestedBlock> m_IncomingRequestsQueue;
+		UploadLoadLedger m_UploadLoads;
+		// A disk completion that cannot reach the service retires quota
+		// immediately; the service closes this connection on its next turn.
+		std::atomic<bool> m_UploadDispatchFailed { false };
+		std::atomic<bool> m_UploadClosing { false };
 		int m_LastRequestedPieceIndex;
 		std::unique_ptr<boost::asio::steady_timer> m_HandshakeReceiveTimer;
 		// BEP10

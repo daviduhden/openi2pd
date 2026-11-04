@@ -170,3 +170,39 @@ strings on the torrent executor. They describe the metainfo itself, separate
 from peer comment/rating exchange. Missing values remain empty. The prepared
 loopback regression includes escaped text and absent values; manual CI remains
 pending, and no wire or persisted format was changed.
+
+### Cold upload admission and cancellation
+
+Peer upload admission accounts queued requests, disk loads and active sends
+before dispatch. CANCEL revokes publication while retaining the physical
+read's reservation until its callbacks retire. Process-wide count and scratch
+byte reservations survive peer removal, so reconnect/cancel cycles cannot
+create an unbounded backlog. Their shared budget owner outlives every ticket;
+logical removal is not permission to reuse capacity still held by queued work.
+
+Cold reads validate exact full-piece fragment coverage and hash private scratch
+before returning a requested block. Only fully verified scratch can warm the
+existing piece cache under its epoch/mutex guards; failed or canceled reads
+leave earlier cache data intact. Warming avoids rereading a whole piece per
+wire block. Scratch reservations do not bound all cached pieces. Full peer
+upload-slot scheduling and download endgame remain separate work.
+
+The implementation advertises no upload Allowed Fast set. A locally choked
+legacy request is ignored; a negotiated Fast request is rejected. Exact
+CANCEL for queued/loading work emits a Fast rejection once, while a wire frame
+already in flight is not interrupted. References: [BEP 3](https://www.bittorrent.org/beps/bep_0003.html)
+and [BEP 6](https://www.bittorrent.org/beps/bep_0006.html). Source and focused
+scheduler/storage regressions are prepared; live wire/cancellation and
+sanitizer validation remain pending manual CI.
+
+The serving limits are 32 queued/load/send requests per peer and six active
+sends/loads. Process-wide tickets reserve at most 1200 physical jobs and
+256 MiB of conservative full-piece scratch, including canceled work from
+removed peers. A maximum legal piece still fits when capacity is free.
+Capacity refusal uses the legacy peer retry timeout or negotiated Fast reject,
+not an immediate retry loop. These bounds cover temporary serving work;
+verified caches retained after ticket destruction use existing eviction policy.
+Close revokes ledger admission synchronously, but does not interrupt a provider
+call or cached send already admitted. Cached-send sending state has scope
+cleanup across allocation/submission failure. All SHA1 call sites in the
+native torrent unit now reject provider failure before trusting the output.

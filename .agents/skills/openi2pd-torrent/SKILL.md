@@ -115,6 +115,46 @@ Do not let them edit, build or run tests.
   filesystem paths cross IPC.
 
 ## Known issues and decisions
+- `UploadSlotPolicy` grants eight interested peers and rotates on the first
+  maintenance/interest event after 30 seconds. It preserves incumbents while
+  filling vacancies, keys fairness by peer identity and resets on stop.
+  Apply chokes before grants. Choke revokes disk publication and sends Fast
+  rejections once while retaining load reservations until callbacks retire.
+  This native fair policy does not reproduce Java's bandwidth/reciprocity
+  ranking; keep that parity gap separate from wire compatibility.
+  Include snapshot, policy and choke-preparation allocations in failure
+  boundaries: an exception must revoke former grants before propagation.
+  Fallback teardown walks the registry without allocating a new snapshot.
+- Cold upload reads use `UploadLoadLedger` tickets before disk publication.
+  Queued requests, loads and sends share peer capacity; canceled/removed
+  tickets retain process-wide count/byte reservations until their last
+  callback releases them. The budget state is shared with tickets, so its
+  mutex outlives queued work. BEP 6 cancellation still sends a rejection;
+  legacy requests while choked are ignored and Fast requests rejected because
+  no upload Allowed Fast set is advertised. Slot choice uses the policy above.
+  Cached-send state uses ScopeExit across allocation and stream submission;
+  an exception must not leave a piece permanently marked as sending.
+- `Piece::ReadVerifiedBlock` validates complete fragment coverage and hashes
+  private scratch before replacing the cache under its mutex and epoch
+  checks. Partial/canceled reads must never leave trusted shared bytes. Warm
+  the existing cache only after full success to avoid a full-piece reread for
+  every wire block. The upload scratch reservation is not a bound on all
+  retained piece-cache memory; existing cache eviction remains relevant.
+- Local verification uses weak tunnel ownership at every queued disk/service
+  boundary. Compute selected completion on the service thread after disk
+  persistence, never by reading mutable priorities on the disk worker. A
+  canceled chain releases its atomic active-verification flag and leaves
+  cursor/pending state available for a later explicitly admitted pass.
+- Peer admission retires an idle registry entry before queuing `Close()`.
+  Deferred teardown alone does not free capacity and lets bursts exceed the
+  peer cap. Removal compares the current shared owner so an old close cannot
+  erase a replacement with the same authenticated identity. The existing
+  verify-parity regression exercises retirement without a running service.
+- Completion snapshots file selection on the service thread and rechecks
+  selection, verified pieces and exact torrent-instance membership before
+  publishing. A same-hash replacement is a different authority. These checks
+  do not cancel a filesystem operation already in progress; queued handlers
+  must also avoid retaining the tunnel through its own stopped executors.
 
 - Shared BEP 9 assembly remembers one competing metadata size. After
   progress stalls for a request interval, reserve a bounded opportunity
@@ -335,6 +375,20 @@ Do not let them edit, build or run tests.
 - All payload IO stays behind `TorrentPayloadStorage` (worker or SAF); no path
   fallback after selection. Zero-length files never open a document; no-seek
   providers and short writes fail closed without staging.
+
+- Routine per-piece resume persistence is `UpdateTorrentResumeFile()` (120 s
+  monotonic, injectable clock); stop, removal, completion and shutdown keep
+  immediate `SaveTorrentResumeFile()`. A missing `.part` promotion sets
+  `eTorrentErrorFilesystem`, invalidates covering pieces on the service thread
+  and persists the corrected bitmap; never call `Complete()` on missing data.
+- `CreateAvailableBitfield()` is a clamped union of established peers'
+  advertised bitfields, exposed additively as RPC `piecesAvailable`; it is not
+  local completion. A stopped datagram session clears its send queue.
+- TUI torrent pause/resume and the footer use the exact `TorrentStatusToken`
+  classifier. Never substring-match status; unknown sends no command.
+- Do not adopt upstream connection replacement until `RemoveConnection` is
+  identity-keyed, and do not port the intrusive receive queue without
+  releasing the pooled source packet.
 
 ## Do not
 

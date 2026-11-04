@@ -336,3 +336,21 @@ Reference: [BEP 9](https://www.bittorrent.org/beps/bep_0009.html), revision
 owners, malformed lengths, expiry, disconnect, size disagreement and hash
 failure. Compilation, sanitizer execution and live Java I2PSnark exchange
 remain pending. Endgame/CANCEL and queue/magnet persistence remain separate.
+
+## Native upload-slot continuation (static)
+
+`UploadSlotPolicy` admits eight interested established peers, preserves current
+grants between rotations and fills departures immediately. The identity cursor
+rotates after 30 monotonic seconds when the next status/interest event runs;
+there is no exact-period timer. Closing peers and stopped/removed torrents
+lose grants. Choke is submitted before replacements are unchoked, and queued
+or newly canceled disk requests receive Fast rejections once. Canceled reads
+retain their count/byte reservation until their final callback retires.
+
+Reference: Java 2.14.0, revision
+`3c98503c5f14efe7bdd783528ba7f621f12d8081`, `PeerCoordinator.java` and
+`PeerCheckerTask.java`, plus [BEP 6](https://www.bittorrent.org/beps/bep_0006.html).
+Java also ranks bandwidth/reciprocity; this native round-robin policy is a
+deliberate functional subset, not exact scheduling parity. Pure scheduler,
+ledger and negative source regressions are prepared. Compilation, sanitizers
+and live Java exchange remain Pending CI.

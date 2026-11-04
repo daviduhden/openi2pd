@@ -49,6 +49,7 @@
 #include <unistd.h>
 #endif
 #include "Log.h"
+#include "Modern.h"
 #include "Base.h"
 #include "I2PEndian.h"
 #include "Timestamp.h"
@@ -59,6 +60,156 @@ namespace i2p
 {
 namespace torrents
 {
+	struct UploadLoadLedger::BudgetState
+	{
+		// A removed peer may still have canceled reads in the disk queue.
+		// Count their leases until every queued callback releases them, so
+		// connection churn cannot bypass the existing per-peer bounds.
+		std::mutex mutex;
+		size_t outstandingUploadLoads = 0, outstandingUploadBytes = 0;
+	};
+
+	std::shared_ptr<UploadLoadLedger::BudgetState> UploadLoadLedger::GetBudget ()
+	{
+		static const auto budget = std::make_shared<BudgetState> ();
+		return budget;
+	}
+
+	UploadLoadLedger::Lease::~Lease ()
+	{
+		if (!m_Budget) return;
+		std::lock_guard lock (m_Budget->mutex);
+		--m_Budget->outstandingUploadLoads;
+		m_Budget->outstandingUploadBytes -= bytes;
+	}
+
+	UploadLoadLedger::Ticket UploadLoadLedger::Acquire (const RequestedBlock & block, uint64_t epoch, size_t pieceBytes)
+	{
+		std::lock_guard ledgerLock (m_Mutex);
+		if (m_Closed || !pieceBytes || pieceBytes > MaxGlobalBytes
+			|| m_Leases.size () >= MAX_INCOMING_REQUESTS_QUEUE_SIZE
+			|| std::any_of (m_Leases.begin (), m_Leases.end (),
+				[&block] (const Ticket & existing) { return existing->block == block; }))
+			return { };
+		auto ticket = std::make_shared<Lease> (block, epoch, pieceBytes);
+		auto budget = GetBudget ();
+		{
+			std::lock_guard lock (budget->mutex);
+			if (budget->outstandingUploadLoads >= MaxGlobalLoads
+				|| pieceBytes > MaxGlobalBytes - budget->outstandingUploadBytes)
+				return { };
+			++budget->outstandingUploadLoads;
+			budget->outstandingUploadBytes += pieceBytes;
+			ticket->m_Budget = std::move (budget);
+		}
+		m_Leases.push_back (ticket);
+		return ticket;
+	}
+
+	bool UploadLoadLedger::Release (const Ticket & ticket)
+	{
+		std::lock_guard lock (m_Mutex);
+		auto it = std::find (m_Leases.begin (), m_Leases.end (), ticket);
+		if (it == m_Leases.end ()) return false;
+		m_Leases.erase (it);
+		return true;
+	}
+
+	bool UploadLoadLedger::Cancel (const RequestedBlock & block)
+	{
+		std::lock_guard lock (m_Mutex);
+		for (const auto & ticket : m_Leases)
+			if (ticket->block == block)
+				return !ticket->cancelled.exchange (true, std::memory_order_acq_rel);
+		return false;
+	}
+
+	void UploadLoadLedger::CancelAll ()
+	{
+		std::lock_guard lock (m_Mutex);
+		for (const auto & ticket : m_Leases)
+			ticket->cancelled.store (true, std::memory_order_release);
+	}
+
+	std::vector<RequestedBlock> UploadLoadLedger::CancelForChoke ()
+	{
+		std::lock_guard lock (m_Mutex);
+		std::vector<RequestedBlock> revoked;
+		// Allocate before changing cancellation state. Every newly revoked
+		// request will then have a bounded, allocation-free record for its
+		// Fast rejection; duplicate CANCEL/choke never acknowledges twice.
+		revoked.reserve (m_Leases.size ());
+		for (const auto & ticket : m_Leases)
+			if (!ticket->cancelled.exchange (true, std::memory_order_acq_rel)) revoked.push_back (ticket->block);
+		return revoked;
+	}
+
+	void UploadLoadLedger::Close ()
+	{
+		std::lock_guard lock (m_Mutex);
+		m_Closed = true;
+		for (const auto & ticket : m_Leases) ticket->cancelled.store (true, std::memory_order_release);
+	}
+
+	bool UploadLoadLedger::Contains (const RequestedBlock & block) const
+	{
+		std::lock_guard lock (m_Mutex);
+		return std::any_of (
+			m_Leases.begin (), m_Leases.end (), [&block] (const Ticket & ticket) { return ticket->block == block; });
+	}
+
+	bool UploadLoadLedger::IsCancelled (const RequestedBlock & block) const
+	{
+		std::lock_guard lock (m_Mutex);
+		for (const auto & ticket : m_Leases)
+			if (ticket->block == block) return ticket->cancelled.load (std::memory_order_acquire);
+		return false;
+	}
+
+	std::span<const UploadSlotPolicy::Peer> UploadSlotPolicy::Update (std::span<const Peer> eligible, uint64_t now)
+	{
+		if (eligible.empty () || eligible.size () > MAX_PEERS_PER_TORRENT)
+		{
+			Reset ();
+			return { };
+		}
+		std::vector<Peer> candidates (eligible.begin (), eligible.end ());
+		std::sort (candidates.begin (), candidates.end ());
+		candidates.erase (std::unique (candidates.begin (), candidates.end ()), candidates.end ());
+		// Rebase a backward sample without rotating a fresh cohort.
+		if (m_LastRotation && now < *m_LastRotation) m_LastRotation = now;
+		if (!m_LastRotation || now - *m_LastRotation >= RotationSeconds)
+		{
+			m_Selected.clear ();
+			m_LastRotation = now;
+		}
+		else
+			std::erase_if (m_Selected, [&candidates] (const Peer & peer)
+				{ return !std::binary_search (candidates.begin (), candidates.end (), peer); });
+		auto next
+			= m_Cursor ? std::upper_bound (candidates.begin (), candidates.end (), *m_Cursor) : candidates.begin ();
+		const auto start = static_cast<size_t> (std::distance (candidates.begin (), next));
+		for (size_t step = 0; step < candidates.size () && m_Selected.size () < MaxSlots; ++step)
+		{
+			const auto & peer = candidates[(start + step) % candidates.size ()];
+			if (Selected (peer)) continue;
+			m_Selected.push_back (peer);
+			m_Cursor = peer;
+		}
+		return m_Selected;
+	}
+
+	bool UploadSlotPolicy::Selected (const Peer & peer) const
+	{
+		return std::find (m_Selected.begin (), m_Selected.end (), peer) != m_Selected.end ();
+	}
+
+	void UploadSlotPolicy::Reset ()
+	{
+		m_Selected.clear ();
+		m_Cursor.reset ();
+		m_LastRotation.reset ();
+	}
 
 	// BEncoded
 
@@ -1415,9 +1566,8 @@ namespace torrents
 			m_IsVerified = false;
 			return false;
 		}
-		uint8_t digest[SHA_DIGEST_LENGTH];
-		SHA1 (m_Data.get (), m_Size, digest);
-		m_IsVerified = !memcmp (m_Hash, digest, SHA_DIGEST_LENGTH);
+		uint8_t digest[SHA_DIGEST_LENGTH] { };
+		m_IsVerified = SHA1 (m_Data.get (), m_Size, digest) && !memcmp (m_Hash, digest, SHA_DIGEST_LENGTH);
 		return m_IsVerified;
 	}
 
@@ -1636,6 +1786,62 @@ namespace torrents
 			return false;
 		out.assign (m_Data.get () + offset, m_Data.get () + offset + len);
 		return true;
+	}
+
+	bool Piece::ReadVerifiedBlock (std::span<const PieceFileFragment> fragments, size_t offset, size_t len,
+		uint64_t epoch, const std::atomic<bool> & cancelled, std::vector<uint8_t> & out) try
+	{
+		out.clear ();
+		std::array<uint8_t, SHA_DIGEST_LENGTH> expected;
+		{
+			std::lock_guard lock (m_Mutex);
+			if (cancelled.load (std::memory_order_acquire) || epoch != m_BlockEpoch
+				|| !len || len > REQUEST_BLOCK_SIZE || offset > m_Size || len > m_Size - offset
+				|| m_IsSaving || m_IsVerificationPending || m_Blocks)
+				return false;
+			std::copy_n (m_Hash, expected.size (), expected.begin ());
+		}
+		// Validate full, contiguous coverage before allocating or exposing
+		// bytes to a provider. Partial scratch never enters m_Data.
+		size_t covered = 0;
+		for (const auto & fragment : fragments)
+		{
+			if (!fragment.file || !fragment.fragmentSize || fragment.fragmentOffset != covered
+				|| fragment.fragmentSize > m_Size - covered)
+				return false;
+			covered += fragment.fragmentSize;
+		}
+		if (covered != m_Size) return false;
+		if (CopyBlock (offset, len, out)) return true;
+		auto scratch = std::make_unique<uint8_t[]> (m_Size);
+		for (const auto & fragment : fragments)
+		{
+			if (cancelled.load (std::memory_order_acquire) || GetBlockEpoch () != epoch
+				|| !fragment.file->Load (fragment.fileOffset, scratch.get () + fragment.fragmentOffset,
+					fragment.fragmentSize))
+				return false;
+		}
+		std::array<uint8_t, SHA_DIGEST_LENGTH> digest { };
+		if (!SHA1 (scratch.get (), m_Size, digest.data ()) || digest != expected) return false;
+		{
+			std::lock_guard lock (m_Mutex);
+			if (cancelled.load (std::memory_order_acquire) || epoch != m_BlockEpoch
+				|| m_IsSaving || m_IsVerificationPending || m_Blocks)
+				return false;
+			out.assign (scratch.get () + offset, scratch.get () + offset + len);
+			// Warm the existing verified cache only after the complete read
+			// and hash succeed, avoiding one full-piece read per wire block.
+			m_Data = std::move (scratch);
+			m_IsVerified = true;
+			m_LastActivityTimestamp = i2p::util::GetMonotonicSeconds ();
+		}
+		return true;
+	}
+	catch (...)
+	{
+		// Storage/allocation failure never publishes partial cache bytes.
+		out.clear ();
+		return false;
 	}
 
 	void Piece::NewDataBufferLocked ()
@@ -2217,7 +2423,13 @@ namespace torrents
 		m_Info.resize (len);
 		memcpy (m_Info.data (), (const uint8_t *)buf.data (), len);
 		// calculate info hash
-		SHA1 (m_Info.data (), len, m_InfoHash.data ());
+		if (!SHA1 (m_Info.data (), len, m_InfoHash.data ()))
+		{
+			m_InfoHash.fill (0);
+			m_Error = eTorrentErrorMalformedMetaInfo;
+			m_IsStopped = true;
+			return 0;
+		}
 		// Metadata arriving after the fact (magnet/BEP9) can turn the torrent
 		// into a private swarm. Candidates learned from public gossip before
 		// that point must not survive the transition.
@@ -2967,6 +3179,25 @@ namespace torrents
 			all ? boost::logic::tribool (true) : (none ? boost::logic::tribool (false) : boost::logic::indeterminate) };
 	}
 
+	std::vector<uint8_t> Torrent::CreateAvailableBitfield () const
+	{
+		// Wire form, zero-filled and exactly the local piece count. A
+		// metadata-less torrent has no pieces and therefore no bitmap.
+		const size_t numPieces = m_Pieces.size ();
+		std::vector<uint8_t> available ((numPieces + 7) / 8);
+		if (available.empty ()) return available;
+		for (const auto & item : m_Connections)
+		{
+			auto connection = item.second.lock ();
+			if (!connection || !connection->IsEstablished ()) continue;
+			// An empty or not-yet-received bitfield advertises nothing; only
+			// MergeAvailableBitfield clamps a larger remote set.
+			if (!connection->IsRemoteBitfieldReceived ()) continue;
+			MergeAvailableBitfield (available, numPieces, connection->GetRemoteBitfield ());
+		}
+		return available;
+	}
+
 	bool Torrent::IsBitfieldValid (const std::vector<uint8_t> & bitfield) const
 	{
 		const size_t numPieces = m_Pieces.size ();
@@ -3045,6 +3276,39 @@ namespace torrents
 					return false;
 			}
 			return last < m_Pieces.size ();
+		}
+		return false;
+	}
+
+	bool Torrent::InvalidateFilePieces (size_t index)
+	{
+		if (!m_PieceLength || index >= m_Files.size ()) return false;
+		size_t offset = 0, current = 0;
+		for (const auto & file : m_Files)
+		{
+			const auto length = file->GetFileLength ();
+			if (current++ != index)
+			{
+				offset += length;
+				continue;
+			}
+			if (!length) return false; // a zero-length file has no payload
+			const auto first = offset / m_PieceLength;
+			const auto last = (offset + length - 1) / m_PieceLength;
+			bool invalidated = false;
+			for (size_t piece = first; piece <= last && piece < m_Pieces.size (); ++piece)
+			{
+				// Never invalidate a piece whose write is still in flight: that
+				// writer verifies and publishes it, and a concurrent
+				// MarkCorrupt() would discard a valid pending write.
+				if (m_Pieces[piece].IsSaving ()) continue;
+				// MarkCorrupt() makes even a verified piece downloadable
+				// again; Reset() would keep the complete flag.
+				m_Pieces[piece].MarkCorrupt ();
+				invalidated = true;
+			}
+			if (invalidated) m_IsComplete.store (false, std::memory_order_release);
+			return invalidated;
 		}
 		return false;
 	}
@@ -3336,7 +3600,7 @@ namespace torrents
 
 	bool Torrent::UpdateStatus (uint64_t ts)
 	{
-		GetConnections (); // cleanup expired connections
+		RefreshUploadSlots (ts); // also prune expired connections
 		// Keep the bounded candidate table fresh on the periodic tick:
 		// expired and permanently failed candidates must not linger in it.
 		ExpirePeerCandidates (ts);
@@ -3408,6 +3672,21 @@ namespace torrents
 					bitfield.size (), error))
 				LogPrint (eLogError, "Torrents: Can't write resume file ", resumeFilePath, " : ", error);
 		}
+	}
+
+	void Torrent::UpdateTorrentResumeFile (uint64_t nowMilliseconds)
+	{
+		if (!nowMilliseconds) nowMilliseconds = i2p::util::GetMonotonicMilliseconds ();
+		if (nowMilliseconds < m_NextResumeUpdateTime)
+		{
+			// Still inside the window, unless the clock moved back by more
+			// than one interval: that is a platform anomaly rather than a
+			// throttle hit, so re-base instead of suppressing persistence
+			// until the stale deadline.
+			if (m_NextResumeUpdateTime - nowMilliseconds <= TORRENT_RESUME_UPDATE_INTERVAL) return;
+		}
+		SaveTorrentResumeFile ();
+		m_NextResumeUpdateTime = nowMilliseconds + TORRENT_RESUME_UPDATE_INTERVAL;
 	}
 
 	void Torrent::StartCountingPeers ()
@@ -3626,9 +3905,12 @@ namespace torrents
 		for (const auto & conn : GetConnections ())
 		{
 			// Idle means established, choked in both directions and not
-			// interested either way. Close() only posts the teardown to the
-			// service thread, so the handler is never destroyed here.
+			// interested either way. Retire the slot before Close() posts
+			// teardown, so a burst cannot rotate the same victim repeatedly
+			// and exceed the cap while those callbacks are still pending.
 			if (!conn || !conn->IsEstablishedAndIdle ()) continue;
+			const auto remoteIdentHash = conn->GetRemoteIdentHash ();
+			if (!remoteIdentHash || !RetirePeerConnection (m_Connections, *remoteIdentHash, conn)) continue;
 			LogPrint (eLogDebug, "Torrents: Rotating an idle peer of ", m_Name, " to respect the connection limit");
 			conn->Close ();
 			return true;
@@ -3641,7 +3923,8 @@ namespace torrents
 		if (!conn) return;
 		auto remoteIdentHash = conn->GetRemoteIdentHash ();
 		if (!remoteIdentHash) return;
-		m_Connections.erase (*remoteIdentHash);
+		RetirePeerConnection (m_Connections, *remoteIdentHash, conn);
+		RefreshUploadSlots ();
 	}
 
 	std::list<std::shared_ptr<PeerConnection>> Torrent::GetConnections ()
@@ -3660,6 +3943,63 @@ namespace torrents
 				it = m_Connections.erase (it);
 		}
 		return ret;
+	}
+
+	void Torrent::RefreshUploadSlots (uint64_t now) try
+	{
+		// Stream submission can fail synchronously. Avoid nested policy
+		// application if its teardown removes a connection during a pass.
+		if (m_RefreshingUploadSlots) return;
+		m_RefreshingUploadSlots = true;
+		const auto resetRefresh = i2p::modern::ScopeExit ([this] { m_RefreshingUploadSlots = false; });
+		auto connections = GetConnections ();
+		if (m_IsStopped || IsRemoved () || !IsValid ())
+			m_UploadSlots.Reset ();
+		else
+		{
+			std::vector<UploadSlotPolicy::Peer> eligible;
+			eligible.reserve (connections.size ());
+			for (const auto & connection : connections)
+			{
+				if (!connection->IsUploadSlotCandidate ()) continue;
+				if (const auto ident = connection->GetRemoteIdentHash ()) eligible.push_back (*ident);
+			}
+			m_UploadSlots.Update (eligible, now ? now : i2p::util::GetMonotonicSeconds ());
+		}
+		auto selected = [this] (const std::shared_ptr<PeerConnection> & connection)
+		{
+			const auto ident = connection->GetRemoteIdentHash ();
+			return ident && connection->IsUploadSlotCandidate () && m_UploadSlots.Selected (*ident);
+		};
+		// Revoke before granting: rotating cohorts must never temporarily
+		// exceed the eight-slot bound. Submitted wire frames may finish.
+		for (const auto & connection : connections)
+			if (!selected (connection)) connection->SetUploadAllowed (false);
+		for (const auto & connection : connections)
+			if (selected (connection)) connection->SetUploadAllowed (true);
+	}
+	catch (...)
+	{
+		// Snapshot/policy allocation can fail before any old grant is
+		// revoked. Fail closed without allocating another snapshot. Close
+		// publishes upload revocation before posting teardown; post() never
+		// removes a registry entry inline, so this iteration stays valid.
+		m_UploadSlots.Reset ();
+		for (const auto & entry : m_Connections)
+		{
+			if (auto connection = entry.second.lock ())
+			{
+				connection->m_IsRemoteChoked = true;
+				connection->m_UploadDispatchFailed.store (true, std::memory_order_release);
+				try { connection->Close (); }
+				catch (...)
+				{
+					// Admission is already revoked if posting fails. The next
+					// service turn retries close; retain the original failure.
+				}
+			}
+		}
+		throw;
 	}
 
 	bool Torrent::IsConnectedToPeer (const i2p::data::IdentHash & peer)
@@ -3687,6 +4027,7 @@ namespace torrents
 			ClearPeerCandidates ();
 			m_MetadataDownload.Reset ();
 		}
+		RefreshUploadSlots ();
 	}
 
 	void Torrent::MarkRemoved ()
@@ -3950,6 +4291,10 @@ namespace torrents
 	void PeerConnection::Terminate ()
 	{
 		if (Kill ()) return;
+		m_IsEstablished = false;
+		m_UploadClosing.store (true, std::memory_order_release);
+		m_UploadLoads.Close ();
+		m_IncomingRequestsQueue.clear ();
 		if (m_Torrent)
 		{
 			m_Torrent->GetMetadataDownload ().Release (m_MetadataOwner);
@@ -4072,11 +4417,20 @@ namespace torrents
 
 	void PeerConnection::Close ()
 	{
+		// StopTorrent queues teardown, but disk authority is revoked now.
+		// The leaf ledger is synchronized even for an external caller.
+		m_UploadClosing.store (true, std::memory_order_release);
+		m_UploadLoads.Close ();
 		boost::asio::post (GetTorrentsTunnel ()->GetService (), [s = shared_from_this ()] () { s->Terminate (); });
 	}
 
 	void PeerConnection::CheckKeepAlive (uint64_t ts)
 	{
+		if (m_UploadDispatchFailed.load (std::memory_order_acquire))
+		{
+			Close ();
+			return;
+		}
 		if (m_IsEstablished && m_Torrent && !m_Torrent->IsValid ()) RequestUtMetadata ();
 		if (m_IsEstablished) RequestComments ();
 		// Incremental PEX refresh. Private swarms are suppressed inside
@@ -4284,15 +4638,12 @@ namespace torrents
 				break;
 			case eMessageTypeInterested:
 				m_IsRemoteInterested = true;
-				if (m_IsRemoteChoked)
-				{
-					m_IsRemoteChoked = false;
-					SendUnchokeMsg ();
-				}
+				if (m_Torrent) m_Torrent->RefreshUploadSlots ();
 				break;
 			case eMessageTypeNotInterested:
 				m_IsRemoteInterested = false;
 				m_UploadRate = 0;
+				if (m_Torrent) m_Torrent->RefreshUploadSlots ();
 				break;
 			case eMessageTypeHave: HandleHaveMsg (m_ReceiveBuffer + offset + 1, msgLen - 1); break;
 			case eMessageTypeBitfield: HandleBitfieldMsg (m_ReceiveBuffer + offset + 1, msgLen - 1); break;
@@ -4612,7 +4963,12 @@ namespace torrents
 									// permanently marked and silenced.
 									if (current->GetError () == eTorrentErrorFilesystem)
 										current->SetError (eTorrentErrorNoError);
-									current->SaveTorrentResumeFile ();
+									// Routine progress: throttled so a fast swarm
+									// cannot force one atomic replace and fsync per
+									// verified piece. Stop, removal, completion and
+									// the final shutdown snapshot still save
+									// immediately.
+									current->UpdateTorrentResumeFile ();
 									boost::asio::post (tunnel->GetService (),
 										[torrent, tunnel, infoHash, index] ()
 										{
@@ -4696,17 +5052,7 @@ namespace torrents
 				if (s->m_NumPieces > 0) s->m_NumPieces--;
 				if (!ecode && s->m_Stream)
 				{
-					while (!s->m_IncomingRequestsQueue.empty () && s->m_NumPieces < MAX_NUM_PIECES)
-					{
-						s->SendRequestedBlock (s->m_IncomingRequestsQueue.front ());
-						s->m_IncomingRequestsQueue.pop_front ();
-					}
-					if (s->m_IsRemoteChoked && s->m_IncomingRequestsQueue.size () < 2 * MAX_NUM_PIECES)
-					{
-						LogPrint (eLogDebug, "Torrents: Unchoke");
-						s->m_IsRemoteChoked = false;
-						s->SendUnchokeMsg ();
-					}
+					s->ProcessUploadRequests ();
 					// update stats
 					auto ts = i2p::util::GetMonotonicMilliseconds ();
 					if (s->m_LastBlockUploadTimestamp)
@@ -4770,13 +5116,14 @@ namespace torrents
 		const uint32_t offset = bufbe32toh (buf + 4);
 		const uint32_t length = bufbe32toh (buf + 8);
 		const RequestedBlock cancelled { index, offset, length };
-		// Only a request still queued can be cancelled; an in-flight send is
-		// already copying the block and must not be interrupted mid-frame.
-		// BEP 3 identifies the request by the exact index/offset/length
-		// triple.
+		// BEP 3 cancellation identifies the exact index/offset/length.
+		// Revoke both queued requests and disk work, but never interrupt an
+		// in-flight wire frame. A disk reservation retires on completion.
 		auto it = std::find (m_IncomingRequestsQueue.begin (), m_IncomingRequestsQueue.end (), cancelled);
-		if (it == m_IncomingRequestsQueue.end ()) return;
-		m_IncomingRequestsQueue.erase (it);
+		if (it != m_IncomingRequestsQueue.end ())
+			m_IncomingRequestsQueue.erase (it);
+		else if (!m_UploadLoads.Cancel (cancelled))
+			return;
 		// Reject Request is a BEP 6 Fast Extension message, so it is only
 		// sent to a peer that negotiated the extension. Upstream answers
 		// unconditionally, which would be a protocol violation here.
@@ -4785,135 +5132,180 @@ namespace torrents
 
 	void PeerConnection::HandleRequestMsg (const uint8_t * buf, size_t len)
 	{
-		if (!m_Torrent) return;
+		if (m_UploadClosing.load (std::memory_order_acquire)) return;
+		if (!m_Torrent || !m_Stream || !m_IsEstablished || m_Torrent->IsRemoved () || m_Torrent->IsStopped ()) return;
 		if (len != REQUEST_MSG_PAYLOAD_LENGTH)
 		{
 			LogPrint (eLogWarning, "Torrents: Unexpected length of request message ", len);
 			return;
 		}
-		uint32_t index = bufbe32toh (buf);
-		uint32_t offset = bufbe32toh (buf + 4);
-		uint32_t length = bufbe32toh (buf + 8);
-		if (length > REQUEST_BLOCK_SIZE)
+		const uint32_t index = bufbe32toh (buf);
+		const uint32_t offset = bufbe32toh (buf + 4);
+		const uint32_t length = bufbe32toh (buf + 8);
+		// No Allowed Fast upload set is advertised by this implementation.
+		// Remote Allowed Fast messages grant downloads, not upload rights.
+		// BEP 3 drops choked requests; BEP 6 answers them with a rejection.
+		if (m_IsRemoteChoked)
 		{
-			LogPrint (eLogWarning, "Torrents: Requested length is too long ", length);
+			if (m_IsFast) SendRejectRequestMsg (index, offset, length);
 			return;
 		}
-		if (index < m_Torrent->GetNumPieces ())
+		if (!length || length > REQUEST_BLOCK_SIZE || index >= m_Torrent->GetNumPieces ())
 		{
-			LogPrint (eLogDebug, "Torrents: Received request index ", index, " offset ", offset, " length ", length);
-			Piece & piece = m_Torrent->GetPiece (index);
-			auto pieceSize = piece.GetSize ();
-			// Reject zero-length and out-of-range requests. Checking both range
-			// ends also prevents serving uninitialised bytes that belong to a
-			// neighbouring, not yet downloaded block.
-			if (length && offset <= pieceSize && length <= pieceSize - offset && piece.HasBlock (offset)
-				&& piece.HasBlock (offset + length - 1))
+			if (m_IsFast) SendRejectRequestMsg (index, offset, length);
+			return;
+		}
+		const auto & piece = m_Torrent->GetPiece (index);
+		const auto pieceSize = piece.GetSize ();
+		if (offset > pieceSize || length > pieceSize - offset || !piece.HasBlock (offset)
+			|| !piece.HasBlock (offset + length - 1))
+		{
+			if (m_IsFast) SendRejectRequestMsg (index, offset, length);
+			return;
+		}
+		const RequestedBlock request { index, offset, length };
+		// A cold read owns quota before it is posted. Canceled reads keep
+		// their reservation until completion, so cancellation is not an
+		// admission bypass. Ignore exact duplicates already being prepared.
+		if (m_UploadLoads.Contains (request))
+		{
+			// A request reissued after CANCEL needs its own Fast response,
+			// but cannot reuse the canceled job's still-occupied disk slot.
+			if (m_IsFast && m_UploadLoads.IsCancelled (request)) SendRejectRequestMsg (index, offset, length);
+			return;
+		}
+		if (std::find (m_IncomingRequestsQueue.begin (), m_IncomingRequestsQueue.end (), request)
+				!= m_IncomingRequestsQueue.end ())
+			return;
+		if (m_IncomingRequestsQueue.size () + m_UploadLoads.Size () + m_NumPieces >= MAX_INCOMING_REQUESTS_QUEUE_SIZE)
+		{
+			if (m_IsFast) SendRejectRequestMsg (index, offset, length);
+			return;
+		}
+		m_IncomingRequestsQueue.push_back (request);
+		ProcessUploadRequests ();
+	}
+
+	void PeerConnection::ProcessUploadRequests ()
+	{
+		if (m_UploadClosing.load (std::memory_order_acquire)) return;
+		if (m_UploadDispatchFailed.load (std::memory_order_acquire))
+		{
+			Close ();
+			return;
+		}
+		auto tunnel = GetTorrentsTunnel ();
+		if (!tunnel || !m_Stream || !m_IsEstablished || m_IsRemoteChoked || !m_Torrent || m_Torrent->IsRemoved ()
+			|| m_Torrent->IsStopped ())
+			return;
+		while (!m_IncomingRequestsQueue.empty () && m_NumPieces + m_UploadLoads.Size () < MAX_NUM_PIECES)
+		{
+			const auto request = m_IncomingRequestsQueue.front ();
+			m_IncomingRequestsQueue.pop_front ();
+			if (SendRequestedBlock (request)) continue;
+			const auto index = std::get<0> (request);
+			auto ticket = m_UploadLoads.Acquire (
+				request, m_Torrent->GetPiece (index).GetBlockEpoch (), m_Torrent->GetPiece (index).GetSize ());
+			if (!ticket)
 			{
-				if (m_NumPieces >= MAX_NUM_PIECES)
-				{
-					// Queue each (index, offset, length) once. Without this a
-					// peer can fill the bounded queue with copies of the same
-					// request and starve useful uploads.
-					const RequestedBlock request { index, offset, length };
-					bool alreadyQueued
-						= std::find (m_IncomingRequestsQueue.begin (), m_IncomingRequestsQueue.end (), request)
-						!= m_IncomingRequestsQueue.end ();
-					if (!alreadyQueued
-						&& m_IncomingRequestsQueue.size () + m_NumPieces < MAX_INCOMING_REQUESTS_QUEUE_SIZE)
-						m_IncomingRequestsQueue.emplace_back (request);
-					else if (!alreadyQueued && m_IsFast)
-						SendRejectRequestMsg (index, offset, length);
-					else if (!alreadyQueued && !m_IsRemoteChoked)
+				// Capacity refusal is retryable through normal peer request
+				// timeouts (BEP 3) or Reject Request (BEP 6), never a hot retry.
+				if (m_IsFast) SendRejectRequestMsg (index, std::get<1> (request), std::get<2> (request));
+				continue;
+			}
+			const std::weak_ptr<PeerConnection> weakPeer = weak_from_this ();
+			const std::weak_ptr<TorrentsTunnel> weakTunnel = tunnel;
+			try
+			{
+				boost::asio::post (tunnel->GetDiskIOService (),
+					[weakPeer, weakTunnel, ticket, weakTorrent = std::weak_ptr<Torrent> (m_Torrent)] ()
 					{
-						LogPrint (eLogDebug, "Torrents: Choke");
-						m_IsRemoteChoked = true;
-						SendChokeMsg ();
-					}
-				}
-				else if (!SendRequestedBlock ({ index, offset, length })) // block was not sent
-				{
-					// try to load from file
-					boost::asio::post (GetTorrentsTunnel ()->GetDiskIOService (),
-						[requestBlock = RequestedBlock { index, offset, length }, torrent = m_Torrent,
-							s = shared_from_this ()] () mutable
+						auto tunnel = weakTunnel.lock ();
+						auto torrent = weakTorrent.lock ();
+						if (!tunnel || !torrent)
 						{
-							if (torrent->IsRemoved ()) return;
-							bool loaded = true;
-							auto [index, offset, len] = requestBlock;
-							Piece & piece = torrent->GetPiece (index);
-							piece.SetIsSending (true);
-							piece.SetIsLoading (true);
-							// Data without a matching verified flag (previous
-							// failed load, eviction or corruption) is reloaded
-							// and rehashed instead of being served blindly.
-							if (!piece.HasData () || !piece.IsVerified ())
+							if (auto peer = weakPeer.lock ()) peer->m_UploadLoads.Release (ticket);
+							return;
+						}
+						const auto index = std::get<0> (ticket->block);
+						Piece & piece = torrent->GetPiece (index);
+						bool loaded = false;
+						std::vector<uint8_t> block;
+						try
+						{
+							if (!ticket->cancelled.load (std::memory_order_acquire) && !torrent->IsRemoved ()
+								&& tunnel->FindTorrent (torrent->GetInfoHash ()) == torrent
+								&& piece.GetBlockEpoch () == ticket->epoch)
 							{
 								auto fragments = torrent->GetPieceFileFragments (index);
-								for (auto & it : fragments)
+								loaded = piece.ReadVerifiedBlock (fragments, std::get<1> (ticket->block),
+									std::get<2> (ticket->block), ticket->epoch, ticket->cancelled, block);
+							}
+						}
+						catch (...)
+						{
+							// Even fragment-list allocation failure reaches retirement.
+							loaded = false;
+						}
+						try
+						{
+							boost::asio::post (tunnel->GetService (),
+								[weakPeer, weakTunnel, weakTorrent, ticket, loaded, block = std::move (block)] ()
 								{
-									if (!piece.Load (std::move (it)))
+									auto peer = weakPeer.lock ();
+									auto tunnel = weakTunnel.lock ();
+									auto torrent = weakTorrent.lock ();
+									if (!peer || !peer->m_UploadLoads.Release (ticket)) return;
+									if (peer->m_UploadDispatchFailed.load (std::memory_order_acquire))
 									{
-										loaded = false;
-										break;
+										peer->Close ();
+										return;
 									}
-								}
-								if (loaded && !piece.VerifyHash ())
-								{
-									LogPrint (eLogError, "Torrents: Corrupted piece ", index);
-									loaded = false;
-								}
-							}
-							piece.SetIsLoading (false);
-							piece.SetIsSending (false);
-							if (!loaded)
-							{
-								// A complete piece whose local data failed to
-								// load or hash must not stay complete: rebuild
-								// it as Missing so it can be downloaded again.
-								torrent->InvalidatePiece (index);
-							}
-							if (loaded)
-								boost::asio::post (s->GetTorrentsTunnel ()->GetService (),
-									[requestedBlock = std::move (requestBlock), s] ()
+									if (!tunnel || !torrent || !peer->m_Stream || !peer->m_IsEstablished
+										|| peer->m_UploadClosing.load (std::memory_order_acquire)
+										|| peer->m_Torrent != torrent || torrent->IsRemoved () || torrent->IsStopped ()
+										|| tunnel->FindTorrent (torrent->GetInfoHash ()) != torrent)
+										return;
+									const auto [index, offset, length] = ticket->block;
+									if (!ticket->cancelled.load (std::memory_order_acquire))
 									{
-										if (!s->SendRequestedBlock (requestedBlock))
-										{
-											LogPrint (eLogError, "Torrents: Couldn't send block from loaded piece");
-											auto [rejectIndex, rejectOffset, rejectLength] = requestedBlock;
-											s->SendRejectRequestMsg (rejectIndex, rejectOffset, rejectLength);
-										}
-									});
-							else
+										const bool current
+											= torrent->GetPiece (index).GetBlockEpoch () == ticket->epoch;
+										if (!loaded && current) torrent->InvalidatePiece (index);
+										if (current && loaded && !peer->m_IsRemoteChoked)
+											peer->SendPieceMsg (index, offset, block.data (), block.size ());
+										else if (peer->m_IsFast)
+											peer->SendRejectRequestMsg (index, offset, length);
+									}
+									peer->ProcessUploadRequests ();
+								});
+						}
+						catch (...)
+						{
+							// This leaf ledger is thread-safe; no peer wire state is
+							// touched off service. Its next turn closes the session.
+							if (auto peer = weakPeer.lock ())
 							{
-								LogPrint (eLogError, "Torrents: Failed to load piece ", index);
-								if (s->m_IsFast)
-									boost::asio::post (s->GetTorrentsTunnel ()->GetService (),
-										[requestedBlock = std::move (requestBlock), s] ()
-										{
-											auto [rejectIndex, rejectOffset, rejectLength] = requestedBlock;
-											s->SendRejectRequestMsg (rejectIndex, rejectOffset, rejectLength);
-										});
+								peer->m_UploadDispatchFailed.store (true, std::memory_order_release);
+								peer->m_UploadLoads.Release (ticket);
 							}
-						});
-				}
+						}
+					});
 			}
-			else
+			catch (...)
 			{
-				LogPrint (eLogWarning, "Torrents: Requested block (", index, ",", offset, ") is not available");
-				if (m_IsFast) SendRejectRequestMsg (index, offset, length);
+				m_UploadLoads.Release (ticket);
+				throw;
 			}
-		}
-		else
-		{
-			LogPrint (eLogWarning, "Torrents: Requested index ", index, "exceeds number of pieces",
-				m_Torrent->GetNumPieces ());
-			if (m_IsFast) SendRejectRequestMsg (index, offset, length);
 		}
 	}
 
 	bool PeerConnection::SendRequestedBlock (const RequestedBlock & requestedBlock)
 	{
+		if (m_UploadClosing.load (std::memory_order_acquire)) return false;
+		if (!m_Stream || !m_IsEstablished || !m_Torrent || m_IsRemoteChoked
+			|| m_Torrent->IsRemoved () || m_Torrent->IsStopped ())
+			return false;
 		bool ret = true;
 		auto [index, offset, len] = requestedBlock;
 		Piece & piece = m_Torrent->GetPiece (index);
@@ -4923,6 +5315,9 @@ namespace torrents
 			return false;
 		}
 		piece.SetIsSending (true);
+		// Buffer allocation and stream submission may throw. The cache
+		// must remain evictable after either failure.
+		const auto resetSending = i2p::modern::ScopeExit ([&piece] { piece.SetIsSending (false); });
 		// CopyBlock validates the whole request under the piece lock and
 		// returns a private copy, so the buffer cannot be freed by Reset,
 		// MarkCorrupt or the disk thread while SendPieceMsg is using it.
@@ -4931,7 +5326,6 @@ namespace torrents
 			SendPieceMsg (index, offset, block.data (), block.size ());
 		else
 			ret = false;
-		piece.SetIsSending (false);
 		return ret;
 	}
 
@@ -4966,6 +5360,59 @@ namespace torrents
 		htobe32buf (buf, 1);
 		buf[4] = eMessageTypeNotInterested;
 		WriteToStream (buf, NOTINTERESTED_MSG_LENGTH);
+	}
+
+	bool PeerConnection::IsUploadSlotCandidate () const
+	{
+		return m_Stream && m_IsEstablished && m_IsRemoteInterested && !m_UploadClosing.load (std::memory_order_acquire)
+			&& !m_UploadDispatchFailed.load (std::memory_order_acquire);
+	}
+
+	void PeerConnection::SetUploadAllowed (bool allowed)
+	{
+		if (allowed)
+		{
+			if (!m_IsRemoteChoked || !IsUploadSlotCandidate ()) return;
+			m_IsRemoteChoked = false;
+			try
+			{
+				SendUnchokeMsg ();
+				ProcessUploadRequests ();
+			}
+			catch (...)
+			{
+				m_IsRemoteChoked = true;
+				Close ();
+				throw;
+			}
+			return;
+		}
+		if (m_IsRemoteChoked) return;
+		try
+		{
+			// Preparation shares the failure boundary with wire submission:
+			// reserve() failure must revoke the former grant as well.
+			auto revoked = m_UploadLoads.CancelForChoke ();
+			std::list<RequestedBlock> queued;
+			queued.splice (queued.end (), m_IncomingRequestsQueue);
+			m_IsRemoteChoked = true;
+			m_UploadRate = 0;
+			SendChokeMsg ();
+			// BEP 6 requires explicit rejections after choke. This router
+			// advertises no upload Allowed Fast set, so no piece is exempt.
+			// Canceled jobs retain quota and will not answer a second time.
+			if (m_IsFast)
+			{
+				for (const auto & [index, offset, length] : queued) SendRejectRequestMsg (index, offset, length);
+				for (const auto & [index, offset, length] : revoked) SendRejectRequestMsg (index, offset, length);
+			}
+		}
+		catch (...)
+		{
+			m_IsRemoteChoked = true;
+			Close ();
+			throw;
+		}
 	}
 
 	void PeerConnection::SendChokeMsg ()
