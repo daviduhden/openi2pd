@@ -28,9 +28,9 @@
 #include <sys/un.h>
 #include <thread>
 #include <unistd.h>
-#include <vector>
 
 #include "TuiProtocol.h"
+#include "tui/PosixConnectRetry.h"
 #include "daemon/TuiServer.h"
 #include "daemon/TuiServerCommon.h"
 #include "tui/TuiClient.h"
@@ -503,48 +503,64 @@ void TestBoundedStop (const std::string & directory)
 
 void TestConnectIsBounded (const std::string & path)
 {
-	// The console runs Connect() on its only thread, so a listener whose
-	// accept queue is saturated must fail the bounded attempt instead of
-	// freezing the whole interface. The server serves one client at a time
-	// and listen(fd, 4) queues the rest.
+	// Exercise timeout/error policy with a fake clock and connector. Kernel
+	// backlog sizing is advisory, so real accept-queue saturation is not a
+	// portable way to reach this branch.
+	{
+		using Clock = std::chrono::steady_clock;
+		Clock::time_point now { };
+		int attempts = 0;
+		const int error = i2p::tui::detail::RetryUnixConnectUntil (
+			now + std::chrono::milliseconds (100), [&] { return now; },
+			[&]
+			{
+				++attempts;
+				errno = EAGAIN;
+				return -1;
+			}, [&] (auto interval) { now += interval; }, std::chrono::milliseconds (20));
+		assert (error == ETIMEDOUT);
+		assert (attempts == 6);
+	}
+	{
+		using Clock = std::chrono::steady_clock;
+		Clock::time_point now { };
+		int attempts = 0;
+		const int error = i2p::tui::detail::RetryUnixConnectUntil (
+			now + std::chrono::seconds (1), [&] { return now; },
+			[&]
+			{
+				if (++attempts < 3)
+				{
+					errno = EINTR;
+					return -1;
+				}
+				return 0;
+			}, [&] (auto interval) { now += interval; }, std::chrono::milliseconds (20));
+		assert (error == 0);
+		assert (attempts == 3);
+		assert (now == Clock::time_point { });
+	}
+	{
+		using Clock = std::chrono::steady_clock;
+		Clock::time_point now { };
+		const int error = i2p::tui::detail::RetryUnixConnectUntil (
+			now + std::chrono::seconds (1), [&] { return now; },
+			[]
+			{
+				errno = ENOENT;
+				return -1;
+			}, [&] (auto interval) { now += interval; }, std::chrono::milliseconds (20));
+		assert (error == ENOENT);
+		assert (now == Clock::time_point { });
+	}
+
 	i2p::tui::Client served (path);
 	assert (served.Connect ().has_value ());
 	auto pong = served.Request ("PING");
 	assert (pong.has_value ());
 	assert (pong->starts_with ("pong="));
 
-	// Fill the accept queue. The attempt that cannot complete is the proof:
-	// a blocking connect would never return, so the loop itself is the
-	// regression for the bounded attempt.
-	std::vector<std::unique_ptr<i2p::tui::Client>> queued;
-	std::chrono::steady_clock::duration blockedFor { };
-	bool queueFull = false;
-	for (int attempt = 0; attempt < 16 && !queueFull; ++attempt)
-	{
-		auto client = std::make_unique<i2p::tui::Client> (path);
-		const auto started = std::chrono::steady_clock::now ();
-		auto connected = client->Connect ();
-		blockedFor = std::chrono::steady_clock::now () - started;
-		if (connected)
-		{
-			// The connection is queued and stays open, so the next attempt
-			// has one slot fewer.
-			queued.emplace_back (std::move (client));
-			continue;
-		}
-		assert (connected.error ().find ("connect:") != std::string::npos);
-		assert (!client->IsConnected ());
-		queueFull = true;
-	}
-	assert (queueFull);
-	assert (!queued.empty ());
-	// Two seconds of budget plus scheduling slack, and far below the
-	// thirty-minute lifetime of one served connection.
-	assert (blockedFor < std::chrono::seconds (6));
-
-	// Releasing the served and queued clients lets the accept loop drain and
-	// serve again; a failed bounded attempt leaves nothing behind.
-	queued.clear ();
+	// Release the one real client and verify a fresh connection still works.
 	served.Disconnect ();
 
 	i2p::tui::Client recovered (path);
