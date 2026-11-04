@@ -105,6 +105,15 @@ report that limitation; do not substitute local execution. Ask for:
 
 ## Known issues and decisions
 
+- A single-flight data-storage response must match type, decodable payload,
+  request ID, worker generation and artifact kind. Typed Error must also name
+  the pending operation. Any mismatch retires the channel before returning:
+  a real reply left queued would desynchronize every following request.
+  Never replay an ambiguous write/remove. Client Busy is not evidence that
+  the channel survived; distinguish it from a correlated wire Busy refusal.
+  The negative source contract pins this path; malformed worker reply
+  injection remains a dynamic regression gap.
+
 - Unix startup abort calls `StopPrivsepWorkers` after init may already
   have created artifact and router storage workers. Review this abort
   inventory alongside normal stop and DaemonInit rollback. Revoke each

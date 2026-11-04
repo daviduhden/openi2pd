@@ -956,10 +956,11 @@ struct DataStorageClient::Impl
 	 *
 	 * Validation (kind, canonical name, payload bound) happens before any
 	 * worker contact, so a refused request cannot change the worker's
-	 * state. A send/receive failure closes the channel and moves the
-	 * client into restarting, and becomes a terminal `Failed` once the
-	 * shared attempt window is spent; the ambiguous request is never
-	 * replayed, so the caller sees false. `LastStatus()` reports Busy for
+	 * state. A send/receive or reply-correlation failure closes the
+	 * channel and moves the client into restarting. The client becomes
+	 * terminal `Failed` once the shared attempt window is spent; the
+	 * ambiguous request is never replayed, so the caller sees false.
+	 * `LastStatus()` reports Busy for
 	 * that case, Rejected for a typed per-request `Error` reply (which
 	 * leaves the channel usable) and for a local refusal, and request-id
 	 * exhaustion is a local Busy refusal.
@@ -1035,10 +1036,12 @@ struct DataStorageClient::Impl
 		if (message.type == MessageType::Error)
 		{
 			// A typed per-request refusal keeps the channel alive only when it
-			// answers this request. An uncorrelated Error cannot be the answer
-			// to the pending operation, and accepting it would leave the real
-			// reply queued and desynchronise every later operation.
-			if (message.requestId != id)
+			// answers this request with a valid operation-specific payload.
+			// An uncorrelated Error cannot answer the pending operation:
+			// accepting it leaves the real reply queued and desynchronizes
+			// every later operation.
+			auto error = DecodeError (message.payload);
+			if (message.requestId != id || !error || std::get<0> (*error) != MessageType::DataStorageRequest)
 			{
 				lastStatus.store (DataStorageStatus::Busy);
 				MarkRestart ("uncorrelated worker error");
@@ -1049,12 +1052,15 @@ struct DataStorageClient::Impl
 		}
 		auto decoded = DecodeDataStorageReply (message.payload);
 		if (message.type != MessageType::DataStorageReply || !decoded
+			|| std::get<1> (*decoded) != static_cast<uint8_t> (kind)
 			|| !IsCurrentDataStorageReply (std::get<2> (*decoded), message.requestId, generation, id))
 		{
-			// A reply from a replaced worker, or for a request the client has
-			// already abandoned, is dropped. The channel stays usable because
-			// the frame itself was well formed.
+			// Single-flight ownership means any unexpected reply corrupts
+			// this transaction. Its real reply may still be queued: leaving
+			// the channel open would keep later operations one reply behind.
+			// Retire the channel and never replay the ambiguous write/remove.
 			lastStatus.store (DataStorageStatus::Busy);
+			MarkRestart ("invalid or uncorrelated worker reply");
 			return false;
 		}
 		const auto status = static_cast<DataStorageStatus> (std::get<0> (*decoded));

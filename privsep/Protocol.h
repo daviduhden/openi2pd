@@ -861,10 +861,10 @@ inline i2p::expected<std::tuple<MessageType, ErrorCode, std::string>, ProtocolEr
 }
 
 /**
- * Wire status of one data-storage operation. `Busy` never means the
- * worker is dead: it is a bounded local or worker-side refusal that
- * leaves the channel usable (request-id space exhausted, single-flight
- * slot busy).
+ * Wire status of one data-storage operation. A correlated `Busy` reply
+ * is a bounded worker refusal and leaves the channel usable. Client
+ * LastStatus also uses Busy for local admission or transport failure;
+ * it alone does not establish channel health or write completion.
  */
 enum class DataStorageStatus : uint8_t
 {

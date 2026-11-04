@@ -7,8 +7,8 @@
  * Simulates worker death with a real child: the failing write is
  * reported and never replayed, the retry is scheduled by the injected
  * clock (250 ms then 500 ms), the replacement worker gets a new
- * generation, stale replies are dropped, and request-id exhaustion is a
- * Busy refusal that keeps the client usable. Skipped when the kernel
+ * generation, stale replies cannot be applied, and request-id exhaustion
+ * is a Busy refusal that keeps the client usable. Skipped when the kernel
  * cannot provide the storage sandbox or the process is privileged.
  * Prepared for manual CI only.
  */
@@ -187,9 +187,10 @@ int main (int argc, char ** argv)
 	assert (client.Write (StorageArtifact::RouterInfoCache, name, Bytes (5, 16)));
 	assert (client.Generation () == 4);
 
-	// Stale-generation replies are dropped, so a reply from an older
-	// worker
-	// can never be applied to the current request.
+	// Pure correlation checks: replies from older workers/requests cannot
+	// be applied to the current operation. Invalid live replies also retire
+	// the channel; the compile-free authority contract pins that branch
+	// because this fixture has no reply-injection seam.
 	assert (IsCurrentDataStorageReply (3, 42, 3, 42));
 	assert (!IsCurrentDataStorageReply (2, 42, 3, 42));
 	assert (!IsCurrentDataStorageReply (3, 41, 3, 42));
