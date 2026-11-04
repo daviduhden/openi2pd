@@ -69,7 +69,7 @@ Options:
 | `WITH_UPNP` | ON | Require MiniUPnPc 2.2.6/API 17 and define `USE_UPNP`; API 18 signature used when available; also used by the Android JNI target |
 | `WITH_TORRENTS` | ON | Include the BitTorrent client and require Boost.JSON/URL; pass `-DWITH_TORRENTS=OFF` to omit it on Linux, OpenBSD or Windows |
 | `WITH_STATIC` | OFF | Static link the router where supported |
-| `WITH_HARDENING` | OFF | Stack protector, FORTIFY, RELRO/NOW |
+| `WITH_HARDENING` | OFF | GCC/Clang: stack protector, FORTIFY and RELRO/NOW; MSVC: `/GS`, `/sdl`, Control Flow Guard, ASLR and DEP (plus high-entropy ASLR for 64-bit targets) |
 | `WITH_ADDRSANITIZER` | OFF | ASan |
 | `WITH_THREADSANITIZER` | OFF | TSan (mutually exclusive with ASan) |
 | `WITH_UNDEFSANITIZER` | OFF | UBSan |

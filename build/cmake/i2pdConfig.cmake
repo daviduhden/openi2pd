@@ -11,6 +11,15 @@
 
 @PACKAGE_INIT@
 
+# Match the project's dependency discovery policy inside this package
+# include, without changing the consumer's surrounding policy scope.
+if(POLICY CMP0144)
+  cmake_policy(SET CMP0144 NEW)
+endif()
+if(POLICY CMP0167)
+  cmake_policy(SET CMP0167 NEW)
+endif()
+
 include(CMakeFindDependencyMacro)
 find_dependency(Threads)
 find_dependency(Boost @I2PD_BOOST_MIN_VERSION@

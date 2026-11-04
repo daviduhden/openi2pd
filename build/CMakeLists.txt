@@ -12,6 +12,13 @@
 
 cmake_minimum_required(VERSION 3.24)
 
+# CMP0144 NEW honors upper-case dependency root variables. Set it only
+# where the running CMake knows the policy; older supported versions retain
+# their legacy behavior without a developer warning.
+if(POLICY CMP0144)
+  cmake_policy(SET CMP0144 NEW)
+endif()
+
 # CMake 3.30 removed FindBoost in favor of Boost's package config. Select
 # that maintained discovery path explicitly where the policy is available;
 # older supported CMake versions continue using their bundled module.
@@ -741,11 +748,11 @@ add_library(i2pd_warnings INTERFACE)
 if(MSVC)
   target_compile_options(i2pd_warnings INTERFACE /W4 /permissive- /Zc:__cplusplus /utf-8)
   if(WITH_HARDENING)
-    # The Unix hardening block below is not equivalent on MSVC; do not
-    # accept the option silently and leave the binary uninstrumented by
-    # accident.
-    message(WARNING
-      "WITH_HARDENING is not implemented for MSVC; configure without it or add explicit MSVC linker flags")
+    target_compile_options(i2pd_warnings INTERFACE /GS /sdl /guard:cf)
+    target_link_options(i2pd_warnings INTERFACE /guard:cf /DYNAMICBASE /NXCOMPAT)
+    if(CMAKE_SIZEOF_VOID_P EQUAL 8)
+      target_link_options(i2pd_warnings INTERFACE /HIGHENTROPYVA)
+    endif()
   endif()
 else()
   target_compile_options(i2pd_warnings INTERFACE

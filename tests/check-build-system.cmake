@@ -146,7 +146,7 @@ endforeach()
 # Dependency floors and removed compatibility branches are part of the
 # maintained contract. These are compile-free source checks.
 foreach(required IN ITEMS "OpenSSL 3.0.2" "LibreSSL 4.0" "cmake_minimum_required(VERSION 3.24)" "I2PD_LIBRESSL_VERSION" "LIBRESSL_VERSION_TEXT"
-    "cmake_policy(SET CMP0167 NEW)"
+    "cmake_policy(SET CMP0144 NEW)" "cmake_policy(SET CMP0167 NEW)"
     "I2PD_OPENSSL_EXPECT" "I2PD_OPENSSL_EXPECT_MAJOR" "I2PD_HAVE_EVP_PKEY_IS_A" "I2PD_HAVE_EVP_KDF_FETCH"
     "I2PD_HAVE_EVP_EC_GEN" "I2PD_HAVE_SSL_SET1_DNSNAME" "I2PD_HAVE_SSL_SET1_HOST"
     "I2PD_HAVE_OPENSSL_MLKEM_H" "I2PD_OPENSSL_PROBE_STAMP" "I2PD_OPENSSL_LINK_OK"
@@ -202,6 +202,10 @@ assert_present("${top_cmake_text}" "OPTIONAL_COMPONENTS container"
 assert_present("${top_cmake_text}" "target_link_libraries(libi2pdclient PRIVATE Boost::json Boost::url)"
   "torrent RPC must link the Boost.JSON/URL implementations")
 read_required("${PROJECT_ROOT}/build/cmake/i2pdConfig.cmake" package_config_text)
+assert_present("${package_config_text}" "cmake_policy(SET CMP0144 NEW)"
+  "installed Boost discovery must honor CMP0144 without warning")
+assert_present("${package_config_text}" "cmake_policy(SET CMP0167 NEW)"
+  "installed Boost discovery must select package config mode without warning")
 read_required("${PROJECT_ROOT}/android/app/src/main/cpp/CMakeLists.txt" android_wrapper_text)
 read_required("${PROJECT_ROOT}/android/app/build.gradle" android_gradle_text)
 assert_present("${android_wrapper_text}" "CMAKE_FIND_ROOT_PATH_MODE_LIBRARY BOTH"
@@ -240,6 +244,12 @@ assert_absent("${top_cmake_text}" "wsock32" "obsolete Winsock 1.1 import library
 assert_absent("${top_cmake_text}" "crypt32" "unused crypt32 import library")
 assert_present("${top_cmake_text}" "-Wl,--dynamicbase -Wl,--nxcompat"
   "MinGW hardening must use PE rather than ELF linker options")
+assert_present("${top_cmake_text}" "target_compile_options(i2pd_warnings INTERFACE /GS /sdl /guard:cf)"
+  "MSVC hardening must enable stack checks, SDL checks and Control Flow Guard")
+assert_present("${top_cmake_text}" "target_link_options(i2pd_warnings INTERFACE /guard:cf /DYNAMICBASE /NXCOMPAT)"
+  "MSVC hardening must enable Control Flow Guard, ASLR and DEP")
+assert_present("${top_cmake_text}" "target_link_options(i2pd_warnings INTERFACE /HIGHENTROPYVA)"
+  "64-bit MSVC hardening must enable high-entropy ASLR")
 assert_present("${tests_cmake_text}" "test-boost-linkage"
   "compiled Boost.JSON/URL dependencies need a link regression")
 assert_absent("${top_cmake_text}" "OPENSSL_SUPPRESS_DEPRECATED"
