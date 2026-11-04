@@ -138,9 +138,10 @@ namespace crypto
 			size_t len, uint8_t * signature) const;
 		/// RedDSA variant (Proposal 123) used by LeaseSet2: the nonce is
 		/// randomized (80 CSPRNG bytes per RFC-style construction) because a
-		/// predictable nonce would reveal the private scalar. A failed nonce
-		/// draw zeroes the signature rather than falling back to a
-		/// deterministic nonce.
+		/// predictable nonce would reveal the private scalar. Missing input,
+		/// nonce, digest or scalar-operation failure zeroes the non-null
+		/// signature output. Temporary nonce and scalar storage is cleansed.
+		/// The output may overlap the message; a null message requires len 0.
 		void SignRedDSA (const uint8_t * privateKey, const uint8_t * publicKeyEncoded, const uint8_t * buf, size_t len,
 			uint8_t * signature) const;
 
@@ -164,10 +165,10 @@ namespace crypto
 		bool IsOnCurve (const EDDSAPoint & p, BN_CTX * ctx) const;
 		BIGNUM * RecoverX (const BIGNUM * y, BN_CTX * ctx) const;
 		EDDSAPoint DecodePoint (const uint8_t * buf, BN_CTX * ctx) const;
-		void EncodePoint (const EDDSAPoint & p, uint8_t * buf) const;
+		bool EncodePoint (const EDDSAPoint & p, uint8_t * buf) const;
 
 		template <int len> BIGNUM * DecodeBN (const uint8_t * buf) const;
-		void EncodeBN (const BIGNUM * bn, uint8_t * buf, size_t len) const;
+		bool EncodeBN (const BIGNUM * bn, uint8_t * buf, size_t len) const;
 
 	private:
 		BIGNUM *q, *l, *d, *I;

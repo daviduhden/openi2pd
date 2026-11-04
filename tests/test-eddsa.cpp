@@ -121,6 +121,30 @@ int main ()
 	// Blinding must reject a y-encoding whose recovered x is not on the
 	// curve.
 	auto & ed25519 = i2p::crypto::GetEd25519 ();
+	// RedDSA must preserve a valid randomized signature and overlap, while
+	// missing input zeroes the entire output rather than leaving stale data.
+	{
+		uint8_t scalar[32] { 1 };
+		i2p::crypto::RedDSA25519Signer redSigner (scalar);
+		i2p::crypto::RedDSA25519Verifier redVerifier;
+		redVerifier.SetPublicKey (redSigner.GetPublicKey ());
+		uint8_t output[64];
+		redSigner.Sign (msg, 1023, output);
+		assert (redVerifier.Verify (msg, 1023, output));
+		uint8_t overlapping[64] { 1, 2, 3 };
+		const uint8_t original[] { 1, 2, 3 };
+		redSigner.Sign (overlapping, sizeof (original), overlapping);
+		assert (redVerifier.Verify (original, sizeof (original), overlapping));
+		for (unsigned missing = 0; missing < 3; ++missing)
+		{
+			memset (output, 0xA5, sizeof (output));
+			ed25519->SignRedDSA (missing == 0 ? nullptr : scalar,
+				missing == 1 ? nullptr : redSigner.GetPublicKey (),
+				missing == 2 ? nullptr : msg, 1023, output);
+			for (auto byte : output) assert (byte == 0);
+		}
+		ed25519->SignRedDSA (scalar, redSigner.GetPublicKey (), msg, 1023, nullptr);
+	}
 	assert (ed25519->IsValidPublicKey (pub));
 	uint8_t invalid[32] { };
 	bool foundInvalid = false;
@@ -160,10 +184,10 @@ int main ()
 	// use a constant-time comparison. S + L would otherwise verify because
 	// the base-point multiplication reduces the scalar modulo L.
 	{
-		std::array<uint8_t, 32> r { }, pubKey { }, digest { };
+		std::array<uint8_t, 32> r { }, pubKey { };
 		memcpy (r.data (), s, r.size ());
 		memcpy (pubKey.data (), pub, pubKey.size ());
-		Sha512 (r, pubKey, msg, 1023, digest.data ());
+		const auto digest = Sha512 (r, pubKey, msg, 1023);
 
 		BN_CTX * ctx = BN_CTX_new ();
 		assert (ctx);

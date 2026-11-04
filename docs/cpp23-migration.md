@@ -183,6 +183,14 @@ Behavioral compatibility of the modernized code remains subject to manual CI.
 
 ## Ownership/RAII continuation validation
 
+RedDSA signing now owns its EVP/BN contexts and scalar intermediates through
+`unique_ptr` deleters and a `ScopeExit` commit/cleansing guard. Digest,
+randomness and scalar-operation failures zero the signature; output may still
+overlap the message. Positive, overlap and missing-input regressions are
+prepared in `test-eddsa`, pending manual CI compilation/tests. The shared
+point-arithmetic helpers still contain unchecked BIGNUM operations; this
+change does not establish allocator-fault safety for those internals.
+
 The Kademlia, Garlic, Reseed, daemon descriptor/OpenSSL, ClientContext/
 AddressBook, span-tool and signature/GOST changes in this continuation are
 **static-only**. The new `test-kad-dht`, `test-addressbook`, extended

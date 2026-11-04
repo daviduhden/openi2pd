@@ -15,9 +15,11 @@
 #include <openssl/evp.h>
 #include <openssl/crypto.h>
 #include <cstring>
+#include <memory>
 #include "Log.h"
 #include "Crypto.h"
 #include "Ed25519.h"
+#include "Modern.h"
 
 namespace i2p
 {
@@ -226,56 +228,50 @@ namespace crypto
 	void Ed25519::SignRedDSA (const uint8_t * privateKey, const uint8_t * publicKeyEncoded, const uint8_t * buf,
 		size_t len, uint8_t * signature) const
 	{
-		BN_CTX * bnCtx = BN_CTX_new ();
-		// T = 80 random bytes
-		uint8_t T[80];
-		if (!bnCtx || RAND_bytes (T, sizeof (T)) != 1)
-		{
-			// A predictable RedDSA nonce would reveal the private scalar.
-			OPENSSL_cleanse (T, sizeof (T));
-			if (bnCtx) BN_CTX_free (bnCtx);
-			memset (signature, 0, EDDSA25519_SIGNATURE_LENGTH);
-			LogPrint (eLogError, "RedDSA: random nonce generation failed");
-			return;
-		}
-		// calculate r = H*(T || publickey || data)
-		EVP_MD_CTX * ctx = EVP_MD_CTX_new ();
-		EVP_DigestInit_ex (ctx, EVP_sha512 (), NULL);
-		EVP_DigestUpdate (ctx, T, 80);
-		EVP_DigestUpdate (ctx, publicKeyEncoded, 32);
-		EVP_DigestUpdate (ctx, buf, len); // data
-		uint8_t digest[64];
-		unsigned int dl = 64;
-		EVP_DigestFinal_ex (ctx, digest, &dl);
-		EVP_MD_CTX_free (ctx);
-		BIGNUM * r = DecodeBN<64> (digest);
-		BN_mod (r, r, l, bnCtx); // % l
-		EncodeBN (r, digest, 32);
-		// calculate R
-		uint8_t R[EDDSA25519_SIGNATURE_LENGTH / 2]; // we must use separate buffer because signature might be inside buf
-		EncodePoint (Normalize (MulB (digest, bnCtx), bnCtx), R);
-		// calculate S
-		ctx = EVP_MD_CTX_new ();
-		EVP_DigestInit_ex (ctx, EVP_sha512 (), NULL);
-		EVP_DigestUpdate (ctx, R, EDDSA25519_SIGNATURE_LENGTH / 2); // R
-		EVP_DigestUpdate (ctx, publicKeyEncoded, EDDSA25519_PUBLIC_KEY_LENGTH); // public key
-		EVP_DigestUpdate (ctx, buf, len); // data
-		dl = 64;
-		EVP_DigestFinal_ex (ctx, digest, &dl);
-		EVP_MD_CTX_free (ctx);
-		BIGNUM * h = DecodeBN<64> (digest);
-		// S = (r + h*a) % l
-		BIGNUM * a = DecodeBN<EDDSA25519_PRIVATE_KEY_LENGTH> (privateKey);
-		BN_mod_mul (h, h, a, l, bnCtx); // %l
-		BN_mod_add (h, h, r, l, bnCtx); // %l
-		memcpy (signature, R, EDDSA25519_SIGNATURE_LENGTH / 2);
-		EncodeBN (h, signature + EDDSA25519_SIGNATURE_LENGTH / 2, EDDSA25519_SIGNATURE_LENGTH / 2); // S
-		OPENSSL_cleanse (T, sizeof (T));
-		OPENSSL_cleanse (digest, sizeof (digest));
-		BN_clear_free (r); // secret nonce scalar
-		BN_free (h); // public signature scalar
-		BN_clear_free (a);
-		BN_CTX_free (bnCtx);
+		if (!signature) return;
+		bool complete = false;
+		uint8_t T[80] {}, digest[64] {}, R[EDDSA25519_SIGNATURE_LENGTH / 2] {};
+		i2p::modern::ScopeExit cleanup ([&]
+			{
+				OPENSSL_cleanse (T, sizeof (T));
+				OPENSSL_cleanse (digest, sizeof (digest));
+				OPENSSL_cleanse (R, sizeof (R));
+				if (!complete)
+				{
+					memset (signature, 0, EDDSA25519_SIGNATURE_LENGTH);
+					LogPrint (eLogError, "RedDSA: signing failed");
+				}
+			});
+		if (!privateKey || !publicKeyEncoded || (!buf && len)) return;
+		std::unique_ptr<BN_CTX, decltype (&BN_CTX_free)> bnCtx (BN_CTX_new (), BN_CTX_free);
+		std::unique_ptr<EVP_MD_CTX, decltype (&EVP_MD_CTX_free)> ctx (EVP_MD_CTX_new (), EVP_MD_CTX_free);
+		if (!bnCtx || !ctx || RAND_bytes (T, sizeof (T)) != 1) return;
+		unsigned int dl = sizeof (digest);
+		// Proposal 123: r = H*(T || public key || message).
+		if (EVP_DigestInit_ex (ctx.get (), EVP_sha512 (), nullptr) != 1
+			|| EVP_DigestUpdate (ctx.get (), T, sizeof (T)) != 1
+			|| EVP_DigestUpdate (ctx.get (), publicKeyEncoded, EDDSA25519_PUBLIC_KEY_LENGTH) != 1
+			|| (len && EVP_DigestUpdate (ctx.get (), buf, len) != 1)
+			|| EVP_DigestFinal_ex (ctx.get (), digest, &dl) != 1 || dl != sizeof (digest)) return;
+		using SecretBN = std::unique_ptr<BIGNUM, decltype (&BN_clear_free)>;
+		SecretBN r (DecodeBN<64> (digest), BN_clear_free);
+		if (!r || BN_mod (r.get (), r.get (), l, bnCtx.get ()) != 1) return;
+		if (!EncodeBN (r.get (), digest, 32)) return;
+		// Keep R separate: the signature is allowed to overlap the message.
+		if (!EncodePoint (Normalize (MulB (digest, bnCtx.get ()), bnCtx.get ()), R)) return;
+		dl = sizeof (digest);
+		if (EVP_DigestInit_ex (ctx.get (), EVP_sha512 (), nullptr) != 1
+			|| EVP_DigestUpdate (ctx.get (), R, sizeof (R)) != 1
+			|| EVP_DigestUpdate (ctx.get (), publicKeyEncoded, EDDSA25519_PUBLIC_KEY_LENGTH) != 1
+			|| (len && EVP_DigestUpdate (ctx.get (), buf, len) != 1)
+			|| EVP_DigestFinal_ex (ctx.get (), digest, &dl) != 1 || dl != sizeof (digest)) return;
+		SecretBN h (DecodeBN<64> (digest), BN_clear_free);
+		SecretBN a (DecodeBN<EDDSA25519_PRIVATE_KEY_LENGTH> (privateKey), BN_clear_free);
+		if (!h || !a || BN_mod_mul (h.get (), h.get (), a.get (), l, bnCtx.get ()) != 1
+			|| BN_mod_add (h.get (), h.get (), r.get (), l, bnCtx.get ()) != 1) return;
+		memcpy (signature, R, sizeof (R));
+		if (!EncodeBN (h.get (), signature + sizeof (R), sizeof (R))) return;
+		complete = true;
 	}
 
 	EDDSAPoint Ed25519::Sum (const EDDSAPoint & p1, const EDDSAPoint & p2, BN_CTX * ctx) const
@@ -517,11 +513,12 @@ namespace crypto
 		return p;
 	}
 
-	void Ed25519::EncodePoint (const EDDSAPoint & p, uint8_t * buf) const
+	bool Ed25519::EncodePoint (const EDDSAPoint & p, uint8_t * buf) const
 	{
-		EncodeBN (p.y, buf, EDDSA25519_PUBLIC_KEY_LENGTH);
+		if (!p.x || !p.y || !EncodeBN (p.y, buf, EDDSA25519_PUBLIC_KEY_LENGTH)) return false;
 		if (BN_is_bit_set (p.x, 0)) // highest bit
 			buf[EDDSA25519_PUBLIC_KEY_LENGTH - 1] |= 0x80; // set highest bit
+		return true;
 	}
 
 	template <int len> BIGNUM * Ed25519::DecodeBN (const uint8_t * buf) const
@@ -533,15 +530,14 @@ namespace crypto
 			buf1[i] = buf[len - 1 - i];
 			buf1[len - 1 - i] = buf[i];
 		}
-		BIGNUM * res = BN_new ();
-		BN_bin2bn (buf1, len, res);
+		BIGNUM * res = BN_bin2bn (buf1, len, nullptr);
 		OPENSSL_cleanse (buf1, len);
 		return res;
 	}
 
-	void Ed25519::EncodeBN (const BIGNUM * bn, uint8_t * buf, size_t len) const
+	bool Ed25519::EncodeBN (const BIGNUM * bn, uint8_t * buf, size_t len) const
 	{
-		bn2buf (bn, buf, len);
+		if (!bn2buf (bn, buf, len)) return false;
 		// To Little Endian
 		for (size_t i = 0; i < len / 2; i++) // invert bytes
 		{
@@ -549,6 +545,7 @@ namespace crypto
 			buf[i] = buf[len - 1 - i];
 			buf[len - 1 - i] = tmp;
 		}
+		return true;
 	}
 
 	bool Ed25519::BlindPublicKey (const uint8_t * pub, const uint8_t * seed, uint8_t * blinded)
