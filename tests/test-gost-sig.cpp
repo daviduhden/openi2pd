@@ -44,6 +44,7 @@ int main ()
 		auto & curve = *i2p::crypto::GetGOSTR3410Curve (i2p::crypto::eGOSTR3410CryptoProA);
 		BN_CTX * ctx = BN_CTX_new ();
 		assert (ctx);
+		BN_CTX_start (ctx);
 		BIGNUM *q = BN_CTX_get (ctx), *privBN = BN_CTX_get (ctx);
 		BIGNUM *digest = BN_CTX_get (ctx), *r = BN_CTX_get (ctx), *s = BN_CTX_get (ctx);
 		assert (q && privBN && digest && r && s && EC_GROUP_get_order (curve.GetGroup (), q, ctx) == 1);
@@ -61,6 +62,7 @@ int main ()
 			assert (curve.Verify (pubPoint, digest, r, s));
 		}
 		EC_POINT_free (pubPoint);
+		BN_CTX_end (ctx);
 		BN_CTX_free (ctx);
 	}
 }

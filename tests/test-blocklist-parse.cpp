@@ -144,7 +144,8 @@ void TestHashes ()
 	assert (entry.kind == OperatorBlocklistEntryKind::RouterHash);
 	assert (entry.routerHash == hash);
 
-	auto withReason = ParseOk ("Known bad router:" + line);
+	const auto withReasonLine = "Known bad router:" + line;
+	auto withReason = ParseOk (withReasonLine);
 	assert (withReason.kind == OperatorBlocklistEntryKind::RouterHash);
 	assert (withReason.routerHash == hash);
 	assert (withReason.reason == "Known bad router");

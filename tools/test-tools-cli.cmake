@@ -220,11 +220,12 @@ endif()
 # A Win32 reserved device name ("nul.b64") is the null device in every
 # directory, so the fixture would be empty on Windows and the rejection
 # below would pass vacuously. Use a compound stem and pin the bytes that
-# were actually written.
-file(WRITE "${WORK}/nul-input.b64" "AAAA\n")
+# were actually written. No line terminator is needed; text-mode CMake
+# output can expand LF to CRLF on Windows.
+file(WRITE "${WORK}/nul-input.b64" "AAAA")
 file(READ "${WORK}/nul-input.b64" NUL_INPUT_HEX HEX)
-if(NOT NUL_INPUT_HEX STREQUAL "414141410a")
-  fail("b33address NUL fixture content is ${NUL_INPUT_HEX}, expected 414141410a")
+if(NOT NUL_INPUT_HEX STREQUAL "41414141")
+  fail("b33address NUL fixture content is ${NUL_INPUT_HEX}, expected 41414141")
 endif()
 set(TOOL_STDIN "${WORK}/nul-input.b64")
 run_cli(b33address out err)

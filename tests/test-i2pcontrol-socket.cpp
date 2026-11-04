@@ -135,10 +135,10 @@ int main ()
 
 			const auto identity = IdentifySocketPath (socketPath);
 			Check (identity.valid, "socket identity recorded");
-			::close (fd);
 
-			// Same path, different socket: the recorded identity must not delete
-			// the replacement.
+			// Keep the original listener open like I2PControlService does
+			// until after unlinking its path. The live inode prevents immediate
+			// inode reuse from making this replacement look identical.
 			::unlink (socketPath.c_str ());
 			const int replacement = BindUnixSocket (socketPath);
 			Check (replacement >= 0, "replacement socket bound");
@@ -151,6 +151,7 @@ int main ()
 				Check (!Exists (socketPath), "own socket is removed");
 				::close (replacement);
 			}
+			::close (fd);
 
 			// An absent path is never reported as removed.
 			SocketIdentity absent;

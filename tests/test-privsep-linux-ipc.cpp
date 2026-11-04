@@ -170,8 +170,8 @@ void TestEmptyRecordIsNotEof ()
 	assert (SendRawWithFds (pair->first.Fd (), "", &fd, 1));
 	close (fd);
 	auto emptyWithFd = pair->second.ReceiveWithFd (50);
-	assert (emptyWithFd.has_value ());
-	assert (!emptyWithFd->has_value ());
+	assert (!emptyWithFd.has_value ());
+	assert (emptyWithFd.error () == "descriptor on an empty record");
 	if (before >= 0) assert (CountOpenFds () == before);
 	ExpectReusable (pair->first, pair->second, 202);
 

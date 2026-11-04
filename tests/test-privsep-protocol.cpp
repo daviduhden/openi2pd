@@ -407,7 +407,10 @@ int main ()
 	// legitimate record is still delivered intact instead of being
 	// truncated into a fatal ancillary-data fault. The refused frame here
 	// is header-only (a descriptor on a zero-payload Ping), so a shrunk
-	// buffer would be sixteen bytes.
+	// buffer would be sixteen bytes. One byte beyond the header proves the
+	// receive buffer was restored without assuming a kernel-specific
+	// maximum SOCK_SEQPACKET record size; the maximum payload is covered by
+	// the codec tests above.
 	{
 		auto recovery = Channel::CreatePair ();
 		assert (recovery.has_value ());
@@ -422,8 +425,7 @@ int main ()
 		assert (refusal.has_value () && refusal->has_value ());
 		assert ((*refusal)->type == MessageType::Error);
 		assert ((*refusal)->requestId == 11);
-		Message large { MessageType::RouterStorageRequest, 12,
-			std::string (MaxPayloadFor (MessageType::RouterStorageRequest), 'v') };
+		Message large { MessageType::RouterStorageRequest, 12, std::string (1, 'v') };
 		assert (recovery->first.Send (large).has_value ());
 		auto delivered = recovery->second.ReceiveWithFd (2000);
 		assert (delivered.has_value () && delivered->has_value ());

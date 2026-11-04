@@ -71,14 +71,32 @@ void TestFirstInstanceGuard ()
 	constexpr DWORD openMode
 		= PIPE_ACCESS_DUPLEX | FILE_FLAG_FIRST_PIPE_INSTANCE | FILE_FLAG_OVERLAPPED;
 	constexpr DWORD pipeMode = PIPE_TYPE_BYTE | PIPE_READMODE_BYTE | PIPE_WAIT | PIPE_REJECT_REMOTE_CLIENTS;
+	// Leave capacity for a second instance: exhaustion must not mask
+	// the namespace-exclusivity check being exercised here.
+	constexpr DWORD maxInstances = 2;
 
-	HANDLE first = CreateNamedPipeW (name.c_str (), openMode, pipeMode, 1, 4096, 4096, 0, nullptr);
+	HANDLE first = CreateNamedPipeW (name.c_str (), openMode, pipeMode, maxInstances, 4096, 4096, 0, nullptr);
 	if (first == INVALID_HANDLE_VALUE) fwprintf (stderr, L"CreateNamedPipeW failed: %lu\n", GetLastError ());
 	assert (first != INVALID_HANDLE_VALUE);
 
-	HANDLE second = CreateNamedPipeW (name.c_str (), openMode, pipeMode, 1, 4096, 4096, 0, nullptr);
+	HANDLE second = CreateNamedPipeW (name.c_str (), openMode, pipeMode, maxInstances, 4096, 4096, 0, nullptr);
+	const DWORD secondError = second == INVALID_HANDLE_VALUE ? GetLastError () : ERROR_SUCCESS;
+	if (second != INVALID_HANDLE_VALUE || secondError != ERROR_ACCESS_DENIED)
+		std::fprintf (stderr, "second first-instance pipe: error=%lu, expected=%lu\n",
+			static_cast<unsigned long> (secondError), static_cast<unsigned long> (ERROR_ACCESS_DENIED));
 	assert (second == INVALID_HANDLE_VALUE);
-	assert (GetLastError () == ERROR_ACCESS_DENIED);
+	assert (secondError == ERROR_ACCESS_DENIED);
+
+	// The identical request without FIRST_PIPE_INSTANCE must succeed.
+	// This distinguishes the guard from a quota or permission failure.
+	HANDLE ordinary = CreateNamedPipeW (name.c_str (), openMode & ~FILE_FLAG_FIRST_PIPE_INSTANCE,
+		pipeMode, maxInstances, 4096, 4096, 0, nullptr);
+	const DWORD ordinaryError = ordinary == INVALID_HANDLE_VALUE ? GetLastError () : ERROR_SUCCESS;
+	if (ordinary == INVALID_HANDLE_VALUE)
+		std::fprintf (stderr, "ordinary second pipe instance failed: %lu\n",
+			static_cast<unsigned long> (ordinaryError));
+	assert (ordinary != INVALID_HANDLE_VALUE);
+	assert (CloseHandle (ordinary));
 
 	assert (CloseHandle (first));
 }

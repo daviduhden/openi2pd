@@ -735,13 +735,13 @@ assert_stripped_output_equals("AA==" "i2pbase64 encodes NUL")
 
 # Cross-read padding: the quartet that carries '=' straddles the 4096-byte
 # read boundary, so the decoder must carry "AA" in its pending buffer and
-# join it with the "==" of the next read. Every prefix quartet is "qg=="
-# (0xaa), so the output is 1023 x 0xaa followed by the single 0x00 of the
-# padded quartet.
-string(REPEAT "qg==" 1023 SPLIT_PREFIX)
+# join it with the "==" of the next read. The prefix has only unpadded
+# "qqqq" quartets, each decoding to three 0xaa bytes. The final "AA=="
+# adds one 0x00 byte.
+string(REPEAT "qqqq" 1023 SPLIT_PREFIX)
 file(WRITE "${WORK}/split-padding.b64" "${SPLIT_PREFIX}\n\nAA==\n")
 run_tool_to_file(i2pbase64 "${WORK}/split-padding.bin" TRUE -d split-padding.b64)
-string(REPEAT "aa" 1023 SPLIT_HEX)
+string(REPEAT "aa" 3069 SPLIT_HEX)
 string(APPEND SPLIT_HEX "00")
 assert_file_hex("${WORK}/split-padding.bin" "${SPLIT_HEX}" "i2pbase64 decodes padding split across reads")
 
