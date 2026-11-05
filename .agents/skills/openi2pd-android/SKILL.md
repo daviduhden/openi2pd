@@ -121,6 +121,15 @@ run Gradle, install an APK or run a device test.
 
 ## Known issues and decisions
 
+- JNI static methods receive a mandatory `jclass` argument even when their
+  bodies do not use it. Omit unused names in native definitions instead of
+  disabling parameter warnings; preserve types, position and exported names.
+  Review adjacent entry points globally, since an early core compile failure
+  can hide JNI warnings seen by an earlier revision. If an unused documented
+  name is removed, describe the VM argument in prose rather than retaining an
+  unmatched Doxygen `@param`. Class references passed as actual operation
+  operands, such as the SAF bridge type, still require named ownership.
+
 - Dialog callbacks capture `UiDialogEpoch.Token` when the form is created,
   not when clicked. Recheck current view and mutation admission before work;
   retire authority before framework dismissal. Nested torrent forms require

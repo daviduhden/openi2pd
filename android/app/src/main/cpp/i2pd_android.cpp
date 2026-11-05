@@ -856,7 +856,7 @@ std::string BuildRecentLogs (uint64_t after, size_t limit)
 void DetachSafPayloads () noexcept;
 }
 
-JNIEXPORT jstring JNICALL Java_org_openi2pd_router_I2PD_1JNI_getABICompiledWith (JNIEnv * env, jclass clazz)
+JNIEXPORT jstring JNICALL Java_org_openi2pd_router_I2PD_1JNI_getABICompiledWith (JNIEnv * env, jclass)
 {
 #if defined(__arm__)
 #if defined(__ARM_ARCH_7A__)
@@ -905,7 +905,7 @@ JNIEXPORT jstring JNICALL Java_org_openi2pd_router_I2PD_1JNI_getABICompiledWith 
  * @return "ok", a bounded diagnostic, START_CANCELED_RESULT, or the
  * fixed role-conflict token
  */
-JNIEXPORT jstring JNICALL Java_org_openi2pd_router_I2PD_1JNI_startDaemon (JNIEnv * env, jclass clazz)
+JNIEXPORT jstring JNICALL Java_org_openi2pd_router_I2PD_1JNI_startDaemon (JNIEnv * env, jclass)
 {
 	return JniStringCall (
 		env,
@@ -968,7 +968,7 @@ extern "C" JNIEXPORT void JNICALL Java_org_openi2pd_router_I2PD_1JNI_requestStop
  * can ask for it without waiting behind a start that is copying
  * packaged assets.
  */
-JNIEXPORT jstring JNICALL Java_org_openi2pd_router_I2PD_1JNI_getDataDir (JNIEnv * env, jclass clazz)
+JNIEXPORT jstring JNICALL Java_org_openi2pd_router_I2PD_1JNI_getDataDir (JNIEnv * env, jclass)
 {
 	return JniStringCall (
 		env,
@@ -991,7 +991,7 @@ JNIEXPORT jstring JNICALL Java_org_openi2pd_router_I2PD_1JNI_getDataDir (JNIEnv 
  * remaining SAF payload capabilities are released on this attached JNI
  * thread so no JNI runs from a payload destructor.
  */
-JNIEXPORT void JNICALL Java_org_openi2pd_router_I2PD_1JNI_stopDaemon (JNIEnv * env, jclass clazz)
+JNIEXPORT void JNICALL Java_org_openi2pd_router_I2PD_1JNI_stopDaemon (JNIEnv * env, jclass)
 {
 	JniVoidCall (env,
 		[] ()
@@ -1011,7 +1011,7 @@ JNIEXPORT void JNICALL Java_org_openi2pd_router_I2PD_1JNI_stopDaemon (JNIEnv * e
 		});
 }
 
-JNIEXPORT void JNICALL Java_org_openi2pd_router_I2PD_1JNI_stopAcceptingTunnels (JNIEnv * env, jclass clazz)
+JNIEXPORT void JNICALL Java_org_openi2pd_router_I2PD_1JNI_stopAcceptingTunnels (JNIEnv * env, jclass)
 {
 	JniVoidCall (env,
 		[] ()
@@ -1022,7 +1022,7 @@ JNIEXPORT void JNICALL Java_org_openi2pd_router_I2PD_1JNI_stopAcceptingTunnels (
 		});
 }
 
-JNIEXPORT void JNICALL Java_org_openi2pd_router_I2PD_1JNI_startAcceptingTunnels (JNIEnv * env, jclass clazz)
+JNIEXPORT void JNICALL Java_org_openi2pd_router_I2PD_1JNI_startAcceptingTunnels (JNIEnv * env, jclass)
 {
 	JniVoidCall (env,
 		[] ()
@@ -1033,7 +1033,7 @@ JNIEXPORT void JNICALL Java_org_openi2pd_router_I2PD_1JNI_startAcceptingTunnels 
 		});
 }
 
-JNIEXPORT void JNICALL Java_org_openi2pd_router_I2PD_1JNI_reloadTunnelsConfigs (JNIEnv * env, jclass clazz)
+JNIEXPORT void JNICALL Java_org_openi2pd_router_I2PD_1JNI_reloadTunnelsConfigs (JNIEnv * env, jclass)
 {
 	JniVoidCall (env,
 		[] ()
@@ -1054,7 +1054,7 @@ JNIEXPORT void JNICALL Java_org_openi2pd_router_I2PD_1JNI_reloadTunnelsConfigs (
 	 * `disabled`, `accepted`, `busy` or `unavailable`. No URL, path or
 	 * option is accepted from Java.
 	 */
-JNIEXPORT jstring JNICALL Java_org_openi2pd_router_I2PD_1JNI_requestReseed (JNIEnv * env, jclass clazz)
+JNIEXPORT jstring JNICALL Java_org_openi2pd_router_I2PD_1JNI_requestReseed (JNIEnv * env, jclass)
 {
 	return JniStringCall (
 		env,
@@ -1068,7 +1068,7 @@ JNIEXPORT jstring JNICALL Java_org_openi2pd_router_I2PD_1JNI_requestReseed (JNIE
 }
 
 /** Change transit acceptance through the daemon-owned typed queue. */
-JNIEXPORT jstring JNICALL Java_org_openi2pd_router_I2PD_1JNI_setTransit (JNIEnv * env, jclass clazz, jboolean enabled)
+JNIEXPORT jstring JNICALL Java_org_openi2pd_router_I2PD_1JNI_setTransit (JNIEnv * env, jclass, jboolean enabled)
 {
 	return JniStringCall (
 		env,
@@ -1085,7 +1085,7 @@ JNIEXPORT jstring JNICALL Java_org_openi2pd_router_I2PD_1JNI_setTransit (JNIEnv 
 
 /** Apply one closed bandwidth class without writing configuration. */
 JNIEXPORT jstring JNICALL Java_org_openi2pd_router_I2PD_1JNI_setBandwidth (
-	JNIEnv * env, jclass clazz, jstring bandwidth)
+	JNIEnv * env, jclass, jstring bandwidth)
 {
 	return JniStringCall (
 		env,
@@ -1105,7 +1105,7 @@ JNIEXPORT jstring JNICALL Java_org_openi2pd_router_I2PD_1JNI_setBandwidth (
 }
 
 /** Apply a bounded share ratio without writing config. */
-JNIEXPORT jstring JNICALL Java_org_openi2pd_router_I2PD_1JNI_setShareRatio (JNIEnv * env, jclass clazz, jint percent)
+JNIEXPORT jstring JNICALL Java_org_openi2pd_router_I2PD_1JNI_setShareRatio (JNIEnv * env, jclass, jint percent)
 {
 	return JniStringCall (
 		env,
@@ -1128,7 +1128,7 @@ JNIEXPORT jstring JNICALL Java_org_openi2pd_router_I2PD_1JNI_setShareRatio (JNIE
 	 * The record never waits for the job and never carries a URL or
 	 * credential.
 	 */
-JNIEXPORT jstring JNICALL Java_org_openi2pd_router_I2PD_1JNI_getReseedStatus (JNIEnv * env, jclass clazz)
+JNIEXPORT jstring JNICALL Java_org_openi2pd_router_I2PD_1JNI_getReseedStatus (JNIEnv * env, jclass)
 {
 	return JniStringCall (
 		env,
@@ -1165,7 +1165,7 @@ JNIEXPORT jstring JNICALL Java_org_openi2pd_router_I2PD_1JNI_getReseedStatus (JN
 	 * labels cross the boundary; no private key, identity file or storage
 	 * path.
 	 */
-JNIEXPORT jstring JNICALL Java_org_openi2pd_router_I2PD_1JNI_getTunnelServices (JNIEnv * env, jclass clazz)
+JNIEXPORT jstring JNICALL Java_org_openi2pd_router_I2PD_1JNI_getTunnelServices (JNIEnv * env, jclass)
 {
 	return JniStringCall (
 		env,
@@ -1205,7 +1205,7 @@ JNIEXPORT jstring JNICALL Java_org_openi2pd_router_I2PD_1JNI_getTunnelServices (
 }
 
 /** Start one configured tunnel by its bounded service name. */
-JNIEXPORT jstring JNICALL Java_org_openi2pd_router_I2PD_1JNI_startTunnel (JNIEnv * env, jclass clazz, jstring name)
+JNIEXPORT jstring JNICALL Java_org_openi2pd_router_I2PD_1JNI_startTunnel (JNIEnv * env, jclass, jstring name)
 {
 	return JniStringCall (
 		env,
@@ -1223,7 +1223,7 @@ JNIEXPORT jstring JNICALL Java_org_openi2pd_router_I2PD_1JNI_startTunnel (JNIEnv
 }
 
 /** Stop one configured tunnel by its bounded service name. */
-JNIEXPORT jstring JNICALL Java_org_openi2pd_router_I2PD_1JNI_stopTunnel (JNIEnv * env, jclass clazz, jstring name)
+JNIEXPORT jstring JNICALL Java_org_openi2pd_router_I2PD_1JNI_stopTunnel (JNIEnv * env, jclass, jstring name)
 {
 	return JniStringCall (
 		env,
@@ -1243,10 +1243,10 @@ JNIEXPORT jstring JNICALL Java_org_openi2pd_router_I2PD_1JNI_stopTunnel (JNIEnv 
 /**
 	 * Add or replace one address-book name.
 	 *
+	 * The VM supplies a static class reference, which is not retained.
+	 *
 	 * @param env JNI environment supplied by the VM for this call; it is
 	 * only used on the calling thread.
-	 * @param clazz static class reference of the Java declaration; the
-	 * native side keeps no reference to it.
 	 * @param name bounded `.i2p` host label, validated before use and
 	 * never re-pointed unless @a replace is true.
 	 * @param destination full base64 destination for @a name, bounded
@@ -1256,7 +1256,7 @@ JNIEXPORT jstring JNICALL Java_org_openi2pd_router_I2PD_1JNI_stopTunnel (JNIEnv 
 	 * @return `ok`, `exists`, `invalid`, `unavailable` or `failed`
 	 */
 JNIEXPORT jstring JNICALL Java_org_openi2pd_router_I2PD_1JNI_addAddressWithResult (
-	JNIEnv * env, jclass clazz, jstring name, jstring destination, jboolean replace)
+	JNIEnv * env, jclass, jstring name, jstring destination, jboolean replace)
 {
 	return JniStringCall (
 		env,
@@ -1286,7 +1286,7 @@ JNIEXPORT jstring JNICALL Java_org_openi2pd_router_I2PD_1JNI_addAddressWithResul
 }
 
 /** Address-book subscription sources, one bounded URL per line. */
-JNIEXPORT jstring JNICALL Java_org_openi2pd_router_I2PD_1JNI_getSubscriptions (JNIEnv * env, jclass clazz)
+JNIEXPORT jstring JNICALL Java_org_openi2pd_router_I2PD_1JNI_getSubscriptions (JNIEnv * env, jclass)
 {
 	return JniStringCall (
 		env,
@@ -1307,7 +1307,7 @@ JNIEXPORT jstring JNICALL Java_org_openi2pd_router_I2PD_1JNI_getSubscriptions (J
 }
 
 /** Add a validated subscription source through a typed daemon verb. */
-JNIEXPORT jstring JNICALL Java_org_openi2pd_router_I2PD_1JNI_addSubscription (JNIEnv * env, jclass clazz, jstring url)
+JNIEXPORT jstring JNICALL Java_org_openi2pd_router_I2PD_1JNI_addSubscription (JNIEnv * env, jclass, jstring url)
 {
 	return JniStringCall (
 		env,
@@ -1326,7 +1326,7 @@ JNIEXPORT jstring JNICALL Java_org_openi2pd_router_I2PD_1JNI_addSubscription (JN
 
 /** Remove one subscription source by its exact URL. */
 JNIEXPORT jstring JNICALL Java_org_openi2pd_router_I2PD_1JNI_removeSubscription (
-	JNIEnv * env, jclass clazz, jstring url)
+	JNIEnv * env, jclass, jstring url)
 {
 	return JniStringCall (
 		env,
@@ -1344,7 +1344,7 @@ JNIEXPORT jstring JNICALL Java_org_openi2pd_router_I2PD_1JNI_removeSubscription 
 }
 
 /** Ban one router identity (base64) until the router restarts. */
-JNIEXPORT jstring JNICALL Java_org_openi2pd_router_I2PD_1JNI_banRouter (JNIEnv * env, jclass clazz, jstring hash)
+JNIEXPORT jstring JNICALL Java_org_openi2pd_router_I2PD_1JNI_banRouter (JNIEnv * env, jclass, jstring hash)
 {
 	return JniStringCall (
 		env,
@@ -1362,7 +1362,7 @@ JNIEXPORT jstring JNICALL Java_org_openi2pd_router_I2PD_1JNI_banRouter (JNIEnv *
 }
 
 /** Remove one in-memory router ban. */
-JNIEXPORT jstring JNICALL Java_org_openi2pd_router_I2PD_1JNI_unbanRouter (JNIEnv * env, jclass clazz, jstring hash)
+JNIEXPORT jstring JNICALL Java_org_openi2pd_router_I2PD_1JNI_unbanRouter (JNIEnv * env, jclass, jstring hash)
 {
 	return JniStringCall (
 		env,
@@ -1388,7 +1388,7 @@ JNIEXPORT jstring JNICALL Java_org_openi2pd_router_I2PD_1JNI_unbanRouter (JNIEnv
 	 * written to i2pd.conf and no restart is required.
 	 */
 JNIEXPORT jboolean JNICALL Java_org_openi2pd_router_I2PD_1JNI_setRuntimeLogLevel (
-	JNIEnv * env, jclass clazz, jstring jlevel)
+	JNIEnv * env, jclass, jstring jlevel)
 {
 	return JniScalarCall<jboolean> (
 		env,
@@ -1420,7 +1420,7 @@ JNIEXPORT jboolean JNICALL Java_org_openi2pd_router_I2PD_1JNI_setRuntimeLogLevel
  * Running.
  */
 JNIEXPORT void JNICALL Java_org_openi2pd_router_I2PD_1JNI_onNetworkStateChanged (
-	JNIEnv * env, jclass clazz, jboolean isConnected)
+	JNIEnv * env, jclass, jboolean isConnected)
 {
 	JniVoidCall (env,
 		[isConnected] ()
@@ -1442,7 +1442,7 @@ JNIEXPORT void JNICALL Java_org_openi2pd_router_I2PD_1JNI_onNetworkStateChanged 
  * deliberately outside the native-call lock: the daemon start worker
  * sets it while the router may still be waiting for packaged assets.
  */
-JNIEXPORT void JNICALL Java_org_openi2pd_router_I2PD_1JNI_setDataDir (JNIEnv * env, jclass clazz, jstring jdataDir)
+JNIEXPORT void JNICALL Java_org_openi2pd_router_I2PD_1JNI_setDataDir (JNIEnv * env, jclass, jstring jdataDir)
 {
 	JniVoidCall (env,
 		[&] ()
@@ -1459,7 +1459,7 @@ JNIEXPORT void JNICALL Java_org_openi2pd_router_I2PD_1JNI_setDataDir (JNIEnv * e
 		});
 }
 
-JNIEXPORT jint JNICALL Java_org_openi2pd_router_I2PD_1JNI_getTransitTunnelsCount (JNIEnv * env, jclass clazz)
+JNIEXPORT jint JNICALL Java_org_openi2pd_router_I2PD_1JNI_getTransitTunnelsCount (JNIEnv * env, jclass)
 {
 	return JniScalarCall<jint> (
 		env,
@@ -1472,7 +1472,7 @@ JNIEXPORT jint JNICALL Java_org_openi2pd_router_I2PD_1JNI_getTransitTunnelsCount
 		0);
 }
 
-JNIEXPORT jstring JNICALL Java_org_openi2pd_router_I2PD_1JNI_getStatusSummary (JNIEnv * env, jclass clazz)
+JNIEXPORT jstring JNICALL Java_org_openi2pd_router_I2PD_1JNI_getStatusSummary (JNIEnv * env, jclass)
 {
 	return JniStringCall (
 		env,
@@ -1511,7 +1511,7 @@ JNIEXPORT jstring JNICALL Java_org_openi2pd_router_I2PD_1JNI_getStatusSummary (J
 		"Status unavailable");
 }
 
-JNIEXPORT jstring JNICALL Java_org_openi2pd_router_I2PD_1JNI_getStatusSnapshot (JNIEnv * env, jclass clazz)
+JNIEXPORT jstring JNICALL Java_org_openi2pd_router_I2PD_1JNI_getStatusSnapshot (JNIEnv * env, jclass)
 {
 	return JniStringCall (
 		env,
@@ -1540,7 +1540,7 @@ JNIEXPORT jstring JNICALL Java_org_openi2pd_router_I2PD_1JNI_getStatusSnapshot (
 }
 
 JNIEXPORT jstring JNICALL Java_org_openi2pd_router_I2PD_1JNI_getRecentLogs (
-	JNIEnv * env, jclass clazz, jlong afterSequence, jint limit)
+	JNIEnv * env, jclass, jlong afterSequence, jint limit)
 {
 	return JniStringCall (
 		env,
@@ -1759,7 +1759,7 @@ JNIEXPORT jstring JNICALL Java_org_openi2pd_router_I2PD_1JNI_importTorrent (
 		"I2PDTUI/1 ERR 6 14\ncontrol failed");
 }
 
-JNIEXPORT jboolean JNICALL Java_org_openi2pd_router_I2PD_1JNI_getHTTPProxyState (JNIEnv * env, jclass clazz)
+JNIEXPORT jboolean JNICALL Java_org_openi2pd_router_I2PD_1JNI_getHTTPProxyState (JNIEnv * env, jclass)
 {
 	return JniScalarCall<jboolean> (
 		env,
@@ -1771,7 +1771,7 @@ JNIEXPORT jboolean JNICALL Java_org_openi2pd_router_I2PD_1JNI_getHTTPProxyState 
 		JNI_FALSE);
 }
 
-JNIEXPORT jboolean JNICALL Java_org_openi2pd_router_I2PD_1JNI_getSOCKSProxyState (JNIEnv * env, jclass clazz)
+JNIEXPORT jboolean JNICALL Java_org_openi2pd_router_I2PD_1JNI_getSOCKSProxyState (JNIEnv * env, jclass)
 {
 	return JniScalarCall<jboolean> (
 		env,
@@ -1783,7 +1783,7 @@ JNIEXPORT jboolean JNICALL Java_org_openi2pd_router_I2PD_1JNI_getSOCKSProxyState
 		JNI_FALSE);
 }
 
-JNIEXPORT jboolean JNICALL Java_org_openi2pd_router_I2PD_1JNI_getBOBState (JNIEnv * env, jclass clazz)
+JNIEXPORT jboolean JNICALL Java_org_openi2pd_router_I2PD_1JNI_getBOBState (JNIEnv * env, jclass)
 {
 	return JniScalarCall<jboolean> (
 		env,
@@ -1795,7 +1795,7 @@ JNIEXPORT jboolean JNICALL Java_org_openi2pd_router_I2PD_1JNI_getBOBState (JNIEn
 		JNI_FALSE);
 }
 
-JNIEXPORT jboolean JNICALL Java_org_openi2pd_router_I2PD_1JNI_getSAMState (JNIEnv * env, jclass clazz)
+JNIEXPORT jboolean JNICALL Java_org_openi2pd_router_I2PD_1JNI_getSAMState (JNIEnv * env, jclass)
 {
 	return JniScalarCall<jboolean> (
 		env,
@@ -1807,7 +1807,7 @@ JNIEXPORT jboolean JNICALL Java_org_openi2pd_router_I2PD_1JNI_getSAMState (JNIEn
 		JNI_FALSE);
 }
 
-JNIEXPORT jboolean JNICALL Java_org_openi2pd_router_I2PD_1JNI_getI2CPState (JNIEnv * env, jclass clazz)
+JNIEXPORT jboolean JNICALL Java_org_openi2pd_router_I2PD_1JNI_getI2CPState (JNIEnv * env, jclass)
 {
 	return JniScalarCall<jboolean> (
 		env,
