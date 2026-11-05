@@ -340,6 +340,15 @@ a TUI client.
 
 ## Tracking
 
+When extracting Make recipes into command drivers, audit source contracts
+for literals that moved with the implementation. Check delegation in the
+Makefile and destinations in the helper separately; joining their texts
+can let an unused helper conceal a missing call. OpenBSD's installation
+contract covers all three phases (`dirs`, `data`, `script`) in
+`tests/check-services.cmake`; mock argv coverage lives in
+`tools/tests/make-drivers.t`. A passing source contract does not prove
+installation succeeded on OpenBSD.
+
 Use `TOOLS`/`FW`/F and `PERL`/Perl. Record command/tool, input boundary, output
 format, tests and install consumers. Propose a dated `PROGRESS.md` entry and any `TODO.md`/`ROADMAP.md` changes to the coordinator; append them only when explicitly assigned;
 subagents report proposed rows to the coordinator.
