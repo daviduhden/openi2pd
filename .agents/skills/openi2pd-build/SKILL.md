@@ -110,6 +110,16 @@ build.
   let packaging install competing definitions.
 
 ## Known issues and decisions
+
+- `I2PD_WARNINGS_AS_ERRORS` defaults to `OFF`. Explicit manual matrix
+  configurations may enable it to add `/WX` or `-Werror` through
+  `i2pd_warnings`; do not set global compiler flags or export this policy
+  to installed consumers. Imported dependencies are not rebuilt with this
+  option, but their headers can still produce diagnostics in project
+  translation units. Keep opt-in matrix validation pending until executed.
+- Standalone recursive inventory contracts explicitly select CMP0009 NEW
+  so directory symlinks cannot expand the inspected source tree. A script
+  run with `cmake -P` does not inherit the build's minimum-version policies.
 - The POSIX Make front-end delegates to `build/make-driver.sh`; preserve the
   prerequisite graph and pass expanded CMake flags as trailing argv, never
   reparse an environment string with eval. Keep cleanup refusal and prefix/

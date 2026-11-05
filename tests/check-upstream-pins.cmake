@@ -8,6 +8,9 @@
 # never clones, fetches or executes anything.
 #
 
+# Quoted field names are literals, even when variables share their names.
+cmake_policy(SET CMP0054 NEW)
+
 if(NOT PROJECT_ROOT)
   message(FATAL_ERROR "PROJECT_ROOT is required")
 endif()

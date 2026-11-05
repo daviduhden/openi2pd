@@ -84,6 +84,7 @@ elseif(MSVC AND CMAKE_CXX_COMPILER_VERSION VERSION_LESS 19.35)
 endif()
 
 option(WITH_HARDENING       "Use hardening compiler flags"                 OFF)
+option(I2PD_WARNINGS_AS_ERRORS "Treat project target warnings as errors"    OFF)
 option(WITH_LIBRARY         "Install libraries and headers"                ON)
 option(WITH_BINARY          "Build the router executable"                  ON)
 option(I2PD_BUILD_TUI       "Build the TUI (ncursesw on Unix, Win32 on Windows)" ON)
@@ -745,6 +746,16 @@ endif()
 # Common compiler diagnostics. These are not global flags: each target
 # gets the same interface plus its own definitions.
 add_library(i2pd_warnings INTERFACE)
+# Opt in per project target, without changing imported dependency builds
+# or installed consumers. Dependency headers can still emit diagnostics
+# while a project translation unit includes them.
+if(I2PD_WARNINGS_AS_ERRORS)
+  if(MSVC)
+    target_compile_options(i2pd_warnings INTERFACE /WX)
+  else()
+    target_compile_options(i2pd_warnings INTERFACE -Werror)
+  endif()
+endif()
 if(MSVC)
   target_compile_options(i2pd_warnings INTERFACE /W4 /permissive- /Zc:__cplusplus /utf-8)
   if(WITH_HARDENING)

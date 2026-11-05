@@ -8,6 +8,9 @@
 # runs a package.
 #
 
+# Repository inventories must not traverse directory symlinks.
+cmake_policy(SET CMP0009 NEW)
+
 if(NOT PROJECT_ROOT)
   message(FATAL_ERROR "PROJECT_ROOT is required")
 endif()

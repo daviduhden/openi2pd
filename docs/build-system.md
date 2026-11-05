@@ -78,6 +78,7 @@ Options:
 | `WITH_TORRENTS` | ON | Include the BitTorrent client and require Boost.JSON/URL; pass `-DWITH_TORRENTS=OFF` to omit it on Linux, OpenBSD or Windows |
 | `WITH_STATIC` | OFF | Static link the router where supported |
 | `WITH_HARDENING` | OFF | GCC/Clang: stack protector, FORTIFY and RELRO/NOW; MSVC: `/GS`, `/sdl`, Control Flow Guard, ASLR and DEP (plus high-entropy ASLR for 64-bit targets) |
+| `I2PD_WARNINGS_AS_ERRORS` | OFF | Opt-in `-Werror` or `/WX` through the project warning interface; imported dependency builds are unaffected, but included dependency headers can still produce diagnostics |
 | `WITH_ADDRSANITIZER` | OFF | ASan |
 | `WITH_THREADSANITIZER` | OFF | TSan (mutually exclusive with ASan) |
 | `WITH_UNDEFSANITIZER` | OFF | UBSan |

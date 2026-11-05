@@ -13,6 +13,8 @@
 # variable names, so a boolean-valued condition would silently
 # take the wrong branch on a CMake 3.x host.
 cmake_policy(SET CMP0012 NEW)
+# Recursive source inventories must not follow directory symlinks.
+cmake_policy(SET CMP0009 NEW)
 
 if(NOT PROJECT_ROOT)
   message(FATAL_ERROR "PROJECT_ROOT is required")
@@ -244,6 +246,12 @@ assert_absent("${top_cmake_text}" "wsock32" "obsolete Winsock 1.1 import library
 assert_absent("${top_cmake_text}" "crypt32" "unused crypt32 import library")
 assert_present("${top_cmake_text}" "-Wl,--dynamicbase -Wl,--nxcompat"
   "MinGW hardening must use PE rather than ELF linker options")
+assert_present("${top_cmake_text}"
+  "option(I2PD_WARNINGS_AS_ERRORS \"Treat project target warnings as errors\"    OFF)"
+  "strict diagnostics must remain an explicit opt-in")
+assert_present("${top_cmake_text}"
+  "if(I2PD_WARNINGS_AS_ERRORS)\n  if(MSVC)\n    target_compile_options(i2pd_warnings INTERFACE /WX)\n  else()\n    target_compile_options(i2pd_warnings INTERFACE -Werror)\n  endif()\nendif()"
+  "strict diagnostics must apply through the project warning interface")
 assert_present("${top_cmake_text}" "target_compile_options(i2pd_warnings INTERFACE /GS /sdl /guard:cf)"
   "MSVC hardening must enable stack checks, SDL checks and Control Flow Guard")
 assert_present("${top_cmake_text}" "target_link_options(i2pd_warnings INTERFACE /guard:cf /DYNAMICBASE /NXCOMPAT)"
