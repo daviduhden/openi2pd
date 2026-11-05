@@ -229,6 +229,37 @@ for my $path ( sort @action_files ) {
     close $fh;
     ( my $joined = $text ) =~ s/\\\n\s*/ /g;
     $joined =~ s/`\n\s*/ /g;
+    if ($path =~ m{[\\/]linux-openssl-build[\\/]action[.]ya?ml\z}) {
+        # A failed compiler must still leave stderr and probe evidence.
+        # Inspect commands and their upload block separately so an unused
+        # filename elsewhere cannot satisfy the artifact contract.
+        my $active = $joined;
+        $active =~ s/^[ \t]*#.*$//mg;
+        for my $required (
+            q{STRICT_WARNINGS: ${{ inputs.warnings_as_errors }}},
+            q{case "$STRICT_WARNINGS" in}, q{ON|OFF)},
+            q{-DI2PD_WARNINGS_AS_ERRORS="$STRICT_WARNINGS"} ) {
+            push @errors, "$path: strict warnings chain missing: $required"
+              if index($active, $required) < 0;
+        }
+        push @errors, "$path: strict warnings action default must be OFF"
+          unless $active =~ /^  warnings_as_errors:\n(?:(?!^  [A-Za-z_]+:).)*?^    default: ['"]?OFF['"]?\s*$/ms;
+        for my $phase ( [ 'configure', qr/cmake\s+-S\s+build\s+-B\s+build-output/ ],
+            [ 'build', qr/cmake\s+--build\s+build-output/ ] ) {
+            my ($name, $command) = @{$phase};
+            push @errors, "$path: build evidence missing: $name stderr capture"
+              unless $active =~ /$command[^\n]*2>&1\s*\|\s*tee\s+(?:"?\$PWD\/)?\Q$name\E[.]log"?(?:\s|$)/;
+        }
+        my ($build_block) = $active =~ /(^[ \t]*-[ ]name:[ ]Build and run all CTest targets\n.*?)(?=^[ \t]*-[ ]name:|\z)/ms;
+        push @errors, "$path: build evidence missing: pipeline failure propagation"
+          unless defined $build_block && $build_block =~ /set -euo pipefail/;
+        my ($upload_block) = $active =~ /(^[ \t]*-[ ]name:[^\n]*\n(?:(?!^[ \t]*-[ ]name:).)*?uses:[ ]actions\/upload-artifact[^\n]*\n(?:(?!^[ \t]*-[ ]name:).)*)/ms;
+        for my $required ('if: always()', 'configure.log', 'build.log',
+            'build-output/CMakeFiles/CMakeConfigureLog.yaml') {
+            push @errors, "$path: build evidence missing: upload $required"
+              unless defined $upload_block && index($upload_block, $required) >= 0;
+        }
+    }
     for my $line ( split /\n/, $joined ) {
         next if $line =~ /^\s*#/;
         push @errors, "$path: interpreter policy requires Perl, not an alternate runtime"
@@ -265,6 +296,12 @@ for my $file ( sort keys %branch_formula ) {
     }
     my $text    = $texts{$file};
     my $formula = $branch_formula{$file};
+    my $active = $text;
+    $active =~ s/^[ \t]*#.*$//mg;
+    push @errors, "$file: strict warnings dispatch must be boolean default false"
+      unless $active =~ /^      warnings_as_errors:\n(?:(?!^      [A-Za-z_]+:).)*?^        type: boolean\n(?:(?!^      [A-Za-z_]+:).)*?^        default: false\s*$/ms;
+    push @errors, "$file: strict warnings forwarding missing"
+      if index($active, q{warnings_as_errors: ${{ inputs.warnings_as_errors && 'ON' || 'OFF' }}}) < 0;
     if ( index( $text, $formula ) < 0 ) {
         push @errors, "$file: does not select the $formula Homebrew bottle";
     }

@@ -152,6 +152,24 @@ workflow, run `gh`, build or test.
   policy is a coverage limitation rather than proof of full sandboxing.
 
 ## Known issues and decisions
+
+- Preserve configure and build streams separately from CTest artifacts.
+  An early native compile error can leave no Testing directory: the Linux
+  OpenSSL composite retains configure.log, build.log and CMake configure
+  evidence under its always-run upload. Keep stderr merged and pipefail
+  explicit when tee captures diagnostics; never turn a failed build green.
+  The two manual OpenSSL workflows expose warnings_as_errors (default false)
+  through the shared action's validated ON/OFF input. Keep it opt-in until
+  the selected compiler lane is clean; do not infer cleanliness from the
+  existence of the switch or from a build stopped at an earlier error.
+  The workflow checker and negative fixtures pin the complete input,
+  forwarding, environment and CMake option chain so a visible UI switch
+  cannot silently stop reaching the compiler policy.
+- Successful compile-free steps can emit CMake developer warnings before a
+  later step fails. Script-mode checks do not inherit project policies:
+  inspect recursive inventories for CMP0009 and quoted discriminator names
+  for CMP0054. Select NEW behavior explicitly, rather than suppressing dev
+  warnings, and review symlink traversal and literal comparisons together.
 - Interpreter metadata queries and file-based syntax checks do not need
   embedded programs. The maintenance gate uses the native version banner;
   its suite and validator still enforce the Perl floor. Source scans cover

@@ -14,6 +14,11 @@ name: Linux OpenSSL 3.x
 
 on:
   workflow_dispatch:
+    inputs:
+      warnings_as_errors:
+        description: Treat project compiler warnings as errors
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -54,3 +59,4 @@ jobs:
           cxx: ${{ matrix.cxx }}
           openssl_branch: '3'
           openssl_formula: openssl@3
+          warnings_as_errors: ${{ inputs.warnings_as_errors && 'ON' || 'OFF' }}

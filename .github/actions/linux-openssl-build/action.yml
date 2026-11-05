@@ -28,6 +28,9 @@ inputs:
   openssl_formula:
     description: Homebrew formula installed by the caller (openssl@3 or openssl@4).
     required: true
+  warnings_as_errors:
+    description: Enable strict project diagnostics (ON or OFF).
+    default: 'OFF'
 runs:
   using: composite
   steps:
@@ -83,15 +86,24 @@ runs:
 
     - name: Build and run all CTest targets
       shell: bash
+      env:
+        STRICT_WARNINGS: ${{ inputs.warnings_as_errors }}
       run: |
+        set -euo pipefail
+        case "$STRICT_WARNINGS" in
+          ON|OFF) ;;
+          *) echo "warnings_as_errors must be ON or OFF" >&2; exit 1 ;;
+        esac
         cmake -S build -B build-output -G Ninja \
           -DCMAKE_C_COMPILER=${{ inputs.cc }} \
           -DCMAKE_CXX_COMPILER=${{ inputs.cxx }} \
           -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON \
           -DI2PD_REQUIRE_PERL=ON \
+          -DI2PD_WARNINGS_AS_ERRORS="$STRICT_WARNINGS" \
           -DI2PD_BUILD_TUI=ON -DI2PD_OPENSSL_EXPECT=OpenSSL \
-          -DI2PD_OPENSSL_EXPECT_MAJOR=${{ inputs.openssl_branch }}
-        cmake --build build-output --parallel 2
+          -DI2PD_OPENSSL_EXPECT_MAJOR=${{ inputs.openssl_branch }} \
+          2>&1 | tee configure.log
+        cmake --build build-output --parallel 2 2>&1 | tee build.log
         ctest --test-dir build-output -j 2 --output-on-failure \
           --no-tests=error --output-junit "$PWD/ctest-${{ inputs.name }}.xml"
         ./build-output/i2pd --version
@@ -159,6 +171,10 @@ runs:
       with:
         name: linux-openssl-${{ inputs.openssl_branch }}-${{ inputs.name }}-ctest
         path: |
+          configure.log
+          build.log
+          build-output/CMakeCache.txt
+          build-output/CMakeFiles/CMakeConfigureLog.yaml
           build-output/Testing
           ctest-*.xml
         if-no-files-found: warn

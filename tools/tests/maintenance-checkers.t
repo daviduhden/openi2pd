@@ -251,6 +251,65 @@ sub workflow_crash_fixtures {
         'inventory diagnostic requires filename-safe source handling' );
     write_file( $validation, $validation_source );
 
+    my $linux_action = File::Spec->catfile($tmp, '.github', 'actions',
+        'linux-openssl-build', 'action.yml');
+    my $linux_source = read_fixture_file($linux_action);
+    for my $missing (
+        q{STRICT_WARNINGS: ${{ inputs.warnings_as_errors }}},
+        q{-DI2PD_WARNINGS_AS_ERRORS="$STRICT_WARNINGS"} ) {
+        my $candidate = $linux_source;
+        my $changed = $candidate =~ s/\Q$missing\E/missing-strict-warnings/g;
+        ok($changed, 'strict warnings mutation removes an actual boundary');
+        write_file($linux_action, $candidate);
+        ($code, $out) = run_checker($checker);
+        is($code, 1, 'strict warnings must reach environment and CMake');
+        like($out, qr/strict warnings chain missing/, 'strict chain diagnostic');
+    }
+    write_file($linux_action, $linux_source);
+    for my $branch (3, 4) {
+        my $workflow = File::Spec->catfile($tmp, '.github', 'workflows',
+            "build-linux-openssl$branch.yml");
+        my $original = read_fixture_file($workflow);
+        my $forwarding = q{warnings_as_errors: ${{ inputs.warnings_as_errors && 'ON' || 'OFF' }}};
+        my $candidate = $original;
+        my $changed = $candidate =~ s/\Q$forwarding\E/missing-strict-forwarding/g;
+        ok($changed, 'each branch actually forwards the dispatch choice');
+        write_file($workflow, $candidate);
+        ($code, $out) = run_checker($checker);
+        is($code, 1, 'dropped branch forwarding fails');
+        like($out, qr/strict warnings forwarding missing/, 'forwarding diagnostic');
+        write_file($workflow, $original);
+    }
+    for my $missing ('2>&1 | tee configure.log', '2>&1 | tee build.log',
+        'build-output/CMakeFiles/CMakeConfigureLog.yaml', 'if: always()') {
+        my $candidate = $linux_source;
+        my $changed = $candidate =~ s/\Q$missing\E/missing-build-evidence/g;
+        ok($changed, 'negative fixture removes an actual evidence boundary');
+        write_file($linux_action, $candidate);
+        ($code, $out) = run_checker($checker);
+        is($code, 1, 'workflow checker rejects lost compiler evidence');
+        like($out, qr/build evidence missing/,
+            'evidence diagnostic identifies capture or upload boundary');
+    }
+    write_file($linux_action, $linux_source);
+    for my $log_name ('configure.log', 'build.log') {
+        my $candidate = $linux_source;
+        my $changed = $candidate =~ s/^[ \t]*\Q$log_name\E[ \t]*\n//m;
+        ok($changed, 'negative fixture removes upload entry only');
+        write_file($linux_action, $candidate);
+        ($code, $out) = run_checker($checker);
+        is($code, 1, 'capture alone cannot satisfy artifact preservation');
+        like($out, qr/build evidence missing: upload/,
+            'upload diagnostic is independent of pipeline capture');
+    }
+    my $without_pipefail = $linux_source;
+    $without_pipefail =~ s/set -euo pipefail/set -eu/g;
+    write_file($linux_action, $without_pipefail);
+    ($code, $out) = run_checker($checker);
+    is($code, 1, 'tee must not hide a failed configure or compiler');
+    like($out, qr/pipeline failure propagation/, 'pipefail diagnostic');
+    write_file($linux_action, $linux_source);
+
     my $maintenance = File::Spec->catfile(
         $tmp, '.github', 'workflows', 'agent-maintenance.yml' );
     my $maintenance_source = read_fixture_file($maintenance);
