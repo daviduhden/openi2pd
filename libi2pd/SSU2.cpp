@@ -1640,18 +1640,26 @@ namespace transport
 		// This path is reachable before the peer is authenticated (token
 		// mismatch/SendRetry), so keep the cache bounded against spoofed
 		// endpoints.
-		if (m_IncomingTokens.size () >= SSU2_MAX_INCOMING_TOKENS) EvictIncomingToken (ts);
-		uint64_t token;
-		RAND_bytes ((uint8_t *)&token, 8);
+		uint64_t token = 0;
+		if (RAND_bytes ((uint8_t *)&token, sizeof (token)) != 1)
+		{
+			LogPrint (eLogError, "SSU2: Incoming token randomness unavailable");
+			return 0;
+		}
 		if (!token) token = 1; // token can't be zero
+		if (m_IncomingTokens.size () >= SSU2_MAX_INCOMING_TOKENS) EvictIncomingToken (ts);
 		m_IncomingTokens.try_emplace (ep, token, uint32_t (ts + SSU2_TOKEN_EXPIRATION_TIMEOUT));
 		return token;
 	}
 
 	std::pair<uint64_t, uint32_t> SSU2Server::NewIncomingToken (const boost::asio::ip::udp::endpoint & ep)
 	{
-		uint64_t token;
-		RAND_bytes ((uint8_t *)&token, 8);
+		uint64_t token = 0;
+		if (RAND_bytes ((uint8_t *)&token, sizeof (token)) != 1)
+		{
+			LogPrint (eLogError, "SSU2: New token randomness unavailable");
+			return { 0, 0 };
+		}
 		if (!token) token = 1; // token can't be zero
 		uint32_t expires
 			= static_cast<uint32_t> (i2p::util::GetSecondsSinceEpoch () + SSU2_NEXT_TOKEN_EXPIRATION_TIMEOUT);

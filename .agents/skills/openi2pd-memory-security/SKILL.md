@@ -107,6 +107,15 @@ Do not let reconnaissance agents edit, compile, execute tests or run scripts.
 
 ## Known issues and decisions
 
+- SSU2 incoming-token RNG failures return zero (or {0, 0} with expiry)
+  without caching a token. Review every consumer when changing this sentinel:
+  Retry must not send a normal-close token, optional NewToken blocks must be
+  omitted, and accepted relay introductions must stop before hole punching.
+  A zero produced by a successful RNG call may follow the protocol's nonzero
+  normalization; an RNG failure must never take that predictable fallback.
+  Keep RNG failure injection pending CI and audit unchecked TunnelConfig and
+  DHT generation separately rather than assuming capability probes cover it.
+
 - SAM session creation must commit unique ID ownership at map insertion,
   not only at the socket's preliminary lookup. Return a typed duplicate
   failure and never the incumbent session to a competing creator. Transfer

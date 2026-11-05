@@ -190,8 +190,12 @@ namespace transport
 
 		void UpdateOutgoingToken (const boost::asio::ip::udp::endpoint & ep, uint64_t token, uint32_t exp);
 		uint64_t FindOutgoingToken (const boost::asio::ip::udp::endpoint & ep);
+		/// Return a cached/fresh token, or zero if randomness fails.
+		/// Failure never inserts a token or evicts a valid cache entry.
 		uint64_t GetIncomingToken (const boost::asio::ip::udp::endpoint & ep);
 		void RemoveIncomingToken (const boost::asio::ip::udp::endpoint & ep);
+		/// Replace the token and expiry, or return {0, 0} on RNG failure.
+		/// Failure leaves any cached token unchanged.
 		std::pair<uint64_t, uint32_t> NewIncomingToken (const boost::asio::ip::udp::endpoint & ep);
 
 		void RescheduleIntroducersUpdateTimer ();

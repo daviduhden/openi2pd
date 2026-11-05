@@ -1436,7 +1436,7 @@ namespace transport
 			payloadSize += 7;
 		}
 		auto token = m_Server.NewIncomingToken (m_RemoteEndpoint);
-		if (ts + SSU2_TOKEN_EXPIRATION_THRESHOLD > token.second) // not expired?
+		if (token.first && ts + SSU2_TOKEN_EXPIRATION_THRESHOLD > token.second) // not expired?
 		{
 			payload[payloadSize] = eSSU2BlkNewToken;
 			htobe16buf (payload + payloadSize + 1, 12);
@@ -2257,7 +2257,10 @@ namespace transport
 		memcpy (h + 16, &m_SourceConnID, 8); // source id
 		uint64_t token = 0;
 		if (m_TerminationReason == eSSU2TerminationReasonNormalClose)
+		{
 			token = m_Server.GetIncomingToken (m_RemoteEndpoint);
+			if (!token) return;
+		}
 		memcpy (h + 24, &token, 8); // token
 		// payload
 		payload[0] = eSSU2BlkDateTime;
@@ -3817,6 +3820,9 @@ namespace transport
 		auto packet = m_Server.GetSentPacketsPool ().AcquireShared ();
 		uint32_t nonce = bufbe32toh (buf + 33);
 		const uint64_t incomingToken = code == eSSU2RelayResponseCodeAccept ? m_Server.GetIncomingToken (ep) : 0;
+		// A failed token request must not authorize an introduction or
+		// create a hole-punch session with an unusable credential.
+		if (code == eSSU2RelayResponseCodeAccept && !incomingToken) return;
 		packet->payloadSize = CreateRelayResponseBlock (
 			packet->payload, m_MaxPayloadSize, code, nonce, incomingToken, ep.address ().is_v4 ());
 		if (code == eSSU2RelayResponseCodeAccept && addr)

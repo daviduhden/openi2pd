@@ -1575,6 +1575,44 @@ foreach(required IN ITEMS
   endif()
 endforeach()
 
+# Failed token generation must not publish or cache uninitialized bytes.
+foreach(token_method IN ITEMS GetIncomingToken NewIncomingToken)
+  if(token_method STREQUAL "GetIncomingToken")
+    set(token_begin "uint64_t SSU2Server::GetIncomingToken (")
+    set(token_end "std::pair<uint64_t, uint32_t> SSU2Server::NewIncomingToken (")
+    set(token_failure "return 0;")
+  else()
+    set(token_begin "std::pair<uint64_t, uint32_t> SSU2Server::NewIncomingToken (")
+    set(token_end "std::vector<std::shared_ptr<SSU2Session>> SSU2Server::FindIntroducers (")
+    set(token_failure "return { 0, 0 };")
+  endif()
+  string(FIND "${ssu2}" "${token_begin}" token_start)
+  string(FIND "${ssu2}" "${token_end}" token_finish)
+  if(token_start EQUAL -1 OR token_finish LESS token_start)
+    message(FATAL_ERROR "Missing SSU2 token method boundary: ${token_method}")
+  endif()
+  math(EXPR token_length "${token_finish} - ${token_start}")
+  string(SUBSTRING "${ssu2}" ${token_start} ${token_length} token_source)
+  string(FIND "${token_source}"
+    "if (RAND_bytes ((uint8_t *)&token, sizeof (token)) != 1)" token_guard)
+  string(FIND "${token_source}" "${token_failure}" token_fail_return)
+  string(FIND "${token_source}" "m_IncomingTokens.try_emplace" token_cache)
+  if(token_guard EQUAL -1 OR token_fail_return LESS token_guard
+      OR token_cache LESS token_fail_return)
+    message(FATAL_ERROR "SSU2 token RNG failure must precede cache insertion: ${token_method}")
+  endif()
+endforeach()
+foreach(required IN ITEMS
+    "if (!token || token != m_Server.GetIncomingToken (m_RemoteEndpoint))"
+    "if (token.first && ts + SSU2_TOKEN_EXPIRATION_THRESHOLD > token.second)"
+    "if (!token) return;"
+    "if (code == eSSU2RelayResponseCodeAccept && !incomingToken) return;")
+  string(FIND "${ssu2_session}" "${required}" token_consumer_guard)
+  if(token_consumer_guard EQUAL -1)
+    message(FATAL_ERROR "Missing SSU2 token failure consumer: ${required}")
+  endif()
+endforeach()
+
 # SAF grant/status delivery must recheck the service epoch on the main lane.
 string(FIND "${android_router_service}" "public void readTorrentStorageStatus(" saf_status_begin)
 string(FIND "${android_router_service}" "public void importTorrent(" saf_status_end)
