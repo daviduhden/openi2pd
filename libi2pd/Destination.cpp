@@ -1019,7 +1019,6 @@ namespace client
 			? (uint64_t)(outbound->GetMeanLatency ()) / 1000LL
 			: outbound->GetNumHops () * (uint64_t)(i2p::tunnel::HIGH_LATENCY_PER_HOP) / 1000LL;
 		m_PublishConfirmationTimer.expires_after (std::chrono::milliseconds (publishConfirmationTimeout));
-		std::weak_ptr<LeaseSetDestination> weak = weak_from_this ();
 		m_PublishConfirmationTimer.async_wait (
 			[weak, publishConfirmationTimeout] (const boost::system::error_code & ecode)
 			{

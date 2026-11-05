@@ -117,6 +117,13 @@ compile, run tests or run project scripts.
 
 ## Known issues and decisions
 
+- Callback ownership migrations can add several weak captures in one
+  method. Reuse one weak handle within a lexical scope for drop, timer and
+  posted continuations; a second declaration with the same name prevents
+  every consumer of that translation unit from compiling. Review sibling
+  branch scopes separately, and align the whole lambda body with its braces
+  so an early-return guard does not visually own the following statements.
+
 - A startup condition predicate belongs to one joined worker generation.
   `Log::Start` re-arms its publication bit before creating a new writer;
   otherwise that writer can use the previous true bit and exit before the

@@ -886,8 +886,8 @@ namespace client
 				boost::asio::post (GetService (),
 					[weak, msg, remote, nonce] ()
 					{
-					auto s = weak.lock ();
-					if (!s) return;
+						auto s = weak.lock ();
+						if (!s) return;
 						bool sent = s->SendMsg (msg, remote);
 						if (auto owner = s->GetSessionOwner ())
 							owner->SendMessageStatusMessage (nonce,
