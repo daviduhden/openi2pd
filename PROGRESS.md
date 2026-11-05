@@ -6865,3 +6865,46 @@ or push.
   authorized. Commit publication supplies no new CI evidence: compilation,
   sanitizers, interoperability and device validation remain pending their
   manual workflows on the resulting published revision.
+
+## 2026-11-04 — Compile and warning audit continuation
+
+- Paginated all 255 accessible Actions runs (51 SHAs, 16 workflow names):
+  252 complete logs, one partial (39058430980, missing job 117472356821),
+  two unavailable. Inspected successful sibling/step diagnostics as well as
+  failures. Raw logs and downloaded artifacts stay outside the repository.
+- Eight latest workflows ran d7e8491ce31f46912103e761c6d5ec2cd7f747cf.
+  CE-074 weak-owner redeclaration blocked native lanes; CE-075 stale OpenBSD
+  installer-source contract blocked two static jobs. Corrected both and
+  searched equivalent lexical scopes and extracted-driver consumers.
+- CW-016 fixes I2CP lambda indentation; CW-017 selects explicit standalone
+  CMake policies and reviews recursive inventory symlink behavior. JNI
+  unused class arguments are CW-018; two corrected historical warning
+  families are retained as CW-019. Detailed run/job evidence stays in the
+  compilation inventories rather than being attributed to local changes.
+- Added optional target-scoped I2PD_WARNINGS_AS_ERRORS, default OFF, and
+  manual OpenSSL dispatch inputs. Configure/build stderr and probe evidence
+  survive early failures with pipefail; negative workflow fixtures cover
+  capture, upload and failure propagation independently.
+- Preventive review also found unchecked SSU2 token RNG output. Generators
+  now fail before caching; Retry, optional NewToken and accepted relay paths
+  suppress use of failed tokens. Reviewed all consumers and prepared a
+  focused source contract. Equivalent TunnelConfig/DHT initialization and
+  Windows path-encoding findings remain explicitly pending, not disguised
+  as compiler observations or validated security fixes.
+- Delegated native, platform/build, source contracts, history, OpenBSD/crypto,
+  Android, global patterns and regression/documentation reviews. Root owns
+  shared CI interfaces and tracking. Skills preserve scope, evidence and
+  script-policy decisions; AGENTS extends successful-step evidence rules.
+- No local configure/build/compiler, Make, CTest, Perl test suite, Android,
+  sanitizer or package execution. No commits or push. Status: Implemented /
+  static; Pending CI compilation / Pending CI tests. Earlier sanitizer,
+  platform and external-action/package findings remain open; no clean-matrix
+  or regression-free claim is made.
+- Compile-free consistency checks passed: build-system, service, packaging,
+  legal metadata, upstream pins, control security, skills, language policy,
+  workflow source guard, documentation links, Java-25 configuration and JNI
+  declaration parity (46 symbols). The Perl knowledge validator passes with
+  zero errors; its AK004 manual relevance warning was reviewed against the
+  callback, JNI, installer, diagnostics and RNG procedures added to skills.
+  Negative Test::More fixtures were prepared but not executed. These outcomes
+  establish source consistency, not compiler or runtime correctness.

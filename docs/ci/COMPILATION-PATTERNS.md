@@ -8,6 +8,33 @@ static hypotheses must remain explicitly distinguished.
 
 ## Required triage sequence
 
+The 2026-11-04 continuation adds these reusable checks (CE-074/075,
+CW-016/017), distinct from historical runtime findings:
+
+- Callback migrations: inspect the entire enclosing lexical scope before
+  introducing a weak handle. Reuse an existing owner when authority matches;
+  similarly named handles in separate lambdas or branches are not duplicates.
+- Early returns: review following indentation and braces in lambda bodies.
+  Correct misleading presentation without changing the guarded operation.
+- Extracted Make recipes: verify delegation and helper contents separately.
+  A stale check against the original file can fail; concatenating sources can
+  incorrectly pass when the helper is no longer invoked.
+- CMake script mode: choose recursive symlink and quoted-operand policy
+  semantics explicitly. A project's configure baseline does not cover `-P`.
+- JNI definitions: omit unused ABI-mandated argument names, preserving their
+  types, order and exported symbols. Check actual bodies before removing a
+  name and keep Doxygen parameter descriptions consistent.
+- Uninitialized random output: compiler dataflow can miss a provider failure
+  through an external API. SSU2 incoming-token generation now checks RAND_bytes
+  before caching and propagates a zero failure sentinel through all four
+  consumers. This is a static security finding, not an observed warning.
+  TunnelConfig/DHT initialization still needs complete failure-contract work;
+  predictable fallback values are not acceptable substitutes for entropy.
+- Early compiler failures: preserve combined stdout/stderr with pipefail and
+  always-upload configure/build logs, cache and configure-probe evidence.
+  Missing CTest output does not imply no warnings. Negative workflow fixtures
+  now pin both capture and upload boundaries independently.
+
 1. Capture workflow, run, job, URL, full commit SHA, toolchain, platform and
    matrix entry. Retrieve the failed job log and successful sibling logs;
    successful builds can still report warnings.

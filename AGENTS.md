@@ -104,6 +104,10 @@ Retrieve successful sibling job logs as well as failed logs: an early compile
 failure can hide later warnings, while a successful lane can expose them. Do
 not infer that a skipped target or platform is clean from another job's
 success.
+Include successful steps inside failed jobs in the warning review. Preserve
+configure and build output even when CTest never starts; distinguish expected
+negative feature probes from project diagnostics and record unavailable
+logs or missing artifacts as evidence gaps, never as clean results.
 When a warning repeats across many test targets, inspect whether one shared
 support translation unit is linked into each executable and group the reports
 by source cause. Also classify successful-run package, action-runtime and

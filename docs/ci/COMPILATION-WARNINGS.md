@@ -8,6 +8,93 @@ about later targets.
 
 ## History coverage
 
+The 2026-11-04 refresh paginated the complete accessible API: **255 runs**,
+**51 SHAs**, **16 current/former workflow names**, dated 2026-10-17 through
+2026-11-04 (166 failed, 62 cancelled, 27 successful). Retrieved full logs for
+252 runs, including successful siblings and successful steps in failed jobs.
+Run `39058430980` has partial logs but job `117472356821` is unavailable;
+`39058841124` and `39058346321` have no retrievable logs. These retention
+gaps are not clean evidence. Logs and paginated
+metadata remain outside Git under `/tmp/openi2pd-audit-20261104`.
+
+The eight newest runs use `d7e8491ce31f46912103e761c6d5ec2cd7f747cf`; see
+[exact jobs and results](COMPILATION-ERRORS.md). Validation artifacts contain
+source documentation and three sanitizer evidence manifests. Packaging has
+no downloadable artifacts; generated packages were not inspected for that run.
+Historical findings below remain preserved.
+
+### CW-016 — I2CP callback indentation misrepresented its guard
+
+- **Observed:** [Packaging 41921782301](https://github.com/daviduhden/openi2pd/actions/runs/41921782301),
+  container `126895843200` and musl `126895843550`, at the SHA above:
+  `I2CP.cpp:890`, `-Wmisleading-indentation`.
+- **Correction:** align two lambda-body statements following an early return;
+  control flow and lifetime authority are unchanged.
+- **Equivalent review:** early-return/deeper-indentation seams across native
+  core, clients, daemon and privsep; no further demonstrated instance found.
+  Status: Implemented / static; Pending CI compilation.
+
+### CW-017 — Standalone CMake checks relied on unset policies
+
+- **Observed:** [Validation 41921782009](https://github.com/daviduhden/openi2pd/actions/runs/41921782009),
+  `126895844279`: legal-metadata passed with CMP0009 warning; upstream-pins
+  passed with three CMP0054 warnings before the later CE-075 failure.
+- **Correction/global review:** set CMP0009 NEW in recursive legal-metadata,
+  build-system and packaging inventories, preventing directory-symlink
+  traversal. Set CMP0054 NEW in upstream-pins so quoted discriminator names
+  remain literals even when same-named variables exist. Script mode does not
+  inherit the project's policy baseline.
+- **Validation:** these four compile-free source checks pass locally without
+  these warnings. Remote CMake lanes remain Pending CI tests. No diagnostic
+  suppression or global policy change was introduced.
+
+### CW-018 — JNI definition parameters named but unused
+
+- **Observed:** [Android 41364864089](https://github.com/daviduhden/openi2pd/actions/runs/41364864089),
+  job `125022760915`, SHA `56f17c0f47a3d1a328be6c54df7b661c480924f8`:
+  33 `-Wunused-parameter` diagnostics for `jclass clazz` in
+  `i2pd_android.cpp`. The newest Android run stops before this target and
+  therefore does not establish that these warnings disappeared.
+- **Correction/global review:** inspect JNI definition bodies, omit unused
+  class parameter names while preserving the JNI parameter types and ABI,
+  and adjust the one affected Doxygen description. Declaration-only names
+  do not trigger this diagnostic and remain valid.
+- **State:** Implemented / static; Pending CI compilation. Native/JNI, Java,
+  Android lint, D8/R8 and API 29 device coverage are still pending.
+
+### CW-019 — Historical logger initialization order and date truncation
+
+- **Observed:** successful [Packaging 39220635893](https://github.com/daviduhden/openi2pd/actions/runs/39220635893),
+  SHA `b5fa95529f3b78fd925702485f6c904b635dec3d`, Debian job logs:
+  `Log.h:105` / `Log.cpp:78` initialization order (`-Wreorder`), and
+  `Timestamp.cpp:314` `%04i` into a nine-byte date buffer
+  (`-Wformat-truncation`). Success did not imply warning-free compilation.
+- **Current disposition:** logger initializer order matches declarations;
+  the date formatter bounds the year and explicitly writes eight digits.
+  Preserve these causes as historical evidence; no additional source patch
+  is justified by the old diagnostic. Broader current matrix validation
+  remains pending and these observations do not validate future revisions.
+
+### External diagnostics remaining open
+
+Latest Android/OpenBSD/package logs include action-runtime `punycode` and
+`url.parse()` deprecations; Windows includes an MSYS2 updater instruction to
+terminate other programs. These are dependency/runtime messages, not native
+compiler warnings. Successful historical packaging `41364876230` also exposes
+Node 20 action metadata and autopkgtest `--force-yes` deprecations (CW-015).
+They remain external debt; no global installation or suppression was changed.
+Expected negative CMake feature probes are capability detection, not product
+compilation failures.
+
+`I2PD_WARNINGS_AS_ERRORS=ON` now requests `-Werror` or `/WX` on project targets.
+Default OFF remains appropriate until lane-specific cleanliness is demonstrated.
+Imported dependency builds are unaffected; headers included in project units
+can still emit diagnostics. This option supplies no clean-matrix evidence.
+Both manual OpenSSL workflows expose `warnings_as_errors` with default false;
+the shared action validates its ON/OFF value before passing it to CMake.
+The workflow source guard and prepared negative fixtures pin the complete
+forwarding chain and the separate configure/build capture and upload paths.
+
 On 2026-10-31, GitHub Actions retained 206 runs across 11 current and former
 workflow names, 43 distinct commit SHAs, dated 2026-10-17 through
 2026-10-31. Complete logs were retrieved for 202 completed runs. Logs for

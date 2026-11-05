@@ -2268,6 +2268,14 @@ behavioral execution remain pending manual CI.
 
 ### Authorized publication of the accumulated continuation
 
+The subsequent compiler-cleanliness review paginated 255 accessible runs and
+recovered full logs for 252. CE-074/075 and CW-016/017 have static corrections;
+early compiler artifact retention and negative fixtures are prepared. Strict
+diagnostics are a project-target opt-in exposed by both manual OpenSSL lanes.
+Status: Pending CI compilation / Pending CI tests. Published d7e8491c stopped
+early in native compilation; supported-matrix cleanliness, historical runtime
+findings and external diagnostics remain unresolved.
+
 The reviewed implementation, regression and maintenance increments are split
 into signed subsystem commits under explicit user authorization. Publication
 does not promote static work to Validated by CI; supported compiler, sanitizer,

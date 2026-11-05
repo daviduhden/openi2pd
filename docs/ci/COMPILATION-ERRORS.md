@@ -20,6 +20,54 @@ compile or link failure.
 
 ## Runs reviewed
 
+### Published revision reviewed on 2026-11-04
+
+All eight new workflows used `d7e8491ce31f46912103e761c6d5ec2cd7f747cf`.
+No result below validates the subsequent local corrections.
+
+| Run | Exact jobs and results |
+|---|---|
+| [41921781843](https://github.com/daviduhden/openi2pd/actions/runs/41921781843) | Linux consumer `126895842477` failed; interop `126895842955` passed |
+| [41921782009](https://github.com/daviduhden/openi2pd/actions/runs/41921782009) | fuzz `126895843940`, ASan/UBSan `126895843996`, UBSan `126895844045`, TSan `126895844122` failed compiling; static `126895844279` failed; source docs `126895843425` passed; optional Perl quality skipped |
+| [41921782022](https://github.com/daviduhden/openi2pd/actions/runs/41921782022) | Android `126895843020` failed native compilation; API 29 UI skipped |
+| [41921782129](https://github.com/daviduhden/openi2pd/actions/runs/41921782129) | Run cancelled; MinGW `126895844115` failed compiling; MSVC `126895844687` cancelled |
+| [41921782154](https://github.com/daviduhden/openi2pd/actions/runs/41921782154) | OpenSSL 3 GCC `126895843898` and Clang `126895844275` failed compiling |
+| [41921782167](https://github.com/daviduhden/openi2pd/actions/runs/41921782167) | OpenSSL 4 Clang `126895847156` and GCC `126895847621` failed compiling |
+| [41921782301](https://github.com/daviduhden/openi2pd/actions/runs/41921782301) | Run cancelled; service install `126895842902` passed; Debian `126895843308` and service contracts `126895843459` failed; container `126895843200` and musl `126895843550` cancelled |
+| [41921782377](https://github.com/daviduhden/openi2pd/actions/runs/41921782377) | OpenBSD `126895844550` failed compiling |
+
+### CE-074 — Callback migration redeclared an existing weak owner
+
+- **Evidence:** native compiler lanes above report `Destination.cpp:1022`,
+  redefinition/redeclaration of `weak` in `LeaseSetDestination::Publish()`.
+  Debian subprocess exit 2 is a consequence, not a separate package defect.
+- **Cause/correction:** the on-drop callback already initializes a weak
+  destination handle in the enclosing scope. Reuse it for the confirmation
+  timer. Both callbacks keep weak ownership and lock before member access.
+- **Global review:** equivalent declarations and captures in Destination,
+  I2CP, Streaming, BOB and MatchedDestination. Repeated names in distinct
+  methods, branches or lambda scopes are legitimate and were preserved.
+  Compiler matrices directly cover declaration scope; lifetime contracts
+  remain enabled.
+- **State:** Implemented / static; **Pending CI compilation**. Later linking,
+  tests, Android Java/JNI and MSVC coverage remain unproven. Downloaded
+  sanitizer artifacts contain the exact revision and six missing-image
+  records; no sanitizer execution or closure of older findings is implied.
+
+### CE-075 — Service contract followed the pre-extraction source
+
+- **Evidence:** Validation static job and Packaging service contracts above
+  failed at `check-services.cmake:552`: missing `share/examples/etc/i2pd`.
+- **Cause/correction:** paths moved from the OpenBSD port Makefile to
+  `install-examples.sh`. Read the helper separately; check all three Makefile
+  delegations (`dirs`, `data`, `script`) and the helper's sample/state/NOTICE
+  paths. Joined source text would hide a missing delegation.
+- **Equivalent review/regressions:** packaging contracts already follow their
+  extracted driver; existing mock Make-driver regressions cover OpenBSD phase
+  argv. Updated the service contract without weakening the installation rule.
+- **State:** Implemented / static; **Pending CI tests**. Local compile-free
+  service/packaging source checks pass; no package was built or executed.
+
 | Run | Workflow | Commit | Result |
 |---|---|---|---|
 | [40411690766](https://github.com/daviduhden/openi2pd/actions/runs/40411690766) | Linux and Android | `88ac1e92` | failure (several jobs) |

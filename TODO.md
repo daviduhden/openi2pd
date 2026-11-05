@@ -2404,5 +2404,14 @@ tests until the exact published revision passes a manual lane.
 
 ## Publication review
 
+- [ ] **[CI-CLEAN-001]** Revalidate CE-074/075 and CW-016/017 on corrected source.
+  - Priority P1; Status Implemented / static; Pending CI compilation; Pending CI tests. Reused the publication weak owner, corrected I2CP indentation, followed extracted OpenBSD installer authority and selected explicit standalone CMake policies. Exact evidence is in docs/ci/COMPILATION-ERRORS.md and COMPILATION-WARNINGS.md. Early failures prevent clean-matrix, sanitizer, Android/JNI or MSVC claims.
+- [ ] **[CI-CLEAN-002]** Preserve early compiler evidence and exercise strict diagnostics.
+  - Priority P1; Status Implemented / static; Pending CI compilation; Pending CI tests. Linux OpenSSL retains configure/build stderr and probe evidence with failure propagation. Negative workflow fixtures prepared. Target-scoped warnings-as-errors defaults OFF; both OpenSSL dispatches expose the opt-in. No local builds or tests.
+- [ ] **[CI-CLEAN-003]** Resolve remaining evidence and platform gaps.
+  - Priority P1; Status Pending. History contains 255 runs; three old log requests have retention gaps. External action/runtime/package deprecations and historical sanitizer findings remain open. Preventive Windows review found mixed UTF-8 argv/ACP filesystem origins in FS.cpp; normalize the complete path contract with Windows regressions before changing it. This is a static functional finding, not a compiler diagnostic.
+- [ ] **[CI-CLEAN-004]** Complete unchecked provider-failure propagation.
+  - Priority P1; Status Partially implemented / static; Pending CI tests. SSU2 generators now return failure sentinels before caching; Retry, optional NewToken and accepted relay paths suppress token use on failure. Focused compile-free source contracts pin generators and all consumers. Equivalent unchecked initialization remains in TunnelConfig and the DHT node ID constructor; inspect their complete construction/async failure contracts before changing them. These are static security findings, not observed compiler warnings.
+
 - [ ] **[PUB-001]** Validate the signed continuation on its published revision.
   - Priority P1; Status Pending CI compilation; Pending CI tests. Explicit authorization covers the reviewed signed commits and a normal push to main. Static checks passed; source-review corrections preserve platform-capability and Android label-association accuracy. Publishing or signing is not build/test evidence. Existing unresolved CI findings remain open until the exact new revision runs in the applicable manual lanes.
