@@ -99,6 +99,14 @@ the console.
   restoration on quit/error.
 
 ## Known issues and decisions
+
+- `test-tui-protocol` flushes constant phase names to stderr before each
+  group and a completion marker before returning from `main`. For native
+  heap exceptions without assertion output, compare these markers with
+  CTest's exact-run log to distinguish pre-main, active-phase and teardown
+  failures. Markers do not identify the corrupting write; retain the need
+  for sanitizer or the manual Windows PageHeap/CDB evidence. Never emit
+  parser inputs, user values or credential-bearing operands as markers.
 - `Put(text, limit)` is a terminal-column budget, not a byte count. The
   Windows backend and the layout arithmetic share `tui/TerminalText.h`; the
   strict decoder rejects overlong/surrogate/out-of-range UTF-8 as one U+FFFD

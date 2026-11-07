@@ -17,6 +17,7 @@
 
 #include <cassert>
 #include <cstdint>
+#include <cstdio>
 #include <string>
 #include <string_view>
 
@@ -874,16 +875,29 @@ static void TestCommentPageBounds ()
 
 int main ()
 {
-	TestRequests ();
-	TestBoundedContainerWrites ();
-	TestAdminCommands ();
-	TestTunnelAndReseedAdminVerbs ();
-	TestAddressReplaceVerbs ();
-	TestConfigRequests ();
-	TestTorrentRequests ();
-	TestCommentPageBounds ();
-	TestResponseHeader ();
-	TestFraming ();
-	TestFields ();
+	// Flush constant phase names before executing each check. A native
+	// heap exception may leave no assertion output; these markers locate
+	// the active phase without retaining any parsed input or credentials.
+	const auto run = [] (const char * phase, void (*test) ())
+	{
+		std::fputs ("[tui-protocol] ", stderr);
+		std::fputs (phase, stderr);
+		std::fputc ('\n', stderr);
+		std::fflush (stderr);
+		test ();
+	};
+	run ("requests", &TestRequests);
+	run ("bounded-container-writes", &TestBoundedContainerWrites);
+	run ("admin-commands", &TestAdminCommands);
+	run ("tunnel-reseed-admin", &TestTunnelAndReseedAdminVerbs);
+	run ("address-replace", &TestAddressReplaceVerbs);
+	run ("config-requests", &TestConfigRequests);
+	run ("torrent-requests", &TestTorrentRequests);
+	run ("comment-page-bounds", &TestCommentPageBounds);
+	run ("response-header", &TestResponseHeader);
+	run ("framing", &TestFraming);
+	run ("fields", &TestFields);
+	std::fputs ("[tui-protocol] complete\n", stderr);
+	std::fflush (stderr);
 	return 0;
 }

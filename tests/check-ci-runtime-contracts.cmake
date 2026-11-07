@@ -37,6 +37,13 @@ require_runtime_source("libi2pd_client/TorrentsDHT.cpp"
 require_runtime_source("libi2pd_client/TorrentsTunnel.cpp"
   "if (candidate->IsInitialized ()) m_DHT = std::move (candidate);")
 
+require_runtime_source("privsep/WindowsSupervisor.cpp"
+  "WaitForSingleObject (m_Worker->process.Native (), 0)")
+require_runtime_source("privsep/WindowsSupervisor.cpp"
+  "GetExitCodeProcess (m_Worker->process.Native (), &exitCode)")
+require_runtime_source("tests/test-tui-protocol.cpp"
+  "std::fflush (stderr);")
+
 file(READ "${PROJECT_ROOT}/privsep/WindowsIpc.cpp" windows_runtime_source)
 if(windows_runtime_source MATCHES "WindowsChannel candidate \\(m_Pipe"
     OR windows_runtime_source MATCHES "candidate[.]Release \\(\\)")
@@ -50,7 +57,3 @@ require_runtime_source("privsep/WindowsIpc.cpp"
   "std::min (WORKER_HELLO_TIMEOUT_MS, RemainingDeadlineMs (deadline))")
 require_runtime_source("tests/test-privsep-windows-ipc.cpp"
   "TestMalformedHelloRearmsListener ()")
-require_runtime_source("privsep/WindowsSupervisor.cpp"
-  "WaitForSingleObject (m_Worker->process.Native (), 0)")
-require_runtime_source("privsep/WindowsSupervisor.cpp"
-  "GetExitCodeProcess (m_Worker->process.Native (), &exitCode)")
