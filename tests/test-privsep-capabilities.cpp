@@ -193,9 +193,9 @@ void TestMasksAreDistinctAndDocumented ()
 	// protocol, not in what they may do.
 	assert (distinct.size () == 8);
 
-	// No capability is dead, and every capability except the universal
-	// framed
-	// IPC channel is withheld from at least one role.
+	// Exec remains representable so forbidden grants can be rejected, but
+	// no documented role receives it. Other capabilities have consumers;
+	// only the universal framed IPC channel is granted to every role.
 	for (size_t index = 0; index < CAPABILITY_COUNT; ++index)
 	{
 		const auto capability = static_cast<Capability> (index);
@@ -207,6 +207,12 @@ void TestMasksAreDistinctAndDocumented ()
 				++granted;
 			else
 				++withheld;
+		}
+		if (capability == Capability::Exec)
+		{
+			assert (granted == 0);
+			assert (withheld == ROLE_CAPABILITY_MATRIX.size ());
+			continue;
 		}
 		assert (granted > 0);
 		if (capability == Capability::Ipc)

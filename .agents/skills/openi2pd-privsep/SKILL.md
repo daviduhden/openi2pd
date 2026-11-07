@@ -105,6 +105,13 @@ report that limitation; do not substitute local execution. Ask for:
 
 ## Known issues and decisions
 
+- Capability vocabulary and allowed role masks are different contracts.
+  Exec remains a named bit so parsers and policy reviews can reject it;
+  its presence in the enum never requires granting it to a role. Matrix
+  coverage tests must explicitly require zero Exec grants while retaining
+  positive coverage for the other capabilities. Never satisfy a generic
+  "every bit is used" assertion by broadening a sandbox's target mask.
+
 - A Windows accept timeout alone cannot distinguish a loader or mitigation
   failure from an unauthenticated live worker. Sample the process handle
   with a zero-time wait before terminal cleanup, then retain only a numeric
