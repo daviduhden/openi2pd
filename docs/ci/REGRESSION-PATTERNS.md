@@ -340,3 +340,23 @@ publication and first enqueue as separate events. Re-arm only after the old
 worker has joined, under the same lock used by its wait. The logger's TF-070
 fix prepares both repeated restart/destination assertions and a compile-free
 source-order guard; neither substitutes for manual sanitizer execution.
+
+## 2026-11-07 cross-component regression families
+
+- RT-038: valid signatures can still violate deterministic known-answer
+  output. Compare provider and fallback signers against the complete RFC
+  vector; never weaken equality to hide nonce derivation differences.
+- RT-039: every overlapped wait exit must either observe completion or cancel
+  and reap before stack buffers/events disappear; WAIT_FAILED is an exit too.
+- RT-040: stopped flags reused across restarts can revive old tasks. Use fresh
+  authority and serialize already-admitted persistence before final snapshots.
+  Exercise queued stale tasks and teardown, not only successful callbacks.
+- RT-041: parser failure cannot double as container termination. Require a
+  value after every dictionary key, including nested/list/metainfo consumers.
+- TF-076: shifting a wait word discards signal failure. Check the complete
+  status and test a producer that emits valid data before abnormal termination.
+- TF-078: always-upload cannot recover files left inside a failed VM action.
+  Inspect the pinned action's failure/copyback ordering and preserve exit codes.
+- RT-032: phase-marker completion localizes detection, not the corrupting
+  instruction. Require exact stack/image evidence before attributing heap
+  damage or closing a historical sanitizer family.

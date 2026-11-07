@@ -838,3 +838,63 @@ with unanswered replies while retaining lost-first/lost-last reply controls.
 This is Implemented / static, Pending CI compilation and Pending CI tests.
 It does not attribute or close the historical 6880-byte/24-allocation report:
 the exact sanitizer image/stack and a fresh manual run are still needed.
+
+## 2026-11-07 static corrections and observed recurrences
+
+Observed run evidence uses SHA `14f224e6c7776619c13449759523a87298d4f63a`;
+links/jobs are in the compilation inventory. Every correction below is
+Implemented / static, Pending CI compilation and Pending CI tests.
+
+### RT-038 — Compatibility Ed25519 nonce used half the digest
+
+OpenBSD 42402987408 and MinGW 42402984632 fail the strict RFC signature
+comparison at test-eddsa.cpp:145; provider signing passes. The compatibility
+signer decoded only 32 of the 64 SHA-512 nonce bytes. Decode the whole digest,
+reduce modulo L and encode the scalar before multiplication, as required by
+[RFC 8032 section 5.1.6](https://www.rfc-editor.org/rfc/rfc8032.html#section-5.1.6).
+Existing signatures remain valid: this corrects deterministic output, not the
+wire encoding or verification rules. Retained strict known-answer checks and
+added direct compatibility/overlapping-buffer cases. Secure BIGNUM ownership
+and constant-time division flags cover the new reduction and analogous
+RedDSA path; this is not a claim of end-to-end constant-time fallback code.
+
+### RT-039 — Failed Windows wait could release pending OVERLAPPED storage
+
+Static review of `WindowsIpc.cpp` found WAIT_FAILED returned without cancelling
+and reaping I/O. Preserve the original wait error, request cancellation and
+wait for completion before releasing stack storage. Reviewed sibling TUI
+cancellation paths and prepared a source contract. No exact CI stack ties
+this defect to RT-032; that heap-corruption diagnosis remains unresolved.
+
+### RT-040 — Retired DHT work could overwrite the final persistence snapshot
+
+Static review found reused generation authority and periodic writes admitted
+before shutdown. Start now allocates fresh authority; timers reject retired
+generations. A persistence barrier orders admitted writes before final Save,
+and queued writes recheck revocation under that barrier. RAII releases flight
+claims on submission/execution failures. An in-memory regression exercises
+old/new queued saves, final snapshots and claim isolation. Lifecycle mutation
+still requires the owner executor or a quiescent service; this does not claim
+safe arbitrary concurrent destruction.
+
+### RT-041 — Bencode dangling keys could be accepted as dictionary endings
+
+Static parser review found failed value parsing followed by `break`, allowing
+an `e` byte to close a dictionary with a missing value. Reject immediately in
+ParseDictionary and ExtractDictionary, including malformed nested/list values.
+Prepared direct, nested and metainfo regressions with valid controls in the
+existing bencode suite. No production crash was observed for this finding.
+
+### RT-032 recurrence and sanitizer evidence gaps
+
+Windows 42402984632 reports heap status `0xc0000374` in tui-protocol,
+pipe-name and supervisor tests. TUI phase markers reach completion: this
+localizes detection, not necessarily the original invalid write. The worker
+exits `3221225794` (`0xC0000142`, DLL initialization failure). Neither fact
+proves a CRT ABI mismatch or a logger-destructor cause. Diagnostic manual run
+[42407544860](https://github.com/daviduhden/openi2pd/actions/runs/42407544860)
+uses the published SHA, not these local fixes; its PageHeap evidence remains
+pending. MinGW daemon `--version` still times out with empty output while
+TUI version succeeds; no timeout increase masks the unresolved startup issue.
+RT-027/031 sanitizer families remain open: current sanitizer builds stop at
+CE-078, and unsanitized sibling successes cannot close those reports.

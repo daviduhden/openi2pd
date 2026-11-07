@@ -2288,3 +2288,13 @@ The reviewed implementation, regression and maintenance increments are split
 into signed subsystem commits under explicit user authorization. Publication
 does not promote static work to Validated by CI; supported compiler, sanitizer,
 package, live-peer and device lanes still need the published revision.
+
+## 2026-11-07 evidence checkpoint
+
+Implemented / static: RFC nonce, overlapped completion lifetime, DHT persistence
+ordering, bencode value validation and CI fixture/artifact corrections. Pending
+CI compilation and Pending CI tests apply to all local changes. Prioritize
+MSVC PageHeap attribution, worker DLL startup and MinGW version timeout, then
+fresh sanitizer evidence for historical ownership findings. The floating
+OpenSSL 4 lane currently uses 4.1.0 and does not establish explicit 4.0.x
+coverage. See the six docs/ci inventories and TODO audit follow-up rows.

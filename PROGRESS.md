@@ -6980,3 +6980,36 @@ or push.
   lines. Updated the Tools component description to include the shared native
   reference and command aliases. Source consistency checks do not establish
   compilation, package rendering, sanitizer or runtime validation.
+
+## 2026-11-07 — Historical CI and preventive runtime audit
+
+- Reviewed the 272-run historical snapshot and eight new full run logs on
+  14f224e6, including successful siblings and exact install/package artifacts.
+  Recorded retention gaps and exact jobs in the six docs/ci inventories.
+- Fixed missing FS header, canonical changelog assertion, native Perl wait
+  status portability, OpenBSD Git fixture dependency, two compiler warnings
+  and two Android compat-drawable Lint findings. Seventeen Android findings
+  and external tool warnings remain open.
+- Corrected compatibility Ed25519 deterministic nonce reduction against RFC
+  8032 while preserving verification/wire formats and secure scalar cleanup.
+- Hardened failed Windows overlapped waits, DHT generation/save ordering and
+  bencode dictionary value parsing. Prepared focused regressions and source
+  guards; no builds or behavioral tests were run locally.
+- Reworked OpenBSD remote execution to copy diagnostics after failures without
+  masking exit status. Source workflow checks now reject workflow_call.
+- Eight owning skills were updated with reusable procedures; AGENTS evidence
+  policy distinguishes detection markers from fault attribution. CI validation
+  of local work remains pending. MSVC PageHeap run 42407544860 tests published
+  14f224e6; heap corruption, worker DLL startup and MinGW version timeout stay
+  open. Sanitizer execution is blocked by CE-078 in the reviewed batch.
+- Final compile-free review passes: knowledge validator (zero errors; AK004
+  relevance warning manually reviewed), workflow policy, runtime/control
+  source guards, build/package/tool/skill/language contracts, documentation
+  links/navigation/parameters, Shell source policy, Java 25 configuration,
+  JNI parity (46 declarations) and diff whitespace. The eight skill updates
+  capture actual nonce, lifetime, parser, platform and diagnostic procedures;
+  structural validation alone does not establish their semantic relevance.
+- Independent final review found no demonstrated integration defect in the
+  Ed25519 or Windows cancellation changes. Forced wait-failure/cancellation
+  races still require dynamic regression coverage. Diagnostic run 42407544860
+  remained in progress at this checkpoint; no result is attributed to it.

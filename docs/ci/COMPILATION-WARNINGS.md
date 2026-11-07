@@ -479,3 +479,32 @@ Successful Linux/packaging jobs also contain Node.js 20 action-runtime notices
 and Node `punycode`/`url.parse()` deprecations from action tooling. They are
 third-party/runtime notices, not first-party C++ warnings. Do not count them as
 compiler-clean evidence or suppress them in project compiler flags.
+
+## 2026-11-07 exact-run warning follow-up
+
+All runs below use `14f224e6c7776619c13449759523a87298d4f63a`;
+see the compilation inventory for exact job IDs and links.
+
+- **CW-023:** Windows 42402984632 reports `NOMINMAX` redefinition in
+  `tests/test-log-lifecycle.cpp`. Added an `#ifndef` guard; inspected the
+  other 23 macro definitions for equivalent unguarded definitions.
+  Implemented / static; Pending CI compilation.
+- **CW-024:** OpenBSD 42402987408 reports a copied range-loop string in
+  `tests/test-privsep-openbsd-policy.cpp`. Use a const reference without
+  changing test semantics. Implemented / static; Pending CI compilation.
+- **CW-003 follow-up:** Android 42402998875 has 19 Lint findings, including
+  two `UseCompatTextViewDrawableXml` diagnostics in `fragment_logs.xml`.
+  Converted the view to AppCompat with compat drawable attributes. The other
+  17 findings (vector paths, ChromeOS ABI, nested weights and overdraw) remain
+  open; no suppressions or unsupported ABI claims were introduced. Device
+  validation was skipped. Pending CI tests.
+- **CW-021 follow-up:** the previous Gradle wrapper warning is absent from
+  the successful Android job; this is limited to that executed revision.
+- **CW-022 follow-up:** packaging 42402990302 succeeds. Its exact uploaded
+  Debian archive includes all 15 tool aliases, the shared manual and canonical
+  changelog; uploaded `lintian.log` is empty. This validates that package lane,
+  not unexecuted package variants. Sixteen debugedit unknown-DWARF diagnostics
+  remain external (debugedit 1:5.0-5build2 / GCC 13.3).
+- External action Node-runtime/deprecation notices, autopkgtest force-yes
+  debt and Landlock ABI 8 versus runner ABI 10 coverage remain separately
+  identified; a successful job does not close them.

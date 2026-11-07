@@ -228,3 +228,19 @@ necessarily portable across the complete supported range. Use cancel() for
 timers, retaining socket error-code overloads. The expanded source contract
 covers I2CP, SAM, SOCKS and RPC. These static corrections await compilation;
 no old remote run validates them.
+
+## 2026-11-07 preventive review
+
+- CE-078: require direct headers at every filesystem namespace consumer;
+  transitive includes vary with platform and test support translation units.
+- CE-079 / CW-022: compare an assertion with the exact-run uploaded payload
+  before changing install authority. Canonical package and static-bundle names
+  can intentionally differ.
+- CE-080: a source guard must recognize secure RAII ownership, not insist on
+  the removed raw cleanup spelling. Pin deleter and owner together.
+- CW-023/024: review platform macro definitions and value-copy range loops
+  across siblings, including successful compiler output.
+- Floating dependency names do not pin coverage: the OpenSSL 4 configure
+  artifact now identifies 4.1.0, leaving explicit 4.0.x coverage pending.
+- Host Git availability does not imply VM or CTest PATH availability. Declare
+  the fixture dependency and preserve its interpreter-specific environment.

@@ -215,3 +215,26 @@ and a source-order contract are prepared. This demonstrated source
 interleaving explains the observed symptom; runtime confirmation is Pending
 CI. The queue wakeup and other lifecycle hypotheses are not declared resolved
 by this static correction.
+
+## Published revision `14f224e6` (2026-11-07)
+
+Exact run/job links and SHA are recorded in COMPILATION-ERRORS.md. Local
+corrections are Implemented / static, Pending CI compilation and Pending CI
+tests; no local behavioral suite was executed.
+
+| ID | Observed evidence | Correction / remaining validation |
+|---|---|---|
+| TF-074 | OpenBSD 42402987408 / MinGW 42402984632: EdDSA assertion at line 145 | RT-038 full nonce reduction; strict comparison retained |
+| TF-075 | Same platforms: capability fixture expects a grant for forbidden Exec | Assert zero Exec grants and complete withholding; production capability masks unchanged |
+| TF-076 | Windows 42402984632: POSIX WIFEXITED/WIFSIGNALED unimplemented in native Perl | Decode Perl wait words portably in three suites; check full pipe status in vector/branding helpers; signal-with-valid-JSON fixtures prepared |
+| TF-077 | OpenBSD 42402987408: validator fixture cannot execute git init -b main | Install Git in VM; declare Git 2.28 test dependency and put its directory in that CTest environment |
+| TF-078 | OpenBSD failing action provides no usable CTest artifact | Pinned action exits before copyback; separate prepare action and documented remote custom shell preserve copyback and original failure status |
+
+The custom shell behavior was checked against the pinned
+[vmactions implementation](https://github.com/vmactions/openbsd-vm/blob/f1ca8bc8ecc5b6ef7218e5b914836e067e1546d3/index.js)
+and its documented custom-shell interface. Negative workflow fixtures pin
+failure-preserving upload structure and prohibit workflow_call triggers.
+TF-073 recurs in all three sanitizer jobs of 42403004301 through CE-078.
+No new sanitizer runtime result is available. Optional Perl quality and API 29
+UI lanes are skipped; those capabilities remain unvalidated. Existing MSVC
+heap failures and MinGW startup timeout remain open under RT-032.

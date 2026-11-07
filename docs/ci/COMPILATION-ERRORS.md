@@ -1705,3 +1705,53 @@ Runs: Linux/Android [41229374061](https://github.com/daviduhden/openi2pd/actions
 - **Platform detail:** Android used Temurin 25.0.5, Gradle 9.8.1, AGP 9.4.1 and NDK r30; native arm64 completed before Javac stopped the job. Windows MSVC 19.44 and MSYS2/MinGW completed compilation/linking, then failed CTest (four of eight MSVC tests, four of 214 MSYS2 tests). OpenBSD 8.0 Clang 22.1.6 / LibreSSL 4.4.0 built all targets before 11 of 220 CTests failed. Linux GCC/Clang OpenSSL 3.x and OpenSSL 4.x likewise compiled/linked before test failures. Successful Linux and packaging jobs on this SHA are separate evidence and do not validate those failing lanes.
 - **Static corrections in this worktree:** the two parser-result fixture lifetime defects are fixed by keeping their input strings alive; UDP datagram-version configuration is validated before enum conversion; transport connector lookup accepts a raw integer so rejection tests do not construct invalid enum values. These changes are not present in the run SHA.
 - **State:** partially corrected by static analysis; **Pending CI compilation** and **Pending CI tests**. The EdDSA sanitizer finding and remaining current CTest failures still need cause-specific investigation.
+
+## Published revision reviewed on 2026-11-07
+
+Exact SHA: `14f224e6c7776619c13449759523a87298d4f63a`.
+The accessible historical snapshot contains 272 runs across 53 SHAs and 16
+workflow names: 177 failures, 63 cancellations and 32 successes. Previous
+cached evidence and the eight new full logs were reviewed together. Full logs
+are available for 269 runs; run 39058430980 is partial (job 117472356821
+missing), and 39058841124 / 39058346321 are unavailable. Retention gaps are
+not evidence of success. Raw logs and downloaded artifacts remain outside Git.
+
+| Run | Jobs and observed result |
+|---|---|
+| [42402993215](https://github.com/daviduhden/openi2pd/actions/runs/42402993215) | OpenSSL 3 Clang 128494612836 / GCC 128494613099: CE-078 |
+| [42402995976](https://github.com/daviduhden/openi2pd/actions/runs/42402995976) | OpenSSL 4 Clang 128494620750 / GCC 128494620947: CE-078 |
+| [42403004301](https://github.com/daviduhden/openi2pd/actions/runs/42403004301) | TSan 128494644892, UBSan 128494644962, ASan/UBSan 128494645005: CE-078; fuzz 128494644758, static 128494644874 and docs 128494644919 succeed; Perl quality skipped |
+| [42402987408](https://github.com/daviduhden/openi2pd/actions/runs/42402987408) | OpenBSD 128494594640 builds, then three of 245 CTests fail |
+| [42402984632](https://github.com/daviduhden/openi2pd/actions/runs/42402984632) | MSVC 128494586125 and MinGW 128494586377 build, then fail tests |
+| [42403001540](https://github.com/daviduhden/openi2pd/actions/runs/42403001540) | Install consumer 128494636785 fails CE-079; interoperability 128494637153 succeeds |
+| [42402998875](https://github.com/daviduhden/openi2pd/actions/runs/42402998875) | Android 128494629319 succeeds; API 29 UI 128494630663 skipped |
+| [42402990302](https://github.com/daviduhden/openi2pd/actions/runs/42402990302) | All five packaging/service/component jobs succeed; CW-022 archive inspection below |
+
+Uploaded configure logs identify GCC 16.2.0, Clang 23.1.5, OpenSSL 3.5.9 and
+OpenSSL 4.1.0. Thus the floating OpenSSL 4 lane does not establish coverage of
+the declared 4.0.x floor. OpenBSD uses Clang 22.1.6 / LibreSSL 4.4.0.
+No result in this table validates the subsequent local corrections.
+
+### CE-078 — Router storage regression omitted its filesystem header
+
+`tests/test-router-storage.cpp:73`: `i2p::fs` is undeclared in all four
+OpenSSL jobs and all three sanitizer jobs above. Added the direct `FS.h`
+include after checking other test consumers for the same transitive-header
+assumption. Source contract prepared. Implemented / static; Pending CI
+compilation and Pending CI tests. Sanitizers never reached execution.
+
+### CE-079 — Consumer asserted an obsolete changelog filename
+
+Linux install consumer 128494636785 expected `share/doc/i2pd/ChangeLog`.
+The exact-run install artifact contains the canonical lowercase `changelog`.
+Corrected the workflow assertion; reviewed package/static-bundle consumers
+without renaming their independently defined payloads. Implemented / static;
+Pending CI tests. This is an install assertion, not a linker failure.
+
+### CE-080 — Raw cleanup source guard rejected an equivalent RAII owner
+
+Local compile-free control-security review required literal `BN_clear_free
+(r)`, rejecting the new `SecretBN` owner. Updated the guard to require its
+explicit secure deleter and owned variable instead. Source guard passes;
+this was not an observed compiler diagnostic. Runtime validation remains
+pending with RT-038.

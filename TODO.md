@@ -2424,3 +2424,13 @@ tests until the exact published revision passes a manual lane.
 
 - [ ] **[PUB-001]** Validate the signed continuation on its published revision.
   - Priority P1; Status Pending CI compilation; Pending CI tests. Explicit authorization covers the reviewed signed commits and a normal push to main. Static checks passed; source-review corrections preserve platform-capability and Android label-association accuracy. Publishing or signing is not build/test evidence. Existing unresolved CI findings remain open until the exact new revision runs in the applicable manual lanes.
+
+## 2026-11-07 audit follow-up
+
+| ID | State | Remaining work |
+|---|---|---|
+| CI-NOV07-01 | Implemented / static | CE-078/079, CW-023/024, TF-075/076/077/078 corrections; Pending CI compilation and Pending CI tests |
+| SEC-NOV07-01 | Implemented / static | RT-038/039/040/041 regressions prepared; run exact corrected revision in manual CI |
+| CI-NOV07-02 | In progress | Retrieve PageHeap 42407544860; resolve RT-032 and MinGW startup timeout using exact diagnostics |
+| CI-NOV07-03 | Pending | Restore sanitizer execution after CE-078, revisit RT-027/031, add explicit OpenSSL 4.0.x coverage alongside observed 4.1.0 |
+| ANDROID-NOV07-01 | Partially implemented / static | Two compat-drawable findings corrected; 17 Lint findings and API 29 device validation remain pending |
