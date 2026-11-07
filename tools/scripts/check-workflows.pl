@@ -101,8 +101,7 @@ for my $file (@files) {
             next if $maintenance_gate && $trigger eq 'pull_request';
             next
               if !$maintenance_gate
-              && ( $trigger eq 'workflow_dispatch'
-                || $trigger eq 'workflow_call' );
+              && $trigger eq 'workflow_dispatch';
             push @errors, "$file: unsupported trigger '$trigger'";
         }
         if ($maintenance_gate) {
@@ -516,7 +515,7 @@ composite action files under F<.github/actions/>:
 =item *
 
 an F<on:> block is required. All build, test and packaging workflows must
-declare C<workflow_dispatch> (optionally C<workflow_call>); only
+declare only C<workflow_dispatch>; only
 F<agent-maintenance.yml> may declare C<pull_request>, and it may not also
 declare C<workflow_dispatch>. Push and schedule triggers fail the check;
 

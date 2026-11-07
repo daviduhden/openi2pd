@@ -343,10 +343,11 @@ workflow, run `gh`, build or test.
 - SIGPIPE under `pipefail` can turn a matching `grep -q` pipeline into status
   141 (false pass) or a failing check (false fail). Capture `javap`,
   `strings`, `file` or `nm` output to a temporary file before grepping.
-- Build/test/package workflows are `workflow_dispatch`-only; the compile-free
-  agent-maintenance gate is the sole pull-request workflow. `workflow_call` is
-  allowed only for a real reusable consumer. Manual results never validate an
-  unpublished local tree.
+- Review trigger parsing against the current AGENTS policy, including
+  reusable events: a dispatch declaration must not let a second event pass
+  unchecked. Keep a negative fixture that adds `workflow_call` to an
+  otherwise valid workflow. Manual results never validate an unpublished
+  local tree.
 
 
 - Start a compile-failure triage with the real manual runs:

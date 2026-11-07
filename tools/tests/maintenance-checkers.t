@@ -224,6 +224,15 @@ sub workflow_crash_fixtures {
     open my $fh, '<', $windows or BAIL_OUT("read workflow fixture: $!");
     my $source = do { local $/ = undef; <$fh> };
     close $fh or BAIL_OUT("close workflow fixture: $!");
+    my $reusable = $source;
+    $reusable =~ s/^(  workflow_dispatch:)/  workflow_call:\n$1/m;
+    isnt( $reusable, $source, 'workflow fixture adds a reusable trigger' );
+    write_file( $windows, $reusable );
+    ( $code, $out ) = run_checker($checker);
+    is( $code, 1, 'workflow checker rejects reusable workflow triggers' );
+    like( $out, qr/unsupported trigger 'workflow_call'/,
+        'reusable trigger reports its unsupported event' );
+    write_file( $windows, $source );
     for my $unsafe ( 'kp 40', '.dump /ma unsafe.dmp', 'dv' ) {
         my $candidate = $source;
         $candidate =~ s/kc[ ]40/$unsafe/gx;
