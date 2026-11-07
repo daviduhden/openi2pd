@@ -6908,3 +6908,75 @@ or push.
   callback, JNI, installer, diagnostics and RNG procedures added to skills.
   Negative Test::More fixtures were prepared but not executed. These outcomes
   establish source consistency, not compiler or runtime correctness.
+
+## 2026-11-05 — Retrospective and preventive runtime audit
+
+- Recovered the eight new full run logs and exact job/SHA metadata, including
+  successful Linux consumer/interop, Android and packaging siblings. The
+  paginated history snapshot contains 263 runs, 52 SHAs and 16 workflow names
+  (171 failed, 62 cancelled, 30 successful). Earlier cached evidence retains
+  two unavailable logs and one partial log; no missing diagnostic is invented.
+- All eight new runs compile 01960093aeff480d24ed8507878355a643da168f.
+  CE-076 test namespace constants block broad native/sanitizer tests; fixed
+  five extents without changing crypto assertions. CW-020 MSVC shadowing is
+  fixed without moving lock/lifetime boundaries. CW-021 Android wrapper and
+  cache hints are corrected; successful old APK checks do not validate them.
+- Exact Windows artifact confirms RT-032 test-tui-protocol heap corruption
+  with empty output. Six selected siblings pass and supervisor startup skips
+  for a worker-pipe timeout. Constant flushed test phase markers and bounded
+  child-liveness diagnostics are prepared. Published Windows 42061501515 was
+  dispatched with PageHeap/CDB enabled; it cannot validate local changes.
+  That diagnostic run finished with MSVC cancelled during compilation and
+  no test image for PageHeap. The artifact contains commands only; no stack
+  was collected. Cancellation's external cause is unknown, no retry was used,
+  and the published MinGW lane repeats CE-076.
+- Equivalent-pattern review found RT-034 stream-result/CV publication,
+  address-book volatile state and lost reseed stop notification; corrected
+  them and registered test-stream-creation-sync plus source contracts.
+  RT-035 DHT entropy failure now prevents routing-table creation, Start and
+  capability/port publication. RT-037 Windows accepted channels now own
+  duplicate handles and share original deadlines; malformed-hello/re-arm
+  regression retains all identity and authorization checks.
+- Exact Debian artifact confirms fifteen missing tool pages and uppercase
+  changelog warning. Added a shared manual and command aliases, aligned CMake,
+  Debian/RPM payloads and package/install regressions, and retained source
+  ChangeLog while installing canonical changelog. No package was built or
+  installed locally. Sanitizer configure/build evidence now survives an early
+  compile failure, with capture/upload negative fixtures prepared.
+- Ten specialized reconnaissance streams covered history, C++23, memory,
+  concurrency, crypto/protocols, IPC, torrent/storage, Android, portability and
+  regression/packaging evidence. Historical RT-036 observations retain later
+  exact-SHA passes without closing distinct EdDSA or lifecycle leak families.
+- AGENTS and affected skills preserve the reusable namespace, shadowing,
+  wrapper, manual, publication, cancellation, ownership and evidence decisions.
+  No compiler/configure/build, Make, CTest, behavioral Perl suite, sanitizer,
+  Android/device or package execution ran locally. No commits or push.
+  Status: Implemented / static; Pending CI compilation / Pending CI tests.
+  Synchronous own-executor stream requests now fail before posting, with
+  contracts and regression coverage for both overloads. RT-032, older
+  sanitizer findings, TunnelConfig entropy and external diagnostics remain
+  explicit open work.
+- Final source review found CE-077: the Doxygen parameter checker treated
+  unnamed JNI jclass as a missing name. Corrected general abstract-declarator
+  recognition and prepared positive/negative fixtures without weakening named
+  parameter checks. The compile-free checker now passes.
+- Final compile-free checks pass: knowledge/skill structure and references,
+  control security, build/package/tool inventories, workflow/source policy,
+  Java-25 configuration, JNI parity, documentation links/navigation/parameters,
+  Shell syntax and diff whitespace. Knowledge validator has zero errors;
+  AK004 manual relevance warning was reviewed against the twelve changed
+  domain skills and AGENTS evidence policy. Prepared behavioral suites and
+  package/manual rendering remain unexecuted locally and pending manual CI.
+
+## 2026-11-07 — Authorized publication review
+
+- Explicit authorization covers subsystem-focused signed commits and a normal
+  push to main. Preserved configured Git identity and signing policy; no
+  history rewrite, generated artifacts or raw diagnostic archives are included.
+- Staged callback, fixture and packaging hunks independently. Runtime source
+  contracts grow with their owning implementation instead of depending on
+  uncommitted cross-subsystem changes. Script executable modes are preserved.
+- Reviewed new manual text after staging and removed only extra EOF blank
+  lines. Updated the Tools component description to include the shared native
+  reference and command aliases. Source consistency checks do not establish
+  compilation, package rendering, sanitizer or runtime validation.

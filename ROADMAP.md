@@ -2268,6 +2268,14 @@ behavioral execution remain pending manual CI.
 
 ### Authorized publication of the accumulated continuation
 
+The 2026-11-05 runtime/compile review extends the evidence inventory to 263
+historical runs plus a separately dispatched published Windows diagnostic run.
+Local static corrections address CE-076, CW-020/021/022 and RT-034/035/037;
+regressions cover stream publication, malformed Windows hello/re-arm, manual
+payloads and early sanitizer evidence. RT-032 heap corruption and the complete
+historical sanitizer ownership families remain unresolved. Status: Pending CI
+compilation / Pending CI tests; no supported-matrix cleanliness claim.
+
 The subsequent compiler-cleanliness review paginated 255 accessible runs and
 recovered full logs for 252. CE-074/075 and CW-016/017 have static corrections;
 early compiler artifact retention and negative fixtures are prepared. Strict

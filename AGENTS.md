@@ -233,6 +233,8 @@ that a partial commit is self-contained. Preserve executable modes when
 staging projected file content, and pair new script inventories and consumers
 with every referenced helper. Keep temporary index projections outside the
 repository and leave the working files intact.
+Review untracked text after selective staging too: a worktree-only diff does
+not inspect its whitespace, modes or accidental generated content.
 
 1. Read `TODO.md`, `ROADMAP.md`, `PROGRESS.md` and relevant technical reports.
 2. Inspect the real code and current diff.

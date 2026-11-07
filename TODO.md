@@ -2404,6 +2404,15 @@ tests until the exact published revision passes a manual lane.
 
 ## Publication review
 
+- [ ] **[AUDIT-20261105-001]** Validate CE-076 and CW-020/021 corrections.
+  - Priority P1; Status Implemented / static; Pending CI compilation; Pending CI tests. EdDSA test extents now qualify crypto constants; MSVC closure/cleanup shadowing is removed; Android wrapper declares its project and obsolete Boost hints are removed from both lanes. Exact eight-run SHA/job evidence is in docs/ci/COMPILATION-ERRORS.md; successful siblings do not validate local changes.
+- [ ] **[AUDIT-20261105-002]** Resolve Windows heap corruption and startup evidence gaps.
+  - Priority P1; Status Correction pending. RT-032/TF-046 recurs at 01960093; exact artifact output is empty. Prepared constant phase markers and dispatched published PageHeap run 42061501515. Supervisor capability skip is not a pass. Independent accepted-handle/deadline defects are corrected statically with malformed-hello re-arm regression; Windows runtime validation remains pending.
+- [ ] **[AUDIT-20261105-003]** Validate preventive concurrency and entropy fixes.
+  - Priority P1; Status Implemented / static; Pending CI compilation; Pending CI tests. RT-034/035 cover synchronous stream result publication and own-executor rejection, atomic address-book flag, stop-aware reseed waiting and fail-closed DHT identity publication. New stream regression, existing lifecycle tests and negative source contracts are wired into manual CI. Unchecked TunnelConfig entropy remains a separate pending investigation.
+- [ ] **[AUDIT-20261105-004]** Validate complete tool manual payload and sanitizer evidence.
+  - Priority P1; Status Implemented / static; Pending CI tests. Fifteen command manuals share one reference; CMake, Debian, both RPM manifests, install tests and smoke checks agree. Canonical changelog resolves CW-022. Sanitizer logs retain configure/build stderr before CTest, with negative workflow fixtures. No local package/tool/test execution; external action/debugedit/autopkgtest warnings remain open.
+
 - [ ] **[CI-CLEAN-001]** Revalidate CE-074/075 and CW-016/017 on corrected source.
   - Priority P1; Status Implemented / static; Pending CI compilation; Pending CI tests. Reused the publication weak owner, corrected I2CP indentation, followed extracted OpenBSD installer authority and selected explicit standalone CMake policies. Exact evidence is in docs/ci/COMPILATION-ERRORS.md and COMPILATION-WARNINGS.md. Early failures prevent clean-matrix, sanitizer, Android/JNI or MSVC claims.
 - [ ] **[CI-CLEAN-002]** Preserve early compiler evidence and exercise strict diagnostics.
