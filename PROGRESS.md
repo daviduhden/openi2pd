@@ -7013,3 +7013,70 @@ or push.
   Ed25519 or Windows cancellation changes. Forced wait-failure/cancellation
   races still require dynamic regression coverage. Diagnostic run 42407544860
   remained in progress at this checkpoint; no result is attributed to it.
+
+## 2026-11-07 — Post-publication sanitizer and PageHeap follow-up
+
+- Reviewed the complete 281-run paginated snapshot (54 SHAs), successful
+  sibling logs and new exact-run artifacts. Published 68c16e10 compiles in
+  the reviewed lanes; sanitizers now execute and reveal distinct failures.
+- PageHeap 42407544860 on 14f224e6 establishes profile static-destruction
+  order through NetDb::Stop, rather than a speculative allocator cause.
+  Grouped profile runtime lifetime, warmed destructor-capable producers,
+  and retained recycling-pool authority in profile deleters. Added a real
+  process-exit regression to common CTest and selective MSVC/PageHeap lanes.
+- Corrected sanitizer fixture authority for pending Streaming completion,
+  I2PTunnel destination teardown and torrent disk-domain draining. Retained
+  half-close, shutdown and metadata assertions and added weak-expiry checks.
+- Fixed the portability scanner's open/openbsd keyword confusion and the
+  Linux IPC fixture's disabled explicit-policy expectation. Added negative
+  controls without weakening production credential checks or pipe policy.
+- Redacted complete proxy operands from transport error logs. Prepared a
+  negative source contract; no credential-bearing diagnostic is retained.
+- Prepared a separate manual instrumented OpenSSL 4.1.0 TSan diagnostic.
+  The Homebrew bottle report remains unresolved until that exact dependency
+  synchronization is visible to TSan. No creator serialization/suppression.
+- API 29 UI and OpenBSD worker/broker capability skips remain evidence gaps;
+  MinGW informational timeout and worker DLL startup are distinct from the
+  profile teardown defect. Android retains 17 Lint findings. Existing crypto,
+  DHT and ratchet tests pass in the exact sanitizer lanes actually executed.
+- Concurrent action SHA/container edits from another session were preserved;
+  this audit does not attribute their implementation or CI validation.
+- All local corrections are Implemented / static, Pending CI compilation and
+  Pending CI tests. No builds, behavioral tests, commits or pushes performed.
+- Refreshed latest Windows artifacts: only MSVC isolation now segfaults;
+  supervisor still exits before authentication with 0xC0000142. MinGW has
+  distinct Perl fixture/Unicode failures plus the informational timeout.
+  Dispatched PageHeap 42417372545 on published 68c16e10, not local changes;
+  no new diagnosis is inferred while that run remains in progress.
+- Continued Windows fixture triage: raw writes preserve catalog bytes and
+  symlink capability probing catches throwing native stubs. Unicode root
+  handling remains Blocked pending a lossless Git/native-path bridge; kept
+  its regression enabled and prepared bounded failure-only fixture evidence.
+- Global URL-log review extended redaction to subscription/reseed start and
+  parse failures and outproxy debugging; no complete source operand reaches
+  those diagnostics, including query-bearing configuration.
+- Final compile-free checks pass: diff whitespace; knowledge validator (zero
+  errors, AK004 relevance warning reviewed); workflow/runtime/control source
+  contracts; agent/build/package/tool/language inventories; documentation
+  links/navigation/parameter contracts; Shell policy; Java 25 configuration;
+  JNI parity (46 declarations). No behavioral suite was executed locally.
+- Seven owning skills plus CI matrix references and AGENTS were synchronized.
+  Reusable knowledge covers retained pool authority, fixture byte/lifetime
+  boundaries, source-log redaction and instrumented dependency diagnostics.
+  Independent C++ review confirms the profile pool no longer borrows a dead
+  owner and found no new shared cycle. Static review is not CI validation.
+
+## 2026-11-07 — Authorized publication of audit and CI maintenance
+
+- Reviewed all pending source, fixture, diagnostic and concurrent workflow
+  changes for separate signed commits using the configured Git identity.
+  Selective index projections preserve working files and executable modes;
+  shared guards and new workflow inventories accompany their consumers.
+- Reviewed action tag/SHA pairs and container tags. Additional CI environment
+  boundaries and narrowly documented lint exceptions were reviewed as their
+  own maintenance change. Zizmor regular/pedantic/auditor, yamllint and
+  actionlint pass as compile-free checks; justified inline exceptions remain
+  visible. No native build, configuration or behavioral test was run.
+- Corrected the outproxy source comment to describe operation-only logging.
+  Historical findings and blocked Unicode/startup paths remain explicit;
+  publication does not attribute remote validation to unexecuted changes.

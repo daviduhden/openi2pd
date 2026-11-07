@@ -109,6 +109,11 @@ the invalid write occurred. Keep heap attribution open until the exact
 stack/image evidence supports it. Inspect pinned VM actions for failure-time
 copyback ordering: an always-upload step cannot collect files that never
 left the guest, and diagnostic collection must preserve the original status.
+When extending a cache beyond a global owner's lifetime, trace the deleters
+of its values as well as the cache's own mutexes and containers. A retained
+object with a borrowing pool deleter still depends on the shorter-lived pool.
+Keep fixture shutdown explicit and assert release after deferred work drains;
+do not remove production ownership edges to hide a fixture leak.
 Include successful steps inside failed jobs in the warning review. Preserve
 configure and build output even when CTest never starts; distinguish expected
 negative feature probes from project diagnostics and record unavailable

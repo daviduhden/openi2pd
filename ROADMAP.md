@@ -2298,3 +2298,14 @@ MSVC PageHeap attribution, worker DLL startup and MinGW version timeout, then
 fresh sanitizer evidence for historical ownership findings. The floating
 OpenSSL 4 lane currently uses 4.1.0 and does not establish explicit 4.0.x
 coverage. See the six docs/ci inventories and TODO audit follow-up rows.
+
+## Post-publication sanitizer checkpoint
+
+The executed 68c16e10 matrix restores sanitizer coverage and validates narrow
+crypto/ratchet/DHT paths; it does not pass as a whole. Profile static teardown,
+profile recycler authority, fixture completion/draining, IPC test policy and
+proxy redaction corrections are Implemented / static, Pending CI tests.
+Next validate the process-exit regression on MSVC/PageHeap and all sanitizer
+lanes, then classify the provider report using instrumented OpenSSL. Keep
+MinGW pre-output startup, worker DLL initialization, Android rendering warnings
+and platform capability skips separate from demonstrated corrected causes.

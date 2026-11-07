@@ -1755,3 +1755,40 @@ Local compile-free control-security review required literal `BN_clear_free
 explicit secure deleter and owned variable instead. Source guard passes;
 this was not an observed compiler diagnostic. Runtime validation remains
 pending with RT-038.
+
+## Published revision reviewed after 2026-11-07 dispatch
+
+SHA `68c16e10a72c70da948a3f230acc07b2800d44ac` contains the preceding static
+corrections. The refreshed paginated history has 281 runs / 54 SHAs / 16
+workflow names: 183 failures, 63 cancellations and 35 successes. This extends,
+rather than replaces, the previous historical evidence and retention gaps.
+Complete logs from successful siblings and failed jobs were reviewed.
+
+| Run | Exact jobs / result |
+|---|---|
+| [42414224563](https://github.com/daviduhden/openi2pd/actions/runs/42414224563) | OpenSSL 3 Clang 128528708995 / GCC 128528709468 compile/link, fail Perl portability and Linux IPC assertions |
+| [42414227604](https://github.com/daviduhden/openi2pd/actions/runs/42414227604) | OpenSSL 4 Clang 128528716996 / GCC 128528717182 compile/link, same CTest failures |
+| [42414235478](https://github.com/daviduhden/openi2pd/actions/runs/42414235478) | TSan 128528743055, ASan/UBSan 128528743083, UBSan 128528743120 compile/link and execute CTest; runtime inventory applies |
+| Same Validation run | static 128528742886, fuzz 128528743116 and docs 128528743145 pass; optional Perl quality 128528743772 skipped |
+| [42414218464](https://github.com/daviduhden/openi2pd/actions/runs/42414218464) | OpenBSD 128528690422 compiles/links; 245 CTests, only Perl portability fails; three capability skips |
+| [42414215883](https://github.com/daviduhden/openi2pd/actions/runs/42414215883) | MSVC 128528682366 / MinGW 128528682471 compile/link, fail runtime tests |
+| [42414232964](https://github.com/daviduhden/openi2pd/actions/runs/42414232964) | install consumer 128528734278 and interoperability 128528734554 pass |
+| [42414230020](https://github.com/daviduhden/openi2pd/actions/runs/42414230020) | Android 128528724653 passes with 17 Lint warnings; device job 128528725623 skipped |
+| [42414221469](https://github.com/daviduhden/openi2pd/actions/runs/42414221469) | static 128528698923, services 128528699048, components 128528699079, Debian 128528699193 and container 128528699229 pass |
+
+CE-078 direct-header blocker is resolved in these executed configurations;
+sanitizers now run. CE-079's canonical changelog assertion passes in the exact
+install-consumer job. CE-080's source guard passes in the executed static lane.
+No new project compiler warning or compile/link blocker was found in the
+reviewed SSL/Validation logs. This is not a claim that all optional targets or
+toolchain floors were exercised. Local follow-up changes remain Pending CI
+compilation and Pending CI tests, with no result attributed to them.
+
+### CE-081 — Local redaction guard confused host names with source URLs
+
+A new compile-free guard initially banned every logged variable named
+`address`, including address-book hostnames rather than source URLs. Narrowed
+that rule to Reseed's source operands; subscription/outproxy guards pin their
+actual URL members and all guards span multiline calls. This is a corrected
+local source-contract failure, not a compiler diagnostic. The source guard
+passes after correction; dynamic redaction validation remains pending.

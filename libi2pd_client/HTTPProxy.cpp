@@ -2023,8 +2023,8 @@ namespace proxy
 		{
 			if (m_OutproxyUrl.size ())
 			{
-				// Only the redacted form is logged: a configured outproxy URL
-				// may carry `user:password@`, which must never reach a log.
+				// A configured URL can carry credentials in userinfo or query
+				// data. Log the operation without formatting its operand.
 				LogPrint (eLogDebug, "HTTPProxy: Using configured outproxy");
 				if (m_ProxyURL.parse (m_OutproxyUrl))
 					ForwardToUpstreamProxy ();

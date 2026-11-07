@@ -2434,3 +2434,24 @@ tests until the exact published revision passes a manual lane.
 | CI-NOV07-02 | In progress | Retrieve PageHeap 42407544860; resolve RT-032 and MinGW startup timeout using exact diagnostics |
 | CI-NOV07-03 | Pending | Restore sanitizer execution after CE-078, revisit RT-027/031, add explicit OpenSSL 4.0.x coverage alongside observed 4.1.0 |
 | ANDROID-NOV07-01 | Partially implemented / static | Two compat-drawable findings corrected; 17 Lint findings and API 29 device validation remain pending |
+
+## Post-publication audit follow-up
+
+| ID | State | Remaining work |
+|---|---|---|
+| SEC-NOV07-02 | Implemented / static | RT-032 profile runtime/pool authority correction and process-exit regression; Pending CI compilation and Pending CI tests |
+| TEST-NOV07-01 | Implemented / static | RT-042/043 fixture lifetime/draining and TF-079/080 portability/IPC controls; Pending CI tests |
+| SEC-NOV07-03 | Implemented / static | RT-045 transport proxy-operand redaction and negative source contract; Pending CI tests |
+| CI-NOV07-04 | In progress | RT-044 requires newly prepared instrumented OpenSSL TSan diagnostic; dependency bottle report remains unresolved |
+| CI-NOV07-05 | Pending | Investigate MinGW pre-output version hang / worker DLL initialization separately; preserve OpenBSD broker and API 29 UI capability gaps |
+
+CI-NOV07-01/03 follow-up: published 68c16e10 resolves the missing-header
+blocker and restores sanitizer execution. The complete matrix still fails
+through the independent issues above; no current local correction is validated.
+
+Native Perl follow-up:
+
+| ID | State | Remaining work |
+|---|---|---|
+| PERL-NOV07-01 | Implemented / static | TF-082 raw fixture bytes and TF-083 narrow symlink capability handling; Pending CI tests |
+| PERL-NOV07-02 | Blocked | TF-083 native Win32 Unicode path/process bridge needs lossless round-trip implementation; test remains enabled with bounded diagnostics |

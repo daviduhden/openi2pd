@@ -238,3 +238,50 @@ TF-073 recurs in all three sanitizer jobs of 42403004301 through CE-078.
 No new sanitizer runtime result is available. Optional Perl quality and API 29
 UI lanes are skipped; those capabilities remain unvalidated. Existing MSVC
 heap failures and MinGW startup timeout remain open under RT-032.
+
+## Follow-up on published `68c16e10`
+
+| ID | Exact observed failure | Correction / status |
+|---|---|---|
+| TF-079 | Perl portability test 210 across SSL3/4, OpenBSD and all sanitizer jobs | Scanner matched `open` inside quoted `openbsd`; require the complete keyword, retain unsafe pipe fixtures and add a safe literal control. Implemented / static; Pending CI tests |
+| TF-080 | Linux IPC TestPeerExpectation line 299 in SSL3/4 and ASan | Fixture set configured=false before asking explicit UID rejection. Use designated configured fields; preserve UID/GID negatives and add the legacy kernel-authenticated round trip. Production checks unchanged. Implemented / static; Pending CI tests |
+| TF-081 | PageHeap 42407544860 emits syntax error for CDB `q 1` after the useful stack | Use supported `q`; independently fail on OPENI2PD_CRASH or missing debugger log, with negative source fixtures. Implemented / static; Pending CI tests |
+
+Validation 42414235478 ASan/UBSan has six failing tests: TF-079, TF-080,
+i2ptunnel-stop, i2ptunnel-targets, streaming-sendstate and torrents-security
+(RT-042/043). TSan has TF-079 plus RT-044; UBSan has TF-079 only. These are
+runtime/test failures after successful compilation, not compile blockers.
+
+Earlier TF-074/075/076/077 now pass the corresponding executed crypto,
+capability and Perl/Git fixture paths. OpenBSD TF-078 artifact copyback is
+confirmed: exact-run artifact `13591246747` contains configure.log, build.log,
+JUnit and Testing data despite CTest failure. Three tests are skipped in JUnit:
+worker identity and credentials under root, plus torrent storage pending an
+exec-free broker. LastTest's summary wording must not override JUnit notrun.
+Skipped worker startup gives no later handshake/shutdown evidence.
+
+### TF-082 — Native Win32 fixture output changed LF into CRLF
+
+Windows 42414215883 MinGW job `128528682471`, perl-maintenance-checkers
+assertions 243/244: generated i18n catalogs fail escaped/newline-key controls.
+The shared fixture writer used text output; native Windows inserted CRLF.
+Use raw writes to preserve intended bytes, retaining explicit CRLF-negative
+fixtures. Implemented / static; Pending CI tests.
+
+### TF-083 — Native Win32 path and symlink capability boundaries
+
+Same run/job, perl-agent-knowledge-contract: Unicode worktree-root subtest 36
+fails resolution and JSON PASS assertions; subtest 39 runs no assertions when
+core symlink throws an unimplemented-operation exception. Trap only symlink
+creation and report an exact capability skip, preserving checks on capable
+hosts. Implemented / static; Pending CI tests for that capability handling.
+
+Unicode worktree paths remain **Blocked**. Git UTF-8 output, decoded Perl
+strings and native Win32 filesystem/process paths require a lossless bridge.
+Core GetANSIPathName can substitute question marks when short aliases are
+unavailable; silently applying it would jeopardize path-boundary checks.
+The test stays enabled and adds bounded failure-only diagnostics for its
+private fixture paths. No CLI coercion, CPAN dependency or blanket skip was
+introduced. Required follow-up: inspect those exact byte/path diagnostics and
+implement a verified round-trip native-path/process bridge before claiming
+Unicode portability. Reference: [Perl Win32 filename API](https://perldoc.perl.org/5.40.3/Win32#Win32::GetANSIPathName(FILENAME)).

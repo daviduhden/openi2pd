@@ -898,3 +898,110 @@ pending. MinGW daemon `--version` still times out with empty output while
 TUI version succeeds; no timeout increase masks the unresolved startup issue.
 RT-027/031 sanitizer families remain open: current sanitizer builds stop at
 CE-078, and unsanitized sibling successes cannot close those reports.
+
+## Exact sanitizer and PageHeap follow-up
+
+### RT-032 — PageHeap identifies profile static-destruction order
+
+[42407544860](https://github.com/daviduhden/openi2pd/actions/runs/42407544860),
+MSVC job `128508397079`, SHA `14f224e6c7776619c13449759523a87298d4f63a`,
+provides the missing code-only stack in the exact uploaded diagnostic images:
+`std::list::_Free_non_head -> DiscardPostponedRouterProfileUpdates ->
+NetDb::Stop -> NetDb::~NetDb -> execute_onexit_table`, Profiling.cpp:851.
+All three targeted images finish their checks before this access violation.
+The namespace-static profile queue had already been destroyed when the global
+NetDb destructor called Stop. This establishes a concrete destruction-order
+cause, unlike the earlier detection-only phase markers.
+
+The local correction groups profile state under one function-local runtime,
+constructed before destructor-capable producers complete construction. It
+preserves ordered shutdown rather than leaking process state or bypassing
+cleanup. Cross-review also found that cached/external RouterProfiles could
+outlive their NetDb-owned recycling pool: profile deleters now retain pool
+authority. Regressions cover late destruction and external profile release.
+Implemented / static; Pending CI compilation and Pending CI tests. The
+separate worker DLL startup failure and MinGW informational timeout remain
+unresolved: informational handling uses `_Exit`, so this destructor correction
+cannot be claimed to fix the empty-output timeout.
+
+### RT-042 — Streaming fixture completion borrowed an expired stack result
+
+Validation [42414235478](https://github.com/daviduhden/openi2pd/actions/runs/42414235478),
+ASan/UBSan job `128528743083`, SHA
+`68c16e10a72c70da948a3f230acc07b2800d44ac`: test-streaming-sendstate reports
+stack-use-after-scope through SendBuffer::Cancel / Stream destruction into
+Write's callback and the former SendResult at line 139. Use shared completion
+state, retain all prior state/error checks, drop the lexical owner before the
+stream and assert weak expiry after cancellation. This fixes fixture lifetime;
+it does not remove the half-close path. Implemented / static; Pending CI tests.
+
+### RT-043 — Fixture-owned destination cycles and unserviced disk work
+
+Same ASan job: test-i2ptunnel-stop leaks 843016 bytes / 79 allocations;
+test-i2ptunnel-targets leaks 290088 / 63. Those fixtures create registered
+streaming destinations without performing ClientDestination::Stop. Teardown
+now stops the destination on the quiescent executor, drains cancellations and
+asserts weak-owner expiry. Real streaming ownership remains intact.
+
+The distinct 25913-byte / 139-allocation leak belongs to
+**test-torrents-security**, TestRPCMetadataFields, not ratchet-session. Its
+unstarted tunnel disk queue retained its owner through queued admin-state
+loads. The fixture now runs both executor domains through final Stop, drains
+disk tasks and asserts tunnel release. Implemented / static; Pending CI tests.
+The exact ratchet test passes all three sanitizer lanes on this SHA; that
+narrow result revisits historical RT-031 without attributing unrelated leaks.
+
+### RT-044 — OpenSSL property-cache TSan report needs instrumented dependency
+
+Same run, TSan job `128528743055`: test-clientcontext-registry reports strcmp
+in `ossl_method_store_atomic_find_in_list`, reading a block allocated through
+CRYPTO_malloc by a sibling concurrent PeerOrdering constructor. The dependency
+is the Homebrew OpenSSL 4.1.0 bottle; its atomics are not instrumented by the
+project's compiler flags. Official source initializes `prop_query` before
+atomic publication, and the pointer-load ordering changes under TSan builds.
+This supports an instrumentation hypothesis, not proof of a harmless report
+or an actual upstream race. Do not serialize the eight creators or suppress it.
+
+Primary references: [OpenSSL property cache](https://github.com/openssl/openssl/blob/openssl-4.1.0/crypto/property/property.c),
+[OpenSSL pthread atomics](https://github.com/openssl/openssl/blob/openssl-4.1.0/crypto/threads_pthread.c),
+[TSan non-instrumented-code requirements](https://github.com/google/sanitizers/wiki/ThreadSanitizerCppManual#non-instrumented-code).
+Required evidence is a same-Clang TSan build of the exact library/providers,
+with configure/build logs and image identity, followed by the unchanged
+registry regression. State: In progress; dynamic attribution remains pending.
+
+### RT-045 — Static NTCP2 proxy-error logs exposed configured credentials
+
+Preventive review found unsupported/invalid proxy URL diagnostics formatted
+the entire `ntcp2proxy` operand, which can contain credentials. Remove the
+operand and retain operation/outcome only; search sibling transport URL logs
+and prepare a negative source contract. No CI log is asserted to contain a
+secret. Implemented / static; Pending CI tests for redaction behavior.
+
+RT-044 validation preparation: `crypto-tsan.yml` adds a separate manual
+instrumented-library diagnostic, preserving the existing matrix. It pins
+OpenSSL 4.1.0 commit `2f4e3a5fec05394068cfa7379890ab552483a8a6`, builds
+library/providers and the project with the same Clang TSan instrumentation,
+checks the linked library path, and runs the unchanged registry regression.
+Source/build/install stay under RUNNER_TEMP; always-run collection stages
+exact images, hashes, build IDs and logs into the workspace for upload.
+This workflow exists only locally and has not been executed. The upstream
+library's native Make is isolated CI dependency tooling, not a new project
+build requirement or local validation route.
+
+Exact latest Windows distinction: run 42414215883 has a single MSVC isolation
+segfault; six other selected tests pass and supervisor is skipped after worker
+`0xC0000142` before authentication. MinGW's four failures are Perl portability,
+maintenance fixtures, knowledge validator and informational version timeout.
+Do not equate the new isolation crash with the older PageHeap stack without
+new image evidence. Manual diagnostic
+[42417372545](https://github.com/daviduhden/openi2pd/actions/runs/42417372545)
+was dispatched once on published `68c16e10` for that attribution; its results
+remain pending and cannot validate the local corrections.
+
+RT-045 equivalent-pattern search also found raw URL operands in address-book
+subscription start/parse errors and reseed download-start/parse errors.
+Those operands can carry userinfo or query credentials even when parsing
+fails. Removed the operands, including the outproxy debug URL (userinfo-only
+redaction cannot establish that query data is non-secret). Retained operation
+and outcome diagnostics, existing redaction APIs/tests, and added multiline
+source guards across all affected components. No protocol behavior changed.

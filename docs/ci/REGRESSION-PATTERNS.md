@@ -360,3 +360,30 @@ source-order guard; neither substitutes for manual sanitizer execution.
 - RT-032: phase-marker completion localizes detection, not the corrupting
   instruction. Require exact stack/image evidence before attributing heap
   damage or closing a historical sanitizer family.
+
+## Post-publication lifetime and authority review
+
+- Namespace-static containers called by another translation unit's destructor
+  require explicit construction/destruction dependencies. Review all producer
+  destructors, not only the first crash stack; keep persistence shutdown real.
+- Moving a cache to longer-lived state also moves the lifetime of its values.
+  Borrowing pool deleters must not reference a shorter-lived owner. Retain
+  pool authority in external profile handles and test release after owner exit.
+- Fixture teardown is part of the ownership graph. A registered streaming
+  destination needs explicit Stop; a queued disk task needs a running/drained
+  executor. Assert weak expiry without removing production ownership edges.
+- Deferred cancellation may complete after lexical callback state disappears.
+  Completion state must carry authority through buffer/stream destruction.
+- Separate configured IPC topology rejection from the unconfigured predicate's
+  deferred kernel authentication; keep negative tests for the explicit policy.
+- A successful ratchet test cannot close an unrelated torrent leak. Preserve
+  exact test names, allocator totals and stack origins when revisiting history.
+
+- Byte-oriented fixtures must open output in raw mode on native Win32;
+  implicit newline translation can invalidate catalogs before parsing starts.
+- Core portability operations may throw unsupported stubs. Probe the narrow
+  symlink operation, retain all other cases and record the capability reason.
+  Do not convert a filename-encoding defect into a capability skip.
+- Native path conversion is security-sensitive: decoded Git UTF-8 is not
+  automatically a valid Win32 filesystem/process operand. Reject lossy
+  question-mark substitutions and retain Unicode regressions while blocked.

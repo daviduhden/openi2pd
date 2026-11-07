@@ -508,3 +508,21 @@ see the compilation inventory for exact job IDs and links.
 - External action Node-runtime/deprecation notices, autopkgtest force-yes
   debt and Landlock ABI 8 versus runner ABI 10 coverage remain separately
   identified; a successful job does not close them.
+
+## Follow-up on published `68c16e10`
+
+Exact runs/jobs are tabulated in COMPILATION-ERRORS.md. CW-023 NOMINMAX and
+CW-024 loop-copy diagnostics are absent from the reviewed new platform logs;
+their earlier warnings remain historical evidence. Android 42414230020 has
+zero errors and 17 Lint warnings: 12 VectorPath, two ChromeOsAbiSupport, one
+NestedWeights and two Overdraw. The two compat-drawable warnings are absent.
+Do not remove branded geometry, an inset/background owner or add an ABI
+without the corresponding rendering/native artifact evidence. API 29 UI was
+skipped, so these source suggestions are not device validation.
+
+Packaging 42414221469 again emits 16 external debugedit unknown-DWARF
+messages and an autopkgtest `--force-yes` deprecation. Gradle deprecation and
+Node DEP0040/DEP0169/runtime notices remain tool/dependency debt. No warning
+suppression was added. Concurrent action-version and container-image edits
+by another session are preserved; this audit does not attribute or validate
+those independent changes.

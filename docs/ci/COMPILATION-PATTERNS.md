@@ -244,3 +244,22 @@ no old remote run validates them.
   artifact now identifies 4.1.0, leaving explicit 4.0.x coverage pending.
 - Host Git availability does not imply VM or CTest PATH availability. Declare
   the fixture dependency and preserve its interpreter-specific environment.
+
+## Post-publication source/tooling review
+
+- A lexical portability guard needs complete keyword boundaries. Matching
+  `open` as a prefix inside `openbsd` consumed a later quoted pipe literal;
+  add a safe control beside real unsafe operands rather than deleting guards.
+- Treat source-build success separately from CTest failure and sanitizer
+  reports. Removing CE-078 exposed runtime families, not a clean matrix.
+- A debugger quit command can have different syntax from a shell exit code.
+  Inspect official command grammar and classify exception markers even when
+  the debugger process itself returns zero.
+- ThreadSanitizer requires dependency synchronization visibility. Retain
+  reports from uninstrumented providers and prepare an instrumented-library
+  lane; warmup, serialization and suppression do not establish correctness.
+
+- A source-contract operand name is meaningful only in its owning API.
+  `address` is a raw reseed URL in one component and a parsed hostname in
+  another. Scope negative guards to the owning source/member; keep multiline
+  matching without banning unrelated functional diagnostics (CE-081).
