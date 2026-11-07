@@ -114,7 +114,9 @@ build.
 - Perl-enabled test builds require Git 2.28+ for isolated validator
   fixtures. CMake resolves Git before registering that contract and adds
   its directory to the test PATH; OpenBSD's VM must install Git explicitly.
-  Runtime-only builds do not acquire this dependency.
+  Runtime-only builds do not acquire this dependency. Reconcile installed
+  filename assertions with exact install artifacts after payload renames;
+  the consumer lane checks lowercase changelog, matching CMake's rename.
 - Platform feature macros can already come from dependency headers or
   compiler definitions. Guard local NOMINMAX/Windows lean declarations
   with ifndef instead of changing their value or suppressing redefinition
