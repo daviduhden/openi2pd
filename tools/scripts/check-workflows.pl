@@ -503,10 +503,14 @@ sub windows_crash_command_errors {
     my ($windows) = @_;
     my @violations;
     my ( $inside, $closed ) = ( 0, 0 );
-    my %events = map { $_ => 1 } qw(av 0xc0000374 0xc0000409);
+    my %events = map { $_ => 1 } qw(av 0xc0000374 0xc0000409 0xc0000142);
     my %seen;
     my %allowed = map { $_ => 1 }
       ( '.echo OPENI2PD_CRASH', '.lastevent', 'ln @rip', 'kc 40', 'q' );
+    push @violations, 'build-windows.yml: missing bounded worker initialization diagnostic'
+      unless $windows =~ /^\s*\$debugArguments = \@\('-G', '-noshell', '-lines', '-y', "`"\$symbols`"", '-logo', "`"\$log`"", '-cf', "`"\$commands`"", "`"\$binary`""\)\s*$/m
+        && $windows =~ /foreach \(\$test in \@\([^\n]*'test-privsep-windows-supervisor'\)\)/
+        && $windows =~ /^\s*build-msvc\/tests\/Release\/test-privsep-windows-supervisor[.]exe\s*$/m;
     push @violations, 'build-windows.yml: crash marker must fail the diagnostic step'
       unless index($windows, q{Select-String -Path $log -Pattern '^OPENI2PD_CRASH\s*$' -Quiet}) >= 0
         && index($windows, q{$failures += "$test debugger exception"}) >= 0

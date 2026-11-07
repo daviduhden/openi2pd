@@ -208,10 +208,11 @@ jobs:
           sxe -c ".echo OPENI2PD_CRASH; .lastevent; ln @rip; kc 40; q" av
           sxe -c ".echo OPENI2PD_CRASH; .lastevent; ln @rip; kc 40; q" 0xc0000374
           sxe -c ".echo OPENI2PD_CRASH; .lastevent; ln @rip; kc 40; q" 0xc0000409
+          sxe -c ".echo OPENI2PD_CRASH; .lastevent; ln @rip; kc 40; q" 0xc0000142
           g
           '@ | Set-Content -Encoding ascii $commands
           $failures = @()
-          foreach ($test in @('test-tui-protocol', 'test-tui-pipe-name', 'test-privsep-windows-isolation', 'test-profile-static-lifetime')) {
+          foreach ($test in @('test-tui-protocol', 'test-tui-pipe-name', 'test-privsep-windows-isolation', 'test-profile-static-lifetime', 'test-privsep-windows-supervisor')) {
             $image = "$test.exe"
             $binary = Join-Path $env:GITHUB_WORKSPACE "build-msvc/tests/Release/$image"
             if (-not (Test-Path $binary)) { throw "missing diagnostic target $image" }
@@ -220,7 +221,9 @@ jobs:
               if ($LASTEXITCODE -ne 0) { throw "PageHeap enable failed for $image" }
               $log = Join-Path $evidence "$test.txt"
               $symbols = Split-Path -Parent $binary
-              $debugArguments = @('-G', '-lines', '-y', "`"$symbols`"", '-logo', "`"$log`"", '-cf', "`"$commands`"", "`"$binary`"")
+              # Trace the parent only: worker command lines hold secrets.
+              # Child initializer stacks require a nonsecret probe.
+              $debugArguments = @('-G', '-noshell', '-lines', '-y', "`"$symbols`"", '-logo', "`"$log`"", '-cf', "`"$commands`"", "`"$binary`"")
               $debugger = Start-Process -FilePath $cdb -ArgumentList $debugArguments -NoNewWindow -PassThru
               if (-not $debugger.WaitForExit(120000)) {
                 & taskkill.exe /PID $debugger.Id /T /F
@@ -256,5 +259,6 @@ jobs:
             build-msvc/tests/Release/test-tui-pipe-name.exe
             build-msvc/tests/Release/test-privsep-windows-isolation.exe
             build-msvc/tests/Release/test-profile-static-lifetime.exe
+            build-msvc/tests/Release/test-privsep-windows-supervisor.exe
           if-no-files-found: warn
           retention-days: 7

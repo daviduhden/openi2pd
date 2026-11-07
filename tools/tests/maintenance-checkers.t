@@ -257,6 +257,22 @@ sub workflow_crash_fixtures {
     is($code, 1, 'debugger zero exit cannot hide an exception marker');
     like($out, qr/crash marker must fail/, 'marker classification is required');
     write_file($windows, $source);
+    for my $boundary (
+        [q{'-G', }, q{'-G', '-o', }],
+        [q{'-noshell', }, ''],
+        [q{, 'test-privsep-windows-supervisor'}, ''],
+        ['0xc0000142', '0xc0000143'],
+        ['build-msvc/tests/Release/test-privsep-windows-supervisor.exe', 'missing-image.exe'] ) {
+        my ($before, $after) = @{$boundary};
+        my $candidate = $source;
+        ok($candidate =~ s/\Q$before\E/$after/, 'worker diagnostic mutation changes a real boundary');
+        write_file($windows, $candidate);
+        ($code, $out) = run_checker($checker);
+        is($code, 1, 'worker diagnostic requires parent-only tracing and bounded evidence');
+        like($out, qr/worker initialization diagnostic|unsupported crash debugger line|missing bounded crash command file/,
+            'worker diagnostic names its missing evidence boundary');
+    }
+    write_file($windows, $source);
     my $openbsd = File::Spec->catfile(
         $tmp, '.github', 'workflows', 'build-openbsd.yml' );
     my $openbsd_source = read_fixture_file($openbsd);
