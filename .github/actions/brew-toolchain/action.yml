@@ -36,12 +36,16 @@ runs:
         INSTALL_COMPILERS: ${{ inputs.compilers }}
         INSTALL_LIBRARIES: ${{ inputs.libraries }}
         OPENSSL_FORMULA: ${{ inputs.openssl }}
-      run: |
+      run: |  # zizmor: ignore[github-env] values come from Homebrew and a validated formula allowlist; manual-only workflows
         set -euo pipefail
         if [ ! -x /home/linuxbrew/.linuxbrew/bin/brew ]; then
           echo 'Homebrew is not available at /home/linuxbrew/.linuxbrew/bin/brew' >&2
           exit 1
         fi
+        case "$OPENSSL_FORMULA" in
+          openssl@3|openssl@4) ;;
+          *) echo "unsupported OpenSSL formula: $OPENSSL_FORMULA" >&2; exit 1 ;;
+        esac
         eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
         export HOMEBREW_NO_AUTO_UPDATE=1 HOMEBREW_NO_INSTALL_CLEANUP=1
         brew update

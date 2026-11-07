@@ -33,7 +33,7 @@ jobs:
           persist-credentials: false
       - name: Install latest build tools from Homebrew
         timeout-minutes: 20
-        uses: ./.github/actions/brew-toolchain
+        uses: ./.github/actions/brew-toolchain  # zizmor: ignore[self-repository] actionlint 1.7.12 does not accept GitHub $/ self-repository syntax
       - name: Build, install components and consume package
         run: |
           set -euo pipefail
@@ -126,6 +126,7 @@ jobs:
           retention-days: 7
 
   interop:
+    name: I2P Java interoperability
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:

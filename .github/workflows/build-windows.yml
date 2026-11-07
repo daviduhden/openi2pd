@@ -31,6 +31,7 @@ jobs:
   # MSYS2/Clang64 validates the full dependency set and the Win32 TUI
   # backend with the same toolchain used for the distribution helper.
   build:
+    name: Windows MSYS2 Clang64 build and tests
     runs-on: windows-2022
     timeout-minutes: 45
     defaults:
@@ -54,7 +55,7 @@ jobs:
             mingw-w64-clang-x86_64-zlib
             mingw-w64-clang-x86_64-miniupnpc
       - name: Configure and build
-        run: |
+        run: |  # zizmor: ignore[misfeature] required by the MSYS2 Clang64 toolchain supplied by setup-msys2
           cmake -S build -B build-output -G Ninja \
             -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ \
             -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON \
@@ -67,7 +68,7 @@ jobs:
       # reuses the bounded driver, so a hang costs its budget and still
       # prints the captured output.
       - name: Diagnose the informational startup path
-        run: |
+        run: |  # zizmor: ignore[misfeature] required by the MSYS2 Clang64 toolchain supplied by setup-msys2
           # Capture the package inventory before any CTest step: a failing
           # suite must still arrive with the exact dependency set that ran.
           pacman -Q > build-output/msys2-packages.txt
@@ -90,7 +91,7 @@ jobs:
             -DVERSION_TIMEOUT=10 -DHELP_TIMEOUT=10 \
             -P tests/check-binary-version.cmake || echo "probe exit: $?"
       - name: Run CTest
-        run: |
+        run: |  # zizmor: ignore[misfeature] required by the MSYS2 Clang64 toolchain supplied by setup-msys2
           ctest --test-dir build-output -j 2 --output-on-failure \
             --no-tests=error --output-junit "$PWD/ctest-msys2.xml"
           # Bound the console-image probe: an informational flag that
@@ -115,6 +116,7 @@ jobs:
   # -DWITH_TORRENTS=OFF. No runtime download is part of the product
   # build.
   build-msvc:
+    name: Windows MSVC build and tests
     # windows-latest moved past the VS 2022 image used by the project's
     # documented MSVC generator. Pin the image that provides it.
     runs-on: windows-2022

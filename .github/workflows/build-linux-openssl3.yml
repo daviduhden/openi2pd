@@ -48,11 +48,11 @@ jobs:
           persist-credentials: false
       - name: Install latest build tools from Homebrew
         timeout-minutes: 20
-        uses: ./.github/actions/brew-toolchain
+        uses: ./.github/actions/brew-toolchain  # zizmor: ignore[self-repository] actionlint 1.7.12 does not accept GitHub $/ self-repository syntax
         with:
           openssl: openssl@3
       - name: Build and test the latest OpenSSL 3.x branch
-        uses: ./.github/actions/linux-openssl-build
+        uses: ./.github/actions/linux-openssl-build  # zizmor: ignore[self-repository] actionlint 1.7.12 does not accept GitHub $/ self-repository syntax
         with:
           name: ${{ matrix.name }}
           cc: ${{ matrix.cc }}

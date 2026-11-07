@@ -88,24 +88,32 @@ runs:
       shell: bash
       env:
         STRICT_WARNINGS: ${{ inputs.warnings_as_errors }}
+        CC_INPUT: ${{ inputs.cc }}
+        CXX_INPUT: ${{ inputs.cxx }}
+        OPENSSL_BRANCH_INPUT: ${{ inputs.openssl_branch }}
+        COMPILER_NAME: ${{ inputs.name }}
       run: |
         set -euo pipefail
         case "$STRICT_WARNINGS" in
           ON|OFF) ;;
           *) echo "warnings_as_errors must be ON or OFF" >&2; exit 1 ;;
         esac
+        case "$OPENSSL_BRANCH_INPUT" in
+          3|4) ;;
+          *) echo "openssl_branch must be 3 or 4" >&2; exit 1 ;;
+        esac
         cmake -S build -B build-output -G Ninja \
-          -DCMAKE_C_COMPILER=${{ inputs.cc }} \
-          -DCMAKE_CXX_COMPILER=${{ inputs.cxx }} \
+          -DCMAKE_C_COMPILER="$CC_INPUT" \
+          -DCMAKE_CXX_COMPILER="$CXX_INPUT" \
           -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON \
           -DI2PD_REQUIRE_PERL=ON \
           -DI2PD_WARNINGS_AS_ERRORS="$STRICT_WARNINGS" \
           -DI2PD_BUILD_TUI=ON -DI2PD_OPENSSL_EXPECT=OpenSSL \
-          -DI2PD_OPENSSL_EXPECT_MAJOR=${{ inputs.openssl_branch }} \
+          -DI2PD_OPENSSL_EXPECT_MAJOR="$OPENSSL_BRANCH_INPUT" \
           2>&1 | tee configure.log
         cmake --build build-output --parallel 2 2>&1 | tee build.log
         ctest --test-dir build-output -j 2 --output-on-failure \
-          --no-tests=error --output-junit "$PWD/ctest-${{ inputs.name }}.xml"
+          --no-tests=error --output-junit "$PWD/ctest-${COMPILER_NAME}.xml"
         ./build-output/i2pd --version
 
     - name: Run I2PSnark compatibility regressions

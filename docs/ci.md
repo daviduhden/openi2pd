@@ -142,7 +142,7 @@ the component-install lane checks every tool binary, `i2pdctl` and
   does not claim a long-running corpus campaign.
 - A compile-free `workflow-static` check (`tools/scripts/check-workflows.pl`)
   permits `pull_request` only in the maintenance gate and otherwise requires
-  `workflow_dispatch` (optionally `workflow_call`), rejects any
+  only `workflow_dispatch`, rejects `workflow_call` and any
   `continue-on-error`, and any executing `ctest` invocation without
   `--no-tests=error` and `--output-junit`. It runs in `skills-static` and as a
   CTest target.
@@ -170,8 +170,8 @@ the component-install lane checks every tool binary, `i2pdctl` and
   remains TUI/API-focused, builds the TUI tests and verifies installation.
   Dependencies are build-time only; the installed product downloads nothing.
 - Build/test/package workflows are `workflow_dispatch`-only; the maintenance
-  gate is the sole pull-request workflow and runs no build or test. `workflow_call` is permitted by the static
-  guard for a future reusable consumer, but no workflow declares it today. Manual runs do not cancel an
+  gate is the sole pull-request workflow and runs no build or test. The
+  static guard rejects `workflow_call`. Manual runs do not cancel an
   earlier validation (`cancel-in-progress: false`), and CTest logs, package
   outputs, Android reports and fuzz corpora are archived as short-retention
   artifacts.
@@ -181,8 +181,10 @@ the component-install lane checks every tool binary, `i2pdctl` and
 ```sh
 perl -c tools/scripts/check-workflows.pl
 perl tools/scripts/check-workflows.pl
-zizmor --format plain .github/workflows
-yamllint -f parsable .github/workflows
+zizmor --offline --persona=regular .
+zizmor --offline --persona=pedantic .
+zizmor --offline --persona=auditor .
+yamllint -f parsable .github/workflows .github/actions
 actionlint .github/workflows/*.yml
 ```
 
@@ -203,13 +205,16 @@ gh run view <run-id> --log > /tmp/openi2pd-ci.log
 The workflows are published on `main`; dispatches always run the remote
 revision, never the local uncommitted worktree.
 
-At the 2026-10-19 static checkpoint after adding the label inventory,
-platform-specific test registration and fuzz CTest entries: zizmor 1.31.1
-reported no findings (10 suppressed baseline items), yamllint was clean and
-actionlint reported no errors. After the 2026-10-21 workflow/artifact edits,
-`actionlint` and `yamllint` are clean; zizmor reports five low-confidence
-self-repository `./` local-action hints and no medium/high findings. These are
-static checks; they do not replace a GitHub Actions run.
+At the 2026-11-07 zizmor 1.32.0 checkpoint, regular, pedantic and auditor
+modes report no findings. The only auditor-level items are inline,
+rule-specific and justified: `self-repository` for the eight local
+`./.github/actions/*` calls that actionlint 1.7.12 cannot express with
+GitHub's `$/` syntax; `github-env` for the Homebrew composite action, which
+writes only a validated formula and trusted prefix paths from manual
+workflows; and `misfeature` for the custom `setup-msys2` and
+`vmactions/openbsd-vm` shells those actions require. `yamllint` and
+`actionlint` are clean. These are static checks; they do not replace a GitHub
+Actions run.
 
 ## 2026-10-19 dispatch audit
 

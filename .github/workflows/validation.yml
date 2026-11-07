@@ -163,7 +163,7 @@ jobs:
           persist-credentials: false
       - name: Install latest build tools from Homebrew
         timeout-minutes: 20
-        uses: ./.github/actions/brew-toolchain # zizmor: ignore[self-repository] actionlint 1.7.12 does not accept GitHub $/ self-repository syntax
+        uses: ./.github/actions/brew-toolchain  # zizmor: ignore[self-repository] actionlint 1.7.12 does not accept GitHub $/ self-repository syntax
       - name: Locate LLVM symbolizer
         run: |
           clang_path=$(readlink -f "$(command -v clang)")
@@ -189,13 +189,14 @@ jobs:
           SANITIZER_NAME: ${{ matrix.name }}
         run: |
           set -euo pipefail
+          read -r -a sanitizer_flags <<< "$SANITIZER_FLAGS"
           cmake -S build -B build-sanitizers -G Ninja \
             -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ \
             -DCMAKE_BUILD_TYPE=Debug \
             -DBUILD_TESTING=ON -DWITH_UPNP=OFF \
             -DI2PD_REQUIRE_PERL=ON \
             -DI2PD_BUILD_TUI=ON -DI2PD_OPENSSL_EXPECT=OpenSSL \
-            $SANITIZER_FLAGS 2>&1 | tee sanitizer-configure.log
+            "${sanitizer_flags[@]}" 2>&1 | tee sanitizer-configure.log
           cmake --build build-sanitizers --parallel 2 2>&1 | tee sanitizer-build.log
           ctest --test-dir build-sanitizers -j 1 --output-on-failure \
             --no-tests=error --output-junit "$PWD/ctest-sanitizers-${SANITIZER_NAME}.xml"
@@ -253,7 +254,7 @@ jobs:
           persist-credentials: false
       - name: Install latest build tools from Homebrew
         timeout-minutes: 20
-        uses: ./.github/actions/brew-toolchain # zizmor: ignore[self-repository] actionlint 1.7.12 does not accept GitHub $/ self-repository syntax
+        uses: ./.github/actions/brew-toolchain  # zizmor: ignore[self-repository] actionlint 1.7.12 does not accept GitHub $/ self-repository syntax
       - name: Build libFuzzer targets
         timeout-minutes: 30
         run: |

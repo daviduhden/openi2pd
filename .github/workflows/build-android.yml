@@ -29,6 +29,7 @@ concurrency:
 
 jobs:
   android:
+    name: Android arm64 build and unit tests
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     env:

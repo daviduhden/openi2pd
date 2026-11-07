@@ -24,6 +24,7 @@ concurrency:
 
 jobs:
   build:
+    name: OpenBSD 8.0 build and tests
     runs-on: ubuntu-24.04
     timeout-minutes: 120
     steps:
@@ -46,7 +47,7 @@ jobs:
       # The pinned custom shell copies files back after a failed command
       # and returns its original status; the action's run input does not.
       - name: Build and test inside OpenBSD
-        shell: openbsd {0}
+        shell: openbsd {0}  # zizmor: ignore[misfeature] custom shell required by vmactions/openbsd-vm failure copyback
         run: |
           set -eu
           if ! cmake -S build -B build-output -G Ninja \

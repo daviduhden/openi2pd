@@ -113,6 +113,22 @@ workflow, run `gh`, build or test.
 - Never interpolate a `workflow_dispatch` input directly into a `run:` block.
   Pass it through `env:` and validate its shape first; the fuzz lane accepts
   only digits in `FUZZ_SECONDS`.
+- `zizmor` 1.32.0 must report zero findings in regular, pedantic and auditor
+  modes. Current justified exceptions are all inline and rule-specific:
+  `self-repository` on `uses: ./.github/actions/*` because actionlint 1.7.12
+  rejects GitHub's `$/` syntax; `github-env` on the Homebrew composite action
+  because it writes only validated formula/prefix values from a manual
+  workflow; and `misfeature` for the `setup-msys2` and
+  `vmactions/openbsd-vm` custom shells they require. Do not add a global
+  `zizmor.yml` disable or a repository-wide ignore list.
+- The sanitizer matrix passes `matrix.flags` and `matrix.name` through
+  `SANITIZER_FLAGS`/`SANITIZER_NAME`; keep them out of the `run:` body.
+- Composite actions also pass expression inputs through quoted environment
+  operands. Keep the OpenSSL formula/major allowlists at the action boundary.
+  Narrow lint exceptions must identify the tool limitation and why the
+  affected construct is required, such as vmactions' copyback shell or
+  actionlint's lack of self-repository action syntax; do not broaden them
+  into a workflow-wide diagnostic suppression.
 - Do not attribute a run to a revision it did not build. Local uncommitted
   changes are not validated by an earlier remote run.
 - For every compiler or linker warning, inspect successful and failed job
@@ -175,16 +191,6 @@ workflow, run `gh`, build or test.
 
 ## Known issues and decisions
 
-- When a source-policy test reports an unsafe invocation, inspect the
-  matched operand as well as the executable source. Invocation guards
-  must match whole keywords, not prefixes in quoted platform names;
-  retain unsafe fixtures beside the source exposing a false positive.
-
-- CDB's `q` command has no exit-code operand. Keep exception markers in
-  its code-only log and classify them independently of debugger exit
-  status; missing logs must fail too. Pin both command syntax and marker
-  classification so successful debugger shutdown cannot hide a crash.
-
 - `crypto-tsan.yml` isolates the OpenSSL 4.1.0 commit
   `2f4e3a5fec05394068cfa7379890ab552483a8a6` for crypto race diagnosis.
   Its library and providers use the same Clang TSan as the focused project
@@ -196,6 +202,16 @@ workflow, run `gh`, build or test.
   with their logs for later symbolization; these are CI artifacts only.
   Run focused CTest serially and stage artifacts into the workspace from
   the temporary build before upload, including failure-time evidence.
+
+- CDB's `q` command has no exit-code operand. Keep exception markers in
+  its code-only log and classify them independently of debugger exit
+  status; missing logs must fail too. Pin both command syntax and marker
+  classification so successful debugger shutdown cannot hide a crash.
+
+- When a source-policy test reports an unsafe invocation, inspect the
+  matched operand as well as the executable source. Invocation guards
+  must match whole keywords, not prefixes in quoted platform names;
+  retain unsafe fixtures beside the source exposing a false positive.
 
 - The pinned OpenBSD action's run input throws before final copyback on
   failure. Prepare its rsync VM, then run builds in the named OpenBSD
