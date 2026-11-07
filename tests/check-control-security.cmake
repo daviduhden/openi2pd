@@ -318,7 +318,8 @@ foreach(required IN ITEMS
   endif()
 endforeach()
 foreach(required IN ITEMS
-    "BN_clear_free (r)"
+    "using SecretBN = std::unique_ptr<BIGNUM, decltype (&BN_clear_free)>;"
+    "SecretBN r (nullptr, BN_clear_free);"
     "BN_clear_free (alpha)")
   string(FIND "${ed25519_source}" "${required}" position)
   if(position EQUAL -1)

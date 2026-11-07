@@ -131,8 +131,9 @@ namespace crypto
 
 		bool Verify (const EDDSAPoint & publicKey, const uint8_t * digest, const uint8_t * signature) const;
 		/// Produce an Ed25519 signature over the message in buf. The nonce is
-		/// derived deterministically from the expanded key prefix and the
-		/// message, so the expanded key is secret material that the caller
+		/// derived from the full SHA-512 hash of the expanded key prefix and
+		/// message, reduced modulo L as in RFC 8032 section 5.1.6. The
+		/// expanded key is secret material that the caller
 		/// must cleanse. A missing input, a provider/digest
 		/// failure or a point/scalar encoding failure zeroes the
 		/// whole signature instead of returning a partial one;

@@ -93,6 +93,25 @@ executing project code, or inspect a real private key.
 
 ## Known issues and decisions
 
+- Secret-cleansing source contracts must follow the owning RAII deleter
+  when a raw BN_clear_free call is removed. Pin both the secret BIGNUM
+  owner type and its BN_clear_free construction rather than requiring a
+  legacy manual-free spelling or accepting an unrelated deleter elsewhere.
+
+- Ed25519 compatibility signing reduces all 64 SHA-512 nonce bytes modulo
+  L before encoding the 32-byte scalar consumed by MulB. Truncation can
+  produce valid signatures but fails RFC 8032 deterministic vectors and
+  differs from provider signing. Keep the strict vector comparison for
+  direct and compatibility calls, including overlapping message/output.
+  This correction changes historical compatibility signatures for the same
+  key/message, while preserving R/S encoding and verification compatibility.
+  SignRedDSA already uses full-width reduction; do not replace its random
+  nonce transcript with Ed25519's deterministic transcript.
+  Both nonce reductions set BN_FLG_CONSTTIME to request the library's
+  protected division path. This mitigation does not establish constant-time
+  signing: the complete fallback scalar/point timing surface still needs
+  review across OpenSSL and LibreSSL and independent timing validation.
+
 - Ed25519 key and signature lengths are namespace-scoped constants in
   `i2p::crypto`, not preprocessor macros. Tests outside that namespace must
   qualify array extents unless a local using declaration supplies lookup.

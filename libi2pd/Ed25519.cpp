@@ -190,7 +190,9 @@ namespace crypto
 		}
 		BN_CTX * bnCtx = BN_CTX_new ();
 		EVP_MD_CTX * ctx = nullptr;
-		BIGNUM *r = nullptr, *h = nullptr, *a = nullptr;
+		using SecretBN = std::unique_ptr<BIGNUM, decltype (&BN_clear_free)>;
+		SecretBN r (nullptr, BN_clear_free);
+		BIGNUM *h = nullptr, *a = nullptr;
 		uint8_t digest[64] = { };
 		unsigned int dl = sizeof (digest);
 		bool ok = bnCtx && (ctx = EVP_MD_CTX_new ()) != nullptr && EVP_DigestInit_ex (ctx, EVP_sha512 (), nullptr) == 1
@@ -203,15 +205,19 @@ namespace crypto
 			EVP_MD_CTX_free (ctx);
 			ctx = nullptr;
 		}
-		r = ok ? DecodeBN<32> (digest) : nullptr; // DecodeBN<64> (digest) for test vectors
+		// RFC 8032 section 5.1.6 reduces the entire SHA-512 nonce modulo L.
+		// MulB consumes 32 little-endian bytes, so encode the reduced scalar
+		// rather than discarding the upper half of the hash.
+		r.reset (ok ? DecodeBN<64> (digest) : nullptr);
+		if (r) BN_set_flags (r.get (), BN_FLG_CONSTTIME);
+		ok = ok && r && BN_mod (r.get (), r.get (), l, bnCtx) == 1 && EncodeBN (r.get (), digest, 32);
 		// calculate R
 		uint8_t R[EDDSA25519_SIGNATURE_LENGTH / 2] = { }; // signature might overlap buf
 		// The encoder result is part of the success flag: a point that
 		// cannot be encoded would otherwise be published as a signature
 		// with an all-zero R half.
 		if (ok && r)
-			ok = EncodePoint (
-				Normalize (MulB (digest, bnCtx), bnCtx), R); // EncodePoint (Mul (B, r, bnCtx), R) for test vectors
+			ok = EncodePoint (Normalize (MulB (digest, bnCtx), bnCtx), R);
 		// calculate S
 		ctx = ok ? EVP_MD_CTX_new () : nullptr;
 		ok = ok && ctx && EVP_DigestInit_ex (ctx, EVP_sha512 (), nullptr) == 1
@@ -222,7 +228,7 @@ namespace crypto
 		if (ctx) EVP_MD_CTX_free (ctx);
 		h = ok ? DecodeBN<64> (digest) : nullptr;
 		a = ok ? DecodeBN<EDDSA25519_PRIVATE_KEY_LENGTH> (expandedPrivateKey) : nullptr; // left half
-		ok = ok && r && h && a && BN_mod_mul (h, h, a, l, bnCtx) == 1 && BN_mod_add (h, h, r, l, bnCtx) == 1;
+		ok = ok && r && h && a && BN_mod_mul (h, h, a, l, bnCtx) == 1 && BN_mod_add (h, h, r.get (), l, bnCtx) == 1;
 		if (ok)
 		{
 			memcpy (signature, R, EDDSA25519_SIGNATURE_LENGTH / 2);
@@ -235,7 +241,6 @@ namespace crypto
 			memset (signature, 0, EDDSA25519_SIGNATURE_LENGTH);
 			LogPrint (eLogError, "Ed25519: signing failed");
 		}
-		if (r) BN_clear_free (r); // secret nonce scalar
 		if (h) BN_free (h); // public signature scalar
 		if (a) BN_clear_free (a);
 
@@ -274,6 +279,7 @@ namespace crypto
 			|| EVP_DigestFinal_ex (ctx.get (), digest, &dl) != 1 || dl != sizeof (digest)) return;
 		using SecretBN = std::unique_ptr<BIGNUM, decltype (&BN_clear_free)>;
 		SecretBN r (DecodeBN<64> (digest), BN_clear_free);
+		if (r) BN_set_flags (r.get (), BN_FLG_CONSTTIME);
 		if (!r || BN_mod (r.get (), r.get (), l, bnCtx.get ()) != 1) return;
 		if (!EncodeBN (r.get (), digest, 32)) return;
 		// Keep R separate: the signature is allowed to overlap the message.

@@ -57,3 +57,11 @@ require_runtime_source("privsep/WindowsIpc.cpp"
   "std::min (WORKER_HELLO_TIMEOUT_MS, RemainingDeadlineMs (deadline))")
 require_runtime_source("tests/test-privsep-windows-ipc.cpp"
   "TestMalformedHelloRearmsListener ()")
+require_runtime_source("libi2pd/Ed25519.cpp"
+  "r.reset (ok ? DecodeBN<64> (digest) : nullptr);")
+file(READ "${PROJECT_ROOT}/libi2pd/Ed25519.cpp" eddsa_nonce_source)
+if(eddsa_nonce_source MATCHES "DecodeBN<32> \\(digest\\)")
+  message(FATAL_ERROR "EdDSA nonce must use the entire SHA-512 output")
+endif()
+require_runtime_source("tests/test-eddsa.cpp"
+  "assert (memcmp (output, sig, sizeof (output)) == 0);")

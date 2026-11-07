@@ -143,6 +143,15 @@ int main ()
 		// rejected inputs.
 		ed25519->Sign (expanded, pub, msg, 1023, output);
 		assert (memcmp (output, sig, sizeof (output)) == 0);
+		// The compatibility backend must use the same full-width nonce as
+		// the provider backend, including when output overlaps the message.
+		i2p::crypto::EDDSA25519SignerCompat compat (key, pub);
+		compat.Sign (msg, 1023, output);
+		assert (memcmp (output, sig, sizeof (output)) == 0);
+		std::array<uint8_t, 1023> overlapping;
+		memcpy (overlapping.data (), msg, overlapping.size ());
+		ed25519->Sign (expanded, pub, overlapping.data (), overlapping.size (), overlapping.data ());
+		assert (memcmp (overlapping.data (), sig, sizeof (output)) == 0);
 		memset (expanded, 0, sizeof (expanded));
 	}
 	// RedDSA must preserve a valid randomized signature and overlap, while
