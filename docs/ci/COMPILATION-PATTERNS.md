@@ -263,3 +263,19 @@ no old remote run validates them.
   `address` is a raw reseed URL in one component and a parsed hostname in
   another. Scope negative guards to the owning source/member; keep multiline
   matching without banning unrelated functional diagnostics (CE-081).
+
+## 2026-11-08 — Configure and typed-source contracts
+
+- Target sanitizer flags are too late for executable configure probes linking
+  instrumented dependencies. Preserve the API probe and propagate the runtime
+  through configure-time linker flags; retain the exact failed link command.
+- A compiler predefined feature macro must keep its existing value. Backport
+  the narrow upstream guard in an isolated pinned source tree, not a global
+  installation or warning suppression; retain source and patch hashes.
+- Named source concepts keep callback contracts reusable and documentation
+  extraction unambiguous. A checker limitation is not a compiler diagnosis.
+- Protocol enum growth invalidates hard-coded unknown-value fixtures. Derive
+  boundary values from the registry and separately test framing/authorization.
+- New provider-failure exceptions require reviewing constructor and send-state
+  consumers, direct includes, partial caches and nested message construction.
+  A normal-looking zero return must not disguise failure as omitted padding.

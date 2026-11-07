@@ -1005,3 +1005,133 @@ fails. Removed the operands, including the outproxy debug URL (userinfo-only
 redaction cannot establish that query data is non-secret). Retained operation
 and outcome diagnostics, existing redaction APIs/tests, and added multiline
 source guards across all affected components. No protocol behavior changed.
+
+## 2026-11-08 — Runtime evidence and preventive provider review
+
+### RT-032 / RT-042 / RT-043 — Exact corrected-image results
+
+Historical PageHeap 42417372545, job 128538275404, SHA `68c16e10`, confirms
+that Windows isolation had the same Profiling.cpp:851 list-destruction stack
+through NetDb::Stop as the other targeted images. Latest MSVC 42419357644,
+job 128544374044, passes isolation and test-profile-static-lifetime on
+`8ffd1ad8`. This validates those executed exit paths, not the skipped worker
+handshake. Supervisor still skips after pre-authentication `0xC0000142`.
+MinGW GUI informational output still times out while the console counterpart
+passes; that startup issue remains separate from global destruction.
+
+Validation 42419375465 on `8ffd1ad8` passes i2ptunnel-stop,
+i2ptunnel-targets, streaming-sendstate and torrents-security in all three
+sanitizer lanes. No ASan/LeakSanitizer/UB runtime report appears in the complete
+new logs. EdDSA, ratchet, bencode and DHT protocol tests also pass in those
+executed lanes. These narrow results revisit the earlier families without
+asserting that every sanitizer configuration is clean.
+
+### RT-044 — Focused instrumented-provider evidence
+
+The ordinary TSan job 128544291559 still reports strcmp versus CRYPTO_malloc
+inside the prebuilt OpenSSL property cache. Focused diagnostic 42422405960,
+job 128553458708, SHA `9f5320b2409003cf05df3b1d8968a7a3ebe6949e`, passes
+1/1 registry concurrency tests in 0.08 seconds. Its linked libcrypto.so.4
+resolves to the pinned, same-Clang, TSan-instrumented temporary installation.
+The total job lasts 7m14s. This supports the dependency-instrumentation
+classification; one passing run is not a proof that arbitrary races are absent.
+
+A reusable local composite now prepares that same dependency for the normal
+TSan row and focused diagnostic. Full sanitizer CTests remain enabled; only
+TSan uses the instrumented prefix, while ASan/UBSan and the GCC/Clang bottle
+branch lanes remain intact. Configure probes receive the TSan runtime too.
+Logs, source/patch identities and matching libraries/providers are staged for
+failure-time collection. The shared full-matrix implementation and upstream
+macro guard are local and Pending CI compilation / Pending CI tests.
+
+### RT-046 — Recognized metainfo types could fall through generic skipping
+
+Static review found ParseDictionary's callback-zero convention reused as a
+typed-field failure: a malformed known value was generically skipped and
+some fields retained default values. A wrong-type file length could become
+zero beside a valid sibling, and wrong-type top-level length could bypass the
+length/files exclusion. Recognized typed extractors now record malformed
+state before returning zero. Preserve valid integer-zero files and unknown
+extension keys. Primary announce also uses the existing 2048-byte engine cap,
+a local resource policy rather than a new wire limit. Existing bencode tests
+cover wrong types, mixed siblings, valid zero and announce boundaries.
+Reference: [BEP 3](https://www.bittorrent.org/beps/bep_0003.html).
+Implemented / static; Pending CI tests.
+
+### RT-047 — Peer identity and seed fallback weakened provider failure
+
+Static review found torrent peer-ID generation falling back to GetRngSeed,
+which itself fell back to a monotonic clock if the provider failed. That
+output was not unpredictable. Peer-ID failure now clears all bytes, keeps
+readiness false and stops the torrent; later resume/error reset cannot make
+it publishable. HTTP/UDP tracker, DHT, magnet insertion and peer handshake
+paths require readiness. Internal error 4 is appended; existing values 0–3
+and RPC's generic local-error value 3 remain unchanged. Private per-object
+failure tests avoid altering the process-global provider. RPC/control tests
+preserve the existing string field and numeric mapping.
+
+GetRngSeed now aborts initialization/operation with an exception instead of
+using clocks. Zero remains valid. Global-constructor provider failure can
+terminate before main; graceful recovery is not claimed for every caller.
+Deterministic source tests pin partial/empty failures and valid boundaries.
+Implemented / static; Pending CI compilation and Pending CI tests.
+
+### RT-048 — Unchecked provider output across protocol constructors
+
+Global equivalent-pattern review found RandomUInt32 returning zero on
+provider failure. RandomBelow could then loop indefinitely for a rejection
+threshold or return a deterministic choice. The common checked byte-fill
+helper bounds the provider count, skips genuinely empty requests, cleanses
+partial output and propagates failure. Bounded-choice failure escapes instead
+of reusing a failure sentinel; a successful zero word remains valid.
+
+Previously unchecked fills in identity padding, router transport material,
+tunnel IDs/records/tests, I2NP IDs, peer selection, NTCP2/SSU2 packet padding,
+connection IDs/nonces and streaming IDs now use that contract. Candidate
+private keys are cleansed on exceptions before persistence/publication.
+Recognized key-generation failure no longer retries a different algorithm;
+explicit legacy requests and separate unsupported-selection compatibility
+mapping remain distinct. No primitive, I2P wire format or capability grant is
+changed. Provider failure is a local operation failure, not a peer fault.
+
+Tunnel construction discards phony hops and marks failed builds; pending
+reply entries roll back only the matching attempt, releasing ownership outside
+the mutex. Test encryption is staged before correlation/onDrop publication,
+and key/tag buffers are always cleansed. Phony-hop ownership insertion now
+precedes publishing its link so allocation failure cannot dangle the chain.
+Source contracts and focused helper regressions are prepared; no provider
+failure was injected into production locally. Implemented / static;
+Pending CI compilation and Pending CI tests.
+
+### RT-049 — Handshake and tracker typed failures committed partial state
+
+The same callback-zero pattern existed in BEP 10 and tracker replies. Known
+handshake fields could be skipped, then negotiation marked received; malformed
+tracker values could reset the failure ladder and commit other fields.
+Malformed flags now prevent all transactional commits. Unknown fields, opaque
+tracker IDs and extension ID zero retain their documented behavior. Existing
+peer/tracker tests cover preceding valid fields, invalid typed values, retry
+availability, failure accounting and known disabled/unknown extensions.
+References: [BEP 10](https://www.bittorrent.org/beps/bep_0010.html),
+[BEP 3](https://www.bittorrent.org/beps/bep_0003.html).
+Implemented / static; Pending CI tests.
+
+RT-048 transaction review: SSU2 clears cached outbound handshake state before
+replacement construction and discards incomplete replacements on failure.
+Unauthenticated Retry input does not revoke a valid cached request; an
+accepted Retry revokes it before rebuilding. Candidate transport keys are
+cleansed on failure, and Tag::Randomize callers must check status before
+publication. Legacy supported key generation no longer retries with a weaker
+algorithm after provider failure. Existing unsupported-selection mapping is
+a separate compatibility policy, not a newly validated capability.
+
+### RT-050 — Worker initialization evidence has a credential boundary
+
+MSVC run 42419357644, job 128544374044, SHA 8ffd1ad8 skips supervisor
+handshake coverage after worker initialization status 0xC0000142. Parent-only
+CDB diagnostics are prepared with -noshell and without child-following -o.
+The worker command line carries a bootstrap credential, so automatic child
+creation output must not be enabled. A negative workflow fixture rejects
+child-following. Worker-stack attribution remains Blocked until a non-secret
+loader probe or an out-of-band bootstrap design is available. No sandbox,
+ACL or process mitigation is relaxed. Pending CI tests for parent diagnostics.

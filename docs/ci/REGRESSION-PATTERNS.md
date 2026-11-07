@@ -387,3 +387,27 @@ source-order guard; neither substitutes for manual sanitizer execution.
 - Native path conversion is security-sensitive: decoded Git UTF-8 is not
   automatically a valid Win32 filesystem/process operand. Reject lossy
   question-mark substitutions and retain Unicode regressions while blocked.
+
+## 2026-11-08 — Failure publication and parser transactions
+
+- Separate callback skip semantics from recognized-field validation. A typed
+  extractor's zero must record malformed state before generic fallback can
+  skip it. Review metainfo, extension maps, trackers, DHT and PEX together.
+- Parse negotiation and tracker responses into scratch state. Commit only
+  after the entire document validates; malformed updates cannot consume the
+  handshake slot or reset peer/failure accounting.
+- A provider failure is not a valid random zero. Use independent readiness,
+  wipe partial buffers and stop publication; never substitute a clock seed.
+- Exercise byte-source failure per invocation, without a process-global
+  provider hook. Pin exact result types so unsupported C API values cannot
+  accidentally convert into success.
+- Rejection samplers must propagate failure immediately. Do not require every
+  sample from a finite random space to be unique in a regression.
+- Stage nested framing/encryption randomness before publishing correlation
+  and onDrop authority. Roll back only the matching pending owner on exception,
+  and release final owners outside correlation mutexes.
+- Allocating a phony hop must finish before exposing its raw chain link;
+  failed allocation must leave the existing topology intact.
+- A successful instrumented dependency lane supports attribution of an
+  uninstrumented-library report, but does not certify a different matrix or
+  prove that all races are absent. Keep full CTest coverage and exact images.

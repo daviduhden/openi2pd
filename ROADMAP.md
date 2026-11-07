@@ -2309,3 +2309,14 @@ Next validate the process-exit regression on MSVC/PageHeap and all sanitizer
 lanes, then classify the provider report using instrumented OpenSSL. Keep
 MinGW pre-output startup, worker DLL initialization, Android rendering warnings
 and platform capability skips separate from demonstrated corrected causes.
+
+## 2026-11-08 evidence and prevention checkpoint
+
+Validated by CI: the profile process-exit regression on the executed MSVC,
+OpenBSD and sanitizer lanes; focused instrumented-provider diagnostic
+42422405960 on 9f5320b2. No clean supported-matrix claim follows from those
+narrow results. Next run the complete TSan suite with its instrumented
+library, the corrected IPC opcode fixture and the prepared typed-parser and
+random-source failure regressions. These local corrections are Implemented /
+static, Pending CI compilation and Pending CI tests. Preserve the blocked
+Windows Unicode/worker-startup investigations and platform capability gaps.

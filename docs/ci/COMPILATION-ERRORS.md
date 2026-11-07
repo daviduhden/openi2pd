@@ -1792,3 +1792,68 @@ that rule to Reseed's source operands; subscription/outproxy guards pin their
 actual URL members and all guards span multiline calls. This is a corrected
 local source-contract failure, not a compiler diagnostic. The source guard
 passes after correction; dynamic redaction validation remains pending.
+
+## 2026-11-08 — Published audit follow-up
+
+The nine completed batch runs below executed
+`8ffd1ad822de9e893f4116496ffc358fb0571019`, not the later local policy or
+follow-up changes. The paginated snapshot contains 291 runs, 55 SHAs and 17
+workflow names: 189 failures, 63 cancellations and 39 successes. A subsequent
+focused run is recorded separately below. Previous missing/partial historical
+logs remain evidence gaps; the new batch does not replace that history.
+
+| Run | Exact jobs and result |
+|---|---|
+| [42419357644](https://github.com/daviduhden/openi2pd/actions/runs/42419357644) | MSVC 128544374044 passes selected tests; MinGW 128544374249 fails Unicode contract and GUI version probe |
+| [42419360397](https://github.com/daviduhden/openi2pd/actions/runs/42419360397) | OpenBSD 128544246065 builds and completes 246 CTests without failures; capability skips remain |
+| [42419362861](https://github.com/daviduhden/openi2pd/actions/runs/42419362861) | All five packaging/service/component jobs pass |
+| [42419365560](https://github.com/daviduhden/openi2pd/actions/runs/42419365560) | OpenSSL 3 Clang 128544260702 / GCC 128544260852 build; each fails only Linux IPC among 251 tests |
+| [42419367524](https://github.com/daviduhden/openi2pd/actions/runs/42419367524) | OpenSSL 4 GCC 128544267385 / Clang 128544267552 build; same Linux IPC failure |
+| [42419370092](https://github.com/daviduhden/openi2pd/actions/runs/42419370092) | Android 128544275653 passes with 17 Lint warnings; API 29 UI 128544276582 skipped |
+| [42419372239](https://github.com/daviduhden/openi2pd/actions/runs/42419372239) | Install 128544281668 and interop-reference 128544281791 pass |
+| [42419375465](https://github.com/daviduhden/openi2pd/actions/runs/42419375465) | ASan/UBSan 128544291546, TSan 128544291559 and UBSan 128544291639 build then fail CTest; docs 128544291347, fuzz 128544291525 and static 128544291588 pass; Perl quality 128544292248 skipped |
+| [42419378836](https://github.com/daviduhden/openi2pd/actions/runs/42419378836) | Instrumented crypto 128544301805 builds OpenSSL, stops at project configure (CE-082) |
+
+No new first-party compiler warning was found in the reviewed OpenBSD,
+OpenSSL branch and Linux logs. CTest failures are classified below rather
+than misreported as compilation failures. Toolchain floors, skipped paths
+and unexecuted local changes are not certified by these observations.
+
+### CE-082 — Instrumented dependency requires runtime in configure probes
+
+Crypto run 42419378836 stops at CMakeLists.txt:545,
+`I2PD_OPENSSL_LINK_OK`: the selected modern API surface fails to link.
+The exact uploaded CMakeConfigureLog shows the probe linked instrumented
+libcrypto/libssl without `-fsanitize=thread`, producing undefined `__tsan_*`
+symbols. Target sanitizer options are installed later than this probe.
+
+Set the diagnostic executable linker flags to include the runtime, retaining
+the API probe. The externally published correction is in
+`9f5320b2409003cf05df3b1d8968a7a3ebe6949e`; this audit did not create that
+commit. Focused run [42422405960](https://github.com/daviduhden/openi2pd/actions/runs/42422405960),
+job 128553458708, configures, builds and passes 1/1 tests on that exact SHA.
+The full matrix's shared dependency integration and macro patch remain local:
+Pending CI compilation and Pending CI tests.
+
+Including the focused run, the snapshot is 292 runs / 56 SHAs, with 40
+successes, 189 failures and 63 cancellations. Later local fixes are not
+validated by that success.
+
+### CE-083 — Nested requires clause confused a documentation checker
+
+Local source validation initially interpreted a nested requires-expression
+as the documented function's parameter list. Naming the byte/word source
+concepts makes the contract reusable and avoids that ambiguity without
+weakening its exact return-type constraints. Doxygen parameter source checks
+pass after the refactor. This is a source-tool limitation, not a compiler
+error; broader nested-requires recognition remains a checker improvement.
+
+### CE-084 — Composite extraction retained a malformed workflow tail
+
+Publication review found the new TSan action retained a duplicated workflow
+tail after its intended final output. Substring guards had passed despite
+invalid YAML. Removed only the duplicated tail; focused project build and
+artifact steps remain in the owning workflow. YAML parsing and actionlint
+now pass. This was a local source/configuration defect, not an observed CI
+failure. The CI skill now requires complete extraction-boundary review and
+YAML parsing alongside source guards. Dynamic execution remains pending.

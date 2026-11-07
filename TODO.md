@@ -2439,10 +2439,10 @@ tests until the exact published revision passes a manual lane.
 
 | ID | State | Remaining work |
 |---|---|---|
-| SEC-NOV07-02 | Implemented / static | RT-032 profile runtime/pool authority correction and process-exit regression; Pending CI compilation and Pending CI tests |
+| SEC-NOV07-02 | Validated by CI | RT-032 process-exit regression passes MSVC, OpenBSD and the three sanitizer lanes on 8ffd1ad8; this does not resolve the separate MinGW informational timeout |
 | TEST-NOV07-01 | Implemented / static | RT-042/043 fixture lifetime/draining and TF-079/080 portability/IPC controls; Pending CI tests |
 | SEC-NOV07-03 | Implemented / static | RT-045 transport proxy-operand redaction and negative source contract; Pending CI tests |
-| CI-NOV07-04 | In progress | RT-044 requires newly prepared instrumented OpenSSL TSan diagnostic; dependency bottle report remains unresolved |
+| CI-NOV07-04 | In progress | Focused instrumented OpenSSL run 42422405960 passes on 9f5320b2; full TSan matrix integration and macro guard remain Pending CI tests |
 | CI-NOV07-05 | Pending | Investigate MinGW pre-output version hang / worker DLL initialization separately; preserve OpenBSD broker and API 29 UI capability gaps |
 
 CI-NOV07-01/03 follow-up: published 68c16e10 resolves the missing-header
@@ -2455,3 +2455,20 @@ Native Perl follow-up:
 |---|---|---|
 | PERL-NOV07-01 | Implemented / static | TF-082 raw fixture bytes and TF-083 narrow symlink capability handling; Pending CI tests |
 | PERL-NOV07-02 | Blocked | TF-083 native Win32 Unicode path/process bridge needs lossless round-trip implementation; test remains enabled with bounded diagnostics |
+
+## 2026-11-08 retrospective and preventive audit
+
+| ID | State | Remaining work |
+|---|---|---|
+| CI-NOV08-01 | Implemented / static | Shared instrumented OpenSSL action, upstream macro guard and full TSan dependency wiring; Pending CI compilation and Pending CI tests |
+| TEST-NOV08-01 | Implemented / static | TF-084 unknown-opcode fixture now follows the protocol registry; run full IPC regression in manual CI |
+| SEC-NOV08-01 | Implemented / static | RT-047/048 checked randomness, cleansing, handshake/build rollback and publication barriers; focused regressions prepared, Pending CI tests |
+| TORRENT-NOV08-01 | Implemented / static | RT-046/049 typed metainfo, tracker and BEP 10 transactions plus peer-ID failure controls; Pending CI tests |
+| WIN-NOV08-01 | Blocked | Unicode Git/native path bridge and worker 0xC0000142 attribution remain unresolved; parent-only diagnostics must not disclose bootstrap credentials |
+
+The 292-run snapshot contains 56 SHAs, 189 failures, 63 cancellations and
+40 successes. Results belong to their exact revisions, not this worktree.
+The earlier RT-042/043 fixture regressions pass the executed sanitizer lanes;
+full lanes still fail for independent IPC/provider findings. Android retains
+17 Lint findings and an unexecuted API 29 device lane. Explicit OpenSSL 4.0.x
+coverage and historical retention gaps remain open.

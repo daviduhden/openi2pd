@@ -285,3 +285,49 @@ private fixture paths. No CLI coercion, CPAN dependency or blanket skip was
 introduced. Required follow-up: inspect those exact byte/path diagnostics and
 implement a verified round-trip native-path/process bridge before claiming
 Unicode portability. Reference: [Perl Win32 filename API](https://perldoc.perl.org/5.40.3/Win32#Win32::GetANSIPathName(FILENAME)).
+
+## 2026-11-08 — Published `8ffd1ad8` and focused `9f5320b2`
+
+### TF-084 — Unknown-type fixture reused a now-registered IPC value
+
+OpenSSL 3/4 jobs and all three sanitizer jobs fail
+`test-privsep-linux-ipc.cpp:465`, TestMalformedFrames. Type 7 is
+ConfigureTorrentStorage, so a raw framing channel correctly accepts it.
+Derive the first unknown value from MAX_MESSAGE_TYPE and check the registry;
+retain reserved-zero and 0xffff rejection plus channel-reuse controls. Add
+explicit acceptance of known framing, without changing endpoint authorization
+or production decoding. Implemented / static; Pending CI tests.
+
+The earlier configured-peer expectation case runs before this assertion and
+passes; this does not mark the whole IPC binary validated. Ordinary TSan also
+fails the separate provider-cache case, while ASan/UBSan and UBSan have only
+TF-084 in the new batch. OpenBSD completes all 246 CTest entries without a
+failure, but worker/broker capability skips remain unexecuted paths.
+
+### TF-085 — New failure regressions prepared, not executed
+
+Existing bencode and verification suites now cover recognized field types,
+transactional handshake/tracker failures and peer-ID provider failure. The
+RPC metadata fixture additionally checks internal error 4 maps to existing
+wire error 3 plus a string, and control snapshots retain that string.
+All are local prepared regressions, not newly observed CI failures.
+
+### TF-086 — Seed uniqueness assertion admitted legitimate random failures
+
+Static probability review found the old 512-sample test required all 32-bit
+seeds to differ; a real birthday collision could fail it without a defect.
+Replace that requirement with deterministic source/boundary/failure/cleansing
+regressions and a provider non-constant control that permits collisions.
+No historical failure is attributed to this hypothesis. Implemented / static;
+Pending CI tests. No retry or timeout hides it.
+
+TF-079 portability scanning, TF-082 raw catalog fixtures and narrow symlink
+capability handling pass their executed new paths. TF-083 Unicode resolution
+still fails in Windows 42419357644: the retained diagnostics show intended
+UTF-8 `c3a9` versus Git's `c383c2a9` representation at the failing root.
+That identifies a boundary mismatch, not a safe license to coerce paths.
+The Unicode test remains enabled; a lossless native path/process bridge is
+still Blocked. MinGW's other failure is the GUI informational timeout.
+
+Focused TSan 42422405960 on `9f5320b2` passes 1/1; it does not validate the
+local full-matrix dependency refactor, provider failure changes or parser fixes.

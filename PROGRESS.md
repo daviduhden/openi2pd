@@ -7080,3 +7080,61 @@ or push.
 - Corrected the outproxy source comment to describe operation-only logging.
   Historical findings and blocked Unicode/startup paths remain explicit;
   publication does not attribute remote validation to unexecuted changes.
+
+## 2026-11-08 — Historical evidence and preventive failure transactions
+
+- Paginated 292 available runs across 56 SHAs: 189 failed, 63 cancelled and
+  40 successful. Reviewed successful sibling diagnostics and exact-run
+  artifacts; preserved older retention gaps in the six CI inventories.
+- Published 8ffd1ad8 passes the profile process-exit regression on MSVC,
+  OpenBSD and three sanitizer lanes. Corrected earlier fixture lifetimes
+  also pass their executed lanes. Complete suites still expose independent
+  Linux IPC fixture and provider synchronization findings.
+- Dispatched focused instrumented-provider run 42422405960 on published
+  9f5320b2: its single regression passes. Prepared a shared instrumented
+  OpenSSL action for the complete TSan row and the narrow upstream compiler
+  macro guard. This later local integration remains Pending CI tests.
+- Fixed the IPC fixture's obsolete unknown opcode 7 without changing the
+  production registry or authorization. Prepared registry-bound negatives.
+- Hardened metainfo, tracker and BEP 10 known-field typing with transactional
+  commits and existing-target regressions. Unknown fields and disabled
+  extension IDs retain compatibility. Peer-ID failure is sticky and blocks
+  publication; RPC retains its existing generic numeric error contract.
+- Centralized checked random fills and removed clock seed fallback. Reviewed
+  equivalent provider/status consumers globally: key candidates are cleansed,
+  tunnel pending entries roll back by identity outside locks, and SSU2 retires
+  incomplete resend state while preserving valid state on unauthenticated
+  input. Prepared deterministic zero, partial-write, rejection and failure
+  regressions without overriding process-wide providers.
+- Retained Windows Unicode/MinGW startup blockers, 17 Android Lint findings,
+  API 29 and OpenBSD capability gaps. CDB remains parent-only because worker
+  command lines contain bootstrap credentials; no child-following diagnostic
+  was dispatched and no sandbox grant was weakened.
+- Final compile-free checks pass: whitespace, runtime/control source
+  contracts, workflow policy (10 workflows/3 actions), skills/language
+  contracts, documentation links/navigation/parameters and Shell policy.
+  Knowledge validation passes with zero errors; AK004 semantic relevance
+  was reviewed manually. AGENTS and CI, cryptography and torrent skills now
+  preserve reusable transaction, dependency-instrumentation and privacy
+  procedures. Adjacent platform/build/Android interfaces were reviewed by
+  specialized agents; their unchanged policies remain applicable.
+- No local builds, configuration, behavioral tests, commits or pushes were
+  performed. New source changes are Implemented / static, Pending CI
+  compilation and Pending CI tests; a clean supported matrix is not claimed.
+
+## 2026-11-08 — Authorized atomic publication review
+
+- Independent native/torrent and CI reviewers inspected commit boundaries,
+  shared consumers and the two untracked source artifacts. Selective hunks
+  and temporary index projections preserve working files and tracked modes.
+- Corrected the duplicated malformed composite-action tail before staging;
+  retained its project build and artifact steps in the owning workflow.
+  Corrected stale PR-gate wording in CI knowledge. YAML parsing, actionlint
+  and offline zizmor pass with the repository's existing narrowly documented
+  self-repository syntax compatibility exception.
+- The upstream patch's blank context lines are unified-diff syntax. Reviewed
+  its two inserted lines separately with git apply --numstat; whitespace
+  checks exclude that source patch rather than altering required context.
+- Configured author identity and commit signing are retained. No compiler,
+  build configuration or behavioral test was invoked. Publication leaves
+  native and workflow validation pending on the exact published revision.

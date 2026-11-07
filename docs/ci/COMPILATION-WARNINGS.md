@@ -526,3 +526,26 @@ Node DEP0040/DEP0169/runtime notices remain tool/dependency debt. No warning
 suppression was added. Concurrent action-version and container-image edits
 by another session are preserved; this audit does not attribute or validate
 those independent changes.
+
+## 2026-11-08 — Successful siblings and instrumented dependency
+
+The latest batch uses SHA `8ffd1ad8`; exact run/job links are in the error
+inventory. OpenBSD and all four OpenSSL branch builds expose no new project
+compiler warning in the reviewed logs. Android 42419370092 retains 17 Lint
+warnings: 12 VectorPath, two ChromeOS ABI, one NestedWeights and two Overdraw.
+The earlier compat drawable warnings remain absent; API 29 UI is skipped.
+Packaging 42419362861 retains the 16 external debugedit DWARF diagnostics and
+`--force-yes` debt. These are not first-party C++ compiler diagnostics.
+
+### CW-025 — Clang predefined TSan macro redefined by OpenSSL
+
+Instrumented run 42419378836 emits 18 warnings from
+`include/internal/threads_common.h:17`: Clang 23 already defines
+`__SANITIZE_THREAD__`, while OpenSSL 4.1.0 defines it empty again. The
+subsequent successful 42422405960 still contains the warning because the
+patch is not in its SHA. Apply only the matching guard hunk from
+[OpenSSL f99bbcd5afff69840f2bfed92458cd5ac092cf91](https://github.com/openssl/openssl/commit/f99bbcd5afff69840f2bfed92458cd5ac092cf91)
+to the pinned temporary source tree. Preserve the compiler's value and TSan
+annotations, record the applied diff/hash, and keep unrelated upstream changes
+out. No global installation or warning suppression is modified.
+Implemented / static; Pending CI compilation for the patched library.
