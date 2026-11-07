@@ -203,9 +203,9 @@ jobs:
           # Print only code locations and function names: no dumps,
           # memory reads, argument values, locals or register dumps.
           @'
-          sxe -c ".echo OPENI2PD_CRASH; .lastevent; ln @rip; kc 40; q 1" av
-          sxe -c ".echo OPENI2PD_CRASH; .lastevent; ln @rip; kc 40; q 1" 0xc0000374
-          sxe -c ".echo OPENI2PD_CRASH; .lastevent; ln @rip; kc 40; q 1" 0xc0000409
+          sxe -c ".echo OPENI2PD_CRASH; .lastevent; ln @rip; kc 40; q" av
+          sxe -c ".echo OPENI2PD_CRASH; .lastevent; ln @rip; kc 40; q" 0xc0000374
+          sxe -c ".echo OPENI2PD_CRASH; .lastevent; ln @rip; kc 40; q" 0xc0000409
           g
           '@ | Set-Content -Encoding ascii $commands
           $failures = @()
@@ -226,6 +226,13 @@ jobs:
                 $failures += "$test debugger deadline"
               } elseif ($debugger.ExitCode -ne 0) {
                 $failures += "$test debugger exit $($debugger.ExitCode)"
+              }
+              # CDB q takes no exit code. Its logged exception marker
+              # is a failure even when the debugger itself exits zero.
+              if (-not (Test-Path $log)) {
+                $failures += "$test missing debugger log"
+              } elseif (Select-String -Path $log -Pattern '^OPENI2PD_CRASH\s*$' -Quiet) {
+                $failures += "$test debugger exception"
               }
             } finally {
               & $gflags /p /disable $image

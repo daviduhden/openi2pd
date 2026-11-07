@@ -455,7 +455,11 @@ sub windows_crash_command_errors {
     my %events = map { $_ => 1 } qw(av 0xc0000374 0xc0000409);
     my %seen;
     my %allowed = map { $_ => 1 }
-      ( '.echo OPENI2PD_CRASH', '.lastevent', 'ln @rip', 'kc 40', 'q 1' );
+      ( '.echo OPENI2PD_CRASH', '.lastevent', 'ln @rip', 'kc 40', 'q' );
+    push @violations, 'build-windows.yml: crash marker must fail the diagnostic step'
+      unless index($windows, q{Select-String -Path $log -Pattern '^OPENI2PD_CRASH\s*$' -Quiet}) >= 0
+        && index($windows, q{$failures += "$test debugger exception"}) >= 0
+        && index($windows, q{$failures += "$test missing debugger log"}) >= 0;
     for my $line ( split /\n/x, $windows ) {
         $line =~ s/\A\s+|\s+\z//gx;
         if ( !$inside && $line eq q{@'} ) {

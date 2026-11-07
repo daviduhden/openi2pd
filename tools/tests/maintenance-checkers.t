@@ -243,6 +243,20 @@ sub workflow_crash_fixtures {
         like( $out, qr/code[ ]locations[ ]only/x, 'crash evidence privacy diagnostic' );
     }
     write_file( $windows, $source );
+    my $invalid_quit = $source;
+    $invalid_quit =~ s/; q"/; q 1"/g;
+    isnt($invalid_quit, $source, 'debugger fixture adds an invalid quit operand');
+    write_file($windows, $invalid_quit);
+    ($code, $out) = run_checker($checker);
+    is($code, 1, 'debugger quit must not use an unsupported exit operand');
+    like($out, qr/code locations only/, 'invalid quit fails command allowlist');
+    my $no_marker = $source;
+    $no_marker =~ s/debugger exception/debugger ignored/;
+    write_file($windows, $no_marker);
+    ($code, $out) = run_checker($checker);
+    is($code, 1, 'debugger zero exit cannot hide an exception marker');
+    like($out, qr/crash marker must fail/, 'marker classification is required');
+    write_file($windows, $source);
     my $openbsd = File::Spec->catfile(
         $tmp, '.github', 'workflows', 'build-openbsd.yml' );
     my $openbsd_source = read_fixture_file($openbsd);

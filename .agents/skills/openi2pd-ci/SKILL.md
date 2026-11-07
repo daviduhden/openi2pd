@@ -180,6 +180,11 @@ workflow, run `gh`, build or test.
   must match whole keywords, not prefixes in quoted platform names;
   retain unsafe fixtures beside the source exposing a false positive.
 
+- CDB's `q` command has no exit-code operand. Keep exception markers in
+  its code-only log and classify them independently of debugger exit
+  status; missing logs must fail too. Pin both command syntax and marker
+  classification so successful debugger shutdown cannot hide a crash.
+
 - The pinned OpenBSD action's run input throws before final copyback on
   failure. Prepare its rsync VM, then run builds in the named OpenBSD
   custom shell: that wrapper pulls artifacts after a failed command and
