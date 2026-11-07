@@ -65,3 +65,8 @@ if(eddsa_nonce_source MATCHES "DecodeBN<32> \\(digest\\)")
 endif()
 require_runtime_source("tests/test-eddsa.cpp"
   "assert (memcmp (output, sig, sizeof (output)) == 0);")
+# Cancellation must reap overlapped I/O even when the event wait fails.
+require_runtime_source("privsep/WindowsIpc.cpp"
+  "const DWORD waitError = wait == WAIT_FAILED ? GetLastError () : ERROR_SUCCESS;")
+require_runtime_source("privsep/WindowsIpc.cpp"
+  "GetOverlappedResult (pipe, &overlapped, &transferred, TRUE)")

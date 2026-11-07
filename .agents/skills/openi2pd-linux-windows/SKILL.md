@@ -100,6 +100,12 @@ execution. Ask for:
   datadir ACL as the Windows equivalent.
 
 ## Known issues and decisions
+- A failed wait on overlapped I/O does not release the kernel's ownership
+  of the OVERLAPPED structure or data buffer. Capture the wait error before
+  cancelling, then use blocking GetOverlappedResult to reap the operation
+  before returning that original error. CancelIoEx returning ERROR_NOT_FOUND
+  is a completion race, not permission to release pending stack storage.
+  Review timeout and WAIT_FAILED branches together across pipe helpers.
 - Accepted Windows pipe candidates own non-inheritable duplicates of the
   listener handle. Terminal decode/read failures may close a candidate,
   while the original listener stays valid for rejection and re-arm. Close

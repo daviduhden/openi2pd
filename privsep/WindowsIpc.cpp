@@ -455,18 +455,22 @@ namespace
 			outcome.error = GetLastError ();
 			return outcome;
 		}
-		if (wait == WAIT_FAILED)
+		// A failed wait does not complete the I/O. Save that diagnostic
+		// before cancellation changes GetLastError, then reap the operation
+		// before releasing its OVERLAPPED and caller-owned buffer.
+		const DWORD waitError = wait == WAIT_FAILED ? GetLastError () : ERROR_SUCCESS;
+		// Cancellation races with completion; ERROR_NOT_FOUND from
+		// CancelIoEx alone does not prove the operation has been reaped.
+		(void)CancelIoEx (pipe, &overlapped);
+		DWORD transferred = 0;
+		const BOOL completed = GetOverlappedResult (pipe, &overlapped, &transferred, TRUE);
+		const DWORD completionError = completed ? ERROR_SUCCESS : GetLastError ();
+		if (waitError != ERROR_SUCCESS)
 		{
-			outcome.error = GetLastError ();
+			outcome.error = waitError;
 			return outcome;
 		}
-		// Deadline expired. CancelIoEx is asynchronous and races with a
-		// completion that is already queued, so the result is inspected
-		// afterwards instead of being thrown away.
-		(void)CancelIoEx (pipe, &overlapped);
-		(void)WaitForSingleObject (overlapped.hEvent, INFINITE);
-		DWORD transferred = 0;
-		if (GetOverlappedResult (pipe, &overlapped, &transferred, FALSE))
+		if (completed)
 		{
 			if (transferred > 0 || emptyCompletionIsSuccess)
 			{
@@ -477,13 +481,12 @@ namespace
 				outcome.cancelled = true;
 			return outcome;
 		}
-		const DWORD error = GetLastError ();
-		if (error == ERROR_OPERATION_ABORTED || error == ERROR_NOT_FOUND)
+		if (completionError == ERROR_OPERATION_ABORTED || completionError == ERROR_NOT_FOUND)
 		{
 			outcome.cancelled = true;
 			return outcome;
 		}
-		outcome.error = error;
+		outcome.error = completionError;
 		return outcome;
 	}
 
