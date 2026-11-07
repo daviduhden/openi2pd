@@ -104,16 +104,19 @@ namespace data
 		}
 
 		// Sleeps for `delay` unless the stop token is signalled first. The
-		// stop callback wakes the wait immediately, so shutdown never waits
-		// for the historical 30-second retry interval.
+		// stop-aware wait prevents cancellation from waiting out the
+		// historical 30-second retry interval.
 		bool SleepUnlessStopped (std::chrono::milliseconds delay, const std::stop_token & token)
 		{
 			if (token.stop_requested ()) return false;
 			std::mutex mutex;
-			std::condition_variable cv;
-			std::stop_callback wake (token, [&cv] { cv.notify_all (); });
+			std::condition_variable_any cv;
 			std::unique_lock<std::mutex> lock (mutex);
-			return !cv.wait_for (lock, delay, [&token] { return token.stop_requested (); });
+			// The stop-aware wait registers cancellation atomically with its
+			// sleep. A separate notify callback can lose the stop notification
+			// between checking the predicate and parking the thread.
+			cv.wait_for (lock, token, delay, [] { return false; });
+			return !token.stop_requested ();
 		}
 
 		// Runs one asynchronous operation with a hard deadline and

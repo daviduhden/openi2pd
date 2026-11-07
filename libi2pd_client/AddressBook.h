@@ -464,7 +464,9 @@ namespace client
 		i2p::datagram::DatagramDestination::ReceiverRegistration m_LookupReceiver;
 		detail::AddressLookupRequests m_Lookups;
 		std::unique_ptr<AddressBookStorage> m_Storage;
-		volatile bool m_IsLoaded;
+		// Subscription completion and administrative reads use different
+		// threads. This flag does not grant access to the storage object.
+		std::atomic<bool> m_IsLoaded;
 		std::future<void> m_Downloading;
 		int m_NumRetries;
 		// Subscription sources, guarded by m_SubscriptionsMutex. The URL list

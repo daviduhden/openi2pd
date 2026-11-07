@@ -135,6 +135,7 @@ set(I2PD_TESTS
   test-streaming-limitaction
   test-streaming-accept-timeout
   test-streaming-accept-race
+  test-stream-creation-sync
   test-streaming-recently-closed
   test-streaming-overlimit-reset
   test-streaming-sendstate
@@ -336,6 +337,9 @@ foreach(test IN LISTS I2PD_TESTS)
   if(test STREQUAL "test-router-profile-race")
     set_property(TEST ${test} APPEND PROPERTY LABELS i2p)
   endif()
+  if(test STREQUAL "test-stream-creation-sync")
+    set_property(TEST ${test} APPEND PROPERTY LABELS i2p)
+  endif()
   if(test STREQUAL "test-datagram-receiver-lifecycle")
     set_property(TEST ${test} APPEND PROPERTY LABELS "i2p;security;memory")
   endif()
@@ -411,6 +415,7 @@ foreach(test IN LISTS I2PD_TESTS)
       OR test STREQUAL "test-datagram-version-dispatch"
       OR test STREQUAL "test-streaming-accept-timeout"
       OR test STREQUAL "test-streaming-accept-race"
+      OR test STREQUAL "test-stream-creation-sync"
       OR test STREQUAL "test-streaming-recently-closed"
       OR test STREQUAL "test-streaming-overlimit-reset"
       OR test STREQUAL "test-streaming-sendstate"

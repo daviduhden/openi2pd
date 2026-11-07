@@ -1820,7 +1820,14 @@ namespace client
 	template <typename Dest>
 	std::shared_ptr<i2p::stream::Stream> ClientDestination::CreateStreamSync (const Dest & dest, uint16_t port)
 	{
-		volatile bool done = false;
+		// Completion is posted back to this executor. Waiting here from
+		// one of its handlers would prevent the completion from running.
+		if (GetService ().get_executor ().running_in_this_thread ())
+		{
+			LogPrint (eLogError, "Destination: Synchronous stream creation requires an external caller");
+			return nullptr;
+		}
+		bool done = false;
 		std::shared_ptr<i2p::stream::Stream> stream;
 		std::condition_variable streamRequestComplete;
 		std::mutex streamRequestCompleteMutex;
@@ -1828,17 +1835,20 @@ namespace client
 			[&done, &streamRequestComplete, &streamRequestCompleteMutex, &stream] (
 				std::shared_ptr<i2p::stream::Stream> s)
 			{
-				stream = s;
-				std::unique_lock<std::mutex> l (streamRequestCompleteMutex);
-				streamRequestComplete.notify_all ();
-				done = true;
+				{
+					std::lock_guard<std::mutex> l (streamRequestCompleteMutex);
+					stream = std::move (s);
+					done = true;
+					// Keep notification inside the lock: returning destroys
+					// the caller's condition variable immediately afterward.
+					streamRequestComplete.notify_all ();
+				}
 			},
 			dest, port);
-		while (!done)
-		{
-			std::unique_lock<std::mutex> l (streamRequestCompleteMutex);
-			if (!done) streamRequestComplete.wait (l);
-		}
+		// Publish both the result and completion under one mutex. Volatile
+		// does not synchronize a caller with the destination's executor.
+		std::unique_lock<std::mutex> l (streamRequestCompleteMutex);
+		streamRequestComplete.wait (l, [&done] { return done; });
 		return stream;
 	}
 

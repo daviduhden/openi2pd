@@ -417,10 +417,15 @@ namespace client
 			StreamRequestComplete streamRequestComplete, const i2p::data::IdentHash & dest, uint16_t port = 0);
 		void CreateStream (StreamRequestComplete streamRequestComplete,
 			std::shared_ptr<const i2p::data::BlindedPublicKey> dest, uint16_t port = 0);
+		/// Wait for stream creation; the destination executor must run.
+		/// Returns nullptr on failure or if called from that executor.
+		/// Executor handlers must use the callback overload instead.
 		std::shared_ptr<i2p::stream::Stream> CreateStream (
-			const i2p::data::IdentHash & dest, uint16_t port = 0); // sync
+			const i2p::data::IdentHash & dest, uint16_t port = 0);
+		/// Synchronous blinded lookup with the same executor restriction.
+		/// Returns nullptr rather than blocking its completion executor.
 		std::shared_ptr<i2p::stream::Stream> CreateStream (
-			std::shared_ptr<const i2p::data::BlindedPublicKey> dest, uint16_t port = 0); // sync
+			std::shared_ptr<const i2p::data::BlindedPublicKey> dest, uint16_t port = 0);
 		std::shared_ptr<i2p::stream::Stream> CreateStream (
 			std::shared_ptr<const i2p::data::LeaseSet> remote, uint16_t port = 0);
 		void SendPing (const i2p::data::IdentHash & to, uint16_t fromPort = 0, uint16_t toPort = 0);

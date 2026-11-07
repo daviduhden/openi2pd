@@ -107,6 +107,23 @@ Do not let reconnaissance agents edit, compile, execute tests or run scripts.
 
 ## Known issues and decisions
 
+- Async-to-sync result bridges must publish both the result and completion
+  predicate under one mutex, then use the predicate form of wait. Volatile
+  does not synchronize the executor and caller; inspect related status
+  flags such as address-book subscription completion for the same mistake.
+  When the condition variable is caller-local, notify before releasing
+  that lock so a waiter cannot destroy it before notification finishes.
+  The stream-creation regression exercises both overloads on an unready
+  destination so failures complete without network activity.
+  A synchronous bridge must reject its own completion executor before
+  posting work; handlers use callback overloads. The regression also
+  invokes both sync overloads from that executor to pin fail-fast behavior.
+- A stop callback that only notifies a condition variable can lose a wake
+  between the predicate check and parking. Prefer the stop-token-aware
+  condition_variable_any wait; its predicate result cannot distinguish a
+  timed-out always-false predicate from cancellation, so inspect the token.
+  This does not resolve blocking DNS or unrelated object teardown paths.
+
 - SSU2 incoming-token RNG failures return zero (or {0, 0} with expiry)
   without caching a token. Review every consumer when changing this sentinel:
   Retry must not send a normal-close token, optional NewToken blocks must be
