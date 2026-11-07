@@ -123,3 +123,110 @@ foreach(url_source libi2pd/Reseed.cpp libi2pd_client/AddressBook.cpp
     message(FATAL_ERROR "Raw reseed source operand in log")
   endif()
 endforeach()
+
+# Registry tests derive unknown types from the authoritative boundary.
+require_runtime_source("tests/test-privsep-linux-ipc.cpp"
+  "static_cast<uint16_t> (MAX_MESSAGE_TYPE + 1)")
+require_runtime_source("tests/test-privsep-linux-ipc.cpp"
+  "assert (!IsKnownMessageType (type));")
+file(READ "${PROJECT_ROOT}/tests/test-privsep-linux-ipc.cpp" ipc_fixture)
+if(ipc_fixture MATCHES "BuildHeader \\(7,")
+  message(FATAL_ERROR "Registered IPC type 7 is not an unknown-type fixture")
+endif()
+require_runtime_source("tests/test-torrent-bencode.cpp" "TestKnownFieldTypes ()")
+require_runtime_source("libi2pd_client/Torrents.cpp"
+  "if (!l || announce.size () > MAX_TRACKER_ANNOUNCE_LENGTH)")
+
+# Provider failure never publishes clock-derived seeds or peer IDs.
+require_runtime_source("libi2pd/util.cpp" "return detail::RequireRandomSeed")
+require_runtime_source("libi2pd/util.h"
+  "throw std::runtime_error (\"CSPRNG seed unavailable\");")
+file(READ "${PROJECT_ROOT}/libi2pd/util.cpp" seed_source)
+string(FIND "${seed_source}" "uint_fast32_t GetRngSeed ()" seed_start)
+string(FIND "${seed_source}" "\n\tnamespace net" seed_end)
+if(seed_start LESS 0 OR seed_end LESS seed_start)
+  message(FATAL_ERROR "Cannot inspect provider seed boundary")
+endif()
+math(EXPR seed_length "${seed_end} - ${seed_start}")
+string(SUBSTRING "${seed_source}" ${seed_start} ${seed_length} seed_body)
+if(seed_body MATCHES "GetMonotonic|GetMillisecondsSinceEpoch|std::chrono")
+  message(FATAL_ERROR "Provider seed generation must not fall back to clocks")
+endif()
+require_runtime_source("tests/test-rng-seed.cpp" "assert (zero == 0 && calls == 1);")
+require_runtime_source("tests/test-rng-seed.cpp" "assert (seeds.size () > 1);")
+require_runtime_source("tests/test-torrents-verify-parity.cpp" "TestPeerIDProviderFailure ()")
+require_runtime_source("libi2pd_client/Torrents.cpp"
+  "if (!m_Torrent || !m_Stream || !m_Torrent->HasPeerID ()) return;")
+require_runtime_source("libi2pd_client/Torrents.h"
+  "m_Error.store (HasPeerID () ? error : eTorrentErrorRandomSource, std::memory_order_release);")
+require_runtime_source("libi2pd_client/TorrentsTunnel.cpp"
+  "if (!torrent || !torrent->HasPeerID () || !IsTorrentTracker (trackerID, *torrent)) return false;")
+
+# Reject bare calls; conditional continuations need semantic review.
+if(POLICY CMP0009)
+  cmake_policy(SET CMP0009 NEW)
+endif()
+file(GLOB_RECURSE provider_sources
+  "${PROJECT_ROOT}/libi2pd/*.cpp" "${PROJECT_ROOT}/libi2pd/*.h"
+  "${PROJECT_ROOT}/libi2pd/*.hpp" "${PROJECT_ROOT}/libi2pd_client/*.cpp"
+  "${PROJECT_ROOT}/libi2pd_client/*.h")
+foreach(provider_path IN LISTS provider_sources)
+  file(READ "${provider_path}" provider_text)
+  if(provider_text MATCHES "(^|\n)[ \t]*RAND_(priv_)?bytes[ \t]*\\([^;\n]*\\)[ \t]*;")
+    message(FATAL_ERROR "Unchecked provider statement: ${provider_path}")
+  endif()
+endforeach()
+require_runtime_source("libi2pd/Random.h" "OPENSSL_cleanse (bytes.data (), bytes.size ());")
+require_runtime_source("libi2pd/Random.h" "return detail::RandomBelowWith (bound, [] { return RandomUInt32 (); });")
+require_runtime_source("libi2pd/TunnelPool.cpp" "auto retireUnsentTest = i2p::modern::ScopeExit")
+require_runtime_source("libi2pd/TunnelPool.cpp" "OPENSSL_cleanse (key, sizeof (key));")
+require_runtime_source("libi2pd/Tunnel.cpp" "auto abortBuild = i2p::modern::ScopeExit")
+require_runtime_source("libi2pd/Tunnel.cpp" "retired = std::move (entry->second);")
+require_runtime_source("libi2pd/TunnelConfig.cpp" "m_Hops.push_back (std::move (hop));")
+require_runtime_source("libi2pd/NetDb.cpp" "if (!randomIdent.Randomize ())")
+require_runtime_source("libi2pd/RouterContext.cpp"
+  "OPENSSL_cleanse (keys.get (), sizeof (NTCP2PrivateKeys));")
+require_runtime_source("libi2pd/RouterContext.cpp"
+  "OPENSSL_cleanse (keys.get (), sizeof (SSU2PrivateKeys));")
+require_runtime_source("libi2pd/SSU2Session.cpp"
+  "auto discardIncompleteHandshake = i2p::modern::ScopeExit")
+require_runtime_source("libi2pd/SSU2Session.cpp"
+  "discardIncompleteHandshake.dismiss ();")
+file(READ "${PROJECT_ROOT}/libi2pd/RouterContext.cpp" router_randomness)
+if(router_randomness MATCHES "LogPrint[^;]*replyToken")
+  message(FATAL_ERROR "Router publication tokens must not enter logs")
+endif()
+
+function(require_runtime_region path begin end token)
+  file(READ "${PROJECT_ROOT}/${path}" region_source)
+  string(FIND "${region_source}" "${begin}" begin_at)
+  string(FIND "${region_source}" "${end}" end_at)
+  if(begin_at LESS 0 OR end_at LESS begin_at)
+    message(FATAL_ERROR "Cannot inspect runtime region in ${path}")
+  endif()
+  math(EXPR region_size "${end_at} - ${begin_at}")
+  string(SUBSTRING "${region_source}" ${begin_at} ${region_size} region)
+  string(FIND "${region}" "${token}" token_at)
+  if(token_at LESS 0)
+    message(FATAL_ERROR "Missing bounded runtime region contract in ${path}")
+  endif()
+endfunction()
+require_runtime_region("libi2pd/SSU2Session.cpp"
+  "bool SSU2Session::SendSessionRequest (uint64_t token)"
+  "bool SSU2Session::ProcessSessionRequest (Header & header"
+  "m_SentHandshakePacket.reset ();\n\t\tauto discardIncompleteHandshake")
+require_runtime_region("libi2pd/SSU2Session.cpp"
+  "bool SSU2Session::SendSessionCreated (const uint8_t * X)"
+  "bool SSU2Session::ProcessSessionCreated (uint8_t * buf"
+  "m_SentHandshakePacket.reset ();\n\t\tauto discardIncompleteHandshake")
+require_runtime_source("libi2pd/SSU2Session.cpp"
+  "// Retire the previous attempt only after Retry validation.")
+require_runtime_source("libi2pd/Tunnel.cpp"
+  "std::shared_ptr<Tunnel> retired;\n\t\t\t{\n\t\t\t\tstd::lock_guard<std::mutex> lock (m_PendingTunnelsMutex);")
+require_runtime_source("libi2pd/Tag.h" "[[nodiscard]] bool Randomize ()")
+require_runtime_source("libi2pd/Tag.h"
+  "if (RAND_bytes (m_Buf, sz) == 1) return true;\n\t\t\tOPENSSL_cleanse (m_Buf, sz);")
+require_runtime_source("tests/test-torrents-verify-parity.cpp" "TestExtendedHandshakeFieldTypes ()")
+require_runtime_source("tests/test-torrents-verify-parity.cpp" "TestTrackerKnownFieldTypes ()")
+require_runtime_source("tests/test-torrents-security.cpp"
+  "entry.as_object ().at (\"error\").as_int64 () == (populated ? 3 : 0)")
