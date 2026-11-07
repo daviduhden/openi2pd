@@ -42,6 +42,18 @@ struct Fixture
 			i2p::data::SIGNING_KEY_TYPE_EDDSA_SHA512_ED25519, i2p::data::CRYPTO_KEY_TYPE_ECIES_X25519_AEAD, true);
 		destination = std::make_shared<i2p::client::ClientDestination> (service, keys, false, &params);
 	}
+
+	~Fixture ()
+	{
+		// Port destinations retain their owner until explicit shutdown.
+		service.stop ();
+		destination->Stop ();
+		std::weak_ptr<i2p::client::ClientDestination> released = destination;
+		destination.reset ();
+		service.restart ();
+		service.poll ();
+		assert (released.expired ());
+	}
 };
 
 const std::string BasicPost = "POST /upload HTTP/1.1\r\nHost: peer\r\nContent-Length: 0\r\n\r\n";

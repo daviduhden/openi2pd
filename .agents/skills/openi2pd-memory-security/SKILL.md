@@ -520,6 +520,12 @@ Do not let reconnaissance agents edit, compile, execute tests or run scripts.
   Test completion state must remain owned until cancellation/destruction,
   just as production callback state does. Exercise the deferred teardown
   with heap-owned completion state and a weak-expiry assertion.
+- Fixtures that create registered streaming destinations must explicitly
+  stop their ClientDestination before releasing it: the port registry and
+  streaming owner retain each other until Stop removes the registrations.
+  For a context without a runner, stop it first to select synchronous
+  teardown, then restart/poll canceled callbacks before checking weak expiry.
+  Do not weaken stream ownership to compensate for a missing fixture stop.
 - A stopped member `io_context` may still own queued cancellation handlers.
   Member timers must not strongly capture their owning destination: canceling
   the timer and stopping its executor does not drain that queue. Capture a

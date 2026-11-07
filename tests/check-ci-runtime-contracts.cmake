@@ -114,3 +114,8 @@ require_runtime_source("tests/test-streaming-sendstate.cpp"
   "std::shared_ptr<SendResult> result")
 require_runtime_source("tests/test-streaming-sendstate.cpp"
   "assert (pending.expired ());")
+
+require_runtime_source("tests/test-i2ptunnel-stop.cpp"
+  "assert (released.expired ());")
+require_runtime_source("tests/test-i2ptunnel-targets.cpp"
+  "assert (released.expired ());")
