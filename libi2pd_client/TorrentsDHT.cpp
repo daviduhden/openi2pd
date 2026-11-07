@@ -24,6 +24,7 @@
 #include "I2PEndian.h"
 #include "Timestamp.h"
 #include "FS.h"
+#include "Modern.h"
 #include "TorrentsTunnel.h"
 #include "TorrentsDHT.h"
 
@@ -669,6 +670,9 @@ namespace torrents
 		// save that has not run yet must fail closed instead of entering
 		// half-destroyed state.
 		m_ServiceState->stopping.store (true, std::memory_order_release);
+		// A disk task captures its callable, but destruction must still
+		// wait until any write admitted by this generation has returned.
+		std::lock_guard<std::mutex> persistence (m_ServiceState->persistenceMutex);
 		m_DHTUpdateCheckTimer.cancel ();
 		m_DHTExpirationCheckTimer.cancel ();
 		m_DHTSendPingCheckTimer.cancel ();
@@ -685,6 +689,18 @@ namespace torrents
 	void TorrentsDHT::Start ()
 	{
 		if (!IsInitialized ()) return;
+		auto nextState = std::make_shared<DHTServiceState> ();
+		m_ServiceState->stopping.store (true, std::memory_order_release);
+		{
+			// Do not load state while an old periodic writer can replace it.
+			std::lock_guard<std::mutex> persistence (m_ServiceState->persistenceMutex);
+		}
+		m_DatagramReceiver.Reset ();
+		{
+			std::lock_guard<std::mutex> lock (m_IncomingMutex);
+			m_Incoming.clear ();
+		}
+		m_ServiceState = std::move (nextState);
 		auto dest = m_Tunnel.GetLocalDestination ();
 		if (dest && m_DHTFileName.empty ()) m_DHTFileName = dest->GetIdentHash ().ToBase32 () + ".dht";
 		if (m_DHTFileName.empty ()) m_DHTFileName = "nodest.dht";
@@ -696,10 +712,6 @@ namespace torrents
 		}
 		else if (!m_DHTFileName.empty () && m_DHTFileName[0])
 			LogPrint (eLogError, "TorrentsDHT: Refusing unsafe DHT state filename");
-		m_ServiceState->stopping.store (false, std::memory_order_release);
-		// A fresh generation starts with no write in flight; a stale one
-		// could not have completed because Stop() marks `stopping` first.
-		m_ServiceState->saveInFlight.store (false, std::memory_order_release);
 		if (dest)
 		{
 			auto dgramDest = dest->GetDatagramDestination ();
@@ -747,13 +759,11 @@ namespace torrents
 			std::lock_guard<std::mutex> lock (m_IncomingMutex);
 			m_Incoming.clear ();
 		}
-		// A periodic write that has not started yet sees `stopping` and
-		// returns without writing, so the flag must not stay latched across a
-		// restart.
-		m_ServiceState->saveInFlight.store (false, std::memory_order_release);
-		// The final save stays synchronous: the caller stops the delegated
-		// storage worker only after this returns, so no periodic save may
-		// still be queued when that authority goes away.
+		// A queued write rechecks revocation under this barrier. An admitted
+		// write must finish before the final snapshot replaces its output.
+		// The tunnel drains its disk worker after Stop(), so no task retains
+		// active storage authority beyond that shutdown sequence.
+		std::lock_guard<std::mutex> persistence (m_ServiceState->persistenceMutex);
 		if (!m_DHTFileName.empty () && m_DHTFileName[0] && IsValidStateFileName (m_DHTFileName))
 			Save (GetDHTFilePath (m_DHTFileName));
 	}
@@ -1913,8 +1923,15 @@ namespace torrents
 	{
 		m_DHTUpdateCheckTimer.cancel ();
 		m_DHTUpdateCheckTimer.expires_after (std::chrono::seconds (DHT_UPDATE_CHECK_INTERVAL));
+		std::weak_ptr<DHTServiceState> guard = m_ServiceState;
 		m_DHTUpdateCheckTimer.async_wait (
-			[this] (const boost::system::error_code & ecode) { HandleDHTUpdateCheckTimer (ecode); });
+			[this, guard] (const boost::system::error_code & ecode)
+			{
+				const auto state = guard.lock ();
+				if (!state || state->stopping.load (std::memory_order_acquire)
+					|| ecode == boost::asio::error::operation_aborted) return;
+				HandleDHTUpdateCheckTimer (ecode);
+			});
 	}
 
 	void TorrentsDHT::HandleDHTUpdateCheckTimer (const boost::system::error_code & ecode)
@@ -1938,8 +1955,15 @@ namespace torrents
 	{
 		m_DHTExpirationCheckTimer.cancel ();
 		m_DHTExpirationCheckTimer.expires_after (std::chrono::seconds (DHT_EXPIRATION_CHECK_INTERVAL));
+		std::weak_ptr<DHTServiceState> guard = m_ServiceState;
 		m_DHTExpirationCheckTimer.async_wait (
-			[this] (const boost::system::error_code & ecode) { HandleDHTExpirationCheckTimer (ecode); });
+			[this, guard] (const boost::system::error_code & ecode)
+			{
+				const auto state = guard.lock ();
+				if (!state || state->stopping.load (std::memory_order_acquire)
+					|| ecode == boost::asio::error::operation_aborted) return;
+				HandleDHTExpirationCheckTimer (ecode);
+			});
 	}
 
 	void TorrentsDHT::HandleDHTExpirationCheckTimer (const boost::system::error_code & ecode)
@@ -1998,8 +2022,15 @@ namespace torrents
 	{
 		m_DHTSendPingCheckTimer.cancel ();
 		m_DHTSendPingCheckTimer.expires_after (std::chrono::seconds (DHT_SEND_PING_CHECK_INTERVAL));
+		std::weak_ptr<DHTServiceState> guard = m_ServiceState;
 		m_DHTSendPingCheckTimer.async_wait (
-			[this] (const boost::system::error_code & ecode) { HandleDHTSendPingCheckTimer (ecode); });
+			[this, guard] (const boost::system::error_code & ecode)
+			{
+				const auto state = guard.lock ();
+				if (!state || state->stopping.load (std::memory_order_acquire)
+					|| ecode == boost::asio::error::operation_aborted) return;
+				HandleDHTSendPingCheckTimer (ecode);
+			});
 	}
 
 	void TorrentsDHT::HandleDHTSendPingCheckTimer (const boost::system::error_code & ecode)
@@ -2020,8 +2051,15 @@ namespace torrents
 	{
 		m_DHTQueryExpirationCheckTimer.cancel ();
 		m_DHTQueryExpirationCheckTimer.expires_after (std::chrono::seconds (DHT_QUERY_EXPIRATION_CHECK_INTERVAL));
+		std::weak_ptr<DHTServiceState> guard = m_ServiceState;
 		m_DHTQueryExpirationCheckTimer.async_wait (
-			[this] (const boost::system::error_code & ecode) { DHTQueryExpirationCheckTimer (ecode); });
+			[this, guard] (const boost::system::error_code & ecode)
+			{
+				const auto state = guard.lock ();
+				if (!state || state->stopping.load (std::memory_order_acquire)
+					|| ecode == boost::asio::error::operation_aborted) return;
+				DHTQueryExpirationCheckTimer (ecode);
+			});
 	}
 
 	void TorrentsDHT::DHTQueryExpirationCheckTimer (const boost::system::error_code & ecode)
@@ -2176,34 +2214,28 @@ namespace torrents
 		// Single flight: a save that is still queued or running makes this
 		// tick a no-op, so the disk domain never accumulates writes.
 		if (m_ServiceState->saveInFlight.exchange (true, std::memory_order_acq_rel)) return;
+		auto state = m_ServiceState;
+		auto resetUnsubmitted = i2p::modern::ScopeExit ([state]
+			{ state->saveInFlight.store (false, std::memory_order_release); });
 		const auto file = GetDHTFilePath (m_DHTFileName);
-		if (file.empty ())
-		{
-			m_ServiceState->saveInFlight.store (false, std::memory_order_release);
-			return;
-		}
+		if (file.empty ()) return;
 		// The snapshot is built on the service thread because it reads the
 		// routing table and node identity. The write task captures no `this`:
 		// only the shared state, the path, the bytes and a copy of the
 		// storage callable, so it stays valid even if persistence is revoked
 		// first.
 		std::vector<uint8_t> bytes;
-		if (!BuildStateSnapshot (bytes))
-		{
-			m_ServiceState->saveInFlight.store (false, std::memory_order_release);
-			return;
-		}
+		if (!BuildStateSnapshot (bytes)) return;
 		const bool delegated = m_DelegatedPersistence;
 		auto save = m_SaveState;
-		auto state = m_ServiceState;
 		boost::asio::post (m_Tunnel.GetDiskIOService (),
 			[state, file, bytes = std::move (bytes), delegated, save = std::move (save)] () mutable
 			{
+				auto clearFlight = i2p::modern::ScopeExit ([state]
+					{ state->saveInFlight.store (false, std::memory_order_release); });
+				std::lock_guard<std::mutex> persistence (state->persistenceMutex);
 				if (state->stopping.load (std::memory_order_acquire))
-				{
-					state->saveInFlight.store (false, std::memory_order_release);
 					return;
-				}
 				std::string error;
 				if (delegated)
 				{
@@ -2216,8 +2248,8 @@ namespace torrents
 				else if (!WriteFileAtomicNoFollow (
 							 file.parent_path (), file.filename (), bytes.data (), bytes.size (), error))
 					LogPrint (eLogError, "TorrentsDHT: Can't write state file: ", error);
-				state->saveInFlight.store (false, std::memory_order_release);
 			});
+		resetUnsubmitted.dismiss ();
 	}
 
 	void TorrentsDHT::Unannounce (const Torrent::InfoHash & infoHash)

@@ -122,6 +122,19 @@ Do not let them edit, build or run tests.
   partially populated dictionaries, nested/list fallback and otherwise
   valid metainfo with dangling ignored keys; failed extraction is empty/0.
 
+- DHT Start creates fresh callback/persistence authority; never clear a
+  retired generation's stopping flag. All six timer callbacks lock their
+  generation before entering the service. Lifecycle mutations remain on the
+  owner executor or a quiescent service; a weak state is not permission to
+  destroy routing fields concurrently with a handler.
+- A periodic DHT save rechecks revocation after taking its generation's
+  persistence mutex. Stop revokes first and takes that barrier before its
+  final snapshot, preventing an admitted old writer from winning afterward.
+  Normal tunnel shutdown also drains the disk executor before restart; keep
+  that separate from direct DHT restart and final-writer ordering. The DHT
+  protocol regression drives old and new queued saves through real delegates
+  without network or filesystem access. Failed submission releases its
+  single-flight claim, and old callbacks release only their own claim.
 - A DHT node ID is usable only after successful provider randomness and
   routing-table construction. The tunnel discards an uninitialized DHT,
   leaving its capability and ports absent; Start must reject that state

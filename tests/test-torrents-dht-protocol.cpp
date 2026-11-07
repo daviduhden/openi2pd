@@ -7,8 +7,9 @@
  * Pins the side-effect free KRPC frame decoder, the bounded
  * issued-token store with its per-node quota, the compact node/peer
  * decoders, the per-peer routing cap, the anonymous raw-frame budget,
- * the port-safety helpers and the flat state-record validation. No
- * socket, timer or live node is involved.
+ * the port-safety helpers and the flat state-record validation. The
+ * restart regression drives a real queued state save with in-memory
+ * persistence; no socket or live peer is involved.
  */
 
 #include <array>
@@ -21,10 +22,28 @@
 #include <string_view>
 #include <vector>
 
+#include "Destination.h"
 #include "TorrentsDHT.h"
 #include "TorrentsTunnel.h"
 
 #ifndef NO_TORRENTS
+
+namespace i2p::torrents
+{
+// Restrict the fixture seam to the periodic callback and its generation.
+// Persistence still goes through the production queue and revocation gate.
+struct DHTLifecycleTestAccess
+{
+	static void QueueSave (TorrentsDHT & dht)
+	{
+		dht.HandleDHTStateSaveTimer (boost::system::error_code { });
+	}
+	static std::shared_ptr<DHTServiceState> State (const TorrentsDHT & dht)
+	{
+		return dht.m_ServiceState;
+	}
+};
+}
 
 namespace
 {
@@ -642,6 +661,56 @@ void TestStateRecords ()
 	const std::vector<uint8_t> oversized (TorrentsDHT::MaxStateBytes + NodeInfo { }.size (), 0);
 	assert (!DecodeDHTStateRecords (oversized).has_value ());
 }
+
+void TestPersistenceGeneration ()
+{
+	boost::asio::io_context service;
+	auto keys = i2p::data::PrivateKeys::CreateRandomKeys (
+		i2p::data::SIGNING_KEY_TYPE_EDDSA_SHA512_ED25519,
+		i2p::data::CRYPTO_KEY_TYPE_ECIES_X25519_AEAD, true);
+	auto owner = std::make_shared<i2p::client::ClientDestination> (
+		service, keys, false);
+	TorrentsTunnel tunnel ("dht-generation-test", owner, "/unused-authority",
+		std::string_view { }, false);
+	TorrentsDHT dht (tunnel, 1234, "generation.dht");
+	assert (dht.IsInitialized ());
+	std::vector<std::vector<uint8_t>> writes;
+	dht.SetPersistence (
+		[] (const std::filesystem::path &, std::vector<uint8_t> &, std::string &)
+			{ return false; },
+		[&writes] (const std::filesystem::path &, std::span<const uint8_t> bytes, std::string &)
+		{
+			writes.emplace_back (bytes.begin (), bytes.end ());
+			return true;
+		});
+
+	dht.Start ();
+	auto retired = DHTLifecycleTestAccess::State (dht);
+	DHTLifecycleTestAccess::QueueSave (dht);
+	assert (retired->saveInFlight.load ());
+	assert (writes.empty ());
+	dht.Stop ();
+	assert (writes.size () == 1); // final synchronous snapshot
+	assert (retired->stopping.load ());
+	dht.Start ();
+	auto current = DHTLifecycleTestAccess::State (dht);
+	assert (current != retired);
+	assert (!current->stopping.load ());
+	assert (!current->saveInFlight.load ());
+	// A pre-Stop task cannot overwrite the final snapshot after restart,
+	// and clearing its flight flag cannot change the new generation.
+	DHTLifecycleTestAccess::QueueSave (dht);
+	assert (current->saveInFlight.load ());
+	tunnel.GetDiskIOService ().poll_one ();
+	assert (writes.size () == 1);
+	assert (!retired->saveInFlight.load ());
+	assert (current->saveInFlight.load ());
+	tunnel.GetDiskIOService ().poll_one ();
+	assert (writes.size () == 2);
+	assert (!current->saveInFlight.load ());
+	dht.Stop ();
+	assert (writes.size () == 3);
+}
 } // namespace
 
 int main ()
@@ -659,6 +728,7 @@ int main ()
 	TestClosestNodesOrdering ();
 	TestPortSafety ();
 	TestStateRecords ();
+	TestPersistenceGeneration ();
 	return 0;
 }
 

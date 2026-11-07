@@ -576,14 +576,17 @@ namespace torrents
 
 	class TorrentsTunnel;
 	// Shared between the DHT service thread, its timers and the disk
-	// domain. Every new asynchronous callback captures a weak reference
-	// and enters the DHT only after locking a live guard with `stopping`
-	// false; Stop() sets it before cancelling, so a torn-down service is
-	// never entered from a timer or a disk-domain task.
+	// domain. Timers enter the DHT only after locking a live weak guard
+	// with `stopping` false; receiver registrations retain the revocable
+	// state and disk tasks retain it without borrowing the DHT object.
+	// Start() creates a fresh state rather than reviving a stopped
+	// generation. The persistence barrier orders an in-flight periodic write
+	// before Stop()'s final snapshot; queued writes recheck after acquiring it.
 	struct DHTServiceState
 	{
 		std::atomic<bool> stopping { false };
 		std::atomic<bool> saveInFlight { false };
+		std::mutex persistenceMutex;
 	};
 
 	/// I2P datagram DHT for one tunnel. It borrows the tunnel for its
@@ -620,14 +623,17 @@ namespace torrents
 		static bool IsValidStateFileName (std::string_view name);
 		/// Load persisted routing state, publish the datagram receivers (when
 		/// the destination provides a datagram endpoint) and arm the DHT
-		/// timers. Loading may be delegated; an enabled-but-failing delegate
+		/// timers. Lifecycle operations and timer handlers are serialized on
+		/// the tunnel service, or run while that service is quiescent.
+		/// Loading may be delegated; an enabled-but-failing delegate
 		/// must not substitute a parent filesystem read.
 		void Start ();
 		/// Publish the stopping flag before cancelling timers or resetting
 		/// the receivers, discard frames queued by the stopped generation and
-		/// save the routing snapshot. No callback may enter the DHT
-		/// afterwards, and a queued frame is never replayed into a later
-		/// Start().
+		/// wait for an admitted periodic write before saving the final
+		/// snapshot. Old callbacks stay revoked across restart; queued frames
+		/// never enter a later Start(). The persistence barrier may wait for
+		/// the bounded delegated storage operation during orderly shutdown.
 		void Stop ();
 
 		// Both are always in 1..65535: 65535 is refused at construction and
@@ -676,6 +682,10 @@ namespace torrents
 		size_t GetNumQueuedDatagrams () const;
 
 	private:
+		// The protocol regression drives the real periodic-save callback
+		// without waiting for its production timer or opening a network.
+		friend struct DHTLifecycleTestAccess;
+
 		// Bounded service-thread hand-off. The network thread only copies the
 		// frame here under the mutex: it never parses, sends or touches
 		// routing, query or torrent state.

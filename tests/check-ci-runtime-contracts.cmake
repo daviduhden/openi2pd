@@ -72,3 +72,9 @@ require_runtime_source("privsep/WindowsIpc.cpp"
   "GetOverlappedResult (pipe, &overlapped, &transferred, TRUE)")
 require_runtime_source("tests/test-torrent-bencode.cpp"
   "TestDictionaryValuesRequired ()")
+require_runtime_source("libi2pd_client/TorrentsDHT.h"
+  "std::mutex persistenceMutex;")
+require_runtime_source("libi2pd_client/TorrentsDHT.cpp"
+  "auto nextState = std::make_shared<DHTServiceState> ();")
+require_runtime_source("tests/test-torrents-dht-protocol.cpp"
+  "TestPersistenceGeneration ()")
