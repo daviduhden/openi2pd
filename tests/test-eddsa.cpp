@@ -126,9 +126,9 @@ int main ()
 	// and callers publish the buffer as a RouterInfo or LeaseSet1
 	// signature.
 	{
-		uint8_t expanded[2 * EDDSA25519_PRIVATE_KEY_LENGTH];
+		uint8_t expanded[2 * i2p::crypto::EDDSA25519_PRIVATE_KEY_LENGTH];
 		i2p::crypto::Ed25519::ExpandPrivateKey (key, expanded);
-		uint8_t output[EDDSA25519_SIGNATURE_LENGTH];
+		uint8_t output[i2p::crypto::EDDSA25519_SIGNATURE_LENGTH];
 		for (unsigned missing = 0; missing < 3; ++missing)
 		{
 			memset (output, 0xA5, sizeof (output));
@@ -174,8 +174,9 @@ int main ()
 		// success branch.
 		uint8_t seed[64];
 		for (size_t i = 0; i < sizeof (seed); ++i) seed[i] = static_cast<uint8_t> (i * 7 + 1);
-		uint8_t blindedPriv[EDDSA25519_PRIVATE_KEY_LENGTH], blindedPub[EDDSA25519_PUBLIC_KEY_LENGTH];
-		uint8_t derivedPub[EDDSA25519_PUBLIC_KEY_LENGTH];
+		uint8_t blindedPriv[i2p::crypto::EDDSA25519_PRIVATE_KEY_LENGTH],
+			blindedPub[i2p::crypto::EDDSA25519_PUBLIC_KEY_LENGTH];
+		uint8_t derivedPub[i2p::crypto::EDDSA25519_PUBLIC_KEY_LENGTH];
 		assert (ed25519->BlindPrivateKey (scalar, seed, blindedPriv, blindedPub));
 		assert (ed25519->BlindPublicKey (redSigner.GetPublicKey (), seed, derivedPub));
 		assert (memcmp (blindedPub, derivedPub, sizeof (blindedPub)) == 0);

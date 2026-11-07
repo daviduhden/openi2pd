@@ -93,6 +93,14 @@ executing project code, or inspect a real private key.
 
 ## Known issues and decisions
 
+- Ed25519 key and signature lengths are namespace-scoped constants in
+  `i2p::crypto`, not preprocessor macros. Tests outside that namespace must
+  qualify array extents unless a local using declaration supplies lookup.
+  A failed extent can cascade into undeclared output buffers; fix the
+  first constant lookup without changing buffer sizes or weakening the
+  negative crypto assertions. A sanitizer compile failure supplies no
+  runtime evidence for the skipped regressions.
+
 - Pending ratchet reply correlation borrows its receive tagset; the inbound
   tag map retains the session through that tagset. Making both edges strong
   creates a session/tagset cycle even after destination teardown. Lock weak
