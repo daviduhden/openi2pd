@@ -25,6 +25,7 @@
 #include <openssl/crypto.h>
 #include <openssl/rand.h>
 #include "Config.h"
+#include "Profiling.h"
 #include "Crypto.h"
 #include "Ed25519.h"
 #include "Timestamp.h"
@@ -161,6 +162,8 @@ RouterContext::RouterContext ()
 	, m_PublishReplyToken (0)
 	, m_IsHiddenMode (false)
 {
+	// Router/session teardown must precede shared profile destruction.
+	i2p::data::PrepareProfilesRuntime ();
 }
 
 RouterContext::~RouterContext ()

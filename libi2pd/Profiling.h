@@ -144,6 +144,10 @@ namespace data
 	bool IsRouterBanned (const IdentHash & identHash);
 	bool IsRouterDuplicated (const IdentHash & identHash); // check only existing profiles
 	void InitProfilesStorage ();
+	/// Keep the profile runtime alive through owner destruction.
+	/// Owners whose teardown accesses profiles call this before their
+	/// constructors complete. It performs no disk I/O or store setup.
+	void PrepareProfilesRuntime ();
 	// The selected root is immutable for the process lifetime; changing
 	// datadir requires a process restart. Calls are coordinated within
 	// this process and require exclusive ownership of the data directory.

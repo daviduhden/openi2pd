@@ -25,6 +25,7 @@
 #include "Transports.h"
 #include "NetDb.hpp"
 #include "Config.h"
+#include "Profiling.h"
 #include "Tunnel.h"
 #include "TunnelPool.h"
 #include "util.h"
@@ -581,6 +582,8 @@ namespace tunnel
 		, m_TunnelCreationAttemptsNum (0)
 		, m_Rng (i2p::util::GetRngSeed ())
 	{
+		// Retiring tunnels may update profiles after the worker is joined.
+		i2p::data::PrepareProfilesRuntime ();
 	}
 
 	Tunnels::~Tunnels ()

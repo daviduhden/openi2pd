@@ -82,3 +82,13 @@ require_runtime_source("libi2pd_client/TorrentsDHT.cpp"
   "auto nextState = std::make_shared<DHTServiceState> ();")
 require_runtime_source("tests/test-torrents-dht-protocol.cpp"
   "TestPersistenceGeneration ()")
+
+# Profile state and recycler authority must survive cross-TU teardown.
+require_runtime_source("libi2pd/Profiling.cpp"
+  "static ProfilingRuntime runtime;")
+foreach(producer NetDb.cpp Transports.cpp Tunnel.cpp RouterContext.cpp)
+  require_runtime_source("libi2pd/${producer}" "PrepareProfilesRuntime ();")
+endforeach()
+require_runtime_source("libi2pd/NetDb.hpp"
+  "[pool] (RouterProfile * profile) noexcept { pool->ReleaseMt (profile); }")
+require_runtime_source("tests/CMakeLists.txt" "test-profile-static-lifetime")

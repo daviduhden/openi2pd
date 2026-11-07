@@ -100,6 +100,16 @@ execution. Ask for:
   datadir ACL as the Windows equivalent.
 
 ## Known issues and decisions
+- A Windows heap exception after a test's completion marker may come from
+  process teardown rather than that test's parser. PageHeap traced the
+  profile callback-list free through NetDb::Stop and its static destructor.
+  The profile runtime is constructed before NetDb, transport, tunnel and
+  router owners finish construction, so it is destroyed after their cleanup.
+  Keep the capture-release regression; neither skipping shutdown nor leaking
+  the list repairs a cross-translation-unit destruction-order defect.
+  A cached profile may outlive NetDb itself, so its recycler deleter retains
+  shared pool authority. Clearing a cache alone cannot protect independent
+  external owners; test their final release after the allocating NetDb dies.
 - A failed wait on overlapped I/O does not release the kernel's ownership
   of the OVERLAPPED structure or data buffer. Capture the wait error before
   cancelling, then use blocking GetOverlappedResult to reap the operation

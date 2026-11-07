@@ -40,6 +40,7 @@
 #include "IdentMetrics.h"
 #include "Blocklist.h"
 #include "PersistentStorage.h"
+#include "Profiling.h"
 #include "NetDb.hpp"
 
 using namespace i2p::transport;
@@ -281,6 +282,10 @@ namespace data
 		, m_LastExploratorySelectionUpdateTime (0)
 		, m_Rng (i2p::util::GetRngSeed ())
 	{
+		// Stop() may discard callbacks even when Start() was never called.
+		// Construct the shared runtime before this object's destructor is
+		// registered so it remains alive throughout NetDb teardown.
+		PrepareProfilesRuntime ();
 	}
 
 	NetDb::~NetDb ()
@@ -549,7 +554,7 @@ namespace data
 				if (mts >= lastProfilesCleanup
 						+ (uint64_t)(i2p::data::PEER_PROFILE_AUTOCLEAN_TIMEOUT + profilesCleanupVariance) * 1000)
 				{
-					m_RouterProfilesPool.CleanUpMt ();
+					m_RouterProfilesPool->CleanUpMt ();
 					if (m_PersistProfiles)
 					{
 						bool isSaving = m_SavingProfiles.valid ();

@@ -44,32 +44,40 @@ namespace i2p
 {
 namespace data
 {
-	static i2p::fs::HashedStorage g_ProfilesStorage ("peerProfiles", "p", "profile-", "txt");
-	// Storage lock is outermost for filesystem work; no map/state lock is
-	// held while performing file IO. Profile methods acquire their IO lock
-	// first. A RouterProfile can be read from several threads while it is
-	// written by the tunnel or transport that observed the peer. m_Mutex
-	// guards every field (including endpoints and the dirty flag);
-	// m_IoMutex serialises Save()/Load() per object so one profile has at
-	// most one file operation in flight. The lock order is m_IoMutex
-	// before m_Mutex. Callers must hold a shared_ptr for as long as they
-	// touch the profile: the caches only evict an entry whose shared count
-	// is one. The storage root is fixed for the process lifetime
-	// (InitProfilesStorage); g_ProfilesStorageMutex makes "initialized +
-	// root" a single immutable fact so a writer never observes a
-	// half-configured store.
-	static std::mutex g_ProfilesStorageMutex;
-	static bool g_ProfilesStorageInitialized = false;
-	static std::string g_ProfilesStoragePlace;
-	static std::unordered_map<i2p::data::IdentHash, std::shared_ptr<RouterProfile>> g_Profiles;
-	static std::mutex g_ProfilesMutex;
-	static std::list<std::pair<i2p::data::IdentHash, std::function<void (std::shared_ptr<RouterProfile>)>>>
-		g_PostponedUpdates;
-	static std::mutex g_PostponedUpdatesMutex;
-	static std::mt19937 m_ProfilesRng (i2p::util::GetRngSeed ());
-	static std::mutex m_ProfilesRngMutex;
-	static std::mutex g_ProfileLoadObserverMutex;
-	static std::function<void (const i2p::data::IdentHash &)> g_ProfileLoadObserver;
+	// The runtime is constructed before each NetDb completes construction.
+	// Its destructor therefore runs after NetDb::Stop(), regardless of
+	// translation-unit initialization order. Storage and lock ordering stay
+	// unchanged: storage -> profile IO -> per-profile state, and cache
+	// locks are never held during filesystem operations.
+	struct ProfilingRuntime
+	{
+		i2p::fs::HashedStorage storage { "peerProfiles", "p", "profile-", "txt" };
+		std::mutex storageMutex;
+		bool storageInitialized = false;
+		std::string storagePlace;
+		std::mutex rngMutex;
+		std::mt19937 rng { i2p::util::GetRngSeed () };
+		std::mutex profilesMutex;
+		std::unordered_map<IdentHash, std::shared_ptr<RouterProfile>> profiles;
+		std::mutex loadObserverMutex;
+		std::function<void (const IdentHash &)> loadObserver;
+		// The callback queue is destroyed before the cache and storage.
+		// NetDb has already quiesced producers and discarded or applied it.
+		std::mutex postponedMutex;
+		std::list<std::pair<IdentHash,
+			std::function<void (std::shared_ptr<RouterProfile>)>>> postponed;
+	};
+
+	static ProfilingRuntime & GetProfilingRuntime ()
+	{
+		static ProfilingRuntime runtime;
+		return runtime;
+	}
+
+	void PrepareProfilesRuntime ()
+	{
+		(void)GetProfilingRuntime ();
+	}
 
 	RouterProfile::RouterProfile ()
 		: m_IsUpdated (false)
@@ -141,8 +149,8 @@ namespace data
 			std::ostringstream serialized;
 			serialized.imbue (std::locale::classic ());
 			boost::property_tree::write_ini (serialized, pt);
-			std::lock_guard storageLock (g_ProfilesStorageMutex);
-			if (!g_ProfilesStorageInitialized)
+			std::lock_guard storageLock (GetProfilingRuntime ().storageMutex);
+			if (!GetProfilingRuntime ().storageInitialized)
 			{
 				LogPrint (eLogError, "Profiling: Storage is not initialized; refusing profile write");
 				return false;
@@ -173,13 +181,13 @@ namespace data
 
 		try
 		{
-			std::lock_guard storageLock (g_ProfilesStorageMutex);
-			if (!g_ProfilesStorageInitialized)
+			std::lock_guard storageLock (GetProfilingRuntime ().storageMutex);
+			if (!GetProfilingRuntime ().storageInitialized)
 			{
 				LogPrint (eLogWarning, "Profiling: Storage is not initialized; skipping profile load");
 				return;
 			}
-			const auto path = g_ProfilesStorage.Path (ident);
+			const auto path = GetProfilingRuntime ().storage.Path (ident);
 			if (!i2p::fs::Exists (path))
 			{
 				LogPrint (eLogWarning, "Profiling: No profile yet for ", ident);
@@ -353,8 +361,8 @@ namespace data
 	{
 		uint32_t randomValues[3];
 		{
-			std::lock_guard lock (m_ProfilesRngMutex);
-			for (auto & value : randomValues) value = m_ProfilesRng ();
+			std::lock_guard lock (GetProfilingRuntime ().rngMutex);
+			for (auto & value : randomValues) value = GetProfilingRuntime ().rng ();
 		}
 		const auto successRate = i2p::tunnel::tunnels.GetPreciseTunnelCreationSuccessRate ();
 		std::lock_guard lock (m_Mutex);
@@ -517,8 +525,8 @@ namespace data
 	 * @brief Return the canonical profile for a peer, creating and loading
 	 *        it once.
 	 *
-	 * The cache lookup is done under g_ProfilesMutex; a miss then loads
-	 * from disk outside every lock and inserts under the lock again. Two
+	 * The cache lookup is done under its mutex; a miss then loads from
+	 * disk outside every lock and inserts under the lock again. Two
 	 * threads that race on the same new peer may therefore both parse the
 	 * file, but emplace keeps the first instance and both callers receive
 	 * that same canonical object, so accounting is never split across two
@@ -533,9 +541,9 @@ namespace data
 	std::shared_ptr<RouterProfile> GetRouterProfile (const IdentHash & identHash)
 	{
 		{
-			std::unique_lock<std::mutex> l (g_ProfilesMutex);
-			auto it = g_Profiles.find (identHash);
-			if (it != g_Profiles.end ())
+			std::unique_lock<std::mutex> l (GetProfilingRuntime ().profilesMutex);
+			auto it = GetProfilingRuntime ().profiles.find (identHash);
+			if (it != GetProfilingRuntime ().profiles.end ())
 			{
 				it->second->SetLastAccessTime (i2p::util::GetSecondsSinceEpoch ());
 				return it->second;
@@ -544,16 +552,16 @@ namespace data
 		{
 			std::function<void (const IdentHash &)> observer;
 			{
-				std::lock_guard<std::mutex> l (g_ProfileLoadObserverMutex);
-				observer = g_ProfileLoadObserver;
+				std::lock_guard<std::mutex> l (GetProfilingRuntime ().loadObserverMutex);
+				observer = GetProfilingRuntime ().loadObserver;
 			}
 			if (observer) observer (identHash);
 		}
 		auto profile = netdb.NewRouterProfile ();
 		profile->Load (identHash); // if possible
 		{
-			std::lock_guard<std::mutex> l (g_ProfilesMutex);
-			auto it = g_Profiles.emplace (identHash, profile).first;
+			std::lock_guard<std::mutex> l (GetProfilingRuntime ().profilesMutex);
+			auto it = GetProfilingRuntime ().profiles.emplace (identHash, profile).first;
 			profile = it->second;
 		}
 		profile->SetLastAccessTime (i2p::util::GetSecondsSinceEpoch ());
@@ -562,17 +570,17 @@ namespace data
 
 	std::shared_ptr<RouterProfile> GetRouterProfileIfExists (const IdentHash & identHash)
 	{
-		std::lock_guard<std::mutex> l (g_ProfilesMutex);
-		auto it = g_Profiles.find (identHash);
-		if (it == g_Profiles.end ()) return nullptr;
+		std::lock_guard<std::mutex> l (GetProfilingRuntime ().profilesMutex);
+		auto it = GetProfilingRuntime ().profiles.find (identHash);
+		if (it == GetProfilingRuntime ().profiles.end ()) return nullptr;
 		it->second->SetLastAccessTime (i2p::util::GetSecondsSinceEpoch ());
 		return it->second;
 	}
 
 	void SetRouterProfileLoadObserverForTesting (std::function<void (const IdentHash &)> observer)
 	{
-		std::lock_guard<std::mutex> l (g_ProfileLoadObserverMutex);
-		g_ProfileLoadObserver = std::move (observer);
+		std::lock_guard<std::mutex> l (GetProfilingRuntime ().loadObserverMutex);
+		GetProfilingRuntime ().loadObserver = std::move (observer);
 	}
 
 	bool IsRouterBanned (const IdentHash & identHash)
@@ -582,17 +590,17 @@ namespace data
 		// checks are cheap and the runtime-ban path is lock-free while the
 		// set is empty.
 		if (IsOperatorBlockedRouter (identHash) || IsRuntimeRouterBanned (identHash)) return true;
-		std::lock_guard<std::mutex> l (g_ProfilesMutex);
-		auto it = g_Profiles.find (identHash);
-		if (it != g_Profiles.end ()) return it->second->IsUnreachable ();
+		std::lock_guard<std::mutex> l (GetProfilingRuntime ().profilesMutex);
+		auto it = GetProfilingRuntime ().profiles.find (identHash);
+		if (it != GetProfilingRuntime ().profiles.end ()) return it->second->IsUnreachable ();
 		return false;
 	}
 
 	bool IsRouterDuplicated (const IdentHash & identHash)
 	{
-		std::lock_guard<std::mutex> l (g_ProfilesMutex);
-		auto it = g_Profiles.find (identHash);
-		if (it != g_Profiles.end ()) return it->second->IsDuplicated ();
+		std::lock_guard<std::mutex> l (GetProfilingRuntime ().profilesMutex);
+		auto it = GetProfilingRuntime ().profiles.find (identHash);
+		if (it != GetProfilingRuntime ().profiles.end ()) return it->second->IsDuplicated ();
 		return false;
 	}
 
@@ -605,18 +613,18 @@ namespace data
 	{
 		if (place.empty ()) throw std::runtime_error ("Profiling: Refusing empty storage root");
 		const auto requested = std::filesystem::weakly_canonical (place).string ();
-		std::lock_guard storageLock (g_ProfilesStorageMutex);
-		if (g_ProfilesStorageInitialized)
+		std::lock_guard storageLock (GetProfilingRuntime ().storageMutex);
+		if (GetProfilingRuntime ().storageInitialized)
 		{
-			if (requested != g_ProfilesStoragePlace)
+			if (requested != GetProfilingRuntime ().storagePlace)
 				throw std::runtime_error ("Profiling: Storage root is immutable after initialization");
 			return;
 		}
-		g_ProfilesStorage.SetPlace (requested);
-		if (!g_ProfilesStorage.Init (i2p::data::GetBase64SubstitutionTable (), 64))
+		GetProfilingRuntime ().storage.SetPlace (requested);
+		if (!GetProfilingRuntime ().storage.Init (i2p::data::GetBase64SubstitutionTable (), 64))
 			throw std::runtime_error ("Profiling: Failed to initialize storage root");
-		g_ProfilesStoragePlace = requested;
-		g_ProfilesStorageInitialized = true;
+		GetProfilingRuntime ().storagePlace = requested;
+		GetProfilingRuntime ().storageInitialized = true;
 	}
 
 	static void SaveProfilesToDisk (
@@ -648,8 +656,8 @@ namespace data
 	std::future<void> PersistProfiles ()
 	{
 		{
-			std::lock_guard storageLock (g_ProfilesStorageMutex);
-			if (!g_ProfilesStorageInitialized)
+			std::lock_guard storageLock (GetProfilingRuntime ().storageMutex);
+			if (!GetProfilingRuntime ().storageInitialized)
 			{
 				LogPrint (eLogWarning, "Profiling: Storage is not initialized; skipping persistence");
 				return std::future<void> ();
@@ -658,8 +666,8 @@ namespace data
 		auto ts = i2p::util::GetSecondsSinceEpoch ();
 		std::list<std::pair<i2p::data::IdentHash, std::shared_ptr<RouterProfile>>> tmp;
 		{
-			std::lock_guard<std::mutex> l (g_ProfilesMutex);
-			for (auto it = g_Profiles.begin (); it != g_Profiles.end ();)
+			std::lock_guard<std::mutex> l (GetProfilingRuntime ().profilesMutex);
+			for (auto it = GetProfilingRuntime ().profiles.begin (); it != GetProfilingRuntime ().profiles.end ();)
 			{
 				if (it->second->MarkPersistenceDue (ts))
 				{
@@ -671,7 +679,7 @@ namespace data
 				// lock. Keep it canonical until the map is its only remaining
 				// owner.
 				if (it->second.use_count () == 1 && it->second->IsExpiredFromCache (ts))
-					it = g_Profiles.erase (it);
+					it = GetProfilingRuntime ().profiles.erase (it);
 				else
 					it++;
 			}
@@ -684,8 +692,8 @@ namespace data
 	{
 		std::unordered_map<i2p::data::IdentHash, std::shared_ptr<RouterProfile>> tmp;
 		{
-			std::lock_guard<std::mutex> l (g_ProfilesMutex);
-			std::swap (tmp, g_Profiles);
+			std::lock_guard<std::mutex> l (GetProfilingRuntime ().profilesMutex);
+			std::swap (tmp, GetProfilingRuntime ().profiles);
 		}
 		auto ts = i2p::util::GetSecondsSinceEpoch ();
 		for (auto & it : tmp)
@@ -709,14 +717,14 @@ namespace data
 	 */
 	static void DeleteFilesFromDisk ()
 	{
-		std::lock_guard storageLock (g_ProfilesStorageMutex);
-		if (!g_ProfilesStorageInitialized)
+		std::lock_guard storageLock (GetProfilingRuntime ().storageMutex);
+		if (!GetProfilingRuntime ().storageInitialized)
 		{
 			LogPrint (eLogWarning, "Profiling: Storage is not initialized; skipping cleanup");
 			return;
 		}
 		std::vector<std::string> files;
-		g_ProfilesStorage.Traverse (files);
+		GetProfilingRuntime ().storage.Traverse (files);
 
 		struct stat st;
 		std::time_t now = std::time (nullptr);
@@ -735,7 +743,7 @@ namespace data
 			const auto encoded = std::string_view (filename).substr (prefix.size (), encodedHashLength);
 			IdentHash hash;
 			if (hash.FromBase64 (encoded) != IdentHash::len || hash.ToBase64 () != encoded
-				|| candidate != std::filesystem::path (g_ProfilesStorage.Path (std::string (encoded))))
+				|| candidate != std::filesystem::path (GetProfilingRuntime ().storage.Path (std::string (encoded))))
 				continue;
 			std::error_code error;
 			if (!std::filesystem::is_regular_file (std::filesystem::symlink_status (candidate, error)) || error)
@@ -765,8 +773,8 @@ namespace data
 	std::future<void> DeleteObsoleteProfiles ()
 	{
 		{
-			std::lock_guard storageLock (g_ProfilesStorageMutex);
-			if (!g_ProfilesStorageInitialized)
+			std::lock_guard storageLock (GetProfilingRuntime ().storageMutex);
+			if (!GetProfilingRuntime ().storageInitialized)
 			{
 				LogPrint (eLogWarning, "Profiling: Storage is not initialized; skipping cleanup");
 				return std::future<void> ();
@@ -774,13 +782,13 @@ namespace data
 		}
 		{
 			auto ts = i2p::util::GetSecondsSinceEpoch ();
-			std::lock_guard<std::mutex> l (g_ProfilesMutex);
-			for (auto it = g_Profiles.begin (); it != g_Profiles.end ();)
+			std::lock_guard<std::mutex> l (GetProfilingRuntime ().profilesMutex);
+			for (auto it = GetProfilingRuntime ().profiles.begin (); it != GetProfilingRuntime ().profiles.end ();)
 			{
 				// The map lock prevents new lookups; an existing owner keeps the
 				// profile canonical until it can no longer be mutated externally.
 				if (it->second.use_count () == 1 && it->second->IsExpiredByLifetime (ts))
-					it = g_Profiles.erase (it);
+					it = GetProfilingRuntime ().profiles.erase (it);
 				else
 					it++;
 			}
@@ -794,9 +802,9 @@ namespace data
 		if (!update) return true;
 		std::shared_ptr<RouterProfile> profile;
 		{
-			std::lock_guard<std::mutex> l (g_ProfilesMutex);
-			auto it = g_Profiles.find (identHash);
-			if (it != g_Profiles.end ()) profile = it->second;
+			std::lock_guard<std::mutex> l (GetProfilingRuntime ().profilesMutex);
+			auto it = GetProfilingRuntime ().profiles.find (identHash);
+			if (it != GetProfilingRuntime ().profiles.end ()) profile = it->second;
 		}
 		if (profile)
 		{
@@ -804,8 +812,8 @@ namespace data
 			return true;
 		}
 		// postpone
-		std::lock_guard<std::mutex> l (g_PostponedUpdatesMutex);
-		g_PostponedUpdates.emplace_back (identHash, update);
+		std::lock_guard<std::mutex> l (GetProfilingRuntime ().postponedMutex);
+		GetProfilingRuntime ().postponed.emplace_back (identHash, update);
 		return false;
 	}
 
@@ -834,9 +842,9 @@ namespace data
 	{
 		std::list<std::pair<i2p::data::IdentHash, std::function<void (std::shared_ptr<RouterProfile>)>>> updates;
 		{
-			std::lock_guard<std::mutex> l (g_PostponedUpdatesMutex);
-			if (g_PostponedUpdates.empty ()) return std::future<void> ();
-			g_PostponedUpdates.swap (updates);
+			std::lock_guard<std::mutex> l (GetProfilingRuntime ().postponedMutex);
+			if (GetProfilingRuntime ().postponed.empty ()) return std::future<void> ();
+			GetProfilingRuntime ().postponed.swap (updates);
 		}
 		return std::async (std::launch::async, ApplyPostponedUpdates, std::move (updates));
 	}
@@ -845,8 +853,8 @@ namespace data
 	{
 		std::list<std::pair<i2p::data::IdentHash, std::function<void (std::shared_ptr<RouterProfile>)>>> discarded;
 		{
-			std::lock_guard lock (g_PostponedUpdatesMutex);
-			discarded.swap (g_PostponedUpdates);
+			std::lock_guard lock (GetProfilingRuntime ().postponedMutex);
+			discarded.swap (GetProfilingRuntime ().postponed);
 		}
 	}
 }

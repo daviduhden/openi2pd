@@ -111,6 +111,12 @@ build.
 
 ## Known issues and decisions
 
+- The profile static-lifetime regression must run through normal process
+  exit, not _Exit, to exercise ordered global teardown and retained pool
+  deleters. Keep it in the common CTest list and the selective MSVC build,
+  CTest expression and optional PageHeap image/artifact inventory together.
+  Header-only ownership review does not replace the exit-path regression.
+
 - Perl-enabled test builds require Git 2.28+ for isolated validator
   fixtures. CMake resolves Git before registering that contract and adds
   its directory to the test PATH; OpenBSD's VM must install Git explicitly.

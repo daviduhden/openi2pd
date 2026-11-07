@@ -446,7 +446,14 @@ namespace data
 		{
 			return m_IdentitiesPool.AcquireSharedMt (buf, len);
 		};
-		std::shared_ptr<RouterProfile> NewRouterProfile () { return m_RouterProfilesPool.AcquireSharedMt (); };
+		/// Keep recycling authority alive with every returned profile.
+		/// Cached or external profile owners may outlive this NetDb.
+		std::shared_ptr<RouterProfile> NewRouterProfile ()
+		{
+			const auto pool = m_RouterProfilesPool;
+			return std::shared_ptr<RouterProfile> (pool->AcquireMt (),
+				[pool] (RouterProfile * profile) noexcept { pool->ReleaseMt (profile); });
+		}
 
 	private:
 		// Keep the request manager alive for the duration of a call even if
@@ -497,7 +504,8 @@ namespace data
 		i2p::util::MemoryPoolMt<RouterInfo::Addresses> m_RouterInfoAddressVectorsPool;
 		i2p::util::MemoryPoolMt<Lease> m_LeasesPool;
 		i2p::util::MemoryPoolMt<IdentityEx> m_IdentitiesPool;
-		i2p::util::MemoryPoolMt<RouterProfile> m_RouterProfilesPool;
+		std::shared_ptr<i2p::util::MemoryPoolMt<RouterProfile>> m_RouterProfilesPool
+			= std::make_shared<i2p::util::MemoryPoolMt<RouterProfile>> ();
 
 		mutable std::mutex m_LeaseSetsMutex;
 		std::unordered_map<IdentHash, std::shared_ptr<LeaseSet>> m_LeaseSets;

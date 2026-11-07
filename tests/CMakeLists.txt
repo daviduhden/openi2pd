@@ -158,6 +158,7 @@ set(I2PD_TESTS
   test-routercontext-port-range
   test-router-profile-race
   test-router-profile-storage
+  test-profile-static-lifetime
   test-netdb-stop-admission
   test-netdb-clove-origin
   test-netdb-router-admission
@@ -336,6 +337,9 @@ foreach(test IN LISTS I2PD_TESTS)
   endif()
   if(test STREQUAL "test-router-profile-race")
     set_property(TEST ${test} APPEND PROPERTY LABELS i2p)
+  endif()
+  if(test STREQUAL "test-profile-static-lifetime")
+    set_property(TEST ${test} APPEND PROPERTY LABELS "i2p;memory;security")
   endif()
   if(test STREQUAL "test-stream-creation-sync")
     set_property(TEST ${test} APPEND PROPERTY LABELS i2p)

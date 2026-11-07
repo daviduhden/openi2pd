@@ -21,6 +21,7 @@
 #include "Transports.h"
 #include "TransportConnector.h"
 #include "Config.h"
+#include "Profiling.h"
 #include "HTTP.h"
 #include "Blocklist.h"
 #include "util.h"
@@ -236,6 +237,8 @@ namespace transport
 		, m_TransitBandwidth5m (0)
 		, m_Rng (i2p::util::GetRngSeed ())
 	{
+		// Session teardown can report profile updates during destruction.
+		i2p::data::PrepareProfilesRuntime ();
 	}
 
 	Transports::~Transports ()
