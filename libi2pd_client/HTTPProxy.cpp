@@ -2025,7 +2025,7 @@ namespace proxy
 			{
 				// Only the redacted form is logged: a configured outproxy URL
 				// may carry `user:password@`, which must never reach a log.
-				LogPrint (eLogDebug, "HTTPProxy: Using outproxy ", RedactURLUserInfo (m_OutproxyUrl));
+				LogPrint (eLogDebug, "HTTPProxy: Using configured outproxy");
 				if (m_ProxyURL.parse (m_OutproxyUrl))
 					ForwardToUpstreamProxy ();
 				else

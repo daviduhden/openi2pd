@@ -2602,10 +2602,10 @@ namespace client
 	{
 		i2p::http::URL url;
 		// must be run in separate thread
-		LogPrint (eLogInfo, "Addressbook: Downloading hosts database from ", m_Link);
+		LogPrint (eLogInfo, "Addressbook: Downloading hosts database");
 		if (!url.parse (m_Link))
 		{
-			LogPrint (eLogError, "Addressbook: Failed to parse url: ", m_Link);
+			LogPrint (eLogError, "Addressbook: Invalid subscription URL");
 			return AddressBookDownloadResult::Failed;
 		}
 		auto addr = m_Book.GetAddress (url.host);

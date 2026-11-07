@@ -107,6 +107,12 @@ Do not let reconnaissance agents edit, compile, execute tests or run scripts.
 
 ## Known issues and decisions
 
+- URL logging review must include invalid-input and download-start paths,
+  not only parsed userinfo. Subscription, reseed and outproxy URLs may carry
+  credentials in userinfo or queries; log operation/outcome without the
+  source operand. Keep the multiline transport and client source guards
+  alongside existing parser-level redaction regressions.
+
 - Async-to-sync result bridges must publish both the result and completion
   predicate under one mutex, then use the predicate form of wait. Volatile
   does not synchronize the executor and caller; inspect related status

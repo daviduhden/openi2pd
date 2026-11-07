@@ -110,6 +110,10 @@ execution. Ask for:
   A cached profile may outlive NetDb itself, so its recycler deleter retains
   shared pool authority. Clearing a cache alone cannot protect independent
   external owners; test their final release after the allocating NetDb dies.
+- Proxy configuration may include credentials even when parsing fails.
+  Transport diagnostics report only the rejected operation or scheme class,
+  never the configured URL operand. Review sibling proxy branches together.
+
 - A failed wait on overlapped I/O does not release the kernel's ownership
   of the OVERLAPPED structure or data buffer. Capture the wait error before
   cancelling, then use blocking GetOverlappedResult to reap the operation

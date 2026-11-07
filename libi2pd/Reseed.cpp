@@ -479,7 +479,7 @@ namespace data
 	ReseedResult Reseeder::ReseedFromSU3Url (const std::string & url, bool isHttps, const std::stop_token & token)
 	{
 		ReseedResult result;
-		LogPrint (eLogInfo, "Reseed: Downloading SU3 from ", url);
+		LogPrint (eLogInfo, "Reseed: Downloading SU3 bundle");
 		std::string su3;
 		if (m_FetchHook)
 			su3 = m_FetchHook (url, token);
@@ -1261,7 +1261,7 @@ namespace data
 		i2p::http::URL url;
 		if (!url.parse (address))
 		{
-			LogPrint (eLogCritical, "Reseed: Failed to parse url: ", address);
+			LogPrint (eLogCritical, "Reseed: Invalid source URL");
 			SetReseedReason (m_LastTransportError, "url");
 			return "";
 		}
@@ -1721,7 +1721,7 @@ namespace data
 		i2p::http::URL url;
 		if (!url.parse (address))
 		{
-			LogPrint (eLogError, "Reseed: Failed to parse url: ", address);
+			LogPrint (eLogError, "Reseed: Invalid source URL");
 			SetReseedReason (m_LastTransportError, "url");
 			return "";
 		}

@@ -92,3 +92,19 @@ endforeach()
 require_runtime_source("libi2pd/NetDb.hpp"
   "[pool] (RouterProfile * profile) noexcept { pool->ReleaseMt (profile); }")
 require_runtime_source("tests/CMakeLists.txt" "test-profile-static-lifetime")
+
+file(READ "${PROJECT_ROOT}/libi2pd/Transports.cpp" transport_redaction)
+if(transport_redaction MATCHES "LogPrint[^;]*(ntcp2proxy|ssu2proxy)")
+  message(FATAL_ERROR "Proxy configuration operands must never enter logs")
+endif()
+foreach(url_source libi2pd/Reseed.cpp libi2pd_client/AddressBook.cpp
+    libi2pd_client/HTTPProxy.cpp)
+  file(READ "${PROJECT_ROOT}/${url_source}" url_logging)
+  if(url_logging MATCHES "LogPrint[^;]*(m_Link|m_OutproxyUrl)")
+    message(FATAL_ERROR "Credential-bearing source URL in log: ${url_source}")
+  endif()
+  if(url_source STREQUAL "libi2pd/Reseed.cpp"
+      AND url_logging MATCHES "LogPrint[^;]*,[ \t\r\n]*(address|url)[ \t\r\n]*[),]")
+    message(FATAL_ERROR "Raw reseed source operand in log")
+  endif()
+endforeach()
