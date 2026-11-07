@@ -123,6 +123,10 @@ compile, run tests or run project scripts.
   every consumer of that translation unit from compiling. Review sibling
   branch scopes separately, and align the whole lambda body with its braces
   so an early-return guard does not visually own the following statements.
+  Nested lambdas expose captured names as closure members under MSVC's
+  shadow diagnostics. Give a rearmed timer owner a distinct name, and name
+  retired weak-lock owners separately from the function's input owner.
+  Renaming must not move final shared-owner destruction into a mutex scope.
 
 - A startup condition predicate belongs to one joined worker generation.
   `Log::Start` re-arms its publication bit before creating a new writer;

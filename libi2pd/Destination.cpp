@@ -1084,10 +1084,10 @@ namespace client
 								s->GetIdentHash ().ToBase32 ());
 							s->m_PublishVerificationTimer.expires_after (
 								std::chrono::seconds (PUBLISH_REGULAR_VERIFICATION_INTERNAL));
-							std::weak_ptr<LeaseSetDestination> weak = s;
-							s->m_PublishVerificationTimer.async_wait ([weak] (const boost::system::error_code & ecode)
+							std::weak_ptr<LeaseSetDestination> verificationWeak = s;
+							s->m_PublishVerificationTimer.async_wait ([verificationWeak] (const boost::system::error_code & ecode)
 								{
-									if (auto self = weak.lock ()) self->HandlePublishVerificationTimer (ecode);
+									if (auto self = verificationWeak.lock ()) self->HandlePublishVerificationTimer (ecode);
 								});
 							return;
 						}

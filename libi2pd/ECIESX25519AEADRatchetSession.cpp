@@ -1056,7 +1056,7 @@ namespace garlic
 			m_PendingReplyTagsets.push_back ({ std::move (receive), std::move (send), now });
 		}
 		for (auto & it : dropped)
-			if (auto receive = it.receive.lock ()) receive->Expire ();
+			if (auto expiredReceive = it.receive.lock ()) expiredReceive->Expire ();
 	}
 
 	std::shared_ptr<RatchetTagSet> ECIESX25519AEADRatchetSession::TakeMatchingPendingSendTagset (
