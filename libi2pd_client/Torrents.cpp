@@ -2884,7 +2884,7 @@ namespace torrents
 			ReportTrackerFailure (trackerID, "oversized response");
 			return;
 		}
-		bool sawInterval = false, failed = false;
+		bool sawInterval = false, failed = false, malformed = false;
 		// Every field is parsed into a scratch value and committed only after
 		// the whole document validated. A response that turns out to be
 		// truncated or otherwise malformed therefore cannot keep the entries,
@@ -2896,13 +2896,14 @@ namespace torrents
 		int advertisedInterval = 0, advertisedMinInterval = 0, seeders = 0, leechers = 0;
 		std::string parsedTrackerID, failureReason;
 		const auto parsed = ParseDictionary (buf,
-			[this, &sawInterval, &failed, &parsedPeers, &parsedPeerList, &sawMinInterval, &sawTrackerID,
+			[this, &sawInterval, &failed, &malformed, &parsedPeers, &parsedPeerList, &sawMinInterval, &sawTrackerID,
 				&sawSeeders, &sawLeechers, &advertisedInterval, &advertisedMinInterval, &seeders, &leechers,
 				&parsedTrackerID, &failureReason] (std::string_view key, std::string_view buf) -> size_t
 			{
 				if (key == "interval")
 				{
 					auto [value, l] = ExtractInteger (buf);
+					if (!l) malformed = true;
 					if (l)
 					{
 						sawInterval = true;
@@ -2920,6 +2921,7 @@ namespace torrents
 				else if (key == "min interval" || key == "min_interval")
 				{
 					auto [value, l] = ExtractInteger (buf);
+					if (!l) malformed = true;
 					if (l)
 					{
 						sawMinInterval = true;
@@ -2946,12 +2948,14 @@ namespace torrents
 				else if (key == "peers")
 				{
 					const auto len = ParsePeers (buf, parsedPeers);
+					if (!len) malformed = true;
 					if (len) parsedPeerList = true;
 					return len;
 				}
 				else if (key == "complete")
 				{
 					auto [value, l] = ExtractInteger (buf);
+					if (!l) malformed = true;
 					if (l)
 					{
 						sawSeeders = true;
@@ -2962,6 +2966,7 @@ namespace torrents
 				else if (key == "incomplete")
 				{
 					auto [value, l] = ExtractInteger (buf);
+					if (!l) malformed = true;
 					if (l)
 					{
 						sawLeechers = true;
@@ -2972,6 +2977,7 @@ namespace torrents
 				else if (key == "failure reason")
 				{
 					auto [reason, l] = ExtractByteString (buf);
+					if (!l) malformed = true;
 					failed = true;
 					// A tracker-level failure is a consecutive failure: retry on
 					// the same bounded ladder as a transport failure instead of
@@ -2984,7 +2990,7 @@ namespace torrents
 				}
 				return 0;
 			});
-		if (!parsed || parsed != buf.size ())
+		if (malformed || !parsed || parsed != buf.size ())
 		{
 			ReportTrackerFailure (trackerID, "malformed response");
 			return;
@@ -5520,24 +5526,29 @@ namespace torrents
 				int64_t requests = 0;
 				std::string_view clientVersion { };
 				bool hasMetadataSize = false, hasRequests = false, hasClientVersion = false;
+				bool malformed = false;
 			} handshake;
 			auto parsed = ParseDictionary (payload,
 				[&handshake] (std::string_view key, std::string_view value) -> size_t
 				{
 					if (key == "m")
 					{
-						return ParseDictionary (value,
+						const auto length = ParseDictionary (value,
 							[&handshake] (std::string_view extension, std::string_view msgID) -> size_t
 							{
 								auto [id, l] = ExtractInteger (msgID);
+								if (!l) handshake.malformed = true;
 								if (l && handshake.extensions.size () < MAX_EXTENDED_HANDSHAKE_EXTENSIONS)
 									handshake.extensions.emplace_back (std::string (extension), id);
 								return l;
 							});
+						if (!length) handshake.malformed = true;
+						return length;
 					}
 					if (key == "metadata_size")
 					{
 						auto [size, l] = ExtractInteger (value);
+						if (!l) handshake.malformed = true;
 						if (l)
 						{
 							handshake.metadataSize = size;
@@ -5548,6 +5559,7 @@ namespace torrents
 					if (key == "reqq")
 					{
 						auto [requests, l] = ExtractInteger (value);
+						if (!l) handshake.malformed = true;
 						if (l)
 						{
 							handshake.requests = requests;
@@ -5558,6 +5570,7 @@ namespace torrents
 					if (key == "v")
 					{
 						auto [version, l] = ExtractByteString (value);
+						if (!l) handshake.malformed = true;
 						if (l)
 						{
 							// A client string is diagnostics only; cap it so a
@@ -5571,7 +5584,7 @@ namespace torrents
 				});
 			// `len` includes the extended message id; the dictionary starts
 			// after it. Anything else is a malformed or padded handshake.
-			if (!parsed || parsed != payload.size ())
+			if (handshake.malformed || !parsed || parsed != payload.size ())
 			{
 				LogPrint (eLogWarning, "Torrents: Malformed BEP10 handshake");
 				return;

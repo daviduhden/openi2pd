@@ -116,6 +116,22 @@ Do not let them edit, build or run tests.
 
 ## Known issues and decisions
 
+- Bencode callbacks return zero to request generic skipping, not to reject
+  a known field. Metainfo handlers must also set the malformed error when
+  a recognized field has the wrong type; otherwise a string file length
+  can become a valid-looking zero-byte file. Track field presence separately
+  from successful extraction for length/files exclusion. Cover valid integer
+  zero-byte files and ignored unknown fields alongside negative cases.
+  The existing 2048-byte tracker URL cap also applies to the primary
+  announce field; this is a local resource policy, not a BEP wire limit.
+  Apply the same distinction to BEP 10's `m` dictionary, integer extension
+  IDs/metadata_size/reqq and byte-string v, and to typed tracker response
+  fields. Record malformation before fallback and commit scratch state only
+  after the complete document validates. Rejected handshakes do not consume
+  the write-once slot; rejected tracker types retain prior peers/stats and
+  advance the failure ladder. Unknown fields, zero extension IDs and unusable
+  opaque tracker IDs keep their existing tolerant behavior.
+
 - Metadata-only RPC fixtures can still enqueue disk-domain work through
   AddTorrent. Run or drain that executor as well as the destination service;
   a member executor with an owner-retaining task can prevent destruction.

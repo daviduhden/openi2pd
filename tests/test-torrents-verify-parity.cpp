@@ -39,6 +39,36 @@
 
 #ifndef NO_TORRENTS
 
+namespace i2p::torrents
+{
+struct PeerExtendedHandshakeTestAccess
+{
+	static void Parse (PeerConnection & peer, const std::string & encoded)
+	{
+		std::string frame (1, '\0');
+		frame += encoded;
+		peer.HandleExtendedMsg (reinterpret_cast<const uint8_t *> (frame.data ()), frame.size ());
+	}
+	static bool Uncommitted (const PeerConnection & peer)
+	{
+		return !peer.m_ExtendedHandshakeReceived && !peer.m_RemoteMsgIDUtMetadata
+			&& peer.m_ExtendedMessageHandlers.empty () && !peer.m_RemoteMetadataSize
+			&& peer.m_MaxNumRequests == MIN_NUM_REQUESTS && peer.m_RemoteName.empty ();
+	}
+	static bool Accepted (const PeerConnection & peer)
+	{
+		return peer.m_ExtendedHandshakeReceived && peer.m_RemoteMsgIDUtMetadata == 1
+			&& peer.m_RemoteMetadataSize == 64 && peer.m_MaxNumRequests == 17
+			&& peer.m_RemoteName == "valid";
+	}
+	static bool Disabled (const PeerConnection & peer)
+	{
+		return peer.m_ExtendedHandshakeReceived && !peer.m_RemoteMsgIDUtMetadata
+			&& peer.m_ExtendedMessageHandlers.empty () && peer.m_RemoteName == "disabled";
+	}
+};
+}
+
 namespace
 {
 using namespace i2p::torrents;
@@ -544,6 +574,76 @@ static void TestPerTorrentPeerID ()
 	for (size_t i = 6; i < id.size (); ++i) assert (std::isalnum (id[i]) != 0);
 }
 
+static void TestExtendedHandshakeFieldTypes ()
+{
+	const auto valid = Dict ({ { "m", Dict ({ { "ut_metadata", "i1e" }, { "disabled", "i0e" } }) },
+		{ "metadata_size", "i64e" }, { "reqq", "i17e" }, { "v", Bytes ("valid") }, { "unknown", "le" } });
+	for (const auto & [field, invalid] : std::initializer_list<std::pair<std::string, std::string>> {
+		{ "m", "i1e" }, { "m", Bytes ("not-a-map") },
+		{ "m", Dict ({ { "ut_metadata", Bytes ("1") } }) },
+		{ "m", Dict ({ { "unknown", "le" } }) }, { "metadata_size", Bytes ("64") },
+		{ "reqq", "de" }, { "v", "i1e" } })
+	{
+		auto torrent = MakeVerifiedTorrent ("handshake-types", false).torrent;
+		PeerConnection peer (nullptr, nullptr, torrent);
+		// Valid fields precede the bad value: none may be installed early.
+		std::string encoded = "d";
+		if (field != "m") encoded += Bytes ("m") + Dict ({ { "ut_metadata", "i9e" } });
+		if (field != "reqq") encoded += Bytes ("reqq") + "i19e";
+		if (field != "v") encoded += Bytes ("v") + Bytes ("uncommitted");
+		encoded += Bytes (field) + invalid + "e";
+		PeerExtendedHandshakeTestAccess::Parse (peer, encoded);
+		assert (PeerExtendedHandshakeTestAccess::Uncommitted (peer));
+		// Malformation must not consume the write-once negotiation slot.
+		PeerExtendedHandshakeTestAccess::Parse (peer, valid);
+		assert (PeerExtendedHandshakeTestAccess::Accepted (peer));
+	}
+	// BEP 10 assigns zero the meaning "disable this extension". Unknown
+	// extension names with positive integer IDs remain forward compatible.
+	auto torrent = MakeVerifiedTorrent ("handshake-disable", false).torrent;
+	PeerConnection disabled (nullptr, nullptr, torrent);
+	PeerExtendedHandshakeTestAccess::Parse (disabled,
+		Dict ({ { "m", Dict ({ { "ut_metadata", "i0e" }, { "future_extension", "i7e" } }) },
+			{ "v", Bytes ("disabled") } }));
+	assert (PeerExtendedHandshakeTestAccess::Disabled (disabled));
+}
+
+static void TestTrackerKnownFieldTypes ()
+{
+	for (const auto & [field, invalid] : std::initializer_list<std::pair<std::string, std::string>> {
+		{ "interval", Bytes ("60") }, { "min interval", "le" }, { "min_interval", "de" },
+		{ "complete", Bytes ("0") }, { "incomplete", "le" }, { "peers", "i1e" },
+		{ "failure reason", "i1e" } })
+	{
+		auto fixture = MakeVerifiedTorrent ("tracker-types", false);
+		auto & torrent = *fixture.torrent;
+		torrent.ParseTrackerResponse (0, Dict ({ { "complete", "i42e" }, { "incomplete", "i43e" },
+			{ "interval", "i1800e" }, { "min interval", "i600e" }, { "tracker id", Bytes ("good") },
+			{ "peers", CompactPeers ({ 0x11 }) } }));
+		const auto interval = torrent.GetInterval (0);
+		torrent.ReportTrackerFailure (0, "prior failure");
+		const auto priorRetry = torrent.GetNextTrackerRequestTime (0);
+		std::string encoded = "d";
+		if (field != "complete") encoded += Bytes ("complete") + "i7e";
+		if (field != "peers") encoded += Bytes ("peers") + CompactPeers ({ 0x22 });
+		encoded += Bytes ("tracker id") + Bytes ("uncommitted") + Bytes (field) + invalid + "e";
+		torrent.ParseTrackerResponse (0, encoded);
+		assert (torrent.GetTrackerError (0) == "malformed response");
+		assert (torrent.GetNumSeeders (0) == 42 && torrent.GetNumLeechers (0) == 43);
+		assert (torrent.GetInterval (0) == interval && torrent.GetMinInterval (0) == 600 * 1000);
+		assert (torrent.GetTrackerID (0) == "good" && torrent.GetNumPeers (0) == 1);
+		const auto peers = torrent.GetNonConnectedPeers (0);
+		std::array<uint8_t, i2p::data::IdentHash::len> expected { };
+		expected.front () = 0x11;
+		expected.back () = 0x7F;
+		assert (peers.size () == 1 && peers.contains (i2p::data::IdentHash (expected.data ())));
+		assert (torrent.GetNextTrackerRequestTime (0) >= priorRetry + 600 * 1000);
+		// Unknown fields and unusable opaque tracker IDs stay ignorable.
+		torrent.ParseTrackerResponse (0, Dict ({ { "unknown", "le" }, { "tracker id", "i1e" } }));
+		assert (torrent.GetTrackerError (0).empty () && torrent.GetTrackerID (0) == "good");
+	}
+}
+
 // Connection limits must stay internally consistent: dials are the
 // smaller bound and a session may hold more peers than a single
 // torrent.
@@ -607,6 +707,8 @@ int main ()
 	TestTrackerIntervalAndTrackerID ();
 	TestQueryValueEncoding ();
 	TestPerTorrentPeerID ();
+	TestExtendedHandshakeFieldTypes ();
+	TestTrackerKnownFieldTypes ();
 	TestConnectionLimitRelations ();
 	TestConnectionRetirement ();
 	return 0;

@@ -1611,6 +1611,7 @@ namespace torrents
 	/// ID.
 	class PeerConnection : public i2p::client::I2PServiceHandler, public std::enable_shared_from_this<PeerConnection>
 	{
+		friend struct PeerExtendedHandshakeTestAccess;
 		using ExtendedMessageHandler = void (PeerConnection::*) (const uint8_t * buf, size_t len);
 
 	public:
