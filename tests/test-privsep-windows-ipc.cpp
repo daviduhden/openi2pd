@@ -613,6 +613,55 @@ void TestHelloRejectionsAndRearm ()
 	}
 }
 
+void TestMalformedHelloRearmsListener ()
+{
+	const std::wstring name = MakeTestPipeName (L"malformed-hello-rearm");
+	const std::string nonce = TestNonce ();
+	auto server = WindowsServer::Create (name);
+	assert (server.has_value ());
+	std::unique_ptr<WindowsChannel> client;
+	std::thread worker (
+		[&] ()
+		{
+			auto malformed = WindowsChannel::ConnectBound (name, GetCurrentProcessId (), CurrentSessionId (), 5000);
+			assert (malformed.has_value ());
+			auto hello = EncodeWorkerHelloFrame (WindowsWorkerRole::Storage, nonce);
+			assert (hello.has_value ());
+			auto frame = Encode ({ MessageType::WorkerHello, 0, *hello });
+			assert (frame.has_value ());
+			// Invalid magic takes Receive's terminal-close path, unlike a
+			// well-framed hello rejected later for its role or nonce.
+			(*frame)[0] ^= 1;
+			WriteRawRecord (malformed->Native (), *frame);
+			malformed->Close ();
+
+			// The original listener must survive that close and admit this
+			// second connection under the same PID/session/nonce policy.
+			auto connected = WindowsChannel::ConnectBound (name, GetCurrentProcessId (), CurrentSessionId (), 5000);
+			assert (connected.has_value ());
+			SendHello (*connected, WindowsWorkerRole::Storage, nonce);
+			client = std::make_unique<WindowsChannel> (std::move (*connected));
+		});
+	auto accepted = server->AcceptBound (
+		5000, GetCurrentProcessId (), CurrentSessionId (), WindowsWorkerRole::Storage, TestNonceHexA (), nullptr);
+	worker.join ();
+	assert (accepted.has_value ());
+	assert (client);
+	client->SetRole (WindowsWorkerRole::Storage);
+	assert (accepted->Send ({ MessageType::Ping, 63, { } }, 2000).has_value ());
+	auto ping = client->Receive (2000);
+	assert (ping.has_value () && ping->has_value ());
+	assert ((*ping)->type == MessageType::Ping);
+	assert ((*ping)->requestId == 63);
+	assert (client->Send ({ MessageType::Pong, 63, { } }, 2000).has_value ());
+	auto pong = accepted->Receive (2000);
+	assert (pong.has_value () && pong->has_value ());
+	assert ((*pong)->type == MessageType::Pong);
+	assert ((*pong)->requestId == 63);
+	accepted->Close ();
+	client->Close ();
+}
+
 void TestDuplicateHelloIsRefused ()
 {
 	const std::wstring name = MakeTestPipeName (L"duplicate-hello");
@@ -1003,6 +1052,7 @@ int main ()
 	TestBindRequiresExplicitIdentity ();
 	TestAcceptBoundHappyPath ();
 	TestHelloRejectionsAndRearm ();
+	TestMalformedHelloRearmsListener ();
 	TestDuplicateHelloIsRefused ();
 	TestAuthorizationAndDescriptorRefusal ();
 	TestFrameBounds ();

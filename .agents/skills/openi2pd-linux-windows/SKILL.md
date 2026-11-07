@@ -100,6 +100,20 @@ execution. Ask for:
   datadir ACL as the Windows equivalent.
 
 ## Known issues and decisions
+- Accepted Windows pipe candidates own non-inheritable duplicates of the
+  listener handle. Terminal decode/read failures may close a candidate,
+  while the original listener stays valid for rejection and re-arm. Close
+  the original without disconnecting only after authenticated admission;
+  never wrap one HANDLE value in two owning objects and then attempt to
+  repair a close with Release(). Pin malformed framing followed by a real
+  WorkerHello on the same listener, not only wrong-role/nonce refusals.
+- Windows worker admission shares one absolute deadline across listener
+  waits, peer inspection, WorkerHello and rejection backoff. Recompute the
+  remaining budget after peer inspection, cap hello reads by that budget,
+  and close an expired candidate before disarming the retained listener.
+  Connect retries must also cap their post-WaitNamedPipe backoff. A local
+  timeout per phase would silently extend the caller's total allowance;
+  test deadline propagation without relying on tight scheduler timing.
 - A Windows test must not dereference `SupervisorStatus::Get()` (or any
   `std::optional`) without a check; `/UNDEBUG` keeps the assertion live but
   an empty optional is undefined behaviour. Use one checked accessor.

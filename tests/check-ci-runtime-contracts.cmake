@@ -36,3 +36,17 @@ require_runtime_source("libi2pd_client/TorrentsDHT.cpp"
   "if (!IsInitialized ()) return;")
 require_runtime_source("libi2pd_client/TorrentsTunnel.cpp"
   "if (candidate->IsInitialized ()) m_DHT = std::move (candidate);")
+
+file(READ "${PROJECT_ROOT}/privsep/WindowsIpc.cpp" windows_runtime_source)
+if(windows_runtime_source MATCHES "WindowsChannel candidate \\(m_Pipe"
+    OR windows_runtime_source MATCHES "candidate[.]Release \\(\\)")
+  message(FATAL_ERROR "Accepted channels must not share listener ownership")
+endif()
+require_runtime_source("privsep/WindowsIpc.cpp"
+  "WindowsChannel candidate (candidatePipe, true);")
+require_runtime_source("privsep/WindowsIpc.cpp"
+  "channel.Receive (timeoutMs)")
+require_runtime_source("privsep/WindowsIpc.cpp"
+  "std::min (WORKER_HELLO_TIMEOUT_MS, RemainingDeadlineMs (deadline))")
+require_runtime_source("tests/test-privsep-windows-ipc.cpp"
+  "TestMalformedHelloRearmsListener ()")

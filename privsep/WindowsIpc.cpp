@@ -128,6 +128,15 @@ namespace
 	constexpr DWORD WORKER_CONTROL_TIMEOUT_MS = 5000;
 	constexpr DWORD WORKER_CONNECT_TIMEOUT_MS = 10000;
 
+	/** Floor the unspent part of a caller-supplied DWORD time budget. */
+	DWORD RemainingDeadlineMs (std::chrono::steady_clock::time_point deadline)
+	{
+		const auto now = std::chrono::steady_clock::now ();
+		if (now >= deadline) return 0;
+		return static_cast<DWORD> (
+			std::chrono::duration_cast<std::chrono::milliseconds> (deadline - now).count ());
+	}
+
 	struct LocalFreeDeleter
 	{
 		void operator() (void * pointer) const
@@ -620,9 +629,10 @@ namespace
 
 	/** Consume and validate the accepted connection's first frame. */
 	bool ReceiveWorkerHello (
-		WindowsChannel & channel, WindowsWorkerRole expectedRole, std::string_view nonce, std::string & error)
+		WindowsChannel & channel, WindowsWorkerRole expectedRole, std::string_view nonce, DWORD timeoutMs,
+		std::string & error)
 	{
-		auto received = channel.Receive (WORKER_HELLO_TIMEOUT_MS);
+		auto received = channel.Receive (timeoutMs);
 		if (!received)
 		{
 			error = received.error ();
@@ -906,13 +916,17 @@ i2p::expected<WindowsChannel, std::string> WindowsServer::Accept (DWORD timeoutM
 		if (!connected) return i2p::unexpected (connected.error ());
 		if (!*connected) return i2p::unexpected ("worker pipe accept timeout");
 
-		WindowsChannel candidate (m_Pipe, true);
+		// The candidate owns a distinct handle. A terminal receive failure
+		// may close it without invalidating the listener's re-arm authority.
+		HANDLE candidatePipe = INVALID_HANDLE_VALUE;
+		if (!DuplicateHandle (GetCurrentProcess (), m_Pipe, GetCurrentProcess (), &candidatePipe, 0, FALSE,
+				DUPLICATE_SAME_ACCESS))
+			return i2p::unexpected ("DuplicateHandle(worker pipe): " + Win32ErrorText (GetLastError ()));
+		WindowsChannel candidate (candidatePipe, true);
 		auto peer = candidate.Peer ();
 		if (!peer)
 		{
-			// The candidate must never close the listener: it only detaches
-			// its own view of the instance, which stays owned here.
-			candidate.Release ();
+			candidate.Close ();
 			DisarmListener ();
 			return i2p::unexpected (peer.error ());
 		}
@@ -921,12 +935,17 @@ i2p::expected<WindowsChannel, std::string> WindowsServer::Accept (DWORD timeoutM
 			// Reject this connection but keep the listener usable for the real
 			// worker; a hostile same-user connect must not be a DoS, and the
 			// rejection budget bounds the work it can cause.
-			candidate.Release ();
+			candidate.Close ();
 			DisarmListener ();
 			if (++rejected >= MAX_REJECTED_CONNECTIONS) return i2p::unexpected ("too many rejected worker connections");
-			Sleep (REJECTED_CONNECTION_BACKOFF_MS);
+			const DWORD backoff = std::min (REJECTED_CONNECTION_BACKOFF_MS, RemainingDeadlineMs (deadline));
+			if (!backoff) return i2p::unexpected ("worker pipe accept timeout");
+			Sleep (backoff);
 			continue;
 		}
+		// Close only the listener's handle, leaving the accepted instance
+		// connected through the candidate's independently owned duplicate.
+		CloseHandle (m_Pipe);
 		m_Pipe = INVALID_HANDLE_VALUE;
 		return candidate;
 	}
@@ -975,7 +994,13 @@ i2p::expected<WindowsChannel, std::string> WindowsServer::AcceptBound (DWORD tim
 		if (!connected) return i2p::unexpected (connected.error ());
 		if (!*connected) return i2p::unexpected ("worker pipe accept timeout");
 
-		WindowsChannel candidate (m_Pipe, true);
+		// Receive may close a malformed candidate. Its duplicate must never
+		// invalidate the listener handle used for the next authenticated try.
+		HANDLE candidatePipe = INVALID_HANDLE_VALUE;
+		if (!DuplicateHandle (GetCurrentProcess (), m_Pipe, GetCurrentProcess (), &candidatePipe, 0, FALSE,
+				DUPLICATE_SAME_ACCESS))
+			return i2p::unexpected ("DuplicateHandle(worker pipe): " + Win32ErrorText (GetLastError ()));
+		WindowsChannel candidate (candidatePipe, true);
 		bool fatal = false;
 		auto peer = QueryPipeClient (m_Pipe, fatal);
 		std::string rejection;
@@ -985,7 +1010,7 @@ i2p::expected<WindowsChannel, std::string> WindowsServer::AcceptBound (DWORD tim
 			{
 				// The thread could not leave the client identity, so this
 				// listener cannot continue safely.
-				candidate.Release ();
+				candidate.Close ();
 				DisarmListener ();
 				return i2p::unexpected (peer.error ());
 			}
@@ -1003,15 +1028,26 @@ i2p::expected<WindowsChannel, std::string> WindowsServer::AcceptBound (DWORD tim
 			rejection = "worker pipe peer AppContainer SID does not match";
 		if (rejection.empty ())
 		{
+			// Peer inspection and the hello share the original accept budget.
+			// Never grant a fresh five seconds to a late connection.
+			const DWORD helloBudget = std::min (WORKER_HELLO_TIMEOUT_MS, RemainingDeadlineMs (deadline));
+			if (!helloBudget)
+			{
+				candidate.Close ();
+				DisarmListener ();
+				return i2p::unexpected ("worker pipe accept timeout");
+			}
 			std::string helloError;
-			if (!ReceiveWorkerHello (candidate, role, *nonce, helloError)) rejection = helloError;
+			if (!ReceiveWorkerHello (candidate, role, *nonce, helloBudget, helloError)) rejection = helloError;
 		}
 		if (!rejection.empty ())
 		{
-			candidate.Release ();
+			candidate.Close ();
 			DisarmListener ();
 			if (++rejected >= MAX_REJECTED_CONNECTIONS) return i2p::unexpected (rejection);
-			Sleep (REJECTED_CONNECTION_BACKOFF_MS);
+			const DWORD backoff = std::min (REJECTED_CONNECTION_BACKOFF_MS, RemainingDeadlineMs (deadline));
+			if (!backoff) return i2p::unexpected ("worker pipe accept timeout");
+			Sleep (backoff);
 			continue;
 		}
 		// Record the spawned role for diagnostics, but authorize this side as
@@ -1019,6 +1055,7 @@ i2p::expected<WindowsChannel, std::string> WindowsServer::AcceptBound (DWORD tim
 		// the worker's request types.
 		candidate.SetRole (role);
 		candidate.SetCoreRole ();
+		CloseHandle (m_Pipe);
 		m_Pipe = INVALID_HANDLE_VALUE;
 		return candidate;
 	}
@@ -1123,7 +1160,9 @@ i2p::expected<WindowsChannel, std::string> WindowsChannel::ConnectBound (
 		const DWORD remaining
 			= static_cast<DWORD> (std::chrono::duration_cast<std::chrono::milliseconds> (deadline - now).count ());
 		WaitNamedPipeW (pipeName.c_str (), std::min<DWORD> (remaining, 100));
-		Sleep (10);
+		const DWORD retryBudget = RemainingDeadlineMs (deadline);
+		if (!retryBudget) break;
+		Sleep (std::min<DWORD> (retryBudget, 10));
 	}
 	if (pipe == INVALID_HANDLE_VALUE)
 		return i2p::unexpected ("WaitNamedPipe/CreateFile: " + Win32ErrorText (lastError));
