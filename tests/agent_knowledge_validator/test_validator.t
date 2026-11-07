@@ -37,6 +37,17 @@ sub fs_native {
       ? $value : Encode::encode( 'UTF-8', $value );
 }
 
+# Native Win32 builds can expose symlink as a throwing stub rather than
+# return false. Probe only this operation; retain the other path cases.
+sub create_fixture_symlink {
+    my ($target, $link) = @_;
+    my $linked = eval { symlink $target, $link };
+    my $reason = $@ || "$!";
+    die "create symlink fixture: $reason\n" if !$linked && $^O ne 'MSWin32';
+    $reason =~ s/\s+/ /g;
+    return ($linked, $reason);
+}
+
 my $source_root = fs_text( abs_path( File::Spec->catdir( $Bin, '..', '..' ) ) );
 my $validator = File::Spec->catfile( $source_root, 'scripts',
     'validate-agent-knowledge.pl' );
@@ -714,6 +725,20 @@ contract_case 'UTF-8 repository paths and encoded Markdown links agree' => sub {
           . "See [mixed](docs/資料/r%C3%A9sumé.md).\n" );
     my $result = $f->run_validator( '--scope', 'worktree', '--format', 'json' );
     exit_is( $result, 0, 'Unicode worktree root and all link spellings resolve' );
+    if ($result->{code} && $^O eq 'MSWin32') {
+        # Only private fixture paths are recorded. Distinguish Git UTF-8
+        # bytes from Perl's native path without altering either boundary.
+        my $git_root = $f->git('rev-parse', '--show-toplevel');
+        $git_root =~ s/\r?\n\z//;
+        diag('Win32 Unicode fixture root UTF-8 bytes: '
+            . unpack('H*', substr(Encode::encode('UTF-8', $f->{root}), 0, 1024)));
+        diag('Git worktree root bytes: '
+            . unpack('H*', substr($git_root, 0, 1024)));
+        my $native = fs_native(fs_text($git_root));
+        diag('Native root Unicode flag: ' . (utf8::is_utf8($native) ? 1 : 0));
+        my $resolved = abs_path($native);
+        diag('Native root resolution: ' . (defined($resolved) ? 'present' : "failed: $!"));
+    }
     my $report = JSON::PP->new->utf8->decode( $result->{stdout} );
     is( $report->{status}, 'PASS', 'UTF-8 JSON output remains machine-readable' );
     is( scalar @{ $report->{errors} }, 0, 'literal and decoded paths have no reference failures' );
@@ -770,10 +795,10 @@ contract_case 'symlink references cannot escape the repository' => sub {
     open my $external, '>', $outside or die "create external fixture: $!\n";
     print {$external} "External fixture.\n";
     close $external or die "close external fixture: $!\n";
-    my $linked = symlink $outside, $f->path('external-link.md');
-    die "create symlink fixture: $!\n" if !$linked && $^O ne 'MSWin32';
+    my ($linked, $reason) =
+      create_fixture_symlink($outside, $f->path('external-link.md'));
     SKIP: {
-        skip 'host does not permit creating symbolic links', 2 unless $linked;
+        skip "host cannot create symbolic links: $reason", 2 unless $linked;
         $f->update_agent();
         $f->write( 'AGENTS.md', $f->read('AGENTS.md') . "\nSee [outside](external-link.md).\n" );
         my $result = $f->run_validator( '--scope', 'worktree' );
@@ -789,10 +814,10 @@ contract_case 'instruction discovery does not follow symlink files' => sub {
     print {$external} "Malformed external instructions.\n";
     close $external or die "close external fixture: $!\n";
     make_path( $f->path('external') );
-    my $linked = symlink $outside, $f->path('external/AGENTS.md');
-    die "create symlink fixture: $!\n" if !$linked && $^O ne 'MSWin32';
+    my ($linked, $reason) =
+      create_fixture_symlink($outside, $f->path('external/AGENTS.md'));
     SKIP: {
-        skip 'host does not permit creating symbolic links', 1 unless $linked;
+        skip "host cannot create symbolic links: $reason", 1 unless $linked;
         $f->commit('record external instruction symlink');
         exit_is( $f->run_validator( '--scope', 'worktree' ), 0, 'external instruction contents are not consumed' );
     }

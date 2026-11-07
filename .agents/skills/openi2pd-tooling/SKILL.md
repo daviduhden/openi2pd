@@ -122,6 +122,20 @@ a TUI client.
 
 ## Known issues and decisions
 
+- Native Win32 Perl can throw from an unimplemented `symlink` stub;
+  trap only the fixture creation operation and report its capability
+  reason while retaining traversal/discovery assertions on capable hosts.
+  Do not use that limitation to skip Unicode or other path contracts.
+  Catalog fixtures must be written in raw mode so Win32 newline
+  translation cannot replace deliberate LF bytes with CRLF.
+- Native Win32 Unicode worktree resolution remains an open validator
+  portability issue. Git emits UTF-8 while native filesystem APIs may
+  use the active codepage; an unflagged byte string does not identify its
+  encoding. Do not adopt GetANSIPathName without checking its lossless
+  roundtrip: absent 8.3 support it may substitute question marks. Keep
+  Unicode contracts enabled and inspect their failure-only fixture-byte
+  diagnostics before changing the shared filesystem/process boundary.
+
 - Decode child results from Perl's documented wait word, not POSIX::WIF*
   helpers: native Win32 Perl can expose those names as throwing stubs.
   Preserve waitpid/spawn failure and POSIX signal outcomes separately from
