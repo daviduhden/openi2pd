@@ -663,6 +663,28 @@ workflow_crash_fixtures($root);
     ( $code, $out ) = run_checker( $doxygen_checker, '--root', $tmp );
     is( $code, 0, 'Doxygen checker accepts complete and undocumented blocks' );
 
+    # Unnamed type operands still count toward arity, but need no @param.
+    write_file($header, <<'CPP');
+/// JNI-style entry point.
+/// @param env caller environment.
+/// @param named actual operand.
+/// @param callback completion function.
+void Probe(JNIEnv * env, jclass, const Widget, const ns::Widget,
+    unsigned long int, long double, struct Context, enum class Mode,
+    ns::Widget named, void (*callback)(int));
+CPP
+    ($code, $out) = run_checker($doxygen_checker, '--root', $tmp);
+    is($code, 0, 'unnamed type operands do not become phantom parameter names');
+    write_file($header, <<'CPP');
+/// Entry point.
+/// @param env caller environment.
+void Probe(JNIEnv * env, jclass, const ns::Widget missing,
+    unsigned long count, void (*callback)(int));
+CPP
+    ($code, $out) = run_checker($doxygen_checker, '--root', $tmp);
+    is($code, 1, 'named operands still require documentation');
+    like($out, qr/missing|count|callback/, 'named parameter diagnostic remains');
+
     # A documented name that the declaration does not have is the inverse
     # defect: Doxygen reports "argument ... is not found in the argument
     # list", and array parameters must still yield their identifier.

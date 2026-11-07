@@ -121,6 +121,13 @@ a TUI client.
   Never let it execute repository code.
 
 ## Known issues and decisions
+
+The lexical Doxygen checker distinguishes abstract parameter declarators
+from named ones: standalone typedefs, qualified types, cv-qualified types
+and builtin type combinations are unnamed but still count toward arity.
+Keep negative named-operand and function-pointer fixtures alongside JNI
+unnamed-class examples; never exempt a specific JNI type name to silence
+a false positive. This checker does not resolve C++ symbol tables.
 - Audit interpreter execution by operand role, not by a literal `-e` search:
   combined Perl flags, absolute/env interpreters, stdin/heredocs, generated
   fixtures and Shell documentation examples need review. `perl -c file`

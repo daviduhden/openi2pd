@@ -176,6 +176,16 @@ sub param_name
 	$param =~ s/\[\s*\]\s*$//;
 
 	if ($param =~ /\(\s*\*\s*([A-Za-z_]\w*)\s*\)/) { return $1; }
+	# Abstract declarators have no documentation name. A lone typedef or
+	# qualified type is not an identifier declaration, even when cv or
+	# elaborated-type specifiers precede it. Keep this lexical: resolving
+	# arbitrary C++ types would require the compiler's symbol table.
+	my $type_only = $param;
+	$type_only =~ s/\b(?:const|volatile|typename)\b/ /g;
+	$type_only =~ s/^\s*(?:struct|class|union|enum(?:\s+class)?)\s+//;
+	$type_only =~ s/^\s+|\s+$//g;
+	return undef if $type_only =~ /\A(?:::)?[A-Za-z_]\w*(?:\s*::\s*[A-Za-z_]\w*)*\z/;
+	return undef if $type_only =~ /\A(?:signed|unsigned|short|long|int|char|double|float|bool|wchar_t|char8_t|char16_t|char32_t|void)(?:\s+(?:signed|unsigned|short|long|int|char|double|float|bool|wchar_t|char8_t|char16_t|char32_t|void))*\z/;
 	return undef unless $param =~ /([A-Za-z_]\w*)\s*$/;
 	my $name = $1;
 	return undef if $name =~ /^(?:const|volatile|unsigned|signed|struct|class|enum|typename)$/;
