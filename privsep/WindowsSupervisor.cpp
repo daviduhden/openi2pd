@@ -190,14 +190,30 @@ i2p::expected<void, std::string> WindowsWorkerSupervisor::SpawnGeneration (uint3
 		m_Config.role, acceptedNonce, container);
 	if (!accepted)
 	{
+		// Sample liveness before FailTerminal terminates the job. Only the
+		// numeric exit status is retained: the command line carries a nonce.
+		std::string detail = accepted.error ();
+		const DWORD state = WaitForSingleObject (m_Worker->process.Native (), 0);
+		if (state == WAIT_OBJECT_0)
+		{
+			DWORD exitCode = 0;
+			if (GetExitCodeProcess (m_Worker->process.Native (), &exitCode))
+				detail += " (worker exited before authentication; code " + std::to_string (exitCode) + ")";
+			else
+				detail += " (worker exited before authentication; exit status unavailable)";
+		}
+		else if (state == WAIT_TIMEOUT)
+			detail += " (worker still running before authentication teardown)";
+		else
+			detail += " (worker liveness query failed before authentication teardown)";
 		// The child exists but never authenticated: terminate the Job Object
 		// and wait for the process before returning, so nothing outlives this
 		// call.
-		return FailTerminal (WindowsWorkerFailureKind::Accept, generation, accepted.error ());
+		return FailTerminal (WindowsWorkerFailureKind::Accept, generation, std::move (detail));
 	}
 	m_Channel = std::make_unique<WindowsChannel> (std::move (*accepted));
-	// The accepted instance is consumed; the listener handle now lives in
-	// the channel and the server object must not try to close it again.
+	// The accepted instance uses the channel's duplicate; the listener's
+	// original handle is already closed and must not disconnect that pipe.
 	m_Server.reset ();
 
 	m_Policy.NoteReady (Clock::now ());

@@ -50,3 +50,7 @@ require_runtime_source("privsep/WindowsIpc.cpp"
   "std::min (WORKER_HELLO_TIMEOUT_MS, RemainingDeadlineMs (deadline))")
 require_runtime_source("tests/test-privsep-windows-ipc.cpp"
   "TestMalformedHelloRearmsListener ()")
+require_runtime_source("privsep/WindowsSupervisor.cpp"
+  "WaitForSingleObject (m_Worker->process.Native (), 0)")
+require_runtime_source("privsep/WindowsSupervisor.cpp"
+  "GetExitCodeProcess (m_Worker->process.Native (), &exitCode)")

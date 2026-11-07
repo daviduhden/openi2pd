@@ -104,6 +104,14 @@ report that limitation; do not substitute local execution. Ask for:
   worker is not global separation.
 
 ## Known issues and decisions
+
+- A Windows accept timeout alone cannot distinguish a loader or mitigation
+  failure from an unauthenticated live worker. Sample the process handle
+  with a zero-time wait before terminal cleanup, then retain only a numeric
+  exit status or a fixed liveness outcome. Cleanup itself terminates the
+  child, so sampling afterwards loses the original evidence. Never collect
+  the command line or spawn nonce. A supervisor test skipped at this seam
+  supplies no authenticated-worker or restart validation.
 - Capability target masks are not universal live platform profiles. The
   exec-free supervisor target is enforced by OpenBSD's pre-created workers;
   Linux still forks/execs replacement log workers. Its implementation must
