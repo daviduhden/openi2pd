@@ -112,6 +112,37 @@ static void ExpectMalformed (std::string_view data)
 	assert (torrent.GetError () != eTorrentErrorNoError);
 }
 
+static void TestDictionaryValuesRequired ()
+{
+	for (const std::string_view malformed : {
+		"d1:ae", "d1:ai1e1:be", "d1:ad1:bee", "d1:ald1:beee" })
+	{
+		assert (ParseDictionary (malformed) == 0);
+		auto [fields, consumed] = ExtractDictionary (malformed);
+		assert (consumed == 0);
+		assert (fields.empty ());
+	}
+	// The same invalid child must not be accepted through list fallback.
+	assert (ParseList ("ld1:aee") == 0);
+	for (const std::string_view valid : { "de", "d1:ai1ee", "d1:adee", "d1:a0:e" })
+	{
+		assert (ParseDictionary (valid) == valid.size ());
+		auto [fields, consumed] = ExtractDictionary (valid);
+		assert (consumed == valid.size ());
+		assert (fields.size () == (valid == "de" ? 0U : 1U));
+	}
+
+	// Required metadata can be valid while an ignored trailing key lacks
+	// its value. Both the top-level and info dictionary must reject it.
+	auto content = MakeTorrentFile (SingleFileInfo (16384, 16384, 1));
+	content.insert (content.size () - 1, "1:z");
+	ExpectMalformed (content);
+	auto info = SingleFileInfo (16384, 16384, 1);
+	info.insert (info.size () - 1, "1:z");
+	content = MakeTorrentFile (info);
+	ExpectMalformed (content);
+}
+
 static void TestValidSingleFile ()
 {
 	auto data = MakeTorrentFile (SingleFileInfo (16384, 16384, 1));
@@ -357,6 +388,7 @@ static void TestReadTorrentFileBounded ()
 
 int main ()
 {
+	TestDictionaryValuesRequired ();
 	TestValidSingleFile ();
 	TestValidMultiFile ();
 	TestTruncatedAndMalformed ();

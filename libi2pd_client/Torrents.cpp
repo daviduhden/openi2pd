@@ -1021,14 +1021,15 @@ namespace torrents
 		{
 			if (keys.size () >= BENCODED_MAX_DICTIONARY_KEYS) return 0;
 			auto [key, offset] = ExtractByteString (buf);
-			if (!offset) break;
+			if (!offset) return 0;
 			if (!keys.insert (key).second) return 0; // duplicate dictionary key
 			len += offset;
 			buf = buf.substr (offset);
 			offset = 0;
 			if (handler) offset = handler (key, buf);
 			if (!offset) offset = ParseBEncoded (buf, depth);
-			if (!offset || offset > buf.size ()) break;
+			// After a key, 'e' is a missing value, not the dictionary end.
+			if (!offset || offset > buf.size ()) return 0;
 			len += offset;
 			buf = buf.substr (offset);
 		}
@@ -1054,12 +1055,16 @@ namespace torrents
 					break;
 				}
 				auto [key, offset] = ExtractByteString (buf);
-				if (!offset) break;
+				if (!offset) return { { }, 0 };
 				len += offset;
 				buf = buf.substr (offset);
 				offset = ParseBEncoded (buf, 1);
-				if (!offset || offset > buf.size ()) break;
-				if (!ret.emplace (key, buf.substr (0, offset)).second) break; // duplicate key
+				// Do not reinterpret a missing value as the closing delimiter
+				// or expose earlier fields from a malformed dictionary.
+				if (!offset || offset > buf.size ()) return { { }, 0 };
+				// Reject duplicate keys without returning partial fields.
+				if (!ret.emplace (key, buf.substr (0, offset)).second)
+					return { { }, 0 };
 				len += offset;
 				buf = buf.substr (offset);
 			}
@@ -1085,7 +1090,7 @@ namespace torrents
 			size_t l = 0;
 			if (handler) l = handler (buf);
 			if (!l) l = ParseBEncoded (buf, depth);
-			if (!l || l > buf.size ()) break;
+			if (!l || l > buf.size ()) return 0;
 			len += l;
 			buf = buf.substr (l);
 		}

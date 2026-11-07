@@ -70,3 +70,5 @@ require_runtime_source("privsep/WindowsIpc.cpp"
   "const DWORD waitError = wait == WAIT_FAILED ? GetLastError () : ERROR_SUCCESS;")
 require_runtime_source("privsep/WindowsIpc.cpp"
   "GetOverlappedResult (pipe, &overlapped, &transferred, TRUE)")
+require_runtime_source("tests/test-torrent-bencode.cpp"
+  "TestDictionaryValuesRequired ()")

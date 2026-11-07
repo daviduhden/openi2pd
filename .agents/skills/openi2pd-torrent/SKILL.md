@@ -115,6 +115,13 @@ Do not let them edit, build or run tests.
   filesystem paths cross IPC.
 
 ## Known issues and decisions
+
+- After a bencode dictionary key is consumed, failure to parse its value
+  must return failure immediately. Breaking into delimiter handling can
+  mistake an e in value position for the dictionary terminator. Cover
+  partially populated dictionaries, nested/list fallback and otherwise
+  valid metainfo with dangling ignored keys; failed extraction is empty/0.
+
 - A DHT node ID is usable only after successful provider randomness and
   routing-table construction. The tunnel discards an uninitialized DHT,
   leaving its capability and ports absent; Start must reject that state
