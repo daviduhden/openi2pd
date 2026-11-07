@@ -171,9 +171,12 @@ namespace torrents
 			}
 		}
 		if (dht)
-			m_DHT = std::make_unique<TorrentsDHT> (*this,
+		{
+			auto candidate = std::make_unique<TorrentsDHT> (*this,
 				TORRENT_PORT + (localDestination ? localDestination->GetRng () () % (65535 - TORRENT_PORT - 1) : 1),
 				dhtFileName);
+			if (candidate->IsInitialized ()) m_DHT = std::move (candidate);
+		}
 	}
 
 	TorrentsTunnel::~TorrentsTunnel ()

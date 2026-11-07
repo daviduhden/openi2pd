@@ -115,6 +115,13 @@ Do not let them edit, build or run tests.
   filesystem paths cross IPC.
 
 ## Known issues and decisions
+- A DHT node ID is usable only after successful provider randomness and
+  routing-table construction. The tunnel discards an uninitialized DHT,
+  leaving its capability and ports absent; Start must reject that state
+  before persisted-state loading, receiver publication or timer scheduling.
+  A saved self record must not silently bypass an RNG initialization failure.
+  Preserve the existing identity format and never substitute fixed entropy.
+  Provider-failure injection and no-advertisement validation remain CI work.
 - `UploadSlotPolicy` grants eight interested peers and rotates on the first
   maintenance/interest event after 30 seconds. It preserves incumbents while
   filling vacancies, keys fairness by peer identity and resets on stop.

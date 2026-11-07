@@ -594,10 +594,14 @@ namespace torrents
 	class TorrentsDHT
 	{
 	public:
+		/// A missing destination or RNG failure leaves initialization false.
+		/// The tunnel must discard such an instance without advertising DHT.
 		TorrentsDHT (TorrentsTunnel & tunnel, uint16_t port, std::string_view dhtFileName);
 		~TorrentsDHT ();
 		TorrentsDHT (const TorrentsDHT &) = delete;
 		TorrentsDHT & operator= (const TorrentsDHT &) = delete;
+		/// True only after a random node identity has a routing table.
+		bool IsInitialized () const { return static_cast<bool> (m_RoutingTable); }
 
 		// Set before Start. Delegated persistence never falls back to parent
 		// IO.

@@ -29,3 +29,10 @@ require_runtime_source("tests/test-stream-creation-sync.cpp"
   "destination->CreateStream (blinded)")
 require_runtime_source("tests/test-stream-creation-sync.cpp"
   "destination->CreateStream (remote)")
+
+require_runtime_source("libi2pd_client/TorrentsDHT.cpp"
+  "if (RAND_bytes (m_NodeID.data () + 6, static_cast<int> (m_NodeID.size () - 6)) != 1)")
+require_runtime_source("libi2pd_client/TorrentsDHT.cpp"
+  "if (!IsInitialized ()) return;")
+require_runtime_source("libi2pd_client/TorrentsTunnel.cpp"
+  "if (candidate->IsInitialized ()) m_DHT = std::move (candidate);")

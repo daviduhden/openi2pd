@@ -649,7 +649,14 @@ namespace torrents
 			memcpy (m_NodeID.data (), dest->GetIdentHash (), 6);
 			m_NodeID[4] ^= (m_Port >> 8);
 			m_NodeID[5] ^= (m_Port & 0xFF);
-			RAND_bytes (m_NodeID.data () + 6, static_cast<int> (m_NodeID.size () - 6));
+			if (RAND_bytes (m_NodeID.data () + 6, static_cast<int> (m_NodeID.size () - 6)) != 1)
+			{
+				// Never publish a partially generated identity or let persisted
+				// state turn provider failure into a predictable fallback.
+				m_NodeID.fill (0);
+				LogPrint (eLogError, "TorrentsDHT: Node identity randomness unavailable");
+				return;
+			}
 			m_RoutingTable = std::make_unique<RoutingTable> (m_NodeID);
 		}
 		else
@@ -677,6 +684,7 @@ namespace torrents
 
 	void TorrentsDHT::Start ()
 	{
+		if (!IsInitialized ()) return;
 		auto dest = m_Tunnel.GetLocalDestination ();
 		if (dest && m_DHTFileName.empty ()) m_DHTFileName = dest->GetIdentHash ().ToBase32 () + ".dht";
 		if (m_DHTFileName.empty ()) m_DHTFileName = "nodest.dht";
