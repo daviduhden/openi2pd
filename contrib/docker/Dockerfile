@@ -33,7 +33,7 @@
 # least 660 seconds.
 #
 
-FROM alpine:latest AS builder
+FROM alpine:3.24.4 AS builder
 RUN apk add --no-cache build-base cmake ninja boost-dev \
       boost-program_options boost-json boost-url boost-container \
       openssl-dev zlib-dev miniupnpc-dev
@@ -45,7 +45,7 @@ RUN cmake -S build -B build-output -G Ninja \
     && cmake --build build-output --parallel "$(nproc)" \
     && strip build-output/i2pd
 
-FROM alpine:latest
+FROM alpine:3.24.4
 LABEL org.opencontainers.image.title="openi2pd"
 LABEL org.opencontainers.image.source="https://github.com/daviduhden/openi2pd"
 LABEL org.opencontainers.image.licenses="BSD-3-Clause"

@@ -185,7 +185,7 @@ jobs:
           persist-credentials: false
       - name: Build the fully static router in Alpine
         run: |
-          docker run --rm -v "$PWD:/src" -w /src alpine:latest \
+          docker run --rm -v "$PWD:/src" -w /src alpine:3.24.4 \
             sh contrib/static/build-musl.sh
       - name: Verify the static binary and package it
         run: |
@@ -199,7 +199,7 @@ jobs:
           version="${version}.$(sed -n 's/^#define I2PD_VERSION_MINOR \([0-9]*\)$/\1/p' libi2pd/version.h)"
           version="${version}.$(sed -n 's/^#define I2PD_VERSION_MICRO \([0-9]*\)$/\1/p' libi2pd/version.h)"
           docker run --rm -e VERSION="$version" \
-            -v "$PWD:/src" -w /src debian:bookworm \
+            -v "$PWD:/src" -w /src debian:trixie \
             sh contrib/static/package.sh deb /src/static-bin /src/static-out
           test -n "$(find static-out -name '*.deb' -print -quit)"
       - name: Upload static package evidence

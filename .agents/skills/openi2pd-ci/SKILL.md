@@ -101,6 +101,13 @@ workflow, run `gh`, build or test.
   replace the manual-only OpenBSD/Windows images: `windows-2022` supplies
   the documented Visual Studio 2022 generator, and Ubuntu 24.04 remains the
   supported Homebrew host.
+- The packaging containers are pinned to `alpine:3.24.4` and
+  `debian:trixie`, matching the current stable branches. The Dockerfile
+  builder and runtime stages use the same Alpine tag so the linked Boost,
+  OpenSSL and zlib set is consistent. Android SDK components stay aligned
+  with `android/app/build.gradle`: `build-tools;36.0.0`,
+  `ndk;30.0.16248370`, and `cmake;3.31.6` are deliberate build inputs, not
+  independently upgradable workflow tools.
 - Do not add `continue-on-error`, ignore a failing test or suppress warnings to
   make a job green.
 - Do not attribute a run to a revision it did not build. Local uncommitted
