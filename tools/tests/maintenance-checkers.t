@@ -205,7 +205,7 @@ my $shell_checker = File::Spec->catfile(
 sub workflow_crash_fixtures {
     my ($fixture_root) = @_;
     my $tmp = tempdir( CLEANUP => 1 );
-    for my $relative ( '.github/workflows', '.github/actions', 'tools/scripts/check-workflows.pl' ) {
+    for my $relative ( '.github/workflows', '.github/actions', '.github/patches', 'tools/scripts/check-workflows.pl' ) {
         File::Find::find( {
             no_chdir => 1,
             wanted => sub {
@@ -298,8 +298,12 @@ sub workflow_crash_fixtures {
     my $crypto = File::Spec->catfile(
         $tmp, '.github', 'workflows', 'crypto-tsan.yml');
     my $crypto_source = read_fixture_file($crypto);
+    my $crypto_action = File::Spec->catfile($tmp, '.github', 'actions',
+        'tsan-openssl', 'action.yml');
+    my $crypto_action_source = read_fixture_file($crypto_action);
     for my $boundary (
         ['-fsanitize=thread', '-fsanitize=address'],
+        ['git apply --check "$patch_file"', 'true'],
         ['2f4e3a5fec05394068cfa7379890ab552483a8a6', 'unpinned'],
         ['-DWITH_THREADSANITIZER=ON', '-DWITH_THREADSANITIZER=OFF'],
         ['-DCMAKE_EXE_LINKER_FLAGS="-fsanitize=thread -Wl,--build-id=sha1"',
@@ -311,15 +315,19 @@ sub workflow_crash_fixtures {
         ['readelf -n "$image"', 'true'],
         ['if-no-files-found: error', 'if-no-files-found: warn'] ) {
         my ($before, $after) = @{$boundary};
-        my $candidate = $crypto_source;
+        write_file($crypto, $crypto_source);
+        write_file($crypto_action, $crypto_action_source);
+        my $target = index($crypto_source, $before) >= 0 ? $crypto : $crypto_action;
+        my $candidate = $target eq $crypto ? $crypto_source : $crypto_action_source;
         my $changed = $candidate =~ s/\Q$before\E/$after/;
         ok($changed, 'crypto diagnostic mutation changes a real boundary');
-        write_file($crypto, $candidate);
+        write_file($target, $candidate);
         ($code, $out) = run_checker($checker);
         is($code, 1, 'crypto diagnostic requires pinned complete instrumentation');
         like($out, qr/missing instrumented crypto boundary/,
             'crypto diagnostic reports its missing contract');
     }
+    write_file($crypto_action, $crypto_action_source);
     my $suppressed = $crypto_source;
     $suppressed =~ s/halt_on_error=1/halt_on_error=0/;
     write_file($crypto, $suppressed);
@@ -328,10 +336,41 @@ sub workflow_crash_fixtures {
     like($out, qr/sanitizer suppressions are forbidden/,
         'crypto diagnostic keeps sanitizer findings actionable');
     write_file($crypto, $crypto_source);
+    my $macro_patch = File::Spec->catfile($tmp, '.github', 'patches',
+        'openssl-tsan-compiler-macro.patch');
+    my $macro_source = read_fixture_file($macro_patch);
+    for my $required (
+        '+#if !defined(__SANITIZE_THREAD__)',
+        ' #include <sanitizer/tsan_interface.h>',
+        'f99bbcd5afff69840f2bfed92458cd5ac092cf91' ) {
+        my $incomplete = $macro_source;
+        my $changed = $incomplete =~ s/\Q$required\E/missing-context/;
+        ok($changed, 'macro patch mutation changes actual context');
+        write_file($macro_patch, $incomplete);
+        ($code, $out) = run_checker($checker);
+        is($code, 1, 'OpenSSL adaptation requires guard, context and provenance');
+        like($out, qr/incomplete upstream macro patch/,
+            'OpenSSL adaptation reports missing source context');
+    }
+    write_file($macro_patch, $macro_source);
     my $validation = File::Spec->catfile( $tmp, '.github', 'workflows', 'validation.yml' );
     open my $validation_fh, '<', $validation or BAIL_OUT("read sanitizer fixture: $!");
     my $validation_source = do { local $/ = undef; <$validation_fh> };
     close $validation_fh or BAIL_OUT("close sanitizer fixture: $!");
+    for my $boundary (
+        ["if: matrix.name == 'tsan'", "if: matrix.name == 'ubsan'"],
+        ['"-DCMAKE_EXE_LINKER_FLAGS=-fsanitize=thread -Wl,--build-id=sha1"', '"-DCMAKE_EXE_LINKER_FLAGS=-Wl,--build-id=sha1"'],
+        ['"${sanitizer_flags[@]}" "${crypto_flags[@]}"', '"${sanitizer_flags[@]}"'],
+        ["if: always() && matrix.name == 'tsan'", 'if: success()'] ) {
+        my ($before, $after) = @{$boundary};
+        my $candidate = $validation_source;
+        ok($candidate =~ s/\Q$before\E/$after/, 'TSan matrix mutation changes a real boundary');
+        write_file($validation, $candidate);
+        ($code, $out) = run_checker($checker);
+        is($code, 1, 'TSan matrix must select and retain instrumented crypto');
+        like($out, qr/shared TSan crypto boundary/, 'TSan matrix guard identifies its boundary');
+    }
+    write_file($validation, $validation_source);
     for my $missing ( 'build-sanitizers/tests/test-i2ptunnel-stop',
         'sanitizer-evidence/revision.txt', 'sha256sum' ) {
         my $candidate = $validation_source;

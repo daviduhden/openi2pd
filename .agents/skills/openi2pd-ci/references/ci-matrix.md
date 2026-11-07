@@ -17,7 +17,7 @@ Use with `SKILL.md`. All jobs are manual; no result here validates a revision.
 | `build-linux.yml` | install-components, interop | component staging/consumer; pinned Java reference |
 | `build-android.yml` | android (arm64), android-ui (opt-in) | Java 25/JNI/APK, unit/Lint, Javadoc; API 29 emulator UI/accessibility |
 | `validation.yml` | source-docs, skills-static, perl-quality (opt-in), sanitizers, fuzz-smoke | Doxygen; compile-free skills/workflow/service/packaging/legal/upstream checks; optional Perl::Critic; ASan+UBSan, UBSan-only and TSan; fifteen libFuzzer targets + bounded smoke |
-| `crypto-tsan.yml` | crypto-tsan | pinned OpenSSL/provider source and focused registry test instrumented with the same Clang TSan; linked paths, exact images and logs retained; execution pending |
+| `crypto-tsan.yml` | crypto-tsan | shared tsan-openssl composite builds pinned crypto/providers with Clang TSan; focused registry test, linked paths and images retained; full sanitizer TSan row reuses the composite |
 | `build-openbsd.yml` | OpenBSD | LibreSSL build, full CTest, platform tests |
 | `build-windows.yml` | MSYS2/Clang64, MSVC | full Windows graph/CTest; TUI/API/install |
 | `packaging.yml` | service-contracts, service-install-matrix, static-musl, container-image, Debian | static contracts; seven-manager Service staging; static Debian/RPM-style package; container image; Debian lintian/autopkgtest, conffile reinstall, remove/purge |

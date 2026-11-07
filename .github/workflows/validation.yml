@@ -180,6 +180,10 @@ jobs:
           else
             echo "llvm-symbolizer unavailable; raw sanitizer PCs will be retained"
           fi
+      - name: Build instrumented crypto for TSan
+        if: matrix.name == 'tsan'
+        id: tsan-crypto
+        uses: ./.github/actions/tsan-openssl  # zizmor: ignore[self-repository] actionlint 1.7.12 does not accept GitHub $/ self-repository syntax
       - name: Build and run sanitizer CTest matrix
         env:
           ASAN_OPTIONS: ${{ matrix.asan_options }}
@@ -187,17 +191,35 @@ jobs:
           TSAN_OPTIONS: "halt_on_error=1:second_deadlock_stack=1"
           SANITIZER_FLAGS: ${{ matrix.flags }}
           SANITIZER_NAME: ${{ matrix.name }}
+          TSAN_OPENSSL_PREFIX: ${{ steps.tsan-crypto.outputs.prefix }}
         run: |
           set -euo pipefail
           read -r -a sanitizer_flags <<< "$SANITIZER_FLAGS"
+          crypto_flags=()
+          if [ "$SANITIZER_NAME" = tsan ]; then
+            test "$TSAN_OPENSSL_PREFIX" = "$RUNNER_TEMP/crypto-tsan/prefix"
+            export LD_LIBRARY_PATH="$TSAN_OPENSSL_PREFIX/lib:${LD_LIBRARY_PATH:-}"
+            export OPENSSL_MODULES="$TSAN_OPENSSL_PREFIX/lib/ossl-modules"
+            crypto_flags=(
+              "-DOPENSSL_ROOT_DIR=$TSAN_OPENSSL_PREFIX"
+              "-DOPENSSL_INCLUDE_DIR=$TSAN_OPENSSL_PREFIX/include"
+              "-DOPENSSL_CRYPTO_LIBRARY=$TSAN_OPENSSL_PREFIX/lib/libcrypto.so"
+              "-DOPENSSL_SSL_LIBRARY=$TSAN_OPENSSL_PREFIX/lib/libssl.so"
+              "-DCMAKE_EXE_LINKER_FLAGS=-fsanitize=thread -Wl,--build-id=sha1"
+            )
+          fi
           cmake -S build -B build-sanitizers -G Ninja \
             -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ \
             -DCMAKE_BUILD_TYPE=Debug \
             -DBUILD_TESTING=ON -DWITH_UPNP=OFF \
             -DI2PD_REQUIRE_PERL=ON \
             -DI2PD_BUILD_TUI=ON -DI2PD_OPENSSL_EXPECT=OpenSSL \
-            "${sanitizer_flags[@]}" 2>&1 | tee sanitizer-configure.log
+            "${sanitizer_flags[@]}" "${crypto_flags[@]}" 2>&1 | tee sanitizer-configure.log
           cmake --build build-sanitizers --parallel 2 2>&1 | tee sanitizer-build.log
+          if [ "$SANITIZER_NAME" = tsan ]; then
+            ldd build-sanitizers/tests/test-clientcontext-registry > sanitizer-linked-libraries.txt
+            grep -F "$TSAN_OPENSSL_PREFIX/lib/libcrypto.so" sanitizer-linked-libraries.txt
+          fi
           ctest --test-dir build-sanitizers -j 1 --output-on-failure \
             --no-tests=error --output-junit "$PWD/ctest-sanitizers-${SANITIZER_NAME}.xml"
       - name: Record sanitizer reproduction identities
@@ -215,6 +237,27 @@ jobs:
               echo "$image: not produced" >> sanitizer-evidence/missing-images.txt
             fi
           done
+      - name: Stage TSan crypto reproduction evidence
+        if: always() && matrix.name == 'tsan'
+        run: |
+          set -euo pipefail
+          diagnostic="$RUNNER_TEMP/crypto-tsan"
+          mkdir -p sanitizer-evidence/openssl/images
+          if [ -d "$diagnostic/evidence" ]; then
+            cp -R "$diagnostic/evidence" sanitizer-evidence/openssl/logs
+          fi
+          for image in "$diagnostic/prefix/lib/"libcrypto.so* \
+            "$diagnostic/prefix/lib/"libssl.so* "$diagnostic/prefix/lib/ossl-modules/"*.so \
+            build-sanitizers/tests/test-clientcontext-registry; do
+            if [ -f "$image" ]; then
+              cp -L "$image" sanitizer-evidence/openssl/images/
+              sha256sum "$image" >> sanitizer-evidence/openssl/images.sha256
+              readelf -n "$image" >> sanitizer-evidence/openssl/build-ids.txt
+            fi
+          done
+          if [ -d "$diagnostic/prefix/lib/ossl-modules" ]; then
+            cp -R "$diagnostic/prefix/lib/ossl-modules" sanitizer-evidence/openssl/images/
+          fi
       - name: Upload sanitizer test logs
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
@@ -223,6 +266,7 @@ jobs:
           path: |
             sanitizer-configure.log
             sanitizer-build.log
+            sanitizer-linked-libraries.txt
             build-sanitizers/CMakeCache.txt
             build-sanitizers/CMakeFiles/CMakeConfigureLog.yaml
             build-sanitizers/Testing

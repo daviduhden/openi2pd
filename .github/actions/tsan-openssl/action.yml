@@ -1,0 +1,48 @@
+# See the LICENSE file at the top of the project tree for copyright
+# and license details.
+#
+# openi2pd: shared instrumented crypto dependency for TSan lanes.
+---
+name: Build instrumented OpenSSL
+description: Build pinned OpenSSL and providers with the project's Clang TSan.
+outputs:
+  prefix:
+    description: Private installation prefix for explicit project linking.
+    value: ${{ steps.build.outputs.prefix }}
+runs:
+  using: composite
+  steps:
+    - id: build
+      shell: bash
+      env:
+        OPENSSL_COMMIT: 2f4e3a5fec05394068cfa7379890ab552483a8a6
+        TSAN_OPTIONS: halt_on_error=1:second_deadlock_stack=1
+      run: |
+        set -euo pipefail
+        diagnostic="$RUNNER_TEMP/crypto-tsan"
+        mkdir -p "$diagnostic/source" "$diagnostic/evidence"
+        git init "$diagnostic/source"
+        git -C "$diagnostic/source" remote add origin https://github.com/openssl/openssl.git
+        git -C "$diagnostic/source" fetch --depth=1 origin "$OPENSSL_COMMIT"
+        git -C "$diagnostic/source" checkout --detach FETCH_HEAD
+        test "$(git -C "$diagnostic/source" rev-parse HEAD)" = "$OPENSSL_COMMIT"
+        git rev-parse HEAD > "$diagnostic/evidence/project-revision.txt"
+        git -C "$diagnostic/source" rev-parse HEAD > "$diagnostic/evidence/openssl-revision.txt"
+        clang --version > "$diagnostic/evidence/clang.txt"
+        cd "$diagnostic/source"
+        # Retain Clang's predefined TSan macro; upstream fixes this too.
+        patch_file="$GITHUB_WORKSPACE/.github/patches/openssl-tsan-compiler-macro.patch"
+        git apply --check "$patch_file"
+        git apply "$patch_file"
+        git diff --binary > "$diagnostic/evidence/openssl-source.patch"
+        sha256sum "$patch_file" > "$diagnostic/evidence/openssl-patch.sha256"
+        # Only the isolated upstream dependency uses its native Make.
+        # Disable assembly so provider memory accesses are instrumented.
+        CC=clang CXX=clang++ perl ./Configure linux-x86_64 shared no-asm enable-legacy \
+          --prefix="$diagnostic/prefix" --openssldir="$diagnostic/prefix/ssl" --libdir=lib \
+          -O1 -g -fno-omit-frame-pointer -fsanitize=thread -Wl,--build-id=sha1 \
+          2>&1 | tee "$diagnostic/evidence/openssl-configure.log"
+        make -j2 2>&1 | tee "$diagnostic/evidence/openssl-build.log"
+        make install_sw 2>&1 | tee "$diagnostic/evidence/openssl-install.log"
+        perl configdata.pm --dump > "$diagnostic/evidence/openssl-configdata.txt"
+        echo "prefix=$diagnostic/prefix" >> "$GITHUB_OUTPUT"

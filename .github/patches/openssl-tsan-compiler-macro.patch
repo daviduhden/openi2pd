@@ -1,0 +1,21 @@
+OpenSSL diagnostic-only compiler macro guard.
+Derived from OpenSSL commit f99bbcd5afff69840f2bfed92458cd5ac092cf91.
+The upstream source retains its Apache-2.0 license and attribution.
+Only this hunk is applied to pinned OpenSSL 4.1.0 diagnostic sources.
+
+Index: include/internal/threads_common.h
+===================================================================
+--- a/include/internal/threads_common.h
++++ b/include/internal/threads_common.h
+@@ -14,9 +14,11 @@
+ 
+ #if defined(__clang__) && defined(__has_feature)
+ #if __has_feature(thread_sanitizer)
++#if !defined(__SANITIZE_THREAD__)
+ #define __SANITIZE_THREAD__
+ #endif
+ #endif
++#endif
+ 
+ #if defined(__SANITIZE_THREAD__)
+ #include <sanitizer/tsan_interface.h>

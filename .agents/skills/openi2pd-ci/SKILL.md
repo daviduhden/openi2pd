@@ -148,10 +148,13 @@ workflow, run `gh`, build or test.
   policy, C++23/Java 25 levels, availability matrix and seam inventory) and
   `i18n-static` (native/Android catalog wiring) in the compile-free
   `ci;docs;static` gate; do not execute a skill or compile to validate them.
-- The maintenance PR checker compares the base/head commit range and rejects
+- The manual maintenance checker compares an explicit base/head range and rejects
   repository changes without a substantive instruction update. It validates
   structure and local paths, not semantic relevance; the final review must
   record the reason the knowledge update is reusable.
+- Before publishing a composite-action extraction, parse its YAML as well as
+  running source guards. Review the complete action boundary: substring
+  checks can pass when a duplicated workflow tail makes the YAML invalid.
 
 ## Authorization and triage
 
@@ -205,6 +208,14 @@ workflow, run `gh`, build or test.
   configure-time executable probes too. Set the diagnostic executable
   linker flags explicitly; target sanitizer options are applied later
   and cannot resolve those probe symbols. Preserve the API link probe.
+  Clang 23 also predefines __SANITIZE_THREAD__; the diagnostic applies
+  only the guard hunk from OpenSSL f99bbcd5afff69840f2bfed92458cd5ac092cf91.
+  Keep its context-checking patch and exact diff/hash artifacts together;
+  do not redefine or suppress the compiler macro in build flags.
+  The local tsan-openssl composite owns this source build for both the
+  focused diagnostic and only the TSan row of the full sanitizer matrix.
+  Keep ASan/UBSan and normal branch bottles unchanged; forward its prefix
+  explicitly and retain the full CTest selection and failure artifacts.
 
 - CDB's `q` command has no exit-code operand. Keep exception markers in
   its code-only log and classify them independently of debugger exit

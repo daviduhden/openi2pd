@@ -25,7 +25,11 @@ branch lanes. The separate `crypto-tsan.yml` diagnostic builds a pinned
 OpenSSL revision with TSan to investigate synchronization inside providers;
 an uninstrumented bottle cannot supply that evidence. It retains the same
 Clang across library and project builds, checks linked paths and uploads
-matching images/logs. This diagnostic is prepared, not yet executed.
+matching images/logs. Run 42422405960 passed the focused diagnostic on
+9f5320b2409003cf05df3b1d8968a7a3ebe6949e. This does not validate the full
+sanitizer matrix or subsequent local changes. The shared TSan dependency
+action and compiler-macro patch are prepared for both the diagnostic and
+the full TSan row; ASan/UBSan and the branch bottle lanes remain separate.
 
 The remaining manual lanes are split by concern so a dispatch does not pay
 for unrelated jobs:

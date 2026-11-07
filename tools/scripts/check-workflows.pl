@@ -325,11 +325,19 @@ for my $file (@files) {
     }
 }
 my $crypto_diagnostic = $texts{'crypto-tsan.yml'};
+my $crypto_action_path = File::Spec->catfile($actions_dir, 'tsan-openssl', 'action.yml');
+open my $crypto_action_file, '<', $crypto_action_path
+  or die "cannot read instrumented crypto action: $!\n";
+my $crypto_action = do { local $/; <$crypto_action_file> };
+close $crypto_action_file;
 if (defined $crypto_diagnostic) {
     for my $required (
         'OPENSSL_COMMIT: 2f4e3a5fec05394068cfa7379890ab552483a8a6',
         'https://github.com/openssl/openssl.git',
         'test "$(git -C "$diagnostic/source" rev-parse HEAD)" = "$OPENSSL_COMMIT"',
+        'patch_file="$GITHUB_WORKSPACE/.github/patches/openssl-tsan-compiler-macro.patch"',
+        'git apply --check "$patch_file"', 'git apply "$patch_file"',
+        'git diff --binary > "$diagnostic/evidence/openssl-source.patch"',
         'CC=clang CXX=clang++ perl ./Configure', '-fsanitize=thread',
         '--prefix="$diagnostic/prefix"', '--libdir=lib',
         '-DWITH_THREADSANITIZER=ON',
@@ -346,10 +354,43 @@ if (defined $crypto_diagnostic) {
         'path: crypto-tsan-evidence',
         'if-no-files-found: error' ) {
         push @errors, "crypto-tsan.yml: missing instrumented crypto boundary $required"
-          if index($crypto_diagnostic, $required) < 0;
+          if index($crypto_diagnostic . $crypto_action, $required) < 0;
     }
     push @errors, 'crypto-tsan.yml: sanitizer suppressions are forbidden'
-      if $crypto_diagnostic =~ /suppressions=|ignore_noninstrumented_modules|halt_on_error=0/;
+      if ($crypto_diagnostic . $crypto_action) =~ /suppressions=|ignore_noninstrumented_modules|halt_on_error=0/;
+}
+for my $required (
+    "if: matrix.name == 'tsan'", 'uses: ./.github/actions/tsan-openssl',
+    'TSAN_OPENSSL_PREFIX: ${{ steps.tsan-crypto.outputs.prefix }}',
+    'if [ "$SANITIZER_NAME" = tsan ]; then',
+    '"-DOPENSSL_CRYPTO_LIBRARY=$TSAN_OPENSSL_PREFIX/lib/libcrypto.so"',
+    '"-DOPENSSL_SSL_LIBRARY=$TSAN_OPENSSL_PREFIX/lib/libssl.so"',
+    '"-DCMAKE_EXE_LINKER_FLAGS=-fsanitize=thread -Wl,--build-id=sha1"',
+    '"${sanitizer_flags[@]}" "${crypto_flags[@]}"',
+    "if: always() && matrix.name == 'tsan'",
+    'sanitizer-evidence/openssl/images', 'sanitizer-linked-libraries.txt' ) {
+    push @errors, "validation.yml: missing shared TSan crypto boundary $required"
+      if index($texts{'validation.yml'}, $required) < 0;
+}
+my $crypto_patch_path = File::Spec->catfile($root, '.github', 'patches',
+    'openssl-tsan-compiler-macro.patch');
+if (defined $crypto_diagnostic) {
+    if (open my $patch_file, '<', $crypto_patch_path) {
+        local $/;
+        my $patch = <$patch_file>;
+        close $patch_file;
+        for my $required (
+            'f99bbcd5afff69840f2bfed92458cd5ac092cf91',
+            'Index: include/internal/threads_common.h',
+            '+#if !defined(__SANITIZE_THREAD__)',
+            ' #define __SANITIZE_THREAD__',
+            ' #include <sanitizer/tsan_interface.h>' ) {
+            push @errors, "crypto-tsan.yml: incomplete upstream macro patch $required"
+              if index($patch, $required) < 0;
+        }
+    } else {
+        push @errors, 'crypto-tsan.yml: missing upstream macro patch';
+    }
 }
 # The manual lanes are split by concern: Linux builds and packaging
 # checks, Android, and the validation lanes (Doxygen, compile-free agent
