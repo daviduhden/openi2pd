@@ -153,6 +153,11 @@ workflow, run `gh`, build or test.
 
 ## Known issues and decisions
 
+- A manual heap-diagnostic run can be cancelled before its target exists.
+  Inspect the build step and exact artifact before interpreting a later
+  missing-binary helper failure. Preserve cancellation as an evidence gap;
+  never infer a bad output path, a clean test or an allocator cause from it.
+
 - Preserve configure and build streams separately from CTest artifacts.
   An early native compile error can leave no Testing directory: the Linux
   OpenSSL composite retains configure.log, build.log and CMake configure
@@ -404,6 +409,15 @@ workflow, run `gh`, build or test.
   the whole CTest lane even when no compiler runs.
 
 ## Tracking
+
+Early compiler evidence must survive in every job family, not only the
+ordinary Linux action. Sanitizer lanes retain separate configure/build
+stderr logs, CMake cache and probe YAML even when tests never start.
+Review capture with pipefail and unconditional artifact publication as
+separate boundaries; negative fixtures must remove upload entries while
+leaving tee intact. Missing binaries or logs before their phase starts
+are evidence gaps, not clean runtime results. The workflow source guard
+and `tools/tests/maintenance-checkers.t` cover this cross-job seam.
 
 Use `CI`/J and `GOV-*`. Record workflow/job, revision, run id, result, first
 failure and correction. Keep historical runs clearly separated from current

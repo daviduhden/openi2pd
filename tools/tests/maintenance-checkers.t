@@ -242,6 +242,40 @@ sub workflow_crash_fixtures {
             'sanitizer evidence diagnostic identifies the gap' );
     }
     write_file( $validation, $validation_source );
+    for my $missing ('2>&1 | tee sanitizer-configure.log',
+        '2>&1 | tee sanitizer-build.log',
+        'build-sanitizers/CMakeCache.txt',
+        'build-sanitizers/CMakeFiles/CMakeConfigureLog.yaml') {
+        my $candidate = $validation_source;
+        my $changed = $candidate =~ s/\Q$missing\E/missing-build-evidence/g;
+        ok($changed, 'sanitizer mutation removes an actual evidence boundary');
+        write_file($validation, $candidate);
+        ($code, $out) = run_checker($checker);
+        is($code, 1, 'sanitizer build failure must preserve diagnostics');
+        like($out, qr/sanitizer build evidence missing/, 'sanitizer capture diagnostic');
+    }
+    for my $log_name ('sanitizer-configure.log', 'sanitizer-build.log') {
+        my $candidate = $validation_source;
+        my $changed = $candidate =~ s/^[ \t]*\Q$log_name\E[ \t]*\n//m;
+        ok($changed, 'sanitizer upload mutation preserves tee capture');
+        write_file($validation, $candidate);
+        ($code, $out) = run_checker($checker);
+        is($code, 1, 'sanitizer capture requires artifact publication');
+        like($out, qr/sanitizer build evidence missing: upload/, 'sanitizer upload diagnostic');
+    }
+    for my $boundary (
+        ['Build and run sanitizer CTest matrix', 'set -euo pipefail'],
+        ['Upload sanitizer test logs', 'if: always()'] ) {
+        my ($step, $operand) = @{$boundary};
+        my $candidate = $validation_source;
+        my $changed = $candidate =~ s{(^[ \t]*-[ ]name:[ ]\Q$step\E\n(?:(?!^[ \t]*-[ ]name:).)*?)\Q$operand\E}{$1 . 'missing-failure-boundary'}mse;
+        ok($changed, 'sanitizer failure-boundary mutation is effective');
+        write_file($validation, $candidate);
+        ($code, $out) = run_checker($checker);
+        is($code, 1, 'sanitizer pipeline and unconditional upload are required');
+        like($out, qr/sanitizer build evidence missing/, 'sanitizer failure-boundary diagnostic');
+    }
+    write_file( $validation, $validation_source );
     my $newline_inventory = $validation_source;
     $newline_inventory =~ s/git ls-files -z/git ls-files/g;
     write_file( $validation, $newline_inventory );

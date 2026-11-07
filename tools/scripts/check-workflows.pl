@@ -360,6 +360,26 @@ for my $job ( sort keys %job_owner ) {
 # Keep the known leak/lifecycle reproducers beside their logs and hashes.
 if ( exists $blocks_for{'validation.yml'}{'sanitizers'} ) {
     my $sanitizers = $blocks_for{'validation.yml'}{'sanitizers'};
+    my $active = $sanitizers;
+    $active =~ s/^[ \t]*#.*$//mg;
+    $active =~ s/\\\n\s*/ /g;
+    for my $phase ( [ 'configure', qr/cmake\s+-S\s+build\s+-B\s+build-sanitizers/ ],
+        [ 'build', qr/cmake\s+--build\s+build-sanitizers/ ] ) {
+        my ($name, $command) = @{$phase};
+        push @errors, "validation.yml: sanitizer build evidence missing: $name stderr capture"
+          unless $active =~ /$command[^\n]*2>&1\s*\|\s*tee\s+sanitizer-\Q$name\E[.]log(?:\s|$)/;
+    }
+    my ($build_block) = $active =~ /(^[ \t]*-[ ]name:[ ]Build and run sanitizer CTest matrix\n.*?)(?=^[ \t]*-[ ]name:|\z)/ms;
+    push @errors, "validation.yml: sanitizer build evidence missing: pipeline failure propagation"
+      unless defined $build_block && $build_block =~ /set -euo pipefail/;
+    my ($upload_block) = $active =~ /(^[ \t]*-[ ]name:[ ]Upload sanitizer test logs\n.*?)(?=^[ \t]*-[ ]name:|\z)/ms;
+    for my $required ('if: always()', 'uses: actions/upload-artifact',
+        'sanitizer-configure.log', 'sanitizer-build.log',
+        'build-sanitizers/CMakeCache.txt',
+        'build-sanitizers/CMakeFiles/CMakeConfigureLog.yaml') {
+        push @errors, "validation.yml: sanitizer build evidence missing: upload $required"
+          unless defined $upload_block && index($upload_block, $required) >= 0;
+    }
     for my $image (qw(test-eddsa test-i2ptunnel-stop test-i2ptunnel-targets
         test-eciesx25519-ratchet-session test-runnableservice-lifecycle
         test-i2cp-session-lifecycle)) {

@@ -186,14 +186,15 @@ jobs:
           UBSAN_OPTIONS: ${{ matrix.ubsan_options }}
           TSAN_OPTIONS: "halt_on_error=1:second_deadlock_stack=1"
         run: |
+          set -euo pipefail
           cmake -S build -B build-sanitizers -G Ninja \
             -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ \
             -DCMAKE_BUILD_TYPE=Debug \
             -DBUILD_TESTING=ON -DWITH_UPNP=OFF \
             -DI2PD_REQUIRE_PERL=ON \
             -DI2PD_BUILD_TUI=ON -DI2PD_OPENSSL_EXPECT=OpenSSL \
-            ${{ matrix.flags }}
-          cmake --build build-sanitizers --parallel 2
+            ${{ matrix.flags }} 2>&1 | tee sanitizer-configure.log
+          cmake --build build-sanitizers --parallel 2 2>&1 | tee sanitizer-build.log
           ctest --test-dir build-sanitizers -j 1 --output-on-failure \
             --no-tests=error --output-junit "$PWD/ctest-sanitizers-${{ matrix.name }}.xml"
       - name: Record sanitizer reproduction identities
@@ -217,6 +218,10 @@ jobs:
         with:
           name: sanitizer-${{ matrix.name }}-logs
           path: |
+            sanitizer-configure.log
+            sanitizer-build.log
+            build-sanitizers/CMakeCache.txt
+            build-sanitizers/CMakeFiles/CMakeConfigureLog.yaml
             build-sanitizers/Testing
             build-sanitizers/tests/test-eddsa
             build-sanitizers/tests/test-i2ptunnel-stop
