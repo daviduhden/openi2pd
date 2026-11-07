@@ -30,37 +30,50 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
         with:
           persist-credentials: false
-      - uses: vmactions/openbsd-vm@f1ca8bc8ecc5b6ef7218e5b914836e067e1546d3  # v1.4.9
+      - name: Prepare OpenBSD VM
+        uses: vmactions/openbsd-vm@f1ca8bc8ecc5b6ef7218e5b914836e067e1546d3  # v1.4.9
         with:
           release: '8.0'
           arch: x86_64
           cpu: 2
           mem: 6144
           copyback: true
+          sync: rsync
+          custom-shell-name: openbsd
           prepare: |
             set -eu
             pkg_add cmake ninja boost miniupnpc llvm libcxx git
-          run: |
-            set -eu
-            if ! cmake -S build -B build-output -G Ninja \
-              -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ \
-              -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON \
-              -DI2PD_REQUIRE_PERL=ON \
-              -DI2PD_OPENSSL_EXPECT=LibreSSL > configure.log 2>&1; then
-              cat configure.log
-              exit 1
-            fi
+      # The pinned custom shell copies files back after a failed command
+      # and returns its original status; the action's run input does not.
+      - name: Build and test inside OpenBSD
+        shell: openbsd {0}
+        run: |
+          set -eu
+          if ! cmake -S build -B build-output -G Ninja \
+            -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ \
+            -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON \
+            -DI2PD_REQUIRE_PERL=ON \
+            -DI2PD_OPENSSL_EXPECT=LibreSSL > configure.log 2>&1; then
             cat configure.log
-            grep -q 'OpenSSL library    : LibreSSL' configure.log
-            cmake --build build-output --parallel 2
-            test -x build-output/i2pd-tui
-            ctest --test-dir build-output -j 2 --output-on-failure \
-              --no-tests=error --output-junit "$PWD/ctest-openbsd.xml"
-            ctest --test-dir build-output -N -L platform --no-tests=error
-            make BUILD_DIR=build-make \
-              CMAKE_FLAGS="-DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF -DI2PD_OPENSSL_EXPECT=LibreSSL" \
-              router
-            test -x build-make/i2pd
+            exit 1
+          fi
+          cat configure.log
+          grep -q 'OpenSSL library    : LibreSSL' configure.log
+          if cmake --build build-output --parallel 2 > build.log 2>&1; then
+            cat build.log
+          else
+            build_status=$?
+            cat build.log
+            exit "$build_status"
+          fi
+          test -x build-output/i2pd-tui
+          ctest --test-dir build-output -j 2 --output-on-failure \
+            --no-tests=error --output-junit "$PWD/ctest-openbsd.xml"
+          ctest --test-dir build-output -N -L platform --no-tests=error
+          make BUILD_DIR=build-make \
+            CMAKE_FLAGS="-DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF -DI2PD_OPENSSL_EXPECT=LibreSSL" \
+            router
+          test -x build-make/i2pd
       - name: Upload OpenBSD test logs
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
@@ -69,6 +82,7 @@ jobs:
           path: |
             build-output/Testing
             configure.log
+            build.log
             ctest-openbsd.xml
           if-no-files-found: warn
           retention-days: 7

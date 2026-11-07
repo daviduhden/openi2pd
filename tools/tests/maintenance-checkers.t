@@ -233,6 +233,44 @@ sub workflow_crash_fixtures {
         like( $out, qr/code[ ]locations[ ]only/x, 'crash evidence privacy diagnostic' );
     }
     write_file( $windows, $source );
+    my $openbsd = File::Spec->catfile(
+        $tmp, '.github', 'workflows', 'build-openbsd.yml' );
+    my $openbsd_source = read_fixture_file($openbsd);
+    for my $boundary (
+        ['copyback: true', 'copyback: false'],
+        ['sync: rsync', 'sync: no'],
+        ['custom-shell-name: openbsd', 'custom-shell-name: other'],
+        ['shell: openbsd {0}', 'shell: bash'],
+        ['exit "$build_status"', 'exit 0'],
+        ['if: always()', 'if: success()'] ) {
+        my ($before, $after) = @{$boundary};
+        my $candidate = $openbsd_source;
+        my $changed = $candidate =~ s/\Q$before\E/$after/;
+        ok($changed, 'OpenBSD mutation changes an actual copyback boundary');
+        write_file($openbsd, $candidate);
+        ($code, $out) = run_checker($checker);
+        is($code, 1, 'OpenBSD command failure must retain host evidence');
+        like($out, qr/OpenBSD failure copyback/,
+            'OpenBSD diagnostic identifies the lost copyback contract');
+    }
+    my $without_upload = $openbsd_source;
+    my $removed_upload = $without_upload =~ s/^[ \t]*build[.]log[ \t]*\n//m;
+    ok($removed_upload, 'OpenBSD mutation removes upload entry only');
+    write_file($openbsd, $without_upload);
+    ($code, $out) = run_checker($checker);
+    is($code, 1, 'OpenBSD build capture alone cannot satisfy artifact upload');
+    like($out, qr/OpenBSD failure copyback missing: upload build[.]log/,
+        'OpenBSD upload diagnostic is independent of command capture');
+    my $action_run = $openbsd_source;
+    my $added_run = $action_run =~ s{(            pkg_add [^\n]+\n)}
+      {$1 . "          run: |\n            exit 0\n"}e;
+    ok($added_run, 'OpenBSD mutation inserts an action run input');
+    write_file($openbsd, $action_run);
+    ($code, $out) = run_checker($checker);
+    is($code, 1, 'OpenBSD build must use the failure-preserving custom shell');
+    like($out, qr/OpenBSD failure copyback forbids the action run input/,
+        'OpenBSD action run diagnostic retains the known failure cause');
+    write_file($openbsd, $openbsd_source);
     my $validation = File::Spec->catfile( $tmp, '.github', 'workflows', 'validation.yml' );
     open my $validation_fh, '<', $validation or BAIL_OUT("read sanitizer fixture: $!");
     my $validation_source = do { local $/ = undef; <$validation_fh> };

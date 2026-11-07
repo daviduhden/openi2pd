@@ -147,6 +147,33 @@ for my $file (@files) {
               if index($without_comments, $command) < 0;
         }
     }
+    if ($file eq 'build-openbsd.yml') {
+        # The pinned action throws before its final copyback when its
+        # run input fails. Its named rsync shell instead pulls after the
+        # command and returns the original command status.
+        my ($prepare) = $without_comments =~ /(^      - name: Prepare OpenBSD VM\n.*?)(?=^      - (?:name|uses):|\z)/ms;
+        my ($build) = $without_comments =~ /(^      - name: Build and test inside OpenBSD\n.*?)(?=^      - (?:name|uses):|\z)/ms;
+        my ($upload) = $without_comments =~ /(^      - name: Upload OpenBSD test logs\n.*?)(?=^      - (?:name|uses):|\z)/ms;
+        for my $required ('uses: vmactions/openbsd-vm@', 'copyback: true',
+            'sync: rsync', 'custom-shell-name: openbsd') {
+            push @errors, "$file: OpenBSD failure copyback missing: prepare $required"
+              unless defined $prepare && index($prepare, $required) >= 0;
+        }
+        push @errors, "$file: OpenBSD failure copyback forbids the action run input"
+          if defined $prepare && $prepare =~ /^          run:/m;
+        for my $required ('shell: openbsd {0}', 'run: |', 'set -eu',
+            'cmake --build build-output', 'ctest --test-dir build-output',
+            'build_status=$?', 'exit "$build_status"') {
+            push @errors, "$file: OpenBSD failure copyback missing: build $required"
+              unless defined $build && index($build, $required) >= 0;
+        }
+        for my $required ('if: always()', 'uses: actions/upload-artifact@',
+            'build-output/Testing', 'configure.log', 'build.log',
+            'ctest-openbsd.xml') {
+            push @errors, "$file: OpenBSD failure copyback missing: upload $required"
+              unless defined $upload && index($upload, $required) >= 0;
+        }
+    }
     my %referenced;
     while ( $without_comments =~ /\binputs\.([A-Za-z_][A-Za-z0-9_-]*)/g ) {
         $referenced{$1} = 1;

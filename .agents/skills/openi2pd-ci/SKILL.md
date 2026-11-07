@@ -153,6 +153,13 @@ workflow, run `gh`, build or test.
 
 ## Known issues and decisions
 
+- The pinned OpenBSD action's run input throws before final copyback on
+  failure. Prepare its rsync VM, then run builds in the named OpenBSD
+  custom shell: that wrapper pulls artifacts after a failed command and
+  returns the original status. Keep action setup, custom-shell execution
+  and always-run host upload as separate source-guard boundaries. Do not
+  replace failure propagation with a successful VM exit or retry.
+
 - A manual heap-diagnostic run can be cancelled before its target exists.
   Inspect the build step and exact artifact before interpreting a later
   missing-binary helper failure. Preserve cancellation as an evidence gap;
