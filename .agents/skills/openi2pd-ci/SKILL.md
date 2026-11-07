@@ -175,6 +175,11 @@ workflow, run `gh`, build or test.
 
 ## Known issues and decisions
 
+- When a source-policy test reports an unsafe invocation, inspect the
+  matched operand as well as the executable source. Invocation guards
+  must match whole keywords, not prefixes in quoted platform names;
+  retain unsafe fixtures beside the source exposing a false positive.
+
 - The pinned OpenBSD action's run input throws before final copyback on
   failure. Prepare its rsync VM, then run builds in the named OpenBSD
   custom shell: that wrapper pulls artifacts after a failed command and

@@ -216,10 +216,22 @@ my @dangerous = (
     [ qr/(?<![\w:])chmod\s+0?777\b/,         'world-writable chmod' ],
     [ qr/(?<![\w:])chmod\s+0?666\b/,         'world-writable chmod' ],
     [
-        qr/\bopen\s*\(?\s*[^,\n]+,\s*["'][^"']*[^"'\-]\|["']/,
+        qr/\bopen\b\s*\(?\s*[^,\n]+,\s*["'][^"']*[^"'\-]\|["']/,
         'single-scalar pipe open'
     ],
 );
+
+# Match the open keyword, not the prefix of a quoted OpenBSD shell name.
+# Keep real scalar-pipe operands rejected beside that source fixture.
+my $pipe_pattern = $dangerous[-1][0];
+for my $command ( 'command |', 'command --argument |' ) {
+    my $source = 'open' . " my \$fh, '$command';";
+    like($source, $pipe_pattern, 'scalar pipe operand remains rejected');
+}
+my $file_read = 'open' . " my \$fh, '<', \$path;\n"
+  . "for my \$required ('shell: openbsd {0}', 'run: |') {}\n";
+unlike($file_read, $pipe_pattern,
+    'file read cannot consume a later quoted workflow literal');
 
 for my $relative (@scripts) {
     my $path = File::Spec->catfile( $root, split m{/}, $relative );
