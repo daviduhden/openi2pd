@@ -121,6 +121,14 @@ run Gradle, install an APK or run a device test.
 
 ## Known issues and decisions
 
+- Compound vector drawables on the log empty-state view use an explicit
+  AppCompatTextView with `app:drawableTopCompat` and `app:drawableTint`.
+  Keep its ID, accessibility live region and text styling unchanged when
+  adapting drawable attributes; a plain platform TextView does not consume
+  AppCompat attributes. Review other layouts for the same attribute pair
+  rather than suppressing UseCompatTextViewDrawableXml. Lint success and a
+  built APK do not replace the optional API-29 view-inflation checks.
+
 - The AGP native wrapper is a separate top-level CMake entry point. Keep a
   literal `project(OpenI2PdAndroid LANGUAGES C CXX)` after its minimum-version
   declaration, even though the shared build subdirectory declares its own

@@ -129,14 +129,14 @@ Defines native Android application resources.
             android:paddingBottom="@dimen/margin_small"
             android:scrollbars="vertical" />
 
-        <TextView
+        <androidx.appcompat.widget.AppCompatTextView
             android:id="@+id/logs_empty_text"
             android:layout_width="match_parent"
             android:layout_height="match_parent"
             android:accessibilityLiveRegion="polite"
             android:drawablePadding="@dimen/margin_small"
-            android:drawableTint="?attr/colorOnSurfaceVariant"
-            android:drawableTop="@drawable/ic_logs_empty"
+            app:drawableTint="?attr/colorOnSurfaceVariant"
+            app:drawableTopCompat="@drawable/ic_logs_empty"
             android:gravity="center"
             android:padding="@dimen/margin_large"
             android:text="@string/logs_empty"
