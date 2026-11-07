@@ -111,6 +111,15 @@ build.
 
 ## Known issues and decisions
 
+- Perl-enabled test builds require Git 2.28+ for isolated validator
+  fixtures. CMake resolves Git before registering that contract and adds
+  its directory to the test PATH; OpenBSD's VM must install Git explicitly.
+  Runtime-only builds do not acquire this dependency.
+- Platform feature macros can already come from dependency headers or
+  compiler definitions. Guard local NOMINMAX/Windows lean declarations
+  with ifndef instead of changing their value or suppressing redefinition
+  warnings; inspect sibling platform test translation units as well.
+
 - Native tool man pages and their shared reference belong to Tools, even
   with I2PD_INSTALL_DOCS=OFF. The install regression checks each command's
   alias and its shared target on all host platforms. Install the upstream

@@ -8,6 +8,7 @@
 #include "../privsep/RouterStorage.h"
 #include "../privsep/RunWorker.h"
 #include "../privsep/LinuxSandbox.h"
+#include "FS.h"
 #include <array>
 #include <cassert>
 #include <fstream>

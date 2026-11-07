@@ -345,7 +345,7 @@ void TestPledgeWindows ()
 		assert (IsPledgePromiseSubset (runtime, startup));
 		// No window may regain process execution, recoverable policy
 		// violations, identity changes or descriptor sending.
-		for (const auto text : { startup, runtime })
+		for (const auto & text : { startup, runtime })
 		{
 			assert (!HasPromiseText (text, "exec"));
 			assert (!HasPromiseText (text, "error"));

@@ -92,6 +92,10 @@ if(BUILD_TESTING AND NOT CMAKE_CROSSCOMPILING)
     message(STATUS "Perl not found: i2pdctl and Perl static checks are not registered")
   endif()
   if(PERL_EXECUTABLE)
+    # The validator contract creates isolated Git fixtures. Resolve its
+    # runtime dependency now instead of failing inside the first test.
+    find_package(Git 2.28 REQUIRED)
+    get_filename_component(I2PD_TEST_GIT_BINDIR "${GIT_EXECUTABLE}" DIRECTORY)
     add_test(NAME perl-i2pdctl-syntax
       COMMAND "${PERL_EXECUTABLE}" -c "${CMAKE_CURRENT_SOURCE_DIR}/scripts/i2pdctl")
     set_tests_properties(perl-i2pdctl-syntax PROPERTIES LABELS "perl;static" TIMEOUT 30)
@@ -150,6 +154,7 @@ if(BUILD_TESTING AND NOT CMAKE_CROSSCOMPILING)
       COMMAND "${PERL_EXECUTABLE}" "${PROJECT_ROOT}/tests/agent_knowledge_validator/test_validator.t")
     set_tests_properties(perl-agent-knowledge-contract PROPERTIES
       WORKING_DIRECTORY "${PROJECT_ROOT}"
+      ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:${I2PD_TEST_GIT_BINDIR}"
       LABELS "perl;static;docs"
       TIMEOUT 120)
     add_test(NAME shell-policy-static

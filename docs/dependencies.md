@@ -26,6 +26,7 @@ matrix.
 | ncursesw | 6.0 | TUI; required when `I2PD_BUILD_TUI=ON` (default) and `I2PD_TUI_REQUIRED=ON`, otherwise optional. Wide-character build preferred; ASCII rendering used. | `i2pd-tui` only |
 | MiniUPnPc | 2.2.6 / API 17 | Optional UPnP client; 2.2.6 is the current Ubuntu 24.04 package. API 18 adds the external-address `UPNP_GetValidIGD` signature and is selected when present; older API branches are rejected. | daemon and Android JNI when `WITH_UPNP=ON` |
 | Perl | OpenBSD base Perl / any Perl 5 with core modules | `i2pdctl` uses `Config`, `File::Spec`, `Getopt::Long`, `JSON::PP`, `HTTP::Tiny`, `IPC::Open3`, `IO::Select`, `POSIX` and `Symbol`; tests use `Test::More`. No CPAN or runtime download is performed. | `i2pdctl` and optional static/CI checks only |
+| Git | 2.28 | The Perl validator contract creates private repositories with `git init -b`; CMake resolves Git and prepends its binary directory to that test's PATH. The OpenBSD VM installs Git explicitly. | Perl-enabled host tests; no daemon runtime dependency |
 | `openssl` command | Same OpenSSL/LibreSSL base already required | Used only by the shell-free `s_client` fallback when `IO::Socket::SSL` is absent; HTTPS never downgrades to cleartext. | `i2pdctl` HTTPS fallback |
 
 ## Removed compatibility branches

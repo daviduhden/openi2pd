@@ -39,7 +39,7 @@ jobs:
           copyback: true
           prepare: |
             set -eu
-            pkg_add cmake ninja boost miniupnpc llvm libcxx
+            pkg_add cmake ninja boost miniupnpc llvm libcxx git
           run: |
             set -eu
             if ! cmake -S build -B build-output -G Ninja \

@@ -57,6 +57,15 @@ require_runtime_source("privsep/WindowsIpc.cpp"
   "std::min (WORKER_HELLO_TIMEOUT_MS, RemainingDeadlineMs (deadline))")
 require_runtime_source("tests/test-privsep-windows-ipc.cpp"
   "TestMalformedHelloRearmsListener ()")
+
+# Cancellation must reap overlapped I/O even when the event wait fails.
+require_runtime_source("privsep/WindowsIpc.cpp"
+  "const DWORD waitError = wait == WAIT_FAILED ? GetLastError () : ERROR_SUCCESS;")
+require_runtime_source("privsep/WindowsIpc.cpp"
+  "GetOverlappedResult (pipe, &overlapped, &transferred, TRUE)")
+require_runtime_source("tests/test-router-storage.cpp" "#include \"FS.h\"")
+require_runtime_source("tests/test-log-lifecycle.cpp" "#ifndef NOMINMAX")
+require_runtime_source("tools/CMakeLists.txt" "find_package(Git 2.28 REQUIRED)")
 require_runtime_source("libi2pd/Ed25519.cpp"
   "r.reset (ok ? DecodeBN<64> (digest) : nullptr);")
 file(READ "${PROJECT_ROOT}/libi2pd/Ed25519.cpp" eddsa_nonce_source)
@@ -65,11 +74,6 @@ if(eddsa_nonce_source MATCHES "DecodeBN<32> \\(digest\\)")
 endif()
 require_runtime_source("tests/test-eddsa.cpp"
   "assert (memcmp (output, sig, sizeof (output)) == 0);")
-# Cancellation must reap overlapped I/O even when the event wait fails.
-require_runtime_source("privsep/WindowsIpc.cpp"
-  "const DWORD waitError = wait == WAIT_FAILED ? GetLastError () : ERROR_SUCCESS;")
-require_runtime_source("privsep/WindowsIpc.cpp"
-  "GetOverlappedResult (pipe, &overlapped, &transferred, TRUE)")
 require_runtime_source("tests/test-torrent-bencode.cpp"
   "TestDictionaryValuesRequired ()")
 require_runtime_source("libi2pd_client/TorrentsDHT.h"

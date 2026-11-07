@@ -29,7 +29,9 @@
 #ifndef _WIN32
 #include <sys/stat.h>
 #else
+#ifndef NOMINMAX
 #define NOMINMAX
+#endif
 #include <aclapi.h>
 #include <windows.h>
 #endif
