@@ -305,11 +305,8 @@ for my $path ( sort @action_files ) {
     }
 }
 
-# The two Linux OpenSSL branch lanes are the only Linux build workflows.
-# They must consume the Homebrew precompiled bottle for the branch they
-# claim (openssl@3 / openssl@4) and must not reintroduce a source-built
-# pinned OpenSSL download: the split exists to keep the matrix small and
-# fast while still exercising the latest version of each branch.
+# Regular OpenSSL branch lanes consume bottles. A separate diagnostic
+# builds pinned crypto with TSan; it never replaces those matrix lanes.
 my %branch_formula = (
     'build-linux-openssl3.yml' => 'openssl@3',
     'build-linux-openssl4.yml' => 'openssl@4',
@@ -340,6 +337,32 @@ for my $file (@files) {
     if ( $texts{$file} =~ /openssl\.org\/source|OPENSSL_SHA256|OPENSSL_PIN/ ) {
         push @errors, "$file: OpenSSL source builds moved to the Homebrew branch workflows";
     }
+}
+my $crypto_diagnostic = $texts{'crypto-tsan.yml'};
+if (defined $crypto_diagnostic) {
+    for my $required (
+        'OPENSSL_COMMIT: 2f4e3a5fec05394068cfa7379890ab552483a8a6',
+        'https://github.com/openssl/openssl.git',
+        'test "$(git -C "$diagnostic/source" rev-parse HEAD)" = "$OPENSSL_COMMIT"',
+        'CC=clang CXX=clang++ perl ./Configure', '-fsanitize=thread',
+        '--prefix="$diagnostic/prefix"', '--libdir=lib',
+        '-DWITH_THREADSANITIZER=ON',
+        '-DOPENSSL_CRYPTO_LIBRARY="$diagnostic/prefix/lib/libcrypto.so"',
+        '-DOPENSSL_SSL_LIBRARY="$diagnostic/prefix/lib/libssl.so"',
+        '--target test-clientcontext-registry',
+        q{-R '^test-clientcontext-registry$'},
+        'ctest --test-dir "$diagnostic/project" -j 1',
+        'readelf -n "$image"', 'sha256sum "$image"',
+        'if: always()', 'staged="$GITHUB_WORKSPACE/crypto-tsan-evidence"',
+        'cp -R "$diagnostic/evidence" "$staged/logs"',
+        'cp -L "$image" "$staged/images/"',
+        'path: crypto-tsan-evidence',
+        'if-no-files-found: error' ) {
+        push @errors, "crypto-tsan.yml: missing instrumented crypto boundary $required"
+          if index($crypto_diagnostic, $required) < 0;
+    }
+    push @errors, 'crypto-tsan.yml: sanitizer suppressions are forbidden'
+      if $crypto_diagnostic =~ /suppressions=|ignore_noninstrumented_modules|halt_on_error=0/;
 }
 # The manual lanes are split by concern: Linux builds and packaging
 # checks, Android, and the validation lanes (Doxygen, compile-free agent

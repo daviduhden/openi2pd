@@ -295,6 +295,37 @@ sub workflow_crash_fixtures {
     like($out, qr/OpenBSD failure copyback forbids the action run input/,
         'OpenBSD action run diagnostic retains the known failure cause');
     write_file($openbsd, $openbsd_source);
+    my $crypto = File::Spec->catfile(
+        $tmp, '.github', 'workflows', 'crypto-tsan.yml');
+    my $crypto_source = read_fixture_file($crypto);
+    for my $boundary (
+        ['-fsanitize=thread', '-fsanitize=address'],
+        ['2f4e3a5fec05394068cfa7379890ab552483a8a6', 'unpinned'],
+        ['-DWITH_THREADSANITIZER=ON', '-DWITH_THREADSANITIZER=OFF'],
+        ['--target test-clientcontext-registry', '--target i2pd'],
+        ['ctest --test-dir "$diagnostic/project" -j 1', 'ctest --test-dir "$diagnostic/project" -j 2'],
+        ['staged="$GITHUB_WORKSPACE/crypto-tsan-evidence"', 'staged="$RUNNER_TEMP/evidence"'],
+        ['path: crypto-tsan-evidence', 'path: elsewhere'],
+        ['readelf -n "$image"', 'true'],
+        ['if-no-files-found: error', 'if-no-files-found: warn'] ) {
+        my ($before, $after) = @{$boundary};
+        my $candidate = $crypto_source;
+        my $changed = $candidate =~ s/\Q$before\E/$after/;
+        ok($changed, 'crypto diagnostic mutation changes a real boundary');
+        write_file($crypto, $candidate);
+        ($code, $out) = run_checker($checker);
+        is($code, 1, 'crypto diagnostic requires pinned complete instrumentation');
+        like($out, qr/missing instrumented crypto boundary/,
+            'crypto diagnostic reports its missing contract');
+    }
+    my $suppressed = $crypto_source;
+    $suppressed =~ s/halt_on_error=1/halt_on_error=0/;
+    write_file($crypto, $suppressed);
+    ($code, $out) = run_checker($checker);
+    is($code, 1, 'crypto diagnostic cannot silence sanitizer failures');
+    like($out, qr/sanitizer suppressions are forbidden/,
+        'crypto diagnostic keeps sanitizer findings actionable');
+    write_file($crypto, $crypto_source);
     my $validation = File::Spec->catfile( $tmp, '.github', 'workflows', 'validation.yml' );
     open my $validation_fh, '<', $validation or BAIL_OUT("read sanitizer fixture: $!");
     my $validation_source = do { local $/ = undef; <$validation_fh> };

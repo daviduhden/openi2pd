@@ -1,0 +1,130 @@
+# See the LICENSE file at the top of the project tree for copyright
+# and license details.
+#
+# openi2pd: instrumented OpenSSL race diagnostics.
+#
+---
+name: Instrumented OpenSSL TSan diagnostic
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  crypto-tsan:
+    name: Instrumented OpenSSL TSan diagnostic
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      OPENSSL_COMMIT: 2f4e3a5fec05394068cfa7379890ab552483a8a6
+      TSAN_OPTIONS: halt_on_error=1:second_deadlock_stack=1
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install diagnostic toolchain
+        uses: ./.github/actions/brew-toolchain  # zizmor: ignore[self-repository] actionlint 1.7.12 does not accept GitHub $/ self-repository syntax
+      - name: Build pinned OpenSSL with ThreadSanitizer
+        shell: bash
+        run: |
+          set -euo pipefail
+          diagnostic="$RUNNER_TEMP/crypto-tsan"
+          mkdir -p "$diagnostic/source" "$diagnostic/evidence"
+          git init "$diagnostic/source"
+          git -C "$diagnostic/source" remote add origin https://github.com/openssl/openssl.git
+          git -C "$diagnostic/source" fetch --depth=1 origin "$OPENSSL_COMMIT"
+          git -C "$diagnostic/source" checkout --detach FETCH_HEAD
+          test "$(git -C "$diagnostic/source" rev-parse HEAD)" = "$OPENSSL_COMMIT"
+          git rev-parse HEAD > "$diagnostic/evidence/project-revision.txt"
+          git -C "$diagnostic/source" rev-parse HEAD > "$diagnostic/evidence/openssl-revision.txt"
+          clang --version > "$diagnostic/evidence/clang.txt"
+          cd "$diagnostic/source"
+          # Only the isolated upstream dependency uses its native Make.
+          # Disable assembly so provider memory accesses are instrumented.
+          CC=clang CXX=clang++ perl ./Configure linux-x86_64 shared no-asm enable-legacy \
+            --prefix="$diagnostic/prefix" --openssldir="$diagnostic/prefix/ssl" --libdir=lib \
+            -O1 -g -fno-omit-frame-pointer -fsanitize=thread -Wl,--build-id=sha1 \
+            2>&1 | tee "$diagnostic/evidence/openssl-configure.log"
+          make -j2 2>&1 | tee "$diagnostic/evidence/openssl-build.log"
+          make install_sw 2>&1 | tee "$diagnostic/evidence/openssl-install.log"
+          perl configdata.pm --dump > "$diagnostic/evidence/openssl-configdata.txt"
+      - name: Build and run focused crypto concurrency regression
+        shell: bash
+        run: |
+          set -euo pipefail
+          diagnostic="$RUNNER_TEMP/crypto-tsan"
+          export LD_LIBRARY_PATH="$diagnostic/prefix/lib:${LD_LIBRARY_PATH:-}"
+          export OPENSSL_MODULES="$diagnostic/prefix/lib/ossl-modules"
+          cmake -S build -B "$diagnostic/project" -G Ninja \
+            -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ \
+            -DCMAKE_BUILD_TYPE=Debug -DBUILD_TESTING=ON \
+            -DWITH_THREADSANITIZER=ON -DWITH_UPNP=OFF \
+            -DI2PD_OPENSSL_EXPECT=OpenSSL \
+            -DOPENSSL_ROOT_DIR="$diagnostic/prefix" \
+            -DOPENSSL_INCLUDE_DIR="$diagnostic/prefix/include" \
+            -DOPENSSL_CRYPTO_LIBRARY="$diagnostic/prefix/lib/libcrypto.so" \
+            -DOPENSSL_SSL_LIBRARY="$diagnostic/prefix/lib/libssl.so" \
+            -DCMAKE_EXE_LINKER_FLAGS=-Wl,--build-id=sha1 \
+            2>&1 | tee "$diagnostic/evidence/project-configure.log"
+          cmake --build "$diagnostic/project" --target test-clientcontext-registry --parallel 2 \
+            2>&1 | tee "$diagnostic/evidence/project-build.log"
+          ldd "$diagnostic/project/tests/test-clientcontext-registry" \
+            > "$diagnostic/evidence/linked-libraries.txt"
+          grep -F "$diagnostic/prefix/lib/libcrypto.so" "$diagnostic/evidence/linked-libraries.txt"
+          ctest --test-dir "$diagnostic/project" -j 1 -R '^test-clientcontext-registry$' \
+            --output-on-failure --no-tests=error \
+            --output-junit "$diagnostic/evidence/ctest.xml"
+      - name: Record exact diagnostic image identities
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          diagnostic="$RUNNER_TEMP/crypto-tsan"
+          mkdir -p "$diagnostic/evidence"
+          for image in "$diagnostic/project/tests/test-clientcontext-registry" \
+            "$diagnostic/prefix/lib/libcrypto.so" "$diagnostic/prefix/lib/libssl.so" \
+            "$diagnostic/prefix/lib/ossl-modules/legacy.so"; do
+            if [ -f "$image" ]; then
+              sha256sum "$image" >> "$diagnostic/evidence/images.sha256"
+              readelf -n "$image" >> "$diagnostic/evidence/build-ids.txt"
+            fi
+          done
+      - name: Stage diagnostic artifacts in the workspace
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          diagnostic="$RUNNER_TEMP/crypto-tsan"
+          staged="$GITHUB_WORKSPACE/crypto-tsan-evidence"
+          mkdir -p "$staged/images" "$staged/project"
+          if [ -d "$diagnostic/evidence" ]; then
+            cp -R "$diagnostic/evidence" "$staged/logs"
+          fi
+          for entry in Testing CMakeCache.txt CMakeFiles/CMakeConfigureLog.yaml; do
+            if [ -e "$diagnostic/project/$entry" ]; then
+              cp -R "$diagnostic/project/$entry" "$staged/project/"
+            fi
+          done
+          for image in "$diagnostic/project/tests/test-clientcontext-registry" \
+            "$diagnostic/prefix/lib/"libcrypto.so* "$diagnostic/prefix/lib/"libssl.so*; do
+            if [ -f "$image" ]; then
+              cp -L "$image" "$staged/images/"
+            fi
+          done
+          if [ -d "$diagnostic/prefix/lib/ossl-modules" ]; then
+            cp -R "$diagnostic/prefix/lib/ossl-modules" "$staged/images/"
+          fi
+      - name: Upload instrumented crypto diagnostics
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
+        with:
+          name: instrumented-openssl-tsan
+          path: crypto-tsan-evidence
+          if-no-files-found: error
+          retention-days: 7

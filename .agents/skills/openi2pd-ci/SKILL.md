@@ -185,6 +185,18 @@ workflow, run `gh`, build or test.
   status; missing logs must fail too. Pin both command syntax and marker
   classification so successful debugger shutdown cannot hide a crash.
 
+- `crypto-tsan.yml` isolates the OpenSSL 4.1.0 commit
+  `2f4e3a5fec05394068cfa7379890ab552483a8a6` for crypto race diagnosis.
+  Its library and providers use the same Clang TSan as the focused project
+  regression, with assembly disabled and explicit library paths. All
+  dependency builds/installations stay in RUNNER_TEMP; upstream Make is
+  diagnostic tooling, not a project build dependency. Keep the regular
+  bottle matrix intact and compare exact image IDs without suppressions.
+  Retain the focused executable and matching shared libraries/providers
+  with their logs for later symbolization; these are CI artifacts only.
+  Run focused CTest serially and stage artifacts into the workspace from
+  the temporary build before upload, including failure-time evidence.
+
 - The pinned OpenBSD action's run input throws before final copyback on
   failure. Prepare its rsync VM, then run builds in the named OpenBSD
   custom shell: that wrapper pulls artifacts after a failed command and

@@ -20,8 +20,12 @@ The Linux build matrix is two workflows, one per OpenSSL branch:
 latest Homebrew `openssl@3`/`openssl@4` bottle plus the precompiled GCC, LLVM,
 CMake, Ninja, Boost, zlib, MiniUPnPc and ncurses bottles, verifies that the
 installed keg reports the same version as the formula, and then builds and
-tests with both GCC and Clang. Do not reintroduce a source-built OpenSSL
-download; `tools/scripts/check-workflows.pl` refuses one.
+tests with both GCC and Clang. Keep source-built dependencies out of those
+branch lanes. The separate `crypto-tsan.yml` diagnostic builds a pinned
+OpenSSL revision with TSan to investigate synchronization inside providers;
+an uninstrumented bottle cannot supply that evidence. It retains the same
+Clang across library and project builds, checks linked paths and uploads
+matching images/logs. This diagnostic is prepared, not yet executed.
 
 The remaining manual lanes are split by concern so a dispatch does not pay
 for unrelated jobs:

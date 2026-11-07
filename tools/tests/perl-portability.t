@@ -363,6 +363,7 @@ my @consumers = (
     '.github/workflows/validation.yml',
     '.github/workflows/build-linux-openssl3.yml',
     '.github/workflows/build-linux-openssl4.yml',
+    '.github/workflows/crypto-tsan.yml',
     '.github/workflows/build-windows.yml',
     '.github/workflows/build-openbsd.yml',
     '.github/workflows/packaging.yml',
