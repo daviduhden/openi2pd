@@ -11,6 +11,7 @@
  */
 
 #include <cassert>
+#include <initializer_list>
 #include <cerrno>
 #include <chrono>
 #include <cstdint>
@@ -458,19 +459,29 @@ void TestMalformedFrames ()
 		ExpectReusable (sender, receiver, 102);
 	}
 
-	// Unknown message types are rejected before payload dispatch.
+	// Derive the first unknown type from the registry: formerly unused
+	// numeric values can become valid when new operations are introduced.
 	{
-		assert (SendRaw (sender.Fd (), BuildHeader (7, 3, 0)));
-		auto received = receiver.Receive (1000);
-		assert (!received.has_value ());
-		assert (received.error ().find ("unknown type") != std::string::npos);
-		ExpectReusable (sender, receiver, 103);
-
-		assert (SendRaw (sender.Fd (), BuildHeader (0xffff, 4, 0)));
-		auto unknown = receiver.Receive (1000);
-		assert (!unknown.has_value ());
-		assert (unknown.error ().find ("unknown type") != std::string::npos);
-		ExpectReusable (sender, receiver, 104);
+		uint32_t request = 103;
+		for (const uint16_t type : { uint16_t { 0 },
+			static_cast<uint16_t> (MAX_MESSAGE_TYPE + 1), uint16_t { 0xffff } })
+		{
+			assert (!IsKnownMessageType (type));
+			assert (SendRaw (sender.Fd (), BuildHeader (type, request, 0)));
+			auto unknown = receiver.Receive (1000);
+			assert (!unknown.has_value ());
+			assert (unknown.error ().find ("unknown type") != std::string::npos);
+			ExpectReusable (sender, receiver, request++);
+		}
+		// This raw channel validates framing, not endpoint payloads or
+		// authorization. ConfigureTorrentStorage is a registered type.
+		const auto known = static_cast<uint16_t> (MessageType::ConfigureTorrentStorage);
+		assert (IsKnownMessageType (known));
+		assert (SendRaw (sender.Fd (), BuildHeader (known, 106, 0)));
+		auto accepted = receiver.Receive (1000);
+		assert (accepted.has_value () && accepted->has_value ());
+		assert ((*accepted)->type == MessageType::ConfigureTorrentStorage);
+		ExpectReusable (sender, receiver, 107);
 	}
 
 	// A declared length above the frame limit is a size error even when
