@@ -108,3 +108,9 @@ foreach(url_source libi2pd/Reseed.cpp libi2pd_client/AddressBook.cpp
     message(FATAL_ERROR "Raw reseed source operand in log")
   endif()
 endforeach()
+
+# Fixture authority must cover deferred completion and final teardown.
+require_runtime_source("tests/test-streaming-sendstate.cpp"
+  "std::shared_ptr<SendResult> result")
+require_runtime_source("tests/test-streaming-sendstate.cpp"
+  "assert (pending.expired ());")

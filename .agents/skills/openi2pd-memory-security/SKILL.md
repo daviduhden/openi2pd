@@ -516,6 +516,10 @@ Do not let reconnaissance agents edit, compile, execute tests or run scripts.
   restart only when `stopped()` is true; avoid fixed poll-count loops as a
   substitute for executor lifecycle management. Audit every sequential
   poll-driven fixture when one exposes a missed callback (`TF-049`).
+- A successful poll does not complete a half-closed stream's queued write.
+  Test completion state must remain owned until cancellation/destruction,
+  just as production callback state does. Exercise the deferred teardown
+  with heap-owned completion state and a weak-expiry assertion.
 - A stopped member `io_context` may still own queued cancellation handlers.
   Member timers must not strongly capture their owning destination: canceling
   the timer and stopping its executor does not drain that queue. Capture a

@@ -54,17 +54,17 @@ struct SendResult
 // buffer onto the stream's io_context, so the completion is delivered
 // from a handler, never from the call itself. poll() drains all handlers
 // ready on this single-threaded service context.
-void Write (boost::asio::io_context & service, i2p::stream::Stream & stream, SendResult & result)
+void Write (boost::asio::io_context & service, i2p::stream::Stream & stream, std::shared_ptr<SendResult> result)
 {
 	// poll() stops the context after its ready queue is drained. Each call
 	// here starts a new asynchronous write after the preceding poll cycle.
 	if (service.stopped ()) service.restart ();
 	stream.AsyncSend (TEST_PAYLOAD, sizeof (TEST_PAYLOAD),
-		[&result] (const boost::system::error_code & ecode, size_t len)
+		[result] (const boost::system::error_code & ecode, size_t len)
 		{
-			result.ecode = ecode;
-			result.transferred = len;
-			result.called = true;
+			result->ecode = ecode;
+			result->transferred = len;
+			result->called = true;
 		});
 	service.poll ();
 }
@@ -92,10 +92,10 @@ int main ()
 	// assertions below are not vacuous.
 	{
 		auto stream = std::make_shared<Stream> (f.service, f.destination);
-		SendResult result;
+		auto result = std::make_shared<SendResult> ();
 		Write (f.service, *stream, result);
-		assert (result.called);
-		assert (!result.ecode);
+		assert (result->called);
+		assert (!result->ecode);
 		assert (stream->GetSendQueueSize () == 1);
 	}
 
@@ -106,11 +106,11 @@ int main ()
 		auto stream = std::make_shared<Stream> (f.service, f.destination);
 		stream->SetStreamIDsForTesting (3, 4);
 		stream->SetStatusForTesting (eStreamStatusClosed);
-		SendResult result;
+		auto result = std::make_shared<SendResult> ();
 		Write (f.service, *stream, result);
-		assert (result.called);
-		assert (result.ecode == boost::asio::error::operation_aborted);
-		assert (result.transferred == 0);
+		assert (result->called);
+		assert (result->ecode == boost::asio::error::operation_aborted);
+		assert (result->transferred == 0);
 		assert (stream->GetSendQueueSize () == 0);
 		assert (stream->GetSendBufferSize () == 0);
 	}
@@ -120,11 +120,11 @@ int main ()
 		auto stream = std::make_shared<Stream> (f.service, f.destination);
 		stream->SetStreamIDsForTesting (5, 6);
 		stream->SetStatusForTesting (eStreamStatusReset);
-		SendResult result;
+		auto result = std::make_shared<SendResult> ();
 		Write (f.service, *stream, result);
-		assert (result.called);
-		assert (result.ecode == boost::asio::error::operation_aborted);
-		assert (result.transferred == 0);
+		assert (result->called);
+		assert (result->ecode == boost::asio::error::operation_aborted);
+		assert (result->transferred == 0);
 		assert (stream->GetSendQueueSize () == 0);
 		assert (stream->GetSendBufferSize () == 0);
 	}
@@ -136,11 +136,17 @@ int main ()
 		auto stream = std::make_shared<Stream> (f.service, f.destination);
 		stream->SetStreamIDsForTesting (7, 8);
 		stream->SetStatusForTesting (eStreamStatusClosing);
-		SendResult result;
+		auto result = std::make_shared<SendResult> ();
 		Write (f.service, *stream, result);
-		assert (result.ecode != boost::asio::error::operation_aborted);
-		assert (!result.called || !result.ecode);
+		assert (result->ecode != boost::asio::error::operation_aborted);
+		assert (!result->called || !result->ecode);
 		assert (stream->GetSendBufferSize () == 0 || stream->GetSendBufferSize () == sizeof (TEST_PAYLOAD));
+		// A FIN-pending write can complete only when destruction cancels
+		// it. The callback owns its state past this lexical scope.
+		std::weak_ptr<SendResult> pending = result;
+		result.reset ();
+		stream.reset ();
+		assert (pending.expired ());
 	}
 
 	// A blocking read whose deadline expires while the destination service
