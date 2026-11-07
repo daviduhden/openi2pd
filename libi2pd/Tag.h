@@ -63,13 +63,13 @@ namespace data
 		void Fill (uint8_t c) { memset (m_Buf, c, sz); }
 		void Wipe () { OPENSSL_cleanse (m_Buf, sz); }
 
-		bool Randomize ()
+		[[nodiscard]] bool Randomize ()
 		{
 			// Clear first so a partially written buffer is never mistaken for
 			// a freshly generated tag if the provider fails.
 			memset (m_Buf, 0, sz);
 			if (RAND_bytes (m_Buf, sz) == 1) return true;
-			memset (m_Buf, 0, sz);
+			OPENSSL_cleanse (m_Buf, sz);
 			return false;
 		}
 

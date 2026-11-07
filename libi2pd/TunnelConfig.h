@@ -20,6 +20,7 @@
 #include "Identity.h"
 #include "RouterContext.h"
 #include "Crypto.h"
+#include "Random.h"
 
 namespace i2p
 {
@@ -198,7 +199,10 @@ namespace tunnel
 	class ZeroHopsTunnelConfig : public TunnelConfig
 	{
 	public:
-		ZeroHopsTunnelConfig () { RAND_bytes ((uint8_t *)&m_TunnelID, 4); };
+		ZeroHopsTunnelConfig ()
+		{
+			i2p::crypto::FillRandomBytes ({ reinterpret_cast<uint8_t *> (&m_TunnelID), sizeof (m_TunnelID) });
+		};
 
 		bool IsInbound () const { return true; }; // TODO:
 		uint32_t GetTunnelID () const { return m_TunnelID; };

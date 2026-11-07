@@ -21,6 +21,7 @@
 #include <algorithm>
 #include <limits>
 #include "Base.h"
+#include "Random.h"
 #include "Log.h"
 #include "I2PEndian.h"
 #include "Timestamp.h"
@@ -64,7 +65,7 @@ std::shared_ptr<I2NPMessage> NewI2NPMessage (size_t len)
 void I2NPMessage::FillI2NPMessageHeader (I2NPMessageType msgType, uint32_t msgID, bool checksum)
 {
 	SetTypeID (static_cast<uint8_t> (msgType));
-	if (!msgID) RAND_bytes ((uint8_t *)&msgID, 4);
+	if (!msgID) i2p::crypto::FillRandomBytes ({ reinterpret_cast<uint8_t *> (&msgID), sizeof (msgID) });
 	SetMsgID (msgID);
 	SetExpiration (i2p::util::GetMillisecondsSinceEpoch () + I2NP_MESSAGE_EXPIRATION_TIMEOUT);
 	UpdateSize ();
@@ -160,7 +161,7 @@ std::shared_ptr<I2NPMessage> CreateDeliveryStatusMsg (uint32_t msgID)
 	}
 	else // for SSU establishment
 	{
-		RAND_bytes ((uint8_t *)&msgID, 4);
+		i2p::crypto::FillRandomBytes ({ reinterpret_cast<uint8_t *> (&msgID), sizeof (msgID) });
 		htobe32buf (buf + DELIVERY_STATUS_MSGID_OFFSET, msgID);
 		htobe64buf (buf + DELIVERY_STATUS_TIMESTAMP_OFFSET, i2p::context.GetNetID ());
 	}

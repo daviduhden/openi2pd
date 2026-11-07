@@ -14,6 +14,9 @@
 #include "I2PEndian.h"
 #include "Blocklist.h"
 #include "Crypto.h"
+#include "Random.h"
+#include "Modern.h"
+#include <openssl/crypto.h>
 #include "Tunnel.h"
 #include "NetDb.hpp"
 #include "Timestamp.h"
@@ -717,7 +720,28 @@ namespace tunnel
 		for (auto & it : newTests)
 		{
 			uint32_t msgID;
-			RAND_bytes ((uint8_t *)&msgID, 4);
+			i2p::crypto::FillRandomBytes ({ reinterpret_cast<uint8_t *> (&msgID), sizeof (msgID) });
+			uint8_t key[32] { };
+			uint64_t tag = 0;
+			auto clearSecrets = i2p::modern::ScopeExit ([&]
+				{
+					OPENSSL_cleanse (key, sizeof (key));
+					OPENSSL_cleanse (&tag, sizeof (tag));
+				});
+			// Generate every secret before publishing test/key correlation.
+			// The guard also cleans the key if tag generation throws.
+			i2p::crypto::FillRandomBytes (key);
+			i2p::crypto::FillRandomBytes ({ reinterpret_cast<uint8_t *> (&tag), sizeof (tag) });
+			auto msg = CreateTunnelTestMsg (msgID);
+			msg = i2p::garlic::WrapECIESX25519Message (msg, key, tag);
+			if (!msg)
+			{
+				LogPrint (eLogWarning, "TunnelPool: Cannot encrypt tunnel test");
+				continue;
+			}
+			// Message framing can request randomness too. Complete it before
+			// registering either the reply key or the test's failure callback.
+			destination->SubmitECIESx25519Key (key, tag);
 			TunnelTest test;
 			test.outbound = it.first;
 			test.inbound = it.second;
@@ -729,7 +753,13 @@ namespace tunnel
 				std::unique_lock<std::mutex> l (m_TestsMutex);
 				m_Tests[msgID] = test;
 			}
-			auto msg = CreateTunnelTestMsg (msgID);
+			bool submitted = false;
+			auto retireUnsentTest = i2p::modern::ScopeExit ([&]
+				{
+					if (submitted) return;
+					std::unique_lock<std::mutex> l (m_TestsMutex);
+					m_Tests.erase (msgID);
+				});
 			auto outbound = it.first;
 			auto s = shared_from_this ();
 			msg->onDrop = [msgID, outbound, s] ()
@@ -745,15 +775,9 @@ namespace tunnel
 					s->m_OutboundTunnels.erase (outbound);
 				}
 			};
-			// encrypt
-			uint8_t key[32];
-			RAND_bytes (key, 32);
-			uint64_t tag;
-			RAND_bytes ((uint8_t *)&tag, 8);
-			destination->SubmitECIESx25519Key (key, tag);
-			msg = i2p::garlic::WrapECIESX25519Message (msg, key, tag);
 			// send
 			outbound->SendTunnelDataMsgTo (it.second->GetNextIdentHash (), it.second->GetNextTunnelID (), msg);
+			submitted = true;
 		}
 	}
 

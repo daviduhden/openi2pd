@@ -21,6 +21,7 @@
 #include "Timestamp.h"
 #include "util.h"
 #include "NetDbRequests.h"
+#include "Random.h"
 
 namespace i2p
 {
@@ -525,7 +526,7 @@ namespace data
 		LogPrint (eLogInfo, "NetDbReq: Exploring new ", numDestinations, " routers ...");
 		for (int i = 0; i < numDestinations; i++)
 		{
-			RAND_bytes (randomHash, 32);
+			i2p::crypto::FillRandomBytes (randomHash);
 			auto dest = CreateRequest (randomHash, true, !throughTunnels); // exploratory
 			if (!dest)
 			{

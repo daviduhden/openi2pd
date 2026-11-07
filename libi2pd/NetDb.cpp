@@ -22,6 +22,7 @@
 #include <utility>
 #include <boost/asio.hpp>
 #include <stdexcept>
+#include "Random.h"
 
 #include "I2PEndian.h"
 #include "Base.h"
@@ -1223,7 +1224,8 @@ namespace data
 		// make floodfill lookups
 		while (numFloodfills > 0)
 		{
-			randomIdent.Randomize ();
+			if (!randomIdent.Randomize ())
+				throw std::runtime_error ("NetDb: Lookup identity randomness unavailable");
 			auto msg = i2p::CreateRouterInfoDatabaseLookupMsg (randomIdent, ourIdent, 0, false);
 			requests.push_back (msg);
 			numFloodfills--;
@@ -1232,7 +1234,8 @@ namespace data
 		// make regular router lookups
 		while (numRouters > 0)
 		{
-			randomIdent.Randomize ();
+			if (!randomIdent.Randomize ())
+				throw std::runtime_error ("NetDb: Lookup identity randomness unavailable");
 			auto msg = i2p::CreateRouterInfoDatabaseLookupMsg (randomIdent, ourIdent, 0, true);
 			requests.push_back (msg);
 			numRouters--;
@@ -2335,7 +2338,7 @@ namespace data
 	template <typename Filter> std::shared_ptr<const RouterInfo> NetDb::GetRandomRouter (Filter filter) const
 	{
 		uint16_t inds[3];
-		RAND_bytes ((uint8_t *)inds, sizeof (inds));
+		i2p::crypto::FillRandomBytes ({ reinterpret_cast<uint8_t *> (inds), sizeof (inds) });
 		std::lock_guard<std::mutex> l (m_RouterInfosMutex);
 		auto count = m_RouterInfos.size ();
 		if (count == 0) return nullptr;

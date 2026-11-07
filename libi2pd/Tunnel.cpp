@@ -18,6 +18,8 @@
 #include <algorithm>
 #include <vector>
 #include "Crypto.h"
+#include "Random.h"
+#include "Modern.h"
 #include "RouterContext.h"
 #include "Log.h"
 #include "Timestamp.h"
@@ -77,6 +79,16 @@ namespace tunnel
 			SetState (eTunnelStateBuildFailed);
 			return; // no message is composed and nothing is sent
 		}
+		bool completed = false;
+		auto abortBuild = i2p::modern::ScopeExit ([&]
+			{
+				if (completed) return;
+				// Provider exceptions must not retain a phony hop or leave the
+				// pending tunnel looking like an outstanding usable build.
+				if (plan.insertPhonyRecord) m_Config->DeletePhonyHop ();
+				m_NumBuildRecords.store (0, std::memory_order_relaxed);
+				SetState (eTunnelStateBuildFailed);
+			});
 		if (plan.insertPhonyRecord) m_Config->CreatePhonyHop ();
 		const int numRecords = plan.numRecords;
 		auto msg = numRecords <= STANDARD_NUM_RECORDS ? NewI2NPShortMessage () : NewI2NPMessage ();
@@ -94,7 +106,7 @@ namespace tunnel
 		{
 			uint32_t msgID;
 			if (hop->next && hop->next->ident) // we set replyMsgID for last non-phony hop only
-				RAND_bytes ((uint8_t *)&msgID, 4);
+				i2p::crypto::FillRandomBytes ({ reinterpret_cast<uint8_t *> (&msgID), sizeof (msgID) });
 			else
 				msgID = replyMsgID;
 			if (i >= numRecords)
@@ -128,7 +140,7 @@ namespace tunnel
 		for (int j = hopsWithPhony; j < numRecords; j++)
 		{
 			int idx = recordIndicies[j];
-			RAND_bytes (records + idx * SHORT_TUNNEL_BUILD_RECORD_SIZE, SHORT_TUNNEL_BUILD_RECORD_SIZE);
+			i2p::crypto::FillRandomBytes ({ records + idx * SHORT_TUNNEL_BUILD_RECORD_SIZE, SHORT_TUNNEL_BUILD_RECORD_SIZE });
 		}
 
 		// decrypt real records Peeling order is the reverse of the send
@@ -191,6 +203,7 @@ namespace tunnel
 			}
 			i2p::transport::transports.SendMessage (GetNextIdentHash (), msg);
 		}
+		completed = true;
 	}
 
 	bool Tunnel::HandleTunnelBuildResponse (uint8_t * msg, size_t len)
@@ -1338,9 +1351,38 @@ namespace tunnel
 		auto newTunnel = std::make_shared<TTunnel> (config);
 		newTunnel->SetTunnelPool (pool);
 		uint32_t replyMsgID;
-		RAND_bytes ((uint8_t *)&replyMsgID, 4);
+		i2p::crypto::FillRandomBytes ({ reinterpret_cast<uint8_t *> (&replyMsgID), sizeof (replyMsgID) });
 		AddPendingTunnel (replyMsgID, newTunnel);
-		newTunnel->Build (replyMsgID, outboundTunnel);
+		try
+		{
+			newTunnel->Build (replyMsgID, outboundTunnel);
+		}
+		catch (...)
+		{
+			// Publication must precede send so a synchronous reply can match.
+			// Retire only this attempt if framing/provider work aborts; a
+			// colliding replacement owns its own correlation entry.
+			std::shared_ptr<Tunnel> retired;
+			{
+				std::lock_guard<std::mutex> lock (m_PendingTunnelsMutex);
+				auto retireAttempt = [&] (auto & pending)
+				{
+					auto entry = pending.find (replyMsgID);
+					if (entry != pending.end ()
+						&& static_cast<const Tunnel *> (entry->second.get ())
+							== static_cast<const Tunnel *> (newTunnel.get ()))
+					{
+						retired = std::move (entry->second);
+						pending.erase (entry);
+					}
+				};
+				retireAttempt (m_PendingInboundTunnels);
+				retireAttempt (m_PendingOutboundTunnels);
+			}
+			// The detached owner and all final destructors run without the
+			// pending-map mutex. Preserve the original provider exception.
+			throw;
+		}
 		return newTunnel;
 	}
 

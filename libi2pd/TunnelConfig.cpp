@@ -22,6 +22,7 @@
 #include "I2NPProtocol.h"
 #include "util.h"
 #include "TunnelConfig.h"
+#include "Random.h"
 
 namespace i2p
 {
@@ -29,7 +30,7 @@ namespace tunnel
 {
 	TunnelHopConfig::TunnelHopConfig (std::shared_ptr<const i2p::data::IdentityEx> r)
 	{
-		RAND_bytes ((uint8_t *)&tunnelID, 4);
+		i2p::crypto::FillRandomBytes ({ reinterpret_cast<uint8_t *> (&tunnelID), sizeof (tunnelID) });
 		if (!tunnelID) tunnelID = 1; // tunnelID can't be zero
 		isGateway = true;
 		isEndpoint = true;
@@ -46,7 +47,7 @@ namespace tunnel
 	{
 		nextIdent = identHash;
 		isEndpoint = false;
-		RAND_bytes ((uint8_t *)&nextTunnelID, 4);
+		i2p::crypto::FillRandomBytes ({ reinterpret_cast<uint8_t *> (&nextTunnelID), sizeof (nextTunnelID) });
 		if (!nextTunnelID) nextTunnelID = 1; // tunnelID can't be zero
 	}
 
@@ -220,7 +221,7 @@ namespace tunnel
 			return false;
 		}
 		memcpy (record + SHORT_REQUEST_RECORD_ENCRYPTED_OFFSET, ephemeralKeys->GetPublicKey (), 32);
-		RAND_bytes (record + 48, SHORT_TUNNEL_BUILD_RECORD_SIZE - 48);
+		i2p::crypto::FillRandomBytes ({ record + 48, SHORT_TUNNEL_BUILD_RECORD_SIZE - 48 });
 		return true;
 	}
 
@@ -292,8 +293,10 @@ namespace tunnel
 			auto hop = std::make_unique<ShortPhonyTunnelHopConfig> ();
 			TunnelHopConfig * raw = hop.get ();
 			raw->prev = m_LastHop;
-			m_LastHop->next = raw;
+			// Publish the link only after ownership insertion succeeds.
+			// An allocation exception must leave the live chain unchanged.
 			m_Hops.push_back (std::move (hop));
+			m_LastHop->next = raw;
 			m_LastHop = raw;
 		}
 	}

@@ -15,6 +15,7 @@
 #include <boost/algorithm/string.hpp> // for boost::to_lower
 #include "Log.h"
 #include "Crypto.h"
+#include "Random.h"
 #include "RouterContext.h"
 #include "I2NPProtocol.h"
 #include "NetDb.hpp"
@@ -1449,7 +1450,7 @@ namespace transport
 
 			auto ts = i2p::util::GetSecondsSinceEpoch ();
 			size_t inds[3];
-			RAND_bytes ((uint8_t *)inds, sizeof (inds));
+			i2p::crypto::FillRandomBytes ({ reinterpret_cast<uint8_t *> (inds), sizeof (inds) });
 			inds[0] %= count;
 			auto & [ident, peer] = peers[inds[0]];
 			// try random peer
