@@ -88,7 +88,19 @@ workflow, run `gh`, build or test.
   exact exception, so any additional automatic trigger needs an explicit
   policy and checker update.
 - Pin third-party actions to commit SHAs with a version comment; set
-  `persist-credentials: false` on checkout.
+  `persist-credentials: false` on checkout. The reviewed pins are
+  `actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1` (v7.0.1),
+  `actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9`
+  (v7.0.2), `actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9`
+  (v6.1.0), `actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78`
+  (v6.2.0), `msys2/setup-msys2@ec48f7c5447b3140e2b088413ae3a55687bccb6e`
+  (v2.33.0), and `vmactions/openbsd-vm@f1ca8bc8ecc5b6ef7218e5b914836e067e1546d3`
+  (v1.4.9). Resolve a replacement tag with
+  `git ls-remote https://github.com/OWNER/REPO refs/tags/TAG`, review the
+  upstream release notes, and change the SHA and comment together. Do not
+  replace the manual-only OpenBSD/Windows images: `windows-2022` supplies
+  the documented Visual Studio 2022 generator, and Ubuntu 24.04 remains the
+  supported Homebrew host.
 - Do not add `continue-on-error`, ignore a failing test or suppress warnings to
   make a job green.
 - Do not attribute a run to a revision it did not build. Local uncommitted
