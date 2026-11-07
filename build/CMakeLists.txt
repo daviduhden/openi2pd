@@ -1214,9 +1214,13 @@ endif()
 
 if(I2PD_INSTALL_DOCS)
   install(FILES
-    "${PROJECT_ROOT}/ChangeLog" "${PROJECT_ROOT}/LICENSE" "${PROJECT_ROOT}/README.md"
+    "${PROJECT_ROOT}/LICENSE" "${PROJECT_ROOT}/README.md"
     "${PROJECT_ROOT}/NOTICE"
     DESTINATION ${CMAKE_INSTALL_DOCDIR}
+    COMPONENT Documentation)
+  install(FILES "${PROJECT_ROOT}/ChangeLog"
+    DESTINATION ${CMAKE_INSTALL_DOCDIR}
+    RENAME changelog
     COMPONENT Documentation)
   # The tool licence keeps its upstream text and is renamed so it cannot
   # overwrite the router LICENSE in the same directory.

@@ -111,6 +111,8 @@ Ask for exact paths and package names. Do not let them run `dpkg-buildpackage`,
   archive before attributing a missing-page warning to a manifest alone.
   Both RPM spec variants install pages independently of CMake; update their
   explicit install commands and file lists when the tool manual set changes.
+  The canonical installed upstream changelog is lowercase `changelog`;
+  preserve source `ChangeLog` and Debian's separate `changelog.Debian`.
 - Package Makefiles delegate procedural work without changing framework
   authority: Debian build flags and parallel options belong in its driver;
   the static payload helper travels with the copied `debian/` directory.
@@ -158,7 +160,7 @@ Ask for exact paths and package names. Do not let them run `dpkg-buildpackage`,
   English.
 - Package validation claims require the manual packaging workflow; static file
   inspection is not package validation.
-- Debian's `dh_compress` packages the upstream `ChangeLog` as `ChangeLog.gz`
+- Debian's `dh_compress` packages the upstream `ChangeLog` as `changelog.gz`
   and can compress `README.md` to `README.md.gz`; package smoke assertions must
   check the installed archive names while CMake/source manifests keep the
   original source names. The ordinary `debian/` and `contrib/static/debian/`
@@ -207,19 +209,21 @@ Ask for exact paths and package names. Do not let them run `dpkg-buildpackage`,
   exception exits `1`. Do not restore the old `SIGABRT`-as-`SIGTERM` path.
 
 - CMake owns the distribution payload: `Documentation` installs
-  `ChangeLog`/`LICENSE`/`NOTICE`/`README.md`, `LICENSE.i2pd-tools`,
+  source `ChangeLog` as `changelog`, `LICENSE`/`NOTICE`/`README.md`,
+  `LICENSE.i2pd-tools`,
   the filtered `docs/` tree and `assets/branding`; man pages are
   owned by `Runtime` (`i2pd.1`), `Tui` (`i2pd-tui.1`) and `Tools`
-  (`i2pdctl.1` and the native-tool reference/aliases), not by the optional docs block. `I2PD_INSTALL_CONFIG=OFF`
+  (`i2pdctl.1` and the native-tool reference/aliases), not by the optional
+  docs block. `I2PD_INSTALL_CONFIG=OFF`
   combined with a service manager is a configure error.
 - Debian `*.install` entries are resolved in the current directory first and
   only then in `debian/tmp`; never list `docs` or `assets/branding` (the source
   tree wins and bypasses CMake filtering). List the installed
   `usr/share/doc/i2pd/...` and `usr/share/man/...` paths. `dh_missing
   --fail-missing` is the guard.
-- The source manifest installs `ChangeLog` from CMake's Documentation
-  component, while debhelper compresses it in the binary package to
-  `/usr/share/doc/i2pd/ChangeLog.gz`. Keep `debian/i2pd.install` and the
+- The source manifest installs lowercase `changelog` from CMake's
+  Documentation component, while debhelper compresses it in the package to
+  `/usr/share/doc/i2pd/changelog.gz`. Keep `debian/i2pd.install` and the
   compile-free manifest contract on the uncompressed source path; Debian smoke
   checks must expect the installed `.gz` path.
 - `i2pd-tui` carries `Breaks`/`Replaces: i2pd (<< 2.61.0-3)` for the moved

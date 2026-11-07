@@ -232,7 +232,7 @@ assert_contains("${openbsd_descr}" "C++ implementation" "OpenBSD pkg/DESCR must 
 # so a source-tree "docs" or "assets/branding" entry silently bypasses
 # the CMake filters.
 foreach(required IN ITEMS
-    "usr/share/doc/i2pd/ChangeLog"
+    "usr/share/doc/i2pd/changelog"
     "usr/share/doc/i2pd/LICENSE"
     "usr/share/doc/i2pd/README.md"
     "usr/share/doc/i2pd/NOTICE"
@@ -398,7 +398,7 @@ foreach(required IN ITEMS
     "docs/i18n.md"
     "apparmor_parser"
     "desktop-file-validate"
-    "/usr/share/doc/i2pd/ChangeLog.gz"
+    "/usr/share/doc/i2pd/changelog.gz"
     "/usr/share/doc/i2pd/README.md.gz"
     "/usr/share/doc/i2pd/assets/branding/colors.md.gz"
     "i2pd (= ")

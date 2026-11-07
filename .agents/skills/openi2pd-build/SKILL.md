@@ -113,7 +113,9 @@ build.
 
 - Native tool man pages and their shared reference belong to Tools, even
   with I2PD_INSTALL_DOCS=OFF. The install regression checks each command's
-  alias and its shared target on all host platforms.
+  alias and its shared target on all host platforms. Install the upstream
+  ChangeLog under the canonical documentation name changelog; Debian smoke
+  expects the compressed name after debhelper processes the staged file.
   When one install statement lists shared manuals, inspect its actual closing
   delimiter rather than a fixed-size lookahead that can miss its component.
 

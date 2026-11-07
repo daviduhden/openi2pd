@@ -41,7 +41,7 @@ usr/share/i2pd/certificates usr/share/i2pd
 # CMake Documentation component. Do not list the source docs/ or
 # assets/branding directories here: dh_install would prefer the unfiltered
 # source tree over debian/tmp and bypass the CMake pattern filter.
-usr/share/doc/i2pd/ChangeLog
+usr/share/doc/i2pd/changelog
 usr/share/doc/i2pd/LICENSE
 usr/share/doc/i2pd/NOTICE
 usr/share/doc/i2pd/README.md
