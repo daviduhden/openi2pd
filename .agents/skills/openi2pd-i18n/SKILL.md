@@ -100,6 +100,12 @@ the text crosses a protocol/IPC boundary.
   represented by an empty locale list.
 
 ## Known issues and decisions
+
+- Catalog checker fixtures use raw output on every host. Native Win32
+  text mode inserts CRLF into LF samples and can make escape-decoding
+  regressions fail for unrelated newline policy. Keep an explicit CRLF
+  negative case beside LF and escaped-key controls; do not normalize
+  production catalogs to accommodate incorrectly written fixtures.
 - Decode harvested C++ escapes in one left-to-right pass. Sequential global
   replacements can turn a literal backslash-plus-n into a real newline and
   merge distinct catalog keys. Keep the maintenance-checker positive pair

@@ -37,7 +37,8 @@ sub write_file {
     # directory so a nested layout such as res/img/ can be reproduced.
     my ( undef, $dir ) = File::Spec->splitpath($path);
     make_path($dir) unless -d $dir;
-    open my $fh, '>', $path or die "open $path: $!\n";
+    # Preserve exact fixture bytes, including deliberate LF/CRLF cases.
+    open my $fh, '>:raw', $path or die "open $path: $!\n";
     print {$fh} $contents;
     close $fh or die "close $path: $!\n";
 }
