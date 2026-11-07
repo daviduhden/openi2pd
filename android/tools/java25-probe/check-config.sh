@@ -66,6 +66,8 @@ grep -Fq '"-DANDROID_STL=c++_shared"' "$app_gradle" ||
 	fail 'JNI build is not aligned with the c++_shared vcpkg STL'
 grep -Fq '"-DI2PD_OPENSSL_EXPECT=OpenSSL"' "$app_gradle" ||
 	fail 'JNI build does not pin the expected OpenSSL backend'
+grep -Fq 'project(OpenI2PdAndroid LANGUAGES C CXX)' "$native_cmake" ||
+	fail 'Android native entry point has no explicit project declaration'
 grep -Fq 'CMAKE_FIND_ROOT_PATH_MODE_LIBRARY BOTH' "$native_cmake" ||
 	fail 'wrapper does not allow dependency prefixes outside the NDK sysroot'
 grep -Fq 'CMAKE_FIND_ROOT_PATH_MODE_INCLUDE BOTH' "$native_cmake" ||

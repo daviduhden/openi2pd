@@ -121,6 +121,15 @@ run Gradle, install an APK or run a device test.
 
 ## Known issues and decisions
 
+- The AGP native wrapper is a separate top-level CMake entry point. Keep a
+  literal `project(OpenI2PdAndroid LANGUAGES C CXX)` after its minimum-version
+  declaration, even though the shared build subdirectory declares its own
+  versioned project. Otherwise CMake inserts an implicit project before the
+  wrapper policy baseline. Dependency prefixes passed by CI should use the
+  active package-config discovery interface; remove unused legacy FindBoost
+  include/library hints at their invocation sites, not by reading them only
+  to suppress warnings. Review both arm64 and optional emulator prefixes.
+
 - JNI static methods receive a mandatory `jclass` argument even when their
   bodies do not use it. Omit unused names in native definitions instead of
   disabling parameter warnings; preserve types, position and exported names.
