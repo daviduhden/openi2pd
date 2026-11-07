@@ -201,6 +201,10 @@ workflow, run `gh`, build or test.
   with their logs for later symbolization; these are CI artifacts only.
   Run focused CTest serially and stage artifacts into the workspace from
   the temporary build before upload, including failure-time evidence.
+  Instrumented dependency libraries need the matching TSan runtime in
+  configure-time executable probes too. Set the diagnostic executable
+  linker flags explicitly; target sanitizer options are applied later
+  and cannot resolve those probe symbols. Preserve the API link probe.
 
 - CDB's `q` command has no exit-code operand. Keep exception markers in
   its code-only log and classify them independently of debugger exit

@@ -100,6 +100,10 @@ execution. Ask for:
   datadir ACL as the Windows equivalent.
 
 ## Known issues and decisions
+- Malformed-frame fixtures must derive unknown types from the shared
+  registry boundary, not a formerly unused numeric operation. Raw channels
+  accept registered framing without endpoint payload authorization; test
+  those layers separately and retain zero and upper wire-value rejection.
 - A Windows heap exception after a test's completion marker may come from
   process teardown rather than that test's parser. PageHeap traced the
   profile callback-list free through NetDb::Stop and its static destructor.

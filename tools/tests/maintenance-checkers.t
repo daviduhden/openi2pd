@@ -302,6 +302,8 @@ sub workflow_crash_fixtures {
         ['-fsanitize=thread', '-fsanitize=address'],
         ['2f4e3a5fec05394068cfa7379890ab552483a8a6', 'unpinned'],
         ['-DWITH_THREADSANITIZER=ON', '-DWITH_THREADSANITIZER=OFF'],
+        ['-DCMAKE_EXE_LINKER_FLAGS="-fsanitize=thread -Wl,--build-id=sha1"',
+         '-DCMAKE_EXE_LINKER_FLAGS="-Wl,--build-id=sha1"'],
         ['--target test-clientcontext-registry', '--target i2pd'],
         ['ctest --test-dir "$diagnostic/project" -j 1', 'ctest --test-dir "$diagnostic/project" -j 2'],
         ['staged="$GITHUB_WORKSPACE/crypto-tsan-evidence"', 'staged="$RUNNER_TEMP/evidence"'],

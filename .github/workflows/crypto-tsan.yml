@@ -70,7 +70,7 @@ jobs:
             -DOPENSSL_INCLUDE_DIR="$diagnostic/prefix/include" \
             -DOPENSSL_CRYPTO_LIBRARY="$diagnostic/prefix/lib/libcrypto.so" \
             -DOPENSSL_SSL_LIBRARY="$diagnostic/prefix/lib/libssl.so" \
-            -DCMAKE_EXE_LINKER_FLAGS=-Wl,--build-id=sha1 \
+            -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=thread -Wl,--build-id=sha1" \
             2>&1 | tee "$diagnostic/evidence/project-configure.log"
           cmake --build "$diagnostic/project" --target test-clientcontext-registry --parallel 2 \
             2>&1 | tee "$diagnostic/evidence/project-build.log"

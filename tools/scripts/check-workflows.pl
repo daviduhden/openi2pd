@@ -333,6 +333,7 @@ if (defined $crypto_diagnostic) {
         'CC=clang CXX=clang++ perl ./Configure', '-fsanitize=thread',
         '--prefix="$diagnostic/prefix"', '--libdir=lib',
         '-DWITH_THREADSANITIZER=ON',
+        '-DCMAKE_EXE_LINKER_FLAGS="-fsanitize=thread -Wl,--build-id=sha1"',
         '-DOPENSSL_CRYPTO_LIBRARY="$diagnostic/prefix/lib/libcrypto.so"',
         '-DOPENSSL_SSL_LIBRARY="$diagnostic/prefix/lib/libssl.so"',
         '--target test-clientcontext-registry',
