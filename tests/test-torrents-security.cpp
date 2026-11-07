@@ -954,6 +954,9 @@ void TestRPCMetadataFields ()
 	const std::string creator = "fixture\\creator";
 	assert (torrent->SetMetaComment (comment));
 	assert (torrent->SetCreatedBy (creator));
+	// Internal error identities remain generic local errors on the RPC
+	// boundary; no new numeric wire value is introduced.
+	torrent->SetError (eTorrentErrorRandomSource);
 	auto work = boost::asio::make_work_guard (service);
 	// Adding metadata queues owner-retaining disk work. Run that domain
 	// too: an unstarted member queue otherwise keeps the tunnel alive.
@@ -980,7 +983,13 @@ void TestRPCMetadataFields ()
 	boost::asio::io_context clientService;
 	boost::asio::ip::tcp::socket client (clientService);
 	client.connect (server.GetEndpoint ());
-	const std::string body = "{\"method\":\"torrent-get\",\"arguments\":{\"fields\":[\"comment\",\"creator\"],\"ids\":["
+	const auto snapshot = tunnel->GetControlSnapshot (std::chrono::seconds (2));
+	assert (snapshot.has_value ());
+	const auto reported = std::find_if (snapshot->torrents.begin (), snapshot->torrents.end (),
+		[id] (const auto & info) { return info.id == id; });
+	assert (reported != snapshot->torrents.end ());
+	assert (reported->error == torrent->GetErrorStr ());
+	const std::string body = "{\"method\":\"torrent-get\",\"arguments\":{\"fields\":[\"comment\",\"creator\",\"error\",\"errorString\"],\"ids\":["
 		+ std::to_string (id) + "," + std::to_string (emptyId) + "," + std::to_string (invalidId) + "]}}";
 	const std::string request = "POST /rpc HTTP/1.1\r\nHost: localhost\r\nContent-Type: application/json\r\nContent-Length: "
 		+ std::to_string (body.size ()) + "\r\n\r\n" + body;
@@ -996,6 +1005,10 @@ void TestRPCMetadataFields ()
 		const auto returnedId = entry.as_object ().at ("id").as_int64 ();
 		const bool populated = returnedId == id;
 		assert (populated || returnedId == emptyId || returnedId == invalidId);
+		assert (entry.as_object ().at ("error").as_int64 () == (populated ? 3 : 0));
+		const auto & errorText = entry.as_object ().at ("errorString").as_string ();
+		assert (std::string_view (errorText.data (), errorText.size ())
+			== (populated ? torrent->GetErrorStr () : std::string_view { }));
 		const auto & returnedComment = entry.as_object ().at ("comment").as_string ();
 		const auto & returnedCreator = entry.as_object ().at ("creator").as_string ();
 		assert (std::string_view (returnedComment.data (), returnedComment.size ())

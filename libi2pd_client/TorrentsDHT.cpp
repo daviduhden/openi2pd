@@ -2300,8 +2300,8 @@ namespace torrents
 
 	void TorrentsDHT::GetPeersAndAnnounce (std::shared_ptr<Torrent> torrent)
 	{
-		if (!torrent || torrent->IsPrivate () || IsLocallyPrivate (torrent->GetInfoHash ()) || torrent->IsStopped ()
-			|| torrent->IsRemoved () || !m_RoutingTable)
+		if (!torrent || !torrent->HasPeerID () || torrent->IsPrivate () || IsLocallyPrivate (torrent->GetInfoHash ())
+			|| torrent->IsStopped () || torrent->IsRemoved () || !m_RoutingTable)
 			return;
 
 		// If this torrent's hash is in our own k-bucket, we are one of the

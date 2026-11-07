@@ -116,6 +116,17 @@ Do not let them edit, build or run tests.
 
 ## Known issues and decisions
 
+- Peer IDs require successful RAND_bytes generation; repeated RNG seeds or
+  clock fallback destroy per-torrent unlinkability. Failure clears the ID,
+  leaves the torrent stopped, and is sticky through error resets/resume.
+  HasPeerID guards HTTP/BEP 15, peer handshakes and DHT publication; magnet
+  insertion and IsValid also reject failure. Recreate after provider recovery.
+  The private per-object source seam tests partial/unsupported generation
+  without replacing the global provider or changing unrelated randomness.
+  TorrentError appends the failure value without renumbering earlier errors;
+  RPC still maps any local error to its existing code 3 and typed control
+  snapshots carry the error text, not the internal enum.
+
 - Bencode callbacks return zero to request generic skipping, not to reject
   a known field. Metainfo handlers must also set the malformed error when
   a recognized field has the wrong type; otherwise a string file length

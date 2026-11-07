@@ -41,6 +41,20 @@
 
 namespace i2p::torrents
 {
+struct TorrentPeerIDTestAccess
+{
+	static void FailGeneration (Torrent & torrent, bool partial)
+	{
+		if (partial)
+			torrent.InitPeerID ([] (unsigned char * bytes, int size)
+				{
+					std::memset (bytes, 0x55, static_cast<size_t> (size));
+					return 0;
+				});
+		else torrent.InitPeerID ([] (unsigned char *, int) { return -1; });
+	}
+};
+
 struct PeerExtendedHandshakeTestAccess
 {
 	static void Parse (PeerConnection & peer, const std::string & encoded)
@@ -574,6 +588,28 @@ static void TestPerTorrentPeerID ()
 	for (size_t i = 6; i < id.size (); ++i) assert (std::isalnum (id[i]) != 0);
 }
 
+static void TestPeerIDProviderFailure ()
+{
+	for (bool partial : { false, true })
+	{
+		auto torrent = MakeVerifiedTorrent ("peer-id-failure", false).torrent;
+		assert (torrent->HasPeerID () && torrent->IsValid ());
+		TorrentPeerIDTestAccess::FailGeneration (*torrent, partial);
+		assert (!torrent->HasPeerID ());
+		assert (!torrent->IsValid () && torrent->IsStopped ());
+		assert (torrent->GetError () == eTorrentErrorRandomSource);
+		assert (!torrent->GetErrorStr ().empty ());
+		assert (std::all_of (torrent->GetPeerID ().begin (), torrent->GetPeerID ().end (),
+			[] (uint8_t value) { return value == 0; }));
+		// Neither a filesystem completion nor administrative resume may
+		// make a failed identity publishable. No global provider is changed.
+		torrent->SetError (eTorrentErrorNoError);
+		torrent->SetStopped (false);
+		assert (torrent->GetError () == eTorrentErrorRandomSource);
+		assert (!torrent->HasPeerID () && torrent->IsStopped ());
+	}
+}
+
 static void TestExtendedHandshakeFieldTypes ()
 {
 	const auto valid = Dict ({ { "m", Dict ({ { "ut_metadata", "i1e" }, { "disabled", "i0e" } }) },
@@ -707,6 +743,7 @@ int main ()
 	TestTrackerIntervalAndTrackerID ();
 	TestQueryValueEncoding ();
 	TestPerTorrentPeerID ();
+	TestPeerIDProviderFailure ();
 	TestExtendedHandshakeFieldTypes ();
 	TestTrackerKnownFieldTypes ();
 	TestConnectionLimitRelations ();

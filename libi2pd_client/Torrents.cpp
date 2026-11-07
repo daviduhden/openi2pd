@@ -2120,7 +2120,7 @@ namespace torrents
 		InitPeerID ();
 	}
 
-	void Torrent::InitPeerID ()
+	void Torrent::InitPeerID (int (*source) (unsigned char *, int))
 	{
 		// A per-torrent random peer id: the tunnel-wide destination identity
 		// must not be used as a peer id, and two torrents must not share one.
@@ -2129,16 +2129,22 @@ namespace torrents
 		constexpr size_t randomLength = 14;
 		static_assert (prefixLength + randomLength == std::tuple_size_v<PeerID>, "peer id must stay 20 bytes");
 		uint8_t random[randomLength] { };
-		if (RAND_bytes (random, static_cast<int> (sizeof (random))) != 1)
+		m_HasPeerID = false;
+		m_PeerID.fill (0);
+		if (!source) source = RAND_bytes;
+		if (source (random, static_cast<int> (sizeof (random))) != 1)
 		{
-			// Never fall back to a predictable identity: derive from the
-			// project RNG seed so the id is still per-process unpredictable.
-			for (size_t i = 0; i < sizeof (random); ++i)
-				random[i] = static_cast<uint8_t> (i2p::util::GetRngSeed () >> ((i % sizeof (uint32_t)) * 8));
+			// A repeated seed or a clock fallback links independent torrents.
+			// Leave this object permanently unavailable instead of publishing
+			// an empty or predictable replacement identity.
+			m_Error = eTorrentErrorRandomSource;
+			m_IsStopped = true;
+			return;
 		}
 		memcpy (m_PeerID.data (), "-I2PD-", prefixLength);
 		for (size_t i = 0; i < sizeof (random); ++i)
 			m_PeerID[prefixLength + i] = alphabet[random[i] % (sizeof (alphabet) - 1)];
+		m_HasPeerID = true;
 	}
 
 	Torrent::Torrent (std::string_view buf)
@@ -4064,6 +4070,8 @@ namespace torrents
 
 	void Torrent::SetStopped (bool stopped)
 	{
+		// Administrative resume cannot repair failed identity generation.
+		if (!HasPeerID ()) stopped = true;
 		m_IsStopped = stopped;
 		// A stopped torrent refuses dials, so remembered candidates would
 		// only accumulate and survive into the next start.
@@ -4800,7 +4808,7 @@ namespace torrents
 
 	void PeerConnection::SendHandshakeMsg ()
 	{
-		if (!m_Torrent || !m_Stream) return;
+		if (!m_Torrent || !m_Stream || !m_Torrent->HasPeerID ()) return;
 		uint8_t buf[HANDSHAKE_MSG_LENGTH];
 		buf[0] = 19;
 		memcpy (buf + 1, "BitTorrent protocol", 19);

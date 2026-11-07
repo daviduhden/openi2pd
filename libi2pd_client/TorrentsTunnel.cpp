@@ -2307,6 +2307,7 @@ namespace torrents
 			if (EncodeTorrentMagnetState (merged, error).empty ()) return { nullptr, 0 };
 		}
 		auto torrent = existing ? existing : std::make_shared<Torrent> (state.infoHash);
+		if (!torrent->HasPeerID ()) return { nullptr, 0 };
 		Torrent::TrackerTiers tiers;
 		for (const auto & tracker : merged.trackers) tiers.push_back ({ tracker });
 		if (!tiers.empty () && !torrent->SetTrackerTiers (tiers)) return { nullptr, 0 };
@@ -2916,7 +2917,7 @@ namespace torrents
 	void TorrentsTunnel::RequestTorrentTrackers (std::shared_ptr<Torrent> torrent, TrackerAnnounceEvent event)
 	{
 		if (m_StartupRecoveryPending.load ()) return;
-		if (!torrent || (torrent->IsStopped () && event != eTrackerAnnounceEventStopped)) return;
+		if (!torrent || !torrent->HasPeerID () || (torrent->IsStopped () && event != eTrackerAnnounceEventStopped)) return;
 		for (size_t i = 0; i < m_Trackers.size (); i++) RequestTracker (i, torrent, event);
 	}
 
@@ -2948,7 +2949,7 @@ namespace torrents
 
 	bool TorrentsTunnel::RequestTracker (size_t trackerID, std::shared_ptr<Torrent> torrent, TrackerAnnounceEvent event)
 	{
-		if (!torrent || !IsTorrentTracker (trackerID, *torrent)) return false;
+		if (!torrent || !torrent->HasPeerID () || !IsTorrentTracker (trackerID, *torrent)) return false;
 		i2p::http::URL reqURL = std::get<0> (m_Trackers[trackerID]);
 		if (!IsI2PTrackerURL (reqURL))
 		{
@@ -3759,6 +3760,7 @@ namespace torrents
 		std::shared_ptr<Torrent> torrent, std::string_view dest, uint16_t port, uint16_t fromPort,
 		TrackerAnnounceEvent event)
 	{
+		if (!torrent || !torrent->HasPeerID ()) return;
 		LogPrint (eLogDebug, "TorrentsTunnel: Sending announce to datagram tracker ", dest, ":", port);
 		auto address = i2p::client::context.GetAddressBook ().GetAddress (dest);
 		if (address && address->IsIdentHash ())

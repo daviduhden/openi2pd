@@ -789,11 +789,12 @@ namespace torrents
 		eTorrentErrorMalformedMetaInfo = 1,
 		eTorrentErrorNonSupportedVersion = 2,
 		eTorrentErrorFilesystem = 3,
+		eTorrentErrorRandomSource = 4,
 		eNumTorrentErrors
 	};
 
 	constexpr std::array<std::string_view, eNumTorrentErrors> TorrentErrorStr { "", "Malformed metaInfo",
-		"Non-supported version", "Filesystem error" };
+		"Non-supported version", "Filesystem error", "Random source failure" };
 
 	using RequestedBlock = std::tuple<uint32_t, uint32_t, uint32_t>; // (index, offset, len)
 
@@ -1152,7 +1153,12 @@ namespace torrents
 		void SetAnnounceTrackerID (int trackerID) { m_AnnounceTrackerID = trackerID; }
 		// Per-torrent random 20-byte peer id used in handshakes and
 		// announces.
+		/// The bytes are publishable only when HasPeerID() is true.
 		const PeerID & GetPeerID () const { return m_PeerID; }
+		/// True only after provider-backed generation succeeded. A failed
+		/// torrent remains stopped and must not publish tracker/DHT announces
+		/// or peer handshakes. Recreate it after provider recovery.
+		bool HasPeerID () const { return m_HasPeerID; }
 		// Opaque tracker id (BEP 3 "tracker id") echoed on later announces.
 		std::string GetTrackerID (size_t trackerID) const;
 		void SetTrackerID (size_t trackerID, std::string_view id);
@@ -1171,10 +1177,16 @@ namespace torrents
 		bool SetMetaComment (std::string_view comment);
 		bool SetCreatedBy (std::string_view createdBy);
 		void SetName (std::string_view name) { m_Name = AdjustName (name); }
-		bool IsValid () const { return !m_Name.empty () && m_PieceLength && (m_Length || !m_Files.empty ()); }
-		TorrentError GetError () const { return m_Error.load (std::memory_order_acquire); }
+		bool IsValid () const { return HasPeerID () && !m_Name.empty () && m_PieceLength && (m_Length || !m_Files.empty ()); }
+		TorrentError GetError () const
+		{
+			return HasPeerID () ? m_Error.load (std::memory_order_acquire) : eTorrentErrorRandomSource;
+		}
 		std::string_view GetErrorStr () const { return TorrentErrorStr[GetError ()]; }
-		void SetError (TorrentError error) { m_Error.store (error, std::memory_order_release); }
+		void SetError (TorrentError error)
+		{
+			m_Error.store (HasPeerID () ? error : eTorrentErrorRandomSource, std::memory_order_release);
+		}
 		const std::filesystem::path & GetFullPath () const { return m_FullPath; }
 		void SetFullPath (const std::filesystem::path & fullPath) { m_FullPath = fullPath; }
 		const std::list<std::shared_ptr<TorrentFile>> & GetFiles () const { return m_Files; }
@@ -1514,8 +1526,11 @@ namespace torrents
 		void ExpireTrackerPeers (uint64_t nowEpoch);
 
 	private:
+		friend struct TorrentPeerIDTestAccess;
 		Torrent ();
-		void InitPeerID ();
+		// The optional source is private for isolated provider-failure tests.
+		// Production initialization always selects RAND_bytes.
+		void InitPeerID (int (*source) (unsigned char *, int) = nullptr);
 		size_t ParsePieces (std::string_view buf);
 		/// Parse one tracker "peers" value into @a peers.
 		///
@@ -1552,6 +1567,8 @@ namespace torrents
 		std::vector<std::pair<std::string, std::string>> m_TopLevelExtras;
 		bool m_MetaInfoComplete = true;
 		PeerID m_PeerID { };
+		// Immutable after construction in production.
+		bool m_HasPeerID = false;
 		TrackerTiers m_TrackerTiers;
 		bool m_HasExplicitTrackers = false;
 		bool m_IsPrivate = false;
