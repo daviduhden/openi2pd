@@ -359,10 +359,19 @@ sub run_binary {
         }
         $out .= $chunk;
     }
-    close $ph;
+    my $closed = close $ph;
+    my $wait_status = $?;
     return ( undef, 'harness output is too large' ) if $too_large;
-    my $status = $? >> 8;
+    return ( undef, 'cannot reap harness process' ) if $wait_status < 0;
+    my $signal = $wait_status & 127;
+    if ($signal) {
+        return ( undef, 'harness terminated abnormally' )
+          if $^O eq 'MSWin32' || $signal == 127;
+        return ( undef, "harness terminated by signal $signal" );
+    }
+    my $status = $wait_status >> 8;
     return ( undef, "harness exited $status" ) if $status != 0;
+    return ( undef, 'cannot close harness output' ) unless $closed;
     my $got = eval { JSON::PP->new->decode($out) };
     return ( undef, 'harness output is not JSON: ' . ( $@ =~ s/\s+\z//r ) )
       unless defined $got;

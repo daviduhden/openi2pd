@@ -22,7 +22,6 @@ use FindBin qw($Bin);
 use IPC::Open3 qw(open3);
 use Encode ();
 use Errno qw(EINTR);
-use POSIX qw(WIFEXITED WEXITSTATUS WIFSIGNALED WTERMSIG);
 use JSON::PP;
 use Test::More;
 
@@ -192,10 +191,13 @@ SKILL
         }
         my $status = $?;
         die "waitpid failed for fixture child\n" if $waited != $pid;
-        my $code = POSIX::WIFEXITED($status)
-          ? POSIX::WEXITSTATUS($status)
-          : POSIX::WIFSIGNALED($status)
-          ? 128 + POSIX::WTERMSIG($status)
+        # Perl exposes a Unix-style wait word even on Win32, where the
+        # POSIX::WIF* helpers are unavailable. Signal interpretation is
+        # valid only on hosts with POSIX child termination semantics.
+        my $signal = $status & 127;
+        my $code = $status < 0 ? 255
+          : !$signal ? $status >> 8
+          : $^O ne 'MSWin32' && $signal != 127 ? 128 + $signal
           : 255;
         seek $stdout, 0, 0 or die "rewind child stdout: $!\n";
         seek $stderr, 0, 0 or die "rewind child stderr: $!\n";

@@ -11,7 +11,7 @@ use File::Spec;
 use File::Temp qw(tempdir tempfile);
 use IPC::Open3 qw(open3);
 use IO::Socket::INET;
-use POSIX qw(WIFEXITED WEXITSTATUS);
+use POSIX ();
 use Errno qw(EINTR);
 
 my $root = File::Spec->rel2abs(File::Spec->catdir($Bin, '..', '..'));
@@ -37,7 +37,14 @@ sub invoke {
     my $err = <$errors> // '';
     close $output;
     close $errors;
-    return (WIFEXITED($status) ? WEXITSTATUS($status) : 255, $out, $err);
+    # Perl's wait word preserves shifted exit values on Win32 without
+    # requiring the unimplemented POSIX::WIFEXITED helper there.
+    my $signal = $status & 127;
+    my $code = $status < 0 ? 255
+      : !$signal ? $status >> 8
+      : $^O ne 'MSWin32' && $signal != 127 ? 128 + $signal
+      : 255;
+    return ($code, $out, $err);
 }
 sub fixture {
     my ($name, $data) = @_;

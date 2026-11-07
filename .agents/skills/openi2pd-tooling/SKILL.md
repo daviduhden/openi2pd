@@ -122,6 +122,15 @@ a TUI client.
 
 ## Known issues and decisions
 
+- Decode child results from Perl's documented wait word, not POSIX::WIF*
+  helpers: native Win32 Perl can expose those names as throwing stubs.
+  Preserve waitpid/spawn failure and POSIX signal outcomes separately from
+  shifted exit values; do not interpret Win32 low bits as POSIX signals or
+  let an abnormal nonzero status become exit zero. Keep synthetic normal
+  exit/error cases and real POSIX signal fixtures in the runner regressions.
+  A child can emit matching JSON before dying: validate the full terminal
+  status before accepting output, and require successful pipe closure.
+
 The lexical Doxygen checker distinguishes abstract parameter declarators
 from named ones: standalone typedefs, qualified types, cv-qualified types
 and builtin type combinations are unnamed but still count toward arity.

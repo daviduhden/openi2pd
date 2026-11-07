@@ -24,7 +24,6 @@ use FindBin    qw($Bin);
 use IPC::Open3 qw(open3);
 use Digest::SHA qw(sha256_hex);
 use Errno qw(ECHILD EINTR);
-use POSIX qw(WIFEXITED WEXITSTATUS WIFSIGNALED WTERMSIG);
 use JSON::PP;
 use Test::More;
 
@@ -86,10 +85,17 @@ sub decode_wait_status {
     my ( $pid, $waited, $status, $wait_error ) = @_;
     return ( 255, 'waitpid-error', $wait_error ) if $waited == -1;
     return ( 255, 'waitpid-error', 0 ) if $waited != $pid;
-    return ( 128 + WTERMSIG($status), 'signal', WTERMSIG($status) )
-      if WIFSIGNALED($status);
-    return ( WEXITSTATUS($status), 'exit', 0 ) if WIFEXITED($status);
-    return ( 255, 'waitpid-error', 0 );
+    return ( 255, 'waitpid-error', 0 ) if $status < 0;
+    # Perl documents $? as a Unix-style wait word on every host. Win32
+    # supplies the shifted exit value but has no POSIX signal semantics;
+    # its POSIX::WIF* stubs may throw rather than classify a normal exit.
+    my $signal = $status & 127;
+    if ($signal) {
+        return ( 255, 'abnormal', $status ) if $^O eq 'MSWin32';
+        return ( 255, 'waitpid-error', 0 ) if $signal == 127;
+        return ( 128 + $signal, 'signal', $signal );
+    }
+    return ( $status >> 8, 'exit', 0 );
 }
 
 my $link_checker =
@@ -1087,8 +1093,9 @@ CPP
 
 # --- check-vectors unexpected pass exit status ----------------------------
 SKIP: {
-    skip 'the temporary executable harness uses POSIX shebang execution', 3
+    skip 'the temporary executable harness uses POSIX shebang execution', 6
       if $^O eq 'MSWin32';
+    local $ENV{OPENI2PD_VECTOR_FIXTURE_SIGNAL} = 0;
     my $tmp     = tempdir( CLEANUP => 1 );
     my $vectors = File::Spec->catdir( $tmp, 'vectors' );
     my $input   = "SAM fixture\n";
@@ -1131,10 +1138,39 @@ SKIP: {
     is( $kind, 'exit', 'unexpected pass is a normal checker failure' );
     like( $out, qr/UNEXPECTED-PASS \Q$case_id\E/,
         'unexpected pass diagnostic names the fixture' );
+
+    my $normal_case = JSON::PP->new->decode(read_fixture_file($case));
+    delete $normal_case->{known_gap};
+    write_file($case, JSON::PP->new->canonical->encode($normal_case) . "\n");
+    {
+        local $ENV{OPENI2PD_VECTOR_FIXTURE_SIGNAL} = 1;
+        ($code, $out, $kind) = run_checker(
+            $vector_checker, '--vectors', $vectors, '--binary', $harness
+        );
+        is($code, 1, 'valid JSON cannot hide a signal-terminated harness');
+        is($kind, 'exit', 'checker reports the child failure normally');
+        like($out, qr/harness terminated by signal [0-9]+/,
+            'checker retains the POSIX terminal cause');
+    }
 }
 
 # --- child wait status decoding -------------------------------------------
 {
+    for my $exit_code (0, 1, 2, 127, 255) {
+        my ($code, $kind, $detail) =
+          decode_wait_status(17, 17, $exit_code << 8, 0);
+        is($code, $exit_code, 'shifted child exit code is portable');
+        is($kind, 'exit', 'normal exit needs no platform POSIX macro');
+        is($detail, 0, 'normal exit has no signal or errno');
+    }
+    my ($wrong_code, $wrong_kind) = decode_wait_status(17, 18, 0, 0);
+    is($wrong_code, 255, 'an unrelated reaped child cannot report success');
+    is($wrong_kind, 'waitpid-error', 'child identity mismatch is distinct');
+    my ($invalid_code, $invalid_kind) = decode_wait_status(17, 17, -1, 0);
+    is($invalid_code, 255, 'invalid child status never reports success');
+    is($invalid_kind, 'waitpid-error', 'invalid status remains a wait error');
+    my ($abnormal_code) = decode_wait_status(17, 17, 127, 0);
+    is($abnormal_code, 255, 'stopped or abnormal status never reports success');
     my ( $code, $kind, $detail ) =
       decode_wait_status( 17, -1, 0, ECHILD );
     is( $code, 255, 'waitpid failure maps to a non-zero status' );

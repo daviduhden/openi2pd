@@ -32,7 +32,10 @@ else {
     local $/;
     $output = <$fh>;
     my $closed = close $fh;
-    is( $closed ? 0 : ( $? >> 8 ), 0, 'validator exits successfully' );
+    my $status = $?;
+    # A signal can leave the shifted exit value at zero. Require the
+    # successful pipe close and the complete wait word, not just >> 8.
+    ok( $closed && $status == 0, 'validator exits successfully' );
     like( $output, qr/branding validation passed/,
         'validator reports success' );
 }
