@@ -955,8 +955,25 @@ void TestRPCMetadataFields ()
 	assert (torrent->SetMetaComment (comment));
 	assert (torrent->SetCreatedBy (creator));
 	auto work = boost::asio::make_work_guard (service);
+	// Adding metadata queues owner-retaining disk work. Run that domain
+	// too: an unstarted member queue otherwise keeps the tunnel alive.
+	auto & diskService = tunnel->GetDiskIOService ();
+	auto diskWork = boost::asio::make_work_guard (diskService);
+	std::jthread disk ([&] { diskService.run (); });
 	std::jthread engine ([&] { service.run (); });
-	auto stopEngine = i2p::modern::ScopeExit ([&] { service.stop (); engine.join (); });
+	std::weak_ptr<TorrentsTunnel> released = tunnel;
+	auto stopEngine = i2p::modern::ScopeExit ([&]
+		{
+			// Keep both domains available until final persistence finishes.
+			tunnel->Stop ();
+			diskWork.reset ();
+			disk.join ();
+			destination->Stop ();
+			service.stop ();
+			engine.join ();
+			tunnel.reset ();
+			assert (released.expired ());
+		});
 	TorrentsRPCServer server ("127.0.0.1", 0);
 	server.AddTunnel ("", tunnel);
 	server.Start ();

@@ -116,6 +116,13 @@ Do not let them edit, build or run tests.
 
 ## Known issues and decisions
 
+- Metadata-only RPC fixtures can still enqueue disk-domain work through
+  AddTorrent. Run or drain that executor as well as the destination service;
+  a member executor with an owner-retaining task can prevent destruction.
+  Keep both domains available through tunnel Stop and final persistence,
+  join disk work before stopping the destination service, and distinguish
+  these fixture leaks from ratchet-session ownership reports.
+
 - After a bencode dictionary key is consumed, failure to parse its value
   must return failure immediately. Breaking into delimiter handling can
   mistake an e in value position for the dictionary terminator. Cover

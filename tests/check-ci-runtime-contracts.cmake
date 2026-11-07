@@ -119,3 +119,6 @@ require_runtime_source("tests/test-i2ptunnel-stop.cpp"
   "assert (released.expired ());")
 require_runtime_source("tests/test-i2ptunnel-targets.cpp"
   "assert (released.expired ());")
+
+require_runtime_source("tests/test-torrents-security.cpp"
+  "auto diskWork = boost::asio::make_work_guard (diskService);")
