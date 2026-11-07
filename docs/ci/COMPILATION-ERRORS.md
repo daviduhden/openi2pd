@@ -20,6 +20,62 @@ compile or link failure.
 
 ## Runs reviewed
 
+### Published revision reviewed on 2026-11-05
+
+This batch compiled `01960093aeff480d24ed8507878355a643da168f`. The source
+fixes below remain local and are not validated by these runs.
+
+| Run | Exact jobs / result |
+|---|---|
+| [42056740314](https://github.com/daviduhden/openi2pd/actions/runs/42056740314) | OpenSSL 3 GCC `127347064556`, Clang `127347065517`: CE-076 |
+| [42056745588](https://github.com/daviduhden/openi2pd/actions/runs/42056745588) | OpenSSL 4 GCC `127347082633`, Clang `127347083394`: CE-076 |
+| [42056734723](https://github.com/daviduhden/openi2pd/actions/runs/42056734723) | OpenBSD `127347040995`: CE-076 |
+| [42056732400](https://github.com/daviduhden/openi2pd/actions/runs/42056732400) | MinGW `127347034154`: CE-076; MSVC `127347034968`: CW-020 and RT-032 recurrence |
+| [42056754181](https://github.com/daviduhden/openi2pd/actions/runs/42056754181) | UBSan `127347117917`, TSan `127347118420`, ASan/UBSan `127347118453`: CE-076; fuzz `127347117313`, docs `127347117881`, static contracts `127347117983`: success; optional Perl quality skipped |
+| [42056748811](https://github.com/daviduhden/openi2pd/actions/runs/42056748811) | Android `127347095759`: success with CW-021; API 29 UI skipped |
+| [42056751743](https://github.com/daviduhden/openi2pd/actions/runs/42056751743) | Linux consumer `127347106870`, interop `127347107515`: success |
+| [42056737144](https://github.com/daviduhden/openi2pd/actions/runs/42056737144) | service `127347050200`, Debian `127347051009`, service matrix `127347051108`, container `127347051182`, musl `127347051190`: success with CW-022 |
+
+### CE-076 — Unqualified EdDSA constants invalidate regression extents
+
+- **Diagnostic:** `test-eddsa.cpp:129/131/177/178` cannot resolve
+  `EDDSA25519_PRIVATE_KEY_LENGTH`, `EDDSA25519_SIGNATURE_LENGTH` and
+  `EDDSA25519_PUBLIC_KEY_LENGTH`. GCC's undeclared output/expanded/blinded
+  arrays are consequences of invalid extents, not separate crypto failures.
+- **Platforms:** GCC 16.2.0 / Clang 23.1.5 with OpenSSL 3.5.9 and 4.1.0;
+  OpenBSD Clang 22.1.6 / LibreSSL 4.4.0; MinGW and sanitizer compilation.
+- **Correction/global review:** qualify all five references with
+  `i2p::crypto::`. Equivalent uses in signature-identity-hardening have an
+  explicit local namespace import; native implementations are already in the
+  owning namespace. Preserve all positive and negative EdDSA assertions.
+- **State:** Implemented / static; Pending CI compilation / Pending CI tests.
+  Existing test-eddsa is the direct regression. Sanitizer lanes never reach
+  CTest, so RT-027/031 remain open. Their artifacts contain missing-image
+  manifests rather than new sanitizer execution evidence.
+
+The separately requested Windows diagnostic run
+[42061501515](https://github.com/daviduhden/openi2pd/actions/runs/42061501515)
+also compiles published `01960093`: MinGW `127364143189` repeats CE-076;
+MSVC `127364220253` is cancelled during compilation. The missing diagnostic
+binary reported afterward is a consequence of that incomplete build, not
+evidence of a wrong install path or a new compiler/linker error.
+
+### CE-077 — Local source checker invented names for unnamed parameters
+
+- **Observed locally, compile-free only:** check-doxygen-params.pl reported
+  `i2pd_android.cpp:1243: undocumented parameter(s): jclass`. The JNI class
+  parameter is intentionally unnamed after CW-018; actual Doxygen accepts
+  this declaration. This is a checker defect, not an Android compiler error.
+- **Cause/global correction:** the lexical parser treated a lone typedef as
+  its own parameter name. Recognize abstract declarators, qualified types,
+  cv/elaborated specifiers and builtin type combinations without changing
+  signature arity or named/function-pointer parameter checks. Arbitrary C++
+  symbol resolution remains outside a source-only lexical checker.
+- **Regressions/state:** positive unnamed/JNI/type fixtures plus negative
+  actual named-parameter omissions are prepared in maintenance-checkers.t.
+  The source checker now passes locally. Behavioral fixtures remain Pending
+  CI tests; no warning suppression or fictional @param was added.
+
 ### Published revision reviewed on 2026-11-04
 
 All eight new workflows used `d7e8491ce31f46912103e761c6d5ec2cd7f747cf`.

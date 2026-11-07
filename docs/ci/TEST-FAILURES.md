@@ -5,6 +5,26 @@ and license details.
 
 # Test failure inventory
 
+## Published revision `01960093` (2026-11-05)
+
+| ID | Exact evidence | Disposition |
+|---|---|---|
+| TF-046 / TF-062 | Windows 42056732400, MSVC `127347034968`: test-tui-protocol heap exception `0xc0000374`, empty LastTest output | Unresolved RT-032; constant phase markers prepared, published PageHeap run 42061501515 dispatched |
+| TF-072 | Same Windows job: test-privsep-windows-supervisor skipped after `worker pipe accept timeout` at startup | Capability/worker-start evidence gap; no claim that handshake/restart/stop passed; child-liveness diagnostics prepared |
+| TF-073 | Validation 42056754181 sanitizer jobs `127347117917`, `127347118420`, `127347118453` never reach CTest | CE-076 compile blocker; absence of new reports does not resolve old RT-027/031 |
+
+Linux consumer/interop 42056751743, Android 42056748811, Packaging 42056737144
+and Validation's fuzz/docs/static siblings pass at the full SHA recorded in
+the compilation inventory. Optional Android device and Perl quality lanes
+were skipped. These results validate only the operations actually executed,
+not local fixes or the full supported matrix.
+
+Prepared regressions: test-stream-creation-sync (both synchronous callback
+paths), malformed Windows hello/re-arm in the existing IPC suite, extended
+Tools manpage install checks and negative sanitizer-evidence fixtures.
+Source-only checks pass separately; all behavioral execution remains pending
+manual CI on a revision containing these local changes.
+
 ## Batch `63c42ca4` (run 41232676139, MSYS2) and 41232673150 (Linux)
 
 This is the first batch that executed the newly added suites: the Linux lanes

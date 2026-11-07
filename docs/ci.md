@@ -47,7 +47,10 @@ reviewed. The C++ job also uploads a list of TODO/FIXME/XXX candidates for
 human comparison with `TODO.md`; a textual match can include a string literal
 and does not establish that a marker is tracked. External specification URLs
 still require review. Generated reports are CI artifacts, not installed files.
-This lane is prepared by static analysis and has not yet run. The
+Source documentation passed in Validation run
+[42056754181](https://github.com/daviduhden/openi2pd/actions/runs/42056754181)
+at `01960093aeff480d24ed8507878355a643da168f`; that result does not establish
+complete documentation coverage or validate later local changes. The
 language-specific comment conventions, Doxygen/Javadoc/POD rules and the
 review checklist are in [source documentation](source-documentation.md).
 
@@ -67,6 +70,12 @@ Each record identifies the published revision and lane, preserves the
 diagnostic, distinguishes cause from hypothesis, and states whether a
 correction has static review or CI evidence. Search semantically related
 callers and platform branches before closing a finding.
+
+Configure and build evidence must survive a failure before CTest starts.
+The OpenSSL composite and sanitizer jobs capture merged stderr/stdout with
+pipefail, then always upload the named logs, CMake cache and configure-probe
+report. Negative source fixtures independently pin capture, failure
+propagation and upload; no missing test binary is interpreted as a clean run.
 
 ## Hardening applied
 

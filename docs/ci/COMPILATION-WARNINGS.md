@@ -8,6 +8,60 @@ about later targets.
 
 ## History coverage
 
+The 2026-11-05 snapshot adds eight runs: **263 runs / 52 SHAs / 16 workflow
+names**, with 171 failures, 62 cancellations and 30 successes. The eight full
+new logs supplement the previous 252 complete logs, one partial and two
+unavailable. Successful Android, Linux and packaging logs were reviewed too.
+Exact new jobs and SHAs are in [the error inventory](COMPILATION-ERRORS.md).
+Raw evidence is under `/tmp/openi2pd-audit-20261105`; larger Windows and
+package artifacts are under `/var/tmp/openi2pd-ci-20261105` after a temporary
+download hit the `/tmp` quota. No artifact is installed, executed or checked in.
+
+### CW-020 — MSVC captures and cleanup locals shadow existing names
+
+- **Observed:** Windows [42056732400](https://github.com/daviduhden/openi2pd/actions/runs/42056732400),
+  MSVC `127347034968`, SHA `01960093aeff480d24ed8507878355a643da168f`:
+  C4458 at `Destination.cpp:1087` (`weak` hides a closure member) and C4457 at
+  `ECIESX25519AEADRatchetSession.cpp:1059` (`receive` hides a parameter).
+- **Correction:** rename the nested verification owner to `verificationWeak`
+  and the cleanup lock to `expiredReceive`. Preserve all captures, lock
+  boundaries and retention of receive owners until after mutex release.
+- **Global review:** inspected sibling nested callbacks and ratchet cleanup
+  scopes; separate methods/branches are legitimate scopes. Implemented /
+  static; Pending MSVC CI compilation. No cast or suppression was added.
+
+### CW-021 — Successful Android configure emitted wrapper warnings
+
+- **Observed:** Android [42056748811](https://github.com/daviduhden/openi2pd/actions/runs/42056748811),
+  `127347095759`, same SHA: no direct `project()` and minimum-version ordering
+  warnings, plus five unused legacy Boost include/library cache hints.
+- **Correction:** declare `project(OpenI2PdAndroid LANGUAGES C CXX)` immediately
+  after the wrapper's minimum version. Remove unused hints from both arm64
+  and x86_64 workflow environments; retain prefix/root config discovery.
+  Reviewed other CMake entrypoints and kept genuine subdirectories unchanged.
+- **Regression/state:** the Java-25 configuration source guard pins the
+  project declaration. Implemented / static; Pending Android CI compilation.
+  The old successful APK/Javac/dex/lint result does not validate this change,
+  and its optional API 29 device lane was skipped.
+
+### CW-022 — Successful Debian package lacked native-tool manuals
+
+- **Observed:** Packaging [42056737144](https://github.com/daviduhden/openi2pd/actions/runs/42056737144),
+  Debian `127347051009`, same SHA: fifteen `no-manual-page` warnings and
+  `wrong-name-for-upstream-changelog` for `ChangeLog.gz`.
+- **Artifact:** exact uploaded `.deb` archive has only router/i2pdctl pages
+  and uppercase `ChangeLog.gz`, alongside `changelog.Debian.gz`. Missing
+  content and the install graph are the cause, not a guessed helper failure.
+- **Correction/global review:** add a native-tool reference and fifteen
+  command aliases, install together in Tools, and align Debian and both RPM
+  manifests. Install source ChangeLog as canonical lowercase `changelog`;
+  keep original source/provenance and adapt package smoke expectations.
+- **Regressions/state:** component install checks now require every command
+  alias plus its shared target; Debian source contracts and smoke cover the
+  payload. Implemented / static; Pending CI tests and package validation.
+  External debugedit DWARF, autopkgtest `--force-yes` and action-runtime
+  deprecations remain distinct unresolved dependency diagnostics (CW-015).
+
 The 2026-11-04 refresh paginated the complete accessible API: **255 runs**,
 **51 SHAs**, **16 current/former workflow names**, dated 2026-10-17 through
 2026-11-04 (166 failed, 62 cancelled, 27 successful). Retrieved full logs for

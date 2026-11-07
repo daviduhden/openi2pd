@@ -108,6 +108,10 @@ Include successful steps inside failed jobs in the warning review. Preserve
 configure and build output even when CTest never starts; distinguish expected
 negative feature probes from project diagnostics and record unavailable
 logs or missing artifacts as evidence gaps, never as clean results.
+Revisit historical runtime families after each compile blocker is removed:
+an earlier passing sibling test cannot resolve a different sanitizer report.
+Record capability skips with their exact startup reason; a skipped worker
+test provides no evidence for its subsequent handshake or shutdown paths.
 When a warning repeats across many test targets, inspect whether one shared
 support translation unit is linked into each executable and group the reports
 by source cause. Also classify successful-run package, action-runtime and

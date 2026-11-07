@@ -8,6 +8,17 @@ static hypotheses must remain explicitly distinguished.
 
 ## Required triage sequence
 
+The 2026-11-05 review adds namespace-owned array extents (CE-076), closure
+member shadowing on MSVC (CW-020), real CMake wrapper entrypoints and obsolete
+cache hints (CW-021), and exact-archive manual/changelog evidence (CW-022).
+Follow the [runtime regression guide](REGRESSION-PATTERNS.md) for the resulting
+publication, cancellation, provider-failure and accepted-handle searches.
+Sanitizer configure/build stderr is now preserved independently of CTest;
+negative workflow fixtures pin capture, failure propagation and upload.
+CE-077 also pins a lexical tooling boundary: unnamed parameter types are not
+documentation names. Keep arity, real named operands and function-pointer
+checks intact when handling abstract C++ declarators.
+
 The 2026-11-04 continuation adds these reusable checks (CE-074/075,
 CW-016/017), distinct from historical runtime findings:
 

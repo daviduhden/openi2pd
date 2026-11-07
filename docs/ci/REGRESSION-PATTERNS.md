@@ -24,6 +24,26 @@ than relying on the original failure to recur.
 
 ## Runtime and package regressions
 
+- **Volatile publication:** inspect both the predicate and result under one
+  mutex; volatile is not cross-thread synchronization. A callback notifying
+  a caller-local CV must finish notification before the waiting caller can
+  destroy that CV. Test both async-to-sync overloads with a live executor.
+- **Stop notification:** an atomic stop flag plus a notify-only callback can
+  still miss a wakeup between predicate evaluation and parking. Prefer the
+  standard stop-token-aware wait and distinguish timeout from cancellation.
+- **Accepted resource ownership:** a temporary channel cannot own the same
+  HANDLE as a reusable listener. Exercise a terminal malformed-frame close
+  followed by successful re-authentication; semantic role rejection alone
+  does not reach the transport-close path.
+- **Shared deadline:** peer inspection, first-frame authentication, rejection
+  backoff and retry sleeps consume one original budget. Never grant a fresh
+  phase timeout when the outer deadline is almost exhausted.
+- **Failed provider output:** constructor candidates must remain private until
+  entropy succeeds; persisted state must not revive failed initialization.
+- **Package warnings:** inspect the exact archive, provide actual manuals,
+  and test both alias and shared-target ownership. A successful Lintian step
+  configured to fail only on errors may still report project warning debt.
+
 - **Windows handle baseline:** a fail-closed test must validate configuration
   before creating profiles/tokens/jobs and compare handle counts after every
   terminal path.

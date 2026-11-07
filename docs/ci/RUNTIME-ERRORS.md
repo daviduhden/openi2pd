@@ -5,6 +5,84 @@ and license details.
 
 # Runtime error inventory
 
+## 2026-11-05 preventive and historical continuation
+
+### RT-034 — Static cross-thread publication and cancellation defects
+
+- **Origin:** preventive equivalent-pattern review, not a newly executed
+  sanitizer report. Latest sanitizer jobs stop at CE-076.
+- **Confirmed code:** `ClientDestination::CreateStreamSync` used volatile
+  completion and accessed its stream outside a common mutex. AddressBook's
+  volatile `m_IsLoaded` crosses subscription/admin threads. Reseed's separate
+  notify-only stop callback could miss cancellation between predicate and park.
+- **Correction:** publish stream and completion under one mutex and use a
+  predicate wait; keep notification inside the lock so the caller-local CV
+  cannot be destroyed before notification. Make the address-book flag atomic;
+  this alone does not grant synchronized access to storage. Use the standard
+  stop-token-aware condition_variable_any wait in the reseed retry interval.
+- **Global review/regression:** searched volatile flags, condition variables,
+  callback publication and cancellation. New test-stream-creation-sync covers
+  both production overloads with a live executor and unready destination;
+  existing reseed lifecycle tests and source contracts remain enabled.
+  Own-executor synchronous calls now fail before posting instead of deadlocking;
+  contracts direct those callers to callback overloads and the regression
+  covers both rejected synchronous forms. Implemented / static; Pending CI
+  compilation / Pending CI tests. Complete storage lifetime authority remains
+  separate work.
+
+### RT-035 — Static unchecked DHT identity entropy failure
+
+- **Confirmed code:** TorrentsDHT constructor ignored RAND_bytes failure
+  before routing-table creation. This is a static provider-failure defect,
+  not evidence of a generated weak identity in a real run.
+- **Correction/consumers:** clear failed partial IDs, leave routing table
+  absent, reject Start before persisted-state loading or receiver/timer setup,
+  and publish only initialized DHT candidates from TorrentsTunnel. No predictable
+  fallback, capability or port advertisement is introduced.
+- **Regressions/state:** source contracts pin generation/start/publication;
+  provider-failure injection remains Pending CI tests. TunnelConfig unchecked
+  entropy remains a separate open construction/failure-contract investigation.
+
+### RT-036 — Recovered older sanitizer families
+
+- [39222148542](https://github.com/daviduhden/openi2pd/actions/runs/39222148542),
+  SHA `0cf32519b5841f995bbd6b77849664caae0b225f`, ASan/UBSan
+  `117959731699`: test-http-res leaks 248 bytes / two allocations; test-eddsa
+  has an OpenSSL allocation leak of 1,048 bytes / two allocations; the
+  signature-identity-hardening truncated-certificate fixture writes two bytes
+  beyond its old five-byte extension. Current fixture reserves six bytes.
+- [39215938005](https://github.com/daviduhden/openi2pd/actions/runs/39215938005),
+  SHA `e37a4325da4de96e09a5f881185b5dba84032e07`: TSan `117939888841`
+  reports NSS crashes in tunnel-pool tests; null identity observations belong
+  to these historical fixture/lifecycle families. Do not infer a current root
+  from the external frame alone.
+- **Later exact evidence:** Validation 41364867079, SHA `56f17c0f`, ASan/UBSan
+  `125022771190` and TSan `125022771257` pass test-http-res,
+  test-signature-identity-hardening and test-tunnelpool-zero-hop. Preserve those
+  observations without attributing them to today's source. They do not close
+  the distinct EdDSA provider leak, RT-027 or current RT-031 ownership reports.
+
+### RT-037 — Static Windows accepted-pipe authority and deadline defects
+
+- **Confirmed code:** a candidate WindowsChannel borrowed the listener's
+  owning HANDLE. Terminal Receive errors closed it while WindowsServer still
+  retained the same value. The server could disconnect/close a stale handle.
+  WorkerHello also received a fresh five-second budget after connection and
+  peer inspection, exceeding the outer accept deadline.
+- **Correction/global review:** duplicate accepted handles in both Accept
+  paths; candidates own only their duplicate and the server retains its
+  listener for rejection/re-arm. On success close the original and transfer
+  the candidate alone. Bound hello, rejection backoff and connect retry waits
+  by the original remaining budget. Rejected candidates no longer Release
+  borrowed ownership. Privilege, identity and nonce checks remain mandatory.
+- **Regressions/state:** malformed transport hello followed by a valid
+  reconnect/Ping/Pong exercises terminal-close and re-arm. Source contracts
+  pin ownership/deadline seams. Supervisor failures now retain only a fixed
+  child-liveness outcome or numeric exit code before teardown, never nonce or
+  command-line operands. Implemented / static; Pending Windows CI tests.
+  This finding is not yet the demonstrated cause of RT-032 or the observed
+  supervisor startup skip.
+
 Runtime diagnostics are separated from compile/link failures. A process that
 exits zero can still have produced a sanitizer report; a fail-fast test exit
 is not a compile error.
@@ -625,6 +703,26 @@ Found by the static audit that followed CE-070; none was observed in CI.
 - **Cause/state:** allocations and ownership stacks must be mapped from the adjacent complete sanitizer output before assigning a product root. The test failures do not by themselves prove races, but TSan reports are actionable findings. **Correction pending; Pending CI tests.**
 
 ### RT-032 — intermittent MSVC heap corruption recurred
+
+- **2026-11-05 recurrence:** [42056732400](https://github.com/daviduhden/openi2pd/actions/runs/42056732400),
+  MSVC `127347034968`, SHA `01960093aeff480d24ed8507878355a643da168f`:
+  `test-tui-protocol` exits `0xc0000374` after 0.28 seconds. Exact uploaded
+  LastTest.log has empty test output. Six selected tests pass; worker
+  supervisor skips at startup (`worker pipe accept timeout`). These results
+  do not clear the corruption or validate live-worker supervision.
+- **Current investigation:** reviewed parser ownership, expected values,
+  tracker indices, framing and comment slicing without a demonstrated root.
+  Added constant flushed phase markers, preserving assertions and avoiding
+  inputs/credentials. Dispatched published Windows run
+  [42061501515](https://github.com/daviduhden/openi2pd/actions/runs/42061501515)
+  with `heap_diagnostics=true`; it runs the published SHA, not local markers.
+  MSVC job `127364220253` was cancelled during compilation; the always-run
+  diagnostic then reports missing test-tui-protocol.exe. The exact artifact
+  contains only debugger commands, no PageHeap stack or produced test image.
+  MinGW `127364143189` still fails CE-076 on that unchanged published SHA.
+  Cancellation's external cause is not established. No automatic retry was
+  used. Symbol-only PageHeap/CDB evidence is still required. No speculative product
+  rewrite or timeout inflation is used to hide this finding.
 
 - **Run/job:** Windows [41364870388](https://github.com/daviduhden/openi2pd/actions/runs/41364870388), MSVC job `125022780835`, SHA `56f17c0f47a3d1a328be6c54df7b661c480924f8`.
 - **Tests:** `test-tui-protocol`, `test-tui-pipe-name` and `test-privsep-windows-isolation` exit `0xc0000374`; `test-tui-win32-pipe` asserts `GetLastError() == ERROR_ACCESS_DENIED` and exits `0xc0000409`.
