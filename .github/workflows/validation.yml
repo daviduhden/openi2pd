@@ -163,7 +163,7 @@ jobs:
           persist-credentials: false
       - name: Install latest build tools from Homebrew
         timeout-minutes: 20
-        uses: ./.github/actions/brew-toolchain
+        uses: ./.github/actions/brew-toolchain # zizmor: ignore[self-repository] actionlint 1.7.12 does not accept GitHub $/ self-repository syntax
       - name: Locate LLVM symbolizer
         run: |
           clang_path=$(readlink -f "$(command -v clang)")
@@ -185,6 +185,8 @@ jobs:
           ASAN_OPTIONS: ${{ matrix.asan_options }}
           UBSAN_OPTIONS: ${{ matrix.ubsan_options }}
           TSAN_OPTIONS: "halt_on_error=1:second_deadlock_stack=1"
+          SANITIZER_FLAGS: ${{ matrix.flags }}
+          SANITIZER_NAME: ${{ matrix.name }}
         run: |
           set -euo pipefail
           cmake -S build -B build-sanitizers -G Ninja \
@@ -193,10 +195,10 @@ jobs:
             -DBUILD_TESTING=ON -DWITH_UPNP=OFF \
             -DI2PD_REQUIRE_PERL=ON \
             -DI2PD_BUILD_TUI=ON -DI2PD_OPENSSL_EXPECT=OpenSSL \
-            ${{ matrix.flags }} 2>&1 | tee sanitizer-configure.log
+            $SANITIZER_FLAGS 2>&1 | tee sanitizer-configure.log
           cmake --build build-sanitizers --parallel 2 2>&1 | tee sanitizer-build.log
           ctest --test-dir build-sanitizers -j 1 --output-on-failure \
-            --no-tests=error --output-junit "$PWD/ctest-sanitizers-${{ matrix.name }}.xml"
+            --no-tests=error --output-junit "$PWD/ctest-sanitizers-${SANITIZER_NAME}.xml"
       - name: Record sanitizer reproduction identities
         if: always()
         run: |
@@ -235,6 +237,7 @@ jobs:
           retention-days: 7
 
   fuzz-smoke:
+    name: Bounded fuzz smoke checks
     runs-on: ubuntu-24.04
     # The step budgets below (20 toolchain + 30 build + 10 CTest smoke +
     # 25 bounded run + 5 upload) exceed 60 minutes, so the job cap must
@@ -250,7 +253,7 @@ jobs:
           persist-credentials: false
       - name: Install latest build tools from Homebrew
         timeout-minutes: 20
-        uses: ./.github/actions/brew-toolchain
+        uses: ./.github/actions/brew-toolchain # zizmor: ignore[self-repository] actionlint 1.7.12 does not accept GitHub $/ self-repository syntax
       - name: Build libFuzzer targets
         timeout-minutes: 30
         run: |
@@ -274,7 +277,15 @@ jobs:
             --output-junit "$PWD/ctest-fuzz.xml"
       - name: Run bounded fuzz smoke checks
         timeout-minutes: 25
+        env:
+          FUZZ_SECONDS: ${{ inputs.fuzz_seconds }}
         run: |
+          case "$FUZZ_SECONDS" in
+            ''|*[!0-9]*)
+              echo "fuzz_seconds must be a non-negative integer" >&2
+              exit 1
+              ;;
+          esac
           artifact_root="$RUNNER_TEMP/fuzz-artifacts"
           mkdir -p "$artifact_root"
           summary="$RUNNER_TEMP/fuzz-summary.md"
@@ -295,7 +306,7 @@ jobs:
               cp -a "tests/fuzz/corpus/$fuzzer/." "$corpus"/
             fi
             if "build-fuzz/tests/$fuzzer" \
-              -max_total_time=${{ inputs.fuzz_seconds }} \
+              -max_total_time="$FUZZ_SECONDS" \
               -timeout=10 \
               -max_len=65536 \
               -rss_limit_mb=6144 \

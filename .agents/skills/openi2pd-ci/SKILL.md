@@ -110,6 +110,9 @@ workflow, run `gh`, build or test.
   independently upgradable workflow tools.
 - Do not add `continue-on-error`, ignore a failing test or suppress warnings to
   make a job green.
+- Never interpolate a `workflow_dispatch` input directly into a `run:` block.
+  Pass it through `env:` and validate its shape first; the fuzz lane accepts
+  only digits in `FUZZ_SECONDS`.
 - Do not attribute a run to a revision it did not build. Local uncommitted
   changes are not validated by an earlier remote run.
 - For every compiler or linker warning, inspect successful and failed job
