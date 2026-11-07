@@ -93,6 +93,38 @@ executing project code, or inspect a real private key.
 
 ## Known issues and decisions
 
+- Inspect nested framing randomness before publishing tunnel correlation,
+  not only explicit key/tag fills. Complete wrapping first, cleanse both
+  secrets on every exit, and retire an unsent attempt by identity outside
+  its correlation lock when construction throws.
+- Handshake resend buffers are transactional output. Revoke them before
+  provider work in local builders, but preserve the previous valid attempt
+  when unauthenticated input is rejected. A validated Retry/version change
+  retires old wire state before initializing its replacement.
+- Router key candidates must be cleansed if entropy or persistence fails.
+  Supported identity generation failures must not retry another algorithm;
+  keep explicitly requested legacy types separate from failure handling.
+- A checked provider wrapper is insufficient if its caller ignores status.
+  Review Tag::Randomize and key-generation consumers as well as RAND calls;
+  never submit a zeroed failure buffer as a new lookup identity.
+
+- GetRngSeed publishes a 32-bit provider result, including zero, or throws
+  on provider failure. Never replace failed randomness with clocks or a
+  fixed value. Its per-call constrained byte-source adapter permits
+  deterministic boundary/failure tests without changing global providers.
+  Review constructor and executor exception boundaries when adding callers:
+  global initialization can terminate before main, and this API does not
+  promise graceful recovery. Provider-diversity tests must allow legitimate
+  32-bit collisions instead of requiring every sample to be unique.
+- Random.h owns checked byte filling for callers that abort by exception:
+  FillRandomBytes handles the provider's signed byte-count bound and skips
+  empty spans, cleansing the entire destination before propagating provider
+  failure. Its per-call source seam tests partial writes without modifying
+  global providers. RandomUInt32 propagates failure rather than returning
+  zero; otherwise RandomBelow can spin forever rejecting a failed word for
+  a non-power-of-two bound. Keep valid zero and failure as separate cases,
+  and test both rejection sampling and first-attempt failure propagation.
+
 - Secret-cleansing source contracts must follow the owning RAII deleter
   when a raw BN_clear_free call is removed. Pin both the secret BIGNUM
   owner type and its BN_clear_free construction rather than requiring a

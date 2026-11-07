@@ -12,6 +12,7 @@
 
 #include <cstring>
 #include "Log.h"
+#include "Random.h"
 #include "SSU2.h"
 #include "SSU2OutOfSession.h"
 #include "Transports.h"
@@ -388,7 +389,7 @@ namespace transport
 		uint8_t h[32], payload[SSU2_MAX_PACKET_SIZE];
 		// fill packet
 		header.h.connID = GetDestConnID (); // dest id
-		RAND_bytes (header.buf + 8, 4); // random packet num
+		i2p::crypto::FillRandomBytes (std::span { header.buf + 8, 4 });
 		header.h.type = eSSU2PeerTest;
 		header.h.flags[0] = 2; // ver, always 2 even for post-quantum
 		header.h.flags[1] = (uint8_t)i2p::context.GetNetID (); // netID
@@ -522,14 +523,14 @@ namespace transport
 		uint8_t h[32], payload[SSU2_MAX_PACKET_SIZE];
 		// fill packet
 		header.h.connID = GetDestConnID (); // dest id
-		RAND_bytes (header.buf + 8, 4); // random packet num
+		i2p::crypto::FillRandomBytes (std::span { header.buf + 8, 4 });
 		header.h.type = eSSU2HolePunch;
 		header.h.flags[0] = SSU2_HOLE_PUNCH_VERSION; // ver, always 2
 		header.h.flags[1] = (uint8_t)i2p::context.GetNetID (); // netID
 		header.h.flags[2] = 0; // flag
 		memcpy (h, header.buf, 16);
 		htobuf64 (h + 16, GetSourceConnID ()); // source id
-		RAND_bytes (h + 24, 8); // header token, to be ignored by Alice
+		i2p::crypto::FillRandomBytes (std::span { h + 24, 8 });
 		// payload
 		payload[0] = eSSU2BlkDateTime;
 		htobe16buf (payload + 1, 4);

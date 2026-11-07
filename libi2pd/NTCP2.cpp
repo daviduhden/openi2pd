@@ -25,6 +25,7 @@
 #include "Log.h"
 #include "I2PEndian.h"
 #include "Crypto.h"
+#include "Random.h"
 #if OPENSSL_SIPHASH
 #include <openssl/core_names.h>
 #endif
@@ -332,7 +333,15 @@ namespace transport
 		// padding
 		if (paddingLength)
 		{
-			RAND_bytes (m_Buffer + offset, static_cast<int> (paddingLength));
+			try
+			{
+				i2p::crypto::FillRandomBytes (std::span { m_Buffer + offset, paddingLength });
+			}
+			catch (const std::runtime_error &)
+			{
+				LogPrint (eLogError, "NTCP2: SessionRequest randomness unavailable");
+				return false;
+			}
 			MixHash (m_Buffer + offset, paddingLength);
 		}
 		m_BufferLen = offset + paddingLength;
@@ -411,7 +420,15 @@ namespace transport
 		// padding
 		if (paddingLength)
 		{
-			RAND_bytes (m_Buffer + offset, static_cast<int> (paddingLength));
+			try
+			{
+				i2p::crypto::FillRandomBytes (std::span { m_Buffer + offset, paddingLength });
+			}
+			catch (const std::runtime_error &)
+			{
+				LogPrint (eLogError, "NTCP2: SessionCreated randomness unavailable");
+				return false;
+			}
 			MixHash (m_Buffer + offset, paddingLength);
 		}
 		m_BufferLen = offset + paddingLength;
@@ -2288,7 +2305,19 @@ namespace transport
 		{
 			if (m_NextPaddingSize >= 16)
 			{
-				RAND_bytes ((uint8_t *)m_PaddingSizes, sizeof (m_PaddingSizes));
+				try
+				{
+					i2p::crypto::FillRandomBytes (
+						std::span { reinterpret_cast<uint8_t *> (m_PaddingSizes), sizeof (m_PaddingSizes) });
+				}
+				catch (const std::runtime_error &)
+				{
+					// Returning zero would mean valid omitted padding to callers.
+					// Close without another randomized frame, then abort the send.
+					m_NextSendBuffer.reset ();
+					Terminate ();
+					throw;
+				}
 				m_NextPaddingSize = 0;
 			}
 			paddingSize = m_PaddingSizes[m_NextPaddingSize++] % (paddingSize + 1);

@@ -27,6 +27,7 @@
 #include "Config.h"
 #include "Profiling.h"
 #include "Crypto.h"
+#include "Random.h"
 #include "Ed25519.h"
 #include "Timestamp.h"
 #include "I2NPProtocol.h"
@@ -574,9 +575,11 @@ void RouterContext::NewNTCP2Keys ()
 	auto staticKeys = std::make_unique<i2p::crypto::X25519Keys> ();
 	if (!staticKeys->GenerateKeys ()) throw std::runtime_error ("Router: NTCP2 static key generation failed");
 	auto keys = std::make_unique<NTCP2PrivateKeys> ();
+	auto cleanseCandidate = i2p::modern::ScopeExit ([&keys]
+		{ if (keys) OPENSSL_cleanse (keys.get (), sizeof (NTCP2PrivateKeys)); });
 	staticKeys->GetPrivateKey (keys->staticPrivateKey);
 	memcpy (keys->staticPublicKey, staticKeys->GetPublicKey (), 32);
-	RAND_bytes (keys->iv, 16);
+	i2p::crypto::FillRandomBytes (std::span { keys->iv, 16 });
 	// save
 	if (!WriteRetainedFixedFile (i2p::data::RouterPersistentFile::NTCP2Keys,
 			std::span<const uint8_t> (reinterpret_cast<const uint8_t *> (keys.get ()), sizeof (NTCP2PrivateKeys))))
@@ -592,9 +595,11 @@ void RouterContext::NewSSU2Keys ()
 	auto staticKeys = std::make_unique<i2p::crypto::X25519Keys> ();
 	if (!staticKeys->GenerateKeys ()) throw std::runtime_error ("Router: SSU2 static key generation failed");
 	auto keys = std::make_unique<SSU2PrivateKeys> ();
+	auto cleanseCandidate = i2p::modern::ScopeExit ([&keys]
+		{ if (keys) OPENSSL_cleanse (keys.get (), sizeof (SSU2PrivateKeys)); });
 	staticKeys->GetPrivateKey (keys->staticPrivateKey);
 	memcpy (keys->staticPublicKey, staticKeys->GetPublicKey (), 32);
-	RAND_bytes (keys->intro, 32);
+	i2p::crypto::FillRandomBytes (std::span { keys->intro, 32 });
 	// save
 	if (!WriteRetainedFixedFile (i2p::data::RouterPersistentFile::SSU2Keys,
 			std::span<const uint8_t> (reinterpret_cast<const uint8_t *> (keys.get ()), sizeof (SSU2PrivateKeys))))
@@ -2049,9 +2054,9 @@ uint64_t RouterContext::Publish ()
 	if (floodfill)
 	{
 		uint32_t replyToken;
-		RAND_bytes ((uint8_t *)&replyToken, 4);
+		i2p::crypto::FillRandomBytes (std::span { reinterpret_cast<uint8_t *> (&replyToken), sizeof (replyToken) });
 		LogPrint (eLogInfo, "Router: Publishing our RouterInfo to ",
-			i2p::data::GetIdentHashAbbreviation (floodfill->GetIdentHash ()), ". reply token=", replyToken);
+			i2p::data::GetIdentHashAbbreviation (floodfill->GetIdentHash ()));
 		auto onDrop = [this] ()
 		{
 			auto service = m_Service.Load (std::memory_order_acquire);

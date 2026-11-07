@@ -17,6 +17,7 @@
 #include <utility>
 #include <cstring>
 #include "Crypto.h"
+#include "Random.h"
 #include "Log.h"
 #include "RouterInfo.h"
 #include "RouterContext.h"
@@ -290,7 +291,8 @@ namespace stream
 		, m_JitterDiv (1)
 		, m_MTU (STREAMING_MTU)
 	{
-		RAND_bytes ((uint8_t *)&m_RecvStreamID, 4);
+		i2p::crypto::FillRandomBytes (
+			std::span { reinterpret_cast<uint8_t *> (&m_RecvStreamID), sizeof (m_RecvStreamID) });
 		m_RemoteIdentity = remote->GetIdentity ();
 		auto outboundSpeed = m_LocalDestinationOwner->GetOwner ()->GetStreamingOutboundSpeed ();
 		if (outboundSpeed) m_MinPacingTime = (1000000LL * STREAMING_MTU) / outboundSpeed;
@@ -373,7 +375,8 @@ namespace stream
 		, m_JitterDiv (1)
 		, m_MTU (STREAMING_MTU)
 	{
-		RAND_bytes ((uint8_t *)&m_RecvStreamID, 4);
+		i2p::crypto::FillRandomBytes (
+			std::span { reinterpret_cast<uint8_t *> (&m_RecvStreamID), sizeof (m_RecvStreamID) });
 		auto outboundSpeed = m_LocalDestinationOwner->GetOwner ()->GetStreamingOutboundSpeed ();
 		if (outboundSpeed) m_MinPacingTime = (1000000LL * STREAMING_MTU) / outboundSpeed;
 

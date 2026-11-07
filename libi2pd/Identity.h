@@ -75,6 +75,8 @@ namespace data
 		operator const uint8_t *() const { return reinterpret_cast<const uint8_t *> (this); }
 	};
 
+	/// Generate the legacy DSA/ElGamal shape, or throw on provider failure.
+	/// Partial private output is cleared before propagating the exception.
 	Keys CreateRandomKeys ();
 
 	const size_t DEFAULT_IDENTITY_SIZE = sizeof (Identity); // 387 bytes
@@ -262,6 +264,10 @@ namespace data
 
 		static std::shared_ptr<i2p::crypto::CryptoKeyDecryptor> CreateDecryptor (
 			CryptoKeyType cryptoType, const uint8_t * key);
+		/// Generate owned keys; provider/generation failure throws and clears
+		/// temporary private material. Unsupported selections retain the
+		/// legacy compatibility mapping; inspect returned types when exact
+		/// algorithm selection is required.
 		static PrivateKeys CreateRandomKeys (SigningKeyType type = SIGNING_KEY_TYPE_DSA_SHA1,
 			CryptoKeyType cryptoType = CRYPTO_KEY_TYPE_ELGAMAL, bool isDestination = false);
 		static bool GenerateSigningKeyPair (SigningKeyType type, uint8_t * priv, uint8_t * pub);

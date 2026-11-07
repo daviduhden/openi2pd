@@ -18,6 +18,7 @@
 #include <optional>
 #include <cstring>
 #include "Crypto.h"
+#include "Random.h"
 #include "I2PEndian.h"
 #include "Log.h"
 #include "Modern.h"
@@ -140,7 +141,7 @@ namespace data
 		, m_IsValid (true)
 	{
 		uint8_t randomPaddingBlock[32] { };
-		RAND_bytes (randomPaddingBlock, 32);
+		i2p::crypto::FillRandomBytes (randomPaddingBlock);
 		const bool shortEncryptionKey = cryptoType == CRYPTO_KEY_TYPE_ECIES_X25519_AEAD
 			|| cryptoType == CRYPTO_KEY_TYPE_ECIES_MLKEM512_X25519_AEAD
 			|| cryptoType == CRYPTO_KEY_TYPE_ECIES_MLKEM768_X25519_AEAD
@@ -168,14 +169,14 @@ namespace data
 			case SIGNING_KEY_TYPE_ECDSA_SHA256_P256:
 			{
 				size_t padding = 128 - i2p::crypto::ECDSAP256_KEY_LENGTH; // 64 = 128 - 64
-				RAND_bytes (m_StandardIdentity.signingKey, static_cast<int> (padding));
+				i2p::crypto::FillRandomBytes (std::span { m_StandardIdentity.signingKey, padding });
 				memcpy (m_StandardIdentity.signingKey + padding, signingKey, i2p::crypto::ECDSAP256_KEY_LENGTH);
 				break;
 			}
 			case SIGNING_KEY_TYPE_ECDSA_SHA384_P384:
 			{
 				size_t padding = 128 - i2p::crypto::ECDSAP384_KEY_LENGTH; // 32 = 128 - 96
-				RAND_bytes (m_StandardIdentity.signingKey, static_cast<int> (padding));
+				i2p::crypto::FillRandomBytes (std::span { m_StandardIdentity.signingKey, padding });
 				memcpy (m_StandardIdentity.signingKey + padding, signingKey, i2p::crypto::ECDSAP384_KEY_LENGTH);
 				break;
 			}
@@ -216,7 +217,7 @@ namespace data
 			{
 				// 256
 				size_t padding = 128 - i2p::crypto::GOSTR3410_256_PUBLIC_KEY_LENGTH; // 64 = 128 - 64
-				RAND_bytes (m_StandardIdentity.signingKey, static_cast<int> (padding));
+				i2p::crypto::FillRandomBytes (std::span { m_StandardIdentity.signingKey, padding });
 				memcpy (
 					m_StandardIdentity.signingKey + padding, signingKey, i2p::crypto::GOSTR3410_256_PUBLIC_KEY_LENGTH);
 				break;
@@ -1183,16 +1184,15 @@ namespace data
 	 * @param isDestination a destination keeps its
 	 *                      encryption key private (the public key is
 	 *                      derived from the private half later).
-	 * @return a complete key set, degraded to DSA-SHA1/ElGamal when the
-	 *         request cannot be satisfied.
+	 * @return A complete key set, with the historical legacy mapping for
+	 *         unsupported algorithm selections.
+	 * @throws std::runtime_error If provider or key generation fails.
 	 *
-	 * The degradation is deliberate and loud: an unsupported or failed
-	 * provider path logs an error and returns the legacy identity shape
-	 * instead of publishing a certificate whose key layout has no
-	 * implementation. A caller that must not accept the downgrade has to
-	 * compare the resulting key types with the request. An unknown crypto
-	 * type is mapped to ElGamal for the same reason: key-file parsing
-	 * would otherwise consume zero bytes.
+	 * Unsupported selections retain the existing compatibility mapping;
+	 * callers requiring an exact selection must compare the returned types.
+	 * A supported algorithm's generation failure aborts instead of retrying
+	 * another algorithm. Unknown encryption layouts map to ElGamal because
+	 * key-file parsing would otherwise consume zero bytes.
 	 */
 	PrivateKeys PrivateKeys::CreateRandomKeys (SigningKeyType type, CryptoKeyType cryptoType, bool isDestination)
 	{
@@ -1219,21 +1219,17 @@ namespace data
 			keys.m_SigningPrivateKey.resize (verifier->GetPrivateKeyLen ());
 			if (!GenerateSigningKeyPair (type, keys.m_SigningPrivateKey.data (), signingPublicKey.data ()))
 			{
-				LogPrint (eLogError, "Identity: Can't generate signing keys of type ", (int)type, ". Use DSA-SHA1");
-				return PrivateKeys (i2p::data::CreateRandomKeys ()); // DSA-SHA1
+				throw std::runtime_error ("Identity: Signing key generation failed");
 			}
 			// encryption
 			uint8_t publicKey[256] = { };
 			if (isDestination)
 			{
-				if (RAND_bytes (keys.m_PrivateKey, 256) != 1)
-					return PrivateKeys (i2p::data::CreateRandomKeys ()); // DSA-SHA1
+				i2p::crypto::FillRandomBytes (keys.m_PrivateKey);
 			}
 			else if (!GenerateCryptoKeyPair (cryptoType, keys.m_PrivateKey, publicKey))
 			{
-				LogPrint (
-					eLogError, "Identity: Can't generate crypto keys of type ", (int)cryptoType, ". Use DSA-SHA1");
-				return PrivateKeys (i2p::data::CreateRandomKeys ()); // DSA-SHA1
+				throw std::runtime_error ("Identity: Encryption key generation failed");
 			}
 			// identity
 			keys.m_Public = std::make_shared<IdentityEx> (
@@ -1252,16 +1248,15 @@ namespace data
 		uint8_t signingPublicKey[i2p::crypto::DSA_PUBLIC_KEY_LENGTH] { };
 		if (!i2p::crypto::CreateDSARandomKeys (keys.m_SigningPrivateKey.data (), signingPublicKey))
 		{
-			LogPrint (eLogError, "Identity: Can't generate DSA-SHA1 signing keys. Use ElGamal");
-			return PrivateKeys (i2p::data::CreateRandomKeys ());
+			throw std::runtime_error ("Identity: DSA signing key generation failed");
 		}
 		uint8_t publicKey[256] { };
 		if (isDestination)
 		{
-			if (RAND_bytes (keys.m_PrivateKey, 256) != 1) return PrivateKeys (i2p::data::CreateRandomKeys ());
+			i2p::crypto::FillRandomBytes (keys.m_PrivateKey);
 		}
 		else if (!GenerateCryptoKeyPair (cryptoType, keys.m_PrivateKey, publicKey))
-			return PrivateKeys (i2p::data::CreateRandomKeys ());
+			throw std::runtime_error ("Identity: Encryption key generation failed");
 		keys.m_Public = std::make_shared<IdentityEx> (
 			isDestination ? nullptr : publicKey, signingPublicKey, SIGNING_KEY_TYPE_DSA_SHA1, cryptoType);
 		keys.CreateSigner ();
@@ -1345,8 +1340,8 @@ namespace data
 		default: LogPrint (eLogError, "Identity: Crypto key type ", (int)type, " is not supported");
 		}
 		// A provider failure is not the only way to arrive here with empty
-		// key material: report both cases so CreateRandomKeys() takes its
-		// fallback instead of publishing an unusable identity.
+		// key material: report both cases so CreateRandomKeys() aborts
+		// instead of publishing an unusable identity.
 		if (!generated || isAllZero (priv, privLen) || isAllZero (pub, pubLen))
 		{
 			LogPrint (eLogError, "Identity: Crypto key generation failed for type ", (int)type);
@@ -1430,11 +1425,16 @@ namespace data
 
 	Keys CreateRandomKeys ()
 	{
-		Keys keys;
+		Keys keys { };
+		auto cleanseFailure = i2p::modern::ScopeExit ([&keys]
+			{ OPENSSL_cleanse (&keys, sizeof (keys)); });
 		// encryption
-		i2p::crypto::GenerateElGamalKeyPair (keys.privateKey, keys.publicKey);
+		if (!PrivateKeys::GenerateCryptoKeyPair (CRYPTO_KEY_TYPE_ELGAMAL, keys.privateKey, keys.publicKey))
+			throw std::runtime_error ("Identity: Legacy encryption key generation failed");
 		// signing
-		i2p::crypto::CreateDSARandomKeys (keys.signingPrivateKey, keys.signingKey);
+		if (!i2p::crypto::CreateDSARandomKeys (keys.signingPrivateKey, keys.signingKey))
+			throw std::runtime_error ("Identity: Legacy signing key generation failed");
+		cleanseFailure.dismiss ();
 		return keys;
 	}
 }

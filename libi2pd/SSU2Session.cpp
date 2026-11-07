@@ -20,6 +20,7 @@
 #include <openssl/rand.h>
 #include "Log.h"
 #include "Modern.h"
+#include "Random.h"
 #include "Blocklist.h"
 #include "Transports.h"
 #include "Gzip.h"
@@ -209,8 +210,10 @@ namespace transport
 			if (in_RemoteRouter->IsSSU2PeerTesting (true)) m_RemotePeerTestTransports |= i2p::data::RouterInfo::eSSU2V4;
 			if (in_RemoteRouter->IsSSU2PeerTesting (false))
 				m_RemotePeerTestTransports |= i2p::data::RouterInfo::eSSU2V6;
-			RAND_bytes ((uint8_t *)&m_DestConnID, 8);
-			RAND_bytes ((uint8_t *)&m_SourceConnID, 8);
+			i2p::crypto::FillRandomBytes (
+				std::span { reinterpret_cast<uint8_t *> (&m_DestConnID), sizeof (m_DestConnID) });
+			i2p::crypto::FillRandomBytes (
+				std::span { reinterpret_cast<uint8_t *> (&m_SourceConnID), sizeof (m_SourceConnID) });
 			AdjustMaxPayloadSize ();
 		}
 	}
@@ -280,7 +283,15 @@ namespace transport
 		}
 		// create nonce
 		uint32_t nonce;
-		RAND_bytes ((uint8_t *)&nonce, 4);
+		try
+		{
+			i2p::crypto::FillRandomBytes (std::span { reinterpret_cast<uint8_t *> (&nonce), sizeof (nonce) });
+		}
+		catch (const std::runtime_error &)
+		{
+			LogPrint (eLogError, "SSU2: Introduction randomness unavailable");
+			return false;
+		}
 		if (m_RelaySessions.size () >= SSU2_MAX_RELAY_SESSIONS)
 		{
 			LogPrint (eLogWarning, "SSU2: Too many pending relay introductions ", m_RelaySessions.size ());
@@ -377,7 +388,7 @@ namespace transport
 			return;
 		}
 		uint32_t nonce;
-		RAND_bytes ((uint8_t *)&nonce, 4);
+		i2p::crypto::FillRandomBytes (std::span { reinterpret_cast<uint8_t *> (&nonce), sizeof (nonce) });
 		auto ts = i2p::util::GetMillisecondsSinceEpoch ();
 		// session for message 5
 		auto session = std::make_shared<SSU2PeerTestSession> (m_Server, htobe64 (((uint64_t)nonce << 32) | nonce), 0);
@@ -1045,6 +1056,11 @@ namespace transport
 
 	bool SSU2Session::SendSessionRequest (uint64_t token)
 	{
+		// The old attempt cannot survive a failed replacement. Keep the new
+		// packet private until every provider step and the send succeed.
+		m_SentHandshakePacket.reset ();
+		auto discardIncompleteHandshake = i2p::modern::ScopeExit ([this]
+			{ m_SentHandshakePacket.reset (); });
 		// we are Alice
 		if (!m_Address) return false;
 		SelectOutgoingVersion ();
@@ -1071,7 +1087,15 @@ namespace transport
 		uint8_t *headerX = m_SentHandshakePacket->headerX, *payload = m_SentHandshakePacket->payload;
 		// fill packet
 		header.h.connID = m_DestConnID; // dest id
-		RAND_bytes (header.buf + 8, 4); // random packet num
+		try
+		{
+			i2p::crypto::FillRandomBytes (std::span { header.buf + 8, 4 });
+		}
+		catch (const std::runtime_error &)
+		{
+			LogPrint (eLogError, "SSU2: SessionRequest randomness unavailable");
+			return false;
+		}
 		header.h.type = eSSU2SessionRequest;
 		header.h.flags[0] = m_Version; // ver
 		header.h.flags[1] = (uint8_t)i2p::context.GetNetID (); // netID
@@ -1175,6 +1199,7 @@ namespace transport
 			LogPrint (eLogWarning, "SSU2: SessionRequest request to ", m_RemoteEndpoint, " already pending");
 			return false;
 		}
+		discardIncompleteHandshake.dismiss ();
 		return true;
 	}
 
@@ -1366,6 +1391,9 @@ namespace transport
 
 	bool SSU2Session::SendSessionCreated (const uint8_t * X)
 	{
+		m_SentHandshakePacket.reset ();
+		auto discardIncompleteHandshake = i2p::modern::ScopeExit ([this]
+			{ m_SentHandshakePacket.reset (); });
 		// we are Bob
 		if (!m_NoiseState || m_MaxPayloadSize <= 48) return false;
 		m_EphemeralKeys = i2p::transport::transports.GetNextX25519KeysPair ();
@@ -1382,13 +1410,23 @@ namespace transport
 		m_SentHandshakePacket->sendTime = ts;
 
 		uint8_t kh2[32];
+		auto cleanseHeaderKey = i2p::modern::ScopeExit ([&kh2]
+			{ OPENSSL_cleanse (kh2, sizeof (kh2)); });
 		i2p::crypto::HKDF (m_NoiseState->m_CK, nullptr, 0, "SessCreateHeader", kh2,
 			32); // k_header_2 = HKDF(chainKey, ZEROLEN, "SessCreateHeader", 32)
 		// fill packet
 		Header & header = m_SentHandshakePacket->header;
 		uint8_t *headerX = m_SentHandshakePacket->headerX, *payload = m_SentHandshakePacket->payload;
 		header.h.connID = m_DestConnID; // dest id
-		RAND_bytes (header.buf + 8, 4); // random packet num
+		try
+		{
+			i2p::crypto::FillRandomBytes (std::span { header.buf + 8, 4 });
+		}
+		catch (const std::runtime_error &)
+		{
+			LogPrint (eLogError, "SSU2: SessionCreated randomness unavailable");
+			return false;
+		}
 		header.h.type = eSSU2SessionCreated;
 		header.h.flags[0] = m_Version; // ver
 		header.h.flags[1] = (uint8_t)i2p::context.GetNetID (); // netID
@@ -1470,6 +1508,7 @@ namespace transport
 		// send
 		m_HandshakeInterval = ts;
 		m_Server.Send (header.buf, 16, headerX, 48, payload, payloadSize, m_RemoteEndpoint);
+		discardIncompleteHandshake.dismiss ();
 		return true;
 	}
 
@@ -2120,7 +2159,7 @@ namespace transport
 		uint8_t h[32], payload[41];
 		// fill packet
 		header.h.connID = m_DestConnID; // dest id
-		RAND_bytes (header.buf + 8, 4); // random packet num
+		i2p::crypto::FillRandomBytes (std::span { header.buf + 8, 4 });
 		header.h.type = eSSU2TokenRequest;
 		header.h.flags[0] = GetVersion (); // ver
 		header.h.flags[1] = (uint8_t)i2p::context.GetNetID (); // netID
@@ -2248,7 +2287,7 @@ namespace transport
 		uint8_t h[32], payload[72];
 		// fill packet
 		header.h.connID = m_DestConnID; // dest id
-		RAND_bytes (header.buf + 8, 4); // random packet num
+		i2p::crypto::FillRandomBytes (std::span { header.buf + 8, 4 });
 		header.h.type = eSSU2Retry;
 		header.h.flags[0] = GetVersion (); // ver
 		header.h.flags[1] = (uint8_t)i2p::context.GetNetID (); // netID
@@ -2456,6 +2495,8 @@ namespace transport
 				// request a fresh one instead of tearing the session down.
 				LogPrint (eLogInfo, "SSU2: Retry selected version ", (int)m_Version, "; requesting a new token");
 				m_State = eSSU2SessionStateUnknown;
+				// The validated version change retires the old wire packet.
+				m_SentHandshakePacket.reset ();
 				SendTokenRequest ();
 				return true;
 			}
@@ -2464,6 +2505,9 @@ namespace transport
 			return false;
 		}
 
+		// Retire the previous attempt only after Retry validation. Local
+		// provider failure must not leave its packet available for resend.
+		m_SentHandshakePacket.reset ();
 		if (!m_NoiseState) m_NoiseState.reset (new i2p::crypto::NoiseSymmetricState);
 #if OPENSSL_PQ
 		if (m_Version > 2)
@@ -2480,7 +2524,14 @@ namespace transport
 			InitNoiseXKState1 (*m_NoiseState, m_Address->s); // reset Noise TODO: check state
 
 		m_TerminationReason = eSSU2TerminationReasonNormalClose;
-		return SendSessionRequest (token);
+		if (!SendSessionRequest (token))
+		{
+			// The validated peer input succeeded; local replacement failed.
+			// Close without requiring an additional randomized response.
+			Done ();
+			return false;
+		}
+		return true;
 	}
 
 	static bool ValidateHolePunchDateTime (const uint8_t * buf, size_t len)
@@ -2959,7 +3010,8 @@ namespace transport
 								[] () -> uint64_t
 								{
 									uint32_t value = 0;
-									RAND_bytes (reinterpret_cast<uint8_t *> (&value), sizeof (value));
+									i2p::crypto::FillRandomBytes (
+										std::span { reinterpret_cast<uint8_t *> (&value), sizeof (value) });
 									return value;
 								});
 							if (tag)
