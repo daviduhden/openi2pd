@@ -26,7 +26,11 @@
 #include <utility>
 #include <charconv>
 #include <cstdint>
+#include <cstddef>
 #include <cstring>
+#include <concepts>
+#include <span>
+#include <stdexcept>
 #include <string_view>
 #include <boost/asio.hpp>
 #include "AddressFormat.h"
@@ -350,6 +354,34 @@ namespace util
 		const decltype (m_Options) & GetOptions () const { return m_Options; }
 	};
 
+	namespace detail
+	{
+		/**
+		 * Adapt a trusted random-byte source to a 32-bit seed.
+		 * The source must fill every byte before returning true. False or
+		 * an exception aborts seeding; partial output is never published.
+		 * Zero is a valid seed. The callable is per invocation, so tests
+		 * need no process-global provider hook or replacement generator.
+		 * @param fill Trusted source accepting the complete seed byte span.
+		 * @return The provider's 32-bit result, widened without truncation.
+		 * @throws std::runtime_error If the source reports failure.
+		 * Source exceptions propagate without publishing partial output.
+		 */
+		template <typename Fill>
+			requires std::predicate<Fill &, std::span<std::byte>>
+		uint_fast32_t RequireRandomSeed (Fill && fill)
+		{
+			uint32_t seed = 0;
+			if (!std::invoke (fill, std::as_writable_bytes (std::span { &seed, 1 })))
+				throw std::runtime_error ("CSPRNG seed unavailable");
+			return static_cast<uint_fast32_t> (seed);
+		}
+	}
+
+	/// Obtain a provider-generated 32-bit seed, including zero.
+	/// Throws std::runtime_error if provider randomness is unavailable;
+	/// callers must abort initialization or the current operation. Global
+	/// constructor failure terminates startup rather than using a clock.
 	uint_fast32_t GetRngSeed ();
 
 	// Bounded, NUL-terminating copy for fixed platform buffers. Returns

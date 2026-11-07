@@ -344,14 +344,13 @@ namespace util
 		// Protocol-visible choices (I2NP message IDs, padding, tunnel order
 		// and peer ordering) must not be derived from an observable monotonic
 		// clock. mt19937 is only a fast non-cryptographic mixer here; its
-		// seed comes from the provider CSPRNG. Fail closed to a mixed clock
-		// value rather than a constant if the provider is unavailable.
-		uint32_t seed = 0;
-		if (RAND_bytes (reinterpret_cast<unsigned char *> (&seed), sizeof (seed)) == 1)
-			return static_cast<uint_fast32_t> (seed);
-		LogPrint (eLogError, "Util: CSPRNG seed unavailable");
-		const uint64_t now = GetMonotonicMicroseconds ();
-		return static_cast<uint_fast32_t> (now ^ (now >> 32) ^ 0x9e3779b9u);
+		// seed comes from the provider CSPRNG. A failed provider aborts
+		// initialization instead of publishing predictable fallback state.
+		return detail::RequireRandomSeed ([] (std::span<std::byte> bytes)
+			{
+				return RAND_bytes (reinterpret_cast<unsigned char *> (bytes.data ()),
+					static_cast<int> (bytes.size ())) == 1;
+			});
 	}
 
 	namespace net

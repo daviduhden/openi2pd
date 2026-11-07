@@ -176,6 +176,10 @@ proposed tracking updates to the coordinator.
 - Preserve copyright, license, SPDX, NOTICE and upstream provenance.
 - Do not weaken `pledge`/`unveil`, cryptographic checks, signature/AEAD
   verification or untrusted-input limits.
+- Provider failure must abort the randomness-dependent operation. Never
+  substitute clocks or counters for unavailable provider output, and keep
+  publication blocked after failure. Zero remains a valid random seed;
+  readiness must not be inferred from a nonzero value.
 - Never log, format, echo or retain passwords, private keys, seeds, tokens or
   complete credential-bearing protocol operands. Log only the operation and a
   non-secret outcome; add a regression whenever a secret crosses a parser.
