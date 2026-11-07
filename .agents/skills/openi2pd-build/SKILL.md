@@ -111,6 +111,12 @@ build.
 
 ## Known issues and decisions
 
+- Native tool man pages and their shared reference belong to Tools, even
+  with I2PD_INSTALL_DOCS=OFF. The install regression checks each command's
+  alias and its shared target on all host platforms.
+  When one install statement lists shared manuals, inspect its actual closing
+  delimiter rather than a fixed-size lookahead that can miss its component.
+
 - `I2PD_WARNINGS_AS_ERRORS` defaults to `OFF`. Explicit manual matrix
   configurations may enable it to add `/WX` or `-Werror` through
   `i2pd_warnings`; do not set global compiler flags or export this policy

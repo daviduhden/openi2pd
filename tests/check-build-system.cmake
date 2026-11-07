@@ -424,7 +424,14 @@ foreach(page_owner IN ITEMS
   if(page_position EQUAL -1)
     message(FATAL_ERROR "CMake install graph is missing ${page_name}")
   endif()
-  string(SUBSTRING "${top_cmake_text}" ${page_position} 220 page_rule)
+  # Read to this install statement's closing delimiter. A shared tool
+  # manual list may span more than an arbitrary fixed lookahead window.
+  string(SUBSTRING "${top_cmake_text}" ${page_position} -1 page_tail)
+  string(FIND "${page_tail}" ")" page_rule_end)
+  if(page_rule_end EQUAL -1)
+    message(FATAL_ERROR "Unterminated man-page install rule: ${page_name}")
+  endif()
+  string(SUBSTRING "${page_tail}" 0 ${page_rule_end} page_rule)
   string(FIND "${page_rule}" "COMPONENT ${page_component}" page_component_position)
   if(page_component_position EQUAL -1)
     message(FATAL_ERROR

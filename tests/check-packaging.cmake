@@ -246,6 +246,17 @@ foreach(required IN ITEMS
 endforeach()
 assert_absent("${debian_i2pd_install}" "docs usr/share/doc/i2pd"
   "daemon manifest must not copy the unfiltered source docs tree")
+foreach(tool IN ITEMS autoconf_i2pd b33address b33offlinekeys famtool
+    i2pbase64 keygen keyinfo offlinekeys regaddr regaddr_3ld regaddralias
+    routerinfo vain verifyhost x25519)
+  assert_contains("${debian_i2pd_install}" "usr/share/man/man1/${tool}.1"
+    "native tool man page must be owned by the daemon package")
+  file(READ "${PROJECT_ROOT}/man/${tool}.1" tool_man)
+  assert_contains("${tool_man}" ".so man1/openi2pd-tools.1"
+    "native tool man alias must resolve the shared reference")
+endforeach()
+assert_contains("${debian_i2pd_install}" "usr/share/man/man1/openi2pd-tools.1"
+  "shared native tool reference must be packaged with its aliases")
 assert_absent("${debian_i2pd_install}" "assets/branding usr/share/doc/i2pd"
   "daemon manifest must not copy the unfiltered source branding tree")
 assert_contains("${debian_tui_install}" "usr/share/man/man1/i2pd-tui.1"

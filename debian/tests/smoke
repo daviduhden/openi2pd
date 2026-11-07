@@ -242,6 +242,12 @@ fi
 # Manpages follow the package split.
 require_manpage i2pd.1
 require_manpage i2pdctl.1
+require_manpage openi2pd-tools.1
+for tool in autoconf_i2pd b33address b33offlinekeys famtool i2pbase64 \
+    keygen keyinfo offlinekeys regaddr regaddr_3ld regaddralias routerinfo \
+    vain verifyhost x25519; do
+    require_manpage "$tool.1"
+done
 require_manpage i2pd-tui.1
 dpkg-query -L i2pd | grep -qE '/usr/share/man/man1/i2pd\.1(\.gz)?$' \
     || fail "i2pd.1 is not owned by i2pd"

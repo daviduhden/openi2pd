@@ -199,7 +199,7 @@ Staging can select one CMake install component at a time:
 | `Tui` | `i2pd-tui`, its `i2pd-tui.1` manual page, desktop launcher and icons; no service definition |
 | `Libraries` | `libi2pd`, `libi2pdclient`, `libi2pdlang` and the internal privilege-separation archive |
 | `Development` | Public headers, the exported `privsep/` headers, `i2pd-targets.cmake`, `i2pdConfig.cmake` and the version file |
-| `Tools` | Native auxiliary tools, `i2pdctl`, its `i2pdctl.1` manual page and the renamed `LICENSE.i2pd-tools` |
+| `Tools` | Native auxiliary tools, `i2pdctl`, its manual, the shared native-tool reference and command aliases, and the renamed `LICENSE.i2pd-tools` |
 | `Documentation` | `ChangeLog`, `LICENSE`, `NOTICE`, `README.md`, `LICENSE.i2pd-tools`, the filtered documentation tree and the branding assets |
 | `Service` | The selected native service definition; requires `WITH_BINARY=ON` and `I2PD_INSTALL_CONFIG=ON` |
 

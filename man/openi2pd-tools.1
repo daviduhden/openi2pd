@@ -1,0 +1,280 @@
+.\" See the LICENSE file at the top of the project tree for copyright
+.\" and license details.
+.\"
+.\" openi2pd: native auxiliary tools reference.
+.\"
+.Dd November 5, 2026
+.Dt OPENI2PD-TOOLS 1
+.Os openi2pd
+.Sh NAME
+.Nm openi2pd-tools ,
+.Nm autoconf_i2pd ,
+.Nm b33address ,
+.Nm b33offlinekeys ,
+.Nm famtool ,
+.Nm i2pbase64 ,
+.Nm keygen ,
+.Nm keyinfo ,
+.Nm offlinekeys ,
+.Nm regaddr ,
+.Nm regaddr_3ld ,
+.Nm regaddralias ,
+.Nm routerinfo ,
+.Nm vain ,
+.Nm verifyhost ,
+.Nm x25519
+.Nd native I2P configuration, identity and RouterInfo tools
+.Sh DESCRIPTION
+These commands use the native openi2pd libraries for I2P configuration,
+destination keys, host registration and RouterInfo inspection.
+They are separate programs; the
+.Nm openi2pd-tools
+name identifies this manual page, not an executable.
+No router needs to be running for the operations described here.
+.Pp
+Operands named
+.Ar keys
+or
+.Ar private-key-file
+refer to binary destination private key files, not public destinations.
+Keep these files private.
+Only publish addresses, public destinations or signed registration
+records.
+.Sh COMMANDS
+.Ss autoconf_i2pd
+.Bd -literal -offset indent
+autoconf_i2pd
+.Ed
+Interactively select a language, connectivity mode and configuration
+options, then write the generated configuration to the chosen file.
+Review the output before installation.
+The command does not start or reconfigure a running router.
+.Ss b33address
+.Bd -literal -offset indent
+b33address < destination.txt
+.Ed
+Read a base64 public destination from standard input and print its
+blinded
+b33 address and the current day's store hash.
+The destination must use Ed25519 or RedDSA.
+Do not supply a private key serialization.
+.Ss b33offlinekeys
+.Bd -literal -offset indent
+b33offlinekeys output-keys destination-keys [days]
+.Ed
+Generate per-day offline keys for an encrypted LeaseSet.
+The output file must differ from the destination key file.
+The destination must use Ed25519 or RedDSA.
+The default is 365 days; the accepted range is 1 through 65535.
+The output file contains secrets and is intended for the router.
+.Ss famtool
+.Bd -literal -offset indent
+famtool [-v] -g -n family -c certificate -k private-key
+famtool [-v] -s -n family -k private-key -i router.keys \
+    -f router.info
+famtool [-v] -V -c certificate -f router.info
+.Ed
+Generate a router-family certificate
+.Pq Fl g ,
+sign RouterInfo family membership
+.Pq Fl s ,
+or verify membership
+.Pq Fl V .
+.Fl v
+prints progress and
+.Fl h
+prints help.
+The generated PEM private key is unencrypted; keep it offline and
+private.
+.Ss i2pbase64
+.Bd -literal -offset indent
+i2pbase64 [-d] [filename]
+.Ed
+Encode binary input using the I2P base64 alphabet, or decode with
+.Fl d .
+Read standard input when no filename is given and write standard output.
+Decoding accepts ASCII whitespace.
+.Fl h
+prints help.
+Use a separate destination file for redirected output; redirecting onto
+the
+input file truncates it before this command can read it.
+.Ss keygen
+.Bd -literal -offset indent
+keygen output-file [signature-type]
+.Ed
+Create a binary destination private key file.
+The signature type may be an I2P numeric type or a supported name;
+the default is Ed25519, type 7.
+Availability of other algorithms depends on the selected crypto library.
+The output contains private key material.
+.Ss keyinfo
+.Bd -literal -offset indent
+keyinfo [-v] [-d] [-p] [-b] privatekey.dat
+.Ed
+Inspect a destination private key file.
+The default output is its base32 address.
+.Fl d
+prints the public destination in base64,
+.Fl p
+prints the private destination key in base64,
+.Fl v
+prints identity details, and
+.Fl b
+prints b33 and offline-key information.
+Never publish or retain diagnostic output from
+.Fl p .
+.Ss offlinekeys
+.Bd -literal -offset indent
+offlinekeys output-file keys-file [signature-type] [days]
+.Ed
+Create an offline signature and transient signing keys for a
+destination.
+The default transient signature is Ed25519 and the default duration is
+365 days.
+The duration must be from 1 through 3650 days.
+The output must not resolve to the input file.
+Keep the main destination key offline and protect the generated key
+file.
+.Ss regaddr
+.Bd -literal -offset indent
+regaddr private-key-file hostname
+.Ed
+Write a signed host registration record to standard output.
+Submit the signed record, never the private key, to a registration
+service.
+.Ss regaddr_3ld
+.Bd -literal -offset indent
+regaddr_3ld step1 subdomain-keys subdomain > step1.txt
+regaddr_3ld step2 step1.txt domain-keys domain > step2.txt
+regaddr_3ld step3 step2.txt subdomain-keys > record.txt
+.Ed
+Create a signed third-level subdomain record in three steps.
+Each step reads the preceding record when applicable and writes only the
+resulting signed record to standard output.
+The command has no help option; an invalid invocation prints the step
+grammar to standard error.
+.Ss regaddralias
+.Bd -literal -offset indent
+regaddralias old-keys new-keys hostname
+.Ed
+Write a signed alias record binding the old and new public destinations.
+Both input key files are private.
+The resulting record includes both signatures and may be published.
+.Ss routerinfo
+.Bd -literal -offset indent
+routerinfo [-6] [-p] [-y] [-f] routerinfo.dat ...
+routerinfo [-6] [-y] --firewall=backend [options] \
+    routerinfo.dat ...
+.Ed
+List published transport addresses from one or more RouterInfo files.
+.Fl 6
+includes IPv6,
+.Fl p
+includes ports in listing mode, and
+.Fl y
+selects Yggdrasil addresses when present.
+.Fl f
+prints legacy iptables output fragments.
+.Pp
+.Fl -firewall Ns = Ns Ar backend
+prints outbound rules for
+.Cm iptables ,
+.Cm nftables ,
+.Cm windows ,
+or
+.Cm pf .
+The command never applies rules or reloads a firewall.
+Review the generated output before applying it with the platform's
+tools.
+The IPv6 and Yggdrasil selections are explicit in firewall mode too.
+.Pp
+The nftables backend additionally accepts
+.Fl -nft-family Ns = Ns Cm inet Ns | Ns Cm ip Ns | Ns Cm ip6 ,
+.Fl -nft-table Ns = Ns Ar name ,
+and
+.Fl -nft-chain Ns = Ns Ar name .
+Defaults are
+.Cm inet ,
+.Cm filter
+and
+.Cm output .
+Those objects must already exist in the firewall configuration.
+.Fl h
+or
+.Fl -help
+prints help.
+.Ss vain
+.Bd -literal -offset indent
+vain [options] pattern
+.Ed
+Generate an Ed25519 destination matching a base32 prefix.
+.Fl r
+or
+.Fl -reg
+interprets the pattern as a regular expression.
+.Fl t
+or
+.Fl -threads
+sets the worker count from 1 through 1024.
+.Fl s
+or
+.Fl -signature
+selects the signature type; only Ed25519 is implemented.
+.Fl o
+or
+.Fl -output
+sets the output path prefix.
+.Fl m
+or
+.Fl -multiplymode
+continues after a match.
+.Fl h
+or
+.Fl -help
+prints help.
+Searching may consume substantial CPU.
+Generated destination files contain private keys.
+.Ss verifyhost
+.Bd -literal -offset indent
+verifyhost 'host record'
+.Ed
+Verify a signed record produced by
+.Cm regaddr ,
+.Cm regaddr_3ld ,
+or
+.Cm regaddralias .
+Pass the complete record as one argument.
+A successful invocation prints
+.Ql Valid destination ;
+rejection diagnostics are written to standard error.
+.Ss x25519
+.Bd -literal -offset indent
+x25519 [--help]
+.Ed
+Generate an X25519 authentication key pair for encrypted LeaseSets.
+Standard output includes both
+.Ql PublicKey:
+and
+.Ql PrivateKey:
+in I2P base64.
+Share only the public key.
+Do not capture the private key in logs or support reports.
+.Sh EXIT STATUS
+Zero indicates success.
+Nonzero indicates an invalid invocation, rejected input, unsupported
+algorithm, crypto-provider failure or file operation failure.
+Specific nonzero values differ between commands; scripts must preserve
+the
+status of the selected command.
+.Sh FILES
+.Bl -tag -width Ds
+.It Pa /usr/share/doc/i2pd/docs/tools/
+Per-command references, formats, examples and security notes.
+The documentation directory may be omitted by an optional-documentation
+build configuration; these manual pages belong to the Tools component.
+.El
+.Sh SEE ALSO
+.Xr i2pd 1 ,
+.Xr i2pdctl 1 ,
+.Xr i2pd-tui 1

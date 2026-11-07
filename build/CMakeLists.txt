@@ -1256,7 +1256,24 @@ if(NOT ANDROID)
       COMPONENT Tui)
   endif()
   if(I2PD_BUILD_TOOLS)
-    install(FILES "${PROJECT_ROOT}/man/i2pdctl.1"
+    install(FILES
+      "${PROJECT_ROOT}/man/i2pdctl.1"
+      "${PROJECT_ROOT}/man/openi2pd-tools.1"
+      "${PROJECT_ROOT}/man/autoconf_i2pd.1"
+      "${PROJECT_ROOT}/man/b33address.1"
+      "${PROJECT_ROOT}/man/b33offlinekeys.1"
+      "${PROJECT_ROOT}/man/famtool.1"
+      "${PROJECT_ROOT}/man/i2pbase64.1"
+      "${PROJECT_ROOT}/man/keygen.1"
+      "${PROJECT_ROOT}/man/keyinfo.1"
+      "${PROJECT_ROOT}/man/offlinekeys.1"
+      "${PROJECT_ROOT}/man/regaddr.1"
+      "${PROJECT_ROOT}/man/regaddr_3ld.1"
+      "${PROJECT_ROOT}/man/regaddralias.1"
+      "${PROJECT_ROOT}/man/routerinfo.1"
+      "${PROJECT_ROOT}/man/vain.1"
+      "${PROJECT_ROOT}/man/verifyhost.1"
+      "${PROJECT_ROOT}/man/x25519.1"
       DESTINATION ${CMAKE_INSTALL_MANDIR}/man1
       COMPONENT Tools)
   endif()

@@ -53,6 +53,22 @@ usr/share/doc/i2pd/assets
 # documentation tree, so they survive -DI2PD_INSTALL_DOCS=OFF packaging.
 usr/share/man/man1/i2pd.1
 usr/share/man/man1/i2pdctl.1
+usr/share/man/man1/openi2pd-tools.1
+usr/share/man/man1/autoconf_i2pd.1
+usr/share/man/man1/b33address.1
+usr/share/man/man1/b33offlinekeys.1
+usr/share/man/man1/famtool.1
+usr/share/man/man1/i2pbase64.1
+usr/share/man/man1/keygen.1
+usr/share/man/man1/keyinfo.1
+usr/share/man/man1/offlinekeys.1
+usr/share/man/man1/regaddr.1
+usr/share/man/man1/regaddr_3ld.1
+usr/share/man/man1/regaddralias.1
+usr/share/man/man1/routerinfo.1
+usr/share/man/man1/vain.1
+usr/share/man/man1/verifyhost.1
+usr/share/man/man1/x25519.1
 
 # Distribution-specific AppArmor profile, loaded by dh_apparmor.
 contrib/apparmor/usr.bin.i2pd etc/apparmor.d

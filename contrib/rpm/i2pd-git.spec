@@ -109,6 +109,22 @@ chrpath -d i2pd
 %{__install} -D -m 644 %{_builddir}/openi2pd-main/man/i2pd.1 %{buildroot}%{_mandir}/man1/i2pd.1
 %{__install} -D -m 644 %{_builddir}/openi2pd-main/man/i2pd-tui.1 %{buildroot}%{_mandir}/man1/i2pd-tui.1
 %{__install} -D -m 644 %{_builddir}/openi2pd-main/man/i2pdctl.1 %{buildroot}%{_mandir}/man1/i2pdctl.1
+%{__install} -D -m 644 %{_builddir}/openi2pd-main/man/openi2pd-tools.1 %{buildroot}%{_mandir}/man1/openi2pd-tools.1
+%{__install} -D -m 644 %{_builddir}/openi2pd-main/man/autoconf_i2pd.1 %{buildroot}%{_mandir}/man1/autoconf_i2pd.1
+%{__install} -D -m 644 %{_builddir}/openi2pd-main/man/b33address.1 %{buildroot}%{_mandir}/man1/b33address.1
+%{__install} -D -m 644 %{_builddir}/openi2pd-main/man/b33offlinekeys.1 %{buildroot}%{_mandir}/man1/b33offlinekeys.1
+%{__install} -D -m 644 %{_builddir}/openi2pd-main/man/famtool.1 %{buildroot}%{_mandir}/man1/famtool.1
+%{__install} -D -m 644 %{_builddir}/openi2pd-main/man/i2pbase64.1 %{buildroot}%{_mandir}/man1/i2pbase64.1
+%{__install} -D -m 644 %{_builddir}/openi2pd-main/man/keygen.1 %{buildroot}%{_mandir}/man1/keygen.1
+%{__install} -D -m 644 %{_builddir}/openi2pd-main/man/keyinfo.1 %{buildroot}%{_mandir}/man1/keyinfo.1
+%{__install} -D -m 644 %{_builddir}/openi2pd-main/man/offlinekeys.1 %{buildroot}%{_mandir}/man1/offlinekeys.1
+%{__install} -D -m 644 %{_builddir}/openi2pd-main/man/regaddr.1 %{buildroot}%{_mandir}/man1/regaddr.1
+%{__install} -D -m 644 %{_builddir}/openi2pd-main/man/regaddr_3ld.1 %{buildroot}%{_mandir}/man1/regaddr_3ld.1
+%{__install} -D -m 644 %{_builddir}/openi2pd-main/man/regaddralias.1 %{buildroot}%{_mandir}/man1/regaddralias.1
+%{__install} -D -m 644 %{_builddir}/openi2pd-main/man/routerinfo.1 %{buildroot}%{_mandir}/man1/routerinfo.1
+%{__install} -D -m 644 %{_builddir}/openi2pd-main/man/vain.1 %{buildroot}%{_mandir}/man1/vain.1
+%{__install} -D -m 644 %{_builddir}/openi2pd-main/man/verifyhost.1 %{buildroot}%{_mandir}/man1/verifyhost.1
+%{__install} -D -m 644 %{_builddir}/openi2pd-main/man/x25519.1 %{buildroot}%{_mandir}/man1/x25519.1
 %{__cp} -r %{_builddir}/openi2pd-main/contrib/certificates/ %{buildroot}%{_datadir}/i2pd/certificates
 %{__cp} -r %{_builddir}/openi2pd-main/contrib/tunnels.d/ %{buildroot}%{_sysconfdir}/i2pd/tunnels.conf.d
 ln -s %{_datadir}/i2pd/certificates %{buildroot}%{_sharedstatedir}/i2pd/certificates
@@ -167,6 +183,22 @@ getent passwd i2pd >/dev/null || \
 %{_datadir}/icons/hicolor/scalable/apps/openi2pd.svg
 %{_datadir}/icons/hicolor/256x256/apps/openi2pd.png
 %{_mandir}/man1/i2pdctl.1*
+%{_mandir}/man1/openi2pd-tools.1*
+%{_mandir}/man1/autoconf_i2pd.1*
+%{_mandir}/man1/b33address.1*
+%{_mandir}/man1/b33offlinekeys.1*
+%{_mandir}/man1/famtool.1*
+%{_mandir}/man1/i2pbase64.1*
+%{_mandir}/man1/keygen.1*
+%{_mandir}/man1/keyinfo.1*
+%{_mandir}/man1/offlinekeys.1*
+%{_mandir}/man1/regaddr.1*
+%{_mandir}/man1/regaddr_3ld.1*
+%{_mandir}/man1/regaddralias.1*
+%{_mandir}/man1/routerinfo.1*
+%{_mandir}/man1/vain.1*
+%{_mandir}/man1/verifyhost.1*
+%{_mandir}/man1/x25519.1*
 %dir %attr(0700,i2pd,i2pd) %{_sharedstatedir}/i2pd
 %dir %attr(0700,i2pd,i2pd) %{_localstatedir}/log/i2pd
 %{_datadir}/i2pd/certificates

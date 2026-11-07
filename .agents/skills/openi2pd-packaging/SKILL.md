@@ -105,6 +105,12 @@ Ask for exact paths and package names. Do not let them run `dpkg-buildpackage`,
   duplicate action.
 
 ## Known issues and decisions
+- Auxiliary tool pages share `man/openi2pd-tools.1`; command-named `.so`
+  pages must be installed with that target in the Tools component. Keep
+  Debian's explicit payload inventory aligned and inspect the exact package
+  archive before attributing a missing-page warning to a manifest alone.
+  Both RPM spec variants install pages independently of CMake; update their
+  explicit install commands and file lists when the tool manual set changes.
 - Package Makefiles delegate procedural work without changing framework
   authority: Debian build flags and parallel options belong in its driver;
   the static payload helper travels with the copied `debian/` directory.
@@ -204,7 +210,7 @@ Ask for exact paths and package names. Do not let them run `dpkg-buildpackage`,
   `ChangeLog`/`LICENSE`/`NOTICE`/`README.md`, `LICENSE.i2pd-tools`,
   the filtered `docs/` tree and `assets/branding`; man pages are
   owned by `Runtime` (`i2pd.1`), `Tui` (`i2pd-tui.1`) and `Tools`
-  (`i2pdctl.1`), not by the optional docs block. `I2PD_INSTALL_CONFIG=OFF`
+  (`i2pdctl.1` and the native-tool reference/aliases), not by the optional docs block. `I2PD_INSTALL_CONFIG=OFF`
   combined with a service manager is a configure error.
 - Debian `*.install` entries are resolved in the current directory first and
   only then in `debian/tmp`; never list `docs` or `assets/branding` (the source
