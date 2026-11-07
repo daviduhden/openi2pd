@@ -25,7 +25,7 @@ excluded.
 | Original | Consumer(s) | Perl replacement | Install/validation |
 |---|---|---|---|
 | `tools/scripts/i2pdctl` (historical Python 3, shebang) | `tools/CMakeLists.txt`; `docs/tools/README.md`; `docs/tools/i2pdctl.md` | `tools/scripts/i2pdctl` (Perl 5, already implemented before this increment) | Existing CLI/transport/install regressions retained; no duplicate rewrite. |
-| `scripts/validate-agent-knowledge.py` | Maintenance PR gate, AGENTS and developer procedures | `scripts/validate-agent-knowledge.pl` and core-only modules under `scripts/lib/` | Preserve worktree/range CLI, TOML settings, AK001-AK006/AKX001, UTF-8 text/JSON and exit 0/1/2; syntax, black-box and manual validation lanes prepared. |
+| `scripts/validate-agent-knowledge.py` | Maintenance gate, AGENTS and developer procedures | `scripts/validate-agent-knowledge.pl` and core-only modules under `scripts/lib/` | Preserve worktree/range CLI, TOML settings, AK001-AK006/AKX001, UTF-8 text/JSON and exit 0/1/2; syntax, black-box and manual validation lanes prepared. |
 | `tests/agent_knowledge_validator/test_validator.py` | Maintenance contract suite | `tests/agent_knowledge_validator/test_validator.t` | Test::More fixtures preserve original cases and add configuration/path/process boundary controls; no Python comparison runtime retained. |
 
 No other project-maintained Python source, extensionless Python shebang,
@@ -43,7 +43,7 @@ invocation returns to a maintained build consumer.
 | `tools/scripts/i2pdctl` | I2PControl client | syntax, `prove`, install layout, portability |
 | `tools/scripts/check-doc-links.pl` | offline Markdown link checker | syntax, `perl-doc-links`, portability, negative fixture |
 | `tools/scripts/check-workflows.pl` | manual-only workflow and empty-CTest guard | syntax, `workflow-static`, `skills-static` |
-| `scripts/validate-agent-knowledge.pl` and `scripts/lib/` | substantive instruction synchronization, section and local-link gate; TOML configuration | syntax, Test::More, `agent-maintenance.yml` PR gate and manual validation |
+| `scripts/validate-agent-knowledge.pl` and `scripts/lib/` | substantive instruction synchronization, section and local-link gate; TOML configuration | syntax, Test::More, `agent-maintenance.yml` gate and manual validation |
 | `tests/agent_knowledge_validator/test_validator.t` | black-box validator contract and Git fixtures | syntax, `prove`, portability and manual validation |
 | `tools/scripts/check-doc-nav.pl` | MkDocs navigation/unlisted-page checker | syntax, `docs-nav-static`, portability |
 | `tools/scripts/check-doxygen-params.pl` | compile-free `@param`, `@ref` and command-balance guard: partial blocks, repeated names, header/definition duplicates, unresolved reference targets and Javadoc inline tags in C/C++ comments under Doxygen's `WARN_IF_DOC_ERROR` | syntax, `doxygen-static`, negative fixtures |

@@ -43,7 +43,7 @@ endforeach()
 file(READ "${PROJECT_ROOT}/.github/workflows/agent-maintenance.yml" knowledge_workflow)
 foreach(required IN ITEMS
     "prove -v tests/agent_knowledge_validator/test_validator.t"
-    "perl scripts/validate-agent-knowledge.pl --scope range")
+    "perl scripts/validate-agent-knowledge.pl --scope worktree")
   string(FIND "${knowledge_workflow}" "${required}" found)
   if(found LESS 0)
     message(FATAL_ERROR "Knowledge gate must consume Perl: ${required}")

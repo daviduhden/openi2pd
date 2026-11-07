@@ -4,8 +4,8 @@
 #
 # openi2pd: check workflows.
 #
-# Compile-free contract for manual build/test workflows and the
-# dedicated pull-request agent-maintenance gate: no other triggers, no
+# Compile-free contract for manual build/test workflows and the manual
+# agent-maintenance gate: workflow_dispatch is the only trigger, no
 # continue-on-error, and every executing ctest invocation must fail on
 # an empty selection. It never dispatches, parses YAML with a
 # third-party module or runs a workflow.
@@ -95,26 +95,13 @@ for my $file (@files) {
         push @errors, "$file: missing on: block";
     }
     else {
-        my $maintenance_gate = $file eq 'agent-maintenance.yml';
         for my $trigger (@triggers) {
             $trigger =~ s/:$//;
-            next if $maintenance_gate && $trigger eq 'pull_request';
-            next
-              if !$maintenance_gate
-              && $trigger eq 'workflow_dispatch';
+            next if $trigger eq 'workflow_dispatch';
             push @errors, "$file: unsupported trigger '$trigger'";
         }
-        if ($maintenance_gate) {
-            push @errors, "$file: maintenance gate must declare pull_request"
-              unless grep { $_ eq 'pull_request' } @triggers;
-            push @errors,
-              "$file: maintenance gate must not run on workflow_dispatch"
-              if grep { $_ eq 'workflow_dispatch' } @triggers;
-        }
-        else {
-            push @errors, "$file: workflow_dispatch is not declared"
-              unless grep { $_ eq 'workflow_dispatch' } @triggers;
-        }
+        push @errors, "$file: workflow_dispatch is not declared"
+          unless grep { $_ eq 'workflow_dispatch' } @triggers;
     }
 
     # Every `inputs.NAME` reference must be declared by this workflow's own
@@ -129,9 +116,8 @@ for my $file (@files) {
     if ($file eq 'agent-maintenance.yml' || $file eq 'validation.yml') {
         my @commands = ('prove -v tests/agent_knowledge_validator/test_validator.t',
             'perl tools/scripts/check-shell-policy.pl');
-        push @commands, $file eq 'agent-maintenance.yml'
-          ? 'perl scripts/validate-agent-knowledge.pl --scope range'
-          : 'perl scripts/validate-agent-knowledge.pl --scope worktree';
+        push @commands,
+          'perl scripts/validate-agent-knowledge.pl --scope worktree';
         for my $command (@commands) {
             push @errors, "$file: Perl knowledge contract missing: $command"
               if index($without_comments, $command) < 0;
@@ -517,12 +503,12 @@ if (@errors) {
 }
 
 print
-"workflow-static: $checked workflow(s) and " . scalar (@action_files) . " action file(s) obey the manual-build/PR-maintenance trigger policy and fail on empty CTest selections\n";
+"workflow-static: $checked workflow(s) and " . scalar (@action_files) . " action file(s) obey the manual-only trigger policy and fail on empty CTest selections\n";
 exit 0;
 
 =head1 NAME
 
-check-workflows.pl - enforce manual-build and PR-maintenance GitHub Actions policies
+check-workflows.pl - enforce manual-only GitHub Actions policies
 
 =head1 SYNOPSIS
 
@@ -541,10 +527,10 @@ composite action files under F<.github/actions/>:
 
 =item *
 
-an F<on:> block is required. All build, test and packaging workflows must
-declare only C<workflow_dispatch>; only
-F<agent-maintenance.yml> may declare C<pull_request>, and it may not also
-declare C<workflow_dispatch>. Push and schedule triggers fail the check;
+an F<on:> block is required. Every workflow, including
+F<agent-maintenance.yml>, must declare only C<workflow_dispatch>. Push,
+pull-request, schedule, repository-dispatch and workflow-call triggers fail
+the check;
 
 =item *
 

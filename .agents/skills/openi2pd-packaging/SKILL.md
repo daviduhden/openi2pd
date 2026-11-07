@@ -275,9 +275,9 @@ Ask for exact paths and package names. Do not let them run `dpkg-buildpackage`,
 - Do not weaken service hardening, sandbox paths, user separation or file
   permissions.
 - Do not claim package/service validation from a manifest inspection.
-- Keep packaging/build/test workflows `workflow_dispatch`-only. The sole
-  pull-request exception is the compile-free `agent-maintenance.yml` gate;
-  use `openi2pd-ci` for workflow trigger policy and validation.
+- Keep every workflow, including the compile-free `agent-maintenance.yml`
+  gate, `workflow_dispatch`-only. Use `openi2pd-ci` for workflow trigger policy
+  and validation.
 - Do not create commits, tags, releases, worktrees or temporary commits, and do not push; inspect `git status`/`git diff` before editing.
 - Do not install dependencies, fetch/vendor code or perform hidden downloads to enable a local build or test. Preserve LICENSE/NOTICE/provenance and technical identifiers/paths unless an approved migration exists (AGENTS.md).
 

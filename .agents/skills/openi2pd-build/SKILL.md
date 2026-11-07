@@ -408,9 +408,9 @@ build.
   build.
 - Do not make an option silently change a wire/persisted format or a security
   boundary.
-- Keep build/test/package workflows `workflow_dispatch`-only. The sole
-  pull-request exception is the compile-free `agent-maintenance.yml` gate;
-  use `openi2pd-ci` for workflow trigger policy and validation.
+- Keep every workflow, including the compile-free `agent-maintenance.yml`
+  gate, `workflow_dispatch`-only. Use `openi2pd-ci` for workflow trigger policy
+  and validation.
 - Do not create commits, tags, releases, worktrees or temporary commits, and do not push; inspect `git status`/`git diff` before editing.
 - Do not install dependencies, fetch/vendor code or perform hidden downloads to enable a local build or test. Preserve LICENSE/NOTICE/provenance and technical identifiers/paths unless an approved migration exists (AGENTS.md).
 

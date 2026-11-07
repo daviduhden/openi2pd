@@ -58,7 +58,7 @@ outside an explicitly assigned temporary output path.
   install-layout checks in the Linux lane. The same interpreter must be used
   for CMake discovery and shell/prove checks.
 - `agent-skills-static` validates this reference; it does not execute Perl.
-- The maintenance PR gate and manual skills lane consume the Perl validator
+- The manual maintenance gate and manual skills lane consume the Perl validator
   contract. The portability guard scans both gates without a Python allowlist.
   Syntax/critic inventories explicitly list `.pm` files under `scripts/lib/`
   and the guard compares that list with recursive discovery; module

@@ -81,12 +81,11 @@ workflow, run `gh`, build or test.
   [source documentation policy](../../../AGENTS.md#source-documentation-policy)
   and run in manual CI; report generator coverage and unresolved warnings.
 
-- Build, test and packaging workflows remain `workflow_dispatch`-only. The
-  compile-free `agent-maintenance.yml` PR gate is the sole pull-request
-  exception; it runs the compile-free Perl validator contract and structural
-  checks, never native/JVM builds or product tests. `check-workflows.pl` enforces this
-  exact exception, so any additional automatic trigger needs an explicit
-  policy and checker update.
+- Every workflow, including the compile-free `agent-maintenance.yml` gate,
+  remains `workflow_dispatch`-only. The maintenance gate runs the Perl
+  validator contract and structural checks, never native/JVM builds or product
+  tests. `check-workflows.pl` rejects every other trigger, so adding one needs
+  an explicit policy and checker update.
 - Pin third-party actions to commit SHAs with a version comment; set
   `persist-credentials: false` on checkout. The reviewed pins are
   `actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1` (v7.0.1),
@@ -452,8 +451,8 @@ workflow, run `gh`, build or test.
   `AGENTS.md` may run locally.
 - Do not dispatch or watch a workflow, read remote logs with `gh`, or otherwise
   act on GitHub without explicit coordinator authorization.
-- Do not add `push`/`schedule` triggers or additional `pull_request` triggers,
-  mutable action tags, persisted checkout credentials or `continue-on-error`.
+- Do not add `push`, `pull_request`, `schedule`, `repository_dispatch` or
+  `workflow_call` triggers. Keep `workflow_dispatch` as the only trigger.
 - Do not hide a failure by deleting a test, weakening an assertion or
   suppressing warnings.
 - Do not create commits, tags, releases, worktrees or temporary commits, and do not push; inspect `git status`/`git diff` before editing.

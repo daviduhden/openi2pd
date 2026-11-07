@@ -209,7 +209,7 @@ branding validators or a build.
 - Do not add personal credits, donation links or outdated upstream install
   instructions.
 - Build/test/package workflows remain `workflow_dispatch`-only; the
-  compile-free agent-maintenance PR gate is the only pull-request exception.
+  compile-free agent-maintenance gate is also manual-only.
   See `openi2pd-ci` for workflow policy.
 - Do not create commits, tags, releases, worktrees or temporary commits, and do not push; inspect `git status`/`git diff` before editing.
 - Do not install dependencies, fetch/vendor code or perform hidden downloads to enable a local build or test. Preserve LICENSE/NOTICE/provenance and technical identifiers/paths unless an approved migration exists (AGENTS.md).

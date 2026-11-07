@@ -65,10 +65,9 @@ weakening, or removal of security restrictions.
 
 ### CI is the only dynamic validator
 
-All builds and tests run through GitHub Actions. Build, test and packaging
-workflows remain `workflow_dispatch`-only; only
-`.github/workflows/agent-maintenance.yml` may use `pull_request`, solely for
-compile-free synchronization checks. Do not add `push`, `schedule` or
+All builds and tests run through GitHub Actions. Every workflow, including
+`.github/workflows/agent-maintenance.yml`, is `workflow_dispatch`-only. Do not
+add `push`, `pull_request`, `schedule`, `repository_dispatch` or
 `workflow_call` triggers. Do not attribute results from an earlier revision to
 current local changes. Do not commit or
 push without authorization. When changes exist only locally, prepare the tests
@@ -172,8 +171,8 @@ proposed tracking updates to the coordinator.
   coordinator.
 - Do not reintroduce GNU make, the HTTP admin console, web assets, submodules
   or hidden downloads.
-- Keep build/test/package CI manual-only (`workflow_dispatch`); the only
-  trigger exception is the maintenance PR gate defined above.
+- Keep every CI workflow manual-only (`workflow_dispatch`), including the
+  maintenance gate defined above. No other trigger is allowed.
 - Preserve copyright, license, SPDX, NOTICE and upstream provenance.
 - Do not weaken `pledge`/`unveil`, cryptographic checks, signature/AEAD
   verification or untrusted-input limits.
@@ -334,17 +333,19 @@ repeat it only when that review finds an error that is corrected.
 5. Remove obsolete or duplicated instructions, validate local references, and
    update examples and validation commands affected by the implementation. If
    an update cannot be made, document why and report the task incomplete.
-6. Run `perl scripts/validate-agent-knowledge.pl --scope worktree` (with `--base BASE_SHA
-   --head HEAD_SHA` in pull-request CI) and the owning compile-free checks. The
+6. Run `perl scripts/validate-agent-knowledge.pl --scope worktree` (or
+   `--scope range --base BASE_SHA --head HEAD_SHA` when reviewing a branch)
+   and the owning compile-free checks. The
    checker verifies structure and substantive text changes, not semantic
    relevance; explain in the final report why the update helps future work.
 7. Report agents and skills reviewed, instruction files changed, reusable
    knowledge added/corrected, checks run and synchronization status in the
    final `Agent & Skills Synchronization` section.
 
-The `agent-maintenance.yml` pull-request gate is the only exception to the
-manual-only workflow rule. Build, test, packaging and release validation stay
-`workflow_dispatch`-only. This does not change branch protection settings.
+The `agent-maintenance.yml` gate is also manual-only and runs the compile-free
+agent/skill synchronization checks on demand. Build, test, packaging and
+release validation stay `workflow_dispatch`-only. This does not change branch
+protection settings.
 
 ### Shared Agent Knowledge Validation Contract
 
@@ -355,7 +356,7 @@ to CI under the static-only local policy. The validator requires Perl 5.16+
 and Git, uses only core modules, and publishes contract version `1.0.0`. All
 adopting repositories share the same CLI, AK001-AK006 identifiers, output
 schema, and exit codes (`0` pass, `1` policy failure, `2` execution/configuration
-error). For a pull request, pass both revisions with
+error). For a branch review, pass both revisions with
 `--scope range --base BASE_REF --head HEAD_REF`; compare from their merge base.
 
 Read [Agent Knowledge Validation Contract](docs/agent-knowledge-validation.md)
@@ -368,7 +369,7 @@ provenance, not a runtime compatibility shim. Preserve the shared observable
 contract rather than byte identity with a different language implementation.
 Repository-specific requirements belong in the documented TOML
 configuration or a stable `AKX...` extension, never in a private fork of the
-shared rules. The GitHub PR workflow runs the same tests and range command;
+shared rules. The manual GitHub workflow runs the same tests and worktree command;
 it does not edit files or require secrets.
 
 ### Mandatory Definition of Done
@@ -574,9 +575,8 @@ CI. Update the feature matrix in `docs/cpp23-migration.md` and
   delegate control flow to source-controlled helpers without eval; preserve
   prerequisite ordering, overrides and framework-specific install authority.
   File-based syntax checks are distinct from inline source execution.
-- Build, test, packaging and release-validation workflows are
-  `workflow_dispatch`-only; the maintenance PR gate is the sole exception.
-  Actions are SHA-pinned and
+- Build, test, packaging, release-validation and maintenance workflows are
+  all `workflow_dispatch`-only. Actions are SHA-pinned and
   checkout credentials are not persisted.
 - OpenBSD is first-class; do not weaken pledge/unveil or LibreSSL support.
   Supported crypto floors are OpenSSL 3.0.2–4.0.x and LibreSSL 4.0+ with
@@ -2517,9 +2517,8 @@ uploaded. A skipped stub returns 77 with a registered `SKIP_RETURN_CODE`; it
 must never print `skip:` and return 0. Do not use `continue-on-error` to hide a
 failing test, and do not treat an empty CTest selection as success.
 
-Build/test/package workflows remain `workflow_dispatch`-only;
-`agent-maintenance.yml` is the sole `pull_request` gate. `workflow_call` may be
-added only with an actual reusable consumer and an explicit policy update.
+Every workflow remains `workflow_dispatch`-only, including
+`agent-maintenance.yml`. `workflow_call` is not allowed.
 `tools/scripts/check-workflows.pl` is the compile-free guard (CTest
 `workflow-static` and the `skills-static` job): it rejects other triggers,
 `continue-on-error`, and any executing ctest line without

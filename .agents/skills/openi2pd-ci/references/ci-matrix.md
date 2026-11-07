@@ -23,7 +23,7 @@ Use with `SKILL.md`. All jobs are manual; no result here validates a revision.
 | `packaging.yml` | service-contracts, service-install-matrix, static-musl, container-image, Debian | static contracts; seven-manager Service staging; static Debian/RPM-style package; container image; Debian lintian/autopkgtest, conffile reinstall, remove/purge |
 
 Build/test/package workflows use `workflow_dispatch`; the compile-free
-agent-maintenance gate is the sole pull-request workflow. Actions are
+agent-maintenance gate is a manual workflow. Actions are
 SHA-pinned and checkout credentials are not persisted.
 
 The interop job verifies the current Java 2.14.0 reference separately from

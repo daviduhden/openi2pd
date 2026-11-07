@@ -1,19 +1,19 @@
 # See the LICENSE file at the top of the project tree for copyright and
 # license details.
 #
-# openi2pd: pull-request agent knowledge synchronization gate.
+# openi2pd: manual agent knowledge synchronization gate.
 #
 ---
 name: Agent Knowledge Validation
 
 on:
-  pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: agent-maintenance-${{ github.event.pull_request.number }}
+  group: agent-maintenance-${{ github.run_id }}
   cancel-in-progress: true
 
 jobs:
@@ -33,10 +33,7 @@ jobs:
       - name: Run Perl validator contract tests
         run: prove -v tests/agent_knowledge_validator/test_validator.t
       - name: Agent Knowledge Validation
-        env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-        run: perl scripts/validate-agent-knowledge.pl --scope range --base "$BASE_SHA" --head "$HEAD_SHA"
+        run: perl scripts/validate-agent-knowledge.pl --scope worktree
       - name: Check Agent Skills contract
         run: cmake -DPROJECT_ROOT="$PWD" -P tests/check-agent-skills.cmake
       - name: Check workflow trigger policy

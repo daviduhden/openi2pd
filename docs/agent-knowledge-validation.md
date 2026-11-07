@@ -27,7 +27,7 @@ prove -v tests/agent_knowledge_validator/test_validator.t
 
 `worktree` includes staged and unstaged tracked changes, untracked non-ignored
 files, renames, and deletions. `range` compares the merge base of `BASE_REF`
-and `HEAD_REF` with `HEAD_REF`. For a pull request, fetch sufficient history
+and `HEAD_REF` with `HEAD_REF`. For a branch review, fetch sufficient history
 and pass the PR base and head commit SHAs; the validator resolves their common
 ancestor itself.
 

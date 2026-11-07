@@ -10,10 +10,10 @@ Documents project documentation.
 
 # CI policy and workflow linting
 
-Build, test and packaging workflows remain **manual-only** (`workflow_dispatch`).
-The sole automatic gate is `.github/workflows/agent-maintenance.yml`, which
-runs compile-free agent/skill synchronization checks on pull requests. No build
-or test workflow runs automatically; no `push` or schedule trigger is allowed.
+Every workflow is **manual-only** (`workflow_dispatch`), including
+`.github/workflows/agent-maintenance.yml`, which runs compile-free agent/skill
+synchronization checks on demand. No workflow runs automatically; `push`,
+`pull_request`, `schedule` and `repository_dispatch` triggers are not allowed.
 
 The Linux build matrix is two workflows, one per OpenSSL branch:
 `build-linux-openssl3.yml` and `build-linux-openssl4.yml`. Each installs the
@@ -141,9 +141,9 @@ the component-install lane checks every tool binary, `i2pdctl` and
   crash reproducers are uploaded as short-retention artifacts. The workflow
   does not claim a long-running corpus campaign.
 - A compile-free `workflow-static` check (`tools/scripts/check-workflows.pl`)
-  permits `pull_request` only in the maintenance gate and otherwise requires
-  only `workflow_dispatch`, rejects `workflow_call` and any
-  `continue-on-error`, and any executing `ctest` invocation without
+  requires `workflow_dispatch` for every workflow, rejects `push`,
+  `pull_request`, `schedule`, `repository_dispatch`, `workflow_call` and any
+  `continue-on-error`, and rejects any executing `ctest` invocation without
   `--no-tests=error` and `--output-junit`. It runs in `skills-static` and as a
   CTest target.
 - The manual `Packaging and service validation` workflow runs the service and
@@ -169,9 +169,9 @@ the component-install lane checks every tool binary, `i2pdctl` and
   target graph and runs all registered Windows tests; the native MSVC job
   remains TUI/API-focused, builds the TUI tests and verifies installation.
   Dependencies are build-time only; the installed product downloads nothing.
-- Build/test/package workflows are `workflow_dispatch`-only; the maintenance
-  gate is the sole pull-request workflow and runs no build or test. The
-  static guard rejects `workflow_call`. Manual runs do not cancel an
+- Build/test/package and maintenance workflows are all
+  `workflow_dispatch`-only; the maintenance gate runs no build or test. The
+  static guard rejects every other trigger. Manual runs do not cancel an
   earlier validation (`cancel-in-progress: false`), and CTest logs, package
   outputs, Android reports and fuzz corpora are archived as short-retention
   artifacts.

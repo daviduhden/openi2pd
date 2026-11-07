@@ -448,7 +448,7 @@ sub workflow_crash_fixtures {
     my $maintenance_source = read_fixture_file($maintenance);
     for my $missing (
         'prove -v tests/agent_knowledge_validator/test_validator.t',
-        'perl scripts/validate-agent-knowledge.pl --scope range' ) {
+        'perl scripts/validate-agent-knowledge.pl --scope worktree' ) {
         my $candidate = $maintenance_source;
         $candidate =~ s/\Q$missing\E/echo missing-contract/g;
         write_file( $maintenance, $candidate );
