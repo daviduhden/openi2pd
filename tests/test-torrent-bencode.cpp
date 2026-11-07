@@ -158,6 +158,52 @@ static void TestValidSingleFile ()
 	assert (torrent.GetFiles ().front ()->GetFileLength () == 16384);
 }
 
+static void TestKnownFieldTypes ()
+{
+	const auto validInfo = SingleFileInfo (16384, 16384, 1);
+	for (const std::string key : { "announce", "comment", "created by" })
+		ExpectMalformed (Dict ({ { key, Int (1) }, { "info", validInfo } }));
+
+	auto infoWith = [] (std::string_view field, const std::string & encoded)
+	{
+		return Dict ({ { "length", field == "length" ? encoded : Int (16384) },
+			{ "name", field == "name" ? encoded : Bytes ("file.bin") },
+			{ "piece length", field == "piece length" ? encoded : Int (16384) },
+			{ "pieces", field == "pieces" ? encoded : Bytes (Pieces (1)) },
+			{ "private", field == "private" ? encoded : Int (0) },
+			{ "meta version", field == "meta version" ? encoded : Int (2) } });
+	};
+	for (const std::string key : { "length", "piece length", "private", "meta version" })
+		ExpectMalformed (MakeTorrentFile (infoWith (key, Bytes ("0"))));
+	for (const std::string key : { "name", "pieces" })
+		ExpectMalformed (MakeTorrentFile (infoWith (key, Int (1))));
+
+	// A malformed per-file length must not become a zero-length file.
+	// Its valid sibling makes the overall piece count otherwise correct.
+	const auto validFile = Dict ({ { "length", Int (16384) }, { "path", List ({ Bytes ("data") }) } });
+	for (const auto & wrongLength : { Bytes ("0"), List ({ }), Dict ({ }) })
+	{
+		const auto badFile = Dict ({ { "length", wrongLength }, { "path", List ({ Bytes ("empty") }) } });
+		ExpectMalformed (MakeTorrentFile (Dict ({ { "files", List ({ badFile, validFile }) },
+			{ "name", Bytes ("root") }, { "piece length", Int (16384) }, { "pieces", Bytes (Pieces (1)) } })));
+	}
+	auto multi = MultiFileInfo ({ { 0, { "empty" } }, { 16384, { "data" } } }, 16384, 1);
+	Torrent validZeroLength (MakeTorrentFile (multi));
+	assert (validZeroLength.GetError () == eTorrentErrorNoError);
+	assert (validZeroLength.GetFiles ().front ()->GetFileLength () == 0);
+	// Field presence is independent of whether its type was valid.
+	multi.insert (multi.size () - 1, Bytes ("length") + Bytes ("0"));
+	ExpectMalformed (MakeTorrentFile (multi));
+
+	const std::string boundedAnnounce (MAX_TRACKER_ANNOUNCE_LENGTH, 'a');
+	Torrent boundary (MakeTorrentFile (validInfo, boundedAnnounce));
+	assert (boundary.GetError () == eTorrentErrorNoError);
+	assert (boundary.GetAnnounce () == boundedAnnounce);
+	ExpectMalformed (MakeTorrentFile (validInfo, boundedAnnounce + "a"));
+	Torrent unknownField (Dict ({ { "info", validInfo }, { "x", Int (1) } }));
+	assert (unknownField.GetError () == eTorrentErrorNoError);
+}
+
 static void TestValidMultiFile ()
 {
 	auto data = MakeTorrentFile (MultiFileInfo ({ { 100, { "dir", "a.txt" } }, { 200, { "b.txt" } } }, 16384, 1));
@@ -389,6 +435,7 @@ static void TestReadTorrentFileBounded ()
 int main ()
 {
 	TestDictionaryValuesRequired ();
+	TestKnownFieldTypes ();
 	TestValidSingleFile ();
 	TestValidMultiFile ();
 	TestTruncatedAndMalformed ();

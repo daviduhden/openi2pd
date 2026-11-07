@@ -2150,7 +2150,9 @@ namespace torrents
 				if (key == "announce")
 				{
 					auto [announce, l] = ExtractByteString (buf);
-					if (l) m_Announce = announce;
+					if (!l || announce.size () > MAX_TRACKER_ANNOUNCE_LENGTH)
+						m_Error = eTorrentErrorMalformedMetaInfo;
+					else m_Announce = announce;
 					return l;
 				}
 				else if (key == "announce-list")
@@ -2187,7 +2189,11 @@ namespace torrents
 				else if (key == "comment")
 				{
 					auto [comment, l] = ExtractByteString (buf);
-					if (!l) return 0;
+					if (!l)
+					{
+						m_Error = eTorrentErrorMalformedMetaInfo;
+						return 0;
+					}
 					if (comment.size () <= 1024)
 						m_MetaComment.assign (comment);
 					else
@@ -2197,7 +2203,11 @@ namespace torrents
 				else if (key == "created by")
 				{
 					auto [createdBy, l] = ExtractByteString (buf);
-					if (!l) return 0;
+					if (!l)
+					{
+						m_Error = eTorrentErrorMalformedMetaInfo;
+						return 0;
+					}
 					if (createdBy.size () <= 255)
 						m_CreatedBy.assign (createdBy);
 					else
@@ -2313,9 +2323,15 @@ namespace torrents
 			{
 				if (key == "length")
 				{
-					auto [value, l] = ExtractInteger (buf);
-					if (!l) return 0;
+					// Presence and validity are separate: a wrong type must not
+					// bypass the length/files exclusion through parser fallback.
 					hasLength = true;
+					auto [value, l] = ExtractInteger (buf);
+					if (!l)
+					{
+						m_Error = eTorrentErrorMalformedMetaInfo;
+						return 0;
+					}
 					// MAX_TORRENT_LENGTH is a 64-bit bound. It must not be
 					// truncated into size_t on ILP32, so reject values that
 					// cannot be represented by the platform size type.
@@ -2332,6 +2348,7 @@ namespace torrents
 				else if (key == "name")
 				{
 					auto [name, l] = ExtractByteString (buf);
+					if (!l) m_Error = eTorrentErrorMalformedMetaInfo;
 					if (l)
 					{
 						m_Name = AdjustName (name);
@@ -2353,7 +2370,11 @@ namespace torrents
 				else if (key == "piece length")
 				{
 					auto [value, l] = ExtractInteger (buf);
-					if (!l) return 0;
+					if (!l)
+					{
+						m_Error = eTorrentErrorMalformedMetaInfo;
+						return 0;
+					}
 					if (value < 0 || (uint64_t)value < MIN_PIECE_LENGTH || (uint64_t)value > MAX_PIECE_LENGTH)
 					{
 						LogPrint (eLogError, "Torrents: Invalid piece length ", value);
@@ -2366,7 +2387,11 @@ namespace torrents
 				else if (key == "pieces")
 				{
 					auto [hashes, l] = ExtractByteString (buf);
-					if (!l) return 0;
+					if (!l)
+					{
+						m_Error = eTorrentErrorMalformedMetaInfo;
+						return 0;
+					}
 					version = 1; // v1 or hybrid
 					piecesValue = buf;
 					hasPieces = true;
@@ -2380,6 +2405,7 @@ namespace torrents
 				else if (key == "meta version")
 				{
 					auto [value, l] = ExtractInteger (buf);
+					if (!l) m_Error = eTorrentErrorMalformedMetaInfo;
 					if (l && !version && value >= 0 && value <= 2) // no pieces yet, v1/v2
 						version = static_cast<int> (value);
 					return l;
@@ -2633,7 +2659,11 @@ namespace torrents
 						{
 							hasPath = true;
 							auto [subdirs, l] = ParseStringList (value);
-							if (!l) return 0;
+							if (!l)
+							{
+								m_Error = eTorrentErrorMalformedMetaInfo;
+								return 0;
+							}
 							if (subdirs.empty () || subdirs.size () > MAX_TORRENT_PATH_COMPONENTS)
 							{
 								LogPrint (eLogError, "Torrents: Invalid number of path components ", subdirs.size ());
@@ -2658,7 +2688,11 @@ namespace torrents
 						{
 							hasLength = true;
 							auto [length, l] = ExtractInteger (value);
-							if (!l) return 0;
+							if (!l)
+							{
+								m_Error = eTorrentErrorMalformedMetaInfo;
+								return 0;
+							}
 							if (length < 0 || (uint64_t)length > MAX_TORRENT_LENGTH
 								|| (uint64_t)length > (uint64_t)std::numeric_limits<size_t>::max ())
 							{
