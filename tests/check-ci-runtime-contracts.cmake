@@ -83,6 +83,22 @@ require_runtime_source("libi2pd_client/TorrentsDHT.cpp"
 require_runtime_source("tests/test-torrents-dht-protocol.cpp"
   "TestPersistenceGeneration ()")
 
+# Fixture authority must cover deferred completion and final teardown.
+require_runtime_source("tests/test-streaming-sendstate.cpp"
+  "std::shared_ptr<SendResult> result")
+require_runtime_source("tests/test-streaming-sendstate.cpp"
+  "assert (pending.expired ());")
+require_runtime_source("tests/test-i2ptunnel-stop.cpp"
+  "assert (released.expired ());")
+require_runtime_source("tests/test-i2ptunnel-targets.cpp"
+  "assert (released.expired ());")
+require_runtime_source("tests/test-torrents-security.cpp"
+  "auto diskWork = boost::asio::make_work_guard (diskService);")
+require_runtime_source("tests/test-privsep-linux-ipc.cpp"
+  ".requireGid = true, .configured = true")
+require_runtime_source("tests/test-privsep-linux-ipc.cpp"
+  "assert (!pair->second.MatchesPeerExpectation (uid, gid + 1, 0));")
+
 # Profile state and recycler authority must survive cross-TU teardown.
 require_runtime_source("libi2pd/Profiling.cpp"
   "static ProfilingRuntime runtime;")
@@ -92,7 +108,6 @@ endforeach()
 require_runtime_source("libi2pd/NetDb.hpp"
   "[pool] (RouterProfile * profile) noexcept { pool->ReleaseMt (profile); }")
 require_runtime_source("tests/CMakeLists.txt" "test-profile-static-lifetime")
-
 file(READ "${PROJECT_ROOT}/libi2pd/Transports.cpp" transport_redaction)
 if(transport_redaction MATCHES "LogPrint[^;]*(ntcp2proxy|ssu2proxy)")
   message(FATAL_ERROR "Proxy configuration operands must never enter logs")
@@ -108,17 +123,3 @@ foreach(url_source libi2pd/Reseed.cpp libi2pd_client/AddressBook.cpp
     message(FATAL_ERROR "Raw reseed source operand in log")
   endif()
 endforeach()
-
-# Fixture authority must cover deferred completion and final teardown.
-require_runtime_source("tests/test-streaming-sendstate.cpp"
-  "std::shared_ptr<SendResult> result")
-require_runtime_source("tests/test-streaming-sendstate.cpp"
-  "assert (pending.expired ());")
-
-require_runtime_source("tests/test-i2ptunnel-stop.cpp"
-  "assert (released.expired ());")
-require_runtime_source("tests/test-i2ptunnel-targets.cpp"
-  "assert (released.expired ());")
-
-require_runtime_source("tests/test-torrents-security.cpp"
-  "auto diskWork = boost::asio::make_work_guard (diskService);")

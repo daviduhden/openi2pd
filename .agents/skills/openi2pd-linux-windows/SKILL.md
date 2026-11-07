@@ -114,6 +114,11 @@ execution. Ask for:
   Transport diagnostics report only the rejected operation or scheme class,
   never the configured URL operand. Review sibling proxy branches together.
 
+- PeerExpectation.configured selects explicit topology checks. A default
+  expectation defers sender authentication to Receive's kernel credential
+  path; its standalone predicate deliberately accepts synthetic arguments.
+  Keep configured UID/GID rejection tests separate from this legacy path,
+  and use designated fields rather than ambiguous trailing booleans.
 - A failed wait on overlapped I/O does not release the kernel's ownership
   of the OVERLAPPED structure or data buffer. Capture the wait error before
   cancelling, then use blocking GetOverlappedResult to reap the operation

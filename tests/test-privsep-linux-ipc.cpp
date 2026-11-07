@@ -295,8 +295,19 @@ void TestPeerExpectation ()
 		pair->second.ExpectPeer (PeerExpectation { uid, gid, 0, true, false, false, true });
 		assert (!pair->second.MatchesPeerExpectation (0, gid, 0));
 	}
-	pair->second.ExpectPeer (PeerExpectation { uid, gid, 0, true, false, false, false });
+	pair->second.ExpectPeer (PeerExpectation {
+		.uid = uid, .gid = gid, .requireGid = true, .configured = true });
 	assert (!pair->second.MatchesPeerExpectation (uid + 1, gid, 0));
+	assert (!pair->second.MatchesPeerExpectation (uid, gid + 1, 0));
+	assert (pair->second.MatchesPeerExpectation (uid, gid, 0));
+	// An unconfigured predicate defers to Receive's kernel credential
+	// check; it cannot classify synthetic sender credentials itself.
+	pair->second.ExpectPeer (PeerExpectation { });
+	assert (pair->second.MatchesPeerExpectation (uid + 1, gid, 0));
+	assert (pair->first.Send (Message { MessageType::Ping, 404, { } }).has_value ());
+	auto legacy = pair->second.Receive (1000);
+	assert (legacy.has_value () && legacy->has_value ());
+	assert ((*legacy)->requestId == 404);
 }
 
 void TestAdoptRejectsPendingRecord ()
