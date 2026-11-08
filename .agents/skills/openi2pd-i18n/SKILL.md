@@ -101,6 +101,10 @@ the text crosses a protocol/IPC boundary.
 
 ## Known issues and decisions
 
+- The four native catalogs include English identity fallback and translated
+  es/ru/zh-Hans tables; the checker prints current coverage, not a frozen
+  count. Signed plural counts use safe magnitude, including INT_MIN.
+
 - Locale readers retain an immutable locale/tag snapshot through lookup.
   GetLanguageTag resolves the environment on first use too. Strip POSIX
   codesets, match Chinese script subtags exactly and reject conflicting or
