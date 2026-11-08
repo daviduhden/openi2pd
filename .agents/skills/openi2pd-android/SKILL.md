@@ -121,6 +121,14 @@ run Gradle, install an APK or run a device test.
 
 ## Known issues and decisions
 
+- The wide activity uses a weighted outer content area and native relative
+  positioning for its rail, divider and remaining fragment width. Do not
+  nest a second weighted layout there or add a dependency just for bounds.
+  Preserve logical start/end placement and the rail/fragment IDs. Root
+  colorSurface and the theme's brand_background are different roles in
+  both palettes: removing the former to silence Overdraw changes colors
+  unless window paint authority is updated deliberately at the same time.
+
 - Compound vector drawables on the log empty-state view use an explicit
   AppCompatTextView with `app:drawableTopCompat` and `app:drawableTint`.
   Keep its ID, accessibility live region and text styling unchanged when
