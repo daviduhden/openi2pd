@@ -676,7 +676,8 @@ static void TestCompactTrackerFraming ()
 			{
 				assert (torrent.GetTrackerError (tracker).empty ());
 				assert (torrent.GetInterval (tracker) == 7200 * 1000);
-				assert (torrent.GetNumPeers (tracker) == length / i2p::data::IdentHash::len);
+				assert (std::cmp_equal (torrent.GetNumPeers (tracker),
+					length / i2p::data::IdentHash::len));
 			}
 		}
 		// Reject an invalid public API range before reading or publishing it.

@@ -117,6 +117,12 @@ compile, run tests or run project scripts.
 
 ## Known issues and decisions
 
+- When a signed count API meets a size-derived expectation, inspect both
+  declarations and use std::cmp_equal where equality is intended. Casting
+  either operand can misrepresent negative results. A warning from test
+  code still belongs in the exact-run inventory and requires CI compilation
+  of the affected translation unit after correction.
+
 - Tunnel test correlation uses a shared, local attempt identity in addition
   to the reusable wire ID. A retained drop callback and unsent rollback
   retire only that identity; after reply, detach or replacement they must
