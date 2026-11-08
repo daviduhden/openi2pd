@@ -138,3 +138,22 @@ the tunnel is stopping and the instance has not been removed. Ordinary saves
 still require matching live membership. Deterministic queue/removal cases in
 `test-torrents-security` are prepared; real shutdown, crash and power-loss
 validation remains pending manual CI.
+
+### Initial discovery and durable authority
+
+A newly inserted torrent now has service-owned initial-discovery authority
+bound weakly to that exact instance. Metainfo persistence, file preparation,
+loaded pause policy and resume verification precede its first tracker/DHT
+submission. A newly supplied magnet instead waits for the latest successful
+immutable magnet-record write; an older coalesced write cannot authorize a
+newer name/hint/pause generation. Validated recovery records retain their
+existing startup policy gate. No persisted format changes.
+
+Periodic tracker/DHT work and explicit reannounce use the same initial gate.
+The one-shot is consumed before dispatch, with lifetime/stop/removal/error
+checks and a private-swarm recheck before DHT. Existing advertisements after
+initial admission remain governed by the normal torrent state machine;
+this does not impose a new durability wait on every later UI mutation.
+Policy, private-swarm and two-generation write controls are prepared in the
+existing security target. Compilation, sanitizer and live peer validation
+remain pending manual CI on a revision containing the changes.

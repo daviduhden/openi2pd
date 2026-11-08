@@ -437,6 +437,13 @@ namespace torrents
 		TorrentCommandResult QueueTorrentCreation (const TorrentCommand & command);
 		void LoadTorrentAdminState (const std::shared_ptr<Torrent> & torrent);
 		void SaveTorrentAdminState (const std::shared_ptr<Torrent> & torrent, bool final = false);
+		// Service-thread discovery waits for durable recovery authority and
+		// payload verification. Injected actions run synchronously, letting
+		// policy regressions exercise the production gate without sockets.
+		bool CanDiscoverTorrent (const std::shared_ptr<Torrent> & torrent) const;
+		bool DispatchInitialDiscovery (const std::shared_ptr<Torrent> & torrent,
+			const std::function<void ()> & trackers, const std::function<void ()> & dht);
+		void DiscoverAddedTorrent (const std::shared_ptr<Torrent> & torrent);
 		std::pair<std::shared_ptr<Torrent>, int> AddMagnetState (const TorrentMagnetState & state, bool restoring);
 
 		// True when path is lexically inside m_TorrentsDir and neither the
@@ -473,6 +480,7 @@ namespace torrents
 		// Compile-time fixture access without starting listeners or workers.
 		friend struct TorrentRecoveryTestAccess;
 		friend struct TorrentInboundAcceptTestAccess;
+		friend struct TorrentDiscoveryTestAccess;
 		bool ReadTorrentFileForControl (
 			const std::filesystem::path & path, std::vector<uint8_t> & content, std::string & error);
 		bool SaveTorrentFile (std::shared_ptr<Torrent> torrent, const std::string & content);
@@ -645,6 +653,9 @@ namespace torrents
 			bool loaded = false;
 			bool pending = false;
 			bool dirty = false;
+			bool initialDiscoveryPending = false;
+			bool initialDiscoveryReady = false;
+			std::weak_ptr<Torrent> initialDiscoveryOwner;
 			uint64_t generation = 0;
 			uint64_t commentRevision = 0;
 			std::string error;

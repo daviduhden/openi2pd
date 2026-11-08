@@ -116,6 +116,13 @@ Do not let them edit, build or run tests.
 
 ## Known issues and decisions
 
+- Initial discovery belongs to the service-owned durability transaction.
+  Wait for the current instance, loaded pause policy, latest successful
+  state write, prepared files and completed resume verification. Magnets
+  release only after their current immutable record is durable. Gate
+  periodic/explicit paths too, consume initial authority before callbacks,
+  and recheck private/removal state before DHT after tracker dispatch.
+
 - Streaming may copy an acceptor before deregistration. Torrent inbound
   callbacks therefore borrow the tunnel weakly and retain a distinct
   registration generation. Stop closes registration synchronously and

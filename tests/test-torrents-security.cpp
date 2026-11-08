@@ -77,6 +77,60 @@ struct TorrentInboundAcceptTestAccess
 	}
 };
 
+struct TorrentDiscoveryTestAccess
+{
+	static void Prepare (TorrentsTunnel & tunnel, const std::shared_ptr<Torrent> & torrent,
+		bool ready = false, bool loaded = true)
+	{
+		tunnel.m_Stopping = false;
+		tunnel.m_StartupRecoveryPending = false;
+		tunnel.m_Torrents.clear ();
+		tunnel.m_TorrentsByID.clear ();
+		tunnel.m_AdminState.clear ();
+		tunnel.m_Torrents.emplace (torrent->GetInfoHash (), torrent);
+		auto & state = tunnel.m_AdminState[torrent->GetInfoHash ()];
+		state.loaded = loaded;
+		state.initialDiscoveryPending = true;
+		state.initialDiscoveryReady = ready;
+		state.initialDiscoveryOwner = torrent;
+	}
+	static void Ready (TorrentsTunnel & tunnel, const std::shared_ptr<Torrent> & torrent)
+	{
+		tunnel.m_AdminState.at (torrent->GetInfoHash ()).initialDiscoveryReady = true;
+	}
+	static void Loaded (TorrentsTunnel & tunnel, const std::shared_ptr<Torrent> & torrent)
+	{
+		tunnel.m_AdminState.at (torrent->GetInfoHash ()).loaded = true;
+	}
+	static void PendingWrite (TorrentsTunnel & tunnel, const std::shared_ptr<Torrent> & torrent, bool pending)
+	{
+		tunnel.m_AdminState.at (torrent->GetInfoHash ()).pending = pending;
+	}
+	static bool Dispatch (TorrentsTunnel & tunnel, const std::shared_ptr<Torrent> & torrent,
+		const std::function<void ()> & trackers, const std::function<void ()> & dht)
+	{
+		return tunnel.DispatchInitialDiscovery (torrent, trackers, dht);
+	}
+	static void Replace (TorrentsTunnel & tunnel, const std::shared_ptr<Torrent> & torrent)
+	{
+		tunnel.m_Torrents[torrent->GetInfoHash ()] = torrent;
+	}
+	static bool PendingInitial (TorrentsTunnel & tunnel, const std::shared_ptr<Torrent> & torrent)
+	{
+		return tunnel.m_AdminState.at (torrent->GetInfoHash ()).initialDiscoveryPending;
+	}
+	static void Activity (TorrentsTunnel & tunnel, bool stopped, bool recovering)
+	{
+		tunnel.m_Stopping = stopped;
+		tunnel.m_StartupRecoveryPending = recovering;
+	}
+	static void Finish (TorrentsTunnel & tunnel)
+	{
+		tunnel.m_Stopping = true;
+		tunnel.m_Torrents.clear ();
+		tunnel.m_AdminState.clear ();
+	}
+};
 }
 
 // The size constant must be computed in 64 bits even on ILP32, where
@@ -927,6 +981,128 @@ void TestInboundAcceptAuthority ()
 	assertRejected (current);
 }
 
+void TestInitialDiscoveryAuthority ()
+{
+	boost::asio::io_context service;
+	auto keys = i2p::data::PrivateKeys::CreateRandomKeys (
+		i2p::data::SIGNING_KEY_TYPE_EDDSA_SHA512_ED25519, i2p::data::CRYPTO_KEY_TYPE_ECIES_X25519_AEAD, true);
+	auto destination = std::make_shared<i2p::client::ClientDestination> (service, keys, false);
+	auto tunnel = std::make_shared<TorrentsTunnel> ("discovery-authority", destination, "", "", false);
+	auto torrent = std::make_shared<Torrent> (MakeSingleFileTorrent ());
+	assert (torrent->IsValid ());
+	int trackers = 0, dht = 0;
+	auto discover = [&]
+	{
+		return TorrentDiscoveryTestAccess::Dispatch (*tunnel, torrent, [&] { ++trackers; }, [&] { ++dht; });
+	};
+
+	// Neither a pending persistence write nor unloaded pause policy
+	// grants network authority. Verification is a separate barrier.
+	TorrentDiscoveryTestAccess::Prepare (*tunnel, torrent, false, false);
+	assert (!discover ());
+	TorrentDiscoveryTestAccess::Ready (*tunnel, torrent);
+	assert (!discover ());
+	TorrentDiscoveryTestAccess::Loaded (*tunnel, torrent);
+	TorrentDiscoveryTestAccess::PendingWrite (*tunnel, torrent, true);
+	assert (!discover ());
+	TorrentDiscoveryTestAccess::PendingWrite (*tunnel, torrent, false);
+	torrent->RequestLocalVerification (false);
+	assert (!discover ());
+	assert (torrent->GetNextPieceToVerify () == -1);
+	assert (discover ());
+	assert (trackers == 1 && dht == 1);
+	assert (!discover ()); // insertion authority is consumed once
+
+	TorrentDiscoveryTestAccess::Prepare (*tunnel, torrent, true);
+	TorrentDiscoveryTestAccess::Activity (*tunnel, true, false);
+	assert (!discover ());
+	TorrentDiscoveryTestAccess::Activity (*tunnel, false, true);
+	assert (!discover ());
+	TorrentDiscoveryTestAccess::Activity (*tunnel, false, false);
+	torrent->SetStopped (true);
+	assert (!discover ());
+	torrent->SetStopped (false);
+	torrent->SetError (eTorrentErrorFilesystem);
+	assert (!discover ());
+	torrent->SetError (eTorrentErrorNoError);
+	auto replacement = std::make_shared<Torrent> (MakeSingleFileTorrent ());
+	TorrentDiscoveryTestAccess::Replace (*tunnel, replacement);
+	assert (!discover ());
+	assert (!TorrentDiscoveryTestAccess::Dispatch (*tunnel, replacement, {}, {}));
+	assert (trackers == 1 && dht == 1);
+
+	// Private metadata may contact its configured tracker, never DHT.
+	const auto privateInfo = Dict ({ { "length", "i16384e" }, { "name", Bytes ("private.bin") },
+		{ "piece length", "i16384e" }, { "pieces", Bytes (std::string (SHA_DIGEST_LENGTH, 'A')) },
+		{ "private", "i1e" } });
+	torrent = std::make_shared<Torrent> (Dict ({ { "info", privateInfo } }));
+	assert (torrent->IsValid () && torrent->IsPrivate ());
+	TorrentDiscoveryTestAccess::Prepare (*tunnel, torrent, true);
+	assert (discover ());
+	assert (trackers == 2 && dht == 1);
+
+	// Retirement during tracker dispatch must suppress the DHT action.
+	torrent = std::make_shared<Torrent> (MakeSingleFileTorrent ());
+	TorrentDiscoveryTestAccess::Prepare (*tunnel, torrent, true);
+	assert (TorrentDiscoveryTestAccess::Dispatch (*tunnel, torrent,
+		[&] { ++trackers; torrent->MarkRemoved (); }, [&] { ++dht; }));
+	assert (trackers == 3 && dht == 1);
+	assert (!discover ());
+	TorrentDiscoveryTestAccess::Finish (*tunnel);
+}
+
+void TestMagnetDiscoveryWaitsForDurability ()
+{
+	for (bool writable : { false, true })
+	{
+		TempDir dir { MakeTempDir () };
+		auto root = dir.path / "root";
+		if (writable) std::filesystem::create_directory (root);
+		else { std::ofstream blocked (root); blocked << "not a directory"; }
+		boost::asio::io_context service;
+		auto keys = i2p::data::PrivateKeys::CreateRandomKeys (
+			i2p::data::SIGNING_KEY_TYPE_EDDSA_SHA512_ED25519, i2p::data::CRYPTO_KEY_TYPE_ECIES_X25519_AEAD, true);
+		auto destination = std::make_shared<i2p::client::ClientDestination> (service, keys, false);
+		auto tunnel = std::make_shared<TorrentsTunnel> ("magnet-discovery", destination, root.string (), "", false);
+		const std::string magnet = "magnet:?xt=urn:btih:00112233445566778899aabbccddeeff00112233";
+		auto [torrent, id] = tunnel->AddMagnet (magnet);
+		assert (torrent && id);
+		assert (TorrentDiscoveryTestAccess::PendingInitial (*tunnel, torrent));
+		int premature = 0;
+		assert (!TorrentDiscoveryTestAccess::Dispatch (*tunnel, torrent,
+			[&] { ++premature; }, [&] { ++premature; }));
+		// Coalesce a changed immutable record behind the first write. The
+		// first acknowledgement cannot authorize the newer generation.
+		assert (tunnel->AddMagnet (magnet + "&dn=updated").first == torrent);
+		tunnel->GetDiskIOService ().restart ();
+		tunnel->GetDiskIOService ().poll ();
+		service.restart ();
+		service.poll ();
+		assert (TorrentDiscoveryTestAccess::PendingInitial (*tunnel, torrent));
+		assert (premature == 0);
+		if (writable)
+		{
+			tunnel->GetDiskIOService ().restart ();
+			tunnel->GetDiskIOService ().poll ();
+			service.restart ();
+			service.poll ();
+			assert (!TorrentDiscoveryTestAccess::PendingInitial (*tunnel, torrent));
+			auto relative = std::filesystem::path (".openi2pd-state")
+				/ (ToHexString (torrent->GetInfoHash ()) + ".magnet");
+			std::vector<uint8_t> bytes;
+			std::string error;
+			assert (ReadFileBoundedNoFollow (root, relative, MAX_TORRENT_MAGNET_STATE_BYTES, bytes, error));
+			TorrentMagnetState durable;
+			assert (DecodeTorrentMagnetState (
+				std::string_view (reinterpret_cast<const char *> (bytes.data ()), bytes.size ()), durable, error));
+			assert (durable.name == "updated");
+		}
+		else
+			assert (!TorrentDiscoveryTestAccess::Dispatch (*tunnel, torrent, {}, {}));
+		TorrentDiscoveryTestAccess::Finish (*tunnel);
+	}
+}
+
 void TestMagnetRecovery ()
 {
 	for (bool malformed : { false, true })
@@ -1287,6 +1463,8 @@ void TestResumeWriteAndRead ()
 int main ()
 {
 	TestInboundAcceptAuthority ();
+	TestInitialDiscoveryAuthority ();
+	TestMagnetDiscoveryWaitsForDurability ();
 	TestMagnetRecovery ();
 	TestRPCAdmissionAndRestart ();
 	TestRPCMetadataFields ();

@@ -380,30 +380,27 @@ require_runtime_order("libi2pd/Tag.h"
   "ByteStreamToBase32 (m_Buf, length)")
 require_runtime_source("tests/test-kad-dht.cpp" "TestTagEncodingBounds ();")
 
+# A conservative writable threshold must not suppress the first send.
 require_runtime_order("privsep/Channel.cpp"
   "bool waitForSpace = false;" "bool Channel::RejectFrame"
   "if (waitForSpace)" "::poll (&pfd" "::sendmsg (m_Fd"
   "if (error == EAGAIN || error == EWOULDBLOCK)"
   "waitForSpace = true;")
-
 require_runtime_order("privsep/OpenBSDImsg.cpp"
   "bool attempted = false;" "ImsgChannel::Receive (int timeoutMs)"
   "if (attempted && !infinite && DeadlineExpired (deadline))"
   "if (imsgbuf_write (m_Buffer) != -1) continue;" "::poll (&pfd")
-
 require_runtime_source("tests/test-privsep-linux-ipc.cpp"
   "MessageType::LogRecord, 1000, resumedPayload }, 0)")
-
 require_runtime_source("tests/test-privsep-linux-ipc.cpp"
   "assert (immediate.error () == \"send timeout\");")
-
 require_runtime_source("tests/test-privsep-openbsd-imsg.cpp"
   "MessageType::Ping, 9, { } }, -1, 0)")
 
+# Copied acceptors must reject a destroyed or restarted torrent owner.
 require_runtime_order("libi2pd_client/TorrentsTunnel.cpp"
   "void TorrentsTunnel::Stop ()" "void TorrentsTunnel::StopOnService ()"
   "RevokeInboundAccepts ();" "if (m_Stopping.load")
-
 require_runtime_order("libi2pd_client/TorrentsTunnel.cpp"
   "void TorrentsTunnel::RevokeInboundAccepts ()"
   "void TorrentsTunnel::Accept ()"
@@ -412,49 +409,55 @@ require_runtime_order("libi2pd_client/TorrentsTunnel.cpp"
   "return [owner, generation]" "auto self = owner.lock ();"
   "admission (generation->mutex);" "!generation->active"
   "self->AddHandler (connection);" "connection->ReceiveHandshake ();")
-
 require_runtime_source("libi2pd_client/TorrentsTunnel.h"
   "bool m_InboundAcceptStopped = true;")
-
 require_runtime_source("tests/test-torrents-security.cpp"
   "TestInboundAcceptAuthority ();")
-
 require_runtime_source("tests/test-torrents-security.cpp"
   "assert (released.expired ());")
 
+# One broker deadline covers admission, output and stale-reply waits.
 require_runtime_order("privsep/Supervisor.cpp"
   "SpawnSupervisedTorrentStorage (int rootFd" "auto & reply = *selected;"
   "const auto deadline =" "lock.try_lock_until (deadline)"
   "channel.SendUntil (" "std::chrono::steady_clock::now () >= deadline"
   "channel.ReceiveWithFdUntil (deadline)")
-
 require_runtime_source("tests/test-privsep-linux-ipc.cpp"
   "TestTransactionDeadline ();")
-
 require_runtime_source("libi2pd_client/I2PService.cpp"
   "if (generation->wait != wait) return;")
-
 require_runtime_source("libi2pd_client/I2PService.cpp"
   "selected.swap (generation->callbacks);")
-
 require_runtime_source("tests/CMakeLists.txt" "test-i2p-service-readiness")
-
 require_runtime_source("tests/CMakeLists.txt" "test-tunnel-destination-cache")
-
 require_runtime_source("tests/CMakeLists.txt" "test-destination-leaseset-session")
-
 require_runtime_order("libi2pd/Destination.cpp"
   "const uint8_t storeType =" "auto makeLeaseSet ="
   "NETDB_STORE_TYPE_LEASESET && from" "return;" "switch (storeType)")
 
+# Alphabet views carry their bounds through every shard initializer.
 require_runtime_source("libi2pd/Base.h"
   "std::span<const char, 32> GetBase32SubstitutionTable ()")
-
 require_runtime_source("libi2pd/Base.h"
   "std::span<const char, 64> GetBase64SubstitutionTable ()")
-
 require_runtime_source("libi2pd/FS.cpp"
   "bool HashedStorage::Init (std::span<const char> chars)")
-
 require_runtime_source("tests/test-base-64.cpp"
   "decltype (GetBase32SubstitutionTable ())::extent == 32")
+
+# Initial discovery cannot race persistence or reenter twice.
+require_runtime_order("libi2pd_client/TorrentsTunnel.cpp"
+  "bool TorrentsTunnel::DispatchInitialDiscovery ("
+  "void TorrentsTunnel::DiscoverAddedTorrent ("
+  "if (!CanDiscoverTorrent (torrent)) return false;"
+  "state->second.initialDiscoveryPending = false;"
+  "if (trackers) trackers ();"
+  "!torrent->IsPrivate () && dht")
+require_runtime_source("libi2pd_client/TorrentsTunnel.cpp"
+  "state->second.initialDiscoveryOwner.lock () == torrent")
+require_runtime_source("libi2pd_client/TorrentsTunnel.cpp"
+  "&& !torrent->IsLocalVerificationRequested ()")
+require_runtime_source("tests/test-torrents-security.cpp"
+  "TestMagnetDiscoveryWaitsForDurability ();")
+require_runtime_source("tests/test-torrents-security.cpp"
+  "TestInitialDiscoveryAuthority ();")
