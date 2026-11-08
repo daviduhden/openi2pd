@@ -82,8 +82,13 @@ sub slurp {
 # rendered content.
 sub strip_inline_tags {
     my ($text) = @_;
-    $text =~ s/\{\@(?:code|literal)\s+[^}]*\}//gs;
-    $text =~ s/\{\@(?:link|linkplain|value|inheritDoc|docRoot)[^}]*\}//gs;
+    $text =~ s/
+        \{ \@ (?: code | literal ) \s+ [^}]* \}
+    //gsx;
+    $text =~ s/
+        \{ \@ (?: link | linkplain | value | inheritDoc | docRoot )
+        [^}]* \}
+    //gsx;
     return $text;
 }
 
@@ -96,13 +101,15 @@ sub declaration_after {
     my $depth = 0;
     for ( my $i = $from; $i < @$lines && @decl < 40; $i++ ) {
         my $line = $lines->[$i];
-        next if $line =~ m{^\s*(?:\@|//|/\*|\*|\})};
+        next if $line =~ m{ ^ \s* (?: \@ | // | /\* | \* | \} ) }x;
         push @decl, $line;
         $depth += ( $line =~ tr/(// ) - ( $line =~ tr/)// );
-        last if $depth <= 0 && $line =~ /[;{]/;
+        last if $depth <= 0 && $line =~ /[;{]/x;
     }
     my $decl = join( '', @decl );
-    $decl =~ s/\s+/ /g;
+    # Replacement whitespace remains literal under extended matching.
+    # Keep one space so adjacent declaration operands stay distinct.
+    $decl =~ s/\s+/ /gx;
     return $decl;
 }
 
@@ -110,15 +117,15 @@ sub declaration_after {
 # declaration has no parameter list this checker can trust.
 sub declared_params {
     my ($decl) = @_;
-    return () unless $decl =~ /\(/;
+    return () unless $decl =~ /\(/x;
     my $args = $decl;
-    $args =~ s/^[^(]*\(//;
-    $args =~ s/\).*$//;
+    $args =~ s/^[^(]*\(//x;
+    $args =~ s/\).*$//x;
     my ( @names, $current, $depth );
     $depth = 0;
     for my $char ( split //, $args ) {
-        if ( $char =~ /[<(]/ ) { $depth++ }
-        elsif ( $char =~ /[>)]/ ) { $depth-- }
+        if ( $char =~ /[<(]/x ) { $depth++ }
+        elsif ( $char =~ /[>)]/x ) { $depth-- }
         if ( $char eq ',' && $depth == 0 ) {
             push @names, $current;
             $current = '';
@@ -129,16 +136,16 @@ sub declared_params {
     push @names, $current if length $current;
     my @parsed;
     for my $param (@names) {
-        $param =~ s/^\s+|\s+$//g;
+        $param =~ s/^\s+|\s+$//gx;
         next if $param eq '';
-        $param =~ s/=.*$//;
-        $param =~ s/^\@\w+(?:\([^)]*\))?\s+//;
-        $param =~ s/^final\s+//;
-        $param =~ s/\s*\[\s*\]$//;
-        $param =~ s/\.\.\.$//;
-        $param =~ s/^.*\s//;
+        $param =~ s/=.*$//x;
+        $param =~ s/^ \@ \w+ (?: \( [^)]* \) )? \s+ //x;
+        $param =~ s/^final\s+//x;
+        $param =~ s/\s*\[\s*\]$//x;
+        $param =~ s/\.\.\.$//x;
+        $param =~ s/^.*\s//x;
         push @parsed, $param
-          if $param =~ /^[A-Za-z_]\w*$/ && $param !~ /^(?:void|final)$/;
+          if $param =~ /^[A-Za-z_]\w*$/x && $param !~ /^(?:void|final)$/x;
     }
     return @parsed;
 }
@@ -149,10 +156,10 @@ sub check_block {
     my $where = "$file line " . ( $start + 1 );
 
     my $text = strip_inline_tags( join( '', @$block ) );
-    for my $raw ( split /\n/, $text, -1 ) {
+    for my $raw ( split /\n/x, $text, -1 ) {
 
         # Unregistered block tag, for example a JDK-internal @implNote.
-        if ( $raw =~ /^\s*\*\s*\@([A-Za-z]\w*)/ ) {
+        if ( $raw =~ /^\s*\*\s*\@([A-Za-z]\w*)/x ) {
             my $tag = $1;
             if ( !$block_tag{$tag} ) {
                 my $hint = $inline_tag{$tag}
@@ -166,7 +173,7 @@ sub check_block {
         # prose. Angle brackets are only safe inside {@code}/{@literal}
         # or when they are a supported HTML element. A tag name must
         # follow the bracket immediately; `< iExp` is plain text.
-        while ( $raw =~ m{</?([A-Za-z][A-Za-z0-9]*)}g ) {
+        while ( $raw =~ m{ </? ([A-Za-z][A-Za-z0-9]*) }gx ) {
             my $tag = lc $1;
             next if $html_tag{$tag};
             fail( "$where: <$1> is parsed as HTML, not text; use "
@@ -176,9 +183,9 @@ sub check_block {
 
     my @documented;
     for my $raw ( @$block[ 1 .. $#$block ] ) {
-        while ( $raw =~ /\@param\s+(<[^>]+>|\w+)/g ) {
+        while ( $raw =~ /\@param\s+(<[^>]+>|\w+)/gx ) {
             my $name = $1;
-            next if $name =~ /^</;    # @param <T> documents a type
+            next if $name =~ /^</x;    # @param <T> documents a type
             push @documented, $name;
         }
     }
@@ -187,7 +194,7 @@ sub check_block {
     return unless @declared;
     my %declared = map { $_ => 1 } @declared;
     for my $name (@documented) {
-        if ( !$declared{$name} && $decl !~ /\b\Q$name\E\b/ ) {
+        if ( !$declared{$name} && $decl !~ /\b\Q$name\E\b/x ) {
             fail("$where: \@param $name is not a parameter of "
                   . "'$decl'");
         }
@@ -198,7 +205,7 @@ sub check_block {
 my @files;
 find(
     sub {
-        return unless /\.java\z/;
+        return unless /\.java\z/x;
         push @files, $File::Find::name;
     },
     $java_root
@@ -207,14 +214,14 @@ find(
 
 for my $file (@files) {
     my $text = slurp($file);
-    my @lines = split /\n/, $text, -1;
+    my @lines = split /\n/x, $text, -1;
     for ( my $i = 0; $i < @lines; $i++ ) {
-        next unless $lines[$i] =~ m{^\s*/\*\*};
+        next unless $lines[$i] =~ m{^\s*/\*\*}x;
         my @block;
         my $j = $i;
         while ( $j < @lines ) {
             push @block, $lines[$j] . "\n";
-            last if $lines[$j] =~ m{\*/};
+            last if $lines[$j] =~ m{\*/}x;
             $j++;
         }
         check_block( $file, $i, \@block, \@lines, $j + 1 );

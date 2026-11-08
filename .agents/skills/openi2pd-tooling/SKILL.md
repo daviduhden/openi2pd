@@ -122,6 +122,12 @@ a TUI client.
 
 ## Known issues and decisions
 
+- Review extended-regex changes by operand, preserving replacement spaces
+  separately from pattern layout. Javadoc inline tags may contain spaces,
+  hashes and angle brackets that must stay opaque to HTML validation.
+  tests/android-javadoc-regex.t pins these cases through the file-based
+  checker and remains wired to CTest plus the manual Perl-quality lane.
+
 - Perl::Critic slurp findings should initialize the localized input record
   separator explicitly to undef, retaining its dynamic scope and restoration.
   Diagnostic accumulators must preserve the old push-count result when

@@ -604,6 +604,13 @@ if(NOT PERL_EXECUTABLE)
   message(STATUS "Perl not found: static interop/documentation checks are not registered")
 endif()
 if(PERL_EXECUTABLE)
+  add_test(NAME perl-android-javadoc-regex
+    COMMAND "${PERL_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/android-javadoc-regex.t")
+  set_tests_properties(perl-android-javadoc-regex PROPERTIES
+    WORKING_DIRECTORY "${PROJECT_ROOT}"
+    LABELS "ci;android;docs;perl"
+    TIMEOUT 60)
+
   # Compile-free native/Android translation contract. The interpreter
   # comes from the configure step instead of a run-time `find_program`,
   # so the catalog check cannot be skipped by a ctest PATH difference.

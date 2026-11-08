@@ -105,6 +105,7 @@ if(BUILD_TESTING AND NOT CMAKE_CROSSCOMPILING)
     # before the regression tests run. i2pdctl is covered by the
     # dedicated target above and is therefore absent here.
     set(I2PD_PERL_SYNTAX_SCRIPTS
+      "${PROJECT_ROOT}/tests/android-javadoc-regex.t"
       "${PROJECT_ROOT}/scripts/validate-agent-knowledge.pl"
       "${PROJECT_ROOT}/tests/agent_knowledge_validator/test_validator.t"
       "${PROJECT_ROOT}/tests/agent_knowledge_validator/fixtures/execution-marker.pl"
@@ -259,6 +260,7 @@ if(BUILD_TESTING AND NOT CMAKE_CROSSCOMPILING)
     add_test(NAME perl-critic
       COMMAND "${PERLCRITIC_EXECUTABLE}"
         --profile "${PROJECT_ROOT}/.perlcriticrc"
+        "${PROJECT_ROOT}/tests/android-javadoc-regex.t"
         "${PROJECT_ROOT}/scripts/validate-agent-knowledge.pl"
         "${PROJECT_ROOT}/tests/agent_knowledge_validator/test_validator.t"
         "${PROJECT_ROOT}/tests/agent_knowledge_validator/fixtures/execution-marker.pl"
