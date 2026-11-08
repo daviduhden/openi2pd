@@ -122,6 +122,14 @@ a TUI client.
 
 ## Known issues and decisions
 
+- Key generation can throw when the selected generator is unavailable or
+  fails. keygen converts that refusal to its existing exit 2 before opening
+  output; do not restore a different-algorithm fallback or expose provider
+  exception operands. Cover every verification-only RSA name and numeric
+  alias, normal process exit, empty stdout and absent output files. Review
+  every CreateRandomKeys consumer when changing the library failure contract;
+  vain already owns its enclosing search exception boundary.
+
 - Native Win32 Perl can throw from an unimplemented `symlink` stub;
   trap only the fixture creation operation and report its capability
   reason while retaining traversal/discovery assertions on capable hosts.

@@ -12,6 +12,8 @@
 
 #include <fstream>
 #include <iostream>
+#include <exception>
+#include <memory>
 #include <vector>
 
 #include "Crypto.h"
@@ -63,9 +65,22 @@ int main (int argc, char * argv[])
 		type = static_cast<i2p::data::SigningKeyType> (*requested);
 	}
 
-	auto keys = i2p::data::PrivateKeys::CreateRandomKeys (type);
-	// CreateRandomKeys historically falls back to a DSA identity when a
-	// requested generator is unavailable. Never write a mislabelled key.
+	std::unique_ptr<i2p::data::PrivateKeys> generated;
+	try
+	{
+		// Direct initialization elides an extra copy of private key bytes.
+		generated.reset (new i2p::data::PrivateKeys (i2p::data::PrivateKeys::CreateRandomKeys (type)));
+	}
+	catch (const std::exception &)
+	{
+		// Generation failure is a normal CLI refusal, not a crash. Keep the
+		// existing exit code and never expose provider exception operands.
+		std::cerr << "unsupported signature type " << SigTypeToName (type) << " (" << type << ")" << std::endl;
+		return 2;
+	}
+	const auto & keys = *generated;
+	// Unknown selections can retain the core's historical legacy mapping.
+	// Never write a key whose actual type differs from the requested type.
 	if (!keys.GetPublic () || keys.GetPublic ()->GetSigningKeyType () != type)
 	{
 		std::cerr << "unsupported signature type " << SigTypeToName (type) << " (" << type << ")" << std::endl;
