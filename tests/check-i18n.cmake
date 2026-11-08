@@ -134,10 +134,30 @@ assert_present("${tui_text}" "answer == \"sí\"" "Spanish affirmative token")
 # key.
 assert_present("${tui_text}" "void App::SetStatus (std::string message, bool error)"
   "SetStatus definition")
-assert_present("${tui_text}" "i2p::i18n::tr (std::string_view (message))"
-  "SetStatus catalog lookup")
-assert_present("${tui_text}" "i2p::i18n::tr (std::string_view (label))"
-  "BeginPrompt catalog lookup")
+assert_present("${tui_text}" "std::string_view (message, N - 1)"
+  "SetStatus source-literal lookup")
+assert_present("${tui_text}" "std::string_view (label, N - 1)"
+  "BeginPrompt source-literal lookup")
+assert_absent("${tui_text}" "i2p::i18n::tr (std::string_view (message))"
+  "Runtime status values must not become catalog keys")
+assert_absent("${tui_text}" "i2p::i18n::tr (std::string_view (label))"
+  "Runtime prompt values must not become catalog keys")
+assert_absent("${tui_text}" "i2p::i18n::tr (std::string_view (text))"
+  "Rendered lines must preserve runtime data")
+assert_present("${tui_text}" "SetLanguage (resolved->language)"
+  "Resolved configuration must select the TUI language")
+assert_absent("${tui_text}" "setlocale (LC_ALL"
+  "Terminal encoding setup must not overwrite numeric locale pinning")
+assert_present("${i18n_text}" "std::atomic<std::shared_ptr<const Selection>>"
+  "Concurrent readers retain one immutable locale selection")
+assert_present("${i18n_text}" "return ActiveSelection ()->tag;"
+  "Language tag queries must resolve the initial environment")
+assert_present("${cmake_text}" "target_link_libraries(libi2pdlang PUBLIC Threads::Threads)"
+  "Standalone catalog consumers inherit the synchronization dependency")
+assert_present("${tui_text}" "TorrentErrorText (info.error)"
+  "Known torrent errors need a closed presentation mapping")
+assert_present("${tui_text}" "WrapUtf8 (translated, width)"
+  "Translated help must wrap before scroll bounds are calculated")
 
 # Multibyte labels must use display columns, never byte length.
 string(FIND "${tui_text}" "DisplayWidth (prefix)" detail_width)
@@ -149,8 +169,8 @@ assert_present("${tui_text}" "TorrentStatusText" "localized torrent status rende
 # Line endings are part of catalog hygiene: the Android/Xml and native
 # catalog guards reject CRLF, and a Windows checkout with core.autocrlf
 # would otherwise convert them and fail on an unmodified tree. The
-# repository .gitattributes must pin LF for every localized format and keep
-# only the Windows command script on CRLF.
+# repository .gitattributes must pin LF for every localized format and
+# keep only the Windows command script on CRLF.
 set(gitattributes_path "${PROJECT_ROOT}/.gitattributes")
 read_required("${gitattributes_path}" gitattributes_text)
 assert_present("${gitattributes_text}" "* text=auto eol=lf"
@@ -167,8 +187,8 @@ assert_present("${guard_text}" "fail_encoding( 'CRLF line ending', \$path, \$lin
 # Full catalog contract: key/placeholder/plural parity, no translated
 # identifiers and every tr()/SetStatus()/BeginPrompt() literal present.
 # The interpreter is passed by the test definition (configure-time
-# discovery); a run-time lookup made the contract depend on the ctest PATH
-# and silently skipped it on Windows.
+# discovery); a run-time lookup made the contract depend on the ctest
+# PATH and silently skipped it on Windows.
 if(NOT PERL_EXECUTABLE)
   find_program(PERL_EXECUTABLE NAMES perl)
 endif()

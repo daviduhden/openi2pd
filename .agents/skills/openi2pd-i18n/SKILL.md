@@ -40,7 +40,7 @@ translations.
   `SettingsFragment.java` language preference.
 - Tests and checks: `tests/test-i18n-format.cpp`,
   `tests/test-i18n-locale.cpp`, `tests/check-i18n.cmake`,
-  `i18n/check-i18n-catalogs.pl` (455-key/14-plural-group authority) and
+  `i18n/check-i18n-catalogs.pl` (key/plural coverage authority) and
   `android/tools/check-android-locales.pl`.
 
 ## Reference sources
@@ -101,16 +101,23 @@ the text crosses a protocol/IPC boundary.
 
 ## Known issues and decisions
 
-- The four native catalogs include English identity fallback and translated
-  es/ru/zh-Hans tables; the checker prints current coverage, not a frozen
-  count. Signed plural counts use safe magnitude, including INT_MIN.
-
 - Locale readers retain an immutable locale/tag snapshot through lookup.
   GetLanguageTag resolves the environment on first use too. Strip POSIX
   codesets, match Chinese script subtags exactly and reject conflicting or
   unsupported scripts; explicit Hans takes precedence over its region.
   Initialize numeric locale before concurrent formatting; live language
   switches must not reset process LC_CTYPE or LC_NUMERIC.
+- Native printf validation compares argument types in order, including
+  length modifiers and dynamic width/precision. Consume %% atomically and
+  reject %n, unsupported directives and nonportable native positional forms.
+  Android positional placeholders remain the separate platform contract.
+- Harvest compact tabs, static help/option prose and backend-owned errors
+  alongside direct literals. Keep the literal percent shortcut outside a
+  printf translation template. Reject duplicate plural keys and preserve
+  separators even after Chinese or Cyrillic characters.
+- The four native catalogs include English identity fallback and translated
+  es/ru/zh-Hans tables; the checker prints current coverage, not a frozen
+  count. Signed plural counts use safe magnitude, including INT_MIN.
 
 - Catalog checker fixtures use raw output on every host. Native Win32
   text mode inserts CRLF into LF samples and can make escape-decoding
@@ -151,17 +158,17 @@ the text crosses a protocol/IPC boundary.
   Android user-visible numbers; use the active per-app locale.
 - Android locale filters and `locales_config` must stay synchronized with the
   resource directories; the compile-free guard checks key/placeholder parity.
-- `I18N-003` tracks remaining full TUI help/tool/composed-string coverage;
-  the current native core/status/prompt catalogs are real but not a claim that
-  every historical tool diagnostic has a translation.
+- `I18N-003` tracks remaining standalone-tool and unknown diagnostic coverage;
+  TUI help, compact labels, duration/summary templates and known engine errors
+  now use the catalogs. This does not translate arbitrary remote error text.
 - No compiler, CTest, Gradle, device or manual workflow has validated the
   current translations.
 
 - New user-facing TUI/Android strings must be added in English *and* to the
   es/ru/zh-Hans catalogs. A missing native key currently falls back to the
   English source (functional but untranslated). The application-service labels
-  are translated; the open residual is `I18N-007` (Help bodies and `--help`
-  prose) and `I18N-003` (standalone-tool/composed strings). Never present an
+  are translated, including TUI help and `--help` descriptions. The residual
+  is `I18N-003` (standalone-tool/unknown diagnostic strings). Never present an
   untranslated string as a translation or cite a closed task as the backlog.
 
 - Native catalogs are keyed by the full English source string. C++ joins
@@ -171,10 +178,10 @@ the text crosses a protocol/IPC boundary.
 - The catalog checker must concatenate adjacent C++ literals in both catalog
   keys and values as well as harvested call sites; otherwise valid multi-line
   translations appear to be missing.
-- `SetStatus`/`BeginPrompt` translate at their boundary. `PutLine` only
-  translates an exact full line and never sees the `"> "`/`"! "` status prefix,
-  so a catalog entry for a status message is unreachable without the boundary
-  lookup. Confirmation hints must match `IsAffirmative` (`y/yes/s/sí/д/да`).
+- `SetStatus`/`BeginPrompt` translate trusted source-array arguments; their
+  composed-string overloads preserve runtime values. PutLine never guesses a
+  catalog key from rendered text. Explicitly translate trusted ternary labels
+  before composition. Confirmation hints must match IsAffirmative.
 - Plural lookup is keyed by the English plural text and the catalogs provide
   the forms (es two, ru three, zh one). Use `ntr` for native counts and
   `<plurals>`/`getQuantityString` for Android; never concatenate a count with
@@ -187,9 +194,10 @@ the text crosses a protocol/IPC boundary.
   `TorrentControl.UserMessageException`; hardcoded English is a defect. The
   log row, notification channel and torrent labels carry resources. `zh-TW`/
   `zh-Hant` fall back to English and `LocaleResourceTest` pins that.
-- Machine-readable CLI output, `--help`, protocol verbs, field names, config
+- Machine-readable CLI output, protocol verbs, field names, config
   keys, log tokens, status wire values and hashes stay English. `autoconf_i2pd`
   uses the shared catalogs; other tools resolve the environment lazily.
+  TUI --help translates prose while keeping option spellings unchanged.
 
 - Canonical tag mapping: native/config `en`, `es`, `ru`, `zh-Hans`; Android
   resources `en`, `es`, `ru`, `zh-CN` (`values-zh-rCN`). `zh-TW`/`zh-Hant`/`zh-HK`

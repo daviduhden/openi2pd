@@ -100,10 +100,18 @@ the console.
 
 ## Known issues and decisions
 
+- ResolveSocket returns the configured language in its result; select that
+  language rather than the earlier options copy. Early help uses explicit
+  or environment language. Change only LC_CTYPE during terminal setup so
+  the registry's numeric locale remains pinned.
+- Rendering is presentation-only. Translate trusted labels before composing
+  rows, and map known states/errors through closed vocabularies. Leave user
+  names, paths, comments and unknown daemon bodies untouched.
 - Shared FitLength and both terminal backends retain zero-width marks after
   a base that exactly fits the column budget. Zero budget emits nothing.
   Prompt deletion removes one UTF-8 scalar, not a byte or whole grapheme;
-  keep CJK, Cyrillic, Spanish, emoji and combining regressions together.
+  bounded prefills must not split scalars and invalid input is refused before
+  IPC. Keep CJK, Cyrillic, Spanish, emoji and combining regressions together.
 
 - `test-tui-protocol` flushes constant phase names to stderr before each
   group and a completion marker before returning from `main`. For native

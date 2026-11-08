@@ -122,6 +122,11 @@ a TUI client.
 
 ## Known issues and decisions
 
+- Native catalog harvesting includes TUI tab/help tables, option prose and
+  both terminal backends. Update isolated checker fixtures when adding a
+  source authority. Ordered printf operands, duplicate plurals and multibyte
+  trailing separators need negative fixtures; do not run that suite locally.
+
 - Perl::Critic slurp findings should initialize the localized input record
   separator explicitly to undef, retaining its dynamic scope and restoration.
   Diagnostic accumulators must preserve the old push-count result when

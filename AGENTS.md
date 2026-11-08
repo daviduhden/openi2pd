@@ -195,6 +195,9 @@ proposed tracking updates to the coordinator.
 - Authenticate IPC records before generating refusal replies or consuming
   peer violation budgets. Nested refusal writes share the receive operation's
   absolute deadline; rejecting a frame must not create a fresh wait budget.
+- Translate trusted presentation labels or closed status vocabularies, never
+  arbitrary rendered rows, user operands or remote diagnostics. Treat format
+  operands as data and preserve their ordered native printf types.
 - Security-sensitive files must be created or replaced through one validated,
   no-follow/atomic operation with private permissions. Never chmod a pathname and reopen it for secret output.
 - Do not change I2P wire formats or persisted formats without a specification

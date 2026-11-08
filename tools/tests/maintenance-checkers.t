@@ -4,10 +4,12 @@
 #
 # openi2pd: maintenance checkers.
 #
-# Negative fixtures for the maintained static checkers. A checker that has
-# silently stopped detecting a broken link, an unlisted page or a missing JNI
-# definition must fail this suite. Every fixture lives in a File::Temp tree;
-# the real repository is never modified and no network or compiler is used.
+# Negative fixtures for the maintained static checkers. A checker that
+# silently stopped detecting a broken link, an unlisted page or a
+# missing JNI definition must fail this suite.
+#
+# Every fixture lives in a File::Temp tree; the real repository is never
+# modified and no network or compiler is used.
 #
 
 use strict;
@@ -33,8 +35,8 @@ my $root = File::Spec->rel2abs(
 sub write_file {
     my ( $path, $contents ) = @_;
 
-    # Fixtures are written into a fresh File::Temp tree; create the parent
-    # directory so a nested layout such as res/img/ can be reproduced.
+    # Fixtures are written into a fresh File::Temp tree. Create the
+    # parent directory so nested layouts such as res/img/ work.
     my ( undef, $dir ) = File::Spec->splitpath($path);
     make_path($dir) unless -d $dir;
     # Preserve exact fixture bytes, including deliberate LF/CRLF cases.
@@ -50,8 +52,10 @@ sub run_checker {
     # STDERR is merged into STDOUT by passing a false error handle:
     # every checker writes its diagnostics to STDERR and its summary to
     # STDOUT, and the assertions below do not care which stream carried
-    # the text. A single stream is also the only portable design here:
-    # Win32 select() accepts sockets only, so IO::Select on a pipe never
+    # the text.
+    #
+    # A single stream is also the only portable design here. Win32
+    # select() accepts sockets only, so IO::Select on a pipe never
     # becomes readable there and the previous two-pipe drain silently
     # returned an empty capture on Windows.
     my $pid = open3( my $input, my $output, undef, $^X, $script, @args );
@@ -59,9 +63,11 @@ sub run_checker {
     binmode $output;
 
     # Read to EOF. A checker that never exits is bounded by the CTest
-    # TIMEOUT registered for this suite; the fixture checkers are small
-    # and synchronous, so a readiness-based deadline would add a
-    # platform difference without protecting anything else.
+    # TIMEOUT registered for this suite.
+    #
+    # The fixture checkers are small and synchronous. A readiness-based
+    # deadline would add a platform difference without protecting
+    # anything else.
     while ( my $chunk = <$output> ) {
         $text .= $chunk;
     }
@@ -89,7 +95,7 @@ sub decode_wait_status {
     return ( 255, 'waitpid-error', 0 ) if $status < 0;
     # Perl documents $? as a Unix-style wait word on every host. Win32
     # supplies the shifted exit value but has no POSIX signal semantics;
-    # its POSIX::WIF* stubs may throw rather than classify a normal exit.
+    # its POSIX::WIF* stubs may throw when classifying a normal exit.
     my $signal = $status & 127;
     if ($signal) {
         return ( 255, 'abnormal', $status ) if $^O eq 'MSWin32';
@@ -532,7 +538,7 @@ sub read_fixture_file {
 }
 workflow_crash_fixtures($root);
 
-# --- check-android-locales.pl plural categories ---------------------------
+# --- check-android-locales.pl plural categories -----------------------
 {
     my $tmp     = tempdir( CLEANUP => 1 );
     my $android = File::Spec->catdir( $tmp, 'android' );
@@ -605,7 +611,7 @@ workflow_crash_fixtures($root);
         'unused Chinese quantity diagnostic is explicit' );
 }
 
-# --- check-doc-links.pl ----------------------------------------------------
+# --- check-doc-links.pl ----------------------------------------------
 {
     my $tmp  = tempdir( CLEANUP => 1 );
     my $docs = File::Spec->catdir( $tmp, 'docs' );
@@ -626,7 +632,7 @@ workflow_crash_fixtures($root);
     is( $code, 0, 'doc link checker accepts the repaired tree' );
 }
 
-# --- check-doc-nav.pl ------------------------------------------------------
+# --- check-doc-nav.pl ------------------------------------------------
 {
     my $tmp  = tempdir( CLEANUP => 1 );
     my $docs = File::Spec->catdir( $tmp, 'docs' );
@@ -649,7 +655,7 @@ workflow_crash_fixtures($root);
     is( $code, 0, 'doc navigation checker accepts a listed page' );
 }
 
-# --- check-android-jni-symbols.pl ------------------------------------------
+# --- check-android-jni-symbols.pl -------------------------------------
 {
     my $tmp  = tempdir( CLEANUP => 1 );
     my $java = File::Spec->catfile(
@@ -701,16 +707,16 @@ workflow_crash_fixtures($root);
     );
 }
 
-# --- check-android-javadoc.pl ----------------------------------------------
+# --- check-android-javadoc.pl -----------------------------------------
 {
     my $tmp  = tempdir( CLEANUP => 1 );
     my $android = File::Spec->catdir( $tmp, 'android' );
     my $java = File::Spec->catfile( $android, 'app', 'src', 'main',
         'java', 'org', 'openi2pd', 'router', 'Probe.java' );
 
-    # The comment forms the manual Gradle Javadoc lane rejects with
-    # -Xdoclint:all -Werror: a raw placeholder, a JDK-internal block tag,
-    # an inline tag used as a block tag and a mismatched @param name.
+    # The manual Gradle Javadoc lane uses -Xdoclint:all -Werror. It
+    # rejects raw placeholders, JDK-internal block tags, inline tags
+    # used as block tags and mismatched @param names.
     write_file( $java,
             "package org.openi2pd.router;\n"
           . "class Probe {\n"
@@ -779,10 +785,12 @@ workflow_crash_fixtures($root);
         'mismatched-parameter diagnostic is emitted' );
 }
 
-# --- Doxygen partial parameter documentation -------------------------------
+# --- Doxygen partial parameter documentation -------------------------
 # The source-docs lane fails on a documented function that names some
-# parameters with @param and leaves others out; WARN_NO_PARAMDOC is off, so
-# a block with no @param at all is intentionally accepted.
+# parameters with @param and leaves others out.
+#
+# WARN_NO_PARAMDOC is off, so a block with no @param at all is
+# intentionally accepted.
 {
     my $tmp = tempdir( CLEANUP => 1 );
     my $header =
@@ -819,7 +827,7 @@ workflow_crash_fixtures($root);
     ( $code, $out ) = run_checker( $doxygen_checker, '--root', $tmp );
     is( $code, 0, 'Doxygen checker accepts complete and undocumented blocks' );
 
-    # Unnamed type operands still count toward arity, but need no @param.
+    # Unnamed type operands count toward arity but need no @param.
     write_file($header, <<'CPP');
 /// JNI-style entry point.
 /// @param env caller environment.
@@ -841,9 +849,10 @@ CPP
     is($code, 1, 'named operands still require documentation');
     like($out, qr/missing|count|callback/, 'named parameter diagnostic remains');
 
-    # A documented name that the declaration does not have is the inverse
-    # defect: Doxygen reports "argument ... is not found in the argument
-    # list", and array parameters must still yield their identifier.
+    # A name missing from the declaration is the inverse defect: Doxygen
+    # reports "argument ... is not found in the argument list".
+    #
+    # Array parameters must still yield their identifier.
     write_file(
         $header,
         "class Probe {\n"
@@ -877,10 +886,12 @@ CPP
     is( $code, 0, 'Doxygen checker accepts an array parameter identifier' );
 }
 
-# --- Doxygen duplicated parameter documentation ----------------------------
-# Doxygen merges a member's declaration and definition documentation, so a
+# --- Doxygen duplicated parameter documentation ----------------------
+# Doxygen merges member declaration and definition documentation. A
 # parameter documented on both sides is reported twice and aborts the
-# source-docs lane, and the same name twice in one block is a defect too.
+# source-docs lane.
+#
+# The same name twice in one block is a defect too.
 {
     my $tmp    = tempdir( CLEANUP => 1 );
     my $header = File::Spec->catfile( $tmp, 'libi2pd', 'probe.h' );
@@ -923,8 +934,8 @@ CPP
         'duplicate diagnostic points at the declaration'
     );
 
-    # The definition owns the parameter contract when the declaration has
-    # none: this is the supported split and must stay accepted.
+    # The definition owns the parameter contract when the declaration
+    # has none. This is the supported split and must stay accepted.
     write_file(
         $header,
         "namespace i2p\n{\nclass Probe\n{\npublic:\n"
@@ -935,8 +946,8 @@ CPP
     is( $code, 0,
         'Doxygen checker accepts a definition that owns the @param docs' );
 
-    # A same-named local helper with another parameter count is a different
-    # entity, so its @param block is not a duplicate of the declaration.
+    # A same-named local helper with another parameter count is a
+    # different entity. Its @param block is not a duplicate declaration.
     write_file(
         $header,
         "namespace i2p\n{\n"
@@ -985,10 +996,12 @@ CPP
     );
 }
 
-# --- Doxygen unresolved cross-references -----------------------------------
-# Doxygen reports an unknown \ref target as a doc error and WARN_AS_ERROR
-# makes it fatal. A type, namespace, macro or callable resolves; a generic
-# data-member name such as `mutex` does not and must stay in backticks.
+# --- Doxygen unresolved cross-references ------------------------------
+# Doxygen reports an unknown \ref target as a doc error. WARN_AS_ERROR
+# makes it fatal.
+#
+# A type, namespace, macro or callable resolves. A generic data-member
+# name such as `mutex` does not and must stay in backticks.
 {
     my $tmp    = tempdir( CLEANUP => 1 );
     my $header = File::Spec->catfile( $tmp, 'libi2pd', 'probe.h' );
@@ -1023,10 +1036,11 @@ CPP
         'Doxygen checker accepts type and callable references' );
 }
 
-# --- Doxygen command balance and Javadoc inline tags -----------------------
-# `{\@code x}` is Javadoc syntax; Doxygen reads the `@code` as an opening
-# block and aborts at the end of the comment. A real @code/@endcode pair is
-# accepted, and an unclosed @verbatim is rejected.
+# --- Doxygen command balance and Javadoc inline tags ------------------
+# `{\@code x}` is Javadoc syntax. Doxygen treats `@code` as an opening
+# block and aborts at the end of the comment.
+#
+# A real @code/@endcode pair passes; unclosed @verbatim is rejected.
 {
     my $tmp    = tempdir( CLEANUP => 1 );
     my $header = File::Spec->catfile( $tmp, 'libi2pd', 'probe.h' );
@@ -1070,10 +1084,12 @@ CPP
         'unbalanced-verbatim diagnostic names the block' );
 }
 
-# --- CRLF catalogs and nested documentation paths --------------------------
+# --- CRLF catalogs and nested documentation paths ---------------------
 # A CRLF checkout is the failure mode a Windows runner without the
-# repository .gitattributes rule reproduces, and a nested documentation page
-# is where a native separator leaks into a repository-relative comparison.
+# repository .gitattributes rule reproduces.
+#
+# A nested documentation page is where a native separator leaks into a
+# repository-relative comparison.
 {
     my $tmp     = tempdir( CLEANUP => 1 );
     my $android = File::Spec->catdir( $tmp, 'android' );
@@ -1143,12 +1159,14 @@ CPP
     like( $out, qr{\Q$dirs{ru}\E}, 'CRLF diagnostic names the locale' );
 }
 
-# --- i18n catalog escape decoding -----------------------------------------
+# --- i18n catalog escape decoding -------------------------------------
 # One left-to-right pass keeps a literal backslash-n key, a key with a
 # real newline and a key with a backslash followed by a newline as three
-# distinct entries. The previous ordered substitutions decoded the first
-# form into a backslash-newline and merged it with the third, so this
-# fixture fails on that implementation and still rejects a duplicate.
+# distinct entries.
+#
+# The previous ordered substitutions decoded the first form into a
+# backslash-newline and merged it with the third. This fixture fails on
+# that implementation and still rejects a duplicate.
 {
     my $tmp       = tempdir( CLEANUP => 1 );
     my $backslash = '\\';
@@ -1172,7 +1190,8 @@ CPP
     # The checker also harvests translatable call sites; an empty
     # source is enough and contributes no keys.
     for my $source ( 'tui/main.cpp', 'libi2pd_client/HTTPProxy.cpp',
-        'daemon/Daemon.cpp', 'tools/autoconf_i2pd.cpp' )
+        'daemon/Daemon.cpp', 'tools/autoconf_i2pd.cpp',
+        'tui/TerminalUnix.cpp', 'tui/TerminalWin32.cpp' )
     {
         write_file( File::Spec->catfile( $tmp, split m{/}, $source ),
             "// no translatable literal\n" );
@@ -1194,7 +1213,98 @@ CPP
     like( $out, qr/duplicate key/, 'duplicate-key diagnostic is emitted' );
 }
 
-# --- nested documentation pages -------------------------------------------
+# --- native printf operand contracts ---------------------------------
+{
+    my $tmp = tempdir(CLEANUP => 1);
+    for my $source ('tui/main.cpp', 'libi2pd_client/HTTPProxy.cpp',
+        'daemon/Daemon.cpp', 'tools/autoconf_i2pd.cpp',
+        'tui/TerminalUnix.cpp', 'tui/TerminalWin32.cpp') {
+        write_file(File::Spec->catfile($tmp, split m{/}, $source),
+            "// no translatable literal\n");
+    }
+    my $catalog = sub {
+        my ($key, $value, $forms) = @_;
+        my $plural = defined $forms
+          ? "static const std::map<std::string, std::vector<std::string>> plurals {\n"
+            . '    { "%d files", { ' . $forms . " } },\n};\n"
+          : '';
+        return "static const LocaleStrings strings {\n"
+          . '    { "' . $key . '", "' . $value . "\" },\n};\n" . $plural;
+    };
+    for my $case (
+        ['%s %d', '%s %d', 0, 'ordered string and integer'],
+        ['%s %d', '%d %s', 1, 'reordered argument types'],
+        ['%zu', '%u', 1, 'changed integer length'],
+        ['%*.*f', '%*.*f', 0, 'dynamic width and precision'],
+        ['%*.*f', '%*f', 1, 'missing precision argument'],
+        ['%%s %d', '%%s %d', 0, 'escaped conversion spelling'],
+        ['%%s %d', '%s %d', 1, 'escaped percent became an operand'],
+        ['Progress %', 'Progreso %', 0, 'literal trailing percent'],
+        ['label: ', '标签', 1, 'missing Chinese composition separator'],
+        ['label: ', 'метка', 1, 'missing Cyrillic composition separator'],
+        ['%s', '%s%n', 1, 'forbidden count write'],
+        ['%s %d', '%2$d %1$s', 1, 'nonportable positional operands'],
+        ['%s', '%q', 1, 'unsupported conversion'],
+        ['%s', '%Ls', 1, 'invalid length and conversion pair'] ) {
+        my ($key, $translated, $expected, $label) = @{$case};
+        for my $name (qw(Spanish.cpp Russian.cpp ChineseSimplified.cpp)) {
+            write_file(File::Spec->catfile($tmp, 'i18n', $name),
+                $catalog->($key, $name eq 'Spanish.cpp' ? $translated : $key));
+        }
+        my ($code, $out) = run_checker($i18n_checker, '--root', $tmp);
+        is($code, $expected, "native printf contract: $label");
+        like($out, qr/placeholder mismatch|printf|parity OK|trailing space/,
+            'native printf contract emits a relevant diagnostic');
+    }
+    my %forms = (
+        'Spanish.cpp' => '"%s file", "%d files"',
+        'Russian.cpp' => '"%d file", "%d files", "%d files"',
+        'ChineseSimplified.cpp' => '"%d files"'
+    );
+    for my $name (sort keys %forms) {
+        write_file(File::Spec->catfile($tmp, 'i18n', $name),
+            $catalog->('Status', 'Status', $forms{$name}));
+    }
+    my ($code, $out) = run_checker($i18n_checker, '--root', $tmp);
+    is($code, 1, 'plural forms preserve their source printf operand types');
+    like($out, qr/plural placeholder mismatch/,
+        'plural operand diagnostic identifies the contract');
+
+    %forms = (
+        'Spanish.cpp' => '"%d file", "%d files"',
+        'Russian.cpp' => '"%d file", "%d files", "%d files"',
+        'ChineseSimplified.cpp' => '"%d files"'
+    );
+    for my $name (sort keys %forms) {
+        my $source = $catalog->('Status', 'Status', $forms{$name});
+        my $entry = '    { "%d files", { ' . $forms{$name} . " } },\n";
+        $source =~ s/};\n$/$entry};\n/ or BAIL_OUT('missing plural fixture boundary');
+        write_file(File::Spec->catfile($tmp, 'i18n', $name), $source);
+    }
+    ($code, $out) = run_checker($i18n_checker, '--root', $tmp);
+    is($code, 1, 'duplicate plural keys cannot silently replace forms');
+    like($out, qr/duplicate plural key/, 'duplicate plural diagnostic is explicit');
+
+    # Closed source tables translate labels; protocol/user values do not
+    # enter this harvest. Detect every missing source authority.
+    for my $fixture (
+        ['tui/main.cpp', 'constexpr auto TAB_SHORT_NAMES = { "compact tab probe" };'],
+        ['tui/main.cpp', 'void App::DrawHelp () { static constexpr auto lines[] = { "  help probe" }; }'],
+        ['tui/main.cpp', 'option ("--unchanged-token", "option prose probe");'],
+        ['tui/TerminalUnix.cpp', 'g_Error = "terminal failure probe";'] ) {
+        for my $name (sort keys %forms) {
+            write_file(File::Spec->catfile($tmp, 'i18n', $name),
+                $catalog->('Status', 'Status', $forms{$name}));
+        }
+        write_file(File::Spec->catfile($tmp, split m{/}, $fixture->[0]), $fixture->[1]);
+        ($code, $out) = run_checker($i18n_checker, '--root', $tmp);
+        is($code, 1, 'trusted source prose requires a native catalog key');
+        like($out, qr/missing source literal/, 'trusted-table harvesting names missing coverage');
+        write_file(File::Spec->catfile($tmp, split m{/}, $fixture->[0]), "// no translatable literal\n");
+    }
+}
+
+# --- nested documentation pages --------------------------------------
 {
     my $tmp  = tempdir( CLEANUP => 1 );
     my $docs = File::Spec->catdir( $tmp, 'docs' );
@@ -1218,7 +1328,7 @@ CPP
         'escape diagnostic is emitted for a parent-of-repository link' );
 }
 
-# --- nested navigation pages ----------------------------------------------
+# --- nested navigation pages -----------------------------------------
 {
     my $tmp  = tempdir( CLEANUP => 1 );
     my $docs = File::Spec->catdir( $tmp, 'docs' );
@@ -1241,7 +1351,7 @@ CPP
     is( $code, 0, 'doc navigation checker accepts a listed nested page' );
 }
 
-# --- check-vectors unexpected pass exit status ----------------------------
+# --- check-vectors unexpected pass exit status ------------------------
 SKIP: {
     skip 'the temporary executable harness uses POSIX shebang execution', 6
       if $^O eq 'MSWin32';
@@ -1304,7 +1414,7 @@ SKIP: {
     }
 }
 
-# --- child wait status decoding -------------------------------------------
+# --- child wait status decoding --------------------------------------
 {
     for my $exit_code (0, 1, 2, 127, 255) {
         my ($code, $kind, $detail) =

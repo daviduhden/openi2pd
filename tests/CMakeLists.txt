@@ -466,8 +466,9 @@ foreach(test IN LISTS I2PD_TESTS)
   if(test STREQUAL "test-ssu2-payload-blocks" OR test STREQUAL "test-i2np-database-bounds")
     set_property(TEST ${test} APPEND PROPERTY LABELS "i2p;security;memory")
   endif()
-  if(test STREQUAL "test-i18n-locale")
-    set_property(TEST ${test} APPEND PROPERTY LABELS docs)
+  if(test STREQUAL "test-i18n-locale" OR test STREQUAL "test-i18n-format"
+      OR test STREQUAL "test-tui-terminal")
+    set_property(TEST ${test} APPEND PROPERTY LABELS "docs;i18n;unicode")
   endif()
 
   # A privileged/forked subsystem test must not overlap another test

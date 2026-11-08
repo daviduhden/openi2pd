@@ -550,8 +550,8 @@ std::string BoundUtf8 (std::string_view value, size_t limit)
 	return std::string (value.substr (0, cut));
 }
 
-/// @brief Result of one UTF-8 step: bytes consumed and terminal columns
-/// occupied.
+/// @brief Byte length and terminal columns occupied by one UTF-8 step.
+///
 /// Separating the two is the core of the console's text handling: a
 /// client label or a Chinese translation may occupy two cells per three
 /// bytes, so truncation, padding and wrapping must advance by columns
@@ -563,25 +563,23 @@ struct Utf8Character
 	int width = 1;
 };
 
-/// @brief Advance one character and report its byte length and cell
-/// width.
+/// @brief Advance one character; report its byte length and cell width.
+///
 /// POSIX uses mbrtowc/wcwidth in the locale established by main(). The
 /// state object is created fresh for every call on purpose: the
 /// renderer never carries shift state across characters, so a malformed
 /// sequence cannot poison the following rows.
 ///
 /// Windows has no wcwidth(), so the strict decoder and conservative
-/// width table in TerminalText.h are used for both the layout arithmetic
-/// here and the Win32 backend's clipping. Keeping one owner is what makes
-/// the two agree byte-for-byte; a second local table drifted before.
+/// width table in TerminalText.h serve both layout arithmetic here and
+/// clipping in the Win32 backend. One owner keeps them consistent;
+/// a second local table drifted before.
 ///
 /// @param text UTF-8 text being rendered.
 /// @param offset Byte offset into `text`; must be before text.size().
-/// @return Consumed bytes (at least 1, so callers always progress) and
-/// width.
+/// @return Width and consumed bytes (at least 1, so callers progress).
 /// @warning Invalid/truncated sequences report length 1 and width 1.
-/// They are never skipped in bulk, so the decoder cannot walk past a
-/// row.
+/// They are never skipped in bulk, preventing reads beyond the row.
 Utf8Character NextCharacter (std::string_view text, size_t offset)
 {
 	if (offset >= text.size ()) return { 1, 0 };
@@ -739,8 +737,8 @@ std::string SanitizeCommentText (std::string_view text)
 	return SanitizeText (text);
 }
 
-/// @brief Cut a string to a column budget, optionally ending in an
-/// ellipsis.
+/// @brief Fit a string to a column budget with an optional ellipsis.
+///
 /// Characters are added only while they still fit, so a wide glyph is
 /// dropped whole; a partial UTF-8 sequence can never be produced. The
 /// ellipsis is counted in columns before the body, so the returned
@@ -748,10 +746,8 @@ std::string SanitizeCommentText (std::string_view text)
 ///
 /// @param text Input text.
 /// @param maxWidth Column budget (not bytes).
-/// @param ellipsis Append "..." when at least three columns are
-/// available.
-/// @return Possibly empty string; the input unchanged when it already
-/// fits.
+/// @param ellipsis Append "..." when three columns are available.
+/// @return Possibly empty string; unchanged input when it already fits.
 std::string TruncateUtf8 (std::string_view text, int maxWidth, bool ellipsis = true)
 {
 	if (maxWidth <= 0 || text.empty ()) return { };
@@ -848,9 +844,7 @@ std::vector<std::string> WrapUtf8 (std::string_view text, int maxWidth)
 
 void RemoveLastUtf8 (std::string & value)
 {
-	if (value.empty ()) return;
-	value.pop_back ();
-	while (!value.empty () && (static_cast<unsigned char> (value.back ()) & 0xC0) == 0x80) value.pop_back ();
+	terminal::text::EraseLastUnit (value);
 }
 
 std::string HumanBytes (uint64_t value)
@@ -899,19 +893,17 @@ std::string HumanDuration (uint64_t seconds)
 	uint64_t hours = (seconds % 86400) / 3600;
 	uint64_t minutes = (seconds % 3600) / 60;
 	uint64_t secs = seconds % 60;
-	char buffer[64];
 	if (days)
-		snprintf (buffer, sizeof (buffer), "%llud %02lluh", static_cast<unsigned long long> (days),
+		return i2p::i18n::tr ("%llud %02lluh", static_cast<unsigned long long> (days),
 			static_cast<unsigned long long> (hours));
 	else if (hours)
-		snprintf (buffer, sizeof (buffer), "%lluh %02llum", static_cast<unsigned long long> (hours),
+		return i2p::i18n::tr ("%lluh %02llum", static_cast<unsigned long long> (hours),
 			static_cast<unsigned long long> (minutes));
 	else if (minutes)
-		snprintf (buffer, sizeof (buffer), "%llum %02llus", static_cast<unsigned long long> (minutes),
+		return i2p::i18n::tr ("%llum %02llus", static_cast<unsigned long long> (minutes),
 			static_cast<unsigned long long> (secs));
 	else
-		snprintf (buffer, sizeof (buffer), "%llus", static_cast<unsigned long long> (secs));
-	return buffer;
+		return i2p::i18n::tr ("%llus", static_cast<unsigned long long> (secs));
 }
 
 std::string HumanUptime (long seconds)
@@ -923,7 +915,7 @@ std::string HumanUptime (long seconds)
 	const long secs = seconds % 60;
 	char buffer[64];
 	if (days)
-		snprintf (buffer, sizeof (buffer), "%ldd %02ld:%02ld:%02ld", days, hours, minutes, secs);
+		return i2p::i18n::tr ("%ldd %02ld:%02ld:%02ld", days, hours, minutes, secs);
 	else
 		snprintf (buffer, sizeof (buffer), "%02ld:%02ld:%02ld", hours, minutes, secs);
 	return buffer;
@@ -973,12 +965,12 @@ std::string_view LevelName (int level)
 {
 	switch (level)
 	{
-	case eLogCritical: return "CRIT";
-	case eLogError: return "ERROR";
-	case eLogWarning: return "WARN";
-	case eLogInfo: return "INFO";
-	case eLogDebug: return "DEBUG";
-	default: return "NONE";
+	case eLogCritical: return i2p::i18n::tr ("Critical");
+	case eLogError: return i2p::i18n::tr ("Error");
+	case eLogWarning: return i2p::i18n::tr ("Warning");
+	case eLogInfo: return i2p::i18n::tr ("Info");
+	case eLogDebug: return i2p::i18n::tr ("Debug");
+	default: return i2p::i18n::tr ("None");
 	}
 }
 
@@ -1281,17 +1273,16 @@ TorrentDetail BuildTorrentDetail (const std::map<std::string, std::string> & fie
 	return detail;
 }
 
-/// @brief Choose which torrent table columns fit in the available
-/// width.
+/// @brief Choose torrent table columns that fit the available width.
+///
 /// Columns are shed from the least important to the most important
 /// (error text, ratio, upload, size, download, peers) until the name
 /// column has at least 12 cells, with a hard floor of 4. The order is
-/// fixed so the table never reorders as the terminal is resized and a
-/// reader keeps the same column positions for everything that is still
-/// visible.
+/// fixed so resizing never reorders the table. Columns that remain
+/// visible keep their positions.
+///
 /// @param width Total row width available to the table.
-/// @return The name-column width plus the flags selecting the visible
-/// columns.
+/// @return Name-column width and flags selecting visible columns.
 TorrentLayout ComputeTorrentLayout (int width)
 {
 	TorrentLayout layout;
@@ -1355,7 +1346,7 @@ std::string SortName (TorrentSort sort)
 //
 // The status is an English wire token, never a translated string, so it
 // is matched exactly instead of by substring: "verifying" contains no
-// "start"/"download"/"seed" and previously fell through to RESUME, while
+// "start"/"download"/"seed" previously fell through to RESUME, while
 // "queued-seed" matched "seed" and was treated as already running.
 enum class TorrentRunState
 {
@@ -1407,6 +1398,88 @@ std::string_view TorrentStatusText (std::string_view status)
 	return status;
 }
 
+// Wire tokens are stable identifiers. Translate this closed display
+// vocabulary only, never arbitrary peer labels, config values or names.
+std::string_view TorrentErrorText (std::string_view error)
+{
+	if (error == "Malformed metaInfo") return i2p::i18n::tr ("Malformed metaInfo");
+	if (error == "Non-supported version") return i2p::i18n::tr ("Non-supported version");
+	if (error == "Filesystem error") return i2p::i18n::tr ("Filesystem error");
+	if (error == "Random source failure") return i2p::i18n::tr ("Random source failure");
+	return error;
+}
+
+// Only errors owned by local option/configuration parsing enter here.
+// Preserve unknown diagnostics and interpolate user operands as data.
+std::string LocalClientErrorText (std::string_view error)
+{
+	if (error == "--lang requires a language") return std::string (i2p::i18n::tr ("--lang requires a language"));
+	if (error == "--socket requires a path") return std::string (i2p::i18n::tr ("--socket requires a path"));
+	if (error == "--datadir requires a path") return std::string (i2p::i18n::tr ("--datadir requires a path"));
+	if (error == "--conf requires a path") return std::string (i2p::i18n::tr ("--conf requires a path"));
+	if (error.starts_with ("unknown option: "))
+		return i2p::i18n::tr ("Unknown option: %s", std::string (error.substr (16)).c_str ());
+	if (error.starts_with ("can't open "))
+		return i2p::i18n::tr ("Cannot open configuration file: %s", std::string (error.substr (11)).c_str ());
+	if (error.starts_with ("can't read "))
+		return i2p::i18n::tr ("Cannot read configuration file: %s", std::string (error.substr (11)).c_str ());
+	return std::string (error);
+}
+
+std::string_view TunnelStateText (std::string_view state)
+{
+	if (state == "established") return i2p::i18n::tr ("established");
+	if (state == "pending") return i2p::i18n::tr ("pending");
+	if (state == "build-reply") return i2p::i18n::tr ("build reply received");
+	if (state == "build-failed") return i2p::i18n::tr ("build failed");
+	if (state == "test-failed") return i2p::i18n::tr ("test failed");
+	if (state == "failed") return i2p::i18n::tr ("failed");
+	if (state == "expiring") return i2p::i18n::tr ("expiring");
+	if (state == "unknown") return i2p::i18n::tr ("unknown");
+	return state;
+}
+
+std::string_view TunnelDirectionText (std::string_view direction)
+{
+	if (direction == "in") return i2p::i18n::tr ("in");
+	if (direction == "out") return i2p::i18n::tr ("out");
+	if (direction == "transit") return i2p::i18n::tr ("transit");
+	return direction;
+}
+
+std::string_view RouterStatusText (std::string_view status)
+{
+	if (status == "OK") return i2p::i18n::tr ("OK");
+	if (status == "Firewalled") return i2p::i18n::tr ("Firewalled");
+	if (status == "Unknown") return i2p::i18n::tr ("Unknown");
+	if (status == "Proxy") return i2p::i18n::tr ("Proxy");
+	// Mesh and Stan are router mode identifiers, not free-form labels.
+	return status;
+}
+
+std::string_view RouterErrorText (std::string_view error)
+{
+	if (error == "none") return i2p::i18n::tr ("none");
+	if (error == "clock-skew") return i2p::i18n::tr ("Clock skew");
+	if (error == "offline") return i2p::i18n::tr ("Offline");
+	if (error == "symmetric-nat") return i2p::i18n::tr ("Symmetric NAT");
+	if (error == "full-cone-nat") return i2p::i18n::tr ("Full cone NAT");
+	if (error == "no-descriptors") return i2p::i18n::tr ("File descriptor limit reached");
+	if (error == "unknown") return i2p::i18n::tr ("unknown");
+	return error;
+}
+
+std::string_view LogLevelText (std::string_view level)
+{
+	if (level == "none") return LevelName (eLogNone);
+	if (level == "critical") return LevelName (eLogCritical);
+	if (level == "error") return LevelName (eLogError);
+	if (level == "warn") return LevelName (eLogWarning);
+	if (level == "info") return LevelName (eLogInfo);
+	if (level == "debug") return LevelName (eLogDebug);
+	return level;
+}
+
 std::string RatioText (const TorrentRow & torrent)
 {
 	double ratio
@@ -1426,15 +1499,15 @@ std::string RatioEtaText (const TorrentRow & torrent)
 	return text;
 }
 
-/// @brief Interactive console application: snapshot model, render loop
-/// and input dispatch.
+/// @brief Interactive console: snapshots, rendering and input dispatch.
+///
 /// App owns every piece of console state for the process lifetime. The
 /// data model is a set of immutable snapshots fetched from the daemon
 /// over the local TUI IPC channel (see TuiClient.h): each `Parse*`
 /// method only replaces the rows of one panel, and no drawing code ever
 /// talks to the daemon. Draw only reads the model; the event loop is
-/// the single writer, so there is no locking anywhere in the
-/// presentation layer.
+/// the single writer, so the presentation layer needs no locks.
+///
 /// Pacing: one iteration of Run draws the dirty screen, issues the
 /// snapshot requests that are due for the current tab, then blocks in
 /// ReadKey for at most 200 ms. Per-snapshot deadlines keep the IPC load
@@ -1451,8 +1524,7 @@ public:
 	/// @brief Bind the console to parsed options and a prepared theme.
 	/// @param options Resolved client options; the socket path must
 	/// already be absolute.
-	/// @param theme Theme owning colour discovery; must outlive this
-	/// object.
+	/// @param theme Colour-discovery owner; must outlive this object.
 	explicit App (i2p::tui::ClientOptions options, const Theme & theme)
 		: m_Options (std::move (options))
 		, m_Client (m_Options.socketPath)
@@ -1521,11 +1593,22 @@ private:
 	const TorrentTunnelRow * ActiveTunnel () const;
 	bool RequireTorrentTunnel ();
 	void SetStatus (std::string message, bool error);
+	// Only source literals are looked up. Composed daemon/user text is
+	// already localized at its owner and must never become a catalog key.
+	template <size_t N> void SetStatus (const char (&message)[N], bool error)
+	{
+		SetStatus (std::string (i2p::i18n::tr (std::string_view (message, N - 1))), error);
+	}
 	void EnterTorrentDetails ();
 	void LeaveTorrentDetails ();
 	void PageTorrentComments (int direction);
 	bool TerminalTooSmall () const;
 	void BeginPrompt (PromptKind kind, std::string label, std::string initial = { });
+	template <size_t N>
+	void BeginPrompt (PromptKind kind, const char (&label)[N], std::string initial = { })
+	{
+		BeginPrompt (kind, std::string (i2p::i18n::tr (std::string_view (label, N - 1))), std::move (initial));
+	}
 	bool HandlePromptKey (int key);
 	void CommitPrompt ();
 	void CancelPrompt ();
@@ -1685,11 +1768,9 @@ private:
 /// leave an empty screen: the operator keeps seeing the last complete
 /// snapshot while the client waits inside its bounded socket timeout.
 ///
-/// @return Always 0; a transport or protocol problem is surfaced in the
-/// UI.
+/// @return Always 0; transport or protocol problems appear in the UI.
 /// @pre terminal::Init() succeeded and the process locale provides a
-///      multibyte LC_CTYPE, because the renderer decodes UTF-8 with
-///      mbrtowc.
+///      multibyte LC_CTYPE for the renderer's mbrtowc decoding.
 /// @post Drawing has stopped; the caller must still call
 /// terminal::Shutdown() to restore the screen and input modes.
 int App::Run ()
@@ -1724,15 +1805,14 @@ int App::Run ()
 	return 0;
 }
 
-/// @brief Attempt a reconnect at most every two seconds while
-/// disconnected.
+/// @brief Retry disconnected clients at most every two seconds.
+///
 /// A successful connect resets the auxiliary torrent state so rows from
 /// the previous daemon instance can never be shown against a new one,
-/// and it schedules an immediate snapshot pass. Failures are kept as
-/// the error text that Draw renders, never as an exception or a modal
-/// dialog.
-/// @post On success `m_Connected` is true and the refresh deadlines are
-/// reset.
+/// and schedules an immediate snapshot pass. Draw renders failures as
+/// error text rather than exceptions or modal dialogs.
+///
+/// @post Success sets `m_Connected` and resets refresh deadlines.
 void App::ConnectIfNeeded ()
 {
 	if (m_Connected) return;
@@ -1756,23 +1836,21 @@ void App::ConnectIfNeeded ()
 	m_Dirty = true;
 }
 
-/// @brief Issue one request and classify its failure for the
-/// presentation layer.
+/// @brief Issue a request and classify failures for presentation.
+///
 /// The client distinguishes a well-formed remote error (the daemon
 /// parsed the verb and rejected it) from a transport or protocol
 /// failure. Only the former leaves the socket usable, so only the
 /// former is shown as a status message: anything else marks the client
 /// disconnected and schedules a reconnect.
-/// @param command Protocol request line without the `name/version `
-/// prefix.
-/// @param payload Receives the response payload on success; untouched
-/// otherwise.
+///
+/// @param command Protocol request without the `name/version ` prefix.
+/// @param payload Response destination; unchanged on failure.
 /// @param reportRemoteError Show a remote error in the status bar.
 /// Optional companion snapshots pass false so an older daemon that does
 /// not know a verb cannot pin a permanent error message on screen.
 /// @return true when a payload was received.
-/// @post On a non-remote failure the connection is closed and `m_Error`
-/// is set.
+/// @post Non-remote failures close the connection and set `m_Error`.
 bool App::Request (std::string_view command, std::string & payload, bool reportRemoteError)
 {
 	auto response = m_Client.Request (command);
@@ -1807,12 +1885,13 @@ bool App::Request (std::string_view command, std::string & payload, bool reportR
 /// two-second base tick carries STATE and the cheap tab snapshot, while
 /// lists, logs and the address-book auxiliaries run on their own slower
 /// deadlines. Only the primary snapshot of a panel sets its `*Loaded`
-/// flag, so a failed auxiliary request cannot make a panel look like it
-/// was refreshed.
+/// flag. Failed auxiliary requests cannot mark a panel as refreshed.
+///
 /// Destinations rotates one address-book auxiliary request per six
 /// seconds (names, blocked names, subscriptions) rather than issuing
-/// four blocking requests in one tick, which used to stall input for up
-/// to ~12 s.
+/// four blocking requests in one tick. That used to stall input for
+/// approximately 12 seconds.
+///
 /// @pre `m_Connected` is true; otherwise this is a no-op.
 void App::Refresh ()
 {
@@ -1911,14 +1990,14 @@ void App::Refresh ()
 	if (m_Tab == Tab::Torrents) RefreshTorrents (now);
 }
 
-/// @brief Poll the torrent tunnel list and the selected tunnel's data
-/// in rotation.
+/// @brief Rotate polling of torrent tunnels and selected-tunnel data.
+///
 /// Each pass issues at most one request, ordered from the cheapest and
 /// most structural (tunnel list) to the most detailed (open detail
 /// tab), so the service thread on the daemon side is never asked for
 /// everything at once. The torrent list is the only snapshot required
-/// for the table, and it is skipped entirely while no tunnel is
-/// selected.
+/// for the table. Skip it entirely while no tunnel is selected.
+///
 /// @param now Monotonic timestamp sampled once by the caller.
 void App::RefreshTorrents (std::chrono::steady_clock::time_point now)
 {
@@ -2509,7 +2588,8 @@ bool App::ParseCommandResult (const std::string & payload)
 	// untranslated; the caller maps them to localized status text.
 	m_LastAdminOutcome = ToLowerAscii (MapValue (fields, "outcome"));
 	bool error = result == "error";
-	if (message.empty ()) message = error ? "daemon rejected the command" : "command accepted";
+	if (message.empty ())
+		message = error ? i2p::i18n::tr ("daemon rejected the command") : i2p::i18n::tr ("command accepted");
 	SetStatus (message, error);
 	return !error;
 }
@@ -2584,7 +2664,8 @@ void App::BeginTransitPrompt ()
 	}
 	m_PendingTransit = current != "1";
 	BeginPrompt (PromptKind::ConfirmTransit,
-		m_PendingTransit ? "Enable transit tunnels? [y/N] " : "Disable transit tunnels? [y/N] ");
+		std::string (m_PendingTransit ? i2p::i18n::tr ("Enable transit tunnels? [y/N] ")
+			: i2p::i18n::tr ("Disable transit tunnels? [y/N] ")));
 }
 
 void App::BeginOnlinePrompt ()
@@ -2602,8 +2683,8 @@ void App::BeginOnlinePrompt ()
 	}
 	m_PendingOnline = current != "1";
 	BeginPrompt (PromptKind::ConfirmOnline,
-		m_PendingOnline ? "Bring transports online? [y/N] "
-						: "Take transports offline (the router keeps running)? [y/N] ");
+		std::string (m_PendingOnline ? i2p::i18n::tr ("Bring transports online? [y/N] ")
+			: i2p::i18n::tr ("Take transports offline (the router keeps running)? [y/N] ")));
 }
 
 void App::CycleDaemonLogLevel ()
@@ -2810,11 +2891,6 @@ bool App::RequireTorrentTunnel ()
 
 void App::SetStatus (std::string message, bool error)
 {
-	// Translate at the status boundary. Rendering only translated the
-	// exact full line, but the status line is prefixed with "> "/"! "
-	// later, so a catalog entry for a status message was unreachable.
-	const auto localized = i2p::i18n::tr (std::string_view (message));
-	if (localized != std::string_view (message)) message.assign (localized);
 	m_StatusMessage = BoundUtf8 (SanitizeText (message), 1024);
 	m_StatusError = error;
 	m_StatusExpiry = std::chrono::steady_clock::now () + (error ? 20s : 8s);
@@ -2991,13 +3067,11 @@ bool App::TerminalTooSmall () const
 /// @brief Enter modal input mode for one prompt kind.
 ///
 /// The prompt owns the keyboard until CommitPrompt or CancelPrompt
-/// runs. The label is looked up in the active catalog exactly as given;
-/// a label that is not a catalog key (for example one containing a
-/// formatted value) is kept verbatim so an unrelated entry can never be
-/// substituted.
+/// runs. The overload translates source literals; labels composed
+/// with runtime values arrive localized and are never looked up again.
 /// @param kind Prompt identity that CommitPrompt switches on.
-/// @param label English source string, translated here when it is a
-/// catalog key.
+/// @param label Already localized label; source literals use the
+/// translating overload before reaching this ownership boundary.
 /// @param initial Pre-filled buffer contents.
 /// @warning Refuses to open a prompt on a terminal smaller than the
 /// safety floor (see TerminalTooSmall): a destructive confirmation that
@@ -3013,10 +3087,9 @@ void App::BeginPrompt (PromptKind kind, std::string label, std::string initial)
 	}
 	m_Prompt = kind;
 	m_PendingTunnelName = m_TorrentTunnelName;
-	const auto localized = i2p::i18n::tr (std::string_view (label));
-	m_PromptLabel = localized == std::string_view (label) ? std::move (label) : std::string (localized);
+	m_PromptLabel = std::move (label);
 	m_InputBuffer = std::move (initial);
-	if (m_InputBuffer.size () > 2048) m_InputBuffer.resize (2048);
+	if (m_InputBuffer.size () > 2048) m_InputBuffer = BoundUtf8 (m_InputBuffer, 2048);
 	m_Dirty = true;
 }
 
@@ -3072,21 +3145,23 @@ bool App::HandlePromptKey (int key)
 	return true;
 }
 
-/// @brief Apply a completed prompt: local filter, ledger edit or typed
-/// daemon verb.
+/// @brief Apply a prompt as a filter, ledger edit or typed daemon verb.
+///
 /// The function is the single place where prompt text turns into an
 /// action, so the accepted grammar of every verb is visible together.
-/// Three families:
-///   - local view state (filters) — applied immediately, no IPC;
-/// - `Confirm*` kinds — read a yes/no answer through IsAffirmative and
-/// only then emit the corresponding typed `ADMIN`/`TORRENT-*` verb; the
-/// target identity was captured when the prompt opened (m_Pending*) so
-/// the operator never retypes a name, hash or comment id;
-/// - value prompts — validated, bounded, and sent through
-/// SendAdminCommand or SendTorrentCommand, which report the daemon's
-/// typed outcome.
+///
+/// Local filters take effect immediately without IPC.
+///
+/// `Confirm*` prompts read yes/no through IsAffirmative before emitting
+/// the typed `ADMIN`/`TORRENT-*` verb. The target captured when the
+/// prompt opened (m_Pending*) retains its name, hash and id.
+///
+/// Value prompts are validated and bounded before SendAdminCommand or
+/// SendTorrentCommand reports the daemon's typed outcome.
+///
 /// Prompts clear their state before dispatch, so no path can leave the
 /// modal flag set or re-enter with a stale pending target.
+///
 /// @post The prompt is closed and the screen is scheduled for redraw
 /// even when the entered value was rejected.
 void App::CommitPrompt ()
@@ -3097,6 +3172,13 @@ void App::CommitPrompt ()
 	m_Prompt = PromptKind::None;
 	m_InputBuffer.clear ();
 	m_Dirty = true;
+	// Input arrives as bytes. A paste stopped at the byte cap may leave
+	// a partial scalar; reject it rather than submitting corrupted data.
+	if (!terminal::text::IsValidUtf8 (input))
+	{
+		SetStatus ("input is not complete valid UTF-8", true);
+		return;
+	}
 
 	if (kind == PromptKind::Filter)
 	{
@@ -3533,7 +3615,8 @@ void App::CommitPrompt ()
 			m_PendingTrackerHash = std::move (hash);
 			m_PendingCommentId = value;
 			BeginPrompt (hide ? PromptKind::ConfirmCommentHide : PromptKind::ConfirmCommentUnhide,
-				std::string (hide ? "hide local comment " : "unhide local comment ") + value + "? [y/N] ");
+				hide ? i2p::i18n::tr ("Hide local comment %s? [y/N] ", value.c_str ())
+					: i2p::i18n::tr ("Unhide local comment %s? [y/N] ", value.c_str ()));
 			return;
 		}
 		SendTorrentCommand (command + std::to_string (tunnel) + " " + std::to_string (id) + " " + value);
@@ -3749,10 +3832,11 @@ void App::ToggleSelected ()
 		return;
 	}
 	if (!RequireTorrentTunnel ()) return;
-	// The toggle takes the stop-side action for a running torrent and for a
-	// queued one (it has not started, and pausing it must not start it), and
-	// the start-side action only for an explicitly stopped torrent. An
-	// unknown token never sends a command: guessing would either start a
+	// Running or queued torrents take the stop-side action. Pausing a
+	// queued torrent must not start it; only an explicitly stopped torrent
+	// takes the start-side action.
+	//
+	// Unknown tokens never send a command: guessing would either start a
 	// torrent the user stopped or stop one that is downloading.
 	bool pause = true;
 	switch (ClassifyTorrentStatus (torrent->status))
@@ -3917,45 +4001,23 @@ void App::CycleTorrentTunnel (int delta)
 	SetStatus (std::string (i2p::i18n::tr ("tunnel: ")) + m_TorrentTunnels[position].name, false);
 }
 
-/// @brief Draw one whole line at `row` after sanitizing, translating
-/// and fitting it.
-/// This is the only rendering primitive panels use, which makes it the
-/// single localization and safety boundary: text is sanitized
-/// (control/bidi/invalid UTF-8), translated only when it is an exact
-/// catalog entry (or an exact catalog entry after a leading
-/// layout-space prefix), then truncated by terminal columns.
-/// Composition of runtime values happens before this call and is
-/// intentionally not looked up, so a translated sentence can never be
-/// matched against a partially formatted string.
+/// @brief Draw one whole line after sanitizing and fitting it.
+///
+/// Callers translate trusted labels before composing runtime data.
+/// The rendering boundary never translates arbitrary content. Torrents,
+/// addresses or comments named after catalog keys stay unchanged.
+///
 /// @param row Terminal row to draw; it must be inside the screen.
-/// @param text Untrusted text to sanitize, translate and fit.
-/// @param width Column budget for the whole line; wide glyphs count as
-/// two.
-/// @param attributes Theme attribute word; 0 keeps the current
-/// attribute.
-/// @post A single-line attribute is restored to normal before
-/// returning.
+/// @param text Already localized text and untrusted values to sanitize.
+/// @param width Whole-line column budget; wide glyphs count as two.
+/// @param attributes Theme attributes; 0 keeps the current attribute.
+/// @post Single-line attributes return to normal before returning.
 void App::PutLine (int row, const std::string & text, int width, int attributes)
 {
 	terminal::Move (row, 0);
 	terminal::ClearToEol ();
 	if (attributes) terminal::SetAttribute (attributes);
-	// Translate exact catalog entries at the rendering boundary. Lines
-	// with leading layout spaces keep the prefix while the visible text is
-	// looked up without it; composed strings remain unchanged unless their
-	// full text has a catalog entry.
-	std::string translated (i2p::i18n::tr (text));
-	if (translated == text)
-	{
-		const auto first = text.find_first_not_of (' ');
-		if (first != std::string::npos && first > 0)
-		{
-			const std::string_view core (text.data () + first, text.size () - first);
-			const auto localized = i2p::i18n::tr (core);
-			if (localized != core) translated = std::string (text.data (), first) + std::string (localized);
-		}
-	}
-	auto safe = TruncateUtf8 (SanitizeText (translated), width, true);
+	auto safe = TruncateUtf8 (SanitizeText (text), width, true);
 	if (!safe.empty ()) terminal::Put (safe);
 	if (attributes) terminal::SetAttribute (terminal::ATTR_NORMAL);
 }
@@ -4002,7 +4064,7 @@ void App::DrawFooter (int height, int width)
 	std::string line = " ";
 	line += m_Connected ? i2p::i18n::tr ("connected") : i2p::i18n::tr ("disconnected");
 	if (!m_Error.empty ()) line += " | " + m_Error;
-	line += " | socket " + m_Options.socketPath;
+	line += " | " + std::string (i2p::i18n::tr ("socket")) + " " + m_Options.socketPath;
 	if (m_Tab == Tab::Torrents)
 		line += i2p::i18n::tr (
 			" | Enter detail Esc/q back a/A add n/N create t/T trackers p pause/resume R reannounce "
@@ -4107,12 +4169,15 @@ void App::DrawStatus (int top, int height, int width)
 
 	show ("Router identity", Field ("router.hash"));
 	show ("Version / net ID",
-		Field ("router.version") + " / " + Field ("router.netid") + " (protocol " + Field ("protocol") + ")");
+		Field ("router.version") + " / " + Field ("router.netid") + " ("
+			+ std::string (i2p::i18n::tr ("protocol")) + " " + Field ("protocol") + ")");
 	show ("Uptime", HumanUptime (ToLong (Field ("router.uptime"))));
-	show ("Network status (IPv4)", Field ("network.status4") + " " + Field ("network.error4"));
-	show ("Network status (IPv6)", Field ("network.status6") + " " + Field ("network.error6"));
+	show ("Network status (IPv4)", std::string (RouterStatusText (Field ("network.status4")))
+		+ " " + std::string (RouterErrorText (Field ("network.error4"))));
+	show ("Network status (IPv6)", std::string (RouterStatusText (Field ("network.status6")))
+		+ " " + std::string (RouterErrorText (Field ("network.error6"))));
 	show ("Capabilities", Field ("router.caps"));
-	show ("Floodfill", Field ("router.floodfill") == "1" ? "yes" : "no");
+	show ("Floodfill", Field ("router.floodfill") == "1" ? i2p::i18n::tr ("yes") : i2p::i18n::tr ("no"));
 	show ("NAT / testing",
 		std::string ("v4 ")
 			+ std::string (Field ("network.testing4") == "1" ? i2p::i18n::tr ("testing") : i2p::i18n::tr ("ok"))
@@ -4121,7 +4186,7 @@ void App::DrawStatus (int top, int height, int width)
 	show ("NTCP2 / SSU2",
 		std::string (Field ("transport.ntcp2") == "1" ? "NTCP2" : "-") + " / "
 			+ (Field ("transport.ssu2") == "1" ? "SSU2" : "-"));
-	show ("Transport online", Field ("transport.online") == "1" ? "yes" : "no");
+	show ("Transport online", Field ("transport.online") == "1" ? i2p::i18n::tr ("yes") : i2p::i18n::tr ("no"));
 	show ("Bandwidth in / out",
 		HumanRate (ToU64 (Field ("bandwidth.in"))) + " / " + HumanRate (ToU64 (Field ("bandwidth.out"))));
 	show ("Bandwidth 15s in / out",
@@ -4140,9 +4205,10 @@ void App::DrawStatus (int top, int height, int width)
 		Field ("router.accepts_tunnels") == "1" ? i2p::i18n::tr ("accepted (t to change)")
 												: i2p::i18n::tr ("declined (t to change)"));
 	show ("Tunnel creation success", Field ("tunnels.success") + "%");
-	show ("Tunnel queues", Field ("tunnels.queue") + " data / " + Field ("tunnels.build_queue") + " build");
-	show ("Reseeding", Field ("netdb.reseeding") == "1" ? "active" : "idle");
-	show ("Daemon log level", m_DaemonLogLevel);
+	show ("Tunnel queues", Field ("tunnels.queue") + " " + std::string (i2p::i18n::tr ("data")) + " / "
+		+ Field ("tunnels.build_queue") + " " + std::string (i2p::i18n::tr ("build")));
+	show ("Reseeding", Field ("netdb.reseeding") == "1" ? i2p::i18n::tr ("active") : i2p::i18n::tr ("idle"));
+	show ("Daemon log level", LogLevelText (m_DaemonLogLevel));
 	show ("Log queue drops", Field ("log.dropped"));
 	show ("Max bandwidth", HumanBytes (ToLong (Field ("router.bandwidth_limit")) * 1024) + "/s");
 	show ("Local time", Timestamp (static_cast<long> (std::time (nullptr))));
@@ -4153,7 +4219,8 @@ void App::DrawRateHistory (int & row, int top, int height, int width)
 {
 	if (m_InHistory.empty () || width < 28 || row + 4 > top + height) return;
 	PutLine (row++, "", width);
-	PutLine (row++, " Bandwidth history (15-second samples)", width, m_Theme.Attributes (ThemeRole::Muted));
+	PutLine (row++, " " + std::string (i2p::i18n::tr ("Bandwidth history (15-second samples)")), width,
+		m_Theme.Attributes (ThemeRole::Muted));
 	static constexpr std::array<const char *, 8> blocks = { " ", "\xE2\x96\x81", "\xE2\x96\x82", "\xE2\x96\x83",
 		"\xE2\x96\x84", "\xE2\x96\x85", "\xE2\x96\x86", "\xE2\x96\x87" };
 	uint32_t maximum = 1;
@@ -4161,10 +4228,11 @@ void App::DrawRateHistory (int & row, int top, int height, int width)
 	for (auto value : m_OutHistory) maximum = std::max (maximum, value);
 	auto draw = [&] (std::string_view label, const std::deque<uint32_t> & history, ThemeRole role)
 	{
-		const int available = std::max (0, width - 9);
+		const std::string prefix = "  " + std::string (i2p::i18n::tr (label)) + " ";
+		const int available = std::max (0, width - DisplayWidth (prefix));
 		if (available <= 0) return;
 		const size_t start = history.size () > static_cast<size_t> (available) ? history.size () - available : 0;
-		std::string line = "  " + std::string (i2p::i18n::tr (label)) + " ";
+		std::string line = prefix;
 		for (size_t i = start; i < history.size (); ++i)
 		{
 			const uint64_t scaled = static_cast<uint64_t> (history[i]) * 7 / maximum;
@@ -4184,9 +4252,9 @@ void App::DrawPeers (int top, int height, int width)
 		+ std::string (i2p::i18n::tr ("(bounded snapshot, Up/Down scroll)"));
 	if (!m_Connected) title += " " + std::string (i2p::i18n::tr ("[stale]"));
 	PutLine (row++, title, width, m_Theme.Attributes (ThemeRole::Primary));
-	std::string header = "  "
-		+ std::string (
-			i2p::i18n::tr ("Peer hash                                      Sess Attempts Transports            High"));
+	std::string header = "  " + FitUtf8 (i2p::i18n::tr ("Peer"), 46)
+		+ FitUtf8 (i2p::i18n::tr ("Sess"), 5) + FitUtf8 (i2p::i18n::tr ("Attempts"), 9)
+		+ " " + FitUtf8 (i2p::i18n::tr ("Transports"), 20) + FitUtf8 (i2p::i18n::tr ("High"), 5);
 	PutLine (row++, header, width, m_Theme.Attributes (ThemeRole::Primary));
 	if (m_Peers.empty ())
 		PutLine (row,
@@ -4202,7 +4270,7 @@ void App::DrawPeers (int top, int height, int width)
 		const auto & peer = m_Peers[i];
 		std::string line = "  " + FitUtf8 (peer.hash, 46) + FitUtf8 (std::to_string (peer.sessions), 5, true)
 			+ FitUtf8 (std::to_string (peer.attempts), 9, true) + " " + FitUtf8 (peer.transportNames, 20)
-			+ FitUtf8 (peer.highBandwidth ? "yes" : "", 5);
+			+ FitUtf8 (peer.highBandwidth ? i2p::i18n::tr ("yes") : std::string_view { }, 5);
 		PutLine (row++, line, width);
 	}
 }
@@ -4214,10 +4282,9 @@ void App::DrawConnections (int top, int height, int width)
 		+ std::to_string (m_Connections.size ());
 	if (!m_Connected) title = "  " + std::string (i2p::i18n::tr ("Active transport connections: daemon disconnected"));
 	PutLine (row++, title, width, m_Theme.Attributes (ThemeRole::Primary));
-	PutLine (row++,
-		"  "
-			+ std::string (i2p::i18n::tr (
-				"Peer hash                                      Sess Attempts Transports            High")),
+	PutLine (row++, "  " + FitUtf8 (i2p::i18n::tr ("Peer"), 46)
+			+ FitUtf8 (i2p::i18n::tr ("Sess"), 5) + FitUtf8 (i2p::i18n::tr ("Attempts"), 9)
+			+ " " + FitUtf8 (i2p::i18n::tr ("Transports"), 20) + FitUtf8 (i2p::i18n::tr ("High"), 5),
 		width, m_Theme.Attributes (ThemeRole::Primary));
 	if (m_Connections.empty ())
 	{
@@ -4235,7 +4302,7 @@ void App::DrawConnections (int top, int height, int width)
 		const auto & peer = m_Connections[i];
 		std::string line = "  " + FitUtf8 (peer.hash, 46) + FitUtf8 (std::to_string (peer.sessions), 5, true)
 			+ FitUtf8 (std::to_string (peer.attempts), 9, true) + " " + FitUtf8 (peer.transportNames, 20)
-			+ FitUtf8 (peer.highBandwidth ? "yes" : "", 5);
+			+ FitUtf8 (peer.highBandwidth ? i2p::i18n::tr ("yes") : std::string_view { }, 5);
 		PutLine (row++, line, width);
 	}
 }
@@ -4249,7 +4316,9 @@ void App::DrawTunnels (int top, int height, int width)
 		+ std::string (i2p::i18n::tr ("success")) + " " + Field ("tunnels.success") + "%";
 	if (!m_Connected) title += " " + std::string (i2p::i18n::tr ("[stale]"));
 	PutLine (row++, title, width, m_Theme.Attributes (ThemeRole::Primary));
-	PutLine (row++, "  " + std::string (i2p::i18n::tr ("Tunnel ID   Dir      State         Hops  Created")), width,
+	PutLine (row++, "  " + FitUtf8 (i2p::i18n::tr ("Tunnel ID"), 11)
+			+ FitUtf8 (i2p::i18n::tr ("Direction"), 9) + FitUtf8 (i2p::i18n::tr ("State"), 14)
+			+ FitUtf8 (i2p::i18n::tr ("Hops"), 6, true) + " " + std::string (i2p::i18n::tr ("Created")), width,
 		m_Theme.Attributes (ThemeRole::Primary));
 	if (m_Tunnels.empty ())
 		PutLine (row,
@@ -4263,10 +4332,9 @@ void App::DrawTunnels (int top, int height, int width)
 	for (int i = start; i < static_cast<int> (m_Tunnels.size ()) && row < top + height; ++i)
 	{
 		const auto & tunnel = m_Tunnels[i];
-		char buffer[160];
-		snprintf (buffer, sizeof (buffer), "  %-10.10s %-8.8s %-13.13s %5.5s %s", tunnel.id.c_str (),
-			tunnel.direction.c_str (), tunnel.state.c_str (), tunnel.hops.c_str (),
-			Timestamp (ToLong (tunnel.created)).c_str ());
+		const std::string line = "  " + FitUtf8 (tunnel.id, 11)
+			+ FitUtf8 (TunnelDirectionText (tunnel.direction), 9) + FitUtf8 (TunnelStateText (tunnel.state), 14)
+			+ FitUtf8 (tunnel.hops, 6, true) + " " + Timestamp (ToLong (tunnel.created));
 		ThemeRole role = ThemeRole::Muted;
 		if (tunnel.state == "established")
 			role = ThemeRole::Success;
@@ -4274,7 +4342,7 @@ void App::DrawTunnels (int top, int height, int width)
 			role = ThemeRole::Error;
 		else if (tunnel.state == "pending" || tunnel.state == "build-reply" || tunnel.state == "expiring")
 			role = ThemeRole::Warning;
-		PutLine (row++, buffer, width, m_Theme.Attributes (role));
+		PutLine (row++, line, width, m_Theme.Attributes (role));
 	}
 }
 
@@ -4374,10 +4442,10 @@ void App::DrawNetDb (int top, int height, int width)
 	m_Scroll = std::clamp (m_Scroll, 0, maximum);
 	if (routers)
 	{
-		PutLine (row++,
-			"  "
-				+ std::string (
-					i2p::i18n::tr ("Hash                                      Ver  Caps# F  V4 V6 Updated     Reach")),
+		PutLine (row++, "  " + FitUtf8 (i2p::i18n::tr ("Hash"), 42)
+				+ FitUtf8 (i2p::i18n::tr ("Ver"), 5, true) + FitUtf8 (i2p::i18n::tr ("Caps#"), 5, true)
+				+ FitUtf8 ("F", 2) + FitUtf8 ("V4", 3) + FitUtf8 ("V6", 3)
+				+ FitUtf8 (i2p::i18n::tr ("Updated"), 12) + FitUtf8 (i2p::i18n::tr ("Reach"), 6),
 			width, m_Theme.Attributes (ThemeRole::Primary));
 		for (int i = m_Scroll; i < static_cast<int> (m_NetDbRouters.size ()) && row < top + height; ++i)
 		{
@@ -4385,16 +4453,17 @@ void App::DrawNetDb (int top, int height, int width)
 			std::string line = "  " + FitUtf8 (router.hash, 42) + FitUtf8 (std::to_string (router.version), 5, true)
 				+ FitUtf8 (std::to_string (router.caps), 5, true) + FitUtf8 (router.floodfill ? "F" : "-", 2);
 			line += FitUtf8 (router.v4 ? "Y" : "-", 3) + FitUtf8 (router.v6 ? "Y" : "-", 3)
-				+ FitUtf8 (TimestampAged (router.timestamp), 12) + FitUtf8 (router.reachable ? "yes" : "no", 6);
+				+ FitUtf8 (TimestampAged (router.timestamp), 12)
+				+ FitUtf8 (router.reachable ? i2p::i18n::tr ("yes") : i2p::i18n::tr ("no"), 6);
 			PutLine (row++, line, width);
 		}
 	}
 	else
 	{
-		PutLine (row++,
-			"  "
-				+ std::string (i2p::i18n::tr (
-					"Hash                                      Store Enc    Expires     Earliest    State")),
+		PutLine (row++, "  " + FitUtf8 (i2p::i18n::tr ("Hash"), 42)
+				+ FitUtf8 (i2p::i18n::tr ("Store"), 6, true) + FitUtf8 (i2p::i18n::tr ("Enc"), 5, true)
+				+ FitUtf8 (i2p::i18n::tr ("Expires"), 12) + " " + FitUtf8 (i2p::i18n::tr ("Earliest"), 12)
+				+ " " + FitUtf8 (i2p::i18n::tr ("State"), 8),
 			width, m_Theme.Attributes (ThemeRole::Primary));
 		for (int i = m_Scroll; i < static_cast<int> (m_NetDbLeaseSets.size ()) && row < top + height; ++i)
 		{
@@ -4576,7 +4645,7 @@ void App::DrawLogs (int top, int height, int width)
 	int row = top;
 	std::string header = "  " + std::string (i2p::i18n::tr ("Time      Level  Message (l local level, / filter"));
 	if (!m_LogFilter.empty ()) header += ": " + TruncateUtf8 (m_LogFilter, 32);
-	header += ", " + std::string (i2p::i18n::tr ("L daemon: ")) + m_DaemonLogLevel + ")";
+	header += ", " + std::string (i2p::i18n::tr ("L daemon: ")) + std::string (LogLevelText (m_DaemonLogLevel)) + ")";
 	if (!m_Connected) header += " " + std::string (i2p::i18n::tr ("[stale]"));
 	PutLine (row++, header, width, m_Theme.Attributes (ThemeRole::Primary));
 	if (visible.empty ())
@@ -4625,7 +4694,7 @@ void App::DrawHelp (int top, int height, int width)
 		"  H                       reload tunnel configuration (confirmed)",
 		"  s / S                   graceful / immediate shutdown (confirmed; S requires SHUTDOWN)",
 		"  c                       cancel a pending graceful shutdown",
-		"  b / %                   set bandwidth class / share ratio percent",
+		"  b / %",
 		"  t                       toggle transit tunnel acceptance (confirmed)",
 		"  The bandwidth history keeps the last 60 fifteen-second samples.", "", "  Connections (0)",
 		"  Up/Down, PgUp/PgDn      scroll established transport sessions",
@@ -4676,12 +4745,32 @@ void App::DrawHelp (int top, int height, int width)
 		"  The TUI never opens torrent files, peers or trackers directly.",
 		"  Removal with local data is a separate, typed confirmation.",
 		"  Long UTF-8 values are truncated without splitting characters." };
-	int total = static_cast<int> (sizeof (lines) / sizeof (lines[0]));
-	int visible = std::max (0, height);
-	int maximum = std::max (0, total - visible);
-	m_HelpScroll = std::clamp (m_HelpScroll, 0, maximum);
+	std::vector<std::string> rendered;
+	for (const auto label : lines)
+	{
+		// This table contains trusted source labels, not runtime data.
+		const auto first = label.find_first_not_of (' ');
+		const auto core = first == std::string_view::npos ? label : label.substr (first);
+		const auto indentation = first == std::string_view::npos ? label.size () : first;
+		std::string translated (indentation, ' ');
+		// '%' is a literal shortcut, not a printf operand or translatable
+		// identifier. Keep it outside the description's catalog key.
+		if (core == "b / %")
+		{
+			translated += "b / %                   ";
+			translated += i2p::i18n::tr ("set bandwidth class / share ratio percent");
+		}
+		else translated += i2p::i18n::tr (core);
+		// Scroll the translated, column-wrapped lines so longer Russian or
+		// Chinese help remains reachable after narrowing the terminal.
+		for (auto & line : WrapUtf8 (translated, width)) rendered.push_back (std::move (line));
+	}
+	const int total = static_cast<int> (rendered.size ());
+	const int visible = std::max (0, height);
+	m_HelpScroll = std::clamp (m_HelpScroll, 0, std::max (0, total - visible));
 	int row = top;
-	for (int i = m_HelpScroll; i < total && row < top + height; ++i) PutLine (row++, std::string (lines[i]), width);
+	for (int i = m_HelpScroll; i < total && row < top + height; ++i)
+		PutLine (row++, rendered[i], width);
 }
 
 void App::DrawTorrents (int top, int height, int width)
@@ -4780,7 +4869,7 @@ void App::DrawTorrents (int top, int height, int width)
 		if (layout.showRatio) line += column (RatioEtaText (torrent), TORRENT_RATIO_COLS);
 		if (layout.showError)
 		{
-			std::string error = torrent.error.empty () ? std::string () : "! " + torrent.error;
+			std::string error = torrent.error.empty () ? std::string () : "! " + std::string (TorrentErrorText (torrent.error));
 			line += column (error, TORRENT_ERROR_COLS);
 		}
 		PutLine (row, line, width, selected ? m_Theme.Attributes (ThemeRole::SelectedRow) : 0);
@@ -4865,11 +4954,10 @@ void App::BuildDetailGeneral (std::vector<std::string> & lines, const TorrentRow
 	add ("Downloaded / uploaded", HumanBytes (info.downloaded) + " / " + HumanBytes (info.uploaded));
 	add ("Rate down / up", HumanRate (info.downRate) + " / " + HumanRate (info.upRate));
 	add ("Peers",
-		std::to_string (info.peers) + " (seeders " + std::to_string (info.seeders) + ", leechers "
-			+ std::to_string (info.leechers) + ")");
+		i2p::i18n::tr ("%d (%d seeders, %d leechers)", info.peers, info.seeders, info.leechers));
 	add ("Ratio", RatioText (info));
 	add ("ETA", info.eta ? HumanDuration (*info.eta) : std::string (i2p::i18n::tr ("not reported")));
-	add ("Error", info.error.empty () ? std::string (i2p::i18n::tr ("none")) : info.error);
+	add ("Error", info.error.empty () ? std::string (i2p::i18n::tr ("none")) : std::string (TorrentErrorText (info.error)));
 	add ("Detail",
 		m_TorrentDetail.loaded ? std::string (i2p::i18n::tr ("loaded from TORRENT-DETAIL"))
 							   : std::string (i2p::i18n::tr ("waiting for daemon snapshot")));
@@ -4889,10 +4977,10 @@ void App::BuildDetailGeneral (std::vector<std::string> & lines, const TorrentRow
 														   : std::string (i2p::i18n::tr ("failed: ")))
 					+ m_TorrentSession.creationMessage);
 			add ("Creation progress",
-				HumanBytes (m_TorrentSession.creationBytesDone) + " / "
-					+ HumanBytes (m_TorrentSession.creationTotalBytes) + " | files "
-					+ std::to_string (m_TorrentSession.creationFilesDone) + " / "
-					+ std::to_string (m_TorrentSession.creationTotalFiles));
+				i2p::i18n::tr ("%s / %s | files %s / %s", HumanBytes (m_TorrentSession.creationBytesDone).c_str (),
+					HumanBytes (m_TorrentSession.creationTotalBytes).c_str (),
+					std::to_string (m_TorrentSession.creationFilesDone).c_str (),
+					std::to_string (m_TorrentSession.creationTotalFiles).c_str ()));
 		}
 	}
 	else
@@ -5185,9 +5273,10 @@ void App::DrawTorrentStatusLine (int height, int width)
 			// queued or unknown row is never counted as running.
 			if (ClassifyTorrentStatus (torrent.status) == TorrentRunState::Running) ++active;
 		}
-		std::string line = "  " + std::to_string (m_TorrentView.size ()) + "/" + std::to_string (m_Torrents.size ())
-			+ " shown, " + std::to_string (active) + " active | " + HumanBytes (have) + " / " + HumanBytes (total)
-			+ " | " + HumanRateShort (down) + " down " + HumanRateShort (up) + " up";
+		std::string line = "  " + std::string (i2p::i18n::tr ("%s/%s shown, %s active | %s / %s | %s down %s up",
+			std::to_string (m_TorrentView.size ()).c_str (), std::to_string (m_Torrents.size ()).c_str (),
+			std::to_string (active).c_str (), HumanBytes (have).c_str (), HumanBytes (total).c_str (),
+			HumanRateShort (down).c_str (), HumanRateShort (up).c_str ()));
 		PutLine (row, line, width, m_Theme.Attributes (ThemeRole::Muted));
 	}
 }
@@ -5200,9 +5289,11 @@ void App::DrawTorrentStatusLine (int height, int width)
 /// - 2` and the help footer at `height - 1`. Below the 6x40 safety
 /// floor the frame is replaced by a notice, because every panel assumes
 /// a readable content band.
+///
 /// Nothing here requests data or mutates the model; Draw is only ever
 /// called from the event loop with a complete snapshot, which is why
 /// the panels can read fields without locks.
+///
 /// @post The terminal is refreshed and `m_Dirty` is cleared.
 void App::Draw ()
 {
@@ -5473,7 +5564,8 @@ void App::HandleKey (int key)
 				m_PendingTorrentTunnel = m_TorrentTunnel;
 				m_PendingTrackerHash = torrent->hash;
 				BeginPrompt (key == 't' ? PromptKind::AddTracker : PromptKind::RemoveTracker,
-					key == 't' ? "add I2P tracker URL: " : "remove I2P tracker URL: ");
+					std::string (key == 't' ? i2p::i18n::tr ("add I2P tracker URL: ")
+						: i2p::i18n::tr ("remove I2P tracker URL: ")));
 				return;
 			}
 			case 'p':
@@ -5555,7 +5647,8 @@ void App::HandleKey (int key)
 		m_NetDbView = m_NetDbView == NetDbView::Routers ? NetDbView::LeaseSets : NetDbView::Routers;
 		m_Scroll = 0;
 		m_NextNetDbList = std::chrono::steady_clock::now ();
-		SetStatus (m_NetDbView == NetDbView::Routers ? "netDb: router directory" : "netDb: LeaseSet directory", false);
+		SetStatus (std::string (m_NetDbView == NetDbView::Routers ? i2p::i18n::tr ("netDb: router directory")
+			: i2p::i18n::tr ("netDb: LeaseSet directory")), false);
 		return;
 	}
 
@@ -5838,8 +5931,8 @@ void App::HandleKey (int key)
 }
 }
 
-/// @brief Process entry point: parse, establish locale, then own the
-/// console.
+/// @brief Parse options, establish the locale, then own the console.
+///
 /// Order is load-bearing. Options are resolved (including the `[tui]
 /// socket` key from i2pd.conf) before any terminal work, so
 /// `--help`/`--version` never require a console. The locale is then
@@ -5849,31 +5942,39 @@ void App::HandleKey (int key)
 /// are not decoded byte-by-byte. Signals publish a stop flag only,
 /// which lets the normal shutdown path restore the alternate screen,
 /// cursor and input modes instead of dying inside a handler.
+///
 /// @return EXIT_SUCCESS on a clean exit, EXIT_FAILURE for bad options
-/// or an unusable terminal (the error goes to stderr, never the
-/// screen).
+/// or an unusable terminal. Errors go to stderr, never the screen.
 /// @post terminal::Shutdown() restored the console before returning.
 int main (int argc, char * argv[])
 {
 	auto options = i2p::tui::ParseOptions (argc, argv);
 	if (!options)
 	{
-		std::fprintf (stderr, "i2pd-tui: %s\n", options.error ().c_str ());
+		i2p::i18n::SetLanguage ({ });
+		std::fprintf (stderr, "i2pd-tui: %s\n", LocalClientErrorText (options.error ()).c_str ());
 		return EXIT_FAILURE;
 	}
+	// Help and pre-terminal diagnostics use the same explicit/environment
+	// catalog selection as the interactive console.
+	i2p::i18n::SetLanguage (options->language);
 	if (options->showHelp)
 	{
-		std::printf ("i2pd-tui " VERSION " - local console for the openi2pd router\n"
-					 "\n"
-					 "Usage: i2pd-tui [--socket PATH] [--datadir PATH] [--conf PATH] [--service]\n"
-					 "\n"
-					 "  --socket ENDPOINT  local IPC endpoint (Unix socket; Windows pipe name)\n"
-					 "  --datadir PATH  data directory (default: user data directory)\n"
-					 "  --conf PATH     i2pd.conf used to read [tui] socket\n"
-					 "  --service       use the system service data directory\n"
-					 "  --lang LANG     UI language: en, es, ru, zh-Hans\n"
-					 "  --help          show this help\n"
-					 "  --version       show the version\n");
+		std::printf ("i2pd-tui %s - %s\n\n", VERSION,
+			std::string (i2p::i18n::tr ("local console for the openi2pd router")).c_str ());
+		std::printf ("%s\n\n", std::string (i2p::i18n::tr (
+			"Usage: i2pd-tui [--socket PATH] [--datadir PATH] [--conf PATH] [--service]")).c_str ());
+		auto option = [] (const char * syntax, std::string_view description)
+		{
+			std::printf ("  %-19s%s\n", syntax, std::string (i2p::i18n::tr (description)).c_str ());
+		};
+		option ("--socket ENDPOINT", "local IPC endpoint (Unix socket; Windows pipe name)");
+		option ("--datadir PATH", "data directory (default: user data directory)");
+		option ("--conf PATH", "i2pd.conf used to read [tui] socket");
+		option ("--service", "use the system service data directory");
+		option ("--lang LANG", "UI language: en, es, ru, zh-Hans");
+		option ("--help", "show this help");
+		option ("--version", "show the version");
 		return EXIT_SUCCESS;
 	}
 	if (options->showVersion)
@@ -5885,7 +5986,7 @@ int main (int argc, char * argv[])
 	auto resolved = i2p::tui::ResolveSocket (*options);
 	if (!resolved)
 	{
-		std::fprintf (stderr, "i2pd-tui: %s\n", resolved.error ().c_str ());
+		std::fprintf (stderr, "i2pd-tui: %s\n", LocalClientErrorText (resolved.error ()).c_str ());
 		return EXIT_FAILURE;
 	}
 
@@ -5893,13 +5994,14 @@ int main (int argc, char * argv[])
 	// The shared text helpers decode payloads with mbrtowc()/wcwidth(), so
 	// the CRT must use UTF-8.  Fall back to the system locale if a very
 	// old CRT rejects the explicit name.
-	if (!setlocale (LC_ALL, ".UTF-8")) setlocale (LC_ALL, "");
+	if (!setlocale (LC_CTYPE, ".UTF-8")) setlocale (LC_CTYPE, "");
 	// A console close/logoff would otherwise terminate without restoring
-	// the alternate screen and input modes. The handler only publishes
-	// g_Stop.
+	// the alternate screen and input modes.
+	//
+	// The handler only publishes g_Stop.
 	(void)SetConsoleCtrlHandler (HandleConsoleEvent, TRUE);
 #else
-	setlocale (LC_ALL, "");
+	setlocale (LC_CTYPE, "");
 	// The shared renderer measures UTF-8 with mbrtowc()/wcwidth(). Ensure
 	// a multibyte LC_CTYPE even when LANG/LC_ALL is unset or C/POSIX.
 	if (MB_CUR_MAX == 1 && !setlocale (LC_CTYPE, "C.UTF-8")) (void)setlocale (LC_CTYPE, "en_US.UTF-8");
@@ -5914,16 +6016,18 @@ int main (int argc, char * argv[])
 	sigaction (SIGTERM, &stopAction, nullptr);
 #endif
 
-	// Select the UI catalog after the platform locale is established. An
-	// explicit --lang/[tui] language wins; otherwise
-	// LC_ALL/LC_MESSAGES/LANG is consulted and unsupported locales fall
-	// back to English.
-	i2p::i18n::SetLanguage (options->language);
+	// ResolveSocket may have loaded [tui] language from configuration.
+	// Selecting it again keeps explicit --lang precedence and never
+	// changes LC_CTYPE or the already pinned numeric formatting locale.
+	i2p::i18n::SetLanguage (resolved->language);
 
 	if (!i2p::tui::terminal::Init ())
 	{
 		const char * error = i2p::tui::terminal::LastError ();
-		std::fprintf (stderr, "i2pd-tui: %s\n", error ? error : "unable to initialize the terminal");
+		// LastError is a closed backend-owned literal, not peer/user data.
+		const std::string description (error ? i2p::i18n::tr (std::string_view (error))
+			: i2p::i18n::tr ("unable to initialize the terminal"));
+		std::fprintf (stderr, "i2pd-tui: %s\n", description.c_str ());
 		return EXIT_FAILURE;
 	}
 	// The central theme owns colour discovery and all colour-pair
