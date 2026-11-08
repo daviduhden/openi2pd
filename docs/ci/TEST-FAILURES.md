@@ -331,3 +331,31 @@ still Blocked. MinGW's other failure is the GUI informational timeout.
 
 Focused TSan 42422405960 on `9f5320b2` passes 1/1; it does not validate the
 local full-matrix dependency refactor, provider failure changes or parser fixes.
+
+## 2026-11-08 — Tests after the c115d386 continuation
+
+### TF-087 — Scheduling fixture expected malformed known types to succeed
+
+The tracker-schedule assertion at line 167 fails in OpenBSD, MinGW, all four
+OpenSSL jobs and all three sanitizer jobs (run/job table in the compilation
+inventory). Its empty byte string interval contradicts the now-executed typed
+parser contract. The fixture now asserts malformed response, retained prior
+interval and bounded failure scheduling. Negative integer intervals still
+exercise valid typed clamping. The parser is not weakened to satisfy the old
+expectation. Equivalent known-type fixtures, DHT, PEX and metadata handlers
+were inspected. Implemented / static; Pending CI tests.
+
+### TF-088 — Release assertion evaluation needs a direct regression
+
+A successful MSVC suite still emitted CW-026. A shared source-level assertion
+setup removes the command override while retaining evaluation. The new
+common/selected test fails if NDEBUG remains defined or an assert operand
+stops executing. Normal tests, tool tests and fuzzers use the same helper.
+Prepared / not executed; Pending CI compilation and Pending CI tests.
+
+RT-051 and RT-052 remain real product/CLI failure-path defects rather than
+fixture expectations. Their regression extensions stay enabled. The older
+unknown-opcode case now passes far enough to expose the independent EOF case.
+MinGW Unicode and GUI version timeout remain unresolved; MSVC still skips
+supervisor authentication after worker status 0xC0000142. API 29 remains
+skipped. No passing sibling closes those coverage gaps.

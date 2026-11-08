@@ -7138,3 +7138,73 @@ or push.
 - Configured author identity and commit signing are retained. No compiler,
   build configuration or behavioral test was invoked. Publication leaves
   native and workflow validation pending on the exact published revision.
+
+## 2026-11-08 — Executed continuation and trust-boundary follow-up
+
+- Recovered all ten latest full/failed-step logs, successful siblings and
+  relevant exact artifacts. Paginated 302 runs across 57 SHAs and 18 workflow
+  names: 194 failures, 63 cancellations and 45 successes. Existing historical
+  retention gaps remain; every new run executed c115d3864f2f0ce9f899d79ae48edf8e15d605c7.
+- Instrumented OpenSSL, its macro patch and full TSan registry regression now
+  pass their executed paths without a sanitizer report. RNG, metainfo,
+  verify-parity and profile lifetime tests pass the three sanitizer lanes;
+  complete suites fail through independent keygen, scheduling fixture and
+  IPC EOF causes. Android, Linux, packaging and knowledge lanes pass within
+  their documented skips/warnings. The six CI inventories retain exact jobs.
+- Ten specialized reconnaissance/review agents covered history, native and
+  crypto, platform/IPC, regression security, Android/JNI, portability,
+  torrents/storage, concurrency, warnings/CI and knowledge synchronization.
+  File ownership was exclusive and shared interfaces received root review.
+- Contained key generation exceptions at the CLI boundary without restoring
+  fallback keys. Expanded RSA alias/status/stdout/no-file regressions.
+- Corrected IPC terminal EOF classification, authenticated before any refusal
+  or violation-budget mutation, and bounded nested replies by the receive's
+  remaining absolute deadline. Added buffered close, wrong credentials,
+  descriptor cleanup, backpressure and recovery regressions.
+- Prevalidated complete Retry grammar before changing crypto/version state;
+  cache insertion now follows complete payload/termination checks. Reviewed
+  equivalent token update paths and prepared valid-prefix/forbidden-tail
+  controls plus source-order guards.
+- Corrected the scheduling fixture's old wrong-type success expectation.
+  HTTP and datagram compact tracker hashes now reject partial tails before
+  state publication. Prepared empty, boundary and prior-state regressions.
+- Tunnel tests now carry unique attempt authority through drop and rollback;
+  live ID collisions cannot replace entries and stale callbacks cannot
+  penalize replacements. Prepared deterministic ID/pair/deadline reuse.
+- Replaced conflicting MSVC assertion command macros with a shared early
+  source header, retaining GNU-style behavior and adding a Release assertion
+  evaluation regression to common and selected MSVC CTest. No warning was
+  disabled. Updated stale instructions about assertion flags and the manual
+  maintenance workflow's worktree/range distinction.
+- Wide Android content uses native relative constraints instead of nested
+  weighted measurement, preserving IDs, insets and color roles. Independent
+  review checked LTR/RTL geometry and MainActivity assumptions. Vector, ABI,
+  overdraw and device findings remain; no brand geometry was changed.
+- No local builds, configuration, behavioral tests, commits or pushes.
+  All new changes are Implemented / static, Pending CI compilation and
+  Pending CI tests. Existing user work was preserved.
+- Final compile-free verification passes: whitespace, knowledge validator,
+  runtime/control/build/package/tool/skills/language source contracts,
+  workflow policy, documentation links/navigation/parameter contracts,
+  Shell policy, XML parsing, yamllint and actionlint. AK004's sole relevance
+  warning was reviewed manually against the real interfaces. The nine
+  affected Skills and AGENTS preserve reusable assertion, parser, callback,
+  IPC authority/deadline and platform-layout procedures; stale universal
+  assertion-flag and maintenance-range claims were corrected. Structural
+  validation is not proof of runtime correctness or semantic relevance.
+
+## 2026-11-08 — Authorized publication of trust-boundary corrections
+
+- Reviewed modified and untracked files with independent native/IPC/torrent
+  and build/Android reviewers. No generated output or sensitive artifact is
+  part of the publication. Temporary index projections stay outside the tree
+  and preserve source content and executable modes.
+- Split assertion setup, EOF classification, IPC authentication, refusal
+  deadlines, keygen status handling, Retry publication, tunnel attempt
+  authority, tracker fixture/framing, Android measurement and shared source
+  contracts into separate dependency-ordered signed changes. Historical
+  inventories and tracking remain their own final evidence increment.
+- Configured author/committer identity and signing are preserved. Static
+  review and publication do not validate the new revision dynamically;
+  manual compilation, sanitizer, interoperability and device checks remain
+  pending. No local build, configure or behavioral test was performed.

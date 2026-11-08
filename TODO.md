@@ -2472,3 +2472,23 @@ The earlier RT-042/043 fixture regressions pass the executed sanitizer lanes;
 full lanes still fail for independent IPC/provider findings. Android retains
 17 Lint findings and an unexecuted API 29 device lane. Explicit OpenSSL 4.0.x
 coverage and historical retention gaps remain open.
+
+## 2026-11-08 executed continuation and next corrections
+
+| ID | State | Remaining work |
+|---|---|---|
+| CI-NOV08B-01 | Validated by CI | Instrumented dependency and macro patch execute in full TSan and focused c115d386 runs; full suite still fails three independent tests |
+| CLI-NOV08B-01 | Implemented / static | RT-051 keygen generation refusal and all RSA aliases; Pending CI tests |
+| IPC-NOV08B-01 | Implemented / static | RT-052/054 EOF, authentication before refusals and shared absolute deadlines; Pending CI tests |
+| CRYPTO-NOV08B-01 | Implemented / static | RT-053 Retry full-grammar prevalidation and late token publication; Pending CI tests |
+| TORRENT-NOV08B-01 | Implemented / static | TF-087 fixture correction and RT-055 compact peer framing in both tracker consumers; Pending CI tests |
+| TUNNEL-NOV08B-01 | Implemented / static | RT-056 attempt-qualified rollback/drop and deterministic reuse regression; Pending CI tests |
+| BUILD-NOV08B-01 | Implemented / static | CW-026 shared Release assertion setup and selected MSVC regression; Pending CI compilation and Pending CI tests |
+| ANDROID-NOV08B-01 | Implemented / static | Wide-layout NestedWeights correction preserves colors/IDs; Pending CI tests and device review; 16 other Lint findings remain |
+
+The new snapshot is 302 runs / 57 SHAs. Exact c115d386 sanitizer lanes pass
+RNG, metainfo, verify-parity, profile lifetime and registry tests without a
+sanitizer report; no result validates later local corrections. The unknown
+IPC opcode control now passes before the separate EOF failure. Windows
+Unicode/startup, pre-auth worker 0xC0000142, API 29/device and OpenBSD sandbox
+capability gaps remain unresolved. Explicit OpenSSL 4.0.x is still uncovered.

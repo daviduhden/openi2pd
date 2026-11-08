@@ -2320,3 +2320,15 @@ library, the corrected IPC opcode fixture and the prepared typed-parser and
 random-source failure regressions. These local corrections are Implemented /
 static, Pending CI compilation and Pending CI tests. Preserve the blocked
 Windows Unicode/worker-startup investigations and platform capability gaps.
+
+## 2026-11-08 executed c115d386 checkpoint
+
+Full TSan now uses the instrumented OpenSSL/provider dependency and no longer
+emits the earlier cache race report in the executed suite. All three
+sanitizer configurations still fail the same keygen, tracker fixture and IPC
+EOF cases. The next static increment corrects those causes, strengthens IPC
+refusal authority/deadlines, Retry state publication, tracker framing and
+tunnel-test attempt ownership, and preserves MSVC Release assertions without
+D9025. These changes and the wide Android measurement fix await manual CI.
+Keep the Windows Unicode/worker startup and device/platform coverage gaps
+open rather than inferring cleanliness from the passing sibling jobs.

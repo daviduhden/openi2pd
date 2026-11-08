@@ -279,3 +279,15 @@ no old remote run validates them.
 - New provider-failure exceptions require reviewing constructor and send-state
   consumers, direct includes, partial caches and nested message construction.
   A normal-looking zero return must not disguise failure as omitted padding.
+
+## 2026-11-08 — Shared assertion and CLI failure seams
+
+- A repeated successful-job command warning can originate in one shared test
+  configuration. Inspect normal tests, tool tests and fuzzers together;
+  source-level assertion initialization must precede cassert and any PCH.
+- Removing a fallback can correctly introduce an exception in a library while
+  exposing a missing executable boundary. Preserve fail-closed generation;
+  adapt CLI status/stdout/file contracts rather than restoring weak output.
+- Strict known-field parsing invalidates fixtures that treated wrong types as
+  absent fields. Preserve out-of-range typed-value controls alongside invalid
+  type controls, and review all consumers of the shared parser.

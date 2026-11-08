@@ -411,3 +411,21 @@ source-order guard; neither substitutes for manual sanitizer execution.
 - A successful instrumented dependency lane supports attribution of an
   uninstrumented-library report, but does not certify a different matrix or
   prove that all races are absent. Keep full CTest coverage and exact images.
+
+## 2026-11-08 — Ordering at transaction boundaries
+
+- EOF is not an unauthenticated data frame. Reject ancillary anomalies first,
+  classify terminal zero reads, then authenticate live records. Buffered data
+  plus hangup must still follow the data-frame authentication path.
+- Authenticate before a refusal response or violation-counter update. A
+  deadline belongs to the whole receive operation, including error replies;
+  nested sends must use its remaining budget, not a new fixed wait.
+- Validate an entire Retry payload before version, crypto or token mutation.
+  A valid first block does not authorize forbidden trailing blocks.
+- Validate fixed-width peer ranges before updating any tracker statistics.
+  Exercise malformed tails after a complete hash, empty input, valid multiple
+  hashes and the same public API reached through both tracker transports.
+- A correlation key is not callback authority. Retain a unique local attempt
+  identity across delayed completions, match it on rollback/drop and refuse
+  live key collisions. Reuse the same ID, peer pair and timestamp in the
+  regression so correlated field comparisons cannot accidentally pass it.

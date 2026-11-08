@@ -549,3 +549,30 @@ to the pinned temporary source tree. Preserve the compiler's value and TSan
 annotations, record the applied diff/hash, and keep unrelated upstream changes
 out. No global installation or warning suppression is modified.
 Implemented / static; Pending CI compilation for the patched library.
+
+## 2026-11-08 — Shared MSVC assertion configuration
+
+### CW-026 — Release assertions caused repeated D9025 command diagnostics
+
+Windows run 42426220784, successful MSVC job 128564962837, SHA c115d386,
+emits nine `D9025: overriding '/DNDEBUG' with '/UNDEBUG'` warnings. The
+common test helper, libFuzzer targets and tools-getopt all used the same
+command-macro override. The older classification as intentional records
+historical intent; it does not resolve the warning under the clean-build goal.
+
+The shared test assertion helper now force-includes a source header on MSVC
+that undefines NDEBUG before including cassert. Other drivers retain -UNDEBUG.
+No compiler diagnostic is disabled, and assertion operands must still execute
+in Release. New test-release-assertions is registered in common CTest and the
+selective MSVC build/expression. No PCH setup exists; introducing one requires
+renewed force-include ordering review. Implemented / static; Pending CI
+compilation and Pending CI tests for the changed configuration.
+
+The exact OpenBSD, four OpenSSL lanes, sanitizer and focused crypto logs show
+no new compiler warning in the reviewed output. CW-025's macro redefinition
+is absent with the applied upstream guard. Android still emits 17 Lint
+findings on c115d386; a local wide-layout measurement fix targets only one
+NestedWeights finding. Twelve VectorPath, two ChromeOS ABI and two Overdraw
+findings remain. Removing root paints would change the theme's color roles.
+Debian retains 16 external debugedit diagnostics and deprecated --force-yes;
+Gradle and runner capability notices remain separately classified debt.

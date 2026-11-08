@@ -1135,3 +1135,88 @@ creation output must not be enabled. A negative workflow fixture rejects
 child-following. Worker-stack attribution remains Blocked until a non-secret
 loader probe or an out-of-band bootstrap design is available. No sandbox,
 ACL or process mitigation is relaxed. Pending CI tests for parent diagnostics.
+
+## 2026-11-08 — Continuation failures and preventive trust boundaries
+
+Exact run/job/SHA references for this batch are in COMPILATION-ERRORS.md.
+Complete logs reveal no ASan, UBSan or TSan report in the executed suites.
+The full TSan registry regression now passes with instrumented OpenSSL;
+focused run 42426234142 / 128565003226 passes 1/1 in 0.12 seconds. This
+validates those exercised dependency paths, not a clean full suite. RNG,
+metainfo, verification parity and profile lifetime regressions pass in the
+executed sanitizer lanes. Historical unexecuted hypotheses remain open.
+
+### RT-051 — Keygen did not contain the new fail-closed generation exception
+
+All OpenSSL/sanitizer lanes, OpenBSD and MinGW fail tools-regressions at
+its RSA keygen invocation (tools/test-tools-regressions.cmake:260).
+`Identity: Signing key generation failed` escapes main and aborts instead
+of returning the documented unsupported-generator status. The library's
+fail-closed behavior is retained. Keygen now catches at the CLI boundary,
+returns 2, emits the existing non-secret refusal and creates no output file.
+All three RSA names and numeric aliases pin status, empty stdout and no file.
+Vain's enclosing failure boundary and the supported router fixture were
+reviewed as equivalent consumers. Implemented / static; Pending CI tests.
+
+### RT-052 — EOF was authenticated as a live empty IPC record
+
+Linux IPC fails test-privsep-linux-ipc.cpp:623 in all four OpenSSL and three
+sanitizer jobs. A zero recvmsg with hangup lacks SCM_CREDENTIALS, so the old
+ordering reported missing record credentials instead of terminal close.
+Ancillary errors and unexpected descriptors still reject first; a terminal
+empty read is now closed before live-empty-record authentication. Buffered
+nonempty records still authenticate before delivery. Added buffered-close,
+wrong-identity-close and empty-close controls. OpenBSD imsg's buffered-drain
+and read-zero path was inspected separately. Pending CI tests.
+
+### RT-053 — Retry token/version state preceded complete validation
+
+Preventive source review, not an observed CI crash: ProcessRetry cached the
+header token before AEAD and payload validation. It also changed version-bound
+crypto state after only checking the first DateTime block. Full Retry-state
+block grammar now validates before version replacement, and token insertion
+follows complete payload/termination/nonzero-token checks. A valid prefix plus
+forbidden trailing blocks is covered by the existing preauth regression;
+source-order contracts pin the real handler. Other NewToken, HolePunch and
+RelayResponse update sites were reviewed for validation authority. No I2P wire
+format changes. Implemented / static; Pending CI tests.
+
+### RT-054 — IPC refusals preceded per-record authority and shared deadlines
+
+Preventive follow-up to RT-052 found nonempty frame decoding could generate
+Error replies or consume the violation budget before SCM_CREDENTIALS checks.
+Authentication now precedes recoverable refusals. Wrong-identity malformed
+frames and descriptor-bearing frames must produce no response or FD leak;
+matching identity still receives typed refusals and can recover.
+Refusal sends also used a fresh 250ms budget inside a shorter receive call.
+Their send budget must be bounded by the remaining absolute receive deadline;
+source ordering and backpressure regressions retain this obligation.
+Implemented / static; Pending CI tests. No endpoint capability is relaxed.
+
+### RT-055 — Compact tracker tails were committed as successful peers
+
+Preventive equivalent-pattern review found HTTP compact peer parsing ignored
+trailing bytes after complete 32-byte hashes. The datagram consumer also
+updated scheduling, counters and peers before validating the hash range.
+Both now reject incomplete tails before publication; the public datagram API
+also rejects a null nonempty range. Empty replies and existing peer caps stay
+valid. Tests cover 0/1/31/32/33/63/64 bytes and preserve prior state on malformed
+responses in both paths. This is stricter rejection of malformed input, not a
+new wire format or a claim of identical malformed-input tolerance to Java.
+References: [I2P BitTorrent](https://www.i2p.net/en/docs/applications/bittorrent/)
+and [UDP tracker specification](https://i2p.net/en/docs/specs/udp-announces/).
+Implemented / static; Pending CI tests.
+
+### RT-056 — Reused tunnel-test IDs could grant stale callback authority
+
+Preventive concurrency review found tunnel tests keyed only by random message
+ID. Live insertion replaced an existing attempt, and a retained old onDrop
+or rollback erased solely by ID and could penalize its replacement's tunnel.
+Pending tests now retain unique local attempt authority, reject live-ID
+collisions and retire by both ID and authority. Detached owners and final
+cleanup run outside the correlation mutex. A stale callback after reply,
+removal or reuse is inert; only a matching drop penalizes the outbound tunnel.
+The existing timing regression reuses the exact same ID, pair and deadline
+and exercises repeated callbacks. CreateTunnel's separate pointer-qualified
+rollback was reviewed as the equivalent pattern. Implemented / static;
+Pending CI compilation and Pending CI tests. Wire IDs remain unchanged.

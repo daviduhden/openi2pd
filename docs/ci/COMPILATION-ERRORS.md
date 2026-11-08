@@ -1857,3 +1857,30 @@ artifact steps remain in the owning workflow. YAML parsing and actionlint
 now pass. This was a local source/configuration defect, not an observed CI
 failure. The CI skill now requires complete extraction-boundary review and
 YAML parsing alongside source guards. Dynamic execution remains pending.
+
+## 2026-11-08 — Executed continuation on c115d386
+
+All ten runs below executed `c115d3864f2f0ce9f899d79ae48edf8e15d605c7`.
+The complete paginated snapshot is 302 runs / 57 SHAs / 18 workflow names:
+194 failures, 63 cancellations and 45 successes. Full logs and failed-step
+logs were retrieved for every new run, including successful siblings.
+Historical retention gaps remain; no new gap was found in this batch.
+
+| Run | Jobs and observed result |
+|---|---|
+| [42426220784](https://github.com/daviduhden/openi2pd/actions/runs/42426220784) | MSVC 128564962837 passes; MinGW 128564963017 fails tools, tracker scheduling, Unicode and version timeout |
+| [42426222299](https://github.com/daviduhden/openi2pd/actions/runs/42426222299) | OpenBSD 128564966656 builds; tools and tracker scheduling fail among 246 tests |
+| [42426226746](https://github.com/daviduhden/openi2pd/actions/runs/42426226746) | OpenSSL 3 Clang 128564979659 / GCC 128564979810 build; each fails tools, tracker scheduling and Linux IPC among 251 tests |
+| [42426228294](https://github.com/daviduhden/openi2pd/actions/runs/42426228294) | OpenSSL 4 Clang 128564984956 / GCC 128564985102 build; same three CTest failures |
+| [42426232908](https://github.com/daviduhden/openi2pd/actions/runs/42426232908) | TSan 128564999538, ASan/UBSan 128564999594 and UBSan 128564999718 build; same three failures; docs 128564999749, static 128564999721 and fuzz 128564999658 pass; Perl quality 128565001193 skipped |
+| [42426234142](https://github.com/daviduhden/openi2pd/actions/runs/42426234142) | Instrumented crypto 128565003226 passes its focused test |
+| [42426229970](https://github.com/daviduhden/openi2pd/actions/runs/42426229970) | Android 128564989720 passes; API 29 UI 128564990988 skipped |
+| [42426231401](https://github.com/daviduhden/openi2pd/actions/runs/42426231401) | Install 128564994129 and reference interop 128564994367 pass |
+| [42426223641](https://github.com/daviduhden/openi2pd/actions/runs/42426223641) | Static package 128564970772, services 128564970915, Debian 128564970939, container 128564970941 and component matrix 128564970995 pass |
+| [42426225051](https://github.com/daviduhden/openi2pd/actions/runs/42426225051) | Knowledge gate 128564974440 passes |
+
+No new compile/link blocker appears in these exact logs. The selected
+libraries are OpenSSL 3.5.9 / 4.1.0 and LibreSSL 4.4.0; unavailable LibreSSL
+feature probes select compatibility paths rather than proving a source error.
+Explicit OpenSSL 4.0.x coverage remains unexecuted. Successful compilation
+must not be confused with the runtime failures below or MSVC CW-026.
