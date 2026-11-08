@@ -6,13 +6,15 @@
  *
  * Declares the operation vocabulary, the fixed resource bounds and the
  * worker entry point for the network-denied torrent payload process.
- * Only setup and registration carry a path, and even those are relative
- * to a delegated root that the worker receives as a capability (an
- * inherited descriptor on OpenBSD, one SCM_RIGHTS descriptor on Linux)
- * and validates against the caller's device/inode identity before it
- * applies its sandbox. Every later payload operation names a
- * worker-assigned handle, so a peer cannot re-point an open file by
- * sending a different path.
+ * The worker receives its delegated root as a capability: an inherited
+ * descriptor on OpenBSD or one SCM_RIGHTS descriptor on Linux. It
+ * checks the caller's device/inode identity before sandboxing.
+ *
+ * Read/Write/Release name worker-assigned handles. Registration,
+ * promotion, removal and metadata operations carry names that are
+ * resolved relative to the validated root. An existing handle cannot
+ * be redirected by changing a later request's pathname.
+ *
  * The worker is an endpoint of the shared framed protocol
  * (privsep/Protocol.h): it enforces the per-type descriptor policy,
  * refuses a replayed or non-monotonic request id instead of
@@ -52,6 +54,12 @@ inline constexpr uint64_t TorrentStorageFileLimit = uint64_t { 1 } << 40;
  * Wire operation ids carried in the first payload byte of a
  * TorrentStorageRequest. Ids are part of the worker protocol; add a new
  * one at the end and update the worker dispatch and its tests together.
+ *
+ * Requests execute sequentially in one worker loop. Read/Write offsets
+ * are bounded by the handle's registered size; a successful Write reply
+ * follows fsync. Failure is not rollback: a partial write or a rename
+ * followed by directory-fsync failure may already have changed storage.
+ * Do not retry an ambiguous mutation as though it had never executed.
  */
 enum class StorageOperation : uint8_t
 {
@@ -83,7 +91,8 @@ enum class StorageOperation : uint8_t
 	RemoveDirectory,
 	/**
 	 * Start a bounded staging write of a metainfo/resume/DHT state
-	 * file. */
+	 * file. A new begin discards the previous pending staging write.
+	 */
 	MetadataBegin,
 	/** Append the next sequential chunk of the pending metadata file. */
 	MetadataChunk,
@@ -109,14 +118,29 @@ enum class StorageOperation : uint8_t
 	 */
 	AuthorizeDHTMetadata
 };
-/// Validate the lexical form of a root-relative worker path. This does
-/// not open the path or prove containment; the worker must traverse
-/// from its root descriptor without following links before acting on
-/// it.
+/**
+ * Check root-relative path syntax without accessing the filesystem.
+ * Reject absolute paths, empty/dot components, trailing separators,
+ * control bytes, backslashes and colons. Limits are measured in bytes:
+ * 4096 for the whole path and 255 for each component.
+ *
+ * This does not validate UTF-8, file type, ownership or containment.
+ * The worker must walk from its root descriptor without following links
+ * and apply operation-specific checks before using an accepted path.
+ */
 bool SafeStoragePath (std::string_view path);
-/// Serve typed operations after validating the delegated root and
-/// applying the platform policy. An inherited root is used for the
-/// OpenBSD bootstrap path.
+/**
+ * Run a blocking storage endpoint on its dedicated worker process.
+ * On supported POSIX platforms, adopt fd as the owned IPC channel.
+ * The OpenBSD bootstrap additionally supplies inheritedRoot; Linux
+ * receives the root with configuration.
+ * The worker closes standard descriptors before applying its policy.
+ *
+ * Return 0 on an authorized Shutdown and 1 on bootstrap, channel or
+ * sandbox failure. A rejected operation can leave the channel usable.
+ * Unsupported platforms fail instead of running an unconfined writer.
+ * Callers must not use this entry point on a router event-loop thread.
+ */
 int RunTorrentStorageWorker (int fd, int inheritedRoot = -1);
 }
 #endif

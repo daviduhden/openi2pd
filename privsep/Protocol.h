@@ -355,12 +355,12 @@ constexpr bool IsReplyType (MessageType type)
 }
 
 /**
- * True for the one request-direction frame the accepting side has to read
- * before any worker role exists: the Windows `WorkerHello` spawn proof.
- * It is the only exception to "the requesting side receives replies only",
- * because the receiver cannot know which role may receive what until it
- * has authenticated the frame. Everything else that is a request belongs
- * to a worker endpoint.
+ * True for the request-direction frame read before any worker role
+ * exists: the Windows `WorkerHello` spawn proof.
+ *
+ * This is the sole exception to receiving replies on the requesting
+ * side. The receiver cannot assign role authority before authenticating
+ * the frame. All other requests belong to worker endpoints.
  */
 constexpr bool IsPreDispatchHandshake (MessageType type)
 {
@@ -369,10 +369,11 @@ constexpr bool IsPreDispatchHandshake (MessageType type)
 
 /**
  * What each side may put on the wire, derived from the registry instead
- * of a second hand-written direction switch. A bound worker sends replies
- * only; it writes its pre-dispatch handshake before the role binds. The
- * requesting side sends requests and the typed `Error` refusal, but never
- * the spawn proof, which only a worker connection may send.
+ * of a second hand-written direction switch. A bound worker sends only
+ * replies; it writes its pre-dispatch handshake before the role binds.
+ *
+ * The requesting side sends requests and the typed `Error` refusal, but
+ * never the spawn proof, which only a worker connection may send.
  */
 constexpr bool WorkerMaySend (MessageType type)
 {
@@ -442,11 +443,11 @@ constexpr bool AllowsOperation (EndpointRole role, MessageType type)
  * authorization test and every transport share one authority:
  * - a request is received by worker endpoints only, except the
  *   pre-dispatch spawn proof the accepting side must read;
- * - a reply is received by the requesting side and never by a pure worker
- *   role, except the typed `Error` refusal that a refused worker must be
- *   able to read.
- * A violation is a topology change, not a style issue: it decides whether
- * a worker can drive the router or forge another client's reply.
+ * - a reply reaches the requesting side, never a pure worker role,
+ *   except the typed `Error` refusal a refused worker must read.
+ *
+ * A violation changes the topology: it decides whether a worker can
+ * drive the router or forge another client's reply.
  */
 constexpr bool ValidateDirectionInvariants ()
 {
@@ -499,6 +500,10 @@ struct ProtocolError
 /// Owns encoded payload bytes. Multi-byte integers use network byte
 /// order. Data() borrows the string; later writes change its contents
 /// and can invalidate views or iterators into its storage.
+///
+/// A writer has no internal synchronization or aggregate payload cap.
+/// Serialize access externally and let the message encoder enforce its
+/// registry ceiling before publishing bytes to a channel.
 class PayloadWriter
 {
 public:
@@ -526,7 +531,14 @@ public:
 		WriteU32 (static_cast<uint32_t> (size));
 		m_Data.append (value.substr (0, size));
 	}
-	/** Fallible bounded string; returns false instead of truncating. */
+	/**
+	 * Append one length-prefixed field without truncation. A false result
+	 * leaves the writer unchanged; a successful append can invalidate
+	 * outstanding views into Data().
+	 *
+	 * The caller supplies a protocol field limit representable in u32.
+	 * This helper checks that limit, not the enclosing message ceiling.
+	 */
 	bool WriteStringBounded (std::string_view value, size_t limit)
 	{
 		if (value.size () > limit) return false;
@@ -543,8 +555,8 @@ public:
 	 * Raw bytes with no length prefix. Used by the data-storage request
 	 * family, whose name/payload lengths are already explicit u8/u32
 	 * fields. The caller is responsible for the bound; the encoder checks
-	 * it. An empty span writes nothing: a removal request has no bytes, and
-	 * appending a zero-length range from a null pointer must not be
+	 * it. An empty span writes nothing: a removal request has no bytes.
+	 * Appending a zero-length range from a null pointer must not be
 	 * expressed as a string operation at all.
 	 */
 	void WriteBytes (std::span<const uint8_t> bytes)
@@ -569,6 +581,10 @@ private:
 /// ReadString and ReadRaw borrow the original buffer, which must
 /// outlive both reader and view. A failed multi-byte read can advance
 /// the cursor; abandon the reader on error.
+///
+/// Each reader is one mutable parsing cursor, not shared thread state.
+/// Done() proves exact field consumption only; semantic validation,
+/// peer identity and operation authorization remain caller duties.
 class PayloadReader
 {
 public:
@@ -727,6 +743,17 @@ inline bool IsRecoverableFrameFault (const ProtocolError & error)
 	}
 }
 
+/**
+ * Decode one complete transport record into owned payload bytes.
+ * No views into frame escape on success, so the receive buffer may be
+ * reused once this call returns. Framing errors carry constant
+ * diagnostic text rather than bytes supplied by the peer.
+ *
+ * This verifies framing and registry limits, not payload semantics or
+ * sender authority. The channel must authenticate its peer and validate
+ * attached descriptors. The endpoint must authorize the message type
+ * and decode its payload before performing a side effect.
+ */
 inline i2p::expected<Message, ProtocolError> Decode (std::string_view frame)
 {
 	if (frame.size () < HEADER_SIZE) return i2p::unexpected (ProtocolError { ErrorCode::Malformed, "short frame" });

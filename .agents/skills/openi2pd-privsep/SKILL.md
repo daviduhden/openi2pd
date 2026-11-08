@@ -119,6 +119,14 @@ report that limitation; do not substitute local execution. Ask for:
   send control and a valid same-channel send so registry rejection cannot
   prevent the test from reaching the intended EOF or identity check.
 
+- Keep storage documentation precise about authority and failure. Payload
+  Read/Write/Release use handles, but namespace and metadata operations can
+  carry validated root-relative names. SafeStoragePath is lexical validation,
+  not filesystem containment. A failed write or directory fsync can follow
+  an actual mutation; a failure reply does not promise rollback. Decode
+  validates framing without authenticating the transport peer or authorizing
+  the endpoint operation.
+
 - Capability vocabulary and allowed role masks are different contracts.
   Exec remains a named bit so parsers and policy reviews can reject it;
   its presence in the enum never requires granting it to a role. Matrix
