@@ -10,6 +10,16 @@ Documents project documentation.
 
 # Master TODO
 
+Latest retrospective: TF-089/TF-090 and CW-027 are Implemented / static,
+Pending CI compilation / Pending CI tests. CW-028 is Partially implemented /
+static: 35 explicit Perl slurp scopes and diagnostic helper fixes are prepared,
+while other analyzer families remain Correction pending. RT-057 Windows
+startup and existing Unicode/version failures remain unresolved. The retained
+history has 312 runs and logs for 309; see `docs/ci/` and `PROGRESS.md`.
+RT-058 tracker count saturation and RT-059 POSIX absolute refusal deadlines
+are Implemented / static, Pending CI compilation / Pending CI tests. The
+equivalent Windows relative-budget handoffs remain a documented follow-up.
+
 Persistent task inventory for the openi2pd fork. IDs are stable. A checked
 box does **not** replace the status field: dynamic validation is tracked
 separately.
@@ -333,7 +343,7 @@ they do not establish 2.14.0 compatibility. See NET-026.
   - Files: `android/app/src/main/res/values/strings.xml`, `values-es/strings.xml`, `values-ru/strings.xml`, `values-zh-rCN/strings.xml`, `res/xml/locales_config.xml`, `build.gradle`, `AndroidManifest.xml`, `SettingsFragment.java`, `UiFormat.java`, `LocaleResourceTest.java`, `android/tools/check-android-locales.pl`.
   - Validation: Android resource parity guard passes statically; AAPT2/Lint/unit/device and per-app locale recreation remain pending manual CI.
 - [ ] **[I18N-003]** Complete TUI/tool catalog coverage and width/layout validation.
-  - Priority P1; Status Partially implemented / static; native core labels, status, prompts and common torrent/error text are translated, but the full 60-line help table, every tool help/error and all composed detail strings still need catalog entries and translated layout review. The TUI `Put` column budget and `DisplayWidth` tab advance are fixed; ncursesw/Windows width, Russian/Chinese truncation and every tool locale remain pending manual runtime tests.
+  - Priority P1; Status Partially implemented / static; TUI help, compact tabs, summaries, duration units and known engine errors now use catalogs. Standalone tools beyond autoconf_i2pd and unknown diagnostic bodies remain separate coverage work. Translated help wraps before scrolling; UTF-8 deletion and exact-column combining marks have prepared regressions. ncursesw/Windows layout and tool locale behavior remain Pending CI tests.
   - Files: `tui/main.cpp`, `tui/TerminalUnix.cpp`, `i18n/*`, `tools/*.cpp`, `tests/test-i18n-locale.cpp`, `tests/check-i18n.cmake`.
   - Validation: static source inspection only; no terminal, tool, OpenBSD/Windows or manual CI run exists.
 
@@ -1567,7 +1577,7 @@ target is 2.14.0; re-auditing these findings is pending under NET-026. Full inve
   - Files: `libi2pd_client/BOB.cpp`, `daemon/I2PControl.{h,cpp}`, `daemon/I2PControlHandlers.{h,cpp}`, `daemon/UPnP.{h,cpp}`, `libi2pd/Timestamp.{h,cpp}`, `libi2pd/Config.cpp`, tests `test-i2pcontrol-{json,socket}`, `test-bob-command`, `test-upnp-mapping`, `test-ntp-timesync-lifecycle`.
   - Residual: BOB is a TCP listener so a per-UID check is only available where the kernel reports INET peer credentials; Windows has no local-socket peer credentials (a non-default password is required); UPnP status is not yet wired to the TUI/Android; no live IGD/NTP/BOB client run.
 - [x] **[I18N-004]** Translate the native TUI, prompts, status and BitTorrent panels.
-  - Priority P1; Status Implemented / static; Pending CI compilation; Pending CI tests. The three catalogs now carry 455 keys with identical key sets: status/NetDb/config/destinations/services/logs panels, table headers, torrent table and all five detail tabs, footer bars, prompts, status messages, HTTP proxy address-helper/error pages and the `autoconf_i2pd` interactive prompts. English remains the fallback. Help bodies and `--help` prose remain English (documented residual).
+  - Priority P1; Status Implemented / static; Pending CI compilation; Pending CI tests. The three translated catalogs carry 628 keys with identical key sets, plus English identity fallback: status/NetDb/config/destinations/services/logs panels, table headers, torrent table and five detail tabs, compact navigation, wrapped help/CLI prose, duration/summary templates, prompts, known status/errors, HTTP proxy pages and autoconf_i2pd. Unknown daemon bodies and user data remain untouched.
   - Files: `i18n/{Spanish,Russian,ChineseSimplified}.cpp`, `tui/main.cpp`, `libi2pd_client/HTTPProxy.cpp`, `tools/autoconf_i2pd.cpp`, `i18n/I18N.cpp`, `tests/test-i18n-locale.cpp`.
 - [x] **[I18N-005]** Native catalog contract, plurals and localized confirmation tokens.
   - Priority P1; Status Implemented / static; Pending CI compilation; Pending CI tests. `i18n/check-i18n-catalogs.pl` (run by `i18n-static`) verifies es/ru/zh key parity, printf/placeholder and trailing-space parity, UTF-8/BOM/CRLF hygiene, plural-form arity (es 2, ru 3, zh 1), rejects translated config/protocol identifiers and requires every `tr`/`SetStatus`/`BeginPrompt` literal (including adjacent-literal concatenation) to exist in all catalogs. `SetStatus` and `BeginPrompt` translate at their boundary (a `"> "`-prefixed status was previously unreachable), `IsAffirmative` accepts `s/sí/д/да` to match the advertised `[s/N]`/`[д/Н]` hints, `TorrentStatusText` localizes wire status tokens for display only, and `BuildDetailGeneral` sizes its wrap budget from display columns. Plural tables cover nodes/buckets/torrents/ranges/addresses/records/days/threads/peers/connections/tunnels/attempts/samples/files; `test-i18n-locale` asserts real es/ru/zh values and Russian one/few/many.
@@ -1576,7 +1586,7 @@ target is 2.14.0; re-auditing these findings is pending under NET-026. Full inve
   - Priority P1; Status Implemented / static; Pending Gradle/AAPT2/device tests. Replaced `logs_summary_format`, `torrent_count` and `runtime_admin_reseed_status` strings with `<plurals>` in all four locales (ru one/few/many/other) and switched the call sites to `getQuantityString`. Hardcoded creation/validation/operation errors now come from `torrent_creation_failed_unknown`, `torrent_create_source_invalid` and `torrent_operation_failed_generic` through a typed `TorrentControl.UserMessageException`; the log row uses `log_row_description`; the notification channel has a translated name and description; the zh tracker label is no longer the English token; Russian router/reseed terminology is unified. `check-android-locales.pl` now validates plural arity/placeholders, rejects non-positional placeholders and walks app/test references; `LocaleResourceTest` asserts zh-TW/zh-Hant English fallback and Russian plural forms.
   - Files: `android/app/src/main/res/values*/strings.xml`, `RouterViewModel.java`, `TorrentControl.java`, `TorrentsFragment.java`, `LogsFragment.java`, `RuntimeAdminFragment.java`, `LogAdapter.java`, `RouterService.java`, `android/tools/check-android-locales.pl`, `LocaleResourceTest.java`.
 - [ ] **[I18N-007]** Remaining native help and CLI prose.
-  - Priority P2; Status Missing. The TUI Help bodies (81 lines) need re-wrapping before translation; `--help`/usage bodies and machine-readable tool output stay English by policy. `autoconf_i2pd` now uses the shared catalogs.
+  - Priority P2; Status Implemented / static; Pending CI compilation; Pending CI tests for TUI help, --help descriptions and local option/configuration diagnostics. Translated help wraps by display columns before calculating scroll bounds. Command spellings and machine-readable output remain unchanged; standalone-tool coverage is tracked by I18N-003.
   - Files: `tui/main.cpp`, `libi2pd/Config.cpp`, `tools/*.cpp`, `i18n/*`.
 - [ ] **[PARITY-020]** NetDb propagation and floodfill-policy parity.
   - Priority P1/P2; Status Missing / partial. Deferred: go-away RouterInfo on store ack and lookup replies, non-floodfill published-LeaseSet answers, Java probabilistic store admission, stale-RouterInfo selection refresh and reseed URL-list reconciliation. Java `router.floodfillParticipant` defaults to `auto`, with a hidden-router override and a substantial runtime monitor; local `floodfill` is an explicit false-by-default boolean. Do not alias them or map `auto` to false. Reference `FloodfillMonitorJob.shouldBeFloodfill()`, `FloodfillNetworkDatabaseFacade`, `HandleFloodfillDatabaseStoreMessageJob`, `HandleDatabaseLookupMessageJob`, `KademliaNetworkDatabaseFacade`, `Reseeder.java`.
@@ -2182,6 +2192,16 @@ compilation and Pending CI tests.
 
 - [ ] **[DOCS-013]** Review and document C++23, Java 25, Perl and shell source contracts progressively.
   - Priority P1; Status Partially implemented / static; Pending CI compilation; Pending CI tests. The permanent source documentation policy is in `AGENTS.md`; conventions and the manual generation lane are in `docs/source-documentation.md`. The 2026-10-26/27 passes covered native protocols, crypto/netDb, IPC/daemon, torrent/client services, TUI/tools, Android service/SAF/JNI, Perl and service/packaging scripts. The 2026-10-31 continuation inventoried maintained source/config formats and reviewed native C++/headers, Java/AIDL/XML, tests, tools/scripts, platform support, CMake, workflows, OpenBSD port, service/package files and sample configuration. Existing comments were corrected or reflowed where they were inaccurate, ambiguous or overlong; useful contracts were added for ownership, locking, bounds, trust boundaries and failure behavior. Comment prose defaults to concise technical American English/ASCII and 72 columns. Continue reconciling the tracked findings and run the manual `source_docs` lane; static review does not validate generated Doxygen/Javadoc.
+  - The current i18n source-comment reflow is Implemented / static:
+    native/TUI, Android, Perl and CMake prose now uses natural paragraphs
+    within 72 characters, including prefixes. Non-comment source was
+    compared against the pre-reflow working files. Generated Doxygen and
+    Javadoc rendering remains Pending CI tests; see `PROGRESS.md`.
+  - Continued contract documentation is Implemented / static for worker
+    framing/storage, Android presentation/settings, Perl validator scope,
+    Shell orchestration, installed CMake discovery, diagnostic artifacts,
+    systemd/OpenRC/runit supervision and Debian staging. Corrected authority
+    and rollback overclaims; generator validation remains Pending CI tests.
 - [ ] **[DOCS-014]** Reconcile source TODO/FIXME/XXX markers with tracked work.
   - Priority P2; Status Pending. Static text inspection found existing candidates in transport/streaming, client configuration, torrent RPC placeholders, crypto, SAM and tools. Review each against `TODO.md`, distinguish obsolete notes and string literals from real work, and add stable task references where appropriate. The CI candidate collection is not proof that all markers are tracked.
 - [x] **[DOCS-015]** Repair source-comment defects found during the documentation pass.
@@ -2492,3 +2512,19 @@ sanitizer report; no result validates later local corrections. The unknown
 IPC opcode control now passes before the separate EOF failure. Windows
 Unicode/startup, pre-auth worker 0xC0000142, API 29/device and OpenBSD sandbox
 capability gaps remain unresolved. Explicit OpenSSL 4.0.x is still uncovered.
+
+## 2026-11-08 four-language presentation continuation
+
+| ID | State | Remaining validation |
+|---|---|---|
+| I18N-NOV08-01 | Implemented / static | Atomic locale snapshots, POSIX tags, script fallback and signed plurals; Pending CI compilation and Pending CI tests |
+| I18N-NOV08-02 | Implemented / static | 628 native keys / 14 plural groups, explicit label boundaries and wrapped help; Pending CI tests and terminal review |
+| I18N-NOV08-03 | Implemented / static | Whole-scalar deletion, bounded UTF-8 input and combining marks at exact column limits; Pending CI tests on ncursesw and Windows |
+| ANDROID-I18N-NOV08-01 | Implemented / static | 34 new resource keys per locale, known-state/error presentation, Unicode caps and per-app notification/tile context; Pending CI compilation and Pending CI tests |
+| I18N-NOV08-04 | Implemented / static | Ordered printf/escaped-percent validation, duplicate plurals, multibyte separators and trusted-table harvesting; checker regressions Prepared / not executed |
+
+English fallback and raw unknown/user/protocol values remain explicit.
+Static catalog checks do not validate translated layouts, Activity recreation,
+TalkBack, notification/tile refresh or grapheme rendering on real terminals.
+The existing manual native/sanitizer and Android JVM/device lanes own those
+checks; this worktree has not been published or exercised by CI.

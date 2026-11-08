@@ -1884,3 +1884,52 @@ libraries are OpenSSL 3.5.9 / 4.1.0 and LibreSSL 4.4.0; unavailable LibreSSL
 feature probes select compatibility paths rather than proving a source error.
 Explicit OpenSSL 4.0.x coverage remains unexecuted. Successful compilation
 must not be confused with the runtime failures below or MSVC CW-026.
+
+## 2026-11-08 — Retained history and c3f5df53 continuation
+
+The paginated API inventory now contains 312 runs: 49 successes, 199 failures,
+63 cancellations and one in-progress run. It includes 15 historical workflow
+IDs and ten current workflows. All 312 log requests were attempted: 290
+nonempty logs were retained; 22 were empty, unavailable or incomplete. An
+empty response is an evidence gap, not proof of expiration or success.
+Raw metadata and retrieval status are outside the repository under
+`/tmp/openi2pd-ci/history-nov8`. Some large artifact downloads exhausted the
+temporary filesystem; exact Windows and Android reports were recovered
+separately. Initial sanitizer/debug-image gaps were subsequently resolved
+under /var/tmp, as recorded below.
+
+All latest runs below use `c3f5df5330cbaa8e07176886a7105869fa30ae83`.
+Local i18n, documentation and current fixes are not validated by these runs.
+
+| Run | Exact jobs and result |
+|---|---|
+| [42431903303](https://github.com/daviduhden/openi2pd/actions/runs/42431903303) | TSan 128582436615, UBSan 128582436820 and ASan/UBSan 128582436891 fail tracker/IPC assertions; docs 128582436832, static 128582436835 and fuzz 128582436741 pass; Perl quality 128582436852 fails Critic after passing 1230 tests |
+| [42431822974](https://github.com/daviduhden/openi2pd/actions/runs/42431822974) | OpenSSL 3 GCC 128582202338 and Clang 128582202574 build, then fail tracker/IPC tests |
+| [42431807205](https://github.com/daviduhden/openi2pd/actions/runs/42431807205) | OpenSSL 4 GCC 128582150723 and Clang 128582151077 build, then fail the same tests |
+| [42431852556](https://github.com/daviduhden/openi2pd/actions/runs/42431852556) | OpenBSD 128582289517 builds, then fails tracker scheduling |
+| [42431789062](https://github.com/daviduhden/openi2pd/actions/runs/42431789062) | MSVC 128582094948 passes ordinary tests but fails heap diagnostics; MinGW 128582095295 fails tracker, Unicode validator and GUI version tests |
+| [42431876464](https://github.com/daviduhden/openi2pd/actions/runs/42431876464) | Android build 128582358937 succeeds; API 29 UI job remains incomplete in the retrieved snapshot |
+| [42431921178](https://github.com/daviduhden/openi2pd/actions/runs/42431921178) | Reference interoperability 128582491723 and installed consumer 128582491902 pass |
+| [42431888475](https://github.com/daviduhden/openi2pd/actions/runs/42431888475) | Packaging/service jobs 128582393551, 128582393734, 128582393757, 128582393821 and 128582393822 pass |
+| [42431861964](https://github.com/daviduhden/openi2pd/actions/runs/42431861964) | Instrumented crypto TSan 128582316585 passes its focused suite |
+| [42431928876](https://github.com/daviduhden/openi2pd/actions/runs/42431928876) | Agent knowledge workflow succeeds |
+
+No new compile/link blocker was found in this batch. This does not close
+runtime failures, CW-027/CW-028, Android Lint debt or platform coverage gaps.
+
+Per-job fallback resolved 19 of the 22 empty run-log responses: 309 of the
+312 retained runs now have log evidence (290 run logs plus 19 recovered job
+sets). The earliest run, 39057879349 on 2026-10-17, is recoverable by job ID.
+The three remaining gaps are in-progress Android 42431876464 and canceled
+runs 39058841124 / 39058346321. Their job endpoints report `log not found`;
+the missing-log diagnostic applies to those canceled runs, while Android is
+incomplete. No unsupported retention-expiry explanation is inferred. Recovered run
+40594540028 has 12 nonempty job logs and three explicitly skipped jobs.
+
+All three latest sanitizer archives and the focused instrumented OpenSSL
+archive were recovered under `/var/tmp/openi2pd-ci-history-nov8`. They include
+retained executable images, configure/test logs, hashes and exact revision
+manifests. The sanitizer configurations are Clang 23.1.5, OpenSSL 4.1.0 and
+Debug; this is not explicit OpenSSL 4.0.x coverage. Their LastTest.log files
+confirm only TF-089/TF-090, without sanitizer-report markers. Focused XML
+records one test and zero failures. No downloaded executable was run locally.

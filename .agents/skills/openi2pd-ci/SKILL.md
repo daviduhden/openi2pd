@@ -77,6 +77,12 @@ workflow, run `gh`, build or test.
 
 ## Conventions
 
+- If a run-level log download is empty, query job IDs and retrieve each
+  `gh run view RUN_ID --job JOB_ID --log` before declaring a retention gap.
+  Keep partial artifacts and full logs distinct; large debug archives can
+  exhaust /tmp, so retrieve targeted evidence under a sufficiently sized
+  private temporary directory and record missing artifacts explicitly.
+
 - Documentation-lane comments must distinguish retained evidence from a
   passing generator. The source-docs always-upload step can retain partial
   Doxygen output after failure; a TODO scan with no matches is valid, while

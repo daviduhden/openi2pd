@@ -429,3 +429,30 @@ source-order guard; neither substitutes for manual sanitizer execution.
   identity across delayed completions, match it on rollback/drop and refuse
   live key collisions. Reuse the same ID, peer pair and timestamp in the
   regression so correlated field comparisons cannot accidentally pass it.
+
+## 2026-11-08 — Distinguish fixture admission from the tested transition
+
+- Before asserting buffered-close authentication, send a registry-valid
+  frame. Retain a rejection control for the previous invalid operand and
+  prove the endpoint still accepts a valid record afterward.
+- Test valid 32-byte compact peer records, rejected 20-byte info hashes,
+  unchanged state after rejection and recovery through a later valid reply.
+  Keep malformed tails distinct from scheduling floor/ceiling behavior.
+- A debugger's explicit crash marker, a nonzero test exit and a worker
+  capability skip are separate outcomes. Inspect exact artifacts before
+  classifying a heap diagnostic; lack of a marker does not certify startup.
+- Fetch retained history with pagination and record empty log responses as
+  gaps. Large artifact download failures must not erase already recovered
+  logs or turn missing evidence into a clean result.
+
+- Saturation must precede a narrowing boundary, not follow it. Preserve a
+  uint32_t tracker count through an int64_t API and compare HTTP/datagram
+  behavior at INT_MAX+1 and UINT32_MAX using the actual wire operand type.
+  Negative/internal callers need separate controls so a widening does not
+  silently change their established clamp-to-zero behavior.
+
+- Carry a finite deadline as an absolute steady-clock time point across
+  nested encoding/refusal operations. Recomputing milliseconds remaining and
+  then starting a fresh public relative timeout can rebase the caller's
+  budget after preemption. Source guards can pin propagation; runtime queue
+  saturation tests are still needed and do not prove arbitrary scheduling.

@@ -103,6 +103,10 @@ Retrieve successful sibling job logs as well as failed logs: an early compile
 failure can hide later warnings, while a successful lane can expose them. Do
 not infer that a skipped target or platform is clean from another job's
 success.
+An empty run-level log is not evidence of retention expiry. Retrieve its job
+metadata and try each job log before classifying the evidence as unavailable.
+For a failed regression, verify that fixture inputs satisfy the production
+schema before attributing a later state-transition assertion to product code.
 Phase markers identify where corruption was detected, not necessarily where
 the invalid write occurred. Keep heap attribution open until the exact
 stack/image evidence supports it. Inspect pinned VM actions for failure-time

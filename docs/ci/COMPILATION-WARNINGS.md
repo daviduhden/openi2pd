@@ -576,3 +576,56 @@ NestedWeights finding. Twelve VectorPath, two ChromeOS ABI and two Overdraw
 findings remain. Removing root paints would change the theme's color roles.
 Debian retains 16 external debugedit diagnostics and deprecated --force-yes;
 Gradle and runner capability notices remain separately classified debt.
+
+## 2026-11-08 — c3f5df53 successful-build diagnostics
+
+### CW-027 — Signed peer count compared with a size-derived expectation
+
+OpenSSL 3 run [42431822974](https://github.com/daviduhden/openi2pd/actions/runs/42431822974),
+GCC job 128582202338, and OpenSSL 4 run
+[42431807205](https://github.com/daviduhden/openi2pd/actions/runs/42431807205),
+GCC job 128582150723, emit `-Wsign-compare` at
+`tests/test-torrents-verify-parity.cpp:679` on c3f5df53. GetNumPeers returns
+int while a peer-byte-length quotient is size_t. Use std::cmp_equal instead
+of narrowing either operand. Equivalent count/size comparisons and I2CP key
+count types were inspected; no additional demonstrated instance required a
+change. Existing parity tests retain their registration. Implemented / static;
+Pending CI compilation and Pending CI tests. No diagnostic is suppressed.
+
+### CW-028 — Optional Perl quality lane exposes unresolved profile debt
+
+Validation run [42431903303](https://github.com/daviduhden/openi2pd/actions/runs/42431903303),
+job 128582436852, SHA c3f5df53 passes 1230 Test::More assertions in seven
+files, then Perl::Critic exits 2. The exact Critic step has 910 reported policy
+occurrences across 23 families, including 662 extended-format regex findings,
+46 complex regexes and 35 uninitialized localized variables. These are Perl
+analyzer diagnostics, not C++ compiler errors or failed functional tests.
+
+All 35 slurp scopes in 17 maintained scripts/test helpers now explicitly set
+`local $/ = undef`, preserving whole-file reads and dynamic restoration.
+Three diagnostic accumulators unpack arguments and explicitly return the
+previous push count; two helper paths have explicit returns, and an unused
+catalog hash is removed. Equivalent helper patterns were searched globally.
+No /x modifier was added mechanically: literal spaces, hashes and captured
+text need individual semantic review. No policy, severity or CI lane was
+weakened. The remaining analyzer debt is Correction pending; the implemented
+subset is Pending CI tests and has not been rescanned with Perl::Critic.
+
+Android's exact latest Lint artifact reports zero errors and 16 warnings:
+12 VectorPath, two ChromeOS ABI and two Overdraw. NestedWeights is absent
+in this executed revision. This does not validate later local resource edits.
+MSVC D9025 is absent in the latest reviewed job, which now executes the
+assertion regression; its separate heap diagnostic still fails (RT-057).
+
+### CW-029 — Successful runner tooling reports unavailable Landlock ABI
+
+Successful Linux run [42431921178](https://github.com/daviduhden/openi2pd/actions/runs/42431921178),
+consumer job 128582491902, and focused instrumented run
+[42431861964](https://github.com/daviduhden/openi2pd/actions/runs/42431861964),
+job 128582316585, report a runner/tool Landlock ABI 10 requirement versus
+available ABI 8. Validation build jobs, including the successful fuzz lane,
+also emit the notice. This is external runner/tool hardening coverage debt,
+not a first-party compiler warning or proof of a daemon sandbox failure.
+No global runner installation or suppression was changed. A compatible
+runner/tool combination remains Pending; passing product tests do not close
+this capability notice. Existing package and Android Lint debt stays open.

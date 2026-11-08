@@ -15,6 +15,28 @@ requirements and current code; `TODO.md` is the authoritative task list.
 
 ## Current baseline
 
+The c3f5df53 retrospective now covers 312 retained runs and log evidence for
+309, with two canceled-log gaps and incomplete Android UI evidence. TF-089/
+TF-090 fixtures, CW-027 signed comparison and the bounded CW-028 Perl fixes
+are Implemented / static, Pending CI tests. Windows startup/Unicode/version,
+remaining Perl analyzer debt, Android Lint and runner capability gaps remain
+open; see the six inventories under `docs/ci/`.
+Preventive production fixes RT-058/RT-059 preserve unsigned tracker counts
+through saturation and carry POSIX refusal deadlines without rebasing.
+Their regressions are prepared; Windows timing handoffs remain separately
+pending and no local change has new dynamic validation.
+
+The i18n comment-readability follow-up is Implemented / static: natural
+paragraphs and the 72-character limit preserve the existing implementation.
+Static source comparison and documentation contracts cover this increment;
+generated Doxygen/Javadoc rendering remains pending manual CI.
+
+The subsequent source-documentation increment covers IPC/storage authority,
+Android lifecycle and validation boundaries, Perl inspection scope, Shell
+orchestration, CMake package discovery, workflow artifacts and service/package
+ownership. Behavior is preserved by snapshot comparison; generated API
+documentation remains Pending CI tests under DOCS-013.
+
 The static compilation/linkage audit of published `e669765d` is tracked by
 `BUILD-018` and `TEST-023`: Boost implementation linkage, translation helper
 namespaces, fixture ordering, Landlock UAPI
@@ -2332,3 +2354,19 @@ tunnel-test attempt ownership, and preserves MSVC Release assertions without
 D9025. These changes and the wide Android measurement fix await manual CI.
 Keep the Windows Unicode/worker startup and device/platform coverage gaps
 open rather than inferring cleanliness from the passing sibling jobs.
+
+## 2026-11-08 four-language UI continuation
+
+Implemented / static: native catalogs now cover 628 keys and 14 plural groups,
+including trusted TUI help, compact tabs, durations, summaries and known
+errors. Language selection handles POSIX encodings and exact Chinese script
+intent, retains immutable snapshots during concurrent lookups and preserves
+English fallback. Prompt deletion and clipping preserve complete scalars and
+trailing combining marks. Android adds 34 resource keys per locale and applies
+per-app contexts to notifications/Quick Settings as well as UI labels.
+
+Pending CI compilation / Pending CI tests: native concurrency/format/terminal
+regressions, checker fixtures, JVM/resource tests and API 29/device locale
+recreation, notification refresh, TalkBack and tablet/terminal layout review.
+Standalone tool prose and unknown remote diagnostic bodies are not presented
+as fully translated. Protocol tokens and user data remain unchanged.

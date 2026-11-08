@@ -1220,3 +1220,71 @@ The existing timing regression reuses the exact same ID, pair and deadline
 and exercises repeated callbacks. CreateTunnel's separate pointer-qualified
 rollback was reviewed as the equivalent pattern. Implemented / static;
 Pending CI compilation and Pending CI tests. Wire IDs remain unchanged.
+
+## 2026-11-08 — Exact diagnostic evidence after c3f5df53
+
+### RT-057 — PageHeap lane stops on worker initialization, not a crash marker
+
+Windows run [42431789062](https://github.com/daviduhden/openi2pd/actions/runs/42431789062),
+MSVC job 128582094948, SHA c3f5df53, passes ordinary tests but the heap
+step fails on supervisor debugger exit 77. The exact uploaded PageHeap log
+reports worker initialization failure 3221225794 (0xC0000142). It contains
+no standalone OPENI2PD_CRASH event; echoed debugger command text is not an
+exception event. The handshake and shutdown paths remain unexecuted after
+this startup failure. Classification: unresolved startup/capability gap,
+not a newly demonstrated heap-corruption cause and not heap-clean evidence.
+
+Exact Windows artifacts were inspected under
+`/var/tmp/openi2pd-ci-windows-42431789062`; incomplete large sanitizer artifact
+downloads initially exhausted /tmp but were recovered under /var/tmp with
+logs, XML, images and hashes. The workflow remains
+fail-closed on debugger exit 77; no skip, timeout increase or exception
+suppression was added. Correction pending; a nonsecret child-initialization
+probe and a successful worker-start lane are still needed.
+
+Newest sanitizer failures are TF-089/TF-090 assertions. No ASan/UBSan/TSan
+report marker was found in the reviewed latest job logs. Earlier sanitizer
+families remain historical evidence; this observation neither validates
+local changes nor proves the absence of races or memory errors.
+
+### RT-058 — Datagram swarm counters narrowed before saturation
+
+Preventive finding derived from the tracker-width review, not an observed
+CI assertion. TorrentsTunnel.cpp decodes UDP seeders/leechers as uint32_t,
+then passed them to int parameters of HandleDatagramTrackerResponse. On the
+supported 32-bit int toolchains, values above INT_MAX could become negative
+before ClampTrackerCount and be reported as zero. HTTP already retains
+int64_t through the same saturation helper.
+
+The internal declaration and definition now accept int64_t. The sole
+production caller promotes its uint32_t values losslessly; negative internal
+callers retain clamping to zero. No wire or persistence format changes.
+TestDatagramTrackerCountBounds compares HTTP/datagram results at INT64_MIN,
+-1, zero, INT_MAX, INT_MAX+1, UINT32_MAX and INT64_MAX, and passes an actual
+uint32_t wire-typed operand. Main invokes it in the already-registered parity
+suite. Counts and consumers were reviewed independently for platform/type
+consistency. Implemented / static; Pending CI compilation and Pending CI tests.
+
+### RT-059 — Nested IPC refusal rebased an already-consumed deadline
+
+Preventive equivalent-pattern review of RT-054, not a new CI timeout. POSIX
+ReceiveWithFd calculated relative milliseconds remaining, then RejectFrame
+called SendWithFd, which started a new absolute budget. Preemption between
+those operations could extend the original receive deadline.
+
+The public send converts its relative timeout once and delegates to a private
+SendWithFdUntil carrying an absolute steady-clock time point. Both refusal
+branches retain min(original finite deadline, now+250ms), including through
+Error encoding. Infinite receives retain the historical 250ms refusal cap.
+Public signatures, endpoint authorization, descriptor policy and EOF behavior
+are preserved. The compile-free source contract pins both calls and rejects
+relative recomputation inside the absolute sender. Existing backpressure and
+zero-timeout regressions remain enabled. Implemented / static; Pending CI
+compilation and Pending CI tests.
+
+Equivalent Windows handoffs were inspected: WindowsIpc.cpp's helloBudget
+passes a relative remaining budget into ReceiveWorkerHello/Receive, while
+WindowsSupervisor.cpp's shutdown send derives a relative remaining budget.
+These separate APIs remain a static deadline-propagation follow-up; no observed
+CI failure is attributed to that precision risk. The POSIX fix does not claim
+to resolve Windows timing or startup coverage.

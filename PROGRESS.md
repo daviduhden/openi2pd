@@ -7208,3 +7208,194 @@ or push.
   review and publication do not validate the new revision dynamically;
   manual compilation, sanitizer, interoperability and device checks remain
   pending. No local build, configure or behavioral test was performed.
+
+## 2026-11-08 — Four-language presentation and Unicode continuation
+
+- Delegated native/TUI, Android, locale/checker, translation and independent
+  native-lifetime/format review with exclusive file ownership. No local build,
+  configure, behavioral test, commit or push was performed.
+- Expanded native Spanish/Russian/Simplified Chinese tables from 455 to 628
+  keys; English source keys remain identity fallback. Fourteen plural groups
+  retain their language-specific arity. Corrected 43 missing Chinese trailing
+  separators and the Spanish DHT contact label. Added trusted help/compact
+  tab/CLI/backend-error harvesting alongside direct source literals.
+- Selected native languages through retained immutable locale/tag snapshots.
+  POSIX codesets and script boundaries no longer misselect English/Simplified;
+  unknown/Traditional requests fall back to English. First tag access resolves
+  the environment. Signed plural categories handle INT_MIN safely. Catalog
+  synchronization is a declared Threads dependency of libi2pdlang.
+- Removed runtime row/prompt/status translation guessing. Trusted literal
+  boundaries and closed state/error maps translate presentation without
+  rewriting names, URLs, hashes, comments, command spellings or unknown daemon
+  bodies. Local option/configuration errors interpolate operands as data.
+- TUI uses the language returned by configuration resolution, translates
+  early help, preserves LC_NUMERIC through LC_CTYPE-only terminal setup and
+  wraps translated help before scroll calculation. Whole-scalar backspace,
+  bounded prefills and malformed-input rejection protect UTF-8 prompts.
+  Shared and platform column budgets now retain a fitting base's combining
+  marks. Grapheme/ZWJ rendering is not claimed identical across terminals.
+- Android adds 34 matching keys in each of four resource catalogs. Closed
+  snapshot/error mappings, localized progress/percentages and TalkBack labels
+  preserve the original DTO and protocol fields. UTF-16 caps preserve surrogate
+  pairs. Settings canonicalize supported script/region variants; unknown
+  scripts use English, and empty AppCompat selection remains System.
+- RouterService and Quick Settings use the supported AndroidX localized
+  context on API 29-32. Notification refresh observes locale identity and
+  updates channel names without changing user importance settings.
+- Prepared native locale/concurrency/format/UTF-8 regressions, stricter ordered
+  printf and escaped-percent fixtures, duplicate plural/multibyte separator
+  controls, Android JVM surrogate tests and resource plural/fallback tests.
+  Native tests carry i18n/unicode labels; existing full/manual sanitizer and
+  Android unit/device lanes already include the owning targets. No workflow
+  trigger, test coverage or protocol format was weakened.
+- Updated AGENTS, owning i18n/TUI/Android/build/tooling Skills and language
+  documentation; removed stale help, runtime-lookup and Chinese plural claims.
+  All changes are Implemented / static, Pending CI compilation and Pending CI
+  tests on this unpublished worktree. Device, screen-reader and real-terminal
+  validation remain open, as does standalone-tool prose coverage.
+- Final compile-free checks pass: native 628-key/14-group parity, Android
+  resource/placeholder parity, i18n/build/skills/language contracts, whitespace,
+  documentation references/navigation/parameters, workflow policy and Shell
+  policy. Agent knowledge validation passes with zero errors and the single
+  AK004 relevance warning reviewed manually. The instruction updates preserve
+  reusable ownership, literal/data boundaries, script fallback, service-context
+  and Unicode-column procedures rather than treating structural checks as
+  proof of translation quality. New tests were prepared but not executed.
+
+## 2026-11-08 — Natural source-comment wrapping
+
+- Implemented / static: two delegated reviews reflowed native/TUI and Android
+  comments, with a separate Perl fixture-comment pass. CMake and catalog
+  checker comments were reviewed by the coordinator. Distinct ideas now use
+  blank comment lines or Javadoc paragraphs; isolated word endings were
+  removed and indentation/prefixes count toward the 72-character limit.
+- Preserved the existing uncommitted i18n implementation. Comparison against
+  a pre-reflow working-file snapshot found identical non-comment source in
+  18 changed native/Android files. Perl/CMake diffs were reviewed separately
+  to preserve fixture strings, heredocs and executable statements.
+- Static documentation parameter, Android Javadoc, i18n and Agent Skills
+  contracts pass. Agent knowledge validation passes with zero errors;
+  AK004 relevance was reviewed manually. The documentation skill now records
+  snapshot-based reflow review and fixture-aware comment handling, while
+  AGENTS defines paragraph and line-width expectations.
+- No builds, tests, documentation generation, commits or push were run.
+  Generated Doxygen/Javadoc rendering remains Pending CI tests.
+
+## 2026-11-08 — Source contracts across runtime and distribution
+
+- DOCS-013, Implemented / static: delegated native, Java and script/service
+  reviews documented 15 source/configuration files without executable changes.
+  Follow-up delegated CMake, Actions and Shell inspection verified comments
+  added by the coordinator. Before-file snapshots remain outside the tree;
+  non-comment source comparison preserves existing uncommitted work.
+- Native contracts distinguish frame parsing from peer authentication and
+  authorization, borrowed parsing buffers from owned decoded messages, and
+  handle-based payload operations from named storage operations. Corrected
+  the inaccurate path-only-registration claim. Failed storage mutations do
+  not imply rollback, and lexical path checks do not establish containment.
+- Java documentation separates TorrentRow decoder validation from canonical
+  construction, UTF-16 truncation from grapheme segmentation, locale mapping
+  from redaction, and stale completion suppression from canceled writes.
+- Perl POD describes stable-checkout assumptions, range-selected paths with
+  current-worktree contents, link-check limits and substantive-edit heuristics.
+  Shell/CMake comments trace argv, Make prerequisites, staging/install
+  authority and missing Development headers. Actions comments distinguish
+  partial diagnostic artifacts from successful documentation generation.
+- systemd/OpenRC/runit and Debian comments distinguish manager permissions,
+  signal delivery, logger lifecycle and trusted staging inputs from worker
+  isolation, reload acknowledgement or filesystem confinement.
+- AGENTS, source-documentation guidance and the documentation, Android,
+  build, tooling, CI and privilege-separation skills retain these reusable
+  distinctions. Licenses, executable statements and configuration values
+  are preserved; comments use natural paragraphs within 72 characters.
+- No local builds, tests, documentation generation, commits or push.
+  Doxygen/Javadoc generation remains Pending CI tests. Compile-free source
+  contract and knowledge-check results are recorded after integration below.
+- Integration checks passed: comment-only snapshot comparison for all 15
+  source/configuration files; 72-character comment inspection; Doxygen
+  parameter/reference contract; Android Javadoc source contract (53 files);
+  service/build contracts; workflow policy (10 workflows, three actions);
+  Shell source policy (316 files); Agent Skills; Markdown links; and
+  `git diff --check`. Knowledge validation reports zero errors and AK004
+  manual-relevance guidance, reviewed against the concrete boundary findings.
+  These source checks do not validate generated documentation or runtime.
+
+## 2026-11-08 — Retrospective CI and preventive fixture/analyzer audit
+
+- Retrieved current workflows, exact run/job metadata and the full paginated
+  history: 312 runs / 15 historical workflow IDs, ten active workflows.
+  Run-level retrieval produced 290 nonempty logs; job-level fallback recovered
+  another 19 runs. Two canceled runs report missing logs; current Android UI
+  remains incomplete. Earliest retained job logs reach 2026-10-17. Successful
+  sibling jobs and exact Android/Windows artifacts were reviewed as well.
+- All latest results execute c3f5df5330cbaa8e07176886a7105869fa30ae83,
+  not current local changes. Six CI inventories retain prior history and now
+  record exact jobs, warning families, fixture causes, runtime classification,
+  retrieval gaps and remaining coverage. Large sanitizer artifact downloads
+  exceeded /tmp capacity; no missing artifact is represented as clean evidence.
+- TF-089, Implemented / static: fixed both invalid Ping EOF/identity fixtures,
+  preserving zero-payload registry enforcement and adding an illegal-send then
+  valid-send channel-reuse control. Production IPC behavior is unchanged.
+- TF-090, Implemented / static: tracker scheduling uses a typed 32-byte I2P
+  destination hash instead of a 20-byte info hash, with wrong-width rejection,
+  retained counters/interval and valid recovery. Equivalent parser consumers
+  and fixed-width fixtures were reviewed without widening production tolerance.
+- CW-027, Implemented / static: signed peer counts use std::cmp_equal against
+  size-derived expectations; analogous count API declarations were inspected.
+- CW-028, Partially implemented / static: fixed all 35 implicit localized
+  slurp initializations across 17 scripts/test helpers. Three diagnostic
+  accumulators preserve their push-count returns through explicit argument
+  unpacking; helper returns and an unused catalog hash were corrected.
+  The observed Critic step has 910 policy occurrences across 23 families;
+  remaining regex/complexity and other findings are Correction pending.
+  No analyzer policy, regex semantics or severity was suppressed or reduced.
+- RT-057 remains unresolved: exact PageHeap logs show child initialization
+  0xC0000142 and debugger exit 77, without an actual crash marker. Windows
+  Unicode and GUI version timeout remain open. Android build passes with 16
+  Lint warnings, but API 29 UI is not validated. Runner Landlock ABI debt is
+  classified separately as CW-029.
+- Existing common CTest registrations cover the three amended native suites;
+  the manual Perl-quality lane retains its existing Test::More suites and
+  Critic gate. New assertions and fixes are Pending CI compilation / Pending
+  CI tests. No local compiler, test suite, Perl::Critic or syntax compilation
+  was executed; no commits, push or remote workflow dispatch occurred.
+- AGENTS and CI/C++23/torrent/privsep/tooling skills now retain job-log
+  fallback, fixture admission, hash-width, signedness and Perl slurp/return
+  procedures. Compile-free source contracts, catalog parity, workflow/Shell
+  policy and skills checks pass. Knowledge synchronization and final links/
+  whitespace review are recorded at integration completion below.
+- Artifact recovery completed under /var/tmp: all three latest sanitizer
+  archives and focused instrumented OpenSSL diagnostics include logs, XML,
+  executable images and hash/revision manifests. LastTest.log confirms the
+  two fixture assertions without sanitizer-report markers; focused XML has
+  one test and zero failures. Clang 23.1.5/OpenSSL 4.1.0 Debug is the observed
+  sanitizer configuration, not an executed OpenSSL 4.0.x lane. No retained
+  image was executed locally. Initial quota gaps are resolved; two canceled
+  log gaps and incomplete Android UI evidence remain.
+- RT-058, Implemented / static: additional independent memory/portability
+  review found UDP uint32_t swarm counts narrowed to int before saturation.
+  The internal tracker response API now retains int64_t through the common
+  clamp, with HTTP/datagram signed-extrema and actual uint32_t regressions.
+  Shared declarations, the sole production caller and all test consumers
+  were reviewed. This is a preventive product fix, separate from TF-090's
+  malformed fixture. Pending CI compilation and Pending CI tests.
+- RT-059, Implemented / static: an independent IPC timing review found the
+  remaining-relative refusal budget was rebased by nested sends. POSIX now
+  propagates the original capped absolute deadline through a private send
+  helper, preserving public APIs and authorization. The runtime source
+  contract pins propagation and rejects relative recomputation; existing
+  backpressure/zero-timeout cases remain prepared. Equivalent Windows hello
+  and shutdown handoffs are documented follow-ups, not claimed fixed.
+- Eight real specialized subagents covered the ten requested audit areas
+  through combined scopes and independent follow-up reviews. A further
+  subagent creation hit the session thread limit; existing agents supplied
+  the remaining portability/integration reviews. No execution was simulated.
+- Final source checks pass: runtime-fix ordering/deadline contract, Doxygen
+  parameter/reference contract, 53-file Android Javadoc contract, 46 JNI
+  declarations, Android resource parity, native 628-key/14-group catalogs,
+  workflow/Shell policy, Agent Skills/language contracts, Markdown links and
+  whitespace. Agent knowledge validation has zero errors; AK004 relevance is
+  reviewed against actual fixture, type and deadline findings. These checks
+  inspect source only. New native assertions, Perl suites/analyzer and the
+  complete supported matrix remain pending manual CI on a published revision
+  containing these changes; no such validation is claimed in this session.

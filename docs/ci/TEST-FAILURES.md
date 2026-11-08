@@ -359,3 +359,43 @@ unknown-opcode case now passes far enough to expose the independent EOF case.
 MinGW Unicode and GUI version timeout remain unresolved; MSVC still skips
 supervisor authentication after worker status 0xC0000142. API 29 remains
 skipped. No passing sibling closes those coverage gaps.
+
+## 2026-11-08 — Failures exposed after prior fixture corrections
+
+### TF-089 — EOF regressions violated the Ping payload contract
+
+Validation 42431903303 jobs 128582436615, 128582436820 and 128582436891,
+and both OpenSSL compiler
+matrices (run/job links in COMPILATION-ERRORS.md), SHA c3f5df53, fail
+`test-privsep-linux-ipc.cpp:649`: sending Ping with payload "last" is rejected.
+The registry permits zero payload bytes for Ping, Pong and Shutdown. A valid
+empty-payload frame still has a nonempty transport record containing its
+header. The test failed before reaching buffered EOF authentication.
+
+Both buffered-close and wrong-identity-close fixtures now send a valid Ping.
+The first explicitly rejects the old illegal payload, then sends a valid
+frame on the same channel and checks type, request ID and empty payload.
+Global searches found exactly these two nonempty control-message fixtures.
+Production encoding, authentication, descriptor and EOF checks are unchanged.
+Implemented / static; Pending CI tests. RT-052/RT-054 negative paths must
+still execute on the revised source before closing their validation tasks.
+
+### TF-090 — Compact destination fixture used the torrent info-hash width
+
+The same sanitizer/OpenSSL runs, OpenBSD 42431852556 job 128582289517 and
+MinGW 42431789062 job 128582095295 fail tracker-schedule.cpp:197 on c3f5df53.
+The fixture allocated 20 bytes from infoHash.size(), but compact I2P peers
+carry 32-byte destination hashes. RT-055 correctly rejects that malformed
+range before committing the expected interval.
+
+Use a typed IdentHash fixture. Added explicit 20-byte rejection checks retain
+prior interval/counters and bound retry scheduling; a subsequent valid reply
+clears the failure and restores normal scheduling. Valid minimum/maximum
+interval cases remain. Equivalent HTTP/datagram compact-peer fixtures were
+inspected, including existing tail-length rejection coverage. No production
+parser tolerance is widened. Implemented / static; Pending CI tests.
+
+The latest Perl lane passes 1230 assertions but fails its separate analyzer
+step (CW-028). Windows Unicode conversion, GUI version timeout and worker
+initialization remain unresolved; API 29 UI results are incomplete. Existing
+negative tests and diagnostic failures remain enabled.

@@ -291,3 +291,19 @@ no old remote run validates them.
 - Strict known-field parsing invalidates fixtures that treated wrong types as
   absent fields. Preserve out-of-range typed-value controls alongside invalid
   type controls, and review all consumers of the shared parser.
+
+## 2026-11-08 — Fixture schema, signedness and analyzer families
+
+- Compare signed result APIs and unsigned size expressions with signedness-
+  aware operations such as std::cmp_equal; narrowing casts can disguise a
+  negative result. Inspect the declarations of analogous count APIs first.
+- A transport fixture must satisfy the real message registry before testing
+  later lifecycle behavior. Empty payload does not mean an empty record.
+- A digest's semantic identity determines its width: a torrent info hash and
+  an I2P destination hash are not interchangeable byte containers.
+- Localize Perl's input record separator with explicit undef for slurping;
+  preserve dynamic restoration and don't change helper return values while
+  repairing argument-unpacking or final-return diagnostics.
+- Group Perl::Critic by policy and owning parser. A blanket /x conversion can
+  change meaningful whitespace and hash characters; preserve the analyzer
+  gate and track remaining debt instead of suppressing it.
