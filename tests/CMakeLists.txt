@@ -103,6 +103,7 @@ set(I2PD_TESTS
   test-i2ptunnel-stop
   test-i2ptunnel-filter
   test-i2ptunnel-targets
+  test-tunnel-destination-cache
   test-base-64
   test-win32-shutdown-deadline
   test-gost
@@ -448,6 +449,9 @@ foreach(test IN LISTS I2PD_TESTS)
     set_property(TEST ${test} APPEND PROPERTY LABELS tools)
   endif()
   # Explain the few exceptions to the broad regex labels above.
+  if(test STREQUAL "test-tunnel-destination-cache")
+    set_property(TEST ${test} APPEND PROPERTY LABELS security)
+  endif()
   if(test STREQUAL "test-privsep-log" OR test STREQUAL "test-privsep-protocol"
       OR test STREQUAL "test-privsep-linux-ipc" OR test STREQUAL "test-tui-ipc-regression"
       OR test STREQUAL "test-tui-pipe-name")

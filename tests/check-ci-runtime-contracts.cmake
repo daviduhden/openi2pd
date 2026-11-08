@@ -409,6 +409,8 @@ require_runtime_order("privsep/Supervisor.cpp"
 require_runtime_source("tests/test-privsep-linux-ipc.cpp"
   "TestTransactionDeadline ();")
 
+require_runtime_source("tests/CMakeLists.txt" "test-tunnel-destination-cache")
+
 require_runtime_source("libi2pd/Base.h"
   "std::span<const char, 32> GetBase32SubstitutionTable ()")
 

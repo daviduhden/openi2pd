@@ -28,6 +28,7 @@
 #include "HTTPProxy.h"
 #include "SOCKS.h"
 #include "MatchedDestination.h"
+#include "TunnelDestinationCache.h"
 
 namespace i2p
 {
@@ -630,7 +631,7 @@ namespace client
 	bool ClientContext::LoadPrivateKeys (i2p::data::PrivateKeys & keys, std::string_view filename,
 		i2p::data::SigningKeyType sigType, i2p::data::CryptoKeyType cryptoType)
 	{
-		if (filename.starts_with ("transient"))
+		if (UsesTransientTunnelKeys (filename))
 		{
 			keys = i2p::data::PrivateKeys::CreateRandomKeys (sigType, cryptoType, true);
 			LogPrint (eLogInfo, "Clients: New transient keys address ",
@@ -1099,7 +1100,7 @@ namespace client
 				eLogWarning, "Clients: ", tunConf, " read section by section, ", numSections, " section(s) accepted");
 		}
 
-		std::map<std::string, std::shared_ptr<ClientDestination>> destinations; // keys -> destination
+		TunnelDestinationCache<ClientDestination> destinations;
 		for (auto & section : pt)
 		{
 			std::string name = section.first;
@@ -1154,10 +1155,8 @@ namespace client
 						localDestination = GetSharedLocalDestination ();
 					else if (keys.length () > 0)
 					{
-						auto it = destinations.find (keys);
-						if (it != destinations.end ())
-							localDestination = it->second;
-						else
+						localDestination = destinations.Find (keys);
+						if (!localDestination)
 						{
 							i2p::data::PrivateKeys k;
 							if (LoadPrivateKeys (k, keys, sigType, cryptoType))
@@ -1170,14 +1169,14 @@ namespace client
 									else
 										localDestination = CreateNewLocalDestination (
 											k, type == I2P_TUNNELS_SECTION_TYPE_UDPCLIENT, &options);
-									if (keys != "transient") destinations[keys] = localDestination;
+									destinations.Remember (keys, localDestination);
 								}
 								else
 								{
 									// Reconfigure the running destination in place; no restart
 									// is needed.
 									localDestination->Reconfigure (options);
-									if (keys != "transient") destinations[keys] = localDestination;
+									destinations.Remember (keys, localDestination);
 								}
 							}
 						}
@@ -1411,10 +1410,9 @@ namespace client
 						localDestination = GetSharedLocalDestination ();
 					else
 					{
-						auto it = destinations.find (keys);
-						if (it != destinations.end ())
+						localDestination = destinations.Find (keys);
+						if (localDestination)
 						{
-							localDestination = it->second;
 							localDestination->SetPublic (true);
 						}
 						else
@@ -1425,7 +1423,7 @@ namespace client
 							if (!localDestination)
 							{
 								localDestination = CreateNewLocalDestination (k, true, &options);
-								destinations[keys] = localDestination;
+								destinations.Remember (keys, localDestination);
 							}
 							else
 								localDestination->SetPublic (true);
@@ -1704,10 +1702,9 @@ namespace client
 						options.Insert (I2CP_PARAM_INBOUND_NICKNAME, name);
 
 					std::shared_ptr<ClientDestination> localDestination = nullptr;
-					auto it = destinations.find (keys);
-					if (it != destinations.end ())
+					localDestination = destinations.Find (keys);
+					if (localDestination)
 					{
-						localDestination = it->second;
 						localDestination->SetPublic (true);
 					}
 					else
@@ -1718,7 +1715,7 @@ namespace client
 						if (!localDestination)
 						{
 							localDestination = CreateNewLocalDestination (k, true, &options);
-							destinations[keys] = localDestination;
+							destinations.Remember (keys, localDestination);
 						}
 						else
 							localDestination->SetPublic (true);

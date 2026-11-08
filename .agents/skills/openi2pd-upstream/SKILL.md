@@ -92,6 +92,12 @@ run tests.
 
 ## Known issues and decisions
 
+- Adapt identity-cache fixes to the fork's key-loader classifier, not just
+  upstream's exact transient marker. Review lookup and insertion for every
+  endpoint type; matching only one permits unintended cross-section reuse.
+  Treat a newly verified Java release as a separate reference until its
+  source window and fixtures are reviewed; preserve historical pins.
+
 - Review logging-only upstream changes for operand privacy as well as level.
   The duplicate torrent RPC warning uses a fixed outcome without its name;
   browser file-path diagnostics have no native-console equivalent. A merge
