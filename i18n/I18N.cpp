@@ -13,7 +13,6 @@
  */
 
 #include <algorithm>
-#include <atomic>
 #include <cctype>
 #include <clocale>
 #include <cstdlib>
@@ -24,6 +23,7 @@
 
 #include "I18N_langs.h"
 #include "I18N.h"
+#include "AtomicSharedPtr.h"
 
 namespace i2p
 {
@@ -38,7 +38,7 @@ namespace i18n
 		};
 		// Readers retain the complete immutable selection through lookup.
 		// A concurrent language switch cannot destroy their plural table.
-		std::atomic<std::shared_ptr<const Selection>> g_Selection;
+		i2p::util::AtomicSharedPtr<const Selection> g_Selection;
 		std::once_flag g_NumericLocale;
 
 		std::string Normalize (std::string_view tag)
@@ -154,12 +154,11 @@ namespace i18n
 			// Standalone tools do not call SetLanguage themselves. Resolve the
 			// environment once on first use so LC_ALL/LC_MESSAGES/LANG selects a
 			// catalog without every tool duplicating the initialization.
-			auto selection = g_Selection.load (std::memory_order_acquire);
+			auto selection = g_Selection.Load ();
 			if (selection) return selection;
 			std::call_once (g_NumericLocale, [] { setlocale (LC_NUMERIC, "C"); });
 			auto initial = Select (EnvironmentLanguage ());
-			if (g_Selection.compare_exchange_strong (selection, initial,
-					std::memory_order_acq_rel, std::memory_order_acquire)) return initial;
+			if (g_Selection.CompareExchangeStrong (selection, initial)) return initial;
 			return selection;
 		}
 	} // namespace
@@ -167,7 +166,7 @@ namespace i18n
 	void SetLanguage (const std::string & tag)
 	{
 		std::call_once (g_NumericLocale, [] { setlocale (LC_NUMERIC, "C"); });
-		g_Selection.store (Select (tag.empty () ? EnvironmentLanguage () : tag), std::memory_order_release);
+		g_Selection.Store (Select (tag.empty () ? EnvironmentLanguage () : tag));
 	}
 
 	std::string GetLanguageTag ()

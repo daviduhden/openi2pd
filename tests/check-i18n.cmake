@@ -148,8 +148,10 @@ assert_present("${tui_text}" "SetLanguage (resolved->language)"
   "Resolved configuration must select the TUI language")
 assert_absent("${tui_text}" "setlocale (LC_ALL"
   "Terminal encoding setup must not overwrite numeric locale pinning")
-assert_present("${i18n_text}" "std::atomic<std::shared_ptr<const Selection>>"
+assert_present("${i18n_text}" "i2p::util::AtomicSharedPtr<const Selection>"
   "Concurrent readers retain one immutable locale selection")
+assert_absent("${i18n_text}" "std::atomic<std::shared_ptr"
+  "Locale publication must retain the libc++ capability fallback")
 assert_present("${i18n_text}" "return ActiveSelection ()->tag;"
   "Language tag queries must resolve the initial environment")
 assert_present("${cmake_text}" "target_link_libraries(libi2pdlang PUBLIC Threads::Threads)"

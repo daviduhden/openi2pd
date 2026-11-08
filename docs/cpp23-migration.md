@@ -36,7 +36,7 @@ are not proven by the build probes or the manual CI matrix remain unavailable.
 | `std::optional`/`variant`/`any` | available | optional state and closed alternatives |
 | `std::expected` | language feature available; library missing on some OpenBSD libc++ | use the portable `i2p::expected` shim |
 | `span`/`string_view` | available | explicit extents and non-owning text |
-| `atomic<shared_ptr<T>>` | C++20 facility; continuation pending manual CI | immutable locale/tag snapshots retain plural-table lifetime during language switches |
+| `atomic<shared_ptr<T>>` | libc++ availability differs; use `AtomicSharedPtr` capability selection | immutable locale/tag snapshots retain plural-table lifetime; explicit mutex-path regressions are prepared |
 | ranges/views, generic lambdas, `<=>` | available with libc++/libstdc++ support | local algorithms and comparisons |
 | `chrono`, `jthread`, stop tokens | available; used by the TUI server and X25519 supplier | `Transports` still keeps its legacy join path; do not describe it as jthread-owned |
 | `std::format`/`std::print` | not assumed on the OpenBSD floor | `snprintf`/existing formatting stays |
@@ -125,7 +125,10 @@ statically unreachable:
   `Transports`, `AddressBook`, `ClientContext`, `I2CP`, `I2PService`, `SAM`,
   `SOCKS`, `RouterContext`.
 - `BOOST_VERSION >= 105500` Asio option branch.
-- Boost.Filesystem (`STD_FILESYSTEM`) and Boost.Atomic `shared_ptr` fallbacks; `std::filesystem` and `std::atomic<std::shared_ptr>` are now unconditional.
+- Boost.Filesystem (`STD_FILESYSTEM`) and Boost.Atomic `shared_ptr` fallbacks;
+  `std::filesystem` is unconditional. Shared ownership uses `AtomicSharedPtr`,
+  selecting the standard specialization only when its library feature macro
+  is present, with the existing mutex implementation on other targets.
 - `boost/lexical_cast.hpp` Android fallback, `BOOST_ASIO_HAS_STD_ARRAY`, Boost.Bind global-placeholder workaround and the `JSON_SUPPORTED`/old-Boost fallback.
 - Torrents `std::atomic_ref` capability fallback; C++23 standard usage is unconditional.
 - Legacy Windows endian intrinsics (`_byteswap_*`/`__builtin_bswap*`) and the `LittleBigEndian` fallback; Windows uses C++23 `std::endian`/`std::byteswap`.
@@ -221,3 +224,11 @@ validated on OpenBSD/Windows/Android/live peers in the current tree.
 - [testing](testing.md)
 - [android java25](android-java25.md)
 - [Developer guide](developer-guide/README.md)
+
+The shared-pointer capability wrapper now has an explicit backend template
+selector for regression coverage. Existing source callers use its default;
+all consumers must be rebuilt after this internal template change. Native and
+mutex branches share strong compare-exchange ownership semantics. Retired
+stored values and replaced expected values release outside the mutex, with
+reentrant-deleter tests prepared for common and selective MSVC CI. No wire or
+persistent representation changes, and no new local compilation is claimed.

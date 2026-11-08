@@ -39,7 +39,7 @@ matrix.
 | Boost < 1.55 Asio option branch | Superseded by the declared Boost 1.74 minimum |
 | `#if __cplusplus >= 202002L` branches | Always true under the new standard |
 | Boost.Filesystem fallback (`STD_FILESYSTEM=0`, MinGW path workaround) | C++23 `std::filesystem` is unconditional on supported toolchains |
-| Boost.Atomic `shared_ptr` fallback (`__cpp_lib_atomic_shared_ptr`) | C++20 `std::atomic<std::shared_ptr>` is part of the supported library baseline |
+| Boost.Atomic `shared_ptr` fallback | Project `AtomicSharedPtr` selects the standard specialization by feature macro, retaining its mutex backend for libc++ without that facility |
 | `std::atomic_ref` fallback in Torrents | C++20/C++23 standard library baseline |
 | `WITH_TUI` and `I2PD_BUILD_TESTS` aliases | Canonical `I2PD_BUILD_TUI` and `BUILD_TESTING` remain |
 | `filelist.mk`, `Makefile.linux`, `Makefile.openbsd`, `Makefile.mingw`, GNU make syntax | Replaced by CMake and a POSIX make front-end |

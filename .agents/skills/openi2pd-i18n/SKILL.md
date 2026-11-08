@@ -101,6 +101,12 @@ the text crosses a protocol/IPC boundary.
 
 ## Known issues and decisions
 
+- The registry publishes Selection through the existing AtomicSharedPtr
+  abstraction. Never instantiate atomic<shared_ptr> directly here: Android,
+  OpenBSD and MinGW libc++ can lack the specialization despite C++23 mode.
+  Lazy environment selection uses strong CAS so it cannot replace an explicit
+  concurrent selection; shared-pointer CAS must match control-block identity.
+
 - Locale readers retain an immutable locale/tag snapshot through lookup.
   GetLanguageTag resolves the environment on first use too. Strip POSIX
   codesets, match Chinese script subtags exactly and reject conflicting or

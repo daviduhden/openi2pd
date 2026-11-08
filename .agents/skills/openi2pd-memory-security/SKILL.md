@@ -107,6 +107,9 @@ Do not let reconnaissance agents edit, compile, execute tests or run scripts.
 
 ## Known issues and decisions
 
+- Publication locks must not run final owner destructors
+  that can reenter the same storage; test both native and mutex backends.
+
 - URL logging review must include invalid-input and download-start paths,
   not only parsed userinfo. Subscription, reseed and outproxy URLs may carry
   credentials in userinfo or queries; log operation/outcome without the

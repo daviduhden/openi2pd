@@ -357,7 +357,8 @@ The current header policy uses a short `See the LICENSE file at the top of the p
 
 - `build/CMakeLists.txt` — explicit OpenSSL 3.0.2/LibreSSL 4.0, zlib 1.2.11 and MiniUPnPc 2.2.6/API 17 checks; Boost 1.74 program_options and conditional Boost 1.81 JSON/URL; removed Boost.Atomic/Filesystem and the `WITH_TUI`/`I2PD_BUILD_TESTS` aliases.
 - `libi2pd/FS.h`, `FS.cpp`, `libi2pd_client/AddressBook.cpp` — unconditional `std::filesystem`; removed `STD_FILESYSTEM` and Boost.Filesystem paths.
-- `libi2pd/RouterInfo.h/.cpp` — unconditional `std::atomic<std::shared_ptr>`; removed the Boost.Atomic fallback.
+- `libi2pd/RouterInfo.h/.cpp` — project `AtomicSharedPtr` selects the standard
+  specialization or mutex backend; the Boost.Atomic fallback is removed.
 - `libi2pd_client/Torrents.cpp` — unconditional `std::atomic_ref`; removed the C++20 capability fallback.
 - `libi2pd/Crypto.h`, `Crypto.cpp`, `Signature.h/.cpp`, `Reseed.cpp`, `Family.cpp`, `daemon/I2PControl.cpp` — removed OpenSSL-3.0-only guards while retaining LibreSSL/SipHash and PQ capability checks; SigType 8 now uses plain Ed25519.
 - `libi2pd_client/TorrentsRPC.cpp` — removed the redundant Boost version check; CMake now guarantees Boost 1.81 for non-Android JSON/URL builds.

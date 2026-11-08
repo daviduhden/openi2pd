@@ -117,6 +117,15 @@ compile, run tests or run project scripts.
 
 ## Known issues and decisions
 
+- Reuse AtomicSharedPtr for shared-owner publication on supported libc++
+  targets; C++23 mode alone does not provide the standard specialization.
+  Its explicit false backend tests mutex behavior without changing feature
+  macros or other translation units' layouts. CAS compares pointer and owner
+  identity, updates expected on failure, and releases replaced owners outside
+  the internal lock. Keep deduction guides for value-based construction when
+  moving constructors to partial specializations; exercise inferred/default
+  and explicit fallback types with reentrant Store/failed-CAS regressions.
+
 - When a signed count API meets a size-derived expectation, inspect both
   declarations and use std::cmp_equal where equality is intended. Casting
   either operand can misrepresent negative results. A warning from test

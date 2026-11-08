@@ -118,6 +118,11 @@ branding validators or a build.
 
 ## Known issues and decisions
 
+- When a library capability fallback changes, reconcile the dependency guide,
+  language feature matrix and changed-file inventory together. Historical
+  removal of a Boost fallback does not prove unconditional availability of
+  the standard-library replacement on every supported libc++ target.
+
 - When expanding a contract, trace both admission and completion paths.
   Record which entry point performs validation and whether cancellation
   revokes work or merely suppresses its UI result. For service and package

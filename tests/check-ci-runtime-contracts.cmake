@@ -319,3 +319,12 @@ require_runtime_order("libi2pd/TunnelPool.cpp"
   "RetireTunnelTest (msgID, authority)" "if (!retired || !retired->outbound) return;"
   "retired->outbound->SetState (eTunnelStateFailed);")
 require_runtime_source("tests/test-tunnelpool-test-timing.cpp" "TestStaleDropCannotRetireReplacement ()")
+
+# Exercise both capability-selected and explicit mutex shared ownership.
+require_runtime_source("tests/CMakeLists.txt" "test-atomic-shared-ptr")
+require_runtime_source("tests/test-atomic-shared-ptr.cpp"
+  "i2p::util::AtomicSharedPtr<T, false>")
+require_runtime_source("tests/test-atomic-shared-ptr.cpp"
+  "TestStoreReleasesOutsideLock<Storage> ()")
+require_runtime_source("tests/test-atomic-shared-ptr.cpp"
+  "TestFailedCompareExchangeReleasesOutsideLock<Storage> ()")

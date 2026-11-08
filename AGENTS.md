@@ -558,6 +558,10 @@ virtual threads, scoped values and structured concurrency remain guarded
 library APIs on Android; source-language features do not make them available.
 Never present an experimental or unavailable feature as functional and never
 lower the C++ or Java language level silently.
+For shared-owner publication, reuse the capability-selected AtomicSharedPtr
+wrapper rather than assuming atomic<shared_ptr> from C++23 mode. Exercise its
+explicit mutex backend without changing feature macros across translation
+units; owner retirement must not run reentrant destructors under its lock.
 
 Preserve wire/persisted compatibility, anonymity, cryptographic guarantees,
 privilege separation, OpenBSD/LibreSSL and OpenSSL 4.x support. Refactors may

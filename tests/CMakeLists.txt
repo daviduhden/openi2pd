@@ -174,6 +174,7 @@ set(I2PD_TESTS
   test-runnableservice-lifecycle
   test-i18n-format
   test-i18n-locale
+  test-atomic-shared-ptr
   test-socks-address
   test-socks-resolve
   test-kad-dht

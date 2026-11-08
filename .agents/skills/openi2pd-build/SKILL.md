@@ -111,6 +111,12 @@ build.
 
 ## Known issues and decisions
 
+- AtomicSharedPtr's false template backend keeps portable synchronization
+  regressions executable on every host without feature-macro or ODR changes.
+  Add its test to common CTest and the selective MSVC build/filter, PageHeap
+  image list and artifacts together. Language level does not imply libc++
+  supplies every C++20 specialization used by that C++23 translation unit.
+
 - When documenting package discovery, read the installed config and its
   install component together. The config/export belongs to Development;
   missing headers after a copied or partial install are not a guarantee that
