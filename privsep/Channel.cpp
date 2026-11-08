@@ -553,6 +553,15 @@ i2p::expected<std::optional<ReceivedMessage>, std::string> Channel::ReceiveWithF
 				::close (receivedFd);
 				return i2p::unexpected ("descriptor on an empty record");
 			}
+			// EOF has no record credentials. Classify a terminal empty read
+			// before authenticating live empty records; no frame is accepted.
+			if (readyEvents
+				& (POLLERR | POLLHUP
+#ifdef POLLRDHUP
+					| POLLRDHUP
+#endif
+					))
+				return i2p::unexpected ("peer closed the channel");
 			// A zero-length record is still a peer send and must satisfy the
 			// same per-record credential rule as a data frame.
 #if defined(__linux__)
@@ -570,15 +579,6 @@ i2p::expected<std::optional<ReceivedMessage>, std::string> Channel::ReceiveWithF
 					return i2p::unexpected ("empty record failed SCM_CREDENTIALS");
 			}
 #endif
-			// SOCK_SEQPACKET delivers a zero-length datagram as recvmsg()==0,
-			// exactly like EOF. Only a hangup/error event makes this terminal.
-			if (readyEvents
-				& (POLLERR | POLLHUP
-#ifdef POLLRDHUP
-					| POLLRDHUP
-#endif
-					))
-				return i2p::unexpected ("peer closed the channel");
 			if (++emptyRecords > 8) return i2p::unexpected ("empty-record flood");
 			continue; // consume the empty record and keep the channel usable
 		}

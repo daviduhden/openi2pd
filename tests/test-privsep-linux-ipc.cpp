@@ -640,6 +640,40 @@ void TestClosedChannel ()
 	assert (!localReceive.has_value ());
 	assert (localReceive.error ().find ("closed") != std::string::npos);
 	assert (!local->second.Send (Message { MessageType::Ping, 2, { } }).has_value ());
+
+	// POLLIN can accompany hangup. Drain and authenticate buffered frames
+	// before the terminal read, which has no record credentials on Linux.
+	auto buffered = Channel::CreatePair ();
+	assert (buffered.has_value ());
+	assert (buffered->first.Send (Message { MessageType::Ping, 3, "last" }).has_value ());
+	buffered->first.Close ();
+	auto last = buffered->second.Receive (100);
+	assert (last.has_value () && last->has_value ());
+	assert ((*last)->requestId == 3 && (*last)->payload == "last");
+	auto afterLast = buffered->second.Receive (100);
+	assert (!afterLast.has_value ());
+	assert (afterLast.error ().find ("closed") != std::string::npos);
+
+	// A closing sender cannot bypass the configured record identity check.
+	auto rejected = Channel::CreatePair ();
+	assert (rejected.has_value ());
+	rejected->second.ExpectPeer (PeerExpectation {
+		.uid = static_cast<uint32_t> (geteuid ()) + 1, .configured = true });
+	assert (rejected->first.Send (Message { MessageType::Ping, 4, "reject" }).has_value ());
+	rejected->first.Close ();
+	auto unauthenticated = rejected->second.Receive (100);
+	assert (!unauthenticated.has_value ());
+	assert (unauthenticated.error ().find ("expected peer") != std::string::npos);
+
+	// An empty queued record followed by close is terminal, never accepted
+	// as data or returned as a retryable timeout.
+	auto empty = Channel::CreatePair ();
+	assert (empty.has_value ());
+	assert (SendRaw (empty->first.Fd (), ""));
+	empty->first.Close ();
+	auto emptyClose = empty->second.Receive (100);
+	assert (!emptyClose.has_value ());
+	assert (emptyClose.error ().find ("closed") != std::string::npos);
 }
 
 void TestSendDeadlineAfterDrain ()

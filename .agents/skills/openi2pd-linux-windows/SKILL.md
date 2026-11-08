@@ -100,6 +100,11 @@ execution. Ask for:
   datadir ACL as the Windows equivalent.
 
 ## Known issues and decisions
+- Linux seqpacket EOF can report POLLIN with hangup and recvmsg zero without
+  SCM_CREDENTIALS. After rejecting ancillary/descriptor faults, classify
+  terminal zero reads before authenticating live empty records. Nonempty
+  buffered frames still require authentication before a later EOF; cover
+  buffered success, wrong identity plus close and empty-record close.
 - Malformed-frame fixtures must derive unknown types from the shared
   registry boundary, not a formerly unused numeric operation. Raw channels
   accept registered framing without endpoint payload authorization; test
