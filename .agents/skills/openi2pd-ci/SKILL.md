@@ -77,6 +77,12 @@ workflow, run `gh`, build or test.
 
 ## Conventions
 
+- Documentation-lane comments must distinguish retained evidence from a
+  passing generator. The source-docs always-upload step can retain partial
+  Doxygen output after failure; a TODO scan with no matches is valid, while
+  other rg errors remain failures. The skills-static job also runs Perl
+  contract tests, so do not describe that entire lane as text-only parsing.
+
 - Source-documentation generation and checks follow the
   [source documentation policy](../../../AGENTS.md#source-documentation-policy)
   and run in manual CI; report generator coverage and unresolved warnings.

@@ -28,6 +28,8 @@ permissions:
   contents: read
 
 concurrency:
+  # Keep in-progress validation for this ref. A pending dispatch waits
+  # for its concurrency group instead of canceling the active evidence.
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: false
 
@@ -49,6 +51,8 @@ jobs:
           mkdir -p docs/generated/source-api
           doxygen docs/Doxyfile.source
       - name: Collect source TODO candidates for review
+        # Preserve candidates even when Doxygen failed. No matches is
+        # normal; unreadable inputs or rg failures must still fail.
         if: always()
         run: |
           if rg -n '\b(TODO|FIXME|XXX)\b' libi2pd libi2pd_client privsep daemon tui tools android i18n tests/interop contrib debian \
@@ -60,6 +64,8 @@ jobs:
             if [ "$result" -ne 1 ]; then exit "$result"; fi
           fi
       - name: Upload source documentation and TODO candidates
+        # A failed generator can leave partial output. Uploading it aids
+        # diagnosis; artifact presence does not certify successful docs.
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
         with:
@@ -71,6 +77,8 @@ jobs:
           retention-days: 7
 
   skills-static:
+    # This lane avoids native compilation but includes Perl contracts.
+    # Its name does not mean every step is a text-only parser.
     name: Agent Skills static contract
     runs-on: ubuntu-24.04
     timeout-minutes: 5
