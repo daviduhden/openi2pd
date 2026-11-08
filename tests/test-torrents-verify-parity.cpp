@@ -688,6 +688,38 @@ static void TestCompactTrackerFraming ()
 	}
 }
 
+static void TestDatagramTrackerCountBounds ()
+{
+	auto fixture = MakeVerifiedTorrent ("datagram-count-bounds", false);
+	auto & torrent = *fixture.torrent;
+	const int maximum = std::numeric_limits<int>::max ();
+	for (const auto & [count, expected] : std::initializer_list<std::pair<int64_t, int>> {
+		{ std::numeric_limits<int64_t>::min (), 0 }, { -1, 0 }, { 0, 0 },
+		{ maximum, maximum }, { int64_t { maximum } + 1, maximum },
+		{ std::numeric_limits<uint32_t>::max (), maximum },
+		{ std::numeric_limits<int64_t>::max (), maximum } })
+	{
+		// Preserve signed caller clamping and match HTTP's numeric bounds.
+		torrent.HandleDatagramTrackerResponse (0, 900, nullptr, 0, count, count);
+		assert (torrent.GetTrackerError (0).empty ());
+		assert (torrent.GetNumSeeders (0) == expected);
+		assert (torrent.GetNumLeechers (0) == expected);
+		const std::string value = "i" + std::to_string (count) + "e";
+		torrent.ParseTrackerResponse (1,
+			Dict ({ { "complete", value }, { "incomplete", value } }));
+		assert (torrent.GetTrackerError (1).empty ());
+		assert (torrent.GetNumSeeders (1) == expected);
+		assert (torrent.GetNumLeechers (1) == expected);
+	}
+
+	// Keep the caller's actual decoded wire type at the API boundary.
+	// Narrowing to int here would turn UINT32_MAX into a negative count.
+	const uint32_t wireCount = std::numeric_limits<uint32_t>::max ();
+	torrent.HandleDatagramTrackerResponse (0, 900, nullptr, 0, wireCount, wireCount);
+	assert (torrent.GetNumSeeders (0) == maximum);
+	assert (torrent.GetNumLeechers (0) == maximum);
+}
+
 static void TestTrackerKnownFieldTypes ()
 {
 	for (const auto & [field, invalid] : std::initializer_list<std::pair<std::string, std::string>> {
@@ -791,6 +823,7 @@ int main ()
 	TestExtendedHandshakeFieldTypes ();
 	TestTrackerKnownFieldTypes ();
 	TestCompactTrackerFraming ();
+	TestDatagramTrackerCountBounds ();
 	TestConnectionLimitRelations ();
 	TestConnectionRetirement ();
 	return 0;

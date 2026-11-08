@@ -1115,8 +1115,10 @@ namespace torrents
 		/// A nonempty range must be readable and contain whole 32-byte
 		/// hashes. Null/nonempty or partial-hash ranges record a failure
 		/// without replacing prior peers, interval or swarm counts.
+		/// Counts retain the full unsigned wire range until clamping into
+		/// the signed statistics fields; negative caller values clamp to 0.
 		void HandleDatagramTrackerResponse (size_t trackerID, uint32_t interval, const uint8_t * hashes,
-			size_t hashesLen, int numSeeders, int numLeechers);
+			size_t hashesLen, int64_t numSeeders, int64_t numLeechers);
 
 		bool IsComplete () const { return m_IsComplete.load (std::memory_order_acquire); }
 		void SetComplete ();

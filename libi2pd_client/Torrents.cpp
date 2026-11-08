@@ -3116,7 +3116,8 @@ namespace torrents
 	}
 
 	void Torrent::HandleDatagramTrackerResponse (
-		size_t trackerID, uint32_t interval, const uint8_t * hashes, size_t hashesLen, int numSeeders, int numLeechers)
+		size_t trackerID, uint32_t interval, const uint8_t * hashes, size_t hashesLen,
+		int64_t numSeeders, int64_t numLeechers)
 	{
 		// Share HTTP's fixed-width rule before changing tracker state. Empty
 		// replies are valid; a nonempty range requires an actual buffer.

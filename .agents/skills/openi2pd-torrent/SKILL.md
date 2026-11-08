@@ -116,6 +116,12 @@ Do not let them edit, build or run tests.
 
 ## Known issues and decisions
 
+- Datagram tracker swarm counts arrive as uint32_t. Preserve that entire
+  range through the int64_t HandleDatagramTrackerResponse boundary before
+  ClampTrackerCount saturates statistics to 0..INT_MAX. Narrowing to int at
+  the call boundary can turn a large valid wire count into zero. Keep HTTP/
+  datagram parity cases at INT_MAX+1 and UINT32_MAX plus negative callers.
+
 - Compact tracker peers carry 32-byte I2P destination hashes, while torrent
   info hashes are 20 bytes. Scheduling fixtures must use IdentHash for valid
   peers; preserve explicit wrong-width rejection, unchanged counters and
