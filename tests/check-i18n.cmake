@@ -188,6 +188,19 @@ assert_present("${guard_text}" "fail_encoding( 'CRLF line ending', \$path, \$lin
 
 # Full catalog contract: key/placeholder/plural parity, no translated
 # identifiers and every tr()/SetStatus()/BeginPrompt() literal present.
+# Source selection uses repository identities rather than native paths.
+read_required("${PROJECT_ROOT}/i18n/check-i18n-catalogs.pl" native_guard)
+assert_present("${native_guard}" "File::Spec->abs2rel(\$path, \$root)"
+  "trusted-source selection derives repository-relative paths")
+assert_present("${native_guard}" "File::Spec->splitdir("
+  "trusted-source selection normalizes native separators")
+read_required("${PROJECT_ROOT}/tools/tests/maintenance-checkers.t" native_fixtures)
+assert_present("${native_fixtures}" "win32 terminal failure probe"
+  "trusted-source regression covers the Windows terminal")
+assert_present("${native_fixtures}"
+  "rendered operands remain outside trusted label harvesting"
+  "source harvesting must exclude rendered user data")
+
 # The interpreter is passed by the test definition (configure-time
 # discovery); a run-time lookup made the contract depend on the ctest
 # PATH and silently skipped it on Windows.

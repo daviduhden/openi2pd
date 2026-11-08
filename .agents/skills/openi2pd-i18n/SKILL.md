@@ -101,6 +101,12 @@ the text crosses a protocol/IPC boundary.
 
 ## Known issues and decisions
 
+- Source harvesting selects trusted tables by repository-relative identity.
+  Build that identity with File::Spec before matching it; native Windows
+  separators otherwise bypass tab/help/option and terminal-error checks.
+  Keep filesystem paths native for reads, cover both terminal adapters,
+  and retain a rendered-data control outside the trusted-label boundary.
+
 - The registry publishes Selection through the existing AtomicSharedPtr
   abstraction. Never instantiate atomic<shared_ptr> directly here: Android,
   OpenBSD and MinGW libc++ can lack the specialization despite C++23 mode.

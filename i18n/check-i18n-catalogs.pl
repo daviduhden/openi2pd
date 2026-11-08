@@ -297,11 +297,16 @@ sub harvest {
     my $text = read_file($path);
     my %keys;
 
+    # Match repository identities, not native filesystem separators.
+    # Keep the original path for reads and diagnostics on Windows.
+    my $source = join '/', File::Spec->splitdir(
+        File::Spec->abs2rel($path, $root));
+
     # Adjacent string literals are concatenated by the C++ compiler
     # before the lookup, so the catalog key is the whole argument, not
     # its first fragment.
     my $literal_run = qr/((?:"(?:[^"\\]|\\.)*"\s*)+)/;
-    if ($path =~ m{/tui/Terminal(?:Unix|Win32)\.cpp$}) {
+    if ($source =~ m{\Atui/Terminal(?:Unix|Win32)\.cpp\z}) {
         while ($text =~ /\bg_Error\s*=\s*$literal_run/g) {
             my $run = $1;
             my @parts = $run =~ /"((?:[^"\\]|\\.)*)"/g;
@@ -324,7 +329,7 @@ sub harvest {
     # Label helpers in the TUI translate internally; harvest literal
     # labels so a missing catalog entry cannot silently fall back to
     # English.
-    if ( $path =~ m{/tui/main\.cpp$} ) {
+    if ( $source eq 'tui/main.cpp' ) {
 	# These arrays and descriptions are trusted source prose.
 	# Drawing helpers must never harvest or translate runtime/user
 	# strings.

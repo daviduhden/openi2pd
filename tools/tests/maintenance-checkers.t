@@ -1340,7 +1340,8 @@ CPP
         ['tui/main.cpp', 'constexpr auto TAB_SHORT_NAMES = { "compact tab probe" };'],
         ['tui/main.cpp', 'void App::DrawHelp () { static constexpr auto lines[] = { "  help probe" }; }'],
         ['tui/main.cpp', 'option ("--unchanged-token", "option prose probe");'],
-        ['tui/TerminalUnix.cpp', 'g_Error = "terminal failure probe";'] ) {
+        ['tui/TerminalUnix.cpp', 'g_Error = "terminal failure probe";'],
+        ['tui/TerminalWin32.cpp', 'g_Error = "win32 terminal failure probe";'] ) {
         for my $name (sort keys %forms) {
             write_file(File::Spec->catfile($tmp, 'i18n', $name),
                 $catalog->('Status', 'Status', $forms{$name}));
@@ -1351,6 +1352,10 @@ CPP
         like($out, qr/missing source literal/, 'trusted-table harvesting names missing coverage');
         write_file(File::Spec->catfile($tmp, split m{/}, $fixture->[0]), "// no translatable literal\n");
     }
+    write_file(File::Spec->catfile($tmp, 'tui', 'main.cpp'),
+        'DrawLine (row, "untrusted rendered data");');
+    ($code, $out) = run_checker($i18n_checker, '--root', $tmp);
+    is($code, 0, 'rendered operands remain outside trusted label harvesting');
 }
 
 # --- nested documentation pages --------------------------------------
