@@ -529,3 +529,14 @@ importance settings. JVM and instrumentation regressions are prepared for
 resource fallback, plural templates and supplementary characters. These
 changes are Implemented / static; API 29/device refresh, Lint, AAPT2, D8/R8
 and Java compilation remain pending manual CI on the changed revision.
+
+## Emulator dependency triplet and API floor
+
+Android's x86_64 ABI uses vcpkg's `x64-android` triplet. The application ABI,
+Gradle filter and emulator architecture stay `x86_64`; only vcpkg identifiers
+and their installed prefixes use `x64`. Both in-tree overlay triplets include
+the pinned upstream file before setting API 29 and release dependency mode.
+This ordering matters because the upstream x64 triplet selects API 28 and
+would override an outer cache hint. The workflow guard and negative fixtures
+pin this distinction. Native linking, JVM/UI execution and dependency rebuilds
+remain pending manual CI on this correction.

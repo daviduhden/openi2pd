@@ -322,8 +322,8 @@ jobs:
     env:
       I2PD_ANDROID_CMAKE_ARGS: >-
         -DWITH_HARDENING=ON
-        -DCMAKE_PREFIX_PATH=${{ github.workspace }}/build-android-x86_64/vcpkg_installed/x86_64-android
-        -DBOOST_ROOT=${{ github.workspace }}/build-android-x86_64/vcpkg_installed/x86_64-android
+        -DCMAKE_PREFIX_PATH=${{ github.workspace }}/build-android-x86_64/vcpkg_installed/x64-android
+        -DBOOST_ROOT=${{ github.workspace }}/build-android-x86_64/vcpkg_installed/x64-android
         -DCMAKE_FIND_ROOT_PATH_MODE_LIBRARY=BOTH
         -DCMAKE_FIND_ROOT_PATH_MODE_INCLUDE=BOTH
         -DCMAKE_FIND_ROOT_PATH_MODE_PACKAGE=BOTH
@@ -394,16 +394,17 @@ jobs:
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
         with:
           path: ${{ env.VCPKG_DEFAULT_BINARY_CACHE }}
-          key: android-x86_64-android-29-${{ env.NDK_VERSION }}-${{ hashFiles('contrib/ci/android/*') }}
+          key: android-x64-android-29-${{ env.NDK_VERSION }}-${{ hashFiles('contrib/ci/android/*') }}
       - name: Build Android x86_64
         run: |
+          # vcpkg names this architecture x64; Android's ABI is x86_64.
+          # The overlay pins dependencies to the app's API 29 floor.
           cmake -S build -B build-android-x86_64 -G Ninja \
             -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" \
             -DVCPKG_CHAINLOAD_TOOLCHAIN_FILE="$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake" \
             -DVCPKG_MANIFEST_DIR="$GITHUB_WORKSPACE/contrib/ci/android" \
-            -DVCPKG_TARGET_TRIPLET=x86_64-android \
-            -DVCPKG_CMAKE_SYSTEM_VERSION=29 \
-            -DVCPKG_BUILD_TYPE=release \
+            -DVCPKG_OVERLAY_TRIPLETS="$GITHUB_WORKSPACE/contrib/ci/android" \
+            -DVCPKG_TARGET_TRIPLET=x64-android \
             -DANDROID_ABI=x86_64 -DANDROID_PLATFORM=android-29 \
             -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF \
             -DI2PD_BUILD_JNI=ON -DWITH_BINARY=OFF -DWITH_HARDENING=ON \

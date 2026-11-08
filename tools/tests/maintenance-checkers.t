@@ -211,7 +211,9 @@ my $shell_checker = File::Spec->catfile(
 sub workflow_crash_fixtures {
     my ($fixture_root) = @_;
     my $tmp = tempdir( CLEANUP => 1 );
-    for my $relative ( '.github/workflows', '.github/actions', '.github/patches', 'tools/scripts/check-workflows.pl' ) {
+    for my $relative ( '.github/workflows', '.github/actions',
+        '.github/patches', 'contrib/ci/android',
+        'tools/scripts/check-workflows.pl' ) {
         File::Find::find( {
             no_chdir => 1,
             wanted => sub {
@@ -227,6 +229,53 @@ sub workflow_crash_fixtures {
     my $checker = File::Spec->catfile( $tmp, 'tools', 'scripts', 'check-workflows.pl' );
     my ( $code, $out ) = run_checker($checker);
     is( $code, 0, 'current workflow crash commands expose code locations only' );
+    my $android = File::Spec->catfile(
+        $tmp, '.github', 'workflows', 'build-android.yml' );
+    my $android_source = read_fixture_file($android);
+    for my $boundary (
+        [ '-DVCPKG_TARGET_TRIPLET=x64-android',
+            '-DVCPKG_TARGET_TRIPLET=x86_64-android' ],
+        [ '/vcpkg_installed/x64-android',
+            '/vcpkg_installed/x86_64-android' ],
+        [ '-DANDROID_ABI=x86_64', '-DANDROID_ABI=x64' ],
+        [ '-Pi2pd.abis=x86_64', '-Pi2pd.abis=x64' ],
+        [ q{-DVCPKG_OVERLAY_TRIPLETS="$GITHUB_WORKSPACE/contrib/ci/android"},
+            '-DVCPKG_OVERLAY_TRIPLETS=missing' ],
+    ) {
+        my ( $before, $after ) = @{$boundary};
+        my $candidate = $android_source;
+        ok( $candidate =~ s/\Q$before\E/$after/gx,
+            'Android fixture changes a real dependency boundary' );
+        write_file( $android, $candidate );
+        ( $code, $out ) = run_checker($checker);
+        is( $code, 1, 'workflow checker rejects ABI/triplet drift' );
+        like( $out, qr/Android[ ]dependency[ ]boundary/x,
+            'Android diagnostic identifies the dependency contract' );
+    }
+    write_file( $android, $android_source );
+    my $missing_main = $android_source;
+    ok( $missing_main =~ s/^[ ]{2}android:/  android-renamed:/mx,
+        'negative fixture renames the required main Android job' );
+    write_file( $android, $missing_main );
+    ( $code, $out ) = run_checker($checker);
+    is( $code, 1, 'workflow checker rejects missing main Android coverage' );
+    like( $out, qr/missing[ ]Android[ ]dependency[ ]job[ ]'android'/x,
+        'missing job diagnostic identifies the dependency contract' );
+    write_file( $android, $android_source );
+    my $overlay = File::Spec->catfile(
+        $tmp, 'contrib', 'ci', 'android', 'x64-android.cmake' );
+    my $overlay_source = read_fixture_file($overlay);
+    my $wrong_floor = $overlay_source;
+    my $floor_before = 'VCPKG_CMAKE_SYSTEM_VERSION 29';
+    my $floor_after = 'VCPKG_CMAKE_SYSTEM_VERSION 28';
+    ok( $wrong_floor =~ s/\Q$floor_before\E/$floor_after/x,
+        'Android fixture lowers the real dependency API floor' );
+    write_file( $overlay, $wrong_floor );
+    ( $code, $out ) = run_checker($checker);
+    is( $code, 1, 'workflow checker rejects dependency API drift' );
+    like( $out, qr/Android[ ]dependency[ ]boundary/x,
+        'API floor diagnostic identifies the overlay contract' );
+    write_file( $overlay, $overlay_source );
     my $windows = File::Spec->catfile( $tmp, '.github', 'workflows', 'build-windows.yml' );
     open my $fh, '<', $windows or BAIL_OUT("read workflow fixture: $!");
     my $source = do { local $/ = undef; <$fh> };

@@ -494,6 +494,64 @@ for my $file ( sort keys %input_gate ) {
     }
 }
 
+# Dependency triplets and Android ABIs use separate naming schemes.
+# Check both prefixes and the overlay so a native build cannot resolve a
+# different architecture or API floor before Gradle starts.
+my %android_native = (
+    android => [ 'arm64-android', 'arm64-v8a', 'build-android' ],
+    'android-ui' => [ 'x64-android', 'x86_64', 'build-android-x86_64' ],
+);
+for my $job ( sort keys %android_native ) {
+    if ( !exists $blocks_for{'build-android.yml'}{$job} ) {
+        push @errors, "build-android.yml: missing Android dependency job '$job'";
+        next;
+    }
+    my ( $triplet, $abi, $build_directory ) = @{ $android_native{$job} };
+    my $active = $blocks_for{'build-android.yml'}{$job};
+    $active =~ s/^[ \t]*\#[^\n]*$//mgx;
+    for my $required (
+        '-DVCPKG_TARGET_TRIPLET=' . $triplet,
+        q{-DVCPKG_OVERLAY_TRIPLETS="$GITHUB_WORKSPACE/contrib/ci/android"},
+        '-DANDROID_ABI=' . $abi,
+        '-DANDROID_PLATFORM=android-29',
+        q{-DCMAKE_PREFIX_PATH=${{ github.workspace }}/} . $build_directory
+          . '/vcpkg_installed/' . $triplet,
+        q{-DBOOST_ROOT=${{ github.workspace }}/} . $build_directory
+          . '/vcpkg_installed/' . $triplet,
+        '-Pi2pd.abis=' . $abi,
+        '-Pandroid.injected.build.abi=' . $abi,
+    ) {
+        push @errors,
+          "build-android.yml: Android dependency boundary in $job lacks $required"
+          if index( $active, $required ) < 0;
+    }
+    while ( $active =~ /-DVCPKG_TARGET_TRIPLET=([^\s\\]+)/gx ) {
+        push @errors,
+          "build-android.yml: Android dependency boundary has wrong triplet in $job"
+          if $1 ne $triplet;
+    }
+    my $path = File::Spec->catfile( $root, 'contrib', 'ci', 'android',
+        "$triplet.cmake" );
+    if ( open my $overlay, '<', $path ) {
+        my $text = do { local $/ = undef; <$overlay> };
+        close $overlay or push @errors,
+          "build-android.yml: Android dependency boundary cannot close $path";
+        $text =~ s/^[ \t]*\#[^\n]*$//mgx;
+        my $include = index( $text,
+            q{include("$ENV{VCPKG_ROOT}/triplets/} . $triplet . q{.cmake")} );
+        my $floor = index( $text, 'set(VCPKG_CMAKE_SYSTEM_VERSION 29)' );
+        my $build_type = index( $text, 'set(VCPKG_BUILD_TYPE release)' );
+        push @errors,
+          "build-android.yml: Android dependency boundary has invalid overlay $triplet"
+          if $include < 0 || $floor <= $include
+          || $build_type <= $include;
+    }
+    else {
+        push @errors,
+          "build-android.yml: Android dependency boundary lacks overlay $triplet";
+    }
+}
+
 # Crash evidence must not collect process memory or argument values.
 # Keep the opt-in debugger command file to this code-location allowlist.
 push @errors, windows_crash_command_errors( $texts{'build-windows.yml'} )
@@ -614,6 +672,14 @@ C<skills-static>, C<perl-quality>, C<sanitizers>, C<fuzz-smoke>). A pinned
 job that appears in another workflow fails, and F<build.yml>/F<fuzz.yml> must
 not return. The expensive opt-in jobs C<android-ui> and C<perl-quality> must
 keep referencing their C<android_ui>/C<perl_style> input gate.
+
+=item *
+
+Android dependencies use vcpkg triplets C<arm64-android> and C<x64-android>.
+Their Android ABI names remain C<arm64-v8a> and C<x86_64>, respectively.
+Both jobs must select matching install prefixes and repository overlays
+that pin API 29 after including the upstream triplet. The checker reads
+those overlay files without configuring CMake or running vcpkg.
 
 =item *
 

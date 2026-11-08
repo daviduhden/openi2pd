@@ -121,6 +121,12 @@ run Gradle, install an APK or run a device test.
 
 ## Known issues and decisions
 
+- vcpkg's emulator triplet is x64-android; Android and emulator ABI names
+  remain x86_64. Keep triplet, installed prefixes and cache inputs aligned.
+  Both Android overlay triplets include their pinned upstream first and set
+  API 29 afterward; an outer cache variable cannot override upstream API 28.
+  Workflow-negative fixtures must copy contrib/ci/android with the actions.
+
 - Document factory validation separately from direct record construction.
   TorrentRow.from bounds decoded fields; its canonical constructor does not
   impose those checks. Settings generation fencing suppresses obsolete UI
