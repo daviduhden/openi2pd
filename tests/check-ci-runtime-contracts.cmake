@@ -52,9 +52,23 @@ endif()
 require_runtime_source("privsep/WindowsIpc.cpp"
   "WindowsChannel candidate (candidatePipe, true);")
 require_runtime_source("privsep/WindowsIpc.cpp"
-  "channel.Receive (timeoutMs)")
+  "channel.ReceiveUntil (deadline)")
 require_runtime_source("privsep/WindowsIpc.cpp"
-  "std::min (WORKER_HELLO_TIMEOUT_MS, RemainingDeadlineMs (deadline))")
+  "std::min (deadline, DeadlineAfter (WORKER_HELLO_TIMEOUT_MS))")
+require_runtime_source("privsep/WindowsIpc.cpp"
+  "WaitForConnectionUntil (deadline)")
+require_runtime_source("privsep/WindowsIpc.cpp"
+  "overlapped.hEvent, RemainingDeadlineMs (deadline)")
+require_runtime_source("privsep/WindowsIpc.cpp"
+  "return TerminateAndWaitUntil (deadline);")
+require_runtime_source("privsep/WindowsSupervisor.cpp"
+  "m_Channel->SendUntil ({ MessageType::Shutdown, 0, { } }, sendDeadline)")
+require_runtime_source("privsep/WindowsSupervisor.cpp"
+  "m_Worker->StopUntil (deadline)")
+require_runtime_source("tests/test-privsep-windows-ipc.cpp"
+  "auto expired = accepted->ReceiveUntil (")
+require_runtime_source("tests/test-privsep-windows-ipc.cpp"
+  "accepted->ReceiveUntil ((WindowsDeadline::max) ())")
 require_runtime_source("tests/test-privsep-windows-ipc.cpp"
   "TestMalformedHelloRearmsListener ()")
 
@@ -337,6 +351,23 @@ require_runtime_source("tests/test-atomic-shared-ptr.cpp"
   "TestStoreReleasesOutsideLock<Storage> ()")
 require_runtime_source("tests/test-atomic-shared-ptr.cpp"
   "TestFailedCompareExchangeReleasesOutsideLock<Storage> ()")
+require_runtime_source(".github/workflows/build-windows.yml"
+  "build-msvc/tests/Release/test-atomic-shared-ptr.exe")
+require_runtime_source(".github/workflows/build-windows.yml"
+  "|atomic-shared-ptr|kad-dht|release-assertions))$")
+require_runtime_source(".github/workflows/build-windows.yml"
+  "build-msvc/tests/Release/test-kad-dht.exe")
+
+require_runtime_order("privsep/WindowsIpc.cpp"
+  "WindowsChannel::ReceiveUntil (WindowsDeadline deadline)" "WindowsChannel::Peer () const"
+  "const auto offending = static_cast<MessageType> (inspection.rawType);"
+  "std::min (deadline, DeadlineAfter (250))"
+  "EncodeError (decoded->type, ErrorCode::NotAuthorized, refusal)"
+  "std::min (deadline, DeadlineAfter (250))")
+require_runtime_source("privsep/WindowsSupervisor.cpp"
+  "m_Worker->WaitUntil (gracefulDeadline)")
+require_runtime_source("privsep/WindowsIpc.cpp"
+  "WindowsWorkerProcess::WaitUntil (WindowsDeadline deadline) const")
 require_runtime_order("libi2pd/Tag.h"
   "std::string ToBase64 (size_t length = sz) const"
   "std::string ToBase32 (size_t length = sz) const"

@@ -919,6 +919,19 @@ void TestLegacyAcceptRoundTripAndTimeout ()
 	assert (!idle->has_value ());
 	assert (accepted->IsOpen ());
 
+	// Expired inherited deadlines retain nonblocking receive semantics.
+	// Cancellation must reap the read and leave the channel reusable.
+	auto expired = accepted->ReceiveUntil (
+		std::chrono::steady_clock::now () - std::chrono::milliseconds (1));
+	assert (expired.has_value () && !expired->has_value ());
+	assert (accepted->IsOpen ());
+	assert (client->SendUntil ({ MessageType::Ping, 50, { } },
+		std::chrono::steady_clock::now () + std::chrono::seconds (2)).has_value ());
+	auto absolute = accepted->ReceiveUntil ((WindowsDeadline::max) ());
+	assert (absolute.has_value () && absolute->has_value ());
+	assert ((*absolute)->type == MessageType::Ping);
+	assert ((*absolute)->requestId == 50);
+
 	assert (client->Send ({ MessageType::Ping, 51, { } }).has_value ());
 	auto received = accepted->Receive (2000);
 	assert (received.has_value () && received->has_value ());

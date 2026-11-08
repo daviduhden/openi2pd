@@ -128,13 +128,21 @@ namespace
 	constexpr DWORD WORKER_CONTROL_TIMEOUT_MS = 5000;
 	constexpr DWORD WORKER_CONNECT_TIMEOUT_MS = 10000;
 
-	/** Floor the unspent part of a caller-supplied DWORD time budget. */
-	DWORD RemainingDeadlineMs (std::chrono::steady_clock::time_point deadline)
+	WindowsDeadline DeadlineAfter (DWORD timeoutMs)
 	{
+		return timeoutMs == INFINITE ? WindowsDeadline::max ()
+			: std::chrono::steady_clock::now () + std::chrono::milliseconds (timeoutMs);
+	}
+
+	/** Floor the unspent part of a caller-supplied DWORD time budget. */
+	DWORD RemainingDeadlineMs (WindowsDeadline deadline)
+	{
+		if (deadline == WindowsDeadline::max ()) return INFINITE;
 		const auto now = std::chrono::steady_clock::now ();
 		if (now >= deadline) return 0;
-		return static_cast<DWORD> (
-			std::chrono::duration_cast<std::chrono::milliseconds> (deadline - now).count ());
+		const auto remaining = std::chrono::duration_cast<std::chrono::milliseconds> (deadline - now).count ();
+		// A finite deadline must never turn into the INFINITE sentinel.
+		return static_cast<DWORD> (std::min<std::chrono::milliseconds::rep> (remaining, INFINITE - 1));
 	}
 
 	struct LocalFreeDeleter
@@ -440,11 +448,11 @@ namespace
 	 * returning
 	 * earlier would hand the kernel a dangling stack object.
 	 */
-	OverlappedOutcome WaitOverlapped (
-		HANDLE pipe, OVERLAPPED & overlapped, DWORD timeoutMs, bool emptyCompletionIsSuccess = false)
+	OverlappedOutcome WaitOverlappedUntil (
+		HANDLE pipe, OVERLAPPED & overlapped, WindowsDeadline deadline, bool emptyCompletionIsSuccess = false)
 	{
 		OverlappedOutcome outcome;
-		const DWORD wait = WaitForSingleObject (overlapped.hEvent, timeoutMs);
+		const DWORD wait = WaitForSingleObject (overlapped.hEvent, RemainingDeadlineMs (deadline));
 		if (wait == WAIT_OBJECT_0)
 		{
 			if (GetOverlappedResult (pipe, &overlapped, &outcome.transferred, FALSE))
@@ -632,10 +640,10 @@ namespace
 
 	/** Consume and validate the accepted connection's first frame. */
 	bool ReceiveWorkerHello (
-		WindowsChannel & channel, WindowsWorkerRole expectedRole, std::string_view nonce, DWORD timeoutMs,
+		WindowsChannel & channel, WindowsWorkerRole expectedRole, std::string_view nonce, WindowsDeadline deadline,
 		std::string & error)
 	{
-		auto received = channel.Receive (timeoutMs);
+		auto received = channel.ReceiveUntil (deadline);
 		if (!received)
 		{
 			error = received.error ();
@@ -875,7 +883,7 @@ i2p::expected<WindowsServer, std::string> WindowsServer::Create (
 	return WindowsServer (pipe, pipeName, userSid, descriptor);
 }
 
-i2p::expected<bool, std::string> WindowsServer::WaitForConnection (DWORD timeoutMs)
+i2p::expected<bool, std::string> WindowsServer::WaitForConnectionUntil (WindowsDeadline deadline)
 {
 	ScopedHandle event (CreateEventW (nullptr, TRUE, FALSE, nullptr));
 	if (!event) return i2p::unexpected ("CreateEvent(pipe accept): " + Win32ErrorText (GetLastError ()));
@@ -888,7 +896,7 @@ i2p::expected<bool, std::string> WindowsServer::WaitForConnection (DWORD timeout
 		const DWORD error = GetLastError ();
 		if (error == ERROR_PIPE_CONNECTED) return true;
 		if (error != ERROR_IO_PENDING) return i2p::unexpected ("ConnectNamedPipe: " + Win32ErrorText (error));
-		const auto outcome = WaitOverlapped (m_Pipe, overlapped, timeoutMs, true /* a connect transfers no bytes */);
+		const auto outcome = WaitOverlappedUntil (m_Pipe, overlapped, deadline, true /* no connection bytes */);
 		if (!outcome.completed)
 		{
 			DisarmListener ();
@@ -907,15 +915,13 @@ i2p::expected<WindowsChannel, std::string> WindowsServer::Accept (DWORD timeoutM
 	// nonce,
 	// the PID/session and the AppContainer identity.
 	if (m_Pipe == INVALID_HANDLE_VALUE) return i2p::unexpected ("worker pipe is closed");
-	const auto deadline = std::chrono::steady_clock::now () + std::chrono::milliseconds (timeoutMs);
+	const auto deadline = DeadlineAfter (timeoutMs);
 	unsigned rejected = 0;
 	while (true)
 	{
 		const auto now = std::chrono::steady_clock::now ();
 		if (now >= deadline) return i2p::unexpected ("worker pipe accept timeout");
-		const DWORD remaining
-			= static_cast<DWORD> (std::chrono::duration_cast<std::chrono::milliseconds> (deadline - now).count ());
-		auto connected = WaitForConnection (remaining);
+		auto connected = WaitForConnectionUntil (deadline);
 		if (!connected) return i2p::unexpected (connected.error ());
 		if (!*connected) return i2p::unexpected ("worker pipe accept timeout");
 
@@ -985,15 +991,13 @@ i2p::expected<WindowsChannel, std::string> WindowsServer::AcceptBound (DWORD tim
 	if (container && !container->IsValid ()) return i2p::unexpected ("expected worker AppContainer is not valid");
 	const bool containerExpected = container != nullptr;
 
-	const auto deadline = std::chrono::steady_clock::now () + std::chrono::milliseconds (timeoutMs);
+	const auto deadline = DeadlineAfter (timeoutMs);
 	unsigned rejected = 0;
 	while (true)
 	{
 		const auto now = std::chrono::steady_clock::now ();
 		if (now >= deadline) return i2p::unexpected ("worker pipe accept timeout");
-		const DWORD remaining
-			= static_cast<DWORD> (std::chrono::duration_cast<std::chrono::milliseconds> (deadline - now).count ());
-		auto connected = WaitForConnection (remaining);
+		auto connected = WaitForConnectionUntil (deadline);
 		if (!connected) return i2p::unexpected (connected.error ());
 		if (!*connected) return i2p::unexpected ("worker pipe accept timeout");
 
@@ -1033,15 +1037,15 @@ i2p::expected<WindowsChannel, std::string> WindowsServer::AcceptBound (DWORD tim
 		{
 			// Peer inspection and the hello share the original accept budget.
 			// Never grant a fresh five seconds to a late connection.
-			const DWORD helloBudget = std::min (WORKER_HELLO_TIMEOUT_MS, RemainingDeadlineMs (deadline));
-			if (!helloBudget)
+			const auto helloDeadline = std::min (deadline, DeadlineAfter (WORKER_HELLO_TIMEOUT_MS));
+			if (std::chrono::steady_clock::now () >= helloDeadline)
 			{
 				candidate.Close ();
 				DisarmListener ();
 				return i2p::unexpected ("worker pipe accept timeout");
 			}
 			std::string helloError;
-			if (!ReceiveWorkerHello (candidate, role, *nonce, helloBudget, helloError)) rejection = helloError;
+			if (!ReceiveWorkerHello (candidate, role, *nonce, helloDeadline, helloError)) rejection = helloError;
 		}
 		if (!rejection.empty ())
 		{
@@ -1196,6 +1200,11 @@ i2p::expected<WindowsChannel, std::string> WindowsChannel::ConnectBound (
 
 i2p::expected<void, std::string> WindowsChannel::Send (const Message & message, DWORD timeoutMs)
 {
+	return SendUntil (message, DeadlineAfter (timeoutMs));
+}
+
+i2p::expected<void, std::string> WindowsChannel::SendUntil (const Message & message, WindowsDeadline deadline)
+{
 	if (!IsOpen ()) return i2p::unexpected ("worker pipe is closed");
 	// Direction is part of the role contract: the request-issuing side
 	// sends
@@ -1220,7 +1229,7 @@ i2p::expected<void, std::string> WindowsChannel::Send (const Message & message, 
 	{
 		const DWORD error = GetLastError ();
 		if (error != ERROR_IO_PENDING) return i2p::unexpected ("WriteFile(worker pipe): " + Win32ErrorText (error));
-		const auto outcome = WaitOverlapped (m_Pipe, overlapped, timeoutMs);
+		const auto outcome = WaitOverlappedUntil (m_Pipe, overlapped, deadline);
 		if (outcome.completed)
 			written = outcome.transferred;
 		else if (outcome.cancelled)
@@ -1246,6 +1255,11 @@ i2p::expected<void, std::string> WindowsChannel::Send (const Message & message, 
 }
 
 i2p::expected<std::optional<Message>, std::string> WindowsChannel::Receive (DWORD timeoutMs)
+{
+	return ReceiveUntil (DeadlineAfter (timeoutMs));
+}
+
+i2p::expected<std::optional<Message>, std::string> WindowsChannel::ReceiveUntil (WindowsDeadline deadline)
 {
 	if (!IsOpen ()) return i2p::unexpected ("worker pipe is closed");
 	// One byte over the maximum legal frame: every larger message-mode
@@ -1280,7 +1294,7 @@ i2p::expected<std::optional<Message>, std::string> WindowsChannel::Receive (DWOR
 			return i2p::unexpected ("worker pipe closed");
 		}
 		if (error != ERROR_IO_PENDING) return i2p::unexpected ("ReadFile(worker pipe): " + Win32ErrorText (error));
-		const auto outcome = WaitOverlapped (m_Pipe, overlapped, timeoutMs);
+		const auto outcome = WaitOverlappedUntil (m_Pipe, overlapped, deadline);
 		if (outcome.completed)
 			read = outcome.transferred;
 		else if (outcome.cancelled)
@@ -1328,9 +1342,9 @@ i2p::expected<std::optional<Message>, std::string> WindowsChannel::Receive (DWOR
 			&& ++m_ProtocolViolations <= MAX_WINDOWS_PROTOCOL_VIOLATIONS)
 		{
 			const auto offending = static_cast<MessageType> (inspection.rawType);
-			(void)Send ({ MessageType::Error, inspection.requestId,
+			(void)SendUntil ({ MessageType::Error, inspection.requestId,
 							EncodeError (offending, decoded.error ().code, decoded.error ().text) },
-				250);
+				std::min (deadline, DeadlineAfter (250)));
 			return std::optional<Message> { };
 		}
 		Close ();
@@ -1354,9 +1368,9 @@ i2p::expected<std::optional<Message>, std::string> WindowsChannel::Receive (DWOR
 	{
 		if (++m_ProtocolViolations <= MAX_WINDOWS_PROTOCOL_VIOLATIONS)
 		{
-			(void)Send ({ MessageType::Error, decoded->requestId,
+			(void)SendUntil ({ MessageType::Error, decoded->requestId,
 							EncodeError (decoded->type, ErrorCode::NotAuthorized, refusal) },
-				250);
+				std::min (deadline, DeadlineAfter (250)));
 			return std::optional<Message> { };
 		}
 		Close ();
@@ -1957,7 +1971,13 @@ i2p::expected<WindowsWorkerProcess, std::string> SpawnWindowsWorker (const std::
 
 bool WindowsWorkerProcess::Wait (DWORD timeoutMs) const
 {
-	return process.IsValid () && WaitForSingleObject (process.Native (), timeoutMs) == WAIT_OBJECT_0;
+	return WaitUntil (DeadlineAfter (timeoutMs));
+}
+
+bool WindowsWorkerProcess::WaitUntil (WindowsDeadline deadline) const
+{
+	return process.IsValid ()
+		&& WaitForSingleObject (process.Native (), RemainingDeadlineMs (deadline)) == WAIT_OBJECT_0;
 }
 
 DWORD WindowsWorkerProcess::ExitCode () const
@@ -1977,19 +1997,31 @@ DWORD WindowsWorkerProcess::ExitCode () const
 // away.
 bool WindowsWorkerProcess::TerminateAndWait (DWORD timeoutMs, UINT exitCode)
 {
+	return TerminateAndWaitUntil (DeadlineAfter (timeoutMs), exitCode);
+}
+
+bool WindowsWorkerProcess::TerminateAndWaitUntil (WindowsDeadline deadline, UINT exitCode)
+{
 	// The job owns every process the worker created; closing the job first
 	// prevents an orphaned child from outliving its parent.
 	if (job.IsValid ()) (void)TerminateJobObject (job.Native (), exitCode);
 	if (!process.IsValid ()) return true;
 	(void)TerminateProcess (process.Native (), exitCode);
-	return Wait (timeoutMs);
+	return WaitForSingleObject (process.Native (), RemainingDeadlineMs (deadline)) == WAIT_OBJECT_0;
 }
 
 bool WindowsWorkerProcess::Stop (DWORD timeoutMs)
 {
+	return StopUntil (DeadlineAfter (timeoutMs));
+}
+
+bool WindowsWorkerProcess::StopUntil (WindowsDeadline deadline)
+{
 	if (!process.IsValid ()) return true;
-	if (WaitForSingleObject (process.Native (), timeoutMs) == WAIT_OBJECT_0) return true;
-	return TerminateAndWait (timeoutMs);
+	if (WaitForSingleObject (process.Native (), RemainingDeadlineMs (deadline)) == WAIT_OBJECT_0) return true;
+	// A graceful timeout consumes the budget; forcing exit cannot start
+	// another equally long wait. Job close remains the teardown backstop.
+	return TerminateAndWaitUntil (deadline);
 }
 
 // Deterministic name for tests and local tools: it is derived from the

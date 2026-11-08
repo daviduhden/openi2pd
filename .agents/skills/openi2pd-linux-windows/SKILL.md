@@ -100,6 +100,13 @@ execution. Ask for:
   datadir ACL as the Windows equivalent.
 
 ## Known issues and decisions
+
+- Windows Until APIs retain one absolute deadline through accept, hello,
+  send/read, typed refusals and graceful/forced shutdown. DWORD wrappers
+  convert once; INFINITE is an explicit max-time-point sentinel and finite
+  waits cap below it. Cancellation must still reap OVERLAPPED state after
+  timeout; cleanup and supervisor lifecycle-lock admission are not a strict
+  whole-call wall-clock guarantee. Preserve expired-read/reuse regressions.
 - Endpoint refusal writes share the enclosing receive's remaining deadline.
   Keep the separate 250 ms refusal cap only when it is smaller, including
   infinite receives; a timeout-zero receive must not wait on a full reply

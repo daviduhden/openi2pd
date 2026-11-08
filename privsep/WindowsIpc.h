@@ -23,6 +23,7 @@
 #ifndef I2PD_PRIVSEP_WINDOWS_IPC_H__
 #define I2PD_PRIVSEP_WINDOWS_IPC_H__
 
+#include <chrono>
 #include <cstdint>
 #include <optional>
 #include <span>
@@ -45,6 +46,9 @@
 
 namespace i2p::privsep
 {
+/// Absolute wait budget; max() represents the Win32 INFINITE timeout.
+using WindowsDeadline = std::chrono::steady_clock::time_point;
+
 /**
  * AppContainer profile and SID owner, declared by WindowsIsolation.h.
  * It is
@@ -266,11 +270,17 @@ struct WindowsWorkerProcess
 
 	/** Bounded wait; false on timeout or an invalid handle. */
 	bool Wait (DWORD timeoutMs) const;
+	/// Wait without rebasing an enclosing lifecycle operation's budget.
+	bool WaitUntil (WindowsDeadline deadline) const;
 	DWORD ExitCode () const;
 	/** Terminate the job and process, then wait for exit. */
 	bool TerminateAndWait (DWORD timeoutMs, UINT exitCode = ERROR_PROCESS_ABORTED);
+	/// Terminate, then reap using only the original deadline's remainder.
+	bool TerminateAndWaitUntil (WindowsDeadline deadline, UINT exitCode = ERROR_PROCESS_ABORTED);
 	/** Wait for a graceful exit within the budget, then terminate. */
 	bool Stop (DWORD timeoutMs = 2000);
+	/// Graceful and forced waits share one absolute deadline.
+	bool StopUntil (WindowsDeadline deadline);
 };
 
 /**
@@ -398,7 +408,7 @@ private:
 	}
 
 	/** One bounded ConnectNamedPipe() on the armed instance. */
-	i2p::expected<bool, std::string> WaitForConnection (DWORD timeoutMs);
+	i2p::expected<bool, std::string> WaitForConnectionUntil (WindowsDeadline deadline);
 	/**
 	 * Disconnect the armed listener so the one instance can be re-armed
 	 * after a rejected connection or a cancelled accept. The handle stays
@@ -500,6 +510,13 @@ public:
 	 */
 	i2p::expected<void, std::string> Send (const Message & message, DWORD timeoutMs = 5000);
 	/**
+	 * Send with a caller-owned absolute wait deadline. Encoding and event
+	 * setup cannot create a fresh wait budget. An expired deadline allows
+	 * immediate completion only; cancellation still reaps kernel-owned
+	 * OVERLAPPED state, so cleanup may outlast the wait deadline.
+	 */
+	i2p::expected<void, std::string> SendUntil (const Message & message, WindowsDeadline deadline);
+	/**
 	 * Receive one frame. A deadline expiry that cancels a read is reported
 	 * as
 	 * an empty optional *only* when no record completed: a record that
@@ -509,6 +526,13 @@ public:
 	 * Receive() must not be called concurrently on the same channel.
 	 */
 	i2p::expected<std::optional<Message>, std::string> Receive (DWORD timeoutMs = 1000);
+	/**
+	 * Receive with an inherited absolute wait deadline. Refusal writes
+	 * share that deadline and retain their separate 250ms cap. Completed
+	 * records racing cancellation remain deliverable; kernel reaping can
+	 * outlast the deadline and never releases live OVERLAPPED storage.
+	 */
+	i2p::expected<std::optional<Message>, std::string> ReceiveUntil (WindowsDeadline deadline);
 	i2p::expected<WindowsPeer, std::string> Peer () const;
 
 private:

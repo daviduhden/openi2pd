@@ -402,8 +402,10 @@ void WindowsWorkerSupervisor::PublishFailedOnce (const WindowsWorkerFailureOutco
 // leaves its slice. The ordering is intentional: advisory Shutdown
 // frame, short graceful window with the channel still open, channel
 // close, Job Object termination, bounded wait. The Job Object remains
-// the authority; a worker that ignores the frame is terminated, and the
-// caller's budget bounds the whole sequence.
+// the authority; a worker that ignores the frame is terminated. After
+// lifecycle ownership is acquired, child waits share one deadline.
+// Kernel cancellation/reaping can outlast the wait budget when needed
+// to retain the lifetime of an outstanding operation's storage.
 bool WindowsWorkerSupervisor::Stop (uint32_t budgetMs)
 {
 	std::lock_guard<std::mutex> lock (m_LifecycleMutex);
@@ -411,6 +413,7 @@ bool WindowsWorkerSupervisor::Stop (uint32_t budgetMs)
 	if (m_StopEvent.IsValid ()) SetEvent (m_StopEvent.Native ());
 
 	const auto started = Clock::now ();
+	const auto deadline = started + std::chrono::milliseconds (budgetMs);
 	bool clean = true;
 
 	// One bounded, advisory Shutdown frame. The worker may already be
@@ -418,9 +421,10 @@ bool WindowsWorkerSupervisor::Stop (uint32_t budgetMs)
 	// authority.
 	if (m_Channel && m_Channel->IsOpen ())
 	{
-		const uint32_t sendBudget
-			= std::min (RemainingBudgetMs (ElapsedMs (started), budgetMs), WINDOWS_WORKER_SHUTDOWN_SEND_MS);
-		if (sendBudget > 0) (void)m_Channel->Send ({ MessageType::Shutdown, 0, { } }, sendBudget);
+		const auto sendDeadline
+			= std::min (deadline, Clock::now () + std::chrono::milliseconds (WINDOWS_WORKER_SHUTDOWN_SEND_MS));
+		if (Clock::now () < sendDeadline)
+			(void)m_Channel->SendUntil ({ MessageType::Shutdown, 0, { } }, sendDeadline);
 	}
 	if (m_Worker)
 	{
@@ -429,7 +433,11 @@ bool WindowsWorkerSupervisor::Stop (uint32_t budgetMs)
 		// the process handle (never the PID).
 		const uint32_t remaining = RemainingBudgetMs (ElapsedMs (started), budgetMs);
 		if (remaining > WINDOWS_WORKER_GRACEFUL_STOP_MS && m_Worker->process.IsValid ())
-			(void)WaitForSingleObject (m_Worker->process.Native (), WINDOWS_WORKER_GRACEFUL_STOP_MS);
+		{
+			const auto gracefulDeadline = std::min (
+				deadline, Clock::now () + std::chrono::milliseconds (WINDOWS_WORKER_GRACEFUL_STOP_MS));
+			(void)m_Worker->WaitUntil (gracefulDeadline);
+		}
 	}
 	if (m_Channel)
 	{
@@ -445,9 +453,8 @@ bool WindowsWorkerSupervisor::Stop (uint32_t budgetMs)
 		// forced reap reports nothing left to terminate.
 		const bool alreadyExited
 			= m_Worker->process.IsValid () && WaitForSingleObject (m_Worker->process.Native (), 0) == WAIT_OBJECT_0;
-		const uint32_t remaining = RemainingBudgetMs (ElapsedMs (started), budgetMs);
 		if (m_Worker->job.IsValid ()) (void)TerminateJobObject (m_Worker->job.Native (), ERROR_PROCESS_ABORTED);
-		if (!m_Worker->Stop (remaining) && !alreadyExited)
+		if (!m_Worker->StopUntil (deadline) && !alreadyExited)
 		{
 			clean = false;
 			std::cerr << "windows worker supervisor (" << m_Name

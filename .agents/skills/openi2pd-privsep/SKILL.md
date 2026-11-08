@@ -110,8 +110,9 @@ report that limitation; do not substitute local execution. Ask for:
   public send: preemption can otherwise rebase the original receive budget.
   Keep the 250ms refusal cap and the earlier finite deadline together. The
   source contract pins direct absolute propagation; backpressure execution
-  remains a separate runtime regression. Windows hello/shutdown relative
-  handoff sites remain separate follow-ups, not covered by this POSIX fix.
+  remains a separate runtime regression. Windows now has a separate Until
+  path; its kernel-reaping and mutex-admission limits belong to the platform
+  skill, not the POSIX deadline guarantee.
 
 - Ping, Pong and Shutdown have zero-byte payload ceilings in the registry.
   A buffered EOF/authentication fixture must send an empty payload; its
