@@ -582,6 +582,39 @@ i2p::expected<std::optional<ReceivedMessage>, std::string> Channel::ReceiveWithF
 			if (++emptyRecords > 8) return i2p::unexpected ("empty-record flood");
 			continue; // consume the empty record and keep the channel usable
 		}
+#if defined(__linux__)
+		// Authenticate before parsing or answering a record. Even a typed
+		// refusal and its violation budget belong to an identified peer.
+		// SO_PEERCRED is the creator snapshot, so spawned workers use the
+		// explicit expectation; raw channels retain their kernel fallback.
+		if (!receivedCredentials)
+		{
+			if (receivedFd >= 0) ::close (receivedFd);
+			return i2p::unexpected ("missing SCM_CREDENTIALS");
+		}
+		if (m_PeerExpectation.configured)
+		{
+			if (!MatchesPeerExpectation (messageCredentials.uid, messageCredentials.gid, messageCredentials.pid))
+			{
+				if (receivedFd >= 0) ::close (receivedFd);
+				return i2p::unexpected ("SCM_CREDENTIALS do not match the expected peer");
+			}
+		}
+		else
+		{
+			auto peer = Credentials ();
+			if (!peer)
+			{
+				if (receivedFd >= 0) ::close (receivedFd);
+				return i2p::unexpected (peer.error ());
+			}
+			if (messageCredentials.uid != peer->uid || messageCredentials.gid != peer->gid)
+			{
+				if (receivedFd >= 0) ::close (receivedFd);
+				return i2p::unexpected ("SCM_CREDENTIALS do not match peer");
+			}
+		}
+#endif
 		if (receivedFd >= 0)
 		{
 			// MSG_CMSG_CLOEXEC is not available on every supported UNIX. Do not
@@ -641,42 +674,6 @@ i2p::expected<std::optional<ReceivedMessage>, std::string> Channel::ReceiveWithF
 				continue;
 			}
 		}
-#if defined(__linux__)
-		// SO_PASSCRED makes SCM_CREDENTIALS mandatory on every received
-		// record. SO_PEERCRED reports the credentials captured when the
-		// socket was created: after a root core drops the worker to
-		// `privsep.user`, the worker's frames carry the worker uid and the
-		// creator record is stale. Production channels therefore carry an
-		// explicit expectation set by the spawner; only a raw test channel
-		// falls back to SO_PEERCRED.
-		if (!receivedCredentials)
-		{
-			if (receivedFd >= 0) ::close (receivedFd);
-			return i2p::unexpected ("missing SCM_CREDENTIALS");
-		}
-		if (m_PeerExpectation.configured)
-		{
-			if (!MatchesPeerExpectation (messageCredentials.uid, messageCredentials.gid, messageCredentials.pid))
-			{
-				if (receivedFd >= 0) ::close (receivedFd);
-				return i2p::unexpected ("SCM_CREDENTIALS do not match the expected peer");
-			}
-		}
-		else
-		{
-			auto peer = Credentials ();
-			if (!peer)
-			{
-				if (receivedFd >= 0) ::close (receivedFd);
-				return i2p::unexpected (peer.error ());
-			}
-			if (messageCredentials.uid != peer->uid || messageCredentials.gid != peer->gid)
-			{
-				if (receivedFd >= 0) ::close (receivedFd);
-				return i2p::unexpected ("SCM_CREDENTIALS do not match peer");
-			}
-		}
-#endif
 		return std::optional<ReceivedMessage> (ReceivedMessage { std::move (*message), receivedFd });
 	}
 }

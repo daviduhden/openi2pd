@@ -100,6 +100,12 @@ execution. Ask for:
   datadir ACL as the Windows equivalent.
 
 ## Known issues and decisions
+- Authenticate nonempty seqpacket records before Decode and endpoint
+  refusals. An attributable malformed frame is not yet an identified peer;
+  sending Error or charging the violation budget before SCM_CREDENTIALS
+  would let a rejected identity affect the serving endpoint. Retain FD
+  cleanup on rejection and test silent wrong-identity faults followed by
+  authenticated recovery, including forbidden descriptors.
 - Linux seqpacket EOF can report POLLIN with hangup and recvmsg zero without
   SCM_CREDENTIALS. After rejecting ancillary/descriptor faults, classify
   terminal zero reads before authenticating live empty records. Nonempty

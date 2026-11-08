@@ -19,6 +19,7 @@
 #include <dirent.h>
 #include <iostream>
 #include <fcntl.h>
+#include <poll.h>
 #include <string>
 #include <string_view>
 #include <sys/socket.h>
@@ -676,6 +677,64 @@ void TestClosedChannel ()
 	assert (emptyClose.error ().find ("closed") != std::string::npos);
 }
 
+void TestAuthenticateBeforeRefusal ()
+{
+	auto pair = Channel::CreatePair ();
+	assert (pair.has_value ());
+	auto & sender = pair->first;
+	auto & receiver = pair->second;
+	receiver.SetEnforcementPolicy (EnforcementPolicy::Endpoint);
+	const uint32_t uid = static_cast<uint32_t> (geteuid ());
+	const uint32_t gid = static_cast<uint32_t> (getegid ());
+	receiver.ExpectPeer (PeerExpectation { .uid = uid + 1, .configured = true });
+
+	// Both a recoverable frame fault and a descriptor-policy refusal are
+	// silent for the wrong identity. Repetition must not spend the serving
+	// endpoint's authenticated-peer violation budget or leak received FDs.
+	for (bool descriptorFault : { false, true })
+	{
+		for (uint32_t attempt = 0; attempt < 10; ++attempt)
+		{
+			const int before = CountOpenFds ();
+			if (descriptorFault)
+			{
+				const int fd = OpenDescriptor ("/dev/null", O_RDONLY);
+				auto frame = Encode (Message { MessageType::Ping, 500 + attempt, { } });
+				assert (frame.has_value ());
+				assert (SendRawWithFds (sender.Fd (), *frame, &fd, 1));
+				::close (fd);
+			}
+			else
+			{
+				// Ping accepts no payload, but the known header is complete.
+				auto frame = BuildHeader (static_cast<uint16_t> (MessageType::Ping), 500 + attempt, 1);
+				frame += 'x';
+				assert (SendRaw (sender.Fd (), frame));
+			}
+			auto refused = receiver.ReceiveWithFd (100);
+			assert (!refused.has_value ());
+			assert (refused.error ().find ("expected peer") != std::string::npos);
+			pollfd pending { sender.Fd (), POLLIN, 0 };
+			assert (::poll (&pending, 1, 0) == 0);
+			if (before >= 0) assert (CountOpenFds () == before);
+		}
+	}
+
+	// The same fault is answerable only after the expected identity is
+	// restored. A succeeding Ping proves no earlier refusal consumed the
+	// authenticated violation budget or desynchronized the record stream.
+	receiver.ExpectPeer (PeerExpectation { .uid = uid, .gid = gid, .configured = true });
+	auto malformed = BuildHeader (static_cast<uint16_t> (MessageType::Ping), 600, 1);
+	malformed += 'x';
+	assert (SendRaw (sender.Fd (), malformed));
+	auto idle = receiver.ReceiveWithFd (50);
+	assert (idle.has_value () && !idle->has_value ());
+	auto response = sender.Receive (100);
+	assert (response.has_value () && response->has_value ());
+	assert ((*response)->type == MessageType::Error && (*response)->requestId == 600);
+	ExpectReusable (sender, receiver, 601);
+}
+
 void TestSendDeadlineAfterDrain ()
 {
 	// A poll(POLLOUT) result can become stale before sendmsg() runs:
@@ -841,6 +900,7 @@ int main ()
 	TestSendValidation ();
 	TestChannelOwnership ();
 	TestClosedChannel ();
+	TestAuthenticateBeforeRefusal ();
 	TestSendDeadlineAfterDrain ();
 	TestReceiveDeadline ();
 	TestSendQueueSaturation ();
