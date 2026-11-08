@@ -107,7 +107,12 @@ Do not let reconnaissance agents edit, compile, execute tests or run scripts.
 
 ## Known issues and decisions
 
-- Publication locks must not run final owner destructors
+- Validate signed bit indices before converting to byte offsets. Tag::GetBit
+  returns an MSB-first mask, not a bool; negative and upper-bound indices
+  return zero. Preserve valid mask results while testing INT_MIN/INT_MAX and
+  multiple tag widths. Tag prefix encoders reject lengths above their fixed
+  extent before reading and preserve valid zero/short/full serialization.
+  Publication locks must not run final owner destructors
   that can reenter the same storage; test both native and mutex backends.
 
 - URL logging review must include invalid-input and download-start paths,

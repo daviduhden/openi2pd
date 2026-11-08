@@ -320,6 +320,15 @@ require_runtime_order("libi2pd/TunnelPool.cpp"
   "retired->outbound->SetState (eTunnelStateFailed);")
 require_runtime_source("tests/test-tunnelpool-test-timing.cpp" "TestStaleDropCannotRetireReplacement ()")
 
+# Reject signed negative bit indices before conversion or buffer access.
+require_runtime_order("libi2pd/Tag.h"
+  "uint8_t GetBit (int i) const" "private:"
+  "if (i < 0) return 0;" "const size_t pos = static_cast<size_t> (i) / 8;"
+  "if (pos >= sz) return 0;" "return m_Buf[pos] &")
+require_runtime_source("tests/test-kad-dht.cpp" "TestTagBitBounds ();")
+require_runtime_source("tests/test-kad-dht.cpp"
+  "hash.GetBit (std::numeric_limits<int>::min ())")
+
 # Exercise both capability-selected and explicit mutex shared ownership.
 require_runtime_source("tests/CMakeLists.txt" "test-atomic-shared-ptr")
 require_runtime_source("tests/test-atomic-shared-ptr.cpp"
@@ -328,3 +337,14 @@ require_runtime_source("tests/test-atomic-shared-ptr.cpp"
   "TestStoreReleasesOutsideLock<Storage> ()")
 require_runtime_source("tests/test-atomic-shared-ptr.cpp"
   "TestFailedCompareExchangeReleasesOutsideLock<Storage> ()")
+require_runtime_order("libi2pd/Tag.h"
+  "std::string ToBase64 (size_t length = sz) const"
+  "std::string ToBase32 (size_t length = sz) const"
+  "if (length > sz) throw std::length_error"
+  "ByteStreamToBase64 (m_Buf, length)")
+require_runtime_order("libi2pd/Tag.h"
+  "std::string ToBase32 (size_t length = sz) const"
+  "size_t FromBase32 (std::string_view s)"
+  "if (length > sz) throw std::length_error"
+  "ByteStreamToBase32 (m_Buf, length)")
+require_runtime_source("tests/test-kad-dht.cpp" "TestTagEncodingBounds ();")

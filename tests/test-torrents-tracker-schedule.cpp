@@ -194,7 +194,7 @@ void TestResponseParsing ()
 	// torrent's 20-byte info hash. A valid zero destination is skipped
 	// while the datagram interval still uses the HTTP scheduling floor.
 	i2p::data::IdentHash hashes { };
-	torrent.HandleDatagramTrackerResponse (10, 30, hashes.data (), hashes.size (), 1, 2);
+	torrent.HandleDatagramTrackerResponse (10, 30, hashes.data (), i2p::data::IdentHash::len, 1, 2);
 	assert (torrent.GetTrackerError (10).empty ());
 	assert (torrent.GetInterval (10) == 900 * 1000);
 	assert (torrent.GetNumPeers (10) == 0); // zero destinations are skipped
@@ -211,12 +211,12 @@ void TestResponseParsing ()
 
 	// A later complete record recovers without retaining the error or
 	// the short failure ladder.
-	torrent.HandleDatagramTrackerResponse (10, 3600, hashes.data (), hashes.size (), 3, 4);
+	torrent.HandleDatagramTrackerResponse (10, 3600, hashes.data (), i2p::data::IdentHash::len, 3, 4);
 	assert (torrent.GetTrackerError (10).empty ());
 	assert (torrent.GetInterval (10) == 3600 * 1000);
 	assert (torrent.GetNumSeeders (10) == 3 && torrent.GetNumLeechers (10) == 4);
 	torrent.HandleDatagramTrackerResponse (
-		11, std::numeric_limits<uint32_t>::max (), hashes.data (), hashes.size (), 0, 0);
+		11, std::numeric_limits<uint32_t>::max (), hashes.data (), i2p::data::IdentHash::len, 0, 0);
 	assert (torrent.GetTrackerError (11).empty ());
 	assert (torrent.GetInterval (11) == MAX_TRACKER_REQUESTS_INTERVAL);
 }

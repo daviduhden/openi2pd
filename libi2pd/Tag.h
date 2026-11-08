@@ -19,6 +19,7 @@
 #include <openssl/crypto.h>
 #include <string>
 #include <string_view>
+#include <stdexcept>
 #include <compare>
 #include <functional>
 #include "Base.h"
@@ -73,18 +74,31 @@ namespace data
 			return false;
 		}
 
-		std::string ToBase64 (size_t length = sz) const { return i2p::data::ByteStreamToBase64 (m_Buf, length); }
+		/// Encode a prefix; oversized lengths throw before reading storage.
+		std::string ToBase64 (size_t length = sz) const
+		{
+			if (length > sz) throw std::length_error ("tag encoding length exceeds storage");
+			return i2p::data::ByteStreamToBase64 (m_Buf, length);
+		}
 
-		std::string ToBase32 (size_t length = sz) const { return i2p::data::ByteStreamToBase32 (m_Buf, length); }
+		/// Encode a prefix; oversized lengths throw before reading storage.
+		std::string ToBase32 (size_t length = sz) const
+		{
+			if (length > sz) throw std::length_error ("tag encoding length exceeds storage");
+			return i2p::data::ByteStreamToBase32 (m_Buf, length);
+		}
 
 		size_t FromBase32 (std::string_view s) { return i2p::data::Base32ToByteStream (s, m_Buf, sz); }
 
 		size_t FromBase64 (std::string_view s) { return i2p::data::Base64ToByteStream (s, m_Buf, sz); }
 
+		/// Return the MSB-first bit mask, or zero for an invalid index.
+		/// Reject negative indices before conversion or buffer access.
 		uint8_t GetBit (int i) const
 		{
-			int pos = i >> 3; // /8
-			if (pos >= (int)sz) return 0;
+			if (i < 0) return 0;
+			const size_t pos = static_cast<size_t> (i) / 8;
+			if (pos >= sz) return 0;
 			return m_Buf[pos] & (0x80 >> (i & 0x07));
 		}
 

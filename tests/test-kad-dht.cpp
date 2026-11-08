@@ -11,11 +11,15 @@
  */
 
 #include <algorithm>
+#include <array>
 #include <cassert>
+#include <cstddef>
 #include <cstdint>
 #include <functional>
+#include <limits>
 #include <memory>
 #include <sstream>
+#include <stdexcept>
 #include <string>
 #include <utility>
 #include <vector>
@@ -43,6 +47,68 @@ struct TestNode
 	std::shared_ptr<RouterInfo> router;
 	IdentHash hash;
 };
+
+void TestTagBitBounds ()
+{
+	IdentHash hash;
+	hash.Fill (0xff);
+	for (int bit = 0; bit < static_cast<int> (IdentHash::len * 8); ++bit)
+		assert (hash.GetBit (bit) == (0x80 >> (bit % 8)));
+	assert (hash.GetBit (-1) == 0);
+	assert (hash.GetBit (std::numeric_limits<int>::min ()) == 0);
+	assert (hash.GetBit (static_cast<int> (IdentHash::len * 8)) == 0);
+	assert (hash.GetBit (std::numeric_limits<int>::max ()) == 0);
+
+	// The boundary belongs to each tag width, not only identity hashes.
+	Tag<8> shortTag;
+	shortTag.Fill (0xff);
+	assert (shortTag.GetBit (63) == 1);
+	assert (shortTag.GetBit (64) == 0);
+	assert (shortTag.GetBit (-8) == 0);
+	hash.Fill (0);
+	assert (hash.GetBit (0) == 0);
+	assert (hash.GetBit (255) == 0);
+}
+
+template <std::size_t width> void TestTagEncodingBoundsForWidth ()
+{
+	Tag<width> tag;
+	tag.Fill (0);
+	const auto full64 = tag.ToBase64 ();
+	const auto full32 = tag.ToBase32 ();
+	for (const auto length : std::array<std::size_t, 4> { 0, 1, width / 2, width })
+	{
+		// Zero-filled prefixes provide independent encoding vectors.
+		const auto expected64 = std::string ((length * 8 + 5) / 6, 'A')
+			+ std::string ((3 - length % 3) % 3, '=');
+		const auto expected32 = std::string ((length * 8 + 4) / 5, 'a');
+		assert (tag.ToBase64 (length) == expected64);
+		assert (tag.ToBase32 (length) == expected32);
+	}
+
+	const int negative = -1;
+	for (const auto length : std::array<std::size_t, 3> {
+		width + 1, std::numeric_limits<std::size_t>::max (),
+		static_cast<std::size_t> (negative) })
+	{
+		bool rejected64 = false, rejected32 = false;
+		try { (void)tag.ToBase64 (length); }
+		catch (const std::length_error &) { rejected64 = true; }
+		try { (void)tag.ToBase32 (length); }
+		catch (const std::length_error &) { rejected32 = true; }
+		assert (rejected64 && rejected32);
+		// Rejection cannot damage later full-width encodings or tag bytes.
+		assert (tag.ToBase64 () == full64);
+		assert (tag.ToBase32 () == full32);
+		assert (tag.IsZero ());
+	}
+}
+
+void TestTagEncodingBounds ()
+{
+	TestTagEncodingBoundsForWidth<8> ();
+	TestTagEncodingBoundsForWidth<32> ();
+}
 
 TestNode MakeNode (uint32_t seed)
 {
@@ -259,6 +325,8 @@ void TestDestructionAndRelease ()
 
 int main ()
 {
+	TestTagBitBounds ();
+	TestTagEncodingBounds ();
 	TestInsertFindAndDuplicates ();
 	TestRemoveLeafAndPromotion ();
 	TestClear ();
