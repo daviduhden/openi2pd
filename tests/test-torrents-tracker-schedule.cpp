@@ -161,12 +161,18 @@ void TestResponseParsing ()
 	assert (torrent.GetMinInterval (5) == 2400 * 1000);
 	assert (torrent.GetInterval (5) == 2400 * 1000);
 
-	// An unusable interval value is not trusted: it falls back to the
-	// floor.
+	// A wrong bencode type is malformed, not an absent interval. Keep the
+	// prior schedule and retry on the failure ladder without committing
+	// otherwise valid fields from the rejected response.
+	torrent.ParseTrackerResponse (6, Dict ({ { "interval", Integer (3600) } }));
+	const auto previousInterval = torrent.GetInterval (6);
 	torrent.ParseTrackerResponse (6, Dict ({ { "interval", "0:" } }));
-	assert (torrent.GetTrackerError (6).empty ());
-	assert (torrent.GetInterval (6) == 900 * 1000);
+	assert (torrent.GetTrackerError (6) == "malformed response");
+	assert (torrent.GetInterval (6) == previousInterval);
+	assert (ScheduledWait (torrent, 6) <= 60 * 1000);
+	// A valid integer outside the useful range still uses the floor.
 	torrent.ParseTrackerResponse (7, Dict ({ { "interval", Integer (-30) } }));
+	assert (torrent.GetTrackerError (7).empty ());
 	assert (torrent.GetInterval (7) == 900 * 1000);
 
 	// Truncated bencode is a failure, not a successful announce, and a

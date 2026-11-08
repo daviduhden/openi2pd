@@ -116,6 +116,10 @@ Do not let them edit, build or run tests.
 
 ## Known issues and decisions
 
+- Tracker scheduling tests must distinguish a valid out-of-range integer
+  from a wrong bencode type. The former is clamped; the latter preserves
+  previous tracker state and enters the failure ladder. Audit sibling tests
+  when strengthening a shared parser contract.
 - Peer IDs require successful RAND_bytes generation; repeated RNG seeds or
   clock fallback destroy per-torrent unlinkability. Failure clears the ID,
   leaves the torrent stopped, and is sticky through error resets/resume.
