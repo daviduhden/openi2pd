@@ -199,7 +199,14 @@ void TestPayloadValidatorRejectsPreAuthInjection ()
 	const auto retry = Concat ({ dateTime, address, padding });
 	assert (ValidateSSU2PayloadBlocks (eSSU2SessionStateTokenReceived, retry.data (), retry.size ()));
 	for (const auto * forbidden : { &i2np, &relayTagRequest, &newToken })
+	{
 		assert (!ValidateSSU2PayloadBlocks (eSSU2SessionStateTokenReceived, forbidden->data (), forbidden->size ()));
+		// A valid prefix must not permit version or token publication when
+		// a later block is forbidden in Retry's state.
+		const auto invalidRetry = Concat ({ dateTime, *forbidden });
+		assert (!ValidateSSU2PayloadBlocks (
+			eSSU2SessionStateTokenReceived, invalidRetry.data (), invalidRetry.size ()));
+	}
 
 	const auto sessionConfirmed = Concat ({ routerInfo, options, padding });
 	assert (ValidateSSU2PayloadBlocks (

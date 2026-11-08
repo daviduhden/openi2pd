@@ -93,6 +93,17 @@ executing project code, or inspect a real private key.
 
 ## Known issues and decisions
 
+- Retry payload grammar must validate before changing version-bound crypto
+  state as well as before inserting its token. The first DateTime block
+  alone cannot authorize a malformed or forbidden trailing block; test a
+  valid prefix followed by each disallowed block in the Retry state.
+
+- Retry header unmasking is not payload validation. Publish its outgoing
+  token only after AEAD, full block validation and termination handling;
+  rejecting a packet must leave the token cache unchanged. Audit NewToken,
+  HolePunch and RelayResponse update sites with their own enclosing payload
+  and signature checks rather than treating every token field alike.
+
 - Inspect nested framing randomness before publishing tunnel correlation,
   not only explicit key/tag fills. Complete wrapping first, cleanse both
   secrets on every exit, and retire an unsent attempt by identity outside

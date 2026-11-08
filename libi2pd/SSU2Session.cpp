@@ -2397,9 +2397,6 @@ namespace transport
 			return false;
 		}
 		uint64_t token = headerX[1];
-		if (token)
-			m_Server.UpdateOutgoingToken (m_RemoteEndpoint, token,
-				static_cast<uint32_t> (i2p::util::GetSecondsSinceEpoch () + SSU2_TOKEN_EXPIRATION_TIMEOUT));
 		// decrypt and handle payload
 		uint8_t * payload = buf + 32;
 		CreateNonce (be32toh (header.h.packetNum), nonce);
@@ -2415,6 +2412,13 @@ namespace transport
 		if (!HasDateTimeFirstBlock (payload, len - 48))
 		{
 			LogPrint (eLogWarning, "SSU2: Retry has no valid DateTime first block");
+			return false;
+		}
+		// Check every block before replacing version-bound crypto state.
+		// A valid first DateTime cannot authorize a malformed later block.
+		if (!ValidateSSU2PayloadBlocks (eSSU2SessionStateTokenReceived, payload, len - 48))
+		{
+			LogPrint (eLogWarning, "SSU2: Retry has an invalid block sequence");
 			return false;
 		}
 		if (versionChanged)
@@ -2505,6 +2509,11 @@ namespace transport
 			return false;
 		}
 
+		// Header unmasking alone does not validate a Retry. Cache its token
+		// only after AEAD, the complete payload and termination handling;
+		// malformed input must not replace another attempt's cached token.
+		m_Server.UpdateOutgoingToken (m_RemoteEndpoint, token,
+			static_cast<uint32_t> (i2p::util::GetSecondsSinceEpoch () + SSU2_TOKEN_EXPIRATION_TIMEOUT));
 		// Retire the previous attempt only after Retry validation. Local
 		// provider failure must not leave its packet available for resend.
 		m_SentHandshakePacket.reset ();
