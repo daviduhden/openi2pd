@@ -121,6 +121,12 @@ run Gradle, install an APK or run a device test.
 
 ## Known issues and decisions
 
+- Give the content surface one opaque owner: the theme window resolves
+  colorSurface while phone/tablet activity roots remain transparent. Check
+  both night modes and both width qualifiers; the Android 12 splash keeps
+  its separate brand background. Do not silence Overdraw or change vector
+  geometry to erase unrelated Lint warnings.
+
 - vcpkg's emulator triplet is x64-android; Android and emulator ABI names
   remain x86_64. Keep triplet, installed prefixes and cache inputs aligned.
   Both Android overlay triplets include their pinned upstream first and set

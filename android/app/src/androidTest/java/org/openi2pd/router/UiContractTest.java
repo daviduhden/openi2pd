@@ -18,6 +18,9 @@ import static org.junit.Assert.assertTrue;
 
 import android.content.Context;
 import android.content.res.Configuration;
+import android.content.res.TypedArray;
+import android.graphics.drawable.ColorDrawable;
+import android.graphics.drawable.Drawable;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.widget.TextView;
@@ -112,6 +115,39 @@ public final class UiContractTest {
         View compact = inflate(R.layout.activity_main);
         assertNotNull(compact.findViewById(R.id.nav_bottom));
         assertNull(compact.findViewById(R.id.nav_rail));
+    }
+
+    @Test
+    public void windowOwnsSurfaceWithoutDuplicateRootBackgrounds() {
+        for (int mode : new int[] {
+                Configuration.UI_MODE_NIGHT_NO, Configuration.UI_MODE_NIGHT_YES}) {
+            Context context = resolution(mode);
+            TypedArray attributes = context.obtainStyledAttributes(
+                    new int[] {android.R.attr.windowBackground});
+            try {
+                Drawable background = attributes.getDrawable(0);
+                assertTrue(background instanceof ColorDrawable);
+                assertEquals(MaterialColors.getColor(context,
+                                com.google.android.material.R.attr.colorSurface, 0),
+                        ((ColorDrawable) background).getColor());
+            } finally {
+                attributes.recycle();
+            }
+
+            // Resolve both layout variants independently of the device.
+            for (int width : new int[] {400, 800}) {
+                Configuration configuration = new Configuration(
+                        context.getResources().getConfiguration());
+                configuration.screenWidthDp = width;
+                configuration.smallestScreenWidthDp = width;
+                Context sized = new android.view.ContextThemeWrapper(
+                        context.createConfigurationContext(configuration),
+                        R.style.Theme_OpenI2Pd);
+                View root = LayoutInflater.from(sized).inflate(
+                        R.layout.activity_main, null, false);
+                assertNull(root.getBackground());
+            }
+        }
     }
 
     @Test

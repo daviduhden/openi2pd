@@ -50,7 +50,10 @@ Defines native Android application resources.
         <item name="android:statusBarColor">@color/brand_background</item>
         <item name="android:navigationBarColor">@color/brand_background</item>
         <item name="android:windowLightStatusBar">@bool/window_light_status_bar</item>
-        <item name="android:windowBackground">@color/brand_background</item>
+        <!-- The window owns the opaque content surface. Root layouts
+            stay transparent to avoid drawing the same surface twice.
+            The Android 12 splash keeps its separate background role. -->
+        <item name="android:windowBackground">?attr/colorSurface</item>
         <item name="android:windowActionModeOverlay">true</item>
         <item name="android:windowNoTitle">true</item>
         <item name="android:windowDisablePreview">false</item>
