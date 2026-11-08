@@ -190,15 +190,34 @@ void TestResponseParsing ()
 	assert (torrent.GetInterval (9) == MAX_TRACKER_REQUESTS_INTERVAL);
 	assert (ScheduledWait (torrent, 9) <= 60 * 1000);
 
-	// The datagram tracker response (BEP 15, seconds) obeys the same
-	// floor.
-	std::vector<uint8_t> hashes (infoHash.size (), 0);
+	// Compact peers carry 32-byte I2P destination hashes, not the
+	// torrent's 20-byte info hash. A valid zero destination is skipped
+	// while the datagram interval still uses the HTTP scheduling floor.
+	i2p::data::IdentHash hashes { };
 	torrent.HandleDatagramTrackerResponse (10, 30, hashes.data (), hashes.size (), 1, 2);
+	assert (torrent.GetTrackerError (10).empty ());
 	assert (torrent.GetInterval (10) == 900 * 1000);
 	assert (torrent.GetNumPeers (10) == 0); // zero destinations are skipped
 	assert (torrent.GetNumSeeders (10) == 1 && torrent.GetNumLeechers (10) == 2);
+
+	// Reusing an info hash as a peer record is malformed. Its advertised
+	// interval and counters cannot replace the previous valid schedule.
+	torrent.HandleDatagramTrackerResponse (10, 7200, infoHash.data (), infoHash.size (), 99, 99);
+	assert (torrent.GetTrackerError (10) == "malformed response");
+	assert (torrent.GetInterval (10) == 900 * 1000);
+	assert (torrent.GetNumPeers (10) == 0);
+	assert (torrent.GetNumSeeders (10) == 1 && torrent.GetNumLeechers (10) == 2);
+	assert (ScheduledWait (torrent, 10) <= 60 * 1000);
+
+	// A later complete record recovers without retaining the error or
+	// the short failure ladder.
+	torrent.HandleDatagramTrackerResponse (10, 3600, hashes.data (), hashes.size (), 3, 4);
+	assert (torrent.GetTrackerError (10).empty ());
+	assert (torrent.GetInterval (10) == 3600 * 1000);
+	assert (torrent.GetNumSeeders (10) == 3 && torrent.GetNumLeechers (10) == 4);
 	torrent.HandleDatagramTrackerResponse (
 		11, std::numeric_limits<uint32_t>::max (), hashes.data (), hashes.size (), 0, 0);
+	assert (torrent.GetTrackerError (11).empty ());
 	assert (torrent.GetInterval (11) == MAX_TRACKER_REQUESTS_INTERVAL);
 }
 

@@ -116,6 +116,12 @@ Do not let them edit, build or run tests.
 
 ## Known issues and decisions
 
+- Compact tracker peers carry 32-byte I2P destination hashes, while torrent
+  info hashes are 20 bytes. Scheduling fixtures must use IdentHash for valid
+  peers; preserve explicit wrong-width rejection, unchanged counters and
+  subsequent valid recovery. A size derived from infoHash cannot establish
+  a valid compact-peer record even when every byte is zero.
+
 - Tracker scheduling tests must distinguish a valid out-of-range integer
   from a wrong bencode type. The former is clamped; the latter preserves
   previous tracker state and enters the failure ladder. Audit sibling tests
