@@ -15,6 +15,7 @@
 #include <cassert>
 #include <cstdint>
 #include <memory>
+#include <functional>
 #include <mutex>
 #include <vector>
 
@@ -28,16 +29,32 @@ namespace tunnel
 {
 	struct TunnelPoolTestAccess
 	{
-		static void InsertTest (TunnelPool & pool, uint32_t msgID, std::shared_ptr<OutboundTunnel> outbound,
+		struct AttemptCallbacks
+		{
+			std::function<void ()> drop;
+			std::function<bool ()> retire;
+		};
+
+		static AttemptCallbacks InsertTest (TunnelPool & pool, uint32_t msgID, std::shared_ptr<OutboundTunnel> outbound,
 			std::shared_ptr<InboundTunnel> inbound, uint64_t expiration)
 		{
 			TunnelPool::TunnelTest test;
+			test.authority = std::make_shared<const TunnelPool::TunnelTestAuthority> ();
 			test.outbound = std::move (outbound);
 			test.inbound = std::move (inbound);
 			test.sentTime = i2p::util::GetMillisecondsSinceEpoch ();
 			test.expiration = expiration;
-			std::lock_guard<std::mutex> l (pool.m_TestsMutex);
-			pool.m_Tests[msgID] = test;
+			{
+				std::lock_guard<std::mutex> l (pool.m_TestsMutex);
+				assert (pool.m_Tests.emplace (msgID, test).second);
+			}
+			auto owner = pool.shared_from_this ();
+			return {
+				[owner, msgID, authority = test.authority]
+					{ owner->HandleTunnelTestDrop (msgID, authority); },
+				[owner, msgID, authority = test.authority]
+					{ return owner->RetireTunnelTest (msgID, authority).has_value (); }
+			};
 		}
 
 		static size_t NumTests (const TunnelPool & pool)
@@ -208,6 +225,33 @@ void TestRecentInboundTrafficSkipsTesting ()
 	assert (!ShouldSkipTunnelTest (now, 0));
 	assert (!ShouldSkipTunnelTest (now, now - 60 * 1000));
 }
+
+void TestStaleDropCannotRetireReplacement ()
+{
+	auto pool = std::make_shared<TunnelPool> (1, 1, 1, 1, 0, 0, false);
+	auto pair = MakeEstablishedPair ();
+	TunnelPoolTestAccess::AddOutbound (*pool, pair.outbound);
+	TunnelPoolTestAccess::AddInbound (*pool, pair.inbound);
+	const uint64_t deadline = i2p::util::GetMillisecondsSinceEpoch () + 60000;
+	auto old = TunnelPoolTestAccess::InsertTest (*pool, 77, pair.outbound, pair.inbound, deadline);
+	assert (old.retire ());
+	// Reuse the same wire ID, tunnel pair and deadline. Only local attempt
+	// identity distinguishes the replacement from retained old callbacks.
+	auto replacement = TunnelPoolTestAccess::InsertTest (*pool, 77, pair.outbound, pair.inbound, deadline);
+	old.drop ();
+	assert (!old.retire ());
+	assert (TunnelPoolTestAccess::NumTests (*pool) == 1);
+	assert (pair.outbound->GetState () == eTunnelStateEstablished);
+	assert (TunnelPoolTestAccess::OutboundSize (*pool) == 1);
+	replacement.drop ();
+	assert (TunnelPoolTestAccess::NumTests (*pool) == 0);
+	assert (pair.outbound->GetState () == eTunnelStateFailed);
+	assert (TunnelPoolTestAccess::OutboundSize (*pool) == 0);
+	// Repeated completion is inert after the matching attempt retired.
+	replacement.drop ();
+	assert (!replacement.retire ());
+	tunnels.DeleteTunnelPool (pool);
+}
 }
 
 int main ()
@@ -217,5 +261,6 @@ int main ()
 	TestSuccessfulTestResetsStrikes ();
 	TestTestFailedTunnelsAreNotPublished ();
 	TestRecentInboundTrafficSkipsTesting ();
+	TestStaleDropCannotRetireReplacement ();
 	return 0;
 }

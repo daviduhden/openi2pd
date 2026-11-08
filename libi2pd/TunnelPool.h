@@ -25,6 +25,7 @@
 #include <random>
 #include <functional>
 #include <map>
+#include <optional>
 #include "Identity.h"
 #include "IdentMetrics.h"
 #include "LeaseSet.h"
@@ -308,9 +309,13 @@ namespace tunnel
 		bool StandardSelectPeers (Path & path, int numHops, bool inbound, SelectHopFunc nextHop);
 
 	private:
+		// A local attempt identity survives in callbacks independently of a
+		// reusable wire message ID. It carries no secret or protocol data.
+		struct TunnelTestAuthority { };
 		/** One outstanding tunnel test message. */
 		struct TunnelTest
 		{
+			std::shared_ptr<const TunnelTestAuthority> authority;
 			std::shared_ptr<OutboundTunnel> outbound;
 			std::shared_ptr<InboundTunnel> inbound;
 			uint64_t sentTime = 0; // milliseconds since epoch
@@ -318,6 +323,12 @@ namespace tunnel
 		};
 
 	private:
+		// Detach only the matching attempt. Returned tunnel owners are
+		// destroyed after the correlation mutex has been released.
+		std::optional<TunnelTest> RetireTunnelTest (uint32_t msgID,
+			const std::shared_ptr<const TunnelTestAuthority> & authority);
+		void HandleTunnelTestDrop (uint32_t msgID,
+			const std::shared_ptr<const TunnelTestAuthority> & authority);
 		void TestTunnels (uint64_t ts);
 		void CreateTunnels (uint64_t ts);
 		void CreateInboundTunnel (uint64_t ts);

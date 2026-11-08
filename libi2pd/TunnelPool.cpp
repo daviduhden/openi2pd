@@ -743,6 +743,7 @@ namespace tunnel
 			// registering either the reply key or the test's failure callback.
 			destination->SubmitECIESx25519Key (key, tag);
 			TunnelTest test;
+			test.authority = std::make_shared<const TunnelTestAuthority> ();
 			test.outbound = it.first;
 			test.inbound = it.second;
 			test.sentTime = nowMs;
@@ -751,33 +752,53 @@ namespace tunnel
 					it.first->GetNumHops () + it.second->GetNumHops (), i2p::transport::transports.GetLocalDelay ());
 			{
 				std::unique_lock<std::mutex> l (m_TestsMutex);
-				m_Tests[msgID] = test;
+				// A random ID collision must not replace another live attempt.
+				if (!m_Tests.emplace (msgID, test).second) continue;
 			}
 			bool submitted = false;
 			auto retireUnsentTest = i2p::modern::ScopeExit ([&]
 				{
 					if (submitted) return;
-					std::unique_lock<std::mutex> l (m_TestsMutex);
-					m_Tests.erase (msgID);
+					(void)RetireTunnelTest (msgID, test.authority);
 				});
-			auto outbound = it.first;
 			auto s = shared_from_this ();
-			msg->onDrop = [msgID, outbound, s] ()
+			msg->onDrop = [msgID, authority = test.authority, s] ()
 			{
-				// if test msg dropped locally it's outbound tunnel to blame
-				outbound->SetState (eTunnelStateFailed);
-				{
-					std::unique_lock<std::mutex> l (s->m_TestsMutex);
-					s->m_Tests.erase (msgID);
-				}
-				{
-					std::unique_lock<std::mutex> l (s->m_OutboundTunnelsMutex);
-					s->m_OutboundTunnels.erase (outbound);
-				}
+				s->HandleTunnelTestDrop (msgID, authority);
 			};
 			// send
-			outbound->SendTunnelDataMsgTo (it.second->GetNextIdentHash (), it.second->GetNextTunnelID (), msg);
+			it.first->SendTunnelDataMsgTo (it.second->GetNextIdentHash (), it.second->GetNextTunnelID (), msg);
 			submitted = true;
+		}
+	}
+
+	std::optional<TunnelPool::TunnelTest> TunnelPool::RetireTunnelTest (uint32_t msgID,
+		const std::shared_ptr<const TunnelTestAuthority> & authority)
+	{
+		std::optional<TunnelTest> retired;
+		{
+			std::unique_lock<std::mutex> l (m_TestsMutex);
+			auto entry = m_Tests.find (msgID);
+			if (authority && entry != m_Tests.end () && entry->second.authority == authority)
+			{
+				retired.emplace (std::move (entry->second));
+				m_Tests.erase (entry);
+			}
+		}
+		return retired;
+	}
+
+	void TunnelPool::HandleTunnelTestDrop (uint32_t msgID,
+		const std::shared_ptr<const TunnelTestAuthority> & authority)
+	{
+		auto retired = RetireTunnelTest (msgID, authority);
+		// A reply, detach or replacement revokes the old drop callback's
+		// authority to remove or penalize any tunnel, even the same pair.
+		if (!retired || !retired->outbound) return;
+		retired->outbound->SetState (eTunnelStateFailed);
+		{
+			std::unique_lock<std::mutex> l (m_OutboundTunnelsMutex);
+			m_OutboundTunnels.erase (retired->outbound);
 		}
 	}
 

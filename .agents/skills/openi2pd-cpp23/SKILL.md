@@ -117,6 +117,15 @@ compile, run tests or run project scripts.
 
 ## Known issues and decisions
 
+- Tunnel test correlation uses a shared, local attempt identity in addition
+  to the reusable wire ID. A retained drop callback and unsent rollback
+  retire only that identity; after reply, detach or replacement they must
+  neither erase the new entry nor penalize its tunnel. Reject live-ID
+  collisions instead of overwriting the table. Move retained tunnel owners
+  out under the correlation mutex, then run final destructors outside it.
+  The timing regression reuses the same ID, pair and deadline explicitly;
+  matching only those fields does not distinguish two local attempts.
+
 - Callback ownership migrations can add several weak captures in one
   method. Reuse one weak handle within a lexical scope for drop, timer and
   posted continuations; a second declaration with the same name prevents
