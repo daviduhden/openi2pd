@@ -115,12 +115,18 @@ a TUI client.
 - `scripts/validate-agent-knowledge.pl` and
   `tests/agent_knowledge_validator/test_validator.t` implement the shared
   validator contract with core Perl dependencies. Local mode inspects staged/unstaged plus
-  untracked paths; PR mode accepts explicit `--base`/`--head` commit SHAs. Its
+  untracked paths; range mode accepts explicit `--base`/`--head` SHAs. Its
   substantive-text heuristic and link/section checks are structural only; a
   reviewer must still assess whether the update records useful knowledge.
   Never let it execute repository code.
 
 ## Known issues and decisions
+
+- A standalone Test::More contract under tests/*.t needs both independent
+  source discovery in perl-portability.t and the explicit syntax/Critic
+  inventories. Updating only CMake creates a cross-platform inventory
+  failure even when the new contract itself passes. Review both directions
+  of discovery rather than weakening equality to a subset comparison.
 
 - Review extended-regex changes by operand, preserving replacement spaces
   separately from pattern layout. Javadoc inline tags may contain spaces,

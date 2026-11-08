@@ -15,6 +15,7 @@ execution boundary is owned by [AGENTS.md](../../../../AGENTS.md).
 |---|---|---|
 | `scripts/validate-agent-knowledge.pl`, `scripts/lib/` | Shared AK001-AK006/AKX001 worktree/range/configuration/report contract | Core Perl and argument-list Git; reads only |
 | `tests/agent_knowledge_validator/test_validator.t` | Black-box validator contract with private Git fixtures | Test::More/core modules; fixture copies entry point and module tree |
+| `tests/android-javadoc-regex.t` | Extended-regex Javadoc parsing contract | Test::More/core modules; independent top-level test discovery |
 | `tools/scripts/i2pdctl` | I2PControl JSON-RPC client (`exec`, `raw_info`, `info`); HTTPS-only loopback default, no TUI path | Perl core modules; `IO::Socket::SSL` or documented `openssl s_client` fallback |
 | `tools/scripts/validate-branding.pl` | Branding/palette/vector/mirror checks | Perl core modules; reads assets only |
 | `tools/scripts/check-doc-links.pl` | Documentation link, anchor and target checks | Perl core modules; repository-contained paths only |

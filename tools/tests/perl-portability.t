@@ -117,6 +117,7 @@ my @scripts = (
     'scripts/validate-agent-knowledge.pl',
     'tests/agent_knowledge_validator/test_validator.t',
     'tests/agent_knowledge_validator/fixtures/execution-marker.pl',
+    'tests/android-javadoc-regex.t',
     'tools/scripts/i2pdctl',
     'tools/scripts/check-doc-links.pl',
     'tools/scripts/check-doc-nav.pl',
@@ -153,6 +154,10 @@ my @discovered = map { repo_relative($_) }
     glob( File::Spec->catfile( $root, 'android', 'tools',   '*.pl' ) ),
     glob( File::Spec->catfile( $root, 'i18n',    '*.pl' ) )
   );
+# Standalone contracts live directly under tests as well as subsystem
+# directories. Discover this class independently of its CMake inventory.
+push @discovered, map { repo_relative($_) }
+  grep { -f $_ } glob( File::Spec->catfile( $root, 'tests', '*.t' ) );
 push @discovered, map { repo_relative($_) }
   grep { -f $_ } (
     glob( File::Spec->catfile( $root, 'scripts', '*.pl' ) ),
@@ -433,7 +438,8 @@ shebang exists outside the generated and dependency trees;
 
 the maintained script inventory equals the scripts discovered under
 F<tools/scripts/>, F<tools/tests/>, F<tests/interop/>, F<android/tools/> and
-F<i18n/>, F<scripts/> and F<tests/agent_knowledge_validator/>. Validator
+F<i18n/>, F<scripts/>, top-level F<tests/*.t> and
+F<tests/agent_knowledge_validator/>. Validator
 modules under F<scripts/lib/> are discovered recursively and checked for
 core dependencies and safe source patterns without a program shebang.
 Adding, renaming or removing a script therefore requires updating
