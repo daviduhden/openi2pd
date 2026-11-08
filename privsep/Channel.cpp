@@ -427,6 +427,12 @@ i2p::expected<std::optional<ReceivedMessage>, std::string> Channel::ReceiveWithF
 	const bool infinite = IsInfiniteTimeout (timeoutMs);
 	const auto deadline = MakeDeadline (timeoutMs);
 
+	// A protocol refusal is part of this receive, not a fresh operation.
+	// Keep the historical refusal cap for infinite receives; finite calls
+	// share their remaining budget, including nonblocking timeout zero.
+	const auto refusalTimeout = [&]
+		{ return infinite ? 250 : std::min (250, PollTimeout (false, deadline)); };
+
 	// Deliberately one buffer slot larger than a maximum frame so a
 	// truncated SOCK_SEQPACKET record can never look like a valid frame.
 	// The capacity is fixed for the whole call: every record of this loop
@@ -654,7 +660,7 @@ i2p::expected<std::optional<ReceivedMessage>, std::string> Channel::ReceiveWithF
 				{
 					const Message offending { static_cast<MessageType> (inspection.rawType), inspection.requestId,
 						{ } };
-					if (RejectFrame (offending, message.error ().code, message.error ().text, 250)) continue;
+					if (RejectFrame (offending, message.error ().code, message.error ().text, refusalTimeout ())) continue;
 				}
 			}
 			return i2p::unexpected (std::string ("protocol: ") + std::string (message.error ().text));
@@ -669,7 +675,7 @@ i2p::expected<std::optional<ReceivedMessage>, std::string> Channel::ReceiveWithF
 					::close (receivedFd);
 					receivedFd = -1;
 				}
-				if (!RejectFrame (*message, ErrorCode::BadField, descriptorFault, 250))
+				if (!RejectFrame (*message, ErrorCode::BadField, descriptorFault, refusalTimeout ()))
 					return i2p::unexpected ("protocol: " + descriptorFault);
 				continue;
 			}

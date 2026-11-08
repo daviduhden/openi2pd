@@ -173,6 +173,8 @@ public:
 	 * The receive is bounded by @a timeoutMs. A ready record can still be
 	 * taken by another reader between poll() and recvmsg(); the resulting
 	 * EAGAIN is retried until the absolute deadline rather than blocking.
+	 * Recoverable refusal writes share that same remaining budget; they
+	 * cannot extend a finite receive deadline with a new send timeout.
 	 * A negative timeout keeps the historical infinite-wait meaning. A
 	 * timeout returns an empty optional; transport, credential and
 	 * protocol failures return an error.

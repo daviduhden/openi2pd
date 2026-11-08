@@ -826,6 +826,75 @@ void TestReceiveDeadline ()
 	assert (zeroElapsed < std::chrono::seconds (1));
 }
 
+void TestRefusalSharesReceiveDeadline ()
+{
+	for (const int budget : { 0, 25 })
+	{
+		for (bool descriptorFault : { false, true })
+		{
+			auto pair = Channel::CreatePair ();
+			assert (pair.has_value ());
+			auto & sender = pair->first;
+			auto & receiver = pair->second;
+			receiver.SetEnforcementPolicy (EnforcementPolicy::Endpoint);
+			int sendBuffer = 4096;
+			assert (setsockopt (receiver.Fd (), SOL_SOCKET, SO_SNDBUF, &sendBuffer, sizeof (sendBuffer)) == 0);
+
+			// Saturate the reply direction with the smallest valid records.
+			// A refused large write alone would not prove a small Error cannot
+			// still fit in the remaining socket-buffer space.
+			int queued = 0;
+			for (; queued < 1000; ++queued)
+			{
+				auto frame = Encode (Message { MessageType::Ping, static_cast<uint32_t> (queued), { } });
+				assert (frame.has_value ());
+				const auto sent = ::send (receiver.Fd (), frame->data (), frame->size (), MSG_DONTWAIT | MSG_NOSIGNAL);
+				if (sent < 0)
+				{
+					assert (errno == EAGAIN || errno == EWOULDBLOCK);
+					break;
+				}
+				assert (sent == static_cast<ssize_t> (frame->size ()));
+			}
+			assert (queued > 0 && queued < 1000);
+
+			const int before = CountOpenFds ();
+			if (descriptorFault)
+			{
+				const int fd = OpenDescriptor ("/dev/null", O_RDONLY);
+				auto frame = Encode (Message { MessageType::Ping, 1001, { } });
+				assert (frame.has_value ());
+				assert (SendRawWithFds (sender.Fd (), *frame, &fd, 1));
+				::close (fd);
+			}
+			else
+			{
+				auto frame = BuildHeader (static_cast<uint16_t> (MessageType::Ping), 1001, 1);
+				frame += 'x';
+				assert (SendRaw (sender.Fd (), frame));
+			}
+			const auto started = std::chrono::steady_clock::now ();
+			auto rejected = receiver.ReceiveWithFd (budget);
+			const auto elapsed = std::chrono::steady_clock::now () - started;
+			assert (!rejected.has_value ());
+			assert (elapsed < std::chrono::seconds (2));
+			if (before >= 0) assert (CountOpenFds () == before);
+			// Source contracts pin the exact nested timeout calculation;
+			// this runtime bound permits runner scheduling and instrumentation.
+			for (int index = 0; index < queued; ++index)
+			{
+				auto received = sender.Receive (100);
+				assert (received.has_value () && received->has_value ());
+				assert ((*received)->type == MessageType::Ping);
+				assert ((*received)->requestId == static_cast<uint32_t> (index));
+			}
+			pollfd pending { sender.Fd (), POLLIN, 0 };
+			assert (::poll (&pending, 1, 0) == 0);
+			ExpectReusable (sender, receiver, 1002);
+		}
+	}
+}
+
 void TestSendQueueSaturation ()
 {
 	// Simulate a wedged peer without any network: shrink the sender's
@@ -903,6 +972,7 @@ int main ()
 	TestAuthenticateBeforeRefusal ();
 	TestSendDeadlineAfterDrain ();
 	TestReceiveDeadline ();
+	TestRefusalSharesReceiveDeadline ();
 	TestSendQueueSaturation ();
 	return 0;
 }

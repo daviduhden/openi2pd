@@ -100,6 +100,12 @@ execution. Ask for:
   datadir ACL as the Windows equivalent.
 
 ## Known issues and decisions
+- Endpoint refusal writes share the enclosing receive's remaining deadline.
+  Keep the separate 250 ms refusal cap only when it is smaller, including
+  infinite receives; a timeout-zero receive must not wait on a full reply
+  queue. Cover both malformed framing and forbidden descriptors with a
+  saturated reverse direction, and use source contracts for exact budget
+  arithmetic rather than fragile scheduler-tight elapsed assertions.
 - Authenticate nonempty seqpacket records before Decode and endpoint
   refusals. An attributable malformed frame is not yet an identified peer;
   sending Error or charging the violation budget before SCM_CREDENTIALS

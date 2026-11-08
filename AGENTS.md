@@ -192,6 +192,9 @@ proposed tracking updates to the coordinator.
 - Network and local-control services must bound concurrent connections,
   queued state and authentication artifacts. Handshakes, headers, bodies and
   writes require cancellable deadlines; never perform a blocking read on an event-loop thread.
+- Authenticate IPC records before generating refusal replies or consuming
+  peer violation budgets. Nested refusal writes share the receive operation's
+  absolute deadline; rejecting a frame must not create a fresh wait budget.
 - Security-sensitive files must be created or replaced through one validated,
   no-follow/atomic operation with private permissions. Never chmod a pathname and reopen it for secret output.
 - Do not change I2P wire formats or persisted formats without a specification
