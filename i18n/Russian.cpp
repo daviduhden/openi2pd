@@ -25,8 +25,11 @@ namespace i18n
 
 		static int plural (int n)
 		{
-			const int mod10 = n % 10;
-			const int mod100 = n % 100;
+			// Plural categories ignore sign. Unsigned magnitude also handles
+			// INT_MIN without overflowing a signed negation or abs().
+			const auto magnitude = n < 0 ? 0u - static_cast<unsigned int> (n) : static_cast<unsigned int> (n);
+			const auto mod10 = magnitude % 10;
+			const auto mod100 = magnitude % 100;
 			if (mod10 == 1 && mod100 != 11) return 0;
 			if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return 1;
 			return 2;

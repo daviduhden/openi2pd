@@ -111,6 +111,10 @@ build.
 
 ## Known issues and decisions
 
+- libi2pdlang publishes Threads::Threads for its atomic selection and
+  once-only numeric initialization. Keep the dependency on the standalone
+  catalog target; incidental router/tool linkage is not an export contract.
+
 - Release tests and fuzzers must evaluate assert operands. The shared
   TestAssertions.cmake helper retains -UNDEBUG for GNU-style drivers and
   force-includes tests/TestAssertions.h for MSVC, before any source header.

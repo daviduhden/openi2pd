@@ -101,6 +101,13 @@ the text crosses a protocol/IPC boundary.
 
 ## Known issues and decisions
 
+- Locale readers retain an immutable locale/tag snapshot through lookup.
+  GetLanguageTag resolves the environment on first use too. Strip POSIX
+  codesets, match Chinese script subtags exactly and reject conflicting or
+  unsupported scripts; explicit Hans takes precedence over its region.
+  Initialize numeric locale before concurrent formatting; live language
+  switches must not reset process LC_CTYPE or LC_NUMERIC.
+
 - Catalog checker fixtures use raw output on every host. Native Win32
   text mode inserts CRLF into LF samples and can make escape-decoding
   regressions fail for unrelated newline policy. Keep an explicit CRLF

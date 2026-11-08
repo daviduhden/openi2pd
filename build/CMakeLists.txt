@@ -966,6 +966,7 @@ target_include_directories(libi2pdlang
     ${LIBI2PD_DIR}
 )
 target_compile_features(libi2pdlang PUBLIC cxx_std_23)
+target_link_libraries(libi2pdlang PUBLIC Threads::Threads)
 target_link_libraries(libi2pdlang PRIVATE $<BUILD_INTERFACE:i2pd_warnings>)
 i2pd_enable_sanitizers(libi2pdlang)
 # The language registry is process-local and intentionally independent

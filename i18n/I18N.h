@@ -61,13 +61,13 @@ namespace i18n
 			const auto it = m_Plurals.find (arg2);
 			if (it == m_Plurals.end ()) // not found, fallback to english
 			{
-				return n == 1 ? arg : arg2;
+				return n == 1 || n == -1 ? arg : arg2;
 			}
 			else
 			{
 				int form = m_Formula (n);
 				if (form < 0 || static_cast<std::size_t> (form) >= it->second.size ()) form = 0;
-				return it->second.empty () ? (n == 1 ? arg : arg2) : it->second[form];
+				return it->second.empty () ? (n == 1 || n == -1 ? arg : arg2) : it->second[form];
 			}
 		}
 
@@ -83,11 +83,22 @@ namespace i18n
 	 * Select the active UI language. Accepts BCP-47/locale tags such as
 	 * `en`, `es`, `ru`, `zh-Hans`, `zh_CN` and `es_ES`; an empty tag
 	 * consults LC_ALL/LC_MESSAGES/LANG. Unknown or unsupported languages
-	 * fall back to English, and LC_NUMERIC is pinned to C after selection.
+	 * fall back to English.
+	 *
+	 * POSIX encoding suffixes are ignored. Chinese script subtags are
+	 * matched exactly; unsupported Traditional Chinese uses English.
+	 *
+	 * Concurrent readers retain an immutable selection for each lookup.
+	 * LC_NUMERIC is pinned to C during initialization.
+	 * Initialize before other threads use the process C numeric locale;
+	 * later switches do not mutate that process-global locale again.
 	 */
 	void SetLanguage (const std::string & tag);
-	/** Active normalized tag (`en`, `es`, `ru` or `zh-Hans`). */
+	/** Active normalized tag; first use also resolves the environment. */
 	std::string GetLanguageTag ();
+	/// Return a static catalog view, or borrow arg unchanged on fallback.
+	///
+	/// Unknown input must outlive the view; no user text is copied.
 	std::string_view translate (std::string_view arg);
 	std::string translate (const std::string & arg, const std::string & arg2, int n);
 
@@ -112,19 +123,19 @@ namespace i18n
 	} // detail
 
 	/**
- * @brief Get translation of string
- * @param arg String with message
- */
+	 * @brief Get translation of string
+	 * @param arg String with message
+	 */
 	template <typename TValue> std::string_view tr (TValue && arg)
 	{
 		return i2p::i18n::translate (std::forward<TValue> (arg));
 	}
 
 	/**
- * @brief Get translation of string and format it
- * @param arg String with message
- * @param args Array of arguments for string formatting
-*/
+	 * @brief Get translation of string and format it
+	 * @param arg String with message
+	 * @param args Array of arguments for string formatting
+	 */
 	template <typename TValue, typename... TArgs> std::string tr (TValue && arg, TArgs &&... args)
 	{
 		return i2p::i18n::detail::FormatPrintf (
@@ -132,23 +143,23 @@ namespace i18n
 	}
 
 	/**
- * @brief Get translation of string with plural forms
- * @param arg String with message in singular form
- * @param arg2 String with message in plural form
- * @param n Integer, used for selection of form
- */
+	 * @brief Get translation of string with plural forms
+	 * @param arg String with message in singular form
+	 * @param arg2 String with message in plural form
+	 * @param n Integer, used for selection of form
+	 */
 	template <typename TValue, typename TValue2> std::string ntr (TValue && arg, TValue2 && arg2, int n)
 	{
 		return i2p::i18n::translate (std::forward<TValue> (arg), std::forward<TValue2> (arg2), std::forward<int> (n));
 	}
 
 	/**
- * @brief Get translation of string with plural forms and format it
- * @param arg String with message in singular form
- * @param arg2 String with message in plural form
- * @param n Integer, used for selection of form
- * @param args Array of arguments for string formatting
- */
+	 * @brief Get translation of string with plural forms and format it
+	 * @param arg String with message in singular form
+	 * @param arg2 String with message in plural form
+	 * @param n Integer, used for selection of form
+	 * @param args Array of arguments for string formatting
+	 */
 	template <typename TValue, typename TValue2, typename... TArgs>
 	std::string ntr (TValue && arg, TValue2 && arg2, int n, TArgs &&... args)
 	{
@@ -160,8 +171,8 @@ namespace i18n
 } // i2p
 
 // Preserve the historical unqualified helpers while exposing the
-// namespace used by standalone UI consumers. These are the same
-// overload sets.
+// namespace used by standalone UI consumers. Both names expose the same
+// overloads.
 using i2p::i18n::ntr;
 using i2p::i18n::tr;
 

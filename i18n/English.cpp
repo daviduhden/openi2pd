@@ -4,9 +4,8 @@
  *
  * openi2pd: English.
  *
- * Defines the built-in English locale, which returns source strings
- * unchanged and supplies fallback plural forms keyed by singular and
- * plural text.
+ * Defines the built-in English locale, returning source strings
+ * unchanged. Plural fallback uses singular and plural text as keys.
  */
 
 #include <map>
@@ -15,8 +14,8 @@
 #include <memory>
 #include "I18N.h"
 
-// English localization file
-// This is an example translation file without strings in it.
+// English text is the canonical lookup key and fallback source catalog.
+// There is no need to duplicate every UI literal in a separate table.
 
 namespace i2p
 {
@@ -31,7 +30,7 @@ namespace i18n
 		// Reference: Localization guide, plural forms and categories.
 		static int plural (int n)
 		{
-			return n != 1 ? 1 : 0;
+			return n != 1 && n != -1 ? 1 : 0;
 		}
 
 		// Right to Left language?

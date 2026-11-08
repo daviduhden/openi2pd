@@ -36,6 +36,7 @@ are not proven by the build probes or the manual CI matrix remain unavailable.
 | `std::optional`/`variant`/`any` | available | optional state and closed alternatives |
 | `std::expected` | language feature available; library missing on some OpenBSD libc++ | use the portable `i2p::expected` shim |
 | `span`/`string_view` | available | explicit extents and non-owning text |
+| `atomic<shared_ptr<T>>` | C++20 facility; continuation pending manual CI | immutable locale/tag snapshots retain plural-table lifetime during language switches |
 | ranges/views, generic lambdas, `<=>` | available with libc++/libstdc++ support | local algorithms and comparisons |
 | `chrono`, `jthread`, stop tokens | available; used by the TUI server and X25519 supplier | `Transports` still keeps its legacy join path; do not describe it as jthread-owned |
 | `std::format`/`std::print` | not assumed on the OpenBSD floor | `snprintf`/existing formatting stays |

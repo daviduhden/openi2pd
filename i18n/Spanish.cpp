@@ -26,7 +26,7 @@ namespace i18n
 
 		static int plural (int n)
 		{
-			return n != 1 ? 1 : 0;
+			return n != 1 && n != -1 ? 1 : 0;
 		}
 
 		static bool rtl = false;
