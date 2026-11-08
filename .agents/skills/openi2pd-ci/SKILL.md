@@ -148,9 +148,10 @@ workflow, run `gh`, build or test.
   policy, C++23/Java 25 levels, availability matrix and seam inventory) and
   `i18n-static` (native/Android catalog wiring) in the compile-free
   `ci;docs;static` gate; do not execute a skill or compile to validate them.
-- The manual maintenance checker compares an explicit base/head range and rejects
-  repository changes without a substantive instruction update. It validates
-  structure and local paths, not semantic relevance; the final review must
+- The manual maintenance workflow checks the checked-out worktree. Review
+  publication changes separately with the validator's explicit base/head
+  range mode to enforce substantive instruction updates across commits. The
+  validator checks structure and local paths, not semantic relevance; review must
   record the reason the knowledge update is reusable.
 - Before publishing a composite-action extraction, parse its YAML as well as
   running source guards. Review the complete action boundary: substring

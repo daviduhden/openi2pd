@@ -230,3 +230,75 @@ require_runtime_source("tests/test-torrents-verify-parity.cpp" "TestExtendedHand
 require_runtime_source("tests/test-torrents-verify-parity.cpp" "TestTrackerKnownFieldTypes ()")
 require_runtime_source("tests/test-torrents-security.cpp"
   "entry.as_object ().at (\"error\").as_int64 () == (populated ? 3 : 0)")
+
+# Source order guards supplement the behavioral regressions in manual CI.
+function(require_runtime_order path begin end)
+  file(READ "${PROJECT_ROOT}/${path}" source)
+  string(FIND "${source}" "${begin}" first)
+  string(FIND "${source}" "${end}" last)
+  if(first LESS 0 OR last LESS first)
+    message(FATAL_ERROR "Cannot bound ordered runtime contract: ${path}")
+  endif()
+  math(EXPR length "${last} - ${first}")
+  string(SUBSTRING "${source}" ${first} ${length} remaining)
+  foreach(token IN LISTS ARGN)
+    string(FIND "${remaining}" "${token}" position)
+    if(position LESS 0)
+      message(FATAL_ERROR "Runtime ordering broken in ${path}: ${token}")
+    endif()
+    string(LENGTH "${token}" token_length)
+    math(EXPR next "${position} + ${token_length}")
+    string(SUBSTRING "${remaining}" ${next} -1 remaining)
+  endforeach()
+endfunction()
+
+require_runtime_order("privsep/Channel.cpp"
+  "if (received == 0)" "if (++emptyRecords > 8)"
+  "if (receivedFd >= 0)" "peer closed the channel"
+  "missing SCM_CREDENTIALS on an empty record")
+require_runtime_source("tests/test-privsep-linux-ipc.cpp"
+  "afterLast.error ().find (\"closed\")")
+require_runtime_source("tests/test-privsep-linux-ipc.cpp"
+  "unauthenticated.error ().find (\"expected peer\")")
+require_runtime_order("libi2pd/SSU2Session.cpp"
+  "bool SSU2Session::ProcessRetry (" "static bool ValidateHolePunchDateTime"
+  "AEADChaCha20Poly1305 (" "HasDateTimeFirstBlock ("
+  "ValidateSSU2PayloadBlocks (eSSU2SessionStateTokenReceived"
+  "if (versionChanged)"
+  "HandlePayload (payload" "if (m_IsInvalidMessage)"
+  "if (m_ReceivedTermination)" "if (!token)"
+  "m_Server.UpdateOutgoingToken (" "m_SentHandshakePacket.reset ();")
+require_runtime_source("tools/keygen.cpp" "catch (const std::exception &)")
+require_runtime_order("tools/keygen.cpp" "int main (" "const auto & keys"
+  "CreateRandomKeys (type)" "catch (const std::exception &)" "return 2;")
+require_runtime_source("tools/test-tools-regressions.cmake"
+  "foreach(signature RSA-2048-SHA256 RSA-3072-SHA384 RSA-4096-SHA512 4 5 6)")
+require_runtime_source("tests/test-torrents-tracker-schedule.cpp"
+  "torrent.GetTrackerError (6) == \"malformed response\"")
+require_runtime_source("libi2pd_client/Torrents.cpp"
+  "if (!len || hashes.size () % i2p::data::IdentHash::len != 0) return 0;")
+require_runtime_order("libi2pd_client/Torrents.cpp"
+  "void Torrent::HandleDatagramTrackerResponse (" "void Torrent::SetTrackerError ("
+  "if ((!hashes && hashesLen) || hashesLen % i2p::data::IdentHash::len != 0)"
+  "ReportTrackerFailure (trackerID, \"malformed response\")"
+  "CheckTrackerStatsSize (trackerID)" "peers.clear ();")
+require_runtime_source("tests/test-torrents-verify-parity.cpp" "TestCompactTrackerFraming ()")
+require_runtime_order("privsep/Channel.cpp"
+  "Channel::ReceiveWithFd (int timeoutMs)" "Channel::Credentials () const"
+  "SCM_CREDENTIALS do not match the expected peer"
+  "auto message = Decode (record);" "RejectFrame (offending,")
+require_runtime_source("privsep/Channel.cpp"
+  "return infinite ? 250 : std::min (250, PollTimeout (false, deadline));")
+require_runtime_source("privsep/Channel.cpp"
+  "message.error ().text, refusalTimeout ())) continue;")
+require_runtime_source("privsep/Channel.cpp"
+  "descriptorFault, refusalTimeout ()))")
+require_runtime_source("tests/test-privsep-linux-ipc.cpp" "TestAuthenticateBeforeRefusal ()")
+require_runtime_source("tests/test-privsep-linux-ipc.cpp" "TestRefusalSharesReceiveDeadline ()")
+require_runtime_source("libi2pd/TunnelPool.cpp" "entry->second.authority == authority")
+require_runtime_source("libi2pd/TunnelPool.cpp" "m_Tests.emplace (msgID, test).second")
+require_runtime_order("libi2pd/TunnelPool.cpp"
+  "void TunnelPool::HandleTunnelTestDrop (" "void TunnelPool::ManageTunnels ("
+  "RetireTunnelTest (msgID, authority)" "if (!retired || !retired->outbound) return;"
+  "retired->outbound->SetState (eTunnelStateFailed);")
+require_runtime_source("tests/test-tunnelpool-test-timing.cpp" "TestStaleDropCannotRetireReplacement ()")
