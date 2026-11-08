@@ -288,11 +288,28 @@ require_runtime_order("privsep/Channel.cpp"
   "SCM_CREDENTIALS do not match the expected peer"
   "auto message = Decode (record);" "RejectFrame (offending,")
 require_runtime_source("privsep/Channel.cpp"
-  "return infinite ? 250 : std::min (250, PollTimeout (false, deadline));")
+  "return infinite ? capped : std::min (deadline, capped);")
 require_runtime_source("privsep/Channel.cpp"
-  "message.error ().text, refusalTimeout ())) continue;")
+  "message.error ().text, refusalDeadline ())) continue;")
 require_runtime_source("privsep/Channel.cpp"
-  "descriptorFault, refusalTimeout ()))")
+  "descriptorFault, refusalDeadline ()))")
+require_runtime_source("privsep/Channel.cpp"
+  "}, -1, false, deadline)")
+require_runtime_order("privsep/Channel.cpp"
+  "Channel::SendWithFdUntil (" "bool Channel::RejectFrame ("
+  "PollTimeout (infinite, deadline)" "::sendmsg (")
+file(READ "${PROJECT_ROOT}/privsep/Channel.cpp" channel_deadline_source)
+if(channel_deadline_source MATCHES "refusalTimeout")
+  message(FATAL_ERROR "Nested refusal sends must retain absolute deadlines")
+endif()
+string(FIND "${channel_deadline_source}" "Channel::SendWithFdUntil (" absolute_send_begin)
+string(FIND "${channel_deadline_source}" "bool Channel::RejectFrame (" absolute_send_end)
+math(EXPR absolute_send_length "${absolute_send_end} - ${absolute_send_begin}")
+string(SUBSTRING "${channel_deadline_source}" ${absolute_send_begin}
+  ${absolute_send_length} absolute_send_source)
+if(absolute_send_source MATCHES "MakeDeadline|timeoutMs")
+  message(FATAL_ERROR "Absolute channel sends must not rebase their deadline")
+endif()
 require_runtime_source("tests/test-privsep-linux-ipc.cpp" "TestAuthenticateBeforeRefusal ()")
 require_runtime_source("tests/test-privsep-linux-ipc.cpp" "TestRefusalSharesReceiveDeadline ()")
 require_runtime_source("libi2pd/TunnelPool.cpp" "entry->second.authority == authority")

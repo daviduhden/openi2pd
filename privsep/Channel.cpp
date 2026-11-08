@@ -316,6 +316,12 @@ i2p::expected<void, std::string> Channel::Send (const Message & message, int tim
 
 i2p::expected<void, std::string> Channel::SendWithFd (const Message & message, int fd, int timeoutMs)
 {
+	return SendWithFdUntil (message, fd, IsInfiniteTimeout (timeoutMs), MakeDeadline (timeoutMs));
+}
+
+i2p::expected<void, std::string> Channel::SendWithFdUntil (const Message & message, int fd, bool infinite,
+	std::chrono::steady_clock::time_point deadline)
+{
 	if (!IsOpen ()) return i2p::unexpected ("channel is closed");
 	if (fd >= 0 && fcntl (fd, F_GETFD) < 0)
 		return i2p::unexpected (std::string ("invalid descriptor: ") + strerror (errno));
@@ -338,8 +344,6 @@ i2p::expected<void, std::string> Channel::SendWithFd (const Message & message, i
 	// with MSG_DONTWAIT and retry until one absolute deadline, so the
 	// timeout always holds even on BSD-derived sockets that report
 	// readiness conservatively.
-	const bool infinite = IsInfiniteTimeout (timeoutMs);
-	const auto deadline = MakeDeadline (timeoutMs);
 	while (true)
 	{
 		pollfd pfd { m_Fd, POLLOUT, 0 };
@@ -394,13 +398,15 @@ i2p::expected<void, std::string> Channel::SendWithFd (const Message & message, i
 	}
 }
 
-bool Channel::RejectFrame (const Message & frame, ErrorCode code, std::string_view detail, int timeoutMs)
+bool Channel::RejectFrame (const Message & frame, ErrorCode code, std::string_view detail,
+	std::chrono::steady_clock::time_point deadline)
 {
 	// The budget is charged before the send so a peer cannot force an
 	// unbounded error loop by filling the socket in both directions.
 	if (++m_ProtocolViolations > MAX_PROTOCOL_VIOLATIONS) return false;
 	std::string_view bounded = detail.substr (0, MAX_ERROR_DETAIL);
-	return Send ({ MessageType::Error, frame.requestId, EncodeError (frame.type, code, bounded) }, timeoutMs)
+	return SendWithFdUntil (
+		{ MessageType::Error, frame.requestId, EncodeError (frame.type, code, bounded) }, -1, false, deadline)
 		.has_value ();
 }
 
@@ -429,9 +435,14 @@ i2p::expected<std::optional<ReceivedMessage>, std::string> Channel::ReceiveWithF
 
 	// A protocol refusal is part of this receive, not a fresh operation.
 	// Keep the historical refusal cap for infinite receives; finite calls
-	// share their remaining budget, including nonblocking timeout zero.
-	const auto refusalTimeout = [&]
-		{ return infinite ? 250 : std::min (250, PollTimeout (false, deadline)); };
+	// inherit the original deadline, including nonblocking timeout zero.
+	// Keep it absolute through payload preparation and nested sends so
+	// preemption cannot turn remaining time into a fresh relative budget.
+	const auto refusalDeadline = [&]
+	{
+		const auto capped = MakeDeadline (250);
+		return infinite ? capped : std::min (deadline, capped);
+	};
 
 	// Deliberately one buffer slot larger than a maximum frame so a
 	// truncated SOCK_SEQPACKET record can never look like a valid frame.
@@ -660,7 +671,7 @@ i2p::expected<std::optional<ReceivedMessage>, std::string> Channel::ReceiveWithF
 				{
 					const Message offending { static_cast<MessageType> (inspection.rawType), inspection.requestId,
 						{ } };
-					if (RejectFrame (offending, message.error ().code, message.error ().text, refusalTimeout ())) continue;
+					if (RejectFrame (offending, message.error ().code, message.error ().text, refusalDeadline ())) continue;
 				}
 			}
 			return i2p::unexpected (std::string ("protocol: ") + std::string (message.error ().text));
@@ -675,7 +686,7 @@ i2p::expected<std::optional<ReceivedMessage>, std::string> Channel::ReceiveWithF
 					::close (receivedFd);
 					receivedFd = -1;
 				}
-				if (!RejectFrame (*message, ErrorCode::BadField, descriptorFault, refusalTimeout ()))
+				if (!RejectFrame (*message, ErrorCode::BadField, descriptorFault, refusalDeadline ()))
 					return i2p::unexpected ("protocol: " + descriptorFault);
 				continue;
 			}

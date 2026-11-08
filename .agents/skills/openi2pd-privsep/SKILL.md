@@ -105,6 +105,14 @@ report that limitation; do not substitute local execution. Ask for:
 
 ## Known issues and decisions
 
+- POSIX refusal sends inherit a steady-clock time point through the private
+  SendWithFdUntil path. Do not convert remaining time back into a relative
+  public send: preemption can otherwise rebase the original receive budget.
+  Keep the 250ms refusal cap and the earlier finite deadline together. The
+  source contract pins direct absolute propagation; backpressure execution
+  remains a separate runtime regression. Windows hello/shutdown relative
+  handoff sites remain separate follow-ups, not covered by this POSIX fix.
+
 - Ping, Pong and Shutdown have zero-byte payload ceilings in the registry.
   A buffered EOF/authentication fixture must send an empty payload; its
   encoded header still supplies a nonempty transport record. Keep a negative

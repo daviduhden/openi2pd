@@ -882,7 +882,7 @@ void TestRefusalSharesReceiveDeadline ()
 			assert (!rejected.has_value ());
 			assert (elapsed < std::chrono::seconds (2));
 			if (before >= 0) assert (CountOpenFds () == before);
-			// Source contracts pin the exact nested timeout calculation;
+			// Source contracts pin the inherited absolute send deadline;
 			// this runtime bound permits runner scheduling and instrumentation.
 			for (int index = 0; index < queued; ++index)
 			{

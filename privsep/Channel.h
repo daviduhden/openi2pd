@@ -16,6 +16,7 @@
 #define I2PD_PRIVSEP_CHANNEL_H__
 
 #include "Expected.h"
+#include <chrono>
 #include <cstdint>
 #include <optional>
 #include <string>
@@ -207,12 +208,22 @@ public:
 
 private:
 	/**
+	 * Internal send that retains its caller's absolute deadline. Public
+	 * relative timeouts are converted once; nested refusals never rebase
+	 * the receive budget after scheduling or payload preparation.
+	 */
+	i2p::expected<void, std::string> SendWithFdUntil (const Message & message, int fd, bool infinite,
+		std::chrono::steady_clock::time_point deadline);
+	/**
 	 * Reply with a typed Error and account the violation; false means
 	 * "close". `frame.type` must be a type that has a registry row: the
 	 * payload's offending-type field is decoded with the same registry, so
 	 * an unknown value would make the refusal unreadable.
+	 * The caller supplies the capped absolute receive deadline; preparing
+	 * the Error payload cannot grant a new relative timeout.
 	 */
-	bool RejectFrame (const Message & frame, ErrorCode code, std::string_view detail, int timeoutMs);
+	bool RejectFrame (const Message & frame, ErrorCode code, std::string_view detail,
+		std::chrono::steady_clock::time_point deadline);
 
 	int m_Fd = -1;
 	EnforcementPolicy m_EnforcementPolicy = EnforcementPolicy::Transport;
