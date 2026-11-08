@@ -644,6 +644,49 @@ static void TestExtendedHandshakeFieldTypes ()
 	assert (PeerExtendedHandshakeTestAccess::Disabled (disabled));
 }
 
+static void TestCompactTrackerFraming ()
+{
+	for (const size_t length : { size_t { 0 }, size_t { 1 }, size_t { 31 },
+		size_t { 32 }, size_t { 33 }, size_t { 63 }, size_t { 64 } })
+	{
+		auto fixture = MakeVerifiedTorrent ("compact-tracker-framing", false);
+		auto & torrent = *fixture.torrent;
+		std::string hashes (length, '\0');
+		for (size_t offset = 0; offset + 32 <= length; offset += 32)
+			hashes[offset] = static_cast<char> (1 + offset / 32);
+		for (const size_t tracker : { size_t { 0 }, size_t { 1 } })
+			torrent.ParseTrackerResponse (tracker, Dict ({ { "interval", "i1800e" },
+				{ "complete", "i42e" }, { "incomplete", "i43e" },
+				{ "peers", CompactPeers ({ 0x11 }) } }));
+		const auto previous = torrent.GetNonConnectedPeers (0);
+		torrent.ParseTrackerResponse (0, Dict ({ { "interval", "i7200e" },
+			{ "complete", "i7e" }, { "peers", Bytes (hashes) } }));
+		torrent.HandleDatagramTrackerResponse (1, 7200,
+			reinterpret_cast<const uint8_t *> (hashes.data ()), hashes.size (), 7, 8);
+		for (const size_t tracker : { size_t { 0 }, size_t { 1 } })
+		{
+			if (length % i2p::data::IdentHash::len)
+			{
+				assert (torrent.GetTrackerError (tracker) == "malformed response");
+				assert (torrent.GetInterval (tracker) == 1800 * 1000);
+				assert (torrent.GetNumSeeders (tracker) == 42 && torrent.GetNumLeechers (tracker) == 43);
+				assert (torrent.GetNonConnectedPeers (tracker) == previous);
+			}
+			else
+			{
+				assert (torrent.GetTrackerError (tracker).empty ());
+				assert (torrent.GetInterval (tracker) == 7200 * 1000);
+				assert (torrent.GetNumPeers (tracker) == length / i2p::data::IdentHash::len);
+			}
+		}
+		// Reject an invalid public API range before reading or publishing it.
+		torrent.HandleDatagramTrackerResponse (2, 60, nullptr, 32, 1, 2);
+		assert (torrent.GetTrackerError (2) == "malformed response");
+		torrent.HandleDatagramTrackerResponse (2, 60, nullptr, 0, 1, 2);
+		assert (torrent.GetTrackerError (2).empty () && torrent.GetNumPeers (2) == 0);
+	}
+}
+
 static void TestTrackerKnownFieldTypes ()
 {
 	for (const auto & [field, invalid] : std::initializer_list<std::pair<std::string, std::string>> {
@@ -746,6 +789,7 @@ int main ()
 	TestPeerIDProviderFailure ();
 	TestExtendedHandshakeFieldTypes ();
 	TestTrackerKnownFieldTypes ();
+	TestCompactTrackerFraming ();
 	TestConnectionLimitRelations ();
 	TestConnectionRetirement ();
 	return 0;

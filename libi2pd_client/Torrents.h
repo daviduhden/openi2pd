@@ -1112,6 +1112,9 @@ namespace torrents
 		/// hashes and swarm counts. Datagram announces stay outside the HTTP
 		/// single-flight registry, so the caller owns transaction
 		/// correlation.
+		/// A nonempty range must be readable and contain whole 32-byte
+		/// hashes. Null/nonempty or partial-hash ranges record a failure
+		/// without replacing prior peers, interval or swarm counts.
 		void HandleDatagramTrackerResponse (size_t trackerID, uint32_t interval, const uint8_t * hashes,
 			size_t hashesLen, int numSeeders, int numLeechers);
 

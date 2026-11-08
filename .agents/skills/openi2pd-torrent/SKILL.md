@@ -120,6 +120,12 @@ Do not let them edit, build or run tests.
   from a wrong bencode type. The former is clamped; the latter preserves
   previous tracker state and enters the failure ladder. Audit sibling tests
   when strengthening a shared parser contract.
+- HTTP compact peer strings and datagram tracker ranges require a multiple
+  of the 32-byte destination hash width before updating peers or statistics.
+  Bound the public datagram consumer as well as its wire caller; retain
+  empty replies, peer caps and zero-hash filtering. Cover truncated tails
+  after complete hashes and prior-state preservation in both transports.
+
 - Peer IDs require successful RAND_bytes generation; repeated RNG seeds or
   clock fallback destroy per-torrent unlinkability. Failure clears the ID,
   leaves the torrent stopped, and is sticky through error resets/resume.

@@ -3078,7 +3078,9 @@ namespace torrents
 			return len;
 		}
 		auto [hashes, len] = ExtractByteString (buf);
-		if (!len) return 0;
+		// Compact I2P peers are complete 32-byte destination hashes. Reject
+		// a truncated tail before any peer reaches the scratch set.
+		if (!len || hashes.size () % i2p::data::IdentHash::len != 0) return 0;
 		size_t count = 0;
 		while (hashes.length () >= i2p::data::IdentHash::len && count < MAX_PEERS_PER_TRACKER_RESPONSE)
 		{
@@ -3116,6 +3118,13 @@ namespace torrents
 	void Torrent::HandleDatagramTrackerResponse (
 		size_t trackerID, uint32_t interval, const uint8_t * hashes, size_t hashesLen, int numSeeders, int numLeechers)
 	{
+		// Share HTTP's fixed-width rule before changing tracker state. Empty
+		// replies are valid; a nonempty range requires an actual buffer.
+		if ((!hashes && hashesLen) || hashesLen % i2p::data::IdentHash::len != 0)
+		{
+			ReportTrackerFailure (trackerID, "malformed response");
+			return;
+		}
 		CheckTrackerStatsSize (trackerID);
 		auto & [peers, trackerRequestInterval, nextRequestTime, seeders, leechers, lastUpdateTime, error, minimum,
 			failureInterval] = m_TrackerStats[trackerID];
