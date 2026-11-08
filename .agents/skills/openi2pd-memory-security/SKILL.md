@@ -107,6 +107,12 @@ Do not let reconnaissance agents edit, compile, execute tests or run scripts.
 
 ## Known issues and decisions
 
+- Revoking a callback registration does not revoke copies already extracted
+  by its dispatcher. Trace that copy across the dispatcher mutex, then pin
+  weak lifetime authority and per-registration admission through shutdown.
+  A queued teardown flag is not a synchronous registration barrier; check
+  whether new registration can slip in before that flag becomes visible.
+
 - Validate signed bit indices before converting to byte offsets. Tag::GetBit
   returns an MSB-first mask, not a bool; negative and upper-bound indices
   return zero. Preserve valid mask results while testing INT_MIN/INT_MAX and

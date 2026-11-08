@@ -116,6 +116,14 @@ Do not let them edit, build or run tests.
 
 ## Known issues and decisions
 
+- Streaming may copy an acceptor before deregistration. Torrent inbound
+  callbacks therefore borrow the tunnel weakly and retain a distinct
+  registration generation. Stop closes registration synchronously and
+  revokes admission under the same gate used for handler publication;
+  waiting for service-thread m_Stopping alone leaves a registration gap.
+  Exercise copied callbacks after stop/restart and owner release, plus
+  concurrent revocation, in test-torrents-security without live listeners.
+
 - Datagram tracker swarm counts arrive as uint32_t. Preserve that entire
   range through the int64_t HandleDatagramTrackerResponse boundary before
   ClampTrackerCount saturates statistics to 0..INT_MAX. Narrowing to int at

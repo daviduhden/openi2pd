@@ -17,10 +17,12 @@
 #include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <future>
 #include <initializer_list>
 #include <iterator>
 #include <limits>
 #include <memory>
+#include <mutex>
 #include <string>
 #include <string_view>
 #include <thread>
@@ -50,6 +52,31 @@ struct TorrentRecoveryTestAccess
 		tunnel.LoadInitialTorrents ();
 	}
 };
+
+struct TorrentInboundAcceptTestAccess
+{
+	static auto Begin (TorrentsTunnel & tunnel)
+	{
+		// Exercise accept generations without starting disk workers.
+		{
+			std::lock_guard<std::mutex> publication (tunnel.m_InboundAcceptMutex);
+			tunnel.m_InboundAcceptStopped = false;
+		}
+		tunnel.m_Stopping.store (false);
+		return tunnel.CreateInboundAcceptor ();
+	}
+	static auto AdmissionLock (TorrentsTunnel & tunnel)
+	{
+		return std::unique_lock<std::mutex> (tunnel.m_InboundAcceptGeneration->mutex);
+	}
+	static void Revoke (TorrentsTunnel & tunnel) { tunnel.RevokeInboundAccepts (); }
+	static auto Register (TorrentsTunnel & tunnel) { return tunnel.CreateInboundAcceptor (); }
+	static size_t Handlers (TorrentsTunnel & tunnel)
+	{
+		return tunnel.CountPeerHandlers ();
+	}
+};
+
 }
 
 // The size constant must be computed in 64 bits even on ILP32, where
@@ -836,6 +863,70 @@ void TestRemovedTorrentPersistence ()
 	assert (!std::filesystem::exists (dir.path / "removed.resume"));
 }
 
+void TestInboundAcceptAuthority ()
+{
+	boost::asio::io_context service;
+	auto keys = i2p::data::PrivateKeys::CreateRandomKeys (
+		i2p::data::SIGNING_KEY_TYPE_EDDSA_SHA512_ED25519, i2p::data::CRYPTO_KEY_TYPE_ECIES_X25519_AEAD, true);
+	auto destination = std::make_shared<i2p::client::ClientDestination> (service, keys, false);
+	auto streaming = std::make_shared<i2p::stream::StreamingDestination> (destination);
+	auto tunnel = std::make_shared<TorrentsTunnel> ("accept-authority", destination, "", "", false);
+	auto copied = TorrentInboundAcceptTestAccess::Begin (*tunnel);
+	{
+		// Revocation shares the admission lock. No sleeps or timer race
+		// decide when the currently admitted operation releases that lock.
+		auto admitted = TorrentInboundAcceptTestAccess::AdmissionLock (*tunnel);
+		std::promise<void> entering;
+		auto entered = entering.get_future ();
+		std::jthread revoker ([&]
+			{
+				entering.set_value ();
+				TorrentInboundAcceptTestAccess::Revoke (*tunnel);
+			});
+		entered.wait ();
+		admitted.unlock ();
+		revoker.join ();
+		// Stop may still be queued and m_Stopping false, but registration
+		// must already be closed by its synchronous revocation phase.
+		assert (!TorrentInboundAcceptTestAccess::Register (*tunnel));
+	}
+	auto stop = [&]
+	{
+		boost::asio::post (service, [tunnel] { tunnel->Stop (); });
+		service.restart ();
+		service.poll ();
+	};
+	auto assertRejected = [&] (const auto & acceptor)
+	{
+		auto stream = std::make_shared<i2p::stream::Stream> (service, streaming);
+		acceptor (stream);
+		service.restart ();
+		service.poll ();
+		assert (stream->GetStatus () == i2p::stream::eStreamStatusTerminated);
+	};
+
+	// A callback extracted before deregistration must reject after stop.
+	stop ();
+	assertRejected (copied);
+	assert (TorrentInboundAcceptTestAccess::Handlers (*tunnel) == 0);
+
+	// Restart uses a distinct authority even though m_Stopping is false.
+	auto current = TorrentInboundAcceptTestAccess::Begin (*tunnel);
+	assertRejected (copied);
+	auto live = std::make_shared<i2p::stream::Stream> (service, streaming);
+	current (live);
+	assert (TorrentInboundAcceptTestAccess::Handlers (*tunnel) == 1);
+	stop ();
+	assert (TorrentInboundAcceptTestAccess::Handlers (*tunnel) == 0);
+	assertRejected (current);
+
+	// Retaining either extracted callback must not retain the tunnel.
+	std::weak_ptr<TorrentsTunnel> released = tunnel;
+	tunnel.reset ();
+	assert (released.expired ());
+	assertRejected (current);
+}
+
 void TestMagnetRecovery ()
 {
 	for (bool malformed : { false, true })
@@ -1195,6 +1286,7 @@ void TestResumeWriteAndRead ()
 
 int main ()
 {
+	TestInboundAcceptAuthority ();
 	TestMagnetRecovery ();
 	TestRPCAdmissionAndRestart ();
 	TestRPCMetadataFields ();

@@ -181,6 +181,7 @@ namespace torrents
 
 	TorrentsTunnel::~TorrentsTunnel ()
 	{
+		RevokeInboundAccepts ();
 		// Normally Stop() has already run on the service thread. The
 		// destructor cannot call shared_from_this() to marshal another
 		// teardown, but it must still join the disk worker: a joinable
@@ -195,6 +196,11 @@ namespace torrents
 
 	void TorrentsTunnel::Start ()
 	{
+		RevokeInboundAccepts ();
+		{
+			std::lock_guard<std::mutex> publication (m_InboundAcceptMutex);
+			m_InboundAcceptStopped = false;
+		}
 		m_Stopping.store (false, std::memory_order_release);
 		m_StartupRecoveryPending.store (true);
 		if (m_UseIsolatedStorage)
@@ -261,6 +267,8 @@ namespace torrents
 
 	void TorrentsTunnel::Stop ()
 	{
+		// Revoke admission now, even when service teardown remains queued.
+		RevokeInboundAccepts ();
 		if (m_Stopping.load (std::memory_order_acquire)) return;
 		auto localDestination = GetLocalDestination ();
 		if (!localDestination)
@@ -336,6 +344,7 @@ namespace torrents
 
 	void TorrentsTunnel::StopOnService ()
 	{
+		RevokeInboundAccepts ();
 		bool expected = false;
 		if (!m_Stopping.compare_exchange_strong (expected, true, std::memory_order_acq_rel)) return;
 		if (m_Creation.pending)
@@ -2844,30 +2853,78 @@ namespace torrents
 			});
 	}
 
+	void TorrentsTunnel::RevokeInboundAccepts ()
+	{
+		std::lock_guard<std::mutex> publication (m_InboundAcceptMutex);
+		m_InboundAcceptStopped = true;
+		if (!m_InboundAcceptGeneration) return;
+		std::lock_guard<std::mutex> admission (m_InboundAcceptGeneration->mutex);
+		m_InboundAcceptGeneration->active = false;
+	}
+
+	i2p::stream::StreamingDestination::Acceptor TorrentsTunnel::CreateInboundAcceptor ()
+	{
+		std::weak_ptr<TorrentsTunnel> owner = std::static_pointer_cast<TorrentsTunnel> (weak_from_this ().lock ());
+		if (owner.expired ()) return { };
+		auto generation = std::make_shared<InboundAcceptGeneration> ();
+		{
+			std::lock_guard<std::mutex> publication (m_InboundAcceptMutex);
+			if (m_InboundAcceptStopped) return { };
+			if (m_InboundAcceptGeneration)
+			{
+				std::lock_guard<std::mutex> admission (m_InboundAcceptGeneration->mutex);
+				m_InboundAcceptGeneration->active = false;
+			}
+			m_InboundAcceptGeneration = generation;
+		}
+		return [owner, generation] (std::shared_ptr<i2p::stream::Stream> stream)
+		{
+			if (!stream) return;
+			auto self = owner.lock ();
+			if (!self)
+			{
+				stream->Close ();
+				return;
+			}
+			// Streaming dispatches on the destination service. Keep shutdown
+			// admission serialized until the handler and its receive exist.
+			std::unique_lock<std::mutex> admission (generation->mutex);
+			if (!generation->active || self->m_Stopping)
+			{
+				admission.unlock ();
+				stream->Close ();
+				return;
+			}
+			if (self->CountPeerHandlers () >= MAX_TOTAL_PEERS)
+			{
+				admission.unlock ();
+				LogPrint (eLogWarning, "TorrentsTunnel: Refusing inbound peer at the connection limit ", MAX_TOTAL_PEERS);
+				stream->Close ();
+				return;
+			}
+			auto connection = std::make_shared<PeerConnection> (self, stream);
+			self->AddHandler (connection);
+			connection->ReceiveHandshake ();
+		};
+	}
+
 	void TorrentsTunnel::Accept ()
 	{
 		auto localDestination = GetLocalDestination ();
 		if (localDestination)
 		{
 			if (!localDestination->IsAcceptingStreams ()) // set it as default if not set yet
-				localDestination->AcceptStreams (
-					[this] (std::shared_ptr<i2p::stream::Stream> stream)
-					{
-						if (!stream) return;
-						if (m_Stopping || CountPeerHandlers () >= MAX_TOTAL_PEERS)
-						{
-							// Bound inbound accepts before any handshake or
-							// torrent lookup happens: unknown streams must not
-							// accumulate handlers.
-							LogPrint (eLogWarning, "TorrentsTunnel: Refusing inbound peer at the connection limit ",
-								MAX_TOTAL_PEERS);
-							stream->Close ();
-							return;
-						}
-						auto conn = std::make_shared<PeerConnection> (shared_from_this (), stream);
-						AddHandler (conn);
-						conn->ReceiveHandshake ();
-					});
+			{
+				auto acceptor = CreateInboundAcceptor ();
+				if (acceptor)
+				{
+					// SetAcceptor publishes immediately but posts dispatch, so
+					// registration can share the synchronous stop barrier.
+					std::lock_guard<std::mutex> publication (m_InboundAcceptMutex);
+					if (!m_InboundAcceptStopped && !m_Stopping)
+						localDestination->AcceptStreams (acceptor);
+				}
+			}
 		}
 		else
 			LogPrint (eLogError, "TorrentsTunnel: Local destination not set");

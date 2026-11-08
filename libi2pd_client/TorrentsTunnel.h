@@ -42,6 +42,7 @@
 #include <boost/beast.hpp>
 #include "HTTP.h"
 #include "Datagram.h"
+#include "Streaming.h"
 #include "I2PService.h"
 #include "util.h"
 #include "BoostStream.h"
@@ -328,8 +329,10 @@ namespace torrents
 		/// on the disk service and arm the
 		/// tracker/keep-alive/reconnect/status timers. The service thread
 		/// never walks the directory or opens a torrent file.
+		/// @pre Serialize lifecycle calls; a restart follows completed
+		///      service teardown, not merely a timed-out Stop() return.
 		void Start () override;
-		// Marshals the service-thread teardown with a bounded wait. When it
+		// Revokes inbound admission before queuing service teardown. When it
 		// times out the posted closure owns a reference and completes the
 		// teardown on the service thread; Stop() never mutates DHT, timers,
 		// accepted streams or torrent state from the caller's thread.
@@ -449,12 +452,27 @@ namespace torrents
 		std::string GetDisplayFilePath (const std::filesystem::path & path) const;
 
 		void Accept ();
+		// Each registration owns a distinct generation. Registration runs
+		// in the destination service domain after startup. Revocation shares
+		// the mutex held across handler publication and initial receive.
+		struct InboundAcceptGeneration
+		{
+			std::mutex mutex;
+			bool active = true;
+		};
+		i2p::stream::StreamingDestination::Acceptor CreateInboundAcceptor ();
+		void RevokeInboundAccepts ();
+		std::mutex m_InboundAcceptMutex;
+		// Registration closes synchronously, before service teardown runs.
+		bool m_InboundAcceptStopped = true;
+		std::shared_ptr<InboundAcceptGeneration> m_InboundAcceptGeneration;
 		// Enumerate and read the configured torrent directory on the storage
 		// service. Parsing/insertion is posted back to the network service;
 		// the network thread never walks the directory or opens a file.
 		void LoadInitialTorrents ();
 		// Compile-time fixture access without starting listeners or workers.
 		friend struct TorrentRecoveryTestAccess;
+		friend struct TorrentInboundAcceptTestAccess;
 		bool ReadTorrentFileForControl (
 			const std::filesystem::path & path, std::vector<uint8_t> & content, std::string & error);
 		bool SaveTorrentFile (std::shared_ptr<Torrent> torrent, const std::string & content);

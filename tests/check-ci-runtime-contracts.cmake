@@ -400,6 +400,28 @@ require_runtime_source("tests/test-privsep-linux-ipc.cpp"
 require_runtime_source("tests/test-privsep-openbsd-imsg.cpp"
   "MessageType::Ping, 9, { } }, -1, 0)")
 
+require_runtime_order("libi2pd_client/TorrentsTunnel.cpp"
+  "void TorrentsTunnel::Stop ()" "void TorrentsTunnel::StopOnService ()"
+  "RevokeInboundAccepts ();" "if (m_Stopping.load")
+
+require_runtime_order("libi2pd_client/TorrentsTunnel.cpp"
+  "void TorrentsTunnel::RevokeInboundAccepts ()"
+  "void TorrentsTunnel::Accept ()"
+  "m_InboundAcceptStopped = true;"
+  "if (m_InboundAcceptStopped) return { };"
+  "return [owner, generation]" "auto self = owner.lock ();"
+  "admission (generation->mutex);" "!generation->active"
+  "self->AddHandler (connection);" "connection->ReceiveHandshake ();")
+
+require_runtime_source("libi2pd_client/TorrentsTunnel.h"
+  "bool m_InboundAcceptStopped = true;")
+
+require_runtime_source("tests/test-torrents-security.cpp"
+  "TestInboundAcceptAuthority ();")
+
+require_runtime_source("tests/test-torrents-security.cpp"
+  "assert (released.expired ());")
+
 require_runtime_order("privsep/Supervisor.cpp"
   "SpawnSupervisedTorrentStorage (int rootFd" "auto & reply = *selected;"
   "const auto deadline =" "lock.try_lock_until (deadline)"
