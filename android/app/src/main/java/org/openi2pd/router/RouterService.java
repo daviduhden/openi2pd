@@ -83,8 +83,10 @@ import java.util.function.UnaryOperator;
  * android:stopWithTask="false"}, so {@link #onTaskRemoved(Intent)} is a
  * UI event and must not stop the daemon or touch the run state; {@link
  * #onDestroy()} retires this service epoch before removing queued main
- * handler messages. SAF work may finish provider cleanup after retirement,
- * but its progress and completion callbacks are fenced at delivery.</p>
+ * handler messages.</p>
+ *
+ * <p>SAF work may finish provider cleanup after retirement, but its
+ * progress and completion callbacks are fenced at delivery.</p>
  *
  * <p><b>Process model:</b> the service is intentionally same-process
  * and not exported. {@link LocalBinder} is therefore an in-process
@@ -215,6 +217,7 @@ public class RouterService extends Service {
      */
     private volatile long logsEpoch;
     private volatile DaemonWrapper.State lastNotificationState;
+    private volatile String lastNotificationLocale = "";
     /**
      * Serialises the read-modify-write of the persisted run state so a
      * generation increment cannot be lost between a main-thread command
@@ -693,11 +696,11 @@ public class RouterService extends Service {
      * stop are queued atomically, so work already accepted by this
      * owner drains ahead of the stop and no later submission from it
      * can run. The SAF lane is shut down, the pending import cancel
-     * hook is invoked and the main-handler messages are purged. In-flight
-     * providers may continue cleanup, while epoch-fenced callbacks cannot
-     * publish after retirement. The persisted run state is
-     * deliberately kept so {@code START_STICKY} can restore the
-     * router.</p>
+     * hook is invoked and the main-handler messages are purged.</p>
+     *
+     * <p>In-flight providers may continue cleanup, while epoch-fenced
+     * callbacks cannot publish after retirement. Persisted run state is
+     * kept so {@code START_STICKY} can restore the router.</p>
      */
     @Override
     public void onDestroy() {
@@ -739,8 +742,10 @@ public class RouterService extends Service {
         releaseMulticastLock();
         stopForegroundCompat();
         // Destruction only: remove messages currently in this handler,
-        // including SAF deadlines. SAF callback delivery also checks the
-        // retired epoch, covering completions queued after this purge.
+        // including SAF deadlines.
+        //
+        // SAF callback delivery checks the retired epoch, covering
+        // completions queued after this purge.
         // A plain stop keeps queued callbacks so work can report.
         mainHandler.removeCallbacksAndMessages(null);
         super.onDestroy();
@@ -967,9 +972,10 @@ public class RouterService extends Service {
      */
     private void beginGracefulStopRequest() {
         // No router is running: stay sticky only until the native call
-        // decides to stop (or starts a drain); a failed call ends in the
-        // stopped transition, which persists Stopped again. The check
-        // and conditional transition share the writer lock.
+        // decides to stop (or starts a drain). A failed call ends in
+        // the stopped transition, which persists Stopped again.
+        //
+        // The check and conditional transition share the writer lock.
         updateRunState(state -> state.phase() == RouterRunState.Phase.Stopped
                 ? state.running(wallClockNow()) : state);
         clearGracefulDeadline();
@@ -1362,8 +1368,10 @@ public class RouterService extends Service {
 
     /**
      * Deliver a start intent from a caller that cannot bind its own
-     * service. A user action (the Quick Settings tile) always requests a
-     * run, so it persists the running intent before the daemon starts.
+     * service.
+     *
+     * <p>A user action (the Quick Settings tile) always requests a run,
+     * so it persists the running intent before the daemon starts.</p>
      */
     public static boolean requestStart(Context context) {
         return sendCommand(context, ACTION_START, true);
@@ -1660,6 +1668,7 @@ public class RouterService extends Service {
             }
             foregroundShown = true;
             lastNotificationState = daemon.getState();
+            lastNotificationLocale = notificationLocale();
             return true;
         } catch (RuntimeException e) {
             // Includes ForegroundServiceStartNotAllowedException on
@@ -1696,7 +1705,7 @@ public class RouterService extends Service {
         DaemonWrapper local = daemon;
         DaemonWrapper.State state =
                 local == null ? DaemonWrapper.State.uninitialized : local.getState();
-        if (state == lastNotificationState) {
+        if (state == lastNotificationState && lastNotificationLocale.equals(notificationLocale())) {
             return;
         }
         publishNotification();
@@ -1713,20 +1722,29 @@ public class RouterService extends Service {
             return;
         }
         try {
+            if (!lastNotificationLocale.equals(notificationLocale())) {
+                // Refresh the existing channel's localized name without
+                // replacing the user's importance settings.
+                createNotificationChannel();
+            }
             notificationManager.notify(NOTIFICATION_ID, buildNotification());
             DaemonWrapper local = daemon;
             lastNotificationState =
                     local == null ? DaemonWrapper.State.uninitialized : local.getState();
+            lastNotificationLocale = notificationLocale();
         } catch (RuntimeException e) {
             Log.w(TAG, "unable to publish router notification", e);
         }
     }
 
     private Notification buildNotification() {
+        // On API 29-32, a Service context does not inherit Activity
+        // locales. Resolve them through the supported AndroidX adapter.
+        Context localized = ContextCompat.getContextForLanguage(this);
         DaemonWrapper local = daemon;
         DaemonWrapper.State state =
                 local == null ? DaemonWrapper.State.uninitialized : local.getState();
-        CharSequence text = getText(state.getStatusStringResourceId());
+        CharSequence text = localized.getText(state.getStatusStringResourceId());
 
         NotificationCompat.Builder builder =
                 new NotificationCompat.Builder(this, CHANNEL_ID)
@@ -1739,9 +1757,9 @@ public class RouterService extends Service {
                         .setOnlyAlertOnce(true)
                         .setTicker(text)
                         .setWhen(System.currentTimeMillis())
-                        .setContentTitle(getText(R.string.app_name))
+                        .setContentTitle(localized.getText(R.string.app_name))
                         .setContentText(text)
-                        .addAction(R.drawable.ic_stop, getText(R.string.action_stop),
+                        .addAction(R.drawable.ic_stop, localized.getText(R.string.action_stop),
                                 PendingIntent.getService(this, 1,
                                         new Intent(this, RouterService.class)
                                                 .setAction(ACTION_STOP),
@@ -1752,7 +1770,7 @@ public class RouterService extends Service {
         // the drain state rejects.
         boolean draining = state == DaemonWrapper.State.gracefulShutdownInProgress;
         builder.addAction(R.drawable.ic_graceful,
-                getText(draining ? R.string.action_cancel_graceful_stop
+                localized.getText(draining ? R.string.action_cancel_graceful_stop
                                  : R.string.action_graceful_stop),
                 PendingIntent.getService(this, draining ? 3 : 2,
                         new Intent(this, RouterService.class)
@@ -1770,15 +1788,21 @@ public class RouterService extends Service {
         return builder.build();
     }
 
+    private String notificationLocale() {
+        return ContextCompat.getContextForLanguage(this).getResources()
+                .getConfiguration().getLocales().toLanguageTags();
+    }
+
     private void createNotificationChannel() {
         if (notificationManager == null) {
             return;
         }
         try {
+            Context localized = ContextCompat.getContextForLanguage(this);
             NotificationChannel channel =
-                    new NotificationChannel(CHANNEL_ID, getText(R.string.notification_channel_name),
+                    new NotificationChannel(CHANNEL_ID, localized.getText(R.string.notification_channel_name),
                             NotificationManager.IMPORTANCE_LOW);
-            channel.setDescription(getString(R.string.notification_channel_description));
+            channel.setDescription(localized.getString(R.string.notification_channel_description));
             channel.setLockscreenVisibility(Notification.VISIBILITY_PRIVATE);
             channel.setShowBadge(false);
             notificationManager.createNotificationChannel(channel);
@@ -1796,6 +1820,7 @@ public class RouterService extends Service {
         }
         foregroundShown = false;
         lastNotificationState = null;
+        lastNotificationLocale = "";
         if (notificationManager != null) {
             notificationManager.cancel(NOTIFICATION_ID);
         }
@@ -1980,11 +2005,11 @@ public class RouterService extends Service {
     }
 
     /**
-     * Read the bounded payload-storage diagnostic for one torrent on the
-     * SAF worker.
+     * Read one torrent's bounded payload-storage diagnostic on the SAF
+     * worker.
      *
-     * <p>{@link TorrentSafStorage#status} reads the persisted grant map,
-     * asks the system for the live URI permissions and may re-arm a
+     * <p>{@link TorrentSafStorage#status} reads the persisted grant map
+     * and asks the system for live URI permissions. It may re-arm a
      * bounded broker bind, so it must never run on the main thread. The
      * callback runs on the main thread, receives a fixed diagnostic
      * string (never a URI, document name or account identifier) and is
@@ -2021,10 +2046,11 @@ public class RouterService extends Service {
     }
 
     /**
-     * Commit one grant mutation on the bounded SAF lane. Queue rejection
-     * and provider failure complete with false while this service owner
-     * remains current; owner retirement suppresses every delivery,
-     * including callbacks already queued on the main handler.
+     * Commit one grant mutation on the bounded SAF lane.
+     *
+     * <p>Queue rejection and provider failure complete with false while
+     * this service owner remains current. Owner retirement suppresses
+     * every delivery, including queued main-handler callbacks.</p>
      */
     private void runSafGrantOperation(java.util.concurrent.Callable<Boolean> operation,
             java.util.function.Consumer<Boolean> callback) {
@@ -2141,12 +2167,17 @@ public class RouterService extends Service {
 
     /**
      * Hash a selected SAF source and produce metadata on the SAF
-     * worker. Byte progress, when the caller supplies a consumer, and
-     * the final byte array are posted to the main handler; a null result
-     * denotes failure. The 30-minute deadline requests cancellation but
-     * cannot force a provider that ignores cancellation to return. The
-     * result is metadata only and does not establish payload seeding
-     * authority.
+     * worker.
+     *
+     * <p>The final byte array is posted to the main handler, as is byte
+     * progress when the caller supplies a consumer. Null denotes
+     * failure.</p>
+     *
+     * <p>The 30-minute deadline requests cancellation. A provider that
+     * ignores cancellation cannot be forced to return.</p>
+     *
+     * <p>The result is metadata only and does not establish payload
+     * seeding authority.</p>
      *
      * @param progress optional hashed-byte reporter; {@code null} is a
      *                 valid request that simply reports no progress

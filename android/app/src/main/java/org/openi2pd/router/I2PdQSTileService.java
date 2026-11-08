@@ -7,8 +7,10 @@
  * Quick Settings tile that sends the same explicit start/stop service
  * intents as the UI, gated behind an unlock prompt on the lock screen,
  * and refreshes from the process-wide router flag when listening
- * starts. A command the system refuses is logged and the tile keeps the
- * previous state instead of showing an optimistic one.
+ * starts.
+ *
+ * A command the system refuses is logged. The tile keeps the previous
+ * state instead of showing an optimistic one.
  *
  */
 
@@ -17,6 +19,8 @@ package org.openi2pd.router;
 import android.service.quicksettings.Tile;
 import android.service.quicksettings.TileService;
 import android.util.Log;
+
+import androidx.core.content.ContextCompat;
 
 /**
  * Quick Settings tile.
@@ -33,8 +37,7 @@ public class I2PdQSTileService extends TileService {
     public void onClick() {
         super.onClick();
         if (isLocked()) {
-            // Do not expose router start/stop controls on the lock
-            // screen.
+            // Keep router start/stop controls off the lock screen.
             unlockAndRun(this::toggleRouter);
             return;
         }
@@ -76,10 +79,11 @@ public class I2PdQSTileService extends TileService {
             return;
         }
         tile.setState(running ? Tile.STATE_ACTIVE : Tile.STATE_INACTIVE);
-        tile.setLabel(getString(R.string.app_name));
+        android.content.Context localized = ContextCompat.getContextForLanguage(this);
+        tile.setLabel(localized.getString(R.string.app_name));
         tile.setContentDescription(
-                getString(R.string.tile_state_format, getString(R.string.app_name),
-                        getString(running ? R.string.value_running : R.string.value_stopped)));
+                localized.getString(R.string.tile_state_format, localized.getString(R.string.app_name),
+                        localized.getString(running ? R.string.value_running : R.string.value_stopped)));
         try {
             tile.updateTile();
         } catch (RuntimeException e) {

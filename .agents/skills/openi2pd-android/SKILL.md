@@ -132,11 +132,13 @@ run Gradle, install an APK or run a device test.
   error categories. DTO/wire tokens and unknown text stay unchanged. Supply
   localized labels and active-locale percentages to TorrentRow, including
   TalkBack; UTF-16 caps must not split surrogate pairs.
-
 - Language preference presentation canonicalizes regional/script variants;
   unknown scripts use English while empty AppCompat locales mean System.
   Explicit Hans takes priority over region; Hant never becomes Simplified.
-
+- Services and Quick Settings do not inherit Activity locale contexts on
+  API 29-32. Use ContextCompat.getContextForLanguage with the pinned AndroidX
+  core, and refresh notification text/channel names when locale identity
+  changes even if daemon state did not. Device refresh remains CI-only.
 - Plural instrumentation compares unformatted resource templates when
   checking categories; formatted counts would differ even if the category
   were wrong. Cover Russian 11/21/22 and Chinese's single other category.

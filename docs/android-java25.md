@@ -504,3 +504,28 @@ and compound receivers while allowing unqualified local helpers. Ambiguous
 method names such as BufferedReader.lines and unrelated transform methods
 remain for receiver-aware Android Lint. JVM-only tests still run on the build
 JDK. This source check supplies no DEX/device execution evidence.
+
+## Per-app locale presentation continuation
+
+UiText maps the closed router/torrent status and safe diagnostic vocabularies
+at the Android presentation boundary. Snapshots, command operands, names,
+comments, URLs and unknown diagnostics retain their original values. The four
+resource catalogs include matching status/error strings and positional file
+progress templates; percentage formatting uses the active per-app locale.
+TorrentRow receives those display values rather than rendering wire tokens.
+UTF-16 caps retain surrogate pairs for TextView and TalkBack.
+
+The settings summary canonicalizes regional and script variants of supported
+locales. An empty AppCompat selection remains System; unsupported languages or
+Chinese scripts fall back to English. Explicit Hans is Simplified regardless
+of region, while Hant never resolves to Simplified.
+
+Service and Quick Settings resource lookups use
+[ContextCompat.getContextForLanguage](https://developer.android.com/reference/androidx/core/content/ContextCompat#getContextForLanguage(android.content.Context))
+from the existing pinned AndroidX core. This avoids relying on an Activity's
+context on API 29-32. Notification publication observes locale identity as
+well as router state, and refreshes channel names without replacing user
+importance settings. JVM and instrumentation regressions are prepared for
+resource fallback, plural templates and supplementary characters. These
+changes are Implemented / static; API 29/device refresh, Lint, AAPT2, D8/R8
+and Java compilation remain pending manual CI on the changed revision.
