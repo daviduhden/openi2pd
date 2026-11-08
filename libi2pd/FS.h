@@ -21,6 +21,7 @@
 #include <functional>
 #include <filesystem>
 #include <string_view>
+#include <span>
 #include <inttypes.h>
 
 namespace i2p
@@ -38,7 +39,7 @@ namespace fs
 	 * HashedStorage h ("name", "y", "z-", ".txt");
 	 * h.SetPlace("/tmp/hs-test");
 	 * h.GetName() returns "name"; GetRoot() returns "/tmp/hs-test/name".
-	 * h.Init (alphabet, 8) creates the shard directories.
+	 * h.Init (alphabet) creates the shard directories.
 	 * h.Path ("abcd") returns the sharded file path.
 	 * h.Remove ("abcd") removes that file if it exists.
 	 * std::vector&lt;std::string&gt; files;
@@ -61,8 +62,12 @@ namespace fs
 			, prefix2 (p2)
 			, suffix (s) { };
 
-		/** create subdirs in storage */
-		bool Init (const char * chars, size_t cnt);
+		/**
+		 * Create shard directories for a trusted canonical alphabet.
+		 * Borrowed bytes are used only during the call; no NUL terminator
+		 * or separate size is required. Path policy remains with the caller.
+		 */
+		bool Init (std::span<const char> chars);
 		const std::string & GetRoot () const { return root; }
 		const std::string & GetName () const { return name; }
 		/** set directory where to place storage directory */

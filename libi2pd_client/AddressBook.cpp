@@ -762,7 +762,7 @@ namespace client
 	{
 		storage.SetPlace (i2p::fs::GetDataDir ());
 		// init storage
-		if (storage.Init (i2p::data::GetBase32SubstitutionTable (), 32))
+		if (storage.Init (i2p::data::GetBase32SubstitutionTable ()))
 		{
 			// init ETags
 			etagsPath = i2p::fs::StorageRootPath (storage, "etags");

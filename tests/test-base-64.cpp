@@ -14,6 +14,7 @@
 #include <cassert>
 #include <cstdint>
 #include <span>
+#include <string_view>
 #include <string.h>
 
 #include "Base.h"
@@ -22,6 +23,13 @@ using namespace i2p::data;
 
 int main ()
 {
+	static_assert (decltype (GetBase32SubstitutionTable ())::extent == 32);
+	static_assert (decltype (GetBase64SubstitutionTable ())::extent == 64);
+	const auto base32 = GetBase32SubstitutionTable ();
+	const auto base64 = GetBase64SubstitutionTable ();
+	assert (std::string_view (base32.data (), base32.size ()) == "abcdefghijklmnopqrstuvwxyz234567");
+	assert (std::string_view (base64.data (), base64.size ())
+		== "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-~");
 	const char * in = "test";
 	size_t in_len = strlen (in);
 	char out[16];

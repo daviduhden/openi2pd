@@ -621,7 +621,7 @@ namespace data
 			return;
 		}
 		GetProfilingRuntime ().storage.SetPlace (requested);
-		if (!GetProfilingRuntime ().storage.Init (i2p::data::GetBase64SubstitutionTable (), 64))
+		if (!GetProfilingRuntime ().storage.Init (i2p::data::GetBase64SubstitutionTable ()))
 			throw std::runtime_error ("Profiling: Failed to initialize storage root");
 		GetProfilingRuntime ().storagePlace = requested;
 		GetProfilingRuntime ().storageInitialized = true;

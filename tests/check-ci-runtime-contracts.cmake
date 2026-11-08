@@ -408,3 +408,15 @@ require_runtime_order("privsep/Supervisor.cpp"
 
 require_runtime_source("tests/test-privsep-linux-ipc.cpp"
   "TestTransactionDeadline ();")
+
+require_runtime_source("libi2pd/Base.h"
+  "std::span<const char, 32> GetBase32SubstitutionTable ()")
+
+require_runtime_source("libi2pd/Base.h"
+  "std::span<const char, 64> GetBase64SubstitutionTable ()")
+
+require_runtime_source("libi2pd/FS.cpp"
+  "bool HashedStorage::Init (std::span<const char> chars)")
+
+require_runtime_source("tests/test-base-64.cpp"
+  "decltype (GetBase32SubstitutionTable ())::extent == 32")

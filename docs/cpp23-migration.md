@@ -232,3 +232,11 @@ mutex branches share strong compare-exchange ownership semantics. Retired
 stored values and replaced expected values release outside the mutex, with
 reentrant-deleter tests prepared for common and selective MSVC CI. No wire or
 persistent representation changes, and no new local compilation is claimed.
+
+### Borrowed alphabet continuation
+
+Encoding table accessors now return fixed-extent std::span views over static
+storage, without a NUL terminator. HashedStorage accepts a span and iterates
+its extent; netDb, profiles, address book and fixtures no longer repeat an
+independent 32/64 count. Encoded bytes and on-disk shard layout are unchanged.
+The internal/public header interface requires consumers to rebuild together.

@@ -117,6 +117,11 @@ compile, run tests or run project scripts.
 
 ## Known issues and decisions
 
+- Encoding alphabet accessors return static-extent spans over process-life
+  storage, excluding a NUL terminator. HashedStorage consumes the span
+  directly; migrate netDb, profiles, address book and persistence fixtures
+  together. Never replace the explicit extent with strlen on these tables.
+
 - Reuse AtomicSharedPtr for shared-owner publication on supported libc++
   targets; C++23 mode alone does not provide the standard specialization.
   Its explicit false backend tests mutex behavior without changing feature

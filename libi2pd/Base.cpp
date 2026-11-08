@@ -58,7 +58,7 @@ namespace data
 		'7',
 	};
 
-	const char * GetBase32SubstitutionTable ()
+	std::span<const char, 32> GetBase32SubstitutionTable ()
 	{
 		return T32;
 	}
@@ -76,7 +76,7 @@ namespace data
 		'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z', '0', '1', '2', '3', '4', '5', '6', '7',
 		'8', '9', '-', '~' };
 
-	const char * GetBase64SubstitutionTable ()
+	std::span<const char, 64> GetBase64SubstitutionTable ()
 	{
 		return T64;
 	}

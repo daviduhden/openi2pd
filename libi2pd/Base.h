@@ -35,8 +35,10 @@ namespace data
 		return Base64ToByteStream (base64Str, std::span<uint8_t> (outBuffer, outBuffer ? len : 0));
 	}
 
-	const char * GetBase32SubstitutionTable ();
-	const char * GetBase64SubstitutionTable ();
+	/// Borrow the process-lifetime alphabet without a NUL terminator.
+	std::span<const char, 32> GetBase32SubstitutionTable ();
+	/// Borrow the I2P Base64 alphabet with its exact static extent.
+	std::span<const char, 64> GetBase64SubstitutionTable ();
 	constexpr bool IsBase64 (char ch)
 	{
 		return (ch >= 'A' && ch <= 'Z') || (ch >= 'a' && ch <= 'z') || (ch >= '0' && ch <= '9') || ch == '-'

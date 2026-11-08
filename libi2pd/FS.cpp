@@ -552,15 +552,15 @@ namespace fs
 		root = path + i2p::fs::dirSep + name;
 	}
 
-	bool HashedStorage::Init (const char * chars, size_t count)
+	bool HashedStorage::Init (std::span<const char> chars)
 	{
 		try
 		{
 			if (!fs_lib::exists (root)) fs_lib::create_directories (root);
 
-			for (size_t i = 0; i < count; i++)
+			for (const auto character : chars)
 			{
-				auto p = root + i2p::fs::dirSep + prefix1 + chars[i];
+				auto p = root + i2p::fs::dirSep + prefix1 + character;
 				if (fs_lib::exists (p)) continue;
 				if (fs_lib::create_directory (p)) continue; /* ^ throws exception on failure */
 				return false;

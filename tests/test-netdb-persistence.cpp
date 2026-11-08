@@ -48,7 +48,7 @@ struct NetDbLifecycleTestAccess
 	{
 		std::lock_guard lock (database.m_StorageMutex);
 		database.m_Storage.SetPlace (root);
-		assert (database.m_Storage.Init (i2p::data::GetBase64SubstitutionTable (), 64));
+		assert (database.m_Storage.Init (i2p::data::GetBase64SubstitutionTable ()));
 	}
 	static void Insert (NetDb & database, const std::shared_ptr<RouterInfo> & router)
 	{
