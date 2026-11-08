@@ -100,6 +100,11 @@ the console.
 
 ## Known issues and decisions
 
+- Shared FitLength and both terminal backends retain zero-width marks after
+  a base that exactly fits the column budget. Zero budget emits nothing.
+  Prompt deletion removes one UTF-8 scalar, not a byte or whole grapheme;
+  keep CJK, Cyrillic, Spanish, emoji and combining regressions together.
+
 - `test-tui-protocol` flushes constant phase names to stderr before each
   group and a completion marker before returning from `main`. For native
   heap exceptions without assertion output, compare these markers with

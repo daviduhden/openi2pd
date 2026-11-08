@@ -37,12 +37,12 @@ namespace tui
 		 * The decoder is deliberately strict: an overlong form, an
 		 * encoded UTF-16 surrogate, a code point above U+10FFFF, a bad
 		 * continuation byte and a truncated tail all become exactly one
-		 * U+FFFD unit of length one and width one. Falling back to one
-		 * unit per rejected byte keeps the caller's cursor advancing,
-		 * which is what the ncurses backend does for an undecodable
-		 * byte, and stops a hostile byte sequence from reaching the VT
-		 * stream or the cell buffer in a form the console would have to
-		 * reinterpret.
+		 * U+FFFD unit of length one and width one.
+		 *
+		 * One unit per rejected byte keeps the caller's cursor advancing,
+		 * matching ncurses behavior for an undecodable byte. It also keeps
+		 * hostile sequences out of the VT stream and cell buffer, where
+		 * the console might reinterpret them.
 		 */
 		namespace text
 		{
@@ -67,6 +67,7 @@ namespace tui
 			 * and emoji count two, and everything else counts one: an
 			 * unknown glyph is charged one column, matching the fallback
 			 * documented in Terminal.h.
+			 *
 			 * @param codePoint decoded code point.
 			 * @return 0, 1 or 2 columns.
 			 */
@@ -93,6 +94,7 @@ namespace tui
 			 * equivalents), encoded surrogates (ED A0..BF), values above
 			 * U+10FFFF (F4 90 and above), stray continuation bytes and a
 			 * truncated tail are rejected as one U+FFFD unit.
+			 *
 			 * @param text UTF-8 text; must outlive the call.
 			 * @param offset start byte; an out-of-range offset yields the
 			 * replacement unit.
@@ -167,6 +169,7 @@ namespace tui
 			 * A surrogate or a value above U+10FFFF cannot be encoded;
 			 * it becomes U+FFFD so the result is always well-formed UTF-8
 			 * and never contains a five-byte form.
+			 *
 			 * @param codePoint code point to encode.
 			 * @return 1 to 4 UTF-8 bytes.
 			 */
@@ -199,6 +202,49 @@ namespace tui
 			}
 
 			/**
+			 * Whether a byte range contains only complete UTF-8 scalars.
+			 *
+			 * @param text Input bytes; empty input is valid.
+			 * @return False for invalid, overlong or truncated encodings.
+			 */
+			inline bool IsValidUtf8 (std::string_view text)
+			{
+				std::size_t offset = 0;
+				while (offset < text.size ())
+				{
+					const auto unit = Decode (text, offset);
+					if (unit.length == 1 && static_cast<unsigned char> (text[offset]) >= 0x80)
+						return false;
+					offset += unit.length;
+				}
+				return true;
+			}
+
+			/**
+			 * Remove the final UTF-8 scalar without retaining its lead byte.
+			 *
+			 * Malformed suffixes lose only their final byte, so unrelated
+			 * preceding text is preserved and repeated deletion progresses.
+			 *
+			 * Combining marks are separate scalars, not whole graphemes.
+			 *
+			 * @param value Mutable UTF-8 input; empty input is a no-op.
+			 */
+			inline void EraseLastUnit (std::string & value)
+			{
+				if (value.empty ()) return;
+				std::size_t first = value.size () - 1;
+				while (first > 0 && value.size () - first < 4
+					&& (static_cast<unsigned char> (value[first]) & 0xC0) == 0x80)
+					--first;
+				const auto unit = Decode (value, first);
+				if (first + unit.length == value.size ())
+					value.erase (first);
+				else
+					value.pop_back ();
+			}
+
+			/**
 			 * Length in bytes of the prefix that fits a column budget.
 			 *
 			 * Mirrors the ncurses backend: whole sequences only, a wide
@@ -206,17 +252,19 @@ namespace tui
 			 * and a negative budget means "whole string". A malformed
 			 * byte occupies one column, so rejected input still advances
 			 * the cursor instead of stalling the row.
+			 * Trailing combining marks remain with their fitting base even
+			 * at the exact budget; a zero budget always returns no bytes.
 			 * @param text UTF-8 text; must outlive the call.
 			 * @param limit column budget, or a negative value for none.
 			 * @return byte length of the fitting prefix (0..text.size()).
 			 */
 			inline std::size_t FitLength (std::string_view text, int limit)
 			{
+				if (limit == 0) return 0;
 				int columns = 0;
 				std::size_t offset = 0;
 				while (offset < text.size ())
 				{
-					if (limit >= 0 && columns >= limit) break;
 					const Unit unit = Decode (text, offset);
 					if (limit >= 0 && columns + unit.width > limit) break;
 					columns += unit.width;

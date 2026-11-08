@@ -95,10 +95,10 @@ namespace tui
 			// this backend does the same: there is exactly one terminal, owned
 			// by the console thread. Init, Shutdown and every drawing call must
 			// run on that thread; the flags below are deliberately not atomic
-			// and act as an initialization guard, not as synchronization. Init
-			// is idempotent: a second call reports success without re-entering
-			// initscr(), while a failed call leaves the guard clear so the
-			// caller may retry.
+			// and guard initialization rather than synchronizing calls.
+			//
+			// Init is idempotent: a second call succeeds without re-entering
+			// initscr(). A failed call leaves the guard clear to allow retries.
 			bool g_Initialized = false;
 			const char * g_Error = nullptr;
 
@@ -205,7 +205,7 @@ namespace tui
 
 		void Put (std::string_view text, int limit)
 		{
-			if (!g_Initialized || text.empty ()) return;
+			if (!g_Initialized || text.empty () || limit == 0) return;
 			// limit is a terminal-column budget, not a byte count. Decode each
 			// UTF-8 sequence so a wide CJK glyph or a combining mark cannot be
 			// split or consume the wrong number of cells.
@@ -218,7 +218,8 @@ namespace tui
 			std::string copy;
 			int columns = 0;
 			size_t offset = 0;
-			while (offset < text.size () && (limit < 0 || columns < limit))
+			// A zero-width mark still belongs to its base at the cell limit.
+			while (offset < text.size ())
 			{
 				std::mbstate_t state { };
 				wchar_t character = 0;

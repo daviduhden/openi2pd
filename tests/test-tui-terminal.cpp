@@ -12,6 +12,7 @@
 
 #include <cassert>
 #include <cstddef>
+#include <initializer_list>
 #include <string>
 #include <string_view>
 
@@ -196,9 +197,8 @@ static void TestTextEncoding ()
 static void TestColumnBudget ()
 {
 	// Put()'s limit is a terminal-column budget, not a byte count. The
-	// Windows backend used the byte length, which truncated every
-	// translated label early and charged a CJK glyph three columns for
-	// two.
+	// Windows previously used byte length, truncating translated labels
+	// early and charging three columns for a two-column CJK glyph.
 	assert (text::FitLength ("abc", 3) == 3);
 	assert (text::FitLength ("abc", 2) == 2);
 	assert (text::FitLength ("abc", 0) == 0);
@@ -220,14 +220,11 @@ static void TestColumnBudget ()
 	assert (text::FitLength (wide, 3) == 3);
 	assert (text::FitLength (wide, 4) == 6);
 
-	// A combining mark costs no column. The budget is still checked before
-	// each unit, exactly like the ncurses backend's `columns < limit` loop,
-	// so a mark that follows its base at the exact budget is dropped: the
-	// base character has already consumed the columns. With room for two
-	// columns both units are emitted.
+	// A combining mark costs no column and stays attached to a fitting
+	// base at the exact budget. A zero budget must still emit no bytes.
 	const std::string_view combining = "e\xCC\x81";
 	assert (text::FitLength (combining, 0) == 0);
-	assert (text::FitLength (combining, 1) == 1);
+	assert (text::FitLength (combining, 1) == 3);
 	assert (text::FitLength (combining, 2) == 3);
 
 	// A malformed byte occupies one column, so a hostile sequence cannot
@@ -258,17 +255,52 @@ static void TestColumnBudget ()
 			assert (columns <= limit);
 			if (length < sample.size ())
 			{
-				// The walk stops only where the next unit would not fit;
-				// a zero-width mark at the exact budget is dropped, which
-				// is what the ncurses backend's `columns < limit` loop
-				// condition does.
+				// Except for an explicitly empty budget, the next unit must
+				// exceed the available columns; combining marks stay attached.
 				const auto next = text::Decode (sample, length);
-				if (next.width == 0)
-					assert (columns >= limit);
+				if (limit == 0)
+					assert (length == 0);
 				else
 					assert (columns + next.width > limit);
 			}
 		}
+	}
+}
+
+static void TestUtf8Backspace ()
+{
+	const std::string_view scalars[] = {
+		"A", "\xC3\xB1", "\xD0\xAF", "\xE4\xB8\xAD", "\xF0\x9F\x98\x80", "\xEF\xBF\xBD"
+	};
+	for (const auto scalar : scalars)
+	{
+		assert (text::IsValidUtf8 (scalar));
+		std::string input = "prefix" + std::string (scalar);
+		text::EraseLastUnit (input);
+		assert (input == "prefix");
+	}
+	std::string combined = "e\xCC\x81";
+	assert (text::IsValidUtf8 (combined));
+	text::EraseLastUnit (combined);
+	assert (combined == "e");
+	text::EraseLastUnit (combined);
+	assert (combined.empty ());
+	assert (text::IsValidUtf8 (combined));
+	text::EraseLastUnit (combined);
+	assert (combined.empty ());
+
+	// Invalid/truncated input cannot consume an unrelated valid prefix.
+	for (const std::string_view suffix : { "\x80", "\xE4\xB8", "\xED\xA0\x80", "\xF4\x90\x80\x80" })
+	{
+		assert (!text::IsValidUtf8 (suffix));
+		std::string input = "prefix" + std::string (suffix);
+		for (size_t remaining = suffix.size (); remaining > 0; --remaining)
+		{
+			const auto previous = input.size ();
+			text::EraseLastUnit (input);
+			assert (input.size () == previous - 1);
+		}
+		assert (input == "prefix");
 	}
 }
 
@@ -280,5 +312,6 @@ int main ()
 	TestTextDecoding ();
 	TestTextEncoding ();
 	TestColumnBudget ();
+	TestUtf8Backspace ();
 	return 0;
 }

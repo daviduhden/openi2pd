@@ -65,9 +65,8 @@ namespace tui
 				bool configured = false;
 			};
 
-			// One console, owned by the console thread; like the ncurses
-			// backend these globals are an initialization guard rather than
-			// synchronization.
+			// One console belongs to the console thread, as with ncurses.
+			// These globals guard initialization; they do not synchronize.
 			//
 			// g_Front is what has been painted on screen, g_Back is the cell
 			// grid the application writes. Refresh() diffs back against front
@@ -496,7 +495,7 @@ namespace tui
 			// filter, this is the backstop that stops router data from injecting
 			// an escape sequence.
 			//
-			// `limit` is a terminal-column budget, not a byte count (Terminal.h):
+			// `limit` budgets terminal columns, not bytes (Terminal.h):
 			// counting the UTF-8 byte length here charged a Russian or Spanish
 			// label twice its width and a CJK glyph three columns for two, so
 			// every translated header, footer and label column was truncated
@@ -507,12 +506,12 @@ namespace tui
 			// Writing past the last column wraps to the next row, and a wide
 			// glyph that would straddle the right edge wraps as a whole; text
 			// that runs past the last row is dropped, not scrolled.
-			if (!g_Initialized || text.empty () || g_Width <= 0 || g_Height <= 0) return;
+			if (!g_Initialized || text.empty () || limit == 0 || g_Width <= 0 || g_Height <= 0) return;
 			int columns = 0;
 			std::size_t offset = 0;
 			while (offset < text.size ())
 			{
-				if (limit >= 0 && columns >= limit) break;
+				// Keep combining marks with a base that exactly fits the limit.
 				const Unit unit = Decode (text, offset);
 				if (limit >= 0 && columns + unit.width > limit) break;
 				offset += unit.length;
