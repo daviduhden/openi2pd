@@ -193,6 +193,12 @@ workflow, run `gh`, build or test.
 
 ## Known issues and decisions
 
+- Successful MSVC jobs can still emit one D9025 warning per test target.
+  Review the shared assertion setup across normal tests, tools and fuzzers,
+  and retain the dedicated Release assertion regression in the selective
+  MSVC build and CTest expression. A passing selected suite is not evidence
+  that assertions evaluated unless that source contract is exercised.
+
 - `crypto-tsan.yml` isolates the OpenSSL 4.1.0 commit
   `2f4e3a5fec05394068cfa7379890ab552483a8a6` for crypto race diagnosis.
   Its library and providers use the same Clang TSan as the focused project

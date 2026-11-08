@@ -174,11 +174,11 @@ jobs:
             --target i2pd i2pd-tui test-tui-protocol test-tui-terminal `
               test-tui-pipe-name test-tui-win32-pipe test-privsep-windows-ipc `
               test-privsep-windows-isolation test-privsep-windows-supervisor `
-              test-win32-shutdown-deadline test-profile-static-lifetime
+              test-win32-shutdown-deadline test-profile-static-lifetime test-release-assertions
       - name: Run TUI and worker IPC tests
         run: |
           ctest --test-dir build-msvc -C Release -j 2 --output-on-failure `
-            -R '^(test-(tui-protocol|tui-terminal|tui-pipe-name|tui-win32-pipe|privsep-windows-(ipc|isolation|supervisor)|win32-shutdown-deadline|profile-static-lifetime))$' `
+            -R '^(test-(tui-protocol|tui-terminal|tui-pipe-name|tui-win32-pipe|privsep-windows-(ipc|isolation|supervisor)|win32-shutdown-deadline|profile-static-lifetime|release-assertions))$' `
             --no-tests=error --output-junit "$PWD/ctest-msvc.xml"
       - name: Verify runtime install
         run: |

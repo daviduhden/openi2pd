@@ -144,7 +144,7 @@ execution. Ask for:
   timeout per phase would silently extend the caller's total allowance;
   test deadline propagation without relying on tight scheduler timing.
 - A Windows test must not dereference `SupervisorStatus::Get()` (or any
-  `std::optional`) without a check; `/UNDEBUG` keeps the assertion live but
+  `std::optional`) without a check; the shared assertion helper keeps checks live but
   an empty optional is undefined behaviour. Use one checked accessor.
   `test-win32-shutdown-deadline` belongs in the MSVC target and `-R` lists.
 - Configured I2PControl must fail the daemon start on POSIX (`ThrowFatal` has

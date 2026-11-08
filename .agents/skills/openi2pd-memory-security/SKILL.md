@@ -461,7 +461,8 @@ Do not let reconnaissance agents edit, compile, execute tests or run scripts.
 - A skipped/partial coverage path must not look like a pass. Return 77 with a
   registered `SKIP_RETURN_CODE` for a platform stub, or keep the assertion
   active; never print `skip:` and return 0. Fuzzer harnesses must compile
-  their asserts (`-UNDEBUG`) even in RelWithDebInfo.
+  their asserts through `i2pd_enable_test_assertions()` even in RelWithDebInfo;
+  MSVC uses the early assertion header and GNU-style drivers use -UNDEBUG.
 
 - Fuzz corpora are checked in under `tests/fuzz/corpus/<target>/`; every
   target has a small non-secret seed (≤64 KiB), a per-target `-max_len` and a

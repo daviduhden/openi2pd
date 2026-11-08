@@ -8,6 +8,7 @@
 # security groups.
 #
 
+include("${PROJECT_ROOT}/build/cmake/TestAssertions.cmake")
 
 # Sanitizer and fuzz builds execute the same tests with much heavier
 # instrumentation; keep a single, explicit budget instead of relying on
@@ -61,11 +62,7 @@ function(i2pd_add_test name)
   endif()
   target_include_directories(${name} PRIVATE "${PROJECT_ROOT}" "${PROJECT_ROOT}/tools")
   target_link_libraries(${name} PRIVATE libi2pd libi2pdclient libi2pdlang i2pd_warnings)
-  if(MSVC)
-    target_compile_options(${name} PRIVATE /UNDEBUG)
-  else()
-    target_compile_options(${name} PRIVATE -UNDEBUG)
-  endif()
+  i2pd_enable_test_assertions(${name})
   i2pd_enable_sanitizers(${name})
   add_test(NAME ${name} COMMAND ${name})
   set_tests_properties(${name} PROPERTIES TIMEOUT ${I2PD_TEST_TIMEOUT})
@@ -95,6 +92,7 @@ set(I2PD_TORRENT_TESTS
 )
 
 set(I2PD_TESTS
+  test-release-assertions
   test-log-diagnostic-sink
   test-http-merge_chunked
   test-http-req
@@ -742,11 +740,7 @@ if(WITH_FUZZERS)
     target_compile_options(${fuzzer} PRIVATE
       -fsanitize=fuzzer,address,undefined -fno-sanitize-recover=all
       -fno-omit-frame-pointer)
-    if(MSVC)
-      target_compile_options(${fuzzer} PRIVATE /UNDEBUG)
-    else()
-      target_compile_options(${fuzzer} PRIVATE -UNDEBUG)
-    endif()
+    i2pd_enable_test_assertions(${fuzzer})
     target_link_options(${fuzzer} PRIVATE -fsanitize=fuzzer,address,undefined)
     # Optional, non-default CTest smoke entry. The manual Fuzzing
     # workflow runs each target for a bounded wall-clock budget with a

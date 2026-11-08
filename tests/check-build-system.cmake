@@ -829,4 +829,29 @@ file(READ "${PROJECT_ROOT}/.github/workflows/validation.yml" build_workflow_text
 assert_present("${build_workflow_text}" "mkdir -p docs/generated/source-api"
   "source-docs job must create the gitignored Doxygen output directory")
 
+# Release assertions must survive without conflicting MSVC command macros.
+read_required("${PROJECT_ROOT}/build/cmake/TestAssertions.cmake" assertion_helper)
+assert_present("${assertion_helper}" "/FI\${PROJECT_ROOT}/tests/TestAssertions.h"
+  "MSVC tests need source-level assertion initialization")
+assert_present("${assertion_helper}" "PRIVATE -UNDEBUG"
+  "GNU-style test drivers must preserve Release assertions")
+read_required("${PROJECT_ROOT}/tests/TestAssertions.h" assertion_header)
+assert_present("${assertion_header}" "#undef NDEBUG"
+  "MSVC assertion header must revoke the Release macro")
+assert_present("${assertion_header}" "#include <cassert>"
+  "MSVC assertion header must initialize assertions after undefining NDEBUG")
+foreach(consumer tests/CMakeLists.txt tools/CMakeLists.txt)
+  read_required("${PROJECT_ROOT}/${consumer}" assertion_consumer)
+  assert_present("${assertion_consumer}" "i2pd_enable_test_assertions("
+    "Test assertion helper must cover ${consumer}")
+endforeach()
+read_required("${PROJECT_ROOT}/tests/test-release-assertions.cpp" assertion_regression)
+assert_present("${assertion_regression}" "assert (++evaluations == 1);"
+  "Release regression must evaluate an assertion operand")
+read_required("${PROJECT_ROOT}/.github/workflows/build-windows.yml" assertion_workflow)
+assert_present("${assertion_workflow}" "test-profile-static-lifetime test-release-assertions"
+  "Selective MSVC builds must produce the assertion regression")
+assert_present("${assertion_workflow}" "|release-assertions))$"
+  "Selective MSVC CTest must execute the assertion regression")
+
 message(STATUS "build-system-static: OK")

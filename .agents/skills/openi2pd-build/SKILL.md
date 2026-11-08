@@ -111,6 +111,14 @@ build.
 
 ## Known issues and decisions
 
+- Release tests and fuzzers must evaluate assert operands. The shared
+  TestAssertions.cmake helper retains -UNDEBUG for GNU-style drivers and
+  force-includes tests/TestAssertions.h for MSVC, before any source header.
+  Do not combine MSVC /DNDEBUG and /UNDEBUG: the override causes D9025 even
+  in passing lanes. The preprocessing and operand-evaluation regression is
+  test-release-assertions. No precompiled headers currently precede this
+  seam; review forced-include/PCH ordering if that build policy changes.
+
 - The profile static-lifetime regression must run through normal process
   exit, not _Exit, to exercise ordered global teardown and retained pool
   deleters. Keep it in the common CTest list and the selective MSVC build,
@@ -324,9 +332,11 @@ build.
   evidence. `tools/scripts/check-workflows.pl` (CTest `workflow-static`)
   rejects other triggers, `continue-on-error` and any ctest command missing
   those flags.
-- `-UNDEBUG` is mandatory for every assert-based executable, including
+- `i2pd_enable_test_assertions()` is mandatory for assert-based executables, including
   `test-tools-getopt` and the libFuzzer harnesses built with
-  `RelWithDebInfo`. Use `i2pd_enable_sanitizers()` for the sanitizer flags;
+  `RelWithDebInfo`; its source-header policy keeps MSVC Release assertions
+  active without conflicting command-line macros. Use
+  `i2pd_enable_sanitizers()` for the sanitizer flags;
   do not hand-roll a second sanitizer matrix.
 - `test-x25519-rfc7748` is the provider-independent RFC 7748 KAT. Keep
   known-answer tests free of generated identities and wall-clock/network
