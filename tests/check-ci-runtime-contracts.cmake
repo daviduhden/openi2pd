@@ -379,3 +379,23 @@ require_runtime_order("libi2pd/Tag.h"
   "if (length > sz) throw std::length_error"
   "ByteStreamToBase32 (m_Buf, length)")
 require_runtime_source("tests/test-kad-dht.cpp" "TestTagEncodingBounds ();")
+
+require_runtime_order("privsep/Channel.cpp"
+  "bool waitForSpace = false;" "bool Channel::RejectFrame"
+  "if (waitForSpace)" "::poll (&pfd" "::sendmsg (m_Fd"
+  "if (error == EAGAIN || error == EWOULDBLOCK)"
+  "waitForSpace = true;")
+
+require_runtime_order("privsep/OpenBSDImsg.cpp"
+  "bool attempted = false;" "ImsgChannel::Receive (int timeoutMs)"
+  "if (attempted && !infinite && DeadlineExpired (deadline))"
+  "if (imsgbuf_write (m_Buffer) != -1) continue;" "::poll (&pfd")
+
+require_runtime_source("tests/test-privsep-linux-ipc.cpp"
+  "MessageType::LogRecord, 1000, resumedPayload }, 0)")
+
+require_runtime_source("tests/test-privsep-linux-ipc.cpp"
+  "assert (immediate.error () == \"send timeout\");")
+
+require_runtime_source("tests/test-privsep-openbsd-imsg.cpp"
+  "MessageType::Ping, 9, { } }, -1, 0)")

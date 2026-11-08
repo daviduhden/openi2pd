@@ -83,6 +83,11 @@ public:
 	 * exactly one SCM_RIGHTS descriptor and ownership is transferred to
 	 * the imsg layer after a successful compose (matching
 	 * imsg_compose(3)).
+	 *
+	 * Zero timeout permits one nonblocking write attempt; positive values
+	 * bound all remaining writes and waits by one absolute deadline, and
+	 * negative values wait indefinitely. Timeout or write/poll failure
+	 * closes the channel because the queued frame may be partially sent.
 	 */
 	i2p::expected<void, std::string> Send (const Message & message, int fd = -1, int timeoutMs = 5000);
 	/**

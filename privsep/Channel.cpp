@@ -341,24 +341,30 @@ i2p::expected<void, std::string> Channel::SendWithFdUntil (const Message & messa
 	// or fails with EAGAIN. A poll(POLLOUT) followed by a blocking sendmsg
 	// is NOT bounded, because another writer (or a consumer of the
 	// advertised space) can take the free slot between the two calls. Send
-	// with MSG_DONTWAIT and retry until one absolute deadline, so the
-	// timeout always holds even on BSD-derived sockets that report
-	// readiness conservatively.
+	// with MSG_DONTWAIT before polling: readiness thresholds can report
+	// no space while a smaller record would still fit. Poll only after
+	// EAGAIN, and retain the same absolute deadline for every retry.
+	bool waitForSpace = false;
 	while (true)
 	{
-		pollfd pfd { m_Fd, POLLOUT, 0 };
-		int result;
-		do result = ::poll (&pfd, 1, PollTimeout (infinite, deadline));
-		while (result < 0 && errno == EINTR && (infinite || !DeadlineExpired (deadline)));
-		if (result < 0)
+		if (waitForSpace)
 		{
-			const int error = errno;
-			if (error == EINTR) return i2p::unexpected ("send timeout");
-			return i2p::unexpected (std::string ("poll: ") + strerror (error));
+			if (!infinite && DeadlineExpired (deadline)) return i2p::unexpected ("send timeout");
+			pollfd pfd { m_Fd, POLLOUT, 0 };
+			int result;
+			do result = ::poll (&pfd, 1, PollTimeout (infinite, deadline));
+			while (result < 0 && errno == EINTR && (infinite || !DeadlineExpired (deadline)));
+			if (result < 0)
+			{
+				const int error = errno;
+				if (error == EINTR) return i2p::unexpected ("send timeout");
+				return i2p::unexpected (std::string ("poll: ") + strerror (error));
+			}
+			if (result == 0) return i2p::unexpected ("send timeout");
+			if (pfd.revents & POLLNVAL) return i2p::unexpected ("poll: invalid descriptor");
+			if (pfd.revents & (POLLERR | POLLHUP)) return i2p::unexpected ("sendmsg: peer closed the channel");
+			if (!infinite && DeadlineExpired (deadline)) return i2p::unexpected ("send timeout");
 		}
-		if (result == 0) return i2p::unexpected ("send timeout");
-		if (pfd.revents & POLLNVAL) return i2p::unexpected ("poll: invalid descriptor");
-		if (pfd.revents & (POLLERR | POLLHUP)) return i2p::unexpected ("sendmsg: peer closed the channel");
 
 		struct msghdr messageHeader { };
 		messageHeader.msg_iov = iov;
@@ -387,7 +393,8 @@ i2p::expected<void, std::string> Channel::SendWithFdUntil (const Message & messa
 			if (error == EAGAIN || error == EWOULDBLOCK)
 			{
 				if (!infinite && DeadlineExpired (deadline)) return i2p::unexpected ("send timeout");
-				continue; // another writer claimed the slot after poll()
+				waitForSpace = true;
+				continue; // readiness can become stale before sendmsg()
 			}
 			return i2p::unexpected (std::string ("sendmsg: ") + strerror (error));
 		}

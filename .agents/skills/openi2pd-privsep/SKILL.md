@@ -105,6 +105,12 @@ report that limitation; do not substitute local execution. Ask for:
 
 ## Known issues and decisions
 
+- SOCK_SEQPACKET readiness is conservative: after one record drains, a
+  smaller send can succeed while POLLOUT remains false. Try MSG_DONTWAIT
+  first and poll only after EAGAIN, preserving the original deadline.
+  Pair the zero-budget success case with saturated-queue failure and
+  unchanged-record assertions; a pre-send poll must not gate that attempt.
+
 - POSIX refusal sends inherit a steady-clock time point through the private
   SendWithFdUntil path. Do not convert remaining time back into a relative
   public send: preemption can otherwise rebase the original receive budget.

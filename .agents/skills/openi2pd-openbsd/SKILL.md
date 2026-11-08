@@ -96,6 +96,12 @@ limitation; do not substitute local execution. Ask for:
   unsupported type.
 
 ## Known issues and decisions
+
+- The imsg write loop attempts nonblocking output before polling and checks
+  its original deadline after any partial progress. Timeout or ambiguous
+  write/poll failure closes the composed queue instead of replaying a frame.
+  Keep zero-budget idle sends distinct from Linux record-queue regressions;
+  the imsg correction still needs its own OpenBSD execution evidence.
 - The maintained port template delegates sample installation to
   `contrib/openbsd/port/install-examples.sh`, merged beside the external
   Makefile and invoked through `${.CURDIR}`. Do not require a new helper in

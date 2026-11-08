@@ -740,11 +740,10 @@ void TestAuthenticateBeforeRefusal ()
 
 void TestSendDeadlineAfterDrain ()
 {
-	// A poll(POLLOUT) result can become stale before sendmsg() runs:
-	// another writer, or the consumer side of the advertised space, can
-	// take the slot in between. The timeout must still hold, and freeing
-	// exactly one record slot must let a bounded send proceed without
-	// spinning or blocking.
+	// Linux's writable threshold can remain unsatisfied after one queued
+	// record drains even though a small nonblocking send fits. Zero budget
+	// must still permit one immediate send attempt without waiting for
+	// POLLOUT. Saturation coverage below separately pins bounded retries.
 	auto pair = Channel::CreatePair ();
 	assert (pair.has_value ());
 	int sendBuffer = 4096;
@@ -767,9 +766,8 @@ void TestSendDeadlineAfterDrain ()
 	assert (queued > 0);
 	assert (queued < 1000);
 
-	// Release one slot, leaving residual queue space smaller than the
-	// whole socket buffer. A sender that ignores EAGAIN after a stale poll
-	// would block here instead of respecting its deadline.
+	// Release one slot while most records remain queued. A pre-send poll
+	// can still report no readiness; it must not suppress the attempt.
 	auto first = pair->second.Receive (1000);
 	assert (first.has_value ());
 	assert (first->has_value ());
@@ -778,7 +776,7 @@ void TestSendDeadlineAfterDrain ()
 
 	const auto started = std::chrono::steady_clock::now ();
 	const std::string resumedPayload (64, 's');
-	auto sent = pair->first.Send (Message { MessageType::LogRecord, 1000, resumedPayload }, 1000);
+	auto sent = pair->first.Send (Message { MessageType::LogRecord, 1000, resumedPayload }, 0);
 	const auto elapsed = std::chrono::steady_clock::now () - started;
 	if (!sent)
 		std::cerr << "post-drain send failed after " << queued << " queued frames: " << sent.error () << std::endl;
@@ -926,6 +924,12 @@ void TestSendQueueSaturation ()
 	}
 	assert (queued > 0);
 	assert (queued < 1000);
+
+	// The single immediate attempt cannot turn zero budget into a wait
+	// when the queue really is full, and must leave all records intact.
+	auto immediate = pair->first.Send (Message { MessageType::LogRecord, 998, payload }, 0);
+	assert (!immediate.has_value ());
+	assert (immediate.error () == "send timeout");
 
 	const auto started = std::chrono::steady_clock::now ();
 	auto blocked = pair->first.Send (Message { MessageType::LogRecord, 999, payload }, 50);

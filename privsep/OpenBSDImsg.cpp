@@ -209,13 +209,15 @@ i2p::expected<ImsgChannel, std::string> ImsgChannel::AdoptValidated (int fd, uin
  * smaller than the 64 KiB project frame maximum on OpenBSD. A frame
  * whose per-type ceiling is legal but whose imsg framing is not is
  * therefore refused here, and this transport has no chunking, so the
- * send fails instead of splitting the frame. The buffer is drained with
- * `poll` and an absolute deadline; a negative timeout keeps the
- * infinite-wait meaning.
+ * send fails instead of splitting the frame. Try a nonblocking write
+ * before polling for more space, retaining one absolute deadline.
+ * Zero timeout permits one write attempt; a negative timeout keeps the
+ * infinite-wait meaning. Partial progress does not renew the deadline.
+ *
  * A timeout closes the channel, because a frame already composed may
  * have been partially written and must never be retried on the same
- * buffer as a second mutation. Poll errors are reported without closing
- * so the caller can decide whether the channel is still worth draining.
+ * buffer as a second mutation. Write and poll errors also close the
+ * channel because the queued frame may already have reached its peer.
  */
 i2p::expected<void, std::string> ImsgChannel::Send (const Message & message, int fd, int timeoutMs)
 {
@@ -229,8 +231,30 @@ i2p::expected<void, std::string> ImsgChannel::Send (const Message & message, int
 
 	const bool infinite = IsInfiniteTimeout (timeoutMs);
 	const auto deadline = MakeDeadline (timeoutMs);
+	bool attempted = false;
 	while (imsgbuf_queuelen (m_Buffer) > 0)
 	{
+		if (attempted && !infinite && DeadlineExpired (deadline))
+		{
+			Close ();
+			return i2p::unexpected ("imsg send timeout");
+		}
+		attempted = true;
+		// A small queued write can fit before the socket advertises its
+		// general writable threshold. Try the nonblocking write first.
+		if (imsgbuf_write (m_Buffer) != -1) continue;
+		const int writeError = errno;
+		if (writeError != EAGAIN && writeError != EWOULDBLOCK
+			&& writeError != ENOBUFS && writeError != EINTR)
+		{
+			Close (); // the queued frame is ambiguous; never replay it
+			return i2p::unexpected (std::string ("imsgbuf_write: ") + strerror (writeError));
+		}
+		if (!infinite && DeadlineExpired (deadline))
+		{
+			Close ();
+			return i2p::unexpected ("imsg send timeout");
+		}
 		pollfd pfd { m_Fd, POLLOUT, 0 };
 		int polled;
 		do polled = ::poll (&pfd, 1, PollTimeout (infinite, deadline));
@@ -254,20 +278,6 @@ i2p::expected<void, std::string> ImsgChannel::Send (const Message & message, int
 		{
 			Close ();
 			return i2p::unexpected ("imsg poll: peer closed the channel");
-		}
-		if (imsgbuf_write (m_Buffer) == -1)
-		{
-			if (errno == EAGAIN || errno == EWOULDBLOCK || errno == ENOBUFS)
-			{
-				if (!infinite && DeadlineExpired (deadline))
-				{
-					Close ();
-					return i2p::unexpected ("imsg send timeout");
-				}
-				continue;
-			}
-			Close (); // the queued frame is now ambiguous; never replay it
-			return i2p::unexpected (std::string ("imsgbuf_write: ") + strerror (errno));
 		}
 	}
 	return { };

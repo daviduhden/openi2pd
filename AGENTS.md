@@ -107,6 +107,10 @@ An empty run-level log is not evidence of retention expiry. Retrieve its job
 metadata and try each job log before classifying the evidence as unavailable.
 For a failed regression, verify that fixture inputs satisfy the production
 schema before attributing a later state-transition assertion to product code.
+For socket backpressure failures, distinguish readiness thresholds from an
+actual nonblocking write result. Review zero-budget admission separately from
+deadline-bounded retries and inspect equivalent transports before fixing the
+fixture or changing its timeout.
 Phase markers identify where corruption was detected, not necessarily where
 the invalid write occurred. Keep heap attribution open until the exact
 stack/image evidence supports it. Inspect pinned VM actions for failure-time

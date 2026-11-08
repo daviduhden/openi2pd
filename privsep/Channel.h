@@ -149,8 +149,9 @@ public:
 	 * already covered by the operation policy (for example a pre-opened
 	 * log or storage file).
 	 * The send is atomic (SOCK_SEQPACKET) and bounded by @a timeoutMs even
-	 * if the peer drains the queue concurrently: the implementation polls
-	 * with an absolute deadline and retries EAGAIN using MSG_DONTWAIT. A
+	 * if the peer drains the queue concurrently. Attempt a nonblocking
+	 * write before polling; retries retain the original deadline.
+	 * Zero timeout permits that immediate attempt without waiting. A
 	 * negative timeout keeps the historical infinite-wait meaning.
 	 */
 	i2p::expected<void, std::string> SendWithFd (const Message & message, int fd, int timeoutMs = 5000);

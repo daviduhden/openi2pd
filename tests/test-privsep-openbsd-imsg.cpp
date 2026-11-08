@@ -89,7 +89,8 @@ int main ()
 	// is refused before a frame is queued and the channel stays usable.
 	auto unknownType = left->Send (Message { static_cast<MessageType> (0xffff), 9, { } });
 	assert (!unknownType.has_value ());
-	assert (left->Send (Message { MessageType::Ping, 9, { } }).has_value ());
+	// Zero budget still permits one nonblocking write on an idle socket.
+	assert (left->Send (Message { MessageType::Ping, 9, { } }, -1, 0).has_value ());
 	auto stillUsable = right->Receive (1000);
 	assert (stillUsable.has_value () && stillUsable->has_value ());
 	assert ((*stillUsable)->message.requestId == 9);
