@@ -1161,3 +1161,14 @@ local policy does not implement Java's bandwidth/reciprocity ranking. Compare
 the pinned Java `PeerCoordinator`/`PeerCheckerTask` and
 [BEP 6](https://www.bittorrent.org/beps/bep_0006.html) before claiming scheduler
 parity. Compilation, sanitizer and live peer exchange remain Pending CI.
+
+## 2026-11-08 session provenance continuation
+
+Adapted upstream `b89360354d356f7d468280c861a4102c019bf850`: an
+ECIES-origin LeaseSet1 is refused before parsing or replacing the client
+cache. LeaseSet1 cannot provide the static ECIES key needed to bind that
+session peer. Classification still masks DatabaseStore's upper option bits.
+The new signed LS1 fixture retains plaintext acceptance and checks that a
+newer ECIES-origin advertisement cannot replace it or establish peer identity.
+This changes acceptance policy, not a wire format. Implemented / static;
+Pending CI compilation and Pending CI tests, with live Java exchange pending.

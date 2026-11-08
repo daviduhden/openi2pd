@@ -98,6 +98,12 @@ peer or add a hidden external checkout. The reference is for reading only.
   protocol requirement justifies it.
 
 ## Known issues and decisions
+
+- ECIES-origin LeaseSet1 must be refused before parsing or replacing a
+  client cache entry: LS1 cannot supply the static ECIES peer binding.
+  Mask DatabaseStore option bits before classification and retain a signed
+  plaintext LS1 positive control. A provider/session source comparison
+  does not establish live exchange parity with a newly released Java tag.
 - NTCP2's first 64 inbound SessionRequest bytes have a dedicated 10 s
   service-owned read deadline. Cancel it before crypto handoff; atomic
   generation revocation plus weak executor dispatch protects cancellation

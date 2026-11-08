@@ -411,6 +411,12 @@ require_runtime_source("tests/test-privsep-linux-ipc.cpp"
 
 require_runtime_source("tests/CMakeLists.txt" "test-tunnel-destination-cache")
 
+require_runtime_source("tests/CMakeLists.txt" "test-destination-leaseset-session")
+
+require_runtime_order("libi2pd/Destination.cpp"
+  "const uint8_t storeType =" "auto makeLeaseSet ="
+  "NETDB_STORE_TYPE_LEASESET && from" "return;" "switch (storeType)")
+
 require_runtime_source("libi2pd/Base.h"
   "std::span<const char, 32> GetBase32SubstitutionTable ()")
 

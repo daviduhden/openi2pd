@@ -623,6 +623,14 @@ namespace client
 		// bits must not make an otherwise valid store disappear at the client
 		// layer; the router-level handler already masks them.
 		const uint8_t storeType = buf[DATABASE_STORE_TYPE_OFFSET] & 0x0f;
+		// An authenticated ECIES session must publish a LeaseSet2 whose
+		// static encryption key can be bound to that session. LeaseSet1 has
+		// no such key; reject it before parsing or replacing cached state.
+		if (storeType == i2p::data::NETDB_STORE_TYPE_LEASESET && from)
+		{
+			LogPrint (eLogWarning, "Destination: LeaseSet1 rejected from ECIES session");
+			return;
+		}
 		switch (storeType)
 		{
 		case i2p::data::NETDB_STORE_TYPE_LEASESET: // 1
@@ -637,7 +645,7 @@ namespace client
 				if (storeType == i2p::data::NETDB_STORE_TYPE_LEASESET)
 				{
 					auto ls = std::make_shared<i2p::data::LeaseSet> (buf + offset, len - offset);
-					if (!SupportsEncryptionType (i2p::data::CRYPTO_KEY_TYPE_ELGAMAL) || from)
+					if (!SupportsEncryptionType (i2p::data::CRYPTO_KEY_TYPE_ELGAMAL))
 						ls->SetIsIncompatibleCrypto (true);
 					return ls;
 				}

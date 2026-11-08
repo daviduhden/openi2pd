@@ -104,6 +104,7 @@ set(I2PD_TESTS
   test-i2ptunnel-filter
   test-i2ptunnel-targets
   test-tunnel-destination-cache
+  test-destination-leaseset-session
   test-base-64
   test-win32-shutdown-deadline
   test-gost
