@@ -40,7 +40,10 @@ my $root = defined $root_arg ? $root_arg
 my $res  = File::Spec->catdir( $root, qw(app src main res) );
 my @errors;
 
-sub fail { push @errors, join( '', @_ ) . "\n" }
+sub fail {
+    my @parts = @_;
+    return push @errors, join( '', @parts ) . "\n";
+}
 
 # A catalog is read once per section (strings, plurals), so an encoding
 # defect would otherwise be reported twice for the same file.
@@ -49,13 +52,13 @@ sub fail_encoding {
     my ( $kind, $path, $line ) = @_;
     my $key = "$kind\0$path";
     return if $encoding_reported{$key}++;
-    fail( defined $line ? "$kind in $path:$line" : "$kind in $path" );
+    return fail( defined $line ? "$kind in $path:$line" : "$kind in $path" );
 }
 
 sub read_file {
     my ($path) = @_;
     open( my $fh, '<:raw', $path ) or die "open $path: $!";
-    local $/;
+    local $/ = undef;
     my $text = <$fh>;
     close($fh);
 

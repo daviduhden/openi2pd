@@ -28,7 +28,7 @@ my $root =
 sub read_file {
     my ($path) = @_;
     open my $fh, '<', $path or return;
-    local $/;
+    local $/ = undef;
     my $text = <$fh>;
     close $fh;
     return defined $text ? $text : '';

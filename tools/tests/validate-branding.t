@@ -29,7 +29,7 @@ if ( !$opened ) {
     fail('validator reports success');
 }
 else {
-    local $/;
+    local $/ = undef;
     $output = <$fh>;
     my $closed = close $fh;
     my $status = $?;

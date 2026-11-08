@@ -154,7 +154,7 @@ SKILL
         my ( $self, $relative ) = @_;
         open my $file, '<:raw:encoding(UTF-8)', $self->path($relative)
           or die "open fixture: $!\n";
-        local $/;
+        local $/ = undef;
         my $text = <$file>;
         close $file or die "close fixture: $!\n";
         return defined $text ? $text : '';
@@ -212,7 +212,7 @@ SKILL
           : 255;
         seek $stdout, 0, 0 or die "rewind child stdout: $!\n";
         seek $stderr, 0, 0 or die "rewind child stderr: $!\n";
-        local $/;
+        local $/ = undef;
         my $out = <$stdout>;
         my $err = <$stderr>;
         close $stdout or die "close child stdout: $!\n";

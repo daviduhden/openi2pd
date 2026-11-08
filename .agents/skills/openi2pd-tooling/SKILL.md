@@ -122,6 +122,13 @@ a TUI client.
 
 ## Known issues and decisions
 
+- Perl::Critic slurp findings should initialize the localized input record
+  separator explicitly to undef, retaining its dynamic scope and restoration.
+  Diagnostic accumulators must preserve the old push-count result when
+  unpacking arguments and adding an explicit return. Do not apply /x to
+  parser regexes mechanically: literal whitespace and hash characters require
+  semantic review. Passing Test::More does not imply the analyzer lane passes.
+
 - Key generation can throw when the selected generator is unavailable or
   fails. keygen converts that refusal to its existing exit 2 before opening
   output; do not restore a different-algorithm fallback or expose provider

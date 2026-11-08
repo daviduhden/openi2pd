@@ -78,7 +78,7 @@ for my $path (sort @files) {
     eval {
         die "source limit\n" if -s $path > 16 * 1024 * 1024;
         open my $file, '<:raw', $path or die "source read\n";
-        local $/;
+        local $/ = undef;
         $text = <$file> // '';
         close $file or die "source close\n";
         1;

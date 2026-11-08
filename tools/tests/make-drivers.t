@@ -44,7 +44,7 @@ sub write_file {
 sub read_file {
     my ($path) = @_;
     open my $file, '<', $path or die "open $path: $!\n";
-    local $/;
+    local $/ = undef;
     my $text = <$file>;
     close $file or die "close $path: $!\n";
     return $text // '';
@@ -76,7 +76,7 @@ sub invoke {
     chdir $previous or die "restore cwd: $!\n";
     die $error unless $pid;
     close $input;
-    my $text = do { local $/; <$output> } // '';
+    my $text = do { local $/ = undef; <$output> } // '';
     close $output;
     while (1) {
         my $waited = waitpid $pid, 0;

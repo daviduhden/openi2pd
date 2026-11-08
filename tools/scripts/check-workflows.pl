@@ -34,7 +34,7 @@ my %texts;
 for my $file (@files) {
     my $path = File::Spec->catfile( $dir, $file );
     open my $fh, '<', $path or die "cannot read $path: $!\n";
-    local $/;
+    local $/ = undef;
     my $text = <$fh>;
     close $fh;
     $checked++;
@@ -236,7 +236,7 @@ if ( -d $actions_dir ) {
 }
 for my $path ( sort @action_files ) {
     open my $fh, '<', $path or die "cannot read $path: $!\n";
-    local $/;
+    local $/ = undef;
     my $text = <$fh>;
     close $fh;
     ( my $joined = $text ) =~ s/\\\n\s*/ /g;
@@ -328,7 +328,7 @@ my $crypto_diagnostic = $texts{'crypto-tsan.yml'};
 my $crypto_action_path = File::Spec->catfile($actions_dir, 'tsan-openssl', 'action.yml');
 open my $crypto_action_file, '<', $crypto_action_path
   or die "cannot read instrumented crypto action: $!\n";
-my $crypto_action = do { local $/; <$crypto_action_file> };
+my $crypto_action = do { local $/ = undef; <$crypto_action_file> };
 close $crypto_action_file;
 if (defined $crypto_diagnostic) {
     for my $required (
@@ -376,7 +376,7 @@ my $crypto_patch_path = File::Spec->catfile($root, '.github', 'patches',
     'openssl-tsan-compiler-macro.patch');
 if (defined $crypto_diagnostic) {
     if (open my $patch_file, '<', $crypto_patch_path) {
-        local $/;
+        local $/ = undef;
         my $patch = <$patch_file>;
         close $patch_file;
         for my $required (

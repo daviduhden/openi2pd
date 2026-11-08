@@ -43,7 +43,7 @@ for my $path ( $java, $header, $native ) {
 sub slurp {
     my ($path) = @_;
     open my $fh, '<', $path or die "open $path: $!\n";
-    local $/;
+    local $/ = undef;
     my $text = <$fh>;
     close $fh;
     return $text // '';

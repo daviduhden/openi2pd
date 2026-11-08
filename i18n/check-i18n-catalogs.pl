@@ -50,7 +50,10 @@ my @sources = map { File::Spec->catfile( $root, split m{/}, $_ ) } (
 );
 
 my @errors;
-sub fail { push @errors, join( '', @_ ) . "\n" }
+sub fail {
+    my @parts = @_;
+    return push @errors, join( '', @parts ) . "\n";
+}
 
 sub usage {
     my ($code) = @_;
@@ -61,7 +64,7 @@ sub usage {
 sub read_file {
     my ($path) = @_;
     open my $fh, '<:raw', $path or die "open $path: $!\n";
-    local $/;
+    local $/ = undef;
     my $text = <$fh>;
     close $fh;
     return $text // '';
@@ -167,7 +170,6 @@ sub valid_utf8 {
     )*$/sx;
 }
 
-my %catalog;
 for my $catalog (@catalogs) {
     fail("missing catalog $catalog->{path}") unless -f $catalog->{path};
     next                                     unless -f $catalog->{path};

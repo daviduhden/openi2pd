@@ -63,7 +63,7 @@ sub trim {
 sub read_utf8 {
     my ( $path, $preserve_newlines ) = @_;
     open my $file, '<:raw', fs_native($path) or die "cannot read $path: $!\n";
-    local $/;
+    local $/ = undef;
     my $bytes = <$file>;
     close $file or die "cannot close $path: $!\n";
     my $text = decode( 'UTF-8', $bytes // '', FB_CROAK );
@@ -107,7 +107,7 @@ sub git {
     close $output;
     my $status = reap_git($pid);
     seek $error, 0, 0 or die "cannot rewind git diagnostic capture: $!\n";
-    my $stderr_bytes = do { local $/; <$error> };
+    my $stderr_bytes = do { local $/ = undef; <$error> };
     close $error;
     my $stdout = decode( 'UTF-8', $stdout_bytes, FB_DEFAULT );
     my $stderr = decode( 'UTF-8', $stderr_bytes // '', FB_DEFAULT );

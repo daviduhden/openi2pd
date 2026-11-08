@@ -355,7 +355,7 @@ sub read_source
 			print STDERR "check-doxygen-params: cannot read $path: $!\n";
 			exit 2;
 		};
-	local $/;
+	local $/ = undef;
 	my $source = <$fh>;
 	close $fh;
 	return defined $source ? $source : '';

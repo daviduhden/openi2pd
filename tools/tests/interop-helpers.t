@@ -32,7 +32,7 @@ sub invoke {
     my $status = $?;
     seek $output, 0, 0 or die "rewind output failed\n";
     seek $errors, 0, 0 or die "rewind errors failed\n";
-    local $/;
+    local $/ = undef;
     my $out = <$output> // '';
     my $err = <$errors> // '';
     close $output;

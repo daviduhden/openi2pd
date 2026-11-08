@@ -82,7 +82,7 @@ for my $rel (@svgs) {
     my $name = $rel;
     open my $fh, '<', $path
       or do { print STDERR "open $name: $!\n"; $failed++; next };
-    local $/;
+    local $/ = undef;
     my $text = <$fh>;
     close $fh;
     for my $bad (
@@ -187,10 +187,10 @@ my $artwork_path =
   File::Spec->catfile( $root, 'contrib', 'artwork', 'open-i2pd-icon.svg' );
 if ( -f $symbol_path && -f $artwork_path ) {
     my $symbol_hash = sha256_hex(
-        do { open my $fh, '<:raw', $symbol_path or die $!; local $/; <$fh> }
+        do { open my $fh, '<:raw', $symbol_path or die $!; local $/ = undef; <$fh> }
     );
     my $artwork_hash = sha256_hex(
-        do { open my $fh, '<:raw', $artwork_path or die $!; local $/; <$fh> }
+        do { open my $fh, '<:raw', $artwork_path or die $!; local $/ = undef; <$fh> }
     );
     if ( $symbol_hash ne $artwork_hash ) {
         print STDERR
@@ -205,7 +205,7 @@ if ( -f $original ) {
     my $expected =
       '9e8dc2d7a8e330112f28011ebfe993871a01e9cd8be70c8cb85cb29c0d76112f';
     my $actual = sha256_hex(
-        do { open my $fh, '<:raw', $original or die $!; local $/; <$fh> }
+        do { open my $fh, '<:raw', $original or die $!; local $/ = undef; <$fh> }
     );
     if ( $actual ne $expected ) {
         print STDERR "logo-original.png SHA-256 changed\n";
@@ -242,7 +242,7 @@ sub check_palette_file {
     }
     open my $fh, '<', $path
       or do { print STDERR "open $rel: $!\n"; $failed++; return 0 };
-    local $/;
+    local $/ = undef;
     my $text = <$fh>;
     close $fh;
     my $count = 0;
@@ -307,7 +307,7 @@ sub check_svg_palette {
     return unless -f $path;
     open my $fh, '<', $path
       or do { print STDERR "open $rel: $!\n"; $failed++; return };
-    local $/;
+    local $/ = undef;
     my $text = <$fh>;
     close $fh;
     while ( $text =~ /fill="(#[0-9A-Fa-f]{6})"/g ) {
@@ -340,7 +340,7 @@ sub check_android_vector_palette {
     return unless -f $path;
     open my $fh, '<', $path
       or do { print STDERR "open $rel: $!\n"; $failed++; return };
-    local $/;
+    local $/ = undef;
     my $text = <$fh>;
     close $fh;
     while ( $text =~ /android:fillColor="(#[0-9A-Fa-f]{6,8})"/g ) {
@@ -380,10 +380,10 @@ for my $name (
         next;
     }
     my $canonical_hash = sha256_hex(
-        do { open my $fh, '<:raw', $canonical or die $!; local $/; <$fh> }
+        do { open my $fh, '<:raw', $canonical or die $!; local $/ = undef; <$fh> }
     );
     my $mirror_hash = sha256_hex(
-        do { open my $fh, '<:raw', $mirror or die $!; local $/; <$fh> }
+        do { open my $fh, '<:raw', $mirror or die $!; local $/ = undef; <$fh> }
     );
     if ( $canonical_hash ne $mirror_hash ) {
         print STDERR
@@ -396,10 +396,10 @@ my $docs_colors =
   File::Spec->catfile( $root, 'docs', 'assets', 'branding', 'colors.md' );
 if ( -f $docs_colors ) {
     my $canonical_hash = sha256_hex(
-        do { open my $fh, '<:raw', $colors_path or die $!; local $/; <$fh> }
+        do { open my $fh, '<:raw', $colors_path or die $!; local $/ = undef; <$fh> }
     );
     my $docs_hash = sha256_hex(
-        do { open my $fh, '<:raw', $docs_colors or die $!; local $/; <$fh> }
+        do { open my $fh, '<:raw', $docs_colors or die $!; local $/ = undef; <$fh> }
     );
     if ( $canonical_hash ne $docs_hash ) {
         print STDERR

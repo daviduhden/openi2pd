@@ -62,12 +62,15 @@ if ( !-d $java_root ) {
 
 my @errors;
 
-sub fail { push @errors, join( '', @_ ) . "\n" }
+sub fail {
+    my @parts = @_;
+    return push @errors, join( '', @parts ) . "\n";
+}
 
 sub slurp {
     my ($path) = @_;
     open( my $fh, '<:raw', $path ) or die "open $path: $!";
-    local $/;
+    local $/ = undef;
     my $text = <$fh>;
     close($fh);
     return $text;
@@ -189,6 +192,7 @@ sub check_block {
                   . "'$decl'");
         }
     }
+    return;
 }
 
 my @files;

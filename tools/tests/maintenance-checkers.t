@@ -526,7 +526,7 @@ sub workflow_crash_fixtures {
 sub read_fixture_file {
     my ($path) = @_;
     open my $fh, '<', $path or BAIL_OUT("read workflow fixture: $!");
-    my $text = do { local $/; <$fh> };
+    my $text = do { local $/ = undef; <$fh> };
     close $fh or BAIL_OUT("close workflow fixture: $!");
     return $text;
 }

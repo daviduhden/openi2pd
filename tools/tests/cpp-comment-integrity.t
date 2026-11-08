@@ -173,7 +173,7 @@ find(
 my @tree_errors;
 for my $path ( sort @source_files ) {
     open my $fh, '<:raw', $path or die "open $path: $!\n";
-    local $/;
+    local $/ = undef;
     my $source = <$fh>;
     close $fh or die "close $path: $!\n";
     push @tree_errors, map { "$path: $_" } scan_comments($source);

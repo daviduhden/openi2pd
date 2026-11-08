@@ -104,7 +104,7 @@ sub run_git {
     # options.
     open my $fh, '-|', $git, '-C', $reference, @args
       or return ( undef, "git: $!" );
-    local $/;
+    local $/ = undef;
     my $out    = <$fh>;
     my $closed = close $fh;
     $out = '' unless defined $out;
@@ -154,7 +154,7 @@ sub read_input {
     my ( $path, $format ) = @_;
     open my $fh, '<', $path or die "open $path: $!\n";
     binmode $fh;
-    local $/;
+    local $/ = undef;
     my $raw = <$fh>;
     close $fh;
     $raw = '' unless defined $raw;
@@ -178,7 +178,7 @@ sub load_cases {
     my @cases;
     for my $path ( sort @found ) {
         open my $fh, '<', $path or die "open $path: $!\n";
-        local $/;
+        local $/ = undef;
         my $text = <$fh>;
         close $fh;
         my $data = eval { JSON::PP->new->decode($text) };
