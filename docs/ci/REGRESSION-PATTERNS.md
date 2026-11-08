@@ -456,3 +456,21 @@ source-order guard; neither substitutes for manual sanitizer execution.
   then starting a fresh public relative timeout can rebase the caller's
   budget after preemption. Source guards can pin propagation; runtime queue
   saturation tests are still needed and do not prove arbitrary scheduling.
+
+## 2026-11-08 — Ownership retirement and bounded composition
+
+- Test final-deleter reentrance while the synchronization wrapper is alive.
+  Both retired stored values and failed-CAS expected owners must release after
+  unlock; pointer equality alone does not prove shared ownership identity.
+- Pair signed-index rejection with valid masks at multiple fixed widths.
+  Encoding extents need zero/short/full controls, oversized and converted-
+  negative rejection, plus valid recovery without altered bytes.
+- Preserve one absolute Windows deadline through composed operations. Keep
+  expired-but-immediately-completable I/O distinct from newly permitted waits,
+  and retain cancellation reaping even when cleanup exceeds the wait budget.
+- An overall canceled run can include an earlier real build failure. An
+  always-run diagnostic missing its binary after cancellation supplies no
+  heap-crash evidence; inspect the actual artifact and executed steps.
+- Extended Perl regex layout must retain literal replacement spaces and
+  opaque inline-tag bodies containing hashes, spaces and angle brackets.
+  Keep positive, CRLF, generic/vararg and negative diagnostic cases together.

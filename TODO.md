@@ -10,15 +10,16 @@ Documents project documentation.
 
 # Master TODO
 
-Latest retrospective: TF-089/TF-090 and CW-027 are Implemented / static,
-Pending CI compilation / Pending CI tests. CW-028 is Partially implemented /
-static: 35 explicit Perl slurp scopes and diagnostic helper fixes are prepared,
-while other analyzer families remain Correction pending. RT-057 Windows
-startup and existing Unicode/version failures remain unresolved. The retained
-history has 312 runs and logs for 309; see `docs/ci/` and `PROGRESS.md`.
-RT-058 tracker count saturation and RT-059 POSIX absolute refusal deadlines
-are Implemented / static, Pending CI compilation / Pending CI tests. The
-equivalent Windows relative-budget handoffs remain a documented follow-up.
+Latest retrospective: 322 retained runs, logs for 320, on 59 SHAs. The executed
+0b7f0ab4 matrix exposes CE-085/086 library/Tag compilation, CE-087 Android
+triplet configuration and TF-091 Debian document compression failures.
+Their corrections and RT-060/061/062 owner-retirement, Tag bounds and Windows
+deadline fixes are Implemented / static, Pending CI compilation / Pending CI
+tests. CW-028 remains Partially implemented / static: prior slurp fixes
+executed, while the local Javadoc regex subset and new corpus await CI.
+Remaining Critic families are Correction pending. RT-057 Windows startup,
+Unicode/version and earlier Android Lint debt remain unresolved. New compile
+blockers prevent revalidation of TF-089/090 and RT-058/059; see `docs/ci/`.
 
 Persistent task inventory for the openi2pd fork. IDs are stable. A checked
 box does **not** replace the status field: dynamic validation is tracked

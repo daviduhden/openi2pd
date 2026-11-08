@@ -1288,3 +1288,57 @@ WindowsSupervisor.cpp's shutdown send derives a relative remaining budget.
 These separate APIs remain a static deadline-propagation follow-up; no observed
 CI failure is attributed to that precision risk. The POSIX fix does not claim
 to resolve Windows timing or startup coverage.
+
+## 2026-11-08 — Preventive lifetime, bounds and Windows deadline review
+
+### RT-060 — Mutex publication retired the last owner while locked
+
+Static finding while fixing CE-085, not an observed sanitizer report. The
+existing AtomicSharedPtr fallback Store assigned its old shared pointer under
+the internal mutex. A final deleter reentering Load could deadlock. Store now
+swaps ownership and retires it after unlocking; the new failed-CAS path also
+replaces expected outside the lock. Strong CAS matches both raw pointer and
+control-block ownership rather than operator== alone. Explicit fallback tests
+cover distinct owners/aliases and deterministic reentrant Store/failed-CAS
+retirement while the wrapper remains alive. Existing RouterInfo, Tunnel,
+RouterContext and Blocklist consumers were reviewed. Wrapper lifetime still
+requires quiescence before destruction. Implemented / static; Pending CI
+compilation and Pending CI tests, including selective MSVC coverage.
+
+### RT-061 — Public Tag bit and encoding extents were incompletely bounded
+
+Static finding from CE-086's equivalent-type review, not a demonstrated remote
+exploit. GetBit rejected upper offsets but a negative int could address before
+m_Buf. It now rejects negatives before conversion and preserves MSB-first mask
+results for valid indices. Kademlia's actual production recursion begins at
+zero; no negative network-driven caller was shown.
+
+ToBase64/ToBase32 also accepted caller lengths greater than the fixed storage,
+allowing a raw encoder read beyond the buffer. They now throw a generic
+length_error before reading on an invalid extent. The sole nondefault
+production Base64 caller uses 16/32 bytes of Tag<32>; no argument-taking
+production Base32 caller was found. Valid prefixes, wire encodings and stored
+formats are unchanged. Kademlia tests cover masks, negative/extreme indices,
+widths 8/32, zero/short/full encodings, oversized/SIZE_MAX/converted-negative
+lengths and valid recovery. Ordered source guards pin rejection before access.
+Implemented / static; Pending CI compilation and Pending CI tests.
+
+### RT-062 — Windows nested operations restarted relative wait budgets
+
+Preventive continuation of RT-059, not an observed timing failure. Absolute
+Windows deadlines now flow through accept, WorkerHello, overlapped send/read,
+both 250ms refusal branches and supervisor shutdown/graceful/forced waits.
+Legacy DWORD timeout APIs convert once and delegate; INFINITE has an explicit
+max-time-point sentinel, and finite conversions cannot become INFINITE.
+
+Worker Stop previously waited its full budget then granted it again to forced
+termination. StopUntil/TerminateAndWaitUntil share the original deadline;
+supervisor graceful waits use WaitUntil too. Existing authentication, nonce,
+role, DACL and re-arm checks remain. CancelIoEx still drains kernel-owned
+OVERLAPPED state with GetOverlappedResult before releasing stack storage.
+Cancellation cleanup may outlast the wait deadline; lifecycle mutex admission
+is also outside that budget. No strict whole-call wall-clock claim is made.
+Expired receive/reuse and absolute roundtrip regressions retain the legacy
+relative controls; ordered source guards pin propagation. Implemented / static;
+Pending Windows CI compilation and Pending CI tests. This does not resolve
+0xC0000142 startup coverage or canceled MSVC diagnostics.

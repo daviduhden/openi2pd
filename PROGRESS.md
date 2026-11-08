@@ -7399,3 +7399,83 @@ or push.
   inspect source only. New native assertions, Perl suites/analyzer and the
   complete supported matrix remain pending manual CI on a published revision
   containing these changes; no such validation is claimed in this session.
+
+## 2026-11-08 — Audit of the published 0b7f0ab4 matrix
+
+- Retrieved all ten new full/failed logs and exact job metadata, including
+  successful siblings and completed failing steps within canceled runs.
+  Paginated retained history is 322 runs / 59 SHAs / 15 workflow IDs: 52
+  successes, 204 failures, 66 cancellations. Logs cover 320 runs (301 run logs
+  plus 19 job-level recoveries); only two older canceled runs remain missing.
+  New evidence is outside the tree under /var/tmp/openi2pd-ci-next.
+- CE-085, Implemented / static: Android/OpenBSD/MSYS2 libc++ rejects direct
+  atomic<shared_ptr<Selection>>. The registry reuses AtomicSharedPtr with strong
+  CAS, preserving concurrent lazy/explicit selection. An explicit mutex backend
+  enables deterministic tests without feature-macro or ODR changes. All old
+  callers and shared header interfaces were reviewed; consumers must rebuild.
+- RT-060, Implemented / static: fallback Store could invoke its final deleter
+  under a mutex. Swap/retirement and failed-CAS expected replacement now happen
+  outside locks. New common/MSVC/PageHeap ownership regressions cover both
+  backends, distinct owners/aliases and deterministic deleter reentrance while
+  storage remains alive. Wrapper destruction still requires quiescence.
+- CE-086, Implemented / static: all three new tracker fixture calls use
+  IdentHash::len instead of nonexistent size(). Global typed-Tag API searches
+  found no additional container-method defect. Runtime suites were not reached
+  after the exact remote compilation failure.
+- RT-061, Implemented / static: signed negative Tag::GetBit indices reject
+  before conversion/read. Prefix encoders reject extents beyond fixed storage
+  before raw reads; valid serialization is unchanged. Focused Kademlia tests
+  cover masks, indices, widths, valid encodings, invalid lengths and recovery.
+  Actual production callers were reviewed; no remote exploit is claimed.
+- CE-087, Implemented / static: emulator dependencies use vcpkg x64-android,
+  while Android/emulator ABIs stay x86_64. Both overlays set API 29 after the
+  upstream include. Workflow guards/negative fixtures cover job presence,
+  triplets, prefixes, ABI and overlay ordering. No source/API level is lowered.
+- TF-091, Implemented / static: exact Debian data archive contains i18n.md.gz.
+  DEP-8 permits plain-or-gzip Markdown while preserving exact license and
+  changelog requirements; no install manifest or compression rule changes.
+- CW-028, Partially implemented / static: executed suites pass 1270 assertions
+  before Critic fails with 896 occurrences in 20 families. Earlier 35 slurp
+  findings are absent. A bounded manual review converts 29 Javadoc regex
+  operands to extended layout and retains captures/replacement spaces. Eight
+  new fixture assertions are wired into CTest, syntax/Critic inventories and
+  the manual Perl-quality lane. They were prepared, not executed locally.
+- RT-062, Implemented / static: Windows accept/hello, send/read, both refusal
+  branches and graceful/forced worker shutdown now inherit absolute deadlines.
+  Legacy DWORD APIs remain. INFINITE is explicit; finite conversions cannot
+  become infinite. Kernel cancellation still reaps OVERLAPPED storage and may
+  exceed the wait deadline; lifecycle-lock admission is outside the budget.
+- Eight real subagents and follow-up scopes reviewed history, native/runtime,
+  Android/platforms, ownership concurrency, crypto/bit bounds, Windows IPC and
+  regression/package integration. New test/fixture and shared-interface edits
+  were assigned exclusively; the coordinator owns integration and tracking.
+- Six historical inventories retain observed causes separately from static
+  preventive findings. Canceled MSVC compilation supplies no heap execution
+  trace; Android UI has a real triplet failure before later cancellation.
+  Earlier startup, Unicode/version, Lint and external runner gaps stay open.
+- No local compilation, build configuration, test suite, Perl::Critic,
+  sanitizer, dependency installation, commit or push. All new code remains
+  Pending CI compilation / Pending CI tests on a published revision.
+- Warning precision: OpenSSL 3/4 GCC jobs compile the parity translation unit
+  without repeating CW-027. This is compilation evidence for that correction,
+  not a complete build, link or runtime result after CE-086 stopped Ninja.
+  Tag boundary regressions also join the selective MSVC build/filter,
+  PageHeap and executable artifact inventory alongside atomic ownership.
+- Post-change knowledge review corrected stale unconditional atomic shared-
+  pointer baseline claims in dependency/change guides and the C++23 matrix.
+  The native feature remains selected only when its macro is available; the
+  existing mutex strategy remains part of the supported library floor.
+- Recovered historical Android UI job 128582359111 on c3f5df53 confirms the
+  same CE-087 triplet error before its eventual cancellation; the common
+  root entry retains both executions instead of classifying them as missing
+  or clean device coverage.
+- Final compile-free checks pass: whitespace, workflow/manual-only policy,
+  Shell policy, Doxygen parameter/reference structure, Android Javadoc source
+  (53 files), locale parity, JNI parity (46 declarations), runtime ordering,
+  i18n/build/package/tools/skills/language contracts and Markdown references.
+  Agent knowledge validation has zero errors; AK004 relevance was reviewed
+  manually against capability, ownership, bounds and artifact findings.
+  Regression suites, Perl::Critic, Doxygen/Javadoc generation and the changed
+  native/Android/Windows matrix remain pending manual CI. No local test or
+  compiler executed, no commits/push, and no local correction is attributed
+  to the earlier remote SHA.

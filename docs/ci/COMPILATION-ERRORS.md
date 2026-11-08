@@ -1933,3 +1933,75 @@ manifests. The sanitizer configurations are Clang 23.1.5, OpenSSL 4.1.0 and
 Debug; this is not explicit OpenSSL 4.0.x coverage. Their LastTest.log files
 confirm only TF-089/TF-090, without sanitizer-report markers. Focused XML
 records one test and zero failures. No downloaded executable was run locally.
+
+## 2026-11-08 — Executed 0b7f0ab4 matrix
+
+The retained inventory is now 322 runs / 59 SHAs / 15 workflow IDs: 52
+successes, 204 failures and 66 cancellations. Log evidence exists for 320
+runs (301 run logs plus 19 job-level recoveries); only canceled runs
+39058841124 and 39058346321 remain unavailable. The older Android run
+42431876464 is now canceled and its full log was recovered. No expiry reason
+is invented. New logs and selected exact artifacts are outside the repository
+under `/var/tmp/openi2pd-ci-next/`.
+
+Every new run below executes `0b7f0ab4a7d795e6fd701b5f9388047394f46264`.
+These results do not validate subsequent local corrections.
+
+| Run | Exact job evidence |
+|---|---|
+| [42440567699](https://github.com/daviduhden/openi2pd/actions/runs/42440567699) | MSYS2 128608714812 fails CE-085; MSVC 128608715047 is canceled during compilation, with no executed heap-test log |
+| [42440570248](https://github.com/daviduhden/openi2pd/actions/runs/42440570248) | OpenBSD 128608721993 fails CE-085 before CTest |
+| [42440572453](https://github.com/daviduhden/openi2pd/actions/runs/42440572453) | Debian 128608728103 builds, then fails TF-091; static musl 128608727906, container 128608728007 and service jobs 128608728044/128608728056 pass |
+| [42440574663](https://github.com/daviduhden/openi2pd/actions/runs/42440574663) | Agent knowledge gate succeeds |
+| [42440576959](https://github.com/daviduhden/openi2pd/actions/runs/42440576959) | OpenSSL 3 Clang 128608740557 and GCC 128608740834 fail CE-086 during test compilation |
+| [42440579056](https://github.com/daviduhden/openi2pd/actions/runs/42440579056) | OpenSSL 4 Clang 128608746790 and GCC 128608746972 fail CE-086 during test compilation |
+| [42440581461](https://github.com/daviduhden/openi2pd/actions/runs/42440581461) | Arm64 128608753809 fails CE-085; UI 128608753848 fails CE-087 before later cancellation |
+| [42440583737](https://github.com/daviduhden/openi2pd/actions/runs/42440583737) | Java reference interoperability 128608760162 and installed consumer 128608760333 pass |
+| [42440586281](https://github.com/daviduhden/openi2pd/actions/runs/42440586281) | TSan 128608769023, UBSan 128608769091 and ASan/UBSan 128608769237 fail CE-086 before CTest; docs 128608769069, fuzz 128608769070 and static 128608769085 pass; Perl quality 128608768953 fails Critic after passing its suites |
+| [42440588665](https://github.com/daviduhden/openi2pd/actions/runs/42440588665) | Focused instrumented OpenSSL TSan 128608775434 passes |
+
+### CE-085 — libc++ lacks the atomic shared-pointer specialization
+
+Android arm64, OpenBSD and MSYS2 diagnose I18N.cpp's Selection declaration:
+`std::atomic<T> requires that 'T' be a trivially copyable type`. C++23 mode
+does not provide this missing standard-library specialization. The existing
+AtomicSharedPtr capability wrapper already supports these targets, but the
+new locale registry bypassed it.
+
+The registry now uses that wrapper, extended with strong compare-exchange
+that compares pointer and control-block identity. The explicit false template
+backend exercises fallback code on native-capable hosts without feature-macro
+or ODR manipulation. Store and failed-CAS owner retirement occur outside the
+mutex (RT-060). New default/fallback regressions join common CTest and the
+selective MSVC build/filter, PageHeap targets and retained images. Global
+search found no other direct unsupported instantiation outside the guarded
+wrapper. Implemented / static; Pending CI compilation and Pending CI tests.
+
+### CE-086 — Fixed-width Tag was treated as a standard container
+
+All OpenSSL/sanitizer lanes diagnose tracker-schedule.cpp:197,214,219:
+`no member named 'size' in 'i2p::data::Tag<32>'`. The previous width correction
+picked the correct type but used a nonexistent container method. All three
+calls now use IdentHash::len. Typed-Tag searches for size/length/begin/end
+found no additional demonstrated occurrence; a DHT candidate was a string
+view, not a Tag. Existing tracker regression remains enabled. Implemented /
+static; Pending CI compilation and Pending CI tests.
+
+### CE-087 — Android ABI spelling used as a vcpkg triplet
+
+The recovered canceled run
+[42431876464](https://github.com/daviduhden/openi2pd/actions/runs/42431876464),
+UI job 128582359111 on c3f5df5330cbaa8e07176886a7105869fa30ae83, already
+contains the same invalid-triplet failure before cancellation. Its logs were
+unavailable while that run was in progress; cancellation did not erase the
+earlier configuration defect.
+
+The UI job rejects `x86_64-android` as an invalid triplet name; the pinned
+vcpkg source supplies `x64-android`. Later Ninja/configuration diagnostics
+cascade from that failure and do not establish a missing runner tool.
+Triplet, prefixes and cache inputs now use x64-android while Android/emulator
+ABI values remain x86_64. A new overlay includes the pinned upstream triplet
+before setting API 29/release, matching arm64; the upstream API 28 cannot be
+corrected by the former outer cache hint. Guards and negative fixtures pin
+both mandatory jobs, ABI/prefix/overlay coherence and API ordering.
+Implemented / static; Pending CI compilation and Pending CI tests.

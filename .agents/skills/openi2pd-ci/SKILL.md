@@ -206,6 +206,11 @@ workflow, run `gh`, build or test.
 
 ## Known issues and decisions
 
+- Treat an overall cancellation separately from completed failing steps.
+  The Android UI triplet can fail before cleanup is canceled; a canceled
+  MSVC build can leave no binary for the always-run heap diagnostic. Inspect
+  the actual artifact before attributing a missing target to a heap crash.
+
 - Successful MSVC jobs can still emit one D9025 warning per test target.
   Review the shared assertion setup across normal tests, tools and fuzzers,
   and retain the dedicated Release assertion regression in the selective

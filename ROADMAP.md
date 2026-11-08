@@ -15,16 +15,15 @@ requirements and current code; `TODO.md` is the authoritative task list.
 
 ## Current baseline
 
-The c3f5df53 retrospective now covers 312 retained runs and log evidence for
-309, with two canceled-log gaps and incomplete Android UI evidence. TF-089/
-TF-090 fixtures, CW-027 signed comparison and the bounded CW-028 Perl fixes
-are Implemented / static, Pending CI tests. Windows startup/Unicode/version,
-remaining Perl analyzer debt, Android Lint and runner capability gaps remain
-open; see the six inventories under `docs/ci/`.
-Preventive production fixes RT-058/RT-059 preserve unsigned tracker counts
-through saturation and carry POSIX refusal deadlines without rebasing.
-Their regressions are prepared; Windows timing handoffs remain separately
-pending and no local change has new dynamic validation.
+The 0b7f0ab4 retrospective covers 322 retained runs with logs for 320.
+CE-085/086/087 and TF-091 corrections are Implemented / static; common/native
+and explicit mutex ownership tests, Android overlay guards, document-smoke
+checks and new Javadoc fixtures are prepared for manual CI. RT-060/061/062
+add retirement, Tag bounds and Windows absolute-deadline protections.
+Compilation/runtime validation is pending. Remaining analyzer, Windows
+startup/Unicode/version, Android Lint and runner capability debt stay open.
+The compile failures do not revalidate TF-089/090 or RT-058/059 from the
+earlier c3f5df53 review; see the six inventories under `docs/ci/`.
 
 The i18n comment-readability follow-up is Implemented / static: natural
 paragraphs and the 72-character limit preserve the existing implementation.

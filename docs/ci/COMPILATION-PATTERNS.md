@@ -307,3 +307,19 @@ no old remote run validates them.
 - Group Perl::Critic by policy and owning parser. A blanket /x conversion can
   change meaningful whitespace and hash characters; preserve the analyzer
   gate and track remaining debt instead of suppressing it.
+
+## 2026-11-08 — Library facilities and fixed-width interfaces
+
+- A C++23 translation unit can still use a libc++ missing a C++20 library
+  specialization. Reuse capability-selected ownership wrappers and test the
+  explicit fallback type without changing feature macros across TUs.
+- A typed fixed-width hash is not a standard container. Inspect its actual
+  public extent API before adapting a fixture; audit related byte/bit helpers
+  for signed offsets and caller-supplied lengths before raw encoder access.
+- vcpkg architecture names, Android ABIs and emulator names are different
+  namespaces. Keep prefixes/cache inputs coherent, and set overlay floors
+  after the pinned upstream include rather than relying on an overwritten
+  outer cache hint.
+- Inspect the exact generated package data/control archives. Content growth
+  can cross compression thresholds without changing the install manifest;
+  plain-or-gzip document checks must still reject a missing pair.

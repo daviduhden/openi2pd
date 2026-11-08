@@ -399,3 +399,40 @@ The latest Perl lane passes 1230 assertions but fails its separate analyzer
 step (CW-028). Windows Unicode conversion, GUI version timeout and worker
 initialization remain unresolved; API 29 UI results are incomplete. Existing
 negative tests and diagnostic failures remain enabled.
+
+## 2026-11-08 — 0b7f0ab4 fixture and packaging outcomes
+
+### TF-091 — Documentation growth changed debhelper compression
+
+Packaging run [42440572453](https://github.com/daviduhden/openi2pd/actions/runs/42440572453),
+Debian job 128608728103, SHA 0b7f0ab4 builds and installs both packages, then
+DEP-8 fails `missing file: /usr/share/doc/i2pd/docs/i18n.md`. The exact uploaded
+Debian data archive contains docs/i18n.md.gz and not the plain form. Its control
+archive was inspected; this is not a maintainer-script failure or missing
+CMake install payload.
+
+Smoke now accepts plain or .gz representations for compressible Markdown
+policy/README/palette documentation. Missing both forms still fails. License
+paths and canonical changelog.gz remain exact. Analogous fixed compressed
+expectations were reviewed, and the packaging source contract pins the
+paired existence check. No compression policy or install manifest is weakened.
+Implemented / static; Pending CI tests on the corrected package smoke path.
+
+### TF-092 — Compilation and cancellation hide runtime verification
+
+The latest sanitizer/OpenSSL lanes stop at CE-086; Android/OpenBSD/MSYS2 stop
+at CE-085/CE-087. Therefore TF-089/TF-090 and RT-058/RT-059 runtime paths are
+not validated by this batch. New atomic ownership, signed bit/encoding bounds,
+Javadoc corpus, Android guard fixtures and Windows deadline controls are
+Prepared / not executed locally and Pending CI compilation / Pending CI tests.
+
+Android UI emulator/instrumentation never starts after its failed triplet
+configure. Cancellation happens later; its cause is not inferred. MSVC is
+canceled while compiling, and its always-run heap step finds no diagnostic
+binary. The 294-byte artifact contains only debugger commands, not an executed
+heap trace. Earlier 0xC0000142 and MinGW Unicode/version failures stay open.
+
+The source-only static job and documentation/fuzz sibling jobs pass on the
+remote SHA; Perl's seven executed suites pass 1270 assertions. Those results
+do not run the new local eight-assertion corpus or resolve the failing Critic
+step and cannot be attributed to later edits.

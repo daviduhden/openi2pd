@@ -629,3 +629,40 @@ not a first-party compiler warning or proof of a daemon sandbox failure.
 No global runner installation or suppression was changed. A compatible
 runner/tool combination remains Pending; passing product tests do not close
 this capability notice. Existing package and Android Lint debt stays open.
+
+## 2026-11-08 — Warning review on 0b7f0ab4
+
+Exact run/job metadata is in COMPILATION-ERRORS.md. Successful sibling jobs,
+completed steps in canceled jobs and failed-job build prefixes were reviewed.
+New actual configurations include GNU 16.2 / Clang 23.1.5 with OpenSSL 3.5.9
+and 4.1.0 Release, OpenBSD Clang 22.1.6 / LibreSSL 4.4.0 Release and Android
+Clang 21 / OpenSSL 3.6.5 Release. This is not explicit OpenSSL 4.0.x evidence.
+
+CW-028 repeats in Validation 42440586281, job 128608768953: Test::More passes
+1270 assertions across seven files, then Critic exits 2 with 896 occurrences
+across 20 families. The prior 35 localized-initialization, three argument-
+unpacking and unused-variable findings are absent. Extended-format regex
+findings now number 690 as new checker code expanded the reviewed surface;
+complex-regex and other analyzer debt remain open.
+
+A bounded local continuation manually reviews 29 Javadoc regex operands,
+using extended layout without changing captures or literal replacement
+spaces. The new eight-assertion Javadoc corpus covers hashes, whitespace,
+inline tags, generic/vararg declarations and negative diagnostics. It is wired
+into CTest, syntax/Critic inventories and the manual Perl-quality lane.
+No local Critic run or clean-analyzer claim is made. Remaining CW-028 debt is
+Correction pending; this subset is Implemented / static, Pending CI tests.
+
+ASN1_STRING_length / SSL_set1_host deprecation and missing mlkem.h diagnostics
+in retained configure artifacts occur inside negative feature probes. They
+are not new first-party translation-unit warnings. Successful Linux consumer
+128608760333 still reports CW-029's external Landlock ABI 10 versus host ABI 8
+capability gap. No runner policy or warning suppression was changed.
+
+Android Lint/Java/APK steps were skipped after native/triplet failures, and
+MSVC was canceled during compilation. Their earlier Lint, startup and heap
+coverage debt remains unresolved; no clean result is inferred from absent
+later output. The parity translation unit does compile in OpenSSL 3/4 GCC
+jobs 128608740834/128608746972 without CW-027's repeated sign comparison.
+That warning correction has executed compilation evidence on 0b7f0ab4;
+CE-086 still prevents a successful whole build or parity link/test claim.
