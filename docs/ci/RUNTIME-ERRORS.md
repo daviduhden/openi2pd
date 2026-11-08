@@ -1342,3 +1342,106 @@ Expired receive/reuse and absolute roundtrip regressions retain the legacy
 relative controls; ordered source guards pin propagation. Implemented / static;
 Pending Windows CI compilation and Pending CI tests. This does not resolve
 0xC0000142 startup coverage or canceled MSVC diagnostics.
+
+## 2026-11-08 — Executed `6390fdea` runtime continuation
+
+### RT-063 — Writable polling suppresses a fitting nonblocking send
+
+OpenSSL 3 run 42492805461 (Clang/GCC 128768619632/128768619750), OpenSSL 4
+42492808412 (GCC/Clang 128768627826/128768627990) and Validation 42492817128
+(UBSan/TSan/ASan+UBSan 128768653761/128768653799/128768653853) fail
+`TestSendDeadlineAfterDrain` at test-privsep-linux-ipc.cpp:785. Each reports
+`post-drain send failed after 7 queued frames: send timeout`. The LogRecord
+fixture satisfies the production schema. Linux can retain a conservative
+POLLOUT threshold after one record drains, although the smaller record fits.
+Channel::SendWithFdUntil polls before making that nonblocking attempt.
+
+The channel now attempts MSG_DONTWAIT first and polls only after EAGAIN,
+retaining the same absolute deadline through interruption and retries.
+Timeout zero allows one immediate attempt; a genuinely full queue still
+fails immediately without changing records. The focused drain and saturation
+regressions pin both behaviors. Global review identified the same pre-write
+poll ordering in OpenBSD imsg: its nonblocking write now precedes polling,
+partial progress does not renew the deadline, and ambiguous queued frames
+close on failure. This OpenBSD change is preventive, not an observed imsg
+failure. Header contracts and source-order guards were updated. Implemented /
+static; Pending CI compilation and Pending CI tests.
+
+The related TUI stream writer still polls before writing. No demonstrated
+stream failure is attributed to it. HTTP CONNECT and SOCKS upstream success
+handlers additionally use synchronous sends in completion handlers. Safely
+replacing those requires serialized handler resources, bounded full writes
+and admission atomic with I2PService shutdown: AddHandler currently inserts
+independently of Stop/ClearHandlers' snapshot. A partial async substitution
+would preserve that race. This structural follow-up remains Pending; it has
+not been hidden by a new timeout or weaker shutdown behavior.
+
+Named RNG, SSU2 preauth/payload, EdDSA, ratchet, torrent verification,
+tracker and atomic/Tag regressions pass in the three executed sanitizer lanes.
+No sanitizer-error marker appears in their full logs, but both failed test
+families keep each job red. This supplies specific regression evidence, not
+an absence-of-vulnerabilities claim. Earlier MSYS2 Unicode/version and MSVC
+worker startup remain unresolved: the exact MSVC artifact reports exit
+3221225794 (0xC0000142) before authentication. Its supervisor skips; PageHeap
+also skips, so there is no new heap stack or shutdown validation. Three
+OpenBSD worker capability skips provide no explicit startup reason in the
+retained LastTest output; that evidence gap stays open.
+
+### RT-064 — Extracted torrent acceptors borrowed a raw tunnel pointer
+
+Preventive source finding, not a crash observed in the new CI logs.
+TorrentsTunnel::Accept retained raw `this`, while StreamingDestination copied
+its acceptor under a mutex and invoked it after unlocking. Deregistration
+cannot revoke that extracted copy. Destruction without a completed Stop is
+explicitly supported by the tunnel destructor, so raw callback ownership
+was insufficient even though normal service-thread shutdown reduces exposure.
+
+The callback now locks a weak owner and a distinct shared registration
+generation. Registration and handler admission each share a barrier with
+revocation. Stop closes registration synchronously before marshalling
+service teardown; a separate protected stopped bit prevents fresh factory
+publication while m_Stopping still awaits the service thread. Start revokes
+prior generations, and destruction revokes them without shared_from_this.
+Final registration publication also checks the same barrier. Existing peer
+limits and handshake initialization are retained.
+
+The existing torrent-security target now prepares copied-callback stop,
+restart, active admission, concurrent revocation, closed registration and
+final owner-release controls without live workers/listeners. Its common
+CTest/security labels already include sanitizer lanes. Header interfaces
+and callback/dispatcher locking were reviewed, including I2PServerTunnel,
+BOB and SAM acceptors; those already carry weak/generation or shared owner
+authority. This bounded correction does not resolve the separate general
+I2PService forwarder-admission follow-up described above. Implemented / static;
+Pending CI compilation and Pending CI tests.
+
+## Integral continuation — static findings after `6390fdea`
+
+No later remote run validates the following local changes.
+
+- **RT-065 / CONT-045:** I2PService readiness invoked callbacks while iterating
+  its vector, allowing reentrant registration/erasure to invalidate traversal.
+  Retained service callbacks also survived stop/restart despite their promised
+  authority. Distinct lifecycle/wait states, detached invocation, bounded
+  pending callbacks and weak destination ownership now address that readiness
+  seam. Seven controls include executor destruction and stale canceled waits.
+  GuardStreamCompletion suppresses stale results at its check; it does not
+  close the separate concurrent Stop-to-AddHandler publication window.
+- **RT-066 / CONT-046:** a storage-supervisor stale-reply loop renewed five
+  seconds on every ReceiveWithFd, after another relative send and unbounded
+  mutex admission. One absolute deadline now spans timed admission, output
+  and stale draining, including initial broker send/reply. Relative APIs stay
+  supported. POSIX ChildProcess shutdown still composes relative phase waits;
+  that related follow-up remains Pending rather than silently closed.
+- **RT-067 / CONT-047:** reload-local destination lookup/insertion treated
+  transient marker strings like reusable persisted identities in some endpoint
+  paths. One cache follows the loader's full transient prefix family for all
+  consumers; file-backed reuse and failed-creation misses are retained.
+- **RT-068 / CONT-047:** an ECIES-origin LeaseSet1 reached parsing/cache update
+  despite lacking a static ECIES identity binding. Classification now rejects
+  it before that boundary, retaining masked-type handling and signed plaintext
+  acceptance. The prepared fixture checks both rejection and old-cache identity.
+
+All four are Implemented / static, Pending CI compilation and Pending CI tests.
+The upstream provenance and source comparisons are in upstream-sync.md and
+INTEROPERABILITY.md; they do not establish live Java interoperability.

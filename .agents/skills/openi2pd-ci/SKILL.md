@@ -206,6 +206,11 @@ workflow, run `gh`, build or test.
 
 ## Known issues and decisions
 
+- Retained workflow names are not stable identities: renamed workflows can
+  contribute several names to one workflow_id. Count both explicitly when
+  refreshing historical inventories. A skipped optional quality/device job
+  cannot validate its analyzer or runtime even when its siblings succeed.
+
 - Treat an overall cancellation separately from completed failing steps.
   The Android UI triplet can fail before cleanup is canceled; a canceled
   MSVC build can leave no binary for the always-run heap diagnostic. Inspect

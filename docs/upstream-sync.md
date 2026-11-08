@@ -506,3 +506,45 @@ persisted format changes are imported.
 
 The negative source contract pins operand-free duplicate warnings. Compilation
 and manual CI remain pending for the unpublished tree.
+
+## Continuation `4885bedf..9702ba83` (2026-11-08, static)
+
+The `openssl` head is now `9702ba83ee82e52a698f1568ae6aef35b17c81a9`.
+The GitHub comparison contains eighteen commits after the prior audited
+`4885bedfb490c42f0f831ae12ca4aab776c39021`. Exact API responses and patches
+are retained outside the tree under `/var/tmp/openi2pd-upstream-nov8/`.
+No merge or cherry-pick was performed. The following decisions describe the
+current source review; adapted code remains Pending CI compilation/tests.
+
+| SHA | Decision |
+|---|---|
+| `552d6f25d59f47310e273effce6f47f09e842991` | Adapted: a reload-local destination cache shares the key loader's complete transient-prefix policy. All client/server/torrent lookup and insertion sites skip transient identities while retaining file-backed reuse. Header-level regression prepared. |
+| `8c7f3b20cf56caece2426c782593ced49ddb77e9` | Adapted: initial tracker/DHT discovery waits for durable current-generation state, file preparation and resume verification. Private swarms never enter DHT; initial authority is consumed once. Prepared policy and coalesced-write regressions, Pending CI. |
+| `f88def67c6b826228cae6118a51bd67e5bed70fa` | Partially implemented: file-selection and request scheduling update interest; periodic refresh after remote availability changes remains pending. |
+| `2473f681cfb128cdf170562b564fbcbbb16af8e4` | Partially implemented with the preceding interest change; any adaptation must preserve active-request ownership rather than blindly clear interest. |
+| `642688e641ea5e25b1c2b4a1c7144c5b219a08b8` | Incompatible browser-console rendering; retain native TUI and typed presentation paths. |
+| `2ad5c1a537193064070a63fc7ef8fe897663f364` | Already implemented through the fork's owned torrent/disk callback restructuring; no unused raw-this capture to import. |
+| `dc8bdea1da7535b5aaaf03bffcca8e9a345e5ee7` | Already implemented: ParseTorrentMagnet accepts bounded 32-character base32 and 40-character hex infohashes. |
+| `67cd6a0848c3e637e886654aee9564cb863fdbc2` | Adapted: fixed-extent borrowed alphabet spans and a span-based HashedStorage initializer migrate netDb, profiles, address book and persistence tests together. Exact alphabet/extent regressions prepared; encoded bytes and shard names are unchanged. |
+| `bc849eafd6a4eded3e48dec88a7fb939f1814ae8` | Applicable via adaptation, Pending: RouterInfo path API must agree with fork storage authority and consumers. |
+| `e20cf4c9608f99cc4ab61d324d259e11cea4dc00` | Applicable via adaptation, Pending: typed HashedStorage paths require coordinated no-follow/root-confined consumers. |
+| `e7a1802bee3b87f4d33541cba194ae7258b5a566` | Obsolete without the preceding path import; fixes an upstream Windows call site absent from this interface revision. |
+| `b89360354d356f7d468280c861a4102c019bf850` | Adapted: reject LeaseSet1 delivered through an ECIES session before parsing, cache replacement or peer binding. Signed plaintext positive and masked-type rejection controls prepared. |
+| `b106bceb0f0c6ea03350fc33a4a89e5c19945f21` | Applicable via adaptation, Pending: logger paths must retain private no-reparse creation and rotation authority. |
+| `ac289ff03a4528e961ba33da91e735259405a0b4` | Already equivalent bounded extension checks; ends_with modernization is optional and supplies no additional fix here. |
+| `0eee25973810d3392bdf092f51fe1db1fd8e94cc` | Partially implemented: std::filesystem is already used; ReadDir interface migration remains pending. GNU Make changes are incompatible. |
+| `9108cb88ea4c5800132c7c7741fc2ff0b6e47168` | Applicable via adaptation, Pending: central data/certificate path migration must omit removed HTTP administration paths. |
+| `26cce428e2f6d5afd0605d30af832af0440a2e78` | Obsolete: the fork never imported the invalid string/path operator combination fixed for macOS. |
+| `9702ba83ee82e52a698f1568ae6aef35b17c81a9` | Applicable via adaptation, Pending: final typed-path conversions belong to a coherent storage API migration, not isolated string replacements. |
+
+Java's latest stable release is now `i2p-2.14.1`, published 2026-11-06.
+Tag object `1e85daffd1d5ab4add91a0fc7af30525dcca2808` peels to
+`a1c317c73c9cbd0b25c210dd5bd7b6baa71197c7`. The fifteen-commit patch window
+from pinned 2.14.0 was reviewed selectively. Java's NTCP2 PQ correction
+`52456c82bd03cb44fa7b5dac9b43ddcfe6257531` has no demonstrated native
+equivalent: the native public-key/ciphertext offsets, advertised lengths and
+buffer static assertions already include the PQ segments. The Java
+Destination-size correction is likewise absent from IdentityEx's actual
+certificate-extent sizing. No speculative crypto or wire changes were made.
+The 2.14.0 and 2.13.0 source pins and old dynamic evidence remain unchanged;
+this metadata update does not establish full 2.14.1 interoperability.

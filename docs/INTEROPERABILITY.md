@@ -17,6 +17,7 @@ Current comparison target and historical audit provenance:
 | Item | Value |
 |---|---|
 | Repository | https://github.com/i2p/i2p.i2p |
+| Latest stable verified 2026-11-08 | `i2p-2.14.1`, published 2026-11-06; peeled commit `a1c317c73c9cbd0b25c210dd5bd7b6baa71197c7` |
 | Current target tag | `i2p-2.14.0` |
 | Target commit (peeled tag) | `3c98503c5f14efe7bdd783528ba7f621f12d8081` |
 | Tag object | `9db233ed7241599eba76f29b8c334eaaf3db2e87` |
@@ -34,6 +35,13 @@ full matrix and wire evidence have not been migrated. Historical claims that
 no newer stable tag existed are superseded by the verified 2.14.0 target above.
 Existing test names and historical validation records remain tied to their
 original revisions; they provide no 2.14.0 validation.
+
+The newer 2.14.1 release does not relabel the pinned 2.14.0 comparison or
+historical fixtures. Its 15-commit patch window was inspected selectively:
+the Java NTCP2 PQ offset/length correction already has explicit native
+counterparts, and IdentityEx sizes its actual certificate extent rather than
+using Java's former fixed-key size assumption. This is static comparison,
+not a new handshake, identity or full-release interoperability result.
 
 The Java tree is **not** vendored and is not a build/runtime dependency of
 openi2pd. No Java code was modified.

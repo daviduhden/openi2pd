@@ -2369,3 +2369,42 @@ regressions, checker fixtures, JVM/resource tests and API 29/device locale
 recreation, notification refresh, TalkBack and tablet/terminal layout review.
 Standalone tool prose and unknown remote diagnostic bodies are not presented
 as fully translated. Protocol tokens and user data remain unchanged.
+
+## 2026-11-08 executed `6390fdea` and backpressure follow-up
+
+Validated by CI: the executed ownership/Tag/tracker and named crypto
+regressions, Android arm64 pipeline and Debian documentation smoke correction.
+The full matrix still fails on IPC backpressure and Perl inventories. Next
+validate RT-063's send-first absolute-deadline behavior on Linux and OpenBSD,
+TF-093/094 inventory/source harvesting on POSIX and native Windows, and the
+two prepared Android Overdraw corrections. These local changes are
+Implemented / static, Pending CI compilation and Pending CI tests.
+
+Keep forwarder publication atomic with client-service shutdown as a required
+architectural follow-up for HTTP/SOCKS asynchronous completion writes. Retain
+Windows startup/Unicode/version investigations and all skipped optional
+quality/device/worker coverage. Explicit OpenSSL 4.0.x and the fourteen
+remaining Android Lint findings are not represented as completed.
+
+RT-064 additionally hardens torrent inbound acceptance against callbacks
+copied before deregistration. Distinct generations, weak owners and a
+synchronous registration/admission barrier now cover stop/restart and owner
+release. The existing security target has a focused prepared regression;
+its earlier passing result does not validate this new source change.
+
+## Integral continuation: lifecycle, upstream and initial discovery
+
+The next local increment implements CONT-044..049: Activity confirmation
+authority, readiness generations, broker transaction deadlines, transient
+identity separation, ECIES LeaseSet1 refusal, borrowed alphabet spans and
+storage-qualified initial tracker/DHT discovery. All remain Implemented /
+static, Pending CI compilation and Pending CI tests. The new native targets
+join common CTest and selected MSVC build/filter/PageHeap/artifact inventories;
+Android JVM/device source discovery includes the new confirmation controls.
+
+The upstream high-water mark advances to 9702ba83 after eighteen explicit
+commit decisions. Java stable 2.14.1 is verified independently; existing
+2.14.0/2.13.0 references keep their historical scope. Next complete the shared
+handler-admission architecture before converting HTTP/SOCKS success writes,
+and migrate typed filesystem interfaces coherently with no-follow storage.
+Advanced torrent bandwidth/ranking and live peer parity remain open.

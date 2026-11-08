@@ -323,3 +323,19 @@ no old remote run validates them.
 - Inspect the exact generated package data/control archives. Content growth
   can cross compression thresholds without changing the install manifest;
   plain-or-gzip document checks must still reject a missing pair.
+
+## 2026-11-08 — A compiled matrix can fail an inventory contract
+
+Treat the 6390fdea portability assertions as test-infrastructure failures,
+not compiler or linker diagnostics. A new helper can be registered correctly
+in both CMake consumers but omitted from the independent discovery universe.
+Search all inventory layers, preserve equality in both directions, and cover
+new source classes such as top-level tests/*.t. Inspect successful sibling
+target output before changing warning policy: there is no justification for
+suppressing native diagnostics to repair a Perl manifest mismatch.
+
+Historical workflow identity uses workflow_id, not display name. The current
+332-run inventory has fifteen IDs but eighteen names after renaming. Keep
+exact source revisions, job IDs and optional-lane skips in any clean-build
+claim; an arm64 Android success does not validate the x64 device dependency
+triplet or the Java 25 UI suite.

@@ -474,3 +474,52 @@ source-order guard; neither substitutes for manual sanitizer execution.
 - Extended Perl regex layout must retain literal replacement spaces and
   opaque inline-tag bodies containing hashes, spaces and angle brackets.
   Keep positive, CRLF, generic/vararg and negative diagnostic cases together.
+
+## 2026-11-08 — Readiness, inventory and platform source identities
+
+- RT-063: readiness thresholds are hints, not proof that a smaller
+  nonblocking write cannot succeed. Exercise a one-record drain with zero
+  budget alongside a genuinely saturated failure. Poll only after retryable
+  write failure and retain one absolute deadline, including partial imsg
+  progress. Do not extend the test timeout to conceal a send admission bug.
+- TF-093: discover a new test source class independently before comparing
+  explicit CMake syntax/style lists. Preserve exact equality and registration
+  of every maintained script; do not solve a manifest failure by dropping
+  the new helper from quality coverage.
+- TF-094: path-gated source analysis must separate native filesystem operands
+  from canonical repository identities. Exercise missing trusted labels in
+  each terminal adapter and a rendered-data control that must stay outside
+  catalog harvesting. Catalog parity alone cannot detect skipped source
+  tables on Windows.
+- Android Overdraw: give opaque content a single background owner, check
+  light/dark and phone/tablet qualifiers, and retain the splash role. Resource
+  parsing establishes structure; Lint and device rendering remain separate
+  manual-CI validations.
+- Successful selected suites do not cover skipped supervisor startup,
+  optional UI, Perl quality or PageHeap paths. Retain exact capability reasons
+  where present and record missing skip reasons as an evidence gap.
+
+RT-064 extends copied-callback review to inbound torrent accepts. A weak
+owner prevents use-after-destruction, but only a distinct generation rejects
+callbacks from an earlier registration after restart. Share admission with
+revocation through handler publication, and close registration synchronously
+before queued teardown. Test the registration gap while m_Stopping is still
+false as well as destruction after deferred work drains.
+
+### Integral continuation: generations and transaction-wide budgets
+
+- Detach readiness callbacks before invoking arbitrary completions. Reentrant
+  registration must not mutate an iterated vector, and a canceled old wait
+  must not consume a replacement wait's queue. Test both external executor
+  drainage and destruction of an executor owned by the destination.
+- Bound synchronous refusal as well as the admitted queue: posting one error
+  callback for every rejected request merely moves unbounded state elsewhere.
+- Carry absolute IPC deadlines through admission, output and stale-reply loops.
+  A per-message count cap does not bound repeated relative waits in time.
+- Share a transient-key classifier between identity creation and cache reuse;
+  exact-literal filtering is insufficient when the loader accepts a prefix.
+- Test provenance rejection before parsing/cache mutation using a signed
+  positive control, including upper DatabaseStore option bits.
+- Initial torrent discovery needs current-generation durable state, not merely
+  successful insertion. Coalesce two immutable writes and prove the earlier
+  acknowledgement cannot release the later generation's network authority.

@@ -7479,3 +7479,131 @@ or push.
   native/Android/Windows matrix remain pending manual CI. No local test or
   compiler executed, no commits/push, and no local correction is attributed
   to the earlier remote SHA.
+
+## 2026-11-08 — Executed `6390fdea` retrospective and next prevention pass
+
+- Recovered metadata for all 332 accessible runs / 60 SHAs / 15 workflow IDs
+  (18 historical display names): 57 successes, 209 failures, 66 cancellations.
+  Ten new full logs and selected exact-run artifacts join prior retained
+  evidence; 330 runs have logs and two canceled historical runs remain
+  unavailable. Previous logs were reused, not all reread this increment.
+- All new results belong to 6390fdea0258f4ac46302fbb354bc527971446c9.
+  OpenBSD, MSYS2, OpenSSL and sanitizer builds pass prior compile blockers.
+  Named atomic/Tag/tracker/RNG/SSU2/ratchet/torrent regressions execute.
+  Full sanitizer jobs fail IPC and Perl inventory tests; no sanitizer-report
+  marker was found in their complete logs. No local correction is validated.
+- RT-063: a schema-valid queued LogRecord fails after one record drains.
+  Conservative POLLOUT thresholds suppressed a fitting nonblocking send.
+  Channel now sends first and polls only after EAGAIN, retaining its absolute
+  deadline. Zero-budget success and full-queue failure controls are prepared.
+  OpenBSD imsg equivalent ordering and partial-progress deadline were corrected
+  preventively; ambiguous composed frames close rather than replay.
+- TF-093: added independent top-level tests/*.t discovery and the maintained
+  Javadoc corpus entry; exact CMake syntax/Critic equality stays intact.
+  TF-094: native Windows path separators no longer bypass trusted table/error
+  harvesting. Both terminal adapters and untranslated rendered data are covered
+  in the existing maintenance suite. A separate read-only agent reviewed them.
+- CW-003: the Android theme window owns colorSurface and both root layouts
+  remain transparent. Prepared light/dark plus phone/tablet UI regression;
+  Android 12 splash remains separate. Fourteen other Lint warnings and the
+  required Kotlin opt-out's external deprecation remain open without suppressions.
+- Exact artifacts distinguish eleven MSVC passes from a supervisor skip after
+  worker exit 0xC0000142; PageHeap did not execute. Three OpenBSD worker skips
+  retain missing startup reasons as an evidence gap. Android x64/UI and Perl
+  quality lanes skipped; passing arm64 or Javadoc corpus does not validate them.
+- Global write-pattern review identified HTTP CONNECT/SOCKS synchronous
+  completion sends. Safe async replacement needs a shared handler admission,
+  executor and cancellation design; a two-call substitution would preserve
+  post-shutdown publication races. Retained this as explicit follow-up.
+- Specialized agents covered historical evidence, native C++/memory and
+  concurrency, platforms/Android/JNI, independent regression/tooling review,
+  crypto/I2P and torrent/storage. Shared files and tracking remained
+  coordinator-owned. Only source inspection and compile-free checks run
+  locally; no compiler, build configuration, test suite, commit or push.
+- Preventive RT-064: replaced torrent inbound raw-this accept authority with
+  a weak owner, distinct generation and synchronized registration/admission
+  barriers. Coordinator review caught the additional fresh-registration gap
+  while StopOnService remains queued; a protected synchronous stopped bit
+  and final publication check now close it. Copied-callback, concurrent
+  revocation, restart and owner-release controls join the existing torrent
+  security target. Related BOB, SAM and server-tunnel acceptors were reviewed;
+  no generic client-service lifecycle completion is claimed.
+- Final Agent & Skills Synchronization: reviewed root instructions, discovery
+  index and the affected CI/build, privilege-separation/OpenBSD, Android,
+  tooling/i18n, ownership/security and torrent procedures. Updated reusable
+  readiness, inventory, source-identity and copied-callback guidance; removed
+  stale PR-gate wording. Knowledge validation passes with zero errors;
+  AK004's semantic-relevance warning was reviewed against those changes.
+- Final source checks pass: whitespace, agent/skill and language contracts,
+  runtime ordering, native catalog parity (628 keys / 14 plural groups),
+  manual-only workflow policy (10 workflows / 3 actions), Shell policy
+  (317 files), Doxygen parameter references, Markdown links (118 files),
+  Android Javadoc (53 files), four-locale parity and JNI parity
+  (46 declarations). Added code comments were reviewed at 72 characters.
+  These are compile-free inspections, not native/Java/Perl regression runs.
+  The changed Linux/OpenBSD/torrent behavior and Android UI await manual CI
+  after authorized publication; no local build/test, commit or push occurred.
+
+## 2026-11-08 — Integral development continuation after `6390fdea`
+
+- Preserved the existing 38-file local correction set. Refreshed GitHub
+  authentication, workflow and hundred-run metadata: newest runs still use
+  6390fdea, so earlier evidence is reused rather than relabeled or rerun.
+- Three specialized reconnaissance scopes covered architecture/build/tools,
+  protocol/upstream/crypto, and torrent/TUI/Android/SAF. Independent integration
+  review checked shared native APIs, ownership and MSVC/test inventories.
+- CONT-045: readiness transactions now separate lifecycle generations and
+  individual waits. Callbacks detach before invocation, closed/full refusal
+  applies synchronous backpressure outside locks, deadlines saturate and
+  timers serialize. Weak destination/generation authority avoids ownership
+  cycles; tests cover reentry, capacity, exceptions, cancellation, restart,
+  late streams and externally drained/owned executor destruction. Check-time
+  stale-result suppression is not atomic handler publication or cancellation
+  of already-issued remote effects; full I2PService admission remains open.
+- CONT-046: storage-supervisor admission, output and stale-reply draining now
+  consume one five-second absolute deadline. New Channel Until forms retain
+  relative APIs and descriptor ownership; expired deadlines allow immediate
+  nonblocking progress, while transaction owners check expiry before another
+  mutation/drain. Tests and source contracts prepare deadline reuse controls.
+- CONT-044: MainActivity uses foreground/session confirmation tickets with
+  exact replacement/dismissal revocation, one-shot consume and reentrant
+  cleanup fencing. Thirteen JVM and three harmless Activity controls are
+  prepared. Permission/autostart state is preserved; no JDK-only API added.
+- Upstream openssl advances from 4885bedf to 9702ba83 (18 commits). Adapted
+  transient identity reuse, ECIES LS1 provenance rejection, alphabet spans
+  and initial DHT discovery. Remaining path migrations, partial interest
+  updates, already-implemented and incompatible/obsolete commits are retained
+  individually in docs/upstream-sync.md. No merge or cherry-pick.
+- CONT-048: Base32/Base64 return fixed-extent borrowed spans without NUL;
+  HashedStorage takes their extent directly. Updated netDb, profiles, address
+  book and persistence fixtures together; exact alphabets/extents are pinned.
+  This interface change requires a full consumer rebuild, not persisted data
+  migration. No global-library install or warning suppression was used.
+- CONT-049: initial tracker/DHT work waits for durable current-generation
+  state, file preparation and completed resume verification. Same-instance,
+  stop/removal, startup policy and private-swarm checks cover direct/periodic
+  paths; failed preparation now publishes the existing filesystem error.
+  Policy and coalesced magnet-write controls use existing security targets.
+- Java stable 2.14.1 (November 6) is verified at peeled a1c317c7. Selected
+  PQ offset/length and identity-size fixes have no demonstrated native
+  equivalent, so no speculative wire/crypto patch was imported. Historical
+  comparison fixtures remain pinned to 2.14.0/2.13.0; full 2.14.1 parity is not
+  claimed. Reconciled stale magnet/upload-slot rows against actual source.
+- Three new native regressions join common CTest and selective MSVC build,
+  filter, PageHeap images and retained binaries. The cache regression also
+  receives security coverage after independent review caught that label gap.
+  All local behavior is Pending CI compilation / Pending CI tests.
+- Final Agent & Skills Synchronization reviewed root instructions, discovery
+  index and affected subsystem/cross-boundary procedures. Reusable updates
+  cover borrowed table extents, readiness/executor ownership, transaction
+  deadlines, Activity reentrancy, transient classifiers, ECIES provenance and
+  storage-qualified discovery. The independent review's check-time-versus-
+  atomic-publication distinction is explicit in the header and tracking.
+- Compile-free checks pass: tracked/untracked whitespace, runtime/source
+  ordering, Android dialog contracts, build graph and language contracts,
+  workflow/manual-only policy (10 workflows / 3 actions), Shell policy
+  (317 files), Markdown links (118 files), Doxygen parameters, Javadoc source
+  (54 files), four-locale parity and JNI parity (46 declarations). Knowledge
+  validation reports zero errors; AK004 relevance was reviewed manually.
+  These inspections are not compiler, JVM, CTest, sanitizer or live-network
+  execution. No local builds/tests, commits, push or new CI claim.

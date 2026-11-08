@@ -436,3 +436,47 @@ The source-only static job and documentation/fuzz sibling jobs pass on the
 remote SHA; Perl's seven executed suites pass 1270 assertions. Those results
 do not run the new local eight-assertion corpus or resolve the failing Critic
 step and cannot be attributed to later edits.
+
+## 2026-11-08 — Executed `6390fdea` test inventory
+
+Exact run/job/SHA references are recorded in
+[the compilation continuation](COMPILATION-ERRORS.md).
+
+### TF-093 — Standalone Perl contract omitted from independent discovery
+
+OpenSSL 3/4, OpenBSD and all three sanitizer lanes fail the portability
+inventory equality assertions at tools/tests/perl-portability.t:329/339
+(assertions 609/610 on the sanitizer runners). MSYS2 reports the same cause
+at its platform-dependent assertion numbers. CMake includes
+`tests/android-javadoc-regex.t`, but both the explicit maintained inventory
+and independent source discovery omit top-level `tests/*.t`. The first
+mismatch is that path versus `tests/interop/check-vectors.pl`.
+
+The explicit inventory now includes the Javadoc contract and independent
+discovery scans top-level `.t` files. Exact bidirectional equality remains;
+no test is removed or relaxed. Analogous script/module/subdirectory
+inventories and both syntax/Critic consumers were reviewed. Existing CTest
+and manual sanitizer/platform lanes exercise the correction. Implemented /
+static; Pending CI tests. No local Test::More suite was executed.
+
+### TF-094 — Native Windows paths bypass trusted source harvesting
+
+MSYS2 42492792058, job 128768581923, fails eight assertions in
+`perl-maintenance-checkers`: four missing-label fixtures return success
+instead of `missing source literal`. `harvest()` in the native catalog
+checker matches `/tui/main.cpp` and terminal suffixes directly against
+File::Spec native paths. Backslash separators bypass tab/help/option/error
+collection while ordinary catalog parity still passes.
+
+The checker now derives a repository-relative slash identity with
+abs2rel/splitdir solely for source selection. Native read paths and rendered
+user operands remain unchanged. Both terminal adapters and an explicit
+untranslated rendered-data control are covered in the existing fixture
+suite. Related path-sensitive checkers were searched; no additional
+same-form defect was demonstrated. Implemented / static; Pending CI tests.
+
+The same MSYS2 job still fails the historical Unicode validator fixture and
+an empty-output GUI version probe after 12 seconds. These remain separate,
+unresolved findings; increasing budgets or skipping fixtures is not a fix.
+Optional Perl quality job 128768654939 and Android UI job 128768637533 skip,
+so no new Critic or device-validation result is available.

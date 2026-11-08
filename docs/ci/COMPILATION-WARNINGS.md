@@ -666,3 +666,41 @@ later output. The parity translation unit does compile in OpenSSL 3/4 GCC
 jobs 128608740834/128608746972 without CW-027's repeated sign comparison.
 That warning correction has executed compilation evidence on 0b7f0ab4;
 CE-086 still prevents a successful whole build or parity link/test claim.
+
+## 2026-11-08 — Successful-step warning review on `6390fdea`
+
+The ten new full logs include successful siblings and successful build steps
+inside failed jobs. No new first-party native compiler diagnostic or
+sanitizer-report marker was found in the reviewed output. Expected negative
+feature probes are not source warnings; failed CTest jobs are not clean
+matrix results. Exact run/job references are in COMPILATION-ERRORS.md.
+
+Android 42492811416, job 128768636472, still reports zero Lint errors and
+16 warnings: twelve VectorPath, two ChromeOsAbiSupport and two Overdraw.
+Both activity roots painted colorSurface over a theme window background.
+The theme now owns colorSurface and phone/tablet roots are transparent;
+Android 12 splash retains its distinct brand background. A prepared device
+contract checks both night modes and both layout widths. Implemented /
+static; Pending CI compilation and Pending CI tests. Existing executed
+Lint output remains at sixteen until CI runs the correction.
+
+The twelve long brand paths cannot be eliminated safely by optional
+whitespace removal alone; lossless compaction still exceeds the reported
+length threshold. Splitting contours can change fill/hole semantics, and
+rasterization or redesign is not an accepted warning fix. The two ABI
+warnings need a coherent multi-ABI artifact/dependency strategy, not removal
+of ABI checks. Those fourteen findings remain Correction pending.
+
+The same Gradle job repeats `android.builtInKotlin=false` deprecation three
+times. The opt-out avoids the documented AGP/Kotlin task-creation failure for
+Java 25 even without Kotlin sources. Removing it without a compatible
+upstream toolchain would regress the build; no suppression was introduced.
+The optional Perl quality job skips, so CW-028's unresolved Critic families
+have no new validation. The eight-assertion Javadoc regression does execute
+in ordinary CTest, which is separate from passing Perl::Critic.
+
+Debian job 128768602097 succeeds and its Lintian log is empty; external
+autopkgtest still emits deprecated `--force-yes`. Repository search found
+no maintained invocation with that flag. MSYS2's package updater warns to
+terminate other MSYS2 programs. Both are tooling/runner messages, not project
+compiler warnings. Existing external and capability findings remain open.

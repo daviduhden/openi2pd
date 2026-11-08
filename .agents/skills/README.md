@@ -82,7 +82,7 @@ by `openi2pd-tui`.
   two agents edit the same file.
 - Every repository change performs the mandatory `Continuous Agent & Skills
   Maintenance` procedure in `AGENTS.md` and includes a substantive update to
-  at least one relevant instruction or skill file. The PR maintenance gate
+  at least one relevant instruction or skill file. The manual maintenance gate
   checks structure, changed paths and local references; semantic relevance
   remains an explicit review obligation.
 - Never duplicate normative policy. Link the single `AGENTS.md` owner and keep

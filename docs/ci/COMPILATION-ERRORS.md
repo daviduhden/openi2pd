@@ -2005,3 +2005,38 @@ before setting API 29/release, matching arm64; the upstream API 28 cannot be
 corrected by the former outer cache hint. Guards and negative fixtures pin
 both mandatory jobs, ABI/prefix/overlay coherence and API ordering.
 Implemented / static; Pending CI compilation and Pending CI tests.
+
+## 2026-11-08 — Executed `6390fdea` continuation
+
+The complete accessible metadata inventory contains 332 runs, 60 SHAs,
+15 workflow IDs and 18 historical workflow names: 57 successes, 209 failures
+and 66 cancellations. Names can change without creating a new workflow ID.
+All ten new runs compile or inspect
+`6390fdea0258f4ac46302fbb354bc527971446c9`. Full logs, failed-step logs,
+job metadata and selected artifacts are retained outside the repository at
+`/var/tmp/openi2pd-audit-20261108/`. Prior evidence is reused from the
+previous audit; not every historical log was reread in this increment.
+Together with the previous 320 logged runs, the ten newly retrieved full
+logs provide evidence for 330 runs. Canceled runs 39058841124 and 39058346321
+remain inaccessible; no expiry reason is inferred.
+
+| Run | Exact jobs and observed result |
+|---|---|
+| [42492792058](https://github.com/daviduhden/openi2pd/actions/runs/42492792058) | MSVC 128768581583 builds and passes 11 selected tests; one supervisor test skips. MSYS2 128768581923 builds, then fails four tooling/version targets |
+| [42492795963](https://github.com/daviduhden/openi2pd/actions/runs/42492795963) | OpenBSD 128768592510 compiles 685 build steps, then fails only perl-portability; three worker tests skip |
+| [42492805461](https://github.com/daviduhden/openi2pd/actions/runs/42492805461) | OpenSSL 3 Clang/GCC 128768619632/128768619750 build and fail RT-063 plus TF-093 |
+| [42492808412](https://github.com/daviduhden/openi2pd/actions/runs/42492808412) | OpenSSL 4 GCC/Clang 128768627826/128768627990 build and fail the same runtime/tooling families |
+| [42492817128](https://github.com/daviduhden/openi2pd/actions/runs/42492817128) | UBSan/TSan/ASan+UBSan 128768653761/128768653799/128768653853 build and fail RT-063 and TF-093; documentation, static and fuzz siblings succeed |
+| [42492811416](https://github.com/daviduhden/openi2pd/actions/runs/42492811416) | Android arm64 128768636472 succeeds; optional API 29 UI 128768637533 skips |
+| [42492799085](https://github.com/daviduhden/openi2pd/actions/runs/42492799085) | Service contracts 128768601903, service install 128768602044, Debian 128768602097, container 128768602120 and static musl 128768602214 succeed |
+| [42492814378](https://github.com/daviduhden/openi2pd/actions/runs/42492814378) | Installed consumer 128768645072 and Java interoperability 128768645253 succeed |
+| [42492802482](https://github.com/daviduhden/openi2pd/actions/runs/42492802482) | Knowledge gate 128768610891 succeeds |
+| [42492820526](https://github.com/daviduhden/openi2pd/actions/runs/42492820526) | Focused instrumented OpenSSL TSan 128768663178 succeeds |
+
+CE-085/086 compile blockers are absent from the executed platform and native
+lanes. Atomic ownership, Tag and tracker regressions now execute; this is
+stronger than compilation evidence alone. CE-087's arm64 dependency path
+passes, but the optional x64 emulator job did not run and its triplet fix
+remains Pending CI compilation. TF-091's Debian smoke check passes. No result
+above validates subsequent local source corrections. The full supported
+matrix remains failing, and explicit OpenSSL 4.0.x coverage remains pending.

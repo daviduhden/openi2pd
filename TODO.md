@@ -10,16 +10,17 @@ Documents project documentation.
 
 # Master TODO
 
-Latest retrospective: 322 retained runs, logs for 320, on 59 SHAs. The executed
-0b7f0ab4 matrix exposes CE-085/086 library/Tag compilation, CE-087 Android
-triplet configuration and TF-091 Debian document compression failures.
-Their corrections and RT-060/061/062 owner-retirement, Tag bounds and Windows
-deadline fixes are Implemented / static, Pending CI compilation / Pending CI
-tests. CW-028 remains Partially implemented / static: prior slurp fixes
-executed, while the local Javadoc regex subset and new corpus await CI.
-Remaining Critic families are Correction pending. RT-057 Windows startup,
-Unicode/version and earlier Android Lint debt remain unresolved. New compile
-blockers prevent revalidation of TF-089/090 and RT-058/059; see `docs/ci/`.
+Latest retrospective: 332 retained runs, evidence for 330, on 60 SHAs.
+The executed 6390fdea matrix builds past CE-085/086 and validates named
+ownership, Tag, tracker and crypto regressions; Debian TF-091 also passes.
+RT-063 IPC write admission and TF-093/094 Perl discovery/Windows harvesting
+corrections are Implemented / static, Pending CI compilation / Pending CI
+tests. Two Android Overdraw corrections await Lint and device validation.
+CW-028 Critic debt remains Correction pending: its optional lane skipped.
+The optional Android x64/UI lane also skipped, so CE-087 emulator validation
+remains pending. Windows Unicode/version/startup, fourteen other Android
+Lint findings, platform capability gaps and structural proxy handoff work
+remain open; see `docs/ci/`. No complete clean-matrix claim is made.
 
 Persistent task inventory for the openi2pd fork. IDs are stable. A checked
 box does **not** replace the status field: dynamic validation is tracked
@@ -1540,7 +1541,7 @@ target is 2.14.0; re-auditing these findings is pending under NET-026. Full inve
   - Files: `android/app/src/main/cpp/i2pd_android.cpp`; Android `RuntimeAdminFragment`, `RouterService`, `DaemonWrapper`, `I2PD_JNI`, `RouterRepository`, `RouterViewModel`, `RuntimeAdminPolicy`, localized resources and focused instrumentation/policy tests.
   - Validation: compile-free XML, locale and JNI-symbol checks were reported passing by the Android audit agent. Manual Gradle/Android CI compilation and tests, device behavior, callback lifecycle, and main-thread enforcement remain pending; none was run locally.
 - [ ] **[SNARK-012]** Durable magnet/session queue recovery and advanced peer policy.
-  - Priority P1; Status Partially implemented / static; Pending CI compilation; Pending CI tests. CONT-017 adds bounded v1 unresolved records, startup recovery before announce, duplicate hint merging and pause fallback until metainfo plus administrative state are durable. Policy scan precedes resolved recovery; incomplete scans withhold resolved admission. See `docs/torrent/local-state.md`. Still open: BEP 12 ordered tiers, unchoke/upload-slot rotation, endgame with CANCEL send, per-torrent/session bandwidth limits, per-file or per-piece recheck, and typed torrent result codes/truncation flags in the IPC snapshot.
+  - Priority P1; Status Partially implemented / static; Pending CI compilation; Pending CI tests. CONT-017 adds bounded v1 unresolved records, startup recovery before announce, duplicate hint merging and pause fallback until metainfo plus administrative state are durable. Policy scan precedes resolved recovery; incomplete scans withhold resolved admission. CONT-040 supplies bounded eight-slot rotation; advanced ranking/exact timing remain open. See `docs/torrent/local-state.md`. Still open: BEP 12 ordered tiers, endgame with CANCEL send, per-torrent/session bandwidth limits, per-file or per-piece recheck, and typed torrent result codes/truncation flags in the IPC snapshot.
   - Pinned Java evidence: `SnarkManager.saveMagnetStatus()` persists infohash, trackers, display name and running state; `PeerCoordinator` caps uploaders and rotates unchokes; `BandwidthManager` applies global/torrent/peer queues. Peer-rate observation is not equivalent to admission or shaping.
   - Files: `TorrentsTunnel.*`, `TorrentsState.*`, `Torrents.*`, `TorrentsControl.*`, `TuiProtocol.h`, Android `TorrentControl`/`TorrentsFragment`.
   - Residual: no compiler/CTest/device/live peer run exists.
@@ -2405,7 +2406,7 @@ tests until the exact published revision passes a manual lane.
 - [ ] **[CONT-043]** Adapt upstream RPC severity without retaining names.
   - Priority P2; Status Implemented / static; Pending CI compilation; Pending CI tests. New upstream change 328a5694 and merge 4885bedf are classified; native duplicate warning is operand-free, absent browser path hunk omitted. Java remains pinned at 2.14.0; no live interoperability claim.
 - [ ] **[CONT-044]** Review Activity-owned confirmation authority separately.
-  - Priority P2; Status Pending. MainActivity generic confirm, reseed and graceful-shutdown dialogs remain outside Fragment view tokens. Review Activity destruction/recreation and one-shot submission while preserving permission/autostart state; do not infer Fragment fixes cover this boundary. No Activity modification or dynamic evidence in this increment.
+  - Priority P2; Status Implemented / static; Pending CI compilation; Pending CI tests. Activity foreground/session tickets revoke on replacement, dismissal, stop, destruction and service transitions. One-shot consumption precedes action; reentrant cleanup cannot reopen authority. JVM and harmless device controls are prepared. Permission/autostart policy is preserved; Fragment and Activity ownership remain separate.
 
 ## Complete Python-to-Perl validator migration
 
@@ -2529,3 +2530,43 @@ Static catalog checks do not validate translated layouts, Activity recreation,
 TalkBack, notification/tile refresh or grapheme rendering on real terminals.
 The existing manual native/sanitizer and Android JVM/device lanes own those
 checks; this worktree has not been published or exercised by CI.
+
+## 2026-11-08 executed `6390fdea` continuation
+
+| ID | State | Remaining validation or work |
+|---|---|---|
+| IPC-NOV08C-01 | Implemented / static | RT-063 send-first deadline correction and saturation/drain controls; Pending CI compilation and Pending CI tests on Linux/OpenBSD |
+| PERL-NOV08C-01 | Implemented / static | TF-093 top-level Test::More discovery and TF-094 trusted-source native path identity; Pending CI tests on POSIX and native Windows |
+| ANDROID-NOV08C-01 | Implemented / static | CW-003 two Overdraw fixes with night/width UI regression; Pending CI compilation, Lint and device tests; fourteen other Lint findings remain Correction pending |
+| CLIENT-NOV08C-01 | Pending | Serialize HTTP/SOCKS completion writes, cancellation and forwarder admission with I2PService shutdown before replacing synchronous sends |
+| CI-NOV08C-01 | Blocked | Optional x64/UI, Critic and skipped worker paths lack new execution; OpenSSL 4.0.x lane remains absent; current local corrections are unpublished |
+
+Named 6390fdea test results do not resolve all historical hypotheses. Windows
+Unicode/version and pre-authentication 0xC0000142 remain open, with no new
+PageHeap stack. Source-only checks do not validate local runtime corrections.
+
+Torrent follow-up: TORRENT-NOV08C-01 is Implemented / static: RT-064 weak,
+generation-qualified inbound accept authority and synchronous stop/publication
+barriers; Pending CI compilation and Pending CI tests.
+
+## Integral continuation after `6390fdea` (Implemented / static)
+
+| ID | State | Work and remaining validation |
+|---|---|---|
+| CONT-045 | Implemented / static | Generation/per-wait readiness transactions, detached callbacks, bounded admission and weak destination/executor ownership; seven prepared controls; Pending CI compilation and Pending CI tests |
+| CONT-046 | Implemented / static | Absolute Channel transaction APIs and timed storage-supervisor admission/send/stale-drain budget; Pending CI compilation and Pending CI tests on Linux/OpenBSD |
+| CONT-047 | Implemented / static | Four selected upstream adaptations: transient destination cache, ECIES LS1 rejection, alphabet spans and initial discovery; exact 18-commit classification in docs/upstream-sync.md; Pending CI compilation and Pending CI tests |
+| CONT-048 | Implemented / static | Fixed-extent alphabet views and span-based HashedStorage consumers; existing Base64/persistence regressions extended, consumers must rebuild together |
+| CONT-049 | Implemented / static | Initial tracker/DHT submission waits for current durable state, file preparation and resume verification; policy/coalesced-write controls prepared; live exchange remains Pending |
+
+CONT-044 now has thirteen JVM and three Activity/device confirmation controls.
+The 2.14.1 stable tag is verified separately from historical 2.14.0/2.13.0
+fixtures; a full new-release source audit and live differential remain Pending.
+Do not repeat durable magnet or eight-slot implementation from stale summary
+rows: CONT-017/040 already provide them, with advanced shaping/ranking open.
+
+Remaining structural work includes full I2PService handler admission and
+HTTP/SOCKS handoff against shutdown, POSIX ChildProcess shutdown's composed
+relative waits, coordinated typed filesystem APIs, periodic torrent interest
+refresh and the previously recorded Windows/Android/quality coverage gaps.
+No new CI execution contains these local changes; no commits or push made.
