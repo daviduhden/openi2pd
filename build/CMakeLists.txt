@@ -13,15 +13,16 @@
 cmake_minimum_required(VERSION 3.24)
 
 # CMP0144 NEW honors upper-case dependency root variables. Set it only
-# where the running CMake knows the policy; older supported versions retain
-# their legacy behavior without a developer warning.
+# where the running CMake knows the policy; older supported versions
+# retain their legacy behavior without a developer warning.
 if(POLICY CMP0144)
   cmake_policy(SET CMP0144 NEW)
 endif()
 
-# CMake 3.30 removed FindBoost in favor of Boost's package config. Select
-# that maintained discovery path explicitly where the policy is available;
-# older supported CMake versions continue using their bundled module.
+# CMake 3.30 removed FindBoost in favor of Boost's package config.
+# Select that maintained discovery path explicitly where the policy is
+# available; older supported CMake versions continue using their bundled
+# module.
 if(POLICY CMP0167)
   cmake_policy(SET CMP0167 NEW)
 endif()
@@ -44,7 +45,7 @@ project(
 # Win32/Resource.rc carries the executable icon and version block.
 # Without the RC language CMake ignores it as a non-compilable source.
 # enable_language() has no working OPTIONAL mode, so probe with
-# CheckLanguage and enable RC only when a resource compiler is actually
+# CheckLanguage and enable RC only when a resource compiler is
 # available.
 if(WIN32)
   include(CheckLanguage)
@@ -277,8 +278,8 @@ else()
   set(I2PD_BOOST_MIN_VERSION 1.74)
   set(I2PD_BOOST_COMPONENTS program_options)
   # Keep the optional component name in the installed package config
-  # too:
-  # FindBoost creates the target only when the host actually ships it.
+  # too. FindBoost creates the target only when the host actually ships
+  # it.
   set(I2PD_BOOST_OPTIONAL_COMPONENTS container)
 endif()
 if(WITH_STATIC AND WITH_TORRENTS AND NOT TARGET Boost::container)
@@ -350,10 +351,10 @@ if(I2PD_OPENSSL_EXPECT_VERSION AND NOT I2PD_OPENSSL_VERSION VERSION_EQUAL I2PD_O
   message(FATAL_ERROR
     "Expected ${I2PD_OPENSSL_EXPECT_VERSION}, selected ${I2PD_OPENSSL_KIND} ${I2PD_OPENSSL_VERSION}")
 endif()
-# A branch lane ("latest 3.x", "latest 4.x") cannot pin an exact version,
-# so it guards the major instead. Without this the kind check alone would
-# accept any OpenSSL that find_package() resolved, and a lane that claims
-# 3.x could build and pass against 4.x.
+# A branch lane ("latest 3.x", "latest 4.x") cannot pin an exact
+# version, so it guards the major instead. Without this the kind check
+# alone would accept any OpenSSL that find_package() resolved, and a
+# lane that claims 3.x could build and pass against 4.x.
 if(I2PD_OPENSSL_EXPECT_MAJOR)
   string(REGEX MATCH "^[0-9]+" _i2pd_openssl_major "${I2PD_OPENSSL_VERSION}")
   if(NOT _i2pd_openssl_major STREQUAL I2PD_OPENSSL_EXPECT_MAJOR)

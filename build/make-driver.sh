@@ -1,6 +1,6 @@
 #!/bin/sh
-# See the LICENSE file at the top of the project tree for copyright
-# and license details.
+# See the LICENSE file at the top of the project tree for copyright and
+# license details.
 #
 # openi2pd: POSIX make command driver.
 #
@@ -8,8 +8,9 @@
 # this helper owns command sequencing and cleanup/install decisions.
 # Arguments: ACTION CMAKE BUILD_DIR GENERATOR DESTDIR PREFIX [FLAGS...].
 # FLAGS arrive as argv, already quoted by the calling recipe. Never eval
-# them or split them again. CMake/Ninja retain incremental build ownership;
-# CMAKE_BUILD_PARALLEL_LEVEL passes through in the environment.
+# them or split them again. CMake/Ninja retain incremental build
+# ownership; CMAKE_BUILD_PARALLEL_LEVEL passes through in the
+# environment.
 
 set -eu
 
@@ -27,6 +28,8 @@ shift 6
 
 configure()
 {
+	# Component defaults precede caller flags at each call site. A caller
+	# can override a default through argv without any shell reparsing.
 	"$cmake_command" -S build -B "$build_directory" -G "$generator" "$@"
 }
 
@@ -55,6 +58,9 @@ case "$action" in
 		ctest --test-dir "$build_directory" --output-on-failure
 		;;
 	install)
+		# DESTDIR relocates the staging root; PREFIX changes the logical
+		# install prefix. An empty PREFIX preserves the configured prefix.
+		# This action does not build first; Make owns that prerequisite.
 		if [ -n "$install_prefix" ]; then
 			DESTDIR=$staging_directory "$cmake_command" --install "$build_directory" --prefix "$install_prefix"
 		else
@@ -103,6 +109,8 @@ case "$action" in
 		"$cmake_command" -E remove_directory "$build_directory"
 		;;
 	dist)
+		# Archive the committed tree, not local edits or untracked files.
+		# The output path is relative to the repository-root invocation.
 		git archive --format=tar.gz -9 --prefix=openi2pd/ HEAD -o openi2pd.tar.gz
 		;;
 	*)

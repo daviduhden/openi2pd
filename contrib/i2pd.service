@@ -85,6 +85,9 @@ SyslogIdentifier=open-i2pd
 # the router needs AF_INET and AF_INET6 and interface discovery uses
 # netlink.
 NoNewPrivileges=yes
+# This unit permits both router networking and persistent state updates.
+# Service-level hardening does not establish per-worker filesystem or
+# network isolation; those boundaries belong to daemon IPC startup.
 ProtectSystem=strict
 # Add any overridden datadir, pidfile directory or TUI socket directory
 # here. StateDirectory/RuntimeDirectory/LogsDirectory add their paths

@@ -8,6 +8,11 @@
 # enclosing package.sh copies this whole debian/ directory and supplies
 # bin/ plus the read-only src/ link. No compilation or stripping occurs;
 # all destinations remain below the explicitly supplied package root.
+#
+# ARCH and PACKAGE_ROOT are trusted arguments from debhelper in that
+# scratch tree. Nonempty-argument checks are interface checks, not path
+# confinement. Callers must keep the staging tree and its parents free
+# of hostile symlink changes. The helper never modifies installed state.
 
 set -eu
 if [ "$#" -ne 2 ] || [ -z "$1" ] || [ -z "$2" ]; then

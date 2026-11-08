@@ -1,78 +1,85 @@
 #!/usr/bin/make -f
-# See the LICENSE file at the top of the project tree for copyright
-# and license details.
+# See the LICENSE file at the top of the project tree for copyright and
+# license details.
 #
 # openi2pd: rules.
 #
-# Debhelper rules for the CMake/Ninja build. CMake installs runtime, tools,
-# documentation and man pages into debian/tmp; debhelper assigns them to i2pd
-# and i2pd-tui, loads the AppArmor profile and integrates systemd, SysV,
-# sysusers, tmpfiles and logrotate.
+# Debhelper rules for the CMake/Ninja build. CMake installs runtime,
+# tools, documentation and man pages into debian/tmp; debhelper assigns
+# them to i2pd and i2pd-tui, loads the AppArmor profile and integrates
+# systemd, SysV, sysusers, tmpfiles and logrotate.
 #
 
 # CMake is the only supported build system. This file is executed by
 # debhelper, not by the project's POSIX make front-end. The direct CMake
-# invocation bypasses dh_auto_configure, so pass the dpkg-buildflags values
-# explicitly (including PIE/FORTIFY/RELRO/NOW) and enable the project's own
-# hardening diagnostics.
+# invocation bypasses dh_auto_configure, so pass the dpkg-buildflags
+# values explicitly (including PIE/FORTIFY/RELRO/NOW) and enable the
+# project's own hardening diagnostics.
 #
-# Build inputs: the packaging reads only the checked-out source tree and the
-# Build-Depends that the build environment provides; it downloads nothing.
-# Environment: DEB_BUILD_OPTIONS may carry "parallel=N"; DEB_HOST_ARCH selects
-# the target architecture. The rules run unprivileged (Rules-Requires-Root: no)
-# and write only below build-debian/ and debian/tmp/.
+# Build inputs: the packaging reads only the checked-out source tree and
+# the Build-Depends that the build environment provides; it downloads
+# nothing. Environment: DEB_BUILD_OPTIONS may carry "parallel=N";
+# DEB_HOST_ARCH selects the target architecture. The rules run
+# unprivileged (Rules-Requires-Root: no) and write only below
+# build-debian/ and debian/tmp/.
 export DEB_BUILD_MAINT_OPTIONS = hardening=+all
 export DEB_CXXFLAGS_MAINT_APPEND = -Wall -pedantic
 
 %:
 	dh $@
 
-# Install prefixes mirror the Debian filesystem layout so the CMake install
-# rules place units, sysusers/tmpfiles policy and man pages at their final
-# paths; debian/i2pd.install then claims them from debian/tmp.
+# Install prefixes mirror the Debian filesystem layout so the CMake
+# install rules place units, sysusers/tmpfiles policy and man pages at
+# their final paths; debian/i2pd.install then claims them from
+# debian/tmp.
 #
-# RelWithDebInfo keeps debug info for dh_strip/dh_dwz to split into a -dbgsym
-# package instead of shipping it in the binary.
+# RelWithDebInfo keeps debug info for dh_strip/dh_dwz to split into a
+# -dbgsym package instead of shipping it in the binary.
 #
 # BUILD_TESTING=OFF keeps CTest out of the package build (see
 # override_dh_auto_test).
 #
-# I2PD_SERVICE_MANAGER=none makes CMake skip its own service payload: debhelper
-# integrates contrib/i2pd.service and contrib/sysvinit/i2pd, and installing
-# both owners would create duplicate units and start actions.
+# I2PD_SERVICE_MANAGER=none makes CMake skip its own service payload:
+# debhelper integrates contrib/i2pd.service and contrib/sysvinit/i2pd,
+# and installing both owners would create duplicate units and start
+# actions.
 override_dh_auto_configure:
 	sh debian/build-driver.sh configure
 
-# An empty "parallel=" value (the common case) leaves --parallel without a job
-# count, so CMake/Ninja use their own default; a distro-supplied value is passed
-# through unchanged.
+# An empty "parallel=" value (the common case) leaves --parallel without
+# a job count, so CMake/Ninja use their own default; a distro-supplied
+# value is passed through unchanged.
 override_dh_auto_build:
 	sh debian/build-driver.sh build
 
 override_dh_auto_test:
-	# Unit tests belong to CI. Router tests need network fixtures and are not
-	# run during a package build.
+	# Unit tests belong to CI. Router tests need network fixtures
+	# and are not run during a package build.
 	@true
 
-# Remove only the out-of-tree build directory; the source tree, including the
-# checked-in Gradle wrapper, stays untouched.
+# Remove only the out-of-tree build directory; the source tree,
+# including the checked-in Gradle wrapper, stays untouched.
 override_dh_auto_clean:
 	sh debian/build-driver.sh clean
 
 override_dh_auto_install:
+	# The driver uses CURDIR only as the source-root prefix for DESTDIR.
+	# Package manifests claim the staged payload; this target never writes
+	# directly into the build host's installed service or state paths.
 	sh debian/build-driver.sh install "$(CURDIR)"
 
-# dh_apparmor installs the local include and reloads the profile. The profile
-# itself is in i2pd.install; running the helper after dh_install keeps the
-# profile and the maintscript snippets in the same package.
+# dh_apparmor installs the local include and reloads the profile. The
+# profile itself is in i2pd.install; running the helper after dh_install
+# keeps the profile and the maintscript snippets in the same package.
 override_dh_install:
 	dh_install
 	dh_apparmor --profile-name=usr.bin.i2pd -pi2pd
 
-# Keep the SysV script for non-systemd systems. dh_installinit owns the single
-# enable/start/stop action through invoke-rc.d, which reaches the native unit
-# on a systemd host and the SysV script elsewhere. dh_installsystemd installs
-# and enables the unit but must not add a second start/stop action.
+# Keep the SysV script for non-systemd systems. dh_installinit owns the
+# single enable/start/stop action through invoke-rc.d, which reaches the
+# native unit on a systemd host and the SysV script elsewhere.
+# dh_installsystemd installs and enables the unit but must not add a
+# second start/stop action.
 override_dh_installinit:
 	dh_installinit
 
@@ -82,8 +89,8 @@ override_dh_installsystemd:
 override_dh_installtmpfiles:
 	dh_installtmpfiles
 
-# Any file installed by CMake but claimed by no manifest is a packaging error
-# (an unshipped binary, stray doc tree or new unit), so fail the build rather
-# than silently dropping it.
+# Any file installed by CMake but claimed by no manifest is a packaging
+# error (an unshipped binary, stray doc tree or new unit), so fail the
+# build rather than silently dropping it.
 override_dh_missing:
 	dh_missing --fail-missing

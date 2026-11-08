@@ -147,6 +147,8 @@ description_reopenlogs="Reopen log files (SIGUSR1)"
 
 reload() {
 	ebegin "Reloading ${name}"
+	# Address the supervised service through OpenRC, not a pidfile read.
+	# A successful signal request is not a tunnel-reload acknowledgement.
 	# --signal must stay before the service name: supervise-daemon is a
 	# musl binary, and musl's argument parser does not permute options
 	# after operands.
@@ -157,6 +159,8 @@ reload() {
 reopenlogs() {
 	ebegin "Reopening ${name} logs"
 	# SIGUSR1 makes the daemon reopen its log file after external rotation.
+	# Rotation policy must retain the configured directory's private mode;
+	# this signal path does not recreate or repair permissions itself.
 	supervise-daemon --signal USR1 "${RC_SVCNAME}"
 	eend $?
 }

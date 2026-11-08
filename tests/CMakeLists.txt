@@ -20,10 +20,10 @@ endif()
 
 function(i2pd_add_test name)
   add_executable(${name} "${name}.cpp")
-  # Every C++ test echoes the product's own diagnostics to stderr as they
-  # happen (tests/log-support.cpp). Without it a failing assert would
-  # abort with the records still only in the administrative ring, which is
-  # invisible to CTest. Fuzz targets skip this unit on purpose.
+  # Every C++ test echoes the product's own diagnostics to stderr as
+  # they happen (tests/log-support.cpp). Without it a failing assert
+  # would abort with the records still only in the administrative ring,
+  # which is invisible to CTest. Fuzz targets skip this unit on purpose.
   target_sources(${name} PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/log-support.cpp")
   target_compile_features(${name} PRIVATE cxx_std_23)
   if(name MATCHES "^test-privsep-(protocol|log|authorization|capabilities|supervisor|linux-ipc|linux-sandbox|openbsd-policy|openbsd-imsg|windows-ipc|windows-isolation|windows-supervisor)$")
@@ -579,10 +579,10 @@ set_tests_properties(agent-skills-static PROPERTIES
 
 # Shell-level checks that only need the built router binary. The driver
 # runs the executable directly with a bounded wait and reports its exit
-# status plus captured output: a bare `add_test(... i2pd --version)` cannot
-# distinguish a healthy quiet windowed build from a child that is blocked
-# on a modal dialog, which is how this test timed out on the Windows
-# GUI-subsystem router. The exit status stays authoritative.
+# status plus captured output: a bare `add_test(... i2pd --version)`
+# cannot distinguish a healthy quiet windowed build from a child that is
+# blocked on a modal dialog, which is how this test timed out on the
+# Windows GUI-subsystem router. The exit status stays authoritative.
 if(TARGET i2pd)
   add_test(NAME i2pd-version
     COMMAND "${CMAKE_COMMAND}"
@@ -604,8 +604,8 @@ if(NOT PERL_EXECUTABLE)
 endif()
 if(PERL_EXECUTABLE)
   # Compile-free native/Android translation contract. The interpreter
-  # comes from the configure step instead of a run-time `find_program`, so
-  # the catalog check cannot be skipped by a ctest PATH difference.
+  # comes from the configure step instead of a run-time `find_program`,
+  # so the catalog check cannot be skipped by a ctest PATH difference.
   add_test(NAME i18n-static
     COMMAND "${CMAKE_COMMAND}"
       "-DPROJECT_ROOT=${PROJECT_ROOT}"

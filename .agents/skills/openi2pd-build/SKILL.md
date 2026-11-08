@@ -111,6 +111,13 @@ build.
 
 ## Known issues and decisions
 
+- When documenting package discovery, read the installed config and its
+  install component together. The config/export belongs to Development;
+  missing headers after a copied or partial install are not a guarantee that
+  Libraries-only discovery works. Current config logic rejects any explicit
+  Development request when include roots are missing, even an optional one.
+  Trace Make prerequisites separately from make-driver command sequencing.
+
 - libi2pdlang publishes Threads::Threads for its atomic selection and
   once-only numeric initialization. Keep the dependency on the standalone
   catalog target; incidental router/tool linkage is not an export contract.
