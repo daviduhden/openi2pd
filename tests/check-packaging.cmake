@@ -399,15 +399,18 @@ foreach(required IN ITEMS
     "apparmor_parser"
     "desktop-file-validate"
     "/usr/share/doc/i2pd/changelog.gz"
-    "/usr/share/doc/i2pd/README.md.gz"
-    "/usr/share/doc/i2pd/assets/branding/colors.md.gz"
+    "require_document /usr/share/doc/i2pd/README.md"
+    "require_document /usr/share/doc/i2pd/docs/i18n.md"
+    "require_document /usr/share/doc/i2pd/assets/branding/colors.md"
     "i2pd (= ")
   assert_contains("${debian_tests_smoke}" "${required}" "autopkgtest smoke")
 endforeach()
 assert_absent("${debian_tests_smoke}" "require_file /usr/share/doc/i2pd/ChangeLog\n"
   "autopkgtest must expect debhelper's compressed upstream changelog")
 assert_absent("${debian_tests_smoke}" "require_file /usr/share/doc/i2pd/README.md\n"
-  "autopkgtest must expect debhelper's compressed Markdown documentation")
+  "autopkgtest must allow debhelper's compressed Markdown documentation")
+assert_contains("${debian_tests_smoke}" "[ ! -f \"$1\" ] && [ ! -f \"$1.gz\" ]"
+  "documentation lookup must reject a missing plain and compressed pair")
 
 read_file("${PROJECT_ROOT}/contrib/static/debian/i2pd.postrm" static_debian_postrm)
 assert_absent("${static_debian_postrm}" "update-rc.d i2pd remove"

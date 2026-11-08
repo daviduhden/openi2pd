@@ -105,6 +105,11 @@ Ask for exact paths and package names. Do not let them run `dpkg-buildpackage`,
   duplicate action.
 
 ## Known issues and decisions
+
+- Debian documentation can cross debhelper's compression threshold when its
+  contents grow. Inspect the exact package data archive before changing an
+  install manifest; DEP-8 accepts plain or .gz forms of Markdown documents.
+  Keep mandatory licenses and canonical compressed changelog checks exact.
 - Auxiliary tool pages share `man/openi2pd-tools.1`; command-named `.so`
   pages must be installed with that target in the Tools component. Keep
   Debian's explicit payload inventory aligned and inspect the exact package
