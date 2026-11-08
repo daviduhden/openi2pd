@@ -121,6 +121,13 @@ run Gradle, install an APK or run a device test.
 
 ## Known issues and decisions
 
+- MainActivity confirmations use UiConfirmationAuthority foreground/session
+  tickets, independently of Fragment view tokens. Consume once before the
+  action, revoke before dismissal, and deny registration while framework
+  cleanup reenters. Service changes retire consent; click-time action
+  admission still needs a fresh snapshot. Keep permission/autostart policy
+  separate and use harmless callbacks in Activity lifecycle regressions.
+
 - Give the content surface one opaque owner: the theme window resolves
   colorSurface while phone/tablet activity roots remain transparent. Check
   both night modes and both width qualifiers; the Android 12 splash keeps

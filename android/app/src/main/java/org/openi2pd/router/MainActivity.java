@@ -54,6 +54,7 @@ import com.google.android.material.navigation.NavigationBarView;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.BooleanSupplier;
 
 /**
  * Single-activity host for the router screens.
@@ -97,6 +98,9 @@ public class MainActivity extends AppCompatActivity {
     private int lastActionMask = -1;
     private boolean everServiceConnected;
     private boolean serviceBannerTimedOut;
+    private final UiConfirmationAuthority confirmations = new UiConfirmationAuthority();
+    private boolean confirmationServiceConnected;
+    private boolean confirmationNativeStarted;
     /**
      * Defer the very first auto-start until the permission dialog
      * resolves.
@@ -192,6 +196,11 @@ public class MainActivity extends AppCompatActivity {
         fragments.addOnBackStackChangedListener(this::updateNavigationState);
 
         viewModel.getSnapshot().observe(this, snapshot -> {
+            boolean started = snapshot != null && snapshot.nativeStarted();
+            if (started != confirmationNativeStarted) {
+                confirmationNativeStarted = started;
+                confirmations.sessionChanged();
+            }
             lastSnapshot = snapshot;
             updateToolbarSubtitle();
             int mask = (UiFormat.gracefulActive(snapshot) ? 1 : 0)
@@ -207,6 +216,10 @@ public class MainActivity extends AppCompatActivity {
 
         viewModel.getServiceConnected().observe(this, connected -> {
             boolean isConnected = Boolean.TRUE.equals(connected);
+            if (isConnected != confirmationServiceConnected) {
+                confirmationServiceConnected = isConnected;
+                confirmations.sessionChanged();
+            }
             if (isConnected) {
                 everServiceConnected = true;
                 serviceBannerTimedOut = false;
@@ -569,7 +582,7 @@ public class MainActivity extends AppCompatActivity {
         }
         if (id == R.id.action_stop) {
             confirm(R.string.confirm_exit_title, R.string.confirm_exit_message,
-                    R.string.action_exit, () -> {
+                    R.string.action_exit, () -> UiFormat.canStop(lastSnapshot), () -> {
                         viewModel.stopRouter();
                         Toast.makeText(this, R.string.toast_stopping, Toast.LENGTH_SHORT).show();
                         finishAndRemoveTask();
@@ -589,7 +602,10 @@ public class MainActivity extends AppCompatActivity {
     void confirmReseed() {
         final Context appContext = getApplicationContext();
         confirm(R.string.confirm_reseed_title, R.string.confirm_reseed_message,
-                R.string.action_reseed, () -> viewModel.requestReseed(outcome -> {
+                R.string.action_reseed,
+                () -> UiFormat.isConnected(lastSnapshot)
+                        && lastSnapshot != null && !lastSnapshot.reseeding(),
+                () -> viewModel.requestReseed(outcome -> {
                     String token = outcome == null ? "" : outcome;
                     int message = switch (token) {
                         case "started" -> R.string.toast_reseed_started;
@@ -608,7 +624,9 @@ public class MainActivity extends AppCompatActivity {
             return;
         }
         confirm(R.string.confirm_graceful_title, R.string.confirm_graceful_message,
-                R.string.action_graceful_stop, () -> {
+                R.string.action_graceful_stop,
+                () -> UiFormat.canGraceful(lastSnapshot)
+                        && !UiFormat.gracefulActive(lastSnapshot), () -> {
                     viewModel.beginGracefulStop();
                     Toast.makeText(this, R.string.toast_graceful_started, Toast.LENGTH_SHORT)
                             .show();
@@ -625,22 +643,18 @@ public class MainActivity extends AppCompatActivity {
             return;
         }
 
-        new MaterialAlertDialogBuilder(this)
-                .setTitle(R.string.battery_optimizations_enabled)
-                .setMessage(R.string.battery_optimizations_enabled_dialog)
-                .setNegativeButton(R.string.action_cancel, null)
-                .setPositiveButton(R.string.action_continue,
-                        (dialog, which) -> {
-                            Intent request =
-                                    new Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
-                                            Uri.parse("package:" + getPackageName()));
-                            try {
-                                startActivity(request);
-                            } catch (RuntimeException exception) {
-                                openBatteryOptimizationSettings();
-                            }
-                        })
-                .show();
+        confirm(R.string.battery_optimizations_enabled,
+                R.string.battery_optimizations_enabled_dialog, R.string.action_continue,
+                () -> {
+                    Intent request =
+                            new Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
+                                    Uri.parse("package:" + getPackageName()));
+                    try {
+                        startActivity(request);
+                    } catch (RuntimeException exception) {
+                        openBatteryOptimizationSettings();
+                    }
+                });
     }
 
     private void openBatteryOptimizationSettings() {
@@ -654,14 +668,52 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    private void confirm(@StringRes int title, @StringRes int message, @StringRes int positive,
+    /** Local seam for confirmations with harmless test callbacks. */
+    @Nullable
+    androidx.appcompat.app.AlertDialog confirm(@StringRes int title, @StringRes int message,
+            @StringRes int positive, @NonNull Runnable action) {
+        return confirm(title, message, positive, () -> true, action);
+    }
+
+    /**
+     * Capture this foreground/service interval before showing a window.
+     * The click rechecks command admission and consumes the exact
+     * registration before running the action. Framework dismissal and
+     * lifecycle teardown cannot reactivate that callback.
+     */
+    @Nullable
+    private androidx.appcompat.app.AlertDialog confirm(@StringRes int title,
+            @StringRes int message, @StringRes int positive, @NonNull BooleanSupplier admitted,
             @NonNull Runnable action) {
-        new MaterialAlertDialogBuilder(this)
+        if (!confirmationReady())
+            return null;
+        var dialog = new MaterialAlertDialogBuilder(this)
                 .setTitle(title)
                 .setMessage(message)
                 .setNegativeButton(R.string.action_cancel, null)
-                .setPositiveButton(positive, (dialog, which) -> action.run())
-                .show();
+                .setPositiveButton(positive, null)
+                .create();
+        var ticket = confirmations.register(dialog::dismiss);
+        if (ticket == null)
+            return null;
+        dialog.setOnDismissListener(ignored -> confirmations.dismissed(ticket));
+        try {
+            dialog.show();
+        } catch (RuntimeException failure) {
+            confirmations.dismissed(ticket);
+            throw failure;
+        }
+        dialog.getButton(android.content.DialogInterface.BUTTON_POSITIVE)
+                .setOnClickListener(button -> {
+                    if (confirmations.consume(ticket, confirmationReady() && admitted.getAsBoolean()))
+                        action.run();
+                });
+        return dialog;
+    }
+
+    private boolean confirmationReady() {
+        return !isFinishing() && !isDestroyed()
+                && getLifecycle().getCurrentState().isAtLeast(Lifecycle.State.STARTED);
     }
 
     /**
@@ -733,6 +785,7 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onStart() {
         super.onStart();
+        confirmations.start();
         if (viewModel != null) {
             viewModel.setUiVisible(true);
             if (pendingAutostart && !startAfterPermissionResult) {
@@ -748,10 +801,17 @@ public class MainActivity extends AppCompatActivity {
 
     @Override
     protected void onStop() {
+        confirmations.stop();
         if (viewModel != null) {
             viewModel.setUiVisible(false);
         }
         super.onStop();
+    }
+
+    @Override
+    protected void onDestroy() {
+        confirmations.stop();
+        super.onDestroy();
     }
 
     /**

@@ -540,3 +540,15 @@ This ordering matters because the upstream x64 triplet selects API 28 and
 would override an outer cache hint. The workflow guard and negative fixtures
 pin this distinction. Native linking, JVM/UI execution and dependency rebuilds
 remain pending manual CI on this correction.
+
+### Activity confirmation ownership continuation
+
+MainActivity confirmations now use a separate UiConfirmationAuthority rather
+than borrowing Fragment view tokens. Opaque foreground/session tickets are
+retired on replacement, dismissal, stop, destruction and service transitions.
+Consumption is one-shot, precedes the action, and rechecks current command
+admission; reentrant framework cleanup cannot register or reopen authority.
+Permission and autostart state remain independent. The helper uses ordinary
+Java library facilities available at minSdk 29; no unavailable JDK 25 runtime
+API or Kotlin dependency is introduced. Thirteen JVM and three harmless
+Activity/device controls are prepared; execution remains pending manual CI.

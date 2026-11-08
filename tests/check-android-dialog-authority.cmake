@@ -53,3 +53,30 @@ endforeach()
 if(torrent MATCHES "new MaterialAlertDialogBuilder")
   message(FATAL_ERROR "Torrent dialogs must use their owned builder")
 endif()
+
+# Activity confirmations carry foreground/session authority.
+file(READ "${java}/UiConfirmationAuthority.java" confirmation)
+file(READ "${java}/MainActivity.java" activity)
+foreach(required IN ITEMS "Ticket current;" "ticket != current"
+    "ticket.foreground != foreground" "ticket.session != session"
+    "boolean consume(" "void sessionChanged()" "void stop()")
+  string(FIND "${confirmation}" "${required}" found)
+  if(found LESS 0)
+    message(FATAL_ERROR "Activity confirmation authority missing: ${required}")
+  endif()
+endforeach()
+foreach(required IN ITEMS "confirmations.start();" "confirmations.stop();"
+    "confirmations.sessionChanged();" "confirmations.consume(ticket,"
+    "confirmations.register(dialog::dismiss)")
+  string(FIND "${activity}" "${required}" found)
+  if(found LESS 0)
+    message(FATAL_ERROR "Activity confirmation lifecycle missing: ${required}")
+  endif()
+endforeach()
+foreach(test_path IN ITEMS
+    "android/app/src/test/java/org/openi2pd/router/UiConfirmationAuthorityTest.java"
+    "android/app/src/androidTest/java/org/openi2pd/router/MainActivityConfirmationTest.java")
+  if(NOT EXISTS "${PROJECT_ROOT}/${test_path}")
+    message(FATAL_ERROR "Missing confirmation regression: ${test_path}")
+  endif()
+endforeach()
