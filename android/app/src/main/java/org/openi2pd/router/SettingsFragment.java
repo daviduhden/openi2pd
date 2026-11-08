@@ -6,10 +6,11 @@
  *
  * {@link PreferenceFragmentCompat} over a validated subset of {@code
  * i2pd.conf}; keys naming key material or passwords are deliberately
- * absent. File reads and writes run on a single daemon background
- * executor with results applied back on the main thread, and each
- * change reports whether it is hot, needs a restart or needs a tunnel
- * reload.
+ * absent.
+ *
+ * File reads and writes run on a single daemon background executor with
+ * results applied back on the main thread. Each change reports whether
+ * it is hot, needs a restart or needs a tunnel reload.
  *
  */
 
@@ -336,7 +337,7 @@ public class SettingsFragment extends PreferenceFragmentCompat {
             return;
         }
         LocaleListCompat locales = AppCompatDelegate.getApplicationLocales();
-        String tag = locales.isEmpty() ? "system" : locales.toLanguageTags();
+        String tag = locales.isEmpty() ? "system" : UiText.languageChoice(locales.get(0));
         if (!Arrays.asList(preference.getEntryValues()).contains(tag)) {
             tag = "system";
         }
@@ -470,6 +471,19 @@ public class SettingsFragment extends PreferenceFragmentCompat {
         });
     }
 
+    /**
+     * Serialize a configuration write and fence its UI completion.
+     *
+     * <p>Admission occurs on the main thread. The worker borrows the
+     * captured store and values; completion callbacks run on the main
+     * thread only while the same view generation is current. With no
+     * loaded store, failure is reported synchronously.</p>
+     *
+     * <p>View teardown does not cancel a write already admitted to the
+     * executor. Generation fencing prevents stale widget changes, not
+     * persistence, so callbacks must not be the sole owners of required
+     * file cleanup or other background-operation resources.</p>
+     */
     private void persist(@NonNull String key, @NonNull String value, @NonNull Runnable onSuccess,
             @NonNull Runnable onFailure) {
         RouterConfigStore localStore = store;
@@ -583,6 +597,13 @@ public class SettingsFragment extends PreferenceFragmentCompat {
         }
     }
 
+    /**
+     * Offer one restart confirmation bound to the current view epoch.
+     *
+     * <p>The token is captured when the form is created and rechecked
+     * when submitted. Replacement or teardown retires its authority;
+     * dismissing an older form must not reset a newer form's flag.</p>
+     */
     private void showRestartDialog() {
         var dialogToken = dialogs.token();
         if (restartDialogShown || !dialogs.maySubmit(dialogToken,

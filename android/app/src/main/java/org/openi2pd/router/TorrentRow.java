@@ -4,12 +4,15 @@
  *
  * openi2pd: TorrentRow.
  *
- * Typed, bounded view of one TORRENTS snapshot row. The
- * desktop-compatible control protocol returns a flat key/value map;
+ * Typed, bounded view of one TORRENTS snapshot row.
+ *
+ * The desktop-compatible control protocol returns a flat key/value map;
  * parsing it in the fragment mixed bounds checks, presentation and
- * accessibility text. A record makes the field set explicit, rejects an
- * out-of-range value once and lets the JVM test the decoder without an
- * Activity, a device or the native library.
+ * accessibility text.
+ *
+ * A record makes the field set explicit, rejects an out-of-range value
+ * once and lets the JVM test the decoder without an Activity, a device
+ * or the native library.
  *
  */
 
@@ -19,9 +22,12 @@ import java.util.Map;
 import java.util.regex.Pattern;
 
 /**
- * Immutable torrent summary. Every string is capped, every counter is
- * non-negative and a malformed identifier is rejected rather than
- * replaced by an invented value.
+ * Immutable torrent summary decoded through {@link #from}.
+ *
+ * <p>The decoder bounds display text and counters. Malformed IDs are
+ * rejected rather than replaced with invented targets. These checks
+ * belong to the decoder; the canonical constructor does not validate
+ * arbitrary caller-supplied components.</p>
  */
 record TorrentRow(String id, String name, String status, String error, String hash, String magnet,
         long total, long wanted, long have, boolean privateTorrent, long downloaded, long uploaded,
@@ -43,6 +49,11 @@ record TorrentRow(String id, String name, String status, String error, String ha
      * failing: a malformed hash or magnet is dropped, counters and the
      * percentage are clamped, and an absent or negative ETA stays at
      * {@code -1}.</p>
+     *
+     * <p>The map is borrowed only for this synchronous decode. Callers
+     * must not mutate it concurrently; the result retains strings and
+     * primitives, not the map. Bounded state and error text remain
+     * data until a presentation mapper recognizes an exact token.</p>
      *
      * @throws IllegalArgumentException when the id is absent,
      *                                  non-numeric or too long
@@ -87,13 +98,16 @@ record TorrentRow(String id, String name, String status, String error, String ha
     }
 
     /**
-     * Two-line row label. The private badge is a caller-supplied
-     * localized string, so this record never carries UI text of its
-     * own.
+     * Two-line row label. All presentation vocabulary and the formatted
+     * percentage come from the active UI locale, not the wire tokens.
+     *
+     * <p>The name is appended verbatim. Callers supply non-null labels;
+     * this method neither translates user text nor escapes protocol
+     * operands. Its result must not be used to construct commands.</p>
      */
-    String displayLabel(String privateBadge) {
+    String displayLabel(String privateBadge, String stateLabel, String progress) {
         StringBuilder label = new StringBuilder(name.length() + status.length() + 48);
-        label.append(name).append('\n').append(status).append(" · ").append(percent).append('%');
+        label.append(name).append('\n').append(stateLabel).append(" · ").append(progress);
         if (privateTorrent && !privateBadge.isEmpty()) {
             label.append(" · ").append(privateBadge);
         }
@@ -101,25 +115,36 @@ record TorrentRow(String id, String name, String status, String error, String ha
     }
 
     /**
-     * TalkBack description: name, state and percentage in one
-     * utterance.
+     * TalkBack description combining name, state and percentage.
      */
-    String accessibilityLabel(String privateBadge) {
+    String accessibilityLabel(String privateBadge, String stateLabel, String progress, String errorLabel) {
         StringBuilder label = new StringBuilder(name.length() + status.length() + 48);
-        label.append(name).append(", ").append(status).append(", ").append(percent).append('%');
+        label.append(name).append(", ").append(stateLabel).append(", ").append(progress);
         if (privateTorrent && !privateBadge.isEmpty()) {
             label.append(", ").append(privateBadge);
         }
         if (hasError()) {
-            label.append(", ").append(error);
+            label.append(", ").append(errorLabel);
         }
         return label.toString();
     }
 
+    /**
+     * Cap display text in UTF-16 units without splitting a valid pair.
+     *
+     * <p>This preserves a surrogate pair crossing the truncation point;
+     * it does not validate malformed UTF-16 already inside the input or
+     * preserve grapheme clusters. Decoder limits are positive.</p>
+     */
     private static String text(Map<String, String> fields, String key, int max) {
         String value = fields.getOrDefault(key, "");
         if (value.length() > max) {
-            return value.substring(0, max);
+            // Limits use UTF-16 units. Truncation must preserve whole
+            // supplementary characters for TextView and accessibility.
+            int end = max;
+            if (Character.isHighSurrogate(value.charAt(end - 1))
+                    && Character.isLowSurrogate(value.charAt(end))) --end;
+            return value.substring(0, end);
         }
         return value;
     }
@@ -175,7 +200,10 @@ record TorrentRow(String id, String name, String status, String error, String ha
         }
     }
 
-    /** The engine reports a negative or absent ETA as -1. */
+    /**
+     * Preserve a parsed signed ETA; absent or invalid input becomes -1.
+     * Other negative values remain negative for unknown-ETA rendering.
+     */
     private static int eta(Map<String, String> fields, String key) {
         String value = fields.getOrDefault(key, "-1");
         if (value.isEmpty() || value.length() > 10) {

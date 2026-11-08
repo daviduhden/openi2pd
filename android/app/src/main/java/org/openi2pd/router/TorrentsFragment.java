@@ -7,6 +7,7 @@
  * Administrative torrent screen that talks only through the bounded
  * {@link RouterViewModel} control commands: discovery, magnet add, SAF
  * import, DHT, creation status, priorities, trackers and comments.
+ *
  * Closing the screen never stops the service or the torrents, and
  * picker state survives Activity or Fragment recreation through a
  * registered result launcher.
@@ -37,12 +38,15 @@ import java.util.Map;
 import java.util.function.Consumer;
 
 /**
- * Material Views for torrent administration through {@link
- * RouterViewModel}. The fragment owns only its view and picker state;
- * the service owns torrent operations and continues when the screen
- * closes. LiveData observers use the view lifecycle, and selected
- * asynchronous completions compare a view generation before updating
- * controls after recreation.
+ * Material Views for torrent administration through
+ * {@link RouterViewModel}.
+ *
+ * <p>The fragment owns only its view and picker state; the service owns
+ * torrent operations and continues when the screen closes.</p>
+ *
+ * <p>LiveData observers use the view lifecycle. Selected asynchronous
+ * completions compare a view generation before updating controls after
+ * recreation.</p>
  */
 public final class TorrentsFragment extends Fragment {
     /**
@@ -368,7 +372,9 @@ public final class TorrentsFragment extends Fragment {
         return false;
     }
 
-    /** Capture both view and session authority when opening a dialog. */
+    /**
+     * Capture both view and session authority when opening a dialog.
+     */
     private OwnedDialogBuilder dialogBuilder() {
         return new OwnedDialogBuilder();
     }
@@ -526,9 +532,12 @@ public final class TorrentsFragment extends Fragment {
             for (int i = 0; i < count; ++i) {
                 TorrentRow row = TorrentRow.from(fields, "torrent." + i + ".");
                 String badge = getString(R.string.torrent_private_badge);
+                String stateLabel = UiText.torrentStatus(requireContext(), row.status());
+                String progress = UiText.percent(requireContext(), row.percent());
                 MaterialButton button = UiFactory.button(requireContext());
-                button.setText(row.displayLabel(badge));
-                UiFactory.applyRowSemantics(button, row.accessibilityLabel(badge));
+                button.setText(row.displayLabel(badge, stateLabel, progress));
+                UiFactory.applyRowSemantics(button, row.accessibilityLabel(badge, stateLabel,
+                        progress, UiText.diagnostic(requireContext(), row.error())));
                 button.setOnClickListener(view -> actions(row));
                 rows.addView(button);
             }
@@ -902,38 +911,38 @@ public final class TorrentsFragment extends Fragment {
         StringBuilder text = new StringBuilder();
         if (fields.containsKey("dht.numNodes")) {
             text.append(getString(R.string.torrent_dht_summary,
-                    fields.getOrDefault("dht.numNodes", "0"),
-                    fields.getOrDefault("dht.numBuckets", "0"),
-                    fields.getOrDefault("dht.numTorrents", "0"),
-                    fields.getOrDefault("dht.numFailedPeers", "0")));
+                    UiText.counter(requireContext(), fields.getOrDefault("dht.numNodes", "0")),
+                    UiText.counter(requireContext(), fields.getOrDefault("dht.numBuckets", "0")),
+                    UiText.counter(requireContext(), fields.getOrDefault("dht.numTorrents", "0")),
+                    UiText.counter(requireContext(), fields.getOrDefault("dht.numFailedPeers", "0"))));
         } else {
             text.append(fields.getOrDefault("detail.name", ""))
                     .append('\n')
-                    .append(fields.getOrDefault("detail.status", ""))
+                    .append(UiText.torrentStatus(requireContext(), fields.getOrDefault("detail.status", "")))
                     .append('\n')
                     .append(fields.getOrDefault("detail.hash", ""))
                     .append('\n')
                     .append(getString(R.string.torrent_transfer_summary,
-                            fields.getOrDefault("detail.have", "0"),
-                            fields.getOrDefault(
-                                    "detail.wanted", fields.getOrDefault("detail.total", "0")),
-                            fields.getOrDefault("detail.downRate", "0"),
-                            fields.getOrDefault("detail.upRate", "0")))
+                            UiText.counter(requireContext(), fields.getOrDefault("detail.have", "0")),
+                            UiText.counter(requireContext(), fields.getOrDefault(
+                                    "detail.wanted", fields.getOrDefault("detail.total", "0"))),
+                            UiText.counter(requireContext(), fields.getOrDefault("detail.downRate", "0")),
+                            UiText.counter(requireContext(), fields.getOrDefault("detail.upRate", "0"))))
                     .append('\n')
                     .append("1".equals(fields.get("detail.private"))
                                     ? getString(R.string.torrent_private_summary_yes)
                                     : getString(R.string.torrent_private_summary_no))
                     .append('\n')
-                    .append(fields.getOrDefault("detail.error", ""));
+                    .append(UiText.diagnostic(requireContext(), fields.getOrDefault("detail.error", "")));
             text.append('\n').append(getString(R.string.torrent_files)).append('\n');
             for (int i = 0; i < 1000 && fields.containsKey("file." + i + ".name"); ++i) {
                 String prefix = "file." + i + ".";
                 text.append(fields.get(prefix + "name"))
                         .append("\n")
-                        .append(fields.getOrDefault(prefix + "completed", "0"))
-                        .append(" / ")
-                        .append(fields.getOrDefault(prefix + "length", "0"))
-                        .append(" B\n");
+                        .append(getString(R.string.torrent_file_progress,
+                                UiText.counter(requireContext(), fields.getOrDefault(prefix + "completed", "0")),
+                                UiText.counter(requireContext(), fields.getOrDefault(prefix + "length", "0"))))
+                        .append('\n');
             }
             text.append('\n').append(getString(R.string.torrent_peers)).append('\n');
             for (int i = 0; i < 200 && fields.containsKey("peer." + i + ".ident"); ++i) {
@@ -942,15 +951,15 @@ public final class TorrentsFragment extends Fragment {
                         .append('\n')
                         .append(fields.getOrDefault(prefix + "client", ""))
                         .append(" · ")
-                        .append(fields.getOrDefault(prefix + "progress", "0"))
-                        .append("%\n");
+                        .append(UiText.peerProgress(requireContext(), fields.getOrDefault(prefix + "progress", "0")))
+                        .append('\n');
             }
             text.append('\n').append(getString(R.string.torrent_trackers)).append('\n');
             for (int i = 0; i < 100 && fields.containsKey("tracker." + i + ".announce"); ++i) {
                 String prefix = "tracker." + i + ".";
                 text.append(fields.get(prefix + "announce"))
                         .append('\n')
-                        .append(fields.getOrDefault(prefix + "lastResult", ""))
+                        .append(UiText.diagnostic(requireContext(), fields.getOrDefault(prefix + "lastResult", "")))
                         .append('\n');
             }
         }
@@ -1173,7 +1182,7 @@ public final class TorrentsFragment extends Fragment {
         String failure = fields.getOrDefault("comments.persistenceError", "");
         if (!failure.isEmpty()) {
             TextView persistence = new TextView(requireContext());
-            persistence.setText(getString(R.string.torrent_error, failure));
+            persistence.setText(getString(R.string.torrent_error, UiText.diagnostic(requireContext(), failure)));
             content.addView(persistence);
         }
         var dialog = dialogOwner
@@ -1404,14 +1413,17 @@ public final class TorrentsFragment extends Fragment {
     }
 
     /**
-     * A validation failure that names a resource is already localized;
-     * a wire diagnostic keeps its daemon-provided English text.
+     * A validation failure that names a resource is already localized.
+     * Known diagnostics resolve resources, while unknown wire text
+     * retains its English fallback.
+     *
+     * <p>User names and data never enter this mapper.</p>
      */
     private String errorText(IllegalArgumentException error) {
         if (error instanceof TorrentControl.UserMessageException typed) {
             return getString(typed.messageRes());
         }
-        return error.getMessage();
+        return UiText.diagnostic(requireContext(), error.getMessage());
     }
 
     private String safeTunnelName(String value) {

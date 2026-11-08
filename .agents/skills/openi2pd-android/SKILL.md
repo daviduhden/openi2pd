@@ -121,6 +121,26 @@ run Gradle, install an APK or run a device test.
 
 ## Known issues and decisions
 
+- Document factory validation separately from direct record construction.
+  TorrentRow.from bounds decoded fields; its canonical constructor does not
+  impose those checks. Settings generation fencing suppresses obsolete UI
+  completion but does not cancel an admitted configuration write. UiText's
+  closed vocabulary localizes known diagnostics and preserves unknown text;
+  this presentation layer is not a secret-redaction boundary.
+
+- UiText is a closed presentation vocabulary for snapshot status and safe
+  error categories. DTO/wire tokens and unknown text stay unchanged. Supply
+  localized labels and active-locale percentages to TorrentRow, including
+  TalkBack; UTF-16 caps must not split surrogate pairs.
+
+- Language preference presentation canonicalizes regional/script variants;
+  unknown scripts use English while empty AppCompat locales mean System.
+  Explicit Hans takes priority over region; Hant never becomes Simplified.
+
+- Plural instrumentation compares unformatted resource templates when
+  checking categories; formatted counts would differ even if the category
+  were wrong. Cover Russian 11/21/22 and Chinese's single other category.
+
 - The wide activity uses a weighted outer content area and native relative
   positioning for its rail, divider and remaining fragment width. Do not
   nest a second weighted layout there or add a dependency just for bounds.

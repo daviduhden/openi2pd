@@ -6,9 +6,10 @@
  *
  * Overview screen that derives every label, metric and button state
  * from the published {@link RouterSnapshot}, showing unknown metrics
- * until the native status has actually been parsed. Start, stop,
- * restart and graceful-stop are confirmed by dialog and only forward
- * commands through {@link RouterViewModel}.
+ * until the native status has actually been parsed.
+ *
+ * Start, stop, restart and graceful-stop are confirmed by dialog and
+ * only forward commands through {@link RouterViewModel}.
  *
  */
 
@@ -204,7 +205,7 @@ public class DashboardFragment extends Fragment {
         UiFormat.setTextIfChanged(statusTitle, getString(UiFormat.stateLabelRes(state)));
         statusTitle.setTextColor(ContextCompat.getColor(context, UiFormat.stateColorRes(state)));
         UiFormat.setTextIfChanged(statusSubtitle, UiFormat.statusSubtitle(context, snapshot));
-        String detail = UiFormat.routerDetail(snapshot);
+        String detail = UiFormat.routerDetail(requireContext(), snapshot);
         statusDetail.setVisibility(detail.isEmpty() ? View.GONE : View.VISIBLE);
         if (!detail.isEmpty())
             UiFormat.setTextIfChanged(statusDetail, detail);

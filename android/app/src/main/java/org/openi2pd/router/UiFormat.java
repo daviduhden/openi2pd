@@ -5,9 +5,11 @@
  * openi2pd: UiFormat.
  *
  * Pure presentation helpers mapping snapshots to state labels, colours,
- * addresses, rates, durations, byte counts and percentages with
- * English-pinned number formatting. They never call JNI or perform I/O
- * and only rewrite a TextView when its text actually changes.
+ * addresses, rates, durations, byte counts and percentages with active
+ * per-app number formatting.
+ *
+ * They never call JNI or perform I/O and only rewrite a TextView when
+ * its text actually changes.
  *
  */
 
@@ -28,9 +30,9 @@ import java.util.Locale;
 /**
  * Presentation helpers for router snapshots.
  *
- * <p>This class never calls JNI and never performs I/O. It only
- * converts the immutable snapshot published by {@link RouterViewModel}
- * into text that is safe to show on the UI thread.</p>
+ * <p>This class never calls JNI and never performs I/O. It converts the
+ * immutable snapshot published by {@link RouterViewModel} into text
+ * that is safe to show on the UI thread.</p>
  */
 public final class UiFormat {
     private static final int MAX_ERROR_LENGTH = 240;
@@ -42,6 +44,13 @@ public final class UiFormat {
         // Static helpers only.
     }
 
+    /**
+     * Derive display state without changing native lifecycle authority.
+     *
+     * <p>A successful native start may still render DEGRADED when live
+     * status is absent or offline. Command admission must use the
+     * dedicated lifecycle helpers rather than rely on this label.</p>
+     */
     @NonNull
     public static RouterState stateOf(@Nullable RouterSnapshot snapshot) {
         if (snapshot == null || snapshot.state() == null) {
@@ -76,8 +85,7 @@ public final class UiFormat {
     }
 
     /**
-     * Native status name plus the router error, or empty when not
-     * parsed.
+     * Native status name plus router error, or empty before parsing.
      */
     @NonNull
     public static String routerDetail(@Nullable RouterSnapshot snapshot) {
@@ -91,8 +99,19 @@ public final class UiFormat {
     }
 
     /**
-     * True only when live counters from a parsed native status are
-     * available.
+     * Localize known status/error vocabulary without rewriting the
+     * snapshot.
+     */
+    @NonNull
+    public static String routerDetail(@NonNull Context context, @Nullable RouterSnapshot snapshot) {
+        if (snapshot == null || !snapshot.hasStatus()) return "";
+        String status = UiText.routerStatus(context, snapshot.routerStatus());
+        String error = UiText.diagnostic(context, snapshot.routerError());
+        return status.isEmpty() ? "" : (error.isEmpty() ? status : status + " · " + error);
+    }
+
+    /**
+     * True only when live counters from a parsed native status exist.
      */
     public static boolean hasLiveMetrics(@Nullable RouterSnapshot snapshot) {
         return snapshot != null && snapshot.hasLiveMetrics();
@@ -158,8 +177,7 @@ public final class UiFormat {
     }
 
     /**
-     * Begin (or cancel) a graceful stop only for a normally started
-     * router.
+     * Begin or cancel a graceful stop only after a normal router start.
      */
     public static boolean canGraceful(@Nullable RouterSnapshot snapshot) {
         return canRestart(snapshot);
@@ -198,12 +216,13 @@ public final class UiFormat {
                 if (snapshot.state() == DaemonWrapper.State.startFailed) {
                     yield detail.isEmpty() ? context.getString(R.string.state_error)
                                            : context.getString(R.string.status_start_failed_format,
-                                                     summarize(detail));
+                                                     UiText.diagnostic(context, summarize(detail)));
                 }
                 yield detail.isEmpty()
                         ? context.getString(R.string.status_status_unavailable)
                         : context.getString(
-                                  R.string.status_status_unavailable_format, summarize(detail));
+                                  R.string.status_status_unavailable_format,
+                                  UiText.diagnostic(context, summarize(detail)));
             }
             case UNKNOWN -> context.getString(R.string.status_service_connecting);
         };
@@ -220,11 +239,11 @@ public final class UiFormat {
             if (snapshot.state() == DaemonWrapper.State.startFailed) {
                 return detail.isEmpty() ? context.getString(R.string.warning_router_error)
                                         : context.getString(R.string.warning_start_failed_format,
-                                                  summarize(detail));
+                                                  UiText.diagnostic(context, summarize(detail)));
             }
             return detail.isEmpty() ? context.getString(R.string.warning_status_unavailable)
                                     : context.getString(R.string.warning_status_unavailable_format,
-                                              summarize(detail));
+                                              UiText.diagnostic(context, summarize(detail)));
         }
         if (state == RouterState.DEGRADED && snapshot.nativeStarted() && !snapshot.hasStatus()) {
             return context.getString(R.string.warning_status_unavailable);
@@ -232,7 +251,8 @@ public final class UiFormat {
         if (state == RouterState.CONNECTED || state == RouterState.DEGRADED) {
             String error = snapshot.errorText();
             if (!TextUtils.isEmpty(error)) {
-                return context.getString(R.string.warning_error_format, summarize(error));
+                return context.getString(R.string.warning_error_format,
+                        UiText.diagnostic(context, summarize(error)));
             }
             if (!snapshot.online()) {
                 return context.getString(R.string.warning_offline);
@@ -306,6 +326,13 @@ public final class UiFormat {
         return host != null && host.indexOf(':') >= 0;
     }
 
+    /**
+     * Render a non-negative count using the context's active locale.
+     *
+     * <p>Formatting occurs only at the presentation boundary. Grouping
+     * separators and localized digits must not be parsed back into
+     * configuration, snapshot fields or native control requests.</p>
+     */
     @NonNull
     public static String count(@NonNull Context context, long value) {
         return NumberFormat.getIntegerInstance(locale(context)).format(Math.max(0L, value));
@@ -414,9 +441,12 @@ public final class UiFormat {
 
     /**
      * Avoids re-layout when a one-second snapshot carries an unchanged
-     * field. All text still comes from the immutable snapshot; this
-     * only skips the redundant {@link TextView#setText(CharSequence)}
-     * call.
+     * field.
+     *
+     * <p>All text still comes from the immutable snapshot. Redundant
+     * calls to {@link TextView#setText(CharSequence)} are skipped.
+     * Callers must hold the current view's lifecycle authority and run
+     * on the UI thread; text equality supplies neither guarantee.</p>
      */
     public static void setTextIfChanged(@NonNull TextView view, @NonNull CharSequence text) {
         if (!TextUtils.equals(view.getText(), text)) {

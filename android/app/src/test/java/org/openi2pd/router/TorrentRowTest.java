@@ -121,9 +121,24 @@ public final class TorrentRowTest {
     @Test
     public void labelsCarryStateAndPrivateBadge() {
         TorrentRow row = TorrentRow.from(row(), "torrent.0.");
-        assertEquals("example\nSeeding · 100% · private", row.displayLabel("private"));
-        assertEquals("example, Seeding, 100%, private", row.accessibilityLabel("private"));
-        assertEquals("example, Seeding, 100%", row.accessibilityLabel(""));
+        assertEquals("example\nSeeding · 100% · private", row.displayLabel("private", "Seeding", "100%"));
+        assertEquals("example, Seeding, 100%, private",
+                row.accessibilityLabel("private", "Seeding", "100%", ""));
+        assertEquals("example, Seeding, 100%", row.accessibilityLabel("", "Seeding", "100%", ""));
+        assertEquals("example\nРаздача · 100 % · личный",
+                row.displayLabel("личный", "Раздача", "100 %"));
+    }
+
+    @Test
+    public void textCapsPreserveSupplementaryCharacters() {
+        Map<String, String> fields = row();
+        fields.put("torrent.0.name", repeat('n', 511) + "\uD83D\uDE80tail");
+        fields.put("torrent.0.error", repeat('e', 255) + "\uD83D\uDE80tail");
+        TorrentRow row = TorrentRow.from(fields, "torrent.0.");
+        assertEquals(repeat('n', 511), row.name());
+        assertEquals(repeat('e', 255), row.error());
+        fields.put("torrent.0.name", repeat('n', 510) + "\uD83D\uDE80tail");
+        assertEquals(repeat('n', 510) + "\uD83D\uDE80", TorrentRow.from(fields, "torrent.0.").name());
     }
 
     private static String repeat(char value, int count) {
