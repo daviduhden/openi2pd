@@ -15,6 +15,7 @@
 #include "Identity.h"
 #include "ClientContext.h"
 #include "I2PService.h"
+#include <limits>
 #include <boost/asio/error.hpp>
 
 namespace i2p
@@ -28,8 +29,7 @@ namespace client
 		: m_LocalDestination (localDestination
 				  ? localDestination
 				  : i2p::client::context.CreateNewLocalDestination (false, I2P_SERVICE_DEFAULT_KEY_TYPE))
-		, m_ReadyTimer (m_LocalDestination->GetService ())
-		, m_ReadyTimerTriggered (false)
+		, m_ReadyGeneration (std::make_shared<ReadyGeneration> (m_LocalDestination))
 		, m_ConnectTimeout (0)
 		, m_CloseIdleTime (0)
 		, m_NewDestOnResume (false)
@@ -46,12 +46,14 @@ namespace client
 
 	I2PService::~I2PService ()
 	{
+		ResetReadyGeneration (false);
 		ClearHandlers ();
 		if (m_LocalDestination) m_LocalDestination->Release ();
 	}
 
 	void I2PService::Start ()
 	{
+		ResetReadyGeneration (true);
 		m_Running.store (true);
 		if (m_CloseIdleTime)
 		{
@@ -70,6 +72,7 @@ namespace client
 
 	void I2PService::Stop ()
 	{
+		ResetReadyGeneration (false);
 		m_Running.store (false);
 		if (m_IdleCheckTimer)
 		{
@@ -80,7 +83,9 @@ namespace client
 
 	void I2PService::ClearHandlers ()
 	{
-		if (m_ConnectTimeout) m_ReadyTimer.cancel ();
+		// Clearing handlers also retires in-flight stream completions. Keep
+		// an open service usable, but never reopen a stopped generation.
+		ResetReadyGeneration (true, true);
 		// Snapshot and detach under the lock, then terminate outside it: a
 		// handler's Terminate() re-enters RemoveHandler through Done() and
 		// may close sockets whose completion handlers run on another thread.
@@ -136,50 +141,137 @@ namespace client
 
 	void I2PService::AddReadyCallback (ReadyCallback cb)
 	{
-		uint64_t now = i2p::util::GetMonotonicSeconds ();
-		uint64_t tm = (m_ConnectTimeout) ? now + m_ConnectTimeout : NEVER_TIMES_OUT;
-
-		LogPrint (eLogDebug, "I2PService::AddReadyCallback() ", tm, " ", now);
-		m_ReadyCallbacks.push_back ({ cb, tm });
-		if (!m_ReadyTimerTriggered) TriggerReadyCheckTimer ();
+		RegisterReadyCallback (GetReadyGeneration (), std::move (cb));
 	}
 
-	void I2PService::TriggerReadyCheckTimer ()
+	std::shared_ptr<I2PService::ReadyGeneration> I2PService::GetReadyGeneration () const
 	{
-		m_ReadyTimer.expires_after (std::chrono::seconds (I2P_SERVICE_READINESS_CHECK_INTERVAL));
-		m_ReadyTimer.async_wait (
-			std::bind (&I2PService::HandleReadyCheckTimer, shared_from_this (), std::placeholders::_1));
-		m_ReadyTimerTriggered = true;
+		std::lock_guard lock (m_ReadinessMutex);
+		return m_ReadyGeneration;
 	}
 
-	void I2PService::HandleReadyCheckTimer (const boost::system::error_code & ec)
+	void I2PService::ResetReadyGeneration (bool accepting, bool preserveClosed)
 	{
-		bool isReady = (!ec) ? m_LocalDestination->IsReady () : false;
-		if (ec || isReady)
+		std::shared_ptr<ReadyGeneration> previous;
 		{
-			for (auto & itr : m_ReadyCallbacks) itr.first (ec);
-			m_ReadyCallbacks.clear ();
+			std::lock_guard publication (m_ReadinessMutex);
+			const bool reopen = accepting && (!preserveClosed || m_ReadyGeneration);
+			auto replacement = reopen ? std::make_shared<ReadyGeneration> (m_LocalDestination) : nullptr;
+			previous = std::exchange (m_ReadyGeneration, std::move (replacement));
+			if (previous) previous->accepting.store (false, std::memory_order_release);
 		}
-		else if (!isReady)
+		if (previous)
 		{
-			// expire timed out requests
-			uint64_t now = i2p::util::GetMonotonicSeconds ();
-			auto itr = m_ReadyCallbacks.begin ();
-			while (itr != m_ReadyCallbacks.end ())
+			std::lock_guard admission (previous->mutex);
+			boost::system::error_code ignored;
+			previous->timer.cancel (ignored);
+		}
+	}
+
+	void I2PService::InvokeReadyCallback (ReadyCallback & callback, const boost::system::error_code & ec)
+	{
+		try { callback (ec); }
+		catch (...) { LogPrint (eLogError, "I2PService: Readiness callback failed"); }
+	}
+
+	void I2PService::RegisterReadyCallback (
+		const std::shared_ptr<ReadyGeneration> & generation, ReadyCallback cb)
+	{
+		assert (cb);
+		boost::system::error_code rejection = boost::asio::error::operation_aborted;
+		if (generation)
+		{
+			std::lock_guard admission (generation->mutex);
+			if (generation->accepting.load (std::memory_order_acquire))
 			{
-				if (itr->second != NEVER_TIMES_OUT && now >= itr->second)
-				{
-					itr->first (boost::asio::error::timed_out);
-					itr = m_ReadyCallbacks.erase (itr);
-				}
+				if (generation->callbacks.size () >= MAX_SERVICE_READY_CALLBACKS)
+					rejection = boost::asio::error::no_buffer_space;
 				else
-					++itr;
+				{
+					const auto now = i2p::util::GetMonotonicSeconds ();
+					const auto timeout = m_ConnectTimeout.load (std::memory_order_relaxed);
+					const auto limit = (std::numeric_limits<uint64_t>::max) ();
+					const auto deadline = !timeout ? NEVER_TIMES_OUT : timeout > limit - now ? limit : now + timeout;
+					generation->callbacks.emplace_back (std::move (cb), deadline);
+					if (!generation->wait) TriggerReadyCheckTimer (generation);
+					return;
+				}
 			}
 		}
-		if (!ec && m_ReadyCallbacks.size ())
-			TriggerReadyCheckTimer ();
-		else
-			m_ReadyTimerTriggered = false;
+		// Refusal is backpressure, not another unbounded executor item.
+		InvokeReadyCallback (cb, rejection);
+	}
+
+	void I2PService::TriggerReadyCheckTimer (const std::shared_ptr<ReadyGeneration> & generation)
+	{
+		// The generation mutex serializes all operations on this timer.
+		auto wait = std::make_shared<ReadyWait> ();
+		generation->wait = wait;
+		generation->timer.expires_after (std::chrono::seconds (I2P_SERVICE_READINESS_CHECK_INTERVAL));
+		generation->timer.async_wait ([generation, wait] (const boost::system::error_code & ec)
+			{ HandleReadyCheckTimer (ec, generation, wait); });
+	}
+
+	void I2PService::HandleReadyCheckTimer (const boost::system::error_code & ec,
+		const std::shared_ptr<ReadyGeneration> & generation, const std::shared_ptr<ReadyWait> & wait)
+	{
+		decltype (generation->callbacks) selected;
+		boost::system::error_code outcome = ec;
+		{
+			std::lock_guard admission (generation->mutex);
+			if (generation->wait != wait) return;
+			generation->wait.reset ();
+			if (!generation->accepting.load (std::memory_order_acquire))
+				outcome = boost::asio::error::operation_aborted;
+			auto destination = generation->destination.lock ();
+			if (!destination)
+			{
+				generation->accepting.store (false, std::memory_order_release);
+				outcome = boost::asio::error::operation_aborted;
+			}
+			if (outcome || destination->IsReady ())
+				selected.swap (generation->callbacks);
+			else
+			{
+				const auto now = i2p::util::GetMonotonicSeconds ();
+				auto & pending = generation->callbacks;
+				for (auto it = pending.begin (); it != pending.end ();)
+				{
+					if (it->second != NEVER_TIMES_OUT && now >= it->second)
+					{
+						selected.push_back (std::move (*it));
+						it = pending.erase (it);
+					}
+					else ++it;
+				}
+				outcome = boost::asio::error::timed_out;
+			}
+			if (generation->accepting.load (std::memory_order_acquire) && !generation->callbacks.empty ())
+				TriggerReadyCheckTimer (generation);
+		}
+		// Reentrant registration cannot mutate the detached callback list.
+		for (auto & entry : selected)
+		{
+			const auto result = generation->accepting.load (std::memory_order_acquire)
+				? outcome : boost::system::error_code (boost::asio::error::operation_aborted);
+			InvokeReadyCallback (entry.first, result);
+		}
+	}
+
+	StreamRequestComplete I2PService::GuardStreamCompletion (
+		const std::shared_ptr<ReadyGeneration> & generation, StreamRequestComplete complete)
+	{
+		std::weak_ptr<ReadyGeneration> authority = generation;
+		return [authority, complete = std::move (complete)] (std::shared_ptr<i2p::stream::Stream> stream)
+		{
+			auto generation = authority.lock ();
+			if (!generation || !generation->accepting.load (std::memory_order_acquire))
+			{
+				if (stream) stream->AsyncClose ();
+				stream = nullptr;
+			}
+			complete (std::move (stream));
+		};
 	}
 
 	void I2PService::ScheduleIdleCheckTimer ()
@@ -218,42 +310,51 @@ namespace client
 	void I2PService::CreateStream (
 		StreamRequestComplete streamRequestComplete, std::shared_ptr<const Address> address, uint16_t port)
 	{
-		if (m_ConnectTimeout && !m_LocalDestination->IsReady ())
+		assert (streamRequestComplete);
+		auto generation = GetReadyGeneration ();
+		auto complete = GuardStreamCompletion (generation, std::move (streamRequestComplete));
+		if (!generation || !generation->accepting.load (std::memory_order_acquire))
 		{
-			// The readiness callback can fire after this service was stopped and
-			// destroyed, so it captures a weak owner plus the destination it
-			// must talk to instead of `this`.
-			auto localDestination = m_LocalDestination;
-			std::weak_ptr<I2PService> weakSelf = weak_from_this ();
-			AddReadyCallback (
-				[weakSelf, localDestination, streamRequestComplete, address, port] (
+			complete (nullptr);
+			return;
+		}
+		auto localDestination = generation->destination.lock ();
+		if (!localDestination)
+		{
+			complete (nullptr);
+			return;
+		}
+		if (m_ConnectTimeout.load (std::memory_order_relaxed) && !localDestination->IsReady ())
+		{
+			// Readiness and the eventual stream result borrow the same
+			// generation. A restart cannot revive an earlier request.
+			std::weak_ptr<ReadyGeneration> authority = generation;
+			std::weak_ptr<ClientDestination> destination = localDestination;
+			RegisterReadyCallback (generation,
+				[authority, destination, complete = std::move (complete), address, port] (
 					const boost::system::error_code & ec)
 				{
-					if (ec)
+					auto current = authority.lock ();
+					auto localDestination = destination.lock ();
+					if (ec || !current || !localDestination || !current->accepting.load (std::memory_order_acquire))
 					{
-						LogPrint (eLogWarning, "I2PService::CreateStream() ", ec.message ());
-						streamRequestComplete (nullptr);
-					}
-					else if (!weakSelf.lock () || !localDestination)
-					{
-						// The service stopped while waiting for readiness.
-						streamRequestComplete (nullptr);
+						complete (nullptr);
 					}
 					else
 					{
 						if (address->IsIdentHash ())
-							localDestination->CreateStream (streamRequestComplete, address->identHash, port);
+							localDestination->CreateStream (complete, address->identHash, port);
 						else
-							localDestination->CreateStream (streamRequestComplete, address->blindedPublicKey, port);
+							localDestination->CreateStream (complete, address->blindedPublicKey, port);
 					}
 				});
 		}
 		else
 		{
 			if (address->IsIdentHash ())
-				m_LocalDestination->CreateStream (streamRequestComplete, address->identHash, port);
+				localDestination->CreateStream (complete, address->identHash, port);
 			else
-				m_LocalDestination->CreateStream (streamRequestComplete, address->blindedPublicKey, port);
+				localDestination->CreateStream (complete, address->blindedPublicKey, port);
 		}
 	}
 }

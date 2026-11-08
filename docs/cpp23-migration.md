@@ -233,10 +233,17 @@ stored values and replaced expected values release outside the mutex, with
 reentrant-deleter tests prepared for common and selective MSVC CI. No wire or
 persistent representation changes, and no new local compilation is claimed.
 
-### Borrowed alphabet continuation
+### Borrowed alphabet and readiness-state continuation
 
 Encoding table accessors now return fixed-extent std::span views over static
 storage, without a NUL terminator. HashedStorage accepts a span and iterates
 its extent; netDb, profiles, address book and fixtures no longer repeat an
 independent 32/64 count. Encoded bytes and on-disk shard layout are unchanged.
 The internal/public header interface requires consumers to rebuild together.
+
+Client-service readiness separates lifecycle and per-wait state using shared
+identities, weak destination references, serialized timer operations and
+callback snapshots. This adopts explicit ownership and revocation rather
+than treating a stopped event loop as drained. Source and regressions are
+Implemented / static, Pending CI compilation and Pending CI tests; no local
+compiler or regression execution establishes compatibility yet.

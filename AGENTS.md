@@ -253,6 +253,9 @@ reply index borrows that tagset. Exercise teardown as well as successful and
 lost-reply matching, and keep final destructors outside correlation mutexes.
 For Android forms, capture view/session authority at creation, revoke before
 dismissal, and preserve bounded nested forms when replacing dialog plumbing.
+Readiness retirement is distinct from handler admission: trace every
+completed-stream handoff through the owner's Stop()/ClearHandlers() boundary.
+Check-time stale suppression alone is not atomic handler publication.
 
 Publication reviews must inspect the staged snapshot as well as the worktree.
 Worktree consistency checks can see uncommitted dependencies and do not prove

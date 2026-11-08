@@ -409,6 +409,14 @@ require_runtime_order("privsep/Supervisor.cpp"
 require_runtime_source("tests/test-privsep-linux-ipc.cpp"
   "TestTransactionDeadline ();")
 
+require_runtime_source("libi2pd_client/I2PService.cpp"
+  "if (generation->wait != wait) return;")
+
+require_runtime_source("libi2pd_client/I2PService.cpp"
+  "selected.swap (generation->callbacks);")
+
+require_runtime_source("tests/CMakeLists.txt" "test-i2p-service-readiness")
+
 require_runtime_source("tests/CMakeLists.txt" "test-tunnel-destination-cache")
 
 require_runtime_source("tests/CMakeLists.txt" "test-destination-leaseset-session")

@@ -15,6 +15,7 @@
 #define I2PSERVICE_H__
 
 #include <atomic>
+#include <cstddef>
 #include <mutex>
 #include <unordered_set>
 #include <memory>
@@ -34,6 +35,7 @@ namespace client
 {
 	constexpr int I2P_SERVICE_READINESS_CHECK_INTERVAL = 1; // in seconds
 	constexpr uint64_t I2P_SERVICE_MIN_CLOSE_IDLE_TIME = 30000; // in milliseconds
+	constexpr size_t MAX_SERVICE_READY_CALLBACKS = 1024;
 
 	class I2PServiceHandler;
 	/// Shared owner for a client destination and its active service
@@ -62,7 +64,8 @@ namespace client
 		}
 		/// Detach a snapshot under the registry lock, then terminate its
 		/// handlers outside that lock because termination can re-enter
-		/// RemoveHandler().
+		/// RemoveHandler(). Retire earlier readiness requests and stream
+		/// publication authority without reopening a stopped service.
 		void ClearHandlers ();
 		size_t GetNumHandlers () const
 		{
@@ -75,6 +78,17 @@ namespace client
 		void SetNewDestOnResume (bool newDestOnResume) { m_NewDestOnResume = newDestOnResume; }
 		void UpdateLastActivityTime ();
 
+		/**
+		 * Await destination readiness in the current lifecycle generation.
+		 * A constructed service accepts requests before Start(). Stop(),
+		 * restart and ClearHandlers() retire earlier requests; cancellation
+		 * completes on the destination executor when its queue is drained.
+		 * At most MAX_SERVICE_READY_CALLBACKS wait per generation; excess
+		 * or closed-generation requests are refused synchronously outside
+		 * locks, with no_buffer_space or operation_aborted respectively.
+		 * Callback exceptions are contained so other requests still finish.
+		 * @param cb non-empty callback; reentrant registration is allowed
+		 */
 		void AddReadyCallback (ReadyCallback cb);
 
 		inline std::shared_ptr<ClientDestination> GetLocalDestination () { return m_LocalDestination; }
@@ -88,8 +102,9 @@ namespace client
 		/// Resolve @a dest through the address book and open one I2P stream.
 		/// The name comes from a local client or proxy request and is
 		/// therefore untrusted: an unresolvable or invalid name completes
-		/// with `nullptr` instead of throwing. Completion runs on the
-		/// destination's io_context, and a b33/blinded name takes the
+		/// with `nullptr` instead of throwing. Admission failures complete
+		/// synchronously; accepted work completes on the destination's
+		/// io_context. A b33/blinded name takes the
 		/// blinded-key path rather than being looked up as a b32 hash.
 		/// @param streamRequestComplete completion retained by value and
 		///        invoked exactly once with the opened stream, or with
@@ -101,9 +116,12 @@ namespace client
 		/// Same as above for an address that was already resolved by the
 		/// caller. When a connect timeout is configured and the destination
 		/// is not yet ready, the request waits on a readiness callback that
-		/// captures a weak owner; a service stopped in the meantime completes
-		/// the request with `nullptr` instead of resuming work for a dead
-		/// service.
+		/// retains revocable generation authority. A stopped or restarted
+		/// generation detected at completion yields `nullptr` and closes
+		/// the returned stream. This is a check-time stale-result guard,
+		/// not atomic handler publication against concurrent Stop().
+		/// This revokes result publication, not an already-issued lookup or
+		/// remote side effect. Admission refusal completes synchronously.
 		/// @param complete completion retained by value and invoked exactly
 		///        once with the opened stream or with `nullptr`; it must not
 		///        be empty
@@ -131,8 +149,31 @@ namespace client
 		}
 
 	private:
-		void TriggerReadyCheckTimer ();
-		void HandleReadyCheckTimer (const boost::system::error_code & ec);
+		struct ReadyWait { };
+		struct ReadyGeneration
+		{
+			explicit ReadyGeneration (std::shared_ptr<ClientDestination> dest)
+				: destination (dest), timer (dest->GetService ()) { }
+			std::weak_ptr<ClientDestination> destination;
+			boost::asio::steady_timer timer;
+			std::mutex mutex;
+			std::atomic<bool> accepting { true };
+			std::vector<std::pair<ReadyCallback, uint64_t>> callbacks;
+			std::shared_ptr<ReadyWait> wait;
+		};
+		// Publication precedes generation locking. Completion never calls
+		// user code under either lock. Timers retain neither service nor
+		// destination; canceled completions still require executor drainage.
+		std::shared_ptr<ReadyGeneration> GetReadyGeneration () const;
+		void ResetReadyGeneration (bool accepting, bool preserveClosed = false);
+		void RegisterReadyCallback (const std::shared_ptr<ReadyGeneration> & generation, ReadyCallback cb);
+		static void TriggerReadyCheckTimer (const std::shared_ptr<ReadyGeneration> & generation);
+		static void HandleReadyCheckTimer (const boost::system::error_code & ec,
+			const std::shared_ptr<ReadyGeneration> & generation, const std::shared_ptr<ReadyWait> & wait);
+		static StreamRequestComplete GuardStreamCompletion (
+			const std::shared_ptr<ReadyGeneration> & generation, StreamRequestComplete complete);
+		static void InvokeReadyCallback (ReadyCallback & callback, const boost::system::error_code & ec);
+		friend struct I2PServiceReadinessTestAccess;
 		void ScheduleIdleCheckTimer ();
 		void HandleIdleCheckTimer (const boost::system::error_code & ec);
 		void Resume ();
@@ -141,10 +182,9 @@ namespace client
 		std::shared_ptr<ClientDestination> m_LocalDestination;
 		std::unordered_set<std::shared_ptr<I2PServiceHandler>> m_Handlers;
 		mutable std::mutex m_HandlersMutex;
-		std::vector<std::pair<ReadyCallback, uint64_t>> m_ReadyCallbacks;
-		boost::asio::steady_timer m_ReadyTimer;
-		bool m_ReadyTimerTriggered;
-		uint64_t m_ConnectTimeout; // in seconds
+		mutable std::mutex m_ReadinessMutex;
+		std::shared_ptr<ReadyGeneration> m_ReadyGeneration;
+		std::atomic<uint64_t> m_ConnectTimeout; // in seconds
 		uint64_t m_CloseIdleTime; // in milliseconds
 		bool m_NewDestOnResume;
 		uint64_t m_LastActivityTime; // monotonic milliseconds
