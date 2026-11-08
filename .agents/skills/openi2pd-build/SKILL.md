@@ -111,6 +111,11 @@ build.
 
 ## Known issues and decisions
 
+- Header-level cache tests and client readiness/session tests belong in
+  common CTest as well as the selective MSVC inventory. When extending that
+  inventory, keep build targets, selection regex, PageHeap images and
+  retained executables aligned; ordinary Linux success misses that seam.
+
 - AtomicSharedPtr's false template backend keeps portable synchronization
   regressions executable on every host without feature-macro or ODR changes.
   Add its test to common CTest and the selective MSVC build/filter, PageHeap
