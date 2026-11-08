@@ -440,6 +440,9 @@ executor for blocking calls, deadlines and admission quotas.
   describe current guarantees and track unfinished protections separately.
 - Update affected comments whenever implementation or interfaces change.
   Do not retain comments that contradict the code or claim unverified behavior.
+- Scope each guarantee to its enforcing boundary. Distinguish a validating
+  factory from a public constructor, stale-result suppression from canceled
+  side effects, and service hardening from per-worker resource isolation.
 - Analyze the implementation before documenting it. Write comments for human
   maintainers in technical American English, using ASCII by default. Keep
   comment lines at or below 72 characters unless the source format or tool
@@ -455,6 +458,10 @@ executor for blocking calls, deadlines and admission quotas.
 - When reflowing C-style or Doxygen blocks, preserve one opening delimiter
   and the matching closing delimiter; continuation lines use `*`, not a new
   `/*` opener.
+- Wrap comment prose at natural phrase boundaries and separate distinct
+  ideas with blank comment lines. Count indentation and comment prefixes
+  toward the 72-character limit; avoid isolated final words. Preserve
+  Doxygen tags, Javadoc inline markup and literal examples when reflowing.
 - Documentation generation and validation run only in manual CI. Document
   source-level findings and retain pending CI states until that revision passes.
   The language-specific checklist and the current `source_docs` lane live in

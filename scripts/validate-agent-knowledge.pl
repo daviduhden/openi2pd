@@ -78,6 +78,10 @@ sub maybe_read {
     return $@ ? undef : $text;
 }
 
+# Own and reap one child per request. Callers receive decoded stdout;
+# checked commands reject any nonzero wait status before returning it.
+# Stderr never shares the result pipe, so a Git diagnostic cannot become
+# a path or revision operand in a later validation step.
 sub git {
     my ( $root, $check, @arguments ) = @_;
     my ( $input, $output );
@@ -136,7 +140,8 @@ sub relative_path {
 }
 
 # Resolve every existing symlink, including one before a '..' component.
-# Missing suffixes are preserved, so escape checks also cover broken links.
+# Missing suffixes are preserved, so escape checks also cover broken
+# links.
 sub resolved_path {
     my ( $path, $depth ) = @_;
     $depth //= 0;
@@ -164,9 +169,10 @@ sub resolved_path {
 
 sub glob_match {
     my ( $path, $pattern ) = @_;
-    # fnmatchcase treats slash and leading dots like ordinary characters.
-    # Dynamic matching avoids regex backtracking on configured globs and
-    # preserves empty/reversed bracket ranges without regex injection.
+    # fnmatchcase treats slash and leading dots like ordinary
+    # characters. Dynamic matching avoids regex backtracking on
+    # configured globs and preserves empty/reversed bracket ranges
+    # without regex injection.
     my @tokens;
     for ( my $at = 0; $at < length $pattern; ++$at ) {
         my $char = substr( $pattern, $at, 1 );
@@ -235,6 +241,9 @@ sub is_instruction {
     return matches_any( $path, $extra );
 }
 
+# Discover instruction files without following directory symlinks.
+# Discovery and later reads are separate filesystem operations: this is
+# inspection of a stable checkout, not a race-free filesystem jail.
 sub discover_instructions {
     my ( $root, $extra ) = @_;
     my @found;
@@ -350,6 +359,12 @@ sub resolve_commit {
     return $commit;
 }
 
+# Keep Git's NUL-delimited records intact until status/path pairs are
+# decoded. Worktree scope compares HEAD with the working tree, then adds
+# untracked non-ignored paths. It does not review only staged files.
+#
+# Range scope selects changed paths from the merge base. The subsequent
+# instruction validation reads the current checkout, not Git blobs.
 sub discover_changes {
     my ( $root, $args ) = @_;
     my $raw;
@@ -408,6 +423,12 @@ sub changed_content {
     return ( \@added, \@removed );
 }
 
+# Cancel identical normalized lines one occurrence at a time. This keeps
+# moves and repeated boilerplate from looking like new guidance, while
+# counting both additions and removals toward the effective edit size.
+#
+# The threshold detects cosmetic edits only. A passing score cannot
+# decide whether the remaining prose is relevant or technically correct.
 sub substantive_update {
     my ( $added, $removed, $minimum ) = @_;
     my @new = @{$added};
@@ -529,6 +550,9 @@ sub validate_extensions {
     return \@errors;
 }
 
+# Check local Markdown destinations as filesystem references only.
+# Remote schemes and fragment-only targets do not cause network access;
+# local anchors are not resolved by this existence/containment check.
 sub validate_references {
     my ( $root, $paths ) = @_;
     my @errors;
@@ -703,7 +727,8 @@ sub main {
     my @arguments = @_;
     my %args = ( format => 'text' );
     # Preserve unique long-option abbreviations, including --sc/--fo.
-    # The short -h alias must not turn ambiguous --h into a valid option.
+    # The short -h alias must not turn ambiguous --h into a valid
+    # option.
     for my $argument (@arguments) {
         last if $argument eq '--';
         next unless $argument =~ /\A--([^=]+)/;
@@ -761,6 +786,11 @@ Scope C<range> compares the revisions' merge base to the selected head.
 Both scopes validate instruction files in the current worktree. Renames
 are deliberately reported as deletion plus addition.
 
+The caller must provide a stable checkout corresponding to the intended
+review. Range mode selects changes from commits but does not materialize
+their instruction contents. Worktree mode includes all local changes,
+so it cannot establish that a partial commit is self-contained.
+
 C<--format text> is the default; C<--format json> emits a single UTF-8
 object with schema version 1.0, contract version 1.0.0, ordered checks,
 errors, warnings and summary counts. AK001 through AK006 and optional
@@ -782,6 +812,12 @@ parsing. Optional index writes, fsmonitor hooks, external diff drivers
 and text conversion are disabled: validation examines source bytes.
 Instruction discovery does not follow symlinks. Relative Markdown links
 are percent-decoded and resolved before repository containment checks.
+
+These are source-inspection checks, not an operating-system sandbox.
+Discovery, symlink resolution and later reads are separate operations.
+Concurrent filesystem mutation violates the stable-checkout assumption.
+Link validation checks local destination existence, not Markdown anchors
+or remote availability. No repository-supplied commands are executed.
 
 Each Git child owns a stdout pipe and a private temporary stderr file.
 The regular file avoids pipe-select dependencies on Windows and stderr

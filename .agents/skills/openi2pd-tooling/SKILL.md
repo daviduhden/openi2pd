@@ -122,17 +122,23 @@ a TUI client.
 
 ## Known issues and decisions
 
-- Native catalog harvesting includes TUI tab/help tables, option prose and
-  both terminal backends. Update isolated checker fixtures when adding a
-  source authority. Ordered printf operands, duplicate plurals and multibyte
-  trailing separators need negative fixtures; do not run that suite locally.
-
 - Perl::Critic slurp findings should initialize the localized input record
   separator explicitly to undef, retaining its dynamic scope and restoration.
   Diagnostic accumulators must preserve the old push-count result when
   unpacking arguments and adding an explicit return. Do not apply /x to
   parser regexes mechanically: literal whitespace and hash characters require
   semantic review. Passing Test::More does not imply the analyzer lane passes.
+
+- Source-documentation reviews of the knowledge validator must distinguish
+  changed-path selection from instruction-content reads. Range mode uses a
+  merge-base diff but validates the current checkout; it does not materialize
+  a commit snapshot. Document its stable-checkout assumption and keep
+  substantive-edit scoring separate from semantic relevance guarantees.
+
+- Native catalog harvesting includes TUI tab/help tables, option prose and
+  both terminal backends. Update isolated checker fixtures when adding a
+  source authority. Ordered printf operands, duplicate plurals and multibyte
+  trailing separators need negative fixtures; do not run that suite locally.
 
 - Key generation can throw when the selected generator is unavailable or
   fails. keygen converts that refusal to its existing exit 2 before opening

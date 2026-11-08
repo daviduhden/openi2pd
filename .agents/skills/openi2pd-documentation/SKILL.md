@@ -118,6 +118,22 @@ branding validators or a build.
 
 ## Known issues and decisions
 
+- When expanding a contract, trace both admission and completion paths.
+  Record which entry point performs validation and whether cancellation
+  revokes work or merely suppresses its UI result. For service and package
+  comments, inspect the invoked driver before claiming worker isolation,
+  readiness, ownership changes or file-permission guarantees. Keep verified
+  limitations beside the corresponding contract rather than generalizing
+  a helper's checks to every caller.
+
+- For comment reflow, capture the current working files before editing so
+  unrelated local implementation changes remain the comparison baseline.
+  Compare non-comment source against that snapshot, inspect paragraph breaks
+  and count indentation plus comment prefixes in the 72-character limit.
+  Use blank comment lines between ideas and Javadoc `<p>` for rendered
+  paragraphs; keep inline tags and literal examples intact. Review fixture
+  strings separately: apparent comment lines inside a heredoc are test data.
+
 - When documenting a new boundary check in an older helper's header,
   inspect its existing definition block before adding parameter tags.
   Keep the API contract in one declaration and the implementation's

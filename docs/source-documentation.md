@@ -34,6 +34,13 @@ instead of claiming the target design.
 Every change updates the comments it invalidates. A comment that contradicts
 the code is a defect, not legacy noise.
 
+State the boundary that enforces each guarantee. A validating factory does
+not constrain other constructors; ignoring an obsolete completion does not
+cancel a write already admitted to an executor. Service-wide filesystem
+hardening does not establish separate network and storage capabilities for
+each worker. Describe those limits where the corresponding API or directive
+is documented, after checking its callers and implementation.
+
 When reflowing a C-style or Doxygen block, preserve its single opening
 delimiter and matching `*/`. Continuation lines begin with `*`; do not emit a
 new `/*` marker for each wrapped line.
