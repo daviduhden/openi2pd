@@ -644,13 +644,16 @@ void TestClosedChannel ()
 
 	// POLLIN can accompany hangup. Drain and authenticate buffered frames
 	// before the terminal read, which has no record credentials on Linux.
+	// Ping has no payload; its encoded header is still a nonempty record.
 	auto buffered = Channel::CreatePair ();
 	assert (buffered.has_value ());
-	assert (buffered->first.Send (Message { MessageType::Ping, 3, "last" }).has_value ());
+	assert (!buffered->first.Send (Message { MessageType::Ping, 3, "last" }).has_value ());
+	assert (buffered->first.Send (Message { MessageType::Ping, 3, { } }).has_value ());
 	buffered->first.Close ();
 	auto last = buffered->second.Receive (100);
 	assert (last.has_value () && last->has_value ());
-	assert ((*last)->requestId == 3 && (*last)->payload == "last");
+	assert ((*last)->type == MessageType::Ping);
+	assert ((*last)->requestId == 3 && (*last)->payload.empty ());
 	auto afterLast = buffered->second.Receive (100);
 	assert (!afterLast.has_value ());
 	assert (afterLast.error ().find ("closed") != std::string::npos);
@@ -660,7 +663,7 @@ void TestClosedChannel ()
 	assert (rejected.has_value ());
 	rejected->second.ExpectPeer (PeerExpectation {
 		.uid = static_cast<uint32_t> (geteuid ()) + 1, .configured = true });
-	assert (rejected->first.Send (Message { MessageType::Ping, 4, "reject" }).has_value ());
+	assert (rejected->first.Send (Message { MessageType::Ping, 4, { } }).has_value ());
 	rejected->first.Close ();
 	auto unauthenticated = rejected->second.Receive (100);
 	assert (!unauthenticated.has_value ());

@@ -105,6 +105,12 @@ report that limitation; do not substitute local execution. Ask for:
 
 ## Known issues and decisions
 
+- Ping, Pong and Shutdown have zero-byte payload ceilings in the registry.
+  A buffered EOF/authentication fixture must send an empty payload; its
+  encoded header still supplies a nonempty transport record. Keep a negative
+  send control and a valid same-channel send so registry rejection cannot
+  prevent the test from reaching the intended EOF or identity check.
+
 - Capability vocabulary and allowed role masks are different contracts.
   Exec remains a named bit so parsers and policy reviews can reject it;
   its presence in the enum never requires granting it to a role. Matrix
