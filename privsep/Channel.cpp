@@ -314,6 +314,12 @@ i2p::expected<void, std::string> Channel::Send (const Message & message, int tim
 	return SendWithFd (message, -1, timeoutMs);
 }
 
+i2p::expected<void, std::string> Channel::SendUntil (const Message & message,
+	std::chrono::steady_clock::time_point deadline)
+{
+	return SendWithFdUntil (message, -1, false, deadline);
+}
+
 i2p::expected<void, std::string> Channel::SendWithFd (const Message & message, int fd, int timeoutMs)
 {
 	return SendWithFdUntil (message, fd, IsInfiniteTimeout (timeoutMs), MakeDeadline (timeoutMs));
@@ -417,9 +423,9 @@ bool Channel::RejectFrame (const Message & frame, ErrorCode code, std::string_vi
 		.has_value ();
 }
 
-i2p::expected<std::optional<Message>, std::string> Channel::Receive (int timeoutMs)
+static i2p::expected<std::optional<Message>, std::string> ReceiveWithoutDescriptor (
+	i2p::expected<std::optional<ReceivedMessage>, std::string> received)
 {
-	auto received = ReceiveWithFd (timeoutMs);
 	if (!received) return i2p::unexpected (received.error ());
 	if (!received->has_value ()) return std::optional<Message> { };
 	if ((*received)->fd >= 0)
@@ -430,15 +436,36 @@ i2p::expected<std::optional<Message>, std::string> Channel::Receive (int timeout
 	return std::optional<Message> (std::move ((*received)->message));
 }
 
+i2p::expected<std::optional<Message>, std::string> Channel::Receive (int timeoutMs)
+{
+	return ReceiveWithoutDescriptor (ReceiveWithFd (timeoutMs));
+}
+
+i2p::expected<std::optional<Message>, std::string> Channel::ReceiveUntil (
+	std::chrono::steady_clock::time_point deadline)
+{
+	return ReceiveWithoutDescriptor (ReceiveWithFdUntil (deadline));
+}
+
 i2p::expected<std::optional<ReceivedMessage>, std::string> Channel::ReceiveWithFd (int timeoutMs)
+{
+	return ReceiveWithFdUntil (IsInfiniteTimeout (timeoutMs), MakeDeadline (timeoutMs));
+}
+
+i2p::expected<std::optional<ReceivedMessage>, std::string> Channel::ReceiveWithFdUntil (
+	std::chrono::steady_clock::time_point deadline)
+{
+	return ReceiveWithFdUntil (false, deadline);
+}
+
+i2p::expected<std::optional<ReceivedMessage>, std::string> Channel::ReceiveWithFdUntil (
+	bool infinite, std::chrono::steady_clock::time_point deadline)
 {
 	if (!IsOpen ()) return i2p::unexpected ("channel is closed");
 	// A SOCK_SEQPACKET record is delivered to exactly one reader.
 	// Concurrent Receive/ReceiveWithFd callers therefore steal records
 	// from each other; every endpoint must have a single reader (see the
 	// header contract).
-	const bool infinite = IsInfiniteTimeout (timeoutMs);
-	const auto deadline = MakeDeadline (timeoutMs);
 
 	// A protocol refusal is part of this receive, not a fresh operation.
 	// Keep the historical refusal cap for infinite receives; finite calls

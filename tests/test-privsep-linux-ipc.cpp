@@ -738,6 +738,25 @@ void TestAuthenticateBeforeRefusal ()
 	ExpectReusable (sender, receiver, 601);
 }
 
+void TestTransactionDeadline ()
+{
+	auto pair = Channel::CreatePair ();
+	assert (pair.has_value ());
+	const auto deadline = std::chrono::steady_clock::now () - std::chrono::seconds (1);
+	// Expiry permits immediate progress but must never restart a wait.
+	assert (pair->first.SendUntil ({ MessageType::Ping, 10, { } }, deadline));
+	auto ready = pair->second.ReceiveWithFdUntil (deadline);
+	assert (ready && ready->has_value ());
+	assert ((*ready)->message.requestId == 10 && (*ready)->fd == -1);
+	const auto started = std::chrono::steady_clock::now ();
+	auto empty = pair->second.ReceiveUntil (deadline);
+	assert (empty && !empty->has_value ());
+	assert (std::chrono::steady_clock::now () - started < std::chrono::seconds (2));
+	assert (pair->first.SendUntil ({ MessageType::Ping, 11, { } }, deadline));
+	auto next = pair->second.ReceiveUntil (deadline);
+	assert (next && next->has_value () && (*next)->requestId == 11);
+}
+
 void TestSendDeadlineAfterDrain ()
 {
 	// Linux's writable threshold can remain unsatisfied after one queued
@@ -977,6 +996,7 @@ int main ()
 	TestChannelOwnership ();
 	TestClosedChannel ();
 	TestAuthenticateBeforeRefusal ();
+	TestTransactionDeadline ();
 	TestSendDeadlineAfterDrain ();
 	TestReceiveDeadline ();
 	TestRefusalSharesReceiveDeadline ();

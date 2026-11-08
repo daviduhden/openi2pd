@@ -105,6 +105,12 @@ report that limitation; do not substitute local execution. Ask for:
 
 ## Known issues and decisions
 
+- Composite broker operations pass one absolute deadline through timed
+  admission, send and every stale-reply receive. Do not convert remaining
+  time back into a fresh relative receive budget. Channel Until methods
+  retain the existing immediate-at-expiry behavior; transaction owners
+  check expiry before starting another mutation or draining another reply.
+
 - SOCK_SEQPACKET readiness is conservative: after one record drains, a
   smaller send can succeed while POLLOUT remains false. Try MSG_DONTWAIT
   first and poll only after EAGAIN, preserving the original deadline.

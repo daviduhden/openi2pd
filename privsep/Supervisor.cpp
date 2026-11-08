@@ -133,7 +133,7 @@ namespace
 
 namespace
 {
-	std::mutex storageSupervisorMutex;
+	std::timed_mutex storageSupervisorMutex;
 	std::unique_ptr<Channel> storageSupervisor;
 	uint32_t storageSupervisorRequest = 0;
 	std::filesystem::path storageSupervisorRoot;
@@ -225,13 +225,14 @@ bool PrepareTorrentStorageSupervisor (const std::string & root, std::string & er
 		error = "storage supervisor paths exceed the IPC bound";
 		return false;
 	}
-	auto sent = spawned->Send ({ MessageType::ConfigureTorrentStorage, 1, config.Data () }, 5000);
+	const auto deadline = std::chrono::steady_clock::now () + std::chrono::seconds (5);
+	auto sent = spawned->SendUntil ({ MessageType::ConfigureTorrentStorage, 1, config.Data () }, deadline);
 	if (!sent)
 	{
 		error = sent.error ();
 		return false;
 	}
-	auto reply = spawned->Receive (5000);
+	auto reply = spawned->ReceiveUntil (deadline);
 	if (!reply || !*reply || (**reply).type != MessageType::TorrentStorageSupervisorReply || (**reply).requestId != 1
 		|| !(**reply).payload.empty ())
 	{
@@ -248,7 +249,11 @@ bool PrepareTorrentStorageSupervisor (const std::string & root, std::string & er
 
 i2p::expected<Channel, std::string> SpawnSupervisedTorrentStorage (int rootFd, std::string_view rootPath)
 {
-	std::lock_guard lock (storageSupervisorMutex);
+	// Admission, send and stale-reply draining consume one transaction.
+	const auto deadline = std::chrono::steady_clock::now () + std::chrono::seconds (5);
+	std::unique_lock lock (storageSupervisorMutex, std::defer_lock);
+	if (!lock.try_lock_until (deadline))
+		return i2p::unexpected (std::string ("storage supervisor busy"));
 	if (!storageSupervisor || storageSupervisorRequest == UINT32_MAX)
 		return i2p::unexpected (std::string ("storage supervisor unavailable"));
 	const auto id = ++storageSupervisorRequest;
@@ -261,8 +266,10 @@ i2p::expected<Channel, std::string> SpawnSupervisedTorrentStorage (int rootFd, s
 		return i2p::unexpected (std::string ("storage root path is too long"));
 	request.WriteU64BE (static_cast<uint64_t> (expected.st_dev));
 	request.WriteU64BE (static_cast<uint64_t> (expected.st_ino));
+	if (std::chrono::steady_clock::now () >= deadline)
+		return i2p::unexpected (std::string ("storage supervisor busy"));
 	auto & channel = *storageSupervisor;
-	auto sent = channel.Send ({ MessageType::SpawnTorrentStorage, id, request.Data () }, 5000);
+	auto sent = channel.SendUntil ({ MessageType::SpawnTorrentStorage, id, request.Data () }, deadline);
 	if (!sent)
 	{
 		storageSupervisor.reset ();
@@ -272,7 +279,9 @@ i2p::expected<Channel, std::string> SpawnSupervisedTorrentStorage (int rootFd, s
 	unsigned drainedStale = 0;
 	while (true)
 	{
-		auto received = channel.ReceiveWithFd (5000);
+		if (std::chrono::steady_clock::now () >= deadline)
+			return i2p::unexpected (std::string ("storage supervisor busy"));
+		auto received = channel.ReceiveWithFdUntil (deadline);
 		if (!received)
 		{
 			storageSupervisor.reset ();

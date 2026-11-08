@@ -142,6 +142,10 @@ public:
 	void Close ();
 
 	i2p::expected<void, std::string> Send (const Message & message, int timeoutMs = 5000);
+	/// Send within a caller-owned deadline, including nested transactions.
+	/// One immediate nonblocking attempt is allowed even at expiry.
+	i2p::expected<void, std::string> SendUntil (const Message & message,
+		std::chrono::steady_clock::time_point deadline);
 	/**
 	 * Send one message with at most one SCM_RIGHTS descriptor. The
 	 * descriptor is an explicitly authorized side channel; the protocol
@@ -159,6 +163,10 @@ public:
 	/// closed and reported as an error; an empty optional means the
 	/// deadline expired.
 	i2p::expected<std::optional<Message>, std::string> Receive (int timeoutMs = 1000);
+	/// Receive without rebasing a transaction's absolute deadline.
+	/// Expired deadlines permit only an immediately available record.
+	i2p::expected<std::optional<Message>, std::string> ReceiveUntil (
+		std::chrono::steady_clock::time_point deadline);
 	/**
 	 * Receive one frame and optionally one descriptor. Any SCM_RIGHTS
 	 * descriptor is returned to the caller and must be closed by it. More
@@ -182,6 +190,9 @@ public:
 	 * protocol failures return an error.
 	 */
 	i2p::expected<std::optional<ReceivedMessage>, std::string> ReceiveWithFd (int timeoutMs = 1000);
+	/// Absolute-deadline form with the same descriptor ownership contract.
+	i2p::expected<std::optional<ReceivedMessage>, std::string> ReceiveWithFdUntil (
+		std::chrono::steady_clock::time_point deadline);
 	i2p::expected<uint32_t, std::string> PeerUid () const;
 	i2p::expected<PeerCredentials, std::string> Credentials () const;
 
@@ -208,6 +219,8 @@ public:
 	static constexpr unsigned MAX_PROTOCOL_VIOLATIONS = 8;
 
 private:
+	i2p::expected<std::optional<ReceivedMessage>, std::string> ReceiveWithFdUntil (
+		bool infinite, std::chrono::steady_clock::time_point deadline);
 	/**
 	 * Internal send that retains its caller's absolute deadline. Public
 	 * relative timeouts are converted once; nested refusals never rebase

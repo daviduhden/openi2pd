@@ -399,3 +399,12 @@ require_runtime_source("tests/test-privsep-linux-ipc.cpp"
 
 require_runtime_source("tests/test-privsep-openbsd-imsg.cpp"
   "MessageType::Ping, 9, { } }, -1, 0)")
+
+require_runtime_order("privsep/Supervisor.cpp"
+  "SpawnSupervisedTorrentStorage (int rootFd" "auto & reply = *selected;"
+  "const auto deadline =" "lock.try_lock_until (deadline)"
+  "channel.SendUntil (" "std::chrono::steady_clock::now () >= deadline"
+  "channel.ReceiveWithFdUntil (deadline)")
+
+require_runtime_source("tests/test-privsep-linux-ipc.cpp"
+  "TestTransactionDeadline ();")
