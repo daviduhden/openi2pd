@@ -256,6 +256,11 @@ dismissal, and preserve bounded nested forms when replacing dialog plumbing.
 Readiness retirement is distinct from handler admission: trace every
 completed-stream handoff through the owner's Stop()/ClearHandlers() boundary.
 Check-time stale suppression alone is not atomic handler publication.
+For token-guarded queued work, review the interval between the token load
+and owner use. A shared revocable admission gate may protect a non-owning
+owner pointer only when shutdown revokes through that same gate and waits
+for admitted access. Keep generation rejection separate from admission,
+document lock ordering and exclude synchronous reentrant lifecycle calls.
 
 At parser boundaries, rejected numeric fields and malformed first tokens
 remain arbitrary input. Review complete command buffers, ignored fields

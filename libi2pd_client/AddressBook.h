@@ -420,11 +420,20 @@ namespace client
 		// The subscription timer belongs to the shared local destination's
 		// io_context. RearmSubscriptionsTimer() must only run there.
 		void RearmSubscriptionsTimer (std::chrono::seconds delay);
-		// Any thread: hands a re-arm to the io_context. The shared lifetime
-		// token is cleared by Stop(), so a queued re-arm cannot touch
-		// released timer or subscription state.
+		// Any thread: hands a re-arm to the io_context. Admission retains no
+		// owner; Stop() revokes it and waits for an admitted re-arm. The
+		// per-Start token rejects callbacks from an earlier generation.
 		void PostSubscriptionsRearm (std::chrono::seconds delay);
 		std::shared_ptr<std::atomic<bool>> ReloadToken () const;
+
+		// Lock order: admission before m_SubscriptionsMutex. Only the posted
+		// re-arm holds admission while invoking the owner; that path must
+		// never call Start(), Stop() or external callbacks synchronously.
+		struct RearmAdmission
+		{
+			std::mutex mutex;
+			AddressBook * owner = nullptr;
+		};
 
 		void RecordMergeConflict ();
 
@@ -476,6 +485,8 @@ namespace client
 		std::vector<std::string> m_SubscriptionURLs;
 		std::vector<std::shared_ptr<AddressBookSubscription>> m_Subscriptions;
 		std::shared_ptr<AddressBookSubscription> m_DefaultSubscription; // in case if we don't know any addresses yet
+		// Immutable handle; queued posts can retain it beyond destruction.
+		const std::shared_ptr<RearmAdmission> m_RearmAdmission;
 		std::shared_ptr<std::atomic<bool>> m_ReloadAlive; // see PostSubscriptionsRearm()
 		std::atomic<uint64_t> m_MergeConflicts;
 		std::unique_ptr<boost::asio::steady_timer> m_SubscriptionsUpdateTimer, m_AddressCacheUpdateTimer;

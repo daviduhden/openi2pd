@@ -513,6 +513,13 @@ set_tests_properties(build-system-static PROPERTIES
 # Control-plane, proxy-handshake and cross-thread lifetime contracts.
 # Reads source text only; never invokes a compiler, socket or project
 # binary.
+add_test(NAME addressbook-rearm-lifetime-static
+  COMMAND "${CMAKE_COMMAND}"
+    -DSOURCE_DIR=${PROJECT_SOURCE_DIR}
+    -P "${CMAKE_CURRENT_SOURCE_DIR}/check-addressbook-rearm-lifetime.cmake")
+set_tests_properties(addressbook-rearm-lifetime-static PROPERTIES
+  LABELS "static;security;memory" TIMEOUT 30)
+
 add_test(NAME control-security-static
   COMMAND "${CMAKE_COMMAND}"
     "-DPROJECT_ROOT=${PROJECT_ROOT}"

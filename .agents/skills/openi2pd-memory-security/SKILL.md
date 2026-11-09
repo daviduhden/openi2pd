@@ -107,6 +107,14 @@ Do not let reconnaissance agents edit, compile, execute tests or run scripts.
 
 ## Known issues and decisions
 
+- An atomic alive token rejects stale callbacks but cannot retain the owner
+  between the load and a member call. AddressBook re-arm posts instead own
+  an immutable shared admission gate; Stop revokes owner access through
+  that gate, and a separate generation token rejects pre-restart work.
+  Review admission-before-subscription lock ordering and prohibit reentrant
+  lifecycle/external calls under the gate. This covers posts only, not all
+  AddressBook timer callbacks.
+
 - Raw failed destinations, unknown first tokens, ignored SAM fields and
   rejected numeric options can carry secrets. Use operation/outcome logs
   rather than assuming expected public schemas sanitize their operands.

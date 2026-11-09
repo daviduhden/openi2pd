@@ -1568,3 +1568,28 @@ owner/generation architecture. PRIVSEP-017 likewise remains open: retained
 unreaped PID/pidfd ownership can be lost when ChildProcess is destroyed or
 move-assigned after failed Stop. RT-069 only guarantees retention while the
 same owner survives; phase-budget passes do not validate retirement.
+
+## RT-074: posted AddressBook re-arm has check/use lifetime gap (static)
+
+`AddressBook::PostSubscriptionsRearm` captured raw this, checked an atomic
+alive token, then invoked a member. Stop/destruction could interleave after
+the check; the token did not retain lifetime authority. This is preventive
+source analysis, not an attribution of a CI crash. The local correction
+captures immutable shared admission state plus the generation token.
+Stop revokes owner access under the same gate held throughout the member
+call; Start invalidates older tokens before publishing fresh authority.
+Lock order is admission then subscription mutex. The admitted member must
+not invoke lifecycle methods or external callbacks synchronously.
+
+`addressbook-rearm-lifetime-static` pins capture, gate ordering and revocation
+for manual CI. Implemented / static; Pending CI compilation / Pending CI
+tests. Separate raw timer callbacks remain under review; this is not a claim
+of complete AddressBook shutdown safety.
+
+Global equivalent review found no second exact token-guarded raw-owner post.
+Existing raw callbacks remain CONC-003/005/022/028. Six TorrentsDHT timer
+callbacks also pair raw this with service-state checks; whether executor
+serialization closes their teardown interval remains an unresolved static
+hypothesis, not a demonstrated defect. Inspect Stop/owner-thread ordering
+before changing them. The DHT receiver's registration separately drains
+admitted dispatch, so it must not be grouped by superficial capture shape.

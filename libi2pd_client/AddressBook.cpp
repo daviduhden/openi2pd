@@ -1235,6 +1235,7 @@ namespace client
 		, m_IsLoaded (false)
 		, m_NumRetries (0)
 		, m_DefaultSubscription (nullptr)
+		, m_RearmAdmission (std::make_shared<RearmAdmission> ())
 		, m_ReloadAlive (std::make_shared<std::atomic<bool>> (false))
 		, m_MergeConflicts (0)
 		, m_SubscriptionsUpdateTimer (nullptr)
@@ -1253,8 +1254,12 @@ namespace client
 		if (m_IsEnabled)
 		{
 			{
+				std::lock_guard<std::mutex> admission (m_RearmAdmission->mutex);
 				std::lock_guard<std::mutex> l (m_SubscriptionsMutex);
+				if (m_ReloadAlive)
+					m_ReloadAlive->store (false, std::memory_order_release);
 				m_ReloadAlive = std::make_shared<std::atomic<bool>> (true);
+				m_RearmAdmission->owner = this;
 			}
 			if (!m_Storage) m_Storage = std::make_unique<AddressBookFilesystemStorage> ();
 			m_Storage->Init ();
@@ -1273,13 +1278,13 @@ namespace client
 
 	void AddressBook::Stop ()
 	{
-		// Reject queued subscription re-arms before the timer and the source
-		// objects are released; a reload posted by the administration thread
-		// must not touch stopped state. The client context is stopped while
-		// the router io_context may still run, so the same lock also
-		// serializes this teardown against RearmSubscriptionsTimer().
+		// Drain admitted re-arms before releasing timer/source state. A post
+		// may outlive this book; it owns only the revoked admission state.
+		// Never acquire admission while holding the subscription mutex.
 		{
+			std::lock_guard<std::mutex> admission (m_RearmAdmission->mutex);
 			std::lock_guard<std::mutex> l (m_SubscriptionsMutex);
+			m_RearmAdmission->owner = nullptr;
 			if (m_ReloadAlive) m_ReloadAlive->store (false, std::memory_order_release);
 			m_ReloadAlive.reset ();
 			if (m_SubscriptionsUpdateTimer)
@@ -2217,14 +2222,17 @@ namespace client
 		if (!dest) return; // Start()/ResetTimers() read the persisted list instead
 		auto token = ReloadToken ();
 		if (!token) return;
+		auto admission = m_RearmAdmission;
 		auto & service = dest->GetService ();
 		boost::asio::post (service,
-			[this, token, delay]
+			[admission, token, delay]
 			{
-				// Lifetime authority: Stop() clears the shared token before it
-				// releases the subscription timer and the source objects.
+				// Revocation and owner use share one gate. The generation token
+				// remains false even if Start() publishes the owner again.
+				std::lock_guard<std::mutex> lock (admission->mutex);
+				if (!admission->owner) return;
 				if (!token->load (std::memory_order_acquire)) return;
-				RearmSubscriptionsTimer (delay);
+				admission->owner->RearmSubscriptionsTimer (delay);
 			});
 	}
 
