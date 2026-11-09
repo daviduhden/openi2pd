@@ -213,6 +213,11 @@ workflow, run `gh`, build or test.
   preserve that attribution limit. Pin both debugger command lists with
   the workflow checker, including parent-only tracing and no shell escape.
 
+- A repeated negative-fixture failure across compilers can be a shared
+  input-schema defect. Compare generated fixture bytes with the checker's
+  documented grammar before changing production containment. Separate
+  successful compilation from the later TAP failure in every lane.
+
 - Pair MSYS Perl with MSYS Git: native Git sees physical special-filename
   mappings rather than the POSIX names used by Perl. Record both selected
   executables and pass the Git cache path explicitly. Strict native-link

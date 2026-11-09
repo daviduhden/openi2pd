@@ -7837,3 +7837,28 @@ or push.
   a nested-map negative fixture pins it. Doc-link physical/original-path
   separation and missing/symlink controls also received independent review.
   No local builds, test execution, commits or push occurred.
+- CI audit continuation at published 176aec32: retrieved all 382 retained
+  runs and full latest-ten logs/metadata/artifact inventories. Nine native
+  lanes compile and fail the same TF-100 fixture grammar; no native compiler
+  warning or new sanitizer diagnostic was found in reviewed latest output.
+  Corrected inline fixtures and added an existing physical-escape control;
+  execution of these local changes remains Pending CI tests.
+- Six specialized agents covered all ten requested reconnaissance areas.
+  Preventive RT-074 replaces AddressBook's token-only raw-owner re-arm post
+  with revocable admission and generation authority, with a registered
+  compile-free contract. Separate timer and process-retirement gaps remain.
+- Added opt-in bounded Windows loader/entry diagnostics and privacy guards;
+  no startup-source fix is inferred without evidence. MSVC's startup skip
+  and Android's skipped device lane remain explicit limitations. Android
+  passes 174 JVM tests at the published SHA, not at the current local tree.
+- Agent & Skills Synchronization reviewed root policy, discovery index and
+  owning CI/tooling/memory/C++/build/Android procedures. Updated reusable
+  fixture grammar, admission, debugger and device-evidence guidance. No local
+  builds, tests, commits or push. Final compile-free results recorded below.
+- Compile-free checks pass: whitespace, knowledge validator, workflow policy,
+  shell policy, documentation links, control-security/runtime contracts,
+  build-system graph, Skill/language contracts and the new re-arm source
+  contract. AK004 remains the expected manual semantic-review advisory;
+  reviewed updates describe actual fixture, admission and evidence seams.
+  TAP regressions, C++ compilation and dynamic lifecycle validation remain
+  Pending CI tests / Pending CI compilation for these local changes.

@@ -447,8 +447,11 @@ run Gradle, install an APK or run a device test.
   `stopDaemon` publishes the native stop token before the monitor and a start
   returns `start-canceled`; the JNI empty-string path must never pass a null
   `jchar*` and must clear exceptions/local refs on failure.
-- No Gradle/NDK/device evidence exists; do not describe Android separation or
-  the AIDL/JNI changes as validated.
+- Separate Gradle/NDK compilation and host JVM results from device evidence.
+  Successful arm64 linking does not exercise Binder/SAF permissions,
+  provider cancellation or process separation on a device. Inspect whether
+  optional API 29 instrumentation actually executed before claiming those
+  boundaries validated.
 
 - Android torrent commands go through `I2PD_JNI.torrentCommand`, whose allowlist
   must admit every verb the Java UI builds: single/bulk start, stop and

@@ -630,3 +630,48 @@ The GUI version timeout remains unattributed. The exact GUI image and six
 CLANG64 DLLs are now retained; imports resolve and main invokes global
 constructors before RunI2PD. This narrows hypotheses but is not stack/entry
 proof. Do not change RNG or startup behavior without that evidence.
+
+## TF-100 continuation: fixture grammar bypasses containment
+
+All latest runs execute `176aec32c6ac9deeae36f5142d05a9c284f5e94a`.
+[Validation 42690770393](https://github.com/daviduhden/openi2pd/actions/runs/42690770393)
+jobs 129409600455, 129409600562 and 129409600759 fail assertions 413–418
+in `perl-maintenance-checkers`. Four OpenSSL compiler lanes, OpenBSD and
+CLANG64 repeat the same failure, nine lanes total. Original diagnostic:
+`physical symlink prefix cannot escape through a missing target`.
+
+The fixture uses reference-style Markdown, outside the documented grammar
+of `check-doc-links.pl`. No target reached the resolver; this is a fixture
+defect, not evidence against physical-prefix resolution. Global search
+found this fixture form only in that symlink loop. The local correction
+uses inline links, absolute symlink authority and an existing outside-file
+control before all three missing/parent-component cases. Existing six
+assertions remain; two controls are added. Implemented / static; Pending CI
+tests. Production grammar is unchanged.
+
+At this SHA, MSYS Git/Perl closure, extensionless TLS wrappers and YAML
+package scanner regressions pass. CLANG64 still separately fails
+`i2pd-version` after 12 seconds without output. MSVC reports 17 tests with
+one supervisor skip: worker exit 3221225794 (0xC0000142) before authentication.
+OpenBSD reports 255 tests, one fixture failure and three capability skips.
+Skipped handshake/shutdown paths remain unvalidated.
+
+### Latest-ten evidence inventory
+
+All rows use the exact SHA above. Full logs, job metadata and artifact
+inventories were retrieved; failed logs and relevant artifacts supplement
+the review. Historical run metadata totals 382; unavailable historical
+diagnostics remain evidence gaps as previously recorded.
+
+| Run | Workflow | Observed result |
+|---|---|---|
+| [42690778943](https://github.com/daviduhden/openi2pd/actions/runs/42690778943) | Instrumented OpenSSL TSan | Success |
+| [42690770393](https://github.com/daviduhden/openi2pd/actions/runs/42690770393) | Validation | Three sanitizer lanes fail TF-100; fuzz/docs/static pass; Perl quality skipped |
+| [42690762752](https://github.com/daviduhden/openi2pd/actions/runs/42690762752) | Linux | Install/consumer and I2P Java interoperability pass |
+| [42690756912](https://github.com/daviduhden/openi2pd/actions/runs/42690756912) | Android | Arm64 build and 174 JVM tests pass; API 29 UI skipped |
+| [42690751293](https://github.com/daviduhden/openi2pd/actions/runs/42690751293) | OpenSSL 4 | GCC/Clang each fail TF-100 |
+| [42690742396](https://github.com/daviduhden/openi2pd/actions/runs/42690742396) | OpenSSL 3 | GCC/Clang each fail TF-100 |
+| [42690736472](https://github.com/daviduhden/openi2pd/actions/runs/42690736472) | Agent knowledge | Success |
+| [42690730284](https://github.com/daviduhden/openi2pd/actions/runs/42690730284) | Packaging/services | Success |
+| [42690723606](https://github.com/daviduhden/openi2pd/actions/runs/42690723606) | OpenBSD 8.0 | TF-100 plus three capability skips |
+| [42690715945](https://github.com/daviduhden/openi2pd/actions/runs/42690715945) | Windows | CLANG64 TF-100/startup timeout; MSVC success with worker startup skip |

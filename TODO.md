@@ -10,18 +10,23 @@ Documents project documentation.
 
 # Master TODO
 
-Latest retrospective: 372 retained runs on 64 SHAs. At d63b6b90 native
-regressions pass, but TF-098's YAML package false positive fails multiple
-full suites and knowledge validation. RT-071's executed idle slice is
-Validated by CI. Local TF-097/098/099/100 tooling, CW-030 Java comment and
-RT-072/073 confidentiality/lifetime corrections are Implemented / static,
-Pending CI compilation / Pending CI tests. GUI startup, native MSWin32
-Unicode, fourteen earlier Lint warnings, optional lanes, C++ documentation
-coverage and full worker/handler retirement remain open. Current local
-changes have no remote validation.
+Latest retrospective: 382 retained runs (234 failure, 82 success, 66
+cancelled). The latest ten execute 176aec32. Native compilation succeeds;
+nine lanes fail TF-100's unsupported reference-link fixture. Its inline
+grammar correction and positive containment control are Implemented / static,
+Pending CI tests. TF-097/098/099 and the executed RT-072/073 regressions are
+Validated by CI at that SHA. Android's 174 JVM tests pass; CW-030's Java
+WrongCommentType warnings are absent, with fourteen other Lint warnings
+remaining. Windows GUI startup, native MSWin32 Unicode, optional lanes,
+C++ documentation coverage and full worker/handler retirement remain open.
+MSVC worker startup skips after exit 0xC0000142; a green job does not validate
+its handshake. Current local changes have no remote validation.
 
 - CONT-050: portable supervisor admission and Asio timer teardown:
   Validated by CI in the executed 9f2934f8 lanes; no clean-matrix claim.
+- RT-074: AddressBook queued re-arm admission and generation retirement:
+  Implemented / static; Pending CI compilation / Pending CI tests.
+  Source contract registered; separate timer callbacks remain open.
 - CONT-051: coherent peer interest across availability, selection and active
   requests: Validated by CI at 9f2934f8. Subsequent HAVE_NONE/BITFIELD
   controls are Implemented / static; Pending CI tests.

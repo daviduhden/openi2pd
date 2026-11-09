@@ -15,11 +15,10 @@ requirements and current code; `TODO.md` is the authoritative task list.
 
 ## Current baseline
 
-At d63b6b90, RT-071's native timer regressions pass while the shared YAML
-checker false positive fails multiple suites. History reaches 372 runs on
-64 SHAs. CONT-057/058/059 correct targeted Java documentation, host checker
-semantics/tool closure and diagnostic confidentiality. These local changes
-are Implemented / static, Pending CI compilation / Pending CI tests. Full
+At 176aec32, native compilation succeeds and prior host/checker/privacy
+corrections pass their executed regressions. History reaches 382 runs.
+TF-100's negative fixture uses unsupported Markdown grammar and fails nine
+lanes; the local inline-link correction is Pending CI tests. Full
 matrix cleanliness still requires Windows GUI attribution, remaining host
 coverage, fourteen earlier Lint warnings, native documentation coverage,
 CONC-028 timer authority and PRIVSEP-017 deferred owner retirement.

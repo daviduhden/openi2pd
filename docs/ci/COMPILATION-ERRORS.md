@@ -20,6 +20,15 @@ compile or link failure.
 
 ## Runs reviewed
 
+### Revision 176aec32: successful compilation, later fixture failures
+
+Latest-ten runs execute `176aec32c6ac9deeae36f5142d05a9c284f5e94a`.
+Runs 42690770393, 42690751293, 42690742396, 42690723606 and 42690715945
+reach CTest after successful native compilation/linking. The shared failure
+is TF-100's Markdown fixture, not a compiler diagnostic. CLANG64 also times
+out at startup. See [test failures](TEST-FAILURES.md#tf-100-continuation-fixture-grammar-bypasses-containment).
+This covers the published SHA only, not local corrections or skipped targets.
+
 ### Published revision reviewed on 2026-11-05
 
 This batch compiled `01960093aeff480d24ed8507878355a643da168f`. The source

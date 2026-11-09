@@ -1,5 +1,16 @@
 # Compilation and lint warning inventory
 
+## Revision 176aec32 warning review
+
+Full latest-ten logs, including successful sibling steps, reveal no project
+compiler warning in reviewed output. Android run 42690756912 succeeds:
+127 WrongCommentType findings are absent; twelve VectorPath and two
+ChromeOsAbiSupport Lint findings remain, plus builtInKotlin option
+deprecation. These are distinct from native compiler cleanliness. Linux
+Landlock ABI 8 messages describe coverage limits. MSYS package setup asks
+that other MSYS processes terminate; it is not a source warning. Optional
+Perl-quality and Android API 29 device jobs are skipped, not clean.
+
 This file records warning diagnostics from GitHub Actions separately from
 compile errors. Repeated header inclusions and template instantiations are
 grouped by cause, not counted as independent defects. A successful build can
