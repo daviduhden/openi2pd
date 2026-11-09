@@ -206,6 +206,11 @@ workflow, run `gh`, build or test.
 
 ## Known issues and decisions
 
+- Read artifact JUnit counts when promoting prepared regressions to CI
+  evidence. A LastTest.log "Passed" marker can accompany return-code-77
+  capability skips; retain the JUnit/run skip state and absence of startup
+  diagnostics. A successful Android JVM lane does not cover skipped devices.
+
 - A toolchain template failure before executable creation leaves earlier
   runtime findings unresolved. Record the instantiated clock/API and group
   repeated targets by source cause; inspect successful sibling steps and

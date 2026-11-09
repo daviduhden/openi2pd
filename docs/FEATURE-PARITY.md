@@ -722,3 +722,14 @@ Android administrative and torrent forms capture view/session authority when
 opened and revoke it before view teardown. Nested torrent forms retain bounded
 registrations. Prepared JVM/device regressions do not establish device or
 Java 25 toolchain validation; all new behavior remains Pending CI.
+
+## 9f2934f8 evidence and subsequent local continuation
+
+Android DisplayText passes three JVM tests and confirmation authority passes
+thirteen at the executed revision. The device lane remains skipped and Lint
+retains fourteen warnings. Torrent verification parity passes the executed
+sanitizer suites; this is scoped regression evidence, not complete I2PSnark
+feature parity. Subsequent HAVE_NONE/BITFIELD state and direct bandwidth
+sampling changes are Implemented / static, Pending CI compilation / Pending
+CI tests. POSIX child-stop phase budgets likewise require new CI evidence;
+router-wide privilege separation remains incomplete.

@@ -715,3 +715,16 @@ this is not evidence of a warning-free matrix. Packaging run 42512607518
 passes five jobs, with empty Lintian output; external autopkgtest
 `--force-yes` deprecation remains historical debt. Earlier Android Lint and
 optional quality-lane findings remain open.
+
+## 9f2934f8 warning review
+
+The accessible inventory is 352 runs on 62 SHAs: 222 failures, 64 successes
+and 66 cancellations. All ten new full logs and successful sibling steps
+were retrieved. No fresh own-code native compiler-warning family was found.
+Android arm64 job 128929903685 succeeds with 14 Lint warnings: two
+ChromeOsAbiSupport and twelve VectorPath findings; previous Overdraw
+warnings are absent. Device job 128929904898 skips. External AGP built-in
+Kotlin opt-out deprecation and autopkgtest --force-yes debt remain open.
+Packaging's five jobs pass and exact-artifact lintian.log is empty. These
+facts do not establish a globally clean warning matrix or eliminate skipped
+quality/worker capability coverage.

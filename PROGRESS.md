@@ -7652,3 +7652,56 @@ or push.
   New untracked sources were also inspected for whitespace. Remaining work
   includes full service handler admission, worker shutdown phase budgets,
   explicit OpenSSL 4.0 coverage and the historical runtime/platform findings.
+
+## Continuation at 9f2934f8: executed regressions and next fixes
+
+- Clean starting tree at 9f2934f8. Recovered ten complete new run logs,
+  job metadata and artifact inventories; relevant Android/OpenBSD/MSYS2/
+  packaging/TSan artifacts remain outside the tree under /var/tmp.
+  Inventory: 352 runs, 62 SHAs, 222 failures/64 successes/66 cancellations.
+- Three specialized agents independently reviewed CI/build/docs/tools/
+  packaging, native C++/crypto/protocol/upstream, and Android/torrent/TUI;
+  coordinator traced IPC, shutdown, ownership and shared interfaces. Agents
+  implemented exclusively assigned files; a separate static review checked
+  stop phase monotonicity and retained PID/pidfd ownership.
+- CE-088/089 and CONT-050 native targets execute successfully in the new
+  sanitizer/OpenBSD lanes. Focused instrumented OpenSSL TSan passes. Torrent
+  verification parity passes those suites. Android DisplayText 3/3 and
+  confirmation authority 13/13 pass JVM execution; optional devices skip.
+  MSVC selected tests and packaging pass; this is not a full clean matrix.
+- TF-095: allow standard Carp after complete script discovery exposed the
+  missing allowlist entry. No external dependency or validation suppression.
+- TF-096: replace the logger's 400-ms cadence assumption with actual
+  zero-budget saturation, controlled full drainage and joined/reaped fixture
+  ownership before final assertions. Production one-second timeout unchanged.
+- CONT-053 / RT-069: POSIX advisory shutdown, graceful exit, TERM and final
+  reap use one ChildStopBudget. Until helpers retain absolute boundaries;
+  EINTR polling recomputes remaining time, liveness probes defer interruption.
+  Startup hello reads are nonblocking before the first byte and share one
+  five-second deadline across fragments/signals. Pure boundary controls and
+  negative source contracts join common CTest and selected MSVC diagnostics.
+  Existing child-reap fixtures continue exercising production wait logic.
+- RT-070: HAVE_NONE now reconciles interest immediately and BITFIELD clears
+  prior equal-size bits before decoding. Actual peer-message regressions
+  retain outstanding-request authority and cover stale availability.
+- CONT-054: adapted upstream 026d9a99 and 4f357490 direct bandwidth samples
+  with final 2500 ms interval, preserving independent 30-second idle decay.
+  Corrected a seconds-versus-milliseconds assertion with chrono durations.
+  Per-SHA provenance is recorded; no wire/persisted format changed.
+- Current source corrections remain Implemented / static, Pending CI
+  compilation / Pending CI tests. Existing Windows UTF-8/mojibake and GUI
+  version failures, fourteen Android Lint warnings, optional quality/device
+  skips and detached intermediary spawn deadlines remain open. No local
+  builds/configures/tests, commits or push.
+- Agent & Skills Synchronization reviewed AGENTS, discovery and affected
+  build/CI/memory/privsep/tooling/torrent/upstream procedures. Reusable updates
+  describe actual saturation, absolute phase budgets, EINTR, core-module
+  classification, JUnit skip evidence, authoritative bitfields and rate units.
+- Compile-free checks pass: whitespace including untracked new sources,
+  runtime/source ordering, build graph, language modernization, Skill
+  structure, workflow policy (ten workflows/three actions) and Doxygen
+  parameters/references. Knowledge validation has zero errors; AK004's manual
+  relevance warning was reviewed against the changed seams. These are not
+  compiler/test/sanitizer runs. Final independent review found no descriptor,
+  nonce or lifecycle regression in nonblocking startup/interrupt handling.
+  Official Java latest release remains i2p-2.14.1 at its recorded tag object.

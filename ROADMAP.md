@@ -15,6 +15,14 @@ requirements and current code; `TODO.md` is the authoritative task list.
 
 ## Current baseline
 
+At 9f2934f8, CE-088/089 are Validated by CI in executed lanes. The retained
+inventory reaches 352 runs on 62 SHAs; logger fixture and Perl allowlist
+failures now replace the compile blockers. Local CONT-053/054 add absolute
+POSIX child phase/startup deadlines, authoritative torrent availability and
+adapted upstream sampling. These changes are Implemented / static, Pending
+CI compilation / Pending CI tests. Windows Unicode/version, fourteen Lint
+warnings and skipped capability/device coverage remain unresolved.
+
 The 70f66977 retrospective now covers 342 runs on 61 SHAs. CE-088/089
 block the native runtime matrix before execution. Portable timer teardown
 and monotonic supervisor admission are Implemented / static, Pending CI

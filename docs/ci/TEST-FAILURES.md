@@ -489,3 +489,45 @@ were not reached. Historical runtime families and optional-lane gaps remain
 open. Packaging 42512607518 passes its five distinct jobs, and documentation
 and agent-knowledge siblings pass at the executed SHA. Those results do not
 validate local source changes or the later ab021821 launcher-only commit.
+
+## TF-095: core Carp omitted after expanded Perl discovery
+
+Observed at `9f2934f81edd16c6bcb9b3ebbac91474c7b318a1` in
+[Validation 42545638623](https://github.com/daviduhden/openi2pd/actions/runs/42545638623),
+Linux OpenSSL 3/4, OpenBSD 42545614356 and MSYS2 42545610680.
+The perl-portability import assertion rejects `Carp`, imported by the
+previously uncovered tests/android-javadoc-regex.t. Carp is a core Perl
+module; the checker allowlist was incomplete, not the dependency policy.
+The local allowlist correction retains the existing per-import regression.
+Global inspection found one owning module allowlist. Implemented / static;
+Pending CI tests. No dependency was added or interpreter requirement changed.
+
+## TF-096: slow log-peer fixture assumes per-record readiness
+
+At the same SHA, OpenSSL 3/4 GCC/Clang and Validation ASan+UBSan, TSan and
+UBSan fail `test-privsep-log.cpp:953`, assertion `sink.IsOpen ()`.
+Validation jobs are 128929923766, 128929923845 and 128929923871.
+A peer draining one record per 400 ms does not guarantee POLLOUT before the
+production one-second timeout: several records can be required by the
+kernel readiness threshold. LogSink correctly detaches on timeout; this
+assertion alone is not evidence of a production mutex or memory defect.
+
+The prepared fixture fills the queue via actual zero-budget send failure,
+parks the peer behind a control pipe, checks concurrent counter access and
+then drains all queued records. Futures are joined and the child reaped
+before final outcome assertions. The production timeout is unchanged.
+Implemented / static; Pending CI tests. Scheduling-sensitive test behavior
+must still be assessed by the same runner/toolchain lanes.
+
+## 9f2934f8 positive evidence and remaining platform gaps
+
+Readiness, deadline-mutex and torrent verification regressions pass all
+three executed sanitizer configurations and OpenBSD. MSVC's selected suite
+passes. Android job 128929903685 has DisplayTextTest 3/3 and confirmation
+13/13, no failures; device job 128929904898 skips. OpenBSD's three worker
+capability skips provide no later handshake evidence and emit no reason.
+Windows still has Unicode fixture and GUI-version failures: the Git root
+round-trip turns UTF-8 resume-with-accents into double-encoded mojibake,
+then native abs_path fails; the console control reports its version while
+the GUI probe times out with empty output. These remain separate open
+findings, not resolved by passing MSVC sibling tests.

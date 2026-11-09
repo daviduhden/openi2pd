@@ -353,3 +353,11 @@ call spellings; wall-clock conversion weakens monotonic transaction bounds.
 The supervisor now uses a condition-variable admission gate with a short
 state lock and predicate waits. Its prepared concurrency regression must run
 on the exact failing TSan toolchain before closing CE-089.
+
+## Cross-unit comparisons after upstream tuning
+
+Changing the torrent rate period from 20 to 2500 milliseconds exposed a
+regression assertion comparing numeric 30 seconds with milliseconds. Compare
+chrono durations, not raw constants with different units. Review adjacent
+sampling and idle-decay comments and consumers whenever upstream changes a
+period; direct rate samples and idle decay remain separate mechanisms.

@@ -1180,3 +1180,13 @@ The new signed LS1 fixture retains plaintext acceptance and checks that a
 newer ECIES-origin advertisement cannot replace it or establish peer identity.
 This changes acceptance policy, not a wire format. Implemented / static;
 Pending CI compilation and Pending CI tests, with live Java exchange pending.
+
+## Subsequent torrent availability and rate review
+
+After the 9f2934f8 regression run, static review found HAVE_NONE omitted
+interest reconciliation and equal-size replacement BITFIELD retained old set
+bits. Both now reconcile the authoritative remote availability while keeping
+active-request interest until retirement. Focused peer-message controls are
+prepared, Pending CI tests. Upstream direct 2500 ms rate sampling is adapted
+through 4f357490; it is local scheduling behavior, not a wire-format change
+or evidence of live Java peer parity.

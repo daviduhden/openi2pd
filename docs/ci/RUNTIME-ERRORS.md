@@ -1457,3 +1457,31 @@ periodic and peer-availability paths previously retained stale interest or
 asserted interest despite skipped files. Active requests now retain interest
 until retired, with stop/removal overriding it. A focused selection/request
 regression is prepared in test-torrents-verify-parity; Pending CI tests.
+
+## RT-069: POSIX worker phase and interruption budgets (static finding)
+
+Source review found ChildProcess::Stop renewed advisory-send, graceful,
+TERM and final-reap relative waits. ChildStopBudget now records all absolute
+phase boundaries once; Until waits preserve them, and unreaped children keep
+PID/pidfd ownership. A pure boundary regression plus existing child-reap
+fixture and negative source contract are prepared. Startup hello reads also
+become nonblocking before the first byte and share one five-second deadline
+across fragments and EINTR. Zero-budget liveness probes defer interrupted
+calls rather than spinning. Implemented / static; Pending CI compilation /
+Pending CI tests. Scheduler/kernel stalls can exceed wall time, and detached
+intermediary spawn waits remain a distinct pending review.
+
+## RT-070: authoritative torrent availability (static finding)
+
+HAVE_NONE reset the peer bitfield without reconciling interest. Equal-size
+BITFIELD updates preserved prior set bits. Both now replace availability
+and reconcile interest, retaining active requests until retirement. The
+existing verification fixture drives actual message handlers. Implemented /
+static; Pending CI tests. Earlier passing interest tests did not cover these
+new cases.
+
+At 9f2934f8, focused instrumented OpenSSL TSan run 42545641719 passes;
+Validation's logger assertion is TF-096, not a sanitizer report. No new
+sanitizer family was found in the retrieved full logs. Historical Windows,
+heap, capability and shutdown findings retain their individual evidence
+requirements; passing sibling lanes do not close them globally.

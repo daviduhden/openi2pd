@@ -2080,3 +2080,16 @@ Prepared `test-deadline-mutex` covers refusal, immediate admission, wakeup
 and concurrent exclusion, with sanitizer labels and selected MSVC coverage.
 Implemented / static; Pending CI compilation and Pending CI tests. Neither
 failed TSan compilation is sanitizer runtime evidence.
+
+## CE-088/089 validation at 9f2934f8
+
+The ten workflows execute `9f2934f81edd16c6bcb9b3ebbac91474c7b318a1`.
+[Validation 42545638623](https://github.com/daviduhden/openi2pd/actions/runs/42545638623)
+builds all three sanitizer configurations past both blockers and executes
+readiness, deadline-mutex and torrent verification regressions successfully.
+[Focused TSan 42545641719](https://github.com/daviduhden/openi2pd/actions/runs/42545641719)
+passes. OpenSSL 3/4 GCC/Clang, OpenBSD and Android compile past the timer
+failure; MSVC's selected suite passes. CE-088/089 are Validated by CI in
+those executed configurations. Later local shutdown and torrent changes
+remain Pending CI compilation / Pending CI tests. Overall failures are
+TF-095/096 and existing Windows findings, not recurring compile blockers.

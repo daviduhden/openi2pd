@@ -534,3 +534,15 @@ requests: selection withdrawal cannot invalidate responses in flight, while
 stop/removal revokes authority. Exercise periodic and HAVE/BITFIELD consumers
 as well as explicit selection changes; successful compilation alone does not
 validate these state transitions.
+
+## Controlled saturation and bounded phase propagation
+
+TF-096 replaces elapsed-send inference with an actual zero-budget saturation
+failure and a separately controlled peer drain. A successful small send and
+POLLOUT readiness have different thresholds. Keep the production deadline,
+join borrowing threads, and reap children before final fixture assertions.
+RT-069 adds absolute child-stop phase boundaries, signal-interruption review
+and nonblocking startup reads. Pair pure budget arithmetic with the existing
+child-reap fixture and the source guard; no pure test proves kernel shutdown.
+BITFIELD replacement regressions must start with already-set bits of the same
+size; an initially empty bitfield cannot expose stale availability.

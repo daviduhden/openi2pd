@@ -10,18 +10,24 @@ Documents project documentation.
 
 # Master TODO
 
-Latest retrospective: 342 retained runs on 61 SHAs. The ten new runs at
-70f66977 expose CE-088 (Asio timer overload removal) and CE-089 (libstdc++
-timed mutex under TSan). Corrections are Implemented / static, Pending CI
-compilation and Pending CI tests; affected runtime targets did not execute.
-Packaging and agent knowledge passed at that SHA, not at the local revision.
+Latest retrospective: 352 retained runs on 62 SHAs. The ten runs at
+9f2934f8 build past CE-088/089 and execute the targeted native regressions.
+TF-095 (core-module allowlist) and TF-096 (logger backpressure fixture)
+corrections are Implemented / static, Pending CI tests. Windows Unicode and
+GUI-version probes, fourteen Android Lint warnings and capability/device
+skips remain open. CI does not validate subsequent local changes.
 
 - CONT-050: portable supervisor admission and Asio timer teardown:
-  Implemented / static; Pending CI compilation / Pending CI tests.
+  Validated by CI in the executed 9f2934f8 lanes; no clean-matrix claim.
 - CONT-051: coherent peer interest across availability, selection and active
-  requests: Implemented / static; Pending CI tests.
+  requests: Validated by CI at 9f2934f8. Subsequent HAVE_NONE/BITFIELD
+  controls are Implemented / static; Pending CI tests.
 - CONT-052: shared Android surrogate-safe presentation bounds:
+  Validated by CI (three JVM tests); device validation remains Pending.
+- CONT-053: single POSIX stop/startup deadlines and interrupted probes:
   Implemented / static; Pending CI compilation / Pending CI tests.
+- CONT-054: upstream torrent direct samples at 2500 ms, unit-safe scheduler
+  assertions: Implemented / static; Pending CI compilation / Pending CI tests.
 
 Previous retrospective: 332 retained runs, evidence for 330, on 60 SHAs.
 The executed 6390fdea matrix builds past CE-085/086 and validates named
