@@ -1593,3 +1593,13 @@ serialization closes their teardown interval remains an unresolved static
 hypothesis, not a demonstrated defect. Inspect Stop/owner-thread ordering
 before changing them. The DHT receiver's registration separately drains
 admitted dispatch, so it must not be grouped by superficial capture shape.
+
+### Windows startup attribution at 176aec32
+
+[Windows run 42690715945](https://github.com/daviduhden/openi2pd/actions/runs/42690715945)
+job 129409411723 still times out on router version output; MSVC sibling job
+129409410995 skips supervisor startup after worker exit 0xC0000142. No stack
+attributes either failure. Prepared opt-in loader/entry CDB evidence uses
+the exact retained router image and runtime DLLs, a 20-second deadline and
+code-only output. It does not guarantee a stack at timeout or resolve the
+startup fault. Original CTest runs independently of this diagnostic step.

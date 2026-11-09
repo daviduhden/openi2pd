@@ -60,6 +60,7 @@ jobs:
             mingw-w64-clang-x86_64-zlib
             mingw-w64-clang-x86_64-miniupnpc
       - name: Configure and build
+        id: msys2_build
         run: |  # zizmor: ignore[misfeature] required by the MSYS2 Clang64 toolchain supplied by setup-msys2
           # Native Strawberry Perl uses different path encoding rules.
           # Select the MSYS host interpreter for the full UTF-8 contract.
@@ -117,7 +118,46 @@ jobs:
           cmake -DBINARY=build-output/i2pd.exe \
             -DVERSION_TIMEOUT=10 -DHELP_TIMEOUT=10 \
             -P tests/check-binary-version.cmake || echo "probe exit: $?"
+      - name: Capture bounded router loader and entry evidence
+        if: ${{ always() && inputs.heap_diagnostics }}
+        shell: pwsh
+        timeout-minutes: 2
+        run: |
+          $debugTools = Join-Path ${env:ProgramFiles(x86)} 'Windows Kits\10\Debuggers\x64'
+          $cdb = Join-Path $debugTools 'cdb.exe'
+          if (-not (Test-Path $cdb)) {
+            throw 'startup diagnostics require installed x64 CDB'
+          }
+          $evidence = Join-Path $env:GITHUB_WORKSPACE 'build-output/startup-debugger'
+          New-Item -ItemType Directory -Force $evidence | Out-Null
+          $binary = Join-Path $env:GITHUB_WORKSPACE 'build-output/startup-images/i2pd.exe'
+          if (-not (Test-Path $binary)) { throw 'missing retained router image' }
+          $commands = Join-Path $evidence 'commands.txt'
+          $log = Join-Path $evidence 'loader-entry.txt'
+          # Code-only evidence: no child following, locals, operands,
+          # register dumps or memory dumps. The entry pseudo-register
+          # does not depend on MinGW symbols being readable by CDB.
+          @(
+            '.echo OPENI2PD_LOADER'
+            'sxe -c ".echo OPENI2PD_STARTUP_EXCEPTION; .lastevent; ln @rip; kc 20; q" av'
+            'sxe -c ".echo OPENI2PD_STARTUP_EXCEPTION; .lastevent; ln @rip; kc 20; q" 0xc0000142'
+            'bp @$exentry ".echo OPENI2PD_ENTRY; ln @rip; kc 20; g"'
+            'g'
+          ) | Set-Content -Encoding ascii $commands
+          $debugArguments = @('-G', '-noshell', '-logo', "`"$log`"", '-cf', "`"$commands`"", "`"$binary`"", '--version')
+          $debugger = Start-Process -FilePath $cdb -ArgumentList $debugArguments -WorkingDirectory (Split-Path -Parent $binary) -NoNewWindow -PassThru
+          if (-not $debugger.WaitForExit(20000)) {
+            # A deadline preserves loader/entry evidence only; it does
+            # not promise a stack of the thread stalled at timeout.
+            'OPENI2PD_DEBUGGER_DEADLINE' | Set-Content -Encoding ascii (Join-Path $evidence 'deadline.txt')
+            & taskkill.exe /PID $debugger.Id /T /F
+            if ($LASTEXITCODE -ne 0) { throw 'startup debugger cleanup failed' }
+          }
+          if (-not (Test-Path $log)) { throw 'missing startup debugger log' }
+          # This diagnostic launch cannot replace the ordinary probe or
+          # CTest result; both still execute with their original budgets.
       - name: Run CTest
+        if: ${{ always() && steps.msys2_build.outcome == 'success' }}
         run: |  # zizmor: ignore[misfeature] required by the MSYS2 Clang64 toolchain supplied by setup-msys2
           ctest --test-dir build-output -j 2 --output-on-failure \
             --no-tests=error --output-junit "$PWD/ctest-msys2.xml"
@@ -139,6 +179,7 @@ jobs:
             build-output/router-dlls.txt
             build-output/router-dll-paths.txt
             build-output/startup-images
+            build-output/startup-debugger
           if-no-files-found: warn
           retention-days: 7
 

@@ -206,6 +206,13 @@ workflow, run `gh`, build or test.
 
 ## Known issues and decisions
 
+- CLANG64 startup diagnostics use installed CDB with loader and executable
+  entry markers, code-only exception stacks and a 20-second process-tree
+  deadline. They remain opt-in via heap_diagnostics and cannot replace
+  ordinary CTest. A timeout marker does not include a stalled-thread stack;
+  preserve that attribution limit. Pin both debugger command lists with
+  the workflow checker, including parent-only tracing and no shell escape.
+
 - Pair MSYS Perl with MSYS Git: native Git sees physical special-filename
   mappings rather than the POSIX names used by Perl. Record both selected
   executables and pass the Git cache path explicitly. Strict native-link

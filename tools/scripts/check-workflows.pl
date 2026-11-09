@@ -556,6 +556,46 @@ for my $job ( sort keys %android_native ) {
 # Keep the opt-in debugger command file to this code-location allowlist.
 push @errors, windows_crash_command_errors( $texts{'build-windows.yml'} )
   if exists $texts{'build-windows.yml'};
+push @errors, windows_startup_command_errors( $texts{'build-windows.yml'} )
+  if exists $texts{'build-windows.yml'};
+
+sub windows_startup_command_errors {
+    my ($windows) = @_;
+    my @violations;
+    my ($step) = $windows =~
+      /(      - name: Capture bounded router loader and entry evidence\n.*?)(?=      - name:)/s;
+    return 'build-windows.yml: missing startup diagnostic step'
+      unless defined $step;
+    my ($commands) = $step =~ /          \@\(\n(.*?)          \) \| Set-Content -Encoding ascii \$commands/s;
+    my @expected = (
+        q{.echo OPENI2PD_LOADER},
+        q{sxe -c ".echo OPENI2PD_STARTUP_EXCEPTION; .lastevent; ln @rip; kc 20; q" av},
+        q{sxe -c ".echo OPENI2PD_STARTUP_EXCEPTION; .lastevent; ln @rip; kc 20; q" 0xc0000142},
+        q{bp @$exentry ".echo OPENI2PD_ENTRY; ln @rip; kc 20; g"},
+        'g',
+    );
+    my @actual = defined($commands)
+      ? map { /^\s*'([^']*)'\s*,?\s*$/ ? $1 : 'INVALID' }
+        split /\n/, $commands
+      : ();
+    push @violations, 'build-windows.yml: startup diagnostics may print code locations only'
+      unless join("\n", @actual) eq join("\n", @expected);
+    for my $required (
+        q{if: ${{ always() && inputs.heap_diagnostics }}},
+        q{$debugger.WaitForExit(20000)},
+        q{& taskkill.exe /PID $debugger.Id /T /F},
+        q{$debugArguments = @('-G', '-noshell', '-logo', "`"$log`"", '-cf', "`"$commands`"", "`"$binary`"", '--version')},
+    ) {
+        push @violations, 'build-windows.yml: missing bounded startup diagnostic contract'
+          if index($step, $required) < 0;
+    }
+    push @violations, 'build-windows.yml: startup diagnostics must preserve CTest'
+      unless index($windows,
+        q{if: ${{ always() && steps.msys2_build.outcome == 'success' }}}) >= 0;
+    push @violations, 'build-windows.yml: missing startup diagnostic artifact'
+      unless $windows =~ /^\s*build-output\/startup-debugger\s*$/m;
+    return @violations;
+}
 
 sub windows_crash_command_errors {
     my ($windows) = @_;

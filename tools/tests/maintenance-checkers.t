@@ -359,12 +359,29 @@ sub workflow_crash_fixtures {
         ['build-msvc/tests/Release/test-privsep-windows-supervisor.exe', 'missing-image.exe'] ) {
         my ($before, $after) = @{$boundary};
         my $candidate = $source;
-        ok($candidate =~ s/\Q$before\E/$after/, 'worker diagnostic mutation changes a real boundary');
+        ok($candidate =~ s/(.*)\Q$before\E/$1$after/s,
+            'worker diagnostic mutation changes its final worker boundary');
         write_file($windows, $candidate);
         ($code, $out) = run_checker($checker);
         is($code, 1, 'worker diagnostic requires parent-only tracing and bounded evidence');
         like($out, qr/worker initialization diagnostic|unsupported crash debugger line|missing bounded crash command file/,
             'worker diagnostic names its missing evidence boundary');
+    }
+    write_file($windows, $source);
+    for my $boundary (
+        ['kc 20', 'kp 20'],
+        ['WaitForExit(20000)', 'WaitForExit()'],
+        [q{@('-G', '-noshell', '-logo'}, q{@('-G', '-o', '-logo'}],
+        [q{steps.msys2_build.outcome == 'success'}, 'false'] ) {
+        my ($before, $after) = @{$boundary};
+        my $candidate = $source;
+        ok($candidate =~ s/\Q$before\E/$after/,
+            'startup diagnostic mutation changes a real boundary');
+        write_file($windows, $candidate);
+        ($code, $out) = run_checker($checker);
+        is($code, 1, 'startup diagnostics retain privacy, bounds and CTest');
+        like($out, qr/startup diagnostics|startup diagnostic contract/,
+            'startup diagnostic identifies its unsafe boundary');
     }
     write_file($windows, $source);
     my $openbsd = File::Spec->catfile(
