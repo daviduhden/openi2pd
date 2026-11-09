@@ -105,6 +105,12 @@ report that limitation; do not substitute local execution. Ask for:
 
 ## Known issues and decisions
 
+- Supervisor admission must preserve its steady-clock transaction deadline
+  across toolchains. GCC 14 libstdc++ timed_mutex instantiation under TSan
+  can reference an unavailable clocklock member. Review the complete clock
+  path and use the portable deadline gate, not wall-clock conversion or
+  a fresh relative timeout. Keep gate wait and protected work separate.
+
 - Composite broker operations pass one absolute deadline through timed
   admission, send and every stale-reply receive. Do not convert remaining
   time back into a fresh relative receive budget. Channel Until methods

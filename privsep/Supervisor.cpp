@@ -35,6 +35,7 @@
 #include "Capabilities.h"
 #include "Channel.h"
 #include "Credentials.h"
+#include "DeadlineMutex.h"
 #include "LinuxSandbox.h"
 #include "LogWorker.h"
 #include "OpenBSDSandbox.h"
@@ -133,7 +134,7 @@ namespace
 
 namespace
 {
-	std::timed_mutex storageSupervisorMutex;
+	DeadlineMutex storageSupervisorMutex;
 	std::unique_ptr<Channel> storageSupervisor;
 	uint32_t storageSupervisorRequest = 0;
 	std::filesystem::path storageSupervisorRoot;

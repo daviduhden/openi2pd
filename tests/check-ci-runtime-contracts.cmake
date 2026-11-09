@@ -417,6 +417,13 @@ require_runtime_source("tests/test-torrents-security.cpp"
   "assert (released.expired ());")
 
 # One broker deadline covers admission, output and stale-reply waits.
+require_runtime_source("privsep/Supervisor.cpp"
+  "DeadlineMutex storageSupervisorMutex;")
+require_runtime_source("privsep/DeadlineMutex.h"
+  "m_Changed.wait_until (lock, deadline,")
+require_runtime_source("tests/CMakeLists.txt" "test-deadline-mutex")
+require_runtime_source("tests/test-deadline-mutex.cpp"
+  "TestMutualExclusion ();")
 require_runtime_source("libi2pd_client/I2PService.cpp"
   "try { previous->timer.cancel (); }")
 require_runtime_order("privsep/Supervisor.cpp"

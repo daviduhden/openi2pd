@@ -257,6 +257,11 @@ Readiness retirement is distinct from handler admission: trace every
 completed-stream handoff through the owner's Stop()/ClearHandlers() boundary.
 Check-time stale suppression alone is not atomic handler publication.
 
+For library-template failures, inspect the instantiated clock and platform
+branch before changing call spelling. Relative waits may instantiate the
+same broken steady-clock path; preserve the absolute transaction deadline
+with a reviewed portable primitive instead of switching to wall time.
+
 Publication reviews must inspect the staged snapshot as well as the worktree.
 Worktree consistency checks can see uncommitted dependencies and do not prove
 that a partial commit is self-contained. Preserve executable modes when

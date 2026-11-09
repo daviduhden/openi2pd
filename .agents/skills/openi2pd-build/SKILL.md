@@ -111,6 +111,11 @@ build.
 
 ## Known issues and decisions
 
+- Deadline admission regressions must receive concurrency, IPC and security
+  labels so full sanitizer jobs exercise the portable primitive. Do not
+  infer template compatibility from a platform that did not instantiate
+  the clock-specific operation.
+
 - Header-level cache tests and client readiness/session tests belong in
   common CTest as well as the selective MSVC inventory. When extending that
   inventory, keep build targets, selection regex, PageHeap images and
