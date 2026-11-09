@@ -13,6 +13,7 @@ use strict;
 use warnings;
 use 5.016;
 use File::Find;
+use File::Basename qw(basename dirname);
 use File::Spec;
 use Cwd qw(abs_path);
 
@@ -51,6 +52,45 @@ sub is_inside_repository {
     my $key = path_key($resolved);
     return 1 if $key eq $repo_key;
     return index( $key, "$repo_key/" ) == 0;
+}
+
+# Resolve existing prefixes physically before reducing missing suffixes.
+# canonpath alone deliberately preserves '..', so it cannot prove that
+# an absent target stays below the repository. Existing symlinks retain
+# their filesystem meaning before any following parent component.
+sub resolved_target {
+    my ( $path, $depth ) = @_;
+    $depth //= 0;
+    return undef if $depth > 40;
+    my $candidate = File::Spec->rel2abs($path);
+    my @suffix;
+    my $physical;
+    while ( !defined( $physical = abs_path($candidate) ) ) {
+        my $parent = dirname($candidate);
+        return undef if $parent eq $candidate;
+        unshift @suffix, basename($candidate);
+        $candidate = $parent;
+    }
+    for my $part (@suffix) {
+        next if $part eq '' || $part eq '.';
+        if ( $part eq '..' ) {
+            $physical = dirname($physical);
+            next;
+        }
+        $candidate = File::Spec->catfile( $physical, $part );
+        if ( -l $candidate ) {
+            my $target = readlink $candidate;
+            return undef unless defined $target;
+            $target = File::Spec->catfile( dirname($candidate), $target )
+              unless File::Spec->file_name_is_absolute($target);
+            $physical = resolved_target( $target, $depth + 1 );
+            return undef unless defined $physical;
+            next;
+        }
+        my $resolved = abs_path($candidate);
+        $physical = defined $resolved ? $resolved : $candidate;
+    }
+    return $physical;
 }
 
 my @files;
@@ -177,14 +217,19 @@ for my $file ( sort @files ) {
                   File::Spec->splitpath( File::Spec->rel2abs($file) );
                 $path = File::Spec->catfile( $dir, split m{/}, $target );
             }
-            my $resolved = abs_path($path);
-            $resolved = File::Spec->canonpath($path) unless defined $resolved;
+            my $resolved = resolved_target($path);
+            if ( !defined $resolved ) {
+                push @missing, "$file:$line_number: $target (unresolvable path)";
+                next;
+            }
             if ( !is_inside_repository($resolved) ) {
                 push @missing,
                   "$file:$line_number: $target (escapes repository)";
                 next;
             }
-            unless ( -e $resolved ) {
+            # Resolution classifies containment, but a missing directory
+            # before '..' must not become a valid existing link target.
+            unless ( -e $path ) {
                 push @missing, "$file:$line_number: $target";
                 next;
             }
@@ -210,12 +255,15 @@ for my $file ( sort @files ) {
               $target =~ m{\A/}
               ? File::Spec->catfile( $root, split m{/}, substr( $target, 1 ) )
               : File::Spec->catfile( $dir,  split m{/}, $target );
-            my $resolved = abs_path($path);
-            $resolved = File::Spec->canonpath($path) unless defined $resolved;
+            my $resolved = resolved_target($path);
+            if ( !defined $resolved ) {
+                push @missing, "$file:$line_number: $target (unresolvable path)";
+                next;
+            }
             push @missing, "$file:$line_number: $target (escapes repository)"
               unless is_inside_repository($resolved);
             push @missing, "$file:$line_number: $target"
-              if is_inside_repository($resolved) && !-e $resolved;
+              if is_inside_repository($resolved) && !-e $path;
         }
     }
     close $fh;
@@ -281,8 +329,8 @@ reported.
 
 =head1 DEPENDENCIES
 
-Core Perl only (strict, warnings, File::Find, File::Spec, Cwd, 5.016), which
-the OpenBSD base interpreter provides.
+Core Perl only (strict, warnings, File::Find, File::Basename, File::Spec,
+Cwd, 5.016), which the OpenBSD base interpreter provides.
 
 =head1 SECURITY AND PORTABILITY
 
@@ -296,5 +344,7 @@ C<File::Spec-E<gt>catdir> uses the native separator, so a prefix comparison
 would report every valid link as escaping the repository there. The key is
 case-folded on case-insensitive filesystems, keeps the absolute-path marker,
 and requires a path-component boundary so a sibling directory that shares the
-prefix is still rejected. Symbolic links are resolved by C<abs_path> before
-the containment test, so C<..> and a symlinked target cannot escape it.
+prefix is still rejected. Existing prefixes are resolved physically before
+normalising missing suffixes. Symbolic links retain their meaning before
+following C<..> components, including when the final target is absent.
+Unreadable links and excessive recursive resolution fail closed.

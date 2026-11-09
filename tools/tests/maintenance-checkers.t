@@ -1419,6 +1419,36 @@ CPP
     is( $code, 1, 'doc link checker rejects a target above the repository' );
     like( $out, qr/\(escapes repository\)/,
         'escape diagnostic is emitted for a parent-of-repository link' );
+
+    for my $target ('missing/deep.md', 'missing/../page.md',
+        '../index.md/../index.md') {
+        write_file(File::Spec->catfile($docs, 'sub', 'page.md'),
+            "# Page\n\n[missing]($target)\n");
+        ($code, $out) = run_checker($link_checker, $docs);
+        is($code, 1, 'untraversable or missing contained target stays invalid');
+        unlike($out, qr/\(escapes repository\)/,
+            'contained missing suffix is not classified as a repository escape');
+    }
+
+    my $outside = tempdir(CLEANUP => 1);
+    my $jump = File::Spec->catfile($docs, 'sub', 'jump');
+    my $linked = eval { symlink($outside, $jump) };
+    my $link_reason = $@ || "$!";
+    $linked &&= -l $jump && defined(readlink($jump));
+    BAIL_OUT('cannot create genuine symlink fixture')
+        if !$linked && $^O ne 'MSWin32';
+    SKIP: {
+        skip "native symlink unavailable: $link_reason", 6 unless $linked;
+        for my $target ('jump/missing.md', 'jump/missing/../leaf.md',
+            'jump/../leaf.md') {
+            write_file(File::Spec->catfile($docs, 'sub', 'page.md'),
+                "# Page\n\n[out][escape]\n\n[escape]: $target\n");
+            ($code, $out) = run_checker($link_checker, $docs);
+            is($code, 1, 'physical symlink prefix cannot escape through a missing target');
+            like($out, qr/\(escapes repository\)/,
+                'missing-target containment follows symlinks before parent components');
+        }
+    }
 }
 
 # --- nested navigation pages -----------------------------------------

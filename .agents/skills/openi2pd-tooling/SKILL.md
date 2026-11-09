@@ -129,6 +129,9 @@ a TUI client.
   POSIX wrappers. Search the native image first within each absolute PATH
   directory, then the wrapper. An earlier wrapper must win before a later
   system transport.
+- Doc-link containment resolves physical prefixes before normalizing
+  missing suffixes. Keep original-path existence checks separate, so
+  missing/../existing and regular-file/.. paths cannot become valid links.
 
 - Every CTest TAP file uses PERL_EXECUTABLE directly. A separately found
   prove wrapper can select a different interpreter through a shebang/BAT
