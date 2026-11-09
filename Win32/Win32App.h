@@ -19,7 +19,7 @@ namespace i2p
 {
 namespace win32
 {
-	/**
+	/*
 	 * Create the hidden main window and, outside service mode, start COM
 	 * network-state monitoring.
 	 *
@@ -37,7 +37,7 @@ namespace win32
 	 * @pre Called on the thread that will run RunWin32App().
 	 */
 	bool StartWin32App (bool isWinService);
-	/**
+	/*
 	 * Ask the message loop to exit and release the window class.
 	 *
 	 * Posts (rather than sends) an exit command, so it is safe from a
@@ -46,20 +46,20 @@ namespace win32
 	 * the daemon: DaemonWin32::stop performs the ordered teardown.
 	 */
 	void StopWin32App ();
-	/**
+	/*
 	 * Run the Win32 message loop until WM_QUIT and return its exit code.
 	 * @pre StartWin32App() succeeded on this thread.
 	 */
 	int RunWin32App ();
-	/**
+	/*
 	 * Post the graceful-shutdown command; false when no window is
 	 * present. */
 	bool GracefulShutdown ();
-	/**
+	/*
 	 * Post the cancel-graceful-shutdown command; false when no window
 	 * is present. */
 	bool StopGracefulShutdown ();
-	/**
+	/*
 	 * Remaining graceful-drain seconds, or 0 when no countdown is armed.
 	 * The value is derived from GetTickCount() and can be stale by one
 	 * timer tick.

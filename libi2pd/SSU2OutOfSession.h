@@ -26,7 +26,7 @@ namespace transport
 	const int SSU2_PEER_TEST_RESEND_INTERVAL_VARIANCE = 2000; // in milliseconds
 	const int SSU2_PEER_TEST_MAX_NUM_RESENDS = 3;
 
-	/**
+	/*
 	 * The HolePunch long header always carries SSU2 version 2, independent
 	 * of the version that Alice will negotiate in the following
 	 * SessionRequest (SSU2 spec, Hole Punch: "ver :: 2"). Java
@@ -34,7 +34,7 @@ namespace transport
 	 */
 	constexpr uint8_t SSU2_HOLE_PUNCH_VERSION = 2;
 
-	/**
+	/*
 	 * Whether an out-of-session Peer Test packet may be answered.
 	 *
 	 * Java PeerTestManager.receiveTest() rejects a source with an invalid
@@ -48,7 +48,7 @@ namespace transport
 	 */
 	bool IsValidPeerTestEndpoint (const boost::asio::ip::udp::endpoint & ep);
 
-	/**
+	/*
 	 * Whether an out-of-session PeerTest Address block may update our
 	 * external address.
 	 *

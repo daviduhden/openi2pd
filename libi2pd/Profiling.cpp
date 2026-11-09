@@ -521,7 +521,7 @@ namespace data
 			&& ((v4 && m_LastEndpoint.address ().is_v4 ()) || (!v4 && m_LastEndpoint.address ().is_v6 ()));
 	}
 
-	/**
+	/*
 	 * @brief Return the canonical profile for a peer, creating and loading
 	 *        it once.
 	 *
@@ -634,7 +634,7 @@ namespace data
 			if (it.second && !it.second->Save (it.first)) it.second->MarkPersistenceFailed ();
 	}
 
-	/**
+	/*
 	 * @brief Snapshot the profiles that are due and start an asynchronous
 	 *        save.
 	 * @return future of the save; an invalid future when nothing is due.
@@ -701,7 +701,7 @@ namespace data
 				if (!it.second->Save (it.first)) it.second->MarkPersistenceFailed ();
 	}
 
-	/**
+	/*
 	 * @brief Remove expired profile files from the shared hashed storage.
 	 *
 	 * Traverse() yields every regular file below the store root, including
@@ -827,7 +827,7 @@ namespace data
 		}
 	}
 
-	/**
+	/*
 	 * @brief Apply and clear all postponed profile updates,
 	 *        asynchronously.
 	 * @return future of the flush; invalid when the queue was empty.

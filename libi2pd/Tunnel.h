@@ -63,7 +63,7 @@ namespace tunnel
 	const double TCSR_SMOOTHING_CONSTANT = 0.0005; // smoothing constant in exponentially weighted moving average
 	const double TCSR_START_VALUE = 0.1; // start value of tunnel creation success rate
 
-	/**
+	/*
 	 * Record table planned for one short tunnel build message.
 	 *
 	 * `numHops` are the real hops of the configured path,
@@ -110,7 +110,7 @@ namespace tunnel
 		};
 
 	public:
-		/** function for visiting a hops stored in a tunnel */
+		/* function for visiting a hops stored in a tunnel */
 		typedef std::function<void (std::shared_ptr<const i2p::data::IdentityEx>)> TunnelHopVisitor;
 
 		Tunnel (std::shared_ptr<TunnelConfig> config);
@@ -129,13 +129,13 @@ namespace tunnel
 		bool IsRecreated () const { return m_IsRecreated.load (std::memory_order_relaxed); };
 		void SetRecreated (bool recreated) { m_IsRecreated.store (recreated, std::memory_order_relaxed); };
 		int GetNumHops () const { return static_cast<int> (m_Hops.size ()); };
-		/**
+		/*
 		 * record count advertised by the last build request, 0 if none was
 		 * sent
 		 */
 		int GetNumBuildRecords () const { return m_NumBuildRecords.load (std::memory_order_relaxed); };
 
-		/**
+		/*
 		 * @name Tunnel test strikes
 		 *
 		 * How many tunnel tests this tunnel has failed in a row. The counter
@@ -175,7 +175,7 @@ namespace tunnel
 		void SendTunnelDataMsg (std::shared_ptr<i2p::I2NPMessage> /* msg */) override;
 		void EncryptTunnelMsg (std::shared_ptr<const I2NPMessage> in, std::shared_ptr<I2NPMessage> out) override;
 
-		/** @brief add latency sample */
+		/* @brief add latency sample */
 		void AddLatencySample (const int us)
 		{
 			// Read-modify-write from several transport / tunnel threads. A
@@ -188,15 +188,15 @@ namespace tunnel
 				if (m_Latency.compare_exchange_weak (old, updated, std::memory_order_relaxed)) break;
 			}
 		}
-		/** @brief get this tunnel's estimated latency */
+		/* @brief get this tunnel's estimated latency */
 		int GetMeanLatency () const { return (m_Latency.load (std::memory_order_relaxed) + 500) / 1000; }
-		/** Return true when latency is within [lowerbound, upperbound]. */
+		/* Return true when latency is within [lowerbound, upperbound]. */
 		bool LatencyFitsRange (int lowerbound, int upperbound) const;
 
 		bool LatencyIsKnown () const { return m_Latency.load (std::memory_order_relaxed) != UNKNOWN_LATENCY; }
 		bool IsSlow () const;
 
-		/** visit all hops we currently store */
+		/* visit all hops we currently store */
 		void VisitTunnelHops (TunnelHopVisitor v);
 
 	private:
@@ -260,7 +260,7 @@ namespace tunnel
 			, m_Endpoint (true) { };
 		void HandleTunnelDataMsg (std::shared_ptr<I2NPMessage> && msg) override;
 		virtual size_t GetNumReceivedBytes () const { return m_Endpoint.GetNumReceivedBytes (); };
-		/** last tunnel data message arrival in milliseconds, 0 if none yet */
+		/* last tunnel data message arrival in milliseconds, 0 if none yet */
 		uint64_t GetLastReceiveTimeMs () const { return m_Endpoint.GetLastReceiveTimeMs (); };
 		bool IsInbound () const override { return true; }
 		bool Recreate () override;
@@ -309,7 +309,7 @@ namespace tunnel
 		size_t m_NumSentBytes;
 	};
 
-	/**
+	/*
 	 * One-hop tunnel configurations used by the fallback builders.
 	 *
 	 * The far-end transport mask is the peer's real transport set in the
@@ -321,7 +321,7 @@ namespace tunnel
 	std::shared_ptr<TunnelConfig> CreateOneHopInboundTunnelConfig (const i2p::data::RouterInfo & router);
 	std::shared_ptr<TunnelConfig> CreateOneHopOutboundTunnelConfig (
 		const i2p::data::RouterInfo & router, uint32_t replyTunnelID, const i2p::data::IdentHash & replyIdent);
-	/** Outbound mirror of @a inbound: same peers, same far-end mask. */
+	/* Outbound mirror of @a inbound: same peers, same far-end mask. */
 	std::shared_ptr<TunnelConfig> CreatePairedOutboundTunnelConfig (const InboundTunnel & inbound);
 
 	/// Tunnel manager: owns the tunnel worker thread, the registered
@@ -378,16 +378,16 @@ namespace tunnel
 
 		std::shared_ptr<I2NPMessage> NewI2NPTunnelMessage (bool endpoint);
 
-		/**
+		/*
 		 * Tunnels with an outstanding build request that belong to @a pool.
 		 */
 		size_t GetNumPendingTunnels (const TunnelPool * pool, bool inbound) const;
-		/** Inbound registry messages dropped because the queue was full. */
+		/* Inbound registry messages dropped because the queue was full. */
 		uint64_t GetNumDroppedTunnelMessages () const
 		{
 			return m_NumDroppedTunnelMessages.load (std::memory_order_relaxed);
 		}
-		/**
+		/*
 		 * Queue size bound used by PostTunnelData(), for diagnostics and
 		 * tests.
 		 */
@@ -402,11 +402,11 @@ namespace tunnel
 											  * m_TransitTunnels.GetNumTransitTunnels () / maxNumTransitTunnels)
 										: CONGESTION_LEVEL_FULL;
 		}
-		/** Returns one value from the shared tunnel RNG. */
+		/* Returns one value from the shared tunnel RNG. */
 		uint32_t GetRng ();
-		/** Returns a copy of the shared RNG for read-only algorithms. */
+		/* Returns a copy of the shared RNG for read-only algorithms. */
 		std::mt19937 GetRngSnapshot () const;
-		/**
+		/*
 		 * Shuffle in place while advancing the shared RNG under its mutex.
 		 */
 		template <typename RandomIt> void Shuffle (RandomIt first, RandomIt last)

@@ -89,7 +89,7 @@ namespace
 	constexpr unsigned STAGING_SLOTS = 8;
 	constexpr int REQUEST_TIMEOUT_MS = 5000;
 
-	/**
+	/*
 	 * Canonical name codecs.
 	 *
 	 * These deliberately do not call the core library: this archive must
@@ -146,7 +146,7 @@ namespace
 		return out;
 	}
 
-	/** Decode a padded I2P-base64 string; returns the byte count or -1. */
+	/* Decode a padded I2P-base64 string; returns the byte count or -1. */
 	int DecodeBase64 (std::string_view text, uint8_t * out, size_t outSize)
 	{
 		if (text.empty () || text.size () % 4 != 0) return -1;
@@ -213,7 +213,7 @@ namespace
 		return out;
 	}
 
-	/** Decode a lower-case base32 string; returns the byte count or -1. */
+	/* Decode a lower-case base32 string; returns the byte count or -1. */
 	int DecodeBase32 (std::string_view text, uint8_t * out, size_t outSize)
 	{
 		unsigned tmp = 0, bits = 0;
@@ -261,7 +261,7 @@ namespace
 		}
 	};
 
-	/**
+	/*
 	 * Resolved location of one artifact: the fixed kind directory, the
 	 * optional first-character shard the core already uses, and the file
 	 * name.
@@ -273,7 +273,7 @@ namespace
 		std::string file;
 	};
 
-	/**
+	/*
 	 * Map one canonical artifact name onto the fixed kind directory, the
 	 * first-character shard the core's readers already use and the file
 	 * name.
@@ -308,7 +308,7 @@ namespace
 		return false;
 	}
 
-	/**
+	/*
 	 * Open (or create, mode 0700) one child directory of @a root. The
 	 * entry is checked with AT_SYMLINK_NOFOLLOW and then re-checked
 	 * through the opened descriptor so a replaced entry between the two
@@ -335,7 +335,7 @@ namespace
 		return opened.Release ();
 	}
 
-	/**
+	/*
 	 * fstatat with symlinks rejected; returns false on any unexpected
 	 * error. */
 	bool TargetStatus (int directory, const std::string & file, struct stat & status, bool & exists)
@@ -446,7 +446,7 @@ namespace
 		return ::unlinkat (directory, layout.file.c_str (), 0) == 0 && ::fsync (directory) == 0;
 	}
 
-	/**
+	/*
 	 * Send the single status reply of one request. It is used for the
 	 * configuration acknowledgement, for the result of an operation and
 	 * for a local refusal (Busy/Rejected), so the client always has
@@ -559,7 +559,7 @@ bool IsCurrentDataStorageReply (
 	return replyGeneration == currentGeneration && replyRequestId == inFlightRequestId;
 }
 
-/**
+/*
  * Data-storage worker body. Ordering is the contract, not an accident:
  * 1. adopt the channel and apply the socket/capability lockdown before
  * the first untrusted frame;
@@ -762,7 +762,7 @@ int RunDataStorageWorker (int fd, int inheritedRoot)
 
 struct DataStorageClient::Impl
 {
-	/**
+	/*
 	 * Client-side lifecycle. `Stopped` is the state before `Start()` and
 	 * after `Stop()`; `Ready` owns a configured worker; `Restarting` may
 	 * respawn once the shared backoff deadline has passed; `Failed` is
@@ -784,7 +784,7 @@ struct DataStorageClient::Impl
 	std::string rootPath;
 	uint64_t device = 0;
 	uint64_t inode = 0;
-	/**
+	/*
 	 * Kept open for the lifetime of a started client so a restart can
 	 * reuse the same validated directory capability instead of
 	 * re-resolving a path. */
@@ -928,7 +928,7 @@ struct DataStorageClient::Impl
 		return true;
 	}
 
-	/** Respawn/configure once when the backoff allows it. */
+	/* Respawn/configure once when the backoff allows it. */
 	bool EnsureReady ()
 	{
 		if (state == State::Ready) return true;
@@ -951,7 +951,7 @@ struct DataStorageClient::Impl
 		return false;
 	}
 
-	/**
+	/*
 	 * Single-flight write or removal under the client's `mutex`.
 	 *
 	 * Validation (kind, canonical name, payload bound) happens before any

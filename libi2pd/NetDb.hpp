@@ -99,19 +99,19 @@ namespace data
 	// hour of uptime, when the local clock and peer view can be trusted.
 	const uint32_t NETDB_JAVA_UP_LONG_ENOUGH = 60 * 60; // in seconds
 
-	/** function for visiting a leaseset stored in a floodfill */
+	/* function for visiting a leaseset stored in a floodfill */
 	typedef std::function<void (const IdentHash, std::shared_ptr<LeaseSet>)> LeaseSetVisitor;
 
-	/** function for visiting a router info we have locally */
+	/* function for visiting a router info we have locally */
 	typedef std::function<void (std::shared_ptr<const i2p::data::RouterInfo>)> RouterInfoVisitor;
 
-	/**
+	/*
 	 * function for visiting a router info and determining if we want to
 	 * use it
 	 */
 	typedef std::function<bool (std::shared_ptr<const i2p::data::RouterInfo>)> RouterInfoFilter;
 
-	/**
+	/*
 	 * Decoded DatabaseLookup reply-key block (I2NP DatabaseLookup, bit
 	 * 1/bit 4).
 	 *
@@ -133,7 +133,7 @@ namespace data
 		std::array<uint8_t, 32> tag { };
 	};
 
-	/**
+	/*
 	 * Validate and decode a DatabaseLookup reply-key block.
 	 *
 	 * Returns false for truncated blocks, an invalid tag count, or the
@@ -145,7 +145,7 @@ namespace data
 	bool ParseDatabaseLookupReplyKey (
 		const uint8_t * block, size_t len, uint8_t flags, DatabaseLookupReplyKey & replyKey);
 
-	/**
+	/*
 	 * True when the parsed reply key can encrypt the reply. A lookup that
 	 * requested an encrypted reply (bit 1 or bit 4) must never be answered
 	 * in cleartext, so callers drop the message when this returns false.
@@ -162,7 +162,7 @@ namespace data
 		return !requested || replyKey.mode != DatabaseLookupReplyKey::Mode::None;
 	}
 
-	/**
+	/*
 	 * Delivery path of a DatabaseStore/DatabaseLookup.
 	 *
 	 * Java's InboundMessageDistributor treats a message that crossed an
@@ -188,7 +188,7 @@ namespace data
 		return origin != DatabaseStoreOrigin::Tunnel;
 	}
 
-	/**
+	/*
 	 * Java InboundMessageDistributor/HandleDatabaseStoreMessageJob: only a
 	 * direct store may carry a reply token and be acknowledged/relayed. A
 	 * tunnel-origin store still keeps its entry, but the token, reply
@@ -214,7 +214,7 @@ namespace data
 		return true;
 	}
 
-	/**
+	/*
 	 * Java PeerState.gotRI/PeerState2.gotRI admission for the
 	 * request-flood bit: only a floodfill forwards a received RouterInfo,
 	 * and never for an operator-blocked or runtime-banned key. The per-key
@@ -223,7 +223,7 @@ namespace data
 	 */
 	bool IsRouterInfoFloodAdmitted (bool floodfillEnabled, const IdentHash & ident);
 
-	/**
+	/*
 	 * Classification of a file found under the netDb hashed storage root.
 	 */
 	enum class RouterInfoFileKind : uint8_t
@@ -233,7 +233,7 @@ namespace data
 		Foreign // not written by this storage; left untouched
 	};
 
-	/**
+	/*
 	 * Classify a netDb storage path and, for Load, return the expected
 	 * base64 identity hash. A cached RouterInfo is only accepted when its
 	 * file name still matches the identity hash of the parsed descriptor.

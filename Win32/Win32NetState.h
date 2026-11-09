@@ -19,7 +19,7 @@
 #include "Log.h"
 #include "Transports.h"
 
-/**
+/*
  * COM sink for Windows Network List Manager connectivity events.
  *
  * The object is created with a reference count of one, advised on the
@@ -45,7 +45,7 @@ public:
 	}
 	~CNetworkListManagerEvent () { }
 
-	/**
+	/*
 	 * Standard COM identity: only IUnknown and
 	 * INetworkListManagerEvents (with AddRef). */
 	HRESULT STDMETHODCALLTYPE QueryInterface (REFIID riid, void ** ppvObject)
@@ -66,7 +66,7 @@ public:
 		return S_OK;
 	}
 
-	/**
+	/*
 	 * Instance-count management. Release() deletes the object at zero, so
 	 * the count must be balanced exactly once by the subscriber.
 	 */
@@ -79,7 +79,7 @@ public:
 		return (ULONG)Result;
 	}
 
-	/**
+	/*
 	 * Map one connectivity observation onto the transport online flag.
 	 *
 	 * IPv4 and/or IPv6 Internet capability means online; no Internet
@@ -125,7 +125,7 @@ private:
 	LONG m_ref;
 };
 
-/**
+/*
  * Create the Network List Manager COM object, publish its current state
  * and advise the connectivity sink.
  *
@@ -137,7 +137,7 @@ private:
  * mode.
  */
 void SubscribeToEvents ();
-/**
+/*
  * Unadvise the connectivity sink and release every COM object and the
  * apartment.
  * Releasing the sink is what deletes it (reference count one), so the

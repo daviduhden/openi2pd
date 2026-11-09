@@ -154,19 +154,19 @@ namespace tunnel
 	const uint64_t TUNNEL_BUILD_REPLY_EXPIRATION_MS = 60 * 1000; // 60 seconds
 	const uint64_t TUNNEL_BUILD_RELAY_EXPIRATION_MS = 25 * 1000; // 25 seconds
 
-	/** Exact ShortTunnelBuild payload size for @a numRecords records. */
+	/* Exact ShortTunnelBuild payload size for @a numRecords records. */
 	constexpr size_t GetShortTunnelBuildMessageSize (int numRecords)
 	{
 		return 1 + static_cast<size_t> (numRecords) * SHORT_TUNNEL_BUILD_RECORD_SIZE;
 	}
-	/**
+	/*
 	 * Exact VariableTunnelBuild payload size for @a numRecords records.
 	 */
 	constexpr size_t GetVariableTunnelBuildMessageSize (int numRecords)
 	{
 		return 1 + static_cast<size_t> (numRecords) * TUNNEL_BUILD_RECORD_SIZE;
 	}
-	/**
+	/*
 	 * True when a build payload is exactly the declared size (no trailing
 	 * bytes).
 	 */
@@ -178,7 +178,7 @@ namespace tunnel
 		return payloadLength == expected;
 	}
 
-	/**
+	/*
 	 * Bounded, decaying replay filter for transit build requests.
 	 *
 	 * Entries expire after the replay window and the table is capped, so a
@@ -195,7 +195,7 @@ namespace tunnel
 		{
 		}
 
-		/** @return True for a new key; false for a replay. */
+		/* @return True for a new key; false for a replay. */
 		bool CheckAndStore (const uint8_t * key, uint64_t nowMs);
 		size_t GetSize () const { return m_Entries.size (); }
 		void Clear ();

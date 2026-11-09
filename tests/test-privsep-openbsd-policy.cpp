@@ -74,7 +74,7 @@ bool HasPromiseText (std::string_view list, std::string_view name)
 	return false;
 }
 
-/**
+/*
  * Every generated token must be reviewable without applying the policy:
  * a promise name from the pledge(2) table, and an unveil rule naming an
  * absolute path below the filesystem root with a permission subset of
@@ -129,7 +129,7 @@ template <typename Action> void ExpectPledgeViolation (OpenBSDWorkerRole role, A
 	assert (WTERMSIG (status) == SIGABRT);
 }
 
-/** Run @a body under @a policy in a child and assert a clean exit. */
+/* Run @a body under @a policy in a child and assert a clean exit. */
 template <typename Body> void ExpectPolicyExit (const OpenBSDPolicy & policy, Body body)
 {
 	const pid_t pid = fork ();
@@ -566,7 +566,7 @@ void TestNetworkCannotWritePersistentFile ()
 		});
 }
 
-/**
+/*
  * The supervisor holds only stdio/proc. With no exec promise,
  * attempting to execute any image is a pledge violation and aborts
  * the process.
@@ -581,7 +581,7 @@ void TestSupervisorCannotExec ()
 			execve ("/bin/sh", argv, env);
 		});
 }
-/**
+/*
  * The supervisor pledge has no unveil promise: re-opening unveil
  * aborts.
  */
@@ -590,7 +590,7 @@ void TestSupervisorCannotReopenUnveil ()
 	ExpectPledgeViolation (OpenBSDWorkerRole::Supervisor, [] { (void)unveil ("/etc", "r"); });
 }
 
-/** After the explicit lock, a second unveil call is EPERM. */
+/* After the explicit lock, a second unveil call is EPERM. */
 void TestUnveilLockIsFinal ()
 {
 	OpenBSDPolicy policy;
@@ -612,7 +612,7 @@ void TestUnveilLockIsFinal ()
 	ExpectPledgeViolation (OpenBSDWorkerRole::Log, [] { (void)unveil ("/etc", "r"); });
 }
 
-/** The in-process spawn gate is per-process and cannot be cleared. */
+/* The in-process spawn gate is per-process and cannot be cleared. */
 void TestProcessCreationGate ()
 {
 	assert (!IsProcessCreationForbidden ());

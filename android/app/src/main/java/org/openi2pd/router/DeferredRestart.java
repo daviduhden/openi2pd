@@ -16,7 +16,7 @@ import java.util.function.Consumer;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
 
-/**
+/*
  * One pending restart, fenced against cancellation and owner retirement.
  * Readiness and admission share the owner's state monitor. Admission
  * makes only a short state transition and returns the launch action;
@@ -47,7 +47,7 @@ final class DeferredRestart {
         this.admit = Objects.requireNonNull(admit);
     }
 
-    /**
+    /*
      * Replace any pending request. Authority synchronously gates the
      * short admission action against owner retirement; it must not
      * retain the action. Each completion must be nonblocking.
@@ -63,7 +63,7 @@ final class DeferredRestart {
         ready();
     }
 
-    /** Invalidate even a continuation already queued on the executor. */
+    /* Invalidate even a continuation already queued on the executor. */
     void cancel() {
         Ticket previous;
         synchronized (monitor) {
@@ -73,7 +73,7 @@ final class DeferredRestart {
         complete(previous, false);
     }
 
-    /** Signal that a start generation has finished all of its cleanup. */
+    /* Signal that a start generation has finished all of its cleanup. */
     void ready() {
         Ticket ticket;
         synchronized (monitor) {

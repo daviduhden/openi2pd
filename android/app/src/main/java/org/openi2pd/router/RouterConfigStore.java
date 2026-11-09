@@ -27,7 +27,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.Locale;
 import java.util.Objects;
 
-/**
+/*
  * Central safe access to the daemon's {@code i2pd.conf}.
  *
  * <p>Only app-specific storage is accepted. Reads are size bounded and
@@ -51,13 +51,13 @@ public final class RouterConfigStore {
 
     private static volatile RouterConfigStore instance;
 
-    /** How a changed option becomes active in the running router. */
+    /* How a changed option becomes active in the running router. */
     public enum ApplyMode {
-        /** Takes effect without restarting the router. */
+        /* Takes effect without restarting the router. */
         HOT,
-        /** The router must be restarted. */
+        /* The router must be restarted. */
         RESTART,
-        /** Re-read tunnels.d / tunnels.conf without a full restart. */
+        /* Re-read tunnels.d / tunnels.conf without a full restart. */
         RELOAD_TUNNELS
     }
 
@@ -76,7 +76,7 @@ public final class RouterConfigStore {
         this.configFile = resolveConfigFile(appContext);
     }
 
-    /**
+    /*
      * Process-wide store for the daemon's {@code i2pd.conf}, created
      * once under the class lock and bound to the application context.
      *
@@ -100,7 +100,7 @@ public final class RouterConfigStore {
         return local;
     }
 
-    /** Read a string option, or {@code def} when absent/invalid. */
+    /* Read a string option, or {@code def} when absent/invalid. */
     public synchronized String getString(String key, String def) {
         if (!isSafeKey(key) || isSecretKey(key) || configFile == null) {
             return def;
@@ -114,12 +114,12 @@ public final class RouterConfigStore {
         return value == null ? def : value;
     }
 
-    /** Read a boolean option, or {@code def} when absent/invalid. */
+    /* Read a boolean option, or {@code def} when absent/invalid. */
     public synchronized boolean getBoolean(String key, boolean def) {
         return parseBoolean(getString(key, null), def);
     }
 
-    /**
+    /*
      * Parse the INI boolean spellings accepted by i2pd. Kept static and
      * Android-free so the settings loader can parse values off the main
      * thread and so the rule is covered by a pure-JVM test.
@@ -135,7 +135,7 @@ public final class RouterConfigStore {
         };
     }
 
-    /**
+    /*
      * Validate and write one option. Existing comments, sections and
      * unknown keys are preserved. Returns {@code false} for unsafe
      * input, oversized files or I/O failure.
@@ -178,7 +178,7 @@ public final class RouterConfigStore {
         return true;
     }
 
-    /**
+    /*
      * How a changed option becomes visible to the running router.
      *
      * <p>The log level is hot: {@link SettingsFragment} writes the
@@ -202,7 +202,7 @@ public final class RouterConfigStore {
         return ApplyMode.RESTART;
     }
 
-    /**
+    /*
      * Value validation shared by settings and direct callers.
      *
      * <p>Rejects empty values, control characters and the INI injection
@@ -232,7 +232,7 @@ public final class RouterConfigStore {
         return true;
     }
 
-    /**
+    /*
      * Legacy settings used {@code log} for the router's {@code
      * loglevel} option. Keep that alias so an existing
      * PreferenceFragment key continues to edit the real INI key instead
@@ -263,7 +263,7 @@ public final class RouterConfigStore {
         return true;
     }
 
-    /**
+    /*
      * Refuse to read or write key material/passwords through this
      * store.
      */
@@ -334,7 +334,7 @@ public final class RouterConfigStore {
         return out.toString(StandardCharsets.UTF_8.name());
     }
 
-    /**
+    /*
      * Return the last assignment for {@code flatKey}, matching both
      * {@code key = value} at top level and {@code [section] key =
      * value}. Boost.Program_options uses the last duplicate, so the

@@ -23,7 +23,7 @@ import android.util.Log;
 import org.openi2pd.router.AutoStartController;
 import org.openi2pd.router.RouterService;
 
-/**
+/*
  * Boot and package-replacement resume.
  *
  * <p>Neither action starts a router by itself. The receiver only
@@ -69,7 +69,7 @@ public class BootUpReceiver extends BroadcastReceiver {
         }
     }
 
-    /**
+    /*
      * Pure decision for one broadcast, without a {@code Context}, so a
      * JVM test can pin the rule that a broadcast never starts a router
      * the operator stopped.

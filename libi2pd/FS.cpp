@@ -309,7 +309,7 @@ namespace fs
 		return true;
 	}
 
-	/**
+	/*
 	 * @brief Durable, atomic replacement of one file.
 	 * @param path target path; the parent directory supplies the temporary
 	 *             file.

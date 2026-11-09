@@ -51,7 +51,7 @@ inline constexpr std::array<SigTypeName, 16> SIG_TYPE_NAMES { {
 	{ "GOSTR3410-TC26-A-GOSTR3411-512", i2p::data::SIGNING_KEY_TYPE_GOSTR3410_TC26_A_512_GOSTR3411_512 },
 } };
 
-/**
+/*
  * @brief returns stable string representation of a signing key type
  *
  * The first table entry with a matching type wins, so an alias must
@@ -71,7 +71,7 @@ inline std::string SigTypeToName (uint16_t keytype)
 	return ss.str ();
 }
 
-/**
+/*
  * @brief whether a signing key type has the b33 blinded form
  *
  * An encrypted LeaseSet blinds only Ed25519 and RedDSA destinations, so
@@ -89,7 +89,7 @@ inline bool IsBlindableSigningKeyType (i2p::data::SigningKeyType type)
 /// Grammar-level failure categories; none retains the rejected operand.
 enum class RecordNameError { Empty, TooLong, Control, Separator };
 
-/**
+/*
  * A registration record is `name=destination#!sig=...`; a name carrying
  * a separator, control byte or whitespace could forge extra fields. The
  * check is deliberately about the record grammar, not DNS policy.
@@ -134,7 +134,7 @@ constexpr bool IsValidRecordName (std::string_view name)
 	return !ValidateRecordName (name).has_value ();
 }
 
-/**
+/*
  * Parse a complete decimal integer inside a closed range. Trailing
  * characters, overflow and an empty input are rejected instead of
  * silently truncated.

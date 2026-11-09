@@ -52,7 +52,7 @@ using worker_pid_t = int;
 using worker_pid_t = pid_t;
 #endif
 
-/**
+/*
  * Worker roles as an enumerated identity. The spawner declares the role
  * both on the command line and in the identity hello written to the
  * child's descriptor 5; RunWorker refuses a process whose argv role and
@@ -74,7 +74,7 @@ enum class WorkerRole : uint8_t
 
 const char * WorkerRoleName (WorkerRole role);
 
-/**
+/*
  * True for roles that receive an inherited storage root at descriptor
  * 4. A role outside this set must never be spawned with a root fd, and
  * every role in it must receive one; the spawn helper enforces both
@@ -84,9 +84,9 @@ bool WorkerRoleTakesInheritedRoot (WorkerRole role);
 std::optional<WorkerRole> WorkerRoleFromName (std::string_view name);
 
 inline constexpr size_t WORKER_HELLO_NONCE_SIZE = 16;
-/** A big-endian 32-bit uid followed by a big-endian 32-bit gid. */
+/* A big-endian 32-bit uid followed by a big-endian 32-bit gid. */
 inline constexpr size_t WORKER_HELLO_IDENTITY_SIZE = 8;
-/**
+/*
  * One role byte, the 16-byte nonce and the identity of the process that
  * will serve the channel: `[role u8 | nonce 16 | uid u32 BE | gid u32
  * BE]`, a fixed 25-byte record. The uid/gid are written by the forked
@@ -95,7 +95,7 @@ inline constexpr size_t WORKER_HELLO_IDENTITY_SIZE = 8;
  */
 inline constexpr size_t WORKER_HELLO_SIZE = 1 + WORKER_HELLO_NONCE_SIZE + WORKER_HELLO_IDENTITY_SIZE;
 
-/**
+/*
  * Decoded spawn identity: the role and the identity the worker must
  * have. */
 struct WorkerHelloRecord
@@ -105,7 +105,7 @@ struct WorkerHelloRecord
 	uint32_t gid = 0;
 };
 
-/**
+/*
  * Build the hello record for one spawn from an explicit nonce and
  * identity.
  * Returns nullopt for an unknown role, a zero nonce, a nonce of the
@@ -114,19 +114,19 @@ struct WorkerHelloRecord
  */
 std::optional<std::vector<uint8_t>> EncodeWorkerHello (
 	WorkerRole role, std::span<const uint8_t> nonce, uint32_t uid, uint32_t gid);
-/**
+/*
  * Validate a complete hello record. Requires exactly WORKER_HELLO_SIZE
  * bytes, a known role id, a non-zero nonce and a non-zero uid. Errors
  * never contain the nonce.
  */
 std::optional<WorkerHelloRecord> DecodeWorkerHello (std::span<const uint8_t> hello);
-/**
+/*
  * Generate a fresh 16-byte nonce from the platform CSPRNG and build the
  * hello for an explicit identity. Fails closed (nullopt) when the
  * provider cannot supply randomness.
  */
 std::optional<std::vector<uint8_t>> CreateWorkerHello (WorkerRole role, uint32_t uid, uint32_t gid);
-/**
+/*
  * Read, validate and consume the hello from @a fd, then close it.
  *
  * Reads are nonblocking and share one five-second steady deadline,
@@ -141,7 +141,7 @@ std::optional<std::vector<uint8_t>> CreateWorkerHello (WorkerRole role, uint32_t
 std::optional<WorkerHelloRecord> ReadWorkerHello (int fd);
 
 #ifndef _WIN32
-/**
+/*
  * Close inherited standard descriptors that are sockets. A foreground
  * service or socket-activated wrapper can otherwise hand the
  * log/supervisor worker a live network descriptor that seccomp/Landlock
@@ -156,7 +156,7 @@ inline void SanitizeInheritedStdio ()
 	}
 }
 
-/**
+/*
  * Rebind descriptors 0, 1 and 2 to /dev/null.
  *
  * A worker must never write to the operator's terminal, a
@@ -168,7 +168,7 @@ inline void SanitizeInheritedStdio ()
  */
 bool PinStandardDescriptors ();
 
-/**
+/*
  * Poll for child exit against one absolute steady-clock deadline.
  * Scheduler and kernel stalls can delay return; reaping is nonblocking.
  *
@@ -229,7 +229,7 @@ inline bool WaitForChildExitUntil (pid_t pid, int pidFd,
 	}
 }
 
-/** Relative-time convenience wrapper; owners of phases use Until. */
+/* Relative-time convenience wrapper; owners of phases use Until. */
 inline bool WaitForChildExitBounded (pid_t pid, int pidFd, int timeoutMs)
 {
 	return WaitForChildExitUntil (pid, pidFd,
@@ -248,14 +248,14 @@ public:
 	ChildProcess (const ChildProcess &) = delete;
 	ChildProcess & operator= (const ChildProcess &) = delete;
 
-	/**
+	/*
 	 * Adopt an existing child and channel. Used by the spawn path to apply
 	 * the shared ownership and pidfd setup.
 	 */
 	static ChildProcess Adopt (worker_pid_t pid, Channel channel);
 
 	bool IsRunning ();
-	/**
+	/*
 	 * Stop and reap the child within a bounded time.
 	 *
 	 * Advisory send, graceful exit, TERM and KILL reaping share one
@@ -273,7 +273,7 @@ public:
 	 * the router exits.
 	 */
 	void Stop (int timeoutMs = 2000);
-	/**
+	/*
 	 * Release ownership without signalling. Used by the OpenBSD storage
 	 * broker after it hands the worker channel to the core: the broker
 	 * must not kill a worker that another process now owns.
@@ -289,12 +289,12 @@ public:
 
 private:
 	friend i2p::expected<ChildProcess, std::string> SpawnLogWorker (std::string_view executable);
-	/**
+	/*
 	 * Reap without blocking. Returns true when the child no longer
 	 * exists. */
 	bool ReapNoHang ();
 #ifndef _WIN32
-	/**
+	/*
 	 * Wait for exit until an absolute deadline. Never blocks
 	 * indefinitely. */
 	bool WaitForExitUntil (std::chrono::steady_clock::time_point deadline);
@@ -305,13 +305,13 @@ private:
 	Channel m_Channel;
 };
 
-/**
+/*
  * Spawn a log worker. On OpenBSD the supervisor resolves the executable
  * path before applying its own pledge policy and passes it here, so the
  * supervisor does not need rpath after the sandbox is installed.
  */
 i2p::expected<ChildProcess, std::string> SpawnLogWorker (std::string_view executable = { });
-/**
+/*
  * Spawn the supervisor process that owns the log worker.
  *
  * The child is bound to a fresh CSPRNG nonce over descriptor 5 and
@@ -321,7 +321,7 @@ i2p::expected<ChildProcess, std::string> SpawnLogWorker (std::string_view execut
  * proc/exec.
  */
 i2p::expected<ChildProcess, std::string> SpawnSupervisor ();
-/**
+/*
  * Spawn one worker role with no inherited storage root.
  *
  * Descriptor contract for the exec'ed child: 3 = control channel, 5 =
@@ -341,7 +341,7 @@ i2p::expected<ChildProcess, std::string> SpawnWorker (const char * role, std::st
 // process. The returned channel is its lifetime token; no proc promise
 // is needed later.
 i2p::expected<Channel, std::string> SpawnDetachedWorker (const char * role);
-/**
+/*
  * Pre-pledge startup only; inherited fd4, channel EOF owns worker
  * lifetime.
  * The worker is double-forked so it is not the daemon's child, so only
@@ -350,7 +350,7 @@ i2p::expected<Channel, std::string> SpawnDetachedWorker (const char * role);
  * the caller must not expect a waitable child.
  */
 i2p::expected<Channel, std::string> SpawnDetachedWorkerWithRoot (const char * role, int rootFd);
-/**
+/*
  * Spawn a worker role that takes the delegated storage root as fd4.
  *
  * @param role role name accepted by WorkerRoleFromName; the pairing
@@ -366,7 +366,7 @@ i2p::expected<Channel, std::string> SpawnDetachedWorkerWithRoot (const char * ro
 i2p::expected<ChildProcess, std::string> SpawnWorkerWithRoot (
 	const char * role, std::string_view executable, int rootFd);
 
-/**
+/*
  * Freeze the executable used for every spawn.
  *
  * Called once during startup with the resolved `argv[0]`. The candidate
@@ -382,7 +382,7 @@ i2p::expected<ChildProcess, std::string> SpawnWorkerWithRoot (
  * `IsProcessCreationForbidden()`): one flag, one owner, one definition.
  */
 void SetExecutablePath (std::string path);
-/** Frozen executable path, or empty when it was never validated. */
+/* Frozen executable path, or empty when it was never validated. */
 std::string ExecutablePath ();
 }
 

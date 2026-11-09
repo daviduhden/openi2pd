@@ -27,7 +27,7 @@ import androidx.lifecycle.ViewModelProvider;
 
 import com.google.android.material.chip.Chip;
 
-/**
+/*
  * Network and client-service status. All values come from the
  * service-owned snapshot; missing values are rendered as an em dash
  * instead of invented state.
@@ -94,7 +94,7 @@ public class NetworkFragment extends Fragment {
         viewModel.getSnapshot().observe(getViewLifecycleOwner(), this::render);
     }
 
-    /**
+    /*
      * Render one snapshot, or the unknown placeholders for {@code
      * null}.
      *

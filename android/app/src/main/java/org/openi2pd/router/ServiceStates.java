@@ -12,7 +12,7 @@
 
 package org.openi2pd.router;
 
-/**
+/*
  * Snapshot of the optional client services exposed by the router.
  *
  * <p>This is a presentation record only. It deliberately contains
@@ -27,7 +27,7 @@ package org.openi2pd.router;
  */
 public record ServiceStates(
         boolean httpProxy, boolean socksProxy, boolean bob, boolean sam, boolean i2cp) {
-    /**
+    /*
      * All services disabled; used before the daemon is started or on
      * error.
      */

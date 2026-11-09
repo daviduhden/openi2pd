@@ -29,7 +29,7 @@ void InstallRouterPersistenceWriter (RouterPersistenceWriter writer);
 bool WriteRouterPersistentFile (RouterPersistentFile file, std::span<const uint8_t> bytes);
 const char * RouterPersistentFileName (RouterPersistentFile file);
 
-/**
+/*
  * Bulk router artifacts that are still written by the socket-owning
  * core.
  *
@@ -56,7 +56,7 @@ using ArtifactWriter
 	= std::function<bool (StorageArtifact kind, std::string_view name, std::span<const uint8_t> bytes)>;
 using ArtifactRemover = std::function<bool (StorageArtifact kind, std::string_view name)>;
 
-/**
+/*
  * Upper bound for one artifact payload; a cached RouterInfo is at most
  * 4 KiB.
  */
@@ -65,7 +65,7 @@ using ArtifactRemover = std::function<bool (StorageArtifact kind, std::string_vi
 // larger payload, so accepting it here would only defer the failure.
 constexpr size_t MAX_ARTIFACT_SIZE = 16 * 1024;
 
-/**
+/*
  * Process capability invariant.
  *
  * A process that owns transport sockets and router keys must never also
@@ -84,7 +84,7 @@ constexpr CapabilityMask CapabilityBit (ProcessCapability capability)
 {
 	return CapabilityMask (1) << static_cast<CapabilityMask> (capability);
 }
-/**
+/*
  * true when a capability set does not combine Network and ArtifactWrite
  */
 constexpr bool IsCapabilitySetCompatible (CapabilityMask mask)
@@ -92,7 +92,7 @@ constexpr bool IsCapabilitySetCompatible (CapabilityMask mask)
 	return (mask & CapabilityBit (ProcessCapability::Network)) == 0
 		|| (mask & CapabilityBit (ProcessCapability::ArtifactWrite)) == 0;
 }
-/**
+/*
  * true while the direct data-directory writer may still be used.
  * Enabling privsep.artifacts makes the installed writer the only write
  * path, so a missing or failing worker must never be retried through
@@ -103,11 +103,11 @@ constexpr bool IsDirectArtifactFallbackAllowed (bool artifactsDelegated)
 	return !artifactsDelegated;
 }
 
-/**
+/*
  * true when "privsep.artifacts" delegates artifact writes to a worker
  */
 bool AreArtifactWritesDelegated ();
-/**
+/*
  * Replace the artifact backend. Install before the storage users start;
  * the caller keeps ownership of the worker lifecycle. Until an explicit
  * writer is installed the direct data-directory backend is the
@@ -115,14 +115,14 @@ bool AreArtifactWritesDelegated ();
  * disabled.
  */
 void InstallArtifactStorage (ArtifactWriter writer, ArtifactRemover remover);
-/**
+/*
  * Drop an installed backend and return to the direct data-directory
  * one.
  */
 void ClearArtifactStorage ();
-/** true when an explicit (worker) backend is installed */
+/* true when an explicit (worker) backend is installed */
 bool IsArtifactStorageInstalled ();
-/**
+/*
  * Write one artifact through the installed writer, or through the
  * direct backend while privsep.artifacts is disabled. A failed write
  * leaves the previous file intact (the writer replaces atomically), is
@@ -130,13 +130,13 @@ bool IsArtifactStorageInstalled ();
  * caller. It is never retried through the filesystem.
  */
 bool WriteArtifact (StorageArtifact kind, std::string_view name, std::span<const uint8_t> bytes);
-/** Remove one artifact; an already absent artifact is a success. */
+/* Remove one artifact; an already absent artifact is a success. */
 bool RemoveArtifact (StorageArtifact kind, std::string_view name);
-/**
+/*
  * stable log/protocol token for a kind, or nullptr for an unknown value
  */
 const char * StorageArtifactName (StorageArtifact kind);
-/**
+/*
  * true when name is the canonical identifier format required for kind
  */
 bool IsValidArtifactName (StorageArtifact kind, std::string_view name);

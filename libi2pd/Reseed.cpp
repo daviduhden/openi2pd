@@ -258,7 +258,7 @@ namespace data
 		return m_NetDbOverride ? *m_NetDbOverride : i2p::data::netdb;
 	}
 
-	/**
+	/*
 	 @brief tries to bootstrap into I2P network (from local files and servers, with respect of options)
 	 */
 	ReseedResult Reseeder::Bootstrap (const std::stop_token & token)
@@ -339,7 +339,7 @@ namespace data
 		return result;
 	}
 
-	/**
+	/*
 	 * @brief Download and verify one round of SU3 bundles from randomly
 	 *        chosen reseed servers.
 	 * @param token stop token; honoured before every download and before
@@ -465,7 +465,7 @@ namespace data
 		return result;
 	}
 
-	/**
+	/*
 	 * @brief bootstrap from HTTPS URL with SU3 file
 	 * @param url absolute SU3 or directory URL, with the Proposal 147
 	 * `netid` query parameter already appended by the caller; it is

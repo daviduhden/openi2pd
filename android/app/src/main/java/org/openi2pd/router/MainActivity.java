@@ -56,7 +56,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.function.BooleanSupplier;
 
-/**
+/*
  * Single-activity host for the router screens.
  *
  * <p>State is owned by {@link RouterViewModel} and the router service,
@@ -101,14 +101,14 @@ public class MainActivity extends AppCompatActivity {
     private final UiConfirmationAuthority confirmations = new UiConfirmationAuthority();
     private boolean confirmationServiceConnected;
     private boolean confirmationNativeStarted;
-    /**
+    /*
      * Defer the very first auto-start until the permission dialog
      * resolves.
      */
     private boolean startAfterPermissionResult;
     private boolean pendingAutostart;
 
-    /**
+    /*
      * Build the single-activity shell and decide whether a first launch
      * may auto-start the router.
      *
@@ -258,7 +258,7 @@ public class MainActivity extends AppCompatActivity {
         });
     }
 
-    /**
+    /*
      * Keep the toolbar title and Up affordance in sync with the top of
      * the back stack. The title is not part of Fragment state, so it
      * must be derived after rotation and after every detail push/pop.
@@ -358,7 +358,7 @@ public class MainActivity extends AppCompatActivity {
         return true;
     }
 
-    /**
+    /*
      * Show one destination as a single hidden-or-resumed fragment
      * transaction.
      *
@@ -455,12 +455,12 @@ public class MainActivity extends AppCompatActivity {
         return new DashboardFragment();
     }
 
-    /** Open the log detail from a dashboard quick action. */
+    /* Open the log detail from a dashboard quick action. */
     public void openLogs() {
         openDetail(new LogsFragment(), TAG_LOGS, R.string.logs_title);
     }
 
-    /**
+    /*
      * Switch to the settings destination from a dashboard quick action.
      */
     public void openSettings() {
@@ -592,7 +592,7 @@ public class MainActivity extends AppCompatActivity {
         return super.onOptionsItemSelected(item);
     }
 
-    /**
+    /*
      * Reseeding contacts the configured reseed servers over HTTPS, so
      * it is confirmed first. The native call returns immediately with a
      * typed outcome; the bootstrap itself runs in the NetDb background
@@ -668,14 +668,14 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    /** Local seam for confirmations with harmless test callbacks. */
+    /* Local seam for confirmations with harmless test callbacks. */
     @Nullable
     androidx.appcompat.app.AlertDialog confirm(@StringRes int title, @StringRes int message,
             @StringRes int positive, @NonNull Runnable action) {
         return confirm(title, message, positive, () -> true, action);
     }
 
-    /**
+    /*
      * Capture this foreground/service interval before showing a window.
      * The click rechecks command admission and consumes the exact
      * registration before running the action. Framework dismissal and
@@ -716,7 +716,7 @@ public class MainActivity extends AppCompatActivity {
                 && getLifecycle().getCurrentState().isAtLeast(Lifecycle.State.STARTED);
     }
 
-    /**
+    /*
      * Ask once for the runtime permissions that affect a running
      * router. Notifications are separate from routing; local-network
      * access is required by Android 17 before UPnP/SSDP may reach the
@@ -741,7 +741,7 @@ public class MainActivity extends AppCompatActivity {
         return true;
     }
 
-    /**
+    /*
      * Resolve the startup permission dialog and then release the
      * deferred first-launch start exactly once.
      *
@@ -814,7 +814,7 @@ public class MainActivity extends AppCompatActivity {
         super.onDestroy();
     }
 
-    /**
+    /*
      * Persist the navigation selection and the permission hand-off flag
      * before the UI is recreated, so the same destination is shown and
      * the first-launch auto-start is not replayed. Router state is not

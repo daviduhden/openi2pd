@@ -35,7 +35,7 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.openi2pd.router.receivers.BootUpReceiver;
 
-/**
+/*
  * Instrumentation lifecycle tests. They intentionally never start the
  * native daemon, open sockets or require a network. A device/emulator
  * must still run them in CI.
@@ -69,7 +69,7 @@ public final class RouterServiceLifecycleTest {
         serviceRule.unbindService();
     }
 
-    /**
+    /*
      * A boot broadcast must deliver the restore command, not an explicit
      * start command: the persisted stop is terminal, so the service
      * reconciles to "stay stopped" and stops itself again. The previous

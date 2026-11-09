@@ -11,7 +11,7 @@ import static org.junit.Assert.assertThrows;
 
 import org.junit.Test;
 
-/** Pure-JVM coverage for UTF-16 presentation truncation boundaries. */
+/* Pure-JVM coverage for UTF-16 presentation truncation boundaries. */
 public final class DisplayTextTest {
     @Test
     public void preservesSupplementaryCharactersAtBothSidesOfLimit() {

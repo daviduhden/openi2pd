@@ -65,7 +65,7 @@ namespace crypto
 			if (encrypted) memset (encrypted, 0, ECIES_ENCRYPTED_SIZE);
 		}
 
-		/**
+		/*
 		 * @brief Decode an I2P 64-byte X||Y point onto an OpenSSL curve.
 		 * @param curve group the point belongs to.
 		 * @param point pre-allocated destination point.
@@ -339,7 +339,7 @@ namespace crypto
 		return true;
 	}
 
-	/**
+	/*
 	 * @brief Build the decryptor for this local key pair on first use.
 	 *
 	 * Lazy creation keeps the long-term private key out of a second object

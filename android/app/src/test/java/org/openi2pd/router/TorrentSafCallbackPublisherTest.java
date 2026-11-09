@@ -18,7 +18,7 @@ import java.util.concurrent.Executor;
 
 import org.junit.Test;
 
-/** Pure-JVM checks for SAF callbacks crossing service destruction. */
+/* Pure-JVM checks for SAF callbacks crossing service destruction. */
 public final class TorrentSafCallbackPublisherTest {
     @Test
     public void queuedProgressAndCompletionAreFencedAfterRetirement() {

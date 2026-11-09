@@ -16,7 +16,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.function.Consumer;
 
-/**
+/*
  * Fences callbacks and worker submissions retained by an obsolete
  * RouterService instance after a destroy/recreate cycle. The
  * owner-scoped executor serializes Java service work through one
@@ -50,7 +50,7 @@ final class ServiceOwnerEpoch {
         return epoch != 0L && currentEpoch == epoch;
     }
 
-    /**
+    /*
      * Run an owner callback only if its epoch is current. The check and
      * action share the epoch monitor with acquisition and retirement,
      * so the callback must remain short and must not enter JNI or wait
@@ -66,7 +66,7 @@ final class ServiceOwnerEpoch {
         return true;
     }
 
-    /**
+    /*
      * Create an owner-scoped submission view over the process FIFO.
      * Submission and retirement share this monitor, so accepted work is
      * queued before the owner's final stop barrier; execution is then
@@ -88,7 +88,7 @@ final class ServiceOwnerEpoch {
         };
     }
 
-    /**
+    /*
      * Retire an owner and append its mandatory stop atomically with
      * respect to owner submissions/acquisition. The bookkeeping
      * callback must not block or call JNI; the stop itself runs later,

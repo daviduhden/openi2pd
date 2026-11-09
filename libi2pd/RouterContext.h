@@ -112,7 +112,7 @@ public:
 	RouterContext ();
 	~RouterContext ();
 	void Init ();
-	/** Release transient pre-start state after failed Daemon::init.
+	/* Release transient pre-start state after failed Daemon::init.
 	 * Caller serializes lifecycle access; persisted identity and transport
 	 * keys are retained. This does not undo filesystem/configuration side
 	 * effects.

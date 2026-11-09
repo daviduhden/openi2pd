@@ -12,7 +12,7 @@ import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 
-/**
+/*
  * Creates the service-owned SAF lane. One provider operation runs at a
  * time, with at most sixteen pending tasks retaining grants, status
  * consumers or import/export state. A small burst fits without letting
@@ -24,7 +24,7 @@ final class TorrentSafTaskExecutor {
     private TorrentSafTaskExecutor() {
     }
 
-    /**
+    /*
      * Return a new owner-scoped executor. Saturation and shutdown throw
      * {@link java.util.concurrent.RejectedExecutionException}; callers
      * publish their typed fallback through the owner's epoch fence.

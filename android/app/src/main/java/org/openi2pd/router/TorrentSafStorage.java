@@ -18,7 +18,7 @@ import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-/**
+/*
  * Client-side SAF capability registry and Binder adapter for torrent
  * payloads. Local root and file IDs survive a broker replacement, while
  * the remote IDs cached in each entry are valid only for one client
@@ -38,7 +38,7 @@ final class TorrentSafStorage {
     private static final MappingAuthority mappingAuthority =
             new MappingAuthority(temporaryGrants::drain);
 
-    /**
+    /*
      * One process-local grant mutation. Contention and reentrant calls
      * are rejected rather than waiting on a provider that might call
      * back into the application. No callback may extend this authority
@@ -103,7 +103,7 @@ final class TorrentSafStorage {
     private static final BindBudget budget = new BindBudget();
     private static boolean bound, retryScheduled;
     private static final java.util.Map<String, Long> authorized = new java.util.HashMap<>();
-    /**
+    /*
      * Framework-free bind-retry budget. A permanently broken policy
      * must not spawn and kill the broker process forever, while a
      * transient crash must not disable SAF storage until the
@@ -121,7 +121,7 @@ final class TorrentSafStorage {
         private long connectedAt, retriedAt;
         private boolean connected, retried, exhausted;
 
-        /**
+        /*
          * Charges one attempt and returns its backoff; -1 means
          * exhausted.
          */
@@ -143,7 +143,7 @@ final class TorrentSafStorage {
             return attempts;
         }
 
-        /**
+        /*
          * Records a successful connection. The latch is always cleared;
          * the attempt budget is restored only when the previous binding
          * was stable, so a broker that connects and immediately dies
@@ -157,7 +157,7 @@ final class TorrentSafStorage {
             connectedAt = now;
         }
 
-        /**
+        /*
          * A completed transaction is proof of a usable binding, but it
          * restores the budget only for a binding past the stability
          * floor.
@@ -169,7 +169,7 @@ final class TorrentSafStorage {
             exhausted = false;
         }
 
-        /**
+        /*
          * Explicit recovery: clears the exhausted latch at most once
          * per stability window. Returns true when a bind attempt may be
          * scheduled.
@@ -186,7 +186,7 @@ final class TorrentSafStorage {
             return true;
         }
 
-        /**
+        /*
          * An explicit selection or daemon start begins a fresh episode.
          */
         void reset() {
@@ -224,7 +224,7 @@ final class TorrentSafStorage {
         T run(Session session) throws Exception;
     }
 
-    /**
+    /*
      * Why a transaction produced its fallback; the caller decides what
      * to do.
      */
@@ -328,7 +328,7 @@ final class TorrentSafStorage {
                 scheduleBind();
         }
     }
-    /**
+    /*
      * Binds the broker identity (apiVersion + generation) on the single
      * IPC thread so the service main thread never waits for a saturated
      * broker. The next transaction re-checks it, so a rejected
@@ -342,7 +342,7 @@ final class TorrentSafStorage {
             // first.
         }
     }
-    /**
+    /*
      * Resolves the broker generation for this binding exactly once and
      * refuses a broker from another build, for example a process that
      * survived an in-place update and does not implement protocol v2.
@@ -406,7 +406,7 @@ final class TorrentSafStorage {
         }
         watchRetirement(session.remote.asBinder());
     }
-    /**
+    /*
      * Bounds the retiring state. If the broker is still alive the
      * binding is dropped so the process is destroyed and a fresh broker
      * can be bound; a dead binder is normally resolved by its death
@@ -430,7 +430,7 @@ final class TorrentSafStorage {
         }
         dropStaleBinding();
     }
-    /**
+    /*
      * Unbinds a binding whose broker ignored (or never received)
      * retirement.
      */
@@ -499,7 +499,7 @@ final class TorrentSafStorage {
             }
         }, delay);
     }
-    /**
+    /*
      * Explicit, bounded recovery from a transient bind failure. Called
      * by {@link #initialize}, by an explicit tree selection and by the
      * status refresh the UI performs; a permanently broken policy still
@@ -520,7 +520,7 @@ final class TorrentSafStorage {
             return;
         scheduleBind();
     }
-    /**
+    /*
      * Install the application context and begin a fresh bind episode.
      *
      * <p>Called from {@link RouterService#onCreate()} on the main
@@ -544,7 +544,7 @@ final class TorrentSafStorage {
         // worker, not on the service main thread. Binding alone only
         // starts the broker.
     }
-    /**
+    /*
      * Persist a torrent-to-tree mapping after obtaining at least read
      * access. A read-only grant may seed existing content, but cannot
      * authorize writes. Existing mappings sharing a URI keep their
@@ -644,7 +644,7 @@ final class TorrentSafStorage {
         }
     }
 
-    /**
+    /*
      * Acquire an opaque process-wide transient grant lease. Every
      * borrower gets a token, even if another service owner obtained
      * all modes earlier. Null means admission or acquisition failed.
@@ -681,7 +681,7 @@ final class TorrentSafStorage {
         return acquired[0];
     }
 
-    /**
+    /*
      * Retire exactly this operation token on its provider worker. Never
      * wait for contended grant authority or revoke another borrower:
      * busy authority defers bounded cleanup until the next operation.
@@ -693,7 +693,7 @@ final class TorrentSafStorage {
             mappingAuthority.run(() -> true);
     }
 
-    /**
+    /*
      * Release both persisted modes of an obsolete tree only after the
      * mapping commit and when no other torrent references it. Modes
      * belong to the old tree: a read-only replacement must not leave
@@ -738,7 +738,7 @@ final class TorrentSafStorage {
         }
     }
 
-    /**
+    /*
      * Remove one persisted mapping and release its tree permission only
      * when no remaining mapping references that URI. A failed
      * preference commit leaves the permission intact.
@@ -774,7 +774,7 @@ final class TorrentSafStorage {
     // Called only from native disk workers, never the main thread. A
     // selected but revoked/unavailable mapping remains selected and
     // fails closed.
-    /**
+    /*
      * True when any torrent-to-tree mapping is persisted.
      *
      * <p>Called from {@link DaemonWrapper}'s start worker through the
@@ -789,7 +789,7 @@ final class TorrentSafStorage {
                             .getAll()
                             .isEmpty();
     }
-    /**
+    /*
      * Whether the native backend must treat this torrent as
      * provider-backed.
      *
@@ -814,7 +814,7 @@ final class TorrentSafStorage {
                 && context.getSharedPreferences("torrent-saf-grants", Context.MODE_PRIVATE)
                            .contains(tunnel + ":" + hash.toLowerCase(java.util.Locale.ROOT));
     }
-    /**
+    /*
      * Create or return the local tree capability for one torrent's
      * grant.
      *
@@ -885,7 +885,7 @@ final class TorrentSafStorage {
         }
         return result;
     }
-    /**
+    /*
      * Create a local file capability and open it through the current
      * broker.
      *
@@ -914,7 +914,7 @@ final class TorrentSafStorage {
         }
         return id;
     }
-    /**
+    /*
      * Read an exact bounded range through the broker.
      * @return exactly {@code count} bytes, or {@code null} on refusal
      *                 or failure
@@ -937,7 +937,7 @@ final class TorrentSafStorage {
         invalidate(handle);
         return null;
     }
-    /**
+    /*
      * Write a bounded range; the copied buffer belongs to this
      * transaction. Ambiguous failed writes are reported to the engine
      * and are not replayed.
@@ -1010,7 +1010,7 @@ final class TorrentSafStorage {
             }
         }
     }
-    /**
+    /*
      * Cancels the metadata export in progress and nothing else. Payload
      * reads and writes belong to the native engine, which owns their
      * invalidation, so an administrative "cancel export" must never
@@ -1047,7 +1047,7 @@ final class TorrentSafStorage {
             return id != 0 && session.remote.deleteByRelative(id, path, session.operation);
         }, false).value());
     }
-    /**
+    /*
      * Removes one empty directory below a tree root. Prepared for
      * engine cleanup of a fully removed torrent; the broker refuses a
      * directory with children.
@@ -1060,7 +1060,7 @@ final class TorrentSafStorage {
             return id != 0 && session.remote.removeEmptyDirectory(id, path, session.operation);
         }, false).value());
     }
-    /**
+    /*
      * Human-readable payload-storage state for the torrent list.
      *
      * <p>Worker threads only. It reads the persisted grant map, queries
@@ -1115,7 +1115,7 @@ final class TorrentSafStorage {
             return "SAF storage connected; random-access provider required";
         }
     }
-    /**
+    /*
      * Drops a local capability whose broker descriptor can no longer be
      * used. Only an authoritative failure reaches this path: a busy
      * local queue or a client deadline keeps the capability and leaves
@@ -1194,7 +1194,7 @@ final class TorrentSafStorage {
     private static <T> T call(Operation<T> action, T fallback) {
         return run(action, fallback).value();
     }
-    /**
+    /*
      * Runs one metadata-export transaction and publishes its token so
      * that cancelPending() can abort exactly this export and nothing
      * else.
@@ -1240,7 +1240,7 @@ final class TorrentSafStorage {
         return execute(session, action, fallback,
                 android.os.SystemClock.elapsedRealtime() + OPERATION_TIMEOUT_MS, true);
     }
-    /**
+    /*
      * One bounded transaction on the single IPC thread. Only death or
      * an unusable frame may replace the broker: a busy local queue, a
      * slow provider and a client deadline return a typed retryable

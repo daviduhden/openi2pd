@@ -47,7 +47,7 @@ import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
-/**
+/*
  * Grouped, validated settings backed by {@link RouterConfigStore}.
  *
  * <p>Only configuration keys are shown. Key files, passwords and other
@@ -76,7 +76,7 @@ public class SettingsFragment extends PreferenceFragmentCompat {
     private boolean restartDialogShown;
     private boolean viewDestroyed;
     private final UiDialogEpoch dialogs = new UiDialogEpoch();
-    /**
+    /*
      * View generation. Every asynchronous configuration load or save
      * captures the current value and is applied only while it still
      * matches and the view exists, so a result that arrives after
@@ -325,7 +325,7 @@ public class SettingsFragment extends PreferenceFragmentCompat {
         });
     }
 
-    /**
+    /*
      * Per-app language selection. AppCompat stores the choice without
      * touching the device locale; an empty locale list follows the
      * system. This is the only runtime locale override allowed in the
@@ -368,7 +368,7 @@ public class SettingsFragment extends PreferenceFragmentCompat {
         }
     }
 
-    /**
+    /*
      * Runtime apply control for the log level.
      *
      * <p>The preference file keeps the value for the next start; a
@@ -415,7 +415,7 @@ public class SettingsFragment extends PreferenceFragmentCompat {
         return false;
     }
 
-    /**
+    /*
      * Hand the saved level to the running logger. A stopped router
      * keeps the value in the file and applies it on the next start; a
      * running router that rejects it is reported as a failure instead
@@ -471,7 +471,7 @@ public class SettingsFragment extends PreferenceFragmentCompat {
         });
     }
 
-    /**
+    /*
      * Serialize a configuration write and fence its UI completion.
      *
      * <p>Admission occurs on the main thread. The worker borrows the
@@ -597,7 +597,7 @@ public class SettingsFragment extends PreferenceFragmentCompat {
         }
     }
 
-    /**
+    /*
      * Offer one restart confirmation bound to the current view epoch.
      *
      * <p>The token is captured when the form is created and rechecked

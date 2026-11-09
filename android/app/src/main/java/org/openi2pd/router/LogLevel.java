@@ -13,7 +13,7 @@ package org.openi2pd.router;
 import java.util.Locale;
 import java.util.Optional;
 
-/**
+/*
  * Severity of one native router log line and the log screen's filter
  * views.
  *
@@ -29,15 +29,15 @@ import java.util.Optional;
  * errors. A higher {@link #severity()} is more severe.</p>
  */
 public enum LogLevel {
-    /** Unfiltered view: every retained line passes. */
+    /* Unfiltered view: every retained line passes. */
     ALL(-1),
-    /** Debug and trace lines; also an unfiltered view. */
+    /* Debug and trace lines; also an unfiltered view. */
     DEBUG(0),
-    /** Informational lines and unknown native tokens. */
+    /* Informational lines and unknown native tokens. */
     INFO(1),
-    /** Warnings and every more severe line. */
+    /* Warnings and every more severe line. */
     WARN(2),
-    /** Errors, fatal and critical lines. */
+    /* Errors, fatal and critical lines. */
     ERROR(3);
 
     /*
@@ -57,12 +57,12 @@ public enum LogLevel {
         this.severity = severity;
     }
 
-    /** Numeric severity rank; a higher value is more severe. */
+    /* Numeric severity rank; a higher value is more severe. */
     public int severity() {
         return severity;
     }
 
-    /**
+    /*
      * Lowest severity rank this view compares against. Unfiltered views
      * bypass the comparison, and {@link #ALL} keeps a rank below every
      * classified line.
@@ -71,7 +71,7 @@ public enum LogLevel {
         return severity;
     }
 
-    /**
+    /*
      * Whether this view ignores severity, as {@link #ALL} and {@link
      * #DEBUG} do.
      */
@@ -79,7 +79,7 @@ public enum LogLevel {
         return this == ALL || this == DEBUG;
     }
 
-    /** Whether a line classified as {@code level} passes this view. */
+    /* Whether a line classified as {@code level} passes this view. */
     public boolean accepts(LogLevel level) {
         return switch (this) {
             case ALL, DEBUG -> true;
@@ -87,7 +87,7 @@ public enum LogLevel {
         };
     }
 
-    /**
+    /*
      * Classifies one native level token. {@code null} and unknown
      * tokens are informational, which is also how the daemon's {@code
      * none} state is presented.
@@ -97,7 +97,7 @@ public enum LogLevel {
         return matched(value).orElse(INFO);
     }
 
-    /**
+    /*
      * Returns the most severe token family present in an already
      * lowercased value. Failure tokens are checked first because a line
      * may mention a lower severity while reporting a failure.

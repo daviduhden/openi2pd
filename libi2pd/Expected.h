@@ -22,7 +22,7 @@
 #include <utility>
 #include <variant>
 
-/**
+/*
  * Small, portable subset of i2p::expected used by the fork.
  *
  * Some supported toolchains -- notably the OpenBSD base libc++ used by
@@ -113,7 +113,7 @@ public:
 		return has_value () ? std::get<0> (std::move (m_Value)) : static_cast<T> (std::forward<U> (fallback));
 	}
 
-	/** Monadic chaining with the same error type (std::expected-style). */
+	/* Monadic chaining with the same error type (std::expected-style). */
 	template <class F> auto and_then (F && func) & -> std::invoke_result_t<F, T &>
 	{
 		using Result = std::invoke_result_t<F, T &>;

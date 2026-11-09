@@ -29,7 +29,7 @@ import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 import com.google.android.material.textfield.TextInputEditText;
 import com.google.android.material.textfield.TextInputLayout;
 
-/**
+/*
  * Bounded address-book administration; no files or native handles reach
  * the UI.
  *
@@ -58,7 +58,7 @@ import com.google.android.material.textfield.TextInputLayout;
  * place.</p>
  */
 public final class AddressBookFragment extends Fragment {
-    /** Bounds enforced by the native JNI entry points. */
+    /* Bounds enforced by the native JNI entry points. */
     private static final int MAX_NAME = RuntimeAdminPolicy.MAX_ADDRESS_NAME;
     private static final int MAX_DESTINATION = RuntimeAdminPolicy.MAX_DESTINATION;
     private static final int MAX_SUBSCRIPTION_URL = RuntimeAdminPolicy.MAX_SUBSCRIPTION_URL;
@@ -69,7 +69,7 @@ public final class AddressBookFragment extends Fragment {
     private TextView status;
     private boolean busy;
     private final UiDialogEpoch dialogs = new UiDialogEpoch();
-    /**
+    /*
      * View generation. Bridge callbacks are asynchronous, so the ones
      * that rebuild a row list capture the current value and discard
      * their result once {@link #onDestroyView()} has incremented it; a
@@ -132,7 +132,7 @@ public final class AddressBookFragment extends Fragment {
         parent.addView(button);
     }
 
-    /**
+    /*
      * Reload address rows and subscription sources, then rebuild both
      * lists.
      *
@@ -246,7 +246,7 @@ public final class AddressBookFragment extends Fragment {
                         }));
     }
 
-    /**
+    /*
      * Validate and submit one add-or-replace request.
      *
      * <p>The name and destination are trimmed and checked against the
@@ -477,7 +477,7 @@ public final class AddressBookFragment extends Fragment {
         return dialogs.maySubmit(token, status != null && isAdded(), busy);
     }
 
-    /** Show one dialog owned by the captured view, never its successor. */
+    /* Show one dialog owned by the captured view, never its successor. */
     private void showDialog(UiDialogEpoch.Token token, MaterialAlertDialogBuilder builder) {
         if (!maySubmitDialog(token))
             return;

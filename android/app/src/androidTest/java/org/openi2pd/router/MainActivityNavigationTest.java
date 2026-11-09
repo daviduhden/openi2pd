@@ -35,7 +35,7 @@ import org.junit.Rule;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 
-/**
+/*
  * Instrumentation navigation smoke test. It deliberately persists
  * {@code should_run=false} before launch so opening the activity
  * exercises the service binding and screen transitions without starting

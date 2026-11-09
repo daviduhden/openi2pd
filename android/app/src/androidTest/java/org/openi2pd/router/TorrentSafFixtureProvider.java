@@ -31,7 +31,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
-/**
+/*
  * In-process {@link DocumentsProvider} used only by the manual device
  * lane.
  *
@@ -46,42 +46,42 @@ import java.util.concurrent.atomic.AtomicInteger;
  * authorization.</p>
  */
 public final class TorrentSafFixtureProvider extends DocumentsProvider {
-    /** Healthy provider: no injected fault. */
+    /* Healthy provider: no injected fault. */
     static final int NORMAL = 0;
-    /**
+    /*
      * Blocks inside openDocument and honours the CancellationSignal.
      */
     static final int COOPERATIVE = 1;
-    /**
+    /*
      * Blocks inside openDocument and ignores the CancellationSignal.
      */
     static final int IGNORE_CANCELLATION = 2;
-    /** Returns a non-seekable pipe instead of a document. */
+    /* Returns a non-seekable pipe instead of a document. */
     static final int PIPE = 3;
-    /**
+    /*
      * Every operation fails as if the persisted grant had been revoked.
      */
     static final int REVOKED = 4;
-    /**
+    /*
      * The first open succeeds and the document is gone immediately
      * afterwards.
      */
     static final int DELETED_AFTER_OPEN = 5;
-    /**
+    /*
      * Every open returns a new inode with the same length and other
      * bytes.
      */
     static final int REPLACED_SAME_LENGTH = 6;
-    /**
+    /*
      * Returns a sequential socket: lseek fails and fstat is not a
      * regular file.
      */
     static final int NO_SEEK = 7;
-    /**
+    /*
      * Returns a read-only descriptor for a write open, so pwrite fails.
      */
     static final int FAILS_WRITE = 8;
-    /**
+    /*
      * The first open succeeds and every later operation reports a lost
      * grant.
      */
@@ -392,7 +392,7 @@ public final class TorrentSafFixtureProvider extends DocumentsProvider {
         return new File(directory, "doc-" + (sequence++));
     }
 
-    /**
+    /*
      * Bounded fixture pattern; consecutive inodes carry different
      * bytes.
      */

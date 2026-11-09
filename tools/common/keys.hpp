@@ -28,7 +28,7 @@
 
 namespace i2p::tools
 {
-/**
+/*
 	 * Owner of a private-key serialization. The destructor wipes the bytes
 	 * and the type is non-copyable/non-movable so it cannot be
 	 * accidentally left behind in a second buffer.
@@ -65,7 +65,7 @@ private:
 	std::vector<uint8_t> m_Data;
 };
 
-/**
+/*
 	 * Read a destination key file and require the parser to consume every
 	 * byte. A trailing block is rejected instead of silently ignored.
 	 *
@@ -93,7 +93,7 @@ inline i2p::expected<void, std::string> LoadPrivateKeys (const std::string & pat
 	return { };
 }
 
-/**
+/*
 	 * Replace a key file through the core staged writer: same directory,
 	 * fsync, owner-only mode and no in-place truncation. The original
 	 * bytes are unchanged, so existing key files stay interoperable.
@@ -119,7 +119,7 @@ inline bool SavePrivateKeys (const std::string & path, std::span<const uint8_t> 
 	return i2p::fs::AtomicWritePrivate (path, contents);
 }
 
-/**
+/*
 	 * True when two paths name the same file, either textually after
 	 * canonicalization or through the same device/inode. Used to refuse an
 	 * output that would destroy its own input.

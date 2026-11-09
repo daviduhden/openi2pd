@@ -18,7 +18,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
-/**
+/*
  * Immutable, presentation-safe view of the router.
  *
  * <p>The service publishes this object to the UI on the main thread. It
@@ -74,7 +74,7 @@ public record RouterSnapshot(DaemonWrapper.State state, boolean nativeStarted, b
         }
     }
 
-    /**
+    /*
      * True when the native status snapshot has actually been parsed.
      * The daemon can be started while the status bridge is still
      * unavailable (for example on an older native build or immediately
@@ -86,7 +86,7 @@ public record RouterSnapshot(DaemonWrapper.State state, boolean nativeStarted, b
                 && !"Unknown".equalsIgnoreCase(routerStatus);
     }
 
-    /**
+    /*
      * True when this snapshot contains live, observed router metrics.
      *
      * <p>Intentionally an alias of {@link #hasStatus()}: screens ask
@@ -99,7 +99,7 @@ public record RouterSnapshot(DaemonWrapper.State state, boolean nativeStarted, b
         return hasStatus();
     }
 
-    /**
+    /*
      * Snapshot without native counters. Safe to build on the main
      * thread: it only reads already-cached Java state from {@link
      * DaemonWrapper}.

@@ -54,11 +54,11 @@ namespace android
 			return out;
 		}
 
-		/** Serialises all JNI-visible control and status calls. */
+		/* Serialises all JNI-visible control and status calls. */
 		std::mutex nativeCallMutex;
 		std::atomic<DaemonLifecycle> lifecycle { DaemonLifecycle::Stopped };
 
-		/**
+		/*
 		 * Start-cancellation token. It is published by RequestStartCancel()
 		 * without nativeCallMutex, so a Java stop request can abort a start
 		 * that currently owns the guard. It is cleared exactly once, at the
@@ -125,7 +125,7 @@ namespace android
 	static char programName[] = "i2pd";
 	static char * argv[] = { programName, nullptr };
 
-	/**
+	/*
 	 * Run one complete start transition: wait for the packaged assets, set
 	 * the application data directory, Daemon.init(), then Daemon.start().
 	 *

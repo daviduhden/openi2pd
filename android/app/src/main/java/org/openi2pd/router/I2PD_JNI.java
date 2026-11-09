@@ -17,7 +17,7 @@ package org.openi2pd.router;
 
 import android.util.Log;
 
-/**
+/*
  * Thin, auditable Java surface over the in-tree C++23 JNI library.
  *
  * <p>{@link RouterService} and {@link DaemonWrapper} own router control
@@ -48,7 +48,7 @@ public final class I2PD_JNI {
     private static final String TAG = "I2PD_JNI";
     private static final Object LOAD_LOCK = new Object();
 
-    /**
+    /*
      * Process-role tokens mirrored by the native {@code
      * claimProcessRole} contract. Android runs the router and the
      * opt-in SAF storage broker in separate processes of the same UID,
@@ -60,14 +60,14 @@ public final class I2PD_JNI {
     public static final int PROCESS_ROLE_ROUTER = 1;
     public static final int PROCESS_ROLE_STORAGE_BROKER = 2;
 
-    /**
+    /*
      * Fixed, non-secret token carried by a role conflict. It contains
      * no path, identity, grant or credential and is safe to display and
      * to log.
      */
     static final String PROCESS_ROLE_CONFLICT = "process-role-conflict";
 
-    /**
+    /*
      * Result token returned when a stop request aborted an in-progress
      * start. {@link DaemonWrapper} maps it to the stopped state.
      */
@@ -80,7 +80,7 @@ public final class I2PD_JNI {
         // Native entry points only.
     }
 
-    /**
+    /*
      * Serialize a v1 torrent from already hashed SAF sources. The
      * native encoder validates all input again and does not read the
      * source documents. Call from a worker because validation and
@@ -101,7 +101,7 @@ public final class I2PD_JNI {
     public static native byte[] buildTorrentMetadata(byte[] name, byte[][] paths, long[] lengths,
             int pieceLength, byte[] hashes, byte[][] trackers, boolean privateTorrent);
 
-    /**
+    /*
      * Install the process-owned Java SAF bridge after claiming the
      * router role. Existing payloads retain their bridge while a
      * replacement is installed.
@@ -111,7 +111,7 @@ public final class I2PD_JNI {
      */
     static native boolean installSafStorageBridge(Class<?> bridge);
 
-    /**
+    /*
      * Apply the storage-broker process sandbox and claim {@link
      * #PROCESS_ROLE_STORAGE_BROKER}.
      *
@@ -123,7 +123,7 @@ public final class I2PD_JNI {
      */
     static native boolean restrictSafStorageProcess();
 
-    /**
+    /*
      * Claim one process role. Accepted once per process and
      * irreversible.
      *
@@ -132,12 +132,12 @@ public final class I2PD_JNI {
      */
     private static native boolean claimProcessRole(int role);
 
-    /**
+    /*
      * Currently claimed process role, or {@link #PROCESS_ROLE_NONE}.
      */
     public static native int processRole();
 
-    /**
+    /*
      * Claim {@link #PROCESS_ROLE_ROUTER}. Called by {@link
      * DaemonWrapper} before the first router-capable native entry
      * point.
@@ -155,7 +155,7 @@ public final class I2PD_JNI {
         }
     }
 
-    /**
+    /*
      * Ask the native lifecycle to abort an in-progress start.
      *
      * <p>This sets one native atomic and returns; it deliberately takes
@@ -180,7 +180,7 @@ public final class I2PD_JNI {
 
     public static native String getABICompiledWith();
 
-    /**
+    /*
      * Load {@code libi2pd.so}.
      *
      * @throws UnsatisfiedLinkError if the library or one of its
@@ -207,7 +207,7 @@ public final class I2PD_JNI {
         }
     }
 
-    /**
+    /*
      * Best-effort variant for non-critical paths (settings/status
      * probes). Never throws and never leaves a pending load failure
      * unreported.
@@ -241,7 +241,7 @@ public final class I2PD_JNI {
         return error;
     }
 
-    /**
+    /*
      * Start the native router and block until its initialisation
      * transition has finished.
      *
@@ -258,7 +258,7 @@ public final class I2PD_JNI {
      */
     public static native String startDaemon();
 
-    /**
+    /*
      * Stop and tear down the running router synchronously.
      *
      * <p>Listeners, client and transit tunnels, netDb and the torrent
@@ -275,7 +275,7 @@ public final class I2PD_JNI {
     public static native void stopAcceptingTunnels();
     public static native void reloadTunnelsConfigs();
 
-    /**
+    /*
      * Ask the running netDb to reseed without blocking the caller.
      *
      * <p>The native call only starts the owned, cancellable NetDb job
@@ -290,40 +290,40 @@ public final class I2PD_JNI {
      */
     public static native String requestReseed();
 
-    /** Apply transit acceptance through the typed admin queue. */
+    /* Apply transit acceptance through the typed admin queue. */
     static native String setTransit(boolean enabled);
 
-    /** Apply one exact bandwidth class: K, L, M, N, O, P or X. */
+    /* Apply one exact bandwidth class: K, L, M, N, O, P or X. */
     static native String setBandwidth(String bandwidthClass);
 
-    /** Apply a bounded transit share percentage, 0..100. */
+    /* Apply a bounded transit share percentage, 0..100. */
     static native String setShareRatio(int percent);
 
-    /**
+    /*
      * Bounded, non-secret reseed status with ordered phase, enabled,
      * attempts, succeeded, lastAttemptMs, lastSuccessMs and lastError.
      * An empty string means the router is not running.
      */
     public static native String getReseedStatus();
 
-    /**
+    /*
      * Configured client/server tunnels, one {@code
      * name|kind|running|endpoint|destination} record per line. Only
      * public labels cross the boundary.
      */
     public static native String getTunnelServices();
 
-    /**
+    /*
      * Start one configured tunnel by its unique, bounded service name.
      */
     public static native String startTunnel(String name);
 
-    /**
+    /*
      * Stop one configured tunnel by its unique, bounded service name.
      */
     public static native String stopTunnel(String name);
 
-    /**
+    /*
      * Apply one runtime log level to the running logger without a
      * restart.
      *
@@ -336,7 +336,7 @@ public final class I2PD_JNI {
      */
     public static native boolean setRuntimeLogLevel(String level);
 
-    /**
+    /*
      * Publish the app-private data directory the router will use.
      *
      * <p>State only: it copies no assets and does not start the daemon,
@@ -358,13 +358,13 @@ public final class I2PD_JNI {
 
     public static native void onNetworkStateChanged(boolean isConnected);
 
-    /**
+    /*
      * Bounded newline-separated {@code key=value} status snapshot.
      * Native exceptions are converted to an {@code error=} snapshot.
      */
     public static native String getStatusSnapshot();
 
-    /**
+    /*
      * Recent log records as {@code
      * sequence|timestampSeconds|level|text}.
      *
@@ -375,14 +375,14 @@ public final class I2PD_JNI {
      */
     public static native String getRecentLogs(long afterSequence, int limit);
 
-    /**
+    /*
      * Bounded address-book rows as {@code name|b32-or-b33|blinded\n}.
      * The call is made only from the service worker while the daemon
      * runs.
      */
     static native String getAddressBook();
 
-    /**
+    /*
      * Add or replace one validated address-book name with a typed
      * result.
      *
@@ -394,46 +394,46 @@ public final class I2PD_JNI {
      */
     static native String addAddressWithResult(String name, String destination, boolean replace);
 
-    /** Remove one name without deleting destination key material. */
+    /* Remove one name without deleting destination key material. */
     static native boolean removeAddress(String name);
 
-    /**
+    /*
      * Block a deleted-host subscription pattern; returns false on
      * invalid input.
      */
     static native boolean blockAddress(String name);
 
-    /** Remove one exact deleted-host pattern. */
+    /* Remove one exact deleted-host pattern. */
     static native boolean unblockAddress(String name);
 
-    /** Bounded deleted-host patterns, one per line. */
+    /* Bounded deleted-host patterns, one per line. */
     static native String getBlockedAddresses();
 
-    /** Address-book subscription sources, one bounded URL per line. */
+    /* Address-book subscription sources, one bounded URL per line. */
     static native String getSubscriptions();
 
-    /**
+    /*
      * Add one validated subscription source; returns the typed outcome
      * token.
      */
     static native String addSubscription(String url);
 
-    /** Remove one subscription source by its exact URL. */
+    /* Remove one subscription source by its exact URL. */
     static native String removeSubscription(String url);
 
-    /** Ban one base64 router identity until the router restarts. */
+    /* Ban one base64 router identity until the router restarts. */
     static native String banRouter(String hash);
 
-    /** Remove one in-memory router ban. */
+    /* Remove one in-memory router ban. */
     static native String unbanRouter(String hash);
 
-    /**
+    /*
      * Torrent-only bounded control protocol; called exclusively by
      * RouterService.
      */
     static native String torrentCommand(byte[] utf8Request);
 
-    /**
+    /*
      * Raw bounded torrent metadata from a user-selected SAF document.
      */
     static native String importTorrent(int tunnel, byte[] metadata);

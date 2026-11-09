@@ -1609,7 +1609,7 @@ namespace transport
 		return false;
 	}
 
-	/** XXX: if routes are not restricted this dies */
+	/* XXX: if routes are not restricted this dies */
 	std::shared_ptr<const i2p::data::RouterInfo> Transports::GetRestrictedPeer ()
 	{
 		{

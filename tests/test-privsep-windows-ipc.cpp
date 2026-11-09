@@ -50,7 +50,7 @@ using namespace i2p::privsep;
 
 namespace
 {
-/**
+/*
  * A nonce-shaped 32-byte pattern; the value never has to be secret here.
  */
 std::string TestNonce ()
@@ -72,7 +72,7 @@ std::wstring OtherNonceHex ()
 	return EncodeWindowsWorkerNonce (nonce);
 }
 
-/** Narrow the ASCII hex accepted by DecodeWindowsWorkerNonce. */
+/* Narrow the ASCII hex accepted by DecodeWindowsWorkerNonce. */
 std::string NarrowHex (const std::wstring & hex)
 {
 	std::string narrow;
@@ -113,7 +113,7 @@ bool IsWellKnown (const void * sid, WELL_KNOWN_SID_TYPE type)
 	return CreateWellKnownSid (type, nullptr, buffer, &size) && EqualSid (const_cast<void *> (sid), buffer);
 }
 
-/**
+/*
  * The DACL must stay protected, must not contain a
  * world/authenticated/anonymous ACE and must contain exactly the
  * expected number of allow ACEs, with `expectedSid` present when it is
@@ -160,7 +160,7 @@ void CheckDacl (HANDLE pipe, const std::wstring & expectedSid, DWORD expectedAce
 	LocalFree (descriptor);
 }
 
-/**
+/*
  * Connect as the trusted test process and run `handshake` on the channel.
  */
 std::thread StartTestWorker (const std::wstring & pipeName, std::function<void (WindowsChannel &)> handshake,
@@ -183,7 +183,7 @@ void SendHello (WindowsChannel & channel, WindowsWorkerRole role, const std::str
 	assert (channel.Send ({ MessageType::WorkerHello, requestId, *payload }, 5000).has_value ());
 }
 
-/**
+/*
  * Send one handshake on a connection the server is expected to reject on
  * identity *before* it reads a frame. The client's write races the
  * server's DisconnectNamedPipe, so a failed send is a legal outcome of
@@ -196,7 +196,7 @@ void SendHelloAfterRejection (WindowsChannel & channel, WindowsWorkerRole role, 
 	(void)channel.Send ({ MessageType::WorkerHello, 1, *payload }, 5000);
 }
 
-/** Write one raw message-mode record, bypassing the frame encoders. */
+/* Write one raw message-mode record, bypassing the frame encoders. */
 void WriteRawRecord (HANDLE pipe, const std::string & record)
 {
 	DWORD written = 0;

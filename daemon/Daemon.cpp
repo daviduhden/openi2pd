@@ -157,7 +157,7 @@ namespace util
 				= written > 0 ? std::min<size_t> (static_cast<size_t> (written), sizeof (result.message) - 1) : 0;
 		}
 
-		/**
+		/*
 		 * Execute one typed administrator command.
 		 *
 		 * This runs on the daemon-owned administrative thread started by
@@ -526,7 +526,7 @@ namespace util
 		constexpr auto LOG_WORKER_STABLE_PERIOD = std::chrono::milliseconds (60000);
 		constexpr unsigned LOG_RESTART_MAX_ATTEMPTS = 8;
 
-		/**
+		/*
 		 * Sleep in bounded slices so shutdown never waits for a full
 		 * backoff. */
 		bool SleepUnlessStopping (const std::atomic<bool> & stop, std::chrono::milliseconds total)
@@ -545,7 +545,7 @@ namespace util
 	}
 #endif
 
-	/**
+	/*
 	 * Spawn, configure and install one worker. Any previous worker is
 	 * stopped and reaped first, so at most one live child exists at any
 	 * time even when a caller skips the supervisor's reap step.
@@ -770,7 +770,7 @@ namespace util
 #if !defined(_WIN32) && !defined(I2PD_NO_PRIVSEP)
 	namespace
 	{
-		/**
+		/*
 		 * A torrent tunnel may request isolated payload storage. The option
 		 * is per tunnel section in tunnels.conf and tunnels.d (one .conf per
 		 * tunnel) and is parsed by ClientContext much later, so the
@@ -846,7 +846,7 @@ namespace util
 			return false;
 		}
 
-		/**
+		/*
 		 * The isolation switches that require a worker identity.
 		 *
 		 * They are read independently: `privsep.enabled` selects the log
@@ -877,7 +877,7 @@ namespace util
 			return features;
 		}
 
-		/**
+		/*
 		 * Resolve and install the worker identity.
 		 *
 		 * Runs before the first pledge (name-service lookups need ambient
@@ -1470,7 +1470,7 @@ namespace util
 				d->m_NTPSync->Stop ();
 				d->m_NTPSync = nullptr;
 			}
-			/** shut down netdb right away */
+			/* shut down netdb right away */
 			i2p::transport::transports.Stop ();
 			i2p::data::netdb.Stop ();
 #if !defined(_WIN32) && !defined(I2PD_NO_PRIVSEP)

@@ -51,7 +51,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.UnaryOperator;
 
-/**
+/*
  * Started and bound router service.
  *
  * <p>This class is the single owner of {@link DaemonWrapper}. It keeps
@@ -108,7 +108,7 @@ public class RouterService extends Service {
             "org.openi2pd.router.action.CANCEL_GRACEFUL_STOP";
     public static final String ACTION_RELOAD_TUNNELS = "org.openi2pd.router.action.RELOAD_TUNNELS";
 
-    /**
+    /*
      * Typed reseed command for callers that cannot bind (the result is
      * not observable through an intent; the binder method reports it).
      * The worker issues at most one native request and the native path
@@ -116,7 +116,7 @@ public class RouterService extends Service {
      */
     public static final String ACTION_RESEED = "org.openi2pd.router.action.RESEED";
 
-    /**
+    /*
      * Typed runtime log-level command for callers that cannot bind. The
      * extra is validated against {@link
      * DaemonWrapper#isRuntimeLogLevel}; an intent with a missing or
@@ -125,7 +125,7 @@ public class RouterService extends Service {
     public static final String ACTION_SET_RUNTIME_LOG_LEVEL =
             "org.openi2pd.router.action.SET_RUNTIME_LOG_LEVEL";
 
-    /**
+    /*
      * Bounded runtime log level extra for {@link
      * #ACTION_SET_RUNTIME_LOG_LEVEL}. Only the exact closed set
      * accepted by {@link DaemonWrapper#isRuntimeLogLevel} is forwarded;
@@ -140,13 +140,13 @@ public class RouterService extends Service {
     private static final int LOG_FETCH_LIMIT = 200;
     private static final int MAX_LOG_ENTRIES = 1000;
     private static final int MAX_ERROR_TEXT = 4096;
-    /**
+    /*
      * Bounded diagnostics counter for task-removal events; never a
      * run-state write.
      */
     private static final int MAX_TASK_REMOVED_EVENTS = 20;
     private static final String PREFERENCES = "router_state";
-    /**
+    /*
      * Distinct published/logged state used when a restore could not
      * reach the foreground. It is prefixed to the snapshot error text
      * until the single bounded retry runs, so the UI never shows a
@@ -155,7 +155,7 @@ public class RouterService extends Service {
     private static final String RESTORE_DEFERRED = "restoreDeferred";
     private static final String RESTORE_DEFERRED_NOTE = RESTORE_DEFERRED
             + ": the persisted run state could not be restored yet; the next bind retries once";
-    /**
+    /*
      * Coarse process-wide flag for components that cannot bind (Quick
      * Settings tile, deprecated connectivity receiver). It only mirrors
      * the daemon state; it is not a service singleton and holds no
@@ -165,10 +165,10 @@ public class RouterService extends Service {
     private long ownerEpoch;
 
     public interface Listener {
-        /** Called on the main thread with an immutable snapshot. */
+        /* Called on the main thread with an immutable snapshot. */
         void onRouterSnapshot(RouterSnapshot snapshot);
 
-        /**
+        /*
          * Called on the main thread when the retained log list changes.
          */
         void onRouterLogs(List<LogEntry> logs);
@@ -178,7 +178,7 @@ public class RouterService extends Service {
     private final CopyOnWriteArrayList<Listener> listeners = new CopyOnWriteArrayList<>();
     private final AtomicBoolean pollInFlight = new AtomicBoolean(false);
     private final AtomicBoolean torrentInFlight = new AtomicBoolean(false);
-    /**
+    /*
      * Bounds concurrent reseed requests; the native bootstrap is
      * single-flight too.
      */
@@ -192,7 +192,7 @@ public class RouterService extends Service {
     private Executor worker;
     private DaemonWrapper daemon;
     private NotificationManager notificationManager;
-    /**
+    /*
      * Android filters Wi-Fi multicast unless a MulticastLock is held.
      * UPnP SSDP discovery needs it while the router is running; the
      * lock is reference-counted explicitly and released on every
@@ -206,31 +206,31 @@ public class RouterService extends Service {
     private volatile boolean recentLogsSupported = true;
     private volatile RouterSnapshot lastSnapshot;
     private volatile List<LogEntry> lastLogs = Collections.emptyList();
-    /**
+    /*
      * Only the worker thread writes this; volatile for main-thread
      * snapshots.
      */
     private volatile long lastLogSequence;
-    /**
+    /*
      * Bumped by clearLogs(); an older poll must not republish the
      * cleared list.
      */
     private volatile long logsEpoch;
     private volatile DaemonWrapper.State lastNotificationState;
     private volatile String lastNotificationLocale = "";
-    /**
+    /*
      * Serialises the read-modify-write of the persisted run state so a
      * generation increment cannot be lost between a main-thread command
      * and the daemon state listener.
      */
     private final Object runStateLock = new Object();
-    /**
+    /*
      * One-shot marker set when a restore could not enter the
      * foreground. The next bind consumes it exactly once, so no
      * unbounded retry loop exists.
      */
     private volatile boolean restoreRetryPending;
-    /**
+    /*
      * Remaining drain delay that must be re-armed once a restored
      * daemon reports {@code startedOkay}; {@code -1} when no resume is
      * pending. The native deadline lives only in {@link DaemonWrapper},
@@ -238,7 +238,7 @@ public class RouterService extends Service {
      * completes.
      */
     private volatile long pendingDrainResumeMillis = -1L;
-    /**
+    /*
      * Main-thread diagnostics counter; bounded so a swipe loop cannot
      * spam the log.
      */
@@ -281,7 +281,7 @@ public class RouterService extends Service {
         }
     };
 
-    /**
+    /*
      * The graceful-stop deadline is scheduled on the service main
      * handler and only enqueues the native stop on the single-thread
      * worker. This replaces the legacy timer thread and keeps every
@@ -372,7 +372,7 @@ public class RouterService extends Service {
         });
     }
 
-    /**
+    /*
      * In-process binder. Do not turn this into an exported interface:
      * clients in another UID would gain router control. See the class
      * documentation for the future AIDL/isolated-process design.
@@ -383,7 +383,7 @@ public class RouterService extends Service {
         }
     }
 
-    /**
+    /*
      * Acquire the owner epoch and reconcile the durable run intent
      * once.
      *
@@ -467,7 +467,7 @@ public class RouterService extends Service {
         }
     }
 
-    /**
+    /*
      * Dispatch one {@link RouterCommand} and decide the service
      * stickiness.
      *
@@ -581,7 +581,7 @@ public class RouterService extends Service {
         return readShouldRun() || daemon.isStartedOkay() ? START_STICKY : START_NOT_STICKY;
     }
 
-    /**
+    /*
      * Enter the foreground for the current command or fail the command.
      *
      * <p>A {@code startForegroundService()} caller expects {@code
@@ -598,7 +598,7 @@ public class RouterService extends Service {
         return false;
     }
 
-    /**
+    /*
      * Forward one runtime log level to the control worker. A null or
      * unknown value is rejected before any native state is touched; the
      * command then keeps the service's current stickiness, like the
@@ -618,7 +618,7 @@ public class RouterService extends Service {
         stopSelfIfIdle(startId);
     }
 
-    /**
+    /*
      * Ignore an unrecognised action and release the service when it is
      * idle.
      */
@@ -627,7 +627,7 @@ public class RouterService extends Service {
         stopSelfIfIdle(startId);
     }
 
-    /**
+    /*
      * Stop only this start id when neither the persisted run intent nor
      * a started daemon still needs the service. This is the
      * command-scoped counterpart of {@link #stopIfIdle()} and must not
@@ -639,7 +639,7 @@ public class RouterService extends Service {
         }
     }
 
-    /**
+    /*
      * Return the in-process binder. Clients must go through {@link
      * RouterRepository}; this is deliberately not an AIDL interface and
      * the service is not exported, so no other UID gains router
@@ -650,7 +650,7 @@ public class RouterService extends Service {
         return binder;
     }
 
-    /**
+    /*
      * Safety net for a client that died without unregistering:
      * observation stops, while the daemon, the notification and the
      * persisted run state keep running. Returning {@code false} means
@@ -665,7 +665,7 @@ public class RouterService extends Service {
         return false;
     }
 
-    /**
+    /*
      * The manifest contract is {@code android:stopWithTask="false"}, so
      * removing the task is a UI event and not a router command. The
      * foreground service, the daemon and the persisted run state are
@@ -689,7 +689,7 @@ public class RouterService extends Service {
         super.onTaskRemoved(rootIntent);
     }
 
-    /**
+    /*
      * Tear down this service owner without losing the run intent.
      *
      * <p>Runs on the main thread. Retirement and the mandatory native
@@ -751,7 +751,7 @@ public class RouterService extends Service {
         super.onDestroy();
     }
 
-    /**
+    /*
      * Android 15+ calls this when a time-limited foreground service
      * type exceeds its budget. The router uses specialUse, which has no
      * such limit, but dataSync on API 29..33 and any future type change
@@ -774,7 +774,7 @@ public class RouterService extends Service {
     // Binder API (same process, main-thread safe)
     // -----------------------------------------------------------------
 
-    /**
+    /*
      * Register an observation listener and publish the current snapshot
      * and log list immediately, then start the one-second poll.
      *
@@ -809,7 +809,7 @@ public class RouterService extends Service {
         });
     }
 
-    /**
+    /*
      * Remove one listener; removing the last one stops status/log
      * polling.
      */
@@ -838,7 +838,7 @@ public class RouterService extends Service {
         runOnMain(this::pollNow);
     }
 
-    /**
+    /*
      * Request a start and persist the running intent before the worker
      * is asked. Main-thread safe; the wrapper rejects a start while one
      * is already running, so repeated taps cannot create a second
@@ -855,7 +855,7 @@ public class RouterService extends Service {
         });
     }
 
-    /**
+    /*
      * Terminal stop: persist {@code Stopped}, clear the graceful
      * deadline and enqueue the native stop on the control worker. The
      * caller is never blocked and the daemon is never stopped on the
@@ -869,7 +869,7 @@ public class RouterService extends Service {
         });
     }
 
-    /** Restart through the wrapper's ordered stop-then-start path. */
+    /* Restart through the wrapper's ordered stop-then-start path. */
     public void restartRouter() {
         runOnMain(() -> {
             if (!ensureForeground()) {
@@ -881,7 +881,7 @@ public class RouterService extends Service {
         });
     }
 
-    /**
+    /*
      * Stop and start the daemon as one explicit user action. The run
      * intent is persisted by the caller before this reaches the worker,
      * and the stopped transition is ignored while restartInProgress is
@@ -942,7 +942,7 @@ public class RouterService extends Service {
         });
     }
 
-    /**
+    /*
      * Persist an explicit start intent and drop any graceful-stop
      * deadline.
      *
@@ -966,7 +966,7 @@ public class RouterService extends Service {
         }
     }
 
-    /**
+    /*
      * Persist the intent to stop when draining and schedule the
      * deadline.
      */
@@ -982,7 +982,7 @@ public class RouterService extends Service {
         beginGracefulStopCommand();
     }
 
-    /**
+    /*
      * Cancel a drain. A stacked or repeated cancel never resurrects a
      * stopped router, and the persisted phase only moves Draining to
      * Running.
@@ -998,7 +998,7 @@ public class RouterService extends Service {
         });
     }
 
-    /**
+    /*
      * Stop accepting transit tunnels and arm the service-owned
      * deadline.
      *
@@ -1014,7 +1014,7 @@ public class RouterService extends Service {
         enqueueControl(() -> beginGracefulShutdownOnWorker(requestedDelay));
     }
 
-    /**
+    /*
      * Worker-side counterpart of {@link #beginGracefulStopCommand()}.
      */
     private void beginGracefulShutdownOnWorker(long requestedDelayMs) {
@@ -1046,7 +1046,7 @@ public class RouterService extends Service {
         }
     }
 
-    /**
+    /*
      * Enqueue the idempotent native stop; the daemon may already be
      * gone.
      */
@@ -1065,7 +1065,7 @@ public class RouterService extends Service {
         runOnMain(() -> enqueueControl(daemon::reloadTunnelsConfigs));
     }
 
-    /**
+    /*
      * Request a NetDb reseed without restarting the router.
      *
      * <p>The native call is single-flight and non-blocking: it starts
@@ -1104,13 +1104,13 @@ public class RouterService extends Service {
         }
     }
 
-    /** Apply live transit acceptance on the service worker. */
+    /* Apply live transit acceptance on the service worker. */
     public void setTransit(boolean enabled, java.util.function.Consumer<String> callback) {
         runRuntimeAdmin(
                 () -> daemon == null ? "unavailable" : daemon.setTransit(enabled), callback);
     }
 
-    /** Apply one closed bandwidth class at runtime. */
+    /* Apply one closed bandwidth class at runtime. */
     public void setBandwidth(String bandwidthClass, java.util.function.Consumer<String> callback) {
         if (destroyed || !RuntimeAdminPolicy.isValidBandwidthClass(bandwidthClass)) {
             mainHandler.post(() -> callback.accept("invalid"));
@@ -1122,7 +1122,7 @@ public class RouterService extends Service {
                 callback);
     }
 
-    /** Apply a bounded live share percentage. */
+    /* Apply a bounded live share percentage. */
     public void setShareRatio(int percent, java.util.function.Consumer<String> callback) {
         if (destroyed || !RuntimeAdminPolicy.isValidShareRatio(percent)) {
             mainHandler.post(() -> callback.accept("invalid"));
@@ -1150,7 +1150,7 @@ public class RouterService extends Service {
         }, () -> callback.accept("unavailable"));
     }
 
-    /**
+    /*
      * Bounded reseed status record on the control worker; empty when
      * stopped.
      */
@@ -1168,7 +1168,7 @@ public class RouterService extends Service {
         }, () -> callback.accept(""));
     }
 
-    /**
+    /*
      * Configured tunnel rows on the control worker; empty when stopped.
      */
     public void readTunnelServices(java.util.function.Consumer<String> callback) {
@@ -1185,7 +1185,7 @@ public class RouterService extends Service {
         }, () -> callback.accept(""));
     }
 
-    /**
+    /*
      * Start or stop one configured tunnel; the callback receives the
      * outcome token.
      */
@@ -1210,7 +1210,7 @@ public class RouterService extends Service {
         }, () -> callback.accept("unavailable"));
     }
 
-    /**
+    /*
      * Add/replace one address-book name; the callback receives the
      * outcome token.
      */
@@ -1230,7 +1230,7 @@ public class RouterService extends Service {
         }, () -> callback.accept("unavailable"));
     }
 
-    /** Address-book subscription sources, one bounded URL per line. */
+    /* Address-book subscription sources, one bounded URL per line. */
     public void readSubscriptions(java.util.function.Consumer<String> callback) {
         runOnWorker(() -> {
             String rows = "";
@@ -1245,7 +1245,7 @@ public class RouterService extends Service {
         }, () -> callback.accept(""));
     }
 
-    /**
+    /*
      * Add or remove one subscription source; the callback receives the
      * outcome token.
      */
@@ -1270,7 +1270,7 @@ public class RouterService extends Service {
         }, () -> callback.accept("unavailable"));
     }
 
-    /**
+    /*
      * Ban or unban one base64 router hash; the callback receives the
      * outcome token.
      */
@@ -1293,7 +1293,7 @@ public class RouterService extends Service {
         }, () -> callback.accept("unavailable"));
     }
 
-    /**
+    /*
      * Run one bounded native command on the control worker or report
      * unavailability.
      */
@@ -1310,7 +1310,7 @@ public class RouterService extends Service {
         }
     }
 
-    /**
+    /*
      * Apply one runtime log level to the running logger on the control
      * worker. The caller persists any preference separately; this path
      * only changes the live logger and never writes {@code i2pd.conf}.
@@ -1356,7 +1356,7 @@ public class RouterService extends Service {
     // Commands used by receivers/tile without binding.
     // -----------------------------------------------------------------
 
-    /**
+    /*
      * Coarse process-wide mirror for components that cannot bind (Quick
      * Settings tile, deprecated receivers). It reflects the last
      * published daemon state and is not a singleton handle: it carries
@@ -1366,7 +1366,7 @@ public class RouterService extends Service {
         return routerRunning;
     }
 
-    /**
+    /*
      * Deliver a start intent from a caller that cannot bind its own
      * service.
      *
@@ -1377,7 +1377,7 @@ public class RouterService extends Service {
         return sendCommand(context, ACTION_START, true);
     }
 
-    /**
+    /*
      * Deliver the sticky-restore command from a caller that cannot bind
      * its own service (the boot and package-replace receiver).
      *
@@ -1403,7 +1403,7 @@ public class RouterService extends Service {
         return sendCommand(context, ACTION_STOP, false);
     }
 
-    /**
+    /*
      * True when the persisted run intent is anything other than a
      * stopped router. A fresh install has no record at all and
      * auto-starts once; after an explicit stop, a finished drain, or
@@ -1458,7 +1458,7 @@ public class RouterService extends Service {
         }
     }
 
-    /** Non-secret label for one command action in a diagnostic. */
+    /* Non-secret label for one command action in a diagnostic. */
     private static String describeCommand(String action) {
         return action == null ? "RESTORE" : action;
     }
@@ -1680,7 +1680,7 @@ public class RouterService extends Service {
         }
     }
 
-    /**
+    /*
      * Create the notification channel when it is missing and verify it
      * exists. The create is retried exactly once here rather than being
      * swallowed at service creation, where a transient failure would
@@ -1711,7 +1711,7 @@ public class RouterService extends Service {
         publishNotification();
     }
 
-    /**
+    /*
      * Republish the foreground notification unconditionally. Used when
      * the daemon state did not change (task removal) but the
      * notification must be kept current; the call is bounded and never
@@ -1835,7 +1835,7 @@ public class RouterService extends Service {
     // Lifecycle helpers
     // -----------------------------------------------------------------
 
-    /**
+    /*
      * One outstanding torrent operation bounds both the queue and JNI
      * work.
      */
@@ -1868,7 +1868,7 @@ public class RouterService extends Service {
         }
     }
 
-    /** Bounded address-book rows on the control worker. */
+    /* Bounded address-book rows on the control worker. */
     public void readAddressBook(java.util.function.Consumer<String> callback) {
         Executor executor = worker;
         try {
@@ -1890,7 +1890,7 @@ public class RouterService extends Service {
         }
     }
 
-    /** Read deleted-host patterns on the control worker. */
+    /* Read deleted-host patterns on the control worker. */
     public void readBlockedAddresses(java.util.function.Consumer<String> callback) {
         Executor executor = worker;
         try {
@@ -1912,7 +1912,7 @@ public class RouterService extends Service {
         }
     }
 
-    /**
+    /*
      * Block a validated subscription name or wildcard on the control
      * worker.
      */
@@ -1937,7 +1937,7 @@ public class RouterService extends Service {
         }
     }
 
-    /** Remove one exact deleted-host pattern on the control worker. */
+    /* Remove one exact deleted-host pattern on the control worker. */
     public void unblockAddress(String name, java.util.function.Consumer<Boolean> callback) {
         Executor executor = worker;
         try {
@@ -1959,7 +1959,7 @@ public class RouterService extends Service {
         }
     }
 
-    /** Remove one validated address-book name on the control worker. */
+    /* Remove one validated address-book name on the control worker. */
     public void removeAddress(String name, java.util.function.Consumer<Boolean> callback) {
         Executor executor = worker;
         try {
@@ -1981,7 +1981,7 @@ public class RouterService extends Service {
         }
     }
 
-    /**
+    /*
      * Persist or release a SAF payload tree off the main thread. Both
      * operations commit the grant map to disk and may talk to the
      * provider, so they must never run in an Activity or picker
@@ -1997,14 +1997,14 @@ public class RouterService extends Service {
                 callback);
     }
 
-    /** Release the persisted grant for one torrent payload. */
+    /* Release the persisted grant for one torrent payload. */
     public void detachPayload(
             String tunnel, String hash, java.util.function.Consumer<Boolean> callback) {
         runSafGrantOperation(
                 () -> TorrentSafStorage.detach(getApplicationContext(), tunnel, hash), callback);
     }
 
-    /**
+    /*
      * Read one torrent's bounded payload-storage diagnostic on the SAF
      * worker.
      *
@@ -2045,7 +2045,7 @@ public class RouterService extends Service {
         }
     }
 
-    /**
+    /*
      * Commit one grant mutation on the bounded SAF lane.
      *
      * <p>Queue rejection and provider failure complete with false while
@@ -2081,7 +2081,7 @@ public class RouterService extends Service {
         }
     }
 
-    /**
+    /*
      * Import bounded metainfo from a user-granted content URI on the
      * SAF worker. JNI receives the bytes, never the provider path. The
      * deadline requests cancellation; it cannot force a blocked
@@ -2165,7 +2165,7 @@ public class RouterService extends Service {
         }
     }
 
-    /**
+    /*
      * Hash a selected SAF source and produce metadata on the SAF
      * worker.
      *
@@ -2242,7 +2242,7 @@ public class RouterService extends Service {
         }
     }
 
-    /**
+    /*
      * Request cancellation of the SAF import or creation currently in
      * flight. The hook only signals; the worker still owns the
      * descriptor and closes it, so cancelling never races a read on
@@ -2254,7 +2254,7 @@ public class RouterService extends Service {
             cancel.run();
     }
 
-    /**
+    /*
      * Export bounded metainfo through the broker's one-shot document
      * grant. Completion is posted to the main handler. On failure the
      * broker is asked to truncate the incomplete export, then the
@@ -2335,7 +2335,7 @@ public class RouterService extends Service {
         }
     }
 
-    /**
+    /*
      * Start the router on the worker with the SSDP multicast lock held.
      */
     private void startDaemonWithMulticast() {
@@ -2445,7 +2445,7 @@ public class RouterService extends Service {
                 appContext.getSharedPreferences(PREFERENCES, MODE_PRIVATE), wallClockNow());
     }
 
-    /**
+    /*
      * Persisted run intent with the graceful deadline sanitised against
      * now.
      */
@@ -2453,7 +2453,7 @@ public class RouterService extends Service {
         return RouterRunState.load(runStatePreferences(), wallClockNow());
     }
 
-    /**
+    /*
      * Apply one durable run-state transition.
      *
      * <p>The read-modify-write is serialised so the generation truly
@@ -2471,7 +2471,7 @@ public class RouterService extends Service {
         }
     }
 
-    /**
+    /*
      * Persist an already computed state only if its generation still
      * follows the latest persisted state. Transitions that need to read
      * and change a state atomically use {@link
@@ -2493,7 +2493,7 @@ public class RouterService extends Service {
         updateRunState(state -> state.draining(deadlineEpochMs));
     }
 
-    /** Cancel the scheduled expiry and any pending drain resume. */
+    /* Cancel the scheduled expiry and any pending drain resume. */
     private void clearGracefulDeadline() {
         mainHandler.removeCallbacks(gracefulStopExpired);
         pendingDrainResumeMillis = -1L;
@@ -2504,11 +2504,11 @@ public class RouterService extends Service {
     // -----------------------------------------------------------------
 
     private enum RestoreAction {
-        /** No router is wanted; never start the daemon. */
+        /* No router is wanted; never start the daemon. */
         STAY_STOPPED,
-        /** A running router was interrupted; start it normally. */
+        /* A running router was interrupted; start it normally. */
         START_RUNNING,
-        /**
+        /*
          * A graceful drain is still inside its window; start and re-arm
          * it.
          */
@@ -2517,7 +2517,7 @@ public class RouterService extends Service {
 
     private record RestorePlan(RestoreAction action, long remainingDrainMs) {}
 
-    /**
+    /*
      * Reconcile the persisted run state with a freshly created service
      * owner.
      *
@@ -2547,7 +2547,7 @@ public class RouterService extends Service {
         return new RestorePlan(RestoreAction.START_RUNNING, 0L);
     }
 
-    /**
+    /*
      * Continue a persisted drain after a process death.
      *
      * <p>The daemon and its in-memory deadline are gone, so the
@@ -2564,7 +2564,7 @@ public class RouterService extends Service {
         enqueueControl(this::startDaemonWithMulticast);
     }
 
-    /**
+    /*
      * Publish and record a restore that could not start the daemon, and
      * leave a one-shot retry marker. The marker is consumed by the next
      * bind (or by the next successful foreground transition), which
@@ -2582,7 +2582,7 @@ public class RouterService extends Service {
         }
     }
 
-    /**
+    /*
      * Consume the deferred-restore marker. The persisted phase decides
      * the action, exactly as in {@link #reconcilePersistedRunState()}:
      * a stopped router is never started and an expired drain only
@@ -2619,7 +2619,7 @@ public class RouterService extends Service {
         }
     }
 
-    /**
+    /*
      * Extra snapshot text while a deferred restore has not been retried
      * yet.
      */

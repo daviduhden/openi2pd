@@ -25,22 +25,22 @@
 
 namespace i2p::privsep
 {
-/**
+/*
  * Appended to a log fragment that had to be cut at the text bound. The
  * marker lives inside the bound, so one sanitised record never exceeds
  * MAX_TEXT_SIZE.
  */
 inline constexpr std::string_view LOG_TRUNCATION_MARKER = "...[truncated]";
-/**
+/*
  * Replacement for the value of a sensitive
  * `&lt;key&gt;=&lt;value&gt;` pair. */
 inline constexpr std::string_view LOG_REDACTED_VALUE = "<redacted>";
-/**
+/*
  * Bound on redactions per record; keeps the pass cheap for hostile
  * input. */
 inline constexpr size_t MAX_LOG_REDACTIONS = 64;
 
-/**
+/*
  * Byte budget for the log file sink. Reaching it stops appends; there
  * is no rotation and existing content is never truncated or rewritten.
  * The ConfigureLog payload has no spare field (and its decoder requires
@@ -49,7 +49,7 @@ inline constexpr size_t MAX_LOG_REDACTIONS = 64;
  */
 inline constexpr uint64_t MAX_LOG_SINK_BYTES = 64 * 1024 * 1024;
 
-/**
+/*
  * Whether one more record still fits the file-sink budget. Pure so the
  * bound can be tested without writing 64 MiB; the worker passes its own
  * counters.
@@ -59,7 +59,7 @@ constexpr bool FitsLogSinkBudget (uint64_t currentBytes, uint64_t recordBytes, u
 	return currentBytes <= cap && recordBytes <= cap - currentBytes;
 }
 
-/**
+/*
  * Parent-side log sink. It only serializes structured records to the
  * log worker; the router process never opens or writes the log file
  * itself.
@@ -81,7 +81,7 @@ public:
 	{
 	}
 
-	/**
+	/*
 	 * Send the one-time configuration and remember it for restarts.
 	 *
 	 * A real log file is opened here and transferred as one descriptor
@@ -90,13 +90,13 @@ public:
 	 * frame.
 	 */
 	i2p::expected<void, std::string> Configure (bool useSyslog, std::string_view path, std::string_view tag);
-	/**
+	/*
 	 * Configure the next process without opening the path locally. Used by
 	 * the supervisor when the log worker itself owns the filesystem
 	 * capability; the supervisor never opens the log file.
 	 */
 	i2p::expected<void, std::string> ConfigureProxy (bool useSyslog, std::string_view path, std::string_view tag);
-	/**
+	/*
 	 * Attach a freshly spawned worker after re-sending the configuration.
 	 *
 	 * The replacement is proven before it is adopted: the old channel is
@@ -106,7 +106,7 @@ public:
 	 * the documented record drops; it never leaves two sinks attached.
 	 */
 	i2p::expected<void, std::string> Reattach (Channel channel);
-	/**
+	/*
 	 * Reattach a proxy-owned worker without opening the log file
 	 * locally. */
 	i2p::expected<void, std::string> ReattachProxy (Channel channel);
@@ -114,15 +114,15 @@ public:
 	i2p::expected<void, std::string> Shutdown ();
 	bool IsOpen () const;
 	bool IsShutdown () const;
-	/**
+	/*
 	 * Records dropped because the sink was closed, detached or a send
 	 * failed. */
 	uint64_t DroppedCount () const;
-	/**
+	/*
 	 * Documented alias of DroppedCount(); records this process
 	 * discarded. */
 	uint64_t GetDroppedCount () const { return DroppedCount (); }
-	/**
+	/*
 	 * The subset of the drop counter caused by worker unavailability
 	 * (closed channel, detached worker or a failed send) rather than by a
 	 * rejected level or a shutdown. The worker cannot report its own drops
@@ -132,7 +132,7 @@ public:
 	uint64_t GetWorkerDroppedCount () const;
 
 private:
-	/**
+	/*
 	 * Send one configuration frame and prove the worker is
 	 * live/configured.
 	 *
@@ -147,7 +147,7 @@ private:
 	i2p::expected<void, std::string> WaitForPong (Channel & channel, uint32_t expected, int timeoutMs);
 	void CountDroppedLocked (bool workerUnavailable);
 	mutable std::mutex m_Mutex;
-	/**
+	/*
 	 * Shared so a concurrent Write can keep the channel alive while it
 	 * sends outside the lock: the descriptor is only closed when the last
 	 * in-flight sender releases it.
@@ -158,7 +158,7 @@ private:
 	uint64_t m_WorkerDropped = 0;
 	bool m_Configured = false;
 	bool m_Shutdown = false;
-	/**
+	/*
 	 * A send failed; the channel is unusable until a reattach replaces
 	 * it. */
 	bool m_ChannelFailed = false;
@@ -167,7 +167,7 @@ private:
 	std::string m_Tag;
 };
 
-/**
+/*
  * Entry point for the isolated log worker process.
  *
  * @param fd Channel descriptor adopted as descriptor 3; the worker
@@ -180,7 +180,7 @@ private:
  */
 int RunLogWorker (int fd);
 
-/**
+/*
  * Bound one log text fragment and neutralise anything that could forge
  * a physical line or drive a terminal. C0 controls other than tab, DEL
  * and the C1 block (U+0080..U+009F, which contains the single-byte CSI
@@ -191,7 +191,7 @@ int RunLogWorker (int fd);
  */
 std::string SanitizeLogText (std::string_view text);
 
-/**
+/*
  * Replace the value of a `&lt;sensitive
  * key&gt;&lt;separator&gt;&lt;value&gt;` pair with LOG_REDACTED_VALUE.
  * The key set is compiled in (password, private key, privatekey,

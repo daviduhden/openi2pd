@@ -39,7 +39,7 @@ int main ()
 #else
 namespace
 {
-/**
+/*
  * Count the descriptors owned by this process. The directory descriptor
  * used for the scan is included in every measurement, so equal values
  * mean equal ownership. Returns -1 when /proc is unavailable; callers
@@ -77,7 +77,7 @@ std::string BuildHeader (uint16_t type, uint32_t requestId, uint32_t length)
 	return writer.Data ();
 }
 
-/**
+/*
  * Send a raw record, optionally with SCM_RIGHTS descriptors. This
  * bypasses
  * Encode() on purpose: the receiver is the component under test.
@@ -111,7 +111,7 @@ bool SendRaw (int socketFd, std::string_view frame)
 	return SendRawWithFds (socketFd, frame, nullptr, 0);
 }
 
-/**
+/*
  * A rejected record must be fully consumed. The next valid frame has to
  * arrive intact, otherwise a framing error would desynchronise the
  * channel.

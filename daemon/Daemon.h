@@ -50,7 +50,7 @@ namespace util
 		virtual void SetGracefulShutdownInterval (int seconds) { (void)seconds; };
 		virtual bool SupportsGracefulShutdown () const { return false; };
 
-		/**
+		/*
 		 * Begin or cancel a graceful drain without going through a signal
 		 * handler. The implementation only changes the tunnel-acceptance flag
 		 * and the platform shutdown countdown; the daemon loop remains the
@@ -71,14 +71,14 @@ namespace util
 
 		bool IsService () const;
 
-		/**
+		/*
 		 * Spawn privilege-separated workers before the parent runtime sandbox
 		 * is installed. On OpenBSD fork/exec must happen while the startup
 		 * pledge still contains proc/exec; the runtime policy then drops
 		 * both.
 		 */
 		bool PreparePrivsepWorkers ();
-		/** Revoke installed storage callbacks and reap prepared workers
+		/* Revoke installed storage callbacks and reap prepared workers
 		 * during Unix startup rollback, including workers started by init().
 		 */
 		void StopPrivsepWorkers ();

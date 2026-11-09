@@ -1199,7 +1199,7 @@ namespace client
 
 		std::list<std::shared_ptr<SAMSocket>> ListSockets (std::string_view id) const;
 
-		/** Send raw data to a remote endpoint from UDP. Buffers are
+		/* Send raw data to a remote endpoint from UDP. Buffers are
 		 * copied, so callers may release them. Sends are queued on
 		 * the SAM service; only one asynchronous send is in flight.
 		 */

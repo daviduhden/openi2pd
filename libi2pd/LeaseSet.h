@@ -54,7 +54,7 @@ namespace data
 		uint32_t tunnelID;
 		uint64_t endDate; // 0 means invalid
 		bool isUpdated; // transient
-		/** Return true if expiry is within t plus the clock fudge. */
+		/* Return true if expiry is within t plus the clock fudge. */
 		bool ExpiresWithin (const uint64_t t, const uint64_t fudge = 1000) const
 		{
 			auto expire = i2p::util::GetMillisecondsSinceEpoch ();
@@ -186,7 +186,7 @@ namespace data
 		size_t m_BufferLen;
 	};
 
-	/**
+	/*
 	 * validate lease set buffer signature and extract expiration timestamp
 	 * @returns true if the leaseset is well formed and signature is valid
 	 */

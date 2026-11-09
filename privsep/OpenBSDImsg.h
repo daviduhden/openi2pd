@@ -31,7 +31,7 @@ extern "C"
 
 namespace i2p::privsep
 {
-/**
+/*
  * OpenBSD imsg adapter for the versioned worker frame.
  *
  * The frame remains encoded by Protocol.h and is carried as the imsg
@@ -54,7 +54,7 @@ public:
 	ImsgChannel (const ImsgChannel &) = delete;
 	ImsgChannel & operator= (const ImsgChannel &) = delete;
 
-	/**
+	/*
 	 * Adopt an already-connected descriptor as an imsg channel.
 	 *
 	 * Initializes the imsg buffer, enables fd passing
@@ -66,7 +66,7 @@ public:
 	 * from another process.
 	 */
 	static i2p::expected<ImsgChannel, std::string> Adopt (int fd);
-	/**
+	/*
 	 * Validate an inherited stream socket and peer UID before enabling
 	 * imsg fd passing. The imsg adapter is not production-wired yet; this
 	 * is the mandatory gate for any future supervisor/network control
@@ -78,7 +78,7 @@ public:
 	int Fd () const { return m_Fd; }
 	void Close ();
 
-	/**
+	/*
 	 * Send one encoded frame. When @a fd is non-negative it is passed with
 	 * exactly one SCM_RIGHTS descriptor and ownership is transferred to
 	 * the imsg layer after a successful compose (matching
@@ -90,7 +90,7 @@ public:
 	 * closes the channel because the queued frame may be partially sent.
 	 */
 	i2p::expected<void, std::string> Send (const Message & message, int fd = -1, int timeoutMs = 5000);
-	/**
+	/*
 	 * Receive one frame, draining the imsg user buffer before polling so a
 	 * second message delivered by the same read is not stranded.
 	 *

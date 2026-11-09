@@ -21,7 +21,7 @@ namespace i2p
 {
 namespace tui
 {
-	/**
+	/*
 	 * Map a configured local endpoint to a stable Windows named-pipe path.
 	 *
 	 * The daemon and i2pd-tui are separate processes and do not share a
@@ -42,7 +42,7 @@ namespace tui
 	 */
 	std::wstring MakeWin32PipeName (std::string_view endpoint);
 
-	/**
+	/*
 	 * Normalised UTF-8 form used by MakeWin32PipeName
 	 * (diagnostics/tests). */
 	std::string NormalizeWin32Endpoint (std::string_view endpoint);

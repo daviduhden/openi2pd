@@ -22,7 +22,7 @@ import org.junit.Test;
 
 import java.util.Locale;
 
-/**
+/*
  * Pure-JVM tests for {@link RouterCommand#fromAction(String)}. No
  * Android API, Robolectric, emulator or native library is involved.
  */

@@ -40,7 +40,7 @@ struct ReceivedMessage
 	int fd = -1; // SCM_RIGHTS descriptor, owned by the receiver
 };
 
-/**
+/*
  * Expected identity of the process at the other end of a channel.
  *
  * Linux `SO_PEERCRED` reports the credentials captured when the socket
@@ -59,14 +59,14 @@ struct PeerExpectation
 	uint32_t pid = 0;
 	bool requireGid = false;
 	bool requirePid = false;
-	/**
+	/*
 	 * Accept uid 0 in addition to `uid` (unprivileged worker + root
 	 * core). */
 	bool allowRoot = false;
 	bool configured = false;
 };
 
-/**
+/*
  * How much of the message registry a channel enforces.
  *
  * `Transport` (the default) checks framing, size, credentials and the
@@ -118,9 +118,9 @@ public:
 	Channel & operator= (const Channel &) = delete;
 
 	static i2p::expected<std::pair<Channel, Channel>, std::string> CreatePair ();
-	/** Adopt an inherited worker channel; expects this uid (or root). */
+	/* Adopt an inherited worker channel; expects this uid (or root). */
 	static Channel Adopt (int fd);
-	/**
+	/*
 	 * Adopt a descriptor received from another process after validating
 	 * that it is an AF_UNIX SOCK_SEQPACKET socket with the expected peer
 	 * UID. On failure the descriptor is closed and the caller receives an
@@ -130,7 +130,7 @@ public:
 
 	bool IsOpen () const { return m_Fd >= 0; }
 	int Fd () const { return m_Fd; }
-	/**
+	/*
 	 * Detach the descriptor without closing it; ownership passes to the
 	 * caller. */
 	int Release ()
@@ -146,7 +146,7 @@ public:
 	/// One immediate nonblocking attempt is allowed even at expiry.
 	i2p::expected<void, std::string> SendUntil (const Message & message,
 		std::chrono::steady_clock::time_point deadline);
-	/**
+	/*
 	 * Send one message with at most one SCM_RIGHTS descriptor. The
 	 * descriptor is an explicitly authorized side channel; the protocol
 	 * payload remains unchanged. Callers must only pass descriptors
@@ -167,7 +167,7 @@ public:
 	/// Expired deadlines permit only an immediately available record.
 	i2p::expected<std::optional<Message>, std::string> ReceiveUntil (
 		std::chrono::steady_clock::time_point deadline);
-	/**
+	/*
 	 * Receive one frame and optionally one descriptor. Any SCM_RIGHTS
 	 * descriptor is returned to the caller and must be closed by it. More
 	 * than one descriptor is a protocol error. On Linux the per-message
@@ -196,21 +196,21 @@ public:
 	i2p::expected<uint32_t, std::string> PeerUid () const;
 	i2p::expected<PeerCredentials, std::string> Credentials () const;
 
-	/**
+	/*
 	 * Set the identity every received frame must carry (Linux
 	 * per-message). */
 	void ExpectPeer (const PeerExpectation & expectation) { m_PeerExpectation = expectation; }
 	const PeerExpectation & GetPeerExpectation () const { return m_PeerExpectation; }
-	/** Testable predicate used by the Linux `SCM_CREDENTIALS` path. */
+	/* Testable predicate used by the Linux `SCM_CREDENTIALS` path. */
 	bool MatchesPeerExpectation (uint32_t uid, uint32_t gid, uint32_t pid) const;
 
 	void SetEnforcementPolicy (EnforcementPolicy policy) { m_EnforcementPolicy = policy; }
 	EnforcementPolicy GetEnforcementPolicy () const { return m_EnforcementPolicy; }
-	/**
+	/*
 	 * Frames answered with a typed error and discarded since
 	 * construction. */
 	unsigned ProtocolViolations () const { return m_ProtocolViolations; }
-	/**
+	/*
 	 * A peer that keeps sending frames its own role may not receive (or a
 	 * descriptor on a type that forbids one) is disconnected once this
 	 * bound is exceeded. It is deliberately small: every tolerated frame
@@ -221,14 +221,14 @@ public:
 private:
 	i2p::expected<std::optional<ReceivedMessage>, std::string> ReceiveWithFdUntil (
 		bool infinite, std::chrono::steady_clock::time_point deadline);
-	/**
+	/*
 	 * Internal send that retains its caller's absolute deadline. Public
 	 * relative timeouts are converted once; nested refusals never rebase
 	 * the receive budget after scheduling or payload preparation.
 	 */
 	i2p::expected<void, std::string> SendWithFdUntil (const Message & message, int fd, bool infinite,
 		std::chrono::steady_clock::time_point deadline);
-	/**
+	/*
 	 * Reply with a typed Error and account the violation; false means
 	 * "close". `frame.type` must be a type that has a registry row: the
 	 * payload's offending-type field is decoded with the same registry, so

@@ -43,7 +43,7 @@ namespace i2p::privsep
 {
 namespace
 {
-	/** Descriptor the spawner uses for the one-shot identity record. */
+	/* Descriptor the spawner uses for the one-shot identity record. */
 	constexpr int WORKER_HELLO_FD = 5;
 }
 

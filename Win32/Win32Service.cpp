@@ -25,7 +25,7 @@
 
 namespace
 {
-/**
+/*
 	 * The service stop flag is published with Interlocked operations so
 	 * the monitor thread and the control handler never race on a plain
 	 * BOOL. The value is 0 (running) or 1 (stopping).
@@ -35,7 +35,7 @@ BOOL IsStopping (volatile LONG * flag)
 	return InterlockedCompareExchange (flag, 0, 0) != 0;
 }
 
-/**
+/*
 	 * Drain the router and join its bounded monitor thread.
 	 *
 	 * Order is load-bearing: `Daemon.stop()` tears down router subsystems

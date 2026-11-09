@@ -64,7 +64,7 @@ bool WaitForExit (pid_t pid, int & status, int timeoutMs)
 	return false;
 }
 
-/**
+/*
 	 * Fork one worker, run the parent-side exchange and wait for exit. The
 	 * worker is a plain fork of the test process so the credential check
 	 * is exercised for the current uid (cross-uid rejection needs root).
@@ -146,7 +146,7 @@ int OpenLogDescriptor (const std::string & path)
 }
 
 #ifdef __linux__
-/**
+/*
  * Count descriptors owned by this process. The directory descriptor
  * used for the scan is included in every measurement. Returns -1
  * without /proc so a non-procfs Linux build skips the comparison
@@ -187,7 +187,7 @@ void TestLogTextSanitization ()
 	assert (SanitizeLogText (oversized).size () == MAX_TEXT_SIZE);
 }
 
-/**
+/*
  * The sanitizer matrix: UTF-8 awareness, C1 neutralisation and the
  * bound.
  */
@@ -257,7 +257,7 @@ void TestLogSanitizerMatrix ()
 	assert (SanitizeLogText ("short").find (LOG_TRUNCATION_MARKER) == std::string::npos);
 }
 
-/**
+/*
  * The compiled-in sensitive-key list and its bounded, exact
  * redaction.
  */
@@ -301,7 +301,7 @@ void TestLogRedaction ()
 	assert (redactions == MAX_LOG_REDACTIONS);
 }
 
-/**
+/*
  * The file-sink byte budget decision, independent of the 64 MiB
  * default.
  */
@@ -319,7 +319,7 @@ void TestLogSinkBudget ()
 	assert (FitsLogSinkBudget (MAX_LOG_SINK_BYTES - 1, 1));
 }
 
-/**
+/*
  * A log peer that pauses after configuration until the parent releases
  * the drain. Once released it consumes every queued record, so socket
  * readiness thresholds do not depend on per-record scheduling delays.

@@ -34,7 +34,7 @@ import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 import com.google.android.material.textfield.TextInputEditText;
 import com.google.android.material.textfield.TextInputLayout;
 
-/**
+/*
  * Bounded runtime administration.
  *
  * <p>Each control maps to one typed native command: {@code
@@ -51,7 +51,7 @@ import com.google.android.material.textfield.TextInputLayout;
  * authority before dismissing its one retained dialog.</p>
  */
 public final class RuntimeAdminFragment extends Fragment {
-    /** Bounds shared with the native bridge. */
+    /* Bounds shared with the native bridge. */
     private static final int MAX_ROUTER_HASH = RuntimeAdminPolicy.MAX_ROUTER_HASH;
 
     private RouterViewModel model;
@@ -60,7 +60,7 @@ public final class RuntimeAdminFragment extends Fragment {
     private LinearLayout rows;
     private boolean busy;
     private final UiDialogEpoch dialogs = new UiDialogEpoch();
-    /**
+    /*
      * View generation. Command and read callbacks run after their JNI
      * call has returned, so each one captures the current value and is
      * dropped once {@link #onDestroyView()} has incremented it; a stale
@@ -474,7 +474,7 @@ public final class RuntimeAdminFragment extends Fragment {
         return dialogs.maySubmit(token, status != null && isAdded(), busy);
     }
 
-    /** Show one dialog owned by the captured view, never its successor. */
+    /* Show one dialog owned by the captured view, never its successor. */
     private void showDialog(UiDialogEpoch.Token token, MaterialAlertDialogBuilder builder) {
         if (!maySubmitDialog(token))
             return;

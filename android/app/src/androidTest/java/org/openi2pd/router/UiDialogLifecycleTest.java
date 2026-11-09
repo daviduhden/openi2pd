@@ -29,7 +29,7 @@ import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 
-/**
+/*
  * Opens only local forms and never submits administrative commands.
  * The router stays stopped. Each fragment instance loses and recreates
  * its view, exercising the case where isAdded becomes true again but

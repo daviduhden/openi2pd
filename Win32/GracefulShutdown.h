@@ -15,7 +15,7 @@ namespace i2p::win32
 {
 inline constexpr uint32_t GRACEFUL_SHUTDOWN_TIMEOUT_MS = 10U * 60U * 1000U;
 
-/** Return the remaining time for a short wrap-safe tick deadline. */
+/* Return the remaining time for a short wrap-safe tick deadline. */
 constexpr uint32_t GetGracefulShutdownRemainingMilliseconds (uint32_t deadline, uint32_t now) noexcept
 {
 	const auto remaining = deadline - now;

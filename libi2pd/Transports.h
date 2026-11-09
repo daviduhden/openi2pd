@@ -146,7 +146,7 @@ namespace transport
 	};
 
 	const uint64_t SESSION_CREATION_TIMEOUT = 15; // in seconds
-	/**
+	/*
 	 * Immutable copy of the transport peer table for administrative views.
 	 * It intentionally contains no RouterInfo pointers or session objects:
 	 * the caller cannot retain router state or race with peer cleanup.
@@ -260,7 +260,7 @@ namespace transport
 		size_t GetNumPeers () const;
 		size_t GetNumConnectedPeers () const;
 		std::vector<PeerSnapshot> GetPeersSnapshot (size_t max) const;
-		/**
+		/*
 		 * bounded snapshot containing only peers with at least one live
 		 * session
 		 */
@@ -277,15 +277,15 @@ namespace transport
 		std::shared_ptr<const i2p::data::RouterInfo> GetRandomPeer (
 			bool isHighBandwidth, i2p::data::PeerOrdering * peerOrdering = nullptr) const;
 
-		/** get a trusted first hop for restricted routes */
+		/* get a trusted first hop for restricted routes */
 		std::shared_ptr<const i2p::data::RouterInfo> GetRestrictedPeer ();
-		/** do we want to use restricted routes? */
+		/* do we want to use restricted routes? */
 		bool RoutesRestricted () const;
-		/**
+		/*
 		 * restrict routes to use only these router families for first hops
 		 */
 		void RestrictRoutesToFamilies (const std::vector<std::string_view> & families);
-		/** restrict routes to use only these routers for first hops */
+		/* restrict routes to use only these routers for first hops */
 		void RestrictRoutesToRouters (const std::vector<i2p::data::IdentHash> & routers);
 
 		bool IsTrustedRouter (const i2p::data::IdentHash & ih) const;
@@ -366,11 +366,11 @@ namespace transport
 		// Bandwidth during last 5 minutes
 		uint32_t m_InBandwidth5m, m_OutBandwidth5m, m_TransitBandwidth5m;
 
-		/** which router families to trust for first hops */
+		/* which router families to trust for first hops */
 		std::vector<i2p::data::FamilyID> m_TrustedFamilies;
 		mutable std::mutex m_FamilyMutex;
 
-		/** which routers for first hop to trust */
+		/* which routers for first hop to trust */
 		std::unordered_set<i2p::data::IdentHash> m_TrustedRouters;
 		mutable std::mutex m_TrustedRoutersMutex;
 

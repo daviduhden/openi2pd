@@ -7,7 +7,7 @@ package org.openi2pd.router;
 
 import java.io.IOException;
 
-/**
+/*
  * Per-request retained UTF-8 budgets for provider-controlled creation
  * inputs. Paths have an 8 MiB aggregate ceiling; document IDs and
  * retained URI strings share a separate 8 MiB ceiling.
@@ -28,7 +28,7 @@ final class TorrentSafCreationBudget {
     private int pathBytes;
     private int documentIdBytes;
 
-    /** Validate a component against the native UTF-8 byte limit. */
+    /* Validate a component against the native UTF-8 byte limit. */
     static String component(String name) throws IOException {
         if (name == null || name.isEmpty() || name.length() > 255
                 || name.equals(".") || name.equals("..")
@@ -42,7 +42,7 @@ final class TorrentSafCreationBudget {
         return name;
     }
 
-    /**
+    /*
      * Charge root or child text before building a URI or retaining it
      * in a source list, visited set or sibling-name set. Failed charges
      * leave both counters unchanged. IDs are opaque provider operands;
@@ -62,13 +62,13 @@ final class TorrentSafCreationBudget {
         pathBytes += paths;
     }
 
-    /** Bound the encoded document authority before retaining its URI. */
+    /* Bound the encoded document authority before retaining its URI. */
     static void uri(String uri) throws IOException {
         if (uri == null || uri.length() > MAX_URI_LENGTH)
             throw new IOException("Source URI limit exceeded");
     }
 
-    /** Charge an encoded URI before retaining it in a source record. */
+    /* Charge an encoded URI before retaining it in a source record. */
     void authority(String uri) throws IOException {
         uri(uri);
         int bytes = utf8Length(uri);
@@ -77,7 +77,7 @@ final class TorrentSafCreationBudget {
         documentIdBytes += bytes;
     }
 
-    /** Check every full or final partial-piece hash before appending. */
+    /* Check every full or final partial-piece hash before appending. */
     static void hashAppend(int currentBytes) throws IOException {
         if (currentBytes < 0 || currentBytes > MAX_HASH_BYTES - HASH_BYTES)
             throw new IOException("Too many pieces; select a larger piece size");

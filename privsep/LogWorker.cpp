@@ -42,7 +42,7 @@ namespace i2p::privsep
 {
 namespace
 {
-	/**
+	/*
 	 * Validate one UTF-8 sequence at @a pos and report its length plus
 	 * code point. Returns 0 for invalid input: a bad lead or continuation
 	 * byte, a truncated sequence, an overlong form, a surrogate or a value
@@ -91,7 +91,7 @@ namespace
 		return length;
 	}
 
-	/**
+	/*
 	 * Code points that must not reach a file, syslog or a terminal
 	 * verbatim. Tab is the only C0 control kept; C1 contains the
 	 * single-byte CSI (0x9B) that some terminals still honour inside an
@@ -175,7 +175,7 @@ namespace
 		return true;
 	}
 
-	/**
+	/*
 	 * A key must start a token: the preceding byte must not be
 	 * alphanumeric. */
 	bool IsKeyBoundary (std::string_view text, size_t pos)
@@ -192,7 +192,7 @@ namespace
 		return ch == ' ' || ch == '\t' || ch == ',' || ch == ';' || ch == '}' || ch == ']' || ch == ')';
 	}
 
-	/**
+	/*
 	 * A quoted value ends after its closing quote; an unquoted one at a
 	 * separator. */
 	size_t FindValueEnd (std::string_view text, size_t start)
@@ -272,7 +272,7 @@ namespace
 		return level <= 5; // eLogNone..eLogDebug
 	}
 
-	/**
+	/*
 	 * Bind a pre-opened log descriptor to the configured path. Without
 	 * this check the sender could hand over any same-UID writable regular
 	 * file and turn the log worker into a write primitive for it. The
@@ -356,7 +356,7 @@ namespace
 	}
 #endif
 
-	/**
+	/*
 	 * The single text pipeline: redact first (it can grow the text) and
 	 * sanitise last, so the fragment written to the sink is bounded and
 	 * never ends inside a multi-byte sequence.
@@ -385,7 +385,7 @@ namespace
 		return line;
 	}
 
-	/**
+	/*
 	 * Bytes already in the attached sink, or 0 when it cannot be
 	 * measured. */
 	uint64_t CurrentSinkSize (FILE * file)
@@ -634,7 +634,7 @@ bool LogSink::IsShutdown () const
 	return m_Shutdown;
 }
 
-/**
+/*
  * Log-worker body.
  *
  * Ordering and failure classification: on Linux the role sandbox for

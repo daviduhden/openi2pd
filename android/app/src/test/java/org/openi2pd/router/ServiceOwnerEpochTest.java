@@ -24,7 +24,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.TimeUnit;
 
-/** Pure-JVM checks for stale owner callback fencing. */
+/* Pure-JVM checks for stale owner callback fencing. */
 public final class ServiceOwnerEpochTest {
     @Test
     public void newerOwnerFencesCallbacksFromPriorService() {

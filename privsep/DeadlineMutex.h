@@ -12,7 +12,7 @@
 
 namespace i2p::privsep
 {
-/**
+/*
  * Nonrecursive transaction admission with a steady-clock deadline.
  *
  * Implements BasicLockable and the steady try_lock_until operation used

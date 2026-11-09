@@ -22,7 +22,7 @@ import androidx.lifecycle.MutableLiveData;
 
 import java.util.List;
 
-/**
+/*
  * Activity/Fragment-facing state holder.
  *
  * <p>All public methods are main-thread safe. The native calls happen
@@ -31,7 +31,7 @@ import java.util.List;
  */
 public class RouterViewModel extends AndroidViewModel {
     private final RouterRepository repository;
-    /** Terminal control response paired with the selected tunnel. */
+    /* Terminal control response paired with the selected tunnel. */
     public record TorrentImportResult(int tunnel, String response) {}
     private final MutableLiveData<TorrentImportResult> torrentImportResult =
             new MutableLiveData<>();
@@ -55,7 +55,7 @@ public class RouterViewModel extends AndroidViewModel {
         return repository.getServiceConnected();
     }
 
-    /**
+    /*
      * Pause/resume service observation when the activity leaves the
      * foreground.
      */
@@ -103,7 +103,7 @@ public class RouterViewModel extends AndroidViewModel {
         torrentImportResult.setValue(null);
     }
 
-    /**
+    /*
      * Start a bounded SAF import and publish its single result.
      *
      * <p>Main-thread only. A second import is ignored while one is
@@ -122,7 +122,7 @@ public class RouterViewModel extends AndroidViewModel {
         });
     }
 
-    /**
+    /*
      * Progress or terminal result for one SAF metainfo creation.
      * Running values report hashed bytes; terminal values carry encoded
      * metainfo or a localized error, never payload authority.
@@ -132,7 +132,7 @@ public class RouterViewModel extends AndroidViewModel {
     public LiveData<SafCreation> getSafCreation() {
         return safCreation;
     }
-    /**
+    /*
      * Hash a user-selected SAF source into metainfo on the service's
      * SAF lane.
      *
@@ -169,7 +169,7 @@ public class RouterViewModel extends AndroidViewModel {
         repository.exportTorrent(target, state.metadata(), result);
     }
 
-    /**
+    /*
      * Persist or release a SAF payload grant away from the UI thread.
      */
     public void selectPayloadTree(String tunnel, String hash, android.net.Uri tree,
@@ -177,7 +177,7 @@ public class RouterViewModel extends AndroidViewModel {
         repository.selectPayloadTree(tunnel, hash, tree, callback);
     }
 
-    /**
+    /*
      * Release the payload grant for one torrent on the service's SAF
      * lane. The callback runs on the main thread and may arrive after
      * the calling view is gone, so callers must fence it with their own
@@ -188,7 +188,7 @@ public class RouterViewModel extends AndroidViewModel {
         repository.detachPayload(tunnel, hash, callback);
     }
 
-    /**
+    /*
      * Bounded payload-storage diagnostic for one torrent. It is read on
      * the service's SAF worker because it consults the live URI
      * permissions and may re-arm a bounded broker bind; the callback
@@ -224,7 +224,7 @@ public class RouterViewModel extends AndroidViewModel {
         repository.reloadTunnels();
     }
 
-    /**
+    /*
      * Request a bounded, non-blocking NetDb reseed; the callback runs
      * on the main thread.
      */
@@ -244,7 +244,7 @@ public class RouterViewModel extends AndroidViewModel {
         repository.setShareRatio(percent, callback);
     }
 
-    /**
+    /*
      * Bounded reseed phase/attempt/error record; empty when the router
      * is stopped.
      */
@@ -279,7 +279,7 @@ public class RouterViewModel extends AndroidViewModel {
         repository.banCommand(hash, ban, callback);
     }
 
-    /**
+    /*
      * Apply a runtime log level to the running logger; the file is
      * written separately.
      */
@@ -291,7 +291,7 @@ public class RouterViewModel extends AndroidViewModel {
         repository.clearLogs();
     }
 
-    /**
+    /*
      * First-launch policy: auto-start only before any run state has
      * been persisted. The Activity calls this only for a genuinely
      * fresh task (savedInstanceState == null), so rotation cannot
@@ -305,12 +305,12 @@ public class RouterViewModel extends AndroidViewModel {
         }
     }
 
-    /** Optional; the UI may instead filter its adapter locally. */
+    /* Optional; the UI may instead filter its adapter locally. */
     public void setLogFilterLevel(String level) {
         repository.setLogFilterLevel(level);
     }
 
-    /**
+    /*
      * Clear the service binding when the ViewModel is destroyed. The
      * daemon is not stopped here: the foreground service owns it, so a
      * rotated or finished Activity never changes router state.

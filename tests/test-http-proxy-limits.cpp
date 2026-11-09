@@ -27,7 +27,7 @@ namespace
 using i2p::proxy::HTTP_PROXY_MAX_HEADER_SIZE;
 using i2p::proxy::HTTPProxyHeaderLimitExceeded;
 
-/**
+/*
  * Build a syntactically valid request whose header is exactly `total`
  * bytes.
  */
@@ -57,7 +57,7 @@ void TestHeaderLimitBoundary ()
 	assert (HTTPProxyHeaderLimitExceeded (HTTP_PROXY_MAX_HEADER_SIZE + 1, 0));
 }
 
-/**
+/*
  * The parser must stay incomplete while the header is being accumulated
  * and must succeed once the end-of-headers marker arrives at exactly 1
  * MiB.
@@ -97,7 +97,7 @@ void TestIncrementalParserAtHeaderLimit ()
 	assert (parsed.GetHeader ("Host") == "example.i2p");
 }
 
-/**
+/*
  * A peer that never terminates its header must be rejected before the
  * buffer grows past the ceiling. This mirrors
  * HTTPReqHandler::HandleSockRecv(), which calls
@@ -125,7 +125,7 @@ void TestOversizedHeaderRejected ()
 	assert (buffered <= HTTP_PROXY_MAX_HEADER_SIZE);
 }
 
-/**
+/*
  * Mirrors HTTPReqHandler's finalisation contract: a null stream closes
  * the handler state, leaves the owner's handler set and is safe to
  * repeat.
@@ -185,7 +185,7 @@ void TestProxyStatusMapping ()
 	assert (HTTPProxyFailureStatus (HTTPProxyFailure::GatewayTimeout) == 504);
 }
 
-/** Only http:// (and https for CONNECT) may reach a destination. */
+/* Only http:// (and https for CONNECT) may reach a destination. */
 void TestRequestTargetSchemes ()
 {
 	using i2p::proxy::ClassifyRequestTarget;
@@ -238,7 +238,7 @@ void TestRequestTargetSchemes ()
 	assert (ProxyTargetErrorStatus (ProxyTargetError::Malformed) == 400);
 }
 
-/**
+/*
  * `CONNECT [::1]:443` must parse an IPv6 literal instead of splitting
  * on ':'.
  */
@@ -268,7 +268,7 @@ void TestConnectAuthority ()
 	assert (!ClassifyRequestTarget ("CONNECT", "::1:443", { }).IsValid ());
 }
 
-/** The proxy consumes hop-by-hop and proxy-disclosure headers. */
+/* The proxy consumes hop-by-hop and proxy-disclosure headers. */
 void TestHopByHopStripMatrix ()
 {
 	using i2p::proxy::IsHopByHopHeaderName;
@@ -328,7 +328,7 @@ void TestHopByHopStripMatrix ()
 	assert (StripHopByHopHeaders (req) == 0);
 }
 
-/**
+/*
  * A hostile Host can never produce markup, and the escaper is
  * bounded.
  */
@@ -365,7 +365,7 @@ void TestHtmlEscaping ()
 	assert (EscapeHTML (std::string (HTTP_PROXY_MAX_ESCAPED_INPUT + 100, 'a')).size () == HTTP_PROXY_MAX_ESCAPED_INPUT);
 }
 
-/** A configured outproxy URL never appears in a page or a log line. */
+/* A configured outproxy URL never appears in a page or a log line. */
 void TestOutproxyURLRedaction ()
 {
 	using i2p::proxy::RedactURLUserInfo;

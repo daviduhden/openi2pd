@@ -20,7 +20,7 @@ import org.junit.Test;
 
 import java.util.List;
 
-/**
+/*
  * Pure-JVM tests for the native snapshot and log parsers. They do not
  * call JNI and do not require an emulator.
  */

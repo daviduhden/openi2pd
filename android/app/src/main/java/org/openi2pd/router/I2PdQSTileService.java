@@ -22,7 +22,7 @@ import android.util.Log;
 
 import androidx.core.content.ContextCompat;
 
-/**
+/*
  * Quick Settings tile.
  *
  * <p>The tile sends the same explicit start/stop commands as the UI. It

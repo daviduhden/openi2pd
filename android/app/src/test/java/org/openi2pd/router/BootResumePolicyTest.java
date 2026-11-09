@@ -22,7 +22,7 @@ import android.content.Intent;
 import org.junit.Test;
 import org.openi2pd.router.receivers.BootUpReceiver;
 
-/**
+/*
  * JVM checks for {@link BootUpReceiver#mayResume(String, boolean,
  * boolean)}.
  *

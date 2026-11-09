@@ -24,7 +24,7 @@
 
 namespace i2p::privsep
 {
-/**
+/*
  * Fixed service identity of every spawned worker.
  *
  * The pair is non-secret and process-wide: it is resolved once before
@@ -38,7 +38,7 @@ namespace i2p::privsep
  */
 struct WorkerCredentials
 {
-	/**
+	/*
 	 * True only when `privsep.user` was resolved; false keeps the
 	 * daemon's own effective identity. */
 	bool configured = false;
@@ -46,7 +46,7 @@ struct WorkerCredentials
 	uint32_t gid = 0;
 };
 
-/**
+/*
  * Resolve `user`/`group` before the startup sandbox is applied.
  *
  * An empty user and group keep the current effective identity
@@ -57,13 +57,13 @@ struct WorkerCredentials
  */
 i2p::expected<WorkerCredentials, std::string> ResolveWorkerCredentials (std::string_view user, std::string_view group);
 
-/**
+/*
  * Install the process-wide worker identity. Must precede the first
  * spawn. */
 void SetWorkerCredentials (const WorkerCredentials & credentials);
 const WorkerCredentials & GetWorkerCredentials ();
 
-/**
+/*
  * Effective uid a spawned worker must have. In the core this is the
  * configured `privsep.user` (or the core's own euid when unconfigured);
  * after `RunWorker` it is the identity recorded in the spawn hello.
@@ -71,7 +71,7 @@ const WorkerCredentials & GetWorkerCredentials ();
  */
 uint32_t WorkerUid ();
 
-/**
+/*
  * True when a channel peer may be the daemon that spawned this worker:
  * the same effective uid, or uid 0 for an unprivileged worker whose
  * root core retained its authority and only drops credentials in the
@@ -80,7 +80,7 @@ uint32_t WorkerUid ();
  */
 bool IsAllowedParentUid (uint32_t peerUid);
 
-/**
+/*
  * Drop to the configured identity in a forked child, immediately before
  * execve. Clears supplementary groups, sets gid then uid, and verifies
  * the real/effective ids plus an empty supplementary set.
@@ -93,7 +93,7 @@ bool IsAllowedParentUid (uint32_t peerUid);
  */
 bool DropWorkerCredentialsInChild (const WorkerCredentials & credentials);
 
-/**
+/*
  * Describe the identity without leaking a password or a home directory.
  * Used in bounded startup diagnostics.
  */

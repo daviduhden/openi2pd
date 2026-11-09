@@ -19,7 +19,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.util.function.BooleanSupplier;
 
-/**
+/*
  * Binary SAF metadata reader: neither a provider path nor a display
  * name is trusted.
  */
@@ -31,12 +31,12 @@ final class TorrentDocumentReader {
         return read(input, TorrentControl.MAX_IMPORT_BYTES);
     }
 
-    /** Read under the import cap with a caller-owned cancellation signal. */
+    /* Read under the import cap with a caller-owned cancellation signal. */
     static byte[] read(InputStream input, BooleanSupplier canceled) throws IOException {
         return read(input, TorrentControl.MAX_IMPORT_BYTES, canceled);
     }
 
-    /**
+    /*
      * Read a complete torrent document under a caller-selected cap. The
      * caller retains ownership of {@code input} and must close it,
      * including on error.
@@ -63,7 +63,7 @@ final class TorrentDocumentReader {
         return read(input, maximum, () -> false);
     }
 
-    /**
+    /*
      * Read bounded metadata while observing a caller signal and the
      * thread interrupt flag. Cancellation cannot interrupt a provider
      * already blocked in read; it prevents the next read and prevents

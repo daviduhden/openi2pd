@@ -94,7 +94,7 @@ namespace
 		return L"unknown";
 	}
 
-	/** ASCII-only narrowing for diagnostics and profile names. */
+	/* ASCII-only narrowing for diagnostics and profile names. */
 	std::string NarrowAscii (const std::wstring & text)
 	{
 		std::string result;
@@ -155,7 +155,7 @@ namespace
 	};
 	using LocalPtr = std::unique_ptr<void, LocalFreeDeleter>;
 
-	/**
+	/*
 	 * Releases an AppContainer profile SID.
 	 *
 	 * CreateAppContainerProfile() and
@@ -182,7 +182,7 @@ namespace
 		return (ch >= L'A' && ch <= L'Z') || (ch >= L'a' && ch <= L'z');
 	}
 
-	/**
+	/*
 	 * A delegated root is resolved by the caller and handed in as an
 	 * absolute local or UNC path. A relative path would depend on the
 	 * worker's current directory, and the device namespace would let the
@@ -200,7 +200,7 @@ namespace
 		return !deviceNamespace;
 	}
 
-	/**
+	/*
 	 * One capability SID, owned by the caller's SID_AND_ATTRIBUTES entry.
 	 * A capability SID is a LocalAlloc block because the profile/token
 	 * APIs consume it as a plain PSID and its owner releases it with
@@ -259,7 +259,7 @@ namespace
 		return isolation;
 	}
 
-	/**
+	/*
 	 * The Windows isolation authority. Every OS policy for a Windows
 	 * worker role must be reviewable against exactly one row.
 	 *
@@ -330,7 +330,7 @@ WindowsRoleIsolation GetWindowsRoleIsolation (WindowsWorkerRole role)
 	return WINDOWS_ROLE_ISOLATION_TABLE[index];
 }
 
-/**
+/*
  * The owned AppContainer identity: the profile name, the derived
  * package SID, its string form and the capability SID array handed to
  * the token. Every SID is a LocalAlloc block freed by this object,

@@ -5248,7 +5248,7 @@ namespace transport
 		return ri;
 	}
 
-	/**
+	/*
 	 * @brief Record an authenticated packet number and advance the
 	 *        contiguous receive point.
 	 * @param packetNum packet number decoded from an authenticated header.

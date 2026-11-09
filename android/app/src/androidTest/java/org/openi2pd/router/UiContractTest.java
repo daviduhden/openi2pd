@@ -35,7 +35,7 @@ import com.google.android.material.color.MaterialColors;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 
-/**
+/*
  * Read-only contract checks for the native Material 3 screens.
  *
  * <p>Asserts one-screen-reader-stop rows, visible touch targets, the
@@ -180,7 +180,7 @@ public final class UiContractTest {
                 R.id.text_ipv4, R.id.text_ipv6);
     }
 
-    /**
+    /*
      * Each label points to its value through labelFor, rather than the
      * reverse. Labels need no ID, so inspect the complete hierarchy and
      * require exactly one nonempty TextView label for each value.

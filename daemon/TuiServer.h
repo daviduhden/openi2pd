@@ -20,7 +20,7 @@ namespace i2p
 {
 namespace tui
 {
-	/**
+	/*
 	 * Local administrative channel for i2pd-tui.
 	 *
 	 * The router owns the listening endpoint and all snapshot collection.

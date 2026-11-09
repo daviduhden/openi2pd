@@ -134,7 +134,7 @@ namespace crypto
 		return cryptoConstants;
 	}
 
-	/**
+	/*
 	 * @brief Serialise a BIGNUM into a fixed-width big-endian field.
 	 * @param bn value to serialise; a null pointer is a failure, not zero.
 	 * @param buf caller-owned output of exactly @a len bytes.
@@ -317,7 +317,7 @@ namespace crypto
 
 	namespace
 	{
-		/**
+		/*
 		 * @brief Report whether a 32-byte buffer is unusable X25519 key
 		 * material.
 		 *
@@ -343,7 +343,7 @@ namespace crypto
 		memset (m_PublicKey, 0, sizeof (m_PublicKey));
 	}
 
-	/**
+	/*
 	 * @brief Construct the key holder from raw private/public material.
 	 * @param priv 32-byte private scalar, or null for an empty holder.
 	 * @param pub optional 32-byte public key the caller believes belongs
@@ -493,7 +493,7 @@ namespace crypto
 		return true;
 	}
 
-	/**
+	/*
 	 * @brief Derive the shared secret with a peer's ephemeral/static key.
 	 * @param pub 32-byte peer public key; the high bit must be clear
 	 *            because I2P never uses a compressed/tagged encoding here.
@@ -543,7 +543,7 @@ namespace crypto
 		if (!m_Pkey || EVP_PKEY_get_raw_private_key (m_Pkey, priv, &len) != 1 || len != 32) memset (priv, 0, 32);
 	}
 
-	/**
+	/*
 	 * @brief Load an existing private scalar and derive its public key.
 	 *
 	 * The public key is always derived. Leaving m_PublicKey untouched when
@@ -575,7 +575,7 @@ namespace crypto
 
 	// ElGamal
 
-	/**
+	/*
 	 * @brief Encrypt 222 bytes into the 514-byte I2P ElGamal envelope.
 	 * @param key 256-byte public key field (big-endian y).
 	 * @param data 222-byte plaintext block supplied by the caller.
@@ -711,7 +711,7 @@ namespace crypto
 		return true;
 	}
 
-	/**
+	/*
 	 * @brief Generate an ElGamal key pair (private exponent plus public
 	 *        y).
 	 * @param priv 256-byte private key field, cleansed then written.
@@ -780,7 +780,7 @@ namespace crypto
 		}
 	}
 
-	/**
+	/*
 	 * @brief Encrypt 222 bytes into the fixed 514-byte ECIES envelope.
 	 * @param curve group holding @a key; the order determines the field
 	 *              width.
@@ -1209,7 +1209,7 @@ namespace crypto
 
 	// AEAD/ChaCha20/Poly1305
 
-	/**
+	/*
 	 * @brief One ChaCha20-Poly1305 operation with an explicit context.
 	 * @param ctx caller-owned provider context, reused across calls.
 	 * @param msg ciphertext without tag (decrypt) or plaintext (encrypt).
@@ -1442,7 +1442,7 @@ namespace crypto
 		ctx (salt, key, keyLen, info, out, outLen);
 	}
 
-	/**
+	/*
 	 * @brief Construct a reusable HKDF-SHA256 context.
 	 *
 	 * The provider path (EVP_KDF_fetch) and the legacy EVP_PKEY_HKDF path
@@ -1902,7 +1902,7 @@ namespace crypto
 		return g_CryptoCapabilities;
 	}
 
-	/**
+	/*
 	 * @brief One-time crypto initialisation; returns false to refuse
 	 *        startup.
 	 * @param precomputation build the ElGamal exponentiation table.

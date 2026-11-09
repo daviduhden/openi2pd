@@ -73,7 +73,7 @@ namespace crypto
 		}
 	}
 
-	/**
+	/*
 	 * SipHash-2-4 (Aumasson/Bernstein), 64- or 128-bit output.
 	 *
 	 * This is the portable fallback used when the crypto provider is built

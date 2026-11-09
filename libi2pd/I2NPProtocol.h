@@ -200,7 +200,7 @@ const unsigned int I2NP_MESSAGE_LOCAL_EXPIRATION_TIMEOUT_TRANSIT = 4000000; // i
 const unsigned int I2NP_MESSAGE_EXPIRATION_TIMEOUT = 8000; // in milliseconds (as initial RTT)
 const unsigned int I2NP_MESSAGE_CLOCK_SKEW = 60 * 1000; // 1 minute in milliseconds
 
-/**
+/*
  * Java MessageValidator window applied before an I2NP message reaches a
  * handler: an expiration date older than 90 s or further than 240 s in
  * the future is invalid. The stricter per-hop tunnel window
@@ -225,7 +225,7 @@ constexpr bool IsFreshI2NPExpiration (uint64_t expiration, uint64_t now) noexcep
 	return expiration + I2NP_DISPATCH_MAX_AGE >= now && expiration <= now + I2NP_DISPATCH_MAX_FUTURE;
 }
 
-/**
+/*
  * Throttled diagnostics for a drop path an unauthenticated peer can
  * trigger. The first drop and every `logEvery`-th drop are logged; the
  * total stays readable so an operator can still see the rate.
@@ -252,7 +252,7 @@ private:
 	uint64_t m_LogEvery;
 };
 
-/**
+/*
  * Drop accounting for the I2NP dispatcher and the garlic clove walker.
  * All counters are relaxed atomics: they only feed throttled
  * diagnostics and the administrative view, never a decision.
@@ -297,7 +297,7 @@ const size_t I2NP_DUPLICATE_MAX_ENTRIES = 8192; // per generation
 // cover.
 const uint64_t I2NP_DUPLICATE_GENERATION_TIMEOUT = 300; // seconds
 
-/**
+/*
  * Java DecayingHashSet key for I2NP duplicate suppression: the message
  * ID is combined with the message's expiration second and a per-context
  * salt. The expiration component means a peer cannot keep one message
@@ -314,7 +314,7 @@ constexpr uint32_t GetI2NPDuplicateKey (uint32_t msgID, uint64_t expiration, uin
 	return key;
 }
 
-/**
+/*
  * Bounded, decaying duplicate filter. Two generations are kept and
  * rotated by age (Java DecayingBloomFilter's double-buffered set), so
  * an entry survives at most two generation windows and the memory is
@@ -355,7 +355,7 @@ private:
 // destination salt.
 I2NPDuplicateFilter & GetI2NPRouterDuplicateFilter ();
 
-/**
+/*
  * Where a garlic clove came from.
  *
  * Java separates a garlic message received directly from a peer
@@ -541,7 +541,7 @@ inline bool IsI2NPDispatchExpired (const I2NPMessage & msg, uint64_t now)
 // replays), and SSU2 keeps its own per-session message-ID map.
 bool IsI2NPDispatchDuplicate (const I2NPMessage & msg, uint64_t nowSeconds);
 
-/**
+/*
  * Java InboundMessageDistributor.handleClove() allow-list for a clove
  * of a garlic that arrived through an I2NP tunnel. A clove may carry a
  * data or control-reply message only; tunnel/build/request types would
@@ -567,7 +567,7 @@ constexpr bool IsAllowedCloveMessageType (uint8_t typeID) noexcept
 	}
 }
 
-/**
+/*
  * Clove types of a garlic received directly from a peer (Java
  * HandleGarlicMessageJob). The set is the tunnel set plus TunnelTest: a
  * peer that has no inbound tunnel of its own can only test ours through
@@ -588,7 +588,7 @@ constexpr bool IsAllowedCloveMessageType (uint8_t typeID, bool fromTunnel) noexc
 	return fromTunnel ? IsAllowedCloveMessageType (typeID) : IsAllowedDirectGarlicCloveMessageType (typeID);
 }
 
-/**
+/*
  * Java DatabaseLookup admission. A directly received message and a
  * clove of a garlic received directly from a peer are dispatched to the
  * netDb; a message or clove that crossed an I2NP tunnel is dropped. The

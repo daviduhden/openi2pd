@@ -8,7 +8,7 @@ package org.openi2pd.router;
 import java.util.ArrayList;
 import java.util.List;
 
-/**
+/*
  * Main-thread authority for one view's dialogs. A token belongs to the
  * view that opened it, so recreating a view cannot revive old click
  * callbacks. Replacement retains one dialog; explicit nesting admits
@@ -19,12 +19,12 @@ import java.util.List;
  */
 final class UiDialogEpoch {
     static final int MAX_DIALOGS = 8;
-    /** Opaque identity, never a reusable generation number. */
+    /* Opaque identity, never a reusable generation number. */
     static final class Token {
         private Token() {}
     }
 
-    /** Exact dialog registration, independent of its view token. */
+    /* Exact dialog registration, independent of its view token. */
     static final class Registration {
         private final Runnable dismiss;
 
@@ -36,7 +36,7 @@ final class UiDialogEpoch {
     private Token current;
     private final ArrayList<Registration> visible = new ArrayList<>();
 
-    /** Retire any old view before admitting dialogs for its successor. */
+    /* Retire any old view before admitting dialogs for its successor. */
     void openView() {
         retireView();
         current = new Token();
@@ -50,12 +50,12 @@ final class UiDialogEpoch {
         return token != null && token == current;
     }
 
-    /** Recheck mutable admission when the user activates a dialog. */
+    /* Recheck mutable admission when the user activates a dialog. */
     boolean maySubmit(Token token, boolean viewReady, boolean busy) {
         return isCurrent(token) && viewReady && !busy;
     }
 
-    /**
+    /*
      * Register one dialog before showing it. Stale callers cannot
      * replace the current dialog. The caller installs an on-dismiss
      * listener carrying the returned registration before showing it.
@@ -71,7 +71,7 @@ final class UiDialogEpoch {
         return next;
     }
 
-    /** Keep a parent form while displaying one bounded nested choice. */
+    /* Keep a parent form while displaying one bounded nested choice. */
     Registration nest(Token token, Runnable dismiss) {
         if (!isCurrent(token) || dismiss == null || visible.size() >= MAX_DIALOGS)
             return null;
@@ -80,13 +80,13 @@ final class UiDialogEpoch {
         return next;
     }
 
-    /** An old dialog's delayed dismissal cannot clear its successor. */
+    /* An old dialog's delayed dismissal cannot clear its successor. */
     void dismissed(Registration registration) {
         if (registration != null)
             visible.remove(registration);
     }
 
-    /** Revoke click authority before invoking framework dismissal. */
+    /* Revoke click authority before invoking framework dismissal. */
     void retireView() {
         current = null;
         var previous = new ArrayList<>(visible);

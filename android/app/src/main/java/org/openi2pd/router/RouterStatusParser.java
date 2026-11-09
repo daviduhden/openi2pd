@@ -21,7 +21,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 
-/**
+/*
  * Parsers for the two bounded native text formats.
  *
  * <p>Both formats are line oriented and are treated as untrusted input
@@ -52,7 +52,7 @@ final class RouterStatusParser {
         // Static helpers.
     }
 
-    /**
+    /*
      * Parse the newline-separated {@code key=value} snapshot produced
      * by {@code I2PD_JNI.getStatusSnapshot()}.
      *
@@ -116,7 +116,7 @@ final class RouterStatusParser {
                 startResult);
     }
 
-    /**
+    /*
      * Parse records of the form {@code
      * sequence|timestampSeconds|level|text}. The text field may contain
      * {@code |}, so the split is limited to four fields. Records at or
@@ -233,7 +233,7 @@ final class RouterStatusParser {
         return DisplayText.bound(error, 128);
     }
 
-    /**
+    /*
      * The native ring currently serialises its numeric {@code LogLevel}
      * (0 none, 1 critical, 2 error, 3 warn, 4 info, 5 debug). Textual
      * levels are accepted too so the parser also works with the

@@ -89,7 +89,7 @@ namespace proxy
 
 	namespace
 	{
-		/**
+		/*
 		 * Non-globally-reachable IPv4 destinations: this host (0/8),
 		 * private (10/8, 172.16/12, 192.168/16), loopback (127/8),
 		 * carrier-grade NAT (100.64/10), link-local (169.254/16), IETF
@@ -190,7 +190,7 @@ namespace proxy
 			value.clear ();
 		}
 
-		/**
+		/*
 		 * Strict standard-alphabet base64 decoder: four-character framing,
 		 * terminal-only padding, no whitespace, no non-canonical trailing
 		 * bits and a hard output bound of PROXY_AUTH_MAX_FIELD_SIZE * 2 + 1
@@ -243,7 +243,7 @@ namespace proxy
 			return true;
 		}
 
-		/** Split `user ":" password`; the password may itself contain ':'. */
+		/* Split `user ":" password`; the password may itself contain ':'. */
 		bool SplitBasicCredentials (std::string_view decoded, std::string & user, std::string & password)
 		{
 			const std::size_t colon = decoded.find (':');
@@ -277,7 +277,7 @@ namespace proxy
 			return true;
 		}
 
-		/** Strict 1..65535 decimal port. */
+		/* Strict 1..65535 decimal port. */
 		bool ParseDecimalPort (std::string_view text, std::uint16_t & port) noexcept
 		{
 			if (text.empty () || text.size () > 5) return false;
@@ -298,7 +298,7 @@ namespace proxy
 				|| ch == '-' || ch == '_';
 		}
 
-		/** A single DNS label sequence; no IPv6 colons and no URL syntax. */
+		/* A single DNS label sequence; no IPv6 colons and no URL syntax. */
 		bool IsValidHostName (std::string_view host) noexcept
 		{
 			if (host.empty () || host.size () > 255) return false;
@@ -318,7 +318,7 @@ namespace proxy
 			return value.find (':') != std::string_view::npos;
 		}
 
-		/**
+		/*
 		 * Parse `host[:port]` or `[ipv6][:port]`.
 		 * @return false and sets @a error on a syntax failure.
 		 */
@@ -388,7 +388,7 @@ namespace proxy
 			return true;
 		}
 
-		/**
+		/*
 		 * Append the UTF-8 sequence starting at @a index, or a replacement
 		 * char.
 		 */
@@ -772,7 +772,7 @@ namespace proxy
 
 	namespace
 	{
-		/** RFC 7230 token, used for a Digest parameter name. */
+		/* RFC 7230 token, used for a Digest parameter name. */
 		bool IsTokenCharacter (char ch) noexcept
 		{
 			if ((ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || (ch >= '0' && ch <= '9')) return true;
@@ -1219,7 +1219,7 @@ namespace proxy
 		bool HandleRequest ();
 		void HandleSockRecv (const boost::system::error_code & ecode, std::size_t bytes_transfered);
 		void Terminate ();
-		/**
+		/*
 		 * Close both sockets without calling Done (safe in the destructor).
 		 */
 		void CloseSockets () noexcept;
@@ -1234,15 +1234,15 @@ namespace proxy
 		/* error helpers */
 		void GenericProxyError (
 			std::string_view title, std::string_view description, int code = HTTP_PROXY_STATUS_INTERNAL_ERROR);
-		/** Trusted HTML fragment with an escaped title. */
+		/* Trusted HTML fragment with an escaped title. */
 		void SendProxyInfoHTML (
 			std::string_view title, std::string_view html, int code = HTTP_PROXY_STATUS_INTERNAL_ERROR);
 		void HostNotFound (std::string_view host);
 		void SendProxyError (std::string_view content, int code = HTTP_PROXY_STATUS_INTERNAL_ERROR);
 		void SendRedirect (const std::string & address);
-		/** Local proxy authentication; also strips every Proxy-* header. */
+		/* Local proxy authentication; also strips every Proxy-* header. */
 		bool AuthorizeClient ();
-		/** @param stale True if an expired Digest nonce allows a retry. */
+		/* @param stale True if an expired Digest nonce allows a retry. */
 		void SendProxyAuthRequired (bool stale = false);
 
 		void ForwardToUpstreamProxy ();
@@ -1259,7 +1259,7 @@ namespace proxy
 		void SocksProxySuccess ();
 		void HandoverToUpstreamProxy ();
 
-		/**
+		/*
 		 * Cancellable deadline for one upstream phase (resolve, connect or
 		 * SOCKS5 handshake). The phase name is a fixed internal label, never
 		 * client input, and never contains a URL or a credential.
@@ -1267,7 +1267,7 @@ namespace proxy
 		void ArmUpstreamDeadline (std::string_view phase);
 		void CancelUpstreamDeadline ();
 		void HandleUpstreamDeadline ();
-		/** 504 + close, shared by every upstream failure path. */
+		/* 504 + close, shared by every upstream failure path. */
 		void UpstreamTimedOut ();
 
 		uint8_t m_recv_chunk[8192];
@@ -1280,7 +1280,7 @@ namespace proxy
 		boost::asio::steady_timer m_UpstreamTimer;
 		boost::asio::steady_timer m_AuthTimer;
 		std::string m_UpstreamPhase;
-		/**
+		/*
 		 * Set once an upstream phase expired: late callbacks must not reply.
 		 */
 		bool m_UpstreamAbandoned = false;
@@ -1295,7 +1295,7 @@ namespace proxy
 		std::uint32_t m_AuthFailureDelayMs = 0;
 		i2p::http::URL m_ProxyURL;
 		i2p::http::URL m_RequestURL;
-		/** Validated destination of the current request. */
+		/* Validated destination of the current request. */
 		ProxyRequestTarget m_Target;
 		int m_req_len = 0;
 		i2p::http::URL m_ClientRequestURL;
@@ -1734,7 +1734,7 @@ namespace proxy
 		/* replace headers */
 		if (!m_SendUserAgent) req.UpdateHeader ("User-Agent", "MYOB/6.66 (AN/ON)");
 
-		/**
+		/*
 		 * i2pd PR #1816: Android Webview send this with the value set to the
 		 * application ID, so we drop it, but only if it does not belong to an
 		 * AJAX request (*HttpRequest, like XMLHttpRequest).
@@ -1747,7 +1747,7 @@ namespace proxy
 				req.RemoveHeader ("X-Requested-With");
 		}
 
-		/**
+		/*
 		 * according to i2p ticket #1862:
 		 * leave Referer if requested URL with same schema, host and port,
 		 * otherwise, drop it.
@@ -1773,7 +1773,7 @@ namespace proxy
 			req.UpdateHeader ("Connection", "close");
 	}
 
-	/**
+	/*
 	 * @brief Try to parse request from @a m_recv_buf
 	 *   If parsing success, rebuild request and store to @a m_send_buf
 	 * with remaining data tail
@@ -2470,7 +2470,7 @@ namespace proxy
 		Terminate ();
 	}
 
-	/**
+	/*
 	 * A proxied connection towards an I2P destination.
 	 *
 	 * The request direction keeps the existing ClientRequest
@@ -2494,7 +2494,7 @@ namespace proxy
 
 		~HTTPProxyClientConnection () { m_ResponseTimer.cancel (); }
 
-		/** Arm the response-header deadline, then start the connection. */
+		/* Arm the response-header deadline, then start the connection. */
 		void StartResponse (const uint8_t * msg, size_t len)
 		{
 			ArmResponseDeadline ();

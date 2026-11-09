@@ -52,7 +52,7 @@ inline std::string TestExecutablePath (const char * argv0)
 	return path;
 }
 
-/** Freeze the test binary before the first spawn helper call. */
+/* Freeze the test binary before the first spawn helper call. */
 inline void PinTestExecutable (const char * argv0)
 {
 	SetExecutablePath (TestExecutablePath (argv0));

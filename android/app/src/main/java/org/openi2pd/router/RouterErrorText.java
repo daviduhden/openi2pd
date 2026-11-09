@@ -15,11 +15,11 @@ import java.util.concurrent.CancellationException;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.TimeoutException;
 
-/** Converts internal exceptions to safe text for UI snapshots. */
+/* Converts internal exceptions to safe text for UI snapshots. */
 final class RouterErrorText {
     private RouterErrorText() {}
 
-    /**
+    /*
      * Return a stable public category without exception messages, causes,
      * class names or stack traces. Those fields can contain paths and
      * provider-controlled data.

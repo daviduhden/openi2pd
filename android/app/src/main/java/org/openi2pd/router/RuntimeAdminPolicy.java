@@ -18,7 +18,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
-/**
+/*
  * Closed bounds and decoders shared by the runtime-administration
  * bridge.
  *
@@ -29,26 +29,26 @@ import java.util.List;
  * boundary will forward.</p>
  */
 final class RuntimeAdminPolicy {
-    /** Unique configured tunnel service name. */
+    /* Unique configured tunnel service name. */
     static final int MAX_TUNNEL_NAME = 64;
-    /**
+    /*
      * Address-book name (stored names and the add/replace host label).
      */
     static final int MAX_ADDRESS_NAME = 255;
-    /** Full base64 destination. */
+    /* Full base64 destination. */
     static final int MAX_DESTINATION = 1024;
-    /** Address-book subscription URL. */
+    /* Address-book subscription URL. */
     static final int MAX_SUBSCRIPTION_URL = 512;
-    /** Base64 of a 32-byte router identity hash. */
+    /* Base64 of a 32-byte router identity hash. */
     static final int MAX_ROUTER_HASH = 44;
-    /** Router bandwidth classes accepted by the daemon admin verb. */
+    /* Router bandwidth classes accepted by the daemon admin verb. */
     private static final String[] BANDWIDTH_CLASSES = {"K", "L", "M", "N", "O", "P", "X"};
-    /** Rows kept from the bounded tunnel snapshot. */
+    /* Rows kept from the bounded tunnel snapshot. */
     static final int MAX_TUNNEL_ROWS = 200;
-    /** Rows kept from the bounded subscription snapshot. */
+    /* Rows kept from the bounded subscription snapshot. */
     static final int MAX_SUBSCRIPTION_ROWS = 32;
 
-    /** One configured client or server tunnel; public labels only. */
+    /* One configured client or server tunnel; public labels only. */
     record TunnelService(
             String name, String kind, boolean running, String endpoint, String destination) {}
 
@@ -56,7 +56,7 @@ final class RuntimeAdminPolicy {
         // Static helpers.
     }
 
-    /**
+    /*
      * A tunnel service name is one printable, whitespace-free token.
      * The native parser rejects a space outright, so the UI must not
      * offer one either.
@@ -74,7 +74,7 @@ final class RuntimeAdminPolicy {
         return true;
     }
 
-    /**
+    /*
      * A host label of at most {@link #MAX_ADDRESS_NAME} characters with
      * no space. The native boundary re-applies the same limit, and the
      * address book applies the full host-name and destination rules.
@@ -84,7 +84,7 @@ final class RuntimeAdminPolicy {
                 && name.indexOf(' ') < 0;
     }
 
-    /**
+    /*
      * A full base64 destination of at most {@link #MAX_DESTINATION}
      * characters. Only the size and the absent space are checked here;
      * the daemon verifies the base64 identity itself.
@@ -94,7 +94,7 @@ final class RuntimeAdminPolicy {
                 && destination.length() <= MAX_DESTINATION && destination.indexOf(' ') < 0;
     }
 
-    /**
+    /*
      * The address book performs the scheme/host validation; bound the
      * size here.
      */
@@ -103,7 +103,7 @@ final class RuntimeAdminPolicy {
                 && url.indexOf(' ') < 0;
     }
 
-    /**
+    /*
      * A router hash is exactly one base64 identity hash; the daemon
      * re-verifies it.
      */
@@ -123,7 +123,7 @@ final class RuntimeAdminPolicy {
         return true;
     }
 
-    /** Accept only the exact one-character bandwidth classes. */
+    /* Accept only the exact one-character bandwidth classes. */
     static boolean isValidBandwidthClass(String value) {
         if (value == null) {
             return false;
@@ -136,12 +136,12 @@ final class RuntimeAdminPolicy {
         return false;
     }
 
-    /** Share is a decimal percentage in the daemon's 0..100 range. */
+    /* Share is a decimal percentage in the daemon's 0..100 range. */
     static boolean isValidShareRatio(int value) {
         return value >= 0 && value <= 100;
     }
 
-    /** Parse a bounded percentage; return -1 when invalid. */
+    /* Parse a bounded percentage; return -1 when invalid. */
     static int parseShareRatio(String text) {
         if (text == null || text.isEmpty() || text.length() > 3) {
             return -1;
@@ -159,19 +159,19 @@ final class RuntimeAdminPolicy {
         }
     }
 
-    /**
+    /*
      * True only for the exact success token of an administrative verb.
      */
     static boolean isOk(String outcome) {
         return "ok".equals(outcome);
     }
 
-    /** True for the typed "the name already exists" add result. */
+    /* True for the typed "the name already exists" add result. */
     static boolean isExists(String outcome) {
         return "exists".equals(outcome);
     }
 
-    /**
+    /*
      * True only for the two tokens that mean a reseed job is now
      * running.
      */
@@ -179,7 +179,7 @@ final class RuntimeAdminPolicy {
         return "started".equals(outcome) || "already-running".equals(outcome);
     }
 
-    /**
+    /*
      * True only for the tokens that report a real tunnel state change.
      */
     static boolean isTunnelStateChange(String outcome) {
@@ -187,7 +187,7 @@ final class RuntimeAdminPolicy {
                 || "already-running".equals(outcome) || "already-stopped".equals(outcome);
     }
 
-    /**
+    /*
      * Decode {@code name|kind|running|endpoint|destination} rows.
      *
      * <p>Malformed, over-long and unnamed rows are skipped rather than
@@ -216,7 +216,7 @@ final class RuntimeAdminPolicy {
         return services;
     }
 
-    /**
+    /*
      * Typed reseed snapshot. The fields stay strings because the daemon
      * protocol is textual and deliberately bounded; the UI converts the
      * two counters itself. {@link #UNKNOWN} is the explicit absent
@@ -232,7 +232,7 @@ final class RuntimeAdminPolicy {
         }
     }
 
-    /**
+    /*
      * Decode the ordered fields phase, enabled, attempts, succeeded,
      * lastAttemptMs, lastSuccessMs and lastError.
      * An empty or malformed record yields {@link ReseedStatus#UNKNOWN}
@@ -251,7 +251,7 @@ final class RuntimeAdminPolicy {
                 bound(fields[6], 128));
     }
 
-    /**
+    /*
      * Decode bounded subscription rows, skipping empty or over-long
      * values.
      */

@@ -34,7 +34,7 @@ using i2p::data::StorageArtifact;
 
 namespace
 {
-/**
+/*
  * Borrow the bytes of @a bytes as an unsigned byte span.
  *
  * The payload parameter of EncodeDataStorageRequest is a byte span, so a

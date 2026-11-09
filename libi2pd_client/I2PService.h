@@ -78,7 +78,7 @@ namespace client
 		void SetNewDestOnResume (bool newDestOnResume) { m_NewDestOnResume = newDestOnResume; }
 		void UpdateLastActivityTime ();
 
-		/**
+		/*
 		 * Await destination readiness in the current lifecycle generation.
 		 * A constructed service accepts requests before Start(). Stop(),
 		 * restart and ClearHandlers() retire earlier requests; cancellation

@@ -79,7 +79,7 @@ namespace
 		return i2p::unexpected (std::string (message));
 	}
 
-	/**
+	/*
 	 * Promise names accepted by the supported OpenBSD release
 	 * (pledge(2)). "exec" and "error" are deliberately absent; see
 	 * FORBIDDEN_PLEDGE_PROMISES.
@@ -89,7 +89,7 @@ namespace
 			  "getpw", "id", "inet", "mcast", "pf", "proc", "prot_exec", "ps", "recvfd", "route", "rpath", "sendfd",
 			  "settime", "stdio", "tape", "tty", "unix", "unveil", "video", "vminfo", "vmm", "wpath", "wroute" };
 
-	/**
+	/*
 	 * Promises no policy may ever carry.
 	 *
 	 * "exec" would let a restricted process start a new image; every
@@ -99,7 +99,7 @@ namespace
 	 */
 	constexpr std::string_view FORBIDDEN_PLEDGE_PROMISES[] = { "exec", "error" };
 
-	/**
+	/*
 	 * Promises a runtime policy file may never add, even when the runtime
 	 * base set already contains one of them. They either re-open process
 	 * creation (proc/exec), change process identity (id/chown), or grant

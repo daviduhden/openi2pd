@@ -31,7 +31,7 @@ import com.google.android.material.button.MaterialButton;
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 import com.google.android.material.progressindicator.LinearProgressIndicator;
 
-/**
+/*
  * Tunnel counts, configuration reload and graceful stop.
  *
  * <p>Transit tunnels are configured by the {@code notransit} option in

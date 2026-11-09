@@ -21,7 +21,7 @@ import java.util.function.Predicate;
 
 import org.junit.Test;
 
-/** Deterministic restart ordering without Android, JNI or sleeping. */
+/* Deterministic restart ordering without Android, JNI or sleeping. */
 public final class DeferredRestartTest {
     private static final class Fixture {
         final Object monitor = new Object();

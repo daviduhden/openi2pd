@@ -121,7 +121,7 @@ namespace
 {
 	constexpr DWORD PIPE_BUFFER_SIZE = 64 * 1024;
 	constexpr DWORD PIPE_MAX_INSTANCES = 1;
-	/** A hostile same-user connect must never exhaust the accept loop. */
+	/* A hostile same-user connect must never exhaust the accept loop. */
 	constexpr unsigned MAX_REJECTED_CONNECTIONS = 16;
 	constexpr DWORD REJECTED_CONNECTION_BACKOFF_MS = 25;
 	constexpr DWORD WORKER_HELLO_TIMEOUT_MS = 5000;
@@ -134,7 +134,7 @@ namespace
 			: std::chrono::steady_clock::now () + std::chrono::milliseconds (timeoutMs);
 	}
 
-	/** Floor the unspent part of a caller-supplied DWORD time budget. */
+	/* Floor the unspent part of a caller-supplied DWORD time budget. */
 	DWORD RemainingDeadlineMs (WindowsDeadline deadline)
 	{
 		if (deadline == WindowsDeadline::max ()) return INFINITE;
@@ -186,7 +186,7 @@ namespace
 			== CSTR_EQUAL;
 	}
 
-	/**
+	/*
 	 * True when a value can be interpolated into a single command-line
 	 * token.
 	 * A quote would break the quoting of the executable and whitespace
@@ -306,7 +306,7 @@ namespace
 		return std::wstring (sidString);
 	}
 
-	/**
+	/*
 	 * Validate one SID string before it is interpolated into an SDDL DACL.
 	 * The SDDL grammar is text, so a `)` or `;` in the value would close
 	 * the
@@ -406,7 +406,7 @@ namespace
 		return { };
 	}
 
-	/**
+	/*
 	 * Outcome of one overlapped operation.
 	 *
 	 * `completed` means the operation finished successfully with
@@ -425,7 +425,7 @@ namespace
 		DWORD error = 0;
 	};
 
-	/**
+	/*
 	 * Wait for one overlapped pipe operation and reap it before returning.
 	 *
 	 * A record that completed in the same instant as its deadline must not
@@ -498,7 +498,7 @@ namespace
 		return outcome;
 	}
 
-	/**
+	/*
 	 * The Windows pipe transport has no descriptor channel, so a type
 	 * whose
 	 * registry row requires a descriptor can never be satisfied here.
@@ -518,7 +518,7 @@ namespace
 		return false;
 	}
 
-	/** Compare nonces without early exit on a differing byte. */
+	/* Compare nonces without early exit on a differing byte. */
 	bool ConstantTimeEqual (std::string_view left, std::string_view right)
 	{
 		if (left.size () != right.size ()) return false;
@@ -583,7 +583,7 @@ namespace
 		return true;
 	}
 
-	/**
+	/*
 	 * Read the identity of the client end of a connected message-mode
 	 * pipe.
 	 *
@@ -638,7 +638,7 @@ namespace
 		return peer;
 	}
 
-	/** Consume and validate the accepted connection's first frame. */
+	/* Consume and validate the accepted connection's first frame. */
 	bool ReceiveWorkerHello (
 		WindowsChannel & channel, WindowsWorkerRole expectedRole, std::string_view nonce, WindowsDeadline deadline,
 		std::string & error)
@@ -1746,7 +1746,7 @@ i2p::expected<WindowsWorkerProcess, std::string> SpawnWindowsWorker (const std::
 		DWORD64 mitigation = 0;
 		SECURITY_CAPABILITIES capabilities { };
 		DWORD allApplicationPackages = 0;
-		/** True when JOB_LIST was accepted by UpdateProcThreadAttribute. */
+		/* True when JOB_LIST was accepted by UpdateProcThreadAttribute. */
 		bool jobAttributeAdded = false;
 
 		AttributeList () = default;
@@ -2061,7 +2061,7 @@ i2p::expected<std::wstring, std::string> MakeRandomPipeName ()
 
 namespace
 {
-	/** A worker has no log sink before its channel is configured. */
+	/* A worker has no log sink before its channel is configured. */
 	void WorkerFault (const char * text)
 	{
 		OutputDebugStringA (text);

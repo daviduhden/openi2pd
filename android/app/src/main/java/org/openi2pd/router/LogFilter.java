@@ -11,7 +11,7 @@ package org.openi2pd.router;
 
 import java.util.Locale;
 
-/**
+/*
  * Pure predicate helpers applied to the retained native log list.
  *
  * <p>A chip is a <em>minimum</em> severity, so {@code Warn} also shows

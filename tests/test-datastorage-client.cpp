@@ -60,7 +60,7 @@ bool ReadBack (const std::filesystem::path & path, std::vector<uint8_t> & bytes)
 	return true;
 }
 
-/**
+/*
  * Wait until a request observes the dead worker; never advances the
  * clock.
  */

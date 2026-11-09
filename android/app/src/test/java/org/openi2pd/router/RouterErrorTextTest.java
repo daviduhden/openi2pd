@@ -19,7 +19,7 @@ import org.junit.Test;
 import java.io.IOException;
 import java.util.concurrent.TimeoutException;
 
-/** Ensures exception data is not copied into UI-facing snapshots. */
+/* Ensures exception data is not copied into UI-facing snapshots. */
 public class RouterErrorTextTest {
     @Test
     public void mapsKnownFailuresToStableCategories() {

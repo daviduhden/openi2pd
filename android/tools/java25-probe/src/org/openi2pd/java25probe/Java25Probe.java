@@ -25,7 +25,7 @@ public final class Java25Probe {
 
     record Stopped(long at, String reason) implements Event {}
 
-    /** Exhaustive pattern switch over a sealed hierarchy. */
+    /* Exhaustive pattern switch over a sealed hierarchy. */
     static String describe(Event event) {
         return switch (event) {
             case Started(String name, long at) when at > 0 -> "started " + name;
@@ -47,7 +47,7 @@ public final class Java25Probe {
         }
     }
 
-    /** JEP 513: validate before the explicit super(...) invocation. */
+    /* JEP 513: validate before the explicit super(...) invocation. */
     static final class Validated extends Base {
         Validated(int value) {
             if (value < 0) {

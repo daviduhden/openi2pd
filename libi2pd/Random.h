@@ -41,7 +41,7 @@ namespace crypto
 		concept RandomWordSource = requires (Next & next)
 			{ { std::invoke (next) } -> std::same_as<uint32_t>; };
 
-		/**
+		/*
 		 * Checked per-call source adapter. Failure never publishes partial
 		 * output; the entire destination is cleansed before unwinding.
 		 * @param bytes Writable output, or an empty span for a no-op.
@@ -74,7 +74,7 @@ namespace crypto
 			}
 		}
 
-		/**
+		/*
 		 * Apply unbiased rejection to a checked 32-bit source.
 		 * @param bound Exclusive upper bound; zero and one return zero.
 		 * @param next Trusted source; exceptions abort rejection immediately.
@@ -93,7 +93,7 @@ namespace crypto
 		}
 	}
 
-	/**
+	/*
 	 * Fill output from the provider, or abort without usable partial data.
 	 * @param bytes Writable output; empty spans do not invoke the provider.
 	 * @throws std::length_error Before writing counts above INT_MAX.

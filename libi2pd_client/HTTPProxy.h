@@ -32,7 +32,7 @@ namespace i2p
 {
 namespace proxy
 {
-	/**
+	/*
 	 * Hard ceiling for an incomplete HTTP request header accumulated from
 	 * a client. It bounds m_recv_buf while the handler is still searching
 	 * for the end of headers. The limit is checked before each append, so
@@ -40,7 +40,7 @@ namespace proxy
 	 */
 	constexpr std::size_t HTTP_PROXY_MAX_HEADER_SIZE = 1024 * 1024; // 1 MiB
 
-	/**
+	/*
 	 * A client that opens a connection but never finishes the request
 	 * header must not keep a handler (and its socket) allocated
 	 * indefinitely. The timer starts when the handler takes the socket and
@@ -48,7 +48,7 @@ namespace proxy
 	 */
 	constexpr int HTTP_PROXY_HEADER_TIMEOUT = 30; // seconds
 
-	/**
+	/*
 	 * Upstream (outproxy) connect budget. It covers name resolution, the
 	 * TCP connect and the SOCKS5 version/method/request exchange. Every
 	 * phase is a cancellable steady_timer; the service thread is never
@@ -56,14 +56,14 @@ namespace proxy
 	 */
 	constexpr int HTTP_PROXY_UPSTREAM_TIMEOUT = 30; // seconds
 
-	/**
+	/*
 	 * Budget for the first response header coming back from a destination.
 	 * Once the header is complete the connection becomes an opaque pipe,
 	 * so the timer only guards the header read.
 	 */
 	constexpr int HTTP_PROXY_RESPONSE_HEADER_TIMEOUT = 60; // seconds
 
-	/**
+	/*
 	 * @return true when appending @a incoming bytes to a header
 	 *         that has no end-of-headers marker yet would exceed
 	 *         HTTP_PROXY_MAX_HEADER_SIZE. Only call this while the
@@ -75,7 +75,7 @@ namespace proxy
 		return incoming > HTTP_PROXY_MAX_HEADER_SIZE - buffered;
 	}
 
-	/**
+	/*
 	 * @return true when @a host names a clearnet target that must never be
 	 *         reached through an outproxy or an upstream proxy: a loopback,
 	 *         unspecified, RFC 1918/6598 private, link-local, benchmarking,
@@ -139,7 +139,7 @@ namespace proxy
 	 */
 	inline constexpr std::size_t HTTP_PROXY_MAX_ESCAPED_INPUT = 2048;
 
-	/**
+	/*
 	 * Escape `&`, `&lt;`, `&gt;`, `"` and `'` (and drop C0 controls, DEL
 	 * and any byte that is not part of a valid UTF-8 sequence) for
 	 * interpolation into HTML text or a quoted attribute. The result never
@@ -148,7 +148,7 @@ namespace proxy
 	 */
 	std::string EscapeHTML (std::string_view value);
 
-	/**
+	/*
 	 * Remove a `user[:password]@` userinfo part from an absolute URL so
 	 * the value is safe to log. The scheme, host, port and path are
 	 * preserved; a value without "://" or without "@" is returned
@@ -168,14 +168,14 @@ namespace proxy
 	bool IsHopByHopHeaderName (std::string_view name) noexcept;
 	bool IsProxyDisclosureHeaderName (std::string_view name) noexcept;
 
-	/**
+	/*
 	 * Remove hop-by-hop, proxy-only and X-Forwarded-* headers from a
 	 * request.
 	 * @return the number of removed headers.
 	 */
 	std::size_t StripHopByHopHeaders (i2p::http::HTTPReq & req);
 
-	/**
+	/*
 	 * @return true for an `Authorization: NTLM ...` value. NTLM
 	 *         authenticates the *connection*, not the request, so passing
 	 *         it through a proxy would bind the upstream connection to the
@@ -205,17 +205,17 @@ namespace proxy
 
 	struct ProxyRequestTarget
 	{
-		/** `http` for absolute/origin form, `https` for CONNECT. */
+		/* `http` for absolute/origin form, `https` for CONNECT. */
 		std::string scheme;
-		/** Host without IPv6 brackets. */
+		/* Host without IPv6 brackets. */
 		std::string host;
 		uint16_t port = 0;
-		/**
+		/*
 		 * Origin-form request target (path plus optional query), never empty.
 		 */
 		std::string path;
 		bool useConnect = false;
-		/**
+		/*
 		 * true when the host came from the request target, not from `Host`.
 		 */
 		bool absolute = false;
@@ -224,7 +224,7 @@ namespace proxy
 		bool IsValid () const noexcept { return error == ProxyTargetError::None; }
 	};
 
-	/**
+	/*
 	 * @param method       request method, verbatim
 	 * @param target       request target, verbatim
 	 * @param host_header  the request `Host` value (empty when absent)
@@ -239,7 +239,7 @@ namespace proxy
 	ProxyRequestTarget ClassifyRequestTarget (
 		std::string_view method, std::string_view target, std::string_view host_header);
 
-	/**
+	/*
 	 * Status code for a classification failure: 403 for a scheme, else
 	 * 400.
 	 */
@@ -269,12 +269,12 @@ namespace proxy
 	 * logged and are never forwarded to a destination or to an outproxy.
 	 */
 
-	/**
+	/*
 	 * RFC 1929 ULEN/PLEN ceiling; also the conservative Basic field limit.
 	 */
 	inline constexpr std::size_t PROXY_AUTH_MAX_FIELD_SIZE = 255;
 
-	/**
+	/*
 	 * Bound for the whole `Proxy-Authorization` value before any decoding.
 	 * 4 * ceil((255 + 1 + 255) / 3) = 684 bytes of base64 plus scheme and
 	 * padding, so 1 KiB keeps a comfortable margin without allowing
@@ -282,10 +282,10 @@ namespace proxy
 	 */
 	inline constexpr std::size_t PROXY_AUTH_MAX_ENCODED_SIZE = 1024;
 
-	/** Fixed challenge value; part of the local proxy contract. */
+	/* Fixed challenge value; part of the local proxy contract. */
 	inline constexpr std::string_view HTTP_PROXY_AUTH_CHALLENGE = "Basic realm=\"openi2pd\"";
 
-	/**
+	/*
 	 * Default local realm for both schemes. I2P Java uses "I2P HTTP
 	 * Proxy"; the project keeps its own identity so an existing local
 	 * Basic client continues to match. `httpproxy.auth.realm` overrides
@@ -293,13 +293,13 @@ namespace proxy
 	 */
 	inline constexpr std::string_view HTTP_PROXY_AUTH_REALM = "openi2pd";
 
-	/**
+	/*
 	 * Upper bound for `httpproxy.auth.failuredelay`. The delay is applied
 	 * with a timer, never with a blocking sleep on the service thread.
 	 */
 	inline constexpr std::uint32_t HTTP_PROXY_AUTH_MAX_FAILURE_DELAY_MS = 30000;
 
-	/**
+	/*
 	 * Outcome of a local proxy authentication check. The same enum
 	 * describes a parsed `Proxy-Authorization` value and the final
 	 * per-request decision, so callers and regressions can distinguish "no
@@ -307,34 +307,34 @@ namespace proxy
 	 */
 	enum class ProxyAuthResult
 	{
-		/**
+		/*
 		 * No local credential is configured; the request is not
 		 * authenticated.
 		 */
 		NotRequired,
-		/**
+		/*
 		 * The value parsed as Basic and matched the configured credential.
 		 */
 		Accepted,
-		/**
+		/*
 		 * No `Proxy-Authorization` header (or an empty value) was supplied.
 		 */
 		Missing,
-		/**
+		/*
 		 * More than one `Proxy-Authorization` header: ambiguous, so rejected.
 		 */
 		Duplicate,
-		/** The value, or the decoded field, exceeds the documented bound. */
+		/* The value, or the decoded field, exceeds the documented bound. */
 		TooLarge,
-		/**
+		/*
 		 * A syntactically valid scheme other than Basic (for example Digest).
 		 */
 		UnsupportedScheme,
-		/**
+		/*
 		 * Broken syntax, broken base64, or a missing/empty user or password.
 		 */
 		Malformed,
-		/** Well-formed credentials that do not match the configured ones. */
+		/* Well-formed credentials that do not match the configured ones. */
 		BadCredentials
 	};
 
@@ -343,7 +343,7 @@ namespace proxy
 		return result == ProxyAuthResult::Accepted || result == ProxyAuthResult::NotRequired;
 	}
 
-	/** Short stable log label. It never contains credential material. */
+	/* Short stable log label. It never contains credential material. */
 	constexpr std::string_view ProxyAuthResultName (ProxyAuthResult result) noexcept
 	{
 		switch (result)
@@ -360,7 +360,7 @@ namespace proxy
 		return "unknown";
 	}
 
-	/**
+	/*
 	 * Compare two credential fields without an early exit on the first
 	 * mismatching byte. The loop always runs over the longer of the two
 	 * strings; the length itself is not treated as a secret, but a length
@@ -379,7 +379,7 @@ namespace proxy
 		return difference == 0;
 	}
 
-	/**
+	/*
 	 * Strictly decode an RFC 7617 Basic credential value.
 	 *
 	 * @param value    the `Proxy-Authorization` header value, verbatim
@@ -396,7 +396,7 @@ namespace proxy
 	 */
 	ProxyAuthResult ProxyBasicAuthDecode (std::string_view value, std::string & user, std::string & password);
 
-	/**
+	/*
 	 * Local HTTP proxy credential. `enabled` is the operator's intent;
 	 * when it is set but a field is empty or oversized,
 	 * HasUsableCredentials() is false and every request is rejected (fail
@@ -416,7 +416,7 @@ namespace proxy
 				&& password.size () <= PROXY_AUTH_MAX_FIELD_SIZE;
 		}
 
-		/**
+		/*
 		 * @param value the `Proxy-Authorization` value, already extracted by
 		 *   the caller (empty when absent)
 		 * @param occurrences how many
@@ -426,14 +426,14 @@ namespace proxy
 		ProxyAuthResult Verify (std::string_view value, std::size_t occurrences) const;
 	};
 
-	/**
+	/*
 	 * Remove every credential-bearing `Proxy-*` request header, including
 	 * `Proxy-Authorization`, case-insensitively.
 	 * @return the number of removed headers.
 	 */
 	std::size_t HTTPProxyStripCredentials (i2p::http::HTTPReq & req);
 
-	/**
+	/*
 	 * Bounded `407 Proxy Authentication Required` response with the Basic
 	 * challenge and `Connection: close`. The realm is escaped into a
 	 * quoted string; the default overload uses HTTP_PROXY_AUTH_REALM.
@@ -459,7 +459,7 @@ namespace proxy
 	 */
 	enum class ProxyAuthScheme
 	{
-		/** No local credential is configured. */
+		/* No local credential is configured. */
 		None,
 		Basic,
 		Digest
@@ -467,7 +467,7 @@ namespace proxy
 
 	std::string_view ProxyAuthSchemeName (ProxyAuthScheme scheme) noexcept;
 
-	/**
+	/*
 	 * RFC 7616 digest algorithm selector: only MD5 and SHA-256 are
 	 * supported.
 	 */
@@ -478,13 +478,13 @@ namespace proxy
 		Unsupported
 	};
 
-	/**
+	/*
 	 * Lower-case hex H() over @a data. Empty when the provider is
 	 * unavailable.
 	 */
 	std::string ProxyDigestHashHex (std::string_view data, ProxyDigestAlgorithm algorithm);
 
-	/**
+	/*
 	 * Bounded parse of a `Digest ...` credential value (RFC 7616 section
 	 * 3.4).
 	 */
@@ -495,7 +495,7 @@ namespace proxy
 		bool hasAlgorithm = false;
 	};
 
-	/**
+	/*
 	 * @return false when the value is not `Digest`, when a parameter is
 	 *   duplicated or oversized, or when the quoting is not a well-formed
 	 *   RFC 7230 quoted-string.
@@ -512,11 +512,11 @@ namespace proxy
 		UnsupportedAlgorithm,
 		BadRealm,
 		BadQop,
-		/** The nonce is unknown or expired: answer 407 with `stale=true`. */
+		/* The nonce is unknown or expired: answer 407 with `stale=true`. */
 		StaleNonce,
-		/** The `opaque` value is not the one issued with this nonce. */
+		/* The `opaque` value is not the one issued with this nonce. */
 		BadNonce,
-		/** A valid `nc` was already used (replay) or went backwards. */
+		/* A valid `nc` was already used (replay) or went backwards. */
 		Replayed,
 		BadCredentials
 	};
@@ -531,20 +531,20 @@ namespace proxy
 		return result == ProxyDigestResult::StaleNonce;
 	}
 
-	/** Short stable log label. It never contains credential material. */
+	/* Short stable log label. It never contains credential material. */
 	std::string_view ProxyDigestResultName (ProxyDigestResult result) noexcept;
 
-	/**
+	/*
 	 * Nonce lifetime and cache bound, matching I2P Java
 	 * MAX_NONCE_AGE/MAX_NONCE_COUNT.
 	 */
 	inline constexpr std::int64_t PROXY_DIGEST_NONCE_LIFETIME_MS = 60 * 60 * 1000;
 	inline constexpr std::size_t PROXY_DIGEST_MAX_NONCES = 1024;
-	/** RFC 7616 nonce-count is exactly eight lower-case hex digits. */
+	/* RFC 7616 nonce-count is exactly eight lower-case hex digits. */
 	inline constexpr std::size_t PROXY_DIGEST_NC_LENGTH = 8;
 	inline constexpr std::size_t PROXY_DIGEST_MAX_PARAM_SIZE = PROXY_AUTH_MAX_ENCODED_SIZE;
 
-	/**
+	/*
 	 * Local Digest credential plus its nonce cache. The configured fields
 	 * are immutable after Prepare(); the cache is mutex-guarded because
 	 * every accepted connection shares this object through the acceptor.
@@ -564,7 +564,7 @@ namespace proxy
 		std::string password;
 		std::string realm = "openi2pd";
 
-		/**
+		/*
 		 * Validate the configuration and precompute H(A1) for both
 		 * algorithms.
 		 * @return false when the credential or the realm is unusable; the
@@ -575,20 +575,20 @@ namespace proxy
 		bool IsEnabled () const noexcept { return enabled; }
 		bool HasUsableCredentials () const noexcept { return m_Prepared; }
 
-		/**
+		/*
 		 * Issue a fresh nonce for a challenge.
 		 * @return false when the CSPRNG is unavailable; the caller must then
 		 *   deny the request instead of advertising an unverifiable nonce.
 		 */
 		bool NewChallenge (std::int64_t nowMs, std::string & nonce, std::string & opaque);
 
-		/**
+		/*
 		 * Insert a specific nonce, for a regression vector or for a nonce the
 		 * caller generated elsewhere. Same bounds as NewChallenge().
 		 */
 		void SeedNonce (std::string nonce, std::string opaque, std::int64_t nowMs);
 
-		/**
+		/*
 		 * Verify one `Proxy-Authorization` value against @a method (needed
 		 * for H(A2)) at @a nowMs.
 		 */
@@ -605,11 +605,11 @@ namespace proxy
 		std::map<std::string, NonceState> m_Nonces;
 	};
 
-	/** One `Proxy-Authenticate: Digest ...` value (one algorithm). */
+	/* One `Proxy-Authenticate: Digest ...` value (one algorithm). */
 	std::string HTTPProxyDigestChallenge (std::string_view realm, std::string_view nonce, std::string_view opaque,
 		ProxyDigestAlgorithm algorithm, bool stale);
 
-	/**
+	/*
 	 * Bounded 407 page carrying both Digest challenges (SHA-256 first).
 	 */
 	std::string HTTPProxyDigestChallengeResponse (
@@ -634,7 +634,7 @@ namespace proxy
 		bool GetHelperSupport () const { return m_Addresshelper; }
 		bool GetSendUserAgent () const { return m_SendUserAgent; }
 
-		/**
+		/*
 		 * Local authentication state. The constructor reads
 		 * `httpproxy.auth.type` (basic|digest), `httpproxy.auth.enabled`,
 		 * `httpproxy.auth.username`, `httpproxy.auth.password`,
@@ -648,11 +648,11 @@ namespace proxy
 		void SetBasicAuth (std::string username, std::string password);
 
 		ProxyAuthScheme GetAuthScheme () const { return m_AuthScheme; }
-		/** Shared so every handler uses one bounded nonce cache. */
+		/* Shared so every handler uses one bounded nonce cache. */
 		const std::shared_ptr<ProxyDigestAuth> & GetDigestAuth () const { return m_DigestAuth; }
-		/** Realm used by the Basic and Digest challenges. */
+		/* Realm used by the Basic and Digest challenges. */
 		const std::string & GetAuthRealm () const { return m_AuthRealm; }
-		/** Non-blocking authentication failure delay in milliseconds. */
+		/* Non-blocking authentication failure delay in milliseconds. */
 		std::uint32_t GetAuthFailureDelayMs () const { return m_AuthFailureDelayMs; }
 
 	protected:

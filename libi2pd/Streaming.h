@@ -366,7 +366,7 @@ namespace stream
 
 		void AsyncClose () { boost::asio::post (m_Service, std::bind (&Stream::Close, shared_from_this ())); };
 
-		/**
+		/*
 		 * only call close from destination thread, use Stream::AsyncClose for
 		 * other threads
 		 */

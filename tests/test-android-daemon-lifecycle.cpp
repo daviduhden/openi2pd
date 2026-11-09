@@ -29,7 +29,7 @@ using i2p::android::ProcessRole;
 using i2p::android::START_CANCELED_RESULT;
 using i2p::android::StartDaemonLifecycle;
 
-/**
+/*
  * Process-role contract: one claim per process, irreversible,
  * non-secret.
  */

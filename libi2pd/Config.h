@@ -18,7 +18,7 @@
 #include <boost/program_options/options_description.hpp>
 #include <boost/program_options/variables_map.hpp>
 
-/**
+/*
  * Functions to parse and store i2pd parameters
  *
  * General usage flow:
@@ -35,7 +35,7 @@ namespace config
 {
 	extern boost::program_options::variables_map m_Options;
 
-	/**
+	/*
 	 * @brief Initialize list of acceptable parameters
 	 *
 	 * Should be called before any Parse* functions.
@@ -55,7 +55,7 @@ namespace config
 		Help
 	};
 
-	/**
+	/*
 	 * @brief Answer a command-line request for version or help text.
 	 * @param outcome request to render, never @c CmdlineOutcome::Proceed
 	 * @return 0 after the response was published, non-zero when @a outcome
@@ -77,7 +77,7 @@ namespace config
 	int PublishInformationalResponse (CmdlineOutcome outcome);
 
 #if defined(_WIN32)
-	/**
+	/*
 	 * @brief Answer an informational request from the raw command line.
 	 * @param commandLine NUL-terminated Windows command line.
 	 * @param exitCode receives the status the caller must exit with.
@@ -106,7 +106,7 @@ namespace config
 	bool TryPublishRawWindowsInformationalRequest (const wchar_t * commandLine, int & exitCode);
 #endif
 
-	/**
+	/*
 	 * @brief Detect a version or help request without side effects.
 	 * @param argc Cmdline arguments count, should be passed from main().
 	 * @param argv Cmdline parameters array, should be passed from main()
@@ -125,7 +125,7 @@ namespace config
 	 */
 	CmdlineOutcome ClassifyInformationalRequest (int argc, char * argv[]);
 
-	/**
+	/*
 	 * @brief Parse cmdline parameters, and show help if requested
 	 * @param argc Cmdline arguments count, should be passed from main().
 	 * @param argv Cmdline parameters array, should be passed from main()
@@ -150,7 +150,7 @@ namespace config
 	 */
 	void ParseCmdline (int argc, char * argv[], bool ignoreUnknown = false);
 
-	/**
+	/*
 	 * @brief Load and parse given config file
 	 * @param path Path to config file
 	 *
@@ -165,13 +165,13 @@ namespace config
 	 */
 	void ParseConfig (const std::string & path);
 
-	/**
+	/*
 	 * @brief Used to combine options from cmdline, config and default
 	 *        values
 	 */
 	void Finalize ();
 
-	/**
+	/*
 	 * @brief Accessor to parameters by name
 	 * @param name Name of the requested parameter
 	 * @param value Variable where to store option
@@ -198,7 +198,7 @@ namespace config
 	bool GetOptionAsAny (const char * name, boost::any & value);
 	bool GetOptionAsAny (const std::string & name, boost::any & value);
 
-	/**
+	/*
 	 * @brief Set value of given parameter
 	 * @param name Name of settable parameter
 	 * @param value New parameter value
@@ -214,7 +214,7 @@ namespace config
 		return true;
 	}
 
-	/**
+	/*
 	 * @brief Check is value explicitly given or default
 	 * @param name Name of checked parameter
 	 * @return true if value set to default, false otherwise

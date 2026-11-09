@@ -84,9 +84,9 @@ struct DaclSummary
 {
 	bool containerAce = false;
 	bool containerWrites = false;
-	/** Everyone (S-1-1-0) must never be added by this component. */
+	/* Everyone (S-1-1-0) must never be added by this component. */
 	bool everyone = false;
-	/**
+	/*
 	 * ALL [RESTRICTED] APPLICATION PACKAGES must never gain write access.
 	 */
 	bool anyPackageWrites = false;

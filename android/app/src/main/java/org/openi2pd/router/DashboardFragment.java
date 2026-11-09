@@ -35,7 +35,7 @@ import com.google.android.material.chip.Chip;
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 import com.google.android.material.progressindicator.LinearProgressIndicator;
 
-/**
+/*
  * Router overview. Every control is enabled from the published snapshot
  * and destructive actions require confirmation.
  *
@@ -170,7 +170,7 @@ public class DashboardFragment extends Fragment {
         viewModel.getSnapshot().observe(getViewLifecycleOwner(), this::render);
     }
 
-    /**
+    /*
      * Last snapshot handed to {@link #render}, kept only so the
      * graceful button can choose between "begin" and "cancel". Main
      * thread only; a stale value cannot start work because every
@@ -178,7 +178,7 @@ public class DashboardFragment extends Fragment {
      */
     private RouterSnapshot lastSnapshot;
 
-    /**
+    /*
      * Apply one published snapshot to the views.
      *
      * <p>Runs on the main thread from the {@code LiveData} observer and
@@ -259,7 +259,7 @@ public class DashboardFragment extends Fragment {
         buttonGraceful.setEnabled(gracefulActive || UiFormat.canGraceful(snapshot));
     }
 
-    /**
+    /*
      * Show the confirmation dialog for a destructive command.
      *
      * <p>The {@code action} runs on the main thread only after the

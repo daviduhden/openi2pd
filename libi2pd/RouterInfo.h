@@ -469,7 +469,7 @@ namespace data
 		void SetUpdated (bool updated) { m_IsUpdated.store (updated); };
 		bool SaveToFile (const std::string & fullPath);
 		static bool SaveToFile (const std::string & fullPath, std::shared_ptr<Buffer> buf);
-		/**
+		/*
 		 * Persist a cached descriptor through the artifact writer. The
 		 * artifact name is the canonical base64 identity hash, so the cache
 		 * file stays netDb/routerInfo-&lt;b64&gt;.dat with identical bytes. The
@@ -507,7 +507,7 @@ namespace data
 		/// newer.
 		bool IsNewer (const uint8_t * buf, size_t len) const;
 
-		/**
+		/*
 		 * return true if we are in a router family and the signature is valid
 		 */
 		bool IsFamily (FamilyID famid) const

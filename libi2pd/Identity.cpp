@@ -381,7 +381,7 @@ namespace data
 		return *this;
 	}
 
-	/**
+	/*
 	 * @brief Parse a serialised identity (standard 387 bytes plus
 	 *        certificate).
 	 * @param buf untrusted wire bytes.
@@ -840,7 +840,7 @@ namespace data
 		return ret + m_B33OfflineKeys.GetLen ();
 	}
 
-	/**
+	/*
 	 * @brief Parse a private key file (identity, crypto key, signing key,
 	 *        ...).
 	 * @param buf untrusted key material as stored in a destination file.
@@ -1016,7 +1016,7 @@ namespace data
 		return i2p::data::ByteStreamToBase64 (buf.data (), l);
 	}
 
-	/**
+	/*
 	 * @brief Sign a message buffer with the destination or transient key.
 	 *
 	 * @warning The interface cannot report failure. A negative
@@ -1176,7 +1176,7 @@ namespace data
 		return nullptr;
 	}
 
-	/**
+	/*
 	 * @brief Generate a destination or router identity of the requested
 	 *        types.
 	 * @param type requested signing key type.

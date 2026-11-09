@@ -13,7 +13,7 @@ package org.openi2pd.router;
 
 import java.util.Map;
 
-/**
+/*
  * Checks whether a persisted tree URI remains referenced by another
  * torrent. Grant release is performed by the caller only after the
  * mapping update is committed, so a failed update cannot revoke a
@@ -30,7 +30,7 @@ final class TorrentSafGrants {
     private TorrentSafGrants() {
     }
 
-    /**
+    /*
      * @param grants persisted torrent-key to tree-URI mappings
      * @param uri URI string whose remaining references are being
      *            checked

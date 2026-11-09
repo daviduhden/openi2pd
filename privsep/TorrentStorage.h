@@ -29,28 +29,28 @@
 #include <string_view>
 namespace i2p::privsep
 {
-/**
+/*
  * Largest single payload block accepted by Read/Write and by one
  * metadata chunk. It bounds both the request frame and the
  * per-operation work, so a peer cannot ask the worker to copy an
  * arbitrarily large buffer in one step.
  */
 inline constexpr size_t TorrentStorageBlock = 16 * 1024;
-/**
+/*
  * Maximum number of payload/metadata handles registered at once. The
  * handle table is the worker's only long-lived per-peer state; reaching
  * the limit is a typed per-operation refusal (the channel stays
  * usable), not a disconnect.
  */
 inline constexpr uint32_t TorrentStorageHandles = 4096;
-/**
+/*
  * Declared-size ceiling for one registered payload file (1 TiB). It is
  * a sanity bound on the registration claim, not an allocation: the
  * registered length, checked against the opened descriptor, is what
  * bounds every later offset.
  */
 inline constexpr uint64_t TorrentStorageFileLimit = uint64_t { 1 } << 40;
-/**
+/*
  * Wire operation ids carried in the first payload byte of a
  * TorrentStorageRequest. Ids are part of the worker protocol; add a new
  * one at the end and update the worker dispatch and its tests together.
@@ -63,54 +63,54 @@ inline constexpr uint64_t TorrentStorageFileLimit = uint64_t { 1 } << 40;
  */
 enum class StorageOperation : uint8_t
 {
-	/**
+	/*
 	 * Open (create=1) or reopen (create=0) a payload path; reply
 	 * carries the handle. */
 	Register = 1,
-	/**
+	/*
 	 * Read one block at an offset of a registered handle; reply carries
 	 * the bytes. */
 	Read,
-	/**
+	/*
 	 * Write one block at an offset; only a handle opened writable
 	 * accepts this. */
 	Write,
-	/**
+	/*
 	 * Close and forget one handle. Repeating it fails but does not
 	 * poison the channel. */
 	Release,
-	/**
+	/*
 	 * Atomically publish a fully written staging file as the final
 	 * payload name. */
 	Promote,
-	/**
+	/*
 	 * Delete one payload file after checking its owner, size and link
 	 * count. */
 	Remove,
-	/** Remove one empty payload directory; never recursive. */
+	/* Remove one empty payload directory; never recursive. */
 	RemoveDirectory,
-	/**
+	/*
 	 * Start a bounded staging write of a metainfo/resume/DHT state
 	 * file. A new begin discards the previous pending staging write.
 	 */
 	MetadataBegin,
-	/** Append the next sequential chunk of the pending metadata file. */
+	/* Append the next sequential chunk of the pending metadata file. */
 	MetadataChunk,
-	/**
+	/*
 	 * fsync and atomically rename the pending metadata file onto its
 	 * target. */
 	MetadataCommit,
-	/** Discard the pending metadata file and its staging slot. */
+	/* Discard the pending metadata file and its staging slot. */
 	MetadataAbort,
-	/**
+	/*
 	 * Delete a metainfo/resume/DHT state file under the metadata name
 	 * rules. */
 	MetadataRemove,
-	/**
+	/*
 	 * Open an existing metadata file read-only and return its handle
 	 * and size. */
 	MetadataOpen,
-	/**
+	/*
 	 * Allow one flat DHT state leaf name that the general metadata suffix
 	 * rules would otherwise refuse. It is sent only from trusted tunnel
 	 * configuration, never from a peer-supplied filename, and is capped
@@ -118,7 +118,7 @@ enum class StorageOperation : uint8_t
 	 */
 	AuthorizeDHTMetadata
 };
-/**
+/*
  * Check root-relative path syntax without accessing the filesystem.
  * Reject absolute paths, empty/dot components, trailing separators,
  * control bytes, backslashes and colons. Limits are measured in bytes:
@@ -129,7 +129,7 @@ enum class StorageOperation : uint8_t
  * and apply operation-specific checks before using an accepted path.
  */
 bool SafeStoragePath (std::string_view path);
-/**
+/*
  * Run a blocking storage endpoint on its dedicated worker process.
  * On supported POSIX platforms, adopt fd as the owned IPC channel.
  * The OpenBSD bootstrap additionally supplies inheritedRoot; Linux

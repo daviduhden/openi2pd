@@ -79,7 +79,7 @@ namespace i18n
 		std::function<int (int)> m_Formula;
 	};
 
-	/**
+	/*
 	 * Select the active UI language. Accepts BCP-47/locale tags such as
 	 * `en`, `es`, `ru`, `zh-Hans`, `zh_CN` and `es_ES`; an empty tag
 	 * consults LC_ALL/LC_MESSAGES/LANG. Unknown or unsupported languages
@@ -94,7 +94,7 @@ namespace i18n
 	 * later switches do not mutate that process-global locale again.
 	 */
 	void SetLanguage (const std::string & tag);
-	/** Active normalized tag; first use also resolves the environment. */
+	/* Active normalized tag; first use also resolves the environment. */
 	std::string GetLanguageTag ();
 	/// Return a static catalog view, or borrow arg unchanged on fallback.
 	///
@@ -122,7 +122,7 @@ namespace i18n
 		}
 	} // detail
 
-	/**
+	/*
 	 * @brief Get translation of string
 	 * @param arg String with message
 	 */
@@ -131,7 +131,7 @@ namespace i18n
 		return i2p::i18n::translate (std::forward<TValue> (arg));
 	}
 
-	/**
+	/*
 	 * @brief Get translation of string and format it
 	 * @param arg String with message
 	 * @param args Array of arguments for string formatting
@@ -142,7 +142,7 @@ namespace i18n
 			i2p::i18n::translate (std::forward<TValue> (arg)), std::forward<TArgs> (args)...);
 	}
 
-	/**
+	/*
 	 * @brief Get translation of string with plural forms
 	 * @param arg String with message in singular form
 	 * @param arg2 String with message in plural form
@@ -153,7 +153,7 @@ namespace i18n
 		return i2p::i18n::translate (std::forward<TValue> (arg), std::forward<TValue2> (arg2), std::forward<int> (n));
 	}
 
-	/**
+	/*
 	 * @brief Get translation of string with plural forms and format it
 	 * @param arg String with message in singular form
 	 * @param arg2 String with message in plural form

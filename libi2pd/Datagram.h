@@ -233,13 +233,13 @@ namespace datagram
 		///       its own mutex during destruction.
 		void Stop ();
 
-		/** @brief ack the garlic routing path */
+		/* @brief ack the garlic routing path */
 		void Ack ();
 
-		/** send an i2np message to remote endpoint for this session */
+		/* send an i2np message to remote endpoint for this session */
 		void SendMsg (std::shared_ptr<I2NPMessage> msg);
 		void FlushSendQueue (bool waitForLeaseSet = true);
-		/**
+		/*
 		 * get the last time in milliseconds for when we used this datagram
 		 * session
 		 */

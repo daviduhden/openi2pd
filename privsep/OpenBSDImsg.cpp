@@ -154,7 +154,7 @@ i2p::expected<ImsgChannel, std::string> ImsgChannel::Adopt (int fd)
 #endif
 }
 
-/**
+/*
  * Adopt a descriptor that another process forwarded, after proving it
  * is the object this role is allowed to use.
  *
@@ -201,7 +201,7 @@ i2p::expected<ImsgChannel, std::string> ImsgChannel::AdoptValidated (int fd, uin
 #endif
 }
 
-/**
+/*
  * Send one frame, optionally with one descriptor, within @a timeoutMs.
  *
  * The imsg adapter has its own ceiling: an `imsg_compose` frame must
@@ -289,7 +289,7 @@ i2p::expected<void, std::string> ImsgChannel::Send (const Message & message, int
 #endif
 }
 
-/**
+/*
  * Receive exactly one frame, optionally with one forwarded descriptor.
  *
  * `imsgbuf_read` may append several complete messages to the user

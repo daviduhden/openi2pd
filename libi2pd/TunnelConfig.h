@@ -51,7 +51,7 @@ namespace tunnel
 		void SetPrev (TunnelHopConfig * p);
 
 		virtual uint8_t GetRetCode (const uint8_t * records) const = 0;
-		/**
+		/*
 		 * Write this hop's build request record at `recordIndex`.
 		 *
 		 * `numRecords` bounds the record table. Returns false when the record
@@ -77,7 +77,7 @@ namespace tunnel
 		ShortECIESTunnelHopConfig (std::shared_ptr<const i2p::data::IdentityEx> r)
 			: TunnelHopConfig (r) { };
 
-		/** @return False on encryption failure; callers must fail closed. */
+		/* @return False on encryption failure; callers must fail closed. */
 		bool EncryptECIES (const uint8_t * clearText, uint8_t * encrypted);
 
 		uint8_t GetRetCode (const uint8_t * records) const override

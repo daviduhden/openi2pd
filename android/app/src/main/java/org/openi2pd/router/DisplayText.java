@@ -5,11 +5,11 @@
 
 package org.openi2pd.router;
 
-/** Presentation bounds shared by snapshots, logs and accessibility. */
+/* Presentation bounds shared by snapshots, logs and accessibility. */
 final class DisplayText {
     private DisplayText() {}
 
-    /**
+    /*
      * Cap UTF-16 units without splitting a valid surrogate pair.
      *
      * <p>Null becomes empty. A zero limit is valid; negative limits are

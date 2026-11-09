@@ -29,7 +29,7 @@ namespace i2p
 namespace client
 {
 
-	/** set standard socket options */
+	/* set standard socket options */
 	static void I2PTunnelSetSocketOptions (std::shared_ptr<boost::asio::ip::tcp::socket> socket)
 	{
 		if (socket && socket->is_open ())

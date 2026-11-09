@@ -90,7 +90,7 @@ public:
 		ClientRequest,
 		ServerRequest,
 		ServerResponse,
-		/**
+		/*
 		 * A response travelling from an I2P destination towards a local HTTP
 		 * proxy client. Hop-by-hop and proxy-only headers are removed so a
 		 * destination cannot inject them into the browser, while

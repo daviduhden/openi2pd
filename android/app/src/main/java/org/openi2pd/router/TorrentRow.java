@@ -21,7 +21,7 @@ package org.openi2pd.router;
 import java.util.Map;
 import java.util.regex.Pattern;
 
-/**
+/*
  * Immutable torrent summary decoded through {@link #from}.
  *
  * <p>The decoder bounds display text and counters. Malformed IDs are
@@ -37,10 +37,10 @@ record TorrentRow(String id, String name, String status, String error, String ha
     private static final int MAX_STATUS = 64;
     private static final int MAX_ERROR = 256;
     private static final int MAX_MAGNET = 2048;
-    /** Compiled once: a snapshot decodes up to 200 rows per refresh. */
+    /* Compiled once: a snapshot decodes up to 200 rows per refresh. */
     private static final Pattern HASH = Pattern.compile("[0-9a-fA-F]{40}");
 
-    /**
+    /*
      * Decode one {@code <prefix>key} snapshot row.
      *
      * <p>The engine id is mandatory: it must be one to ten ASCII
@@ -97,7 +97,7 @@ record TorrentRow(String id, String name, String status, String error, String ha
         return !error.isEmpty();
     }
 
-    /**
+    /*
      * Two-line row label. All presentation vocabulary and the formatted
      * percentage come from the active UI locale, not the wire tokens.
      *
@@ -114,7 +114,7 @@ record TorrentRow(String id, String name, String status, String error, String ha
         return label.toString();
     }
 
-    /**
+    /*
      * TalkBack description combining name, state and percentage.
      */
     String accessibilityLabel(String privateBadge, String stateLabel, String progress, String errorLabel) {
@@ -129,7 +129,7 @@ record TorrentRow(String id, String name, String status, String error, String ha
         return label.toString();
     }
 
-    /**
+    /*
      * Cap display text in UTF-16 units without splitting a valid pair.
      *
      * <p>This preserves a surrogate pair crossing the truncation point;
@@ -167,7 +167,7 @@ record TorrentRow(String id, String name, String status, String error, String ha
         }
     }
 
-    /**
+    /*
      * The daemon emits the percentage as {@code
      * std::to_string(double)}, for example {@code 42.500000}. Integer
      * parsing returned 0 for every row and would silently blank the
@@ -192,7 +192,7 @@ record TorrentRow(String id, String name, String status, String error, String ha
         }
     }
 
-    /**
+    /*
      * Preserve a parsed signed ETA; absent or invalid input becomes -1.
      * Other negative values remain negative for unknown-ETA rendering.
      */

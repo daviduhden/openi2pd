@@ -25,7 +25,7 @@ import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.core.content.ContextCompat;
 
-/**
+/*
  * Compact, allocation-bounded traffic chart.
  *
  * <p>The view owns a fixed-size ring buffer. Samples are supplied by
@@ -101,7 +101,7 @@ public class TrafficChartView extends View {
         uploadFillPaint.setAlpha(26);
     }
 
-    /**
+    /*
      * Add one sample. Negative values are clamped to zero. The oldest
      * sample is discarded once the ring is full.
      */
@@ -121,7 +121,7 @@ public class TrafficChartView extends View {
         invalidate();
     }
 
-    /**
+    /*
      * Actual peak across the retained download/upload samples, or zero.
      */
     public long getPeakBytesPerSecond() {

@@ -70,7 +70,7 @@ inline const char * L4Protocol (Transport transport)
 	return transport == Transport::NTCP2 ? "tcp" : "udp";
 }
 
-/**
+/*
 	 * Parse and validate an address/port/transport tuple. Numeric
 	 * addresses only: RouterInfo files are untrusted, and a hostname would
 	 * make the generated rules depend on DNS.
@@ -86,7 +86,7 @@ inline bool IsNumericAddressText (std::string_view text)
 		});
 }
 
-/**
+/*
 	 * Why an address/port/transport tuple cannot become an endpoint.
 	 *
 	 * `Malformed` is input the tool cannot interpret: an unknown
@@ -103,7 +103,7 @@ enum class EndpointRejection
 	Malformed ///< unparsable or structurally invalid tuple
 };
 
-/**
+/*
 	 * Parse and validate an address/port/transport tuple.
 	 * Numeric addresses only: RouterInfo files are untrusted, and a
 	 * hostname would make the generated rules depend on DNS.
@@ -184,7 +184,7 @@ inline EndpointRejection ValidateEndpoint (
 	return EndpointRejection::None;
 }
 
-/**
+/*
 	 * @brief Parse and validate an address/port/transport tuple.
 	 * @return The canonical endpoint, or std::nullopt when
 	 * `ValidateEndpoint()` rejects it for any reason.
@@ -196,7 +196,7 @@ inline std::optional<Endpoint> MakeEndpoint (std::string_view addressText, int p
 	return endpoint;
 }
 
-/**
+/*
 	 * Revalidate an Endpoint at the rendering boundary. Endpoint is
 	 * deliberately a small aggregate, so callers should use
 	 * MakeEndpoint(); this guard keeps a manually constructed or
@@ -252,7 +252,7 @@ inline bool IsSafeIdentifier (std::string_view value)
 	return !IsReservedNftWord (value);
 }
 
-/**
+/*
 	 * nftables chain names are configured by the caller. Reject the
 	 * standard inbound/forward hook names so a typo cannot turn an
 	 * "outbound" command into an INPUT/FORWARD rule. Custom output chains
@@ -266,7 +266,7 @@ inline bool IsSafeOutputChain (std::string_view value)
 	return lower != "input" && lower != "forward" && lower != "prerouting" && lower != "postrouting";
 }
 
-/**
+/*
 	 * Display-name tag for Windows rules (normally a router hash prefix).
 	 * Restricted to printable identifier characters so the generated
 	 * PowerShell line cannot acquire a newline, a control character or an
@@ -375,7 +375,7 @@ inline std::optional<std::string> Pf (const Endpoint & endpoint, const RenderOpt
 	return rule;
 }
 
-/**
+/*
  * True when the backend's configured family deliberately excludes
  * endpoint. */
 inline bool IsSelectedByFamily (const Endpoint & endpoint, const RenderOptions & options)
@@ -401,7 +401,7 @@ inline std::optional<std::string> Render (const Endpoint & endpoint, const Rende
 	}
 }
 
-/** Stable deduplication key across multiple RouterInfo files. */
+/* Stable deduplication key across multiple RouterInfo files. */
 inline std::string EndpointKey (const Endpoint & endpoint)
 {
 	return std::string (endpoint.ipv6 ? "6|" : "4|") + std::to_string (static_cast<int> (endpoint.transport)) + "|"

@@ -31,7 +31,7 @@
 
 namespace i2p::privsep
 {
-/**
+/*
  * Entry point for the supervisor process. The core owns the other
  * endpoint of the control socketpair. The supervisor owns the log
  * worker process and forwards structured records; it never opens the
@@ -39,7 +39,7 @@ namespace i2p::privsep
  */
 int RunSupervisor (int fd);
 
-/**
+/*
  * Process-wide admission gate for worker creation.
  *
  * The daemon calls `ForbidProcessCreation()` after every allowed worker
@@ -68,7 +68,7 @@ bool PrepareTorrentStorageSupervisor (const std::string & root, std::string & er
 i2p::expected<Channel, std::string> SpawnSupervisedTorrentStorage (int rootFd, std::string_view rootPath);
 int RunTorrentStorageSupervisor (int fd);
 
-/**
+/*
  * Lifecycle state of one worker owned by the supervisor. `Failed` is
  * terminal for the current spawn budget: the supervisor stops replacing
  * that worker and reports the state once instead of retrying forever.
@@ -93,18 +93,18 @@ constexpr std::string_view SupervisorWorkerStateName (SupervisorWorkerState stat
 	return "unknown";
 }
 
-/** One immutable observation of an owned worker. */
+/* One immutable observation of an owned worker. */
 struct SupervisorWorkerSnapshot
 {
 	std::string worker;
 	SupervisorWorkerState state = SupervisorWorkerState::Starting;
-	/** Spawn generation: increments on every replacement. */
+	/* Spawn generation: increments on every replacement. */
 	uint32_t generation = 0;
-	/** Restarts performed since the worker was last stable. */
+	/* Restarts performed since the worker was last stable. */
 	uint32_t restarts = 0;
-	/** Records the client gave up on; 0 when the caller cannot know. */
+	/* Records the client gave up on; 0 when the caller cannot know. */
 	uint64_t droppedRecords = 0;
-	/**
+	/*
 	 * Last non-secret reason. Callers must pass static text only: a reason
 	 * is never derived from a payload, a path, a log record or a
 	 * credential.
@@ -112,7 +112,7 @@ struct SupervisorWorkerSnapshot
 	std::string reason;
 };
 
-/**
+/*
  * Bounded, mutex-published snapshot of the workers the supervisor owns.
  * Readers take a copy; they never hold a reference into the container.
  * The insertion order is stable and the container stops growing at
@@ -163,7 +163,7 @@ public:
 		SetReason (*entry, reason);
 	}
 
-	/**
+	/*
 	 * Terminal: the restart budget is exhausted. Repeated calls stay
 	 * one entry. */
 	void NoteFailed (std::string_view worker, uint32_t generation, uint32_t restarts, std::string_view reason)
@@ -208,7 +208,7 @@ public:
 	}
 
 private:
-	/** Find-or-append. Returns nullptr once MAX_WORKERS is reached. */
+	/* Find-or-append. Returns nullptr once MAX_WORKERS is reached. */
 	SupervisorWorkerSnapshot * FindLocked (std::string_view worker)
 	{
 		for (auto & entry : m_Workers)
@@ -231,7 +231,7 @@ private:
 	std::vector<SupervisorWorkerSnapshot> m_Workers;
 };
 
-/**
+/*
  * Process-local status of the running supervisor. It is a diagnostic
  * snapshot, not a wire protocol: another process cannot read this
  * memory, and exposing it over IPC would require a new message type
@@ -244,7 +244,7 @@ inline SupervisorStatus & GetSupervisorStatus ()
 	return status;
 }
 
-/**
+/*
  * The single restart policy for the supervisor's log worker and for one
  * Windows worker role.
  *
@@ -274,7 +274,7 @@ public:
 	static constexpr std::chrono::seconds STABLE_PERIOD { 60 };
 	static constexpr uint32_t MAX_RESTARTS = 8;
 
-	/**
+	/*
 	 * Sum of every wait the ladder can hand out before the budget is
 	 * spent. Exposed so tests and diagnostics quote the same arithmetic
 	 * the scheduler uses instead of a hand-computed constant that can
@@ -292,14 +292,14 @@ public:
 		return total;
 	}
 
-	/** The worker for generation @a generation became ready at @a now. */
+	/* The worker for generation @a generation became ready at @a now. */
 	void NoteReady (std::chrono::steady_clock::time_point now)
 	{
 		m_ReadyAt = now;
 		m_HasReady = true;
 	}
 
-	/**
+	/*
 	 * Reset the budget when the current worker has served STABLE_PERIOD.
 	 * Returns true when a reset happened (used to publish a ready state).
 	 * Exhaustion is terminal until the owner calls Reset(): a late
@@ -314,7 +314,7 @@ public:
 		return true;
 	}
 
-	/**
+	/*
 	 * Account one worker failure at @a now and return the bounded delay to
 	 * honour before the next spawn, or nullopt when the budget is
 	 * exhausted. The timestamp keeps the call clock-injected and uniform
@@ -369,17 +369,17 @@ static_assert (LogWorkerRestartBudget::TotalLadderDelay () >= LogWorkerRestartBu
 static_assert (LogWorkerRestartBudget::TotalLadderDelay () < LogWorkerRestartBudget::STABLE_PERIOD * 2,
 	"the restart ladder must stay within two stable periods");
 
-/**
+/*
  * How one received frame relates to the request the client is
  * waiting for. */
 enum class SupervisorReplyKind : uint8_t
 {
-	/**
+	/*
 	 * A reply for an earlier request that this client already
 	 * abandoned. */
 	Stale,
 	Matching,
-	/**
+	/*
 	 * A reply for a request id this client has not sent yet. It cannot
 	 * answer the pending request, so it is a bounded protocol fault: the
 	 * reply and its descriptor are discarded and the request is rejected,
@@ -397,7 +397,7 @@ struct SupervisorReplyDecision
 	std::string_view detail;
 };
 
-/**
+/*
  * Stale replies one request may drain before the run is itself treated as
  * a fault.
  *

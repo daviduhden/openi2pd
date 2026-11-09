@@ -22,7 +22,7 @@ namespace i2p
 {
 namespace client
 {
-	/**
+	/*
 	 * @brief Client destination whose outbound tunnels end at the inbound
 	 *   gateway of the remote destination's current lease.
 	 *

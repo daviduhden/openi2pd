@@ -92,7 +92,7 @@ namespace
 #endif
 	}
 
-	/**
+	/*
 	 * Retrieve CSPRNG bytes without depending on an OpenSSL symbol in this
 	 * archive. getrandom(2) is the kernel CSPRNG on Linux;
 	 * arc4random_buf(3) is the base-system CSPRNG on OpenBSD. Any short or
@@ -125,7 +125,7 @@ namespace
 #endif
 	}
 
-	/** Best-effort wipe of a stack copy of the spawn nonce or record. */
+	/* Best-effort wipe of a stack copy of the spawn nonce or record. */
 	void WipeBytes (uint8_t * buffer, size_t size) noexcept
 	{
 		volatile uint8_t * wipe = buffer;
@@ -146,7 +146,7 @@ namespace
 			| (static_cast<uint32_t> (in[2]) << 8) | static_cast<uint32_t> (in[3]);
 	}
 
-	/**
+	/*
 	 * Format a hello record into a fixed buffer.
 	 *
 	 * Async-signal-safe (no allocation), so the forked child can build the
@@ -168,7 +168,7 @@ namespace
 		return true;
 	}
 
-	/**
+	/*
 	 * Post-fork: publish the identity record at descriptor 5.
 	 *
 	 * Async-signal-safe only (dup2/fcntl/_exit). A spawn without a record
@@ -184,7 +184,7 @@ namespace
 		if (statusFlags < 0 || ::fcntl (5, F_SETFL, statusFlags & ~O_NONBLOCK) < 0) _exit (127);
 	}
 
-	/**
+	/*
 	 * Post-fork: create the one-shot identity pipe and write the record.
 	 *
 	 * The pipe is created in the process that execs, and only that process
@@ -259,7 +259,7 @@ namespace
 	extern ino_t g_ExecutableInode;
 	extern off_t g_ExecutableSize;
 
-	/**
+	/*
 	 * Post-fork child setup shared by the direct and detached spawn paths.
 	 *
 	 * Async-signal-safe only: no allocation, no stdio, no setenv and no
@@ -398,7 +398,7 @@ bool WorkerRoleTakesInheritedRoot (WorkerRole role)
 
 namespace
 {
-	/**
+	/*
 	 * Roles that benefit from an empty network namespace when one is
 	 * available. */
 	[[maybe_unused]] bool RoleWantsNetworkNamespace (WorkerRole role)
@@ -567,7 +567,7 @@ std::optional<WorkerHelloRecord> ReadWorkerHello (int fd)
 
 namespace
 {
-	/** Fixed caps so a hostile path or binary cannot exhaust a spawn. */
+	/* Fixed caps so a hostile path or binary cannot exhaust a spawn. */
 	constexpr size_t MAX_EXECUTABLE_PATH_SIZE = 4096;
 	constexpr uint64_t MAX_EXECUTABLE_SIZE = 512ull * 1024ull * 1024ull;
 
@@ -580,7 +580,7 @@ namespace
 	ino_t g_ExecutableInode = 0;
 	off_t g_ExecutableSize = 0;
 
-	/**
+	/*
 	 * Validate a candidate executable before it is frozen.
 	 *
 	 * Absolute, free of NUL, a regular file owned by root or this process,
@@ -623,7 +623,7 @@ namespace
 		return true;
 	}
 
-	/**
+	/*
 	 * Cheap syntactic check used on every spawn.
 	 *
 	 * No filesystem access: the core or supervisor may already be past its

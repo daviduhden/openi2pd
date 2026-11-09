@@ -23,7 +23,7 @@ namespace i2p::client
 		return name.starts_with ("transient");
 	}
 
-	/**
+	/*
 	 * Reuse file-backed identities within one configuration reload.
 	 *
 	 * This cache owns retained destinations and is confined to the reload

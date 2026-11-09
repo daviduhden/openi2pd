@@ -898,7 +898,7 @@ namespace transport
 		}
 	}
 
-	/**
+	/*
 	 * @brief Derive the data-phase AEAD and SipHash keys from the final
 	 *        Noise chaining key.
 	 *

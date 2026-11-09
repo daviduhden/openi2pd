@@ -24,7 +24,7 @@ import android.widget.ScrollView;
 import androidx.core.view.ViewCompat;
 import com.google.android.material.button.MaterialButton;
 
-/**
+/*
  * Shared Material Views construction for programmatic screens. Callers
  * create and update these views on the Android main thread and retain
  * them only for the owning Fragment's view lifecycle.
@@ -33,7 +33,7 @@ final class UiFactory {
     private UiFactory() {
     }
 
-    /**
+    /*
      * Scroll container plus its centred, width-capped column. The
      * programmatic screens previously duplicated this block with a
      * hard-coded 16dp inset and no width cap, so they stretched edge to
@@ -55,7 +55,7 @@ final class UiFactory {
         return new Column(scroll, content);
     }
 
-    /**
+    /*
      * A Material 3 button with the documented minimum touch target and
      * RTL-aware row padding. Callers still set text/listeners/style.
      */
@@ -68,7 +68,7 @@ final class UiFactory {
         return button;
     }
 
-    /**
+    /*
      * One-speech-utterance semantics for a programmatic row. A
      * multi-line button otherwise makes TalkBack read the label, the
      * separator and the badge as unrelated fragments. {@code

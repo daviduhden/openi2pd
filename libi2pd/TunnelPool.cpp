@@ -954,7 +954,7 @@ namespace tunnel
 		}
 		if (i2p::transport::transports.RoutesRestricted () || hasTrustedRouters)
 		{
-			/** if routes are restricted or trusted prepend trusted first hop */
+			/* if routes are restricted or trusted prepend trusted first hop */
 			auto hop
 				= hasTrustedRouters ? SelectTrustedRouter (inbound) : i2p::transport::transports.GetRestrictedPeer ();
 			if (!hop) return false;

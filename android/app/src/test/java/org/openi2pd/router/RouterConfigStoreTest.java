@@ -18,7 +18,7 @@ import static org.junit.Assert.assertTrue;
 
 import org.junit.Test;
 
-/**
+/*
  * Pure-JVM tests for INI value validation. The Android Context is never
  * constructed or called, so these run without an emulator.
  */

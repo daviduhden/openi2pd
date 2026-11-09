@@ -36,7 +36,7 @@ import androidx.fragment.app.Fragment;
 
 import java.io.File;
 
-/**
+/*
  * Application identity and license information. No secrets, keys or
  * native pointers are displayed. The ABI shown is the device ABI; the
  * daemon data directory follows the application-specific storage

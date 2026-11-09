@@ -45,7 +45,7 @@
 namespace
 {
 #ifndef _WIN32
-/**
+/*
  * Freeze the executable path workers are spawned from.
  *
  * argv[0] is captured once, before any daemon path can spawn. A bare
@@ -64,7 +64,7 @@ void FreezeWorkerExecutable (const char * argv0)
 	i2p::privsep::SetExecutablePath (resolved);
 }
 #else
-/**
+/*
  * Never let the operating system block an unattended start on a modal
  * dialog.
  *
@@ -80,7 +80,7 @@ void SuppressInteractiveErrorDialogs ()
 	SetErrorMode (SEM_FAILCRITICALERRORS | SEM_NOGPFAULTERRORBOX | SEM_NOOPENFILEERRORBOX);
 }
 
-/**
+/*
  * Report a startup failure on the inherited standard error.
  *
  * A GUI-subsystem image cannot assume a console, so the message goes to
@@ -97,7 +97,7 @@ void WriteStandardError (std::string_view text)
 	WriteFile (handle, text.data (), static_cast<DWORD> (text.size ()), &written, nullptr);
 }
 
-/**
+/*
  * Authoritative UTF-8 argument vector for the GUI entry point.
  *
  * The router links as a GUI-subsystem image, which has no console and

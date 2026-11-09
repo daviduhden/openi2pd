@@ -24,7 +24,7 @@ import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 
-/** Uses harmless counters; no confirmation submits a router command. */
+/* Uses harmless counters; no confirmation submits a router command. */
 @RunWith(AndroidJUnit4.class)
 public final class MainActivityConfirmationTest {
     @Before

@@ -37,7 +37,7 @@ import com.google.android.material.textfield.TextInputLayout;
 import java.util.Map;
 import java.util.function.Consumer;
 
-/**
+/*
  * Material Views for torrent administration through
  * {@link RouterViewModel}.
  *
@@ -49,11 +49,11 @@ import java.util.function.Consumer;
  * recreation.</p>
  */
 public final class TorrentsFragment extends Fragment {
-    /**
+    /*
      * Highest comment record offset TORRENT-DETAIL accepts (0..255).
      */
     private static final int MAX_COMMENT_OFFSET = 255;
-    /** Records a torrent retains, including hidden entries. */
+    /* Records a torrent retains, including hidden entries. */
     private static final int MAX_COMMENT_TOTAL = 256;
     private RouterViewModel model;
     private LinearLayout rows;
@@ -303,7 +303,7 @@ public final class TorrentsFragment extends Fragment {
             bulkRemove.setEnabled(enabled);
     }
 
-    /**
+    /*
      * Session-wide removal, confirmed like a single-torrent removal.
      * The two variants map to the closed TORRENT-REMOVE-ALL verb;
      * deleting local data keeps its separate destructive confirmation.
@@ -356,7 +356,7 @@ public final class TorrentsFragment extends Fragment {
         });
     }
 
-    /**
+    /*
      * True when a new control request may be started. A dialog action
      * that cannot be sent is reported instead of being dropped
      * silently, so the dialog never implies a moderation decision the
@@ -372,7 +372,7 @@ public final class TorrentsFragment extends Fragment {
         return false;
     }
 
-    /**
+    /*
      * Capture both view and session authority when opening a dialog.
      */
     private OwnedDialogBuilder dialogBuilder() {
@@ -399,7 +399,7 @@ public final class TorrentsFragment extends Fragment {
         }
     }
 
-    /**
+    /*
      * Guard standard dialog callbacks at their common construction
      * boundary. Custom view/button callbacks retain the same builder
      * explicitly. Nested choices retain parent forms, within the
@@ -669,7 +669,7 @@ public final class TorrentsFragment extends Fragment {
         }
     }
 
-    /**
+    /*
      * Show the payload-storage dialog for one torrent.
      *
      * <p>The persisted grant map and the live URI permissions are read
@@ -1136,7 +1136,7 @@ public final class TorrentsFragment extends Fragment {
                                                  : R.string.torrent_priority_normal);
     }
 
-    /**
+    /*
      * Comment page size the daemon emits per TORRENT-DETAIL response.
      * The daemon retains up to 256 records (64 hidden) and the dialog
      * pages explicitly instead of expecting one unbounded reply.
@@ -1319,7 +1319,7 @@ public final class TorrentsFragment extends Fragment {
         showDialog(dialogOwner, dialog);
     }
 
-    /** Bounded, localized age for a comment epoch-seconds field. */
+    /* Bounded, localized age for a comment epoch-seconds field. */
     private String commentAge(String seconds) {
         try {
             long epoch = Long.parseLong(seconds);
@@ -1412,7 +1412,7 @@ public final class TorrentsFragment extends Fragment {
         showDialog(dialogOwner, dialog);
     }
 
-    /**
+    /*
      * A validation failure that names a resource is already localized.
      * Known diagnostics resolve resources, while unknown wire text
      * retains its English fallback.

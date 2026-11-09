@@ -67,7 +67,7 @@ i2p::expected<std::string, std::string> ReadText (const char * path)
 	return text;
 }
 
-/**
+/*
 	 * Sign everything accumulated so far, then append the marker and the
 	 * base64 signature.
 	 *

@@ -240,7 +240,7 @@ namespace tui
 			return true;
 		}
 
-		/**
+		/*
 		 * Verify the connected pipe server as far as Win32 makes practical.
 		 *
 		 * GetNamedPipeServerProcessId reports the process that owns the

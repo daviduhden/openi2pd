@@ -48,7 +48,7 @@ namespace i2p
 {
 namespace
 {
-	/**
+	/*
 	 * One retained fixed-file write after a failed isolated persistence
 	 * attempt.
 	 *
@@ -77,7 +77,7 @@ namespace
 			return true;
 		}
 
-		/** Retry the retained write once. True when nothing is pending. */
+		/* Retry the retained write once. True when nothing is pending. */
 		bool Flush ()
 		{
 			if (!m_Pending.load (std::memory_order_acquire)) return true;
@@ -90,7 +90,7 @@ namespace
 			return true;
 		}
 
-		/**
+		/*
 		 * Drop the retained record without writing. Used when initialization
 		 * is rolled back: no later tick may publish key material from a
 		 * failed start attempt.
@@ -116,7 +116,7 @@ namespace
 		return slot;
 	}
 
-	/**
+	/*
 	 * Write one fixed router file through the installed persistence
 	 * authority. A failure is retained for one later retry; it never
 	 * becomes a local write in the network process.

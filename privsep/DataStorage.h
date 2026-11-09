@@ -30,14 +30,14 @@
 
 namespace i2p::privsep
 {
-/** True for the artifact kinds this worker is allowed to own. */
+/* True for the artifact kinds this worker is allowed to own. */
 bool IsKnownArtifactKind (uint8_t kind);
-/**
+/*
  * Fixed per-kind root directory name ("netDb", "peerProfiles",
  * "destinations"). */
 const char * ArtifactDirectory (i2p::data::StorageArtifact kind);
 
-/**
+/*
  * Canonical artifact name validation.
  *
  * `RouterInfoCache` and `PeerProfile` accept exactly a canonical
@@ -52,7 +52,7 @@ const char * ArtifactDirectory (i2p::data::StorageArtifact kind);
  */
 bool IsCanonicalArtifactName (i2p::data::StorageArtifact kind, std::string_view name);
 
-/**
+/*
  * Relative path of one artifact inside the delegated root. The layout
  * matches the core's existing readers exactly:
  * `netDb/r&lt;first&gt;/routerInfo-&lt;name&gt;.dat`,
@@ -62,7 +62,7 @@ bool IsCanonicalArtifactName (i2p::data::StorageArtifact kind, std::string_view 
  */
 std::string ArtifactRelativePath (i2p::data::StorageArtifact kind, std::string_view name);
 
-/**
+/*
  * Target metadata gate used by both the write and the remove path of
  * the worker. A target may be replaced or deleted only when it is a
  * regular file, owned by the worker's effective uid and carrying
@@ -71,7 +71,7 @@ std::string ArtifactRelativePath (i2p::data::StorageArtifact kind, std::string_v
  */
 bool AcceptsArtifactTarget (bool isRegularFile, uint32_t targetUid, uint32_t currentUid, uint32_t linkCount);
 
-/**
+/*
  * Exponential restart backoff for a storage client whose worker died.
  *
  * The policy is shared by the router-storage and data-storage clients
@@ -95,23 +95,23 @@ public:
 	static constexpr std::chrono::milliseconds MIN_BACKOFF { 250 };
 	static constexpr std::chrono::seconds MAX_BACKOFF { 30 };
 
-	/** Forget every attempt and pending delay. */
+	/* Forget every attempt and pending delay. */
 	void Reset (std::chrono::steady_clock::time_point now) noexcept;
-	/** Start measuring the current successfully configured generation. */
+	/* Start measuring the current successfully configured generation. */
 	void NoteReady (std::chrono::steady_clock::time_point now) noexcept;
-	/**
+	/*
 	 * Credit a stable generation only after its validated operation reply.
 	 * Returns true if the continuous ready interval restores the budget.
 	 * Failure observation and setup replies must not call this method.
 	 */
 	bool NoteStable (std::chrono::steady_clock::time_point now) noexcept;
-	/**
+	/*
 	 * Record one failed attempt and schedule the next one. Returns false
 	 * when the consecutive failure budget is exhausted; the caller
 	 * must then stop retrying.
 	 */
 	bool RecordFailure (std::chrono::steady_clock::time_point now) noexcept;
-	/** True when the remaining budget and delay allow another attempt. */
+	/* True when the remaining budget and delay allow another attempt. */
 	bool CanAttempt (std::chrono::steady_clock::time_point now) const noexcept;
 	std::chrono::steady_clock::time_point NextAttempt () const noexcept { return m_NextAttempt; }
 	unsigned Attempts () const noexcept { return m_Attempts; }
@@ -125,7 +125,7 @@ private:
 	bool m_Ready = false;
 };
 
-/**
+/*
  * True when a reply belongs to the current worker generation and to the
  * request the client is still waiting for. A reply from a replaced
  * worker, or one for an already abandoned request, must be dropped
@@ -134,7 +134,7 @@ private:
 bool IsCurrentDataStorageReply (
 	uint32_t replyGeneration, uint32_t replyRequestId, uint32_t currentGeneration, uint32_t inFlightRequestId);
 
-/**
+/*
  * Generation-fenced client for the data-storage worker.
  *
  * Single-flight: one request at a time under a mutex, with monotonic
@@ -162,7 +162,7 @@ public:
 
 	bool Start (const std::filesystem::path & root, std::string & error);
 	void Stop ();
-	/**
+	/*
 	 * Write or remove one artifact. A stopped token cancels the operation
 	 * cooperatively: before the send nothing happens, after the send the
 	 * worker is told to abandon the request if it has not run yet, the
@@ -173,21 +173,21 @@ public:
 		std::stop_token token = { });
 	bool Remove (i2p::data::StorageArtifact kind, std::string_view name, std::stop_token token = { });
 
-	/**
+	/*
 	 * Typed outcome of the most recent Write/Remove (diagnostics and
 	 * tests). */
 	DataStorageStatus LastStatus () const;
-	/**
+	/*
 	 * Generation of the configured worker; 0 before the first
 	 * successful Start. */
 	uint32_t Generation () const;
-	/** Worker pid, or -1 when this client owns no child (diagnostics). */
+	/* Worker pid, or -1 when this client owns no child (diagnostics). */
 	long WorkerPid () const;
-	/**
+	/*
 	 * Injected clock so restart scheduling can be tested without
 	 * sleeping. */
 	void SetClockForTesting (std::function<std::chrono::steady_clock::time_point ()> clock);
-	/**
+	/*
 	 * Move the request-id counter. Exists so the exhaustion contract can
 	 * be exercised deterministically; the counter is otherwise monotonic
 	 * and is never reset by a restart or a Stop/Start cycle.
@@ -199,7 +199,7 @@ private:
 	std::unique_ptr<Impl> m_Impl;
 };
 
-/**
+/*
  * Data-storage worker entry point. Validates the delegated root
  * (identity, owner, mode), creates the three fixed 0700 directories,
  * applies the storage sandbox of the platform and then serves artifact

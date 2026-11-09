@@ -20,7 +20,7 @@ import org.junit.Test;
 
 import java.util.List;
 
-/**
+/*
  * Pins the Java side of the runtime-administration JNI contract.
  *
  * <p>Every bound here is applied twice: Java rejects an oversized value

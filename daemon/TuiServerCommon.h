@@ -24,7 +24,7 @@ namespace i2p
 {
 namespace tui
 {
-	/**
+	/*
 	 * Closed set of router-wide administrative operations.
 	 *
 	 * Every variant carries only bounded, typed data. There is
@@ -62,7 +62,7 @@ namespace tui
 		AddressSubRemove
 	};
 
-	/**
+	/*
 	 * Discrete outcome of a verb that can report more than
 	 * success/failure.
 	 * Only the operations listed below publish one; every other verb
@@ -158,7 +158,7 @@ namespace tui
 		size_t messageLength = 0;
 	};
 
-	/**
+	/*
 	 * Executes one command on the daemon-owned administrative thread. The
 	 * callback must not block the IPC transport and must fill a typed
 	 * result.
@@ -174,7 +174,7 @@ namespace tui
 	bool StartAdminCommandQueue (AdminCommandExecutor executor);
 	void StopAdminCommandQueue ();
 
-	/**
+	/*
 	 * Enqueue one typed command and wait up to timeout for its result.
 	 *
 	 * A timeout does not cancel an accepted command: it returns Accepted
@@ -184,7 +184,7 @@ namespace tui
 	 */
 	AdminCommandResult SubmitAdminCommand (const AdminCommand & command, std::chrono::milliseconds timeout);
 
-	/**
+	/*
 	 * Result of handling one request line.
 	 *
 	 * The response is already framed and length-checked by the protocol
@@ -197,7 +197,7 @@ namespace tui
 		bool closeConnection = false;
 	};
 
-	/**
+	/*
 	 * Validate and execute one newline-free request line.
 	 *
 	 * This is the only protocol entry point. Both the UNIX-domain socket

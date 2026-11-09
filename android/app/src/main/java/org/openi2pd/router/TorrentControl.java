@@ -20,12 +20,12 @@ import java.nio.charset.StandardCharsets;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
-/**
+/*
  * Bounded desktop-compatible torrent snapshots; no engine handles reach
  * the UI.
  */
 final class TorrentControl {
-    /**
+    /*
      * A validation failure whose text is a UI resource. Diagnostic
      * exceptions keep their English message because they describe wire
      * data; only the cases an operator can fix carry a translated
@@ -45,14 +45,14 @@ final class TorrentControl {
     }
 
     static final int MAX_IMPORT_BYTES = 8 * 1024 * 1024;
-    /** Comment records one TORRENT-DETAIL response emits. */
+    /* Comment records one TORRENT-DETAIL response emits. */
     static final int COMMENT_PAGE = 16;
-    /** Highest comment record offset the daemon accepts. */
+    /* Highest comment record offset the daemon accepts. */
     private static final int MAX_COMMENT_OFFSET = 255;
     private TorrentControl() {
     }
 
-    /**
+    /*
      * Decode a bounded {@code I2PDTUI/1} response into immutable
      * fields. The frame length is a UTF-8 byte count, not a Java
      * character count; enforcing it before splitting fields detects
@@ -121,7 +121,7 @@ final class TorrentControl {
         return "TORRENT-ADD-MAGNET " + tunnel + " " + magnet;
     }
 
-    /**
+    /*
      * Decode the control protocol's field escaping: {@code \n}, {@code
      * \r} and {@code \\} become their literal characters and any other
      * backslash sequence is preserved verbatim, so an unknown escape
@@ -156,7 +156,7 @@ final class TorrentControl {
         return "TORRENT-REMOVE " + tunnel + " " + torrentId + (deleteFiles ? " files" : "");
     }
 
-    /**
+    /*
      * Single-torrent lifecycle verbs. The selection is validated with
      * the same bounded id rules as pause/resume/recheck, so no request
      * can name the engine's "not found" sentinel or a non-numeric id.
@@ -174,7 +174,7 @@ final class TorrentControl {
         };
     }
 
-    /**
+    /*
      * A torrent id must be a positive engine id bound to the selected
      * tunnel.
      */
@@ -218,7 +218,7 @@ final class TorrentControl {
                 + " " + tracker;
     }
 
-    /**
+    /*
      * Creation-scoped tracker hint. A torrent created from a SAF
      * document has no engine id yet, so the administrative selection
      * check cannot apply; the I2P-only URL, length and
@@ -260,7 +260,7 @@ final class TorrentControl {
         return "TORRENT-CREATE " + tunnel + " " + source;
     }
 
-    /**
+    /*
      * Bounded comment page request. The daemon retains up to 256
      * comment records (64 of them hidden) but emits at most {@link
      * #COMMENT_PAGE} records per TORRENT-DETAIL response, so paging is

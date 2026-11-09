@@ -34,12 +34,12 @@ namespace tui
 		bool showVersion = false;
 	};
 
-	/**
+	/*
 	 * Parse command line options without depending on the router's
 	 * config code. */
 	i2p::expected<ClientOptions, std::string> ParseOptions (int argc, char * argv[]);
 
-	/**
+	/*
 	 * Resolve the local IPC endpoint from --socket, the config file, or
 	 * the data dir. */
 	i2p::expected<ClientOptions, std::string> ResolveSocket (ClientOptions options);
@@ -92,7 +92,7 @@ namespace tui
 		i2p::expected<void, std::string> Connect ();
 		void Disconnect ();
 
-		/**
+		/*
 			 * Send one command and return its response payload. Transport and
 			 * protocol failures close the connection and report the matching
 			 * kind. A well-formed remote error response keeps the connection

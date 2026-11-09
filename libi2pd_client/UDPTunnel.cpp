@@ -150,7 +150,7 @@ namespace client
 		}
 
 		boost::asio::ip::address addr;
-		/** create new udp session */
+		/* create new udp session */
 		if (m_IsUniqueLocal && m_LocalAddress.is_loopback ())
 		{
 			auto ident = from.GetIdentHash ();

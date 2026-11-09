@@ -23,7 +23,7 @@ import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 import org.junit.Test;
 
-/**
+/*
  * JVM regressions for the SAF broker's admission, ownership and
  * deadline rules. Everything exercised here is framework-free broker
  * state (one-shot export grants, the `(uid, pid)` owner binding, the

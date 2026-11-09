@@ -28,7 +28,7 @@ import java.io.IOException;
 import java.util.Locale;
 import java.util.Objects;
 
-/**
+/*
  * Autostart preference and its app-private marker file.
  *
  * <p>The marker's existence is the setting. It lives in {@code
@@ -47,7 +47,7 @@ public final class AutoStartController {
         // Static helpers.
     }
 
-    /** Marker file, migrating the legacy cache marker if necessary. */
+    /* Marker file, migrating the legacy cache marker if necessary. */
     public static File getMarker(Context context) {
         Objects.requireNonNull(context, "context");
         Context appContext = applicationContext(context);
@@ -81,7 +81,7 @@ public final class AutoStartController {
         return legacy;
     }
 
-    /**
+    /*
      * Read the autostart preference. Only the app-private marker is
      * inspected, apart from the one-time legacy migration in {@link
      * #getMarker(Context)}, so a worker thread may call it.
@@ -90,7 +90,7 @@ public final class AutoStartController {
         return getMarker(context).isFile();
     }
 
-    /**
+    /*
      * Enable/disable boot autostart and, when enabling, open a known
      * vendor autostart screen for the user. See {@link
      * #setEnabled(Context, boolean, boolean)} for a variant that keeps
@@ -100,7 +100,7 @@ public final class AutoStartController {
         return setEnabled(context, enabled, true);
     }
 
-    /**
+    /*
      * Enable/disable boot autostart.
      *
      * @param showVendorSettings when {@code true}, enabling also starts
@@ -152,7 +152,7 @@ public final class AutoStartController {
         return true;
     }
 
-    /**
+    /*
      * Open a known vendor autostart screen; must be called on the main
      * thread.
      */

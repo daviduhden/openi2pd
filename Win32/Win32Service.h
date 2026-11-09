@@ -18,7 +18,7 @@
 
 #define SERVICE_NAME "i2pdService"
 
-/**
+/*
  * Windows service wrapper for the router process.
  *
  * One instance is created on the stack of DaemonWin32::init and handed
@@ -43,17 +43,17 @@ public:
 
 	virtual ~I2PService (void);
 
-	/**
+	/*
 	 * Heuristic service-mode probe (window station visibility), not an
 	 * identity check. */
 	static BOOL isService ();
-	/**
+	/*
 	 * Register the service table and hand control to the SCM. Blocks for
 	 * the lifetime of the service; @a service must outlive this call.
 	 * @return the SCM dispatcher result, non-zero on success.
 	 */
 	static BOOL Run (I2PService & service);
-	/**
+	/*
 	 * Run the stop path synchronously on the calling thread: report
 	 * STOP_PENDING with a wait hint, drain the daemon and its monitor
 	 * thread, then report STOPPED. A no-op when the service is already
@@ -62,21 +62,21 @@ public:
 	void Stop ();
 
 protected:
-	/**
+	/*
 	 * Start the router. Throw a DWORD to report a specific service exit
 	 * code. */
 	virtual void OnStart (DWORD dwArgc, PSTR * pszArgv);
-	/**
+	/*
 	 * Drain the router and join its monitor thread within a bounded
 	 * budget. */
 	virtual void OnStop ();
 	virtual void OnPause ();
 	virtual void OnContinue ();
-	/**
+	/*
 	 * Machine shutdown: delegates to the stop path so exactly one drain
 	 * exists. */
 	virtual void OnShutdown ();
-	/**
+	/*
 	 * Publish one SCM state.
 	 *
 	 * @param dwCurrentState SERVICE_* state; RUNNING and STOPPED are
@@ -93,7 +93,7 @@ protected:
 private:
 	static void WINAPI ServiceMain (DWORD dwArgc, LPSTR * lpszArgv);
 	static void WINAPI ServiceCtrlHandler (DWORD dwCtrl);
-	/**
+	/*
 	 * Sleep in one-second slices until the stop flag is published, then
 	 * signal it. */
 	void WorkerThread ();
@@ -106,11 +106,11 @@ private:
 	SERVICE_STATUS m_status;
 	SERVICE_STATUS_HANDLE m_statusHandle;
 
-	/**
+	/*
 	 * Stop flag read through InterlockedCompareExchange; 0 running, 1
 	 * stopping. */
 	BOOL m_fStopping;
-	/**
+	/*
 	 * Manual-reset event signalled by WorkerThread once it observed the
 	 * stop flag. */
 	HANDLE m_hStoppedEvent;

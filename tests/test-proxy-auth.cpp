@@ -56,7 +56,7 @@ using i2p::proxy::SOCKSChooseAuthMethod;
 using i2p::proxy::SOCKSUserPassAuth;
 using i2p::proxy::SOCKSUserPassFieldValid;
 
-/**
+/*
  * RFC 4648 standard-alphabet encoder for the test vectors. The
  * production decoder is deliberately independent of the I2P URL-safe
  * codec, so the test must not use i2p::data::ByteStreamToBase64 either.

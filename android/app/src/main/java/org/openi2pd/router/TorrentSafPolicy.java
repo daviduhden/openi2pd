@@ -9,7 +9,7 @@
 
 package org.openi2pd.router;
 
-/**
+/*
  * Framework-free bounds shared by the SAF broker, its client and JVM
  * tests.
  *
@@ -24,13 +24,13 @@ package org.openi2pd.router;
  * contract and must not be raised without coordinator review.</p>
  */
 final class TorrentSafPolicy {
-    /** Largest read/write payload carried by one Binder transaction. */
+    /* Largest read/write payload carried by one Binder transaction. */
     static final int MAX_TRANSFER = 16384;
 
     private TorrentSafPolicy() {
     }
 
-    /**
+    /*
      * Check a transfer against both its document length and the IPC
      * chunk cap. Subtraction after {@code offset <= length} avoids
      * overflowing an {@code offset + count} calculation on an untrusted

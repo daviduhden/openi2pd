@@ -34,7 +34,7 @@ import java.util.Date;
 import java.util.Locale;
 import java.util.Objects;
 
-/**
+/*
  * Recycled log list. The adapter is read-only: log text is sanitised by
  * the native logger and is only formatted for display here.
  */

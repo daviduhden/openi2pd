@@ -97,7 +97,7 @@ namespace data
 		}
 	}
 
-	/**
+	/*
 	 * @brief May this advertised LS2 key type become the active encryptor?
 	 *
 	 * Selection is policy, not parsing: every advertised section is
@@ -159,7 +159,7 @@ namespace data
 		ReadFromBuffer (false);
 	}
 
-	/**
+	/*
 	 * @brief Parse an LS1 (or the legacy layout) from the stored buffer.
 	 * @param readIdentity re-read the identity prefix instead of reusing
 	 *                     it.
@@ -1123,7 +1123,7 @@ namespace data
 		return false;
 	}
 
-	/**
+	/*
 	 * @brief Decode per-client authorization data and derive the auth
 	 *        cookie.
 	 * @return bytes consumed, 0 when the message declares no client auth,
@@ -1414,7 +1414,7 @@ namespace data
 		return ts > m_ExpirationTime;
 	}
 
-	/**
+	/*
 	 * @brief Validate a stored LS1 before it is accepted into the netDb.
 	 * @param ptr buffer beginning with the identity prefix.
 	 * @param sz bytes available.
@@ -1463,7 +1463,7 @@ namespace data
 		}
 		const uint8_t * leases = ptr + size;
 		uint64_t earliest = UINT64_MAX;
-		/** find the earliest and latest lease expiration timestamps */
+		/* find the earliest and latest lease expiration timestamps */
 		for (int i = 0; i < numLeases; i++)
 		{
 			leases += 36; // gateway + tunnel ID

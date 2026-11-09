@@ -282,7 +282,7 @@ namespace data
 
 	RouterInfo::~RouterInfo () { }
 
-	/**
+	/*
 	 * @brief Replace the cached body with a re-signed RouterInfo.
 	 * @param buf complete new RouterInfo, identity prefix included.
 	 * @param len bytes available; bounded by MAX_RI_BUFFER_SIZE.
@@ -490,7 +490,7 @@ namespace data
 		}
 	}
 
-	/**
+	/*
 	 * @brief Parse the signed body of a RouterInfo (no identity, no
 	 *        signature).
 	 * @param buf first byte after the identity prefix.
@@ -1919,7 +1919,7 @@ namespace data
 		return false;
 	}
 
-	/**
+	/*
 	 * @brief Rebuild the serialised RouterInfo and sign it.
 	 * @param privateKeys our identity; signs the body and supplies the
 	 *                    prefix.

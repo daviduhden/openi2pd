@@ -144,7 +144,7 @@ namespace tui
 			return true;
 		}
 
-		/**
+		/*
 		 * Build a self-relative security descriptor for the pipe.
 		 *
 		 * Policy (documented in TuiServer.h and the design report):

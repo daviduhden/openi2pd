@@ -27,7 +27,7 @@ import java.text.NumberFormat;
 import java.util.List;
 import java.util.Locale;
 
-/**
+/*
  * Presentation helpers for router snapshots.
  *
  * <p>This class never calls JNI and never performs I/O. It converts the
@@ -37,14 +37,14 @@ import java.util.Locale;
 public final class UiFormat {
     private static final int MAX_ERROR_LENGTH = 240;
 
-    /** Presentation states derived from router lifecycle and status. */
+    /* Presentation states derived from router lifecycle and status. */
     public enum RouterState { UNKNOWN, STOPPED, STARTING, CONNECTED, DEGRADED, STOPPING, ERROR }
 
     private UiFormat() {
         // Static helpers only.
     }
 
-    /**
+    /*
      * Derive display state without changing native lifecycle authority.
      *
      * <p>A successful native start may still render DEGRADED when live
@@ -69,7 +69,7 @@ public final class UiFormat {
         };
     }
 
-    /**
+    /*
      * Colour role for the router state. The status title is the primary
      * state cue, so it must not rely on text alone.
      */
@@ -84,7 +84,7 @@ public final class UiFormat {
         };
     }
 
-    /**
+    /*
      * Native status name plus router error, or empty before parsing.
      */
     @NonNull
@@ -98,7 +98,7 @@ public final class UiFormat {
         return error.isEmpty() ? status : status + " · " + error;
     }
 
-    /**
+    /*
      * Localize known status/error vocabulary without rewriting the
      * snapshot.
      */
@@ -110,14 +110,14 @@ public final class UiFormat {
         return status.isEmpty() ? "" : (error.isEmpty() ? status : status + " · " + error);
     }
 
-    /**
+    /*
      * True only when live counters from a parsed native status exist.
      */
     public static boolean hasLiveMetrics(@Nullable RouterSnapshot snapshot) {
         return snapshot != null && snapshot.hasLiveMetrics();
     }
 
-    /** True when the daemon itself has completed its native start. */
+    /* True when the daemon itself has completed its native start. */
     public static boolean isStarted(@Nullable RouterSnapshot snapshot) {
         return snapshot != null && snapshot.state() != null && snapshot.state().isStartedOkay();
     }
@@ -157,7 +157,7 @@ public final class UiFormat {
                 || snapshot.state() == DaemonWrapper.State.startFailed;
     }
 
-    /**
+    /*
      * Stop is based on the real daemon lifecycle, not on presentation
      * text. A started router whose status snapshot failed must still be
      * stoppable.
@@ -176,7 +176,7 @@ public final class UiFormat {
         return snapshot != null && snapshot.state() == DaemonWrapper.State.startedOkay;
     }
 
-    /**
+    /*
      * Begin or cancel a graceful stop only after a normal router start.
      */
     public static boolean canGraceful(@Nullable RouterSnapshot snapshot) {
@@ -326,7 +326,7 @@ public final class UiFormat {
         return host != null && host.indexOf(':') >= 0;
     }
 
-    /**
+    /*
      * Render a non-negative count using the context's active locale.
      *
      * <p>Formatting occurs only at the presentation boundary. Grouping
@@ -439,7 +439,7 @@ public final class UiFormat {
         return TextUtils.isEmpty(value) ? context.getString(R.string.value_unknown) : value;
     }
 
-    /**
+    /*
      * Avoids re-layout when a one-second snapshot carries an unchanged
      * field.
      *

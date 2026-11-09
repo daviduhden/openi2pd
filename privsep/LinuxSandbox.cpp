@@ -108,7 +108,7 @@ namespace i2p::privsep
 #endif
 namespace
 {
-	/**
+	/*
 	 * A process installs its socket filter at most once (filters
 	 * stack). */
 	bool g_SeccompInstalled = false;
@@ -575,7 +575,7 @@ i2p::expected<void, std::string> VerifyWorkerPrivileges ()
 	return { };
 }
 
-/**
+/*
  * Install the pre-configuration half of a worker profile: no-new-privs,
  * an empty capability set and the role's socket/Internet seccomp
  * filter. It is called before the first frame is parsed because it
@@ -603,7 +603,7 @@ i2p::expected<void, std::string> ApplyLinuxIpcLockdown (const LinuxSandboxProfil
 	return { };
 }
 
-/**
+/*
  * Install a complete worker profile. The order is deliberate:
  * no-new-privs first (so nothing later can regain privilege), then the
  * optional empty network namespace, then the capability drop, then
@@ -642,7 +642,7 @@ i2p::expected<void, std::string> ApplyLinuxSandbox (const LinuxSandboxProfile & 
 	return { };
 }
 
-/**
+/*
  * Confine a supervisor that will fork/exec workers.
  *
  * Only no-new-privs and the capability drop are applied. Landlock,

@@ -118,7 +118,7 @@ struct RouterStorageClient::Impl
 
 	std::mutex mutex;
 	ChildProcess child;
-	/** Validated root capability retained so a restart reuses the same
+	/* Validated root capability retained so a restart reuses the same
 	 * directory object instead of re-resolving an attacker-controlled
 	 * path. */
 	std::string rootPath;
@@ -126,7 +126,7 @@ struct RouterStorageClient::Impl
 	uint64_t inode = 0;
 	int rootFd = -1;
 	uint32_t next = 0;
-	/**
+	/*
 	 * Bumped by every successful Start/configuration. Request ids are
 	 * fenced per generation so a reply from a replaced worker can never
 	 * be applied. */

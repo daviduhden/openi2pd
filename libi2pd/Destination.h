@@ -227,7 +227,7 @@ namespace client
 		virtual void Start ();
 		virtual void Stop ();
 
-		/** i2cp reconfigure */
+		/* i2cp reconfigure */
 		virtual bool Reconfigure (const i2p::util::Mapping & i2cpOpts);
 
 		std::shared_ptr<i2p::tunnel::TunnelPool> GetTunnelPool () { return m_Pool; };

@@ -595,7 +595,7 @@ int RunTorrentStorageSupervisor (int fd)
 #endif
 }
 
-/**
+/*
  * Serve the supervisor endpoint: own one log worker, forward framed
  * records and replace that worker under the shared restart ladder.
  *
@@ -663,7 +663,7 @@ int RunSupervisor (int fd)
 		std::cerr << "privsep supervisor: cannot resolve executable before sandbox" << std::endl;
 		return 1;
 	}
-	/**
+	/*
 	 * Spawn and configure one log worker through a fresh sink. Both the
 	 * active and the reserve worker use the same bounded handshake; no
 	 * channel exists before this call.
@@ -744,7 +744,7 @@ int RunSupervisor (int fd)
 	// Configuration is parsed only after the Linux capability drop and
 	// before any worker exists on this platform.
 	if (!ReadLogConfig (control, useSyslog, path, tag)) return 1;
-	/**
+	/*
 	 * Spawn a replacement worker and configure it through a fresh sink.
 	 * Linux has no pledge(2): fork+exec is its supervisor mechanism and is
 	 * bounded by the shared restart ladder.

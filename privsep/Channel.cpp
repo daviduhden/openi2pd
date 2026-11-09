@@ -49,7 +49,7 @@ namespace
 {
 	using SteadyClock = std::chrono::steady_clock;
 
-	/**
+	/*
  * Enforce the registry's descriptor classification. The caller has
  * already confirmed there is at most one descriptor, so this decides
  * presence and kind only. A missing required descriptor and a forbidden
@@ -102,7 +102,7 @@ namespace
 		}
 		return false;
 	}
-	/** A negative timeout keeps the historical infinite-wait meaning. */
+	/* A negative timeout keeps the historical infinite-wait meaning. */
 	bool IsInfiniteTimeout (int timeoutMs)
 	{
 		return timeoutMs < 0;

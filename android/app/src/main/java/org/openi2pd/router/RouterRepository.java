@@ -32,7 +32,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Locale;
 
-/**
+/*
  * Presentation-facing bridge to {@link RouterService}.
  *
  * <p>Binds with the application context, exposes immutable LiveData and
@@ -64,7 +64,7 @@ public final class RouterRepository implements RouterService.Listener {
     private boolean binding;
     private boolean bound;
     private boolean closed;
-    /**
+    /*
      * UI visibility gates the service listener so polling stops in
      * background.
      */
@@ -118,7 +118,7 @@ public final class RouterRepository implements RouterService.Listener {
         this.appContext = app == null ? context : app;
     }
 
-    /**
+    /*
      * Bind once; safe to call repeatedly and after a configuration
      * change.
      */
@@ -138,7 +138,7 @@ public final class RouterRepository implements RouterService.Listener {
         return serviceConnected;
     }
 
-    /**
+    /*
      * Start or stop observation of the bound service. Keeping the
      * binding while the UI is not visible lets commands still use the
      * binder, but stops the service's JNI polling and the fragment
@@ -173,7 +173,7 @@ public final class RouterRepository implements RouterService.Listener {
         }
     }
 
-    /**
+    /*
      * Run one bounded torrent control request through the service.
      *
      * <p>{@code request} is the typed {@code I2PDTUI/1} line built by
@@ -264,7 +264,7 @@ public final class RouterRepository implements RouterService.Listener {
         local.exportTorrent(target, metadata, callback);
     }
 
-    /**
+    /*
      * Import bounded metainfo from a user-granted {@code content} URI.
      * Only the bytes cross into the engine; a provider path and display
      * name are never trusted or converted, and the result is a typed
@@ -280,7 +280,7 @@ public final class RouterRepository implements RouterService.Listener {
         local.importTorrent(tunnel, document, callback);
     }
 
-    /**
+    /*
      * Persist a selected SAF payload tree on the service's SAF worker.
      */
     public void selectPayloadTree(String tunnel, String hash, android.net.Uri tree,
@@ -293,7 +293,7 @@ public final class RouterRepository implements RouterService.Listener {
         local.selectPayloadTree(tunnel, hash, tree, callback);
     }
 
-    /**
+    /*
      * Release a persisted SAF payload grant on the service's SAF
      * worker.
      */
@@ -307,7 +307,7 @@ public final class RouterRepository implements RouterService.Listener {
         local.detachPayload(tunnel, hash, callback);
     }
 
-    /**
+    /*
      * Bounded payload-storage diagnostic for one torrent, produced on
      * the service's SAF worker. The callback runs on the main thread.
      */
@@ -321,7 +321,7 @@ public final class RouterRepository implements RouterService.Listener {
         local.readTorrentStorageStatus(tunnel, hash, callback);
     }
 
-    /**
+    /*
      * Start the router. Always goes through startForegroundService() so
      * the service is in the started (START_STICKY) state even if it is
      * currently only bound.
@@ -368,7 +368,7 @@ public final class RouterRepository implements RouterService.Listener {
         }
     }
 
-    /**
+    /*
      * Ask the running router to reseed. The service starts the
      * non-blocking native job on its worker and reports the typed
      * outcome token on the main thread. A missing binding is reported
@@ -411,7 +411,7 @@ public final class RouterRepository implements RouterService.Listener {
         local.setShareRatio(percent, callback);
     }
 
-    /**
+    /*
      * Bounded reseed status record; empty when the router is not
      * running.
      */
@@ -424,7 +424,7 @@ public final class RouterRepository implements RouterService.Listener {
         local.readReseedStatus(callback);
     }
 
-    /** Configured tunnel rows; empty when the router is not running. */
+    /* Configured tunnel rows; empty when the router is not running. */
     public void readTunnelServices(java.util.function.Consumer<String> callback) {
         RouterService local = service;
         if (closed || local == null) {
@@ -482,7 +482,7 @@ public final class RouterRepository implements RouterService.Listener {
         local.banCommand(hash, ban, callback);
     }
 
-    /**
+    /*
      * Apply one runtime log level to the running logger. Persisting the
      * value is the caller's explicit, separate step.
      */
@@ -495,7 +495,7 @@ public final class RouterRepository implements RouterService.Listener {
         local.applyRuntimeLogLevel(level, callback);
     }
 
-    /**
+    /*
      * True only when no run state has ever been persisted by the
      * service.
      */
@@ -510,7 +510,7 @@ public final class RouterRepository implements RouterService.Listener {
         }
     }
 
-    /**
+    /*
      * Optional presentation filter. {@code null} or "all" shows every
      * retained record; "debug", "info", "warn" and "error" apply a
      * minimum severity. The service always retains the full bounded
@@ -522,7 +522,7 @@ public final class RouterRepository implements RouterService.Listener {
         runOnMain(() -> logs.setValue(applyFilter(allLogs)));
     }
 
-    /**
+    /*
      * Release the service binding and stop observation. Idempotent and
      * main-thread safe; {@link RouterViewModel#onCleared()} calls it so
      * a finished UI never leaks a connection.

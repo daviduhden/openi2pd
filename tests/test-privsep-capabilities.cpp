@@ -24,7 +24,7 @@ using namespace i2p::privsep;
 
 namespace
 {
-/** Human-readable mask for assertion diagnostics. */
+/* Human-readable mask for assertion diagnostics. */
 std::string MaskText (CapabilityMask mask)
 {
 	std::string text;

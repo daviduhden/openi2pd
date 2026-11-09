@@ -24,38 +24,38 @@
 
 namespace i2p::privsep
 {
-/**
+/*
  * Coarse capabilities. They are intentionally few: each one is a
  * capability a compromised worker could abuse, so the model must stay
  * small enough to audit against every backend policy.
  */
 enum class Capability : uint8_t
 {
-	/** Sockets outside the process: TCP/UDP to the external network. */
+	/* Sockets outside the process: TCP/UDP to the external network. */
 	ExternalNetwork = 0,
-	/**
+	/*
 	 * Durable writes (create/replace/delete/fsync). Always scoped to a
 	 * root that was delegated and validated before the sandbox is
 	 * installed; there is no ambient "write anywhere" capability.
 	 */
 	PersistentWrite,
-	/** Read regular files/directories, including a delegated root. */
+	/* Read regular files/directories, including a delegated root. */
 	FilesystemRead,
-	/** Signal and reap owned child processes. */
+	/* Signal and reap owned child processes. */
 	Signal,
-	/** execve() a path resolved before the sandbox was installed. */
+	/* execve() a path resolved before the sandbox was installed. */
 	Exec,
-	/** Send an SCM_RIGHTS descriptor (local IPC only). */
+	/* Send an SCM_RIGHTS descriptor (local IPC only). */
 	FdPassSend,
-	/** Receive an SCM_RIGHTS descriptor (local IPC only). */
+	/* Receive an SCM_RIGHTS descriptor (local IPC only). */
 	FdPassReceive,
-	/** Framed local IPC channel to the core; never an external socket. */
+	/* Framed local IPC channel to the core; never an external socket. */
 	Ipc,
 	Count
 };
 
 inline constexpr size_t CAPABILITY_COUNT = static_cast<size_t> (Capability::Count);
-/**
+/*
  * Every declared bit; used to reject a mask with an unknown
  * capability. */
 inline constexpr uint32_t ALL_CAPABILITY_BITS = (1u << CAPABILITY_COUNT) - 1;
@@ -77,7 +77,7 @@ constexpr const char * CapabilityName (Capability capability)
 	return "unknown";
 }
 
-/**
+/*
  * Process roles that own (or will own) an isolated capability set. The
  * enum is the vocabulary of the matrix below; it is not a claim that
  * every role is already split into its own process.
@@ -116,7 +116,7 @@ constexpr const char * ProcessRoleName (ProcessRole role)
 	return "unknown";
 }
 
-/** A small, hashable-by-hand set of capabilities. */
+/* A small, hashable-by-hand set of capabilities. */
 class CapabilityMask
 {
 public:
@@ -146,7 +146,7 @@ constexpr CapabilityMask operator| (CapabilityMask left, CapabilityMask right)
 	return CapabilityMask (left.Bits () | right.Bits ());
 }
 
-/**
+/*
  * One documented row of the matrix. `legacy` marks a set that exists
  * today but is not the target: it is recorded so the migration state is
  * explicit instead of being silently assumed to be compliant.
@@ -159,7 +159,7 @@ struct RoleCapabilityRow
 	std::string_view rationale;
 };
 
-/**
+/*
  * The single authority for the role/capability contract. Every backend
  * policy is reviewable against exactly one row, and the invariant below
  * is enforced for every non-legacy (target) row.
@@ -169,7 +169,7 @@ inline constexpr CapabilityMask CORE_TARGET_CAPABILITIES = CapabilityMask ()
 															   .With (Capability::FilesystemRead)
 															   .With (Capability::Signal)
 															   .With (Capability::Ipc);
-/**
+/*
  * Migration state, not compliance: the router core still performs
  * netDb, profile, destination-key and configuration persistence
  * in-process. This row documents reality, and it deliberately violates
@@ -232,7 +232,7 @@ inline constexpr std::array<RoleCapabilityRow, 10> ROLE_CAPABILITY_MATRIX {
 
 inline constexpr size_t ROLE_CAPABILITY_ROW_COUNT = ROLE_CAPABILITY_MATRIX.size ();
 
-/**
+/*
  * The target (non-legacy) mask of @a role, or nullopt when it has no
  * row. */
 constexpr std::optional<CapabilityMask> TargetMask (ProcessRole role)
@@ -244,7 +244,7 @@ constexpr std::optional<CapabilityMask> TargetMask (ProcessRole role)
 	return std::nullopt;
 }
 
-/** The documented pre-migration mask of @a role, when one exists. */
+/* The documented pre-migration mask of @a role, when one exists. */
 constexpr std::optional<CapabilityMask> LegacyMask (ProcessRole role)
 {
 	for (const auto & row : ROLE_CAPABILITY_MATRIX)
@@ -254,7 +254,7 @@ constexpr std::optional<CapabilityMask> LegacyMask (ProcessRole role)
 	return std::nullopt;
 }
 
-/**
+/*
  * The invariant: external network access and durable writes never
  * coexist in one process. A process that can both reach the network and
  * rewrite durable state can exfiltrate or corrupt that state without
@@ -265,7 +265,7 @@ constexpr bool SatisfiesCapabilityInvariant (CapabilityMask mask)
 	return !(mask.Has (Capability::ExternalNetwork) && mask.Has (Capability::PersistentWrite));
 }
 
-/**
+/*
  * Whether the declared target of @a role satisfies the invariant. Only
  * target rows are judged: a legacy row may still violate it while the
  * migration is pending, and calling that "safe" would be a false claim.
@@ -282,7 +282,7 @@ struct CapabilityValidation
 	std::string_view error;
 };
 
-/**
+/*
  * Structural validation of the matrix itself. Used by the unit test and
  * by a startup-time assertion in the supervisor, so a future edit that
  * makes a target row unsafe (or drops a role) fails instead of being
@@ -322,7 +322,7 @@ static_assert (!SatisfiesCapabilityInvariant (CORE_LEGACY_CAPABILITIES),
 static_assert (!SatisfiesCapabilityInvariant (NETWORK_CAPABILITIES.With (Capability::PersistentWrite)),
 	"the invariant must reject a network role with durable writes");
 
-/**
+/*
  * Windows worker roles. The names and order mirror `WindowsWorkerRole`
  * in privsep/WindowsIpc.h; that header is Windows-only, while this one
  * stays platform-free so the mapping below is reviewable and
@@ -357,7 +357,7 @@ constexpr const char * WindowsIsolationRoleName (WindowsIsolationRole role)
 	return "unknown";
 }
 
-/**
+/*
  * Which documented capability row a Windows worker must be reviewable
  * against. This is a mapping, not a new capability: the Windows role
  * table (privsep/WindowsIsolation.cpp) is the enforcement authority and
@@ -387,7 +387,7 @@ constexpr std::optional<ProcessRole> WindowsRoleToProcessRole (WindowsIsolationR
 struct WindowsRoleMapping
 {
 	WindowsIsolationRole role;
-	/**
+	/*
 	 * Target capability row, or nullopt when no process role exists
 	 * yet. */
 	std::optional<ProcessRole> processRole;
@@ -409,7 +409,7 @@ inline constexpr std::array<WindowsRoleMapping, WINDOWS_ISOLATION_ROLE_COUNT> WI
 			"yet, so it stays Ipc-only and is tracked as a mapping backlog item." } }
 };
 
-/**
+/*
  * Structural validation of the Windows mapping. Every Windows worker
  * role has exactly one row, and every mapped row must be a target row
  * that satisfies the external-network/persistent-write invariant.

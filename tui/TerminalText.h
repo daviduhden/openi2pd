@@ -25,7 +25,7 @@ namespace tui
 {
 	namespace terminal
 	{
-		/**
+		/*
 		 * Terminal-column policy for UTF-8 text.
 		 *
 		 * Terminal.h defines `Put(text, limit)` as a column budget and
@@ -57,7 +57,7 @@ namespace tui
 				int width = 1;
 			};
 
-			/**
+			/*
 			 * Column width of a code point.
 			 *
 			 * A fixed table rather than wcwidth() because the Windows
@@ -87,7 +87,7 @@ namespace tui
 				return 1;
 			}
 
-			/**
+			/*
 			 * Decode one UTF-8 unit at `offset`.
 			 *
 			 * Overlong forms (C0/C1 and their three/four-byte
@@ -163,7 +163,7 @@ namespace tui
 				return unit;
 			}
 
-			/**
+			/*
 			 * Encode one code point as UTF-8.
 			 *
 			 * A surrogate or a value above U+10FFFF cannot be encoded;
@@ -201,7 +201,7 @@ namespace tui
 				return result;
 			}
 
-			/**
+			/*
 			 * Whether a byte range contains only complete UTF-8 scalars.
 			 *
 			 * @param text Input bytes; empty input is valid.
@@ -220,7 +220,7 @@ namespace tui
 				return true;
 			}
 
-			/**
+			/*
 			 * Remove the final UTF-8 scalar without retaining its lead byte.
 			 *
 			 * Malformed suffixes lose only their final byte, so unrelated
@@ -244,7 +244,7 @@ namespace tui
 					value.pop_back ();
 			}
 
-			/**
+			/*
 			 * Length in bytes of the prefix that fits a column budget.
 			 *
 			 * Mirrors the ncurses backend: whole sequences only, a wide

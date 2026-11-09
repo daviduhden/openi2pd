@@ -58,7 +58,7 @@ namespace client
 	const char I2P_CONTROL_CERTIFICATE_COMMON_NAME[] = "i2pd.i2pcontrol";
 	const char I2P_CONTROL_CERTIFICATE_ORGANIZATION[] = "openi2pd";
 
-	/**
+	/*
 	 * A method handler failure that must reach the client as a JSON-RPC
 	 * error object instead of an empty successful result.
 	 *

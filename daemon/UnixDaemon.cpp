@@ -135,7 +135,7 @@ static void WarnBeforeLogger (const std::string & message)
 // done by the daemon loop
 static volatile sig_atomic_t g_PendingSignals[NSIG] = { };
 
-/**
+/*
  * Async-signal-safe handler shared by the daemon's installed
  * dispositions.
  * The handler only records the signal number in a `volatile

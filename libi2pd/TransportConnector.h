@@ -26,7 +26,7 @@ namespace i2p
 {
 namespace transport
 {
-	/**
+	/*
 	 * Inputs shared by outbound transport strategies.
 	 *
 	 * The context pins RouterInfo and borrows both server objects. Keep it
@@ -59,7 +59,7 @@ namespace transport
 		}
 	};
 
-	/**
+	/*
 	 * One outbound protocol strategy.
 	 *
 	 * `TryConnect` returns true only when this strategy started (or

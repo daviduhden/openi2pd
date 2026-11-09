@@ -41,7 +41,7 @@ namespace util
 			m_NonEmpty.notify_one ();
 		}
 
-		/**
+		/*
 		 * Enqueue only while the queue is below an explicit limit. The size
 		 * check and insertion are one critical section, so concurrent
 		 * producers cannot exceed the limit. Returns false when the record

@@ -17,7 +17,7 @@ import android.content.Context;
 import android.util.AttributeSet;
 import android.widget.LinearLayout;
 
-/**
+/*
  * Vertical content container capped to a comfortable reading width.
  *
  * <p>Phones measure at their natural width. On tablets and unfolded

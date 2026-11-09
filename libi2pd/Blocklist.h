@@ -65,7 +65,7 @@ namespace data
 		HostnameSkipped // Java would resolve it; this implementation never does DNS
 	};
 
-	/**
+	/*
 	 * One parsed blocklist line.
 	 *
 	 * `reason` is the optional `comment:` prefix before the last ':'. It
@@ -83,7 +83,7 @@ namespace data
 		std::string_view reason;
 	};
 
-	/**
+	/*
 	 * Parse one blocklist line.
 	 *
 	 * Grammar (Java Blocklist.java compatible): `#` in column 1 is a
@@ -103,7 +103,7 @@ namespace data
 	bool IsOperatorBlocklistLineLengthAllowed (size_t length) noexcept;
 	bool IsOperatorBlocklistFileSizeAllowed (uint64_t size) noexcept;
 
-	/**
+	/*
 	 * Immutable parsed blocklist.
 	 *
 	 * IPv4 ranges are sorted and merged (overlapping and adjacent ranges
@@ -130,7 +130,7 @@ namespace data
 		std::unordered_set<IdentHash> m_RouterHashes;
 	};
 
-	/**
+	/*
 	 * Bounded accumulator used by the startup loader and the parser tests.
 	 * AddLine() records skipped hostnames and rejected lines; the loader
 	 * logs one message per class after Build() instead of one per line.
@@ -183,7 +183,7 @@ namespace data
 		bool loaded = false;
 	};
 
-	/**
+	/*
 	 * One-shot startup load. Reads blocklist.enable/blocklist.file/
 	 * blocklist.detail from the configuration, resolves a relative path
 	 * against the data directory and publishes one immutable snapshot.
@@ -194,14 +194,14 @@ namespace data
 	 */
 	bool LoadOperatorBlocklist ();
 
-	/**
+	/*
 	 * Query the published snapshot. Cheap and non-blocking on the hot
 	 * path.
 	 */
 	bool IsOperatorBlockedAddress (const boost::asio::ip::address & address);
 	bool IsOperatorBlockedRouter (const IdentHash & hash);
 
-	/** In-memory only, bounded, never persisted. */
+	/* In-memory only, bounded, never persisted. */
 	bool AddRuntimeRouterBan (const IdentHash & hash);
 	bool RemoveRuntimeRouterBan (const IdentHash & hash);
 	bool IsRuntimeRouterBanned (const IdentHash & hash);

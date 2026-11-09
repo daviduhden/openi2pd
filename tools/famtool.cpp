@@ -10,7 +10,7 @@
  * stays bounded.
  */
 
-/**
+/*
  * famtool - a tool for creating and verifying router families
  */
 #include <cerrno>
@@ -47,7 +47,7 @@ namespace
 constexpr size_t MAX_FAMILY_SIGNATURE_INPUT = 50;
 constexpr size_t MAX_FAMILY_NAME_LENGTH = MAX_FAMILY_SIGNATURE_INPUT - IdentHash::len;
 
-/**
+/*
  * A family name is written into RouterInfo properties and the
  * certificate CN. Keep it to the documented label alphabet; ';' or a
  * newline would inject an extra property.
@@ -64,7 +64,7 @@ bool IsValidFamilyName (std::string_view name)
 	return true;
 }
 
-/** RouterInfo's constructor throws; tools report a value instead. */
+/* RouterInfo's constructor throws; tools report a value instead. */
 std::unique_ptr<RouterInfo> LoadRouterInfo (const std::string & path)
 {
 	try

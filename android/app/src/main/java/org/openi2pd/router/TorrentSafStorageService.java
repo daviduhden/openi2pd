@@ -43,7 +43,7 @@ import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-/**
+/*
  * Owns provider descriptors and serves the app-private SAF Binder
  * interface. The separate process runs under the application UID; it is
  * containment, not an independent Android permission boundary. Each
@@ -57,7 +57,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * is transferred to the router process.</p>
  */
 public final class TorrentSafStorageService extends Service {
-    /**
+    /*
      * Wire contract version reported by {@link
      * ITorrentSafStorage#apiVersion()}.
      */
@@ -74,19 +74,19 @@ public final class TorrentSafStorageService extends Service {
     private static final int MAX_PARTS = 32;
     private static final int MAX_PART = 255;
     private static final int MAX_CHILDREN = 20000;
-    /** One-shot lifetime of a prepared export capability. */
+    /* One-shot lifetime of a prepared export capability. */
     static final long EXPORT_TTL_MS = 30_000;
-    /**
+    /*
      * First watchdog stage: abort the provider call, keep every other
      * handle.
      */
     static final long CANCEL_DEADLINE_MS = 15_000;
-    /**
+    /*
      * Second stage: fence only a provider that ignored cancellation.
      */
     static final long KILL_DEADLINE_MS = 30_000;
 
-    /** Exact process identity of one Binder caller. */
+    /* Exact process identity of one Binder caller. */
     record Caller(int uid, int pid) {}
 
     private record Root(Uri uri, boolean writable, Caller owner) {}
@@ -94,7 +94,7 @@ public final class TorrentSafStorageService extends Service {
     private record File(long root, Uri uri, ParcelFileDescriptor fd, long length, boolean writable,
             String documentId, Caller owner) {}
 
-    /**
+    /*
      * Broker process identity. The generation is a non-zero CSPRNG
      * value chosen at service creation; retirement is a one-shot latch
      * so a duplicated, stale or replayed retire(generation) cannot
@@ -118,7 +118,7 @@ public final class TorrentSafStorageService extends Service {
             return retired.get();
         }
 
-        /**
+        /*
          * One-shot process fence used by the internal watchdog
          * escalation.
          */
@@ -126,7 +126,7 @@ public final class TorrentSafStorageService extends Service {
             return retired.compareAndSet(false, true);
         }
 
-        /**
+        /*
          * One-shot retirement requested by a client for this exact
          * generation.
          */
@@ -135,7 +135,7 @@ public final class TorrentSafStorageService extends Service {
         }
     }
 
-    /**
+    /*
      * Bounded, framework-free operation registry shared with JVM tests.
      * It performs no synchronization of its own: every caller holds the
      * broker's operation lock.
@@ -176,7 +176,7 @@ public final class TorrentSafStorageService extends Service {
         }
     }
 
-    /**
+    /*
      * One-shot export capabilities. A token authorizes exactly one
      * truncating open of exactly one document identity by exactly one
      * caller. Guarded by the broker's io lock; it performs no
@@ -199,7 +199,7 @@ public final class TorrentSafStorageService extends Service {
             return true;
         }
 
-        /**
+        /*
          * Consumes one token. Returns null for an unknown, expired or
          * foreign token; a foreign presentation does not burn the
          * owner's capability.
@@ -230,7 +230,7 @@ public final class TorrentSafStorageService extends Service {
         }
     }
 
-    /** One admitted operation and its two watchdog stages. */
+    /* One admitted operation and its two watchdog stages. */
     private static final class Operation {
         final long token;
         final Caller owner;
@@ -276,7 +276,7 @@ public final class TorrentSafStorageService extends Service {
         return owner != null && owner.equals(caller);
     }
 
-    /**
+    /*
      * One-shot latch plus process death; death fences every old writer.
      */
     private void retireProcess() {
@@ -284,7 +284,7 @@ public final class TorrentSafStorageService extends Service {
         android.os.Process.killProcess(android.os.Process.myPid());
     }
 
-    /**
+    /*
      * Registers one bounded operation. Returns null when the broker is
      * already retiring, the token is invalid or duplicated, or every
      * slot is taken; the caller then answers with its typed failure.
@@ -308,7 +308,7 @@ public final class TorrentSafStorageService extends Service {
         }
     }
 
-    /**
+    /*
      * A provider deadline may only be charged once the operation owns
      * the provider lock. Framework-free so the ordering contract is
      * testable.
@@ -317,7 +317,7 @@ public final class TorrentSafStorageService extends Service {
         return holdsProviderLock && registered;
     }
 
-    /**
+    /*
      * Arms the 15 s cancel and 30 s fence stages for one admitted
      * operation. Called under {@code ioLock}, i.e. only when the
      * operation is about to hold the provider; returns false when the
@@ -350,7 +350,7 @@ public final class TorrentSafStorageService extends Service {
         }
     }
 
-    /**
+    /*
      * Cancels both watchdog stages; a completed operation is never
      * escalated.
      */
@@ -366,7 +366,7 @@ public final class TorrentSafStorageService extends Service {
         }
     }
 
-    /**
+    /*
      * First stage: abort the provider call. This never retires the
      * broker, so a single slow document cannot drop every unrelated
      * torrent descriptor.
@@ -378,7 +378,7 @@ public final class TorrentSafStorageService extends Service {
         }
     }
 
-    /**
+    /*
      * Second stage: fence the process only when the same operation is
      * still registered 15 s after cancellation, because a provider that
      * ignored cancellation may still be writing the descriptor.
@@ -411,7 +411,7 @@ public final class TorrentSafStorageService extends Service {
         return value;
     }
 
-    /**
+    /*
      * Releases one handle without any caller check; internal
      * transitions only.
      */
@@ -437,7 +437,7 @@ public final class TorrentSafStorageService extends Service {
         }
     }
 
-    /**
+    /*
      * Releases every handle of this owner that aliases a deleted
      * document.
      */
@@ -1004,7 +1004,7 @@ public final class TorrentSafStorageService extends Service {
         }
     };
 
-    /**
+    /*
      * Resolves (and optionally creates) every component of a bounded
      * relative path below the tree root. Each created component is
      * validated before it becomes a parent, so a provider that returns
@@ -1135,7 +1135,7 @@ public final class TorrentSafStorageService extends Service {
         }
     }
 
-    /**
+    /*
      * True when the resolved document exists and is not a directory.
      */
     private boolean regularDocument(Uri doc, CancellationSignal signal) {
@@ -1149,7 +1149,7 @@ public final class TorrentSafStorageService extends Service {
         }
     }
 
-    /**
+    /*
      * True only for an existing directory whose child listing is empty.
      */
     private boolean emptyDirectory(Uri tree, Uri doc, CancellationSignal signal) {
@@ -1209,7 +1209,7 @@ public final class TorrentSafStorageService extends Service {
                 && OsConstants.S_ISREG(opened.st_mode) && OsConstants.S_ISREG(current.st_mode);
     }
 
-    /**
+    /*
      * Size-independent identity check used by deletion: a failed or
      * partial write legitimately changes the length, but the
      * device/inode pair and the regular-file type must still match the
@@ -1229,7 +1229,7 @@ public final class TorrentSafStorageService extends Service {
 
     private boolean restricted;
 
-    /**
+    /*
      * Claim the storage-broker process role before serving any Binder
      * call.
      *
@@ -1248,7 +1248,7 @@ public final class TorrentSafStorageService extends Service {
             stopSelf();
     }
 
-    /**
+    /*
      * Serve the app-private broker interface, or {@code null} when the
      * role claim in {@link #onCreate()} failed. The service is not
      * exported, and each transaction is additionally authenticated
@@ -1260,7 +1260,7 @@ public final class TorrentSafStorageService extends Service {
         return restricted ? binder : null;
     }
 
-    /**
+    /*
      * Fence the broker when the last client unbinds. Retirement is
      * process death, so a later client must rebind, repeat the
      * handshake and receive a new generation instead of reusing any
@@ -1272,7 +1272,7 @@ public final class TorrentSafStorageService extends Service {
         return false;
     }
 
-    /**
+    /*
      * Release the process-owned resources: pending watchdog stages and
      * queued descriptor closes are dropped, and the process is fenced.
      * A close that was still queued is abandoned, but the descriptor

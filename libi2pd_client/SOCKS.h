@@ -36,13 +36,13 @@ namespace i2p
 {
 namespace proxy
 {
-	/** RFC 1929 ULEN/PLEN ceiling. */
+	/* RFC 1929 ULEN/PLEN ceiling. */
 	inline constexpr std::size_t SOCKS_AUTH_MAX_FIELD_SIZE = PROXY_AUTH_MAX_FIELD_SIZE;
 
-	/** Fixed receive buffer for one decoded username or password. */
+	/* Fixed receive buffer for one decoded username or password. */
 	inline constexpr std::size_t SOCKS_AUTH_BUFFER_SIZE = SOCKS_AUTH_MAX_FIELD_SIZE + 1;
 
-	/**
+	/*
 	 * Success replies.
 	 *
 	 * RFC 1928 requires BND.ADDR/BND.PORT in a success reply. The proxy
@@ -56,13 +56,13 @@ namespace proxy
 	inline constexpr std::uint32_t SOCKS5_REPLY_LOOPBACK_ADDRESS = 0x7F000001; // 127.0.0.1
 	inline constexpr std::uint16_t SOCKS5_CONNECT_REPLY_PORT = 1;
 
-	/** `05 00 00 01 7F 00 00 01 00 01` (CONNECT succeeded). */
+	/* `05 00 00 01 7F 00 00 01 00 01` (CONNECT succeeded). */
 	inline std::array<std::uint8_t, 10> SOCKS5ConnectSuccessReply () noexcept
 	{
 		return { 0x05, 0x00, 0x00, 0x01, 0x7f, 0x00, 0x00, 0x01, 0x00, SOCKS5_CONNECT_REPLY_PORT };
 	}
 
-	/**
+	/*
 	 * `05 00 00 01 7F 00 00 01 &lt;port&gt;` (UDP ASSOCIATE succeeded).
 	 */
 	inline std::array<std::uint8_t, 10> SOCKS5UdpAssociateReply (std::uint16_t port) noexcept
@@ -71,13 +71,13 @@ namespace proxy
 			static_cast<std::uint8_t> (port & 0xff) };
 	}
 
-	/**
+	/*
 	 * Bounds for the torsocks RESOLVE cache, matching I2P Java
 	 * LHMCache(256).
 	 */
 	inline constexpr std::size_t SOCKS_RESOLVE_CACHE_MAX_ENTRIES = 256;
 	inline constexpr std::uint64_t SOCKS_RESOLVE_CACHE_TTL_MS = 10 * 60 * 1000;
-	/** 255.0.0.0/8 is reserved and can never name a real host. */
+	/* 255.0.0.0/8 is reserved and can never name a real host. */
 	inline constexpr std::uint32_t SOCKS_RESOLVE_FAKE_PREFIX = 0xFF000000;
 
 	namespace socks_detail
@@ -117,7 +117,7 @@ namespace proxy
 			v2 = RotateLeft (v2, 32);
 		}
 
-		/**
+		/*
 		 * SipHash-2-4 over a 128-bit key. The project-owned implementation is
 		 * used here rather than the provider-backed one because the fake-IP
 		 * derivation must stay identical across OpenSSL and LibreSSL builds;
@@ -158,7 +158,7 @@ namespace proxy
 		}
 	} // namespace socks_detail
 
-	/**
+	/*
 	 * Deterministic fake IPv4 for a destination: 255.a.b.c derived from a
 	 * keyed SipHash of the name. The mapping is stable for the process
 	 * lifetime and never overlaps a routable address.
@@ -172,7 +172,7 @@ namespace proxy
 		return boost::asio::ip::address_v4 (SOCKS_RESOLVE_FAKE_PREFIX | low);
 	}
 
-	/**
+	/*
 	 * Bounded, mutex-guarded cache for torsocks RESOLVE.
 	 *
 	 * A lookup maps a fake IPv4 back to the destination name, and an
@@ -195,7 +195,7 @@ namespace proxy
 			m_Key = key;
 		}
 
-		/** Insert or refresh @a destination and return its fake address. */
+		/* Insert or refresh @a destination and return its fake address. */
 		boost::asio::ip::address_v4 Insert (std::string_view destination, std::uint64_t nowMs)
 		{
 			std::lock_guard<std::mutex> lock (m_Mutex);
@@ -228,7 +228,7 @@ namespace proxy
 			return address;
 		}
 
-		/** @return the live destination for @a address, or empty. */
+		/* @return the live destination for @a address, or empty. */
 		std::string Lookup (const boost::asio::ip::address_v4 & address, std::uint64_t nowMs) const
 		{
 			std::lock_guard<std::mutex> lock (m_Mutex);
@@ -277,7 +277,7 @@ namespace proxy
 		std::array<std::uint8_t, 16> m_Key { };
 	};
 
-	/**
+	/*
 	 * @return true when an RFC 1929 field length (taken from ULEN/PLEN or
 	 *         from the configured credential) is acceptable: 1..255 bytes.
 	 */
@@ -288,17 +288,17 @@ namespace proxy
 
 	enum class SOCKSAuthMethodChoice
 	{
-		/** Method 0x00: proceed without a credential exchange. */
+		/* Method 0x00: proceed without a credential exchange. */
 		None,
-		/** Method 0x02: the RFC 1929 username/password sub-negotiation. */
+		/* Method 0x02: the RFC 1929 username/password sub-negotiation. */
 		UserPass,
-		/**
+		/*
 		 * Method 0xFF: reply and close; no offered method can be satisfied.
 		 */
 		Unacceptable
 	};
 
-	/**
+	/*
 	 * RFC 1929 method selection.
 	 *
 	 * With local authentication enabled only a verifiable credential
@@ -315,7 +315,7 @@ namespace proxy
 		return offered_none ? SOCKSAuthMethodChoice::None : SOCKSAuthMethodChoice::Unacceptable;
 	}
 
-	/**
+	/*
 	 * Local SOCKS5 username/password credential. Same fail-closed contract
 	 * as ProxyBasicAuth: `enabled` with an empty or oversized field denies
 	 * every client instead of accepting arbitrary credentials.
@@ -370,7 +370,7 @@ namespace proxy
 		/// association.
 		void ReleaseLocalUDPPort (uint16_t port);
 
-		/**
+		/*
 		 * Torsocks RESOLVE mapping. A fake address is 255/8 and expires after
 		 * SOCKS_RESOLVE_CACHE_TTL_MS; the cache holds at most 256 entries.
 		 * GetResolvedAddress() returns a copy because the cache is guarded
@@ -381,7 +381,7 @@ namespace proxy
 		bool HasResolvedAddresses () const { return m_ResolveCache.Size () != 0; }
 		std::size_t GetResolvedAddressCount () const { return m_ResolveCache.Size (); }
 
-		/**
+		/*
 		 * Local SOCKS5 authentication state. The constructor reads
 		 * `socksproxy.auth.enabled`, `socksproxy.auth.username` and
 		 * `socksproxy.auth.password`; handlers snapshot it when accepted.

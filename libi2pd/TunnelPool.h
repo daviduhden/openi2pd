@@ -83,14 +83,14 @@ namespace tunnel
 		void Reverse ();
 	};
 
-	/** interface for custom tunnel peer selection algorithm */
+	/* interface for custom tunnel peer selection algorithm */
 	struct ITunnelPeerSelector
 	{
 		virtual ~ITunnelPeerSelector () { };
 		virtual bool SelectPeers (Path & peers, int hops, bool isInbound) = 0;
 	};
 
-	/** Which hop of a path a router is being admitted for. */
+	/* Which hop of a path a router is being admitted for. */
 	enum class TunnelPeerRole : uint8_t
 	{
 		Gateway = 0,
@@ -98,7 +98,7 @@ namespace tunnel
 		Endpoint
 	};
 
-	/**
+	/*
 	 * Peer admission rules shared by fresh path selection and tunnel
 	 * reuse.
 	 *
@@ -118,7 +118,7 @@ namespace tunnel
 	bool IsRouterUsableForTunnel (const i2p::data::RouterInfo & router, const i2p::data::RouterInfo * compatibleWith,
 		TunnelPeerRole role, bool inbound, bool clientTunnel);
 
-	/**
+	/*
 	 * Role of peer @a index in a path of @a numPeers.
 	 *
 	 * Matches the flags StandardSelectPeers passes to NetDb: the last hop
@@ -127,27 +127,27 @@ namespace tunnel
 	 */
 	TunnelPeerRole GetTunnelPeerRole (int index, int numPeers, bool inbound);
 
-	/**
+	/*
 	 * Clamp a configured hop count and variance to the build record table.
 	 */
 	void ClampTunnelLength (int & hops, int & variance, bool inbound);
 
-	/**
+	/*
 	 * Build requests this round may start, given the pool shape and
 	 * failures.
 	 */
 	int ComputeBuildRequestCount (int configured, int established, int pending, int consecutiveFailures);
 
-	/** Delay before the next build round for @a consecutiveFailures. */
+	/* Delay before the next build round for @a consecutiveFailures. */
 	int GetTunnelBuildBackoff (int consecutiveFailures);
 
-	/** Deadline for a tunnel test reply, in milliseconds. */
+	/* Deadline for a tunnel test reply, in milliseconds. */
 	uint64_t GetTunnelTestTimeout (int numHops, int localDelayMs);
 
-	/** True when recent inbound traffic makes a test redundant. */
+	/* True when recent inbound traffic makes a test redundant. */
 	bool ShouldSkipTunnelTest (uint64_t nowMs, uint64_t lastReceiveMs);
 
-	/**
+	/*
 	 * True when an outbound path of @a numPeers peers needs an existing
 	 * inbound tunnel.
 	 *
@@ -163,7 +163,7 @@ namespace tunnel
 		return numPeers > 0;
 	}
 
-	/**
+	/*
 	 * Lifetime-safe registration of a custom tunnel peer selector.
 	 *
 	 * The pool never owns the selector. A registration may carry an owner,
@@ -258,46 +258,46 @@ namespace tunnel
 			return hops >= base + std::min (0, variance) && hops <= base + std::max (0, variance);
 		}
 
-		/** i2cp reconfigure */
+		/* i2cp reconfigure */
 		bool Reconfigure (int inboundHops, int outboundHops, int inboundQuant, int outboundQuant);
 
 		void SetCustomPeerSelector (ITunnelPeerSelector * selector, std::shared_ptr<void> owner = nullptr);
 		void UnsetCustomPeerSelector ();
 		bool HasCustomPeerSelector ();
-		/** Copy the current registration; holds no strong owner reference. */
+		/* Copy the current registration; holds no strong owner reference. */
 		TunnelPeerSelectorHandle GetCustomPeerSelector () const
 		{
 			std::lock_guard<std::mutex> lock (m_CustomPeerSelectorMutex);
 			return m_CustomPeerSelector;
 		}
 
-		/** record the outcome of a tunnel build owned by this pool */
+		/* record the outcome of a tunnel build owned by this pool */
 		void TunnelBuildFailed () { m_ConsecutiveBuildFailures.fetch_add (1, std::memory_order_relaxed); };
 		void TunnelBuildSucceeded () { m_ConsecutiveBuildFailures.store (0, std::memory_order_relaxed); };
 		int GetConsecutiveBuildFailures () const { return m_ConsecutiveBuildFailures.load (std::memory_order_relaxed); }
 		uint64_t GetNextBuildTime () const { return m_NextBuildTime.load (std::memory_order_relaxed); }
-		/** outstanding tunnel tests, for diagnostics and regression tests */
+		/* outstanding tunnel tests, for diagnostics and regression tests */
 		size_t GetNumTests () const
 		{
 			std::lock_guard<std::mutex> l (m_TestsMutex);
 			return m_Tests.size ();
 		}
 
-		/** Make this pool yield tunnels within [min, max] latency. */
+		/* Make this pool yield tunnels within [min, max] latency. */
 		void RequireLatency (int min, int max)
 		{
 			m_MinLatency.store (min, std::memory_order_relaxed);
 			m_MaxLatency.store (max, std::memory_order_relaxed);
 		}
 
-		/** @brief Return true when both latency limits are positive. */
+		/* @brief Return true when both latency limits are positive. */
 		bool HasLatencyRequirement () const
 		{
 			return m_MinLatency.load (std::memory_order_relaxed) > 0
 				&& m_MaxLatency.load (std::memory_order_relaxed) > 0;
 		}
 
-		/** Get the lowest-latency tunnel, ignoring pool latency limits. */
+		/* Get the lowest-latency tunnel, ignoring pool latency limits. */
 		std::shared_ptr<InboundTunnel> GetLowestLatencyInboundTunnel (
 			std::shared_ptr<InboundTunnel> exclude = nullptr) const;
 		std::shared_ptr<OutboundTunnel> GetLowestLatencyOutboundTunnel (
@@ -312,7 +312,7 @@ namespace tunnel
 		// A local attempt identity survives in callbacks independently of a
 		// reusable wire message ID. It carries no secret or protocol data.
 		struct TunnelTestAuthority { };
-		/** One outstanding tunnel test message. */
+		/* One outstanding tunnel test message. */
 		struct TunnelTest
 		{
 			std::shared_ptr<const TunnelTestAuthority> authority;
@@ -339,7 +339,7 @@ namespace tunnel
 		bool SelectPeers (Path & path, bool isInbound);
 		bool SelectExplicitPeers (Path & path, bool isInbound);
 		bool ValidatePeers (std::vector<std::shared_ptr<const i2p::data::IdentityEx>> & peers, bool inbound) const;
-		/** True when a recreation may reuse the peers of @a tunnel. */
+		/* True when a recreation may reuse the peers of @a tunnel. */
 		bool CanReuseTunnelPeers (const Tunnel & tunnel) const;
 		std::shared_ptr<const i2p::data::RouterInfo> SelectTrustedRouter (bool inbound) const;
 

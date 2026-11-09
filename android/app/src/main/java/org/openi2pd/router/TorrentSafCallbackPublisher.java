@@ -12,7 +12,7 @@ import java.util.Objects;
 import java.util.concurrent.Executor;
 import java.util.concurrent.RejectedExecutionException;
 
-/**
+/*
  * Queues a SAF callback and fences its delivery against service-owner
  * retirement. The callback runs on the supplied executor only while its
  * captured owner epoch remains current.
@@ -21,7 +21,7 @@ final class TorrentSafCallbackPublisher {
     private TorrentSafCallbackPublisher() {
     }
 
-    /**
+    /*
      * Queue a callback whose owner is checked again at delivery time.
      *
      * <p>The callback executes under the service-owner epoch monitor,

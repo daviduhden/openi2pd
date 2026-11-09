@@ -15,7 +15,7 @@
 
 namespace i2p::tools
 {
-/**
+/*
  * @brief Own the process-wide libi2pd crypto lifetime for one tool run.
  *
  * `InitCrypto(false)` probes the provider and skips the ElGamal

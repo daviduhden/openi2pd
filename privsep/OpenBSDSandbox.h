@@ -24,7 +24,7 @@
 
 namespace i2p::privsep
 {
-/**
+/*
  * Worker roles for the OpenBSD native sandbox. These are capability
  * classes, not a claim that every backend has already been moved out of
  * the router core. The policy builder is deliberately independent of
@@ -46,7 +46,7 @@ enum class OpenBSDWorkerRole : uint8_t
 	Network,
 	Crypto,
 	Admin,
-	/**
+	/*
 	 * Disabled torrent-storage broker role identifier.
 	 *
 	 * The former on-demand broker forked and exec'ed a storage worker
@@ -72,27 +72,27 @@ struct OpenBSDPolicyConfig
 	// UNIX connections or descriptor reception after bootstrap.
 	bool preopenedStorageIpc = false;
 
-	/** Absolute data/certificate roots used by the storage policy. */
+	/* Absolute data/certificate roots used by the storage policy. */
 	std::string dataDir;
 	std::string certsDir;
 
-	/** Log-worker configuration. */
+	/* Log-worker configuration. */
 	std::string logPath;
 	bool logToSyslog = false;
 	bool preopenedLog = false;
 
-	/** Network worker may request mcast only for explicit UPnP support. */
+	/* Network worker may request mcast only for explicit UPnP support. */
 	bool upnp = false;
-	/** Future transport worker receives sockets over SCM_RIGHTS. */
+	/* Future transport worker receives sockets over SCM_RIGHTS. */
 	bool socketHandoff = false;
-	/** Worker needs route/interface data for MTU/address probing. */
+	/* Worker needs route/interface data for MTU/address probing. */
 	bool routeInfo = false;
-	/**
+	/*
 	 * Proxy-less deployments may disable DNS; default preserves current
 	 * policy. */
 	bool dnsLookup = true;
 
-	/**
+	/*
 	 * Extra paths are explicit configuration, never an implicit current
 	 * directory rule. They are used only for the storage policy.
 	 */
@@ -108,13 +108,13 @@ struct OpenBSDPolicy
 	std::string pledge;
 	std::vector<OpenBSDUnveilRule> unveil;
 
-	/** True for inet/dns/mcast/route-style network promises. */
+	/* True for inet/dns/mcast/route-style network promises. */
 	bool HasExternalNetwork () const;
-	/** True for wpath/cpath/fattr. */
+	/* True for wpath/cpath/fattr. */
 	bool HasPersistentWrite () const;
-	/** True when the policy carries proc. No policy carries exec. */
+	/* True when the policy carries proc. No policy carries exec. */
 	bool HasProcessCreation () const;
-	/**
+	/*
 	 * Local UNIX-socket IPC only; this is not external network
 	 * capability. */
 	bool HasLocalIpc () const;
@@ -122,7 +122,7 @@ struct OpenBSDPolicy
 
 const char * OpenBSDWorkerRoleName (OpenBSDWorkerRole role);
 
-/**
+/*
  * True when @a name is a pledge(2) promise of a supported OpenBSD
  * release.
  *
@@ -136,7 +136,7 @@ const char * OpenBSDWorkerRoleName (OpenBSDWorkerRole role);
  */
 bool IsKnownPledgePromiseName (std::string_view name);
 
-/**
+/*
  * True for promises this project never permits in a policy.
  *
  * "exec" would let a restricted process start a new image; every worker
@@ -147,7 +147,7 @@ bool IsKnownPledgePromiseName (std::string_view name);
  */
 bool IsForbiddenPledgePromiseName (std::string_view name);
 
-/**
+/*
  * Build a least-privilege policy for a role.
  *
  * The caller supplies only paths it actually owns. `BuildOpenBSDPolicy`
@@ -158,7 +158,7 @@ bool IsForbiddenPledgePromiseName (std::string_view name);
 i2p::expected<OpenBSDPolicy, std::string> BuildOpenBSDPolicy (
 	OpenBSDWorkerRole role, const OpenBSDPolicyConfig & config);
 
-/**
+/*
  * Apply unveil rules, lock the unveil list and then install pledge.
  *
  * pledge(2) is always called with a null execpromises argument, pinned
@@ -176,7 +176,7 @@ i2p::expected<OpenBSDPolicy, std::string> BuildOpenBSDPolicy (
  */
 i2p::expected<void, std::string> ApplyOpenBSDPolicy (const OpenBSDPolicy & policy);
 
-/**
+/*
  * Pin, not a configuration knob: the execpromises argument of every
  * pledge(2) call in this component. It is always null, and no policy
  * may name "exec", so a new image can never inherit a validated-looking
@@ -184,40 +184,40 @@ i2p::expected<void, std::string> ApplyOpenBSDPolicy (const OpenBSDPolicy & polic
  */
 inline constexpr const char * OPENBSD_PLEDGE_EXECPROMISES = nullptr;
 
-/** Startup or runtime phase of the router core's own pledge. */
+/* Startup or runtime phase of the router core's own pledge. */
 enum class OpenBSDPledgePhase : uint8_t
 {
-	/**
+	/*
 	 * First pledge, installed after every worker has been created and
 	 * before unveil rules are added. It is the widest set the core ever
 	 * holds and can only be reduced afterwards. It never carries exec or
 	 * id: spawn helpers run while the core is still unpledged.
 	 */
 	Startup,
-	/** After the unveil list is locked; drops unveil and any extra. */
+	/* After the unveil list is locked; drops unveil and any extra. */
 	Runtime
 };
 
-/**
+/*
  * Which optional promises a pledge window needs. The router core is not
  * a worker: these flags describe the daemon's own startup/runtime
  * requirements.
  */
 struct OpenBSDPledgeWindow
 {
-	/** The core installs unveil rules here during startup. */
+	/* The core installs unveil rules here during startup. */
 	bool unveil = false;
-	/** Multicast discovery is enabled for UPnP (both windows). */
+	/* Multicast discovery is enabled for UPnP (both windows). */
 	bool upnp = false;
-	/**
+	/*
 	 * The core reaps/signals an owned supervisor. No window carries exec;
 	 * every worker is created before this flag is used. */
 	bool reapChildren = false;
-	/** The core receives worker channels/roots by descriptor (recvfd). */
+	/* The core receives worker channels/roots by descriptor (recvfd). */
 	bool descriptorReception = false;
 };
 
-/**
+/*
  * The fixed promise list for one phase, in canonical order.
  *
  * The runtime list is always a subset of the startup list: pledge(2)
@@ -227,15 +227,15 @@ struct OpenBSDPledgeWindow
  * sites use these builders.
  */
 std::vector<std::string> OpenBSDPledgePromiseList (OpenBSDPledgePhase phase, const OpenBSDPledgeWindow & window);
-/**
+/*
  * Join `OpenBSDPledgePromiseList` into the space-separated pledge
  * argument. */
 std::string BuildOpenBSDPledgePromises (OpenBSDPledgePhase phase, const OpenBSDPledgeWindow & window);
 
-/** True when every promise in `subset` is present in `superset`. */
+/* True when every promise in `subset` is present in `superset`. */
 bool IsPledgePromiseSubset (std::string_view subset, std::string_view superset);
 
-/**
+/*
  * Parse and validate an operator `openbsd.pledge_file`.
  *
  * Rules, all of them deliberately fail-closed:
@@ -258,7 +258,7 @@ bool IsPledgePromiseSubset (std::string_view subset, std::string_view superset);
 i2p::expected<std::vector<std::string>, std::string> ParseOpenBSDPledgeFile (
 	const std::string & path, std::span<const std::string_view> allowedPromises, OpenBSDPledgePhase phase);
 
-/**
+/*
  * Open a directory for descriptor passing (SCM_RIGHTS). The descriptor
  * is close-on-exec, non-symlink and checked to be a directory. The
  * worker still applies the storage policy; this helper only makes the
@@ -266,20 +266,20 @@ i2p::expected<std::vector<std::string>, std::string> ParseOpenBSDPledgeFile (
  */
 i2p::expected<int, std::string> OpenPreopenedDirectory (std::string_view path);
 
-/**
+/*
  * Validate a descriptor received through SCM_RIGHTS before it is used.
  * It must be close-on-exec and either a regular file or a directory.
  */
 i2p::expected<void, std::string> ValidatePreopenedDescriptor (int fd, bool directory);
 
-/**
+/*
  * Validate a socket received through SCM_RIGHTS before it is used by a
  * network/transport worker: close-on-exec, expected SOCK_* type and,
  * for a listening stream socket, SO_ACCEPTCONN.
  */
 i2p::expected<void, std::string> ValidatePreopenedSocket (int fd, int expectedType, bool requireListening);
 
-/**
+/*
  * Compile-time/runtime policy checks used by diagnostics and CI. They
  * inspect the policy text and never weaken or apply a policy
  * themselves.

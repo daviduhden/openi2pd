@@ -27,7 +27,7 @@
 #include <utility>
 #include <vector>
 
-/**
+/*
  * Line-framed protocol between the router and i2pd-tui over a
  * local UNIX stream socket.
  *
@@ -64,7 +64,7 @@ namespace i2p
 {
 namespace tui
 {
-	/**
+	/*
 	 * Framing invariants shared by the daemon and the console.
 	 *
 	 * A request is exactly one line; a response is a header line followed
@@ -429,7 +429,7 @@ namespace tui
 		}
 	}
 
-	/**
+	/*
 	 * Parse one request line (without the trailing newline).
 	 */
 	inline i2p::expected<Request, ProtocolError> ParseRequest (std::string_view line)

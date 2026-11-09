@@ -44,7 +44,7 @@ using namespace i2p::privsep;
 
 namespace
 {
-/**
+/*
  * Hello field offsets: [role u8 | nonce 16 | uid u32 BE | gid u32
  * BE].
  */
@@ -111,7 +111,7 @@ std::string ReadAll (int fd)
 	return text;
 }
 
-/**
+/*
  * The test binary's own absolute path. It is used both as the frozen
  * spawn path and as the exec target of the hand-started worker
  * scenarios; the production resolver is deliberately not used because
@@ -133,7 +133,7 @@ std::string SelfExecutable ([[maybe_unused]] const char * argv0)
 	return { };
 }
 
-/**
+/*
  * Build a raw hello with an arbitrary role/identity, bypassing the
  * codec.
  */
@@ -167,7 +167,7 @@ struct ScenarioResult
 	std::string error;
 };
 
-/**
+/*
  * Run the production RunWorker in a child whose descriptor 5 carries @a
  * hello
  * (or no descriptor at all) and whose argv names @a argvRole.

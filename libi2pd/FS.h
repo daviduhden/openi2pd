@@ -30,7 +30,7 @@ namespace fs
 {
 	extern std::string dirSep;
 
-	/**
+	/*
 	 * @brief Class to work with NetDb & Router profiles
 	 *
 	 * Usage:
@@ -62,7 +62,7 @@ namespace fs
 			, prefix2 (p2)
 			, suffix (s) { };
 
-		/**
+		/*
 		 * Create shard directories for a trusted canonical alphabet.
 		 * Borrowed bytes are used only during the call; no NUL terminator
 		 * or separate size is required. Path policy remains with the caller.
@@ -70,9 +70,9 @@ namespace fs
 		bool Init (std::span<const char> chars);
 		const std::string & GetRoot () const { return root; }
 		const std::string & GetName () const { return name; }
-		/** set directory where to place storage directory */
+		/* set directory where to place storage directory */
 		void SetPlace (const std::string & path);
-		/**
+		/*
 		 * @brief Return the sharded path for a canonical encoded identity.
 		 * @param ident validated encoded identity; empty input returns an
 		 *        empty path.
@@ -80,29 +80,29 @@ namespace fs
 		 *         input. Non-empty identities must already be validated.
 		 */
 		std::string Path (const std::string & ident) const;
-		/** remove file by ident */
+		/* remove file by ident */
 		void Remove (const std::string & ident);
-		/** find all files in storage and store list in provided vector */
+		/* find all files in storage and store list in provided vector */
 		void Traverse (std::vector<std::string> & files);
-		/** visit every file in this storage with a visitor */
+		/* visit every file in this storage with a visitor */
 		void Iterate (FilenameVisitor v);
 	};
 
-	/** @brief Returns current application name, default 'i2pd' */
+	/* @brief Returns current application name, default 'i2pd' */
 	const std::string & GetAppName ();
-	/** @brief Set application name, affects autodetection of datadir */
+	/* @brief Set application name, affects autodetection of datadir */
 	void SetAppName (const std::string & name);
 
-	/** @brief Returns datadir path */
+	/* @brief Returns datadir path */
 	const std::string & GetDataDir ();
 
-	/** @brief Returns certsdir path */
+	/* @brief Returns certsdir path */
 	const std::string & GetCertsDir ();
 
-	/** @brief Returns datadir path in UTF-8 encoding */
+	/* @brief Returns datadir path in UTF-8 encoding */
 	const std::string GetUTF8DataDir ();
 
-	/**
+	/*
 	 * @brief Set datadir either from cmdline option or using autodetection
 	 * @param cmdline_datadir Value of cmdline parameter
 	 *                        --datadir=&lt;something&gt;
@@ -117,7 +117,7 @@ namespace fs
 	 */
 	void DetectDataDir (const std::string & cmdline_datadir, bool isService = false);
 
-	/**
+	/*
 	 * @brief Set certsdir either from cmdline option or using
 	 *        autodetection
 	 * @param cmdline_certsdir Value of cmdline parameter
@@ -132,12 +132,12 @@ namespace fs
 	 */
 	void SetCertsDir (const std::string & cmdline_certsdir);
 
-	/**
+	/*
 	 * @brief Create subdirectories inside datadir
 	 */
 	bool Init ();
 
-	/**
+	/*
 	 * @brief Get list of files in directory
 	 * @param path Path to directory
 	 * @param files Vector to store found files
@@ -145,7 +145,7 @@ namespace fs
 	 */
 	bool ReadDir (const std::string & path, std::vector<std::string> & files);
 
-	/**
+	/*
 	 * @brief Remove file with given path
 	 * @param path Absolute path to file
 	 * @return true on success, false if file not exists, throws exception
@@ -160,7 +160,7 @@ namespace fs
 	/// rejects the rename.
 	bool Rename (std::string_view from, std::string_view to);
 
-	/**
+	/*
 	 * Write bytes to a same-directory temporary file and durably replace
 	 * path. A false result after POSIX rename can mean the new file is
 	 * visible but parent-directory durability could not be confirmed. The
@@ -171,13 +171,13 @@ namespace fs
 	 * concurrent reparse changes.
 	 */
 	bool AtomicWrite (std::string_view path, std::string_view contents);
-	/**
+	/*
 	 * AtomicWrite with a protected owner/SYSTEM DACL on Windows and mode
 	 * 0600 on POSIX.
 	 */
 	bool AtomicWritePrivate (std::string_view path, std::string_view contents);
 
-	/**
+	/*
 	 * @brief Check existence of file
 	 * @param path Absolute path to file
 	 * @return true if file exists, false otherwise
@@ -198,7 +198,7 @@ namespace fs
 		_ExpandPath (path, other...);
 	}
 
-	/**
+	/*
 	 * @brief Get path relative to datadir
 	 *
 	 * Examples (with datadir = "/tmp/i2pd"):

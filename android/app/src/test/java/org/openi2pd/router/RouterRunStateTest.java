@@ -28,7 +28,7 @@ import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 
-/**
+/*
  * Pure-JVM checks for {@link RouterRunState}.
  *
  * <p>These tests replace the emulator for everything the run state
@@ -46,7 +46,7 @@ import java.util.Set;
  * mutation path.</p>
  */
 public final class RouterRunStateTest {
-    /**
+    /*
      * Fixed wall clock so every deadline assertion is deterministic.
      */
     private static final long NOW = 1_700_000_000_000L;
@@ -346,7 +346,7 @@ public final class RouterRunStateTest {
         return preferences;
     }
 
-    /**
+    /*
      * Minimal in-memory {@link SharedPreferences}.
      *
      * <p>Only the methods {@link RouterRunState} uses do real work; the
@@ -424,7 +424,7 @@ public final class RouterRunStateTest {
             // The run state has no observers.
         }
 
-        /**
+        /*
          * Buffered editor that publishes on apply()/commit() like the
          * framework.
          */

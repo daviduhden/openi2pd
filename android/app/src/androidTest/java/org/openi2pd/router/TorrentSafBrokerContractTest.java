@@ -52,7 +52,7 @@ import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 
-/**
+/*
  * Manual device-CI contract for the real SAF broker process.
  *
  * <p>Hosts nothing itself: it binds {@code :torrent_storage}, checks
@@ -95,7 +95,7 @@ public final class TorrentSafBrokerContractTest {
         broker = null;
     }
 
-    /**
+    /*
      * Binds the real broker or skips when this build cannot host it.
      */
     private void bind() throws InterruptedException {

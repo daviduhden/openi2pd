@@ -398,7 +398,7 @@ namespace log
 		}
 	} // namespace
 
-	/**
+	/*
 	 * @brief Maps our loglevel to their symbolic name
 	 */
 	static const char * g_LogLevelStr[eNumLogLevels] = {
@@ -410,7 +410,7 @@ namespace log
 		"debug" // eLogDebug
 	};
 
-	/**
+	/*
 	 * @brief Colorize log output -- array of terminal control sequences
 	 * @note Using ISO 6429 (ANSI) color sequences
 	 */
@@ -429,7 +429,7 @@ namespace log
 #endif
 
 #ifndef _WIN32
-	/**
+	/*
 	 * @brief Maps our log levels to syslog one
 	 * @return syslog priority LOG_*, as defined in syslog.h
 	 */
@@ -618,7 +618,7 @@ namespace log
 		return m_LastDateTime;
 	}
 
-	/**
+	/*
 	 * @brief Write one record to the current destination on the writer
 	 *        thread.
 	 * @note This function better to be run in separate thread due to
@@ -723,7 +723,7 @@ namespace log
 		FlushStream ();
 	}
 
-	/**
+	/*
 	 * @brief Enqueue a record and update the bounded recent-record ring.
 	 *
 	 * Two independent bounds apply. The queue holds at most

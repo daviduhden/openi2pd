@@ -99,7 +99,7 @@ namespace crypto
 {
 	bool bn2buf (const BIGNUM * bn, uint8_t * buf, size_t len);
 
-	/**
+	/*
 	 * Copy one attribute from a read-only X.509 name as UTF-8 into a
 	 * bounded buffer.
 	 *

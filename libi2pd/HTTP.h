@@ -75,14 +75,14 @@ namespace http
 		URL (URL &&) = default;
 		URL & operator= (const URL &) = default;
 
-		/**
+		/*
 		 * @brief Tries to parse url from string
 		 * @return true on success, false on invalid url
 		 */
 		bool parse (const char * str, std::size_t len = 0);
 		bool parse (std::string_view url);
 
-		/**
+		/*
 		 * @brief Parse query part of url to key/value map
 		 * @note Honestly, this should be implemented with std::multimap
 		 */
@@ -90,14 +90,14 @@ namespace http
 
 		void create_query (const std::map<std::string, std::string> & params);
 
-		/**
+		/*
 		 * @brief Serialize URL structure to url
 		 * @note Returns relative url if schema if empty, absolute url
 		 *       otherwise
 		 */
 		std::string to_string (bool requestTargetOnly = false) const;
 
-		/**
+		/*
 		 * @brief return true if the host is inside i2p
 		 */
 		bool is_i2p () const;
@@ -112,7 +112,7 @@ namespace http
 		void del_header (const char * name);
 		std::string get_header (const std::string & name) const;
 
-		/** @brief Returns declared message length or -1 if unknown */
+		/* @brief Returns declared message length or -1 if unknown */
 		long int content_length () const;
 	};
 
@@ -128,7 +128,7 @@ namespace http
 			, method ("GET")
 			, uri ("/") { };
 
-		/**
+		/*
 		 * @brief Tries to parse HTTP request from string
 		 * @return -1 on error, 0 on incomplete query, >0 on success
 		 * @note Positive return value is a size of header
@@ -136,7 +136,7 @@ namespace http
 		int parse (const char * buf, size_t len);
 		int parse (std::string_view buf);
 
-		/** @brief Serialize HTTP request to string */
+		/* @brief Serialize HTTP request to string */
 		std::string to_string () const;
 		void write (std::ostream & o) const;
 
@@ -155,7 +155,7 @@ namespace http
 		std::string version;
 		std::string status;
 		unsigned short int code;
-		/**
+		/*
 		 * @brief Simplifies response generation
 		 *
 		 * If this variable is set, on @a to_string() call:
@@ -171,7 +171,7 @@ namespace http
 		{
 		}
 
-		/**
+		/*
 		 * @brief Tries to parse HTTP response from string
 		 * @return -1 on error, 0 on incomplete query, >0 on success
 		 * @note Positive return value is a size of header
@@ -179,7 +179,7 @@ namespace http
 		int parse (const char * buf, size_t len);
 		int parse (const std::string_view buf);
 
-		/**
+		/*
 		 * @brief Serialize HTTP response to string
 		 * @note If @a version is set to HTTP/1.1, and Date header is missing,
 		 *   it will be generated based on current time and added to headers
@@ -188,21 +188,21 @@ namespace http
 		 */
 		std::string to_string ();
 
-		/** @brief Checks that response declared as chunked data */
+		/* @brief Checks that response declared as chunked data */
 		bool is_chunked () const;
 
-		/** @brief Checks that response contains compressed data */
+		/* @brief Checks that response contains compressed data */
 		bool is_gzipped (bool includingI2PGzip = true) const;
 	};
 
-	/**
+	/*
 	 * @brief returns HTTP status string by integer code
 	 * @param code HTTP code [100, 599]
 	 * @return Immutable string with status
 	 */
 	std::string_view HTTPCodeToStatus (int code);
 
-	/**
+	/*
 	 * @brief Replaces %-encoded characters in string with their values
 	 * @param url Source string
 	 * @param null If set to true - decode also %00 sequence, otherwise -
@@ -211,7 +211,7 @@ namespace http
 	 */
 	std::string UrlDecode (std::string_view url, bool null = false);
 
-	/**
+	/*
 	 * @brief Merge HTTP response content with Transfer-Encoding: chunked
 	 * @param in Input stream
 	 * @param out Output stream

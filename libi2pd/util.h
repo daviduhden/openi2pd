@@ -92,7 +92,7 @@ namespace util
 			++m_Size;
 		}
 
-		/**
+		/*
 		 * Typed pool deleter. Replaces the former type-erased deleter:
 		 * the object still borrows the pool, which must outlive it.
 		 */
@@ -200,7 +200,7 @@ namespace util
 			}
 		}
 
-		/**
+		/*
 		 * Thread-safe typed pool deleter; the pool must outlive the object.
 		 */
 		struct Deleter
@@ -356,7 +356,7 @@ namespace util
 
 	namespace detail
 	{
-		/**
+		/*
 		 * Adapt a trusted random-byte source to a 32-bit seed.
 		 * The source must fill every byte before returning true. False or
 		 * an exception aborts seeding; partial output is never published.

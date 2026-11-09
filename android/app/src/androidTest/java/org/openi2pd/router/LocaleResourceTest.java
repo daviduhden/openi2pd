@@ -29,7 +29,7 @@ import org.junit.runner.RunWith;
 
 import java.util.Locale;
 
-/**
+/*
  * The Android product ships English, Spanish, Russian and Simplified
  * Chinese UI catalogs. Unsupported locales must fall back to English;
  * supported locales must resolve a translated catalog.

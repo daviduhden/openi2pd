@@ -5,7 +5,7 @@
  */
 package org.openi2pd.router;
 
-/**
+/*
  * Main-thread ownership for one Activity confirmation. Foreground and
  * service sessions have opaque identities: restarting either cannot
  * reactivate callbacks retained by an older window. Replacement and
@@ -20,7 +20,7 @@ package org.openi2pd.router;
  * authority as daemon authorization.</p>
  */
 final class UiConfirmationAuthority {
-    /** Opaque registration for one owner and session. */
+    /* Opaque registration for one owner and session. */
     static final class Ticket {
         private final Object foreground;
         private final Object session;
@@ -38,7 +38,7 @@ final class UiConfirmationAuthority {
     private Ticket current;
     private boolean retiring;
 
-    /** Start a fresh foreground interval, retiring any prior window. */
+    /* Start a fresh foreground interval, retiring any prior window. */
     void start() {
         if (retiring)
             return;
@@ -48,7 +48,7 @@ final class UiConfirmationAuthority {
         dismiss(previous);
     }
 
-    /** Revoke before dismissal; repeated cleanup is harmless. */
+    /* Revoke before dismissal; repeated cleanup is harmless. */
     void stop() {
         foreground = null;
         Ticket previous = current;
@@ -56,7 +56,7 @@ final class UiConfirmationAuthority {
         dismiss(previous);
     }
 
-    /** Reconnection or native restart invalidates pending consent. */
+    /* Reconnection or native restart invalidates pending consent. */
     void sessionChanged() {
         session = new Object();
         Ticket previous = current;
@@ -64,7 +64,7 @@ final class UiConfirmationAuthority {
         dismiss(previous);
     }
 
-    /**
+    /*
      * Replace the foreground confirmation. A stopped owner retains no
      * callback; callers must not show a window when this returns null.
      */
@@ -83,7 +83,7 @@ final class UiConfirmationAuthority {
         return next;
     }
 
-    /**
+    /*
      * Claim one action and close its window before returning success.
      * Denied admission leaves the confirmation usable until its owner
      * explicitly dismisses or retires it.
@@ -97,7 +97,7 @@ final class UiConfirmationAuthority {
         return ticket.foreground == foreground && ticket.session == session;
     }
 
-    /** A delayed old-window dismissal cannot revoke its replacement. */
+    /* A delayed old-window dismissal cannot revoke its replacement. */
     void dismissed(Ticket ticket) {
         if (ticket == null || ticket != current)
             return;

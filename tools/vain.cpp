@@ -60,7 +60,7 @@ struct Options
 	bool multiple = false;
 };
 
-/**
+/*
  * Shared result of one search generation.
  *
  * `found` is the stop signal, not only a result: a worker that matches
@@ -84,7 +84,7 @@ struct SearchState
 	size_t keyId = 0; // guarded by mutex
 };
 
-/** Zeroing owner for a private key buffer. */
+/* Zeroing owner for a private key buffer. */
 class KeyBuffer
 {
 public:
@@ -215,7 +215,7 @@ void HashNextBlock (uint32_t state[8], const uint8_t * block)
 	TransformBlock (state, W);
 }
 
-/**
+/*
 	 * Encode at most outLen base32 characters and NUL-terminate. The
 	 * caller must provide outLen + 1 bytes of storage. Returns the number
 	 * of characters written (excluding the terminator).
@@ -265,7 +265,7 @@ bool MatchesPrefix (std::string_view address, std::string_view prefix)
 	return address.size () >= prefix.size () && address.compare (0, prefix.size (), prefix) == 0;
 }
 
-/** Plain patterns are base32 destination prefixes only. */
+/* Plain patterns are base32 destination prefixes only. */
 bool IsBase32Prefix (std::string_view prefix)
 {
 	if (prefix.empty () || prefix.size () > ADDRESS_LEN) return false;

@@ -216,7 +216,7 @@ namespace torrents
 		int maxTotalPeers = 0;
 	};
 
-	/**
+	/*
 	 * One bounded page of the retained comment snapshot.
 	 *
 	 * `TORRENT-DETAIL` returns the newest records first (the snapshot is

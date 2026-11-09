@@ -57,7 +57,7 @@ namespace config
 #define path_to_file(file) "~/.i2pd/" #file " or /var/lib/i2pd/" #file
 #endif
 
-	/**
+	/*
 	 * @brief Register the option table and clear previously stored values.
 	 *
 	 * Registration happens once per process; a second call only drops the
@@ -539,7 +539,7 @@ namespace config
 
 	namespace
 	{
-		/**
+		/*
 		 * Command-line parsing style shared by every parse site.
 		 *
 		 * Guessing of long option names is disabled so a typo cannot
@@ -554,7 +554,7 @@ namespace config
 			return style;
 		}
 
-		/**
+		/*
 		 * Whether the parsed command line carries proxy credentials.
 		 *
 		 * Credentials are configuration-file only: a command-line value
@@ -574,7 +574,7 @@ namespace config
 			return false;
 		}
 
-		/**
+		/*
 		 * Render the text of an informational request.
 		 *
 		 * One authority for both the early entry-point path and
@@ -605,7 +605,7 @@ namespace config
 		}
 
 #if defined(_WIN32)
-		/**
+		/*
 		 * Write @a text completely to @a handle.
 		 * @return false on the first failed or empty write.
 		 *
@@ -628,7 +628,7 @@ namespace config
 			return true;
 		}
 
-		/**
+		/*
 		 * Write @a text to one inherited standard handle.
 		 * @param which STD_OUTPUT_HANDLE or STD_ERROR_HANDLE.
 		 * @param text complete banner text to publish.
@@ -655,7 +655,7 @@ namespace config
 		}
 #endif
 
-		/**
+		/*
 		 * Publish @a text to the process standard output.
 		 *
 		 * The informational text is ASCII, so it renders identically under
@@ -688,7 +688,7 @@ namespace config
 		}
 
 #if defined(_WIN32)
-		/**
+		/*
 		 * Map one unquoted raw command-line token to a request.
 		 * @param token first character of the token.
 		 * @param length token length in wide characters.
@@ -711,7 +711,7 @@ namespace config
 			return CmdlineOutcome::Proceed;
 		}
 
-		/**
+		/*
 		 * Scan a raw Windows command line for an informational flag.
 		 * @param commandLine NUL-terminated line from GetCommandLineW().
 		 * @return the requested answer, or CmdlineOutcome::Proceed.
@@ -818,7 +818,7 @@ namespace config
 		return CmdlineOutcome::Proceed;
 	}
 
-	/**
+	/*
 	 * @brief Parse the command line into the global option map.
 	 *
 	 * Guessing of long option names is disabled so a typo cannot silently

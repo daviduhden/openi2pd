@@ -42,7 +42,7 @@ import android.net.Network;
 import android.net.NetworkCapabilities;
 import android.util.Log;
 
-/**
+/*
  * Process-wide owner of the native i2pd daemon.
  *
  * <p>The wrapper uses application-owned resources rather than storing
@@ -58,7 +58,7 @@ public class DaemonWrapper {
     private static final String DATA_DIR_NAME = "open-i2pd";
     private static final int COPY_BUFFER_SIZE = 8192;
 
-    /**
+    /*
      * Runtime log levels accepted by the native logger, in severity
      * order. The native {@code setRuntimeLogLevel} entry point
      * validates the same exact, case-sensitive closed set before it
@@ -67,13 +67,13 @@ public class DaemonWrapper {
     private static final String[] RUNTIME_LOG_LEVELS = {
             "none", "critical", "error", "warn", "info", "debug"};
 
-    /**
+    /*
      * Time transit tunnels are given to drain during a graceful
      * shutdown.
      */
     public static final long GRACEFUL_STOP_DELAY_MILLIS = 10L * 60L * 1000L;
 
-    /**
+    /*
      * Receives lifecycle transitions of the native daemon.
      *
      * <p>A callback runs on whichever thread performed the transition
@@ -91,7 +91,7 @@ public class DaemonWrapper {
     private record
             StateChange(State oldState, State newState, List<StateUpdateListener> listeners) {}
 
-    /**
+    /*
      * Lifecycle state published to listeners.
      *
      * <p>{@link #isStartedOkay()} switches over every constant on
@@ -141,7 +141,7 @@ public class DaemonWrapper {
     private final AtomicBoolean stopRequested = new AtomicBoolean(false);
     private final AtomicLong gracefulStopDeadlineMillis = new AtomicLong(0L);
 
-    /**
+    /*
      * Connectivity callbacks are delivered on the main thread, while
      * the native update takes the native-call lock that start, stop and
      * reseed hold. This dispatcher keeps that JNI call off the UI
@@ -192,7 +192,7 @@ public class DaemonWrapper {
         this(context, assetManager, connectivityManager, true, null);
     }
 
-    /**
+    /*
      * @param autoStart when {@code false} the wrapper stays in {@link
      *                  State#stopped} until the owner calls {@link
      *                  #startDaemon()}. {@link RouterService} uses this
@@ -204,7 +204,7 @@ public class DaemonWrapper {
         this(context, assetManager, connectivityManager, autoStart, null);
     }
 
-    /**
+    /*
      * @param networkStateExecutor serial executor for the connectivity
      *                             update. Connectivity callbacks arrive
      *                             on the main thread; {@link
@@ -251,7 +251,7 @@ public class DaemonWrapper {
         }
     }
 
-    /**
+    /*
      * Default app-private data directory. Shared with {@link
      * RouterConfigStore} so configuration edits and the native router
      * always agree on the path.
@@ -305,7 +305,7 @@ public class DaemonWrapper {
         return I2PD_JNI.getDataDir();
     }
 
-    /**
+    /*
      * Resolve a file inside the daemon data directory, refusing paths
      * that escape the application's own storage.
      */
@@ -354,7 +354,7 @@ public class DaemonWrapper {
         return false;
     }
 
-    /**
+    /*
      * Change the native data directory. Only app-specific storage is
      * accepted. Returns {@code false} when the path is rejected.
      */
@@ -402,7 +402,7 @@ public class DaemonWrapper {
         return false;
     }
 
-    /**
+    /*
      * Stop the daemon.
      *
      * <p>The start-cancellation token is published before any monitor
@@ -458,7 +458,7 @@ public class DaemonWrapper {
         notifyListeners(finishChange);
     }
 
-    /**
+    /*
      * Request a start and return immediately; the native initialisation
      * runs on the dedicated {@code i2pdDaemonStart} thread.
      *
@@ -472,7 +472,7 @@ public class DaemonWrapper {
         startDaemonInternal();
     }
 
-    /**
+    /*
      * Stop, then queue a start once the previous start has fully
      * unwound. The control executor is never polled or slept on.
      * A later stop/restart cancels the pending ticket, even after its
@@ -631,7 +631,7 @@ public class DaemonWrapper {
         }
     }
 
-    /**
+    /*
      * Bounded address-book rows; empty when the daemon is not running.
      */
     public String getAddressBook() {
@@ -647,7 +647,7 @@ public class DaemonWrapper {
         }
     }
 
-    /** Remove one name; false when absent or invalid. */
+    /* Remove one name; false when absent or invalid. */
     public boolean removeAddress(String name) {
         synchronized (lock) {
             if (!state.isStartedOkay())
@@ -661,7 +661,7 @@ public class DaemonWrapper {
         }
     }
 
-    /** Block a subscription name or wildcard pattern. */
+    /* Block a subscription name or wildcard pattern. */
     public boolean blockAddress(String name) {
         synchronized (lock) {
             if (!state.isStartedOkay())
@@ -675,7 +675,7 @@ public class DaemonWrapper {
         }
     }
 
-    /** Remove one blocked subscription pattern. */
+    /* Remove one blocked subscription pattern. */
     public boolean unblockAddress(String name) {
         synchronized (lock) {
             if (!state.isStartedOkay())
@@ -689,7 +689,7 @@ public class DaemonWrapper {
         }
     }
 
-    /** Bounded deleted-host patterns, one per line. */
+    /* Bounded deleted-host patterns, one per line. */
     public String getBlockedAddresses() {
         synchronized (lock) {
             if (!state.isStartedOkay())
@@ -703,7 +703,7 @@ public class DaemonWrapper {
         }
     }
 
-    /**
+    /*
      * Exact, case-sensitive check against the closed runtime log level
      * set. Shared by {@link RouterService}'s binder and intent paths so
      * an invalid value is rejected before any native call is attempted.
@@ -720,7 +720,7 @@ public class DaemonWrapper {
         return false;
     }
 
-    /**
+    /*
      * Ask the running netDb to reseed from the configured reseed
      * servers.
      *
@@ -748,7 +748,7 @@ public class DaemonWrapper {
         }
     }
 
-    /** Apply live transit acceptance without changing config. */
+    /* Apply live transit acceptance without changing config. */
     public String setTransit(boolean enabled) {
         synchronized (lock) {
             if (!state.isStartedOkay()) {
@@ -764,7 +764,7 @@ public class DaemonWrapper {
         }
     }
 
-    /** Apply one allowlisted router bandwidth class at runtime. */
+    /* Apply one allowlisted router bandwidth class at runtime. */
     public String setBandwidth(String bandwidthClass) {
         if (!RuntimeAdminPolicy.isValidBandwidthClass(bandwidthClass)) {
             return "invalid";
@@ -783,7 +783,7 @@ public class DaemonWrapper {
         }
     }
 
-    /** Apply a bounded transit-share percentage. */
+    /* Apply a bounded transit-share percentage. */
     public String setShareRatio(int percent) {
         if (!RuntimeAdminPolicy.isValidShareRatio(percent)) {
             return "invalid";
@@ -802,7 +802,7 @@ public class DaemonWrapper {
         }
     }
 
-    /**
+    /*
      * Bounded reseed phase/attempt/error record, or an empty string
      * while the router is not running. It never waits for the job and
      * carries no URL.
@@ -822,7 +822,7 @@ public class DaemonWrapper {
         }
     }
 
-    /**
+    /*
      * Configured client/server tunnels as bounded {@code
      * name|kind|running|...} rows.
      */
@@ -841,12 +841,12 @@ public class DaemonWrapper {
         }
     }
 
-    /** Start one configured tunnel by its bounded service name. */
+    /* Start one configured tunnel by its bounded service name. */
     public String startTunnel(String name) {
         return tunnelCommand(name, true);
     }
 
-    /** Stop one configured tunnel by its bounded service name. */
+    /* Stop one configured tunnel by its bounded service name. */
     public String stopTunnel(String name) {
         return tunnelCommand(name, false);
     }
@@ -869,7 +869,7 @@ public class DaemonWrapper {
         }
     }
 
-    /**
+    /*
      * Add or replace one address-book name with the typed result.
      *
      * @return {@code ok}, {@code exists}, {@code invalid}, {@code
@@ -894,7 +894,7 @@ public class DaemonWrapper {
         }
     }
 
-    /** Address-book subscription sources, one bounded URL per line. */
+    /* Address-book subscription sources, one bounded URL per line. */
     public String getSubscriptions() {
         synchronized (lock) {
             if (!state.isStartedOkay()) {
@@ -910,7 +910,7 @@ public class DaemonWrapper {
         }
     }
 
-    /**
+    /*
      * Add one validated subscription source; returns the typed outcome
      * token.
      */
@@ -918,7 +918,7 @@ public class DaemonWrapper {
         return subscriptionCommand(url, true);
     }
 
-    /** Remove one subscription source by its exact URL. */
+    /* Remove one subscription source by its exact URL. */
     public String removeSubscription(String url) {
         return subscriptionCommand(url, false);
     }
@@ -941,12 +941,12 @@ public class DaemonWrapper {
         }
     }
 
-    /** Ban one base64 router identity until the router restarts. */
+    /* Ban one base64 router identity until the router restarts. */
     public String banRouter(String hash) {
         return banCommand(hash, true);
     }
 
-    /** Remove one in-memory router ban. */
+    /* Remove one in-memory router ban. */
     public String unbanRouter(String hash) {
         return banCommand(hash, false);
     }
@@ -969,7 +969,7 @@ public class DaemonWrapper {
         }
     }
 
-    /**
+    /*
      * Apply a runtime log level to the running logger without
      * restarting the daemon. The value is validated here and again in
      * native code; this path never writes {@code i2pd.conf}, so
@@ -996,7 +996,7 @@ public class DaemonWrapper {
         }
     }
 
-    /**
+    /*
      * Transit tunnel count used by the graceful-shutdown decision.
      *
      * <p>Returns {@code 0} when the native library is unavailable: the
@@ -1012,7 +1012,7 @@ public class DaemonWrapper {
         }
     }
 
-    /**
+    /*
      * Start a graceful shutdown: stop accepting transit tunnels and
      * give the remaining ones time to drain. Scheduling belongs to
      * RouterService so the eventual native stop is enqueued on its
@@ -1053,7 +1053,7 @@ public class DaemonWrapper {
         return scheduledDelay;
     }
 
-    /**
+    /*
      * Cancel a scheduled graceful shutdown and resume accepting transit
      * tunnels. Only a {@link State#gracefulShutdownInProgress} router
      * changes; the deadline is cleared either way.
@@ -1185,7 +1185,7 @@ public class DaemonWrapper {
         }
     }
 
-    /**
+    /*
      * Install a native session once, without enabling JSON-RPC or a web
      * listener.
      */
@@ -1251,7 +1251,7 @@ public class DaemonWrapper {
         }
     }
 
-    /**
+    /*
      * Install the bundled configuration and asset trees once per
      * application version.
      *
@@ -1314,7 +1314,7 @@ public class DaemonWrapper {
         }
     }
 
-    /**
+    /*
      * Copy the asset at the specified path to the app data directory.
      * If the asset is a directory, its contents are also copied.
      */

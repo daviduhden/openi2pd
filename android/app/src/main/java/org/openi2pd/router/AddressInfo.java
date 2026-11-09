@@ -14,7 +14,7 @@
 
 package org.openi2pd.router;
 
-/**
+/*
  * One published or observed transport address.
  *
  * <p>Instances are immutable. {@code host} is a plain IPv4/IPv6

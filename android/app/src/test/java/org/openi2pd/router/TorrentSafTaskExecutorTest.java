@@ -21,7 +21,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 
 import org.junit.Test;
 
-/** Pure-JVM checks; no provider, Android service or native calls. */
+/* Pure-JVM checks; no provider, Android service or native calls. */
 public final class TorrentSafTaskExecutorTest {
     @Test
     public void blockedProviderBoundsQueueAndRejectsWithoutCallerExecution() throws Exception {

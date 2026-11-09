@@ -195,7 +195,7 @@ namespace transport
 		}
 	}
 
-	/**
+	/*
 	 * HolePunch/Introduced payload whitelist.
 	 *
 	 * SSU2 spec, Hole Punch: the payload carries DateTime, Address,
@@ -218,7 +218,7 @@ namespace transport
 		}
 	}
 
-	/**
+	/*
 	 * Out-of-session message versions accepted on receive.
 	 *
 	 * PeerTest and HolePunch always send version 2 (Java PacketBuilder2),
@@ -230,7 +230,7 @@ namespace transport
 		return version >= 2 && version <= 4;
 	}
 
-	/**
+	/*
 	 * Advertised SSU2 version mask from a signed RouterInfo address.
 	 *
 	 * Version 2 is the base "v" option and is always usable. Bits 3 and 4
@@ -243,7 +243,7 @@ namespace transport
 		return static_cast<uint8_t> ((1u << 2) | (pqVersions & ((1u << 3) | (1u << 4))));
 	}
 
-	/** Highest advertised version, always at least 2. */
+	/* Highest advertised version, always at least 2. */
 	constexpr int GetHighestSSU2Version (uint8_t advertisedMask)
 	{
 		for (int version = 4; version >= 3; --version)
@@ -251,7 +251,7 @@ namespace transport
 		return 2;
 	}
 
-	/**
+	/*
 	 * Whether an unauthenticated Retry header may change Alice's version.
 	 *
 	 * The Retry header is authenticated only with the peer's published
@@ -269,7 +269,7 @@ namespace transport
 		return retryVersion >= GetHighestSSU2Version (advertisedMask);
 	}
 
-	/**
+	/*
 	 * Version to retry after an authenticated IncompatibleVersion
 	 * termination.
 	 *
@@ -287,7 +287,7 @@ namespace transport
 		return 0;
 	}
 
-	/**
+	/*
 	 * Whether an ACK block actually acknowledges packet 0.
 	 *
 	 * The ACK block covers [ackThrough - acnt, ackThrough] and no First
@@ -325,7 +325,7 @@ namespace transport
 		eSSU2SessionStateTokenRequestReceived
 	};
 
-	/**
+	/*
 	 * Payload block whitelist for each SSU2 message context.
 	 *
 	 * Java SSU2Payload.processPayload() is called with an explicit message
@@ -368,7 +368,7 @@ namespace transport
 		}
 	}
 
-	/**
+	/*
 	 * Whether an Address block may update RouterContext from this session.
 	 *
 	 * Address blocks are expected in SessionCreated, Retry and the
@@ -388,7 +388,7 @@ namespace transport
 		}
 	}
 
-	/**
+	/*
 	 * PeerTest (msgs 1-4), I2NP messages and other data-phase handlers
 	 * require an established session with a known peer identity.
 	 */
@@ -410,13 +410,13 @@ namespace transport
 	const uint64_t SSU2_PEER_TEST_RATE_WINDOW = 10 * 60; // in seconds
 	const size_t SSU2_MAX_PEER_TEST_RATE_ENTRIES = 256;
 
-	/** Whether one more non-established inbound session may be created. */
+	/* Whether one more non-established inbound session may be created. */
 	constexpr bool IsInboundSessionAdmissionAllowed (size_t numNonEstablishedInboundSessions)
 	{
 		return numNonEstablishedInboundSessions < SSU2_MAX_INBOUND_SESSIONS;
 	}
 
-	/**
+	/*
 	 * Reaction to an inbound packet while SSU2_MAX_INBOUND_SESSIONS is
 	 * reached. Only a SessionRequest or TokenRequest still has a handshake
 	 * context that a Retry can answer with
@@ -429,13 +429,13 @@ namespace transport
 			|| messageType == static_cast<uint8_t> (eSSU2TokenRequest);
 	}
 
-	/** Whether one more out-of-session PeerTest session may be created. */
+	/* Whether one more out-of-session PeerTest session may be created. */
 	constexpr bool IsSSU2PeerTestSessionAdmissionAllowed (size_t numPeerTestSessions)
 	{
 		return numPeerTestSessions < SSU2_MAX_PEER_TEST_SESSIONS;
 	}
 
-	/**
+	/*
 	 * Whether a peer test in the given family may proceed despite an
 	 * existing session to Alice. Java only blocks when the existing
 	 * session has the same address family (`aps.isIPv6() == isIPv6`), so
@@ -447,7 +447,7 @@ namespace transport
 		return existing->GetRemoteEndpoint ().address ().is_v4 () != testV4;
 	}
 
-	/**
+	/*
 	 * Whether the Bob-side PeerTest nonce table is full (never evict live
 	 * state).
 	 */
@@ -456,7 +456,7 @@ namespace transport
 		return numEntries >= maximum;
 	}
 
-	/** Result of admitting a Bob-side PeerTest nonce. */
+	/* Result of admitting a Bob-side PeerTest nonce. */
 	enum class SSU2PeerTestAdmission : uint8_t
 	{
 		Accepted = 0,
@@ -464,7 +464,7 @@ namespace transport
 		LimitExceeded
 	};
 
-	/**
+	/*
 	 * RouterInfo block frag byte for one complete (unfragmented)
 	 * RouterInfo. The SSU2 spec encodes `index << 4 | count` for
 	 * fragments, but only this value is valid in the SessionConfirmed
@@ -478,7 +478,7 @@ namespace transport
 		return frag == SSU2_ROUTER_INFO_FRAG_SINGLE;
 	}
 
-	/**
+	/*
 	 * Mint a relay tag. Zero means "no tag" in this implementation, so
 	 * zero is never published: at most `attempts` draws are made and 0 is
 	 * returned when every draw produced zero (the caller then publishes
@@ -494,7 +494,7 @@ namespace transport
 		return 0;
 	}
 
-	/**
+	/*
 	 * Whether a received RelayTag block may set our tag. The first
 	 * non-zero tag wins; a later block is ignored so the tag already
 	 * published to our introducers never changes underneath them.
@@ -504,7 +504,7 @@ namespace transport
 		return !current && received != 0;
 	}
 
-	/**
+	/*
 	 * States that an unauthenticated inbound packet can put a session in
 	 * before the handshake completes. They are the entries counted against
 	 * SSU2_MAX_INBOUND_SESSIONS.
@@ -520,7 +520,7 @@ namespace transport
 		}
 	}
 
-	/**
+	/*
 	 * Fixed-window state for the per-source PeerTest msg 1/2 rate limit.
 	 */
 	struct SSU2PeerTestRateState
@@ -529,7 +529,7 @@ namespace transport
 		unsigned int count = 0;
 	};
 
-	/**
+	/*
 	 * Charge one PeerTest msg 1/2 against a per-source window.
 	 *
 	 * Returns true when the message may be processed. The window is fixed:
@@ -552,7 +552,7 @@ namespace transport
 		return true;
 	}
 
-	/**
+	/*
 	 * Key for the PeerTest per-source limiter: IPv4 /32 and IPv6 /64.
 	 *
 	 * Java PeerTestManager keys the limiter on the source prefix, so a
@@ -567,7 +567,7 @@ namespace transport
 		return boost::asio::ip::address_v6 (bytes);
 	}
 
-	/**
+	/*
 	 * Whether PeerTest msg 4 may open msg 6 toward the Charlie endpoint
 	 * that the msg 4 signed data reports. The endpoint must be routable
 	 * (Java isValidPeerTestEndpoint), supported by this router and not
@@ -578,7 +578,7 @@ namespace transport
 		return endpointValid && addressSupported && !operatorBlocked;
 	}
 
-	/**
+	/*
 	 * PathChallenge is only meaningful inside an established data session.
 	 *
 	 * Responding earlier would let a pre-authentication or closing packet
@@ -592,7 +592,7 @@ namespace transport
 		return state == eSSU2SessionStateEstablished;
 	}
 
-	/**
+	/*
 	 * Delay before the next PathChallenge retransmission.
 	 *
 	 * `sent` is the number of challenges already sent, including the
@@ -609,7 +609,7 @@ namespace transport
 		return SSU2_PATH_CHALLENGE_DELAY << shift;
 	}
 
-	/**
+	/*
 	 * Whether pending connection migration must be abandoned. Java checks
 	 * the strict `now > started + MAX_PATH_CHALLENGE_TIME` and send-count
 	 * bounds. Expiry never terminates the SSU2 session; it keeps the old
@@ -620,7 +620,7 @@ namespace transport
 		return now > started + SSU2_MAX_PATH_CHALLENGE_TIME || sent > SSU2_MAX_PATH_CHALLENGE_SENDS;
 	}
 
-	/**
+	/*
 	 * Pending connection migration state, matching PeerState2's
 	 * MIGRATION_STATE_PENDING fields. A single challenge value is reused
 	 * for every retransmission, and only a PathResponse from the pending
@@ -637,7 +637,7 @@ namespace transport
 		size_t previousMaxPayloadSize;
 	};
 
-	/**
+	/*
 	 * Pure framing and block-whitelist validator for decrypted SSU2
 	 * payloads. It never touches sockets, sessions or global router state,
 	 * so fuzzers and unit tests can exercise the state matrix directly.
@@ -825,7 +825,7 @@ namespace transport
 
 		typedef std::function<void ()> OnEstablished;
 
-		/**
+		/*
 		 * Which side of an introduction a pending relay nonce belongs to.
 		 *
 		 * The role used to be inferred from the stored session's

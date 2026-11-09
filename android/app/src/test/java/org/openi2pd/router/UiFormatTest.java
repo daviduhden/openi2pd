@@ -21,7 +21,7 @@ import org.junit.Test;
 
 import java.util.Collections;
 
-/**
+/*
  * Pure-JVM tests for the state/format helpers. These methods do not
  * touch Android resources, so no emulator or Robolectric is required.
  */

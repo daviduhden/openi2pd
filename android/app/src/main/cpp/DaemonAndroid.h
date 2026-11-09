@@ -24,7 +24,7 @@ namespace i2p
 {
 namespace android
 {
-	/**
+	/*
 	 * The one role a process may serve. Android runs the router and the
 	 * opt-in SAF storage broker in different processes of the same UID, so
 	 * the role cannot be inferred from credentials, arguments or the
@@ -42,7 +42,7 @@ namespace android
 		StorageBroker = 2
 	};
 
-	/**
+	/*
 	 * Fixed, non-secret token reported when a role claim conflicts with
 	 * the role already claimed by this process. It carries no path,
 	 * identity, grant or credential detail and is safe to display and to
@@ -50,7 +50,7 @@ namespace android
 	 */
 	inline constexpr const char * PROCESS_ROLE_CONFLICT = "process-role-conflict";
 
-	/**
+	/*
 	 * Result token returned by start() when a stop request aborted the
 	 * start before the router reached Running. Java maps it to the stopped
 	 * state instead of a start failure.
@@ -59,7 +59,7 @@ namespace android
 
 	namespace detail
 	{
-		/**
+		/*
 		 * One process-wide role slot. It is a function-local static so the
 		 * header stays ODR-safe and a host regression can include it without
 		 * linking the daemon. It is deliberately never reset: a process role
@@ -72,13 +72,13 @@ namespace android
 		}
 	}
 
-	/** Role claimed by this process, or None before the first claim. */
+	/* Role claimed by this process, or None before the first claim. */
 	inline ProcessRole CurrentProcessRole () noexcept
 	{
 		return static_cast<ProcessRole> (detail::ProcessRoleSlot ().load (std::memory_order_acquire));
 	}
 
-	/**
+	/*
 	 * Claim `role` exactly once per process.
 	 *
 	 * @return true when this call claimed the role or this process already
@@ -97,13 +97,13 @@ namespace android
 		return expected == static_cast<int> (role);
 	}
 
-	/** True when this process has already claimed exactly `role`. */
+	/* True when this process has already claimed exactly `role`. */
 	inline bool HasProcessRole (ProcessRole role) noexcept
 	{
 		return CurrentProcessRole () == role;
 	}
 
-	/**
+	/*
 	 * Request cancellation of an in-progress start transition. It sets one
 	 * process-global atomic and returns immediately: the caller (a Java
 	 * stop request) may run while start() still owns the native-call
@@ -111,10 +111,10 @@ namespace android
 	 */
 	void RequestStartCancel () noexcept;
 
-	/** True when the current start attempt has a cancellation request. */
+	/* True when the current start attempt has a cancellation request. */
 	bool IsStartCancelRequested () noexcept;
 
-	/**
+	/*
 	 * Serialises every JNI-visible control/status call (start, stop,
 	 * reload, status, snapshots, network state and proxy probes) against
 	 * each other.
@@ -145,7 +145,7 @@ namespace android
 		std::unique_lock<std::mutex> m_Lock;
 	};
 
-	/**
+	/*
 	 * Current lifecycle without taking the native-call lock (diagnostics).
 	 *
 	 * Native mirror of the Java daemon state. It is published before the
@@ -182,28 +182,28 @@ namespace android
 		DaemonAndroidImpl ();
 		~DaemonAndroidImpl ();
 
-		/**
+		/*
 		 * @return success
 		 */
 		bool init (int argc, char * argv[]);
-		/** Invoke Daemon.start(); the lifecycle owner changes state. */
+		/* Invoke Daemon.start(); the lifecycle owner changes state. */
 		bool start ();
 		void stop ();
 
 		void setDataDir (std::string path);
 	};
 
-	/**
+	/*
 	 * Returns "ok" only after initialization and start succeeded;
 	 * otherwise returns a bounded human-readable error for Java to
 	 * display. Callers must hold a NativeCallGuard.
 	 */
 	std::string start ();
 
-	/** Publishes Stopping before Daemon.stop(); callers hold the guard. */
+	/* Publishes Stopping before Daemon.stop(); callers hold the guard. */
 	void stop ();
 
-	/**
+	/*
 	 * Record the application data directory used by the next start.
 	 *
 	 * The value is a path inside app-specific storage, already validated
@@ -212,7 +212,7 @@ namespace android
 	 */
 	void SetDataDir (std::string jdataDir);
 
-	/** Copy of the recorded data directory; safe on the UI thread. */
+	/* Copy of the recorded data directory; safe on the UI thread. */
 	std::string GetDataDir (void);
 }
 }

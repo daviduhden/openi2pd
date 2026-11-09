@@ -28,11 +28,11 @@ namespace i2p
 {
 namespace modern
 {
-	/** An enumeration type, ignoring cv-qualification and references. */
+	/* An enumeration type, ignoring cv-qualification and references. */
 	template <typename T>
 	concept Enum = std::is_enum_v<std::remove_cvref_t<T>>;
 
-	/**
+	/*
 	 * A type whose object representation is one byte.
 	 *
 	 * std::uint8_t and std::int8_t are normally aliases of unsigned char
@@ -42,15 +42,15 @@ namespace modern
 	concept ByteLike = std::same_as<std::remove_cvref_t<T>, std::byte> || std::same_as<std::remove_cvref_t<T>, char>
 		|| std::same_as<std::remove_cvref_t<T>, signed char> || std::same_as<std::remove_cvref_t<T>, unsigned char>;
 
-	/** A contiguous range whose element type is byte-like. */
+	/* A contiguous range whose element type is byte-like. */
 	template <typename T>
 	concept ContiguousByteRange = std::ranges::contiguous_range<T> && ByteLike<std::ranges::range_value_t<T>>;
 
-	/** A type that converts implicitly to a non-owning string view. */
+	/* A type that converts implicitly to a non-owning string view. */
 	template <typename T>
 	concept StringViewLike = std::convertible_to<T, std::string_view>;
 
-	/**
+	/*
 	 * The underlying integer value of an enumeration, preserving its type.
 	 */
 	template <typename T>
@@ -60,7 +60,7 @@ namespace modern
 		return static_cast<std::underlying_type_t<std::remove_cv_t<T>>> (value);
 	}
 
-	/**
+	/*
 	 * Compose several callables into one overload set, typically for
 	 * std::visit. Every argument must provide a call operator.
 	 */
@@ -70,7 +70,7 @@ namespace modern
 	};
 	template <typename... Ts> Overloaded (Ts...) -> Overloaded<Ts...>;
 
-	/**
+	/*
 	 * Move-only scope guard that invokes its callable on destruction
 	 * unless dismiss() was called.
 	 *
@@ -103,7 +103,7 @@ namespace modern
 			if (m_Active) m_Func ();
 		}
 
-		/** Cancel the pending action. */
+		/* Cancel the pending action. */
 		void dismiss () noexcept { m_Active = false; }
 
 	private:
@@ -112,10 +112,10 @@ namespace modern
 	};
 	template <typename F> ScopeExit (F) -> ScopeExit<F>;
 
-	/** A borrowed, read-only view over raw bytes. */
+	/* A borrowed, read-only view over raw bytes. */
 	using ByteSpan = std::span<const std::byte>;
 
-	/**
+	/*
 	 * Identity overload for an already-typed byte span (including
 	 * rvalues).
 	 */
@@ -124,7 +124,7 @@ namespace modern
 		return bytes;
 	}
 
-	/**
+	/*
 	 * Borrow contiguous byte storage as a read-only byte span.
 	 *
 	 * The range must outlive the returned view; temporaries are rejected

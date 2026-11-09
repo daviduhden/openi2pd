@@ -13,7 +13,7 @@
 
 package org.openi2pd.router;
 
-/**
+/*
  * One router log record in presentation form.
  *
  * <p>The native ring already sanitises control characters and bounds
@@ -21,7 +21,7 @@ package org.openi2pd.router;
  * malformed or hostile native/library response.</p>
  */
 public record LogEntry(long sequence, long timestampSeconds, String level, String message) {
-    /**
+    /*
      * Upper bound accepted from the native ring (native limit is 512).
      */
     private static final int MAX_MESSAGE_LENGTH = 16 * 1024;

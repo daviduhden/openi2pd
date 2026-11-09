@@ -70,7 +70,7 @@ namespace log
 
 	struct LogMsg; /* forward declaration */
 
-	/**
+	/*
 	 * A bounded, sanitized copy of a recent log message. Exposed to local
 	 * administrative interfaces (the TUI); it never contains more than
 	 * LOG_RECENT_TEXT_LIMIT bytes of the original message.
@@ -139,7 +139,7 @@ namespace log
 		std::atomic<bool> m_HasSynchronousSink { false };
 
 	private:
-		/** prevent making copies */
+		/* prevent making copies */
 		Log (const Log &);
 		const Log & operator= (const Log &);
 
@@ -149,7 +149,7 @@ namespace log
 		void InstallFileStream (
 			const std::string & path, std::shared_ptr<std::ostream> stream, bool onlyIfFileDestination);
 
-		/**
+		/*
 			 * @brief Makes formatted string from unix timestamp
 			 * @param ts Second since epoch
 			 *
@@ -170,31 +170,31 @@ namespace log
 
 		void Start ();
 		void Stop ();
-		/**
+		/*
 		 * Restore stdout as the destination after a stopped logger's failed
 		 * initialization attempt. Returns false while the writer is active.
 		 */
 		bool ResetDestination ();
 
-		/**
+		/*
 			 * @brief Sets minimal allowed level for log messages
 			 * @param level String with wanted minimal msg level
 			 */
 		void SetLogLevel (const std::string & level);
 
-		/**
+		/*
 			 * @brief Sets log destination to logfile
 			 * @param path Path to logfile
 			 */
 		void SendTo (const std::string & path);
 
-		/**
+		/*
 			 * @brief Sets log destination to given output stream
 			 * @param os Output stream
 			 */
 		void SendTo (std::shared_ptr<std::ostream> os);
 
-		/**
+		/*
 			 * @brief Sets format for timestamps in log
 			 * @param format String with timestamp format
 			 */
@@ -205,7 +205,7 @@ namespace log
 		};
 
 #ifndef _WIN32
-		/**
+		/*
 			 * @brief Sets log destination to syslog
 			 * @param name Wanted program name
 			 * @param facility Wanted log category
@@ -213,7 +213,7 @@ namespace log
 		void SendTo (const char * name, int facility);
 #endif
 
-		/**
+		/*
 			 * @brief Format log message and write to output stream/syslog
 			 *
 			 * The record is consumed by reference; the caller keeps ownership of
@@ -221,10 +221,10 @@ namespace log
 			 */
 		void Append (std::shared_ptr<i2p::log::LogMsg> &);
 
-		/** @brief Reopen log file */
+		/* @brief Reopen log file */
 		void Reopen ();
 
-		/**
+		/*
 			 * Route processed records to an external sink (privilege-separated
 			 * log worker). When set, the process never opens or writes a log
 			 * file itself. Must be configured before Start().
@@ -235,7 +235,7 @@ namespace log
 			m_Sink = std::move (sink);
 		}
 
-		/**
+		/*
 		 * Route every record to @a sink synchronously, on the thread that
 		 * called LogPrint(), in addition to the normal destination/queue.
 		 *
@@ -252,7 +252,7 @@ namespace log
 		 */
 		void SetSynchronousSink (SinkFunction sink);
 
-		/**
+		/*
 			 * @brief Copy up to @a max records with sequence greater than @a
 			 *        after
 			 * @note Thread-safe. Intended for the local TUI IPC service.
@@ -261,7 +261,7 @@ namespace log
 		uint64_t GetDroppedCount () const { return m_QueuedDropped.load (std::memory_order_relaxed); };
 	};
 
-	/**
+	/*
 	 * @struct LogMsg
 	 * @brief Log message container
 	 *
@@ -325,7 +325,7 @@ inline void LogPrint (std::stringstream & s, const boost::asio::ip::udp::endpoin
 	s << i2p::util::net::FormatEndpoint (value);
 }
 
-/** internal usage only -- folding args array to single string */
+/* internal usage only -- folding args array to single string */
 // Exclude Asio address/endpoint types so an rvalue/lvalue does not
 // prefer this forwarding overload over the safe
 // FormatAddress/FormatEndpoint overloads above (Boost's POSIX formatter
@@ -341,7 +341,7 @@ void LogPrint (std::stringstream & s, TValue && arg) noexcept
 	s << std::forward<TValue> (arg);
 }
 
-/**
+/*
  * @brief Create log message and send it to queue
  * @param level Message level (eLogError, eLogInfo, ...)
  * @param args Array of message parts
@@ -366,7 +366,7 @@ template <typename... TArgs> void LogPrint (LogLevel level, TArgs &&... args) no
 	i2p::log::Logger ().Append (msg);
 }
 
-/**
+/*
  * @brief Throw fatal error message with the list of arguments
  * @param args Array of message parts
  */

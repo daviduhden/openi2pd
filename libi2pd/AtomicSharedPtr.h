@@ -107,7 +107,7 @@ namespace util
 			}
 			return value;
 		}
-		/**
+		/*
 		 * Match both the stored pointer and its control block. As with the
 		 * standard specialization, a failed comparison updates expected.
 		 * Memory orders must be valid for standard compare-exchange;

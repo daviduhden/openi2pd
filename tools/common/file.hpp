@@ -46,7 +46,7 @@ namespace i2p::tools
 {
 inline constexpr size_t MAX_TOOL_FILE_SIZE = 16 * 1024 * 1024; // 16 MiB
 
-/**
+/*
 	 * Read a complete file with an explicit size cap. Returns a value
 	 * instead of throwing or leaving a partially initialized buffer on
 	 * short reads.
@@ -126,7 +126,7 @@ inline bool WriteFile (const std::string & path, const uint8_t * data, size_t si
 	return WriteFile (path, std::span<const uint8_t> (data, data ? size : 0));
 }
 
-/** Best-effort erasure of private key material. */
+/* Best-effort erasure of private key material. */
 inline void Wipe (std::vector<uint8_t> & data)
 {
 	if (!data.empty ()) OPENSSL_cleanse (data.data (), data.size ());

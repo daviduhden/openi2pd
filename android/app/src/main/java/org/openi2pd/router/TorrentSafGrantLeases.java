@@ -13,7 +13,7 @@ import java.util.function.BooleanSupplier;
 import java.util.function.IntConsumer;
 import java.util.function.IntSupplier;
 
-/**
+/*
  * Bounded ownership of transient URI permissions across service epochs.
  * All registry operations except {@link #retire} require the caller's
  * nonreentrant grant authority. Framework callbacks run only under that
@@ -31,7 +31,7 @@ final class TorrentSafGrantLeases {
     static final int MAX_URI_LENGTH = 8192;
     private static final int SUPPORTED_MODES = 3; // Android read/write flags.
 
-    /** An opaque one-shot authority; it carries no URI or provider data. */
+    /* An opaque one-shot authority; it carries no URI or provider data. */
     static final class Token {
         private final TorrentSafGrantLeases owner;
         private final AtomicBoolean retired = new AtomicBoolean();
@@ -56,7 +56,7 @@ final class TorrentSafGrantLeases {
     private final Map<String, Entry> entries = new HashMap<>();
     private int leaseCount;
 
-    /**
+    /*
      * Acquire a token, including when the modes already exist. Null
      * rejects bad input, saturation or provider failure. The caller
      * must drain retired tokens before admission. URI strings are used
@@ -96,7 +96,7 @@ final class TorrentSafGrantLeases {
         }
     }
 
-    /**
+    /*
      * Request retirement from any thread without waiting on a provider.
      * Foreign and already retired tokens cannot change registry state.
      */
@@ -105,7 +105,7 @@ final class TorrentSafGrantLeases {
                 && token.retired.compareAndSet(false, true);
     }
 
-    /**
+    /*
      * Transfer an obsolete mapping's release obligation to its active
      * borrowers. False means no borrower blocks immediate release.
      */
@@ -117,7 +117,7 @@ final class TorrentSafGrantLeases {
         return true;
     }
 
-    /**
+    /*
      * Drain pending retirement once under grant authority. A still
      * mapped URI keeps all modes; an unreferenced URI releases only
      * owned modes. Failure to read mappings retains the grant as well.

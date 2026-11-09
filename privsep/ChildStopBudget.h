@@ -11,7 +11,7 @@
 
 namespace i2p::privsep
 {
-/**
+/*
  * Absolute POSIX child-stop phase boundaries, measured once at entry.
  *
  * Reserve up to 500 ms each for TERM and final KILL reaping, with the

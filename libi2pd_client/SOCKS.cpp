@@ -173,7 +173,7 @@ namespace proxy
 		bool Socks5ChooseAuth ();
 		authMethods ChooseAuthMethod () const;
 		void Socks5UserPasswdResponse (bool success);
-		/**
+		/*
 		 * Zero the decoded RFC 1929 fields; called after verification and on
 		 * stop.
 		 */

@@ -12,7 +12,7 @@ import android.content.Context;
 import java.text.NumberFormat;
 import java.util.Locale;
 
-/**
+/*
  * Presentation-only mappings.
  *
  * <p>Protocol tokens remain unchanged in snapshots and commands.
@@ -26,7 +26,7 @@ import java.util.Locale;
 final class UiText {
     private UiText() {}
 
-    /**
+    /*
      * Canonical preference value for an explicit per-app locale.
      *
      * <p>An explicit Chinese script takes precedence over the region.
@@ -51,7 +51,7 @@ final class UiText {
         };
     }
 
-    /**
+    /*
      * Translate the closed torrent-state vocabulary at rendering time.
      *
      * <p>Null or empty tokens render as empty text. New tokens remain
@@ -87,7 +87,7 @@ final class UiText {
         return resource == 0 ? token : context.getString(resource);
     }
 
-    /**
+    /*
      * Map only exact, known diagnostics; remote text is not
      * reinterpreted.
      */
@@ -127,7 +127,7 @@ final class UiText {
         return resource == 0 ? text : context.getString(resource);
     }
 
-    /**
+    /*
      * Format a whole percentage after clamping it to the display range.
      *
      * <p>Formatters are created per call rather than shared: mutable
@@ -139,7 +139,7 @@ final class UiText {
                 .format(Math.max(0, Math.min(value, 100)) / 100.0);
     }
 
-    /**
+    /*
      * Numeric control fields use invariant wire syntax until rendering.
      */
     static String counter(Context context, String token) {
@@ -151,7 +151,7 @@ final class UiText {
         }
     }
 
-    /**
+    /*
      * Parse invariant peer progress, then format in the context locale.
      *
      * <p>Malformed or non-finite input becomes the unknown-value label.

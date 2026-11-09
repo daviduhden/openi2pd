@@ -134,7 +134,7 @@ namespace win32
 		Shell_NotifyIcon (NIM_DELETE, &nid);
 	}
 
-	/**
+	/*
 	 * Window procedure for the hidden main window.
 	 *
 	 * All router interaction from outside this thread is expressed as a

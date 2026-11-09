@@ -68,19 +68,19 @@ namespace tunnel
 			, m_CurrentMsgID (0) { };
 		~TunnelEndpoint () = default;
 		size_t GetNumReceivedBytes () const { return m_NumReceivedBytes; };
-		/**
+		/*
 		 * arrival time of the last tunnel data message in milliseconds, 0 if
 		 * none
 		 */
 		uint64_t GetLastReceiveTimeMs () const { return m_LastReceiveTime.load (std::memory_order_relaxed); };
-		/**
+		/*
 		 * pending reassembly state sizes, for diagnostics and regression
 		 * tests
 		 */
 		size_t GetNumIncompleteMessages () const { return m_IncompleteMessages.size (); };
 		size_t GetNumOutOfSequenceFragments () const { return m_OutOfSequenceFragments.size (); };
 		void Cleanup ();
-		/**
+		/*
 		 * expiry pass against an explicit clock, used by deterministic tests
 		 */
 		void Cleanup (uint64_t nowMs);

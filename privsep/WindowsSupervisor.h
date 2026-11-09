@@ -47,7 +47,7 @@ inline constexpr uint32_t WINDOWS_WORKER_ACCEPT_TIMEOUT_MS = 5000;
 inline constexpr uint32_t WINDOWS_WORKER_SEND_TIMEOUT_MS = 5000;
 inline constexpr uint32_t WINDOWS_WORKER_STOP_BUDGET_MS = 5000;
 inline constexpr uint32_t WINDOWS_WORKER_SHUTDOWN_SEND_MS = 250;
-/**
+/*
  * Graceful window after the Shutdown frame before the Job Object is
  * used. */
 inline constexpr uint32_t WINDOWS_WORKER_GRACEFUL_STOP_MS = 1000;
@@ -56,7 +56,7 @@ inline constexpr uint32_t WINDOWS_SERVICE_START_WAIT_HINT_MS = 30000;
 inline constexpr uint32_t WINDOWS_SERVICE_STOP_WAIT_HINT_MS = 30000;
 inline constexpr uint32_t WINDOWS_SERVICE_DRAIN_BUDGET_MS = 30000;
 
-/**
+/*
  * Time left inside a caller-supplied budget. A zero result means the
  * budget is spent: the caller may not perform another blocking step on
  * that budget.
@@ -66,7 +66,7 @@ constexpr uint32_t RemainingBudgetMs (uint64_t elapsedMs, uint32_t budgetMs)
 	return elapsedMs >= budgetMs ? 0 : budgetMs - static_cast<uint32_t> (elapsedMs);
 }
 
-/**
+/*
  * A pending SCM state must never be reported with a zero wait hint: the
  * SCM then applies its own short default timeout. Clamp to at least 1
  * ms.
@@ -76,7 +76,7 @@ constexpr uint32_t NonZeroWaitHint (uint32_t requestedMs)
 	return requestedMs == 0 ? 1 : requestedMs;
 }
 
-/**
+/*
  * Static, non-secret diagnostic for a supervisor that runs inside an
  * existing Job Object. `AssignProcessToJobObject` can fail inside a
  * restrictive parent job, so the topology is reported *before* the
@@ -92,7 +92,7 @@ constexpr std::string_view NestedJobDiagnostic (bool insideJobObject)
 	return insideJobObject ? WINDOWS_NESTED_JOB_DIAGNOSTIC : std::string_view { };
 }
 
-/**
+/*
  * Static, non-secret note for a worker Job Object created inside an
  * existing job hierarchy. A nested job may not set UI limits, so the
  * worker job is created without JobObjectBasicUIRestrictions; process
@@ -107,22 +107,22 @@ constexpr std::string_view NestedJobUiDiagnostic (bool uiRestrictionsApplied)
 	return uiRestrictionsApplied ? std::string_view { } : WINDOWS_NESTED_JOB_UI_DIAGNOSTIC;
 }
 
-/** Why the current worker generation ended. */
+/* Why the current worker generation ended. */
 enum class WindowsWorkerFailureKind : uint8_t
 {
-	/** Token, job-object or process creation failed. */
+	/* Token, job-object or process creation failed. */
 	Spawn,
-	/** The process exists but job assignment or resume failed. */
+	/* The process exists but job assignment or resume failed. */
 	Assign,
-	/** The spawned child never authenticated the pipe. */
+	/* The spawned child never authenticated the pipe. */
 	Accept,
-	/** The authenticated worker left. The only restartable kind. */
+	/* The authenticated worker left. The only restartable kind. */
 	Exit,
-	/** The restart ladder is exhausted for this supervisor. */
+	/* The restart ladder is exhausted for this supervisor. */
 	Budget
 };
 
-/**
+/*
  * Only a worker that was authenticated and then exited is replaced.
  * Setup failures are terminal for the current supervisor: respawning
  * would repeat the same failure and could mask a policy or identity
@@ -133,7 +133,7 @@ constexpr bool IsTerminalWindowsWorkerFailure (WindowsWorkerFailureKind kind)
 	return kind != WindowsWorkerFailureKind::Exit;
 }
 
-/**
+/*
  * Static text for the published supervisor reason. The detailed
  * diagnostic (which may contain a path) never reaches the snapshot.
  */
@@ -150,7 +150,7 @@ constexpr std::string_view WindowsWorkerFailureReason (WindowsWorkerFailureKind 
 	return "worker failure";
 }
 
-/**
+/*
  * Restart ladder of one supervised worker. It reuses the single
  * LogWorkerRestartBudget (250 ms doubling to 30 s, at most 8 restarts,
  * reset after 60 s of stable service) and owns the monotonic spawn
@@ -164,18 +164,18 @@ class WindowsWorkerRestartPolicy
 public:
 	using Clock = std::chrono::steady_clock;
 
-	/** The worker of the current generation authenticated at @a now. */
+	/* The worker of the current generation authenticated at @a now. */
 	void NoteReady (Clock::time_point now) { m_Budget.NoteReady (now); }
 
-	/** Start a new generation and return its 1-based number. */
+	/* Start a new generation and return its 1-based number. */
 	uint32_t BeginGeneration () { return ++m_Generation; }
 
-	/**
+	/*
 	 * Account one authenticated worker exit; nullopt when the budget is
 	 * spent. */
 	std::optional<std::chrono::milliseconds> NoteExit (Clock::time_point now) { return m_Budget.NoteFailure (now); }
 
-	/**
+	/*
 	 * Reset the ladder when the current worker served the stable
 	 * period. */
 	bool NoteStable (Clock::time_point now) { return m_Budget.NoteStable (now); }
@@ -196,26 +196,26 @@ private:
 	uint32_t m_Generation = 0;
 };
 
-/** One decision of the restart classifier. */
+/* One decision of the restart classifier. */
 struct WindowsWorkerFailureOutcome
 {
 	SupervisorWorkerState state = SupervisorWorkerState::Failed;
-	/** Terminal failures are published as Failed and never respawned. */
+	/* Terminal failures are published as Failed and never respawned. */
 	bool terminal = true;
-	/**
+	/*
 	 * Generation to publish; the next one for a restart, the last for
 	 * Failed. */
 	uint32_t generation = 0;
 	uint32_t restarts = 0;
-	/**
+	/*
 	 * Bounded backoff before the next spawn; zero for a terminal
 	 * failure. */
 	std::chrono::milliseconds delay { 0 };
-	/** Static reason, never derived from a payload, path or credential. */
+	/* Static reason, never derived from a payload, path or credential. */
 	std::string_view reason;
 };
 
-/**
+/*
  * The single restart classifier. A restartable exit first offers the
  * stable reset, then charges the ladder, then allocates the next
  * generation. A spent budget becomes `Budget` (terminal). Setup
@@ -248,7 +248,7 @@ inline WindowsWorkerFailureOutcome PlanWindowsWorkerFailure (
 	return outcome;
 }
 
-/**
+/*
  * Publish one transition into a SupervisorStatus. This is the only
  * place that maps a state onto the snapshot writer, so the production
  * supervisor and the unit tests share one publisher. A repeated Failed
@@ -268,7 +268,7 @@ inline void PublishWindowsWorkerTransition (SupervisorStatus & status, std::stri
 
 #ifdef _WIN32
 
-/**
+/*
  * A role needs the AppContainer identity when it holds external network
  * access or persistent writes: a restricted token alone is a privilege
  * reduction, not a network/filesystem boundary.
@@ -280,7 +280,7 @@ inline bool WindowsRoleNeedsAppContainer (WindowsWorkerRole role)
 	return GetWindowsRoleIsolation (role).appContainer;
 }
 
-/**
+/*
  * Storage and log additionally need an explicitly delegated write
  * root. */
 inline bool WindowsRoleNeedsWriteRoot (WindowsWorkerRole role)
@@ -288,7 +288,7 @@ inline bool WindowsRoleNeedsWriteRoot (WindowsWorkerRole role)
 	return GetWindowsRoleIsolation (role).persistentWrites;
 }
 
-/**
+/*
  * Stable snapshot name of a role; bounded to
  * SupervisorStatus::MAX_WORKER_NAME. */
 constexpr std::string_view WindowsWorkerSupervisorName (WindowsWorkerRole role)
@@ -307,22 +307,22 @@ constexpr std::string_view WindowsWorkerSupervisorName (WindowsWorkerRole role)
 
 struct WindowsWorkerSupervisorConfig
 {
-	/** Worker image; it is passed to CreateProcess as an absolute path. */
+	/* Worker image; it is passed to CreateProcess as an absolute path. */
 	std::wstring executable;
 	WindowsWorkerRole role = WindowsWorkerRole::Admin;
-	/**
+	/*
 	 * Delegated write root for a role that needs persistent writes. The
 	 * supervisor grants the container SID and refuses to start without it.
 	 */
 	std::wstring persistentWriteRoot;
-	/** Test pipe name; empty selects a per-spawn random name. */
+	/* Test pipe name; empty selects a per-spawn random name. */
 	std::wstring pipeName;
 	uint32_t acceptTimeoutMs = WINDOWS_WORKER_ACCEPT_TIMEOUT_MS;
 	uint32_t stopBudgetMs = WINDOWS_WORKER_STOP_BUDGET_MS;
 	uint32_t pollIntervalMs = WINDOWS_WORKER_POLL_MS;
 };
 
-/**
+/*
  * Owns exactly one worker role for its lifetime: creates the listener
  * with the AppContainer SID of the role, spawns the child, accepts only
  * that child (PID, session, role and nonce) and exposes the
@@ -356,7 +356,7 @@ public:
 	WindowsWorkerSupervisor (const WindowsWorkerSupervisor &) = delete;
 	WindowsWorkerSupervisor & operator= (const WindowsWorkerSupervisor &) = delete;
 
-	/**
+	/*
 	 * Validate the role policy and identity, create the stop event, then
 	 * spawn and authenticate generation 1. Any failure is terminal and
 	 * published.
@@ -369,26 +369,26 @@ public:
 	 */
 	i2p::expected<void, std::string> Start ();
 
-	/**
+	/*
 	 * Drain until Stop() or a terminal failure. Bounded by
 	 * pollIntervalMs. */
 	void RunMonitor ();
 
-	/**
+	/*
 	 * One monitor slice: honour a pending backoff, spawn when due, or wait
 	 * for the worker to exit. Returns false once the supervisor is
 	 * terminal.
 	 */
 	bool PumpOnce (uint32_t maxWaitMs);
 
-	/** Authenticated channel of the current generation, or nullptr. */
+	/* Authenticated channel of the current generation, or nullptr. */
 	WindowsChannel * Channel () { return m_Channel ? &*m_Channel : nullptr; }
 	const WindowsChannel * Channel () const { return m_Channel ? &*m_Channel : nullptr; }
 
 	i2p::expected<void, std::string> Send (const Message & message);
 	i2p::expected<std::optional<Message>, std::string> Receive (uint32_t timeoutMs);
 
-	/** Stop with the caller's budget; idempotent. */
+	/* Stop with the caller's budget; idempotent. */
 	bool Stop (uint32_t budgetMs);
 	bool Stop () { return Stop (m_Config.stopBudgetMs); }
 
@@ -398,12 +398,12 @@ public:
 	SupervisorWorkerState State () const { return m_State.load (std::memory_order_acquire); }
 	uint32_t Generation () const { return m_Policy.Generation (); }
 	uint32_t Restarts () const { return m_Policy.Restarts (); }
-	/**
+	/*
 	 * Not a destructor barrier; the caller must stop before dropping
 	 * it. */
 	const WindowsWorkerRestartPolicy & Policy () const { return m_Policy; }
 	const std::string & Name () const { return m_Name; }
-	/**
+	/*
 	 * Pipe name of the current generation. It is cleared together with the
 	 * worker, so an empty value means no generation owns a listener (a
 	 * failed spawn, a released generation or a completed stop).
@@ -412,24 +412,24 @@ public:
 	DWORD WorkerProcessId () const { return m_ProcessId; }
 	bool IsInsideJobObject () const { return m_InsideJob; }
 
-	/**
+	/*
 	 * Copy of the last diagnostic (may contain a path; never a secret
 	 * operand). */
 	std::string Diagnostic () const;
-	/** Nested-job diagnostic of this process, empty when not in a job. */
+	/* Nested-job diagnostic of this process, empty when not in a job. */
 	std::string JobDiagnostic () const;
 
 private:
 	i2p::expected<void, std::string> SpawnGeneration (uint32_t generation);
 	void HandleWorkerExit ();
-	/**
+	/*
 	 * Publish Failed once, remember the diagnostic, release every
 	 * handle. */
 	i2p::expected<void, std::string> FailTerminal (
 		WindowsWorkerFailureKind kind, uint32_t generation, std::string detail);
-	/** Terminal publication is idempotent for the supervisor lifetime. */
+	/* Terminal publication is idempotent for the supervisor lifetime. */
 	void PublishFailedOnce (const WindowsWorkerFailureOutcome & outcome);
-	/**
+	/*
 	 * Close the channel, terminate the Job Object and wait before
 	 * returning. */
 	void ReleaseWorker (uint32_t budgetMs = WINDOWS_WORKER_STOP_BUDGET_MS);
@@ -457,7 +457,7 @@ private:
 	Clock::time_point m_RestartDue { };
 	uint32_t m_PendingGeneration = 0;
 	bool m_RestartPending = false;
-	/**
+	/*
 	 * A Failed snapshot is published at most once per supervisor
 	 * lifetime. */
 	bool m_FailedPublished = false;
@@ -465,13 +465,13 @@ private:
 	mutable std::mutex m_Mutex;
 	std::string m_Diagnostic;
 	std::string m_JobDiagnostic;
-	/**
+	/*
 	 * Serialises the generation state between the monitor and a control
 	 * stop. */
 	std::mutex m_LifecycleMutex;
 };
 
-/** Dynamic Job Object topology probe used by the spawn preflight. */
+/* Dynamic Job Object topology probe used by the spawn preflight. */
 bool IsCurrentProcessInJobObject ();
 
 #endif // _WIN32

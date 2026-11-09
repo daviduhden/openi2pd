@@ -18,7 +18,7 @@
 
 namespace
 {
-/**
+/*
  * Reset the shim's process-wide parser state between cases.
  *
  * `optarg`, `optind`, `optopt` and `opterr` are globals, so each case

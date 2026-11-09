@@ -22,7 +22,7 @@
 
 namespace i2p::privsep
 {
-/**
+/*
  * Coarse process classes for the Linux worker sandbox. These are policy
  * classes, not a claim that every backend has already been split out of
  * the router core.
@@ -41,15 +41,15 @@ struct LinuxSandboxProfile
 {
 	bool allowNetwork = false;
 	bool allowPersistentWrites = false;
-	/**
+	/*
 	 * Restrict regular-file/directory reads to delegated writable
 	 * roots. */
 	bool restrictFilesystemReads = false;
-	/** Deny every new socket/socketpair, including AF_UNIX. */
+	/* Deny every new socket/socketpair, including AF_UNIX. */
 	bool denySocketCreation = false;
-	/** Deny AF_INET/AF_INET6 but permit AF_UNIX for IPC/syslog. */
+	/* Deny AF_INET/AF_INET6 but permit AF_UNIX for IPC/syslog. */
 	bool denyInetSockets = false;
-	/**
+	/*
 	 * Request a new empty network namespace. Failure is only fatal when
 	 * requireNetworkNamespace is true; seccomp/Landlock remain the
 	 * fallback.
@@ -63,7 +63,7 @@ struct LinuxSandboxProfile
 	std::vector<std::string> writablePaths;
 };
 
-/**
+/*
  * Declared policy of one Linux worker class: the capabilities a role is
  * allowed to retain. It is the contract, not the enforcement; the
  * backend policy for a given platform must never grant more than this
@@ -75,7 +75,7 @@ struct LinuxSandboxProfile
  * which deliberately installs no Landlock/seccomp/namespace domain.
  */
 LinuxSandboxProfile GetLinuxSandboxProfile (WorkerClass workerClass);
-/**
+/*
  * Install the profile's Landlock domain and seccomp filter.
  *
  * `writablePaths` must be absolute and resolved before this call; an
@@ -100,14 +100,14 @@ i2p::expected<void, std::string> ApplyLinuxSandbox (const LinuxSandboxProfile & 
 // requests.
 i2p::expected<void, std::string> ApplyLinuxSupervisorSandbox ();
 
-/**
+/*
  * First capability stage in the forked child, **while it is still
  * privileged**: clear the ambient set and drop every bounding-set bit.
  * The effective/permitted sets are deliberately kept so the following
  * `setgroups`/`setgid`/`setuid` calls still have CAP_SETGID/CAP_SETUID.
  */
 i2p::expected<void, std::string> PrepareCapabilitiesBeforeCredentialDrop ();
-/**
+/*
  * Second capability stage, after `setuid`: zero the
  * effective/permitted/ inheritable sets and verify with capget. Running
  * this before the credential drop would make setgid/setuid fail;
@@ -116,7 +116,7 @@ i2p::expected<void, std::string> PrepareCapabilitiesBeforeCredentialDrop ();
  */
 i2p::expected<void, std::string> ClearCapabilitiesAfterCredentialDrop ();
 
-/**
+/*
  * Apply the part of a worker policy that needs no configuration and
  * must be in force before the first untrusted frame is parsed:
  * no-new-privs, an empty capability set and the role's
@@ -125,13 +125,13 @@ i2p::expected<void, std::string> ClearCapabilitiesAfterCredentialDrop ();
  * most once per process.
  */
 i2p::expected<void, std::string> ApplyLinuxIpcLockdown (const LinuxSandboxProfile & profile);
-/**
+/*
  * Assert the post-exec preconditions before a worker serves a frame:
  * `PR_GET_NO_NEW_PRIVS == 1` and an empty capability set (Linux only).
  */
 i2p::expected<void, std::string> VerifyWorkerPrivileges ();
 
-/**
+/*
  * Optional cgroup v2 limits. The path must name a delegated cgroup
  * directory (not an arbitrary filesystem path). The function writes
  * only the known cgroup control files, with O_NOFOLLOW/O_CLOEXEC, and
@@ -150,7 +150,7 @@ struct LinuxCgroupV2Limits
 
 i2p::expected<void, std::string> ApplyLinuxCgroupV2Limits (const LinuxCgroupV2Limits & limits);
 
-/**
+/*
  * Evaluation result for diagnostics and tests. It never enables a
  * capability; it only reports which mechanisms the running kernel can
  * enforce. A false field here is not a policy decision either: the

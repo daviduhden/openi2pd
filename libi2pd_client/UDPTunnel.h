@@ -35,7 +35,7 @@ namespace i2p
 {
 namespace client
 {
-	/** 2 minute timeout for udp sessions */
+	/* 2 minute timeout for udp sessions */
 	const uint64_t I2P_UDP_SESSION_TIMEOUT = 1000 * 60 * 2;
 	const int I2P_UDP_SESSION_CLEANUP_INTERVAL = 17; // in seconds
 	const uint64_t I2P_UDP_REPLIABLE_DATAGRAM_INTERVAL = 100; // in milliseconds
@@ -58,9 +58,9 @@ namespace client
 	const uint32_t I2P_UDP_MAX_NUM_ACK_TIMEOUTS = 3; // in a row, before routing path gets reset
 	const uint64_t I2P_UDP_PEER_PATH_RESET_TIMEOUT = 4 * I2P_UDP_MAX_UNACKED_DATAGRAM_TIME; // silence, in milliseconds
 
-	/** max size for i2p udp */
+	/* max size for i2p udp */
 	const size_t I2P_UDP_MAX_MTU = 64 * 1024;
-	/** local socket buffers, not datagram size */
+	/* local socket buffers, not datagram size */
 	const size_t I2P_UDP_SOCKET_BUFFER_SIZE = 4 * 1024 * 1024;
 
 	// Reliability state of one datagram conversation. Both tunnel
@@ -177,30 +177,30 @@ namespace client
 		void Receive ();
 	};
 
-	/** read only info about a datagram session */
+	/* read only info about a datagram session */
 	struct DatagramSessionInfo
 	{
-		/** the name of this forward */
+		/* the name of this forward */
 		std::string Name;
-		/** ident hash of local destination */
+		/* ident hash of local destination */
 		std::shared_ptr<const i2p::data::IdentHash> LocalIdent;
-		/** ident hash of remote destination */
+		/* ident hash of remote destination */
 		std::shared_ptr<const i2p::data::IdentHash> RemoteIdent;
-		/**
+		/*
 		 * ident hash of IBGW in use currently in this session or nullptr if
 		 * none is set
 		 */
 		std::shared_ptr<const i2p::data::IdentHash> CurrentIBGW;
-		/**
+		/*
 		 * ident hash of OBEP in use for this session or nullptr if none is
 		 * set
 		 */
 		std::shared_ptr<const i2p::data::IdentHash> CurrentOBEP;
-		/** i2p router's udp endpoint */
+		/* i2p router's udp endpoint */
 		boost::asio::ip::udp::endpoint LocalEndpoint;
-		/** client's udp endpoint */
+		/* client's udp endpoint */
 		boost::asio::ip::udp::endpoint RemoteEndpoint;
-		/** how long has this conversation been idle in ms */
+		/* how long has this conversation been idle in ms */
 		uint64_t idle;
 	};
 
@@ -233,7 +233,7 @@ namespace client
 			uint16_t port, bool gzip);
 		~I2PUDPServerTunnel ();
 
-		/** expire stale udp conversations */
+		/* expire stale udp conversations */
 		void ExpireStale (const uint64_t delta = I2P_UDP_SESSION_TIMEOUT);
 		void Start ();
 		void Stop ();

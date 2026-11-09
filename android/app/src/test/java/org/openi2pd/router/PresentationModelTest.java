@@ -21,7 +21,7 @@ import org.junit.Test;
 import java.util.ArrayList;
 import java.util.List;
 
-/**
+/*
  * Pure-JVM tests for the immutable presentation records. They guard the
  * defensive bounds that keep malformed native input out of the UI.
  */

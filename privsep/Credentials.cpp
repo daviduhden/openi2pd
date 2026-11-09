@@ -30,18 +30,18 @@ namespace i2p::privsep
 {
 namespace
 {
-	/**
+	/*
 	 * Account and group names are bounded well below any NSS record
 	 * size. */
 	constexpr size_t MAX_IDENTITY_NAME_SIZE = 256;
-	/**
+	/*
 	 * Fixed NSS scratch buffer. The first attempt uses half of it and one
 	 * ERANGE retry uses all of it, so a hostile or broken account database
 	 * cannot make the lookup grow without a limit.
 	 */
 	constexpr size_t LOOKUP_BUFFER_SIZE = 16384;
 
-	/**
+	/*
 	 * Reject NUL, an embedded control character and an oversized name. A
 	 * truncated account name would silently resolve to a different
 	 * identity.
@@ -57,7 +57,7 @@ namespace
 		return true;
 	}
 
-	/**
+	/*
 	 * Run one bounded NSS lookup (getpwnam_r/getgrnam_r share this
 	 * shape). */
 	template <typename Lookup> int LookupBounded (Lookup && lookup)

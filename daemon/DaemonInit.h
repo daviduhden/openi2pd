@@ -24,28 +24,28 @@ namespace i2p::util
 {
 enum class DaemonInitPhase : uint8_t
 {
-	/**
+	/*
 	 * Log destination/sink setup; rollback stops the logger and resets
 	 * it. */
 	Logging,
-	/** Crypto provider initialization; rollback terminates it. */
+	/* Crypto provider initialization; rollback terminates it. */
 	Crypto,
-	/**
+	/*
 	 * Fixed router-file write authority (router.keys/info, ntcp2/ssu2
 	 * keys). Rollback first replaces the persistence writer with a
 	 * refusing callback so a failed isolated setup can never fall back to
 	 * core filesystem writes.
 	 */
 	RouterStorage,
-	/**
+	/*
 	 * Hash-named artifact write authority (netDb, peer profiles,
 	 * destination keys). */
 	DataStorage,
-	/** Router context and its identity/configuration state. */
+	/* Router context and its identity/configuration state. */
 	RouterContext
 };
 
-/**
+/*
  * LIFO rollback ledger for daemon initialization.
  *
  * A phase is recorded with Begin() *before* the resource is acquired,
@@ -74,28 +74,28 @@ public:
 
 	~DaemonInitTransaction () { Rollback (); }
 
-	/** Record @a phase as acquired from this point on. */
+	/* Record @a phase as acquired from this point on. */
 	void Begin (DaemonInitPhase phase)
 	{
 		if (m_PhaseCount == m_Phases.size ()) throw std::length_error ("too many daemon initialization phases");
 		m_Phases[m_PhaseCount++] = phase;
 	}
 
-	/** Record the phase, then run the operation that acquires it. */
+	/* Record the phase, then run the operation that acquires it. */
 	template <typename Operation> decltype (auto) Run (DaemonInitPhase phase, Operation && operation)
 	{
 		Begin (phase);
 		return std::forward<Operation> (operation) ();
 	}
 
-	/** Keep every acquired phase and disable the destructor rollback. */
+	/* Keep every acquired phase and disable the destructor rollback. */
 	void Commit () noexcept
 	{
 		m_Committed = true;
 		m_PhaseCount = 0;
 	}
 
-	/**
+	/*
 	 * Unwind recorded phases in reverse order. Safe to call repeatedly and
 	 * from the destructor; a committed transaction does nothing.
 	 */
