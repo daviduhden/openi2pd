@@ -10,7 +10,7 @@
 Source: i2pd
 Section: net
 Priority: optional
-Maintainer: openi2pd maintainers <daviduhden@users.noreply.github.com>
+Maintainer: David Uhden Collado <david@uhden.dev>
 Build-Depends: debhelper-compat (= 13),
                dh-apparmor,
                dh-sequence-installsysusers,
