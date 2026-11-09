@@ -200,7 +200,7 @@ SKIP: {
 # are permitted only when their namespace resolves to scripts/lib.
 my %allowed_module = map { $_ => 1 } qw(
   strict warnings lib constant utf8
-  Config Cwd Digest::SHA Encode Errno File::Basename File::Copy File::Find File::Path File::Spec File::Temp
+  Carp Config Cwd Digest::SHA Encode Errno File::Basename File::Copy File::Find File::Path File::Spec File::Temp
   FindBin Getopt::Long HTTP::Tiny IO::Select IO::Socket::INET IPC::Open3
   JSON::PP POSIX Symbol Test::More
 );

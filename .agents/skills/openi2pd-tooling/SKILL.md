@@ -122,6 +122,11 @@ a TUI client.
 
 ## Known issues and decisions
 
+- Expanded script discovery can reveal omissions in the core-module
+  allowlist, including Carp. Classify the imported module before changing
+  dependencies; the portability check should cover all discovered imports
+  without treating a standard diagnostic module as an external dependency.
+
 - A standalone Test::More contract under tests/*.t needs both independent
   source discovery in perl-portability.t and the explicit syntax/Critic
   inventories. Updating only CMake creates a cross-platform inventory
