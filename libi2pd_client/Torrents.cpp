@@ -4867,6 +4867,7 @@ namespace torrents
 		m_RemoteBitfieldReceived = true;
 		size_t numPieces = m_Torrent->GetNumPieces ();
 		m_RemoteBitfield.resize (numPieces);
+		m_RemoteBitfield.reset ();
 		size_t idx = 0;
 		for (size_t i = 0; i < len; i++) // bytes
 		{
@@ -4923,6 +4924,7 @@ namespace torrents
 		m_RemoteBitfield.resize (numPieces);
 		m_RemoteBitfield.reset ();
 		m_RemoteBitfieldReceived = true;
+		RefreshInterest ();
 	}
 
 	void PeerConnection::SendHaveNoneMsg ()

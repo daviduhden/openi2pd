@@ -67,6 +67,18 @@ struct PeerExtendedHandshakeTestAccess
 		peer.m_NumRequests = requests;
 		peer.RefreshInterest ();
 	}
+	static void HaveNone (PeerConnection & peer)
+	{
+		peer.HandleHaveNoneMsg ();
+		assert (peer.m_RemoteBitfieldReceived);
+		assert (peer.m_RemoteBitfield.none ());
+	}
+	static void EmptyBitfield (PeerConnection & peer)
+	{
+		const uint8_t bits = 0;
+		peer.HandleBitfieldMsg (&bits, 1);
+		assert (peer.m_RemoteBitfield.none ());
+	}
 
 	static void Parse (PeerConnection & peer, const std::string & encoded)
 	{
@@ -673,6 +685,16 @@ static void TestInterestTracksSelectionAndActiveRequests ()
 	assert (peer.IsInterested ());
 	// Availability can disappear without a file-selection mutation.
 	PeerExtendedHandshakeTestAccess::RefreshInterest (peer, 0, false);
+	assert (!peer.IsInterested ());
+	// Availability messages must reconcile without a keep-alive tick.
+	PeerExtendedHandshakeTestAccess::RefreshInterest (peer, 0, true);
+	PeerExtendedHandshakeTestAccess::HaveNone (peer);
+	assert (!peer.IsInterested ());
+	PeerExtendedHandshakeTestAccess::RefreshInterest (peer, 1, true);
+	PeerExtendedHandshakeTestAccess::HaveNone (peer);
+	assert (peer.IsInterested ());
+	PeerExtendedHandshakeTestAccess::RefreshInterest (peer, 0, true);
+	PeerExtendedHandshakeTestAccess::EmptyBitfield (peer);
 	assert (!peer.IsInterested ());
 	torrent->SetStopped (true);
 	PeerExtendedHandshakeTestAccess::RefreshInterest (peer, 1, true);

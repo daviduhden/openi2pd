@@ -116,6 +116,10 @@ Do not let them edit, build or run tests.
 
 ## Known issues and decisions
 
+- BITFIELD is an authoritative replacement even when its size is unchanged;
+  clear prior bits before decoding. HAVE_NONE reconciles interest at once,
+  preserving outstanding-response authority.
+
 - Reconcile peer interest independently of scheduling and keep-alive
   traffic. Active requests retain interest until retirement; stop/removal
   overrides that authority. HAVE, BITFIELD, selection and periodic paths
