@@ -111,6 +111,10 @@ build.
 
 ## Known issues and decisions
 
+- MSYS host-tool closure includes Git as well as Perl. Pin GIT_EXECUTABLE
+  for native CMake and retain PATH command evidence for scripts invoking
+  bare git; a CMake cache setting alone does not select that subprocess.
+
 - Host interpreter closure includes test wrappers as well as CMake's
   find_package result. The MSYS workflow pins its interpreter path and
   i2pdctl TAP tests share it; native MSWin32 Unicode remains a separate

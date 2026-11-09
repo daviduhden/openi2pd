@@ -251,6 +251,14 @@ require_runtime_source(".github/workflows/build-windows.yml"
 require_runtime_source(".github/workflows/build-windows.yml"
   [=[-DPERL_EXECUTABLE="$msys_perl"]=])
 require_runtime_source(".github/workflows/build-windows.yml"
+  "msys_git=$(cygpath -m /usr/bin/git.exe)")
+require_runtime_source(".github/workflows/build-windows.yml"
+  [=[-DGIT_EXECUTABLE="$msys_git"]=])
+require_runtime_source(".github/workflows/build-windows.yml"
+  "MSYS: winsymlinks:nativestrict")
+require_runtime_source("tests/agent_knowledge_validator/test_validator.t"
+  "my $observed = -l $link ? readlink($link) : undef;")
+require_runtime_source(".github/workflows/build-windows.yml"
   "build-output/startup-images")
 require_runtime_source("tools/CMakeLists.txt"
   [=[COMMAND "${PERL_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/i2pdctl.t"]=])

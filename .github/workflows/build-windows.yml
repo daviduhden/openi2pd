@@ -34,6 +34,9 @@ jobs:
     name: Windows MSYS2 Clang64 build and tests
     runs-on: windows-2022
     timeout-minutes: 45
+    env:
+      # Deep-copy emulation is not a symlink containment test.
+      MSYS: winsymlinks:nativestrict
     defaults:
       run:
         shell: msys2 {0}
@@ -47,6 +50,7 @@ jobs:
           update: true
           install: >-
             perl
+            git
             mingw-w64-clang-x86_64-clang
             mingw-w64-clang-x86_64-binutils
             mingw-w64-clang-x86_64-cmake
@@ -61,11 +65,17 @@ jobs:
           # Select the MSYS host interpreter for the full UTF-8 contract.
           test -x /usr/bin/perl.exe
           msys_perl=$(cygpath -m /usr/bin/perl.exe)
+          # Match Git to Perl's logical filename and symlink semantics.
+          test -x /usr/bin/git.exe
+          msys_git=$(cygpath -m /usr/bin/git.exe)
+          command -v git
+          git --version
           cmake -S build -B build-output -G Ninja \
             -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ \
             -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON \
             -DI2PD_BUILD_TUI=ON -DI2PD_TUI_REQUIRED=ON -DWITH_HARDENING=ON \
-            -DI2PD_REQUIRE_PERL=ON -DPERL_EXECUTABLE="$msys_perl"
+            -DI2PD_REQUIRE_PERL=ON -DPERL_EXECUTABLE="$msys_perl" \
+            -DGIT_EXECUTABLE="$msys_git"
           cmake --build build-output --parallel 2
       # Cheap and bounded, and intentionally before CTest: the PE subsystem
       # and the import table separate a loader-level block (a missing DLL can

@@ -43,6 +43,15 @@ sub create_fixture_symlink {
     my ($target, $link) = @_;
     my $linked = eval { symlink $target, $link };
     my $reason = $@ || "$!";
+    # MSYS can report success after copying instead of linking. The
+    # existing capability skip requires a real, readable symlink.
+    if ($linked) {
+        my $observed = -l $link ? readlink($link) : undef;
+        if ( !defined $observed ) {
+            $linked = 0;
+            $reason = 'host did not create a readable symbolic link';
+        }
+    }
     die "create symlink fixture: $reason\n" if !$linked && $^O ne 'MSWin32';
     $reason =~ s/\s+/ /g;
     return ($linked, $reason);

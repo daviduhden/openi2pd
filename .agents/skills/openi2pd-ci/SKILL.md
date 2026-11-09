@@ -206,6 +206,11 @@ workflow, run `gh`, build or test.
 
 ## Known issues and decisions
 
+- Pair MSYS Perl with MSYS Git: native Git sees physical special-filename
+  mappings rather than the POSIX names used by Perl. Record both selected
+  executables and pass the Git cache path explicitly. Strict native-link
+  mode prevents deepcopy emulation from masquerading as symlink coverage.
+
 - CLANG64 host tooling explicitly selects MSYS /usr/bin/perl.exe. An
   incidental native Strawberry Perl has different Unicode filesystem
   semantics. Keep native MSWin32 coverage distinct from this MSYS lane.
