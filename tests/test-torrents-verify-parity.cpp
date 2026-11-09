@@ -57,6 +57,17 @@ struct TorrentPeerIDTestAccess
 
 struct PeerExtendedHandshakeTestAccess
 {
+	static void RefreshInterest (PeerConnection & peer, size_t requests,
+		bool advertised)
+	{
+		peer.m_IsEstablished = true;
+		peer.m_RemoteBitfield.resize (peer.m_Torrent->GetNumPieces ());
+		peer.m_RemoteBitfield.reset ();
+		if (advertised) peer.m_RemoteBitfield.set (0);
+		peer.m_NumRequests = requests;
+		peer.RefreshInterest ();
+	}
+
 	static void Parse (PeerConnection & peer, const std::string & encoded)
 	{
 		std::string frame (1, '\0');
@@ -644,6 +655,31 @@ static void TestExtendedHandshakeFieldTypes ()
 	assert (PeerExtendedHandshakeTestAccess::Disabled (disabled));
 }
 
+static void TestInterestTracksSelectionAndActiveRequests ()
+{
+	auto torrent = MakeVerifiedTorrent ("peer-interest", false).torrent;
+	torrent->SetStopped (false);
+	PeerConnection peer (nullptr, nullptr, torrent);
+	PeerExtendedHandshakeTestAccess::RefreshInterest (peer, 0, true);
+	assert (peer.IsInterested ());
+	// Withdrawing selection must retain responses already in flight.
+	assert (torrent->SetFilePriority (0, 0));
+	PeerExtendedHandshakeTestAccess::RefreshInterest (peer, 1, true);
+	assert (peer.IsInterested ());
+	PeerExtendedHandshakeTestAccess::RefreshInterest (peer, 0, true);
+	assert (!peer.IsInterested ());
+	assert (torrent->SetFilePriority (0, 1));
+	PeerExtendedHandshakeTestAccess::RefreshInterest (peer, 0, true);
+	assert (peer.IsInterested ());
+	// Availability can disappear without a file-selection mutation.
+	PeerExtendedHandshakeTestAccess::RefreshInterest (peer, 0, false);
+	assert (!peer.IsInterested ());
+	torrent->SetStopped (true);
+	PeerExtendedHandshakeTestAccess::RefreshInterest (peer, 1, true);
+	assert (!peer.IsInterested ());
+	PeerExtendedHandshakeTestAccess::RefreshInterest (peer, 0, false);
+}
+
 static void TestCompactTrackerFraming ()
 {
 	for (const size_t length : { size_t { 0 }, size_t { 1 }, size_t { 31 },
@@ -821,6 +857,7 @@ int main ()
 	TestPerTorrentPeerID ();
 	TestPeerIDProviderFailure ();
 	TestExtendedHandshakeFieldTypes ();
+	TestInterestTracksSelectionAndActiveRequests ();
 	TestTrackerKnownFieldTypes ();
 	TestCompactTrackerFraming ();
 	TestDatagramTrackerCountBounds ();

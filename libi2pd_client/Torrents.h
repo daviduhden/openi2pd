@@ -1739,6 +1739,9 @@ namespace torrents
 		size_t FillRequestMsg (uint8_t * buf, uint32_t index, uint32_t offset, uint32_t len);
 		void SendInterestedMsg ();
 		void SendNotinterestedMsg ();
+		// Service thread: active requests retain interest until retirement.
+		// Reconcile availability without starting another scheduling pass.
+		void RefreshInterest ();
 		void SendUnchokeMsg ();
 		void SendChokeMsg ();
 		void HandleChokeMsg ();

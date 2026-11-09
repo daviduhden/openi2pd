@@ -4515,20 +4515,19 @@ namespace torrents
 				// release below, so a peer that keeps sending keep-alives (or
 				// other blocks) can no longer pin a stalled block forever.
 				ReleaseExpiredOutgoingRequests (ts);
+				// Other peers can finish our last wanted piece while this
+				// connection is choked or still exchanges keep-alives.
+				RefreshInterest ();
 				if (ts > m_LastSendTime + PEER_KEEP_SEND_INTERVAL)
 				{
 					ReleaseOutgoingRequests (); // pending requests are invalid now
+					RefreshInterest ();
 					bool requested = false;
-					if (!m_Torrent->IsComplete () && m_Torrent->HasIncompletePieces (m_RemoteBitfield))
+					if (m_IsInterested && !m_Torrent->IsComplete ())
 					{
 						// try to request if we still have blocks to request
 						if (!m_IsChoked)
 							requested = RequestNextBlocks ();
-						else if (!m_IsInterested)
-						{
-							m_IsInterested = true;
-							SendInterestedMsg ();
-						}
 					}
 					if (!requested)
 					{
@@ -4841,20 +4840,9 @@ namespace torrents
 		if (index < m_RemoteBitfield.size () && m_Torrent && index < m_Torrent->GetNumPieces ())
 		{
 			m_RemoteBitfield.set (index);
-			if (!m_Torrent->IsComplete ())
-			{
-				Piece & piece = m_Torrent->GetPiece (index);
-				if (!piece.IsComplete ())
-				{
-					// new piece
-					if (!m_IsInterested)
-					{
-						m_IsInterested = true;
-						SendInterestedMsg ();
-					}
-					if (m_LastRequestedPieceIndex < 0 && !m_IsChoked) RequestNextBlocks ();
-				}
-			}
+			RefreshInterest ();
+			if (m_IsInterested && m_LastRequestedPieceIndex < 0 && !m_IsChoked)
+				RequestNextBlocks ();
 		}
 	}
 
@@ -4877,7 +4865,6 @@ namespace torrents
 		// the only signal that lets later `.all()` checks mean "remote is a
 		// seed".
 		m_RemoteBitfieldReceived = true;
-		m_IsInterested = false;
 		size_t numPieces = m_Torrent->GetNumPieces ();
 		m_RemoteBitfield.resize (numPieces);
 		size_t idx = 0;
@@ -4890,16 +4877,13 @@ namespace torrents
 				if (buf[i] & bit)
 				{
 					m_RemoteBitfield.set (idx);
-					if (!m_IsInterested && !m_Torrent->GetPiece (static_cast<int> (idx)).IsComplete ())
-						m_IsInterested = true;
 				}
 				bit >>= 1;
 				idx++;
 			}
 		}
-		if (m_IsInterested)
-			SendInterestedMsg ();
-		else if (IsRemoteSeed ()) // remote advertised every piece
+		RefreshInterest ();
+		if (!m_IsInterested && IsRemoteSeed ()) // remote advertised every piece
 			Terminate (); // we don't need this connection
 	}
 
@@ -4919,12 +4903,8 @@ namespace torrents
 		m_RemoteBitfield.resize (numPieces);
 		m_RemoteBitfield.set ();
 		m_RemoteBitfieldReceived = true;
-		if (!m_Torrent->IsComplete ())
-		{
-			m_IsInterested = true;
-			SendInterestedMsg ();
-		}
-		else
+		RefreshInterest ();
+		if (!m_IsInterested)
 			Terminate (); // we don't need this connection
 	}
 
@@ -5751,7 +5731,17 @@ namespace torrents
 	void PeerConnection::RefreshFileSelection ()
 	{
 		if (!m_IsEstablished || !m_Torrent) return;
-		const bool interested = !m_Torrent->IsStopped () && m_Torrent->HasIncompletePieces (m_RemoteBitfield);
+		RefreshInterest ();
+		if (m_IsInterested && !m_IsChoked) RequestNextBlocks ();
+	}
+
+	void PeerConnection::RefreshInterest ()
+	{
+		if (!m_IsEstablished || !m_Torrent) return;
+		// A selection change must not withdraw interest in a response we
+		// already requested. Stop/removal still revokes download authority.
+		const bool interested = !m_Torrent->IsStopped () && !m_Torrent->IsRemoved ()
+			&& (m_NumRequests || m_Torrent->HasIncompletePieces (m_RemoteBitfield));
 		if (interested != m_IsInterested)
 		{
 			m_IsInterested = interested;
@@ -5760,7 +5750,6 @@ namespace torrents
 			else
 				SendNotinterestedMsg ();
 		}
-		if (interested && !m_IsChoked) RequestNextBlocks ();
 	}
 
 	void PeerConnection::RefreshComments ()
@@ -6065,14 +6054,8 @@ namespace torrents
 		if (m_LastRequestedPieceIndex >= 0)
 		{
 			m_LastRequestedPieceIndex = -1; // no request
-			// Keep interest when this peer still advertises wanted pieces;
-			// the block may be temporarily in flight on another connection.
-			if (m_IsInterested && !m_Torrent->HasIncompletePieces (m_RemoteBitfield))
-			{
-				m_IsInterested = false;
-				SendNotinterestedMsg ();
-			}
 		}
+		RefreshInterest ();
 		return { };
 	}
 

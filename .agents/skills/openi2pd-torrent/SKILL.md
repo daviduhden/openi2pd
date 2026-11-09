@@ -116,6 +116,11 @@ Do not let them edit, build or run tests.
 
 ## Known issues and decisions
 
+- Reconcile peer interest independently of scheduling and keep-alive
+  traffic. Active requests retain interest until retirement; stop/removal
+  overrides that authority. HAVE, BITFIELD, selection and periodic paths
+  must agree, including pieces completed on another connection.
+
 - Initial discovery belongs to the service-owned durability transaction.
   Wait for the current instance, loaded pause policy, latest successful
   state write, prepared files and completed resume verification. Magnets
