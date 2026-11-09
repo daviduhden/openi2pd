@@ -2040,3 +2040,43 @@ passes, but the optional x64 emulator job did not run and its triplet fix
 remains Pending CI compilation. TF-091's Debian smoke check passes. No result
 above validates subsequent local source corrections. The full supported
 matrix remains failing, and explicit OpenSSL 4.0.x coverage remains pending.
+
+## CE-088: removed Asio timer cancellation overload
+
+Observed at SHA `70f66977f8bbd446e96854d7cb81e04ef8e85ff6` in
+[OpenSSL 3 run 42512612136](https://github.com/daviduhden/openi2pd/actions/runs/42512612136),
+Clang/GCC jobs 128828747199/128828747419, and Linux, OpenSSL 4,
+Android, OpenBSD and Validation siblings. Boost 1.92 reports
+`I2PService.cpp:167: too many arguments to function call, expected 0, have 1`
+for timer `cancel(error_code&)`.
+
+Cause: readiness teardown used a removed timer API. The local correction
+uses `cancel()` after retiring callback authority, containing only
+`boost::system::system_error` at the teardown boundary. The fixture uses the
+same portable API and lets failures surface. Global timer searches found no
+other equivalent overloads; socket/acceptor error-code overloads remain
+valid and unchanged. Existing readiness lifecycle regressions and the source
+contract pin this seam. Implemented / static; Pending CI compilation and
+Pending CI tests. Downstream skipped targets are not validated.
+
+## CE-089: libstdc++ timed mutex clock-lock instantiation under TSan
+
+Observed at the same SHA in
+[Validation 42512621915](https://github.com/daviduhden/openi2pd/actions/runs/42512621915)
+(job 128828775722) and
+[focused TSan 42512623978](https://github.com/daviduhden/openi2pd/actions/runs/42512623978)
+(job 128828782006). Clang with GCC 14 libstdc++ reports
+`mutex:205: no member named '_M_clocklock' in 'std::timed_mutex'`, instantiated
+by `Supervisor.cpp:255` through `unique_lock::try_lock_until`.
+
+The steady-clock template selects an unavailable clock-lock member under
+this toolchain's TSan configuration. Repository-wide inspection found one
+production timed-mutex instance. The local `DeadlineMutex` uses plain mutex
+state and predicate condition-variable waits, preserving the existing
+absolute transaction deadline. Protected broker work never holds its state
+mutex. GCC 14's condition-variable clock-wait branch has a distinct
+capability guard and fallback; no system header or feature macro changed.
+Prepared `test-deadline-mutex` covers refusal, immediate admission, wakeup
+and concurrent exclusion, with sanitizer labels and selected MSVC coverage.
+Implemented / static; Pending CI compilation and Pending CI tests. Neither
+failed TSan compilation is sanitizer runtime evidence.

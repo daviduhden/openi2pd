@@ -480,3 +480,12 @@ an empty-output GUI version probe after 12 seconds. These remain separate,
 unresolved findings; increasing budgets or skipping fixtures is not a fix.
 Optional Perl quality job 128768654939 and Android UI job 128768637533 skip,
 so no new Critic or device-validation result is available.
+
+## 70f66977 blocked regression execution
+
+CE-088 blocks the newly registered readiness and downstream native tests;
+CE-089 independently blocks both TSan builds. Android unit/Lint/device steps
+were not reached. Historical runtime families and optional-lane gaps remain
+open. Packaging 42512607518 passes its five distinct jobs, and documentation
+and agent-knowledge siblings pass at the executed SHA. Those results do not
+validate local source changes or the later ab021821 launcher-only commit.

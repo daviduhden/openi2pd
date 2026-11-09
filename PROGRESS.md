@@ -7607,3 +7607,48 @@ or push.
   validation reports zero errors; AK004 relevance was reviewed manually.
   These inspections are not compiler, JVM, CTest, sanitizer or live-network
   execution. No local builds/tests, commits, push or new CI claim.
+
+## Continuation after 70f66977: compile blockers and state coherence
+
+- Recovered ten new exact-run logs, job metadata and artifact inventories;
+  history now has 342 runs on 61 SHAs (217 failures, 59 successes and 66
+  cancellations). New evidence lives outside the tree in /var/tmp. The
+  executed SHA is 70f66977; HEAD ab021821 only changes Gradle launcher
+  notices and those files were left untouched.
+- Real delegated reconnaissance covered CI/history/build/tools/packaging,
+  native/crypto/protocol/upstream and Android/torrent/TUI seams. The upstream
+  openssl tip is still the recorded 9702ba83. No speculative wire change.
+- CONT-050 / CE-088: replaced removed Asio timer cancellation overload in
+  readiness teardown and its fixture; socket/acceptor overloads remain valid.
+  Authority retirement precedes cancellation and its narrow failure handler.
+- CONT-050 / CE-089: replaced supervisor timed_mutex with DeadlineMutex,
+  retaining the absolute steady deadline and short admission-state lock.
+  Prepared refusal, wakeup and concurrent-exclusion regression, common CTest
+  labels and selected MSVC build/PageHeap/artifact integration.
+- CONT-051: peer interest now reconciles periodic, scheduler, selection and
+  HAVE/BITFIELD paths. Pending requests retain interest until retirement;
+  stopped/removed torrents override it. Selection/request cases extend the
+  existing verification parity target.
+- CONT-052: Android DisplayText centralizes presentation caps without cutting
+  supplementary Unicode pairs. Snapshot/log/error/torrent consumers keep
+  their previous limits and null handling; protocol validators are unchanged.
+  JVM tests cover cutoff boundaries, BMP text, empty/null and LogEntry limits.
+- All source corrections are Implemented / static, Pending CI compilation
+  and Pending CI tests. New runs stopped before affected runtime tests;
+  historical heap/IPC/Windows/Lint and optional coverage gaps remain open.
+  Packaging passed five jobs at 70f66977; no complete clean matrix claim.
+- Agent knowledge review updates AGENTS and build/CI/C++23/privsep/torrent/
+  Android/i18n skills with reusable API, clock and presentation invariants.
+  No local compilation, configuration, tests, commits or push.
+- Compile-free checks passed: diff whitespace, runtime source contracts,
+  build-system contracts, language modernization, agent-skill structure,
+  native/Android locale parity and workflow policy (10 workflows, 3 actions).
+  Agent knowledge validator passes with zero errors; AK004 relevance was
+  reviewed manually against each changed seam. These checks are source
+  inspections, not compilation, JVM/CTest or sanitizer execution.
+- Independent final integration review caught and corrected the selected
+  MSVC CTest filter omission for test-deadline-mutex; build, execution,
+  PageHeap and artifact lists now agree. Workflow static policy passed again.
+  New untracked sources were also inspected for whitespace. Remaining work
+  includes full service handler admission, worker shutdown phase budgets,
+  explicit OpenSSL 4.0 coverage and the historical runtime/platform findings.

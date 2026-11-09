@@ -10,7 +10,20 @@ Documents project documentation.
 
 # Master TODO
 
-Latest retrospective: 332 retained runs, evidence for 330, on 60 SHAs.
+Latest retrospective: 342 retained runs on 61 SHAs. The ten new runs at
+70f66977 expose CE-088 (Asio timer overload removal) and CE-089 (libstdc++
+timed mutex under TSan). Corrections are Implemented / static, Pending CI
+compilation and Pending CI tests; affected runtime targets did not execute.
+Packaging and agent knowledge passed at that SHA, not at the local revision.
+
+- CONT-050: portable supervisor admission and Asio timer teardown:
+  Implemented / static; Pending CI compilation / Pending CI tests.
+- CONT-051: coherent peer interest across availability, selection and active
+  requests: Implemented / static; Pending CI tests.
+- CONT-052: shared Android surrogate-safe presentation bounds:
+  Implemented / static; Pending CI compilation / Pending CI tests.
+
+Previous retrospective: 332 retained runs, evidence for 330, on 60 SHAs.
 The executed 6390fdea matrix builds past CE-085/086 and validates named
 ownership, Tag, tracker and crypto regressions; Debian TF-091 also passes.
 RT-063 IPC write admission and TF-093/094 Perl discovery/Windows harvesting

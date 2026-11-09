@@ -15,6 +15,12 @@ requirements and current code; `TODO.md` is the authoritative task list.
 
 ## Current baseline
 
+The 70f66977 retrospective now covers 342 runs on 61 SHAs. CE-088/089
+block the native runtime matrix before execution. Portable timer teardown
+and monotonic supervisor admission are Implemented / static, Pending CI
+compilation and Pending CI tests. Torrent interest reconciliation adds a
+prepared regression; prior runtime and platform gaps remain open.
+
 The 0b7f0ab4 retrospective covers 322 retained runs with logs for 320.
 CE-085/086/087 and TF-091 corrections are Implemented / static; common/native
 and explicit mutex ownership tests, Android overlay guards, document-smoke

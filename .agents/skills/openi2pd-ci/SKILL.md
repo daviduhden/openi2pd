@@ -206,6 +206,11 @@ workflow, run `gh`, build or test.
 
 ## Known issues and decisions
 
+- A toolchain template failure before executable creation leaves earlier
+  runtime findings unresolved. Record the instantiated clock/API and group
+  repeated targets by source cause; inspect successful sibling steps and
+  exact artifacts before claiming warning or sanitizer coverage.
+
 - Retained workflow names are not stable identities: renamed workflows can
   contribute several names to one workflow_id. Count both explicitly when
   refreshing historical inventories. A skipped optional quality/device job

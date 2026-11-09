@@ -339,3 +339,17 @@ Historical workflow identity uses workflow_id, not display name. The current
 exact source revisions, job IDs and optional-lane skips in any clean-build
 claim; an arm64 Android success does not validate the x64 device dependency
 triplet or the Java 25 UI suite.
+
+## Timer APIs and clock-specific template branches (CE-088/089)
+
+Timer cancellation overload availability is independent of socket APIs.
+Retire callback authority before invoking throwing cancellation and contain
+only the documented system error at nonthrowing teardown boundaries. Search
+fixtures as well as production code.
+
+A relative timed-mutex wait can instantiate the same steady-clock backend as
+an absolute wait. Inspect the standard-library branch before substituting
+call spellings; wall-clock conversion weakens monotonic transaction bounds.
+The supervisor now uses a condition-variable admission gate with a short
+state lock and predicate waits. Its prepared concurrency regression must run
+on the exact failing TSan toolchain before closing CE-089.

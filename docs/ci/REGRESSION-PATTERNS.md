@@ -523,3 +523,14 @@ false as well as destruction after deferred work drains.
 - Initial torrent discovery needs current-generation durable state, not merely
   successful insertion. Coalesce two immutable writes and prove the earlier
   acknowledgement cannot release the later generation's network authority.
+
+## Admission and presentation-state regression seams
+
+CE-089's portable gate regression checks held refusal, immediate admission,
+release handoff and four-thread exclusion without scheduling sleeps. Keep
+absolute steady deadlines through admission and the subsequent transaction.
+Torrent interest tests must distinguish wanted availability from active
+requests: selection withdrawal cannot invalidate responses in flight, while
+stop/removal revokes authority. Exercise periodic and HAVE/BITFIELD consumers
+as well as explicit selection changes; successful compilation alone does not
+validate these state transitions.

@@ -704,3 +704,14 @@ autopkgtest still emits deprecated `--force-yes`. Repository search found
 no maintained invocation with that flag. MSYS2's package updater warns to
 terminate other MSYS2 programs. Both are tooling/runner messages, not project
 compiler warnings. Existing external and capability findings remain open.
+
+## 70f66977 retrospective: blocked warning coverage
+
+Ten additional runs bring the accessible inventory to 342 runs on 61 SHAs.
+Successful sibling steps and full logs were inspected, including packaging,
+documentation and agent knowledge. No new own-code compiler warning family
+was identified in those logs. CE-088/089 prevent later native coverage;
+this is not evidence of a warning-free matrix. Packaging run 42512607518
+passes five jobs, with empty Lintian output; external autopkgtest
+`--force-yes` deprecation remains historical debt. Earlier Android Lint and
+optional quality-lane findings remain open.

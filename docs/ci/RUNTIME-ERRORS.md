@@ -1445,3 +1445,15 @@ No later remote run validates the following local changes.
 All four are Implemented / static, Pending CI compilation and Pending CI tests.
 The upstream provenance and source comparisons are in upstream-sync.md and
 INTEROPERABILITY.md; they do not establish live Java interoperability.
+
+## 70f66977 runtime evidence boundary
+
+Validation 42512621915 and focused TSan 42512623978 stop during compilation
+(CE-088/089). Uploaded diagnostics contain no built TSan executables; the
+OpenBSD artifact likewise ends at configure/build. These runs neither close
+nor reproduce earlier IPC, heap, worker capability or shutdown findings.
+Local torrent interest reconciliation is a preventive source finding:
+periodic and peer-availability paths previously retained stale interest or
+asserted interest despite skipped files. Active requests now retain interest
+until retired, with stop/removal overriding it. A focused selection/request
+regression is prepared in test-torrents-verify-parity; Pending CI tests.
