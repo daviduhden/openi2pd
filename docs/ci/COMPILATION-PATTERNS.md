@@ -370,3 +370,13 @@ it for every TAP file. Distinguish native Win32 ACP paths from MSYS UTF-8
 paths and from Git's UTF-8 output; repeated decoding does not fix a wrong
 filesystem/process boundary. Keep complete Unicode fixtures and exact
 interpreter/cache evidence.
+
+## Schema-aware source checkers and comment recognition
+
+A YAML package list is data; a run scalar is executable source. Keep masking
+restricted to known action input schemas and direct indentation, preserve
+line numbers, and prepare nested-map and inline-interpreter negative controls.
+Do not fix a checker false positive by disguising the package or suppressing
+its diagnostic. Javadoc-like prose inside ordinary comments is a separate
+observed Lint problem: opener-only correction preserves executable behavior,
+while a demotion guard prevents silent coverage loss.

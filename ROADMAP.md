@@ -15,6 +15,15 @@ requirements and current code; `TODO.md` is the authoritative task list.
 
 ## Current baseline
 
+At d63b6b90, RT-071's native timer regressions pass while the shared YAML
+checker false positive fails multiple suites. History reaches 372 runs on
+64 SHAs. CONT-057/058/059 correct targeted Java documentation, host checker
+semantics/tool closure and diagnostic confidentiality. These local changes
+are Implemented / static, Pending CI compilation / Pending CI tests. Full
+matrix cleanliness still requires Windows GUI attribution, remaining host
+coverage, fourteen earlier Lint warnings, native documentation coverage,
+CONC-028 timer authority and PRIVSEP-017 deferred owner retirement.
+
 The 80a487d5 retrospective reaches 362 runs on 63 SHAs. Native sanitizer,
 OpenSSL, OpenBSD and selected MSVC regressions pass; Windows MSYS2 Unicode
 and GUI-version failures remain. Local CONT-055/056 add idle-timer lifetime

@@ -105,6 +105,11 @@ report that limitation; do not substitute local execution. Ask for:
 
 ## Known issues and decisions
 
+- Stop's retained PID/pidfd guarantee ends with the owning object. Audit
+  failed-reap move assignment and destruction separately: PRIVSEP-017's
+  deferred-retirement registry is still required before discarded owners
+  can preserve reap authority. Passing phase-budget tests do not cover it.
+
 - Capability fixtures emit a fixed non-secret reason through
   tests/capability-skip.h before return code 77. Distinguish root runners,
   missing account data, absent kernel controls and unimplemented exec-free

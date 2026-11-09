@@ -1527,3 +1527,44 @@ Resume runs after unlock to avoid reacquiring the same mutex recursively.
 A fresh-activity/rearmed-authority regression and source-order guard are
 prepared. Broader concurrent Resume/key-replacement and global handler
 admission remain separate lifecycle review work, not guarantees of this fix.
+
+## RT-071 validation at d63b6b90
+
+Idle/readiness tests, including owner/executor teardown, extreme deadlines
+and cross-thread idle access, pass all three executed sanitizer jobs in
+Validation 42667615188 and the OpenSSL suites. The full jobs fail TF-098,
+not these regressions. This validates the executed timer slice, not the
+separate global handler-admission or concurrent Resume architecture.
+
+## RT-072: parser and remote-error operands reach diagnostics (static)
+
+Source review traced complete failed destinations, unknown first tokens,
+ignored SAM parameters, rejected numeric values and UDP header buffers into
+LogPrint in I2PService, SAM and BOB. Equivalent unrecognized RPC methods,
+DHT query names and BEP 15 error payloads were also logged. Expected public
+schemas do not sanitize arbitrary rejected input; no real user secret or
+exploit observation is asserted.
+
+Local corrections log fixed operation/outcome summaries and retain validated
+length/numeric metadata. BEP 15 transaction-port validation precedes the
+outcome log; existing bounded tracker reports and protocol replies remain
+unchanged. A credential-marker regression asserts a live logger sentinel,
+one fixed outcome, no operand markers and exactly one nullptr completion.
+Multiline negative source guards cover all affected sinks. Implemented /
+static; Pending CI compilation / Pending CI tests.
+
+## RT-073: tracker error dispatch checks expiry before locking (static)
+
+The old expired check followed by a fresh lock()->ReportTrackerFailure does
+not itself grant lifetime; lock may return empty. The local dispatch retains
+one strong owner before use. Repository-wide variants in SSU2 already check
+the locked pointer; cleanup-only expired checks do not dereference values.
+A compile-free source contract pins the retained owner. Implemented / static;
+Pending CI tests. No CI crash is attributed to this preventive finding.
+
+Previously tracked CONC-028 still includes UDP cleanup/statistics/keepalive
+raw-this timer callbacks beyond ACKs; canceled-but-queued success needs an
+owner/generation architecture. PRIVSEP-017 likewise remains open: retained
+unreaped PID/pidfd ownership can be lost when ChildProcess is destroyed or
+move-assigned after failed Stop. RT-069 only guarantees retention while the
+same owner survives; phase-budget passes do not validate retirement.

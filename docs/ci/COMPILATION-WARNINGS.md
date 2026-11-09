@@ -753,3 +753,28 @@ Doxyfile disables undocumented-member warnings. Their pass can therefore
 coexist with lost API coverage. No generator result at this SHA establishes
 coverage. The user's existing style change is preserved; resolving the
 coverage policy and checking generated API output remain Pending CI tests.
+
+## d63b6b90: CW-030 becomes an observed Android Lint family
+
+Inventory: 372 retained runs, 64 SHAs, fifteen workflow IDs/eighteen names;
+229 failures, 77 successes, 66 cancellations. All ten latest full/failed
+logs, metadata and artifact inventories were retrieved, including successful
+siblings. No fresh own-code native compiler-warning or sanitizer signature
+was identified in the executed configurations.
+
+[Android 42667603361](https://github.com/daviduhden/openi2pd/actions/runs/42667603361),
+job 129335343363, succeeds but both debug/release Lint XML report 141
+warnings: 127 WrongCommentType, twelve VectorPath and two
+ChromeOsAbiSupport. The 127 findings are ordinary comments containing
+Javadoc links/block tags, across forty Java files. This is Android Lint,
+not Checkstyle. Local correction restores only those 127 openers; all
+Java prose, license headers and executable statements are preserved.
+The source checker now rejects hidden tags on non-private APIs, with
+positive legal/private/code-only comment controls. Implemented / static;
+Pending CI tests and doclint. The fourteen other warnings remain open.
+
+Source-documentation job 129335384749 passes, but does not establish native
+API coverage after opener demotion. CW-030's C++ coverage remains separate
+and unresolved; no broad rollback of the existing style change was made.
+Android device 129335345378 skips. Packaging passes five jobs; external
+updater/autopkgtest debt and optional analyzer coverage retain their scope.

@@ -10,14 +10,15 @@ Documents project documentation.
 
 # Master TODO
 
-Latest retrospective: 362 retained runs on 63 SHAs. At 80a487d5 nine
-workflows succeed; Windows MSYS2 retains Unicode and GUI-version failures.
-TF-095 (core-module allowlist) and TF-096 (logger fixture) are Validated by
-CI in executed lanes. TF-097 host-Perl selection and RT-071 idle lifetime
-corrections are Implemented / static, Pending CI compilation / Pending CI
-tests. Fourteen Android Lint warnings, native MSWin32 Unicode, GUI startup,
-capability/device skips and CW-030 documentation coverage remain open.
-HEAD fb974bbe and subsequent local changes have no new CI evidence.
+Latest retrospective: 372 retained runs on 64 SHAs. At d63b6b90 native
+regressions pass, but TF-098's YAML package false positive fails multiple
+full suites and knowledge validation. RT-071's executed idle slice is
+Validated by CI. Local TF-097/098/099/100 tooling, CW-030 Java comment and
+RT-072/073 confidentiality/lifetime corrections are Implemented / static,
+Pending CI compilation / Pending CI tests. GUI startup, native MSWin32
+Unicode, fourteen earlier Lint warnings, optional lanes, C++ documentation
+coverage and full worker/handler retirement remain open. Current local
+changes have no remote validation.
 
 - CONT-050: portable supervisor admission and Asio timer teardown:
   Validated by CI in the executed 9f2934f8 lanes; no clean-matrix claim.
@@ -32,9 +33,17 @@ HEAD fb974bbe and subsequent local changes have no new CI evidence.
 - CONT-054: upstream torrent direct samples at 2500 ms, unit-safe scheduler
   assertions: Validated by CI in executed 80a487d5 suites.
 - CONT-055: idle timer weak ownership, wait identity and bounded expiry:
-  Implemented / static; Pending CI compilation / Pending CI tests.
+  Validated by CI in the executed d63b6b90 native suites.
 - CONT-056: explicit MSYS Perl, exact GUI image retention and capability
-  skip reasons: Implemented / static; Pending CI tests. GUI fix remains open.
+  skip reasons: Validated by CI for those boundaries; deeper MSYS tests
+  fail and the GUI fix remains open.
+- CONT-057: 127 targeted Javadoc opener corrections and demotion guard:
+  Implemented / static; Pending CI tests. Native API coverage remains open.
+- CONT-058: schema-scoped shell checker, matching MSYS Git/symlinks,
+  POSIX wrappers and physical doc-link containment: Implemented / static;
+  Pending CI tests.
+- CONT-059: parser/remote diagnostic confidentiality and retained tracker
+  owner: Implemented / static; Pending CI compilation / Pending CI tests.
 
 Previous retrospective: 332 retained runs, evidence for 330, on 60 SHAs.
 The executed 6390fdea matrix builds past CE-085/086 and validates named

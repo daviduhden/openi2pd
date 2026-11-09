@@ -561,3 +561,16 @@ non-secret reason. Returning 77 must not be confused with subsequent worker
 handshake success. A console control with a smaller link graph cannot rule
 out static initializers or DLL faults in the GUI router; retain the exact
 image/dependency closure before making that inference.
+
+## Host emulation, physical containment and confidential diagnostics
+
+Host interpreter, Git and executable-wrapper semantics form one closure.
+Test real filename/symlink behavior; symlink success without -l/readlink can
+be deepcopy emulation. Physical containment and original-path existence are
+separate checks: normalizing missing/../existing must not validate it.
+
+Negative confidentiality controls require a positive logger sentinel and
+fixed-outcome assertion, so disabled logging cannot pass them vacuously.
+Unknown tokens and malformed numeric operands are arbitrary bytes, not safe
+closed labels. Inspect multiline sinks and remote error payloads globally;
+retain a weak owner once rather than checking expired before lock use.

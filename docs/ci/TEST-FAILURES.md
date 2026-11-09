@@ -564,3 +564,69 @@ router libraries and cannot exclude router loader/static-initializer issues.
 The exact artifact lacked the GUI image and matching DLLs. The prepared
 workflow now retains them with PE/import/runtime resolution and CMake cache
 before probing. This improves attribution; it is not a GUI startup fix.
+
+## TF-098: YAML package metadata misclassified as interpreter stdin
+
+Observed at `d63b6b9075e510d469cff1aab2dcdd6e664ea4d5` in
+[knowledge 42667583150](https://github.com/daviduhden/openi2pd/actions/runs/42667583150),
+job 129335273970, and OpenBSD, OpenSSL 3/4, Windows MSYS2 and all three
+Validation sanitizer jobs. Diagnostic: build-windows.yml:49, interpreter
+source from standard input is forbidden. The line is the literal package
+name perl inside setup-msys2's install scalar, not executed code.
+
+The local scanner masks only literal package lists in direct action inputs,
+preserving line numbers. It continues checking executable run blocks,
+unknown actions, nested maps and executable-looking package operands.
+Accepted/rejected YAML fixtures pin these boundaries and secret-free
+source diagnostics. No workflow workaround or warning suppression.
+Implemented / static; Pending CI tests.
+
+## TF-099: Cygwin executable suffix hides an earlier POSIX TLS shim
+
+Windows MSYS2 job 129335208335 in
+[42667563721](https://github.com/daviduhden/openi2pd/actions/runs/42667563721)
+now uses MSYS Perl 5.42.3, exposing the i2pdctl TLS fallback fixture. The
+runtime reports Config::_exe as .exe, while the intended fake OpenSSL is
+an extensionless POSIX executable. The resolver skipped it and selected
+real system OpenSSL, causing connection errors rather than parser results.
+
+The local resolver tries the native image first within each absolute PATH
+directory, then the extensionless POSIX wrapper. Native MSWin32 retains its
+image-only behavior. Existing forty fallback controls remain enabled and
+pin the intentionally extensionless shim. No shell or dependency added.
+Implemented / static; Pending CI tests.
+
+## TF-097 continuation: matching MSYS Git and genuine symlinks
+
+The original Unicode repository case now passes, but newline/metacharacter
+path and symlink cases expose mismatched host tools. Exact package inventory
+has MSYS Perl but no MSYS Git. Native Git sees physical filename mappings
+where Cygwin/MSYS exposes logical POSIX names. The local workflow explicitly
+installs MSYS Git, pins its native CMake path and records bare-git resolution.
+This is host-tool closure, not a native MSWin32 Unicode fix. See the primary
+[MSYS Git guidance](https://www.msys2.org/docs/git/) and
+[Cygwin filename mapping](https://cygwin.org/cygwin-ug-net/using-specialnames.html).
+
+Default MSYS symlink deepcopy can report creation success without a link.
+The local job requests strict native symlinks; the fixture verifies -l and
+readlink before relying on it, retaining its prior platform failure/skip
+boundary. No successful copy is treated as containment coverage. See
+[MSYS symlink modes](https://www.msys2.org/docs/symlinks/).
+Implemented / static; Pending CI tests.
+
+## TF-100: missing-target doc links use an unsafe lexical projection
+
+The same MSYS2 maintenance-checkers output rejects an outside missing link
+but calls it merely missing. check-doc-links fell back from abs_path failure
+to canonpath, which deliberately preserves parent components. The local
+resolver walks the longest existing physical prefix, then normalizes missing
+suffixes, following symlinks before parents and bounding link expansion.
+Original-path existence remains mandatory: missing/../existing and regular
+file/.. paths cannot become valid links through normalization. Added nested
+missing and real-symlink escape fixtures. Global Perl search found no other
+abs_path-to-canonpath failure fallback. Implemented / static; Pending CI tests.
+
+The GUI version timeout remains unattributed. The exact GUI image and six
+CLANG64 DLLs are now retained; imports resolve and main invokes global
+constructors before RunI2PD. This narrows hypotheses but is not stack/entry
+proof. Do not change RNG or startup behavior without that evidence.

@@ -7768,3 +7768,72 @@ or push.
   timer. Prepared fresh-activity/stale-wait controls and source-order guard
   pin this seam. The guard and whitespace checks pass after correction;
   dynamic race validation remains Pending CI tests.
+
+## d63b6b90 retrospective: schema, host tooling and confidentiality
+
+- Clean starting tree at d63b6b90. Ten new exact-run full/failed logs, job
+  metadata and artifact inventories recovered under /var/tmp/openi2pd-ci-d63.
+  Retained history: 372 runs/64 SHAs, 229 failures/77 successes/66 canceled;
+  fifteen workflow IDs/eighteen names. Successful siblings and exact Android,
+  Windows, OpenBSD, Debian and documentation artifacts were reviewed too.
+- Ten real specialized reconnaissance agents covered history, C++23, memory,
+  concurrency, crypto/protocols, IPC, torrents/storage, Android/JNI,
+  portability and regression/CI documentation. Four concurrent slots required
+  successive waves; all reconnaissance was launched before edits. Static-only
+  restrictions were passed explicitly. Implementations used exclusive scopes;
+  coordinator owns shared guards, workflows, Skills and tracking.
+- Native idle/readiness, logger, child-budget and torrent suites pass all
+  three sanitizer configurations; no new native compiler or sanitizer family
+  found. Shared TF-098 instead treats the YAML package perl as interpreter
+  stdin source. The scanner now masks only literal direct setup-msys2 package
+  inputs, with exact-line, nested-map, unknown-action and executable-source
+  negative fixtures. Root checker reports zero policy violations locally.
+- CONT-057 / CW-030: exact debug/release Lint artifacts contain 127
+  WrongCommentType findings across forty Java files, plus fourteen previous
+  warnings. Restored only those 127 Javadoc openers, preserving prose, legal
+  and executable text. Source guard and fixtures cover non-private link/block
+  tags while retaining ordinary/private/code-only comments. C++ API coverage
+  remains separate; no broad reversal of the source style change.
+- CONT-058: i2pdctl tries the native executable image before an extensionless
+  POSIX wrapper in each absolute PATH directory. Existing forty TLS fallback
+  controls retain their shim instead of accidentally invoking system OpenSSL.
+  Match MSYS Git with Perl and use strict native symlinks; verify real links
+  before relying on them. Native MSWin32 remains a different unresolved
+  capability, not a claimed MSYS result. GUI imports resolve in retained
+  images but timeout attribution still needs runtime stack/entry evidence.
+- TF-100: doc links resolve existing physical prefixes before missing suffix
+  normalization. Original-path existence is separate, preventing false
+  acceptance of missing/../existing or file/.. paths. Prepared missing-parent
+  and real-symlink escape controls. No equivalent Perl abs_path/canonpath
+  failure fallback found in the global source search.
+- CONT-059 / RT-072: fixed operation/outcome logs replace complete SAM/BOB
+  command input, rejected numeric values, failed destinations, arbitrary RPC/
+  DHT method names and remote tracker payloads. Wire replies and bounded
+  report behavior stay unchanged. Synthetic credential-marker controls pin
+  active logging, one outcome and exactly-once failure completion; multiline
+  negative source contracts cover the equivalent sinks.
+- RT-073: tracker error dispatch retains one locked announce owner rather
+  than treating expired() as lifetime authority; port matching precedes
+  the outcome log. Cleanup-only expiry checks and already-checked SSU2 locks
+  were reviewed as distinct patterns. No observed crash is attributed here.
+- Previously tracked CONC-028 UDP raw-this timer variants and PRIVSEP-017
+  unreaped-owner destruction/move remain open, with explicit attribution
+  limits. Passing phase or ACK tests cannot close those architectural tasks.
+- All new behavior is Implemented / static, Pending CI compilation / Pending
+  CI tests. No local compiler/build/configuration/tests, commits or push.
+- Agent & Skills Synchronization updates root policy and owning tooling,
+  CI/build, Android/docs, memory/interop/torrent/privsep procedures. Knowledge
+  captures schema boundaries, true symlinks, physical containment, wrappers,
+  comment recognition, malformed-operand confidentiality and weak ownership.
+- Final compile-free checks pass: tracked whitespace and 72-column added
+  comments, runtime and control-security contracts, build graph, workflow
+  policy (ten workflows/three actions), Skill structure/language contracts,
+  Android Javadoc source inspection (55 files), shell policy (317 sources),
+  documentation links (118 Markdown files) and knowledge validation. AK004
+  relevance was reviewed manually. Java numstat is exactly 127 added/removed
+  opener lines in forty files; no runtime Java statement changed. These
+  checks do not execute the prepared TAP/JVM/CTest/sanitizer regressions.
+- Independent review tightened package masking to direct input indentation;
+  a nested-map negative fixture pins it. Doc-link physical/original-path
+  separation and missing/symlink controls also received independent review.
+  No local builds, test execution, commits or push occurred.

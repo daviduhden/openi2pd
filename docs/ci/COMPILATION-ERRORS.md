@@ -2108,3 +2108,19 @@ that every optional platform/configuration executed.
 HEAD fb974bbe changes source comment openers after the executed SHA. Source
 inspection found no executable-token change, but the earlier CI results do
 not validate its documentation coverage or subsequent local corrections.
+
+## d63b6b90 retrospective: shared checker failure after successful builds
+
+Ten workflows execute `d63b6b9075e510d469cff1aab2dcdd6e664ea4d5`.
+No new native compile/link blocker was found. Validation run 42667615188
+executes idle/readiness, logger, child-budget and torrent regressions in
+UBSan 129335384481, ASan+UBSan 129335384669 and TSan 129335384764; all
+fail only shell-policy-static after those native tests pass. OpenSSL 3
+GCC/Clang 129335298243/129335298694 and OpenSSL 4 Clang/GCC
+129335321171/129335321684 have the same checker failure. Treat this as
+TF-098, not a compiler or sanitizer failure.
+
+OpenBSD job 129335226371 and knowledge job 129335273970 also encounter
+TF-098. Windows MSVC 129335207660 passes; MSYS2 129335208335 exposes
+additional tooling/runtime failures. All subsequent local corrections
+remain Pending CI compilation / Pending CI tests.
