@@ -246,6 +246,16 @@ require_runtime_source("tests/test-torrents-security.cpp"
   "entry.as_object ().at (\"error\").as_int64 () == (populated ? 3 : 0)")
 
 # Source order guards supplement the behavioral regressions in manual CI.
+require_runtime_source(".github/workflows/build-windows.yml"
+  "msys_perl=$(cygpath -m /usr/bin/perl.exe)")
+require_runtime_source(".github/workflows/build-windows.yml"
+  [=[-DPERL_EXECUTABLE="$msys_perl"]=])
+require_runtime_source("tools/CMakeLists.txt"
+  [=[COMMAND "${PERL_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/i2pdctl.t"]=])
+file(READ "${PROJECT_ROOT}/tools/CMakeLists.txt" perl_test_graph)
+if(perl_test_graph MATCHES "PROVE_EXECUTABLE")
+  message(FATAL_ERROR "TAP test must not select an unrelated prove interpreter")
+endif()
 function(require_runtime_order path begin end)
   file(READ "${PROJECT_ROOT}/${path}" source)
   string(FIND "${source}" "${begin}" first)

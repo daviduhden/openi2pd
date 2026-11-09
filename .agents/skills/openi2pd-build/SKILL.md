@@ -111,6 +111,11 @@ build.
 
 ## Known issues and decisions
 
+- Host interpreter closure includes test wrappers as well as CMake's
+  find_package result. The MSYS workflow pins its interpreter path and
+  i2pdctl TAP tests share it; native MSWin32 Unicode remains a separate
+  platform limitation, not validated by MSYS execution.
+
 - Pure shutdown-budget tests cover boundary partitioning without starting
   workers. Pair them with the production Until source contract and actual
   child-reap regression; pure arithmetic is not shutdown runtime evidence.

@@ -83,7 +83,6 @@ if(BUILD_TESTING AND NOT CMAKE_CROSSCOMPILING)
   i2pd_enable_sanitizers(routerinfo-fixture)
 
   find_package(Perl)
-  find_program(PROVE_EXECUTABLE prove)
 
   if(NOT PERL_EXECUTABLE)
     if(I2PD_REQUIRE_PERL)
@@ -228,16 +227,10 @@ if(BUILD_TESTING AND NOT CMAKE_CROSSCOMPILING)
         TIMEOUT 120)
     endif()
   endif()
-  if(PERL_EXECUTABLE AND PROVE_EXECUTABLE)
-    add_test(NAME perl-i2pdctl
-      COMMAND "${PROVE_EXECUTABLE}" -v "${CMAKE_CURRENT_SOURCE_DIR}/tests/i2pdctl.t")
-    set_tests_properties(perl-i2pdctl PROPERTIES
-      WORKING_DIRECTORY "${PROJECT_ROOT}"
-      LABELS "perl;integration"
-      TIMEOUT 120)
-  elseif(PERL_EXECUTABLE)
-    # OpenBSD base Perl may not ship the prove wrapper. Running the TAP file
-    # directly still exercises the same Test::More assertions.
+  if(PERL_EXECUTABLE)
+    # Use the selected interpreter for every TAP file. A separately found
+    # prove wrapper can select another Perl through its shebang or BAT
+    # launcher, mixing incompatible filesystem/process encodings.
     add_test(NAME perl-i2pdctl
       COMMAND "${PERL_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/i2pdctl.t")
     set_tests_properties(perl-i2pdctl PROPERTIES

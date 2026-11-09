@@ -122,6 +122,11 @@ a TUI client.
 
 ## Known issues and decisions
 
+- Every CTest TAP file uses PERL_EXECUTABLE directly. A separately found
+  prove wrapper can select a different interpreter through a shebang/BAT
+  launcher. Preserve the same Test::More file, exit status and assertions
+  when consolidating interpreter ownership; do not skip Unicode fixtures.
+
 - Expanded script discovery can reveal omissions in the core-module
   allowlist, including Carp. Classify the imported module before changing
   dependencies; the portability check should cover all discovered imports
