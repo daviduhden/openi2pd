@@ -99,6 +99,11 @@ peer or add a hidden external checkout. The reference is for reading only.
 
 ## Known issues and decisions
 
+- Protocol logging must not echo unknown command tokens or complete
+  parameter/header buffers, even for CONNECT/SEND/NAMING with public
+  expected fields. Keep wire replies unchanged while logging fixed
+  operation/outcome summaries; arbitrary extra operands can hold secrets.
+
 - ECIES-origin LeaseSet1 must be refused before parsing or replacing a
   client cache entry: LS1 cannot supply the static ECIES peer binding.
   Mask DatabaseStore option bits before classification and retain a signed

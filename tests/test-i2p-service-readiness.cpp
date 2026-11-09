@@ -15,10 +15,12 @@
 #include <memory>
 #include <mutex>
 #include <stdexcept>
+#include <string>
 #include <thread>
 #include <utility>
 
 #include "I2PService.h"
+#include "Log.h"
 #include "Streaming.h"
 
 namespace i2p::client
@@ -120,6 +122,42 @@ struct Fixture
 		Drain ();
 	}
 };
+
+void TestUnresolvedDestinationDoesNotLogOperand ()
+{
+	Fixture fixture;
+	auto & logger = i2p::log::Logger ();
+	// A sentinel and the outcome assertion prevent a disabled logger
+	// from making the negative credential checks pass vacuously.
+	LogPrint (eLogWarning, "service-redaction-capture-begin");
+	const auto before = logger.GetRecent (0, i2p::log::LOG_RECENT_CAPACITY);
+	assert (!before.empty ());
+	assert (before.back ().text == "service-redaction-capture-begin");
+	const auto sequence = before.back ().sequence;
+	unsigned completions = 0;
+	fixture.owner->CreateStream (
+		[&] (std::shared_ptr<i2p::stream::Stream> stream)
+		{
+			++completions;
+			assert (!stream);
+		}, "https://redaction-user:redaction-password@invalid.example/"
+		   "redaction-path?token=redaction-token");
+	assert (completions == 1);
+	fixture.Drain ();
+	assert (completions == 1);
+	const auto records = logger.GetRecent (sequence, i2p::log::LOG_RECENT_CAPACITY);
+	unsigned outcomes = 0;
+	for (const auto & record : records)
+	{
+		assert (record.text.find ("redaction-user") == std::string::npos);
+		assert (record.text.find ("redaction-password") == std::string::npos);
+		assert (record.text.find ("redaction-path") == std::string::npos);
+		assert (record.text.find ("redaction-token") == std::string::npos);
+		if (record.text == "I2PService: Remote destination not found")
+			++outcomes;
+	}
+	assert (outcomes == 1);
+}
 
 void TestReentrantRegistrationAndStaleWait ()
 {
@@ -368,6 +406,7 @@ void TestDestinationIdleStateAcrossThreads ()
 
 int main ()
 {
+	TestUnresolvedDestinationDoesNotLogOperand ();
 	TestReentrantRegistrationAndStaleWait ();
 	TestStopRestartAndReentrantStop ();
 	TestClearAndLateStreamCompletion ();

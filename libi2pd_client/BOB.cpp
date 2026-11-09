@@ -277,7 +277,7 @@ namespace client
 				auto addr = context.GetAddressBook ().GetAddress (receiver->buffer);
 				if (!addr)
 				{
-					LogPrint (eLogError, "BOB: Address ", receiver->buffer, " not found");
+					LogPrint (eLogError, "BOB: Inbound address not found");
 					CloseReceiver (receiver);
 					return;
 				}
@@ -620,9 +620,9 @@ namespace client
 		}
 		else
 		{
-			// The command word is not a secret; the operand may be (a keypair
-			// or a password), so it is never logged.
-			LogPrint (eLogError, "BOB: Unknown command ", command.c_str ());
+			// A malformed first token can itself be a key or password.
+			// Report the outcome without retaining any command input.
+			LogPrint (eLogError, "BOB: Unknown command");
 			SendReplyError ("unknown command");
 		}
 	}
@@ -735,7 +735,7 @@ namespace client
 
 	void BOBCommandSession::StartCommandHandler (const char *, size_t)
 	{
-		LogPrint (eLogDebug, "BOB: start ", m_Nickname);
+		LogPrint (eLogDebug, "BOB: start");
 		if (m_IsActive)
 		{
 			SendReplyError ("tunnel is active");
@@ -831,7 +831,7 @@ namespace client
 
 	void BOBCommandSession::StopCommandHandler (const char *, size_t)
 	{
-		LogPrint (eLogDebug, "BOB: stop ", m_Nickname);
+		LogPrint (eLogDebug, "BOB: stop");
 		if (!m_IsActive)
 		{
 			SendReplyError ("tunnel is inactive");

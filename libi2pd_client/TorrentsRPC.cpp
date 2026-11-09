@@ -347,7 +347,7 @@ namespace torrents
 			auto it = methods.find (method);
 			if (it == methods.end ())
 			{
-				LogPrint (eLogInfo, "TorrentsRPC: Method not found ", method);
+				LogPrint (eLogInfo, "TorrentsRPC: Method not found");
 				return ErrorResponse (GetTag (jsonRequest), "Method not found");
 			}
 			if (jsonRequest.contains ("arguments") && !jsonRequest.at ("arguments").is_object ())

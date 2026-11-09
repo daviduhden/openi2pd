@@ -597,6 +597,41 @@ if(sam_payload_log)
   message(FATAL_ERROR "SAM logs a datagram payload")
 endif()
 
+# Rejected inputs are still untrusted, including the first command token
+# and fields whose expected schema is numeric. Inspect multiline sinks.
+function(forbid_operand_logs relative operands)
+  file(READ "${PROJECT_ROOT}/${relative}" source)
+  if(ARGC GREATER 2)
+    string(FIND "${source}" "${ARGV2}" first)
+    string(FIND "${source}" "${ARGV3}" last)
+    if(first LESS 0 OR last LESS first)
+      message(FATAL_ERROR "Cannot locate operand-log boundary in ${relative}")
+    endif()
+    math(EXPR length "${last} - ${first}")
+    string(SUBSTRING "${source}" ${first} ${length} source)
+  endif()
+  string(REGEX MATCHALL "LogPrint[ \t\r\n]*\\([^;]*\\);" sinks "${source}")
+  foreach(sink IN LISTS sinks)
+    # Length metadata is allowed; it never copies the operand bytes.
+    string(REGEX REPLACE
+      "(msg|buf|line|word|name|destination|header)\\.(size|length)[ \t]*\\([ \t]*\\)"
+      "safe_numeric_length" inspected "${sink}")
+    if(inspected MATCHES ",[ \t\r\n]*(${operands})([^A-Za-z0-9_]|$)")
+      message(FATAL_ERROR "Untrusted operand reaches a log in ${relative}")
+    endif()
+  endforeach()
+endfunction()
+forbid_operand_logs("libi2pd_client/I2PService.cpp" "dest")
+forbid_operand_logs("libi2pd_client/SAM.cpp"
+  "buf|line|word|name|msg|destination|header|params|options")
+forbid_operand_logs("libi2pd_client/BOB.cpp"
+  "command|operand|m_Nickname|receiver->buffer")
+forbid_operand_logs("libi2pd_client/TorrentsRPC.cpp" "method")
+forbid_operand_logs("libi2pd_client/TorrentsDHT.cpp" "query")
+forbid_operand_logs("libi2pd_client/TorrentsTunnel.cpp" "error"
+  "void TorrentsTunnel::HandleErrorResponse"
+  "void TorrentsTunnel::ConnectToDatagramTracker")
+
 foreach(required IN ITEMS
     "MAX_RECENTLY_CLOSED_STREAMS"
     "AcceptorToken"

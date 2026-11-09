@@ -1370,7 +1370,7 @@ namespace torrents
 		else if (query == "find_node" && hasTarget)
 			HandleFindNodeQuery (from.GetIdentHash (), fromPort, frame.transaction, target);
 		else
-			LogPrint (eLogDebug, "TorrentsDHT: Unexpected query ", query);
+			LogPrint (eLogDebug, "TorrentsDHT: Unexpected query");
 	}
 
 	void TorrentsDHT::HandlePingQuery (const i2p::data::IdentHash & fromIdent, uint16_t fromPort,

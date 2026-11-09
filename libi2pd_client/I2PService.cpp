@@ -362,7 +362,7 @@ namespace client
 			CreateStream (streamRequestComplete, address, port);
 		else
 		{
-			LogPrint (eLogWarning, "I2PService: Remote destination not found: ", dest);
+			LogPrint (eLogWarning, "I2PService: Remote destination not found");
 			streamRequestComplete (nullptr);
 		}
 	}

@@ -257,6 +257,11 @@ Readiness retirement is distinct from handler admission: trace every
 completed-stream handoff through the owner's Stop()/ClearHandlers() boundary.
 Check-time stale suppression alone is not atomic handler publication.
 
+At parser boundaries, rejected numeric fields and malformed first tokens
+remain arbitrary input. Review complete command buffers, ignored fields
+and remote error payloads together; expected public schemas do not make
+their rejected operands safe diagnostics.
+
 For timer ownership, trace destruction when the executor never runs again.
 A queued callback retaining the service that owns its timer can preserve
 the whole destination/executor cycle; cancellation alone does not drain it.

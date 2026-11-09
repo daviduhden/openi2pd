@@ -116,6 +116,11 @@ Do not let them edit, build or run tests.
 
 ## Known issues and decisions
 
+- BEP 15 error payloads are opaque remote data, not safe log strings.
+  Match the stored transaction port before logging an outcome and keep
+  only the existing bounded tracker report. RPC method/KRPC query names
+  also remain arbitrary until matched against the closed dispatch vocabulary.
+
 - BITFIELD is an authoritative replacement even when its size is unchanged;
   clear prior bits before decoding. HAVE_NONE reconciles interest at once,
   preserving outstanding-response authority. Rate sampling uses milliseconds

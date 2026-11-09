@@ -107,6 +107,12 @@ Do not let reconnaissance agents edit, compile, execute tests or run scripts.
 
 ## Known issues and decisions
 
+- Raw failed destinations, unknown first tokens, ignored SAM fields and
+  rejected numeric options can carry secrets. Use operation/outcome logs
+  rather than assuming expected public schemas sanitize their operands.
+  Pair negative source guards with a live logger sentinel so disabled
+  diagnostics cannot make redaction tests pass vacuously.
+
 - A self-retaining periodic timer can leak even when Stop cancels it if
   the executor never drains. Test immediate owner/destination release and
   use distinct wait identities to reject stale successful completions.

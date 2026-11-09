@@ -3781,9 +3781,10 @@ namespace torrents
 			return;
 		}
 		std::string_view error ((const char *)(buf + 4), len - 4);
-		LogPrint (eLogInfo, "TorrentsTunnel: Datagram tracker error response: ", error);
 		auto [trackerID, storedPort, torrent, ts] = it->second;
 		if (toPort != storedPort) return;
+		// A remote error can contain credentials or other opaque payload.
+		LogPrint (eLogInfo, "TorrentsTunnel: Datagram tracker error response");
 		if (!torrent.expired ()) // response to announce
 			torrent.lock ()->ReportTrackerFailure (trackerID, error.substr (0, 512));
 		m_DatragramTrackerTransactions.erase (it);

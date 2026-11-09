@@ -407,9 +407,8 @@ namespace client
 			auto space = line.find (' ');
 			auto word = space == std::string_view::npos ? line : line.substr (0, space);
 			auto reply = MakeSAMControlReply (control, word, argument);
-			// Only the command word is logged: the argument of AUTH (and of a
-			// PING echo) may carry credentials and is never written to the log.
-			LogPrint (eLogDebug, "SAM: Control command ", word);
+			// Log only the operation: command operands can carry credentials.
+			LogPrint (eLogDebug, "SAM: Control command received");
 			ConsumeInput (lineLength);
 			switch (control)
 			{
@@ -417,7 +416,7 @@ namespace client
 			case SAMControlCommand::eSAMControlCommandQuit:
 			case SAMControlCommand::eSAMControlCommandStop:
 			case SAMControlCommand::eSAMControlCommandExit:
-				LogPrint (eLogInfo, "SAM: Client requested ", word);
+				LogPrint (eLogInfo, "SAM: Client requested shutdown");
 				SendMessageReply (reply, true);
 				return;
 			case SAMControlCommand::eSAMControlCommandPing:
@@ -429,7 +428,7 @@ namespace client
 				SendMessageReply (reply, false);
 				return;
 			case SAMControlCommand::eSAMControlCommandUnknown:
-				LogPrint (eLogError, "SAM: Unknown command ", word);
+				LogPrint (eLogError, "SAM: Unknown command");
 				SendMessageReply (reply, false);
 				return;
 			default: return;
@@ -900,9 +899,9 @@ namespace client
 		// The reply arrives after the connect completes, so no further
 		// command may be parsed (or replied to) in the meantime.
 		m_IsCommandPending = true;
-		// CONNECT carries only a public destination and ports, so the
-		// parameter list is safe to log (unlike SESSION CREATE and HELLO).
-		LogPrint (eLogDebug, "SAM: Stream connect: ", buf);
+		// Parameter names and rejected values remain untrusted operands;
+		// record the operation without copying them into diagnostics.
+		LogPrint (eLogDebug, "SAM: Stream connect request");
 		if (m_SocketType != SAMSocketType::eSAMSocketTypeUnknown)
 		{
 			SendStreamI2PError ("Socket already in use");
@@ -1089,7 +1088,7 @@ namespace client
 
 	void SAMSocket::ProcessStreamAccept (std::string_view buf)
 	{
-		LogPrint (eLogDebug, "SAM: Stream accept: ", buf);
+		LogPrint (eLogDebug, "SAM: Stream accept request");
 		if (m_SocketType != SAMSocketType::eSAMSocketTypeUnknown)
 		{
 			SendStreamI2PError ("Socket already in use");
@@ -1168,7 +1167,7 @@ namespace client
 
 	void SAMSocket::ProcessStreamForward (std::string_view buf)
 	{
-		LogPrint (eLogDebug, "SAM: Stream forward: ", buf);
+		LogPrint (eLogDebug, "SAM: Stream forward request");
 
 		i2p::util::Mapping params;
 		if (!GetCommandParams (buf, params)) return;
@@ -1277,9 +1276,8 @@ namespace client
 
 	size_t SAMSocket::ProcessDatagramSend (std::string_view line, const char * payload, size_t available)
 	{
-		// The SEND parameters name the public peer destination, ports and
-		// size; the payload itself is never logged.
-		LogPrint (eLogDebug, "SAM: Datagram send: ", line);
+		// Neither parameter operands nor payload belong in diagnostics.
+		LogPrint (eLogDebug, "SAM: Datagram send request");
 		i2p::util::Mapping params;
 		if (!GetCommandParams (line, params)) return available;
 		// A SEND has no ID parameter: it belongs to the session created on
@@ -1302,7 +1300,7 @@ namespace client
 		if (session->Type != SAMSessionType::eSAMSessionTypeRaw
 			&& session->Type != SAMSessionType::eSAMSessionTypeDatagram)
 		{
-			LogPrint (eLogError, "SAM: SEND on a non-datagram session ", session->Name);
+			LogPrint (eLogError, "SAM: SEND on a non-datagram session");
 			Terminate ("SAM: SEND on a non-datagram session");
 			return available;
 		}
@@ -1312,7 +1310,7 @@ namespace client
 		if (!ParseSAMNumber (params[SAM_PARAM_SIZE], size) || !size
 			|| size > (isRaw ? SAM_RAW_SEND_MAX_SIZE : SAM_DATAGRAM_SEND_MAX_SIZE))
 		{
-			LogPrint (eLogWarning, "SAM: Invalid SEND size ", params[SAM_PARAM_SIZE]);
+			LogPrint (eLogWarning, "SAM: Invalid SEND size");
 			Terminate ("SAM: invalid SEND size");
 			return available;
 		}
@@ -1325,17 +1323,17 @@ namespace client
 		uint8_t protocol = session->Protocol;
 		if (!ParseSAMPort (params, SAM_PARAM_FROM_PORT, fromPort))
 		{
-			LogPrint (eLogWarning, "SAM: Invalid SEND FROM_PORT ", params[SAM_PARAM_FROM_PORT], ", using default");
+			LogPrint (eLogWarning, "SAM: Invalid SEND FROM_PORT, using default");
 			fromPort = session->FromPort;
 		}
 		if (!ParseSAMPort (params, SAM_PARAM_TO_PORT, toPort))
 		{
-			LogPrint (eLogWarning, "SAM: Invalid SEND TO_PORT ", params[SAM_PARAM_TO_PORT], ", using default");
+			LogPrint (eLogWarning, "SAM: Invalid SEND TO_PORT, using default");
 			toPort = session->ToPort;
 		}
 		if (isRaw && !ParseSAMProtocol (params, SAM_PARAM_PROTOCOL, protocol))
 		{
-			LogPrint (eLogWarning, "SAM: Invalid SEND PROTOCOL ", params[SAM_PARAM_PROTOCOL], ", using default");
+			LogPrint (eLogWarning, "SAM: Invalid SEND PROTOCOL, using default");
 			protocol = session->Protocol;
 		}
 		if (params[SAM_PARAM_DESTINATION].empty ())
@@ -1383,7 +1381,7 @@ namespace client
 		// A lease set request can defer the NAMING REPLY; keep later commands
 		// from producing replies first.
 		m_IsCommandPending = true;
-		LogPrint (eLogDebug, "SAM: Naming lookup: ", buf);
+		LogPrint (eLogDebug, "SAM: Naming lookup request");
 		i2p::util::Mapping params;
 		if (!GetCommandParams (buf, params)) return;
 		std::string name (params[SAM_PARAM_NAME]);
@@ -1414,7 +1412,7 @@ namespace client
 		}
 		else
 		{
-			LogPrint (eLogError, "SAM: Naming failed, unknown address ", name);
+			LogPrint (eLogError, "SAM: Naming failed, unknown address");
 			const int formatted
 				= std::snprintf (m_Buffer, SAM_SOCKET_BUFFER_SIZE, SAM_NAMING_REPLY_KEY_NOT_FOUND, name.c_str ());
 			const size_t len
@@ -1712,13 +1710,13 @@ namespace client
 
 	void SAMSocket::SendSessionI2PError (const std::string & msg)
 	{
-		LogPrint (eLogError, "SAM: Session I2P error: ", msg);
+		LogPrint (eLogError, "SAM: Session I2P error");
 		SendReplyWithMessage (SAM_SESSION_STATUS_I2P_ERROR, msg, true);
 	}
 
 	void SAMSocket::SendStreamI2PError (const std::string & msg)
 	{
-		LogPrint (eLogError, "SAM: Stream I2P error: ", msg);
+		LogPrint (eLogError, "SAM: Stream I2P error");
 		SendReplyWithMessage (SAM_STREAM_STATUS_I2P_ERROR, msg, true);
 	}
 
@@ -1741,7 +1739,7 @@ namespace client
 				}
 				else
 				{
-					LogPrint (eLogError, "SAM: Naming lookup failed. LeaseSet for ", name, " not found");
+					LogPrint (eLogError, "SAM: Naming lookup failed, LeaseSet not found");
 					const int formatted = std::snprintf (
 						s->m_Buffer, SAM_SOCKET_BUFFER_SIZE, SAM_NAMING_REPLY_KEY_NOT_FOUND, name.c_str ());
 					const size_t len = formatted <= 0
@@ -2465,7 +2463,7 @@ namespace client
 		auto datagramDest = localDest ? localDest->GetDatagramDestination () : nullptr;
 		if (!datagramDest)
 		{
-			LogPrint (eLogError, "SAM: Missing datagram destination for session ", Name);
+			LogPrint (eLogError, "SAM: Missing datagram destination for session");
 			return;
 		}
 		// Resolve like a stream connect: a full base64 destination, or a .i2p
@@ -2485,7 +2483,7 @@ namespace client
 		}
 		if (!addr || !addr->IsValid ())
 		{
-			LogPrint (eLogError, "SAM: Datagram invalid destination ", destination);
+			LogPrint (eLogError, "SAM: Datagram invalid destination");
 			return;
 		}
 		// DatagramDestination owns localDest, so retaining it in a callback
@@ -2862,11 +2860,11 @@ namespace client
 					auto numStreams = streamingDest->GetNumStreams ();
 					if (numStreams > 0)
 					{
-						LogPrint (eLogInfo, "SAM: Session ", session->Name, " still has ", numStreams, " streams");
+						LogPrint (eLogInfo, "SAM: Session still has ", numStreams, " streams");
 						ScheduleSessionCleanupTimer (session);
 					}
 					else
-						LogPrint (eLogDebug, "SAM: Session ", session->Name, " terminated");
+						LogPrint (eLogDebug, "SAM: Session terminated");
 				}
 			}
 		}
@@ -2986,16 +2984,14 @@ namespace client
 								if (ParseSAMNumber (params[SAM_PARAM_FROM_PORT], value))
 									fromPort = value;
 								else
-									LogPrint (eLogWarning, "SAM: Invalid datagram FROM_PORT ",
-										params[SAM_PARAM_FROM_PORT], ", using session default");
+									LogPrint (eLogWarning, "SAM: Invalid datagram FROM_PORT, using session default");
 							}
 							if (params.Contains (SAM_PARAM_TO_PORT))
 							{
 								if (ParseSAMNumber (params[SAM_PARAM_TO_PORT], value))
 									toPort = value;
 								else
-									LogPrint (eLogWarning, "SAM: Invalid datagram TO_PORT ", params[SAM_PARAM_TO_PORT],
-										", using session default");
+									LogPrint (eLogWarning, "SAM: Invalid datagram TO_PORT, using session default");
 							}
 							if (session->Type == SAMSessionType::eSAMSessionTypeRaw
 								&& params.Contains (SAM_PARAM_PROTOCOL))
@@ -3004,8 +3000,7 @@ namespace client
 								if (ParseSAMNumber (params[SAM_PARAM_PROTOCOL], proto))
 									protocol = proto;
 								else
-									LogPrint (eLogWarning, "SAM: Invalid datagram PROTOCOL ",
-										params[SAM_PARAM_PROTOCOL], ", using session default");
+									LogPrint (eLogWarning, "SAM: Invalid datagram PROTOCOL, using session default");
 							}
 							LogPrint (eLogInfo, "SAM: Datagram params are FROM_PORT=", fromPort, " TO_PORT=", toPort,
 								" PROTOCOL=", (unsigned)protocol);
@@ -3014,7 +3009,7 @@ namespace client
 							header.destination, (const uint8_t *)eol, payloadLen, fromPort, toPort, protocol);
 					}
 					else
-						LogPrint (eLogError, "SAM: Session ", header.sessionID, " not found");
+						LogPrint (eLogError, "SAM: Datagram session not found");
 				}
 				else
 					LogPrint (eLogError, "SAM: Invalid datagram");
