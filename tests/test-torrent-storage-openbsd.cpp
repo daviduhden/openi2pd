@@ -20,6 +20,7 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include "privsep-test-executable.h"
+#include "capability-skip.h"
 
 int main (int argc, char ** argv)
 {
@@ -27,11 +28,13 @@ int main (int argc, char ** argv)
 	if (argc == 4 && std::string_view (argv[1]) == "--privsep-worker")
 		return i2p::privsep::RunWorker (argv[2], argv[3]);
 #if defined(__OpenBSD__)
-	if (::geteuid () == 0) return 77; // Production explicitly refuses root.
+	if (::geteuid () == 0)
+		return i2p::test::SkipCapability ("storage workers refuse a root runner");
 	// The on-demand broker forked/exec'ed a worker after its own sandbox,
 	// which requires the forbidden pledge(2) "exec" promise. CTest treats
 	// 77 as SKIP; the direct worker path remains covered elsewhere.
-	return 77;
+	return i2p::test::SkipCapability (
+		"exec-free OpenBSD storage supervisor provisioning is not implemented");
 	auto executable = std::filesystem::canonical (argv[0]).string ();
 	assert (::setenv ("I2PD_EXECUTABLE", executable.c_str (), 1) == 0);
 	char temporary[] = "/tmp/openi2pd-storage-openbsd-XXXXXX";
@@ -117,6 +120,6 @@ int main (int argc, char ** argv)
 	worker.Stop ();
 	return 0;
 #else
-	return 77;
+	return i2p::test::SkipCapability ("OpenBSD storage supervisor requires OpenBSD");
 #endif
 }

@@ -105,6 +105,12 @@ report that limitation; do not substitute local execution. Ask for:
 
 ## Known issues and decisions
 
+- Capability fixtures emit a fixed non-secret reason through
+  tests/capability-skip.h before return code 77. Distinguish root runners,
+  missing account data, absent kernel controls and unimplemented exec-free
+  provisioning. A reason improves evidence; it does not validate skipped
+  worker handshake, resource transfer or shutdown paths.
+
 - POSIX ChildStopBudget partitions one entry deadline across advisory send,
   graceful exit, TERM and final reap. Keep absolute Until APIs through each
   phase and retain PID/pidfd when final reaping fails. Nonblocking liveness

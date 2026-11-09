@@ -254,13 +254,15 @@ ScenarioResult RunHelloScenario (
 }
 
 #include "privsep-test-executable.h"
+#include "capability-skip.h"
 
 int main (int argc, char ** argv)
 {
 	i2p::privsep::PinTestExecutable (argv[0]);
 	if (argc == 4 && std::string_view (argv[1]) == "--privsep-worker")
 		return i2p::privsep::RunWorker (argv[2], argv[3]);
-	if (::geteuid () == 0) return 77;
+	if (::geteuid () == 0)
+		return i2p::test::SkipCapability ("worker identity requires a non-root runner");
 
 	// The spawn helpers only use a frozen, validated absolute path.
 	const std::string self = SelfExecutable (argc > 0 ? argv[0] : nullptr);

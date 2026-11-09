@@ -258,6 +258,12 @@ file(READ "${PROJECT_ROOT}/tools/CMakeLists.txt" perl_test_graph)
 if(perl_test_graph MATCHES "PROVE_EXECUTABLE")
   message(FATAL_ERROR "TAP test must not select an unrelated prove interpreter")
 endif()
+require_runtime_source("tests/test-privsep-worker-identity.cpp"
+  "SkipCapability (\"worker identity requires a non-root runner\")")
+require_runtime_source("tests/test-privsep-credentials.cpp"
+  "SkipCapability (\"worker credentials require a non-root runner\")")
+require_runtime_source("tests/test-torrent-storage-openbsd.cpp"
+  "exec-free OpenBSD storage supervisor provisioning is not implemented")
 function(require_runtime_order path begin end)
   file(READ "${PROJECT_ROOT}/${path}" source)
   string(FIND "${source}" "${begin}" first)

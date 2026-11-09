@@ -25,6 +25,7 @@
 #include <unistd.h>
 #endif
 #include "privsep-test-executable.h"
+#include "capability-skip.h"
 
 int main (int argc, char ** argv)
 {
@@ -37,7 +38,8 @@ int main (int argc, char ** argv)
 		assert (!SafeStoragePath (path));
 	assert (!SafeStoragePath (std::string ("a\0b", 3)));
 #if defined(__linux__) && !defined(__ANDROID__)
-	if (::geteuid () == 0) return 77; // The production worker deliberately refuses root.
+	if (::geteuid () == 0)
+		return i2p::test::SkipCapability ("storage workers refuse a root runner");
 	auto root = std::filesystem::temp_directory_path () / ("openi2pd-storage-worker-" + std::to_string (::getpid ()));
 	std::filesystem::create_directory (root);
 	struct Cleanup
@@ -52,7 +54,10 @@ int main (int argc, char ** argv)
 	i2p::torrents::TorrentStorageWorker worker;
 	std::string error;
 	auto support = ProbeLinuxIsolation ();
-	if (!support.filesystem || !support.seccompFilter) return 77; // Explicitly unsupported kernels only.
+	if (!support.filesystem)
+		return i2p::test::SkipCapability ("kernel lacks required filesystem isolation");
+	if (!support.seccompFilter)
+		return i2p::test::SkipCapability ("kernel lacks required seccomp filtering");
 	assert (worker.Start (root, error));
 	{
 		const auto name = ".openi2pd-state/" + std::string (40, 'a') + ".magnet";
@@ -163,6 +168,6 @@ int main (int argc, char ** argv)
 	assert (WIFEXITED (status) && WEXITSTATUS (status) == 0);
 	return 0;
 #else
-	return 77;
+	return i2p::test::SkipCapability ("storage isolation fixture requires desktop Linux");
 #endif
 }

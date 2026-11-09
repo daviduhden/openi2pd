@@ -40,6 +40,7 @@ int main ()
 #include <unistd.h>
 
 #include "privsep/Credentials.h"
+#include "capability-skip.h"
 
 using namespace i2p::privsep;
 
@@ -55,13 +56,16 @@ int main ()
 {
 	// A root test runner would exercise the privilege-raising path and can
 	// never reach the unprivileged expectations below.
-	if (::geteuid () == 0) return 77;
+	if (::geteuid () == 0)
+		return i2p::test::SkipCapability ("worker credentials require a non-root runner");
 	// Skip rather than guessing when the account database cannot describe
 	// the identity the test itself runs as.
 	const struct passwd * self = ::getpwuid (::geteuid ());
-	if (!self || !self->pw_name || !*self->pw_name) return 77;
+	if (!self || !self->pw_name || !*self->pw_name)
+		return i2p::test::SkipCapability ("runner user is absent from the account database");
 	const struct group * selfGroup = ::getgrgid (::getegid ());
-	if (!selfGroup || !selfGroup->gr_name || !*selfGroup->gr_name) return 77;
+	if (!selfGroup || !selfGroup->gr_name || !*selfGroup->gr_name)
+		return i2p::test::SkipCapability ("runner group is absent from the account database");
 	const std::string user (self->pw_name);
 	const std::string selfGroupName (selfGroup->gr_name);
 
