@@ -212,13 +212,12 @@ namespace torrents
 	// so without decay an idle connection would report the last burst
 	// forever. CheckKeepAlive runs every 15 s and halves a direction's
 	// rate after one idle window and zeroes it after two. The window is
-	// deliberately much longer than BANDWIDTH_RATE_SAMPLING_INTERVAL (20
-	// ms): a 20 ms idle test would zero every rate at each check and carry
-	// no information.
+	// deliberately longer than the 2.5-second bandwidth sample; treating
+	// each scheduler tick as idle would discard useful transfer history.
 	constexpr uint64_t PEER_RATE_DECAY_INTERVAL = 30; // in seconds
 	constexpr int PIECE_INACTIVITY_TIMEOUT = 22; // in seconds
 	constexpr int HANDSHAKE_RECEIVE_TIMEOUT = 20; // in seconds
-	constexpr int BANDWIDTH_RATE_SAMPLING_INTERVAL = 20; // in milliseconds
+	constexpr int BANDWIDTH_RATE_SAMPLING_INTERVAL = 2500; // milliseconds
 	constexpr int TORRENT_FILE_FLUSH_INTERVAL = 30; // in seconds
 	constexpr int TORRENT_FILE_INACTIVITY_TIMEOUT = 90; // in seconds
 	// Routine per-piece resume persistence is throttled. A fast swarm can

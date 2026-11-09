@@ -20,6 +20,7 @@
  */
 
 #include <cassert>
+#include <chrono>
 #include <cstdint>
 #include <algorithm>
 #include <stdexcept>
@@ -311,9 +312,9 @@ int main ()
 	assert (DecayPeerRate (1000, 10 * PEER_RATE_DECAY_INTERVAL) == 0);
 	// Integer halving has a floor; it must not wrap.
 	assert (DecayPeerRate (1, PEER_RATE_DECAY_INTERVAL) == 0);
-	// The decay window is a scheduler tick multiple, not the 20 ms
-	// sampler.
-	assert (PEER_RATE_DECAY_INTERVAL > BANDWIDTH_RATE_SAMPLING_INTERVAL);
+	// Compare durations, not the numeric seconds and milliseconds.
+	assert (std::chrono::seconds (PEER_RATE_DECAY_INTERVAL) >
+		std::chrono::milliseconds (BANDWIDTH_RATE_SAMPLING_INTERVAL));
 
 	// --- verified-completion rule
 	// ------------------------------------------

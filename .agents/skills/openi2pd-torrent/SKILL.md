@@ -118,7 +118,9 @@ Do not let them edit, build or run tests.
 
 - BITFIELD is an authoritative replacement even when its size is unchanged;
   clear prior bits before decoding. HAVE_NONE reconciles interest at once,
-  preserving outstanding-response authority.
+  preserving outstanding-response authority. Rate sampling uses milliseconds
+  while idle decay uses seconds; compare chrono durations in regressions.
+  The upstream 2.5-second direct sample does not replace 30-second idle decay.
 
 - Reconcile peer interest independently of scheduling and keep-alive
   traffic. Active requests retain interest until retirement; stop/removal

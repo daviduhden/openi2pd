@@ -548,3 +548,17 @@ Destination-size correction is likewise absent from IdentityEx's actual
 certificate-extent sizing. No speculative crypto or wire changes were made.
 The 2.14.0 and 2.13.0 source pins and old dynamic evidence remain unchanged;
 this metadata update does not establish full 2.14.1 interoperability.
+
+## openssl continuation through 4f357490
+
+The next two commits after 9702ba83 are reviewed individually. Implemented /
+static, Pending CI compilation / Pending CI tests; no merge or cherry-pick.
+
+| SHA | Decision |
+|---|---|
+| `026d9a99edec786e1827cacdfc76feb4bfa2369e` | Applicable via adaptation: use direct upload/download bandwidth samples instead of averaging with the previous rate. Its intermediate 250 ms period is superseded by the following commit. |
+| `4f357490f7fed257e5a6a64750ebd8b8e5950bf2` | Applicable via adaptation: final sampling period is 2500 ms, despite the commit message's 3.5-second wording. Preserve the fork's independent 30-second idle decay. |
+
+The scheduler regression now compares chrono durations rather than numeric
+seconds against milliseconds. Neither change alters a wire or persisted
+format, and live peer-performance parity remains unverified.

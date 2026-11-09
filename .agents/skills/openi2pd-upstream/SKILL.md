@@ -92,6 +92,11 @@ run tests.
 
 ## Known issues and decisions
 
+- Read the actual interval constant when importing sampling changes: commit
+  4f357490 describes 3.5 seconds but sets 2500 milliseconds. Preserve the
+  final source semantics and review idle decay and unit-sensitive tests
+  together; intermediate upstream intervals need not become local states.
+
 - Adapt identity-cache fixes to the fork's key-loader classifier, not just
   upstream's exact transient marker. Review lookup and insertion for every
   endpoint type; matching only one permits unintended cross-section reuse.
