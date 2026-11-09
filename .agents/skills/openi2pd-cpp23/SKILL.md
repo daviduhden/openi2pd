@@ -117,6 +117,13 @@ compile, run tests or run project scripts.
 
 ## Known issues and decisions
 
+- Idle timer callbacks borrow I2PService weakly and carry a distinct
+  IdleWait identity. Serialize timer mutation, retire before cancellation
+  and destroy timers outside the gate. Exercise owner/destination release
+  without running the executor, plus queued success after rearm/restart.
+  IdleDeadline saturates conversion and addition separately; exercise
+  UINT64_MAX input and a clock near time_point::max without waiting.
+
 - Asio timer cancellation and socket cancellation have different API
   availability. New timer code uses cancel() and contains system_error at
   retired-authority teardown boundaries; fixture failures remain visible.

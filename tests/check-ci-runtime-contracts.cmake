@@ -471,6 +471,28 @@ require_runtime_source("libi2pd_client/I2PService.cpp"
 require_runtime_source("libi2pd_client/I2PService.cpp"
   "selected.swap (generation->callbacks);")
 require_runtime_source("tests/CMakeLists.txt" "test-i2p-service-readiness")
+require_runtime_source("libi2pd_client/I2PService.cpp"
+  "if (ec || !m_Running.load () || !wait || m_IdleWait != wait) return;")
+require_runtime_source("libi2pd_client/I2PService.cpp"
+  "m_IdleCheckTimer->async_wait ([owner, wait]")
+require_runtime_source("libi2pd_client/I2PService.cpp"
+  "return now > latest ? Timer::time_point::max () : now + delay;")
+require_runtime_source("libi2pd/Garlic.h" "std::atomic<bool> m_IsIdling;")
+require_runtime_source("tests/test-i2p-service-readiness.cpp"
+  "TestIdleWaitRevocationAndRestart ();")
+require_runtime_source("tests/test-i2p-service-readiness.cpp"
+  "TestIdleTimerDoesNotRetainOwnerOrDestination ();")
+require_runtime_source("tests/test-i2p-service-readiness.cpp"
+  "TestIdleDeadlineSaturation ();")
+require_runtime_source("tests/test-i2p-service-readiness.cpp"
+  "TestFreshActivityRearmsIdleAuthority ();")
+require_runtime_order("libi2pd_client/I2PService.cpp"
+  "void I2PService::UpdateLastActivityTime ()" "void I2PService::Resume ()"
+  "std::lock_guard idle (m_IdleMutex);"
+  "m_LastActivityTime = i2p::util::GetMonotonicMilliseconds ();"
+  "resume = m_LocalDestination->IsIdling ();" "if (resume) Resume ();")
+require_runtime_source("tests/test-i2p-service-readiness.cpp"
+  "TestDestinationIdleStateAcrossThreads ();")
 require_runtime_source("tests/CMakeLists.txt" "test-tunnel-destination-cache")
 require_runtime_source("tests/CMakeLists.txt" "test-destination-leaseset-session")
 require_runtime_order("libi2pd/Destination.cpp"

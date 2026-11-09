@@ -174,8 +174,16 @@ namespace client
 			const std::shared_ptr<ReadyGeneration> & generation, StreamRequestComplete complete);
 		static void InvokeReadyCallback (ReadyCallback & callback, const boost::system::error_code & ec);
 		friend struct I2PServiceReadinessTestAccess;
+		struct IdleWait { };
+		// Timer mutation and wait identity share this gate. Callbacks borrow
+		// the service and cannot retain its destination or owned executor.
 		void ScheduleIdleCheckTimer ();
-		void HandleIdleCheckTimer (const boost::system::error_code & ec);
+		static boost::asio::steady_timer::time_point IdleDeadline (
+			boost::asio::steady_timer::time_point now, uint64_t idleTime);
+		void ScheduleIdleCheckTimerLocked ();
+		void RetireIdleCheckTimer ();
+		void HandleIdleCheckTimer (const boost::system::error_code & ec,
+			const std::shared_ptr<IdleWait> & wait);
 		void Resume ();
 
 	private:
@@ -185,10 +193,12 @@ namespace client
 		mutable std::mutex m_ReadinessMutex;
 		std::shared_ptr<ReadyGeneration> m_ReadyGeneration;
 		std::atomic<uint64_t> m_ConnectTimeout; // in seconds
-		uint64_t m_CloseIdleTime; // in milliseconds
-		bool m_NewDestOnResume;
-		uint64_t m_LastActivityTime; // monotonic milliseconds
+		std::atomic<uint64_t> m_CloseIdleTime; // in milliseconds
+		std::atomic<bool> m_NewDestOnResume;
+		std::atomic<uint64_t> m_LastActivityTime; // monotonic milliseconds
+		mutable std::mutex m_IdleMutex;
 		std::unique_ptr<boost::asio::steady_timer> m_IdleCheckTimer;
+		std::shared_ptr<IdleWait> m_IdleWait;
 		std::atomic<bool> m_Running { false };
 
 		static constexpr size_t NEVER_TIMES_OUT = 0;

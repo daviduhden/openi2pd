@@ -107,6 +107,16 @@ Do not let reconnaissance agents edit, compile, execute tests or run scripts.
 
 ## Known issues and decisions
 
+- A self-retaining periodic timer can leak even when Stop cancels it if
+  the executor never drains. Test immediate owner/destination release and
+  use distinct wait identities to reject stale successful completions.
+  Service-local gates do not synchronize destination-wide state by default.
+  GarlicDestination's advisory idle flag uses atomic value access across
+  service/tunnel threads; it does not publish other destination data. Bound
+  timer units before duration conversion and absolute clock addition.
+  Serialize activity timestamp/idle-state snapshots with the idle decision;
+  invoke Resume after releasing that gate because it rearms the timer.
+
 - Search EINTR loops when reviewing timeout rebasing. Polling again with
   the previous relative timeout renews the budget; partial startup reads
   can do the same. A zero-budget liveness probe should defer interruption

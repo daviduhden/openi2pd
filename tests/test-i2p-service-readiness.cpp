@@ -8,12 +8,14 @@
  */
 
 #include <cassert>
+#include <barrier>
 #include <cstddef>
 #include <cstdint>
 #include <limits>
 #include <memory>
 #include <mutex>
 #include <stdexcept>
+#include <thread>
 #include <utility>
 
 #include "I2PService.h"
@@ -57,6 +59,25 @@ struct I2PServiceReadinessTestAccess
 	static auto Guard (I2PService & service, StreamRequestComplete complete)
 	{
 		return I2PService::GuardStreamCompletion (service.GetReadyGeneration (), std::move (complete));
+	}
+	static auto IdleSnapshot (I2PService & service)
+	{
+		std::lock_guard lock (service.m_IdleMutex);
+		return service.m_IdleWait;
+	}
+	static auto IdleDeadline (boost::asio::steady_timer::time_point now,
+		uint64_t idleTime)
+	{
+		return I2PService::IdleDeadline (now, idleTime);
+	}
+	static void RearmIdle (I2PService & service)
+	{
+		service.ScheduleIdleCheckTimer ();
+	}
+	template<class Ticket> static void DeliverIdle (I2PService & service,
+		const Ticket & ticket, const boost::system::error_code & error)
+	{
+		service.HandleIdleCheckTimer (error, ticket);
 	}
 };
 }
@@ -231,10 +252,13 @@ void TestOwnedExecutorDestructionWithPendingCancellation ()
 	auto keys = i2p::data::PrivateKeys::CreateRandomKeys (
 		i2p::data::SIGNING_KEY_TYPE_EDDSA_SHA512_ED25519,
 		i2p::data::CRYPTO_KEY_TYPE_ECIES_X25519_AEAD, true);
-	// Do not Start(): destruction shuts down the owned executor without
-	// a worker thread or a final poll. Queued callbacks are discarded.
+	// Do not start the destination: destruction shuts down its executor
+	// without a worker thread or final poll. Queued callbacks are
+	// discarded with that executor.
 	auto destination = std::make_shared<i2p::client::RunnableClientDestination> (keys, false);
 	auto service = std::make_shared<i2p::client::I2PService> (destination);
+	service->SetCloseIdleTime (i2p::client::I2P_SERVICE_MIN_CLOSE_IDLE_TIME);
+	service->Start ();
 	int invoked = 0;
 	service->AddReadyCallback ([&] (const Error &) { ++invoked; });
 	std::weak_ptr<i2p::client::I2PService> releasedService = service;
@@ -243,6 +267,102 @@ void TestOwnedExecutorDestructionWithPendingCancellation ()
 	destination.reset ();
 	assert (releasedService.expired () && releasedDestination.expired ());
 	assert (invoked == 0);
+}
+
+void TestIdleWaitRevocationAndRestart ()
+{
+	Fixture fixture;
+	fixture.owner->SetCloseIdleTime (i2p::client::I2P_SERVICE_MIN_CLOSE_IDLE_TIME);
+	fixture.owner->Start ();
+	auto first = Access::IdleSnapshot (*fixture.owner);
+	assert (first);
+	Access::RearmIdle (*fixture.owner);
+	auto second = Access::IdleSnapshot (*fixture.owner);
+	assert (second && second != first);
+	Access::DeliverIdle (*fixture.owner, first, { });
+	assert (Access::IdleSnapshot (*fixture.owner) == second);
+	Access::DeliverIdle (*fixture.owner, second,
+		boost::asio::error::operation_aborted);
+	assert (Access::IdleSnapshot (*fixture.owner) == second);
+	fixture.owner->Stop ();
+	Access::DeliverIdle (*fixture.owner, second, { });
+	assert (!Access::IdleSnapshot (*fixture.owner));
+	assert (!fixture.destination->IsIdling ());
+	fixture.owner->Start ();
+	auto restarted = Access::IdleSnapshot (*fixture.owner);
+	assert (restarted && restarted != second);
+	Access::DeliverIdle (*fixture.owner, second, { });
+	assert (Access::IdleSnapshot (*fixture.owner) == restarted);
+	assert (!fixture.destination->IsIdling ());
+}
+
+void TestIdleTimerDoesNotRetainOwnerOrDestination ()
+{
+	Fixture fixture;
+	fixture.owner->SetCloseIdleTime (i2p::client::I2P_SERVICE_MIN_CLOSE_IDLE_TIME);
+	fixture.owner->Start ();
+	assert (Access::IdleSnapshot (*fixture.owner));
+	std::weak_ptr<i2p::client::I2PService> owner = fixture.owner;
+	std::weak_ptr<i2p::client::ClientDestination> destination = fixture.destination;
+	fixture.owner.reset ();
+	fixture.destination.reset ();
+	assert (owner.expired () && destination.expired ());
+	fixture.Drain ();
+}
+
+void TestIdleDeadlineSaturation ()
+{
+	using Timer = boost::asio::steady_timer;
+	using std::chrono::milliseconds;
+	const auto epoch = Timer::time_point { };
+	assert (Access::IdleDeadline (epoch, 60000) == epoch + milliseconds (30000));
+	assert (Access::IdleDeadline (epoch, 0) == epoch);
+	const auto nearEnd = Timer::time_point::max () - milliseconds (1);
+	assert (Access::IdleDeadline (nearEnd, 60000) == Timer::time_point::max ());
+	assert (Access::IdleDeadline (nearEnd,
+		std::numeric_limits<uint64_t>::max ()) == Timer::time_point::max ());
+}
+
+void TestFreshActivityRearmsIdleAuthority ()
+{
+	Fixture fixture;
+	fixture.owner->SetCloseIdleTime (i2p::client::I2P_SERVICE_MIN_CLOSE_IDLE_TIME);
+	fixture.owner->Start ();
+	auto retired = Access::IdleSnapshot (*fixture.owner);
+	fixture.destination->SetIsIdling (true);
+	fixture.owner->UpdateLastActivityTime ();
+	assert (!fixture.destination->IsIdling ());
+	auto current = Access::IdleSnapshot (*fixture.owner);
+	assert (current && current != retired);
+	Access::DeliverIdle (*fixture.owner, retired, { });
+	assert (!fixture.destination->IsIdling ());
+	assert (Access::IdleSnapshot (*fixture.owner) == current);
+}
+
+void TestDestinationIdleStateAcrossThreads ()
+{
+	Fixture fixture;
+	// These production APIs are used by the service and tunnel pool.
+	// The barrier establishes concurrent authority without timing sleeps.
+	std::barrier ready (2);
+	unsigned observations = 0;
+	std::jthread writer ([&]
+		{
+			ready.arrive_and_wait ();
+			for (unsigned index = 0; index < 10000; ++index)
+				fixture.destination->SetIsIdling (index % 2 != 0);
+			fixture.destination->SetIsIdling (true);
+		});
+	std::jthread reader ([&]
+		{
+			ready.arrive_and_wait ();
+			for (unsigned index = 0; index < 10000; ++index)
+				observations += fixture.destination->IsIdling () ? 1 : 0;
+		});
+	writer.join ();
+	reader.join ();
+	assert (observations <= 10000);
+	assert (fixture.destination->IsIdling ());
 }
 }
 
@@ -255,5 +375,10 @@ int main ()
 	TestThrowingCallbackDoesNotAbandonPeers ();
 	TestPendingTimerDoesNotRetainOwnerOrDestination ();
 	TestOwnedExecutorDestructionWithPendingCancellation ();
+	TestIdleWaitRevocationAndRestart ();
+	TestIdleTimerDoesNotRetainOwnerOrDestination ();
+	TestIdleDeadlineSaturation ();
+	TestFreshActivityRearmsIdleAuthority ();
+	TestDestinationIdleStateAcrossThreads ();
 	return 0;
 }

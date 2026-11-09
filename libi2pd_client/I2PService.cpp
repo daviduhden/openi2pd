@@ -15,6 +15,7 @@
 #include "Identity.h"
 #include "ClientContext.h"
 #include "I2PService.h"
+#include <algorithm>
 #include <limits>
 #include <boost/asio/error.hpp>
 #include <boost/system/system_error.hpp>
@@ -47,6 +48,8 @@ namespace client
 
 	I2PService::~I2PService ()
 	{
+		m_Running.store (false);
+		RetireIdleCheckTimer ();
 		ResetReadyGeneration (false);
 		ClearHandlers ();
 		if (m_LocalDestination) m_LocalDestination->Release ();
@@ -60,10 +63,11 @@ namespace client
 		{
 			if (m_LocalDestination && m_LocalDestination->GetRefCounter () <= 1)
 			{
+				std::lock_guard idle (m_IdleMutex);
 				if (!m_IdleCheckTimer)
 					m_IdleCheckTimer.reset (new boost::asio::steady_timer (m_LocalDestination->GetService ()));
 				m_LastActivityTime = i2p::util::GetMonotonicMilliseconds ();
-				ScheduleIdleCheckTimer ();
+				ScheduleIdleCheckTimerLocked ();
 			}
 			else
 				LogPrint (eLogError, "I2PService: i2cp.closeIdleTime can't be set for ", GetName (),
@@ -75,11 +79,7 @@ namespace client
 	{
 		ResetReadyGeneration (false);
 		m_Running.store (false);
-		if (m_IdleCheckTimer)
-		{
-			m_IdleCheckTimer->cancel ();
-			m_IdleCheckTimer = nullptr;
-		}
+		RetireIdleCheckTimer ();
 	}
 
 	void I2PService::ClearHandlers ()
@@ -113,11 +113,18 @@ namespace client
 
 	void I2PService::UpdateLastActivityTime ()
 	{
-		if (m_CloseIdleTime)
+		bool resume = false;
 		{
-			m_LastActivityTime = i2p::util::GetMonotonicMilliseconds ();
-			if (m_LocalDestination->IsIdling ()) Resume ();
+			// Publish activity under the same gate as the idle decision.
+			// Resume rearms the timer, so invoke it after releasing this gate.
+			std::lock_guard idle (m_IdleMutex);
+			if (m_CloseIdleTime.load ())
+			{
+				m_LastActivityTime = i2p::util::GetMonotonicMilliseconds ();
+				resume = m_LocalDestination->IsIdling ();
+			}
 		}
+		if (resume) Resume ();
 	}
 
 	void I2PService::Resume ()
@@ -280,22 +287,71 @@ namespace client
 
 	void I2PService::ScheduleIdleCheckTimer ()
 	{
-		if (!m_IdleCheckTimer || !m_CloseIdleTime) return;
-		m_IdleCheckTimer->expires_after (std::chrono::milliseconds (m_CloseIdleTime / 2));
-		m_IdleCheckTimer->async_wait (
-			std::bind (&I2PService::HandleIdleCheckTimer, shared_from_this (), std::placeholders::_1));
+		std::lock_guard idle (m_IdleMutex);
+		ScheduleIdleCheckTimerLocked ();
 	}
 
-	void I2PService::HandleIdleCheckTimer (const boost::system::error_code & ec)
+	void I2PService::ScheduleIdleCheckTimerLocked ()
 	{
-		if (ec != boost::asio::error::operation_aborted)
+		const auto idleTime = m_CloseIdleTime.load ();
+		if (!m_Running.load () || !m_IdleCheckTimer || !idleTime) return;
+		auto wait = std::make_shared<IdleWait> ();
+		m_IdleWait = wait;
+		m_IdleCheckTimer->expires_at (IdleDeadline (
+			boost::asio::steady_timer::clock_type::now (), idleTime));
+		std::weak_ptr<I2PService> owner = weak_from_this ();
+		m_IdleCheckTimer->async_wait ([owner, wait] (const boost::system::error_code & ec)
+			{
+				if (auto service = owner.lock ()) service->HandleIdleCheckTimer (ec, wait);
+			});
+	}
+
+	boost::asio::steady_timer::time_point I2PService::IdleDeadline (
+		boost::asio::steady_timer::time_point now, uint64_t idleTime)
+	{
+		using Timer = boost::asio::steady_timer;
+		// Bound milliseconds before converting to native clock ticks,
+		// then bound addition separately. Large configuration values
+		// must never wrap into an already-expired timer.
+		constexpr auto maxMilliseconds = std::chrono::duration_cast<
+			std::chrono::milliseconds> (Timer::duration::max ()).count ();
+		const auto milliseconds = std::min (idleTime / 2,
+			static_cast<uint64_t> (maxMilliseconds));
+		const auto delay = std::chrono::duration_cast<Timer::duration> (
+			std::chrono::milliseconds (milliseconds));
+		const auto latest = Timer::time_point::max () - delay;
+		return now > latest ? Timer::time_point::max () : now + delay;
+	}
+
+	void I2PService::RetireIdleCheckTimer ()
+	{
+		std::unique_ptr<boost::asio::steady_timer> retired;
 		{
-			auto ts = i2p::util::GetMonotonicMilliseconds ();
-			if (ts > m_LastActivityTime + m_CloseIdleTime)
-				m_LocalDestination->SetIsIdling (true);
-			else
-				ScheduleIdleCheckTimer ();
+			std::lock_guard idle (m_IdleMutex);
+			m_IdleWait.reset ();
+			retired = std::move (m_IdleCheckTimer);
+			if (retired)
+			{
+				try { retired->cancel (); }
+				catch (const boost::system::system_error &) { }
+			}
 		}
+	}
+
+	void I2PService::HandleIdleCheckTimer (const boost::system::error_code & ec,
+		const std::shared_ptr<IdleWait> & wait)
+	{
+		std::lock_guard idle (m_IdleMutex);
+		if (ec || !m_Running.load () || !wait || m_IdleWait != wait) return;
+		m_IdleWait.reset ();
+		const auto idleTime = m_CloseIdleTime.load ();
+		if (!idleTime) return;
+		const auto ts = i2p::util::GetMonotonicMilliseconds ();
+		const auto last = m_LastActivityTime.load ();
+		if (ts > last && ts - last > idleTime)
+			m_LocalDestination->SetIsIdling (true);
+		else
+			ScheduleIdleCheckTimerLocked ();
 	}
 
 	void I2PService::CreateStream (StreamRequestComplete streamRequestComplete, std::string_view dest, uint16_t port)

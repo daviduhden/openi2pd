@@ -257,6 +257,11 @@ Readiness retirement is distinct from handler admission: trace every
 completed-stream handoff through the owner's Stop()/ClearHandlers() boundary.
 Check-time stale suppression alone is not atomic handler publication.
 
+For timer ownership, trace destruction when the executor never runs again.
+A queued callback retaining the service that owns its timer can preserve
+the whole destination/executor cycle; cancellation alone does not drain it.
+Review weak ownership and stale successful completions across restarts.
+
 For library-template failures, inspect the instantiated clock and platform
 branch before changing call spelling. Relative waits may instantiate the
 same broken steady-clock path; preserve the absolute transaction deadline

@@ -421,8 +421,10 @@ namespace garlic
 		/// lifetime; this generator is not a cryptographic source for keys or
 		/// secret nonces and must not be shared across threads.
 		std::mt19937 & GetRng ();
-		bool IsIdling () const { return m_IsIdling; };
-		void SetIsIdling (bool isIdling) { m_IsIdling = isIdling; };
+		// Advisory state crosses service and tunnel-pool threads. It does
+		// not publish or protect any other destination state.
+		bool IsIdling () const { return m_IsIdling.load (std::memory_order_relaxed); };
+		void SetIsIdling (bool isIdling) { m_IsIdling.store (isIdling, std::memory_order_relaxed); };
 		void SetNumTags (int numTags) { m_NumTags = numTags; };
 		int GetNumTags () const { return m_NumTags; };
 		void SetNumRatchetInboundTags (int numTags)
@@ -524,7 +526,7 @@ namespace garlic
 		bool IsDuplicateClove (uint32_t msgID, uint64_t expiration);
 
 	private:
-		bool m_IsIdling;
+		std::atomic<bool> m_IsIdling;
 		// outgoing sessions
 		int m_NumTags;
 		mutable std::mutex m_SessionsMutex;
