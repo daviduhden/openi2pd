@@ -372,18 +372,25 @@ sub _parse_url {
 
 sub _which {
     my ($name) = @_;
-    $name .= $Config{_exe}
-        if length $Config{_exe} && $name !~ /\Q$Config{_exe}\E\z/;
+    my @names = ($name);
+    if ( length $Config{_exe} && $name !~ /\Q$Config{_exe}\E\z/ ) {
+        # Prefer the native image, but POSIX runtimes such as Cygwin
+        # also execute extensionless scripts through their shebang.
+        @names = ( "$name$Config{_exe}" );
+        push @names, $name unless $^O eq 'MSWin32';
+    }
     # Only absolute PATH entries are searched. A relative or empty entry
     # could resolve to whatever sits in the current directory, and the
     # result is executed without a shell, so the resolved absolute path
     # is returned instead of the bare name.
     for my $directory (File::Spec->path) {
         next unless length $directory && File::Spec->file_name_is_absolute($directory);
-        my $candidate = File::Spec->catfile($directory, $name);
-        next unless -f $candidate && -x _;
-        my $absolute = Cwd::abs_path($candidate);
-        return $absolute if defined $absolute && -f $absolute && -x _;
+        for my $candidate_name (@names) {
+            my $candidate = File::Spec->catfile($directory, $candidate_name);
+            next unless -f $candidate && -x _;
+            my $absolute = Cwd::abs_path($candidate);
+            return $absolute if defined $absolute && -f $absolute && -x _;
+        }
     }
     return undef;
 }
@@ -1290,8 +1297,11 @@ is required or attempted.
 =head1 PORTABILITY
 
 Runs with the OpenBSD base interpreter and base C<openssl>. C<$Config{_exe}>
-supplies the executable suffix on Windows; the whole-exchange deadlines rely
-on C<alarm>, so they need a platform where SIGALRM is available.
+supplies the preferred native executable suffix. POSIX runtimes, including
+Cygwin/MSYS Perl, also accept extensionless executable scripts in the same
+absolute C<PATH> directory. Native MSWin32 keeps the suffixed-image search.
+The whole-exchange deadlines rely on C<alarm>, so they need a platform where
+SIGALRM is available.
 
 =head1 SEE ALSO
 

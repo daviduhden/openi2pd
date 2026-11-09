@@ -330,6 +330,8 @@ sub decode_json {
 # builtins are used so the shim works with PATH pointing at its own directory.
 sub write_openssl_shim {
     my ($directory) = @_;
+    # Deliberately extensionless: Cygwin/MSYS reports an .exe suffix,
+    # but this POSIX script must win before a later system OpenSSL.
     my $path = File::Spec->catfile( $directory, 'openssl' );
     open my $handle, '>', $path
       or BAIL_OUT("cannot create openssl shim: $!");

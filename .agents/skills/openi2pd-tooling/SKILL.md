@@ -125,6 +125,10 @@ a TUI client.
 - Shell-policy scanning masks only literal setup-msys2 package scalars
   within that action's with map. Preserve line numbers; run blocks, unknown
   action schemas and executable-looking package input remain checked.
+- Cygwin/MSYS can report an executable suffix while accepting extensionless
+  POSIX wrappers. Search the native image first within each absolute PATH
+  directory, then the wrapper. An earlier wrapper must win before a later
+  system transport.
 
 - Every CTest TAP file uses PERL_EXECUTABLE directly. A separately found
   prove wrapper can select a different interpreter through a shebang/BAT
