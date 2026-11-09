@@ -204,6 +204,45 @@ my $shell_checker = File::Spec->catfile(
     ($code, $out) = run_checker($shell_checker, '--root', $tmp);
     is($code, 1, 'documentation shell fences obey the same embedding policy');
     like($out, qr/guide[.]md:2:/, 'documentation fence preserves original line numbers');
+
+    write_file($markdown, "Plain documentation.\n");
+    my $yaml = File::Spec->catfile($tmp, 'workflow.yml');
+    my $packages = "steps:\n  - uses: msys2/setup-msys2\@fixture\n"
+        . "    with:\n      install: >-\n        perl\n        python\n"
+        . "      pacboy: |\n        perl:p\n        ninja:p\n";
+    write_file($yaml, $packages);
+    ($code, $out) = run_checker($shell_checker, '--root', $tmp);
+    is($code, 0, 'known MSYS package scalars are data, not stdin programs');
+    for my $command ("perl", "perl -e 'secret-yaml-marker'",
+        "python3 -c 'secret-yaml-marker'") {
+        write_file($yaml, $packages . "  - run: |\n      $command\n");
+        ($code, $out) = run_checker($shell_checker, '--root', $tmp);
+        is($code, 1, 'executable YAML remains subject to interpreter policy');
+        like($out, qr/workflow[.]yml:11:/,
+            'masked metadata retains original executable line numbers');
+        unlike($out, qr/secret-yaml-marker/,
+            'YAML policy diagnostic omits source operands');
+    }
+    write_file($yaml, "steps:\n  - run: perl\n");
+    ($code, $out) = run_checker($shell_checker, '--root', $tmp);
+    is($code, 1, 'inline YAML bare interpreter still rejects stdin source');
+    like($out, qr/workflow[.]yml:2:/, 'inline YAML location is preserved');
+    my $bad_packages = $packages;
+    $bad_packages =~ s/        perl\n/        perl -e 'secret-yaml-marker'\n/;
+    write_file($yaml, $bad_packages);
+    ($code, $out) = run_checker($shell_checker, '--root', $tmp);
+    is($code, 1, 'executable-looking package data is not masked');
+    like($out, qr/workflow[.]yml:5:/, 'invalid package-data line is retained');
+    unlike($out, qr/secret-yaml-marker/, 'package-data diagnostic omits operands');
+    my $unknown = $packages;
+    $unknown =~ s{msys2/setup-msys2}{example/unrelated};
+    write_file($yaml, $unknown);
+    ($code, $out) = run_checker($shell_checker, '--root', $tmp);
+    is($code, 1, 'package masking does not trust unrelated action schemas');
+    write_file($yaml, "steps:\n  - uses: msys2/setup-msys2\@fixture\n"
+        . "    with:\n      unknown:\n        install: >-\n          perl\n");
+    ($code, $out) = run_checker($shell_checker, '--root', $tmp);
+    is($code, 1, 'nested mappings cannot impersonate direct package inputs');
 }
 
 # Crash diagnostics must reject commands that expose process arguments

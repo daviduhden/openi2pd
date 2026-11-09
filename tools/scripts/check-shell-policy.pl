@@ -89,6 +89,7 @@ for my $path (sort @files) {
     if ($path =~ /\.md\z/i) {
         $text = documentation_commands($text);
     }
+    $text = workflow_package_data($text) if $path =~ /\.ya?ml\z/i;
     my $relative = join '/', File::Spec->splitdir(File::Spec->abs2rel($path, $root));
     # A shebang supplies the source filename implicitly. Evaluate only
     # its explicit options, without confusing the following file body
@@ -104,6 +105,64 @@ for my $issue (@violations) {
 print 'shell-policy: ' . scalar(@files) . " source file(s), "
     . scalar(@violations) . " policy violation(s)\n";
 exit(@violations ? 1 : 0);
+
+# setup-msys2's install/pacboy block scalars are package names, not
+# commands. Mask only literal package lists in that action's with map;
+# retain every newline and scan malformed or executable-looking input.
+# Other actions, run blocks and generic YAML remain conservative inputs.
+sub workflow_package_data {
+    my ($text) = @_;
+    my @lines = split /\n/, $text, -1;
+    my ($step_indent, $key_indent, $with_indent, $child_indent, $package_indent);
+    my $msys = 0;
+    for my $line (@lines) {
+        next if $line =~ /\A\s*(?:#.*)?\z/;
+        my ($padding) = $line =~ /\A( *)/;
+        my $indent = length $padding;
+        if (defined($package_indent) && $indent > $package_indent) {
+            if ($line =~ /\A *(?:[A-Za-z0-9][A-Za-z0-9_.+\@:-]*)(?: +[A-Za-z0-9][A-Za-z0-9_.+\@:-]*)* *(?:#.*)?\z/) {
+                $line = '';
+            }
+            next;
+        }
+        undef $package_indent;
+        if (defined($step_indent) && $indent <= $step_indent) {
+            undef $step_indent;
+            undef $key_indent;
+            undef $with_indent;
+            undef $child_indent;
+            $msys = 0;
+        }
+        if ($line =~ /\A( *)-( +)\S/) {
+            $step_indent = length $1;
+            $key_indent = length($1) + 1 + length($2);
+            undef $with_indent;
+            undef $child_indent;
+            $msys = 0;
+        }
+        next unless defined $step_indent;
+        if ($line =~ /\A *(?:- +)?uses: *['"]?msys2\/setup-msys2\@[A-Za-z0-9_.\/-]+['"]? *(?:#.*)?\z/) {
+            $msys = 1;
+            next;
+        }
+        next unless $msys;
+        if (defined($with_indent) && $indent <= $with_indent) {
+            undef $with_indent;
+            undef $child_indent;
+        }
+        if ($line =~ /\A *with: *(?:#.*)?\z/ && $indent == $key_indent) {
+            $with_indent = $indent;
+            next;
+        }
+        $child_indent //= $indent
+            if defined($with_indent) && $indent > $with_indent;
+        if (defined($child_indent) && $indent == $child_indent
+            && $line =~ /\A *(?:install|pacboy): *[>|][+-]? *(?:#.*)?\z/) {
+            $package_indent = $indent;
+        }
+    }
+    return join "\n", @lines;
+}
 
 sub documentation_commands {
     my ($text) = @_;
