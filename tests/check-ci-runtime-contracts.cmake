@@ -417,6 +417,8 @@ require_runtime_source("tests/test-torrents-security.cpp"
   "assert (released.expired ());")
 
 # One broker deadline covers admission, output and stale-reply waits.
+require_runtime_source("libi2pd_client/I2PService.cpp"
+  "try { previous->timer.cancel (); }")
 require_runtime_order("privsep/Supervisor.cpp"
   "SpawnSupervisedTorrentStorage (int rootFd" "auto & reply = *selected;"
   "const auto deadline =" "lock.try_lock_until (deadline)"

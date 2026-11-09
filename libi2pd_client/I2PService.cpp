@@ -17,6 +17,7 @@
 #include "I2PService.h"
 #include <limits>
 #include <boost/asio/error.hpp>
+#include <boost/system/system_error.hpp>
 
 namespace i2p
 {
@@ -163,8 +164,11 @@ namespace client
 		if (previous)
 		{
 			std::lock_guard admission (previous->mutex);
-			boost::system::error_code ignored;
-			previous->timer.cancel (ignored);
+			// Retire authority before cancellation. Newer Asio timer APIs
+			// expose only the throwing overload; teardown must still finish
+			// if the timer service reports a cancellation failure.
+			try { previous->timer.cancel (); }
+			catch (const boost::system::system_error &) { }
 		}
 	}
 

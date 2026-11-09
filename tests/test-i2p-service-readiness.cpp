@@ -46,8 +46,7 @@ struct I2PServiceReadinessTestAccess
 	template<class Ticket> static void Cancel (const Ticket & ticket)
 	{
 		std::lock_guard lock (ticket.first->mutex);
-		boost::system::error_code ignored;
-		ticket.first->timer.cancel (ignored);
+		ticket.first->timer.cancel ();
 	}
 	template<class Ticket> static void Deliver (const Ticket & ticket,
 		const boost::system::error_code & error)

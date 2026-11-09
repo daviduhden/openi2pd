@@ -117,6 +117,11 @@ compile, run tests or run project scripts.
 
 ## Known issues and decisions
 
+- Asio timer cancellation and socket cancellation have different API
+  availability. New timer code uses cancel() and contains system_error at
+  retired-authority teardown boundaries; fixture failures remain visible.
+  Search timers independently before changing valid socket overloads.
+
 - Encoding alphabet accessors return static-extent spans over process-life
   storage, excluding a NUL terminator. HashedStorage consumes the span
   directly; migrate netDb, profiles, address book and persistence fixtures
