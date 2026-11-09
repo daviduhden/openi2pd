@@ -109,9 +109,7 @@ public class LogAdapter extends ListAdapter<LogEntry, LogAdapter.Holder> {
             String rawLevel = entry.level() == null ? "" : entry.level().trim();
             String levelText = rawLevel.isEmpty() ? context.getString(R.string.value_unknown)
                                                   : rawLevel.toUpperCase(Locale.ROOT);
-            if (levelText.length() > MAX_LEVEL_LENGTH) {
-                levelText = levelText.substring(0, MAX_LEVEL_LENGTH);
-            }
+            levelText = DisplayText.bound(levelText, MAX_LEVEL_LENGTH);
             String messageText = TextUtils.isEmpty(entry.message())
                     ? context.getString(R.string.value_unknown)
                     : entry.message();

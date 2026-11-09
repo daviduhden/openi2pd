@@ -121,6 +121,11 @@ run Gradle, install an APK or run a device test.
 
 ## Known issues and decisions
 
+- DisplayText bounds presentation strings in UTF-16 units without cutting
+  valid surrogate pairs. Reuse it in snapshot, log and error caps; preserve
+  each caller's null/default behavior. It does not validate malformed
+  Unicode, preserve graphemes or replace protocol byte-limit validation.
+
 - MainActivity confirmations use UiConfirmationAuthority foreground/session
   tickets, independently of Fragment view tokens. Consume once before the
   action, revoke before dismissal, and deny registration while framework

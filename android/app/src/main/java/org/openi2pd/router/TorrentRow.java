@@ -138,15 +138,7 @@ record TorrentRow(String id, String name, String status, String error, String ha
      */
     private static String text(Map<String, String> fields, String key, int max) {
         String value = fields.getOrDefault(key, "");
-        if (value.length() > max) {
-            // Limits use UTF-16 units. Truncation must preserve whole
-            // supplementary characters for TextView and accessibility.
-            int end = max;
-            if (Character.isHighSurrogate(value.charAt(end - 1))
-                    && Character.isLowSurrogate(value.charAt(end))) --end;
-            return value.substring(0, end);
-        }
-        return value;
+        return DisplayText.bound(value, max);
     }
 
     private static long counter(Map<String, String> fields, String key) {

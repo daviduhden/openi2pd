@@ -101,6 +101,11 @@ the text crosses a protocol/IPC boundary.
 
 ## Known issues and decisions
 
+- Android presentation truncation uses DisplayText, shared with torrent
+  rows. Exercise supplementary characters across the cutoff as well as
+  BMP Chinese, null and zero limits. A UTF-16 cap is neither a byte cap nor
+  a grapheme-width guarantee; protocol operands keep their own validators.
+
 - Source harvesting selects trusted tables by repository-relative identity.
   Build that identity with File::Spec before matching it; native Windows
   separators otherwise bypass tab/help/option and terminal-error checks.

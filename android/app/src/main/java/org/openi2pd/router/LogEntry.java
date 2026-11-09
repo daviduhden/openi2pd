@@ -31,8 +31,6 @@ public record LogEntry(long sequence, long timestampSeconds, String level, Strin
         timestampSeconds = Math.max(0L, timestampSeconds);
         level = level == null ? "" : level.trim();
         message = message == null ? "" : message;
-        if (message.length() > MAX_MESSAGE_LENGTH) {
-            message = message.substring(0, MAX_MESSAGE_LENGTH);
-        }
+        message = DisplayText.bound(message, MAX_MESSAGE_LENGTH);
     }
 }

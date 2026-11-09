@@ -277,6 +277,6 @@ final class RuntimeAdminPolicy {
         if (value == null) {
             return "";
         }
-        return value.length() <= maximum ? value : value.substring(0, maximum);
+        return DisplayText.bound(value, maximum);
     }
 }

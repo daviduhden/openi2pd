@@ -2642,8 +2642,7 @@ public class RouterService extends Service {
             return existing;
         }
         String combined = existing + "\n" + extra;
-        return combined.length() <= MAX_ERROR_TEXT ? combined
-                                                   : combined.substring(0, MAX_ERROR_TEXT);
+        return DisplayText.bound(combined, MAX_ERROR_TEXT);
     }
 
     private static String describe(Throwable tr) {

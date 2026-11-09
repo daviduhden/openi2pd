@@ -485,7 +485,7 @@ public final class UiFormat {
         }
         first = first.trim();
         if (first.length() > MAX_ERROR_LENGTH) {
-            return first.substring(0, MAX_ERROR_LENGTH) + "…";
+            return DisplayText.bound(first, MAX_ERROR_LENGTH) + "…";
         }
         return first;
     }

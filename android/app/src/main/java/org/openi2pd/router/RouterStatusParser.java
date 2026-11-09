@@ -157,9 +157,7 @@ final class RouterStatusParser {
                 continue;
             }
             String text = parts[3];
-            if (text.length() > MAX_LOG_TEXT_LENGTH) {
-                text = text.substring(0, MAX_LOG_TEXT_LENGTH);
-            }
+            text = DisplayText.bound(text, MAX_LOG_TEXT_LENGTH);
             entries.add(new LogEntry(sequence, timestamp, normalizeLevel(parts[2]), text));
         }
         return entries;
@@ -224,7 +222,7 @@ final class RouterStatusParser {
         if (value == null) {
             return "";
         }
-        return value.length() <= maximum ? value : value.substring(0, maximum);
+        return DisplayText.bound(value, maximum);
     }
 
     private static String normalizeError(String error) {
@@ -232,7 +230,7 @@ final class RouterStatusParser {
                 || "ok".equalsIgnoreCase(error)) {
             return "";
         }
-        return error.length() <= 128 ? error : error.substring(0, 128);
+        return DisplayText.bound(error, 128);
     }
 
     /**
