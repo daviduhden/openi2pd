@@ -21,7 +21,7 @@ package org.openi2pd.router;
 import java.util.Map;
 import java.util.regex.Pattern;
 
-/*
+/**
  * Immutable torrent summary decoded through {@link #from}.
  *
  * <p>The decoder bounds display text and counters. Malformed IDs are
@@ -40,7 +40,7 @@ record TorrentRow(String id, String name, String status, String error, String ha
     /* Compiled once: a snapshot decodes up to 200 rows per refresh. */
     private static final Pattern HASH = Pattern.compile("[0-9a-fA-F]{40}");
 
-    /*
+    /**
      * Decode one {@code <prefix>key} snapshot row.
      *
      * <p>The engine id is mandatory: it must be one to ten ASCII

@@ -56,7 +56,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.function.BooleanSupplier;
 
-/*
+/**
  * Single-activity host for the router screens.
  *
  * <p>State is owned by {@link RouterViewModel} and the router service,
@@ -814,7 +814,7 @@ public class MainActivity extends AppCompatActivity {
         super.onDestroy();
     }
 
-    /*
+    /**
      * Persist the navigation selection and the permission hand-off flag
      * before the UI is recreated, so the same destination is shown and
      * the first-launch auto-start is not replayed. Router state is not

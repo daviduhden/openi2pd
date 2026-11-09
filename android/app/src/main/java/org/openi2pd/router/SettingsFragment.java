@@ -47,7 +47,7 @@ import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
-/*
+/**
  * Grouped, validated settings backed by {@link RouterConfigStore}.
  *
  * <p>Only configuration keys are shown. Key files, passwords and other

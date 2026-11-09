@@ -35,7 +35,7 @@ import com.google.android.material.chip.Chip;
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 import com.google.android.material.progressindicator.LinearProgressIndicator;
 
-/*
+/**
  * Router overview. Every control is enabled from the published snapshot
  * and destructive actions require confirmation.
  *

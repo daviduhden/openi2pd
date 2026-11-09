@@ -27,7 +27,7 @@ import androidx.lifecycle.ViewModelProvider;
 
 import com.google.android.material.chip.Chip;
 
-/*
+/**
  * Network and client-service status. All values come from the
  * service-owned snapshot; missing values are rendered as an em dash
  * instead of invented state.

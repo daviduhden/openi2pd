@@ -96,4 +96,54 @@ is($code, 1, 'unescaped HTML-like placeholders remain errors');
 like($out, qr/<tunnel>\ is\ parsed\ as\ HTML/x,
     'raw placeholder diagnostic survives inline-tag stripping');
 
+my $ordinary = <<'JAVA';
+/*
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
+ */
+class Probe {
+    /* Ordinary implementation prose remains an ordinary comment. */
+    static void consume(String value) {}
+}
+JAVA
+($code, $out) = check_source($ordinary);
+is($code, 0, 'legal headers and plain ordinary comments are accepted');
+
+my $private = <<'JAVA';
+/* File description uses {@code value} without becoming API docs. */
+package org.openi2pd.router;
+class Probe {
+    /* Private implementation refers to {@link Probe}. */
+    private static void consume(String value) {}
+}
+JAVA
+($code, $out) = check_source($private);
+is($code, 0, 'file descriptions and private implementation retain style');
+
+my $code_prose = $ordinary;
+$code_prose =~ s/Ordinary implementation prose remains an ordinary comment\./Use {\@code value} as implementation prose./;
+($code, $out) = check_source($code_prose);
+is($code, 0, 'inline code prose alone does not imply API documentation');
+
+my $demoted = $source;
+$demoted =~ s{ /\*\* }{/*}x;
+($code, $out) = check_source($demoted);
+is($code, 1, 'demoting a Javadoc opener cannot hide its tags');
+like($out, qr/Javadoc\ tag\ in\ ordinary\ block\ comment/x,
+    'demoted documentation has an explicit marker diagnostic');
+
+for my $tag ('{@link Probe}', '{@linkplain Probe}', '@param value input',
+        '@implNote hidden malformed documentation') {
+    my $tagged = $ordinary;
+    $tagged =~ s/Ordinary implementation prose remains an ordinary comment\./$tag/;
+    ($code, $out) = check_source($tagged);
+    is($code, 1, "ordinary single-line comment rejects $tag");
+}
+
+my $block_tag = $ordinary;
+$block_tag =~ s{ /\*\ Ordinary\ implementation\ prose\ remains\ an\ ordinary\ comment\.\ \*/ }
+    {/*\n     * \@param value input\n     */}x;
+($code, $out) = check_source($block_tag);
+is($code, 1, 'ordinary multiline comment rejects a block tag');
+
 done_testing();

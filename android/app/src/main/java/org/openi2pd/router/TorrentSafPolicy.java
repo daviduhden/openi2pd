@@ -9,7 +9,7 @@
 
 package org.openi2pd.router;
 
-/*
+/**
  * Framework-free bounds shared by the SAF broker, its client and JVM
  * tests.
  *

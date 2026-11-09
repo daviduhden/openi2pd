@@ -42,7 +42,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 
-/*
+/**
  * Recycler-backed log screen with local search and severity filters.
  * The list is capped so a noisy native log stream cannot exhaust heap.
  *

@@ -118,6 +118,12 @@ branding validators or a build.
 
 ## Known issues and decisions
 
+- Android Lint locations identify ordinary blocks carrying Javadoc links
+  or block tags, including single-line comments on the reported line.
+  Verify opener-only diffs and guard non-private declarations against
+  demotion. Code/literal-only prose, legal headers and private comments
+  remain outside that narrower Lint boundary; native coverage is separate.
+
 - Changing a documentation opener from /** to /* preserves executable
   semantics but removes Doxygen/Javadoc recognition. A parameter checker
   that only harvests documentation blocks may then pass vacuously. Record

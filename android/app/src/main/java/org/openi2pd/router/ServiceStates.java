@@ -12,7 +12,7 @@
 
 package org.openi2pd.router;
 
-/*
+/**
  * Snapshot of the optional client services exposed by the router.
  *
  * <p>This is a presentation record only. It deliberately contains

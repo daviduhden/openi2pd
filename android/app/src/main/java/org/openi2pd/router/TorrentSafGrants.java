@@ -30,7 +30,7 @@ final class TorrentSafGrants {
     private TorrentSafGrants() {
     }
 
-    /*
+    /**
      * @param grants persisted torrent-key to tree-URI mappings
      * @param uri URI string whose remaining references are being
      *            checked

@@ -499,7 +499,7 @@ final class TorrentSafStorage {
             }
         }, delay);
     }
-    /*
+    /**
      * Explicit, bounded recovery from a transient bind failure. Called
      * by {@link #initialize}, by an explicit tree selection and by the
      * status refresh the UI performs; a permanently broken policy still
@@ -520,7 +520,7 @@ final class TorrentSafStorage {
             return;
         scheduleBind();
     }
-    /*
+    /**
      * Install the application context and begin a fresh bind episode.
      *
      * <p>Called from {@link RouterService#onCreate()} on the main
@@ -544,7 +544,7 @@ final class TorrentSafStorage {
         // worker, not on the service main thread. Binding alone only
         // starts the broker.
     }
-    /*
+    /**
      * Persist a torrent-to-tree mapping after obtaining at least read
      * access. A read-only grant may seed existing content, but cannot
      * authorize writes. Existing mappings sharing a URI keep their
@@ -693,7 +693,7 @@ final class TorrentSafStorage {
             mappingAuthority.run(() -> true);
     }
 
-    /*
+    /**
      * Release both persisted modes of an obsolete tree only after the
      * mapping commit and when no other torrent references it. Modes
      * belong to the old tree: a read-only replacement must not leave
@@ -738,7 +738,7 @@ final class TorrentSafStorage {
         }
     }
 
-    /*
+    /**
      * Remove one persisted mapping and release its tree permission only
      * when no remaining mapping references that URI. A failed
      * preference commit leaves the permission intact.
@@ -774,7 +774,7 @@ final class TorrentSafStorage {
     // Called only from native disk workers, never the main thread. A
     // selected but revoked/unavailable mapping remains selected and
     // fails closed.
-    /*
+    /**
      * True when any torrent-to-tree mapping is persisted.
      *
      * <p>Called from {@link DaemonWrapper}'s start worker through the
@@ -789,7 +789,7 @@ final class TorrentSafStorage {
                             .getAll()
                             .isEmpty();
     }
-    /*
+    /**
      * Whether the native backend must treat this torrent as
      * provider-backed.
      *
@@ -814,7 +814,7 @@ final class TorrentSafStorage {
                 && context.getSharedPreferences("torrent-saf-grants", Context.MODE_PRIVATE)
                            .contains(tunnel + ":" + hash.toLowerCase(java.util.Locale.ROOT));
     }
-    /*
+    /**
      * Create or return the local tree capability for one torrent's
      * grant.
      *
@@ -885,7 +885,7 @@ final class TorrentSafStorage {
         }
         return result;
     }
-    /*
+    /**
      * Create a local file capability and open it through the current
      * broker.
      *
@@ -914,7 +914,7 @@ final class TorrentSafStorage {
         }
         return id;
     }
-    /*
+    /**
      * Read an exact bounded range through the broker.
      * @return exactly {@code count} bytes, or {@code null} on refusal
      *                 or failure
@@ -937,7 +937,7 @@ final class TorrentSafStorage {
         invalidate(handle);
         return null;
     }
-    /*
+    /**
      * Write a bounded range; the copied buffer belongs to this
      * transaction. Ambiguous failed writes are reported to the engine
      * and are not replayed.
@@ -1060,7 +1060,7 @@ final class TorrentSafStorage {
             return id != 0 && session.remote.removeEmptyDirectory(id, path, session.operation);
         }, false).value());
     }
-    /*
+    /**
      * Human-readable payload-storage state for the torrent list.
      *
      * <p>Worker threads only. It reads the persisted grant map, queries

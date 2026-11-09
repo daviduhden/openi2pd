@@ -178,7 +178,7 @@ public final class RouterConfigStore {
         return true;
     }
 
-    /*
+    /**
      * How a changed option becomes visible to the running router.
      *
      * <p>The log level is hot: {@link SettingsFragment} writes the

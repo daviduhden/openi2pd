@@ -13,6 +13,8 @@
 # JDK-internal tag, not a standard doclet tag), raw angle-bracket
 # placeholders in prose that javadoc parses as HTML element names, and a
 # documented parameter that the following declaration does not have.
+# Reject Javadoc links/block tags in ordinary comments too: otherwise
+# changing an opener can silently remove that contract from doclint.
 # It never runs Gradle, javadoc or a device.
 #
 # usage: check-android-javadoc.pl [--root ANDROID_DIRECTORY]
@@ -216,7 +218,8 @@ for my $file (@files) {
     my $text = slurp($file);
     my @lines = split /\n/x, $text, -1;
     for ( my $i = 0; $i < @lines; $i++ ) {
-        next unless $lines[$i] =~ m{^\s*/\*\*}x;
+        next unless $lines[$i] =~ m{^\s*/\*}x;
+        my $is_javadoc = $lines[$i] =~ m{^\s*/\*\*}x;
         my @block;
         my $j = $i;
         while ( $j < @lines ) {
@@ -224,7 +227,22 @@ for my $file (@files) {
             last if $lines[$j] =~ m{\*/}x;
             $j++;
         }
-        check_block( $file, $i, \@block, \@lines, $j + 1 );
+        if ($is_javadoc) {
+            check_block( $file, $i, \@block, \@lines, $j + 1 );
+        }
+        else {
+            # Match Lint's declaration boundary: private implementation
+            # comments and file headers are not API documentation.
+            # Keep their existing prose and marker style intact.
+            my $comment = join( '', @block );
+            my $decl = declaration_after( \@lines, $j + 1 );
+            if ( $decl !~ /\bprivate\b|^\s*(?:package|import)\b/x
+                && ( $comment =~ /\{\@(?:link|linkplain)\b/x
+                || $comment =~ /^\s*(?:\/\*|\*)\s*\@[A-Za-z]\w*\b/mx ) ) {
+                fail( "$file line " . ( $i + 1 )
+                    . ': Javadoc tag in ordinary block comment; use /**' );
+            }
+        }
         $i = $j;
     }
 }
@@ -281,7 +299,16 @@ Use C<{@code ...}> (which escapes its body) or C<&lt;...&gt;>;
 =item *
 
 a documented parameter that the following declaration does not have,
-which doclint reports as an unresolvable reference.
+which doclint reports as an unresolvable reference;
+
+=item *
+
+Javadoc links or block tags inside a non-private declaration's ordinary
+block comment. Such comments are invisible to doclint and trigger Lint's
+C<WrongCommentType>; restore the documentation opener rather than
+suppressing the warning or removing the tags. File headers and private
+implementation comments retain their existing comment style. Inline
+C<code> and C<literal> prose alone do not imply API documentation.
 
 =back
 

@@ -13,7 +13,7 @@
 
 package org.openi2pd.router;
 
-/*
+/**
  * One decoded {@link RouterService} start command.
  *
  * <p>{@link #fromAction(String, String)} is the only place that knows
@@ -51,21 +51,21 @@ sealed interface RouterCommand {
 
     record Reseed() implements RouterCommand {}
 
-    /*
+    /**
      * Runtime log-level request. {@code level} may be null or unknown;
      * the service rejects both through {@link
      * DaemonWrapper#isRuntimeLogLevel} before queueing any native call.
      */
     record SetRuntimeLogLevel(String level) implements RouterCommand {}
 
-    /*
+    /**
      * Unrecognised action. {@code action} is never null, because a null
      * action maps to {@link Restore}; it is retained for diagnostics
      * only.
      */
     record Unknown(String action) implements RouterCommand {}
 
-    /*
+    /**
      * Decode an action without its extra.
      *
      * <p>The runtime log-level command carries the value of {@link
@@ -77,7 +77,7 @@ sealed interface RouterCommand {
         return fromAction(action, null);
     }
 
-    /*
+    /**
      * Decode an action and, for the runtime log-level command, its
      * extra.
      *

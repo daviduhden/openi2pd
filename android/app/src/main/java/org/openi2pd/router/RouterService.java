@@ -51,7 +51,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.UnaryOperator;
 
-/*
+/**
  * Started and bound router service.
  *
  * <p>This class is the single owner of {@link DaemonWrapper}. It keeps
@@ -116,7 +116,7 @@ public class RouterService extends Service {
      */
     public static final String ACTION_RESEED = "org.openi2pd.router.action.RESEED";
 
-    /*
+    /**
      * Typed runtime log-level command for callers that cannot bind. The
      * extra is validated against {@link
      * DaemonWrapper#isRuntimeLogLevel}; an intent with a missing or
@@ -125,7 +125,7 @@ public class RouterService extends Service {
     public static final String ACTION_SET_RUNTIME_LOG_LEVEL =
             "org.openi2pd.router.action.SET_RUNTIME_LOG_LEVEL";
 
-    /*
+    /**
      * Bounded runtime log level extra for {@link
      * #ACTION_SET_RUNTIME_LOG_LEVEL}. Only the exact closed set
      * accepted by {@link DaemonWrapper#isRuntimeLogLevel} is forwarded;
@@ -383,7 +383,7 @@ public class RouterService extends Service {
         }
     }
 
-    /*
+    /**
      * Acquire the owner epoch and reconcile the durable run intent
      * once.
      *
@@ -467,7 +467,7 @@ public class RouterService extends Service {
         }
     }
 
-    /*
+    /**
      * Dispatch one {@link RouterCommand} and decide the service
      * stickiness.
      *
@@ -639,7 +639,7 @@ public class RouterService extends Service {
         }
     }
 
-    /*
+    /**
      * Return the in-process binder. Clients must go through {@link
      * RouterRepository}; this is deliberately not an AIDL interface and
      * the service is not exported, so no other UID gains router
@@ -1377,7 +1377,7 @@ public class RouterService extends Service {
         return sendCommand(context, ACTION_START, true);
     }
 
-    /*
+    /**
      * Deliver the sticky-restore command from a caller that cannot bind
      * its own service (the boot and package-replace receiver).
      *
@@ -2004,7 +2004,7 @@ public class RouterService extends Service {
                 () -> TorrentSafStorage.detach(getApplicationContext(), tunnel, hash), callback);
     }
 
-    /*
+    /**
      * Read one torrent's bounded payload-storage diagnostic on the SAF
      * worker.
      *
@@ -2165,7 +2165,7 @@ public class RouterService extends Service {
         }
     }
 
-    /*
+    /**
      * Hash a selected SAF source and produce metadata on the SAF
      * worker.
      *

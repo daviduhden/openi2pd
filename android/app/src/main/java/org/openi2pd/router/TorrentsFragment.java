@@ -37,7 +37,7 @@ import com.google.android.material.textfield.TextInputLayout;
 import java.util.Map;
 import java.util.function.Consumer;
 
-/*
+/**
  * Material Views for torrent administration through
  * {@link RouterViewModel}.
  *

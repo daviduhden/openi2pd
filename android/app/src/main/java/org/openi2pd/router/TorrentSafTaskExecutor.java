@@ -24,7 +24,7 @@ final class TorrentSafTaskExecutor {
     private TorrentSafTaskExecutor() {
     }
 
-    /*
+    /**
      * Return a new owner-scoped executor. Saturation and shutdown throw
      * {@link java.util.concurrent.RejectedExecutionException}; callers
      * publish their typed fallback through the owner's epoch fence.

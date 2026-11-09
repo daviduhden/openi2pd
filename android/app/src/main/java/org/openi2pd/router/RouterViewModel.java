@@ -22,7 +22,7 @@ import androidx.lifecycle.MutableLiveData;
 
 import java.util.List;
 
-/*
+/**
  * Activity/Fragment-facing state holder.
  *
  * <p>All public methods are main-thread safe. The native calls happen
@@ -132,7 +132,7 @@ public class RouterViewModel extends AndroidViewModel {
     public LiveData<SafCreation> getSafCreation() {
         return safCreation;
     }
-    /*
+    /**
      * Hash a user-selected SAF source into metainfo on the service's
      * SAF lane.
      *

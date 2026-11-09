@@ -32,7 +32,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Locale;
 
-/*
+/**
  * Presentation-facing bridge to {@link RouterService}.
  *
  * <p>Binds with the application context, exposes immutable LiveData and
@@ -173,7 +173,7 @@ public final class RouterRepository implements RouterService.Listener {
         }
     }
 
-    /*
+    /**
      * Run one bounded torrent control request through the service.
      *
      * <p>{@code request} is the typed {@code I2PDTUI/1} line built by
@@ -522,7 +522,7 @@ public final class RouterRepository implements RouterService.Listener {
         runOnMain(() -> logs.setValue(applyFilter(allLogs)));
     }
 
-    /*
+    /**
      * Release the service binding and stop observation. Idempotent and
      * main-thread safe; {@link RouterViewModel#onCleared()} calls it so
      * a finished UI never leaks a connection.

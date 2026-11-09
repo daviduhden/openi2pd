@@ -13,7 +13,7 @@ import java.util.function.BooleanSupplier;
 import java.util.function.IntConsumer;
 import java.util.function.IntSupplier;
 
-/*
+/**
  * Bounded ownership of transient URI permissions across service epochs.
  * All registry operations except {@link #retire} require the caller's
  * nonreentrant grant authority. Framework callbacks run only under that

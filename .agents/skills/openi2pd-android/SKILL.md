@@ -121,6 +121,11 @@ run Gradle, install an APK or run a device test.
 
 ## Known issues and decisions
 
+- WrongCommentType is Android Lint, not Checkstyle. Restore only affected
+  Javadoc openers when prose already carries links/block tags; preserve
+  executable text, licenses and ordinary implementation comments. The
+  source checker rejects hidden documentation tags on non-private APIs.
+
 - DisplayText bounds presentation strings in UTF-16 units without cutting
   valid surrogate pairs. Reuse it in snapshot, log and error caps; preserve
   each caller's null/default behavior. It does not validate malformed

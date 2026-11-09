@@ -74,7 +74,7 @@ final class RuntimeAdminPolicy {
         return true;
     }
 
-    /*
+    /**
      * A host label of at most {@link #MAX_ADDRESS_NAME} characters with
      * no space. The native boundary re-applies the same limit, and the
      * address book applies the full host-name and destination rules.
@@ -84,7 +84,7 @@ final class RuntimeAdminPolicy {
                 && name.indexOf(' ') < 0;
     }
 
-    /*
+    /**
      * A full base64 destination of at most {@link #MAX_DESTINATION}
      * characters. Only the size and the absent space are checked here;
      * the daemon verifies the base64 identity itself.
@@ -187,7 +187,7 @@ final class RuntimeAdminPolicy {
                 || "already-running".equals(outcome) || "already-stopped".equals(outcome);
     }
 
-    /*
+    /**
      * Decode {@code name|kind|running|endpoint|destination} rows.
      *
      * <p>Malformed, over-long and unnamed rows are skipped rather than
@@ -216,7 +216,7 @@ final class RuntimeAdminPolicy {
         return services;
     }
 
-    /*
+    /**
      * Typed reseed snapshot. The fields stay strings because the daemon
      * protocol is textual and deliberately bounded; the UI converts the
      * two counters itself. {@link #UNKNOWN} is the explicit absent
@@ -232,7 +232,7 @@ final class RuntimeAdminPolicy {
         }
     }
 
-    /*
+    /**
      * Decode the ordered fields phase, enabled, attempts, succeeded,
      * lastAttemptMs, lastSuccessMs and lastError.
      * An empty or malformed record yields {@link ReseedStatus#UNKNOWN}

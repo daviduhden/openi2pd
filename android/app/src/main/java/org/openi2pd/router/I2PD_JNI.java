@@ -17,7 +17,7 @@ package org.openi2pd.router;
 
 import android.util.Log;
 
-/*
+/**
  * Thin, auditable Java surface over the in-tree C++23 JNI library.
  *
  * <p>{@link RouterService} and {@link DaemonWrapper} own router control
@@ -67,7 +67,7 @@ public final class I2PD_JNI {
      */
     static final String PROCESS_ROLE_CONFLICT = "process-role-conflict";
 
-    /*
+    /**
      * Result token returned when a stop request aborted an in-progress
      * start. {@link DaemonWrapper} maps it to the stopped state.
      */
@@ -80,7 +80,7 @@ public final class I2PD_JNI {
         // Native entry points only.
     }
 
-    /*
+    /**
      * Serialize a v1 torrent from already hashed SAF sources. The
      * native encoder validates all input again and does not read the
      * source documents. Call from a worker because validation and
@@ -101,7 +101,7 @@ public final class I2PD_JNI {
     public static native byte[] buildTorrentMetadata(byte[] name, byte[][] paths, long[] lengths,
             int pieceLength, byte[] hashes, byte[][] trackers, boolean privateTorrent);
 
-    /*
+    /**
      * Install the process-owned Java SAF bridge after claiming the
      * router role. Existing payloads retain their bridge while a
      * replacement is installed.
@@ -111,7 +111,7 @@ public final class I2PD_JNI {
      */
     static native boolean installSafStorageBridge(Class<?> bridge);
 
-    /*
+    /**
      * Apply the storage-broker process sandbox and claim {@link
      * #PROCESS_ROLE_STORAGE_BROKER}.
      *
@@ -132,12 +132,12 @@ public final class I2PD_JNI {
      */
     private static native boolean claimProcessRole(int role);
 
-    /*
+    /**
      * Currently claimed process role, or {@link #PROCESS_ROLE_NONE}.
      */
     public static native int processRole();
 
-    /*
+    /**
      * Claim {@link #PROCESS_ROLE_ROUTER}. Called by {@link
      * DaemonWrapper} before the first router-capable native entry
      * point.
@@ -180,7 +180,7 @@ public final class I2PD_JNI {
 
     public static native String getABICompiledWith();
 
-    /*
+    /**
      * Load {@code libi2pd.so}.
      *
      * @throws UnsatisfiedLinkError if the library or one of its
@@ -241,7 +241,7 @@ public final class I2PD_JNI {
         return error;
     }
 
-    /*
+    /**
      * Start the native router and block until its initialisation
      * transition has finished.
      *
@@ -258,7 +258,7 @@ public final class I2PD_JNI {
      */
     public static native String startDaemon();
 
-    /*
+    /**
      * Stop and tear down the running router synchronously.
      *
      * <p>Listeners, client and transit tunnels, netDb and the torrent
@@ -275,7 +275,7 @@ public final class I2PD_JNI {
     public static native void stopAcceptingTunnels();
     public static native void reloadTunnelsConfigs();
 
-    /*
+    /**
      * Ask the running netDb to reseed without blocking the caller.
      *
      * <p>The native call only starts the owned, cancellable NetDb job
@@ -323,7 +323,7 @@ public final class I2PD_JNI {
      */
     public static native String stopTunnel(String name);
 
-    /*
+    /**
      * Apply one runtime log level to the running logger without a
      * restart.
      *
@@ -336,7 +336,7 @@ public final class I2PD_JNI {
      */
     public static native boolean setRuntimeLogLevel(String level);
 
-    /*
+    /**
      * Publish the app-private data directory the router will use.
      *
      * <p>State only: it copies no assets and does not start the daemon,
@@ -364,7 +364,7 @@ public final class I2PD_JNI {
      */
     public static native String getStatusSnapshot();
 
-    /*
+    /**
      * Recent log records as {@code
      * sequence|timestampSeconds|level|text}.
      *
@@ -382,7 +382,7 @@ public final class I2PD_JNI {
      */
     static native String getAddressBook();
 
-    /*
+    /**
      * Add or replace one validated address-book name with a typed
      * result.
      *

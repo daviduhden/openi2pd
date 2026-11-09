@@ -25,7 +25,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.function.LongConsumer;
 
-/*
+/**
  * Builds v1 metainfo from provider streams without converting a content
  * URI into a filesystem path. The caller owns the worker and
  * cancellation signal; cursors, descriptors and streams opened here are
@@ -60,7 +60,7 @@ final class TorrentSafCreator {
     private TorrentSafCreator() {
     }
 
-    /*
+    /**
      * Enumerate a document or tree in stable path order and hash the
      * byte stream across file boundaries. Provider-reported lengths,
      * when present, are checked against bytes actually read before

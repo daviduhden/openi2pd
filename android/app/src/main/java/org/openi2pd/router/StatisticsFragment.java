@@ -26,7 +26,7 @@ import androidx.annotation.Nullable;
 import androidx.fragment.app.Fragment;
 import androidx.lifecycle.ViewModelProvider;
 
-/*
+/**
  * Traffic history and lifetime counters. The chart is a bounded custom
  * view; samples are appended only when the service publishes a
  * snapshot.

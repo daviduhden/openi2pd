@@ -21,7 +21,7 @@ final class TorrentSafCallbackPublisher {
     private TorrentSafCallbackPublisher() {
     }
 
-    /*
+    /**
      * Queue a callback whose owner is checked again at delivery time.
      *
      * <p>The callback executes under the service-owner epoch monitor,

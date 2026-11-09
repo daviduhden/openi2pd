@@ -81,7 +81,7 @@ public final class AutoStartController {
         return legacy;
     }
 
-    /*
+    /**
      * Read the autostart preference. Only the app-private marker is
      * inspected, apart from the one-time legacy migration in {@link
      * #getMarker(Context)}, so a worker thread may call it.
@@ -90,7 +90,7 @@ public final class AutoStartController {
         return getMarker(context).isFile();
     }
 
-    /*
+    /**
      * Enable/disable boot autostart and, when enabling, open a known
      * vendor autostart screen for the user. See {@link
      * #setEnabled(Context, boolean, boolean)} for a variant that keeps
@@ -100,7 +100,7 @@ public final class AutoStartController {
         return setEnabled(context, enabled, true);
     }
 
-    /*
+    /**
      * Enable/disable boot autostart.
      *
      * @param showVendorSettings when {@code true}, enabling also starts

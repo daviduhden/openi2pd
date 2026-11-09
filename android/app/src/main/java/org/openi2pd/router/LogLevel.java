@@ -13,7 +13,7 @@ package org.openi2pd.router;
 import java.util.Locale;
 import java.util.Optional;
 
-/*
+/**
  * Severity of one native router log line and the log screen's filter
  * views.
  *
@@ -62,7 +62,7 @@ public enum LogLevel {
         return severity;
     }
 
-    /*
+    /**
      * Lowest severity rank this view compares against. Unfiltered views
      * bypass the comparison, and {@link #ALL} keeps a rank below every
      * classified line.
@@ -71,7 +71,7 @@ public enum LogLevel {
         return severity;
     }
 
-    /*
+    /**
      * Whether this view ignores severity, as {@link #ALL} and {@link
      * #DEBUG} do.
      */

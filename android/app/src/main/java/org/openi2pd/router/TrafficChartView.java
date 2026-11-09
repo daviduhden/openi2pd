@@ -25,7 +25,7 @@ import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.core.content.ContextCompat;
 
-/*
+/**
  * Compact, allocation-bounded traffic chart.
  *
  * <p>The view owns a fixed-size ring buffer. Samples are supplied by

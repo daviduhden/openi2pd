@@ -52,7 +52,7 @@ final class TorrentControl {
     private TorrentControl() {
     }
 
-    /*
+    /**
      * Decode a bounded {@code I2PDTUI/1} response into immutable
      * fields. The frame length is a UTF-8 byte count, not a Java
      * character count; enforcing it before splitting fields detects
@@ -260,7 +260,7 @@ final class TorrentControl {
         return "TORRENT-CREATE " + tunnel + " " + source;
     }
 
-    /*
+    /**
      * Bounded comment page request. The daemon retains up to 256
      * comment records (64 of them hidden) but emits at most {@link
      * #COMMENT_PAGE} records per TORRENT-DETAIL response, so paging is

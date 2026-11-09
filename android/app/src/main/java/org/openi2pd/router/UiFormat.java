@@ -27,7 +27,7 @@ import java.text.NumberFormat;
 import java.util.List;
 import java.util.Locale;
 
-/*
+/**
  * Presentation helpers for router snapshots.
  *
  * <p>This class never calls JNI and never performs I/O. It converts the
@@ -439,7 +439,7 @@ public final class UiFormat {
         return TextUtils.isEmpty(value) ? context.getString(R.string.value_unknown) : value;
     }
 
-    /*
+    /**
      * Avoids re-layout when a one-second snapshot carries an unchanged
      * field.
      *

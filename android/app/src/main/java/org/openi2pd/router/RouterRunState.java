@@ -16,7 +16,7 @@ package org.openi2pd.router;
 
 import android.content.SharedPreferences;
 
-/*
+/**
  * Immutable persisted run intent of {@link RouterService}.
  *
  * <p>The service used to persist a single {@code should_run} boolean
@@ -79,12 +79,12 @@ public record RouterRunState(Phase phase, long gracefulDeadlineEpochMs, long gen
             this.wireName = wireName;
         }
 
-        /* Exact string persisted in {@link #KEY_PHASE}. */
+        /** Exact string persisted in {@link #KEY_PHASE}. */
         public String wireName() {
             return wireName;
         }
 
-        /*
+        /**
          * Decode a persisted phase.
          *
          * @return the phase, or {@code null} for an absent or unknown
@@ -109,7 +109,7 @@ public record RouterRunState(Phase phase, long gracefulDeadlineEpochMs, long gen
     /* Legacy run flag; always written as {@code phase != Stopped}. */
     static final String KEY_SHOULD_RUN = "should_run";
 
-    /* Persisted {@link Phase#wireName()}. */
+    /** Persisted {@link Phase#wireName()}. */
     static final String KEY_PHASE = "run_phase";
 
     /* Absolute graceful-stop deadline in wall-clock milliseconds. */
@@ -154,7 +154,7 @@ public record RouterRunState(Phase phase, long gracefulDeadlineEpochMs, long gen
         return phase != Phase.Stopped;
     }
 
-    /*
+    /**
      * True when this precomputed state follows a strictly newer write
      * generation than {@code previous}.
      *
@@ -169,7 +169,7 @@ public record RouterRunState(Phase phase, long gracefulDeadlineEpochMs, long gen
         return previous != null && generation > previous.generation;
     }
 
-    /*
+    /**
      * Save a state computed before acquiring the writer lock only when
      * it still follows the latest persisted generation.
      *
@@ -207,7 +207,7 @@ public record RouterRunState(Phase phase, long gracefulDeadlineEpochMs, long gen
         return phase == Phase.Draining;
     }
 
-    /*
+    /**
      * True when the drain deadline has been reached or passed.
      *
      * <p>A stopped or running state is never drain-expired; callers
@@ -233,7 +233,7 @@ public record RouterRunState(Phase phase, long gracefulDeadlineEpochMs, long gen
         return Math.min(remaining, MAX_DRAIN_WINDOW_MILLIS);
     }
 
-    /*
+    /**
      * Enter {@link Phase#Running} as a durable transition.
      *
      * <p>This is an instance method, unlike the {@link #stopped()}
@@ -256,7 +256,7 @@ public record RouterRunState(Phase phase, long gracefulDeadlineEpochMs, long gen
         return new RouterRunState(Phase.Draining, deadlineEpochMs, generation + 1);
     }
 
-    /*
+    /**
      * Cancel a drain and return to {@link Phase#Running}. A stacked or
      * repeated cancel never resurrects a stopped router, so a
      * non-draining state is returned unchanged.
@@ -285,7 +285,7 @@ public record RouterRunState(Phase phase, long gracefulDeadlineEpochMs, long gen
         return new RouterRunState(Phase.Stopped, 0L, 0L);
     }
 
-    /*
+    /**
      * Write the complete record, including the legacy {@code
      * should_run} mirror, into {@code editor}. The caller applies or
      * commits exactly once; {@link RouterService} uses {@code apply()}.
@@ -304,7 +304,7 @@ public record RouterRunState(Phase phase, long gracefulDeadlineEpochMs, long gen
         editor.putBoolean(KEY_SHOULD_RUN, shouldRun());
     }
 
-    /*
+    /**
      * Read the persisted run intent and sanitise it against the wall
      * clock.
      *
@@ -354,7 +354,7 @@ public record RouterRunState(Phase phase, long gracefulDeadlineEpochMs, long gen
         return new RouterRunState(Phase.Draining, deadline, persistedGeneration);
     }
 
-    /*
+    /**
      * {@link #load(SharedPreferences, long)} against the current wall
      * clock.
      */
@@ -374,7 +374,7 @@ public record RouterRunState(Phase phase, long gracefulDeadlineEpochMs, long gen
         return preferences.contains(KEY_PHASE) || preferences.contains(KEY_SHOULD_RUN);
     }
 
-    /*
+    /**
      * Raw persisted deadline without sanitisation. Callers only use it
      * to report that {@link #isPlausibleDeadline(long, long)} rejected
      * a value before it was clamped.
@@ -383,7 +383,7 @@ public record RouterRunState(Phase phase, long gracefulDeadlineEpochMs, long gen
         return preferences == null ? 0L : preferences.getLong(KEY_DEADLINE, 0L);
     }
 
-    /*
+    /**
      * Clamp a persisted deadline to the plausible window.
      *
      * @return the deadline, {@code now + MAX_DRAIN_WINDOW_MILLIS} for

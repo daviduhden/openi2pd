@@ -57,7 +57,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * is transferred to the router process.</p>
  */
 public final class TorrentSafStorageService extends Service {
-    /*
+    /**
      * Wire contract version reported by {@link
      * ITorrentSafStorage#apiVersion()}.
      */
@@ -1229,7 +1229,7 @@ public final class TorrentSafStorageService extends Service {
 
     private boolean restricted;
 
-    /*
+    /**
      * Claim the storage-broker process role before serving any Binder
      * call.
      *
@@ -1248,7 +1248,7 @@ public final class TorrentSafStorageService extends Service {
             stopSelf();
     }
 
-    /*
+    /**
      * Serve the app-private broker interface, or {@code null} when the
      * role claim in {@link #onCreate()} failed. The service is not
      * exported, and each transaction is additionally authenticated

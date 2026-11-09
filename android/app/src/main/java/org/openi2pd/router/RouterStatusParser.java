@@ -52,7 +52,7 @@ final class RouterStatusParser {
         // Static helpers.
     }
 
-    /*
+    /**
      * Parse the newline-separated {@code key=value} snapshot produced
      * by {@code I2PD_JNI.getStatusSnapshot()}.
      *

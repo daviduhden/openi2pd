@@ -42,7 +42,7 @@ import android.net.Network;
 import android.net.NetworkCapabilities;
 import android.util.Log;
 
-/*
+/**
  * Process-wide owner of the native i2pd daemon.
  *
  * <p>The wrapper uses application-owned resources rather than storing
@@ -73,7 +73,7 @@ public class DaemonWrapper {
      */
     public static final long GRACEFUL_STOP_DELAY_MILLIS = 10L * 60L * 1000L;
 
-    /*
+    /**
      * Receives lifecycle transitions of the native daemon.
      *
      * <p>A callback runs on whichever thread performed the transition
@@ -91,7 +91,7 @@ public class DaemonWrapper {
     private record
             StateChange(State oldState, State newState, List<StateUpdateListener> listeners) {}
 
-    /*
+    /**
      * Lifecycle state published to listeners.
      *
      * <p>{@link #isStartedOkay()} switches over every constant on
@@ -192,7 +192,7 @@ public class DaemonWrapper {
         this(context, assetManager, connectivityManager, true, null);
     }
 
-    /*
+    /**
      * @param autoStart when {@code false} the wrapper stays in {@link
      *                  State#stopped} until the owner calls {@link
      *                  #startDaemon()}. {@link RouterService} uses this
@@ -204,7 +204,7 @@ public class DaemonWrapper {
         this(context, assetManager, connectivityManager, autoStart, null);
     }
 
-    /*
+    /**
      * @param networkStateExecutor serial executor for the connectivity
      *                             update. Connectivity callbacks arrive
      *                             on the main thread; {@link
@@ -251,7 +251,7 @@ public class DaemonWrapper {
         }
     }
 
-    /*
+    /**
      * Default app-private data directory. Shared with {@link
      * RouterConfigStore} so configuration edits and the native router
      * always agree on the path.
@@ -402,7 +402,7 @@ public class DaemonWrapper {
         return false;
     }
 
-    /*
+    /**
      * Stop the daemon.
      *
      * <p>The start-cancellation token is published before any monitor
@@ -458,7 +458,7 @@ public class DaemonWrapper {
         notifyListeners(finishChange);
     }
 
-    /*
+    /**
      * Request a start and return immediately; the native initialisation
      * runs on the dedicated {@code i2pdDaemonStart} thread.
      *
@@ -472,7 +472,7 @@ public class DaemonWrapper {
         startDaemonInternal();
     }
 
-    /*
+    /**
      * Stop, then queue a start once the previous start has fully
      * unwound. The control executor is never polled or slept on.
      * A later stop/restart cancels the pending ticket, even after its
@@ -703,7 +703,7 @@ public class DaemonWrapper {
         }
     }
 
-    /*
+    /**
      * Exact, case-sensitive check against the closed runtime log level
      * set. Shared by {@link RouterService}'s binder and intent paths so
      * an invalid value is rejected before any native call is attempted.
@@ -720,7 +720,7 @@ public class DaemonWrapper {
         return false;
     }
 
-    /*
+    /**
      * Ask the running netDb to reseed from the configured reseed
      * servers.
      *
@@ -869,7 +869,7 @@ public class DaemonWrapper {
         }
     }
 
-    /*
+    /**
      * Add or replace one address-book name with the typed result.
      *
      * @return {@code ok}, {@code exists}, {@code invalid}, {@code
@@ -969,7 +969,7 @@ public class DaemonWrapper {
         }
     }
 
-    /*
+    /**
      * Apply a runtime log level to the running logger without
      * restarting the daemon. The value is validated here and again in
      * native code; this path never writes {@code i2pd.conf}, so
@@ -996,7 +996,7 @@ public class DaemonWrapper {
         }
     }
 
-    /*
+    /**
      * Transit tunnel count used by the graceful-shutdown decision.
      *
      * <p>Returns {@code 0} when the native library is unavailable: the
@@ -1012,7 +1012,7 @@ public class DaemonWrapper {
         }
     }
 
-    /*
+    /**
      * Start a graceful shutdown: stop accepting transit tunnels and
      * give the remaining ones time to drain. Scheduling belongs to
      * RouterService so the eventual native stop is enqueued on its
@@ -1053,7 +1053,7 @@ public class DaemonWrapper {
         return scheduledDelay;
     }
 
-    /*
+    /**
      * Cancel a scheduled graceful shutdown and resume accepting transit
      * tunnels. Only a {@link State#gracefulShutdownInProgress} router
      * changes; the deadline is cleared either way.

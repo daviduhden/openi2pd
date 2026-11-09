@@ -16,7 +16,7 @@ package org.openi2pd.router;
 
 import android.app.Application;
 
-/*
+/**
  * Application entry point.
  *
  * <p>It deliberately owns no daemon, no service connection and no
