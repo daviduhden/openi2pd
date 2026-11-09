@@ -118,6 +118,12 @@ branding validators or a build.
 
 ## Known issues and decisions
 
+- Changing a documentation opener from /** to /* preserves executable
+  semantics but removes Doxygen/Javadoc recognition. A parameter checker
+  that only harvests documentation blocks may then pass vacuously. Record
+  that coverage gap separately from generator warnings and compiler results;
+  do not attribute an earlier revision's source-documentation evidence to it.
+
 - When a library capability fallback changes, reconcile the dependency guide,
   language feature matrix and changed-file inventory together. Historical
   removal of a Boost fallback does not prove unconditional availability of

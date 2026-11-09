@@ -361,3 +361,12 @@ regression assertion comparing numeric 30 seconds with milliseconds. Compare
 chrono durations, not raw constants with different units. Review adjacent
 sampling and idle-decay comments and consumers whenever upstream changes a
 period; direct rate samples and idle decay remain separate mechanisms.
+
+## Host interpreter and wrapper closure
+
+Finding Perl is insufficient if a separately found prove wrapper invokes a
+different runtime. Explicitly select the host toolchain interpreter and use
+it for every TAP file. Distinguish native Win32 ACP paths from MSYS UTF-8
+paths and from Git's UTF-8 output; repeated decoding does not fix a wrong
+filesystem/process boundary. Keep complete Unicode fixtures and exact
+interpreter/cache evidence.

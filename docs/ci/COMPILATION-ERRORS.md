@@ -2093,3 +2093,18 @@ failure; MSVC's selected suite passes. CE-088/089 are Validated by CI in
 those executed configurations. Later local shutdown and torrent changes
 remain Pending CI compilation / Pending CI tests. Overall failures are
 TF-095/096 and existing Windows findings, not recurring compile blockers.
+
+## 80a487d5 retrospective: no new native compile blocker
+
+The ten newly inspected workflows execute
+`80a487d5111a8ff053d268c3c2cab019d005bef3`. Nine succeed; Windows MSYS2
+job 128952711384 fails its Unicode validator and GUI-version tests after
+compilation. MSVC job 128952711616 passes seventeen selected tests.
+Validation run 42553097403 passes UBSan 128952794694, ASan+UBSan
+128952794861 and TSan 128952794997. The focused instrumented OpenSSL
+TSan run 42553100250 also passes. These are scoped results, not a claim
+that every optional platform/configuration executed.
+
+HEAD fb974bbe changes source comment openers after the executed SHA. Source
+inspection found no executable-token change, but the earlier CI results do
+not validate its documentation coverage or subsequent local corrections.

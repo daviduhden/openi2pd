@@ -728,3 +728,28 @@ Kotlin opt-out deprecation and autopkgtest --force-yes debt remain open.
 Packaging's five jobs pass and exact-artifact lintian.log is empty. These
 facts do not establish a globally clean warning matrix or eliminate skipped
 quality/worker capability coverage.
+
+## 80a487d5 successful-job warning review
+
+History now contains 362 retained runs on 63 SHAs (223 failures, 73
+successes, 66 cancellations), with fifteen workflow IDs and eighteen names.
+All ten latest full logs, failed logs, metadata and artifact inventories
+were retrieved. No fresh own-code native compiler-warning family or
+sanitizer signature was identified in these logs.
+
+Android job 128952775574 still reports zero Lint errors and fourteen
+warnings (two ChromeOsAbiSupport, twelve VectorPath). Device 128952776731
+and optional Critic 128952795496 skip. Packaging passes five jobs and its
+exact Lintian file is empty; external autopkgtest --force-yes and MSYS2
+updater diagnostics persist. No warning suppression or speculative vector
+geometry change was introduced.
+
+### CW-030: documentation coverage after opener-only changes (static)
+
+HEAD fb974bbe changes 1,633 documentation openers from /** to /* across
+219 files. This preserves executable tokens but removes Doxygen/Javadoc
+recognition. Both parameter checkers harvest documentation blocks only;
+Doxyfile disables undocumented-member warnings. Their pass can therefore
+coexist with lost API coverage. No generator result at this SHA establishes
+coverage. The user's existing style change is preserved; resolving the
+coverage policy and checking generated API output remain Pending CI tests.

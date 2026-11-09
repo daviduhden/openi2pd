@@ -15,6 +15,15 @@ requirements and current code; `TODO.md` is the authoritative task list.
 
 ## Current baseline
 
+The 80a487d5 retrospective reaches 362 runs on 63 SHAs. Native sanitizer,
+OpenSSL, OpenBSD and selected MSVC regressions pass; Windows MSYS2 Unicode
+and GUI-version failures remain. Local CONT-055/056 add idle-timer lifetime
+and deadline controls, explicit host-interpreter selection, exact GUI-image
+retention and capability reasons. These are Implemented / static, Pending
+CI compilation / Pending CI tests. Native MSWin32 paths, fourteen Lint
+warnings, skipped optional lanes and source-documentation coverage after
+fb974bbe retain separate evidence requirements.
+
 At 9f2934f8, CE-088/089 are Validated by CI in executed lanes. The retained
 inventory reaches 352 runs on 62 SHAs; logger fixture and Perl allowlist
 failures now replace the compile blockers. Local CONT-053/054 add absolute

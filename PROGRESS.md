@@ -7705,3 +7705,66 @@ or push.
   compiler/test/sanitizer runs. Final independent review found no descriptor,
   nonce or lifecycle regression in nonblocking startup/interrupt handling.
   Official Java latest release remains i2p-2.14.1 at its recorded tag object.
+
+## 80a487d5 retrospective and preventive idle lifecycle corrections
+
+- Starting tree clean at fb974bbe; the latest ten workflows execute
+  80a487d5. Paged inventory: 362 runs/63 SHAs, 223 failures, 73 successes,
+  66 cancellations; fifteen workflow IDs/eighteen display names. Retrieved
+  every new full/failed log, metadata and artifact inventory, including
+  successful jobs; exact Windows/OpenBSD/Android/packaging artifacts are
+  retained under /var/tmp/openi2pd-ci-80 outside the source tree.
+- Delegated history/CI/regression evidence, Windows portability/runtime and
+  native memory/concurrency/protocol reconnaissance. Implementations used
+  exclusive native files; coordinator owns workflow/CMake, test diagnostics,
+  source contracts and tracking. Windows integration received independent
+  read-only review. Static-only/no-build/no-test policy passed to all agents.
+- Nine workflows succeed. Validation UBSan/ASan+UBSan/TSan, focused OpenSSL
+  TSan, OpenSSL 3/4, OpenBSD, packaging and selected MSVC pass at the exact
+  SHA. TF-095/096 and executed child-budget/torrent regressions can now use
+  Validated by CI. Android DisplayText remains 3/3 JVM; optional device and
+  Critic skip. Fourteen Lint warnings and external tooling debt remain open.
+- TF-097 / CONT-056: CLANG64 found unrelated Strawberry Perl 5.32 rather
+  than an explicitly installed MSYS host Perl. Declare MSYS perl and pass
+  its cygpath interpreter path to CMake. Direct TAP invocation retains the
+  same Test::More assertions while preventing a prove wrapper from selecting
+  another runtime. Complete Unicode fixtures remain enabled. Native
+  MSWin32 Unicode support is separately unresolved, not certified by MSYS.
+- GUI startup remains unattributed: the TUI links a smaller library graph,
+  so its version result does not rule out router static initializers or
+  loader faults. Retain exact GUI image, resolved CLANG64 DLLs, PE/runtime
+  tables and CMake cache before the bounded probe. No startup fix claimed.
+- Capability fixtures now emit static non-secret reasons before existing 77
+  returns; root/account/kernel/provisioning branches and assertions remain
+  unchanged. Source contracts pin key reasons and interpreter ownership.
+- RT-071 / CONT-055: idle waits borrow the owner weakly, carry distinct
+  tokens and serialize timer revocation. Destruction occurs outside the
+  idle gate. Added owned-executor teardown, immediate owner/destination
+  release and stale-success/rearm/restart controls. GarlicDestination idle
+  state is atomic after tracing cross-thread consumers; extreme idle
+  durations saturate conversion and absolute addition, with focused tests.
+- Full listener/global AddHandler admission remains a separate architecture
+  task; timer changes do not claim to solve it. Existing fb974bbe style work
+  is preserved. Its 1,633 opener replacements remove documentation harvest
+  across 219 files; parameter-check success does not prove API-doc coverage.
+  CW-030 records the unvalidated coverage issue instead of hiding it.
+- Local source changes are Implemented / static, Pending CI compilation /
+  Pending CI tests. No compilation/configuration/tests, commits or push.
+- Agent & Skills Synchronization reviews AGENTS, discovery and owning CI,
+  build/tooling, C++23/memory/privsep and documentation procedures. Reusable
+  knowledge covers interpreter closure, exact image evidence, weak timer
+  lifetimes, unit saturation, advisory atomic state and truthful skip/doc
+  coverage. Structural validator relevance is reviewed manually, not inferred
+  from its automated pass.
+- Final compile-free checks pass: tracked/untracked whitespace and new
+  comment wrapping, runtime source guards, build graph, workflow policy
+  (ten workflows/three actions), Skill structure and knowledge validation.
+  Validator reports zero errors; its AK004 relevance warning was reviewed
+  semantically. Documentation-marker coverage remains explicitly unresolved;
+  structural checker success is not a generated-documentation guarantee.
+- Independent native review caught fresh-activity/idle-decision ordering
+  beyond atomic value access. Timestamp publication and the idle snapshot now
+  share the timer gate; Resume executes after unlock because it rearms the
+  timer. Prepared fresh-activity/stale-wait controls and source-order guard
+  pin this seam. The guard and whitespace checks pass after correction;
+  dynamic race validation remains Pending CI tests.

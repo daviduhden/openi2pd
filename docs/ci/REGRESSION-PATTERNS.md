@@ -546,3 +546,18 @@ and nonblocking startup reads. Pair pure budget arithmetic with the existing
 child-reap fixture and the source guard; no pure test proves kernel shutdown.
 BITFIELD replacement regressions must start with already-set bits of the same
 size; an initially empty bitfield cannot expose stale availability.
+
+## Idle timer ownership and exact capability evidence
+
+A cancellation request does not drain a stopped executor. Test owner and
+destination expiration before polling, and discard queued work only after
+proving release. Distinct wait tokens must reject old successful timer
+completions after rearm and restart; weak ownership alone does not establish
+that generation invariant. Test extreme timer durations without overflowing
+steady-clock arithmetic.
+
+Capability skips require their original branch conditions and a fixed
+non-secret reason. Returning 77 must not be confused with subsequent worker
+handshake success. A console control with a smaller link graph cannot rule
+out static initializers or DLL faults in the GUI router; retain the exact
+image/dependency closure before making that inference.

@@ -531,3 +531,36 @@ round-trip turns UTF-8 resume-with-accents into double-encoded mojibake,
 then native abs_path fails; the console control reports its version while
 the GUI probe times out with empty output. These remain separate open
 findings, not resolved by passing MSVC sibling tests.
+
+## TF-095/096: validated in the executed 80a487d5 lanes
+
+[Validation 42553097403](https://github.com/daviduhden/openi2pd/actions/runs/42553097403)
+passes all three sanitizer jobs. Perl portability and the controlled logger
+fixture execute successfully; OpenSSL 3/4 and OpenBSD workflows also pass.
+Child-stop budget, torrent availability and rate-scheduler controls pass in
+the executed suites. TF-095/096 are Validated by CI at this SHA; pure budget
+arithmetic is not evidence for every kernel shutdown path.
+
+## TF-097: MSYS2 lane discovers an unrelated native Perl
+
+[Windows 42553068552](https://github.com/daviduhden/openi2pd/actions/runs/42553068552),
+job 128952711384, at the same SHA fails perl-agent-knowledge-contract's
+Unicode Git-root round trip. The configure log finds
+C:/Strawberry/perl/bin/perl.exe 5.32.1; the MSYS package inventory does not
+contain Perl. Native Perl's CP_ACP filesystem/process boundary does not
+match the UTF-8 contract, and the fixture also includes Chinese names that
+cannot be repaired by a CP1252-only adapter. Decoding Git output twice or
+skipping these cases would hide the mismatch.
+
+The local workflow declares the MSYS perl package and passes its cygpath
+interpreter path to CMake. Every i2pdctl TAP invocation now uses the selected
+Perl directly, removing incidental prove-wrapper interpreter selection while
+retaining the same Test::More assertions. Source guards pin the interpreter
+boundary. Implemented / static; Pending CI tests. Native MSWin32 Unicode
+support remains a separate limitation; an MSYS pass will not validate it.
+
+The GUI i2pd-version timeout remains open. The TUI control does not link the
+router libraries and cannot exclude router loader/static-initializer issues.
+The exact artifact lacked the GUI image and matching DLLs. The prepared
+workflow now retains them with PE/import/runtime resolution and CMake cache
+before probing. This improves attribution; it is not a GUI startup fix.

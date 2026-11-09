@@ -10,12 +10,14 @@ Documents project documentation.
 
 # Master TODO
 
-Latest retrospective: 352 retained runs on 62 SHAs. The ten runs at
-9f2934f8 build past CE-088/089 and execute the targeted native regressions.
-TF-095 (core-module allowlist) and TF-096 (logger backpressure fixture)
-corrections are Implemented / static, Pending CI tests. Windows Unicode and
-GUI-version probes, fourteen Android Lint warnings and capability/device
-skips remain open. CI does not validate subsequent local changes.
+Latest retrospective: 362 retained runs on 63 SHAs. At 80a487d5 nine
+workflows succeed; Windows MSYS2 retains Unicode and GUI-version failures.
+TF-095 (core-module allowlist) and TF-096 (logger fixture) are Validated by
+CI in executed lanes. TF-097 host-Perl selection and RT-071 idle lifetime
+corrections are Implemented / static, Pending CI compilation / Pending CI
+tests. Fourteen Android Lint warnings, native MSWin32 Unicode, GUI startup,
+capability/device skips and CW-030 documentation coverage remain open.
+HEAD fb974bbe and subsequent local changes have no new CI evidence.
 
 - CONT-050: portable supervisor admission and Asio timer teardown:
   Validated by CI in the executed 9f2934f8 lanes; no clean-matrix claim.
@@ -25,9 +27,14 @@ skips remain open. CI does not validate subsequent local changes.
 - CONT-052: shared Android surrogate-safe presentation bounds:
   Validated by CI (three JVM tests); device validation remains Pending.
 - CONT-053: single POSIX stop/startup deadlines and interrupted probes:
-  Implemented / static; Pending CI compilation / Pending CI tests.
+  Validated by CI (executed source/child-budget regressions at 80a487d5);
+  complete kernel shutdown and detached spawn paths remain Pending.
 - CONT-054: upstream torrent direct samples at 2500 ms, unit-safe scheduler
-  assertions: Implemented / static; Pending CI compilation / Pending CI tests.
+  assertions: Validated by CI in executed 80a487d5 suites.
+- CONT-055: idle timer weak ownership, wait identity and bounded expiry:
+  Implemented / static; Pending CI compilation / Pending CI tests.
+- CONT-056: explicit MSYS Perl, exact GUI image retention and capability
+  skip reasons: Implemented / static; Pending CI tests. GUI fix remains open.
 
 Previous retrospective: 332 retained runs, evidence for 330, on 60 SHAs.
 The executed 6390fdea matrix builds past CE-085/086 and validates named

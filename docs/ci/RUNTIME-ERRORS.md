@@ -1485,3 +1485,45 @@ Validation's logger assertion is TF-096, not a sanitizer report. No new
 sanitizer family was found in the retrieved full logs. Historical Windows,
 heap, capability and shutdown findings retain their individual evidence
 requirements; passing sibling lanes do not close them globally.
+
+## RT-071: idle timer retains service and destination (static finding)
+
+I2PService's periodic idle timer captured shared_from_this. The service owns
+the timer and retains its destination, so a stopped/non-drained executor can
+preserve the cycle. The local correction uses weak ownership, a distinct
+IdleWait identity and one gate for timer mutation/revocation. Stop and
+destruction revoke before cancellation; timer destruction occurs outside
+the gate. Stale successful callbacks cannot affect a rearmed/restarted wait.
+Prepared controls cover owner/destination release and owned-executor
+teardown without polling. Idle configuration/activity publication and
+cross-thread destination idle-flag access are reviewed together.
+Implemented / static; Pending CI compilation / Pending CI tests.
+
+Full ServiceAcceptor/global AddHandler admission remains a separate
+architectural task; these timer changes do not make handler publication
+atomic with Stop/ClearHandlers. Windows GUI startup and native MSWin32
+Unicode failures retain their exact-run evidence requirements.
+
+## 80a487d5 capability evidence
+
+OpenBSD job 128952719567 passes with worker identity, credentials and torrent
+supervisor capability skips. Existing skipped branches now emit a fixed
+non-secret reason before code 77: root runner, missing account data,
+unsupported kernel control, or unimplemented exec-free provisioning.
+No skip condition or security restriction changed. These source changes are
+Pending CI tests; the historical run still has no startup reason output.
+
+The RT-071 follow-up also replaces GarlicDestination's advisory idle bool
+with atomic value access after tracing service and tunnel-pool callers.
+It does not publish unrelated destination data. Oversized idle settings can
+overflow clock-unit conversion/addition; IdleDeadline now bounds both steps
+and deterministic near-max/UINT64_MAX controls are prepared. A synchronized
+two-thread test exercises actual idle APIs for TSan. No local dynamic
+validation was performed.
+
+Independent review of RT-071 found atomic timestamps alone did not serialize
+fresh activity with the timer's idle decision. Both now share the idle gate;
+Resume runs after unlock to avoid reacquiring the same mutex recursively.
+A fresh-activity/rearmed-authority regression and source-order guard are
+prepared. Broader concurrent Resume/key-replacement and global handler
+admission remain separate lifecycle review work, not guarantees of this fix.
