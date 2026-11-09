@@ -3785,8 +3785,9 @@ namespace torrents
 		if (toPort != storedPort) return;
 		// A remote error can contain credentials or other opaque payload.
 		LogPrint (eLogInfo, "TorrentsTunnel: Datagram tracker error response");
-		if (!torrent.expired ()) // response to announce
-			torrent.lock ()->ReportTrackerFailure (trackerID, error.substr (0, 512));
+		// Retain the announce owner once; expiry cannot grant lifetime.
+		if (auto current = torrent.lock ())
+			current->ReportTrackerFailure (trackerID, error.substr (0, 512));
 		m_DatragramTrackerTransactions.erase (it);
 	}
 

@@ -631,6 +631,11 @@ forbid_operand_logs("libi2pd_client/TorrentsDHT.cpp" "query")
 forbid_operand_logs("libi2pd_client/TorrentsTunnel.cpp" "error"
   "void TorrentsTunnel::HandleErrorResponse"
   "void TorrentsTunnel::ConnectToDatagramTracker")
+file(READ "${PROJECT_ROOT}/libi2pd_client/TorrentsTunnel.cpp" tracker_source)
+string(FIND "${tracker_source}" "if (auto current = torrent.lock ())" retained_tracker)
+if(retained_tracker EQUAL -1)
+  message(FATAL_ERROR "Tracker error dispatch must retain its weak announce owner")
+endif()
 
 foreach(required IN ITEMS
     "MAX_RECENTLY_CLOSED_STREAMS"
