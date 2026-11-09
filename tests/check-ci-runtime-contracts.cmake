@@ -417,6 +417,8 @@ require_runtime_source("tests/test-torrents-security.cpp"
   "assert (released.expired ());")
 
 # One broker deadline covers admission, output and stale-reply waits.
+require_runtime_source("tests/test-privsep-log.cpp"
+  "const auto sent = filler.Send (queued, 0);")
 require_runtime_source("privsep/Supervisor.cpp"
   "DeadlineMutex storageSupervisorMutex;")
 require_runtime_source("privsep/DeadlineMutex.h"

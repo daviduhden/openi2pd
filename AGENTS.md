@@ -262,6 +262,11 @@ branch before changing call spelling. Relative waits may instantiate the
 same broken steady-clock path; preserve the absolute transaction deadline
 with a reviewed portable primitive instead of switching to wall time.
 
+Backpressure fixtures must establish actual queue saturation and control
+when the peer resumes draining. Per-record sleeps cannot prove writable
+readiness or success within a production deadline. Join borrowing threads
+and reap fixture children before asserting the final failure outcomes.
+
 Publication reviews must inspect the staged snapshot as well as the worktree.
 Worktree consistency checks can see uncommitted dependencies and do not prove
 that a partial commit is self-contained. Preserve executable modes when

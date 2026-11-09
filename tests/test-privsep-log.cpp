@@ -19,6 +19,7 @@
 #include <fcntl.h>
 #include <fstream>
 #include <functional>
+#include <future>
 #include <iterator>
 #include <string>
 #include <string_view>
@@ -319,12 +320,11 @@ void TestLogSinkBudget ()
 }
 
 /**
- * A minimal log peer that acknowledges one configuration and then
- * drains one record every 400 ms. The slow drain keeps the sender's
- * queue full so a send has to wait, without ever hitting the sink's
- * one-second send timeout.
+ * A log peer that pauses after configuration until the parent releases
+ * the drain. Once released it consumes every queued record, so socket
+ * readiness thresholds do not depend on per-record scheduling delays.
  */
-void RunSlowLogPeer (int fd)
+void RunSlowLogPeer (int fd, int drainControl)
 {
 	Channel channel = Channel::Adopt (fd);
 	auto configure = channel.Receive (2000);
@@ -332,13 +332,18 @@ void RunSlowLogPeer (int fd)
 	auto ping = channel.Receive (2000);
 	if (!ping || !*ping) _exit (1);
 	if (!channel.Send (Message { MessageType::Pong, (**ping).requestId, { } })) _exit (1);
+	char command = 0;
+	ssize_t received;
+	do received = read (drainControl, &command, 1);
+	while (received < 0 && errno == EINTR);
+	close (drainControl);
+	if (received != 1 || command != 'd') _exit (1);
 	while (true)
 	{
 		auto record = channel.Receive (2000);
 		if (!record) _exit (0);
 		if (!*record) continue;
 		if ((**record).type == MessageType::Shutdown) _exit (0);
-		std::this_thread::sleep_for (std::chrono::milliseconds (400));
 	}
 }
 
@@ -346,7 +351,7 @@ void TestBoundedChildStop ()
 {
 	// A child that ignores SIGTERM must not make the production wait
 	// helper perform an unbounded waitpid. The helper is header-inline so
-	// this test exercises the exact logic ChildProcess::WaitForExit uses
+	// this test exercises the production absolute-deadline reap logic
 	// without linking the daemon-only Worker.cpp.
 	{
 		pid_t pid = fork ();
@@ -924,48 +929,79 @@ int main ()
 	{
 		auto pair = Channel::CreatePair ();
 		assert (pair.has_value ());
+		int drainControl[2];
+		assert (pipe (drainControl) == 0);
 		pid_t pid = fork ();
 		assert (pid >= 0);
 		if (pid == 0)
 		{
+			close (drainControl[1]);
 			pair->first.Close ();
-			RunSlowLogPeer (pair->second.Fd ());
+			RunSlowLogPeer (pair->second.Fd (), drainControl[0]);
 			_exit (1);
 		}
+		close (drainControl[0]);
 		pair->second.Close ();
 
+		// The duplicate fills the same outbound queue without calling the
+		// sink's one-second send. Only zero-budget EAGAIN proves saturation.
+		const int fillFd = dup (pair->first.Fd ());
+		assert (fillFd >= 0);
+		Channel filler = Channel::Adopt (fillFd);
 		LogSink sink (std::move (pair->first));
 		assert (sink.Configure (true, "", "mutex").has_value ());
 		assert (sink.IsOpen ());
 
 		const std::string record (MAX_TEXT_SIZE, 'm');
-		bool waited = false;
-		for (int attempt = 0; attempt < 128 && !waited; ++attempt)
+		const Message queued { MessageType::LogRecord, 0,
+			EncodeLogRecord (4, 1, record) };
+		bool saturated = false;
+		for (int attempt = 0; attempt < 1024 && !saturated; ++attempt)
 		{
-			const auto started = std::chrono::steady_clock::now ();
-			sink.Write (4, 1, record);
-			waited = std::chrono::steady_clock::now () - started >= std::chrono::milliseconds (100);
+			const auto sent = filler.Send (queued, 0);
+			if (!sent)
+			{
+				assert (sent.error () == "send timeout");
+				saturated = true;
+			}
 		}
-		// The peer drains one record per 400 ms, so a full queue makes the
-		// send wait well past the threshold while still completing under the
-		// sink's one-second timeout.
-		assert (waited);
-		assert (sink.IsOpen ());
-		assert (sink.GetDroppedCount () == 0);
+		filler.Close ();
+		assert (saturated);
 
-		std::thread slow ([&sink, &record] () { sink.Write (4, 2, record); });
-		std::this_thread::sleep_for (std::chrono::milliseconds (100));
-		const auto started = std::chrono::steady_clock::now ();
-		const uint64_t dropped = sink.GetDroppedCount ();
-		const auto waitedForLock = std::chrono::steady_clock::now () - started;
-		slow.join ();
-		assert (waitedForLock < std::chrono::milliseconds (250));
-		assert (dropped == 0); // slow, not dead: nothing was dropped
-		assert (sink.GetWorkerDroppedCount () == dropped);
+		std::promise<void> entered;
+		auto ready = entered.get_future ();
+		auto slow = std::async (std::launch::async, [&sink, &record, &entered]
+			{
+				entered.set_value ();
+				sink.Write (4, 2, record);
+			});
+		ready.get ();
+		const bool waiting = slow.wait_for (std::chrono::milliseconds (100))
+			== std::future_status::timeout;
+		auto counter = std::async (std::launch::async,
+			[&sink] { return sink.GetDroppedCount (); });
+		const bool counterReady = counter.wait_for (
+			std::chrono::milliseconds (250)) == std::future_status::ready;
+		const char command = 'd';
+		ssize_t released;
+		do released = write (drainControl[1], &command, 1);
+		while (released < 0 && errno == EINTR);
+		close (drainControl[1]);
+		// Release the peer and join before asserting: a failing mutex
+		// regression must not strand a thread borrowing the stack sink.
+		slow.get ();
+		const uint64_t dropped = counter.get ();
 
 		kill (pid, SIGKILL);
 		int status = 0;
 		assert (WaitForExit (pid, status, 5000));
+		assert (released == 1);
+		assert (waiting);
+		assert (counterReady);
+		assert (sink.IsOpen ());
+		assert (dropped == 0);
+		assert (sink.GetDroppedCount () == 0);
+		assert (sink.GetWorkerDroppedCount () == dropped);
 	}
 
 	// Peer credentials are readable and match the worker's expected uid.
