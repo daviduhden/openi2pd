@@ -206,6 +206,12 @@ workflow, run `gh`, build or test.
 
 ## Known issues and decisions
 
+- CLANG64 host tooling explicitly selects MSYS /usr/bin/perl.exe. An
+  incidental native Strawberry Perl has different Unicode filesystem
+  semantics. Keep native MSWin32 coverage distinct from this MSYS lane.
+  Retain the GUI image, resolved CLANG64 DLLs, PE table and CMake cache;
+  the TUI version control links a different library closure.
+
 - Read artifact JUnit counts when promoting prepared regressions to CI
   evidence. A LastTest.log "Passed" marker can accompany return-code-77
   capability skips; retain the JUnit/run skip state and absence of startup

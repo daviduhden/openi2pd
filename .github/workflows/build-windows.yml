@@ -79,12 +79,23 @@ jobs:
           # suite must still arrive with the exact dependency set that ran.
           pacman -Q > build-output/msys2-packages.txt
           echo "== PE subsystem =="
-          objdump -p build-output/i2pd.exe | grep -i 'Subsystem' || echo "objdump unavailable"
+          objdump -p build-output/i2pd.exe > build-output/router-pe.txt || echo "objdump unavailable"
+          grep -i 'Subsystem' build-output/router-pe.txt || echo "subsystem unavailable"
           echo "== imported DLLs =="
-          objdump -p build-output/i2pd.exe | grep -i 'DLL Name' || echo "import table unavailable"
+          grep -i 'DLL Name' build-output/router-pe.txt || echo "import table unavailable"
           echo "== runtime resolution =="
-          ldd build-output/i2pd.exe || echo "ldd unavailable"
-          echo "== console-image control (same libraries, console subsystem) =="
+          ldd build-output/i2pd.exe > build-output/router-dlls.txt || echo "ldd unavailable"
+          cat build-output/router-dlls.txt
+          # Retain the exact image and resolved toolchain DLLs; the TUI
+          # does not link router libraries and is not an equivalent image.
+          mkdir -p build-output/startup-images
+          cp -p build-output/i2pd.exe build-output/startup-images/
+          awk '$2 == "=>" && $3 ~ /^\/clang64\/bin\// { print $3 }' \
+            build-output/router-dlls.txt | sort -u > build-output/router-dll-paths.txt
+          while IFS= read -r library; do
+            cp -p "$library" build-output/startup-images/
+          done < build-output/router-dll-paths.txt
+          echo "== TUI console control (different library closure) =="
           if timeout 15 ./build-output/i2pd-tui.exe --version; then
             echo "i2pd-tui exit: 0"
           else
@@ -113,6 +124,11 @@ jobs:
             build-output/Testing
             ctest-msys2.xml
             build-output/msys2-packages.txt
+            build-output/CMakeCache.txt
+            build-output/router-pe.txt
+            build-output/router-dlls.txt
+            build-output/router-dll-paths.txt
+            build-output/startup-images
           if-no-files-found: warn
           retention-days: 7
 

@@ -250,6 +250,8 @@ require_runtime_source(".github/workflows/build-windows.yml"
   "msys_perl=$(cygpath -m /usr/bin/perl.exe)")
 require_runtime_source(".github/workflows/build-windows.yml"
   [=[-DPERL_EXECUTABLE="$msys_perl"]=])
+require_runtime_source(".github/workflows/build-windows.yml"
+  "build-output/startup-images")
 require_runtime_source("tools/CMakeLists.txt"
   [=[COMMAND "${PERL_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/i2pdctl.t"]=])
 file(READ "${PROJECT_ROOT}/tools/CMakeLists.txt" perl_test_graph)
