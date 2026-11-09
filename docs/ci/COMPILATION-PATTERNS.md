@@ -380,3 +380,10 @@ Do not fix a checker false positive by disguising the package or suppressing
 its diagnostic. Javadoc-like prose inside ordinary comments is a separate
 observed Lint problem: opener-only correction preserves executable behavior,
 while a demotion guard prevents silent coverage loss.
+## Fixture grammar versus compiler failure
+
+At 176aec32, nine native lanes compile then fail the same TAP containment
+case. Reference-style Markdown is outside the checker grammar, so its
+negative fixture never exercises resolution. Confirm parser admission with
+an existing-target control before changing security code. Record this under
+TF-100 rather than inventing nine compiler failures.

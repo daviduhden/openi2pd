@@ -122,6 +122,12 @@ a TUI client.
 
 ## Known issues and decisions
 
+- Doc-link negative fixtures must use supported inline Markdown grammar.
+  Reference definitions are deliberately ignored; a negative expectation
+  alone does not prove the target reached containment. Pair missing-suffix
+  symlink cases with an existing outside-target control and use absolute
+  symlink destinations in temporary trees.
+
 - Shell-policy scanning masks only literal setup-msys2 package scalars
   within that action's with map. Preserve line numbers; run blocks, unknown
   action schemas and executable-looking package input remain checked.

@@ -1430,7 +1430,8 @@ CPP
             'contained missing suffix is not classified as a repository escape');
     }
 
-    my $outside = tempdir(CLEANUP => 1);
+    my $outside = File::Spec->rel2abs(tempdir(CLEANUP => 1));
+    write_file(File::Spec->catfile($outside, 'present.md'), "# Outside\n");
     my $jump = File::Spec->catfile($docs, 'sub', 'jump');
     my $linked = eval { symlink($outside, $jump) };
     my $link_reason = $@ || "$!";
@@ -1438,11 +1439,19 @@ CPP
     BAIL_OUT('cannot create genuine symlink fixture')
         if !$linked && $^O ne 'MSWin32';
     SKIP: {
-        skip "native symlink unavailable: $link_reason", 6 unless $linked;
+        skip "native symlink unavailable: $link_reason", 8 unless $linked;
+        # Use the checker's supported inline grammar. This control proves
+        # that the physical escape is recognized before missing suffixes.
+        write_file(File::Spec->catfile($docs, 'sub', 'page.md'),
+            "# Page\n\n[out](jump/present.md)\n");
+        ($code, $out) = run_checker($link_checker, $docs);
+        is($code, 1, 'existing physical symlink target escapes repository');
+        like($out, qr/\(escapes repository\)/,
+            'supported inline link reaches the containment checker');
         for my $target ('jump/missing.md', 'jump/missing/../leaf.md',
             'jump/../leaf.md') {
             write_file(File::Spec->catfile($docs, 'sub', 'page.md'),
-                "# Page\n\n[out][escape]\n\n[escape]: $target\n");
+                "# Page\n\n[out]($target)\n");
             ($code, $out) = run_checker($link_checker, $docs);
             is($code, 1, 'physical symlink prefix cannot escape through a missing target');
             like($out, qr/\(escapes repository\)/,

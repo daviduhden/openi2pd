@@ -574,3 +574,9 @@ fixed-outcome assertion, so disabled logging cannot pass them vacuously.
 Unknown tokens and malformed numeric operands are arbitrary bytes, not safe
 closed labels. Inspect multiline sinks and remote error payloads globally;
 retain a weak owner once rather than checking expired before lock use.
+## Negative fixtures must enter the intended parser
+
+TF-100 at 176aec32 repeats across nine lanes because reference-style links
+are ignored by design. Preserve supported inline grammar and assert an
+existing physical escape before malformed/missing-target variants. A failing
+negative assertion does not establish that production validation ran.
