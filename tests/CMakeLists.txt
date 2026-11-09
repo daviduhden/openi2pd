@@ -107,6 +107,7 @@ set(I2PD_TESTS
   test-destination-leaseset-session
   test-i2p-service-readiness
   test-deadline-mutex
+  test-child-stop-budget
   test-base-64
   test-win32-shutdown-deadline
   test-gost
@@ -452,7 +453,7 @@ foreach(test IN LISTS I2PD_TESTS)
     set_property(TEST ${test} APPEND PROPERTY LABELS tools)
   endif()
   # Explain the few exceptions to the broad regex labels above.
-  if(test STREQUAL "test-deadline-mutex")
+  if(test STREQUAL "test-deadline-mutex" OR test STREQUAL "test-child-stop-budget")
     set_property(TEST ${test} APPEND PROPERTY LABELS "ipc;security;memory;concurrency")
   endif()
   if(test STREQUAL "test-i2p-service-readiness")

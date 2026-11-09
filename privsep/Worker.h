@@ -129,6 +129,9 @@ std::optional<std::vector<uint8_t>> CreateWorkerHello (WorkerRole role, uint32_t
 /**
  * Read, validate and consume the hello from @a fd, then close it.
  *
+ * Reads are nonblocking and share one five-second steady deadline,
+ * including partial records and interrupted polls.
+ *
  * Exactly WORKER_HELLO_SIZE bytes are read and one further byte is
  * peeked with a non-blocking read: a missing descriptor, an empty/short
  * record, a second or duplicated record (one extra byte, or a writer
@@ -166,17 +169,16 @@ inline void SanitizeInheritedStdio ()
 bool PinStandardDescriptors ();
 
 /**
- * Wait for a child until an absolute deadline without ever blocking
- * past it.
+ * Poll for child exit against one absolute steady-clock deadline.
+ * Scheduler and kernel stalls can delay return; reaping is nonblocking.
+ *
  * @param pid child process id; a non-positive value is treated as
  *        already reaped so the function returns true at once.
  * @param pidFd an optional pidfd for @a pid, or -1 when pidfd_open is
  *        unavailable. When present it is polled for exit before falling
- *        back
- *        to WNOHANG; the caller still owns and closes the descriptor.
- * @param timeoutMs how far ahead of the call the deadline lies, in
- *        milliseconds; negative values are clamped to 0 so the function
- *        still performs one non-blocking reap attempt.
+ *        back to WNOHANG. The caller owns and closes the descriptor.
+ * @param deadline absolute steady-clock cutoff. An expired cutoff still
+ *        allows one non-blocking reap attempt.
  * @return true when the child was reaped (including ECHILD), false on
  * timeout.
  * This is deliberately header-inline so the bounded-reap regression can
@@ -185,17 +187,18 @@ bool PinStandardDescriptors ();
  * callers must treat false as "not reaped yet" and retry later rather
  * than block.
  */
-inline bool WaitForChildExitBounded (pid_t pid, int pidFd, int timeoutMs)
+inline bool WaitForChildExitUntil (pid_t pid, int pidFd,
+	std::chrono::steady_clock::time_point deadline)
 {
 	if (pid <= 0) return true;
-	const auto deadline = std::chrono::steady_clock::now () + std::chrono::milliseconds (std::max (timeoutMs, 0));
 	bool usePidFd = pidFd >= 0;
 	while (true)
 	{
 		int status = 0;
 		pid_t result;
 		do result = ::waitpid (pid, &status, WNOHANG);
-		while (result < 0 && errno == EINTR);
+		while (result < 0 && errno == EINTR &&
+			std::chrono::steady_clock::now () < deadline);
 		if (result == pid || (result < 0 && errno == ECHILD)) return true;
 
 		const auto now = std::chrono::steady_clock::now ();
@@ -207,9 +210,10 @@ inline bool WaitForChildExitBounded (pid_t pid, int pidFd, int timeoutMs)
 			pollfd pfd { pidFd, POLLIN, 0 };
 			const int waitMs = static_cast<int> (
 				std::min<int64_t> (std::max<int64_t> (remainingMs, 1), std::numeric_limits<int>::max ()));
-			int polled;
-			do polled = ::poll (&pfd, 1, waitMs);
-			while (polled < 0 && errno == EINTR && std::chrono::steady_clock::now () < deadline);
+			const int polled = ::poll (&pfd, 1, waitMs);
+			// Recompute remaining time after interruption, never repeat
+			// poll with the previous full relative timeout.
+			if (polled < 0 && errno == EINTR) continue;
 			if (polled > 0)
 			{
 				if (pfd.revents & POLLNVAL)
@@ -220,8 +224,17 @@ inline bool WaitForChildExitBounded (pid_t pid, int pidFd, int timeoutMs)
 			else if (polled == 0)
 				continue; // deadline reached at the loop head
 		}
-		std::this_thread::sleep_for (std::chrono::milliseconds (std::min<int64_t> (remainingMs, 20)));
+		std::this_thread::sleep_until (std::min (deadline,
+			std::chrono::steady_clock::now () + std::chrono::milliseconds (20)));
 	}
+}
+
+/** Relative-time convenience wrapper; owners of phases use Until. */
+inline bool WaitForChildExitBounded (pid_t pid, int pidFd, int timeoutMs)
+{
+	return WaitForChildExitUntil (pid, pidFd,
+		std::chrono::steady_clock::now () +
+		std::chrono::milliseconds (std::max (timeoutMs, 0)));
 }
 #endif
 
@@ -244,6 +257,11 @@ public:
 	bool IsRunning ();
 	/**
 	 * Stop and reap the child within a bounded time.
+	 *
+	 * Advisory send, graceful exit, TERM and KILL reaping share one
+	 * timeout budget. Nonpositive values use the two-second default.
+	 * Up to 500 ms is reserved for each escalation phase, rather than
+	 * adding new waits after the graceful period expires.
 	 *
 	 * After SIGTERM/SIGKILL the wait is still bounded by an absolute
 	 * deadline (pidfd or WNOHANG polling); it never performs an unbounded
@@ -275,10 +293,12 @@ private:
 	 * Reap without blocking. Returns true when the child no longer
 	 * exists. */
 	bool ReapNoHang ();
+#ifndef _WIN32
 	/**
 	 * Wait for exit until an absolute deadline. Never blocks
 	 * indefinitely. */
-	bool WaitForExit (int timeoutMs);
+	bool WaitForExitUntil (std::chrono::steady_clock::time_point deadline);
+#endif
 	void ClosePidFd ();
 	worker_pid_t m_Pid = -1;
 	int m_PidFd = -1;

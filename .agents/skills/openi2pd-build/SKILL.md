@@ -111,6 +111,10 @@ build.
 
 ## Known issues and decisions
 
+- Pure shutdown-budget tests cover boundary partitioning without starting
+  workers. Pair them with the production Until source contract and actual
+  child-reap regression; pure arithmetic is not shutdown runtime evidence.
+
 - Deadline admission regressions must receive concurrency, IPC and security
   labels so full sanitizer jobs exercise the portable primitive. Do not
   infer template compatibility from a platform that did not instantiate

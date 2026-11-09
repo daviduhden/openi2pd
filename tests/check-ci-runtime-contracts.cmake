@@ -417,6 +417,19 @@ require_runtime_source("tests/test-torrents-security.cpp"
   "assert (released.expired ());")
 
 # One broker deadline covers admission, output and stale-reply waits.
+require_runtime_order("privsep/Worker.cpp"
+  "void ChildProcess::Stop (int timeoutMs)" "static i2p::expected<ChildProcess"
+  "const ChildStopBudget budget" "SendUntil (shutdown, budget.send)"
+  "WaitForExitUntil (budget.graceful)" "WaitForExitUntil (budget.terminate)"
+  "WaitForExitUntil (budget.reap)")
+require_runtime_source("privsep/Worker.h"
+  "const int polled = ::poll (&pfd, 1, waitMs);")
+require_runtime_order("privsep/Worker.cpp"
+  "std::optional<WorkerHelloRecord> ReadWorkerHello" "constexpr size_t MAX_EXECUTABLE_PATH_SIZE"
+  "const auto deadline =" "statusFlags | O_NONBLOCK"
+  "while (done < buffer.size ())"
+  "std::chrono::steady_clock::now () >= deadline" "::read (fd,")
+require_runtime_source("tests/CMakeLists.txt" "test-child-stop-budget")
 require_runtime_source("tests/test-privsep-log.cpp"
   "const auto sent = filler.Send (queued, 0);")
 require_runtime_source("privsep/Supervisor.cpp"

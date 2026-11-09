@@ -21,6 +21,7 @@
 #endif
 
 #include "Worker.h"
+#include "ChildStopBudget.h"
 #include "Credentials.h"
 #include "LinuxSandbox.h"
 #include "LogWorker.h"
@@ -499,18 +500,33 @@ std::optional<std::vector<uint8_t>> CreateWorkerHello (WorkerRole role, uint32_t
 std::optional<WorkerHelloRecord> ReadWorkerHello (int fd)
 {
 	if (fd < 0) return std::nullopt;
+	// Partial records and signals share one startup deadline. Set the
+	// read end nonblocking before consuming any untrusted pipe bytes.
+	const auto deadline = std::chrono::steady_clock::now () +
+		std::chrono::seconds (5);
+	const int statusFlags = ::fcntl (fd, F_GETFL);
+	if (statusFlags < 0 || ::fcntl (fd, F_SETFL, statusFlags | O_NONBLOCK))
+	{
+		::close (fd);
+		return std::nullopt;
+	}
 	std::array<uint8_t, WORKER_HELLO_SIZE> buffer { };
 	size_t done = 0;
 	while (done < buffer.size ())
 	{
+		if (std::chrono::steady_clock::now () >= deadline) break;
 		const auto count = ::read (fd, buffer.data () + done, buffer.size () - done);
 		if (count < 0 && errno == EINTR) continue;
 		if (count < 0 && (errno == EAGAIN || errno == EWOULDBLOCK))
 		{
 			pollfd ready { fd, POLLIN, 0 };
-			int polled;
-			do polled = ::poll (&ready, 1, 5000);
-			while (polled < 0 && errno == EINTR);
+			const auto remaining = std::chrono::duration_cast<
+				std::chrono::milliseconds> (deadline -
+				std::chrono::steady_clock::now ()).count ();
+			if (remaining <= 0) break;
+			const int polled = ::poll (&ready, 1,
+				static_cast<int> (std::min<int64_t> (remaining, 5000)));
+			if (polled < 0 && errno == EINTR) continue;
 			if (polled <= 0) break;
 			continue;
 		}
@@ -526,7 +542,6 @@ std::optional<WorkerHelloRecord> ReadWorkerHello (int fd)
 	// the exec'ing child only, so a valid record is followed by EOF. A
 	// byte, or a writer that is still open, means a duplicated or
 	// oversized hello.
-	const int statusFlags = ::fcntl (fd, F_GETFL);
 	bool exactlyOne = false;
 	if (statusFlags >= 0 && ::fcntl (fd, F_SETFL, statusFlags | O_NONBLOCK) == 0)
 	{
@@ -694,12 +709,13 @@ ChildProcess ChildProcess::Adopt (pid_t pid, Channel channel)
 	return process;
 }
 
-bool ChildProcess::WaitForExit (int timeoutMs)
+bool ChildProcess::WaitForExitUntil (
+	std::chrono::steady_clock::time_point deadline)
 {
-	// WaitForChildExitBounded() already reaps the child. A second
+	// WaitForChildExitUntil() already reaps the child. A second
 	// waitpid() here could consume a newly forked child that reused the
 	// PID, so only clear the local handle.
-	if (!WaitForChildExitBounded (m_Pid, m_PidFd, timeoutMs)) return false;
+	if (!WaitForChildExitUntil (m_Pid, m_PidFd, deadline)) return false;
 	m_Pid = -1;
 	ClosePidFd ();
 	return true;
@@ -709,13 +725,12 @@ bool ChildProcess::ReapNoHang ()
 {
 	if (m_Pid <= 0) return true;
 	int status = 0;
-	pid_t result;
-	do result = waitpid (m_Pid, &status, WNOHANG);
-	while (result < 0 && errno == EINTR);
+	// An interrupted nonblocking probe defers to the next owner tick.
+	const pid_t result = waitpid (m_Pid, &status, WNOHANG);
 	if (result == m_Pid || (result < 0 && errno == ECHILD))
 	{
 		// All reap paths are sequential and non-blocking: either this call
-		// or WaitForChildExitBounded() consumed the status. A second waitpid
+		// or WaitForChildExitUntil() consumed the status. A second waitpid
 		// therefore observes ECHILD and can never see a recycled PID.
 		m_Pid = -1;
 		ClosePidFd ();
@@ -732,9 +747,8 @@ bool ChildProcess::IsRunning ()
 	if (m_PidFd >= 0)
 	{
 		pollfd pfd { m_PidFd, POLLIN, 0 };
-		int result;
-		do result = poll (&pfd, 1, 0);
-		while (result < 0 && errno == EINTR);
+		const int result = poll (&pfd, 1, 0);
+		if (result < 0 && errno == EINTR) return true;
 		if (result == 0) return true;
 		if (result > 0 && (pfd.revents & POLLIN))
 		{
@@ -750,10 +764,12 @@ bool ChildProcess::IsRunning ()
 
 void ChildProcess::Stop (int timeoutMs)
 {
+	const ChildStopBudget budget (std::chrono::steady_clock::now (), timeoutMs);
 	if (m_Channel.IsOpen ())
 	{
 		Message shutdown { MessageType::Shutdown, 0, { } };
-		(void)m_Channel.Send (shutdown, 500);
+		if (std::chrono::steady_clock::now () < budget.send)
+			(void)m_Channel.SendUntil (shutdown, budget.send);
 		m_Channel.Close ();
 	}
 	if (m_Pid > 0)
@@ -768,11 +784,10 @@ void ChildProcess::Stop (int timeoutMs)
 #endif
 			kill (m_Pid, signal);
 		};
-		const int gracefulMs = timeoutMs > 0 ? timeoutMs : 2000;
-		if (!WaitForExit (gracefulMs))
+		if (!WaitForExitUntil (budget.graceful))
 		{
 			signalChild (SIGTERM);
-			if (!WaitForExit (500))
+			if (!WaitForExitUntil (budget.terminate))
 			{
 				signalChild (SIGKILL);
 				// SIGKILL is asynchronous and cannot interrupt an
@@ -782,8 +797,7 @@ void ChildProcess::Stop (int timeoutMs)
 				// child is still not reaped, keep m_Pid/m_PidFd so a later
 				// Stop()/IsRunning() can retry; the zombie holds the PID, so
 				// the retained number cannot be recycled in the meantime.
-				const int reapMs = std::clamp (timeoutMs > 0 ? timeoutMs : 500, 100, 1000);
-				if (!WaitForExit (reapMs))
+				if (!WaitForExitUntil (budget.reap))
 				{
 					// Do not close the pidfd: it is the only race-free way to
 					// learn about a later exit. The process entry remains

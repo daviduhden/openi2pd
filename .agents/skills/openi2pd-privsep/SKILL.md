@@ -105,6 +105,12 @@ report that limitation; do not substitute local execution. Ask for:
 
 ## Known issues and decisions
 
+- POSIX ChildStopBudget partitions one entry deadline across advisory send,
+  graceful exit, TERM and final reap. Keep absolute Until APIs through each
+  phase and retain PID/pidfd when final reaping fails. Nonblocking liveness
+  probes defer after EINTR; startup hello reads become nonblocking before
+  their first byte and share one deadline across partial records/signals.
+
 - Supervisor admission must preserve its steady-clock transaction deadline
   across toolchains. GCC 14 libstdc++ timed_mutex instantiation under TSan
   can reference an unavailable clocklock member. Review the complete clock

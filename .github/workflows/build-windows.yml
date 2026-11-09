@@ -176,11 +176,11 @@ jobs:
               test-privsep-windows-isolation test-privsep-windows-supervisor `
               test-win32-shutdown-deadline test-profile-static-lifetime test-release-assertions `
               test-atomic-shared-ptr test-kad-dht `
-              test-i2p-service-readiness test-tunnel-destination-cache test-destination-leaseset-session test-deadline-mutex
+              test-i2p-service-readiness test-tunnel-destination-cache test-destination-leaseset-session test-deadline-mutex test-child-stop-budget
       - name: Run TUI and worker IPC tests
         run: |
           ctest --test-dir build-msvc -C Release -j 2 --output-on-failure `
-            -R '^(test-(tui-protocol|tui-terminal|tui-pipe-name|tui-win32-pipe|privsep-windows-(ipc|isolation|supervisor)|win32-shutdown-deadline|profile-static-lifetime|i2p-service-readiness|tunnel-destination-cache|destination-leaseset-session|deadline-mutex|atomic-shared-ptr|kad-dht|release-assertions))$' `
+            -R '^(test-(tui-protocol|tui-terminal|tui-pipe-name|tui-win32-pipe|privsep-windows-(ipc|isolation|supervisor)|win32-shutdown-deadline|profile-static-lifetime|i2p-service-readiness|tunnel-destination-cache|destination-leaseset-session|deadline-mutex|child-stop-budget|atomic-shared-ptr|kad-dht|release-assertions))$' `
             --no-tests=error --output-junit "$PWD/ctest-msvc.xml"
       - name: Verify runtime install
         run: |
@@ -214,7 +214,7 @@ jobs:
           g
           '@ | Set-Content -Encoding ascii $commands
           $failures = @()
-          foreach ($test in @('test-tui-protocol', 'test-tui-pipe-name', 'test-privsep-windows-isolation', 'test-profile-static-lifetime', 'test-atomic-shared-ptr', 'test-kad-dht', 'test-i2p-service-readiness', 'test-tunnel-destination-cache', 'test-destination-leaseset-session', 'test-deadline-mutex', 'test-privsep-windows-supervisor')) {
+          foreach ($test in @('test-tui-protocol', 'test-tui-pipe-name', 'test-privsep-windows-isolation', 'test-profile-static-lifetime', 'test-atomic-shared-ptr', 'test-kad-dht', 'test-i2p-service-readiness', 'test-tunnel-destination-cache', 'test-destination-leaseset-session', 'test-deadline-mutex', 'test-child-stop-budget', 'test-privsep-windows-supervisor')) {
             $image = "$test.exe"
             $binary = Join-Path $env:GITHUB_WORKSPACE "build-msvc/tests/Release/$image"
             if (-not (Test-Path $binary)) { throw "missing diagnostic target $image" }
@@ -265,6 +265,7 @@ jobs:
             build-msvc/tests/Release/test-kad-dht.exe
             build-msvc/tests/Release/test-i2p-service-readiness.exe
             build-msvc/tests/Release/test-deadline-mutex.exe
+            build-msvc/tests/Release/test-child-stop-budget.exe
             build-msvc/tests/Release/test-tunnel-destination-cache.exe
             build-msvc/tests/Release/test-destination-leaseset-session.exe
             build-msvc/tests/Release/test-privsep-windows-supervisor.exe

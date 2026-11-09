@@ -107,6 +107,11 @@ Do not let reconnaissance agents edit, compile, execute tests or run scripts.
 
 ## Known issues and decisions
 
+- Search EINTR loops when reviewing timeout rebasing. Polling again with
+  the previous relative timeout renews the budget; partial startup reads
+  can do the same. A zero-budget liveness probe should defer interruption
+  to its next owner tick instead of looping indefinitely.
+
 - Revoking a callback registration does not revoke copies already extracted
   by its dispatcher. Trace that copy across the dispatcher mutex, then pin
   weak lifetime authority and per-registration admission through shutdown.
