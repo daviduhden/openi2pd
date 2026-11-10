@@ -1236,6 +1236,7 @@ namespace client
 		, m_NumRetries (0)
 		, m_DefaultSubscription (nullptr)
 		, m_RearmAdmission (std::make_shared<RearmAdmission> ())
+		, m_CacheAdmission (std::make_shared<CacheAdmission> ())
 		, m_ReloadAlive (std::make_shared<std::atomic<bool>> (false))
 		, m_MergeConflicts (0)
 		, m_SubscriptionsUpdateTimer (nullptr)
@@ -1267,7 +1268,13 @@ namespace client
 			LoadHosts (); /* try storage, then hosts.txt, then download */
 			StartSubscriptions ();
 			StartLookups ();
-			ScheduleCacheUpdate ();
+			{
+				std::lock_guard<std::mutex> cache (m_CacheAdmission->mutex);
+				m_CacheAdmission->generation =
+					std::make_shared<const CacheAdmission::Generation> ();
+				m_CacheAdmission->owner = this;
+				ScheduleCacheUpdateLocked ();
+			}
 		}
 	}
 
@@ -1278,6 +1285,18 @@ namespace client
 
 	void AddressBook::Stop ()
 	{
+		// Cancellation cannot revoke a successful completion already queued.
+		// Drain admitted cache access before any storage teardown.
+		{
+			std::lock_guard<std::mutex> cache (m_CacheAdmission->mutex);
+			m_CacheAdmission->owner = nullptr;
+			m_CacheAdmission->generation.reset ();
+			if (m_AddressCacheUpdateTimer)
+			{
+				m_AddressCacheUpdateTimer->cancel ();
+				m_AddressCacheUpdateTimer.reset ();
+			}
+		}
 		// Drain admitted re-arms before releasing timer/source state. A post
 		// may outlive this book; it owns only the revoked admission state.
 		// Never acquire admission while holding the subscription mutex.
@@ -1295,11 +1314,6 @@ namespace client
 		}
 		StopLookups ();
 		StopSubscriptions ();
-		if (m_AddressCacheUpdateTimer)
-		{
-			m_AddressCacheUpdateTimer->cancel ();
-			m_AddressCacheUpdateTimer = nullptr;
-		}
 		bool isDownloading = m_Downloading.valid ();
 		if (isDownloading)
 		{
@@ -2405,11 +2419,18 @@ namespace client
 				}
 			}
 		}
-		if (m_AddressCacheUpdateTimer)
 		{
-			m_AddressCacheUpdateTimer->cancel ();
-			m_AddressCacheUpdateTimer = nullptr;
-			ScheduleCacheUpdate (); // creates it again on the current destination
+			std::lock_guard<std::mutex> cache (m_CacheAdmission->mutex);
+			if (m_CacheAdmission->owner != this) return;
+			// Retire successful completions from the replaced destination too.
+			m_CacheAdmission->generation =
+				std::make_shared<const CacheAdmission::Generation> ();
+			if (m_AddressCacheUpdateTimer)
+			{
+				m_AddressCacheUpdateTimer->cancel ();
+				m_AddressCacheUpdateTimer.reset ();
+			}
+			ScheduleCacheUpdateLocked ();
 		}
 	}
 
@@ -2570,8 +2591,10 @@ namespace client
 		}
 	}
 
-	void AddressBook::ScheduleCacheUpdate ()
+	void AddressBook::ScheduleCacheUpdateLocked ()
 	{
+		if (m_CacheAdmission->owner != this) return;
+		if (!m_CacheAdmission->generation) return;
 		if (!m_AddressCacheUpdateTimer)
 		{
 			auto dest = i2p::client::context.GetSharedLocalDestination ();
@@ -2580,14 +2603,21 @@ namespace client
 		if (m_AddressCacheUpdateTimer)
 		{
 			m_AddressCacheUpdateTimer->expires_after (std::chrono::seconds (ADDRESS_CACHE_UPDATE_INTERVAL));
+			auto admission = m_CacheAdmission;
+			// Each wait owns a distinct identity, including within one run.
+			admission->generation =
+				std::make_shared<const CacheAdmission::Generation> ();
+			auto generation = admission->generation;
 			m_AddressCacheUpdateTimer->async_wait (
-				[this] (const boost::system::error_code & ecode)
+				[admission, generation] (const boost::system::error_code & ecode)
 				{
-					if (ecode != boost::asio::error::operation_aborted)
-					{
-						if (m_Storage) m_Storage->CleanUpCache ();
-						ScheduleCacheUpdate ();
-					}
+					if (ecode) return;
+					std::lock_guard<std::mutex> cache (admission->mutex);
+					if (!admission->owner) return;
+					if (admission->generation != generation) return;
+					auto & book = *admission->owner;
+					if (book.m_Storage) book.m_Storage->CleanUpCache ();
+					book.ScheduleCacheUpdateLocked ();
 				});
 		}
 	}

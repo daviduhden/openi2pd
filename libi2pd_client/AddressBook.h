@@ -247,6 +247,11 @@ namespace client
 		virtual std::shared_ptr<const i2p::data::IdentityEx> GetAddress (const i2p::data::IdentHash & ident) = 0;
 		virtual void AddAddress (std::shared_ptr<const i2p::data::IdentityEx> address) = 0;
 		virtual void RemoveAddress (const i2p::data::IdentHash & ident) = 0;
+		/**
+		 * Runs under the owning book's cache admission barrier.
+		 * Implementations must not synchronously invoke book lifecycle or
+		 * timer-reset operations, including through external callbacks.
+		 */
 		virtual void CleanUpCache () = 0;
 
 		virtual bool Init () = 0;
@@ -300,6 +305,8 @@ namespace client
 	public:
 		explicit AddressBook (std::unique_ptr<AddressBookStorage> storage = nullptr);
 		~AddressBook ();
+		// The context serializes lifecycle calls. Callback admission does
+		// not make concurrent Start/Stop calls safe for storage state.
 		void Start ();
 		void ResetTimers (); // after the shared local destination is replaced
 		void StartResolvers ();
@@ -435,6 +442,16 @@ namespace client
 			AddressBook * owner = nullptr;
 		};
 
+		// Independent leaf barrier: never acquire another book lifecycle
+		// barrier while holding it. Stop revokes before releasing storage.
+		struct CacheAdmission
+		{
+			struct Generation {};
+			std::mutex mutex;
+			AddressBook * owner = nullptr;
+			std::shared_ptr<const Generation> generation;
+		};
+
 		void RecordMergeConflict ();
 
 		static bool IsValidDeletedPattern (std::string_view pattern);
@@ -459,7 +476,8 @@ namespace client
 		void HandleLookupResponse (
 			const i2p::data::IdentityEx & from, uint16_t fromPort, uint16_t toPort, const uint8_t * buf, size_t len);
 
-		void ScheduleCacheUpdate ();
+		// Caller holds m_CacheAdmission->mutex; rearming must not relock.
+		void ScheduleCacheUpdateLocked ();
 
 	private:
 		std::mutex m_AddressBookMutex;
@@ -487,6 +505,7 @@ namespace client
 		std::shared_ptr<AddressBookSubscription> m_DefaultSubscription; // in case if we don't know any addresses yet
 		// Immutable handle; queued posts can retain it beyond destruction.
 		const std::shared_ptr<RearmAdmission> m_RearmAdmission;
+		const std::shared_ptr<CacheAdmission> m_CacheAdmission;
 		std::shared_ptr<std::atomic<bool>> m_ReloadAlive; // see PostSubscriptionsRearm()
 		std::atomic<uint64_t> m_MergeConflicts;
 		std::unique_ptr<boost::asio::steady_timer> m_SubscriptionsUpdateTimer, m_AddressCacheUpdateTimer;

@@ -107,6 +107,14 @@ Do not let reconnaissance agents edit, compile, execute tests or run scripts.
 
 ## Known issues and decisions
 
+- AddressBook cache waits have a separate leaf admission barrier from
+  subscription re-arm posts. Start, ResetTimers and Stop serialize timer
+  ownership through it; every wait captures fresh shared identity and
+  rechecks that identity before owner access. The locked scheduling helper
+  must not reacquire the gate. Storage CleanUpCache runs inside admission
+  and must not reenter book lifecycle/reset operations; review overrides
+  when changing that contract. Subscription timers remain a separate gap.
+
 - An atomic alive token rejects stale callbacks but cannot retain the owner
   between the load and a member call. AddressBook re-arm posts instead own
   an immutable shared admission gate; Stop revokes owner access through

@@ -2,7 +2,8 @@
 # and license details.
 #
 # Pin the queued administration re-arm's revocable lifetime authority.
-# This source contract does not validate the separate timer callbacks.
+# Also pin cache-timer admission; subscription timer callbacks remain
+# outside this contract.
 
 if(NOT DEFINED SOURCE_DIR)
   get_filename_component(SOURCE_DIR "${CMAKE_CURRENT_LIST_DIR}/.." ABSOLUTE)
@@ -61,4 +62,48 @@ require_order("${post}" "if (!token->load (std::memory_order_acquire)) return"
 if(post MATCHES "\\[this[,\\]]" OR
    NOT header MATCHES "const std::shared_ptr<RearmAdmission> m_RearmAdmission")
   message(FATAL_ERROR "Posted re-arm must own only immutable admission state")
+endif()
+
+section("void AddressBook::ResetTimers ()"
+  "void AddressBook::HandleSubscriptionsUpdateTimer (" reset)
+section("void AddressBook::ScheduleCacheUpdateLocked ()"
+  "AddressBookSubscription::AddressBookSubscription (" cache_wait)
+require_order("${start}" "cache (m_CacheAdmission->mutex)"
+  "m_CacheAdmission->owner = this")
+require_order("${start}" "m_CacheAdmission->generation ="
+  "ScheduleCacheUpdateLocked ()")
+require_order("${stop}" "cache (m_CacheAdmission->mutex)"
+  "m_CacheAdmission->owner = nullptr")
+require_order("${stop}" "m_CacheAdmission->owner = nullptr"
+  "m_AddressCacheUpdateTimer->cancel ()")
+require_order("${stop}" "m_CacheAdmission->generation.reset ()"
+  "m_AddressCacheUpdateTimer.reset ()")
+require_order("${stop}" "m_AddressCacheUpdateTimer.reset ()"
+  "m_Storage.reset ()")
+require_order("${reset}" "cache (m_CacheAdmission->mutex)"
+  "if (m_CacheAdmission->owner != this) return")
+require_order("${reset}" "m_CacheAdmission->generation ="
+  "m_AddressCacheUpdateTimer->cancel ()")
+require_order("${reset}" "m_AddressCacheUpdateTimer.reset ()"
+  "ScheduleCacheUpdateLocked ()")
+require_order("${cache_wait}" "if (m_CacheAdmission->owner != this) return"
+  "m_AddressCacheUpdateTimer->expires_after")
+require_order("${cache_wait}" "admission->generation ="
+  "auto generation = admission->generation")
+require_order("${cache_wait}" "auto generation = admission->generation"
+  "m_AddressCacheUpdateTimer->async_wait")
+require_order("${cache_wait}" "[admission, generation]"
+  "cache (admission->mutex)")
+require_order("${cache_wait}" "cache (admission->mutex)"
+  "if (!admission->owner) return")
+require_order("${cache_wait}" "if (admission->generation != generation) return"
+  "auto & book = *admission->owner")
+require_order("${cache_wait}" "book.m_Storage->CleanUpCache ()"
+  "book.ScheduleCacheUpdateLocked ()")
+if(cache_wait MATCHES "\\[this[,\\]]" OR
+   cache_wait MATCHES "book.ScheduleCacheUpdate \\(\\)" OR
+   cache_wait MATCHES "cache \\(m_CacheAdmission->mutex\\)" OR
+   NOT header MATCHES "const std::shared_ptr<CacheAdmission> m_CacheAdmission")
+  message(FATAL_ERROR
+    "Cache wait must retain its gate and rearm without recursive locking")
 endif()
