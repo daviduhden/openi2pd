@@ -116,6 +116,13 @@ Do not let them edit, build or run tests.
 
 ## Known issues and decisions
 
+- Tracker infoHash/slot keys can be reused before old successful callbacks
+  drain. Each registry admission carries nonzero monotonic authority through
+  dial, write, read and deadline completion. Compare it before mutation or
+  release, and discard stale successful bodies before stats/peer parsing.
+  ReleaseAll/ReleaseTorrent must not reset authority; exhaustion fails closed.
+  This is service-thread correlation authority, not general owner lifetime.
+
 - BEP 15 error payloads are opaque remote data, not safe log strings.
   Match the stored transaction port before logging an outcome, retain
   the weak announce owner once, and keep only the existing bounded tracker

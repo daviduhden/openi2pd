@@ -137,7 +137,8 @@ namespace torrents
 		{
 			if (m_Entries.contains (key)) return Admission::Duplicate;
 			if (m_Entries.size () >= MAX_INFLIGHT_TRACKER_REQUESTS) return Admission::Full;
-			m_Entries.emplace (key, std::move (payload));
+			if (!m_NextAuthority) return Admission::Full;
+			m_Entries.emplace (key, Entry { std::move (payload), m_NextAuthority++ });
 			return Admission::Accepted;
 		}
 		bool Release (const TrackerRequestKey & key) { return m_Entries.erase (key) > 0; }
@@ -145,7 +146,26 @@ namespace torrents
 		Payload * Find (const TrackerRequestKey & key)
 		{
 			auto it = m_Entries.find (key);
-			return it == m_Entries.end () ? nullptr : &it->second;
+			return it == m_Entries.end () ? nullptr : &it->second.payload;
+		}
+		/// Return this admission's authority, or zero if absent.
+		/// Values survive retirement/restart without reuse. Exhaustion
+		/// refuses admission; all access remains service-thread only.
+		uint64_t Authority (const TrackerRequestKey & key) const
+		{
+			auto it = m_Entries.find (key);
+			return it == m_Entries.end () ? 0 : it->second.authority;
+		}
+		/// Borrow the current payload only for its original admission.
+		/// The pointer expires when that admission is retired.
+		Payload * Find (const TrackerRequestKey & key, uint64_t authority)
+		{
+			return authority && Authority (key) == authority ? Find (key) : nullptr;
+		}
+		/// Retire a matching admission; stale or zero authority is a no-op.
+		bool Release (const TrackerRequestKey & key, uint64_t authority)
+		{
+			return Find (key, authority) && Release (key);
 		}
 		// Drops every outstanding announce of one torrent and returns the
 		// removed keys so the caller can retire its own per-request state.
@@ -174,16 +194,22 @@ namespace torrents
 		{
 			for (auto it = m_Entries.lower_bound (TrackerRequestKey { infoHash, 0 });
 				it != m_Entries.end () && it->first.infoHash == infoHash; ++it)
-				visitor (it->first, it->second);
+				visitor (it->first, it->second.payload);
 		}
 		template <typename Visitor> void ForEach (Visitor visitor)
 		{
-			for (auto & entry : m_Entries) visitor (entry.first, entry.second);
+			for (auto & entry : m_Entries) visitor (entry.first, entry.second.payload);
 		}
 		size_t Size () const { return m_Entries.size (); }
 
 	private:
-		std::map<TrackerRequestKey, Payload> m_Entries;
+		struct Entry
+		{
+			Payload payload;
+			uint64_t authority;
+		};
+		std::map<TrackerRequestKey, Entry> m_Entries;
+		uint64_t m_NextAuthority = 1;
 	};
 
 	// Registry slot state, parallel to the announce URL table.
@@ -512,7 +538,7 @@ namespace torrents
 		void TrackerRequestSent (const boost::beast::error_code & ecode, size_t bytes_transferred,
 			std::shared_ptr<i2p::client::BoostAsyncStream> httpStream, std::shared_ptr<Torrent> torrent,
 			std::shared_ptr<boost::beast::http::request<boost::beast::http::string_body>> req,
-			const TrackerRequestKey & key);
+			const TrackerRequestKey & key, uint64_t authority);
 
 		// Tracker registry and single-flight bookkeeping. Every helper below
 		// is service-thread only; the announce URL table, the slot table, the
@@ -539,11 +565,11 @@ namespace torrents
 		// Admit one HTTP announce. Returns false when the same (torrent,
 		// slot) already has a request in flight or the tunnel cap is reached.
 		bool AcquireTrackerRequest (const TrackerRequestKey & key, const std::shared_ptr<Torrent> & torrent);
-		void ReleaseTrackerRequest (const TrackerRequestKey & key);
+		void ReleaseTrackerRequest (const TrackerRequestKey & key, uint64_t authority);
 		void CancelTrackerRequests (const Torrent::InfoHash & infoHash);
 		void CancelAllTrackerRequests ();
-		void ScheduleTrackerRequestDeadline (const TrackerRequestKey & key);
-		void HandleTrackerRequestTimeout (const TrackerRequestKey & key);
+		void ScheduleTrackerRequestDeadline (const TrackerRequestKey & key, uint64_t authority);
+		void HandleTrackerRequestTimeout (const TrackerRequestKey & key, uint64_t authority);
 
 		void ScheduleTrackerRequestsCheck ();
 		void HandleTrackerRequestsCheckTimer (const boost::system::error_code & ecode);

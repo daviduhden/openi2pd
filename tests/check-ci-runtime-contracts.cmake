@@ -534,6 +534,27 @@ require_runtime_source("tests/test-torrents-security.cpp"
 require_runtime_source("tests/test-torrents-security.cpp"
   "TestInitialDiscoveryAuthority ();")
 
+# Correlation keys can be reused while successful callbacks
+# remain queued.
+foreach(needle IN ITEMS
+    "[weakSelf, req, torrent, key, authority, event]"
+    "[weakSelf, httpStream, torrent, req, key, authority]"
+    "[weakSelf, httpStream, torrent, buf, parser, key, authority]"
+    "[weakSelf, key, authority]"
+    "if (!wasInFlight) return;")
+  require_runtime_source("libi2pd_client/TorrentsTunnel.cpp" "${needle}")
+endforeach()
+file(READ "${PROJECT_ROOT}/libi2pd_client/TorrentsTunnel.cpp" tracker_callbacks)
+foreach(needle IN ITEMS "m_TrackerRequests.Contains (key)"
+    "m_TrackerRequests.Find (key)" "m_TrackerRequests.Release (key)")
+  string(FIND "${tracker_callbacks}" "${needle}" stale_tracker_key)
+  if(NOT stale_tracker_key EQUAL -1)
+    message(FATAL_ERROR "Tracker callbacks must match admission authority: ${needle}")
+  endif()
+endforeach()
+require_runtime_source("tests/test-torrents-tracker-dispatch.cpp"
+  "TestInflightAuthorityAfterReuse ();")
+
 # Compatibility derivation cannot authorize an unrelated supplied key.
 require_runtime_source("libi2pd/Signature.cpp"
   "if (CRYPTO_memcmp (m_PublicKeyEncoded, signingPublicKey,")

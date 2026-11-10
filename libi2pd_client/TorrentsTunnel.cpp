@@ -3116,6 +3116,7 @@ namespace torrents
 		params.emplace ("peer_id",
 			PercentEncodeQueryValue (
 				std::string_view (reinterpret_cast<const char *> (peerID.data ()), peerID.size ())));
+		const auto authority = m_TrackerRequests.Authority (key);
 		params.emplace ("ip", GetLocalDestination ()->GetIdentity ()->ToBase64 () + ".i2p");
 		params.emplace ("port", std::to_string (TORRENT_PORT)); // 6881
 		params.emplace ("compact", "1");
@@ -3148,10 +3149,14 @@ namespace torrents
 		req->keep_alive (false); // Connection: close
 		std::weak_ptr<i2p::client::I2PService> weakSelf = weak_from_this ();
 		CreateStream (
-			[weakSelf, req, torrent, key, event] (std::shared_ptr<i2p::stream::Stream> stream)
+			[weakSelf, req, torrent, key, authority, event] (std::shared_ptr<i2p::stream::Stream> stream)
 			{
 				auto self = std::static_pointer_cast<TorrentsTunnel> (weakSelf.lock ());
-				if (!self) return;
+				if (!self)
+				{
+					if (stream) stream->AsyncClose ();
+					return;
+				}
 				// A dial that never produced a stream is retired by the deadline
 				// timer, which reports the failure and releases the key.
 				if (!stream) return;
@@ -3164,21 +3169,21 @@ namespace torrents
 				const bool authorized = stoppedEvent
 					|| (IsTrackerSlotLive (self->m_TrackerSlots, key.trackerID)
 						&& self->IsTorrentTracker (key.trackerID, *torrent));
-				if (!self->m_TrackerRequests.Contains (key) || !authorized || (!stoppedEvent && torrent->IsStopped ()))
+				if (!self->m_TrackerRequests.Find (key, authority) || !authorized || (!stoppedEvent && torrent->IsStopped ()))
 				{
 					stream->AsyncClose ();
-					self->ReleaseTrackerRequest (key);
+					self->ReleaseTrackerRequest (key, authority);
 					return;
 				}
-				if (auto * state = self->m_TrackerRequests.Find (key)) state->stream = stream;
+				if (auto * state = self->m_TrackerRequests.Find (key, authority)) state->stream = stream;
 				auto httpStream = std::make_shared<i2p::client::BoostAsyncStream> (stream);
 				boost::beast::http::async_write (*httpStream, *req,
-					[weakSelf, httpStream, torrent, req, key] (
+					[weakSelf, httpStream, torrent, req, key, authority] (
 						const boost::beast::error_code & ecode, size_t bytes_transferred)
 					{
 						auto self = std::static_pointer_cast<TorrentsTunnel> (weakSelf.lock ());
 						if (!self) return;
-						self->TrackerRequestSent (ecode, bytes_transferred, httpStream, torrent, req, key);
+						self->TrackerRequestSent (ecode, bytes_transferred, httpStream, torrent, req, key, authority);
 					});
 			},
 			reqURL.host, reqURL.port);
@@ -3266,27 +3271,26 @@ namespace torrents
 	void TorrentsTunnel::TrackerRequestSent (const boost::beast::error_code & ecode, size_t,
 		std::shared_ptr<i2p::client::BoostAsyncStream> httpStream, std::shared_ptr<Torrent> torrent,
 		std::shared_ptr<boost::beast::http::request<boost::beast::http::string_body>>,
-		const TrackerRequestKey & key)
+		const TrackerRequestKey & key, uint64_t authority)
 	{
 		const size_t trackerID = key.trackerID;
 		// A completion that arrives after the deadline (or after a
 		// stop/cancel) retired the request must not add a second step to the
 		// failure ladder.
-		const bool wasInFlight = m_TrackerRequests.Contains (key);
+		const bool wasInFlight = m_TrackerRequests.Find (key, authority);
+		if (!wasInFlight)
+		{
+			httpStream->GetStream ()->AsyncClose ();
+		}
 		if (ecode)
 		{
-			ReleaseTrackerRequest (key);
+			ReleaseTrackerRequest (key, authority);
 			LogPrint (eLogWarning, "TorrentsTunnel: Tracker ", trackerID, " request failed: ", ecode.message ());
 			if (wasInFlight && !torrent->IsStopped ()) torrent->ReportTrackerFailure (trackerID, "request failed");
 			httpStream->GetStream ()->AsyncClose ();
 		}
-		else if (!wasInFlight)
-		{
-			// The deadline (or a stop/remove) already retired this request and
-			// closed the stream; never start a read that nobody bounds.
-			httpStream->GetStream ()->AsyncClose ();
-		}
 		else
+			return;
 		{
 			// The request stays admitted until the response read completes. The
 			// deadline armed at dispatch is the read deadline too: releasing it
@@ -3299,16 +3303,16 @@ namespace torrents
 			parser->body_limit (MAX_TRACKER_RESPONSE_BODY);
 			std::weak_ptr<i2p::client::I2PService> weakSelf = weak_from_this ();
 			boost::beast::http::async_read (*httpStream, *buf, *parser,
-				[weakSelf, httpStream, torrent, buf, parser, key] (
+				[weakSelf, httpStream, torrent, buf, parser, key, authority] (
 					const boost::beast::error_code & ecode, size_t)
 				{
 					auto self = std::static_pointer_cast<TorrentsTunnel> (weakSelf.lock ());
 					if (!self) return;
 					const size_t trackerID = key.trackerID;
-					// The whole request is retired here, including the deadline:
-					// every completion path leaves the in-flight registry empty.
-					const bool wasInFlight = self->m_TrackerRequests.Contains (key);
-					self->ReleaseTrackerRequest (key);
+					// Retire only this admission, including its deadline. A stale
+					// successful body must not update a replacement admission.
+					const bool wasInFlight = self->m_TrackerRequests.Find (key, authority);
+					self->ReleaseTrackerRequest (key, authority);
 					httpStream->GetStream ()->AsyncClose ();
 					if (ecode)
 					{
@@ -3318,6 +3322,7 @@ namespace torrents
 							torrent->ReportTrackerFailure (trackerID, "response rejected");
 						return;
 					}
+					if (!wasInFlight) return;
 					if (!torrent->IsStopped () && self->IsTorrentTracker (trackerID, *torrent))
 					{
 						const auto & res = parser->get ();
@@ -3342,24 +3347,23 @@ namespace torrents
 		const auto admission = m_TrackerRequests.TryAcquire (
 			key, TrackerRequestState { nullptr, { }, torrent, i2p::util::GetMonotonicMilliseconds () });
 		if (admission != TrackerInflightRegistry<TrackerRequestState>::Admission::Accepted) return false;
-		ScheduleTrackerRequestDeadline (key);
+		ScheduleTrackerRequestDeadline (key, m_TrackerRequests.Authority (key));
 		return true;
 	}
 
-	void TorrentsTunnel::ReleaseTrackerRequest (const TrackerRequestKey & key)
+	void TorrentsTunnel::ReleaseTrackerRequest (const TrackerRequestKey & key, uint64_t authority)
 	{
-		// Erasing the entry destroys the deadline timer, which cancels the
-		// wait: its handler observes operation_aborted and does nothing.
-		m_TrackerRequests.Release (key);
+		// Cancellation may race an already successful timer completion.
+		// Authority also rejects that completion after key reuse.
+		m_TrackerRequests.Release (key, authority);
 	}
 
 	void TorrentsTunnel::CancelTrackerRequests (const Torrent::InfoHash & infoHash)
 	{
 		// Close every matching stream before dropping the entries: an erased
 		// entry also erases its deadline, and a stream left open would never
-		// be bounded again. The completion callback then releases a key that
-		// is already gone, which is a no-op, and the stopped torrent reports
-		// no further failure.
+		// be bounded again. Late callbacks carry the retired authority and
+		// cannot release or update a replacement request with the same key.
 		std::vector<std::shared_ptr<i2p::stream::Stream>> streams;
 		m_TrackerRequests.ForEachTorrent (infoHash,
 			[&streams] (const TrackerRequestKey &, TrackerRequestState & state)
@@ -3384,35 +3388,35 @@ namespace torrents
 		for (const auto & stream : streams) stream->AsyncClose ();
 	}
 
-	void TorrentsTunnel::ScheduleTrackerRequestDeadline (const TrackerRequestKey & key)
+	void TorrentsTunnel::ScheduleTrackerRequestDeadline (const TrackerRequestKey & key, uint64_t authority)
 	{
-		auto * state = m_TrackerRequests.Find (key);
+		auto * state = m_TrackerRequests.Find (key, authority);
 		if (!state) return;
 		auto deadline = std::make_shared<boost::asio::steady_timer> (GetService ());
 		deadline->expires_after (std::chrono::seconds (TRACKER_RESPONSE_TIMEOUT));
 		state->deadline = deadline;
 		std::weak_ptr<i2p::client::I2PService> weakSelf = weak_from_this ();
 		deadline->async_wait (
-			[weakSelf, key] (const boost::system::error_code & ecode)
+			[weakSelf, key, authority] (const boost::system::error_code & ecode)
 			{
-				// A completed, cancelled or torn-down request aborts the wait and
-				// must not report another failure.
+				// A canceled wait does nothing. An already successful completion
+				// also needs its admission authority checked after retirement.
 				if (ecode) return;
 				auto self = std::static_pointer_cast<TorrentsTunnel> (weakSelf.lock ());
-				if (self) self->HandleTrackerRequestTimeout (key);
+				if (self) self->HandleTrackerRequestTimeout (key, authority);
 			});
 	}
 
-	void TorrentsTunnel::HandleTrackerRequestTimeout (const TrackerRequestKey & key)
+	void TorrentsTunnel::HandleTrackerRequestTimeout (const TrackerRequestKey & key, uint64_t authority)
 	{
-		auto * state = m_TrackerRequests.Find (key);
+		auto * state = m_TrackerRequests.Find (key, authority);
 		if (!state) return;
 		// The timer that is dispatching this handler is owned by the entry;
 		// keep it alive across the erase below.
 		[[maybe_unused]] auto keepAlive = state->deadline;
 		auto torrent = state->torrent.lock ();
 		auto stream = state->stream.lock ();
-		m_TrackerRequests.Release (key);
+		m_TrackerRequests.Release (key, authority);
 		LogPrint (eLogWarning, "TorrentsTunnel: Tracker ", key.trackerID, " announce timed out after ",
 			TRACKER_RESPONSE_TIMEOUT, " seconds");
 		if (torrent && !torrent->IsStopped ()) torrent->ReportTrackerFailure (key.trackerID, "No response");

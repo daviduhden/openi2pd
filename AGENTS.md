@@ -261,6 +261,9 @@ and owner use. A shared revocable admission gate may protect a non-owning
 owner pointer only when shutdown revokes through that same gate and waits
 for admitted access. Keep generation rejection separate from admission,
 document lock ordering and exclude synchronous reentrant lifecycle calls.
+Review reusable correlation keys independently of owner lifetime. An old
+successful completion can survive cancellation and key reuse; require
+per-admission authority before mutating or retiring a successor operation.
 
 At parser boundaries, rejected numeric fields and malformed first tokens
 remain arbitrary input. Review complete command buffers, ignored fields

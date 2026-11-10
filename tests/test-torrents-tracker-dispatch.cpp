@@ -321,6 +321,49 @@ void TestInflightAdmission ()
 	assert (inflight.ReleaseAll ().size () == 2 && inflight.Size () == 0);
 }
 
+// All asynchronous stages share this registry authority: retirement
+// permits key reuse while successful callbacks remain queued.
+void TestInflightAuthorityAfterReuse ()
+{
+	using Registry = TrackerInflightRegistry<int>;
+	Registry inflight;
+	const TrackerRequestKey key { MakeHash (0x71), 3 };
+	assert (inflight.Authority (key) == 0);
+	assert (inflight.TryAcquire (key, 10) == Registry::Admission::Accepted);
+	const auto retired = inflight.Authority (key);
+	assert (retired != 0);
+	assert (inflight.Release (key, retired));
+	assert (inflight.TryAcquire (key, 20) == Registry::Admission::Accepted);
+	const auto current = inflight.Authority (key);
+	assert (current != 0 && current != retired);
+
+	// Lookup cannot expose the successor payload; retirement cannot erase
+	// it. The source contract pins use by all asynchronous stages.
+	assert (!inflight.Find (key, retired));
+	assert (!inflight.Release (key, retired));
+	assert (inflight.Size () == 1);
+	assert (inflight.Find (key, current));
+	assert (*inflight.Find (key, current) == 20);
+	assert (!inflight.Find (key, 0));
+	assert (!inflight.Release (key, 0));
+	assert (inflight.Release (key, current));
+	assert (inflight.Size () == 0);
+
+	// Tunnel restart clears requests without resetting their authority.
+	assert (inflight.TryAcquire (key, 30) == Registry::Admission::Accepted);
+	const auto beforeStop = inflight.Authority (key);
+	inflight.ReleaseAll ();
+	assert (inflight.TryAcquire (key, 40) == Registry::Admission::Accepted);
+	const auto afterRestart = inflight.Authority (key);
+	assert (afterRestart != beforeStop);
+	assert (!inflight.Release (key, beforeStop));
+	assert (*inflight.Find (key, afterRestart) == 40);
+	inflight.ReleaseTorrent (key.infoHash);
+	assert (inflight.TryAcquire (key, 50) == Registry::Admission::Accepted);
+	assert (!inflight.Release (key, afterRestart));
+	assert (*inflight.Find (key, inflight.Authority (key)) == 50);
+}
+
 void TestPrivateInfoHashSet ()
 {
 	assert (PrivateInfoHashSet::MaxHashes == MAX_DHT_TORRENTS);
@@ -389,6 +432,7 @@ int main ()
 	TestRegistryExhaustion ();
 	TestTrackerRegistryApi ();
 	TestInflightAdmission ();
+	TestInflightAuthorityAfterReuse ();
 	TestPrivateInfoHashSet ();
 	TestDHTPrivacyApi ();
 	return 0;
