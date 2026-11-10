@@ -682,12 +682,18 @@ namespace crypto
 		return true;
 	}
 
-	void Ed25519::ExpandPrivateKey (const uint8_t * key, uint8_t * expandedKey)
+	bool Ed25519::ExpandPrivateKey (const uint8_t * key, uint8_t * expandedKey)
 	{
-		SHA512 (key, EDDSA25519_PRIVATE_KEY_LENGTH, expandedKey);
+		if (!expandedKey) return false;
+		if (!key || !SHA512 (key, EDDSA25519_PRIVATE_KEY_LENGTH, expandedKey))
+		{
+			OPENSSL_cleanse (expandedKey, 2 * EDDSA25519_PRIVATE_KEY_LENGTH);
+			return false;
+		}
 		expandedKey[0] &= 0xF8; // drop last 3 bits
 		expandedKey[EDDSA25519_PRIVATE_KEY_LENGTH - 1] &= 0x3F; // drop first 2 bits
 		expandedKey[EDDSA25519_PRIVATE_KEY_LENGTH - 1] |= 0x40; // set second bit
+		return true;
 	}
 
 	bool Ed25519::CreateRedDSAPrivateKey (uint8_t * priv)

@@ -93,6 +93,18 @@ executing project code, or inspect a real private key.
 
 ## Known issues and decisions
 
+- Ed25519 compatibility must compare the supplied public key again after
+  the historical bit-253 scalar adjustment. An arbitrary mismatch is not
+  evidence of a legacy key. Publish only an IsValid signer; reject invalid
+  online serialized pairs and retain modern/RFC plus genuine historical
+  controls. Ed25519ph needs a provider key and must not report a legacy-only
+  fallback as ready. Full Sign failure propagation remains separate.
+- Private-key expansion returns checked success. Digest failure clears all
+  64 output bytes and must abort both compatibility signing and private-key
+  blinding; never clamp an unavailable digest into a usable scalar. Keep
+  every caller synchronized with that fallible API. Public-point encoding
+  status and broader RedDSA/backend readiness still need separate review.
+
 - Retry payload grammar must validate before changing version-bound crypto
   state as well as before inserting its token. The first DateTime block
   alone cannot authorize a malformed or forbidden trailing block; test a

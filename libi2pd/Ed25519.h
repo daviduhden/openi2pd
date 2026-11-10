@@ -153,7 +153,9 @@ namespace crypto
 		/// Expand a 32-byte seed into the 64-byte secret scalar and prefix:
 		/// SHA-512 followed by the RFC 8032 clamping. The output is secret
 		/// and must be cleansed by the caller when no longer needed.
-		static void ExpandPrivateKey (
+		/// @return False for absent input/output or digest failure. Failure
+		///         clears all 64 output bytes when output is present.
+		[[nodiscard]] static bool ExpandPrivateKey (
 			const uint8_t * key, uint8_t * expandedKey); // key - 32 bytes, expandedKey - 64 bytes
 		/// Generate a RedDSA private scalar reduced modulo the group order.
 		/// @return False when the CSPRNG fails or no usable scalar was drawn;

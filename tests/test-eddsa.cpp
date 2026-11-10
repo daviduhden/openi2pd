@@ -127,7 +127,12 @@ int main ()
 	// signature.
 	{
 		uint8_t expanded[2 * i2p::crypto::EDDSA25519_PRIVATE_KEY_LENGTH];
-		i2p::crypto::Ed25519::ExpandPrivateKey (key, expanded);
+		memset (expanded, 0xA5, sizeof (expanded));
+		assert (!i2p::crypto::Ed25519::ExpandPrivateKey (nullptr, expanded));
+		for (auto byte : expanded) assert (byte == 0);
+		assert (!i2p::crypto::Ed25519::ExpandPrivateKey (key, nullptr));
+		assert (!i2p::crypto::Ed25519::ExpandPrivateKey (nullptr, nullptr));
+		assert (i2p::crypto::Ed25519::ExpandPrivateKey (key, expanded));
 		uint8_t output[i2p::crypto::EDDSA25519_SIGNATURE_LENGTH];
 		for (unsigned missing = 0; missing < 3; ++missing)
 		{
@@ -146,6 +151,7 @@ int main ()
 		// The compatibility backend must use the same full-width nonce as
 		// the provider backend, including when output overlaps the message.
 		i2p::crypto::EDDSA25519SignerCompat compat (key, pub);
+		assert (compat.IsValid ());
 		compat.Sign (msg, 1023, output);
 		assert (memcmp (output, sig, sizeof (output)) == 0);
 		std::array<uint8_t, 1023> overlapping;

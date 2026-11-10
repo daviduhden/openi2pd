@@ -380,7 +380,7 @@ require_runtime_source("tests/test-atomic-shared-ptr.cpp"
 require_runtime_source(".github/workflows/build-windows.yml"
   "build-msvc/tests/Release/test-atomic-shared-ptr.exe")
 require_runtime_source(".github/workflows/build-windows.yml"
-  "|atomic-shared-ptr|kad-dht|release-assertions))$")
+  "|atomic-shared-ptr|kad-dht|eddsa|signature-identity-hardening|release-assertions))$")
 require_runtime_source(".github/workflows/build-windows.yml"
   "build-msvc/tests/Release/test-kad-dht.exe")
 
@@ -533,3 +533,19 @@ require_runtime_source("tests/test-torrents-security.cpp"
   "TestMagnetDiscoveryWaitsForDurability ();")
 require_runtime_source("tests/test-torrents-security.cpp"
   "TestInitialDiscoveryAuthority ();")
+
+# Compatibility derivation cannot authorize an unrelated supplied key.
+require_runtime_source("libi2pd/Signature.cpp"
+  "if (CRYPTO_memcmp (m_PublicKeyEncoded, signingPublicKey,")
+require_runtime_source("libi2pd/Signature.cpp"
+  "if (fallback->IsValid ()) m_Fallback = std::move (fallback);")
+require_runtime_source("libi2pd/Identity.cpp"
+  "if (signer->IsValid ()) m_Signer = std::move (signer);")
+require_runtime_source("libi2pd/Signature.h"
+  "{ return GetPkey () != nullptr; }")
+require_runtime_source("tests/test-signature-identity-hardening.cpp"
+  "TestEddsaFallbackPairValidation ();")
+require_runtime_source(".github/workflows/build-windows.yml"
+  "test-eddsa test-signature-identity-hardening")
+require_runtime_source(".github/workflows/build-windows.yml"
+  "|eddsa|signature-identity-hardening|")

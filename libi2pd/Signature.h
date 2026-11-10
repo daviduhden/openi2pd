@@ -443,24 +443,37 @@ namespace crypto
 	class EDDSA25519SignerCompat : public Signer
 	{
 	public:
+		/** A supplied public key must match the modern or legacy scalar.
+		 * Invalid construction retains no private material; Sign clears
+		 * its output. Callers must check IsValid before publication.
+		 */
 		EDDSA25519SignerCompat (const uint8_t * signingPrivateKey, const uint8_t * signingPublicKey = nullptr);
-		// we pass signingPublicKey to check if it matches private key
 		~EDDSA25519SignerCompat ();
+		[[nodiscard]] bool IsValid () const { return m_Valid; }
 
 		void Sign (const uint8_t * buf, int len, uint8_t * signature) const;
-		const uint8_t * GetPublicKey () const { return m_PublicKeyEncoded; }; // for keys creation
+		/** Borrow the encoded public key for this signer's lifetime.
+		 * Invalid construction exposes an all-zero encoding.
+		 */
+		const uint8_t * GetPublicKey () const { return m_PublicKeyEncoded; };
 
 	private:
-		uint8_t m_ExpandedPrivateKey[64];
-		uint8_t m_PublicKeyEncoded[EDDSA25519_PUBLIC_KEY_LENGTH];
+		uint8_t m_ExpandedPrivateKey[64] { };
+		uint8_t m_PublicKeyEncoded[EDDSA25519_PUBLIC_KEY_LENGTH] { };
+		bool m_Valid = false;
 	};
 
 	class EDDSA25519Signer : public Signer
 	{
 	public:
+		/** A supplied pair must match the modern or historical scalar.
+		 * Check IsValid before publishing the constructed signer.
+		 */
 		EDDSA25519Signer (const uint8_t * signingPrivateKey, const uint8_t * signingPublicKey = nullptr);
-		// we pass signingPublicKey to check if it matches private key
 		~EDDSA25519Signer ();
+		/** Report whether a validated signing backend is available. */
+		[[nodiscard]] virtual bool IsValid () const
+		{ return m_Pkey || (m_Fallback && m_Fallback->IsValid ()); }
 
 		void Sign (const uint8_t * buf, int len, uint8_t * signature) const;
 
@@ -475,7 +488,13 @@ namespace crypto
 	class EDDSA25519phSigner : public EDDSA25519Signer
 	{
 	public:
-		EDDSA25519phSigner (const uint8_t * signingPrivateKey);
+		/** Require a provider key matching the supplied public key.
+		 * The type-7 legacy scalar fallback cannot sign type 8.
+		 */
+		EDDSA25519phSigner (const uint8_t * signingPrivateKey,
+			const uint8_t * signingPublicKey = nullptr);
+		[[nodiscard]] bool IsValid () const override
+		{ return GetPkey () != nullptr; }
 
 		void Sign (const uint8_t * buf, int len, uint8_t * signature) const;
 	};
@@ -730,7 +749,8 @@ namespace crypto
 			GetEd25519 ()->SignRedDSA (m_PrivateKey, m_PublicKeyEncoded, buf, len, signature);
 		}
 
-		const uint8_t * GetPublicKey () const { return m_PublicKeyEncoded; }; // for keys creation
+		/** Borrow the encoded public key for this signer's lifetime. */
+		const uint8_t * GetPublicKey () const { return m_PublicKeyEncoded; };
 
 	private:
 		uint8_t m_PrivateKey[EDDSA25519_PRIVATE_KEY_LENGTH];

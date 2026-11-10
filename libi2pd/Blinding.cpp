@@ -277,8 +277,8 @@ namespace data
 		case i2p::data::SIGNING_KEY_TYPE_EDDSA_SHA512_ED25519:
 		{
 			uint8_t exp[64];
-			i2p::crypto::Ed25519::ExpandPrivateKey (priv, exp);
-			if (i2p::crypto::GetEd25519 ()->BlindPrivateKey (exp, seed, blindedPriv, blindedPub))
+			if (i2p::crypto::Ed25519::ExpandPrivateKey (priv, exp)
+				&& i2p::crypto::GetEd25519 ()->BlindPrivateKey (exp, seed, blindedPriv, blindedPub))
 				publicKeyLength = i2p::crypto::EDDSA25519_PUBLIC_KEY_LENGTH;
 			OPENSSL_cleanse (exp, sizeof (exp));
 			break;

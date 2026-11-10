@@ -954,7 +954,12 @@ namespace data
 			if (!m_Signer) return 0;
 		}
 		else
-			CreateSigner (m_Public->GetSigningKeyType ());
+		{
+			const auto keyType = m_Public->GetSigningKeyType ();
+			CreateSigner (keyType);
+			if ((keyType == SIGNING_KEY_TYPE_EDDSA_SHA512_ED25519
+				|| keyType == SIGNING_KEY_TYPE_EDDSA_SHA512_ED25519ph) && !m_Signer) return 0;
+		}
 		if (ret < len)
 		{
 			size_t b33Len = m_B33OfflineKeys.FromBuffer (buf + ret, len - ret, m_Public->GetIdentHash ());
@@ -1088,10 +1093,25 @@ namespace data
 			m_Signer.reset (
 				new i2p::crypto::DSASigner (m_SigningPrivateKey.data (), m_Public->GetStandardIdentity ().signingKey));
 		else if (keyType == SIGNING_KEY_TYPE_EDDSA_SHA512_ED25519 && !IsOfflineSignature ())
-			m_Signer.reset (new i2p::crypto::EDDSA25519Signer (m_SigningPrivateKey.data (),
+		{
+			// Retain the supplied identity only when modern or historical
+			// scalar derivation proves the same public/private key pair.
+			auto signer = std::make_unique<i2p::crypto::EDDSA25519Signer> (m_SigningPrivateKey.data (),
 				m_Public->GetStandardIdentity ().signingKey
 					+ (sizeof (Identity::signingKey)
-						- i2p::crypto::EDDSA25519_PUBLIC_KEY_LENGTH))); // TODO: remove public key check
+						- i2p::crypto::EDDSA25519_PUBLIC_KEY_LENGTH));
+			if (signer->IsValid ()) m_Signer = std::move (signer);
+			else LogPrint (eLogError, "Identity: EdDSA signing key pair is invalid");
+		}
+		else if (keyType == SIGNING_KEY_TYPE_EDDSA_SHA512_ED25519ph && !IsOfflineSignature ())
+		{
+			auto signer = std::make_unique<i2p::crypto::EDDSA25519phSigner> (m_SigningPrivateKey.data (),
+				m_Public->GetStandardIdentity ().signingKey
+					+ (sizeof (Identity::signingKey)
+						- i2p::crypto::EDDSA25519_PUBLIC_KEY_LENGTH));
+			if (signer->IsValid ()) m_Signer = std::move (signer);
+			else LogPrint (eLogError, "Identity: Ed25519ph signing key pair is invalid");
+		}
 		else
 		{
 			// public key is not required
@@ -1113,8 +1133,16 @@ namespace data
 			LogPrint (eLogError, "Identity: RSA signing key type ", (int)keyType,
 				" is verification-only; no RSA signer is available");
 			break;
-		case SIGNING_KEY_TYPE_EDDSA_SHA512_ED25519: return new i2p::crypto::EDDSA25519Signer (priv, nullptr); break;
-		case SIGNING_KEY_TYPE_EDDSA_SHA512_ED25519ph: return new i2p::crypto::EDDSA25519phSigner (priv); break;
+		case SIGNING_KEY_TYPE_EDDSA_SHA512_ED25519:
+		{
+			auto signer = std::make_unique<i2p::crypto::EDDSA25519Signer> (priv);
+			return signer->IsValid () ? signer.release () : nullptr;
+		}
+		case SIGNING_KEY_TYPE_EDDSA_SHA512_ED25519ph:
+		{
+			auto signer = std::make_unique<i2p::crypto::EDDSA25519phSigner> (priv);
+			return signer->IsValid () ? signer.release () : nullptr;
+		}
 		case SIGNING_KEY_TYPE_GOSTR3410_CRYPTO_PRO_A_GOSTR3411_256:
 			return new i2p::crypto::GOSTR3410_256_Signer (i2p::crypto::eGOSTR3410CryptoProA, priv);
 			break;

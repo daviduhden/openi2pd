@@ -15,8 +15,11 @@
 #include <cassert>
 #include <cstdint>
 #include <cstring>
+#include <memory>
 #include <vector>
 
+#include <openssl/bn.h>
+#include <openssl/crypto.h>
 #include <openssl/opensslv.h>
 #ifndef LIBRESSL_VERSION_NUMBER
 #include <openssl/core_names.h>
@@ -185,11 +188,11 @@ void TestRsaWireLengths ()
 	assert (!PrivateKeys::GenerateSigningKeyPair (SIGNING_KEY_TYPE_RSA_SHA256_2048, priv, pub));
 }
 
-void TestPrivateKeysRoundTrip ()
+void TestPrivateKeysRoundTrip (i2p::data::SigningKeyType type)
 {
 	using namespace i2p::data;
 
-	auto keys = PrivateKeys::CreateRandomKeys (SIGNING_KEY_TYPE_EDDSA_SHA512_ED25519);
+	auto keys = PrivateKeys::CreateRandomKeys (type);
 	assert (keys.GetPublic ());
 	std::vector<uint8_t> buffer (keys.GetFullLen ());
 	assert (buffer.size () > DEFAULT_IDENTITY_SIZE);
@@ -203,40 +206,105 @@ void TestPrivateKeysRoundTrip ()
 	parsed.Sign (TEST_MESSAGE, sizeof (TEST_MESSAGE), signature);
 	assert (parsed.GetPublic ()->Verify (TEST_MESSAGE, sizeof (TEST_MESSAGE), signature));
 
+	// Keep the complete public identity and file shape, but corrupt the
+	// signing seed. A parser must reject the mismatched pair and revoke
+	// the previously usable parsed identity as well as its signer.
+	auto corrupted = buffer;
+	assert (!keys.IsOfflineSignature () && keys.GetB33OfflineKeys ().GetLen () == 0);
+	const auto signingOffset = buffer.size ()
+		- keys.GetPublic ()->GetSigningPrivateKeyLen ();
+	assert (signingOffset < corrupted.size ());
+	corrupted[signingOffset] ^= 0x01;
+	assert (parsed.FromBuffer (corrupted.data (), corrupted.size ()) == 0);
+	assert (!parsed.GetPublic ());
+	assert (parsed.FromBuffer (buffer.data (), buffer.size ()) == buffer.size ());
+	parsed.Sign (TEST_MESSAGE, sizeof (TEST_MESSAGE), signature);
+	assert (parsed.GetPublic ()->Verify (TEST_MESSAGE, sizeof (TEST_MESSAGE), signature));
+
 	// Truncating the signing private key must fail the parse and leave no
 	// half-initialised public identity behind.
 	assert (parsed.FromBuffer (buffer.data (), buffer.size () - 1) == 0);
 	assert (!parsed.GetPublic ());
 }
 
-void TestEddsaFallbackMatchesCompat ()
+void TestEddsaFallbackPairValidation ()
 {
 	using namespace i2p::crypto;
+	std::array<uint8_t, EDDSA25519_PRIVATE_KEY_LENGTH> priv { };
+	std::array<uint8_t, 64> expanded { };
+	// Select a deterministic seed whose modern scalar has bit 253 set,
+	// so the historical correction must change the derived public key.
+	bool found = false;
+	for (unsigned seed = 0; seed < 256; ++seed)
+	{
+		priv[0] = static_cast<uint8_t> (seed);
+		assert (Ed25519::ExpandPrivateKey (priv.data (), expanded.data ()));
+		if (expanded[31] & 0x20) { found = true; break; }
+	}
+	assert (found);
+	std::unique_ptr<BN_CTX, decltype (&BN_CTX_free)> ctx (
+		BN_CTX_new (), BN_CTX_free);
+	assert (ctx);
+	std::array<uint8_t, EDDSA25519_PUBLIC_KEY_LENGTH> modern, legacy;
+	auto point = GetEd25519 ()->GeneratePublicKey (expanded.data (), ctx.get ());
+	GetEd25519 ()->EncodePublicKey (point, modern.data (), ctx.get ());
+	expanded[31] &= 0xDF;
+	point = GetEd25519 ()->GeneratePublicKey (expanded.data (), ctx.get ());
+	GetEd25519 ()->EncodePublicKey (point, legacy.data (), ctx.get ());
+	assert (modern != legacy);
+	OPENSSL_cleanse (expanded.data (), expanded.size ());
 
-	uint8_t priv[EDDSA25519_PRIVATE_KEY_LENGTH];
-	uint8_t pub[EDDSA25519_PUBLIC_KEY_LENGTH];
-	assert (CreateEDDSA25519RandomKeys (priv, pub));
-
-	// Give the provider-backed signer a public key that cannot match the
-	// one derived from the private key. Both paths must therefore use the
-	// compatibility signer and produce the same deterministic signature.
-	uint8_t mismatched[EDDSA25519_PUBLIC_KEY_LENGTH];
-	memcpy (mismatched, pub, sizeof (mismatched));
+	for (const auto & pub : { modern, legacy })
+	{
+		EDDSA25519SignerCompat compat (priv.data (), pub.data ());
+		EDDSA25519Signer signer (priv.data (), pub.data ());
+		assert (compat.IsValid () && signer.IsValid ());
+		std::array<uint8_t, EDDSA25519_SIGNATURE_LENGTH> first, second;
+		compat.Sign (TEST_MESSAGE, sizeof (TEST_MESSAGE), first.data ());
+		signer.Sign (TEST_MESSAGE, sizeof (TEST_MESSAGE), second.data ());
+		assert (first == second);
+		EDDSA25519Verifier verifier;
+		verifier.SetPublicKey (pub.data ());
+		assert (verifier.Verify (TEST_MESSAGE, sizeof (TEST_MESSAGE), second.data ()));
+	}
+	// The candidate must match neither supported scalar encoding.
+	auto mismatched = modern;
 	mismatched[0] ^= 0x01;
-
-	EDDSA25519SignerCompat compat (priv, mismatched);
-	EDDSA25519Signer signer (priv, mismatched);
-
-	uint8_t compatSignature[EDDSA25519_SIGNATURE_LENGTH] = { };
-	uint8_t signerSignature[EDDSA25519_SIGNATURE_LENGTH] = { };
-	compat.Sign (TEST_MESSAGE, sizeof (TEST_MESSAGE), compatSignature);
-	signer.Sign (TEST_MESSAGE, sizeof (TEST_MESSAGE), signerSignature);
-	assert (!memcmp (compatSignature, signerSignature, sizeof (compatSignature)));
-
-	EDDSA25519Verifier verifier;
-	verifier.SetPublicKey (compat.GetPublicKey ());
-	assert (verifier.Verify (TEST_MESSAGE, sizeof (TEST_MESSAGE), signerSignature));
-	assert (!verifier.Verify (TEST_MESSAGE, sizeof (TEST_MESSAGE) - 1, signerSignature));
+	if (mismatched == legacy) mismatched[1] ^= 0x01;
+	EDDSA25519SignerCompat compat (priv.data (), mismatched.data ());
+	EDDSA25519Signer signer (priv.data (), mismatched.data ());
+	assert (!compat.IsValid () && !signer.IsValid ());
+	std::array<uint8_t, EDDSA25519_SIGNATURE_LENGTH> output;
+	output.fill (0xA5);
+	compat.Sign (TEST_MESSAGE, sizeof (TEST_MESSAGE), output.data ());
+	for (auto byte : output) assert (byte == 0);
+	output.fill (0xA5);
+	signer.Sign (TEST_MESSAGE, sizeof (TEST_MESSAGE), output.data ());
+	for (auto byte : output) assert (byte == 0);
+	EDDSA25519phSigner ph (priv.data (), modern.data ());
+	assert (ph.IsValid ());
+	ph.Sign (TEST_MESSAGE, sizeof (TEST_MESSAGE), output.data ());
+	EDDSA25519phVerifier phVerifier;
+	phVerifier.SetPublicKey (modern.data ());
+	assert (phVerifier.Verify (TEST_MESSAGE, sizeof (TEST_MESSAGE), output.data ()));
+	for (const auto & rejected : { mismatched, legacy })
+	{
+		EDDSA25519phSigner invalidPh (priv.data (), rejected.data ());
+		assert (!invalidPh.IsValid ());
+		// Readiness must reject the fallback even through a base reference.
+		const EDDSA25519Signer & base = invalidPh;
+		assert (!base.IsValid ());
+		output.fill (0xA5);
+		invalidPh.Sign (TEST_MESSAGE, sizeof (TEST_MESSAGE), output.data ());
+		for (auto byte : output) assert (byte == 0);
+	}
+	EDDSA25519SignerCompat missing (nullptr, modern.data ());
+	assert (!missing.IsValid ());
+	assert (!i2p::data::PrivateKeys::CreateSigner (
+		i2p::data::SIGNING_KEY_TYPE_EDDSA_SHA512_ED25519, nullptr));
+	assert (!i2p::data::PrivateKeys::CreateSigner (
+		i2p::data::SIGNING_KEY_TYPE_EDDSA_SHA512_ED25519ph, nullptr));
+	OPENSSL_cleanse (priv.data (), priv.size ());
 }
 
 // Produce an RSA-2048 modulus and a Java-compatible raw PKCS#1 v1.5
@@ -350,8 +418,9 @@ int main ()
 	TestKeyCertificateExcessData ();
 	TestMalformedIdentityIsNotValid ();
 	TestRsaWireLengths ();
-	TestPrivateKeysRoundTrip ();
-	TestEddsaFallbackMatchesCompat ();
+	TestPrivateKeysRoundTrip (i2p::data::SIGNING_KEY_TYPE_EDDSA_SHA512_ED25519);
+	TestPrivateKeysRoundTrip (i2p::data::SIGNING_KEY_TYPE_EDDSA_SHA512_ED25519ph);
+	TestEddsaFallbackPairValidation ();
 	TestRsaRawSignatureVerification ();
 	return 0;
 }
