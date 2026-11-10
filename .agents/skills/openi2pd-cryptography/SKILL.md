@@ -102,8 +102,17 @@ executing project code, or inspect a real private key.
 - Private-key expansion returns checked success. Digest failure clears all
   64 output bytes and must abort both compatibility signing and private-key
   blinding; never clamp an unavailable digest into a usable scalar. Keep
-  every caller synchronized with that fallible API. Public-point encoding
-  status and broader RedDSA/backend readiness still need separate review.
+  every caller synchronized with that fallible API.
+- Public-point encoding also returns checked success and clears failed
+  output. Normalize must validate context/coordinates and all allocation,
+  inversion and multiplication outcomes before encoding. Compatibility and
+  RedDSA constructors publish readiness only after encoding; key factories
+  and random-key wrappers must honor it. MulB/Sum/Dbl allocation handling
+  remains outside that guarantee, as does full Sign failure propagation.
+- When adding an override in a signature family, review all sibling methods
+  and both provider branches. Mixed annotations can produce one diagnostic
+  per translation unit. Use compile-time bounded int components/digests at
+  OpenSSL length boundaries; preserve size_t for buffer-capacity APIs.
 
 - Retry payload grammar must validate before changing version-bound crypto
   state as well as before inserting its token. The first DateTime block

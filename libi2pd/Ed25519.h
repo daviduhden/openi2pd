@@ -114,7 +114,10 @@ namespace crypto
 
 		EDDSAPoint GeneratePublicKey (const uint8_t * expandedPrivateKey, BN_CTX * ctx) const;
 		EDDSAPoint DecodePublicKey (const uint8_t * buf, BN_CTX * ctx) const;
-		void EncodePublicKey (const EDDSAPoint & publicKey, uint8_t * buf, BN_CTX * ctx) const;
+		/** Encode 32 public bytes; failure clears a non-null output.
+		 * Requires a live context and complete point coordinates.
+		 */
+		[[nodiscard]] bool EncodePublicKey (const EDDSAPoint & publicKey, uint8_t * buf, BN_CTX * ctx) const;
 		// Java GroupElement decoding rejects a y encoding whose recovered x
 		// does not satisfy the curve equation. Callers must not blind or hash
 		// through such a key. A rejected encoding decodes to an empty point.

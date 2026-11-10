@@ -247,10 +247,10 @@ void TestEddsaFallbackPairValidation ()
 	assert (ctx);
 	std::array<uint8_t, EDDSA25519_PUBLIC_KEY_LENGTH> modern, legacy;
 	auto point = GetEd25519 ()->GeneratePublicKey (expanded.data (), ctx.get ());
-	GetEd25519 ()->EncodePublicKey (point, modern.data (), ctx.get ());
+	assert (GetEd25519 ()->EncodePublicKey (point, modern.data (), ctx.get ()));
 	expanded[31] &= 0xDF;
 	point = GetEd25519 ()->GeneratePublicKey (expanded.data (), ctx.get ());
-	GetEd25519 ()->EncodePublicKey (point, legacy.data (), ctx.get ());
+	assert (GetEd25519 ()->EncodePublicKey (point, legacy.data (), ctx.get ()));
 	assert (modern != legacy);
 	OPENSSL_cleanse (expanded.data (), expanded.size ());
 
@@ -304,6 +304,8 @@ void TestEddsaFallbackPairValidation ()
 		i2p::data::SIGNING_KEY_TYPE_EDDSA_SHA512_ED25519, nullptr));
 	assert (!i2p::data::PrivateKeys::CreateSigner (
 		i2p::data::SIGNING_KEY_TYPE_EDDSA_SHA512_ED25519ph, nullptr));
+	assert (!i2p::data::PrivateKeys::CreateSigner (
+		i2p::data::SIGNING_KEY_TYPE_REDDSA_SHA512_ED25519, nullptr));
 	OPENSSL_cleanse (priv.data (), priv.size ());
 }
 

@@ -617,3 +617,17 @@ require_runtime_source("tests/test-routerinfo-rsa-reject.cpp"
   "BN_bin2bn (key.modulus.data (), RSA_BYTES, nullptr)")
 require_runtime_source("libi2pd/Signature.h"
   "static constexpr int componentLen = static_cast<int> (keyLen / 2);")
+
+# Encoding and normalization failures must revoke signing readiness.
+require_runtime_source("libi2pd/Ed25519.h"
+  "[[nodiscard]] bool EncodePublicKey (")
+require_runtime_source("libi2pd/Signature.cpp"
+  "if (!GetEd25519 ()->EncodePublicKey (")
+require_runtime_source("libi2pd/Signature.h"
+  "if (!signer.IsValid ())")
+require_runtime_source("libi2pd/Identity.cpp"
+  "std::make_unique<i2p::crypto::RedDSA25519Signer> (priv)")
+require_runtime_order("libi2pd/Ed25519.cpp"
+  "if (!ctx || !p.x || !p.y) return {};" "BN_mod_inverse (normalized.y")
+require_runtime_source("tests/test-eddsa.cpp"
+  "assert (!ed25519->EncodePublicKey (identity, encoded, nullptr));")

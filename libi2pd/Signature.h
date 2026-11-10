@@ -745,32 +745,58 @@ namespace crypto
 	class RedDSA25519Signer : public Signer
 	{
 	public:
+		/** Derive the public key before retaining the private scalar.
+		 * Check IsValid before publication. Point generation still uses
+		 * the shared arithmetic backend's allocation assumptions.
+		 */
 		RedDSA25519Signer (const uint8_t * signingPrivateKey)
 		{
-			memcpy (m_PrivateKey, signingPrivateKey, EDDSA25519_PRIVATE_KEY_LENGTH);
-			BN_CTX * ctx = BN_CTX_new ();
-			auto publicKey = GetEd25519 ()->GeneratePublicKey (m_PrivateKey, ctx);
-			GetEd25519 ()->EncodePublicKey (publicKey, m_PublicKeyEncoded, ctx);
-			BN_CTX_free (ctx);
+			if (!signingPrivateKey) return;
+			std::unique_ptr<BN_CTX, decltype (&BN_CTX_free)> ctx (
+				BN_CTX_new (), BN_CTX_free);
+			if (!ctx) return;
+			auto publicKey = GetEd25519 ()->GeneratePublicKey (
+				signingPrivateKey, ctx.get ());
+			if (!GetEd25519 ()->EncodePublicKey (
+				publicKey, m_PublicKeyEncoded, ctx.get ())) return;
+			memcpy (m_PrivateKey, signingPrivateKey,
+				EDDSA25519_PRIVATE_KEY_LENGTH);
+			m_Valid = true;
 		}
-		~RedDSA25519Signer () override { OPENSSL_cleanse (m_PrivateKey, sizeof (m_PrivateKey)); };
+		~RedDSA25519Signer () override
+		{ OPENSSL_cleanse (m_PrivateKey, sizeof (m_PrivateKey)); }
+		[[nodiscard]] bool IsValid () const { return m_Valid; }
 
 		void Sign (const uint8_t * buf, int len, uint8_t * signature) const override
 		{
+			if (!signature) return;
+			if (!m_Valid)
+			{
+				memset (signature, 0, EDDSA25519_SIGNATURE_LENGTH);
+				return;
+			}
 			GetEd25519 ()->SignRedDSA (m_PrivateKey, m_PublicKeyEncoded, buf, len, signature);
 		}
 
-		/** Borrow the encoded public key for this signer's lifetime. */
+		/** Borrow the encoded public key for this signer's lifetime.
+		 * Invalid construction exposes an all-zero encoding.
+		 */
 		const uint8_t * GetPublicKey () const { return m_PublicKeyEncoded; };
 
 	private:
-		uint8_t m_PrivateKey[EDDSA25519_PRIVATE_KEY_LENGTH];
-		uint8_t m_PublicKeyEncoded[EDDSA25519_PUBLIC_KEY_LENGTH];
+		uint8_t m_PrivateKey[EDDSA25519_PRIVATE_KEY_LENGTH] { };
+		uint8_t m_PublicKeyEncoded[EDDSA25519_PUBLIC_KEY_LENGTH] { };
+		bool m_Valid = false;
 	};
 
 	inline bool CreateRedDSA25519RandomKeys (uint8_t * signingPrivateKey, uint8_t * signingPublicKey)
 	{
-		if (!signingPrivateKey || !signingPublicKey) return false;
+		if (!signingPrivateKey || !signingPublicKey)
+		{
+			if (signingPrivateKey) OPENSSL_cleanse (signingPrivateKey, EDDSA25519_PRIVATE_KEY_LENGTH);
+			if (signingPublicKey) memset (signingPublicKey, 0, EDDSA25519_PUBLIC_KEY_LENGTH);
+			return false;
+		}
 		if (!GetEd25519 ()->CreateRedDSAPrivateKey (signingPrivateKey))
 		{
 			memset (signingPrivateKey, 0, EDDSA25519_PRIVATE_KEY_LENGTH);
@@ -778,6 +804,12 @@ namespace crypto
 			return false;
 		}
 		RedDSA25519Signer signer (signingPrivateKey);
+		if (!signer.IsValid ())
+		{
+			OPENSSL_cleanse (signingPrivateKey, EDDSA25519_PRIVATE_KEY_LENGTH);
+			memset (signingPublicKey, 0, EDDSA25519_PUBLIC_KEY_LENGTH);
+			return false;
+		}
 		memcpy (signingPublicKey, signer.GetPublicKey (), EDDSA25519_PUBLIC_KEY_LENGTH);
 		return true;
 	}

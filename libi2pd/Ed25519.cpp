@@ -115,9 +115,12 @@ namespace crypto
 		return DecodePoint (buf, ctx);
 	}
 
-	void Ed25519::EncodePublicKey (const EDDSAPoint & publicKey, uint8_t * buf, BN_CTX * ctx) const
+	bool Ed25519::EncodePublicKey (const EDDSAPoint & publicKey, uint8_t * buf, BN_CTX * ctx) const
 	{
-		EncodePoint (Normalize (publicKey, ctx), buf);
+		if (!buf) return false;
+		if (EncodePoint (Normalize (publicKey, ctx), buf)) return true;
+		memset (buf, 0, EDDSA25519_PUBLIC_KEY_LENGTH);
+		return false;
 	}
 
 	bool Ed25519::IsValidPublicKey (const uint8_t * buf) const
@@ -453,16 +456,25 @@ namespace crypto
 
 	EDDSAPoint Ed25519::Normalize (const EDDSAPoint & p, BN_CTX * ctx) const
 	{
+		if (!ctx || !p.x || !p.y) return {};
+		EDDSAPoint normalized;
 		if (p.z)
 		{
-			BIGNUM *x = BN_new (), *y = BN_new ();
-			BN_mod_inverse (y, p.z, q, ctx);
-			BN_mod_mul (x, p.x, y, q, ctx); // x = x/z
-			BN_mod_mul (y, p.y, y, q, ctx); // y = y/z
-			return EDDSAPoint { x, y };
+			normalized.x = BN_new ();
+			normalized.y = BN_new ();
+			if (!normalized.x || !normalized.y
+				|| !BN_mod_inverse (normalized.y, p.z, q, ctx)
+				|| BN_mod_mul (normalized.x, p.x, normalized.y, q, ctx) != 1
+				|| BN_mod_mul (normalized.y, p.y, normalized.y, q, ctx) != 1)
+				return {};
 		}
 		else
-			return EDDSAPoint { BN_dup (p.x), BN_dup (p.y) };
+		{
+			normalized.x = BN_dup (p.x);
+			normalized.y = BN_dup (p.y);
+			if (!normalized.x || !normalized.y) return {};
+		}
+		return normalized;
 	}
 
 	bool Ed25519::IsOnCurve (const EDDSAPoint & p, BN_CTX * ctx) const

@@ -633,8 +633,8 @@ namespace crypto
 		if (!Ed25519::ExpandPrivateKey (signingPrivateKey, m_ExpandedPrivateKey)) return;
 		auto publicKey = GetEd25519 ()->GeneratePublicKey (
 			m_ExpandedPrivateKey, ctx.get ());
-		GetEd25519 ()->EncodePublicKey (
-			publicKey, m_PublicKeyEncoded, ctx.get ());
+		if (!GetEd25519 ()->EncodePublicKey (
+			publicKey, m_PublicKeyEncoded, ctx.get ())) return;
 		if (signingPublicKey && CRYPTO_memcmp (m_PublicKeyEncoded,
 			signingPublicKey, EDDSA25519_PUBLIC_KEY_LENGTH))
 		{
@@ -643,8 +643,8 @@ namespace crypto
 			m_ExpandedPrivateKey[EDDSA25519_PRIVATE_KEY_LENGTH - 1] &= 0xDF;
 			publicKey = GetEd25519 ()->GeneratePublicKey (
 				m_ExpandedPrivateKey, ctx.get ());
-			GetEd25519 ()->EncodePublicKey (
-				publicKey, m_PublicKeyEncoded, ctx.get ());
+			if (!GetEd25519 ()->EncodePublicKey (
+				publicKey, m_PublicKeyEncoded, ctx.get ())) return;
 			if (CRYPTO_memcmp (m_PublicKeyEncoded, signingPublicKey,
 				EDDSA25519_PUBLIC_KEY_LENGTH))
 			{

@@ -160,11 +160,64 @@ int main ()
 		assert (memcmp (overlapping.data (), sig, sizeof (output)) == 0);
 		memset (expanded, 0, sizeof (expanded));
 	}
+	// Encoding rejects incomplete and noninvertible points, clears stale
+	// bytes, and preserves the canonical identity on the success path.
+	{
+		BN_CTX * ctx = BN_CTX_new ();
+		assert (ctx);
+		uint8_t encoded[32];
+		i2p::crypto::EDDSAPoint empty;
+		memset (encoded, 0xA5, sizeof (encoded));
+		assert (!ed25519->EncodePublicKey (empty, encoded, ctx));
+		for (auto byte : encoded) assert (byte == 0);
+		i2p::crypto::EDDSAPoint identity (BN_new (), BN_new ());
+		assert (identity.x && identity.y);
+		BN_zero (identity.x);
+		assert (BN_one (identity.y) == 1);
+		assert (ed25519->EncodePublicKey (identity, encoded, ctx));
+		assert (encoded[0] == 1);
+		for (size_t i = 1; i < sizeof (encoded); ++i)
+			assert (encoded[i] == 0);
+		assert (!ed25519->EncodePublicKey (identity, nullptr, ctx));
+		memset (encoded, 0xA5, sizeof (encoded));
+		assert (!ed25519->EncodePublicKey (identity, encoded, nullptr));
+		for (auto byte : encoded) assert (byte == 0);
+		identity.z = BN_new ();
+		assert (identity.z);
+		BN_zero (identity.z);
+		memset (encoded, 0xA5, sizeof (encoded));
+		assert (!ed25519->EncodePublicKey (identity, encoded, ctx));
+		for (auto byte : encoded) assert (byte == 0);
+		assert (BN_set_word (identity.z, 2) == 1);
+		assert (BN_set_word (identity.y, 2) == 1);
+		assert (ed25519->EncodePublicKey (identity, encoded, ctx));
+		assert (encoded[0] == 1);
+		for (size_t i = 1; i < sizeof (encoded); ++i)
+			assert (encoded[i] == 0);
+		BN_CTX_free (ctx);
+		i2p::crypto::RedDSA25519Signer invalid (nullptr);
+		assert (!invalid.IsValid ());
+		for (size_t i = 0; i < sizeof (encoded); ++i)
+			assert (invalid.GetPublicKey ()[i] == 0);
+		uint8_t signature[64];
+		memset (signature, 0xA5, sizeof (signature));
+		invalid.Sign (msg, 1023, signature);
+		for (auto byte : signature) assert (byte == 0);
+		invalid.Sign (msg, 1023, nullptr);
+		uint8_t rejectedKey[32];
+		memset (rejectedKey, 0xA5, sizeof (rejectedKey));
+		assert (!i2p::crypto::CreateRedDSA25519RandomKeys (nullptr, rejectedKey));
+		for (auto byte : rejectedKey) assert (byte == 0);
+		memset (rejectedKey, 0xA5, sizeof (rejectedKey));
+		assert (!i2p::crypto::CreateRedDSA25519RandomKeys (rejectedKey, nullptr));
+		for (auto byte : rejectedKey) assert (byte == 0);
+	}
 	// RedDSA must preserve a valid randomized signature and overlap, while
 	// missing input zeroes the entire output rather than leaving stale data.
 	{
 		uint8_t scalar[32] { 1 };
 		i2p::crypto::RedDSA25519Signer redSigner (scalar);
+		assert (redSigner.IsValid ());
 		i2p::crypto::RedDSA25519Verifier redVerifier;
 		redVerifier.SetPublicKey (redSigner.GetPublicKey ());
 		uint8_t output[64];

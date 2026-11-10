@@ -1149,7 +1149,11 @@ namespace data
 		case SIGNING_KEY_TYPE_GOSTR3410_TC26_A_512_GOSTR3411_512:
 			return new i2p::crypto::GOSTR3410_512_Signer (i2p::crypto::eGOSTR3410TC26A512, priv);
 			break;
-		case SIGNING_KEY_TYPE_REDDSA_SHA512_ED25519: return new i2p::crypto::RedDSA25519Signer (priv); break;
+		case SIGNING_KEY_TYPE_REDDSA_SHA512_ED25519:
+		{
+			auto signer = std::make_unique<i2p::crypto::RedDSA25519Signer> (priv);
+			return signer->IsValid () ? signer.release () : nullptr;
+		}
 		default: LogPrint (eLogError, "Identity: Signing key type ", (int)keyType, " is not supported");
 		}
 		return nullptr;
