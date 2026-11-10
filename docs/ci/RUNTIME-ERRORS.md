@@ -1603,3 +1603,109 @@ attributes either failure. Prepared opt-in loader/entry CDB evidence uses
 the exact retained router image and runtime DLLs, a 20-second deadline and
 code-only output. It does not guarantee a stack at timeout or resolve the
 startup fault. Original CTest runs independently of this diagnostic step.
+
+## RT-075: tracker callbacks can mutate a successor admission (static)
+
+At 02901127, tracker correlation uses only infoHash/tracker slot. Cancellation
+allows immediate reuse while old successful dial/write/read/deadline callbacks
+may remain queued. Those callbacks could release the successor, close its
+stream, report failures or consume an obsolete successful response. No CI
+crash is attributed to this preventive source finding.
+
+`TrackerInflightRegistry` now assigns bounded monotonic uint64 authority to
+each admission; zero is invalid and exhaustion refuses new work. Every
+asynchronous stage must match it before state access/release; stale successful
+bodies return before statistics and peer parsing. Retirement does not reset
+authority. Existing tracker-dispatch tests add reuse/restart/torrent-retirement
+controls, with source contracts pinning actual callback consumers. All helper
+declarations/callers were reviewed; no wire/persisted format changes.
+Implemented / static; Pending CI compilation / Pending CI tests.
+
+## RT-076 / CRY-236: incompatible Ed25519 pairs were accepted (static)
+
+Compatibility construction treated any supplied public-key mismatch as a
+historical scalar and never checked the second derivation. The old regression
+even required an arbitrary mismatch to sign under a different derived key.
+Global consumer review found pair publication in Identity factories and the
+equivalent Ed25519ph online path. The local correction requires modern or
+matching historical type-7 public keys, exposes explicit readiness and refuses
+invalid fallback publication. Type 8 requires a matching provider key; its
+readiness cannot authorize a type-7-only fallback through a base reference.
+Online serialized pair rejection resets partially parsed state. RSA
+verification-only parsing is unchanged. Expanded secrets and BN contexts
+are released on rejected/exceptional construction paths.
+
+Prepared tests distinguish valid modern/RFC, genuine historical and unrelated
+pairs; types 7/8 also cover corrupted serialized seeds, cleared prior identity,
+successful reparsing, null factory inputs and zero rejected output. This is
+preventive analysis, not an observed sanitizer crash. Implemented / static;
+Pending CI compilation / Pending CI tests. Void Sign failure propagation,
+offline transient pair validation and LeaseSet self-verification remain open.
+Expansion now returns checked success: a failed SHA-512 or absent input
+clears all 64 output bytes and prevents signer/blinding use. All consumers
+were adapted, with null-input/output and positive controls. Public-point
+encoding still discards its encoder status; broader primitive/allocation
+and RedDSA readiness remain part of the unfinished signing-failure family.
+
+### Residual lifetime and retirement review
+
+The AddressBook cache timer still captures raw this; Stop cancellation does
+not drain an already successful completion in the published revision.
+The local RT-074 continuation now uses an independent cache admission gate
+and fresh shared identity for every wait. Start/ResetTimers/Stop serialize
+timer ownership; callbacks reject stale/revoked authority before owner use.
+The locked rearm helper avoids recursive acquisition. Reviewed filesystem
+cleanup and four fixture overrides do not call book lifecycle; the virtual
+contract now prohibits synchronous lifecycle/reset reentry. The existing
+source regression pins capture, per-wait identity, teardown and lock ordering.
+Implemented / static; Pending CI compilation / Pending CI tests. Subscription
+timer callbacks remain a separate gap, not covered by this correction.
+
+Six DHT timers also borrow raw this plus weak service-state guards. Normal
+tunnel shutdown serializes them on the destination executor, so that path
+does not demonstrate a race. Concurrent destruction with an active executor
+has no timer admission drain; the persistence mutex covers disk IO only.
+Their receiver registration separately drains dispatch. These residuals need
+deterministic teardown regressions; they are not causes established by CI.
+PRIVSEP-017's deferred PID/pidfd ownership remains open; closing a leaked fd
+alone would discard reap authority rather than repair it.
+
+## RT-077: peer-dial callback can outlive its tunnel or publish after Stop
+
+The published ConnectToPeer callback captures raw this. I2PService still
+invokes the user completion with nullptr after its generation retires, so
+that callback can reach FinishDial after owner destruction. Weak capture
+alone would not serialize AddHandler/Connect against Stop. This is preventive
+source analysis, not attribution of a CI sanitizer report.
+
+The local correction creates a separate dial-run admission even when a
+shared destination already accepts streams. Inbound acceptor registration
+can be absent or replaced independently and cannot serve as run identity.
+The production callback factory reserves a bounded dial, retains only weak
+owner authority, matches the pending torrent instance and holds generation
+admission through handler publication/Connect. Stop revokes that same gate
+synchronously. Revoked/stale/orphaned successes close their streams; IDs
+fail closed after exhaustion and are not reset by restart.
+
+Friend regressions exercise the actual callback factory without network:
+no inbound registration, shutdown barrier, retired generation/reservation,
+replaced owner, exhaustion across restart and expired tunnel. Source
+contracts pin the production capture and callback consumer. Reviewed Connect
+posts IO and does not synchronously reenter lifecycle under the gate.
+Implemented / static; Pending CI compilation / Pending CI tests.
+
+### Published Windows diagnostic: CRT entry reached, cause still open
+
+Run 42719195489, SHA 02901127, CLANG64 job 129508512808 completed and its
+windows-msys2-ctest artifact was inspected while MSVC remained in progress.
+loader-entry.txt contains OPENI2PD_LOADER and OPENI2PD_ENTRY, then the
+20-second deadline marker, without STARTUP_EXCEPTION. Exact-image COFF
+inspection identifies that entry as WinMainCRTStartup, not WinMain.
+CRT/static initialization still precedes application dispatch. Later ZLIB1
+loading from Service Fabric does not identify a cause. No stalled stack
+was captured, and missing checksum/symbol information limits attribution.
+
+The local diagnostic now adds MessageBoxA/W code-only breakpoints to identify
+modal callers without collecting message text/arguments. Its command allowlist
+and a negative privacy mutation are updated. This is Pending CI tests; the
+published run does not include those new commands or local production fixes.

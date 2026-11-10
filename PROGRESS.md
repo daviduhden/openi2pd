@@ -7862,3 +7862,71 @@ or push.
   reviewed updates describe actual fixture, admission and evidence seams.
   TAP regressions, C++ compilation and dynamic lifecycle validation remain
   Pending CI tests / Pending CI compilation for these local changes.
+
+## CI continuation at 02901127 — 2026-11-10
+
+- Recovered all 392 retained run records on 66 SHAs (239 failure, 87 success,
+  66 cancelled), full latest-ten successful/failed logs, job metadata and
+  artifact inventories. Downloaded thirteen relevant archives and inspected
+  exact-run LastTest/JUnit/Lint evidence. Ten specialized reconnaissance
+  agents reviewed history, native code, memory, concurrency, crypto/I2P, IPC,
+  torrents/storage, Android/JNI, portability and regression/documentation.
+- All native lanes compile; nine fail TF-101 because the registered source
+  checker receives build/ from PROJECT_SOURCE_DIR. TF-100 fixtures pass.
+  Corrected the quoted PROJECT_ROOT operand, pinned the actual registration
+  in build-system-static and added an explicit source-root precondition.
+  Direct workflow success had not validated that separately registered argv.
+- Preventive RT-075 adds monotonic per-admission tracker authority through
+  connect/write/read/deadline callbacks. Retired callbacks cannot release a
+  successor or process a stale successful body. Registry reuse/restart tests
+  and callback source contracts are prepared; no wire format changed.
+- CRY-236 / RT-076 now rechecks historical Ed25519 scalar derivation, gates
+  backend publication and rejects online mismatched type-7/type-8 serialized
+  pairs. Type 8 requires a matching provider backend. Modern/RFC, historical,
+  mismatch, null-input, zero-output and reparse controls are prepared.
+  Broad void-Sign failure propagation/offline binding/self-verification remain.
+- TF-102 removes blanket live-worker skips after loader/Ping/restart failure.
+  Only observed nested-job assignment denial permits a capability skip;
+  independent live failure dominates it. Checked returns preserve destructor
+  and final handle verification. Isolation/credentials are unchanged.
+- Dispatched published Windows run 42719195489 with heap_diagnostics=true
+  on 02901127 for missing loader/entry evidence. Local corrections are not
+  present in that SHA and cannot be validated by this run. Windows startup
+  remains unattributed while that diagnostic is pending.
+- Android has 174 passing JVM tests and fourteen repeated Lint warnings;
+  geometry optimization, real ChromeOS ABI coverage and Java-25-compatible
+  toolchain migration remain distinct work. Device/Perl-quality lanes skip.
+  Instrumented TSan executes one registry test; interop evidence is reference
+  and vectors, not live Java handshake proof. External autopkgtest/apt and
+  Landlock runner-capability diagnostics remain recorded separately.
+- AddressBook cache/DHT timer admission, peer-dial publication and deferred
+  PID/pidfd retirement were reviewed independently. The cache slice now uses
+  separate admission with fresh per-wait identities and serialized timer
+  replacement/Stop; its source regression and nonreentrant storage contract
+  are updated. DHT/subscription timers, peer-dial publication and deferred
+  process retirement remain open. Implementations require manual CI.
+- Agent & Skills Synchronization reviews root policy and owning build, CI,
+  crypto, torrent, memory, Android and platform procedures. Reusable updates
+  capture repository-root argv, exact test scope, admission identity, pair
+  readiness and skip classification. No local builds, tests, commits or push.
+- Completed an additional peer-dial slice using independent run admission,
+  weak ownership and matching reservations. Added actual callback-factory
+  regressions for shutdown/restart, stale slots, ownership and ID exhaustion.
+  A shared already-accepting destination still permits outbound dialing.
+- Private-key expansion now propagates digest failure to compatibility
+  signing and blinding, clearing the entire output. Added null/positive
+  controls and expanded the selective MSVC build/test list with EdDSA and
+  signature-identity hardening. No existing test target was removed.
+- Published CLANG64 diagnostic job 129508512808 retained loader/CRT-entry
+  markers and a deadline but no stalled stack. WinMain was not established
+  as reached; no source cause is inferred from later DLL loading. Prepared
+  code-only MessageBoxA/W capture with a guarded negative privacy fixture;
+  its execution is pending publication/manual CI. MSVC remains in progress
+  at this evidence snapshot.
+- Final compile-free checks pass: whitespace and added 72-column comments,
+  knowledge/reference/Skill validation, workflow and Shell policy, Doxygen
+  parameter inspection, documentation links, build graph and lifetime/control
+  source contracts. AK004's semantic advisory was reviewed against the actual
+  changes. These checks do not execute the prepared C++/TAP regressions.
+  All local implementation changes remain Pending CI compilation / Pending CI
+  tests; no build configuration, compiler, local test, commit or push ran.

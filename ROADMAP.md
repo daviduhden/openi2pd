@@ -15,10 +15,11 @@ requirements and current code; `TODO.md` is the authoritative task list.
 
 ## Current baseline
 
-At 176aec32, native compilation succeeds and prior host/checker/privacy
-corrections pass their executed regressions. History reaches 382 runs.
-TF-100's negative fixture uses unsupported Markdown grammar and fails nine
-lanes; the local inline-link correction is Pending CI tests. Full
+At 02901127, history reaches 392 runs on 66 SHAs. TF-100 passes; TF-101
+instead exposes the incorrect source root in a CTest registration. Local
+corrections pin that argv, tracker admission identity, Ed25519 pair readiness
+and Windows failure-versus-skip classification. They remain Pending CI
+compilation / Pending CI tests. Full
 matrix cleanliness still requires Windows GUI attribution, remaining host
 coverage, fourteen earlier Lint warnings, native documentation coverage,
 CONC-028 timer authority and PRIVSEP-017 deferred owner retirement.

@@ -675,3 +675,56 @@ diagnostics remain evidence gaps as previously recorded.
 | [42690730284](https://github.com/daviduhden/openi2pd/actions/runs/42690730284) | Packaging/services | Success |
 | [42690723606](https://github.com/daviduhden/openi2pd/actions/runs/42690723606) | OpenBSD 8.0 | TF-100 plus three capability skips |
 | [42690715945](https://github.com/daviduhden/openi2pd/actions/runs/42690715945) | Windows | CLANG64 TF-100/startup timeout; MSVC success with worker startup skip |
+
+## TF-101: registered source root points to the CMake entry
+
+All rows below execute `029011279d1b7a454571fb600621f11d62f8a142`.
+The first failure is `check-addressbook-rearm-lifetime.cmake:10 (file)`:
+`file failed to open for reading (No such file or directory)` at
+`build/libi2pd_client/AddressBook.cpp`. The script receives
+`-DSOURCE_DIR=${PROJECT_SOURCE_DIR}` from `tests/CMakeLists.txt`; that variable
+names build/, whereas PROJECT_ROOT names the repository. Full logs and
+LastTest/JUnit artifacts confirm the same root cause in nine lanes.
+
+| Run | Jobs | Result and configuration |
+|---|---|---|
+| [42699000692](https://github.com/daviduhden/openi2pd/actions/runs/42699000692) | 129438426292 / 129438426514 / 129438426539 | ASan+UBSan / UBSan / TSan: 260 of 261 pass; only root inspection fails |
+| [42698967451](https://github.com/daviduhden/openi2pd/actions/runs/42698967451) | 129438302355 / 129438302720 | OpenSSL 3 GCC/Clang: same sole failure |
+| [42698975123](https://github.com/daviduhden/openi2pd/actions/runs/42698975123) | 129438329139 / 129438329828 | OpenSSL 4 GCC/Clang: same sole failure |
+| [42698942155](https://github.com/daviduhden/openi2pd/actions/runs/42698942155) | 129438207819 | OpenBSD 8.0: same root failure; worker identity/credentials/storage skip on root runner |
+| [42698933379](https://github.com/daviduhden/openi2pd/actions/runs/42698933379) | 129438186341 | CLANG64: root failure plus independent GUI version timeout |
+
+The previous TF-100 link fixtures pass. The direct workflow invocation
+correctly passes $PWD and passes, which did not cover the registered argv.
+Global search finds no other wrong root-variable registration. The local fix
+quotes SOURCE_DIR=${PROJECT_ROOT}, pins that add_test command in the existing
+build-system contract and adds an explicit root precondition in the script.
+The registered CTest remains enabled everywhere; no test or coverage removed.
+Implemented / static; Pending CI tests. This is not a sanitizer report.
+
+Successful siblings include fifteen fuzz smoke targets, source documentation,
+Skill checks, packaging/services, Linux installed consumers and reference
+interoperability checks. Instrumented OpenSSL TSan run 42699008722 executes
+only test-clientcontext-registry; it does not establish complete crypto
+coverage. Linux interop run 42698992642 verifies Java reference/provenance and
+vectors, not a live Java/C++ handshake. Optional Perl-quality/device jobs skip.
+
+## TF-102: unexpected Windows worker exit was reported as capability skip
+
+In run 42698933379, successful MSVC job 129438185880 reports
+`worker pipe accept timeout (worker exited before authentication; code
+3221225794)` then returns 77. This is 0xC0000142, an unattributed loader
+failure. The same nested UI reduction occurs in the CLANG64 sibling before
+its successful worker restart, so that reduction does not establish cause.
+
+The local fixture classifies live startup/Ping/restart failures as failures.
+Only directly observed nested-job assignment access denial can grant a
+backstop capability skip. Independent live work still runs; failure dominates
+skip. Checked outcomes preserve destruction and final handle verification.
+Classification controls include the loader code and genuine denial cases;
+source guards forbid skip/abort exits from the live cleanup scope.
+Implemented / static; Pending CI tests. No production isolation is weakened.
+
+Published diagnostic run [42719195489](https://github.com/daviduhden/openi2pd/actions/runs/42719195489)
+was dispatched with heap_diagnostics=true on 02901127. It can provide missing
+loader/entry evidence; it cannot validate any local correction described here.

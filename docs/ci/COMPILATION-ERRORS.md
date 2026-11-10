@@ -2133,3 +2133,14 @@ OpenBSD job 129335226371 and knowledge job 129335273970 also encounter
 TF-098. Windows MSVC 129335207660 passes; MSYS2 129335208335 exposes
 additional tooling/runtime failures. All subsequent local corrections
 remain Pending CI compilation / Pending CI tests.
+
+## Revision 02901127: compilation succeeds; registered inspection fails
+
+The latest ten runs execute `029011279d1b7a454571fb600621f11d62f8a142`.
+No first-party compiler error or warning was found in their complete build
+output. Nine native lanes reach CTest and fail TF-101's source-root argument;
+this is a test registration error, not compilation/link failure. Native
+AddressBook code compiled; its standalone source inspection passed in the
+static job, while the distinct CTest invocation never inspected it.
+See [TF-101](TEST-FAILURES.md#tf-101-registered-source-root-points-to-the-cmake-entry).
+Local fixes and preventive tracker/signature changes remain uncompiled in CI.

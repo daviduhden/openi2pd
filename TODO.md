@@ -10,23 +10,33 @@ Documents project documentation.
 
 # Master TODO
 
-Latest retrospective: 382 retained runs (234 failure, 82 success, 66
-cancelled). The latest ten execute 176aec32. Native compilation succeeds;
-nine lanes fail TF-100's unsupported reference-link fixture. Its inline
-grammar correction and positive containment control are Implemented / static,
-Pending CI tests. TF-097/098/099 and the executed RT-072/073 regressions are
-Validated by CI at that SHA. Android's 174 JVM tests pass; CW-030's Java
-WrongCommentType warnings are absent, with fourteen other Lint warnings
-remaining. Windows GUI startup, native MSWin32 Unicode, optional lanes,
-C++ documentation coverage and full worker/handler retirement remain open.
-MSVC worker startup skips after exit 0xC0000142; a green job does not validate
-its handshake. Current local changes have no remote validation.
+Latest retrospective: 392 retained runs on 66 SHAs (239 failure, 87 success,
+66 cancelled). The latest ten execute 02901127. TF-100's link fixtures pass;
+nine native lanes instead fail TF-101: the AddressBook CTest registration
+passes build/ as its source root. Local registration/source guards are
+Implemented / static; Pending CI tests. Tracker admission authority and
+Ed25519 pair rejection are Implemented / static; Pending CI compilation /
+Pending CI tests. MSVC loader exit 0xC0000142 was incorrectly skipped;
+local fixture classification now requires a failure. A published Windows
+diagnostic run 42719195489 was dispatched separately; its results cannot
+validate local changes. Android's 174 JVM tests pass with fourteen Lint
+warnings; device tests are skipped. Windows startup, native MSWin32 Unicode,
+remaining ownership/retirement and broad signing failure propagation remain
+open. Current local changes have no remote validation.
 
 - CONT-050: portable supervisor admission and Asio timer teardown:
   Validated by CI in the executed 9f2934f8 lanes; no clean-matrix claim.
 - RT-074: AddressBook queued re-arm admission and generation retirement:
+  Native code compiles at 02901127; direct source contract passes, but its
+  CTest registration fails TF-101. Local cache-wait admission extends the
+  correction: Implemented / static; Pending CI compilation / Pending CI
+  tests. Subscription timer callbacks remain open; no complete shutdown claim.
+- RT-075: tracker admission identity across cancellation and key reuse:
   Implemented / static; Pending CI compilation / Pending CI tests.
-  Source contract registered; separate timer callbacks remain open.
+- RT-077: outbound peer-dial run admission and owner lifetime:
+  Implemented / static; Pending CI compilation / Pending CI tests.
+- TF-102: Windows live-worker failure versus capability skip:
+  Implemented / static; Pending CI tests. Loader cause remains unresolved.
 - CONT-051: coherent peer interest across availability, selection and active
   requests: Validated by CI at 9f2934f8. Subsequent HAVE_NONE/BITFIELD
   controls are Implemented / static; Pending CI tests.
@@ -329,7 +339,7 @@ they do not establish 2.14.0 compatibility. See NET-026.
   - Files: `libi2pd/PostQuantum.{h,cpp}`, `NTCP2.{h,cpp}`, `SSU2Session.{h,cpp}`, tests `test-crypto-x25519-noise-elligator-mlkem-audit`, `test-ssu2-preauth`, `test-ntcp2-handshake-bounds`.
   - Residual: LibreSSL ML-KEM APIs and no-PQ/restricted-provider lanes are unverified; `MLKEMKeys::Encaps/Decaps` still take no buffer length.
 - [ ] **[CRY-236]** Fallible signing and LeaseSet2 self-verification.
-  - Priority P2; Status Missing. `Signer::Sign` remains `void`, so provider failures can publish an all-zero signature; the legacy Ed25519 compatibility signer re-keys without re-checking and `LocalLeaseSet2`/`LocalEncryptedLeaseSet2` do not verify their own output. Plan: return `i2p::expected`/bool end-to-end, fail the compat signer when the re-derived public key still mismatches, and self-verify before publication.
+  - Priority P2; Status Partially implemented / static; Pending CI compilation; Pending CI tests. Compatibility construction now rechecks the historical Ed25519 public key, invalid backends are not published, and online Ed25519/Ed25519ph serialized pair mismatch is rejected. Modern, historical and mismatch controls are prepared. Remaining: `Signer::Sign` is `void`, provider failures can publish zero output, transient offline pair validation and `LocalLeaseSet2`/`LocalEncryptedLeaseSet2` self-verification require end-to-end fallible signing.
 - [ ] **[CRY-237]** Secret-container capacity cleansing.
   - Priority P2; Status Missing. `PrivateKeys`, `B33OfflineKeys`, `LocalEncryptionKey` and `m_OfflineSignature` cleanse only `size()`; a `SecureBytes` type must cleanse `capacity()` and before resize/overwrite.
 - [ ] **[NET-173]** SSU2/NTCP2 PQ downgrade policy.

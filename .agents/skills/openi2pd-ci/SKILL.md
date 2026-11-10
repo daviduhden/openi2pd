@@ -213,6 +213,11 @@ workflow, run `gh`, build or test.
   retained image if adding application-entry breakpoints; do not reuse an
   earlier build's RVAs. A deadline log does not provide a stalled stack.
 
+- Identify what an executed diagnostic actually runs. The focused OpenSSL
+  TSan workflow executes the client-context registry test, not every crypto
+  target. Reference/provenance and vector interoperability jobs do not prove
+  live Java handshakes. Use exact test names and retain optional-lane skips.
+
 - CLANG64 startup diagnostics use installed CDB with loader and executable
   entry markers, code-only exception stacks and a 20-second process-tree
   deadline. They remain opt-in via heap_diagnostics and cannot replace

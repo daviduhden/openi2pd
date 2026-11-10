@@ -580,3 +580,26 @@ TF-100 at 176aec32 repeats across nine lanes because reference-style links
 are ignored by design. Preserve supported inline grammar and assert an
 existing physical escape before malformed/missing-target variants. A failing
 negative assertion does not establish that production validation ran.
+
+## Admission identity survives cancellation and correlation-key reuse
+
+RT-075 gives every tracker request a monotonic nonzero authority. A cancelled
+operation can still have successful callbacks queued; matching infoHash and
+tracker slot alone can retire the next request. Carry authority through dial,
+write, read and deadline completion, reject stale successful bodies before
+processing, and preserve counters across restart. Registry tests cover
+release/reacquire and source contracts pin every production callback stage.
+
+## Validate key pairs and classify worker failures before reporting success
+
+CRY-236 pair tests distinguish modern keys, genuine historical scalar keys
+and arbitrary mismatches. The old fixture deliberately accepted an unrelated
+public key; replace that expectation with invalid-backend/cleared-output
+assertions plus successful controls. Check serialized pair rejection too.
+
+TF-102 reserves capability skips for observed native denial with matching
+topology. A successful spawn followed by loader exit, failed Ping or failed
+replacement must fail the regression. Run independent live work even after
+a helper capability denial, let failures dominate skips, and drain ownership
+before final handle assertions. A job returning green via 77 proves no
+subsequent handshake/shutdown behavior.

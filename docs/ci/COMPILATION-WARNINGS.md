@@ -789,3 +789,29 @@ API coverage after opener demotion. CW-030's C++ coverage remains separate
 and unresolved; no broad rollback of the existing style change was made.
 Android device 129335345378 skips. Packaging passes five jobs; external
 updater/autopkgtest debt and optional analyzer coverage retain their scope.
+
+## Revision 02901127: successful-run warning and coverage review
+
+Historical metadata now totals 392 runs / 66 SHAs / 18 workflow names:
+239 failure, 87 success, 66 cancelled. All ten new full logs, failed logs,
+job metadata and artifact inventories were retrieved, including successful
+sibling steps. Thirteen relevant archives were downloaded and indexed.
+No project compiler diagnostic was found in reviewed latest build output.
+
+Android run 42698984401, job 129438362009, passes 174 JVM tests; debug and
+release Lint each report the same fourteen warnings: twelve VectorPath and
+two ChromeOsAbiSupport. Vector paths contain 3445/3427/3591 characters in
+four derived resources; spelling compression alone cannot meet the threshold.
+Any optimization must preserve source geometry and even-odd holes. ChromeOS
+coverage requires real x86_64 dependencies/builds, not just an ABI filter.
+The builtInKotlin=false deprecation remains tied to the documented AGP Java
+25 incompatibility. Removing that workaround without a supported toolchain
+is not a fix. API 29 job 129438364608 is skipped.
+
+Debian job 129438237508 in run 42698948530 emits deprecated --force-yes
+during autopkgtest dependency installation. Repository-wide search finds no
+use of that flag; classify it as autopkgtest/apt debt, not project compiler
+output. Logs identify Ubuntu autopkgtest 5.55~24.04.1 but no exact upstream
+source line. Lintian output is empty and the smoke test passes. Landlock
+ABI 8 versus required 10 messages in eight Linux/fuzz/sanitizer jobs describe
+runner coverage limits. MSYS updater and OpenBSD SSH notices are external.
