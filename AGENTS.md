@@ -264,6 +264,10 @@ document lock ordering and exclude synchronous reentrant lifecycle calls.
 Review reusable correlation keys independently of owner lifetime. An old
 successful completion can survive cancellation and key reuse; require
 per-admission authority before mutating or retiring a successor operation.
+For exception safety, trace the interval between remote handle/transaction
+admission and subsequent allocations. Guard the entire transaction, retire
+transport authority without allocation during unwind, and preserve the
+original exception. Closing a channel does not prove a commit rolled back.
 
 At parser boundaries, rejected numeric fields and malformed first tokens
 remain arbitrary input. Review complete command buffers, ignored fields

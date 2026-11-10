@@ -631,3 +631,32 @@ require_runtime_order("libi2pd/Ed25519.cpp"
   "if (!ctx || !p.x || !p.y) return {};" "BN_mod_inverse (normalized.y")
 require_runtime_source("tests/test-eddsa.cpp"
   "assert (!ed25519->EncodePublicKey (identity, encoded, nullptr));")
+
+# Exceptions after handle or transaction admission retire authority.
+file(READ "${PROJECT_ROOT}/libi2pd_client/TorrentStorageWorker.cpp" storage_exception_source)
+function(require_storage_unwind_guard begin end)
+  string(FIND "${storage_exception_source}" "${begin}" start)
+  if(start LESS 0)
+    message(FATAL_ERROR "Missing storage exception review boundary: ${begin}")
+  endif()
+  string(SUBSTRING "${storage_exception_source}" ${start} -1 tail)
+  string(FIND "${tail}" "${end}" finish)
+  if(finish LESS 0)
+    message(FATAL_ERROR "Missing storage exception review boundary: ${end}")
+  endif()
+  string(SUBSTRING "${tail}" 0 ${finish} body)
+  if(NOT body MATCHES "const (Impl::)?ExceptionRetirement retireOnException")
+    message(FATAL_ERROR "Missing storage exception retirement guard: ${begin}")
+  endif()
+endfunction()
+require_storage_unwind_guard("bool Exchange (" "#else")
+require_storage_unwind_guard("uint32_t TorrentStorageWorker::Register ("
+  "bool TorrentStorageWorker::Read (")
+require_storage_unwind_guard("bool TorrentStorageWorker::ReadMetadata ("
+  "bool TorrentStorageWorker::ReplaceMetadata (")
+require_storage_unwind_guard("bool TorrentStorageWorker::ReplaceMetadata ("
+  "bool TorrentStorageWorker::RemoveMetadata (")
+require_runtime_order("libi2pd_client/TorrentStorageWorker.cpp"
+  "process.ChannelFd ().Close ();" "try { process.Stop (100); }")
+require_runtime_source("libi2pd_client/TorrentStorageWorker.cpp"
+  "if (std::uncaught_exceptions () > exceptions)")

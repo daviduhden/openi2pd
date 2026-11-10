@@ -9,6 +9,7 @@
 #include "TorrentStorageWorker.h"
 #include <algorithm>
 #include <chrono>
+#include <exception>
 #include <limits>
 #include <mutex>
 #if (defined(__linux__) || defined(__OpenBSD__)) && !defined(__ANDROID__) && !defined(I2PD_NO_PRIVSEP)
@@ -30,6 +31,29 @@ struct TorrentStorageWorker::Impl
 	i2p::privsep::ChildProcess process;
 	uint32_t next = 0;
 	bool ready = false;
+	// Call only while mutex is held. Closing first avoids allocating a
+	// Shutdown frame during unwind. EOF also retires broker-owned workers.
+	void RetireAfterException () noexcept
+	{
+		ready = false;
+		process.ChannelFd ().Close ();
+		try { process.Stop (100); }
+		catch (...)
+		{
+			// Preserve the original exception. The channel remains closed;
+			// ordinary Stop/destruction can retry child reaping afterward.
+		}
+	}
+	struct ExceptionRetirement
+	{
+		Impl & owner;
+		const int exceptions = std::uncaught_exceptions ();
+		~ExceptionRetirement () noexcept
+		{
+			if (std::uncaught_exceptions () > exceptions)
+				owner.RetireAfterException ();
+		}
+	};
 	// One request/response transaction on the storage channel. Callers
 	// serialize through `mutex`, so at most one frame is in flight. Both
 	// the send and the receive carry a 5 s deadline; a transport failure
@@ -42,6 +66,7 @@ struct TorrentStorageWorker::Impl
 		i2p::privsep::MessageType type, std::string payload, int fd, std::string & result, std::string & error)
 	{
 		using namespace i2p::privsep;
+		const ExceptionRetirement retireOnException { *this };
 		error.clear ();
 		if (next == std::numeric_limits<uint32_t>::max ())
 		{
@@ -209,6 +234,7 @@ uint32_t TorrentStorageWorker::Register (
 	error.clear ();
 #ifdef I2PD_HAS_TORRENT_STORAGE_WORKER
 	using namespace i2p::privsep;
+	const Impl::ExceptionRetirement retireOnException { *m_Impl };
 	auto path = relative.generic_string ();
 	if (!m_Impl->ready || !SafeStoragePath (path) || length > TorrentStorageFileLimit)
 	{
@@ -450,6 +476,9 @@ bool TorrentStorageWorker::ReadMetadata (
 	bytes.clear ();
 #ifdef I2PD_HAS_TORRENT_STORAGE_WORKER
 	using namespace i2p::privsep;
+	// A registered handle must not survive allocation or parsing failure
+	// between exchanges. Retire instead of allocating a Release on unwind.
+	const Impl::ExceptionRetirement retireOnException { *m_Impl };
 	const auto path = relative.generic_string ();
 	if (!m_Impl->ready || !SafeStoragePath (path))
 	{
@@ -527,6 +556,9 @@ bool TorrentStorageWorker::ReplaceMetadata (
 	error.clear ();
 #ifdef I2PD_HAS_TORRENT_STORAGE_WORKER
 	using namespace i2p::privsep;
+	// A begun replacement owns a temporary worker file until commit/abort.
+	// Exceptions between exchanges must revoke that transaction as well.
+	const Impl::ExceptionRetirement retireOnException { *m_Impl };
 	auto path = relative.generic_string ();
 	if (!m_Impl->ready || !SafeStoragePath (path) || bytes.size () > 8 * 1024 * 1024)
 	{

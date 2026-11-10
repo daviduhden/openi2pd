@@ -20,6 +20,9 @@ namespace i2p::torrents
 /// retires the worker. A write whose reply was lost may already have
 /// reached storage and is never replayed by this client. Destruction
 /// stops the worker.
+/// Exceptions during exchanges, registration or metadata transactions
+/// retire the channel before propagating, invalidating all its handles.
+/// Retirement does not roll back a write or commit already performed.
 class TorrentStorageWorker
 {
 public:

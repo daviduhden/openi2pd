@@ -116,6 +116,15 @@ Do not let them edit, build or run tests.
 
 ## Known issues and decisions
 
+- Metadata handle admission precedes result allocation; replacement begins
+  a remote temporary-file transaction before later throwing operations.
+  Exception retirement must cover the full interval between exchanges,
+  not only Exchange itself. Under the client mutex, close the channel and
+  revoke readiness before bounded child cleanup; never serialize Release
+  or Abort while unwinding. Preserve the original exception and the rule
+  that lost commit replies do not imply rollback. Allocator fault injection
+  remains separate from the source contract and ordinary worker tests.
+
 - Outbound peer dials need a run admission distinct from inbound acceptor
   registration: a shared destination can already accept streams and have
   no tunnel inbound generation. Capture weak ownership plus the dial-run
