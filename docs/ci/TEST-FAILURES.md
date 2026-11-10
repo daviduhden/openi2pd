@@ -5,6 +5,36 @@ and license details.
 
 # Test failure inventory
 
+## EA333 retrospective snapshot
+
+The paginated inventory contains 404 runs on 67 SHAs: 96 success, 241 failure,
+66 cancelled and one incomplete at collection. This is metadata coverage,
+not a claim that all historical logs or artifacts remain available.
+
+At `ea3335843fc9073fbbaa0c5d3530c9e9387b85b8`:
+
+- OpenSSL 3 run 42739900479 and OpenSSL 4 run 42739905544 each pass 261
+  main tests in both GCC and Clang jobs, plus their focused suites.
+- Validation 42739919919 passes 261 tests in each ASan/UBSan, UBSan and TSan
+  lane and fifteen fuzzer smoke targets. Reviewed logs contain no sanitizer
+  report. Instrumented OpenSSL TSan 42739924109 exercises one registry test.
+- OpenBSD 42739887270 registers 256 tests: 253 pass and three skip because
+  worker/credential checks require non-root execution. Skips are evidence gaps.
+- Android 42739910723 passes 174 JVM tests in 25 suites. Device execution is
+  skipped; fourteen Lint warnings remain (twelve vector paths, two ChromeOS
+  ABI warnings). APK construction does not validate device behavior.
+- TF-101 source-root correction now passes in executed native lanes. TF-102
+  classification correctly exposes a real Windows worker startup failure.
+  Windows 42739881700 MSVC has 18 pass/one failure; CLANG64 has 243 pass,
+  one failure/one skip out of 245. Diagnostic 42745408718 reproduces them:
+  version timeout and worker 0xC0000142, respectively. See RT inventory for
+  the newly captured modal marker; neither startup problem is resolved.
+
+Current override, bounded-length, encoding and storage-unwind corrections
+have source contracts/regressions prepared but remain Pending CI compilation
+and Pending CI tests. Published results above apply only to their exact SHA.
+
+
 ## Published revision `01960093` (2026-11-05)
 
 | ID | Exact evidence | Disposition |

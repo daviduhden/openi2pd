@@ -1,5 +1,17 @@
 # Compilation diagnostic patterns and repository-wide review
 
+## Partial override annotation and bounded API lengths
+
+CW-031 shows that adding one override can expose unannotated siblings in
+a shared header. Match the complete virtual signature and review alternate
+provider/template branches; do not annotate constructors or unrelated helpers.
+Group repeated translation-unit emissions by their single source cause.
+
+CW-032 shows that fixed buffer sizes can still warn at OpenSSL int operands.
+Use one bounded int-domain constant for extent and length, or a compile-time
+constraint before an explicit template conversion. Dynamic lengths still need
+runtime bounds. Do not change size_t-capacity APIs or rely on debug assertions.
+
 This is the reusable search guide for compiler and linker diagnostics. It
 complements the observed run records in
 [`COMPILATION-ERRORS.md`](COMPILATION-ERRORS.md) and

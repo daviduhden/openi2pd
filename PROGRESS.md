@@ -7930,3 +7930,35 @@ or push.
   changes. These checks do not execute the prepared C++/TAP regressions.
   All local implementation changes remain Pending CI compilation / Pending CI
   tests; no build configuration, compiler, local test, commit or push ran.
+
+## EA333 historical audit and preventive continuation
+
+- Ten specialized reconnaissance agents reviewed CI history, native warnings,
+  memory, concurrency, crypto, IPC, torrents, Android, portability and
+  regressions. Independent crypto, torrent and RSA fixture edits were
+  integrated with coordinator-owned source contracts and knowledge updates.
+- Paginated 404 run records across 67 SHAs; reviewed latest ten full logs,
+  successful siblings and relevant artifacts. Exact counts and coverage gaps
+  are recorded in docs/ci/TEST-FAILURES.md. These results concern published
+  ea333584, not this worktree.
+- Corrected shared missing overrides and MSVC BN length conversion warnings;
+  checked point normalization/encoding, gated RedDSA publication and cleared
+  failed output. Added positive/negative regression inputs. Broad fallible
+  signing and unchecked arithmetic allocations remain open.
+- Guarded storage transaction admission/allocation intervals during unwind.
+  Close precedes bounded retirement without replacing the original exception.
+  No rollback or complete child-reaping guarantee is claimed.
+- Dispatched published Windows diagnostic 42745408718. Both jobs failed:
+  CLANG64 captures MessageBoxA with unresolved callers; MSVC reproduces worker
+  exit 0xC0000142 before authentication. Retained exact evidence outside the
+  repository. No speculative security-policy or DLL changes were made.
+- Updated root policy, build/CI/crypto/torrent Skills and all six inventories.
+  Local changes remain Pending CI compilation / Pending CI tests. No compiler,
+  local build/test, commit or push was invoked.
+- Final compile-free review passed: whitespace, runtime/control source
+  contracts, build graph, Skills, language policy, workflow policy, Markdown
+  links, Doxygen parameter references and Shell policy. Knowledge validation
+  passed with AK004's manual semantic advisory reviewed: the added knowledge
+  pins transaction-wide unwind authority, backend override completeness,
+  checked key readiness and exact skip accounting. These source inspections
+  do not execute regression tests or establish dynamic correctness.

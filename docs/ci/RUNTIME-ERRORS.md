@@ -5,6 +5,38 @@ and license details.
 
 # Runtime error inventory
 
+## EA333 continuation — exact evidence and static corrections
+
+- **RT-078 — Metadata handle retention during allocation failure.** Static
+  inspection of `TorrentStorageWorker::ReadMetadata` found a registered remote
+  handle surviving an exception while constructing its result. Equivalent
+  transaction gaps exist in Register, Exchange and ReplaceMetadata. Scoped
+  unwind guards now invalidate readiness and close the channel before bounded
+  process retirement, while preserving the original exception. This does not
+  promise rollback of an already committed write or solve PRIVSEP-017's
+  remaining process-reaping ownership. Negative source contracts are prepared;
+  allocator fault injection and dynamic validation remain Pending CI tests.
+- **RT-076 / CRY-236 — Checked point encoding and RedDSA readiness.**
+  `Normalize` now checks context, coordinates, allocation, inversion and
+  multiplication failures; `EncodePublicKey` reports failure and clears its
+  output. Compatibility and RedDSA factories reject invalid construction.
+  Null-output/key controls, invalid projective coordinates and valid encodings
+  have focused regressions prepared. These local changes are Implemented /
+  static; Pending CI compilation / Pending CI tests. General Sign failure
+  propagation, offline pairs, LeaseSet self-verification and other unchecked
+  point arithmetic allocations remain open.
+- **Windows startup remains unresolved.** Published SHA
+  `ea3335843fc9073fbbaa0c5d3530c9e9387b85b8`, diagnostic run
+  [42745408718](https://github.com/daviduhden/openi2pd/actions/runs/42745408718),
+  reproduces both failures. CLANG64 job 129596201732 reaches the loader,
+  executable entry and `MessageBoxA` (`OPENI2PD_MODAL`). Its symbolic stack
+  contains unresolved frames; this does not identify the source caller.
+  MSVC job 129596202185 again records worker exit 3221225794 (0xC0000142)
+  before authentication. No attribution to DLL selection, RNG or mitigation
+  policy is justified. Modal operands and bootstrap credentials are not
+  collected. This run cannot validate current local changes.
+
+
 ## 2026-11-05 preventive and historical continuation
 
 ### RT-034 — Static cross-thread publication and cancellation defects

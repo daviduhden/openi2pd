@@ -5,6 +5,25 @@ and license details.
 
 # Regression patterns
 
+## EA333 families requiring continued coverage
+
+- Exercise invalid encoding inputs, non-invertible projective coordinates,
+  null outputs and successful modern/historical encodings. A factory must
+  reject invalid readiness rather than publish an object with zero key bytes.
+  Keep output clearing and secret cleansing distinct from readiness.
+- Trace remote handle admission through every subsequent allocation, including
+  intervals between RPC exchanges. Exception retirement closes the channel
+  before cleanup that can allocate, preserves the exception and cannot imply
+  rollback. Source guards pin all four storage transaction seams; allocator
+  fault injection remains a separate pending regression.
+- Group repeated warnings by shared header/translation unit. Audit inherited
+  methods across every backend when adding one override; constrain fixed-size
+  OpenSSL int operands at compile time and reuse the bound for storage extents.
+- Read JUnit skip entries before reporting execution counts. A successful
+  root-run OpenBSD suite can omit worker authentication entirely. A Windows
+  modal marker proves a dialog call, not its source caller or an RNG failure.
+
+
 Use these patterns when a CI diagnostic is fixed; add a focused test rather
 than relying on the original failure to recur.
 

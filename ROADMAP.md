@@ -15,14 +15,15 @@ requirements and current code; `TODO.md` is the authoritative task list.
 
 ## Current baseline
 
-At 02901127, history reaches 392 runs on 66 SHAs. TF-100 passes; TF-101
-instead exposes the incorrect source root in a CTest registration. Local
-corrections pin that argv, tracker admission identity, Ed25519 pair readiness
-and Windows failure-versus-skip classification. They remain Pending CI
-compilation / Pending CI tests. Full
-matrix cleanliness still requires Windows GUI attribution, remaining host
-coverage, fourteen earlier Lint warnings, native documentation coverage,
-CONC-028 timer authority and PRIVSEP-017 deferred owner retirement.
+At ea333584, the retrospective snapshot reaches 404 runs on 67 SHAs.
+Executed native Linux/OpenSSL and sanitizer suites pass. OpenBSD has three
+root-sensitive skips; Android has fourteen Lint warnings and no device run.
+Windows startup remains CI failure, reproduced in diagnostic 42745408718;
+MessageBoxA is reached without source attribution. Local complete overrides,
+bounded OpenSSL lengths, fallible encoding/RedDSA readiness and metadata
+exception retirement are Implemented / static; Pending CI compilation /
+Pending CI tests. Full matrix cleanliness also requires remaining callback
+lifetimes, PRIVSEP-017 process retirement and CRY-236 signing propagation.
 
 The 80a487d5 retrospective reaches 362 runs on 63 SHAs. Native sanitizer,
 OpenSSL, OpenBSD and selected MSVC regressions pass; Windows MSYS2 Unicode

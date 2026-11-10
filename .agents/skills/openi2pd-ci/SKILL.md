@@ -245,6 +245,9 @@ workflow, run `gh`, build or test.
   evidence. A LastTest.log "Passed" marker can accompany return-code-77
   capability skips; retain the JUnit/run skip state and absence of startup
   diagnostics. A successful Android JVM lane does not cover skipped devices.
+  CTest's aggregate "100% tests passed" includes skipped entries: subtract
+  JUnit skipped counts before describing executed coverage, and retain each
+  worker's exact startup reason.
 
 - A toolchain template failure before executable creation leaves earlier
   runtime findings unresolved. Record the instantiated clock/API and group

@@ -9,6 +9,15 @@ Tracks compile/configure/link failures reported by manual GitHub Actions.
 
 # Compilation error inventory
 
+## ea333584 compile and link status
+
+The latest ten runs built `ea3335843fc9073fbbaa0c5d3530c9e9387b85b8`.
+No compile/link blocker was observed; all native lanes reached tests. The
+shared-header missing-override and MSVC length-conversion messages are
+warnings, recorded as CW-031/032 in the [warning inventory](COMPILATION-WARNINGS.md).
+Windows failures occur at runtime. A successful compile here does not
+establish clean warnings or validate subsequent local encoder/cleanup changes.
+
 This inventory links manual-CI failures and statically found compile risks to
 their first diagnostic, root cause, local correction and validation state.
 A local correction is not a CI result: rows stay **Pending CI compilation**

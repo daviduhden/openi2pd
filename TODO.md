@@ -10,33 +10,28 @@ Documents project documentation.
 
 # Master TODO
 
-Latest retrospective: 392 retained runs on 66 SHAs (239 failure, 87 success,
-66 cancelled). The latest ten execute 02901127. TF-100's link fixtures pass;
-nine native lanes instead fail TF-101: the AddressBook CTest registration
-passes build/ as its source root. Local registration/source guards are
-Implemented / static; Pending CI tests. Tracker admission authority and
-Ed25519 pair rejection are Implemented / static; Pending CI compilation /
-Pending CI tests. MSVC loader exit 0xC0000142 was incorrectly skipped;
-local fixture classification now requires a failure. A published Windows
-diagnostic run 42719195489 was dispatched separately; its results cannot
-validate local changes. Android's 174 JVM tests pass with fourteen Lint
-warnings; device tests are skipped. Windows startup, native MSWin32 Unicode,
-remaining ownership/retirement and broad signing failure propagation remain
-open. Current local changes have no remote validation.
+Latest retrospective: 404 runs on 67 SHAs (96 success, 241 failure,
+66 cancelled, one incomplete at collection). Published ea333584 passes the
+executed Linux/OpenSSL/sanitizer suites; OpenBSD skips three root-sensitive
+checks and Android device execution is skipped. Windows still fails version
+startup and worker initialization; diagnostic 42745408718 confirms a CLANG64
+MessageBoxA call without identifying its source caller, and MSVC 0xC0000142.
+CW-031/CW-032 corrections, checked point encoding/RedDSA readiness and
+RT-078 metadata exception retirement are Implemented / static; Pending CI
+compilation / Pending CI tests. Fourteen Android Lint warnings, remaining
+callback/process ownership and end-to-end fallible signing remain open.
+See the six docs/ci inventories for exact runs and evidence limitations.
 
 - CONT-050: portable supervisor admission and Asio timer teardown:
   Validated by CI in the executed 9f2934f8 lanes; no clean-matrix claim.
-- RT-074: AddressBook queued re-arm admission and generation retirement:
-  Native code compiles at 02901127; direct source contract passes, but its
-  CTest registration fails TF-101. Local cache-wait admission extends the
-  correction: Implemented / static; Pending CI compilation / Pending CI
-  tests. Subscription timer callbacks remain open; no complete shutdown claim.
-- RT-075: tracker admission identity across cancellation and key reuse:
+- RT-074 / RT-075 / RT-077: published admission regressions pass at ea333584
+  in executed native lanes; broader subscription/dial lifetime work remains.
+- TF-101: corrected source-root registration: Validated by CI at ea333584.
+- TF-102: failure classification: Validated by CI; Windows startup: CI failure.
+- CW-031 / CW-032: complete overrides and bounded BN lengths:
   Implemented / static; Pending CI compilation / Pending CI tests.
-- RT-077: outbound peer-dial run admission and owner lifetime:
+- RT-078: metadata allocation-exception retirement:
   Implemented / static; Pending CI compilation / Pending CI tests.
-- TF-102: Windows live-worker failure versus capability skip:
-  Implemented / static; Pending CI tests. Loader cause remains unresolved.
 - CONT-051: coherent peer interest across availability, selection and active
   requests: Validated by CI at 9f2934f8. Subsequent HAVE_NONE/BITFIELD
   controls are Implemented / static; Pending CI tests.

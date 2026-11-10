@@ -1,5 +1,52 @@
 # Compilation and lint warning inventory
 
+## ea333584: CW-031 and CW-032 observed in successful builds
+
+All latest-ten runs execute `ea3335843fc9073fbbaa0c5d3530c9e9387b85b8`.
+Nine workflows succeed, but two first-party warning families remain. Local
+corrections below are Implemented / static; Pending CI compilation / Pending
+CI tests. No warning suppression, diagnostic-disable flag or unsafe cast added.
+
+### CW-031: incomplete override annotation in the signature hierarchy
+
+Original diagnostic: `Signature.h:499:8: warning: 'Sign' overrides a member
+function but is not marked 'override' [-Winconsistent-missing-override]`.
+The new IsValid override exposes the existing unannotated Sign override in
+EDDSA25519phSigner. This shared header is compiled into many targets: 1,106
+emissions occur in the reviewed OpenSSL/validation logs, not 1,106 independent
+source defects. Android, OpenBSD, instrumented TSan and MSYS2 repeat it.
+
+Evidence: [OpenSSL 3 run 42739900479](https://github.com/daviduhden/openi2pd/actions/runs/42739900479)
+Clang job 129578081991; [OpenSSL 4 run 42739905544](https://github.com/daviduhden/openi2pd/actions/runs/42739905544)
+Clang job 129578098622; [Validation 42739919919](https://github.com/daviduhden/openi2pd/actions/runs/42739919919)
+jobs 129578145770/129578145727/129578145841 and fuzz 129578145382.
+Linux Clang is 23.1.5, with OpenSSL 3.5.9/4.1.0 respectively. OpenBSD
+job 129578038587 uses base Clang 22.1.6 and LibreSSL. Android native job
+129578113713 and Windows CLANG64 job 129578023517 are affected too.
+
+Global hierarchy review covers matching Sign, Verify, SetPublicKey, size
+getters and destructors in both OpenSSL/LibreSSL branches, Ed25519/ph,
+GOST and RedDSA. Constructors, hash helpers and nonvirtual public-key getters
+are excluded. Each actual override is annotated; a source guard rejects
+unannotated inherited API shapes. Existing functional regressions remain.
+Fresh CI is needed to establish warning removal in every affected lane.
+
+### CW-032: fixed RSA buffer length narrows at an OpenSSL API
+
+[Windows run 42739881700](https://github.com/daviduhden/openi2pd/actions/runs/42739881700),
+MSVC job 129578023254, emits C4267 at
+`tests/test-signature-identity-hardening.cpp(353,62)`:
+`conversion from 'size_t' to 'int', possible loss of data` in BN_bin2bn.
+Toolchain: MSVC 19.44.35229.0, Release x64, vcpkg OpenSSL 3.6.5.
+
+The buffer is a fixed 256-byte array. One constexpr int now defines both
+its extent and the API operand. Equivalent calls in test-routerinfo-rsa-reject
+use the same fixed int-domain RSA constants. LibreSSL ECDSA component/digest
+lengths and GOST digest/scalar lengths are statically constrained before
+conversion; size_t-capacity APIs such as bn2buf remain unchanged. Runtime
+assertions are not used to justify narrowing in Release. Source contracts pin
+the bounded fixture operands. Execution and warning removal remain pending CI.
+
 ## Revision 176aec32 warning review
 
 Full latest-ten logs, including successful sibling steps, reveal no project
