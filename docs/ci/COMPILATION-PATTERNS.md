@@ -387,3 +387,12 @@ case. Reference-style Markdown is outside the checker grammar, so its
 negative fixture never exercises resolution. Confirm parser admission with
 an existing-target control before changing security code. Record this under
 TF-100 rather than inventing nine compiler failures.
+
+## Repository root versus CMake project entry
+
+TF-101 at 02901127 demonstrates why direct script success does not validate
+registered argv. PROJECT_SOURCE_DIR is build/ in this layout; PROJECT_ROOT
+names the repository. Inspect every command consumer and source path, then
+pin the registration itself in the build-system source contract. Global
+search found only one wrong PROJECT_SOURCE_DIR operand in test registration.
+The script also rejects an invalid root before attempting source reads.

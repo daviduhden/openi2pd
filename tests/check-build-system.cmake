@@ -71,6 +71,12 @@ read_required("${test_makefile}" test_make)
 read_required("${top_cmake}" top_cmake_text)
 read_required("${tools_cmake}" tools_cmake_text)
 read_required("${tests_cmake}" tests_cmake_text)
+
+# The CMake project starts in build/, not at the repository root.
+# Pin the registered invocation as well as the direct workflow command.
+assert_present("${tests_cmake_text}"
+  "add_test(NAME addressbook-rearm-lifetime-static\n  COMMAND \"\${CMAKE_COMMAND}\"\n    \"-DSOURCE_DIR=\${PROJECT_ROOT}\""
+  "AddressBook lifetime registration must read repository sources")
 read_required("${PROJECT_ROOT}/docs/testing.md" testing_doc_text)
 read_required("${android_cmake}" android_cmake_text)
 read_required("${mingw_helper}" mingw_text)

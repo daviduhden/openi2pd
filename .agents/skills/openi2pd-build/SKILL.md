@@ -111,6 +111,13 @@ build.
 
 ## Known issues and decisions
 
+- The CMake entry point lives in build/, so PROJECT_SOURCE_DIR names that
+  directory rather than the repository. Source-inspection CTest commands
+  must pass PROJECT_ROOT for native sources. Review the registered argv
+  as well as direct workflow calls: a correct $PWD invocation does not
+  validate a separately registered argument. The build-system contract
+  pins the AddressBook registration against this root mismatch.
+
 - MSYS host-tool closure includes Git as well as Perl. Pin GIT_EXECUTABLE
   for native CMake and retain PATH command evidence for scripts invoking
   bare git; a CMake cache setting alone does not select that subprocess.

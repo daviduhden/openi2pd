@@ -515,7 +515,7 @@ set_tests_properties(build-system-static PROPERTIES
 # binary.
 add_test(NAME addressbook-rearm-lifetime-static
   COMMAND "${CMAKE_COMMAND}"
-    -DSOURCE_DIR=${PROJECT_SOURCE_DIR}
+    "-DSOURCE_DIR=${PROJECT_ROOT}"
     -P "${CMAKE_CURRENT_SOURCE_DIR}/check-addressbook-rearm-lifetime.cmake")
 set_tests_properties(addressbook-rearm-lifetime-static PROPERTIES
   LABELS "static;security;memory" TIMEOUT 30)

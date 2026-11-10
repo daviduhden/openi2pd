@@ -7,6 +7,11 @@
 if(NOT DEFINED SOURCE_DIR)
   get_filename_component(SOURCE_DIR "${CMAKE_CURRENT_LIST_DIR}/.." ABSOLUTE)
 endif()
+if(NOT EXISTS "${SOURCE_DIR}/libi2pd_client/AddressBook.cpp" OR
+   NOT EXISTS "${SOURCE_DIR}/libi2pd_client/AddressBook.h")
+  message(FATAL_ERROR
+    "SOURCE_DIR must name the repository root, not the build/ CMake entry")
+endif()
 file(READ "${SOURCE_DIR}/libi2pd_client/AddressBook.cpp" source)
 file(READ "${SOURCE_DIR}/libi2pd_client/AddressBook.h" header)
 
