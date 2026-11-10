@@ -202,6 +202,7 @@ namespace torrents
 			m_InboundAcceptStopped = false;
 		}
 		m_Stopping.store (false, std::memory_order_release);
+		StartPeerDials ();
 		m_StartupRecoveryPending.store (true);
 		if (m_UseIsolatedStorage)
 		{
@@ -2917,9 +2918,16 @@ namespace torrents
 	{
 		std::lock_guard<std::mutex> publication (m_InboundAcceptMutex);
 		m_InboundAcceptStopped = true;
-		if (!m_InboundAcceptGeneration) return;
-		std::lock_guard<std::mutex> admission (m_InboundAcceptGeneration->mutex);
-		m_InboundAcceptGeneration->active = false;
+		if (m_PeerDialGeneration)
+		{
+			std::lock_guard<std::mutex> admission (m_PeerDialGeneration->mutex);
+			m_PeerDialGeneration->active = false;
+		}
+		if (m_InboundAcceptGeneration)
+		{
+			std::lock_guard<std::mutex> admission (m_InboundAcceptGeneration->mutex);
+			m_InboundAcceptGeneration->active = false;
+		}
 	}
 
 	i2p::stream::StreamingDestination::Acceptor TorrentsTunnel::CreateInboundAcceptor ()
@@ -3108,6 +3116,7 @@ namespace torrents
 				" announce already in flight or at the request limit");
 			return false;
 		}
+		const auto authority = m_TrackerRequests.Authority (key);
 		std::map<std::string, std::string> params;
 		params.emplace ("info_hash", torrent->GetHexStringInfoHash ());
 		// Percent-encoded per-torrent random peer id. The tunnel identity is
@@ -3116,7 +3125,6 @@ namespace torrents
 		params.emplace ("peer_id",
 			PercentEncodeQueryValue (
 				std::string_view (reinterpret_cast<const char *> (peerID.data ()), peerID.size ())));
-		const auto authority = m_TrackerRequests.Authority (key);
 		params.emplace ("ip", GetLocalDestination ()->GetIdentity ()->ToBase64 () + ".i2p");
 		params.emplace ("port", std::to_string (TORRENT_PORT)); // 6881
 		params.emplace ("compact", "1");
@@ -3281,6 +3289,7 @@ namespace torrents
 		if (!wasInFlight)
 		{
 			httpStream->GetStream ()->AsyncClose ();
+			return;
 		}
 		if (ecode)
 		{
@@ -3290,7 +3299,6 @@ namespace torrents
 			httpStream->GetStream ()->AsyncClose ();
 		}
 		else
-			return;
 		{
 			// The request stays admitted until the response read completes. The
 			// deadline armed at dispatch is the read deadline too: releasing it
@@ -3314,6 +3322,7 @@ namespace torrents
 					const bool wasInFlight = self->m_TrackerRequests.Find (key, authority);
 					self->ReleaseTrackerRequest (key, authority);
 					httpStream->GetStream ()->AsyncClose ();
+					if (!wasInFlight) return;
 					if (ecode)
 					{
 						LogPrint (eLogWarning, "TorrentsTunnel: Tracker ", trackerID,
@@ -3322,7 +3331,6 @@ namespace torrents
 							torrent->ReportTrackerFailure (trackerID, "response rejected");
 						return;
 					}
-					if (!wasInFlight) return;
 					if (!torrent->IsStopped () && self->IsTorrentTracker (trackerID, *torrent))
 					{
 						const auto & res = parser->get ();
@@ -3440,30 +3448,81 @@ namespace torrents
 			LogPrint (eLogInfo, "TorrentsTunnel: Can't connect to self");
 			return;
 		}
-		const uint64_t now = i2p::util::GetMonotonicSeconds ();
-		torrent->MarkPeerCandidateAttempt (peer, now);
-		const uint64_t dial = m_NextDialID++;
-		m_PendingDials.emplace (dial, PendingDial { torrent, now });
-		CreateStream (
-			[this, torrent, peer, origin, dial] (std::shared_ptr<i2p::stream::Stream> stream)
+		auto complete = CreatePeerDialCompletion (torrent, peer, origin);
+		if (complete)
+			CreateStream (std::move (complete), std::make_shared<i2p::client::Address> (peer), TORRENT_PORT);
+	}
+
+	void TorrentsTunnel::StartPeerDials ()
+	{
+		std::lock_guard<std::mutex> publication (m_InboundAcceptMutex);
+		if (m_PeerDialGeneration)
+		{
+			std::lock_guard<std::mutex> admission (m_PeerDialGeneration->mutex);
+			m_PeerDialGeneration->active = false;
+		}
+		m_PeerDialGeneration = std::make_shared<InboundAcceptGeneration> ();
+	}
+
+	i2p::client::StreamRequestComplete TorrentsTunnel::CreatePeerDialCompletion (
+		std::shared_ptr<Torrent> torrent, const i2p::data::IdentHash & peer, PeerConnectionOrigin origin)
+	{
+		std::weak_ptr<TorrentsTunnel> owner = std::static_pointer_cast<TorrentsTunnel> (weak_from_this ().lock ());
+		std::shared_ptr<InboundAcceptGeneration> generation;
+		uint64_t dial;
+		{
+			std::lock_guard<std::mutex> publication (m_InboundAcceptMutex);
+			generation = m_PeerDialGeneration;
+			if (!generation || owner.expired ()) return { };
+			std::lock_guard<std::mutex> admission (generation->mutex);
+			if (!generation->active || m_InboundAcceptStopped || m_Stopping
+				|| !torrent || !m_NextDialID || !CanDial (*torrent)) return { };
+			const uint64_t now = i2p::util::GetMonotonicSeconds ();
+			dial = m_NextDialID++;
+			m_PendingDials.emplace (dial, PendingDial { torrent, now });
+			torrent->MarkPeerCandidateAttempt (peer, now);
+		}
+		return [owner, generation, torrent, peer, origin, dial] (std::shared_ptr<i2p::stream::Stream> stream)
+		{
+			auto self = owner.lock ();
+			if (!self)
 			{
-				FinishDial (dial);
-				if (stream && !torrent->IsStopped ()
-					&& (!torrent->IsPrivate () || origin == ePeerConnectionOriginTracker))
-				{
-					torrent->MarkPeerCandidateConnected (peer);
-					LogPrint (eLogDebug, "TorrentsTunnel: Connected to peer ", peer.ToBase32 () + ".b32.i2p");
-					auto connection = std::make_shared<PeerConnection> (shared_from_this (), stream, torrent, origin);
-					AddHandler (connection);
-					connection->Connect ();
-				}
-				else
-				{
+				if (stream) stream->AsyncClose ();
+				return;
+			}
+			// Stop revokes through this gate before clearing handlers. Connect
+			// posts IO and does not synchronously enter tunnel lifecycle calls.
+			std::unique_lock<std::mutex> admission (generation->mutex);
+			if (!generation->active || self->m_Stopping)
+			{
+				admission.unlock ();
+				if (stream) stream->AsyncClose ();
+				return;
+			}
+			auto pending = self->m_PendingDials.find (dial);
+			if (pending == self->m_PendingDials.end () || pending->second.torrent.lock () != torrent)
+			{
+				admission.unlock ();
+				if (stream) stream->AsyncClose ();
+				return;
+			}
+			self->FinishDial (dial);
+			if (stream && !torrent->IsStopped () && !torrent->IsRemoved ()
+				&& self->FindTorrent (torrent->GetInfoHash ()) == torrent
+				&& (!torrent->IsPrivate () || origin == ePeerConnectionOriginTracker))
+			{
+				torrent->MarkPeerCandidateConnected (peer);
+				auto connection = std::make_shared<PeerConnection> (self, stream, torrent, origin);
+				self->AddHandler (connection);
+				connection->Connect ();
+			}
+			else
+			{
+				if (stream) stream->AsyncClose ();
+				if (!torrent->IsStopped () && !torrent->IsRemoved ())
 					torrent->MarkPeerCandidateFailed (peer, i2p::util::GetMonotonicSeconds ());
-					LogPrint (eLogInfo, "TorrentsTunnel: Can't connect to peer ", peer.ToBase32 () + ".b32.i2p");
-				}
-			},
-			std::make_shared<i2p::client::Address> (peer), TORRENT_PORT);
+			}
+		};
 	}
 
 	size_t TorrentsTunnel::ConnectToPeers (std::shared_ptr<Torrent> torrent)

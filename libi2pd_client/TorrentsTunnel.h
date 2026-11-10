@@ -499,6 +499,13 @@ namespace torrents
 		// Registration closes synchronously, before service teardown runs.
 		bool m_InboundAcceptStopped = true;
 		std::shared_ptr<InboundAcceptGeneration> m_InboundAcceptGeneration;
+		// Outbound authority spans a run, independently of acceptor changes.
+		// Lock order is publication mutex, then generation admission mutex.
+		std::shared_ptr<InboundAcceptGeneration> m_PeerDialGeneration;
+		void StartPeerDials ();
+		i2p::client::StreamRequestComplete CreatePeerDialCompletion (
+			std::shared_ptr<Torrent> torrent, const i2p::data::IdentHash & peer,
+			PeerConnectionOrigin origin);
 		// Enumerate and read the configured torrent directory on the storage
 		// service. Parsing/insertion is posted back to the network service;
 		// the network thread never walks the directory or opens a file.

@@ -65,6 +65,34 @@ struct TorrentInboundAcceptTestAccess
 		tunnel.m_Stopping.store (false);
 		return tunnel.CreateInboundAcceptor ();
 	}
+	static void BeginDials (TorrentsTunnel & tunnel)
+	{
+		{
+			std::lock_guard<std::mutex> publication (tunnel.m_InboundAcceptMutex);
+			tunnel.m_InboundAcceptStopped = false;
+		}
+		tunnel.m_Stopping = false;
+		tunnel.StartPeerDials ();
+	}
+	static auto Dial (TorrentsTunnel & tunnel, std::shared_ptr<Torrent> torrent)
+	{
+		return tunnel.CreatePeerDialCompletion (torrent, i2p::data::IdentHash { }, ePeerConnectionOriginTracker);
+	}
+	static size_t PendingDials (TorrentsTunnel & tunnel) { return tunnel.m_PendingDials.size (); }
+	static void RetireDials (TorrentsTunnel & tunnel) { tunnel.m_PendingDials.clear (); }
+	static auto DialAdmissionLock (TorrentsTunnel & tunnel)
+	{
+		return std::unique_lock<std::mutex> (tunnel.m_PeerDialGeneration->mutex);
+	}
+	static void ReplaceDialOwner (TorrentsTunnel & tunnel, const std::shared_ptr<Torrent> & torrent)
+	{
+		assert (tunnel.m_PendingDials.size () == 1);
+		tunnel.m_PendingDials.begin ()->second.torrent = torrent;
+	}
+	static void ExhaustDials (TorrentsTunnel & tunnel)
+	{
+		tunnel.m_NextDialID = std::numeric_limits<uint64_t>::max ();
+	}
 	static auto AdmissionLock (TorrentsTunnel & tunnel)
 	{
 		return std::unique_lock<std::mutex> (tunnel.m_InboundAcceptGeneration->mutex);
@@ -981,6 +1009,75 @@ void TestInboundAcceptAuthority ()
 	assertRejected (current);
 }
 
+void TestPeerDialAuthority ()
+{
+	boost::asio::io_context service;
+	auto keys = i2p::data::PrivateKeys::CreateRandomKeys (
+		i2p::data::SIGNING_KEY_TYPE_EDDSA_SHA512_ED25519, i2p::data::CRYPTO_KEY_TYPE_ECIES_X25519_AEAD, true);
+	auto destination = std::make_shared<i2p::client::ClientDestination> (service, keys, false);
+	auto streaming = std::make_shared<i2p::stream::StreamingDestination> (destination);
+	auto tunnel = std::make_shared<TorrentsTunnel> ("dial-authority", destination, "", "", false);
+	auto torrent = std::make_shared<Torrent> (MakeSingleFileTorrent ());
+	using Access = TorrentInboundAcceptTestAccess;
+	Access::BeginDials (*tunnel); // No inbound acceptor is registered.
+	auto old = Access::Dial (*tunnel, torrent);
+	assert (old && Access::PendingDials (*tunnel) == 1);
+	auto reject = [&] (const auto & complete)
+	{
+		auto stream = std::make_shared<i2p::stream::Stream> (service, streaming);
+		complete (stream);
+		if (service.stopped ()) service.restart ();
+		service.poll ();
+		assert (stream->GetStatus () == i2p::stream::eStreamStatusTerminated);
+	};
+	{
+		auto admitted = Access::DialAdmissionLock (*tunnel);
+		std::promise<void> entering;
+		auto entered = entering.get_future ();
+		std::jthread revoker ([&]
+		{
+			entering.set_value ();
+			Access::Revoke (*tunnel);
+		});
+		entered.wait ();
+		admitted.unlock ();
+		revoker.join ();
+	}
+	assert (!Access::Dial (*tunnel, torrent));
+	Access::RetireDials (*tunnel);
+	Access::BeginDials (*tunnel);
+	auto current = Access::Dial (*tunnel, torrent);
+	assert (current && Access::PendingDials (*tunnel) == 1);
+	reject (old); // An old generation cannot retire the new pending dial.
+	assert (Access::PendingDials (*tunnel) == 1 && Access::Handlers (*tunnel) == 0);
+	auto replacement = std::make_shared<Torrent> (MakeSingleFileTorrent ());
+	Access::ReplaceDialOwner (*tunnel, replacement);
+	reject (current); // A different torrent instance owns this reservation.
+	assert (Access::PendingDials (*tunnel) == 1);
+	Access::RetireDials (*tunnel);
+	reject (current); // An expired slot cannot publish a late success.
+	assert (Access::Handlers (*tunnel) == 0);
+
+	// Exhaustion never reuses zero or retired IDs, even after restart.
+	Access::ExhaustDials (*tunnel);
+	auto last = Access::Dial (*tunnel, torrent);
+	assert (last);
+	last (nullptr);
+	assert (Access::PendingDials (*tunnel) == 0);
+	assert (!Access::Dial (*tunnel, torrent));
+	Access::Revoke (*tunnel);
+	Access::BeginDials (*tunnel);
+	assert (!Access::Dial (*tunnel, torrent));
+	Access::Revoke (*tunnel);
+	boost::asio::post (service, [tunnel] { tunnel->Stop (); });
+	if (service.stopped ()) service.restart ();
+	service.poll ();
+	std::weak_ptr<TorrentsTunnel> released = tunnel;
+	tunnel.reset ();
+	assert (released.expired ());
+	reject (old); // Retained dial callbacks borrow the tunnel.
+}
+
 void TestInitialDiscoveryAuthority ()
 {
 	boost::asio::io_context service;
@@ -1463,6 +1560,7 @@ void TestResumeWriteAndRead ()
 int main ()
 {
 	TestInboundAcceptAuthority ();
+	TestPeerDialAuthority ();
 	TestInitialDiscoveryAuthority ();
 	TestMagnetDiscoveryWaitsForDurability ();
 	TestMagnetRecovery ();

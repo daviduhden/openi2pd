@@ -570,3 +570,17 @@ require_runtime_source(".github/workflows/build-windows.yml"
   "test-eddsa test-signature-identity-hardening")
 require_runtime_source(".github/workflows/build-windows.yml"
   "|eddsa|signature-identity-hardening|")
+
+# Outbound run admission must also work without inbound registration.
+foreach(needle IN ITEMS "StartPeerDials ();"
+    "return [owner, generation, torrent, peer, origin, dial]"
+    "pending->second.torrent.lock () != torrent"
+    "self->FindTorrent (torrent->GetInfoHash ()) == torrent")
+  require_runtime_source("libi2pd_client/TorrentsTunnel.cpp" "${needle}")
+endforeach()
+require_runtime_source("tests/test-torrents-security.cpp"
+  "TestPeerDialAuthority ();")
+string(FIND "${tracker_callbacks}" "[this, torrent, peer, origin, dial]" raw_dial)
+if(NOT raw_dial EQUAL -1)
+  message(FATAL_ERROR "Peer dial completion must retain explicit owner authority")
+endif()

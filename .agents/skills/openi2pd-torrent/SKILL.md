@@ -116,6 +116,13 @@ Do not let them edit, build or run tests.
 
 ## Known issues and decisions
 
+- Outbound peer dials need a run admission distinct from inbound acceptor
+  registration: a shared destination can already accept streams and have
+  no tunnel inbound generation. Capture weak ownership plus the dial-run
+  generation, validate its reservation/torrent, and hold admission through
+  handler publication and Connect. Stop revokes the same gate. Dial IDs
+  never reset or wrap into an older completion's reservation.
+
 - Tracker infoHash/slot keys can be reused before old successful callbacks
   drain. Each registry admission carries nonzero monotonic authority through
   dial, write, read and deadline completion. Compare it before mutation or
