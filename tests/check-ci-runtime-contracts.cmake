@@ -602,3 +602,18 @@ string(FIND "${tracker_callbacks}" "[this, torrent, peer, origin, dial]" raw_dia
 if(NOT raw_dial EQUAL -1)
   message(FATAL_ERROR "Peer dial completion must retain explicit owner authority")
 endif()
+
+# The complete signing hierarchy must express its inherited contracts.
+file(READ "${PROJECT_ROOT}/libi2pd/Signature.h" signature_contracts)
+if(signature_contracts MATCHES
+    "(void Sign|bool Verify|void SetPublicKey|size_t GetPublicKeyLen|size_t GetSignatureLen) [(][^)]*[)]( const)?[ \t\r\n]*[;{]")
+  message(FATAL_ERROR "Signature overrides must be annotated in every backend")
+endif()
+require_runtime_source("tests/test-signature-identity-hardening.cpp"
+  "BN_bin2bn (encoded.data (), encodedSize, nullptr)")
+require_runtime_source("tests/test-routerinfo-rsa-reject.cpp"
+  "constexpr int RSA_BYTES = RSA_BITS / 8;")
+require_runtime_source("tests/test-routerinfo-rsa-reject.cpp"
+  "BN_bin2bn (key.modulus.data (), RSA_BYTES, nullptr)")
+require_runtime_source("libi2pd/Signature.h"
+  "static constexpr int componentLen = static_cast<int> (keyLen / 2);")

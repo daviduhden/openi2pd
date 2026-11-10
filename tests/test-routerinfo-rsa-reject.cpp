@@ -42,8 +42,10 @@ namespace
 {
 using namespace i2p::data;
 
-constexpr size_t RSA_BITS = 2048;
-constexpr size_t RSA_BYTES = RSA_BITS / 8;
+// Keep fixed RSA lengths in OpenSSL's int domain. The same constants
+// define array extents and API operands without narrowing size_t.
+constexpr int RSA_BITS = 2048;
+constexpr int RSA_BYTES = RSA_BITS / 8;
 // DEFAULT_IDENTITY_SIZE carries 128 signing-key bytes; an RSA-2048
 // modulus
 // needs a key certificate with the remaining 128 bytes.
@@ -98,7 +100,7 @@ void GenerateRsaKey (RsaKey & key)
 	assert (ctx);
 	EVP_PKEY * pkey = nullptr;
 	assert (EVP_PKEY_keygen_init (ctx) > 0);
-	assert (EVP_PKEY_CTX_set_rsa_keygen_bits (ctx, static_cast<int> (RSA_BITS)) > 0);
+	assert (EVP_PKEY_CTX_set_rsa_keygen_bits (ctx, RSA_BITS) > 0);
 	assert (EVP_PKEY_keygen (ctx, &pkey) > 0);
 	EVP_PKEY_CTX_free (ctx);
 	BIGNUM * n = nullptr;
@@ -112,7 +114,7 @@ void GenerateRsaKey (RsaKey & key)
 	assert (rsa);
 	BIGNUM * e = BN_new ();
 	assert (e && BN_set_word (e, 65537) == 1);
-	assert (RSA_generate_key_ex (rsa, static_cast<int> (RSA_BITS), e, nullptr) == 1);
+	assert (RSA_generate_key_ex (rsa, RSA_BITS, e, nullptr) == 1);
 	BN_free (e);
 	const BIGNUM *n = nullptr, *pub = nullptr, *priv = nullptr;
 	RSA_get0_key (rsa, &n, &pub, &priv);
@@ -138,8 +140,8 @@ void SignRawRsa (const RsaKey & key, const uint8_t * message, size_t len, std::a
 	memcpy (encoded.data () + encoded.size () - sizeof (digest), digest, sizeof (digest));
 
 	BN_CTX * ctx = BN_CTX_new ();
-	BIGNUM * m = BN_bin2bn (encoded.data (), encoded.size (), nullptr);
-	BIGNUM * n = BN_bin2bn (key.modulus.data (), key.modulus.size (), nullptr);
+	BIGNUM * m = BN_bin2bn (encoded.data (), RSA_BYTES, nullptr);
+	BIGNUM * n = BN_bin2bn (key.modulus.data (), RSA_BYTES, nullptr);
 	BIGNUM * raw = BN_new ();
 	assert (ctx && m && n && raw);
 	assert (BN_mod_exp (raw, m, key.d, n, ctx) == 1);

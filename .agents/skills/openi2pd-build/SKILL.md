@@ -111,6 +111,12 @@ build.
 
 ## Known issues and decisions
 
+- Successful builds can repeat one shared-header warning across hundreds
+  of targets. Group those emissions by source cause and inspect complete
+  override families before adding annotations. At OpenSSL int boundaries,
+  use one bounded constant for both fixed buffer extent and API length;
+  template conversions need compile-time constraints, not Release asserts.
+
 - The CMake entry point lives in build/, so PROJECT_SOURCE_DIR names that
   directory rather than the repository. Source-inspection CTest commands
   must pass PROJECT_ROOT for native sources. Review the registered argv

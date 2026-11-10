@@ -342,7 +342,8 @@ void CreateRsaRawTestSignature (std::array<uint8_t, 256> & modulus, std::array<u
 
 	uint8_t digest[32];
 	SHA256 (TEST_MESSAGE, sizeof (TEST_MESSAGE), digest);
-	std::array<uint8_t, 256> encoded { };
+	constexpr int encodedSize = 256;
+	std::array<uint8_t, encodedSize> encoded { };
 	encoded[0] = 0;
 	encoded[1] = 1; // PKCS#1 v1.5 block type 1
 	memset (encoded.data () + 2, 0xFF, encoded.size () - 2 - 1 - sizeof (digest));
@@ -350,7 +351,7 @@ void CreateRsaRawTestSignature (std::array<uint8_t, 256> & modulus, std::array<u
 	memcpy (encoded.data () + encoded.size () - sizeof (digest), digest, sizeof (digest));
 
 	BN_CTX * ctx = BN_CTX_new ();
-	BIGNUM * message = BN_bin2bn (encoded.data (), encoded.size (), nullptr);
+	BIGNUM * message = BN_bin2bn (encoded.data (), encodedSize, nullptr);
 	BIGNUM * raw = BN_new ();
 	assert (ctx && message && raw);
 	assert (BN_mod_exp (raw, message, d, n, ctx) == 1);
