@@ -504,18 +504,57 @@ void TestFailedSpawnLeavesNoHandles ()
 }
 
 /*
+ * Only an observed nested-job assignment denial is a capability skip.
+ * Startup and authenticated lifecycle failures must fail regressions.
+ * Diagnostic text and mere membership in a job cannot grant a skip.
+ */
+enum class FixtureOutcome { Passed = 0, Failed = 1, CapabilityDenied = 77 };
+
+constexpr FixtureOutcome ClassifyJobAssignment (DWORD error, bool nested)
+{
+	return error == ERROR_SUCCESS ? FixtureOutcome::Passed
+		: error == ERROR_ACCESS_DENIED && nested
+			? FixtureOutcome::CapabilityDenied : FixtureOutcome::Failed;
+}
+
+constexpr int FixtureExitCode (FixtureOutcome first, FixtureOutcome second,
+	int live)
+{
+	if (live != 0 || first == FixtureOutcome::Failed
+		|| second == FixtureOutcome::Failed) return 1;
+	return first == FixtureOutcome::CapabilityDenied
+		|| second == FixtureOutcome::CapabilityDenied ? 77 : 0;
+}
+
+void TestFixtureOutcomeClassification ()
+{
+	assert (FixtureExitCode (FixtureOutcome::CapabilityDenied,
+		FixtureOutcome::Passed, 1) == 1);
+	assert (FixtureExitCode (FixtureOutcome::CapabilityDenied,
+		FixtureOutcome::Passed, 0) == 77);
+	assert (ClassifyJobAssignment (ERROR_SUCCESS, true) == FixtureOutcome::Passed);
+	assert (ClassifyJobAssignment (ERROR_ACCESS_DENIED, true)
+		== FixtureOutcome::CapabilityDenied);
+	assert (ClassifyJobAssignment (ERROR_ACCESS_DENIED, false)
+		== FixtureOutcome::Failed);
+	assert (ClassifyJobAssignment (0xc0000142u, true) == FixtureOutcome::Failed);
+	assert (ClassifyJobAssignment (ERROR_INVALID_HANDLE, true)
+		== FixtureOutcome::Failed);
+}
+
+/*
  * KILL_ON_JOB_CLOSE and TerminateJobObject are the backstop that keeps
  * a worker from outliving its supervisor. Both are exercised on a plain
  * child process so the check does not depend on the pipe or the worker
  * entry point.
  */
-bool StartChildInJob (WindowsHandle & job, WindowsHandle & process, DWORD & processId)
+FixtureOutcome StartChildInJob (WindowsHandle & job, WindowsHandle & process, DWORD & processId)
 {
 	const std::wstring self = SelfExecutable ();
-	if (self.empty ()) return false;
+	if (self.empty ()) return FixtureOutcome::Failed;
 	bool uiRestricted = false;
 	auto jobHandle = CreateWorkerJobObject (GetWindowsWorkerPolicy (WindowsWorkerRole::Admin), &uiRestricted);
-	if (!jobHandle) return false;
+	if (!jobHandle) return FixtureOutcome::Failed;
 	job = std::move (*jobHandle);
 
 	std::wstring commandLine = L"\"" + self + L"\" --wait-child 60000";
@@ -527,57 +566,59 @@ bool StartChildInJob (WindowsHandle & job, WindowsHandle & process, DWORD & proc
 	if (!CreateProcessW (self.c_str (), mutableCommandLine.data (), nullptr, nullptr, FALSE,
 			CREATE_SUSPENDED | CREATE_NO_WINDOW, nullptr, nullptr, &startup, &information))
 	{
-		std::printf ("skip: cannot create the helper child (Win32 error %lu)\n",
+		std::printf ("failure: cannot create the helper child (Win32 error %lu)\n",
 			static_cast<unsigned long> (GetLastError ()));
-		return false;
+		return FixtureOutcome::Failed;
 	}
 	process.Reset (information.hProcess);
 	WindowsHandle thread (information.hThread);
 	processId = information.dwProcessId;
-	// A nested assignment into a restrictive parent job can be rejected;
-	// the caller reports that as a skip instead of a failure. The reason
-	// is printed so a skip is diagnosable rather than silent.
+	// Preserve the native assignment outcome before cleanup. Only a
+	// proven access denial in an existing job permits a capability skip.
 	if (!AssignProcessToJobObject (job.Native (), process.Native ()))
 	{
 		const DWORD error = GetLastError ();
-		TerminateProcess (process.Native (), ERROR_ACCESS_DENIED);
-		WaitForSingleObject (process.Native (), 5000);
-		std::printf ("skip: cannot assign the helper child to a worker job (Win32 error %lu)\n",
+		const BOOL terminated = TerminateProcess (process.Native (), ERROR_ACCESS_DENIED);
+		const DWORD waited = WaitForSingleObject (process.Native (), 5000);
+		if (!terminated || waited != WAIT_OBJECT_0) return FixtureOutcome::Failed;
+		std::printf ("cannot assign the helper child to a worker job (Win32 error %lu)\n",
 			static_cast<unsigned long> (error));
-		return false;
+		return ClassifyJobAssignment (error, IsCurrentProcessInJobObject ());
 	}
-	if (ResumeThread (thread.Native ()) == static_cast<DWORD> (-1)) return false;
-	return true;
+	if (ResumeThread (thread.Native ()) == static_cast<DWORD> (-1)) return FixtureOutcome::Failed;
+	return FixtureOutcome::Passed;
 }
 
-bool TestJobObjectKillOnClose ()
+FixtureOutcome TestJobObjectKillOnClose ()
 {
 	WindowsHandle job;
 	WindowsHandle process;
 	DWORD processId = 0;
-	if (!StartChildInJob (job, process, processId)) return false;
-	assert (processId != 0);
-	assert (WaitForSingleObject (process.Native (), 0) == WAIT_TIMEOUT);
+	const auto started = StartChildInJob (job, process, processId);
+	if (started != FixtureOutcome::Passed) return started;
+	if (!(processId != 0)) return FixtureOutcome::Failed;
+	if (!(WaitForSingleObject (process.Native (), 0) == WAIT_TIMEOUT)) return FixtureOutcome::Failed;
 	// Closing the last job handle is the documented backstop.
 	job.Reset ();
-	assert (WaitForSingleObject (process.Native (), 5000) == WAIT_OBJECT_0);
-	return true;
+	if (!(WaitForSingleObject (process.Native (), 5000) == WAIT_OBJECT_0)) return FixtureOutcome::Failed;
+	return FixtureOutcome::Passed;
 }
 
-bool TestTerminateJobObject ()
+FixtureOutcome TestTerminateJobObject ()
 {
 	WindowsHandle job;
 	WindowsHandle process;
 	DWORD processId = 0;
-	if (!StartChildInJob (job, process, processId)) return false;
-	assert (processId != 0);
-	assert (WaitForSingleObject (process.Native (), 0) == WAIT_TIMEOUT);
-	assert (TerminateJobObject (job.Native (), 0x1234u));
-	assert (WaitForSingleObject (process.Native (), 5000) == WAIT_OBJECT_0);
+	const auto started = StartChildInJob (job, process, processId);
+	if (started != FixtureOutcome::Passed) return started;
+	if (!(processId != 0)) return FixtureOutcome::Failed;
+	if (!(WaitForSingleObject (process.Native (), 0) == WAIT_TIMEOUT)) return FixtureOutcome::Failed;
+	if (!(TerminateJobObject (job.Native (), 0x1234u))) return FixtureOutcome::Failed;
+	if (!(WaitForSingleObject (process.Native (), 5000) == WAIT_OBJECT_0)) return FixtureOutcome::Failed;
 	DWORD exitCode = 0;
-	assert (GetExitCodeProcess (process.Native (), &exitCode));
-	assert (exitCode == 0x1234u);
-	return true;
+	if (!(GetExitCodeProcess (process.Native (), &exitCode))) return FixtureOutcome::Failed;
+	if (!(exitCode == 0x1234u)) return FixtureOutcome::Failed;
+	return FixtureOutcome::Passed;
 }
 
 /* One request/reply round trip on the authenticated channel. */
@@ -619,7 +660,7 @@ bool PumpUntil (WindowsWorkerSupervisor & supervisor, SupervisorWorkerState stat
 int TestLiveWorker ()
 {
 	const std::wstring self = SelfExecutable ();
-	if (self.empty ()) return 77;
+	if (self.empty ()) return 1;
 
 	SupervisorStatus status;
 	WindowsWorkerSupervisorConfig config;
@@ -639,83 +680,85 @@ int TestLiveWorker ()
 
 	const DWORD baseline = HandleCount ();
 	// The supervisor scope is inside the lambda so that every outcome,
-	// including the 77 skip, still reaches the handle-count check below: a
-	// skip that returned early could not detect a leaked listener, job or
-	// process handle.
+	// including startup failure, reaches the handle-count check below.
+	// Returning outside this scope would conceal resource leaks.
 	const int outcome = [&] () -> int
 	{
 		WindowsWorkerSupervisor supervisor ("test-live-worker", config, status);
 		auto started = supervisor.Start ();
 		if (!started)
 		{
-			std::printf ("skip: cannot start a worker (%s)\n", supervisor.Diagnostic ().c_str ());
-			return 77;
+			std::printf ("failure: cannot start a worker (%s)\n", supervisor.Diagnostic ().c_str ());
+			return 1;
 		}
-		assert (supervisor.IsRunning ());
-		assert (supervisor.Generation () == 1);
-		assert (supervisor.Channel () != nullptr);
-		assert (!supervisor.PipeName ().empty ());
-		assert (RequireSnapshot (status, "test-live-worker").state == SupervisorWorkerState::Ready);
+		if (!supervisor.IsRunning ()) return 1;
+		if (!(supervisor.Generation () == 1)) return 1;
+		if (supervisor.Channel () == nullptr) return 1;
+		if (supervisor.PipeName ().empty ()) return 1;
+		const auto initial = status.Get ("test-live-worker");
+		if (!initial || initial->state != SupervisorWorkerState::Ready) return 1;
 
 		if (!PingPong (supervisor, 7, 5000))
 		{
-			std::printf ("skip: the spawned worker did not answer Ping\n");
+			std::printf ("failure: the spawned worker did not answer Ping\n");
 			(void)supervisor.Stop (5000);
-			return 77;
+			return 1;
 		}
 
-		// Kill the worker behind the supervisor's back. The Job Object would
-		// also
-		// reap it; the point here is the restart path.
+		// Kill the worker to exercise observation and replacement rather
+		// than the Job Object shutdown path.
 		const DWORD workerPid = supervisor.WorkerProcessId ();
-		assert (workerPid != 0);
+		if (workerPid == 0) return 1;
 		HANDLE victim = OpenProcess (PROCESS_TERMINATE, FALSE, workerPid);
 		if (!victim)
 		{
-			std::printf ("skip: cannot open the worker process\n");
+			std::printf ("failure: cannot open the worker process\n");
 			(void)supervisor.Stop (5000);
-			return 77;
+			return 1;
 		}
-		assert (TerminateProcess (victim, 0x55u));
+		const BOOL terminated = TerminateProcess (victim, 0x55u);
 		CloseHandle (victim);
+		if (!terminated) return 1;
 
 		if (!PumpUntil (supervisor, SupervisorWorkerState::Restarting, 5000))
 		{
-			std::printf ("skip: the supervisor did not observe the worker exit\n");
+			std::printf ("failure: the supervisor did not observe the worker exit\n");
 			(void)supervisor.Stop (5000);
-			return 77;
+			return 1;
 		}
-		assert (!supervisor.IsRunning ());
-		assert (supervisor.Generation () == 2);
-		const auto restarting = RequireSnapshot (status, "test-live-worker");
-		assert (restarting.state == SupervisorWorkerState::Restarting);
-		assert (restarting.generation == 2);
-		assert (restarting.restarts == 1);
+		if (supervisor.IsRunning ()) return 1;
+		if (!(supervisor.Generation () == 2)) return 1;
+		const auto restarting = status.Get ("test-live-worker");
+		if (!restarting) return 1;
+		if (!(restarting->state == SupervisorWorkerState::Restarting)) return 1;
+		if (!(restarting->generation == 2)) return 1;
+		if (!(restarting->restarts == 1)) return 1;
 
 		if (!PumpUntil (supervisor, SupervisorWorkerState::Ready, 10000))
 		{
-			std::printf ("skip: the replacement worker did not authenticate\n");
+			std::printf ("failure: the replacement worker did not authenticate\n");
 			(void)supervisor.Stop (5000);
-			return 77;
+			return 1;
 		}
-		assert (supervisor.IsRunning ());
-		assert (supervisor.Generation () == 2);
-		const auto ready = RequireSnapshot (status, "test-live-worker");
-		assert (ready.state == SupervisorWorkerState::Ready);
-		assert (ready.generation == 2);
-		assert (PingPong (supervisor, 8, 5000));
+		if (!supervisor.IsRunning ()) return 1;
+		if (!(supervisor.Generation () == 2)) return 1;
+		const auto ready = status.Get ("test-live-worker");
+		if (!ready) return 1;
+		if (!(ready->state == SupervisorWorkerState::Ready)) return 1;
+		if (!(ready->generation == 2)) return 1;
+		if (!PingPong (supervisor, 8, 5000)) return 1;
 
-		assert (supervisor.Stop (10000));
-		assert (!supervisor.IsRunning ());
-		assert (supervisor.WorkerProcessId () == 0);
-		assert (supervisor.Channel () == nullptr);
+		if (!supervisor.Stop (10000)) return 1;
+		if (supervisor.IsRunning ()) return 1;
+		if (!(supervisor.WorkerProcessId () == 0)) return 1;
+		if (supervisor.Channel () != nullptr) return 1;
 		// The stopped supervisor owns no listener and no pipe name either.
-		assert (supervisor.PipeName ().empty ());
+		if (!supervisor.PipeName ().empty ()) return 1;
 		return 0;
 	} ();
 
 	// Nothing may survive the supervisor: no channel, process or job
-	// handle. This runs for a pass and for a skip alike.
+	// handle. This runs for success and failure alike.
 	if (HandleCount () != baseline)
 	{
 		std::printf ("handle count %lu != baseline %lu after the live worker\n",
@@ -788,21 +831,18 @@ int main (int argc, char ** argv)
 	TestFailClosedSetup ();
 	TestFailedSpawnLeavesNoHandles ();
 	TestServiceDrainContract ();
+	TestFixtureOutcomeClassification ();
 
-	// A Job Object may be unavailable on a locked-down host; that is a
-	// skip for the two backstop checks only, not for the pure or the
-	// supervisor checks.
-	if (!TestJobObjectKillOnClose ())
+	// Run the live lifecycle even when a backstop capability is denied.
+	// A capability skip must never conceal an unrelated worker failure.
+	const auto killOnClose = TestJobObjectKillOnClose ();
+	const auto terminate = TestTerminateJobObject ();
+	const int live = TestLiveWorker ();
+	const int outcome = FixtureExitCode (killOnClose, terminate, live);
+	if (outcome == 77)
 	{
-		std::printf ("skip: Job Object KILL_ON_JOB_CLOSE needs an assignable job\n");
-		return 77;
+		std::printf ("skip: nested Job Object assignment was denied\n");
 	}
-	if (!TestTerminateJobObject ())
-	{
-		std::printf ("skip: TerminateJobObject needs an assignable job\n");
-		return 77;
-	}
-
-	return TestLiveWorker ();
+	return outcome;
 }
 #endif

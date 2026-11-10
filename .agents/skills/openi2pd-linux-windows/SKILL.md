@@ -101,6 +101,13 @@ execution. Ask for:
 
 ## Known issues and decisions
 
+- A worker exit before authentication, failed Ping or failed replacement is
+  a failed live regression, not a generic capability skip. Only a directly
+  observed native denial with matching topology may grant a fixture skip.
+  Run the live lifecycle even if a separate Job backstop is denied; its
+  failure takes precedence. Preserve cleanup and handle-count checks on
+  every outcome. Nested UI reduction alone does not explain loader failure.
+
 - Windows Until APIs retain one absolute deadline through accept, hello,
   send/read, typed refusals and graceful/forced shutdown. DWORD wrappers
   convert once; INFINITE is an explicit max-time-point sentinel and finite

@@ -555,6 +555,24 @@ endforeach()
 require_runtime_source("tests/test-torrents-tracker-dispatch.cpp"
   "TestInflightAuthorityAfterReuse ();")
 
+# Loader and authenticated lifecycle failures differ from
+# runner capability limits.
+file(READ "${PROJECT_ROOT}/tests/test-privsep-windows-supervisor.cpp" worker_fixture)
+string(FIND "${worker_fixture}" "int TestLiveWorker ()" live_begin)
+string(FIND "${worker_fixture}" "void TestServiceDrainContract ()" live_end)
+if(live_begin LESS 0 OR live_end LESS_EQUAL live_begin)
+  message(FATAL_ERROR "Missing live-worker outcome review boundary")
+endif()
+math(EXPR live_length "${live_end} - ${live_begin}")
+string(SUBSTRING "${worker_fixture}" ${live_begin} ${live_length} live_body)
+if(live_body MATCHES "return 77|assert *\\(|RequireSnapshot")
+  message(FATAL_ERROR "Live-worker failures must drain cleanup and fail, not skip")
+endif()
+require_runtime_source("tests/test-privsep-windows-supervisor.cpp"
+  "ClassifyJobAssignment (0xc0000142u, true) == FixtureOutcome::Failed")
+require_runtime_source("tests/test-privsep-windows-supervisor.cpp"
+  "const int outcome = FixtureExitCode (killOnClose, terminate, live);")
+
 # Compatibility derivation cannot authorize an unrelated supplied key.
 require_runtime_source("libi2pd/Signature.cpp"
   "if (CRYPTO_memcmp (m_PublicKeyEncoded, signingPublicKey,")
