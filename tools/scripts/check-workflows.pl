@@ -571,6 +571,8 @@ sub windows_startup_command_errors {
         q{.echo OPENI2PD_LOADER},
         q{sxe -c ".echo OPENI2PD_STARTUP_EXCEPTION; .lastevent; ln @rip; kc 20; q" av},
         q{sxe -c ".echo OPENI2PD_STARTUP_EXCEPTION; .lastevent; ln @rip; kc 20; q" 0xc0000142},
+        q{bu user32!MessageBoxA ".echo OPENI2PD_MODAL; kc 20; q"},
+        q{bu user32!MessageBoxW ".echo OPENI2PD_MODAL; kc 20; q"},
         q{bp @$exentry ".echo OPENI2PD_ENTRY; ln @rip; kc 20; g"},
         'g',
     );

@@ -206,6 +206,13 @@ workflow, run `gh`, build or test.
 
 ## Known issues and decisions
 
+- CDB @$exentry marks the PE/CRT entry, not WinMain or application main.
+  A reached entry marker does not exclude static initialization. Modal
+  attribution uses MessageBoxA/W breakpoints with code-only stacks, never
+  argument or message-text collection. Recompute offsets from the exact
+  retained image if adding application-entry breakpoints; do not reuse an
+  earlier build's RVAs. A deadline log does not provide a stalled stack.
+
 - CLANG64 startup diagnostics use installed CDB with loader and executable
   entry markers, code-only exception stacks and a 20-second process-tree
   deadline. They remain opt-in via heap_diagnostics and cannot replace
