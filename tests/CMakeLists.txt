@@ -116,6 +116,7 @@ set(I2PD_TESTS
   test-blinding
   test-elligator
   test-eddsa
+  test-command-line-policy
   test-siphash
   test-aes
   test-tui-protocol
@@ -331,6 +332,9 @@ foreach(test IN LISTS I2PD_TESTS)
     set_property(TEST ${test} APPEND PROPERTY LABELS "ipc;security;platform")
   endif()
   set_property(TEST ${test} APPEND PROPERTY LABELS unit)
+  if(test STREQUAL "test-command-line-policy")
+    set_property(TEST ${test} APPEND PROPERTY LABELS "ci;security")
+  endif()
   if(test STREQUAL "test-udp-ack-lifecycle")
     set_property(TEST ${test} APPEND PROPERTY LABELS "memory;security")
   endif()
@@ -539,6 +543,16 @@ add_test(NAME timer-cancellation-contract
 set_tests_properties(timer-cancellation-contract PROPERTIES
   LABELS "ci;static;security" TIMEOUT 60)
 
+if(TARGET test-command-line-policy)
+  add_test(NAME command-line-policy-rejections
+    COMMAND "${CMAKE_COMMAND}"
+      "-DTEST_BINARY=$<TARGET_FILE:test-command-line-policy>"
+      "-DBINARY_DIR=${CMAKE_CURRENT_BINARY_DIR}"
+      -P "${CMAKE_CURRENT_SOURCE_DIR}/check-command-line-policy.cmake")
+  set_tests_properties(command-line-policy-rejections PROPERTIES
+    LABELS "ci;security" TIMEOUT 180)
+endif()
+
 # Compile-free modern-language policy/availability check. It reads
 # AGENTS.md, CMake, Gradle, documentation and the modernization seam
 # headers only.
@@ -624,6 +638,11 @@ if(TARGET i2pd)
   set_tests_properties(i2pd-version PROPERTIES
     LABELS "ci;binary;smoke"
     TIMEOUT 30)
+  add_test(NAME i2pd-command-line-policy
+    COMMAND "${CMAKE_COMMAND}" "-DBINARY=$<TARGET_FILE:i2pd>"
+      -P "${CMAKE_CURRENT_SOURCE_DIR}/check-binary-command-line-policy.cmake")
+  set_tests_properties(i2pd-command-line-policy PROPERTIES
+    LABELS "ci;binary;security" TIMEOUT 120)
 endif()
 
 # Interoperability fixtures and documentation/provenance checks. These

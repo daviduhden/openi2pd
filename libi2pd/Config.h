@@ -76,38 +76,9 @@ namespace config
 	 */
 	int PublishInformationalResponse (CmdlineOutcome outcome);
 
-#if defined(_WIN32)
-	/*
-	 * @brief Answer an informational request from the raw command line.
-	 * @param commandLine NUL-terminated Windows command line.
-	 * @param exitCode receives the status the caller must exit with.
-	 * @return true when the banner was published; false to continue.
-	 *
-	 * A GUI-subsystem image has no documented CRT argument vector, and a
-	 * start with an empty vector would run a router instead of answering,
-	 * so the flag is read directly from GetCommandLineW(). The scan reads
-	 * wide characters only: it allocates nothing, performs no I/O and
-	 * cannot block. Only unquoted, exactly spelled `--version`/`-version`
-	 * and `--help`/`-help` tokens count; a quoted value keeps its value
-	 * even when it spells a flag, while an unquoted value that exactly
-	 * spells one is indistinguishable from the flag without parsing the
-	 * full option table. A command line the scan does not recognize still
-	 * reaches ClassifyInformationalRequest() through the converted
-	 * argument vector.
-	 *
-	 * When a flag matches, the option table is registered (if it is not
-	 * yet) because the `--help` answer renders it; nothing else is
-	 * acquired.
-	 *
-	 * The caller must exit immediately with @a exitCode after a true
-	 * return, because this call runs before any daemon state or resource
-	 * exists.
-	 */
-	bool TryPublishRawWindowsInformationalRequest (const wchar_t * commandLine, int & exitCode);
-#endif
 
 	/*
-	 * @brief Detect a version or help request without side effects.
+	 * @brief Detect a version or help request before startup.
 	 * @param argc Cmdline arguments count, should be passed from main().
 	 * @param argv Cmdline parameters array, should be passed from main()
 	 * @return the requested informational response, or
@@ -119,9 +90,10 @@ namespace config
 	 * therefore returns Proceed and the normal parse produces the
 	 * platform-appropriate diagnostic. An entry point uses this to answer
 	 * ``--version``/``--help`` before it installs any console, locale,
-	 * GUI or service state; a Windows entry point answers from the raw
-	 * command line first, through
-	 * TryPublishRawWindowsInformationalRequest().
+	 * GUI or service state. Windows converts its authoritative command
+	 * line into UTF-8 arguments before using this same classifier.
+	 * Init() registers the table and clears previous process options;
+	 * invoke the classifier before startup configuration has been parsed.
 	 */
 	CmdlineOutcome ClassifyInformationalRequest (int argc, char * argv[]);
 

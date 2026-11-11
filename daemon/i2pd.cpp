@@ -10,14 +10,15 @@
  * worker is dispatched to the pipe transport with its spawn nonce);
  * informational command-line requests are answered before any daemon
  * state exists, and normal execution runs the Daemon init/start/run/stop
- * sequence. The Windows WinMain wrapper answers an informational flag
- * from the raw command line before any argument vector exists, then
- * obtains the authoritative command line for the shared runner.
+ * sequence. Both Windows entry wrappers convert the authoritative
+ * command line before the shared parser classifies informational flags
+ * or rejects credential-bearing options.
  */
 
 #include <cstdlib>
 #include <exception>
 #include <iostream>
+#include <memory>
 #include <stdlib.h>
 #include <string>
 #include <string_view>
@@ -98,15 +99,12 @@ void WriteStandardError (std::string_view text)
 }
 
 /*
- * Authoritative UTF-8 argument vector for the GUI entry point.
+ * Authoritative UTF-8 argument vector for both Windows entry points.
  *
- * The router links as a GUI-subsystem image, which has no console and
- * for which the C runtime's __argc/__argv are not a documented contract.
- * A CRT release that leaves them untouched turns every command line,
- * "--version" included, into an argument-less router start that never
- * returns, so the Win32 command line obtained with GetCommandLineW() is
- * the only source and there is no CRT fallback: a failed conversion
- * makes the entry point fail closed.
+ * The GUI image can reach main or WinMain depending on its CRT. Both
+ * paths use GetCommandLineW() so argument parsing has one authority.
+ * Conversion failure aborts instead of substituting CRT globals and
+ * accidentally starting a router with a different command line.
  *
  * The conversion is UTF-8 because every consumer of argv (the option
  * parser, path handling) treats arguments as UTF-8; an unrepresentable
@@ -118,42 +116,46 @@ public:
 	WindowsCommandLine ()
 	{
 		int count = 0;
-		LPWSTR * wide = CommandLineToArgvW (GetCommandLineW (), &count);
-		if (!wide || count <= 0)
-		{
-			if (wide) LocalFree (wide);
-			return;
-		}
+		using WideArguments = std::unique_ptr<LPWSTR, decltype (&LocalFree)>;
+		WideArguments wide (CommandLineToArgvW (GetCommandLineW (), &count), LocalFree);
+		if (!wide || count <= 0) return;
 		m_Storage.reserve (static_cast<size_t> (count));
 		for (int i = 0; i < count; ++i)
 		{
 			// -1 includes the terminating NUL, which the vector must not
 			// keep: capacity is length bytes and the stored string is one
 			// byte shorter.
-			const int length = wide[i] ? WideCharToMultiByte (CP_UTF8, 0, wide[i], -1, nullptr, 0, nullptr, nullptr) : 0;
+			const auto value = wide.get ()[i];
+			const int length = value ? WideCharToMultiByte (CP_UTF8, 0, value, -1, nullptr, 0, nullptr, nullptr) : 0;
 			if (length <= 0)
 			{
 				m_Storage.clear ();
 				break;
 			}
 			std::string argument (static_cast<size_t> (length), '\0');
-			WideCharToMultiByte (CP_UTF8, 0, wide[i], -1, argument.data (), length, nullptr, nullptr);
+			const int written = WideCharToMultiByte (
+				CP_UTF8, 0, value, -1, argument.data (), length, nullptr, nullptr);
+			if (written != length)
+			{
+				m_Storage.clear ();
+				return;
+			}
 			argument.pop_back ();
 			m_Storage.push_back (std::move (argument));
 		}
-		LocalFree (wide);
 		// Build the pointer array only after the last string exists: a
 		// reallocation would otherwise invalidate an earlier pointer.
-		m_Arguments.reserve (m_Storage.size ());
+		m_Arguments.reserve (m_Storage.size () + 1);
 		for (auto & argument : m_Storage) m_Arguments.push_back (argument.data ());
+		m_Arguments.push_back (nullptr);
 	}
 
-	/// True when the whole command line was converted. A caller must fail
-	/// closed otherwise: the CRT globals are not a fallback, because a
-	/// GUI-subsystem image can leave them empty and an argument-less start
-	/// would run a router instead of honouring the command line.
-	bool Valid () const { return !m_Arguments.empty (); }
-	int argc () const { return static_cast<int> (m_Arguments.size ()); }
+	/// True after every argument converts; failure must abort.
+	/// CRT globals may discard a rejected operand or silently change the
+	/// original request into a router start.
+	bool Valid () const { return m_Arguments.size () > 1; }
+	int argc () const { return static_cast<int> (m_Storage.size ()); }
+	/// Borrow strings and the trailing null for this object's lifetime.
 	char ** argv () { return m_Arguments.data (); }
 
 private:
@@ -204,14 +206,60 @@ int RunI2PD (int argc, char * argv[])
 		std::_Exit (i2p::config::PublishInformationalResponse (informational));
 	}
 
+#ifdef _WIN32
+	// Reject invalid CLI operands before Win32 installs a modal reporter.
+	// Daemon initialization resets and parses the same option table again
+	// before loading configuration; worker dispatch has already returned.
+	i2p::config::ParseCmdline (argc, argv);
+#endif
 	if (!Daemon.init (argc, argv)) return EXIT_FAILURE;
 	if (!Daemon.start ()) return EXIT_FAILURE;
 	Daemon.run ();
 	Daemon.stop ();
 	return EXIT_SUCCESS;
 }
+
+#ifdef _WIN32
+/*
+ * Both CRT entry variants use one authoritative Windows command line.
+ * MinGW can select main even for the GUI image, so WinMain alone cannot
+ * own informational classification or worker argument conversion.
+ */
+int RunWindowsEntryPoint ()
+{
+	try
+	{
+		SuppressInteractiveErrorDialogs ();
+		// Informational flags use the complete parser after conversion.
+		// A second raw grammar could bypass credential rejection or
+		// disagree about later options. A CRT fallback is forbidden.
+		WindowsCommandLine commandLine;
+		if (!commandLine.Valid ())
+		{
+			WriteStandardError ("i2pd: fatal error: cannot read the command line\n");
+			return EXIT_FAILURE;
+		}
+		return RunI2PD (commandLine.argc (), commandLine.argv ());
+	}
+	catch (const std::exception &)
+	{
+		WriteStandardError ("i2pd: fatal error: unhandled exception\n");
+	}
+	catch (...)
+	{
+		WriteStandardError ("i2pd: fatal error: unknown exception\n");
+	}
+	return EXIT_FAILURE;
+}
+#endif
 } // namespace
 
+#ifdef _WIN32
+int main ()
+{
+	return RunWindowsEntryPoint ();
+}
+#else
 int main (int argc, char * argv[])
 {
 	// An exception that escapes init/start/run/stop must become a normal
@@ -233,36 +281,12 @@ int main (int argc, char * argv[])
 	}
 	return EXIT_FAILURE;
 }
+#endif
 
 #ifdef _WIN32
 int CALLBACK WinMain (
 	_In_ HINSTANCE /*hInstance*/, _In_ HINSTANCE /*hPrevInstance*/, _In_ LPSTR /*lpCmdLine*/, _In_ int /*nCmdShow*/)
 {
-	// A modal dialog is unreachable on an unattended runner, so from the
-	// first instruction on a failure must surface through the exit status.
-	SuppressInteractiveErrorDialogs ();
-
-	// Answer --version/--help from the raw command line before an argument
-	// vector, an allocation or any daemon state exists. A GUI-subsystem
-	// image has no documented CRT argv, and a start with an empty vector
-	// would begin routing and never return. The scan cannot block, and a
-	// command line it does not recognize still reaches the converted
-	// vector and the shared parser below.
-	int informationalExit = EXIT_SUCCESS;
-	if (i2p::config::TryPublishRawWindowsInformationalRequest (GetCommandLineW (), informationalExit))
-		std::_Exit (informationalExit);
-
-	// Every remaining path needs a real argument vector for the daemon's
-	// own parser. It is built from GetCommandLineW() only: __argc/__argv
-	// are not a contract in a GUI-subsystem image, and falling back to
-	// them silently turns a mistyped command line into an argument-less
-	// router start. A failed conversion therefore fails closed.
-	WindowsCommandLine commandLine;
-	if (!commandLine.Valid ())
-	{
-		WriteStandardError ("i2pd: fatal error: cannot read the command line\n");
-		return EXIT_FAILURE;
-	}
-	return RunI2PD (commandLine.argc (), commandLine.argv ());
+	return RunWindowsEntryPoint ();
 }
 #endif

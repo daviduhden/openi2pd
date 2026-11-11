@@ -795,3 +795,36 @@ require_runtime_order("libi2pd_client/UDPTunnel.cpp"
 require_runtime_source("libi2pd_client/UDPTunnel.cpp"
   "GetAckCancellationError ().value ()")
 require_runtime_source("tests/CMakeLists.txt" "timer-cancellation-contract")
+
+# Registered defaults are not explicit credentials; empty operands are.
+require_runtime_source("libi2pd/Config.cpp"
+  "found != options.end () && !found->second.defaulted ()")
+require_runtime_order("libi2pd/Config.cpp"
+  "if (HasCommandLineCredential (m_Options))"
+  "if (!ignoreUnknown && (m_Options.count (\"help\")"
+  "std::exit (EXIT_FAILURE);")
+file(READ "${PROJECT_ROOT}/libi2pd/Config.cpp" config_policy_source)
+if(config_policy_source MATCHES "[.]what [(][)]"
+    OR config_policy_source MATCHES "ScanRawCommandLine|ClassifyRawToken|TryPublishRawWindowsInformationalRequest")
+  message(FATAL_ERROR "Config diagnostics and informational paths must share safe parsing")
+endif()
+file(READ "${PROJECT_ROOT}/daemon/i2pd.cpp" entry_policy_source)
+string(REGEX MATCHALL "return RunWindowsEntryPoint [(][)]" entry_calls "${entry_policy_source}")
+list(LENGTH entry_calls entry_count)
+if(NOT entry_count EQUAL 2)
+  message(FATAL_ERROR "Both Windows entries must share authoritative conversion")
+endif()
+require_runtime_order("daemon/i2pd.cpp" "int RunWindowsEntryPoint ()"
+  "} // namespace" "WindowsCommandLine commandLine;"
+  "RunI2PD (commandLine.argc (), commandLine.argv ())")
+require_runtime_source("daemon/i2pd.cpp"
+  "WideArguments wide (CommandLineToArgvW (GetCommandLineW (), &count), LocalFree);")
+require_runtime_source("daemon/i2pd.cpp" "if (written != length)")
+require_runtime_source("tests/CMakeLists.txt" "command-line-policy-rejections")
+require_runtime_source("tests/check-command-line-policy.cmake"
+  "if(NOT child_status STREQUAL \"1\")")
+require_runtime_source("tests/test-command-line-policy.cpp"
+  "assert (found->second.defaulted ());")
+require_runtime_source("tests/CMakeLists.txt" "i2pd-command-line-policy")
+require_runtime_order("daemon/i2pd.cpp" "int RunI2PD (" "int RunWindowsEntryPoint ()"
+  "i2p::config::ParseCmdline (argc, argv);" "Daemon.init (argc, argv)")

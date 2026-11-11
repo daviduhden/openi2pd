@@ -25,8 +25,8 @@
 #if defined(_WIN32)
 // GetStdHandle/GetFileType/SetLastError/WriteFile for the inherited
 // standard-handle informational path; the SDK macros come from the
-// libi2pd compile contract. The raw command line itself is read by the
-// WinMain wrapper, which passes the answer request here.
+// libi2pd compile contract. Both entries convert the authoritative
+// command line to UTF-8 before entering the shared option parser.
 #include <windows.h>
 #endif
 #include <boost/program_options/cmdline.hpp>
@@ -561,7 +561,8 @@ namespace config
 		 * would be visible in process listings and shell history. The one
 		 * list is shared by the informational probe and the real parse so
 		 * a version/help request cannot bypass the rejection by being
-		 * answered earlier.
+		 * answered earlier. Registered defaults are not supplied operands;
+		 * an explicitly supplied empty string still counts as one.
 		 */
 		bool HasCommandLineCredential (const variables_map & options)
 		{
@@ -569,7 +570,8 @@ namespace config
 				"socksproxy.auth.username", "socksproxy.auth.password" };
 			for (const char * secret : secretOptions)
 			{
-				if (options.count (secret)) return true;
+				const auto found = options.find (secret);
+				if (found != options.end () && !found->second.defaulted ()) return true;
 			}
 			return false;
 		}
@@ -614,7 +616,7 @@ namespace config
 		 * text is written in 16 KiB chunks, and only handle operations are
 		 * used: no window, dialog or console state is touched.
 		 */
-		bool WriteAll (HANDLE handle, const std::string & text)
+		bool WriteAll (HANDLE handle, std::string_view text)
 		{
 			size_t offset = 0;
 			while (offset < text.size ())
@@ -631,7 +633,7 @@ namespace config
 		/*
 		 * Write @a text to one inherited standard handle.
 		 * @param which STD_OUTPUT_HANDLE or STD_ERROR_HANDLE.
-		 * @param text complete banner text to publish.
+		 * @param text trusted text to publish.
 		 * @return true when the handle accepted the whole text.
 		 *
 		 * A handle the caller did not provide is treated as absent: a
@@ -640,7 +642,7 @@ namespace config
 		 * attached, allocated or reopened, so a missing or invalid handle
 		 * cannot block the answer.
 		 */
-		bool WriteStandardHandle (DWORD which, const std::string & text)
+		bool WriteStandardHandle (DWORD which, std::string_view text)
 		{
 			const HANDLE handle = GetStdHandle (which);
 			if (handle == nullptr || handle == INVALID_HANDLE_VALUE) return false;
@@ -687,85 +689,19 @@ namespace config
 #endif
 		}
 
-#if defined(_WIN32)
-		/*
-		 * Map one unquoted raw command-line token to a request.
-		 * @param token first character of the token.
-		 * @param length token length in wide characters.
-		 * @return the requested answer, or CmdlineOutcome::Proceed.
-		 *
-		 * Only the spellings the option table accepts are recognized,
-		 * including the single-dash long form that allow_long_disguise
-		 * enables. A quoted token never reaches this function, so a
-		 * `--version` used as an option value stays a value.
-		 */
-		CmdlineOutcome ClassifyRawToken (const wchar_t * token, size_t length)
+		// Parser outcomes use inherited stderr without CRT console state.
+		// Call only with trusted labels, never rejected operands.
+		void WriteParserError (std::string_view text)
 		{
-			static constexpr std::wstring_view version = L"--version";
-			static constexpr std::wstring_view disguisedVersion = L"-version";
-			static constexpr std::wstring_view help = L"--help";
-			static constexpr std::wstring_view disguisedHelp = L"-help";
-			const std::wstring_view value (token, length);
-			if (value == version || value == disguisedVersion) return CmdlineOutcome::Version;
-			if (value == help || value == disguisedHelp) return CmdlineOutcome::Help;
-			return CmdlineOutcome::Proceed;
+#if defined(_WIN32)
+			WriteStandardHandle (STD_ERROR_HANDLE, text);
+#else
+			std::fwrite (text.data (), 1, text.size (), stderr);
+			std::fflush (stderr);
+#endif
 		}
 
-		/*
-		 * Scan a raw Windows command line for an informational flag.
-		 * @param commandLine NUL-terminated line from GetCommandLineW().
-		 * @return the requested answer, or CmdlineOutcome::Proceed.
-		 *
-		 * A GUI-subsystem image has no documented CRT argument vector, and
-		 * an empty argument vector starts a router instead of answering,
-		 * so the flag is read from the raw command line. The scan reads
-		 * wide characters only, allocates nothing, performs no I/O and
-		 * cannot block. A token that contains a quote is never matched,
-		 * which keeps a quoted option value a value even when the value
-		 * spells a flag; the authoritative parser still decides every
-		 * command line the scan does not recognize. An unquoted `--` ends
-		 * the scan because every later token is positional.
-		 */
-		CmdlineOutcome ScanRawCommandLine (const wchar_t * commandLine)
-		{
-			if (!commandLine) return CmdlineOutcome::Proceed;
-			size_t offset = 0;
-			while (commandLine[offset])
-			{
-				if (commandLine[offset] == L' ' || commandLine[offset] == L'\t')
-				{
-					++offset;
-					continue;
-				}
-				const size_t start = offset;
-				bool quoted = false;
-				while (commandLine[offset])
-				{
-					const wchar_t current = commandLine[offset];
-					if (current == L'"')
-					{
-						// A quote makes the token a value, whether it opens a
-						// quoted argument or was escaped by a backslash: only
-						// a bare spelling names an option.
-						quoted = true;
-						++offset;
-						continue;
-					}
-					if (current == L' ' || current == L'\t') break;
-					++offset;
-				}
-				const size_t length = offset - start;
-				if (!quoted)
-				{
-					if (length == 2 && commandLine[start] == L'-' && commandLine[start + 1] == L'-')
-						return CmdlineOutcome::Proceed;
-					const auto outcome = ClassifyRawToken (commandLine + start, length);
-					if (outcome != CmdlineOutcome::Proceed) return outcome;
-				}
-			}
-			return CmdlineOutcome::Proceed;
-		}
-#endif
+
 	} // namespace
 
 	int PublishInformationalResponse (CmdlineOutcome outcome)
@@ -778,29 +714,12 @@ namespace config
 		return EXIT_SUCCESS;
 	}
 
-#if defined(_WIN32)
-	bool TryPublishRawWindowsInformationalRequest (const wchar_t * commandLine, int & exitCode)
-	{
-		const auto outcome = ScanRawCommandLine (commandLine);
-		if (outcome == CmdlineOutcome::Proceed) return false;
-		// The renderer prints the registered option table for --help, so
-		// the table must exist even though nothing parsed the command line.
-		// Init() only registers options and drops previously stored values.
-		Init ();
-		// Nothing else has been acquired on this path, so the caller may
-		// exit at once: there is no teardown that could wait on state this
-		// process never created.
-		exitCode = PublishInformationalResponse (outcome);
-		return true;
-	}
-#endif
 
 	CmdlineOutcome ClassifyInformationalRequest (int argc, char * argv[])
 	{
-		// A local option map: this probe never mutates the process
-		// configuration. An unrecognized or malformed command line, and one
-		// that carries credentials, is the normal parser's business, so it
-		// reports Proceed here.
+		// Startup-only probe: Init resets process options before parsing
+		// into a local map. Malformed input and explicit credentials must
+		// reach the normal parser's refusal rather than publish a banner.
 		Init ();
 		try
 		{
@@ -842,18 +761,25 @@ namespace config
 			else
 				store (parse_command_line (argc, argv, m_OptionsDesc, style), m_Options);
 		}
-		catch (boost::program_options::error & e)
+		catch (const boost::program_options::error &)
 		{
-			ThrowFatal ("Error while parsing arguments: ", e.what ());
-			std::cerr << "args: " << e.what () << std::endl;
+			// Parser exception text can contain rejected operands.
+			ThrowFatal ("Error while parsing arguments");
+			WriteParserError ("Error while parsing arguments\n");
 			exit (EXIT_FAILURE);
 		}
 
 		// Credentials are configuration-file only: a command-line value would
 		// be visible in process listings and shell history.
 		if (HasCommandLineCredential (m_Options))
+		{
 			ThrowFatal (
 				"Proxy authentication credentials must be set in the configuration file, not on the command line");
+			WriteParserError ("Proxy credentials are configuration-file only\n");
+			// Reporting callbacks may return, including a Windows dialog.
+			// Refusal must still precede informational output or startup.
+			std::exit (EXIT_FAILURE);
+		}
 
 		if (!ignoreUnknown && (m_Options.count ("help") || m_Options.count ("h")))
 		{
@@ -876,8 +802,8 @@ namespace config
 
 		if (!config.is_open ())
 		{
-			ThrowFatal ("Missing or unreadable config file: ", path);
-			std::cerr << "missing/unreadable config file: " << path << std::endl;
+			ThrowFatal ("Missing or unreadable config file");
+			WriteParserError ("Missing or unreadable config file\n");
 			exit (EXIT_FAILURE);
 		}
 
@@ -885,10 +811,11 @@ namespace config
 		{
 			store (boost::program_options::parse_config_file (config, m_OptionsDesc), m_Options);
 		}
-		catch (boost::program_options::error & e)
+		catch (const boost::program_options::error &)
 		{
-			ThrowFatal ("Error while parsing config file: ", e.what ());
-			std::cerr << e.what () << std::endl;
+			// A malformed line or value can itself carry credentials.
+			ThrowFatal ("Error while parsing config file");
+			WriteParserError ("Error while parsing config file\n");
 			exit (EXIT_FAILURE);
 		};
 	}

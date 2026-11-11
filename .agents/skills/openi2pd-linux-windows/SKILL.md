@@ -183,22 +183,17 @@ execution. Ask for:
   lifecycle helper owns the single rollback stop. `SIGINT` drain goes through
   `BeginGracefulShutdown()` so `ADMIN SHUTDOWN CANCEL` restores the recorded
   transit policy.
-- A GUI-subsystem router answers informational flags from the raw command
-  line at the first `WinMain` instruction; inherited handles only, no
-  `AttachConsole`, no CRT `__argc/__argv` fallback. Set `SetLastError(NO_ERROR)`
-  before a `GetFileType` probe, which does not reset the last error.
-- A GUI-subsystem router answers informational flags from
-  `GetCommandLineW()` at the first `WinMain` instruction, never from CRT
-  `__argc/__argv`; do not attach to a console, and fall back only to the
-  inherited stderr. A repeated empty-output hang means the block is before
-  `WinMain`; inspect subsystem/imports/ldd.
+- The GUI image may reach main or WinMain. Both must convert the complete
+  GetCommandLineW argument vector and enter the shared parser before daemon
+  state. A separate raw flag scan bypassed credential validation; it was
+  removed. Keep inherited handles only, no AttachConsole or CRT-global
+  fallback. Own CommandLineToArgvW storage across conversion exceptions,
+  validate both UTF-8 conversion passes and retain argv's trailing null.
+  An empty-output hang does not prove WinMain or application main was skipped.
+  Set SetLastError(NO_ERROR) before GetFileType, which does not clear it.
 - `CreateProcessW` may rewrite the mutable command-line buffer: build a fresh
   one per attempt. Containment is unconditional; refuse a policy without a
   Job Object and an invalid job handle.
-- A GUI-subsystem router answers `--version`/`--help` at the first
-  `WinMain` instruction from the raw command line, before any argv or
-  `Daemon.init`; write only to inherited handles (no `AttachConsole`), never
-  fall back to CRT `__argc/__argv`, then `_Exit`.
 - `UpdateProcThreadAttribute` stores a pointer: every value must live until
   `CreateProcess` returns. AppContainer profile SIDs are `FreeSid`-owned.
   A nested job cannot set UI limits; keep containment/resource limits, drop

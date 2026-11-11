@@ -274,6 +274,9 @@ length as authority to read, allocate or clear any output buffer.
 Classify sensitive intermediates across their entire lifetime, not from
 the final public output. Arithmetic can turn an initially public scalar
 into private-key-dependent state before a later operation fails.
+Distinguish registered option defaults from explicitly supplied operands.
+Informational fast paths must share the full parser's validation; a
+second flag grammar must not bypass credential or malformed-input refusal.
 
 At parser boundaries, rejected numeric fields and malformed first tokens
 remain arbitrary input. Review complete command buffers, ignored fields

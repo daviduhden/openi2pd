@@ -107,6 +107,14 @@ Do not let reconnaissance agents edit, compile, execute tests or run scripts.
 
 ## Known issues and decisions
 
+- Program_options materializes defaults, including empty credentials.
+  Credential admission uses find plus !defaulted, never map presence or
+  nonempty-value checks. Explicit empty operands still refuse. Inspect
+  command-line and INI parse exceptions together: their what() text can
+  quote rejected operands. Child regressions require exact refusal status,
+  trusted diagnostics and absence of sentinels/sanitizer output; WILL_FAIL
+  alone can mistake a sanitizer failure for a successful rejection.
+
 - Caller-provided lengths cannot authorize output clearing until they pass
   the API's supported geometry checks. Include SIZE_MAX and tiny output
   buffers in negative controls so integer wrap and premature reads/writes
