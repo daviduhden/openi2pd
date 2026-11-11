@@ -15,15 +15,19 @@ requirements and current code; `TODO.md` is the authoritative task list.
 
 ## Current baseline
 
-At c25a0b08, the pre-diagnostic snapshot has 424 completed runs on 69 SHAs.
-Native OpenSSL/sanitizer suites pass and earlier decoder/geometry/startup
-controls execute successfully. Windows remains CI failure; source docs and
-service/Debian acquisition are Blocked by runner DNS (TF-103). Android Lint,
-OpenBSD root skips and skipped devices remain separate coverage limits.
-Local secret-scalar cleansing, UDP ACK admission and coherent storage-root
-publication are Implemented / static; Pending CI compilation / Pending CI
-tests. Caller-PC diagnostic 43055686363 executes only published c25a0b08.
-Broader DHT/UDP lifetimes, PRIVSEP-017 deferred reaping and CRY-236 remain.
+At 74d49559, history reaches 435 completed runs on 70 SHAs. CE-088 recurs
+in UDP cancellation and blocks current-Boost native execution; older-Boost
+package successes do not resolve it. TF-103 still blocks docs/services.
+The completed c25 caller-PC diagnostic identifies the CLANG64 modal's defaulted
+credential refusal through main; MSVC worker initialization remains unresolved.
+Local portable cancellation, guarded registration, authoritative shared Windows
+entry and credential/refusal/redaction corrections are Implemented / static;
+Pending CI compilation / Pending CI tests. New controls cover rejection exit
+status, secrets/sanitizers, binary flag order and timer-source variants.
+Private scalar cleanup and checked transactional GOST signing are also
+Implemented / static; Pending CI compilation / Pending CI tests. These do
+not close provider/allocation injection or the wider signing API audit.
+Android/device, broader DHT/UDP, PRIVSEP-017 and CRY-236 gaps remain.
 
 The 80a487d5 retrospective reaches 362 runs on 63 SHAs. Native sanitizer,
 OpenSSL, OpenBSD and selected MSVC regressions pass; Windows MSYS2 Unicode

@@ -5,6 +5,49 @@ and license details.
 
 # Test failure inventory
 
+## 74d49559 — compile recurrence and exact historical diagnostic
+
+Snapshot: 435 completed runs / 70 SHAs; 113 success, 256 failure, 66 cancelled.
+The eleven additions are ten 74d49559 workflows (one success / nine failure)
+and the earlier c25 Windows diagnostic. All latest logs, job metadata and
+artifact inventories were retrieved; exact diagnostic and package artifacts
+were inspected. Historical unavailable logs remain evidence gaps.
+
+At `74d495596815075002f633e105affc62be14ad1c`, CE-088 blocks current-Boost
+OpenSSL, OpenBSD, Android, Linux consumer, Windows, sanitizer and fuzzer native
+execution. Exact affected jobs are grouped in the CE-088 compilation entry.
+No new native CTest/sanitizer/fuzz success is inferred from those jobs.
+Android has no new JVM/Lint/Javadoc/JNI/APK evidence; its device job
+130657138002 skips, and artifact inventory is empty.
+
+Successful siblings remain distinct:
+
+- Packaging [43059250963](https://github.com/daviduhden/openi2pd/actions/runs/43059250963):
+  container 130657001436, Debian 130657001503 and static musl 130657001682
+  pass with older Boost versions. Exact regular/static package artifacts exist;
+  package smoke/lifecycle checks are not the native ACK/storage CTest suites.
+- Linux interop 43059296683 / 130657161810 passes reference/vector checks,
+  not live Java handshakes or the failed consumer job.
+- Agent gate 43059257292 / 130657025304 and Validation Skills 43059303577 /
+  130657189219 pass. Optional Perl quality 130657192471 skips.
+
+TF-103 recurs in source-docs job 130657188996 and service jobs
+130657000939/130657001652: apt DNS failure before generator/contracts. Unlike
+c25, this revision's Debian job succeeds; retain exact per-job evidence.
+No retry, warning suppression or disabled validator was introduced.
+
+Historical diagnostic [43055686363](https://github.com/daviduhden/openi2pd/actions/runs/43055686363)
+on c25: CLANG64 130644394120 captures the actual modal caller (RT-083);
+MSVC 130644393455 still reports worker initialization 0xC0000142 before auth.
+These are separate runtime families. Current Windows 43059237413 does not
+reach those tests because compilation fails.
+
+New command-line native/default controls, isolated refusal/redaction children,
+actual-router entry probes and timer-checker negative fixtures are registered
+for existing manual CI. New implementation remains Pending CI compilation /
+Pending CI tests. A rejection wrapper requires exact code 1, trusted outcome
+and no sanitizer or sentinel; arbitrary nonzero/WILL_FAIL cannot prove refusal.
+
 ## c25a0b08 — TF-103 infrastructure acquisition failure
 
 Snapshot before diagnostic dispatch: 424 completed runs / 69 SHAs;

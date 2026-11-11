@@ -8063,3 +8063,63 @@ or push.
   retirement and missing infrastructure coverage. Independent integration
   review found no further blocking defect after the cache/socket correction.
   New runtime and provider/allocation-failure validation remain pending CI.
+
+## 74d49559 retrospective and cross-platform correction
+
+- Started from clean 74d495596815075002f633e105affc62be14ad1c. Ten specialists
+  covered history, native warnings, memory, concurrency, crypto/I2P, IPC,
+  torrents, Android, portability and regressions. Retrieved full latest-ten
+  and prior diagnostic logs, exact jobs/SHAs and artifact inventories.
+- Paginated 435 completed runs / 70 SHAs: 113 success, 256 failure,
+  66 cancelled. Latest ten have one success and nine failures. Historical
+  unavailable logs remain explicit gaps, not evidence of clean targets.
+- Recurrent CE-088 is one timer cancel(error_code) root cause across current
+  Boost lanes. Existing guard omitted UDPTunnel. Successful package siblings
+  use older Boost 1.83/1.84; no native sanitizer/ACK coverage is inferred.
+  Source docs and services still fail acquisition DNS under TF-103.
+- Exact c25 diagnostic 43055686363 captures MessageBoxA caller PCs. Resolving
+  the retained image identifies ThrowFatal/ParseCmdline's credential branch
+  through main. Config/entry files are unchanged between c25 and 74. This
+  resolves that modal attribution only, not MSVC worker 0xC0000142 or old heaps.
+- Fixed portable ACK cancellation after identity revocation; cleanup retains
+  a diagnostic code in an observable getter/stats without allocating during
+  unwind. Expiry update and async registration now share one rollback interval.
+- Fixed Config's registered-default versus explicit credential distinction.
+  Explicit empty/value inputs still refuse; reporting callbacks returning
+  cannot permit startup. Both Windows entries now use authoritative converted
+  argv with LocalFree RAII, checked UTF8 conversion and trailing null. Removed
+  the raw scanner, whose independent grammar could bypass later credentials.
+  Windows CLI preflight rejects bad input before a modal reporter exists.
+- Replaced command/INI exception and unreadable-path operand diagnostics with
+  trusted outcomes. Parser stderr uses inherited Windows handles without CRT
+  console assumptions. Configuration formats and security checks are preserved.
+- Prepared native classification/default controls, isolated credential and
+  malformed-input child matrix, actual router flag-order refusal probes and
+  timer-checker negative variants. Wrappers require exact exit1, public outcome
+  and no banner/sentinel/sanitizer diagnostic; no WILL_FAIL or local execution.
+- Extended source coverage across native components; name matching supplements
+  manual type/alias review rather than proving full compiler compatibility.
+  Existing valid socket/acceptor APIs remain untouched. New controls are wired
+  into CTest and existing manual lanes, pending compilation/runtime evidence.
+- Updated AGENTS, build/CI/C++23/memory/Linux-Windows Skills, six inventories,
+  TODO, ROADMAP and CI documentation. New changes remain Implemented / static;
+  Pending CI compilation / Pending CI tests. No local configure/build/compiler,
+  project test, commit or push was invoked.
+
+- RT-086: extended clear-free cleanup to copied private signature scalars.
+  GOST signing now checks all arithmetic, stages complete output, aborts
+  RNG failure and cleanses nonce/context secrets. Prepared malformed-input
+  regressions retain existing vector controls; provider/allocation fault
+  injection and the wider CRY-236 API remain pending. Reviewed the crypto
+  Skill and added reusable ownership/publication procedures. Implemented /
+  static; Pending CI compilation / Pending CI tests.
+
+- Final compile-free review passed: whitespace (including five untracked
+  source/contract files), control-security/timer contracts, build graph,
+  Skills, language policy, manual workflow policy, 118 Markdown link maps,
+  Doxygen parameter references and Shell policy (322 sources). Knowledge
+  validation passed with AK004's semantic advisory manually reviewed.
+  Reviewed AGENTS and six affected Skills: reusable changes distinguish
+  explicit option provenance, authoritative Windows parsing, portable timer
+  cleanup and transactional secret-state publication. Native tests, negative
+  fixture drivers, builds and sanitizers were prepared but not run locally.

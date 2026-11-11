@@ -206,6 +206,13 @@ workflow, run `gh`, build or test.
 
 ## Known issues and decisions
 
+- Resolve a raw Windows return PC against the exact retained PE image and
+  its load base before attributing a hang. The c25 diagnostic mapped the
+  modal to ParseCmdline's credential refusal through main, not a loader or
+  provider failure. The MSVC worker initialization failure is separate.
+  Recheck prior compiler families after refactors: CE-088 recurred because
+  a timer guard covered only a fixed source list and missed UDPTunnel.
+
 - Dependency DNS failures can affect documentation, service checks and
   packaging together before product commands run. Group the failed apt
   mirror/job evidence, retain successful sanitizer siblings, and mark the

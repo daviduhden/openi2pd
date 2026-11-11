@@ -10,18 +10,22 @@ Documents project documentation.
 
 # Master TODO
 
-Latest retrospective: 424 completed runs on 69 SHAs (112 success,
-246 failure, 66 cancelled), before diagnostic 43055686363. Published c25a0b08
-has seven successful workflows; Windows repeats runtime failures. Validation
-source docs and Packaging service/Debian acquisition are blocked by TF-103
-runner DNS before affected checks. Executed OpenSSL/sanitizer suites pass;
-CW-031/032 remain absent; RT-079/080 and published RT-078 controls pass.
-OpenBSD retains three root skips; Android retains fourteen Lint warnings and
-no device run. RT-081 secret-intermediate cleansing, RT-082 UDP ACK admission
-and coherent root-metadata publication are Implemented / static; Pending CI
-compilation / Pending CI tests. DHT/other UDP lifetimes, PRIVSEP-017 deferred
-reaping, allocator injection and broad signing propagation remain open.
-See docs/ci inventories for exact jobs, coverage gaps and diagnostic status.
+Latest retrospective: 435 completed runs on 70 SHAs (113 success,
+256 failure, 66 cancelled). Latest 74d49559 has one successful workflow and
+nine failures, chiefly CE-088's reintroduced Boost timer cancel(error_code).
+Older-Boost package siblings pass; current native tests/sanitizers are blocked.
+TF-103 DNS still blocks docs/services. Exact c25 diagnostic 43055686363 now
+attributes CLANG64's modal to defaulted credentials in ParseCmdline through
+main; MSVC worker 0xC0000142 remains separate. Portable cancellation and guarded
+expiry/registration, shared authoritative Windows entry, explicit/defaulted
+credential policy and parser redaction are Implemented / static; Pending CI
+compilation / Pending CI tests. New native/child/binary/negative-source controls
+are registered. Prior Android Lint, skipped devices, broad lifecycle/provider
+allocation and PRIVSEP-017/CRY-236 gaps remain open. See docs/ci inventories.
+
+- RT-086: private scalar cleansing and transactional GOST signing:
+  Implemented / static; Pending CI compilation / Pending CI tests.
+  Provider/allocation fault injection and wider CRY-236 API remain Pending.
 
 - CONT-050: portable supervisor admission and Asio timer teardown:
   Validated by CI in the executed 9f2934f8 lanes; no clean-matrix claim.
@@ -43,8 +47,13 @@ See docs/ci inventories for exact jobs, coverage gaps and diagnostic status.
   Implemented / static; Pending CI compilation / Pending CI tests.
 - TF-103: runner DNS prevents source docs and service/package checks:
   Blocked; Pending CI tests. No retry/suppression workaround introduced.
-- Windows startup caller PCs: Published; Pending CI tests in 43055686363.
-  Application/worker initialization causes remain Correction pending.
+- Windows caller-PC capture: Validated by CI at c25a0b08 / 43055686363.
+  CLANG64 defaulted-credential cause identified; correction Pending CI tests.
+  MSVC worker initialization remains Correction pending.
+- CE-088 recurrence: portable ACK timer API and broad source guard:
+  Implemented / static; Pending CI compilation / Pending CI tests.
+- RT-083 / RT-084 / RT-085: CLI policy/entry, redaction and cancellation:
+  Implemented / static; Pending CI compilation / Pending CI tests.
 - CONT-051: coherent peer interest across availability, selection and active
   requests: Validated by CI at 9f2934f8. Subsequent HAVE_NONE/BITFIELD
   controls are Implemented / static; Pending CI tests.

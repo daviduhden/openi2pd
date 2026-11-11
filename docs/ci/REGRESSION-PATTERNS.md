@@ -5,6 +5,32 @@ and license details.
 
 # Regression patterns
 
+## Entry parsing, explicit provenance and failure outcomes
+
+- Resolve diagnostic PCs against the exact image/load base. A GUI subsystem
+  does not establish whether main or WinMain ran; a modal stack is not proof
+  of a loader/provider failure. Keep unrelated worker initialization separate.
+- Registered defaults are not explicit CLI input. Test all credential keys,
+  explicit empty values, flag order and help/version through one full parser.
+  A reporter returning does not authorize continuing after refusal.
+- Scan command/INI parse exceptions and unreadable-path diagnostics together.
+  Require trusted outcomes and no synthetic sentinel in both output channels.
+- Positive executable control plus exact refusal status prevents unrelated
+  startup failures from masquerading as policy success. Sanitizer output fails
+  even when its process returns the same code as deliberate refusal.
+- Revoke timer authority before cancellation; preserve cancellation diagnostics
+  without allocating during unwind. Guard expiry update and async registration
+  as one transaction. Negative source fixtures vary names/whitespace/receiver
+  spelling and retain valid socket controls. Execution remains pending CI.
+
+## Transactional signing failure (RT-086)
+
+Check every intermediate arithmetic result before publishing either component.
+A successful zero nonce permits bounded retry; provider failure aborts. Cover
+missing outputs and aliases without erasing borrowed inputs, and clear context
+secrets before retiring the frame. Ordinary vectors and invalid-input tests
+complement source contracts; they do not replace provider/allocation injection.
+
 ## Secret-state transitions and ACK admission
 
 - Classify each intermediate at every arithmetic step. A final public scalar

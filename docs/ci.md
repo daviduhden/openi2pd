@@ -271,6 +271,18 @@ uncommitted tree. Logs were downloaded for the completed jobs.
 - [build system](build-system.md)
 - [Developer guide](developer-guide/README.md)
 
+## Timer and command-line regression controls
+
+CE-088 recurred at 74d49559 because the timer source guard omitted a new file.
+The read-only timer/deadline-name checker now scans native components; its
+negative CTest fixtures vary operands, whitespace and pointer access while
+retaining valid socket controls. Name matching is not complete type analysis.
+Native command-line controls distinguish defaults from explicit credentials.
+Isolated children and real-router probes require exact refusal status and a
+trusted outcome, reject secret/sanitizer output and never use WILL_FAIL.
+Existing manual full suites consume the new registrations. Compilation and
+execution of these local controls remain pending; no workflow trigger changed.
+
 ## Targeted Windows heap evidence
 
 The manual Windows workflow accepts `heap_diagnostics=true`. After ordinary
@@ -285,8 +297,10 @@ records `@$ra` at MessageBoxA/W entry: `kc` discards the raw addresses needed
 to resolve application callers when MinGW symbols are unavailable. Resolve
 code PCs against that exact image; a pre-prolog stack can be incomplete.
 Arguments, dialog text, locals, memory dumps and child tracing remain outside
-the diagnostic boundary. The prepared command change is Pending CI tests;
-earlier modal markers do not establish the source cause of Windows startup.
+the diagnostic boundary. Executed c25 diagnostic 43055686363 resolved the
+CLANG64 modal caller to the credential parser through main; see RT-083 in
+[the runtime inventory](ci/RUNTIME-ERRORS.md). That evidence does not validate
+local entry/parser corrections or explain the separate MSVC worker failure.
 
 MSVC Release now retains EXE/PDB artifacts through CMP0141/ProgramDatabase
 (CMake 3.25+ in this CI lane) and optimized `/DEBUG:FULL /OPT:REF /OPT:ICF`

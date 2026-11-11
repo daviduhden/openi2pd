@@ -1,5 +1,24 @@
 # Compilation and lint warning inventory
 
+## 74d49559 — blocked targets are not warning-clean evidence
+
+Reviewed full latest-ten logs and successful siblings at
+`74d495596815075002f633e105affc62be14ad1c`. No new first-party compiler
+warning was observed before CE-088 stops the current Boost lanes. This does
+not establish warning cleanliness of the unbuilt targets or new regressions.
+
+Packaging 43059250963 succeeds for container 130657001436 and static musl
+130657001682 with Boost 1.84.0 / GCC 15.2 / OpenSSL 3.5.9. Debian 130657001503
+uses Boost 1.83 / GCC 13.3 / OpenSSL 3.0.13 and passes package smoke/lifecycle
+checks. Reviewed successful output has no new native compiler warning.
+External autopkgtest --force-yes deprecation remains third-party debt.
+
+Android 43059287277 stops in native compilation. JVM, Lint, Javadoc,
+class/DEX probes, JNI parity and APK steps are skipped; no current reports or
+APK artifact exist. The prior fourteen Lint findings remain historical debt,
+not a fresh clean or failing Lint result. Documentation/service DNS failures
+also supply no new diagnostics from their unexecuted validators.
+
 ## c25a0b08 — native warning review and unchanged Android debt
 
 Reviewed all ten full logs, including successful steps in failed workflows,

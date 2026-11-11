@@ -1,5 +1,15 @@
 # Compilation diagnostic patterns and repository-wide review
 
+## Recurring Asio cancellation despite an earlier guard
+
+CE-088 reappeared in a file absent from the earlier fixed-file scan. Search
+all native components, headers and consumers when adding a timer; cover
+arbitrary error-operand names, multiline whitespace and pointer receivers.
+Keep valid socket/acceptor overloads separate. A name-based checker remains
+supplemental to type review and compilation, especially for aliases or unusual
+field names. Compare actual dependency versions before treating an older-Boost
+package success as evidence for current Boost compatibility.
+
 ## Correlated dependency failures across unrelated workflows
 
 An apt DNS outage can fail source docs, service checks and Debian acquisition

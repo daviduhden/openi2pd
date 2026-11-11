@@ -9,6 +9,17 @@ Tracks compile/configure/link failures reported by manual GitHub Actions.
 
 # Compilation error inventory
 
+## 74d49559 — CE-088 recurrence across current Boost lanes
+
+Latest ten runs execute `74d495596815075002f633e105affc62be14ad1c`.
+Nine workflows fail; the agent gate passes. Most native jobs stop at the
+same removed timer overload. This is a recurrence of CE-088 (and the older
+CE-008 family), not independent compiler defects. The CE-088 entry below
+records every reached lane. Older-Boost container/Debian/static successes
+do not validate Boost 1.92. Source-doc and service DNS failures remain TF-103.
+New cancellation, command-line and Windows entry corrections are local only:
+Implemented / static; Pending CI compilation / Pending CI tests.
+
 ## c25a0b08 — dependency acquisition versus product compilation
 
 Latest ten runs execute `c25a0b081aa3d3b968e043d968b904a40b48e4f6`.
@@ -2098,6 +2109,36 @@ other equivalent overloads; socket/acceptor error-code overloads remain
 valid and unchanged. Existing readiness lifecycle regressions and the source
 contract pin this seam. Implemented / static; Pending CI compilation and
 Pending CI tests. Downstream skipped targets are not validated.
+
+### Recurrence at 74d49559
+
+First significant diagnostic is `UDPTunnel.cpp:213:22: too many arguments to
+function call, expected 0, have 1`; MSVC reports C2660 for the same call.
+`CancelAckTimerLocked` reintroduced `m_AckTimer.cancel(ignored)`. Earlier
+source guards covered only a few files and missed this new caller.
+
+| Run | Jobs / platform | Evidence |
+|---|---|---|
+| [43059264684](https://github.com/daviduhden/openi2pd/actions/runs/43059264684) | 130657066781 Clang / 130657067952 GCC, OpenSSL 3 | Boost 1.92.0_1; same first source error |
+| [43059274286](https://github.com/daviduhden/openi2pd/actions/runs/43059274286) | 130657098524 GCC / 130657100863 Clang, OpenSSL 4 | Same error; GCC 16.2 / Clang 23.1.5 |
+| [43059244428](https://github.com/daviduhden/openi2pd/actions/runs/43059244428) | 130656977649 OpenBSD | Clang 22.1.6 / LibreSSL 4.4.0; same API error |
+| [43059287277](https://github.com/daviduhden/openi2pd/actions/runs/43059287277) | 130657134497 Android | NDK 30.0.16248370 / Clang 21.0.0; same error |
+| [43059296683](https://github.com/daviduhden/openi2pd/actions/runs/43059296683) | 130657162353 Linux consumer | Build stops before install/consumer validation |
+| [43059303577](https://github.com/daviduhden/openi2pd/actions/runs/43059303577) | 130657188948 ASan+UBSan / 130657189050 TSan / 130657191290 UBSan / 130657188910 fuzz | No new sanitizer/fuzzer runtime evidence |
+| [43059311650](https://github.com/daviduhden/openi2pd/actions/runs/43059311650) | 130657213295 instrumented OpenSSL TSan | Dependency instrumentation cannot validate unbuilt project test |
+| [43059237413](https://github.com/daviduhden/openi2pd/actions/runs/43059237413) | 130661718247 MSVC / 130661718827 CLANG64 | Both fail before their native runtime suites |
+
+Global search distinguishes timer from still-valid socket/acceptor overloads.
+The correction revokes wait/sequence authority then calls parameterless
+cancel(). Cleanup retains a non-secret error code through an observable getter
+and stats instead of throwing during destruction or replacing an earlier
+registration exception. Expiry update and wait registration share one guarded
+interval. The read-only name-based native checker covers current timer/deadline
+receivers across components; negative fixtures include renamed operands,
+multiline/pointer calls and valid socket controls. It is not a type-aware AST
+proof. New fixtures and API correction remain Pending CI compilation / Pending
+CI tests. [Boost's timer contract](https://www.boost.org/doc/libs/latest/doc/html/boost_asio/reference/basic_waitable_timer/cancel.html)
+confirms the parameterless signature and possible system_error.
 
 ## CE-089: libstdc++ timed mutex clock-lock instantiation under TSan
 

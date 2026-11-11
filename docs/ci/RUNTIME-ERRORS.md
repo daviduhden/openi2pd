@@ -5,6 +5,88 @@ and license details.
 
 # Runtime error inventory
 
+## 74d49559 continuation and resolved Windows attribution
+
+Latest current-Boost suites stop at CE-088 before new ACK/storage/crypto
+runtime controls execute. A historical passing run does not validate later
+local corrections. States below are Implemented / static; Pending CI
+compilation / Pending CI tests unless exact executed evidence is stated.
+
+### RT-086 — Private scalar cleanup and transactional GOST signing
+
+Preventive source review found caller-owned DSA/ECDSA/LibreSSL/GOST private
+BIGNUM values freed without cleansing after builders copied them. Signature
+cleanup now uses BN_clear_free, including secret-dependent GOST intermediates.
+Public verification values retain ordinary cleanup. This is not attribution
+of a published sanitizer report.
+
+GOST signing also ignored modular arithmetic results, retried RNG failures
+and could leave partial secret-dependent outputs after failure. The local
+correction stages the pair, checks each operation, aborts failed randomness
+and cleanses context secrets before frame retirement. Successful degenerate
+nonces retain bounded retries under RFC 7091; valid signature geometry is
+unchanged. Missing/invalid-input regressions extend crypto-audit-bounds;
+provider/allocation fault injection and the wider CRY-236 fallible signing
+API remain pending. No current native CI execution validates these changes.
+
+### RT-083 — Defaulted credentials, refusal continuation and Windows entry
+
+The completed [Windows diagnostic 43055686363](https://github.com/daviduhden/openi2pd/actions/runs/43055686363)
+executes `c25a0b081aa3d3b968e043d968b904a40b48e4f6`, CLANG64 job
+130644394120. Retained image SHA-256 is
+`160b1b3efb70190c97e6b9259e11ed34d4335aa474b021465751a49e263594b5`.
+At load base 0x7ff707490000, modal return PC 0x7ff7075bff33 resolves to
+RVA 0x12ff33, ThrowFatal<char const (&)[96]>+0x153. Its caller RVA 0x12ddc9
+is ParseCmdline+0x269, immediately after the credential-refusal call. The
+stack reaches main through RunI2PD and DaemonWin32::init, not WinMain.
+The diagnosed Config/entry sources are unchanged between c25 and 74.
+This attributes the CLANG64 modal; it does not explain MSVC worker 0xC0000142.
+
+Cause: HasCommandLineCredential used map presence although four options
+register empty defaults. It now tests find plus !defaulted, preserving refusal
+of explicit empty operands. Refusal also exits after a returning fatal callback;
+previously reporting could continue into informational publication or startup.
+
+Both Windows entries now own an authoritative GetCommandLineW UTF-8 vector,
+including checked conversion and LocalFree RAII, then use the complete parser.
+The separate raw flag scanner was removed: it could publish a banner without
+checking later credential operands. Windows non-informational CLI preflight
+runs before the daemon installs its modal fatal reporter. Accepted arguments
+are reparsed by normal daemon initialization; worker dispatch remains earlier.
+No DLL, RNG or mitigation change was justified or made. Configuration-file
+GUI failure presentation and MSVC pre-authentication initialization remain
+separate issues; this is not a claim that every Windows startup failure is fixed.
+
+Prepared controls cover default/ordinary CLI, explicit empty/value credentials,
+help/version ordering, malformed syntax and a returning reporter. Binary
+controls exercise the actual entry path with working-version control, strict
+failure status, trusted outcome and no banner/sentinel/sanitizer output.
+
+### RT-084 — Parser exception and filename diagnostic disclosure
+
+Config's command-line/INI parser catches forwarded e.what() through both fatal
+callback and stderr. Rejected unknown/numeric/credential operands can contain
+secrets. Missing-config diagnostics also printed the input pathname. All now
+use trusted operation/outcome labels. Windows parser errors use inherited
+stderr directly, without CRT console assumptions. Negative child probes include
+malformed numeric/duplicate/empty-adjacent arguments, malformed INI and an
+unreadable synthetic path. Exact exit 1 and redaction are required; WILL_FAIL
+is not used and sanitizer diagnostics always fail the wrapper.
+
+### RT-085 / RT-082 — Cancellation and registration exception interval
+
+ACK authority is revoked before cancellation. Parameterless cancellation now
+records a system_error code without allocating or logging during unwind;
+GetAckCancellationError and numeric stats retain that outcome across restart.
+An expires_after exception previously occurred outside the wait-registration
+guard and could leave a sequence without wait authority; both operations now
+share the rollback interval. Older passing package builds do not exercise
+this failure seam. The focused lifecycle fixture and negative source contracts
+are prepared; cancellation-service fault injection remains pending.
+
+Earlier DHT/UDP facade and periodic timer lifetimes, PRIVSEP-017 reaping,
+CRY-236 fallible signing and broad allocator-failure coverage remain open.
+
 ## c25a0b08 continuation — executed baseline and preventive fixes
 
 Published `c25a0b081aa3d3b968e043d968b904a40b48e4f6` passes the executed
