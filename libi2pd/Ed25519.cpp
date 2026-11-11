@@ -209,7 +209,10 @@ namespace crypto
 		EVP_MD_CTX * ctx = nullptr;
 		using SecretBN = std::unique_ptr<BIGNUM, decltype (&BN_clear_free)>;
 		SecretBN r (nullptr, BN_clear_free);
-		BIGNUM *h = nullptr, *a = nullptr;
+		// The challenge becomes private-key dependent before the final
+		// signature scalar exists, including on an arithmetic failure.
+		SecretBN h (nullptr, BN_clear_free);
+		SecretBN a (nullptr, BN_clear_free);
 		uint8_t digest[64] = { };
 		unsigned int dl = sizeof (digest);
 		bool ok = bnCtx && (ctx = EVP_MD_CTX_new ()) != nullptr && EVP_DigestInit_ex (ctx, EVP_sha512 (), nullptr) == 1
@@ -243,24 +246,22 @@ namespace crypto
 			&& EVP_DigestUpdate (ctx, buf, len) == 1 && EVP_DigestFinal_ex (ctx, digest, &dl) == 1
 			&& dl == sizeof (digest);
 		if (ctx) EVP_MD_CTX_free (ctx);
-		h = ok ? DecodeBN<64> (digest) : nullptr;
-		a = ok ? DecodeBN<EDDSA25519_PRIVATE_KEY_LENGTH> (expandedPrivateKey) : nullptr; // left half
-		ok = ok && r && h && a && BN_mod_mul (h, h, a, l, bnCtx) == 1 && BN_mod_add (h, h, r.get (), l, bnCtx) == 1;
+		h.reset (ok ? DecodeBN<64> (digest) : nullptr);
+		a.reset (ok ? DecodeBN<EDDSA25519_PRIVATE_KEY_LENGTH> (expandedPrivateKey) : nullptr);
+		ok = ok && r && h && a && BN_mod_mul (h.get (), h.get (), a.get (), l, bnCtx) == 1
+			&& BN_mod_add (h.get (), h.get (), r.get (), l, bnCtx) == 1;
 		if (ok)
 		{
 			memcpy (signature, R, EDDSA25519_SIGNATURE_LENGTH / 2);
 			// Fold the S encoder result in as well, so a failed second
 			// half zeroes the R half that was already copied.
-			ok = EncodeBN (h, signature + EDDSA25519_SIGNATURE_LENGTH / 2, EDDSA25519_SIGNATURE_LENGTH / 2);
+			ok = EncodeBN (h.get (), signature + EDDSA25519_SIGNATURE_LENGTH / 2, EDDSA25519_SIGNATURE_LENGTH / 2);
 		}
 		if (!ok)
 		{
 			memset (signature, 0, EDDSA25519_SIGNATURE_LENGTH);
 			LogPrint (eLogError, "Ed25519: signing failed");
 		}
-		if (h) BN_free (h); // public signature scalar
-		if (a) BN_clear_free (a);
-
 		OPENSSL_cleanse (digest, sizeof (digest));
 		OPENSSL_cleanse (R, sizeof (R));
 		if (bnCtx) BN_CTX_free (bnCtx);

@@ -93,6 +93,12 @@ executing project code, or inspect a real private key.
 
 ## Known issues and decisions
 
+- Compatibility signing's challenge becomes secret-dependent after scalar
+  multiplication, even though its final signature is public. Give challenge
+  and private scalar clear-free owners across every arithmetic failure;
+  retain ordinary cleanup for verification's genuinely public challenge.
+  Scope negative source guards to Sign so they do not reject Verify.
+
 - Signature constructor lengths are protocol geometry, not trusted buffer
   capacities. Validate ECDSA curve/coordinate pairs and RSA modulus widths
   before allocation, narrowing or failure clearing. Invalid parameters grant

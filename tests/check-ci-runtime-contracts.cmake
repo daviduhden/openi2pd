@@ -714,3 +714,19 @@ require_runtime_source("tests/test-signature-identity-hardening.cpp"
   "TestInvalidSignatureParameters ();")
 require_runtime_source("tests/test-signature-identity-hardening.cpp"
   "std::numeric_limits<size_t>::max ()")
+
+# Public final scalars can contain secret-dependent intermediate values.
+require_runtime_order("libi2pd/Ed25519.cpp"
+  "void Ed25519::Sign (" "void Ed25519::SignRedDSA ("
+  "SecretBN h (nullptr, BN_clear_free);"
+  "SecretBN a (nullptr, BN_clear_free);"
+  "BN_mod_mul (h.get (), h.get (), a.get (),"
+  "EncodeBN (h.get (), signature +")
+file(READ "${PROJECT_ROOT}/libi2pd/Ed25519.cpp" eddsa_cleanup_source)
+string(FIND "${eddsa_cleanup_source}" "void Ed25519::Sign (" sign_begin)
+string(FIND "${eddsa_cleanup_source}" "void Ed25519::SignRedDSA (" sign_end)
+math(EXPR sign_length "${sign_end} - ${sign_begin}")
+string(SUBSTRING "${eddsa_cleanup_source}" ${sign_begin} ${sign_length} sign_body)
+if(sign_body MATCHES "BN_free [(][ha][)]")
+  message(FATAL_ERROR "Signing intermediates must use clear-free ownership")
+endif()
