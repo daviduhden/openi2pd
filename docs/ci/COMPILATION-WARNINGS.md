@@ -1,5 +1,40 @@
 # Compilation and lint warning inventory
 
+## Revision 830c65ab: CW-031/032 absent in executed lanes
+
+Reviewed all ten full logs for published
+`830c65ab1aaed6db9d6edeb7d0a91918ac446e21`, including successful steps inside
+failed Windows jobs. CW-031 missing overrides and CW-032 C4267 are absent;
+no new first-party native GCC/Clang/MSVC compiler warning was observed.
+Their corrections are Validated by CI for the executed lanes, not every
+possible compiler/backend combination.
+
+- [OpenSSL 3 run 42843157728](https://github.com/daviduhden/openi2pd/actions/runs/42843157728):
+  GCC job 129923464005 and Clang 129923464466, OpenSSL 3.5.9.
+- [OpenSSL 4 run 42843164455](https://github.com/daviduhden/openi2pd/actions/runs/42843164455):
+  GCC job 129923487225 and Clang 129923487479, OpenSSL 4.1.0.
+  These lanes use GCC 16.2.0 / Clang 23.1.5.
+- [OpenBSD 42843137520](https://github.com/daviduhden/openi2pd/actions/runs/42843137520),
+  job 129923394440, explicitly selects LibreSSL 4.4.0 with Clang 22.1.6.
+  FindOpenSSL's compatibility version is not the selected library version.
+- [Windows 42843132412](https://github.com/daviduhden/openi2pd/actions/runs/42843132412),
+  jobs 129923376820/129923377257: earlier warning families are absent despite
+  the later runtime failures.
+- [Android 42843171562](https://github.com/daviduhden/openi2pd/actions/runs/42843171562),
+  job 129923514053: native warning removal is separate from fourteen Lint
+  warnings per debug/release report (twelve VectorPath, two ChromeOsAbiSupport).
+  Compound evenOdd paths cannot be split blindly without filling holes.
+  Adding an ABI filter alone cannot supply its native dependency closure.
+  The builtInKotlin=false deprecation and Gradle notice remain toolchain debt.
+- [Packaging 42843143279](https://github.com/daviduhden/openi2pd/actions/runs/42843143279),
+  Debian job 129923412115: deprecated --force-yes originates in external
+  autopkgtest tooling, not repository invocation; no broader allow flag added.
+- Linux consumer 42843178138, job 129923534333: Landlock ABI 8 versus the
+  policy's ABI 10 requirement remains a runner coverage limit (CW-029).
+
+Historical warning records below are retained. Constructor-size and decoder
+findings in RT-079/080 are preventive source defects, not new CI warnings.
+
 ## ea333584: CW-031 and CW-032 observed in successful builds
 
 All latest-ten runs execute `ea3335843fc9073fbbaa0c5d3530c9e9387b85b8`.

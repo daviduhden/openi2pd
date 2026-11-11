@@ -10,17 +10,17 @@ Documents project documentation.
 
 # Master TODO
 
-Latest retrospective: 404 runs on 67 SHAs (96 success, 241 failure,
-66 cancelled, one incomplete at collection). Published ea333584 passes the
-executed Linux/OpenSSL/sanitizer suites; OpenBSD skips three root-sensitive
-checks and Android device execution is skipped. Windows still fails version
-startup and worker initialization; diagnostic 42745408718 confirms a CLANG64
-MessageBoxA call without identifying its source caller, and MSVC 0xC0000142.
-CW-031/CW-032 corrections, checked point encoding/RedDSA readiness and
-RT-078 metadata exception retirement are Implemented / static; Pending CI
-compilation / Pending CI tests. Fourteen Android Lint warnings, remaining
-callback/process ownership and end-to-end fallible signing remain open.
-See the six docs/ci inventories for exact runs and evidence limitations.
+Latest retrospective: 414 completed runs on 68 SHAs (105 success,
+243 failure, 66 cancelled). Published 830c65ab has nine successful workflows;
+Windows still fails version startup and worker initialization. CW-031/032
+are absent in reviewed executed compiler lanes; published encoder tests and
+storage contracts pass. OpenBSD executes 253 of 256 tests (three root-related
+skips); Android's 174 JVM tests pass, with devices skipped and fourteen Lint
+warnings. New RT-079/080 decoder/constructor bounds, RT-078 startup descriptor
+ownership and code-address Windows diagnostics are Implemented / static;
+Pending CI compilation / Pending CI tests. DHT/UDP admission, PRIVSEP-017
+retirement, broad allocator failures and end-to-end signing remain open.
+See the six docs/ci inventories for exact jobs and historical evidence gaps.
 
 - CONT-050: portable supervisor admission and Asio timer teardown:
   Validated by CI in the executed 9f2934f8 lanes; no clean-matrix claim.
@@ -29,9 +29,15 @@ See the six docs/ci inventories for exact runs and evidence limitations.
 - TF-101: corrected source-root registration: Validated by CI at ea333584.
 - TF-102: failure classification: Validated by CI; Windows startup: CI failure.
 - CW-031 / CW-032: complete overrides and bounded BN lengths:
+  Validated by CI at 830c65ab in executed lanes.
+- RT-078: published metadata source contracts and ordinary lifecycle tests:
+  Validated by CI at 830c65ab; allocator fault injection remains Pending.
+  Startup root RAII extension: Implemented / static; Pending CI compilation /
+  Pending CI tests.
+- RT-079 / RT-080: checked decoder and signature constructor geometry:
   Implemented / static; Pending CI compilation / Pending CI tests.
-- RT-078: metadata allocation-exception retirement:
-  Implemented / static; Pending CI compilation / Pending CI tests.
+- Windows startup caller PCs: Implemented / static; Pending CI tests.
+  Application/worker initialization causes remain Correction pending.
 - CONT-051: coherent peer interest across availability, selection and active
   requests: Validated by CI at 9f2934f8. Subsequent HAVE_NONE/BITFIELD
   controls are Implemented / static; Pending CI tests.

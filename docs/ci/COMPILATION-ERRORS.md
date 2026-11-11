@@ -9,6 +9,16 @@ Tracks compile/configure/link failures reported by manual GitHub Actions.
 
 # Compilation error inventory
 
+## Revision 830c65ab: no observed compile/link blocker
+
+The latest ten runs execute `830c65ab1aaed6db9d6edeb7d0a91918ac446e21`.
+Full successful and failed job logs were retrieved before local edits. All
+native lanes reach tests; Windows failures are runtime failures, not linker
+errors. Expected negative feature probes remain capability detection.
+Exact runs and job IDs are listed in [the test inventory](TEST-FAILURES.md).
+This observation does not validate later local bounds, decoder, descriptor
+or debugger changes, which remain Pending CI compilation / Pending CI tests.
+
 ## ea333584 compile and link status
 
 The latest ten runs built `ea3335843fc9073fbbaa0c5d3530c9e9387b85b8`.

@@ -7962,3 +7962,51 @@ or push.
   pins transaction-wide unwind authority, backend override completeness,
   checked key readiness and exact skip accounting. These source inspections
   do not execute regression tests or establish dynamic correctness.
+
+## 2026-11-11 — 830c65ab retrospective and preventive continuation
+
+- Started from a clean worktree at 830c65ab1aaed6db9d6edeb7d0a91918ac446e21.
+  Ten specialist agents covered history, native warnings, memory, concurrency,
+  crypto/protocols, IPC, torrents, Android, portability and regressions.
+- Retrieved paginated metadata for 414 completed runs on 68 SHAs and full
+  logs/job metadata/artifact inventories for the latest ten. Inspected exact
+  Windows/OpenBSD/Android artifacts. Historical expired/unavailable evidence
+  remains a gap, not a clean result. The six docs/ci inventories record jobs,
+  counts, selected compiler/library versions and validation boundaries.
+- Published CW-031/032 diagnostics are absent in reviewed executed lanes.
+  Main OpenSSL/GCC/Clang and sanitizer suites pass 261 tests per lane.
+  Android passes 174 JVM tests; devices skip and fourteen Lint findings remain.
+  OpenBSD has 253 passes plus three root-required skips. The instrumented
+  OpenSSL TSan lane exercises one registry test, not complete crypto coverage.
+- Windows 42843132412 repeats CLANG64 version timeout and MSVC worker
+  0xC0000142. Prepared code-only return PC capture using plain k and @$ra,
+  with matching allowlist and negative fixtures. This corrects loss of useful
+  unresolved addresses in kc output; it is not a source attribution or runtime
+  fix. Deadlines, no child following, privacy restrictions and CTest remain.
+- Implemented RT-079 checked point decoding/recovery/curve arithmetic,
+  all-or-empty copies and constructor failure handling. Prepared null-input,
+  null-context, deep-copy and negation controls. Earlier initialization and
+  Sum/Double/MulB allocation assumptions remain outside the guarantee.
+- Implemented RT-080 supported ECDSA/RSA geometry rejection before allocation,
+  narrowing, reads or output clearing. Prepared one-byte-buffer/SIZE_MAX and
+  valid-width controls; existing identity consumers use accepted parameters.
+- Extended RT-078 to startup: immediate scoped authorized-root descriptor
+  ownership and exception retirement of partial worker admission. Linux and
+  OpenBSD handoffs borrow it; UID/mode/no-follow checks remain. Allocator fault
+  injection and PRIVSEP-017 deferred reaping remain open.
+- Reviewed DHT/UDP token-before-owner races without applying an unsafe
+  token-only lifetime fix. Reviewed Android evenOdd geometry and x86_64 native
+  closure without suppression, rasterization or an unsupported ABI filter.
+- Updated AGENTS and CI/crypto/memory/torrent Skills with reusable caller,
+  geometry, diagnostic and capability ownership contracts. Existing CTest
+  registrations already include the changed regression sources and guards.
+  All new implementation remains Pending CI compilation / Pending CI tests.
+  No local compiler/build/configuration/test, commit or push was invoked.
+- Final compile-free checks passed: whitespace and added-comment widths,
+  runtime/control source contracts, build graph, Skills structure, language
+  policy, manual workflow guard, documentation links, Doxygen parameter
+  references and Shell policy. Agent knowledge validation passed; AK004's
+  semantic advisory was reviewed against actual nullable caller handling,
+  validated geometry, diagnostic PC retention and startup descriptor ownership.
+  These checks do not execute prepared C++ or TAP tests or inject allocator
+  failure. The final independent integration review found no blocking defect.

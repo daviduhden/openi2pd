@@ -5,6 +5,45 @@ and license details.
 
 # Test failure inventory
 
+## Revision 830c65ab: latest ten and historical coverage
+
+Paginated metadata now covers 414 completed runs on 68 SHAs: 105 success,
+243 failure and 66 cancelled. Latest ten are nine success and Windows
+failure. The earlier incomplete diagnostic 42745408718 is now failure.
+Metadata spans back to run 39057879349; historical unavailable job logs
+39058430980/117472356821 and runs 39058841124/39058346321 remain gaps.
+All latest-ten full logs, job metadata and artifact inventories were retrieved;
+Windows, OpenBSD and Android artifacts were inspected. No complete historical
+artifact/log coverage is claimed.
+
+Every row below executes `830c65ab1aaed6db9d6edeb7d0a91918ac446e21`.
+
+| Run / workflow | Jobs | Observed scope |
+|---|---|---|
+| [42843157728 OpenSSL 3](https://github.com/daviduhden/openi2pd/actions/runs/42843157728) | 129923464005 / 129923464466 | GCC/Clang each 261 main tests plus 10/3/9 focused tests pass |
+| [42843164455 OpenSSL 4](https://github.com/daviduhden/openi2pd/actions/runs/42843164455) | 129923487225 / 129923487479 | Same executed main/focused scopes pass |
+| [42843184621 Validation](https://github.com/daviduhden/openi2pd/actions/runs/42843184621) | UBSan 129923558543, TSan 129923558600, ASan+UBSan 129923558655 | Each 261 pass; no sanitizer diagnostic found in reviewed full logs |
+| Same Validation run | Fuzz 129923558436, docs 129923557845, Skills 129923558654 | Fifteen smoke targets, source docs and Skills pass; Perl quality 129923560250 skipped |
+| [42843137520 OpenBSD](https://github.com/daviduhden/openi2pd/actions/runs/42843137520) | 129923394440 | JUnit: 256 registered, 253 pass, three non-root-required skips |
+| [42843171562 Android](https://github.com/daviduhden/openi2pd/actions/runs/42843171562) | 129923514053 | JUnit: 25 suites / 174 JVM tests pass; device job 129923566413 skipped; Lint warnings persist |
+| [42843132412 Windows](https://github.com/daviduhden/openi2pd/actions/runs/42843132412) | CLANG64 129923376820 / MSVC 129923377257 | JUnit: 243 pass / one failure / one skip out of 245; MSVC 18 pass / one failure out of 19 |
+| [42843191661 Instrumented OpenSSL TSan](https://github.com/daviduhden/openi2pd/actions/runs/42843191661) | 129923581632 | One registry test passes, not the complete crypto suite |
+| [42843178138 Linux](https://github.com/daviduhden/openi2pd/actions/runs/42843178138) | Consumer 129923534333 / interop 129923535177 | Install/consumer and reference/vector interop pass; not live Java handshake evidence |
+| [42843143279 Packaging](https://github.com/daviduhden/openi2pd/actions/runs/42843143279) | Services 129923412035/129923412036; container 129923412052; Debian 129923412115; musl 129923412271 | Pass, with external tool/runner debt tracked separately |
+| [42843150302 Agent Knowledge](https://github.com/daviduhden/openi2pd/actions/runs/42843150302) | 129923436556 | Pass |
+
+Published CW-031/032 removal and prepared encoder regressions now have CI
+execution evidence in the supported lanes that ran. Published RT-078 source
+contracts and ordinary storage tests pass; allocator unwind remains untested
+dynamically. TF-102 still exposes Windows startup failure. OpenBSD skips say
+worker identity/credentials require non-root and storage workers refuse root;
+MSYS2 skips the POSIX-only I2PControl socket test.
+
+New RT-079/080, startup-root RAII and CDB caller diagnostics are local:
+Pending CI compilation / Pending CI tests. Existing test-eddsa,
+test-signature-identity-hardening, control-security-static and
+perl-maintenance-checkers registrations cover the prepared increments.
+
 ## EA333 retrospective snapshot
 
 The paginated inventory contains 404 runs on 67 SHAs: 96 success, 241 failure,

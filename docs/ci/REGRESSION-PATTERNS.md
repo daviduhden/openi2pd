@@ -5,6 +5,27 @@ and license details.
 
 # Regression patterns
 
+## Provider, constructor and startup authority continuations
+
+- When making a helper nullable, inspect initialization as well as parser
+  callers. Reject missing coordinates before arithmetic; balance BN_CTX
+  frames on every path and release constructor resources before throwing.
+  Deep copies must be complete or empty, never partially authoritative.
+- Test unsupported size/curve combinations with tiny real buffers, including
+  SIZE_MAX. Invalid claimed lengths do not grant permission even to clear
+  output. Keep positive supported-width controls and both provider branches.
+- Extend exception reviews before the first IPC transaction: path conversion
+  can throw after opening a directory capability. Scope the descriptor at
+  acquisition and revoke partially adopted worker state on unwind, while
+  preserving an already-running worker rejected before admission.
+- A backtrace that drops addresses can hide every unresolved application
+  frame. Preserve code return PCs with a closed diagnostic command list;
+  negative fixtures must reject locals/arguments, child following, unbounded
+  waits, absent caller PCs and lost CTest execution. Keep pre-prolog unwind
+  limits and exact-image symbol resolution explicit.
+
+All new execution and allocator-fault coverage remain pending manual CI.
+
 ## EA333 families requiring continued coverage
 
 - Exercise invalid encoding inputs, non-invertible projective coordinates,

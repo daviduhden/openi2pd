@@ -1,5 +1,14 @@
 # Compilation diagnostic patterns and repository-wide review
 
+## Successful compilation does not validate parameter geometry
+
+Follow a narrowing-warning audit into public runtime constructors, not only
+fixed test buffers. A size_t accepted by a constructor can overflow a later
+allocation plus header, or make a failure clear exceed any valid object.
+Pin supported curve/width pairs before buffer operations. Distinguish such
+preventive source findings (RT-080) from actual observed compiler warnings;
+keep valid internal factory inputs and both backend branches synchronized.
+
 ## Partial override annotation and bounded API lengths
 
 CW-031 shows that adding one override can expose unannotated siblings in

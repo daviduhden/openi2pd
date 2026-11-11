@@ -5,6 +5,81 @@ and license details.
 
 # Runtime error inventory
 
+## Revision 830c65ab and preventive continuation
+
+All current execution evidence below applies to published
+`830c65ab1aaed6db9d6edeb7d0a91918ac446e21`. New corrections are local only.
+
+### RT-079 — Unchecked point decoding and copy failure
+
+- **Origin:** preventive review following RT-076; no new sanitizer report.
+- **Cause:** DecodePoint ignored BN_bin2bn's returned ownership and used
+  recovered coordinates before checking allocation/arithmetic failure.
+  RecoverX and IsOnCurve also used unchecked BN_CTX temporaries. Point
+  negation used unchecked duplicated coordinates.
+- **Correction:** owned coordinates, explicit null/context and arithmetic
+  checks, balanced context frames and all-or-empty point copies. The backend
+  constructor now releases acquired resources and aborts if its newly
+  fallible RecoverX call fails; parser-only changes would leave that caller
+  dereferencing null. No wire or valid-point arithmetic semantics changed.
+- **Regression:** test-eddsa null input/context, empty negation, deep copy and
+  double-negation controls; negative source contracts pin failure-before-use.
+- **State:** Implemented / static; Pending CI compilation / Pending CI tests.
+  Earlier constant initialization, precomputation and Sum/Double/MulB retain
+  unchecked allocation assumptions. Allocation fault injection remains open.
+
+### RT-080 — Untrusted signature geometry before allocation/clearing
+
+- **Origin:** preventive equivalent-pattern review after CW-032, not an
+  observed compiler warning or remote exploit reproduction.
+- **Cause:** public ECDSAVerifier accepted SIZE_MAX: vector(plen + 1) could
+  wrap to zero before pub[0]. ECDSASigner narrowed unchecked scalar widths;
+  random-key helpers used the supplied width to clear outputs on failure.
+  RSAVerifier also narrowed and doubled unrestricted constructor sizes.
+- **Correction:** accept only the existing I2P ECDSA curve/width pairs and
+  RSA modulus widths 256/384/512. Invalid constructors retain inert zero
+  extent; invalid random-key geometry cannot authorize touching outputs.
+  Both OpenSSL and LibreSSL helpers reject before clearing. Existing identity
+  factories already supply supported geometry; no protocol format changed.
+- **Regression:** test-signature-identity-hardening uses one-byte buffers,
+  SIZE_MAX, odd/mismatched/zero lengths, invalid curves and missing hashes,
+  with valid-width controls. Shared source guards pin rejection boundaries.
+- **State:** Implemented / static; Pending CI compilation / Pending CI tests.
+  Buffer capacities for accepted parameters remain a caller precondition;
+  this does not complete CRY-236's fallible signing interface.
+
+### RT-078 continuation — Startup directory capability lifetime
+
+The published transaction guards pass existing executed storage regressions,
+but static follow-up found Start opening a raw root descriptor before
+allocating path conversion, worker spawning and configuration. Exceptions
+could bypass close. A noncopyable scoped root owner now precedes every
+handoff, while startup unwind retires partial worker authority. Refusal of
+an already running worker occurs before that guard. Linux and OpenBSD both
+borrow the local descriptor; no-follow, UID, mode and capability checks stay
+in place. Source guards cover ordering and both handoffs. New startup changes
+are Implemented / static; Pending CI compilation / Pending CI tests. Ordinary
+passing lifecycle tests are not allocator-fault injection, and PRIVSEP-017's
+child-reaping ownership remains unresolved.
+
+### Windows and concurrency remain open
+
+[Windows 42843132412](https://github.com/daviduhden/openi2pd/actions/runs/42843132412)
+repeats the version timeout in CLANG64 job 129923376820 (12.04 s) and worker
+exit 0xC0000142 before authentication in MSVC job 129923377257 (10.04 s).
+Prior diagnostic 42745408718 reached MessageBoxA but kc omitted raw return
+addresses from unresolved MinGW frames. Local diagnostic commands now retain
+plain k return PCs and the direct @$ra at modal entry, without operands,
+locals, dumps or child following. Exact-image attribution and execution of
+these commands remain pending publication/manual CI. No DLL/RNG/mitigation
+cause is asserted. See Microsoft's [backtrace options](https://learn.microsoft.com/en-us/windows-hardware/drivers/debuggercmds/k--kb--kc--kd--kp--kp--kv--display-stack-backtrace-)
+and [pseudo-register contract](https://learn.microsoft.com/en-us/windows-hardware/drivers/debuggercmds/pseudo-register-syntax).
+
+CONC-028/DHT timer callbacks still require real owner admission across token
+load and member use, including queued successful completions and restart.
+Normal service-thread shutdown does not establish arbitrary overlapping
+lifecycle safety. No token-only fix or relaxed sandbox was introduced.
+
 ## EA333 continuation — exact evidence and static corrections
 
 - **RT-078 — Metadata handle retention during allocation failure.** Static

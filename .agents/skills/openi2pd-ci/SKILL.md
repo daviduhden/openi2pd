@@ -216,7 +216,9 @@ workflow, run `gh`, build or test.
   `kc` removes those addresses and can reduce useful frames to `0x0`.
   At modal entry, `? @$ra` records the direct caller without operands.
   Keep argument-printing backtrace variants outside the command allowlist;
-  a prolog-entry backtrace alone can be incomplete.
+  a prolog-entry backtrace alone can be incomplete. Scope ordered source
+  guards to their function when common cleanup names recur elsewhere;
+  first-match searches across a translation unit can bind unrelated code.
 
 - Identify what an executed diagnostic actually runs. The focused OpenSSL
   TSan workflow executes the client-context registry test, not every crypto
