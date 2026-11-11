@@ -825,6 +825,12 @@ require_runtime_source("tests/check-command-line-policy.cmake"
   "if(NOT child_status STREQUAL \"1\")")
 require_runtime_source("tests/test-command-line-policy.cpp"
   "assert (found->second.defaulted ());")
+foreach(signature_secret_path IN ITEMS "libi2pd/Signature.cpp" "libi2pd/Signature.h")
+  file(READ "${PROJECT_ROOT}/${signature_secret_path}" signature_secret_source)
+  if(signature_secret_source MATCHES "BN_free [(](priv|privKey)[)]")
+    message(FATAL_ERROR "Private signature scalars require clear-free cleanup")
+  endif()
+endforeach()
 require_runtime_source("tests/CMakeLists.txt" "i2pd-command-line-policy")
 require_runtime_order("daemon/i2pd.cpp" "int RunI2PD (" "int RunWindowsEntryPoint ()"
   "i2p::config::ParseCmdline (argc, argv);" "Daemon.init (argc, argv)")

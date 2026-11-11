@@ -125,7 +125,7 @@ namespace crypto
 		BIGNUM * priv = BN_bin2bn (signingPrivateKey, DSA_PRIVATE_KEY_LENGTH, NULL);
 		if (!priv) return;
 		m_PrivateKey = CreateDSA (nullptr, priv);
-		BN_free (priv);
+		BN_clear_free (priv);
 		if (!m_PrivateKey) LogPrint (eLogError, "DSA can't create private key");
 	}
 
@@ -182,7 +182,7 @@ namespace crypto
 			&& bn2buf (pub, signingPublicKey, DSA_PUBLIC_KEY_LENGTH)
 			&& bn2buf (priv, signingPrivateKey, DSA_PRIVATE_KEY_LENGTH);
 		BN_free (pub);
-		BN_free (priv);
+		BN_clear_free (priv);
 		EVP_PKEY_free (pkey);
 		EVP_PKEY_free (paramskey);
 		EVP_PKEY_CTX_free (ctx);
@@ -392,7 +392,7 @@ namespace crypto
 		OSSL_PARAM_BLD * paramBld = OSSL_PARAM_BLD_new ();
 		if (!paramBld)
 		{
-			BN_free (priv);
+			BN_clear_free (priv);
 			return;
 		}
 		bool built = OSSL_PARAM_BLD_push_utf8_string (paramBld, OSSL_PKEY_PARAM_GROUP_NAME, OBJ_nid2ln (curve), 0) == 1
@@ -417,7 +417,7 @@ namespace crypto
 
 		OSSL_PARAM_free (params);
 		OSSL_PARAM_BLD_free (paramBld);
-		BN_free (priv);
+		BN_clear_free (priv);
 	}
 
 	ECDSASigner::~ECDSASigner ()
@@ -480,7 +480,7 @@ namespace crypto
 			&& EVP_PKEY_get_bn_param (pkey, OSSL_PKEY_PARAM_EC_PUB_Y, &y) == 1 && y
 			&& bn2buf (priv, signingPrivateKey, keyLen / 2) && bn2buf (x, signingPublicKey, keyLen / 2)
 			&& bn2buf (y, signingPublicKey + keyLen / 2, keyLen / 2);
-		BN_free (priv);
+		BN_clear_free (priv);
 		BN_free (x);
 		BN_free (y);
 		EVP_PKEY_free (pkey);

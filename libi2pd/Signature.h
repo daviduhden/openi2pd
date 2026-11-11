@@ -327,7 +327,7 @@ namespace crypto
 			if (privKey)
 			{
 				EC_KEY_set_private_key (m_PrivateKey, privKey);
-				BN_free (privKey);
+				BN_clear_free (privKey);
 			}
 		}
 
@@ -685,16 +685,16 @@ namespace crypto
 					&& bn2buf (s, signature + keyLen, keyLen))
 				{
 					BN_free (d);
-					BN_free (r);
-					BN_free (s);
+					BN_clear_free (r);
+					BN_clear_free (s);
 					return;
 				}
 			}
 			// Never emit the all-zero signature that the verifier must reject.
 			memset (signature, 0, keyLen * 2);
 			BN_free (d);
-			BN_free (r);
-			BN_free (s);
+			BN_clear_free (r);
+			BN_clear_free (s);
 		}
 
 	private:
@@ -725,7 +725,7 @@ namespace crypto
 		if (!ctx || !priv || !q || EC_GROUP_get_order (curve->GetGroup (), q, ctx) != 1)
 		{
 			BN_free (q);
-			BN_free (priv);
+			BN_clear_free (priv);
 			BN_CTX_free (ctx);
 			clear ();
 			return false;
@@ -738,13 +738,13 @@ namespace crypto
 		BN_CTX_free (ctx);
 		if (!normalised)
 		{
-			BN_free (priv);
+			BN_clear_free (priv);
 			clear ();
 			return false;
 		}
 
 		auto pub = curve->MulP (priv);
-		BN_free (priv);
+		BN_clear_free (priv);
 		BIGNUM *x = BN_new (), *y = BN_new ();
 		bool ok = pub && x && y && curve->GetXY (pub, x, y) && bn2buf (x, signingPublicKey, keyLen)
 			&& bn2buf (y, signingPublicKey + keyLen, keyLen);

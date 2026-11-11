@@ -93,6 +93,10 @@ executing project code, or inspect a real private key.
 
 ## Known issues and decisions
 
+- Trace copied private scalars through both provider branches: a successful
+  key-builder copy does not cleanse its caller-owned BIGNUM. Use clear-free
+  cleanup for private keys and secret-dependent signing intermediates while
+  preserving ordinary cleanup for public verification values.
 - Compatibility signing's challenge becomes secret-dependent after scalar
   multiplication, even though its final signature is public. Give challenge
   and private scalar clear-free owners across every arithmetic failure;
