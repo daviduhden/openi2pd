@@ -47,11 +47,16 @@ namespace crypto
 		EC_POINT * MulP (const BIGNUM * n) const;
 		bool GetXY (const EC_POINT * p, BIGNUM * x, BIGNUM * y) const;
 		EC_POINT * CreatePoint (const BIGNUM * x, const BIGNUM * y) const;
-		/// Sign a pre-hashed digest with GOST R 34.10 (RFC 7091). The digest
-		/// is reduced modulo the subgroup order q and normalized to e = 1
-		/// when that reduction is zero; both r and s are reduced modulo q and
-		/// must lie in [1, q-1]. The caller owns r and s and must cleanse
-		/// them.
+		/// Sign a nonnegative pre-hashed digest using RFC 7091.
+		/// The private scalar must lie in [1, q-1]; a zero digest reduces
+		/// to e = 1. Publish r/s only after the complete calculation.
+		/// Inputs are borrowed; outputs are caller-owned, distinct and
+		/// must not alias either input. An input alias never alters that
+		/// input; failure clears every other supplied output.
+		/// Provider failure aborts; only successful degenerate nonce or
+		/// signature draws retry.
+		/// This operation has no shared mutable context; callers synchronize
+		/// access to their inputs/outputs and cleanse outputs after use.
 		void Sign (const BIGNUM * priv, const BIGNUM * digest, BIGNUM * r, BIGNUM * s);
 		/// Verify r/s against pub and the same digest normalization as
 		/// Sign().

@@ -126,56 +126,70 @@ namespace crypto
 
 	void GOSTR3410Curve::Sign (const BIGNUM * priv, const BIGNUM * digest, BIGNUM * r, BIGNUM * s)
 	{
-		if (!priv || !digest || !r || !s) return;
-		if (!m_Group)
+		// Inputs are borrowed. Never erase one through an output alias.
+		const bool rAliasesInput = r && (r == priv || r == digest);
+		const bool sAliasesInput = s && (s == priv || s == digest);
+		if (r && !rAliasesInput) BN_clear (r);
+		if (s && !sAliasesInput) BN_clear (s);
+		if (rAliasesInput || sAliasesInput || !priv || !digest || !r || !s || r == s || !m_Group
+			|| BN_is_negative (priv) || BN_is_zero (priv) || BN_is_negative (digest)) return;
+
+		struct SigningFrame
 		{
-			BN_zero (r);
-			BN_zero (s);
-			return;
-		}
-		BN_CTX * ctx = BN_CTX_new ();
-		if (!ctx) return;
-		BN_CTX_start (ctx);
-		BIGNUM * q = BN_CTX_get (ctx);
-		BIGNUM * k = BN_CTX_get (ctx);
-		BIGNUM * e = BN_CTX_get (ctx);
-		BIGNUM * tmp = BN_CTX_get (ctx);
-		if (!q || !k || !e || !tmp || EC_GROUP_get_order (m_Group, q, ctx) != 1 || BN_mod (e, digest, q, ctx) != 1)
-		{
-			BN_CTX_end (ctx);
-			BN_CTX_free (ctx);
-			return;
-		}
+			BN_CTX * ctx = BN_CTX_new ();
+			BIGNUM * k = nullptr;
+			BIGNUM * tmp = nullptr;
+			SigningFrame () { if (ctx) BN_CTX_start (ctx); }
+			SigningFrame (const SigningFrame &) = delete;
+			SigningFrame & operator= (const SigningFrame &) = delete;
+			~SigningFrame ()
+			{
+				// Context temporaries retain limbs after BN_CTX_end.
+				if (k) BN_clear (k);
+				if (tmp) BN_clear (tmp);
+				if (ctx)
+				{
+					BN_CTX_end (ctx);
+					BN_CTX_free (ctx);
+				}
+			}
+		} frame;
+		if (!frame.ctx) return;
+		BIGNUM * q = BN_CTX_get (frame.ctx);
+		frame.k = BN_CTX_get (frame.ctx);
+		BIGNUM * e = BN_CTX_get (frame.ctx);
+		frame.tmp = BN_CTX_get (frame.ctx);
+		if (!q || !frame.k || !e || !frame.tmp
+			|| EC_GROUP_get_order (m_Group, q, frame.ctx) != 1
+			|| BN_is_zero (q) || BN_is_negative (q) || BN_cmp (priv, q) >= 0
+			|| BN_mod (e, digest, q, frame.ctx) != 1) return;
 		// RFC 7091 section 6: e = alpha mod q, and e = 1 when that is zero.
-		if (BN_is_zero (e) && BN_one (e) != 1)
-		{
-			BN_CTX_end (ctx);
-			BN_CTX_free (ctx);
-			return;
-		}
-		// r and s must be in [1, q-1]; retry the rare degenerate nonce.
+		if (BN_is_zero (e) && BN_one (e) != 1) return;
+		using SecretBN = std::unique_ptr<BIGNUM, decltype (&BN_clear_free)>;
+		SecretBN stagedR (BN_new (), BN_clear_free);
+		SecretBN stagedS (BN_new (), BN_clear_free);
+		if (!stagedR || !stagedS) return;
+		// Only successful degenerate draws/signatures are retried. A
+		// provider or arithmetic failure must abort rather than look lucky.
 		for (int attempt = 0; attempt < 16; ++attempt)
 		{
-			if (BN_rand_range (k, q) != 1 || BN_is_zero (k)) continue;
-			EC_POINT * C = MulP (k); // C = k*P
-			if (!C) continue;
-			bool ok = GetXY (C, r, nullptr) == 1; // r = Cx
-			EC_POINT_free (C);
-			if (!ok) continue;
-			BN_mod (r, r, q, ctx); // r = Cx mod q
-			if (BN_is_zero (r)) continue;
-			BN_mod_mul (s, r, priv, q, ctx); // (r*priv)%q
-			BN_mod_mul (tmp, k, e, q, ctx); // (k*e)%q
-			BN_mod_add (s, s, tmp, q, ctx); // (r*priv+k*e)%q
-			if (!BN_is_zero (s)) break;
+			BN_clear (frame.k);
+			BN_clear (frame.tmp);
+			if (BN_rand_range (frame.k, q) != 1) return;
+			if (BN_is_zero (frame.k)) continue;
+			std::unique_ptr<EC_POINT, decltype (&EC_POINT_free)> point (MulP (frame.k), EC_POINT_free);
+			if (!point || !GetXY (point.get (), stagedR.get (), nullptr)
+				|| BN_mod (stagedR.get (), stagedR.get (), q, frame.ctx) != 1) return;
+			if (BN_is_zero (stagedR.get ())) continue;
+			if (BN_mod_mul (stagedS.get (), stagedR.get (), priv, q, frame.ctx) != 1
+				|| BN_mod_mul (frame.tmp, frame.k, e, q, frame.ctx) != 1
+				|| BN_mod_add (stagedS.get (), stagedS.get (), frame.tmp, q, frame.ctx) != 1) return;
+			if (BN_is_zero (stagedS.get ())) continue;
+			// Swap publishes the complete pair without another allocation.
+			BN_swap (r, stagedR.get ());
+			BN_swap (s, stagedS.get ());
+			return;
 		}
-		if (BN_is_zero (r) || BN_is_zero (s))
-		{
-			BN_zero (r);
-			BN_zero (s);
-		}
-		BN_CTX_end (ctx);
-		BN_CTX_free (ctx);
 	}
 
 	bool GOSTR3410Curve::Verify (const EC_POINT * pub, const BIGNUM * digest, const BIGNUM * r, const BIGNUM * s)

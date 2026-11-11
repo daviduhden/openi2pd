@@ -794,7 +794,6 @@ require_runtime_order("libi2pd_client/UDPTunnel.cpp"
   "CancelAckTimerLocked ();" "throw;")
 require_runtime_source("libi2pd_client/UDPTunnel.cpp"
   "GetAckCancellationError ().value ()")
-require_runtime_source("tests/CMakeLists.txt" "timer-cancellation-contract")
 
 # Registered defaults are not explicit credentials; empty operands are.
 require_runtime_source("libi2pd/Config.cpp"
@@ -821,6 +820,7 @@ require_runtime_source("daemon/i2pd.cpp"
   "WideArguments wide (CommandLineToArgvW (GetCommandLineW (), &count), LocalFree);")
 require_runtime_source("daemon/i2pd.cpp" "if (written != length)")
 require_runtime_source("tests/CMakeLists.txt" "command-line-policy-rejections")
+require_runtime_source("tests/CMakeLists.txt" "timer-cancellation-contract")
 require_runtime_source("tests/check-command-line-policy.cmake"
   "if(NOT child_status STREQUAL \"1\")")
 require_runtime_source("tests/test-command-line-policy.cpp"
@@ -834,3 +834,21 @@ endforeach()
 require_runtime_source("tests/CMakeLists.txt" "i2pd-command-line-policy")
 require_runtime_order("daemon/i2pd.cpp" "int RunI2PD (" "int RunWindowsEntryPoint ()"
   "i2p::config::ParseCmdline (argc, argv);" "Daemon.init (argc, argv)")
+
+# GOST output is transactional; RNG failure is not a degenerate draw.
+require_runtime_source("libi2pd/Gost.cpp"
+  "if (BN_rand_range (frame.k, q) != 1) return;")
+require_runtime_source("libi2pd/Gost.cpp"
+  "if (BN_is_zero (frame.k)) continue;")
+require_runtime_order("libi2pd/Gost.cpp"
+  "void GOSTR3410Curve::Sign (" "bool GOSTR3410Curve::Verify ("
+  "BN_mod_mul (stagedS.get (), stagedR.get (), priv, q, frame.ctx) != 1"
+  "BN_mod_mul (frame.tmp, frame.k, e, q, frame.ctx) != 1"
+  "BN_mod_add (stagedS.get (), stagedS.get (), frame.tmp, q, frame.ctx) != 1"
+  "BN_swap (r, stagedR.get ());" "BN_swap (s, stagedS.get ());")
+require_runtime_order("libi2pd/Gost.cpp"
+  "~SigningFrame ()" "} frame;"
+  "if (k) BN_clear (k);" "if (tmp) BN_clear (tmp);"
+  "BN_CTX_end (ctx);" "BN_CTX_free (ctx);")
+require_runtime_source("tests/test-crypto-audit-bounds.cpp"
+  "TestGostSigningRejectsInvalidInputs ();")

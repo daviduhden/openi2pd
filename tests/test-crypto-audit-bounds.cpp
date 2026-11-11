@@ -15,9 +15,11 @@
 #include <cstdint>
 #include <cstring>
 #include <limits>
+#include <memory>
 
 #include "Base.h"
 #include "Crypto.h"
+#include "Gost.h"
 
 namespace
 {
@@ -190,6 +192,83 @@ void TestAESRejectsInvalidLengths ()
 	assert (!ecbDecryption.DecryptChecked (nullptr, out));
 	for (size_t i = 0; i < 16; ++i) assert (out[i] == 0);
 }
+
+void TestGostSigningRejectsInvalidInputs ()
+{
+	using namespace i2p::crypto;
+	using SecretBN = std::unique_ptr<BIGNUM, decltype (&BN_clear_free)>;
+	SecretBN priv (BN_new (), BN_clear_free);
+	SecretBN digest (BN_new (), BN_clear_free);
+	SecretBN r (BN_new (), BN_clear_free), s (BN_new (), BN_clear_free);
+	SecretBN order (BN_new (), BN_clear_free);
+	assert (priv && digest && r && s && order);
+	std::unique_ptr<BN_CTX, decltype (&BN_CTX_free)> ctx (BN_CTX_new (), BN_CTX_free);
+	assert (ctx);
+	auto seed = [&]
+	{
+		assert (BN_one (priv.get ()) == 1);
+		BN_zero (digest.get ());
+		assert (BN_set_word (r.get (), 17) == 1);
+		assert (BN_set_word (s.get (), 29) == 1);
+	};
+	auto rejected = [&] { assert (BN_is_zero (r.get ()) && BN_is_zero (s.get ())); };
+	for (auto parameters : std::array { eGOSTR3410CryptoProA, eGOSTR3410TC26A512 })
+	{
+		auto & curve = GetGOSTR3410Curve (parameters);
+		assert (curve && curve->GetGroup ());
+		assert (EC_GROUP_get_order (curve->GetGroup (), order.get (), ctx.get ()) == 1);
+		seed ();
+		curve->Sign (nullptr, digest.get (), r.get (), s.get ());
+		rejected ();
+		seed ();
+		curve->Sign (priv.get (), nullptr, r.get (), s.get ());
+		rejected ();
+		seed ();
+		BN_zero (priv.get ());
+		curve->Sign (priv.get (), digest.get (), r.get (), s.get ());
+		rejected ();
+		seed ();
+		BN_set_negative (priv.get (), 1);
+		curve->Sign (priv.get (), digest.get (), r.get (), s.get ());
+		rejected ();
+		seed ();
+		assert (BN_copy (priv.get (), order.get ()));
+		curve->Sign (priv.get (), digest.get (), r.get (), s.get ());
+		rejected ();
+		seed ();
+		assert (BN_one (digest.get ()) == 1);
+		BN_set_negative (digest.get (), 1);
+		curve->Sign (priv.get (), digest.get (), r.get (), s.get ());
+		rejected ();
+		seed ();
+		curve->Sign (priv.get (), digest.get (), nullptr, s.get ());
+		assert (BN_is_zero (s.get ()));
+		seed ();
+		curve->Sign (priv.get (), digest.get (), r.get (), nullptr);
+		assert (BN_is_zero (r.get ()));
+		seed ();
+		curve->Sign (priv.get (), digest.get (), r.get (), r.get ());
+		assert (BN_is_zero (r.get ()));
+		// Aliased borrowed inputs stay intact; other outputs still clear.
+		seed ();
+		curve->Sign (priv.get (), digest.get (), priv.get (), s.get ());
+		assert (BN_is_one (priv.get ()) && BN_is_zero (s.get ()));
+		seed ();
+		assert (BN_set_word (digest.get (), 41) == 1);
+		curve->Sign (priv.get (), digest.get (), r.get (), digest.get ());
+		assert (BN_is_zero (r.get ()) && BN_is_word (digest.get (), 41));
+		// RFC 7091 normalizes a zero digest to one; valid signing survives.
+		seed ();
+		curve->Sign (priv.get (), digest.get (), r.get (), s.get ());
+		assert (!BN_is_zero (r.get ()) && !BN_is_zero (s.get ()));
+		std::unique_ptr<EC_POINT, decltype (&EC_POINT_free)> publicKey (curve->MulP (priv.get ()), EC_POINT_free);
+		assert (publicKey && curve->Verify (publicKey.get (), digest.get (), r.get (), s.get ()));
+	}
+	seed ();
+	GOSTR3410Curve invalid (nullptr, nullptr, nullptr, nullptr, nullptr, nullptr);
+	invalid.Sign (priv.get (), digest.get (), r.get (), s.get ());
+	rejected ();
+}
 }
 
 int main ()
@@ -200,5 +279,6 @@ int main ()
 	TestElGamalRejectsTrivialPublicKeys ();
 	TestAEADBounds ();
 	TestAESRejectsInvalidLengths ();
+	TestGostSigningRejectsInvalidInputs ();
 	return 0;
 }

@@ -97,6 +97,12 @@ executing project code, or inspect a real private key.
   key-builder copy does not cleanse its caller-owned BIGNUM. Use clear-free
   cleanup for private keys and secret-dependent signing intermediates while
   preserving ordinary cleanup for public verification values.
+- GOST signing stages both output components until all arithmetic succeeds.
+  Distinguish a successful zero nonce (bounded retry) from RNG failure
+  (abort). Cleanse nonce/context intermediates before ending the BN frame;
+  review missing outputs and input/output aliases without erasing inputs.
+  Existing vector controls do not inject allocator or provider failures.
+
 - Compatibility signing's challenge becomes secret-dependent after scalar
   multiplication, even though its final signature is public. Give challenge
   and private scalar clear-free owners across every arithmetic failure;
