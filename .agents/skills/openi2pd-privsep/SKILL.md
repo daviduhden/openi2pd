@@ -105,6 +105,12 @@ report that limitation; do not substitute local execution. Ask for:
 
 ## Known issues and decisions
 
+- A scoped descriptor alone does not make root publication transactional.
+  Stage allocating path conversion before retiring the previous root, then
+  commit the matching path with a nonallocating swap alongside descriptor,
+  device and inode. RouterStorage and DataStorage share this boundary;
+  subsequent worker configuration remains a separate failure interval.
+
 - Stop's retained PID/pidfd guarantee ends with the owning object. Audit
   failed-reap move assignment and destruction separately: PRIVSEP-017's
   deferred-retirement registry is still required before discarded owners

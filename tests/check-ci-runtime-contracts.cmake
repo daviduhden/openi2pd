@@ -730,3 +730,10 @@ string(SUBSTRING "${eddsa_cleanup_source}" ${sign_begin} ${sign_length} sign_bod
 if(sign_body MATCHES "BN_free [(][ha][)]")
   message(FATAL_ERROR "Signing intermediates must use clear-free ownership")
 endif()
+
+# Allocate root metadata before publishing its matching capability.
+foreach(storage_path IN ITEMS "privsep/RouterStorage.cpp" "privsep/DataStorage.cpp")
+  require_runtime_order("${storage_path}"
+    "auto rootPath = absolute.string ();" "m_Impl->rootFd = directory.Release ();")
+  require_runtime_source("${storage_path}" "m_Impl->rootPath.swap (rootPath);")
+endforeach()

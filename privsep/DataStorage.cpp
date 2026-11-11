@@ -1110,7 +1110,8 @@ bool DataStorageClient::Start (const std::filesystem::path & root, std::string &
 	}
 	std::error_code ec;
 	const auto absolute = std::filesystem::canonical (root, ec);
-	if (ec || absolute.string ().size () > MAX_PATH_SIZE)
+	auto rootPath = absolute.string ();
+	if (ec || rootPath.size () > MAX_PATH_SIZE)
 	{
 		error = "invalid data storage root";
 		return false;
@@ -1126,7 +1127,9 @@ bool DataStorageClient::Start (const std::filesystem::path & root, std::string &
 	}
 	if (m_Impl->rootFd >= 0) ::close (m_Impl->rootFd);
 	m_Impl->rootFd = directory.Release ();
-	m_Impl->rootPath = absolute.string ();
+	// Keep the owned descriptor and its root metadata coherent even if
+	// path conversion fails before the previous capability is retired.
+	m_Impl->rootPath.swap (rootPath);
 	m_Impl->device = static_cast<uint64_t> (status.st_dev);
 	m_Impl->inode = static_cast<uint64_t> (status.st_ino);
 	m_Impl->restart.Reset (m_Impl->Now ());

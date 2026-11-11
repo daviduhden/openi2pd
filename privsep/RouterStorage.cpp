@@ -338,7 +338,8 @@ bool RouterStorageClient::Start (const std::filesystem::path & root, std::string
 	}
 	std::error_code ec;
 	auto absolute = std::filesystem::canonical (root, ec);
-	if (ec || absolute.string ().size () > 4096)
+	auto rootPath = absolute.string ();
+	if (ec || rootPath.size () > 4096)
 	{
 		error = "invalid router storage root";
 		return false;
@@ -355,7 +356,9 @@ bool RouterStorageClient::Start (const std::filesystem::path & root, std::string
 	}
 	if (m_Impl->rootFd >= 0) ::close (m_Impl->rootFd);
 	m_Impl->rootFd = directory.Release ();
-	m_Impl->rootPath = absolute.string ();
+	// All allocating root conversion precedes capability publication.
+	// Swap commits its matching path without an intervening allocation.
+	m_Impl->rootPath.swap (rootPath);
 	m_Impl->device = static_cast<uint64_t> (status.st_dev);
 	m_Impl->inode = static_cast<uint64_t> (status.st_ino);
 	m_Impl->restart.Reset (std::chrono::steady_clock::now ());
