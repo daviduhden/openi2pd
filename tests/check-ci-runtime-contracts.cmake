@@ -737,3 +737,45 @@ foreach(storage_path IN ITEMS "privsep/RouterStorage.cpp" "privsep/DataStorage.c
     "auto rootPath = absolute.string ();" "m_Impl->rootFd = directory.Release ();")
   require_runtime_source("${storage_path}" "m_Impl->rootPath.swap (rootPath);")
 endforeach()
+
+# ACK identity is independent of packet sequence and executor retention.
+require_runtime_source("libi2pd_client/UDPTunnel.cpp"
+  "m_AckTimer.async_wait (MakeAckHandlerLocked ())")
+require_runtime_order("libi2pd_client/UDPTunnel.cpp"
+  "auto connection = owner.lock ();" "connection->HandleAckTimeout ();"
+  "std::lock_guard lock (admission->mutex);"
+  "admission->stopRequested.load ()" "admission->wait != wait")
+require_runtime_order("libi2pd_client/UDPTunnel.cpp"
+  "void UDPConnection::Stop ()" "void UDPConnection::CancelAckTimer ()"
+  "stopRequested.store (true)" "std::lock_guard lock (m_AckAdmission->mutex);"
+  "CancelAckTimerLocked ();")
+require_runtime_order("libi2pd_client/UDPTunnel.cpp"
+  "void I2PUDPClientTunnel::Start ()" "void I2PUDPClientTunnel::Stop ()"
+  "UDPConnection::Start ();")
+require_runtime_order("libi2pd_client/UDPTunnel.cpp"
+  "void I2PUDPClientTunnel::Stop ()" "void I2PUDPClientTunnel::RecvFromLocal ()"
+  "UDPConnection::Stop ();" "m_DatagramReceiver.Reset ();")
+require_runtime_source("libi2pd_client/UDPTunnel.cpp"
+  "if (!m_UnackedDatagrams.empty ()) ScheduleAckTimerLocked (0);")
+require_runtime_source("tests/CMakeLists.txt" "test-udp-ack-lifecycle")
+require_runtime_source("tests/test-udp-ack-lifecycle.cpp"
+  "assert (released.expired ());")
+require_runtime_source("tests/test-udp-ack-lifecycle.cpp"
+  "connection->WaitForStopRequest ();")
+require_runtime_order("tests/test-udp-ack-lifecycle.cpp"
+  "dispatch.join ();" "assert (stoppedAfterAction.load ());" "stop.join ();")
+require_runtime_order("libi2pd_client/UDPTunnel.cpp"
+  "void I2PUDPServerTunnel::ExpireStale (" "void I2PUDPClientTunnel::ExpireStale ("
+  "if (m_LastSession == itr->second) m_LastSession.reset ();"
+  "itr->second->Stop ();")
+require_runtime_order("libi2pd_client/UDPTunnel.cpp"
+  "void UDPSession::Stop ()" "void UDPSession::Receive ()"
+  "UDPConnection::Stop ();" "m_ReceiveStopped = true;" "IPSocket.close (ignored);")
+require_runtime_order("libi2pd_client/UDPTunnel.cpp"
+  "void UDPSession::HandleReceived (" "I2PUDPServerTunnel::I2PUDPServerTunnel ("
+  "std::lock_guard lock (m_ReceiveMutex);" "if (m_ReceiveStopped) return;")
+file(READ "${PROJECT_ROOT}/libi2pd_client/UDPTunnel.cpp" udp_lifecycle_source)
+if(udp_lifecycle_source MATCHES "GetDatagramSession [(][)] *->")
+  message(FATAL_ERROR "UDP session lookup must be checked before dereference")
+endif()
+require_runtime_source("libi2pd_client/UDPTunnel.cpp" "if (drainEc) break;")

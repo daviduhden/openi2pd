@@ -111,6 +111,12 @@ build.
 
 ## Known issues and decisions
 
+- Network-free callback lifecycle fixtures belong in the normal native
+  target list with memory/security labels. Full manual sanitizer suites
+  consume that list without another workflow; optional or platform-minimal
+  jobs must retain their distinct coverage limits. Source registration is
+  preparation, not evidence that the new executable compiled or ran.
+
 - Successful builds can repeat one shared-header warning across hundreds
   of targets. Group those emissions by source cause and inspect complete
   override families before adding annotations. At OpenSSL int boundaries,

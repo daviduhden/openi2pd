@@ -139,6 +139,7 @@ set(I2PD_TESTS
   test-streaming-accept-timeout
   test-streaming-accept-race
   test-stream-creation-sync
+  test-udp-ack-lifecycle
   test-streaming-recently-closed
   test-streaming-overlimit-reset
   test-streaming-sendstate
@@ -330,6 +331,9 @@ foreach(test IN LISTS I2PD_TESTS)
     set_property(TEST ${test} APPEND PROPERTY LABELS "ipc;security;platform")
   endif()
   set_property(TEST ${test} APPEND PROPERTY LABELS unit)
+  if(test STREQUAL "test-udp-ack-lifecycle")
+    set_property(TEST ${test} APPEND PROPERTY LABELS "memory;security")
+  endif()
   if(test STREQUAL "test-android-daemon-lifecycle")
     set_property(TEST ${test} APPEND PROPERTY LABELS "android;security")
   endif()

@@ -117,6 +117,16 @@ compile, run tests or run project scripts.
 
 ## Known issues and decisions
 
+- ACK waits need per-admission identity independent of packet sequence zero.
+  Weak ownership avoids executor retention, while a shared leaf gate covers
+  owner use through timeout action publication. Retire identity before cancel
+  and rearm through a locked helper. Declare the locked owner before the gate
+  guard so final destruction cannot reenter Stop under that same mutex.
+  Stop must drain ACK admission before derived teardown. Retiring a server
+  session also revokes matching fast caches and closes its receive gate/socket;
+  receive actions may enter ACK admission, so Stop releases ACK before waiting
+  on receive. This does not establish facade or periodic-callback safety.
+
 - Idle timer callbacks borrow I2PService weakly and carry a distinct
   IdleWait identity. Serialize timer mutation, retire before cancellation
   and destroy timers outside the gate. Exercise owner/destination release

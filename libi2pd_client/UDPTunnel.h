@@ -15,6 +15,7 @@
 
 #include <inttypes.h>
 #include <atomic>
+#include <functional>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -77,8 +78,8 @@ namespace client
 	// state transitions; keep them together and keep them on the owning
 	// service thread.
 	//
-	// Handlers of both sides are queued on sockets and can outlive the
-	// object they belong to, so they hold it by a shared pointer.
+	// Socket handlers retain their connection while queued. ACK waits use
+	// weak ownership to avoid destination retention by an undrained loop.
 	struct UDPConnection : public std::enable_shared_from_this<UDPConnection>
 	{
 		std::shared_ptr<i2p::datagram::DatagramDestination> m_Destination;
@@ -97,13 +98,16 @@ namespace client
 		size_t m_MaxWindow = I2P_UDP_MIN_MAX_NUM_UNACKED_DATAGRAMS;
 
 		boost::asio::steady_timer m_AckTimer;
-		uint32_t m_AckTimerSeqn = 0;
+		std::atomic<uint32_t> m_AckTimerSeqn { 0 };
 		bool m_IsSendingAllowed = true;
 		bool m_IsFirstPacket = true;
 		uint32_t m_NumAckTimeoutsInRow = 0;
 		uint64_t m_LastWindowProbeTime = 0; // milliseconds
 		uint32_t m_NumWindowDrops = 0, m_NumAckTimeouts = 0;
 
+		/** Construct service-bound state; ACK waits require shared ownership.
+		 * The owning service serializes other connection state transitions.
+		 */
 		UDPConnection (
 			boost::asio::io_context & service, std::shared_ptr<i2p::datagram::DatagramDestination> destination)
 			: m_Destination (destination)
@@ -117,7 +121,7 @@ namespace client
 		void SetMaxWindow (size_t w) { m_MaxWindow = w; };
 
 		virtual ~UDPConnection () { Stop (); };
-		virtual void Start () { };
+		virtual void Start ();
 		virtual void Stop ();
 
 		/// Remove @a seqn from the unacknowledged list and sample its RTT.
@@ -131,8 +135,12 @@ namespace client
 		/// probes the peer with an ack-request flag; the shared routing path
 		/// (and the lease set) is reset only after several consecutive
 		/// timeouts and actual silence, because timeouts also happen under
-		/// congestion.
+		/// congestion. Each wait has distinct revocable authority; Stop
+		/// waits for admitted actions; cancellation retires queued success.
 		void ScheduleAckTimer (uint32_t seqn);
+		/// Revoke an ACK wait before resetting connection state.
+		void CancelAckTimer ();
+
 		void UpdateRTT (uint64_t rtt, uint64_t ts);
 		void UpdateSendRate (uint32_t numDatagrams, uint64_t ts);
 		/// Current retransmission timeout in milliseconds, derived from the
@@ -155,6 +163,29 @@ namespace client
 		/// or the session is gone; callers must handle that instead of
 		/// assuming a live path.
 		std::shared_ptr<i2p::datagram::DatagramSession> GetDatagramSession ();
+	protected:
+		using AckHandler = std::function<void (const boost::system::error_code &)>;
+		struct AckAdmission
+		{
+			std::mutex mutex;
+			std::atomic<bool> stopRequested { false };
+			bool stopped = false;
+			std::shared_ptr<const uint8_t> wait;
+		};
+		// This leaf gate covers ACK action publication, not all UDP state.
+		// Service-thread state transitions remain serialized by the owner.
+		// Session registry locks precede this gate, never the reverse.
+		// Never call lifecycle methods synchronously from the action.
+		std::shared_ptr<AckAdmission> m_AckAdmission = std::make_shared<AckAdmission> ();
+		/// Build a revocable completion while the ACK admission gate is held.
+		AckHandler MakeAckHandlerLocked ();
+		/// Run the timeout strategy under ACK admission with a live owner.
+		virtual void HandleAckTimeout ();
+
+	private:
+		void ScheduleAckTimerLocked (uint32_t seqn);
+		void CancelAckTimerLocked ();
+
 	};
 
 	struct UDPSession : public UDPConnection // for server side
@@ -173,8 +204,19 @@ namespace client
 			const std::shared_ptr<i2p::client::ClientDestination> & localDestination,
 			const boost::asio::ip::udp::endpoint & remote, const i2p::data::IdentHash & ident, uint16_t ourPort,
 			uint16_t theirPort);
+		~UDPSession () override { Stop (); }
+		/// Retire ACK authority before closing receive admission/socket.
+		/// A retired server session is replaced, never reopened by Start.
+		void Stop () override;
 		void HandleReceived (const boost::system::error_code & ecode, std::size_t len);
 		void Receive ();
+
+	private:
+		void ReceiveLocked ();
+		// Receive actions may enter the ACK gate; Stop releases ACK first.
+		// Lifecycle cannot reenter synchronously from a datagram send.
+		std::mutex m_ReceiveMutex;
+		bool m_ReceiveStopped = false;
 	};
 
 	/* read only info about a datagram session */
