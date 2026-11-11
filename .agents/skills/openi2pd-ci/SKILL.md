@@ -212,6 +212,11 @@ workflow, run `gh`, build or test.
   argument or message-text collection. Recompute offsets from the exact
   retained image if adding application-entry breakpoints; do not reuse an
   earlier build's RVAs. A deadline log does not provide a stalled stack.
+  Plain `k 20` preserves return PCs when MinGW symbols are unresolved;
+  `kc` removes those addresses and can reduce useful frames to `0x0`.
+  At modal entry, `? @$ra` records the direct caller without operands.
+  Keep argument-printing backtrace variants outside the command allowlist;
+  a prolog-entry backtrace alone can be incomplete.
 
 - Identify what an executed diagnostic actually runs. The focused OpenSSL
   TSan workflow executes the client-context registry test, not every crypto

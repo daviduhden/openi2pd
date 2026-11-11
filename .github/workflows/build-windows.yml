@@ -137,13 +137,15 @@ jobs:
           # Code-only evidence: no child following, locals, operands,
           # register dumps or memory dumps. The entry pseudo-register
           # does not depend on MinGW symbols being readable by CDB.
+          # Keep return PCs when symbols are absent; kc discards them.
+          # The modal entry also records its direct return address.
           @(
             '.echo OPENI2PD_LOADER'
-            'sxe -c ".echo OPENI2PD_STARTUP_EXCEPTION; .lastevent; ln @rip; kc 20; q" av'
-            'sxe -c ".echo OPENI2PD_STARTUP_EXCEPTION; .lastevent; ln @rip; kc 20; q" 0xc0000142'
-            'bu user32!MessageBoxA ".echo OPENI2PD_MODAL; kc 20; q"'
-            'bu user32!MessageBoxW ".echo OPENI2PD_MODAL; kc 20; q"'
-            'bp @$exentry ".echo OPENI2PD_ENTRY; ln @rip; kc 20; g"'
+            'sxe -c ".echo OPENI2PD_STARTUP_EXCEPTION; .lastevent; ln @rip; k 20; q" av'
+            'sxe -c ".echo OPENI2PD_STARTUP_EXCEPTION; .lastevent; ln @rip; k 20; q" 0xc0000142'
+            'bu user32!MessageBoxA ".echo OPENI2PD_MODAL; ? @$ra; k 20; q"'
+            'bu user32!MessageBoxW ".echo OPENI2PD_MODAL; ? @$ra; k 20; q"'
+            'bp @$exentry ".echo OPENI2PD_ENTRY; ln @rip; k 20; g"'
             'g'
           ) | Set-Content -Encoding ascii $commands
           $debugArguments = @('-G', '-noshell', '-logo', "`"$log`"", '-cf', "`"$commands`"", "`"$binary`"", '--version')

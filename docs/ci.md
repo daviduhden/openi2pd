@@ -272,6 +272,15 @@ x64 CDB/GFlags with per-image PageHeap and bounded debugger processes. No SDK
 or debugger download is performed; missing tools fail this optional diagnostic
 step explicitly. The ordinary CTest result remains authoritative.
 
+The CLANG64 startup diagnostic also retains the router image and its DLL
+closure. Its closed CDB command list keeps plain `k` return addresses and
+records `@$ra` at MessageBoxA/W entry: `kc` discards the raw addresses needed
+to resolve application callers when MinGW symbols are unavailable. Resolve
+code PCs against that exact image; a pre-prolog stack can be incomplete.
+Arguments, dialog text, locals, memory dumps and child tracing remain outside
+the diagnostic boundary. The prepared command change is Pending CI tests;
+earlier modal markers do not establish the source cause of Windows startup.
+
 MSVC Release now retains EXE/PDB artifacts through CMP0141/ProgramDatabase
 (CMake 3.25+ in this CI lane) and optimized `/DEBUG:FULL /OPT:REF /OPT:ICF`
 linking. The project floor remains CMake 3.24. The debugger command allowlist

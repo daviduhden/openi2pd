@@ -369,8 +369,10 @@ sub workflow_crash_fixtures {
     }
     write_file($windows, $source);
     for my $boundary (
-        ['kc 20', 'kp 20'],
-        ['OPENI2PD_MODAL; kc 20', 'OPENI2PD_MODAL; dv'],
+        ['k 20', 'kp 20'],
+        ['k 20', 'kc 20'],
+        [q{? @$ra; }, ''],
+        ['OPENI2PD_MODAL; ? @$ra; k 20', 'OPENI2PD_MODAL; dv'],
         ['WaitForExit(20000)', 'WaitForExit()'],
         [q{@('-G', '-noshell', '-logo'}, q{@('-G', '-o', '-logo'}],
         [q{steps.msys2_build.outcome == 'success'}, 'false'] ) {
