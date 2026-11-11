@@ -107,6 +107,11 @@ Do not let reconnaissance agents edit, compile, execute tests or run scripts.
 
 ## Known issues and decisions
 
+- When a native helper becomes nullable, inspect initialization callers as
+  well as parsers. A constructor that throws must release resources already
+  acquired because its class destructor will not run. Record unchanged
+  allocation assumptions separately rather than extending a local guarantee.
+
 - AddressBook cache waits have a separate leaf admission barrier from
   subscription re-arm posts. Start, ResetTimers and Stop serialize timer
   ownership through it; every wait captures fresh shared identity and

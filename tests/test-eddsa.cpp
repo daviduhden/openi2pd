@@ -284,6 +284,21 @@ int main ()
 	{
 		BN_CTX * ctx = BN_CTX_new ();
 		assert (ctx);
+		const auto missingBytes = ed25519->DecodePublicKey (nullptr, ctx);
+		const auto missingContext = ed25519->DecodePublicKey (pub, nullptr);
+		assert (!missingBytes.x && !missingBytes.y);
+		assert (!missingContext.x && !missingContext.y);
+		i2p::crypto::EDDSAPoint empty;
+		const auto negatedEmpty = -empty;
+		assert (!negatedEmpty.x && !negatedEmpty.y);
+		const auto original = ed25519->DecodePublicKey (pub, ctx);
+		assert (original.x && original.y && original.z && original.t);
+		const auto copied = original;
+		assert (copied.x != original.x && copied.y != original.y);
+		assert (BN_cmp (copied.x, original.x) == 0);
+		const auto restored = -(-original);
+		assert (BN_cmp (restored.x, original.x) == 0);
+		assert (BN_cmp (restored.t, original.t) == 0);
 		// The last candidate from the loop above is off-curve.
 		const auto bad = ed25519->DecodePublicKey (invalid, ctx);
 		assert (!bad.x && !bad.y);

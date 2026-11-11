@@ -678,3 +678,23 @@ require_runtime_source("libi2pd_client/TorrentStorageWorker.cpp"
   "SpawnSupervisedTorrentStorage (rootFd.fd, absolute.string ())")
 require_runtime_source("libi2pd_client/TorrentStorageWorker.cpp"
   "MessageType::ConfigureTorrentStorage, setup.Data (), rootFd.fd, result, error")
+
+# Decode failure must precede every use of the unavailable coordinate.
+require_runtime_order("libi2pd/Ed25519.cpp"
+  "if (!Bx)" "BN_mod (Bx, Bx, q, ctx)")
+require_runtime_order("libi2pd/Ed25519.cpp"
+  "if (!buf || !ctx) return {};" "point.y = BN_bin2bn (")
+require_runtime_order("libi2pd/Ed25519.cpp"
+  "if (!point.x) return {};" "BN_is_bit_set (point.x, 0)")
+require_runtime_source("libi2pd/Ed25519.cpp"
+  "if (!ctx || !p.x || !p.y) return false;")
+require_runtime_source("libi2pd/Ed25519.cpp"
+  "throw std::runtime_error (\"Ed25519 base-point recovery failed\");")
+require_runtime_source("libi2pd/Ed25519.h" "EDDSAPoint copy {")
+require_runtime_source("libi2pd/Ed25519.h" "*this = EDDSAPoint {};")
+require_runtime_source("tests/test-eddsa.cpp"
+  "ed25519->DecodePublicKey (nullptr, ctx)")
+require_runtime_source("tests/test-eddsa.cpp"
+  "ed25519->DecodePublicKey (pub, nullptr)")
+require_runtime_source("tests/test-eddsa.cpp"
+  "copied.x != original.x && copied.y != original.y")

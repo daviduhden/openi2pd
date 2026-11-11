@@ -67,39 +67,36 @@ namespace crypto
 			return *this;
 		}
 
+		/** Copy every present coordinate or retire the destination.
+		 * Allocation failure must not produce a partially copied point.
+		 */
 		EDDSAPoint & operator= (const EDDSAPoint & other)
 		{
 			if (this != &other)
 			{
-				BN_free (x);
-				x = other.x ? BN_dup (other.x) : nullptr;
-				BN_free (y);
-				y = other.y ? BN_dup (other.y) : nullptr;
-				BN_free (z);
-				z = other.z ? BN_dup (other.z) : nullptr;
-				BN_free (t);
-				t = other.t ? BN_dup (other.t) : nullptr;
+				EDDSAPoint copy { other.x ? BN_dup (other.x) : nullptr,
+					other.y ? BN_dup (other.y) : nullptr,
+					other.z ? BN_dup (other.z) : nullptr,
+					other.t ? BN_dup (other.t) : nullptr };
+				if ((other.x && !copy.x) || (other.y && !copy.y)
+					|| (other.z && !copy.z) || (other.t && !copy.t))
+					*this = EDDSAPoint {};
+				else
+					*this = std::move (copy);
 			}
 			return *this;
 		}
 
 		EDDSAPoint operator- () const
 		{
-			BIGNUM *x1 = NULL, *y1 = NULL, *z1 = NULL, *t1 = NULL;
-			if (x)
-			{
-				x1 = BN_dup (x);
-				BN_set_negative (x1, !BN_is_negative (x));
-			};
-			if (y) y1 = BN_dup (y);
-			if (z) z1 = BN_dup (z);
-			if (t)
-			{
-				t1 = BN_dup (t);
-				BN_set_negative (t1, !BN_is_negative (t));
-			};
-			return EDDSAPoint { x1, y1, z1, t1 };
+			EDDSAPoint negated (*this);
+			if (negated.x)
+				BN_set_negative (negated.x, !BN_is_negative (negated.x));
+			if (negated.t)
+				BN_set_negative (negated.t, !BN_is_negative (negated.t));
+			return negated;
 		}
+
 	};
 
 	const size_t EDDSA25519_PUBLIC_KEY_LENGTH = 32;
@@ -113,6 +110,10 @@ namespace crypto
 		~Ed25519 ();
 
 		EDDSAPoint GeneratePublicKey (const uint8_t * expandedPrivateKey, BN_CTX * ctx) const;
+		/** Decode 32 borrowed bytes using the supplied context.
+		 * Null input/context, invalid points or provider failure return
+		 * an empty point. Initialization of this backend is separate.
+		 */
 		EDDSAPoint DecodePublicKey (const uint8_t * buf, BN_CTX * ctx) const;
 		/** Encode 32 public bytes; failure clears a non-null output.
 		 * Requires a live context and complete point coordinates.

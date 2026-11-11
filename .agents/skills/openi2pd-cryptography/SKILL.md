@@ -93,6 +93,13 @@ executing project code, or inspect a real private key.
 
 ## Known issues and decisions
 
+- A checked point recovery helper changes every caller's failure contract,
+  including backend initialization. Decode into owned coordinates and check
+  each arithmetic result before use; balance context frames on every return.
+  Point copies must not retain partial coordinates on allocation failure.
+  These boundaries do not establish allocation safety for backend constant
+  setup, table initialization or Sum/Double/MulB.
+
 - Ed25519 compatibility must compare the supplied public key again after
   the historical bit-253 scalar adjustment. An arbitrary mismatch is not
   evidence of a legacy key. Publish only an IsValid signer; reject invalid
@@ -211,7 +218,7 @@ executing project code, or inspect a real private key.
   clear-frees all scalar intermediates; failure zeroes the output without
   clobbering an overlapping message before hashing finishes. Preserve positive
   and overlapping-buffer controls alongside missing-input regressions.
-  This wrapper does not make the shared MulB/Sum/Dbl/Normalize internals
+  This wrapper does not make shared MulB/Sum/Dbl or early initialization
   allocator-failure safe: those unchecked point-arithmetic seams require a
   separate fallible-interface refactor and provider/allocation fault tests.
 

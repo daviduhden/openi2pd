@@ -16,6 +16,7 @@
 #include <openssl/crypto.h>
 #include <cstring>
 #include <memory>
+#include <stdexcept>
 #include "Log.h"
 #include "Crypto.h"
 #include "Ed25519.h"
@@ -67,6 +68,19 @@ namespace crypto
 		BN_mod_inverse (By, By, q, ctx);
 		BN_mul_word (By, 4);
 		BIGNUM * Bx = RecoverX (By, ctx);
+		if (!Bx)
+		{
+			// A provider failure cannot publish a missing base point.
+			// A failed constructor does not run this class's destructor.
+			BN_free (By);
+			BN_CTX_free (ctx);
+			BN_free (q);
+			BN_free (l);
+			BN_free (d);
+			BN_free (I);
+			BN_free (two_252_2);
+			throw std::runtime_error ("Ed25519 base-point recovery failed");
+		}
 		BN_mod (Bx, Bx, q, ctx); // % q
 		BN_mod (By, By, q, ctx); // % q
 
@@ -479,75 +493,89 @@ namespace crypto
 
 	bool Ed25519::IsOnCurve (const EDDSAPoint & p, BN_CTX * ctx) const
 	{
-		// An empty (rejected) point is never on the curve.
-		if (!p.x || !p.y) return false;
+		// Empty or incomplete points never authorize arithmetic.
+		if (!ctx || !p.x || !p.y) return false;
 		BN_CTX_start (ctx);
-		BIGNUM *x2 = BN_CTX_get (ctx), *y2 = BN_CTX_get (ctx), *tmp = BN_CTX_get (ctx);
-		BN_sqr (x2, p.x, ctx); // x^2
-		BN_sqr (y2, p.y, ctx); // y^2
-		// y^2 - x^2 - 1 - d*x^2*y^2
-		BN_mul (tmp, d, x2, ctx);
-		BN_mul (tmp, tmp, y2, ctx);
-		BN_sub (tmp, y2, tmp);
-		BN_sub (tmp, tmp, x2);
-		BN_sub_word (tmp, 1);
-		BN_mod (tmp, tmp, q, ctx); // % q
-		bool ret = BN_is_zero (tmp);
-		BN_CTX_end (ctx);
-		return ret;
+		auto finish = [ctx] (bool valid)
+		{
+			BN_CTX_end (ctx);
+			return valid;
+		};
+		BIGNUM *x2 = BN_CTX_get (ctx), *y2 = BN_CTX_get (ctx);
+		BIGNUM *tmp = BN_CTX_get (ctx);
+		// y^2 - x^2 - 1 - d*x^2*y^2 must vanish modulo q.
+		if (!x2 || !y2 || !tmp
+			|| BN_sqr (x2, p.x, ctx) != 1
+			|| BN_sqr (y2, p.y, ctx) != 1
+			|| BN_mul (tmp, d, x2, ctx) != 1
+			|| BN_mul (tmp, tmp, y2, ctx) != 1
+			|| BN_sub (tmp, y2, tmp) != 1
+			|| BN_sub (tmp, tmp, x2) != 1
+			|| BN_sub_word (tmp, 1) != 1
+			|| BN_mod (tmp, tmp, q, ctx) != 1)
+			return finish (false);
+		return finish (BN_is_zero (tmp));
 	}
 
 	BIGNUM * Ed25519::RecoverX (const BIGNUM * y, BN_CTX * ctx) const
 	{
+		if (!y || !ctx) return nullptr;
 		BN_CTX_start (ctx);
+		auto finish = [ctx] (BIGNUM * result)
+		{
+			BN_CTX_end (ctx);
+			return result;
+		};
 		BIGNUM *y2 = BN_CTX_get (ctx), *xx = BN_CTX_get (ctx);
-		BN_sqr (y2, y, ctx); // y^2
-		// xx = (y^2 -1)*inv(d*y^2 +1)
-		BN_mul (xx, d, y2, ctx);
-		BN_add_word (xx, 1);
-		BN_mod_inverse (xx, xx, q, ctx);
-		BN_sub_word (y2, 1);
-		BN_mul (xx, y2, xx, ctx);
-		// x = srqt(xx) = xx^(2^252-2)
-		BIGNUM * x = BN_new ();
-		BN_mod_exp (x, xx, two_252_2, q, ctx);
-		// check (x^2 -xx) % q
-		BN_sqr (y2, x, ctx);
-		BN_mod_sub (y2, y2, xx, q, ctx);
-		if (!BN_is_zero (y2)) BN_mod_mul (x, x, I, q, ctx);
-		if (BN_is_odd (x)) BN_sub (x, q, x);
-		BN_CTX_end (ctx);
-		return x;
+		// xx = (y^2 - 1) / (d*y^2 + 1), modulo q.
+		if (!y2 || !xx || BN_sqr (y2, y, ctx) != 1
+			|| BN_mul (xx, d, y2, ctx) != 1
+			|| BN_add_word (xx, 1) != 1
+			|| !BN_mod_inverse (xx, xx, q, ctx)
+			|| BN_sub_word (y2, 1) != 1
+			|| BN_mul (xx, y2, xx, ctx) != 1)
+			return finish (nullptr);
+		std::unique_ptr<BIGNUM, decltype (&BN_free)> x (BN_new (), BN_free);
+		if (!x || BN_mod_exp (x.get (), xx, two_252_2, q, ctx) != 1
+			|| BN_sqr (y2, x.get (), ctx) != 1
+			|| BN_mod_sub (y2, y2, xx, q, ctx) != 1)
+			return finish (nullptr);
+		if (!BN_is_zero (y2)
+			&& BN_mod_mul (x.get (), x.get (), I, q, ctx) != 1)
+			return finish (nullptr);
+		if (BN_is_odd (x.get ()) && BN_sub (x.get (), q, x.get ()) != 1)
+			return finish (nullptr);
+		return finish (x.release ());
 	}
 
 	EDDSAPoint Ed25519::DecodePoint (const uint8_t * buf, BN_CTX * ctx) const
 	{
-		// buf is 32 bytes Little Endian, convert it to Big Endian
+		if (!buf || !ctx) return {};
+		// buf is 32 little-endian bytes; the high bit carries x parity.
 		uint8_t buf1[EDDSA25519_PUBLIC_KEY_LENGTH];
-		for (size_t i = 0; i < EDDSA25519_PUBLIC_KEY_LENGTH / 2; i++) // invert bytes
-		{
+		for (size_t i = 0; i < EDDSA25519_PUBLIC_KEY_LENGTH; ++i)
 			buf1[i] = buf[EDDSA25519_PUBLIC_KEY_LENGTH - 1 - i];
-			buf1[EDDSA25519_PUBLIC_KEY_LENGTH - 1 - i] = buf[i];
-		}
-		bool isHighestBitSet = buf1[0] & 0x80;
-		if (isHighestBitSet) buf1[0] &= 0x7f; // clear highest bit
-		BIGNUM * y = BN_new ();
-		BN_bin2bn (buf1, EDDSA25519_PUBLIC_KEY_LENGTH, y);
-		BIGNUM * x = RecoverX (y, ctx);
-		if ((bool)BN_is_bit_set (x, 0) != isHighestBitSet) BN_sub (x, q, x); // x = q - x
-		BIGNUM *z = BN_new (), *t = BN_new ();
-		BN_one (z);
-		BN_mod_mul (t, x, y, q, ctx); // pre-calculate t
-		EDDSAPoint p { x, y, z, t };
-		if (!IsOnCurve (p, ctx))
+		const bool isHighestBitSet = buf1[0] & 0x80;
+		buf1[0] &= 0x7f;
+		EDDSAPoint point;
+		point.y = BN_bin2bn (buf1, EDDSA25519_PUBLIC_KEY_LENGTH, nullptr);
+		if (!point.y) return {};
+		point.x = RecoverX (point.y, ctx);
+		if (!point.x) return {};
+		if (static_cast<bool> (BN_is_bit_set (point.x, 0)) != isHighestBitSet
+			&& BN_sub (point.x, q, point.x) != 1)
+			return {};
+		point.z = BN_new ();
+		point.t = BN_new ();
+		if (!point.z || !point.t || BN_one (point.z) != 1
+			|| BN_mod_mul (point.t, point.x, point.y, q, ctx) != 1)
+			return {};
+		if (!IsOnCurve (point, ctx))
 		{
-			// Fail closed. Java's GroupElement decoding throws for a y value
-			// whose recovered x does not satisfy the curve equation; returning
-			// the point used to let callers blind or verify through it.
 			LogPrint (eLogError, "Decoded point is not on 25519");
-			return EDDSAPoint (); // releases x, y, z and t
+			return {};
 		}
-		return p;
+		return point;
 	}
 
 	bool Ed25519::EncodePoint (const EDDSAPoint & p, uint8_t * buf) const
