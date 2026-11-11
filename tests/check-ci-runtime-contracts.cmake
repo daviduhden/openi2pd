@@ -698,3 +698,19 @@ require_runtime_source("tests/test-eddsa.cpp"
   "ed25519->DecodePublicKey (pub, nullptr)")
 require_runtime_source("tests/test-eddsa.cpp"
   "copied.x != original.x && copied.y != original.y")
+
+# Invalid suite geometry cannot authorize a read or failure clear.
+require_runtime_source("libi2pd/Signature.h"
+  "constexpr bool IsSupportedECDSAKeyLength (int curve, size_t keyLen)")
+require_runtime_source("libi2pd/Signature.cpp"
+  "m_KeyLen (hash && IsSupportedECDSAKeyLength (curve, keyLen) ? keyLen : 0)")
+require_runtime_source("libi2pd/Signature.cpp"
+  "m_KeyLen (hash && (keyLen == 256 || keyLen == 384 || keyLen == 512) ? keyLen : 0)")
+foreach(signature_path IN ITEMS "libi2pd/Signature.cpp" "libi2pd/Signature.h")
+  require_runtime_source("${signature_path}"
+    "if (!IsSupportedECDSAKeyLength (curve, keyLen)) return false;\n\t\tif (!signingPrivateKey || !signingPublicKey) return false;\n\t\tauto clear = [&] ()")
+endforeach()
+require_runtime_source("tests/test-signature-identity-hardening.cpp"
+  "TestInvalidSignatureParameters ();")
+require_runtime_source("tests/test-signature-identity-hardening.cpp"
+  "std::numeric_limits<size_t>::max ()")

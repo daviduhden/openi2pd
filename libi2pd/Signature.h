@@ -106,10 +106,22 @@ namespace crypto
 	constexpr size_t ECDSAP384_KEY_LENGTH = 96;
 	constexpr size_t ECDSAP521_KEY_LENGTH = 132;
 
+	/** Accept only the fixed coordinate widths of I2P ECDSA suites.
+	 * Validate before pointer arithmetic, allocation or output clearing.
+	 * Unsupported curve/length pairs do not establish buffer extents.
+	 */
+	constexpr bool IsSupportedECDSAKeyLength (int curve, size_t keyLen)
+	{
+		return (curve == NID_X9_62_prime256v1 && keyLen == ECDSAP256_KEY_LENGTH)
+			|| (curve == NID_secp384r1 && keyLen == ECDSAP384_KEY_LENGTH)
+			|| (curve == NID_secp521r1 && keyLen == ECDSAP521_KEY_LENGTH);
+	}
+
 #ifndef LIBRESSL_VERSION_NUMBER // OpenSSL 3.0.2 is the minimum
 	class ECDSAVerifier : public Verifier
 	{
 	public:
+		/** Invalid parameters produce an inert, zero-length verifier. */
 		ECDSAVerifier (int curve, size_t keyLen, const EVP_MD * hash);
 		~ECDSAVerifier () override;
 
@@ -130,6 +142,9 @@ namespace crypto
 	class ECDSASigner : public Signer
 	{
 	public:
+		/** Invalid parameters produce an inert signer with no key reads.
+		 * A nonnull private key must contain the suite's scalar width.
+		 */
 		ECDSASigner (int curve, size_t keyLen, const EVP_MD * hash, const uint8_t * signingPrivateKey);
 		~ECDSASigner () override;
 
@@ -141,6 +156,11 @@ namespace crypto
 		EVP_PKEY * m_PrivateKey;
 	};
 
+	/** Fill a supported suite's scalar and public-key output buffers.
+	 * Reject invalid curve/length pairs without accessing either buffer;
+	 * their supplied length cannot authorize clearing. Provider failure
+	 * with valid parameters clears both declared output extents.
+	 */
 	bool CreateECDSARandomKeys (int curve, size_t keyLen, uint8_t * signingPrivateKey, uint8_t * signingPublicKey);
 
 	// ECDSA_SHA256_P256
@@ -338,6 +358,7 @@ namespace crypto
 	inline bool CreateECDSARandomKeys (
 		int curve, size_t keyLen, uint8_t * signingPrivateKey, uint8_t * signingPublicKey)
 	{
+		if (!IsSupportedECDSAKeyLength (curve, keyLen)) return false;
 		if (!signingPrivateKey || !signingPublicKey) return false;
 		auto clear = [&] ()
 		{
@@ -405,6 +426,9 @@ namespace crypto
 	class RSAVerifier : public Verifier
 	{
 	public:
+		/** Accept I2P modulus widths 256, 384 or 512 with a digest.
+		 * Invalid parameters produce an inert, zero-length verifier.
+		 */
 		RSAVerifier (size_t keyLen, const EVP_MD * hash);
 		~RSAVerifier () override;
 

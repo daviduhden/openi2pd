@@ -93,6 +93,10 @@ executing project code, or inspect a real private key.
 
 ## Known issues and decisions
 
+- Signature constructor lengths are protocol geometry, not trusted buffer
+  capacities. Validate ECDSA curve/coordinate pairs and RSA modulus widths
+  before allocation, narrowing or failure clearing. Invalid parameters grant
+  no writable extent; keep tiny-buffer negative controls in both backends.
 - A checked point recovery helper changes every caller's failure contract,
   including backend initialization. Decode into owned coordinates and check
   each arithmetic result before use; balance context frames on every return.

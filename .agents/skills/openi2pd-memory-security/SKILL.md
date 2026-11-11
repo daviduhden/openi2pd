@@ -107,6 +107,10 @@ Do not let reconnaissance agents edit, compile, execute tests or run scripts.
 
 ## Known issues and decisions
 
+- Caller-provided lengths cannot authorize output clearing until they pass
+  the API's supported geometry checks. Include SIZE_MAX and tiny output
+  buffers in negative controls so integer wrap and premature reads/writes
+  are distinguishable from ordinary provider rejection.
 - When a native helper becomes nullable, inspect initialization callers as
   well as parsers. A constructor that throws must release resources already
   acquired because its class destructor will not run. Record unchanged

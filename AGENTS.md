@@ -268,6 +268,9 @@ For exception safety, trace the interval between remote handle/transaction
 admission and subsequent allocations. Guard the entire transaction, retire
 transport authority without allocation during unwind, and preserve the
 original exception. Closing a channel does not prove a commit rolled back.
+When making a helper return failure, adapt initialization callers as well as
+ordinary consumers. Validate size and geometry before treating a caller's
+length as authority to read, allocate or clear any output buffer.
 
 At parser boundaries, rejected numeric fields and malformed first tokens
 remain arbitrary input. Review complete command buffers, ignored fields

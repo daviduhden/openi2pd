@@ -302,7 +302,7 @@ namespace crypto
 #ifndef LIBRESSL_VERSION_NUMBER // OpenSSL 3.0.2 is the minimum
 	ECDSAVerifier::ECDSAVerifier (int curve, size_t keyLen, const EVP_MD * hash)
 		: m_Curve (curve)
-		, m_KeyLen (keyLen)
+		, m_KeyLen (hash && IsSupportedECDSAKeyLength (curve, keyLen) ? keyLen : 0)
 		, m_Hash (hash)
 		, m_PublicKey (nullptr)
 	{
@@ -320,7 +320,7 @@ namespace crypto
 			EVP_PKEY_free (m_PublicKey);
 			m_PublicKey = nullptr;
 		}
-		if (!signingKey) return;
+		if (!signingKey || !m_KeyLen) return;
 		auto plen = GetPublicKeyLen ();
 		std::vector<uint8_t> pub (plen + 1);
 		pub[0] = POINT_CONVERSION_UNCOMPRESSED;
@@ -382,12 +382,12 @@ namespace crypto
 	}
 
 	ECDSASigner::ECDSASigner (int curve, size_t keyLen, const EVP_MD * hash, const uint8_t * signingPrivateKey)
-		: m_KeyLen (keyLen)
+		: m_KeyLen (hash && IsSupportedECDSAKeyLength (curve, keyLen) ? keyLen : 0)
 		, m_Hash (hash)
 		, m_PrivateKey (nullptr)
 	{
-		if (!signingPrivateKey) return;
-		BIGNUM * priv = BN_bin2bn (signingPrivateKey, static_cast<int> (keyLen / 2), NULL);
+		if (!signingPrivateKey || !m_KeyLen) return;
+		BIGNUM * priv = BN_bin2bn (signingPrivateKey, static_cast<int> (m_KeyLen / 2), NULL);
 		if (!priv) return;
 		OSSL_PARAM_BLD * paramBld = OSSL_PARAM_BLD_new ();
 		if (!paramBld)
@@ -458,6 +458,7 @@ namespace crypto
 
 	bool CreateECDSARandomKeys (int curve, size_t keyLen, uint8_t * signingPrivateKey, uint8_t * signingPublicKey)
 	{
+		if (!IsSupportedECDSAKeyLength (curve, keyLen)) return false;
 		if (!signingPrivateKey || !signingPublicKey) return false;
 		auto clear = [&] ()
 		{
@@ -494,7 +495,7 @@ namespace crypto
 #endif
 
 	RSAVerifier::RSAVerifier (size_t keyLen, const EVP_MD * hash)
-		: m_KeyLen (keyLen)
+		: m_KeyLen (hash && (keyLen == 256 || keyLen == 384 || keyLen == 512) ? keyLen : 0)
 		, m_Hash (hash)
 		, m_PublicKey (nullptr)
 	{

@@ -16,6 +16,7 @@
 #include <cstdint>
 #include <cstring>
 #include <memory>
+#include <limits>
 #include <vector>
 
 #include <openssl/bn.h>
@@ -371,6 +372,71 @@ void CreateRsaRawTestSignature (std::array<uint8_t, 256> & modulus, std::array<u
 #endif
 }
 
+
+void TestInvalidSignatureParameters ()
+{
+	using namespace i2p::crypto;
+	// Tiny buffers make any read/clear before parameter rejection visible
+	// to sanitizers. Invalid sizes do not grant authority over more bytes.
+	uint8_t tiny = 0xA5;
+	constexpr size_t largest = std::numeric_limits<size_t>::max ();
+	for (size_t length : { size_t (0), size_t (1), size_t (255),
+		size_t (257), size_t (513), largest })
+	{
+		RSAVerifier verifier (length, EVP_sha256 ());
+		assert (verifier.GetPublicKeyLen () == 0);
+		assert (verifier.GetSignatureLen () == 0);
+		assert (verifier.GetPrivateKeyLen () == 0);
+		verifier.SetPublicKey (&tiny);
+		assert (!verifier.Verify (TEST_MESSAGE, sizeof (TEST_MESSAGE), &tiny));
+	}
+	RSAVerifier missingHash (256, nullptr);
+	missingHash.SetPublicKey (&tiny);
+	assert (missingHash.GetPublicKeyLen () == 0);
+	assert (!missingHash.Verify (TEST_MESSAGE, sizeof (TEST_MESSAGE), &tiny));
+	for (size_t length : { size_t (256), size_t (384), size_t (512) })
+	{
+		RSAVerifier verifier (length, EVP_sha256 ());
+		assert (verifier.GetPublicKeyLen () == length);
+		assert (verifier.GetPrivateKeyLen () == 2 * length);
+	}
+
+	for (size_t length : { size_t (0), size_t (1), size_t (63),
+		size_t (65), ECDSAP384_KEY_LENGTH, largest })
+	{
+		assert (!CreateECDSARandomKeys (
+			NID_X9_62_prime256v1, length, &tiny, &tiny));
+		assert (tiny == 0xA5);
+#ifndef LIBRESSL_VERSION_NUMBER
+		ECDSAVerifier verifier (NID_X9_62_prime256v1, length, EVP_sha256 ());
+		assert (verifier.GetPublicKeyLen () == 0);
+		assert (verifier.GetSignatureLen () == 0);
+		verifier.SetPublicKey (&tiny);
+		assert (!verifier.Verify (TEST_MESSAGE, sizeof (TEST_MESSAGE), &tiny));
+		ECDSASigner signer (NID_X9_62_prime256v1, length, EVP_sha256 (), &tiny);
+		signer.Sign (TEST_MESSAGE, sizeof (TEST_MESSAGE), &tiny);
+		assert (tiny == 0xA5);
+#endif
+	}
+	assert (!CreateECDSARandomKeys (
+		NID_undef, ECDSAP256_KEY_LENGTH, &tiny, &tiny));
+	assert (tiny == 0xA5);
+#ifndef LIBRESSL_VERSION_NUMBER
+	ECDSAVerifier missingDigest (NID_X9_62_prime256v1, ECDSAP256_KEY_LENGTH, nullptr);
+	missingDigest.SetPublicKey (&tiny);
+	assert (missingDigest.GetPublicKeyLen () == 0);
+	assert (!missingDigest.Verify (TEST_MESSAGE, sizeof (TEST_MESSAGE), &tiny));
+	ECDSASigner missingSignerDigest (
+		NID_X9_62_prime256v1, ECDSAP256_KEY_LENGTH, nullptr, &tiny);
+	missingSignerDigest.Sign (TEST_MESSAGE, sizeof (TEST_MESSAGE), &tiny);
+	assert (tiny == 0xA5);
+	ECDSAVerifier invalidCurve (NID_undef, ECDSAP256_KEY_LENGTH, EVP_sha256 ());
+	invalidCurve.SetPublicKey (&tiny);
+	assert (invalidCurve.GetPublicKeyLen () == 0);
+	assert (!invalidCurve.Verify (TEST_MESSAGE, sizeof (TEST_MESSAGE), &tiny));
+#endif
+}
+
 void TestRsaRawSignatureVerification ()
 {
 	using namespace i2p::data;
@@ -424,6 +490,7 @@ int main ()
 	TestPrivateKeysRoundTrip (i2p::data::SIGNING_KEY_TYPE_EDDSA_SHA512_ED25519);
 	TestPrivateKeysRoundTrip (i2p::data::SIGNING_KEY_TYPE_EDDSA_SHA512_ED25519ph);
 	TestEddsaFallbackPairValidation ();
+	TestInvalidSignatureParameters ();
 	TestRsaRawSignatureVerification ();
 	return 0;
 }
