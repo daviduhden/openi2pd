@@ -684,14 +684,8 @@ foreach(required IN ITEMS
   endif()
 endforeach()
 
-# Use the non-deprecated timer API across supported Boost versions. Newer
-# releases remove the error-code overload; socket overloads are separate.
-foreach(source IN ITEMS i2cp_source sam_source)
-  string(FIND "${${source}}" ".cancel (ec)" timer_cancel_ec)
-  if(NOT timer_cancel_ec EQUAL -1)
-    message(FATAL_ERROR "Timer cancel(error_code) is not portable in ${source}")
-  endif()
-endforeach()
+# Timer receiver names and arbitrary operands are checked globally.
+include("${PROJECT_ROOT}/tests/check-timer-cancellation.cmake")
 foreach(required IN ITEMS
     "GetI2CPBlindingAuthSecret"
     "GetI2CPHostReplyResultForAuth"
@@ -1709,15 +1703,6 @@ string(FIND "${socks_destructor_source}" "if (auto self = weak_from_this ().lock
 if(socks_weak_done EQUAL -1)
   message(FATAL_ERROR "SOCKS destructor teardown must not acquire an expired shared owner")
 endif()
-
-# Also cover newly introduced timers, including the optional torrent RPC.
-foreach(timer_source IN ITEMS libi2pd_client/I2CP.cpp libi2pd_client/SAM.cpp
-    libi2pd_client/SOCKS.cpp libi2pd_client/TorrentsRPC.cpp)
-  file(READ "${PROJECT_ROOT}/${timer_source}" timer_contents)
-  if(timer_contents MATCHES "m_[A-Za-z0-9_]*(Timer|Deadline)[.]cancel[ \t]*\\([ \t]*[^ \t)\r\n]")
-    message(FATAL_ERROR "Use non-deprecated timer cancel() in ${timer_source}")
-  endif()
-endforeach()
 
 # Provider work must reject queue saturation, never fall back to the UI.
 file(READ "${PROJECT_ROOT}/android/app/src/main/java/org/openi2pd/router/TorrentSafTaskExecutor.java"

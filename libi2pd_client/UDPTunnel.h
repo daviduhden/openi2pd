@@ -140,6 +140,11 @@ namespace client
 		void ScheduleAckTimer (uint32_t seqn);
 		/// Revoke an ACK wait before resetting connection state.
 		void CancelAckTimer ();
+		/** Return the most recent cancellation failure, initially empty.
+		 * Retained across restart. Takes ACK admission; do not call from
+		 * the timeout action, which already owns that gate.
+		 */
+		boost::system::error_code GetAckCancellationError () const;
 
 		void UpdateRTT (uint64_t rtt, uint64_t ts);
 		void UpdateSendRate (uint32_t numDatagrams, uint64_t ts);
@@ -170,6 +175,7 @@ namespace client
 			std::mutex mutex;
 			std::atomic<bool> stopRequested { false };
 			bool stopped = false;
+			boost::system::error_code cancellationError;
 			std::shared_ptr<const uint8_t> wait;
 		};
 		// This leaf gate covers ACK action publication, not all UDP state.
@@ -184,7 +190,7 @@ namespace client
 
 	private:
 		void ScheduleAckTimerLocked (uint32_t seqn);
-		void CancelAckTimerLocked ();
+		void CancelAckTimerLocked () noexcept;
 
 	};
 

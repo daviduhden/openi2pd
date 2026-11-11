@@ -779,3 +779,19 @@ if(udp_lifecycle_source MATCHES "GetDatagramSession [(][)] *->")
   message(FATAL_ERROR "UDP session lookup must be checked before dereference")
 endif()
 require_runtime_source("libi2pd_client/UDPTunnel.cpp" "if (drainEc) break;")
+
+# Cancellation revokes authority and preserves diagnostics on unwind.
+require_runtime_order("libi2pd_client/UDPTunnel.cpp"
+  "void UDPConnection::CancelAckTimerLocked () noexcept"
+  "void UDPConnection::Acked ("
+  "m_AckAdmission->wait.reset ();" "m_AckTimerSeqn = 0;"
+  "try { m_AckTimer.cancel (); }"
+  "m_AckAdmission->cancellationError = error.code ();")
+require_runtime_order("libi2pd_client/UDPTunnel.cpp"
+  "void UDPConnection::ScheduleAckTimerLocked ("
+  "UDPConnection::AckHandler UDPConnection::MakeAckHandlerLocked ()"
+  "try" "m_AckTimer.expires_after (" "m_AckTimer.async_wait ("
+  "CancelAckTimerLocked ();" "throw;")
+require_runtime_source("libi2pd_client/UDPTunnel.cpp"
+  "GetAckCancellationError ().value ()")
+require_runtime_source("tests/CMakeLists.txt" "timer-cancellation-contract")

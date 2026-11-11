@@ -532,6 +532,13 @@ set_tests_properties(control-security-static PROPERTIES
   LABELS "ci;static;security;memory"
   TIMEOUT 30)
 
+add_test(NAME timer-cancellation-contract
+  COMMAND "${CMAKE_COMMAND}" "-DPROJECT_ROOT=${PROJECT_ROOT}"
+    "-DBINARY_DIR=${CMAKE_CURRENT_BINARY_DIR}"
+    -P "${CMAKE_CURRENT_SOURCE_DIR}/test-timer-cancellation-contract.cmake")
+set_tests_properties(timer-cancellation-contract PROPERTIES
+  LABELS "ci;static;security" TIMEOUT 60)
+
 # Compile-free modern-language policy/availability check. It reads
 # AGENTS.md, CMake, Gradle, documentation and the modernization seam
 # headers only.

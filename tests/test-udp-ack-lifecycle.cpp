@@ -62,6 +62,7 @@ int main ()
 	// An old wait cannot consume or mutate a successor's authority.
 	auto stale = connection->Prepare (8);
 	connection->CancelAckTimer ();
+	assert (!connection->GetAckCancellationError ());
 	auto current = connection->Prepare (9);
 	stale ({});
 	assert (connection->Actions () == 0);

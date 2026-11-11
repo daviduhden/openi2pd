@@ -111,6 +111,13 @@ build.
 
 ## Known issues and decisions
 
+- Boost timer cancellation accepts only cancel() on current Asio; socket
+  and acceptor error-code overloads are independent. An older Boost package
+  passing does not validate the newer API. The name-based native source
+  checker and renamed/multiline/pointer negative fixtures live in
+  tests/check-timer-cancellation.cmake and its contract driver; they do not
+  replace compilation. Do not limit recurrence checks to a few known files.
+
 - Network-free callback lifecycle fixtures belong in the normal native
   target list with memory/security labels. Full manual sanitizer suites
   consume that list without another workflow; optional or platform-minimal

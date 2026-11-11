@@ -117,6 +117,12 @@ compile, run tests or run project scripts.
 
 ## Known issues and decisions
 
+- ACK expiry update and wait registration form one exception interval.
+  Revoke wait identity/sequence before portable timer cancellation; preserve
+  the original registration exception. Cancellation cleanup retains its
+  non-secret error code without allocating or logging during unwind; inspect
+  GetAckCancellationError and the numeric stats field when diagnosing it.
+
 - ACK waits need per-admission identity independent of packet sequence zero.
   Weak ownership avoids executor retention, while a shared leaf gate covers
   owner use through timeout action publication. Retire identity before cancel

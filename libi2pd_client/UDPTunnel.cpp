@@ -12,6 +12,7 @@
  */
 
 #include <string_view>
+#include <boost/system/system_error.hpp>
 #include "Log.h"
 #include "util.h"
 #include "ClientContext.h"
@@ -205,12 +206,24 @@ namespace client
 		CancelAckTimerLocked ();
 	}
 
-	void UDPConnection::CancelAckTimerLocked ()
+	boost::system::error_code UDPConnection::GetAckCancellationError () const
+	{
+		std::lock_guard lock (m_AckAdmission->mutex);
+		return m_AckAdmission->cancellationError;
+	}
+
+	void UDPConnection::CancelAckTimerLocked () noexcept
 	{
 		m_AckAdmission->wait.reset ();
 		m_AckTimerSeqn = 0;
-		boost::system::error_code ignored;
-		m_AckTimer.cancel (ignored);
+		// Revoke before cancellation. New Asio exposes only cancel(); its
+		// failure must neither escape destruction nor replace an exception
+		// from timer registration. Keep its code without allocating here.
+		try { m_AckTimer.cancel (); }
+		catch (const boost::system::system_error & error)
+		{
+			m_AckAdmission->cancellationError = error.code ();
+		}
 	}
 
 	void UDPConnection::Acked (uint32_t seqn)
@@ -374,8 +387,11 @@ namespace client
 		if (shift > I2P_UDP_MAX_NUM_ACK_TIMEOUTS) shift = I2P_UDP_MAX_NUM_ACK_TIMEOUTS;
 		uint64_t timeout = GetRTO () << shift;
 		if (timeout > I2P_UDP_MAX_UNACKED_DATAGRAM_TIME) timeout = I2P_UDP_MAX_UNACKED_DATAGRAM_TIME;
-		m_AckTimer.expires_after (std::chrono::milliseconds (timeout));
-		try { m_AckTimer.async_wait (MakeAckHandlerLocked ()); }
+		try
+		{
+			m_AckTimer.expires_after (std::chrono::milliseconds (timeout));
+			m_AckTimer.async_wait (MakeAckHandlerLocked ());
+		}
 		catch (...)
 		{
 			CancelAckTimerLocked ();
@@ -674,6 +690,7 @@ namespace client
 					"/s window=", s->GetMaxNumUnackedDatagrams (), " unacked=", s->m_UnackedDatagrams.size (),
 					" nextSeqn=", s->m_NextSendPacketNum, " lastRecvSeqn=", s->m_LastReceivedPacketNum,
 					" winDrops=", s->m_NumWindowDrops, " ackTimeouts=", s->m_NumAckTimeouts,
+					" ackCancelError=", s->GetAckCancellationError ().value (),
 					" pathDrops=", session ? session->GetNumPathDrops () : 0,
 					" noPathDrops=", session ? session->GetNumDroppedNoPath () : 0);
 			}
@@ -1097,6 +1114,7 @@ namespace client
 				"ms rate=", m_SendRate, "/s window=", GetMaxNumUnackedDatagrams (),
 				" unacked=", m_UnackedDatagrams.size (), " nextSeqn=", m_NextSendPacketNum,
 				" winDrops=", m_NumWindowDrops, " ackTimeouts=", m_NumAckTimeouts,
+				" ackCancelError=", GetAckCancellationError ().value (),
 				" pathDrops=", session ? session->GetNumPathDrops () : 0,
 				" noPathDrops=", session ? session->GetNumDroppedNoPath () : 0);
 			ScheduleStatsTimer ();
