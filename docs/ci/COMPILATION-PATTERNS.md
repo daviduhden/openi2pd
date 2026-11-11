@@ -1,5 +1,14 @@
 # Compilation diagnostic patterns and repository-wide review
 
+## Correlated dependency failures across unrelated workflows
+
+An apt DNS outage can fail source docs, service checks and Debian acquisition
+without compiling their targets. Group the exact mirror/job acquisition
+failure (TF-103), retain successful compiler siblings and distinguish failed
+acquisition from a failed compile or generated-doc warning. Missing package
+artifacts after cancellation are not evidence of a broken install manifest.
+Do not infer that unexecuted generators or service checks are clean.
+
 ## Successful compilation does not validate parameter geometry
 
 Follow a narrowing-warning audit into public runtime constructors, not only

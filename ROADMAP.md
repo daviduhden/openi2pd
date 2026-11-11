@@ -15,15 +15,15 @@ requirements and current code; `TODO.md` is the authoritative task list.
 
 ## Current baseline
 
-At 830c65ab, history reaches 414 completed runs on 68 SHAs. CW-031/032
-are absent in executed compiler lanes; Linux/OpenSSL and sanitizer suites
-pass. OpenBSD retains three root-related skips; Android retains fourteen
-Lint warnings and no device execution. Windows startup remains CI failure.
-Local checked decoding/point copies, signature constructor geometry, startup
-root ownership and code-address diagnostics are Implemented / static;
-Pending CI compilation / Pending CI tests. Full matrix cleanliness still
-requires Windows attribution, CONC-028/DHT owner admission, PRIVSEP-017
-retirement, allocator-failure coverage and CRY-236 signing propagation.
+At c25a0b08, the pre-diagnostic snapshot has 424 completed runs on 69 SHAs.
+Native OpenSSL/sanitizer suites pass and earlier decoder/geometry/startup
+controls execute successfully. Windows remains CI failure; source docs and
+service/Debian acquisition are Blocked by runner DNS (TF-103). Android Lint,
+OpenBSD root skips and skipped devices remain separate coverage limits.
+Local secret-scalar cleansing, UDP ACK admission and coherent storage-root
+publication are Implemented / static; Pending CI compilation / Pending CI
+tests. Caller-PC diagnostic 43055686363 executes only published c25a0b08.
+Broader DHT/UDP lifetimes, PRIVSEP-017 deferred reaping and CRY-236 remain.
 
 The 80a487d5 retrospective reaches 362 runs on 63 SHAs. Native sanitizer,
 OpenSSL, OpenBSD and selected MSVC regressions pass; Windows MSYS2 Unicode

@@ -5,6 +5,24 @@ and license details.
 
 # Regression patterns
 
+## Secret-state transitions and ACK admission
+
+- Classify each intermediate at every arithmetic step. A final public scalar
+  may contain private-dependent state on an earlier failure; clear-free its
+  owner and keep verification's public inputs distinct in source guards.
+- Retained timer success must carry owner authority and per-wait identity.
+  Packet sequence zero cannot stand in for active admission. Test cancellation,
+  successor waits, restart, final owner release without executor drain and Stop
+  admission independently. Retire an empty ACK window's probe as well.
+  Revoke fast-cache authority with registry removal; an ACK-stopped cached
+  session must not be reused. Close socket receive admission before retirement
+  completes, checking failed drains and nullable lookups in sibling paths.
+- Stage allocating root metadata before publishing the corresponding file
+  descriptor. Exercise both storage siblings; descriptor ownership alone does
+  not guarantee coherent path/device/inode state after an exception.
+- A failed dependency install does not exercise a prepared regression. Keep
+  generator and package gaps pending while preserving passing sanitizer results.
+
 ## Provider, constructor and startup authority continuations
 
 - When making a helper nullable, inspect initialization as well as parser

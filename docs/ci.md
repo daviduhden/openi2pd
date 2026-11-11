@@ -15,6 +15,13 @@ Every workflow is **manual-only** (`workflow_dispatch`), including
 synchronization checks on demand. No workflow runs automatically; `push`,
 `pull_request`, `schedule` and `repository_dispatch` triggers are not allowed.
 
+The c25a0b08 audit separates passing native/sanitizer suites from runner DNS
+failures before source documentation and service/package validation. See
+[the exact-run inventory](ci/TEST-FAILURES.md) for TF-103 and skipped coverage.
+Prepared `test-udp-ack-lifecycle` joins the normal native CTest list and full
+manual sanitizer suites; registration does not establish compilation or
+execution. The Windows caller-PC diagnostic remains a separate manual run.
+
 The Linux build matrix is two workflows, one per OpenSSL branch:
 `build-linux-openssl3.yml` and `build-linux-openssl4.yml`. Each installs the
 latest Homebrew `openssl@3`/`openssl@4` bottle plus the precompiled GCC, LLVM,

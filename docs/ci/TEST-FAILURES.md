@@ -5,6 +5,52 @@ and license details.
 
 # Test failure inventory
 
+## c25a0b08 — TF-103 infrastructure acquisition failure
+
+Snapshot before diagnostic dispatch: 424 completed runs / 69 SHAs;
+112 success, 246 failure, 66 cancelled. Exactly ten new c25 runs give seven
+successful workflows and three failures. Metadata was paginated; latest-ten
+full successful/failed logs and artifact inventories were retrieved.
+Historical unavailable logs remain gaps, not clean results.
+Every result below executes `c25a0b081aa3d3b968e043d968b904a40b48e4f6`.
+
+- [Validation 43037707365](https://github.com/daviduhden/openi2pd/actions/runs/43037707365):
+  source-docs job 130580894102 fails apt with exit 100 after DNS resolution
+  failure for azure.archive.ubuntu.com. Doxygen never starts. ASan+UBSan
+  130580893127, UBSan 130580893120 and TSan 130580893264 each pass 261 tests;
+  full logs contain no sanitizer diagnostic. Fuzz 130580892747 passes fifteen
+  targets; Skills 130580893318 passes; Perl quality 130580895121 skips.
+- [Packaging 43037666619](https://github.com/daviduhden/openi2pd/actions/runs/43037666619):
+  service install 130580746855 and contracts 130580747343 fail the same apt
+  DNS acquisition before configure/contracts. Debian 130580748977 is cancelled
+  during dependency acquisition; no regular-package artifact or maintainer
+  script validation exists. Container 130580749537 and static-musl
+  130580747141 pass. Exact static-musl artifact contains the static PIE package;
+  that separate artifact does not validate the unbuilt regular package.
+- OpenSSL 3 [43037679443](https://github.com/daviduhden/openi2pd/actions/runs/43037679443)
+  jobs 130580792543/130580793026 and OpenSSL 4
+  [43037685671](https://github.com/daviduhden/openi2pd/actions/runs/43037685671)
+  130580814605/130580815136 each pass 261 main and 10/3/9 focused tests.
+- OpenBSD [43037659437](https://github.com/daviduhden/openi2pd/actions/runs/43037659437)
+  job 130580718405: 256 registered, 253 pass and three non-root-required skips.
+- Android [43037693624](https://github.com/daviduhden/openi2pd/actions/runs/43037693624)
+  130580862404 succeeds; 174 JVM tests pass, JNI parity covers 46 declarations,
+  Java major 69 / DEX 039 checks pass. Device 130580865228 skips; Lint remains.
+- Windows [43037652402](https://github.com/daviduhden/openi2pd/actions/runs/43037652402)
+  130580697443: 245 registered / 243 pass / one failure / one skip;
+  130580697869: 19 registered / 18 pass / one failure. Startup causes remain open.
+- Linux [43037699387](https://github.com/daviduhden/openi2pd/actions/runs/43037699387)
+  consumer 130580864054 and reference/vector interop 130580864479 pass; not
+  live Java handshake evidence. Agent gate 43037672749 / 130580768127 passes.
+  Instrumented OpenSSL TSan 43037714920 / 130580926326 passes one registry test.
+
+TF-103 is infrastructure, not a compiler or test assertion regression. Do not
+add retries, broad package allowances or disable validators to hide it.
+Skipped generator/service/package coverage remains Pending CI tests. New
+RT-081/082 and root-metadata controls are prepared, not executed. Separate
+manual diagnostic 43055686363 was launched after this historical snapshot;
+no remote result can validate the new local implementation.
+
 ## Revision 830c65ab: latest ten and historical coverage
 
 Paginated metadata now covers 414 completed runs on 68 SHAs: 105 success,

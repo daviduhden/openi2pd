@@ -5,6 +5,68 @@ and license details.
 
 # Runtime error inventory
 
+## c25a0b08 continuation — executed baseline and preventive fixes
+
+Published `c25a0b081aa3d3b968e043d968b904a40b48e4f6` passes the executed
+RT-079/080 decoder/geometry controls and RT-078 ordinary storage regressions
+in OpenSSL/sanitizer/OpenBSD lanes. This does not supply allocator injection.
+New work below is local only: Implemented / static; Pending CI compilation /
+Pending CI tests. No new sanitizer report is attributed to these findings.
+
+### RT-081 — Secret-dependent compatibility-signing intermediate
+
+`Ed25519::Sign` initially decodes a public challenge into h, then multiplies
+it by private scalar a before adding the nonce. If the addition fails, h is
+still secret-dependent, despite its eventual public signature role. Raw
+BN_free did not cleanse that intermediate. The RedDSA equivalent already
+uses clear-free ownership. Both h and a now use SecretBN/BN_clear_free;
+Verify's public challenge remains unchanged. A function-scoped negative
+source guard pins ownership and arithmetic consumers, rejecting raw frees.
+Existing deterministic, overlap and failure-output tests remain applicable;
+provider fault injection and CRY-236 remain separate pending work.
+
+### RT-082 / CONC-028 — UDP ACK owner and wait authority
+
+`UDPConnection::ScheduleAckTimer` captured raw this; cancellation alone
+could leave queued successful completions using a destroyed connection or
+mutating a replacement wait. ACK sequence zero is also a valid probe state,
+so packet sequence cannot serve as admission identity. The correction uses
+weak/shared owner authority, distinct wait tokens and a leaf admission gate
+shared by completion, Stop, Start, ACK cancellation and client reset. Locked
+rearm avoids recursive gate acquisition; derived teardown follows ACK drain.
+Focused network-free lifecycle controls model retained successful callbacks,
+owner release without executor drain, cancellation/rearm and restart. The
+registered native target is test-udp-ack-lifecycle with memory/security labels.
+Retirement clears matching fast caches before registry removal, and server
+sessions close receive admission and their socket after ACK drain. Queued
+server receives cannot forward/rearm after that boundary. Missing sessions
+and failed synchronous drains are checked in both UDP directions. Facade,
+keepalive/stats/cleanup, receiver and DHT lifetime work remains separate;
+receive buffer leases still last through their queued completions.
+Lifecycle reentry from an ACK action
+is prohibited; arbitrary simultaneous Start/Stop is not a new guarantee.
+
+### RT-078 continuation — coherent root metadata publication
+
+RouterStorageClient and DataStorageClient already owned their opened root
+FD, but published it before allocating its rootPath conversion. An exception
+could leave mismatched root metadata. Path conversion now precedes capability
+retirement; a nonallocating swap commits its matching path with device/inode.
+This fixes the root bundle boundary only, not every subsequent Configure
+exception or PRIVSEP-017 child-retirement issue. Source guards cover both
+siblings. No path/permission/sandbox policy or persistence format changed.
+
+### Windows startup remains a separate CI failure
+
+[43037652402](https://github.com/daviduhden/openi2pd/actions/runs/43037652402)
+reproduces CLANG64 version timeout (job 130580697443, 12.03 s) and MSVC worker
+exit 3221225794 / 0xC0000142 before authentication (130580697869, 10.03 s).
+Published caller-PC diagnostic
+[43055686363](https://github.com/daviduhden/openi2pd/actions/runs/43055686363)
+was dispatched on c25a0b08; its results are pending at this snapshot. Earlier
+MessageBoxA evidence does not identify a source caller or justify changing
+DLL selection, RNG or mitigation policy. No speculative runtime fix is claimed.
+
 ## Revision 830c65ab and preventive continuation
 
 All current execution evidence below applies to published

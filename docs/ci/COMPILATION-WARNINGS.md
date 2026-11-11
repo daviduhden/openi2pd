@@ -1,5 +1,25 @@
 # Compilation and lint warning inventory
 
+## c25a0b08 — native warning review and unchanged Android debt
+
+Reviewed all ten full logs, including successful steps in failed workflows,
+at `c25a0b081aa3d3b968e043d968b904a40b48e4f6`. No new first-party native
+GCC/Clang/MSVC compiler or linker warning was observed; CW-031/032 remain
+absent in executed lanes. Failed feature probes are capability detection.
+
+OpenSSL 3 run 43037679443 uses Clang job 130580792543 / GCC 130580793026;
+OpenSSL 4 run 43037685671 uses GCC 130580814605 / Clang 130580815136.
+Selected libraries are 3.5.9 / 4.1.0 with GCC 16.2.0 and Clang 23.1.5.
+OpenBSD 43037659437 job 130580718405 uses Clang 22.1.6 / LibreSSL 4.4.0.
+
+Android 43037693624 job 130580862404 retains fourteen Lint warnings per
+report: twelve VectorPath and two ChromeOsAbiSupport. The builtInKotlin=false
+notice remains toolchain debt. JVM/JNI parity success does not replace
+skipped device validation or justify geometry changes/ABI filters alone.
+Infrastructure TF-103 does not establish that skipped source-documentation
+or service/package diagnostics are clean. Existing historical warnings and
+runner/toolchain classifications below remain open where not superseded.
+
 ## Revision 830c65ab: CW-031/032 absent in executed lanes
 
 Reviewed all ten full logs for published

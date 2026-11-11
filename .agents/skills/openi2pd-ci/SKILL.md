@@ -206,6 +206,13 @@ workflow, run `gh`, build or test.
 
 ## Known issues and decisions
 
+- Dependency DNS failures can affect documentation, service checks and
+  packaging together before product commands run. Group the failed apt
+  mirror/job evidence, retain successful sanitizer siblings, and mark the
+  missing generator/install checks pending. A cancelled package build has
+  no regular-package artifact; an unrelated static package cannot validate
+  its maintainer scripts. Do not turn this classification into retry policy.
+
 - CDB @$exentry marks the PE/CRT entry, not WinMain or application main.
   A reached entry marker does not exclude static initialization. Modal
   attribution uses MessageBoxA/W breakpoints with code-only stacks, never

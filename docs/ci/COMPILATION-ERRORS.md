@@ -9,6 +9,18 @@ Tracks compile/configure/link failures reported by manual GitHub Actions.
 
 # Compilation error inventory
 
+## c25a0b08 — dependency acquisition versus product compilation
+
+Latest ten runs execute `c25a0b081aa3d3b968e043d968b904a40b48e4f6`.
+No first-party compiler/linker error was observed in retrieved full logs.
+Validation 43037707365 and Packaging 43037666619 fail TF-103 during apt DNS
+resolution of azure.archive.ubuntu.com, before their affected generators,
+service validators or configure steps. These are infrastructure failures,
+not demonstrated source regressions; skipped targets have no new evidence.
+Successful compiler/sanitizer siblings remain independently meaningful.
+See [the exact-run inventory](TEST-FAILURES.md) for jobs and artifact gaps.
+Local scalar, ACK and root-metadata changes remain Pending CI compilation.
+
 ## Revision 830c65ab: no observed compile/link blocker
 
 The latest ten runs execute `830c65ab1aaed6db9d6edeb7d0a91918ac446e21`.

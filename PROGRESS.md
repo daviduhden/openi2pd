@@ -8010,3 +8010,56 @@ or push.
   validated geometry, diagnostic PC retention and startup descriptor ownership.
   These checks do not execute prepared C++ or TAP tests or inject allocator
   failure. The final independent integration review found no blocking defect.
+
+## c25a0b08 retrospective and preventive continuation
+
+- Started clean at c25a0b081aa3d3b968e043d968b904a40b48e4f6. Ten specialist
+  agents covered historical CI, native warnings, memory/runtime, concurrency,
+  crypto/I2P, IPC, torrents/storage, Android, portability and regressions.
+- Paginated 424 completed runs / 69 SHAs (112 success, 246 failure,
+  66 cancelled), before the separate diagnostic dispatch. Retrieved full
+  latest-ten logs, exact jobs/SHAs and artifact inventories. Retained historical
+  unavailable evidence as gaps. Seven workflows pass; Windows runtime failure
+  is separate from TF-103 dependency DNS failures in docs/service/packaging.
+- Successful sanitizer jobs each execute 261 tests without reviewed sanitizer
+  diagnostics; OpenSSL 3/4 and OpenBSD execute RT-079/080 and prior storage
+  controls. Root-sensitive OpenBSD tests and Android devices still skip.
+  Native warnings CW-031/032 remain absent; Android's fourteen Lint findings
+  and toolchain notices remain open.
+- Dispatched Windows heap/caller-PC diagnostic 43055686363 on published c25,
+  not local changes. No source caller or DLL/RNG/mitigation cause is inferred
+  while the new evidence remains pending. No local publication was performed.
+- Implemented RT-081 SecretBN ownership for compatibility signing's challenge
+  and private scalar: an arithmetic failure can leave private-dependent state
+  before a public signature exists. Verification's public challenge unchanged.
+- Implemented RT-082 ACK weak/shared owner authority, per-wait identity and
+  shared Stop admission. Cancellation/restart/empty zero-sequence probe windows
+  retire waits; registration and completion failures revoke authority. Client
+  teardown follows ACK drain; server removal explicitly retires session ACKs.
+  Broader sockets, periodic timers, receiver and DHT lifetimes remain open.
+- Prepared network-free ACK tests for queued success, successor identity,
+  duplicate dispatch, cancellation, zero-sequence probes, errors, restart,
+  Stop versus admitted work and final owner release without executor drain.
+  Borrowing threads join before final assertions. Registered in normal native
+  CTest with memory/security labels; manual full sanitizer lanes consume it.
+- Staged allocating RouterStorage/DataStorage root conversion before descriptor
+  retirement, then swapped matching path metadata without allocation. This
+  hardens root publication, not every later Configure failure or child reaping.
+- Updated root policy and build/CI/C++23/crypto/privsep Skills, six inventories,
+  TODO and ROADMAP. New source changes remain Pending CI compilation / Pending
+  CI tests; no local build/configuration/compiler/test, commit or push ran.
+- Integration review found a cached-session regression before publication:
+  expiry now clears matching fast caches, stops server receive admission and
+  closes its socket after ACK retirement. Receive-to-ACK lock ordering avoids
+  recursive acquisition. Equivalent client cache, missing-session and drain
+  error paths were reviewed and corrected. Full facade/periodic callback and
+  receive-buffer lease retirement remain separate boundaries.
+- Final compile-free checks pass: runtime/control source contracts, build
+  graph, Skills structure, language policy, workflow manual-only policy,
+  documentation links, Doxygen parameter references and Shell policy.
+  Reviewed tracked and untracked whitespace, headers and comment widths.
+  Agent knowledge validation passes with AK004's semantic advisory reviewed:
+  reusable additions cover intermediate secrecy, metadata staging, ACK/cache
+  retirement and missing infrastructure coverage. Independent integration
+  review found no further blocking defect after the cache/socket correction.
+  New runtime and provider/allocation-failure validation remain pending CI.

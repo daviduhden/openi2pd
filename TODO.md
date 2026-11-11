@@ -10,17 +10,18 @@ Documents project documentation.
 
 # Master TODO
 
-Latest retrospective: 414 completed runs on 68 SHAs (105 success,
-243 failure, 66 cancelled). Published 830c65ab has nine successful workflows;
-Windows still fails version startup and worker initialization. CW-031/032
-are absent in reviewed executed compiler lanes; published encoder tests and
-storage contracts pass. OpenBSD executes 253 of 256 tests (three root-related
-skips); Android's 174 JVM tests pass, with devices skipped and fourteen Lint
-warnings. New RT-079/080 decoder/constructor bounds, RT-078 startup descriptor
-ownership and code-address Windows diagnostics are Implemented / static;
-Pending CI compilation / Pending CI tests. DHT/UDP admission, PRIVSEP-017
-retirement, broad allocator failures and end-to-end signing remain open.
-See the six docs/ci inventories for exact jobs and historical evidence gaps.
+Latest retrospective: 424 completed runs on 69 SHAs (112 success,
+246 failure, 66 cancelled), before diagnostic 43055686363. Published c25a0b08
+has seven successful workflows; Windows repeats runtime failures. Validation
+source docs and Packaging service/Debian acquisition are blocked by TF-103
+runner DNS before affected checks. Executed OpenSSL/sanitizer suites pass;
+CW-031/032 remain absent; RT-079/080 and published RT-078 controls pass.
+OpenBSD retains three root skips; Android retains fourteen Lint warnings and
+no device run. RT-081 secret-intermediate cleansing, RT-082 UDP ACK admission
+and coherent root-metadata publication are Implemented / static; Pending CI
+compilation / Pending CI tests. DHT/other UDP lifetimes, PRIVSEP-017 deferred
+reaping, allocator injection and broad signing propagation remain open.
+See docs/ci inventories for exact jobs, coverage gaps and diagnostic status.
 
 - CONT-050: portable supervisor admission and Asio timer teardown:
   Validated by CI in the executed 9f2934f8 lanes; no clean-matrix claim.
@@ -35,8 +36,14 @@ See the six docs/ci inventories for exact jobs and historical evidence gaps.
   Startup root RAII extension: Implemented / static; Pending CI compilation /
   Pending CI tests.
 - RT-079 / RT-080: checked decoder and signature constructor geometry:
+  Validated by CI at c25a0b08 in executed lanes; no allocator injection.
+- RT-081 / RT-082: signing intermediate cleansing and UDP ACK authority:
   Implemented / static; Pending CI compilation / Pending CI tests.
-- Windows startup caller PCs: Implemented / static; Pending CI tests.
+- RT-078: coherent RouterStorage/DataStorage root metadata:
+  Implemented / static; Pending CI compilation / Pending CI tests.
+- TF-103: runner DNS prevents source docs and service/package checks:
+  Blocked; Pending CI tests. No retry/suppression workaround introduced.
+- Windows startup caller PCs: Published; Pending CI tests in 43055686363.
   Application/worker initialization causes remain Correction pending.
 - CONT-051: coherent peer interest across availability, selection and active
   requests: Validated by CI at 9f2934f8. Subsequent HAVE_NONE/BITFIELD
