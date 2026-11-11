@@ -116,6 +116,14 @@ Do not let them edit, build or run tests.
 
 ## Known issues and decisions
 
+- Startup is also a storage transaction: opening the authorized directory
+  precedes allocating path conversion, child adoption and configuration.
+  Scope the root descriptor immediately and revoke partial child/channel
+  authority on unwind. Both supervisor and direct-spawn transports borrow
+  the local capability; reject an already running worker before installing
+  the retirement guard. Ordinary passing lifecycle tests do not exercise
+  allocator failure in this interval.
+
 - Metadata handle admission precedes result allocation; replacement begins
   a remote temporary-file transaction before later throwing operations.
   Exception retirement must cover the full interval between exchanges,

@@ -33,7 +33,9 @@ public:
 	TorrentStorageWorker & operator= (const TorrentStorageWorker &) = delete;
 	/// Start with an administrator-authorized root owned by the worker
 	/// identity. On failure, @a error describes the failure and no path
-	/// fallback is used.
+	/// fallback is used. The local root descriptor is scoped through IPC;
+	/// an exception closes it and retires partial startup authority before
+	/// propagating. Rejecting an already running worker preserves it.
 	bool Start (const std::filesystem::path & root, std::string & error);
 	/// Register a root-relative file with an expected length. Read
 	/// registrations do not create or resize files; @a create delegates

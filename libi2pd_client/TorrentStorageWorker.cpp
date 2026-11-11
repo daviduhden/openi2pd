@@ -152,6 +152,9 @@ bool TorrentStorageWorker::Start (const std::filesystem::path & root, std::strin
 		error = "storage worker already running";
 		return false;
 	}
+	// Startup can allocate after opening the root or adopting a child.
+	// Retire partial worker authority if any of those operations throws.
+	const Impl::ExceptionRetirement retireOnException { *m_Impl };
 	const uint32_t workerUid = WorkerUid ();
 	if (workerUid == 0)
 	{
@@ -168,17 +171,27 @@ bool TorrentStorageWorker::Start (const std::filesystem::path & root, std::strin
 	// O_RDONLY rather than O_PATH: the worker fsyncs parent directories
 	// after metadata/promote operations, which an O_PATH descriptor cannot
 	// satisfy.
-	int fd = ::open (absolute.c_str (), O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
-	if (fd < 0)
+	struct RootDescriptor
+	{
+		explicit RootDescriptor (int value) : fd (value) { }
+		~RootDescriptor () noexcept { if (fd >= 0) ::close (fd); }
+		RootDescriptor (const RootDescriptor &) = delete;
+		RootDescriptor & operator= (const RootDescriptor &) = delete;
+		const int fd;
+	};
+	// IPC borrows this capability; the worker receives its own descriptor.
+	// Stack ownership closes the local root before exception retirement.
+	const RootDescriptor rootFd (
+		::open (absolute.c_str (), O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC));
+	if (rootFd.fd < 0)
 	{
 		error = "cannot open authorized storage root";
 		return false;
 	}
 	struct stat rootStatus { };
-	if (::fstat (fd, &rootStatus) || !S_ISDIR (rootStatus.st_mode) || rootStatus.st_uid != workerUid
+	if (::fstat (rootFd.fd, &rootStatus) || !S_ISDIR (rootStatus.st_mode) || rootStatus.st_uid != workerUid
 		|| (rootStatus.st_mode & 0022))
 	{
-		::close (fd);
 		error = "unsafe authorized storage root";
 		return false;
 	}
@@ -186,8 +199,7 @@ bool TorrentStorageWorker::Start (const std::filesystem::path & root, std::strin
 	// No fork/exec in the pledged core. The pre-started supervisor
 	// validates the directory capability and configures the child before
 	// handing over its IPC.
-	auto channel = SpawnSupervisedTorrentStorage (fd, absolute.string ());
-	::close (fd);
+	auto channel = SpawnSupervisedTorrentStorage (rootFd.fd, absolute.string ());
 	if (!channel)
 	{
 		error = channel.error ();
@@ -201,7 +213,6 @@ bool TorrentStorageWorker::Start (const std::filesystem::path & root, std::strin
 	auto child = SpawnWorker ("torrent-storage", { });
 	if (!child)
 	{
-		::close (fd);
 		error = child.error ();
 		return false;
 	}
@@ -209,15 +220,13 @@ bool TorrentStorageWorker::Start (const std::filesystem::path & root, std::strin
 	PayloadWriter setup;
 	if (!setup.WritePath (absolute.string ()))
 	{
-		::close (fd);
 		error = "storage root path exceeds the IPC bound";
 		return false;
 	}
 	setup.WriteU64BE (static_cast<uint64_t> (rootStatus.st_dev));
 	setup.WriteU64BE (static_cast<uint64_t> (rootStatus.st_ino));
 	std::string result;
-	const bool ok = m_Impl->Exchange (MessageType::ConfigureTorrentStorage, setup.Data (), fd, result, error);
-	::close (fd);
+	const bool ok = m_Impl->Exchange (MessageType::ConfigureTorrentStorage, setup.Data (), rootFd.fd, result, error);
 	m_Impl->ready = ok;
 	return ok;
 #endif

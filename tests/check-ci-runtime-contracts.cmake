@@ -660,3 +660,21 @@ require_runtime_order("libi2pd_client/TorrentStorageWorker.cpp"
   "process.ChannelFd ().Close ();" "try { process.Stop (100); }")
 require_runtime_source("libi2pd_client/TorrentStorageWorker.cpp"
   "if (std::uncaught_exceptions () > exceptions)")
+
+# Startup owns a directory capability before path conversion and IPC.
+require_storage_unwind_guard("bool TorrentStorageWorker::Start ("
+  "uint32_t TorrentStorageWorker::Register (")
+require_runtime_order("libi2pd_client/TorrentStorageWorker.cpp"
+  "storage worker already running" "const Impl::ExceptionRetirement retireOnException")
+require_runtime_order("libi2pd_client/TorrentStorageWorker.cpp"
+  "const Impl::ExceptionRetirement retireOnException" "const RootDescriptor rootFd (")
+require_runtime_source("libi2pd_client/TorrentStorageWorker.cpp"
+  "~RootDescriptor () noexcept { if (fd >= 0) ::close (fd); }")
+require_runtime_source("libi2pd_client/TorrentStorageWorker.cpp"
+  "RootDescriptor (const RootDescriptor &) = delete;")
+require_runtime_source("libi2pd_client/TorrentStorageWorker.cpp"
+  "RootDescriptor & operator= (const RootDescriptor &) = delete;")
+require_runtime_source("libi2pd_client/TorrentStorageWorker.cpp"
+  "SpawnSupervisedTorrentStorage (rootFd.fd, absolute.string ())")
+require_runtime_source("libi2pd_client/TorrentStorageWorker.cpp"
+  "MessageType::ConfigureTorrentStorage, setup.Data (), rootFd.fd, result, error")
