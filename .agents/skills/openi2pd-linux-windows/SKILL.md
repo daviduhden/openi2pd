@@ -101,6 +101,14 @@ execution. Ask for:
 
 ## Known issues and decisions
 
+- STARTF_USESTDHANDLES transfers usable handles only with matching Win32
+  inheritance settings. Delegate worker NUL handles through an explicit
+  HANDLE_LIST on every spawn attempt, including job-attribute fallback;
+  keep its backing array alive until process creation. Inspect startup
+  handles before child stdio replacement can mask invalid parent values.
+  A corrected handle contract does not attribute a pre-authentication DLL
+  initializer failure without child evidence.
+
 - A worker exit before authentication, failed Ping or failed replacement is
   a failed live regression, not a generic capability skip. Only a directly
   observed native denial with matching topology may grant a fixture skip.

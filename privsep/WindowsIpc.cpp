@@ -1715,17 +1715,18 @@ i2p::expected<WindowsWorkerProcess, std::string> SpawnWindowsWorker (const std::
 	const std::wstring commandLine = L"\"" + executable + L"\" --privsep-worker " + RoleName (role) + L" " + pipeName
 		+ L" " + std::to_wstring (parentProcessId) + L" " + std::to_wstring (parentSessionId) + L" " + nonce;
 
-	// Standard handles are pinned to NUL so a service manager's console or
-	// log
-	// pipe is never handed to a worker. bInheritHandles stays FALSE: the
-	// values
-	// document intent, and inheritance itself is already impossible.
+	// STARTF_USESTDHANDLES requires inheritable handles and enabled
+	// inheritance. An explicit handle list delegates only these NUL
+	// handles, never service consoles, log pipes or process handles.
+	SECURITY_ATTRIBUTES standardAttributes { };
+	standardAttributes.nLength = sizeof (standardAttributes);
+	standardAttributes.bInheritHandle = TRUE;
 	ScopedHandle nullInput (
-		CreateFileW (L"NUL", GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_EXISTING, 0, nullptr));
+		CreateFileW (L"NUL", GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, &standardAttributes, OPEN_EXISTING, 0, nullptr));
 	ScopedHandle nullOutput (
-		CreateFileW (L"NUL", GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_EXISTING, 0, nullptr));
+		CreateFileW (L"NUL", GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE, &standardAttributes, OPEN_EXISTING, 0, nullptr));
 	ScopedHandle nullError (
-		CreateFileW (L"NUL", GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_EXISTING, 0, nullptr));
+		CreateFileW (L"NUL", GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE, &standardAttributes, OPEN_EXISTING, 0, nullptr));
 	if (!nullInput || !nullOutput || !nullError)
 		return i2p::unexpected ("CreateFile(NUL): " + Win32ErrorText (GetLastError ()));
 
@@ -1743,6 +1744,7 @@ i2p::expected<WindowsWorkerProcess, std::string> SpawnWindowsWorker (const std::
 		std::vector<BYTE> buffer;
 		LPPROC_THREAD_ATTRIBUTE_LIST list = nullptr;
 		HANDLE jobHandle = nullptr;
+		HANDLE standardHandles[3] { };
 		DWORD64 mitigation = 0;
 		SECURITY_CAPABILITIES capabilities { };
 		DWORD allApplicationPackages = 0;
@@ -1767,23 +1769,17 @@ i2p::expected<WindowsWorkerProcess, std::string> SpawnWindowsWorker (const std::
 	// Build one attribute list. `includeJob` selects the atomic job
 	// attribute; every other mechanism is mandatory for this spawn and a
 	// failure to add it aborts the attempt instead of silently spawning a
-	// weaker worker. There is deliberately no handle list: bInheritHandles
-	// is FALSE and no handle in this function is inheritable, so a
-	// zero-length PROC_THREAD_ATTRIBUTE_HANDLE_LIST would add no
-	// restriction while adding one more attribute the kernel can reject.
+	// weaker worker. The handle list is mandatory on both attempts; the
+	// job fallback must not turn scoped inheritance into general
+	// inheritance.
 	auto buildAttributeList = [&] (
 		AttributeList & attributes, bool includeJob, std::string & error) -> bool
 	{
-		DWORD attributeCount = 0;
+		DWORD attributeCount = 1; // mandatory standard-handle list
 		if (policy.useMitigationPolicy) ++attributeCount;
 		if (includeJob && job->IsValid ()) ++attributeCount;
 		if (useContainer) ++attributeCount;
 		if (lowPrivilege) ++attributeCount;
-		// No mechanism requested: create the process with a plain
-		// STARTUPINFO instead of an empty attribute list, which
-		// InitializeProcThreadAttributeList refuses.
-		if (attributeCount == 0) return true;
-
 		SIZE_T attributeSize = 0;
 		// The first call is expected to fail with ERROR_INSUFFICIENT_BUFFER
 		// and reports the required size; only a zero size is an error.
@@ -1801,6 +1797,16 @@ i2p::expected<WindowsWorkerProcess, std::string> SpawnWindowsWorker (const std::
 		{
 			error = "InitializeProcThreadAttributeList: " + Win32ErrorText (GetLastError ());
 			attributes.list = nullptr;
+			return false;
+		}
+		attributes.standardHandles[0] = nullInput.get ();
+		attributes.standardHandles[1] = nullOutput.get ();
+		attributes.standardHandles[2] = nullError.get ();
+		if (!UpdateProcThreadAttribute (attributes.list, 0,
+				PROC_THREAD_ATTRIBUTE_HANDLE_LIST, attributes.standardHandles,
+				sizeof (attributes.standardHandles), nullptr, nullptr))
+		{
+			error = "UpdateProcThreadAttribute(standard handles): " + Win32ErrorText (GetLastError ());
 			return false;
 		}
 
@@ -1919,11 +1925,11 @@ i2p::expected<WindowsWorkerProcess, std::string> SpawnWindowsWorker (const std::
 		const DWORD creationFlags = CREATE_NO_WINDOW | CREATE_SUSPENDED | CREATE_UNICODE_ENVIRONMENT
 			| (extended ? EXTENDED_STARTUPINFO_PRESENT : 0u);
 		if (useContainer)
-			created = CreateProcessW (executable.c_str (), mutableCommandLine.data (), nullptr, nullptr, FALSE,
+			created = CreateProcessW (executable.c_str (), mutableCommandLine.data (), nullptr, nullptr, TRUE,
 				creationFlags, nullptr, nullptr, &startup.StartupInfo, &processInfo);
 		else
 			created = CreateProcessAsUserW (token.Native (), executable.c_str (), mutableCommandLine.data (), nullptr,
-				nullptr, FALSE, creationFlags, nullptr, nullptr, &startup.StartupInfo, &processInfo);
+				nullptr, TRUE, creationFlags, nullptr, nullptr, &startup.StartupInfo, &processInfo);
 		// The list dies with this iteration; CreateProcess has copied what
 		// it needs by the time it returns.
 		startup.lpAttributeList = nullptr;

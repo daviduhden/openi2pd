@@ -852,3 +852,20 @@ require_runtime_order("libi2pd/Gost.cpp"
   "BN_CTX_end (ctx);" "BN_CTX_free (ctx);")
 require_runtime_source("tests/test-crypto-audit-bounds.cpp"
   "TestGostSigningRejectsInvalidInputs ();")
+
+# Worker stdio must be transferred, not copied as parent-only values.
+require_runtime_source("privsep/WindowsIpc.cpp"
+  "standardAttributes.bInheritHandle = TRUE;")
+require_runtime_source("privsep/WindowsIpc.cpp"
+  "HANDLE standardHandles[3] { };")
+require_runtime_source("privsep/WindowsIpc.cpp"
+  "PROC_THREAD_ATTRIBUTE_HANDLE_LIST, attributes.standardHandles,")
+require_runtime_source("privsep/WindowsIpc.cpp"
+  "DWORD attributeCount = 1; // mandatory standard-handle list")
+require_runtime_source("privsep/WindowsIpc.cpp"
+  "created = CreateProcessW (executable.c_str (), mutableCommandLine.data (), nullptr, nullptr, TRUE,")
+require_runtime_source("privsep/WindowsIpc.cpp"
+  "nullptr, TRUE, creationFlags, nullptr, nullptr, &startup.StartupInfo, &processInfo);")
+require_runtime_order("tests/test-privsep-windows-supervisor.cpp"
+  "if (argument == \"--privsep-worker\")" "return RunWindowsWorker ("
+  "if (!HasUsableWorkerStandardHandles ()) return 3;")

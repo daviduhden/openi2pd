@@ -50,6 +50,7 @@ int main ()
 #include <cstddef>
 #include <cstdio>
 #include <cstdlib>
+#include <initializer_list>
 #include <iterator>
 #include <string>
 #include <vector>
@@ -81,6 +82,25 @@ DWORD HandleCount ()
 	DWORD count = 0;
 	if (!GetProcessHandleCount (GetCurrentProcess (), &count)) return 0xffffffffu;
 	return count;
+}
+
+// Inspect the inherited handles before the worker repins its stdio.
+// Invalid parent-only values must fail this check rather than be hidden
+// by RunWindowsWorker opening new handles after CRT initialization.
+bool HasUsableWorkerStandardHandles ()
+{
+	STARTUPINFOW startup { };
+	GetStartupInfoW (&startup);
+	if (!(startup.dwFlags & STARTF_USESTDHANDLES)) return false;
+	for (HANDLE handle : { startup.hStdInput, startup.hStdOutput,
+		startup.hStdError })
+	{
+		DWORD flags = 0;
+		if (!handle || handle == INVALID_HANDLE_VALUE
+			|| !GetHandleInformation (handle, &flags)
+			|| GetFileType (handle) != FILE_TYPE_CHAR) return false;
+	}
+	return true;
 }
 
 /*
@@ -814,6 +834,7 @@ int main (int argc, char ** argv)
 		}
 		if (argument == "--privsep-worker")
 		{
+			if (!HasUsableWorkerStandardHandles ()) return 3;
 			// role pipe parentPid parentSession nonce
 			if (index + 5 >= argc) return 2;
 			return RunWindowsWorker (argv[index + 1], argv[index + 2], argv[index + 3], argv[index + 4],
