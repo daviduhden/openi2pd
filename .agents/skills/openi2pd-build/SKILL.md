@@ -111,6 +111,10 @@ build.
 
 ## Known issues and decisions
 
+- A new Perl producer/checker must join both explicit syntax/critic source
+  inventories and its owning read-only CTest/manual workflow registration.
+  Keep write modes explicit; CI geometry checks must not regenerate assets.
+
 - Boost timer cancellation accepts only cancel() on current Asio; socket
   and acceptor error-code overloads are independent. An older Boost package
   passing does not validate the newer API. The name-based native source

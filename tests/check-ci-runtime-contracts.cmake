@@ -888,3 +888,4 @@ require_runtime_source("libi2pd/I2NPProtocol.h"
 require_runtime_source("libi2pd/I2NPProtocol.h"
   "|| alignment > maxLen - len) return;")
 require_runtime_source("tests/CMakeLists.txt" "test-signed-data-bounds")
+require_runtime_source("tests/CMakeLists.txt" "android-vector-geometry")

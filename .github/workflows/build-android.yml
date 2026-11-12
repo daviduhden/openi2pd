@@ -59,6 +59,7 @@ jobs:
       - name: Validate Android Gradle toolchain
         run: |
           sh android/tools/java25-probe/check-config.sh
+          perl android/tools/compact-vector-paths.pl
           perl android/tools/check-android-locales.pl
           # The compile-free Javadoc guard fails in seconds on a comment
           # defect that the mandatory :i2pd:sourceJavadoc step (-Werror)
@@ -346,6 +347,7 @@ jobs:
       - name: Validate Android Gradle toolchain
         run: |
           sh android/tools/java25-probe/check-config.sh
+          perl android/tools/compact-vector-paths.pl
           perl android/tools/check-android-locales.pl
           perl android/tools/check-android-jni-symbols.pl
           cd android

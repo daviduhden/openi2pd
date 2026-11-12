@@ -716,6 +716,12 @@ if(PERL_EXECUTABLE)
     LABELS "ci;android;perl;static"
     TIMEOUT 60)
 
+  add_test(NAME android-vector-geometry
+    COMMAND "${PERL_EXECUTABLE}" "${PROJECT_ROOT}/android/tools/compact-vector-paths.pl")
+  set_tests_properties(android-vector-geometry PROPERTIES
+    WORKING_DIRECTORY "${PROJECT_ROOT}"
+    LABELS "ci;android;perl;static" TIMEOUT 60)
+
   add_test(NAME android-javadoc-static
     COMMAND "${PERL_EXECUTABLE}" "${PROJECT_ROOT}/android/tools/check-android-javadoc.pl"
       --root "${PROJECT_ROOT}/android")

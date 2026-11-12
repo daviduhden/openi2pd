@@ -121,6 +121,15 @@ run Gradle, install an APK or run a device test.
 
 ## Known issues and decisions
 
+- Derived branding vectors use exact hundredth-coordinate relative paths
+  to stay below the reviewed 3000-character Lint limit. Run the read-only
+  `android/tools/compact-vector-paths.pl` geometry/literal checker; its
+  explicit `--write` mode regenerates only pathData from the canonical SVG.
+  Preserve contours, evenOdd holes and group transforms. Mathematical
+  geometry checks do not establish pixel-identical rendering on ART.
+  ChromeOS ABI warnings require real x86_64 dependency/build/APK coverage,
+  not merely a broader ABI filter.
+
 - WrongCommentType is Android Lint, not Checkstyle. Restore only affected
   Javadoc openers when prose already carries links/block tags; preserve
   executable text, licenses and ordinary implementation comments. The
