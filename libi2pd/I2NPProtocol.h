@@ -444,9 +444,13 @@ struct I2NPMessage
 	size_t GetLength () const { return len - offset; };
 	size_t GetPayloadLength () const { return GetLength () - I2NP_HEADER_SIZE; };
 
+	/// Advance the message start to the requested byte alignment.
+	/// Zero alignment, invalid geometry or insufficient conservative
+	/// headroom leave both length and offset unchanged.
 	void Align (size_t alignment)
 	{
-		if (len + alignment > maxLen) return;
+		if (!alignment || !buf || offset > len || len > maxLen
+			|| alignment > maxLen - len) return;
 		size_t rem = ((size_t)GetBuffer ()) % alignment;
 		if (rem)
 		{
@@ -457,14 +461,16 @@ struct I2NPMessage
 
 	/// Append at most the remaining capacity; a short result means
 	/// truncation.
-	/// @param buf1 Source bytes, valid for at least len1 bytes.
-	/// @param len1 Number of source bytes available to append.
+	/// Null sources or invalid buffer geometry append nothing.
+	/// @param buf1 Source, valid for the bytes that fit in this buffer.
+	/// @param len1 Requested length; oversized input is truncated.
 	/// @return Number of bytes copied, which may be less than len1.
 	size_t Concat (const uint8_t * buf1, size_t len1)
 	{
-		// make sure with don't write beyond maxLen
-		if (len + len1 > maxLen) len1 = maxLen - len;
-		memcpy (buf + len, buf1, len1);
+		if (!buf || !buf1 || len > maxLen) return 0;
+		// Compare remaining capacity without adding the requested size.
+		if (len1 > maxLen - len) len1 = maxLen - len;
+		if (len1) memcpy (buf + len, buf1, len1);
 		len += len1;
 		return len1;
 	}

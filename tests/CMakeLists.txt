@@ -147,6 +147,7 @@ set(I2PD_TESTS
   test-log-lifecycle
   test-blinding-b33-strict
   test-crypto-audit-bounds
+  test-signed-data-bounds
   test-x25519-rfc7748
   test-reseed-zip-bounds
   test-reseed-outdated-bundle
@@ -334,6 +335,9 @@ foreach(test IN LISTS I2PD_TESTS)
   set_property(TEST ${test} APPEND PROPERTY LABELS unit)
   if(test STREQUAL "test-command-line-policy")
     set_property(TEST ${test} APPEND PROPERTY LABELS "ci;security")
+  endif()
+  if(test STREQUAL "test-signed-data-bounds")
+    set_property(TEST ${test} APPEND PROPERTY LABELS "ci;memory;security")
   endif()
   if(test STREQUAL "test-udp-ack-lifecycle")
     set_property(TEST ${test} APPEND PROPERTY LABELS "memory;security")

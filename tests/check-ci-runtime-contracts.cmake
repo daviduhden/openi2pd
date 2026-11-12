@@ -879,3 +879,12 @@ require_runtime_order("libi2pd/Gost.cpp"
   "BN_mod (x, x, q, ctx) == 1 && BN_cmp (x, r) == 0")
 require_runtime_source("tests/test-crypto-audit-bounds.cpp"
   "TestGostVerificationAndRecoveryBounds ();")
+
+# Capacity checks must not add an untrusted size before comparing.
+require_runtime_source("libi2pd/TransportSession.h"
+  "if (len > sz - m_Size) len = sz - m_Size;")
+require_runtime_source("libi2pd/I2NPProtocol.h"
+  "if (len1 > maxLen - len) len1 = maxLen - len;")
+require_runtime_source("libi2pd/I2NPProtocol.h"
+  "|| alignment > maxLen - len) return;")
+require_runtime_source("tests/CMakeLists.txt" "test-signed-data-bounds")

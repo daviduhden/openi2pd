@@ -53,10 +53,17 @@ namespace transport
 
 		void Reset () { m_Size = 0; }
 
+		/// Append at most the remaining transcript capacity.
+		/// The source must hold the bytes actually copied, which may be
+		/// fewer than len. Null sources append nothing. Empty/full
+		/// transcript operation does not access the source. Return the
+		/// copied count; zero does not authorize signing missing data.
 		size_t Insert (const uint8_t * buf, size_t len)
 		{
-			if (m_Size + len > sz) len = sz - m_Size;
-			memcpy (m_Buf + m_Size, buf, len);
+			if (!buf) return 0;
+			// A hostile size can wrap an additive capacity check.
+			if (len > sz - m_Size) len = sz - m_Size;
+			if (len) memcpy (m_Buf + m_Size, buf, len);
 			m_Size += len;
 			return len;
 		}

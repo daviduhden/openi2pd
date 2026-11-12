@@ -107,6 +107,14 @@ Do not let reconnaissance agents edit, compile, execute tests or run scripts.
 
 ## Known issues and decisions
 
+- Bounded appenders must compare a request against remaining capacity;
+  `used + requested` can wrap even when the destination is fixed-size.
+  Review transcript insertion, message concatenation and alignment together.
+  Reject null/unbacked geometry before pointer arithmetic, skip empty copies
+  and retain truncation semantics. Oversized-length controls must still
+  supply every source byte actually copied; a tiny source would invalidate
+  the fixture rather than prove the destination bound.
+
 - Program_options materializes defaults, including empty credentials.
   Credential admission uses find plus !defaulted, never map presence or
   nonempty-value checks. Explicit empty operands still refuse. Inspect
