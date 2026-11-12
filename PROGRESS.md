@@ -8195,3 +8195,9 @@ or push.
   semantic relevance advisory manually reviewed. Native/negative fixture
   execution, rendering/Lint, slow-peer/fault injection and all new CI
   validation remain Pending; no local build/test/compiler or publication.
+
+- Publication review found a second MSVC filter guard still pinned to old
+  closing parentheses. The regression remained selected. Updated the owning
+  build checker to evaluate actual regex membership, retaining its separate
+  explicit-target requirement, and recorded the reusable rule in build Skills.
+  This is a compile-free contract correction; native CI remains pending.

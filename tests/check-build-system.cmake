@@ -857,7 +857,14 @@ assert_present("${assertion_regression}" "assert (++evaluations == 1);"
 read_required("${PROJECT_ROOT}/.github/workflows/build-windows.yml" assertion_workflow)
 assert_present("${assertion_workflow}" "test-profile-static-lifetime test-release-assertions"
   "Selective MSVC builds must produce the assertion regression")
-assert_present("${assertion_workflow}" "|release-assertions))$"
-  "Selective MSVC CTest must execute the assertion regression")
+# Inspect membership rather than pinning the filter's closing groups.
+string(REGEX MATCH "-R '([^']+)'" assertion_filter_option "${assertion_workflow}")
+set(assertion_filter "${CMAKE_MATCH_1}")
+if(NOT assertion_filter_option)
+  message(FATAL_ERROR "Selective MSVC CTest filter is missing")
+endif()
+if(NOT "test-release-assertions" MATCHES "${assertion_filter}")
+  message(FATAL_ERROR "Selective MSVC CTest must execute the assertion regression")
+endif()
 
 message(STATUS "build-system-static: OK")

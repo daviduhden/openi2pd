@@ -111,6 +111,11 @@ build.
 
 ## Known issues and decisions
 
+- Workflow selection guards should evaluate whether the actual CTest
+  expression selects the required regression. Closing-group literals become
+  stale when wrapper alternatives are added despite preserving coverage;
+  keep the explicit build-target check separate from regex membership.
+
 - A new Perl producer/checker must join both explicit syntax/critic source
   inventories and its owning read-only CTest/manual workflow registration.
   Keep write modes explicit; CI geometry checks must not regenerate assets.
