@@ -666,9 +666,9 @@ namespace torrents
 
 	TorrentsDHT::~TorrentsDHT ()
 	{
-		// A timer callback that already reached its turn or a disk-domain
-		// save that has not run yet must fail closed instead of entering
-		// half-destroyed state.
+		// Revoke shared state before cancellation and disk retirement.
+		// Timer owner admission still relies on service-thread shutdown
+		// serialization; the stopping flag is not a lifetime barrier.
 		m_ServiceState->stopping.store (true, std::memory_order_release);
 		// A disk task captures its callable, but destruction must still
 		// wait until any write admitted by this generation has returned.
@@ -2172,8 +2172,9 @@ namespace torrents
 		m_DHTIncomingDrainTimer.async_wait (
 			[this, guard] (const boost::system::error_code & ecode)
 			{
-				// The guard is authoritative: after Stop() the shared state is
-				// marked stopping, and a torn-down service is never entered.
+				// Reject observed stale generations. This check cannot
+				// serialize owner use against destruction; the separate
+				// owner-admission gap remains tracked.
 				const auto state = guard.lock ();
 				if (!state || state->stopping.load (std::memory_order_acquire)
 					|| ecode == boost::asio::error::operation_aborted)

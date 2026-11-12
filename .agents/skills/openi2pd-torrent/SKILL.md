@@ -122,6 +122,12 @@ Do not let them edit, build or run tests.
   but does not prove rollback or child reaping. Preserve those separate
   limitations in operation contracts and timeout regression descriptions.
 
+- DHT weak run state rejects observed stale generations but does not retain
+  the owner between a stopping check and member access. Review all six
+  timer callbacks together with rearming, Stop and destructor interleavings;
+  service-thread shutdown sequencing is separate from structural admission.
+  Do not document that state check as proof that torn-down entry is absent.
+
 - Startup is also a storage transaction: opening the authorized directory
   precedes allocating path conversion, child adoption and configuration.
   Scope the root descriptor immediately and revoke partial child/channel
