@@ -380,7 +380,7 @@ require_runtime_source("tests/test-atomic-shared-ptr.cpp"
 require_runtime_source(".github/workflows/build-windows.yml"
   "build-msvc/tests/Release/test-atomic-shared-ptr.exe")
 require_runtime_source(".github/workflows/build-windows.yml"
-  "|atomic-shared-ptr|kad-dht|eddsa|signature-identity-hardening|release-assertions))$")
+  "|atomic-shared-ptr|kad-dht|eddsa|signature-identity-hardening|crypto-audit-bounds|signed-data-bounds|command-line-policy|release-assertions)|command-line-policy-rejections|i2pd-command-line-policy)$")
 require_runtime_source(".github/workflows/build-windows.yml"
   "build-msvc/tests/Release/test-kad-dht.exe")
 

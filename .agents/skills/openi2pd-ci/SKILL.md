@@ -206,6 +206,11 @@ workflow, run `gh`, build or test.
 
 ## Known issues and decisions
 
+- The MSVC workflow builds an explicit target subset and filters CTest by
+  name. Adding a native regression to tests/CMakeLists alone does not run
+  it there; update both the MSVC build target list and test expression,
+  including child-process wrapper entries that exercise the router binary.
+
 - Resolve a raw Windows return PC against the exact retained PE image and
   its load base before attributing a hang. The c25 diagnostic mapped the
   modal to ParseCmdline's credential refusal through main, not a loader or
