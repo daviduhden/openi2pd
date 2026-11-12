@@ -61,13 +61,16 @@ namespace crypto
 		/// Verify r/s against pub and the same digest normalization as
 		/// Sign().
 		/// @return False for r or s outside [1, q-1], an invalid point or a
-		/// mismatch; verification is the only accepted success signal.
+		/// mismatch, missing/negative inputs or a provider failure.
+		/// Verification is the only accepted success signal.
 		bool Verify (const EC_POINT * pub, const BIGNUM * digest, const BIGNUM * r, const BIGNUM * s);
 		/// Recover a candidate public key from a signature, used for I2P
 		/// signatures that omit the key. Returns an owned point that the
-		/// caller must free, or null when no candidate exists. A recovered
-		/// key is unauthenticated: it must be checked against the identity it
-		/// claims to belong to and never accepted as an anonymous sender.
+		/// caller must free, or null on invalid input/provider failure.
+		/// Digest normalization matches Sign and Verify. Only the x = r
+		/// candidate is considered; x = r + q is not searched.
+		/// Recovery is unauthenticated: check the claimed identity;
+		/// never accept it as an anonymous sender.
 		EC_POINT * RecoverPublicKey (
 			const BIGNUM * digest, const BIGNUM * r, const BIGNUM * s, bool isNegativeY = false) const;
 

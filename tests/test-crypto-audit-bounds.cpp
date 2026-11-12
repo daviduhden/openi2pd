@@ -14,6 +14,7 @@
 #include <cassert>
 #include <cstdint>
 #include <cstring>
+#include <initializer_list>
 #include <limits>
 #include <memory>
 
@@ -269,6 +270,78 @@ void TestGostSigningRejectsInvalidInputs ()
 	invalid.Sign (priv.get (), digest.get (), r.get (), s.get ());
 	rejected ();
 }
+
+void TestGostVerificationAndRecoveryBounds ()
+{
+	using namespace i2p::crypto;
+	using BN = std::unique_ptr<BIGNUM, decltype (&BN_clear_free)>;
+	BN privateKey (BN_new (), BN_clear_free), digest (BN_new (), BN_clear_free);
+	BN r (BN_new (), BN_clear_free), s (BN_new (), BN_clear_free);
+	BN order (BN_new (), BN_clear_free);
+	std::unique_ptr<BN_CTX, decltype (&BN_CTX_free)> ctx (BN_CTX_new (), BN_CTX_free);
+	assert (privateKey && digest && r && s && order && ctx);
+	assert (BN_one (privateKey.get ()) == 1);
+	for (auto parameters : std::array { eGOSTR3410CryptoProA, eGOSTR3410TC26A512 })
+	{
+		auto & curve = GetGOSTR3410Curve (parameters);
+		assert (curve && curve->GetGroup ());
+		std::unique_ptr<EC_POINT, decltype (&EC_POINT_free)> publicKey (curve->MulP (privateKey.get ()), EC_POINT_free);
+		assert (publicKey);
+		assert (EC_GROUP_get_order (curve->GetGroup (), order.get (), ctx.get ()) == 1);
+		auto validSignature = [&]
+		{
+			// Fixed test scalar and nonce one: r = Px, s = r + 1.
+			// Both groups have Px < q, so recovery needs no x = r + q.
+			BN_zero (digest.get ());
+			assert (curve->GetXY (publicKey.get (), r.get (), nullptr));
+			assert (!BN_is_zero (r.get ()) && !BN_is_negative (r.get ()) && BN_cmp (r.get (), order.get ()) < 0);
+			assert (BN_mod_add (s.get (), r.get (), BN_value_one (), order.get (), ctx.get ()) == 1);
+			assert (!BN_is_zero (s.get ()) && !BN_is_negative (s.get ()));
+		};
+		validSignature ();
+		assert (curve->Verify (publicKey.get (), digest.get (), r.get (), s.get ()));
+		bool matchedIdentity = false;
+		for (bool parity : { false, true })
+		{
+			std::unique_ptr<EC_POINT, decltype (&EC_POINT_free)> candidate (
+				curve->RecoverPublicKey (digest.get (), r.get (), s.get (), parity), EC_POINT_free);
+			if (candidate && EC_POINT_cmp (curve->GetGroup (), candidate.get (), publicKey.get (), ctx.get ()) == 0)
+				matchedIdentity = true;
+		}
+		assert (matchedIdentity);
+		assert (!curve->Verify (nullptr, digest.get (), r.get (), s.get ()));
+		assert (!curve->Verify (publicKey.get (), nullptr, r.get (), s.get ()));
+		assert (!curve->Verify (publicKey.get (), digest.get (), nullptr, s.get ()));
+		assert (!curve->Verify (publicKey.get (), digest.get (), r.get (), nullptr));
+		assert (!curve->RecoverPublicKey (nullptr, r.get (), s.get ()));
+		assert (!curve->RecoverPublicKey (digest.get (), nullptr, s.get ()));
+		assert (!curve->RecoverPublicKey (digest.get (), r.get (), nullptr));
+		for (auto * scalar : { r.get (), s.get () })
+		{
+			validSignature ();
+			BN_set_negative (scalar, 1);
+			assert (!curve->Verify (publicKey.get (), digest.get (), r.get (), s.get ()));
+			assert (!curve->RecoverPublicKey (digest.get (), r.get (), s.get ()));
+			validSignature ();
+			BN_zero (scalar);
+			assert (!curve->Verify (publicKey.get (), digest.get (), r.get (), s.get ()));
+			assert (!curve->RecoverPublicKey (digest.get (), r.get (), s.get ()));
+			validSignature ();
+			assert (BN_copy (scalar, order.get ()));
+			assert (!curve->Verify (publicKey.get (), digest.get (), r.get (), s.get ()));
+			assert (!curve->RecoverPublicKey (digest.get (), r.get (), s.get ()));
+		}
+		validSignature ();
+		assert (BN_one (digest.get ()) == 1);
+		BN_set_negative (digest.get (), 1);
+		assert (!curve->Verify (publicKey.get (), digest.get (), r.get (), s.get ()));
+		assert (!curve->RecoverPublicKey (digest.get (), r.get (), s.get ()));
+		validSignature ();
+		std::unique_ptr<EC_POINT, decltype (&EC_POINT_free)> infinity (EC_POINT_new (curve->GetGroup ()), EC_POINT_free);
+		assert (infinity && EC_POINT_is_at_infinity (curve->GetGroup (), infinity.get ()) == 1);
+		assert (!curve->Verify (infinity.get (), digest.get (), r.get (), s.get ()));
+	}
+}
 }
 
 int main ()
@@ -280,5 +353,6 @@ int main ()
 	TestAEADBounds ();
 	TestAESRejectsInvalidLengths ();
 	TestGostSigningRejectsInvalidInputs ();
+	TestGostVerificationAndRecoveryBounds ();
 	return 0;
 }

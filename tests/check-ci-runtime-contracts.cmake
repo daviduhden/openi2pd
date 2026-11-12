@@ -869,3 +869,13 @@ require_runtime_source("privsep/WindowsIpc.cpp"
 require_runtime_order("tests/test-privsep-windows-supervisor.cpp"
   "if (argument == \"--privsep-worker\")" "return RunWindowsWorker ("
   "if (!HasUsableWorkerStandardHandles ()) return 3;")
+
+# Failed EC predicates and arithmetic may not authorize a signature.
+require_runtime_order("libi2pd/Gost.cpp"
+  "bool GOSTR3410Curve::Verify (" "EC_POINT * GOSTR3410Curve::RecoverPublicKey ("
+  "BN_is_negative (digest) || BN_is_negative (r) || BN_is_negative (s)"
+  "EC_POINT_is_on_curve (m_Group, pub, nullptr) != 1"
+  "BN_mod_mul (z1, s, h, q, ctx) == 1"
+  "BN_mod (x, x, q, ctx) == 1 && BN_cmp (x, r) == 0")
+require_runtime_source("tests/test-crypto-audit-bounds.cpp"
+  "TestGostVerificationAndRecoveryBounds ();")

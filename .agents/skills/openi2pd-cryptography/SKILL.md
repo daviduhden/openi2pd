@@ -93,6 +93,12 @@ executing project code, or inspect a real private key.
 
 ## Known issues and decisions
 
+- EC point predicates can return an error distinct from false. Require
+  the documented success value, then gate signature comparison on every
+  arithmetic result. Review point construction, verification and dormant
+  recovery together; preserve RFC 7091 zero-digest normalization and the
+  existing recovery coordinate limitation in deterministic controls.
+
 - Trace copied private scalars through both provider branches: a successful
   key-builder copy does not cleanse its caller-owned BIGNUM. Use clear-free
   cleanup for private keys and secret-dependent signing intermediates while

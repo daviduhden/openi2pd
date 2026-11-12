@@ -115,8 +115,9 @@ namespace crypto
 		// Reject encodings that are not a finite point on the curve. An
 		// unchecked affine point used to reach the verification equation as
 		// the point at infinity.
-		if (!EC_POINT_set_affine_coordinates (m_Group, p, x, y, nullptr) || EC_POINT_is_at_infinity (m_Group, p)
-			|| !EC_POINT_is_on_curve (m_Group, p, nullptr))
+		if (EC_POINT_set_affine_coordinates (m_Group, p, x, y, nullptr) != 1
+			|| EC_POINT_is_at_infinity (m_Group, p) != 0
+			|| EC_POINT_is_on_curve (m_Group, p, nullptr) != 1)
 		{
 			EC_POINT_free (p);
 			return nullptr;
@@ -194,8 +195,10 @@ namespace crypto
 
 	bool GOSTR3410Curve::Verify (const EC_POINT * pub, const BIGNUM * digest, const BIGNUM * r, const BIGNUM * s)
 	{
-		if (!m_Group || !pub || !digest || !r || !s || EC_POINT_is_at_infinity (m_Group, pub)
-			|| !EC_POINT_is_on_curve (m_Group, pub, nullptr))
+		if (!m_Group || !pub || !digest || !r || !s
+			|| BN_is_negative (digest) || BN_is_negative (r) || BN_is_negative (s)
+			|| EC_POINT_is_at_infinity (m_Group, pub) != 0
+			|| EC_POINT_is_on_curve (m_Group, pub, nullptr) != 1)
 			return false;
 		BN_CTX * ctx = BN_CTX_new ();
 		if (!ctx) return false;
@@ -207,7 +210,8 @@ namespace crypto
 		BIGNUM * z2 = BN_CTX_get (ctx);
 		BIGNUM * x = BN_CTX_get (ctx);
 		EC_POINT * C = EC_POINT_new (m_Group);
-		bool ret = q && e && h && z1 && z2 && x && C && EC_GROUP_get_order (m_Group, q, ctx) == 1 && !BN_is_zero (r)
+		bool ret = q && e && h && z1 && z2 && x && C && EC_GROUP_get_order (m_Group, q, ctx) == 1
+			&& !BN_is_zero (q) && !BN_is_negative (q) && !BN_is_zero (r)
 			&& !BN_is_zero (s) && BN_cmp (r, q) < 0 && BN_cmp (s, q) < 0;
 		if (ret)
 		{
@@ -217,16 +221,15 @@ namespace crypto
 		}
 		if (ret)
 		{
-			BN_mod_mul (z1, s, h, q, ctx); // z1 = s/h
-			BN_sub (z2, q, r); // z2 = -r
-			BN_mod_mul (z2, z2, h, q, ctx); // z2 = -r/h
-			ret = EC_POINT_mul (m_Group, C, z1, pub, z2, ctx) == 1 // z1*P + z2*pub
-				&& !EC_POINT_is_at_infinity (m_Group, C) && GetXY (C, x, nullptr) == 1;
+			ret = BN_mod_mul (z1, s, h, q, ctx) == 1 // z1 = s/h
+				&& BN_sub (z2, q, r) == 1 // z2 = -r
+				&& BN_mod_mul (z2, z2, h, q, ctx) == 1 // z2 = -r/h
+				&& EC_POINT_mul (m_Group, C, z1, pub, z2, ctx) == 1
+				&& EC_POINT_is_at_infinity (m_Group, C) == 0 && GetXY (C, x, nullptr);
 		}
 		if (ret)
 		{
-			BN_mod (x, x, q, ctx); // Cx % q
-			ret = !BN_cmp (x, r); // Cx = r ?
+			ret = BN_mod (x, x, q, ctx) == 1 && BN_cmp (x, r) == 0;
 		}
 		if (C) EC_POINT_free (C);
 		BN_CTX_end (ctx);
@@ -237,7 +240,8 @@ namespace crypto
 	EC_POINT * GOSTR3410Curve::RecoverPublicKey (
 		const BIGNUM * digest, const BIGNUM * r, const BIGNUM * s, bool isNegativeY) const
 	{
-		if (!m_Group || !digest || !r || !s) return nullptr;
+		if (!m_Group || !digest || !r || !s || BN_is_negative (digest)
+			|| BN_is_negative (r) || BN_is_negative (s) || BN_is_zero (r) || BN_is_zero (s)) return nullptr;
 		// s*P = r*Q + h*C
 		BN_CTX * ctx = BN_CTX_new ();
 		if (!ctx) return nullptr;
@@ -248,19 +252,23 @@ namespace crypto
 		BIGNUM * h = BN_CTX_get (ctx);
 		BIGNUM * r1 = BN_CTX_get (ctx);
 		if (C && q && h && r1 && EC_GROUP_get_order (m_Group, q, ctx) == 1
-			&& EC_POINT_set_compressed_coordinates (m_Group, C, r, isNegativeY ? 1 : 0, ctx))
+			&& !BN_is_zero (q) && !BN_is_negative (q) && BN_cmp (r, q) < 0 && BN_cmp (s, q) < 0
+			&& EC_POINT_set_compressed_coordinates (m_Group, C, r, isNegativeY ? 1 : 0, ctx) == 1)
 		{
 			EC_POINT * S = EC_POINT_new (m_Group); // S = s*P
 			EC_POINT * H = EC_POINT_new (m_Group);
-			if (S && H && EC_POINT_mul (m_Group, S, s, nullptr, nullptr, ctx))
+			if (S && H && EC_POINT_mul (m_Group, S, s, nullptr, nullptr, ctx) == 1)
 			{
-				BN_mod (h, digest, q, ctx); // h = digest % q
-				BN_sub (h, q, h); // h = -h
-				if (EC_POINT_mul (m_Group, H, nullptr, C, h, ctx) && EC_POINT_add (m_Group, C, S, H, ctx)
-					&& BN_mod_inverse (r1, r, q, ctx))
+				// RFC 7091 recovery also maps a zero digest to e = 1.
+				bool ok = BN_mod (h, digest, q, ctx) == 1 && (BN_is_zero (h) ? BN_one (h) == 1 : true);
+				ok = ok && BN_sub (h, q, h) == 1; // h = -e modulo q
+				if (ok && EC_POINT_mul (m_Group, H, nullptr, C, h, ctx) == 1
+					&& EC_POINT_add (m_Group, C, S, H, ctx) == 1 && BN_mod_inverse (r1, r, q, ctx))
 				{
 					Q = EC_POINT_new (m_Group);
-					if (Q && !EC_POINT_mul (m_Group, Q, nullptr, C, r1, ctx))
+					if (Q && (EC_POINT_mul (m_Group, Q, nullptr, C, r1, ctx) != 1
+						|| EC_POINT_is_at_infinity (m_Group, Q) != 0
+						|| EC_POINT_is_on_curve (m_Group, Q, ctx) != 1))
 					{
 						EC_POINT_free (Q);
 						Q = nullptr;
