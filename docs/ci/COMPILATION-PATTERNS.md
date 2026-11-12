@@ -1,5 +1,13 @@
 # Compilation diagnostic patterns and repository-wide review
 
+## Review runtime after restoring compilation
+
+At 6d0127b7, removing CE-088 restores native/sanitizer execution. Reclassify
+the remaining MSVC supervisor failure from its complete CTest output; a
+successful build cannot resolve a worker initialization status. Review
+successful Android lanes too: Lint warnings remain independently actionable.
+
+
 ## Recurring Asio cancellation despite an earlier guard
 
 CE-088 reappeared in a file absent from the earlier fixed-file scan. Search

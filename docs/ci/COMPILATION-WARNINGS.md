@@ -1,5 +1,40 @@
 # Compilation and lint warning inventory
 
+## 6d0127b7: successful builds still expose warning debt
+
+Full latest-ten logs contain no observed first-party native compiler/linker
+warning. OpenSSL 3.5.9/4.1.0 lanes use GCC 16.2.0 or Clang 23.1.5;
+OpenBSD uses Clang 22.1.6 / LibreSSL 4.4.0. This observation is scoped to
+executed targets, not proof that every platform/configuration is warning-free.
+
+Android run 43115913175, job 130843735271, succeeds but debug/release Lint
+still report fourteen findings each: twelve VectorPath and two
+ChromeOsAbiSupport. The four branding vectors repeat three long paths
+(3445/3427/3591 characters); ABI filters restrict two DSL locations. Review
+all generated resources and producer scripts together; preserve geometry and
+real ABI packaging rather than suppressing diagnostics. Java 25 remains set.
+
+External package `autopkgtest --force-yes`, MSYS upgrade advice and runner
+Landlock ABI 8 versus required ABI 10 remain separate tooling/capability
+messages. Passing suites do not erase these known limitations. No new actual
+sanitizer report was found; command-line sanitizer options are not reports.
+
+
+### CW-003 follow-up: VectorPath correction (static)
+
+A reviewed exact-hundredth conversion from absolute to relative curve/line
+commands reduces repeated path lengths to 2690/2683/2825 characters, below
+the reviewed AOSP 3000-character limit. This goes beyond the historical
+whitespace/decimal-only compression considered insufficient. The four Android
+resources keep canonical contours, evenOdd holes, transforms and colors.
+`android/tools/compact-vector-paths.pl` checks absolute-command equivalence to
+`assets/branding/symbol.svg` and deterministic compact literals; only explicit
+`--write` regenerates pathData. Native masters are untouched. Its read-only
+check is registered in CTest and Android manual CI. Expected removal of twelve
+warnings is Pending CI tests/Lint/rendering, not an observed clean result.
+The two ChromeOS ABI warnings remain Pending real x86_64 dependency/build/APK
+coverage; no filter-only change or diagnostic suppression was introduced.
+
 ## 74d49559 — blocked targets are not warning-clean evidence
 
 Reviewed full latest-ten logs and successful siblings at

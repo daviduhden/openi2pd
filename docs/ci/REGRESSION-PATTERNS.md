@@ -5,6 +5,26 @@ and license details.
 
 # Regression patterns
 
+## Storage deadline propagation and uncertain commits
+
+Review Open/Begin, every chunk, final commit/release and abort under one outer
+deadline; a bounded helper with two fresh phase budgets is still cumulative.
+Until channel APIs retain immediate-at-expiry semantics, so RPC owners gate
+expiry themselves and reject late success. Keep deferred child ownership while
+revoking channel authority; do not introduce a fresh reap wait or claim rollback
+when a commit acknowledgement is missing. Scope ordinary versus slow-peer and
+allocator-injection coverage separately.
+
+## Native success and platform startup remain separate
+
+The 6d0127b7 Linux sanitizer successes cover executed ACK/CLI/storage controls;
+they do not explain MSVC worker initialization. Inspect child startup handle
+contracts against both CreateProcess paths and preserve an explicit allowlist
+when transferring standard handles. Never infer absence of inherited secrets
+from a comment or from merely supplying handle values in STARTUPINFO.
+Capability skips retain exact artifact reasons and no post-skip claims.
+
+
 ## Entry parsing, explicit provenance and failure outcomes
 
 - Resolve diagnostic PCs against the exact image/load base. A GUI subsystem

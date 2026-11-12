@@ -9,6 +9,18 @@ Tracks compile/configure/link failures reported by manual GitHub Actions.
 
 # Compilation error inventory
 
+## 6d0127b7: compilation blockers removed in executed lanes
+
+CE-088 status: Validated by CI in the executed configurations. Its timer
+correction compiles in both OpenSSL 3/4 compiler lanes,
+OpenBSD, Android and both Windows jobs. Exact job/run mapping is in
+[the test inventory](TEST-FAILURES.md#published-6d0127b7-audit). No new native
+compile/link error was found in the complete latest-ten logs. MSVC's remaining
+failure occurs during worker execution after a successful build; classify it
+as runtime, not a repeated compiler blocker. Skipped tests are not link or
+runtime evidence for their omitted paths.
+
+
 ## 74d49559 — CE-088 recurrence across current Boost lanes
 
 Latest ten runs execute `74d495596815075002f633e105affc62be14ad1c`.

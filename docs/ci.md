@@ -332,3 +332,16 @@ same contract plus a worktree structural scan; CMake also registers
 Critic inventories include the validator's modules. A clean checkout scan
 alone does not exercise changed-file gating; the black-box fixtures do that.
 The Perl migration remains Pending CI tests until a published revision runs.
+
+## Published 6d0127b7 follow-up
+
+The latest-ten matrix has nine successful workflows and an MSVC worker
+runtime failure; full job/run mapping and capability skips are retained in
+[the test inventory](ci/TEST-FAILURES.md#published-6d0127b7-audit). Current
+local corrections have no remote validation: worker handle transfer, GOST
+verification/recovery, bounded append/alignment and compact Android vectors.
+The vector producer's default read-only check now runs in Android manual CI
+and the portable CTest `android-vector-geometry` entry; `--write` is an
+explicit maintenance command, never a CI step. Existing manual native and
+sanitizer selections include the new bounds fixture. ABI, provider fault
+injection and broader lifetime/deadline gaps remain tracked separately.

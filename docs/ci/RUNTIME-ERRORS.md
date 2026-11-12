@@ -5,6 +5,110 @@ and license details.
 
 # Runtime error inventory
 
+## 6d0127b7 validation and remaining runtime boundaries
+
+Published sanitizer suites pass, including the previously blocked ACK/CLI/
+crypto bounds regressions (RT-082/083/084/086 focused controls: Validated by
+CI in these executed lanes). Provider/allocation injection and cancellation
+service fault injection are still Pending. The exact run/job matrix is in
+[TEST-FAILURES.md](TEST-FAILURES.md#published-6d0127b7-audit). No new sanitizer
+failure was observed in those full logs. This does not close the broader
+raw-owner timer, shutdown, provider allocation or privilege-separation audit.
+
+### RT-087 — Worker startup handle transfer and unresolved MSVC initializer
+
+[Windows 43115885487](https://github.com/daviduhden/openi2pd/actions/runs/43115885487),
+MSVC job 130843640621, runs SHA
+`6d0127b78a4173403614b07120d2e27d21e6e793`. Compilation passes; the live
+supervisor child exits before authentication with 3221225794 (`0xC0000142`).
+The exact uploaded windows-msvc-ctest artifact reproduces the parent failure,
+but contains no child initializer stack. Eighteen sibling tests pass.
+CLANG64 job 130843640410 passes its selected suite; it cannot resolve MSVC.
+
+Source review confirms a separate Win32 contract violation: SpawnWindowsWorker
+sets STARTF_USESTDHANDLES using non-inheritable NUL handles while both
+CreateProcess paths disable inheritance. Supplying parent handle values does
+not transfer those handles. The local correction makes only the three NUL
+handles inheritable and mandates an explicit HANDLE_LIST on both attribute
+attempts. Job containment, tokens, mitigations, DACLs and IPC authentication
+remain enforced. The live fixture inspects startup handles before worker
+stdio replacement can hide the defect. Global CreateProcess review found no
+other equivalent STARTF_USESTDHANDLES path.
+
+This API correction is Implemented / static; Pending CI compilation / Pending
+CI tests. It is not proven attribution of the MSVC initializer failure. A
+privacy-preserving child stack is still required if the failure persists;
+existing parent-only CDB output must not be extended to expose worker nonces.
+See Microsoft's [handle-list contract](https://learn.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-updateprocthreadattribute).
+
+### RT-088 — GOST verification and recovery must check complete outcomes
+
+Preventive inspection after RT-086 found unchecked modular multiplication,
+subtraction and final reduction in Verify, plus acceptance of an EC point
+error return (-1) as a truthy result. Negative scalar/digest inputs were not
+explicitly refused. The existing null digest guard was already present;
+there is no new missing-null-guard finding.
+
+Equivalent review covers CreatePoint and RecoverPublicKey. Recovery has no
+production consumer in the current tree, but must use the same RFC 7091
+zero-digest normalization as Sign/Verify and reject failed arithmetic or
+invalid/infinite recovered points. Corrections retain the existing supported
+recovery geometry and do not invent a wire-format change. Focused invalid
+input/point and deterministic recovery controls complement existing vectors.
+Provider/allocation fault injection remains Pending; these new source changes
+are Implemented / static; Pending CI compilation / Pending CI tests.
+
+
+### RT-089 — Bounded append and alignment arithmetic
+
+Preventive source analysis found `used + requested` capacity checks in
+SignedData::Insert and I2NPMessage::Concat. A nonempty prefix plus SIZE_MAX
+can wrap before memcpy. Global equivalent review also found Align's unchecked
+zero divisor and `len + alignment` overflow. Existing production callers use
+bounded/fixed fields; no remote SIZE_MAX path or observed CI crash is asserted.
+
+The local correction compares requested sizes against remaining capacity,
+rejects null/unbacked or invalid message geometry and skips zero-byte copies.
+Align rejects zero/oversized operands while preserving its conservative
+headroom contract. A new native bounds fixture supplies real capacity-sized
+sources, tests SIZE_MAX/null/full/reset/copy cases, checks copied message bytes
+and verifies alignment rejection leaves metadata unchanged. Registered with
+ci/memory/security. Implemented / static; Pending CI compilation / Pending CI
+tests. Allocation arithmetic in message factories requires separate review.
+
+### Open boundaries retained after passing ordinary suites
+
+Six DHT timer callbacks still borrow raw owner authority after checking a
+separate weak stopping state. Cancellation and a token check do not serialize
+that later owner use against Stop/destruction/restart. Ordinary service-thread
+shutdown lowers exposure but is not a structural admission guarantee. A full
+shared admission/revocation design and interleaving regressions remain Pending;
+no new sanitizer race is attributed to this source finding.
+
+### RT-090 / MEM-032 — Shared storage RPC deadlines
+
+Preventive inspection found fresh send/receive budgets in torrent, router and
+data storage clients. Metadata checked its outer deadline only between
+exchanges, allowing final commit/release/abort to start another phase budget.
+No published CI timeout is attributed to this finding.
+
+The correction adds an absolute descriptor-send wrapper and shares one
+five-second exchange deadline through both directions. Metadata's thirty-second
+budget starts after mutex admission, before Open/Begin, and covers chunks and
+final/cleanup RPCs. DataStorage's advisory Cancel retains the earlier original
+deadline. Expiry/late replies cannot authorize success or grant a fresh reap
+wait; channels close while child ownership remains for lifecycle cleanup.
+Uncertain commit publication is not described as rollback. Configure handshake
+budgets do not include process spawning or subsequent explicit lifecycle cleanup.
+
+Existing descriptor-transfer/deadline regressions exercise the new wrapper;
+negative source contracts forbid rebased RPC phases and pin metadata propagation
+and close-only expiry. Deterministic slow-peer/commit-boundary injection remains
+Pending. Implemented / static; Pending CI compilation / Pending CI tests.
+Broader mutex admission, process startup and explicit reaping bounds are separate
+MEM-032 work; the entire caller wall-clock duration is not claimed bounded here.
+
+
 ## 74d49559 continuation and resolved Windows attribution
 
 Latest current-Boost suites stop at CE-088 before new ACK/storage/crypto

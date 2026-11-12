@@ -8123,3 +8123,75 @@ or push.
   explicit option provenance, authoritative Windows parsing, portable timer
   cleanup and transactional secret-state publication. Native tests, negative
   fixture drivers, builds and sanitizers were prepared but not run locally.
+
+## 6d0127b7 retrospective and preventive continuation
+
+- Started clean at published 6d0127b78a4173403614b07120d2e27d21e6e793.
+  Retrieved latest-ten complete logs, failed logs, jobs, artifact inventories
+  and exact Windows/OpenBSD/Linux evidence. Paginated history reaches 445
+  completed runs / 71 SHAs: 122 success, 257 failure, 66 cancelled.
+- Nine latest workflows pass. MSVC compiles and passes 18/19 selected tests;
+  supervisor child initialization exits 0xC0000142 before authentication.
+  CLANG64 passes 250 selected entries (one skip). Linux sanitizer suites each
+  pass 266 entries, plus fifteen fuzz smoke entries and focused OpenSSL TSan.
+  These results validate published code only, never new local changes.
+- RT-087: corrected STARTF_USESTDHANDLES inheritance using only an explicit
+  three-NUL-handle allowlist on both process paths. The fixture inspects
+  startup handles before repinning. API defect is confirmed; causal
+  attribution of MSVC's initializer failure is not. Child stack remains open.
+- RT-088: GOST Verify/CreatePoint now check exact EC statuses and every
+  arithmetic outcome. Recovery uses the same zero-digest normalization and
+  input bounds; deterministic tests retain existing coordinate limitations.
+  The existing null-digest guard was not a new defect. Provider/allocator
+  fault injection remains pending. No cryptographic construction changed.
+- Successful Android logs still report fourteen Lint warnings per variant.
+  OpenBSD exact artifacts retain root-runner skips for identity, credentials
+  and storage. Device/accessibility and optional Perl quality jobs skip.
+  No native compiler warning or actual sanitizer report was observed in the
+  complete latest-ten logs. External package/toolchain messages stay separate.
+- No local build, compiler, project test, commit or push was invoked. New
+  corrections are Implemented / static; Pending CI compilation / Pending CI
+  tests. Inventories and relevant Skills retain these evidence boundaries.
+
+- RT-089: fixed subtraction-based transcript/message capacity checks and
+  zero/overflow alignment handling. New native bounds fixture is registered
+  with ci/memory/security; its oversized source operands still provide every
+  byte actually copied. No remote exploit path is inferred from this API fix.
+- Compacted four derived Android vectors using exact relative coordinates;
+  source-only command equivalence to the canonical SVG passes. Added a core
+  Perl producer/checker, CTest/manual Android registrations and both Perl
+  inventories. Lint/rendering remain pending; two ABI warnings still need
+  genuine x86_64 dependencies/builds/APK verification.
+- Delegated history, native warnings, memory, concurrency, crypto/protocols,
+  IPC, torrents/storage, Android, portability and CI/docs integration review
+  as separate specialist tasks. Retained DHT admission and storage absolute
+  deadline findings; ordinary passing suites do not close either boundary.
+
+- Expanded the explicit MSVC target/test subset to include crypto bounds,
+  transcript/message bounds and CLI policy with both child/binary wrappers.
+  Portable CMake registration alone would not execute these in that lane.
+  Existing tests remain selected; the added MSVC coverage is Pending CI.
+
+- RT-090 / MEM-032: added absolute descriptor sends; torrent/router/data RPCs
+  share send/receive budgets. Metadata carries its thirty-second post-admission
+  deadline through Open/Begin, chunks, commit/release/abort; advisory Cancel
+  is capped by the original deadline. Expiry closes authority without a fresh
+  reap wait; child ownership remains for later lifecycle cleanup. Added negative
+  source contracts and updated descriptor/deadline regressions. Deterministic
+  slow-peer/commit-boundary injection and total admission/startup/reaping bounds
+  remain Pending. No rollback guarantee follows a missing commit acknowledgement.
+
+- Final source/knowledge synchronization reviewed AGENTS, discovery index and
+  eight affected Skills. Reusable additions cover exact EC success, bounded
+  append/alignment, inherited handle authority, geometry-preserving assets,
+  explicit MSVC test selection and post-admission storage RPC deadlines.
+  Corrected obsolete source-contract literals for the expanded MSVC subset
+  and close-only reply retirement; correlation checks remain enforced.
+- Compile-free checks passed: whitespace, control-security/runtime contracts,
+  build graph, tools inventories, agent Skills, language policy, manual-only
+  workflows, links (118 Markdown files), Doxygen parameters and Shell policy.
+  Android vector geometry/literals and XML parsing pass; both untracked
+  source files were reviewed. Knowledge validation passes with AK004's
+  semantic relevance advisory manually reviewed. Native/negative fixture
+  execution, rendering/Lint, slow-peer/fault injection and all new CI
+  validation remain Pending; no local build/test/compiler or publication.

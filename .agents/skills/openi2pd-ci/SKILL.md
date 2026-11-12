@@ -211,6 +211,12 @@ workflow, run `gh`, build or test.
   it there; update both the MSVC build target list and test expression,
   including child-process wrapper entries that exercise the router binary.
 
+- A restored compile lane requires a fresh complete runtime review. Mark
+  only exact executed regressions validated, retain capability-skip reasons
+  from artifacts, and inspect successful Android Lint output independently
+  of the workflow conclusion. Native compiler silence cannot close Lint,
+  optional analyzer or worker initializer findings.
+
 - Resolve a raw Windows return PC against the exact retained PE image and
   its load base before attributing a hang. The c25 diagnostic mapped the
   modal to ParseCmdline's credential refusal through main, not a loader or

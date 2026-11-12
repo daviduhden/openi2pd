@@ -5,6 +5,67 @@ and license details.
 
 # Test failure inventory
 
+## Published 6d0127b7 audit
+
+Paginated history now contains **445 completed runs / 71 SHAs**: 122 success,
+257 failure and 66 cancelled (431 manual and 14 historical push runs).
+The latest ten runs execute exactly
+`6d0127b78a4173403614b07120d2e27d21e6e793`: nine workflows succeed, Windows
+fails only in its MSVC worker supervisor test. Full successful and failed
+logs and artifact inventories were retrieved. Historical evidence gaps remain;
+metadata availability does not imply every old log or artifact survives.
+
+| Run | Job ID | Configuration | Result |
+|---|---|---|---|
+| [43115885487](https://github.com/daviduhden/openi2pd/actions/runs/43115885487) | 130843640410 | Windows MSYS2 Clang64 build and tests | success |
+| [43115885487](https://github.com/daviduhden/openi2pd/actions/runs/43115885487) | 130843640621 | Windows MSVC build and tests | failure |
+| [43115889983](https://github.com/daviduhden/openi2pd/actions/runs/43115889983) | 130843657335 | OpenBSD 8.0 build and tests | success |
+| [43115894670](https://github.com/daviduhden/openi2pd/actions/runs/43115894670) | 130843672860 | Static musl build and package | success |
+| [43115894670](https://github.com/daviduhden/openi2pd/actions/runs/43115894670) | 130843673204 | Debian packages | success |
+| [43115894670](https://github.com/daviduhden/openi2pd/actions/runs/43115894670) | 130843673208 | Container image | success |
+| [43115894670](https://github.com/daviduhden/openi2pd/actions/runs/43115894670) | 130843673224 | Service contracts | success |
+| [43115894670](https://github.com/daviduhden/openi2pd/actions/runs/43115894670) | 130843673288 | Service component install matrix | success |
+| [43115899316](https://github.com/daviduhden/openi2pd/actions/runs/43115899316) | 130843689149 | Agent and skills synchronization | success |
+| [43115903969](https://github.com/daviduhden/openi2pd/actions/runs/43115903969) | 130843705212 | Linux (gcc, OpenSSL 3.x) | success |
+| [43115903969](https://github.com/daviduhden/openi2pd/actions/runs/43115903969) | 130843705491 | Linux (clang, OpenSSL 3.x) | success |
+| [43115908820](https://github.com/daviduhden/openi2pd/actions/runs/43115908820) | 130843719378 | Linux (clang, OpenSSL 4.x) | success |
+| [43115908820](https://github.com/daviduhden/openi2pd/actions/runs/43115908820) | 130843719742 | Linux (gcc, OpenSSL 4.x) | success |
+| [43115913175](https://github.com/daviduhden/openi2pd/actions/runs/43115913175) | 130843735271 | Android arm64 build and unit tests | success |
+| [43115913175](https://github.com/daviduhden/openi2pd/actions/runs/43115913175) | 130843736970 | Android API 29 UI and accessibility | skipped |
+| [43115917664](https://github.com/daviduhden/openi2pd/actions/runs/43115917664) | 130843749626 | I2P Java interoperability | success |
+| [43115917664](https://github.com/daviduhden/openi2pd/actions/runs/43115917664) | 130843750074 | Install components and consumer package | success |
+| [43115922661](https://github.com/daviduhden/openi2pd/actions/runs/43115922661) | 130843767974 | Agent Skills static contract | success |
+| [43115922661](https://github.com/daviduhden/openi2pd/actions/runs/43115922661) | 130843768286 | Sanitizers (tsan) | success |
+| [43115922661](https://github.com/daviduhden/openi2pd/actions/runs/43115922661) | 130843768311 | Sanitizers (ubsan) | success |
+| [43115922661](https://github.com/daviduhden/openi2pd/actions/runs/43115922661) | 130843768330 | Bounded fuzz smoke checks | success |
+| [43115922661](https://github.com/daviduhden/openi2pd/actions/runs/43115922661) | 130843768407 | Sanitizers (asan-ubsan) | success |
+| [43115922661](https://github.com/daviduhden/openi2pd/actions/runs/43115922661) | 130843768489 | C++ source API documentation | success |
+| [43115922661](https://github.com/daviduhden/openi2pd/actions/runs/43115922661) | 130843770002 | Perl quality (Test::More and Perl::Critic) | skipped |
+| [43115927206](https://github.com/daviduhden/openi2pd/actions/runs/43115927206) | 130843783675 | Instrumented OpenSSL TSan diagnostic | success |
+
+MSVC job 130843640621 builds successfully and passes 18 of 19 selected tests.
+`test-privsep-windows-supervisor` fails before authentication: worker exit
+3221225794 (`0xC0000142`), followed by the bounded accept failure. This repeats
+the historical worker family; the CLANG64 informational modal is resolved in
+job 130843640410, whose 250 selected tests have no failures (one skipped).
+No child initializer stack identifies the MSVC failure yet.
+
+ASan+UBSan, UBSan and TSan each pass 266 selected entries. Fifteen fuzz smoke
+entries pass; instrumented OpenSSL TSan passes its focused regression. These
+results validate only the executed published revision and selected inputs.
+OpenBSD reports 261 entries with three capability skips. Its exact artifact
+states: worker identity/credentials require a non-root runner, and storage
+workers refuse a root runner. Retained Android artifacts contain 174 JVM entries with no failures/errors;
+debug/release Lint XML each contain twelve VectorPath and two ABI findings.
+Android device/accessibility and optional Perl quality jobs are skipped; no
+device or Perl::Critic result is inferred.
+
+TF-103 dependency acquisition no longer fails in these executed docs/service
+lanes. Source API generation, package installation and consumer checks pass;
+retain the historical DNS evidence rather than treating recurrence as fixed
+by a product change. See runtime and warning inventories for remaining debt.
+
+
 ## 74d49559 — compile recurrence and exact historical diagnostic
 
 Snapshot: 435 completed runs / 70 SHAs; 113 success, 256 failure, 66 cancelled.

@@ -10,18 +10,23 @@ Documents project documentation.
 
 # Master TODO
 
-Latest retrospective: 435 completed runs on 70 SHAs (113 success,
-256 failure, 66 cancelled). Latest 74d49559 has one successful workflow and
-nine failures, chiefly CE-088's reintroduced Boost timer cancel(error_code).
-Older-Boost package siblings pass; current native tests/sanitizers are blocked.
-TF-103 DNS still blocks docs/services. Exact c25 diagnostic 43055686363 now
-attributes CLANG64's modal to defaulted credentials in ParseCmdline through
-main; MSVC worker 0xC0000142 remains separate. Portable cancellation and guarded
-expiry/registration, shared authoritative Windows entry, explicit/defaulted
-credential policy and parser redaction are Implemented / static; Pending CI
-compilation / Pending CI tests. New native/child/binary/negative-source controls
-are registered. Prior Android Lint, skipped devices, broad lifecycle/provider
-allocation and PRIVSEP-017/CRY-236 gaps remain open. See docs/ci inventories.
+Latest retrospective: 445 completed runs / 71 SHAs (122 success,
+257 failure, 66 cancelled). Published 6d0127b7 has nine successful workflows;
+Windows fails only MSVC's worker supervisor after successful compilation.
+CE-088 and published ACK/CLI/crypto controls pass in executed native lanes;
+ASan+UBSan, UBSan and TSan each pass 266 entries. Capability skips and Android
+Lint debt remain explicit. RT-087 worker stdio inheritance and RT-088 GOST
+verification/recovery corrections are Implemented / static; Pending CI
+compilation / Pending CI tests. MSVC initializer attribution, broad lifecycle,
+provider allocation and PRIVSEP-017/CRY-236 gaps remain open. See docs/ci.
+
+- RT-089: bounded transcript/message append and alignment:
+  Implemented / static; Pending CI compilation / Pending CI tests.
+- Android VectorPath: exact geometry/literal compaction Implemented / static;
+  Pending CI tests/Lint/rendering. Two ChromeOS ABI findings remain Pending.
+- RT-090 / MEM-032: shared storage RPC and metadata deadlines Implemented /
+  static; Pending CI compilation / Pending CI tests. Admission/startup/reaping
+  bounds and deterministic slow-peer/commit-boundary injection remain Pending.
 
 - RT-086: private scalar cleansing and transactional GOST signing:
   Implemented / static; Pending CI compilation / Pending CI tests.
