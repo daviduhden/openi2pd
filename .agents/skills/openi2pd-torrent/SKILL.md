@@ -116,6 +116,12 @@ Do not let them edit, build or run tests.
 
 ## Known issues and decisions
 
+- Metadata RPC budgets begin after serialized client admission. Pass the
+  outer deadline through cleanup as well as chunks; final commit failure
+  can leave publication uncertain. A closed channel revokes client authority
+  but does not prove rollback or child reaping. Preserve those separate
+  limitations in operation contracts and timeout regression descriptions.
+
 - Startup is also a storage transaction: opening the authorized directory
   precedes allocating path conversion, child adoption and configuration.
   Scope the root descriptor immediately and revoke partial child/channel

@@ -889,3 +889,47 @@ require_runtime_source("libi2pd/I2NPProtocol.h"
   "|| alignment > maxLen - len) return;")
 require_runtime_source("tests/CMakeLists.txt" "test-signed-data-bounds")
 require_runtime_source("tests/CMakeLists.txt" "android-vector-geometry")
+
+# Composite storage RPCs cannot create fresh relative phase budgets.
+function(reject_rebased_storage_rpc path begin_marker end_marker)
+  file(READ "${PROJECT_ROOT}/${path}" source)
+  string(FIND "${source}" "${begin_marker}" begin)
+  if(begin LESS 0)
+    message(FATAL_ERROR "Missing storage deadline region in ${path}")
+  endif()
+  string(SUBSTRING "${source}" ${begin} -1 tail)
+  string(FIND "${tail}" "${end_marker}" end)
+  if(end LESS 0)
+    message(FATAL_ERROR "Missing storage deadline boundary in ${path}")
+  endif()
+  string(SUBSTRING "${tail}" 0 ${end} region)
+  if(region MATCHES "[.](Send|SendWithFd|Receive|ReceiveWithFd)[ \t\r\n]*[(]")
+    message(FATAL_ERROR "Storage RPC phases must share Until deadlines: ${path}")
+  endif()
+endfunction()
+reject_rebased_storage_rpc("libi2pd_client/TorrentStorageWorker.cpp"
+  "bool Exchange (" "#endif")
+reject_rebased_storage_rpc("privsep/RouterStorage.cpp"
+  "bool Exchange (MessageType" "\n};")
+reject_rebased_storage_rpc("privsep/DataStorage.cpp"
+  "bool Operate (" "\n};")
+require_runtime_order("libi2pd_client/TorrentStorageWorker.cpp"
+  "bool TorrentStorageWorker::ReadMetadata (" "bool TorrentStorageWorker::ReplaceMetadata ("
+  "const auto deadline =" "const auto path = relative.generic_string ();"
+  "request.Data (), -1, reply, error, deadline)"
+  "read.Data (), -1, reply, error, deadline)"
+  "release.Data (), -1, reply, error, deadline)")
+require_runtime_order("libi2pd_client/TorrentStorageWorker.cpp"
+  "bool TorrentStorageWorker::ReplaceMetadata (" "bool TorrentStorageWorker::RemoveMetadata ("
+  "const auto deadline =" "std::move (payload), -1, reply, error, deadline)"
+  "StorageOperation::MetadataBegin" "StorageOperation::MetadataCommit"
+  "StorageOperation::MetadataAbort")
+file(READ "${PROJECT_ROOT}/libi2pd_client/TorrentStorageWorker.cpp" storage_until_source)
+string(REGEX MATCH "void RetireExpired [(][)] noexcept[^}]*}" retirement "${storage_until_source}")
+if(NOT retirement OR retirement MATCHES "[.](Stop|Send|SendUntil)[ \t]*[(]")
+  message(FATAL_ERROR "Expired storage authority must retire without a new wait")
+endif()
+require_runtime_source("privsep/DataStorage.cpp"
+  "const auto cancelDeadline = std::min (deadline,")
+require_runtime_source("privsep/Channel.cpp"
+  "return SendWithFdUntil (message, fd, false, deadline);")

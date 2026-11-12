@@ -147,9 +147,12 @@ struct RouterStorageClient::Impl
 #endif
 	}
 
-	void CloseWorker ()
+	void CloseWorker (bool waitForExit = true)
 	{
 		child.ChannelFd ().Close ();
+		// Expired RPCs revoke access without a fresh reap budget.
+		// The child remains owned until later lifecycle cleanup.
+		if (!waitForExit) return;
 #if !defined(__OpenBSD__)
 		child.Stop (500);
 #else
@@ -196,12 +199,13 @@ struct RouterStorageClient::Impl
 		auto & channel = child.ChannelFd ();
 		channel.SetEnforcementPolicy (EnforcementPolicy::Endpoint);
 		const auto id = ++next;
-		if (!channel.SendWithFd ({ MessageType::ConfigureRouterStorage, id, setup.Data () }, passed, 5000))
+		const auto deadline = std::chrono::steady_clock::now () + std::chrono::seconds (5);
+		if (!channel.SendWithFdUntil ({ MessageType::ConfigureRouterStorage, id, setup.Data () }, passed, deadline))
 		{
 			error = "router storage worker is unreachable";
 			return false;
 		}
-		auto reply = channel.ReceiveWithFd (5000);
+		auto reply = channel.ReceiveWithFdUntil (deadline);
 		if (!reply || !*reply)
 		{
 			error = "router storage worker did not answer";
@@ -209,6 +213,12 @@ struct RouterStorageClient::Impl
 		}
 		auto & frame = **reply;
 		if (frame.fd >= 0) ::close (frame.fd);
+		if (std::chrono::steady_clock::now () >= deadline)
+		{
+			channel.Close ();
+			error = "router storage configuration deadline exceeded";
+			return false;
+		}
 		const bool accepted = frame.fd < 0 && frame.message.requestId == id
 			&& (frame.message.type == MessageType::RouterStorageReply || frame.message.type == MessageType::Error)
 			&& (frame.message.type == MessageType::Error || frame.message.payload == std::string (1, '\0'));
@@ -229,9 +239,9 @@ struct RouterStorageClient::Impl
 		return true;
 	}
 
-	void MarkRestart (std::string_view reason)
+	void MarkRestart (std::string_view reason, bool waitForExit = true)
 	{
-		CloseWorker ();
+		CloseWorker (waitForExit);
 		if (restartPermitted && restart.RecordFailure (std::chrono::steady_clock::now ()))
 		{
 			state = State::Restarting;
@@ -274,22 +284,24 @@ struct RouterStorageClient::Impl
 		// never collide with a newer one.
 		const auto requestGeneration = generation;
 		const auto id = ++next;
-		if (!channel.Send ({ type, id, std::move (payload) }, 5000))
+		const auto deadline = std::chrono::steady_clock::now () + std::chrono::seconds (5);
+		if (!channel.SendUntil ({ type, id, std::move (payload) }, deadline))
 		{
-			MarkRestart ("send failed");
+			MarkRestart ("send failed", false);
 			return false;
 		}
-		auto result = channel.ReceiveWithFd (5000);
+		auto result = channel.ReceiveWithFdUntil (deadline);
 		if (!result || !*result)
 		{
-			MarkRestart ("worker did not answer");
+			MarkRestart ("worker did not answer", false);
 			return false;
 		}
 		auto & reply = **result;
 		// A worker-level write rejection (status '\1', for example ENOSPC or
 		// a symlink/ownership check) is a failed operation, not a broken
 		// channel.
-		const bool valid = reply.fd < 0 && reply.message.type == MessageType::RouterStorageReply
+		const bool valid = std::chrono::steady_clock::now () < deadline
+			&& reply.fd < 0 && reply.message.type == MessageType::RouterStorageReply
 			&& reply.message.requestId == id && requestGeneration == generation
 			&& (reply.message.payload == std::string (1, '\0') || reply.message.payload == std::string (1, '\1'));
 		if (reply.fd >= 0) ::close (reply.fd);
@@ -297,7 +309,7 @@ struct RouterStorageClient::Impl
 		{
 			// A malformed frame cannot be attributed to a request: the worker
 			// is replaced rather than trusted for a second answer.
-			MarkRestart ("malformed reply");
+			MarkRestart ("malformed reply", false);
 			return false;
 		}
 		restart.NoteStable (std::chrono::steady_clock::now ());

@@ -159,6 +159,11 @@ public:
 	 * negative timeout keeps the historical infinite-wait meaning.
 	 */
 	i2p::expected<void, std::string> SendWithFd (const Message & message, int fd, int timeoutMs = 5000);
+	/// Descriptor send within an absolute transaction deadline.
+	/// SendWithFd ownership/policy apply; the sender fd is borrowed.
+	/// Expiry permits one immediate attempt, as with SendUntil.
+	i2p::expected<void, std::string> SendWithFdUntil (const Message & message, int fd,
+		std::chrono::steady_clock::time_point deadline);
 	/// Receive a message without a descriptor. An unexpected descriptor is
 	/// closed and reported as an error; an empty optional means the
 	/// deadline expired.

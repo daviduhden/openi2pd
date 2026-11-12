@@ -325,6 +325,12 @@ i2p::expected<void, std::string> Channel::SendWithFd (const Message & message, i
 	return SendWithFdUntil (message, fd, IsInfiniteTimeout (timeoutMs), MakeDeadline (timeoutMs));
 }
 
+i2p::expected<void, std::string> Channel::SendWithFdUntil (const Message & message, int fd,
+	std::chrono::steady_clock::time_point deadline)
+{
+	return SendWithFdUntil (message, fd, false, deadline);
+}
+
 i2p::expected<void, std::string> Channel::SendWithFdUntil (const Message & message, int fd, bool infinite,
 	std::chrono::steady_clock::time_point deadline)
 {

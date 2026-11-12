@@ -24,8 +24,8 @@ foreach(required IN ITEMS
     "message.type != MessageType::DataStorageReply || !decoded"
     "std::get<1> (*decoded) != static_cast<uint8_t> (kind)"
     "!IsCurrentDataStorageReply (std::get<2> (*decoded), message.requestId, generation, id)"
-    "MarkRestart (\"uncorrelated worker error\");"
-    "MarkRestart (\"invalid or uncorrelated worker reply\");")
+    "MarkRestart (\"uncorrelated worker error\", false);"
+    "MarkRestart (\"invalid or uncorrelated worker reply\", false);")
   string(FIND "${operation}" "${required}" found)
   if(found LESS 0)
     message(FATAL_ERROR "Data-storage reply authority missing: ${required}")
@@ -41,7 +41,7 @@ if(reply_begin LESS 0 OR reply_end LESS_EQUAL reply_begin)
 endif()
 math(EXPR reply_length "${reply_end} - ${reply_begin}")
 string(SUBSTRING "${operation}" ${reply_begin} ${reply_length} reply_validation)
-string(FIND "${reply_validation}" "MarkRestart (\"invalid or uncorrelated worker reply\");" retired)
+string(FIND "${reply_validation}" "MarkRestart (\"invalid or uncorrelated worker reply\", false);" retired)
 string(FIND "${reply_validation}" "return false;" returned)
 if(retired LESS 0 OR returned LESS retired)
   message(FATAL_ERROR "Invalid storage reply must retire the channel before returning")

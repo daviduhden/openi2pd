@@ -105,6 +105,14 @@ report that limitation; do not substitute local execution. Ask for:
 
 ## Known issues and decisions
 
+- Descriptor-bearing RPCs use the same absolute send/receive deadline as
+  descriptor-free transactions. Carry metadata's outer deadline through
+  begin/open, every chunk and final commit/release/abort. Channel Until APIs
+  permit an immediate attempt at expiry, so mutation owners must reject
+  expiry before calling them. Retire uncertain/late authority without a
+  fresh cleanup RPC or claiming that a commit rolled back. Deferred child
+  reaping, mutex admission and process startup are separate lifecycle bounds.
+
 - A scoped descriptor alone does not make root publication transactional.
   Stage allocating path conversion before retiring the previous root, then
   commit the matching path with a nonallocating swap alongside descriptor,

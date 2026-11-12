@@ -44,6 +44,13 @@ struct TorrentStorageWorker::Impl
 			// ordinary Stop/destruction can retry child reaping afterward.
 		}
 	}
+	// Expiry grants no new child-stop wait. Keep child ownership for
+	// explicit Stop/destruction; channel EOF revokes access.
+	void RetireExpired () noexcept
+	{
+		ready = false;
+		process.ChannelFd ().Close ();
+	}
 	struct ExceptionRetirement
 	{
 		Impl & owner;
@@ -56,14 +63,15 @@ struct TorrentStorageWorker::Impl
 	};
 	// One request/response transaction on the storage channel. Callers
 	// serialize through `mutex`, so at most one frame is in flight. Both
-	// the send and the receive carry a 5 s deadline; a transport failure
+	// the send and receive share a capped 5 s deadline; a failure
 	// retires the worker instead of leaving a late reply that could be
 	// matched to the next request. A typed Error reply with the same
 	// request id is an operation rejection and keeps the channel usable,
 	// while a reply with a descriptor, a foreign id or an unrecognized
 	// shape is treated as corruption and retires the worker.
 	bool Exchange (
-		i2p::privsep::MessageType type, std::string payload, int fd, std::string & result, std::string & error)
+		i2p::privsep::MessageType type, std::string payload, int fd, std::string & result, std::string & error,
+		std::chrono::steady_clock::time_point transactionDeadline = std::chrono::steady_clock::time_point::max ())
 	{
 		using namespace i2p::privsep;
 		const ExceptionRetirement retireOnException { *this };
@@ -73,25 +81,37 @@ struct TorrentStorageWorker::Impl
 			error = "storage request IDs exhausted";
 			return false;
 		}
+		const auto now = std::chrono::steady_clock::now ();
+		const auto deadline = std::min (transactionDeadline, now + std::chrono::seconds (5));
+		if (now >= deadline)
+		{
+			RetireExpired ();
+			error = "storage transaction deadline exceeded";
+			return false;
+		}
 		const auto id = ++next;
-		auto sent = process.ChannelFd ().SendWithFd ({ type, id, std::move (payload) }, fd, 5000);
+		auto sent = process.ChannelFd ().SendWithFdUntil ({ type, id, std::move (payload) }, fd, deadline);
 		if (!sent)
 		{
-			ready = false;
-			process.Stop (100);
+			RetireExpired ();
 			error = sent.error ();
 			return false;
 		}
-		auto received = process.ChannelFd ().ReceiveWithFd (5000);
+		auto received = process.ChannelFd ().ReceiveWithFdUntil (deadline);
 		if (!received || !*received)
 		{
-			ready = false;
-			process.Stop (100);
+			RetireExpired ();
 			error = "storage worker disconnected or timed out";
 			return false;
 		}
 		auto & reply = **received;
 		if (reply.fd >= 0) ::close (reply.fd);
+		if (std::chrono::steady_clock::now () >= deadline)
+		{
+			RetireExpired ();
+			error = "storage transaction deadline exceeded";
+			return false;
+		}
 		if (reply.message.type == MessageType::Error && reply.message.requestId == id && reply.fd < 0)
 		{
 			auto decoded = DecodeError (reply.message.payload);
@@ -488,6 +508,7 @@ bool TorrentStorageWorker::ReadMetadata (
 	// A registered handle must not survive allocation or parsing failure
 	// between exchanges. Retire instead of allocating a Release on unwind.
 	const Impl::ExceptionRetirement retireOnException { *m_Impl };
+	const auto deadline = std::chrono::steady_clock::now () + std::chrono::seconds (30);
 	const auto path = relative.generic_string ();
 	if (!m_Impl->ready || !SafeStoragePath (path))
 	{
@@ -502,7 +523,7 @@ bool TorrentStorageWorker::ReadMetadata (
 		return false;
 	}
 	std::string reply;
-	if (!m_Impl->Exchange (MessageType::TorrentStorageRequest, request.Data (), -1, reply, error)) return false;
+	if (!m_Impl->Exchange (MessageType::TorrentStorageRequest, request.Data (), -1, reply, error, deadline)) return false;
 	PayloadReader reader (reply);
 	const auto handle = reader.ReadU32 ();
 	const auto size = reader.ReadU64BE ();
@@ -514,12 +535,12 @@ bool TorrentStorageWorker::ReadMetadata (
 		return false;
 	}
 	std::vector<uint8_t> result (static_cast<size_t> (*size));
-	const auto deadline = std::chrono::steady_clock::now () + std::chrono::seconds (30);
 	bool ok = true;
 	for (size_t offset = 0; ok && offset < result.size ();)
 	{
 		if (std::chrono::steady_clock::now () >= deadline)
 		{
+			m_Impl->RetireExpired ();
 			error = "metadata read deadline exceeded";
 			ok = false;
 			break;
@@ -530,7 +551,7 @@ bool TorrentStorageWorker::ReadMetadata (
 		read.WriteU32 (*handle);
 		read.WriteU64BE (offset);
 		read.WriteU32 (static_cast<uint32_t> (count));
-		ok = m_Impl->Exchange (MessageType::TorrentStorageRequest, read.Data (), -1, reply, error);
+		ok = m_Impl->Exchange (MessageType::TorrentStorageRequest, read.Data (), -1, reply, error, deadline);
 		if (ok && reply.size () != count)
 		{
 			error = "invalid metadata read length";
@@ -545,7 +566,7 @@ bool TorrentStorageWorker::ReadMetadata (
 		PayloadWriter release;
 		release.WriteU8 (static_cast<uint8_t> (StorageOperation::Release));
 		release.WriteU32 (*handle);
-		const bool released = m_Impl->Exchange (MessageType::TorrentStorageRequest, release.Data (), -1, reply, error)
+		const bool released = m_Impl->Exchange (MessageType::TorrentStorageRequest, release.Data (), -1, reply, error, deadline)
 			&& reply.empty ();
 		if (!ok) error = original;
 		ok = ok && released;
@@ -568,6 +589,7 @@ bool TorrentStorageWorker::ReplaceMetadata (
 	// A begun replacement owns a temporary worker file until commit/abort.
 	// Exceptions between exchanges must revoke that transaction as well.
 	const Impl::ExceptionRetirement retireOnException { *m_Impl };
+	const auto deadline = std::chrono::steady_clock::now () + std::chrono::seconds (30);
 	auto path = relative.generic_string ();
 	if (!m_Impl->ready || !SafeStoragePath (path) || bytes.size () > 8 * 1024 * 1024)
 	{
@@ -577,7 +599,7 @@ bool TorrentStorageWorker::ReplaceMetadata (
 	std::string reply;
 	auto exchange = [&] (std::string payload)
 	{
-		return m_Impl->Exchange (MessageType::TorrentStorageRequest, std::move (payload), -1, reply, error)
+		return m_Impl->Exchange (MessageType::TorrentStorageRequest, std::move (payload), -1, reply, error, deadline)
 			&& reply.empty ();
 	};
 	PayloadWriter begin;
@@ -589,12 +611,12 @@ bool TorrentStorageWorker::ReplaceMetadata (
 	}
 	begin.WriteU64BE (bytes.size ());
 	if (!exchange (begin.Data ())) return false;
-	const auto deadline = std::chrono::steady_clock::now () + std::chrono::seconds (30);
 	bool ok = true;
 	for (size_t offset = 0; ok && offset < bytes.size ();)
 	{
 		if (std::chrono::steady_clock::now () >= deadline)
 		{
+			m_Impl->RetireExpired ();
 			error = "metadata transaction deadline exceeded";
 			ok = false;
 			break;
@@ -610,11 +632,14 @@ bool TorrentStorageWorker::ReplaceMetadata (
 	}
 	if (ok && std::chrono::steady_clock::now () >= deadline)
 	{
+		m_Impl->RetireExpired ();
 		error = "metadata transaction deadline exceeded";
 		ok = false;
 	}
 	if (ok)
 	{
+		// A missing acknowledgement leaves publication uncertain.
+		// Exchange retires the channel; abort cannot imply rollback.
 		PayloadWriter commit;
 		commit.WriteU8 (static_cast<uint8_t> (StorageOperation::MetadataCommit));
 		ok = exchange (commit.Data ());

@@ -818,9 +818,12 @@ struct DataStorageClient::Impl
 	/// OpenBSD the detached worker is disowned instead, because signalling
 	/// it would need proc authority the core no longer holds after its
 	/// runtime pledge.
-	void CloseWorker ()
+	void CloseWorker (bool waitForExit = true)
 	{
 		child.ChannelFd ().Close ();
+		// Expired RPCs revoke access without a fresh reap budget.
+		// The child remains owned until later lifecycle cleanup.
+		if (!waitForExit) return;
 #if !defined(__OpenBSD__)
 		child.Stop (500);
 #else
@@ -831,9 +834,9 @@ struct DataStorageClient::Impl
 #endif
 	}
 
-	void MarkRestart (std::string_view reason)
+	void MarkRestart (std::string_view reason, bool waitForExit = true)
 	{
-		CloseWorker ();
+		CloseWorker (waitForExit);
 		const auto now = Now ();
 		if (restartPermitted && restart.RecordFailure (now))
 		{
@@ -888,19 +891,27 @@ struct DataStorageClient::Impl
 		}
 		const auto id = ++nextRequest;
 		child.ChannelFd ().SetEnforcementPolicy (EnforcementPolicy::Endpoint);
-		if (!child.ChannelFd ().SendWithFd (
-				{ MessageType::ConfigureDataStorage, id, *setup }, passed, REQUEST_TIMEOUT_MS))
+		const auto deadline = std::chrono::steady_clock::now () + std::chrono::milliseconds (REQUEST_TIMEOUT_MS);
+		if (!child.ChannelFd ().SendWithFdUntil (
+				{ MessageType::ConfigureDataStorage, id, *setup }, passed, deadline))
 		{
 			error = "data storage worker is unreachable";
 			return false;
 		}
-		auto reply = child.ChannelFd ().ReceiveWithFd (REQUEST_TIMEOUT_MS);
+		auto reply = child.ChannelFd ().ReceiveWithFdUntil (deadline);
 		if (!reply || !*reply)
 		{
 			error = "data storage worker did not answer";
 			return false;
 		}
 		auto & frame = **reply;
+		if (std::chrono::steady_clock::now () >= deadline)
+		{
+			if (frame.fd >= 0) ::close (frame.fd);
+			child.ChannelFd ().Close ();
+			error = "data storage configuration deadline exceeded";
+			return false;
+		}
 		if (frame.fd >= 0)
 		{
 			::close (frame.fd);
@@ -1011,12 +1022,13 @@ struct DataStorageClient::Impl
 		}
 		const auto id = ++nextRequest;
 		auto & channel = child.ChannelFd ();
-		if (!channel.IsOpen () || !channel.Send ({ MessageType::DataStorageRequest, id, *encoded }, REQUEST_TIMEOUT_MS))
+		const auto deadline = std::chrono::steady_clock::now () + std::chrono::milliseconds (REQUEST_TIMEOUT_MS);
+		if (!channel.IsOpen () || !channel.SendUntil ({ MessageType::DataStorageRequest, id, *encoded }, deadline))
 		{
 			// The request may or may not have been applied. It is never
 			// replayed automatically: the caller sees the failure.
 			lastStatus.store (DataStorageStatus::Busy);
-			MarkRestart ("send failed");
+			MarkRestart ("send failed", false);
 			return false;
 		}
 		// A cancellation observed after the request was sent is advisory: the
@@ -1024,12 +1036,18 @@ struct DataStorageClient::Impl
 		// replayed and the reply is still drained to keep the channel in
 		// sync.
 		const bool cancelledAfterSend = token.stop_requested ();
-		if (cancelledAfterSend) (void)channel.Send ({ MessageType::Cancel, 0, EncodeCancel (id) }, 250);
-		auto reply = channel.Receive (REQUEST_TIMEOUT_MS);
-		if (!reply || !*reply)
+		if (cancelledAfterSend)
+		{
+			const auto cancelDeadline = std::min (deadline,
+				std::chrono::steady_clock::now () + std::chrono::milliseconds (250));
+			if (std::chrono::steady_clock::now () < cancelDeadline)
+				(void)channel.SendUntil ({ MessageType::Cancel, 0, EncodeCancel (id) }, cancelDeadline);
+		}
+		auto reply = channel.ReceiveUntil (deadline);
+		if (!reply || !*reply || std::chrono::steady_clock::now () >= deadline)
 		{
 			lastStatus.store (DataStorageStatus::Busy);
-			MarkRestart ("worker did not answer");
+			MarkRestart ("worker did not answer", false);
 			return false;
 		}
 		const auto & message = **reply;
@@ -1044,7 +1062,7 @@ struct DataStorageClient::Impl
 			if (message.requestId != id || !error || std::get<0> (*error) != MessageType::DataStorageRequest)
 			{
 				lastStatus.store (DataStorageStatus::Busy);
-				MarkRestart ("uncorrelated worker error");
+				MarkRestart ("uncorrelated worker error", false);
 				return false;
 			}
 			lastStatus.store (DataStorageStatus::Rejected);
@@ -1060,7 +1078,7 @@ struct DataStorageClient::Impl
 			// the channel open would keep later operations one reply behind.
 			// Retire the channel and never replay the ambiguous write/remove.
 			lastStatus.store (DataStorageStatus::Busy);
-			MarkRestart ("invalid or uncorrelated worker reply");
+			MarkRestart ("invalid or uncorrelated worker reply", false);
 			return false;
 		}
 		const auto status = static_cast<DataStorageStatus> (std::get<0> (*decoded));

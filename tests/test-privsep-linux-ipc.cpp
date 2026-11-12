@@ -332,13 +332,14 @@ void TestDescriptorTransfer ()
 
 	const int before = CountOpenFds ();
 	const int fd = OpenDescriptor ("/dev/null", O_RDONLY);
-	assert (pair->first.SendWithFd (Message { MessageType::Ping, 11, { } }, fd).has_value ());
+	const auto deadline = std::chrono::steady_clock::now () + std::chrono::seconds (1);
+	assert (pair->first.SendWithFdUntil (Message { MessageType::Ping, 11, { } }, fd, deadline).has_value ());
 	// SCM_RIGHTS duplicates the sender's descriptor; sending does not
 	// transfer ownership of the local copy.
 	assert (fcntl (fd, F_GETFD) >= 0);
 	close (fd);
 
-	auto received = pair->second.ReceiveWithFd (1000);
+	auto received = pair->second.ReceiveWithFdUntil (deadline);
 	assert (received.has_value ());
 	assert (received->has_value ());
 	assert ((*received)->message.type == MessageType::Ping);
@@ -752,7 +753,7 @@ void TestTransactionDeadline ()
 	auto empty = pair->second.ReceiveUntil (deadline);
 	assert (empty && !empty->has_value ());
 	assert (std::chrono::steady_clock::now () - started < std::chrono::seconds (2));
-	assert (pair->first.SendUntil ({ MessageType::Ping, 11, { } }, deadline));
+	assert (pair->first.SendWithFdUntil ({ MessageType::Ping, 11, { } }, -1, deadline));
 	auto next = pair->second.ReceiveUntil (deadline);
 	assert (next && next->has_value () && (*next)->requestId == 11);
 }
