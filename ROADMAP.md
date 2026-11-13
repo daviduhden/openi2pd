@@ -15,15 +15,17 @@ requirements and current code; `TODO.md` is the authoritative task list.
 
 ## Current baseline
 
-At 6d0127b7, history reaches 445 completed runs / 71 SHAs. Nine latest
-workflows pass; MSVC's worker supervisor remains a runtime failure after a
-successful build. Published ACK/CLI/crypto controls pass in executed native
-suites; capability skips and successful Android Lint warnings remain scoped.
-Local worker handle transfer, storage RPC deadlines, bounded append/alignment
-and GOST verification/recovery hardening are
-Implemented / static; Pending CI compilation / Pending CI tests. A child
-initializer stack is still needed for MSVC attribution. Broader lifecycle,
-provider/allocation, Android device and PRIVSEP-017/CRY-236 gaps remain.
+At fdfb1162, history reaches 455 completed runs / 72 SHAs. Five latest
+workflows pass and five fail on Perl expected-inventory or deferred-child
+fixture contracts; MSVC's initializer is a separate unresolved failure.
+Published GOST/bounds controls pass in executed lanes. Android Lint removes
+twelve VectorPath findings, leaving two ABI warnings and unexecuted device
+coverage. Local inventory/fixture/factory corrections and a contained,
+nonsecret Windows initializer probe are Implemented / static; Pending CI
+compilation / Pending CI tests. No security policy is relaxed for diagnosis.
+DHT admission, provider fault injection and broader PRIVSEP-017/CRY-236
+work remain open. Current local CMake source contracts cannot run because
+cmake is unavailable; no tool installation or local builds were performed.
 
 The 80a487d5 retrospective reaches 362 runs on 63 SHAs. Native sanitizer,
 OpenSSL, OpenBSD and selected MSVC regressions pass; Windows MSYS2 Unicode

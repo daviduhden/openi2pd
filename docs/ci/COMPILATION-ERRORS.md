@@ -9,6 +9,16 @@ Tracks compile/configure/link failures reported by manual GitHub Actions.
 
 # Compilation error inventory
 
+## fdfb1162: test failures after successful compilation
+
+No new first-party compiler/linker error was found in complete latest-ten
+logs. OpenSSL 3/4 GCC/Clang, OpenBSD and both Windows jobs build successfully;
+TF-104/105 are Test::More/native assertions and RT-087 is child initialization.
+See [the exact matrix](TEST-FAILURES.md#published-fdfb1162-audit) before grouping
+workflow failure under compilation. New local probe/factory/fixture changes
+remain Pending CI compilation / Pending CI tests, independent of this evidence.
+
+
 ## 6d0127b7: compilation blockers removed in executed lanes
 
 CE-088 status: Validated by CI in the executed configurations. Its timer

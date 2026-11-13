@@ -5,6 +5,50 @@ and license details.
 
 # Runtime error inventory
 
+## fdfb1162: runtime classification and preventive continuation
+
+Exact [run/job evidence](TEST-FAILURES.md#published-fdfb1162-audit) shows native
+compilation succeeding. TF-105 is a fixture ownership mismatch, not a new
+sanitizer report; unrelated runtime families remain open. GOST verification/
+recovery, buffer bounds and focused descriptor-deadline controls pass in
+executed lanes. Ordinary success does not supply provider/allocator injection.
+
+### RT-087 continuation — MSVC initializer still unproven
+
+[Windows 43125810337](https://github.com/daviduhden/openi2pd/actions/runs/43125810337),
+MSVC job 130877469531, exact fdfb116216058ddd1003981ebebc8901d7777621, still
+exits 0xC0000142 before authentication. The NUL handle allowlist correction is
+present and did not resolve this failure. The exact artifact supplies no child
+initializer stack; no token, mitigation or 64 MiB Job limit is relaxed.
+
+The local diagnostic shares contained process creation through a private
+Worker/StartupProbe mode. The public probe wrapper fixes supervisor policy and
+takes no pipe, nonce or arbitrary argument list. Its fixture child receives
+only --windows-startup-probe; the diagnostic parent returns before ordinary
+authenticated tests. A failed MSVC CTest now triggers bounded installed-CDB
+child tracing only for that nonsecret parent. Code-location command allowlists
+cover both files, output requires a real successful probe marker, and artifacts
+are always uploaded. Ordinary tests retain their failure. Memory peak counters
+are hypotheses, not attribution. Implemented / static; Pending CI compilation /
+Pending CI tests. The new workflow has not executed at this unpublished tree.
+
+### RT-091 — I2NP factory overhead arithmetic and empty raw input
+
+Preventive continuation of RT-089 found NewI2NPMessage(size_t) adding header
+overhead before tier classification, allowing SIZE_MAX to wrap into a short
+allocation. The correction compares payload thresholds without addition and
+preserves the existing largest-fixed-buffer result for oversized requests;
+callers still must validate actual capacity. No remote SIZE_MAX exploit or
+observed CI crash is asserted.
+
+Raw CreateI2NPMessage already rejects null/nonempty input, but copied accepted
+null/empty input unconditionally. It now skips that zero-byte memcpy. Existing
+bounds regression gains short/medium tier edges, SIZE_MAX, and null/empty
+controls. Global review retains packet-grammar-bounded fragment arithmetic as
+a separate scope. Implemented / static; Pending CI compilation / Pending CI
+tests. No local native test was executed.
+
+
 ## 6d0127b7 validation and remaining runtime boundaries
 
 Published sanitizer suites pass, including the previously blocked ACK/CLI/

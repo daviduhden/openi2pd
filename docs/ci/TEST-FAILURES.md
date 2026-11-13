@@ -5,6 +5,89 @@ and license details.
 
 # Test failure inventory
 
+## Published fdfb1162 audit
+
+History pagination reaches **455 completed runs / 72 SHAs**: 127 success,
+262 failure and 66 cancelled (441 manual, 14 historical push). The latest ten
+execute `fdfb116216058ddd1003981ebebc8901d7777621`: five success and five
+failure. Full failed/successful sibling logs and artifact inventories were
+retrieved. Historical unavailable evidence remains a gap, not a clean result.
+
+| Run | Job ID | Lane | Conclusion |
+|---|---|---|---|
+| [43125810337](https://github.com/daviduhden/openi2pd/actions/runs/43125810337) | 130877469094 | Windows MSYS2 Clang64 build and tests | failure |
+| [43125810337](https://github.com/daviduhden/openi2pd/actions/runs/43125810337) | 130877469531 | Windows MSVC build and tests | failure |
+| [43125814527](https://github.com/daviduhden/openi2pd/actions/runs/43125814527) | 130877481081 | OpenBSD 8.0 build and tests | failure |
+| [43125818597](https://github.com/daviduhden/openi2pd/actions/runs/43125818597) | 130877495203 | Container image | success |
+| [43125818597](https://github.com/daviduhden/openi2pd/actions/runs/43125818597) | 130877495370 | Service contracts | success |
+| [43125818597](https://github.com/daviduhden/openi2pd/actions/runs/43125818597) | 130877495396 | Static musl build and package | success |
+| [43125818597](https://github.com/daviduhden/openi2pd/actions/runs/43125818597) | 130877495449 | Debian packages | success |
+| [43125818597](https://github.com/daviduhden/openi2pd/actions/runs/43125818597) | 130877495521 | Service component install matrix | success |
+| [43125823301](https://github.com/daviduhden/openi2pd/actions/runs/43125823301) | 130877511759 | Agent and skills synchronization | success |
+| [43125827774](https://github.com/daviduhden/openi2pd/actions/runs/43125827774) | 130877525588 | Linux (clang, OpenSSL 3.x) | failure |
+| [43125827774](https://github.com/daviduhden/openi2pd/actions/runs/43125827774) | 130877526082 | Linux (gcc, OpenSSL 3.x) | failure |
+| [43125831805](https://github.com/daviduhden/openi2pd/actions/runs/43125831805) | 130877539211 | Linux (clang, OpenSSL 4.x) | failure |
+| [43125831805](https://github.com/daviduhden/openi2pd/actions/runs/43125831805) | 130877539436 | Linux (gcc, OpenSSL 4.x) | failure |
+| [43125835856](https://github.com/daviduhden/openi2pd/actions/runs/43125835856) | 130877553010 | Android arm64 build and unit tests | success |
+| [43125835856](https://github.com/daviduhden/openi2pd/actions/runs/43125835856) | 130877555683 | Android API 29 UI and accessibility | skipped |
+| [43125839804](https://github.com/daviduhden/openi2pd/actions/runs/43125839804) | 130877567644 | Install components and consumer package | success |
+| [43125839804](https://github.com/daviduhden/openi2pd/actions/runs/43125839804) | 130877568014 | I2P Java interoperability | success |
+| [43125843909](https://github.com/daviduhden/openi2pd/actions/runs/43125843909) | 130877581127 | Agent Skills static contract | success |
+| [43125843909](https://github.com/daviduhden/openi2pd/actions/runs/43125843909) | 130877581219 | C++ source API documentation | success |
+| [43125843909](https://github.com/daviduhden/openi2pd/actions/runs/43125843909) | 130877581284 | Sanitizers (tsan) | failure |
+| [43125843909](https://github.com/daviduhden/openi2pd/actions/runs/43125843909) | 130877581289 | Sanitizers (asan-ubsan) | failure |
+| [43125843909](https://github.com/daviduhden/openi2pd/actions/runs/43125843909) | 130877581291 | Sanitizers (ubsan) | failure |
+| [43125843909](https://github.com/daviduhden/openi2pd/actions/runs/43125843909) | 130877581337 | Bounded fuzz smoke checks | success |
+| [43125843909](https://github.com/daviduhden/openi2pd/actions/runs/43125843909) | 130877583010 | Perl quality (Test::More and Perl::Critic) | skipped |
+| [43125848460](https://github.com/daviduhden/openi2pd/actions/runs/43125848460) | 130877595351 | Instrumented OpenSSL TSan diagnostic | success |
+
+All four OpenSSL compiler lanes build/link and run 269 CTest entries. Their
+only failing targets are perl-portability (TF-104) and test-datastorage-client
+(TF-105). The three sanitizer lanes have the same two failures; no actual
+ASan/UBSan/TSan report was found. OpenBSD fails one of 264 entries and CLANG64
+one of 253, both only TF-104; their existing capability skips remain separate.
+MSVC passes 23 of 24 selected tests; RT-087 still fails before authentication
+with exit 3221225794 (0xC0000142). Job 130877469531 builds successfully.
+
+### TF-104 — Producer added to CMake but omitted from expected Perl inventory
+
+Original diagnosis in OpenSSL 3 Clang job 130877525588: portability test 3
+reports got android/tools/compact-vector-paths.pl versus expected
+ i18n/check-i18n-catalogs.pl at tools/tests/perl-portability.t:168. Syntax and
+Critic inventory parity assertions 634/635 share that same missing expected
+entry. OpenSSL 3/4 GCC/Clang, all three sanitizer lanes, OpenBSD and CLANG64
+reproduce it. This is a maintenance contract failure, not compiler output.
+
+The correction adds the producer to the expected list, retaining discovery
+and both CMake registration assertions. A compile-free tools inventory guard
+checks all Android Perl scripts across those three seams in both directions.
+Existing source-only review confirms four matching scripts. Implemented /
+static; Pending CI tests. The Test::More suite was not executed locally.
+
+### TF-105 — Deferred child ownership contradicts eager-reap fixture
+
+Original OpenSSL 3 Clang assertion at test-datastorage-client.cpp:132:
+client.WorkerPid () <= 0. Four OpenSSL lanes and all three sanitizer lanes
+reproduce it. The published close-only RPC retirement deliberately preserves
+the ChildProcess for later reaping; WorkerPid already documents owned-child
+identity, not readiness. Global consumer review finds only this fixture.
+
+The fixture now pins the retained original PID during restart backoff and
+asserts ECHILD after replacement and explicit Stop. It also observes SIGKILL
+with Linux waitid/WNOWAIT before issuing exactly one failed RPC. The old
+100-write loop could multiply five-second request budgets and mutate an
+unexpectedly live worker. No production timeout increase or eager-reap
+rollback was introduced. Implemented / static; Pending CI compilation /
+Pending CI tests. Non-Linux code does not instantiate the waitid helper.
+
+Successful siblings include fifteen fuzz smoke entries, source API docs,
+Skills, packaging/services, component consumers and Java interop. Instrumented
+OpenSSL TSan passes its focused test. Android's retained 25 JVM suites have
+174 tests with no failures/errors/skips; debug/release Lint each contain two
+ABI findings and zero VectorPath findings. The device/accessibility job and
+optional Perl quality job are skipped, not validated.
+
+
 ## Published 6d0127b7 audit
 
 Paginated history now contains **445 completed runs / 71 SHAs**: 122 success,

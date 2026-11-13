@@ -345,3 +345,21 @@ and the portable CTest `android-vector-geometry` entry; `--write` is an
 explicit maintenance command, never a CI step. Existing manual native and
 sanitizer selections include the new bounds fixture. ABI, provider fault
 injection and broader lifetime/deadline gaps remain tracked separately.
+
+## Published fdfb1162 and contained startup evidence
+
+The [exact matrix](ci/TEST-FAILURES.md#published-fdfb1162-audit) has five passing
+workflows and five failures after successful native compilation. TF-104 and
+TF-105 are expected-inventory/fixture contracts; MSVC initialization remains
+RT-087. Android VectorPath removal is confirmed by retained Lint XML, while
+ABI/device gaps remain.
+
+The Windows workflow prepares a failure-only contained initializer probe.
+Only its fixed, nonsecret test entry may use CDB child tracing; normal worker
+tests remain parent-only. Every exception command file is allowlisted. The
+probe retains SHA/revision, code-location logs and nonsecret counters with a
+60-second debugger deadline inside a two-minute diagnostic step. Its success
+cannot override CTest or establish IPC/restart coverage. This local workflow
+has not run. CMake is unavailable locally; no configure/build/test or tool
+installation was attempted. Source-only Perl checks do not substitute for
+those pending CMake contracts or native CI.

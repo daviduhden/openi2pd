@@ -1,5 +1,27 @@
 # Compilation and lint warning inventory
 
+## fdfb1162: native warning review and observed Android improvement
+
+Full latest-ten logs show no observed own native compiler/linker warning.
+OpenSSL lanes use GCC 16.2.0 / Clang 23.1.5, OpenSSL 3.5.9/4.1.0; Windows uses
+Clang 23.1.5 or MSVC 19.44.35229.0 with OpenSSL 3.6.5. Native success does not
+validate skipped devices, optional analyzers or new unpublished corrections.
+
+CW-003 VectorPath correction: Validated by CI Lint at Android 43125835856,
+job 130877553010, exact SHA fdfb116216058ddd1003981ebebc8901d7777621.
+Both retained Lint XML reports contain zero VectorPath findings and only two
+ChromeOsAbiSupport warnings at build.gradle:89/109. JVM tests, Javadoc,
+46-declaration JNI parity, class major 69 and the DEX/probe checks pass.
+Java 25.0.5+8, NDK 30.0.16248370 / Clang 21.0.0 and OpenSSL 3.6.5 are recorded
+in the exact job. Pixel-level/device rendering remains unexecuted. Real
+x86_64 dependency prefixes/build/APK coverage remains Pending for the two ABI
+findings; builtInKotlin=false deprecation remains separate toolchain debt.
+
+External autopkgtest --force-yes, runner Landlock ABI 8 versus 10 and MSYS
+upgrade advice remain separate known diagnostics. TF-104 inventory failures
+are not compiler warnings; no suppression or lower language target is used.
+
+
 ## 6d0127b7: successful builds still expose warning debt
 
 Full latest-ten logs contain no observed first-party native compiler/linker

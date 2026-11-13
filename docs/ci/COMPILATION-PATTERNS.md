@@ -1,5 +1,15 @@
 # Compilation diagnostic patterns and repository-wide review
 
+## Expected script inventories are consumers too
+
+TF-104 repeats across nine native/sanitizer/platform jobs although CMake's
+syntax/Critic lists already name the producer. Discovery, the expected
+Test::More inventory and both CMake lists form one interface. Search all
+consumers when introducing a maintenance script; a configure/build pass
+cannot establish expected-inventory parity. Keep source-only seam checking
+separate from executing the full portability suite in manual CI.
+
+
 ## Review runtime after restoring compilation
 
 At 6d0127b7, removing CE-088 restores native/sanitizer execution. Reclassify

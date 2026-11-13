@@ -10,20 +10,22 @@ Documents project documentation.
 
 # Master TODO
 
-Latest retrospective: 445 completed runs / 71 SHAs (122 success,
-257 failure, 66 cancelled). Published 6d0127b7 has nine successful workflows;
-Windows fails only MSVC's worker supervisor after successful compilation.
-CE-088 and published ACK/CLI/crypto controls pass in executed native lanes;
-ASan+UBSan, UBSan and TSan each pass 266 entries. Capability skips and Android
-Lint debt remain explicit. RT-087 worker stdio inheritance and RT-088 GOST
-verification/recovery corrections are Implemented / static; Pending CI
-compilation / Pending CI tests. MSVC initializer attribution, broad lifecycle,
-provider allocation and PRIVSEP-017/CRY-236 gaps remain open. See docs/ci.
+Latest retrospective: 455 completed runs / 72 SHAs (127 success,
+262 failure, 66 cancelled). Published fdfb1162 has five successful and five
+failed workflows. No new native compiler/linker error or own warning was
+observed; failures are TF-104 Perl inventory, TF-105 eager-reap fixture and
+RT-087 MSVC initialization. TF-104/105 corrections and RT-091 I2NP factory
+bounds are Implemented / static; Pending CI compilation / Pending CI tests.
+The contained, nonsecret MSVC initializer probe is prepared, not executed.
+Android Lint confirms zero VectorPath warnings and two remaining ABI warnings;
+174 JVM tests pass, device tests skip. Wider DHT admission, provider injection
+and PRIVSEP-017/CRY-236 gaps remain open. See docs/ci inventories.
 
-- RT-089: bounded transcript/message append and alignment:
-  Implemented / static; Pending CI compilation / Pending CI tests.
-- Android VectorPath: exact geometry/literal compaction Implemented / static;
-  Pending CI tests/Lint/rendering. Two ChromeOS ABI findings remain Pending.
+- RT-089: published transcript/message append and alignment controls:
+  Validated by CI in executed fdfb1162 lanes; RT-091 factory continuation
+  remains Pending CI compilation / Pending CI tests.
+- Android VectorPath: Validated by CI Lint at fdfb1162. Pixel/device rendering
+  and two ChromeOS ABI findings remain Pending.
 - RT-090 / MEM-032: shared storage RPC and metadata deadlines Implemented /
   static; Pending CI compilation / Pending CI tests. Admission/startup/reaping
   bounds and deterministic slow-peer/commit-boundary injection remain Pending.

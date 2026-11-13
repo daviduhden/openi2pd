@@ -8201,3 +8201,60 @@ or push.
   build checker to evaluate actual regex membership, retaining its separate
   explicit-target requirement, and recorded the reusable rule in build Skills.
   This is a compile-free contract correction; native CI remains pending.
+
+## fdfb1162 retrospective and preventive continuation
+
+- Started clean at fdfb116216058ddd1003981ebebc8901d7777621. Retrieved latest
+  ten complete/failed logs, jobs and artifact inventories. Paginated history
+  reaches 455 completed runs / 72 SHAs: 127 success, 262 failure, 66 cancelled.
+  Five latest workflows pass and five fail; no new native compile/link error
+  or own compiler warning was observed in complete output.
+- TF-104: nine native/sanitizer/platform jobs fail Perl inventory parity for
+  compact-vector-paths.pl. CMake syntax/Critic registration already exists;
+  added the missing Test::More expected entry. Prepared a compile-free Android
+  script inventory closure guard. Direct text review confirms four scripts
+  match discovery and both CMake lists; Test::More was not run locally.
+- TF-105: four OpenSSL compiler lanes and three sanitizer lanes assert eager
+  reaping at test-datastorage-client.cpp:132 despite intentional retained
+  child ownership. The fixture now pins the original PID through backoff,
+  verifies ECHILD after replacement and explicit Stop, and observes SIGKILL
+  with Linux waitid/WNOWAIT before one failed RPC. The old retry loop could
+  multiply five-second budgets; no product timeout or ownership was weakened.
+- RT-087 remains unproven at MSVC job 130877469531, run 43125810337: 23/24
+  tests pass, child exits 0xC0000142 before authentication. Retained the exact
+  artifact. Added a type-closed startup probe sharing token/Job/mitigation/
+  NUL handle policy but carrying no nonce, pipe or arbitrary args. A failed
+  MSVC CTest triggers bounded CDB child tracing only for that probe; original
+  test failure remains. Record image SHA/revision, native exit, memory peaks
+  and limits; counters do not establish cause. Each command file and probe
+  argument boundary has guards and negative tests prepared for CI.
+- RT-091: factory overhead addition could wrap SIZE_MAX into a short tier;
+  payload-threshold comparison now preserves the largest-fixed-buffer
+  contract. Accepted null/empty raw input avoids memcpy. Existing bounds
+  regression extends tier edges, SIZE_MAX and null controls. Static only.
+- Android run 43125835856 artifacts confirm both Lint reports have zero
+  VectorPath and two ChromeOS ABI findings. Twenty-five JVM suites contain
+  174 tests without failures/errors/skips. JNI parity/Javadoc/class69/DEX
+  checks pass; device 130877555683 skips. No rendering/device claim follows.
+- Delegated history, native warnings, memory, concurrency, crypto/protocols,
+  IPC, torrents/storage, Android, portability and CI/docs review by area.
+  Remaining DHT owner-admission and torrent-retirement fixture coverage are
+  distinct findings; ordinary passing tests do not close either scope.
+- No local build, compiler, project test, commit or push was executed. CMake
+  is absent in this environment; its source contracts are prepared/reviewed,
+  not locally executed. Perl/text/XML checks are reported separately from
+  unavailable CMake checks and pending native/manual-CI validation.
+
+- Final knowledge review inspected AGENTS, discovery index, applicable source
+  contracts and six updated Skills (build, CI, Windows, memory, privsep,
+  tooling). Reusable updates cover three-way script inventories, retained
+  child ownership, non-reaping death observation, factory classification and
+  closed nonsecret initializer diagnostics. Independent integration review
+  found no blocking source defect after command-file/launch closure guards.
+- Available compile-free checks pass: git whitespace, workflow policy/privacy,
+  118 Markdown links, Doxygen parameter references, Shell policy (322 sources),
+  Android geometry/literals and direct text inventory/authority checks. The
+  knowledge validator passes; AK004's semantic relevance advisory was manually
+  reviewed. cmake is absent, so CMake source contracts were reviewed/prepared
+  but not executed. Negative fixture drivers, native tests, builds, the new
+  probe and CDB captures remain Pending CI. No commits or push were made.

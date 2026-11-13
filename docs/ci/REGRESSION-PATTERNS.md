@@ -5,6 +5,23 @@ and license details.
 
 # Regression patterns
 
+## Deferred ownership, deterministic death and diagnostic privacy
+
+- Compare a lifecycle assertion with its API ownership contract before
+  changing product behavior. A retained PID after channel retirement requires
+  later reap assertions, not hiding the PID or restoring fresh cleanup waits.
+- Observe killed-child exit without consuming status before a failure RPC.
+  A loop of mutating RPCs is neither a harmless liveness poll nor a fixed
+  wall-clock budget; preserve the product's ownership of the wait status.
+- CDB child tracing is allowed only for a closed nonsecret probe sharing
+  production containment. Probe modes return before normal tests. Validate
+  every command file, fixed argument list, deadlines and positive outcome;
+  ordinary authenticated worker tests remain parent-only and mandatory.
+- Factory tier selection must resist overhead overflow as well as append
+  arithmetic. Oversized requests retain bounded fixed-capacity behavior;
+  empty accepted input must not pass a null pointer to zero-byte memcpy.
+
+
 ## Storage deadline propagation and uncertain commits
 
 Review Open/Begin, every chunk, final commit/release and abort under one outer
