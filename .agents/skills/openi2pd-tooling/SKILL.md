@@ -122,6 +122,12 @@ a TUI client.
 
 ## Known issues and decisions
 
+- Android maintenance producers join three inventories: recursive discovery,
+  the expected script list in tools/tests/perl-portability.t, and both CMake
+  syntax/Critic lists. A script present only in CMake still fails the CI
+  parity suite. The compile-free tools inventory guard checks this Android
+  seam without executing Test::More; full module/fixture parity stays in CI.
+
 - Doc-link negative fixtures must use supported inline Markdown grammar.
   Reference definitions are deliberately ignored; a negative expectation
   alone does not prove the target reached containment. Pair missing-suffix

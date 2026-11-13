@@ -228,6 +228,28 @@ foreach(required IN ITEMS "tools/LICENSE" "tools/CMakeLists.txt")
   endif()
 endforeach()
 
+# Android producer scripts also have a Test::More expected inventory.
+# Check that seam without executing the Perl contract suite locally.
+read_required("${PROJECT_ROOT}/tools/tests/perl-portability.t" perl_portability)
+file(GLOB android_perl_sources RELATIVE "${PROJECT_ROOT}"
+  "${PROJECT_ROOT}/android/tools/*.pl")
+string(REGEX MATCHALL "'android/tools/[^']+[.]pl'" android_perl_manifest
+  "${perl_portability}")
+string(REPLACE "'" "" android_perl_manifest "${android_perl_manifest}")
+list(SORT android_perl_sources)
+list(SORT android_perl_manifest)
+if(NOT "${android_perl_sources}" STREQUAL "${android_perl_manifest}")
+  message(FATAL_ERROR "Android Perl discovery and expected inventory differ")
+endif()
+foreach(android_script IN LISTS android_perl_sources)
+  string(REPLACE "." "[.]" script_pattern "${android_script}")
+  string(REGEX MATCHALL "${script_pattern}" script_registrations "${cmake_text}")
+  list(LENGTH script_registrations registration_count)
+  if(NOT registration_count EQUAL 2)
+    message(FATAL_ERROR "Android Perl script needs syntax and Critic registration: ${android_script}")
+  endif()
+endforeach()
+
 list(LENGTH tools_list tool_count)
 if(guard_count LESS 1)
   message(FATAL_ERROR "no crypto guard declaration was found in the tool sources")

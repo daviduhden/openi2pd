@@ -111,6 +111,12 @@ build.
 
 ## Known issues and decisions
 
+- Perl producer registration also has a separately maintained expected
+  inventory in tools/tests/perl-portability.t. Review that consumer when
+  updating syntax/Critic inputs; registering a script twice in CMake does
+  not establish discovery parity. Keep compile-free seam checks alongside
+  the full manual-CI portability suite.
+
 - Workflow selection guards should evaluate whether the actual CTest
   expression selects the required regression. Closing-group literals become
   stale when wrapper alternatives are added despite preserving coverage;

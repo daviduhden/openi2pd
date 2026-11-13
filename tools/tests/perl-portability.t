@@ -130,6 +130,7 @@ my @scripts = (
     'tools/tests/validate-branding.t',
     'tools/tests/perl-portability.t',
     'tests/interop/check-vectors.pl',
+    'android/tools/compact-vector-paths.pl',
     'android/tools/check-android-locales.pl',
     'android/tools/check-android-javadoc.pl',
     'android/tools/check-android-jni-symbols.pl',
