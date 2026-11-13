@@ -949,3 +949,9 @@ list(LENGTH death_rpc_calls death_rpc_count)
 if(NOT death_rpc_count EQUAL 1)
   message(FATAL_ERROR "Worker death fixture must issue exactly one failure RPC")
 endif()
+require_runtime_source("libi2pd/I2NPProtocol.cpp"
+  "if (len <= I2NP_MAX_SHORT_MESSAGE_SIZE - overhead)")
+require_runtime_source("libi2pd/I2NPProtocol.cpp"
+  "if (len <= I2NP_MAX_MEDIUM_MESSAGE_SIZE - overhead)")
+require_runtime_source("libi2pd/I2NPProtocol.cpp"
+  "if (len) memcpy (msg->GetBuffer (), buf, len);")

@@ -609,6 +609,9 @@ std::shared_ptr<I2NPMessage> NewI2NPMessage ();
 std::shared_ptr<I2NPMessage> NewI2NPShortMessage ();
 std::shared_ptr<I2NPMessage> NewI2NPMediumMessage ();
 std::shared_ptr<I2NPMessage> NewI2NPTunnelMessage (bool endpoint);
+/// Select a fixed tier for len payload bytes and header overhead.
+/// Requests beyond the largest tier still return that fixed maximum;
+/// callers must check actual capacity before copying or appending.
 std::shared_ptr<I2NPMessage> NewI2NPMessage (size_t len);
 
 // Both factories return nullptr when the payload does not fit any I2NP

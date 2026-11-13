@@ -107,6 +107,12 @@ Do not let reconnaissance agents edit, compile, execute tests or run scripts.
 
 ## Known issues and decisions
 
+- Audit factory tier selection alongside append bounds. Adding fixed header
+  overhead before classifying an arbitrary size can wrap into a short tier;
+  compare payload thresholds before addition and preserve the documented
+  largest-tier behavior. Empty-input acceptance still requires avoiding a
+  null zero-byte memcpy; check every raw/typed factory consumer.
+
 - Bounded appenders must compare a request against remaining capacity;
   `used + requested` can wrap even when the destination is fixed-size.
   Review transcript insertion, message concatenation and alignment together.

@@ -56,9 +56,11 @@ std::shared_ptr<I2NPMessage> NewI2NPTunnelMessage (bool endpoint)
 
 std::shared_ptr<I2NPMessage> NewI2NPMessage (size_t len)
 {
-	len += I2NP_HEADER_SIZE + 2;
-	if (len <= I2NP_MAX_SHORT_MESSAGE_SIZE) return NewI2NPShortMessage ();
-	if (len <= I2NP_MAX_MEDIUM_MESSAGE_SIZE) return NewI2NPMediumMessage ();
+	// Compare payload capacities before adding header overhead: an
+	// oversized request must not wrap into a smaller allocation tier.
+	constexpr size_t overhead = I2NP_HEADER_SIZE + 2;
+	if (len <= I2NP_MAX_SHORT_MESSAGE_SIZE - overhead) return NewI2NPShortMessage ();
+	if (len <= I2NP_MAX_MEDIUM_MESSAGE_SIZE - overhead) return NewI2NPMediumMessage ();
 	return NewI2NPMessage ();
 }
 
@@ -118,7 +120,7 @@ std::shared_ptr<I2NPMessage> CreateI2NPMessage (
 	// with a zero type and a stale length.
 	if (len <= msg->maxLen - msg->offset)
 	{
-		memcpy (msg->GetBuffer (), buf, len);
+		if (len) memcpy (msg->GetBuffer (), buf, len);
 		msg->len = msg->offset + len;
 		msg->from = from;
 		return msg;

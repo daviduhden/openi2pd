@@ -99,5 +99,28 @@ int main ()
 	assert (aligned.offset == alignedLength + 1 && aligned.len == alignedLength);
 	unbacked.Align (12);
 	assert (unbacked.offset == initialOffset && unbacked.len == alignedLength);
+
+	// Factory tier selection must not wrap header overhead into short.
+	constexpr size_t overhead = i2p::I2NP_HEADER_SIZE + 2;
+	const auto expectTier = [] (size_t requested, size_t expected)
+	{
+		const auto allocated = i2p::NewI2NPMessage (requested);
+		assert (allocated && allocated->maxLen == expected);
+	};
+	expectTier (0, i2p::I2NP_MAX_SHORT_MESSAGE_SIZE);
+	expectTier (i2p::I2NP_MAX_SHORT_MESSAGE_SIZE - overhead,
+		i2p::I2NP_MAX_SHORT_MESSAGE_SIZE);
+	expectTier (i2p::I2NP_MAX_SHORT_MESSAGE_SIZE - overhead + 1,
+		i2p::I2NP_MAX_MEDIUM_MESSAGE_SIZE);
+	expectTier (i2p::I2NP_MAX_MEDIUM_MESSAGE_SIZE - overhead,
+		i2p::I2NP_MAX_MEDIUM_MESSAGE_SIZE);
+	expectTier (i2p::I2NP_MAX_MEDIUM_MESSAGE_SIZE - overhead + 1,
+		i2p::I2NP_MAX_MESSAGE_SIZE);
+	expectTier (std::numeric_limits<size_t>::max (), i2p::I2NP_MAX_MESSAGE_SIZE);
+
+	// Empty input must not dereference a null source.
+	const auto empty = i2p::CreateI2NPMessage (nullptr, 0, nullptr);
+	assert (empty && empty->GetLength () == 0);
+	assert (!i2p::CreateI2NPMessage (nullptr, 1, nullptr));
 	return 0;
 }
