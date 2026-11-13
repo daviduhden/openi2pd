@@ -181,7 +181,11 @@ public:
 	 * Generation of the configured worker; 0 before the first
 	 * successful Start. */
 	uint32_t Generation () const;
-	/* Worker pid, or -1 when this client owns no child (diagnostics). */
+	/*
+	 * Owned child pid; retired children can await lifecycle reaping.
+	 * Returns -1 when no child is owned; a positive pid does not imply
+	 * that its channel is open or that the worker is ready.
+	 */
 	long WorkerPid () const;
 	/*
 	 * Injected clock so restart scheduling can be tested without

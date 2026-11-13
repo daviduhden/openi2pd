@@ -105,6 +105,13 @@ report that limitation; do not substitute local execution. Ask for:
 
 ## Known issues and decisions
 
+- A retired RPC channel can still own a child awaiting lifecycle cleanup.
+  Diagnostic WorkerPid reports that ownership, not readiness. Fixtures must
+  pin retained identity, then verify reaping on replacement and explicit
+  Stop. Observe killed-child exit without consuming its wait status before
+  issuing one failed RPC; polling by repeated writes can mutate live state
+  and multiply the timeout by the retry count.
+
 - Descriptor-bearing RPCs use the same absolute send/receive deadline as
   descriptor-free transactions. Carry metadata's outer deadline through
   begin/open, every chunk and final commit/release/abort. Channel Until APIs

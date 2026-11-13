@@ -933,3 +933,19 @@ require_runtime_source("privsep/DataStorage.cpp"
   "const auto cancelDeadline = std::min (deadline,")
 require_runtime_source("privsep/Channel.cpp"
   "return SendWithFdUntil (message, fd, false, deadline);")
+
+require_runtime_source("tests/test-datastorage-client.cpp" "WEXITED | WNOHANG | WNOWAIT")
+require_runtime_source("tests/test-datastorage-client.cpp"
+  "assert (client.WorkerPid () == firstWorker);")
+require_runtime_source("tests/test-datastorage-client.cpp"
+  "assert (::waitpid (static_cast<pid_t> (retiredWorker), nullptr, WNOHANG) == -1);")
+file(READ "${PROJECT_ROOT}/tests/test-datastorage-client.cpp" death_fixture)
+string(REGEX MATCH "bool WaitForFailure [(][^#]*" death_observer "${death_fixture}")
+if(NOT death_observer OR death_observer MATCHES "attempt < 100")
+  message(FATAL_ERROR "Worker death observation must not retry mutating RPCs")
+endif()
+string(REGEX MATCHALL "client[.]Write [(]" death_rpc_calls "${death_observer}")
+list(LENGTH death_rpc_calls death_rpc_count)
+if(NOT death_rpc_count EQUAL 1)
+  message(FATAL_ERROR "Worker death fixture must issue exactly one failure RPC")
+endif()

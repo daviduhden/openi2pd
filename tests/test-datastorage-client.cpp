@@ -13,8 +13,10 @@
  * Prepared for manual CI only.
  */
 
+#include <algorithm>
 #include <array>
 #include <cassert>
+#include <cerrno>
 #include <chrono>
 #include <csignal>
 #include <cstdint>
@@ -24,6 +26,7 @@
 #include <limits>
 #include <string>
 #include <sys/stat.h>
+#include <sys/wait.h>
 #include <thread>
 #include <unistd.h>
 #include <vector>
@@ -60,19 +63,37 @@ bool ReadBack (const std::filesystem::path & path, std::vector<uint8_t> & bytes)
 	return true;
 }
 
+#if defined(__linux__) && !defined(__ANDROID__)
 /*
- * Wait until a request observes the dead worker; never advances the
- * clock.
+ * Observe SIGKILL completion without consuming child wait status.
+ * Observe death within one second, then require one failed write.
+ * Never mutate an unexpectedly live worker.
  */
 bool WaitForFailure (DataStorageClient & client, StorageArtifact kind, std::string_view name)
 {
-	for (int attempt = 0; attempt < 100; ++attempt)
+	const long worker = client.WorkerPid ();
+	if (worker <= 0) return false;
+	const auto deadline = std::chrono::steady_clock::now () + std::chrono::seconds (1);
+	while (std::chrono::steady_clock::now () < deadline)
 	{
-		if (!client.Write (kind, name, Bytes (9, 8))) return true;
-		std::this_thread::sleep_for (std::chrono::milliseconds (10));
+		siginfo_t status { };
+		if (::waitid (P_PID, static_cast<id_t> (worker), &status, WEXITED | WNOHANG | WNOWAIT) < 0)
+		{
+			if (errno == EINTR) continue;
+			return false;
+		}
+		if (status.si_pid)
+		{
+			if (status.si_pid != worker || status.si_code != CLD_KILLED || status.si_status != SIGKILL)
+				return false;
+			return !client.Write (kind, name, Bytes (9, 8));
+		}
+		std::this_thread::sleep_until (std::min (deadline,
+			std::chrono::steady_clock::now () + std::chrono::milliseconds (10)));
 	}
 	return false;
 }
+#endif
 }
 
 #include "privsep-test-executable.h"
@@ -127,9 +148,9 @@ int main (int argc, char ** argv)
 	}
 	const auto firstFailure = now;
 	assert (client.Generation () == 1);
-	// The client reaps the dead child and owns no worker while it is
-	// restarting.
-	assert (client.WorkerPid () <= 0);
+	// Failed RPCs close authority without starting a new reap wait. The
+	// retired child stays owned until restart or explicit Stop cleanup.
+	assert (client.WorkerPid () == firstWorker);
 
 	// Before the 250 ms backoff expires no replacement is spawned and the
 	// refusal is Busy, not a silent success.
@@ -137,7 +158,7 @@ int main (int argc, char ** argv)
 	assert (!client.Write (StorageArtifact::RouterInfoCache, name, Bytes (2, 16)));
 	assert (client.LastStatus () == DataStorageStatus::Busy);
 	assert (client.Generation () == 1);
-	assert (client.WorkerPid () <= 0);
+	assert (client.WorkerPid () == firstWorker);
 	{
 		std::vector<uint8_t> read;
 		assert (ReadBack (path, read));
@@ -152,6 +173,10 @@ int main (int argc, char ** argv)
 	assert (client.LastStatus () == DataStorageStatus::Ok);
 	assert (client.Generation () == 2);
 	assert (client.WorkerPid () > 0);
+	// Configure reaps the retired child before adopting a successor.
+	errno = 0;
+	assert (::waitpid (static_cast<pid_t> (firstWorker), nullptr, WNOHANG) == -1);
+	assert (errno == ECHILD);
 	{
 		std::vector<uint8_t> read;
 		assert (ReadBack (path, read));
@@ -222,6 +247,20 @@ int main (int argc, char ** argv)
 	assert (client.LastStatus () == DataStorageStatus::Rejected);
 	assert (client.Generation () == stoppedGeneration);
 	assert (client.WorkerPid () <= 0);
+
+	// Explicit Stop also reaps retained authority without restarting.
+	DataStorageClient retired;
+	assert (retired.Start (root, error));
+	const long retiredWorker = retired.WorkerPid ();
+	assert (retiredWorker > 0);
+	assert (::kill (static_cast<pid_t> (retiredWorker), SIGKILL) == 0);
+	assert (WaitForFailure (retired, StorageArtifact::RouterInfoCache, name));
+	assert (retired.WorkerPid () == retiredWorker);
+	retired.Stop ();
+	assert (retired.WorkerPid () <= 0);
+	errno = 0;
+	assert (::waitpid (static_cast<pid_t> (retiredWorker), nullptr, WNOHANG) == -1);
+	assert (errno == ECHILD);
 #endif
 	return 0;
 }
