@@ -101,15 +101,54 @@ already-enabled ones). It adds `LUA_TOKEN` when the parent is elevated.
 active-process/process/job memory limits and basic UI restrictions.
 `SpawnWindowsWorker`:
 
-- creates the restricted token and optional Job Object;
-- creates the child suspended with `bInheritHandles = FALSE`;
-- passes only the local pipe name on the command line;
+- uses the role's restricted token/AppContainer and mandatory Job Object;
+- creates the child suspended with inherited standard handles pinned to NUL;
+- allows only those three NUL handles in `PROC_THREAD_ATTRIBUTE_HANDLE_LIST`
+  on every spawn attempt, including the Job attribute fallback;
+- passes the role, local pipe name, parent PID/session and a secret nonce on
+  the worker command line; diagnostics must never print that command line;
 - applies `PROC_THREAD_ATTRIBUTE_MITIGATION_POLICY` where available (DEP,
   SEHOP, force-relocate images);
 - assigns the process to the Job Object before resuming it.
 
-No handle is inherited and no `DuplicateHandle` transfer is performed. The
-worker reconnects by name.
+No IPC, directory, token or service-console handle is inherited. The worker
+reconnects by name; standard handles are an explicit startup capability,
+not an IPC channel. The allowlist and its backing storage remain alive
+until process creation completes. Failure to install it aborts the spawn.
+
+The 64 MiB process/job memory limit rejects excessive commit requests; it
+does not automatically terminate the Job. A DLL initialization failure can
+have many causes. A peak memory counter alone does not establish that this
+limit caused a failed allocation.
+
+### Nonsecret initializer diagnostic
+
+The supervisor test image has two exact diagnostic entries:
+
+- `--diagnose-worker-initialization` creates one contained child, waits at
+  most 15 seconds after its deadline starts and allows two further seconds
+  for forced termination. Process creation itself is a synchronous Windows
+  API; the enclosing manual CI debugger also needs an outer deadline.
+- The child receives only `--windows-startup-probe` and exits after checking
+  startup standard handles. It never connects to a pipe, generates a nonce
+  or enters the worker protocol. Both entries return before ordinary tests.
+
+`SpawnWindowsWorkerStartupProbe` uses the same contained creation path and
+default supervisor policy as the live fixture: restricted token, Job limits,
+mitigations and the three-handle NUL allowlist. Its public interface accepts
+only the fixture executable, with no caller-selected argument vector or
+weaker policy. Production worker parsing and authentication remain separate.
+
+Child-following CDB may be used only with the parent diagnostic flag. Use
+code-location output such as `.lastevent`, `ln @rip` and `kc 40`; do not emit
+memory, registers, local variables, dumps or process-environment data. A
+normal supervisor test spawns nonce-bearing children and must remain under
+parent-only tracing. Retain the original live-test failure independently of
+this probe's exit and artifacts. The workflow records image SHA/revision
+and counter limits alongside separate debugger/stdout/stderr logs. A
+successful probe covers initialization,
+not authenticated IPC, restart or shutdown. Debugger instrumentation can
+also change initialization behavior; record the exact image and settings.
 
 `WindowsIsolation.cpp` is the role authority. Storage, log, crypto and admin
 use a low-privilege AppContainer (no `internetClient`); network uses a
@@ -217,3 +256,9 @@ no documented handle transfer, requires MIDL/IDL or checked-in generated stubs,
 and introduces a separate concurrency/cancellation model. Revisit ncalrpc only
 as a second transport if a genuine cross-principal service/user or AppContainer
 boundary is required; do not replace pipes merely to rename the primitive.
+
+Microsoft's [CDB options](https://learn.microsoft.com/en-us/windows-hardware/drivers/debugger/cdb-command-line-options)
+define child following and shell restrictions. The
+[initial breakpoint](https://learn.microsoft.com/en-us/windows-hardware/drivers/debugger/initial-breakpoint)
+occurs before DLL initialization; debugger instrumentation and breakpoint
+handling must be recorded when interpreting startup evidence.

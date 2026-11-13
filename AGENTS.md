@@ -129,6 +129,8 @@ Revisit historical runtime families after each compile blocker is removed:
 an earlier passing sibling test cannot resolve a different sanitizer report.
 Review platform startup resource transfer independently of later IPC
 authentication: a parent-only handle value is not delegated authority.
+Diagnose secret-bearing child startup through a closed nonsecret probe;
+code-only stack commands do not prevent debugger command-line disclosure.
 Record capability skips with their exact startup reason; a skipped worker
 test provides no evidence for its subsequent handshake or shutdown paths.
 When a warning repeats across many test targets, inspect whether one shared

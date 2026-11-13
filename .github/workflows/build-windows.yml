@@ -256,6 +256,7 @@ jobs:
               test-crypto-audit-bounds test-signed-data-bounds test-command-line-policy `
               test-i2p-service-readiness test-tunnel-destination-cache test-destination-leaseset-session test-deadline-mutex test-child-stop-budget
       - name: Run TUI and worker IPC tests
+        id: msvc_tests
         run: |
           ctest --test-dir build-msvc -C Release -j 2 --output-on-failure `
             -R '^(test-(tui-protocol|tui-terminal|tui-pipe-name|tui-win32-pipe|privsep-windows-(ipc|isolation|supervisor)|win32-shutdown-deadline|profile-static-lifetime|i2p-service-readiness|tunnel-destination-cache|destination-leaseset-session|deadline-mutex|child-stop-budget|atomic-shared-ptr|kad-dht|eddsa|signature-identity-hardening|crypto-audit-bounds|signed-data-bounds|command-line-policy|release-assertions)|command-line-policy-rejections|i2pd-command-line-policy)$' `
@@ -325,6 +326,48 @@ jobs:
             }
           }
           if ($failures.Count) { throw ($failures -join '; ') }
+      - name: Capture contained worker initialization
+        if: ${{ always() && steps.msvc_tests.outcome == 'failure' }}
+        timeout-minutes: 2
+        run: |
+          # Only this nonce-free probe may trace children.
+          # Preserve the ordinary worker test failure.
+          $debugTools = Join-Path ${env:ProgramFiles(x86)} 'Windows Kits\10\Debuggers\x64'
+          $cdb = Join-Path $debugTools 'cdb.exe'
+          if (-not (Test-Path $cdb)) { throw 'startup probe requires installed x64 CDB' }
+          $evidence = Join-Path $env:GITHUB_WORKSPACE 'build-msvc/startup-probe'
+          New-Item -ItemType Directory -Force $evidence | Out-Null
+          $commands = Join-Path $evidence 'exceptions.txt'
+          @'
+          sxe -c ".echo OPENI2PD_CRASH; .lastevent; ln @rip; kc 40; q" av
+          sxe -c ".echo OPENI2PD_CRASH; .lastevent; ln @rip; kc 40; q" 0xc0000374
+          sxe -c ".echo OPENI2PD_CRASH; .lastevent; ln @rip; kc 40; q" 0xc0000409
+          sxe -c ".echo OPENI2PD_CRASH; .lastevent; ln @rip; kc 40; q" 0xc0000142
+          g
+          '@ | Set-Content -Encoding ascii $commands
+          $binary = Join-Path $env:GITHUB_WORKSPACE 'build-msvc/tests/Release/test-privsep-windows-supervisor.exe'
+          if (-not (Test-Path $binary)) { throw 'startup probe image missing' }
+          $imageHash = (Get-FileHash -Algorithm SHA256 -Path $binary).Hash
+          @(("revision=" + $env:GITHUB_SHA), ("image_sha256=" + $imageHash)) | Set-Content -Encoding ascii (Join-Path $evidence 'identity.txt')
+          $symbols = Split-Path -Parent $binary
+          $log = Join-Path $evidence 'initializer.txt'
+          $consoleLog = Join-Path $evidence 'stdout.txt'
+          $consoleError = Join-Path $evidence 'stderr.txt'
+          $probeArguments = @('-g', '-G', '-o', '-noshell', '-lines', '-y', "`"$symbols`"", '-logo', "`"$log`"", '-cf', "`"$commands`"", "`"$binary`"", '--diagnose-worker-initialization')
+          $debugger = Start-Process -FilePath $cdb -ArgumentList $probeArguments -NoNewWindow -PassThru -RedirectStandardOutput $consoleLog -RedirectStandardError $consoleError
+          if (-not $debugger.WaitForExit(60000)) {
+            & taskkill.exe /PID $debugger.Id /T /F
+            if ($LASTEXITCODE -ne 0) { throw 'startup probe cleanup failed' }
+            throw 'startup probe debugger deadline'
+          }
+          if ($debugger.ExitCode -ne 0) { throw 'startup probe debugger failed' }
+          if (-not (Test-Path $log)) { throw 'startup probe log missing' }
+          if (Select-String -Path $log -Pattern '^OPENI2PD_CRASH\s*$' -Quiet) {
+            throw 'startup probe debugger exception'
+          }
+          if (-not (Select-String -Path @($log, $consoleLog, $consoleError) -Pattern '^startup probe: exit=0\b' -Quiet)) {
+            throw 'startup probe did not establish successful initialization'
+          }
       - name: Upload Windows MSVC evidence
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
@@ -334,6 +377,7 @@ jobs:
             build-msvc/Testing
             ctest-msvc.xml
             build-msvc/heap-diagnostics
+            build-msvc/startup-probe
             build-msvc/tests/Release/*.pdb
             build-msvc/tests/Release/test-tui-protocol.exe
             build-msvc/tests/Release/test-tui-pipe-name.exe

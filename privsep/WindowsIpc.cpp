@@ -1449,11 +1449,8 @@ bool WindowsAllowsOperation (WindowsWorkerRole role, MessageType type)
 WindowsWorkerPolicy GetWindowsWorkerPolicy (WindowsWorkerRole role)
 {
 	WindowsWorkerPolicy policy;
-	// A native worker has no use for more than 64 MiB of private memory.
-	// The
-	// limit is a bound, not a target: exceeding it terminates the job
-	// instead
-	// of letting one role exhaust the service host.
+	// Bound committed process and job memory to 64 MiB. Commit requests
+	// exceeding either limit fail without automatic Job termination.
 	policy.memoryLimit = 64ull * 1024ull * 1024ull;
 	switch (role)
 	{
@@ -1634,20 +1631,34 @@ i2p::expected<WindowsHandle, std::string> CreateWorkerJobObject (
 // the job. The attribute list is rebuilt for the one retry, so no
 // deleted list or dangling attribute value can reach a second
 // CreateProcess call.
-i2p::expected<WindowsWorkerProcess, std::string> SpawnWindowsWorker (const std::wstring & executable,
+namespace
+{
+enum class WindowsSpawnMode { Worker, StartupProbe };
+
+// The probe changes only the fixed command grammar, not containment.
+// It has no pipe, authentication nonce or operation-dispatch authority.
+i2p::expected<WindowsWorkerProcess, std::string> SpawnContainedWindowsProcess (WindowsSpawnMode mode,
+	const std::wstring & executable,
 	WindowsWorkerRole role, const std::wstring & pipeName, DWORD parentProcessId, DWORD parentSessionId,
 	const std::wstring & nonceHex, const WindowsAppContainer * container, const WindowsWorkerPolicy & policy)
 {
+	const bool workerMode = mode == WindowsSpawnMode::Worker;
 	if (executable.empty ()) return i2p::unexpected ("empty worker executable");
 	if (executable.find (L'"') != std::wstring::npos)
 		return i2p::unexpected ("worker executable path must not contain a quote");
-	if (!IsLocalPipeName (pipeName)) return i2p::unexpected ("worker pipe name is not local");
-	if (!IsSafeCommandLineToken (pipeName))
-		return i2p::unexpected ("worker pipe name must not contain quotes or whitespace");
+	if (workerMode)
+	{
+		if (!IsLocalPipeName (pipeName)) return i2p::unexpected ("worker pipe name is not local");
+		if (!IsSafeCommandLineToken (pipeName))
+			return i2p::unexpected ("worker pipe name must not contain quotes or whitespace");
+		if (parentProcessId == 0 || parentSessionId == 0)
+			return i2p::unexpected ("worker spawn requires the supervisor PID and session");
+	}
+	else if (role != WindowsWorkerRole::Supervisor || !pipeName.empty ()
+		|| parentProcessId || parentSessionId || !nonceHex.empty () || container)
+		return i2p::unexpected ("invalid startup probe authority");
 	if (!IsKnownRole (role) || !IsSafeCommandLineToken (RoleName (role)))
 		return i2p::unexpected ("unknown or unusable worker role");
-	if (parentProcessId == 0 || parentSessionId == 0)
-		return i2p::unexpected ("worker spawn requires the supervisor PID and session");
 	// Containment is not an option: a worker outside a Job Object cannot be
 	// stopped as a tree, cannot be bounded and is not covered by
 	// KILL_ON_JOB_CLOSE. Refuse the policy instead of spawning an
@@ -1655,16 +1666,19 @@ i2p::expected<WindowsWorkerProcess, std::string> SpawnWindowsWorker (const std::
 	if (!policy.useJobObject) return i2p::unexpected ("worker spawn requires a Job Object");
 
 	std::wstring nonce = nonceHex;
-	if (nonce.empty ())
+	if (workerMode)
 	{
-		auto generated = GenerateWindowsWorkerNonce ();
-		if (!generated) return i2p::unexpected (generated.error ());
-		nonce = std::move (*generated);
+		if (nonce.empty ())
+		{
+			auto generated = GenerateWindowsWorkerNonce ();
+			if (!generated) return i2p::unexpected (generated.error ());
+			nonce = std::move (*generated);
+		}
+		const auto nonceText = NarrowAscii (nonce);
+		if (!nonceText) return i2p::unexpected ("worker nonce is not ASCII hex");
+		auto nonceBytes = DecodeWindowsWorkerNonce (*nonceText);
+		if (!nonceBytes) return i2p::unexpected ("worker nonce: " + nonceBytes.error ());
 	}
-	const auto nonceText = NarrowAscii (nonce);
-	if (!nonceText) return i2p::unexpected ("worker nonce is not ASCII hex");
-	auto nonceBytes = DecodeWindowsWorkerNonce (*nonceText);
-	if (!nonceBytes) return i2p::unexpected ("worker nonce: " + nonceBytes.error ());
 
 	// The isolation table, not the caller, decides which mechanism a role
 	// uses
@@ -1712,8 +1726,10 @@ i2p::expected<WindowsWorkerProcess, std::string> SpawnWindowsWorker (const std::
 		token = std::move (*created);
 	}
 
-	const std::wstring commandLine = L"\"" + executable + L"\" --privsep-worker " + RoleName (role) + L" " + pipeName
-		+ L" " + std::to_wstring (parentProcessId) + L" " + std::to_wstring (parentSessionId) + L" " + nonce;
+	const std::wstring commandLine = workerMode
+		? L"\"" + executable + L"\" --privsep-worker " + RoleName (role) + L" " + pipeName
+			+ L" " + std::to_wstring (parentProcessId) + L" " + std::to_wstring (parentSessionId) + L" " + nonce
+		: L"\"" + executable + L"\" --windows-startup-probe";
 
 	// STARTF_USESTDHANDLES requires inheritable handles and enabled
 	// inheritance. An explicit handle list delegates only these NUL
@@ -1973,6 +1989,22 @@ i2p::expected<WindowsWorkerProcess, std::string> SpawnWindowsWorker (const std::
 		return i2p::unexpected (error);
 	}
 	return worker;
+}
+}
+
+i2p::expected<WindowsWorkerProcess, std::string> SpawnWindowsWorker (const std::wstring & executable,
+	WindowsWorkerRole role, const std::wstring & pipeName, DWORD parentProcessId, DWORD parentSessionId,
+	const std::wstring & nonceHex, const WindowsAppContainer * container, const WindowsWorkerPolicy & policy)
+{
+	return SpawnContainedWindowsProcess (WindowsSpawnMode::Worker, executable,
+		role, pipeName, parentProcessId, parentSessionId, nonceHex, container, policy);
+}
+
+i2p::expected<WindowsWorkerProcess, std::string> SpawnWindowsWorkerStartupProbe (const std::wstring & executable)
+{
+	return SpawnContainedWindowsProcess (WindowsSpawnMode::StartupProbe, executable,
+		WindowsWorkerRole::Supervisor, {}, 0, 0, {}, nullptr,
+		GetWindowsWorkerPolicy (WindowsWorkerRole::Supervisor));
 }
 
 bool WindowsWorkerProcess::Wait (DWORD timeoutMs) const

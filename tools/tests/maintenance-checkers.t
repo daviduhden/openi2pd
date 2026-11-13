@@ -352,8 +352,8 @@ sub workflow_crash_fixtures {
     like($out, qr/crash marker must fail/, 'marker classification is required');
     write_file($windows, $source);
     for my $boundary (
-        [q{'-G', }, q{'-G', '-o', }],
-        [q{'-noshell', }, ''],
+        [q{$debugArguments = @('-G', }, q{$debugArguments = @('-G', '-o', }],
+        [q{$debugArguments = @('-G', '-noshell', }, q{$debugArguments = @('-G', }],
         [q{, 'test-privsep-windows-supervisor'}, ''],
         ['0xc0000142', '0xc0000143'],
         ['build-msvc/tests/Release/test-privsep-windows-supervisor.exe', 'missing-image.exe'] ) {
@@ -366,6 +366,20 @@ sub workflow_crash_fixtures {
         is($code, 1, 'worker diagnostic requires parent-only tracing and bounded evidence');
         like($out, qr/worker initialization diagnostic|unsupported crash debugger line|missing bounded crash command file/,
             'worker diagnostic names its missing evidence boundary');
+    }
+    write_file($windows, $source);
+    for my $boundary (
+        ['--diagnose-worker-initialization', '--privsep-worker'],
+        ['WaitForExit(60000)', 'WaitForExit()'],
+        ['startup probe: exit=0', 'startup probe: ignored=0'] ) {
+        my ($before, $after) = @{$boundary};
+        my $candidate = $source;
+        ok($candidate =~ s/\Q$before\E/$after/,
+            'startup probe mutation changes its closed boundary');
+        write_file($windows, $candidate);
+        ($code, $out) = run_checker($checker);
+        is($code, 1, 'child tracing requires the bounded nonsecret probe');
+        like($out, qr/startup probe/, 'probe privacy boundary is diagnosed');
     }
     write_file($windows, $source);
     for my $boundary (

@@ -330,13 +330,15 @@ workflow, run `gh`, build or test.
   its code-only log and classify them independently of debugger exit
   status; missing logs must fail too. Pin both command syntax and marker
   classification so successful debugger shutdown cannot hide a crash.
-  The opt-in initialization diagnostic traces parents only and uses
-  `-noshell`. Never add `-o`: automatic child debugger output can disclose
-  the secret bootstrap nonce on the worker command line, independently
-  of the code-location command allowlist. The supervisor image and
-  0xc0000142 event provide parent/exit evidence, not child stacks. Worker
-  initializer stacks remain blocked until a dedicated nonsecret loader
-  probe or out-of-band bootstrap exists; loader snaps are not a fallback.
+  Real worker tests stay parent-only with `-noshell`: child debugger
+  output can disclose the bootstrap nonce independently of stack commands.
+  Child tracing is restricted to the fixed startup-probe entry, which
+  creates no pipe or nonce and returns before ordinary tests. Its failure
+  capture follows failed MSVC CTest without replacing that outcome. Check
+  every command file independently and keep its closed file/launch inventory
+  synchronized when adding diagnostics. Require successful probe output;
+  debugger exit zero alone is insufficient. Memory peaks support hypotheses,
+  not initializer attribution; loader snaps are not a fallback.
 
 - When a source-policy test reports an unsafe invocation, inspect the
   matched operand as well as the executable source. Invocation guards

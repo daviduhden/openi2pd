@@ -101,6 +101,13 @@ execution. Ask for:
 
 ## Known issues and decisions
 
+- Initializer probes share contained process creation with production but
+  use a closed, authority-free command line. The supervisor fixture's
+  diagnostic parent must return before normal worker tests; otherwise CDB
+  child tracing could record authenticated bootstrap arguments. Keep token,
+  Job limits and mitigations unchanged. Job memory peaks alone do not prove
+  why initialization failed, and commit limits do not imply job termination.
+
 - STARTF_USESTDHANDLES transfers usable handles only with matching Win32
   inheritance settings. Delegate worker NUL handles through an explicit
   HANDLE_LIST on every spawn attempt, including job-attribute fallback;

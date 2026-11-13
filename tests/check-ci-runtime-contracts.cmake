@@ -934,6 +934,19 @@ require_runtime_source("privsep/DataStorage.cpp"
 require_runtime_source("privsep/Channel.cpp"
   "return SendWithFdUntil (message, fd, false, deadline);")
 
+# A nonsecret probe shares containment, never authentication authority.
+require_runtime_source("privsep/WindowsIpc.cpp"
+  "enum class WindowsSpawnMode { Worker, StartupProbe };")
+require_runtime_source("privsep/WindowsIpc.cpp"
+  "return i2p::unexpected (\"invalid startup probe authority\");")
+require_runtime_order("privsep/WindowsIpc.cpp"
+  "SpawnWindowsWorkerStartupProbe (" "bool WindowsWorkerProcess::Wait ("
+  "WindowsSpawnMode::StartupProbe" "WindowsWorkerRole::Supervisor, {}, 0, 0, {}, nullptr,"
+  "GetWindowsWorkerPolicy (WindowsWorkerRole::Supervisor)")
+require_runtime_order("tests/test-privsep-windows-supervisor.cpp"
+  "int main (int argc, char ** argv)" "for (int index = 1; index < argc; ++index)"
+  "--diagnose-worker-initialization" "return argc == 2 ? DiagnoseWorkerInitialization () : 2;"
+  "--windows-startup-probe" "return argc == 2 && HasUsableWorkerStandardHandles () ? 0 : 3;")
 require_runtime_source("tests/test-datastorage-client.cpp" "WEXITED | WNOHANG | WNOWAIT")
 require_runtime_source("tests/test-datastorage-client.cpp"
   "assert (client.WorkerPid () == firstWorker);")

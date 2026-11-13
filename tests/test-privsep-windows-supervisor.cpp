@@ -50,6 +50,7 @@ int main ()
 #include <cstddef>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <initializer_list>
 #include <iterator>
 #include <string>
@@ -101,6 +102,52 @@ bool HasUsableWorkerStandardHandles ()
 			|| GetFileType (handle) != FILE_TYPE_CHAR) return false;
 	}
 	return true;
+}
+
+// This parent path never enters normal tests or creates an IPC nonce.
+// Child debugger tracing is safe only for this closed diagnostic mode.
+int DiagnoseWorkerInitialization ()
+{
+	const auto executable = SelfExecutable ();
+	if (executable.empty ()) return 1;
+	const auto deadline = Clock::now () + std::chrono::seconds (15);
+	auto spawned = SpawnWindowsWorkerStartupProbe (executable);
+	if (!spawned)
+	{
+		std::printf ("startup probe: contained spawn failed\n");
+		return 1;
+	}
+	if (!spawned->WaitUntil (deadline))
+	{
+		const bool reaped = spawned->TerminateAndWaitUntil (
+			Clock::now () + std::chrono::seconds (2));
+		std::printf ("startup probe: wait failed, terminated=%u\n",
+			reaped ? 1u : 0u);
+		return 1;
+	}
+	DWORD code = 0;
+	if (!GetExitCodeProcess (spawned->process.Native (), &code))
+	{
+		std::printf ("startup probe: exit query failed\n");
+		return 1;
+	}
+	JOBOBJECT_EXTENDED_LIMIT_INFORMATION limits { };
+	if (!QueryInformationJobObject (spawned->job.Native (),
+		JobObjectExtendedLimitInformation, &limits, sizeof (limits), nullptr))
+	{
+		std::printf ("startup probe: memory query failed, exit=%lu\n",
+			static_cast<unsigned long> (code));
+		return 1;
+	}
+	// These counters contain no arguments or authentication data.
+	// A near-limit peak does not establish allocation failure.
+	std::printf ("startup probe: exit=%lu peak_process=%llu peak_job=%llu limit_process=%llu limit_job=%llu\n",
+		static_cast<unsigned long> (code),
+		static_cast<unsigned long long> (limits.PeakProcessMemoryUsed),
+		static_cast<unsigned long long> (limits.PeakJobMemoryUsed),
+		static_cast<unsigned long long> (limits.ProcessMemoryLimit),
+		static_cast<unsigned long long> (limits.JobMemoryLimit));
+	return code == 0 ? 0 : 1;
 }
 
 /*
@@ -817,6 +864,12 @@ void TestServiceDrainContract ()
 
 int main (int argc, char ** argv)
 {
+	// Exact diagnostic modes return before any secret-bearing worker
+	// dispatch or ordinary tests spawning authenticated children.
+	if (argc > 1 && std::strcmp (argv[1], "--diagnose-worker-initialization") == 0)
+		return argc == 2 ? DiagnoseWorkerInitialization () : 2;
+	if (argc > 1 && std::strcmp (argv[1], "--windows-startup-probe") == 0)
+		return argc == 2 && HasUsableWorkerStandardHandles () ? 0 : 3;
 	// Helper roles: the supervisor spawns this binary as a real worker and
 	// the Job Object tests spawn it as an idle child. The worker role is
 	// forwarded to the production entry point instead of a local

@@ -558,6 +558,8 @@ push @errors, windows_crash_command_errors( $texts{'build-windows.yml'} )
   if exists $texts{'build-windows.yml'};
 push @errors, windows_startup_command_errors( $texts{'build-windows.yml'} )
   if exists $texts{'build-windows.yml'};
+push @errors, windows_startup_probe_errors( $texts{'build-windows.yml'} )
+  if exists $texts{'build-windows.yml'};
 
 sub windows_startup_command_errors {
     my ($windows) = @_;
@@ -602,11 +604,6 @@ sub windows_startup_command_errors {
 sub windows_crash_command_errors {
     my ($windows) = @_;
     my @violations;
-    my ( $inside, $closed ) = ( 0, 0 );
-    my %events = map { $_ => 1 } qw(av 0xc0000374 0xc0000409 0xc0000142);
-    my %seen;
-    my %allowed = map { $_ => 1 }
-      ( '.echo OPENI2PD_CRASH', '.lastevent', 'ln @rip', 'kc 40', 'q' );
     push @violations, 'build-windows.yml: missing bounded worker initialization diagnostic'
       unless $windows =~ /^\s*\$debugArguments = \@\('-G', '-noshell', '-lines', '-y', "`"\$symbols`"", '-logo', "`"\$log`"", '-cf', "`"\$commands`"", "`"\$binary`""\)\s*$/m
         && $windows =~ /foreach \(\$test in \@\([^\n]*'test-privsep-windows-supervisor'\)\)/
@@ -615,6 +612,19 @@ sub windows_crash_command_errors {
       unless index($windows, q{Select-String -Path $log -Pattern '^OPENI2PD_CRASH\s*$' -Quiet}) >= 0
         && index($windows, q{$failures += "$test debugger exception"}) >= 0
         && index($windows, q{$failures += "$test missing debugger log"}) >= 0;
+    push @violations, windows_exception_command_errors($windows);
+    return @violations;
+}
+
+# Validate each supplied exception-command block independently.
+sub windows_exception_command_errors {
+    my ($windows) = @_;
+    my @violations;
+    my ( $inside, $closed ) = ( 0, 0 );
+    my %events = map { $_ => 1 } qw(av 0xc0000374 0xc0000409 0xc0000142);
+    my %seen;
+    my %allowed = map { $_ => 1 }
+      ( '.echo OPENI2PD_CRASH', '.lastevent', 'ln @rip', 'kc 40', 'q' );
     for my $line ( split /\n/x, $windows ) {
         $line =~ s/\A\s+|\s+\z//gx;
         if ( !$inside && $line eq q{@'} ) {
@@ -640,6 +650,37 @@ sub windows_crash_command_errors {
     }
     push @violations, 'build-windows.yml: missing bounded crash command file'
       unless $inside && $closed && keys(%seen) == keys(%events);
+    return @violations;
+}
+
+sub windows_startup_probe_errors {
+    my ($windows) = @_;
+    my @violations;
+    my ($probe) = $windows =~ /      - name: Capture contained worker initialization\n(.*?)(?=      - name:|\z)/s;
+    return 'build-windows.yml: missing bounded startup probe' unless defined $probe;
+    my @command_files = $windows =~ /^\s*'\@ \| Set-Content -Encoding ascii \$commands\s*$/mg;
+    my @debugger_launches = $windows =~ /Start-Process -FilePath \$cdb\b/g;
+    push @violations, 'build-windows.yml: startup probe command-file inventory changed'
+      unless @command_files == 2 && @debugger_launches == 3;
+    my $arguments = q{$probeArguments = @('-g', '-G', '-o', '-noshell', '-lines', '-y', "`"$symbols`"", '-logo', "`"$log`"", '-cf', "`"$commands`"", "`"$binary`"", '--diagnose-worker-initialization')};
+    push @violations, 'build-windows.yml: startup probe must trace only the closed diagnostic mode'
+      unless index($probe, $arguments) >= 0;
+    my @child_lines = $windows =~ /^\s*(\$\w+ = \@\([^\n]*'-o'[^\n]*)$/mg;
+    push @violations, 'build-windows.yml: startup probe cannot trace authenticated workers'
+      unless @child_lines == 1 && $child_lines[0] eq $arguments;
+    for my $required (
+        q{if: ${{ always() && steps.msvc_tests.outcome == 'failure' }}},
+        q{Get-FileHash -Algorithm SHA256 -Path $binary},
+        q{WaitForExit(60000)}, q{taskkill.exe /PID $debugger.Id /T /F},
+        q{Select-String -Path $log -Pattern '^OPENI2PD_CRASH\s*$' -Quiet},
+        q{Select-String -Path @($log, $consoleLog, $consoleError) -Pattern '^startup probe: exit=0\b' -Quiet},
+        q{build-msvc/tests/Release/test-privsep-windows-supervisor.exe}) {
+        push @violations, 'build-windows.yml: startup probe evidence boundary missing'
+          if index($probe, $required) < 0;
+    }
+    push @violations, 'build-windows.yml: startup probe lacks retained artifact'
+      unless $windows =~ /^\s*build-msvc\/startup-probe\s*$/m;
+    push @violations, windows_exception_command_errors($probe);
     return @violations;
 }
 

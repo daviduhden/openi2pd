@@ -289,8 +289,8 @@ struct WindowsWorkerProcess
  * The child receives
  * `--privsep-worker &lt;role&gt; &lt;pipe&gt; &lt;parentPid&gt;
  * &lt;parentSession&gt; &lt;nonceHex&gt;` and
- * inherits no handle: it reconnects to the named pipe by name. The
- * process is
+ * inherits three NUL standard handles via an explicit allowlist.
+ * It reconnects to the named pipe by name. The process is
  * created suspended, placed in a Job Object with per-role limits and
  * then
  * resumed. A role that the isolation table marks as AppContainer-based
@@ -325,12 +325,24 @@ i2p::expected<WindowsWorkerProcess, std::string> SpawnWindowsWorker (const std::
 	WindowsWorkerRole role, const std::wstring & pipeName, DWORD parentProcessId, DWORD parentSessionId,
 	const std::wstring & nonceHex, const WindowsAppContainer * container, const WindowsWorkerPolicy & policy);
 
+/** Spawn a nonsecret diagnostic child under the supervisor policy.
+ *
+ * The image receives only --windows-startup-probe, with no pipe, nonce
+ * or authentication authority. The caller must provide a fixture image
+ * implementing that flag and retain the returned process/job until exit
+ * or bounded termination. The production worker grammar is unchanged.
+ * Token, Job memory/process limits, mitigations and NUL handle transfer
+ * match SpawnWindowsWorker with the default supervisor policy. This
+ * checks startup, not authenticated IPC or worker lifecycle.
+ */
+i2p::expected<WindowsWorkerProcess, std::string> SpawnWindowsWorkerStartupProbe (const std::wstring & executable);
+
 /*
  * Windows local transport for the same versioned Message frames used by
  * the
  * UNIX backend. It is a message-mode named pipe, never TCP or an
  * undocumented
- * ALPC interface. No handle is inherited by the worker: the child
+ * ALPC interface. No IPC handle is inherited by the worker: the child
  * reconnects
  * by name to a pipe whose protected DACL contains the service user,
  * SYSTEM and
