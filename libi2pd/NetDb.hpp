@@ -451,8 +451,8 @@ namespace data
 		std::shared_ptr<RouterProfile> NewRouterProfile ()
 		{
 			const auto pool = m_RouterProfilesPool;
-			return std::shared_ptr<RouterProfile> (pool->AcquireMt (),
-				[pool] (RouterProfile * profile) noexcept { pool->ReleaseMt (profile); });
+			return std::shared_ptr<RouterProfile> (
+				pool->AcquireMt (), [pool] (RouterProfile * profile) noexcept { pool->ReleaseMt (profile); });
 		}
 
 	private:

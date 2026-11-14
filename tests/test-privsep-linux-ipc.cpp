@@ -297,8 +297,7 @@ void TestPeerExpectation ()
 		pair->second.ExpectPeer (PeerExpectation { uid, gid, 0, true, false, false, true });
 		assert (!pair->second.MatchesPeerExpectation (0, gid, 0));
 	}
-	pair->second.ExpectPeer (PeerExpectation {
-		.uid = uid, .gid = gid, .requireGid = true, .configured = true });
+	pair->second.ExpectPeer (PeerExpectation { .uid = uid, .gid = gid, .requireGid = true, .configured = true });
 	assert (!pair->second.MatchesPeerExpectation (uid + 1, gid, 0));
 	assert (!pair->second.MatchesPeerExpectation (uid, gid + 1, 0));
 	assert (pair->second.MatchesPeerExpectation (uid, gid, 0));
@@ -465,8 +464,8 @@ void TestMalformedFrames ()
 	// numeric values can become valid when new operations are introduced.
 	{
 		uint32_t request = 103;
-		for (const uint16_t type : { uint16_t { 0 },
-			static_cast<uint16_t> (MAX_MESSAGE_TYPE + 1), uint16_t { 0xffff } })
+		for (const uint16_t type :
+			{ uint16_t { 0 }, static_cast<uint16_t> (MAX_MESSAGE_TYPE + 1), uint16_t { 0xffff } })
 		{
 			assert (!IsKnownMessageType (type));
 			assert (SendRaw (sender.Fd (), BuildHeader (type, request, 0)));
@@ -662,8 +661,7 @@ void TestClosedChannel ()
 	// A closing sender cannot bypass the configured record identity check.
 	auto rejected = Channel::CreatePair ();
 	assert (rejected.has_value ());
-	rejected->second.ExpectPeer (PeerExpectation {
-		.uid = static_cast<uint32_t> (geteuid ()) + 1, .configured = true });
+	rejected->second.ExpectPeer (PeerExpectation { .uid = static_cast<uint32_t> (geteuid ()) + 1, .configured = true });
 	assert (rejected->first.Send (Message { MessageType::Ping, 4, { } }).has_value ());
 	rejected->first.Close ();
 	auto unauthenticated = rejected->second.Receive (100);

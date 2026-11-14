@@ -1084,8 +1084,7 @@ JNIEXPORT jstring JNICALL Java_org_openi2pd_router_I2PD_1JNI_setTransit (JNIEnv 
 }
 
 /* Apply one closed bandwidth class without writing configuration. */
-JNIEXPORT jstring JNICALL Java_org_openi2pd_router_I2PD_1JNI_setBandwidth (
-	JNIEnv * env, jclass, jstring bandwidth)
+JNIEXPORT jstring JNICALL Java_org_openi2pd_router_I2PD_1JNI_setBandwidth (JNIEnv * env, jclass, jstring bandwidth)
 {
 	return JniStringCall (
 		env,
@@ -1325,8 +1324,7 @@ JNIEXPORT jstring JNICALL Java_org_openi2pd_router_I2PD_1JNI_addSubscription (JN
 }
 
 /* Remove one subscription source by its exact URL. */
-JNIEXPORT jstring JNICALL Java_org_openi2pd_router_I2PD_1JNI_removeSubscription (
-	JNIEnv * env, jclass, jstring url)
+JNIEXPORT jstring JNICALL Java_org_openi2pd_router_I2PD_1JNI_removeSubscription (JNIEnv * env, jclass, jstring url)
 {
 	return JniStringCall (
 		env,
@@ -1387,8 +1385,7 @@ JNIEXPORT jstring JNICALL Java_org_openi2pd_router_I2PD_1JNI_unbanRouter (JNIEnv
 	 * taken so an unknown name cannot change any router state. Nothing is
 	 * written to i2pd.conf and no restart is required.
 	 */
-JNIEXPORT jboolean JNICALL Java_org_openi2pd_router_I2PD_1JNI_setRuntimeLogLevel (
-	JNIEnv * env, jclass, jstring jlevel)
+JNIEXPORT jboolean JNICALL Java_org_openi2pd_router_I2PD_1JNI_setRuntimeLogLevel (JNIEnv * env, jclass, jstring jlevel)
 {
 	return JniScalarCall<jboolean> (
 		env,
@@ -1885,8 +1882,7 @@ extern "C" JNIEXPORT jbyteArray JNICALL Java_org_openi2pd_router_I2PD_1JNI_build
 				return nullptr;
 			}
 			if (!path) return nullptr;
-			const std::string text = bytes (path.get (),
-				std::min<size_t> (8192, MAX_METADATA_PATH_BYTES - pathBytes));
+			const std::string text = bytes (path.get (), std::min<size_t> (8192, MAX_METADATA_PATH_BYTES - pathBytes));
 			pathBytes += text.size ();
 			if (static_cast<uint64_t> (sizes[i]) > std::numeric_limits<size_t>::max ()) return nullptr;
 			files.emplace_back (std::filesystem::path (text), static_cast<size_t> (sizes[i]));

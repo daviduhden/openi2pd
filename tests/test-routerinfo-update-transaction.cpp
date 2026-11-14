@@ -522,8 +522,7 @@ int main ()
 	{
 		const auto primarySignatureLen = keys.GetPublic ()->GetSignatureLen ();
 		auto offlineKeys = keys.CreateOfflineKeys (
-			SIGNING_KEY_TYPE_ECDSA_SHA512_P521,
-			static_cast<uint32_t> (i2p::util::GetSecondsSinceEpoch () + 3600));
+			SIGNING_KEY_TYPE_ECDSA_SHA512_P521, static_cast<uint32_t> (i2p::util::GetSecondsSinceEpoch () + 3600));
 		assert (offlineKeys.IsOfflineSignature ());
 		assert (offlineKeys.GetSignatureLen () != primarySignatureLen);
 		assert (offlineKeys.GetSignatureLen () > primarySignatureLen); // would overrun the slot

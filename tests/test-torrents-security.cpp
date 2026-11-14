@@ -89,26 +89,20 @@ struct TorrentInboundAcceptTestAccess
 		assert (tunnel.m_PendingDials.size () == 1);
 		tunnel.m_PendingDials.begin ()->second.torrent = torrent;
 	}
-	static void ExhaustDials (TorrentsTunnel & tunnel)
-	{
-		tunnel.m_NextDialID = std::numeric_limits<uint64_t>::max ();
-	}
+	static void ExhaustDials (TorrentsTunnel & tunnel) { tunnel.m_NextDialID = std::numeric_limits<uint64_t>::max (); }
 	static auto AdmissionLock (TorrentsTunnel & tunnel)
 	{
 		return std::unique_lock<std::mutex> (tunnel.m_InboundAcceptGeneration->mutex);
 	}
 	static void Revoke (TorrentsTunnel & tunnel) { tunnel.RevokeInboundAccepts (); }
 	static auto Register (TorrentsTunnel & tunnel) { return tunnel.CreateInboundAcceptor (); }
-	static size_t Handlers (TorrentsTunnel & tunnel)
-	{
-		return tunnel.CountPeerHandlers ();
-	}
+	static size_t Handlers (TorrentsTunnel & tunnel) { return tunnel.CountPeerHandlers (); }
 };
 
 struct TorrentDiscoveryTestAccess
 {
-	static void Prepare (TorrentsTunnel & tunnel, const std::shared_ptr<Torrent> & torrent,
-		bool ready = false, bool loaded = true)
+	static void Prepare (
+		TorrentsTunnel & tunnel, const std::shared_ptr<Torrent> & torrent, bool ready = false, bool loaded = true)
 	{
 		tunnel.m_Stopping = false;
 		tunnel.m_StartupRecoveryPending = false;
@@ -168,8 +162,7 @@ static_assert (MAX_TORRENT_LENGTH > std::numeric_limits<uint32_t>::max (), "limi
 
 namespace
 {
-template<class Predicate>
-void WaitForRPC (Predicate predicate)
+template <class Predicate> void WaitForRPC (Predicate predicate)
 {
 	const auto deadline = std::chrono::steady_clock::now () + std::chrono::seconds (5);
 	while (!predicate ())
@@ -183,7 +176,8 @@ std::string ReadClosedRPC (boost::asio::ip::tcp::socket & socket)
 {
 	socket.non_blocking (true);
 	std::string response;
-	WaitForRPC ([&] ()
+	WaitForRPC (
+		[&] ()
 		{
 			char buffer[1024];
 			boost::system::error_code error;
@@ -960,7 +954,8 @@ void TestInboundAcceptAuthority ()
 		auto admitted = TorrentInboundAcceptTestAccess::AdmissionLock (*tunnel);
 		std::promise<void> entering;
 		auto entered = entering.get_future ();
-		std::jthread revoker ([&]
+		std::jthread revoker (
+			[&]
 			{
 				entering.set_value ();
 				TorrentInboundAcceptTestAccess::Revoke (*tunnel);
@@ -1034,11 +1029,12 @@ void TestPeerDialAuthority ()
 		auto admitted = Access::DialAdmissionLock (*tunnel);
 		std::promise<void> entering;
 		auto entered = entering.get_future ();
-		std::jthread revoker ([&]
-		{
-			entering.set_value ();
-			Access::Revoke (*tunnel);
-		});
+		std::jthread revoker (
+			[&]
+			{
+				entering.set_value ();
+				Access::Revoke (*tunnel);
+			});
 		entered.wait ();
 		admitted.unlock ();
 		revoker.join ();
@@ -1088,10 +1084,8 @@ void TestInitialDiscoveryAuthority ()
 	auto torrent = std::make_shared<Torrent> (MakeSingleFileTorrent ());
 	assert (torrent->IsValid ());
 	int trackers = 0, dht = 0;
-	auto discover = [&]
-	{
-		return TorrentDiscoveryTestAccess::Dispatch (*tunnel, torrent, [&] { ++trackers; }, [&] { ++dht; });
-	};
+	auto discover
+		= [&] { return TorrentDiscoveryTestAccess::Dispatch (*tunnel, torrent, [&] { ++trackers; }, [&] { ++dht; }); };
 
 	// Neither a pending persistence write nor unloaded pause policy
 	// grants network authority. Verification is a separate barrier.
@@ -1125,13 +1119,13 @@ void TestInitialDiscoveryAuthority ()
 	auto replacement = std::make_shared<Torrent> (MakeSingleFileTorrent ());
 	TorrentDiscoveryTestAccess::Replace (*tunnel, replacement);
 	assert (!discover ());
-	assert (!TorrentDiscoveryTestAccess::Dispatch (*tunnel, replacement, {}, {}));
+	assert (!TorrentDiscoveryTestAccess::Dispatch (*tunnel, replacement, { }, { }));
 	assert (trackers == 1 && dht == 1);
 
 	// Private metadata may contact its configured tracker, never DHT.
-	const auto privateInfo = Dict ({ { "length", "i16384e" }, { "name", Bytes ("private.bin") },
-		{ "piece length", "i16384e" }, { "pieces", Bytes (std::string (SHA_DIGEST_LENGTH, 'A')) },
-		{ "private", "i1e" } });
+	const auto privateInfo
+		= Dict ({ { "length", "i16384e" }, { "name", Bytes ("private.bin") }, { "piece length", "i16384e" },
+			{ "pieces", Bytes (std::string (SHA_DIGEST_LENGTH, 'A')) }, { "private", "i1e" } });
 	torrent = std::make_shared<Torrent> (Dict ({ { "info", privateInfo } }));
 	assert (torrent->IsValid () && torrent->IsPrivate ());
 	TorrentDiscoveryTestAccess::Prepare (*tunnel, torrent, true);
@@ -1141,8 +1135,14 @@ void TestInitialDiscoveryAuthority ()
 	// Retirement during tracker dispatch must suppress the DHT action.
 	torrent = std::make_shared<Torrent> (MakeSingleFileTorrent ());
 	TorrentDiscoveryTestAccess::Prepare (*tunnel, torrent, true);
-	assert (TorrentDiscoveryTestAccess::Dispatch (*tunnel, torrent,
-		[&] { ++trackers; torrent->MarkRemoved (); }, [&] { ++dht; }));
+	assert (TorrentDiscoveryTestAccess::Dispatch (
+		*tunnel, torrent,
+		[&]
+		{
+			++trackers;
+			torrent->MarkRemoved ();
+		},
+		[&] { ++dht; }));
 	assert (trackers == 3 && dht == 1);
 	assert (!discover ());
 	TorrentDiscoveryTestAccess::Finish (*tunnel);
@@ -1154,8 +1154,13 @@ void TestMagnetDiscoveryWaitsForDurability ()
 	{
 		TempDir dir { MakeTempDir () };
 		auto root = dir.path / "root";
-		if (writable) std::filesystem::create_directory (root);
-		else { std::ofstream blocked (root); blocked << "not a directory"; }
+		if (writable)
+			std::filesystem::create_directory (root);
+		else
+		{
+			std::ofstream blocked (root);
+			blocked << "not a directory";
+		}
 		boost::asio::io_context service;
 		auto keys = i2p::data::PrivateKeys::CreateRandomKeys (
 			i2p::data::SIGNING_KEY_TYPE_EDDSA_SHA512_ED25519, i2p::data::CRYPTO_KEY_TYPE_ECIES_X25519_AEAD, true);
@@ -1166,8 +1171,7 @@ void TestMagnetDiscoveryWaitsForDurability ()
 		assert (torrent && id);
 		assert (TorrentDiscoveryTestAccess::PendingInitial (*tunnel, torrent));
 		int premature = 0;
-		assert (!TorrentDiscoveryTestAccess::Dispatch (*tunnel, torrent,
-			[&] { ++premature; }, [&] { ++premature; }));
+		assert (!TorrentDiscoveryTestAccess::Dispatch (*tunnel, torrent, [&] { ++premature; }, [&] { ++premature; }));
 		// Coalesce a changed immutable record behind the first write. The
 		// first acknowledgement cannot authorize the newer generation.
 		assert (tunnel->AddMagnet (magnet + "&dn=updated").first == torrent);
@@ -1184,8 +1188,8 @@ void TestMagnetDiscoveryWaitsForDurability ()
 			service.restart ();
 			service.poll ();
 			assert (!TorrentDiscoveryTestAccess::PendingInitial (*tunnel, torrent));
-			auto relative = std::filesystem::path (".openi2pd-state")
-				/ (ToHexString (torrent->GetInfoHash ()) + ".magnet");
+			auto relative
+				= std::filesystem::path (".openi2pd-state") / (ToHexString (torrent->GetInfoHash ()) + ".magnet");
 			std::vector<uint8_t> bytes;
 			std::string error;
 			assert (ReadFileBoundedNoFollow (root, relative, MAX_TORRENT_MAGNET_STATE_BYTES, bytes, error));
@@ -1195,7 +1199,7 @@ void TestMagnetDiscoveryWaitsForDurability ()
 			assert (durable.name == "updated");
 		}
 		else
-			assert (!TorrentDiscoveryTestAccess::Dispatch (*tunnel, torrent, {}, {}));
+			assert (!TorrentDiscoveryTestAccess::Dispatch (*tunnel, torrent, { }, { }));
 		TorrentDiscoveryTestAccess::Finish (*tunnel);
 	}
 }
@@ -1240,7 +1244,7 @@ void TestMagnetRecovery ()
 		assert (restored && restored->IsValid () && restored->IsStopped ());
 		const auto statePath = dir.path / ".openi2pd-state" / (hash + ".state");
 		std::ifstream saved (statePath, std::ios::binary);
-		const std::string bytes ((std::istreambuf_iterator<char> (saved)), {});
+		const std::string bytes ((std::istreambuf_iterator<char> (saved)), { });
 		TorrentLocalState state;
 		assert (DecodeTorrentLocalState (bytes, i2p::util::GetSecondsSinceEpoch (), state, error));
 		assert (state.stopped);
@@ -1282,12 +1286,11 @@ void TestMagnetRecovery ()
 	pump ();
 	auto restored = tunnel->FindTorrent (pending.infoHash);
 	assert (restored && !restored->IsValid () && restored->IsStopped ());
-	auto [duplicate, id] = tunnel->AddMagnet (
-		"magnet:?xt=urn:btih:" + hash + "&tr=http%3A%2F%2Fsecond.i2p%2Fa");
+	auto [duplicate, id] = tunnel->AddMagnet ("magnet:?xt=urn:btih:" + hash + "&tr=http%3A%2F%2Fsecond.i2p%2Fa");
 	assert (duplicate == restored && id > 0 && restored->IsStopped ());
 	pump ();
 	std::ifstream saved (path, std::ios::binary);
-	const std::string bytes ((std::istreambuf_iterator<char> (saved)), {});
+	const std::string bytes ((std::istreambuf_iterator<char> (saved)), { });
 	TorrentMagnetState merged;
 	assert (DecodeTorrentMagnetState (bytes, merged, error));
 	assert (merged.stopped && merged.trackers.size () == 2);
@@ -1329,7 +1332,8 @@ void TestRPCMetadataFields ()
 	std::jthread disk ([&] { diskService.run (); });
 	std::jthread engine ([&] { service.run (); });
 	std::weak_ptr<TorrentsTunnel> released = tunnel;
-	auto stopEngine = i2p::modern::ScopeExit ([&]
+	auto stopEngine = i2p::modern::ScopeExit (
+		[&]
 		{
 			// Keep both domains available until final persistence finishes.
 			tunnel->Stop ();
@@ -1349,13 +1353,15 @@ void TestRPCMetadataFields ()
 	client.connect (server.GetEndpoint ());
 	const auto snapshot = tunnel->GetControlSnapshot (std::chrono::seconds (2));
 	assert (snapshot.has_value ());
-	const auto reported = std::find_if (snapshot->torrents.begin (), snapshot->torrents.end (),
-		[id] (const auto & info) { return info.id == id; });
+	const auto reported = std::find_if (
+		snapshot->torrents.begin (), snapshot->torrents.end (), [id] (const auto & info) { return info.id == id; });
 	assert (reported != snapshot->torrents.end ());
 	assert (reported->error == torrent->GetErrorStr ());
-	const std::string body = "{\"method\":\"torrent-get\",\"arguments\":{\"fields\":[\"comment\",\"creator\",\"error\",\"errorString\"],\"ids\":["
+	const std::string body = "{\"method\":\"torrent-get\",\"arguments\":{\"fields\":[\"comment\",\"creator\",\"error\","
+							 "\"errorString\"],\"ids\":["
 		+ std::to_string (id) + "," + std::to_string (emptyId) + "," + std::to_string (invalidId) + "]}}";
-	const std::string request = "POST /rpc HTTP/1.1\r\nHost: localhost\r\nContent-Type: application/json\r\nContent-Length: "
+	const std::string request
+		= "POST /rpc HTTP/1.1\r\nHost: localhost\r\nContent-Type: application/json\r\nContent-Length: "
 		+ std::to_string (body.size ()) + "\r\n\r\n" + body;
 	boost::asio::write (client, boost::asio::buffer (request));
 	const auto response = ReadClosedRPC (client);

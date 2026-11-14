@@ -346,10 +346,11 @@ namespace util
 		// clock. mt19937 is only a fast non-cryptographic mixer here; its
 		// seed comes from the provider CSPRNG. A failed provider aborts
 		// initialization instead of publishing predictable fallback state.
-		return detail::RequireRandomSeed ([] (std::span<std::byte> bytes)
+		return detail::RequireRandomSeed (
+			[] (std::span<std::byte> bytes)
 			{
-				return RAND_bytes (reinterpret_cast<unsigned char *> (bytes.data ()),
-					static_cast<int> (bytes.size ())) == 1;
+				return RAND_bytes (reinterpret_cast<unsigned char *> (bytes.data ()), static_cast<int> (bytes.size ()))
+					== 1;
 			});
 	}
 

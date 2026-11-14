@@ -1147,9 +1147,9 @@ namespace client
 			// through this command session.
 			std::weak_ptr<BOBCommandSession> weak = shared_from_this ();
 			auto requestCallback = [weak] (std::shared_ptr<const i2p::data::LeaseSet> leaseSet)
-				{
-					if (auto session = weak.lock ()) session->SendPing (std::move (leaseSet));
-				};
+			{
+				if (auto session = weak.lock ()) session->SendPing (std::move (leaseSet));
+			};
 			if (addr->IsIdentHash ())
 				localDestination->RequestDestination (addr->identHash, requestCallback);
 			else

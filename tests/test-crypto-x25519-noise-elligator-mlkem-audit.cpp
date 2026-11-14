@@ -458,14 +458,12 @@ void TestSharedAeadEncryptorAcrossThreads ()
 				for (int round = 0; round < ROUNDS; ++round)
 				{
 					uint8_t key[32], nonce[12], plain[48], cipher[64], recovered[48];
-					for (size_t i = 0; i < sizeof (key); ++i)
-						key[i] = static_cast<uint8_t> (thread * 37 + round + i);
+					for (size_t i = 0; i < sizeof (key); ++i) key[i] = static_cast<uint8_t> (thread * 37 + round + i);
 					for (size_t i = 0; i < sizeof (nonce); ++i)
 						nonce[i] = static_cast<uint8_t> (thread * 11 + round * 3 + i);
 					for (size_t i = 0; i < sizeof (plain); ++i)
 						plain[i] = static_cast<uint8_t> (thread + i * 5 + round);
-					if (!encryptor.Encrypt (
-							plain, sizeof (plain), nullptr, 0, key, nonce, cipher, sizeof (cipher)))
+					if (!encryptor.Encrypt (plain, sizeof (plain), nullptr, 0, key, nonce, cipher, sizeof (cipher)))
 					{
 						++failures;
 						continue;

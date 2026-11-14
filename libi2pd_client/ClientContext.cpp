@@ -678,8 +678,8 @@ namespace client
 			size_t len = keys.GetFullLen ();
 			std::vector<uint8_t> buf (len);
 			len = keys.ToBuffer (buf.data (), len);
-			if (!i2p::fs::AtomicWritePrivate (fullPath,
-				std::string_view (reinterpret_cast<const char *> (buf.data ()), len)))
+			if (!i2p::fs::AtomicWritePrivate (
+					fullPath, std::string_view (reinterpret_cast<const char *> (buf.data ()), len)))
 			{
 				LogPrint (eLogCritical, "Clients: Unable to persist private keys file ", filename);
 				return false;
@@ -1190,16 +1190,16 @@ namespace client
 						if (!localDestination) localDestination = GetSharedLocalDestination ();
 
 						bool gzip = section.second.get (I2P_CLIENT_TUNNEL_GZIP, true);
-						const int configuredVersion = section.second.get (
-							UDP_CLIENT_TUNNEL_DATAGRAM_VERSION, (int)i2p::datagram::eDatagramV3);
+						const int configuredVersion
+							= section.second.get (UDP_CLIENT_TUNNEL_DATAGRAM_VERSION, (int)i2p::datagram::eDatagramV3);
 						auto datagramVersion = i2p::datagram::ParseDatagramVersion (configuredVersion);
 						if (!datagramVersion)
 						{
 							LogPrint (eLogError, "Clients: Invalid UDP datagram version in section ", name);
 							continue;
 						}
-						auto clientTunnel = std::make_shared<I2PUDPClientTunnel> (name, dest, end, localDestination,
-							destinationPort, gzip, *datagramVersion);
+						auto clientTunnel = std::make_shared<I2PUDPClientTunnel> (
+							name, dest, end, localDestination, destinationPort, gzip, *datagramVersion);
 						clientTunnel->SetMaxWindow (GetUDPTunnelMaxWindow (section.second));
 
 						uint32_t keepAlive = section.second.get<uint32_t> (I2P_CLIENT_TUNNEL_KEEP_ALIVE_INTERVAL, 0);

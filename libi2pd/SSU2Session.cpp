@@ -1059,8 +1059,7 @@ namespace transport
 		// The old attempt cannot survive a failed replacement. Keep the new
 		// packet private until every provider step and the send succeed.
 		m_SentHandshakePacket.reset ();
-		auto discardIncompleteHandshake = i2p::modern::ScopeExit ([this]
-			{ m_SentHandshakePacket.reset (); });
+		auto discardIncompleteHandshake = i2p::modern::ScopeExit ([this] { m_SentHandshakePacket.reset (); });
 		// we are Alice
 		if (!m_Address) return false;
 		SelectOutgoingVersion ();
@@ -1392,8 +1391,7 @@ namespace transport
 	bool SSU2Session::SendSessionCreated (const uint8_t * X)
 	{
 		m_SentHandshakePacket.reset ();
-		auto discardIncompleteHandshake = i2p::modern::ScopeExit ([this]
-			{ m_SentHandshakePacket.reset (); });
+		auto discardIncompleteHandshake = i2p::modern::ScopeExit ([this] { m_SentHandshakePacket.reset (); });
 		// we are Bob
 		if (!m_NoiseState || m_MaxPayloadSize <= 48) return false;
 		m_EphemeralKeys = i2p::transport::transports.GetNextX25519KeysPair ();
@@ -1410,8 +1408,7 @@ namespace transport
 		m_SentHandshakePacket->sendTime = ts;
 
 		uint8_t kh2[32];
-		auto cleanseHeaderKey = i2p::modern::ScopeExit ([&kh2]
-			{ OPENSSL_cleanse (kh2, sizeof (kh2)); });
+		auto cleanseHeaderKey = i2p::modern::ScopeExit ([&kh2] { OPENSSL_cleanse (kh2, sizeof (kh2)); });
 		i2p::crypto::HKDF (m_NoiseState->m_CK, nullptr, 0, "SessCreateHeader", kh2,
 			32); // k_header_2 = HKDF(chainKey, ZEROLEN, "SessCreateHeader", 32)
 		// fill packet

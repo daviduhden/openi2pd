@@ -184,7 +184,8 @@ void TestClientResponseHeaderBounds (const std::string & directory)
 	{
 		const std::string path = directory + "/" + name;
 		const int listener = ListenRaw (path);
-		std::thread server ([listener, wire = std::move (wire)] () mutable { ServeReply (listener, std::move (wire)); });
+		std::thread server (
+			[listener, wire = std::move (wire)] () mutable { ServeReply (listener, std::move (wire)); });
 
 		i2p::tui::Client client (path);
 		assert (client.Connect ().has_value ());
@@ -517,7 +518,8 @@ void TestConnectIsBounded (const std::string & path)
 				++attempts;
 				errno = EAGAIN;
 				return -1;
-			}, [&] (auto interval) { now += interval; }, std::chrono::milliseconds (20));
+			},
+			[&] (auto interval) { now += interval; }, std::chrono::milliseconds (20));
 		assert (error == ETIMEDOUT);
 		assert (attempts == 6);
 	}
@@ -535,7 +537,8 @@ void TestConnectIsBounded (const std::string & path)
 					return -1;
 				}
 				return 0;
-			}, [&] (auto interval) { now += interval; }, std::chrono::milliseconds (20));
+			},
+			[&] (auto interval) { now += interval; }, std::chrono::milliseconds (20));
 		assert (error == 0);
 		assert (attempts == 3);
 		assert (now == Clock::time_point { });
@@ -549,7 +552,8 @@ void TestConnectIsBounded (const std::string & path)
 			{
 				errno = ENOENT;
 				return -1;
-			}, [&] (auto interval) { now += interval; }, std::chrono::milliseconds (20));
+			},
+			[&] (auto interval) { now += interval; }, std::chrono::milliseconds (20));
 		assert (error == ENOENT);
 		assert (now == Clock::time_point { });
 	}

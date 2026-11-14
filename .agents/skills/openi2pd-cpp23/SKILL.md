@@ -117,6 +117,13 @@ compile, run tests or run project scripts.
 
 ## Known issues and decisions
 
+- Repository formatting uses the Cpp document in .clang-format. Select
+  tracked maintained sources and exclude machine-generated JNI declarations.
+  Compare tokens/literals with a pre-format snapshot and audit exact source
+  contracts separately: formatting acceptance is not compilation or proof
+  that string-based security guards still match their source boundaries.
+
+
 - ACK expiry update and wait registration form one exception interval.
   Revoke wait identity/sequence before portable timer cancellation; preserve
   the original registration exception. Cancellation cleanup retains its

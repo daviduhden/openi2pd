@@ -853,7 +853,9 @@ namespace client
 		}
 		else
 			SendMessageReply (created.error () == SAMSessionCreateError::DuplicateId
-				? SAM_SESSION_CREATE_DUPLICATED_ID : SAM_SESSION_CREATE_DUPLICATED_DEST, true);
+					? SAM_SESSION_CREATE_DUPLICATED_ID
+					: SAM_SESSION_CREATE_DUPLICATED_DEST,
+				true);
 	}
 
 	void SAMSocket::HandleSessionReadinessCheckTimer (const boost::system::error_code & ecode)

@@ -37,86 +37,86 @@
 
 namespace
 {
-	std::mutex g_EchoMutex;
+std::mutex g_EchoMutex;
 
-	const char * LevelName (LogLevel level) noexcept
+const char * LevelName (LogLevel level) noexcept
+{
+	switch (level)
 	{
-		switch (level)
-		{
-		case eLogCritical: return "critical";
-		case eLogError: return "error";
-		case eLogWarning: return "warn";
-		case eLogInfo: return "info";
-		case eLogDebug: return "debug";
-		case eLogNone:
-		case eNumLogLevels: break;
-		}
-		return "log";
+	case eLogCritical: return "critical";
+	case eLogError: return "error";
+	case eLogWarning: return "warn";
+	case eLogInfo: return "info";
+	case eLogDebug: return "debug";
+	case eLogNone:
+	case eNumLogLevels: break;
 	}
+	return "log";
+}
 
-	// Writes one record to stderr. The text is the logger's sanitized
-	// copy: it is already capped at LOG_RECENT_TEXT_LIMIT bytes and has
-	// C0 controls (except TAB) flattened, so a test cannot inject escape
-	// sequences into the CI log through a product message.
-	void Echo (LogLevel level, std::time_t, std::string_view text) noexcept
+// Writes one record to stderr. The text is the logger's sanitized
+// copy: it is already capped at LOG_RECENT_TEXT_LIMIT bytes and has
+// C0 controls (except TAB) flattened, so a test cannot inject escape
+// sequences into the CI log through a product message.
+void Echo (LogLevel level, std::time_t, std::string_view text) noexcept
+{
+	try
 	{
-		try
-		{
-			std::lock_guard<std::mutex> lock (g_EchoMutex);
-			std::fputs ("[test-log ", stderr);
-			std::fputs (LevelName (level), stderr);
-			std::fputs ("] ", stderr);
-			std::fwrite (text.data (), 1, text.size (), stderr);
-			std::fputc ('\n', stderr);
-			std::fflush (stderr);
-		}
-		catch (...)
-		{
-			// A diagnostic must never change the test outcome.
-		}
+		std::lock_guard<std::mutex> lock (g_EchoMutex);
+		std::fputs ("[test-log ", stderr);
+		std::fputs (LevelName (level), stderr);
+		std::fputs ("] ", stderr);
+		std::fwrite (text.data (), 1, text.size (), stderr);
+		std::fputc ('\n', stderr);
+		std::fflush (stderr);
 	}
-
-	void ApplyRequestedLevel () noexcept
+	catch (...)
 	{
-		const char * requested = nullptr;
+		// A diagnostic must never change the test outcome.
+	}
+}
+
+void ApplyRequestedLevel () noexcept
+{
+	const char * requested = nullptr;
 #if defined(_MSC_VER)
-		// MSVC deprecates getenv; own the secure CRT's returned copy.
-		char * allocated = nullptr;
-		size_t length = 0;
-		const auto result = _dupenv_s (&allocated, &length, "OPENI2PD_TEST_LOG_LEVEL");
-		const std::unique_ptr<char, decltype (&std::free)> owned { allocated, &std::free };
-		if (result != 0) return;
-		requested = owned.get ();
+	// MSVC deprecates getenv; own the secure CRT's returned copy.
+	char * allocated = nullptr;
+	size_t length = 0;
+	const auto result = _dupenv_s (&allocated, &length, "OPENI2PD_TEST_LOG_LEVEL");
+	const std::unique_ptr<char, decltype (&std::free)> owned { allocated, &std::free };
+	if (result != 0) return;
+	requested = owned.get ();
 #else
-		requested = std::getenv ("OPENI2PD_TEST_LOG_LEVEL");
+	requested = std::getenv ("OPENI2PD_TEST_LOG_LEVEL");
 #endif
-		if (!requested || !*requested) return;
-		// The product spells the warning level "warn"; accept the common
-		// "warning" spelling without adding it to the production parser.
-		if (std::strcmp (requested, "warning") == 0) requested = "warn";
-		try
-		{
-			i2p::log::Logger ().SetLogLevel (requested);
-		}
-		catch (...)
-		{
-			// An invalid level leaves the product default in place.
-		}
-	}
-
-	struct Install
+	if (!requested || !*requested) return;
+	// The product spells the warning level "warn"; accept the common
+	// "warning" spelling without adding it to the production parser.
+	if (std::strcmp (requested, "warning") == 0) requested = "warn";
+	try
 	{
-		Install ()
-		{
-			// Install the sink before changing the level so the logger's
-			// own "Logging level set to ..." line is echoed as well.
-			i2p::log::Logger ().SetSynchronousSink (&Echo);
-			ApplyRequestedLevel ();
-		}
-	};
+		i2p::log::Logger ().SetLogLevel (requested);
+	}
+	catch (...)
+	{
+		// An invalid level leaves the product default in place.
+	}
+}
 
-	// One initializer per test process. Tests are single-translation
-	// executables created by i2pd_add_test(), so this runs exactly once
-	// before main().
-	Install g_Install;
+struct Install
+{
+	Install ()
+	{
+		// Install the sink before changing the level so the logger's
+		// own "Logging level set to ..." line is echoed as well.
+		i2p::log::Logger ().SetSynchronousSink (&Echo);
+		ApplyRequestedLevel ();
+	}
+};
+
+// One initializer per test process. Tests are single-translation
+// executables created by i2pd_add_test(), so this runs exactly once
+// before main().
+Install g_Install;
 } // namespace

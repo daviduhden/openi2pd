@@ -46,19 +46,20 @@ struct TorrentPeerIDTestAccess
 	static void FailGeneration (Torrent & torrent, bool partial)
 	{
 		if (partial)
-			torrent.InitPeerID ([] (unsigned char * bytes, int size)
+			torrent.InitPeerID (
+				[] (unsigned char * bytes, int size)
 				{
 					std::memset (bytes, 0x55, static_cast<size_t> (size));
 					return 0;
 				});
-		else torrent.InitPeerID ([] (unsigned char *, int) { return -1; });
+		else
+			torrent.InitPeerID ([] (unsigned char *, int) { return -1; });
 	}
 };
 
 struct PeerExtendedHandshakeTestAccess
 {
-	static void RefreshInterest (PeerConnection & peer, size_t requests,
-		bool advertised)
+	static void RefreshInterest (PeerConnection & peer, size_t requests, bool advertised)
 	{
 		peer.m_IsEstablished = true;
 		peer.m_RemoteBitfield.resize (peer.m_Torrent->GetNumPieces ());
@@ -94,9 +95,8 @@ struct PeerExtendedHandshakeTestAccess
 	}
 	static bool Accepted (const PeerConnection & peer)
 	{
-		return peer.m_ExtendedHandshakeReceived && peer.m_RemoteMsgIDUtMetadata == 1
-			&& peer.m_RemoteMetadataSize == 64 && peer.m_MaxNumRequests == 17
-			&& peer.m_RemoteName == "valid";
+		return peer.m_ExtendedHandshakeReceived && peer.m_RemoteMsgIDUtMetadata == 1 && peer.m_RemoteMetadataSize == 64
+			&& peer.m_MaxNumRequests == 17 && peer.m_RemoteName == "valid";
 	}
 	static bool Disabled (const PeerConnection & peer)
 	{
@@ -553,8 +553,8 @@ static void TestTrackerIntervalAndTrackerID ()
 	// minimum, the opaque tracker id and the swarm counts keep the values
 	// of the last fully valid answer, and the failure is recorded instead.
 	torrent.ParseTrackerResponse (6,
-		Dict ({ { "complete", "i42e" }, { "incomplete", "i43e" }, { "interval", "i60e" },
-			{ "min interval", "i600e" }, { "tracker id", Bytes ("good-id") } }));
+		Dict ({ { "complete", "i42e" }, { "incomplete", "i43e" }, { "interval", "i60e" }, { "min interval", "i600e" },
+			{ "tracker id", Bytes ("good-id") } }));
 	assert (torrent.GetNumSeeders (6) == 42 && torrent.GetNumLeechers (6) == 43);
 	assert (torrent.GetTrackerID (6) == "good-id");
 	assert (torrent.GetInterval (6) == MIN_TRACKER_ANNOUNCE_INTERVAL * 1000);
@@ -622,8 +622,8 @@ static void TestPeerIDProviderFailure ()
 		assert (!torrent->IsValid () && torrent->IsStopped ());
 		assert (torrent->GetError () == eTorrentErrorRandomSource);
 		assert (!torrent->GetErrorStr ().empty ());
-		assert (std::all_of (torrent->GetPeerID ().begin (), torrent->GetPeerID ().end (),
-			[] (uint8_t value) { return value == 0; }));
+		assert (std::all_of (
+			torrent->GetPeerID ().begin (), torrent->GetPeerID ().end (), [] (uint8_t value) { return value == 0; }));
 		// Neither a filesystem completion nor administrative resume may
 		// make a failed identity publishable. No global provider is changed.
 		torrent->SetError (eTorrentErrorNoError);
@@ -637,11 +637,10 @@ static void TestExtendedHandshakeFieldTypes ()
 {
 	const auto valid = Dict ({ { "m", Dict ({ { "ut_metadata", "i1e" }, { "disabled", "i0e" } }) },
 		{ "metadata_size", "i64e" }, { "reqq", "i17e" }, { "v", Bytes ("valid") }, { "unknown", "le" } });
-	for (const auto & [field, invalid] : std::initializer_list<std::pair<std::string, std::string>> {
-		{ "m", "i1e" }, { "m", Bytes ("not-a-map") },
-		{ "m", Dict ({ { "ut_metadata", Bytes ("1") } }) },
-		{ "m", Dict ({ { "unknown", "le" } }) }, { "metadata_size", Bytes ("64") },
-		{ "reqq", "de" }, { "v", "i1e" } })
+	for (const auto & [field, invalid] :
+		std::initializer_list<std::pair<std::string, std::string>> { { "m", "i1e" }, { "m", Bytes ("not-a-map") },
+			{ "m", Dict ({ { "ut_metadata", Bytes ("1") } }) }, { "m", Dict ({ { "unknown", "le" } }) },
+			{ "metadata_size", Bytes ("64") }, { "reqq", "de" }, { "v", "i1e" } })
 	{
 		auto torrent = MakeVerifiedTorrent ("handshake-types", false).torrent;
 		PeerConnection peer (nullptr, nullptr, torrent);
@@ -704,8 +703,8 @@ static void TestInterestTracksSelectionAndActiveRequests ()
 
 static void TestCompactTrackerFraming ()
 {
-	for (const size_t length : { size_t { 0 }, size_t { 1 }, size_t { 31 },
-		size_t { 32 }, size_t { 33 }, size_t { 63 }, size_t { 64 } })
+	for (const size_t length :
+		{ size_t { 0 }, size_t { 1 }, size_t { 31 }, size_t { 32 }, size_t { 33 }, size_t { 63 }, size_t { 64 } })
 	{
 		auto fixture = MakeVerifiedTorrent ("compact-tracker-framing", false);
 		auto & torrent = *fixture.torrent;
@@ -713,14 +712,14 @@ static void TestCompactTrackerFraming ()
 		for (size_t offset = 0; offset + 32 <= length; offset += 32)
 			hashes[offset] = static_cast<char> (1 + offset / 32);
 		for (const size_t tracker : { size_t { 0 }, size_t { 1 } })
-			torrent.ParseTrackerResponse (tracker, Dict ({ { "interval", "i1800e" },
-				{ "complete", "i42e" }, { "incomplete", "i43e" },
-				{ "peers", CompactPeers ({ 0x11 }) } }));
+			torrent.ParseTrackerResponse (tracker,
+				Dict ({ { "interval", "i1800e" }, { "complete", "i42e" }, { "incomplete", "i43e" },
+					{ "peers", CompactPeers ({ 0x11 }) } }));
 		const auto previous = torrent.GetNonConnectedPeers (0);
-		torrent.ParseTrackerResponse (0, Dict ({ { "interval", "i7200e" },
-			{ "complete", "i7e" }, { "peers", Bytes (hashes) } }));
-		torrent.HandleDatagramTrackerResponse (1, 7200,
-			reinterpret_cast<const uint8_t *> (hashes.data ()), hashes.size (), 7, 8);
+		torrent.ParseTrackerResponse (
+			0, Dict ({ { "interval", "i7200e" }, { "complete", "i7e" }, { "peers", Bytes (hashes) } }));
+		torrent.HandleDatagramTrackerResponse (
+			1, 7200, reinterpret_cast<const uint8_t *> (hashes.data ()), hashes.size (), 7, 8);
 		for (const size_t tracker : { size_t { 0 }, size_t { 1 } })
 		{
 			if (length % i2p::data::IdentHash::len)
@@ -734,8 +733,7 @@ static void TestCompactTrackerFraming ()
 			{
 				assert (torrent.GetTrackerError (tracker).empty ());
 				assert (torrent.GetInterval (tracker) == 7200 * 1000);
-				assert (std::cmp_equal (torrent.GetNumPeers (tracker),
-					length / i2p::data::IdentHash::len));
+				assert (std::cmp_equal (torrent.GetNumPeers (tracker), length / i2p::data::IdentHash::len));
 			}
 		}
 		// Reject an invalid public API range before reading or publishing it.
@@ -751,11 +749,10 @@ static void TestDatagramTrackerCountBounds ()
 	auto fixture = MakeVerifiedTorrent ("datagram-count-bounds", false);
 	auto & torrent = *fixture.torrent;
 	const int maximum = std::numeric_limits<int>::max ();
-	for (const auto & [count, expected] : std::initializer_list<std::pair<int64_t, int>> {
-		{ std::numeric_limits<int64_t>::min (), 0 }, { -1, 0 }, { 0, 0 },
-		{ maximum, maximum }, { int64_t { maximum } + 1, maximum },
-		{ std::numeric_limits<uint32_t>::max (), maximum },
-		{ std::numeric_limits<int64_t>::max (), maximum } })
+	for (const auto & [count, expected] :
+		std::initializer_list<std::pair<int64_t, int>> { { std::numeric_limits<int64_t>::min (), 0 }, { -1, 0 },
+			{ 0, 0 }, { maximum, maximum }, { int64_t { maximum } + 1, maximum },
+			{ std::numeric_limits<uint32_t>::max (), maximum }, { std::numeric_limits<int64_t>::max (), maximum } })
 	{
 		// Preserve signed caller clamping and match HTTP's numeric bounds.
 		torrent.HandleDatagramTrackerResponse (0, 900, nullptr, 0, count, count);
@@ -763,8 +760,7 @@ static void TestDatagramTrackerCountBounds ()
 		assert (torrent.GetNumSeeders (0) == expected);
 		assert (torrent.GetNumLeechers (0) == expected);
 		const std::string value = "i" + std::to_string (count) + "e";
-		torrent.ParseTrackerResponse (1,
-			Dict ({ { "complete", value }, { "incomplete", value } }));
+		torrent.ParseTrackerResponse (1, Dict ({ { "complete", value }, { "incomplete", value } }));
 		assert (torrent.GetTrackerError (1).empty ());
 		assert (torrent.GetNumSeeders (1) == expected);
 		assert (torrent.GetNumLeechers (1) == expected);
@@ -781,15 +777,14 @@ static void TestDatagramTrackerCountBounds ()
 static void TestTrackerKnownFieldTypes ()
 {
 	for (const auto & [field, invalid] : std::initializer_list<std::pair<std::string, std::string>> {
-		{ "interval", Bytes ("60") }, { "min interval", "le" }, { "min_interval", "de" },
-		{ "complete", Bytes ("0") }, { "incomplete", "le" }, { "peers", "i1e" },
-		{ "failure reason", "i1e" } })
+			 { "interval", Bytes ("60") }, { "min interval", "le" }, { "min_interval", "de" },
+			 { "complete", Bytes ("0") }, { "incomplete", "le" }, { "peers", "i1e" }, { "failure reason", "i1e" } })
 	{
 		auto fixture = MakeVerifiedTorrent ("tracker-types", false);
 		auto & torrent = *fixture.torrent;
-		torrent.ParseTrackerResponse (0, Dict ({ { "complete", "i42e" }, { "incomplete", "i43e" },
-			{ "interval", "i1800e" }, { "min interval", "i600e" }, { "tracker id", Bytes ("good") },
-			{ "peers", CompactPeers ({ 0x11 }) } }));
+		torrent.ParseTrackerResponse (0,
+			Dict ({ { "complete", "i42e" }, { "incomplete", "i43e" }, { "interval", "i1800e" },
+				{ "min interval", "i600e" }, { "tracker id", Bytes ("good") }, { "peers", CompactPeers ({ 0x11 }) } }));
 		const auto interval = torrent.GetInterval (0);
 		torrent.ReportTrackerFailure (0, "prior failure");
 		const auto priorRetry = torrent.GetNextTrackerRequestTime (0);
@@ -845,7 +840,9 @@ static void TestConnectionLimitRelations ()
 // cannot remove a newer connection for the same authenticated identity.
 static void TestConnectionRetirement ()
 {
-	struct Peer { };
+	struct Peer
+	{
+	};
 	std::map<size_t, std::weak_ptr<Peer>> peers;
 	std::vector<std::shared_ptr<Peer>> owners;
 	for (size_t i = 0; i < MAX_PEERS_PER_TORRENT; ++i)

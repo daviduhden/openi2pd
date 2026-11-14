@@ -84,12 +84,11 @@ bool WaitForFailure (DataStorageClient & client, StorageArtifact kind, std::stri
 		}
 		if (status.si_pid)
 		{
-			if (status.si_pid != worker || status.si_code != CLD_KILLED || status.si_status != SIGKILL)
-				return false;
+			if (status.si_pid != worker || status.si_code != CLD_KILLED || status.si_status != SIGKILL) return false;
 			return !client.Write (kind, name, Bytes (9, 8));
 		}
-		std::this_thread::sleep_until (std::min (deadline,
-			std::chrono::steady_clock::now () + std::chrono::milliseconds (10)));
+		std::this_thread::sleep_until (
+			std::min (deadline, std::chrono::steady_clock::now () + std::chrono::milliseconds (10)));
 	}
 	return false;
 }

@@ -253,8 +253,7 @@ i2p::expected<Channel, std::string> SpawnSupervisedTorrentStorage (int rootFd, s
 	// Admission, send and stale-reply draining consume one transaction.
 	const auto deadline = std::chrono::steady_clock::now () + std::chrono::seconds (5);
 	std::unique_lock lock (storageSupervisorMutex, std::defer_lock);
-	if (!lock.try_lock_until (deadline))
-		return i2p::unexpected (std::string ("storage supervisor busy"));
+	if (!lock.try_lock_until (deadline)) return i2p::unexpected (std::string ("storage supervisor busy"));
 	if (!storageSupervisor || storageSupervisorRequest == UINT32_MAX)
 		return i2p::unexpected (std::string ("storage supervisor unavailable"));
 	const auto id = ++storageSupervisorRequest;
@@ -267,8 +266,7 @@ i2p::expected<Channel, std::string> SpawnSupervisedTorrentStorage (int rootFd, s
 		return i2p::unexpected (std::string ("storage root path is too long"));
 	request.WriteU64BE (static_cast<uint64_t> (expected.st_dev));
 	request.WriteU64BE (static_cast<uint64_t> (expected.st_ino));
-	if (std::chrono::steady_clock::now () >= deadline)
-		return i2p::unexpected (std::string ("storage supervisor busy"));
+	if (std::chrono::steady_clock::now () >= deadline) return i2p::unexpected (std::string ("storage supervisor busy"));
 	auto & channel = *storageSupervisor;
 	auto sent = channel.SendUntil ({ MessageType::SpawnTorrentStorage, id, request.Data () }, deadline);
 	if (!sent)
@@ -668,14 +666,12 @@ int RunSupervisor (int fd)
 	 * active and the reserve worker use the same bounded handshake; no
 	 * channel exists before this call.
 	 */
-	auto prepareWorker = [&] (std::unique_ptr<ChildProcess> & process,
-		std::unique_ptr<LogSink> & logSink) -> bool
+	auto prepareWorker = [&] (std::unique_ptr<ChildProcess> & process, std::unique_ptr<LogSink> & logSink) -> bool
 	{
 		auto spawned = SpawnLogWorker (workerExecutable);
 		if (!spawned)
 		{
-			std::cerr << "privsep supervisor: cannot spawn log worker: "
-					  << spawned.error () << std::endl;
+			std::cerr << "privsep supervisor: cannot spawn log worker: " << spawned.error () << std::endl;
 			return false;
 		}
 		process = std::make_unique<ChildProcess> (std::move (*spawned));
@@ -790,8 +786,7 @@ int RunSupervisor (int fd)
 #if defined(__OpenBSD__)
 		// A reserve that died while idle cannot be replaced without exec.
 		// Drop it now so the next active failure is reported as terminal.
-		if (reserveWorker
-			&& (!reserveWorker->IsRunning () || !reserveSink || !reserveSink->IsOpen ()))
+		if (reserveWorker && (!reserveWorker->IsRunning () || !reserveSink || !reserveSink->IsOpen ()))
 		{
 			reserveWorker->Stop (500);
 			reserveSink.reset ();
@@ -826,10 +821,10 @@ int RunSupervisor (int fd)
 				// No exec and no reserve: the supervisor cannot create a new
 				// log worker. The core observes the closed channel and the
 				// runtime status remains Failed; no local fallback is allowed.
-				status.NoteFailed (LOG_WORKER, generation, budget.Restarts (),
-					"pre-created log reserve exhausted");
+				status.NoteFailed (LOG_WORKER, generation, budget.Restarts (), "pre-created log reserve exhausted");
 				std::cerr << "privsep supervisor: pre-created log reserve exhausted; "
-							 "log records are dropped (no exec, no local fallback)" << std::endl;
+							 "log records are dropped (no exec, no local fallback)"
+						  << std::endl;
 				return 1;
 			}
 			// Promote the already-configured reserve. It was created before

@@ -624,30 +624,22 @@ namespace crypto
 	EDDSA25519SignerCompat::EDDSA25519SignerCompat (const uint8_t * signingPrivateKey, const uint8_t * signingPublicKey)
 	{
 		if (!signingPrivateKey) return;
-		std::unique_ptr<BN_CTX, decltype (&BN_CTX_free)> ctx (
-			BN_CTX_new (), BN_CTX_free);
+		std::unique_ptr<BN_CTX, decltype (&BN_CTX_free)> ctx (BN_CTX_new (), BN_CTX_free);
 		if (!ctx) return;
 		// Rejected pairs and exceptional exits retain no expanded secret.
 		auto cleanse = [] (uint8_t * key) { OPENSSL_cleanse (key, 64); };
-		std::unique_ptr<uint8_t, decltype (cleanse)> cleanup (
-			m_ExpandedPrivateKey, cleanse);
+		std::unique_ptr<uint8_t, decltype (cleanse)> cleanup (m_ExpandedPrivateKey, cleanse);
 		if (!Ed25519::ExpandPrivateKey (signingPrivateKey, m_ExpandedPrivateKey)) return;
-		auto publicKey = GetEd25519 ()->GeneratePublicKey (
-			m_ExpandedPrivateKey, ctx.get ());
-		if (!GetEd25519 ()->EncodePublicKey (
-			publicKey, m_PublicKeyEncoded, ctx.get ())) return;
-		if (signingPublicKey && CRYPTO_memcmp (m_PublicKeyEncoded,
-			signingPublicKey, EDDSA25519_PUBLIC_KEY_LENGTH))
+		auto publicKey = GetEd25519 ()->GeneratePublicKey (m_ExpandedPrivateKey, ctx.get ());
+		if (!GetEd25519 ()->EncodePublicKey (publicKey, m_PublicKeyEncoded, ctx.get ())) return;
+		if (signingPublicKey && CRYPTO_memcmp (m_PublicKeyEncoded, signingPublicKey, EDDSA25519_PUBLIC_KEY_LENGTH))
 		{
 			// Historical keys cleared scalar bit 253. Accept that encoding
 			// only when its derived public key matches the supplied pair.
 			m_ExpandedPrivateKey[EDDSA25519_PRIVATE_KEY_LENGTH - 1] &= 0xDF;
-			publicKey = GetEd25519 ()->GeneratePublicKey (
-				m_ExpandedPrivateKey, ctx.get ());
-			if (!GetEd25519 ()->EncodePublicKey (
-				publicKey, m_PublicKeyEncoded, ctx.get ())) return;
-			if (CRYPTO_memcmp (m_PublicKeyEncoded, signingPublicKey,
-				EDDSA25519_PUBLIC_KEY_LENGTH))
+			publicKey = GetEd25519 ()->GeneratePublicKey (m_ExpandedPrivateKey, ctx.get ());
+			if (!GetEd25519 ()->EncodePublicKey (publicKey, m_PublicKeyEncoded, ctx.get ())) return;
+			if (CRYPTO_memcmp (m_PublicKeyEncoded, signingPublicKey, EDDSA25519_PUBLIC_KEY_LENGTH))
 			{
 				OPENSSL_cleanse (m_PublicKeyEncoded, sizeof (m_PublicKeyEncoded));
 				return;
@@ -692,8 +684,7 @@ namespace crypto
 			{
 				// The compatibility signer does not depend on the provider and
 				// can still validate the private/public key pair.
-				auto fallback = std::make_unique<EDDSA25519SignerCompat> (
-					signingPrivateKey, signingPublicKey);
+				auto fallback = std::make_unique<EDDSA25519SignerCompat> (signingPrivateKey, signingPublicKey);
 				if (fallback->IsValid ()) m_Fallback = std::move (fallback);
 				return;
 			}
@@ -707,8 +698,7 @@ namespace crypto
 		if (signingPublicKey && (!havePublicKey || memcmp (publicKey, signingPublicKey, EDDSA25519_PUBLIC_KEY_LENGTH)))
 		{
 			LogPrint (eLogWarning, "EdDSA public key mismatch. Fallback");
-			auto fallback = std::make_unique<EDDSA25519SignerCompat> (
-				signingPrivateKey, signingPublicKey);
+			auto fallback = std::make_unique<EDDSA25519SignerCompat> (signingPrivateKey, signingPublicKey);
 			if (fallback->IsValid ()) m_Fallback = std::move (fallback);
 			m_Pkey.reset ();
 		}
@@ -762,8 +752,7 @@ namespace crypto
 			&& EVP_DigestVerify (ctx.get (), signature, 64, buf, len) == 1;
 	}
 
-	EDDSA25519phSigner::EDDSA25519phSigner (const uint8_t * signingPrivateKey,
-		const uint8_t * signingPublicKey)
+	EDDSA25519phSigner::EDDSA25519phSigner (const uint8_t * signingPrivateKey, const uint8_t * signingPublicKey)
 		: EDDSA25519Signer (signingPrivateKey, signingPublicKey)
 	{
 	}

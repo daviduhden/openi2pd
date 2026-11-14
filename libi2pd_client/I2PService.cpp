@@ -174,19 +174,29 @@ namespace client
 			// Retire authority before cancellation. Newer Asio timer APIs
 			// expose only the throwing overload; teardown must still finish
 			// if the timer service reports a cancellation failure.
-			try { previous->timer.cancel (); }
-			catch (const boost::system::system_error &) { }
+			try
+			{
+				previous->timer.cancel ();
+			}
+			catch (const boost::system::system_error &)
+			{
+			}
 		}
 	}
 
 	void I2PService::InvokeReadyCallback (ReadyCallback & callback, const boost::system::error_code & ec)
 	{
-		try { callback (ec); }
-		catch (...) { LogPrint (eLogError, "I2PService: Readiness callback failed"); }
+		try
+		{
+			callback (ec);
+		}
+		catch (...)
+		{
+			LogPrint (eLogError, "I2PService: Readiness callback failed");
+		}
 	}
 
-	void I2PService::RegisterReadyCallback (
-		const std::shared_ptr<ReadyGeneration> & generation, ReadyCallback cb)
+	void I2PService::RegisterReadyCallback (const std::shared_ptr<ReadyGeneration> & generation, ReadyCallback cb)
 	{
 		assert (cb);
 		boost::system::error_code rejection = boost::asio::error::operation_aborted;
@@ -253,7 +263,8 @@ namespace client
 						selected.push_back (std::move (*it));
 						it = pending.erase (it);
 					}
-					else ++it;
+					else
+						++it;
 				}
 				outcome = boost::asio::error::timed_out;
 			}
@@ -264,7 +275,8 @@ namespace client
 		for (auto & entry : selected)
 		{
 			const auto result = generation->accepting.load (std::memory_order_acquire)
-				? outcome : boost::system::error_code (boost::asio::error::operation_aborted);
+				? outcome
+				: boost::system::error_code (boost::asio::error::operation_aborted);
 			InvokeReadyCallback (entry.first, result);
 		}
 	}
@@ -297,10 +309,10 @@ namespace client
 		if (!m_Running.load () || !m_IdleCheckTimer || !idleTime) return;
 		auto wait = std::make_shared<IdleWait> ();
 		m_IdleWait = wait;
-		m_IdleCheckTimer->expires_at (IdleDeadline (
-			boost::asio::steady_timer::clock_type::now (), idleTime));
+		m_IdleCheckTimer->expires_at (IdleDeadline (boost::asio::steady_timer::clock_type::now (), idleTime));
 		std::weak_ptr<I2PService> owner = weak_from_this ();
-		m_IdleCheckTimer->async_wait ([owner, wait] (const boost::system::error_code & ec)
+		m_IdleCheckTimer->async_wait (
+			[owner, wait] (const boost::system::error_code & ec)
 			{
 				if (auto service = owner.lock ()) service->HandleIdleCheckTimer (ec, wait);
 			});
@@ -313,12 +325,10 @@ namespace client
 		// Bound milliseconds before converting to native clock ticks,
 		// then bound addition separately. Large configuration values
 		// must never wrap into an already-expired timer.
-		constexpr auto maxMilliseconds = std::chrono::duration_cast<
-			std::chrono::milliseconds> (Timer::duration::max ()).count ();
-		const auto milliseconds = std::min (idleTime / 2,
-			static_cast<uint64_t> (maxMilliseconds));
-		const auto delay = std::chrono::duration_cast<Timer::duration> (
-			std::chrono::milliseconds (milliseconds));
+		constexpr auto maxMilliseconds
+			= std::chrono::duration_cast<std::chrono::milliseconds> (Timer::duration::max ()).count ();
+		const auto milliseconds = std::min (idleTime / 2, static_cast<uint64_t> (maxMilliseconds));
+		const auto delay = std::chrono::duration_cast<Timer::duration> (std::chrono::milliseconds (milliseconds));
 		const auto latest = Timer::time_point::max () - delay;
 		return now > latest ? Timer::time_point::max () : now + delay;
 	}
@@ -332,14 +342,18 @@ namespace client
 			retired = std::move (m_IdleCheckTimer);
 			if (retired)
 			{
-				try { retired->cancel (); }
-				catch (const boost::system::system_error &) { }
+				try
+				{
+					retired->cancel ();
+				}
+				catch (const boost::system::system_error &)
+				{
+				}
 			}
 		}
 	}
 
-	void I2PService::HandleIdleCheckTimer (const boost::system::error_code & ec,
-		const std::shared_ptr<IdleWait> & wait)
+	void I2PService::HandleIdleCheckTimer (const boost::system::error_code & ec, const std::shared_ptr<IdleWait> & wait)
 	{
 		std::lock_guard idle (m_IdleMutex);
 		if (ec || !m_Running.load () || !wait || m_IdleWait != wait) return;

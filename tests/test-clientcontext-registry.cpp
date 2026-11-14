@@ -49,13 +49,13 @@ int main ()
 	// registry winner, never an unregistered losing candidate.
 	{
 		auto keys = i2p::data::PrivateKeys::CreateRandomKeys (
-			i2p::data::SIGNING_KEY_TYPE_EDDSA_SHA512_ED25519,
-			i2p::data::CRYPTO_KEY_TYPE_ECIES_X25519_AEAD, true);
+			i2p::data::SIGNING_KEY_TYPE_EDDSA_SHA512_ED25519, i2p::data::CRYPTO_KEY_TYPE_ECIES_X25519_AEAD, true);
 		std::vector<std::shared_ptr<ClientDestination>> results (8);
 		std::vector<std::thread> creators;
 		std::barrier ready (8);
 		for (size_t index = 0; index < results.size (); ++index)
-			creators.emplace_back ([&, index]
+			creators.emplace_back (
+				[&, index]
 				{
 					ready.arrive_and_wait ();
 					results[index] = context.CreateNewLocalDestination (service, keys, false);

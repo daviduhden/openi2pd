@@ -1004,7 +1004,8 @@ namespace transport
 							auto delayTimer = std::make_shared<boost::asio::steady_timer> (*m_Service);
 							delayTimer->expires_after (std::chrono::milliseconds (testDelay));
 							delayTimer->async_wait (
-								[this, router, generation, lifetime, delayTimer] (const boost::system::error_code & ecode)
+								[this, router, generation, lifetime, delayTimer] (
+									const boost::system::error_code & ecode)
 								{
 									if (ecode == boost::asio::error::operation_aborted) return;
 									if (lifetime.expired ()) return;
@@ -1046,7 +1047,8 @@ namespace transport
 							auto delayTimer = std::make_shared<boost::asio::steady_timer> (*m_Service);
 							delayTimer->expires_after (std::chrono::milliseconds (testDelay));
 							delayTimer->async_wait (
-								[this, router, generation, lifetime, delayTimer] (const boost::system::error_code & ecode)
+								[this, router, generation, lifetime, delayTimer] (
+									const boost::system::error_code & ecode)
 								{
 									if (ecode == boost::asio::error::operation_aborted) return;
 									if (lifetime.expired ()) return;

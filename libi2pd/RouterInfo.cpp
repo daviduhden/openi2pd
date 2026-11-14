@@ -1988,8 +1988,8 @@ namespace data
 			// signature must leave the previously published descriptor
 			// untouched rather than a body without a usable signature.
 			std::array<uint8_t, MAX_RI_SIGNATURE_SIZE> signature { };
-			privateKeys.Sign (reinterpret_cast<const uint8_t *> (body.data ()), static_cast<int> (len),
-				signature.data ());
+			privateKeys.Sign (
+				reinterpret_cast<const uint8_t *> (body.data ()), static_cast<int> (len), signature.data ());
 			bool isSigned = false;
 			for (size_t i = 0; i < signatureLen; i++)
 				if (signature[i])

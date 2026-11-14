@@ -42,10 +42,8 @@ static void TestColorFgbgParsing ()
 	const auto highestIndex = ParseColorFgbgBackground ("0;255");
 	assert (highestIndex && *highestIndex == 255);
 
-	const std::string_view malformed[] = {
-		"", "15", ";15", "0;", "0;;15", "0;15;2", "0;15:", ":0;15", "0;15:2", "0;15::2;3",
-		"fg0;15", "0;15tail", " 0;15", "0;15 ", "256;15", "0;256", "999999999999999999999999;15"
-	};
+	const std::string_view malformed[] = { "", "15", ";15", "0;", "0;;15", "0;15;2", "0;15:", ":0;15", "0;15:2",
+		"0;15::2;3", "fg0;15", "0;15tail", " 0;15", "0;15 ", "256;15", "0;256", "999999999999999999999999;15" };
 	for (const auto value : malformed) assert (!ParseColorFgbgBackground (value));
 }
 
@@ -137,7 +135,8 @@ static void TestTextDecoding ()
 		"\xF4\x90\x80\x80", // above U+10FFFF
 		"\xF5\x80\x80\x80", // invalid lead byte
 		"\xE4\xB8", // truncated tail
-		"\xE4" "a", // bad continuation
+		"\xE4"
+		"a", // bad continuation
 		"\x80", // stray continuation byte
 		"\xFF", // never a lead byte
 	};
@@ -181,8 +180,8 @@ static void TestTextEncoding ()
 	assert (text::Encode (0xFFFFFFFF) == "\xEF\xBF\xBD");
 
 	// Every encode/decode round trip keeps the code point and its width.
-	const std::uint32_t scalars[] = { 'A', 0x7F, 0x80, 0x7FF, 0x800, 0x041D, 0x4E2D, 0xFF21, 0xFFFD, 0x10000, 0x1F600,
-		0x10FFFF };
+	const std::uint32_t scalars[]
+		= { 'A', 0x7F, 0x80, 0x7FF, 0x800, 0x041D, 0x4E2D, 0xFF21, 0xFFFD, 0x10000, 0x1F600, 0x10FFFF };
 	for (const auto scalar : scalars)
 	{
 		const std::string encoded = text::Encode (scalar);
@@ -235,8 +234,11 @@ static void TestColumnBudget ()
 	// The invariant behind the fix: the fitting prefix never exceeds the
 	// budget when measured in columns, and it stops only where the next
 	// unit would not fit.
-	const std::string_view samples[] = { "openi2pd TUI", cyrillic, wide, combining,
-		"Espa\xC3\xB1ol", "T\xC3\xBCrk\xC3\xA7" "e", "\xE4\xB8\xAD" "abc" };
+	const std::string_view samples[] = { "openi2pd TUI", cyrillic, wide, combining, "Espa\xC3\xB1ol",
+		"T\xC3\xBCrk\xC3\xA7"
+		"e",
+		"\xE4\xB8\xAD"
+		"abc" };
 	for (const auto sample : samples)
 	{
 		for (int limit = 0; limit <= 8; ++limit)
@@ -269,9 +271,8 @@ static void TestColumnBudget ()
 
 static void TestUtf8Backspace ()
 {
-	const std::string_view scalars[] = {
-		"A", "\xC3\xB1", "\xD0\xAF", "\xE4\xB8\xAD", "\xF0\x9F\x98\x80", "\xEF\xBF\xBD"
-	};
+	const std::string_view scalars[]
+		= { "A", "\xC3\xB1", "\xD0\xAF", "\xE4\xB8\xAD", "\xF0\x9F\x98\x80", "\xEF\xBF\xBD" };
 	for (const auto scalar : scalars)
 	{
 		assert (text::IsValidUtf8 (scalar));

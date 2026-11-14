@@ -311,8 +311,7 @@ inline constexpr MessageSpec kMessageSpecs[] = {
 	// that names the refusal; otherwise it would answer the refusal with
 	// another refusal until the violation budget closed the channel. It
 	// never carries a descriptor and its detail is bounded.
-	{ MessageType::Error, 2, MessageDirection::Reply, kAnyReceiverMask, 263,
-		DescriptorPolicy::None },
+	{ MessageType::Error, 2, MessageDirection::Reply, kAnyReceiverMask, 263, DescriptorPolicy::None },
 	{ MessageType::ConfigureTorrentStorageSupervised, 1, MessageDirection::Request,
 		RoleBit (EndpointRole::TorrentStorage), 8300, DescriptorPolicy::None },
 	{ MessageType::ConfigureDataStorage, 3, MessageDirection::Request, RoleBit (EndpointRole::DataStorage), 4200,

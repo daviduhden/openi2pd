@@ -490,8 +490,8 @@ void TestHelloRejectionsAndRearm ()
 	const std::wstring otherNonce = OtherNonceHex ();
 	// A connection the server rejects on identity is closed before its
 	// handshake is read, so that sender must tolerate a failed write.
-	auto rejectedHello = [&nonce] (WindowsChannel & channel)
-	{ SendHelloAfterRejection (channel, WindowsWorkerRole::Storage, nonce); };
+	auto rejectedHello
+		= [&nonce] (WindowsChannel & channel) { SendHelloAfterRejection (channel, WindowsWorkerRole::Storage, nonce); };
 
 	// A handshake with the wrong nonce is rejected and the listener
 	// re-arms for the real worker, so an impostor can never starve the
@@ -882,8 +882,8 @@ void TestFrameBounds ()
 			OVERLAPPED overlapped { };
 			overlapped.hEvent = writerEvent;
 			DWORD count = 0;
-			BOOL result = WriteFile (
-				clientPipe, beyond.data (), static_cast<DWORD> (beyond.size ()), &count, &overlapped);
+			BOOL result
+				= WriteFile (clientPipe, beyond.data (), static_cast<DWORD> (beyond.size ()), &count, &overlapped);
 			if (!result && GetLastError () == ERROR_IO_PENDING)
 				GetOverlappedResult (clientPipe, &overlapped, &count, TRUE);
 			CloseHandle (writerEvent);
@@ -921,13 +921,13 @@ void TestLegacyAcceptRoundTripAndTimeout ()
 
 	// Expired inherited deadlines retain nonblocking receive semantics.
 	// Cancellation must reap the read and leave the channel reusable.
-	auto expired = accepted->ReceiveUntil (
-		std::chrono::steady_clock::now () - std::chrono::milliseconds (1));
+	auto expired = accepted->ReceiveUntil (std::chrono::steady_clock::now () - std::chrono::milliseconds (1));
 	assert (expired.has_value () && !expired->has_value ());
 	assert (accepted->IsOpen ());
-	assert (client->SendUntil ({ MessageType::Ping, 50, { } },
-		std::chrono::steady_clock::now () + std::chrono::seconds (2)).has_value ());
-	auto absolute = accepted->ReceiveUntil ((WindowsDeadline::max) ());
+	assert (
+		client->SendUntil ({ MessageType::Ping, 50, { } }, std::chrono::steady_clock::now () + std::chrono::seconds (2))
+			.has_value ());
+	auto absolute = accepted->ReceiveUntil ((WindowsDeadline::max)());
 	assert (absolute.has_value () && absolute->has_value ());
 	assert ((*absolute)->type == MessageType::Ping);
 	assert ((*absolute)->requestId == 50);

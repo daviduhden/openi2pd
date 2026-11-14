@@ -49,12 +49,9 @@ namespace tunnel
 				assert (pool.m_Tests.emplace (msgID, test).second);
 			}
 			auto owner = pool.shared_from_this ();
-			return {
+			return { [owner, msgID, authority = test.authority] { owner->HandleTunnelTestDrop (msgID, authority); },
 				[owner, msgID, authority = test.authority]
-					{ owner->HandleTunnelTestDrop (msgID, authority); },
-				[owner, msgID, authority = test.authority]
-					{ return owner->RetireTunnelTest (msgID, authority).has_value (); }
-			};
+				{ return owner->RetireTunnelTest (msgID, authority).has_value (); } };
 		}
 
 		static size_t NumTests (const TunnelPool & pool)

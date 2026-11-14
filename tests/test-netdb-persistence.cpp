@@ -160,8 +160,8 @@ void TestFileNameBinding ()
 	// Both the retired ".tmp" name and AtomicWrite's unique staging name
 	// are leftovers of this storage and may be removed.
 	ident.clear ();
-	assert (ClassifyRouterInfoFile (std::string ("/data/netDb/r/") + cache + ".tmp", ident)
-		== RouterInfoFileKind::Staging);
+	assert (
+		ClassifyRouterInfoFile (std::string ("/data/netDb/r/") + cache + ".tmp", ident) == RouterInfoFileKind::Staging);
 	assert (ident.empty ());
 	assert (ClassifyRouterInfoFile (std::string ("/data/netDb/r/") + cache + ".tmp-4711-3", ident)
 		== RouterInfoFileKind::Staging);
@@ -173,8 +173,8 @@ void TestFileNameBinding ()
 
 	// Unknown names are never loaded and never deleted by the loader. A
 	// prefix-less name is another program's file in the same directory.
-	assert (ClassifyRouterInfoFile (std::string ("/data/netDb/r/") + hash + ".dat", ident)
-		== RouterInfoFileKind::Foreign);
+	assert (
+		ClassifyRouterInfoFile (std::string ("/data/netDb/r/") + hash + ".dat", ident) == RouterInfoFileKind::Foreign);
 	assert (ClassifyRouterInfoFile ("/data/netDb/r/other.dat", ident) == RouterInfoFileKind::Foreign);
 	assert (ClassifyRouterInfoFile ("/data/netDb/r/routerInfo-.dat", ident) == RouterInfoFileKind::Foreign);
 	assert (ClassifyRouterInfoFile ("/data/netDb/r/routerInfo-.dat.tmp-1-1", ident) == RouterInfoFileKind::Staging);
@@ -226,7 +226,7 @@ void TestStopFlushesUpdatedRouterInfo ()
 	i2p::fs::DetectDataDir (root.string (), false);
 	NetDb database;
 	i2p::data::NetDbLifecycleTestAccess::InitStorage (database, root.string ());
-	assert (i2p::data::NetDbLifecycleTestAccess::Path (database, {}).empty ());
+	assert (i2p::data::NetDbLifecycleTestAccess::Path (database, { }).empty ());
 	const auto expectedPath = i2p::data::NetDbLifecycleTestAccess::Path (database, ident.ToBase64 ());
 
 	auto buffer = BuildRouterInfo (keys, now - 60 * 1000);

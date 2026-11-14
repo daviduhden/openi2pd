@@ -894,14 +894,14 @@ std::string HumanDuration (uint64_t seconds)
 	uint64_t minutes = (seconds % 3600) / 60;
 	uint64_t secs = seconds % 60;
 	if (days)
-		return i2p::i18n::tr ("%llud %02lluh", static_cast<unsigned long long> (days),
-			static_cast<unsigned long long> (hours));
+		return i2p::i18n::tr (
+			"%llud %02lluh", static_cast<unsigned long long> (days), static_cast<unsigned long long> (hours));
 	else if (hours)
-		return i2p::i18n::tr ("%lluh %02llum", static_cast<unsigned long long> (hours),
-			static_cast<unsigned long long> (minutes));
+		return i2p::i18n::tr (
+			"%lluh %02llum", static_cast<unsigned long long> (hours), static_cast<unsigned long long> (minutes));
 	else if (minutes)
-		return i2p::i18n::tr ("%llum %02llus", static_cast<unsigned long long> (minutes),
-			static_cast<unsigned long long> (secs));
+		return i2p::i18n::tr (
+			"%llum %02llus", static_cast<unsigned long long> (minutes), static_cast<unsigned long long> (secs));
 	else
 		return i2p::i18n::tr ("%llus", static_cast<unsigned long long> (secs));
 }
@@ -1604,8 +1604,7 @@ private:
 	void PageTorrentComments (int direction);
 	bool TerminalTooSmall () const;
 	void BeginPrompt (PromptKind kind, std::string label, std::string initial = { });
-	template <size_t N>
-	void BeginPrompt (PromptKind kind, const char (&label)[N], std::string initial = { })
+	template <size_t N> void BeginPrompt (PromptKind kind, const char (&label)[N], std::string initial = { })
 	{
 		BeginPrompt (kind, std::string (i2p::i18n::tr (std::string_view (label, N - 1))), std::move (initial));
 	}
@@ -2665,7 +2664,7 @@ void App::BeginTransitPrompt ()
 	m_PendingTransit = current != "1";
 	BeginPrompt (PromptKind::ConfirmTransit,
 		std::string (m_PendingTransit ? i2p::i18n::tr ("Enable transit tunnels? [y/N] ")
-			: i2p::i18n::tr ("Disable transit tunnels? [y/N] ")));
+									  : i2p::i18n::tr ("Disable transit tunnels? [y/N] ")));
 }
 
 void App::BeginOnlinePrompt ()
@@ -2684,7 +2683,7 @@ void App::BeginOnlinePrompt ()
 	m_PendingOnline = current != "1";
 	BeginPrompt (PromptKind::ConfirmOnline,
 		std::string (m_PendingOnline ? i2p::i18n::tr ("Bring transports online? [y/N] ")
-			: i2p::i18n::tr ("Take transports offline (the router keeps running)? [y/N] ")));
+									 : i2p::i18n::tr ("Take transports offline (the router keeps running)? [y/N] ")));
 }
 
 void App::CycleDaemonLogLevel ()
@@ -3616,7 +3615,7 @@ void App::CommitPrompt ()
 			m_PendingCommentId = value;
 			BeginPrompt (hide ? PromptKind::ConfirmCommentHide : PromptKind::ConfirmCommentUnhide,
 				hide ? i2p::i18n::tr ("Hide local comment %s? [y/N] ", value.c_str ())
-					: i2p::i18n::tr ("Unhide local comment %s? [y/N] ", value.c_str ()));
+					 : i2p::i18n::tr ("Unhide local comment %s? [y/N] ", value.c_str ()));
 			return;
 		}
 		SendTorrentCommand (command + std::to_string (tunnel) + " " + std::to_string (id) + " " + value);
@@ -3842,12 +3841,8 @@ void App::ToggleSelected ()
 	switch (ClassifyTorrentStatus (torrent->status))
 	{
 	case TorrentRunState::Running:
-	case TorrentRunState::Queued:
-		pause = true;
-		break;
-	case TorrentRunState::Stopped:
-		pause = false;
-		break;
+	case TorrentRunState::Queued: pause = true; break;
+	case TorrentRunState::Stopped: pause = false; break;
 	case TorrentRunState::Unknown:
 		// Echo the status token the row already shows. The catalogs own
 		// user-facing sentences, and this path must never invent a command
@@ -3855,8 +3850,8 @@ void App::ToggleSelected ()
 		SetStatus (std::string (i2p::i18n::tr ("unknown")), true);
 		return;
 	}
-	std::string command = std::string (pause ? "TORRENT-PAUSE " : "TORRENT-RESUME ")
-		+ std::to_string (m_TorrentTunnel) + " " + std::to_string (torrent->id);
+	std::string command = std::string (pause ? "TORRENT-PAUSE " : "TORRENT-RESUME ") + std::to_string (m_TorrentTunnel)
+		+ " " + std::to_string (torrent->id);
 	SendTorrentCommand (command);
 }
 
@@ -4169,13 +4164,15 @@ void App::DrawStatus (int top, int height, int width)
 
 	show ("Router identity", Field ("router.hash"));
 	show ("Version / net ID",
-		Field ("router.version") + " / " + Field ("router.netid") + " ("
-			+ std::string (i2p::i18n::tr ("protocol")) + " " + Field ("protocol") + ")");
+		Field ("router.version") + " / " + Field ("router.netid") + " (" + std::string (i2p::i18n::tr ("protocol"))
+			+ " " + Field ("protocol") + ")");
 	show ("Uptime", HumanUptime (ToLong (Field ("router.uptime"))));
-	show ("Network status (IPv4)", std::string (RouterStatusText (Field ("network.status4")))
-		+ " " + std::string (RouterErrorText (Field ("network.error4"))));
-	show ("Network status (IPv6)", std::string (RouterStatusText (Field ("network.status6")))
-		+ " " + std::string (RouterErrorText (Field ("network.error6"))));
+	show ("Network status (IPv4)",
+		std::string (RouterStatusText (Field ("network.status4"))) + " "
+			+ std::string (RouterErrorText (Field ("network.error4"))));
+	show ("Network status (IPv6)",
+		std::string (RouterStatusText (Field ("network.status6"))) + " "
+			+ std::string (RouterErrorText (Field ("network.error6"))));
 	show ("Capabilities", Field ("router.caps"));
 	show ("Floodfill", Field ("router.floodfill") == "1" ? i2p::i18n::tr ("yes") : i2p::i18n::tr ("no"));
 	show ("NAT / testing",
@@ -4205,8 +4202,9 @@ void App::DrawStatus (int top, int height, int width)
 		Field ("router.accepts_tunnels") == "1" ? i2p::i18n::tr ("accepted (t to change)")
 												: i2p::i18n::tr ("declined (t to change)"));
 	show ("Tunnel creation success", Field ("tunnels.success") + "%");
-	show ("Tunnel queues", Field ("tunnels.queue") + " " + std::string (i2p::i18n::tr ("data")) + " / "
-		+ Field ("tunnels.build_queue") + " " + std::string (i2p::i18n::tr ("build")));
+	show ("Tunnel queues",
+		Field ("tunnels.queue") + " " + std::string (i2p::i18n::tr ("data")) + " / " + Field ("tunnels.build_queue")
+			+ " " + std::string (i2p::i18n::tr ("build")));
 	show ("Reseeding", Field ("netdb.reseeding") == "1" ? i2p::i18n::tr ("active") : i2p::i18n::tr ("idle"));
 	show ("Daemon log level", LogLevelText (m_DaemonLogLevel));
 	show ("Log queue drops", Field ("log.dropped"));
@@ -4252,9 +4250,9 @@ void App::DrawPeers (int top, int height, int width)
 		+ std::string (i2p::i18n::tr ("(bounded snapshot, Up/Down scroll)"));
 	if (!m_Connected) title += " " + std::string (i2p::i18n::tr ("[stale]"));
 	PutLine (row++, title, width, m_Theme.Attributes (ThemeRole::Primary));
-	std::string header = "  " + FitUtf8 (i2p::i18n::tr ("Peer"), 46)
-		+ FitUtf8 (i2p::i18n::tr ("Sess"), 5) + FitUtf8 (i2p::i18n::tr ("Attempts"), 9)
-		+ " " + FitUtf8 (i2p::i18n::tr ("Transports"), 20) + FitUtf8 (i2p::i18n::tr ("High"), 5);
+	std::string header = "  " + FitUtf8 (i2p::i18n::tr ("Peer"), 46) + FitUtf8 (i2p::i18n::tr ("Sess"), 5)
+		+ FitUtf8 (i2p::i18n::tr ("Attempts"), 9) + " " + FitUtf8 (i2p::i18n::tr ("Transports"), 20)
+		+ FitUtf8 (i2p::i18n::tr ("High"), 5);
 	PutLine (row++, header, width, m_Theme.Attributes (ThemeRole::Primary));
 	if (m_Peers.empty ())
 		PutLine (row,
@@ -4282,9 +4280,10 @@ void App::DrawConnections (int top, int height, int width)
 		+ std::to_string (m_Connections.size ());
 	if (!m_Connected) title = "  " + std::string (i2p::i18n::tr ("Active transport connections: daemon disconnected"));
 	PutLine (row++, title, width, m_Theme.Attributes (ThemeRole::Primary));
-	PutLine (row++, "  " + FitUtf8 (i2p::i18n::tr ("Peer"), 46)
-			+ FitUtf8 (i2p::i18n::tr ("Sess"), 5) + FitUtf8 (i2p::i18n::tr ("Attempts"), 9)
-			+ " " + FitUtf8 (i2p::i18n::tr ("Transports"), 20) + FitUtf8 (i2p::i18n::tr ("High"), 5),
+	PutLine (row++,
+		"  " + FitUtf8 (i2p::i18n::tr ("Peer"), 46) + FitUtf8 (i2p::i18n::tr ("Sess"), 5)
+			+ FitUtf8 (i2p::i18n::tr ("Attempts"), 9) + " " + FitUtf8 (i2p::i18n::tr ("Transports"), 20)
+			+ FitUtf8 (i2p::i18n::tr ("High"), 5),
 		width, m_Theme.Attributes (ThemeRole::Primary));
 	if (m_Connections.empty ())
 	{
@@ -4316,10 +4315,11 @@ void App::DrawTunnels (int top, int height, int width)
 		+ std::string (i2p::i18n::tr ("success")) + " " + Field ("tunnels.success") + "%";
 	if (!m_Connected) title += " " + std::string (i2p::i18n::tr ("[stale]"));
 	PutLine (row++, title, width, m_Theme.Attributes (ThemeRole::Primary));
-	PutLine (row++, "  " + FitUtf8 (i2p::i18n::tr ("Tunnel ID"), 11)
-			+ FitUtf8 (i2p::i18n::tr ("Direction"), 9) + FitUtf8 (i2p::i18n::tr ("State"), 14)
-			+ FitUtf8 (i2p::i18n::tr ("Hops"), 6, true) + " " + std::string (i2p::i18n::tr ("Created")), width,
-		m_Theme.Attributes (ThemeRole::Primary));
+	PutLine (row++,
+		"  " + FitUtf8 (i2p::i18n::tr ("Tunnel ID"), 11) + FitUtf8 (i2p::i18n::tr ("Direction"), 9)
+			+ FitUtf8 (i2p::i18n::tr ("State"), 14) + FitUtf8 (i2p::i18n::tr ("Hops"), 6, true) + " "
+			+ std::string (i2p::i18n::tr ("Created")),
+		width, m_Theme.Attributes (ThemeRole::Primary));
 	if (m_Tunnels.empty ())
 		PutLine (row,
 			m_TunnelsLoaded ? "  " + std::string (i2p::i18n::tr ("no tunnels"))
@@ -4332,9 +4332,9 @@ void App::DrawTunnels (int top, int height, int width)
 	for (int i = start; i < static_cast<int> (m_Tunnels.size ()) && row < top + height; ++i)
 	{
 		const auto & tunnel = m_Tunnels[i];
-		const std::string line = "  " + FitUtf8 (tunnel.id, 11)
-			+ FitUtf8 (TunnelDirectionText (tunnel.direction), 9) + FitUtf8 (TunnelStateText (tunnel.state), 14)
-			+ FitUtf8 (tunnel.hops, 6, true) + " " + Timestamp (ToLong (tunnel.created));
+		const std::string line = "  " + FitUtf8 (tunnel.id, 11) + FitUtf8 (TunnelDirectionText (tunnel.direction), 9)
+			+ FitUtf8 (TunnelStateText (tunnel.state), 14) + FitUtf8 (tunnel.hops, 6, true) + " "
+			+ Timestamp (ToLong (tunnel.created));
 		ThemeRole role = ThemeRole::Muted;
 		if (tunnel.state == "established")
 			role = ThemeRole::Success;
@@ -4442,9 +4442,9 @@ void App::DrawNetDb (int top, int height, int width)
 	m_Scroll = std::clamp (m_Scroll, 0, maximum);
 	if (routers)
 	{
-		PutLine (row++, "  " + FitUtf8 (i2p::i18n::tr ("Hash"), 42)
-				+ FitUtf8 (i2p::i18n::tr ("Ver"), 5, true) + FitUtf8 (i2p::i18n::tr ("Caps#"), 5, true)
-				+ FitUtf8 ("F", 2) + FitUtf8 ("V4", 3) + FitUtf8 ("V6", 3)
+		PutLine (row++,
+			"  " + FitUtf8 (i2p::i18n::tr ("Hash"), 42) + FitUtf8 (i2p::i18n::tr ("Ver"), 5, true)
+				+ FitUtf8 (i2p::i18n::tr ("Caps#"), 5, true) + FitUtf8 ("F", 2) + FitUtf8 ("V4", 3) + FitUtf8 ("V6", 3)
 				+ FitUtf8 (i2p::i18n::tr ("Updated"), 12) + FitUtf8 (i2p::i18n::tr ("Reach"), 6),
 			width, m_Theme.Attributes (ThemeRole::Primary));
 		for (int i = m_Scroll; i < static_cast<int> (m_NetDbRouters.size ()) && row < top + height; ++i)
@@ -4460,10 +4460,10 @@ void App::DrawNetDb (int top, int height, int width)
 	}
 	else
 	{
-		PutLine (row++, "  " + FitUtf8 (i2p::i18n::tr ("Hash"), 42)
-				+ FitUtf8 (i2p::i18n::tr ("Store"), 6, true) + FitUtf8 (i2p::i18n::tr ("Enc"), 5, true)
-				+ FitUtf8 (i2p::i18n::tr ("Expires"), 12) + " " + FitUtf8 (i2p::i18n::tr ("Earliest"), 12)
-				+ " " + FitUtf8 (i2p::i18n::tr ("State"), 8),
+		PutLine (row++,
+			"  " + FitUtf8 (i2p::i18n::tr ("Hash"), 42) + FitUtf8 (i2p::i18n::tr ("Store"), 6, true)
+				+ FitUtf8 (i2p::i18n::tr ("Enc"), 5, true) + FitUtf8 (i2p::i18n::tr ("Expires"), 12) + " "
+				+ FitUtf8 (i2p::i18n::tr ("Earliest"), 12) + " " + FitUtf8 (i2p::i18n::tr ("State"), 8),
 			width, m_Theme.Attributes (ThemeRole::Primary));
 		for (int i = m_Scroll; i < static_cast<int> (m_NetDbLeaseSets.size ()) && row < top + height; ++i)
 		{
@@ -4693,8 +4693,7 @@ void App::DrawHelp (int top, int height, int width)
 		"  o                       bring transports online/offline (confirmed; router keeps running)",
 		"  H                       reload tunnel configuration (confirmed)",
 		"  s / S                   graceful / immediate shutdown (confirmed; S requires SHUTDOWN)",
-		"  c                       cancel a pending graceful shutdown",
-		"  b / %",
+		"  c                       cancel a pending graceful shutdown", "  b / %",
 		"  t                       toggle transit tunnel acceptance (confirmed)",
 		"  The bandwidth history keeps the last 60 fifteen-second samples.", "", "  Connections (0)",
 		"  Up/Down, PgUp/PgDn      scroll established transport sessions",
@@ -4760,7 +4759,8 @@ void App::DrawHelp (int top, int height, int width)
 			translated += "b / %                   ";
 			translated += i2p::i18n::tr ("set bandwidth class / share ratio percent");
 		}
-		else translated += i2p::i18n::tr (core);
+		else
+			translated += i2p::i18n::tr (core);
 		// Scroll the translated, column-wrapped lines so longer Russian or
 		// Chinese help remains reachable after narrowing the terminal.
 		for (auto & line : WrapUtf8 (translated, width)) rendered.push_back (std::move (line));
@@ -4769,8 +4769,7 @@ void App::DrawHelp (int top, int height, int width)
 	const int visible = std::max (0, height);
 	m_HelpScroll = std::clamp (m_HelpScroll, 0, std::max (0, total - visible));
 	int row = top;
-	for (int i = m_HelpScroll; i < total && row < top + height; ++i)
-		PutLine (row++, rendered[i], width);
+	for (int i = m_HelpScroll; i < total && row < top + height; ++i) PutLine (row++, rendered[i], width);
 }
 
 void App::DrawTorrents (int top, int height, int width)
@@ -4869,7 +4868,8 @@ void App::DrawTorrents (int top, int height, int width)
 		if (layout.showRatio) line += column (RatioEtaText (torrent), TORRENT_RATIO_COLS);
 		if (layout.showError)
 		{
-			std::string error = torrent.error.empty () ? std::string () : "! " + std::string (TorrentErrorText (torrent.error));
+			std::string error
+				= torrent.error.empty () ? std::string () : "! " + std::string (TorrentErrorText (torrent.error));
 			line += column (error, TORRENT_ERROR_COLS);
 		}
 		PutLine (row, line, width, selected ? m_Theme.Attributes (ThemeRole::SelectedRow) : 0);
@@ -4953,11 +4953,11 @@ void App::BuildDetailGeneral (std::vector<std::string> & lines, const TorrentRow
 	add ("Have", HumanBytes (info.have));
 	add ("Downloaded / uploaded", HumanBytes (info.downloaded) + " / " + HumanBytes (info.uploaded));
 	add ("Rate down / up", HumanRate (info.downRate) + " / " + HumanRate (info.upRate));
-	add ("Peers",
-		i2p::i18n::tr ("%d (%d seeders, %d leechers)", info.peers, info.seeders, info.leechers));
+	add ("Peers", i2p::i18n::tr ("%d (%d seeders, %d leechers)", info.peers, info.seeders, info.leechers));
 	add ("Ratio", RatioText (info));
 	add ("ETA", info.eta ? HumanDuration (*info.eta) : std::string (i2p::i18n::tr ("not reported")));
-	add ("Error", info.error.empty () ? std::string (i2p::i18n::tr ("none")) : std::string (TorrentErrorText (info.error)));
+	add ("Error",
+		info.error.empty () ? std::string (i2p::i18n::tr ("none")) : std::string (TorrentErrorText (info.error)));
 	add ("Detail",
 		m_TorrentDetail.loaded ? std::string (i2p::i18n::tr ("loaded from TORRENT-DETAIL"))
 							   : std::string (i2p::i18n::tr ("waiting for daemon snapshot")));
@@ -5273,10 +5273,11 @@ void App::DrawTorrentStatusLine (int height, int width)
 			// queued or unknown row is never counted as running.
 			if (ClassifyTorrentStatus (torrent.status) == TorrentRunState::Running) ++active;
 		}
-		std::string line = "  " + std::string (i2p::i18n::tr ("%s/%s shown, %s active | %s / %s | %s down %s up",
-			std::to_string (m_TorrentView.size ()).c_str (), std::to_string (m_Torrents.size ()).c_str (),
-			std::to_string (active).c_str (), HumanBytes (have).c_str (), HumanBytes (total).c_str (),
-			HumanRateShort (down).c_str (), HumanRateShort (up).c_str ()));
+		std::string line = "  "
+			+ std::string (i2p::i18n::tr ("%s/%s shown, %s active | %s / %s | %s down %s up",
+				std::to_string (m_TorrentView.size ()).c_str (), std::to_string (m_Torrents.size ()).c_str (),
+				std::to_string (active).c_str (), HumanBytes (have).c_str (), HumanBytes (total).c_str (),
+				HumanRateShort (down).c_str (), HumanRateShort (up).c_str ()));
 		PutLine (row, line, width, m_Theme.Attributes (ThemeRole::Muted));
 	}
 }
@@ -5565,7 +5566,7 @@ void App::HandleKey (int key)
 				m_PendingTrackerHash = torrent->hash;
 				BeginPrompt (key == 't' ? PromptKind::AddTracker : PromptKind::RemoveTracker,
 					std::string (key == 't' ? i2p::i18n::tr ("add I2P tracker URL: ")
-						: i2p::i18n::tr ("remove I2P tracker URL: ")));
+											: i2p::i18n::tr ("remove I2P tracker URL: ")));
 				return;
 			}
 			case 'p':
@@ -5648,7 +5649,8 @@ void App::HandleKey (int key)
 		m_Scroll = 0;
 		m_NextNetDbList = std::chrono::steady_clock::now ();
 		SetStatus (std::string (m_NetDbView == NetDbView::Routers ? i2p::i18n::tr ("netDb: router directory")
-			: i2p::i18n::tr ("netDb: LeaseSet directory")), false);
+																  : i2p::i18n::tr ("netDb: LeaseSet directory")),
+			false);
 		return;
 	}
 
@@ -5962,12 +5964,11 @@ int main (int argc, char * argv[])
 	{
 		std::printf ("i2pd-tui %s - %s\n\n", VERSION,
 			std::string (i2p::i18n::tr ("local console for the openi2pd router")).c_str ());
-		std::printf ("%s\n\n", std::string (i2p::i18n::tr (
-			"Usage: i2pd-tui [--socket PATH] [--datadir PATH] [--conf PATH] [--service]")).c_str ());
+		std::printf ("%s\n\n",
+			std::string (i2p::i18n::tr ("Usage: i2pd-tui [--socket PATH] [--datadir PATH] [--conf PATH] [--service]"))
+				.c_str ());
 		auto option = [] (const char * syntax, std::string_view description)
-		{
-			std::printf ("  %-19s%s\n", syntax, std::string (i2p::i18n::tr (description)).c_str ());
-		};
+		{ std::printf ("  %-19s%s\n", syntax, std::string (i2p::i18n::tr (description)).c_str ()); };
 		option ("--socket ENDPOINT", "local IPC endpoint (Unix socket; Windows pipe name)");
 		option ("--datadir PATH", "data directory (default: user data directory)");
 		option ("--conf PATH", "i2pd.conf used to read [tui] socket");
@@ -6025,8 +6026,8 @@ int main (int argc, char * argv[])
 	{
 		const char * error = i2p::tui::terminal::LastError ();
 		// LastError is a closed backend-owned literal, not peer/user data.
-		const std::string description (error ? i2p::i18n::tr (std::string_view (error))
-			: i2p::i18n::tr ("unable to initialize the terminal"));
+		const std::string description (
+			error ? i2p::i18n::tr (std::string_view (error)) : i2p::i18n::tr ("unable to initialize the terminal"));
 		std::fprintf (stderr, "i2pd-tui: %s\n", description.c_str ());
 		return EXIT_FAILURE;
 	}

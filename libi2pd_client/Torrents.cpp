@@ -119,16 +119,14 @@ namespace torrents
 	{
 		std::lock_guard lock (m_Mutex);
 		for (const auto & ticket : m_Leases)
-			if (ticket->block == block)
-				return !ticket->cancelled.exchange (true, std::memory_order_acq_rel);
+			if (ticket->block == block) return !ticket->cancelled.exchange (true, std::memory_order_acq_rel);
 		return false;
 	}
 
 	void UploadLoadLedger::CancelAll ()
 	{
 		std::lock_guard lock (m_Mutex);
-		for (const auto & ticket : m_Leases)
-			ticket->cancelled.store (true, std::memory_order_release);
+		for (const auto & ticket : m_Leases) ticket->cancelled.store (true, std::memory_order_release);
 	}
 
 	std::vector<RequestedBlock> UploadLoadLedger::CancelForChoke ()
@@ -471,9 +469,9 @@ namespace torrents
 
 	bool IsWindowsReservedDeviceName (std::string_view component)
 	{
-		static constexpr std::array<std::string_view, 22> reserved { "CON", "PRN", "AUX", "NUL", "COM1", "COM2",
-			"COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9", "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6",
-			"LPT7", "LPT8", "LPT9" };
+		static constexpr std::array<std::string_view, 22> reserved { "CON", "PRN", "AUX", "NUL", "COM1", "COM2", "COM3",
+			"COM4", "COM5", "COM6", "COM7", "COM8", "COM9", "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7",
+			"LPT8", "LPT9" };
 		// Win32 resolves only the part before the first '.', after removing
 		// the trailing spaces and dots it ignores, so "CON .txt" and
 		// "AUX..txt" address the same devices as "CON.txt" and "AUX.txt".
@@ -1063,8 +1061,7 @@ namespace torrents
 				// or expose earlier fields from a malformed dictionary.
 				if (!offset || offset > buf.size ()) return { { }, 0 };
 				// Reject duplicate keys without returning partial fields.
-				if (!ret.emplace (key, buf.substr (0, offset)).second)
-					return { { }, 0 };
+				if (!ret.emplace (key, buf.substr (0, offset)).second) return { { }, 0 };
 				len += offset;
 				buf = buf.substr (offset);
 			}
@@ -1794,15 +1791,15 @@ namespace torrents
 	}
 
 	bool Piece::ReadVerifiedBlock (std::span<const PieceFileFragment> fragments, size_t offset, size_t len,
-		uint64_t epoch, const std::atomic<bool> & cancelled, std::vector<uint8_t> & out) try
+		uint64_t epoch, const std::atomic<bool> & cancelled, std::vector<uint8_t> & out)
+	try
 	{
 		out.clear ();
 		std::array<uint8_t, SHA_DIGEST_LENGTH> expected;
 		{
 			std::lock_guard lock (m_Mutex);
-			if (cancelled.load (std::memory_order_acquire) || epoch != m_BlockEpoch
-				|| !len || len > REQUEST_BLOCK_SIZE || offset > m_Size || len > m_Size - offset
-				|| m_IsSaving || m_IsVerificationPending || m_Blocks)
+			if (cancelled.load (std::memory_order_acquire) || epoch != m_BlockEpoch || !len || len > REQUEST_BLOCK_SIZE
+				|| offset > m_Size || len > m_Size - offset || m_IsSaving || m_IsVerificationPending || m_Blocks)
 				return false;
 			std::copy_n (m_Hash, expected.size (), expected.begin ());
 		}
@@ -1822,16 +1819,16 @@ namespace torrents
 		for (const auto & fragment : fragments)
 		{
 			if (cancelled.load (std::memory_order_acquire) || GetBlockEpoch () != epoch
-				|| !fragment.file->Load (fragment.fileOffset, scratch.get () + fragment.fragmentOffset,
-					fragment.fragmentSize))
+				|| !fragment.file->Load (
+					fragment.fileOffset, scratch.get () + fragment.fragmentOffset, fragment.fragmentSize))
 				return false;
 		}
 		std::array<uint8_t, SHA_DIGEST_LENGTH> digest { };
 		if (!SHA1 (scratch.get (), m_Size, digest.data ()) || digest != expected) return false;
 		{
 			std::lock_guard lock (m_Mutex);
-			if (cancelled.load (std::memory_order_acquire) || epoch != m_BlockEpoch
-				|| m_IsSaving || m_IsVerificationPending || m_Blocks)
+			if (cancelled.load (std::memory_order_acquire) || epoch != m_BlockEpoch || m_IsSaving
+				|| m_IsVerificationPending || m_Blocks)
 				return false;
 			out.assign (scratch.get () + offset, scratch.get () + offset + len);
 			// Warm the existing verified cache only after the complete read
@@ -1998,21 +1995,19 @@ namespace torrents
 		if (!owner || !totalSize || totalSize > MAX_PEER_METADATA_SIZE || now < m_RetryAt || m_Verified)
 			return std::nullopt;
 		Expire (now);
-		if (!m_Data.empty () && totalSize != m_Data.size () && !m_AlternateSize)
-			m_AlternateSize = totalSize;
-		if (!m_Data.empty () && m_AlternateSize && now >= m_LastProgress
-			&& now - m_LastProgress >= REQUEST_TIMEOUT)
+		if (!m_Data.empty () && totalSize != m_Data.size () && !m_AlternateSize) m_AlternateSize = totalSize;
+		if (!m_Data.empty () && m_AlternateSize && now >= m_LastProgress && now - m_LastProgress >= REQUEST_TIMEOUT)
 		{
 			// Remember one competing size before discarding stalled work.
 			// Otherwise the first peer visited on each timer tick could renew
 			// its lease forever and starve every differently sized offer.
 			m_PreferredSize = m_AlternateSize;
 			m_PreferredUntil = now > std::numeric_limits<uint64_t>::max () - REQUEST_TIMEOUT
-				? std::numeric_limits<uint64_t>::max () : now + REQUEST_TIMEOUT;
+				? std::numeric_limits<uint64_t>::max ()
+				: now + REQUEST_TIMEOUT;
 			ClearAssembly ();
 		}
-		if (m_PreferredSize && now < m_PreferredUntil && totalSize != m_PreferredSize)
-			return std::nullopt;
+		if (m_PreferredSize && now < m_PreferredUntil && totalSize != m_PreferredSize) return std::nullopt;
 		if (!m_Data.empty () && totalSize != m_Data.size ())
 		{
 			// A size disagreement cannot replace an active transfer. Once every
@@ -2032,15 +2027,17 @@ namespace torrents
 			m_PreferredSize = 0;
 			m_PreferredUntil = 0;
 		}
-		if (std::any_of (m_Blocks.begin (), m_Blocks.end (),
-			[owner] (const Block & block) { return block.owner == owner; })) return std::nullopt;
+		if (std::any_of (
+				m_Blocks.begin (), m_Blocks.end (), [owner] (const Block & block) { return block.owner == owner; }))
+			return std::nullopt;
 		for (size_t piece = 0; piece < m_Blocks.size (); ++piece)
 		{
 			auto & block = m_Blocks[piece];
 			if (block.received || block.owner) continue;
 			block.owner = owner;
 			block.deadline = now > std::numeric_limits<uint64_t>::max () - REQUEST_TIMEOUT
-				? std::numeric_limits<uint64_t>::max () : now + REQUEST_TIMEOUT;
+				? std::numeric_limits<uint64_t>::max ()
+				: now + REQUEST_TIMEOUT;
 			return piece;
 		}
 		return std::nullopt;
@@ -2066,7 +2063,8 @@ namespace torrents
 		{
 			ClearAssembly ();
 			m_RetryAt = now > std::numeric_limits<uint64_t>::max () - m_FailureDelay
-				? std::numeric_limits<uint64_t>::max () : now + m_FailureDelay;
+				? std::numeric_limits<uint64_t>::max ()
+				: now + m_FailureDelay;
 			m_FailureDelay = std::min<uint64_t> (m_FailureDelay * 2, 300);
 			return Result::HashMismatch;
 		}
@@ -2158,7 +2156,8 @@ namespace torrents
 					auto [announce, l] = ExtractByteString (buf);
 					if (!l || announce.size () > MAX_TRACKER_ANNOUNCE_LENGTH)
 						m_Error = eTorrentErrorMalformedMetaInfo;
-					else m_Announce = announce;
+					else
+						m_Announce = announce;
 					return l;
 				}
 				else if (key == "announce-list")
@@ -3115,9 +3114,8 @@ namespace torrents
 			= std::clamp (interval, MIN_TRACKER_REQUESTS_INTERVAL, MAX_TRACKER_REQUESTS_INTERVAL);
 	}
 
-	void Torrent::HandleDatagramTrackerResponse (
-		size_t trackerID, uint32_t interval, const uint8_t * hashes, size_t hashesLen,
-		int64_t numSeeders, int64_t numLeechers)
+	void Torrent::HandleDatagramTrackerResponse (size_t trackerID, uint32_t interval, const uint8_t * hashes,
+		size_t hashesLen, int64_t numSeeders, int64_t numLeechers)
 	{
 		// Share HTTP's fixed-width rule before changing tracker state. Empty
 		// replies are valid; a nonempty range requires an actual buffer.
@@ -3652,8 +3650,7 @@ namespace torrents
 			{
 				const uint32_t pieceIndex = std::get<0> (it);
 				auto [offset, len] = m_Pieces[pieceIndex].GetNextBlockToRequest ();
-				if (len > 0)
-					return { pieceIndex, static_cast<uint32_t> (offset), static_cast<uint32_t> (len) };
+				if (len > 0) return { pieceIndex, static_cast<uint32_t> (offset), static_cast<uint32_t> (len) };
 			}
 		}
 		return { 0, 0, 0 };
@@ -4006,7 +4003,8 @@ namespace torrents
 		return ret;
 	}
 
-	void Torrent::RefreshUploadSlots (uint64_t now) try
+	void Torrent::RefreshUploadSlots (uint64_t now)
+	try
 	{
 		// Stream submission can fail synchronously. Avoid nested policy
 		// application if its teardown removes a connection during a pass.
@@ -4052,7 +4050,10 @@ namespace torrents
 			{
 				connection->m_IsRemoteChoked = true;
 				connection->m_UploadDispatchFailed.store (true, std::memory_order_release);
-				try { connection->Close (); }
+				try
+				{
+					connection->Close ();
+				}
 				catch (...)
 				{
 					// Admission is already revoked if posting fails. The next
@@ -4526,8 +4527,7 @@ namespace torrents
 					if (m_IsInterested && !m_Torrent->IsComplete ())
 					{
 						// try to request if we still have blocks to request
-						if (!m_IsChoked)
-							requested = RequestNextBlocks ();
+						if (!m_IsChoked) requested = RequestNextBlocks ();
 					}
 					if (!requested)
 					{
@@ -4841,8 +4841,7 @@ namespace torrents
 		{
 			m_RemoteBitfield.set (index);
 			RefreshInterest ();
-			if (m_IsInterested && m_LastRequestedPieceIndex < 0 && !m_IsChoked)
-				RequestNextBlocks ();
+			if (m_IsInterested && m_LastRequestedPieceIndex < 0 && !m_IsChoked) RequestNextBlocks ();
 		}
 	}
 
@@ -4905,8 +4904,7 @@ namespace torrents
 		m_RemoteBitfield.set ();
 		m_RemoteBitfieldReceived = true;
 		RefreshInterest ();
-		if (!m_IsInterested)
-			Terminate (); // we don't need this connection
+		if (!m_IsInterested) Terminate (); // we don't need this connection
 	}
 
 	void PeerConnection::SendHaveAllMsg ()
@@ -5214,7 +5212,7 @@ namespace torrents
 			return;
 		}
 		if (std::find (m_IncomingRequestsQueue.begin (), m_IncomingRequestsQueue.end (), request)
-				!= m_IncomingRequestsQueue.end ())
+			!= m_IncomingRequestsQueue.end ())
 			return;
 		if (m_IncomingRequestsQueue.size () + m_UploadLoads.Size () + m_NumPieces >= MAX_INCOMING_REQUESTS_QUEUE_SIZE)
 		{
@@ -5342,8 +5340,8 @@ namespace torrents
 	bool PeerConnection::SendRequestedBlock (const RequestedBlock & requestedBlock)
 	{
 		if (m_UploadClosing.load (std::memory_order_acquire)) return false;
-		if (!m_Stream || !m_IsEstablished || !m_Torrent || m_IsRemoteChoked
-			|| m_Torrent->IsRemoved () || m_Torrent->IsStopped ())
+		if (!m_Stream || !m_IsEstablished || !m_Torrent || m_IsRemoteChoked || m_Torrent->IsRemoved ()
+			|| m_Torrent->IsStopped ())
 			return false;
 		bool ret = true;
 		auto [index, offset, len] = requestedBlock;
@@ -5827,7 +5825,6 @@ namespace torrents
 		}
 	}
 
-
 	void PeerConnection::HandleUtMetadataExtension (const uint8_t * buf, size_t len)
 	{
 		if (!m_Torrent || m_Torrent->IsStopped () || m_Torrent->IsRemoved ()) return;
@@ -5838,10 +5835,23 @@ namespace torrents
 			{
 				int64_t * target = nullptr;
 				bool * seen = nullptr;
-				if (key == "msg_type") { target = &msgType; seen = &seenType; }
-				else if (key == "piece") { target = &piece; seen = &seenPiece; }
-				else if (key == "total_size") { target = &totalSize; seen = &seenTotal; }
-				else return 0;
+				if (key == "msg_type")
+				{
+					target = &msgType;
+					seen = &seenType;
+				}
+				else if (key == "piece")
+				{
+					target = &piece;
+					seen = &seenPiece;
+				}
+				else if (key == "total_size")
+				{
+					target = &totalSize;
+					seen = &seenTotal;
+				}
+				else
+					return 0;
 				auto [number, consumed] = ExtractInteger (value);
 				if (consumed)
 				{
@@ -5851,8 +5861,7 @@ namespace torrents
 				}
 				return consumed;
 			});
-		if (!payloadLen || payloadLen > len || duplicate || !seenType || !seenPiece || msgType < 0 || piece < 0)
-			return;
+		if (!payloadLen || payloadLen > len || duplicate || !seenType || !seenPiece || msgType < 0 || piece < 0) return;
 		// BEP 9 requires unknown message kinds to be ignored.
 		if (msgType > 2) return;
 		if (static_cast<uint64_t> (piece) > std::numeric_limits<size_t>::max () / REQUEST_BLOCK_SIZE) return;
@@ -5869,7 +5878,8 @@ namespace torrents
 				SendExtendedMsg (m_RemoteMsgIDUtMetadata,
 					CreateDictionary ({ { "msg_type", CreateInteger (1) }, { "piece", CreateInteger (piece) },
 						{ "total_size", CreateInteger (info.size ()) } }),
-					std::string_view ((const char *)info.data () + offset, std::min (info.size () - offset, REQUEST_BLOCK_SIZE)));
+					std::string_view (
+						(const char *)info.data () + offset, std::min (info.size () - offset, REQUEST_BLOCK_SIZE)));
 			}
 			else
 				SendExtendedMsg (m_RemoteMsgIDUtMetadata,
@@ -5899,7 +5909,8 @@ namespace torrents
 			auto info = download.TakeVerified ();
 			const auto bytes = std::string_view (reinterpret_cast<const char *> (info.data ()), info.size ());
 			// A matching hash does not make trailing bytes a valid dictionary.
-			const auto consumed = ParseDictionary (bytes, [] (std::string_view, std::string_view) -> size_t { return 0; });
+			const auto consumed
+				= ParseDictionary (bytes, [] (std::string_view, std::string_view) -> size_t { return 0; });
 			if (consumed == bytes.size ())
 			{
 				if (auto tunnel = GetTorrentsTunnel ()) tunnel->UpdateTorrentInfo (m_Torrent, bytes);
@@ -5918,7 +5929,8 @@ namespace torrents
 	void PeerConnection::RequestUtMetadata ()
 	{
 		if (!m_Torrent || m_Torrent->IsValid () || m_Torrent->IsStopped () || m_Torrent->IsRemoved ()
-			|| !m_RemoteMsgIDUtMetadata || !m_RemoteMetadataSize) return;
+			|| !m_RemoteMsgIDUtMetadata || !m_RemoteMetadataSize)
+			return;
 		if (!m_MetadataOwner) m_MetadataOwner = m_Torrent->AllocateMetadataOwner ();
 		auto piece = m_Torrent->GetMetadataDownload ().Request (
 			m_MetadataOwner, m_RemoteMetadataSize, i2p::util::GetMonotonicSeconds ());

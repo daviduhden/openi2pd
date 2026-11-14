@@ -352,8 +352,7 @@ namespace proxy
 		if (m_UDPTunnel)
 		{
 			m_UDPTunnel->Stop ();
-			if (auto server = GetServer ())
-				server->ReleaseLocalUDPPort (m_UDPTunnel->GetLocalEndpoint ().port ());
+			if (auto server = GetServer ()) server->ReleaseLocalUDPPort (m_UDPTunnel->GetLocalEndpoint ().port ());
 			m_UDPTunnel = nullptr;
 		}
 		// Destruction can reach this path after the final shared owner has

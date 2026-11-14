@@ -133,8 +133,7 @@ public:
 				break;
 			}
 			std::string argument (static_cast<size_t> (length), '\0');
-			const int written = WideCharToMultiByte (
-				CP_UTF8, 0, value, -1, argument.data (), length, nullptr, nullptr);
+			const int written = WideCharToMultiByte (CP_UTF8, 0, value, -1, argument.data (), length, nullptr, nullptr);
 			if (written != length)
 			{
 				m_Storage.clear ();

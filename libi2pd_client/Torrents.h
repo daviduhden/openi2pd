@@ -299,7 +299,13 @@ namespace torrents
 	{
 	public:
 		using Owner = uint64_t;
-		enum class Result { Rejected, Accepted, Complete, HashMismatch };
+		enum class Result
+		{
+			Rejected,
+			Accepted,
+			Complete,
+			HashMismatch
+		};
 		static constexpr uint64_t REQUEST_TIMEOUT = 30;
 		std::optional<size_t> Request (Owner owner, size_t totalSize, uint64_t now);
 		Result Receive (Owner owner, size_t piece, size_t totalSize, std::span<const uint8_t> data,
@@ -314,7 +320,12 @@ namespace torrents
 		size_t Received () const { return m_Received; }
 
 	private:
-		struct Block { Owner owner = 0; uint64_t deadline = 0; bool received = false; };
+		struct Block
+		{
+			Owner owner = 0;
+			uint64_t deadline = 0;
+			bool received = false;
+		};
 		void Expire (uint64_t now);
 		void ClearAssembly ();
 		std::vector<uint8_t> m_Data;
@@ -698,8 +709,8 @@ namespace torrents
 		/// before dispatching IO. Exact fragment coverage and the captured
 		/// epoch are required. Only complete hash-verified scratch replaces
 		/// the cache under its mutex; failure preserves the existing cache.
-		bool ReadVerifiedBlock (std::span<const PieceFileFragment> fragments, size_t offset, size_t len,
-			uint64_t epoch, const std::atomic<bool> & cancelled, std::vector<uint8_t> & out);
+		bool ReadVerifiedBlock (std::span<const PieceFileFragment> fragments, size_t offset, size_t len, uint64_t epoch,
+			const std::atomic<bool> & cancelled, std::vector<uint8_t> & out);
 		size_t GetSize () const { return m_Size; }
 		bool HasBlock (size_t offset) const;
 		std::pair<size_t, size_t>
@@ -817,7 +828,12 @@ namespace torrents
 		UploadLoadLedger & operator= (const UploadLoadLedger &) = delete;
 		struct Lease final
 		{
-			Lease (RequestedBlock block, uint64_t epoch, size_t bytes) : block (block), epoch (epoch), bytes (bytes) { }
+			Lease (RequestedBlock block, uint64_t epoch, size_t bytes)
+				: block (block)
+				, epoch (epoch)
+				, bytes (bytes)
+			{
+			}
 			~Lease ();
 			const RequestedBlock block;
 			const uint64_t epoch;
@@ -846,7 +862,11 @@ namespace torrents
 		void Close ();
 		bool Contains (const RequestedBlock & block) const;
 		bool IsCancelled (const RequestedBlock & block) const;
-		size_t Size () const { std::lock_guard lock (m_Mutex); return m_Leases.size (); }
+		size_t Size () const
+		{
+			std::lock_guard lock (m_Mutex);
+			return m_Leases.size ();
+		}
 
 	private:
 		mutable std::mutex m_Mutex;
@@ -1181,7 +1201,10 @@ namespace torrents
 		bool SetMetaComment (std::string_view comment);
 		bool SetCreatedBy (std::string_view createdBy);
 		void SetName (std::string_view name) { m_Name = AdjustName (name); }
-		bool IsValid () const { return HasPeerID () && !m_Name.empty () && m_PieceLength && (m_Length || !m_Files.empty ()); }
+		bool IsValid () const
+		{
+			return HasPeerID () && !m_Name.empty () && m_PieceLength && (m_Length || !m_Files.empty ());
+		}
 		TorrentError GetError () const
 		{
 			return HasPeerID () ? m_Error.load (std::memory_order_acquire) : eTorrentErrorRandomSource;

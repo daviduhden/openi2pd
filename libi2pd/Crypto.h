@@ -209,8 +209,7 @@ namespace crypto
 	 * output may overlap an input if its writable extent is sufficient.
 	 * A null output is rejected without access.
 	 */
-	bool ElGamalDecrypt (
-		const uint8_t * key, const uint8_t * encrypted, uint8_t * data);
+	bool ElGamalDecrypt (const uint8_t * key, const uint8_t * encrypted, uint8_t * data);
 	void GenerateElGamalKeyPair (uint8_t * priv, uint8_t * pub);
 
 	// ECIES
@@ -223,8 +222,7 @@ namespace crypto
 	 * Inputs are borrowed; output may overlap the envelope because
 	 * plaintext publication follows the complete integrity check.
 	 */
-	bool ECIESDecrypt (const EC_GROUP * curve, const BIGNUM * key, const uint8_t * encrypted,
-		uint8_t * data);
+	bool ECIESDecrypt (const EC_GROUP * curve, const BIGNUM * key, const uint8_t * encrypted, uint8_t * data);
 	void GenerateECIESKeyPair (const EC_GROUP * curve, BIGNUM *& priv, EC_POINT *& pub);
 
 	// AES

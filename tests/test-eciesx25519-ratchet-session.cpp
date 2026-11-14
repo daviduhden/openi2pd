@@ -683,7 +683,7 @@ int main ()
 	else
 	{
 		std::printf ("note: ML-KEM-768 is unavailable in this OpenSSL; the hybrid "
-			"session checks were not exercised\n");
+					 "session checks were not exercised\n");
 		pqChecksOmitted = true;
 	}
 #else

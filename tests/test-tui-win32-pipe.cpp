@@ -68,8 +68,7 @@ void TestPipeNameShape ()
 void TestFirstInstanceGuard ()
 {
 	const auto name = MakePipeName (L"first-instance");
-	constexpr DWORD openMode
-		= PIPE_ACCESS_DUPLEX | FILE_FLAG_FIRST_PIPE_INSTANCE | FILE_FLAG_OVERLAPPED;
+	constexpr DWORD openMode = PIPE_ACCESS_DUPLEX | FILE_FLAG_FIRST_PIPE_INSTANCE | FILE_FLAG_OVERLAPPED;
 	constexpr DWORD pipeMode = PIPE_TYPE_BYTE | PIPE_READMODE_BYTE | PIPE_WAIT | PIPE_REJECT_REMOTE_CLIENTS;
 	// Leave capacity for a second instance: exhaustion must not mask
 	// the namespace-exclusivity check being exercised here.
@@ -89,12 +88,12 @@ void TestFirstInstanceGuard ()
 
 	// The identical request without FIRST_PIPE_INSTANCE must succeed.
 	// This distinguishes the guard from a quota or permission failure.
-	HANDLE ordinary = CreateNamedPipeW (name.c_str (), openMode & ~FILE_FLAG_FIRST_PIPE_INSTANCE,
-		pipeMode, maxInstances, 4096, 4096, 0, nullptr);
+	HANDLE ordinary = CreateNamedPipeW (
+		name.c_str (), openMode & ~FILE_FLAG_FIRST_PIPE_INSTANCE, pipeMode, maxInstances, 4096, 4096, 0, nullptr);
 	const DWORD ordinaryError = ordinary == INVALID_HANDLE_VALUE ? GetLastError () : ERROR_SUCCESS;
 	if (ordinary == INVALID_HANDLE_VALUE)
-		std::fprintf (stderr, "ordinary second pipe instance failed: %lu\n",
-			static_cast<unsigned long> (ordinaryError));
+		std::fprintf (
+			stderr, "ordinary second pipe instance failed: %lu\n", static_cast<unsigned long> (ordinaryError));
 	assert (ordinary != INVALID_HANDLE_VALUE);
 	assert (CloseHandle (ordinary));
 
@@ -114,8 +113,7 @@ void TestOverlappedCancelDrain ()
 	assert (server != INVALID_HANDLE_VALUE);
 
 	HANDLE client = INVALID_HANDLE_VALUE;
-	std::thread connector (
-		[&name, &client]
+	std::thread connector ([&name, &client]
 		{ client = CreateFileW (name.c_str (), GENERIC_READ | GENERIC_WRITE, 0, nullptr, OPEN_EXISTING, 0, nullptr); });
 
 	OVERLAPPED connectOverlapped { };
@@ -170,8 +168,7 @@ void TestByteModeFraming ()
 	assert (server != INVALID_HANDLE_VALUE);
 
 	HANDLE client = INVALID_HANDLE_VALUE;
-	std::thread connector (
-		[&name, &client]
+	std::thread connector ([&name, &client]
 		{ client = CreateFileW (name.c_str (), GENERIC_READ | GENERIC_WRITE, 0, nullptr, OPEN_EXISTING, 0, nullptr); });
 	const BOOL connected = ConnectNamedPipe (server, nullptr);
 	if (!connected) assert (GetLastError () == ERROR_PIPE_CONNECTED);
@@ -284,7 +281,8 @@ void TestClientHeaderLimit ()
 
 	std::string validInput = header + "\npayload";
 	size_t offset = 0;
-	auto valid = i2p::tui::detail::ReadLineBounded (128, [&] () -> i2p::expected<char, std::string>
+	auto valid = i2p::tui::detail::ReadLineBounded (128,
+		[&] () -> i2p::expected<char, std::string>
 		{
 			if (offset == validInput.size ()) return i2p::unexpected ("end of input");
 			return validInput[offset++];
@@ -296,7 +294,8 @@ void TestClientHeaderLimit ()
 	std::string invalidInput (128, 'A');
 	invalidInput += "Xpayload";
 	offset = 0;
-	auto invalid = i2p::tui::detail::ReadLineBounded (128, [&] () -> i2p::expected<char, std::string>
+	auto invalid = i2p::tui::detail::ReadLineBounded (128,
+		[&] () -> i2p::expected<char, std::string>
 		{
 			if (offset == invalidInput.size ()) return i2p::unexpected ("end of input");
 			return invalidInput[offset++];

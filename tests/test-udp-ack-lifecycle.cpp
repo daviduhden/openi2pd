@@ -20,7 +20,9 @@ class AckFixture final : public i2p::client::UDPConnection
 {
 public:
 	explicit AckFixture (boost::asio::io_context & service)
-		: UDPConnection (service, nullptr) { }
+		: UDPConnection (service, nullptr)
+	{
+	}
 
 	AckHandler Prepare (uint32_t sequence)
 	{
@@ -30,10 +32,7 @@ public:
 	}
 
 	unsigned Actions () const { return m_Actions; }
-	void WaitForStopRequest () const
-	{
-		m_AckAdmission->stopRequested.wait (false);
-	}
+	void WaitForStopRequest () const { m_AckAdmission->stopRequested.wait (false); }
 	std::function<void ()> beforeAction;
 
 protected:
@@ -56,7 +55,7 @@ int main ()
 	// Acknowledgment retires a successful completion before its dispatch.
 	auto acknowledged = connection->Prepare (7);
 	connection->Acked (7);
-	acknowledged ({});
+	acknowledged ({ });
 	assert (connection->Actions () == 0);
 
 	// An old wait cannot consume or mutate a successor's authority.
@@ -64,10 +63,10 @@ int main ()
 	connection->CancelAckTimer ();
 	assert (!connection->GetAckCancellationError ());
 	auto current = connection->Prepare (9);
-	stale ({});
+	stale ({ });
 	assert (connection->Actions () == 0);
-	current ({});
-	current ({});
+	current ({ });
+	current ({ });
 	assert (connection->Actions () == 1);
 
 	// A zero-sequence probe is still a real wait. Clearing its whole
@@ -75,7 +74,7 @@ int main ()
 	auto probe = connection->Prepare (0);
 	connection->m_UnackedDatagrams.push_back ({ 9, 1 });
 	connection->Acked (9);
-	probe ({});
+	probe ({ });
 	assert (connection->Actions () == 1);
 	assert (connection->m_UnackedDatagrams.empty ());
 
@@ -83,7 +82,7 @@ int main ()
 	auto failed = connection->Prepare (15);
 	failed (boost::asio::error::operation_aborted);
 	assert (connection->m_AckTimerSeqn.load () == 0);
-	failed ({});
+	failed ({ });
 	assert (connection->Actions () == 1);
 
 	// Restart cannot revive a completion admitted by a prior run.
@@ -91,9 +90,9 @@ int main ()
 	connection->Stop ();
 	connection->Start ();
 	auto restarted = connection->Prepare (11);
-	stopped ({});
+	stopped ({ });
 	assert (connection->Actions () == 1);
-	restarted ({});
+	restarted ({ });
 	assert (connection->Actions () == 2);
 
 	// The timeout action is admitted before Stop requests the gate.
@@ -110,14 +109,15 @@ int main ()
 		actionFinished.store (true);
 	};
 	auto blocked = connection->Prepare (16);
-	std::jthread dispatch ([blocked] { blocked ({}); });
+	std::jthread dispatch ([blocked] { blocked ({ }); });
 	admitted.get_future ().wait ();
-	std::jthread stop ([&]
-	{
-		connection->Stop ();
-		stoppedAfterAction.store (actionFinished.load ());
-		stopReturned.store (true);
-	});
+	std::jthread stop (
+		[&]
+		{
+			connection->Stop ();
+			stoppedAfterAction.store (actionFinished.load ());
+			stopReturned.store (true);
+		});
 	connection->WaitForStopRequest ();
 	const bool returnedBeforeRelease = stopReturned.load ();
 	releaseAction.set_value ();
@@ -126,7 +126,7 @@ int main ()
 	assert (!returnedBeforeRelease);
 	assert (stoppedAfterAction.load ());
 	assert (stopReturned.load ());
-	connection->beforeAction = {};
+	connection->beforeAction = { };
 	connection->Start ();
 
 	// Even a real undrained wait must not retain its owning connection.
@@ -135,6 +135,6 @@ int main ()
 	auto retained = connection->Prepare (13);
 	connection.reset ();
 	assert (released.expired ());
-	retained ({});
+	retained ({ });
 	return 0;
 }

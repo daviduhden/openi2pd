@@ -212,8 +212,7 @@ void TestPrivateKeysRoundTrip (i2p::data::SigningKeyType type)
 	// the previously usable parsed identity as well as its signer.
 	auto corrupted = buffer;
 	assert (!keys.IsOfflineSignature () && keys.GetB33OfflineKeys ().GetLen () == 0);
-	const auto signingOffset = buffer.size ()
-		- keys.GetPublic ()->GetSigningPrivateKeyLen ();
+	const auto signingOffset = buffer.size () - keys.GetPublic ()->GetSigningPrivateKeyLen ();
 	assert (signingOffset < corrupted.size ());
 	corrupted[signingOffset] ^= 0x01;
 	assert (parsed.FromBuffer (corrupted.data (), corrupted.size ()) == 0);
@@ -240,11 +239,14 @@ void TestEddsaFallbackPairValidation ()
 	{
 		priv[0] = static_cast<uint8_t> (seed);
 		assert (Ed25519::ExpandPrivateKey (priv.data (), expanded.data ()));
-		if (expanded[31] & 0x20) { found = true; break; }
+		if (expanded[31] & 0x20)
+		{
+			found = true;
+			break;
+		}
 	}
 	assert (found);
-	std::unique_ptr<BN_CTX, decltype (&BN_CTX_free)> ctx (
-		BN_CTX_new (), BN_CTX_free);
+	std::unique_ptr<BN_CTX, decltype (&BN_CTX_free)> ctx (BN_CTX_new (), BN_CTX_free);
 	assert (ctx);
 	std::array<uint8_t, EDDSA25519_PUBLIC_KEY_LENGTH> modern, legacy;
 	auto point = GetEd25519 ()->GeneratePublicKey (expanded.data (), ctx.get ());
@@ -301,12 +303,9 @@ void TestEddsaFallbackPairValidation ()
 	}
 	EDDSA25519SignerCompat missing (nullptr, modern.data ());
 	assert (!missing.IsValid ());
-	assert (!i2p::data::PrivateKeys::CreateSigner (
-		i2p::data::SIGNING_KEY_TYPE_EDDSA_SHA512_ED25519, nullptr));
-	assert (!i2p::data::PrivateKeys::CreateSigner (
-		i2p::data::SIGNING_KEY_TYPE_EDDSA_SHA512_ED25519ph, nullptr));
-	assert (!i2p::data::PrivateKeys::CreateSigner (
-		i2p::data::SIGNING_KEY_TYPE_REDDSA_SHA512_ED25519, nullptr));
+	assert (!i2p::data::PrivateKeys::CreateSigner (i2p::data::SIGNING_KEY_TYPE_EDDSA_SHA512_ED25519, nullptr));
+	assert (!i2p::data::PrivateKeys::CreateSigner (i2p::data::SIGNING_KEY_TYPE_EDDSA_SHA512_ED25519ph, nullptr));
+	assert (!i2p::data::PrivateKeys::CreateSigner (i2p::data::SIGNING_KEY_TYPE_REDDSA_SHA512_ED25519, nullptr));
 	OPENSSL_cleanse (priv.data (), priv.size ());
 }
 
@@ -372,7 +371,6 @@ void CreateRsaRawTestSignature (std::array<uint8_t, 256> & modulus, std::array<u
 #endif
 }
 
-
 void TestInvalidSignatureParameters ()
 {
 	using namespace i2p::crypto;
@@ -380,8 +378,7 @@ void TestInvalidSignatureParameters ()
 	// to sanitizers. Invalid sizes do not grant authority over more bytes.
 	uint8_t tiny = 0xA5;
 	constexpr size_t largest = std::numeric_limits<size_t>::max ();
-	for (size_t length : { size_t (0), size_t (1), size_t (255),
-		size_t (257), size_t (513), largest })
+	for (size_t length : { size_t (0), size_t (1), size_t (255), size_t (257), size_t (513), largest })
 	{
 		RSAVerifier verifier (length, EVP_sha256 ());
 		assert (verifier.GetPublicKeyLen () == 0);
@@ -401,11 +398,9 @@ void TestInvalidSignatureParameters ()
 		assert (verifier.GetPrivateKeyLen () == 2 * length);
 	}
 
-	for (size_t length : { size_t (0), size_t (1), size_t (63),
-		size_t (65), ECDSAP384_KEY_LENGTH, largest })
+	for (size_t length : { size_t (0), size_t (1), size_t (63), size_t (65), ECDSAP384_KEY_LENGTH, largest })
 	{
-		assert (!CreateECDSARandomKeys (
-			NID_X9_62_prime256v1, length, &tiny, &tiny));
+		assert (!CreateECDSARandomKeys (NID_X9_62_prime256v1, length, &tiny, &tiny));
 		assert (tiny == 0xA5);
 #ifndef LIBRESSL_VERSION_NUMBER
 		ECDSAVerifier verifier (NID_X9_62_prime256v1, length, EVP_sha256 ());
@@ -418,16 +413,14 @@ void TestInvalidSignatureParameters ()
 		assert (tiny == 0xA5);
 #endif
 	}
-	assert (!CreateECDSARandomKeys (
-		NID_undef, ECDSAP256_KEY_LENGTH, &tiny, &tiny));
+	assert (!CreateECDSARandomKeys (NID_undef, ECDSAP256_KEY_LENGTH, &tiny, &tiny));
 	assert (tiny == 0xA5);
 #ifndef LIBRESSL_VERSION_NUMBER
 	ECDSAVerifier missingDigest (NID_X9_62_prime256v1, ECDSAP256_KEY_LENGTH, nullptr);
 	missingDigest.SetPublicKey (&tiny);
 	assert (missingDigest.GetPublicKeyLen () == 0);
 	assert (!missingDigest.Verify (TEST_MESSAGE, sizeof (TEST_MESSAGE), &tiny));
-	ECDSASigner missingSignerDigest (
-		NID_X9_62_prime256v1, ECDSAP256_KEY_LENGTH, nullptr, &tiny);
+	ECDSASigner missingSignerDigest (NID_X9_62_prime256v1, ECDSAP256_KEY_LENGTH, nullptr, &tiny);
 	missingSignerDigest.Sign (TEST_MESSAGE, sizeof (TEST_MESSAGE), &tiny);
 	assert (tiny == 0xA5);
 	ECDSAVerifier invalidCurve (NID_undef, ECDSAP256_KEY_LENGTH, EVP_sha256 ());

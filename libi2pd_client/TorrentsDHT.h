@@ -579,8 +579,13 @@ namespace torrents
 	class TorrentsDHT;
 	enum class DHTTimerSlot : size_t
 	{
-		Update, Expiration, SendPing, QueryExpiration, IncomingDrain,
-		StateSave, Count
+		Update,
+		Expiration,
+		SendPing,
+		QueryExpiration,
+		IncomingDrain,
+		StateSave,
+		Count
 	};
 	// A generation borrows its owner only while ownerMutex is held.
 	// Timers carry weak state and per-wait identities, never the owner.
@@ -592,8 +597,7 @@ namespace torrents
 		std::atomic<bool> saveInFlight { false };
 		std::mutex ownerMutex;
 		TorrentsDHT * owner = nullptr;
-		std::array<std::shared_ptr<const uint8_t>,
-			static_cast<size_t> (DHTTimerSlot::Count)> waits;
+		std::array<std::shared_ptr<const uint8_t>, static_cast<size_t> (DHTTimerSlot::Count)> waits;
 		boost::system::error_code timerCancellationError;
 		std::mutex persistenceMutex;
 	};
@@ -705,8 +709,8 @@ namespace torrents
 		// Requires this generation's ownerMutex. Actions cannot reenter
 		// Start/Stop; private schedulers share the admitted lock.
 		TimerCallback MakeTimerCallbackLocked (DHTTimerSlot slot, TimerAction action);
-		void ScheduleTimerLocked (boost::asio::steady_timer & timer,
-			std::chrono::milliseconds delay, DHTTimerSlot slot, TimerAction action);
+		void ScheduleTimerLocked (
+			boost::asio::steady_timer & timer, std::chrono::milliseconds delay, DHTTimerSlot slot, TimerAction action);
 		// Revoke and drain owner admission before cancelling timers.
 		void RetireServiceState ();
 

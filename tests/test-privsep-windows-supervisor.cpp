@@ -93,13 +93,12 @@ bool HasUsableWorkerStandardHandles ()
 	STARTUPINFOW startup { };
 	GetStartupInfoW (&startup);
 	if (!(startup.dwFlags & STARTF_USESTDHANDLES)) return false;
-	for (HANDLE handle : { startup.hStdInput, startup.hStdOutput,
-		startup.hStdError })
+	for (HANDLE handle : { startup.hStdInput, startup.hStdOutput, startup.hStdError })
 	{
 		DWORD flags = 0;
-		if (!handle || handle == INVALID_HANDLE_VALUE
-			|| !GetHandleInformation (handle, &flags)
-			|| GetFileType (handle) != FILE_TYPE_CHAR) return false;
+		if (!handle || handle == INVALID_HANDLE_VALUE || !GetHandleInformation (handle, &flags)
+			|| GetFileType (handle) != FILE_TYPE_CHAR)
+			return false;
 	}
 	return true;
 }
@@ -119,10 +118,8 @@ int DiagnoseWorkerInitialization ()
 	}
 	if (!spawned->WaitUntil (deadline))
 	{
-		const bool reaped = spawned->TerminateAndWaitUntil (
-			Clock::now () + std::chrono::seconds (2));
-		std::printf ("startup probe: wait failed, terminated=%u\n",
-			reaped ? 1u : 0u);
+		const bool reaped = spawned->TerminateAndWaitUntil (Clock::now () + std::chrono::seconds (2));
+		std::printf ("startup probe: wait failed, terminated=%u\n", reaped ? 1u : 0u);
 		return 1;
 	}
 	DWORD code = 0;
@@ -132,18 +129,16 @@ int DiagnoseWorkerInitialization ()
 		return 1;
 	}
 	JOBOBJECT_EXTENDED_LIMIT_INFORMATION limits { };
-	if (!QueryInformationJobObject (spawned->job.Native (),
-		JobObjectExtendedLimitInformation, &limits, sizeof (limits), nullptr))
+	if (!QueryInformationJobObject (
+			spawned->job.Native (), JobObjectExtendedLimitInformation, &limits, sizeof (limits), nullptr))
 	{
-		std::printf ("startup probe: memory query failed, exit=%lu\n",
-			static_cast<unsigned long> (code));
+		std::printf ("startup probe: memory query failed, exit=%lu\n", static_cast<unsigned long> (code));
 		return 1;
 	}
 	// These counters contain no arguments or authentication data.
 	// A near-limit peak does not establish allocation failure.
 	std::printf ("startup probe: exit=%lu peak_process=%llu peak_job=%llu limit_process=%llu limit_job=%llu\n",
-		static_cast<unsigned long> (code),
-		static_cast<unsigned long long> (limits.PeakProcessMemoryUsed),
+		static_cast<unsigned long> (code), static_cast<unsigned long long> (limits.PeakProcessMemoryUsed),
 		static_cast<unsigned long long> (limits.PeakJobMemoryUsed),
 		static_cast<unsigned long long> (limits.ProcessMemoryLimit),
 		static_cast<unsigned long long> (limits.JobMemoryLimit));
@@ -158,14 +153,13 @@ int DiagnoseWorkerInitialization ()
 std::string SystemErrorText (DWORD error)
 {
 	char * message = nullptr;
-	const DWORD length = FormatMessageA (
-		FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS, nullptr, error,
-		MAKELANGID (LANG_NEUTRAL, SUBLANG_DEFAULT), reinterpret_cast<LPSTR> (&message), 0, nullptr);
+	const DWORD length
+		= FormatMessageA (FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
+			nullptr, error, MAKELANGID (LANG_NEUTRAL, SUBLANG_DEFAULT), reinterpret_cast<LPSTR> (&message), 0, nullptr);
 	if (!length || !message) return { };
 	std::string text (message, length);
 	LocalFree (message);
-	while (!text.empty () && (text.back () == '\r' || text.back () == '\n' || text.back () == ' '))
-		text.pop_back ();
+	while (!text.empty () && (text.back () == '\r' || text.back () == '\n' || text.back () == ' ')) text.pop_back ();
 	return text;
 }
 
@@ -575,38 +569,35 @@ void TestFailedSpawnLeavesNoHandles ()
  * Startup and authenticated lifecycle failures must fail regressions.
  * Diagnostic text and mere membership in a job cannot grant a skip.
  */
-enum class FixtureOutcome { Passed = 0, Failed = 1, CapabilityDenied = 77 };
+enum class FixtureOutcome
+{
+	Passed = 0,
+	Failed = 1,
+	CapabilityDenied = 77
+};
 
 constexpr FixtureOutcome ClassifyJobAssignment (DWORD error, bool nested)
 {
-	return error == ERROR_SUCCESS ? FixtureOutcome::Passed
-		: error == ERROR_ACCESS_DENIED && nested
-			? FixtureOutcome::CapabilityDenied : FixtureOutcome::Failed;
+	return error == ERROR_SUCCESS				 ? FixtureOutcome::Passed
+		: error == ERROR_ACCESS_DENIED && nested ? FixtureOutcome::CapabilityDenied
+												 : FixtureOutcome::Failed;
 }
 
-constexpr int FixtureExitCode (FixtureOutcome first, FixtureOutcome second,
-	int live)
+constexpr int FixtureExitCode (FixtureOutcome first, FixtureOutcome second, int live)
 {
-	if (live != 0 || first == FixtureOutcome::Failed
-		|| second == FixtureOutcome::Failed) return 1;
-	return first == FixtureOutcome::CapabilityDenied
-		|| second == FixtureOutcome::CapabilityDenied ? 77 : 0;
+	if (live != 0 || first == FixtureOutcome::Failed || second == FixtureOutcome::Failed) return 1;
+	return first == FixtureOutcome::CapabilityDenied || second == FixtureOutcome::CapabilityDenied ? 77 : 0;
 }
 
 void TestFixtureOutcomeClassification ()
 {
-	assert (FixtureExitCode (FixtureOutcome::CapabilityDenied,
-		FixtureOutcome::Passed, 1) == 1);
-	assert (FixtureExitCode (FixtureOutcome::CapabilityDenied,
-		FixtureOutcome::Passed, 0) == 77);
+	assert (FixtureExitCode (FixtureOutcome::CapabilityDenied, FixtureOutcome::Passed, 1) == 1);
+	assert (FixtureExitCode (FixtureOutcome::CapabilityDenied, FixtureOutcome::Passed, 0) == 77);
 	assert (ClassifyJobAssignment (ERROR_SUCCESS, true) == FixtureOutcome::Passed);
-	assert (ClassifyJobAssignment (ERROR_ACCESS_DENIED, true)
-		== FixtureOutcome::CapabilityDenied);
-	assert (ClassifyJobAssignment (ERROR_ACCESS_DENIED, false)
-		== FixtureOutcome::Failed);
+	assert (ClassifyJobAssignment (ERROR_ACCESS_DENIED, true) == FixtureOutcome::CapabilityDenied);
+	assert (ClassifyJobAssignment (ERROR_ACCESS_DENIED, false) == FixtureOutcome::Failed);
 	assert (ClassifyJobAssignment (0xc0000142u, true) == FixtureOutcome::Failed);
-	assert (ClassifyJobAssignment (ERROR_INVALID_HANDLE, true)
-		== FixtureOutcome::Failed);
+	assert (ClassifyJobAssignment (ERROR_INVALID_HANDLE, true) == FixtureOutcome::Failed);
 }
 
 /*
@@ -648,8 +639,8 @@ FixtureOutcome StartChildInJob (WindowsHandle & job, WindowsHandle & process, DW
 		const BOOL terminated = TerminateProcess (process.Native (), ERROR_ACCESS_DENIED);
 		const DWORD waited = WaitForSingleObject (process.Native (), 5000);
 		if (!terminated || waited != WAIT_OBJECT_0) return FixtureOutcome::Failed;
-		std::printf ("cannot assign the helper child to a worker job (Win32 error %lu)\n",
-			static_cast<unsigned long> (error));
+		std::printf (
+			"cannot assign the helper child to a worker job (Win32 error %lu)\n", static_cast<unsigned long> (error));
 		return ClassifyJobAssignment (error, IsCurrentProcessInJobObject ());
 	}
 	if (ResumeThread (thread.Native ()) == static_cast<DWORD> (-1)) return FixtureOutcome::Failed;
@@ -822,7 +813,7 @@ int TestLiveWorker ()
 		// The stopped supervisor owns no listener and no pipe name either.
 		if (!supervisor.PipeName ().empty ()) return 1;
 		return 0;
-	} ();
+	}();
 
 	// Nothing may survive the supervisor: no channel, process or job
 	// handle. This runs for success and failure alike.
@@ -890,8 +881,8 @@ int main (int argc, char ** argv)
 			if (!HasUsableWorkerStandardHandles ()) return 3;
 			// role pipe parentPid parentSession nonce
 			if (index + 5 >= argc) return 2;
-			return RunWindowsWorker (argv[index + 1], argv[index + 2], argv[index + 3], argv[index + 4],
-				argv[index + 5]);
+			return RunWindowsWorker (
+				argv[index + 1], argv[index + 2], argv[index + 3], argv[index + 4], argv[index + 5]);
 		}
 	}
 

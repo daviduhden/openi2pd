@@ -144,8 +144,8 @@ public:
 	i2p::expected<void, std::string> Send (const Message & message, int timeoutMs = 5000);
 	/// Send within a caller-owned deadline, including nested transactions.
 	/// One immediate nonblocking attempt is allowed even at expiry.
-	i2p::expected<void, std::string> SendUntil (const Message & message,
-		std::chrono::steady_clock::time_point deadline);
+	i2p::expected<void, std::string> SendUntil (
+		const Message & message, std::chrono::steady_clock::time_point deadline);
 	/*
 	 * Send one message with at most one SCM_RIGHTS descriptor. The
 	 * descriptor is an explicitly authorized side channel; the protocol
@@ -162,16 +162,15 @@ public:
 	/// Descriptor send within an absolute transaction deadline.
 	/// SendWithFd ownership/policy apply; the sender fd is borrowed.
 	/// Expiry permits one immediate attempt, as with SendUntil.
-	i2p::expected<void, std::string> SendWithFdUntil (const Message & message, int fd,
-		std::chrono::steady_clock::time_point deadline);
+	i2p::expected<void, std::string> SendWithFdUntil (
+		const Message & message, int fd, std::chrono::steady_clock::time_point deadline);
 	/// Receive a message without a descriptor. An unexpected descriptor is
 	/// closed and reported as an error; an empty optional means the
 	/// deadline expired.
 	i2p::expected<std::optional<Message>, std::string> Receive (int timeoutMs = 1000);
 	/// Receive without rebasing a transaction's absolute deadline.
 	/// Expired deadlines permit only an immediately available record.
-	i2p::expected<std::optional<Message>, std::string> ReceiveUntil (
-		std::chrono::steady_clock::time_point deadline);
+	i2p::expected<std::optional<Message>, std::string> ReceiveUntil (std::chrono::steady_clock::time_point deadline);
 	/*
 	 * Receive one frame and optionally one descriptor. Any SCM_RIGHTS
 	 * descriptor is returned to the caller and must be closed by it. More
@@ -231,8 +230,8 @@ private:
 	 * relative timeouts are converted once; nested refusals never rebase
 	 * the receive budget after scheduling or payload preparation.
 	 */
-	i2p::expected<void, std::string> SendWithFdUntil (const Message & message, int fd, bool infinite,
-		std::chrono::steady_clock::time_point deadline);
+	i2p::expected<void, std::string> SendWithFdUntil (
+		const Message & message, int fd, bool infinite, std::chrono::steady_clock::time_point deadline);
 	/*
 	 * Reply with a typed Error and account the violation; false means
 	 * "close". `frame.type` must be a type that has a registry row: the
@@ -241,8 +240,8 @@ private:
 	 * The caller supplies the capped absolute receive deadline; preparing
 	 * the Error payload cannot grant a new relative timeout.
 	 */
-	bool RejectFrame (const Message & frame, ErrorCode code, std::string_view detail,
-		std::chrono::steady_clock::time_point deadline);
+	bool RejectFrame (
+		const Message & frame, ErrorCode code, std::string_view detail, std::chrono::steady_clock::time_point deadline);
 
 	int m_Fd = -1;
 	EnforcementPolicy m_EnforcementPolicy = EnforcementPolicy::Transport;

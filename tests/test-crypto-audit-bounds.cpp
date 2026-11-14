@@ -118,12 +118,10 @@ void TestElGamalRejectsTrivialPublicKeys ()
 	uint8_t privateKey[256] = { };
 	privateKey[255] = 7;
 	uint8_t decrypted[222];
-	auto rejectWithoutPlaintext = [&] (const uint8_t * candidateKey,
-		const uint8_t * candidateCiphertext)
+	auto rejectWithoutPlaintext = [&] (const uint8_t * candidateKey, const uint8_t * candidateCiphertext)
 	{
 		memset (decrypted, 0xA5, sizeof (decrypted));
-		assert (!i2p::crypto::ElGamalDecrypt (
-			candidateKey, candidateCiphertext, decrypted));
+		assert (!i2p::crypto::ElGamalDecrypt (candidateKey, candidateCiphertext, decrypted));
 		for (auto byte : decrypted) assert (byte == 0);
 	};
 	rejectWithoutPlaintext (privateKey, encrypted);
@@ -151,13 +149,11 @@ void TestElGamalRejectsTrivialPublicKeys ()
 	// when the caller deliberately reuses an input buffer as output.
 	uint8_t overlappingCiphertext[514];
 	memcpy (overlappingCiphertext, encrypted, sizeof (encrypted));
-	assert (i2p::crypto::ElGamalDecrypt (
-		generatedPrivate, overlappingCiphertext, overlappingCiphertext));
+	assert (i2p::crypto::ElGamalDecrypt (generatedPrivate, overlappingCiphertext, overlappingCiphertext));
 	assert (memcmp (overlappingCiphertext, data, sizeof (data)) == 0);
 	uint8_t overlappingPrivate[256];
 	memcpy (overlappingPrivate, generatedPrivate, sizeof (generatedPrivate));
-	assert (i2p::crypto::ElGamalDecrypt (
-		overlappingPrivate, encrypted, overlappingPrivate));
+	assert (i2p::crypto::ElGamalDecrypt (overlappingPrivate, encrypted, overlappingPrivate));
 	assert (memcmp (overlappingPrivate, data, sizeof (data)) == 0);
 }
 
@@ -167,35 +163,28 @@ void TestECIESIntegrityPublication ()
 		EC_GROUP_new_by_curve_name (NID_X9_62_prime256v1), EC_GROUP_free);
 	std::unique_ptr<BIGNUM, decltype (&BN_clear_free)> key (BN_new (), BN_clear_free);
 	assert (curve && key && BN_set_word (key.get (), 7) == 1);
-	std::unique_ptr<EC_POINT, decltype (&EC_POINT_free)> publicKey (
-		EC_POINT_new (curve.get ()), EC_POINT_free);
-	assert (publicKey && EC_POINT_mul (
-		curve.get (), publicKey.get (), key.get (), nullptr, nullptr, nullptr) == 1);
+	std::unique_ptr<EC_POINT, decltype (&EC_POINT_free)> publicKey (EC_POINT_new (curve.get ()), EC_POINT_free);
+	assert (publicKey && EC_POINT_mul (curve.get (), publicKey.get (), key.get (), nullptr, nullptr, nullptr) == 1);
 	std::array<uint8_t, 222> plaintext;
 	plaintext.fill (0x5A);
 	std::array<uint8_t, 514> envelope;
-	assert (i2p::crypto::ECIESEncrypt (
-		curve.get (), publicKey.get (), plaintext.data (), envelope.data ()));
+	assert (i2p::crypto::ECIESEncrypt (curve.get (), publicKey.get (), plaintext.data (), envelope.data ()));
 	std::array<uint8_t, 222> output;
-	assert (i2p::crypto::ECIESDecrypt (
-		curve.get (), key.get (), envelope.data (), output.data ()));
+	assert (i2p::crypto::ECIESDecrypt (curve.get (), key.get (), envelope.data (), output.data ()));
 	assert (output == plaintext);
 	// Publication occurs only after all envelope reads and integrity checks.
 	auto overlapping = envelope;
-	assert (i2p::crypto::ECIESDecrypt (
-		curve.get (), key.get (), overlapping.data (), overlapping.data ()));
+	assert (i2p::crypto::ECIESDecrypt (curve.get (), key.get (), overlapping.data (), overlapping.data ()));
 	assert (memcmp (overlapping.data (), plaintext.data (), plaintext.size ()) == 0);
 	// CBC changes to the final plaintext block leave its stored digest
 	// unchanged. Failed integrity must leave the caller output untouched.
 	envelope[258 + 224] ^= 1;
 	output.fill (0xA5);
-	assert (!i2p::crypto::ECIESDecrypt (
-		curve.get (), key.get (), envelope.data (), output.data ()));
+	assert (!i2p::crypto::ECIESDecrypt (curve.get (), key.get (), envelope.data (), output.data ()));
 	for (auto byte : output) assert (byte == 0xA5);
 	assert (EC_POINT_set_to_infinity (curve.get (), publicKey.get ()) == 1);
 	envelope.fill (0xA5);
-	assert (!i2p::crypto::ECIESEncrypt (
-		curve.get (), publicKey.get (), plaintext.data (), envelope.data ()));
+	assert (!i2p::crypto::ECIESEncrypt (curve.get (), publicKey.get (), plaintext.data (), envelope.data ()));
 	for (auto byte : envelope) assert (byte == 0);
 }
 
@@ -408,7 +397,8 @@ void TestGostVerificationAndRecoveryBounds ()
 		assert (!curve->Verify (publicKey.get (), digest.get (), r.get (), s.get ()));
 		assert (!curve->RecoverPublicKey (digest.get (), r.get (), s.get ()));
 		validSignature ();
-		std::unique_ptr<EC_POINT, decltype (&EC_POINT_free)> infinity (EC_POINT_new (curve->GetGroup ()), EC_POINT_free);
+		std::unique_ptr<EC_POINT, decltype (&EC_POINT_free)> infinity (
+			EC_POINT_new (curve->GetGroup ()), EC_POINT_free);
 		assert (infinity && EC_POINT_is_at_infinity (curve->GetGroup (), infinity.get ()) == 1);
 		assert (!curve->Verify (infinity.get (), digest.get (), r.get (), s.get ()));
 	}

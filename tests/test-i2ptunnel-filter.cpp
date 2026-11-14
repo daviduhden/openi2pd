@@ -200,8 +200,7 @@ int main ()
 	// back to an open tunnel.
 	{
 		size_t invalid = 0;
-		auto parsed = ParseLegacyAccessList (
-			" " + allowed.ToBase32 () + " , " + other.ToBase32 () + " ", invalid);
+		auto parsed = ParseLegacyAccessList (" " + allowed.ToBase32 () + " , " + other.ToBase32 () + " ", invalid);
 		assert (parsed && !parsed->IsDefaultAllow ());
 		assert (invalid == 0);
 		TunnelAccessFilter legacy (parsed);

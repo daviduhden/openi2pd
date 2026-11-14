@@ -43,7 +43,12 @@ namespace util
 			sync.m_IsRunning.store (true);
 			std::promise<void> completed;
 			auto completion = completed.get_future ();
-			std::thread runner ([&] () { sync.Run (); completed.set_value (); });
+			std::thread runner (
+				[&] ()
+				{
+					sync.Run ();
+					completed.set_value ();
+				});
 			const bool returned = completion.wait_for (std::chrono::seconds (2)) == std::future_status::ready;
 			sync.m_IsRunning.store (false);
 			sync.m_Service.stop ();

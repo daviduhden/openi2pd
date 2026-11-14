@@ -1615,7 +1615,8 @@ namespace transport
 	void NTCP2Session::HandleInitialReadDeadline (const boost::system::error_code & ecode, uint64_t generation)
 	{
 		if (ecode == boost::asio::error::operation_aborted
-			|| generation != m_InitialReadGeneration.load (std::memory_order_relaxed)) return;
+			|| generation != m_InitialReadGeneration.load (std::memory_order_relaxed))
+			return;
 		if (IsTerminated () || IsEstablished ()) return;
 		// No protocol keys exist yet. Close silently rather than emit a
 		// termination frame or retain the prefix until the 28-33 s sweep.

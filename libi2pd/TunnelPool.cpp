@@ -723,7 +723,8 @@ namespace tunnel
 			i2p::crypto::FillRandomBytes ({ reinterpret_cast<uint8_t *> (&msgID), sizeof (msgID) });
 			uint8_t key[32] { };
 			uint64_t tag = 0;
-			auto clearSecrets = i2p::modern::ScopeExit ([&]
+			auto clearSecrets = i2p::modern::ScopeExit (
+				[&]
 				{
 					OPENSSL_cleanse (key, sizeof (key));
 					OPENSSL_cleanse (&tag, sizeof (tag));
@@ -756,24 +757,22 @@ namespace tunnel
 				if (!m_Tests.emplace (msgID, test).second) continue;
 			}
 			bool submitted = false;
-			auto retireUnsentTest = i2p::modern::ScopeExit ([&]
+			auto retireUnsentTest = i2p::modern::ScopeExit (
+				[&]
 				{
 					if (submitted) return;
 					(void)RetireTunnelTest (msgID, test.authority);
 				});
 			auto s = shared_from_this ();
-			msg->onDrop = [msgID, authority = test.authority, s] ()
-			{
-				s->HandleTunnelTestDrop (msgID, authority);
-			};
+			msg->onDrop = [msgID, authority = test.authority, s] () { s->HandleTunnelTestDrop (msgID, authority); };
 			// send
 			it.first->SendTunnelDataMsgTo (it.second->GetNextIdentHash (), it.second->GetNextTunnelID (), msg);
 			submitted = true;
 		}
 	}
 
-	std::optional<TunnelPool::TunnelTest> TunnelPool::RetireTunnelTest (uint32_t msgID,
-		const std::shared_ptr<const TunnelTestAuthority> & authority)
+	std::optional<TunnelPool::TunnelTest> TunnelPool::RetireTunnelTest (
+		uint32_t msgID, const std::shared_ptr<const TunnelTestAuthority> & authority)
 	{
 		std::optional<TunnelTest> retired;
 		{
@@ -788,8 +787,7 @@ namespace tunnel
 		return retired;
 	}
 
-	void TunnelPool::HandleTunnelTestDrop (uint32_t msgID,
-		const std::shared_ptr<const TunnelTestAuthority> & authority)
+	void TunnelPool::HandleTunnelTestDrop (uint32_t msgID, const std::shared_ptr<const TunnelTestAuthority> & authority)
 	{
 		auto retired = RetireTunnelTest (msgID, authority);
 		// A reply, detach or replacement revokes the old drop callback's

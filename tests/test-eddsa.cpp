@@ -40,12 +40,12 @@ void AddOrder (uint8_t * littleEndian)
 	}
 }
 
-std::array<uint8_t, 64> Sha512 (const std::array<uint8_t, 32> & r,
-	const std::array<uint8_t, 32> & pub, const uint8_t * msg, size_t len)
+std::array<uint8_t, 64> Sha512 (
+	const std::array<uint8_t, 32> & r, const std::array<uint8_t, 32> & pub, const uint8_t * msg, size_t len)
 {
 	// The result type owns the full SHA-512 output; callers cannot pass
 	// a SHA-256-sized buffer to the provider or verifier.
-	std::array<uint8_t, 64> digest {};
+	std::array<uint8_t, 64> digest { };
 	EVP_MD_CTX * ctx = EVP_MD_CTX_new ();
 	assert (ctx);
 	assert (EVP_DigestInit_ex (ctx, EVP_sha512 (), nullptr) == 1);
@@ -176,8 +176,7 @@ int main ()
 		assert (BN_one (identity.y) == 1);
 		assert (ed25519->EncodePublicKey (identity, encoded, ctx));
 		assert (encoded[0] == 1);
-		for (size_t i = 1; i < sizeof (encoded); ++i)
-			assert (encoded[i] == 0);
+		for (size_t i = 1; i < sizeof (encoded); ++i) assert (encoded[i] == 0);
 		assert (!ed25519->EncodePublicKey (identity, nullptr, ctx));
 		memset (encoded, 0xA5, sizeof (encoded));
 		assert (!ed25519->EncodePublicKey (identity, encoded, nullptr));
@@ -192,13 +191,11 @@ int main ()
 		assert (BN_set_word (identity.y, 2) == 1);
 		assert (ed25519->EncodePublicKey (identity, encoded, ctx));
 		assert (encoded[0] == 1);
-		for (size_t i = 1; i < sizeof (encoded); ++i)
-			assert (encoded[i] == 0);
+		for (size_t i = 1; i < sizeof (encoded); ++i) assert (encoded[i] == 0);
 		BN_CTX_free (ctx);
 		i2p::crypto::RedDSA25519Signer invalid (nullptr);
 		assert (!invalid.IsValid ());
-		for (size_t i = 0; i < sizeof (encoded); ++i)
-			assert (invalid.GetPublicKey ()[i] == 0);
+		for (size_t i = 0; i < sizeof (encoded); ++i) assert (invalid.GetPublicKey ()[i] == 0);
 		uint8_t signature[64];
 		memset (signature, 0xA5, sizeof (signature));
 		invalid.Sign (msg, 1023, signature);
@@ -230,8 +227,7 @@ int main ()
 		for (unsigned missing = 0; missing < 3; ++missing)
 		{
 			memset (output, 0xA5, sizeof (output));
-			ed25519->SignRedDSA (missing == 0 ? nullptr : scalar,
-				missing == 1 ? nullptr : redSigner.GetPublicKey (),
+			ed25519->SignRedDSA (missing == 0 ? nullptr : scalar, missing == 1 ? nullptr : redSigner.GetPublicKey (),
 				missing == 2 ? nullptr : msg, 1023, output);
 			for (auto byte : output) assert (byte == 0);
 		}
@@ -255,9 +251,8 @@ int main ()
 		{
 			memset (blindedPriv, 0xA5, sizeof (blindedPriv));
 			memset (blindedPub, 0xA5, sizeof (blindedPub));
-			assert (!ed25519->BlindPrivateKey (missing == 0 ? nullptr : scalar,
-				missing == 1 ? nullptr : seed, missing == 2 ? nullptr : blindedPriv,
-				missing == 3 ? nullptr : blindedPub));
+			assert (!ed25519->BlindPrivateKey (missing == 0 ? nullptr : scalar, missing == 1 ? nullptr : seed,
+				missing == 2 ? nullptr : blindedPriv, missing == 3 ? nullptr : blindedPub));
 			if (missing != 2)
 				for (auto byte : blindedPriv) assert (byte == 0);
 			if (missing != 3)

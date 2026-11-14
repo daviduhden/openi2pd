@@ -892,8 +892,7 @@ struct DataStorageClient::Impl
 		const auto id = ++nextRequest;
 		child.ChannelFd ().SetEnforcementPolicy (EnforcementPolicy::Endpoint);
 		const auto deadline = std::chrono::steady_clock::now () + std::chrono::milliseconds (REQUEST_TIMEOUT_MS);
-		if (!child.ChannelFd ().SendWithFdUntil (
-				{ MessageType::ConfigureDataStorage, id, *setup }, passed, deadline))
+		if (!child.ChannelFd ().SendWithFdUntil ({ MessageType::ConfigureDataStorage, id, *setup }, passed, deadline))
 		{
 			error = "data storage worker is unreachable";
 			return false;
@@ -1038,8 +1037,8 @@ struct DataStorageClient::Impl
 		const bool cancelledAfterSend = token.stop_requested ();
 		if (cancelledAfterSend)
 		{
-			const auto cancelDeadline = std::min (deadline,
-				std::chrono::steady_clock::now () + std::chrono::milliseconds (250));
+			const auto cancelDeadline
+				= std::min (deadline, std::chrono::steady_clock::now () + std::chrono::milliseconds (250));
 			if (std::chrono::steady_clock::now () < cancelDeadline)
 				(void)channel.SendUntil ({ MessageType::Cancel, 0, EncodeCancel (id) }, cancelDeadline);
 		}

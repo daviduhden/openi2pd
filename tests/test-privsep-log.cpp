@@ -953,8 +953,7 @@ int main ()
 		assert (sink.IsOpen ());
 
 		const std::string record (MAX_TEXT_SIZE, 'm');
-		const Message queued { MessageType::LogRecord, 0,
-			EncodeLogRecord (4, 1, record) };
+		const Message queued { MessageType::LogRecord, 0, EncodeLogRecord (4, 1, record) };
 		bool saturated = false;
 		for (int attempt = 0; attempt < 1024 && !saturated; ++attempt)
 		{
@@ -970,18 +969,16 @@ int main ()
 
 		std::promise<void> entered;
 		auto ready = entered.get_future ();
-		auto slow = std::async (std::launch::async, [&sink, &record, &entered]
+		auto slow = std::async (std::launch::async,
+			[&sink, &record, &entered]
 			{
 				entered.set_value ();
 				sink.Write (4, 2, record);
 			});
 		ready.get ();
-		const bool waiting = slow.wait_for (std::chrono::milliseconds (100))
-			== std::future_status::timeout;
-		auto counter = std::async (std::launch::async,
-			[&sink] { return sink.GetDroppedCount (); });
-		const bool counterReady = counter.wait_for (
-			std::chrono::milliseconds (250)) == std::future_status::ready;
+		const bool waiting = slow.wait_for (std::chrono::milliseconds (100)) == std::future_status::timeout;
+		auto counter = std::async (std::launch::async, [&sink] { return sink.GetDroppedCount (); });
+		const bool counterReady = counter.wait_for (std::chrono::milliseconds (250)) == std::future_status::ready;
 		const char command = 'd';
 		ssize_t released;
 		do released = write (drainControl[1], &command, 1);

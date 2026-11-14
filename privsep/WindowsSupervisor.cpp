@@ -423,8 +423,7 @@ bool WindowsWorkerSupervisor::Stop (uint32_t budgetMs)
 	{
 		const auto sendDeadline
 			= std::min (deadline, Clock::now () + std::chrono::milliseconds (WINDOWS_WORKER_SHUTDOWN_SEND_MS));
-		if (Clock::now () < sendDeadline)
-			(void)m_Channel->SendUntil ({ MessageType::Shutdown, 0, { } }, sendDeadline);
+		if (Clock::now () < sendDeadline) (void)m_Channel->SendUntil ({ MessageType::Shutdown, 0, { } }, sendDeadline);
 	}
 	if (m_Worker)
 	{
@@ -434,8 +433,8 @@ bool WindowsWorkerSupervisor::Stop (uint32_t budgetMs)
 		const uint32_t remaining = RemainingBudgetMs (ElapsedMs (started), budgetMs);
 		if (remaining > WINDOWS_WORKER_GRACEFUL_STOP_MS && m_Worker->process.IsValid ())
 		{
-			const auto gracefulDeadline = std::min (
-				deadline, Clock::now () + std::chrono::milliseconds (WINDOWS_WORKER_GRACEFUL_STOP_MS));
+			const auto gracefulDeadline
+				= std::min (deadline, Clock::now () + std::chrono::milliseconds (WINDOWS_WORKER_GRACEFUL_STOP_MS));
 			(void)m_Worker->WaitUntil (gracefulDeadline);
 		}
 	}

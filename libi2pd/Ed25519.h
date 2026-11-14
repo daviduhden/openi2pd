@@ -74,13 +74,10 @@ namespace crypto
 		{
 			if (this != &other)
 			{
-				EDDSAPoint copy { other.x ? BN_dup (other.x) : nullptr,
-					other.y ? BN_dup (other.y) : nullptr,
-					other.z ? BN_dup (other.z) : nullptr,
-					other.t ? BN_dup (other.t) : nullptr };
-				if ((other.x && !copy.x) || (other.y && !copy.y)
-					|| (other.z && !copy.z) || (other.t && !copy.t))
-					*this = EDDSAPoint {};
+				EDDSAPoint copy { other.x ? BN_dup (other.x) : nullptr, other.y ? BN_dup (other.y) : nullptr,
+					other.z ? BN_dup (other.z) : nullptr, other.t ? BN_dup (other.t) : nullptr };
+				if ((other.x && !copy.x) || (other.y && !copy.y) || (other.z && !copy.z) || (other.t && !copy.t))
+					*this = EDDSAPoint { };
 				else
 					*this = std::move (copy);
 			}
@@ -90,13 +87,10 @@ namespace crypto
 		EDDSAPoint operator- () const
 		{
 			EDDSAPoint negated (*this);
-			if (negated.x)
-				BN_set_negative (negated.x, !BN_is_negative (negated.x));
-			if (negated.t)
-				BN_set_negative (negated.t, !BN_is_negative (negated.t));
+			if (negated.x) BN_set_negative (negated.x, !BN_is_negative (negated.x));
+			if (negated.t) BN_set_negative (negated.t, !BN_is_negative (negated.t));
 			return negated;
 		}
-
 	};
 
 	const size_t EDDSA25519_PUBLIC_KEY_LENGTH = 32;

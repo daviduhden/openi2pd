@@ -2089,8 +2089,8 @@ namespace transport
 				if (ecode == boost::asio::error::operation_aborted) return;
 				if (timer != m_ProxyHandshakeDeadline) return; // a newer attempt owns the state
 				m_ProxyHandshakeDeadline.reset ();
-				LogPrint (eLogError, "SSU2: Proxy handshake did not complete in ", SSU2_PROXY_HANDSHAKE_TIMEOUT,
-					" seconds");
+				LogPrint (
+					eLogError, "SSU2: Proxy handshake did not complete in ", SSU2_PROXY_HANDSHAKE_TIMEOUT, " seconds");
 				m_UDPAssociateSocket.reset (nullptr);
 				{
 					std::lock_guard<std::mutex> l (m_ProxyRelayEndpointMutex);

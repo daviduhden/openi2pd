@@ -54,8 +54,7 @@ namespace client
 			{
 				if (flags & UDP_SESSION_FLAG_RESET_PATH)
 				{
-					if (auto session = m_LastSession->GetDatagramSession ())
-						session->DropSharedRoutingPath ();
+					if (auto session = m_LastSession->GetDatagramSession ()) session->DropSharedRoutingPath ();
 				}
 				if ((flags & UDP_SESSION_FLAG_RESET_SEQN) && seqn) m_LastSession->m_LastReceivedPacketNum = seqn;
 				if (flags & UDP_SESSION_FLAG_ACK_REQUESTED)
@@ -219,7 +218,10 @@ namespace client
 		// Revoke before cancellation. New Asio exposes only cancel(); its
 		// failure must neither escape destruction nor replace an exception
 		// from timer registration. Keep its code without allocating here.
-		try { m_AckTimer.cancel (); }
+		try
+		{
+			m_AckTimer.cancel ();
+		}
 		catch (const boost::system::system_error & error)
 		{
 			m_AckAdmission->cancellationError = error.code ();
@@ -380,8 +382,7 @@ namespace client
 
 	void UDPConnection::ScheduleAckTimerLocked (uint32_t seqn)
 	{
-		if (m_AckAdmission->stopped || m_AckAdmission->stopRequested.load ()
-			|| m_AckAdmission->wait) return;
+		if (m_AckAdmission->stopped || m_AckAdmission->stopRequested.load () || m_AckAdmission->wait) return;
 		m_AckTimerSeqn = seqn;
 		uint32_t shift = m_NumAckTimeoutsInRow;
 		if (shift > I2P_UDP_MAX_NUM_ACK_TIMEOUTS) shift = I2P_UDP_MAX_NUM_ACK_TIMEOUTS;
@@ -402,15 +403,14 @@ namespace client
 	UDPConnection::AckHandler UDPConnection::MakeAckHandlerLocked ()
 	{
 		auto wait = std::make_shared<const uint8_t> (0);
-		AckHandler handler = [owner = weak_from_this (), admission = m_AckAdmission, wait] (
-			const boost::system::error_code & error)
+		AckHandler handler
+			= [owner = weak_from_this (), admission = m_AckAdmission, wait] (const boost::system::error_code & error)
 		{
 			// Declare the owner before the lock: destruction may call Stop.
 			auto connection = owner.lock ();
 			if (!connection) return;
 			std::lock_guard lock (admission->mutex);
-			if (admission->stopped || admission->stopRequested.load ()
-				|| admission->wait != wait) return;
+			if (admission->stopped || admission->stopRequested.load () || admission->wait != wait) return;
 			admission->wait.reset ();
 			if (error)
 			{
@@ -433,11 +433,10 @@ namespace client
 		bool resetPath = m_NumAckTimeoutsInRow >= I2P_UDP_MAX_NUM_ACK_TIMEOUTS
 			&& ts > m_LastReceivedTime + I2P_UDP_MAX_UNACKED_DATAGRAM_TIME;
 		bool resetPeerPath = resetPath && ts > m_LastReceivedTime + I2P_UDP_PEER_PATH_RESET_TIMEOUT;
-		LogPrint (eLogWarning, "UDP Connection: Packet ", m_AckTimerSeqn.load (), " was not acked, rtt ", m_RTT,
-			"/", m_RTTVar, "ms, ", m_NumAckTimeoutsInRow, " in a row, ", m_NumAckTimeouts, " total",
+		LogPrint (eLogWarning, "UDP Connection: Packet ", m_AckTimerSeqn.load (), " was not acked, rtt ", m_RTT, "/",
+			m_RTTVar, "ms, ", m_NumAckTimeoutsInRow, " in a row, ", m_NumAckTimeouts, " total",
 			resetPath ? ", resetting path" : "");
-		if (m_IsFirstPacket)
-			m_IsSendingAllowed = false; // stop sending only if session is not established yet
+		if (m_IsFirstPacket) m_IsSendingAllowed = false; // stop sending only if session is not established yet
 		m_AckTimerSeqn = 0;
 		// probe the peer, reset path only after several timeouts in a row
 		uint8_t flags = UDP_SESSION_FLAG_ACK_REQUESTED;

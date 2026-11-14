@@ -170,8 +170,7 @@ namespace
 	constexpr uint64_t MetadataLimit = 8 * 1024 * 1024;
 	constexpr uint64_t MetadataPathLimit (std::string_view path)
 	{
-		return path.starts_with (".openi2pd-state/") && path.ends_with (".magnet")
-			? 16 * 1024 : MetadataLimit;
+		return path.starts_with (".openi2pd-state/") && path.ends_with (".magnet") ? 16 * 1024 : MetadataLimit;
 	}
 	bool SafeMetadata (std::string_view path)
 	{
@@ -181,7 +180,8 @@ namespace
 		{
 			auto leaf = path.substr (prefix.size ());
 			if (!((leaf.size () == 46 && leaf.ends_with (".state"))
-				|| (leaf.size () == 47 && leaf.ends_with (".magnet")))) return false;
+					|| (leaf.size () == 47 && leaf.ends_with (".magnet"))))
+				return false;
 			for (auto ch : leaf.substr (0, 40))
 				if (!((ch >= '0' && ch <= '9') || (ch >= 'a' && ch <= 'f'))) return false;
 			return true;

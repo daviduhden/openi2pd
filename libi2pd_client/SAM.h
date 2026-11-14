@@ -1151,7 +1151,11 @@ namespace client
 		void StopLocalDestination ();
 	};
 
-	enum class SAMSessionCreateError { InvalidDestination, DuplicateId };
+	enum class SAMSessionCreateError
+	{
+		InvalidDestination,
+		DuplicateId
+	};
 	using SAMSessionCreateResult = i2p::expected<std::shared_ptr<SAMSession>, SAMSessionCreateError>;
 
 	/// Owns the SAM listener, datagram endpoint and session/socket

@@ -132,12 +132,13 @@ std::shared_ptr<I2NPMessage> CreateI2NPMessage (
 
 std::shared_ptr<I2NPMessage> CopyI2NPMessage (std::shared_ptr<I2NPMessage> msg)
 {
-	if (!msg || !msg->buf || msg->offset > msg->len
-		|| msg->len > msg->maxLen || msg->len > I2NP_MAX_MESSAGE_SIZE) return nullptr;
+	if (!msg || !msg->buf || msg->offset > msg->len || msg->len > msg->maxLen || msg->len > I2NP_MAX_MESSAGE_SIZE)
+		return nullptr;
 	// Preserve the source offset: payload length alone cannot select a
 	// tier when a small message occupies a large prefix in its buffer.
 	auto newMsg = msg->len <= I2NP_MAX_SHORT_MESSAGE_SIZE ? NewI2NPShortMessage ()
-		: msg->len <= I2NP_MAX_MEDIUM_MESSAGE_SIZE ? NewI2NPMediumMessage () : NewI2NPMessage ();
+		: msg->len <= I2NP_MAX_MEDIUM_MESSAGE_SIZE		  ? NewI2NPMediumMessage ()
+														  : NewI2NPMessage ();
 	if (!newMsg || msg->offset > newMsg->maxLen) return nullptr;
 	const size_t length = msg->len - msg->offset;
 	if (length > newMsg->maxLen - msg->offset) return nullptr;

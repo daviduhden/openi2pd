@@ -55,9 +55,11 @@ namespace torrents
 			std::weak_ptr<TorrentsTunnel> tunnel;
 			std::string credential;
 		};
-		explicit TorrentsRPCState (boost::asio::io_context & service,
-			const boost::asio::ip::tcp::endpoint & endpoint)
-			: acceptor (service, endpoint), endpoint (acceptor.local_endpoint ()) { }
+		explicit TorrentsRPCState (boost::asio::io_context & service, const boost::asio::ip::tcp::endpoint & endpoint)
+			: acceptor (service, endpoint)
+			, endpoint (acceptor.local_endpoint ())
+		{
+		}
 		boost::asio::ip::tcp::acceptor acceptor;
 		const boost::asio::ip::tcp::endpoint endpoint;
 		std::mutex mutex;
@@ -723,8 +725,7 @@ namespace torrents
 					auto available = torrent->CreateAvailableBitfield ();
 					std::string b64available;
 					b64available.resize (boost::beast::detail::base64::encoded_size (available.size ()));
-					boost::beast::detail::base64::encode (
-						b64available.data (), available.data (), available.size ());
+					boost::beast::detail::base64::encode (b64available.data (), available.data (), available.size ());
 					return boost::json::value (b64available);
 				} },
 			{ "wanted",
@@ -800,8 +801,8 @@ namespace torrents
 			// them after the engine task completes; no borrowed views escape.
 			{ "comment", [] (std::shared_ptr<Torrent> torrent)
 				{ return MetainfoTextValue (torrent->GetMetaComment (), 1024); } },
-			{ "creator", [] (std::shared_ptr<Torrent> torrent)
-				{ return MetainfoTextValue (torrent->GetCreatedBy (), 255); } }
+			{ "creator",
+				[] (std::shared_ptr<Torrent> torrent) { return MetainfoTextValue (torrent->GetCreatedBy (), 255); } }
 		};
 		if (torrent)
 		{
@@ -1145,9 +1146,12 @@ namespace torrents
 		return SuccessResponse (GetTag (jsonRequest), std::move (response));
 	}
 
-	TorrentsRPCSession::TorrentsRPCSession (const std::shared_ptr<TorrentsRPCState> & state,
-		uint64_t id, boost::asio::ip::tcp::socket && socket)
-		: m_State (state), m_Id (id), m_Socket (std::move (socket)), m_Deadline (m_Socket.get_executor ())
+	TorrentsRPCSession::TorrentsRPCSession (
+		const std::shared_ptr<TorrentsRPCState> & state, uint64_t id, boost::asio::ip::tcp::socket && socket)
+		: m_State (state)
+		, m_Id (id)
+		, m_Socket (std::move (socket))
+		, m_Deadline (m_Socket.get_executor ())
 		, m_ReceiveBuffer (MAX_RPC_BODY_SIZE + 8192)
 	{
 		m_RequestParser.body_limit (MAX_RPC_BODY_SIZE);
@@ -1162,8 +1166,13 @@ namespace torrents
 		m_Socket.close (ignored);
 		// cancel() is portable across the supported Boost range. Close the
 		// socket first so a timer-service error cannot strand the resource.
-		try { m_Deadline.cancel (); }
-		catch (const boost::system::system_error &) { }
+		try
+		{
+			m_Deadline.cancel ();
+		}
+		catch (const boost::system::system_error &)
+		{
+		}
 		if (auto state = m_State.lock ())
 		{
 			std::lock_guard lock (state->mutex);
@@ -1174,8 +1183,11 @@ namespace torrents
 	void TorrentsRPCSession::ArmDeadline ()
 	{
 		m_Deadline.expires_after (std::chrono::seconds (30));
-		m_Deadline.async_wait ([self = shared_from_this ()] (const boost::system::error_code & error)
-			{ if (!error) self->Close (); });
+		m_Deadline.async_wait (
+			[self = shared_from_this ()] (const boost::system::error_code & error)
+			{
+				if (!error) self->Close ();
+			});
 	}
 
 	void TorrentsRPCSession::ReceiveRequest ()
@@ -1263,8 +1275,10 @@ namespace torrents
 
 		JSONRPCHandler jsonHandler (tunnel);
 		auto response = jsonHandler.HandleRequest (request.body ());
-		if (!response.empty ()) SendResponse (boost::beast::http::status::ok, response);
-		else Close ();
+		if (!response.empty ())
+			SendResponse (boost::beast::http::status::ok, response);
+		else
+			Close ();
 	}
 
 	void TorrentsRPCSession::SendResponse (boost::beast::http::status result, std::string_view data)
@@ -1318,9 +1332,15 @@ namespace torrents
 	{
 	}
 
-	TorrentsRPCServer::~TorrentsRPCServer () { Stop (); }
+	TorrentsRPCServer::~TorrentsRPCServer ()
+	{
+		Stop ();
+	}
 
-	boost::asio::ip::tcp::endpoint TorrentsRPCServer::GetEndpoint () const { return m_State->endpoint; }
+	boost::asio::ip::tcp::endpoint TorrentsRPCServer::GetEndpoint () const
+	{
+		return m_State->endpoint;
+	}
 
 	size_t TorrentsRPCServer::GetSessionCount () const
 	{

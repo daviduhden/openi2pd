@@ -49,10 +49,7 @@ struct DHTLifecycleTestAccess
 		std::lock_guard admission (dht.m_ServiceState->ownerMutex);
 		return dht.MakeTimerCallbackLocked (slot, std::move (action));
 	}
-	static std::shared_ptr<DHTServiceState> State (const TorrentsDHT & dht)
-	{
-		return dht.m_ServiceState;
-	}
+	static std::shared_ptr<DHTServiceState> State (const TorrentsDHT & dht) { return dht.m_ServiceState; }
 };
 }
 
@@ -677,18 +674,13 @@ void TestPersistenceGeneration ()
 {
 	boost::asio::io_context service;
 	auto keys = i2p::data::PrivateKeys::CreateRandomKeys (
-		i2p::data::SIGNING_KEY_TYPE_EDDSA_SHA512_ED25519,
-		i2p::data::CRYPTO_KEY_TYPE_ECIES_X25519_AEAD, true);
-	auto owner = std::make_shared<i2p::client::ClientDestination> (
-		service, keys, false);
-	TorrentsTunnel tunnel ("dht-generation-test", owner, "/unused-authority",
-		std::string_view { }, false);
+		i2p::data::SIGNING_KEY_TYPE_EDDSA_SHA512_ED25519, i2p::data::CRYPTO_KEY_TYPE_ECIES_X25519_AEAD, true);
+	auto owner = std::make_shared<i2p::client::ClientDestination> (service, keys, false);
+	TorrentsTunnel tunnel ("dht-generation-test", owner, "/unused-authority", std::string_view { }, false);
 	TorrentsDHT dht (tunnel, 1234, "generation.dht");
 	assert (dht.IsInitialized ());
 	std::vector<std::vector<uint8_t>> writes;
-	dht.SetPersistence (
-		[] (const std::filesystem::path &, std::vector<uint8_t> &, std::string &)
-			{ return false; },
+	dht.SetPersistence ([] (const std::filesystem::path &, std::vector<uint8_t> &, std::string &) { return false; },
 		[&writes] (const std::filesystem::path &, std::span<const uint8_t> bytes, std::string &)
 		{
 			writes.emplace_back (bytes.begin (), bytes.end ());
@@ -727,23 +719,16 @@ void TestTimerOwnerAdmission ()
 {
 	boost::asio::io_context service;
 	auto keys = i2p::data::PrivateKeys::CreateRandomKeys (
-		i2p::data::SIGNING_KEY_TYPE_EDDSA_SHA512_ED25519,
-		i2p::data::CRYPTO_KEY_TYPE_ECIES_X25519_AEAD, true);
-	auto destination = std::make_shared<i2p::client::ClientDestination> (
-		service, keys, false);
-	TorrentsTunnel tunnel ("dht-admission-test", destination,
-		"/unused-authority", std::string_view { }, false);
+		i2p::data::SIGNING_KEY_TYPE_EDDSA_SHA512_ED25519, i2p::data::CRYPTO_KEY_TYPE_ECIES_X25519_AEAD, true);
+	auto destination = std::make_shared<i2p::client::ClientDestination> (service, keys, false);
+	TorrentsTunnel tunnel ("dht-admission-test", destination, "/unused-authority", std::string_view { }, false);
 	auto dht = std::make_unique<TorrentsDHT> (tunnel, 1234, "admission.dht");
 	assert (dht->IsInitialized ());
-	dht->SetPersistence (
-		[] (const std::filesystem::path &, std::vector<uint8_t> &, std::string &)
-			{ return false; },
-		[] (const std::filesystem::path &, std::span<const uint8_t>, std::string &)
-			{ return true; });
+	dht->SetPersistence ([] (const std::filesystem::path &, std::vector<uint8_t> &, std::string &) { return false; },
+		[] (const std::filesystem::path &, std::span<const uint8_t>, std::string &) { return true; });
 	dht->Start ();
 	size_t calls = 0;
-	auto action = [&calls] (TorrentsDHT &, const boost::system::error_code &)
-		{ ++calls; };
+	auto action = [&calls] (TorrentsDHT &, const boost::system::error_code &) { ++calls; };
 	for (size_t index = 0; index < static_cast<size_t> (DHTTimerSlot::Count); ++index)
 	{
 		const auto slot = static_cast<DHTTimerSlot> (index);
@@ -790,7 +775,12 @@ void TestTimerOwnerAdmission ()
 	std::thread admitted ([blocked] { blocked (boost::system::error_code { }); });
 	entered.get_future ().wait ();
 	std::atomic<bool> stopped { false };
-	std::thread stopping ([&] { dht->Stop (); stopped.store (true); });
+	std::thread stopping (
+		[&]
+		{
+			dht->Stop ();
+			stopped.store (true);
+		});
 	blockedState->stopping.wait (false);
 	const bool stoppedBeforeRelease = stopped.load ();
 	release.set_value ();

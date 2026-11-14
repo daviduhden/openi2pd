@@ -85,9 +85,9 @@ namespace
 	 * FORBIDDEN_PLEDGE_PROMISES.
 	 */
 	constexpr std::string_view KNOWN_PLEDGE_PROMISES[]
-		= { "audio", "bpf", "chown", "cpath", "disklabel", "dns", "dpath", "drm", "fattr", "flock",
-			  "getpw", "id", "inet", "mcast", "pf", "proc", "prot_exec", "ps", "recvfd", "route", "rpath", "sendfd",
-			  "settime", "stdio", "tape", "tty", "unix", "unveil", "video", "vminfo", "vmm", "wpath", "wroute" };
+		= { "audio", "bpf", "chown", "cpath", "disklabel", "dns", "dpath", "drm", "fattr", "flock", "getpw", "id",
+			  "inet", "mcast", "pf", "proc", "prot_exec", "ps", "recvfd", "route", "rpath", "sendfd", "settime",
+			  "stdio", "tape", "tty", "unix", "unveil", "video", "vminfo", "vmm", "wpath", "wroute" };
 
 	/*
 	 * Promises no policy may ever carry.
@@ -105,9 +105,8 @@ namespace
 	 * creation (proc/exec), change process identity (id/chown), or grant
 	 * privileged kernel interfaces the router never needs.
 	 */
-	constexpr std::string_view RUNTIME_FORBIDDEN_PLEDGE_PROMISES[] = { "proc", "exec", "error", "id", "chown",
-		"dpath", "prot_exec", "pf", "bpf", "vmm", "tty", "audio", "video", "tape", "disklabel", "drm", "wroute",
-		"settime" };
+	constexpr std::string_view RUNTIME_FORBIDDEN_PLEDGE_PROMISES[] = { "proc", "exec", "error", "id", "chown", "dpath",
+		"prot_exec", "pf", "bpf", "vmm", "tty", "audio", "video", "tape", "disklabel", "drm", "wroute", "settime" };
 
 	constexpr size_t MAX_PLEDGE_FILE_BYTES = 64 * 1024;
 	constexpr size_t MAX_PLEDGE_TOKEN_LENGTH = 32;

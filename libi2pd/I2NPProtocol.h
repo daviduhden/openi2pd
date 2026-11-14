@@ -449,8 +449,7 @@ struct I2NPMessage
 	/// headroom leave both length and offset unchanged.
 	void Align (size_t alignment)
 	{
-		if (!alignment || !buf || offset > len || len > maxLen
-			|| alignment > maxLen - len) return;
+		if (!alignment || !buf || offset > len || len > maxLen || alignment > maxLen - len) return;
 		size_t rem = ((size_t)GetBuffer ()) % alignment;
 		if (rem)
 		{

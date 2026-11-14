@@ -78,8 +78,8 @@ bool HasPrivateWindowsDacl (const std::filesystem::path & path)
 
 	PACL dacl = nullptr;
 	PSECURITY_DESCRIPTOR descriptor = nullptr;
-	if (GetSecurityInfo (handle, SE_FILE_OBJECT, DACL_SECURITY_INFORMATION, nullptr, nullptr, &dacl, nullptr,
-			&descriptor)
+	if (GetSecurityInfo (
+			handle, SE_FILE_OBJECT, DACL_SECURITY_INFORMATION, nullptr, nullptr, &dacl, nullptr, &descriptor)
 		!= ERROR_SUCCESS)
 		return false;
 	const auto freeDescriptor = i2p::modern::ScopeExit ([&] { LocalFree (descriptor); });
@@ -88,7 +88,8 @@ bool HasPrivateWindowsDacl (const std::filesystem::path & path)
 	if (!GetSecurityDescriptorControl (descriptor, &control, &revision) || !(control & SE_DACL_PROTECTED) || !dacl)
 		return false;
 	ACL_SIZE_INFORMATION aclInfo { };
-	if (!GetAclInformation (dacl, &aclInfo, sizeof (aclInfo), AclSizeInformation) || aclInfo.AceCount != 2) return false;
+	if (!GetAclInformation (dacl, &aclInfo, sizeof (aclInfo), AclSizeInformation) || aclInfo.AceCount != 2)
+		return false;
 
 	HANDLE token = nullptr;
 	if (!OpenProcessToken (GetCurrentProcess (), TOKEN_QUERY, &token)) return false;

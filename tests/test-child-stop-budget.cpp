@@ -15,16 +15,14 @@ int main ()
 	using namespace std::chrono;
 	using i2p::privsep::ChildStopBudget;
 	const auto started = ChildStopBudget::Clock::time_point { };
-	for (const int timeout : { -1, 0, 1, 2, 3, 100, 2000,
-		std::numeric_limits<int>::max () })
+	for (const int timeout : { -1, 0, 1, 2, 3, 100, 2000, std::numeric_limits<int>::max () })
 	{
 		const ChildStopBudget budget (started, timeout);
 		assert (started <= budget.send);
 		assert (budget.send <= budget.graceful);
 		assert (budget.graceful <= budget.terminate);
 		assert (budget.terminate <= budget.reap);
-		assert (budget.reap - started == milliseconds (
-			timeout > 0 ? timeout : 2000));
+		assert (budget.reap - started == milliseconds (timeout > 0 ? timeout : 2000));
 		assert (budget.send - started <= milliseconds (500));
 		assert (budget.reap - budget.terminate <= milliseconds (500));
 		assert (budget.terminate - budget.graceful <= milliseconds (500));

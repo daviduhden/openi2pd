@@ -761,7 +761,8 @@ namespace client
 	void I2CPDestination::CreateNewLeaseSet (const std::vector<std::shared_ptr<i2p::tunnel::InboundTunnel>> & tunnels)
 	{
 		std::weak_ptr<I2CPDestination> weak = GetSharedFromThis ();
-		boost::asio::post (GetService (), [weak, tunnels]
+		boost::asio::post (GetService (),
+			[weak, tunnels]
 			{
 				if (auto self = weak.lock ()) self->PostCreateNewLeaseSet (tunnels);
 			});
@@ -1200,8 +1201,13 @@ namespace client
 
 	void I2CPSession::CancelReadTimeout ()
 	{
-		try { m_ReadTimer.cancel (); }
-		catch (const boost::system::system_error &) { }
+		try
+		{
+			m_ReadTimer.cancel ();
+		}
+		catch (const boost::system::system_error &)
+		{
+		}
 	}
 
 	void I2CPSession::HandleReadTimeout (const boost::system::error_code & ecode)
@@ -2496,8 +2502,8 @@ namespace client
 		else
 		{
 			auto s = shared_from_this ();
-			boost::asio::post (m_Owner.GetService (),
-				[s, sendBuf = std::move (sendBuf), l] () mutable { s->QueueI2CPMessage (std::move (sendBuf), l, false); });
+			boost::asio::post (m_Owner.GetService (), [s, sendBuf = std::move (sendBuf), l] () mutable
+				{ s->QueueI2CPMessage (std::move (sendBuf), l, false); });
 		}
 	}
 
@@ -2559,27 +2565,31 @@ namespace client
 			m_Lifetime->accepting = true;
 			m_StopRequested.store (false);
 			Accept ();
-			m_Thread = std::jthread ([authority = m_Lifetime, service = m_Service] (std::stop_token token)
-			{
-				i2p::util::SetThreadName ("I2CP");
+			m_Thread = std::jthread (
+				[authority = m_Lifetime, service = m_Service] (std::stop_token token)
 				{
-					std::lock_guard lock (authority->admission);
-					if (!authority->owner || !authority->accepting) return;
-					authority->owner->SetServiceThread (std::this_thread::get_id ());
-				}
-				// The controller joins this worker before retiring its authority
-				// or touching executor-owned objects. No callback owns the facade.
-				while (!token.stop_requested () && !service->stopped ())
-				{
-					try { service->run (); }
-					catch (const std::exception &)
+					i2p::util::SetThreadName ("I2CP");
 					{
-						LogPrint (eLogError, "I2CP: Service handler failed");
+						std::lock_guard lock (authority->admission);
+						if (!authority->owner || !authority->accepting) return;
+						authority->owner->SetServiceThread (std::this_thread::get_id ());
 					}
-				}
-				std::lock_guard lock (authority->admission);
-				if (authority->owner) authority->owner->SetServiceThread ({ });
-			});
+					// The controller joins this worker before retiring its authority
+					// or touching executor-owned objects. No callback owns the facade.
+					while (!token.stop_requested () && !service->stopped ())
+					{
+						try
+						{
+							service->run ();
+						}
+						catch (const std::exception &)
+						{
+							LogPrint (eLogError, "I2CP: Service handler failed");
+						}
+					}
+					std::lock_guard lock (authority->admission);
+					if (authority->owner) authority->owner->SetServiceThread ({ });
+				});
 		}
 		catch (...)
 		{
@@ -2639,7 +2649,8 @@ namespace client
 		// so session teardown still runs inside its own io_context.
 		SetServiceThread (std::this_thread::get_id ());
 		m_Service->restart ();
-		boost::asio::post (*m_Service, [authority = m_Lifetime]
+		boost::asio::post (*m_Service,
+			[authority = m_Lifetime]
 			{
 				std::lock_guard admission (authority->admission);
 				if (!authority->owner) return;
@@ -2722,8 +2733,10 @@ namespace client
 				}
 				catch (const std::exception &)
 				{
-					if (session) session->Stop ();
-					else ReleaseConnection (nullptr);
+					if (session)
+						session->Stop ();
+					else
+						ReleaseConnection (nullptr);
 					boost::system::error_code ignored;
 					socket->close (ignored);
 					LogPrint (eLogError, "I2CP: Connection initialization failed");

@@ -623,8 +623,7 @@ namespace config
 			{
 				const DWORD chunk = static_cast<DWORD> (std::min<size_t> (text.size () - offset, 0x4000));
 				DWORD written = 0;
-				if (!WriteFile (handle, text.data () + offset, chunk, &written, nullptr) || written == 0)
-					return false;
+				if (!WriteFile (handle, text.data () + offset, chunk, &written, nullptr) || written == 0) return false;
 				offset += written;
 			}
 			return true;
@@ -701,7 +700,6 @@ namespace config
 #endif
 		}
 
-
 	} // namespace
 
 	int PublishInformationalResponse (CmdlineOutcome outcome)
@@ -713,7 +711,6 @@ namespace config
 		WriteStandardOutput (RenderInformationalResponse (outcome));
 		return EXIT_SUCCESS;
 	}
-
 
 	CmdlineOutcome ClassifyInformationalRequest (int argc, char * argv[])
 	{

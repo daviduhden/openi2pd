@@ -56,8 +56,7 @@ int main ()
 {
 	// A root test runner would exercise the privilege-raising path and can
 	// never reach the unprivileged expectations below.
-	if (::geteuid () == 0)
-		return i2p::test::SkipCapability ("worker credentials require a non-root runner");
+	if (::geteuid () == 0) return i2p::test::SkipCapability ("worker credentials require a non-root runner");
 	// Skip rather than guessing when the account database cannot describe
 	// the identity the test itself runs as.
 	const struct passwd * self = ::getpwuid (::geteuid ());

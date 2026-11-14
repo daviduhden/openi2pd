@@ -25,7 +25,8 @@ void TestExpiredAndImmediateAdmission ()
 	Gate gate;
 	std::unique_lock owner (gate);
 	// A distinct caller must fail while admission belongs to owner.
-	auto refused = std::async (std::launch::async, [&]
+	auto refused = std::async (std::launch::async,
+		[&]
 		{
 			assert (!gate.try_lock ());
 			return gate.try_lock_until (Clock::now ());
@@ -43,16 +44,15 @@ void TestReleaseWakesContender ()
 	std::unique_lock owner (gate);
 	std::promise<void> entered;
 	auto ready = entered.get_future ();
-	auto contender = std::async (std::launch::async, [&]
+	auto contender = std::async (std::launch::async,
+		[&]
 		{
 			std::unique_lock lock (gate, std::defer_lock);
 			entered.set_value ();
-			return lock.try_lock_until (
-				Clock::now () + std::chrono::seconds (5));
+			return lock.try_lock_until (Clock::now () + std::chrono::seconds (5));
 		});
 	ready.get ();
-	assert (contender.wait_for (std::chrono::seconds (0)) ==
-		std::future_status::timeout);
+	assert (contender.wait_for (std::chrono::seconds (0)) == std::future_status::timeout);
 	owner.unlock ();
 	assert (contender.get ());
 	assert (gate.try_lock ());
@@ -66,7 +66,8 @@ void TestMutualExclusion ()
 	{
 		std::vector<std::jthread> threads;
 		for (unsigned worker = 0; worker < 4; ++worker)
-			threads.emplace_back ([&]
+			threads.emplace_back (
+				[&]
 				{
 					for (unsigned item = 0; item < 1000; ++item)
 					{

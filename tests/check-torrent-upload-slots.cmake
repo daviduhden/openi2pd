@@ -107,12 +107,12 @@ endif()
 # Its handler walks the registry directly, never allocating a fallback
 # snapshot, and revokes each peer before queuing asynchronous teardown.
 foreach(required IN ITEMS
-    "void Torrent::RefreshUploadSlots (uint64_t now) try"
+    "void Torrent::RefreshUploadSlots (uint64_t now)\n\ttry"
     "for (const auto & entry : m_Connections)"
     "if (auto connection = entry.second.lock ())"
     "connection->m_IsRemoteChoked = true;"
     "connection->m_UploadDispatchFailed.store (true, std::memory_order_release);"
-    "try { connection->Close (); }")
+    "try\n\t\t\t\t{\n\t\t\t\t\tconnection->Close ();\n\t\t\t\t}")
   string(FIND "${apply_slots}" "${required}" found)
   if(found LESS 0)
     message(FATAL_ERROR "Upload policy failure must revoke registry authority: ${required}")

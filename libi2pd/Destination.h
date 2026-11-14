@@ -365,11 +365,13 @@ namespace client
 		std::future<std::vector<i2p::garlic::ECIESX25519AEADRatchetSessionPtr>> GetECIESx25519SessionsList () const
 		{
 			auto weak = weak_from_this ();
-			return boost::asio::post (GetService (), boost::asio::use_future ([weak] ()
-				{
-					if (auto self = weak.lock ()) return self->GetECIESx25519SessionsListSync ();
-					return std::vector<i2p::garlic::ECIESX25519AEADRatchetSessionPtr> { };
-				}));
+			return boost::asio::post (GetService (),
+				boost::asio::use_future (
+					[weak] ()
+					{
+						if (auto self = weak.lock ()) return self->GetECIESx25519SessionsListSync ();
+						return std::vector<i2p::garlic::ECIESX25519AEADRatchetSessionPtr> { };
+					}));
 		}
 	};
 
@@ -420,8 +422,7 @@ namespace client
 		/// Wait for stream creation; the destination executor must run.
 		/// Returns nullptr on failure or if called from that executor.
 		/// Executor handlers must use the callback overload instead.
-		std::shared_ptr<i2p::stream::Stream> CreateStream (
-			const i2p::data::IdentHash & dest, uint16_t port = 0);
+		std::shared_ptr<i2p::stream::Stream> CreateStream (const i2p::data::IdentHash & dest, uint16_t port = 0);
 		/// Synchronous blinded lookup with the same executor restriction.
 		/// Returns nullptr rather than blocking its completion executor.
 		std::shared_ptr<i2p::stream::Stream> CreateStream (

@@ -288,8 +288,7 @@ namespace crypto
 		{
 			if (res)
 			{
-				if (exp[i]) ok = BN_mod_mul_montgomery (res, res,
-					table[len - 1 - i][exp[i] - 1], montCtx, ctx) == 1;
+				if (exp[i]) ok = BN_mod_mul_montgomery (res, res, table[len - 1 - i][exp[i] - 1], montCtx, ctx) == 1;
 			}
 			else if (exp[i])
 			{
@@ -702,22 +701,19 @@ namespace crypto
 		BIGNUM *x = BN_CTX_get (ctx), *a = BN_CTX_get (ctx), *b = BN_CTX_get (ctx);
 		// Arithmetic may leave private-dependent partial results on failure.
 		// Keep every result private until the integrity check succeeds.
-		bool ok = x && a && b && BN_bin2bn (key, 256, x)
-			&& !BN_is_zero (x) && BN_cmp (x, elgp) < 0
-			&& BN_sub (x, elgp, x) == 1 && BN_sub_word (x, 1) == 1
-			&& !BN_is_zero (x);
-		ok = ok && BN_bin2bn (encrypted + 1, 256, a)
-			&& BN_bin2bn (encrypted + 258, 256, b);
+		bool ok = x && a && b && BN_bin2bn (key, 256, x) && !BN_is_zero (x) && BN_cmp (x, elgp) < 0
+			&& BN_sub (x, elgp, x) == 1 && BN_sub_word (x, 1) == 1 && !BN_is_zero (x);
+		ok = ok && BN_bin2bn (encrypted + 1, 256, a) && BN_bin2bn (encrypted + 258, 256, b);
 		// m = b*(a^x mod p) mod p; preserve the legacy wire formula.
-		ok = ok && BN_mod_exp (x, a, x, elgp, ctx) == 1
-			&& BN_mod_mul (b, b, x, elgp, ctx) == 1;
+		ok = ok && BN_mod_exp (x, a, x, elgp, ctx) == 1 && BN_mod_mul (b, b, x, elgp, ctx) == 1;
 		uint8_t m[255] = { };
 		uint8_t hash[32] = { };
-		ok = ok && bn2buf (b, m, sizeof (m))
-			&& SHA256 (m + 33, 222, hash) != nullptr
+		ok = ok && bn2buf (b, m, sizeof (m)) && SHA256 (m + 33, 222, hash) != nullptr
 			&& CRYPTO_memcmp (m + 1, hash, sizeof (hash)) == 0;
-		if (ok) memcpy (data, m + 33, 222);
-		else memset (data, 0, 222);
+		if (ok)
+			memcpy (data, m + 33, 222);
+		else
+			memset (data, 0, 222);
 		OPENSSL_cleanse (m, sizeof (m));
 		OPENSSL_cleanse (hash, sizeof (hash));
 		if (x) BN_clear (x);
@@ -945,8 +941,7 @@ namespace crypto
 			{
 				uint8_t keyBuf[ECIES_KEY_BUF_SIZE], iv[ECIES_KEY_BUF_SIZE], shared[32];
 				uint8_t m[256] = { };
-				if (bn2buf (x, keyBuf, len) && bn2buf (y, iv, len)
-					&& SHA256 (keyBuf, len, shared) != nullptr)
+				if (bn2buf (x, keyBuf, len) && bn2buf (y, iv, len) && SHA256 (keyBuf, len, shared) != nullptr)
 				{
 					// decrypt
 					CBCDecryption decryption;
@@ -955,8 +950,7 @@ namespace crypto
 					{
 						// verify and copy
 						uint8_t hash[32] = { };
-						if (SHA256 (m + 33, 222, hash) != nullptr
-							&& CRYPTO_memcmp (m + 1, hash, 32) == 0)
+						if (SHA256 (m + 33, 222, hash) != nullptr && CRYPTO_memcmp (m + 1, hash, 32) == 0)
 						{
 							memcpy (data, m + 33, 222);
 							ret = true;
@@ -1387,8 +1381,7 @@ namespace crypto
 				break;
 			}
 			int outlen = 0;
-			ok = EVP_EncryptUpdate (ctx, it.first, &outlen, it.first, (int)it.second) == 1
-				&& outlen == (int)it.second;
+			ok = EVP_EncryptUpdate (ctx, it.first, &outlen, it.first, (int)it.second) == 1 && outlen == (int)it.second;
 		}
 		if (ok)
 		{
@@ -1954,8 +1947,8 @@ namespace crypto
 		CRYPTO_set_locking_callback (OpensslLockingCallback);*/
 		const auto & capabilities = GetCryptoCapabilities ();
 		if (!capabilities.sha256 || !capabilities.aes256Cbc || !capabilities.aes256Ecb || !capabilities.chacha20
-			|| !capabilities.chacha20Poly1305 || !capabilities.hkdf || !capabilities.ed25519
-			|| !capabilities.x25519 || (OPENSSL_SIPHASH && !capabilities.sipHash))
+			|| !capabilities.chacha20Poly1305 || !capabilities.hkdf || !capabilities.ed25519 || !capabilities.x25519
+			|| (OPENSSL_SIPHASH && !capabilities.sipHash))
 		{
 			LogPrint (eLogCritical,
 				"Crypto: active libcrypto provider is missing a required algorithm "

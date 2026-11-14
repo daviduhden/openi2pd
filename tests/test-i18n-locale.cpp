@@ -61,11 +61,8 @@ class EnvironmentScope
 		const char * name;
 		std::optional<std::string> value;
 	};
-	std::array<Entry, 3> m_Entries {
-		Entry { "LC_ALL", ReadEnvironment ("LC_ALL") },
-		Entry { "LC_MESSAGES", ReadEnvironment ("LC_MESSAGES") },
-		Entry { "LANG", ReadEnvironment ("LANG") }
-	};
+	std::array<Entry, 3> m_Entries { Entry { "LC_ALL", ReadEnvironment ("LC_ALL") },
+		Entry { "LC_MESSAGES", ReadEnvironment ("LC_MESSAGES") }, Entry { "LANG", ReadEnvironment ("LANG") } };
 
 public:
 	~EnvironmentScope ()
@@ -106,16 +103,11 @@ void TestEnvironmentPrecedence ()
 void TestLocaleSpellings ()
 {
 	for (const auto & [input, expected] : std::initializer_list<std::pair<const char *, const char *>> {
-		{ "es.UTF-8", "es" }, { "es_ES.UTF-8@euro", "es" },
-		{ "ru.UTF-8", "ru" }, { "RU_ru.KOI8-R", "ru" },
-		{ "zh.UTF-8", "zh-Hans" }, { "zh_CN.UTF-8", "zh-Hans" },
-		{ "zh-Hans", "zh-Hans" }, { "zh-SG", "zh-Hans" },
-		{ "zh-Hant", "en" }, { "zh-Hant-CN", "en" },
-		{ "zh-TW", "en" }, { "zh-HK", "en" }, { "zh-MO", "en" },
-		{ "zh-Hans-TW", "zh-Hans" }, { "zh-Hans-HK", "zh-Hans" },
-		{ "zh-CN-Hant", "en" },
-		{ "zh-HansBogus", "en" }, { "zh-CNonsense", "en" },
-		{ "zh-Hans-Hant", "en" }, { "en_US.UTF-8", "en" } })
+			 { "es.UTF-8", "es" }, { "es_ES.UTF-8@euro", "es" }, { "ru.UTF-8", "ru" }, { "RU_ru.KOI8-R", "ru" },
+			 { "zh.UTF-8", "zh-Hans" }, { "zh_CN.UTF-8", "zh-Hans" }, { "zh-Hans", "zh-Hans" }, { "zh-SG", "zh-Hans" },
+			 { "zh-Hant", "en" }, { "zh-Hant-CN", "en" }, { "zh-TW", "en" }, { "zh-HK", "en" }, { "zh-MO", "en" },
+			 { "zh-Hans-TW", "zh-Hans" }, { "zh-Hans-HK", "zh-Hans" }, { "zh-CN-Hant", "en" }, { "zh-HansBogus", "en" },
+			 { "zh-CNonsense", "en" }, { "zh-Hans-Hant", "en" }, { "en_US.UTF-8", "en" } })
 	{
 		i2p::i18n::SetLanguage (input);
 		assert (i2p::i18n::GetLanguageTag () == expected);
@@ -132,7 +124,8 @@ void TestConcurrentSelection ()
 	constexpr std::array<const char *, 4> languages { "en", "es", "ru", "zh-Hans" };
 	std::vector<std::jthread> workers;
 	for (const auto * language : languages)
-		workers.emplace_back ([language]
+		workers.emplace_back (
+			[language]
 			{
 				for (int iteration = 0; iteration < 128; ++iteration)
 				{

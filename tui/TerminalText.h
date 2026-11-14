@@ -213,8 +213,7 @@ namespace tui
 				while (offset < text.size ())
 				{
 					const auto unit = Decode (text, offset);
-					if (unit.length == 1 && static_cast<unsigned char> (text[offset]) >= 0x80)
-						return false;
+					if (unit.length == 1 && static_cast<unsigned char> (text[offset]) >= 0x80) return false;
 					offset += unit.length;
 				}
 				return true;

@@ -129,8 +129,8 @@ int Decode (std::istream & input, std::ostream & output)
 						return 1;
 					}
 					const std::string_view quartet = std::string_view (pending).substr (offset, 4);
-					const auto decoded = i2p::data::Base64ToByteStream (
-						quartet, std::span<uint8_t> (outbuf).subspan (decodedBytes));
+					const auto decoded
+						= i2p::data::Base64ToByteStream (quartet, std::span<uint8_t> (outbuf).subspan (decodedBytes));
 					if (!decoded)
 					{
 						std::cerr << "invalid base64 input" << std::endl;
@@ -211,13 +211,9 @@ int main (int argc, char * argv[])
 	{
 		switch (opt)
 		{
-		case 'h':
-			printUsage (argv[0], std::cout);
-			return 0;
+		case 'h': printUsage (argv[0], std::cout); return 0;
 		case 'd': decode = true; break;
-		default:
-			printUsage (argv[0], std::cerr);
-			return 1;
+		default: printUsage (argv[0], std::cerr); return 1;
 		}
 	}
 

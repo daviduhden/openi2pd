@@ -79,8 +79,7 @@ template <std::size_t width> void TestTagEncodingBoundsForWidth ()
 	for (const auto length : std::array<std::size_t, 4> { 0, 1, width / 2, width })
 	{
 		// Zero-filled prefixes provide independent encoding vectors.
-		const auto expected64 = std::string ((length * 8 + 5) / 6, 'A')
-			+ std::string ((3 - length % 3) % 3, '=');
+		const auto expected64 = std::string ((length * 8 + 5) / 6, 'A') + std::string ((3 - length % 3) % 3, '=');
 		const auto expected32 = std::string ((length * 8 + 4) / 5, 'a');
 		assert (tag.ToBase64 (length) == expected64);
 		assert (tag.ToBase32 (length) == expected32);
@@ -88,14 +87,25 @@ template <std::size_t width> void TestTagEncodingBoundsForWidth ()
 
 	const int negative = -1;
 	for (const auto length : std::array<std::size_t, 3> {
-		width + 1, std::numeric_limits<std::size_t>::max (),
-		static_cast<std::size_t> (negative) })
+			 width + 1, std::numeric_limits<std::size_t>::max (), static_cast<std::size_t> (negative) })
 	{
 		bool rejected64 = false, rejected32 = false;
-		try { (void)tag.ToBase64 (length); }
-		catch (const std::length_error &) { rejected64 = true; }
-		try { (void)tag.ToBase32 (length); }
-		catch (const std::length_error &) { rejected32 = true; }
+		try
+		{
+			(void)tag.ToBase64 (length);
+		}
+		catch (const std::length_error &)
+		{
+			rejected64 = true;
+		}
+		try
+		{
+			(void)tag.ToBase32 (length);
+		}
+		catch (const std::length_error &)
+		{
+			rejected32 = true;
+		}
 		assert (rejected64 && rejected32);
 		// Rejection cannot damage later full-width encodings or tag bytes.
 		assert (tag.ToBase64 () == full64);

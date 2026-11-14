@@ -185,9 +185,7 @@ static void TestBoundedContainerWrites ()
 	//    would silently truncate the value instead of rejecting it.
 	const std::string_view prefix = "I2PDTUI/1 TORRENT-CREATE-V1 0 0 public 1 ";
 	const auto refused = [prefix] (std::string_view tracker)
-	{
-		return !ParseRequest (std::string (prefix) + std::string (tracker) + " payload").has_value ();
-	};
+	{ return !ParseRequest (std::string (prefix) + std::string (tracker) + " payload").has_value (); };
 
 	// Absent, empty, non-numeric, signed, out-of-range and over-long
 	// tiers are all rejected rather than clamped.
@@ -226,8 +224,8 @@ static void TestBoundedContainerWrites ()
 
 	// The table can only grow to the declared tracker-record bound, one
 	// entry per tier, and the last accepted tier is its size minus one.
-	std::string many = "I2PDTUI/1 TORRENT-CREATE-V1 0 0 public "
-		+ std::to_string (MAX_TORRENT_TRACKER_RECORDS_PER_REQUEST) + " ";
+	std::string many
+		= "I2PDTUI/1 TORRENT-CREATE-V1 0 0 public " + std::to_string (MAX_TORRENT_TRACKER_RECORDS_PER_REQUEST) + " ";
 	for (size_t tier = 0; tier < MAX_TORRENT_TRACKER_RECORDS_PER_REQUEST; ++tier)
 	{
 		many.append (std::to_string (tier));
@@ -237,8 +235,7 @@ static void TestBoundedContainerWrites ()
 	auto expanded = ParseRequest (many);
 	assert (expanded.has_value ());
 	assert (expanded->createTrackers.size () == MAX_TORRENT_TRACKER_RECORDS_PER_REQUEST);
-	for (const auto & entries : expanded->createTrackers)
-		assert (entries.size () == 1 && entries.front () == "a");
+	for (const auto & entries : expanded->createTrackers) assert (entries.size () == 1 && entries.front () == "a");
 	assert (expanded->argument == "payload");
 
 	// The daemon's fixed admin storage: name[256] and destination[1025].

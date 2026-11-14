@@ -244,8 +244,7 @@ i2p::expected<void, std::string> ImsgChannel::Send (const Message & message, int
 		// general writable threshold. Try the nonblocking write first.
 		if (imsgbuf_write (m_Buffer) != -1) continue;
 		const int writeError = errno;
-		if (writeError != EAGAIN && writeError != EWOULDBLOCK
-			&& writeError != ENOBUFS && writeError != EINTR)
+		if (writeError != EAGAIN && writeError != EWOULDBLOCK && writeError != ENOBUFS && writeError != EINTR)
 		{
 			Close (); // the queued frame is ambiguous; never replay it
 			return i2p::unexpected (std::string ("imsgbuf_write: ") + strerror (writeError));

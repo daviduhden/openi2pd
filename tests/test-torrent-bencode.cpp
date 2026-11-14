@@ -114,8 +114,7 @@ static void ExpectMalformed (std::string_view data)
 
 static void TestDictionaryValuesRequired ()
 {
-	for (const std::string_view malformed : {
-		"d1:ae", "d1:ai1e1:be", "d1:ad1:bee", "d1:ald1:beee" })
+	for (const std::string_view malformed : { "d1:ae", "d1:ai1e1:be", "d1:ad1:bee", "d1:ald1:beee" })
 	{
 		assert (ParseDictionary (malformed) == 0);
 		auto [fields, consumed] = ExtractDictionary (malformed);
@@ -175,8 +174,7 @@ static void TestKnownFieldTypes ()
 	};
 	for (const std::string key : { "length", "piece length", "private", "meta version" })
 		ExpectMalformed (MakeTorrentFile (infoWith (key, Bytes ("0"))));
-	for (const std::string key : { "name", "pieces" })
-		ExpectMalformed (MakeTorrentFile (infoWith (key, Int (1))));
+	for (const std::string key : { "name", "pieces" }) ExpectMalformed (MakeTorrentFile (infoWith (key, Int (1))));
 
 	// A malformed per-file length must not become a zero-length file.
 	// Its valid sibling makes the overall piece count otherwise correct.

@@ -68,7 +68,7 @@ require_runtime_source("privsep/WindowsSupervisor.cpp"
 require_runtime_source("tests/test-privsep-windows-ipc.cpp"
   "auto expired = accepted->ReceiveUntil (")
 require_runtime_source("tests/test-privsep-windows-ipc.cpp"
-  "accepted->ReceiveUntil ((WindowsDeadline::max) ())")
+  "accepted->ReceiveUntil ((WindowsDeadline::max)())")
 require_runtime_source("tests/test-privsep-windows-ipc.cpp"
   "TestMalformedHelloRearmsListener ()")
 
@@ -330,7 +330,7 @@ require_runtime_order("privsep/Channel.cpp"
 require_runtime_source("privsep/Channel.cpp"
   "return infinite ? capped : std::min (deadline, capped);")
 require_runtime_source("privsep/Channel.cpp"
-  "message.error ().text, refusalDeadline ())) continue;")
+  "message.error ().text, refusalDeadline ()))\n\t\t\t\t\t\tcontinue;")
 require_runtime_source("privsep/Channel.cpp"
   "descriptorFault, refusalDeadline ()))")
 require_runtime_source("privsep/Channel.cpp"
@@ -466,7 +466,7 @@ require_runtime_source("tests/CMakeLists.txt" "test-deadline-mutex")
 require_runtime_source("tests/test-deadline-mutex.cpp"
   "TestMutualExclusion ();")
 require_runtime_source("libi2pd_client/I2PService.cpp"
-  "try { previous->timer.cancel (); }")
+  "try\n\t\t\t{\n\t\t\t\tprevious->timer.cancel ();\n\t\t\t}")
 require_runtime_order("privsep/Supervisor.cpp"
   "SpawnSupervisedTorrentStorage (int rootFd" "auto & reply = *selected;"
   "const auto deadline =" "lock.try_lock_until (deadline)"
@@ -482,7 +482,7 @@ require_runtime_source("tests/CMakeLists.txt" "test-i2p-service-readiness")
 require_runtime_source("libi2pd_client/I2PService.cpp"
   "if (ec || !m_Running.load () || !wait || m_IdleWait != wait) return;")
 require_runtime_source("libi2pd_client/I2PService.cpp"
-  "m_IdleCheckTimer->async_wait ([owner, wait]")
+  "m_IdleCheckTimer->async_wait (\n\t\t\t[owner, wait]")
 require_runtime_source("libi2pd_client/I2PService.cpp"
   "return now > latest ? Timer::time_point::max () : now + delay;")
 require_runtime_source("libi2pd/Garlic.h" "std::atomic<bool> m_IsIdling;")
@@ -579,7 +579,7 @@ require_runtime_source("libi2pd/Signature.cpp"
 require_runtime_source("libi2pd/Signature.cpp"
   "if (fallback->IsValid ()) m_Fallback = std::move (fallback);")
 require_runtime_source("libi2pd/Identity.cpp"
-  "if (signer->IsValid ()) m_Signer = std::move (signer);")
+  "if (signer->IsValid ())\n\t\t\t\tm_Signer = std::move (signer);")
 require_runtime_source("libi2pd/Signature.h"
   "{ return GetPkey () != nullptr; }")
 require_runtime_source("tests/test-signature-identity-hardening.cpp"
@@ -628,7 +628,7 @@ require_runtime_source("libi2pd/Signature.h"
 require_runtime_source("libi2pd/Identity.cpp"
   "std::make_unique<i2p::crypto::RedDSA25519Signer> (priv)")
 require_runtime_order("libi2pd/Ed25519.cpp"
-  "if (!ctx || !p.x || !p.y) return {};" "BN_mod_inverse (normalized.y")
+  "if (!ctx || !p.x || !p.y) return { };" "BN_mod_inverse (normalized.y")
 require_runtime_source("tests/test-eddsa.cpp"
   "assert (!ed25519->EncodePublicKey (identity, encoded, nullptr));")
 
@@ -657,7 +657,7 @@ require_storage_unwind_guard("bool TorrentStorageWorker::ReadMetadata ("
 require_storage_unwind_guard("bool TorrentStorageWorker::ReplaceMetadata ("
   "bool TorrentStorageWorker::RemoveMetadata (")
 require_runtime_order("libi2pd_client/TorrentStorageWorker.cpp"
-  "process.ChannelFd ().Close ();" "try { process.Stop (100); }")
+  "process.ChannelFd ().Close ();" "try\n\t\t{\n\t\t\tprocess.Stop (100);\n\t\t}")
 require_runtime_source("libi2pd_client/TorrentStorageWorker.cpp"
   "if (std::uncaught_exceptions () > exceptions)")
 
@@ -669,7 +669,7 @@ require_runtime_order("libi2pd_client/TorrentStorageWorker.cpp"
 require_runtime_order("libi2pd_client/TorrentStorageWorker.cpp"
   "const Impl::ExceptionRetirement retireOnException" "const RootDescriptor rootFd (")
 require_runtime_source("libi2pd_client/TorrentStorageWorker.cpp"
-  "~RootDescriptor () noexcept { if (fd >= 0) ::close (fd); }")
+  "~RootDescriptor () noexcept\n\t\t{\n\t\t\tif (fd >= 0) ::close (fd);\n\t\t}")
 require_runtime_source("libi2pd_client/TorrentStorageWorker.cpp"
   "RootDescriptor (const RootDescriptor &) = delete;")
 require_runtime_source("libi2pd_client/TorrentStorageWorker.cpp"
@@ -683,15 +683,15 @@ require_runtime_source("libi2pd_client/TorrentStorageWorker.cpp"
 require_runtime_order("libi2pd/Ed25519.cpp"
   "if (!Bx)" "BN_mod (Bx, Bx, q, ctx)")
 require_runtime_order("libi2pd/Ed25519.cpp"
-  "if (!buf || !ctx) return {};" "point.y = BN_bin2bn (")
+  "if (!buf || !ctx) return { };" "point.y = BN_bin2bn (")
 require_runtime_order("libi2pd/Ed25519.cpp"
-  "if (!point.x) return {};" "BN_is_bit_set (point.x, 0)")
+  "if (!point.x) return { };" "BN_is_bit_set (point.x, 0)")
 require_runtime_source("libi2pd/Ed25519.cpp"
   "if (!ctx || !p.x || !p.y) return false;")
 require_runtime_source("libi2pd/Ed25519.cpp"
   "throw std::runtime_error (\"Ed25519 base-point recovery failed\");")
 require_runtime_source("libi2pd/Ed25519.h" "EDDSAPoint copy {")
-require_runtime_source("libi2pd/Ed25519.h" "*this = EDDSAPoint {};")
+require_runtime_source("libi2pd/Ed25519.h" "*this = EDDSAPoint { };")
 require_runtime_source("tests/test-eddsa.cpp"
   "ed25519->DecodePublicKey (nullptr, ctx)")
 require_runtime_source("tests/test-eddsa.cpp"
@@ -785,7 +785,7 @@ require_runtime_order("libi2pd_client/UDPTunnel.cpp"
   "void UDPConnection::CancelAckTimerLocked () noexcept"
   "void UDPConnection::Acked ("
   "m_AckAdmission->wait.reset ();" "m_AckTimerSeqn = 0;"
-  "try { m_AckTimer.cancel (); }"
+  "try\n\t\t{\n\t\t\tm_AckTimer.cancel ();\n\t\t}"
   "m_AckAdmission->cancellationError = error.code ();")
 require_runtime_order("libi2pd_client/UDPTunnel.cpp"
   "void UDPConnection::ScheduleAckTimerLocked ("
@@ -859,7 +859,7 @@ require_runtime_source("privsep/WindowsIpc.cpp"
 require_runtime_source("privsep/WindowsIpc.cpp"
   "HANDLE standardHandles[3] { };")
 require_runtime_source("privsep/WindowsIpc.cpp"
-  "PROC_THREAD_ATTRIBUTE_HANDLE_LIST, attributes.standardHandles,")
+  "PROC_THREAD_ATTRIBUTE_HANDLE_LIST,\n\t\t\t\t\tattributes.standardHandles,")
 require_runtime_source("privsep/WindowsIpc.cpp"
   "DWORD attributeCount = 1; // mandatory standard-handle list")
 require_runtime_source("privsep/WindowsIpc.cpp"
@@ -930,18 +930,18 @@ if(NOT retirement OR retirement MATCHES "[.](Stop|Send|SendUntil)[ \t]*[(]")
   message(FATAL_ERROR "Expired storage authority must retire without a new wait")
 endif()
 require_runtime_source("privsep/DataStorage.cpp"
-  "const auto cancelDeadline = std::min (deadline,")
+  "const auto cancelDeadline\n\t\t\t\t= std::min (deadline,")
 require_runtime_source("privsep/Channel.cpp"
   "return SendWithFdUntil (message, fd, false, deadline);")
 
 # A nonsecret probe shares containment, never authentication authority.
 require_runtime_source("privsep/WindowsIpc.cpp"
-  "enum class WindowsSpawnMode { Worker, StartupProbe };")
+  "enum class WindowsSpawnMode\n\t{\n\t\tWorker,\n\t\tStartupProbe\n\t};")
 require_runtime_source("privsep/WindowsIpc.cpp"
   "return i2p::unexpected (\"invalid startup probe authority\");")
 require_runtime_order("privsep/WindowsIpc.cpp"
   "SpawnWindowsWorkerStartupProbe (" "bool WindowsWorkerProcess::Wait ("
-  "WindowsSpawnMode::StartupProbe" "WindowsWorkerRole::Supervisor, {}, 0, 0, {}, nullptr,"
+  "WindowsSpawnMode::StartupProbe" "WindowsWorkerRole::Supervisor, { },\n\t\t0, 0, { }, nullptr,"
   "GetWindowsWorkerPolicy (WindowsWorkerRole::Supervisor)")
 require_runtime_order("tests/test-privsep-windows-supervisor.cpp"
   "int main (int argc, char ** argv)" "for (int index = 1; index < argc; ++index)"
@@ -992,7 +992,7 @@ require_runtime_order("libi2pd_client/TorrentsDHT.cpp"
   "void TorrentsDHT::ScheduleTimerLocked ("
   "std::weak_ptr<DHTServiceState> guard = m_ServiceState;"
   "std::lock_guard admission (state->ownerMutex);"
-  "|| !state->owner || state->waits[index] != wait) return;"
+  "|| !state->owner || state->waits[index] != wait)\n\t\t\t\treturn;"
   "state->waits[index].reset ();" "action (*state->owner, error);")
 require_runtime_order("libi2pd_client/TorrentsDHT.cpp"
   "TorrentsDHT::~TorrentsDHT ()" "void TorrentsDHT::Start ()"
@@ -1007,7 +1007,7 @@ require_runtime_order("privsep/WindowsIpc.cpp"
   "i2p::expected<WindowsWorkerProcess, std::string> SpawnWindowsWorker ("
   "worker.process.Reset (processInfo.hProcess);"
   "worker.thread.Reset (processInfo.hThread);"
-  "auto terminateUnpublished = i2p::modern::ScopeExit ([&worker] () noexcept"
+  "auto terminateUnpublished = i2p::modern::ScopeExit (\n\t\t\t[&worker] () noexcept"
   "worker.TerminateAndWait (2000, ERROR_PROCESS_ABORTED)"
   "worker.nonceHex = nonce;" "AssignProcessToJobObject ("
   "ResumeThread (worker.thread.Native ())" "terminateUnpublished.dismiss ();"

@@ -246,8 +246,7 @@ void ExpectUnusableAddress (const PrivateKeys & keys, const RouterSpec & spec)
 	assert (router.GetNTCP2V6Address () == nullptr);
 	assert (router.GetSSU2V4Address () == nullptr);
 	assert (router.GetSSU2V6Address () == nullptr);
-	const auto everyTransport
-		= RouterInfo::eNTCP2V4 | RouterInfo::eNTCP2V6 | RouterInfo::eSSU2V4 | RouterInfo::eSSU2V6;
+	const auto everyTransport = RouterInfo::eNTCP2V4 | RouterInfo::eNTCP2V6 | RouterInfo::eSSU2V4 | RouterInfo::eSSU2V6;
 	assert (!router.IsReachableBy (everyTransport));
 	assert (!router.IsPublished (true));
 	assert (!router.IsPublished (false));

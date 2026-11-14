@@ -364,8 +364,8 @@ int main ()
 		auto unknown = Channel::CreatePair ();
 		assert (unknown.has_value ());
 		unknown->second.SetEnforcementPolicy (EnforcementPolicy::Endpoint);
-		const std::string raw = Header (PROTOCOL_MAGIC, PROTOCOL_VERSION,
-			static_cast<uint16_t> (MAX_MESSAGE_TYPE + 1), 900, 0);
+		const std::string raw
+			= Header (PROTOCOL_MAGIC, PROTOCOL_VERSION, static_cast<uint16_t> (MAX_MESSAGE_TYPE + 1), 900, 0);
 		assert (::send (unknown->first.Fd (), raw.data (), raw.size (), 0) == static_cast<ssize_t> (raw.size ()));
 		auto received = unknown->second.ReceiveWithFd (500);
 		assert (!received.has_value ());

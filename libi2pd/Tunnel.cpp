@@ -80,7 +80,8 @@ namespace tunnel
 			return; // no message is composed and nothing is sent
 		}
 		bool completed = false;
-		auto abortBuild = i2p::modern::ScopeExit ([&]
+		auto abortBuild = i2p::modern::ScopeExit (
+			[&]
 			{
 				if (completed) return;
 				// Provider exceptions must not retain a phony hop or leave the
@@ -140,7 +141,8 @@ namespace tunnel
 		for (int j = hopsWithPhony; j < numRecords; j++)
 		{
 			int idx = recordIndicies[j];
-			i2p::crypto::FillRandomBytes ({ records + idx * SHORT_TUNNEL_BUILD_RECORD_SIZE, SHORT_TUNNEL_BUILD_RECORD_SIZE });
+			i2p::crypto::FillRandomBytes (
+				{ records + idx * SHORT_TUNNEL_BUILD_RECORD_SIZE, SHORT_TUNNEL_BUILD_RECORD_SIZE });
 		}
 
 		// decrypt real records Peeling order is the reverse of the send

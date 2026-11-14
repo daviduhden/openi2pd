@@ -132,8 +132,8 @@ namespace data
 			}
 			LoadCertificate (file);
 		}
-		LogPrint (eLogInfo, "Family: ", m_SigningKeys.size () - previousCount,
-			" new signing identities loaded; ", m_SigningKeys.size (), " retained");
+		LogPrint (eLogInfo, "Family: ", m_SigningKeys.size () - previousCount, " new signing identities loaded; ",
+			m_SigningKeys.size (), " retained");
 	}
 
 	bool Families::VerifyFamily (

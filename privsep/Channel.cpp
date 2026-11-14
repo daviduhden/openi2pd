@@ -314,8 +314,8 @@ i2p::expected<void, std::string> Channel::Send (const Message & message, int tim
 	return SendWithFd (message, -1, timeoutMs);
 }
 
-i2p::expected<void, std::string> Channel::SendUntil (const Message & message,
-	std::chrono::steady_clock::time_point deadline)
+i2p::expected<void, std::string> Channel::SendUntil (
+	const Message & message, std::chrono::steady_clock::time_point deadline)
 {
 	return SendWithFdUntil (message, -1, false, deadline);
 }
@@ -325,14 +325,14 @@ i2p::expected<void, std::string> Channel::SendWithFd (const Message & message, i
 	return SendWithFdUntil (message, fd, IsInfiniteTimeout (timeoutMs), MakeDeadline (timeoutMs));
 }
 
-i2p::expected<void, std::string> Channel::SendWithFdUntil (const Message & message, int fd,
-	std::chrono::steady_clock::time_point deadline)
+i2p::expected<void, std::string> Channel::SendWithFdUntil (
+	const Message & message, int fd, std::chrono::steady_clock::time_point deadline)
 {
 	return SendWithFdUntil (message, fd, false, deadline);
 }
 
-i2p::expected<void, std::string> Channel::SendWithFdUntil (const Message & message, int fd, bool infinite,
-	std::chrono::steady_clock::time_point deadline)
+i2p::expected<void, std::string> Channel::SendWithFdUntil (
+	const Message & message, int fd, bool infinite, std::chrono::steady_clock::time_point deadline)
 {
 	if (!IsOpen ()) return i2p::unexpected ("channel is closed");
 	if (fd >= 0 && fcntl (fd, F_GETFD) < 0)
@@ -417,8 +417,8 @@ i2p::expected<void, std::string> Channel::SendWithFdUntil (const Message & messa
 	}
 }
 
-bool Channel::RejectFrame (const Message & frame, ErrorCode code, std::string_view detail,
-	std::chrono::steady_clock::time_point deadline)
+bool Channel::RejectFrame (
+	const Message & frame, ErrorCode code, std::string_view detail, std::chrono::steady_clock::time_point deadline)
 {
 	// The budget is charged before the send so a peer cannot force an
 	// unbounded error loop by filling the socket in both directions.
@@ -711,7 +711,8 @@ i2p::expected<std::optional<ReceivedMessage>, std::string> Channel::ReceiveWithF
 				{
 					const Message offending { static_cast<MessageType> (inspection.rawType), inspection.requestId,
 						{ } };
-					if (RejectFrame (offending, message.error ().code, message.error ().text, refusalDeadline ())) continue;
+					if (RejectFrame (offending, message.error ().code, message.error ().text, refusalDeadline ()))
+						continue;
 				}
 			}
 			return i2p::unexpected (std::string ("protocol: ") + std::string (message.error ().text));

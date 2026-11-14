@@ -585,7 +585,7 @@ namespace fs
 	 */
 	std::string HashedStorage::Path (const std::string & ident) const
 	{
-		if (ident.empty ()) return {};
+		if (ident.empty ()) return { };
 		std::string safe_ident = ident;
 		std::replace (safe_ident.begin (), safe_ident.end (), '/', '-');
 		std::replace (safe_ident.begin (), safe_ident.end (), '\\', '-');

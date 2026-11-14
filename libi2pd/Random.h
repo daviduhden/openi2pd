@@ -35,11 +35,13 @@ namespace crypto
 		}
 
 		template <typename Fill>
-		concept RandomByteSource = requires (Fill & source, std::span<uint8_t> bytes)
-			{ { std::invoke (source, bytes) } -> std::same_as<bool>; };
+		concept RandomByteSource = requires (Fill & source, std::span<uint8_t> bytes) {
+			{ std::invoke (source, bytes) } -> std::same_as<bool>;
+		};
 		template <typename Next>
-		concept RandomWordSource = requires (Next & next)
-			{ { std::invoke (next) } -> std::same_as<uint32_t>; };
+		concept RandomWordSource = requires (Next & next) {
+			{ std::invoke (next) } -> std::same_as<uint32_t>;
+		};
 
 		/*
 		 * Checked per-call source adapter. Failure never publishes partial
@@ -51,8 +53,7 @@ namespace crypto
 		 * @throws std::runtime_error If the source reports failure.
 		 * Source exceptions propagate after cleansing the destination.
 		 */
-		template <RandomByteSource Fill>
-		void FillRandomBytesWith (std::span<uint8_t> bytes, Fill && source)
+		template <RandomByteSource Fill> void FillRandomBytesWith (std::span<uint8_t> bytes, Fill && source)
 		{
 			if (bytes.empty ()) return;
 			if (!RandomByteCountSupported (bytes.size ()))
@@ -80,8 +81,7 @@ namespace crypto
 		 * @param next Trusted source; exceptions abort rejection immediately.
 		 * @return A value below bound, or zero when no choice is needed.
 		 */
-		template <RandomWordSource Next>
-		uint32_t RandomBelowWith (uint32_t bound, Next && next)
+		template <RandomWordSource Next> uint32_t RandomBelowWith (uint32_t bound, Next && next)
 		{
 			if (bound < 2) return 0;
 			// Reject the short top interval to avoid modulo bias.
@@ -103,9 +103,7 @@ namespace crypto
 	inline void FillRandomBytes (std::span<uint8_t> bytes)
 	{
 		detail::FillRandomBytesWith (bytes, [] (std::span<uint8_t> output)
-			{
-				return RAND_bytes (output.data (), static_cast<int> (output.size ())) == 1;
-			});
+			{ return RAND_bytes (output.data (), static_cast<int> (output.size ())) == 1; });
 	}
 
 	/// Return a checked provider word, including zero. Throws on failure.

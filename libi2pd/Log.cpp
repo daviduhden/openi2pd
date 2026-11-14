@@ -48,9 +48,13 @@ namespace log
 		public:
 #ifdef _WIN32
 			explicit NativeLogFile (HANDLE handle = INVALID_HANDLE_VALUE)
-				: m_Handle (handle) { }
+				: m_Handle (handle)
+			{
+			}
 			NativeLogFile (NativeLogFile && other) noexcept
-				: m_Handle (std::exchange (other.m_Handle, INVALID_HANDLE_VALUE)) { }
+				: m_Handle (std::exchange (other.m_Handle, INVALID_HANDLE_VALUE))
+			{
+			}
 			NativeLogFile & operator= (NativeLogFile && other) noexcept
 			{
 				if (this != &other)
@@ -66,13 +70,18 @@ namespace log
 			{
 				if (m_Handle != INVALID_HANDLE_VALUE) CloseHandle (std::exchange (m_Handle, INVALID_HANDLE_VALUE));
 			}
+
 		private:
 			HANDLE m_Handle;
 #else
 			explicit NativeLogFile (int fd = -1)
-				: m_Fd (fd) { }
+				: m_Fd (fd)
+			{
+			}
 			NativeLogFile (NativeLogFile && other) noexcept
-				: m_Fd (std::exchange (other.m_Fd, -1)) { }
+				: m_Fd (std::exchange (other.m_Fd, -1))
+			{
+			}
 			NativeLogFile & operator= (NativeLogFile && other) noexcept
 			{
 				if (this != &other)
@@ -88,6 +97,7 @@ namespace log
 			{
 				if (m_Fd >= 0) close (std::exchange (m_Fd, -1));
 			}
+
 		private:
 			int m_Fd;
 #endif
@@ -99,7 +109,9 @@ namespace log
 		{
 		public:
 			explicit AppendLogBuffer (NativeLogFile file)
-				: m_File (std::move (file)) { }
+				: m_File (std::move (file))
+			{
+			}
 
 		protected:
 			std::streamsize xsputn (const char * data, std::streamsize size) override
@@ -282,9 +294,10 @@ namespace log
 			}
 			const auto freeDescriptor = i2p::modern::ScopeExit ([&] { LocalFree (descriptor); });
 			SECURITY_ATTRIBUTES attributes { sizeof (SECURITY_ATTRIBUTES), descriptor, FALSE };
-			HANDLE handle = CreateFileW (target.c_str (), FILE_APPEND_DATA | FILE_READ_ATTRIBUTES | READ_CONTROL | WRITE_DAC,
-				FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, &attributes, OPEN_ALWAYS,
-				FILE_ATTRIBUTE_NORMAL | FILE_FLAG_OPEN_REPARSE_POINT, nullptr);
+			HANDLE handle
+				= CreateFileW (target.c_str (), FILE_APPEND_DATA | FILE_READ_ATTRIBUTES | READ_CONTROL | WRITE_DAC,
+					FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, &attributes, OPEN_ALWAYS,
+					FILE_ATTRIBUTE_NORMAL | FILE_FLAG_OPEN_REPARSE_POINT, nullptr);
 			if (handle == INVALID_HANDLE_VALUE)
 			{
 				error = "can't open file without following reparse points";
@@ -382,8 +395,8 @@ namespace log
 				error = "file is not a private regular file owned by this user";
 				return nullptr;
 			}
-			if (fstatat (parent.Get (), leaf.c_str (), &named, AT_SYMLINK_NOFOLLOW) != 0
-				|| !S_ISREG (named.st_mode) || named.st_dev != descriptor.st_dev || named.st_ino != descriptor.st_ino)
+			if (fstatat (parent.Get (), leaf.c_str (), &named, AT_SYMLINK_NOFOLLOW) != 0 || !S_ISREG (named.st_mode)
+				|| named.st_dev != descriptor.st_dev || named.st_ino != descriptor.st_ino)
 			{
 				error = "file path changed during secure open";
 				return nullptr;

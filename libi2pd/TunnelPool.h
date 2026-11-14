@@ -311,7 +311,9 @@ namespace tunnel
 	private:
 		// A local attempt identity survives in callbacks independently of a
 		// reusable wire message ID. It carries no secret or protocol data.
-		struct TunnelTestAuthority { };
+		struct TunnelTestAuthority
+		{
+		};
 		/* One outstanding tunnel test message. */
 		struct TunnelTest
 		{
@@ -325,10 +327,9 @@ namespace tunnel
 	private:
 		// Detach only the matching attempt. Returned tunnel owners are
 		// destroyed after the correlation mutex has been released.
-		std::optional<TunnelTest> RetireTunnelTest (uint32_t msgID,
-			const std::shared_ptr<const TunnelTestAuthority> & authority);
-		void HandleTunnelTestDrop (uint32_t msgID,
-			const std::shared_ptr<const TunnelTestAuthority> & authority);
+		std::optional<TunnelTest> RetireTunnelTest (
+			uint32_t msgID, const std::shared_ptr<const TunnelTestAuthority> & authority);
+		void HandleTunnelTestDrop (uint32_t msgID, const std::shared_ptr<const TunnelTestAuthority> & authority);
 		void TestTunnels (uint64_t ts);
 		void CreateTunnels (uint64_t ts);
 		void CreateInboundTunnel (uint64_t ts);

@@ -65,7 +65,7 @@ void TestMagnetState ()
 	reject (encoded + "trailing");
 	reject (std::string (MAX_TORRENT_MAGNET_STATE_BYTES + 1, 'x'));
 	const auto record = [] (std::string_view hash, std::string_view name, std::string_view trackers,
-		std::string_view stopped = "i0e", std::string_view version = "i1e")
+							std::string_view stopped = "i0e", std::string_view version = "i1e")
 	{
 		return CreateDictionary ({ { "hash", CreateByteString (hash) }, { "name", CreateByteString (name) },
 			{ "stopped", stopped }, { "trackers", trackers }, { "version", version } });
@@ -78,7 +78,8 @@ void TestMagnetState ()
 	reject (record (hash, "bad\nname", "le"));
 	reject (record (hash, "name", CreateList ({ CreateByteString ("http://clearnet.example/a") })));
 	reject (record (hash, "name", CreateList ({ CreateByteString ("http://user:private-marker@tracker.i2p/a") })));
-	reject (record (hash, "name", CreateList ({ CreateByteString ("http://tracker.i2p/a"), CreateByteString ("http://tracker.i2p/a") })));
+	reject (record (hash, "name",
+		CreateList ({ CreateByteString ("http://tracker.i2p/a"), CreateByteString ("http://tracker.i2p/a") })));
 	TorrentMagnetState invalid = original;
 	invalid.name = std::string (2049, 'x');
 	assert (EncodeTorrentMagnetState (invalid, error).empty ());

@@ -56,7 +56,8 @@ public:
 void AssertClosed (boost::asio::ip::tcp::socket & socket)
 {
 	socket.non_blocking (true);
-	assert (WaitUntil ([&]
+	assert (WaitUntil (
+		[&]
 		{
 			char byte;
 			boost::system::error_code error;
@@ -64,7 +65,8 @@ void AssertClosed (boost::asio::ip::tcp::socket & socket)
 			if (error == boost::asio::error::would_block || error == boost::asio::error::try_again) return false;
 			assert (error == boost::asio::error::eof || error == boost::asio::error::connection_reset);
 			return true;
-		}, std::chrono::seconds (2)));
+		},
+		std::chrono::seconds (2)));
 }
 
 void TestServerLifecycle ()
@@ -97,7 +99,8 @@ void TestServerLifecycle ()
 	std::mutex mutex;
 	std::condition_variable changed;
 	bool entered = false, release = false;
-	boost::asio::post (server.GetService (), [&]
+	boost::asio::post (server.GetService (),
+		[&]
 		{
 			std::unique_lock lock (mutex);
 			entered = true;
@@ -129,7 +132,12 @@ void TestServerLifecycle ()
 	// A service-thread shutdown leaves its join to the control thread.
 	std::promise<void> stopped;
 	auto future = stopped.get_future ();
-	boost::asio::post (server.GetService (), [&] { server.Stop (); stopped.set_value (); });
+	boost::asio::post (server.GetService (),
+		[&]
+		{
+			server.Stop ();
+			stopped.set_value ();
+		});
 	assert (future.wait_for (std::chrono::seconds (2)) == std::future_status::ready);
 	server.Start ();
 	assert (server.GetNumConnections () == 0);
@@ -150,11 +158,11 @@ void TestServerLifecycle ()
 		// External publication and retirement share lifetime authority.
 		// Race these paths under the sanitizer lanes without fixed sleeps.
 		std::barrier retireGate (2);
-		std::jthread publisher ([&]
+		std::jthread publisher (
+			[&]
 			{
 				retireGate.arrive_and_wait ();
-				for (unsigned i = 0; i < 64; ++i)
-					retained->SendI2CPMessage (I2CP_SET_DATE_MESSAGE, nullptr, 0);
+				for (unsigned i = 0; i < 64; ++i) retained->SendI2CPMessage (I2CP_SET_DATE_MESSAGE, nullptr, 0);
 				retained->Stop ();
 			});
 		retireGate.arrive_and_wait ();
@@ -244,15 +252,15 @@ int main ()
 		auto socket = std::make_shared<boost::asio::ip::tcp::socket> (server.GetService ());
 		auto owner = std::make_shared<I2CPSession> (server, socket);
 		i2p::util::Mapping params;
-		auto destination = std::make_shared<TestRunnableI2CPDestination> (
-			owner, MakeIdentity (), false, params);
+		auto destination = std::make_shared<TestRunnableI2CPDestination> (owner, MakeIdentity (), false, params);
 		destination->Start ();
 		auto & service = destination->GetService ();
 		std::mutex mutex;
 		std::condition_variable changed;
 		bool entered = false;
 		bool release = false;
-		boost::asio::post (service, [&]
+		boost::asio::post (service,
+			[&]
 			{
 				std::unique_lock<std::mutex> lock (mutex);
 				entered = true;

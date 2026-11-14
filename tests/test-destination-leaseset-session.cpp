@@ -23,56 +23,53 @@
 
 namespace
 {
-	class DestinationFixture : public i2p::client::ClientDestination
+class DestinationFixture : public i2p::client::ClientDestination
+{
+public:
+	using ClientDestination::ClientDestination;
+	void Store (const std::vector<uint8_t> & payload, i2p::garlic::ECIESX25519AEADRatchetSession * session)
 	{
-	public:
-		using ClientDestination::ClientDestination;
-		void Store (const std::vector<uint8_t> & payload,
-			i2p::garlic::ECIESX25519AEADRatchetSession * session)
-		{
-			assert (HandleCloveI2NPMessage (
-				i2p::eI2NPDatabaseStore, payload.data (), payload.size (), 1, session));
-		}
-	};
-
-	std::vector<uint8_t> MakeStore (const i2p::data::PrivateKeys & keys,
-		uint64_t expiration)
-	{
-		auto identity = keys.GetPublic ();
-		std::vector<uint8_t> leaseSet (identity->GetFullLen ());
-		assert (identity->ToBuffer (leaseSet.data (), leaseSet.size ()) == leaseSet.size ());
-		const auto * encryptionKey = identity->GetEncryptionPublicKey ();
-		leaseSet.insert (leaseSet.end (), encryptionKey, encryptionKey + 256);
-		leaseSet.resize (leaseSet.size () + identity->GetSigningPublicKeyLen (), 0);
-		leaseSet.push_back (1);
-		leaseSet.resize (leaseSet.size () + i2p::data::IdentHash::len, 0x42);
-		auto offset = leaseSet.size ();
-		leaseSet.resize (offset + 12);
-		htobe32buf (leaseSet.data () + offset, 37);
-		htobe64buf (leaseSet.data () + offset + 4, expiration);
-		std::vector<uint8_t> signature (keys.GetSignatureLen ());
-		keys.Sign (leaseSet.data (), static_cast<int> (leaseSet.size ()), signature.data ());
-		leaseSet.insert (leaseSet.end (), signature.begin (), signature.end ());
-		i2p::data::LeaseSet parsed (leaseSet.data (), leaseSet.size ());
-		assert (parsed.IsValid ());
-
-		std::vector<uint8_t> payload (i2p::DATABASE_STORE_HEADER_SIZE, 0);
-		std::memcpy (payload.data () + i2p::DATABASE_STORE_KEY_OFFSET,
-			identity->GetIdentHash ().data (), i2p::data::IdentHash::len);
-		payload[i2p::DATABASE_STORE_TYPE_OFFSET] = i2p::data::NETDB_STORE_TYPE_LEASESET;
-		payload.insert (payload.end (), leaseSet.begin (), leaseSet.end ());
-		return payload;
+		assert (HandleCloveI2NPMessage (i2p::eI2NPDatabaseStore, payload.data (), payload.size (), 1, session));
 	}
+};
+
+std::vector<uint8_t> MakeStore (const i2p::data::PrivateKeys & keys, uint64_t expiration)
+{
+	auto identity = keys.GetPublic ();
+	std::vector<uint8_t> leaseSet (identity->GetFullLen ());
+	assert (identity->ToBuffer (leaseSet.data (), leaseSet.size ()) == leaseSet.size ());
+	const auto * encryptionKey = identity->GetEncryptionPublicKey ();
+	leaseSet.insert (leaseSet.end (), encryptionKey, encryptionKey + 256);
+	leaseSet.resize (leaseSet.size () + identity->GetSigningPublicKeyLen (), 0);
+	leaseSet.push_back (1);
+	leaseSet.resize (leaseSet.size () + i2p::data::IdentHash::len, 0x42);
+	auto offset = leaseSet.size ();
+	leaseSet.resize (offset + 12);
+	htobe32buf (leaseSet.data () + offset, 37);
+	htobe64buf (leaseSet.data () + offset + 4, expiration);
+	std::vector<uint8_t> signature (keys.GetSignatureLen ());
+	keys.Sign (leaseSet.data (), static_cast<int> (leaseSet.size ()), signature.data ());
+	leaseSet.insert (leaseSet.end (), signature.begin (), signature.end ());
+	i2p::data::LeaseSet parsed (leaseSet.data (), leaseSet.size ());
+	assert (parsed.IsValid ());
+
+	std::vector<uint8_t> payload (i2p::DATABASE_STORE_HEADER_SIZE, 0);
+	std::memcpy (
+		payload.data () + i2p::DATABASE_STORE_KEY_OFFSET, identity->GetIdentHash ().data (), i2p::data::IdentHash::len);
+	payload[i2p::DATABASE_STORE_TYPE_OFFSET] = i2p::data::NETDB_STORE_TYPE_LEASESET;
+	payload.insert (payload.end (), leaseSet.begin (), leaseSet.end ());
+	return payload;
+}
 }
 
 int main ()
 {
 	using namespace i2p::data;
 	boost::asio::io_context service;
-	auto localKeys = PrivateKeys::CreateRandomKeys (
-		SIGNING_KEY_TYPE_EDDSA_SHA512_ED25519, CRYPTO_KEY_TYPE_ELGAMAL, true);
-	auto remoteKeys = PrivateKeys::CreateRandomKeys (
-		SIGNING_KEY_TYPE_EDDSA_SHA512_ED25519, CRYPTO_KEY_TYPE_ELGAMAL, true);
+	auto localKeys
+		= PrivateKeys::CreateRandomKeys (SIGNING_KEY_TYPE_EDDSA_SHA512_ED25519, CRYPTO_KEY_TYPE_ELGAMAL, true);
+	auto remoteKeys
+		= PrivateKeys::CreateRandomKeys (SIGNING_KEY_TYPE_EDDSA_SHA512_ED25519, CRYPTO_KEY_TYPE_ELGAMAL, true);
 	auto destination = std::make_shared<DestinationFixture> (service, localKeys, false);
 	auto session = std::make_shared<i2p::garlic::ECIESX25519AEADRatchetSession> (destination.get (), false);
 	const auto & remote = remoteKeys.GetPublic ()->GetIdentHash ();

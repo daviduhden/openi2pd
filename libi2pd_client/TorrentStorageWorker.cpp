@@ -37,7 +37,10 @@ struct TorrentStorageWorker::Impl
 	{
 		ready = false;
 		process.ChannelFd ().Close ();
-		try { process.Stop (100); }
+		try
+		{
+			process.Stop (100);
+		}
 		catch (...)
 		{
 			// Preserve the original exception. The channel remains closed;
@@ -57,8 +60,7 @@ struct TorrentStorageWorker::Impl
 		const int exceptions = std::uncaught_exceptions ();
 		~ExceptionRetirement () noexcept
 		{
-			if (std::uncaught_exceptions () > exceptions)
-				owner.RetireAfterException ();
+			if (std::uncaught_exceptions () > exceptions) owner.RetireAfterException ();
 		}
 	};
 	// One request/response transaction on the storage channel. Callers
@@ -69,8 +71,8 @@ struct TorrentStorageWorker::Impl
 	// request id is an operation rejection and keeps the channel usable,
 	// while a reply with a descriptor, a foreign id or an unrecognized
 	// shape is treated as corruption and retires the worker.
-	bool Exchange (
-		i2p::privsep::MessageType type, std::string payload, int fd, std::string & result, std::string & error,
+	bool Exchange (i2p::privsep::MessageType type, std::string payload, int fd, std::string & result,
+		std::string & error,
 		std::chrono::steady_clock::time_point transactionDeadline = std::chrono::steady_clock::time_point::max ())
 	{
 		using namespace i2p::privsep;
@@ -193,16 +195,21 @@ bool TorrentStorageWorker::Start (const std::filesystem::path & root, std::strin
 	// satisfy.
 	struct RootDescriptor
 	{
-		explicit RootDescriptor (int value) : fd (value) { }
-		~RootDescriptor () noexcept { if (fd >= 0) ::close (fd); }
+		explicit RootDescriptor (int value)
+			: fd (value)
+		{
+		}
+		~RootDescriptor () noexcept
+		{
+			if (fd >= 0) ::close (fd);
+		}
 		RootDescriptor (const RootDescriptor &) = delete;
 		RootDescriptor & operator= (const RootDescriptor &) = delete;
 		const int fd;
 	};
 	// IPC borrows this capability; the worker receives its own descriptor.
 	// Stack ownership closes the local root before exception retirement.
-	const RootDescriptor rootFd (
-		::open (absolute.c_str (), O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC));
+	const RootDescriptor rootFd (::open (absolute.c_str (), O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC));
 	if (rootFd.fd < 0)
 	{
 		error = "cannot open authorized storage root";
@@ -523,7 +530,8 @@ bool TorrentStorageWorker::ReadMetadata (
 		return false;
 	}
 	std::string reply;
-	if (!m_Impl->Exchange (MessageType::TorrentStorageRequest, request.Data (), -1, reply, error, deadline)) return false;
+	if (!m_Impl->Exchange (MessageType::TorrentStorageRequest, request.Data (), -1, reply, error, deadline))
+		return false;
 	PayloadReader reader (reply);
 	const auto handle = reader.ReadU32 ();
 	const auto size = reader.ReadU64BE ();
@@ -566,7 +574,8 @@ bool TorrentStorageWorker::ReadMetadata (
 		PayloadWriter release;
 		release.WriteU8 (static_cast<uint8_t> (StorageOperation::Release));
 		release.WriteU32 (*handle);
-		const bool released = m_Impl->Exchange (MessageType::TorrentStorageRequest, release.Data (), -1, reply, error, deadline)
+		const bool released
+			= m_Impl->Exchange (MessageType::TorrentStorageRequest, release.Data (), -1, reply, error, deadline)
 			&& reply.empty ();
 		if (!ok) error = original;
 		ok = ok && released;

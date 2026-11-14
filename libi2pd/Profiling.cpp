@@ -64,8 +64,7 @@ namespace data
 		// The callback queue is destroyed before the cache and storage.
 		// NetDb has already quiesced producers and discarded or applied it.
 		std::mutex postponedMutex;
-		std::list<std::pair<IdentHash,
-			std::function<void (std::shared_ptr<RouterProfile>)>>> postponed;
+		std::list<std::pair<IdentHash, std::function<void (std::shared_ptr<RouterProfile>)>>> postponed;
 	};
 
 	static ProfilingRuntime & GetProfilingRuntime ()

@@ -504,8 +504,7 @@ namespace torrents
 		std::shared_ptr<InboundAcceptGeneration> m_PeerDialGeneration;
 		void StartPeerDials ();
 		i2p::client::StreamRequestComplete CreatePeerDialCompletion (
-			std::shared_ptr<Torrent> torrent, const i2p::data::IdentHash & peer,
-			PeerConnectionOrigin origin);
+			std::shared_ptr<Torrent> torrent, const i2p::data::IdentHash & peer, PeerConnectionOrigin origin);
 		// Enumerate and read the configured torrent directory on the storage
 		// service. Parsing/insertion is posted back to the network service;
 		// the network thread never walks the directory or opens a file.

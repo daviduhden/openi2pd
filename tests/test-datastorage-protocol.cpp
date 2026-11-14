@@ -208,8 +208,8 @@ int main ()
 	{
 		const auto base64 = Base64Name (7);
 		const std::string payload (32, 'x');
-		auto encoded
-			= EncodeDataStorageRequest (static_cast<uint8_t> (StorageArtifact::RouterInfoCache), base64, Bytes (payload));
+		auto encoded = EncodeDataStorageRequest (
+			static_cast<uint8_t> (StorageArtifact::RouterInfoCache), base64, Bytes (payload));
 		assert (encoded.has_value ());
 		auto decoded = DecodeDataStorageRequest (*encoded);
 		assert (decoded.has_value ());
@@ -233,7 +233,8 @@ int main ()
 		// Payload cap: the limit is accepted, one byte more is TooLarge.
 		// The temporary string outlives the call, so the borrowed span is
 		// valid for the whole full expression.
-		assert (EncodeDataStorageRequest (1, base64, Bytes (std::string (MAX_ARTIFACT_PAYLOAD_SIZE, 'p'))).has_value ());
+		assert (
+			EncodeDataStorageRequest (1, base64, Bytes (std::string (MAX_ARTIFACT_PAYLOAD_SIZE, 'p'))).has_value ());
 		auto tooLargePayload
 			= EncodeDataStorageRequest (1, base64, Bytes (std::string (MAX_ARTIFACT_PAYLOAD_SIZE + 1, 'p')));
 		assert (!tooLargePayload.has_value ());

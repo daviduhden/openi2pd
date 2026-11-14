@@ -303,8 +303,7 @@ namespace client
 		/// Publish and start the registry winner, serializing factory starts.
 		/// Start runs outside the registry lock. This does not serialize Stop.
 		std::shared_ptr<ClientDestination> AddLocalDestination (
-			std::shared_ptr<ClientDestination> localDestination,
-			const i2p::data::PrivateKeys * keys = nullptr);
+			std::shared_ptr<ClientDestination> localDestination, const i2p::data::PrivateKeys * keys = nullptr);
 
 #ifndef NO_TORRENTS
 		std::shared_ptr<i2p::torrents::TorrentsRPCServer> CreateTorrentsRPCServer (

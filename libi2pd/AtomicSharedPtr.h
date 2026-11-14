@@ -114,17 +114,18 @@ namespace util
 		 * mutex synchronization provides stronger ordering on this path.
 		 */
 		bool CompareExchangeStrong (std::shared_ptr<T> & expected, std::shared_ptr<T> desired,
-			std::memory_order = std::memory_order_acq_rel,
-			std::memory_order = std::memory_order_acquire)
+			std::memory_order = std::memory_order_acq_rel, std::memory_order = std::memory_order_acquire)
 		{
 			std::shared_ptr<T> observed;
 			bool matched;
 			{
 				std::lock_guard<std::mutex> lock (m_Mutex);
-				matched = m_Value.get () == expected.get ()
-					&& !m_Value.owner_before (expected) && !expected.owner_before (m_Value);
-				if (matched) m_Value.swap (desired);
-				else observed = m_Value;
+				matched = m_Value.get () == expected.get () && !m_Value.owner_before (expected)
+					&& !expected.owner_before (m_Value);
+				if (matched)
+					m_Value.swap (desired);
+				else
+					observed = m_Value;
 			}
 			// Both retired values and replaced expected owners can execute
 			// arbitrary destructors; neither is released under the lock.

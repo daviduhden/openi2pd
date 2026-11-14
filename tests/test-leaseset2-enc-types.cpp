@@ -149,7 +149,7 @@ void TestEncTypeOptionGrammar ()
 		assert (parsed.types.count (CRYPTO_KEY_TYPE_ECIES_MLKEM768_X25519_AEAD) == hybridSelectable);
 		const bool hybridFirst = hybridAndX25519[0] == '6';
 		const auto expected = (hybridFirst && hybridSelectable) ? CRYPTO_KEY_TYPE_ECIES_MLKEM768_X25519_AEAD
-															   : CRYPTO_KEY_TYPE_ECIES_X25519_AEAD;
+																: CRYPTO_KEY_TYPE_ECIES_X25519_AEAD;
 		assert (parsed.preferred == expected);
 		if (!hybridSelectable) assert (parsed.types.size () == 1);
 	}

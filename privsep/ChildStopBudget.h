@@ -30,15 +30,12 @@ struct ChildStopBudget
 
 	ChildStopBudget (Clock::time_point started, int timeoutMs)
 	{
-		const auto total = std::chrono::milliseconds (
-			timeoutMs > 0 ? timeoutMs : 2000);
-		const auto reserve = std::min (std::chrono::milliseconds (500),
-			total / 3);
+		const auto total = std::chrono::milliseconds (timeoutMs > 0 ? timeoutMs : 2000);
+		const auto reserve = std::min (std::chrono::milliseconds (500), total / 3);
 		reap = started + total;
 		terminate = reap - reserve;
 		graceful = terminate - reserve;
-		send = std::min (graceful,
-			started + std::chrono::milliseconds (500));
+		send = std::min (graceful, started + std::chrono::milliseconds (500));
 	}
 };
 }

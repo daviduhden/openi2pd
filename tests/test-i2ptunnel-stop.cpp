@@ -50,23 +50,23 @@ public:
 class InspectableIRCConnection : public i2p::client::I2PTunnelConnectionIRC
 {
 public:
+	using I2PTunnelConnection::GetSocket;
 	using I2PTunnelConnectionIRC::I2PTunnelConnectionIRC;
 	using I2PTunnelConnectionIRC::Write;
-	using I2PTunnelConnection::GetSocket;
 };
 
 class InspectableTunnelConnection : public i2p::client::I2PTunnelConnection
 {
 public:
-	using I2PTunnelConnection::I2PTunnelConnection;
 	using I2PTunnelConnection::GetSocket;
+	using I2PTunnelConnection::I2PTunnelConnection;
 };
 
 class InspectableIRCTunnel : public i2p::client::I2PServerTunnelIRC
 {
 public:
-	using I2PServerTunnelIRC::I2PServerTunnelIRC;
 	using I2PServerTunnelIRC::CreateI2PConnection;
+	using I2PServerTunnelIRC::I2PServerTunnelIRC;
 };
 
 struct Fixture
@@ -140,7 +140,7 @@ int main ()
 		assert (!stream->GetRemoteIdentity ());
 		const boost::asio::ip::tcp::endpoint target (boost::asio::ip::address_v4::loopback (), 8083);
 		const uint8_t user[] = "USER test local server :test\r\n";
-		for (const auto & password : { std::string {}, std::string { "fixture-only" } })
+		for (const auto & password : { std::string { }, std::string { "fixture-only" } })
 		{
 			auto connection = std::make_shared<InspectableIRCConnection> (owner, stream, target, password);
 			owner->AddHandler (connection);

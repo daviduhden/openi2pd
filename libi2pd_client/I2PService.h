@@ -149,11 +149,16 @@ namespace client
 		}
 
 	private:
-		struct ReadyWait { };
+		struct ReadyWait
+		{
+		};
 		struct ReadyGeneration
 		{
 			explicit ReadyGeneration (std::shared_ptr<ClientDestination> dest)
-				: destination (dest), timer (dest->GetService ()) { }
+				: destination (dest)
+				, timer (dest->GetService ())
+			{
+			}
 			std::weak_ptr<ClientDestination> destination;
 			boost::asio::steady_timer timer;
 			std::mutex mutex;
@@ -174,7 +179,9 @@ namespace client
 			const std::shared_ptr<ReadyGeneration> & generation, StreamRequestComplete complete);
 		static void InvokeReadyCallback (ReadyCallback & callback, const boost::system::error_code & ec);
 		friend struct I2PServiceReadinessTestAccess;
-		struct IdleWait { };
+		struct IdleWait
+		{
+		};
 		// Timer mutation and wait identity share this gate. Callbacks borrow
 		// the service and cannot retain its destination or owned executor.
 		void ScheduleIdleCheckTimer ();
@@ -182,8 +189,7 @@ namespace client
 			boost::asio::steady_timer::time_point now, uint64_t idleTime);
 		void ScheduleIdleCheckTimerLocked ();
 		void RetireIdleCheckTimer ();
-		void HandleIdleCheckTimer (const boost::system::error_code & ec,
-			const std::shared_ptr<IdleWait> & wait);
+		void HandleIdleCheckTimer (const boost::system::error_code & ec, const std::shared_ptr<IdleWait> & wait);
 		void Resume ();
 
 	private:

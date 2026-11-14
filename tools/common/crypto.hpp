@@ -36,11 +36,15 @@ namespace i2p::tools
 class CryptoGuard
 {
 public:
-	CryptoGuard () : m_Ready (i2p::crypto::InitCrypto (false)) {}
+	CryptoGuard ()
+		: m_Ready (i2p::crypto::InitCrypto (false))
+	{
+	}
 	[[nodiscard]] explicit operator bool () const noexcept { return m_Ready; }
 	~CryptoGuard () { i2p::crypto::TerminateCrypto (); }
 	CryptoGuard (const CryptoGuard &) = delete;
 	CryptoGuard & operator= (const CryptoGuard &) = delete;
+
 private:
 	const bool m_Ready;
 };

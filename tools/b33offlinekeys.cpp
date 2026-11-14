@@ -163,7 +163,7 @@ int main (int argc, char * argv[])
 	if (!i2p::data::BlindedPublicKey (keys.GetPublic ()).IsValid ())
 	{
 		std::cerr << fname << " is a " << SigTypeToName (keys.GetPublic ()->GetSigningKeyType ())
-				   << " destination and has no b33 address; ED25519-SHA512 or RED25519-SHA512 is required" << std::endl;
+				  << " destination and has no b33 address; ED25519-SHA512 or RED25519-SHA512 is required" << std::endl;
 		return 5;
 	}
 

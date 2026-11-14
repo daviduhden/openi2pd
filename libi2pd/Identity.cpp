@@ -957,8 +957,9 @@ namespace data
 		{
 			const auto keyType = m_Public->GetSigningKeyType ();
 			CreateSigner (keyType);
-			if ((keyType == SIGNING_KEY_TYPE_EDDSA_SHA512_ED25519
-				|| keyType == SIGNING_KEY_TYPE_EDDSA_SHA512_ED25519ph) && !m_Signer) return 0;
+			if ((keyType == SIGNING_KEY_TYPE_EDDSA_SHA512_ED25519 || keyType == SIGNING_KEY_TYPE_EDDSA_SHA512_ED25519ph)
+				&& !m_Signer)
+				return 0;
 		}
 		if (ret < len)
 		{
@@ -1098,19 +1099,21 @@ namespace data
 			// scalar derivation proves the same public/private key pair.
 			auto signer = std::make_unique<i2p::crypto::EDDSA25519Signer> (m_SigningPrivateKey.data (),
 				m_Public->GetStandardIdentity ().signingKey
-					+ (sizeof (Identity::signingKey)
-						- i2p::crypto::EDDSA25519_PUBLIC_KEY_LENGTH));
-			if (signer->IsValid ()) m_Signer = std::move (signer);
-			else LogPrint (eLogError, "Identity: EdDSA signing key pair is invalid");
+					+ (sizeof (Identity::signingKey) - i2p::crypto::EDDSA25519_PUBLIC_KEY_LENGTH));
+			if (signer->IsValid ())
+				m_Signer = std::move (signer);
+			else
+				LogPrint (eLogError, "Identity: EdDSA signing key pair is invalid");
 		}
 		else if (keyType == SIGNING_KEY_TYPE_EDDSA_SHA512_ED25519ph && !IsOfflineSignature ())
 		{
 			auto signer = std::make_unique<i2p::crypto::EDDSA25519phSigner> (m_SigningPrivateKey.data (),
 				m_Public->GetStandardIdentity ().signingKey
-					+ (sizeof (Identity::signingKey)
-						- i2p::crypto::EDDSA25519_PUBLIC_KEY_LENGTH));
-			if (signer->IsValid ()) m_Signer = std::move (signer);
-			else LogPrint (eLogError, "Identity: Ed25519ph signing key pair is invalid");
+					+ (sizeof (Identity::signingKey) - i2p::crypto::EDDSA25519_PUBLIC_KEY_LENGTH));
+			if (signer->IsValid ())
+				m_Signer = std::move (signer);
+			else
+				LogPrint (eLogError, "Identity: Ed25519ph signing key pair is invalid");
 		}
 		else
 		{
@@ -1458,8 +1461,7 @@ namespace data
 	Keys CreateRandomKeys ()
 	{
 		Keys keys { };
-		auto cleanseFailure = i2p::modern::ScopeExit ([&keys]
-			{ OPENSSL_cleanse (&keys, sizeof (keys)); });
+		auto cleanseFailure = i2p::modern::ScopeExit ([&keys] { OPENSSL_cleanse (&keys, sizeof (keys)); });
 		// encryption
 		if (!PrivateKeys::GenerateCryptoKeyPair (CRYPTO_KEY_TYPE_ELGAMAL, keys.privateKey, keys.publicKey))
 			throw std::runtime_error ("Identity: Legacy encryption key generation failed");

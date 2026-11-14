@@ -26,13 +26,10 @@ int main (int argc, char ** argv)
 	if (argc == 4 && std::string_view (argv[1]) == "--privsep-worker")
 		return i2p::privsep::RunWorker (argv[2], argv[3]);
 #if defined(__linux__) && !defined(__ANDROID__)
-	if (::geteuid () == 0)
-		return i2p::test::SkipCapability ("storage workers refuse a root runner");
+	if (::geteuid () == 0) return i2p::test::SkipCapability ("storage workers refuse a root runner");
 	auto support = i2p::privsep::ProbeLinuxIsolation ();
-	if (!support.filesystem)
-		return i2p::test::SkipCapability ("kernel lacks required filesystem isolation");
-	if (!support.seccompFilter)
-		return i2p::test::SkipCapability ("kernel lacks required seccomp filtering");
+	if (!support.filesystem) return i2p::test::SkipCapability ("kernel lacks required filesystem isolation");
+	if (!support.seccompFilter) return i2p::test::SkipCapability ("kernel lacks required seccomp filtering");
 	auto root
 		= std::filesystem::temp_directory_path () / ("openi2pd-storage-lifecycle-" + std::to_string (::getpid ()));
 	std::filesystem::create_directory (root);

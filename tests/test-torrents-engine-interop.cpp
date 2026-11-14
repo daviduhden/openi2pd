@@ -48,7 +48,8 @@ void TestSharedMetadata ()
 	assert (download.Receive (1, 0, info.size () + 1, first, hash, 1) == Result::Rejected);
 	assert (download.Receive (1, 0, info.size (), first.first (REQUEST_BLOCK_SIZE - 1), hash, 1) == Result::Rejected);
 	assert (download.Receive (1, 0, info.size (), std::span<const uint8_t> (info), hash, 1) == Result::Rejected);
-	assert (download.Receive (1, std::numeric_limits<size_t>::max (), info.size (), first, hash, 1) == Result::Rejected);
+	assert (
+		download.Receive (1, std::numeric_limits<size_t>::max (), info.size (), first, hash, 1) == Result::Rejected);
 	assert (download.Received () == 0);
 	// Different peers can deliver disjoint blocks in either order.
 	assert (download.Receive (2, 1, info.size (), second, hash, 1) == Result::Accepted);

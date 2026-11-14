@@ -46,8 +46,7 @@ public:
 	bool try_lock_until (std::chrono::steady_clock::time_point deadline)
 	{
 		std::unique_lock lock (m_StateMutex);
-		if (!m_Changed.wait_until (lock, deadline,
-			[this] { return !m_Held; })) return false;
+		if (!m_Changed.wait_until (lock, deadline, [this] { return !m_Held; })) return false;
 		m_Held = true;
 		return true;
 	}

@@ -35,8 +35,8 @@ namespace torrents
 	class TorrentsRPCSession : public std::enable_shared_from_this<TorrentsRPCSession>
 	{
 	public:
-		TorrentsRPCSession (const std::shared_ptr<TorrentsRPCState> & state,
-			uint64_t id, boost::asio::ip::tcp::socket && socket);
+		TorrentsRPCSession (
+			const std::shared_ptr<TorrentsRPCState> & state, uint64_t id, boost::asio::ip::tcp::socket && socket);
 		void ReceiveRequest ();
 		/// Cancel socket and timer on the service thread or after its join.
 		void Close ();

@@ -258,8 +258,7 @@ namespace crypto
 	template <typename Hash, int curve, size_t keyLen> class ECDSAVerifier : public Verifier
 	{
 	public:
-		static_assert (keyLen > 0 && keyLen % 2 == 0
-			&& keyLen / 2 <= std::numeric_limits<int>::max ()
+		static_assert (keyLen > 0 && keyLen % 2 == 0 && keyLen / 2 <= std::numeric_limits<int>::max ()
 			&& Hash::hashLen > 0 && Hash::hashLen <= std::numeric_limits<int>::max ());
 		static constexpr int componentLen = static_cast<int> (keyLen / 2);
 		static constexpr int digestLen = static_cast<int> (Hash::hashLen);
@@ -314,8 +313,7 @@ namespace crypto
 	template <typename Hash, int curve, size_t keyLen> class ECDSASigner : public Signer
 	{
 	public:
-		static_assert (keyLen > 0 && keyLen % 2 == 0
-			&& keyLen / 2 <= std::numeric_limits<int>::max ()
+		static_assert (keyLen > 0 && keyLen % 2 == 0 && keyLen / 2 <= std::numeric_limits<int>::max ()
 			&& Hash::hashLen > 0 && Hash::hashLen <= std::numeric_limits<int>::max ());
 		static constexpr int componentLen = static_cast<int> (keyLen / 2);
 		static constexpr int digestLen = static_cast<int> (Hash::hashLen);
@@ -509,8 +507,7 @@ namespace crypto
 		EDDSA25519Signer (const uint8_t * signingPrivateKey, const uint8_t * signingPublicKey = nullptr);
 		~EDDSA25519Signer () override;
 		/** Report whether a validated signing backend is available. */
-		[[nodiscard]] virtual bool IsValid () const
-		{ return m_Pkey || (m_Fallback && m_Fallback->IsValid ()); }
+		[[nodiscard]] virtual bool IsValid () const { return m_Pkey || (m_Fallback && m_Fallback->IsValid ()); }
 
 		void Sign (const uint8_t * buf, int len, uint8_t * signature) const override;
 
@@ -528,10 +525,8 @@ namespace crypto
 		/** Require a provider key matching the supplied public key.
 		 * The type-7 legacy scalar fallback cannot sign type 8.
 		 */
-		EDDSA25519phSigner (const uint8_t * signingPrivateKey,
-			const uint8_t * signingPublicKey = nullptr);
-		[[nodiscard]] bool IsValid () const override
-		{ return GetPkey () != nullptr; }
+		EDDSA25519phSigner (const uint8_t * signingPrivateKey, const uint8_t * signingPublicKey = nullptr);
+		[[nodiscard]] bool IsValid () const override { return GetPkey () != nullptr; }
 
 		void Sign (const uint8_t * buf, int len, uint8_t * signature) const override;
 	};
@@ -599,8 +594,7 @@ namespace crypto
 	template <typename Hash> class GOSTR3410Verifier : public Verifier
 	{
 	public:
-		static_assert (Hash::hashLen > 0
-			&& Hash::hashLen <= std::numeric_limits<int>::max () / 2);
+		static_assert (Hash::hashLen > 0 && Hash::hashLen <= std::numeric_limits<int>::max () / 2);
 		static constexpr int keyLen = static_cast<int> (Hash::hashLen);
 
 		GOSTR3410Verifier (GOSTR3410ParamSet paramSet)
@@ -620,8 +614,7 @@ namespace crypto
 			auto & curve = GetGOSTR3410Curve (m_ParamSet);
 			if (!curve) return;
 			BIGNUM * x = BN_bin2bn (signingKey, keyLen, NULL);
-			BIGNUM * y
-				= BN_bin2bn (signingKey + GetPublicKeyLen () / 2, keyLen, NULL);
+			BIGNUM * y = BN_bin2bn (signingKey + GetPublicKeyLen () / 2, keyLen, NULL);
 			if (x && y) m_PublicKey = curve->CreatePoint (x, y);
 			BN_free (x);
 			BN_free (y);
@@ -640,8 +633,7 @@ namespace crypto
 			Hash::CalculateHash (buf, len, digest);
 			BIGNUM * d = BN_bin2bn (digest, keyLen, nullptr);
 			BIGNUM * r = BN_bin2bn (signature, keyLen, NULL);
-			BIGNUM * s
-				= BN_bin2bn (signature + GetSignatureLen () / 2, keyLen, NULL);
+			BIGNUM * s = BN_bin2bn (signature + GetSignatureLen () / 2, keyLen, NULL);
 			bool ret = curve->Verify (m_PublicKey, d, r, s);
 			BN_free (d);
 			BN_free (r);
@@ -660,8 +652,7 @@ namespace crypto
 	template <typename Hash> class GOSTR3410Signer : public Signer
 	{
 	public:
-		static_assert (Hash::hashLen > 0
-			&& Hash::hashLen <= std::numeric_limits<int>::max () / 2);
+		static_assert (Hash::hashLen > 0 && Hash::hashLen <= std::numeric_limits<int>::max () / 2);
 		static constexpr int keyLen = static_cast<int> (Hash::hashLen);
 
 		GOSTR3410Signer (GOSTR3410ParamSet paramSet, const uint8_t * signingPrivateKey)
@@ -776,19 +767,14 @@ namespace crypto
 		RedDSA25519Signer (const uint8_t * signingPrivateKey)
 		{
 			if (!signingPrivateKey) return;
-			std::unique_ptr<BN_CTX, decltype (&BN_CTX_free)> ctx (
-				BN_CTX_new (), BN_CTX_free);
+			std::unique_ptr<BN_CTX, decltype (&BN_CTX_free)> ctx (BN_CTX_new (), BN_CTX_free);
 			if (!ctx) return;
-			auto publicKey = GetEd25519 ()->GeneratePublicKey (
-				signingPrivateKey, ctx.get ());
-			if (!GetEd25519 ()->EncodePublicKey (
-				publicKey, m_PublicKeyEncoded, ctx.get ())) return;
-			memcpy (m_PrivateKey, signingPrivateKey,
-				EDDSA25519_PRIVATE_KEY_LENGTH);
+			auto publicKey = GetEd25519 ()->GeneratePublicKey (signingPrivateKey, ctx.get ());
+			if (!GetEd25519 ()->EncodePublicKey (publicKey, m_PublicKeyEncoded, ctx.get ())) return;
+			memcpy (m_PrivateKey, signingPrivateKey, EDDSA25519_PRIVATE_KEY_LENGTH);
 			m_Valid = true;
 		}
-		~RedDSA25519Signer () override
-		{ OPENSSL_cleanse (m_PrivateKey, sizeof (m_PrivateKey)); }
+		~RedDSA25519Signer () override { OPENSSL_cleanse (m_PrivateKey, sizeof (m_PrivateKey)); }
 		[[nodiscard]] bool IsValid () const { return m_Valid; }
 
 		void Sign (const uint8_t * buf, int len, uint8_t * signature) const override

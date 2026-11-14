@@ -87,7 +87,13 @@ inline bool IsBlindableSigningKeyType (i2p::data::SigningKeyType type)
 }
 
 /// Grammar-level failure categories; none retains the rejected operand.
-enum class RecordNameError { Empty, TooLong, Control, Separator };
+enum class RecordNameError
+{
+	Empty,
+	TooLong,
+	Control,
+	Separator
+};
 
 /*
  * A registration record is `name=destination#!sig=...`; a name carrying

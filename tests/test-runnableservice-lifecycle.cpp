@@ -73,8 +73,7 @@ int main ()
 	// and one throwing handler must not discard the following work.
 	std::atomic<int> completed { 0 };
 	boost::asio::post (service.Service (), [] { throw std::runtime_error ("fixture"); });
-	for (int i = 0; i < 32; ++i)
-		boost::asio::post (service.Service (), [&completed] { ++completed; });
+	for (int i = 0; i < 32; ++i) boost::asio::post (service.Service (), [&completed] { ++completed; });
 	service.Start ();
 	service.Drain ();
 	assert (completed == 32);

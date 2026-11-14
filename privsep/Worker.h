@@ -187,8 +187,7 @@ bool PinStandardDescriptors ();
  * callers must treat false as "not reaped yet" and retry later rather
  * than block.
  */
-inline bool WaitForChildExitUntil (pid_t pid, int pidFd,
-	std::chrono::steady_clock::time_point deadline)
+inline bool WaitForChildExitUntil (pid_t pid, int pidFd, std::chrono::steady_clock::time_point deadline)
 {
 	if (pid <= 0) return true;
 	bool usePidFd = pidFd >= 0;
@@ -197,8 +196,7 @@ inline bool WaitForChildExitUntil (pid_t pid, int pidFd,
 		int status = 0;
 		pid_t result;
 		do result = ::waitpid (pid, &status, WNOHANG);
-		while (result < 0 && errno == EINTR &&
-			std::chrono::steady_clock::now () < deadline);
+		while (result < 0 && errno == EINTR && std::chrono::steady_clock::now () < deadline);
 		if (result == pid || (result < 0 && errno == ECHILD)) return true;
 
 		const auto now = std::chrono::steady_clock::now ();
@@ -224,17 +222,16 @@ inline bool WaitForChildExitUntil (pid_t pid, int pidFd,
 			else if (polled == 0)
 				continue; // deadline reached at the loop head
 		}
-		std::this_thread::sleep_until (std::min (deadline,
-			std::chrono::steady_clock::now () + std::chrono::milliseconds (20)));
+		std::this_thread::sleep_until (
+			std::min (deadline, std::chrono::steady_clock::now () + std::chrono::milliseconds (20)));
 	}
 }
 
 /* Relative-time convenience wrapper; owners of phases use Until. */
 inline bool WaitForChildExitBounded (pid_t pid, int pidFd, int timeoutMs)
 {
-	return WaitForChildExitUntil (pid, pidFd,
-		std::chrono::steady_clock::now () +
-		std::chrono::milliseconds (std::max (timeoutMs, 0)));
+	return WaitForChildExitUntil (
+		pid, pidFd, std::chrono::steady_clock::now () + std::chrono::milliseconds (std::max (timeoutMs, 0)));
 }
 #endif
 

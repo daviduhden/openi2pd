@@ -261,8 +261,7 @@ int main (int argc, char ** argv)
 	i2p::privsep::PinTestExecutable (argv[0]);
 	if (argc == 4 && std::string_view (argv[1]) == "--privsep-worker")
 		return i2p::privsep::RunWorker (argv[2], argv[3]);
-	if (::geteuid () == 0)
-		return i2p::test::SkipCapability ("worker identity requires a non-root runner");
+	if (::geteuid () == 0) return i2p::test::SkipCapability ("worker identity requires a non-root runner");
 
 	// The spawn helpers only use a frozen, validated absolute path.
 	const std::string self = SelfExecutable (argc > 0 ? argv[0] : nullptr);
@@ -323,8 +322,8 @@ int main (int argc, char ** argv)
 		assert (!DecodeWorkerHello (RawHello (static_cast<uint8_t> (WorkerRole::Log), nonce, 0, gid)).has_value ());
 		assert (!EncodeWorkerHello (WorkerRole::Log, nonce, 0, gid).has_value ());
 		assert (!EncodeWorkerHello (WorkerRole::Log, std::span<const uint8_t> (), uid, gid).has_value ());
-		assert (!EncodeWorkerHello (WorkerRole::Log,
-			std::span<const uint8_t> (nonce).subspan (0, 15), uid, gid).has_value ());
+		assert (!EncodeWorkerHello (WorkerRole::Log, std::span<const uint8_t> (nonce).subspan (0, 15), uid, gid)
+				.has_value ());
 		const auto generated = CreateWorkerHello (WorkerRole::Log, uid, gid);
 		assert (generated.has_value ());
 		const auto generatedRecord = DecodeWorkerHello (*generated);

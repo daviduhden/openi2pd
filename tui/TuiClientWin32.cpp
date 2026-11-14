@@ -630,26 +630,27 @@ namespace tui
 		// Reading exactly the header leaves the declared payload for
 		// ReadExact, so the frame stays aligned. The limit counts bytes before
 		// LF, matching ParseResponseHeader's inclusive 128-byte bound.
-		return detail::ReadLineBounded (limit, [this] () -> i2p::expected<char, std::string>
+		return detail::ReadLineBounded (limit,
+			[this] () -> i2p::expected<char, std::string>
 			{
-			char ch = 0;
-			OVERLAPPED overlapped { };
-			overlapped.hEvent = m_IoEvent;
-			ResetEvent (m_IoEvent);
+				char ch = 0;
+				OVERLAPPED overlapped { };
+				overlapped.hEvent = m_IoEvent;
+				ResetEvent (m_IoEvent);
 
-			DWORD received = 0;
-			BOOL result = ReadFile (m_Handle, &ch, 1, &received, &overlapped);
-			if (!result)
-			{
-				DWORD readError = GetLastError ();
-				if (readError != ERROR_IO_PENDING)
-					return i2p::unexpected (std::string ("recv: ") + Win32ErrorText (readError));
-				std::string error;
-				if (!WaitForIo (overlapped, CLIENT_IO_TIMEOUT_MS, received, error))
-					return i2p::unexpected (std::string ("recv: ") + error);
-			}
-			if (!received) return i2p::unexpected ("connection closed");
-			return ch;
+				DWORD received = 0;
+				BOOL result = ReadFile (m_Handle, &ch, 1, &received, &overlapped);
+				if (!result)
+				{
+					DWORD readError = GetLastError ();
+					if (readError != ERROR_IO_PENDING)
+						return i2p::unexpected (std::string ("recv: ") + Win32ErrorText (readError));
+					std::string error;
+					if (!WaitForIo (overlapped, CLIENT_IO_TIMEOUT_MS, received, error))
+						return i2p::unexpected (std::string ("recv: ") + error);
+				}
+				if (!received) return i2p::unexpected ("connection closed");
+				return ch;
 			});
 	}
 

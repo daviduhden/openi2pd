@@ -22,10 +22,8 @@ int main ()
 	boost::asio::io_context service;
 	auto work = boost::asio::make_work_guard (service);
 	auto keys = i2p::data::PrivateKeys::CreateRandomKeys (
-		i2p::data::SIGNING_KEY_TYPE_EDDSA_SHA512_ED25519,
-		i2p::data::CRYPTO_KEY_TYPE_ECIES_X25519_AEAD, true);
-	auto destination = std::make_shared<i2p::client::ClientDestination> (
-		service, keys, false);
+		i2p::data::SIGNING_KEY_TYPE_EDDSA_SHA512_ED25519, i2p::data::CRYPTO_KEY_TYPE_ECIES_X25519_AEAD, true);
+	auto destination = std::make_shared<i2p::client::ClientDestination> (service, keys, false);
 	i2p::data::IdentHash remote;
 	remote.Fill (0);
 	std::shared_ptr<const i2p::data::BlindedPublicKey> blinded;
@@ -46,7 +44,8 @@ int main ()
 	// CTest's existing deadline detects a regression without sleep loops.
 	std::promise<bool> ownThreadResult;
 	auto ownThreadDone = ownThreadResult.get_future ();
-	boost::asio::post (service, [destination, remote, blinded, &ownThreadResult]
+	boost::asio::post (service,
+		[destination, remote, blinded, &ownThreadResult]
 		{
 			auto ordinary = destination->CreateStream (remote);
 			auto encrypted = destination->CreateStream (blinded);

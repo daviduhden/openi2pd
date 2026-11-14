@@ -46,8 +46,7 @@ namespace tunnel
 		if (!msg || msg->offset > msg->maxLen
 			|| msg->maxLen - msg->offset < I2NP_HEADER_SIZE + TUNNEL_DATA_MSG_SIZE + 16)
 		{
-			LogPrint (
-				eLogError, "TunnelMessage: Buffer too small for a tunnel cell and its checksum IV, dropped");
+			LogPrint (eLogError, "TunnelMessage: Buffer too small for a tunnel cell and its checksum IV, dropped");
 			return;
 		}
 		const size_t declaredLength = (msg->len > msg->offset) ? msg->len - msg->offset : 0;

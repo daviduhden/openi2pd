@@ -1257,8 +1257,7 @@ namespace client
 			{
 				std::lock_guard<std::mutex> admission (m_RearmAdmission->mutex);
 				std::lock_guard<std::mutex> l (m_SubscriptionsMutex);
-				if (m_ReloadAlive)
-					m_ReloadAlive->store (false, std::memory_order_release);
+				if (m_ReloadAlive) m_ReloadAlive->store (false, std::memory_order_release);
 				m_ReloadAlive = std::make_shared<std::atomic<bool>> (true);
 				m_RearmAdmission->owner = this;
 			}
@@ -1270,8 +1269,7 @@ namespace client
 			StartLookups ();
 			{
 				std::lock_guard<std::mutex> cache (m_CacheAdmission->mutex);
-				m_CacheAdmission->generation =
-					std::make_shared<const CacheAdmission::Generation> ();
+				m_CacheAdmission->generation = std::make_shared<const CacheAdmission::Generation> ();
 				m_CacheAdmission->owner = this;
 				ScheduleCacheUpdateLocked ();
 			}
@@ -2423,8 +2421,7 @@ namespace client
 			std::lock_guard<std::mutex> cache (m_CacheAdmission->mutex);
 			if (m_CacheAdmission->owner != this) return;
 			// Retire successful completions from the replaced destination too.
-			m_CacheAdmission->generation =
-				std::make_shared<const CacheAdmission::Generation> ();
+			m_CacheAdmission->generation = std::make_shared<const CacheAdmission::Generation> ();
 			if (m_AddressCacheUpdateTimer)
 			{
 				m_AddressCacheUpdateTimer->cancel ();
@@ -2605,8 +2602,7 @@ namespace client
 			m_AddressCacheUpdateTimer->expires_after (std::chrono::seconds (ADDRESS_CACHE_UPDATE_INTERVAL));
 			auto admission = m_CacheAdmission;
 			// Each wait owns a distinct identity, including within one run.
-			admission->generation =
-				std::make_shared<const CacheAdmission::Generation> ();
+			admission->generation = std::make_shared<const CacheAdmission::Generation> ();
 			auto generation = admission->generation;
 			m_AddressCacheUpdateTimer->async_wait (
 				[admission, generation] (const boost::system::error_code & ecode)

@@ -126,21 +126,21 @@ int main ()
 	{
 		auto completed = std::make_shared<std::promise<void>> ();
 		auto finished = completed->get_future ();
-		boost::asio::post (bridge.GetService (), [&bridge, completed]
+		boost::asio::post (bridge.GetService (),
+			[&bridge, completed]
 			{
-				auto keys = i2p::data::PrivateKeys::CreateRandomKeys (
-					i2p::data::SIGNING_KEY_TYPE_EDDSA_SHA512_ED25519,
+				auto keys = i2p::data::PrivateKeys::CreateRandomKeys (i2p::data::SIGNING_KEY_TYPE_EDDSA_SHA512_ED25519,
 					i2p::data::CRYPTO_KEY_TYPE_ECIES_X25519_AEAD, true);
 				auto destination = context.CreateNewLocalDestination (bridge.GetService (), keys, false);
 				destination->Acquire (); // independent fixture owner
 				const auto baseline = destination->GetRefCounter ();
 				i2p::util::Mapping params;
-				auto first = bridge.CreateSession ("duplicate-create", SAMSessionType::eSAMSessionTypeStream,
-					keys.ToBase64 (), params);
+				auto first = bridge.CreateSession (
+					"duplicate-create", SAMSessionType::eSAMSessionTypeStream, keys.ToBase64 (), params);
 				assert (first);
 				assert (destination->GetRefCounter () == baseline + 1);
-				auto duplicate = bridge.CreateSession ("duplicate-create", SAMSessionType::eSAMSessionTypeMaster,
-					keys.ToBase64 (), params);
+				auto duplicate = bridge.CreateSession (
+					"duplicate-create", SAMSessionType::eSAMSessionTypeMaster, keys.ToBase64 (), params);
 				assert (!duplicate);
 				assert (duplicate.error () == SAMSessionCreateError::DuplicateId);
 				assert (destination->GetRefCounter () == baseline + 1);

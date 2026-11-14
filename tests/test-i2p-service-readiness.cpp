@@ -47,13 +47,12 @@ struct I2PServiceReadinessTestAccess
 		std::lock_guard lock (generation->mutex);
 		return generation->callbacks.back ().second;
 	}
-	template<class Ticket> static void Cancel (const Ticket & ticket)
+	template <class Ticket> static void Cancel (const Ticket & ticket)
 	{
 		std::lock_guard lock (ticket.first->mutex);
 		ticket.first->timer.cancel ();
 	}
-	template<class Ticket> static void Deliver (const Ticket & ticket,
-		const boost::system::error_code & error)
+	template <class Ticket> static void Deliver (const Ticket & ticket, const boost::system::error_code & error)
 	{
 		assert (ticket.second);
 		I2PService::HandleReadyCheckTimer (error, ticket.first, ticket.second);
@@ -67,17 +66,13 @@ struct I2PServiceReadinessTestAccess
 		std::lock_guard lock (service.m_IdleMutex);
 		return service.m_IdleWait;
 	}
-	static auto IdleDeadline (boost::asio::steady_timer::time_point now,
-		uint64_t idleTime)
+	static auto IdleDeadline (boost::asio::steady_timer::time_point now, uint64_t idleTime)
 	{
 		return I2PService::IdleDeadline (now, idleTime);
 	}
-	static void RearmIdle (I2PService & service)
-	{
-		service.ScheduleIdleCheckTimer ();
-	}
-	template<class Ticket> static void DeliverIdle (I2PService & service,
-		const Ticket & ticket, const boost::system::error_code & error)
+	static void RearmIdle (I2PService & service) { service.ScheduleIdleCheckTimer (); }
+	template <class Ticket>
+	static void DeliverIdle (I2PService & service, const Ticket & ticket, const boost::system::error_code & error)
 	{
 		service.HandleIdleCheckTimer (error, ticket);
 	}
@@ -98,8 +93,7 @@ struct Fixture
 	Fixture ()
 	{
 		auto keys = i2p::data::PrivateKeys::CreateRandomKeys (
-			i2p::data::SIGNING_KEY_TYPE_EDDSA_SHA512_ED25519,
-			i2p::data::CRYPTO_KEY_TYPE_ECIES_X25519_AEAD, true);
+			i2p::data::SIGNING_KEY_TYPE_EDDSA_SHA512_ED25519, i2p::data::CRYPTO_KEY_TYPE_ECIES_X25519_AEAD, true);
 		destination = std::make_shared<i2p::client::ClientDestination> (executor, keys, false);
 		owner = std::make_shared<i2p::client::I2PService> (destination);
 	}
@@ -140,8 +134,9 @@ void TestUnresolvedDestinationDoesNotLogOperand ()
 		{
 			++completions;
 			assert (!stream);
-		}, "https://redaction-user:redaction-password@invalid.example/"
-		   "redaction-path?token=redaction-token");
+		},
+		"https://redaction-user:redaction-password@invalid.example/"
+		"redaction-path?token=redaction-token");
 	assert (completions == 1);
 	fixture.Drain ();
 	assert (completions == 1);
@@ -153,8 +148,7 @@ void TestUnresolvedDestinationDoesNotLogOperand ()
 		assert (record.text.find ("redaction-password") == std::string::npos);
 		assert (record.text.find ("redaction-path") == std::string::npos);
 		assert (record.text.find ("redaction-token") == std::string::npos);
-		if (record.text == "I2PService: Remote destination not found")
-			++outcomes;
+		if (record.text == "I2PService: Remote destination not found") ++outcomes;
 	}
 	assert (outcomes == 1);
 }
@@ -164,12 +158,17 @@ void TestReentrantRegistrationAndStaleWait ()
 	Fixture fixture;
 	int first = 0, second = 0;
 	// Construction, without Start(), preserves the pre-start API.
-	fixture.owner->AddReadyCallback ([&] (const Error & error)
+	fixture.owner->AddReadyCallback (
+		[&] (const Error & error)
 		{
 			assert (error == boost::asio::error::timed_out);
 			++first;
-			fixture.owner->AddReadyCallback ([&] (const Error & nested)
-				{ assert (nested == boost::asio::error::timed_out); ++second; });
+			fixture.owner->AddReadyCallback (
+				[&] (const Error & nested)
+				{
+					assert (nested == boost::asio::error::timed_out);
+					++second;
+				});
 		});
 	fixture.Dispatch ();
 	assert (first == 1 && second == 0);
@@ -183,13 +182,21 @@ void TestStopRestartAndReentrantStop ()
 {
 	Fixture fixture;
 	int retired = 0, current = 0;
-	fixture.owner->AddReadyCallback ([&] (const Error & error)
-		{ assert (error == boost::asio::error::operation_aborted); ++retired; });
+	fixture.owner->AddReadyCallback (
+		[&] (const Error & error)
+		{
+			assert (error == boost::asio::error::operation_aborted);
+			++retired;
+		});
 	auto old = Access::Snapshot (*fixture.owner);
 	fixture.owner->Stop ();
 	fixture.owner->Start ();
-	fixture.owner->AddReadyCallback ([&] (const Error & error)
-		{ assert (error == boost::asio::error::timed_out); ++current; });
+	fixture.owner->AddReadyCallback (
+		[&] (const Error & error)
+		{
+			assert (error == boost::asio::error::timed_out);
+			++current;
+		});
 	Access::Deliver (old, boost::asio::error::timed_out);
 	fixture.Drain ();
 	assert (retired == 1 && current == 0);
@@ -197,10 +204,18 @@ void TestStopRestartAndReentrantStop ()
 	fixture.Dispatch ();
 	assert (current == 1);
 
-	fixture.owner->AddReadyCallback ([&] (const Error &)
-		{ fixture.owner->Stop (); fixture.owner->Start (); });
-	fixture.owner->AddReadyCallback ([&] (const Error & error)
-		{ assert (error == boost::asio::error::operation_aborted); ++retired; });
+	fixture.owner->AddReadyCallback (
+		[&] (const Error &)
+		{
+			fixture.owner->Stop ();
+			fixture.owner->Start ();
+		});
+	fixture.owner->AddReadyCallback (
+		[&] (const Error & error)
+		{
+			assert (error == boost::asio::error::operation_aborted);
+			++retired;
+		});
 	fixture.Dispatch ();
 	assert (retired == 2);
 }
@@ -210,7 +225,11 @@ void TestClearAndLateStreamCompletion ()
 	Fixture fixture;
 	int calls = 0;
 	auto completion = Access::Guard (*fixture.owner,
-		[&] (auto stream) { assert (!stream); ++calls; });
+		[&] (auto stream)
+		{
+			assert (!stream);
+			++calls;
+		});
 	fixture.owner->ClearHandlers ();
 	auto streaming = std::make_shared<i2p::stream::StreamingDestination> (fixture.destination);
 	auto stream = std::make_shared<i2p::stream::Stream> (fixture.executor, streaming);
@@ -221,14 +240,22 @@ void TestClearAndLateStreamCompletion ()
 
 	fixture.owner->Stop ();
 	fixture.owner->ClearHandlers (); // Clearing must not reopen a stop.
-	fixture.owner->AddReadyCallback ([&] (const Error & error)
-		{ assert (error == boost::asio::error::operation_aborted); ++calls; });
+	fixture.owner->AddReadyCallback (
+		[&] (const Error & error)
+		{
+			assert (error == boost::asio::error::operation_aborted);
+			++calls;
+		});
 	fixture.Drain ();
 	assert (calls == 2 && Access::Pending (*fixture.owner) == 0);
 
 	fixture.owner->Start ();
 	auto destroyed = Access::Guard (*fixture.owner,
-		[&] (auto result) { assert (!result); ++calls; });
+		[&] (auto result)
+		{
+			assert (!result);
+			++calls;
+		});
 	std::weak_ptr<i2p::client::I2PService> released = fixture.owner;
 	fixture.owner.reset ();
 	assert (released.expired ());
@@ -245,11 +272,19 @@ void TestQueueBoundAndTimeoutSaturation ()
 	fixture.owner->SetConnectTimeout ((std::numeric_limits<uint64_t>::max) ());
 	size_t aborted = 0, busy = 0;
 	for (size_t index = 0; index < i2p::client::MAX_SERVICE_READY_CALLBACKS; ++index)
-		fixture.owner->AddReadyCallback ([&] (const Error & error)
-			{ assert (error == boost::asio::error::operation_aborted); ++aborted; });
+		fixture.owner->AddReadyCallback (
+			[&] (const Error & error)
+			{
+				assert (error == boost::asio::error::operation_aborted);
+				++aborted;
+			});
 	assert (Access::LastDeadline (*fixture.owner) == (std::numeric_limits<uint64_t>::max) ());
-	fixture.owner->AddReadyCallback ([&] (const Error & error)
-		{ assert (error == boost::asio::error::no_buffer_space); ++busy; });
+	fixture.owner->AddReadyCallback (
+		[&] (const Error & error)
+		{
+			assert (error == boost::asio::error::no_buffer_space);
+			++busy;
+		});
 	assert (busy == 1); // Refusal cannot grow the executor's work queue.
 	fixture.Drain ();
 	assert (busy == 1 && aborted == 0);
@@ -273,8 +308,12 @@ void TestPendingTimerDoesNotRetainOwnerOrDestination ()
 {
 	Fixture fixture;
 	int aborted = 0;
-	fixture.owner->AddReadyCallback ([&] (const Error & error)
-		{ assert (error == boost::asio::error::operation_aborted); ++aborted; });
+	fixture.owner->AddReadyCallback (
+		[&] (const Error & error)
+		{
+			assert (error == boost::asio::error::operation_aborted);
+			++aborted;
+		});
 	std::weak_ptr<i2p::client::I2PService> owner = fixture.owner;
 	std::weak_ptr<i2p::client::ClientDestination> destination = fixture.destination;
 	fixture.owner.reset ();
@@ -288,8 +327,7 @@ void TestPendingTimerDoesNotRetainOwnerOrDestination ()
 void TestOwnedExecutorDestructionWithPendingCancellation ()
 {
 	auto keys = i2p::data::PrivateKeys::CreateRandomKeys (
-		i2p::data::SIGNING_KEY_TYPE_EDDSA_SHA512_ED25519,
-		i2p::data::CRYPTO_KEY_TYPE_ECIES_X25519_AEAD, true);
+		i2p::data::SIGNING_KEY_TYPE_EDDSA_SHA512_ED25519, i2p::data::CRYPTO_KEY_TYPE_ECIES_X25519_AEAD, true);
 	// Do not start the destination: destruction shuts down its executor
 	// without a worker thread or final poll. Queued callbacks are
 	// discarded with that executor.
@@ -319,8 +357,7 @@ void TestIdleWaitRevocationAndRestart ()
 	assert (second && second != first);
 	Access::DeliverIdle (*fixture.owner, first, { });
 	assert (Access::IdleSnapshot (*fixture.owner) == second);
-	Access::DeliverIdle (*fixture.owner, second,
-		boost::asio::error::operation_aborted);
+	Access::DeliverIdle (*fixture.owner, second, boost::asio::error::operation_aborted);
 	assert (Access::IdleSnapshot (*fixture.owner) == second);
 	fixture.owner->Stop ();
 	Access::DeliverIdle (*fixture.owner, second, { });
@@ -357,8 +394,7 @@ void TestIdleDeadlineSaturation ()
 	assert (Access::IdleDeadline (epoch, 0) == epoch);
 	const auto nearEnd = Timer::time_point::max () - milliseconds (1);
 	assert (Access::IdleDeadline (nearEnd, 60000) == Timer::time_point::max ());
-	assert (Access::IdleDeadline (nearEnd,
-		std::numeric_limits<uint64_t>::max ()) == Timer::time_point::max ());
+	assert (Access::IdleDeadline (nearEnd, std::numeric_limits<uint64_t>::max ()) == Timer::time_point::max ());
 }
 
 void TestFreshActivityRearmsIdleAuthority ()
@@ -384,18 +420,18 @@ void TestDestinationIdleStateAcrossThreads ()
 	// The barrier establishes concurrent authority without timing sleeps.
 	std::barrier ready (2);
 	unsigned observations = 0;
-	std::jthread writer ([&]
+	std::jthread writer (
+		[&]
 		{
 			ready.arrive_and_wait ();
-			for (unsigned index = 0; index < 10000; ++index)
-				fixture.destination->SetIsIdling (index % 2 != 0);
+			for (unsigned index = 0; index < 10000; ++index) fixture.destination->SetIsIdling (index % 2 != 0);
 			fixture.destination->SetIsIdling (true);
 		});
-	std::jthread reader ([&]
+	std::jthread reader (
+		[&]
 		{
 			ready.arrive_and_wait ();
-			for (unsigned index = 0; index < 10000; ++index)
-				observations += fixture.destination->IsIdling () ? 1 : 0;
+			for (unsigned index = 0; index < 10000; ++index) observations += fixture.destination->IsIdling () ? 1 : 0;
 		});
 	writer.join ();
 	reader.join ();

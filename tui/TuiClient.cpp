@@ -294,8 +294,8 @@ namespace tui
 		// asynchronous completion (EINPROGRESS/EALREADY) is treated the same
 		// way; it cannot hang here because every pass is bounded.
 		const auto deadline = std::chrono::steady_clock::now () + CONNECT_TIMEOUT;
-		const int connectError = detail::RetryUnixConnectUntil (deadline,
-			[] { return std::chrono::steady_clock::now (); },
+		const int connectError = detail::RetryUnixConnectUntil (
+			deadline, [] { return std::chrono::steady_clock::now (); },
 			[&] { return ::connect (fd, reinterpret_cast<sockaddr *> (&address), sizeof (address)); },
 			[] (auto interval) { std::this_thread::sleep_for (interval); }, CONNECT_RETRY_INTERVAL);
 		if (connectError != 0)

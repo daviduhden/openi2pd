@@ -129,8 +129,8 @@ namespace proxy
 		if (b[0] == 0x00 && b[1] == 0x64 && b[2] == 0xff && b[3] == 0x9b)
 		{
 			if (b[4] == 0x00 && b[5] == 0x01) return true;
-			bool wellKnown = b[4] == 0 && b[5] == 0 && b[6] == 0 && b[7] == 0 && b[8] == 0 && b[9] == 0
-				&& b[10] == 0 && b[11] == 0;
+			bool wellKnown = b[4] == 0 && b[5] == 0 && b[6] == 0 && b[7] == 0 && b[8] == 0 && b[9] == 0 && b[10] == 0
+				&& b[11] == 0;
 			if (wellKnown) return IsBlockedIpv4Bytes (b.data () + 12);
 		}
 		// An IPv4-embedded IPv6 spelling reaches the same host as the plain

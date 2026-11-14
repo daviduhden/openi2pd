@@ -162,9 +162,7 @@ void TestUploadScratchPublication ()
 	std::atomic<bool> cancelled { false };
 	const auto epoch = piece.GetBlockEpoch ();
 	auto read = [&] (std::span<const PieceFileFragment> input)
-	{
-		return piece.ReadVerifiedBlock (input, 0, 4096, epoch, cancelled, block);
-	};
+	{ return piece.ReadVerifiedBlock (input, 0, 4096, epoch, cancelled, block); };
 	const std::vector<PieceFileFragment> shortCoverage { { file, 0, 0, 4096 } };
 	const std::vector<PieceFileFragment> gap { { file, 0, 0, 4096 }, { file, 4096, 4097, 4095 } };
 	const std::vector<PieceFileFragment> overlap { { file, 0, 0, 4096 }, { file, 4096, 4095, 4097 } };
@@ -313,8 +311,8 @@ int main ()
 	// Integer halving has a floor; it must not wrap.
 	assert (DecayPeerRate (1, PEER_RATE_DECAY_INTERVAL) == 0);
 	// Compare durations, not the numeric seconds and milliseconds.
-	assert (std::chrono::seconds (PEER_RATE_DECAY_INTERVAL) >
-		std::chrono::milliseconds (BANDWIDTH_RATE_SAMPLING_INTERVAL));
+	assert (
+		std::chrono::seconds (PEER_RATE_DECAY_INTERVAL) > std::chrono::milliseconds (BANDWIDTH_RATE_SAMPLING_INTERVAL));
 
 	// --- verified-completion rule
 	// ------------------------------------------

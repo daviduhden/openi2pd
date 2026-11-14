@@ -680,11 +680,13 @@ namespace torrents
 		// Lifecycle serializes Start; cancellation runs unlocked.
 		// Revocation also covers queued successful completions.
 		// Keep cancellation errors without replacing another exception.
-		for (auto timer : { &m_DHTUpdateCheckTimer, &m_DHTExpirationCheckTimer,
-			&m_DHTSendPingCheckTimer, &m_DHTQueryExpirationCheckTimer,
-			&m_DHTIncomingDrainTimer, &m_DHTStateSaveTimer })
+		for (auto timer : { &m_DHTUpdateCheckTimer, &m_DHTExpirationCheckTimer, &m_DHTSendPingCheckTimer,
+				 &m_DHTQueryExpirationCheckTimer, &m_DHTIncomingDrainTimer, &m_DHTStateSaveTimer })
 		{
-			try { timer->cancel (); }
+			try
+			{
+				timer->cancel ();
+			}
 			catch (const boost::system::system_error & error)
 			{
 				std::lock_guard admission (state->ownerMutex);
@@ -730,13 +732,14 @@ namespace torrents
 		m_ServiceState = std::move (nextState);
 		std::lock_guard admission (m_ServiceState->ownerMutex);
 		m_ServiceState->owner = this;
-		auto revokeFailedStart = i2p::modern::ScopeExit ([state = m_ServiceState]
-		{
-			state->stopping.store (true, std::memory_order_release);
-			state->stopping.notify_all ();
-			state->owner = nullptr;
-			state->waits.fill (nullptr);
-		});
+		auto revokeFailedStart = i2p::modern::ScopeExit (
+			[state = m_ServiceState]
+			{
+				state->stopping.store (true, std::memory_order_release);
+				state->stopping.notify_all ();
+				state->owner = nullptr;
+				state->waits.fill (nullptr);
+			});
 		auto dest = m_Tunnel.GetLocalDestination ();
 		if (dest && m_DHTFileName.empty ()) m_DHTFileName = dest->GetIdentHash ().ToBase32 () + ".dht";
 		if (m_DHTFileName.empty ()) m_DHTFileName = "nodest.dht";
@@ -764,10 +767,8 @@ namespace torrents
 						const uint8_t * buf, size_t len, const i2p::util::Mapping * options)
 					{
 						std::lock_guard admission (state->ownerMutex);
-						if (state->stopping.load (std::memory_order_acquire)
-							|| !state->owner) return;
-						state->owner->EnqueueIncomingDatagram (
-							from, fromPort, toPort, buf, len, options);
+						if (state->stopping.load (std::memory_order_acquire) || !state->owner) return;
+						state->owner->EnqueueIncomingDatagram (from, fromPort, toPort, buf, len, options);
 					});
 			}
 		}
@@ -1952,20 +1953,19 @@ namespace torrents
 		m_HeardFrom.emplace (nodeID, i2p::util::GetMonotonicSeconds ());
 	}
 
-	TorrentsDHT::TimerCallback TorrentsDHT::MakeTimerCallbackLocked (
-		DHTTimerSlot slot, TimerAction action)
+	TorrentsDHT::TimerCallback TorrentsDHT::MakeTimerCallbackLocked (DHTTimerSlot slot, TimerAction action)
 	{
 		const size_t index = static_cast<size_t> (slot);
 		auto wait = std::make_shared<const uint8_t> (0);
 		std::weak_ptr<DHTServiceState> guard = m_ServiceState;
-		TimerCallback callback = [guard, index, wait, action = std::move (action)] (
-			const boost::system::error_code & error)
+		TimerCallback callback
+			= [guard, index, wait, action = std::move (action)] (const boost::system::error_code & error)
 		{
 			auto state = guard.lock ();
 			if (!state) return;
 			std::lock_guard admission (state->ownerMutex);
-			if (state->stopping.load (std::memory_order_acquire)
-				|| !state->owner || state->waits[index] != wait) return;
+			if (state->stopping.load (std::memory_order_acquire) || !state->owner || state->waits[index] != wait)
+				return;
 			state->waits[index].reset ();
 			if (error) return;
 			action (*state->owner, error);
@@ -1974,8 +1974,8 @@ namespace torrents
 		return callback;
 	}
 
-	void TorrentsDHT::ScheduleTimerLocked (boost::asio::steady_timer & timer,
-		std::chrono::milliseconds delay, DHTTimerSlot slot, TimerAction action)
+	void TorrentsDHT::ScheduleTimerLocked (
+		boost::asio::steady_timer & timer, std::chrono::milliseconds delay, DHTTimerSlot slot, TimerAction action)
 	{
 		if (m_ServiceState->stopping.load (std::memory_order_acquire)) return;
 		const size_t index = static_cast<size_t> (slot);
@@ -1996,9 +1996,7 @@ namespace torrents
 	{
 		ScheduleTimerLocked (m_DHTUpdateCheckTimer, std::chrono::seconds (DHT_UPDATE_CHECK_INTERVAL),
 			DHTTimerSlot::Update, [] (TorrentsDHT & owner, const boost::system::error_code & error)
-			{
-				owner.HandleDHTUpdateCheckTimer (error);
-			});
+			{ owner.HandleDHTUpdateCheckTimer (error); });
 	}
 
 	void TorrentsDHT::HandleDHTUpdateCheckTimer (const boost::system::error_code & ecode)
@@ -2022,9 +2020,7 @@ namespace torrents
 	{
 		ScheduleTimerLocked (m_DHTExpirationCheckTimer, std::chrono::seconds (DHT_EXPIRATION_CHECK_INTERVAL),
 			DHTTimerSlot::Expiration, [] (TorrentsDHT & owner, const boost::system::error_code & error)
-			{
-				owner.HandleDHTExpirationCheckTimer (error);
-			});
+			{ owner.HandleDHTExpirationCheckTimer (error); });
 	}
 
 	void TorrentsDHT::HandleDHTExpirationCheckTimer (const boost::system::error_code & ecode)
@@ -2083,9 +2079,7 @@ namespace torrents
 	{
 		ScheduleTimerLocked (m_DHTSendPingCheckTimer, std::chrono::seconds (DHT_SEND_PING_CHECK_INTERVAL),
 			DHTTimerSlot::SendPing, [] (TorrentsDHT & owner, const boost::system::error_code & error)
-			{
-				owner.HandleDHTSendPingCheckTimer (error);
-			});
+			{ owner.HandleDHTSendPingCheckTimer (error); });
 	}
 
 	void TorrentsDHT::HandleDHTSendPingCheckTimer (const boost::system::error_code & ecode)
@@ -2106,9 +2100,7 @@ namespace torrents
 	{
 		ScheduleTimerLocked (m_DHTQueryExpirationCheckTimer, std::chrono::seconds (DHT_QUERY_EXPIRATION_CHECK_INTERVAL),
 			DHTTimerSlot::QueryExpiration, [] (TorrentsDHT & owner, const boost::system::error_code & error)
-			{
-				owner.DHTQueryExpirationCheckTimer (error);
-			});
+			{ owner.DHTQueryExpirationCheckTimer (error); });
 	}
 
 	void TorrentsDHT::DHTQueryExpirationCheckTimer (const boost::system::error_code & ecode)
@@ -2216,7 +2208,8 @@ namespace torrents
 	void TorrentsDHT::ScheduleDHTIncomingDrain ()
 	{
 		ScheduleTimerLocked (m_DHTIncomingDrainTimer, std::chrono::milliseconds (DHT_INCOMING_DRAIN_INTERVAL),
-			DHTTimerSlot::IncomingDrain, [] (TorrentsDHT & owner, const boost::system::error_code &)
+			DHTTimerSlot::IncomingDrain,
+			[] (TorrentsDHT & owner, const boost::system::error_code &)
 			{
 				owner.DrainIncomingDatagrams ();
 				owner.ScheduleDHTIncomingDrain ();
@@ -2227,9 +2220,7 @@ namespace torrents
 	{
 		ScheduleTimerLocked (m_DHTStateSaveTimer, std::chrono::seconds (DHT_STATE_SAVE_INTERVAL),
 			DHTTimerSlot::StateSave, [] (TorrentsDHT & owner, const boost::system::error_code & error)
-			{
-				owner.HandleDHTStateSaveTimer (error);
-			});
+			{ owner.HandleDHTStateSaveTimer (error); });
 	}
 
 	void TorrentsDHT::HandleDHTStateSaveTimer (const boost::system::error_code & ecode)
@@ -2248,8 +2239,8 @@ namespace torrents
 		// tick a no-op, so the disk domain never accumulates writes.
 		if (m_ServiceState->saveInFlight.exchange (true, std::memory_order_acq_rel)) return;
 		auto state = m_ServiceState;
-		auto resetUnsubmitted = i2p::modern::ScopeExit ([state]
-			{ state->saveInFlight.store (false, std::memory_order_release); });
+		auto resetUnsubmitted
+			= i2p::modern::ScopeExit ([state] { state->saveInFlight.store (false, std::memory_order_release); });
 		const auto file = GetDHTFilePath (m_DHTFileName);
 		if (file.empty ()) return;
 		// The snapshot is built on the service thread because it reads the
@@ -2264,11 +2255,10 @@ namespace torrents
 		boost::asio::post (m_Tunnel.GetDiskIOService (),
 			[state, file, bytes = std::move (bytes), delegated, save = std::move (save)] () mutable
 			{
-				auto clearFlight = i2p::modern::ScopeExit ([state]
-					{ state->saveInFlight.store (false, std::memory_order_release); });
+				auto clearFlight = i2p::modern::ScopeExit (
+					[state] { state->saveInFlight.store (false, std::memory_order_release); });
 				std::lock_guard<std::mutex> persistence (state->persistenceMutex);
-				if (state->stopping.load (std::memory_order_acquire))
-					return;
+				if (state->stopping.load (std::memory_order_acquire)) return;
 				std::string error;
 				if (delegated)
 				{

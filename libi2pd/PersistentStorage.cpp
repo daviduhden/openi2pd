@@ -181,8 +181,8 @@ bool WriteRouterPersistentFile (RouterPersistentFile file, std::span<const uint8
 		writer = installedWriter;
 	}
 	if (writer) return writer (file, bytes);
-	return i2p::fs::AtomicWritePrivate (i2p::fs::DataDirPath (name),
-		std::string_view (reinterpret_cast<const char *> (bytes.data ()), bytes.size ()));
+	return i2p::fs::AtomicWritePrivate (
+		i2p::fs::DataDirPath (name), std::string_view (reinterpret_cast<const char *> (bytes.data ()), bytes.size ()));
 }
 const char * StorageArtifactName (StorageArtifact kind)
 {

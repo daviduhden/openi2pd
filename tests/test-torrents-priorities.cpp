@@ -119,8 +119,8 @@ int main ()
 	// never resizes the placeholder and leaves spare bits clear so the
 	// result is directly encodable as a BEP 3 bitfield.
 	{
-		auto swarm
-			= Torrent::CreateV1 ("availability", { { "", 3 * MIN_PIECE_LENGTH } }, MIN_PIECE_LENGTH, { hash, hash, hash });
+		auto swarm = Torrent::CreateV1 (
+			"availability", { { "", 3 * MIN_PIECE_LENGTH } }, MIN_PIECE_LENGTH, { hash, hash, hash });
 		assert (swarm && swarm->GetNumPieces () == 3);
 		auto available = swarm->CreateAvailableBitfield ();
 		assert (available.size () == 1 && available[0] == 0x00);

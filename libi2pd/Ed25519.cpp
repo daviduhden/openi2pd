@@ -179,8 +179,7 @@ namespace crypto
 			// and fails the comparison instead of being read
 			// uninitialised.
 			uint8_t diff[32] = { };
-			const bool encoded
-				= EncodePoint (Normalize (Sum (Bs, -PKh, ctx), ctx), diff); // Bs - PKh encoded
+			const bool encoded = EncodePoint (Normalize (Sum (Bs, -PKh, ctx), ctx), diff); // Bs - PKh encoded
 			// Constant-time comparison: the expected value must not leak
 			// through an early-exit memcmp().
 			passed = encoded && CRYPTO_memcmp (signature, diff, 32) == 0; // R
@@ -236,8 +235,7 @@ namespace crypto
 		// The encoder result is part of the success flag: a point that
 		// cannot be encoded would otherwise be published as a signature
 		// with an all-zero R half.
-		if (ok && r)
-			ok = EncodePoint (Normalize (MulB (digest, bnCtx), bnCtx), R);
+		if (ok && r) ok = EncodePoint (Normalize (MulB (digest, bnCtx), bnCtx), R);
 		// calculate S
 		ctx = ok ? EVP_MD_CTX_new () : nullptr;
 		ok = ok && ctx && EVP_DigestInit_ex (ctx, EVP_sha512 (), nullptr) == 1
@@ -272,8 +270,9 @@ namespace crypto
 	{
 		if (!signature) return;
 		bool complete = false;
-		uint8_t T[80] {}, digest[64] {}, R[EDDSA25519_SIGNATURE_LENGTH / 2] {};
-		i2p::modern::ScopeExit cleanup ([&]
+		uint8_t T[80] { }, digest[64] { }, R[EDDSA25519_SIGNATURE_LENGTH / 2] { };
+		i2p::modern::ScopeExit cleanup (
+			[&]
 			{
 				OPENSSL_cleanse (T, sizeof (T));
 				OPENSSL_cleanse (digest, sizeof (digest));
@@ -294,7 +293,8 @@ namespace crypto
 			|| EVP_DigestUpdate (ctx.get (), T, sizeof (T)) != 1
 			|| EVP_DigestUpdate (ctx.get (), publicKeyEncoded, EDDSA25519_PUBLIC_KEY_LENGTH) != 1
 			|| (len && EVP_DigestUpdate (ctx.get (), buf, len) != 1)
-			|| EVP_DigestFinal_ex (ctx.get (), digest, &dl) != 1 || dl != sizeof (digest)) return;
+			|| EVP_DigestFinal_ex (ctx.get (), digest, &dl) != 1 || dl != sizeof (digest))
+			return;
 		using SecretBN = std::unique_ptr<BIGNUM, decltype (&BN_clear_free)>;
 		SecretBN r (DecodeBN<64> (digest), BN_clear_free);
 		if (r) BN_set_flags (r.get (), BN_FLG_CONSTTIME);
@@ -307,11 +307,13 @@ namespace crypto
 			|| EVP_DigestUpdate (ctx.get (), R, sizeof (R)) != 1
 			|| EVP_DigestUpdate (ctx.get (), publicKeyEncoded, EDDSA25519_PUBLIC_KEY_LENGTH) != 1
 			|| (len && EVP_DigestUpdate (ctx.get (), buf, len) != 1)
-			|| EVP_DigestFinal_ex (ctx.get (), digest, &dl) != 1 || dl != sizeof (digest)) return;
+			|| EVP_DigestFinal_ex (ctx.get (), digest, &dl) != 1 || dl != sizeof (digest))
+			return;
 		SecretBN h (DecodeBN<64> (digest), BN_clear_free);
 		SecretBN a (DecodeBN<EDDSA25519_PRIVATE_KEY_LENGTH> (privateKey), BN_clear_free);
 		if (!h || !a || BN_mod_mul (h.get (), h.get (), a.get (), l, bnCtx.get ()) != 1
-			|| BN_mod_add (h.get (), h.get (), r.get (), l, bnCtx.get ()) != 1) return;
+			|| BN_mod_add (h.get (), h.get (), r.get (), l, bnCtx.get ()) != 1)
+			return;
 		memcpy (signature, R, sizeof (R));
 		if (!EncodeBN (h.get (), signature + sizeof (R), sizeof (R))) return;
 		complete = true;
@@ -471,23 +473,22 @@ namespace crypto
 
 	EDDSAPoint Ed25519::Normalize (const EDDSAPoint & p, BN_CTX * ctx) const
 	{
-		if (!ctx || !p.x || !p.y) return {};
+		if (!ctx || !p.x || !p.y) return { };
 		EDDSAPoint normalized;
 		if (p.z)
 		{
 			normalized.x = BN_new ();
 			normalized.y = BN_new ();
-			if (!normalized.x || !normalized.y
-				|| !BN_mod_inverse (normalized.y, p.z, q, ctx)
+			if (!normalized.x || !normalized.y || !BN_mod_inverse (normalized.y, p.z, q, ctx)
 				|| BN_mod_mul (normalized.x, p.x, normalized.y, q, ctx) != 1
 				|| BN_mod_mul (normalized.y, p.y, normalized.y, q, ctx) != 1)
-				return {};
+				return { };
 		}
 		else
 		{
 			normalized.x = BN_dup (p.x);
 			normalized.y = BN_dup (p.y);
-			if (!normalized.x || !normalized.y) return {};
+			if (!normalized.x || !normalized.y) return { };
 		}
 		return normalized;
 	}
@@ -503,17 +504,11 @@ namespace crypto
 			return valid;
 		};
 		BIGNUM *x2 = BN_CTX_get (ctx), *y2 = BN_CTX_get (ctx);
-		BIGNUM *tmp = BN_CTX_get (ctx);
+		BIGNUM * tmp = BN_CTX_get (ctx);
 		// y^2 - x^2 - 1 - d*x^2*y^2 must vanish modulo q.
-		if (!x2 || !y2 || !tmp
-			|| BN_sqr (x2, p.x, ctx) != 1
-			|| BN_sqr (y2, p.y, ctx) != 1
-			|| BN_mul (tmp, d, x2, ctx) != 1
-			|| BN_mul (tmp, tmp, y2, ctx) != 1
-			|| BN_sub (tmp, y2, tmp) != 1
-			|| BN_sub (tmp, tmp, x2) != 1
-			|| BN_sub_word (tmp, 1) != 1
-			|| BN_mod (tmp, tmp, q, ctx) != 1)
+		if (!x2 || !y2 || !tmp || BN_sqr (x2, p.x, ctx) != 1 || BN_sqr (y2, p.y, ctx) != 1
+			|| BN_mul (tmp, d, x2, ctx) != 1 || BN_mul (tmp, tmp, y2, ctx) != 1 || BN_sub (tmp, y2, tmp) != 1
+			|| BN_sub (tmp, tmp, x2) != 1 || BN_sub_word (tmp, 1) != 1 || BN_mod (tmp, tmp, q, ctx) != 1)
 			return finish (false);
 		return finish (BN_is_zero (tmp));
 	}
@@ -529,52 +524,41 @@ namespace crypto
 		};
 		BIGNUM *y2 = BN_CTX_get (ctx), *xx = BN_CTX_get (ctx);
 		// xx = (y^2 - 1) / (d*y^2 + 1), modulo q.
-		if (!y2 || !xx || BN_sqr (y2, y, ctx) != 1
-			|| BN_mul (xx, d, y2, ctx) != 1
-			|| BN_add_word (xx, 1) != 1
-			|| !BN_mod_inverse (xx, xx, q, ctx)
-			|| BN_sub_word (y2, 1) != 1
-			|| BN_mul (xx, y2, xx, ctx) != 1)
+		if (!y2 || !xx || BN_sqr (y2, y, ctx) != 1 || BN_mul (xx, d, y2, ctx) != 1 || BN_add_word (xx, 1) != 1
+			|| !BN_mod_inverse (xx, xx, q, ctx) || BN_sub_word (y2, 1) != 1 || BN_mul (xx, y2, xx, ctx) != 1)
 			return finish (nullptr);
 		std::unique_ptr<BIGNUM, decltype (&BN_free)> x (BN_new (), BN_free);
-		if (!x || BN_mod_exp (x.get (), xx, two_252_2, q, ctx) != 1
-			|| BN_sqr (y2, x.get (), ctx) != 1
+		if (!x || BN_mod_exp (x.get (), xx, two_252_2, q, ctx) != 1 || BN_sqr (y2, x.get (), ctx) != 1
 			|| BN_mod_sub (y2, y2, xx, q, ctx) != 1)
 			return finish (nullptr);
-		if (!BN_is_zero (y2)
-			&& BN_mod_mul (x.get (), x.get (), I, q, ctx) != 1)
-			return finish (nullptr);
-		if (BN_is_odd (x.get ()) && BN_sub (x.get (), q, x.get ()) != 1)
-			return finish (nullptr);
+		if (!BN_is_zero (y2) && BN_mod_mul (x.get (), x.get (), I, q, ctx) != 1) return finish (nullptr);
+		if (BN_is_odd (x.get ()) && BN_sub (x.get (), q, x.get ()) != 1) return finish (nullptr);
 		return finish (x.release ());
 	}
 
 	EDDSAPoint Ed25519::DecodePoint (const uint8_t * buf, BN_CTX * ctx) const
 	{
-		if (!buf || !ctx) return {};
+		if (!buf || !ctx) return { };
 		// buf is 32 little-endian bytes; the high bit carries x parity.
 		uint8_t buf1[EDDSA25519_PUBLIC_KEY_LENGTH];
-		for (size_t i = 0; i < EDDSA25519_PUBLIC_KEY_LENGTH; ++i)
-			buf1[i] = buf[EDDSA25519_PUBLIC_KEY_LENGTH - 1 - i];
+		for (size_t i = 0; i < EDDSA25519_PUBLIC_KEY_LENGTH; ++i) buf1[i] = buf[EDDSA25519_PUBLIC_KEY_LENGTH - 1 - i];
 		const bool isHighestBitSet = buf1[0] & 0x80;
 		buf1[0] &= 0x7f;
 		EDDSAPoint point;
 		point.y = BN_bin2bn (buf1, EDDSA25519_PUBLIC_KEY_LENGTH, nullptr);
-		if (!point.y) return {};
+		if (!point.y) return { };
 		point.x = RecoverX (point.y, ctx);
-		if (!point.x) return {};
-		if (static_cast<bool> (BN_is_bit_set (point.x, 0)) != isHighestBitSet
-			&& BN_sub (point.x, q, point.x) != 1)
-			return {};
+		if (!point.x) return { };
+		if (static_cast<bool> (BN_is_bit_set (point.x, 0)) != isHighestBitSet && BN_sub (point.x, q, point.x) != 1)
+			return { };
 		point.z = BN_new ();
 		point.t = BN_new ();
-		if (!point.z || !point.t || BN_one (point.z) != 1
-			|| BN_mod_mul (point.t, point.x, point.y, q, ctx) != 1)
-			return {};
+		if (!point.z || !point.t || BN_one (point.z) != 1 || BN_mod_mul (point.t, point.x, point.y, q, ctx) != 1)
+			return { };
 		if (!IsOnCurve (point, ctx))
 		{
 			LogPrint (eLogError, "Decoded point is not on 25519");
-			return {};
+			return { };
 		}
 		return point;
 	}

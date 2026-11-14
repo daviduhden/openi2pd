@@ -92,8 +92,7 @@ namespace i18n
 				}
 				else
 				{
-					if (!((ch >= 'a' && ch <= 'z') || (ch >= '0' && ch <= '9')) || ++length > 8)
-						return false;
+					if (!((ch >= 'a' && ch <= 'z') || (ch >= '0' && ch <= '9')) || ++length > 8) return false;
 				}
 			}
 			return length != 0;
@@ -107,14 +106,23 @@ namespace i18n
 			std::string tag = "en";
 			if (ValidTag (requested))
 			{
-				if (base == "es") { locale = spanish::GetLocale (); tag = "es"; }
-				else if (base == "ru") { locale = russian::GetLocale (); tag = "ru"; }
+				if (base == "es")
+				{
+					locale = spanish::GetLocale ();
+					tag = "es";
+				}
+				else if (base == "ru")
+				{
+					locale = russian::GetLocale ();
+					tag = "ru";
+				}
 				else if (IsSimplifiedChinese (requested))
 				{
 					// An explicit Traditional modifier overrides generic zh.
 					// Do not present Simplified text as Traditional Chinese.
 					const auto modifier = value.find ('@');
-					const auto script = modifier == std::string::npos ? std::string { }
+					const auto script = modifier == std::string::npos
+						? std::string { }
 						: Normalize (std::string_view (value).substr (modifier + 1));
 					if (script != "hant" && script != "traditional")
 					{

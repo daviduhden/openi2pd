@@ -40,8 +40,8 @@ inline bool HasConnectionUpgradeToken (std::string_view value) noexcept
 	// ASCII-only, locale-independent folding: the option is a short
 	// literal token, never a user-visible string.
 	constexpr std::string_view token = "upgrade";
-	const auto fold = [] (char ch) noexcept -> char
-	{ return ch >= 'A' && ch <= 'Z' ? static_cast<char> (ch + ('a' - 'A')) : ch; };
+	const auto fold
+		= [] (char ch) noexcept -> char { return ch >= 'A' && ch <= 'Z' ? static_cast<char> (ch + ('a' - 'A')) : ch; };
 	for (size_t i = 0; i + token.size () <= value.size (); ++i)
 	{
 		// Require a token boundary so `xupgrade` and `upgrader` are not

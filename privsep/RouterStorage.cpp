@@ -300,9 +300,9 @@ struct RouterStorageClient::Impl
 		// A worker-level write rejection (status '\1', for example ENOSPC or
 		// a symlink/ownership check) is a failed operation, not a broken
 		// channel.
-		const bool valid = std::chrono::steady_clock::now () < deadline
-			&& reply.fd < 0 && reply.message.type == MessageType::RouterStorageReply
-			&& reply.message.requestId == id && requestGeneration == generation
+		const bool valid = std::chrono::steady_clock::now () < deadline && reply.fd < 0
+			&& reply.message.type == MessageType::RouterStorageReply && reply.message.requestId == id
+			&& requestGeneration == generation
 			&& (reply.message.payload == std::string (1, '\0') || reply.message.payload == std::string (1, '\1'));
 		if (reply.fd >= 0) ::close (reply.fd);
 		if (!valid)

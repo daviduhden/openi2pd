@@ -575,8 +575,11 @@ void RouterContext::NewNTCP2Keys ()
 	auto staticKeys = std::make_unique<i2p::crypto::X25519Keys> ();
 	if (!staticKeys->GenerateKeys ()) throw std::runtime_error ("Router: NTCP2 static key generation failed");
 	auto keys = std::make_unique<NTCP2PrivateKeys> ();
-	auto cleanseCandidate = i2p::modern::ScopeExit ([&keys]
-		{ if (keys) OPENSSL_cleanse (keys.get (), sizeof (NTCP2PrivateKeys)); });
+	auto cleanseCandidate = i2p::modern::ScopeExit (
+		[&keys]
+		{
+			if (keys) OPENSSL_cleanse (keys.get (), sizeof (NTCP2PrivateKeys));
+		});
 	staticKeys->GetPrivateKey (keys->staticPrivateKey);
 	memcpy (keys->staticPublicKey, staticKeys->GetPublicKey (), 32);
 	i2p::crypto::FillRandomBytes (std::span { keys->iv, 16 });
@@ -595,8 +598,11 @@ void RouterContext::NewSSU2Keys ()
 	auto staticKeys = std::make_unique<i2p::crypto::X25519Keys> ();
 	if (!staticKeys->GenerateKeys ()) throw std::runtime_error ("Router: SSU2 static key generation failed");
 	auto keys = std::make_unique<SSU2PrivateKeys> ();
-	auto cleanseCandidate = i2p::modern::ScopeExit ([&keys]
-		{ if (keys) OPENSSL_cleanse (keys.get (), sizeof (SSU2PrivateKeys)); });
+	auto cleanseCandidate = i2p::modern::ScopeExit (
+		[&keys]
+		{
+			if (keys) OPENSSL_cleanse (keys.get (), sizeof (SSU2PrivateKeys));
+		});
 	staticKeys->GetPrivateKey (keys->staticPrivateKey);
 	memcpy (keys->staticPublicKey, staticKeys->GetPublicKey (), 32);
 	i2p::crypto::FillRandomBytes (std::span { keys->intro, 32 });

@@ -17,14 +17,13 @@
 
 namespace
 {
-constexpr const char * CredentialError =
-	"Proxy authentication credentials must be set in the configuration file, not on the command line";
+constexpr const char * CredentialError
+	= "Proxy authentication credentials must be set in the configuration file, not on the command line";
 constexpr const char * ArgumentError = "Error while parsing arguments";
 constexpr const char * ConfigError = "Error while parsing config file";
 constexpr const char * MissingConfigError = "Missing or unreadable config file";
-constexpr const char * CredentialOptions[] = { "httpproxy.auth.username",
-	"httpproxy.auth.password", "socksproxy.auth.username",
-	"socksproxy.auth.password" };
+constexpr const char * CredentialOptions[]
+	= { "httpproxy.auth.username", "httpproxy.auth.password", "socksproxy.auth.username", "socksproxy.auth.password" };
 
 class Arguments
 {
@@ -47,10 +46,10 @@ private:
 class DiagnosticCapture
 {
 public:
-	DiagnosticCapture () : m_Previous (i2p::log::GetThrowFunction ())
+	DiagnosticCapture ()
+		: m_Previous (i2p::log::GetThrowFunction ())
 	{
-		i2p::log::SetThrowFunction ([this] (const std::string & message)
-			{ messages.push_back (message); });
+		i2p::log::SetThrowFunction ([this] (const std::string & message) { messages.push_back (message); });
 	}
 
 	~DiagnosticCapture () { i2p::log::SetThrowFunction (std::move (m_Previous)); }
@@ -65,36 +64,32 @@ private:
 i2p::config::CmdlineOutcome Classify (std::vector<std::string> values)
 {
 	Arguments arguments (std::move (values));
-	return i2p::config::ClassifyInformationalRequest (
-		arguments.Count (), arguments.Data ());
+	return i2p::config::ClassifyInformationalRequest (arguments.Count (), arguments.Data ());
 }
 
 void ExpectFatalDiagnostic (const char * expected)
 {
-	i2p::log::SetThrowFunction ([expected] (const std::string & message)
-	{
-		// Match the public outcome without echoing arbitrary diagnostics.
-		if (message == expected)
-			std::fputs (expected, stderr);
-		else
-			std::fputs ("Unexpected fatal policy diagnostic", stderr);
-		std::fputc ('\n', stderr);
-	});
+	i2p::log::SetThrowFunction (
+		[expected] (const std::string & message)
+		{
+			// Match the public outcome without echoing arbitrary diagnostics.
+			if (message == expected)
+				std::fputs (expected, stderr);
+			else
+				std::fputs ("Unexpected fatal policy diagnostic", stderr);
+			std::fputc ('\n', stderr);
+		});
 }
 
 std::vector<std::string> MalformedArguments (const std::string & kind)
 {
-	if (kind == "unknown")
-		return { "i2pd", "--command-line-policy-sentinel" };
-	if (kind == "numeric")
-		return { "i2pd", "--port=command-line-policy-sentinel" };
-	if (kind == "credential-syntax")
-		return { "i2pd", "--httpproxy.auth.password=", "--help" };
+	if (kind == "unknown") return { "i2pd", "--command-line-policy-sentinel" };
+	if (kind == "numeric") return { "i2pd", "--port=command-line-policy-sentinel" };
+	if (kind == "credential-syntax") return { "i2pd", "--httpproxy.auth.password=", "--help" };
 	if (kind == "credential-duplicate")
-		return { "i2pd", "--httpproxy.auth.password",
-			"command-line-policy-sentinel", "--httpproxy.auth.password",
+		return { "i2pd", "--httpproxy.auth.password", "command-line-policy-sentinel", "--httpproxy.auth.password",
 			"second-policy-sentinel", "--version" };
-	return {};
+	return { };
 }
 
 int RejectMalformed (int argc, char * argv[])
@@ -126,13 +121,11 @@ int RejectExplicit (int argc, char * argv[])
 {
 	if (argc != 5) return 2;
 	const std::string index (argv[2]), kind (argv[3]), request (argv[4]);
-	if (index.size () != 1 || index[0] < '0' || index[0] > '3'
-		|| (kind != "empty" && kind != "value")
+	if (index.size () != 1 || index[0] < '0' || index[0] > '3' || (kind != "empty" && kind != "value")
 		|| (request != "normal" && request != "help" && request != "version"))
 		return 2;
 	ExpectFatalDiagnostic (CredentialError);
-	std::vector<std::string> values { "i2pd",
-		std::string ("--") + CredentialOptions[index[0] - '0'],
+	std::vector<std::string> values { "i2pd", std::string ("--") + CredentialOptions[index[0] - '0'],
 		kind == "empty" ? "" : "command-line-policy-sentinel" };
 	if (request != "normal") values.push_back ("--" + request);
 	Arguments arguments (std::move (values));
@@ -145,10 +138,8 @@ int RejectExplicit (int argc, char * argv[])
 
 int main (int argc, char * argv[])
 {
-	if (argc > 1 && std::string (argv[1]) == "--reject-explicit")
-		return RejectExplicit (argc, argv);
-	if (argc > 1 && std::string (argv[1]) == "--reject-malformed")
-		return RejectMalformed (argc, argv);
+	if (argc > 1 && std::string (argv[1]) == "--reject-explicit") return RejectExplicit (argc, argv);
+	if (argc > 1 && std::string (argv[1]) == "--reject-malformed") return RejectMalformed (argc, argv);
 	if (argc != 1) return 2;
 	using i2p::config::CmdlineOutcome;
 	DiagnosticCapture diagnostics;
@@ -182,12 +173,10 @@ int main (int argc, char * argv[])
 	for (const char * option : CredentialOptions)
 	{
 		const std::string flag = std::string ("--") + option;
-		for (const auto & value : { std::string {}, sentinel })
+		for (const auto & value : { std::string { }, sentinel })
 		{
-			assert (Classify ({ "i2pd", "--version", flag, value })
-				== CmdlineOutcome::Proceed);
-			assert (Classify ({ "i2pd", "--help", flag, value })
-				== CmdlineOutcome::Proceed);
+			assert (Classify ({ "i2pd", "--version", flag, value }) == CmdlineOutcome::Proceed);
+			assert (Classify ({ "i2pd", "--help", flag, value }) == CmdlineOutcome::Proceed);
 			assert (diagnostics.messages.empty ());
 		}
 	}

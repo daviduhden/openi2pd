@@ -116,8 +116,7 @@ namespace crypto
 		// unchecked affine point used to reach the verification equation as
 		// the point at infinity.
 		if (EC_POINT_set_affine_coordinates (m_Group, p, x, y, nullptr) != 1
-			|| EC_POINT_is_at_infinity (m_Group, p) != 0
-			|| EC_POINT_is_on_curve (m_Group, p, nullptr) != 1)
+			|| EC_POINT_is_at_infinity (m_Group, p) != 0 || EC_POINT_is_on_curve (m_Group, p, nullptr) != 1)
 		{
 			EC_POINT_free (p);
 			return nullptr;
@@ -133,14 +132,18 @@ namespace crypto
 		if (r && !rAliasesInput) BN_clear (r);
 		if (s && !sAliasesInput) BN_clear (s);
 		if (rAliasesInput || sAliasesInput || !priv || !digest || !r || !s || r == s || !m_Group
-			|| BN_is_negative (priv) || BN_is_zero (priv) || BN_is_negative (digest)) return;
+			|| BN_is_negative (priv) || BN_is_zero (priv) || BN_is_negative (digest))
+			return;
 
 		struct SigningFrame
 		{
 			BN_CTX * ctx = BN_CTX_new ();
 			BIGNUM * k = nullptr;
 			BIGNUM * tmp = nullptr;
-			SigningFrame () { if (ctx) BN_CTX_start (ctx); }
+			SigningFrame ()
+			{
+				if (ctx) BN_CTX_start (ctx);
+			}
 			SigningFrame (const SigningFrame &) = delete;
 			SigningFrame & operator= (const SigningFrame &) = delete;
 			~SigningFrame ()
@@ -160,10 +163,9 @@ namespace crypto
 		frame.k = BN_CTX_get (frame.ctx);
 		BIGNUM * e = BN_CTX_get (frame.ctx);
 		frame.tmp = BN_CTX_get (frame.ctx);
-		if (!q || !frame.k || !e || !frame.tmp
-			|| EC_GROUP_get_order (m_Group, q, frame.ctx) != 1
-			|| BN_is_zero (q) || BN_is_negative (q) || BN_cmp (priv, q) >= 0
-			|| BN_mod (e, digest, q, frame.ctx) != 1) return;
+		if (!q || !frame.k || !e || !frame.tmp || EC_GROUP_get_order (m_Group, q, frame.ctx) != 1 || BN_is_zero (q)
+			|| BN_is_negative (q) || BN_cmp (priv, q) >= 0 || BN_mod (e, digest, q, frame.ctx) != 1)
+			return;
 		// RFC 7091 section 6: e = alpha mod q, and e = 1 when that is zero.
 		if (BN_is_zero (e) && BN_one (e) != 1) return;
 		using SecretBN = std::unique_ptr<BIGNUM, decltype (&BN_clear_free)>;
@@ -180,11 +182,13 @@ namespace crypto
 			if (BN_is_zero (frame.k)) continue;
 			std::unique_ptr<EC_POINT, decltype (&EC_POINT_free)> point (MulP (frame.k), EC_POINT_free);
 			if (!point || !GetXY (point.get (), stagedR.get (), nullptr)
-				|| BN_mod (stagedR.get (), stagedR.get (), q, frame.ctx) != 1) return;
+				|| BN_mod (stagedR.get (), stagedR.get (), q, frame.ctx) != 1)
+				return;
 			if (BN_is_zero (stagedR.get ())) continue;
 			if (BN_mod_mul (stagedS.get (), stagedR.get (), priv, q, frame.ctx) != 1
 				|| BN_mod_mul (frame.tmp, frame.k, e, q, frame.ctx) != 1
-				|| BN_mod_add (stagedS.get (), stagedS.get (), frame.tmp, q, frame.ctx) != 1) return;
+				|| BN_mod_add (stagedS.get (), stagedS.get (), frame.tmp, q, frame.ctx) != 1)
+				return;
 			if (BN_is_zero (stagedS.get ())) continue;
 			// Swap publishes the complete pair without another allocation.
 			BN_swap (r, stagedR.get ());
@@ -195,9 +199,8 @@ namespace crypto
 
 	bool GOSTR3410Curve::Verify (const EC_POINT * pub, const BIGNUM * digest, const BIGNUM * r, const BIGNUM * s)
 	{
-		if (!m_Group || !pub || !digest || !r || !s
-			|| BN_is_negative (digest) || BN_is_negative (r) || BN_is_negative (s)
-			|| EC_POINT_is_at_infinity (m_Group, pub) != 0
+		if (!m_Group || !pub || !digest || !r || !s || BN_is_negative (digest) || BN_is_negative (r)
+			|| BN_is_negative (s) || EC_POINT_is_at_infinity (m_Group, pub) != 0
 			|| EC_POINT_is_on_curve (m_Group, pub, nullptr) != 1)
 			return false;
 		BN_CTX * ctx = BN_CTX_new ();
@@ -210,9 +213,8 @@ namespace crypto
 		BIGNUM * z2 = BN_CTX_get (ctx);
 		BIGNUM * x = BN_CTX_get (ctx);
 		EC_POINT * C = EC_POINT_new (m_Group);
-		bool ret = q && e && h && z1 && z2 && x && C && EC_GROUP_get_order (m_Group, q, ctx) == 1
-			&& !BN_is_zero (q) && !BN_is_negative (q) && !BN_is_zero (r)
-			&& !BN_is_zero (s) && BN_cmp (r, q) < 0 && BN_cmp (s, q) < 0;
+		bool ret = q && e && h && z1 && z2 && x && C && EC_GROUP_get_order (m_Group, q, ctx) == 1 && !BN_is_zero (q)
+			&& !BN_is_negative (q) && !BN_is_zero (r) && !BN_is_zero (s) && BN_cmp (r, q) < 0 && BN_cmp (s, q) < 0;
 		if (ret)
 		{
 			// RFC 7091 section 6: e = digest mod q, with e = 1 when zero.
@@ -224,8 +226,8 @@ namespace crypto
 			ret = BN_mod_mul (z1, s, h, q, ctx) == 1 // z1 = s/h
 				&& BN_sub (z2, q, r) == 1 // z2 = -r
 				&& BN_mod_mul (z2, z2, h, q, ctx) == 1 // z2 = -r/h
-				&& EC_POINT_mul (m_Group, C, z1, pub, z2, ctx) == 1
-				&& EC_POINT_is_at_infinity (m_Group, C) == 0 && GetXY (C, x, nullptr);
+				&& EC_POINT_mul (m_Group, C, z1, pub, z2, ctx) == 1 && EC_POINT_is_at_infinity (m_Group, C) == 0
+				&& GetXY (C, x, nullptr);
 		}
 		if (ret)
 		{
@@ -240,8 +242,9 @@ namespace crypto
 	EC_POINT * GOSTR3410Curve::RecoverPublicKey (
 		const BIGNUM * digest, const BIGNUM * r, const BIGNUM * s, bool isNegativeY) const
 	{
-		if (!m_Group || !digest || !r || !s || BN_is_negative (digest)
-			|| BN_is_negative (r) || BN_is_negative (s) || BN_is_zero (r) || BN_is_zero (s)) return nullptr;
+		if (!m_Group || !digest || !r || !s || BN_is_negative (digest) || BN_is_negative (r) || BN_is_negative (s)
+			|| BN_is_zero (r) || BN_is_zero (s))
+			return nullptr;
 		// s*P = r*Q + h*C
 		BN_CTX * ctx = BN_CTX_new ();
 		if (!ctx) return nullptr;
@@ -251,8 +254,8 @@ namespace crypto
 		BIGNUM * q = BN_CTX_get (ctx);
 		BIGNUM * h = BN_CTX_get (ctx);
 		BIGNUM * r1 = BN_CTX_get (ctx);
-		if (C && q && h && r1 && EC_GROUP_get_order (m_Group, q, ctx) == 1
-			&& !BN_is_zero (q) && !BN_is_negative (q) && BN_cmp (r, q) < 0 && BN_cmp (s, q) < 0
+		if (C && q && h && r1 && EC_GROUP_get_order (m_Group, q, ctx) == 1 && !BN_is_zero (q) && !BN_is_negative (q)
+			&& BN_cmp (r, q) < 0 && BN_cmp (s, q) < 0
 			&& EC_POINT_set_compressed_coordinates (m_Group, C, r, isNegativeY ? 1 : 0, ctx) == 1)
 		{
 			EC_POINT * S = EC_POINT_new (m_Group); // S = s*P
@@ -266,9 +269,10 @@ namespace crypto
 					&& EC_POINT_add (m_Group, C, S, H, ctx) == 1 && BN_mod_inverse (r1, r, q, ctx))
 				{
 					Q = EC_POINT_new (m_Group);
-					if (Q && (EC_POINT_mul (m_Group, Q, nullptr, C, r1, ctx) != 1
-						|| EC_POINT_is_at_infinity (m_Group, Q) != 0
-						|| EC_POINT_is_on_curve (m_Group, Q, ctx) != 1))
+					if (Q
+						&& (EC_POINT_mul (m_Group, Q, nullptr, C, r1, ctx) != 1
+							|| EC_POINT_is_at_infinity (m_Group, Q) != 0
+							|| EC_POINT_is_on_curve (m_Group, Q, ctx) != 1))
 					{
 						EC_POINT_free (Q);
 						Q = nullptr;

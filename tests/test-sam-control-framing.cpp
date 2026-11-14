@@ -273,10 +273,9 @@ void TestHandshakeNegotiation ()
 		NegotiateSAMHandshake ("HELLO VERSION MIN=2.0 MAX=2.9", version) == SAMHandshakeResult::eSAMHandshakeNoVersion);
 	// A component above the newest version is a well-formed range that
 	// selects nothing, not a syntax error.
+	assert (NegotiateSAMHandshake ("HELLO VERSION MIN=3.3.1", version) == SAMHandshakeResult::eSAMHandshakeNoVersion);
 	assert (
-		NegotiateSAMHandshake ("HELLO VERSION MIN=3.3.1", version) == SAMHandshakeResult::eSAMHandshakeNoVersion);
-	assert (NegotiateSAMHandshake ("HELLO VERSION MIN=3.3.0.0.0.1", version)
-		== SAMHandshakeResult::eSAMHandshakeNoVersion);
+		NegotiateSAMHandshake ("HELLO VERSION MIN=3.3.0.0.0.1", version) == SAMHandshakeResult::eSAMHandshakeNoVersion);
 	// An arbitrarily long but in-range bound is not malformed. Java's
 	// SAMHandlerFactory.chooseBestVersion() compares MIN/MAX with
 	// net.i2p.util.VersionComparator, which reads every dotted component

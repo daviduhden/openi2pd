@@ -232,9 +232,9 @@ inline bool IsReservedNftWord (std::string_view value)
 	// chain name terminate the rule early. Keep this list lexical
 	// (case-folded), not a parser.
 	static constexpr std::array<std::string_view, 37> reserved { { "accept", "add", "chain", "comment", "continue",
-		"counter", "ct", "delete", "dnat", "drop", "dup", "flush", "fwd", "goto", "handle", "hook", "inet", "insert", "ip",
-		"ip6", "jump", "limit", "list", "log", "masquerade", "meta", "policy", "priority", "queue", "redirect", "reject",
-		"return", "rule", "snat", "table", "tcp", "type" } };
+		"counter", "ct", "delete", "dnat", "drop", "dup", "flush", "fwd", "goto", "handle", "hook", "inet", "insert",
+		"ip", "ip6", "jump", "limit", "list", "log", "masquerade", "meta", "policy", "priority", "queue", "redirect",
+		"reject", "return", "rule", "snat", "table", "tcp", "type" } };
 	std::string lower (value.begin (), value.end ());
 	std::transform (lower.begin (), lower.end (), lower.begin (), [] (unsigned char ch) { return AsciiLower (ch); });
 	return std::find (reserved.begin (), reserved.end (), std::string_view (lower)) != reserved.end ();

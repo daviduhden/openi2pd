@@ -502,8 +502,7 @@ std::optional<WorkerHelloRecord> ReadWorkerHello (int fd)
 	if (fd < 0) return std::nullopt;
 	// Partial records and signals share one startup deadline. Set the
 	// read end nonblocking before consuming any untrusted pipe bytes.
-	const auto deadline = std::chrono::steady_clock::now () +
-		std::chrono::seconds (5);
+	const auto deadline = std::chrono::steady_clock::now () + std::chrono::seconds (5);
 	const int statusFlags = ::fcntl (fd, F_GETFL);
 	if (statusFlags < 0 || ::fcntl (fd, F_SETFL, statusFlags | O_NONBLOCK))
 	{
@@ -520,12 +519,11 @@ std::optional<WorkerHelloRecord> ReadWorkerHello (int fd)
 		if (count < 0 && (errno == EAGAIN || errno == EWOULDBLOCK))
 		{
 			pollfd ready { fd, POLLIN, 0 };
-			const auto remaining = std::chrono::duration_cast<
-				std::chrono::milliseconds> (deadline -
-				std::chrono::steady_clock::now ()).count ();
+			const auto remaining
+				= std::chrono::duration_cast<std::chrono::milliseconds> (deadline - std::chrono::steady_clock::now ())
+					  .count ();
 			if (remaining <= 0) break;
-			const int polled = ::poll (&ready, 1,
-				static_cast<int> (std::min<int64_t> (remaining, 5000)));
+			const int polled = ::poll (&ready, 1, static_cast<int> (std::min<int64_t> (remaining, 5000)));
 			if (polled < 0 && errno == EINTR) continue;
 			if (polled <= 0) break;
 			continue;
@@ -709,8 +707,7 @@ ChildProcess ChildProcess::Adopt (pid_t pid, Channel channel)
 	return process;
 }
 
-bool ChildProcess::WaitForExitUntil (
-	std::chrono::steady_clock::time_point deadline)
+bool ChildProcess::WaitForExitUntil (std::chrono::steady_clock::time_point deadline)
 {
 	// WaitForChildExitUntil() already reaps the child. A second
 	// waitpid() here could consume a newly forked child that reused the
@@ -768,8 +765,7 @@ void ChildProcess::Stop (int timeoutMs)
 	if (m_Channel.IsOpen ())
 	{
 		Message shutdown { MessageType::Shutdown, 0, { } };
-		if (std::chrono::steady_clock::now () < budget.send)
-			(void)m_Channel.SendUntil (shutdown, budget.send);
+		if (std::chrono::steady_clock::now () < budget.send) (void)m_Channel.SendUntil (shutdown, budget.send);
 		m_Channel.Close ();
 	}
 	if (m_Pid > 0)

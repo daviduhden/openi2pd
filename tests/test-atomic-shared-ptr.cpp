@@ -21,21 +21,16 @@
 
 namespace
 {
-template <typename T>
-using DefaultStorage = i2p::util::AtomicSharedPtr<T>;
+template <typename T> using DefaultStorage = i2p::util::AtomicSharedPtr<T>;
 
-template <typename T>
-using FallbackStorage = i2p::util::AtomicSharedPtr<T, false>;
+template <typename T> using FallbackStorage = i2p::util::AtomicSharedPtr<T, false>;
 
-template <typename T>
-bool SameOwner (const std::shared_ptr<T> & left,
-	const std::shared_ptr<T> & right)
+template <typename T> bool SameOwner (const std::shared_ptr<T> & left, const std::shared_ptr<T> & right)
 {
 	return !left.owner_before (right) && !right.owner_before (left);
 }
 
-template <template <typename> typename Storage>
-void TestPublication ()
+template <template <typename> typename Storage> void TestPublication ()
 {
 	Storage<int> slot;
 	assert (!slot.Load ());
@@ -54,8 +49,7 @@ void TestPublication ()
 	assert (!slot.Load ());
 }
 
-template <template <typename> typename Storage>
-void TestCompareExchange ()
+template <template <typename> typename Storage> void TestCompareExchange ()
 {
 	Storage<int> slot;
 	std::shared_ptr<int> expected;
@@ -71,8 +65,7 @@ void TestCompareExchange ()
 	assert (SameOwner (expected, first));
 	assert (SameOwner (slot.Load (), first));
 
-	assert (slot.CompareExchangeStrong (expected, desired,
-		std::memory_order_acq_rel, std::memory_order_acquire));
+	assert (slot.CompareExchangeStrong (expected, desired, std::memory_order_acq_rel, std::memory_order_acquire));
 	assert (SameOwner (expected, first));
 	assert (SameOwner (slot.Load (), desired));
 
@@ -84,8 +77,7 @@ void TestCompareExchange ()
 	assert (!slot.Load ());
 }
 
-template <template <typename> typename Storage>
-void TestDistinctOwnersAtSameAddress ()
+template <template <typename> typename Storage> void TestDistinctOwnersAtSameAddress ()
 {
 	int value = 7;
 	const auto borrow = [] (int *) { };
@@ -101,8 +93,7 @@ void TestDistinctOwnersAtSameAddress ()
 	assert (SameOwner (slot.Load (), current));
 }
 
-template <template <typename> typename Storage>
-void TestOwnedNullIsNotEmpty ()
+template <template <typename> typename Storage> void TestOwnedNullIsNotEmpty ()
 {
 	auto owner = std::make_shared<int> (7);
 	std::shared_ptr<int> ownedNull (owner, nullptr);
@@ -118,11 +109,9 @@ void TestOwnedNullIsNotEmpty ()
 	assert (SameOwner (slot.Load (), desired));
 }
 
-template <template <typename> typename Storage>
-void TestDistinctAliasesOfOneOwner ()
+template <template <typename> typename Storage> void TestDistinctAliasesOfOneOwner ()
 {
-	auto owner = std::make_shared<std::array<int, 2>> (
-		std::array<int, 2> { 7, 8 });
+	auto owner = std::make_shared<std::array<int, 2>> (std::array<int, 2> { 7, 8 });
 	std::shared_ptr<int> current (owner, &(*owner)[0]);
 	std::shared_ptr<int> expected (owner, &(*owner)[1]);
 	assert (SameOwner (current, expected));
@@ -146,8 +135,7 @@ struct ReentrantOwner
 	}
 };
 
-template <template <typename> typename Storage>
-void TestStoreReleasesOutsideLock ()
+template <template <typename> typename Storage> void TestStoreReleasesOutsideLock ()
 {
 	Storage<ReentrantOwner> slot;
 	bool destroyed = false;
@@ -173,8 +161,7 @@ void TestStoreReleasesOutsideLock ()
 	assert (retired.expired ());
 }
 
-template <template <typename> typename Storage>
-void TestFailedCompareExchangeReleasesOutsideLock ()
+template <template <typename> typename Storage> void TestFailedCompareExchangeReleasesOutsideLock ()
 {
 	auto current = std::make_shared<ReentrantOwner> ();
 	current->value = 2;
@@ -198,8 +185,7 @@ void TestFailedCompareExchangeReleasesOutsideLock ()
 	assert (SameOwner (slot.Load (), current));
 }
 
-template <template <typename> typename Storage>
-void RunBackend ()
+template <template <typename> typename Storage> void RunBackend ()
 {
 	TestPublication<Storage> ();
 	TestCompareExchange<Storage> ();

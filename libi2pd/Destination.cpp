@@ -281,7 +281,8 @@ namespace client
 		m_Pool->SetActive (true);
 		m_CleanupTimer.expires_after (std::chrono::seconds (DESTINATION_CLEANUP_TIMEOUT));
 		std::weak_ptr<LeaseSetDestination> weak = weak_from_this ();
-		m_CleanupTimer.async_wait ([weak] (const boost::system::error_code & ecode)
+		m_CleanupTimer.async_wait (
+			[weak] (const boost::system::error_code & ecode)
 			{
 				if (auto self = weak.lock ()) self->HandleCleanupTimer (ecode);
 			});
@@ -436,7 +437,8 @@ namespace client
 		memcpy (data.k, key, 32);
 		memcpy (data.t, tag, 32);
 		std::weak_ptr<LeaseSetDestination> weak = weak_from_this ();
-		boost::asio::post (m_Service, [weak, data] (void)
+		boost::asio::post (m_Service,
+			[weak, data] (void)
 			{
 				if (auto self = weak.lock ()) self->AddSessionKey (data.k, data.t);
 			});
@@ -453,7 +455,8 @@ namespace client
 		memcpy (data.k, key, 32);
 		data.t = tag;
 		std::weak_ptr<LeaseSetDestination> weak = weak_from_this ();
-		boost::asio::post (m_Service, [weak, data] (void)
+		boost::asio::post (m_Service,
+			[weak, data] (void)
 			{
 				if (auto self = weak.lock ()) self->AddECIESx25519Key (data.k, data.t);
 			});
@@ -520,7 +523,8 @@ namespace client
 		}
 		uint32_t msgID = bufbe32toh (msg->GetPayload () + DELIVERY_STATUS_MSGID_OFFSET);
 		std::weak_ptr<LeaseSetDestination> weak = weak_from_this ();
-		boost::asio::post (m_Service, [weak, msgID]
+		boost::asio::post (m_Service,
+			[weak, msgID]
 			{
 				if (auto self = weak.lock ()) self->HandleDeliveryStatusMessage (msgID);
 			});
@@ -894,7 +898,8 @@ namespace client
 			m_PublishVerificationTimer.expires_after (std::chrono::seconds (
 				PUBLISH_VERIFICATION_TIMEOUT + GetRng () () % PUBLISH_VERIFICATION_TIMEOUT_VARIANCE));
 			std::weak_ptr<LeaseSetDestination> weak = weak_from_this ();
-			m_PublishVerificationTimer.async_wait ([weak] (const boost::system::error_code & ecode)
+			m_PublishVerificationTimer.async_wait (
+				[weak] (const boost::system::error_code & ecode)
 				{
 					if (auto self = weak.lock ()) self->HandlePublishVerificationTimer (ecode);
 				});
@@ -908,7 +913,8 @@ namespace client
 		if (post)
 		{
 			std::weak_ptr<LeaseSetDestination> weak = weak_from_this ();
-			boost::asio::post (m_Service, [weak] ()
+			boost::asio::post (m_Service,
+				[weak] ()
 				{
 					if (auto self = weak.lock ()) self->UpdateLeaseSet ();
 				});
@@ -946,7 +952,8 @@ namespace client
 			m_PublishDelayTimer.cancel ();
 			m_PublishDelayTimer.expires_after (std::chrono::seconds (PUBLISH_MIN_INTERVAL));
 			std::weak_ptr<LeaseSetDestination> weak = weak_from_this ();
-			m_PublishDelayTimer.async_wait ([weak] (const boost::system::error_code & ecode)
+			m_PublishDelayTimer.async_wait (
+				[weak] (const boost::system::error_code & ecode)
 				{
 					if (auto self = weak.lock ()) self->HandlePublishDelayTimer (ecode);
 				});
@@ -1010,7 +1017,8 @@ namespace client
 		msg->onDrop = [weak] ()
 		{
 			if (auto s = weak.lock ())
-				boost::asio::post (s->GetService (), [weak] ()
+				boost::asio::post (s->GetService (),
+					[weak] ()
 					{
 						if (auto self = weak.lock ())
 						{
@@ -1030,8 +1038,7 @@ namespace client
 		m_PublishConfirmationTimer.async_wait (
 			[weak, publishConfirmationTimeout] (const boost::system::error_code & ecode)
 			{
-				if (auto self = weak.lock ())
-					self->HandlePublishConfirmationTimer (ecode, publishConfirmationTimeout);
+				if (auto self = weak.lock ()) self->HandlePublishConfirmationTimer (ecode, publishConfirmationTimeout);
 			});
 		outbound->SendTunnelDataMsgTo (floodfill->GetIdentHash (), 0, msg);
 		m_LastSubmissionTime = ts;
@@ -1046,7 +1053,8 @@ namespace client
 			PUBLISH_RETRY_INTERVAL, " milliseconds");
 		m_PublishConfirmationTimer.expires_after (std::chrono::milliseconds (PUBLISH_RETRY_INTERVAL));
 		std::weak_ptr<LeaseSetDestination> weak = weak_from_this ();
-		m_PublishConfirmationTimer.async_wait ([weak] (const boost::system::error_code & ecode)
+		m_PublishConfirmationTimer.async_wait (
+			[weak] (const boost::system::error_code & ecode)
 			{
 				if (auto self = weak.lock ()) self->HandlePublishConfirmationTimer (ecode, PUBLISH_RETRY_INTERVAL);
 			});
@@ -1093,9 +1101,11 @@ namespace client
 							s->m_PublishVerificationTimer.expires_after (
 								std::chrono::seconds (PUBLISH_REGULAR_VERIFICATION_INTERNAL));
 							std::weak_ptr<LeaseSetDestination> verificationWeak = s;
-							s->m_PublishVerificationTimer.async_wait ([verificationWeak] (const boost::system::error_code & ecode)
+							s->m_PublishVerificationTimer.async_wait (
+								[verificationWeak] (const boost::system::error_code & ecode)
 								{
-									if (auto self = verificationWeak.lock ()) self->HandlePublishVerificationTimer (ecode);
+									if (auto self = verificationWeak.lock ())
+										self->HandlePublishVerificationTimer (ecode);
 								});
 							return;
 						}
@@ -1125,7 +1135,8 @@ namespace client
 			return false;
 		}
 		std::weak_ptr<LeaseSetDestination> weak = weak_from_this ();
-		boost::asio::post (m_Service, [weak, dest, requestComplete = std::move (requestComplete)] () mutable
+		boost::asio::post (m_Service,
+			[weak, dest, requestComplete = std::move (requestComplete)] () mutable
 			{
 				if (auto self = weak.lock ())
 					self->RequestLeaseSet (dest, requestComplete, nullptr, { });
@@ -1159,8 +1170,9 @@ namespace client
 			return true;
 		}
 		std::weak_ptr<LeaseSetDestination> weak = weak_from_this ();
-		boost::asio::post (m_Service, [weak, storeHash, requestComplete = std::move (requestComplete), dest,
-									  authSecret = std::move (authSecret)] () mutable
+		boost::asio::post (m_Service,
+			[weak, storeHash, requestComplete = std::move (requestComplete), dest,
+				authSecret = std::move (authSecret)] () mutable
 			{
 				if (auto self = weak.lock ())
 					self->RequestLeaseSet (storeHash, requestComplete, std::move (dest), std::move (authSecret));
@@ -1277,12 +1289,12 @@ namespace client
 
 			uint8_t replyKey[32];
 			uint64_t replyTag;
-			auto cleanseReplyKey = i2p::modern::ScopeExit ([&replyKey] ()
-				{ OPENSSL_cleanse (replyKey, sizeof (replyKey)); });
+			auto cleanseReplyKey
+				= i2p::modern::ScopeExit ([&replyKey] () { OPENSSL_cleanse (replyKey, sizeof (replyKey)); });
 			// Publish neither key nor tag if the provider cannot supply
 			// fresh randomness. The caller completes the failed request.
-			if (RAND_bytes (replyKey, sizeof (replyKey)) != 1 ||
-				RAND_bytes ((uint8_t *)&replyTag, sizeof (replyTag)) != 1)
+			if (RAND_bytes (replyKey, sizeof (replyKey)) != 1
+				|| RAND_bytes ((uint8_t *)&replyTag, sizeof (replyTag)) != 1)
 			{
 				LogPrint (eLogError, "Destination: Lookup randomness unavailable");
 				return false;
@@ -1295,7 +1307,8 @@ namespace client
 			msg->onDrop = [weak, dest, request] ()
 			{
 				if (auto s = weak.lock ())
-					boost::asio::post (s->GetService (), [weak, dest, request] ()
+					boost::asio::post (s->GetService (),
+						[weak, dest, request] ()
 						{
 							if (auto self = weak.lock ()) self->SendNextLeaseSetRequest (dest, request);
 						});
@@ -1311,7 +1324,8 @@ namespace client
 				? (uint64_t)(request->outboundTunnel->GetMeanLatency ()) / 1000LL
 				: request->outboundTunnel->GetNumHops () * (uint64_t)(i2p::tunnel::HIGH_LATENCY_PER_HOP) / 1000LL;
 			request->requestTimeoutTimer.expires_after (std::chrono::milliseconds (requestLeaseSetTimeout));
-			request->requestTimeoutTimer.async_wait ([weak, dest] (const boost::system::error_code & ecode)
+			request->requestTimeoutTimer.async_wait (
+				[weak, dest] (const boost::system::error_code & ecode)
 				{
 					if (ecode == boost::asio::error::operation_aborted) return;
 					if (auto self = weak.lock ()) self->HandleRequestTimeoutTimer (ecode, dest);
@@ -1372,7 +1386,8 @@ namespace client
 			m_CleanupTimer.expires_after (std::chrono::seconds (
 				DESTINATION_CLEANUP_TIMEOUT + GetRng () () % DESTINATION_CLEANUP_TIMEOUT_VARIANCE));
 			std::weak_ptr<LeaseSetDestination> weak = weak_from_this ();
-			m_CleanupTimer.async_wait ([weak] (const boost::system::error_code & timerError)
+			m_CleanupTimer.async_wait (
+				[weak] (const boost::system::error_code & timerError)
 				{
 					if (auto self = weak.lock ()) self->HandleCleanupTimer (timerError);
 				});
@@ -1892,8 +1907,7 @@ namespace client
 					[weak = std::weak_ptr<i2p::stream::StreamingDestination> (s), fromPort, toPort] (
 						std::shared_ptr<const i2p::data::LeaseSet> ls)
 					{
-						if (auto streaming = weak.lock (); streaming && ls)
-							streaming->SendPing (ls, fromPort, toPort);
+						if (auto streaming = weak.lock (); streaming && ls) streaming->SendPing (ls, fromPort, toPort);
 					});
 			}
 		}
@@ -2095,8 +2109,7 @@ namespace client
 				// signature write would run past the buffer and no peer could
 				// verify the record either; refuse the LS1 instead of
 				// publishing an invalid one.
-				if (m_Keys.GetSignatureLen () != GetIdentity ()->GetSignatureLen ()
-					|| m_Keys.IsOfflineSignature ())
+				if (m_Keys.GetSignatureLen () != GetIdentity ()->GetSignatureLen () || m_Keys.IsOfflineSignature ())
 				{
 					LogPrint (eLogError,
 						"Destination: The LS1 signature length does not match the identity; refusing to publish it");

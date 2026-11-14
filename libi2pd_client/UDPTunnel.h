@@ -168,6 +168,7 @@ namespace client
 		/// or the session is gone; callers must handle that instead of
 		/// assuming a live path.
 		std::shared_ptr<i2p::datagram::DatagramSession> GetDatagramSession ();
+
 	protected:
 		using AckHandler = std::function<void (const boost::system::error_code &)>;
 		struct AckAdmission
@@ -191,7 +192,6 @@ namespace client
 	private:
 		void ScheduleAckTimerLocked (uint32_t seqn);
 		void CancelAckTimerLocked () noexcept;
-
 	};
 
 	struct UDPSession : public UDPConnection // for server side

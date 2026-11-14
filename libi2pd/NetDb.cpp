@@ -1224,8 +1224,7 @@ namespace data
 		// make floodfill lookups
 		while (numFloodfills > 0)
 		{
-			if (!randomIdent.Randomize ())
-				throw std::runtime_error ("NetDb: Lookup identity randomness unavailable");
+			if (!randomIdent.Randomize ()) throw std::runtime_error ("NetDb: Lookup identity randomness unavailable");
 			auto msg = i2p::CreateRouterInfoDatabaseLookupMsg (randomIdent, ourIdent, 0, false);
 			requests.push_back (msg);
 			numFloodfills--;
@@ -1234,8 +1233,7 @@ namespace data
 		// make regular router lookups
 		while (numRouters > 0)
 		{
-			if (!randomIdent.Randomize ())
-				throw std::runtime_error ("NetDb: Lookup identity randomness unavailable");
+			if (!randomIdent.Randomize ()) throw std::runtime_error ("NetDb: Lookup identity randomness unavailable");
 			auto msg = i2p::CreateRouterInfoDatabaseLookupMsg (randomIdent, ourIdent, 0, true);
 			requests.push_back (msg);
 			numRouters--;

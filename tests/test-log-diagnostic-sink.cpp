@@ -61,7 +61,7 @@ int main ()
 
 	// An empty function removes the sink; later records must not reach a
 	// callback that no longer exists.
-	logger.SetSynchronousSink ({});
+	logger.SetSynchronousSink ({ });
 	const size_t before = captured.size ();
 	LogPrint (eLogCritical, "after removal");
 	assert (captured.size () == before);

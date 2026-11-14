@@ -38,8 +38,7 @@ int main (int argc, char ** argv)
 		assert (!SafeStoragePath (path));
 	assert (!SafeStoragePath (std::string ("a\0b", 3)));
 #if defined(__linux__) && !defined(__ANDROID__)
-	if (::geteuid () == 0)
-		return i2p::test::SkipCapability ("storage workers refuse a root runner");
+	if (::geteuid () == 0) return i2p::test::SkipCapability ("storage workers refuse a root runner");
 	auto root = std::filesystem::temp_directory_path () / ("openi2pd-storage-worker-" + std::to_string (::getpid ()));
 	std::filesystem::create_directory (root);
 	struct Cleanup
@@ -54,10 +53,8 @@ int main (int argc, char ** argv)
 	i2p::torrents::TorrentStorageWorker worker;
 	std::string error;
 	auto support = ProbeLinuxIsolation ();
-	if (!support.filesystem)
-		return i2p::test::SkipCapability ("kernel lacks required filesystem isolation");
-	if (!support.seccompFilter)
-		return i2p::test::SkipCapability ("kernel lacks required seccomp filtering");
+	if (!support.filesystem) return i2p::test::SkipCapability ("kernel lacks required filesystem isolation");
+	if (!support.seccompFilter) return i2p::test::SkipCapability ("kernel lacks required seccomp filtering");
 	assert (worker.Start (root, error));
 	{
 		const auto name = ".openi2pd-state/" + std::string (40, 'a') + ".magnet";
@@ -69,7 +66,8 @@ int main (int argc, char ** argv)
 		const std::vector<uint8_t> oversized (16 * 1024 + 1, 'x');
 		assert (!worker.ReplaceMetadata (name, oversized, error));
 		for (const auto & invalid : { ".openi2pd-state/" + std::string (40, 'A') + ".magnet",
-			".openi2pd-state/" + std::string (39, 'a') + ".magnet", name + ".backup", std::string ("arbitrary.magnet") })
+				 ".openi2pd-state/" + std::string (39, 'a') + ".magnet", name + ".backup",
+				 std::string ("arbitrary.magnet") })
 			assert (!worker.ReplaceMetadata (invalid, record, error));
 		assert (worker.RemoveMetadata (name, error));
 	}

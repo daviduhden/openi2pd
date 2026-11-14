@@ -446,7 +446,9 @@ namespace client
 		// barrier while holding it. Stop revokes before releasing storage.
 		struct CacheAdmission
 		{
-			struct Generation {};
+			struct Generation
+			{
+			};
 			std::mutex mutex;
 			AddressBook * owner = nullptr;
 			std::shared_ptr<const Generation> generation;

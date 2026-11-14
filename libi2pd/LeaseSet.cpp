@@ -1183,8 +1183,8 @@ namespace data
 			}
 			i2p::crypto::X25519Keys ck (secret, nullptr); // derive cpk_i from csk_i
 			uint8_t authInput[100];
-			auto cleanseAuthInput = i2p::modern::ScopeExit ([&authInput] ()
-				{ OPENSSL_cleanse (authInput, sizeof (authInput)); });
+			auto cleanseAuthInput
+				= i2p::modern::ScopeExit ([&authInput] () { OPENSSL_cleanse (authInput, sizeof (authInput)); });
 			if (!ck.Agree (ephemeralPublicKey, authInput)) // sharedSecret is first 32 bytes of authInput
 			{
 				LogPrint (eLogError, "LeaseSet2: DH auth key agreement failed");
@@ -1230,8 +1230,8 @@ namespace data
 				return AUTH_DATA_FAILED;
 			}
 			uint8_t authInput[68];
-			auto cleanseAuthInput = i2p::modern::ScopeExit ([&authInput] ()
-				{ OPENSSL_cleanse (authInput, sizeof (authInput)); });
+			auto cleanseAuthInput
+				= i2p::modern::ScopeExit ([&authInput] () { OPENSSL_cleanse (authInput, sizeof (authInput)); });
 			memcpy (authInput, secret, 32);
 			memcpy (authInput + 32, subcredential, 36);
 			uint8_t okm[64]; // 52 actual data
@@ -1872,8 +1872,8 @@ namespace data
 			htobe16buf (authData, static_cast<uint16_t> (authKeys->size ()));
 			authData += 2; // num clients
 			uint8_t authInput[100]; // sharedSecret || cpk_i || subcredential || publishedTimestamp
-			auto cleanseAuthInput = i2p::modern::ScopeExit ([&authInput] ()
-				{ OPENSSL_cleanse (authInput, sizeof (authInput)); });
+			auto cleanseAuthInput
+				= i2p::modern::ScopeExit ([&authInput] () { OPENSSL_cleanse (authInput, sizeof (authInput)); });
 			memcpy (authInput + 64, subcredential, 36);
 			for (auto & it : *authKeys)
 			{
@@ -1891,16 +1891,16 @@ namespace data
 		else // assume PSK
 		{
 			uint8_t authSalt[32];
-			auto cleanseAuthSalt = i2p::modern::ScopeExit ([&authSalt] ()
-				{ OPENSSL_cleanse (authSalt, sizeof (authSalt)); });
+			auto cleanseAuthSalt
+				= i2p::modern::ScopeExit ([&authSalt] () { OPENSSL_cleanse (authSalt, sizeof (authSalt)); });
 			if (RAND_bytes (authSalt, sizeof (authSalt)) != 1) return false;
 			memcpy (authData, authSalt, 32);
 			authData += 32; // authSalt
 			htobe16buf (authData, static_cast<uint16_t> (authKeys->size ()));
 			authData += 2; // num clients
 			uint8_t authInput[68]; // authInput = psk_i || subcredential || publishedTimestamp
-			auto cleanseAuthInput = i2p::modern::ScopeExit ([&authInput] ()
-				{ OPENSSL_cleanse (authInput, sizeof (authInput)); });
+			auto cleanseAuthInput
+				= i2p::modern::ScopeExit ([&authInput] () { OPENSSL_cleanse (authInput, sizeof (authInput)); });
 			memcpy (authInput + 32, subcredential, 36);
 			for (auto & it : *authKeys)
 			{

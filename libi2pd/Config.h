@@ -76,7 +76,6 @@ namespace config
 	 */
 	int PublishInformationalResponse (CmdlineOutcome outcome);
 
-
 	/*
 	 * @brief Detect a version or help request before startup.
 	 * @param argc Cmdline arguments count, should be passed from main().

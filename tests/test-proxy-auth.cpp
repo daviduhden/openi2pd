@@ -307,8 +307,8 @@ void TestBlockedClearnetTargets ()
 	// outproxy would reach on the local network is refused in both.
 	// Non-globally-reachable IPv4 destinations.
 	for (const char * host : { "0.0.0.0", "10.1.2.3", "100.64.0.1", "127.0.0.1", "127.1.2.3", "169.254.169.254",
-			 "172.16.0.1", "172.31.255.255", "192.0.0.1", "192.168.1.1", "198.18.0.1", "224.0.0.1",
-			 "255.255.255.255", "localhost", "app.localhost", "LOCALHOST" })
+			 "172.16.0.1", "172.31.255.255", "192.0.0.1", "192.168.1.1", "198.18.0.1", "224.0.0.1", "255.255.255.255",
+			 "localhost", "app.localhost", "LOCALHOST" })
 		assert (i2p::proxy::IsBlockedClearnetTarget (host));
 
 	// IPv6 loopback, unspecified, link-local, unique-local and multicast,
@@ -319,8 +319,8 @@ void TestBlockedClearnetTargets ()
 	// IPv4-embedded IPv6 spellings reach the same host as the plain IPv4
 	// address. A second, divergent classifier used to accept these while
 	// the outproxy connected to loopback.
-	for (const char * host : { "::ffff:127.0.0.1", "::ffff:10.0.0.1", "::ffff:192.168.0.1",
-			 "::ffff:169.254.169.254", "::127.0.0.1", "[::ffff:127.0.0.1]" })
+	for (const char * host : { "::ffff:127.0.0.1", "::ffff:10.0.0.1", "::ffff:192.168.0.1", "::ffff:169.254.169.254",
+			 "::127.0.0.1", "[::ffff:127.0.0.1]" })
 		assert (i2p::proxy::IsBlockedClearnetTarget (host));
 
 	// The NAT64 well-known prefix embeds IPv4 in the last four bytes; the
@@ -541,8 +541,8 @@ void TestDigestRejections ()
 	// Wrong username with the correct response for the configured user. The
 	// response matches this nc, so only the username comparison can reject
 	// the request.
-	assert (auth->Verify (header ("mufasa", RFC7616_REALM, RFC7616_NONCE, "00000002", "MD5",
-							  RFC7616_MD5_RESPONSE_NC2, RFC7616_OPAQUE),
+	assert (auth->Verify (header ("mufasa", RFC7616_REALM, RFC7616_NONCE, "00000002", "MD5", RFC7616_MD5_RESPONSE_NC2,
+							  RFC7616_OPAQUE),
 				"GET", DIGEST_NOW)
 		== ProxyDigestResult::BadCredentials);
 	// A different method changes H(A2); the response is the one for GET, so
@@ -629,23 +629,20 @@ void TestDigestNonceCount ()
 			response, RFC7616_OPAQUE);
 	};
 
-	assert (auth->Verify (header ("00000001", RFC7616_MD5_RESPONSE), "GET", DIGEST_NOW)
-		== ProxyDigestResult::Accepted);
+	assert (auth->Verify (header ("00000001", RFC7616_MD5_RESPONSE), "GET", DIGEST_NOW) == ProxyDigestResult::Accepted);
 	// Replaying the same nc is rejected even with a valid digest.
-	assert (auth->Verify (header ("00000001", RFC7616_MD5_RESPONSE), "GET", DIGEST_NOW)
-		== ProxyDigestResult::Replayed);
+	assert (auth->Verify (header ("00000001", RFC7616_MD5_RESPONSE), "GET", DIGEST_NOW) == ProxyDigestResult::Replayed);
 	// Going backwards is rejected: nc is monotonic per nonce.
-	assert (auth->Verify (header ("00000000", RFC7616_MD5_RESPONSE), "GET", DIGEST_NOW)
-		== ProxyDigestResult::Malformed);
+	assert (
+		auth->Verify (header ("00000000", RFC7616_MD5_RESPONSE), "GET", DIGEST_NOW) == ProxyDigestResult::Malformed);
 	// A higher count is accepted.
-	assert (auth->Verify (header ("00000002", RFC7616_MD5_RESPONSE_NC2), "GET", DIGEST_NOW)
-		== ProxyDigestResult::Accepted);
-	assert (auth->Verify (header ("00000002", RFC7616_MD5_RESPONSE_NC2), "GET", DIGEST_NOW)
-		== ProxyDigestResult::Replayed);
+	assert (
+		auth->Verify (header ("00000002", RFC7616_MD5_RESPONSE_NC2), "GET", DIGEST_NOW) == ProxyDigestResult::Accepted);
+	assert (
+		auth->Verify (header ("00000002", RFC7616_MD5_RESPONSE_NC2), "GET", DIGEST_NOW) == ProxyDigestResult::Replayed);
 	// A valid response for an older nc is still a replay once a newer count
 	// has been accepted.
-	assert (auth->Verify (header ("00000001", RFC7616_MD5_RESPONSE), "GET", DIGEST_NOW)
-		== ProxyDigestResult::Replayed);
+	assert (auth->Verify (header ("00000001", RFC7616_MD5_RESPONSE), "GET", DIGEST_NOW) == ProxyDigestResult::Replayed);
 
 	// A rejected digest must not consume an nc value.
 	auto fresh = MakeDigestAuth (RFC7616_USER, RFC7616_PASSWORD, RFC7616_REALM);

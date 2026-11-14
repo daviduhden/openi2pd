@@ -223,8 +223,7 @@ void TestPolicySeparation ()
 	// The single cross-role invariant: external network and persistent
 	// writes never coexist in one process, for every buildable role.
 	const OpenBSDWorkerRole roles[] = { OpenBSDWorkerRole::Supervisor, OpenBSDWorkerRole::Log,
-		OpenBSDWorkerRole::Storage, OpenBSDWorkerRole::Network, OpenBSDWorkerRole::Crypto,
-		OpenBSDWorkerRole::Admin };
+		OpenBSDWorkerRole::Storage, OpenBSDWorkerRole::Network, OpenBSDWorkerRole::Crypto, OpenBSDWorkerRole::Admin };
 	for (const auto role : roles)
 	{
 		OpenBSDPolicyConfig config = BaseConfig ();
@@ -234,8 +233,7 @@ void TestPolicySeparation ()
 		assert (policy.has_value ());
 		assert (!(policy->HasExternalNetwork () && policy->HasPersistentWrite ()));
 		// Only the supervisor owns already-created children.
-		if (role != OpenBSDWorkerRole::Supervisor)
-			assert (!policy->HasProcessCreation ());
+		if (role != OpenBSDWorkerRole::Supervisor) assert (!policy->HasProcessCreation ());
 		assert (!HasPromiseText (policy->pledge, "exec"));
 		assert (!HasPromiseText (policy->pledge, "error"));
 	}
@@ -373,8 +371,10 @@ void TestPledgeWindows ()
 			assert (!HasPromiseText (runtime, "recvfd"));
 			assert (!HasPromiseText (startup, "recvfd"));
 		}
-		if (window.unveil) assert (HasPromiseText (startup, "unveil"));
-		else assert (!HasPromiseText (startup, "unveil"));
+		if (window.unveil)
+			assert (HasPromiseText (startup, "unveil"));
+		else
+			assert (!HasPromiseText (startup, "unveil"));
 		assert (HasPromiseText (startup, window.upnp ? "mcast" : "stdio"));
 		if (window.upnp) assert (HasPromiseText (runtime, "mcast"));
 	}
