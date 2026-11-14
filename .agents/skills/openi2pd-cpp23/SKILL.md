@@ -117,6 +117,11 @@ compile, run tests or run project scripts.
 
 ## Known issues and decisions
 
+- Weak-owner timer factories must order local owners before lock guards so
+  reverse destruction unlocks admission before releasing the last owner.
+  Test already-successful stale callbacks and an executor that never drains;
+  do not replace weak ownership with a strong timer/owner cycle.
+
 - Repository formatting uses the Cpp document in .clang-format. Select
   tracked maintained sources and exclude machine-generated JNI declarations.
   Compare tokens/literals with a pre-format snapshot and audit exact source

@@ -10,12 +10,140 @@
 #include <cassert>
 #include <functional>
 #include <memory>
+#include <limits>
 #include <future>
 #include <thread>
 #include "UDPTunnel.h"
 
+namespace i2p::client
+{
+struct UDPPeriodicTestAccess
+{
+	template <typename Owner> static void Activate (Owner & owner)
+	{
+		owner.RetirePeriodicTimers ();
+		owner.m_PeriodicAdmission = std::make_shared<UDPPeriodicAdmission> ();
+		owner.m_IsStarted = true;
+	}
+	template <typename Owner> static void ArmStats (Owner & owner)
+	{
+		std::lock_guard lock (owner.m_PeriodicAdmission->mutex);
+		owner.m_StatsTimer = std::make_unique<boost::asio::steady_timer> (owner.m_LocalDest->GetService ());
+		owner.ScheduleStatsTimer ();
+	}
+	template <typename Owner> static auto State (const Owner & owner) { return owner.m_PeriodicAdmission; }
+	template <typename Owner>
+	static UDPPeriodicHandler Prepare (
+		Owner & owner, UDPPeriodicSlot slot, std::function<void (Owner &, const boost::system::error_code &)> action)
+	{
+		std::lock_guard lock (owner.m_PeriodicAdmission->mutex);
+		return owner.MakePeriodicHandlerLocked (slot, std::move (action));
+	}
+};
+}
+
 namespace
 {
+// Drive each real tunnel's callback factory without starting sockets,
+// receiver registrations, resolver threads or an executor.
+template <typename Owner> void CheckPeriodicAdmission (std::shared_ptr<Owner> owner)
+{
+	using namespace i2p::client;
+	UDPPeriodicTestAccess::Activate (*owner);
+	unsigned actions = 0;
+	std::function<void (Owner &, const boost::system::error_code &)> action
+		= [&actions] (Owner &, const boost::system::error_code &) { ++actions; };
+	for (auto slot : { UDPPeriodicSlot::Stats, UDPPeriodicSlot::Maintenance })
+	{
+		auto old = UDPPeriodicTestAccess::Prepare (*owner, slot, action);
+		auto current = UDPPeriodicTestAccess::Prepare (*owner, slot, action);
+		const auto previous = actions;
+		old ({ });
+		old (boost::asio::error::operation_aborted);
+		assert (actions == previous);
+		current ({ });
+		current ({ });
+		assert (actions == previous + 1);
+		auto cancelled = UDPPeriodicTestAccess::Prepare (*owner, slot, action);
+		cancelled (boost::asio::error::operation_aborted);
+		cancelled ({ });
+		assert (actions == previous + 1);
+	}
+	auto stopped = UDPPeriodicTestAccess::Prepare (*owner, UDPPeriodicSlot::Stats, action);
+	auto oldState = UDPPeriodicTestAccess::State (*owner);
+	owner->Stop ();
+	UDPPeriodicTestAccess::Activate (*owner);
+	assert (UDPPeriodicTestAccess::State (*owner) != oldState);
+	const auto beforeRestart = actions;
+	stopped ({ });
+	assert (actions == beforeRestart);
+
+	std::promise<void> admitted, release;
+	auto mayFinish = release.get_future ().share ();
+	std::atomic<bool> stopReturned { false };
+	std::function<void (Owner &, const boost::system::error_code &)> blockingAction
+		= [&admitted, mayFinish] (Owner &, const boost::system::error_code &)
+	{
+		admitted.set_value ();
+		mayFinish.wait ();
+	};
+	auto blocked = UDPPeriodicTestAccess::Prepare (*owner, UDPPeriodicSlot::Maintenance, blockingAction);
+	auto state = UDPPeriodicTestAccess::State (*owner);
+	std::jthread dispatch ([blocked] { blocked ({ }); });
+	admitted.get_future ().wait ();
+	std::jthread stopping (
+		[&]
+		{
+			owner->Stop ();
+			stopReturned.store (true);
+		});
+	state->stopRequested.wait (false);
+	const bool returnedBeforeRelease = stopReturned.load ();
+	release.set_value ();
+	dispatch.join ();
+	stopping.join ();
+	assert (!returnedBeforeRelease && stopReturned.load ());
+	assert (!owner->GetPeriodicCancellationError ());
+
+	UDPPeriodicTestAccess::Activate (*owner);
+	UDPPeriodicTestAccess::ArmStats (*owner);
+	auto orphan = UDPPeriodicTestAccess::Prepare (*owner, UDPPeriodicSlot::Stats, action);
+	std::weak_ptr<Owner> weak = owner;
+	const auto beforeRelease = actions;
+	owner.reset ();
+	assert (weak.expired ());
+	orphan ({ });
+	assert (actions == beforeRelease);
+}
+
+void TestKeepAliveDeadlineBounds ()
+{
+	using i2p::client::UDPKeepAliveDue;
+	constexpr auto longest = std::numeric_limits<uint32_t>::max ();
+	constexpr auto delay = static_cast<uint64_t> (longest) * 1000;
+	assert (!UDPKeepAliveDue (delay, 0, longest));
+	assert (UDPKeepAliveDue (delay + 1, 0, longest));
+	constexpr auto latest = std::numeric_limits<uint64_t>::max ();
+	assert (!UDPKeepAliveDue (latest, latest - 500, 1));
+	assert (!UDPKeepAliveDue (1000, 2000, 1));
+	assert (!UDPKeepAliveDue (2000, 1000, 1));
+	assert (UDPKeepAliveDue (2001, 1000, 1));
+}
+
+void TestTunnelPeriodicAdmission ()
+{
+	boost::asio::io_context service;
+	auto keys = i2p::data::PrivateKeys::CreateRandomKeys (
+		i2p::data::SIGNING_KEY_TYPE_EDDSA_SHA512_ED25519, i2p::data::CRYPTO_KEY_TYPE_ECIES_X25519_AEAD, true);
+	auto destination = std::make_shared<i2p::client::ClientDestination> (service, keys, false);
+	CheckPeriodicAdmission (std::make_shared<i2p::client::I2PUDPServerTunnel> ("periodic-server", destination,
+		boost::asio::ip::address_v4::loopback (),
+		boost::asio::ip::udp::endpoint (boost::asio::ip::address_v4::loopback (), 1), 1, false));
+	CheckPeriodicAdmission (std::make_shared<i2p::client::I2PUDPClientTunnel> ("periodic-client", "unused.i2p",
+		boost::asio::ip::udp::endpoint (boost::asio::ip::address_v4::loopback (), 0), destination, 1, false,
+		i2p::datagram::eDatagramV3));
+}
+
 class AckFixture final : public i2p::client::UDPConnection
 {
 public:
@@ -49,6 +177,8 @@ private:
 
 int main ()
 {
+	TestKeepAliveDeadlineBounds ();
+	TestTunnelPeriodicAdmission ();
 	boost::asio::io_context service;
 	auto connection = std::make_shared<AckFixture> (service);
 

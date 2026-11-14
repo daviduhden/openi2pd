@@ -1016,3 +1016,28 @@ require_runtime_order("privsep/WindowsIpc.cpp"
   "worker.nonceHex = nonce;" "AssignProcessToJobObject ("
   "ResumeThread (worker.thread.Native ())" "terminateUnpublished.dismiss ();"
   "return worker;")
+
+# Periodic callbacks retain shared owners before taking revocation gates.
+require_runtime_order("libi2pd_client/UDPTunnel.h"
+  "UDPPeriodicHandler MakeUDPPeriodicHandlerLocked (" "/* 2 minute timeout"
+  "auto retained = owner.lock ();" "auto state = weakAdmission.lock ();"
+  "std::lock_guard lock (state->mutex);"
+  "if (state->stopRequested.load () || state->waits[index] != wait) return;"
+  "state->waits[index].reset ();" "if (!error) action (*retained, error);")
+require_runtime_order("libi2pd_client/UDPTunnel.cpp"
+  "void I2PUDPClientTunnel::Stop ()" "void I2PUDPClientTunnel::RecvFromLocal ()"
+  "RetirePeriodicTimers ();" "UDPConnection::Stop ();"
+  "m_DatagramReceiver.Reset ();" "m_ResolveThread->join ();")
+require_runtime_order("libi2pd_client/UDPTunnel.cpp"
+  "void I2PUDPServerTunnel::Stop ()" "std::vector<std::shared_ptr<DatagramSessionInfo>> I2PUDPServerTunnel::GetSessions ()"
+  "RetirePeriodicTimers ();" "m_DatagramReceiver.Reset ();"
+  "std::lock_guard<std::mutex> lock (m_SessionsMutex);")
+require_runtime_source("tests/test-udp-ack-lifecycle.cpp"
+  "TestTunnelPeriodicAdmission ();")
+require_runtime_source(".github/workflows/build-windows.yml"
+  "build-msvc/tests/Release/test-udp-ack-lifecycle.exe")
+
+require_runtime_source("libi2pd_client/UDPTunnel.h"
+  "nowMs - lastMs > static_cast<uint64_t> (intervalSeconds) * 1000")
+require_runtime_source("tests/test-udp-ack-lifecycle.cpp"
+  "TestKeepAliveDeadlineBounds ();")

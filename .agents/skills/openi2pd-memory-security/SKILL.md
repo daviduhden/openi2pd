@@ -107,6 +107,14 @@ Do not let reconnaissance agents edit, compile, execute tests or run scripts.
 
 ## Known issues and decisions
 
+- For shared tunnel timer owners, acquire the weak owner before its admission
+  lock so final owner destruction follows unlock. A borrowed gate alone is
+  insufficient when an admitted action calls shared_from_this. Per-wait
+  identity and stopped generation checks remain independent of cancellation;
+  drain periodic admission before ACK/session teardown and receiver reset.
+  Configured seconds must widen before millisecond multiplication; compare
+  elapsed time instead of adding a duration to a possibly extreme timestamp.
+
 - Timer-generation state alone does not retain a uniquely owned service.
   Revoke borrowed-owner admission through the same mutex callbacks use,
   then cancel outside that gate. Per-wait identity rejects queued successful

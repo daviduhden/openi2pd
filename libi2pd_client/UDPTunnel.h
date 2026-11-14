@@ -15,6 +15,9 @@
 
 #include <inttypes.h>
 #include <atomic>
+#include <array>
+#include <cstddef>
+#include <utility>
 #include <functional>
 #include <optional>
 #include <string>
@@ -36,6 +39,62 @@ namespace i2p
 {
 namespace client
 {
+	/// Revocable authority for one tunnel's periodic timer generation.
+	/// Lifecycle operations are serialized by the owning service (or run
+	/// while quiescent). Callbacks acquire mutex before owner work; Stop
+	/// requests retirement first and drains that admission before teardown.
+	struct UDPPeriodicAdmission
+	{
+		std::atomic<bool> stopRequested { false };
+		std::mutex mutex;
+		std::array<std::shared_ptr<const uint8_t>, 2> waits;
+		boost::system::error_code cancellationError;
+	};
+
+	enum class UDPPeriodicSlot : size_t
+	{
+		Stats,
+		Maintenance
+	};
+	using UDPPeriodicHandler = std::function<void (const boost::system::error_code &)>;
+
+	/// Construct with non-null admission held and a valid slot/action.
+	/// Weak owner retention avoids an
+	/// executor/owner cycle; per-wait identity rejects queued old success.
+	/// An admitted action must not synchronously call Start or Stop.
+	template <typename Owner>
+	UDPPeriodicHandler MakeUDPPeriodicHandlerLocked (const std::shared_ptr<UDPPeriodicAdmission> & admission,
+		std::weak_ptr<Owner> owner, UDPPeriodicSlot slot,
+		std::function<void (Owner &, const boost::system::error_code &)> action)
+	{
+		const auto index = static_cast<size_t> (slot);
+		auto wait = std::make_shared<const uint8_t> (0);
+		std::weak_ptr<UDPPeriodicAdmission> weakAdmission = admission;
+		UDPPeriodicHandler handler
+			= [weakAdmission, owner, index, wait, action = std::move (action)] (const boost::system::error_code & error)
+		{
+			// Retain the owner before taking its gate, so a final owner
+			// destructor can run only after the admission lock is released.
+			auto retained = owner.lock ();
+			if (!retained) return;
+			auto state = weakAdmission.lock ();
+			if (!state) return;
+			std::lock_guard lock (state->mutex);
+			if (state->stopRequested.load () || state->waits[index] != wait) return;
+			state->waits[index].reset ();
+			if (!error) action (*retained, error);
+		};
+		admission->waits[index] = std::move (wait);
+		return handler;
+	}
+
+	/// Check elapsed keepalive time without adding to a timestamp.
+	/// Widen seconds before conversion; backward clock steps are not due.
+	inline constexpr bool UDPKeepAliveDue (uint64_t nowMs, uint64_t lastMs, uint32_t intervalSeconds)
+	{
+		return nowMs > lastMs && nowMs - lastMs > static_cast<uint64_t> (intervalSeconds) * 1000;
+	}
+
 	/* 2 minute timeout for udp sessions */
 	const uint64_t I2P_UDP_SESSION_TIMEOUT = 1000 * 60 * 2;
 	const int I2P_UDP_SESSION_CLEANUP_INTERVAL = 17; // in seconds
@@ -273,7 +332,7 @@ namespace client
 	///          policy; it does not apply to datagrams, which are bounded
 	///          by the per-conversation window and by stale-conversation
 	///          expiry instead.
-	class I2PUDPServerTunnel
+	class I2PUDPServerTunnel : public std::enable_shared_from_this<I2PUDPServerTunnel>
 	{
 	public:
 		I2PUDPServerTunnel (const std::string & name, std::shared_ptr<i2p::client::ClientDestination> localDestination,
@@ -283,8 +342,14 @@ namespace client
 
 		/* expire stale udp conversations */
 		void ExpireStale (const uint64_t delta = I2P_UDP_SESSION_TIMEOUT);
+		/// Requires shared ownership. Start/Stop/configuration run on the
+		/// owning service or while quiescent; lifecycle reentry is forbidden.
+		/// Failed Start revokes periodic work only; call Stop before retry.
 		void Start ();
 		void Stop ();
+		/// Query on the service or while quiescent, outside timer actions.
+		boost::system::error_code GetPeriodicCancellationError () const;
+
 		const char * GetName () const { return m_Name.c_str (); }
 		std::vector<std::shared_ptr<DatagramSessionInfo>> GetSessions ();
 		std::shared_ptr<ClientDestination> GetLocalDestination () const { return m_LocalDest; }
@@ -293,6 +358,11 @@ namespace client
 		void SetMaxWindow (size_t w) { m_MaxWindow = w; }
 
 	private:
+		friend struct UDPPeriodicTestAccess;
+		using PeriodicAction = std::function<void (I2PUDPServerTunnel &, const boost::system::error_code &)>;
+		UDPPeriodicHandler MakePeriodicHandlerLocked (UDPPeriodicSlot slot, PeriodicAction action);
+		void RetirePeriodicTimers () noexcept;
+
 		void HandleRecvFromI2P (const i2p::data::IdentityEx & from, uint16_t fromPort, uint16_t toPort,
 			const uint8_t * buf, size_t len, const i2p::util::Mapping * options);
 		void HandleRecvFromI2PRaw (
@@ -324,6 +394,7 @@ namespace client
 		i2p::datagram::DatagramDestination::ReceiverRegistration m_RawReceiver;
 		uint32_t m_NumRawNoSession = 0;
 		size_t m_MaxWindow = I2P_UDP_MIN_MAX_NUM_UNACKED_DATAGRAMS;
+		std::shared_ptr<UDPPeriodicAdmission> m_PeriodicAdmission = std::make_shared<UDPPeriodicAdmission> ();
 		std::unique_ptr<boost::asio::steady_timer> m_StatsTimer;
 		std::unique_ptr<boost::asio::steady_timer> m_CleanupTimer;
 
@@ -354,8 +425,14 @@ namespace client
 			i2p::datagram::DatagramVersion datagramVersion);
 		~I2PUDPClientTunnel ();
 
+		/// Start/Stop/configuration run on the owning service or while
+		/// quiescent; lifecycle reentry from timer actions is forbidden.
+		/// Failed Start revokes periodic work only; call Stop before retry.
 		void Start () override;
 		void Stop () override;
+		/// Query on the service or while quiescent, outside timer actions.
+		boost::system::error_code GetPeriodicCancellationError () const;
+
 		const char * GetName () const { return m_Name.c_str (); }
 		std::vector<std::shared_ptr<DatagramSessionInfo>> GetSessions ();
 
@@ -376,6 +453,11 @@ namespace client
 		void SetKeepAliveInterval (uint32_t keepAliveInterval);
 
 	private:
+		friend struct UDPPeriodicTestAccess;
+		using PeriodicAction = std::function<void (I2PUDPClientTunnel &, const boost::system::error_code &)>;
+		UDPPeriodicHandler MakePeriodicHandlerLocked (UDPPeriodicSlot slot, PeriodicAction action);
+		void RetirePeriodicTimers () noexcept;
+
 		typedef std::pair<boost::asio::ip::udp::endpoint, uint64_t> UDPConvo;
 		void RecvFromLocal ();
 		void HandleRecvFromLocal (const boost::system::error_code & e, std::size_t transferred);
@@ -412,6 +494,7 @@ namespace client
 		std::shared_ptr<UDPConvo> m_LastSession;
 		uint32_t m_KeepAliveInterval = 0;
 		std::unique_ptr<boost::asio::steady_timer> m_KeepAliveTimer;
+		std::shared_ptr<UDPPeriodicAdmission> m_PeriodicAdmission = std::make_shared<UDPPeriodicAdmission> ();
 		std::unique_ptr<boost::asio::steady_timer> m_StatsTimer;
 
 	public:

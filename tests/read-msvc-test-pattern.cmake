@@ -90,7 +90,7 @@ function(read_msvc_test_pattern workflow_text out_pattern out_error)
     return()
   endif()
   # Retain the complete anchored regex, not just one passing member.
-  set(expected "^(test-(tui-protocol|tui-terminal|tui-pipe-name|tui-win32-pipe|privsep-windows-(ipc|isolation|supervisor)|win32-shutdown-deadline|profile-static-lifetime|i2p-service-readiness|tunnel-destination-cache|destination-leaseset-session|deadline-mutex|child-stop-budget|atomic-shared-ptr|kad-dht|eddsa|signature-identity-hardening|crypto-audit-bounds|signed-data-bounds|command-line-policy|release-assertions)|command-line-policy-rejections|i2pd-command-line-policy)$")
+  set(expected "^(test-(tui-protocol|tui-terminal|tui-pipe-name|tui-win32-pipe|privsep-windows-(ipc|isolation|supervisor)|win32-shutdown-deadline|profile-static-lifetime|i2p-service-readiness|tunnel-destination-cache|destination-leaseset-session|deadline-mutex|child-stop-budget|atomic-shared-ptr|kad-dht|udp-ack-lifecycle|eddsa|signature-identity-hardening|crypto-audit-bounds|signed-data-bounds|command-line-policy|release-assertions)|command-line-policy-rejections|i2pd-command-line-policy)$")
   if(NOT pattern STREQUAL expected)
     set(${out_error} "MSVC CTest filter membership or anchors changed" PARENT_SCOPE)
     return()

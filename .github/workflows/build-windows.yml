@@ -252,14 +252,14 @@ jobs:
               test-tui-pipe-name test-tui-win32-pipe test-privsep-windows-ipc `
               test-privsep-windows-isolation test-privsep-windows-supervisor `
               test-win32-shutdown-deadline test-profile-static-lifetime test-release-assertions `
-              test-atomic-shared-ptr test-kad-dht test-eddsa test-signature-identity-hardening `
+              test-atomic-shared-ptr test-kad-dht test-udp-ack-lifecycle test-eddsa test-signature-identity-hardening `
               test-crypto-audit-bounds test-signed-data-bounds test-command-line-policy `
               test-i2p-service-readiness test-tunnel-destination-cache test-destination-leaseset-session test-deadline-mutex test-child-stop-budget
       - name: Run TUI and worker IPC tests
         id: msvc_tests
         run: |
           $testPattern = '^(test-(tui-protocol|tui-terminal|tui-pipe-name|tui-win32-pipe|privsep-windows-(ipc|isolation|supervisor)|win32-shutdown-deadline|profile-static-lifetime|' +
-            'i2p-service-readiness|tunnel-destination-cache|destination-leaseset-session|deadline-mutex|child-stop-budget|atomic-shared-ptr|kad-dht|eddsa|signature-identity-hardening|' +
+            'i2p-service-readiness|tunnel-destination-cache|destination-leaseset-session|deadline-mutex|child-stop-budget|atomic-shared-ptr|kad-dht|udp-ack-lifecycle|eddsa|signature-identity-hardening|' +
             'crypto-audit-bounds|signed-data-bounds|command-line-policy|release-assertions)|command-line-policy-rejections|i2pd-command-line-policy)$'
           ctest --test-dir build-msvc -C Release -j 2 --output-on-failure `
             -R $testPattern `
@@ -412,6 +412,7 @@ jobs:
             build-msvc/tests/Release/test-profile-static-lifetime.exe
             build-msvc/tests/Release/test-atomic-shared-ptr.exe
             build-msvc/tests/Release/test-kad-dht.exe
+            build-msvc/tests/Release/test-udp-ack-lifecycle.exe
             build-msvc/tests/Release/test-i2p-service-readiness.exe
             build-msvc/tests/Release/test-deadline-mutex.exe
             build-msvc/tests/Release/test-child-stop-budget.exe

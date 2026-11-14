@@ -18,11 +18,39 @@
 #include "ClientContext.h"
 #include "I2PTunnel.h" // for GetLoopbackAddressFor
 #include "UDPTunnel.h"
+#include "Modern.h"
+#include <stdexcept>
 
 namespace i2p
 {
 namespace client
 {
+	namespace
+	{
+		void RevokeUDPPeriodicAdmission (const std::shared_ptr<UDPPeriodicAdmission> & state) noexcept
+		{
+			state->stopRequested.store (true);
+			state->stopRequested.notify_all ();
+			std::lock_guard lock (state->mutex);
+			state->waits.fill (nullptr);
+		}
+
+		void CancelUDPPeriodicTimer (
+			boost::asio::steady_timer * timer, const std::shared_ptr<UDPPeriodicAdmission> & state) noexcept
+		{
+			if (!timer) return;
+			try
+			{
+				timer->cancel ();
+			}
+			catch (const boost::system::system_error & error)
+			{
+				std::lock_guard lock (state->mutex);
+				state->cancellationError = error.code ();
+			}
+		}
+	}
+
 	constexpr std::string_view UDP_SESSION_SEQN { "seqn" };
 	constexpr std::string_view UDP_SESSION_ACKED { "acked" };
 	constexpr std::string_view UDP_SESSION_FLAGS { "flags" };
@@ -625,8 +653,34 @@ namespace client
 		if (m_LocalDest) m_LocalDest->Release ();
 	}
 
+	UDPPeriodicHandler I2PUDPServerTunnel::MakePeriodicHandlerLocked (UDPPeriodicSlot slot, PeriodicAction action)
+	{
+		return MakeUDPPeriodicHandlerLocked<I2PUDPServerTunnel> (
+			m_PeriodicAdmission, weak_from_this (), slot, std::move (action));
+	}
+
+	void I2PUDPServerTunnel::RetirePeriodicTimers () noexcept
+	{
+		RevokeUDPPeriodicAdmission (m_PeriodicAdmission);
+		CancelUDPPeriodicTimer (m_StatsTimer.get (), m_PeriodicAdmission);
+		CancelUDPPeriodicTimer (m_CleanupTimer.get (), m_PeriodicAdmission);
+	}
+
+	boost::system::error_code I2PUDPServerTunnel::GetPeriodicCancellationError () const
+	{
+		std::lock_guard lock (m_PeriodicAdmission->mutex);
+		return m_PeriodicAdmission->cancellationError;
+	}
+
 	void I2PUDPServerTunnel::Start ()
 	{
+		if (weak_from_this ().expired ()) throw std::logic_error ("UDP server Start requires shared ownership");
+		auto next = std::make_shared<UDPPeriodicAdmission> ();
+		RetirePeriodicTimers ();
+		next->cancellationError = GetPeriodicCancellationError ();
+		m_PeriodicAdmission = std::move (next);
+		auto failedStart = i2p::modern::ScopeExit ([this] { RetirePeriodicTimers (); });
+
 		m_IsStarted = true;
 		m_LocalDest->Start ();
 
@@ -641,19 +695,27 @@ namespace client
 			std::bind (&I2PUDPServerTunnel::HandleRecvFromI2PRaw, this, std::placeholders::_1, std::placeholders::_2,
 				std::placeholders::_3, std::placeholders::_4, std::placeholders::_5),
 			m_inPort);
+		std::lock_guard admission (m_PeriodicAdmission->mutex);
 		m_StatsTimer.reset (new boost::asio::steady_timer (m_LocalDest->GetService ()));
 		ScheduleStatsTimer ();
 		m_CleanupTimer.reset (new boost::asio::steady_timer (m_LocalDest->GetService ()));
 		ScheduleCleanupTimer ();
+		failedStart.dismiss ();
 	}
 
 	void I2PUDPServerTunnel::ScheduleCleanupTimer ()
 	{
+		if (m_PeriodicAdmission->stopRequested.load ()) return;
 		if (m_CleanupTimer)
 		{
+			auto & wait = m_PeriodicAdmission->waits[static_cast<size_t> (UDPPeriodicSlot::Maintenance)];
+			wait.reset ();
+			auto failedWait = i2p::modern::ScopeExit ([&wait] { wait.reset (); });
 			m_CleanupTimer->expires_after (std::chrono::seconds (I2P_UDP_SESSION_CLEANUP_INTERVAL));
-			m_CleanupTimer->async_wait (
-				std::bind (&I2PUDPServerTunnel::HandleCleanupTimer, this, std::placeholders::_1));
+			m_CleanupTimer->async_wait (MakePeriodicHandlerLocked (UDPPeriodicSlot::Maintenance,
+				[] (I2PUDPServerTunnel & owner, const boost::system::error_code & error)
+				{ owner.HandleCleanupTimer (error); }));
+			failedWait.dismiss ();
 		}
 	}
 
@@ -668,10 +730,17 @@ namespace client
 
 	void I2PUDPServerTunnel::ScheduleStatsTimer ()
 	{
+		if (m_PeriodicAdmission->stopRequested.load ()) return;
 		if (m_StatsTimer)
 		{
+			auto & wait = m_PeriodicAdmission->waits[static_cast<size_t> (UDPPeriodicSlot::Stats)];
+			wait.reset ();
+			auto failedWait = i2p::modern::ScopeExit ([&wait] { wait.reset (); });
 			m_StatsTimer->expires_after (std::chrono::seconds (10));
-			m_StatsTimer->async_wait (std::bind (&I2PUDPServerTunnel::HandleStatsTimer, this, std::placeholders::_1));
+			m_StatsTimer->async_wait (MakePeriodicHandlerLocked (UDPPeriodicSlot::Stats,
+				[] (I2PUDPServerTunnel & owner, const boost::system::error_code & error)
+				{ owner.HandleStatsTimer (error); }));
+			failedWait.dismiss ();
 		}
 	}
 
@@ -704,8 +773,7 @@ namespace client
 		// receiver of the live tunnel: they share the datagram destination
 		if (!m_IsStarted) return;
 		m_IsStarted = false;
-		if (m_StatsTimer) m_StatsTimer->cancel ();
-		if (m_CleanupTimer) m_CleanupTimer->cancel ();
+		RetirePeriodicTimers ();
 		m_DatagramReceiver.Reset ();
 		m_RawReceiver.Reset ();
 		{
@@ -767,8 +835,34 @@ namespace client
 		if (m_LocalDest) m_LocalDest->Release ();
 	}
 
+	UDPPeriodicHandler I2PUDPClientTunnel::MakePeriodicHandlerLocked (UDPPeriodicSlot slot, PeriodicAction action)
+	{
+		std::weak_ptr<I2PUDPClientTunnel> owner = std::static_pointer_cast<I2PUDPClientTunnel> (shared_from_this ());
+		return MakeUDPPeriodicHandlerLocked<I2PUDPClientTunnel> (m_PeriodicAdmission, owner, slot, std::move (action));
+	}
+
+	void I2PUDPClientTunnel::RetirePeriodicTimers () noexcept
+	{
+		RevokeUDPPeriodicAdmission (m_PeriodicAdmission);
+		CancelUDPPeriodicTimer (m_StatsTimer.get (), m_PeriodicAdmission);
+		CancelUDPPeriodicTimer (m_KeepAliveTimer.get (), m_PeriodicAdmission);
+	}
+
+	boost::system::error_code I2PUDPClientTunnel::GetPeriodicCancellationError () const
+	{
+		std::lock_guard lock (m_PeriodicAdmission->mutex);
+		return m_PeriodicAdmission->cancellationError;
+	}
+
 	void I2PUDPClientTunnel::Start ()
 	{
+		if (weak_from_this ().expired ()) throw std::logic_error ("UDP client Start requires shared ownership");
+		auto next = std::make_shared<UDPPeriodicAdmission> ();
+		RetirePeriodicTimers ();
+		next->cancellationError = GetPeriodicCancellationError ();
+		m_PeriodicAdmission = std::move (next);
+		auto failedStart = i2p::modern::ScopeExit ([this] { RetirePeriodicTimers (); });
+
 		m_IsStarted = true;
 		UDPConnection::Start ();
 		// Reset flag in case of tunnel reload
@@ -796,19 +890,21 @@ namespace client
 		if (!m_ResolveThread) m_ResolveThread.emplace ([this] () { TryResolving (); });
 		RecvFromLocal ();
 
+		std::lock_guard admission (m_PeriodicAdmission->mutex);
 		if (m_KeepAliveInterval) ScheduleKeepAliveTimer ();
 
 		m_StatsTimer.reset (new boost::asio::steady_timer (m_LocalDest->GetService ()));
 		ScheduleStatsTimer ();
+		failedStart.dismiss ();
 	}
 
 	void I2PUDPClientTunnel::Stop ()
 	{
 		if (!m_IsStarted) return; // see the comment in I2PUDPServerTunnel::Stop
 		m_IsStarted = false;
+		// Periodic actions can take ACK/session locks. Drain them first.
+		RetirePeriodicTimers ();
 		UDPConnection::Stop ();
-		if (m_KeepAliveTimer) m_KeepAliveTimer->cancel ();
-		if (m_StatsTimer) m_StatsTimer->cancel ();
 
 		m_DatagramReceiver.Reset ();
 		m_RawReceiver.Reset ();
@@ -1070,17 +1166,30 @@ namespace client
 
 	void I2PUDPClientTunnel::SetKeepAliveInterval (uint32_t keepAliveInterval)
 	{
+		// Prepare before replacing authority; destroy the retired timer
+		// after unlocking so its cancellation cannot invert admission.
+		auto replacement
+			= keepAliveInterval ? std::make_unique<boost::asio::steady_timer> (m_LocalDest->GetService ()) : nullptr;
+		std::lock_guard admission (m_PeriodicAdmission->mutex);
+		m_PeriodicAdmission->waits[static_cast<size_t> (UDPPeriodicSlot::Maintenance)].reset ();
 		m_KeepAliveInterval = keepAliveInterval;
-		if (m_KeepAliveInterval) m_KeepAliveTimer.reset (new boost::asio::steady_timer (m_LocalDest->GetService ()));
+		m_KeepAliveTimer.swap (replacement);
+		if (m_IsStarted && m_KeepAliveInterval) ScheduleKeepAliveTimer ();
 	}
 
 	void I2PUDPClientTunnel::ScheduleKeepAliveTimer ()
 	{
+		if (m_PeriodicAdmission->stopRequested.load ()) return;
 		if (m_KeepAliveTimer)
 		{
+			auto & wait = m_PeriodicAdmission->waits[static_cast<size_t> (UDPPeriodicSlot::Maintenance)];
+			wait.reset ();
+			auto failedWait = i2p::modern::ScopeExit ([&wait] { wait.reset (); });
 			m_KeepAliveTimer->expires_after (std::chrono::seconds (m_KeepAliveInterval));
-			m_KeepAliveTimer->async_wait (
-				std::bind (&I2PUDPClientTunnel::HandleKeepAliveTimer, this, std::placeholders::_1));
+			m_KeepAliveTimer->async_wait (MakePeriodicHandlerLocked (UDPPeriodicSlot::Maintenance,
+				[] (I2PUDPClientTunnel & owner, const boost::system::error_code & error)
+				{ owner.HandleKeepAliveTimer (error); }));
+			failedWait.dismiss ();
 		}
 	}
 
@@ -1088,7 +1197,8 @@ namespace client
 	{
 		if (ecode != boost::asio::error::operation_aborted)
 		{
-			if (i2p::util::GetMillisecondsSinceEpoch () > m_LastRepliableDatagramTime + m_KeepAliveInterval * 1000)
+			if (UDPKeepAliveDue (
+					i2p::util::GetMillisecondsSinceEpoch (), m_LastRepliableDatagramTime, m_KeepAliveInterval))
 				HandleRecvFromLocal (
 					boost::system::error_code (), 0); // send empty packet like it was received from local
 			ScheduleKeepAliveTimer ();
@@ -1097,10 +1207,17 @@ namespace client
 
 	void I2PUDPClientTunnel::ScheduleStatsTimer ()
 	{
+		if (m_PeriodicAdmission->stopRequested.load ()) return;
 		if (m_StatsTimer)
 		{
+			auto & wait = m_PeriodicAdmission->waits[static_cast<size_t> (UDPPeriodicSlot::Stats)];
+			wait.reset ();
+			auto failedWait = i2p::modern::ScopeExit ([&wait] { wait.reset (); });
 			m_StatsTimer->expires_after (std::chrono::seconds (10));
-			m_StatsTimer->async_wait (std::bind (&I2PUDPClientTunnel::HandleStatsTimer, this, std::placeholders::_1));
+			m_StatsTimer->async_wait (MakePeriodicHandlerLocked (UDPPeriodicSlot::Stats,
+				[] (I2PUDPClientTunnel & owner, const boost::system::error_code & error)
+				{ owner.HandleStatsTimer (error); }));
+			failedWait.dismiss ();
 		}
 	}
 

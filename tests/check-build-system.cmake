@@ -868,7 +868,7 @@ foreach(required_test IN ITEMS
     test-privsep-windows-ipc test-privsep-windows-isolation test-privsep-windows-supervisor
     test-win32-shutdown-deadline test-profile-static-lifetime test-i2p-service-readiness
     test-tunnel-destination-cache test-destination-leaseset-session test-deadline-mutex
-    test-child-stop-budget test-atomic-shared-ptr test-kad-dht test-eddsa
+    test-child-stop-budget test-atomic-shared-ptr test-kad-dht test-udp-ack-lifecycle test-eddsa
     test-signature-identity-hardening test-crypto-audit-bounds test-signed-data-bounds
     test-command-line-policy test-release-assertions command-line-policy-rejections
     i2pd-command-line-policy)
@@ -878,7 +878,7 @@ foreach(required_test IN ITEMS
 endforeach()
 
 # Prepared text-only parser regressions run with this contract in CI.
-set(valid_filter_fixture "$testPattern = '^' + '(test-(tui-protocol|tui-terminal|tui-pipe-name|tui-win32-pipe|privsep-windows-(ipc|isolation|supervisor)|win32-shutdown-deadline|profile-static-lifetime|i2p-service-readiness|tunnel-destination-cache|destination-leaseset-session|deadline-mutex|child-stop-budget|atomic-shared-ptr|kad-dht|eddsa|signature-identity-hardening|crypto-audit-bounds|signed-data-bounds|command-line-policy|release-assertions)|command-line-policy-rejections|i2pd-command-line-policy)' + '$'\nctest -R $testPattern\n")
+set(valid_filter_fixture "$testPattern = '^' + '(test-(tui-protocol|tui-terminal|tui-pipe-name|tui-win32-pipe|privsep-windows-(ipc|isolation|supervisor)|win32-shutdown-deadline|profile-static-lifetime|i2p-service-readiness|tunnel-destination-cache|destination-leaseset-session|deadline-mutex|child-stop-budget|atomic-shared-ptr|kad-dht|udp-ack-lifecycle|eddsa|signature-identity-hardening|crypto-audit-bounds|signed-data-bounds|command-line-policy|release-assertions)|command-line-policy-rejections|i2pd-command-line-policy)' + '$'\nctest -R $testPattern\n")
 read_msvc_test_pattern("${valid_filter_fixture}" fixture_pattern fixture_error)
 if(fixture_error OR NOT fixture_pattern STREQUAL assertion_filter)
   message(FATAL_ERROR "MSVC literal concatenation fixture failed")
