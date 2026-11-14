@@ -1114,3 +1114,6 @@ require_runtime_order("privsep/Worker.h"
   "return;" "ClosePidFd ();" "ReleaseAdmission ();")
 require_runtime_source("tests/test-child-stop-budget.cpp"
   "TestDisownRetainsReapAuthority ();")
+require_runtime_source("privsep/Worker.cpp"
+  "~StackSecretWipe () { WipeBytes (m_Bytes.data (), m_Bytes.size ()); }")
+include("${PROJECT_ROOT}/tests/check-worker-secret-wipe.cmake")

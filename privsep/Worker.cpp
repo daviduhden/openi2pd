@@ -134,6 +134,22 @@ namespace
 		for (size_t i = 0; i < size; ++i) wipe[i] = 0;
 	}
 
+	// Stack copies must also retire on refusal and allocation failure.
+	class StackSecretWipe
+	{
+	public:
+		explicit StackSecretWipe (std::span<uint8_t> bytes) noexcept
+			: m_Bytes (bytes)
+		{
+		}
+		~StackSecretWipe () { WipeBytes (m_Bytes.data (), m_Bytes.size ()); }
+		StackSecretWipe (const StackSecretWipe &) = delete;
+		StackSecretWipe & operator= (const StackSecretWipe &) = delete;
+
+	private:
+		std::span<uint8_t> m_Bytes;
+	};
+
 	void WriteU32BE (uint8_t * out, uint32_t value) noexcept
 	{
 		out[0] = static_cast<uint8_t> (value >> 24);
@@ -226,6 +242,7 @@ namespace
 			return false;
 		}
 		std::array<uint8_t, WORKER_HELLO_SIZE> record { };
+		StackSecretWipe recordWipe (record);
 		if (!FormatWorkerHello (record, role, nonce, uid, gid))
 		{
 			::close (readEnd);
@@ -454,8 +471,10 @@ std::optional<std::vector<uint8_t>> EncodeWorkerHello (
 {
 	if (nonce.size () != WORKER_HELLO_NONCE_SIZE) return std::nullopt;
 	std::array<uint8_t, WORKER_HELLO_NONCE_SIZE> fixed { };
+	StackSecretWipe fixedWipe (fixed);
 	std::copy (nonce.begin (), nonce.end (), fixed.begin ());
 	std::array<uint8_t, WORKER_HELLO_SIZE> record { };
+	StackSecretWipe recordWipe (record);
 	if (!FormatWorkerHello (record, role, fixed, uid, gid)) return std::nullopt;
 	std::vector<uint8_t> hello (record.begin (), record.end ());
 	WipeBytes (record.data (), record.size ());
@@ -483,14 +502,16 @@ std::optional<std::vector<uint8_t>> CreateWorkerHello (WorkerRole role, uint32_t
 {
 	if (!WorkerRoleName (role) || uid == 0) return std::nullopt;
 	std::array<uint8_t, WORKER_HELLO_NONCE_SIZE> nonce { };
+	StackSecretWipe nonceWipe (nonce);
 	if (!PlatformRandomBytes (nonce.data (), nonce.size ()))
 	{
 		// Fail closed: a worker without a fresh spawn nonce is not startable.
-		// The error is reported by the caller; the nonce itself never exists.
+		// Report only failure; no partial identity is published.
 		std::fprintf (stderr, "privsep worker: cannot obtain spawn identity randomness\n");
 		return std::nullopt;
 	}
 	std::array<uint8_t, WORKER_HELLO_SIZE> record { };
+	StackSecretWipe recordWipe (record);
 	const bool encoded = FormatWorkerHello (record, role, nonce, uid, gid);
 	WipeBytes (nonce.data (), nonce.size ());
 	if (!encoded) return std::nullopt;
@@ -512,6 +533,7 @@ std::optional<WorkerHelloRecord> ReadWorkerHello (int fd)
 		return std::nullopt;
 	}
 	std::array<uint8_t, WORKER_HELLO_SIZE> buffer { };
+	StackSecretWipe bufferWipe (buffer);
 	size_t done = 0;
 	while (done < buffer.size ())
 	{
@@ -948,6 +970,7 @@ static i2p::expected<ChildProcess, std::string> SpawnWorkerInternal (
 	// travels to the child through fork memory; only the child, which
 	// knows its post-drop identity, writes the record.
 	std::array<uint8_t, WORKER_HELLO_NONCE_SIZE> nonce { };
+	StackSecretWipe nonceWipe (nonce);
 	if (!PlatformRandomBytes (nonce.data (), nonce.size ()))
 		return i2p::unexpected (std::string ("cannot obtain spawn identity randomness"));
 	auto pair = Channel::CreatePair ();
@@ -1022,6 +1045,7 @@ static i2p::expected<Channel, std::string> SpawnDetachedWorkerInternal (const ch
 	if (!IsSpawnableExecutablePath (executable))
 		return i2p::unexpected (std::string ("worker executable path is not frozen"));
 	std::array<uint8_t, WORKER_HELLO_NONCE_SIZE> nonce { };
+	StackSecretWipe nonceWipe (nonce);
 	if (!PlatformRandomBytes (nonce.data (), nonce.size ()))
 		return i2p::unexpected (std::string ("cannot obtain spawn identity randomness"));
 	auto pair = Channel::CreatePair ();

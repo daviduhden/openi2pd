@@ -105,6 +105,12 @@ report that limitation; do not substitute local execution. Ask for:
 
 ## Known issues and decisions
 
+- Stack worker-identity nonce/record copies use StackSecretWipe, including
+  partial provider output and vector-allocation unwind. The prepared
+  check-worker-secret-wipe.cmake contract pairs each local identity array
+  with its guard and rejects guard-removal mutations. Returned authentication
+  records keep their required payload; the guard owns only stack copies.
+
 - A bounded Stop can leave a child alive. Reserve retirement capacity before
   fork and transfer the reservation with process ownership; destructor/move
   must publish retained PID/pidfd without allocation instead of discarding it.
