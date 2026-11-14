@@ -190,7 +190,7 @@ assert_present("${guard_text}" "fail_encoding( 'CRLF line ending', \$path, \$lin
 # identifiers and every tr()/SetStatus()/BeginPrompt() literal present.
 # Source selection uses repository identities rather than native paths.
 read_required("${PROJECT_ROOT}/i18n/check-i18n-catalogs.pl" native_guard)
-assert_present("${native_guard}" "File::Spec->abs2rel(\$path, \$root)"
+assert_present("${native_guard}" "File::Spec->abs2rel( \$path, \$root )"
   "trusted-source selection derives repository-relative paths")
 assert_present("${native_guard}" "File::Spec->splitdir("
   "trusted-source selection normalizes native separators")

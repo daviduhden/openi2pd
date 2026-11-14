@@ -502,6 +502,12 @@ executor for blocking calls, deadlines and admission quotas.
 
 ### Authorized formatting and lint review
 
+After a formatting-related CI failure, inspect direct source needles, regex
+extractors and mutation fixtures across all affected languages. Every negative
+fixture must prove that its intended mutation occurred. Parse a closed literal
+grammar when commands are wrapped; do not evaluate workflow expressions or
+normalize quoted data to make a source contract pass.
+
 Formatting and static lint do not authorize compilation or test execution.
 Use checked-in language configurations, inventory maintained tracked inputs,
 exclude generated/vendor files, preserve modes and keep backup reports outside

@@ -857,14 +857,54 @@ assert_present("${assertion_regression}" "assert (++evaluations == 1);"
 read_required("${PROJECT_ROOT}/.github/workflows/build-windows.yml" assertion_workflow)
 assert_present("${assertion_workflow}" "test-profile-static-lifetime test-release-assertions"
   "Selective MSVC builds must produce the assertion regression")
-# Inspect membership rather than pinning the filter's closing groups.
-string(REGEX MATCH "-R '([^']+)'" assertion_filter_option "${assertion_workflow}")
-set(assertion_filter "${CMAKE_MATCH_1}")
-if(NOT assertion_filter_option)
-  message(FATAL_ERROR "Selective MSVC CTest filter is missing")
+# Resolve the closed literal grammar without evaluating PowerShell.
+include("${PROJECT_ROOT}/tests/read-msvc-test-pattern.cmake")
+read_msvc_test_pattern("${assertion_workflow}" assertion_filter filter_error)
+if(filter_error)
+  message(FATAL_ERROR "Selective MSVC CTest filter: ${filter_error}")
 endif()
-if(NOT "test-release-assertions" MATCHES "${assertion_filter}")
-  message(FATAL_ERROR "Selective MSVC CTest must execute the assertion regression")
+foreach(required_test IN ITEMS
+    test-tui-protocol test-tui-terminal test-tui-pipe-name test-tui-win32-pipe
+    test-privsep-windows-ipc test-privsep-windows-isolation test-privsep-windows-supervisor
+    test-win32-shutdown-deadline test-profile-static-lifetime test-i2p-service-readiness
+    test-tunnel-destination-cache test-destination-leaseset-session test-deadline-mutex
+    test-child-stop-budget test-atomic-shared-ptr test-kad-dht test-eddsa
+    test-signature-identity-hardening test-crypto-audit-bounds test-signed-data-bounds
+    test-command-line-policy test-release-assertions command-line-policy-rejections
+    i2pd-command-line-policy)
+  if(NOT "${required_test}" MATCHES "${assertion_filter}")
+    message(FATAL_ERROR "Selective MSVC CTest excludes ${required_test}")
+  endif()
+endforeach()
+
+# Prepared text-only parser regressions run with this contract in CI.
+set(valid_filter_fixture "$testPattern = '^' + '(test-(tui-protocol|tui-terminal|tui-pipe-name|tui-win32-pipe|privsep-windows-(ipc|isolation|supervisor)|win32-shutdown-deadline|profile-static-lifetime|i2p-service-readiness|tunnel-destination-cache|destination-leaseset-session|deadline-mutex|child-stop-budget|atomic-shared-ptr|kad-dht|eddsa|signature-identity-hardening|crypto-audit-bounds|signed-data-bounds|command-line-policy|release-assertions)|command-line-policy-rejections|i2pd-command-line-policy)' + '$'\nctest -R $testPattern\n")
+read_msvc_test_pattern("${valid_filter_fixture}" fixture_pattern fixture_error)
+if(fixture_error OR NOT fixture_pattern STREQUAL assertion_filter)
+  message(FATAL_ERROR "MSVC literal concatenation fixture failed")
 endif()
+foreach(mutation IN ITEMS variable command no_consumer changed_member duplicate_consumer chained_consumer)
+  set(mutated_filter "${valid_filter_fixture}")
+  if(mutation STREQUAL variable)
+    string(REPLACE " + '$'" " + $unexpected" mutated_filter "${mutated_filter}")
+  elseif(mutation STREQUAL command)
+    string(REPLACE " + '$'" " + $(Get-Content secret)" mutated_filter "${mutated_filter}")
+  elseif(mutation STREQUAL no_consumer)
+    string(REPLACE "-R $testPattern" "-R '.*'" mutated_filter "${mutated_filter}")
+  elseif(mutation STREQUAL changed_member)
+    string(REPLACE "|release-assertions)" ")" mutated_filter "${mutated_filter}")
+  elseif(mutation STREQUAL duplicate_consumer)
+    string(REPLACE "-R $testPattern" "-R $testPattern -R '.*'" mutated_filter "${mutated_filter}")
+  else()
+    string(REPLACE "-R $testPattern" "-R $testPattern; Get-Content secret" mutated_filter "${mutated_filter}")
+  endif()
+  if(mutated_filter STREQUAL valid_filter_fixture)
+    message(FATAL_ERROR "MSVC filter mutation did not change its input: ${mutation}")
+  endif()
+  read_msvc_test_pattern("${mutated_filter}" fixture_pattern fixture_error)
+  if(NOT fixture_error OR fixture_pattern)
+    message(FATAL_ERROR "MSVC filter mutation was accepted: ${mutation}")
+  endif()
+endforeach()
 
 message(STATUS "build-system-static: OK")

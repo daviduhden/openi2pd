@@ -450,8 +450,8 @@ sub workflow_crash_fixtures {
             q{$debugArguments = @('-G', '-noshell', },
             q{$debugArguments = @('-G', }
         ],
-        [ q{, 'test-privsep-windows-supervisor'}, '' ],
-        [ '0xc0000142',                           '0xc0000143' ],
+        [ qr{,\s*'test-privsep-windows-supervisor'(?=\s*\)\))}, '' ],
+        [ '0xc0000142',                                         '0xc0000143' ],
         [
             'build-msvc/tests/Release/test-privsep-windows-supervisor.exe',
             'missing-image.exe'
@@ -460,7 +460,11 @@ sub workflow_crash_fixtures {
     {
         my ( $before, $after ) = @{$boundary};
         my $candidate = $source;
-        ok( $candidate =~ s/(.*)\Q$before\E/$1$after/s,
+
+        # Only the final worker-list operand permits layout whitespace.
+        # Other mutations keep their exact literal authority boundaries.
+        my $pattern = ref($before) eq 'Regexp' ? $before : qr/\Q$before\E/;
+        ok( $candidate =~ s/(.*)$pattern/$1$after/s,
             'worker diagnostic mutation changes its final worker boundary' );
         write_file( $windows, $candidate );
         ( $code, $out ) = run_checker($checker);

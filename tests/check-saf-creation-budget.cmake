@@ -15,7 +15,25 @@ if(charge LESS 0 OR retain LESS_EQUAL charge)
   message(FATAL_ERROR "SAF child text must be charged before collection retention")
 endif()
 string(FIND "${creator}" "budget.authority(document.toString());" authority)
-string(FIND "${creator}" "files.add(new Source(document, path," source)
+# Allow formatter whitespace only at the constructor's call boundaries.
+# Do not merge Java tokens or normalize quoted document operands.
+function(saf_source_retention_position text output)
+  string(REGEX MATCH
+    "files[.]add[(][ \t\r\n]*new[ \t\r\n]+Source[(]document,[ \t\r\n]*path,"
+    source_prefix "${text}")
+  set(position -1)
+  if(source_prefix)
+    string(FIND "${text}" "${source_prefix}" position)
+  endif()
+  set(${output} "${position}" PARENT_SCOPE)
+endfunction()
+saf_source_retention_position("${creator}" source)
+# Negative controls keep root/document identity and token separation.
+saf_source_retention_position("files.add(new Source(root, path, 0));" wrong_document)
+saf_source_retention_position("files.add(newSource(document, path, 0));" merged_token)
+if(NOT wrong_document EQUAL -1 OR NOT merged_token EQUAL -1)
+  message(FATAL_ERROR "SAF source boundary must preserve Java operand identities")
+endif()
 if(authority LESS 0 OR source LESS_EQUAL authority)
   message(FATAL_ERROR "SAF encoded URI must be charged before source retention")
 endif()

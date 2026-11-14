@@ -308,8 +308,8 @@ endforeach()
 foreach(action IN ITEMS "start)" "stop)" "restart)" "status)" "reload)")
   require_text("${sysvinit_text}" "${action}" "sysvinit script")
 endforeach()
-require_text("${sysvinit_text}" "1|true|yes) I2PD_ENABLED=yes" "sysvinit script")
-require_text("${sysvinit_text}" [=[''|*[!0-9]*|0*) return 1 ;;]=]
+require_text("${sysvinit_text}" "1 | true | yes) I2PD_ENABLED=yes ;;" "sysvinit script")
+require_text("${sysvinit_text}" [=['' | *[!0-9]* | 0*) return 1 ;;]=]
   "sysvinit read_pid must reject zero and non-canonical PID strings")
 require_text("${sysvinit_text}" [=[_daemon_real=$(readlink -f "$DAEMON" 2>/dev/null) || return 1]=]
   "sysvinit executable resolution must fail closed")

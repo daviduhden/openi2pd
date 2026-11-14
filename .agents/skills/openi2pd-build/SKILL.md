@@ -111,6 +111,12 @@ build.
 
 ## Known issues and decisions
 
+- MSVC filter source contracts share tests/read-msvc-test-pattern.cmake.
+  Keep its restricted literal grammar, unique consuming -R option, full
+  anchored membership and negative fixtures synchronized with PowerShell
+  wrapping. Do not evaluate workflow expressions to discover test selection.
+
+
 - Perl producer registration also has a separately maintained expected
   inventory in tools/tests/perl-portability.t. Review that consumer when
   updating syntax/Critic inputs; registering a script twice in CMake does

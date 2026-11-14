@@ -106,6 +106,13 @@ Ask for exact paths and package names. Do not let them run `dpkg-buildpackage`,
 
 ## Known issues and decisions
 
+- shfmt spaces grouped case alternatives and can move branch indentation.
+  Compare full maintained phase groups and branch actions in source contracts,
+  including static/regular postinst, preinst and purge-only postrm. An early
+  services assertion can hide later packaging drift; formatting does not
+  justify changing runtime hooks, data preservation or service policy.
+
+
 - Debian documentation can cross debhelper's compression threshold when its
   contents grow. Inspect the exact package data archive before changing an
   install manifest; DEP-8 accepts plain or .gz forms of Markdown documents.

@@ -345,8 +345,8 @@ assert_contains("${debian_sysusers}" "u i2pd"
 # paths with the packaged policy, never reset an administrator's
 # ownership or mode, and never delete state outside purge.
 foreach(required IN ITEMS
-    "configure|reconfigure)"
-    "abort-upgrade|abort-remove|abort-deconfigure|triggered)"
+    "configure | reconfigure)"
+    "abort-upgrade | abort-remove | abort-deconfigure | triggered)"
     "-mindepth 1 -maxdepth 1"
     "! -name certificates"
     "-m 0700"
@@ -362,7 +362,7 @@ foreach(forbidden IN ITEMS
   assert_absent("${debian_postinst}" "${forbidden}"
     "postinst must not reset directories, delete state or start the service")
 endforeach()
-assert_contains("${debian_postrm}" "  purge)"
+assert_contains("${debian_postrm}" "case \"$1\" in\npurge)"
   "postrm must remove state only in the purge branch")
 assert_contains("${debian_postrm}" "rm -rf /var/lib/i2pd"
   "postrm must remove the private state directory on purge")
@@ -377,7 +377,7 @@ if(NOT postrm_state_removal_count EQUAL 1)
     "postrm must remove /var/lib/i2pd exactly once, in the purge branch; "
     "found ${postrm_state_removal_count} occurrences")
 endif()
-assert_contains("${debian_preinst}" "install|upgrade)"
+assert_contains("${debian_preinst}" "install | upgrade)"
   "preinst must act on install and upgrade only")
 assert_absent("${debian_preinst}" "purge)"
   "preinst must never run the certificate migration during purge")
@@ -426,8 +426,8 @@ read_file("${PROJECT_ROOT}/contrib/static/debian/i2pd.postinst"
 read_file("${PROJECT_ROOT}/contrib/static/debian/i2pd.prerm"
   static_debian_prerm)
 foreach(required IN ITEMS
-    "configure|reconfigure)"
-    "abort-upgrade|abort-remove|abort-deconfigure)"
+    "configure | reconfigure)"
+    "abort-upgrade | abort-remove | abort-deconfigure)"
     "triggered)"
     "\"$I2PDUSER\""
     "\"$I2PDHOME\""
@@ -439,7 +439,7 @@ foreach(required IN ITEMS
     "static postinst must keep the packaged phase and directory policy")
 endforeach()
 assert_contains("${static_debian_postinst}"
-  "unknown argument '$1'\" >&2\n    exit 1"
+  "unknown argument '$1'\" >&2\n\texit 1"
   "static postinst must reject an unknown phase with a non-zero status")
 assert_absent("${static_debian_postinst}" "\${I2PDUSER}"
   "static postinst must not use an unquoted brace expansion")

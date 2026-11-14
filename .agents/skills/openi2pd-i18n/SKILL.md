@@ -101,6 +101,12 @@ the text crosses a protocol/IPC boundary.
 
 ## Known issues and decisions
 
+- Trusted-source catalog selection pins the full File::Spec abs2rel call.
+  Perltidy can add spaces inside its parentheses without changing operands.
+  Update exact expected spelling while preserving path/root identity; do not
+  normalize whitespace inside rendered rows, user data or quoted literals.
+
+
 - Android presentation truncation uses DisplayText, shared with torrent
   rows. Exercise supplementary characters across the cutoff as well as
   BMP Chinese, null and zero limits. A UTF-16 cap is neither a byte cap nor

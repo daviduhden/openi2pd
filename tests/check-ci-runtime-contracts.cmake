@@ -379,8 +379,12 @@ require_runtime_source("tests/test-atomic-shared-ptr.cpp"
   "TestFailedCompareExchangeReleasesOutsideLock<Storage> ()")
 require_runtime_source(".github/workflows/build-windows.yml"
   "build-msvc/tests/Release/test-atomic-shared-ptr.exe")
-require_runtime_source(".github/workflows/build-windows.yml"
-  "|atomic-shared-ptr|kad-dht|eddsa|signature-identity-hardening|crypto-audit-bounds|signed-data-bounds|command-line-policy|release-assertions)|command-line-policy-rejections|i2pd-command-line-policy)$")
+include("${PROJECT_ROOT}/tests/read-msvc-test-pattern.cmake")
+file(READ "${PROJECT_ROOT}/.github/workflows/build-windows.yml" msvc_filter_workflow)
+read_msvc_test_pattern("${msvc_filter_workflow}" runtime_msvc_filter runtime_filter_error)
+if(runtime_filter_error)
+  message(FATAL_ERROR "Runtime MSVC coverage: ${runtime_filter_error}")
+endif()
 require_runtime_source(".github/workflows/build-windows.yml"
   "build-msvc/tests/Release/test-kad-dht.exe")
 
@@ -873,7 +877,7 @@ require_runtime_order("tests/test-privsep-windows-supervisor.cpp"
 # Failed EC predicates and arithmetic may not authorize a signature.
 require_runtime_order("libi2pd/Gost.cpp"
   "bool GOSTR3410Curve::Verify (" "EC_POINT * GOSTR3410Curve::RecoverPublicKey ("
-  "BN_is_negative (digest) || BN_is_negative (r) || BN_is_negative (s)"
+  "BN_is_negative (digest) || BN_is_negative (r)\n\t\t\t|| BN_is_negative (s)"
   "EC_POINT_is_on_curve (m_Group, pub, nullptr) != 1"
   "BN_mod_mul (z1, s, h, q, ctx) == 1"
   "BN_mod (x, x, q, ctx) == 1 && BN_cmp (x, r) == 0")
