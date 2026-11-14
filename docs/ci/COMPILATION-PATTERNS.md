@@ -1,5 +1,13 @@
 # Compilation diagnostic patterns and repository-wide review
 
+## Included contracts can hide later formatting failures
+
+TF-108 follows TF-106: an included control-security checker reaches another
+wrapped Java call only after its earlier stale needle is fixed. Review the
+whole include chain, preserve operands and prove negative mutations change
+source. Actual compiler outcomes remain distinct from text-contract failures.
+
+
 ## Bundled classes are not necessarily separate dependency artifacts
 
 CE-091 follows CE-090: resolving a buildscript classpath is preferable to a

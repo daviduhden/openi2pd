@@ -8444,3 +8444,65 @@ or push.
   the modified Windows workflow. Its three existing suppressions remain
   unchanged. Reviewed the untracked CMake helper's whitespace separately.
   These results do not execute the prepared regression suites.
+
+## 2026-11-14: a1a02a05 retrospective and preventive continuation
+
+- Recovered accessible paginated metadata: 495 runs / 76 revisions, with
+  152 successes, 277 failures and 66 cancellations. Reviewed all ten newest
+  workflows at a1a02a053b08aa2ff15fcf8551492adcd476c1b2, including full
+  successful sibling/step logs, and retained exact job IDs in the CI matrix.
+  Downloaded Android artifact 14119311437 and MSVC artifact 14119469284.
+- Five workflows pass and five fail. Published formatting-contract families,
+  Unicode fixtures and UDP periodic regressions now pass in reached lanes.
+  Android validates AGP-bundled D8/R8, Java 25, JNI/DEX checks and 174 JVM
+  tests; device coverage and explicit configuration-cache execution remain
+  gaps. Instrumented crypto executes only the registry test, not broad
+  provider fault injection. No new own native compiler or actual sanitizer
+  diagnostic was observed in the full recovered logs.
+- Corrected TF-108's next included Android confirmation source guard after
+  formatting: preserve captured ticket and full admission predicate, allow
+  only call-boundary wrapping, and prepare two effective negative mutations.
+- MSVC still fails before worker authentication with c0000142 (RT-087).
+  Its return address resolves only to an export without OS PDBs. Prepared
+  explicit Microsoft HTTPS symbols after local PDBs, temporary cache and
+  ntdll metadata within the same 60-second nonce-free probe deadline. No
+  process restriction or mandatory failure assertion was weakened.
+- Preventive RT-098 review hardened all three I2NP gateway overloads before
+  pointer arithmetic/allocation, included every header in tier selection,
+  and adapted nullable transport ingress before asynchronous publication.
+  Prepared geometry/null/SIZE_MAX, maximum/first-invalid, tier-edge and
+  serialized-length controls in the existing signed-data-bounds target.
+- Continued RT-097 beyond its passing periodic tests: failed startup now
+  retires owned registrations, ACK/session/socket state, preserves the
+  original exception, constructs the borrowing resolver last and rejects
+  restart after incomplete cleanup. Queued receives carry generation
+  authority. Prepared private-checkpoint rollback/retry controls, explicit
+  canceled-read draining and weak-owner release. Shared destination startup
+  and extraordinary synchronization failures remain separately scoped.
+- Delegated independent Android/JNI, native/concurrency/portability,
+  crypto/protocol, runtime-regression and Windows evidence reviews. Their
+  findings were consolidated across consumers and equivalent patterns.
+  Reviewed AGENTS/discovery and affected Android, CI, C++23, memory-security,
+  interoperability and Linux/Windows Skills; added reusable operand, prepend,
+  transaction and symbol-provenance procedures. Six CI inventories and
+  TODO/ROADMAP retain historical evidence and pending states.
+- Compile-free workflow/doc/whitespace, actionlint/yamllint and modified
+  workflow zizmor checks pass; its three existing exceptions are unchanged.
+  Agent knowledge validation passes with the semantic-relevance advisory
+  reviewed manually. No builds, compilers, local suites, commits or push.
+  All new native regressions and corrected CMake contracts remain pending
+  execution on a published revision through manual CI. Existing 932
+  Perl::Critic and 11 OpenBSD ShellCheck findings are not closed.
+
+- Cross-review extended RT-097 to RT-099: keepalive could invoke a full receive
+  handler while a read was pending. Separated send-only forwarding, skipped
+  socket draining/rearming for keepalive, and gave each admitted receive its
+  own buffer/endpoint plus weak owner and generation/identity checks. Prepared
+  duplicate-read, stable-peer, retry-storage and undrained-owner regressions.
+  Callback serialization is documented separately from I/O-buffer ownership.
+
+- The same empty-payload review found RT-100 in Datagram2 pointer ranges.
+  All four send entries reject null/nonempty data before admission; accepted
+  empty data uses backed storage and no empty pointer-range insertion.
+  Prepared observer-based V1/V2/V3/raw controls in the existing registered
+  version-dispatch target. No local suite was executed.

@@ -15,19 +15,16 @@ requirements and current code; `TODO.md` is the authoritative task list.
 
 ## Current baseline
 
-At cfc15d644, history reaches 485 runs / 75 SHAs. Three workflows pass;
-seven fail on six format-sensitive contract families, Android's module-only
-R8 resolver and the unresolved MSVC initializer. Native builds and focused
-ECIES/DHT tests pass in executed lanes; no new sanitizer defect is observed.
-Local work preserves source-contract tokens/operands, resolves wrapped MSVC
-selection without evaluation, verifies effective negative mutations, and
-finds bundled D8/R8 through the AGP plugin loader. UDP periodic callback
-admission and documentation Unicode boundaries receive preventive fixes.
-These corrections are Implemented / static; Pending CI compilation / Pending
-CI tests. The Windows probe now proves execution and loader termination;
-conhost access denial is correlation, not attribution. Preserve containment,
-Java 25 and all existing failure assertions. CMake contracts cannot run
-locally because cmake is unavailable; no local builds/tests or publishing.
+At a1a02a05, history reaches 495 runs / 76 SHAs. Five workflows pass and
+five fail. Android Java 25/D8/R8/JNI and published UDP/Unicode controls pass;
+source-contract TF-108 and worker initializer RT-087 remain failures.
+Local work corrects captured confirmation matching without weakening admission,
+prepares OS-symbol evidence under the original probe deadline, and hardens
+I2NP prepend geometry plus downstream nullable message admission (RT-098).
+Compilation and tests for local corrections remain pending manual CI. UDP
+partial-start cleanup and receive-generation admission are implemented locally,
+separately from already validated periodic callbacks. Preserve Java 25, containment and failure assertions; no local
+builds/tests or publication are performed in this audit.
 
 Local repository-wide formatting uses the checked-in clang-format language
 styles, perltidy and shfmt. Workflow linters pass; Perl::Critic and the local

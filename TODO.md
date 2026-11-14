@@ -10,19 +10,22 @@ Documents project documentation.
 
 # Master TODO
 
-Latest retrospective: 485 runs / 75 SHAs (147 success, 272 failure,
-66 cancelled). Published cfc15d644 has three successful workflows and seven
-failures. Native builds and focused ECIES/DHT tests pass; six formatting-
-sensitive maintenance/source contracts fail across platforms (TF-106).
-Android's module-only R8 resolver fails before D8 (CE-091). The armed Windows
-probe reaches loader termination with 0xC0000142; its cause remains RT-087.
-Corrections for closed MSVC-filter parsing, effective negative mutations,
-SAF/I18N/service/package source contracts and AGP-loaded tool provenance are
-Implemented / static; Pending CI compilation / Pending CI tests. Local UDP
-periodic owner admission and strict Unicode documentation handling also remain
-pending CI. Device coverage, provider injection, broader UDP/privsep lifecycle
-and the existing Perl/Shell lint findings remain open. Exact run/job/SHA and
-historical evidence gaps are retained in docs/ci.
+Latest retrospective: 495 runs / 76 SHAs (152 success, 277 failure,
+66 cancelled). Published a1a02a05 has five successful workflows and five
+failures. CE-090/091 Java 25 probe, TF-106 contracts, TF-107 Unicode controls
+and RT-097 UDP periodic regressions pass in executed lanes. TF-108 exposes
+another wrapped Android confirmation needle; local correction and negative
+controls are Implemented / static; Pending CI tests. RT-087 MSVC startup
+remains CI failure with unresolved loader attribution; OS-symbol diagnostics
+are prepared. RT-098 gateway prepend bounds/allocation and nullable transport
+admission are Implemented / static; Pending CI compilation / Pending CI tests.
+UDP partial-start rollback and receive-generation admission are Implemented /
+static; Pending CI compilation / Pending CI tests. Device/provider fault injection,
+configuration-cache execution and existing Perl/Shell lint debt remain open.
+RT-100 nullable datagram framing is Implemented / static; Pending CI tests.
+RT-099 send-only keepalive and isolated single-read admission are Implemented /
+static; Pending CI compilation / Pending CI tests.
+Exact run/job/SHA and historical evidence gaps remain in docs/ci.
 
 - Local formatting/lint: Implemented / static for C++/Java, Perl/Shell and
   workflows. Perl::Critic's 932 findings and 11 OpenBSD framework ShellCheck

@@ -5,6 +5,66 @@ and license details.
 
 # Test failure inventory
 
+## Published a1a02a05 audit
+
+Exact SHA `a1a02a053b08aa2ff15fcf8551492adcd476c1b2`; history now contains 495 runs / 76 SHAs:
+152 success, 277 failure, 66 cancelled. The latest ten workflows split five
+success / five failure. Full logs include successful sibling jobs and steps.
+Linux native Release jobs use GCC 16.2.0 / Clang 23.1.5, CMake 4.5.0,
+Boost 1.92.0_1, zlib 1.4 and OpenSSL 3.5.9 or 4.1.0. OpenBSD 8.0 uses
+Clang 22.1.6, LibreSSL 4.4.0 and zlib 1.3.2; FindOpenSSL's synthetic 2.0.0
+is not the selected LibreSSL library version.
+The published corrections close TF-106's six prior contract families in
+executed lanes; a later Android dialog needle is now exposed (TF-108).
+
+| Run | Job ID | Job/platform | Outcome |
+|---|---|---|---|
+| [43606719436](https://github.com/daviduhden/openi2pd/actions/runs/43606719436) | 132482837476 | Agent Skills static contract | success |
+| [43606719436](https://github.com/daviduhden/openi2pd/actions/runs/43606719436) | 132482837745 | Sanitizers (tsan) | failure |
+| [43606719436](https://github.com/daviduhden/openi2pd/actions/runs/43606719436) | 132482837760 | C++ source API documentation | success |
+| [43606719436](https://github.com/daviduhden/openi2pd/actions/runs/43606719436) | 132482837761 | Sanitizers (ubsan) | failure |
+| [43606719436](https://github.com/daviduhden/openi2pd/actions/runs/43606719436) | 132482837769 | Bounded fuzz smoke checks | success |
+| [43606719436](https://github.com/daviduhden/openi2pd/actions/runs/43606719436) | 132482837819 | Sanitizers (asan-ubsan) | failure |
+| [43606719436](https://github.com/daviduhden/openi2pd/actions/runs/43606719436) | 132482838573 | Perl quality (Test::More and Perl::Critic) | skipped |
+| [43606716217](https://github.com/daviduhden/openi2pd/actions/runs/43606716217) | 132482828254 | Debian packages | success |
+| [43606716217](https://github.com/daviduhden/openi2pd/actions/runs/43606716217) | 132482828466 | Static musl build and package | success |
+| [43606716217](https://github.com/daviduhden/openi2pd/actions/runs/43606716217) | 132482828526 | Service contracts | success |
+| [43606716217](https://github.com/daviduhden/openi2pd/actions/runs/43606716217) | 132482828565 | Service component install matrix | success |
+| [43606716217](https://github.com/daviduhden/openi2pd/actions/runs/43606716217) | 132482828738 | Container image | success |
+| [43606713559](https://github.com/daviduhden/openi2pd/actions/runs/43606713559) | 132482819781 | Instrumented OpenSSL TSan diagnostic | success |
+| [43606710842](https://github.com/daviduhden/openi2pd/actions/runs/43606710842) | 132482811718 | Windows MSYS2 Clang64 build and tests | failure |
+| [43606710842](https://github.com/daviduhden/openi2pd/actions/runs/43606710842) | 132482811917 | Windows MSVC build and tests | failure |
+| [43606708173](https://github.com/daviduhden/openi2pd/actions/runs/43606708173) | 132482803246 | OpenBSD 8.0 build and tests | failure |
+| [43606705310](https://github.com/daviduhden/openi2pd/actions/runs/43606705310) | 132482794675 | Install components and consumer package | success |
+| [43606705310](https://github.com/daviduhden/openi2pd/actions/runs/43606705310) | 132482794915 | I2P Java interoperability | success |
+| [43606702116](https://github.com/daviduhden/openi2pd/actions/runs/43606702116) | 132482786073 | Linux (gcc, OpenSSL 4.x) | failure |
+| [43606702116](https://github.com/daviduhden/openi2pd/actions/runs/43606702116) | 132482786277 | Linux (clang, OpenSSL 4.x) | failure |
+| [43606699306](https://github.com/daviduhden/openi2pd/actions/runs/43606699306) | 132482777786 | Linux (clang, OpenSSL 3.x) | failure |
+| [43606699306](https://github.com/daviduhden/openi2pd/actions/runs/43606699306) | 132482778025 | Linux (gcc, OpenSSL 3.x) | failure |
+| [43606696497](https://github.com/daviduhden/openi2pd/actions/runs/43606696497) | 132482768786 | Android arm64 build and unit tests | success |
+| [43606696497](https://github.com/daviduhden/openi2pd/actions/runs/43606696497) | 132482769839 | Android API 29 UI and accessibility | skipped |
+| [43606693578](https://github.com/daviduhden/openi2pd/actions/runs/43606693578) | 132482761469 | Agent and skills synchronization | success |
+
+### TF-108 — Wrapped confirmation call hides the next stale contract
+
+Linux OpenSSL 3/4 GCC/Clang jobs each pass 268/269 tests; OpenBSD passes
+263/264, CLANG64 252/253 and each sanitizer job 268/269. Their sole failure
+is `control-security-static`, included check-android-dialog-authority.cmake:73:
+`Activity confirmation lifecycle missing: confirmations.consume(ticket,`.
+The Java formatter wrapped that call, while ticket and admission semantics
+remain intact. Local correction permits only call-boundary whitespace and
+retains the captured ticket plus complete readiness/admission predicate.
+Two prepared negative mutations must change real source before rejection.
+Implemented / static; Pending CI tests. Native/JVM test success cannot close
+this independent source contract. Perl quality job 132482838573 is skipped,
+not passing evidence for Perl::Critic.
+
+TF-107's Unicode maintenance fixtures and RT-097's periodic UDP tests now pass
+in the reached suites, including ASan/UBSan/TSan; broader network startup and
+provider fault injection remain outside those controls. MSVC selects 25 tests,
+passes 24, and still fails live worker initialization (RT-087).
+
+
 ## Published cfc15d644 audit
 
 Accessible paginated metadata now contains **485 runs / 75 SHAs**: 147

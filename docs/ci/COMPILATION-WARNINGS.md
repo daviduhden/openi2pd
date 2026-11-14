@@ -1,5 +1,19 @@
 # Compilation and lint warning inventory
 
+## a1a02a05 warning review
+
+Full logs for the [exact matrix](TEST-FAILURES.md#published-a1a02a05-audit)
+contain no new own native compiler warning or actual sanitizer report.
+Android debug/release Lint each retain two ChromeOsAbiSupport warnings;
+builtInKotlin=false remains deprecated, without recurrent VectorPath warnings.
+Device/configuration-cache coverage is not established. Debian job
+132482828254 repeats external autopkgtest --force-yes deprecation; a global
+source search finds no repository invocation. MSYS2 upgrade advice and
+Landlock ABI 8 versus 10 remain runner/tool coverage messages. The skipped
+Perl quality job supplies no evidence closing 932 Perl::Critic findings;
+11 OpenBSD framework ShellCheck findings also remain tracked.
+
+
 ## cfc15d644: successful steps remain warning evidence
 
 Review of full Validation 43595095702 and instrumented OpenSSL 43595090827

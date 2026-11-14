@@ -5,6 +5,25 @@ and license details.
 
 # Regression patterns
 
+## Callback serialization does not protect pending I/O buffers
+
+A timer that invokes a complete receive handler can silently arm a second
+read while the first is pending. A callback mutex cannot serialize kernel
+writes into borrowed buffers/endpoints. Separate send-only keepalive from real
+receive completion, and verify one outstanding read per generation, including
+unresolved/window-full early returns and rollback/retry. Review buffer lifetime
+until completion independently of stale-result suppression.
+
+## Symbols and prepend boundaries require independent controls
+
+RT-087 nearest exports without OS PDBs cannot identify an internal initializer;
+retain image/module identity and symbol provenance within the original probe
+deadline. Conhost failure alone does not justify relaxing process restrictions.
+RT-098 extends preserved-offset copying to prepend: validate complete geometry
+before subtraction, reserve inner plus outer headers at allocation-tier edges,
+and audit nullable results through every downstream asynchronous ingress.
+
+
 ## Formatting must preserve effective negative mutations
 
 TF-106 demonstrates two distinct failures: exact source needles no longer

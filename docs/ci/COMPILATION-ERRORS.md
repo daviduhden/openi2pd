@@ -9,6 +9,25 @@ Tracks compile/configure/link failures reported by manual GitHub Actions.
 
 # Compilation error inventory
 
+## a1a02a05: reached builds pass; Java 25 tool provenance confirmed
+
+At the [exact matrix](TEST-FAILURES.md#published-a1a02a05-audit), native
+compiler/link steps succeed before TF-108's source contract. No new actual
+compiler/link blocker was observed in recovered full logs; expected negative
+feature probes are not project errors.
+
+CE-090/CE-091 probe correction is Validated by CI in Android run
+[43606696497](https://github.com/daviduhden/openi2pd/actions/runs/43606696497),
+job 132482768786, SHA `a1a02a053b08aa2ff15fcf8551492adcd476c1b2`.
+Artifact 14119311437 identifies `builder-9.4.1.jar` as the actual AGP D8/R8
+container, D8/R8 9.4.24 (build 61dc59bf271ddb314b5e0953231bd22df0ffb17e).
+Major 69/JDK 25, D8/R8 min API 29, 46 JNI parity checks and APK DEX039 checks
+pass. Twenty-five JVM suites execute 174 tests with zero failures/errors or
+skips. Device API29 job 132482769839 is skipped; explicit configuration-cache
+execution is not established. These results apply to the published resolver,
+not subsequent local changes.
+
+
 ## cfc15d644: source-contract failures versus actual compilation
 
 The [exact latest matrix](TEST-FAILURES.md#published-cfc15d644-audit) reaches

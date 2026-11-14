@@ -5,6 +5,93 @@ and license details.
 
 # Runtime error inventory
 
+## a1a02a05: scoped validation and unresolved loader attribution
+
+The [exact matrix](TEST-FAILURES.md#published-a1a02a05-audit) passes RT-097's
+UDP callback/keepalive and DHT controls, including MSVC and sanitizer lanes.
+No actual sanitizer error appears in full recovered logs. Instrumented run
+43606713559/job 132482819781 executes only test-clientcontext-registry (1/1),
+not broad crypto/provider failure injection.
+
+### RT-087 continuation: return address still lacks OS PDBs
+
+[Windows 43606710842](https://github.com/daviduhden/openi2pd/actions/runs/43606710842),
+job 132482811917, artifact 14119469284, exact SHA
+`a1a02a053b08aa2ff15fcf8551492adcd476c1b2`, retains image SHA-256
+`E641D62BDE144E889F8C6ACF6894E4CEEFD2105168C224B582BE84B5E11B61CD`.
+Armed probe: conhost 1e40 exits c0000022, worker 1b88 exits c0000142 and parent
+exits 1. ln @$ra reports nearest export LdrInitializeThunk+0x3c7; the symbol
+path contains only local binaries. This does not identify the internal cause.
+CREATE_NO_WINDOW already existed. Containment has not been relaxed.
+
+Local preparation adds explicit Microsoft HTTPS public symbols after local
+PDBs, RUNNER_TEMP cache and ntdll module metadata only in the nonce-free probe,
+retaining the 60-second deadline and mandatory worker failure. Follow
+[Microsoft symbol-path documentation](https://learn.microsoft.com/en-us/windows-hardware/drivers/debugger/symbol-path).
+Symbol-server failure is an evidence gap; runtime root cause remains Pending.
+
+### RT-097 continuation: partial startup and receive generations
+
+Periodic callback controls pass at a1a02a05, but failed UDP Start previously
+revoked only timers, leaving receiver/socket/ACK state. Local startup now
+uses the full owned Stop path and preserves the original exception; the
+borrowing resolver is constructed last. Repeated active Start is idempotent.
+An incomplete cleanup blocks restart until Stop succeeds. Receive callbacks
+carry the old generation gate, so a queued success cannot mutate a retried
+socket/session after its cancellation flag resets.
+
+Prepared rollback fixtures inject failures after real receiver registration,
+client socket/receive/timer publication and before resolver construction;
+they retry and explicitly drain canceled reads before executor destruction.
+They do not roll back shared ClientDestination startup or inject exceptional
+mutex/join failures. DHT differs: its registered callbacks retain revocable
+state and reject stopped owners. Wider TCP/service startup remains Pending.
+Implemented / static; Pending CI compilation / Pending CI tests.
+
+### RT-099: synthetic keepalive duplicated pending UDP reads
+
+Further static review found keepalive called the complete local receive
+handler, which rearmed another async receive over the same buffer/endpoint.
+It could also synchronously drain a socket while its read remained pending.
+A callback gate alone cannot protect kernel writes. Local implementation
+separates send-only forwarding from receive completion, snapshots only a
+completed conversation for keepalive, and bounds each generation to one
+pending operation. Each operation owns its buffer/endpoint; weak-owner and
+generation/identity checks reject old completions without touching successors.
+
+Prepared controls cover duplicate admission, no conversation, unresolved peer,
+disallowed sending, distinct buffers after retry and owner release before
+canceled queue draining. Existing forwarding exceptions remain outside the
+ordinary-success/early-return rearm controls. This is preventive source
+analysis, not a reported sanitizer failure. Implemented / static; Pending CI
+compilation / Pending CI tests.
+
+### RT-100: nullable empty datagram payload ranges
+
+RT-099's send-only review traced empty inputs through all Datagram send APIs.
+Datagram2 formed payload + len even for accepted null/zero input; nonempty
+null input was not rejected before session acquisition. Local changes refuse
+null/nonempty input at all four entries, normalize accepted empty input to
+backed storage for signing backends and skip empty payload-range insertion.
+Existing registered version-dispatch regressions now observe V1/V2/V3/raw
+refusal and valid empty framing without live networking. Valid wire formats
+are unchanged. Static finding; Implemented / static; Pending CI compilation /
+Pending CI tests. No provider failure injection is implied by these controls.
+
+### RT-098: gateway prepend geometry and allocation overhead
+
+Preventive review of the RT-092 I2NP family found shared gateway construction
+could dereference null or prepend through unvalidated offset/length geometry.
+Raw/typed overloads also needed bounds before allocation additions; typed
+allocation omitted the inner header at buffer-tier boundaries. Local fixes
+validate before pointer arithmetic, reserve all headers, preserve valid wire
+bytes and reject malformed input without mutation. Transport ingress rejects
+null factory results before asynchronous queue/session publication. Prepared
+signed-data-bounds regressions cover null, invalid geometry, SIZE_MAX, tier
+edges and copy/in-place payload identity. This is a static finding, not a CI
+crash report. Implemented / static; Pending CI compilation / Pending CI tests.
+
+
 ## cfc15d644: executed ECIES/DHT controls and static-contract failures
 
 `test-crypto-audit-bounds` passes in ASan+UBSan job 132447806018, UBSan
