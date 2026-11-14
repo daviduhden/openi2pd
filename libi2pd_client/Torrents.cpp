@@ -1863,7 +1863,7 @@ namespace torrents
 		return IsAvailableLocked (static_cast<int> (offset / REQUEST_BLOCK_SIZE));
 	}
 
-	std::pair<size_t, size_t> Piece::GetNextBlockToRequest ()
+	std::optional<Piece::BlockRequestLease> Piece::AcquireBlockRequest ()
 	{
 		std::lock_guard<std::mutex> l (m_Mutex);
 		if (m_Blocks)
@@ -1877,12 +1877,19 @@ namespace torrents
 					auto offset = ind * REQUEST_BLOCK_SIZE;
 					m_LastActivityTimestamp = i2p::util::GetMonotonicSeconds ();
 					m_IsRequested = true;
-					return { offset, (offset + REQUEST_BLOCK_SIZE <= m_Size) ? REQUEST_BLOCK_SIZE : m_Size - offset };
+					return BlockRequestLease { offset,
+						(offset + REQUEST_BLOCK_SIZE <= m_Size) ? REQUEST_BLOCK_SIZE : m_Size - offset, m_BlockEpoch };
 				}
 				ind++;
 			}
 		}
-		return { 0, 0 };
+		return { };
+	}
+
+	std::pair<size_t, size_t> Piece::GetNextBlockToRequest ()
+	{
+		const auto lease = AcquireBlockRequest ();
+		return lease ? std::pair { lease->offset, lease->length } : std::pair<size_t, size_t> { 0, 0 };
 	}
 
 	void Piece::ClearAllRequests ()
@@ -3602,7 +3609,8 @@ namespace torrents
 		return true;
 	}
 
-	RequestedBlock Torrent::GetNextBlockToRequest (std::shared_ptr<PeerConnection> conn, bool skipRequested)
+	std::optional<RequestedBlockLease> Torrent::SelectNextBlockToRequest (
+		std::shared_ptr<PeerConnection> conn, bool skipRequested)
 	{
 		if (conn)
 		{
@@ -3611,17 +3619,16 @@ namespace torrents
 				if (!m_Pieces[index].IsComplete () && conn->IsPieceAvailable (index)
 					&& (!skipRequested || !m_Pieces[index].IsRequested ()))
 					highest = std::max (highest, GetPiecePriority (index));
-			if (!highest) return { 0, 0, 0 };
+			if (!highest) return { };
 			// Finish an active piece only while it has the highest eligible
 			// priority. New pieces retain rarest-first ordering within priority.
 			int lastIndex = conn->GetLastRequestedPieceIndex ();
 			if (lastIndex >= 0 && static_cast<size_t> (lastIndex) < m_Pieces.size ()
 				&& conn->IsPieceAvailable (lastIndex) && GetPiecePriority (lastIndex) >= highest)
 			{
-				auto [offset, len] = m_Pieces[lastIndex].GetNextBlockToRequest ();
-				if (len > 0)
-					return { static_cast<uint32_t> (lastIndex), static_cast<uint32_t> (offset),
-						static_cast<uint32_t> (len) };
+				if (const auto lease = m_Pieces[lastIndex].AcquireBlockRequest ())
+					return RequestedBlockLease { static_cast<uint32_t> (lastIndex),
+						static_cast<uint32_t> (lease->offset), static_cast<uint32_t> (lease->length), lease->epoch };
 			}
 			// BEP6 suggestions must not override priority or rarity policy.
 			conn->ResetSuggestedPieceIndex ();
@@ -3649,11 +3656,18 @@ namespace torrents
 			for (const auto & it : sortedByNumPeers)
 			{
 				const uint32_t pieceIndex = std::get<0> (it);
-				auto [offset, len] = m_Pieces[pieceIndex].GetNextBlockToRequest ();
-				if (len > 0) return { pieceIndex, static_cast<uint32_t> (offset), static_cast<uint32_t> (len) };
+				if (const auto lease = m_Pieces[pieceIndex].AcquireBlockRequest ())
+					return RequestedBlockLease { pieceIndex, static_cast<uint32_t> (lease->offset),
+						static_cast<uint32_t> (lease->length), lease->epoch };
 			}
 		}
-		return { 0, 0, 0 };
+		return { };
+	}
+
+	RequestedBlock Torrent::GetNextBlockToRequest (std::shared_ptr<PeerConnection> conn, bool skipRequested)
+	{
+		const auto lease = SelectNextBlockToRequest (std::move (conn), skipRequested);
+		return lease ? RequestedBlock { lease->index, lease->offset, lease->length } : RequestedBlock { 0, 0, 0 };
 	}
 
 	bool Torrent::UpdateStatus (uint64_t ts)
@@ -4399,7 +4413,7 @@ namespace torrents
 			return;
 		}
 		ResetStats ();
-		ReleaseOutgoingRequests ();
+		ReleaseOutgoingRequests (true);
 		m_LastRequestedPieceIndex = -1;
 		if (m_IsInterested)
 		{
@@ -4442,6 +4456,12 @@ namespace torrents
 
 	void PeerConnection::WriteToStream (const uint8_t * buf, size_t len)
 	{
+		if (m_WriteObserverForTesting)
+		{
+			m_WriteObserverForTesting ({ buf, len });
+			m_LastSendTime = i2p::util::GetMonotonicSeconds ();
+			return;
+		}
 		if (!m_Stream) return;
 		LogPrint (eLogDebug, "Torrents: Sending ", len, " bytes");
 		m_Stream->AsyncSend (buf, len,
@@ -4516,12 +4536,17 @@ namespace torrents
 				// release below, so a peer that keeps sending keep-alives (or
 				// other blocks) can no longer pin a stalled block forever.
 				ReleaseExpiredOutgoingRequests (ts);
+				if (m_RequestRetirementTimedOut)
+				{
+					Close ();
+					return;
+				}
 				// Other peers can finish our last wanted piece while this
 				// connection is choked or still exchanges keep-alives.
 				RefreshInterest ();
 				if (ts > m_LastSendTime + PEER_KEEP_SEND_INTERVAL)
 				{
-					ReleaseOutgoingRequests (); // pending requests are invalid now
+					ReleaseOutgoingRequests (true); // cancel the old wire requests
 					RefreshInterest ();
 					bool requested = false;
 					if (m_IsInterested && !m_Torrent->IsComplete ())
@@ -4940,6 +4965,21 @@ namespace torrents
 		uint32_t offset = bufbe32toh (buf + 4);
 		len -= 8;
 		bool applied = false;
+		// Fast cancellation still has one terminal response. Another peer
+		// may now own the block, so do not release or apply its bytes again.
+		auto cancelled = std::find_if (m_OutgoingRequests.begin (), m_OutgoingRequests.end (),
+			[index, offset] (const OutgoingRequest & request)
+			{ return request.cancelled && request.index == index && request.offset == offset; });
+		if (cancelled != m_OutgoingRequests.end ())
+		{
+			// A malformed response must not retire this tuple's authority or
+			// allow an old Reject to match a subsequently reused request.
+			if (len != cancelled->length) return;
+			m_OutgoingRequests.erase (cancelled);
+			if (m_NumRequests) --m_NumRequests;
+			RequestNextBlocks ();
+			return;
+		}
 		if (len && index < m_Torrent->GetNumPieces ())
 		{
 			Piece & piece = m_Torrent->GetPiece (index);
@@ -5048,7 +5088,7 @@ namespace torrents
 				}
 			}
 		}
-		ReleaseOutgoingRequest (index, offset);
+		ReleaseOutgoingRequest (index, offset, len);
 		if (m_NumRequests <= m_MaxNumRequests * 2 / 3) RequestNextBlocks ();
 		if (!applied) return;
 		// update stats only for a block that changed the piece state. Charge
@@ -5122,11 +5162,16 @@ namespace torrents
 
 	void PeerConnection::HandleRejectRequestMsg (const uint8_t * buf, size_t len)
 	{
-		if (len < 8 || !m_Torrent) return;
-		uint32_t index = bufbe32toh (buf);
-		uint32_t offset = bufbe32toh (buf + 4);
-		LogPrint (eLogDebug, "Torrents: Reject request msg received index ", index, " offset ", offset);
-		ReleaseOutgoingRequest (index, offset);
+		// BEP 6 Reject Request identifies all three exact request fields.
+		if (!m_IsFast || !m_Torrent || !buf || len != REJECT_REQUEST_MSG_PAYLOAD_LENGTH) return;
+		const uint32_t index = bufbe32toh (buf);
+		const uint32_t offset = bufbe32toh (buf + 4);
+		const uint32_t length = bufbe32toh (buf + 8);
+		auto found = std::find_if (m_OutgoingRequests.begin (), m_OutgoingRequests.end (),
+			[index, offset, length] (const OutgoingRequest & request)
+			{ return request.index == index && request.offset == offset && request.length == length; });
+		if (found == m_OutgoingRequests.end ()) return;
+		ReleaseOutgoingRequest (index, offset, length);
 		RequestNextBlocks ();
 	}
 
@@ -5373,6 +5418,20 @@ namespace torrents
 		WriteToStream (buf, REQUEST_MSG_LENGTH);
 	}
 
+	void PeerConnection::SendCancelMsg (uint32_t index, uint32_t offset, uint32_t len)
+	{
+		// BEP 3 CANCEL does not require Fast negotiation. Teardown retires
+		// local authority without attempting another wire submission.
+		if ((!m_Stream && !m_WriteObserverForTesting) || !m_IsEstablished
+			|| m_UploadClosing.load (std::memory_order_acquire) || !m_Torrent || m_Torrent->IsStopped ()
+			|| m_Torrent->IsRemoved ())
+			return;
+		std::array<uint8_t, CANCEL_MSG_LENGTH> frame;
+		FillRequestMsg (frame.data (), index, offset, len);
+		frame[4] = eMessageTypeCancel;
+		WriteToStream (frame.data (), frame.size ());
+	}
+
 	size_t PeerConnection::FillRequestMsg (uint8_t * buf, uint32_t index, uint32_t offset, uint32_t len)
 	{
 		htobe32buf (buf, REQUEST_MSG_PAYLOAD_LENGTH + 1); // msg length
@@ -5471,7 +5530,8 @@ namespace torrents
 	void PeerConnection::HandleChokeMsg ()
 	{
 		m_IsChoked = true;
-		ReleaseOutgoingRequests ();
+		// BEP 6 Choke does not implicitly reject pending Fast requests.
+		if (!m_IsFast) ReleaseOutgoingRequests ();
 		m_LastRequestedPieceIndex = -1;
 		m_DownloadRate = 0;
 	}
@@ -6052,13 +6112,13 @@ namespace torrents
 			CreateDictionary ({ { "port", CreateInteger (port) }, { "rport", CreateInteger (rport) } }));
 	}
 
-	std::optional<RequestedBlock> PeerConnection::GetNextBlockToRequest ()
+	std::optional<RequestedBlockLease> PeerConnection::GetNextBlockToRequest ()
 	{
-		auto block = m_Torrent->GetNextBlockToRequest (shared_from_this (), true); // skip already requested pieces
-		if (std::get<2> (block) > 0) return block;
+		auto block = m_Torrent->SelectNextBlockToRequest (shared_from_this (), true); // skip already requested pieces
+		if (block) return block;
 		// try to get block from requested by another connection piece
-		auto block1 = m_Torrent->GetNextBlockToRequest (shared_from_this (), false);
-		if (std::get<2> (block1) > 0) return block1;
+		auto block1 = m_Torrent->SelectNextBlockToRequest (shared_from_this (), false);
+		if (block1) return block1;
 		if (m_LastRequestedPieceIndex >= 0)
 		{
 			m_LastRequestedPieceIndex = -1; // no request
@@ -6069,7 +6129,10 @@ namespace torrents
 
 	bool PeerConnection::RequestNextBlocks ()
 	{
-		if (m_IsChoked || !m_Torrent || m_Torrent->IsComplete ()) return false;
+		if (!m_IsEstablished || m_IsChoked || !m_Torrent || m_Torrent->IsStopped () || m_Torrent->IsRemoved ()
+			|| m_Torrent->IsComplete () || m_RequestRetirementTimedOut
+			|| m_UploadClosing.load (std::memory_order_acquire))
+			return false;
 		if (m_NumRequests >= m_MaxNumRequests) return false;
 		if (m_MaxNumRequests > MAX_NUM_REQUESTS)
 		{
@@ -6080,43 +6143,113 @@ namespace torrents
 		uint8_t buf[REQUEST_MSG_LENGTH * MAX_NUM_REQUESTS];
 		size_t bufOffset = 0;
 		const auto now = i2p::util::GetMonotonicSeconds ();
+		const auto previousPiece = m_LastRequestedPieceIndex;
+		auto firstStaged = m_OutgoingRequests.end ();
+		bool staged = false;
+		auto rollbackBatch = i2p::modern::ScopeExit (
+			[&]
+			{
+				if (!staged) return;
+				for (auto it = firstStaged; it != m_OutgoingRequests.end ();)
+				{
+					m_Torrent->GetPiece (static_cast<int> (it->index)).ReleaseBlock (it->offset, it->epoch);
+					it = m_OutgoingRequests.erase (it);
+					if (m_NumRequests) --m_NumRequests;
+				}
+				m_LastRequestedPieceIndex = previousPiece;
+			});
 		while (m_NumRequests < m_MaxNumRequests)
 		{
 			auto nextBlock = GetNextBlockToRequest ();
 			if (!nextBlock) break;
-			auto [index, offset, len] = *nextBlock;
+			auto [index, offset, len, epoch] = *nextBlock;
+			auto & piece = m_Torrent->GetPiece (static_cast<int> (index));
+			// Selection owns a block before the list node can allocate. Keep
+			// its original epoch until the outgoing ledger accepts it.
+			auto releaseSelection
+				= i2p::modern::ScopeExit ([&piece, offset, epoch] { piece.ReleaseBlock (offset, epoch); });
+			// A terminal Fast response cannot distinguish tuple reuse. Give
+			// this block to another peer until the old authority retires.
+			if (std::any_of (m_OutgoingRequests.begin (), m_OutgoingRequests.end (),
+					[index, offset] (const OutgoingRequest & request)
+					{ return request.index == index && request.offset == offset; }))
+				break;
+			if (m_BeforeRequestAdmissionForTesting) m_BeforeRequestAdmissionForTesting ();
+			m_OutgoingRequests.push_back (OutgoingRequest { index, offset, len, epoch, now });
+			if (!staged)
+			{
+				firstStaged = std::prev (m_OutgoingRequests.end ());
+				staged = true;
+			}
+			++m_NumRequests;
+			releaseSelection.dismiss ();
 			FillRequestMsg (buf + bufOffset, index, offset, len);
 			bufOffset += REQUEST_MSG_LENGTH;
 			m_LastRequestedPieceIndex = index;
-			m_OutgoingRequests.push_back (OutgoingRequest {
-				index, offset, len, m_Torrent->GetPiece (static_cast<int> (index)).GetBlockEpoch (), now });
-			m_NumRequests++;
 		}
+		// Once submission begins a thrown stream operation does not prove
+		// that no frame reached the wire. Retain the admitted response slots.
+		rollbackBatch.dismiss ();
 		if (bufOffset > 0) WriteToStream (buf, bufOffset);
 		return bufOffset > 0;
 	}
 
-	void PeerConnection::ReleaseOutgoingRequest (uint32_t index, uint32_t offset)
+	void PeerConnection::ReleaseOutgoingRequest (uint32_t index, uint32_t offset, size_t length)
 	{
 		if (!m_Torrent) return;
 		auto found = std::find_if (m_OutgoingRequests.begin (), m_OutgoingRequests.end (),
-			[index, offset] (const OutgoingRequest & block) { return block.index == index && block.offset == offset; });
+			[index, offset, length] (const OutgoingRequest & block)
+			{ return block.index == index && block.offset == offset && block.length == length; });
 		if (found == m_OutgoingRequests.end ()) return;
 		const auto epoch = found->epoch;
+		const bool released = found->cancelled;
 		m_OutgoingRequests.erase (found);
-		if (index < m_Torrent->GetNumPieces ())
+		if (!released && index < m_Torrent->GetNumPieces ())
 			m_Torrent->GetPiece (static_cast<int> (index)).ReleaseBlock (offset, epoch);
 		if (m_NumRequests) --m_NumRequests;
 	}
 
-	void PeerConnection::ReleaseOutgoingRequests ()
+	void PeerConnection::ReleaseOutgoingRequests (bool notify)
 	{
-		if (m_Torrent)
-			for (const auto & block : m_OutgoingRequests)
-				if (block.index < m_Torrent->GetNumPieces ())
+		if (notify && m_IsFast)
+		{
+			const auto now = i2p::util::GetMonotonicSeconds ();
+			std::array<RequestedBlock, MAX_NUM_REQUESTS> cancelled;
+			size_t count = 0;
+			for (auto & block : m_OutgoingRequests)
+			{
+				if (block.cancelled) continue;
+				if (m_Torrent && block.index < m_Torrent->GetNumPieces ())
 					m_Torrent->GetPiece (static_cast<int> (block.index)).ReleaseBlock (block.offset, block.epoch);
-		m_OutgoingRequests.clear ();
+				block.cancelled = true;
+				block.cancelledAt = now;
+				if (count < cancelled.size ())
+					cancelled[count++] = { block.index, block.offset, block.length };
+				else
+				{
+					// Fail closed if the admission invariant broke.
+					m_RequestRetirementTimedOut = true;
+				}
+			}
+			// All leases are retired before fallible frame submission.
+			for (size_t i = 0; i < count; ++i)
+			{
+				const auto [index, offset, length] = cancelled[i];
+				SendCancelMsg (index, offset, length);
+			}
+			return;
+		}
+		// Retire every lease before fallible wire notification. Splicing
+		// cannot allocate, and partial submission cannot resurrect entries.
+		std::list<OutgoingRequest> retired;
+		retired.splice (retired.end (), m_OutgoingRequests);
 		m_NumRequests = 0;
+		if (m_Torrent)
+			for (const auto & block : retired)
+				if (!block.cancelled && block.index < m_Torrent->GetNumPieces ())
+					m_Torrent->GetPiece (static_cast<int> (block.index)).ReleaseBlock (block.offset, block.epoch);
+		if (notify)
+			for (const auto & block : retired) SendCancelMsg (block.index, block.offset, block.length);
 	}
 
 	bool PeerConnection::ReleaseExpiredOutgoingRequests (uint64_t now)
@@ -6125,25 +6258,37 @@ namespace torrents
 		bool released = false;
 		for (auto it = m_OutgoingRequests.begin (); it != m_OutgoingRequests.end ();)
 		{
+			if (it->cancelled)
+			{
+				// A Fast peer cannot hold response slots indefinitely by sending
+				// keep-alives while ignoring CANCEL's required terminal reply.
+				if (now >= it->cancelledAt && now - it->cancelledAt >= PEER_REQUEST_TIMEOUT)
+					m_RequestRetirementTimedOut = true;
+				++it;
+				continue;
+			}
 			if (!ShouldExpireOutgoingRequest (it->requestedAt, now, PEER_REQUEST_TIMEOUT))
 			{
 				++it;
 				continue;
 			}
-			// The epoch stored with the request keeps a stale expiry from
-			// resurrecting a block that a recheck or invalidation already reset:
-			// ReleaseBlock is a no-op once the piece epoch moved on.
-			if (it->index < m_Torrent->GetNumPieces ())
-				m_Torrent->GetPiece (static_cast<int> (it->index)).ReleaseBlock (it->offset, it->epoch);
-			it = m_OutgoingRequests.erase (it);
-			if (m_NumRequests) --m_NumRequests;
+			const auto block = *it;
+			if (block.index < m_Torrent->GetNumPieces ())
+				m_Torrent->GetPiece (static_cast<int> (block.index)).ReleaseBlock (block.offset, block.epoch);
+			if (m_IsFast)
+			{
+				it->cancelled = true;
+				it->cancelledAt = now;
+				++it;
+			}
+			else
+			{
+				it = m_OutgoingRequests.erase (it);
+				if (m_NumRequests) --m_NumRequests;
+			}
 			released = true;
+			SendCancelMsg (block.index, block.offset, block.length);
 		}
-		// Leave the block's recovery to the normal scheduler: the released
-		// block is Missing again and can be requested here or by another
-		// peer. Only the bounded PEER_REQUEST_TIMEOUT can repeat this, so a
-		// peer that never answers cannot create an unbounded request loop. A
-		// stopped torrent stays silent until it is resumed.
 		if (released && !m_Torrent->IsStopped ()) RequestNextBlocks ();
 		return released;
 	}

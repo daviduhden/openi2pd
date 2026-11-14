@@ -116,6 +116,15 @@ Do not let them edit, build or run tests.
 
 ## Known issues and decisions
 
+- Outgoing CANCEL uses the exact request tuple and existing wire writer.
+  Fast cancellation retains bounded authority until Piece/Reject, preventing
+  an old terminal response from retiring a reused tuple. Release local leases
+  once, require exact Reject lengths, and keep Fast choke distinct from
+  legacy implicit rejection. Full endgame is a separate implementation.
+  Piece::AcquireBlockRequest captures the epoch under its selection mutex;
+  Torrent/PeerConnection propagate that lease through ledger insertion and
+  batch staging; failure before wire submission must release every new lease.
+
 - DHT timers borrow their owner through revocable generation admission and
   per-wait identity. Review every arm, Stop/restart and final destruction,
   including already-successful completions. Receiver reset and persistence

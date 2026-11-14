@@ -117,6 +117,12 @@ compile, run tests or run project scripts.
 
 ## Known issues and decisions
 
+- Review fixture lambdas and static factories for constructor/member name
+  hiding too: a callback parameter can shadow an enclosing constructor
+  operand, and a factory local can hide a class member. Keep fixture indices
+  in the production API domain before explicit signed conversion.
+
+
 - A startup transaction must include registrations, queued receives and socket
   authority, not only timers. Put a borrowing resolver's construction last
   so ordinary startup unwind never has to join a newly launched thread.

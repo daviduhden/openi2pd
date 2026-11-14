@@ -241,6 +241,7 @@ namespace torrents
 	constexpr size_t HAVE_MSG_PAYLOAD_LENGTH = 4;
 	constexpr size_t PIECE_MSG_LENGTH = 13; // length + id + index + offset
 	constexpr size_t CANCEL_MSG_PAYLOAD_LENGTH = 12;
+	constexpr size_t CANCEL_MSG_LENGTH = CANCEL_MSG_PAYLOAD_LENGTH + 5;
 
 	// Pure transfer-scheduling rules. They are constexpr and socket-free
 	// so the regression test can pin them without a connection, a timer or
@@ -713,8 +714,17 @@ namespace torrents
 			const std::atomic<bool> & cancelled, std::vector<uint8_t> & out);
 		size_t GetSize () const { return m_Size; }
 		bool HasBlock (size_t offset) const;
-		std::pair<size_t, size_t>
-		GetNextBlockToRequest (); // return (offset, len) of next buffer, len = 0 if no next buffer
+		struct BlockRequestLease
+		{
+			size_t offset;
+			size_t length;
+			uint64_t epoch;
+		};
+		/// Reserve a missing block and capture its epoch under one lock.
+		/// Deferred release must use this epoch, never a later snapshot.
+		std::optional<BlockRequestLease> AcquireBlockRequest ();
+		/// Compatibility view for immediate block-state consumers.
+		std::pair<size_t, size_t> GetNextBlockToRequest ();
 		void ClearAllRequests ();
 		// Releases one outstanding block owned by a connection. No-op if the
 		// block is already Available, complete or no longer Requested.
@@ -807,6 +817,15 @@ namespace torrents
 		"Non-supported version", "Filesystem error", "Random source failure" };
 
 	using RequestedBlock = std::tuple<uint32_t, uint32_t, uint32_t>; // (index, offset, len)
+
+	/// A download reservation and the piece epoch captured at admission.
+	struct RequestedBlockLease
+	{
+		uint32_t index;
+		uint32_t offset;
+		uint32_t length;
+		uint64_t epoch;
+	};
 
 	/// Service-owned reservations for queued/in-flight upload disk reads.
 	/// Cancellation revokes publication but retains quota until the disk
@@ -1355,13 +1374,16 @@ namespace torrents
 		/// eligible piece priority wins; within it the active piece is
 		/// continued and new pieces are ordered rarest-first with a random
 		/// tiebreak. BEP 6 suggestions never override that policy.
-		/// @param conn Connection whose remote bitfield
-		///             constrains eligibility; may be null to use the
-		///             unconstrained policy.
+		/// @param conn Connection whose remote bitfield constrains
+		///             eligibility; null produces no selection.
 		/// @param skipRequested Exclude pieces already requested elsewhere.
 		/// @return (index, offset, len), or (0, 0, 0) when nothing is
 		///         eligible.
 		RequestedBlock GetNextBlockToRequest (std::shared_ptr<PeerConnection> conn, bool skipRequested = true);
+		/// Service-thread selection retaining the exact piece reservation.
+		/// The caller must release the returned epoch if publication fails.
+		std::optional<RequestedBlockLease> SelectNextBlockToRequest (
+			std::shared_ptr<PeerConnection> conn, bool skipRequested = true);
 		std::vector<PieceFileFragment> GetPieceFileFragments (int index) const;
 		// Verified-and-flushed bytes per file. A complete-but-unverified or
 		// currently-saving piece contributes nothing, so a file never reports
@@ -1656,6 +1678,7 @@ namespace torrents
 	class PeerConnection : public i2p::client::I2PServiceHandler, public std::enable_shared_from_this<PeerConnection>
 	{
 		friend struct PeerExtendedHandshakeTestAccess;
+		friend struct PeerRequestLedgerTestAccess;
 		using ExtendedMessageHandler = void (PeerConnection::*) (const uint8_t * buf, size_t len);
 
 	public:
@@ -1758,6 +1781,7 @@ namespace torrents
 		void HandleRequestMsg (const uint8_t * buf, size_t len);
 		void HandleCancelMsg (const uint8_t * buf, size_t len);
 		void SendRequestMsg (uint32_t index, uint32_t offset, uint32_t len);
+		void SendCancelMsg (uint32_t index, uint32_t offset, uint32_t len);
 		size_t FillRequestMsg (uint8_t * buf, uint32_t index, uint32_t offset, uint32_t len);
 		void SendInterestedMsg ();
 		void SendNotinterestedMsg ();
@@ -1781,16 +1805,20 @@ namespace torrents
 		void HandleI2PDHTExtension (const uint8_t * buf, size_t len); // BEP5
 		void SendDHTPortAdvertisement ();
 
-		std::optional<RequestedBlock> GetNextBlockToRequest ();
+		std::optional<RequestedBlockLease> GetNextBlockToRequest ();
 		bool RequestNextBlocks ();
 		bool SendRequestedBlock (const RequestedBlock & requestedBlock);
 		// Service thread: cached sends and disk loads share the same six
 		// active slots and the existing total 32-request admission bound.
 		void ProcessUploadRequests ();
-		void ReleaseOutgoingRequest (uint32_t index, uint32_t offset);
-		void ReleaseOutgoingRequests ();
+		void ReleaseOutgoingRequest (uint32_t index, uint32_t offset, size_t length);
+		/// Retire local leases; notify a live peer only when explicitly asked.
+		/// Fast cancellation retains bounded response authority until reply.
+		void ReleaseOutgoingRequests (bool notify = false);
 		// Releases every outbound request older than PEER_REQUEST_TIMEOUT and
-		// re-arms the scheduler. Never touches the incoming/upload queue.
+		// re-arms the scheduler. Fast cancellations keep their response slot
+		// until a terminal reply or another request deadline closes the peer.
+		// Never touches the incoming/upload queue.
 		bool ReleaseExpiredOutgoingRequests (uint64_t now);
 		// Halves/zeroes a direction's reported rate after idle windows.
 		void UpdateIdleRates (uint64_t nowSeconds);
@@ -1810,7 +1838,8 @@ namespace torrents
 		bool m_RemoteBitfieldReceived = false;
 		bool m_IsHandshakeSent, m_IsEstablished, m_IsChoked, m_IsRemoteChoked, m_IsInterested, m_IsRemoteInterested;
 		uint64_t m_LastReceiveTime, m_LastSendTime; // monotonic seconds
-		size_t m_NumRequests, m_NumPieces; // outgoing
+		// Outgoing count includes pending Fast cancellation replies.
+		size_t m_NumRequests, m_NumPieces;
 		struct OutgoingRequest
 		{
 			uint32_t index;
@@ -1818,8 +1847,15 @@ namespace torrents
 			uint32_t length;
 			uint64_t epoch;
 			uint64_t requestedAt; // monotonic seconds, for PEER_REQUEST_TIMEOUT
+			uint64_t cancelledAt = 0;
+			bool cancelled = false;
 		};
 		std::list<OutgoingRequest> m_OutgoingRequests;
+		bool m_RequestRetirementTimedOut = false;
+		// Private fixture interception at the actual write boundary. Empty
+		// in production; the friend owns its captured output lifetime.
+		std::function<void (std::span<const uint8_t>)> m_WriteObserverForTesting;
+		void (*m_BeforeRequestAdmissionForTesting) () = nullptr;
 		std::list<RequestedBlock> m_IncomingRequestsQueue;
 		UploadLoadLedger m_UploadLoads;
 		// A disk completion that cannot reach the service retires quota

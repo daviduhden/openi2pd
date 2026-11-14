@@ -12,6 +12,30 @@ Documents project documentation.
 <!-- SPDX-License-Identifier: BSD-3-Clause -->
 # I2PSnark compatibility inventory
 
+## Outgoing request cancellation continuation (2026-11-14)
+
+Implemented / static; Pending CI compilation / Pending CI tests.
+[BEP 3](https://www.bittorrent.org/beps/bep_0003.html) CANCEL is emitted as a
+17-byte frame through the normal peer writer. Expiry and explicit retirement
+notify once; closing/disconnected/stopped/removed peers remain silent.
+[BEP 6](https://www.bittorrent.org/beps/bep_0006.html) Fast cancellation retains
+bounded exact-tuple authority until Piece/Reject, and Fast choke keeps pending
+requests. Reject requires its exact 12-byte payload and matching length.
+A missing terminal reply closes the peer after another existing request window.
+
+Piece selection now returns an epoch-bearing lease under the selection mutex.
+Request/batch guards release local leases if admission fails before submission;
+a thrown writer after submission cannot prove rollback. Canceled Piece replies
+do not apply data/statistics or release another peer's successor lease.
+The prepared test observes production WriteToStream bytes and state through a
+private observer, not a live Java connection. Full endgame, strict unsolicited
+Fast-message closure, global bandwidth queues and differential Java validation
+remain pending; outgoing CANCEL itself is no longer absent.
+
+Existing bounded magnet recovery and eight-uploader rotation were verified in
+source during reconnaissance and are not reimplemented. Trusted TUI comment
+labels already use four-language catalogs; arbitrary peer text is not translated.
+
 Status: **implemented by static analysis where specified; pending CI
 compilation and pending CI tests**. This is a source inventory, not a claim of
 complete parity, live interoperability, or operating-system privilege separation.
@@ -69,7 +93,7 @@ to the repository. “Present” means source exists and still requires manual C
 | Magnet import/share | `MagnetURI`, `MagnetState`, `ExtensionHandler.handleMetadata` | `ParseTorrentMagnet`, `BuildTorrentMagnet`, torrent metadata extension handlers | Present: btih hex/base32, display name and tracker validation, BEP 9 metadata; complete interoperability pending. |
 | Torrent creation | `Storage`, `MetaInfo` construction, manager creation operations | `TorrentsCreator.*`, `Torrent::CreateV1`, service creation jobs | Implemented by static analysis: anchored directory traversal, streaming cross-file SHA-1, canonical v1 metainfo, automatic/explicit piece size, tracker tiers/private flag, cancellation and byte/file progress. TUI n/N/K and Android private-root creation are connected. SAF creates and exports metainfo through native CreateV1; SAF source seeding is still pending. A public creation with no trackers now inherits the tunnel's common endpoints instead of setting an explicit empty list; a private creation without any tracker is rejected before hashing. |
 | Trackers | `TrackerClient`, `SnarkManager`, `MetaInfo` | `TorrentsTunnel::AddTracker`, tracker request handlers, tracker snapshots | Multiple I2P trackers and announce lifecycle present; t/T add/remove paused-torrent trackers through typed IPC, preserving infohash and queuing persistence. Explicit lists override common trackers, including an explicitly empty list. A primary `announce` outside a non-empty `announce-list` is normalized into tier 0. Private torrents keep a fixed tracker list and reject admin mutation. Tracker snapshots expose the tier (`-1` common). Malformed, oversized, transport-failed and non-200 responses are failures with bounded error text and a short retry ladder capped at 30 minutes; a tracker-advertised `interval` is floored at 15 minutes and raised to a larger `min interval`, and a success without an interval re-bases at that floor. A dispatched request no longer overwrites the failure ladder with the advertised interval. HTTP announces are single-flight per `(torrent, slot)`, capped at 16 concurrent requests, and a dedicated timer closes a request that exceeds 8 seconds (the write and the response read share the admission). Tracker registry slots are reference counted, reused lowest-free-first and never renumbered, so removed torrents release capacity without moving another torrent's statistics; configured common slots are never recycled. Tracker peer lists expire after max(2*interval, 30 min), capped at two hours. Datagram tracker transactions avoid ID collisions and validate the local reply port. Native announces every eligible tracker, matching Java's practical behavior; BEP 12 failover and tier shuffle remain pending (do not change the default before a verified Java comparison). |
-| Download and seed | `PeerState`, `PeerCoordinator`, `Storage` | `Torrent`, `Peer`, `TorrentsTunnel` | Native piece transfer, choke/request handling and seeding present. Accepted blocks refresh piece activity, avoiding the 22-second inactivity reset during a slow multi-megabyte piece, and each connection now releases its own outstanding block claims on choke, keep-alive reset, reject or disconnect instead of leaking them until the inactivity sweep. A per-request 60-second deadline releases a stalled outbound block before the 95-second blanket keep-alive release, so one unresponsive peer cannot pin the pipeline. Peer/torrent transfer counters charge the real block length (including a short final block), and an idle peer's reported rate decays instead of keeping its last burst. A hash mismatch charges the connection that completed the piece; three charges disconnect it (bounded best-effort accounting, not a persisted ban). Selected completion stops peer dialing after the wanted set is verified. Java peer exchange, unchoke/upload-slot policy, endgame/CANCEL send, peer blame and recovery tests remain pending. |
+| Download and seed | `PeerState`, `PeerCoordinator`, `Storage` | `Torrent`, `Peer`, `TorrentsTunnel` | Native piece transfer, choke/request handling and seeding present. Accepted blocks refresh piece activity, avoiding the 22-second inactivity reset during a slow multi-megabyte piece, and each connection now releases its own outstanding block claims on legacy choke, keep-alive reset, exact reject or disconnect (Fast choke retains request authority) instead of leaking them until the inactivity sweep. A per-request 60-second deadline releases a stalled outbound block before the 95-second blanket keep-alive release, so one unresponsive peer cannot pin the pipeline. Peer/torrent transfer counters charge the real block length (including a short final block), and an idle peer's reported rate decays instead of keeping its last burst. A hash mismatch charges the connection that completed the piece; three charges disconnect it (bounded best-effort accounting, not a persisted ban). Selected completion stops peer dialing after the wanted set is verified. Java peer exchange, unchoke/upload-slot policy, full endgame scheduling, peer blame and recovery tests remain pending. |
 | Files and priorities | `Storage`, `PeerCoordinator` | `Torrent::SetFilePriority`, selected-byte accounting, `TorrentsState.*`, native controls | Implemented by static analysis: skip/normal/high, max selected priority for shared pieces, priority then rarity scheduling, dynamic refresh and persisted preferences. TUI f and Android dialogs connected. Local completion and promotion are selected-file based: a skipped file no longer prevents `Seeding`, selected files with every backing piece verified are promoted individually, and unselected `.part` files remain untouched. Per-file progress now uses the same complete+verified+not-saving rule as promotion, so a downloaded-but-unhashed or still-saving piece cannot report a finished file. Tracker `left` and `event=completed` are deliberately whole-torrent (Java `TrackerClient`): a partially selected torrent reports its missing bytes and never claims completion. `GetFullLeft()` supplies that accounting. Force recheck for a paused torrent is exposed as `TORRENT-RECHECK`/`V`/Android and hashes all pieces, including an incomplete bitmap-lost `.part`. Metainfo comment/created-by editing is exposed through `TORRENT-META-COMMENT`/`TORRENT-META-CREATED-BY` (TUI e/E, Android metadata dialog). A failed payload write now publishes `eTorrentErrorFilesystem` and suppresses announce/serving until a later verified write clears it. |
 | Integrity and incomplete resume | `Storage`, `BitField` | torrent piece verification, torrent loading/storage domain | SHA-1 piece validation and existing-data checks present. Resume bitfields now require exactly `ceil(pieces/8)` bytes with zero padding; short/spare-bit files are discarded. Native resume replacement is atomic and removes a stale bitmap when no piece or every piece is complete. Startup hashes every piece fully backed by an existing final or `.part` file, so a mixed final/missing restart does not re-download intact files. Explicit recheck hashes all pieces, including incomplete `.part` ranges. Pending writes remain withheld from HAVE/serving. Crash/failure injection and partial-piece differential tests remain pending. |
 | Statistics | `Peer`, `PeerCoordinator`, `Snark` | `TorrentInfo`, `TorrentPeerInfo`, `TorrentSessionInfo` | Torrent/peer progress, rates, transfer totals and state present; exact accounting semantics need differential review. |
@@ -263,7 +287,7 @@ single-torrent start/stop, plus the missing `COMMENT-UNHIDE` parse branch and
 the Android creation-tracker validator. Prepared regressions are
 `test-torrents-scheduler`, `test-torrents-tracker-dispatch` and the extended
 `test-tui-protocol`; none was compiled or executed. Durable magnet/session
-recovery, BEP 12 failover, unchoke/upload-slot policy, endgame/CANCEL send,
+recovery, BEP 12 failover, unchoke/upload-slot policy, full endgame scheduling,
 per-file or per-piece recheck and bandwidth limits remain open. No live Java
 peer, tracker, DHT, PEX, device or CI run exists for this increment.
 
@@ -335,7 +359,7 @@ Reference: [BEP 9](https://www.bittorrent.org/beps/bep_0009.html), revision
 `9b3e9b3218fe4bb80d92a56045a78be27f645c9f`. Engine regressions cover concurrent
 owners, malformed lengths, expiry, disconnect, size disagreement and hash
 failure. Compilation, sanitizer execution and live Java I2PSnark exchange
-remain pending. Endgame/CANCEL and queue/magnet persistence remain separate.
+remain pending. Full endgame remains separate; bounded queue/magnet persistence already exists.
 
 ## Native upload-slot continuation (static)
 

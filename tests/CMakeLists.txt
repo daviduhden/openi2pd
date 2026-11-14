@@ -86,6 +86,7 @@ set(I2PD_TORRENT_TESTS
   test-torrents-tracker-schedule
   test-torrents-tracker-dispatch
   test-torrents-scheduler
+  test-torrents-requests
   test-torrents-dht-protocol
   test-torrents-pex
   test-torrents-concurrency
@@ -488,7 +489,8 @@ foreach(test IN LISTS I2PD_TESTS)
     set_property(TEST ${test} APPEND PROPERTY LABELS security)
   endif()
   if(test STREQUAL "test-torrents-dht-protocol" OR test STREQUAL "test-torrents-pex"
-      OR test STREQUAL "test-torrents-scheduler" OR test STREQUAL "test-torrents-tracker-dispatch"
+      OR test STREQUAL "test-torrents-scheduler" OR test STREQUAL "test-torrents-requests"
+      OR test STREQUAL "test-torrents-tracker-dispatch"
       OR test STREQUAL "test-tunnels-restart" OR test STREQUAL "test-transit-tunnel-build-replay")
     set_property(TEST ${test} APPEND PROPERTY LABELS "security;memory")
   endif()

@@ -1145,6 +1145,28 @@ require_runtime_order("privsep/Worker.cpp"
   "ChildProcess::Adopt (std::move (*admission), pid, std::move (parent))")
 require_runtime_source("daemon/UnixDaemon.cpp" "i2p::privsep::DrainRetiredChildren ();")
 require_runtime_source("privsep/Supervisor.cpp" "DrainRetiredChildren ();")
+
+# Request leases carry the epoch captured by the selection mutex.
+require_runtime_order("libi2pd_client/Torrents.cpp"
+  "std::optional<Piece::BlockRequestLease> Piece::AcquireBlockRequest ()"
+  "std::pair<size_t, size_t> Piece::GetNextBlockToRequest ()"
+  "std::lock_guard<std::mutex> l (m_Mutex);" "it = BlockStatus::Requested;"
+  "return BlockRequestLease { offset," "m_BlockEpoch };")
+require_runtime_order("libi2pd_client/Torrents.cpp"
+  "bool PeerConnection::RequestNextBlocks ()" "void PeerConnection::ReleaseOutgoingRequest ("
+  "auto rollbackBatch = i2p::modern::ScopeExit ("
+  "auto [index, offset, len, epoch] = *nextBlock;" "auto releaseSelection"
+  "m_BeforeRequestAdmissionForTesting ();"
+  "m_OutgoingRequests.push_back (OutgoingRequest { index, offset, len, epoch, now });"
+  "releaseSelection.dismiss ();" "FillRequestMsg (buf + bufOffset, index, offset, len);"
+  "rollbackBatch.dismiss ();" "WriteToStream (buf, bufOffset);")
+require_runtime_source("libi2pd_client/Torrents.cpp"
+  "if (!m_IsFast || !m_Torrent || !buf || len != REJECT_REQUEST_MSG_PAYLOAD_LENGTH) return;")
+require_runtime_source("tests/test-torrents-requests.cpp"
+  "TestSelectionEpochSurvivesInvalidation ();")
+require_runtime_source("tests/test-torrents-requests.cpp"
+  "TestFastCancellationAuthority ();")
+require_runtime_source("tests/CMakeLists.txt" "test-torrents-requests")
 require_runtime_source("tests/CMakeLists.txt" "test-ssu2-proxy-lifecycle")
 require_runtime_order("privsep/Worker.h"
   "void Disown ()" "worker_pid_t Pid () const"
@@ -1155,6 +1177,14 @@ require_runtime_source("tests/test-child-stop-budget.cpp"
 require_runtime_source("privsep/Worker.cpp"
   "~StackSecretWipe () { WipeBytes (m_Bytes.data (), m_Bytes.size ()); }")
 include("${PROJECT_ROOT}/tests/check-worker-secret-wipe.cmake")
+
+# Delayed Piece responses cannot retire a different wire tuple.
+require_runtime_source("libi2pd_client/Torrents.cpp"
+  "if (len != cancelled->length) return;")
+require_runtime_source("libi2pd_client/Torrents.cpp"
+  "return block.index == index && block.offset == offset && block.length == length;")
+require_runtime_source("libi2pd_client/Torrents.cpp"
+  "ReleaseOutgoingRequest (index, offset, len);")
 
 # Outbound I2CP builders admit full geometry before size addition.
 require_runtime_order("libi2pd_client/I2CP.cpp"
