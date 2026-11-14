@@ -111,6 +111,18 @@ build.
 
 ## Known issues and decisions
 
+- Keep included source-contract fixture variables in a function scope.
+  The project supports CMake 3.24; `block()` requires 3.25 and cannot
+  replace functions merely because newer CI runners accept it. Review
+  command availability separately from preset schema requirements.
+
+
+- OpenSSL probe cache identity lives in build/cmake/OpenSSLProbeStamp.cmake.
+  Include selected SSL/Crypto files and effective toolchain, runtime and
+  compile/link inputs, not only headers/version. The length-prefixed v2
+  hash prevents delimiter ambiguity; its pure contract is included by the
+  existing build-system-static test. Real reconfiguration remains CI-only.
+
 - MSVC filter source contracts share tests/read-msvc-test-pattern.cmake.
   Keep its restricted literal grammar, unique consuming -R option, full
   anchored membership and negative fixtures synchronized with PowerShell
@@ -323,7 +335,7 @@ build.
   keeps the zlib and Boost floors, requests both OpenSSL components and treats
   a missing Development component as a normal not-found result instead of a
   fatal `set_and_check` abort.
-- The `default`/`portable`/`ci-linux` presets use schema 5 (CMake 3.24) and
+- The `default`/`portable`/`ci-linux` presets use schema 5 (CMake 3.25) and
   expose install presets; `portable` disables tests. Keep presets in sync with
   the documented option defaults.
 

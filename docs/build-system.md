@@ -10,6 +10,13 @@ Documents project documentation.
 
 # CMake and POSIX Make migration
 
+OpenSSL capability-cache identity now includes exact selected SSL/Crypto files,
+required compile/link inputs, compiler/target/sysroots, runtime and per-config
+flags. A versioned length-prefixed hash invalidates all old answers together.
+`build/cmake/OpenSSLProbeStamp.cmake` is exercised by a pure prepared contract
+within build-system-static; it does not itself compile or access libraries.
+Real reconfiguration/link validation remains pending manual CI.
+
 Source API documentation runs with the manual CI lanes. The `Validation`
 workflow's `source-docs` job always generates the C++ API from
 `docs/Doxyfile.source`; Android's `:i2pd:sourceJavadoc` task runs with the

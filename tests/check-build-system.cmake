@@ -831,6 +831,14 @@ foreach(probe_name IN LISTS crypto_probe_names)
   endif()
 endforeach()
 
+assert_present("${top_cmake_text}" "i2pd_openssl_probe_stamp(_i2pd_probe_stamp)"
+  "OpenSSL cache identity must include selected link inputs")
+read_required("${PROJECT_ROOT}/tests/check-openssl-probe-stamp.cmake" probe_fixture)
+assert_present("${probe_fixture}" "function(check_openssl_probe_stamp_fixture)"
+  "Probe fixture isolation must retain the CMake 3.24 command floor")
+assert_absent("${probe_fixture}" "block(" "Probe fixture must not require CMake 3.25")
+include("${PROJECT_ROOT}/tests/check-openssl-probe-stamp.cmake")
+
 file(READ "${PROJECT_ROOT}/.github/workflows/validation.yml" build_workflow_text)
 assert_present("${build_workflow_text}" "mkdir -p docs/generated/source-api"
   "source-docs job must create the gitignored Doxygen output directory")

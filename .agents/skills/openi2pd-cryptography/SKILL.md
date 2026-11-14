@@ -315,9 +315,10 @@ executing project code, or inspect a real private key.
 - Supported crypto floors are OpenSSL 3.0.2–4.0.x and LibreSSL 4.0+ with
   `TLS_method()`; CMake enforces only the **lower** floor (3.0.2 / 4.0), so
   "–4.0.x" is a support statement, not a configure guard. The probe cache is
-  stamped by `I2PD_OPENSSL_EXPECT`/`I2PD_OPENSSL_EXPECT_VERSION` and
-  `I2PD_OPENSSL_PROBE_STAMP` (include dir|kind|version); clear the build
-  directory when switching backend or prefix. PQ publication/selection stays
+  checked against `I2PD_OPENSSL_EXPECT`/`I2PD_OPENSSL_EXPECT_VERSION`.
+  Probe invalidation uses the actual link/compiler/configuration inputs;
+  see `build/cmake/OpenSSLProbeStamp.cmake` and the build Skill rather than
+  assuming header/version identity proves the selected libraries. PQ publication/selection stays
   runtime-gated by the real provider round trip.
 - HKDF prefers `EVP_KDF_fetch("HKDF")` with `OSSL_KDF_PARAM_*` when the CMake
   probe succeeds and keeps the `EVP_PKEY_HKDF` bridge for LibreSSL. Preserve
