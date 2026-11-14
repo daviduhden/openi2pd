@@ -107,6 +107,12 @@ An empty run-level log is not evidence of retention expiry. Retrieve its job
 metadata and try each job log before classifying the evidence as unavailable.
 For a failed regression, verify that fixture inputs satisfy the production
 schema before attributing a later state-transition assertion to product code.
+A promise published before entering a lifecycle lock is not evidence that
+revocation is waiting. Witness actual admission ownership and separately
+verify post-revocation rejection; keep scheduler timing out of that claim.
+Socket callback authority also does not serialize synchronous socket calls
+with close/reopen. Audit object operations and nonblocking configuration as a
+separate boundary, documenting lock order and keeping diagnostics outside it.
 For socket backpressure failures, distinguish readiness thresholds from an
 actual nonblocking write result. Review zero-budget admission separately from
 deadline-bounded retries and inspect equivalent transports before fixing the

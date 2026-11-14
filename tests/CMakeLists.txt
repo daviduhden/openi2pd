@@ -204,6 +204,8 @@ set(I2PD_TESTS
   test-ssu2-holepunch-whitelist
   test-ssu2-peertest-policy
   test-ssu2-admission
+  test-ssu2-proxy-lifecycle
+  test-ssu2-socket-lifecycle
   test-crypto-wire-validation
   test-crypto-x25519-noise-elligator-mlkem-audit
   test-openssl-capabilities
@@ -445,6 +447,9 @@ foreach(test IN LISTS I2PD_TESTS)
       OR test STREQUAL "test-i2cp-b33-lookup"
       OR test STREQUAL "test-i2cp-blinding-info")
     set_property(TEST ${test} APPEND PROPERTY LABELS "security;memory")
+  endif()
+  if(test STREQUAL "test-ssu2-socket-lifecycle")
+    set_property(TEST ${test} APPEND PROPERTY LABELS "concurrency;security;memory")
   endif()
   if(test MATCHES "crypto|aead|aes|siphash|eddsa|elligator|blinding|su3|reseed|gost|signature|ecies|openssl|http-proxy-limits|protocol-bounds|routerinfo|ssu2|ntcp2|netdb|leaseset|torrents-security|torrents-verify-parity|i2cp-routing-session|sam-control|race|concurrency|sandbox|policy|imsg")
     set_property(TEST ${test} APPEND PROPERTY LABELS security)
