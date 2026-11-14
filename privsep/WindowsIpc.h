@@ -317,6 +317,10 @@ struct WindowsWorkerProcess
  * rebuilds its own command-line and attribute storage because
  * CreateProcessW may modify the mutable command line it is given.
  *
+ * Exceptions before publication trigger child termination, including
+ * the suspended fallback before Job assignment. Cleanup is
+ * bounded; a failed OS termination/wait is not proof of process exit.
+ *
  * An empty `nonceHex` makes the helper generate one (returned in
  * `WindowsWorkerProcess::nonceHex`); a supplied value must be 64 hex
  * characters.

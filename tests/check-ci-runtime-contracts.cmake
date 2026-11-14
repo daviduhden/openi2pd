@@ -1000,3 +1000,15 @@ require_runtime_order("libi2pd_client/TorrentsDHT.cpp"
   "std::lock_guard persistence (m_ServiceState->persistenceMutex);")
 require_runtime_source("tests/test-torrents-dht-protocol.cpp"
   "TestTimerOwnerAdmission ();")
+
+# Created children need retirement before any allocating metadata/error.
+require_runtime_order("privsep/WindowsIpc.cpp"
+  "if (!created) return i2p::unexpected (lastCreateError);"
+  "i2p::expected<WindowsWorkerProcess, std::string> SpawnWindowsWorker ("
+  "worker.process.Reset (processInfo.hProcess);"
+  "worker.thread.Reset (processInfo.hThread);"
+  "auto terminateUnpublished = i2p::modern::ScopeExit ([&worker] () noexcept"
+  "worker.TerminateAndWait (2000, ERROR_PROCESS_ABORTED)"
+  "worker.nonceHex = nonce;" "AssignProcessToJobObject ("
+  "ResumeThread (worker.thread.Native ())" "terminateUnpublished.dismiss ();"
+  "return worker;")

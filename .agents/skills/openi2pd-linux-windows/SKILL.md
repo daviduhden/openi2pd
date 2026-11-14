@@ -101,6 +101,14 @@ execution. Ask for:
 
 ## Known issues and decisions
 
+- A suspended child exists before fallback Job assignment. Closing process
+  handles is not termination: guard the entire post-CreateProcess interval,
+  including nonce copies and allocating error construction. Retire through
+  allocation-free bounded cleanup before handle owners unwind; release the
+  guard only after successful resume/publication. This exception-safety fix
+  does not attribute an unrelated native initializer exit.
+
+
 - Initializer probes share contained process creation with production but
   use a closed, authority-free command line. The supervisor fixture's
   diagnostic parent must return before normal worker tests; otherwise CDB
@@ -287,8 +295,8 @@ execution. Ask for:
   capability and no write root; supervisor uses a restricted token. Never
   grant Everyone/ALL APPLICATION PACKAGES; grant only the delegated root to the
   container SID. Fail closed instead of falling back to a restricted token.
-- Spawn is suspended with NUL std handles, no handle inheritance, an explicit
-  empty handle list, Job-List + security-capabilities attributes, Job limits
+- Spawn is suspended with only preopened NUL std handles in an explicit
+  inheritance list, Job-List + security-capabilities attributes, Job limits
   and mitigations. Stop terminates the Job Object within a budget. A
   completed-during-cancel record must be delivered; a timed-out write closes.
 - No daemon path starts the Windows supervisor and no Windows role backend

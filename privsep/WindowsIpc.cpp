@@ -28,6 +28,7 @@
 // cycle is
 // resolved by the include guard.
 #include "WindowsIsolation.h"
+#include "Modern.h"
 
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
@@ -113,6 +114,7 @@
 #include <limits>
 #include <memory>
 #include <sstream>
+#include <type_traits>
 #include <vector>
 
 namespace i2p::privsep
@@ -1968,6 +1970,12 @@ i2p::expected<WindowsWorkerProcess, std::string> SpawnContainedWindowsProcess (W
 	WindowsWorkerProcess worker;
 	worker.process.Reset (processInfo.hProcess);
 	worker.thread.Reset (processInfo.hThread);
+	// Closing handles cannot stop a suspended child that has not yet
+	// joined the Job. Guard allocating metadata/error paths as well.
+	auto terminateUnpublished = i2p::modern::ScopeExit ([&worker] () noexcept
+	{
+		(void)worker.TerminateAndWait (2000, ERROR_PROCESS_ABORTED);
+	});
 	worker.job = std::move (*job);
 	worker.processId = processInfo.dwProcessId;
 	worker.nonceHex = nonce;
@@ -1979,15 +1987,16 @@ i2p::expected<WindowsWorkerProcess, std::string> SpawnContainedWindowsProcess (W
 		&& !AssignProcessToJobObject (worker.job.Native (), worker.process.Native ()))
 	{
 		const std::string error = "AssignProcessToJobObject: " + Win32ErrorText (GetLastError ());
-		(void)worker.TerminateAndWait (2000, ERROR_ACCESS_DENIED);
 		return i2p::unexpected (error);
 	}
 	if (ResumeThread (worker.thread.Native ()) == static_cast<DWORD> (-1))
 	{
 		const std::string error = "ResumeThread: " + Win32ErrorText (GetLastError ());
-		(void)worker.TerminateAndWait (2000, ERROR_ACCESS_DENIED);
 		return i2p::unexpected (error);
 	}
+	// Publication moves only handles and metadata, without allocation.
+	static_assert (std::is_nothrow_move_constructible_v<WindowsWorkerProcess>);
+	terminateUnpublished.dismiss ();
 	return worker;
 }
 }

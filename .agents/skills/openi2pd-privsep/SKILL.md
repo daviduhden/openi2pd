@@ -105,6 +105,13 @@ report that limitation; do not substitute local execution. Ask for:
 
 ## Known issues and decisions
 
+- Resource-transfer review includes exceptions after child creation and
+  before containment/publication. An owning process handle alone may close
+  without terminating a suspended unassigned child. Keep a no-allocation
+  rollback guard across metadata/error construction, assignment and resume;
+  preserve the original exception and the cleanup outcome's evidence limits.
+
+
 - A retired RPC channel can still own a child awaiting lifecycle cleanup.
   Diagnostic WorkerPid reports that ownership, not readiness. Fixtures must
   pin retained identity, then verify reaping on replacement and explicit
