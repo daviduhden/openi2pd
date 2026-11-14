@@ -122,6 +122,12 @@ a TUI client.
 
 ## Known issues and decisions
 
+- Windows crash-command checking is a closed grammar. When adding bounded
+  code disassembly to the nonce-free probe, update its exact accepted line
+  and negative maintenance fixture together. Keep stack/data-dumping
+  alternatives rejected; code-only predecessor evidence is not attribution.
+
+
 - Decode Markdown as strict UTF-8 before both Unicode slug/case folding and
   link extraction. Raw punctuation bytes can become false letters; applying
   decoding on only one side still breaks non-ASCII fragments. Reject read or

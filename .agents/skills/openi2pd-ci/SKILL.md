@@ -206,6 +206,12 @@ workflow, run `gh`, build or test.
 
 ## Known issues and decisions
 
+- The nonce-free Windows loader probe may retain code disassembly around
+  its failing return alongside image/PDB identity. Avoid raw stack memory,
+  locals and command lines; predecessor instructions narrow attribution but
+  do not by themselves establish which loader initialization failed.
+
+
 - TF-109 follows the reactor-observation policy in
   [AGENTS.md](../../../AGENTS.md#ci-is-the-only-dynamic-validator).
   The UDP fixture observes m_LocalReceive replacement; the new SSU2 fixture

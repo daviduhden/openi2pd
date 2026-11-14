@@ -368,3 +368,9 @@ errors and Android API review. The Windows target probes and enables the CMake R
 compiler exists, so `Win32/Resource.rc` supplies the icon and version block. `test-boost-linkage`
 and the installed-consumer manual job exercise both Boost implementations. All
 compilation and tests for these changes remain pending manual CI.
+
+The prepared MSVC selection includes `test-ssu2-proxy-lifecycle` and
+`test-torrents-requests` in its build, CTest filter and diagnostic artifacts.
+The additional `test-ssu2-socket-lifecycle` brings the local selection from
+25 to 28 targets; the published
+`e1d1b7a6` run exercised the earlier 25-target selection only.

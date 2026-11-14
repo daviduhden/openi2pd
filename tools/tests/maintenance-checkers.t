@@ -504,10 +504,11 @@ qr/worker initialization diagnostic|unsupported crash debugger line|missing boun
             q{$probeArguments = @('-g', '-G', '-o'}
         ],
         [
-            'OPENI2PD_PROBE_TERMINATION; ln @rip; ln @$ra; kc 40',
+            'OPENI2PD_PROBE_TERMINATION; ln @rip; ln @$ra; ub @$ra L20; kc 40',
             'OPENI2PD_PROBE_TERMINATION; ln @rip; kp 40'
         ],
         [ 'NtTerminateProcess', 'ExitProcess' ],
+        [ 'ub @$ra L20; ',      '' ],
         [
             'OPENI2PD_PROBE_EXIT; .lastevent; g',
             'OPENI2PD_PROBE_EXIT; .lastevent; q'
