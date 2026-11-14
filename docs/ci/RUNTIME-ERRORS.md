@@ -5,6 +5,94 @@ and license details.
 
 # Runtime error inventory
 
+## 519c0386: executed regressions and preventive continuation
+
+The [published job matrix](TEST-FAILURES.md#published-519c0386-audit) shows
+269 selected entries passing in each Linux sanitizer and OpenSSL lane.
+TF-104/105 focused contracts and RT-091 factory controls are Validated by CI
+in their executed configurations. This does not supply allocator/provider
+fault injection or close other historical runtime families.
+
+### RT-087 continuation — MSVC still fails before authentication
+
+[Windows 43523891709](https://github.com/daviduhden/openi2pd/actions/runs/43523891709),
+MSVC job 132224735862, exact SHA
+`519c038609f92309b60bd2986d0a4bb23756a077`, builds successfully. The live
+supervisor reports worker exit 3221225794 (`0xC0000142`) before pipe
+authentication; 23 of 24 selected tests pass. CLANG64 job 132224734937 passes
+its selected suite and cannot explain the MSVC initializer.
+
+The contained nonsecret probe executes, but its debugger driver fails and
+supplies no proven child initializer stack or successful probe result. This
+is an evidence gap, not attribution to the 64 MiB Job limit or a reason to
+relax containment. Production token, Job, mitigation and authentication
+policies remain required. Subsequent local diagnostic-driver changes are
+Pending CI tests; ordinary authenticated tests remain mandatory.
+
+### RT-092 — Preserved offset omitted from I2NP copy capacity
+
+Preventive review of RT-089/091 found that CopyI2NPMessage chose its tier
+from GetLength() but then preserved the original offset. A valid backed
+source with offset 5000 and length 5001 has one byte to copy; the short
+4096-byte destination underflows maxLen - offset and admits an out-of-bounds
+write at offset 5000. Public malformed geometry could also underflow before
+copy admission. This is demonstrated source analysis, not an observed CI
+sanitizer crash or proof of remote reachability.
+
+The correction rejects null/unbacked sources and invalid offset/length/
+capacity geometry, selects a tier for the complete preserved prefix plus
+message, and bounds the destination offset before subtraction. Existing
+origin metadata and independent-buffer semantics remain. Global assignment
+review found TunnelEndpoint/SSU2 growth paths select from the full source
+length and do not share this preserved-offset underflow; their separately
+bounded fragment inputs still require their own reviews.
+
+Prepared test-signed-data-bounds controls cover tier-edge and large offsets,
+one-byte and empty messages, independent copies, origin flags, null/unbacked
+sources, reversed geometry and SIZE_MAX. Implemented / static; Pending CI
+compilation / Pending CI tests. The passing 519c0386 test predates these new
+copy controls.
+
+### RT-093 — Crypto arithmetic failure and intermediate cleansing
+
+Preventive equivalent-pattern review after GOST hardening found unchecked
+ElGamal decryption arithmetic, unchecked precomputed exponentiation outcomes
+and secret-dependent BN/point values released without explicit cleansing.
+A failed modular operation could leave partially updated state available to
+later integrity/output work. No published sanitizer report attributes these
+source findings to a CI crash.
+
+Affected code is libi2pd/Crypto.cpp: ElggPow, ElGamalEncrypt,
+ElGamalDecrypt, ElGamal key derivation and ECIES encrypt/decrypt cleanup.
+Crypto.h documents the writable output and overlapping-input contract.
+The correction checks Montgomery context creation/copy, table duplication,
+multiplication and conversion; failure retires the partial result. ElGamal
+checks arithmetic/hash outcomes and publishes plaintext only after integrity
+success, clearing its writable output on failure. Private exponents,
+shared-secret coordinates, partial derivation values and transient plaintext
+are cleansed before release. The ElGamal/ECIES wire formulas are unchanged;
+this does not establish constant-time execution or provider-internal wiping.
+
+Focused crypto-audit-bounds controls add refused-key/input/output clearing
+and overlapping input/output positive cases alongside existing generated-key
+round trips. Provider/allocator fault injection remains Pending. Implemented /
+static; Pending CI compilation / Pending CI tests for these unpublished
+changes; successful earlier GOST controls do not validate this new work.
+
+### Remaining DHT/UDP owner admission and storage scope
+
+The six DHT timer callbacks still check weak generation state before using
+a borrowed owner; checking a stopping flag does not serialize that use with
+owner destruction. UDP cleanup/stats/keepalive callbacks likewise retain raw
+owner bindings and may see successful completions already queued before
+cancellation. Full owner admission, per-wait identity and restart/teardown
+regressions are Pending; no implementation is claimed in this increment.
+DHT persistence closures retain copied state/data/save authority independently
+of the DHT object. Preserve that ownership while designing lock ordering;
+receiver reset and persistence waits must not occur under an incompatible
+owner-admission lock. Broader storage/PRIVSEP-017 boundaries remain separate.
+
+
 ## fdfb1162: runtime classification and preventive continuation
 
 Exact [run/job evidence](TEST-FAILURES.md#published-fdfb1162-audit) shows native

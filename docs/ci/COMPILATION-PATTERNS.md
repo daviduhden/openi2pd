@@ -1,5 +1,15 @@
 # Compilation diagnostic patterns and repository-wide review
 
+## Separate restored compilation from runtime and fixture outcomes
+
+At 519c0386 all reached native builds succeed, TF-104/105 regressions pass,
+and MSVC still fails before authentication. Preserve the exact run/job/SHA
+when updating status: a worker initialization code is not a compiler error,
+and one passing fixture cannot close a different historical runtime family.
+Scan successful Android and package output independently; an overall success
+can retain Lint, dependency deprecation and runner-capability diagnostics.
+
+
 ## Expected script inventories are consumers too
 
 TF-104 repeats across nine native/sanitizer/platform jobs although CMake's

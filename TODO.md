@@ -10,16 +10,18 @@ Documents project documentation.
 
 # Master TODO
 
-Latest retrospective: 455 completed runs / 72 SHAs (127 success,
-262 failure, 66 cancelled). Published fdfb1162 has five successful and five
-failed workflows. No new native compiler/linker error or own warning was
-observed; failures are TF-104 Perl inventory, TF-105 eager-reap fixture and
-RT-087 MSVC initialization. TF-104/105 corrections and RT-091 I2NP factory
-bounds are Implemented / static; Pending CI compilation / Pending CI tests.
-The contained, nonsecret MSVC initializer probe is prepared, not executed.
-Android Lint confirms zero VectorPath warnings and two remaining ABI warnings;
-174 JVM tests pass, device tests skip. Wider DHT admission, provider injection
-and PRIVSEP-017/CRY-236 gaps remain open. See docs/ci inventories.
+Latest retrospective: 465 completed runs / 73 SHAs (136 success,
+263 failure, 66 cancelled). Published 519c0386 has nine successful workflows;
+Windows MSVC still fails before worker authentication (RT-087, 0xC0000142).
+TF-104/105 corrections pass in executed lanes. No new first-party compiler
+or sanitizer diagnostic was observed in the retrieved latest-ten logs.
+RT-092 preserved-offset I2NP copying and RT-093 checked ElGamal arithmetic /
+secret cleanup are Implemented / static; Pending CI compilation / Pending
+CI tests. Windows termination tracing is being extended without weakening
+isolation. Android has 174 passing JVM tests, two ABI Lint findings and no
+device execution. DHT/UDP timer admission and provider fault injection remain
+Pending. ECIES digest/cipher return propagation is outside RT-093 and still
+requires a complete transactional-output review. See docs/ci inventories for exact revisions and evidence limits.
 
 - RT-089: published transcript/message append and alignment controls:
   Validated by CI in executed fdfb1162 lanes; RT-091 factory continuation

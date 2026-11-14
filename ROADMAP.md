@@ -15,17 +15,16 @@ requirements and current code; `TODO.md` is the authoritative task list.
 
 ## Current baseline
 
-At fdfb1162, history reaches 455 completed runs / 72 SHAs. Five latest
-workflows pass and five fail on Perl expected-inventory or deferred-child
-fixture contracts; MSVC's initializer is a separate unresolved failure.
-Published GOST/bounds controls pass in executed lanes. Android Lint removes
-twelve VectorPath findings, leaving two ABI warnings and unexecuted device
-coverage. Local inventory/fixture/factory corrections and a contained,
-nonsecret Windows initializer probe are Implemented / static; Pending CI
-compilation / Pending CI tests. No security policy is relaxed for diagnosis.
-DHT admission, provider fault injection and broader PRIVSEP-017/CRY-236
-work remain open. Current local CMake source contracts cannot run because
-cmake is unavailable; no tool installation or local builds were performed.
+At 519c0386, history reaches 465 completed runs / 73 SHAs. Nine workflows
+pass, including the executed sanitizer suites; MSVC initialization remains
+unresolved. Published Perl inventory and deferred-child fixture corrections
+pass in the executed lanes. New I2NP preserved-offset copy bounds and checked
+ElGamal failure/cleanup paths are Implemented / static; Pending CI compilation
+/ Pending CI tests. Extend contained Windows termination evidence before
+attributing the loader status. Keep DHT/UDP timer admission, provider fault
+injection, Android device execution and two ABI Lint findings open. CMake
+source contracts remain unexecuted locally because cmake is unavailable;
+no dependency installation, build or local test is authorized.
 
 The 80a487d5 retrospective reaches 362 runs on 63 SHAs. Native sanitizer,
 OpenSSL, OpenBSD and selected MSVC regressions pass; Windows MSYS2 Unicode

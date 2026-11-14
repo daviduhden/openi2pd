@@ -1,5 +1,31 @@
 # Compilation and lint warning inventory
 
+## 519c0386: native compiler review and remaining warning families
+
+Full successful and failed sibling logs show no observed first-party native
+compiler/linker warning. Scope is the exact published revision and reached
+targets in [the matrix](TEST-FAILURES.md#published-519c0386-audit). OpenSSL 3
+run 43523872446 uses GCC 16.2.0 / Clang 23.1.5, Boost 1.92.0 and OpenSSL
+3.5.9; OpenSSL 4 run 43523876608 uses the same compiler/Boost family with
+OpenSSL 4.1.0. OpenBSD 43523886074 records Clang 22.1.6 / LibreSSL 4.4.0.
+Windows 43523891709 records Clang 23.1.5 or MSVC 19.44.35230.0 and OpenSSL
+3.6.5. Passing compilation does not imply complete platform runtime coverage.
+
+Android 43523867631, job 132224656840, succeeds with Clang 21.0.0 / OpenSSL
+3.6.5. Both debug/release Lint output repeat exactly two ChromeOsAbiSupport
+warnings at build.gradle:89 and :109; VectorPath does not recur. Real x86_64
+native dependencies/build/APK coverage remain Pending. The builtInKotlin=false
+opt-out and Gradle 9.8.1 deprecation notices remain toolchain debt, not native
+compiler warnings; no suppression or Java target reduction is introduced.
+
+External autopkgtest --force-yes advice remains in packaging run 43523901724.
+Homebrew tooling reports runner Landlock ABI 8 versus required ABI 10 in
+43523872446, and MSYS advises terminating other programs during upgrade in
+43523891709. These package/runner messages remain distinct from project
+warnings and from sanitizer diagnostics. No new actual sanitizer report was
+found in the complete latest-ten logs.
+
+
 ## fdfb1162: native warning review and observed Android improvement
 
 Full latest-ten logs show no observed own native compiler/linker warning.

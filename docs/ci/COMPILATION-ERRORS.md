@@ -9,6 +9,20 @@ Tracks compile/configure/link failures reported by manual GitHub Actions.
 
 # Compilation error inventory
 
+## 519c0386: build success precedes the remaining MSVC runtime failure
+
+The [exact job matrix](TEST-FAILURES.md#published-519c0386-audit) executes
+`519c038609f92309b60bd2986d0a4bb23756a077`. Complete latest-ten logs contain
+no new observed first-party compiler or linker error. OpenSSL 3/4 GCC and
+Clang lanes, OpenBSD/LibreSSL, Android and both Windows jobs build. CE-088
+remains absent in these current-Boost executions. MSVC 132224735862 fails
+later in test-privsep-windows-supervisor (RT-087), not during compilation.
+TF-104/105 were test/maintenance contracts and now pass in executed lanes;
+retain their historical diagnostics instead of recategorizing them as
+compiler fixes. New RT-092/093 source corrections remain Pending CI
+compilation / Pending CI tests until their own revision executes.
+
+
 ## fdfb1162: test failures after successful compilation
 
 No new first-party compiler/linker error was found in complete latest-ten

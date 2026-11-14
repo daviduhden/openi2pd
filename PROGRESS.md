@@ -8258,3 +8258,40 @@ or push.
   reviewed. cmake is absent, so CMake source contracts were reviewed/prepared
   but not executed. Negative fixture drivers, native tests, builds, the new
   probe and CDB captures remain Pending CI. No commits or push were made.
+
+
+## 2026-11-14: 519c0386 retrospective and preventive continuation
+
+- Retrieved the latest ten full run logs and exact metadata; paginated history
+  now contains 465 completed runs / 73 SHAs (136 success, 263 failure,
+  66 cancelled). Nine workflows pass; Windows MSVC remains RT-087.
+- Published ASan+UBSan, UBSan and TSan each pass 269 CTests; OpenBSD passes
+  264 and Windows CLANG64 passes 253. MSVC passes 23/24 selected tests.
+  These results apply only to 519c038609f92309b60bd2986d0a4bb23756a077.
+- Exact Windows artifact image SHA-256 is
+  29ADC465E6AA3C3F253AA07F78C9EC222EE2EB127F67CDFD123875F655871DF3.
+  The contained probe reproduces 0xC0000142 without an exception marker.
+  Low memory peaks do not establish a policy cause. Add code-only native
+  termination tracing and preserve original termination; isolation unchanged.
+- RT-092 fixes destination-tier selection for preserved-offset I2NP copies;
+  regressions cover tiny/empty payloads at large offsets and invalid geometry.
+- RT-093 checks ElGamal Montgomery/fallback/digest results before publication,
+  stages decryption through integrity validation, clears failed output and
+  cleanses private-dependent BN/EC intermediates. Alias controls are prepared;
+  provider/allocator fault injection remains separate unfinished coverage.
+- Delegated native/portability, crypto/protocol, history/Android, concurrency,
+  DHT/storage and Windows IPC/diagnostic review. DHT and UDP periodic callbacks
+  still need revocable owner admission and per-wait identities; cancellation
+  alone cannot reject queued successful completions. No fix claimed there.
+- Reviewed root instructions, discovery and CI/crypto/memory Skills. Knowledge
+  updates capture preserved-offset sizing, provider-result/alias review and
+  termination versus exception evidence. They are reusable procedures, not
+  timestamps or claims of validation. No obsolete policy was reinstated.
+- Available compile-free checks: workflow/manual/privacy policy, Markdown
+  links (118 files), Doxygen parameters, Shell policy (322 sources), Android
+  vector geometry and knowledge validation pass.
+  AK004 relevance advisory was reviewed against the changed boundaries.
+  CMake is unavailable; native/CMake contracts and negative fixture suites
+  remain prepared, not executed. No local build, compiler, product test,
+  commit or push. All new code and debugger behavior remain Pending CI
+  compilation / Pending CI tests.

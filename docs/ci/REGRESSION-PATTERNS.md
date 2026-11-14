@@ -5,6 +5,26 @@ and license details.
 
 # Regression patterns
 
+## Preserved geometry, failure publication and lifetime admission
+
+- Allocation tier selection must include a preserved prefix, not just the
+  logical payload. Bound source geometry and destination offset before
+  subtraction. Test valid large offsets as well as malformed SIZE_MAX inputs;
+  a well-formed source can still exceed a smaller destination's prefix space.
+- Inspect each arithmetic intermediate through failure. Retire partial
+  precomputed results, stage plaintext until integrity success and cleanse
+  private-dependent context/point values before release. Positive round trips
+  and input refusal tests do not substitute for provider/allocator injection.
+- A failed debugger driver or a child exit code without a captured initializer
+  stack leaves attribution open. Keep nonsecret probe authority distinct from
+  normal authenticated workers, preserve required failure status and retain
+  evidence before diagnosing tokens, mitigations or memory budgets.
+- A weak generation token and stopping check are not owner admission. DHT/UDP
+  timer redesign must cover per-wait correlation and Stop/restart barriers,
+  while preserving independent disk-task ownership and reviewed lock order.
+  These lifecycle changes remain Pending, not implemented in this increment.
+
+
 ## Deferred ownership, deterministic death and diagnostic privacy
 
 - Compare a lifecycle assertion with its API ownership contract before

@@ -5,6 +5,69 @@ and license details.
 
 # Test failure inventory
 
+## Published 519c0386 audit
+
+Accessible history now contains **465 completed runs / 73 SHAs**: 136 success,
+263 failure and 66 cancelled (451 manual and 14 historical push runs).
+The latest ten execute exactly
+`519c038609f92309b60bd2986d0a4bb23756a077`: nine successful workflows and one
+Windows failure. Full logs include successful steps and sibling jobs, not
+only failed output. Historical missing logs/artifacts remain explicit gaps;
+metadata coverage is not complete diagnostic coverage.
+
+| Run | Job ID | Lane | Conclusion |
+|---|---|---|---|
+| [43523860539](https://github.com/daviduhden/openi2pd/actions/runs/43523860539) | 132224634881 | Agent and skills synchronization | success |
+| [43523867631](https://github.com/daviduhden/openi2pd/actions/runs/43523867631) | 132224656840 | Android arm64 build and unit tests | success |
+| [43523867631](https://github.com/daviduhden/openi2pd/actions/runs/43523867631) | 132224659023 | Android API 29 UI and accessibility | skipped |
+| [43523872446](https://github.com/daviduhden/openi2pd/actions/runs/43523872446) | 132224671356 | Linux (gcc, OpenSSL 3.x) | success |
+| [43523872446](https://github.com/daviduhden/openi2pd/actions/runs/43523872446) | 132224671853 | Linux (clang, OpenSSL 3.x) | success |
+| [43523876608](https://github.com/daviduhden/openi2pd/actions/runs/43523876608) | 132224684825 | Linux (gcc, OpenSSL 4.x) | success |
+| [43523876608](https://github.com/daviduhden/openi2pd/actions/runs/43523876608) | 132224685584 | Linux (clang, OpenSSL 4.x) | success |
+| [43523880819](https://github.com/daviduhden/openi2pd/actions/runs/43523880819) | 132224700470 | Install components and consumer package | success |
+| [43523880819](https://github.com/daviduhden/openi2pd/actions/runs/43523880819) | 132224700848 | I2P Java interoperability | success |
+| [43523886074](https://github.com/daviduhden/openi2pd/actions/runs/43523886074) | 132224718963 | OpenBSD 8.0 build and tests | success |
+| [43523891709](https://github.com/daviduhden/openi2pd/actions/runs/43523891709) | 132224734937 | Windows MSYS2 Clang64 build and tests | success |
+| [43523891709](https://github.com/daviduhden/openi2pd/actions/runs/43523891709) | 132224735862 | Windows MSVC build and tests | failure |
+| [43523896686](https://github.com/daviduhden/openi2pd/actions/runs/43523896686) | 132224752618 | Instrumented OpenSSL TSan diagnostic | success |
+| [43523901724](https://github.com/daviduhden/openi2pd/actions/runs/43523901724) | 132224768754 | Static musl build and package | success |
+| [43523901724](https://github.com/daviduhden/openi2pd/actions/runs/43523901724) | 132224769141 | Service contracts | success |
+| [43523901724](https://github.com/daviduhden/openi2pd/actions/runs/43523901724) | 132224769217 | Debian packages | success |
+| [43523901724](https://github.com/daviduhden/openi2pd/actions/runs/43523901724) | 132224769313 | Service component install matrix | success |
+| [43523901724](https://github.com/daviduhden/openi2pd/actions/runs/43523901724) | 132224769332 | Container image | success |
+| [43523906552](https://github.com/daviduhden/openi2pd/actions/runs/43523906552) | 132224783809 | C++ source API documentation | success |
+| [43523906552](https://github.com/daviduhden/openi2pd/actions/runs/43523906552) | 132224783979 | Bounded fuzz smoke checks | success |
+| [43523906552](https://github.com/daviduhden/openi2pd/actions/runs/43523906552) | 132224784136 | Agent Skills static contract | success |
+| [43523906552](https://github.com/daviduhden/openi2pd/actions/runs/43523906552) | 132224784232 | Sanitizers (asan-ubsan) | success |
+| [43523906552](https://github.com/daviduhden/openi2pd/actions/runs/43523906552) | 132224784315 | Sanitizers (ubsan) | success |
+| [43523906552](https://github.com/daviduhden/openi2pd/actions/runs/43523906552) | 132224784350 | Sanitizers (tsan) | success |
+| [43523906552](https://github.com/daviduhden/openi2pd/actions/runs/43523906552) | 132224785363 | Perl quality (Test::More and Perl::Critic) | skipped |
+
+All four OpenSSL compiler lanes and ASan+UBSan, UBSan and TSan pass their
+269 selected entries. TF-104's Perl inventory and TF-105's retained-child
+ownership controls now pass in the executed Linux lanes; the Perl inventory
+also passes on CLANG64 and OpenBSD. This validates those focused corrections,
+not every concurrent shutdown or allocator/provider failure. RT-091's factory
+tier/empty-input controls run through test-signed-data-bounds in these suites.
+Fifteen fuzz smoke entries and the focused instrumented OpenSSL TSan test
+pass. Source documentation, service/package and component-consumer jobs pass.
+
+Windows CLANG64 passes 253 selected entries, including perl-portability.
+MSVC builds and links, then passes 23 of 24 entries. The live supervisor
+still fails before authentication with exit 3221225794 (`0xC0000142`), RT-087.
+The contained startup diagnostic step also fails (`startup probe debugger
+failed`) and does not establish a successful probe or a child initializer
+stack. It cannot attribute the original failure to memory limits, tokens,
+mitigations or application entry. Runtime installation is skipped afterward.
+
+OpenBSD reports 264 selected entries with three skips: worker identity,
+credentials and storage-supervisor controls. Their omitted paths are not
+validated by the other tests. Android device/accessibility and optional Perl
+quality remain skipped. Android's ordinary build, JVM/Lint/Javadoc/JNI and
+APK steps pass; two ChromeOsAbiSupport Lint warnings remain independently
+tracked. New local RT-092/093 changes are not part of any listed execution.
+
+
 ## Published fdfb1162 audit
 
 History pagination reaches **455 completed runs / 72 SHAs**: 127 success,
