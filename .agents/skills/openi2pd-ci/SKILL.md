@@ -206,6 +206,12 @@ workflow, run `gh`, build or test.
 
 ## Known issues and decisions
 
+- TF-109 follows the reactor-observation policy in
+  [AGENTS.md](../../../AGENTS.md#ci-is-the-only-dynamic-validator).
+  The UDP fixture observes m_LocalReceive replacement; the new SSU2 fixture
+  observes a partial callback before supplying remaining bytes. Distinguish
+  these from polls that drain already-posted work or canceled operations.
+
 - A nearest-export loader name is not an internal initializer attribution.
   For the nonce-free startup probe, retain local PDBs first and the explicit
   Microsoft HTTPS symbol store with RUNNER_TEMP cache; preserve the original

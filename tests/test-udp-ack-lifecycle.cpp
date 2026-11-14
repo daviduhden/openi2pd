@@ -2,11 +2,12 @@
  * See the LICENSE file at the top of the project tree for copyright
  * and license details.
  *
- * Exercises ACK completion authority without a router or network.
- * Retained handlers model already queued successful timer completions.
+ * Exercises ACK and UDP read authority without a router. Socket checks
+ * use loopback only; retained handlers model queued timer completions.
  */
 
 #include <atomic>
+#include <chrono>
 #include <cassert>
 #include <functional>
 #include <memory>
@@ -98,7 +99,15 @@ struct UDPPeriodicTestAccess
 			sender.send_to (boost::asio::buffer (payload), owner.m_LocalSocket->local_endpoint ());
 		}
 		service.restart ();
-		service.poll ();
+		// poll() only dispatches work already ready at that instant. A
+		// successful send does not prove the reactor has queued its read
+		// completion, particularly with kqueue. Observe the actual handler's
+		// successor under one deadline; do not retry the socket operation.
+		const auto deadline = std::chrono::steady_clock::now () + std::chrono::seconds (5);
+		while (owner.m_LocalReceive == previous && std::chrono::steady_clock::now () < deadline)
+		{
+			if (!service.run_one_until (deadline)) break;
+		}
 		service.stop ();
 		// A real dropped packet or read error rearms once. A second request
 		// must leave that successor operation and its outputs untouched.

@@ -107,6 +107,9 @@ An empty run-level log is not evidence of retention expiry. Retrieve its job
 metadata and try each job log before classifying the evidence as unavailable.
 For a failed regression, verify that fixture inputs satisfy the production
 schema before attributing a later state-transition assertion to product code.
+For reactor read fixtures, observe the real completion before asserting its
+successor. A successful send followed by one nonblocking poll is not a
+completion barrier; wait under one absolute bound without retrying the I/O.
 A promise published before entering a lifecycle lock is not evidence that
 revocation is waiting. Witness actual admission ownership and separately
 verify post-revocation rejection; keep scheduler timing out of that claim.
