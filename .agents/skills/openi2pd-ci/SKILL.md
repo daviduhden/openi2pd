@@ -212,6 +212,15 @@ workflow, run `gh`, build or test.
   diagnostic inventories require matching source-checker updates; YAML line
   wrapping must not loosen debugger privacy or change dispatched commands.
 
+
+- A standalone tool probe must use the dependency actually resolved by its
+  build, not the first version in a shared cache. Android exports AGP's R8
+  artifact path before the Java 25 probe; keep task, report consumer and
+  artifact retention synchronized. An APK build can succeed before a stale
+  standalone D8 fails, so retain their distinct step-level evidence.
+
+
+
 - A native initialization exit can bypass exception filters. Preserve the
   probe's original termination and collect code-only termination context
   separately from exception context. Keep child-following restricted to the

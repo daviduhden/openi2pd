@@ -656,6 +656,24 @@ for my $job ( sort keys %android_native ) {
     }
 }
 
+# The Java 25 probe must consume the same R8 dependency as AGP.
+if ( exists $texts{'build-android.yml'} ) {
+    my ($probe) = $texts{'build-android.yml'} =~
+      /      - name: Probe Java 25 D8\/R8 dexing\n(.*?)(?=      - name:|\z)/s;
+    for my $required (
+        '(cd android && ./gradlew --no-daemon writeJava25R8Classpath)',
+        'R8_JAR=$(cat android/build/reports/java25/r8-classpath.txt)',
+        'test -f "$R8_JAR"'
+      )
+    {
+        push @errors, 'build-android.yml: Java 25 probe lacks AGP-resolved R8'
+          if !defined($probe) || index( $probe, $required ) < 0;
+    }
+    push @errors,
+      'build-android.yml: Java 25 probe must not scan caches or SDKs'
+      if defined($probe) && $probe =~ /\bfind\s/;
+}
+
 # Crash evidence must not collect process memory or argument values.
 # Keep the opt-in debugger command file to this code-location allowlist.
 push @errors, windows_crash_command_errors( $texts{'build-windows.yml'} )

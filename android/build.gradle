@@ -40,3 +40,28 @@ allprojects {
 tasks.register('clean', Delete) {
     delete rootProject.layout.buildDirectory
 }
+
+// Report the R8 artifact actually selected by AGP. Cache traversal can
+// select an older SDK/Gradle artifact that cannot read Java 25 classes.
+// Capture the resolved file collection without reading Project at task
+// execution, so this report also works with the configuration cache.
+def java25R8Artifacts = buildscript.configurations.classpath.incoming.artifactView {
+    componentFilter { component ->
+        component instanceof org.gradle.api.artifacts.component.ModuleComponentIdentifier &&
+                component.module == 'r8'
+    }
+}.files
+def java25R8Report = layout.buildDirectory.file('reports/java25/r8-classpath.txt')
+tasks.register('writeJava25R8Classpath') {
+    inputs.files(java25R8Artifacts)
+    outputs.file(java25R8Report)
+    doLast {
+        def artifacts = java25R8Artifacts.files
+        if (artifacts.size() != 1) {
+            throw new GradleException('Expected exactly one AGP-resolved R8 artifact')
+        }
+        def report = java25R8Report.get().asFile
+        report.parentFile.mkdirs()
+        report.setText(artifacts.iterator().next().absolutePath + '\n', 'UTF-8')
+    }
+}

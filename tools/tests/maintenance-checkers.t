@@ -337,6 +337,24 @@ sub workflow_crash_fixtures {
         );
     }
     write_file( $android, $android_source );
+    for my $boundary (
+        [ 'writeJava25R8Classpath', 'missingR8ReportTask' ],
+        [
+            'R8_JAR=$(cat android/build/reports/java25/r8-classpath.txt)',
+            'R8_JAR=$(find "$HOME/.gradle" -name "r8*.jar" -print -quit)'
+        ]
+      )
+    {
+        my ( $before, $after ) = @{$boundary};
+        my $candidate = $android_source;
+        ok( $candidate =~ s/\Q$before\E/$after/,
+            'R8 fixture changes the actual probe dependency' );
+        write_file( $android, $candidate );
+        ( $code, $out ) = run_checker($checker);
+        is( $code, 1, 'probe refuses arbitrary cached R8 selection' );
+        like( $out, qr/Java 25 probe/, 'R8 resolution boundary is diagnosed' );
+    }
+    write_file( $android, $android_source );
     my $missing_main = $android_source;
     ok(
         $missing_main =~ s/^[ ]{2}android:/  android-renamed:/mx,

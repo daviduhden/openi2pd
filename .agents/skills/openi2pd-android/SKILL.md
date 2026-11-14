@@ -126,6 +126,14 @@ run Gradle, install an APK or run a device test.
   Review records, pattern switches and text blocks for preserved tokens and
   literals, and run a full Java formatter dry-run after any manual correction.
 
+
+- The Java 25 standalone probe consumes writeJava25R8Classpath's singleton
+  report from the resolved root AGP classpath. Search order in Gradle caches
+  or SDK build-tools is not dependency provenance. A major-69 refusal by an
+  older standalone R8 does not establish that AGP app dexing failed; inspect
+  both steps and keep later skipped JNI/DEX checks pending.
+
+
 - Derived branding vectors use exact hundredth-coordinate relative paths
   to stay below the reviewed 3000-character Lint limit. Run the read-only
   `android/tools/compact-vector-paths.pl` geometry/literal checker; its

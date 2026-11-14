@@ -244,6 +244,14 @@ not added to the APK. It exercises:
 
 All features are final in Java 25. No preview flag is used.
 
+The manual CI probe obtains its R8 JAR from AGP's resolved root buildscript
+classpath. From `android/`, run `./gradlew --no-daemon writeJava25R8Classpath`;
+read the single path in `build/reports/java25/r8-classpath.txt`. Zero or
+multiple R8 artifacts are an error. Do not substitute the first cached JAR
+or an SDK build-tools D8: either can belong to an older toolchain and reject
+major 69 even after the app's own dexing succeeds. The report is retained in
+CI alongside the probe evidence. This resolver change is pending CI.
+
 Exact command:
 
 ```sh

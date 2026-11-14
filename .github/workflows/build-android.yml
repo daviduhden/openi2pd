@@ -234,27 +234,13 @@ jobs:
           fi
       - name: Probe Java 25 D8/R8 dexing
         run: |
-          # assembleDebug above invokes AGP's D8 and resolves the exact
-          # R8 artifact selected by AGP 9.4.1. Unit tests and lint alone
-          # do not necessarily resolve it, so discover it only after app
-          # dexing.
-          # AGP may publish R8 under com.android.tools or
-          # com.android.tools.build; search the whole Gradle user home rather
-          # than one Maven group. Fall back to the SDK build-tools D8/R8 jar
-          # when the dependency cache was restored without the artifact.
-          R8_JAR=$(find "$HOME/.gradle" -type f \( -name 'r8-*.jar' -o -name 'r8.jar' \) \
-            ! -name '*-sources.jar' ! -name '*-javadoc.jar' -print -quit 2>/dev/null || true)
-          if [ -z "$R8_JAR" ]; then
-            sdk_root="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"
-            if [ -n "$sdk_root" ]; then
-              R8_JAR=$(find "$sdk_root/build-tools" -type f \( -name 'r8*.jar' -o -name 'd8.jar' \) -print -quit 2>/dev/null || true)
-            fi
-          fi
-          if [ -z "$R8_JAR" ]; then
-            echo "AGP-resolved R8 jar not found in the Gradle cache after assembleDebug" >&2
-            find "$HOME/.gradle" -type f -name 'r8*.jar' -print 2>/dev/null | head -20 >&2 || true
-            exit 1
-          fi
+          # Use AGP's resolved dependency, never an unrelated cached R8.
+          (cd android && ./gradlew --no-daemon writeJava25R8Classpath)
+          R8_JAR=$(cat android/build/reports/java25/r8-classpath.txt)
+          test -f "$R8_JAR"
+          "$JAVA_HOME/bin/java" -cp "$R8_JAR" com.android.tools.r8.D8 --version \
+            > android/build/reports/java25/r8-version.txt
+          cat android/build/reports/java25/r8-version.txt
           test -f "$ANDROID_JAR"
           ANDROID_JAR="$ANDROID_JAR" R8_JAR="$R8_JAR" \
             sh android/tools/java25-probe/verify-java25.sh
@@ -304,6 +290,7 @@ jobs:
           name: android-arm64-reports
           path: |
             android/app/build/reports
+            android/build/reports/java25
             android/app/build/test-results
             android-apk-artifacts
             android/**/build/outputs/apk

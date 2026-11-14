@@ -114,6 +114,15 @@ grep -Fq 'android.builtInKotlin=false' "$properties" ||
 	fail 'built-in Kotlin workaround is missing (Java 25 jvmTarget would fail task creation)'
 grep -Fq -- '--min-api 29' "$root/android/tools/java25-probe/verify-java25.sh" ||
 	fail 'Java 25 D8/R8 probe does not match minSdk 29'
+# Standalone dexing must use AGP's resolved artifact, never cache order.
+grep -Fq "tasks.register('writeJava25R8Classpath')" "$root_gradle" ||
+	fail 'AGP R8 provenance task is missing'
+grep -Fq 'buildscript.configurations.classpath.incoming.artifactView' "$root_gradle" ||
+	fail 'R8 report does not inspect the resolved AGP classpath'
+grep -Fq "component.module == 'r8'" "$root_gradle" ||
+	fail 'R8 artifact selection is not component-scoped'
+grep -Fq 'artifacts.size() != 1' "$root_gradle" ||
+	fail 'R8 artifact selection does not reject ambiguity'
 
 # The graceful-stop deadline must be owned by RouterService and enqueued
 # on its worker; a java.util.Timer would call JNI from a timer thread.
