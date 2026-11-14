@@ -107,6 +107,14 @@ Do not let reconnaissance agents edit, compile, execute tests or run scripts.
 
 ## Known issues and decisions
 
+- Timer-generation state alone does not retain a uniquely owned service.
+  Revoke borrowed-owner admission through the same mutex callbacks use,
+  then cancel outside that gate. Per-wait identity rejects queued successful
+  completions after rearm; release admission before receiver-reset or disk
+  drain barriers to avoid teardown lock inversion. Review disk-task ownership
+  separately rather than removing its retained state to break a timer cycle.
+
+
 - A copy that preserves a source offset must size its destination for the
   complete occupied extent, not just payload length. Validate backed source
   geometry and destination offset before subtraction. Exercise tiny payloads

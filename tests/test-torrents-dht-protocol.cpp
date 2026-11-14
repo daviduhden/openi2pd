@@ -13,6 +13,9 @@
  */
 
 #include <array>
+#include <atomic>
+#include <future>
+#include <thread>
 #include <cassert>
 #include <cstdint>
 #include <cstring>
@@ -36,7 +39,15 @@ struct DHTLifecycleTestAccess
 {
 	static void QueueSave (TorrentsDHT & dht)
 	{
+		std::lock_guard admission (dht.m_ServiceState->ownerMutex);
 		dht.HandleDHTStateSaveTimer (boost::system::error_code { });
+	}
+	using Action = std::function<void (TorrentsDHT &, const boost::system::error_code &)>;
+	using Callback = std::function<void (const boost::system::error_code &)>;
+	static Callback Timer (TorrentsDHT & dht, DHTTimerSlot slot, Action action)
+	{
+		std::lock_guard admission (dht.m_ServiceState->ownerMutex);
+		return dht.MakeTimerCallbackLocked (slot, std::move (action));
 	}
 	static std::shared_ptr<DHTServiceState> State (const TorrentsDHT & dht)
 	{
@@ -711,6 +722,99 @@ void TestPersistenceGeneration ()
 	dht.Stop ();
 	assert (writes.size () == 3);
 }
+// Drive the production callback factory without running its executor.
+void TestTimerOwnerAdmission ()
+{
+	boost::asio::io_context service;
+	auto keys = i2p::data::PrivateKeys::CreateRandomKeys (
+		i2p::data::SIGNING_KEY_TYPE_EDDSA_SHA512_ED25519,
+		i2p::data::CRYPTO_KEY_TYPE_ECIES_X25519_AEAD, true);
+	auto destination = std::make_shared<i2p::client::ClientDestination> (
+		service, keys, false);
+	TorrentsTunnel tunnel ("dht-admission-test", destination,
+		"/unused-authority", std::string_view { }, false);
+	auto dht = std::make_unique<TorrentsDHT> (tunnel, 1234, "admission.dht");
+	assert (dht->IsInitialized ());
+	dht->SetPersistence (
+		[] (const std::filesystem::path &, std::vector<uint8_t> &, std::string &)
+			{ return false; },
+		[] (const std::filesystem::path &, std::span<const uint8_t>, std::string &)
+			{ return true; });
+	dht->Start ();
+	size_t calls = 0;
+	auto action = [&calls] (TorrentsDHT &, const boost::system::error_code &)
+		{ ++calls; };
+	for (size_t index = 0; index < static_cast<size_t> (DHTTimerSlot::Count); ++index)
+	{
+		const auto slot = static_cast<DHTTimerSlot> (index);
+		auto old = DHTLifecycleTestAccess::Timer (*dht, slot, action);
+		auto current = DHTLifecycleTestAccess::Timer (*dht, slot, action);
+		const size_t previousCalls = calls;
+		old (boost::system::error_code { });
+		old (boost::asio::error::operation_aborted);
+		assert (calls == previousCalls);
+		current (boost::system::error_code { });
+		assert (calls == previousCalls + 1);
+		current (boost::system::error_code { });
+		assert (calls == previousCalls + 1);
+		auto cancelled = DHTLifecycleTestAccess::Timer (*dht, slot, action);
+		cancelled (boost::asio::error::operation_aborted);
+		cancelled (boost::system::error_code { });
+		assert (calls == previousCalls + 1);
+	}
+
+	auto stale = DHTLifecycleTestAccess::Timer (*dht, DHTTimerSlot::StateSave, action);
+	auto retired = DHTLifecycleTestAccess::State (*dht);
+	dht->Stop ();
+	assert (retired->stopping.load () && !retired->owner);
+	dht->Start ();
+	assert (DHTLifecycleTestAccess::State (*dht) != retired);
+	const size_t beforeRestart = calls;
+	stale (boost::system::error_code { });
+	assert (calls == beforeRestart);
+	auto fresh = DHTLifecycleTestAccess::Timer (*dht, DHTTimerSlot::StateSave, action);
+	fresh (boost::system::error_code { });
+	assert (calls == beforeRestart + 1);
+
+	// Stop publishes revocation while a real callback holds admission.
+	// Join borrowing threads before assertions or destruction.
+	std::promise<void> entered, release;
+	auto released = release.get_future ().share ();
+	auto blocked = DHTLifecycleTestAccess::Timer (*dht, DHTTimerSlot::IncomingDrain,
+		[&entered, released] (TorrentsDHT &, const boost::system::error_code &)
+		{
+			entered.set_value ();
+			released.wait ();
+		});
+	auto blockedState = DHTLifecycleTestAccess::State (*dht);
+	std::thread admitted ([blocked] { blocked (boost::system::error_code { }); });
+	entered.get_future ().wait ();
+	std::atomic<bool> stopped { false };
+	std::thread stopping ([&] { dht->Stop (); stopped.store (true); });
+	blockedState->stopping.wait (false);
+	const bool stoppedBeforeRelease = stopped.load ();
+	release.set_value ();
+	admitted.join ();
+	stopping.join ();
+	assert (!stoppedBeforeRelease && stopped.load ());
+	assert (!blockedState->owner);
+	assert (!dht->GetTimerCancellationError ());
+
+	// Queued handlers retain no owner or generation when the service is
+	// never drained. A separately retained retired state is also safe.
+	dht->Start ();
+	auto retained = DHTLifecycleTestAccess::State (*dht);
+	auto orphan = DHTLifecycleTestAccess::Timer (*dht, DHTTimerSlot::Update, action);
+	const size_t beforeDestruction = calls;
+	dht.reset ();
+	assert (retained->stopping.load () && !retained->owner);
+	orphan (boost::system::error_code { });
+	assert (calls == beforeDestruction);
+	std::weak_ptr<DHTServiceState> weak = retained;
+	retained.reset ();
+	assert (weak.expired ());
+}
+
 } // namespace
 
 int main ()
@@ -729,6 +833,7 @@ int main ()
 	TestPortSafety ();
 	TestStateRecords ();
 	TestPersistenceGeneration ();
+	TestTimerOwnerAdmission ();
 	return 0;
 }
 

@@ -116,6 +116,14 @@ Do not let them edit, build or run tests.
 
 ## Known issues and decisions
 
+- DHT timers borrow their owner through revocable generation admission and
+  per-wait identity. Review every arm, Stop/restart and final destruction,
+  including already-successful completions. Receiver reset and persistence
+  waits occur after owner admission is revoked and unlocked. Disk work keeps
+  its independent copied state/data/save authority; timer retirement does
+  not imply cancellation or rollback of an admitted storage operation.
+
+
 - Metadata RPC budgets begin after serialized client admission. Pass the
   outer deadline through cleanup as well as chunks; final commit failure
   can leave publication uncertain. A closed channel revokes client authority

@@ -985,3 +985,18 @@ require_runtime_order("libi2pd/Crypto.cpp"
   "memcpy (data, m + 33, 222);")
 require_runtime_source("tests/test-crypto-audit-bounds.cpp"
   "TestECIESIntegrityPublication ();")
+
+# Weak state is correlation; owner admission must serialize actual use.
+require_runtime_order("libi2pd_client/TorrentsDHT.cpp"
+  "TorrentsDHT::TimerCallback TorrentsDHT::MakeTimerCallbackLocked ("
+  "void TorrentsDHT::ScheduleTimerLocked ("
+  "std::weak_ptr<DHTServiceState> guard = m_ServiceState;"
+  "std::lock_guard admission (state->ownerMutex);"
+  "|| !state->owner || state->waits[index] != wait) return;"
+  "state->waits[index].reset ();" "action (*state->owner, error);")
+require_runtime_order("libi2pd_client/TorrentsDHT.cpp"
+  "TorrentsDHT::~TorrentsDHT ()" "void TorrentsDHT::Start ()"
+  "RetireServiceState ();" "m_DatagramReceiver.Reset ();"
+  "std::lock_guard persistence (m_ServiceState->persistenceMutex);")
+require_runtime_source("tests/test-torrents-dht-protocol.cpp"
+  "TestTimerOwnerAdmission ();")

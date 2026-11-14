@@ -19,6 +19,8 @@
 #include <vector>
 #include <fstream>
 #include <iterator>
+#include <initializer_list>
+#include <boost/system/system_error.hpp>
 #include <limits>
 #include <utility>
 #include "I2PEndian.h"
@@ -664,24 +666,48 @@ namespace torrents
 			m_NodeID.fill (0);
 	}
 
+	void TorrentsDHT::RetireServiceState ()
+	{
+		auto state = m_ServiceState;
+		state->stopping.store (true, std::memory_order_release);
+		state->stopping.notify_all ();
+		{
+			std::lock_guard admission (state->ownerMutex);
+			state->owner = nullptr;
+			state->waits.fill (nullptr);
+		}
+		// Drained admission prevents callback access to these timers.
+		// Lifecycle serializes Start; cancellation runs unlocked.
+		// Revocation also covers queued successful completions.
+		// Keep cancellation errors without replacing another exception.
+		for (auto timer : { &m_DHTUpdateCheckTimer, &m_DHTExpirationCheckTimer,
+			&m_DHTSendPingCheckTimer, &m_DHTQueryExpirationCheckTimer,
+			&m_DHTIncomingDrainTimer, &m_DHTStateSaveTimer })
+		{
+			try { timer->cancel (); }
+			catch (const boost::system::system_error & error)
+			{
+				std::lock_guard admission (state->ownerMutex);
+				state->timerCancellationError = error.code ();
+			}
+		}
+	}
+
+	boost::system::error_code TorrentsDHT::GetTimerCancellationError () const
+	{
+		std::lock_guard admission (m_ServiceState->ownerMutex);
+		return m_ServiceState->timerCancellationError;
+	}
+
 	TorrentsDHT::~TorrentsDHT ()
 	{
-		// Revoke shared state before cancellation and disk retirement.
-		// Timer owner admission still relies on service-thread shutdown
-		// serialization; the stopping flag is not a lifetime barrier.
-		m_ServiceState->stopping.store (true, std::memory_order_release);
-		// A disk task captures its callable, but destruction must still
-		// wait until any write admitted by this generation has returned.
-		std::lock_guard<std::mutex> persistence (m_ServiceState->persistenceMutex);
-		m_DHTUpdateCheckTimer.cancel ();
-		m_DHTExpirationCheckTimer.cancel ();
-		m_DHTSendPingCheckTimer.cancel ();
-		m_DHTQueryExpirationCheckTimer.cancel ();
-		m_DHTIncomingDrainTimer.cancel ();
-		m_DHTStateSaveTimer.cancel ();
+		RetireServiceState ();
+		// Receiver retirement and disk waits run outside ownerMutex.
+		// Disk tasks never borrow this owner.
 		m_DatagramReceiver.Reset ();
+		std::lock_guard persistence (m_ServiceState->persistenceMutex);
 		{
-			std::lock_guard<std::mutex> lock (m_IncomingMutex);
+			std::lock_guard lock (m_IncomingMutex);
 			m_Incoming.clear ();
 		}
 	}
@@ -690,7 +716,8 @@ namespace torrents
 	{
 		if (!IsInitialized ()) return;
 		auto nextState = std::make_shared<DHTServiceState> ();
-		m_ServiceState->stopping.store (true, std::memory_order_release);
+		RetireServiceState ();
+		nextState->timerCancellationError = GetTimerCancellationError ();
 		{
 			// Do not load state while an old periodic writer can replace it.
 			std::lock_guard<std::mutex> persistence (m_ServiceState->persistenceMutex);
@@ -701,6 +728,15 @@ namespace torrents
 			m_Incoming.clear ();
 		}
 		m_ServiceState = std::move (nextState);
+		std::lock_guard admission (m_ServiceState->ownerMutex);
+		m_ServiceState->owner = this;
+		auto revokeFailedStart = i2p::modern::ScopeExit ([state = m_ServiceState]
+		{
+			state->stopping.store (true, std::memory_order_release);
+			state->stopping.notify_all ();
+			state->owner = nullptr;
+			state->waits.fill (nullptr);
+		});
 		auto dest = m_Tunnel.GetLocalDestination ();
 		if (dest && m_DHTFileName.empty ()) m_DHTFileName = dest->GetIdentHash ().ToBase32 () + ".dht";
 		if (m_DHTFileName.empty ()) m_DHTFileName = "nodest.dht";
@@ -717,7 +753,6 @@ namespace torrents
 			auto dgramDest = dest->GetDatagramDestination ();
 			if (dgramDest)
 			{
-				m_DatagramReceiver.Reset ();
 				// The receiver runs on the inbound network thread. It only copies
 				// the frame into the bounded hand-off queue; every routing, query
 				// and torrent mutation happens in DrainIncomingDatagrams() on the
@@ -725,11 +760,14 @@ namespace torrents
 				// teardown fail closed.
 				auto state = m_ServiceState;
 				m_DatagramReceiver = dgramDest->SetReceiver (
-					[this, state] (const i2p::data::IdentityEx & from, uint16_t fromPort, uint16_t toPort,
+					[state] (const i2p::data::IdentityEx & from, uint16_t fromPort, uint16_t toPort,
 						const uint8_t * buf, size_t len, const i2p::util::Mapping * options)
 					{
-						if (state->stopping.load (std::memory_order_acquire)) return;
-						EnqueueIncomingDatagram (from, fromPort, toPort, buf, len, options);
+						std::lock_guard admission (state->ownerMutex);
+						if (state->stopping.load (std::memory_order_acquire)
+							|| !state->owner) return;
+						state->owner->EnqueueIncomingDatagram (
+							from, fromPort, toPort, buf, len, options);
 					});
 			}
 		}
@@ -739,17 +777,12 @@ namespace torrents
 		ScheduleDHTQueryExpirationCheck ();
 		ScheduleDHTIncomingDrain ();
 		ScheduleDHTStateSave ();
+		revokeFailedStart.dismiss ();
 	}
 
 	void TorrentsDHT::Stop ()
 	{
-		m_ServiceState->stopping.store (true, std::memory_order_release);
-		m_DHTUpdateCheckTimer.cancel ();
-		m_DHTExpirationCheckTimer.cancel ();
-		m_DHTSendPingCheckTimer.cancel ();
-		m_DHTQueryExpirationCheckTimer.cancel ();
-		m_DHTIncomingDrainTimer.cancel ();
-		m_DHTStateSaveTimer.cancel ();
+		RetireServiceState ();
 		// Reset waits for any callback already dispatched before this owner
 		// can be destroyed, and its token cannot remove a newer registration.
 		m_DatagramReceiver.Reset ();
@@ -1919,18 +1952,52 @@ namespace torrents
 		m_HeardFrom.emplace (nodeID, i2p::util::GetMonotonicSeconds ());
 	}
 
+	TorrentsDHT::TimerCallback TorrentsDHT::MakeTimerCallbackLocked (
+		DHTTimerSlot slot, TimerAction action)
+	{
+		const size_t index = static_cast<size_t> (slot);
+		auto wait = std::make_shared<const uint8_t> (0);
+		std::weak_ptr<DHTServiceState> guard = m_ServiceState;
+		TimerCallback callback = [guard, index, wait, action = std::move (action)] (
+			const boost::system::error_code & error)
+		{
+			auto state = guard.lock ();
+			if (!state) return;
+			std::lock_guard admission (state->ownerMutex);
+			if (state->stopping.load (std::memory_order_acquire)
+				|| !state->owner || state->waits[index] != wait) return;
+			state->waits[index].reset ();
+			if (error) return;
+			action (*state->owner, error);
+		};
+		m_ServiceState->waits[index] = std::move (wait);
+		return callback;
+	}
+
+	void TorrentsDHT::ScheduleTimerLocked (boost::asio::steady_timer & timer,
+		std::chrono::milliseconds delay, DHTTimerSlot slot, TimerAction action)
+	{
+		if (m_ServiceState->stopping.load (std::memory_order_acquire)) return;
+		const size_t index = static_cast<size_t> (slot);
+		m_ServiceState->waits[index].reset ();
+		try
+		{
+			timer.expires_after (delay);
+			timer.async_wait (MakeTimerCallbackLocked (slot, std::move (action)));
+		}
+		catch (...)
+		{
+			m_ServiceState->waits[index].reset ();
+			throw;
+		}
+	}
+
 	void TorrentsDHT::ScheduleDHTUpdateCheck ()
 	{
-		m_DHTUpdateCheckTimer.cancel ();
-		m_DHTUpdateCheckTimer.expires_after (std::chrono::seconds (DHT_UPDATE_CHECK_INTERVAL));
-		std::weak_ptr<DHTServiceState> guard = m_ServiceState;
-		m_DHTUpdateCheckTimer.async_wait (
-			[this, guard] (const boost::system::error_code & ecode)
+		ScheduleTimerLocked (m_DHTUpdateCheckTimer, std::chrono::seconds (DHT_UPDATE_CHECK_INTERVAL),
+			DHTTimerSlot::Update, [] (TorrentsDHT & owner, const boost::system::error_code & error)
 			{
-				const auto state = guard.lock ();
-				if (!state || state->stopping.load (std::memory_order_acquire)
-					|| ecode == boost::asio::error::operation_aborted) return;
-				HandleDHTUpdateCheckTimer (ecode);
+				owner.HandleDHTUpdateCheckTimer (error);
 			});
 	}
 
@@ -1953,16 +2020,10 @@ namespace torrents
 
 	void TorrentsDHT::ScheduleDHTExpirationCheck ()
 	{
-		m_DHTExpirationCheckTimer.cancel ();
-		m_DHTExpirationCheckTimer.expires_after (std::chrono::seconds (DHT_EXPIRATION_CHECK_INTERVAL));
-		std::weak_ptr<DHTServiceState> guard = m_ServiceState;
-		m_DHTExpirationCheckTimer.async_wait (
-			[this, guard] (const boost::system::error_code & ecode)
+		ScheduleTimerLocked (m_DHTExpirationCheckTimer, std::chrono::seconds (DHT_EXPIRATION_CHECK_INTERVAL),
+			DHTTimerSlot::Expiration, [] (TorrentsDHT & owner, const boost::system::error_code & error)
 			{
-				const auto state = guard.lock ();
-				if (!state || state->stopping.load (std::memory_order_acquire)
-					|| ecode == boost::asio::error::operation_aborted) return;
-				HandleDHTExpirationCheckTimer (ecode);
+				owner.HandleDHTExpirationCheckTimer (error);
 			});
 	}
 
@@ -2020,16 +2081,10 @@ namespace torrents
 
 	void TorrentsDHT::ScheduleDHTSendPingCheck ()
 	{
-		m_DHTSendPingCheckTimer.cancel ();
-		m_DHTSendPingCheckTimer.expires_after (std::chrono::seconds (DHT_SEND_PING_CHECK_INTERVAL));
-		std::weak_ptr<DHTServiceState> guard = m_ServiceState;
-		m_DHTSendPingCheckTimer.async_wait (
-			[this, guard] (const boost::system::error_code & ecode)
+		ScheduleTimerLocked (m_DHTSendPingCheckTimer, std::chrono::seconds (DHT_SEND_PING_CHECK_INTERVAL),
+			DHTTimerSlot::SendPing, [] (TorrentsDHT & owner, const boost::system::error_code & error)
 			{
-				const auto state = guard.lock ();
-				if (!state || state->stopping.load (std::memory_order_acquire)
-					|| ecode == boost::asio::error::operation_aborted) return;
-				HandleDHTSendPingCheckTimer (ecode);
+				owner.HandleDHTSendPingCheckTimer (error);
 			});
 	}
 
@@ -2049,16 +2104,10 @@ namespace torrents
 
 	void TorrentsDHT::ScheduleDHTQueryExpirationCheck ()
 	{
-		m_DHTQueryExpirationCheckTimer.cancel ();
-		m_DHTQueryExpirationCheckTimer.expires_after (std::chrono::seconds (DHT_QUERY_EXPIRATION_CHECK_INTERVAL));
-		std::weak_ptr<DHTServiceState> guard = m_ServiceState;
-		m_DHTQueryExpirationCheckTimer.async_wait (
-			[this, guard] (const boost::system::error_code & ecode)
+		ScheduleTimerLocked (m_DHTQueryExpirationCheckTimer, std::chrono::seconds (DHT_QUERY_EXPIRATION_CHECK_INTERVAL),
+			DHTTimerSlot::QueryExpiration, [] (TorrentsDHT & owner, const boost::system::error_code & error)
 			{
-				const auto state = guard.lock ();
-				if (!state || state->stopping.load (std::memory_order_acquire)
-					|| ecode == boost::asio::error::operation_aborted) return;
-				DHTQueryExpirationCheckTimer (ecode);
+				owner.DHTQueryExpirationCheckTimer (error);
 			});
 	}
 
@@ -2166,37 +2215,20 @@ namespace torrents
 
 	void TorrentsDHT::ScheduleDHTIncomingDrain ()
 	{
-		m_DHTIncomingDrainTimer.cancel ();
-		m_DHTIncomingDrainTimer.expires_after (std::chrono::milliseconds (DHT_INCOMING_DRAIN_INTERVAL));
-		std::weak_ptr<DHTServiceState> guard = m_ServiceState;
-		m_DHTIncomingDrainTimer.async_wait (
-			[this, guard] (const boost::system::error_code & ecode)
+		ScheduleTimerLocked (m_DHTIncomingDrainTimer, std::chrono::milliseconds (DHT_INCOMING_DRAIN_INTERVAL),
+			DHTTimerSlot::IncomingDrain, [] (TorrentsDHT & owner, const boost::system::error_code &)
 			{
-				// Reject observed stale generations. This check cannot
-				// serialize owner use against destruction; the separate
-				// owner-admission gap remains tracked.
-				const auto state = guard.lock ();
-				if (!state || state->stopping.load (std::memory_order_acquire)
-					|| ecode == boost::asio::error::operation_aborted)
-					return;
-				DrainIncomingDatagrams ();
-				ScheduleDHTIncomingDrain ();
+				owner.DrainIncomingDatagrams ();
+				owner.ScheduleDHTIncomingDrain ();
 			});
 	}
 
 	void TorrentsDHT::ScheduleDHTStateSave ()
 	{
-		m_DHTStateSaveTimer.cancel ();
-		m_DHTStateSaveTimer.expires_after (std::chrono::seconds (DHT_STATE_SAVE_INTERVAL));
-		std::weak_ptr<DHTServiceState> guard = m_ServiceState;
-		m_DHTStateSaveTimer.async_wait (
-			[this, guard] (const boost::system::error_code & ecode)
+		ScheduleTimerLocked (m_DHTStateSaveTimer, std::chrono::seconds (DHT_STATE_SAVE_INTERVAL),
+			DHTTimerSlot::StateSave, [] (TorrentsDHT & owner, const boost::system::error_code & error)
 			{
-				const auto state = guard.lock ();
-				if (!state || state->stopping.load (std::memory_order_acquire)
-					|| ecode == boost::asio::error::operation_aborted)
-					return;
-				HandleDHTStateSaveTimer (ecode);
+				owner.HandleDHTStateSaveTimer (error);
 			});
 	}
 

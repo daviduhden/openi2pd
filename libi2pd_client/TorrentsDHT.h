@@ -27,6 +27,7 @@
 #include <random>
 #include <array>
 #include <atomic>
+#include <chrono>
 #include <deque>
 #include <list>
 #include <map>
@@ -575,17 +576,25 @@ namespace torrents
 	};
 
 	class TorrentsTunnel;
-	// Shared between the DHT service thread, its timers and the disk
-	// domain. Timers enter the DHT only after locking a live weak guard
-	// with `stopping` false; receiver registrations retain the revocable
-	// state and disk tasks retain it without borrowing the DHT object.
-	// Start() creates a fresh state rather than reviving a stopped
-	// generation. The persistence barrier orders an in-flight periodic write
-	// before Stop()'s final snapshot; queued writes recheck after acquiring it.
+	class TorrentsDHT;
+	enum class DHTTimerSlot : size_t
+	{
+		Update, Expiration, SendPing, QueryExpiration, IncomingDrain,
+		StateSave, Count
+	};
+	// A generation borrows its owner only while ownerMutex is held.
+	// Timers carry weak state and per-wait identities, never the owner.
+	// Revoke before receiver reset or persistence waits. Disk tasks
+	// retain state/data/save authority without borrowing the DHT owner.
 	struct DHTServiceState
 	{
 		std::atomic<bool> stopping { false };
 		std::atomic<bool> saveInFlight { false };
+		std::mutex ownerMutex;
+		TorrentsDHT * owner = nullptr;
+		std::array<std::shared_ptr<const uint8_t>,
+			static_cast<size_t> (DHTTimerSlot::Count)> waits;
+		boost::system::error_code timerCancellationError;
 		std::mutex persistenceMutex;
 	};
 
@@ -623,18 +632,23 @@ namespace torrents
 		static bool IsValidStateFileName (std::string_view name);
 		/// Load persisted routing state, publish the datagram receivers (when
 		/// the destination provides a datagram endpoint) and arm the DHT
-		/// timers. Lifecycle operations and timer handlers are serialized on
-		/// the tunnel service, or run while that service is quiescent.
+		/// timers. Start and protocol mutations run on the service,
+		/// or while it is quiescent. Lifecycle calls must not
+		/// synchronously reenter from an admitted callback.
 		/// Loading may be delegated; an enabled-but-failing delegate
 		/// must not substitute a parent filesystem read.
 		void Start ();
 		/// Publish the stopping flag before cancelling timers or resetting
 		/// the receivers, discard frames queued by the stopped generation and
-		/// wait for an admitted periodic write before saving the final
-		/// snapshot. Old callbacks stay revoked across restart; queued frames
+		/// drain owner callbacks and disk writes before the final save.
+		/// Old callbacks stay revoked across restart; queued frames
 		/// never enter a later Start(). The persistence barrier may wait for
 		/// the bounded delegated storage operation during orderly shutdown.
 		void Stop ();
+		/// Last timer cancellation failure retained without allocating.
+		/// Query outside callbacks, on the service or while quiescent.
+		/// A subsequent Start() retains this diagnostic.
+		boost::system::error_code GetTimerCancellationError () const;
 
 		// Both are always in 1..65535: 65535 is refused at construction and
 		// on state load so the raw repliable port can never wrap to 0.
@@ -685,6 +699,16 @@ namespace torrents
 		// The protocol regression drives the real periodic-save callback
 		// without waiting for its production timer or opening a network.
 		friend struct DHTLifecycleTestAccess;
+
+		using TimerCallback = std::function<void (const boost::system::error_code &)>;
+		using TimerAction = std::function<void (TorrentsDHT &, const boost::system::error_code &)>;
+		// Requires this generation's ownerMutex. Actions cannot reenter
+		// Start/Stop; private schedulers share the admitted lock.
+		TimerCallback MakeTimerCallbackLocked (DHTTimerSlot slot, TimerAction action);
+		void ScheduleTimerLocked (boost::asio::steady_timer & timer,
+			std::chrono::milliseconds delay, DHTTimerSlot slot, TimerAction action);
+		// Revoke and drain owner admission before cancelling timers.
+		void RetireServiceState ();
 
 		// Bounded service-thread hand-off. The network thread only copies the
 		// frame here under the mutex: it never parses, sends or touches
