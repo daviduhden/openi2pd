@@ -206,6 +206,12 @@ workflow, run `gh`, build or test.
 
 ## Known issues and decisions
 
+- A nearest-export loader name is not an internal initializer attribution.
+  For the nonce-free startup probe, retain local PDBs first and the explicit
+  Microsoft HTTPS symbol store with RUNNER_TEMP cache; preserve the original
+  debugger deadline. Require ntdll module metadata in its closed command
+  grammar. Do not add symbol/module commands to authenticated worker traces.
+
 - A failed contract can hide later stale source needles. Review all source
   languages and mutation fixtures after formatter changes. The shared MSVC
   pattern reader accepts bounded literal concatenation only, validates its

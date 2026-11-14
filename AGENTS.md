@@ -111,6 +111,9 @@ For socket backpressure failures, distinguish readiness thresholds from an
 actual nonblocking write result. Review zero-budget admission separately from
 deadline-bounded retries and inspect equivalent transports before fixing the
 fixture or changing its timeout.
+Nearest-export symbol names do not establish an internal loader cause.
+Retain exact image/module identity and symbol provenance; keep any diagnostic
+symbol-server lookup inside the original bounded collection deadline.
 Phase markers identify where corruption was detected, not necessarily where
 the invalid write occurred. Keep heap attribution open until the exact
 stack/image evidence supports it. Inspect pinned VM actions for failure-time

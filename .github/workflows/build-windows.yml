@@ -361,6 +361,7 @@ jobs:
           # The script resumes explicitly after arming its filters.
           @'
           .echo OPENI2PD_PROBE_ARMED
+          lmvm ntdll
           sxe -c ".echo OPENI2PD_CRASH; .lastevent; ln @rip; kc 40; q" av
           sxe -c ".echo OPENI2PD_CRASH; .lastevent; ln @rip; kc 40; q" 0xc0000374
           sxe -c ".echo OPENI2PD_CRASH; .lastevent; ln @rip; kc 40; q" 0xc0000409
@@ -373,7 +374,10 @@ jobs:
           if (-not (Test-Path $binary)) { throw 'startup probe image missing' }
           $imageHash = (Get-FileHash -Algorithm SHA256 -Path $binary).Hash
           @(("revision=" + $env:GITHUB_SHA), ("image_sha256=" + $imageHash)) | Set-Content -Encoding ascii (Join-Path $evidence 'identity.txt')
-          $symbols = Split-Path -Parent $binary
+          # Public OS symbols distinguish loader internals from exports.
+          # Keep this network lookup inside the existing probe deadline.
+          $symbolCache = Join-Path $env:RUNNER_TEMP 'openi2pd-os-symbols'
+          $symbols = (Split-Path -Parent $binary) + ';srv*' + $symbolCache + '*https://msdl.microsoft.com/download/symbols'
           $log = Join-Path $evidence 'initializer.txt'
           $consoleLog = Join-Path $evidence 'stdout.txt'
           $consoleError = Join-Path $evidence 'stderr.txt'

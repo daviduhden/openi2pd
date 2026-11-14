@@ -780,7 +780,9 @@ q{sxe -c "bu ntdll!NtTerminateProcess \".if (@edx == 0xc0000142) { .echo OPENI2P
             last;
         }
         next if !length $line || $line eq 'g';
-        if ( $probe_mode && $line eq '.echo OPENI2PD_PROBE_ARMED' ) {
+        if ( $probe_mode
+            && ( $line eq '.echo OPENI2PD_PROBE_ARMED' || $line eq 'lmvm ntdll' ) )
+        {
             $probe_seen{$line}++;
             next;
         }
@@ -807,7 +809,7 @@ q{sxe -c "bu ntdll!NtTerminateProcess \".if (@edx == 0xc0000142) { .echo OPENI2P
     push @violations,
       'build-windows.yml: startup probe termination evidence missing'
       if $probe_mode
-      && ( keys(%probe_seen) != 3 || grep { $_ != 1 } values %probe_seen );
+      && ( keys(%probe_seen) != 4 || grep { $_ != 1 } values %probe_seen );
     return @violations;
 }
 
@@ -837,6 +839,8 @@ q{$probeArguments = @('-o', '-noshell', '-lines', '-y', "`"$symbols`"", '-logo',
     for my $required (
         q{if: ${{ always() && steps.msvc_tests.outcome == 'failure' }}},
         q{Get-FileHash -Algorithm SHA256 -Path $binary},
+        q{$symbolCache = Join-Path $env:RUNNER_TEMP 'openi2pd-os-symbols'},
+        q{$symbols = (Split-Path -Parent $binary) + ';srv*' + $symbolCache + '*https://msdl.microsoft.com/download/symbols'},
         q{Select-String -Path $log -Pattern '^OPENI2PD_PROBE_ARMED\s*$' -Quiet},
         q{WaitForExit(60000)},
         q{taskkill.exe /PID $debugger.Id /T /F},

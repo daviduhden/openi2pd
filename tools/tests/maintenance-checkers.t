@@ -497,6 +497,8 @@ qr/worker initialization diagnostic|unsupported crash debugger line|missing boun
     for my $boundary (
         [ '@edx == 0xc0000142',         '@edx == 0' ],
         [ '.echo OPENI2PD_PROBE_ARMED', '.echo UNARMED' ],
+        [ 'lmvm ntdll', 'lmvm kernel32' ],
+        [ 'https://msdl.microsoft.com/download/symbols', 'https://invalid.example/symbols' ],
         [
             q{$probeArguments = @('-o'},
             q{$probeArguments = @('-g', '-G', '-o'}

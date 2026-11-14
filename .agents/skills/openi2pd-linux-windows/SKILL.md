@@ -101,6 +101,12 @@ execution. Ask for:
 
 ## Known issues and decisions
 
+- Interpret loader return addresses against matching OS PDBs and retained
+  module identity. A local-only symbol path may resolve nearest exports,
+  which cannot identify the failing initializer. CREATE_NO_WINDOW and a
+  correlated conhost failure are independent observations, not proof of a
+  startup correction. Keep diagnostic network lookups deadline-bounded.
+
 - A suspended child exists before fallback Job assignment. Closing process
   handles is not termination: guard the entire post-CreateProcess interval,
   including nonce copies and allocating error construction. Retire through
