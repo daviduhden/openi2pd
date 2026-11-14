@@ -611,6 +611,7 @@ namespace transport
 		// enough: it defaults to true, so a caller that sends before the
 		// transports start would dereference a null io_context. Such a send
 		// is dropped, exactly like an offline one, instead of crashing.
+		if (!msg) return { }; // nullable message factories refuse admission
 		if (m_IsOnline && m_Service) return SendMessages (ident, { msg });
 		return { }; // invalid future
 	}
@@ -618,7 +619,10 @@ namespace transport
 	std::future<std::shared_ptr<TransportSession>> Transports::SendMessages (
 		const i2p::data::IdentHash & ident, std::list<std::shared_ptr<i2p::I2NPMessage>> && msgs)
 	{
-		if (!m_Service) return { }; // transports not started
+		// Retire refused factory results before any loopback, peer lookup or
+		// session/queue publication. Mixed batches keep their valid entries.
+		msgs.remove_if ([] (const auto & msg) { return !msg; });
+		if (msgs.empty () || !m_Service) return { }; // nothing to send
 		return boost::asio::post (*m_Service,
 			boost::asio::use_future (
 				[this, ident, msgs = std::move (msgs)] () mutable { return PostMessages (ident, msgs); }));

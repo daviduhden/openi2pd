@@ -99,6 +99,12 @@ peer or add a hidden external checkout. The reference is for reading only.
 
 ## Known issues and decisions
 
+- Gateway hardening must preserve tunnel ID, inner message bytes and the
+  serialized inner/outer lengths in both copy and in-place paths. Allocation
+  reservations include the inner I2NP and gateway headers. Refusal of invalid
+  local geometry is not a new wire format; follow nullable results through
+  transport consumers before treating the factory change as integrated.
+
 - Protocol logging must not echo unknown command tokens or complete
   parameter/header buffers, even for CONNECT/SEND/NAMING with public
   expected fields. Keep wire replies unchanged while logging fixed

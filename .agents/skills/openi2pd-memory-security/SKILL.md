@@ -107,6 +107,12 @@ Do not let reconnaissance agents edit, compile, execute tests or run scripts.
 
 ## Known issues and decisions
 
+- Prepend paths need the same complete backing/offset/length geometry as
+  copies, before pointer subtraction or mutation. Reserve every nested header
+  when choosing allocation tiers; test tier edges and serialized lengths.
+  Trace nullable factory results through batch transport ingress before any
+  asynchronous queue/session publication, preserving valid mixed-batch order.
+
 - For shared tunnel timer owners, acquire the weak owner before its admission
   lock so final owner destruction follows unlock. A borrowed gate alone is
   insufficient when an admitted action calls shared_from_this. Per-wait

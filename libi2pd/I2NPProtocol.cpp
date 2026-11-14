@@ -499,8 +499,9 @@ std::shared_ptr<I2NPMessage> CreateTunnelGatewayMsg (uint32_t tunnelID, const ui
 	// Reserve the six-byte gateway header in addition to the I2NP header.
 	// The previous +0 reservation truncated payloads exactly at
 	// buffer-tier edges while still advertising the full length.
+	constexpr size_t maxInner = I2NP_MAX_MESSAGE_SIZE - 2 - I2NP_HEADER_SIZE - TUNNEL_GATEWAY_HEADER_SIZE;
+	if ((!buf && len) || len > maxInner) return nullptr;
 	auto msg = NewI2NPMessage (len + TUNNEL_GATEWAY_HEADER_SIZE);
-	if (len > std::numeric_limits<uint16_t>::max ()) return nullptr;
 	uint8_t * payload = msg->GetPayload ();
 	htobe32buf (payload + TUNNEL_GATEWAY_HEADER_TUNNELID_OFFSET, tunnelID);
 	htobe16buf (payload + TUNNEL_GATEWAY_HEADER_LENGTH_OFFSET, static_cast<uint16_t> (len));
@@ -516,6 +517,11 @@ std::shared_ptr<I2NPMessage> CreateTunnelGatewayMsg (uint32_t tunnelID, const ui
 
 std::shared_ptr<I2NPMessage> CreateTunnelGatewayMsg (uint32_t tunnelID, std::shared_ptr<I2NPMessage> msg)
 {
+	// Validate before pointer arithmetic, subtraction or in-place writes.
+	if (!msg || !msg->buf || msg->offset > msg->len || msg->len > msg->maxLen || msg->len > I2NP_MAX_MESSAGE_SIZE)
+		return nullptr;
+	const size_t innerLength = msg->len - msg->offset;
+	if (innerLength > std::numeric_limits<uint16_t>::max () - TUNNEL_GATEWAY_HEADER_SIZE) return nullptr;
 	if (msg->offset >= I2NP_HEADER_SIZE + TUNNEL_GATEWAY_HEADER_SIZE)
 	{
 		// message is capable to be used without copying
@@ -540,9 +546,11 @@ std::shared_ptr<I2NPMessage> CreateTunnelGatewayMsg (uint32_t tunnelID, std::sha
 std::shared_ptr<I2NPMessage> CreateTunnelGatewayMsg (
 	uint32_t tunnelID, I2NPMessageType msgType, const uint8_t * buf, size_t len, uint32_t replyMsgID)
 {
-	if (len > std::numeric_limits<uint16_t>::max ()) return nullptr;
-	auto msg = NewI2NPMessage (len + TUNNEL_GATEWAY_HEADER_SIZE);
-	size_t gatewayMsgOffset = I2NP_HEADER_SIZE + TUNNEL_GATEWAY_HEADER_SIZE;
+	constexpr size_t gatewayMsgOffset = I2NP_HEADER_SIZE + TUNNEL_GATEWAY_HEADER_SIZE;
+	constexpr size_t maxPayload = I2NP_MAX_MESSAGE_SIZE - 2 - I2NP_HEADER_SIZE - gatewayMsgOffset;
+	if ((!buf && len) || len > maxPayload) return nullptr;
+	// The allocation payload includes the inner I2NP header as well.
+	auto msg = NewI2NPMessage (len + gatewayMsgOffset);
 	msg->offset += gatewayMsgOffset;
 	msg->len += gatewayMsgOffset;
 	if (msg->Concat (buf, len) < len)

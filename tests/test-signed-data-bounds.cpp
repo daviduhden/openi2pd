@@ -7,6 +7,7 @@
  * transcript; the declared length must not wrap the capacity check.
  */
 
+#include <algorithm>
 #include <array>
 #include <cassert>
 #include <cstddef>
@@ -146,5 +147,75 @@ int main ()
 	copySource->offset = std::numeric_limits<size_t>::max ();
 	copySource->len = std::numeric_limits<size_t>::max ();
 	assert (!i2p::CopyI2NPMessage (copySource));
+
+	auto assertGatewayLengths = [] (const std::shared_ptr<i2p::I2NPMessage> & message, size_t innerLength)
+	{
+		assert (message);
+		assert (message->GetPayloadLength () == i2p::TUNNEL_GATEWAY_HEADER_SIZE + innerLength);
+		assert (message->GetSize () == message->GetPayloadLength ());
+		assert (bufbe16toh (message->GetPayload () + i2p::TUNNEL_GATEWAY_HEADER_LENGTH_OFFSET) == innerLength);
+	};
+	// Gateway prepend admission must reject before touching malformed
+	// public geometry, including null backing and arithmetic extremes.
+	assert (!i2p::CreateTunnelGatewayMsg (1, std::shared_ptr<i2p::I2NPMessage> { }));
+	assert (!i2p::CreateTunnelGatewayMsg (1, std::make_shared<i2p::I2NPMessage> ()));
+	auto gatewaySource = i2p::NewI2NPShortMessage ();
+	const auto backingSize = gatewaySource->maxLen;
+	for (const auto geometry :
+		std::array<std::array<size_t, 2>, 3> { { { 24, 23 }, { backingSize + 1, backingSize + 1 },
+			{ std::numeric_limits<size_t>::max (), std::numeric_limits<size_t>::max () } } })
+	{
+		gatewaySource->offset = geometry[0];
+		gatewaySource->len = geometry[1];
+		assert (!i2p::CreateTunnelGatewayMsg (1, gatewaySource));
+		assert (gatewaySource->offset == geometry[0] && gatewaySource->len == geometry[1]);
+	}
+	for (const size_t start : { size_t { 2 }, size_t { 24 } })
+	{
+		gatewaySource->offset = start;
+		gatewaySource->len = start + source.size ();
+		std::copy (source.begin (), source.end (), gatewaySource->buf + start);
+		const auto wrapped = i2p::CreateTunnelGatewayMsg (1, gatewaySource);
+		assert (wrapped
+			&& wrapped->GetLength () == i2p::I2NP_HEADER_SIZE + i2p::TUNNEL_GATEWAY_HEADER_SIZE + source.size ());
+		assert (std::equal (source.begin (), source.end (), wrapped->GetPayload () + i2p::TUNNEL_GATEWAY_HEADER_SIZE));
+		assert ((wrapped == gatewaySource) == (start == 24));
+		assertGatewayLengths (wrapped, source.size ());
+	}
+	const auto emptyGateway = i2p::CreateTunnelGatewayMsg (1, nullptr, size_t { 0 });
+	assert (emptyGateway && emptyGateway->GetLength () == i2p::I2NP_HEADER_SIZE + i2p::TUNNEL_GATEWAY_HEADER_SIZE);
+	const auto emptyTypedGateway = i2p::CreateTunnelGatewayMsg (1, i2p::eI2NPData, nullptr, size_t { 0 }, 1);
+	assert (emptyTypedGateway
+		&& emptyTypedGateway->GetLength () == 2 * i2p::I2NP_HEADER_SIZE + i2p::TUNNEL_GATEWAY_HEADER_SIZE);
+	assert (!i2p::CreateTunnelGatewayMsg (1, nullptr, size_t { 1 }));
+	assert (!i2p::CreateTunnelGatewayMsg (1, source.data (), std::numeric_limits<size_t>::max ()));
+	assert (!i2p::CreateTunnelGatewayMsg (1, i2p::eI2NPData, nullptr, size_t { 1 }));
+	assert (!i2p::CreateTunnelGatewayMsg (1, i2p::eI2NPData, source.data (), std::numeric_limits<size_t>::max ()));
+	// The typed wrapper reserves two I2NP headers at allocation-tier edges.
+	std::array<uint8_t, i2p::I2NP_MAX_SHORT_MESSAGE_SIZE> gatewayPayload { };
+	const size_t typedEdge
+		= i2p::I2NP_MAX_SHORT_MESSAGE_SIZE - 2 - 2 * i2p::I2NP_HEADER_SIZE - i2p::TUNNEL_GATEWAY_HEADER_SIZE + 1;
+	const auto typedGateway = i2p::CreateTunnelGatewayMsg (1, i2p::eI2NPData, gatewayPayload.data (), typedEdge, 1);
+	assert (typedGateway
+		&& typedGateway->GetLength () == typedEdge + 2 * i2p::I2NP_HEADER_SIZE + i2p::TUNNEL_GATEWAY_HEADER_SIZE);
+	assertGatewayLengths (emptyGateway, 0);
+	assertGatewayLengths (emptyTypedGateway, i2p::I2NP_HEADER_SIZE);
+	assertGatewayLengths (typedGateway, typedEdge + i2p::I2NP_HEADER_SIZE);
+
+	// Check exact global admission caps with readable backing, not just
+	// a huge declared size. Both serialized size fields must stay exact.
+	std::array<uint8_t, i2p::I2NP_MAX_MESSAGE_SIZE> maximumPayload { };
+	constexpr size_t maxInner
+		= i2p::I2NP_MAX_MESSAGE_SIZE - 2 - i2p::I2NP_HEADER_SIZE - i2p::TUNNEL_GATEWAY_HEADER_SIZE;
+	const auto maximumGateway = i2p::CreateTunnelGatewayMsg (1, maximumPayload.data (), maxInner);
+	assertGatewayLengths (maximumGateway, maxInner);
+	assert (maximumGateway->len == maximumGateway->maxLen);
+	assert (!i2p::CreateTunnelGatewayMsg (1, maximumPayload.data (), maxInner + 1));
+	constexpr size_t maxTypedPayload = maxInner - i2p::I2NP_HEADER_SIZE;
+	const auto maximumTypedGateway
+		= i2p::CreateTunnelGatewayMsg (1, i2p::eI2NPData, maximumPayload.data (), maxTypedPayload, 1);
+	assertGatewayLengths (maximumTypedGateway, maxTypedPayload + i2p::I2NP_HEADER_SIZE);
+	assert (maximumTypedGateway->len == maximumTypedGateway->maxLen);
+	assert (!i2p::CreateTunnelGatewayMsg (1, i2p::eI2NPData, maximumPayload.data (), maxTypedPayload + 1, 1));
 	return 0;
 }

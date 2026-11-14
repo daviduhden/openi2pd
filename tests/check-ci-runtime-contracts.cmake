@@ -1041,3 +1041,21 @@ require_runtime_source("libi2pd_client/UDPTunnel.h"
   "nowMs - lastMs > static_cast<uint64_t> (intervalSeconds) * 1000")
 require_runtime_source("tests/test-udp-ack-lifecycle.cpp"
   "TestKeepAliveDeadlineBounds ();")
+
+# Gateway prepend admission precedes all in-place pointer arithmetic.
+require_runtime_order("libi2pd/I2NPProtocol.cpp"
+  "std::shared_ptr<I2NPMessage> CreateTunnelGatewayMsg (uint32_t tunnelID, std::shared_ptr<I2NPMessage> msg)"
+  "size_t GetI2NPMessageLength ("
+  "if (!msg || !msg->buf || msg->offset > msg->len || msg->len > msg->maxLen"
+  "const size_t innerLength = msg->len - msg->offset;"
+  "uint8_t * payload = msg->GetBuffer () - TUNNEL_GATEWAY_HEADER_SIZE;")
+require_runtime_source("libi2pd/I2NPProtocol.cpp"
+  "auto msg = NewI2NPMessage (len + gatewayMsgOffset);")
+require_runtime_order("libi2pd/Transports.cpp"
+  "std::future<std::shared_ptr<TransportSession>> Transports::SendMessages ("
+  "std::shared_ptr<TransportSession> Transports::PostMessages ("
+  "msgs.remove_if ([] (const auto & msg) { return !msg; });"
+  "if (msgs.empty () || !m_Service) return { };"
+  "return boost::asio::post (*m_Service,")
+require_runtime_source("tests/test-signed-data-bounds.cpp"
+  "assertGatewayLengths (maximumGateway, maxInner);")

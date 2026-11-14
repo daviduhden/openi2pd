@@ -664,9 +664,16 @@ std::shared_ptr<I2NPMessage> CreateTunnelDataMsg (const uint8_t * buf);
 std::shared_ptr<I2NPMessage> CreateTunnelDataMsg (uint32_t tunnelID, const uint8_t * payload);
 std::shared_ptr<I2NPMessage> CreateEmptyTunnelDataMsg (bool endpoint);
 
+/// Wrap bounded borrowed bytes; null is valid only for an empty input.
+/// Returns null when the complete gateway envelope cannot fit.
 std::shared_ptr<I2NPMessage> CreateTunnelGatewayMsg (uint32_t tunnelID, const uint8_t * buf, size_t len);
+/// Build an inner I2NP message before wrapping it. Bounds include both
+/// headers; null payload is accepted only when its length is zero.
 std::shared_ptr<I2NPMessage> CreateTunnelGatewayMsg (
 	uint32_t tunnelID, I2NPMessageType msgType, const uint8_t * buf, size_t len, uint32_t replyMsgID = 0);
+/// Wrap a backed message with valid offset/length/capacity geometry.
+/// Reuses and mutates its prefix when sufficient space is reserved;
+/// otherwise copies. Invalid input returns null without mutation.
 std::shared_ptr<I2NPMessage> CreateTunnelGatewayMsg (uint32_t tunnelID, std::shared_ptr<I2NPMessage> msg);
 
 /// Total wire length of the I2NP message starting at @a msg, from the
