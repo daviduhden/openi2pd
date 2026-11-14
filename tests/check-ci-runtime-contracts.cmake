@@ -1093,3 +1093,24 @@ require_runtime_source("libi2pd/Datagram.cpp"
   "if (!payload) payload = &emptyPayload;")
 require_runtime_source("tests/test-datagram-version-dispatch.cpp"
   "TestEmptyAndMissingPayload ();")
+
+# Child retirement capacity exists before fork and survives owner removal.
+require_runtime_order("privsep/Worker.cpp"
+  "ChildProcess::~ChildProcess ()" "ChildProcess::ChildProcess (ChildProcess && other)"
+  "StopWithoutNotification (2000);" "RetireUnreaped ();")
+require_runtime_order("privsep/Worker.cpp"
+  "ChildProcess & ChildProcess::operator= (" "void ChildProcess::ClosePidFd ()"
+  "RetireUnreaped ();" "m_Admission = std::exchange (other.m_Admission, MAX_OWNED_CHILDREN);")
+require_runtime_order("privsep/Worker.cpp"
+  "static i2p::expected<ChildProcess, std::string> SpawnWorkerInternal ("
+  "i2p::expected<ChildProcess, std::string> SpawnWorker ("
+  "auto admission = ChildProcess::Reserve ();" "pid_t pid = fork ();"
+  "ChildProcess::Adopt (std::move (*admission), pid, std::move (parent))")
+require_runtime_source("daemon/UnixDaemon.cpp" "i2p::privsep::DrainRetiredChildren ();")
+require_runtime_source("privsep/Supervisor.cpp" "DrainRetiredChildren ();")
+require_runtime_order("privsep/Worker.h"
+  "void Disown ()" "worker_pid_t Pid () const"
+  "m_Channel.Close ();" "if (m_Pid > 0)" "RetireUnreaped ();"
+  "return;" "ClosePidFd ();" "ReleaseAdmission ();")
+require_runtime_source("tests/test-child-stop-budget.cpp"
+  "TestDisownRetainsReapAuthority ();")

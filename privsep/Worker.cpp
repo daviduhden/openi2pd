@@ -33,11 +33,13 @@
 #include <algorithm>
 #include <array>
 #include <chrono>
+#include <cstddef>
 #include <cstdlib>
 #include <cstring>
 #include <fcntl.h>
 #include <limits>
 #include <mutex>
+#include <new>
 #include <poll.h>
 #include <signal.h>
 #include <sched.h>
@@ -653,13 +655,90 @@ std::string ExecutablePath ()
 	return g_ExecutablePath;
 }
 
+namespace
+{
+	using RetirementRegistry = detail::ChildRetirementRegistry<ChildProcess::MAX_OWNED_CHILDREN>;
+
+	RetirementRegistry & RetiredChildren () noexcept
+	{
+		// Placement construction has no heap allocation and registers no
+		// destructor. Late global owners may still publish retired children.
+		alignas (RetirementRegistry) static std::byte storage[sizeof (RetirementRegistry)];
+		static auto * const registry = ::new (static_cast<void *> (storage)) RetirementRegistry;
+		return *registry;
+	}
+}
+
+size_t DrainRetiredChildren () noexcept
+{
+	return RetiredChildren ().Drain (
+		[] (worker_pid_t pid, int) noexcept
+		{
+			int status = 0;
+			// One WNOHANG attempt per tick, including EINTR. No PID is
+			// signalled after ownership moves into the retirement registry.
+			const auto result = ::waitpid (pid, &status, WNOHANG);
+			return result == pid || (result < 0 && errno == ECHILD);
+		},
+		[] (int fd) noexcept { ::close (fd); });
+}
+
+ChildProcess::Admission::~Admission ()
+{
+	Release ();
+}
+ChildProcess::Admission::Admission (Admission && other) noexcept
+	: m_Slot (std::exchange (other.m_Slot, MAX_OWNED_CHILDREN))
+{
+}
+ChildProcess::Admission & ChildProcess::Admission::operator= (Admission && other) noexcept
+{
+	if (this != &other)
+	{
+		Release ();
+		m_Slot = std::exchange (other.m_Slot, MAX_OWNED_CHILDREN);
+	}
+	return *this;
+}
+void ChildProcess::Admission::Release () noexcept
+{
+	if (m_Slot < MAX_OWNED_CHILDREN) RetiredChildren ().Release (m_Slot);
+	m_Slot = MAX_OWNED_CHILDREN;
+}
+std::optional<ChildProcess::Admission> ChildProcess::Reserve () noexcept
+{
+	DrainRetiredChildren ();
+	auto slot = RetiredChildren ().Reserve ();
+	if (!slot) return std::nullopt;
+	return Admission (*slot);
+}
+void ChildProcess::ReleaseAdmission () noexcept
+{
+	if (m_Admission < MAX_OWNED_CHILDREN) RetiredChildren ().Release (m_Admission);
+	m_Admission = MAX_OWNED_CHILDREN;
+}
+void ChildProcess::RetireUnreaped () noexcept
+{
+	if (m_Pid > 0)
+	{
+		RetiredChildren ().Retire (m_Admission, m_Pid, m_PidFd);
+		m_Pid = -1;
+		m_PidFd = -1;
+		m_Admission = MAX_OWNED_CHILDREN;
+	}
+	else
+		ReleaseAdmission ();
+}
+
 ChildProcess::~ChildProcess ()
 {
-	Stop ();
+	StopWithoutNotification (2000);
+	RetireUnreaped ();
 }
 
 ChildProcess::ChildProcess (ChildProcess && other) noexcept
-	: m_Pid (other.m_Pid)
+	: m_Admission (std::exchange (other.m_Admission, MAX_OWNED_CHILDREN))
+	, m_Pid (other.m_Pid)
 	, m_PidFd (other.m_PidFd)
 	, m_Channel (std::move (other.m_Channel))
 {
@@ -671,7 +750,9 @@ ChildProcess & ChildProcess::operator= (ChildProcess && other) noexcept
 {
 	if (this != &other)
 	{
-		Stop ();
+		StopWithoutNotification (2000);
+		RetireUnreaped ();
+		m_Admission = std::exchange (other.m_Admission, MAX_OWNED_CHILDREN);
 		m_Pid = other.m_Pid;
 		m_PidFd = other.m_PidFd;
 		m_Channel = std::move (other.m_Channel);
@@ -690,9 +771,11 @@ void ChildProcess::ClosePidFd ()
 	}
 }
 
-ChildProcess ChildProcess::Adopt (pid_t pid, Channel channel)
+ChildProcess ChildProcess::Adopt (Admission && admission, pid_t pid, Channel channel) noexcept
 {
+	if (admission.m_Slot >= MAX_OWNED_CHILDREN || pid <= 0) std::terminate ();
 	ChildProcess process;
+	process.m_Admission = std::exchange (admission.m_Slot, MAX_OWNED_CHILDREN);
 	process.m_Pid = pid;
 	process.m_Channel = std::move (channel);
 #if defined(__linux__) && defined(SYS_pidfd_open)
@@ -707,7 +790,14 @@ ChildProcess ChildProcess::Adopt (pid_t pid, Channel channel)
 	return process;
 }
 
-bool ChildProcess::WaitForExitUntil (std::chrono::steady_clock::time_point deadline)
+ChildProcess ChildProcess::AdoptChannel (Channel channel) noexcept
+{
+	ChildProcess process;
+	process.m_Channel = std::move (channel);
+	return process;
+}
+
+bool ChildProcess::WaitForExitUntil (std::chrono::steady_clock::time_point deadline) noexcept
 {
 	// WaitForChildExitUntil() already reaps the child. A second
 	// waitpid() here could consume a newly forked child that reused the
@@ -715,6 +805,7 @@ bool ChildProcess::WaitForExitUntil (std::chrono::steady_clock::time_point deadl
 	if (!WaitForChildExitUntil (m_Pid, m_PidFd, deadline)) return false;
 	m_Pid = -1;
 	ClosePidFd ();
+	ReleaseAdmission ();
 	return true;
 }
 
@@ -731,6 +822,7 @@ bool ChildProcess::ReapNoHang ()
 		// therefore observes ECHILD and can never see a recycled PID.
 		m_Pid = -1;
 		ClosePidFd ();
+		ReleaseAdmission ();
 		return true;
 	}
 	return false;
@@ -738,6 +830,7 @@ bool ChildProcess::ReapNoHang ()
 
 bool ChildProcess::IsRunning ()
 {
+	DrainRetiredChildren ();
 	if (m_Pid <= 0) return false;
 #if defined(__linux__) && defined(SYS_pidfd_open)
 	if (m_PidFd < 0) m_PidFd = static_cast<int> (syscall (SYS_pidfd_open, m_Pid, 0));
@@ -761,6 +854,7 @@ bool ChildProcess::IsRunning ()
 
 void ChildProcess::Stop (int timeoutMs)
 {
+	DrainRetiredChildren ();
 	const ChildStopBudget budget (std::chrono::steady_clock::now (), timeoutMs);
 	if (m_Channel.IsOpen ())
 	{
@@ -768,6 +862,21 @@ void ChildProcess::Stop (int timeoutMs)
 		if (std::chrono::steady_clock::now () < budget.send) (void)m_Channel.SendUntil (shutdown, budget.send);
 		m_Channel.Close ();
 	}
+	StopChild (budget);
+}
+
+void ChildProcess::StopWithoutNotification (int timeoutMs) noexcept
+{
+	DrainRetiredChildren ();
+	const ChildStopBudget budget (std::chrono::steady_clock::now (), timeoutMs);
+	// Channel EOF also stops workers. Destruction/unwind must not frame
+	// an advisory message, since serialization can allocate and throw.
+	m_Channel.Close ();
+	StopChild (budget);
+}
+
+void ChildProcess::StopChild (const ChildStopBudget & budget) noexcept
+{
 	if (m_Pid > 0)
 	{
 		// Prefer pidfd_send_signal so a retained PID number cannot race with
@@ -791,8 +900,8 @@ void ChildProcess::Stop (int timeoutMs)
 				// calling waitpid(..., 0): a wedged storage/NFS task must
 				// never block the daemon's shutdown path forever. If the
 				// child is still not reaped, keep m_Pid/m_PidFd so a later
-				// Stop()/IsRunning() can retry; the zombie holds the PID, so
-				// the retained number cannot be recycled in the meantime.
+				// Stop()/IsRunning() can retry; an unreaped child retains its
+				// PID whether it is still running or already a zombie.
 				if (!WaitForExitUntil (budget.reap))
 				{
 					// Do not close the pidfd: it is the only race-free way to
@@ -804,6 +913,7 @@ void ChildProcess::Stop (int timeoutMs)
 		}
 	}
 	ClosePidFd ();
+	ReleaseAdmission ();
 }
 
 static i2p::expected<ChildProcess, std::string> SpawnWorkerInternal (
@@ -850,6 +960,12 @@ static i2p::expected<ChildProcess, std::string> SpawnWorkerInternal (
 	// identity record.
 	const int inheritedRoot = rootFd >= 0 ? ::fcntl (rootFd, F_DUPFD_CLOEXEC, 6) : -1;
 	if (rootFd >= 0 && inheritedRoot < 0) return i2p::unexpected (std::string ("cannot duplicate inherited root"));
+	auto admission = ChildProcess::Reserve ();
+	if (!admission)
+	{
+		if (inheritedRoot >= 0) ::close (inheritedRoot);
+		return i2p::unexpected (std::string ("worker child ownership limit reached"));
+	}
 	const int channelFd = child.Fd ();
 	const int parentChannelFd = parent.Fd ();
 	pid_t pid = fork ();
@@ -874,7 +990,7 @@ static i2p::expected<ChildProcess, std::string> SpawnWorkerInternal (
 	// SO_PEERCRED and the same-uid frame-injection window.
 	parent.ExpectPeer (
 		PeerExpectation { credentials.uid, credentials.gid, static_cast<uint32_t> (pid), true, true, false, true });
-	return ChildProcess::Adopt (pid, std::move (parent));
+	return ChildProcess::Adopt (std::move (*admission), pid, std::move (parent));
 }
 
 i2p::expected<ChildProcess, std::string> SpawnWorker (const char * role, std::string_view executable)
@@ -923,6 +1039,12 @@ static i2p::expected<Channel, std::string> SpawnDetachedWorkerInternal (const ch
 	}
 	const int inheritedRoot = rootFd >= 0 ? ::fcntl (rootFd, F_DUPFD_CLOEXEC, 6) : -1;
 	if (rootFd >= 0 && inheritedRoot < 0) return i2p::unexpected (std::string ("cannot duplicate worker root"));
+	auto admission = ChildProcess::Reserve ();
+	if (!admission)
+	{
+		if (inheritedRoot >= 0) ::close (inheritedRoot);
+		return i2p::unexpected (std::string ("worker child ownership limit reached"));
+	}
 	const int channelFd = pair->second.Fd ();
 	const int parentChannelFd = pair->first.Fd ();
 	const pid_t intermediate = ::fork ();
@@ -944,10 +1066,10 @@ static i2p::expected<Channel, std::string> SpawnDetachedWorkerInternal (const ch
 	WipeBytes (nonce.data (), nonce.size ());
 	if (inheritedRoot >= 0) ::close (inheritedRoot);
 	pair->second.Close ();
-	if (!WaitForChildExitBounded (intermediate, -1, 5000))
+	auto intermediary = ChildProcess::Adopt (std::move (*admission), intermediate, Channel { });
+	if (!intermediary.WaitForExitUntil (std::chrono::steady_clock::now () + std::chrono::seconds (5)))
 	{
-		::kill (intermediate, SIGKILL);
-		(void)WaitForChildExitBounded (intermediate, -1, 500);
+		intermediary.Stop (500);
 		return i2p::unexpected (std::string ("worker intermediary did not exit"));
 	}
 	// The detached grandchild's pid is not the intermediary's, so bind the

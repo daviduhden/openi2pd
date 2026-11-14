@@ -783,6 +783,9 @@ int RunSupervisor (int fd)
 	unsigned violations = 0;
 	while (true)
 	{
+		// Retired owners keep their reserved PID/pidfd until a later
+		// nonblocking reap; this loop never waits or signals them.
+		DrainRetiredChildren ();
 #if defined(__OpenBSD__)
 		// A reserve that died while idle cannot be replaced without exec.
 		// Drop it now so the next active failure is reported as terminal.

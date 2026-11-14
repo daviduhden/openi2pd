@@ -176,7 +176,7 @@ struct RouterStorageClient::Impl
 			error = worker.error ();
 			return false;
 		}
-		child = ChildProcess::Adopt (-1, std::move (*worker));
+		child = ChildProcess::AdoptChannel (std::move (*worker));
 		const int passed = -1;
 #else
 		auto worker = SpawnWorker ("router-storage", { });

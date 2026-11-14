@@ -30,6 +30,11 @@
 
 #ifndef _WIN32
 #include <algorithm>
+#include <array>
+#include <atomic>
+#include <exception>
+#include <type_traits>
+#include <utility>
 #include <sys/stat.h>
 #include <cerrno>
 #include <chrono>
@@ -42,6 +47,7 @@
 
 namespace i2p::privsep
 {
+struct ChildStopBudget;
 #ifdef _WIN32
 // Windows has no POSIX pid_t. ChildProcess is a POSIX only spawn owner;
 // the alias keeps this public header parseable for the Windows daemon,
@@ -187,7 +193,7 @@ bool PinStandardDescriptors ();
  * callers must treat false as "not reaped yet" and retry later rather
  * than block.
  */
-inline bool WaitForChildExitUntil (pid_t pid, int pidFd, std::chrono::steady_clock::time_point deadline)
+inline bool WaitForChildExitUntil (pid_t pid, int pidFd, std::chrono::steady_clock::time_point deadline) noexcept
 {
 	if (pid <= 0) return true;
 	bool usePidFd = pidFd >= 0;
@@ -222,17 +228,112 @@ inline bool WaitForChildExitUntil (pid_t pid, int pidFd, std::chrono::steady_clo
 			else if (polled == 0)
 				continue; // deadline reached at the loop head
 		}
-		std::this_thread::sleep_until (
-			std::min (deadline, std::chrono::steady_clock::now () + std::chrono::milliseconds (20)));
+		// poll's empty set is a bounded, allocation-free pause. Recompute
+		// the absolute budget after interruption rather than sleeping again.
+		(void)::poll (nullptr, 0, static_cast<int> (std::min<int64_t> (std::max<int64_t> (remainingMs, 1), 20)));
 	}
 }
 
 /* Relative-time convenience wrapper; owners of phases use Until. */
-inline bool WaitForChildExitBounded (pid_t pid, int pidFd, int timeoutMs)
+inline bool WaitForChildExitBounded (pid_t pid, int pidFd, int timeoutMs) noexcept
 {
 	return WaitForChildExitUntil (
 		pid, pidFd, std::chrono::steady_clock::now () + std::chrono::milliseconds (std::max (timeoutMs, 0)));
 }
+#endif
+
+#ifndef _WIN32
+namespace detail
+{
+	/**
+ * Fixed ownership slots reserved before fork and retained after bounded
+ * stop. Only the owner of a Reserved slot may publish its child. Drain
+ * claims each retired slot before inspecting its metadata; callbacks may
+ * only reap/close, never signal a PID or block. No operation allocates.
+ */
+	template <size_t Capacity> class ChildRetirementRegistry
+	{
+	public:
+		static constexpr size_t NO_SLOT = Capacity;
+		std::optional<size_t> Reserve () noexcept
+		{
+			for (size_t i = 0; i < Capacity; ++i)
+			{
+				auto expected = State::Free;
+				if (m_Slots[i].state.compare_exchange_strong (
+						expected, State::Reserved, std::memory_order_acquire, std::memory_order_relaxed))
+					return i;
+			}
+			return std::nullopt;
+		}
+		void Release (size_t index) noexcept
+		{
+			if (index >= Capacity) return;
+			auto expected = State::Reserved;
+			(void)m_Slots[index].state.compare_exchange_strong (
+				expected, State::Free, std::memory_order_release, std::memory_order_relaxed);
+		}
+		void Retire (size_t index, worker_pid_t pid, int pidFd) noexcept
+		{
+			// A live child always owns its pre-fork reservation. Violating
+			// that internal invariant must not silently lose reap authority.
+			if (index >= Capacity || pid <= 0) std::terminate ();
+			auto expected = State::Reserved;
+			if (!m_Slots[index].state.compare_exchange_strong (
+					expected, State::Publishing, std::memory_order_relaxed, std::memory_order_relaxed))
+				std::terminate ();
+			auto & slot = m_Slots[index];
+			slot.pid = pid;
+			slot.pidFd = pidFd;
+			slot.state.store (State::Retired, std::memory_order_release);
+		}
+		template <typename Probe, typename Close>
+			requires std::is_nothrow_invocable_r_v<bool, Probe &, worker_pid_t, int>
+			&& std::is_nothrow_invocable_v<Close &, int>
+		size_t Drain (Probe && probe, Close && close) noexcept
+		{
+			size_t reaped = 0;
+			for (auto & slot : m_Slots)
+			{
+				auto expected = State::Retired;
+				if (!slot.state.compare_exchange_strong (
+						expected, State::Draining, std::memory_order_acquire, std::memory_order_relaxed))
+					continue;
+				if (probe (slot.pid, slot.pidFd))
+				{
+					if (slot.pidFd >= 0) close (slot.pidFd);
+					slot.pid = -1;
+					slot.pidFd = -1;
+					slot.state.store (State::Free, std::memory_order_release);
+					++reaped;
+				}
+				else
+					slot.state.store (State::Retired, std::memory_order_release);
+			}
+			return reaped;
+		}
+
+	private:
+		enum class State : uint8_t
+		{
+			Free,
+			Reserved,
+			Publishing,
+			Retired,
+			Draining
+		};
+		struct Slot
+		{
+			std::atomic<State> state { State::Free };
+			worker_pid_t pid = -1;
+			int pidFd = -1;
+		};
+		std::array<Slot, Capacity> m_Slots { };
+	};
+}
+
+/** Reap each retired child at most once, without waiting or signalling. */
+size_t DrainRetiredChildren () noexcept;
 #endif
 
 class ChildProcess
@@ -245,11 +346,40 @@ public:
 	ChildProcess (const ChildProcess &) = delete;
 	ChildProcess & operator= (const ChildProcess &) = delete;
 
-	/*
-	 * Adopt an existing child and channel. Used by the spawn path to apply
-	 * the shared ownership and pidfd setup.
+#ifndef _WIN32
+	static constexpr size_t MAX_OWNED_CHILDREN = 64;
+	/**
+	 * Move-only pre-fork ownership reservation. Destruction releases an
+	 * unused slot without allocating or touching a child process.
 	 */
-	static ChildProcess Adopt (worker_pid_t pid, Channel channel);
+	class Admission
+	{
+	public:
+		~Admission ();
+		Admission (Admission && other) noexcept;
+		Admission & operator= (Admission && other) noexcept;
+		Admission (const Admission &) = delete;
+		Admission & operator= (const Admission &) = delete;
+
+	private:
+		friend class ChildProcess;
+		explicit Admission (size_t slot) noexcept
+			: m_Slot (slot)
+		{
+		}
+		void Release () noexcept;
+		size_t m_Slot;
+	};
+	/// Reserve before fork; refusal means no child may be created.
+	static std::optional<Admission> Reserve () noexcept;
+	/// Adopt a positive child using its still-valid pre-fork admission.
+	/// No allocation or fallible initialization follows child creation.
+	static ChildProcess Adopt (Admission && admission, worker_pid_t pid, Channel channel) noexcept;
+	/// Own IPC for a detached process whose reaping belongs to init.
+	static ChildProcess AdoptChannel (Channel channel) noexcept;
+	/// Wait/reap this owned child until one absolute deadline.
+	bool WaitForExitUntil (std::chrono::steady_clock::time_point deadline) noexcept;
+#endif
 
 	bool IsRunning ();
 	/*
@@ -266,21 +396,34 @@ public:
 	 * run its exit path even after SIGKILL, so blocking until the kernel
 	 * schedules it could stall the daemon indefinitely. In that case the
 	 * PID and pidfd are retained and a later Stop()/IsRunning() retries
-	 * the non-blocking reap; the child stays a zombie until then or until
-	 * the router exits.
+	 * the non-blocking reap. A running or unreaped child retains its PID.
+	 * Destruction or replacement transfers that ownership into a reserved
+	 * process-local retirement slot for later nonblocking reaping.
 	 */
 	void Stop (int timeoutMs = 2000);
 	/*
-	 * Release ownership without signalling. Used by the OpenBSD storage
-	 * broker after it hands the worker channel to the core: the broker
-	 * must not kill a worker that another process now owns.
+	 * Close this IPC owner without signalling. A positive child remains
+	 * owned by the process-local retirement registry until reaped; this
+	 * is not a transfer of waitpid authority to a second owner. Detached
+	 * channel-only owners have no child reservation to retain.
 	 */
 	void Disown ()
 	{
+		m_Channel.Close ();
+#ifndef _WIN32
+		if (m_Pid > 0)
+		{
+			RetireUnreaped ();
+			return;
+		}
+#endif
 		ClosePidFd ();
 		m_Pid = -1;
-		m_Channel.Close ();
+#ifndef _WIN32
+		ReleaseAdmission ();
+#endif
 	}
+
 	worker_pid_t Pid () const { return m_Pid; }
 	Channel & ChannelFd () { return m_Channel; }
 
@@ -291,10 +434,11 @@ private:
 	 * exists. */
 	bool ReapNoHang ();
 #ifndef _WIN32
-	/*
-	 * Wait for exit until an absolute deadline. Never blocks
-	 * indefinitely. */
-	bool WaitForExitUntil (std::chrono::steady_clock::time_point deadline);
+	void StopWithoutNotification (int timeoutMs) noexcept;
+	void StopChild (const ChildStopBudget & budget) noexcept;
+	void RetireUnreaped () noexcept;
+	void ReleaseAdmission () noexcept;
+	size_t m_Admission = MAX_OWNED_CHILDREN;
 #endif
 	void ClosePidFd ();
 	worker_pid_t m_Pid = -1;

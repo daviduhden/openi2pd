@@ -232,7 +232,7 @@ bool TorrentStorageWorker::Start (const std::filesystem::path & root, std::strin
 		error = channel.error ();
 		return false;
 	}
-	m_Impl->process = ChildProcess::Adopt (-1, std::move (*channel));
+	m_Impl->process = ChildProcess::AdoptChannel (std::move (*channel));
 	m_Impl->process.ChannelFd ().SetEnforcementPolicy (EnforcementPolicy::Endpoint);
 	m_Impl->ready = true;
 	return true;

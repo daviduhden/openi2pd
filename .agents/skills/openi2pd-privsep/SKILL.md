@@ -105,6 +105,15 @@ report that limitation; do not substitute local execution. Ask for:
 
 ## Known issues and decisions
 
+- A bounded Stop can leave a child alive. Reserve retirement capacity before
+  fork and transfer the reservation with process ownership; destructor/move
+  must publish retained PID/pidfd without allocation instead of discarding it.
+  Disown also retains a positive child in the process-local reaper, rather
+  than transferring wait authority to a second owner.
+  Channel-only workers use AdoptChannel and consume no reap reservation.
+  Deferred drains only reap/close, never signal; daemon/supervisor ticks
+  prevent idle retained children from waiting for another spawn to be reaped.
+
 - Resource-transfer review includes exceptions after child creation and
   before containment/publication. An owning process handle alone may close
   without terminating a suspended unassigned child. Keep a no-allocation

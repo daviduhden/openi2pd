@@ -10,6 +10,19 @@ Documents project documentation.
 
 # Process capabilities and OS policies
 
+## Deferred child ownership continuation
+
+Implemented / static; Pending CI compilation / Pending CI tests. POSIX ChildProcess owners
+reserve one of 64 process-local slots before fork. Running and unreaped owned
+children retain the reservation; destructor/move/Disown transfer a positive
+PID/pidfd into deferred retirement without allocation or further signalling.
+The deferred scan only uses waitpid(WNOHANG), retaining metadata on no progress
+and closing the pidfd once after reap/ECHILD. New admission, lifecycle calls,
+supervisor iterations and the daemon's existing one-second tick drain it.
+Channel-only detached workers remain reaped by init and use no reservation.
+No new pledge promise, process-creation capability, network or file authority
+is granted. Cgroup v2/cgroup.kill and real D-state coverage remain pending.
+
 ## Current implementation
 
 | Process | OpenBSD pledge/unveil | Linux | Windows |

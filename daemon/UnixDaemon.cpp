@@ -55,6 +55,9 @@
 #include "ClientContext.h"
 #include "Transports.h"
 #include "util.h"
+#ifndef I2PD_NO_PRIVSEP
+#include "../privsep/Worker.h"
+#endif
 #ifdef __OpenBSD__
 // These declarations are platform-free and remain available in an
 // I2PD_NO_PRIVSEP build: the runtime pledge, the promise table and the
@@ -940,6 +943,11 @@ namespace util
 		while (running)
 		{
 			std::this_thread::sleep_for (std::chrono::seconds (1));
+#ifndef I2PD_NO_PRIVSEP
+			// Reap retired children even when no worker is being restarted.
+			// This scan never waits, signals or creates another process.
+			i2p::privsep::DrainRetiredChildren ();
+#endif
 #ifdef __OpenBSD__
 			// Poll at the existing one-second shutdown tick. Only this thread
 			// consumes these signals, so a pending signal cannot be stolen
