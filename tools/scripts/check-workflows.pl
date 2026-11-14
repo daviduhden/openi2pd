@@ -111,52 +111,81 @@ for my $file (@files) {
     # disable a job or run it unconditionally.
     my %declared = map { $_ => 1 } declared_dispatch_inputs( \@lines );
     ( my $without_comments = $text ) =~ s/^[ \t]*#.*$//mg;
-    push @errors, "$file: interpreter policy requires Perl, not an alternate runtime"
+    push @errors,
+      "$file: interpreter policy requires Perl, not an alternate runtime"
       if $without_comments =~ /\b(?:python[0-9.]*|pypy[0-9.]*|setup-python)\b/i;
-    if ($file eq 'agent-maintenance.yml' || $file eq 'validation.yml') {
-        my @commands = ('prove -v tests/agent_knowledge_validator/test_validator.t',
-            'perl tools/scripts/check-shell-policy.pl');
+    if ( $file eq 'agent-maintenance.yml' || $file eq 'validation.yml' ) {
+        my @commands = (
+            'prove -v tests/agent_knowledge_validator/test_validator.t',
+            'perl tools/scripts/check-shell-policy.pl'
+        );
         push @commands,
           'perl scripts/validate-agent-knowledge.pl --scope worktree';
         for my $command (@commands) {
             push @errors, "$file: Perl knowledge contract missing: $command"
-              if index($without_comments, $command) < 0;
+              if index( $without_comments, $command ) < 0;
         }
     }
-    if ($file eq 'validation.yml') {
+    if ( $file eq 'validation.yml' ) {
         for my $command (
             q{while IFS= read -r -d '' file; do},
             q{mapfile -d '' -t perl_files},
-            q{git ls-files -z '*.pl' '*.pm' '*.t'} ) {
-            push @errors, "$file: NUL-delimited Perl inventory missing: $command"
-              if index($without_comments, $command) < 0;
+            q{git ls-files -z '*.pl' '*.pm' '*.t'}
+          )
+        {
+            push @errors,
+              "$file: NUL-delimited Perl inventory missing: $command"
+              if index( $without_comments, $command ) < 0;
         }
     }
-    if ($file eq 'build-openbsd.yml') {
+    if ( $file eq 'build-openbsd.yml' ) {
+
         # The pinned action throws before its final copyback when its
         # run input fails. Its named rsync shell instead pulls after the
         # command and returns the original command status.
-        my ($prepare) = $without_comments =~ /(^      - name: Prepare OpenBSD VM\n.*?)(?=^      - (?:name|uses):|\z)/ms;
-        my ($build) = $without_comments =~ /(^      - name: Build and test inside OpenBSD\n.*?)(?=^      - (?:name|uses):|\z)/ms;
-        my ($upload) = $without_comments =~ /(^      - name: Upload OpenBSD test logs\n.*?)(?=^      - (?:name|uses):|\z)/ms;
-        for my $required ('uses: vmactions/openbsd-vm@', 'copyback: true',
-            'sync: rsync', 'custom-shell-name: openbsd') {
-            push @errors, "$file: OpenBSD failure copyback missing: prepare $required"
-              unless defined $prepare && index($prepare, $required) >= 0;
+        my ($prepare) = $without_comments =~
+/(^      - name: Prepare OpenBSD VM\n.*?)(?=^      - (?:name|uses):|\z)/ms;
+        my ($build) = $without_comments =~
+/(^      - name: Build and test inside OpenBSD\n.*?)(?=^      - (?:name|uses):|\z)/ms;
+        my ($upload) = $without_comments =~
+/(^      - name: Upload OpenBSD test logs\n.*?)(?=^      - (?:name|uses):|\z)/ms;
+        for my $required (
+            'uses: vmactions/openbsd-vm@',
+            'copyback: true',
+            'sync: rsync',
+            'custom-shell-name: openbsd'
+          )
+        {
+            push @errors,
+              "$file: OpenBSD failure copyback missing: prepare $required"
+              unless defined $prepare && index( $prepare, $required ) >= 0;
         }
-        push @errors, "$file: OpenBSD failure copyback forbids the action run input"
+        push @errors,
+          "$file: OpenBSD failure copyback forbids the action run input"
           if defined $prepare && $prepare =~ /^          run:/m;
-        for my $required ('shell: openbsd {0}', 'run: |', 'set -eu',
-            'cmake --build build-output', 'ctest --test-dir build-output',
-            'build_status=$?', 'exit "$build_status"') {
-            push @errors, "$file: OpenBSD failure copyback missing: build $required"
-              unless defined $build && index($build, $required) >= 0;
+        for my $required (
+            'shell: openbsd {0}',
+            'run: |',
+            'set -eu',
+            'cmake --build build-output',
+            'ctest --test-dir build-output',
+            'build_status=$?',
+            'exit "$build_status"'
+          )
+        {
+            push @errors,
+              "$file: OpenBSD failure copyback missing: build $required"
+              unless defined $build && index( $build, $required ) >= 0;
         }
-        for my $required ('if: always()', 'uses: actions/upload-artifact@',
-            'build-output/Testing', 'configure.log', 'build.log',
-            'ctest-openbsd.xml') {
-            push @errors, "$file: OpenBSD failure copyback missing: upload $required"
-              unless defined $upload && index($upload, $required) >= 0;
+        for my $required (
+            'if: always()',         'uses: actions/upload-artifact@',
+            'build-output/Testing', 'configure.log',
+            'build.log',            'ctest-openbsd.xml'
+          )
+        {
+            push @errors,
+              "$file: OpenBSD failure copyback missing: upload $required"
+              unless defined $upload && index( $upload, $required ) >= 0;
         }
     }
     my %referenced;
@@ -183,12 +212,12 @@ sub job_blocks {
         }
         next unless $in_jobs;
         if ( $line =~ /^\S/ ) {
-            $in_jobs  = 0;
+            $in_jobs = 0;
             $current = undef;
             next;
         }
         if ( $line =~ /^ {2}([A-Za-z0-9_-]+):\s*$/ ) {
-            $current          = $1;
+            $current = $1;
             $blocks{$current} = '';
             next;
         }
@@ -241,7 +270,8 @@ for my $path ( sort @action_files ) {
     close $fh;
     ( my $joined = $text ) =~ s/\\\n\s*/ /g;
     $joined =~ s/`\n\s*/ /g;
-    if ($path =~ m{[\\/]linux-openssl-build[\\/]action[.]ya?ml\z}) {
+    if ( $path =~ m{[\\/]linux-openssl-build[\\/]action[.]ya?ml\z} ) {
+
         # A failed compiler must still leave stderr and probe evidence.
         # Inspect commands and their upload block separately so an unused
         # filename elsewhere cannot satisfy the artifact contract.
@@ -249,32 +279,48 @@ for my $path ( sort @action_files ) {
         $active =~ s/^[ \t]*#.*$//mg;
         for my $required (
             q{STRICT_WARNINGS: ${{ inputs.warnings_as_errors }}},
-            q{case "$STRICT_WARNINGS" in}, q{ON|OFF)},
-            q{-DI2PD_WARNINGS_AS_ERRORS="$STRICT_WARNINGS"} ) {
+            q{case "$STRICT_WARNINGS" in},
+            q{ON|OFF)},
+            q{-DI2PD_WARNINGS_AS_ERRORS="$STRICT_WARNINGS"}
+          )
+        {
             push @errors, "$path: strict warnings chain missing: $required"
-              if index($active, $required) < 0;
+              if index( $active, $required ) < 0;
         }
         push @errors, "$path: strict warnings action default must be OFF"
-          unless $active =~ /^  warnings_as_errors:\n(?:(?!^  [A-Za-z_]+:).)*?^    default: ['"]?OFF['"]?\s*$/ms;
-        for my $phase ( [ 'configure', qr/cmake\s+-S\s+build\s+-B\s+build-output/ ],
-            [ 'build', qr/cmake\s+--build\s+build-output/ ] ) {
-            my ($name, $command) = @{$phase};
+          unless $active =~
+/^  warnings_as_errors:\n(?:(?!^  [A-Za-z_]+:).)*?^    default: ['"]?OFF['"]?\s*$/ms;
+        for my $phase (
+            [ 'configure', qr/cmake\s+-S\s+build\s+-B\s+build-output/ ],
+            [ 'build',     qr/cmake\s+--build\s+build-output/ ]
+          )
+        {
+            my ( $name, $command ) = @{$phase};
             push @errors, "$path: build evidence missing: $name stderr capture"
-              unless $active =~ /$command[^\n]*2>&1\s*\|\s*tee\s+(?:"?\$PWD\/)?\Q$name\E[.]log"?(?:\s|$)/;
+              unless $active =~
+/$command[^\n]*2>&1\s*\|\s*tee\s+(?:"?\$PWD\/)?\Q$name\E[.]log"?(?:\s|$)/;
         }
-        my ($build_block) = $active =~ /(^[ \t]*-[ ]name:[ ]Build and run all CTest targets\n.*?)(?=^[ \t]*-[ ]name:|\z)/ms;
-        push @errors, "$path: build evidence missing: pipeline failure propagation"
+        my ($build_block) = $active =~
+/(^[ \t]*-[ ]name:[ ]Build and run all CTest targets\n.*?)(?=^[ \t]*-[ ]name:|\z)/ms;
+        push @errors,
+          "$path: build evidence missing: pipeline failure propagation"
           unless defined $build_block && $build_block =~ /set -euo pipefail/;
-        my ($upload_block) = $active =~ /(^[ \t]*-[ ]name:[^\n]*\n(?:(?!^[ \t]*-[ ]name:).)*?uses:[ ]actions\/upload-artifact[^\n]*\n(?:(?!^[ \t]*-[ ]name:).)*)/ms;
-        for my $required ('if: always()', 'configure.log', 'build.log',
-            'build-output/CMakeFiles/CMakeConfigureLog.yaml') {
+        my ($upload_block) = $active =~
+/(^[ \t]*-[ ]name:[^\n]*\n(?:(?!^[ \t]*-[ ]name:).)*?uses:[ ]actions\/upload-artifact[^\n]*\n(?:(?!^[ \t]*-[ ]name:).)*)/ms;
+        for my $required (
+            'if: always()', 'configure.log',
+            'build.log',    'build-output/CMakeFiles/CMakeConfigureLog.yaml'
+          )
+        {
             push @errors, "$path: build evidence missing: upload $required"
-              unless defined $upload_block && index($upload_block, $required) >= 0;
+              unless defined $upload_block
+              && index( $upload_block, $required ) >= 0;
         }
     }
     for my $line ( split /\n/, $joined ) {
         next if $line =~ /^\s*#/;
-        push @errors, "$path: interpreter policy requires Perl, not an alternate runtime"
+        push @errors,
+          "$path: interpreter policy requires Perl, not an alternate runtime"
           if $line =~ /\b(?:python[0-9.]*|pypy[0-9.]*|setup-python)\b/i;
         if ( $line =~ /^\s*continue-on-error\s*:/ ) {
             push @errors, "$path: continue-on-error is forbidden";
@@ -305,41 +351,52 @@ for my $file ( sort keys %branch_formula ) {
     }
     my $text    = $texts{$file};
     my $formula = $branch_formula{$file};
-    my $active = $text;
+    my $active  = $text;
     $active =~ s/^[ \t]*#.*$//mg;
-    push @errors, "$file: strict warnings dispatch must be boolean default false"
-      unless $active =~ /^      warnings_as_errors:\n(?:(?!^      [A-Za-z_]+:).)*?^        type: boolean\n(?:(?!^      [A-Za-z_]+:).)*?^        default: false\s*$/ms;
-    push @errors, "$file: strict warnings forwarding missing"
-      if index($active, q{warnings_as_errors: ${{ inputs.warnings_as_errors && 'ON' || 'OFF' }}}) < 0;
+    push @errors,
+      "$file: strict warnings dispatch must be boolean default false"
+      unless $active =~
+/^      warnings_as_errors:\n(?:(?!^      [A-Za-z_]+:).)*?^        type: boolean\n(?:(?!^      [A-Za-z_]+:).)*?^        default: false\s*$/ms;
+    push @errors,
+      "$file: strict warnings forwarding missing"
+      if index( $active,
+        q{warnings_as_errors: ${{ inputs.warnings_as_errors && 'ON' || 'OFF' }}}
+      ) < 0;
     if ( index( $text, $formula ) < 0 ) {
         push @errors, "$file: does not select the $formula Homebrew bottle";
     }
     if ( $text =~ /openssl\.org\/source|OPENSSL_SHA256|OPENSSL_PIN/ ) {
-        push @errors, "$file: must use the Homebrew $formula bottle, not a source build";
+        push @errors,
+          "$file: must use the Homebrew $formula bottle, not a source build";
     }
 }
 for my $file (@files) {
     next if exists $branch_formula{$file};
     if ( $texts{$file} =~ /openssl\.org\/source|OPENSSL_SHA256|OPENSSL_PIN/ ) {
-        push @errors, "$file: OpenSSL source builds moved to the Homebrew branch workflows";
+        push @errors,
+          "$file: OpenSSL source builds moved to the Homebrew branch workflows";
     }
 }
 my $crypto_diagnostic = $texts{'crypto-tsan.yml'};
-my $crypto_action_path = File::Spec->catfile($actions_dir, 'tsan-openssl', 'action.yml');
+my $crypto_action_path =
+  File::Spec->catfile( $actions_dir, 'tsan-openssl', 'action.yml' );
 open my $crypto_action_file, '<', $crypto_action_path
   or die "cannot read instrumented crypto action: $!\n";
 my $crypto_action = do { local $/ = undef; <$crypto_action_file> };
 close $crypto_action_file;
-if (defined $crypto_diagnostic) {
+if ( defined $crypto_diagnostic ) {
     for my $required (
         'OPENSSL_COMMIT: 2f4e3a5fec05394068cfa7379890ab552483a8a6',
         'https://github.com/openssl/openssl.git',
-        'test "$(git -C "$diagnostic/source" rev-parse HEAD)" = "$OPENSSL_COMMIT"',
-        'patch_file="$GITHUB_WORKSPACE/.github/patches/openssl-tsan-compiler-macro.patch"',
-        'git apply --check "$patch_file"', 'git apply "$patch_file"',
+'test "$(git -C "$diagnostic/source" rev-parse HEAD)" = "$OPENSSL_COMMIT"',
+'patch_file="$GITHUB_WORKSPACE/.github/patches/openssl-tsan-compiler-macro.patch"',
+        'git apply --check "$patch_file"',
+        'git apply "$patch_file"',
         'git diff --binary > "$diagnostic/evidence/openssl-source.patch"',
-        'CC=clang CXX=clang++ perl ./Configure', '-fsanitize=thread',
-        '--prefix="$diagnostic/prefix"', '--libdir=lib',
+        'CC=clang CXX=clang++ perl ./Configure',
+        '-fsanitize=thread',
+        '--prefix="$diagnostic/prefix"',
+        '--libdir=lib',
         '-DWITH_THREADSANITIZER=ON',
         '-DCMAKE_EXE_LINKER_FLAGS="-fsanitize=thread -Wl,--build-id=sha1"',
         '-DOPENSSL_CRYPTO_LIBRARY="$diagnostic/prefix/lib/libcrypto.so"',
@@ -347,20 +404,27 @@ if (defined $crypto_diagnostic) {
         '--target test-clientcontext-registry',
         q{-R '^test-clientcontext-registry$'},
         'ctest --test-dir "$diagnostic/project" -j 1',
-        'readelf -n "$image"', 'sha256sum "$image"',
-        'if: always()', 'staged="$GITHUB_WORKSPACE/crypto-tsan-evidence"',
+        'readelf -n "$image"',
+        'sha256sum "$image"',
+        'if: always()',
+        'staged="$GITHUB_WORKSPACE/crypto-tsan-evidence"',
         'cp -R "$diagnostic/evidence" "$staged/logs"',
         'cp -L "$image" "$staged/images/"',
         'path: crypto-tsan-evidence',
-        'if-no-files-found: error' ) {
-        push @errors, "crypto-tsan.yml: missing instrumented crypto boundary $required"
-          if index($crypto_diagnostic . $crypto_action, $required) < 0;
+        'if-no-files-found: error'
+      )
+    {
+        push @errors,
+          "crypto-tsan.yml: missing instrumented crypto boundary $required"
+          if index( $crypto_diagnostic . $crypto_action, $required ) < 0;
     }
     push @errors, 'crypto-tsan.yml: sanitizer suppressions are forbidden'
-      if ($crypto_diagnostic . $crypto_action) =~ /suppressions=|ignore_noninstrumented_modules|halt_on_error=0/;
+      if ( $crypto_diagnostic . $crypto_action ) =~
+      /suppressions=|ignore_noninstrumented_modules|halt_on_error=0/;
 }
 for my $required (
-    "if: matrix.name == 'tsan'", 'uses: ./.github/actions/tsan-openssl',
+    "if: matrix.name == 'tsan'",
+    'uses: ./.github/actions/tsan-openssl',
     'TSAN_OPENSSL_PREFIX: ${{ steps.tsan-crypto.outputs.prefix }}',
     'if [ "$SANITIZER_NAME" = tsan ]; then',
     '"-DOPENSSL_CRYPTO_LIBRARY=$TSAN_OPENSSL_PREFIX/lib/libcrypto.so"',
@@ -368,14 +432,18 @@ for my $required (
     '"-DCMAKE_EXE_LINKER_FLAGS=-fsanitize=thread -Wl,--build-id=sha1"',
     '"${sanitizer_flags[@]}" "${crypto_flags[@]}"',
     "if: always() && matrix.name == 'tsan'",
-    'sanitizer-evidence/openssl/images', 'sanitizer-linked-libraries.txt' ) {
-    push @errors, "validation.yml: missing shared TSan crypto boundary $required"
-      if index($texts{'validation.yml'}, $required) < 0;
+    'sanitizer-evidence/openssl/images',
+    'sanitizer-linked-libraries.txt'
+  )
+{
+    push @errors,
+      "validation.yml: missing shared TSan crypto boundary $required"
+      if index( $texts{'validation.yml'}, $required ) < 0;
 }
-my $crypto_patch_path = File::Spec->catfile($root, '.github', 'patches',
-    'openssl-tsan-compiler-macro.patch');
-if (defined $crypto_diagnostic) {
-    if (open my $patch_file, '<', $crypto_patch_path) {
+my $crypto_patch_path = File::Spec->catfile( $root, '.github', 'patches',
+    'openssl-tsan-compiler-macro.patch' );
+if ( defined $crypto_diagnostic ) {
+    if ( open my $patch_file, '<', $crypto_patch_path ) {
         local $/ = undef;
         my $patch = <$patch_file>;
         close $patch_file;
@@ -384,14 +452,19 @@ if (defined $crypto_diagnostic) {
             'Index: include/internal/threads_common.h',
             '+#if !defined(__SANITIZE_THREAD__)',
             ' #define __SANITIZE_THREAD__',
-            ' #include <sanitizer/tsan_interface.h>' ) {
-            push @errors, "crypto-tsan.yml: incomplete upstream macro patch $required"
-              if index($patch, $required) < 0;
+            ' #include <sanitizer/tsan_interface.h>'
+          )
+        {
+            push @errors,
+              "crypto-tsan.yml: incomplete upstream macro patch $required"
+              if index( $patch, $required ) < 0;
         }
-    } else {
+    }
+    else {
         push @errors, 'crypto-tsan.yml: missing upstream macro patch';
     }
 }
+
 # The manual lanes are split by concern: Linux builds and packaging
 # checks, Android, and the validation lanes (Doxygen, compile-free agent
 # checks, Perl quality, sanitizers and fuzzing). A job must live in its
@@ -399,7 +472,8 @@ if (defined $crypto_diagnostic) {
 my %split_jobs = (
     'build-linux.yml'   => [qw(install-components interop)],
     'build-android.yml' => [qw(android android-ui)],
-    'validation.yml'    => [qw(source-docs skills-static perl-quality sanitizers fuzz-smoke)],
+    'validation.yml'    =>
+      [qw(source-docs skills-static perl-quality sanitizers fuzz-smoke)],
 );
 my %job_owner;
 my %blocks_for;
@@ -427,8 +501,7 @@ for my $job ( sort keys %job_owner ) {
     for my $file (@files) {
         next if $file eq $job_owner{$job};
         if ( exists $blocks_for{$file}{$job} ) {
-            push @errors,
-              "$file: job '$job' belongs to $job_owner{$job}";
+            push @errors, "$file: job '$job' belongs to $job_owner{$job}";
         }
     }
 }
@@ -437,37 +510,61 @@ for my $job ( sort keys %job_owner ) {
 # Keep the known leak/lifecycle reproducers beside their logs and hashes.
 if ( exists $blocks_for{'validation.yml'}{'sanitizers'} ) {
     my $sanitizers = $blocks_for{'validation.yml'}{'sanitizers'};
-    my $active = $sanitizers;
+    my $active     = $sanitizers;
     $active =~ s/^[ \t]*#.*$//mg;
     $active =~ s/\\\n\s*/ /g;
-    for my $phase ( [ 'configure', qr/cmake\s+-S\s+build\s+-B\s+build-sanitizers/ ],
-        [ 'build', qr/cmake\s+--build\s+build-sanitizers/ ] ) {
-        my ($name, $command) = @{$phase};
-        push @errors, "validation.yml: sanitizer build evidence missing: $name stderr capture"
-          unless $active =~ /$command[^\n]*2>&1\s*\|\s*tee\s+sanitizer-\Q$name\E[.]log(?:\s|$)/;
+    for my $phase (
+        [ 'configure', qr/cmake\s+-S\s+build\s+-B\s+build-sanitizers/ ],
+        [ 'build',     qr/cmake\s+--build\s+build-sanitizers/ ]
+      )
+    {
+        my ( $name, $command ) = @{$phase};
+        push @errors,
+"validation.yml: sanitizer build evidence missing: $name stderr capture"
+          unless $active =~
+          /$command[^\n]*2>&1\s*\|\s*tee\s+sanitizer-\Q$name\E[.]log(?:\s|$)/;
     }
-    my ($build_block) = $active =~ /(^[ \t]*-[ ]name:[ ]Build and run sanitizer CTest matrix\n.*?)(?=^[ \t]*-[ ]name:|\z)/ms;
-    push @errors, "validation.yml: sanitizer build evidence missing: pipeline failure propagation"
+    my ($build_block) = $active =~
+/(^[ \t]*-[ ]name:[ ]Build and run sanitizer CTest matrix\n.*?)(?=^[ \t]*-[ ]name:|\z)/ms;
+    push @errors,
+"validation.yml: sanitizer build evidence missing: pipeline failure propagation"
       unless defined $build_block && $build_block =~ /set -euo pipefail/;
-    my ($upload_block) = $active =~ /(^[ \t]*-[ ]name:[ ]Upload sanitizer test logs\n.*?)(?=^[ \t]*-[ ]name:|\z)/ms;
-    for my $required ('if: always()', 'uses: actions/upload-artifact',
-        'sanitizer-configure.log', 'sanitizer-build.log',
+    my ($upload_block) = $active =~
+/(^[ \t]*-[ ]name:[ ]Upload sanitizer test logs\n.*?)(?=^[ \t]*-[ ]name:|\z)/ms;
+    for my $required (
+        'if: always()',
+        'uses: actions/upload-artifact',
+        'sanitizer-configure.log',
+        'sanitizer-build.log',
         'build-sanitizers/CMakeCache.txt',
-        'build-sanitizers/CMakeFiles/CMakeConfigureLog.yaml') {
-        push @errors, "validation.yml: sanitizer build evidence missing: upload $required"
-          unless defined $upload_block && index($upload_block, $required) >= 0;
+        'build-sanitizers/CMakeFiles/CMakeConfigureLog.yaml'
+      )
+    {
+        push @errors,
+          "validation.yml: sanitizer build evidence missing: upload $required"
+          unless defined $upload_block
+          && index( $upload_block, $required ) >= 0;
     }
-    for my $image (qw(test-eddsa test-i2ptunnel-stop test-i2ptunnel-targets
+    for my $image (
+        qw(test-eddsa test-i2ptunnel-stop test-i2ptunnel-targets
         test-eciesx25519-ratchet-session test-runnableservice-lifecycle
-        test-i2cp-session-lifecycle)) {
+        test-i2cp-session-lifecycle)
+      )
+    {
         if ( index( $sanitizers, "build-sanitizers/tests/$image" ) < 0 ) {
-            push @errors, "validation.yml: sanitizer executable evidence missing: $image";
+            push @errors,
+              "validation.yml: sanitizer executable evidence missing: $image";
         }
     }
-    for my $marker ( 'sha256sum', 'sanitizer-evidence/revision.txt',
-        'sanitizer-evidence/missing-images.txt' ) {
+    for my $marker (
+        'sha256sum',
+        'sanitizer-evidence/revision.txt',
+        'sanitizer-evidence/missing-images.txt'
+      )
+    {
         if ( index( $sanitizers, $marker ) < 0 ) {
-            push @errors, "validation.yml: sanitizer identity evidence missing: $marker";
+            push @errors,
+              "validation.yml: sanitizer identity evidence missing: $marker";
         }
     }
 }
@@ -476,7 +573,7 @@ if ( exists $blocks_for{'validation.yml'}{'sanitizers'} ) {
 # a Perl::Critic run on every dispatch is a cost regression, and an
 # accidental `if:` removal is otherwise invisible until the job starts.
 my %input_gate = (
-    'build-android.yml' => { 'android-ui' => 'android_ui' },
+    'build-android.yml' => { 'android-ui'   => 'android_ui' },
     'validation.yml'    => { 'perl-quality' => 'perl_style' },
 );
 for my $file ( sort keys %input_gate ) {
@@ -488,8 +585,7 @@ for my $file ( sort keys %input_gate ) {
             next;
         }
         if ( $blocks_for{$file}{$job} !~ /\binputs\.\Q$input\E\b/ ) {
-            push @errors,
-              "$file: job '$job' must stay gated on inputs.$input";
+            push @errors, "$file: job '$job' must stay gated on inputs.$input";
         }
     }
 }
@@ -498,12 +594,13 @@ for my $file ( sort keys %input_gate ) {
 # Check both prefixes and the overlay so a native build cannot resolve a
 # different architecture or API floor before Gradle starts.
 my %android_native = (
-    android => [ 'arm64-android', 'arm64-v8a', 'build-android' ],
-    'android-ui' => [ 'x64-android', 'x86_64', 'build-android-x86_64' ],
+    android      => [ 'arm64-android', 'arm64-v8a', 'build-android' ],
+    'android-ui' => [ 'x64-android',   'x86_64',    'build-android-x86_64' ],
 );
 for my $job ( sort keys %android_native ) {
     if ( !exists $blocks_for{'build-android.yml'}{$job} ) {
-        push @errors, "build-android.yml: missing Android dependency job '$job'";
+        push @errors,
+          "build-android.yml: missing Android dependency job '$job'";
         next;
     }
     my ( $triplet, $abi, $build_directory ) = @{ $android_native{$job} };
@@ -514,41 +611,48 @@ for my $job ( sort keys %android_native ) {
         q{-DVCPKG_OVERLAY_TRIPLETS="$GITHUB_WORKSPACE/contrib/ci/android"},
         '-DANDROID_ABI=' . $abi,
         '-DANDROID_PLATFORM=android-29',
-        q{-DCMAKE_PREFIX_PATH=${{ github.workspace }}/} . $build_directory
-          . '/vcpkg_installed/' . $triplet,
-        q{-DBOOST_ROOT=${{ github.workspace }}/} . $build_directory
-          . '/vcpkg_installed/' . $triplet,
+        q{-DCMAKE_PREFIX_PATH=${{ github.workspace }}/}
+        . $build_directory
+        . '/vcpkg_installed/'
+        . $triplet,
+        q{-DBOOST_ROOT=${{ github.workspace }}/}
+        . $build_directory
+        . '/vcpkg_installed/'
+        . $triplet,
         '-Pi2pd.abis=' . $abi,
         '-Pandroid.injected.build.abi=' . $abi,
-    ) {
+      )
+    {
         push @errors,
-          "build-android.yml: Android dependency boundary in $job lacks $required"
+"build-android.yml: Android dependency boundary in $job lacks $required"
           if index( $active, $required ) < 0;
     }
     while ( $active =~ /-DVCPKG_TARGET_TRIPLET=([^\s\\]+)/gx ) {
         push @errors,
-          "build-android.yml: Android dependency boundary has wrong triplet in $job"
+"build-android.yml: Android dependency boundary has wrong triplet in $job"
           if $1 ne $triplet;
     }
     my $path = File::Spec->catfile( $root, 'contrib', 'ci', 'android',
         "$triplet.cmake" );
     if ( open my $overlay, '<', $path ) {
         my $text = do { local $/ = undef; <$overlay> };
-        close $overlay or push @errors,
+        close $overlay
+          or push @errors,
           "build-android.yml: Android dependency boundary cannot close $path";
         $text =~ s/^[ \t]*\#[^\n]*$//mgx;
         my $include = index( $text,
             q{include("$ENV{VCPKG_ROOT}/triplets/} . $triplet . q{.cmake")} );
-        my $floor = index( $text, 'set(VCPKG_CMAKE_SYSTEM_VERSION 29)' );
+        my $floor      = index( $text, 'set(VCPKG_CMAKE_SYSTEM_VERSION 29)' );
         my $build_type = index( $text, 'set(VCPKG_BUILD_TYPE release)' );
         push @errors,
-          "build-android.yml: Android dependency boundary has invalid overlay $triplet"
-          if $include < 0 || $floor <= $include
+"build-android.yml: Android dependency boundary has invalid overlay $triplet"
+          if $include < 0
+          || $floor <= $include
           || $build_type <= $include;
     }
     else {
         push @errors,
-          "build-android.yml: Android dependency boundary lacks overlay $triplet";
+"build-android.yml: Android dependency boundary lacks overlay $triplet";
     }
 }
 
@@ -565,37 +669,44 @@ sub windows_startup_command_errors {
     my ($windows) = @_;
     my @violations;
     my ($step) = $windows =~
-      /(      - name: Capture bounded router loader and entry evidence\n.*?)(?=      - name:)/s;
+/(      - name: Capture bounded router loader and entry evidence\n.*?)(?=      - name:)/s;
     return 'build-windows.yml: missing startup diagnostic step'
       unless defined $step;
-    my ($commands) = $step =~ /          \@\(\n(.*?)          \) \| Set-Content -Encoding ascii \$commands/s;
+    my ($commands) = $step =~
+/          \@\(\n(.*?)          \) \| Set-Content -Encoding ascii \$commands/s;
     my @expected = (
         q{.echo OPENI2PD_LOADER},
-        q{sxe -c ".echo OPENI2PD_STARTUP_EXCEPTION; .lastevent; ln @rip; k 20; q" av},
-        q{sxe -c ".echo OPENI2PD_STARTUP_EXCEPTION; .lastevent; ln @rip; k 20; q" 0xc0000142},
+q{sxe -c ".echo OPENI2PD_STARTUP_EXCEPTION; .lastevent; ln @rip; k 20; q" av},
+q{sxe -c ".echo OPENI2PD_STARTUP_EXCEPTION; .lastevent; ln @rip; k 20; q" 0xc0000142},
         q{bu user32!MessageBoxA ".echo OPENI2PD_MODAL; ? @$ra; k 20; q"},
         q{bu user32!MessageBoxW ".echo OPENI2PD_MODAL; ? @$ra; k 20; q"},
         q{bp @$exentry ".echo OPENI2PD_ENTRY; ln @rip; k 20; g"},
         'g',
     );
-    my @actual = defined($commands)
+    my @actual =
+      defined($commands)
       ? map { /^\s*'([^']*)'\s*,?\s*$/ ? $1 : 'INVALID' }
-        split /\n/, $commands
+      split /\n/, $commands
       : ();
-    push @violations, 'build-windows.yml: startup diagnostics may print code locations only'
-      unless join("\n", @actual) eq join("\n", @expected);
+    push @violations,
+      'build-windows.yml: startup diagnostics may print code locations only'
+      unless join( "\n", @actual ) eq join( "\n", @expected );
+
     for my $required (
         q{if: ${{ always() && inputs.heap_diagnostics }}},
         q{$debugger.WaitForExit(20000)},
         q{& taskkill.exe /PID $debugger.Id /T /F},
-        q{$debugArguments = @('-G', '-noshell', '-logo', "`"$log`"", '-cf', "`"$commands`"", "`"$binary`"", '--version')},
-    ) {
-        push @violations, 'build-windows.yml: missing bounded startup diagnostic contract'
-          if index($step, $required) < 0;
+q{$debugArguments = @('-G', '-noshell', '-logo', "`"$log`"", '-cf', "`"$commands`"", "`"$binary`"", '--version')},
+      )
+    {
+        push @violations,
+          'build-windows.yml: missing bounded startup diagnostic contract'
+          if index( $step, $required ) < 0;
     }
-    push @violations, 'build-windows.yml: startup diagnostics must preserve CTest'
-      unless index($windows,
-        q{if: ${{ always() && steps.msys2_build.outcome == 'success' }}}) >= 0;
+    push @violations,
+      'build-windows.yml: startup diagnostics must preserve CTest'
+      unless index( $windows,
+        q{if: ${{ always() && steps.msys2_build.outcome == 'success' }}} ) >= 0;
     push @violations, 'build-windows.yml: missing startup diagnostic artifact'
       unless $windows =~ /^\s*build-output\/startup-debugger\s*$/m;
     return @violations;
@@ -604,30 +715,38 @@ sub windows_startup_command_errors {
 sub windows_crash_command_errors {
     my ($windows) = @_;
     my @violations;
-    push @violations, 'build-windows.yml: missing bounded worker initialization diagnostic'
-      unless $windows =~ /^\s*\$debugArguments = \@\('-G', '-noshell', '-lines', '-y', "`"\$symbols`"", '-logo', "`"\$log`"", '-cf', "`"\$commands`"", "`"\$binary`""\)\s*$/m
-        && $windows =~ /foreach \(\$test in \@\([^\n]*'test-privsep-windows-supervisor'\)\)/
-        && $windows =~ /^\s*build-msvc\/tests\/Release\/test-privsep-windows-supervisor[.]exe\s*$/m;
-    push @violations, 'build-windows.yml: crash marker must fail the diagnostic step'
-      unless index($windows, q{Select-String -Path $log -Pattern '^OPENI2PD_CRASH\s*$' -Quiet}) >= 0
-        && index($windows, q{$failures += "$test debugger exception"}) >= 0
-        && index($windows, q{$failures += "$test missing debugger log"}) >= 0;
+    push @violations,
+      'build-windows.yml: missing bounded worker initialization diagnostic'
+      unless $windows =~
+/^\s*\$debugArguments = \@\('-G', '-noshell', '-lines', '-y', "`"\$symbols`"", '-logo', "`"\$log`"", '-cf', "`"\$commands`"", "`"\$binary`""\)\s*$/m
+      && $windows =~
+      /foreach \(\$test in \@\([^\n]*'test-privsep-windows-supervisor'\)\)/
+      && $windows =~
+/^\s*build-msvc\/tests\/Release\/test-privsep-windows-supervisor[.]exe\s*$/m;
+    push @violations,
+      'build-windows.yml: crash marker must fail the diagnostic step'
+      unless index( $windows,
+        q{Select-String -Path $log -Pattern '^OPENI2PD_CRASH\s*$' -Quiet} ) >= 0
+      && index( $windows, q{$failures += "$test debugger exception"} ) >= 0
+      && index( $windows, q{$failures += "$test missing debugger log"} ) >= 0;
     push @violations, windows_exception_command_errors($windows);
     return @violations;
 }
 
 # Validate each supplied exception-command block independently.
 sub windows_exception_command_errors {
-    my ($windows, $probe_mode) = @_;
+    my ( $windows, $probe_mode ) = @_;
     my @violations;
     my ( $inside, $closed ) = ( 0, 0 );
     my %events = map { $_ => 1 } qw(av 0xc0000374 0xc0000409 0xc0000142);
     my %seen;
+
     # Only the nonce-free probe may inspect termination status. Exact
     # lines keep nested breakpoint commands outside the heap allowlist.
     my %probe_commands = map { $_ => 1 } (
-        q{sxe -c "bu ntdll!NtTerminateProcess \".if (@edx == 0xc0000142) { .echo OPENI2PD_PROBE_TERMINATION; ln @rip; kc 40; }; gc\"; g" cpr},
-        q{sxe -c ".echo OPENI2PD_PROBE_EXIT; .lastevent; g" epr});
+q{sxe -c "bu ntdll!NtTerminateProcess \".if (@edx == 0xc0000142) { .echo OPENI2PD_PROBE_TERMINATION; ln @rip; kc 40; }; gc\"; g" cpr},
+        q{sxe -c ".echo OPENI2PD_PROBE_EXIT; .lastevent; g" epr}
+    );
     my %probe_seen;
     my %allowed = map { $_ => 1 }
       ( '.echo OPENI2PD_CRASH', '.lastevent', 'ln @rip', 'kc 40', 'q' );
@@ -643,56 +762,73 @@ sub windows_exception_command_errors {
             last;
         }
         next if !length $line || $line eq 'g';
-        if ($probe_mode && $probe_commands{$line}) {
+        if ( $probe_mode && $probe_commands{$line} ) {
             $probe_seen{$line}++;
             next;
         }
-        my ( $body, $event ) = $line =~ /\A sxe \s+ -c \s+ "([^"]+)" \s+ (\S+) \z/x;
+        my ( $body, $event ) =
+          $line =~ /\A sxe \s+ -c \s+ "([^"]+)" \s+ (\S+) \z/x;
         if ( !defined $body || !$events{$event} ) {
-            push @violations, 'build-windows.yml: unsupported crash debugger line';
+            push @violations,
+              'build-windows.yml: unsupported crash debugger line';
             next;
         }
         $seen{$event} = 1;
         for my $command ( split /\s*;\s*/x, $body ) {
-            push @violations, 'build-windows.yml: crash diagnostics may print code locations only'
+            push @violations,
+'build-windows.yml: crash diagnostics may print code locations only'
               unless $allowed{$command};
         }
     }
     push @violations, 'build-windows.yml: missing bounded crash command file'
       unless $inside && $closed && keys(%seen) == keys(%events);
-    push @violations, 'build-windows.yml: startup probe termination evidence missing'
-      if $probe_mode && (keys(%probe_seen) != 2 || grep { $_ != 1 } values %probe_seen);
+    push @violations,
+      'build-windows.yml: startup probe termination evidence missing'
+      if $probe_mode
+      && ( keys(%probe_seen) != 2 || grep { $_ != 1 } values %probe_seen );
     return @violations;
 }
 
 sub windows_startup_probe_errors {
     my ($windows) = @_;
     my @violations;
-    my ($probe) = $windows =~ /      - name: Capture contained worker initialization\n(.*?)(?=      - name:|\z)/s;
-    return 'build-windows.yml: missing bounded startup probe' unless defined $probe;
-    my @command_files = $windows =~ /^\s*'\@ \| Set-Content -Encoding ascii \$commands\s*$/mg;
+    my ($probe) = $windows =~
+/      - name: Capture contained worker initialization\n(.*?)(?=      - name:|\z)/s;
+    return 'build-windows.yml: missing bounded startup probe'
+      unless defined $probe;
+    my @command_files =
+      $windows =~ /^\s*'\@ \| Set-Content -Encoding ascii \$commands\s*$/mg;
     my @debugger_launches = $windows =~ /Start-Process -FilePath \$cdb\b/g;
-    push @violations, 'build-windows.yml: startup probe command-file inventory changed'
+    push @violations,
+      'build-windows.yml: startup probe command-file inventory changed'
       unless @command_files == 2 && @debugger_launches == 3;
-    my $arguments = q{$probeArguments = @('-g', '-G', '-o', '-noshell', '-lines', '-y', "`"$symbols`"", '-logo', "`"$log`"", '-cf', "`"$commands`"", "`"$binary`"", '--diagnose-worker-initialization')};
-    push @violations, 'build-windows.yml: startup probe must trace only the closed diagnostic mode'
-      unless index($probe, $arguments) >= 0;
+    my $arguments =
+q{$probeArguments = @('-g', '-G', '-o', '-noshell', '-lines', '-y', "`"$symbols`"", '-logo', "`"$log`"", '-cf', "`"$commands`"", "`"$binary`"", '--diagnose-worker-initialization')};
+    push @violations,
+'build-windows.yml: startup probe must trace only the closed diagnostic mode'
+      unless index( $probe, $arguments ) >= 0;
     my @child_lines = $windows =~ /^\s*(\$\w+ = \@\([^\n]*'-o'[^\n]*)$/mg;
-    push @violations, 'build-windows.yml: startup probe cannot trace authenticated workers'
+    push @violations,
+      'build-windows.yml: startup probe cannot trace authenticated workers'
       unless @child_lines == 1 && $child_lines[0] eq $arguments;
+
     for my $required (
         q{if: ${{ always() && steps.msvc_tests.outcome == 'failure' }}},
         q{Get-FileHash -Algorithm SHA256 -Path $binary},
-        q{WaitForExit(60000)}, q{taskkill.exe /PID $debugger.Id /T /F},
+        q{WaitForExit(60000)},
+        q{taskkill.exe /PID $debugger.Id /T /F},
         q{Select-String -Path $log -Pattern '^OPENI2PD_CRASH\s*$' -Quiet},
-        q{Select-String -Path @($log, $consoleLog, $consoleError) -Pattern '^startup probe: exit=0\b' -Quiet},
-        q{build-msvc/tests/Release/test-privsep-windows-supervisor.exe}) {
-        push @violations, 'build-windows.yml: startup probe evidence boundary missing'
-          if index($probe, $required) < 0;
+q{Select-String -Path @($log, $consoleLog, $consoleError) -Pattern '^startup probe: exit=0\b' -Quiet},
+        q{build-msvc/tests/Release/test-privsep-windows-supervisor.exe}
+      )
+    {
+        push @violations,
+          'build-windows.yml: startup probe evidence boundary missing'
+          if index( $probe, $required ) < 0;
     }
     push @violations, 'build-windows.yml: startup probe lacks retained artifact'
       unless $windows =~ /^\s*build-msvc\/startup-probe\s*$/m;
-    push @violations, windows_exception_command_errors($probe, 1);
+    push @violations, windows_exception_command_errors( $probe, 1 );
     return @violations;
 }
 
@@ -701,8 +837,9 @@ if (@errors) {
     exit 1;
 }
 
-print
-"workflow-static: $checked workflow(s) and " . scalar (@action_files) . " action file(s) obey the manual-only trigger policy and fail on empty CTest selections\n";
+print "workflow-static: $checked workflow(s) and "
+  . scalar(@action_files)
+  . " action file(s) obey the manual-only trigger policy and fail on empty CTest selections\n";
 exit 0;
 
 =head1 NAME

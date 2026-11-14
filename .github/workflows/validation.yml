@@ -140,7 +140,12 @@ jobs:
             perl -c "$file"
           done < <(git ls-files -z '*.pl' '*.pm' '*.t' 'tools/scripts/i2pdctl')
       - name: Run Test::More suites
-        run: prove -v tools/tests/i2pdctl.t tools/tests/validate-branding.t tools/tests/perl-portability.t tools/tests/maintenance-checkers.t tools/tests/make-drivers.t tools/tests/interop-helpers.t tests/agent_knowledge_validator/test_validator.t tests/android-javadoc-regex.t
+        run: >-
+          prove -v tools/tests/i2pdctl.t tools/tests/validate-branding.t
+          tools/tests/perl-portability.t tools/tests/maintenance-checkers.t
+          tools/tests/make-drivers.t tools/tests/interop-helpers.t
+          tests/agent_knowledge_validator/test_validator.t
+          tests/android-javadoc-regex.t
       - name: Run Perl::Critic
         run: |
           mapfile -d '' -t perl_files < <(git ls-files -z '*.pl' '*.pm' '*.t' 'tools/scripts/i2pdctl')

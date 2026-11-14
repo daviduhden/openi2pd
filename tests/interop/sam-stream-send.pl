@@ -10,13 +10,17 @@ use IO::Socket::INET;
 local $SIG{PIPE} = 'IGNORE';
 
 @ARGV == 3 or die "usage: sam-stream-send.pl 127.0.0.1 PORT FILE\n";
-my ($host, $port, $path) = @ARGV;
-$host eq '127.0.0.1' && $port =~ /\A[0-9]{1,5}\z/
-  && $port > 0 && $port <= 65535 or die "invalid loopback endpoint\n";
+my ( $host, $port, $path ) = @ARGV;
+     $host eq '127.0.0.1'
+  && $port =~ /\A[0-9]{1,5}\z/
+  && $port > 0
+  && $port <= 65535
+  or die "invalid loopback endpoint\n";
 local $SIG{ALRM} = sub { die "SAM fixture deadline exceeded\n" };
 alarm 10;
 open my $input, '<:raw', $path or die "cannot open SAM fixture\n";
 my $request = '';
+
 while (1) {
     my $count = read $input, my $chunk, 8192;
     defined $count or die "cannot read SAM fixture\n";
@@ -25,28 +29,33 @@ while (1) {
     length($request) <= 65536 or die "SAM fixture exceeds limit\n";
 }
 close $input or die "cannot close SAM fixture\n";
+
 # This diagnostic client accepts only credential-free HELLO negotiation.
 # Reject duplicate fields and additional lines before opening a socket.
 $request =~ /\AHELLO VERSION((?: (?:MIN|MAX)=[0-9]+(?:\.[0-9]+)*){1,2})\r?\n\z/
   or die "invalid SAM HELLO fixture\n";
 my %fields;
-for my $field (split / /, $1) {
+for my $field ( split / /, $1 ) {
     next unless length $field;
     my ($key) = split /=/, $field;
     !$fields{$key}++ or die "invalid SAM HELLO fixture\n";
 }
 my $socket = IO::Socket::INET->new(
-    PeerAddr => $host, PeerPort => $port, Proto => 'tcp', Timeout => 10
+    PeerAddr => $host,
+    PeerPort => $port,
+    Proto    => 'tcp',
+    Timeout  => 10
 ) or die "SAM connection failed\n";
 my $offset = 0;
-while ($offset < length $request) {
-    my $sent = syswrite $socket, $request, length($request)-$offset, $offset;
+while ( $offset < length $request ) {
+    my $sent = syswrite $socket, $request, length($request) - $offset, $offset;
     defined $sent && $sent > 0 or die "SAM send failed\n";
     $offset += $sent;
 }
+
 # Do not overread into later protocol messages or retain an unbounded line.
 my $reply = '';
-while (length($reply) < 8192) {
+while ( length($reply) < 8192 ) {
     my $count = sysread $socket, my $byte, 1;
     defined $count or die "SAM receive failed\n";
     last unless $count;
@@ -56,12 +65,14 @@ while (length($reply) < 8192) {
 length($reply) < 8192 || $reply =~ /\n\z/
   or die "SAM reply exceeds limit\n";
 length($reply) or die "SAM peer closed without a reply\n";
-close $socket or die "SAM close failed\n";
+close $socket  or die "SAM close failed\n";
 alarm 0;
+
 # Never expose MESSAGE or arbitrary fields from an untrusted peer.
-$reply =~ /\AHELLO REPLY RESULT=(OK|NOVERSION|I2P_ERROR)(?: VERSION=([0-9]+(?:\.[0-9]+)*))?\r?\n\z/
+$reply =~
+/\AHELLO REPLY RESULT=(OK|NOVERSION|I2P_ERROR)(?: VERSION=([0-9]+(?:\.[0-9]+)*))?\r?\n\z/
   or die "invalid SAM HELLO reply\n";
-my ($result, $version) = ($1, $2);
+my ( $result, $version ) = ( $1, $2 );
 $path !~ /[\x00-\x1f\x7f]/ or die "invalid SAM fixture label\n";
 my $safe_reply = "HELLO REPLY RESULT=$result";
 $safe_reply .= " VERSION=$version" if defined $version;

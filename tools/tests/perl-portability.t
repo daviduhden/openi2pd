@@ -42,7 +42,8 @@ sub read_file {
 # platform.
 sub repo_relative {
     my ($path) = @_;
-    return join '/', File::Spec->splitdir( File::Spec->abs2rel( $path, $root ) );
+    return join '/',
+      File::Spec->splitdir( File::Spec->abs2rel( $path, $root ) );
 }
 
 sub first_line {
@@ -97,8 +98,10 @@ find(
                 my $shebang = join "\n",
                   @head[ 0 .. ( $#head < 2 ? $#head : 2 ) ];
                 if (
-                    (   $shebang =~ /^#!.*\b(?:python|pypy)[0-9.]*\b/im
-                        || $shebang =~ /^#!.*\b(?:python|pypy)[0-9.]*\b/i )
+                    (
+                           $shebang =~ /^#!.*\b(?:python|pypy)[0-9.]*\b/im
+                        || $shebang =~ /^#!.*\b(?:python|pypy)[0-9.]*\b/i
+                    )
                   )
                 {
                     push @python_shebang, $relative;
@@ -109,9 +112,8 @@ find(
     $root
 );
 
-is_deeply( \@python_files, [], 'no project-maintained Python sources' );
-is_deeply( \@python_shebang, [],
-    'no Python shebangs in maintained files' );
+is_deeply( \@python_files,   [], 'no project-maintained Python sources' );
+is_deeply( \@python_shebang, [], 'no Python shebangs in maintained files' );
 
 my @scripts = (
     'scripts/validate-agent-knowledge.pl',
@@ -148,22 +150,32 @@ my @scripts = (
 
 my @discovered = map { repo_relative($_) }
   grep { -f $_ } (
-    glob( File::Spec->catfile( $root, 'tools',   'scripts', '*' ) ),
-    glob( File::Spec->catfile( $root, 'tools',   'tests',   '*.t' ) ),
-    glob( File::Spec->catfile( $root, 'tools',   'tests', 'fixtures', '*.pl' ) ),
+    glob( File::Spec->catfile( $root, 'tools', 'scripts', '*' ) ),
+    glob( File::Spec->catfile( $root, 'tools', 'tests',   '*.t' ) ),
+    glob( File::Spec->catfile( $root, 'tools', 'tests', 'fixtures', '*.pl' ) ),
     glob( File::Spec->catfile( $root, 'tests',   'interop', '*.pl' ) ),
     glob( File::Spec->catfile( $root, 'android', 'tools',   '*.pl' ) ),
     glob( File::Spec->catfile( $root, 'i18n',    '*.pl' ) )
   );
+
 # Standalone contracts live directly under tests as well as subsystem
 # directories. Discover this class independently of its CMake inventory.
 push @discovered, map { repo_relative($_) }
   grep { -f $_ } glob( File::Spec->catfile( $root, 'tests', '*.t' ) );
-push @discovered, map { repo_relative($_) }
+push @discovered,
+  map  { repo_relative($_) }
   grep { -f $_ } (
     glob( File::Spec->catfile( $root, 'scripts', '*.pl' ) ),
-    glob( File::Spec->catfile( $root, 'tests', 'agent_knowledge_validator', '*.t' ) ),
-    glob( File::Spec->catfile( $root, 'tests', 'agent_knowledge_validator', 'fixtures', '*.pl' ) )
+    glob(
+        File::Spec->catfile(
+            $root, 'tests', 'agent_knowledge_validator', '*.t'
+        )
+    ),
+    glob(
+        File::Spec->catfile(
+            $root, 'tests', 'agent_knowledge_validator', 'fixtures', '*.pl'
+        )
+    )
   );
 push @discovered, @perl_modules;
 is_deeply(
@@ -178,22 +190,17 @@ is_deeply(
 # Everything reported by this suite is rebuilt from splitdir().
 my $native_example =
   File::Spec->catfile( $root, 'tools', 'scripts', 'i2pdctl' );
-like(
-    repo_relative($native_example),
+like( repo_relative($native_example),
     qr{\Atools/scripts/i2pdctl\z},
-    'repository-relative paths use / on every platform'
-);
-unlike( join( "\n", @discovered ), qr{\\},
-    'discovered inventory contains no native separators' );
+    'repository-relative paths use / on every platform' );
+unlike( join( "\n", @discovered ),
+    qr{\\}, 'discovered inventory contains no native separators' );
 SKIP: {
     skip 'native separator is / on this platform', 1
       unless $^O eq 'MSWin32' || $^O eq 'msys';
     my $native = $root . '\\tools\\scripts\\i2pdctl';
-    like(
-        repo_relative($native),
-        qr{\Atools/scripts/i2pdctl\z},
-        'a backslash path is normalised before comparison'
-    );
+    like( repo_relative($native), qr{\Atools/scripts/i2pdctl\z},
+        'a backslash path is normalised before comparison' );
 }
 
 # Modules shipped with the Perl core on OpenBSD/Linux. This also rejects
@@ -232,12 +239,13 @@ my @dangerous = (
 my $pipe_pattern = $dangerous[-1][0];
 for my $command ( 'command |', 'command --argument |' ) {
     my $source = 'open' . " my \$fh, '$command';";
-    like($source, $pipe_pattern, 'scalar pipe operand remains rejected');
+    like( $source, $pipe_pattern, 'scalar pipe operand remains rejected' );
 }
-my $file_read = 'open' . " my \$fh, '<', \$path;\n"
+my $file_read = 'open'
+  . " my \$fh, '<', \$path;\n"
   . "for my \$required ('shell: openbsd {0}', 'run: |') {}\n";
-unlike($file_read, $pipe_pattern,
-    'file read cannot consume a later quoted workflow literal');
+unlike( $file_read, $pipe_pattern,
+    'file read cannot consume a later quoted workflow literal' );
 
 for my $relative (@scripts) {
     my $path = File::Spec->catfile( $root, split m{/}, $relative );
@@ -276,8 +284,10 @@ for my $relative (@scripts) {
 
     while ( $text =~ /^\s*(?:use|require)\s+([A-Za-z_][A-Za-z0-9_:]*)/mg ) {
         my $module = $1;
-        ok( $allowed_module{$module} || $maintained_module{$module},
-            "$relative uses core or maintained module $module" );
+        ok(
+            $allowed_module{$module} || $maintained_module{$module},
+            "$relative uses core or maintained module $module"
+        );
     }
 
     for my $rule (@dangerous) {
@@ -312,9 +322,8 @@ ok(
 sub cmake_list_entries {
     my ( $text, $pattern ) = @_;
     return () unless $text =~ $pattern;
-    my $block = $1;
-    my $operand =
-      qr/"\$\{(CMAKE_CURRENT_SOURCE_DIR|PROJECT_ROOT)\}\/([^"]+)"/;
+    my $block   = $1;
+    my $operand = qr/"\$\{(CMAKE_CURRENT_SOURCE_DIR|PROJECT_ROOT)\}\/([^"]+)"/;
     my @entries;
     while ( $block =~ /$operand/g ) {
         my ( $anchor, $tail ) = ( $1, $2 );
@@ -329,7 +338,8 @@ sub cmake_list_entries {
     return @entries;
 }
 
-my @expected_syntax = grep { $_ ne 'tools/scripts/i2pdctl' && !/\.pm\z/ } @scripts;
+my @expected_syntax =
+  grep { $_ ne 'tools/scripts/i2pdctl' && !/\.pm\z/ } @scripts;
 my @syntax_entries = cmake_list_entries( $tools_cmake,
     qr/set\(I2PD_PERL_SYNTAX_SCRIPTS(.*?)\)\n/s );
 is_deeply(
@@ -345,16 +355,23 @@ is_deeply(
     [ sort grep { !/\.pm\z/ } @scripts ],
     'the optional Perl::Critic target registers every maintained script'
 );
-my @cmake_modules = cmake_list_entries($tools_cmake,
-    qr/set\(I2PD_AGENT_KNOWLEDGE_MODULES(.*?)\)\n/s);
-is_deeply([sort @cmake_modules], [sort @perl_modules],
-    'explicit CMake module inventory matches recursive source discovery');
-like($tools_cmake,
-    qr/list\(APPEND I2PD_PERL_SYNTAX_SCRIPTS \$\{I2PD_AGENT_KNOWLEDGE_MODULES\}\)/,
-    'validator modules participate in syntax coverage');
-like($tools_cmake,
+my @cmake_modules = cmake_list_entries( $tools_cmake,
+    qr/set\(I2PD_AGENT_KNOWLEDGE_MODULES(.*?)\)\n/s );
+is_deeply(
+    [ sort @cmake_modules ],
+    [ sort @perl_modules ],
+    'explicit CMake module inventory matches recursive source discovery'
+);
+like(
+    $tools_cmake,
+qr/list\(APPEND I2PD_PERL_SYNTAX_SCRIPTS \$\{I2PD_AGENT_KNOWLEDGE_MODULES\}\)/,
+    'validator modules participate in syntax coverage'
+);
+like(
+    $tools_cmake,
     qr/add_test\(NAME perl-critic.*?\$\{I2PD_AGENT_KNOWLEDGE_MODULES\}/s,
-    'validator modules participate in optional style coverage');
+    'validator modules participate in optional style coverage'
+);
 
 # Build consumers must not regress to Python. Documentation that records the
 # historical migration is intentionally not included in this list.

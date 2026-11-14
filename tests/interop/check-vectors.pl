@@ -359,7 +359,7 @@ sub run_binary {
         }
         $out .= $chunk;
     }
-    my $closed = close $ph;
+    my $closed      = close $ph;
     my $wait_status = $?;
     return ( undef, 'harness output is too large' ) if $too_large;
     return ( undef, 'cannot reap harness process' ) if $wait_status < 0;

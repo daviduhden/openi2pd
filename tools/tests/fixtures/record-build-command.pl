@@ -11,17 +11,21 @@ use File::Basename qw(basename);
 use JSON::PP;
 
 my $name = basename($0);
-die "MOCK_LOG is required\n" unless defined $ENV{MOCK_LOG} && length $ENV{MOCK_LOG};
+die "MOCK_LOG is required\n"
+  unless defined $ENV{MOCK_LOG} && length $ENV{MOCK_LOG};
 open my $log, '>>', $ENV{MOCK_LOG} or die "mock log: $!\n";
-print {$log} JSON::PP->new->canonical->encode({
-    name => $name,
-    args => [@ARGV],
-    destdir => $ENV{DESTDIR} // '',
-    parallel => $ENV{CMAKE_BUILD_PARALLEL_LEVEL} // '',
-    hardening => $ENV{DEB_BUILD_MAINT_OPTIONS} // '',
-}) . "\n";
+print {$log} JSON::PP->new->canonical->encode(
+    {
+        name      => $name,
+        args      => [@ARGV],
+        destdir   => $ENV{DESTDIR}                    // '',
+        parallel  => $ENV{CMAKE_BUILD_PARALLEL_LEVEL} // '',
+        hardening => $ENV{DEB_BUILD_MAINT_OPTIONS}    // '',
+    }
+) . "\n";
 close $log or die "mock log close: $!\n";
 exit 23 if ( $ENV{MOCK_FAIL} // '' ) eq $name;
+
 if ( $name eq 'dpkg-buildflags' ) {
     die "unexpected flags query\n" unless @ARGV == 2 && $ARGV[0] eq '--get';
     print $ENV{ 'MOCK_' . $ARGV[1] } // '';

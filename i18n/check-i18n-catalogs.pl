@@ -45,12 +45,13 @@ my @catalogs = (
     },
 );
 my @sources = map { File::Spec->catfile( $root, split m{/}, $_ ) } (
-    'tui/main.cpp',      'libi2pd_client/HTTPProxy.cpp',
-    'daemon/Daemon.cpp', 'tools/autoconf_i2pd.cpp',
+    'tui/main.cpp',         'libi2pd_client/HTTPProxy.cpp',
+    'daemon/Daemon.cpp',    'tools/autoconf_i2pd.cpp',
     'tui/TerminalUnix.cpp', 'tui/TerminalWin32.cpp'
 );
 
 my @errors;
+
 sub fail {
     my @parts = @_;
     return push @errors, join( '', @parts ) . "\n";
@@ -97,9 +98,9 @@ sub parse_strings {
     my $literal_run = qr/((?:"(?:[^"\\]|\\.)*"\s*)+)/;
     while ( $block =~ /\{\s*$literal_run\s*,\s*$literal_run\s*\}/g ) {
 
-	# A nested match below resets $1/$2, so snapshot both literal
-	# runs before extracting the individual string fragments from
-	# them.
+        # A nested match below resets $1/$2, so snapshot both literal
+        # runs before extracting the individual string fragments from
+        # them.
         my ( $key_run, $value_run ) = ( $1, $2 );
         my @key_parts   = $key_run   =~ /"((?:[^"\\]|\\.)*)"/g;
         my @value_parts = $value_run =~ /"((?:[^"\\]|\\.)*)"/g;
@@ -147,40 +148,43 @@ sub placeholders {
     my $escaped_percent = 0;
     while ( $value =~ /%/g ) {
         my $offset = pos($value);
-        my $tail = substr($value, $offset);
+        my $tail   = substr( $value, $offset );
         if ( $tail =~ /^%/ ) {
             ++$escaped_percent;
             pos($value) = $offset + 1;
             next;
         }
-        if ( $tail =~ /^((?:\d+\$)?[-+ 0#]*(\*(?:\d+\$)?|\d*)(?:\.(\*(?:\d+\$)?|\d*))?(hh|ll|[hljztL])?([diuoxXfFeEgGaAcspn]))/ ) {
-            my ($directive, $width, $precision, $length, $conversion) =
-              ($1, $2, $3 // '', $4 // '', $5);
+        if ( $tail =~
+/^((?:\d+\$)?[-+ 0#]*(\*(?:\d+\$)?|\d*)(?:\.(\*(?:\d+\$)?|\d*))?(hh|ll|[hljztL])?([diuoxXfFeEgGaAcspn]))/
+          )
+        {
+            my ( $directive, $width, $precision, $length, $conversion ) =
+              ( $1, $2, $3 // '', $4 // '', $5 );
             fail("positional printf directive is not portable in '$value'")
-              if index($directive, '$') >= 0;
+              if index( $directive, '$' ) >= 0;
             fail("forbidden printf %n directive in '$value'")
               if $conversion eq 'n';
-            my $legal_length = $conversion =~ /^[diuoxXn]$/
+            my $legal_length =
+                $conversion =~ /^[diuoxXn]$/
               ? $length =~ /^(?:hh|h|l|ll|j|z|t)?$/
-              : $conversion =~ /^[fFeEgGaA]$/
-              ? $length =~ /^(?:l|L)?$/
-              : $conversion =~ /^[cs]$/
-              ? $length =~ /^l?$/
-              : $length eq '';
+              : $conversion =~ /^[fFeEgGaA]$/ ? $length =~ /^(?:l|L)?$/
+              : $conversion =~ /^[cs]$/       ? $length =~ /^l?$/
+              :                                 $length eq '';
             fail("unsupported printf length in '%$directive'")
               unless $legal_length;
-            push @found, 'width:int' if $width =~ /^\*/;
+            push @found, 'width:int'     if $width     =~ /^\*/;
             push @found, 'precision:int' if $precision =~ /^\*/;
             push @found, $length . $conversion;
             pos($value) = $offset + length($directive);
             next;
         }
+
         # A terminal percent or ordinary prose punctuation is literal.
         # Unknown source operands such as %q are never portable formats.
         fail("unsupported printf directive in '$value'")
           if $tail =~ /^(?:\d+\$)?[-+ 0#]*(?:\*|\d)*(?:\.(?:\*|\d)*)?[A-Za-z]/;
     }
-    return join(',', @found) . ";escaped-percent=$escaped_percent";
+    return join( ',', @found ) . ";escaped-percent=$escaped_percent";
 }
 
 sub valid_utf8 {
@@ -225,10 +229,10 @@ for my $catalog (@catalogs) {
 "placeholder mismatch for '$key' in $catalog->{path} ($want != $got)"
         ) if $want ne $got;
 
-	# A trailing space in the English key is a word separator in a
-	# composed TUI line. If a translation stores its last word
-	# without it, the next label runs into the sentence, so treat a
-	# lost space as a defect.
+        # A trailing space in the English key is a word separator in a
+        # composed TUI line. If a translation stores its last word
+        # without it, the next label runs into the sentence, so treat a
+        # lost space as a defect.
         if ( $key =~ / $/ && $value !~ / $/ ) {
             fail("trailing space lost for '$key' in $catalog->{path}");
         }
@@ -272,7 +276,7 @@ for my $catalog (@catalogs) {
         for my $form (@$forms) {
             fail("empty plural form '$key' in $catalog->{name}") if $form eq '';
             my $source_signature = placeholders($key);
-            my $form_signature = placeholders($form);
+            my $form_signature   = placeholders($form);
             fail("plural placeholder mismatch for '$key' in $catalog->{name}")
               if $source_signature ne $form_signature;
         }
@@ -299,18 +303,18 @@ sub harvest {
 
     # Match repository identities, not native filesystem separators.
     # Keep the original path for reads and diagnostics on Windows.
-    my $source = join '/', File::Spec->splitdir(
-        File::Spec->abs2rel($path, $root));
+    my $source = join '/',
+      File::Spec->splitdir( File::Spec->abs2rel( $path, $root ) );
 
     # Adjacent string literals are concatenated by the C++ compiler
     # before the lookup, so the catalog key is the whole argument, not
     # its first fragment.
     my $literal_run = qr/((?:"(?:[^"\\]|\\.)*"\s*)+)/;
-    if ($source =~ m{\Atui/Terminal(?:Unix|Win32)\.cpp\z}) {
-        while ($text =~ /\bg_Error\s*=\s*$literal_run/g) {
-            my $run = $1;
+    if ( $source =~ m{\Atui/Terminal(?:Unix|Win32)\.cpp\z} ) {
+        while ( $text =~ /\bg_Error\s*=\s*$literal_run/g ) {
+            my $run   = $1;
             my @parts = $run =~ /"((?:[^"\\]|\\.)*)"/g;
-            $keys{unescape(join '', @parts)} = 1;
+            $keys{ unescape( join '', @parts ) } = 1;
         }
     }
     while ( $text =~ /\btr\s*\(\s*$literal_run/g ) {
@@ -330,30 +334,35 @@ sub harvest {
     # labels so a missing catalog entry cannot silently fall back to
     # English.
     if ( $source eq 'tui/main.cpp' ) {
-	# These arrays and descriptions are trusted source prose.
-	# Drawing helpers must never harvest or translate runtime/user
-	# strings.
-        while ($text =~ /\bTAB_(?:SHORT_)?NAMES\s*=\s*\{(.*?)\};/sg) {
+
+        # These arrays and descriptions are trusted source prose.
+        # Drawing helpers must never harvest or translate runtime/user
+        # strings.
+        while ( $text =~ /\bTAB_(?:SHORT_)?NAMES\s*=\s*\{(.*?)\};/sg ) {
             my $table = $1;
-            while ($table =~ /$literal_run/g) {
-                my $run = $1;
+            while ( $table =~ /$literal_run/g ) {
+                my $run   = $1;
                 my @parts = $run =~ /"((?:[^"\\]|\\.)*)"/g;
-                $keys{unescape(join '', @parts)} = 1;
+                $keys{ unescape( join '', @parts ) } = 1;
             }
         }
-        if (my ($help) = $text =~ /void App::DrawHelp\b.*?lines\[\]\s*=\s*\{(.*?)\};/s) {
-            while ($help =~ /$literal_run/g) {
-                my $run = $1;
+        if ( my ($help) =
+            $text =~ /void App::DrawHelp\b.*?lines\[\]\s*=\s*\{(.*?)\};/s )
+        {
+            while ( $help =~ /$literal_run/g ) {
+                my $run   = $1;
                 my @parts = $run =~ /"((?:[^"\\]|\\.)*)"/g;
-                my $key = unescape(join '', @parts);
+                my $key   = unescape( join '', @parts );
                 $key =~ s/^ +//;
                 $keys{$key} = 1 if length($key) && $key ne 'b / %';
             }
         }
-        while ($text =~ /\boption\s*\(\s*"(?:[^"\\]|\\.)*"\s*,\s*$literal_run/g) {
-            my $run = $1;
+        while (
+            $text =~ /\boption\s*\(\s*"(?:[^"\\]|\\.)*"\s*,\s*$literal_run/g )
+        {
+            my $run   = $1;
             my @parts = $run =~ /"((?:[^"\\]|\\.)*)"/g;
-            $keys{unescape(join '', @parts)} = 1;
+            $keys{ unescape( join '', @parts ) } = 1;
         }
         while ( $text =~ /\b(?:show|add)\s*\(\s*$literal_run/g ) {
             my @lits = $1 =~ /"((?:[^"\\]|\\.)*)"/g;

@@ -48,10 +48,11 @@ my %navigated = map { $_ => 1 } @nav;
 # independent.
 sub nav_relative {
     my ($path) = @_;
-    return join '/', File::Spec->splitdir( File::Spec->abs2rel( $path, $docs ) );
+    return join '/',
+      File::Spec->splitdir( File::Spec->abs2rel( $path, $docs ) );
 }
 
-my %allowed   = map { $_ => 1 } qw(
+my %allowed = map { $_ => 1 } qw(
   README.md
   UPSTREAM-README.md
   file-headers.md
@@ -67,7 +68,7 @@ find(
         no_chdir => 1,
         wanted   => sub {
             return unless -f $_ && /\.md\z/;
-            my $rel = nav_relative( $File::Find::name );
+            my $rel = nav_relative($File::Find::name);
             push @unlisted, $rel unless $navigated{$rel} || $allowed{$rel};
         },
     },
@@ -79,8 +80,7 @@ find(
     {
         no_chdir => 1,
         wanted   => sub {
-            push @html,
-              nav_relative( $File::Find::name )
+            push @html, nav_relative($File::Find::name)
               if -f $_ && /\.(?:html?|xhtml)\z/i;
         },
     },

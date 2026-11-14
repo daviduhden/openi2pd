@@ -34,10 +34,11 @@ my $root_arg;
 GetOptions( 'root=s' => \$root_arg )
   or die "usage: $0 [--root ANDROID_DIRECTORY]\n";
 die "usage: $0 [--root ANDROID_DIRECTORY]\n" if @ARGV;
-my $root = defined $root_arg ? $root_arg
+my $root =
+    defined $root_arg         ? $root_arg
   : -d 'android/app/src/main' ? 'android'
-  : '.';
-my $res  = File::Spec->catdir( $root, qw(app src main res) );
+  :                             '.';
+my $res = File::Spec->catdir( $root, qw(app src main res) );
 my @errors;
 
 sub fail {
@@ -48,6 +49,7 @@ sub fail {
 # A catalog is read once per section (strings, plurals), so an encoding
 # defect would otherwise be reported twice for the same file.
 my %encoding_reported;
+
 sub fail_encoding {
     my ( $kind, $path, $line ) = @_;
     my $key = "$kind\0$path";

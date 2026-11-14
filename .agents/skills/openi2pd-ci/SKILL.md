@@ -206,6 +206,12 @@ workflow, run `gh`, build or test.
 
 ## Known issues and decisions
 
+- Lint workflows and local actions together with yamllint, actionlint and
+  regular/pedantic/auditor zizmor. Wrap long PowerShell regexes by concatenating
+  unchanged fragments and keep CTest coverage identical. Multi-line allowlisted
+  diagnostic inventories require matching source-checker updates; YAML line
+  wrapping must not loosen debugger privacy or change dispatched commands.
+
 - A native initialization exit can bypass exception filters. Preserve the
   probe's original termination and collect code-only termination context
   separately from exception context. Keep child-following restricted to the

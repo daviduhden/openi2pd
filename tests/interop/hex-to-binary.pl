@@ -17,10 +17,10 @@ while (1) {
     length($hex) <= 16 * 1024 * 1024 or die "hex input exceeds limit\n";
 }
 close $input or die "cannot close hex input\n";
-$hex =~ s/^[ \t]*#.*$//mg;
-$hex =~ s/\s+//g;
+$hex                          =~ s/^[ \t]*#.*$//mg;
+$hex                          =~ s/\s+//g;
 length($hex) % 2 == 0 && $hex !~ /[^0-9a-fA-F]/
   or die "invalid hex input\n";
 binmode STDOUT;
-print STDOUT pack('H*', $hex) or die "cannot write corpus bytes\n";
-close STDOUT or die "cannot close corpus output\n";
+print STDOUT pack( 'H*', $hex ) or die "cannot write corpus bytes\n";
+close STDOUT                    or die "cannot close corpus output\n";

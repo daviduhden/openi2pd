@@ -33,9 +33,9 @@ die "cannot resolve repository root\n" unless defined $repo_root;
 # filesystem is case-insensitive. The key is a comparison value only; the
 # filesystem is always accessed through the original path.
 sub path_key {
-    my ($path) = @_;
+    my ($path)    = @_;
     my $canonical = File::Spec->canonpath($path);
-    my $key = join '/', grep { length } File::Spec->splitdir($canonical);
+    my $key       = join '/', grep { length } File::Spec->splitdir($canonical);
     $key = "/$key" if File::Spec->file_name_is_absolute($canonical);
     $key = lc $key if $^O eq 'MSWin32' || $^O eq 'msys';
     return $key;
@@ -219,7 +219,8 @@ for my $file ( sort @files ) {
             }
             my $resolved = resolved_target($path);
             if ( !defined $resolved ) {
-                push @missing, "$file:$line_number: $target (unresolvable path)";
+                push @missing,
+                  "$file:$line_number: $target (unresolvable path)";
                 next;
             }
             if ( !is_inside_repository($resolved) ) {
@@ -227,6 +228,7 @@ for my $file ( sort @files ) {
                   "$file:$line_number: $target (escapes repository)";
                 next;
             }
+
             # Resolution classifies containment, but a missing directory
             # before '..' must not become a valid existing link target.
             unless ( -e $path ) {
@@ -257,7 +259,8 @@ for my $file ( sort @files ) {
               : File::Spec->catfile( $dir,  split m{/}, $target );
             my $resolved = resolved_target($path);
             if ( !defined $resolved ) {
-                push @missing, "$file:$line_number: $target (unresolvable path)";
+                push @missing,
+                  "$file:$line_number: $target (unresolvable path)";
                 next;
             }
             push @missing, "$file:$line_number: $target (escapes repository)"

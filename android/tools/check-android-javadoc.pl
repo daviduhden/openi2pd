@@ -34,8 +34,8 @@ my %block_tag = map { $_ => 1 }
 
 # Inline tags are only valid inside braces. Reaching the start of a line
 # means the comment used one as a block tag, which javadoc rejects.
-my %inline_tag = map { $_ => 1 }
-  qw(code docRoot inheritDoc link linkplain literal value);
+my %inline_tag =
+  map { $_ => 1 } qw(code docRoot inheritDoc link linkplain literal value);
 
 # Javadoc-supported HTML element names. The list is deliberately
 # generous: the checker exists to reject placeholder text such as
@@ -53,10 +53,12 @@ my $root_arg;
 GetOptions( 'root=s' => \$root_arg )
   or die "usage: $0 [--root ANDROID_DIRECTORY]\n";
 die "usage: $0 [--root ANDROID_DIRECTORY]\n" if @ARGV;
-my $root = defined $root_arg ? $root_arg
+my $root =
+    defined $root_arg         ? $root_arg
   : -d 'android/app/src/main' ? 'android'
-  : '.';
+  :                             '.';
 my $java_root = File::Spec->catdir( $root, qw(app src main java) );
+
 if ( !-d $java_root ) {
     print "FAIL: no Java source tree under $java_root\n";
     exit 1;
@@ -101,7 +103,7 @@ sub declaration_after {
     my ( $lines, $from ) = @_;
     my @decl;
     my $depth = 0;
-    for ( my $i = $from; $i < @$lines && @decl < 40; $i++ ) {
+    for ( my $i = $from ; $i < @$lines && @decl < 40 ; $i++ ) {
         my $line = $lines->[$i];
         next if $line =~ m{ ^ \s* (?: \@ | // | /\* | \* | \} ) }x;
         push @decl, $line;
@@ -109,6 +111,7 @@ sub declaration_after {
         last if $depth <= 0 && $line =~ /[;{]/x;
     }
     my $decl = join( '', @decl );
+
     # Replacement whitespace remains literal under extended matching.
     # Keep one space so adjacent declaration operands stay distinct.
     $decl =~ s/\s+/ /gx;
@@ -126,9 +129,9 @@ sub declared_params {
     my ( @names, $current, $depth );
     $depth = 0;
     for my $char ( split //, $args ) {
-        if ( $char =~ /[<(]/x ) { $depth++ }
+        if    ( $char =~ /[<(]/x ) { $depth++ }
         elsif ( $char =~ /[>)]/x ) { $depth-- }
-        if ( $char eq ',' && $depth == 0 ) {
+        if    ( $char eq ',' && $depth == 0 ) {
             push @names, $current;
             $current = '';
             next;
@@ -154,7 +157,7 @@ sub declared_params {
 
 sub check_block {
     my ( $file, $start, $block, $file_lines, $after ) = @_;
-    my $decl = declaration_after( $file_lines, $after );
+    my $decl  = declaration_after( $file_lines, $after );
     my $where = "$file line " . ( $start + 1 );
 
     my $text = strip_inline_tags( join( '', @$block ) );
@@ -164,7 +167,8 @@ sub check_block {
         if ( $raw =~ /^\s*\*\s*\@([A-Za-z]\w*)/x ) {
             my $tag = $1;
             if ( !$block_tag{$tag} ) {
-                my $hint = $inline_tag{$tag}
+                my $hint =
+                  $inline_tag{$tag}
                   ? 'inline tag used as a block tag; wrap it in braces'
                   : 'unregistered tag; use plain prose or a standard tag';
                 fail("$where: unknown tag \@$tag ($hint)");
@@ -178,7 +182,7 @@ sub check_block {
         while ( $raw =~ m{ </? ([A-Za-z][A-Za-z0-9]*) }gx ) {
             my $tag = lc $1;
             next if $html_tag{$tag};
-            fail( "$where: <$1> is parsed as HTML, not text; use "
+            fail(   "$where: <$1> is parsed as HTML, not text; use "
                   . "{\@code <$1>} or &lt;$1&gt;" );
         }
     }
@@ -197,8 +201,7 @@ sub check_block {
     my %declared = map { $_ => 1 } @declared;
     for my $name (@documented) {
         if ( !$declared{$name} && $decl !~ /\b\Q$name\E\b/x ) {
-            fail("$where: \@param $name is not a parameter of "
-                  . "'$decl'");
+            fail( "$where: \@param $name is not a parameter of " . "'$decl'" );
         }
     }
     return;
@@ -215,9 +218,9 @@ find(
 @files = sort @files;
 
 for my $file (@files) {
-    my $text = slurp($file);
+    my $text  = slurp($file);
     my @lines = split /\n/x, $text, -1;
-    for ( my $i = 0; $i < @lines; $i++ ) {
+    for ( my $i = 0 ; $i < @lines ; $i++ ) {
         next unless $lines[$i] =~ m{^\s*/\*}x;
         my $is_javadoc = $lines[$i] =~ m{^\s*/\*\*}x;
         my @block;
@@ -235,12 +238,16 @@ for my $file (@files) {
             # comments and file headers are not API documentation.
             # Keep their existing prose and marker style intact.
             my $comment = join( '', @block );
-            my $decl = declaration_after( \@lines, $j + 1 );
-            if ( $decl !~ /\bprivate\b|^\s*(?:package|import)\b/x
-                && ( $comment =~ /\{\@(?:link|linkplain)\b/x
-                || $comment =~ /^\s*(?:\/\*|\*)\s*\@[A-Za-z]\w*\b/mx ) ) {
-                fail( "$file line " . ( $i + 1 )
-                    . ': Javadoc tag in ordinary block comment; use /**' );
+            my $decl    = declaration_after( \@lines, $j + 1 );
+            if (
+                $decl !~ /\bprivate\b|^\s*(?:package|import)\b/x
+                && (   $comment =~ /\{\@(?:link|linkplain)\b/x
+                    || $comment =~ /^\s*(?:\/\*|\*)\s*\@[A-Za-z]\w*\b/mx )
+              )
+            {
+                fail(   "$file line "
+                      . ( $i + 1 )
+                      . ': Javadoc tag in ordinary block comment; use /**' );
             }
         }
         $i = $j;
@@ -252,8 +259,7 @@ if (@errors) {
     printf STDERR "FAIL: %d Android Javadoc defect(s)\n", scalar @errors;
     exit 1;
 }
-printf "OK: no Javadoc defects in %d Android source file(s)\n",
-  scalar @files;
+printf "OK: no Javadoc defects in %d Android source file(s)\n", scalar @files;
 exit 0;
 
 =head1 NAME

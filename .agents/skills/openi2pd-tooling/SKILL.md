@@ -122,6 +122,14 @@ a TUI client.
 
 ## Known issues and decisions
 
+- For an authorized lint pass, inventory tracked Perl modules and fixtures
+  as well as executable scripts. Resolve perlcritic's interpreter/module path
+  before reporting it missing; keep external lint tools distinct from runtime
+  dependencies. Perltidy/shfmt must preserve executable modes and avoid backup
+  artifacts in the tree. Use the repository Critic profile and report every
+  unresolved diagnostic instead of lowering severity or adding suppressions.
+
+
 - Android maintenance producers join three inventories: recursive discovery,
   the expected script list in tools/tests/perl-portability.t, and both CMake
   syntax/Critic lists. A script present only in CMake still fails the CI

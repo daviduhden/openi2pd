@@ -330,6 +330,7 @@ sub decode_json {
 # builtins are used so the shim works with PATH pointing at its own directory.
 sub write_openssl_shim {
     my ($directory) = @_;
+
     # Deliberately extensionless: Cygwin/MSYS reports an .exe suffix,
     # but this POSIX script must win before a later system OpenSSL.
     my $path = File::Spec->catfile( $directory, 'openssl' );
@@ -476,29 +477,36 @@ ok( $server_port > 0, 'fake I2PControl server is listening' );
 }
 
 {
-    my ( $out, $err, $code ) =
-      run_i2pdctl( 'exec', '--bogus', 'Echo', '{}' );
+    my ( $out, $err, $code ) = run_i2pdctl( 'exec', '--bogus', 'Echo', '{}' );
     is( $code, 2, 'unknown subcommand option exits 2' );
-    like( $err, qr/Unknown option: bogus/i,
-        'unknown option is reported on stderr' );
+    like(
+        $err,
+        qr/Unknown option: bogus/i,
+        'unknown option is reported on stderr'
+    );
     like( $err, qr/usage: i2pdctl exec/, 'usage is printed for a bad option' );
     is( $out, '', 'a bad option writes nothing to stdout' );
 }
 
 {
-    my ( $out, $err, $code ) =
-      run_i2pdctl( 'exec', 'Echo', '{}', 'extra' );
+    my ( $out, $err, $code ) = run_i2pdctl( 'exec', 'Echo', '{}', 'extra' );
     is( $code, 2, 'extra exec arguments exit 2' );
-    like( $err, qr/unrecognized arguments: extra/,
-        'extra exec arguments are reported' );
+    like(
+        $err,
+        qr/unrecognized arguments: extra/,
+        'extra exec arguments are reported'
+    );
     is( $out, '', 'extra arguments write nothing to stdout' );
 }
 
 {
     my ( $out, $err, $code ) = run_i2pdctl( 'info', 'extra' );
     is( $code, 2, 'info with arguments exits 2' );
-    like( $err, qr/unrecognized arguments: extra/,
-        'info arguments are reported' );
+    like(
+        $err,
+        qr/unrecognized arguments: extra/,
+        'info arguments are reported'
+    );
     is( $out, '', 'info arguments write nothing to stdout' );
 }
 

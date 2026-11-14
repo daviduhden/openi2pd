@@ -110,7 +110,8 @@ for my $name ( sort keys %native ) {
 }
 for my $name ( sort keys %header_symbols ) {
     if ( !$java{$name} ) {
-        print STDERR "header declaration $name has no Java native declaration\n";
+        print STDERR
+          "header declaration $name has no Java native declaration\n";
         $failed = 1;
     }
 }

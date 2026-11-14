@@ -14,20 +14,22 @@ use warnings;
 sub parse {
     my ( $class, $text ) = @_;
     $text =~ s/\r\n/\n/g;
-    my $self = bless { text => $text, at => 0, explicit => {} }, $class;
-    my $root = { type => 'table', value => {} };
+    my $self  = bless { text => $text, at => 0, explicit => {} }, $class;
+    my $root  = { type => 'table', value => {} };
     my $table = $root;
     while (1) {
         $self->_space(1);
         last if $self->{at} >= length $text;
         if ( $self->_take('[') ) {
-            $self->_error('array tables are not valid validator settings') if $self->_take('[');
+            $self->_error('array tables are not valid validator settings')
+              if $self->_take('[');
             my @keys = $self->_keys;
             $self->_expect(']');
             my $identity = join "\0", @keys;
             $self->_error('duplicate table') if $self->{explicit}{$identity}++;
             $table = $self->_table( $root, \@keys, 0 );
-            $self->_error('table already established by dotted keys') if $table->{dotted};
+            $self->_error('table already established by dotted keys')
+              if $table->{dotted};
         }
         else {
             my @keys = $self->_keys;
@@ -50,14 +52,15 @@ sub _error {
 
 sub _take {
     my ( $self, $literal ) = @_;
-    return 0 if substr( $self->{text}, $self->{at}, length $literal ) ne $literal;
+    return 0
+      if substr( $self->{text}, $self->{at}, length $literal ) ne $literal;
     $self->{at} += length $literal;
     return 1;
 }
 
 sub _expect {
     my ( $self, $literal ) = @_;
-    $self->_space(0) unless $literal eq "\n";
+    $self->_space(0)                     unless $literal eq "\n";
     $self->_error("expected '$literal'") unless $self->_take($literal);
     return;
 }
@@ -66,13 +69,20 @@ sub _space {
     my ( $self, $newlines ) = @_;
     while ( $self->{at} < length $self->{text} ) {
         my $character = substr( $self->{text}, $self->{at}, 1 );
-        if ( $character eq ' ' || $character eq "\t" || ( $newlines && $character eq "\n" ) ) {
+        if (   $character eq ' '
+            || $character eq "\t"
+            || ( $newlines && $character eq "\n" ) )
+        {
             ++$self->{at};
         }
         elsif ( $character eq '#' ) {
-            my $end = index( $self->{text}, "\n", $self->{at} );
-            my $comment = substr( $self->{text}, $self->{at}, $end < 0 ? length($self->{text}) - $self->{at} : $end - $self->{at} );
-            $self->_error('control character in comment') if $comment =~ /[\x00-\x08\x0b-\x1f\x7f]/;
+            my $end     = index( $self->{text}, "\n", $self->{at} );
+            my $comment = substr( $self->{text}, $self->{at},
+                $end < 0
+                ? length( $self->{text} ) - $self->{at}
+                : $end - $self->{at} );
+            $self->_error('control character in comment')
+              if $comment =~ /[\x00-\x08\x0b-\x1f\x7f]/;
             $self->{at} = $end < 0 ? length $self->{text} : $end;
         }
         else { last; }
@@ -110,14 +120,17 @@ sub _string {
     my $value = '';
     while ( $self->{at} < length $self->{text} ) {
         if ( $multi && $self->_take( $quote x 3 ) ) {
+
             # Four/five terminal quotes encode one/two literal quotes.
             for ( 1 .. 2 ) { $value .= $quote if $self->_take($quote); }
             return $value;
         }
         my $char = substr( $self->{text}, $self->{at}++, 1 );
         return $value if !$multi && $char eq $quote;
-        $self->_error('newline in single-line string') if !$multi && $char eq "\n";
-        $self->_error('control character in string') if ord($char) < 32 && $char ne "\t" && !( $multi && $char eq "\n" );
+        $self->_error('newline in single-line string')
+          if !$multi && $char eq "\n";
+        $self->_error('control character in string')
+          if ord($char) < 32 && $char ne "\t" && !( $multi && $char eq "\n" );
         $self->_error('DEL in string') if ord($char) == 127;
         if ( $quote eq q{"} && $char eq '\\' ) {
             if ($multi) {
@@ -127,17 +140,28 @@ sub _string {
                     next;
                 }
             }
-            $self->_error('unfinished escape') if $self->{at} >= length $self->{text};
-            my $escape = substr( $self->{text}, $self->{at}++, 1 );
-            my %escapes = ( b => "\b", t => "\t", n => "\n", f => "\f", r => "\r", q{"} => q{"}, '\\' => '\\' );
-            if ( exists $escapes{$escape} ) { $value .= $escapes{$escape}; }
+            $self->_error('unfinished escape')
+              if $self->{at} >= length $self->{text};
+            my $escape  = substr( $self->{text}, $self->{at}++, 1 );
+            my %escapes = (
+                b    => "\b",
+                t    => "\t",
+                n    => "\n",
+                f    => "\f",
+                r    => "\r",
+                q{"} => q{"},
+                '\\' => '\\'
+            );
+            if    ( exists $escapes{$escape} ) { $value .= $escapes{$escape}; }
             elsif ( $escape eq 'u' || $escape eq 'U' ) {
                 my $digits = $escape eq 'u' ? 4 : 8;
-                my $hex = substr( $self->{text}, $self->{at}, $digits );
-                $self->_error('invalid Unicode escape') unless length($hex) == $digits && $hex =~ /\A[0-9a-fA-F]+\z/;
+                my $hex    = substr( $self->{text}, $self->{at}, $digits );
+                $self->_error('invalid Unicode escape')
+                  unless length($hex) == $digits && $hex =~ /\A[0-9a-fA-F]+\z/;
                 $self->{at} += $digits;
                 my $code = hex $hex;
-                $self->_error('invalid Unicode scalar') if $code > 0x10ffff || ( $code >= 0xd800 && $code <= 0xdfff );
+                $self->_error('invalid Unicode scalar')
+                  if $code > 0x10ffff || ( $code >= 0xd800 && $code <= 0xdfff );
                 $value .= chr $code;
             }
             else { $self->_error('unknown string escape'); }
@@ -149,6 +173,7 @@ sub _string {
 
 sub _value {
     my ($self) = @_;
+
     # Contract settings need shallow arrays/tables. Reject hostile nested
     # invalid configuration before exhausting the Perl call stack.
     local $self->{depth} = ( $self->{depth} // 0 ) + 1;
@@ -182,7 +207,8 @@ sub _value {
                 last if $self->_take('}');
                 $self->_expect(',');
                 $self->_space(0);
-                $self->_error('trailing comma in inline table') if substr( $self->{text}, $self->{at}, 1 ) eq '}';
+                $self->_error('trailing comma in inline table')
+                  if substr( $self->{text}, $self->{at}, 1 ) eq '}';
             }
         }
         $self->_seal($table);
@@ -192,24 +218,35 @@ sub _value {
     $self->_error('expected value') unless $tail =~ /\A([^\s\],}#]+)/;
     my $token = $1;
     $self->{at} += length $token;
-    return { type => 'boolean', value => $token eq 'true' ? 1 : 0 } if $token eq 'true' || $token eq 'false';
+    return { type => 'boolean', value => $token eq 'true' ? 1 : 0 }
+      if $token eq 'true' || $token eq 'false';
     if ( $token =~ /\A[+-]?(?:0|[1-9](?:_?[0-9])*)\z/ ) {
         ( my $integer = $token ) =~ s/_//g;
         return { type => 'integer', value => _bounded_integer( $integer, 10 ) };
     }
     if ( $token =~ /\A0([xob])([0-9a-fA-F](?:_?[0-9a-fA-F])*)\z/ ) {
         my ( $base, $digits ) = ( $1, $2 );
-        $self->_error('invalid base integer') if ( $base eq 'b' && $digits =~ /[^01_]/ ) || ( $base eq 'o' && $digits =~ /[^0-7_]/ );
+        $self->_error('invalid base integer')
+          if ( $base eq 'b' && $digits =~ /[^01_]/ )
+          || ( $base eq 'o' && $digits =~ /[^0-7_]/ );
         $digits =~ s/_//g;
-        my $integer = _bounded_integer( $digits, $base eq 'x' ? 16 : $base eq 'b' ? 2 : 8 );
+        my $integer =
+          _bounded_integer( $digits, $base eq 'x' ? 16 : $base eq 'b' ? 2 : 8 );
         return { type => 'integer', value => $integer };
     }
+
     # These TOML types are syntactically valid but none is a valid
     # validator option. Preserve type rejection instead of coercing them.
-    if ( $token =~ /\A[+-]?(?:inf|nan|(?:0|[1-9](?:_?[0-9])*)(?:(?:\.[0-9](?:_?[0-9])*)(?:[eE][+-]?[0-9](?:_?[0-9])*)?|[eE][+-]?[0-9](?:_?[0-9])*))\z/ ) {
+    if ( $token =~
+/\A[+-]?(?:inf|nan|(?:0|[1-9](?:_?[0-9])*)(?:(?:\.[0-9](?:_?[0-9])*)(?:[eE][+-]?[0-9](?:_?[0-9])*)?|[eE][+-]?[0-9](?:_?[0-9])*))\z/
+      )
+    {
         return { type => 'float', value => $token };
     }
-    if ( $token =~ /\A\d{4}-\d\d-\d\d(?:[Tt]\d\d:\d\d:\d\d(?:\.\d+)?(?:[Zz]|[+-]\d\d:\d\d)?)?\z/ || $token =~ /\A\d\d:\d\d:\d\d(?:\.\d+)?\z/ ) {
+    if ( $token =~
+/\A\d{4}-\d\d-\d\d(?:[Tt]\d\d:\d\d:\d\d(?:\.\d+)?(?:[Zz]|[+-]\d\d:\d\d)?)?\z/
+        || $token =~ /\A\d\d:\d\d:\d\d(?:\.\d+)?\z/ )
+    {
         return { type => 'datetime', value => $token };
     }
     $self->_error('invalid value');
@@ -232,7 +269,7 @@ sub _table {
 sub _assign {
     my ( $self, $table, $keys, $value ) = @_;
     my @parents = @{$keys};
-    my $last = pop @parents;
+    my $last    = pop @parents;
     $table = $self->_table( $table, \@parents, 1 );
     $self->_error('duplicate key') if exists $table->{value}{$last};
     $table->{value}{$last} = $value;
