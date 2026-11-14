@@ -5,6 +5,27 @@ and license details.
 
 # Regression patterns
 
+## Read completion, tuple authority and deferred ownership
+
+Manual cleanup after successful encoding does not cover provider refusal or
+allocation unwind. Guard owned stack identity copies from declaration and
+retain necessary output payloads separately; guard-removal mutations should
+prove the source contract is effective.
+
+TF-109 requires observing an actual callback, not assuming one poll drained
+a successful loopback send. Retain a single absolute observation deadline
+without resubmitting operations. RT-102 separates buffer lifetime from run,
+attempt and retry-phase admission; composed operations can borrow wrappers
+longer than a basic I/O callback.
+
+Fast CANCEL must retain exact tuple authority until its terminal reply, or an
+old Reject can retire a reused request. Local block leases retire once and
+staging guards cover allocation failure before wire submission. An exception
+after submission does not prove rollback. RT-103 similarly reserves retirement
+capacity before creating the resource: a bounded stop alone is insufficient
+if a destructor subsequently discards the retained PID/pidfd.
+
+
 ## Callback serialization does not protect pending I/O buffers
 
 A timer that invokes a complete receive handler can silently arm a second
@@ -786,3 +807,14 @@ replacement must fail the regression. Run independent live work even after
 a helper capability denial, let failures dominate skips, and drain ownership
 before final handle assertions. A job returning green via 77 proves no
 subsequent handshake/shutdown behavior.
+
+
+### Admission evidence and socket object lifetime
+
+A future observed before its worker reaches a lock does not prove that lock
+blocks revocation. The proxy fixture now witnesses the actual held admission
+mutex and verifies stale rejection after revocation; it does not claim the
+scheduler timing proves a waiting thread. A separate SSU2 barrier stress
+exercises actual synchronous send/close/reopen, while source contracts pin
+nonblocking proxy setup. Callback owner authority and socket-object
+synchronization require separate checks and retain separate open findings.

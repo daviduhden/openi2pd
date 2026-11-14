@@ -5,6 +5,48 @@ and license details.
 
 # Test failure inventory
 
+## e1d1b7a6: completed lanes and OpenBSD observation failure
+
+Exact SHA `e1d1b7a63ce42cb2dbc2fd8331c95283742a705e`. Initial history
+snapshot: 505 runs / 77 SHAs, 157 successes, 277 failures, 66 cancellations,
+five runs in progress. Seventeen completed job logs were recovered directly,
+including successful siblings while parent workflows were still active.
+
+OpenSSL3/Clang job 132565599632, OpenSSL4/GCC 132565609027 and UBSan
+132565663479 each pass 269/269; CLANG64 132565636198 passes 253/253.
+Published RT-097/098/099/100 and TF-108 controls explicitly pass there.
+Additional Linux differential groups pass 10/10, 3/3 and 9/9; fuzz 15/15,
+documentation and agent contracts pass. These are scoped results, not a claim
+that still-running jobs or subsequent local corrections pass.
+
+Final snapshot: eight workflows succeed and two fail. OpenSSL3/GCC
+132565599874 and OpenSSL4/Clang 132565608676 also complete successfully;
+ASan+UBSan 132565663495 and TSan 132565663485 each pass 269/269. Validation
+43633668033 succeeds, but Perl quality 132565664500 remains skipped. Windows
+MSVC 132565636410 passes 24/25 and fails worker initialization (RT-087).
+The full 505-run history therefore ends at 160 success, 279 failure and
+66 cancelled for this batch; no running lane is counted as passed.
+
+### TF-109 — A single poll is not a socket completion barrier
+
+[OpenBSD run 43633655915](https://github.com/daviduhden/openi2pd/actions/runs/43633655915),
+job 132565627097, finishes 263/264. The first real receive observation in
+`test-udp-ack-lifecycle`, CheckReadCompletion:106, fails
+`successor && successor != previous`. Its expected handler warning does not
+appear before the assertion. The fixture sends/cancels then performs one
+nonblocking poll, which does not prove that a reactor completion is ready.
+
+Local correction dispatches until the actual operation identity changes under
+one absolute five-second observation bound. It does not retry the send/read,
+raise CTest's 120/300-second budgets or change product code. Ten analogous
+poll-using fixtures were inspected: posted work, explicit-handler controls and
+closed-socket cancellation drains did not demonstrate another equivalent
+successful-send/single-poll assumption. The newly prepared SSU2 fragment fixture initially repeated the same poll
+assumption; it now observes the first partial callback before sending the
+remaining bytes, then the final callback under the same absolute bound.
+Kernel scheduling details remain a hypothesis, not a product diagnosis. Implemented / static; Pending CI tests.
+
+
 ## Published a1a02a05 audit
 
 Exact SHA `a1a02a053b08aa2ff15fcf8551492adcd476c1b2`; history now contains 495 runs / 76 SHAs:
@@ -1297,3 +1339,18 @@ Implemented / static; Pending CI tests. No production isolation is weakened.
 Published diagnostic run [42719195489](https://github.com/daviduhden/openi2pd/actions/runs/42719195489)
 was dispatched with heap_diagnostics=true on 02901127. It can provide missing
 loader/entry evidence; it cannot validate any local correction described here.
+
+
+### Retrospective refresh and unpublished follow-up
+
+A fresh paginated GitHub query confirms the same 505 runs / 77 SHAs:
+160 success, 279 failure, 66 cancelled. No new remote run validates the local
+increment. Re-reviewed exact OpenBSD and Windows evidence; RT-087 remains
+unresolved. The prepared nonce-free Windows probe now retains predecessor
+instruction disassembly at the failing termination, within its existing
+deadline. It does not log operands, stack data or credentials and does not
+establish a cause until that diagnostic executes on a published revision.
+
+The local MSVC selection now contains 28 targets (25 at published e1d1b7a6),
+including proxy, socket-lifecycle and request-ledger controls. CE-093 and
+CW-033 are preventive local findings, not failures assigned to old runs.

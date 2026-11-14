@@ -1,5 +1,17 @@
 # Compilation and lint warning inventory
 
+## e1d1b7a6 partial completed-job review
+
+The [scoped completed jobs](TEST-FAILURES.md#e1d1b7a6-completed-lanes-and-openbsd-observation-failure)
+contain no new own compiler or sanitizer diagnostic. Final completed GCC/Clang
+Linux matrices and all three sanitizer logs retain that scoped observation. OpenBSD's later failure
+is a fixture assertion after successful compilation, not a compiler warning.
+Android ChromeOS ABI/Kotlin deprecation, MSYS2 upgrade advice, external
+autopkgtest --force-yes and Landlock ABI8 coverage warnings remain separate.
+A still-running or skipped lane supplies no clean-result evidence. Existing
+932 Perl::Critic and 11 OpenBSD framework ShellCheck findings remain open.
+
+
 ## a1a02a05 warning review
 
 Full logs for the [exact matrix](TEST-FAILURES.md#published-a1a02a05-audit)
@@ -1095,3 +1107,13 @@ output. Logs identify Ubuntu autopkgtest 5.55~24.04.1 but no exact upstream
 source line. Lintian output is empty and the smoke test passes. Landlock
 ABI 8 versus required 10 messages in eight Linux/fuzz/sanitizer jobs describe
 runner coverage limits. MSYS updater and OpenBSD SSH notices are external.
+
+
+### CW-033 — Request-ledger fixture shadowing (static)
+
+Preventive review of unpublished `test-torrents-requests.cpp` identified an
+observer argument hiding its constructor argument and a factory local hiding
+a Fixture member. Renamed both and checked the piece index's representability
+and range before its signed API conversion. This is a static warning risk,
+not a diagnostic attributed to any remote run. The prepared MSVC target uses
+the real request ledger; Pending CI compilation / Pending CI tests.

@@ -193,8 +193,8 @@ the console.
   aged timestamps, a persistence-error line and owner/rating previews for
   hidden entries, and requires `[y/N]` confirmation before hide/unhide. Strip
   bidi controls U+202A..U+202E and U+2066..U+2069 before rendering peer labels
-  or text. Comment strings remain English until `I18N-004` catalog entries
-  exist; do not present English as a translation.
+  or text. Trusted comment labels use `tr()` with es/ru/zh-Hans entries;
+  retain peer operands as data and review placeholder types across catalogs.
 
 - Status has more fields than a 24-line terminal: Up/Down/PgUp/PgDn scroll the
   fixed rows, Home/End jump to the first/last field, and the bandwidth history

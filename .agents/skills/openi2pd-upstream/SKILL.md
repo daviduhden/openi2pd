@@ -92,6 +92,11 @@ run tests.
 
 ## Known issues and decisions
 
+- Locate the latest audited SHA across the complete synchronization report,
+  not its first historical section. Classify dependent fixes together: an
+  averaging-formula correction is obsolete if that averaging was deferred;
+  an upstream INI path fix does not apply to native bounded magnet storage.
+
 - Read the actual interval constant when importing sampling changes: commit
   4f357490 describes 3.5 seconds but sets 2500 milliseconds. Preserve the
   final source semantics and review idle decay and unit-sensitive tests
@@ -145,13 +150,13 @@ run tests.
 - No upstream change is validated until the corresponding manual CI lane and
   provenance/vectors are updated.
 
-- The current reviewed `openssl` window is
+- A historical reviewed `openssl` window is
   `e485e138c713dff2ff81bfba112c086da3fe7793` through
   `2b92f2d487288304aafcf92d484ff322ec52e62b`. Datagram queue clearing, the
   120 s resume throttle and `piecesAvailable` are adapted; connection
   replacement is deferred pending identity-keyed removal; the intrusive
   receive queue and browser display commit are rejected. Keep
-  `docs/upstream-sync.md`, TODO and this high-water mark together.
+  `docs/upstream-sync.md`, TODO and the latest audited window together.
 - Browser-console, legacy Makefile and Haiku changes remain incompatible with
   the fork. Never copy an upstream pooled-packet ownership change without
   proving the source owner is released.

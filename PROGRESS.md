@@ -8506,3 +8506,92 @@ or push.
   empty data uses backed storage and no empty pointer-range insertion.
   Prepared observer-based V1/V2/V3/raw controls in the existing registered
   version-dispatch target. No local suite was executed.
+
+
+## Integrated continuation after e1d1b7a6
+
+Status: Implemented / static; Pending CI compilation; Pending CI tests.
+
+- Completed nine independent delegated reconnaissance areas before editing,
+  then assigned exclusive implementation scopes and reviewed shared APIs.
+- Recovered metadata for 505 runs and 77 SHAs. The ten published e1d1b7a6
+  workflows finished with eight successes and two failures. OpenBSD failed
+  the UDP read-completion fixture; MSVC failed live worker initialization.
+  Successful Linux, sanitizer, Android, packaging and validation results
+  apply only to that published revision. Historical logs and evidence gaps
+  remain in the six CI inventories.
+- Corrected the OpenBSD fixture to observe reactor completion under one
+  absolute deadline. Applied the same review to the new SSU2 proxy fixture.
+  Windows public symbols now identify loader initialization frames, but
+  c0000142 attribution remains unresolved; sandbox policy was preserved.
+- Adapted upstream de22c170 to actual I2CP pooled-message capacity, with
+  shared checked framing and boundary regressions. Classified all 15 commits
+  from 4f357490 to 988ef86e; retained reproducible Java reference pins.
+- Added revocable run/attempt authority and bounded partial I/O to SSU2 proxy
+  callbacks, retired terminal deadlines and removed rejected proxy operands
+  from diagnostics. Ordinary nonproxy callback/send-close work remains open.
+- Implemented outgoing torrent CANCEL, bounded Fast cancellation authority,
+  exact response tuples and atomic epoch-bearing piece leases. Allocation
+  rollback regressions cover selection and ledger admission. Existing magnet
+  persistence and uploader rotation were verified rather than reimplemented.
+  Full endgame and strict unsolicited Fast handling remain pending.
+- Reserved child retirement capacity before fork, retained PID/pidfd reap
+  authority after owner removal and Disown, and integrated periodic drains.
+  Guarded every local worker-identity stack copy through early failures and
+  allocation unwind. Broader process isolation and cgroup work remain open.
+- Extracted bounded SAF transfer progress into the production helper and
+  prepared deterministic JVM regressions. Device/provider validation remains
+  pending. Fingerprinted actual OpenSSL link-probe inputs to invalidate stale
+  cached results, with a prepared compile-free source contract.
+- Registered native regressions and expanded the prepared MSVC selection
+  from 25 to 27 targets. Updated architecture, interoperability, torrent,
+  build, CI and tracking documentation. Agent knowledge records reusable
+  reactor observation, tuple authority, retirement and probe-cache procedures.
+- No local builds, compiler invocations, test suites, commits or push were
+  performed. New behavior remains unvalidated by CI until published through
+  a separately authorized action. Existing Perl/Shell lint debt is retained.
+
+- Final compile-free checks passed: whitespace (including untracked text),
+  documentation links/anchors, Doxygen parameter contracts, manual workflow
+  policy, actionlint, yamllint and modified-workflow zizmor. Three existing
+  zizmor exceptions are unchanged. Agent knowledge validation passed with
+  zero errors and the AK004 manual-relevance advisory; reusable procedures
+  were reviewed against the implementation. Independent final review found
+  no blocker in stack wiping or exact torrent response correlation. Prepared
+  CMake contracts were inspected but not executed locally.
+
+
+## Follow-up retrospective and equivalent-pattern audit
+
+Status: Implemented / static; Pending CI compilation; Pending CI tests.
+
+- Used ten real specialized subagents, with exclusive implementation scopes,
+  to refresh history and independently review native warnings, memory,
+  concurrency, crypto/I2P, IPC, torrent/storage, Android, portability and CI.
+  Fresh gh pagination confirms the same 505 runs / 77 SHAs, 160 successes,
+  279 failures and 66 cancellations. No new remote result validates local code.
+- Fixed RT-105 shared SSU2 socket send/close/reopen admission and explicitly
+  made proxy UDP nonblocking. Prepared barrier-based real-socket controls,
+  registered across common suites/sanitizers and MSVC (now 28 selected).
+  Nonproxy raw-owner callbacks and analogous UDPSession affinity remain open.
+- Fixed RT-106 outbound I2CP header arithmetic through one checked builder,
+  including null/nonempty refusal and initialized metadata. Existing target
+  now contains maximum/first-invalid/SIZE_MAX/prefix controls.
+- Corrected CE-093 CMake 3.24 fixture scope and CW-033 fixture shadowing.
+  Replaced a scheduler-dependent proxy assertion with actual held-gate
+  observation and post-revocation refusal. Prepared source guards pin these
+  boundaries; no CMake contract or native/Java suite was executed locally.
+- Windows RT-087 retains unresolved attribution. Added bounded nonce-free
+  predecessor instruction disassembly to the existing diagnostic probe;
+  preserved restrictions and original failure status. No new dispatch.
+- Reviewed root/discovery and owning CI/build/C++23/memory/crypto/interop,
+  torrent/privsep/Android skills. Corrected obsolete probe-stamp semantics
+  and documented reusable object-lock, observation and supported-floor seams.
+  Preserved all earlier local modifications, history, secrets and provenance.
+
+- Compile-free checks pass for workflow policy (including the exact updated
+  debugger grammar), actionlint, yamllint, offline zizmor, Doxygen parameters,
+  documentation links and whitespace. Knowledge validator passes with zero
+  errors; AK004 relevance was reviewed against these concrete procedures.
+  New source assertions/order were inspected without executing CMake.
+  Negative debugger mutations are prepared for CI, not executed locally.

@@ -3172,7 +3172,7 @@ skill and `docs/torrent/security.md` for the current boundary.
   denylist includes inherited `SequencedCollection` methods, `String.stripIndent`,
   `Math.clamp` and `Thread.threadId`. Metric labels associate their value view
   with `android:labelFor`.
-- The current upstream review window is `e485e138..2b92f2d4`; its per-commit
+- The latest upstream review window is `4f357490..988ef86e`; its per-commit
   dispositions are in `docs/upstream-sync.md`. Do not port the intrusive
   receive queue or connection replacement without fixing pooled ownership and
   identity-keyed removal first.

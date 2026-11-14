@@ -1,5 +1,14 @@
 # Compilation diagnostic patterns and repository-wide review
 
+## Capability caches must identify their actual link transaction
+
+CE-092 shows that headers/version cannot identify a link probe. Include exact
+selected libraries, static/runtime selection, compiler/target/sysroots and
+effective flags. Preserve field boundaries before hashing and invalidate all
+capabilities together. Pure identity tests are distinct from a successful
+reconfiguration/link on the supported toolchain.
+
+
 ## Included contracts can hide later formatting failures
 
 TF-108 follows TF-106: an included control-security checker reaches another
@@ -491,3 +500,12 @@ names the repository. Inspect every command consumer and source path, then
 pin the registration itself in the build-system source contract. Global
 search found only one wrong PROJECT_SOURCE_DIR operand in test registration.
 The script also rejects an invalid root before attempting source reads.
+
+
+### Supported-floor checks include source contracts
+
+A compile-free checker still has interpreter command requirements. Use
+function scope for included fixtures at the project CMake 3.24 floor;
+`block()` needs 3.25. Preset schema requirements are a separate boundary.
+Review shared builder size arithmetic before addition, not merely the final
+cast to a wire field; outbound I2CP now shares this admission pattern too.

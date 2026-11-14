@@ -10,6 +10,55 @@ Documents project documentation.
 
 # Upstream provenance and synchronization
 
+
+## openssl continuation through 988ef86e (2026-11-14)
+
+The last audited router-source commit is the final `4f357490` section below,
+not the older `2b92f2d4` section near the document's beginning. The official
+[comparison of 4f357490 through 988ef86e](https://github.com/PurpleI2P/i2pd/compare/4f357490f7fed257e5a6a64750ebd8b8e5950bf2...988ef86e6f7790d119c66c53132b8ac223fc94f8)
+contains fifteen commits. Each was inspected read-only; no merge or
+cherry-pick was used. Decisions preserve local ownership, storage authority
+and the removed browser-console boundary.
+
+| Upstream SHA | Subject | Decision and local result |
+|---|---|---|
+| `d2d2c4826785b78c96dca416d7cc5ae3264c6c16` | use u8string for UTF8 on Windows | Applicable via adaptation, Pending. Local dataDir remains a string and its ACP conversion must be reviewed with typed-path consumers; importing a path-only expression is not a complete migration. |
+| `1aab89dd44ba59ab8eb3b67fb6dfcc3c85fafc48` | drop upload rate if no requests for a while | Existing equivalent idle-rate decay and uninterested-peer reset are retained; the fork's independent 30-second policy is not silently replaced. |
+| `fb1dbd56c511a55e2dd0eecef5aa8a8d2e3a7357` | calculate download/upload rate as average with previous sample | Deferred behavioral change. Local direct sampling was deliberately adapted from the preceding window; averaging requires a separate rate/scheduler review. |
+| `cc1dc4201a0970a6a6541f2a60ef2b659a237d57` | fixed typo | Obsolete without the preceding averaging import: fixes a missing division by two in that new upload-rate formula. Local direct sampling has no corresponding sum. |
+| `1cb7b46a4258c5e8709782a7478fa1b8915787bb` | excluded boost::filesystem | Already implemented in the fork's CMake/std::filesystem direction; no upstream build-file replacement is appropriate. |
+| `e2e735cb3f42134125f6b4cad5811c53b29dc0f4` | save magnet without metaInfo in .magnet file | Existing bounded native magnet persistence/startup loading provides this capability. Do not import generic INI pathname writes across the fork's storage authority. |
+| `d2bac487fff3a3b9ac8579a01d4991fd344bf37f` | restart RPC acceptor if error | Already implemented: local accept rearms non-aborted errors under state admission. Resource-exhaustion retry/backoff remains a separate review; success is not inferred for that path. |
+| `4071778be67fe2ab8481aacd5e2efadda5aab53b` | fixed windows build | Obsolete here: changes the newly added upstream magnet INI reader from path to path.string(); the fork does not use that reader. |
+| `fd436b145141cb8324e6f65b63b858d6baa9a13e` | intrusive list for m_NACKedPackets | Deferred ownership/performance change. Local NACK entries borrow sent packets; intrusive hooks must be reviewed with receive-queue ownership before any container migration. |
+| `bcad29f8c7e48d5a7594487c350a9dd8ffa94ae6` | piece block size and incomplete-piece requests | Already implemented with stronger exact expected-block lengths, subtraction-based bounds and piece availability checks. |
+| `99719200ea8976b396cae16ed75721a74e5696a8` | piece block offset alignment | Already implemented: offset modulo REQUEST_BLOCK_SIZE is checked before indexing or publication. |
+| `9a284ac7e5e91b8bc9f37f0d75ca9093b006cf3f` | magnet hash without metaInfo in .magnet file | Existing fork magnet persistence uses validated 40-hex hash filenames and bounded metadata; no format change imported. |
+| `0c8c0e85a782e25607ff7bfdffa1f09aaee22c4c` | RouterInfo store size-prefix bounds | Already implemented: NetDb checks the two-byte size field before extraction, then checks the compressed payload extent. |
+| `de22c17044e0c5072e906133ad75f46633761da4` | I2CP, SOCKS and SAM overflows/crashes | Adapted I2CP capacity correction locally through one checked payload writer used by both send paths. SOCKS empty-DNS rejection, SAM control-line cap and pre-session I2CP reconfigure rejection already exist. |
+| `988ef86e6f7790d119c66c53132b8ac223fc94f8` | merge client-crash fixes | Reviewed merge of the preceding correction; no additional behavior or history import. |
+
+The [client-crash patch](https://github.com/PurpleI2P/i2pd/commit/de22c17044e0c5072e906133ad75f46633761da4)
+exposed an incomplete earlier local guard: limiting payload to total buffer
+size minus four omitted the existing I2NP header and two-byte reserved
+prefix. Both fallback and direct sends now use actual remaining capacity,
+checked with subtraction before writes; the helper also validates fresh
+message geometry and the 16-bit outer size limit. Rejected fallback sends
+retain their existing guaranteed-failure nonce response. No wire format or
+Java session behavior changes.
+
+`test-i2cp-blinding-info` gains canary-backed maximum/first-invalid capacity,
+SIZE_MAX, null, short-prefix, fresh-message and serialized-length controls.
+Implemented / static; Pending CI compilation / Pending CI tests. Existing
+successful remote runs predate these local changes.
+
+The official [latest Java release](https://github.com/i2p/i2p.i2p/releases/tag/i2p-2.14.1)
+remains `i2p-2.14.1`, published 2026-11-06. Official tag object
+`1e85daffd1d5ab4add91a0fc7af30525dcca2808` still peels to
+`a1c317c73c9cbd0b25c210dd5bd7b6baa71197c7`. The pinned interoperability
+comparison remains 2.14.0; this metadata/source audit does not relabel prior
+fixtures or establish full 2.14.1 equivalence.
+
 ## Reviewed router-source commits (2026-11-04 continuation)
 
 The `openssl` branch advanced from `e485e138c713dff2ff81bfba112c086da3fe7793`

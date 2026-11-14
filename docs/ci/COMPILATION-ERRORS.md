@@ -9,6 +9,29 @@ Tracks compile/configure/link failures reported by manual GitHub Actions.
 
 # Compilation error inventory
 
+## e1d1b7a6 and preventive build-cache correction
+
+The [completed lane evidence](TEST-FAILURES.md#e1d1b7a6-completed-lanes-and-openbsd-observation-failure)
+shows successful native builds before OpenBSD's TF-109 fixture failure.
+No new compiler/link blocker was found in recovered completed job logs.
+
+### CE-092 — Probe cache omitted selected link inputs (static finding)
+
+The OpenSSL cache stamp included only headers, implementation and version,
+while the combined executable probe links exact SSL/Crypto files and uses
+inherited options. Reconfiguring those files under unchanged headers could
+reuse an earlier I2PD_OPENSSL_LINK_OK result. This is demonstrated by source
+analysis, not an observed CI linker failure.
+
+The local v2 identity includes selected library files, required compile/link
+inputs, compiler/target/sysroots, runtime and configuration flags. A
+length-prefixed hash avoids delimiter ambiguity; the existing complete probe
+cache invalidation is retained. New pure stamp tests cover unchanged values,
+selected-file/static/runtime/flag changes and separator-containing fields;
+they run within build-system-static. Real reconfiguration and all local
+changes remain Pending CI compilation / Pending CI tests.
+
+
 ## a1a02a05: reached builds pass; Java 25 tool provenance confirmed
 
 At the [exact matrix](TEST-FAILURES.md#published-a1a02a05-audit), native
@@ -2328,3 +2351,15 @@ AddressBook code compiled; its standalone source inspection passed in the
 static job, while the distinct CTest invocation never inspected it.
 See [TF-101](TEST-FAILURES.md#tf-101-registered-source-root-points-to-the-cmake-entry).
 Local fixes and preventive tracker/signature changes remain uncompiled in CI.
+
+
+### CE-093 — Source-contract scoping exceeded the CMake floor
+
+Static review of the unpublished OpenSSL probe fixture found
+`block(SCOPE_FOR VARIABLES)`, introduced in CMake 3.25, while the project
+supports 3.24. No CI run is attributed: newer runners could conceal this
+configuration incompatibility. Replaced it with function scope, retaining
+fixture isolation. A global build/tests CMake search found no other block
+commands. Prepared cache contract remains registered in build-system checks;
+execution on the supported floor is Pending CI tests. Also corrected the
+owning Skill's stale schema-5 minimum (3.25, distinct from project 3.24).

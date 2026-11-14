@@ -10,6 +10,16 @@ Documents project documentation.
 
 # I2P Java interoperability audit
 
+## 2026-11-14 request and proxy continuation
+
+The local BitTorrent increment follows BEP 3 CANCEL framing and BEP 6 exact
+terminal-response tuples/choke semantics while preserving I2P-only transport.
+Private observer regressions do not constitute a live Java peer exchange.
+SSU2 proxy changes isolate callback attempts and preserve SOCKS wire bytes;
+I2CP framing rejects over-capacity data without changing accepted encoding.
+These local corrections remain pending CI and differential validation. Latest
+stable metadata does not move the pinned 2.14.0 comparison baseline below.
+
 > Historical interoperability record. “Local CTest passed” cells describe the capture date and are not current evidence; use the manual CI matrix and `tests/interop/FIXTURES.md` for the active target.
 
 Current comparison target and historical audit provenance:
@@ -17,7 +27,7 @@ Current comparison target and historical audit provenance:
 | Item | Value |
 |---|---|
 | Repository | https://github.com/i2p/i2p.i2p |
-| Latest stable verified 2026-11-08 | `i2p-2.14.1`, published 2026-11-06; peeled commit `a1c317c73c9cbd0b25c210dd5bd7b6baa71197c7` |
+| Latest stable verified 2026-11-14 | `i2p-2.14.1`, published 2026-11-06; peeled commit `a1c317c73c9cbd0b25c210dd5bd7b6baa71197c7` |
 | Current target tag | `i2p-2.14.0` |
 | Target commit (peeled tag) | `3c98503c5f14efe7bdd783528ba7f621f12d8081` |
 | Tag object | `9db233ed7241599eba76f29b8c334eaaf3db2e87` |
@@ -62,6 +72,22 @@ Status vocabulary:
   fork announces.
 - **Needs dynamic validation** — cannot be concluded from source alone.
 - **Not evaluated** — outside this audit pass.
+
+## I2CP framing-capacity continuation (2026-11-14)
+
+Selective [upstream client-crash review](https://github.com/PurpleI2P/i2pd/commit/de22c17044e0c5072e906133ad75f46633761da4)
+found that both local I2CP outbound Data paths omitted existing header and
+reserved-prefix bytes from their size guard. A shared checked writer now
+uses actual buffer capacity before writing the four-byte length and payload.
+The maximum admitted payload is a local framing constraint; the I2CP wire
+format, nonce failure status and pinned Java 2.14.0 comparison are unchanged.
+
+Canary-backed boundary and malformed-geometry controls are prepared in the
+existing `test-i2cp-blinding-info` target. Implemented / static; Pending CI
+compilation / Pending CI tests. This is a safety correction, not evidence
+of new protocol parity or a full Java 2.14.1 audit. See the complete
+[selective upstream decisions](upstream-sync.md#openssl-continuation-through-988ef86e-2026-11-14).
+
 
 ## Matrix
 

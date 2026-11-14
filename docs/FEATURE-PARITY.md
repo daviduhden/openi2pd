@@ -10,17 +10,43 @@ Documents project documentation.
 
 # I2P Java functional parity matrix
 
+## 2026-11-14 native continuation
+
+Outgoing torrent CANCEL and Fast request-retirement authority are implemented
+locally, including exact Reject parsing and atomic selection epochs. This
+advances request management but does not complete endgame or establish Java
+peer interoperability. Deferred POSIX child ownership and shared SAF transfer
+coverage also advance their respective subsystems; the core is still not
+fully privilege-separated. See [the current Snark increment](torrent/snark-compatibility.md#outgoing-request-cancellation-continuation-2026-11-14).
+All new code is Implemented / static; Pending CI compilation / Pending CI tests.
+
 This document records the functional comparison between the official I2P Java
 router and openi2pd. It complements [`INTEROPERABILITY.md`](INTEROPERABILITY.md):
 that document records wire-level findings and vectors, while this one records
 the broader user-visible and administrative feature set.
+
+## I2CP framing-capacity continuation (2026-11-14)
+
+Selective [upstream client-crash review](https://github.com/PurpleI2P/i2pd/commit/de22c17044e0c5072e906133ad75f46633761da4)
+found that both local I2CP outbound Data paths omitted existing header and
+reserved-prefix bytes from their size guard. A shared checked writer now
+uses actual buffer capacity before writing the four-byte length and payload.
+The maximum admitted payload is a local framing constraint; the I2CP wire
+format, nonce failure status and pinned Java 2.14.0 comparison are unchanged.
+
+Canary-backed boundary and malformed-geometry controls are prepared in the
+existing `test-i2cp-blinding-info` target. Implemented / static; Pending CI
+compilation / Pending CI tests. This is a safety correction, not evidence
+of new protocol parity or a full Java 2.14.1 audit. See the complete
+[selective upstream decisions](upstream-sync.md#openssl-continuation-through-988ef86e-2026-11-14).
+
 
 ## Reference baseline
 
 | Item | Value |
 |---|---|
 | Repository | <https://github.com/i2p/i2p.i2p> |
-| Latest stable verified 2026-11-08 | `i2p-2.14.1`, peeled commit `a1c317c73c9cbd0b25c210dd5bd7b6baa71197c7`; release published 2026-11-06 |
+| Latest stable verified 2026-11-14 | `i2p-2.14.1`, peeled commit `a1c317c73c9cbd0b25c210dd5bd7b6baa71197c7`; release published 2026-11-06 |
 | Current target tag | `i2p-2.14.0` |
 | Target commit (peeled tag) | `3c98503c5f14efe7bdd783528ba7f621f12d8081` |
 | Tag object | `9db233ed7241599eba76f29b8c334eaaf3db2e87` |

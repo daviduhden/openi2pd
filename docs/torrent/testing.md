@@ -31,6 +31,15 @@ that the later CI environment or full engine/TUI runtime was validated.
 
 Prepared coverage:
 
+- `test-torrents-requests`: actual writer-observed CANCEL framing, Fast tuple
+  retirement and choke semantics, exact Reject parsing, canceled responses,
+  allocation rollback and atomic selection epochs. No live Java peer is used.
+- `test-ssu2-proxy-lifecycle`: real partial control reads, run/attempt/retry
+  admission, terminal method refusal and executor-independent retained buffers.
+- `TorrentSafTransferTest`: deterministic positive short transfers, EOF/zero,
+  cancellation and exceptions through the helper used by both broker paths.
+
+
 - `test-torrent-bencode`: valid v1 metadata; truncated/malformed bencode;
   oversized integer/length; excessive depth; bad piece/file counts; missing or
   empty root name; absolute, `..`, separator, control-character and colliding

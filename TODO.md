@@ -10,22 +10,30 @@ Documents project documentation.
 
 # Master TODO
 
-Latest retrospective: 495 runs / 76 SHAs (152 success, 277 failure,
-66 cancelled). Published a1a02a05 has five successful workflows and five
-failures. CE-090/091 Java 25 probe, TF-106 contracts, TF-107 Unicode controls
-and RT-097 UDP periodic regressions pass in executed lanes. TF-108 exposes
-another wrapped Android confirmation needle; local correction and negative
-controls are Implemented / static; Pending CI tests. RT-087 MSVC startup
-remains CI failure with unresolved loader attribution; OS-symbol diagnostics
-are prepared. RT-098 gateway prepend bounds/allocation and nullable transport
-admission are Implemented / static; Pending CI compilation / Pending CI tests.
-UDP partial-start rollback and receive-generation admission are Implemented /
-static; Pending CI compilation / Pending CI tests. Device/provider fault injection,
-configuration-cache execution and existing Perl/Shell lint debt remain open.
-RT-100 nullable datagram framing is Implemented / static; Pending CI tests.
-RT-099 send-only keepalive and isolated single-read admission are Implemented /
-static; Pending CI compilation / Pending CI tests.
-Exact run/job/SHA and historical evidence gaps remain in docs/ci.
+New audit follow-up: RT-105 shared SSU2 socket admission/nonblocking proxy,
+RT-106 outbound I2CP checked arithmetic, CE-093 CMake floor compatibility and
+CW-033 request-fixture shadowing are Implemented / static; Pending CI
+compilation / Pending CI tests. MSVC local selection is 28 targets; published
+e1d1b7a6 exercised 25. No newer runs were found in the refreshed history.
+
+
+Latest retrospective: 505 runs / 77 SHAs (160 success, 279 failure,
+66 cancelled). The completed e1d1b7a6 batch has
+eight successful workflows and two failures: OpenBSD TF-109 socket-fixture
+observation and Windows RT-087 loader initialization. Native Linux matrices,
+CLANG64 and all three sanitizer lanes pass the published bounds/lifecycle
+controls; this does not validate local changes below.
+
+New work: RT-101 I2CP actual-capacity framing, RT-102 SSU2 proxy authority,
+RT-103 deferred child ownership, RT-104 identity-stack cleanup, CE-092 complete OpenSSL probe identity,
+SNARK-006 outgoing CANCEL/Fast correlation and atomic block leases, plus SAF
+exact-transfer coverage are Implemented / static; Pending CI compilation /
+Pending CI tests. TF-109 correction is Implemented / static; Pending CI tests.
+Latest I2P stable remains 2.14.1; the comparison pin remains 2.14.0. Fifteen
+additional upstream commits are classified through 988ef86e; the applicable
+I2CP overflow fix is adapted locally. Device/provider injection, full endgame,
+strict unsolicited Fast-message policy, cgroups and complete core privilege
+separation remain open. Exact evidence and historical gaps remain in docs/ci.
 
 - Local formatting/lint: Implemented / static for C++/Java, Perl/Shell and
   workflows. Perl::Critic's 932 findings and 11 OpenBSD framework ShellCheck
@@ -795,9 +803,9 @@ they do not establish 2.14.0 compatibility. See NET-026.
 - [ ] **[PRIVSEP-015]** Consolidate typed/versioned IPC contracts, authorization, backpressure and recovery.
   - Priority P0; Status Implemented / static, CI pending; protocol v2/minimum v1, typed `Error` replies, shared `AllowsOperation` role allowlist, fallible bounded path encoders, configure/readiness Ping/Pong handshake, monotonic storage request IDs, non-fatal broker capacity/path errors, validated adopted channels, zero-length-record handling, imsg buffered-frame draining, and Windows oversized-message/PID-session binding. Residual: full cross-process channel error taxonomy, automatic client reconnect, explicit transactional cancellation IDs and Windows daemon wiring remain pending.
 - [ ] **[PRIVSEP-016]** Harden the Linux AF_UNIX/seqpacket, seccomp and descriptor boundary.
-  - Priority P0; Status Implemented / static, CI pending; AF_UNIX domain/listening checks and SO_PASSCRED activation on adopted channels; credential and empty-record flood checks; seccomp denials for process_vm_*, kcmp, pidfd_open/send_signal, open/name_to_handle_at, userfaultfd, bpf and perf_event_open; PR_SET_NO_NEW_PRIVS before exec; wider close() fallback ceiling; inherited stdio socket cleanup; Linux dev/inode storage-root binding; Linux rejection of the OpenBSD-only inherited-root roles. Residual: kill/tgkill self-filtering, pid binding/deferred reap, cgroup.kill and full descriptor classification.
+  - Priority P0; Status Implemented / static, CI pending; AF_UNIX domain/listening checks and SO_PASSCRED activation on adopted channels; credential and empty-record flood checks; seccomp denials for process_vm_*, kcmp, pidfd_open/send_signal, open/name_to_handle_at, userfaultfd, bpf and perf_event_open; PR_SET_NO_NEW_PRIVS before exec; wider close() fallback ceiling; inherited stdio socket cleanup; Linux dev/inode storage-root binding; Linux rejection of the OpenBSD-only inherited-root roles. Residual: kill/tgkill self-filtering, forwarded-worker PID binding, cgroup.kill and full descriptor classification. Deferred child ownership is tracked under PRIVSEP-017.
 - [ ] **[PRIVSEP-017]** Complete Linux pidfd, cgroup and stop-budget recovery.
-  - Priority P1; Status Pending; deferred-reap registry for unreapable children, single-reap tri-state wait, total Stop deadline/Retire, forwarded-worker pidfd/kqueue set, opt-in cgroup v2 limits and cgroup.kill. Kernel floors/fallbacks are documented in `docs/security/process-capabilities.md`; no dynamic evidence.
+  - Priority P1; Status Partially implemented / static; Pending CI compilation; Pending CI tests. Pre-fork capacity reservations, a 64-slot deferred-reap registry, retained PID/pidfd through destructor/move/Disown, bounded stop and nonblocking daemon/supervisor drains are implemented. Forwarded-worker pidfd/kqueue sets, opt-in cgroup v2 limits and cgroup.kill remain Pending. Kernel floors/fallbacks are documented in `docs/security/process-capabilities.md`; no real uninterruptible-child or cgroup validation.
 
 ## ID registry and aliases
 
@@ -1360,7 +1368,7 @@ is dynamically validated. No local builds/configuration/tests or commits/push.
   - Pending: BEP 5 announce `port`/`implied_port` parity, live Java trackerless exchanges, adversarial churn, seed outgoing connection policy and process-separated DHT persistence. Prepared but unexecuted: `test-torrents-dht-protocol`, `test-torrents-pex`, `fuzz-torrents-krpc` and `fuzz-torrents-extensions`.
 - [ ] **[SNARK-004]** Opt-in interoperable comments/ratings.
   - Priority P1; Status implemented by static analysis for negotiated exchange, bounded per-peer budgets, store/moderation/statistics and native control persistence; pending CI compilation; pending CI tests.
-  - TUI Comments/c/C/H and Android controls connected. Disabled by default; private torrents suppress exchange and omit `ut_comment` entirely. Bencode retains anonymous/rating-only empty fields; labels are never authenticated identities. The codec accepts Java's up-to-256-entry replies, skips malformed entries, publishes newest-first, normalizes CR/LF/TAB, caps wire frames at Java's 16482-byte extension limit, dedupes a normalized owner/text key regardless of rating, bounds per-pseudonym and anonymous visible entries, evicts old foreign entries at capacity, and supports local unhide. The continuation adds tolerant `filter` hints, per-connection 40/min and per-torrent 80/min admitted-entry windows, revision-aware immediate refresh after a local change (10 s floor, 600 s cadence), revision bumps for hide/trim persistence, and future-timestamp clamping on state load. `TORRENT-DETAIL <tunnel> <id> [offset] [limit]` pages the retained comments with visible/hidden/local counts; TUI uses `[`/`]`, aged timestamps, bidi stripping and confirmed hide/unhide, and Android pages with age/local markers. TUI strings remain English (`I18N-004`); Android strings are in all four catalogs.
+  - TUI Comments/c/C/H and Android controls connected. Disabled by default; private torrents suppress exchange and omit `ut_comment` entirely. Bencode retains anonymous/rating-only empty fields; labels are never authenticated identities. The codec accepts Java's up-to-256-entry replies, skips malformed entries, publishes newest-first, normalizes CR/LF/TAB, caps wire frames at Java's 16482-byte extension limit, dedupes a normalized owner/text key regardless of rating, bounds per-pseudonym and anonymous visible entries, evicts old foreign entries at capacity, and supports local unhide. The continuation adds tolerant `filter` hints, per-connection 40/min and per-torrent 80/min admitted-entry windows, revision-aware immediate refresh after a local change (10 s floor, 600 s cadence), revision bumps for hide/trim persistence, and future-timestamp clamping on state load. `TORRENT-DETAIL <tunnel> <id> [offset] [limit]` pages the retained comments with visible/hidden/local counts; TUI uses `[`/`]`, aged timestamps, bidi stripping and confirmed hide/unhide, and Android pages with age/local markers. Trusted TUI comment labels use tr() with English fallback and es/ru/zh-Hans catalog entries; Android strings are also in all four catalogs. Live terminal/device validation remains pending.
   - Pending: differential Java peer exchange, consent/renegotiation/lifecycle and crash tests, normalized-dedupe/rating parity against Java `CommentSet`, and whitespace/rating policy confirmation. Do not infer interoperability validation from codec roundtrips.
 - [ ] **[SNARK-005]** Autonomous Android native client and SAF.
   - Priority P0; Status implemented by static analysis for existing native panel, bounded SAF torrent import, priorities/comments/trackers, root creation and new document/tree SAF creation/export; pending CI compilation; pending CI tests.
@@ -1376,7 +1384,7 @@ is dynamically validated. No local builds/configuration/tests or commits/push.
   - Pending: actual Linux/OpenBSD/LibreSSL/Windows/Android, Java differential/live, sanitizer/fuzzer and device runs. No earlier revision result validates this local tree.
 - [ ] **[SNARK-008]** Complete advanced functional inventory.
   - Priority P1; Status in implementation (static analysis where specified).
-  - Selection, shared-boundary scheduling and persisted priorities exist. This increment adds selected-file completion/status, selected tracker `left`, per-file promotion from `.part`, `GetFullLeft()` diagnostics and mixed final/`.part` restart verification. Exact resume bitfields are validated and atomically replaced; explicit recheck hashes incomplete pieces. Accepted blocks refresh piece activity instead of hitting the 22 s reset, and each connection releases its own outstanding blocks on choke, keep-alive reset, reject or disconnect. TUI/Android show selected size and privacy; tracker snapshots expose tiers and private edits fail closed. The scheduler continuation adds a 60 s per-request deadline before the 95 s blanket release, real block-length accounting, idle peer-rate decay, complete+verified+not-saving per-file progress, `eTorrentErrorFilesystem` publication on a failed write (cleared by a later verified write) and bounded best-effort corrupt-peer charging (three strikes, 64-entry in-memory table, no persisted ban). TUI `Ctrl-X`/`Ctrl-D` and Android session removal use `TORRENT-REMOVE-ALL`; Android exposes single-torrent start/stop, and `TORRENT-COMMENT-UNHIDE` parses again. Remaining: full bandwidth/connection controls, durable magnet/queue recovery (`SNARK-012`), endgame/CANCEL send, unchoke/upload-slot policy, advanced settings and exact error/retry parity. Keep essential-operation tasks open while any capability or validation remains missing.
+  - Selection, shared-boundary scheduling and persisted priorities exist. This increment adds selected-file completion/status, selected tracker `left`, per-file promotion from `.part`, `GetFullLeft()` diagnostics and mixed final/`.part` restart verification. Exact resume bitfields are validated and atomically replaced; explicit recheck hashes incomplete pieces. Accepted blocks refresh piece activity instead of hitting the 22 s reset, and each connection releases its own outstanding blocks on choke, keep-alive reset, reject or disconnect. TUI/Android show selected size and privacy; tracker snapshots expose tiers and private edits fail closed. The scheduler continuation adds a 60 s per-request deadline before the 95 s blanket release, real block-length accounting, idle peer-rate decay, complete+verified+not-saving per-file progress, `eTorrentErrorFilesystem` publication on a failed write (cleared by a later verified write) and bounded best-effort corrupt-peer charging (three strikes, 64-entry in-memory table, no persisted ban). TUI `Ctrl-X`/`Ctrl-D` and Android session removal use `TORRENT-REMOVE-ALL`; Android exposes single-torrent start/stop, and `TORRENT-COMMENT-UNHIDE` parses again. Remaining: full bandwidth/connection controls, complete queue/crash recovery (`SNARK-012`), full endgame scheduling, advanced ranking/settings and exact error/retry parity. Bounded magnet recovery and eight-uploader rotation already exist. Outgoing CANCEL, Fast cancellation/choke authority, exact Reject handling and atomic epoch-bearing block leases are now Implemented / static; Pending CI compilation / Pending CI tests. Strict unsolicited Fast closure and live Java exchange remain Pending. Keep essential-operation tasks open while any capability or validation remains missing.
 - [ ] **[SNARK-009]** Complete SAF payload backend and lifecycle recovery.
   - Priority P0; Status implemented by static analysis for URI-backed tree download/seeding via bounded Binder/JNI and common native payload storage; pending CI compilation; pending CI tests. Grants and priorities persist; provider bytes are rehashed after restart without trusting the resume bitfield. Unsupported seek fails without staging. Implemented statically: bounded Binder generation recovery, cancellation/retirement and provider fault fixtures; exact-document deletion; brokered cancelable export with exact-size commit/abort; document-ID/size validation before every transfer; shorter existing documents are extended only in write mode and remain unverified; grant reference counting; next-open tree re-resolution with native handle teardown; async startup verification and zero-length-file fragment suppression. The continuation probes every document through the payload backend at startup (`TorrentFile::ProbePayload`), verifies only pieces fully backed by present files, leaves missing/revoked documents downloadable, and reopens a POSIX read-only final-name handle writable after invalidation. The broker arms the 15 s/30 s watchdog only after `ioLock`, so a queued operation is not fenced for a stalled sibling, and the client bind budget recovers from a transient broker crash without an app restart. Fixtures now cover a nested multi-file tree, zero-length documents, deleted/revoked documents, same-length replacement, no-seek/socket, read-only write failure and post-retire rebind. Pending: end-to-end device death/grant/provider/ENOSPC tests, SAF resume trusted by document identity, and real-provider validation.
 - [ ] **[SNARK-010]** Complete multiprocess platforms and remove remaining parent authority.

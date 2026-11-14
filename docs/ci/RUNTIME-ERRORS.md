@@ -5,6 +5,82 @@ and license details.
 
 # Runtime error inventory
 
+## New local corrections after e1d1b7a6
+
+Published controls pass in the [completed lanes](TEST-FAILURES.md#e1d1b7a6-completed-lanes-and-openbsd-observation-failure).
+OpenBSD's TF-109 does not establish a product receive defect. The following
+are separate static findings; none is validated by those older runs.
+
+### RT-087 continuation: OS PDBs resolve the loader, not its failing cause
+
+[Windows 43633659161](https://github.com/daviduhden/openi2pd/actions/runs/43633659161),
+MSVC job 132565636410, artifact 14130163085, exact e1d1b7a6 image SHA-256
+`ECEE71E1F0C2EC188782204432F96157139D964E19EA86F6EBCC97D69D1DEEFC`,
+now resolves ntdll PDB identity `C2C87600B169E76C65E3732E4A1C19911`.
+The worker return is `LdrpInitialize+0x32b`, with LdrpInitializeInternal and
+LdrInitializeThunk frames. Worker PID 1e98 exits c0000142; conhost PID 1724
+exits c0000022. This closes the missing-OS-symbol evidence gap but still does
+not identify which initialization condition failed or establish conhost
+causality. The live worker test remains failed; containment is unchanged.
+
+### RT-101 — I2CP Data framing omitted occupied capacity
+
+Upstream de22c17044e0c5072e906133ad75f46633761da4 exposed equivalent
+SendMsgTo/direct-send guards that allowed global-size-minus-four payloads
+without subtracting the already occupied 18 bytes. Both now use
+AppendI2CPDataPayload, validating complete fresh-message geometry and actual
+remaining capacity before prefix/copy/publication. Existing nonce failure
+replies remain. The normal maximum is 62686 bytes, not 62704. Prepared tests
+cover exact maximum/first invalid, canaries, tiny/extreme geometry, SIZE_MAX
+and prefix serialization. Nonoverlap is a caller precondition, not runtime
+validation. Implemented / static; Pending CI compilation / Pending CI tests.
+
+### RT-102 — SSU2 SOCKS proxy callbacks lacked attempt authority
+
+A terminal method refusal closed the socket but left a deadline that retried
+30 seconds later. Old callbacks could also reset a successor after Stop/Start.
+Local proxy-only authority revokes owner access under a common gate; every
+callback checks run/attempt/retry phase. Attempts retain bounded buffers and
+use basic partial I/O, retiring socket/timer wrappers before executor teardown.
+A terminal refusal retires deadline/retry; undrained attempts cap at 64.
+Malformed proxy operands remain outside diagnostics; a prepared marker-based
+redaction regression exercises the actual parser.
+
+Prepared real-fragment, terminal-refusal, stale-completion, gate-drain, cap and
+after-owner controls use the production admission seam. Non-proxy callbacks
+and the existing UDP send/close race remain outside this increment. Allocator
+or async-init fault injection is not established. Implemented / static;
+Pending CI compilation / Pending CI tests.
+
+### RT-103 / PRIVSEP-017 — Child destruction discarded deferred reap ownership
+
+Stop retained an unreapable PID/pidfd, but destruction or move assignment
+then discarded it. The local implementation reserves one of 64 slots before
+fork, moves that authority with the child and publishes deferred metadata
+without allocation during destruction. Detached channel owners use a distinct
+API. A nonblocking drain exclusively claims retired records and reaps/closes
+once; it never signals a deferred PID. Admission/status, supervisor and daemon
+ticks drain even while idle. The detached intermediary also has an owner.
+
+Prepared registry tests cover saturation, publication/reap, nested drain,
+exact close and production admission/move. No real uninterruptible process,
+cgroup v2 or kernel-exhaustion test was run. Router-wide separation and
+cgroup recovery remain incomplete. Implemented / static; Pending CI
+compilation / Pending CI tests.
+
+
+### RT-104 — Worker identity stack cleanup missed early exits
+
+Existing manual wipes occurred after successful record construction, leaving
+nonce/record copies on refusal, partial provider failure or vector-allocation
+unwind. Eight local identity arrays now borrow StackSecretWipe guards from
+declaration, using the existing volatile byte wipe. Required returned worker
+authentication payloads remain separate from these stack copies.
+The prepared check-worker-secret-wipe.cmake contract matches every local
+identity array to its guard and rejects effective guard-removal mutations.
+This is source analysis; no allocator/provider fault injection was run.
+Implemented / static; Pending CI compilation / Pending CI tests.
+
 ## a1a02a05: scoped validation and unresolved loader attribution
 
 The [exact matrix](TEST-FAILURES.md#published-a1a02a05-audit) passes RT-097's
@@ -2435,3 +2511,36 @@ The local diagnostic now adds MessageBoxA/W code-only breakpoints to identify
 modal callers without collecting message text/arguments. Its command allowlist
 and a negative privacy mutation are updated. This is Pending CI tests; the
 published run does not include those new commands or local production fixes.
+
+
+### RT-105 — SSU2 UDP socket close/open raced synchronous sends
+
+Static follow-up to RT-102 found receive-service proxy disconnect/reopen
+concurrent with service-thread UDP sends. A check of is_open followed by
+send_to did not serialize the socket object with close/open. Both send
+overloads, proxy sends, queries, receive initiation/coalescing and lifecycle
+operations now share a short socket mutex. Proxy authority may precede that
+mutex; socket operations never acquire proxy authority, and diagnostics run
+after unlock. Proxy UDP sockets are explicitly nonblocking so a full queue
+cannot block an event-loop while holding admission. Receive initialization
+also releases its pool packet if admission or initiation fails.
+
+Prepared `test-ssu2-socket-lifecycle` uses barriers and actual sends versus
+close/reopen on direct/proxy paths, with nonblocking and closed-socket
+controls. Registered in common CTest/sanitizers and the MSVC selection.
+Implemented / static; Pending CI compilation / Pending CI tests. This is not
+an observed sanitizer report and does not close nonproxy callback ownership.
+The analogous UDPSession direct-send/Stop seam still needs caller-affinity
+analysis; it is a hypothesis, not a confirmed race in this entry.
+
+### RT-106 — Outbound I2CP header arithmetic preceded admission
+
+The RT-101 global search found two client-output APIs adding headers to an
+arbitrary size_t before checking frame capacity. Extreme input could wrap
+that sum before a large memcpy; null/nonempty payloads were also unchecked.
+Current inbound consumers are bounded, so remote exploitability is not
+asserted. Both output paths now use CreateI2CPMessageFrame, rejecting by
+subtraction before addition/allocation, initializing reserved metadata and
+preserving closeAfterFlush failure teardown. Prepared actual-builder tests
+cover maximum, first invalid, SIZE_MAX, null/empty and extreme prefix input.
+Implemented / static; Pending CI compilation / Pending CI tests.

@@ -15,16 +15,24 @@ requirements and current code; `TODO.md` is the authoritative task list.
 
 ## Current baseline
 
-At a1a02a05, history reaches 495 runs / 76 SHAs. Five workflows pass and
-five fail. Android Java 25/D8/R8/JNI and published UDP/Unicode controls pass;
-source-contract TF-108 and worker initializer RT-087 remain failures.
-Local work corrects captured confirmation matching without weakening admission,
-prepares OS-symbol evidence under the original probe deadline, and hardens
-I2NP prepend geometry plus downstream nullable message admission (RT-098).
-Compilation and tests for local corrections remain pending manual CI. UDP
-partial-start cleanup and receive-generation admission are implemented locally,
-separately from already validated periodic callbacks. Preserve Java 25, containment and failure assertions; no local
-builds/tests or publication are performed in this audit.
+The next local audit increment closes demonstrated SSU2 socket-object races
+and outbound I2CP size arithmetic, while retaining separate nonproxy callback
+ownership and Windows loader attribution findings. Prepared fixture updates
+remove a CMake-floor incompatibility, shadowing and scheduler-based evidence.
+All remain pending compilation/tests on a published manual CI revision.
+
+
+At e1d1b7a6, eight workflows pass; OpenBSD TF-109 and Windows RT-087 fail.
+The OpenBSD correction observes actual reactor completion instead of assuming
+one poll is a barrier; Windows now resolves OS PDBs but the failing loader
+cause remains unresolved. Local development adapts an upstream I2CP overflow
+fix, isolates SSU2 proxy attempts, preserves deferred child ownership, fixes
+OpenSSL probe cache identity and adds outgoing CANCEL/Fast request authority.
+Atomic block leases protect request admission; SAF transfers share production
+fragment/cancellation coverage. All new native/Java work remains pending CI.
+Full endgame, global bandwidth queues, complete process authority separation,
+Windows startup attribution and device/provider failure coverage remain open.
+No local builds/tests, commits or push are performed in this continuation.
 
 Local repository-wide formatting uses the checked-in clang-format language
 styles, perltidy and shfmt. Workflow linters pass; Perl::Critic and the local
