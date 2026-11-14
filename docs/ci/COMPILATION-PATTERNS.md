@@ -1,5 +1,15 @@
 # Compilation diagnostic patterns and repository-wide review
 
+## Resolve the same compiler tool that the application actually uses
+
+CE-090 at b001b969 demonstrates that successful Android compilation and a
+failed independent D8 probe can use different R8 artifacts. Inspect effective
+Gradle user-home, buildscript dependency resolution and the selected jar
+version together. A generic cache search with an SDK fallback does not prove
+AGP's Java 25 support. Keep probe configuration errors distinct from native
+compiler diagnostics and retain exact run/job/SHA evidence.
+
+
 ## Separate restored compilation from runtime and fixture outcomes
 
 At 519c0386 all reached native builds succeed, TF-104/105 regressions pass,

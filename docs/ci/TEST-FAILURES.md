@@ -5,6 +5,60 @@ and license details.
 
 # Test failure inventory
 
+## Published b001b969 audit
+
+Accessible paginated metadata contains **475 runs / 74 SHAs**: 144 success,
+265 failure and 66 cancelled. The latest ten execute exactly
+`b001b969b858a054375ee9b037896cf5eb94fda0`: eight successful workflows and
+Android/Windows failures. Latest logs include successful siblings and steps;
+this does not establish availability of all historical logs or artifacts.
+
+| Run | Job ID | Lane | Conclusion |
+|---|---|---|---|
+| [43536044722](https://github.com/daviduhden/openi2pd/actions/runs/43536044722) | 132265178608 | Agent and skills synchronization | success |
+| [43536049055](https://github.com/daviduhden/openi2pd/actions/runs/43536049055) | 132265190290 | Android arm64 build and unit tests | failure |
+| [43536049055](https://github.com/daviduhden/openi2pd/actions/runs/43536049055) | 132265192521 | Android API 29 UI and accessibility | skipped |
+| [43536053563](https://github.com/daviduhden/openi2pd/actions/runs/43536053563) | 132265205212 | Linux (gcc, OpenSSL 3.x) | success |
+| [43536053563](https://github.com/daviduhden/openi2pd/actions/runs/43536053563) | 132265205296 | Linux (clang, OpenSSL 3.x) | success |
+| [43536057521](https://github.com/daviduhden/openi2pd/actions/runs/43536057521) | 132265216701 | Linux (clang, OpenSSL 4.x) | success |
+| [43536057521](https://github.com/daviduhden/openi2pd/actions/runs/43536057521) | 132265217014 | Linux (gcc, OpenSSL 4.x) | success |
+| [43536061026](https://github.com/daviduhden/openi2pd/actions/runs/43536061026) | 132265228270 | Install components and consumer package | success |
+| [43536061026](https://github.com/daviduhden/openi2pd/actions/runs/43536061026) | 132265228543 | I2P Java interoperability | success |
+| [43536065149](https://github.com/daviduhden/openi2pd/actions/runs/43536065149) | 132265240305 | OpenBSD 8.0 build and tests | success |
+| [43536069099](https://github.com/daviduhden/openi2pd/actions/runs/43536069099) | 132265254180 | Windows MSVC build and tests | failure |
+| [43536069099](https://github.com/daviduhden/openi2pd/actions/runs/43536069099) | 132265254493 | Windows MSYS2 Clang64 build and tests | success |
+| [43536072801](https://github.com/daviduhden/openi2pd/actions/runs/43536072801) | 132265266173 | Instrumented OpenSSL TSan diagnostic | success |
+| [43536077028](https://github.com/daviduhden/openi2pd/actions/runs/43536077028) | 132265279457 | Container image | success |
+| [43536077028](https://github.com/daviduhden/openi2pd/actions/runs/43536077028) | 132265279569 | Debian packages | success |
+| [43536077028](https://github.com/daviduhden/openi2pd/actions/runs/43536077028) | 132265279607 | Service contracts | success |
+| [43536077028](https://github.com/daviduhden/openi2pd/actions/runs/43536077028) | 132265279631 | Static musl build and package | success |
+| [43536077028](https://github.com/daviduhden/openi2pd/actions/runs/43536077028) | 132265279863 | Service component install matrix | success |
+| [43536080681](https://github.com/daviduhden/openi2pd/actions/runs/43536080681) | 132265291590 | Agent Skills static contract | success |
+| [43536080681](https://github.com/daviduhden/openi2pd/actions/runs/43536080681) | 132265291884 | Sanitizers (asan-ubsan) | success |
+| [43536080681](https://github.com/daviduhden/openi2pd/actions/runs/43536080681) | 132265291886 | C++ source API documentation | success |
+| [43536080681](https://github.com/daviduhden/openi2pd/actions/runs/43536080681) | 132265292058 | Bounded fuzz smoke checks | success |
+| [43536080681](https://github.com/daviduhden/openi2pd/actions/runs/43536080681) | 132265292136 | Sanitizers (tsan) | success |
+| [43536080681](https://github.com/daviduhden/openi2pd/actions/runs/43536080681) | 132265293293 | Sanitizers (ubsan) | success |
+| [43536080681](https://github.com/daviduhden/openi2pd/actions/runs/43536080681) | 132265293342 | Perl quality (Test::More and Perl::Critic) | skipped |
+
+RT-092 preserved-offset copy controls (`test-signed-data-bounds`) and RT-093
+ElGamal failure/overlap controls (`test-crypto-audit-bounds`) pass in the
+executed native suites, including Linux GCC/Clang OpenSSL 3/4 and sanitizer
+lanes. These results validate those bounded regressions, not allocator or
+provider fault injection. New local ECIES digest gates and DHT timer ownership
+changes are Pending CI compilation / Pending CI tests.
+
+Android job 132265190290 builds its ordinary targets, then its separate D8
+probe selects an R8 8.6.2-dev jar and rejects Java 25 major version 69
+(CE-090). This is not evidence that the successfully built app used that jar.
+Windows MSVC job 132265254180 still fails the live supervisor before
+handshake with 3221225794 (`0xC0000142`), RT-087. Its debugger step fails and
+the termination/exit markers are absent; script execution itself was not
+proven. No child initializer cause is established.
+Skipped Android device, optional Perl quality and OpenBSD worker-capability
+paths remain unvalidated.
+
+
 ## Published 519c0386 audit
 
 Accessible history now contains **465 completed runs / 73 SHAs**: 136 success,

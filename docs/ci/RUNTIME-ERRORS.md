@@ -5,6 +5,90 @@ and license details.
 
 # Runtime error inventory
 
+## b001b969: scoped regression validation and remaining startup evidence
+
+At [the exact published matrix](TEST-FAILURES.md#published-b001b969-audit),
+RT-092 I2NP preserved-offset copy regressions and RT-093 ElGamal arithmetic,
+output clearing and overlap regressions are Validated by CI in the executed
+native suites. No allocator/provider fault injection was performed by those
+controls. Existing success does not validate the new local ECIES SHA-256
+failure gates, integrity/overlap controls or DHT timer ownership changes;
+these remain Implemented / static; Pending CI compilation / Pending CI tests.
+
+RT-087 remains open at [Windows 43536069099](https://github.com/daviduhden/openi2pd/actions/runs/43536069099),
+MSVC job 132265254180, SHA `b001b969b858a054375ee9b037896cf5eb94fda0`.
+The live worker exits 3221225794 (`0xC0000142`) before authentication. The
+contained probe debugger fails without termination/exit event markers.
+Its command file exists, but execution is not established; there was no
+explicit arming marker in that revision. The local diagnostic removes
+initial/final auto-ignore flags and requires an early arming marker. This
+remains a diagnostic hypothesis, not a production fix or attribution to
+token, Job or mitigation policy. Preserve containment and obtain the exact
+child/debugger startup evidence. The retained probe image SHA-256 is
+`40855D75399EF4B7F39B02E632F3B92DB849385BD652CB4CE6FCC4F68148334A`.
+Microsoft documents [initial stops](https://learn.microsoft.com/en-us/windows-hardware/drivers/debugger/initial-breakpoint)
+and [CDB startup/final flags](https://learn.microsoft.com/en-us/windows-hardware/drivers/debugger/cdb-command-line-options);
+these document the change in diagnostic behavior, not the worker failure.
+
+
+### RT-094 — ECIES digest failure could feed cipher/integrity work
+
+Preventive review of RT-093 found four ignored SHA-256 results in
+ECIESEncrypt/ECIESDecrypt. Provider failure could leave derived-key or
+integrity bytes unavailable before use; this is a source finding, not an
+observed sanitizer report. Both digest stages now gate cipher use and
+plaintext publication. Existing checked CBC failures remain propagated.
+Encrypt failure clears its 514-byte output; decrypt failure preserves its
+222-byte output. All secret cleanup and wire formulas remain unchanged.
+
+Existing crypto-audit-bounds now prepares P-256 roundtrip, overlapping
+ciphertext/plaintext, deterministic CBC corruption and invalid-point refusal
+controls. Source contracts pin digest/cipher/publication ordering. Provider
+fault injection and full constant-time analysis remain Pending. Implemented /
+static; Pending CI compilation / Pending CI tests for this new revision.
+
+### RT-095 — DHT timer state did not authorize borrowed-owner lifetime
+
+The CONC-028 continuation addresses six callbacks that checked weak generation
+state and then invoked raw owner pointers. A state token could survive the
+uniquely owned DHT; checking stopping did not serialize owner use with final
+retirement. No published sanitizer report is attributed to this finding.
+
+The shared generation now owns a revocable owner-admission gate and one wait
+identity per timer. Callbacks capture weak state, acquire admission, reject
+stale/replaced waits and invoke only the admitted owner. Stop/destruction
+revoke and drain admission before receiver reset and persistence waits;
+failed Start also revokes published authority. Disk work retains its separate
+state/data/save ownership. Protocol mutation and Start remain service-thread
+or quiescent operations; synchronous lifecycle reentry is excluded.
+
+The existing DHT protocol fixture prepares stale wait, replacement generation,
+owner destruction and admitted-shutdown controls. These changes are
+Implemented / static; Pending CI compilation / Pending CI tests. UDP periodic
+timers share the previous risk pattern and remain Pending; this change does
+not establish full torrent lifetime safety or global privilege separation.
+
+### RT-096 — Allocating spawn metadata could orphan a suspended worker
+
+Independent Windows IPC review found that SpawnContainedWindowsProcess
+owned process handles after CreateProcess but could allocate nonce/error
+strings before fallback Job assignment or explicit failure termination.
+WindowsWorkerProcess's ordinary handle cleanup does not terminate a child
+that never joined the Job. This source defect is independent of RT-087.
+
+A nonallocating ScopeExit now terminates/waits on every unpublished path,
+including exceptions, before handle owners unwind. It is dismissed only after
+assignment and successful ResumeThread. A static assertion pins nonthrowing
+worker movement at publication. Existing Job/token/mitigation policy is
+unchanged; bounded cleanup cannot promise exit if the OS termination/wait
+fails. Equivalent review covered both production CreateProcess APIs in this
+shared helper and the nonallocating fixture setup interval.
+
+The compile-free runtime contract pins handle ownership, rollback admission,
+metadata, assignment, resume and guard dismissal order. Allocator failure
+injection and live suspended-child retirement remain Pending CI tests.
+Implemented / static; Pending CI compilation / Pending CI tests.
+
 ## 519c0386: executed regressions and preventive continuation
 
 The [published job matrix](TEST-FAILURES.md#published-519c0386-audit) shows

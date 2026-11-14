@@ -9,6 +9,34 @@ Tracks compile/configure/link failures reported by manual GitHub Actions.
 
 # Compilation error inventory
 
+## b001b969: native builds pass; Android probe selects a different D8
+
+The [exact job matrix](TEST-FAILURES.md#published-b001b969-audit) separates
+native build success from Windows startup failure and Android probe tooling.
+RT-092/093 published controls compile and execute; local ECIES/DHT corrections
+have no remote validation yet.
+
+### CE-090 — Android Java 25 probe selects an unrelated R8
+
+- **Evidence:** [run 43536049055](https://github.com/daviduhden/openi2pd/actions/runs/43536049055),
+  Android arm64 job 132265190290, SHA
+  `b001b969b858a054375ee9b037896cf5eb94fda0`.
+- **Diagnostic:** `Unsupported class file major version 69`; stack identifies
+  `R8_8.6.2-dev` after ordinary Android build work succeeds.
+- **Cause:** the workflow takes the first R8 in `$HOME/.gradle`, then permits
+  an SDK build-tools fallback. Neither is tied to AGP dependency resolution.
+  The stack establishes the old tool version; its selected filesystem path
+  was not recorded, so cache versus SDK origin remains undetermined.
+- **Pattern review:** inspect Gradle user-home configuration, buildscript R8
+  resolution and every probe consumer; distinguish this from CE-054's earlier
+  absent-artifact diagnostic. Do not lower Java 25 or suppress the probe.
+- **Correction:** local AGP-resolved singleton-artifact selection and probe
+  configuration corrections are Implemented / static; Pending CI compilation
+  / Pending CI tests. Exact selected artifact/version must be retained in CI.
+- **Regression:** existing Java 25 configuration/probe checks are updated;
+  published native results cannot validate this Android-only correction.
+
+
 ## 519c0386: build success precedes the remaining MSVC runtime failure
 
 The [exact job matrix](TEST-FAILURES.md#published-519c0386-audit) executes
@@ -1365,6 +1393,11 @@ Runs: Linux/Android [41229374061](https://github.com/daviduhden/openi2pd/actions
   on failure. The D8/R8 `--min-api 29` probe itself is unchanged.
 - **Files:** `.github/workflows/build.yml`.
 - **State:** Corrected by static analysis; **Pending Android CI**.
+- **Superseded correction:** CE-090 at b001b969 demonstrates that this
+  broad scan plus SDK fallback can select an older, unrelated R8. Retain
+  this original missing-artifact finding as history; use the effective
+  Gradle cache and AGP-resolved artifact instead. The new correction remains
+  Pending CI compilation / Pending CI tests.
 
 ### CE-055 — Member call on a `char[]` in the I2PControl socket test
 

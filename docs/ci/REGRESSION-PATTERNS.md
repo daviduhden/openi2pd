@@ -5,6 +5,17 @@ and license details.
 
 # Regression patterns
 
+## Scope published regression success to the exercised failure boundary
+
+At b001b969, RT-092/093 bounded copy and ElGamal controls pass, including
+sanitizer lanes. Malformed-input and output-overlap tests do not inject a
+provider allocation, digest or arithmetic failure. Keep those missing failure
+seams explicit while extending ECIES checks; do not attribute the older
+published tests to the new local code. For startup probes, require the script
+marker and child initializer evidence before drawing conclusions from a
+missing authenticated handshake or a debugger driver's own failure.
+
+
 ## Preserved geometry, failure publication and lifetime admission
 
 - Allocation tier selection must include a preserved prefix, not just the

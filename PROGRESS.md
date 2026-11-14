@@ -8295,3 +8295,108 @@ or push.
   remain prepared, not executed. No local build, compiler, product test,
   commit or push. All new code and debugger behavior remain Pending CI
   compilation / Pending CI tests.
+
+
+## 2026-11-14: b001b969 CI and preventive failure-boundary audit
+
+- Retrieved latest full logs and exact run/job metadata, including successful
+  siblings and successful steps inside failed Android/MSVC jobs. Paginated
+  metadata reaches 475 runs / 74 SHAs: 144 success, 265 failure, 66 cancelled.
+  Eight latest workflows pass; Android and Windows fail. Historical missing
+  logs/artifacts remain evidence gaps, not clean results.
+- RT-092 I2NP copy and RT-093 ElGamal controls pass in executed b001b969
+  native/sanitizer suites. No provider/allocator failure was injected there.
+  The new local code below has no remote compilation or runtime validation.
+- CE-090: Android job 132265190290 builds APK/JVM/Lint/Javadoc/major69 first,
+  then standalone R8 8.6.2-dev rejects major69. The log does not retain its
+  selected path, so cache versus SDK origin remains unknown. Replace the
+  broad scan/fallback with one AGP-resolved artifact report, retain its
+  version, and pin task/report/workflow consumers with static guards and
+  prepared negative fixtures. Java 25 and minSdk remain unchanged. Later
+  JNI/DEX steps and opt-in device coverage remain unvalidated by this run.
+- RT-087: exact MSVC artifact reproduces 0xC0000142 without termination/exit
+  markers or a proven initializer stack. Preserve image hash and containment.
+  The diagnostic now removes initial/final auto-ignore flags only from the
+  nonsecret probe and requires an early armed marker. This improves evidence;
+  it does not establish a cause or resolve the worker initialization failure.
+- RT-094: four ECIES digest results now gate cipher/integrity/publication.
+  Preserve distinct output-failure contracts and cleansing; prepare P-256
+  roundtrip, envelope overlap, tamper and invalid-point controls in the
+  existing registered crypto test, plus source-order contracts.
+- RT-095 / CONC-028 continuation: six DHT timers use weak generation state,
+  revocable borrowed-owner admission and per-wait identity. Stop/destruction
+  drain admission before cancellation, receiver reset and persistence waits;
+  failed Start revokes partial publication. Prepared factory-driven controls
+  cover all slots, old successful completions, restart, admitted shutdown and
+  undrained-executor destruction. Disk ownership is preserved; UDP timers
+  and broader lifecycle/protocol mutation boundaries remain separate work.
+- RT-096: independent IPC review found allocating spawn metadata/error paths
+  before fallback Job assignment could orphan a suspended child. A no-allocation
+  rollback guard now covers all unpublished paths, with a nonthrowing-move
+  assertion at publication and an ordered source contract. This finding is
+  independent of RT-087; live allocator/child-retirement injection is pending.
+- Delegated reconnaissance covered history/diagnostics, native warnings and
+  portability, memory/concurrency, crypto/protocols, DHT/storage, Android/JNI,
+  IPC and regression/docs. Independent cross-component review found no
+  integration blocker after retirement/reset ordering and evidence wording
+  were corrected. No local build, compiler, project test, commit or push.
+- Knowledge synchronization reviewed root AGENTS, the discovery index,
+  applicable Skills and shared source contracts. Updated CI, Android, crypto,
+  memory, torrent, Windows and privsep Skills with dependency provenance,
+  evidence arming, failure publication, owner admission and child rollback.
+  Corrected obsolete Windows handle-inheritance guidance. These reusable
+  procedures are distinct from the historical chronology retained here.
+- Available compile-free checks passed: whitespace, workflow/manual/privacy
+  policy, 118 Markdown links, Doxygen parameter references, Shell policy
+  (322 sources), Android vector geometry and the agent-knowledge validator.
+  AK004 semantic relevance was manually reviewed. CMake is unavailable;
+  CMake source contracts, negative fixture suites, Gradle/CDB behavior and
+  all new native regressions remain Pending CI compilation / Pending CI tests.
+
+
+## 2026-11-14: authorized repository-wide formatting and lint
+
+- Preserved the pre-existing audit changes; delegated native, Java and
+  Perl/Shell work to exclusive owners. No generated JNI header, Gradle wrapper,
+  vendor subtree, backup or temporary report was added to the source tree.
+- clang-format 23.1.5 processed 490 maintained native and 94 Java inputs;
+  155 native and 39 Java files changed during this formatting pass. Full
+  --dry-run --Werror checks pass. Pre-format snapshot comparisons retain
+  tokens/literal contents; only harmless using ordering and adjacent literal
+  splitting required additional native review. No builds/compiler/tests ran.
+- perltidy 20260826 processed 30 Perl inputs; shfmt 3.14.1 processed 25 Shell
+  inputs. Thirty-seven script files changed. Formatter reports are clean;
+  Shell formatting has no remaining diff. Perl::Critic 1.156 retains 932
+  profile findings and ShellCheck 0.11.0 retains 11 OpenBSD framework-bound
+  diagnostics. Their complete reports are outside the repository at
+  /var/tmp/openi2pd-style; no severity reduction or suppression was introduced.
+- yamllint 1.38.0 found three overlong lines. Wrapped the unchanged Perl suite
+  command and Windows CTest/diagnostic inventories, adapting the latter's
+  exact source checker to allow the multiline array. yamllint/actionlint
+  1.7.12 and zizmor 1.32.0 regular/pedantic/auditor checks pass with existing
+  exceptions retained. All workflows remain exclusively manual.
+- Formatting changes exact-source spelling; audited lost CMake needles and
+  updated their expected spelling while retaining every assertion and its
+  token order. CMake is unavailable locally; its contracts and all product
+  validation remain Pending CI tests. Formatter acceptance is not compilation.
+- Reviewed AGENTS, discovery and owning C++23, Android, tooling and CI Skills.
+  Added reusable inventory/exclusion, snapshot review, source-contract and
+  lint-result procedures. Knowledge synchronization and compile-free checks
+  are recorded separately from unresolved lint findings and pending CI.
+- No commits or push. Existing work remains uncommitted and preserved.
+
+## 2026-11-14: authorized atomic publication review
+
+- Reviewed the complete worktree with independent native, Android and
+  tooling reviewers. Published functional fixes from pre-format snapshots,
+  then isolated native/Java/Perl/Shell formatting and CI changes through
+  index projections outside the repository. Working files were not replaced.
+- Verified configured author/committer identity and required signatures;
+  no identity, signing option or attribution trailer was changed.
+- Final index review caught a projected Debian init symlink containing its
+  target file's bytes. Corrected its Git link contents in a separate commit
+  without changing the working symlink or rewriting history, and documented
+  the readlink/mode-120000 publication rule. Other links retain their targets.
+- Static checks and pending CI states remain distinct. Perl::Critic's 932
+  findings, OpenBSD's 11 ShellCheck diagnostics, native regression execution
+  and MSVC startup attribution are not closed by publication.

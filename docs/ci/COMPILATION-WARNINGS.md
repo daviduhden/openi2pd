@@ -1,5 +1,54 @@
 # Compilation and lint warning inventory
 
+## Local formatting and static lint pass
+
+This is local lint evidence over the existing working tree, not a CI run or
+compiler/test result. The published b001b969 evidence below remains separate.
+
+- clang-format 23.1.5 uses the checked-in Cpp/Java styles: 490 maintained
+  native inputs and 94 Java inputs; the generated JNI header is excluded.
+  Full formatter dry-runs pass. Snapshot comparison preserves native/Java
+  tokens and literal contents, allowing harmless using-declaration ordering.
+- perltidy 20260826 formats 30 maintained Perl files. Perl::Critic 1.156 with
+  .perlcriticrc still reports 932 findings: 706 extended-format regexes,
+  54 complex regexes, 33 explicit undef returns, 22 complex subroutines,
+  20 brief-open scope findings, 19 negative-unless forms, 15 carping,
+  13 main-code complexity, 10 punctuation-variable localization, eight mixed
+  boolean forms, seven capture checks and six final-return findings. They
+  are Pending; formatter success does not resolve them. No profile weakening,
+  suppressions or automatic semantic regex rewrites were introduced.
+- shfmt 3.14.1 formats 25 maintained Shell scripts; its final diff list is
+  empty. ShellCheck 0.11.0 reports 11 diagnostics only in the OpenBSD rc.d
+  adapter: ten framework variables appear unused and /etc/rc.d/rc.subr is
+  unavailable to local source following. These remain platform-bound review
+  findings, not a claim of a fully clean ShellCheck result.
+- yamllint 1.38.0, actionlint 1.7.12 and zizmor 1.32.0 regular/pedantic/auditor
+  checks pass for ten workflows and three composite actions. Existing narrow
+  zizmor exceptions remain; no new suppression was added. Three overlong
+  workflow lines were wrapped without changing Perl suite lists, Windows
+  CTest selection or the heap diagnostic inventory.
+
+Detailed local reports remain outside the repository under
+/var/tmp/openi2pd-style. Native exact-source contract expectations are reviewed
+alongside formatting; their dynamic/manual CI execution is still pending.
+
+
+## b001b969: successful native siblings and Android probe failure
+
+The [exact latest matrix](TEST-FAILURES.md#published-b001b969-audit) retains
+successful compiler, package, documentation and sanitizer jobs alongside the
+two failing workflows. No new own-code compiler warning was identified in
+this latest native log review; that does not close older unavailable lanes.
+Android's separate major-69 D8 probe error is CE-090, not a warning or proof
+that AGP's successful compilation used the fallback SDK tool.
+
+Keep Android ChromeOsAbiSupport/Gradle deprecation debt, MSYS2 upgrade advice,
+OpenBSD SSH host-key notices, package tooling advice and runner sandbox
+capability skips separate from own-code diagnostics. A successful native
+suite supplies no missing Android device or OpenBSD worker authority evidence.
+New ECIES/DHT local changes remain Pending CI compilation / Pending CI tests.
+
+
 ## 519c0386: native compiler review and remaining warning families
 
 Full successful and failed sibling logs show no observed first-party native

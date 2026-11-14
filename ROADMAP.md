@@ -15,16 +15,23 @@ requirements and current code; `TODO.md` is the authoritative task list.
 
 ## Current baseline
 
-At 519c0386, history reaches 465 completed runs / 73 SHAs. Nine workflows
-pass, including the executed sanitizer suites; MSVC initialization remains
-unresolved. Published Perl inventory and deferred-child fixture corrections
-pass in the executed lanes. New I2NP preserved-offset copy bounds and checked
-ElGamal failure/cleanup paths are Implemented / static; Pending CI compilation
-/ Pending CI tests. Extend contained Windows termination evidence before
-attributing the loader status. Keep DHT/UDP timer admission, provider fault
-injection, Android device execution and two ABI Lint findings open. CMake
-source contracts remain unexecuted locally because cmake is unavailable;
-no dependency installation, build or local test is authorized.
+At b001b969, history reaches 475 runs / 74 SHAs. Eight workflows pass;
+Android's standalone probe uses an unrelated old R8, and MSVC initialization
+remains unattributed. Published I2NP copy/ElGamal regressions pass in executed
+native and sanitizer lanes. Local work binds the Java 25 probe to AGP's
+resolved R8, checks ECIES digests before cipher/publication, and revokes DHT
+timer owner admission across Stop/restart/destruction. Windows spawn rollback
+also covers allocating metadata after child creation. All are Implemented /
+static; Pending CI compilation / Pending CI tests. Windows diagnostics now
+require proof their command file ran before interpreting missing events.
+Keep UDP lifetime admission, provider injection, Android device coverage and
+ABI Lint findings open. No local builds/tests or publishing are authorized;
+CMake source contracts remain pending because cmake is unavailable locally.
+
+Local repository-wide formatting uses the checked-in clang-format language
+styles, perltidy and shfmt. Workflow linters pass; Perl::Critic and the local
+OpenBSD ShellCheck boundary still have explicitly retained diagnostics.
+Formatting is static evidence and does not validate pending native changes.
 
 The 80a487d5 retrospective reaches 362 runs on 63 SHAs. Native sanitizer,
 OpenSSL, OpenBSD and selected MSVC regressions pass; Windows MSYS2 Unicode

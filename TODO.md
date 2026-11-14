@@ -10,22 +10,26 @@ Documents project documentation.
 
 # Master TODO
 
-Latest retrospective: 465 completed runs / 73 SHAs (136 success,
-263 failure, 66 cancelled). Published 519c0386 has nine successful workflows;
-Windows MSVC still fails before worker authentication (RT-087, 0xC0000142).
-TF-104/105 corrections pass in executed lanes. No new first-party compiler
-or sanitizer diagnostic was observed in the retrieved latest-ten logs.
-RT-092 preserved-offset I2NP copying and RT-093 checked ElGamal arithmetic /
-secret cleanup are Implemented / static; Pending CI compilation / Pending
-CI tests. Windows termination tracing is being extended without weakening
-isolation. Android has 174 passing JVM tests, two ABI Lint findings and no
-device execution. DHT/UDP timer admission and provider fault injection remain
-Pending. ECIES digest/cipher return propagation is outside RT-093 and still
-requires a complete transactional-output review. See docs/ci inventories for exact revisions and evidence limits.
+Latest retrospective: 475 runs / 74 SHAs (144 success, 265 failure,
+66 cancelled). Published b001b969 has eight successful workflows; Android
+fails its standalone Java 25 probe with unrelated R8 8.6.2-dev (CE-090),
+and MSVC still exits 0xC0000142 before authentication (RT-087). RT-092/093
+bounded native regressions pass in executed lanes. Local AGP-resolved R8
+selection, ECIES digest gates (RT-094), DHT timer admission (RT-095 /
+CONC-028 continuation), spawn exception rollback (RT-096) and Windows
+script-arming evidence are Implemented / static; Pending CI compilation / Pending CI tests. Android device and later
+JNI/DEX checks were skipped, and two ABI Lint findings remain. Provider fault
+injection, UDP timer admission and broader privilege separation remain Pending.
+Exact run/job/SHA and historical evidence gaps are retained in docs/ci.
+
+- Local formatting/lint: Implemented / static for C++/Java, Perl/Shell and
+  workflows. Perl::Critic's 932 findings and 11 OpenBSD framework ShellCheck
+  diagnostics remain Pending. Source-contract/manual CI validation remains
+  Pending CI tests; see docs/ci/COMPILATION-WARNINGS.md.
 
 - RT-089: published transcript/message append and alignment controls:
   Validated by CI in executed fdfb1162 lanes; RT-091 factory continuation
-  remains Pending CI compilation / Pending CI tests.
+  and RT-092 copy controls are Validated by CI in executed b001b969 suites.
 - Android VectorPath: Validated by CI Lint at fdfb1162. Pixel/device rendering
   and two ChromeOS ABI findings remain Pending.
 - RT-090 / MEM-032: shared storage RPC and metadata deadlines Implemented /
