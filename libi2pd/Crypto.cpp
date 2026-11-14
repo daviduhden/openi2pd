@@ -873,17 +873,17 @@ namespace crypto
 			ok = bn2buf (x, keyBuf, len) && bn2buf (y, iv, len);
 			if (ok)
 			{
-				SHA256 (keyBuf, len, shared);
+				ok = SHA256 (keyBuf, len, shared) != nullptr;
 				// create buffer
 				m[0] = 0xFF;
 				m[255] = 0xFF;
 				memcpy (m + 33, data, 222);
-				SHA256 (m + 33, 222, m + 1);
+				ok = ok && SHA256 (m + 33, 222, m + 1) != nullptr;
 				// encrypt
 				CBCEncryption encryption;
-				encryption.SetKey (shared);
+				if (ok) encryption.SetKey (shared);
 				encrypted[257] = 0;
-				ok = encryption.EncryptChecked (m, 256, iv, encrypted + 258);
+				ok = ok && encryption.EncryptChecked (m, 256, iv, encrypted + 258);
 			}
 			OPENSSL_cleanse (keyBuf, sizeof (keyBuf));
 			OPENSSL_cleanse (iv, sizeof (iv));
@@ -945,18 +945,18 @@ namespace crypto
 			{
 				uint8_t keyBuf[ECIES_KEY_BUF_SIZE], iv[ECIES_KEY_BUF_SIZE], shared[32];
 				uint8_t m[256] = { };
-				if (bn2buf (x, keyBuf, len) && bn2buf (y, iv, len))
+				if (bn2buf (x, keyBuf, len) && bn2buf (y, iv, len)
+					&& SHA256 (keyBuf, len, shared) != nullptr)
 				{
-					SHA256 (keyBuf, len, shared);
 					// decrypt
 					CBCDecryption decryption;
 					decryption.SetKey (shared);
 					if (decryption.DecryptChecked (encrypted + 258, 256, iv, m))
 					{
 						// verify and copy
-						uint8_t hash[32];
-						SHA256 (m + 33, 222, hash);
-						if (!CRYPTO_memcmp (m + 1, hash, 32))
+						uint8_t hash[32] = { };
+						if (SHA256 (m + 33, 222, hash) != nullptr
+							&& CRYPTO_memcmp (m + 1, hash, 32) == 0)
 						{
 							memcpy (data, m + 33, 222);
 							ret = true;

@@ -93,6 +93,13 @@ executing project code, or inspect a real private key.
 
 ## Known issues and decisions
 
+- ECIES checks both the coordinate-to-key digest and plaintext-integrity
+  digest before cipher use or output publication. Preserve its existing
+  decrypt-failure contract (output unchanged), which differs from ElGamal's
+  cleared output. Keep tamper and overlapping-envelope controls together;
+  ordinary positive/negative controls do not inject digest-provider failure.
+
+
 - ElGamal failure review includes table-based Montgomery exponentiation,
   fallback exponentiation and SHA-256, not only the final modular product.
   Stage decrypted plaintext until integrity succeeds, cleanse private BN_CTX

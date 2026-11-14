@@ -968,3 +968,20 @@ require_runtime_source("libi2pd/I2NPProtocol.cpp"
   "if (len <= I2NP_MAX_MEDIUM_MESSAGE_SIZE - overhead)")
 require_runtime_source("libi2pd/I2NPProtocol.cpp"
   "if (len) memcpy (msg->GetBuffer (), buf, len);")
+
+# Provider digest failure must not become cipher input or plaintext.
+require_runtime_order("libi2pd/Crypto.cpp"
+  "bool ECIESEncrypt (" "bool ECIESDecrypt ("
+  "ok = SHA256 (keyBuf, len, shared) != nullptr;"
+  "ok = ok && SHA256 (m + 33, 222, m + 1) != nullptr;"
+  "if (ok) encryption.SetKey (shared);"
+  "ok = ok && encryption.EncryptChecked (m, 256, iv, encrypted + 258);")
+require_runtime_order("libi2pd/Crypto.cpp"
+  "bool ECIESDecrypt (" "void GenerateECIESKeyPair ("
+  "&& SHA256 (keyBuf, len, shared) != nullptr)"
+  "decryption.SetKey (shared);"
+  "if (SHA256 (m + 33, 222, hash) != nullptr"
+  "&& CRYPTO_memcmp (m + 1, hash, 32) == 0)"
+  "memcpy (data, m + 33, 222);")
+require_runtime_source("tests/test-crypto-audit-bounds.cpp"
+  "TestECIESIntegrityPublication ();")

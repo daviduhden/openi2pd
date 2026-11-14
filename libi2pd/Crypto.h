@@ -216,8 +216,15 @@ namespace crypto
 	// ECIES
 	bool ECIESEncrypt (const EC_GROUP * curve, const EC_POINT * key, const uint8_t * data,
 		uint8_t * encrypted); // 222 bytes data, 514 bytes encrypted; false on failure
+	/**
+	 * Decrypt a 514-byte ECIES envelope into a writable 222-byte output.
+	 * @return True only after key derivation, decryption and integrity
+	 * checks succeed. Failure leaves output unchanged.
+	 * Inputs are borrowed; output may overlap the envelope because
+	 * plaintext publication follows the complete integrity check.
+	 */
 	bool ECIESDecrypt (const EC_GROUP * curve, const BIGNUM * key, const uint8_t * encrypted,
-		uint8_t * data); // 514 bytes encrypted, 222 data
+		uint8_t * data);
 	void GenerateECIESKeyPair (const EC_GROUP * curve, BIGNUM *& priv, EC_POINT *& pub);
 
 	// AES
