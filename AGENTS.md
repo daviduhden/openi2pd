@@ -150,6 +150,13 @@ scripts and helper expansions.
 
 ### Tracking states
 
+For status-only worker exits, an exception-only debugger script may collect
+no stack. Distinguish observed exit status from a raised exception and retain
+the exact image hash. Add termination tracing only to an authority-free probe;
+never follow credential-bearing worker command lines or infer a sandbox cause
+from low peak-memory counters.
+
+
 Maintain `AGENTS.md`, `TODO.md`, `ROADMAP.md` and `PROGRESS.md` as work
 progresses. Use the base vocabulary declared at the top of `TODO.md`:
 `Pending`, `In progress`, `Blocked`, `Implemented / static`,

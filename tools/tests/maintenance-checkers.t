@@ -383,6 +383,23 @@ sub workflow_crash_fixtures {
     }
     write_file($windows, $source);
     for my $boundary (
+        ['@edx == 0xc0000142', '@edx == 0'],
+        ['OPENI2PD_PROBE_TERMINATION; ln @rip; kc 40',
+            'OPENI2PD_PROBE_TERMINATION; ln @rip; kp 40'],
+        ['NtTerminateProcess', 'ExitProcess'],
+        ['OPENI2PD_PROBE_EXIT; .lastevent; g',
+            'OPENI2PD_PROBE_EXIT; .lastevent; q'] ) {
+        my ($before, $after) = @{$boundary};
+        my $candidate = $source;
+        ok($candidate =~ s/\Q$before\E/$after/,
+            'probe termination mutation changes its evidence boundary');
+        write_file($windows, $candidate);
+        ($code, $out) = run_checker($checker);
+        is($code, 1, 'probe termination capture requires its exact safe grammar');
+        like($out, qr/startup probe/, 'termination evidence gap is diagnosed');
+    }
+    write_file($windows, $source);
+    for my $boundary (
         ['k 20', 'kp 20'],
         ['k 20', 'kc 20'],
         [q{? @$ra; }, ''],

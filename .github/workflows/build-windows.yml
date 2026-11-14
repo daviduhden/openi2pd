@@ -338,11 +338,16 @@ jobs:
           $evidence = Join-Path $env:GITHUB_WORKSPACE 'build-msvc/startup-probe'
           New-Item -ItemType Directory -Force $evidence | Out-Null
           $commands = Join-Path $evidence 'exceptions.txt'
+          # Normal exit with DLL_INIT_FAILED need not raise an exception.
+          # At each process creation, arm the x64 ExitStatus predicate;
+          # print code locations only and preserve the real termination.
           @'
           sxe -c ".echo OPENI2PD_CRASH; .lastevent; ln @rip; kc 40; q" av
           sxe -c ".echo OPENI2PD_CRASH; .lastevent; ln @rip; kc 40; q" 0xc0000374
           sxe -c ".echo OPENI2PD_CRASH; .lastevent; ln @rip; kc 40; q" 0xc0000409
           sxe -c ".echo OPENI2PD_CRASH; .lastevent; ln @rip; kc 40; q" 0xc0000142
+          sxe -c "bu ntdll!NtTerminateProcess \".if (@edx == 0xc0000142) { .echo OPENI2PD_PROBE_TERMINATION; ln @rip; kc 40; }; gc\"; g" cpr
+          sxe -c ".echo OPENI2PD_PROBE_EXIT; .lastevent; g" epr
           g
           '@ | Set-Content -Encoding ascii $commands
           $binary = Join-Path $env:GITHUB_WORKSPACE 'build-msvc/tests/Release/test-privsep-windows-supervisor.exe'

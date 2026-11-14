@@ -618,11 +618,17 @@ sub windows_crash_command_errors {
 
 # Validate each supplied exception-command block independently.
 sub windows_exception_command_errors {
-    my ($windows) = @_;
+    my ($windows, $probe_mode) = @_;
     my @violations;
     my ( $inside, $closed ) = ( 0, 0 );
     my %events = map { $_ => 1 } qw(av 0xc0000374 0xc0000409 0xc0000142);
     my %seen;
+    # Only the nonce-free probe may inspect termination status. Exact
+    # lines keep nested breakpoint commands outside the heap allowlist.
+    my %probe_commands = map { $_ => 1 } (
+        q{sxe -c "bu ntdll!NtTerminateProcess \".if (@edx == 0xc0000142) { .echo OPENI2PD_PROBE_TERMINATION; ln @rip; kc 40; }; gc\"; g" cpr},
+        q{sxe -c ".echo OPENI2PD_PROBE_EXIT; .lastevent; g" epr});
+    my %probe_seen;
     my %allowed = map { $_ => 1 }
       ( '.echo OPENI2PD_CRASH', '.lastevent', 'ln @rip', 'kc 40', 'q' );
     for my $line ( split /\n/x, $windows ) {
@@ -637,6 +643,10 @@ sub windows_exception_command_errors {
             last;
         }
         next if !length $line || $line eq 'g';
+        if ($probe_mode && $probe_commands{$line}) {
+            $probe_seen{$line}++;
+            next;
+        }
         my ( $body, $event ) = $line =~ /\A sxe \s+ -c \s+ "([^"]+)" \s+ (\S+) \z/x;
         if ( !defined $body || !$events{$event} ) {
             push @violations, 'build-windows.yml: unsupported crash debugger line';
@@ -650,6 +660,8 @@ sub windows_exception_command_errors {
     }
     push @violations, 'build-windows.yml: missing bounded crash command file'
       unless $inside && $closed && keys(%seen) == keys(%events);
+    push @violations, 'build-windows.yml: startup probe termination evidence missing'
+      if $probe_mode && (keys(%probe_seen) != 2 || grep { $_ != 1 } values %probe_seen);
     return @violations;
 }
 
@@ -680,7 +692,7 @@ sub windows_startup_probe_errors {
     }
     push @violations, 'build-windows.yml: startup probe lacks retained artifact'
       unless $windows =~ /^\s*build-msvc\/startup-probe\s*$/m;
-    push @violations, windows_exception_command_errors($probe);
+    push @violations, windows_exception_command_errors($probe, 1);
     return @violations;
 }
 

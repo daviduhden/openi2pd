@@ -206,6 +206,13 @@ workflow, run `gh`, build or test.
 
 ## Known issues and decisions
 
+- A native initialization exit can bypass exception filters. Preserve the
+  probe's original termination and collect code-only termination context
+  separately from exception context. Keep child-following restricted to the
+  authority-free probe and its exact command allowlist; parent telemetry or
+  low memory peaks alone cannot identify which mitigation caused failure.
+
+
 - The MSVC workflow builds an explicit target subset and filters CTest by
   name. Adding a native regression to tests/CMakeLists alone does not run
   it there; update both the MSVC build target list and test expression,
