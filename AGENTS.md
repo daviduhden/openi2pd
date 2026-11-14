@@ -505,7 +505,9 @@ executor for blocking calls, deadlines and admission quotas.
 Formatting and static lint do not authorize compilation or test execution.
 Use checked-in language configurations, inventory maintained tracked inputs,
 exclude generated/vendor files, preserve modes and keep backup reports outside
-the tree. Compare formatting against the pre-format working copy so prior
+the tree. Index projections must record a symlink target with readlink,
+not the referenced file contents; check mode 120000 entries separately.
+Compare formatting against the pre-format working copy so prior
 functional changes remain intact. Review string-based source contracts after
 formatting; formatter success cannot certify their semantic assertions.
 
