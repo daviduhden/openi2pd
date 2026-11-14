@@ -1168,6 +1168,10 @@ require_runtime_source("tests/test-torrents-requests.cpp"
   "TestFastCancellationAuthority ();")
 require_runtime_source("tests/CMakeLists.txt" "test-torrents-requests")
 require_runtime_source("tests/CMakeLists.txt" "test-ssu2-proxy-lifecycle")
+require_runtime_source("android/app/src/main/java/org/openi2pd/router/TorrentSafStorageService.java"
+  "TorrentSafTransfer.exact(offset, count,")
+require_runtime_source("android/app/src/main/java/org/openi2pd/router/TorrentSafStorageService.java"
+  "TorrentSafTransfer.exact(offset, bytes.length,")
 require_runtime_order("privsep/Worker.h"
   "void Disown ()" "worker_pid_t Pid () const"
   "m_Channel.Close ();" "if (m_Pid > 0)" "RetireUnreaped ();"

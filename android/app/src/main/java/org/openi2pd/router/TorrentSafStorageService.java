@@ -729,15 +729,12 @@ public final class TorrentSafStorageService extends Service {
                         return null;
                     byte[] result = new byte[count];
                     try {
-                        int done = 0;
-                        while (done < count) {
-                            current.signal.throwIfCanceled();
-                            int n = Os.pread(file.fd.getFileDescriptor(), result, done,
-                                    count - done, offset + done);
-                            if (n <= 0)
-                                return null;
-                            done += n;
-                        }
+                        if (!TorrentSafTransfer.exact(offset, count,
+                                    current.signal::throwIfCanceled,
+                                    (done, remaining, position)
+                                            -> Os.pread(file.fd.getFileDescriptor(), result, done,
+                                                    remaining, position)))
+                            return null;
                         return result;
                     } catch (Exception failure) {
                         releaseHandle(handle);
@@ -768,15 +765,12 @@ public final class TorrentSafStorageService extends Service {
                             || !authorized(file, true, current.signal))
                         return false;
                     try {
-                        int done = 0;
-                        while (done < bytes.length) {
-                            current.signal.throwIfCanceled();
-                            int n = Os.pwrite(file.fd.getFileDescriptor(), bytes, done,
-                                    bytes.length - done, offset + done);
-                            if (n <= 0)
-                                return false;
-                            done += n;
-                        }
+                        if (!TorrentSafTransfer.exact(offset, bytes.length,
+                                    current.signal::throwIfCanceled,
+                                    (done, remaining, position)
+                                            -> Os.pwrite(file.fd.getFileDescriptor(), bytes, done,
+                                                    remaining, position)))
+                            return false;
                         Os.fsync(file.fd.getFileDescriptor());
                         return true;
                     } catch (Exception failure) {

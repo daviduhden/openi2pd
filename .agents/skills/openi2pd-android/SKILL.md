@@ -121,6 +121,12 @@ run Gradle, install an APK or run a device test.
 
 ## Known issues and decisions
 
+- SAF exact positional transfers share TorrentSafTransfer with JVM tests.
+  Inject fragment counts, EOF/zero progress, cancellation and exceptions at
+  that production seam; regular files cannot reliably force short syscalls.
+  Authorization, descriptor ownership, deadline and write fsync remain in
+  the broker. A false result does not roll back partially written bytes.
+
 - Confirmation source contracts must retain both the captured ticket and
   complete readiness/admission predicate while allowing Java call wrapping.
   Negative controls must alter actual source before checking rejection.

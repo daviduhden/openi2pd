@@ -7,6 +7,14 @@ Explains native piece IO, bounded Binder capabilities and remaining recovery wor
 -->
 # Android SAF payload storage
 
+The exact positional transfer pump is shared with framework-free JVM fixtures
+in `TorrentSafTransfer`. It checks cancellation before each positive fragment,
+rejects EOF/zero/invalid progress and never refreshes a deadline or retries a
+failed call. The broker still owns authorization, the descriptor, IO lock,
+operation deadline and write fsync. Failure can leave partial provider writes;
+helper success alone is not commit acknowledgement. Deterministic JVM coverage
+is prepared; real provider/device/permission-revocation tests remain pending.
+
 Status: implemented by static analysis; pending CI compilation and CI tests.
 
 The torrent details action selects a persistent read/write document tree for a
