@@ -121,6 +121,12 @@ run Gradle, install an APK or run a device test.
 
 ## Known issues and decisions
 
+- Confirmation source contracts must retain both the captured ticket and
+  complete readiness/admission predicate while allowing Java call wrapping.
+  Negative controls must alter actual source before checking rejection.
+  AGP-bundled D8/R8 provenance now has executed Java 25 probe evidence;
+  device and explicit configuration-cache coverage remain separate.
+
 - SAF source retention guards match formatter whitespace only around the
   constructor call, with document/path operands and new/Source token
   separation intact. Negative controls reject a root operand or merged token;

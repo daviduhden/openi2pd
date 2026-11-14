@@ -66,11 +66,42 @@ foreach(required IN ITEMS "Ticket current;" "ticket != current"
   endif()
 endforeach()
 foreach(required IN ITEMS "confirmations.start();" "confirmations.stop();"
-    "confirmations.sessionChanged();" "confirmations.consume(ticket,"
+    "confirmations.sessionChanged();"
     "confirmations.register(dialog::dismiss)")
   string(FIND "${activity}" "${required}" found)
   if(found LESS 0)
     message(FATAL_ERROR "Activity confirmation lifecycle missing: ${required}")
+  endif()
+endforeach()
+# A formatter may wrap after consume's opening parenthesis. Match only
+# that call boundary; retain the captured ticket and admission operands.
+function(has_confirmation_consumption text output)
+  string(REGEX MATCH
+    "confirmations[.]consume[(][ \t\r\n]*ticket,[ \t\r\n]*confirmationReady[(][)][ \t]*&&[ \t]*admitted[.]getAsBoolean[(][)][)]"
+    consumption "${text}")
+  if(consumption)
+    set(${output} TRUE PARENT_SCOPE)
+  else()
+    set(${output} FALSE PARENT_SCOPE)
+  endif()
+endfunction()
+has_confirmation_consumption("${activity}" consumes_captured_ticket)
+if(NOT consumes_captured_ticket)
+  message(FATAL_ERROR "Activity confirmation must consume its captured ticket with current admission")
+endif()
+# Negative controls must change real source before checking refusal.
+foreach(mutation IN ITEMS ticket admission)
+  if(mutation STREQUAL ticket)
+    string(REPLACE "ticket, confirmationReady()" "otherTicket, confirmationReady()" candidate "${activity}")
+  else()
+    string(REPLACE "confirmationReady() && admitted.getAsBoolean()" "true" candidate "${activity}")
+  endif()
+  if(candidate STREQUAL activity)
+    message(FATAL_ERROR "Confirmation authority mutation did not change its input: ${mutation}")
+  endif()
+  has_confirmation_consumption("${candidate}" accepts_mutation)
+  if(accepts_mutation)
+    message(FATAL_ERROR "Confirmation authority accepted mutated ${mutation}")
   endif()
 endforeach()
 foreach(test_path IN ITEMS
