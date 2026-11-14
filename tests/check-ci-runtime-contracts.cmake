@@ -1059,6 +1059,34 @@ require_runtime_order("libi2pd/Transports.cpp"
   "return boost::asio::post (*m_Service,")
 require_runtime_source("tests/test-signed-data-bounds.cpp"
   "assertGatewayLengths (maximumGateway, maxInner);")
+
+# Failed UDP startup retires owned resources before preserving its error.
+require_runtime_order("libi2pd_client/UDPTunnel.cpp"
+  "void I2PUDPClientTunnel::StartImpl (" "void I2PUDPClientTunnel::Stop ()"
+  "RecvFromLocal ();" "ScheduleStatsTimer ();" "if (checkpoint) checkpoint ();"
+  "m_ResolveThread.emplace ([this] () { TryResolving (); });"
+  "auto startupFailure = std::current_exception ();" "Stop ();"
+  "std::rethrow_exception (startupFailure);")
+require_runtime_order("libi2pd_client/UDPTunnel.cpp"
+  "void I2PUDPClientTunnel::RecvFromLocal ()" "void I2PUDPClientTunnel::HandleRecvFromLocal ("
+  "if (m_LocalReceive || m_PeriodicAdmission->stopRequested.load ()) return;"
+  "auto receive = std::make_shared<LocalReceive> ();"
+  "boost::asio::buffer (receive->buffer), receive->endpoint"
+  "auto s = owner.lock ();" "auto state = weakAdmission.lock ();"
+  "std::lock_guard admission (state->mutex);"
+  "if (state->stopRequested.load () || s->m_LocalReceive != receive) return;"
+  "s->m_LocalReceive.reset ();" "s->HandleRecvFromLocal (ecode, transferred, receive);")
+require_runtime_source("tests/test-udp-ack-lifecycle.cpp"
+  "TestFailedStartupRollback ();")
+require_runtime_source("tests/test-udp-ack-lifecycle.cpp"
+  "TestKeepAliveReadAuthority ();")
+require_runtime_source("libi2pd_client/UDPTunnel.cpp"
+  "while (drainLocal && numPackets < i2p::datagram::DATAGRAM_SEND_QUEUE_MAX_SIZE)")
+require_runtime_order("libi2pd_client/UDPTunnel.cpp"
+  "void I2PUDPClientTunnel::SendKeepAlive ()" "void I2PUDPClientTunnel::HandleKeepAliveTimer ("
+  "if (m_LastSession) sender = m_LastSession->first;"
+  "uint8_t empty = 0;"
+  "ForwardLocalDatagram (std::span<uint8_t> (&empty, 0), 0, *sender, false);")
 require_runtime_source("libi2pd/Datagram.cpp"
   "if (len) signedData.insert (signedData.end (), payload, payload + len);")
 require_runtime_source("libi2pd/Datagram.cpp"

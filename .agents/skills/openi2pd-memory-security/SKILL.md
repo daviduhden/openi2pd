@@ -107,6 +107,12 @@ Do not let reconnaissance agents edit, compile, execute tests or run scripts.
 
 ## Known issues and decisions
 
+- Serializing callbacks cannot protect buffers concurrently written by
+  outstanding I/O. A timer must not impersonate a full receive completion
+  that rearms reads or drains the same buffer. Separate send-only keepalive,
+  stable completed-peer snapshots and per-generation read admission; trace
+  operation-buffer lifetime until completion across failed-start retries.
+
 - Prepend paths need the same complete backing/offset/length geometry as
   copies, before pointer subtraction or mutation. Reserve every nested header
   when choosing allocation tiers; test tier edges and serialized lengths.

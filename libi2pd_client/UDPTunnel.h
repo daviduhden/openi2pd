@@ -16,6 +16,7 @@
 #include <inttypes.h>
 #include <atomic>
 #include <array>
+#include <span>
 #include <cstddef>
 #include <utility>
 #include <functional>
@@ -343,8 +344,12 @@ namespace client
 		/* expire stale udp conversations */
 		void ExpireStale (const uint64_t delta = I2P_UDP_SESSION_TIMEOUT);
 		/// Requires shared ownership. Start/Stop/configuration run on the
-		/// owning service or while quiescent; lifecycle reentry is forbidden.
-		/// Failed Start revokes periodic work only; call Stop before retry.
+		/// owning service or while quiescent; lifecycle reentry from any
+		/// admitted callback is forbidden.
+		/// Repeated successful Start is a no-op. Failed Start cleans owned
+		/// resources; a shared destination's startup is not rolled back.
+		/// Unexpected cleanup failure preserves the startup exception and
+		/// requires Stop to complete before retry.
 		void Start ();
 		void Stop ();
 		/// Query on the service or while quiescent, outside timer actions.
@@ -362,6 +367,7 @@ namespace client
 		using PeriodicAction = std::function<void (I2PUDPServerTunnel &, const boost::system::error_code &)>;
 		UDPPeriodicHandler MakePeriodicHandlerLocked (UDPPeriodicSlot slot, PeriodicAction action);
 		void RetirePeriodicTimers () noexcept;
+		void StartImpl (void (*checkpoint) ());
 
 		void HandleRecvFromI2P (const i2p::data::IdentityEx & from, uint16_t fromPort, uint16_t toPort,
 			const uint8_t * buf, size_t len, const i2p::util::Mapping * options);
@@ -389,6 +395,7 @@ namespace client
 		UDPSessionPtr m_LastSession;
 		uint16_t m_inPort;
 		bool m_Gzip;
+		bool m_StartCleanupFailed = false;
 		bool m_IsStarted = false; // a tunnel that never started shares nothing to tear down
 		i2p::datagram::DatagramDestination::ReceiverRegistration m_DatagramReceiver;
 		i2p::datagram::DatagramDestination::ReceiverRegistration m_RawReceiver;
@@ -426,8 +433,11 @@ namespace client
 		~I2PUDPClientTunnel ();
 
 		/// Start/Stop/configuration run on the owning service or while
-		/// quiescent; lifecycle reentry from timer actions is forbidden.
-		/// Failed Start revokes periodic work only; call Stop before retry.
+		/// quiescent; lifecycle reentry from any admitted callback is forbidden.
+		/// Repeated successful Start is a no-op. Failed Start cleans owned
+		/// resources; a shared destination's startup is not rolled back.
+		/// Unexpected cleanup failure preserves the startup exception and
+		/// requires Stop to complete before retry.
 		void Start () override;
 		void Stop () override;
 		/// Query on the service or while quiescent, outside timer actions.
@@ -457,10 +467,21 @@ namespace client
 		using PeriodicAction = std::function<void (I2PUDPClientTunnel &, const boost::system::error_code &)>;
 		UDPPeriodicHandler MakePeriodicHandlerLocked (UDPPeriodicSlot slot, PeriodicAction action);
 		void RetirePeriodicTimers () noexcept;
+		void StartImpl (void (*checkpoint) ());
 
 		typedef std::pair<boost::asio::ip::udp::endpoint, uint64_t> UDPConvo;
 		void RecvFromLocal ();
-		void HandleRecvFromLocal (const boost::system::error_code & e, std::size_t transferred);
+		struct LocalReceive
+		{
+			std::array<uint8_t, I2P_UDP_MAX_MTU> buffer;
+			boost::asio::ip::udp::endpoint endpoint;
+		};
+		void HandleRecvFromLocal (const boost::system::error_code & e, std::size_t transferred,
+			const std::shared_ptr<LocalReceive> & receive);
+		// Only real receive completions may drain the socket or rearm it.
+		void ForwardLocalDatagram (
+			std::span<uint8_t> buffer, size_t transferred, boost::asio::ip::udp::endpoint sender, bool drainLocal);
+		void SendKeepAlive ();
 		void HandleRecvFromI2P (const i2p::data::IdentityEx & from, uint16_t fromPort, uint16_t toPort,
 			const uint8_t * buf, size_t len, const i2p::util::Mapping * options);
 		void HandleRecvFromI2PRaw (
@@ -482,11 +503,13 @@ namespace client
 		const boost::asio::ip::udp::endpoint m_LocalEndpoint;
 		std::optional<std::thread> m_ResolveThread;
 		std::unique_ptr<boost::asio::ip::udp::socket> m_LocalSocket;
-		boost::asio::ip::udp::endpoint m_RecvEndpoint;
-		uint8_t m_RecvBuff[I2P_UDP_MAX_MTU];
+		// Access under periodic admission, or during quiescent startup.
+		// Each operation owns its outputs until its completion is released.
+		std::shared_ptr<LocalReceive> m_LocalReceive;
 		uint16_t RemotePort, m_LastPort;
 		std::atomic<bool> m_cancel_resolve;
 		bool m_Gzip;
+		bool m_StartCleanupFailed = false;
 		bool m_IsStarted = false; // see the comment in I2PUDPServerTunnel
 		i2p::datagram::DatagramVersion m_DatagramVersion;
 		i2p::datagram::DatagramDestination::ReceiverRegistration m_DatagramReceiver;

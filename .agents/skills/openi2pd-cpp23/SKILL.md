@@ -117,6 +117,12 @@ compile, run tests or run project scripts.
 
 ## Known issues and decisions
 
+- A startup transaction must include registrations, queued receives and socket
+  authority, not only timers. Put a borrowing resolver's construction last
+  so ordinary startup unwind never has to join a newly launched thread.
+  Preserve the original failure and block restart after incomplete cleanup;
+  shared destination startup is a separate ownership boundary.
+
 - Weak-owner timer factories must order local owners before lock guards so
   reverse destruction unlocks admission before releasing the last owner.
   Test already-successful stale callbacks and an executor that never drains;

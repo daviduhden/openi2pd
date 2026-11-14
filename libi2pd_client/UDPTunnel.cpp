@@ -20,6 +20,7 @@
 #include "UDPTunnel.h"
 #include "Modern.h"
 #include <stdexcept>
+#include <exception>
 
 namespace i2p
 {
@@ -674,33 +675,63 @@ namespace client
 
 	void I2PUDPServerTunnel::Start ()
 	{
-		if (weak_from_this ().expired ()) throw std::logic_error ("UDP server Start requires shared ownership");
-		auto next = std::make_shared<UDPPeriodicAdmission> ();
-		RetirePeriodicTimers ();
-		next->cancellationError = GetPeriodicCancellationError ();
-		m_PeriodicAdmission = std::move (next);
-		auto failedStart = i2p::modern::ScopeExit ([this] { RetirePeriodicTimers (); });
+		StartImpl (nullptr);
+	}
 
-		m_IsStarted = true;
-		m_LocalDest->Start ();
+	void I2PUDPServerTunnel::StartImpl (void (*checkpoint) ())
+	{
+		if (m_IsStarted)
+		{
+			if (m_StartCleanupFailed) throw std::logic_error ("UDP startup cleanup requires Stop before retry");
+			return;
+		}
+		m_StartCleanupFailed = false;
+		try
+		{
+			if (weak_from_this ().expired ()) throw std::logic_error ("UDP server Start requires shared ownership");
+			auto next = std::make_shared<UDPPeriodicAdmission> ();
+			RetirePeriodicTimers ();
+			next->cancellationError = GetPeriodicCancellationError ();
+			m_PeriodicAdmission = std::move (next);
 
-		auto dgram = m_LocalDest->CreateDatagramDestination (m_Gzip);
-		m_DatagramReceiver.Reset ();
-		m_RawReceiver.Reset ();
-		m_DatagramReceiver = dgram->SetReceiver (
-			std::bind (&I2PUDPServerTunnel::HandleRecvFromI2P, this, std::placeholders::_1, std::placeholders::_2,
-				std::placeholders::_3, std::placeholders::_4, std::placeholders::_5, std::placeholders::_6),
-			m_inPort);
-		m_RawReceiver = dgram->SetRawReceiver (
-			std::bind (&I2PUDPServerTunnel::HandleRecvFromI2PRaw, this, std::placeholders::_1, std::placeholders::_2,
-				std::placeholders::_3, std::placeholders::_4, std::placeholders::_5),
-			m_inPort);
-		std::lock_guard admission (m_PeriodicAdmission->mutex);
-		m_StatsTimer.reset (new boost::asio::steady_timer (m_LocalDest->GetService ()));
-		ScheduleStatsTimer ();
-		m_CleanupTimer.reset (new boost::asio::steady_timer (m_LocalDest->GetService ()));
-		ScheduleCleanupTimer ();
-		failedStart.dismiss ();
+			m_IsStarted = true;
+			m_LocalDest->Start ();
+
+			auto dgram = m_LocalDest->CreateDatagramDestination (m_Gzip);
+			m_DatagramReceiver.Reset ();
+			m_RawReceiver.Reset ();
+			m_DatagramReceiver = dgram->SetReceiver (
+				std::bind (&I2PUDPServerTunnel::HandleRecvFromI2P, this, std::placeholders::_1, std::placeholders::_2,
+					std::placeholders::_3, std::placeholders::_4, std::placeholders::_5, std::placeholders::_6),
+				m_inPort);
+			m_RawReceiver = dgram->SetRawReceiver (
+				std::bind (&I2PUDPServerTunnel::HandleRecvFromI2PRaw, this, std::placeholders::_1,
+					std::placeholders::_2, std::placeholders::_3, std::placeholders::_4, std::placeholders::_5),
+				m_inPort);
+			if (checkpoint) checkpoint ();
+			std::lock_guard admission (m_PeriodicAdmission->mutex);
+			m_StatsTimer.reset (new boost::asio::steady_timer (m_LocalDest->GetService ()));
+			ScheduleStatsTimer ();
+			m_CleanupTimer.reset (new boost::asio::steady_timer (m_LocalDest->GetService ()));
+			ScheduleCleanupTimer ();
+		}
+		catch (...)
+		{
+			auto startupFailure = std::current_exception ();
+			try
+			{
+				Stop ();
+			}
+			catch (...)
+			{
+				// Preserve startup failure and keep cleanup retryable. Unexpected
+				// platform synchronization failures cannot justify detaching a
+				// resolver that borrows this owner.
+				m_IsStarted = true;
+				m_StartCleanupFailed = true;
+			}
+			std::rethrow_exception (startupFailure);
+		}
 	}
 
 	void I2PUDPServerTunnel::ScheduleCleanupTimer ()
@@ -772,7 +803,6 @@ namespace client
 		// same one is already there. Its destructor must not reset the
 		// receiver of the live tunnel: they share the datagram destination
 		if (!m_IsStarted) return;
-		m_IsStarted = false;
 		RetirePeriodicTimers ();
 		m_DatagramReceiver.Reset ();
 		m_RawReceiver.Reset ();
@@ -783,6 +813,8 @@ namespace client
 			if (m_LastSession) m_LastSession->Stop ();
 			m_LastSession.reset ();
 		}
+		m_StartCleanupFailed = false;
+		m_IsStarted = false;
 	}
 
 	std::vector<std::shared_ptr<DatagramSessionInfo>> I2PUDPServerTunnel::GetSessions ()
@@ -856,54 +888,87 @@ namespace client
 
 	void I2PUDPClientTunnel::Start ()
 	{
-		if (weak_from_this ().expired ()) throw std::logic_error ("UDP client Start requires shared ownership");
-		auto next = std::make_shared<UDPPeriodicAdmission> ();
-		RetirePeriodicTimers ();
-		next->cancellationError = GetPeriodicCancellationError ();
-		m_PeriodicAdmission = std::move (next);
-		auto failedStart = i2p::modern::ScopeExit ([this] { RetirePeriodicTimers (); });
+		StartImpl (nullptr);
+	}
 
-		m_IsStarted = true;
-		UDPConnection::Start ();
-		// Reset flag in case of tunnel reload
-		if (m_cancel_resolve.load ()) m_cancel_resolve.store (false);
+	void I2PUDPClientTunnel::StartImpl (void (*checkpoint) ())
+	{
+		if (m_IsStarted)
+		{
+			if (m_StartCleanupFailed) throw std::logic_error ("UDP startup cleanup requires Stop before retry");
+			return;
+		}
+		m_StartCleanupFailed = false;
+		try
+		{
+			if (weak_from_this ().expired ()) throw std::logic_error ("UDP client Start requires shared ownership");
+			auto next = std::make_shared<UDPPeriodicAdmission> ();
+			RetirePeriodicTimers ();
+			next->cancellationError = GetPeriodicCancellationError ();
+			m_PeriodicAdmission = std::move (next);
 
-		m_LocalSocket.reset (new boost::asio::ip::udp::socket (m_LocalDest->GetService (), m_LocalEndpoint));
-		m_LocalSocket->set_option (boost::asio::socket_base::receive_buffer_size (I2P_UDP_SOCKET_BUFFER_SIZE));
-		m_LocalSocket->set_option (boost::asio::socket_base::send_buffer_size (I2P_UDP_SOCKET_BUFFER_SIZE));
-		m_LocalSocket->set_option (boost::asio::socket_base::reuse_address (true));
-		m_LocalSocket->non_blocking (true);
+			m_IsStarted = true;
+			UDPConnection::Start ();
+			// Reset flag in case of tunnel reload
+			if (m_cancel_resolve.load ()) m_cancel_resolve.store (false);
 
-		auto dgram = m_LocalDest->CreateDatagramDestination (m_Gzip, m_DatagramVersion);
-		m_Destination = dgram;
-		m_DatagramReceiver.Reset ();
-		m_RawReceiver.Reset ();
-		m_DatagramReceiver = dgram->SetReceiver (
-			std::bind (&I2PUDPClientTunnel::HandleRecvFromI2P, this, std::placeholders::_1, std::placeholders::_2,
-				std::placeholders::_3, std::placeholders::_4, std::placeholders::_5, std::placeholders::_6));
+			m_LocalSocket.reset (new boost::asio::ip::udp::socket (m_LocalDest->GetService (), m_LocalEndpoint));
+			m_LocalSocket->set_option (boost::asio::socket_base::receive_buffer_size (I2P_UDP_SOCKET_BUFFER_SIZE));
+			m_LocalSocket->set_option (boost::asio::socket_base::send_buffer_size (I2P_UDP_SOCKET_BUFFER_SIZE));
+			m_LocalSocket->set_option (boost::asio::socket_base::reuse_address (true));
+			m_LocalSocket->non_blocking (true);
 
-		m_RawReceiver
-			= dgram->SetRawReceiver (std::bind (&I2PUDPClientTunnel::HandleRecvFromI2PRaw, this, std::placeholders::_1,
-				std::placeholders::_2, std::placeholders::_3, std::placeholders::_4, std::placeholders::_5));
+			auto dgram = m_LocalDest->CreateDatagramDestination (m_Gzip, m_DatagramVersion);
+			m_Destination = dgram;
+			m_DatagramReceiver.Reset ();
+			m_RawReceiver.Reset ();
+			m_DatagramReceiver = dgram->SetReceiver (
+				std::bind (&I2PUDPClientTunnel::HandleRecvFromI2P, this, std::placeholders::_1, std::placeholders::_2,
+					std::placeholders::_3, std::placeholders::_4, std::placeholders::_5, std::placeholders::_6));
 
-		m_LocalDest->Start ();
-		if (!m_ResolveThread) m_ResolveThread.emplace ([this] () { TryResolving (); });
-		RecvFromLocal ();
+			m_RawReceiver = dgram->SetRawReceiver (
+				std::bind (&I2PUDPClientTunnel::HandleRecvFromI2PRaw, this, std::placeholders::_1,
+					std::placeholders::_2, std::placeholders::_3, std::placeholders::_4, std::placeholders::_5));
 
-		std::lock_guard admission (m_PeriodicAdmission->mutex);
-		if (m_KeepAliveInterval) ScheduleKeepAliveTimer ();
+			m_LocalDest->Start ();
 
-		m_StatsTimer.reset (new boost::asio::steady_timer (m_LocalDest->GetService ()));
-		ScheduleStatsTimer ();
-		failedStart.dismiss ();
+			{
+				std::lock_guard admission (m_PeriodicAdmission->mutex);
+				RecvFromLocal ();
+				if (m_KeepAliveInterval) ScheduleKeepAliveTimer ();
+				m_StatsTimer.reset (new boost::asio::steady_timer (m_LocalDest->GetService ()));
+				ScheduleStatsTimer ();
+			}
+			if (checkpoint) checkpoint ();
+			// No fallible publication follows resolver construction. A failed
+			// startup therefore never has a newly created borrowing thread.
+			m_ResolveThread.emplace ([this] () { TryResolving (); });
+		}
+		catch (...)
+		{
+			auto startupFailure = std::current_exception ();
+			try
+			{
+				Stop ();
+			}
+			catch (...)
+			{
+				// Preserve startup failure and keep cleanup retryable. Unexpected
+				// platform synchronization failures cannot justify detaching a
+				// resolver that borrows this owner.
+				m_IsStarted = true;
+				m_StartCleanupFailed = true;
+			}
+			std::rethrow_exception (startupFailure);
+		}
 	}
 
 	void I2PUDPClientTunnel::Stop ()
 	{
 		if (!m_IsStarted) return; // see the comment in I2PUDPServerTunnel::Stop
-		m_IsStarted = false;
 		// Periodic actions can take ACK/session locks. Drain them first.
 		RetirePeriodicTimers ();
+		m_LocalReceive.reset ();
 		UDPConnection::Stop ();
 
 		m_DatagramReceiver.Reset ();
@@ -913,26 +978,53 @@ namespace client
 		{
 			std::lock_guard<std::mutex> lock (m_SessionsMutex);
 			m_Sessions.clear ();
+			m_LastSession.reset ();
+			m_LastPort = 0;
 		}
 
-		if (m_LocalSocket && m_LocalSocket->is_open ()) m_LocalSocket->close ();
+		boost::system::error_code closeError;
+		if (m_LocalSocket) m_LocalSocket->close (closeError);
+		if (closeError)
+		{
+			std::lock_guard admission (m_PeriodicAdmission->mutex);
+			m_PeriodicAdmission->cancellationError = closeError;
+		}
 
 		if (m_ResolveThread)
 		{
 			if (m_ResolveThread->joinable ()) m_ResolveThread->join ();
 			m_ResolveThread.reset ();
 		}
+		m_StartCleanupFailed = static_cast<bool> (closeError);
+		m_IsStarted = m_StartCleanupFailed;
 	}
 
 	void I2PUDPClientTunnel::RecvFromLocal ()
 	{
-		m_LocalSocket->async_receive_from (boost::asio::buffer (m_RecvBuff, I2P_UDP_MAX_MTU), m_RecvEndpoint,
-			[s = std::static_pointer_cast<I2PUDPClientTunnel> (shared_from_this ())] (
+		if (m_LocalReceive || m_PeriodicAdmission->stopRequested.load ()) return;
+		auto receive = std::make_shared<LocalReceive> ();
+		m_LocalReceive = receive;
+		auto failedReceive = i2p::modern::ScopeExit ([this] { m_LocalReceive.reset (); });
+		m_LocalSocket->async_receive_from (boost::asio::buffer (receive->buffer), receive->endpoint,
+			[owner = std::weak_ptr<I2PUDPClientTunnel> (
+				 std::static_pointer_cast<I2PUDPClientTunnel> (shared_from_this ())),
+				receive, weakAdmission = std::weak_ptr<UDPPeriodicAdmission> (m_PeriodicAdmission)] (
 				const boost::system::error_code & ecode, std::size_t transferred)
-			{ s->HandleRecvFromLocal (ecode, transferred); });
+			{
+				auto s = owner.lock ();
+				if (!s) return;
+				auto state = weakAdmission.lock ();
+				if (!state) return;
+				std::lock_guard admission (state->mutex);
+				if (state->stopRequested.load () || s->m_LocalReceive != receive) return;
+				s->m_LocalReceive.reset ();
+				s->HandleRecvFromLocal (ecode, transferred, receive);
+			});
+		failedReceive.dismiss ();
 	}
 
-	void I2PUDPClientTunnel::HandleRecvFromLocal (const boost::system::error_code & ec, std::size_t transferred)
+	void I2PUDPClientTunnel::HandleRecvFromLocal (
+		const boost::system::error_code & ec, std::size_t transferred, const std::shared_ptr<LocalReceive> & receive)
 	{
 		if (m_cancel_resolve)
 		{
@@ -945,10 +1037,16 @@ namespace client
 			RecvFromLocal (); // Restart listener and continue work
 			return;
 		}
+		ForwardLocalDatagram (receive->buffer, transferred, receive->endpoint, true);
+		RecvFromLocal ();
+	}
+
+	void I2PUDPClientTunnel::ForwardLocalDatagram (
+		std::span<uint8_t> buffer, size_t transferred, boost::asio::ip::udp::endpoint sender, bool drainLocal)
+	{
 		if (!isIdentity)
 		{
 			LogPrint (eLogWarning, "UDP Client: Remote endpoint not resolved yet");
-			RecvFromLocal ();
 			return; // drop, remote not resolved
 		}
 		if (!m_IsSendingAllowed)
@@ -967,7 +1065,6 @@ namespace client
 			{
 				if (!(m_IsFirstPacket && ts1 > m_LastRepliableDatagramTime + I2P_UDP_FIRST_PACKET_RESEND_INTERVAL))
 				{
-					RecvFromLocal ();
 					return;
 				}
 				// else fall through and send new first packet, previous one wasn't
@@ -983,10 +1080,9 @@ namespace client
 			if (m_NumWindowDrops == 1 || !(m_NumWindowDrops % 100))
 				LogPrint (eLogWarning, "UDP Client: Window full (front=", m_UnackedDatagrams.front ().first,
 					" next=", m_NextSendPacketNum, "), dropped ", m_NumWindowDrops, " packets");
-			RecvFromLocal ();
 			return;
 		}
-		auto remotePort = m_RecvEndpoint.port ();
+		auto remotePort = sender.port ();
 		if (!m_LastPort || m_LastPort != remotePort)
 		{
 			std::lock_guard<std::mutex> lock (m_SessionsMutex);
@@ -995,7 +1091,7 @@ namespace client
 				m_LastSession = itr->second;
 			else
 			{
-				m_LastSession = std::make_shared<UDPConvo> (boost::asio::ip::udp::endpoint (m_RecvEndpoint), 0);
+				m_LastSession = std::make_shared<UDPConvo> (boost::asio::ip::udp::endpoint (sender), 0);
 				m_Sessions.emplace (remotePort, m_LastSession);
 			}
 			m_LastPort = remotePort;
@@ -1007,7 +1103,6 @@ namespace client
 		auto session = GetDatagramSession ();
 		if (!session)
 		{
-			RecvFromLocal ();
 			return;
 		}
 		uint64_t repliableDatagramInterval = I2P_UDP_REPLIABLE_DATAGRAM_INTERVAL;
@@ -1031,27 +1126,27 @@ namespace client
 				options.Put (UDP_SESSION_SEQN, m_NextSendPacketNum);
 				if (m_LastReceivedPacketNum > 0) options.Put (UDP_SESSION_ACKED, m_LastReceivedPacketNum);
 				if (flags) options.Put (UDP_SESSION_FLAGS, flags);
-				m_Destination->SendDatagram (session, m_RecvBuff, transferred, remotePort, RemotePort, &options);
+				m_Destination->SendDatagram (session, buffer.data (), transferred, remotePort, RemotePort, &options);
 				if (m_IsFirstPacket) m_IsSendingAllowed = false; // send only one packet at the start and wait ack
 			}
 			else
-				m_Destination->SendDatagram (session, m_RecvBuff, transferred, remotePort, RemotePort);
+				m_Destination->SendDatagram (session, buffer.data (), transferred, remotePort, RemotePort);
 			m_LastRepliableDatagramTime = ts;
 		}
 		else
-			m_Destination->SendRawDatagram (session, m_RecvBuff, transferred, remotePort, RemotePort);
+			m_Destination->SendRawDatagram (session, buffer.data (), transferred, remotePort, RemotePort);
 		size_t numPackets = 0;
-		while (numPackets < i2p::datagram::DATAGRAM_SEND_QUEUE_MAX_SIZE)
+		while (drainLocal && numPackets < i2p::datagram::DATAGRAM_SEND_QUEUE_MAX_SIZE)
 		{
 			boost::system::error_code drainEc;
 			size_t moreBytes = m_LocalSocket->available (drainEc);
 			if (drainEc || !moreBytes) break;
 			transferred = m_LocalSocket->receive_from (
-				boost::asio::buffer (m_RecvBuff, I2P_UDP_MAX_MTU), m_RecvEndpoint, 0, drainEc);
+				boost::asio::buffer (buffer.data (), buffer.size ()), sender, 0, drainEc);
 			if (drainEc) break;
-			remotePort = m_RecvEndpoint.port ();
+			remotePort = sender.port ();
 			// TODO: check remotePort
-			m_Destination->SendRawDatagram (session, m_RecvBuff, transferred, remotePort, RemotePort);
+			m_Destination->SendRawDatagram (session, buffer.data (), transferred, remotePort, RemotePort);
 			numPackets++;
 		}
 		if (numPackets)
@@ -1062,7 +1157,6 @@ namespace client
 
 		// mark convo as active
 		if (m_LastSession) m_LastSession->second = ts;
-		RecvFromLocal ();
 	}
 
 	std::vector<std::shared_ptr<DatagramSessionInfo>> I2PUDPClientTunnel::GetSessions ()
@@ -1193,14 +1287,27 @@ namespace client
 		}
 	}
 
+	void I2PUDPClientTunnel::SendKeepAlive ()
+	{
+		std::optional<boost::asio::ip::udp::endpoint> sender;
+		{
+			std::lock_guard lock (m_SessionsMutex);
+			if (m_LastSession) sender = m_LastSession->first;
+		}
+		// The pending receive owns its buffer and endpoint. A synthetic
+		// empty packet uses only a completed conversation and never drains
+		// or rearms the local socket.
+		uint8_t empty = 0;
+		if (sender) ForwardLocalDatagram (std::span<uint8_t> (&empty, 0), 0, *sender, false);
+	}
+
 	void I2PUDPClientTunnel::HandleKeepAliveTimer (const boost::system::error_code & ecode)
 	{
 		if (ecode != boost::asio::error::operation_aborted)
 		{
 			if (UDPKeepAliveDue (
 					i2p::util::GetMillisecondsSinceEpoch (), m_LastRepliableDatagramTime, m_KeepAliveInterval))
-				HandleRecvFromLocal (
-					boost::system::error_code (), 0); // send empty packet like it was received from local
+				SendKeepAlive ();
 			ScheduleKeepAliveTimer ();
 		}
 	}

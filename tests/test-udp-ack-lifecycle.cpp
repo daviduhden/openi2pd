@@ -13,6 +13,9 @@
 #include <limits>
 #include <future>
 #include <thread>
+#include <stdexcept>
+#include <string_view>
+#include <type_traits>
 #include "UDPTunnel.h"
 
 namespace i2p::client
@@ -30,6 +33,80 @@ struct UDPPeriodicTestAccess
 		std::lock_guard lock (owner.m_PeriodicAdmission->mutex);
 		owner.m_StatsTimer = std::make_unique<boost::asio::steady_timer> (owner.m_LocalDest->GetService ());
 		owner.ScheduleStatsTimer ();
+	}
+	template <typename Owner> static void FailStartup (Owner & owner)
+	{
+		owner.StartImpl ([] { throw std::runtime_error ("UDP startup checkpoint"); });
+	}
+	template <typename Owner> static bool IsStopped (const Owner & owner)
+	{
+		return !owner.m_IsStarted && !owner.m_StartCleanupFailed && owner.m_PeriodicAdmission->stopRequested.load ()
+			&& !owner.m_DatagramReceiver && !owner.m_RawReceiver;
+	}
+	static bool ClientResourcesRetired (const I2PUDPClientTunnel & owner)
+	{
+		return (!owner.m_LocalSocket || !owner.m_LocalSocket->is_open ()) && !owner.m_LocalReceive
+			&& !owner.m_ResolveThread && owner.m_cancel_resolve.load () && owner.m_Sessions.empty ()
+			&& !owner.m_LastSession && !owner.m_LastPort;
+	}
+	static auto CheckPendingRead (I2PUDPClientTunnel & owner)
+	{
+		owner.m_LocalSocket
+			= std::make_unique<boost::asio::ip::udp::socket> (owner.m_LocalDest->GetService (), owner.m_LocalEndpoint);
+		owner.m_cancel_resolve.store (false);
+		std::lock_guard admission (owner.m_PeriodicAdmission->mutex);
+		owner.RecvFromLocal ();
+		auto pending = owner.m_LocalReceive;
+		assert (pending);
+		owner.RecvFromLocal ();
+		assert (owner.m_LocalReceive == pending);
+		// No completed conversation must not invent a port-zero session.
+		owner.SendKeepAlive ();
+		assert (!owner.m_LastSession && owner.m_LocalReceive == pending);
+		owner.m_LastSession = std::make_shared<I2PUDPClientTunnel::UDPConvo> (
+			boost::asio::ip::udp::endpoint (boost::asio::ip::address_v4::loopback (), 1234), 0);
+		owner.m_LastPort = 1234;
+		owner.isIdentity = false;
+		for (unsigned i = 0; i < 3; ++i) owner.SendKeepAlive ();
+		assert (owner.m_LocalReceive == pending);
+		owner.isIdentity = true;
+		owner.m_IsSendingAllowed = false;
+		owner.m_IsFirstPacket = false;
+		// A bounded future timestamp makes this branch independent of the
+		// runner's speed without overflowing the production timeout sum.
+		owner.m_LastRepliableDatagramTime = std::numeric_limits<uint64_t>::max () - I2P_UDP_SESSION_TIMEOUT;
+		owner.SendKeepAlive ();
+		assert (owner.m_LocalReceive == pending);
+		return pending;
+	}
+	static void CheckReadCompletion (I2PUDPClientTunnel & owner, bool cancel)
+	{
+		auto previous = owner.m_LocalReceive;
+		assert (previous);
+		auto & service = owner.m_LocalDest->GetService ();
+		owner.isIdentity = false;
+		if (cancel)
+		{
+			boost::system::error_code error;
+			owner.m_LocalSocket->cancel (error);
+			assert (!error);
+		}
+		else
+		{
+			boost::asio::ip::udp::socket sender (service, boost::asio::ip::udp::v4 ());
+			const std::array<uint8_t, 1> payload { 0 };
+			sender.send_to (boost::asio::buffer (payload), owner.m_LocalSocket->local_endpoint ());
+		}
+		service.restart ();
+		service.poll ();
+		service.stop ();
+		// A real dropped packet or read error rearms once. A second request
+		// must leave that successor operation and its outputs untouched.
+		auto successor = owner.m_LocalReceive;
+		assert (successor && successor != previous);
+		std::lock_guard admission (owner.m_PeriodicAdmission->mutex);
+		owner.RecvFromLocal ();
+		assert (owner.m_LocalReceive == successor);
 	}
 	template <typename Owner> static auto State (const Owner & owner) { return owner.m_PeriodicAdmission; }
 	template <typename Owner>
@@ -50,6 +127,9 @@ template <typename Owner> void CheckPeriodicAdmission (std::shared_ptr<Owner> ow
 {
 	using namespace i2p::client;
 	UDPPeriodicTestAccess::Activate (*owner);
+	auto activeState = UDPPeriodicTestAccess::State (*owner);
+	owner->Start ();
+	assert (UDPPeriodicTestAccess::State (*owner) == activeState);
 	unsigned actions = 0;
 	std::function<void (Owner &, const boost::system::error_code &)> action
 		= [&actions] (Owner &, const boost::system::error_code &) { ++actions; };
@@ -116,6 +196,85 @@ template <typename Owner> void CheckPeriodicAdmission (std::shared_ptr<Owner> ow
 	assert (actions == beforeRelease);
 }
 
+template <typename Owner> void CheckFailedStartup (const std::shared_ptr<Owner> & owner)
+{
+	using namespace i2p::client;
+	for (unsigned attempt = 0; attempt < 2; ++attempt)
+	{
+		bool originalFailure = false;
+		try
+		{
+			UDPPeriodicTestAccess::FailStartup (*owner);
+		}
+		catch (const std::runtime_error & error)
+		{
+			originalFailure = std::string_view (error.what ()) == "UDP startup checkpoint";
+		}
+		assert (originalFailure);
+		assert (UDPPeriodicTestAccess::IsStopped (*owner));
+		if constexpr (std::is_same_v<Owner, I2PUDPClientTunnel>)
+			assert (UDPPeriodicTestAccess::ClientResourcesRetired (*owner));
+		// Already stopped cleanup remains idempotent before retry.
+		owner->Stop ();
+	}
+}
+
+void TestFailedStartupRollback ()
+{
+	using namespace i2p::client;
+	boost::asio::io_context service;
+	// No executor runs: queued receive/timer completions must be safely
+	// retired even when cancellation never dispatches their handlers.
+	service.stop ();
+	auto keys = i2p::data::PrivateKeys::CreateRandomKeys (
+		i2p::data::SIGNING_KEY_TYPE_EDDSA_SHA512_ED25519, i2p::data::CRYPTO_KEY_TYPE_ECIES_X25519_AEAD, true);
+	auto destination = std::make_shared<ClientDestination> (service, keys, false);
+	CheckFailedStartup (
+		std::make_shared<I2PUDPServerTunnel> ("failed-server", destination, boost::asio::ip::address_v4::loopback (),
+			boost::asio::ip::udp::endpoint (boost::asio::ip::address_v4::loopback (), 1), 1, false));
+	auto client = std::make_shared<I2PUDPClientTunnel> ("failed-client", "unused.i2p",
+		boost::asio::ip::udp::endpoint (boost::asio::ip::address_v4::loopback (), 0), destination, 1, false,
+		i2p::datagram::eDatagramV3);
+	std::weak_ptr<I2PUDPClientTunnel> weakClient = client;
+	CheckFailedStartup (client);
+	client.reset ();
+	destination->Stop ();
+	// Drain canceled reads before destroying their borrowed executor.
+	service.restart ();
+	service.poll ();
+	service.stop ();
+	assert (weakClient.expired ());
+}
+
+void TestKeepAliveReadAuthority ()
+{
+	using namespace i2p::client;
+	boost::asio::io_context service;
+	service.stop ();
+	auto keys = i2p::data::PrivateKeys::CreateRandomKeys (
+		i2p::data::SIGNING_KEY_TYPE_EDDSA_SHA512_ED25519, i2p::data::CRYPTO_KEY_TYPE_ECIES_X25519_AEAD, true);
+	auto destination = std::make_shared<ClientDestination> (service, keys, false);
+	auto owner = std::make_shared<I2PUDPClientTunnel> ("read-authority", "unused.i2p",
+		boost::asio::ip::udp::endpoint (boost::asio::ip::address_v4::loopback (), 0), destination, 1, false,
+		i2p::datagram::eDatagramV3);
+	UDPPeriodicTestAccess::Activate (*owner);
+	auto retired = UDPPeriodicTestAccess::CheckPendingRead (*owner);
+	owner->Stop ();
+	UDPPeriodicTestAccess::Activate (*owner);
+	auto successor = UDPPeriodicTestAccess::CheckPendingRead (*owner);
+	UDPPeriodicTestAccess::CheckReadCompletion (*owner, false);
+	UDPPeriodicTestAccess::CheckReadCompletion (*owner, true);
+	assert (retired != successor);
+	assert (retired->buffer.data () != successor->buffer.data ());
+	owner->Stop ();
+	std::weak_ptr<I2PUDPClientTunnel> weak = owner;
+	owner.reset ();
+	assert (weak.expired ());
+	service.restart ();
+	service.poll ();
+	service.stop ();
+}
+
 void TestKeepAliveDeadlineBounds ()
 {
 	using i2p::client::UDPKeepAliveDue;
@@ -177,6 +336,8 @@ private:
 
 int main ()
 {
+	TestKeepAliveReadAuthority ();
+	TestFailedStartupRollback ();
 	TestKeepAliveDeadlineBounds ();
 	TestTunnelPeriodicAdmission ();
 	boost::asio::io_context service;
