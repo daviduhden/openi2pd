@@ -116,16 +116,47 @@ void TestElGamalRejectsTrivialPublicKeys ()
 	uint8_t privateKey[256] = { };
 	privateKey[255] = 7;
 	uint8_t decrypted[222];
-	assert (!i2p::crypto::ElGamalDecrypt (privateKey, encrypted, decrypted));
+	auto rejectWithoutPlaintext = [&] (const uint8_t * candidateKey,
+		const uint8_t * candidateCiphertext)
+	{
+		memset (decrypted, 0xA5, sizeof (decrypted));
+		assert (!i2p::crypto::ElGamalDecrypt (
+			candidateKey, candidateCiphertext, decrypted));
+		for (auto byte : decrypted) assert (byte == 0);
+	};
+	rejectWithoutPlaintext (privateKey, encrypted);
+	rejectWithoutPlaintext (nullptr, encrypted);
+	rejectWithoutPlaintext (privateKey, nullptr);
+	uint8_t zeroPrivate[256] = { };
+	rejectWithoutPlaintext (zeroPrivate, encrypted);
+	// All-one limbs exceed the group modulus and must fail before use.
+	uint8_t oversizedPrivate[256];
+	memset (oversizedPrivate, 0xFF, sizeof (oversizedPrivate));
+	rejectWithoutPlaintext (oversizedPrivate, encrypted);
+	// A zero second ciphertext component cannot pass integrity checking.
+	encrypted[256] = 1;
+	rejectWithoutPlaintext (privateKey, encrypted);
 
 	// A generated key pair must still round-trip; the range checks above
 	// must not reject legitimate ElGamal keys.
 	uint8_t generatedPrivate[256] = { };
 	uint8_t generatedPublic[256] = { };
 	i2p::crypto::GenerateElGamalKeyPair (generatedPrivate, generatedPublic);
-	i2p::crypto::ElGamalEncrypt (generatedPublic, data, encrypted);
+	assert (i2p::crypto::ElGamalEncrypt (generatedPublic, data, encrypted));
 	assert (i2p::crypto::ElGamalDecrypt (generatedPrivate, encrypted, decrypted));
 	assert (memcmp (decrypted, data, sizeof (data)) == 0);
+	// Inputs are fully consumed before plaintext publication, including
+	// when the caller deliberately reuses an input buffer as output.
+	uint8_t overlappingCiphertext[514];
+	memcpy (overlappingCiphertext, encrypted, sizeof (encrypted));
+	assert (i2p::crypto::ElGamalDecrypt (
+		generatedPrivate, overlappingCiphertext, overlappingCiphertext));
+	assert (memcmp (overlappingCiphertext, data, sizeof (data)) == 0);
+	uint8_t overlappingPrivate[256];
+	memcpy (overlappingPrivate, generatedPrivate, sizeof (generatedPrivate));
+	assert (i2p::crypto::ElGamalDecrypt (
+		overlappingPrivate, encrypted, overlappingPrivate));
+	assert (memcmp (overlappingPrivate, data, sizeof (data)) == 0);
 }
 
 void TestAEADBounds ()

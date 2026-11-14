@@ -199,8 +199,18 @@ namespace crypto
 	// ElGamal
 	bool ElGamalEncrypt (
 		const uint8_t * key, const uint8_t * data, uint8_t * encrypted); // 222 bytes data, 514 bytes encrypted
+	/**
+	 * Decrypt a 514-byte envelope using a 256-byte private key.
+	 * @param key Private key, borrowed for this call.
+	 * @param encrypted Envelope, borrowed for this call.
+	 * @param data Writable 222-byte output; cleared on failure.
+	 * @return True only after arithmetic and integrity checks succeed.
+	 * All input reads precede output publication or failure clearing;
+	 * output may overlap an input if its writable extent is sufficient.
+	 * A null output is rejected without access.
+	 */
 	bool ElGamalDecrypt (
-		const uint8_t * key, const uint8_t * encrypted, uint8_t * data); // 514 bytes encrypted, 222 data
+		const uint8_t * key, const uint8_t * encrypted, uint8_t * data);
 	void GenerateElGamalKeyPair (uint8_t * priv, uint8_t * pub);
 
 	// ECIES

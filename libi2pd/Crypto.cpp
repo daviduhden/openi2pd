@@ -277,18 +277,33 @@ namespace crypto
 	{
 		if (len <= 0) return nullptr;
 		auto montCtx = BN_MONT_CTX_new ();
-		BN_MONT_CTX_copy (montCtx, g_MontCtx);
+		if (!montCtx || !BN_MONT_CTX_copy (montCtx, g_MontCtx))
+		{
+			if (montCtx) BN_MONT_CTX_free (montCtx);
+			return nullptr;
+		}
 		BIGNUM * res = nullptr;
+		bool ok = true;
 		for (int i = 0; i < len; i++)
 		{
 			if (res)
 			{
-				if (exp[i]) BN_mod_mul_montgomery (res, res, table[len - 1 - i][exp[i] - 1], montCtx, ctx);
+				if (exp[i]) ok = BN_mod_mul_montgomery (res, res,
+					table[len - 1 - i][exp[i] - 1], montCtx, ctx) == 1;
 			}
 			else if (exp[i])
+			{
 				res = BN_dup (table[len - i - 1][exp[i] - 1]);
+				ok = res != nullptr;
+			}
+			if (!ok) break;
 		}
-		if (res) BN_from_montgomery (res, res, montCtx, ctx);
+		if (res && ok) ok = BN_from_montgomery (res, res, montCtx, ctx) == 1;
+		if (!ok)
+		{
+			if (res) BN_clear_free (res);
+			res = nullptr;
+		}
 		BN_MONT_CTX_free (montCtx);
 		return res;
 	}
@@ -624,6 +639,9 @@ namespace crypto
 		{
 			LogPrint (eLogError, "ElGamal: invalid public key or random exponent");
 			memset (encrypted, 0, 514);
+			if (k) BN_clear (k);
+			if (b1) BN_clear (b1);
+			if (b) BN_clear (b);
 			BN_CTX_end (ctx);
 			BN_CTX_free (ctx);
 			return false;
@@ -635,7 +653,11 @@ namespace crypto
 		else
 		{
 			a = BN_new ();
-			BN_mod_exp (a, elgg, k, elgp, ctx);
+			if (a && BN_mod_exp (a, elgg, k, elgp, ctx) != 1)
+			{
+				BN_clear_free (a);
+				a = nullptr;
+			}
 		}
 		// calculate b1
 		bool ok = a && BN_mod_exp (b1, y, k, elgp, ctx) == 1;
@@ -643,7 +665,7 @@ namespace crypto
 		uint8_t m[255] = { };
 		m[0] = 0xFF;
 		memcpy (m + 33, data, 222);
-		SHA256 (m + 33, 222, m + 1);
+		ok = ok && SHA256 (m + 33, 222, m + 1) != nullptr;
 		// calculate b = b1*m mod p
 		ok = ok && BN_bin2bn (m, 255, b) && BN_mod_mul (b, b1, b, elgp, ctx) == 1;
 		// copy a and b
@@ -654,6 +676,9 @@ namespace crypto
 		OPENSSL_cleanse (m, sizeof (m));
 
 		if (a) BN_free (a);
+		BN_clear (k);
+		BN_clear (b1);
+		BN_clear (b);
 		BN_CTX_end (ctx);
 		BN_CTX_free (ctx);
 		return ok;
@@ -661,54 +686,45 @@ namespace crypto
 
 	bool ElGamalDecrypt (const uint8_t * key, const uint8_t * encrypted, uint8_t * data)
 	{
-		if (!key || !encrypted || !data) return false;
+		if (!data) return false;
+		if (!key || !encrypted)
+		{
+			memset (data, 0, 222);
+			return false;
+		}
 		BN_CTX * ctx = BN_CTX_new ();
-		if (!ctx) return false;
+		if (!ctx)
+		{
+			memset (data, 0, 222);
+			return false;
+		}
 		BN_CTX_start (ctx);
 		BIGNUM *x = BN_CTX_get (ctx), *a = BN_CTX_get (ctx), *b = BN_CTX_get (ctx);
-		if (!x || !a || !b)
-		{
-			BN_CTX_end (ctx);
-			BN_CTX_free (ctx);
-			return false;
-		}
-		if (!BN_bin2bn (key, 256, x) || BN_is_zero (x) || BN_cmp (x, elgp) >= 0)
-		{
-			// 0 and values >= p are not valid private exponents
-			BN_CTX_end (ctx);
-			BN_CTX_free (ctx);
-			return false;
-		}
-		BN_sub (x, elgp, x);
-		BN_sub_word (x, 1); // x = elgp - x- 1
-		if (BN_is_zero (x)) // private exponent p-1 maps to the trivial key y = 1
-		{
-			BN_CTX_end (ctx);
-			BN_CTX_free (ctx);
-			return false;
-		}
-		BN_bin2bn (encrypted + 1, 256, a);
-		BN_bin2bn (encrypted + 258, 256, b);
-		// m = b*(a^x mod p) mod p
-		BN_mod_exp (x, a, x, elgp, ctx);
-		BN_mod_mul (b, b, x, elgp, ctx);
+		// Arithmetic may leave private-dependent partial results on failure.
+		// Keep every result private until the integrity check succeeds.
+		bool ok = x && a && b && BN_bin2bn (key, 256, x)
+			&& !BN_is_zero (x) && BN_cmp (x, elgp) < 0
+			&& BN_sub (x, elgp, x) == 1 && BN_sub_word (x, 1) == 1
+			&& !BN_is_zero (x);
+		ok = ok && BN_bin2bn (encrypted + 1, 256, a)
+			&& BN_bin2bn (encrypted + 258, 256, b);
+		// m = b*(a^x mod p) mod p; preserve the legacy wire formula.
+		ok = ok && BN_mod_exp (x, a, x, elgp, ctx) == 1
+			&& BN_mod_mul (b, b, x, elgp, ctx) == 1;
 		uint8_t m[255] = { };
-		if (!bn2buf (b, m, sizeof (m)))
-		{
-			// b does not fit the 255-byte message space. Previously the
-			// uninitialised stack buffer was hashed and compared.
-			BN_CTX_end (ctx);
-			BN_CTX_free (ctx);
-			return false;
-		}
+		uint8_t hash[32] = { };
+		ok = ok && bn2buf (b, m, sizeof (m))
+			&& SHA256 (m + 33, 222, hash) != nullptr
+			&& CRYPTO_memcmp (m + 1, hash, sizeof (hash)) == 0;
+		if (ok) memcpy (data, m + 33, 222);
+		else memset (data, 0, 222);
+		OPENSSL_cleanse (m, sizeof (m));
+		OPENSSL_cleanse (hash, sizeof (hash));
+		if (x) BN_clear (x);
+		if (b) BN_clear (b);
 		BN_CTX_end (ctx);
 		BN_CTX_free (ctx);
-		uint8_t hash[32];
-		SHA256 (m + 33, 222, hash);
-		if (CRYPTO_memcmp (m + 1, hash, 32)) // hash doesn't match, decryption failed
-			return false;
-		memcpy (data, m + 33, 222);
-		return true;
+		return ok;
 	}
 
 	/*
@@ -753,7 +769,8 @@ namespace crypto
 		BIGNUM * p = BN_new ();
 		bool ok
 			= ctx && p && BN_bin2bn (priv, 256, p) && BN_mod_exp (p, elgg, p, elgp, ctx) == 1 && bn2buf (p, pub, 256);
-		if (p) BN_free (p);
+		// Failed exponentiation can leave the private exponent in p.
+		if (p) BN_clear_free (p);
 		if (ctx) BN_CTX_free (ctx);
 		if (!ok)
 		{
@@ -874,7 +891,11 @@ namespace crypto
 			OPENSSL_cleanse (m, sizeof (m));
 		}
 		if (!ok) ClearECIESOutput (encrypted);
-		if (p) EC_POINT_free (p);
+		if (p) EC_POINT_clear_free (p);
+		// Coordinates become shared secrets after multiplication.
+		if (k) BN_clear (k);
+		if (x) BN_clear (x);
+		if (y) BN_clear (y);
 		BN_CTX_end (ctx);
 		BN_CTX_free (ctx);
 		return ok;
@@ -954,8 +975,11 @@ namespace crypto
 		else
 			LogPrint (eLogError, "ECIES decrypt point is invalid");
 
-		if (s) EC_POINT_free (s);
+		if (s) EC_POINT_clear_free (s);
 		EC_POINT_free (p);
+		// A failed coordinate extraction can still write secret limbs.
+		BN_clear (x);
+		BN_clear (y);
 		BN_CTX_end (ctx);
 		BN_CTX_free (ctx);
 		return ret;

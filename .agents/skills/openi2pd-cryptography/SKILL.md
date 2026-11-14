@@ -93,6 +93,14 @@ executing project code, or inspect a real private key.
 
 ## Known issues and decisions
 
+- ElGamal failure review includes table-based Montgomery exponentiation,
+  fallback exponentiation and SHA-256, not only the final modular product.
+  Stage decrypted plaintext until integrity succeeds, cleanse private BN_CTX
+  intermediates before ending the frame, and preserve input/output aliasing.
+  Fixed-output failure clearing requires the documented writable extent;
+  deterministic malformed-input controls do not inject provider failures.
+
+
 - EC point predicates can return an error distinct from false. Require
   the documented success value, then gate signature comparison on every
   arithmetic result. Review point construction, verification and dormant
