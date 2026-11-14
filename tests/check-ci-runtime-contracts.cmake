@@ -1059,3 +1059,9 @@ require_runtime_order("libi2pd/Transports.cpp"
   "return boost::asio::post (*m_Service,")
 require_runtime_source("tests/test-signed-data-bounds.cpp"
   "assertGatewayLengths (maximumGateway, maxInner);")
+require_runtime_source("libi2pd/Datagram.cpp"
+  "if (len) signedData.insert (signedData.end (), payload, payload + len);")
+require_runtime_source("libi2pd/Datagram.cpp"
+  "if (!payload) payload = &emptyPayload;")
+require_runtime_source("tests/test-datagram-version-dispatch.cpp"
+  "TestEmptyAndMissingPayload ();")

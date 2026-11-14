@@ -420,6 +420,8 @@ namespace datagram
 		// `version` selects the framing of this message. eDatagramDefault
 		// keeps the session's version; an explicit V1/V2/V3 overrides it so a
 		// SAM subsession style is not frozen by the destination's default.
+		// Borrow payload for this call. Null is valid only for length zero;
+		// invalid null/nonempty input is refused before session admission.
 		void SendDatagramTo (const uint8_t * payload, size_t len, const i2p::data::IdentHash & ident,
 			uint16_t fromPort = 0, uint16_t toPort = 0, DatagramVersion version = eDatagramDefault);
 		void SendRawDatagramTo (const uint8_t * payload, size_t len, const i2p::data::IdentHash & ident,
@@ -429,6 +431,7 @@ namespace datagram
 		// pool is thread-safe and the gzip deflator is serialized.
 
 		std::shared_ptr<DatagramSession> GetSession (const i2p::data::IdentHash & ident);
+		// Direct send overloads share the same null/empty payload contract.
 		void SendDatagram (std::shared_ptr<DatagramSession> session, const uint8_t * payload, size_t len,
 			uint16_t fromPort, uint16_t toPort, const i2p::util::Mapping * options = nullptr,
 			DatagramVersion version = eDatagramDefault);

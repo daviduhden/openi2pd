@@ -130,6 +130,7 @@ namespace datagram
 	void DatagramDestination::SendDatagramTo (const uint8_t * payload, size_t len,
 		const i2p::data::IdentHash & identity, uint16_t fromPort, uint16_t toPort, DatagramVersion version)
 	{
+		if (!payload && len) return;
 		auto session = GetSession (identity);
 		SendDatagram (session, payload, len, fromPort, toPort, nullptr, version);
 		FlushSendQueue (session);
@@ -138,6 +139,7 @@ namespace datagram
 	void DatagramDestination::SendRawDatagramTo (const uint8_t * payload, size_t len,
 		const i2p::data::IdentHash & identity, uint16_t fromPort, uint16_t toPort, uint8_t protocol)
 	{
+		if (!payload && len) return;
 		auto session = ObtainSession (identity);
 		SendRawDatagram (session, payload, len, fromPort, toPort, protocol);
 		FlushSendQueue (session);
@@ -151,6 +153,11 @@ namespace datagram
 	void DatagramDestination::SendDatagram (std::shared_ptr<DatagramSession> session, const uint8_t * payload,
 		size_t len, uint16_t fromPort, uint16_t toPort, const i2p::util::Mapping * options, DatagramVersion version)
 	{
+		if (!payload && len) return;
+		// Empty datagrams are valid; signing backends still receive a
+		// backed pointer so their empty-range operations remain defined.
+		static constexpr uint8_t emptyPayload = 0;
+		if (!payload) payload = &emptyPayload;
 		if (session)
 		{
 			// The framing is selected per send. The session's version is only
@@ -265,7 +272,7 @@ namespace datagram
 				signedData.insert (signedData.end (), flags, flags + 2);
 				signedData.insert (signedData.end (), optionsBuf.begin (), optionsBuf.end ());
 				signedData.insert (signedData.end (), offlineSignature.begin (), offlineSignature.end ());
-				signedData.insert (signedData.end (), payload, payload + len);
+				if (len) signedData.insert (signedData.end (), payload, payload + len);
 				std::vector<uint8_t> signature (keys.GetSignatureLen ());
 				if (!signature.empty ())
 				{
@@ -294,6 +301,9 @@ namespace datagram
 	void DatagramDestination::SendRawDatagram (std::shared_ptr<DatagramSession> session, const uint8_t * payload,
 		size_t len, uint16_t fromPort, uint16_t toPort, uint8_t protocol)
 	{
+		if (!payload && len) return;
+		static constexpr uint8_t emptyPayload = 0;
+		if (!payload) payload = &emptyPayload;
 		if (session)
 			// Protocol 0 (I2CP "any") is a valid per-message value and must not
 			// be rewritten to 18; callers that want the default pass

@@ -168,6 +168,30 @@ void TestPerSendVersion ()
 	fixture.session->SetSendObserverForTesting (nullptr);
 }
 
+void TestEmptyAndMissingPayload ()
+{
+	auto fixture = MakeFixture ();
+	Observe (fixture);
+	for (auto version : { i2p::datagram::eDatagramV1, i2p::datagram::eDatagramV2, i2p::datagram::eDatagramV3 })
+	{
+		const auto before = fixture.sent.size ();
+		fixture.destination->SendDatagram (fixture.session, nullptr, 1, 0, 0, nullptr, version);
+		fixture.destination->SendDatagramTo (nullptr, 1, fixture.remote, 0, 0, version);
+		assert (fixture.sent.size () == before);
+		fixture.destination->SendDatagramTo (nullptr, 0, fixture.remote, 0, 0, version);
+		assert (fixture.sent.size () == before + 1 && fixture.sent.back ().valid);
+		assert (!fixture.sent.back ().content.empty ()); // signed/framed empty payload
+	}
+	const auto before = fixture.sent.size ();
+	fixture.destination->SendRawDatagram (fixture.session, nullptr, 1, 0, 0);
+	fixture.destination->SendRawDatagramTo (nullptr, 1, fixture.remote);
+	assert (fixture.sent.size () == before);
+	fixture.destination->SendRawDatagramTo (nullptr, 0, fixture.remote);
+	assert (fixture.sent.size () == before + 1 && fixture.sent.back ().valid);
+	assert (fixture.sent.back ().content.empty ());
+	fixture.session->SetSendObserverForTesting (nullptr);
+}
+
 void TestSessionVersionSwitch ()
 {
 	auto fixture = MakeFixture ();
@@ -239,6 +263,7 @@ void TestVersionHelpers ()
 int main ()
 {
 	TestPerSendVersion ();
+	TestEmptyAndMissingPayload ();
 	TestSessionVersionSwitch ();
 	TestStopClearsSendQueue ();
 	TestVersionHelpers ();

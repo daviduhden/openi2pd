@@ -99,6 +99,12 @@ peer or add a hidden external checkout. The reference is for reading only.
 
 ## Known issues and decisions
 
+- Empty datagrams remain valid across V1/V2/V3/raw. Reject null/nonempty
+  input before session creation, but give signing/framing backends backed
+  storage for empty input and avoid constructing null pointer ranges.
+  Observe framed output in the existing version-dispatch regression rather
+  than treating a nullable session's early return as payload validation.
+
 - Gateway hardening must preserve tunnel ID, inner message bytes and the
   serialized inner/outer lengths in both copy and in-place paths. Allocation
   reservations include the inner I2NP and gateway headers. Refusal of invalid
