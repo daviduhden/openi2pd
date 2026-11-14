@@ -117,12 +117,14 @@ grep -Fq -- '--min-api 29' "$root/android/tools/java25-probe/verify-java25.sh" |
 # Standalone dexing must use AGP's resolved artifact, never cache order.
 grep -Fq "tasks.register('writeJava25R8Classpath')" "$root_gradle" ||
 	fail 'AGP R8 provenance task is missing'
-grep -Fq 'buildscript.configurations.classpath.incoming.artifactView' "$root_gradle" ||
-	fail 'R8 report does not inspect the resolved AGP classpath'
-grep -Fq "component.module == 'r8'" "$root_gradle" ||
-	fail 'R8 artifact selection is not component-scoped'
-grep -Fq 'artifacts.size() != 1' "$root_gradle" ||
-	fail 'R8 artifact selection does not reject ambiguity'
+grep -Fq 'com.android.build.gradle.AppPlugin.class.classLoader' "$root_gradle" ||
+	fail 'R8 provenance does not use the AGP plugin classloader'
+grep -Fq "java25AgpLoader.loadClass('com.android.tools.r8.D8').protectionDomain.codeSource.location.toURI()" "$root_gradle" ||
+	fail 'R8 report does not use the AGP-loaded D8 container'
+grep -Fq "java25AgpLoader.loadClass('com.android.tools.r8.R8').protectionDomain.codeSource.location.toURI()" "$root_gradle" ||
+	fail 'R8 report does not inspect the AGP-loaded R8 container'
+grep -Fq 'java25D8Container.canonicalFile != java25R8Container.canonicalFile' "$root_gradle" ||
+	fail 'D8 and R8 provenance does not reject mismatched containers'
 
 # The graceful-stop deadline must be owned by RouterService and enqueued
 # on its worker; a java.util.Timer would call JNI from a timer thread.

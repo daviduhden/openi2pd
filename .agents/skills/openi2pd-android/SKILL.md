@@ -121,14 +121,20 @@ run Gradle, install an APK or run a device test.
 
 ## Known issues and decisions
 
+- SAF source retention guards match formatter whitespace only around the
+  constructor call, with document/path operands and new/Source token
+  separation intact. Negative controls reject a root operand or merged token;
+  charging an encoded URI must still precede retention of its Source.
+
 - Java uses the explicit Language: Java document in .clang-format; do not
   apply the Cpp style or format generated JNI headers as Java-owned source.
   Review records, pattern switches and text blocks for preserved tokens and
   literals, and run a full Java formatter dry-run after any manual correction.
 
 
-- The Java 25 standalone probe consumes writeJava25R8Classpath's singleton
-  report from the resolved root AGP classpath. Search order in Gradle caches
+- The Java 25 standalone probe consumes writeJava25R8Classpath's container
+  report from D8/R8 classes loaded by AppPlugin. AGP can bundle these classes
+  without a separate Maven artifact; both must resolve to one canonical JAR. Search order in Gradle caches
   or SDK build-tools is not dependency provenance. A major-69 refusal by an
   older standalone R8 does not establish that AGP app dexing failed; inspect
   both steps and keep later skipped JNI/DEX checks pending.
@@ -523,9 +529,9 @@ run Gradle, install an APK or run a device test.
   automated API denylist; API-30+/33+ usage is prevented by review only.
   Real Gradle/D8/R8/Lint/device evidence is manual CI only.
 - The CI Java 25 D8/R8 probe must follow `:i2pd:assembleDebug`: unit-test and
-  lint tasks can finish without resolving AGP's R8 artifact. Discover the jar
-  selected by the pinned AGP from the Gradle cache only after app dexing; do
-  not substitute a separately pinned or historical R8 version.
+  lint tasks alone do not establish app dexing. Resolve the tool's container
+  through the actual plugin classloader rather than assuming a Maven module
+  or cache layout; do not substitute a separately pinned historical R8.
 
 - Native GUI contract: `UiFactory` owns the programmatic-screen row and
   column helpers (48dp target, logical padding, centred `MaxWidthLinearLayout`,

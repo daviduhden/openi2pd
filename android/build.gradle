@@ -41,27 +41,24 @@ tasks.register('clean', Delete) {
     delete rootProject.layout.buildDirectory
 }
 
-// Report the R8 artifact actually selected by AGP. Cache traversal can
-// select an older SDK/Gradle artifact that cannot read Java 25 classes.
-// Capture the resolved file collection without reading Project at task
-// execution, so this report also works with the configuration cache.
-def java25R8Artifacts = buildscript.configurations.classpath.incoming.artifactView {
-    componentFilter { component ->
-        component instanceof org.gradle.api.artifacts.component.ModuleComponentIdentifier &&
-                component.module == 'r8'
-    }
-}.files
+// AGP bundles R8 by default, so a separate Maven module need not exist.
+// Use the containers of its actual loaded entry points, not cache order.
+// Capture plain files before task execution to avoid retaining a loader
+// or querying Project from a configuration-cache task action.
+def java25AgpLoader = com.android.build.gradle.AppPlugin.class.classLoader
+def java25D8Container = new File(java25AgpLoader.loadClass('com.android.tools.r8.D8').protectionDomain.codeSource.location.toURI())
+def java25R8Container = new File(java25AgpLoader.loadClass('com.android.tools.r8.R8').protectionDomain.codeSource.location.toURI())
 def java25R8Report = layout.buildDirectory.file('reports/java25/r8-classpath.txt')
 tasks.register('writeJava25R8Classpath') {
-    inputs.files(java25R8Artifacts)
+    inputs.files(java25D8Container, java25R8Container)
     outputs.file(java25R8Report)
     doLast {
-        def artifacts = java25R8Artifacts.files
-        if (artifacts.size() != 1) {
-            throw new GradleException('Expected exactly one AGP-resolved R8 artifact')
+        if (!java25D8Container.isFile() ||
+                java25D8Container.canonicalFile != java25R8Container.canonicalFile) {
+            throw new GradleException('Expected D8 and R8 in one AGP-loaded JAR')
         }
         def report = java25R8Report.get().asFile
         report.parentFile.mkdirs()
-        report.setText(artifacts.iterator().next().absolutePath + '\n', 'UTF-8')
+        report.setText(java25D8Container.canonicalPath + '\n', 'UTF-8')
     }
 }
