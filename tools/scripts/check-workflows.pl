@@ -738,7 +738,7 @@ sub windows_crash_command_errors {
       unless $windows =~
 /^\s*\$debugArguments = \@\('-G', '-noshell', '-lines', '-y', "`"\$symbols`"", '-logo', "`"\$log`"", '-cf', "`"\$commands`"", "`"\$binary`""\)\s*$/m
       && $windows =~
-      /foreach \(\$test in \@\([^\n]*'test-privsep-windows-supervisor'\)\)/
+      /foreach \(\$test in \@\([^)]*'test-privsep-windows-supervisor'\s*\)\)/
       && $windows =~
 /^\s*build-msvc\/tests\/Release\/test-privsep-windows-supervisor[.]exe\s*$/m;
     push @violations,
@@ -780,6 +780,10 @@ q{sxe -c "bu ntdll!NtTerminateProcess \".if (@edx == 0xc0000142) { .echo OPENI2P
             last;
         }
         next if !length $line || $line eq 'g';
+        if ( $probe_mode && $line eq '.echo OPENI2PD_PROBE_ARMED' ) {
+            $probe_seen{$line}++;
+            next;
+        }
         if ( $probe_mode && $probe_commands{$line} ) {
             $probe_seen{$line}++;
             next;
@@ -803,7 +807,7 @@ q{sxe -c "bu ntdll!NtTerminateProcess \".if (@edx == 0xc0000142) { .echo OPENI2P
     push @violations,
       'build-windows.yml: startup probe termination evidence missing'
       if $probe_mode
-      && ( keys(%probe_seen) != 2 || grep { $_ != 1 } values %probe_seen );
+      && ( keys(%probe_seen) != 3 || grep { $_ != 1 } values %probe_seen );
     return @violations;
 }
 
@@ -821,7 +825,7 @@ sub windows_startup_probe_errors {
       'build-windows.yml: startup probe command-file inventory changed'
       unless @command_files == 2 && @debugger_launches == 3;
     my $arguments =
-q{$probeArguments = @('-g', '-G', '-o', '-noshell', '-lines', '-y', "`"$symbols`"", '-logo', "`"$log`"", '-cf', "`"$commands`"", "`"$binary`"", '--diagnose-worker-initialization')};
+q{$probeArguments = @('-o', '-noshell', '-lines', '-y', "`"$symbols`"", '-logo', "`"$log`"", '-cf', "`"$commands`"", "`"$binary`"", '--diagnose-worker-initialization')};
     push @violations,
 'build-windows.yml: startup probe must trace only the closed diagnostic mode'
       unless index( $probe, $arguments ) >= 0;
@@ -833,6 +837,7 @@ q{$probeArguments = @('-g', '-G', '-o', '-noshell', '-lines', '-y', "`"$symbols`
     for my $required (
         q{if: ${{ always() && steps.msvc_tests.outcome == 'failure' }}},
         q{Get-FileHash -Algorithm SHA256 -Path $binary},
+        q{Select-String -Path $log -Pattern '^OPENI2PD_PROBE_ARMED\s*$' -Quiet},
         q{WaitForExit(60000)},
         q{taskkill.exe /PID $debugger.Id /T /F},
         q{Select-String -Path $log -Pattern '^OPENI2PD_CRASH\s*$' -Quiet},

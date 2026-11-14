@@ -218,7 +218,10 @@ workflow, run `gh`, build or test.
   artifact path before the Java 25 probe; keep task, report consumer and
   artifact retention synchronized. An APK build can succeed before a stale
   standalone D8 fails, so retain their distinct step-level evidence.
-
+- Debugger script presence is not script execution. Require an early armed
+  marker and preserve it before classifying debugger exit. The contained
+  worker probe stops initially and resumes in its script; do not add global
+  initial/final breakpoint suppression that conflicts with its event filters.
 
 
 - A native initialization exit can bypass exception filters. Preserve the

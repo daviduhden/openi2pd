@@ -258,8 +258,11 @@ jobs:
       - name: Run TUI and worker IPC tests
         id: msvc_tests
         run: |
+          $testPattern = '^(test-(tui-protocol|tui-terminal|tui-pipe-name|tui-win32-pipe|privsep-windows-(ipc|isolation|supervisor)|win32-shutdown-deadline|profile-static-lifetime|' +
+            'i2p-service-readiness|tunnel-destination-cache|destination-leaseset-session|deadline-mutex|child-stop-budget|atomic-shared-ptr|kad-dht|eddsa|signature-identity-hardening|' +
+            'crypto-audit-bounds|signed-data-bounds|command-line-policy|release-assertions)|command-line-policy-rejections|i2pd-command-line-policy)$'
           ctest --test-dir build-msvc -C Release -j 2 --output-on-failure `
-            -R '^(test-(tui-protocol|tui-terminal|tui-pipe-name|tui-win32-pipe|privsep-windows-(ipc|isolation|supervisor)|win32-shutdown-deadline|profile-static-lifetime|i2p-service-readiness|tunnel-destination-cache|destination-leaseset-session|deadline-mutex|child-stop-budget|atomic-shared-ptr|kad-dht|eddsa|signature-identity-hardening|crypto-audit-bounds|signed-data-bounds|command-line-policy|release-assertions)|command-line-policy-rejections|i2pd-command-line-policy)$' `
+            -R $testPattern `
             --no-tests=error --output-junit "$PWD/ctest-msvc.xml"
       - name: Verify runtime install
         run: |
@@ -293,7 +296,20 @@ jobs:
           g
           '@ | Set-Content -Encoding ascii $commands
           $failures = @()
-          foreach ($test in @('test-tui-protocol', 'test-tui-pipe-name', 'test-privsep-windows-isolation', 'test-profile-static-lifetime', 'test-atomic-shared-ptr', 'test-kad-dht', 'test-i2p-service-readiness', 'test-tunnel-destination-cache', 'test-destination-leaseset-session', 'test-deadline-mutex', 'test-child-stop-budget', 'test-privsep-windows-supervisor')) {
+          foreach ($test in @(
+            'test-tui-protocol',
+            'test-tui-pipe-name',
+            'test-privsep-windows-isolation',
+            'test-profile-static-lifetime',
+            'test-atomic-shared-ptr',
+            'test-kad-dht',
+            'test-i2p-service-readiness',
+            'test-tunnel-destination-cache',
+            'test-destination-leaseset-session',
+            'test-deadline-mutex',
+            'test-child-stop-budget',
+            'test-privsep-windows-supervisor'
+          )) {
             $image = "$test.exe"
             $binary = Join-Path $env:GITHUB_WORKSPACE "build-msvc/tests/Release/$image"
             if (-not (Test-Path $binary)) { throw "missing diagnostic target $image" }
@@ -341,7 +357,10 @@ jobs:
           # Normal exit with DLL_INIT_FAILED need not raise an exception.
           # At each process creation, arm the x64 ExitStatus predicate;
           # print code locations only and preserve the real termination.
+          # Stop initially so command-file execution is observable.
+          # The script resumes explicitly after arming its filters.
           @'
+          .echo OPENI2PD_PROBE_ARMED
           sxe -c ".echo OPENI2PD_CRASH; .lastevent; ln @rip; kc 40; q" av
           sxe -c ".echo OPENI2PD_CRASH; .lastevent; ln @rip; kc 40; q" 0xc0000374
           sxe -c ".echo OPENI2PD_CRASH; .lastevent; ln @rip; kc 40; q" 0xc0000409
@@ -358,15 +377,18 @@ jobs:
           $log = Join-Path $evidence 'initializer.txt'
           $consoleLog = Join-Path $evidence 'stdout.txt'
           $consoleError = Join-Path $evidence 'stderr.txt'
-          $probeArguments = @('-g', '-G', '-o', '-noshell', '-lines', '-y', "`"$symbols`"", '-logo', "`"$log`"", '-cf', "`"$commands`"", "`"$binary`"", '--diagnose-worker-initialization')
+          $probeArguments = @('-o', '-noshell', '-lines', '-y', "`"$symbols`"", '-logo', "`"$log`"", '-cf', "`"$commands`"", "`"$binary`"", '--diagnose-worker-initialization')
           $debugger = Start-Process -FilePath $cdb -ArgumentList $probeArguments -NoNewWindow -PassThru -RedirectStandardOutput $consoleLog -RedirectStandardError $consoleError
           if (-not $debugger.WaitForExit(60000)) {
             & taskkill.exe /PID $debugger.Id /T /F
             if ($LASTEXITCODE -ne 0) { throw 'startup probe cleanup failed' }
             throw 'startup probe debugger deadline'
           }
-          if ($debugger.ExitCode -ne 0) { throw 'startup probe debugger failed' }
           if (-not (Test-Path $log)) { throw 'startup probe log missing' }
+          if (-not (Select-String -Path $log -Pattern '^OPENI2PD_PROBE_ARMED\s*$' -Quiet)) {
+            throw 'startup probe command file did not execute'
+          }
+          if ($debugger.ExitCode -ne 0) { throw 'startup probe debugger failed' }
           if (Select-String -Path $log -Pattern '^OPENI2PD_CRASH\s*$' -Quiet) {
             throw 'startup probe debugger exception'
           }

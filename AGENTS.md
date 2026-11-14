@@ -148,6 +148,12 @@ that exact run and inspect the generated control archive before changing
 packaging hooks; related regular/static package trees can have different
 scripts and helper expansions.
 
+A diagnostic's configured command file is not evidence that it executed.
+Require a nonsecret arming marker before trusting missing exception/event
+output, and keep initialization-status attribution open when it is absent.
+Resolve standalone dependency probes through the build's actual classpath;
+cache presence and a successful app build do not identify the probe version.
+
 ### Tracking states
 
 For status-only worker exits, an exception-only debugger script may collect

@@ -491,7 +491,12 @@ qr/worker initialization diagnostic|unsupported crash debugger line|missing boun
     }
     write_file( $windows, $source );
     for my $boundary (
-        [ '@edx == 0xc0000142', '@edx == 0' ],
+        [ '@edx == 0xc0000142',         '@edx == 0' ],
+        [ '.echo OPENI2PD_PROBE_ARMED', '.echo UNARMED' ],
+        [
+            q{$probeArguments = @('-o'},
+            q{$probeArguments = @('-g', '-G', '-o'}
+        ],
         [
             'OPENI2PD_PROBE_TERMINATION; ln @rip; kc 40',
             'OPENI2PD_PROBE_TERMINATION; ln @rip; kp 40'
