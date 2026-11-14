@@ -11,10 +11,13 @@
  *
  */
 
+#include <algorithm>
+#include <array>
 #include <cassert>
 #include <cstdint>
 #include <cstring>
 #include <memory>
+#include <limits>
 #include <string>
 #include <vector>
 
@@ -460,6 +463,97 @@ void TestSendMessageSeams (const i2p::data::IdentityEx & identity)
 	assert ((int)eI2CPMessageStatusSendFailureExpired == 14);
 }
 
+void TestDataPayloadCapacity ()
+{
+	using i2p::client::AppendI2CPDataPayload;
+	constexpr size_t guard = 8;
+	std::vector<uint8_t> storage (i2p::I2NP_MAX_MESSAGE_SIZE + 2 * guard, 0xA5);
+	std::vector<uint8_t> payload (i2p::I2NP_MAX_MESSAGE_SIZE, 0x5A);
+	i2p::I2NPMessage message;
+	message.buf = storage.data () + guard;
+	message.maxLen = i2p::I2NP_MAX_MESSAGE_SIZE;
+	const auto initialLen = message.len;
+	const size_t maxPayload = message.maxLen - initialLen - sizeof (uint32_t);
+	const auto original = storage;
+	for (const size_t length : { maxPayload + 1, std::numeric_limits<size_t>::max () })
+	{
+		assert (!AppendI2CPDataPayload (message, payload.data (), length));
+		assert (message.len == initialLen && storage == original);
+	}
+	assert (!AppendI2CPDataPayload (message, nullptr, 0));
+	assert (message.len == initialLen && storage == original);
+	assert (AppendI2CPDataPayload (message, payload.data (), maxPayload));
+	assert (message.len == message.maxLen);
+	assert (bufbe32toh (message.GetPayload ()) == maxPayload);
+	assert (std::equal (payload.begin (), payload.begin () + maxPayload, message.GetPayload () + 4));
+	for (size_t i = 0; i < guard; ++i)
+	{
+		assert (storage[i] == 0xA5);
+		assert (storage[guard + message.maxLen + i] == 0xA5);
+	}
+	// Reusing a populated message is refused rather than overwriting it.
+	const auto populated = storage;
+	assert (!AppendI2CPDataPayload (message, payload.data (), 1));
+	assert (storage == populated);
+
+	for (const size_t remaining : { size_t { 3 }, size_t { 4 } })
+	{
+		i2p::I2NPMessage small;
+		small.buf = storage.data () + guard;
+		small.maxLen = small.len + remaining;
+		const auto before = storage;
+		assert (!AppendI2CPDataPayload (small, payload.data (), 1));
+		assert (storage == before);
+		if (remaining == 4)
+		{
+			assert (AppendI2CPDataPayload (small, payload.data (), 0));
+			assert (small.len == small.maxLen && bufbe32toh (small.GetPayload ()) == 0);
+		}
+	}
+	i2p::I2NPMessage invalid;
+	assert (!AppendI2CPDataPayload (invalid, payload.data (), 1));
+	invalid.buf = storage.data ();
+	invalid.offset = std::numeric_limits<size_t>::max () - i2p::I2NP_HEADER_SIZE - 8;
+	invalid.len = invalid.offset + i2p::I2NP_HEADER_SIZE;
+	invalid.maxLen = std::numeric_limits<size_t>::max ();
+	assert (!AppendI2CPDataPayload (invalid, payload.data (), 1));
+	invalid.offset = std::numeric_limits<size_t>::max ();
+	invalid.len = invalid.offset;
+	invalid.maxLen = storage.size ();
+	assert (!AppendI2CPDataPayload (invalid, payload.data (), 1));
+}
+
+void TestOutboundFrameCapacity ()
+{
+	using namespace i2p::client;
+	std::vector<uint8_t> payload (I2CP_MAX_MESSAGE_LENGTH, 0xA7);
+	constexpr size_t capacity = I2CP_MAX_MESSAGE_LENGTH - I2CP_HEADER_SIZE;
+	for (size_t prefix : { size_t { 0 }, size_t { 10 } })
+	{
+		const size_t maximum = capacity - prefix;
+		assert (!CreateI2CPMessageFrame (I2CP_MESSAGE_PAYLOAD_MESSAGE, payload.data (), maximum + 1, prefix));
+		assert (!CreateI2CPMessageFrame (
+			I2CP_MESSAGE_PAYLOAD_MESSAGE, payload.data (), std::numeric_limits<size_t>::max (), prefix));
+		assert (!CreateI2CPMessageFrame (I2CP_MESSAGE_PAYLOAD_MESSAGE, nullptr, 1, prefix));
+		auto frame = CreateI2CPMessageFrame (I2CP_MESSAGE_PAYLOAD_MESSAGE, payload.data (), maximum, prefix);
+		assert (frame && frame->len == I2CP_MAX_MESSAGE_LENGTH);
+		assert (bufbe32toh (frame->buf) == capacity);
+		assert (frame->buf[I2CP_HEADER_TYPE_OFFSET] == I2CP_MESSAGE_PAYLOAD_MESSAGE);
+		for (size_t i = 0; i < prefix; ++i) assert (frame->buf[I2CP_HEADER_SIZE + i] == 0);
+		assert (std::equal (payload.begin (), payload.begin () + maximum, frame->buf + I2CP_HEADER_SIZE + prefix));
+		auto empty = CreateI2CPMessageFrame (I2CP_MESSAGE_PAYLOAD_MESSAGE, nullptr, 0, prefix);
+		assert (empty && empty->len == I2CP_HEADER_SIZE + prefix);
+		assert (bufbe32toh (empty->buf) == prefix);
+	}
+	assert (!CreateI2CPMessageFrame (I2CP_MESSAGE_PAYLOAD_MESSAGE, payload.data (), 0, capacity + 1));
+	assert (!CreateI2CPMessageFrame (
+		I2CP_MESSAGE_PAYLOAD_MESSAGE, payload.data (), 0, std::numeric_limits<size_t>::max ()));
+	auto prefixOnly = CreateI2CPMessageFrame (I2CP_MESSAGE_PAYLOAD_MESSAGE, nullptr, 0, capacity);
+	assert (prefixOnly && prefixOnly->len == I2CP_MAX_MESSAGE_LENGTH);
+	assert (std::all_of (prefixOnly->buf + I2CP_HEADER_SIZE, prefixOnly->buf + prefixOnly->len,
+		[] (uint8_t value) { return value == 0; }));
+}
+
 void TestAdmissionPolicy ()
 {
 	using namespace i2p::client;
@@ -507,6 +601,8 @@ int main ()
 	TestRegistry (identity);
 	TestHostReplyEncoding (identity);
 	TestSendMessageSeams (identity);
+	TestDataPayloadCapacity ();
+	TestOutboundFrameCapacity ();
 	TestAdmissionPolicy ();
 
 	return 0;

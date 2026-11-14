@@ -19,6 +19,7 @@
 #include <charconv>
 #include <chrono>
 #include <future>
+#include <limits>
 #include <openssl/rand.h>
 #include "Base.h"
 #include "I2PEndian.h"
@@ -216,6 +217,36 @@ namespace client
 		// fill the message, so trailing bytes are malformed rather than
 		// ignored.
 		return offset == len;
+	}
+
+	bool AppendI2CPDataPayload (I2NPMessage & message, const uint8_t * payload, size_t len)
+	{
+		if (!payload || !message.buf || message.offset > message.len || message.len > message.maxLen
+			|| message.maxLen > I2NP_MAX_MESSAGE_SIZE || message.len - message.offset != I2NP_HEADER_SIZE)
+			return false;
+		constexpr size_t prefix = sizeof (uint32_t);
+		const size_t remaining = message.maxLen - message.len;
+		if (remaining < prefix || len > remaining - prefix || len > std::numeric_limits<uint16_t>::max () - prefix)
+			return false;
+		auto * output = message.GetPayload ();
+		htobe32buf (output, static_cast<uint32_t> (len));
+		if (len) memcpy (output + prefix, payload, len);
+		message.len += prefix + len;
+		return true;
+	}
+
+	std::shared_ptr<i2p::stream::SendBuffer> CreateI2CPMessageFrame (
+		uint8_t type, const uint8_t * payload, size_t len, size_t prefixLength)
+	{
+		constexpr size_t bodyCapacity = I2CP_MAX_MESSAGE_LENGTH - I2CP_HEADER_SIZE;
+		if ((!payload && len) || prefixLength > bodyCapacity || len > bodyCapacity - prefixLength) return nullptr;
+		const size_t bodyLength = prefixLength + len;
+		auto frame = std::make_shared<i2p::stream::SendBuffer> (I2CP_HEADER_SIZE + bodyLength);
+		htobe32buf (frame->buf + I2CP_HEADER_LENGTH_OFFSET, static_cast<uint32_t> (bodyLength));
+		frame->buf[I2CP_HEADER_TYPE_OFFSET] = type;
+		if (prefixLength) memset (frame->buf + I2CP_HEADER_SIZE, 0, prefixLength);
+		if (len) memcpy (frame->buf + I2CP_HEADER_SIZE + prefixLength, payload, len);
+		return frame;
 	}
 
 	I2CPSendMessageCheck CheckI2CPSendMessage (
@@ -847,27 +878,14 @@ namespace client
 	void I2CPDestination::SendMsgTo (
 		const uint8_t * payload, size_t len, const i2p::data::IdentHash & ident, uint32_t nonce)
 	{
-		// I2CP allows a 64 KiB payload, but an I2NP Data message has a
-		// 4-byte length prefix inside a fixed I2NP_MAX_MESSAGE_SIZE buffer.
-		// Reject before copying or consuming a pool buffer.
-		if (!payload || len > I2NP_MAX_MESSAGE_SIZE - 4)
-		{
-			LogPrint (eLogError, "I2CP: I2NP Data payload is too large ", len);
-			if (auto owner = GetSessionOwner ())
-				owner->SendMessageStatusMessage (nonce, eI2CPMessageStatusGuaranteedFailure);
-			return;
-		}
 		auto msg = m_I2NPMsgsPool.AcquireSharedMt ();
-		if (!msg)
+		if (!msg || !AppendI2CPDataPayload (*msg, payload, len))
 		{
+			LogPrint (eLogError, "I2CP: I2NP Data payload cannot fit, ", len, " bytes");
 			if (auto owner = GetSessionOwner ())
 				owner->SendMessageStatusMessage (nonce, eI2CPMessageStatusGuaranteedFailure);
 			return;
 		}
-		uint8_t * buf = msg->GetPayload ();
-		htobe32buf (buf, static_cast<uint32_t> (len));
-		if (len) memcpy (buf + 4, payload, len);
-		msg->len += len + 4;
 		msg->FillI2NPMessageHeader (eI2NPData, GetRng () ());
 		auto remote = FindLeaseSet (ident);
 		if (remote)
@@ -1017,18 +1035,13 @@ namespace client
 			remoteSession->SetSharedRoutingPath (nullptr);
 			return false;
 		}
-		// create Data message
-		if (!payload || len > I2NP_MAX_MESSAGE_SIZE - 4)
+		// Both direct and fallback sends share complete framing admission.
+		auto msg = m_I2NPMsgsPool.AcquireSharedMt ();
+		if (!msg || !AppendI2CPDataPayload (*msg, payload, len))
 		{
-			LogPrint (eLogError, "I2CP: I2NP Data payload is too large ", len);
+			LogPrint (eLogError, "I2CP: I2NP Data payload cannot fit, ", len, " bytes");
 			return false;
 		}
-		auto msg = m_I2NPMsgsPool.AcquireSharedMt ();
-		if (!msg) return false;
-		uint8_t * buf = msg->GetPayload ();
-		htobe32buf (buf, static_cast<uint32_t> (len));
-		if (len) memcpy (buf + 4, payload, len);
-		msg->len += len + 4;
 		msg->FillI2NPMessageHeader (eI2NPData, GetRng () ());
 		// wrap in gralic
 		auto garlic = remoteSession->WrapSingleMessage (msg);
@@ -1437,10 +1450,10 @@ namespace client
 	{
 		auto authority = LockOwner ();
 		if (m_Terminated.load () || !m_OwnerAuthority->owner || m_Owner.IsStopping ()) return;
-		auto l = len + I2CP_HEADER_SIZE;
-		if (l > I2CP_MAX_MESSAGE_LENGTH)
+		auto sendBuf = CreateI2CPMessageFrame (type, payload, len);
+		if (!sendBuf)
 		{
-			LogPrint (eLogError, "I2CP: Message to send is too long ", l);
+			LogPrint (eLogError, "I2CP: Invalid outbound message body, ", len, " bytes");
 			if (closeAfterFlush)
 			{
 				// Nothing can be flushed, so the caller's teardown must not be
@@ -1458,11 +1471,7 @@ namespace client
 		// Build a complete, caller-independent buffer. The service thread is
 		// the only place where it is copied into the in-flight buffer or
 		// queued.
-		auto sendBuf = std::make_shared<i2p::stream::SendBuffer> (l);
-		uint8_t * buf = sendBuf->buf;
-		htobe32buf (buf + I2CP_HEADER_LENGTH_OFFSET, static_cast<uint32_t> (len));
-		buf[I2CP_HEADER_TYPE_OFFSET] = type;
-		if (len) memcpy (buf + I2CP_HEADER_SIZE, payload, len);
+		const size_t l = sendBuf->len;
 
 		if (m_Owner.IsInServiceThread ())
 			QueueI2CPMessage (std::move (sendBuf), l, closeAfterFlush);
@@ -2482,20 +2491,17 @@ namespace client
 		auto authority = LockOwner ();
 		if (m_Terminated.load () || !m_OwnerAuthority->owner || m_Owner.IsStopping ()) return;
 		// we don't use SendI2CPMessage to eliminate additional copy
-		auto l = len + 10 + I2CP_HEADER_SIZE;
-		if (l > I2CP_MAX_MESSAGE_LENGTH)
+		auto sendBuf = CreateI2CPMessageFrame (I2CP_MESSAGE_PAYLOAD_MESSAGE, payload, len, 10);
+		if (!sendBuf)
 		{
-			LogPrint (eLogError, "I2CP: Message to send is too long ", l);
+			LogPrint (eLogError, "I2CP: Invalid outbound payload, ", len, " bytes");
 			return;
 		}
-		auto sendBuf = std::make_shared<i2p::stream::SendBuffer> (l);
+		const size_t l = sendBuf->len;
 		uint8_t * buf = sendBuf->buf;
-		htobe32buf (buf + I2CP_HEADER_LENGTH_OFFSET, static_cast<uint32_t> (len + 10));
-		buf[I2CP_HEADER_TYPE_OFFSET] = I2CP_MESSAGE_PAYLOAD_MESSAGE;
 		htobe16buf (buf + I2CP_HEADER_SIZE, m_SessionID.load ());
 		htobe32buf (buf + I2CP_HEADER_SIZE + 2, m_MessageID.fetch_add (1));
 		htobe32buf (buf + I2CP_HEADER_SIZE + 6, static_cast<uint32_t> (len));
-		if (len) memcpy (buf + I2CP_HEADER_SIZE + 10, payload, len);
 
 		if (m_Owner.IsInServiceThread ())
 			QueueI2CPMessage (std::move (sendBuf), l, false);

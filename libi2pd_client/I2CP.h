@@ -181,6 +181,26 @@ namespace client
 	// a status instead of dropping the message silently.
 	bool ParseI2CPSendMessage (const uint8_t * buf, size_t len, bool withExpiration, I2CPSendMessageRequest & request);
 
+	/**
+	 * Write the length-prefixed payload of a fresh I2NP Data message.
+	 * Borrows a nonnull, nonoverlapping payload and checks the message's
+	 * complete geometry and remaining capacity before any write.
+	 * Returns false without mutation for invalid input or insufficient
+	 * space. Header publication remains the caller's responsibility.
+	 */
+	bool AppendI2CPDataPayload (I2NPMessage & message, const uint8_t * payload, size_t len);
+
+	/**
+	 * Build a complete bounded client frame before queue admission.
+	 * Borrows payload only during this call; null is valid for zero len.
+	 * Returns null for invalid input or insufficient frame capacity before
+	 * allocation, copying or size addition. Allocation errors propagate.
+	 * prefixLength reserves zero-filled body bytes for caller metadata;
+	 * the caller must fill that metadata before publishing the frame.
+	 */
+	std::shared_ptr<i2p::stream::SendBuffer> CreateI2CPMessageFrame (
+		uint8_t type, const uint8_t * payload, size_t len, size_t prefixLength = 0);
+
 	enum class I2CPSendMessageCheck : uint8_t
 	{
 		Ok = 0,
@@ -439,11 +459,11 @@ namespace client
 		/// byte is not counted) and the whole frame is copied into a
 		/// caller-independent buffer before it is queued, so the caller may
 		/// release the payload immediately and any caller thread is safe.
-		/// An oversized message is dropped with an error log instead of
-		/// being truncated.
+		/// An invalid or oversized message is dropped with an error log.
+		/// A refused terminal frame still schedules connection teardown.
 		/// @param type I2CP message type byte
 		/// @param payload body bytes; may be null when @a len is zero
-		/// @param len body length, at most I2CP_MAX_MESSAGE_LENGTH
+		/// @param len body length, at most frame capacity minus header
 		/// @param closeAfterFlush close the connection only after this frame
 		///        has been written, so a terminal SESSION STATUS is not
 		///        aborted by the teardown; a stalled client is bounded by the

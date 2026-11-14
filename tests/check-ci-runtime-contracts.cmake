@@ -1094,6 +1094,21 @@ require_runtime_source("libi2pd/Datagram.cpp"
 require_runtime_source("tests/test-datagram-version-dispatch.cpp"
   "TestEmptyAndMissingPayload ();")
 
+# I2CP framing is admitted against the actual occupied message geometry.
+require_runtime_order("libi2pd_client/I2CP.cpp"
+  "bool AppendI2CPDataPayload (" "I2CPSendMessageCheck CheckI2CPSendMessage ("
+  "message.offset > message.len" "message.len - message.offset != I2NP_HEADER_SIZE"
+  "const size_t remaining = message.maxLen - message.len;"
+  "remaining < prefix || len > remaining - prefix"
+  "htobe32buf (output, static_cast<uint32_t> (len));"
+  "message.len += prefix + len;")
+file(READ "${PROJECT_ROOT}/libi2pd_client/I2CP.cpp" i2cp_framing_source)
+string(REGEX MATCHALL "AppendI2CPDataPayload [(][*]msg, payload, len[)]" i2cp_data_consumers "${i2cp_framing_source}")
+list(LENGTH i2cp_data_consumers i2cp_data_consumer_count)
+if(NOT i2cp_data_consumer_count EQUAL 2)
+  message(FATAL_ERROR "Both I2CP send paths must share framing admission")
+endif()
+
 # Child retirement capacity exists before fork and survives owner removal.
 require_runtime_order("privsep/Worker.cpp"
   "ChildProcess::~ChildProcess ()" "ChildProcess::ChildProcess (ChildProcess && other)"
@@ -1117,3 +1132,12 @@ require_runtime_source("tests/test-child-stop-budget.cpp"
 require_runtime_source("privsep/Worker.cpp"
   "~StackSecretWipe () { WipeBytes (m_Bytes.data (), m_Bytes.size ()); }")
 include("${PROJECT_ROOT}/tests/check-worker-secret-wipe.cmake")
+
+# Outbound I2CP builders admit full geometry before size addition.
+require_runtime_order("libi2pd_client/I2CP.cpp"
+  "std::shared_ptr<i2p::stream::SendBuffer> CreateI2CPMessageFrame ("
+  "I2CPSendMessageCheck CheckI2CPSendMessage ("
+  "len > bodyCapacity - prefixLength" "const size_t bodyLength = prefixLength + len;"
+  "std::make_shared<i2p::stream::SendBuffer>")
+require_runtime_source("tests/test-i2cp-blinding-info.cpp"
+  "TestOutboundFrameCapacity ();")

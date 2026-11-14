@@ -99,6 +99,18 @@ peer or add a hidden external checkout. The reference is for reading only.
 
 ## Known issues and decisions
 
+- Review both I2NP Data framing and client-output I2CP frames when auditing
+  payload capacity. Outbound framing uses CreateI2CPMessageFrame so header
+  and optional metadata admission precede addition/allocation; keep maximum,
+  SIZE_MAX, null and metadata-prefix controls in the existing I2CP target.
+
+
+- I2CP Data payload admission subtracts the occupied I2NP geometry and
+  four-byte prefix from actual capacity before any write. Both direct and
+  fallback sends share AppendI2CPDataPayload; its nonoverlap requirement is
+  a caller precondition, not an overlap detector. Preserve nonce failure
+  replies and the pinned Java baseline when adapting upstream bounds fixes.
+
 - Empty datagrams remain valid across V1/V2/V3/raw. Reject null/nonempty
   input before session creation, but give signing/framing backends backed
   storage for empty input and avoid constructing null pointer ranges.
