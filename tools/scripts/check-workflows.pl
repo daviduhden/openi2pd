@@ -762,7 +762,7 @@ sub windows_exception_command_errors {
     # Only the nonce-free probe may inspect termination status. Exact
     # lines keep nested breakpoint commands outside the heap allowlist.
     my %probe_commands = map { $_ => 1 } (
-q{sxe -c "bu ntdll!NtTerminateProcess \".if (@edx == 0xc0000142) { .echo OPENI2PD_PROBE_TERMINATION; ln @rip; kc 40; }; gc\"; g" cpr},
+q{sxe -c "bu ntdll!NtTerminateProcess \".if (@edx == 0xc0000142) { .echo OPENI2PD_PROBE_TERMINATION; ln @rip; ln @$ra; kc 40; }; gc\"; g" cpr},
         q{sxe -c ".echo OPENI2PD_PROBE_EXIT; .lastevent; g" epr}
     );
     my %probe_seen;

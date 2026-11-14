@@ -365,7 +365,7 @@ jobs:
           sxe -c ".echo OPENI2PD_CRASH; .lastevent; ln @rip; kc 40; q" 0xc0000374
           sxe -c ".echo OPENI2PD_CRASH; .lastevent; ln @rip; kc 40; q" 0xc0000409
           sxe -c ".echo OPENI2PD_CRASH; .lastevent; ln @rip; kc 40; q" 0xc0000142
-          sxe -c "bu ntdll!NtTerminateProcess \".if (@edx == 0xc0000142) { .echo OPENI2PD_PROBE_TERMINATION; ln @rip; kc 40; }; gc\"; g" cpr
+          sxe -c "bu ntdll!NtTerminateProcess \".if (@edx == 0xc0000142) { .echo OPENI2PD_PROBE_TERMINATION; ln @rip; ln @$ra; kc 40; }; gc\"; g" cpr
           sxe -c ".echo OPENI2PD_PROBE_EXIT; .lastevent; g" epr
           g
           '@ | Set-Content -Encoding ascii $commands

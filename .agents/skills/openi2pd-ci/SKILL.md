@@ -206,6 +206,16 @@ workflow, run `gh`, build or test.
 
 ## Known issues and decisions
 
+- A failed contract can hide later stale source needles. Review all source
+  languages and mutation fixtures after formatter changes. The shared MSVC
+  pattern reader accepts bounded literal concatenation only, validates its
+  CTest consumer and retains the complete anchored selection. The worker-list
+  negative fixture must actually remove its final item before checking refusal.
+- Once a probe is armed, names-only loader stacks remain limited evidence.
+  Resolve the direct return address with ln @$ra only in the closed probe;
+  a conhost access-denied exit does not by itself explain worker DLL failure.
+
+
 - Lint workflows and local actions together with yamllint, actionlint and
   regular/pedantic/auditor zizmor. Wrap long PowerShell regexes by concatenating
   unchanged fragments and keep CTest coverage identical. Multi-line allowlisted

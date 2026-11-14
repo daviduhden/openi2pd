@@ -502,7 +502,7 @@ qr/worker initialization diagnostic|unsupported crash debugger line|missing boun
             q{$probeArguments = @('-g', '-G', '-o'}
         ],
         [
-            'OPENI2PD_PROBE_TERMINATION; ln @rip; kc 40',
+            'OPENI2PD_PROBE_TERMINATION; ln @rip; ln @$ra; kc 40',
             'OPENI2PD_PROBE_TERMINATION; ln @rip; kp 40'
         ],
         [ 'NtTerminateProcess', 'ExitProcess' ],
