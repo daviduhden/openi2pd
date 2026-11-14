@@ -107,6 +107,19 @@ Do not let reconnaissance agents edit, compile, execute tests or run scripts.
 
 ## Known issues and decisions
 
+- SSU2 synchronous sends and receive-side reopen share a socket-object
+  mutex, distinct from callback authority. Keep proxy UDP nonblocking;
+  snapshot relay endpoints before socket admission and never acquire proxy
+  authority from a socket lock. Logs run after unlock. Preserve separate
+  tracking for ordinary raw-owner callbacks and analogous UDP tunnel seams.
+
+
+- A terminal SOCKS method refusal must retire its handshake deadline too.
+  Proxy callbacks need run, attempt and retry-phase authority; retained I/O
+  buffers alone do not authorize a successor socket. Basic partial-I/O pumps
+  recheck authority before touching wrappers, which retire before executor
+  teardown; composed operations can retain borrowing wrapper references.
+
 - Serializing callbacks cannot protect buffers concurrently written by
   outstanding I/O. A timer must not impersonate a full receive completion
   that rearms reads or drains the same buffer. Separate send-only keepalive,

@@ -11,6 +11,7 @@
  *
  */
 
+#include <algorithm>
 #include <chrono>
 #include <mutex>
 #include <random>
@@ -22,6 +23,7 @@
 #include "Config.h"
 #include "Blocklist.h"
 #include "SSU2.h"
+#include "Modern.h"
 
 namespace i2p
 {
@@ -47,13 +49,27 @@ namespace transport
 		, m_IsForcedFirewalled6 (false)
 		, m_Version (2)
 		, m_IsThroughProxy (false)
+		, m_ProxyAuthority (std::make_shared<ProxyAuthority> ())
 	{
+		m_ProxyAuthority->owner = this;
+	}
+
+	SSU2Server::~SSU2Server ()
+	{
+		RevokeProxyAuthority ();
 	}
 
 	void SSU2Server::Start ()
 	{
 		if (!IsRunning ())
 		{
+			// Never revive authority still referenced by an old
+			// completion.
+			if (!m_ProxyAuthority->owner)
+			{
+				m_ProxyAuthority = std::make_shared<ProxyAuthority> ();
+				m_ProxyAuthority->owner = this;
+			}
 			StartIOService ();
 			i2p::config::GetOption ("ssu2.published", m_IsPublished);
 			i2p::config::GetOption ("nettime.frompeers", m_IsSyncClockFromPeers);
@@ -138,6 +154,7 @@ namespace transport
 
 	void SSU2Server::Stop ()
 	{
+		RevokeProxyAuthority ();
 		if (IsRunning ())
 		{
 			m_TerminationTimer.cancel ();
@@ -194,18 +211,9 @@ namespace transport
 		m_Sessions.clear ();
 		m_LastSession = nullptr;
 
-		m_SocketV4.close ();
-		m_SocketV6.close ();
+		CloseSocket (m_SocketV4);
+		CloseSocket (m_SocketV6);
 
-		if (m_UDPAssociateSocket)
-		{
-			m_UDPAssociateSocket->close ();
-			m_UDPAssociateSocket.reset (nullptr);
-		}
-		// The receive service is joined above, so no proxy handler can run
-		// concurrently with these resets.
-		CancelProxyHandshakeDeadline ();
-		if (m_ProxyConnectRetryTimer) m_ProxyConnectRetryTimer->cancel ();
 		{
 			std::lock_guard<std::mutex> l (m_ProxyRelayEndpointMutex);
 			m_ProxyRelayEndpoint.reset (nullptr);
@@ -275,6 +283,7 @@ namespace transport
 
 	bool SSU2Server::IsSupported (const boost::asio::ip::address & addr) const
 	{
+		std::lock_guard socketLock (m_SocketMutex);
 		if (m_IsThroughProxy) return m_SocketV4.is_open ();
 		if (addr.is_v4 ())
 		{
@@ -289,6 +298,7 @@ namespace transport
 
 	uint16_t SSU2Server::GetPort (bool v4) const
 	{
+		std::lock_guard socketLock (m_SocketMutex);
 		boost::system::error_code ec;
 		boost::asio::ip::udp::endpoint ep
 			= (v4 || m_IsThroughProxy) ? m_SocketV4.local_endpoint (ec) : m_SocketV6.local_endpoint (ec);
@@ -380,71 +390,92 @@ namespace transport
 
 	boost::asio::ip::udp::socket & SSU2Server::OpenSocket (const boost::asio::ip::udp::endpoint & localEndpoint)
 	{
-		boost::asio::ip::udp::socket & socket = localEndpoint.address ().is_v6 () ? m_SocketV6 : m_SocketV4;
+		auto & socket = localEndpoint.address ().is_v6 () ? m_SocketV6 : m_SocketV4;
+		uint64_t bufferSize = i2p::context.GetBandwidthLimit () * 1024 / 5;
+		bufferSize = std::clamp (bufferSize, SSU2_SOCKET_MIN_BUFFER_SIZE, SSU2_SOCKET_MAX_BUFFER_SIZE);
+		const int requested = static_cast<int> (bufferSize);
+		boost::asio::socket_base::receive_buffer_size received;
+		boost::asio::socket_base::send_buffer_size sent;
+		std::string bindError;
+		bool bound = false;
+		boost::asio::ip::udp::endpoint actualEndpoint;
+		boost::system::error_code endpointError;
 		try
 		{
+			// Reopen and bind form one transaction against synchronous sends.
+			// Logging happens after unlock so sinks cannot reenter this lock.
+			std::lock_guard socketLock (m_SocketMutex);
 			if (socket.is_open ()) socket.close ();
 			socket.open (localEndpoint.protocol ());
 			if (localEndpoint.address ().is_v6 ()) socket.set_option (boost::asio::ip::v6_only (true));
-
-			uint64_t bufferSize = i2p::context.GetBandwidthLimit () * 1024 / 5; // max lag = 200ms
-			bufferSize = std::max (SSU2_SOCKET_MIN_BUFFER_SIZE, std::min (bufferSize, SSU2_SOCKET_MAX_BUFFER_SIZE));
-
-			boost::asio::socket_base::receive_buffer_size receiveBufferSizeSet (static_cast<int> (bufferSize));
-			boost::asio::socket_base::send_buffer_size sendBufferSizeSet (static_cast<int> (bufferSize));
-			socket.set_option (receiveBufferSizeSet);
-			socket.set_option (sendBufferSizeSet);
-			boost::asio::socket_base::receive_buffer_size receiveBufferSizeGet;
-			boost::asio::socket_base::send_buffer_size sendBufferSizeGet;
-			socket.get_option (receiveBufferSizeGet);
-			socket.get_option (sendBufferSizeGet);
-			if (receiveBufferSizeGet.value () != receiveBufferSizeSet.value ()
-				|| sendBufferSizeGet.value () != sendBufferSizeSet.value ())
-			{
-				LogPrint (eLogWarning, "SSU2: Socket receive buffer size: requested = ", receiveBufferSizeSet.value (),
-					", got = ", receiveBufferSizeGet.value ());
-				LogPrint (eLogWarning, "SSU2: Socket send buffer size: requested = ", sendBufferSizeSet.value (),
-					", got = ", sendBufferSizeGet.value ());
-			}
-			else
-			{
-				LogPrint (eLogInfo, "SSU2: Socket receive buffer size: ", receiveBufferSizeGet.value ());
-				LogPrint (eLogInfo, "SSU2: Socket send buffer size: ", sendBufferSizeGet.value ());
-			}
-
+			socket.set_option (boost::asio::socket_base::receive_buffer_size (requested));
+			socket.set_option (boost::asio::socket_base::send_buffer_size (requested));
+			socket.get_option (received);
+			socket.get_option (sent);
 			socket.non_blocking (true);
+			try
+			{
+				socket.bind (localEndpoint);
+				bound = true;
+			}
+			catch (const std::exception & error)
+			{
+				bindError = error.what ();
+				actualEndpoint = socket.local_endpoint (endpointError);
+			}
 		}
-		catch (std::exception & ex)
+		catch (const std::exception & error)
 		{
-			LogPrint (eLogCritical, "SSU2: Failed to open socket on ", localEndpoint.address (), ": ", ex.what ());
-			ThrowFatal ("Unable to start SSU2 transport on ", localEndpoint.address (), ": ", ex.what ());
+			LogPrint (eLogCritical, "SSU2: Failed to open socket on ", localEndpoint.address (), ": ", error.what ());
+			ThrowFatal ("Unable to start SSU2 transport on ", localEndpoint.address (), ": ", error.what ());
 			return socket;
 		}
-		try
-		{
-			socket.bind (localEndpoint);
+		const auto bufferLogLevel
+			= received.value () == requested && sent.value () == requested ? eLogInfo : eLogWarning;
+		LogPrint (
+			bufferLogLevel, "SSU2: Socket receive buffer size: requested = ", requested, ", got = ", received.value ());
+		LogPrint (bufferLogLevel, "SSU2: Socket send buffer size: requested = ", requested, ", got = ", sent.value ());
+		if (bound)
 			LogPrint (eLogInfo, "SSU2: Start listening on ", localEndpoint);
-		}
-		catch (std::exception & ex)
-		{
-			boost::system::error_code ec;
-			auto actualEndpoint = socket.local_endpoint (ec);
-			if (ec)
-				LogPrint (eLogWarning, "SSU2: Failed to bind to ", localEndpoint, ": ", ex.what ());
-			else
-				LogPrint (eLogWarning, "SSU2: Failed to bind to ", localEndpoint, ": ", ex.what (),
-					". Actual endpoint is ", actualEndpoint);
-			// we can continue without binding being firewalled
-		}
+		else if (endpointError)
+			LogPrint (eLogWarning, "SSU2: Failed to bind to ", localEndpoint, ": ", bindError);
+		else
+			LogPrint (eLogWarning, "SSU2: Failed to bind to ", localEndpoint, ": ", bindError, ". Actual endpoint is ",
+				actualEndpoint);
+		// A failed bind remains usable for firewalled outgoing traffic.
 		return socket;
+	}
+
+	void SSU2Server::CloseSocket (boost::asio::ip::udp::socket & socket)
+	{
+		std::lock_guard socketLock (m_SocketMutex);
+		boost::system::error_code ignored;
+		socket.close (ignored);
+	}
+
+	bool SSU2Server::OpenProxySocket (boost::system::error_code & error)
+	{
+		std::lock_guard socketLock (m_SocketMutex);
+		m_SocketV4.open (boost::asio::ip::udp::v4 (), error);
+		if (!error) m_SocketV4.non_blocking (true, error);
+		if (error)
+		{
+			boost::system::error_code ignored;
+			m_SocketV4.close (ignored);
+		}
+		return !error;
 	}
 
 	void SSU2Server::Receive (boost::asio::ip::udp::socket & socket)
 	{
 		Packet * packet = m_PacketsPool.AcquireMt ();
+		auto release = i2p::modern::ScopeExit ([this, packet] { m_PacketsPool.ReleaseMt (packet); });
+		std::lock_guard socketLock (m_SocketMutex);
+		if (!socket.is_open ()) return;
 		socket.async_receive_from (boost::asio::buffer (packet->buf, SSU2_MAX_PACKET_SIZE), packet->from,
 			std::bind (&SSU2Server::HandleReceivedFrom, this, std::placeholders::_1, std::placeholders::_2, packet,
 				std::ref (socket)));
+		release.dismiss ();
 	}
 
 	void SSU2Server::HandleReceivedFrom (const boost::system::error_code & ecode, size_t bytes_transferred,
@@ -483,7 +514,11 @@ namespace transport
 			packet->len = bytes_transferred;
 
 			boost::system::error_code ec;
-			size_t moreBytes = socket.available (ec);
+			size_t moreBytes;
+			{
+				std::lock_guard socketLock (m_SocketMutex);
+				moreBytes = socket.available (ec);
+			}
 			if (!ec && moreBytes)
 			{
 				std::list<Packet *> packets;
@@ -491,8 +526,11 @@ namespace transport
 				while (moreBytes && packets.size () < SSU2_MAX_NUM_PACKETS_PER_BATCH)
 				{
 					packet = m_PacketsPool.AcquireMt ();
-					packet->len = socket.receive_from (
-						boost::asio::buffer (packet->buf, SSU2_MAX_PACKET_SIZE), packet->from, 0, ec);
+					{
+						std::lock_guard socketLock (m_SocketMutex);
+						packet->len = socket.receive_from (
+							boost::asio::buffer (packet->buf, SSU2_MAX_PACKET_SIZE), packet->from, 0, ec);
+					}
 					if (!ec)
 					{
 						i2p::transport::transports.UpdateReceivedBytes (packet->len);
@@ -500,7 +538,10 @@ namespace transport
 							packets.push_back (packet);
 						else // drop too short packets
 							m_PacketsPool.ReleaseMt (packet);
-						moreBytes = socket.available (ec);
+						{
+							std::lock_guard socketLock (m_SocketMutex);
+							moreBytes = socket.available (ec);
+						}
 						if (ec) break;
 					}
 					else
@@ -524,18 +565,21 @@ namespace transport
 				LogPrint (eLogError, "SSU2: Receive error: code ", ecode.value (), ": ", ecode.message ());
 				if (m_IsThroughProxy)
 				{
-					m_UDPAssociateSocket.reset (nullptr);
 					{
 						std::lock_guard<std::mutex> l (m_ProxyRelayEndpointMutex);
 						m_ProxyRelayEndpoint.reset (nullptr);
 					}
-					m_SocketV4.close ();
+					CloseSocket (m_SocketV4);
 					ConnectToProxy ();
 				}
 				else
 				{
 					boost::system::error_code lec;
-					auto ep = socket.local_endpoint (lec);
+					boost::asio::ip::udp::endpoint ep;
+					{
+						std::lock_guard socketLock (m_SocketMutex);
+						ep = socket.local_endpoint (lec);
+					}
 					if (lec)
 					{
 						LogPrint (eLogError, "SSU2: Can't determine local endpoint: ", lec.message ());
@@ -1125,15 +1169,18 @@ namespace transport
 			boost::asio::buffer (payload, payloadLen) };
 
 		boost::system::error_code ec;
-		if (to.address ().is_v6 ())
 		{
-			if (!m_SocketV6.is_open ()) return;
-			m_SocketV6.send_to (bufs, to, 0, ec);
-		}
-		else
-		{
-			if (!m_SocketV4.is_open ()) return;
-			m_SocketV4.send_to (bufs, to, 0, ec);
+			std::lock_guard socketLock (m_SocketMutex);
+			if (to.address ().is_v6 ())
+			{
+				if (!m_SocketV6.is_open ()) return;
+				m_SocketV6.send_to (bufs, to, 0, ec);
+			}
+			else
+			{
+				if (!m_SocketV4.is_open ()) return;
+				m_SocketV4.send_to (bufs, to, 0, ec);
+			}
 		}
 
 		if (!ec)
@@ -1158,15 +1205,18 @@ namespace transport
 			boost::asio::buffer (headerX, headerXLen), boost::asio::buffer (payload, payloadLen) };
 
 		boost::system::error_code ec;
-		if (to.address ().is_v6 ())
 		{
-			if (!m_SocketV6.is_open ()) return;
-			m_SocketV6.send_to (bufs, to, 0, ec);
-		}
-		else
-		{
-			if (!m_SocketV4.is_open ()) return;
-			m_SocketV4.send_to (bufs, to, 0, ec);
+			std::lock_guard socketLock (m_SocketMutex);
+			if (to.address ().is_v6 ())
+			{
+				if (!m_SocketV6.is_open ()) return;
+				m_SocketV6.send_to (bufs, to, 0, ec);
+			}
+			else
+			{
+				if (!m_SocketV4.is_open ()) return;
+				m_SocketV4.send_to (bufs, to, 0, ec);
+			}
 		}
 
 		if (!ec)
@@ -1971,10 +2021,9 @@ namespace transport
 			if (!m_ProxyRelayEndpoint) return;
 			relay = *m_ProxyRelayEndpoint;
 		}
-		// Build the SOCKS5 UDP request header on this stack frame. The shared
-		// m_ProxyHandshakeBuffer belongs to the receive service's handshake
-		// and must never be written from SendThroughProxy (SSU2 service
-		// thread).
+		// Build the SOCKS5 UDP header locally. Each control attempt
+		// owns separate handshake bytes on the receive service; the
+		// SSU2 send thread never mutates those bytes.
 		uint8_t udpRequestHeader[SOCKS5_UDP_IPV6_REQUEST_HEADER_SIZE];
 		memset (udpRequestHeader, 0, 3); // RSV
 		size_t requestHeaderSize = 0;
@@ -1999,7 +2048,11 @@ namespace transport
 		bufs.push_back (boost::asio::buffer (payload, payloadLen));
 
 		boost::system::error_code ec;
-		m_SocketV4.send_to (bufs, relay, 0, ec); // TODO: implement ipv6 proxy
+		{
+			std::lock_guard socketLock (m_SocketMutex);
+			if (!m_SocketV4.is_open ()) return;
+			m_SocketV4.send_to (bufs, relay, 0, ec);
+		} // The SOCKS UDP relay currently uses IPv4.
 		if (!ec)
 			i2p::transport::transports.UpdateSentBytes (headerLen + headerXLen + payloadLen);
 		else
@@ -2056,245 +2109,261 @@ namespace transport
 		ProcessNextPacket (buf + offset, len - offset, ep);
 	}
 
+	void SSU2Server::RetireProxyAttempt (const std::shared_ptr<ProxyAttempt> & attempt)
+	{
+		if (!attempt) return;
+		boost::system::error_code ignored;
+		if (attempt->socket) attempt->socket->close (ignored);
+		if (attempt->deadline) attempt->deadline->cancel (ignored);
+		if (attempt->retry) attempt->retry->cancel (ignored);
+		// Operation handlers retain only inert buffers after
+		// retirement, never an Asio object borrowing the server's dying
+		// executor.
+		attempt->socket.reset ();
+		attempt->deadline.reset ();
+		attempt->retry.reset ();
+	}
+
+	void SSU2Server::RevokeProxyAuthority ()
+	{
+		auto authority = m_ProxyAuthority;
+		std::shared_ptr<ProxyAttempt> retired;
+		{
+			std::lock_guard admission (authority->mutex);
+			authority->owner = nullptr;
+			retired = std::move (authority->current);
+		}
+		// No admitted callback can touch this attempt after revocation.
+		// Final operation/state destruction happens outside the gate.
+		RetireProxyAttempt (retired);
+	}
+
 	void SSU2Server::ConnectToProxy ()
 	{
+		std::lock_guard admission (m_ProxyAuthority->mutex);
+		if (m_ProxyAuthority->owner) ConnectToProxyLocked ();
+	}
+
+	void SSU2Server::ConnectToProxyLocked ()
+	{
 		if (!m_ProxyEndpoint) return;
-		m_UDPAssociateSocket.reset (new boost::asio::ip::tcp::socket (m_ReceiveService.GetService ()));
-		ScheduleProxyHandshakeDeadline ();
-		m_UDPAssociateSocket->async_connect (*m_ProxyEndpoint,
-			[this] (const boost::system::error_code & ecode)
-			{
-				if (ecode)
-				{
-					LogPrint (eLogError, "SSU2: Can't connect to proxy ", *m_ProxyEndpoint, " ", ecode.message ());
-					m_UDPAssociateSocket.reset (nullptr);
-					ReconnectToProxy ();
-				}
-				else
-					HandshakeWithProxy ();
-			});
-	}
-
-	void SSU2Server::ScheduleProxyHandshakeDeadline ()
-	{
-		// Replace the previous deadline. The old timer keeps its own handler
-		// alive until it expires and then finds itself no longer current, so
-		// a reconnect cannot be torn down by the previous attempt's timer.
-		auto timer = std::make_shared<boost::asio::steady_timer> (m_ReceiveService.GetService ());
-		m_ProxyHandshakeDeadline = timer;
-		timer->expires_after (std::chrono::seconds (SSU2_PROXY_HANDSHAKE_TIMEOUT));
-		timer->async_wait (
-			[this, timer] (const boost::system::error_code & ecode)
-			{
-				if (ecode == boost::asio::error::operation_aborted) return;
-				if (timer != m_ProxyHandshakeDeadline) return; // a newer attempt owns the state
-				m_ProxyHandshakeDeadline.reset ();
-				LogPrint (
-					eLogError, "SSU2: Proxy handshake did not complete in ", SSU2_PROXY_HANDSHAKE_TIMEOUT, " seconds");
-				m_UDPAssociateSocket.reset (nullptr);
-				{
-					std::lock_guard<std::mutex> l (m_ProxyRelayEndpointMutex);
-					m_ProxyRelayEndpoint.reset (nullptr);
-				}
-				ReconnectToProxy ();
-			});
-	}
-
-	void SSU2Server::CancelProxyHandshakeDeadline ()
-	{
-		if (m_ProxyHandshakeDeadline)
+		auto slot = std::find_if (m_ProxyAttempts.begin (), m_ProxyAttempts.end (),
+			[] (const auto & previous) { return previous.expired (); });
+		if (slot == m_ProxyAttempts.end ())
 		{
-			m_ProxyHandshakeDeadline->cancel ();
-			m_ProxyHandshakeDeadline.reset ();
+			auto previous = std::move (m_ProxyAuthority->current);
+			RetireProxyAttempt (previous);
+			{
+				std::lock_guard relay (m_ProxyRelayEndpointMutex);
+				m_ProxyRelayEndpoint.reset ();
+			}
+			LogPrint (eLogError, "SSU2: Too many undrained proxy attempts");
+			return;
+		}
+		auto attempt = std::make_shared<ProxyAttempt> (m_ReceiveService.GetService ());
+		*slot = attempt;
+		auto previous = std::exchange (m_ProxyAuthority->current, attempt);
+		RetireProxyAttempt (previous);
+		{
+			std::lock_guard relay (m_ProxyRelayEndpointMutex);
+			m_ProxyRelayEndpoint.reset ();
+		}
+		try
+		{
+			ScheduleProxyHandshakeDeadline (attempt);
+			attempt->socket->async_connect (*m_ProxyEndpoint,
+				MakeProxyHandler (attempt,
+					[] (SSU2Server & owner, const auto & current, const boost::system::error_code & error)
+					{
+						if (error)
+						{
+							LogPrint (eLogError, "SSU2: Proxy connection failed: ", error.message ());
+							owner.ReconnectToProxy (current);
+						}
+						else
+							owner.HandshakeWithProxy (current);
+					}));
+		}
+		catch (...)
+		{
+			m_ProxyAuthority->current.reset ();
+			RetireProxyAttempt (attempt);
+			throw;
 		}
 	}
 
-	void SSU2Server::HandshakeWithProxy ()
+	void SSU2Server::ScheduleProxyHandshakeDeadline (const std::shared_ptr<ProxyAttempt> & attempt)
 	{
-		if (!m_UDPAssociateSocket) return;
-		m_ProxyHandshakeBuffer[0] = SOCKS5_VER;
-		m_ProxyHandshakeBuffer[1] = 1; // 1 method
-		m_ProxyHandshakeBuffer[2] = 0; // no authentication
-		boost::asio::async_write (*m_UDPAssociateSocket, boost::asio::buffer (m_ProxyHandshakeBuffer, 3),
-			boost::asio::transfer_all (),
-			[this] (const boost::system::error_code & ecode, std::size_t bytes_transferred)
+		attempt->deadline->expires_after (std::chrono::seconds (SSU2_PROXY_HANDSHAKE_TIMEOUT));
+		attempt->deadline->async_wait (MakeProxyHandler (attempt,
+			[] (SSU2Server & owner, const auto & current, const boost::system::error_code & error)
 			{
-				(void)bytes_transferred;
-				if (ecode)
-				{
-					LogPrint (eLogError, "SSU2: Proxy write error ", ecode.message ());
-					m_UDPAssociateSocket.reset (nullptr);
-					ReconnectToProxy ();
-				}
-				else
-					ReadHandshakeWithProxyReply ();
-			});
+				if (error || current->handshakeComplete) return;
+				LogPrint (eLogError, "SSU2: Proxy handshake deadline");
+				owner.ReconnectToProxy (current);
+			}));
 	}
 
-	void SSU2Server::ReadHandshakeWithProxyReply ()
+	void SSU2Server::CancelProxyHandshakeDeadline (const std::shared_ptr<ProxyAttempt> & attempt)
 	{
-		if (!m_UDPAssociateSocket) return;
-		boost::asio::async_read (*m_UDPAssociateSocket, boost::asio::buffer (m_ProxyHandshakeBuffer, 2),
-			boost::asio::transfer_all (),
-			[this] (const boost::system::error_code & ecode, std::size_t bytes_transferred)
-			{
-				(void)bytes_transferred;
-				if (ecode)
-				{
-					LogPrint (eLogError, "SSU2: Proxy read error ", ecode.message ());
-					m_UDPAssociateSocket.reset (nullptr);
-					ReconnectToProxy ();
-				}
-				else
-				{
-					if (m_ProxyHandshakeBuffer[0] == SOCKS5_VER && !m_ProxyHandshakeBuffer[1])
-						SendUDPAssociateRequest ();
-					else
-					{
-						// Deliberately not retried: the local method list only
-						// offers "no authentication", so a proxy that selects
-						// anything else is misconfigured and would otherwise
-						// reconnect (and log) every retry interval forever.
-						LogPrint (eLogError, "SSU2: Invalid proxy reply");
-						m_UDPAssociateSocket.reset (nullptr);
-					}
-				}
-			});
+		boost::system::error_code ignored;
+		if (attempt->deadline) attempt->deadline->cancel (ignored);
+		attempt->deadline.reset ();
 	}
 
-	void SSU2Server::SendUDPAssociateRequest ()
+	void SSU2Server::TransferProxyBytes (const std::shared_ptr<ProxyAttempt> & attempt, size_t size, size_t offset,
+		bool write, ProxyCompletion completion)
 	{
-		if (!m_UDPAssociateSocket) return;
-		m_ProxyHandshakeBuffer[0] = SOCKS5_VER;
-		m_ProxyHandshakeBuffer[1] = SOCKS5_CMD_UDP_ASSOCIATE;
-		m_ProxyHandshakeBuffer[2] = 0; // RSV
-		m_ProxyHandshakeBuffer[3] = SOCKS5_ATYP_IPV4; // TODO: implement ipv6 proxy
-		memset (m_ProxyHandshakeBuffer + 4, 0, 6); // address and port all zeros
-		boost::asio::async_write (*m_UDPAssociateSocket,
-			boost::asio::buffer (m_ProxyHandshakeBuffer, SOCKS5_UDP_IPV4_REQUEST_HEADER_SIZE),
-			boost::asio::transfer_all (),
-			[this] (const boost::system::error_code & ecode, std::size_t bytes_transferred)
+		// Only basic socket operations retain these bytes. Every
+		// partial completion checks attempt authority before accessing
+		// the wrapper again; closing and destroying a retired wrapper
+		// is therefore safe.
+		if (size > attempt->handshake.size () || offset >= size)
+		{
+			completion (*this, attempt, boost::asio::error::invalid_argument, offset);
+			return;
+		}
+		auto handler = MakeProxyHandler (attempt,
+			[size, offset, write, completion = std::move (completion)] (SSU2Server & owner, const auto & current,
+				const boost::system::error_code & error, size_t transferred) mutable
 			{
-				(void)bytes_transferred;
-				if (ecode)
+				if (error || !transferred || transferred > size - offset)
 				{
-					LogPrint (eLogError, "SSU2: Proxy write error ", ecode.message ());
-					m_UDPAssociateSocket.reset (nullptr);
-					ReconnectToProxy ();
+					completion (owner, current, error ? error : boost::asio::error::eof, offset);
+					return;
 				}
+				if (offset + transferred < size)
+					owner.TransferProxyBytes (current, size, offset + transferred, write, std::move (completion));
 				else
-					ReadUDPAssociateReply ();
+					completion (owner, current, { }, size);
 			});
-	}
-
-	void SSU2Server::ReadUDPAssociateReply ()
-	{
-		if (!m_UDPAssociateSocket) return;
-		boost::asio::async_read (*m_UDPAssociateSocket,
-			boost::asio::buffer (m_ProxyHandshakeBuffer, SOCKS5_UDP_IPV4_REQUEST_HEADER_SIZE),
-			boost::asio::transfer_all (),
-			[this] (const boost::system::error_code & ecode, std::size_t bytes_transferred)
-			{
-				(void)bytes_transferred;
-				if (ecode)
-				{
-					LogPrint (eLogError, "SSU2: Proxy read error ", ecode.message ());
-					m_UDPAssociateSocket.reset (nullptr);
-					ReconnectToProxy ();
-				}
-				else
-				{
-					if (m_ProxyHandshakeBuffer[0] == SOCKS5_VER && !m_ProxyHandshakeBuffer[1])
-					{
-						if (m_ProxyHandshakeBuffer[3] == SOCKS5_ATYP_IPV4)
-						{
-							boost::asio::ip::address_v4::bytes_type bytes;
-							memcpy (bytes.data (), m_ProxyHandshakeBuffer + 4, 4);
-							uint16_t port = bufbe16toh (m_ProxyHandshakeBuffer + 8);
-							{
-								std::lock_guard<std::mutex> l (m_ProxyRelayEndpointMutex);
-								m_ProxyRelayEndpoint.reset (
-									new boost::asio::ip::udp::endpoint (boost::asio::ip::address_v4 (bytes), port));
-							}
-							// The control exchange is complete; only now may
-							// the socket be used as a data path.
-							CancelProxyHandshakeDeadline ();
-							m_SocketV4.open (boost::asio::ip::udp::v4 ());
-							Receive (m_SocketV4);
-							ReadUDPAssociateSocket ();
-						}
-						else
-						{
-							LogPrint (eLogError, "SSU2: Proxy UDP associate unsupported ATYP ",
-								(int)m_ProxyHandshakeBuffer[3]);
-							m_UDPAssociateSocket.reset (nullptr);
-							// A reply we cannot parse is a broken proxy, not a
-							// terminal configuration error: retry instead of
-							// leaving the UDP transport disabled forever.
-							ReconnectToProxy ();
-						}
-					}
-					else
-					{
-						LogPrint (eLogError, "SSU2: Proxy UDP associate error ", (int)m_ProxyHandshakeBuffer[1]);
-						m_UDPAssociateSocket.reset (nullptr);
-						ReconnectToProxy ();
-					}
-				}
-			});
-	}
-
-	void SSU2Server::ReadUDPAssociateSocket ()
-	{
-		if (!m_UDPAssociateSocket) return;
-		// Drain into a dedicated byte: the handshake buffer is only for the
-		// SOCKS5 control exchange and must not be reused by the data path.
-		m_UDPAssociateSocket->async_read_some (boost::asio::buffer (m_ProxyUDPAssociateBuffer, 1),
-			[this] (const boost::system::error_code & ecode, std::size_t bytes_transferred)
-			{
-				(void)bytes_transferred;
-				if (ecode)
-				{
-					LogPrint (eLogWarning, "SSU2: Proxy UDP Associate socket error ", ecode.message ());
-					m_UDPAssociateSocket.reset (nullptr);
-					{
-						std::lock_guard<std::mutex> l (m_ProxyRelayEndpointMutex);
-						m_ProxyRelayEndpoint.reset (nullptr);
-					}
-					m_SocketV4.close ();
-					ConnectToProxy (); // try to reconnect immediately
-				}
-				else
-					ReadUDPAssociateSocket ();
-			});
-	}
-
-	void SSU2Server::ReconnectToProxy ()
-	{
-		// A retry starts a new control exchange: the failed attempt's
-		// handshake deadline must not fire into it, and ConnectToProxy()
-		// arms a fresh one.
-		CancelProxyHandshakeDeadline ();
-		LogPrint (eLogInfo, "SSU2: Reconnect to proxy after ", SSU2_PROXY_CONNECT_RETRY_TIMEOUT, " seconds");
-		if (m_ProxyConnectRetryTimer)
-			m_ProxyConnectRetryTimer->cancel ();
+		auto buffer = boost::asio::buffer (attempt->handshake.data () + offset, size - offset);
+		if (write)
+			attempt->socket->async_write_some (buffer, std::move (handler));
 		else
-			m_ProxyConnectRetryTimer.reset (new boost::asio::steady_timer (m_ReceiveService.GetService ()));
-		m_ProxyConnectRetryTimer->expires_after (std::chrono::seconds (SSU2_PROXY_CONNECT_RETRY_TIMEOUT));
-		m_ProxyConnectRetryTimer->async_wait (
-			[this] (const boost::system::error_code & ecode)
+			attempt->socket->async_read_some (buffer, std::move (handler));
+	}
+
+	void SSU2Server::HandshakeWithProxy (const std::shared_ptr<ProxyAttempt> & attempt)
+	{
+		attempt->handshake[0] = SOCKS5_VER;
+		attempt->handshake[1] = 1;
+		attempt->handshake[2] = 0; // No authentication is offered.
+		TransferProxyBytes (attempt, 3, 0, true,
+			[] (SSU2Server & owner, const auto & current, const boost::system::error_code & error, size_t)
 			{
-				if (ecode != boost::asio::error::operation_aborted)
-				{
-					m_UDPAssociateSocket.reset (nullptr);
-					{
-						std::lock_guard<std::mutex> l (m_ProxyRelayEndpointMutex);
-						m_ProxyRelayEndpoint.reset (nullptr);
-					}
-					LogPrint (eLogInfo, "SSU2: Reconnecting to proxy");
-					ConnectToProxy ();
-				}
+				if (error)
+					owner.ReconnectToProxy (current);
+				else
+					owner.ReadHandshakeWithProxyReply (current);
 			});
+	}
+
+	void SSU2Server::ReadHandshakeWithProxyReply (const std::shared_ptr<ProxyAttempt> & attempt)
+	{
+		TransferProxyBytes (attempt, 2, 0, false,
+			[] (SSU2Server & owner, const auto & current, const boost::system::error_code & error, size_t)
+			{ owner.HandleProxyMethodReply (current, error); });
+	}
+
+	void SSU2Server::HandleProxyMethodReply (
+		const std::shared_ptr<ProxyAttempt> & attempt, const boost::system::error_code & error)
+	{
+		if (error)
+			ReconnectToProxy (attempt);
+		else if (attempt->handshake[0] == SOCKS5_VER && !attempt->handshake[1])
+			SendUDPAssociateRequest (attempt);
+		else
+		{
+			// Refused methods retire their deadline without retry.
+			LogPrint (eLogError, "SSU2: Invalid proxy method reply");
+			m_ProxyAuthority->current.reset ();
+			RetireProxyAttempt (attempt);
+		}
+	}
+
+	void SSU2Server::SendUDPAssociateRequest (const std::shared_ptr<ProxyAttempt> & attempt)
+	{
+		attempt->handshake[0] = SOCKS5_VER;
+		attempt->handshake[1] = SOCKS5_CMD_UDP_ASSOCIATE;
+		attempt->handshake[2] = 0;
+		attempt->handshake[3] = SOCKS5_ATYP_IPV4;
+		std::fill_n (attempt->handshake.data () + 4, 6, 0);
+		TransferProxyBytes (attempt, SOCKS5_UDP_IPV4_REQUEST_HEADER_SIZE, 0, true,
+			[] (SSU2Server & owner, const auto & current, const boost::system::error_code & error, size_t)
+			{
+				if (error)
+					owner.ReconnectToProxy (current);
+				else
+					owner.ReadUDPAssociateReply (current);
+			});
+	}
+
+	void SSU2Server::ReadUDPAssociateReply (const std::shared_ptr<ProxyAttempt> & attempt)
+	{
+		TransferProxyBytes (attempt, SOCKS5_UDP_IPV4_REQUEST_HEADER_SIZE, 0, false,
+			[] (SSU2Server & owner, const auto & current, const boost::system::error_code & error, size_t)
+			{
+				if (error || current->handshake[0] != SOCKS5_VER || current->handshake[1]
+					|| current->handshake[3] != SOCKS5_ATYP_IPV4)
+				{
+					owner.ReconnectToProxy (current);
+					return;
+				}
+				boost::asio::ip::address_v4::bytes_type bytes;
+				std::copy_n (current->handshake.data () + 4, bytes.size (), bytes.data ());
+				auto endpoint = std::make_unique<boost::asio::ip::udp::endpoint> (
+					boost::asio::ip::address_v4 (bytes), bufbe16toh (current->handshake.data () + 8));
+				{
+					std::lock_guard relay (owner.m_ProxyRelayEndpointMutex);
+					owner.m_ProxyRelayEndpoint = std::move (endpoint);
+				}
+				current->handshakeComplete = true;
+				owner.CancelProxyHandshakeDeadline (current);
+				boost::system::error_code socketError;
+				if (!owner.OpenProxySocket (socketError))
+				{
+					owner.ReconnectToProxy (current);
+					return;
+				}
+				owner.Receive (owner.m_SocketV4);
+				owner.ReadUDPAssociateSocket (current);
+			});
+	}
+
+	void SSU2Server::ReadUDPAssociateSocket (const std::shared_ptr<ProxyAttempt> & attempt)
+	{
+		attempt->socket->async_read_some (boost::asio::buffer (attempt->drain),
+			MakeProxyHandler (attempt,
+				[] (SSU2Server & owner, const auto & current, const boost::system::error_code & error, size_t)
+				{
+					if (error)
+					{
+						owner.CloseSocket (owner.m_SocketV4);
+						owner.ConnectToProxyLocked ();
+					}
+					else
+						owner.ReadUDPAssociateSocket (current);
+				}));
+	}
+
+	void SSU2Server::ReconnectToProxy (const std::shared_ptr<ProxyAttempt> & attempt)
+	{
+		RetireProxyAttempt (attempt);
+		attempt->retrying = true;
+		{
+			std::lock_guard relay (m_ProxyRelayEndpointMutex);
+			m_ProxyRelayEndpoint.reset ();
+		}
+		attempt->retry = std::make_unique<boost::asio::steady_timer> (m_ReceiveService.GetService ());
+		attempt->retry->expires_after (std::chrono::seconds (SSU2_PROXY_CONNECT_RETRY_TIMEOUT));
+		attempt->retry->async_wait (MakeProxyHandler (
+			attempt,
+			[] (SSU2Server & owner, const auto &, const boost::system::error_code & error)
+			{
+				if (!error) owner.ConnectToProxyLocked ();
+			},
+			true));
 	}
 
 	bool SSU2Server::SetProxy (const std::string & address, uint16_t port)
@@ -2308,7 +2377,7 @@ namespace transport
 		}
 		else
 		{
-			if (ecode) LogPrint (eLogError, "SSU2: Invalid proxy address ", address, " ", ecode.message ());
+			if (ecode) LogPrint (eLogError, "SSU2: Invalid proxy address: ", ecode.message ());
 			return false;
 		}
 		return true;

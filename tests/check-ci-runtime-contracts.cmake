@@ -1109,6 +1109,28 @@ if(NOT i2cp_data_consumer_count EQUAL 2)
   message(FATAL_ERROR "Both I2CP send paths must share framing admission")
 endif()
 
+# Proxy state admits only the matching run, attempt and retry phase.
+require_runtime_source("libi2pd/SSU2.h"
+  "if (!state->owner || state->current != attempt || attempt->retrying != retry) return;")
+require_runtime_order("libi2pd/SSU2.cpp"
+  "void SSU2Server::HandleProxyMethodReply (" "void SSU2Server::SendUDPAssociateRequest ("
+  "m_ProxyAuthority->current.reset ();" "RetireProxyAttempt (attempt);")
+require_runtime_source("tests/test-ssu2-proxy-lifecycle.cpp"
+  "TestUndrainedCallbackAfterOwner ();")
+require_runtime_source("tests/test-ssu2-proxy-lifecycle.cpp"
+  "TestMalformedProxyDiagnostic ();")
+file(READ "${PROJECT_ROOT}/libi2pd/SSU2.cpp" proxy_source)
+string(FIND "${proxy_source}" "void SSU2Server::RetireProxyAttempt (" proxy_begin)
+string(SUBSTRING "${proxy_source}" ${proxy_begin} -1 proxy_lifecycle_source)
+if(proxy_lifecycle_source MATCHES "\\[[^]]*this" OR proxy_lifecycle_source MATCHES "boost::asio::async_(read|write) [(]")
+  message(FATAL_ERROR "Proxy callbacks must not borrow raw owners or composed socket wrappers")
+endif()
+string(FIND "${proxy_source}" "bool SSU2Server::SetProxy (" proxy_parser_begin)
+string(SUBSTRING "${proxy_source}" ${proxy_parser_begin} -1 proxy_parser_source)
+if(proxy_parser_source MATCHES "LogPrint[^;]*,[ \t\r\n]*address[ \t\r\n]*[,)]")
+  message(FATAL_ERROR "Rejected proxy operands must remain outside diagnostics")
+endif()
+
 # Child retirement capacity exists before fork and survives owner removal.
 require_runtime_order("privsep/Worker.cpp"
   "ChildProcess::~ChildProcess ()" "ChildProcess::ChildProcess (ChildProcess && other)"
@@ -1123,6 +1145,7 @@ require_runtime_order("privsep/Worker.cpp"
   "ChildProcess::Adopt (std::move (*admission), pid, std::move (parent))")
 require_runtime_source("daemon/UnixDaemon.cpp" "i2p::privsep::DrainRetiredChildren ();")
 require_runtime_source("privsep/Supervisor.cpp" "DrainRetiredChildren ();")
+require_runtime_source("tests/CMakeLists.txt" "test-ssu2-proxy-lifecycle")
 require_runtime_order("privsep/Worker.h"
   "void Disown ()" "worker_pid_t Pid () const"
   "m_Channel.Close ();" "if (m_Pid > 0)" "RetireUnreaped ();"
@@ -1141,3 +1164,10 @@ require_runtime_order("libi2pd_client/I2CP.cpp"
   "std::make_shared<i2p::stream::SendBuffer>")
 require_runtime_source("tests/test-i2cp-blinding-info.cpp"
   "TestOutboundFrameCapacity ();")
+require_runtime_order("libi2pd/SSU2.cpp"
+  "bool SSU2Server::OpenProxySocket (" "void SSU2Server::Receive ("
+  "std::lock_guard socketLock (m_SocketMutex);"
+  "m_SocketV4.open (" "m_SocketV4.non_blocking (true, error);")
+require_runtime_source("tests/CMakeLists.txt" "test-ssu2-socket-lifecycle")
+require_runtime_source("tests/test-ssu2-proxy-lifecycle.cpp"
+  "assert (SSU2ProxyTestAccess::AdmissionIsHeld (server));")

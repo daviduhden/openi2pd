@@ -22,6 +22,7 @@
 #include <map>
 #include <array>
 #include <functional>
+#include <utility>
 #include <mutex>
 #include <random>
 #include <string>
@@ -113,7 +114,7 @@ namespace transport
 
 	public:
 		SSU2Server ();
-		~SSU2Server () { };
+		~SSU2Server ();
 
 		void Start ();
 		void Stop ();
@@ -213,6 +214,9 @@ namespace transport
 
 	private:
 		boost::asio::ip::udp::socket & OpenSocket (const boost::asio::ip::udp::endpoint & localEndpoint);
+		void CloseSocket (boost::asio::ip::udp::socket & socket);
+		// Admit a nonblocking proxy socket or close it on setup failure.
+		bool OpenProxySocket (boost::system::error_code & error);
 		void Receive (boost::asio::ip::udp::socket & socket);
 		void HandleReceivedFrom (const boost::system::error_code & ecode, size_t bytes_transferred, Packet * packet,
 			boost::asio::ip::udp::socket & socket);
@@ -256,17 +260,65 @@ namespace transport
 		void SendThroughProxy (const uint8_t * header, size_t headerLen, const uint8_t * headerX, size_t headerXLen,
 			const uint8_t * payload, size_t payloadLen, const boost::asio::ip::udp::endpoint & to);
 		void ProcessNextPacketFromProxy (uint8_t * buf, size_t len);
+		struct ProxyAttempt
+		{
+			explicit ProxyAttempt (boost::asio::io_context & service)
+				: socket (std::make_unique<boost::asio::ip::tcp::socket> (service))
+				, deadline (std::make_unique<boost::asio::steady_timer> (service))
+				, retry (std::make_unique<boost::asio::steady_timer> (service))
+			{
+			}
+
+			std::unique_ptr<boost::asio::ip::tcp::socket> socket;
+			std::unique_ptr<boost::asio::steady_timer> deadline, retry;
+			std::array<uint8_t, SOCKS5_UDP_IPV6_REQUEST_HEADER_SIZE> handshake { };
+			std::array<uint8_t, 1> drain { };
+			bool retrying = false;
+			bool handshakeComplete = false;
+		};
+		struct ProxyAuthority
+		{
+			std::mutex mutex;
+			SSU2Server * owner = nullptr;
+			std::shared_ptr<ProxyAttempt> current;
+		};
+		// The unique server owner revokes this gate before proxy
+		// teardown. Callbacks borrow owner only while admitted under
+		// its mutex. Stop must not be called synchronously from an
+		// admitted proxy callback.
+		template <typename Action>
+		auto MakeProxyHandler (const std::shared_ptr<ProxyAttempt> & attempt, Action action, bool retry = false)
+		{
+			return [authority = std::weak_ptr<ProxyAuthority> (m_ProxyAuthority), attempt, action = std::move (action),
+					   retry] (auto &&... args) mutable
+			{
+				auto state = authority.lock ();
+				if (!state) return;
+				std::lock_guard admission (state->mutex);
+				if (!state->owner || state->current != attempt || attempt->retrying != retry) return;
+				std::invoke (action, *state->owner, attempt, std::forward<decltype (args)> (args)...);
+			};
+		}
+		using ProxyCompletion = std::function<void (
+			SSU2Server &, const std::shared_ptr<ProxyAttempt> &, const boost::system::error_code &, size_t)>;
+		void TransferProxyBytes (const std::shared_ptr<ProxyAttempt> & attempt, size_t size, size_t offset, bool write,
+			ProxyCompletion completion);
+		void RevokeProxyAuthority ();
+		void RetireProxyAttempt (const std::shared_ptr<ProxyAttempt> & attempt);
 		void ConnectToProxy ();
-		void ReconnectToProxy ();
-		void HandshakeWithProxy ();
-		void ReadHandshakeWithProxyReply ();
-		void SendUDPAssociateRequest ();
-		void ReadUDPAssociateReply ();
-		void ReadUDPAssociateSocket (); // handle if closed by peer
-		// One per SOCKS5 control exchange: a timer that has been replaced
-		// belongs to a previous attempt and must not tear down the new one.
-		void ScheduleProxyHandshakeDeadline ();
-		void CancelProxyHandshakeDeadline ();
+		void ConnectToProxyLocked ();
+		void ReconnectToProxy (const std::shared_ptr<ProxyAttempt> & attempt);
+		void HandshakeWithProxy (const std::shared_ptr<ProxyAttempt> & attempt);
+		void ReadHandshakeWithProxyReply (const std::shared_ptr<ProxyAttempt> & attempt);
+		void HandleProxyMethodReply (
+			const std::shared_ptr<ProxyAttempt> & attempt, const boost::system::error_code & error);
+		void SendUDPAssociateRequest (const std::shared_ptr<ProxyAttempt> & attempt);
+		void ReadUDPAssociateReply (const std::shared_ptr<ProxyAttempt> & attempt);
+		void ReadUDPAssociateSocket (const std::shared_ptr<ProxyAttempt> & attempt);
+		void ScheduleProxyHandshakeDeadline (const std::shared_ptr<ProxyAttempt> & attempt);
+		void CancelProxyHandshakeDeadline (const std::shared_ptr<ProxyAttempt> & attempt);
+		friend struct SSU2ProxyTestAccess;
+		friend struct SSU2SocketTestAccess;
 
 	private:
 		// The receive service may drain handlers that use pool-backed data.
@@ -276,16 +328,11 @@ namespace transport
 		i2p::util::MemoryPool<SSU2IncompleteMessage> m_IncompleteMessagesPool;
 		i2p::util::MemoryPool<SSU2IncompleteMessage::Fragment> m_FragmentsPool;
 		ReceiveService m_ReceiveService;
-		// Residual threading hazard (not fixed here): these sockets are
-		// shared by the SSU2 service (synchronous send_to in
-		// Send()/SendThroughProxy()) and the receive service
-		// (async_receive_from and the error path that calls OpenSocket()). A
-		// socket error on the receive service can close()/open() the object
-		// while the other thread is inside send_to(). Removing it requires a
-		// dedicated send socket, or posting every send onto the receive
-		// service and changing Send() to an asynchronous API; neither is safe
-		// as a local patch because senders currently rely on the synchronous
-		// result and buffer lifetime.
+		// Socket object operations share one admission lock across both
+		// services, including async initiation, reopen and synchronous send.
+		// Completion handlers never retain it. Proxy authority may precede
+		// this lock; socket operations never acquire proxy authority.
+		mutable std::mutex m_SocketMutex;
 		boost::asio::ip::udp::socket m_SocketV4, m_SocketV6;
 		boost::asio::ip::address m_AddressV4, m_AddressV6;
 		SSU2Sessions m_Sessions;
@@ -333,28 +380,18 @@ namespace transport
 
 		// proxy
 		bool m_IsThroughProxy;
-		// SOCKS5 handshake/associate scratch buffer. It is owned by the
-		// receive service (ConnectToProxy..ReadUDPAssociateReply) and is
-		// never used to compose outgoing UDP datagrams; SendThroughProxy
-		// builds its request header on its own stack frame.
-		uint8_t m_ProxyHandshakeBuffer[SOCKS5_UDP_IPV6_REQUEST_HEADER_SIZE];
-		// Draining the SOCKS UDP-associate socket must not reuse any
-		// handshake buffer: the receive service has a pending read there.
-		uint8_t m_ProxyUDPAssociateBuffer[1];
 		// m_ProxyRelayEndpoint is published by the receive service and
 		// consumed by SendThroughProxy on the SSU2 service. Copy it under
 		// this lock before dereferencing so a reconnect cannot free it
 		// mid-send.
 		std::mutex m_ProxyRelayEndpointMutex;
 		std::unique_ptr<boost::asio::ip::tcp::endpoint> m_ProxyEndpoint;
-		std::unique_ptr<boost::asio::ip::tcp::socket> m_UDPAssociateSocket;
 		std::unique_ptr<boost::asio::ip::udp::endpoint> m_ProxyRelayEndpoint;
-		std::unique_ptr<boost::asio::steady_timer> m_ProxyConnectRetryTimer;
-		// Deadline for the SOCKS5 control exchange. Owned by the receive
-		// service, like every other proxy control object; replaced (not
-		// cancelled) per attempt so a stale handler is recognisable by
-		// identity.
-		std::shared_ptr<boost::asio::steady_timer> m_ProxyHandshakeDeadline;
+		std::shared_ptr<ProxyAuthority> m_ProxyAuthority;
+		// Retained operations must release before their slots can be
+		// reused. Fail closed rather than accumulating unlimited
+		// stopped attempts.
+		std::array<std::weak_ptr<ProxyAttempt>, 64> m_ProxyAttempts;
 
 	public:
 		// for HTTP/I2PControl Safe form: the caller owns the returned copy
