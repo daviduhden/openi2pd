@@ -506,8 +506,9 @@ public class DaemonWrapper {
     // Called only under lock. The returned action publishes and starts
     // outside it, so listeners cannot run under the state monitor.
     private java.util.function.BooleanSupplier admitStartLocked() {
-        if (startThreadRunning || (state != State.stopped && state != State.starting
-                                          && state != State.startFailed))
+        if (startThreadRunning
+                || (state != State.stopped && state != State.starting
+                        && state != State.startFailed))
             return null;
         startThreadRunning = true;
         stopRequested.set(false);

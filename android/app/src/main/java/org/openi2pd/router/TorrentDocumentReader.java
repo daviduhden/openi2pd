@@ -76,7 +76,8 @@ final class TorrentDocumentReader {
      * @throws IOException on invalid bounds, observed cancellation,
      *                     overflow, empty or stalled input
      */
-    static byte[] read(InputStream input, int maximum, BooleanSupplier canceled) throws IOException {
+    static byte[] read(InputStream input, int maximum, BooleanSupplier canceled)
+            throws IOException {
         if (input == null || canceled == null || maximum < 1
                 || maximum > TorrentControl.MAX_IMPORT_BYTES) {
             throw new IOException("Invalid torrent input");

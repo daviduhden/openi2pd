@@ -260,12 +260,12 @@ public final class RuntimeAdminFragment extends Fragment {
         if (!maySubmitDialog(dialogToken)) {
             return;
         }
-        showDialog(dialogToken, new MaterialAlertDialogBuilder(requireContext())
-                .setTitle(R.string.runtime_admin_reseed_title)
-                .setMessage(R.string.runtime_admin_reseed_confirm)
-                .setNegativeButton(R.string.action_cancel, null)
-                .setPositiveButton(R.string.runtime_admin_reseed_now,
-                        (dialog, which) -> {
+        showDialog(dialogToken,
+                new MaterialAlertDialogBuilder(requireContext())
+                        .setTitle(R.string.runtime_admin_reseed_title)
+                        .setMessage(R.string.runtime_admin_reseed_confirm)
+                        .setNegativeButton(R.string.action_cancel, null)
+                        .setPositiveButton(R.string.runtime_admin_reseed_now, (dialog, which) -> {
                             if (!maySubmitDialog(dialogToken))
                                 return;
                             busy = true;
@@ -285,17 +285,19 @@ public final class RuntimeAdminFragment extends Fragment {
         var dialogToken = dialogs.token();
         if (!maySubmitDialog(dialogToken))
             return;
-        showDialog(dialogToken, new MaterialAlertDialogBuilder(requireContext())
-                .setTitle(enabled ? R.string.runtime_admin_transit_action
-                                  : R.string.runtime_admin_nontransit_action)
-                .setMessage(R.string.runtime_admin_controls_confirm)
-                .setNegativeButton(R.string.action_cancel, null)
-                .setPositiveButton(enabled ? R.string.runtime_admin_transit_action
-                                           : R.string.runtime_admin_nontransit_action,
-                        (dialog, which) -> {
-                            if (maySubmitDialog(dialogToken))
-                                submitControl(callback -> model.setTransit(enabled, callback));
-                        }));
+        showDialog(dialogToken,
+                new MaterialAlertDialogBuilder(requireContext())
+                        .setTitle(enabled ? R.string.runtime_admin_transit_action
+                                          : R.string.runtime_admin_nontransit_action)
+                        .setMessage(R.string.runtime_admin_controls_confirm)
+                        .setNegativeButton(R.string.action_cancel, null)
+                        .setPositiveButton(enabled ? R.string.runtime_admin_transit_action
+                                                   : R.string.runtime_admin_nontransit_action,
+                                (dialog, which) -> {
+                                    if (maySubmitDialog(dialogToken))
+                                        submitControl(
+                                                callback -> model.setTransit(enabled, callback));
+                                }));
     }
 
     private void bandwidthDialog() {
@@ -304,16 +306,18 @@ public final class RuntimeAdminFragment extends Fragment {
             return;
         String[] options = getResources().getStringArray(R.array.runtime_admin_bandwidth_options);
         String[] classes = {"K", "L", "M", "N", "O", "P", "X"};
-        showDialog(dialogToken, new MaterialAlertDialogBuilder(requireContext())
-                .setTitle(R.string.runtime_admin_bandwidth_action)
-                .setSingleChoiceItems(options, -1,
-                        (dialog, which) -> {
-                            if (!maySubmitDialog(dialogToken))
-                                return;
-                            dialog.dismiss();
-                            submitControl(callback -> model.setBandwidth(classes[which], callback));
-                        })
-                .setNegativeButton(R.string.action_cancel, null));
+        showDialog(dialogToken,
+                new MaterialAlertDialogBuilder(requireContext())
+                        .setTitle(R.string.runtime_admin_bandwidth_action)
+                        .setSingleChoiceItems(options, -1,
+                                (dialog, which) -> {
+                                    if (!maySubmitDialog(dialogToken))
+                                        return;
+                                    dialog.dismiss();
+                                    submitControl(callback
+                                            -> model.setBandwidth(classes[which], callback));
+                                })
+                        .setNegativeButton(R.string.action_cancel, null));
     }
 
     private void shareDialog() {
@@ -327,12 +331,12 @@ public final class RuntimeAdminFragment extends Fragment {
         input.setFilters(
                 new android.text.InputFilter[] {new android.text.InputFilter.LengthFilter(3)});
         layout.addView(input);
-        showDialog(dialogToken, new MaterialAlertDialogBuilder(requireContext())
-                .setTitle(R.string.runtime_admin_share_action)
-                .setView(layout)
-                .setNegativeButton(R.string.action_cancel, null)
-                .setPositiveButton(R.string.address_book_save,
-                        (dialog, which) -> {
+        showDialog(dialogToken,
+                new MaterialAlertDialogBuilder(requireContext())
+                        .setTitle(R.string.runtime_admin_share_action)
+                        .setView(layout)
+                        .setNegativeButton(R.string.action_cancel, null)
+                        .setPositiveButton(R.string.address_book_save, (dialog, which) -> {
                             if (!maySubmitDialog(dialogToken))
                                 return;
                             int percent = RuntimeAdminPolicy.parseShareRatio(
@@ -386,25 +390,27 @@ public final class RuntimeAdminFragment extends Fragment {
         }
         int message = start ? R.string.runtime_admin_tunnel_start_confirm
                             : R.string.runtime_admin_tunnel_stop_confirm;
-        showDialog(dialogToken, new MaterialAlertDialogBuilder(requireContext())
-                .setMessage(getString(message, name))
-                .setNegativeButton(R.string.action_cancel, null)
-                .setPositiveButton(start ? R.string.runtime_admin_tunnel_start
-                                         : R.string.runtime_admin_tunnel_stop,
-                        (dialog, which) -> {
-                            if (!maySubmitDialog(dialogToken))
-                                return;
-                            busy = true;
-                            int expected = generation;
-                            model.tunnelCommand(name, start, outcome -> {
-                                if (expected != generation || status == null || !isAdded()) {
-                                    return;
-                                }
-                                busy = false;
-                                status.setText(tunnelOutcomeLabel(outcome));
-                                refresh();
-                            });
-                        }));
+        showDialog(dialogToken,
+                new MaterialAlertDialogBuilder(requireContext())
+                        .setMessage(getString(message, name))
+                        .setNegativeButton(R.string.action_cancel, null)
+                        .setPositiveButton(start ? R.string.runtime_admin_tunnel_start
+                                                 : R.string.runtime_admin_tunnel_stop,
+                                (dialog, which) -> {
+                                    if (!maySubmitDialog(dialogToken))
+                                        return;
+                                    busy = true;
+                                    int expected = generation;
+                                    model.tunnelCommand(name, start, outcome -> {
+                                        if (expected != generation || status == null
+                                                || !isAdded()) {
+                                            return;
+                                        }
+                                        busy = false;
+                                        status.setText(tunnelOutcomeLabel(outcome));
+                                        refresh();
+                                    });
+                                }));
     }
 
     private int tunnelOutcomeLabel(String outcome) {
@@ -430,13 +436,13 @@ public final class RuntimeAdminFragment extends Fragment {
         input.setFilters(new android.text.InputFilter[] {
                 new android.text.InputFilter.LengthFilter(MAX_ROUTER_HASH)});
         layout.addView(input);
-        showDialog(dialogToken, new MaterialAlertDialogBuilder(requireContext())
-                .setTitle(ban ? R.string.runtime_admin_ban_action
-                              : R.string.runtime_admin_unban_action)
-                .setView(layout)
-                .setNegativeButton(R.string.action_cancel, null)
-                .setPositiveButton(R.string.address_book_save,
-                        (dialog, which) -> {
+        showDialog(dialogToken,
+                new MaterialAlertDialogBuilder(requireContext())
+                        .setTitle(ban ? R.string.runtime_admin_ban_action
+                                      : R.string.runtime_admin_unban_action)
+                        .setView(layout)
+                        .setNegativeButton(R.string.action_cancel, null)
+                        .setPositiveButton(R.string.address_book_save, (dialog, which) -> {
                             if (!maySubmitDialog(dialogToken))
                                 return;
                             String hash = input.getText() == null

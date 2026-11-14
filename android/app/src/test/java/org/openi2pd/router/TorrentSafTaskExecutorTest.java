@@ -50,8 +50,9 @@ public final class TorrentSafTaskExecutorTest {
             release.countDown();
             blocker.get(5, TimeUnit.SECONDS);
             assertTrue(drained.await(5, TimeUnit.SECONDS));
-            assertEquals("openi2pd-saf", executor.submit(
-                    () -> Thread.currentThread().getName()).get(5, TimeUnit.SECONDS));
+            assertEquals("openi2pd-saf",
+                    executor.submit(() -> Thread.currentThread().getName())
+                            .get(5, TimeUnit.SECONDS));
             assertFalse(rejectedTaskRan.get());
         } finally {
             release.countDown();

@@ -7,7 +7,8 @@ package org.openi2pd.router;
 
 /* Presentation bounds shared by snapshots, logs and accessibility. */
 final class DisplayText {
-    private DisplayText() {}
+    private DisplayText() {
+    }
 
     /*
      * Cap UTF-16 units without splitting a valid surrogate pair.
@@ -18,12 +19,16 @@ final class DisplayText {
      * must retain its own byte limits and rejection policy.</p>
      */
     static String bound(String value, int maximum) {
-        if (maximum < 0) throw new IllegalArgumentException("Negative text limit");
-        if (value == null) return "";
-        if (value.length() <= maximum) return value;
+        if (maximum < 0)
+            throw new IllegalArgumentException("Negative text limit");
+        if (value == null)
+            return "";
+        if (value.length() <= maximum)
+            return value;
         int end = maximum;
         if (end > 0 && Character.isHighSurrogate(value.charAt(end - 1))
-                && Character.isLowSurrogate(value.charAt(end))) --end;
+                && Character.isLowSurrogate(value.charAt(end)))
+            --end;
         return value.substring(0, end);
     }
 }

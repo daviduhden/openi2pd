@@ -21,7 +21,8 @@ final class UiDialogEpoch {
     static final int MAX_DIALOGS = 8;
     /* Opaque identity, never a reusable generation number. */
     static final class Token {
-        private Token() {}
+        private Token() {
+        }
     }
 
     /* Exact dialog registration, independent of its view token. */

@@ -554,8 +554,8 @@ final class TorrentSafStorage {
      *         false also denotes busy or reentrant grant authority
      */
     static boolean select(Context app, String tunnel, String hash, Uri tree) {
-        if (app == null || tunnel == null || tunnel.isEmpty() || tunnel.length() > 1024 || hash == null
-                || !hash.matches("[0-9a-fA-F]{40}") || tree == null
+        if (app == null || tunnel == null || tunnel.isEmpty() || tunnel.length() > 1024
+                || hash == null || !hash.matches("[0-9a-fA-F]{40}") || tree == null
                 || !"content".equals(tree.getScheme()) || !DocumentsContract.isTreeUri(tree))
             return false;
         String key = tunnel + ":" + hash.toLowerCase(java.util.Locale.ROOT);
@@ -616,8 +616,9 @@ final class TorrentSafStorage {
             }
             if (previous != null && !previous.equals(tree.toString()))
                 releaseUnreferencedGrantLocked(prefs.getAll(), previous, key,
-                        (uri, modes) -> app.getContentResolver().releasePersistableUriPermission(
-                                uri, modes));
+                        (uri, modes)
+                                -> app.getContentResolver().releasePersistableUriPermission(
+                                        uri, modes));
             return true;
         } catch (Exception failure) {
             return false;
@@ -651,30 +652,36 @@ final class TorrentSafStorage {
      * Keep the token through provider IO and retire it in finally.
      * The registry retains only the Application context, never Service.
      */
-    static TorrentSafGrantLeases.Token acquireTemporaryGrant(
-            Context app, Uri uri, int requested) {
+    static TorrentSafGrantLeases.Token acquireTemporaryGrant(Context app, Uri uri, int requested) {
         if (app == null || uri == null)
             return null;
         Context application = app.getApplicationContext();
         var resolver = application.getContentResolver();
         TorrentSafGrantLeases.Token[] acquired = {null};
         mappingAuthority.run(() -> {
-            acquired[0] = temporaryGrants.acquire(uri.toString(), requested, () -> {
-                int retained = 0;
-                for (var permission : resolver.getPersistedUriPermissions()) {
-                    if (!uri.equals(permission.getUri()))
-                        continue;
-                    if (permission.isReadPermission())
-                        retained |= Intent.FLAG_GRANT_READ_URI_PERMISSION;
-                    if (permission.isWritePermission())
-                        retained |= Intent.FLAG_GRANT_WRITE_URI_PERMISSION;
-                }
-                return retained;
-            }, modes -> resolver.takePersistableUriPermission(uri, modes),
-                    () -> TorrentSafGrants.referenced(
-                            application.getSharedPreferences(
-                                    "torrent-saf-grants", Context.MODE_PRIVATE).getAll(),
-                            uri.toString(), null),
+            acquired[0] = temporaryGrants.acquire(uri.toString(), requested,
+                    ()
+                            -> {
+                        int retained = 0;
+                        for (var permission : resolver.getPersistedUriPermissions()) {
+                            if (!uri.equals(permission.getUri()))
+                                continue;
+                            if (permission.isReadPermission())
+                                retained |= Intent.FLAG_GRANT_READ_URI_PERMISSION;
+                            if (permission.isWritePermission())
+                                retained |= Intent.FLAG_GRANT_WRITE_URI_PERMISSION;
+                        }
+                        return retained;
+                    },
+                    modes
+                    -> resolver.takePersistableUriPermission(uri, modes),
+                    ()
+                            -> TorrentSafGrants.referenced(
+                                    application
+                                            .getSharedPreferences(
+                                                    "torrent-saf-grants", Context.MODE_PRIVATE)
+                                            .getAll(),
+                                    uri.toString(), null),
                     modes -> resolver.releasePersistableUriPermission(uri, modes));
             return acquired[0] != null;
         });
@@ -715,19 +722,17 @@ final class TorrentSafStorage {
             String exceptKey, java.util.function.BiConsumer<Uri, Integer> release) {
         if (grants == null)
             return false;
-        return mappingAuthority.run(() -> releaseUnreferencedGrantLocked(
-                grants.get(), uri, exceptKey, release));
+        return mappingAuthority.run(
+                () -> releaseUnreferencedGrantLocked(grants.get(), uri, exceptKey, release));
     }
 
     // Only callers holding mappingAuthority may supply this snapshot.
-    private static boolean releaseUnreferencedGrantLocked(
-            java.util.Map<String, ?> grants, String uri, String exceptKey,
-            java.util.function.BiConsumer<Uri, Integer> release) {
+    private static boolean releaseUnreferencedGrantLocked(java.util.Map<String, ?> grants,
+            String uri, String exceptKey, java.util.function.BiConsumer<Uri, Integer> release) {
         if (grants == null || uri == null || release == null
                 || TorrentSafGrants.referenced(grants, uri, exceptKey))
             return false;
-        int modes = Intent.FLAG_GRANT_READ_URI_PERMISSION
-                | Intent.FLAG_GRANT_WRITE_URI_PERMISSION;
+        int modes = Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION;
         if (temporaryGrants.deferRelease(uri, modes))
             return false;
         try {
@@ -767,8 +772,8 @@ final class TorrentSafStorage {
         if (!saved)
             return false;
         releaseUnreferencedGrantLocked(prefs.getAll(), previous, key,
-                (uri, modes) -> app.getContentResolver().releasePersistableUriPermission(
-                        uri, modes));
+                (uri, modes)
+                        -> app.getContentResolver().releasePersistableUriPermission(uri, modes));
         return saved;
     }
     // Called only from native disk workers, never the main thread. A

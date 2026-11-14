@@ -24,7 +24,8 @@ import java.util.Locale;
  * or other user data.</p>
  */
 final class UiText {
-    private UiText() {}
+    private UiText() {
+    }
 
     /*
      * Canonical preference value for an explicit per-app locale.
@@ -36,16 +37,21 @@ final class UiText {
      * method, not by a synthetic locale.</p>
      */
     static String languageChoice(Locale locale) {
-        if (locale == null) return "en";
+        if (locale == null)
+            return "en";
         return switch (locale.getLanguage()) {
             case "en", "es", "ru" -> locale.getLanguage();
             case "zh" -> {
                 String script = locale.getScript();
                 String region = locale.getCountry();
-                if ("Hant".equals(script)) yield "en";
-                if ("Hans".equals(script)) yield "zh-CN";
-                if (!script.isEmpty()) yield "en";
-                yield region.isEmpty() || "CN".equals(region) || "SG".equals(region) ? "zh-CN" : "en";
+                if ("Hant".equals(script))
+                    yield "en";
+                if ("Hans".equals(script))
+                    yield "zh-CN";
+                if (!script.isEmpty())
+                    yield "en";
+                yield region.isEmpty() || "CN".equals(region) || "SG".equals(region) ? "zh-CN"
+                                                                                     : "en";
             }
             default -> "en";
         };
@@ -59,7 +65,8 @@ final class UiText {
      * The supplied context determines resource selection.</p>
      */
     static String torrentStatus(Context context, String token) {
-        if (token == null || token.isEmpty()) return "";
+        if (token == null || token.isEmpty())
+            return "";
         int resource = switch (token) {
             case "stopped" -> R.string.torrent_status_stopped;
             case "queued-verify" -> R.string.torrent_status_queued_verify;
@@ -75,7 +82,8 @@ final class UiText {
     }
 
     static String routerStatus(Context context, String token) {
-        if (token == null || token.isEmpty()) return "";
+        if (token == null || token.isEmpty())
+            return "";
         int resource = switch (token) {
             case "OK" -> R.string.state_connected;
             case "Firewalled" -> R.string.router_status_firewalled;
@@ -92,7 +100,8 @@ final class UiText {
      * reinterpreted.
      */
     static String diagnostic(Context context, String text) {
-        if (text == null || text.isEmpty()) return "";
+        if (text == null || text.isEmpty())
+            return "";
         int resource = switch (text) {
             case "Permission denied" -> R.string.operation_permission_denied;
             case "I/O operation failed", "request failed" -> R.string.operation_io_failed;
@@ -108,15 +117,18 @@ final class UiText {
             case "Random source failure" -> R.string.torrent_error_random;
             case "Invalid magnet link" -> R.string.torrent_invalid_magnet;
             case "Invalid torrent selection", "Invalid comment selection", "Invalid comment ID" ->
-                    R.string.torrent_invalid_selection;
+                R.string.torrent_invalid_selection;
             case "Invalid metainfo text" -> R.string.torrent_invalid_metainfo;
-            case "Invalid I2P tracker URL", "Use an http:// or udp:// I2P tracker without credentials" ->
-                    R.string.torrent_invalid_tracker;
-            case "Invalid comment or rating", "Invalid comment page" -> R.string.torrent_invalid_comment;
+            case "Invalid I2P tracker URL",
+                    "Use an http:// or udp:// I2P tracker without credentials" ->
+                R.string.torrent_invalid_tracker;
+            case "Invalid comment or rating", "Invalid comment page" ->
+                R.string.torrent_invalid_comment;
             case "Invalid torrent session" -> R.string.torrent_invalid_session;
             case "Invalid control response", "Invalid control header", "Invalid response length",
                     "Invalid response field", "Duplicate response field", "malformed response",
-                    "oversized response" -> R.string.torrent_invalid_response;
+                    "oversized response" ->
+                R.string.torrent_invalid_response;
             case "clock-skew", "Clock skew" -> R.string.router_error_clock;
             case "offline", "Offline" -> R.string.status_offline;
             case "symmetric-nat", "Symmetric NAT" -> R.string.router_error_symmetric_nat;
@@ -143,7 +155,8 @@ final class UiText {
      * Numeric control fields use invariant wire syntax until rendering.
      */
     static String counter(Context context, String token) {
-        if (token == null) return context.getString(R.string.value_unknown);
+        if (token == null)
+            return context.getString(R.string.value_unknown);
         try {
             return UiFormat.count(context, Long.parseLong(token));
         } catch (NumberFormatException ignored) {
@@ -159,7 +172,8 @@ final class UiText {
      * decimal. Localized output is never a command operand.</p>
      */
     static String peerProgress(Context context, String token) {
-        if (token == null) return context.getString(R.string.value_unknown);
+        if (token == null)
+            return context.getString(R.string.value_unknown);
         try {
             double value = Double.parseDouble(token);
             if (Double.isNaN(value) || Double.isInfinite(value))

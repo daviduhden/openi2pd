@@ -121,8 +121,7 @@ public class TorrentDocumentReaderTest {
                 closed.set(true);
             }
         };
-        assertThrows(IOException.class,
-                () -> TorrentDocumentReader.read(input, 4, canceled::get));
+        assertThrows(IOException.class, () -> TorrentDocumentReader.read(input, 4, canceled::get));
         assertEquals(1, reads[0]);
         assertFalse(closed.get());
     }

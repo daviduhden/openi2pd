@@ -903,15 +903,15 @@ public class RouterService extends Service {
         pendingDrainResumeMillis = -1L;
         java.util.function.Consumer<Boolean> completion = restarted
                 -> TorrentSafCallbackPublisher.post(requestOwnerEpoch,
-                        command -> mainHandler.post(command),
+                        command
+                        -> mainHandler.post(command),
                         () -> finishRestart(requestGeneration, restarted));
         try {
-            daemon.restartDaemon(worker,
-                    admission -> ServiceOwnerEpoch.runIfCurrent(requestOwnerEpoch, () -> {
+            daemon.restartDaemon(
+                    worker, admission -> ServiceOwnerEpoch.runIfCurrent(requestOwnerEpoch, () -> {
                         if (!destroyed && requestGeneration == restartRequestGeneration.get())
                             admission.run();
-                    }),
-                    completion);
+                    }), completion);
         } catch (RuntimeException e) {
             Log.e(TAG, "unable to restart the router", e);
             completion.accept(false);
@@ -976,8 +976,9 @@ public class RouterService extends Service {
         // the stopped transition, which persists Stopped again.
         //
         // The check and conditional transition share the writer lock.
-        updateRunState(state -> state.phase() == RouterRunState.Phase.Stopped
-                ? state.running(wallClockNow()) : state);
+        updateRunState(state
+                -> state.phase() == RouterRunState.Phase.Stopped ? state.running(wallClockNow())
+                                                                 : state);
         clearGracefulDeadline();
         beginGracefulStopCommand();
     }
@@ -1771,7 +1772,7 @@ public class RouterService extends Service {
         boolean draining = state == DaemonWrapper.State.gracefulShutdownInProgress;
         builder.addAction(R.drawable.ic_graceful,
                 localized.getText(draining ? R.string.action_cancel_graceful_stop
-                                 : R.string.action_graceful_stop),
+                                           : R.string.action_graceful_stop),
                 PendingIntent.getService(this, draining ? 3 : 2,
                         new Intent(this, RouterService.class)
                                 .setAction(draining ? ACTION_CANCEL_GRACEFUL_STOP
@@ -1789,8 +1790,11 @@ public class RouterService extends Service {
     }
 
     private String notificationLocale() {
-        return ContextCompat.getContextForLanguage(this).getResources()
-                .getConfiguration().getLocales().toLanguageTags();
+        return ContextCompat.getContextForLanguage(this)
+                .getResources()
+                .getConfiguration()
+                .getLocales()
+                .toLanguageTags();
     }
 
     private void createNotificationChannel() {
@@ -1799,9 +1803,9 @@ public class RouterService extends Service {
         }
         try {
             Context localized = ContextCompat.getContextForLanguage(this);
-            NotificationChannel channel =
-                    new NotificationChannel(CHANNEL_ID, localized.getText(R.string.notification_channel_name),
-                            NotificationManager.IMPORTANCE_LOW);
+            NotificationChannel channel = new NotificationChannel(CHANNEL_ID,
+                    localized.getText(R.string.notification_channel_name),
+                    NotificationManager.IMPORTANCE_LOW);
             channel.setDescription(localized.getString(R.string.notification_channel_description));
             channel.setLockscreenVisibility(Notification.VISIBILITY_PRIVATE);
             channel.setShowBadge(false);
@@ -2094,7 +2098,8 @@ public class RouterService extends Service {
         if (destroyed || tunnel < 0 || document == null || !"content".equals(document.getScheme())
                 || !torrentInFlight.compareAndSet(false, true)) {
             TorrentSafCallbackPublisher.post(requestOwnerEpoch,
-                    command -> mainHandler.post(command),
+                    command
+                    -> mainHandler.post(command),
                     () -> callback.accept("I2PDTUI/1 ERR 4 15\ninvalid request"));
             return;
         }
@@ -2121,8 +2126,8 @@ public class RouterService extends Service {
                     if (destroyed)
                         throw new java.io.IOException("Service stopped");
                     android.content.ContentResolver resolver = getContentResolver();
-                    grantLease = TorrentSafStorage.acquireTemporaryGrant(
-                            getApplicationContext(), document, Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                    grantLease = TorrentSafStorage.acquireTemporaryGrant(getApplicationContext(),
+                            document, Intent.FLAG_GRANT_READ_URI_PERMISSION);
                     if (grantLease == null)
                         throw new java.io.IOException("Document grant unavailable");
                     try (android.content.res.AssetFileDescriptor opened =
@@ -2160,7 +2165,8 @@ public class RouterService extends Service {
             cancelTorrentImport = null;
             torrentInFlight.set(false);
             TorrentSafCallbackPublisher.post(requestOwnerEpoch,
-                    command -> mainHandler.post(command),
+                    command
+                    -> mainHandler.post(command),
                     () -> callback.accept("I2PDTUI/1 ERR 6 14\nrouter stopped"));
         }
     }
@@ -2196,7 +2202,8 @@ public class RouterService extends Service {
         // an otherwise valid request into a failure on the SAF worker.
         java.util.function.LongConsumer sink = progress;
         if (sink == null) {
-            sink = ignored -> {};
+            sink = ignored -> {
+            };
         }
         var cancel = new android.os.CancellationSignal();
         cancelTorrentImport = cancel::cancel;
@@ -2216,8 +2223,10 @@ public class RouterService extends Service {
                     if (grantLease == null)
                         throw new java.io.IOException("Source grant unavailable");
                     metadata = TorrentSafCreator.create(resolver, source, tree, cancel,
-                            value -> TorrentSafCallbackPublisher.post(requestOwnerEpoch,
-                                    command -> mainHandler.post(command),
+                            value
+                            -> TorrentSafCallbackPublisher.post(requestOwnerEpoch,
+                                    command
+                                    -> mainHandler.post(command),
                                     () -> statusSink.accept(value)),
                             pieceLength, trackers, privateTorrent);
                 } catch (Throwable ignored) {
@@ -2285,9 +2294,10 @@ public class RouterService extends Service {
                 boolean success = false;
                 TorrentSafGrantLeases.Token grantLease = null;
                 try {
-                    grantLease = TorrentSafStorage.acquireTemporaryGrant(
-                            getApplicationContext(), target, Intent.FLAG_GRANT_READ_URI_PERMISSION
-                                    | Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
+                    grantLease =
+                            TorrentSafStorage.acquireTemporaryGrant(getApplicationContext(), target,
+                                    Intent.FLAG_GRANT_READ_URI_PERMISSION
+                                            | Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
                     if (grantLease == null)
                         throw new java.io.IOException("Target grant unavailable");
                     success =

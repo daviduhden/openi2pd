@@ -117,7 +117,8 @@ record TorrentRow(String id, String name, String status, String error, String ha
     /*
      * TalkBack description combining name, state and percentage.
      */
-    String accessibilityLabel(String privateBadge, String stateLabel, String progress, String errorLabel) {
+    String accessibilityLabel(
+            String privateBadge, String stateLabel, String progress, String errorLabel) {
         StringBuilder label = new StringBuilder(name.length() + status.length() + 48);
         label.append(name).append(", ").append(stateLabel).append(", ").append(progress);
         if (privateTorrent && !privateBadge.isEmpty()) {

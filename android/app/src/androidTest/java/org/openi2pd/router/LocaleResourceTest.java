@@ -145,8 +145,7 @@ public final class LocaleResourceTest {
         assertTrue("Spanish plural forms must differ",
                 !es.getResources()
                         .getQuantityString(R.plurals.torrent_count, 1)
-                        .equals(es.getResources().getQuantityString(
-                                R.plurals.torrent_count, 2)));
+                        .equals(es.getResources().getQuantityString(R.plurals.torrent_count, 2)));
         Context zh = localized(base, "zh-CN");
         String chinese = zh.getResources().getQuantityString(R.plurals.torrent_count, 1);
         assertEquals(chinese, zh.getResources().getQuantityString(R.plurals.torrent_count, 2));
@@ -164,7 +163,8 @@ public final class LocaleResourceTest {
             assertEquals(context.getString(R.string.torrent_error_random),
                     UiText.diagnostic(context, "Random source failure"));
             assertEquals(context.getString(R.string.operation_permission_denied),
-                    UiText.diagnostic(context, RouterErrorText.describe(new SecurityException(opaque))));
+                    UiText.diagnostic(
+                            context, RouterErrorText.describe(new SecurityException(opaque))));
             assertEquals(context.getString(R.string.router_status_firewalled),
                     UiText.routerStatus(context, "Firewalled"));
             assertEquals(opaque, UiText.diagnostic(context, opaque));
@@ -172,8 +172,11 @@ public final class LocaleResourceTest {
             String formatted = context.getString(R.string.torrent_file_progress, opaque, "999");
             assertTrue(formatted.contains(opaque) && formatted.contains("999"));
             assertEquals(UiFormat.count(context, 12345), UiText.counter(context, "12345"));
-            assertEquals(java.text.NumberFormat.getPercentInstance(
-                            context.getResources().getConfiguration().getLocales().get(0)).format(0.42),
+            assertEquals(
+                    java.text.NumberFormat
+                            .getPercentInstance(
+                                    context.getResources().getConfiguration().getLocales().get(0))
+                            .format(0.42),
                     UiText.percent(context, 42));
         }
     }

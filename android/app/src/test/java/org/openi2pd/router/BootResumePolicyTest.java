@@ -67,10 +67,8 @@ public final class BootResumePolicyTest {
     public void unrelatedActionsAndActionsWithoutAValueAreIgnored() {
         for (String action : new String[] {null, "", Intent.ACTION_SCREEN_ON,
                      Intent.ACTION_MY_PACKAGE_SUSPENDED, Intent.ACTION_TIME_CHANGED}) {
-            assertFalse(String.valueOf(action),
-                    BootUpReceiver.mayResume(action, true, true));
-            assertFalse(String.valueOf(action),
-                    BootUpReceiver.mayResume(action, true, false));
+            assertFalse(String.valueOf(action), BootUpReceiver.mayResume(action, true, true));
+            assertFalse(String.valueOf(action), BootUpReceiver.mayResume(action, true, false));
         }
     }
 }

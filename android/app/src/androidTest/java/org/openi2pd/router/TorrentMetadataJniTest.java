@@ -71,13 +71,13 @@ public final class TorrentMetadataJniTest {
         for (int i = 0; i < paths.length; ++i)
             paths[i] = utf8(prefix + repeat("b", 250) + i);
         byte[] digest = MessageDigest.getInstance("SHA-1").digest(new byte[paths.length]);
-        assertNull(I2PD_JNI.buildTorrentMetadata(utf8("folder"), paths, lengths,
-                1024 * 1024, digest, new byte[0][], false));
+        assertNull(I2PD_JNI.buildTorrentMetadata(
+                utf8("folder"), paths, lengths, 1024 * 1024, digest, new byte[0][], false));
         // The individual paths remain valid below the aggregate cap.
         byte[] smallDigest = MessageDigest.getInstance("SHA-1").digest(new byte[2]);
-        assertNotNull(I2PD_JNI.buildTorrentMetadata(utf8("folder"),
-                new byte[][] {paths[0], paths[1]}, new long[] {1, 1},
-                1024 * 1024, smallDigest, new byte[0][], false));
+        assertNotNull(
+                I2PD_JNI.buildTorrentMetadata(utf8("folder"), new byte[][] {paths[0], paths[1]},
+                        new long[] {1, 1}, 1024 * 1024, smallDigest, new byte[0][], false));
     }
 
     @Test
@@ -86,10 +86,10 @@ public final class TorrentMetadataJniTest {
         byte[] digest = MessageDigest.getInstance("SHA-1").digest(utf8("a"));
         String supplementary = "\uD83D\uDE00";
         assertNotNull(I2PD_JNI.buildTorrentMetadata(utf8(repeat(supplementary, 63)),
-                new byte[][] {utf8("")}, new long[] {1},
-                1024 * 1024, digest, new byte[0][], false));
+                new byte[][] {utf8("")}, new long[] {1}, 1024 * 1024, digest, new byte[0][],
+                false));
         assertNull(I2PD_JNI.buildTorrentMetadata(utf8(repeat(supplementary, 64)),
-                new byte[][] {utf8("")}, new long[] {1},
-                1024 * 1024, digest, new byte[0][], false));
+                new byte[][] {utf8("")}, new long[] {1}, 1024 * 1024, digest, new byte[0][],
+                false));
     }
 }

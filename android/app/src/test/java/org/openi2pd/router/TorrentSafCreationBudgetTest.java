@@ -32,9 +32,9 @@ public final class TorrentSafCreationBudgetTest {
         assertEquals("😀".repeat(63), TorrentSafCreationBudget.component("😀".repeat(63)));
         rejected(() -> TorrentSafCreationBudget.component("界".repeat(86)));
         rejected(() -> TorrentSafCreationBudget.component("😀".repeat(64)));
-        for (String invalid : new String[] {null, "", ".", "..", "a/b", "a\\b", "a:b",
-                "a<b", "a>b", "a\"b", "a|b", "a?b", "a*b",
-                "a\u0000b", "\uD800", "\uDC00", "secret-provider-marker\n"})
+        for (String invalid : new String[] {null, "", ".", "..", "a/b", "a\\b", "a:b", "a<b", "a>b",
+                     "a\"b", "a|b", "a?b", "a*b", "a\u0000b", "\uD800", "\uDC00",
+                     "secret-provider-marker\n"})
             rejected(() -> TorrentSafCreationBudget.component(invalid));
     }
 
@@ -82,10 +82,11 @@ public final class TorrentSafCreationBudgetTest {
         TorrentSafCreationBudget.hashAppend(0);
         TorrentSafCreationBudget.hashAppend(
                 TorrentSafCreationBudget.MAX_HASH_BYTES - TorrentSafCreationBudget.HASH_BYTES);
-        rejected(() -> TorrentSafCreationBudget.hashAppend(
-                TorrentSafCreationBudget.MAX_HASH_BYTES));
-        rejected(() -> TorrentSafCreationBudget.hashAppend(
-                TorrentSafCreationBudget.MAX_HASH_BYTES - 19));
+        rejected(
+                () -> TorrentSafCreationBudget.hashAppend(TorrentSafCreationBudget.MAX_HASH_BYTES));
+        rejected(()
+                         -> TorrentSafCreationBudget.hashAppend(
+                                 TorrentSafCreationBudget.MAX_HASH_BYTES - 19));
         rejected(() -> TorrentSafCreationBudget.hashAppend(-1));
     }
 }

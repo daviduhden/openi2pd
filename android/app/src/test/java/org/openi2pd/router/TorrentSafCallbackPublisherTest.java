@@ -27,10 +27,8 @@ public final class TorrentSafCallbackPublisherTest {
         Executor executor = queued::add;
         int[] publications = {0};
 
-        assertTrue(TorrentSafCallbackPublisher.post(owner, executor,
-                () -> publications[0]++));
-        assertTrue(TorrentSafCallbackPublisher.post(owner, executor,
-                () -> publications[0]++));
+        assertTrue(TorrentSafCallbackPublisher.post(owner, executor, () -> publications[0]++));
+        assertTrue(TorrentSafCallbackPublisher.post(owner, executor, () -> publications[0]++));
         assertEquals(2, queued.size());
 
         ServiceOwnerEpoch.retireAndQueueStop(owner, ignored -> {}, () -> {});
@@ -47,8 +45,7 @@ public final class TorrentSafCallbackPublisherTest {
         int[] publications = {0};
 
         ServiceOwnerEpoch.retireAndQueueStop(owner, ignored -> {}, () -> {});
-        assertTrue(TorrentSafCallbackPublisher.post(owner, queued::add,
-                () -> publications[0]++));
+        assertTrue(TorrentSafCallbackPublisher.post(owner, queued::add, () -> publications[0]++));
         queued.remove().run();
 
         assertEquals(0, publications[0]);
@@ -60,8 +57,7 @@ public final class TorrentSafCallbackPublisherTest {
         long owner = ServiceOwnerEpoch.acquire();
         int[] publications = {0};
 
-        assertTrue(TorrentSafCallbackPublisher.post(owner, Runnable::run,
-                () -> publications[0]++));
+        assertTrue(TorrentSafCallbackPublisher.post(owner, Runnable::run, () -> publications[0]++));
 
         assertEquals(1, publications[0]);
     }

@@ -185,8 +185,7 @@ public record RouterRunState(Phase phase, long gracefulDeadlineEpochMs, long gen
      *              state
      * @return true when the candidate was saved
      */
-    static boolean saveIfNewer(
-            SharedPreferences preferences, Object writerLock,
+    static boolean saveIfNewer(SharedPreferences preferences, Object writerLock,
             RouterRunState candidate, long nowMs) {
         if (preferences == null || writerLock == null || candidate == null) {
             return false;

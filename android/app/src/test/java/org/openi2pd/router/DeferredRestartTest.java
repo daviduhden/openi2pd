@@ -134,8 +134,9 @@ public final class DeferredRestartTest {
     public void executorRejectionCompletesOnceAndRetainsNoRequest() {
         Fixture fixture = new Fixture();
         fixture.idle = true;
-        fixture.restart.request(command -> { throw new RejectedExecutionException(); },
-                fixture.authority, fixture.completions::add);
+        fixture.restart.request(command -> {
+            throw new RejectedExecutionException();
+        }, fixture.authority, fixture.completions::add);
         fixture.restart.ready();
         fixture.restart.cancel();
 

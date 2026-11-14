@@ -119,16 +119,16 @@ public final class UiContractTest {
 
     @Test
     public void windowOwnsSurfaceWithoutDuplicateRootBackgrounds() {
-        for (int mode : new int[] {
-                Configuration.UI_MODE_NIGHT_NO, Configuration.UI_MODE_NIGHT_YES}) {
+        for (int mode :
+                new int[] {Configuration.UI_MODE_NIGHT_NO, Configuration.UI_MODE_NIGHT_YES}) {
             Context context = resolution(mode);
-            TypedArray attributes = context.obtainStyledAttributes(
-                    new int[] {android.R.attr.windowBackground});
+            TypedArray attributes =
+                    context.obtainStyledAttributes(new int[] {android.R.attr.windowBackground});
             try {
                 Drawable background = attributes.getDrawable(0);
                 assertTrue(background instanceof ColorDrawable);
-                assertEquals(MaterialColors.getColor(context,
-                                com.google.android.material.R.attr.colorSurface, 0),
+                assertEquals(MaterialColors.getColor(
+                                     context, com.google.android.material.R.attr.colorSurface, 0),
                         ((ColorDrawable) background).getColor());
             } finally {
                 attributes.recycle();
@@ -136,15 +136,13 @@ public final class UiContractTest {
 
             // Resolve both layout variants independently of the device.
             for (int width : new int[] {400, 800}) {
-                Configuration configuration = new Configuration(
-                        context.getResources().getConfiguration());
+                Configuration configuration =
+                        new Configuration(context.getResources().getConfiguration());
                 configuration.screenWidthDp = width;
                 configuration.smallestScreenWidthDp = width;
                 Context sized = new android.view.ContextThemeWrapper(
-                        context.createConfigurationContext(configuration),
-                        R.style.Theme_OpenI2Pd);
-                View root = LayoutInflater.from(sized).inflate(
-                        R.layout.activity_main, null, false);
+                        context.createConfigurationContext(configuration), R.style.Theme_OpenI2Pd);
+                View root = LayoutInflater.from(sized).inflate(R.layout.activity_main, null, false);
                 assertNull(root.getBackground());
             }
         }
@@ -164,20 +162,16 @@ public final class UiContractTest {
 
     @Test
     public void metricLabelsAreAssociatedWithValueViews() {
-        assertLabelFor(inflate(R.layout.fragment_dashboard),
-                R.id.metric_uptime, R.id.metric_peers, R.id.metric_routers,
-                R.id.metric_tunnels, R.id.metric_download, R.id.metric_upload,
+        assertLabelFor(inflate(R.layout.fragment_dashboard), R.id.metric_uptime, R.id.metric_peers,
+                R.id.metric_routers, R.id.metric_tunnels, R.id.metric_download, R.id.metric_upload,
                 R.id.metric_reseed);
-        assertLabelFor(inflate(R.layout.fragment_statistics),
-                R.id.stat_download_rate, R.id.stat_upload_rate,
-                R.id.stat_total_received, R.id.stat_total_sent,
-                R.id.stat_total_transit, R.id.stat_tunnels, R.id.stat_uptime,
-                R.id.stat_peers, R.id.stat_routers);
-        assertLabelFor(inflate(R.layout.fragment_tunnels),
-                R.id.text_tunnels_in, R.id.text_tunnels_out,
-                R.id.text_tunnels_transit, R.id.text_tunnels_total);
-        assertLabelFor(inflate(R.layout.fragment_network),
-                R.id.text_ipv4, R.id.text_ipv6);
+        assertLabelFor(inflate(R.layout.fragment_statistics), R.id.stat_download_rate,
+                R.id.stat_upload_rate, R.id.stat_total_received, R.id.stat_total_sent,
+                R.id.stat_total_transit, R.id.stat_tunnels, R.id.stat_uptime, R.id.stat_peers,
+                R.id.stat_routers);
+        assertLabelFor(inflate(R.layout.fragment_tunnels), R.id.text_tunnels_in,
+                R.id.text_tunnels_out, R.id.text_tunnels_transit, R.id.text_tunnels_total);
+        assertLabelFor(inflate(R.layout.fragment_network), R.id.text_ipv4, R.id.text_ipv6);
     }
 
     /*

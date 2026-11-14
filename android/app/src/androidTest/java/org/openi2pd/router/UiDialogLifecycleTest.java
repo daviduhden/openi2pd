@@ -41,7 +41,10 @@ public final class UiDialogLifecycleTest {
     public void keepRouterStoppedAndAvoidStartupPermissionPrompts() {
         Context context = ApplicationProvider.getApplicationContext();
         assertTrue(context.getSharedPreferences("router_state", Context.MODE_PRIVATE)
-                .edit().putBoolean("should_run", false).remove("pending_autostart").commit());
+                        .edit()
+                        .putBoolean("should_run", false)
+                        .remove("pending_autostart")
+                        .commit());
         var automation = InstrumentationRegistry.getInstrumentation().getUiAutomation();
         if (Build.VERSION.SDK_INT >= 33)
             automation.grantRuntimePermission(
@@ -63,15 +66,20 @@ public final class UiDialogLifecycleTest {
 
     @Test
     public void nestedMaterialChoicesKeepParentUntilViewRetires() {
-        try (ActivityScenario<MainActivity> scenario = ActivityScenario.launch(MainActivity.class)) {
+        try (ActivityScenario<MainActivity> scenario =
+                        ActivityScenario.launch(MainActivity.class)) {
             scenario.onActivity(activity -> {
                 var dialogs = new UiDialogEpoch();
                 dialogs.openView();
                 var token = dialogs.token();
-                var parent = new com.google.android.material.dialog.MaterialAlertDialogBuilder(activity)
-                        .setTitle(R.string.torrent_create_saf_title).create();
-                var child = new com.google.android.material.dialog.MaterialAlertDialogBuilder(activity)
-                        .setTitle(R.string.torrent_piece_size_title).create();
+                var parent =
+                        new com.google.android.material.dialog.MaterialAlertDialogBuilder(activity)
+                                .setTitle(R.string.torrent_create_saf_title)
+                                .create();
+                var child =
+                        new com.google.android.material.dialog.MaterialAlertDialogBuilder(activity)
+                                .setTitle(R.string.torrent_piece_size_title)
+                                .create();
                 var parentRegistration = dialogs.replace(token, parent::dismiss);
                 parent.setOnDismissListener(ignored -> dialogs.dismissed(parentRegistration));
                 parent.show();
@@ -89,13 +97,17 @@ public final class UiDialogLifecycleTest {
     }
 
     private void assertDialogRetirement(Fragment fragment, int actionLabel) {
-        try (ActivityScenario<MainActivity> scenario = ActivityScenario.launch(MainActivity.class)) {
+        try (ActivityScenario<MainActivity> scenario =
+                        ActivityScenario.launch(MainActivity.class)) {
             scenario.onActivity(activity -> {
-                activity.getSupportFragmentManager().beginTransaction()
-                        .replace(R.id.fragment_container, fragment, "dialog-lifecycle").commitNow();
+                activity.getSupportFragmentManager()
+                        .beginTransaction()
+                        .replace(R.id.fragment_container, fragment, "dialog-lifecycle")
+                        .commitNow();
                 clickLabel(fragment.requireView(), activity.getString(actionLabel));
             });
-            onView(withText(R.string.address_book_save)).inRoot(isDialog())
+            onView(withText(R.string.address_book_save))
+                    .inRoot(isDialog())
                     .check(matches(isDisplayed()));
             scenario.onActivity(activity -> {
                 var manager = activity.getSupportFragmentManager();
@@ -103,9 +115,10 @@ public final class UiDialogLifecycleTest {
                 manager.beginTransaction().attach(fragment).commitNow();
             });
             onView(withText(R.string.address_book_save)).check(doesNotExist());
-            scenario.onActivity(activity ->
-                    clickLabel(fragment.requireView(), activity.getString(actionLabel)));
-            onView(withText(R.string.address_book_save)).inRoot(isDialog())
+            scenario.onActivity(activity
+                    -> clickLabel(fragment.requireView(), activity.getString(actionLabel)));
+            onView(withText(R.string.address_book_save))
+                    .inRoot(isDialog())
                     .check(matches(isDisplayed()));
             pressBack();
         }

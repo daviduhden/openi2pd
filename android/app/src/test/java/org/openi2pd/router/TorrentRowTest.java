@@ -121,7 +121,8 @@ public final class TorrentRowTest {
     @Test
     public void labelsCarryStateAndPrivateBadge() {
         TorrentRow row = TorrentRow.from(row(), "torrent.0.");
-        assertEquals("example\nSeeding · 100% · private", row.displayLabel("private", "Seeding", "100%"));
+        assertEquals("example\nSeeding · 100% · private",
+                row.displayLabel("private", "Seeding", "100%"));
         assertEquals("example, Seeding, 100%, private",
                 row.accessibilityLabel("private", "Seeding", "100%", ""));
         assertEquals("example, Seeding, 100%", row.accessibilityLabel("", "Seeding", "100%", ""));
@@ -138,7 +139,8 @@ public final class TorrentRowTest {
         assertEquals(repeat('n', 511), row.name());
         assertEquals(repeat('e', 255), row.error());
         fields.put("torrent.0.name", repeat('n', 510) + "\uD83D\uDE80tail");
-        assertEquals(repeat('n', 510) + "\uD83D\uDE80", TorrentRow.from(fields, "torrent.0.").name());
+        assertEquals(
+                repeat('n', 510) + "\uD83D\uDE80", TorrentRow.from(fields, "torrent.0.").name());
     }
 
     private static String repeat(char value, int count) {

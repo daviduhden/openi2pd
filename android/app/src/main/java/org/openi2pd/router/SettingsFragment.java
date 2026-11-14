@@ -606,8 +606,9 @@ public class SettingsFragment extends PreferenceFragmentCompat {
      */
     private void showRestartDialog() {
         var dialogToken = dialogs.token();
-        if (restartDialogShown || !dialogs.maySubmit(dialogToken,
-                    !viewDestroyed && isAdded() && viewModel != null, false)) {
+        if (restartDialogShown
+                || !dialogs.maySubmit(
+                        dialogToken, !viewDestroyed && isAdded() && viewModel != null, false)) {
             return;
         }
         restartDialogShown = true;
@@ -616,14 +617,13 @@ public class SettingsFragment extends PreferenceFragmentCompat {
         builder.setMessage(R.string.pref_restart_required_message);
         builder.setNegativeButton(R.string.pref_later, null);
         boolean[] submitted = {false};
-        builder.setPositiveButton(
-                R.string.pref_restart_now, (dialog, which) -> {
-                    if (dialogs.maySubmit(dialogToken,
-                                !viewDestroyed && isAdded() && viewModel != null, submitted[0])) {
-                        submitted[0] = true;
-                        viewModel.restartRouter();
-                    }
-                });
+        builder.setPositiveButton(R.string.pref_restart_now, (dialog, which) -> {
+            if (dialogs.maySubmit(dialogToken, !viewDestroyed && isAdded() && viewModel != null,
+                        submitted[0])) {
+                submitted[0] = true;
+                viewModel.restartRouter();
+            }
+        });
         var dialog = builder.create();
         var registration = dialogs.replace(dialogToken, dialog::dismiss);
         if (registration == null) {

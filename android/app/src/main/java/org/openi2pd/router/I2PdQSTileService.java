@@ -81,9 +81,9 @@ public class I2PdQSTileService extends TileService {
         tile.setState(running ? Tile.STATE_ACTIVE : Tile.STATE_INACTIVE);
         android.content.Context localized = ContextCompat.getContextForLanguage(this);
         tile.setLabel(localized.getString(R.string.app_name));
-        tile.setContentDescription(
-                localized.getString(R.string.tile_state_format, localized.getString(R.string.app_name),
-                        localized.getString(running ? R.string.value_running : R.string.value_stopped)));
+        tile.setContentDescription(localized.getString(R.string.tile_state_format,
+                localized.getString(R.string.app_name),
+                localized.getString(running ? R.string.value_running : R.string.value_stopped)));
         try {
             tile.updateTile();
         } catch (RuntimeException e) {

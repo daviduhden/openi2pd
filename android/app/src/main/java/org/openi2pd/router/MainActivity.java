@@ -603,8 +603,9 @@ public class MainActivity extends AppCompatActivity {
         final Context appContext = getApplicationContext();
         confirm(R.string.confirm_reseed_title, R.string.confirm_reseed_message,
                 R.string.action_reseed,
-                () -> UiFormat.isConnected(lastSnapshot)
-                        && lastSnapshot != null && !lastSnapshot.reseeding(),
+                ()
+                        -> UiFormat.isConnected(lastSnapshot) && lastSnapshot != null
+                        && !lastSnapshot.reseeding(),
                 () -> viewModel.requestReseed(outcome -> {
                     String token = outcome == null ? "" : outcome;
                     int message = switch (token) {
@@ -625,8 +626,10 @@ public class MainActivity extends AppCompatActivity {
         }
         confirm(R.string.confirm_graceful_title, R.string.confirm_graceful_message,
                 R.string.action_graceful_stop,
-                () -> UiFormat.canGraceful(lastSnapshot)
-                        && !UiFormat.gracefulActive(lastSnapshot), () -> {
+                ()
+                        -> UiFormat.canGraceful(lastSnapshot)
+                        && !UiFormat.gracefulActive(lastSnapshot),
+                () -> {
                     viewModel.beginGracefulStop();
                     Toast.makeText(this, R.string.toast_graceful_started, Toast.LENGTH_SHORT)
                             .show();
@@ -644,8 +647,7 @@ public class MainActivity extends AppCompatActivity {
         }
 
         confirm(R.string.battery_optimizations_enabled,
-                R.string.battery_optimizations_enabled_dialog, R.string.action_continue,
-                () -> {
+                R.string.battery_optimizations_enabled_dialog, R.string.action_continue, () -> {
                     Intent request =
                             new Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
                                     Uri.parse("package:" + getPackageName()));
@@ -682,17 +684,16 @@ public class MainActivity extends AppCompatActivity {
      * lifecycle teardown cannot reactivate that callback.
      */
     @Nullable
-    private androidx.appcompat.app.AlertDialog confirm(@StringRes int title,
-            @StringRes int message, @StringRes int positive, @NonNull BooleanSupplier admitted,
-            @NonNull Runnable action) {
+    private androidx.appcompat.app.AlertDialog confirm(@StringRes int title, @StringRes int message,
+            @StringRes int positive, @NonNull BooleanSupplier admitted, @NonNull Runnable action) {
         if (!confirmationReady())
             return null;
         var dialog = new MaterialAlertDialogBuilder(this)
-                .setTitle(title)
-                .setMessage(message)
-                .setNegativeButton(R.string.action_cancel, null)
-                .setPositiveButton(positive, null)
-                .create();
+                             .setTitle(title)
+                             .setMessage(message)
+                             .setNegativeButton(R.string.action_cancel, null)
+                             .setPositiveButton(positive, null)
+                             .create();
         var ticket = confirmations.register(dialog::dismiss);
         if (ticket == null)
             return null;
@@ -705,7 +706,8 @@ public class MainActivity extends AppCompatActivity {
         }
         dialog.getButton(android.content.DialogInterface.BUTTON_POSITIVE)
                 .setOnClickListener(button -> {
-                    if (confirmations.consume(ticket, confirmationReady() && admitted.getAsBoolean()))
+                    if (confirmations.consume(
+                                ticket, confirmationReady() && admitted.getAsBoolean()))
                         action.run();
                 });
         return dialog;

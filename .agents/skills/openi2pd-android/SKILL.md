@@ -121,6 +121,11 @@ run Gradle, install an APK or run a device test.
 
 ## Known issues and decisions
 
+- Java uses the explicit Language: Java document in .clang-format; do not
+  apply the Cpp style or format generated JNI headers as Java-owned source.
+  Review records, pattern switches and text blocks for preserved tokens and
+  literals, and run a full Java formatter dry-run after any manual correction.
+
 - Derived branding vectors use exact hundredth-coordinate relative paths
   to stay below the reviewed 3000-character Lint limit. Run the read-only
   `android/tools/compact-vector-paths.pl` geometry/literal checker; its

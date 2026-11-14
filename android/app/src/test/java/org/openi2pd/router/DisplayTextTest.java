@@ -29,8 +29,7 @@ public final class DisplayTextTest {
         assertEquals("", DisplayText.bound("\uD840\uDC00", 1));
         assertEquals("", DisplayText.bound("text", 0));
         assertEquals("\u4E2D\u6587", DisplayText.bound("\u4E2D\u6587abc", 2));
-        assertThrows(IllegalArgumentException.class,
-                () -> DisplayText.bound("text", -1));
+        assertThrows(IllegalArgumentException.class, () -> DisplayText.bound("text", -1));
     }
 
     @Test
@@ -38,8 +37,7 @@ public final class DisplayTextTest {
         StringBuilder prefix = new StringBuilder();
         for (int index = 0; index < 16 * 1024 - 1; ++index)
             prefix.append('x');
-        LogEntry entry = new LogEntry(1, 2, "info",
-                prefix + "\uD840\uDC00tail");
+        LogEntry entry = new LogEntry(1, 2, "info", prefix + "\uD840\uDC00tail");
         assertEquals(prefix.toString(), entry.message());
         assertEquals("", new LogEntry(1, 2, null, null).message());
     }

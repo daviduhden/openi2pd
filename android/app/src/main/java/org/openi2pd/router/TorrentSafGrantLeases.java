@@ -62,12 +62,11 @@ final class TorrentSafGrantLeases {
      * must drain retired tokens before admission. URI strings are used
      * only as internal equality keys and must never reach diagnostics.
      */
-    Token acquire(String uri, int requested, IntSupplier retained,
-            IntConsumer take, BooleanSupplier mapped, IntConsumer release) {
-        if (uri == null || uri.isEmpty() || uri.length() > MAX_URI_LENGTH
-                || requested <= 0 || (requested & ~SUPPORTED_MODES) != 0
-                || retained == null || take == null || mapped == null
-                || release == null || leaseCount >= MAX_LEASES)
+    Token acquire(String uri, int requested, IntSupplier retained, IntConsumer take,
+            BooleanSupplier mapped, IntConsumer release) {
+        if (uri == null || uri.isEmpty() || uri.length() > MAX_URI_LENGTH || requested <= 0
+                || (requested & ~SUPPORTED_MODES) != 0 || retained == null || take == null
+                || mapped == null || release == null || leaseCount >= MAX_LEASES)
             return null;
         try {
             int missing = requested & ~retained.getAsInt();
@@ -101,8 +100,7 @@ final class TorrentSafGrantLeases {
      * Foreign and already retired tokens cannot change registry state.
      */
     boolean retire(Token token) {
-        return token != null && token.owner == this
-                && token.retired.compareAndSet(false, true);
+        return token != null && token.owner == this && token.retired.compareAndSet(false, true);
     }
 
     /*

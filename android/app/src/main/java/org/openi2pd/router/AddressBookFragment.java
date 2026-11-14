@@ -234,12 +234,12 @@ public final class AddressBookFragment extends Fragment {
         replace.setText(R.string.address_book_replace_hint);
         form.addView(replace);
 
-        showDialog(dialogToken, new MaterialAlertDialogBuilder(requireContext())
-                .setTitle(R.string.address_book_add)
-                .setView(form)
-                .setNegativeButton(R.string.action_cancel, null)
-                .setPositiveButton(R.string.address_book_save,
-                        (dialog, which) -> {
+        showDialog(dialogToken,
+                new MaterialAlertDialogBuilder(requireContext())
+                        .setTitle(R.string.address_book_add)
+                        .setView(form)
+                        .setNegativeButton(R.string.action_cancel, null)
+                        .setPositiveButton(R.string.address_book_save, (dialog, which) -> {
                             if (maySubmitDialog(dialogToken))
                                 submitAdd(name.getText().toString(),
                                         destination.getText().toString(), replace.isChecked());
@@ -297,11 +297,11 @@ public final class AddressBookFragment extends Fragment {
         var dialogToken = dialogs.token();
         if (!maySubmitDialog(dialogToken))
             return;
-        showDialog(dialogToken, new MaterialAlertDialogBuilder(requireContext())
-                .setMessage(getString(R.string.address_book_replace_confirm, name))
-                .setNegativeButton(R.string.action_cancel, null)
-                .setPositiveButton(R.string.address_book_replace_hint,
-                        (dialog, which) -> {
+        showDialog(dialogToken,
+                new MaterialAlertDialogBuilder(requireContext())
+                        .setMessage(getString(R.string.address_book_replace_confirm, name))
+                        .setNegativeButton(R.string.action_cancel, null)
+                        .setPositiveButton(R.string.address_book_replace_hint, (dialog, which) -> {
                             if (maySubmitDialog(dialogToken))
                                 submitAdd(name, destination, true);
                         }));
@@ -317,12 +317,12 @@ public final class AddressBookFragment extends Fragment {
         input.setFilters(new android.text.InputFilter[] {
                 new android.text.InputFilter.LengthFilter(MAX_SUBSCRIPTION_URL)});
         layout.addView(input);
-        showDialog(dialogToken, new MaterialAlertDialogBuilder(requireContext())
-                .setTitle(R.string.address_book_subscription_add)
-                .setView(layout)
-                .setNegativeButton(R.string.action_cancel, null)
-                .setPositiveButton(R.string.address_book_save,
-                        (dialog, which) -> {
+        showDialog(dialogToken,
+                new MaterialAlertDialogBuilder(requireContext())
+                        .setTitle(R.string.address_book_subscription_add)
+                        .setView(layout)
+                        .setNegativeButton(R.string.action_cancel, null)
+                        .setPositiveButton(R.string.address_book_save, (dialog, which) -> {
                             if (!maySubmitDialog(dialogToken))
                                 return;
                             String url = input.getText() == null
@@ -359,14 +359,16 @@ public final class AddressBookFragment extends Fragment {
         var dialogToken = dialogs.token();
         if (!maySubmitDialog(dialogToken))
             return;
-        showDialog(dialogToken, new MaterialAlertDialogBuilder(requireContext())
-                .setMessage(getString(R.string.address_book_subscription_remove) + "\n" + url)
-                .setNegativeButton(R.string.action_cancel, null)
-                .setPositiveButton(R.string.address_book_subscription_remove,
-                        (dialog, which) -> {
-                            if (maySubmitDialog(dialogToken))
-                                submitSubscription(url, false);
-                        }));
+        showDialog(dialogToken,
+                new MaterialAlertDialogBuilder(requireContext())
+                        .setMessage(
+                                getString(R.string.address_book_subscription_remove) + "\n" + url)
+                        .setNegativeButton(R.string.action_cancel, null)
+                        .setPositiveButton(
+                                R.string.address_book_subscription_remove, (dialog, which) -> {
+                                    if (maySubmitDialog(dialogToken))
+                                        submitSubscription(url, false);
+                                }));
     }
 
     private void blockDialog() {
@@ -379,12 +381,12 @@ public final class AddressBookFragment extends Fragment {
         input.setFilters(
                 new android.text.InputFilter[] {new android.text.InputFilter.LengthFilter(255)});
         layout.addView(input);
-        showDialog(dialogToken, new MaterialAlertDialogBuilder(requireContext())
-                .setTitle(R.string.address_book_block)
-                .setView(layout)
-                .setNegativeButton(R.string.action_cancel, null)
-                .setPositiveButton(R.string.address_book_save,
-                        (dialog, which) -> {
+        showDialog(dialogToken,
+                new MaterialAlertDialogBuilder(requireContext())
+                        .setTitle(R.string.address_book_block)
+                        .setView(layout)
+                        .setNegativeButton(R.string.action_cancel, null)
+                        .setPositiveButton(R.string.address_book_save, (dialog, which) -> {
                             if (!maySubmitDialog(dialogToken))
                                 return;
                             String pattern = input.getText() == null
@@ -425,26 +427,29 @@ public final class AddressBookFragment extends Fragment {
                 status.setText(R.string.address_book_blocked_empty);
                 return;
             }
-            showDialog(dialogToken, new MaterialAlertDialogBuilder(requireContext())
-                    .setTitle(R.string.address_book_blocked_list)
-                    .setItems(patterns.toArray(new String[0]),
-                            (dialog, which) -> {
-                                String pattern = patterns.get(which);
-                                if (!maySubmitDialog(dialogToken))
-                                    return;
-                                busy = true;
-                                int unblockGeneration = generation;
-                                model.unblockAddress(pattern, unblocked -> {
-                                    if (unblockGeneration != generation || status == null || !isAdded())
-                                        return;
-                                    busy = false;
-                                    status.setText(unblocked ? R.string.address_book_unblocked
-                                                             : R.string.address_book_block_failed);
-                                    if (unblocked)
-                                        refresh();
-                                });
-                            })
-                    .setNegativeButton(R.string.action_cancel, null));
+            showDialog(dialogToken,
+                    new MaterialAlertDialogBuilder(requireContext())
+                            .setTitle(R.string.address_book_blocked_list)
+                            .setItems(patterns.toArray(new String[0]),
+                                    (dialog, which) -> {
+                                        String pattern = patterns.get(which);
+                                        if (!maySubmitDialog(dialogToken))
+                                            return;
+                                        busy = true;
+                                        int unblockGeneration = generation;
+                                        model.unblockAddress(pattern, unblocked -> {
+                                            if (unblockGeneration != generation || status == null
+                                                    || !isAdded())
+                                                return;
+                                            busy = false;
+                                            status.setText(unblocked
+                                                            ? R.string.address_book_unblocked
+                                                            : R.string.address_book_block_failed);
+                                            if (unblocked)
+                                                refresh();
+                                        });
+                                    })
+                            .setNegativeButton(R.string.action_cancel, null));
         });
     }
 
@@ -452,11 +457,11 @@ public final class AddressBookFragment extends Fragment {
         var dialogToken = dialogs.token();
         if (!maySubmitDialog(dialogToken))
             return;
-        showDialog(dialogToken, new MaterialAlertDialogBuilder(requireContext())
-                .setMessage(getString(R.string.address_book_remove_confirm, name))
-                .setNegativeButton(R.string.action_cancel, null)
-                .setPositiveButton(R.string.address_book_remove,
-                        (dialog, which) -> {
+        showDialog(dialogToken,
+                new MaterialAlertDialogBuilder(requireContext())
+                        .setMessage(getString(R.string.address_book_remove_confirm, name))
+                        .setNegativeButton(R.string.action_cancel, null)
+                        .setPositiveButton(R.string.address_book_remove, (dialog, which) -> {
                             if (!maySubmitDialog(dialogToken))
                                 return;
                             busy = true;

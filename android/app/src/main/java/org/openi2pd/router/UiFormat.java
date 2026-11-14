@@ -104,7 +104,8 @@ public final class UiFormat {
      */
     @NonNull
     public static String routerDetail(@NonNull Context context, @Nullable RouterSnapshot snapshot) {
-        if (snapshot == null || !snapshot.hasStatus()) return "";
+        if (snapshot == null || !snapshot.hasStatus())
+            return "";
         String status = UiText.routerStatus(context, snapshot.routerStatus());
         String error = UiText.diagnostic(context, snapshot.routerError());
         return status.isEmpty() ? "" : (error.isEmpty() ? status : status + " · " + error);
@@ -220,8 +221,7 @@ public final class UiFormat {
                 }
                 yield detail.isEmpty()
                         ? context.getString(R.string.status_status_unavailable)
-                        : context.getString(
-                                  R.string.status_status_unavailable_format,
+                        : context.getString(R.string.status_status_unavailable_format,
                                   UiText.diagnostic(context, summarize(detail)));
             }
             case UNKNOWN -> context.getString(R.string.status_service_connecting);

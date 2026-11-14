@@ -31,7 +31,10 @@ public final class MainActivityConfirmationTest {
     public void keepRouterStoppedAndAvoidPermissionPrompts() {
         Context context = ApplicationProvider.getApplicationContext();
         assertTrue(context.getSharedPreferences("router_state", Context.MODE_PRIVATE)
-                .edit().putBoolean("should_run", false).remove("pending_autostart").commit());
+                        .edit()
+                        .putBoolean("should_run", false)
+                        .remove("pending_autostart")
+                        .commit());
         var automation = InstrumentationRegistry.getInstrumentation().getUiAutomation();
         if (Build.VERSION.SDK_INT >= 33)
             automation.grantRuntimePermission(
@@ -43,7 +46,8 @@ public final class MainActivityConfirmationTest {
 
     @Test
     public void replacementRevokesOldButtonsAndCurrentButtonRunsOnce() {
-        try (ActivityScenario<MainActivity> scenario = ActivityScenario.launch(MainActivity.class)) {
+        try (ActivityScenario<MainActivity> scenario =
+                        ActivityScenario.launch(MainActivity.class)) {
             scenario.onActivity(activity -> {
                 int[] submitted = {0};
                 AlertDialog old = harmless(activity, () -> submitted[0]++);
@@ -68,7 +72,8 @@ public final class MainActivityConfirmationTest {
         var submitted = new AtomicInteger();
         var old = new AtomicReference<AlertDialog>();
         var button = new AtomicReference<Button>();
-        try (ActivityScenario<MainActivity> scenario = ActivityScenario.launch(MainActivity.class)) {
+        try (ActivityScenario<MainActivity> scenario =
+                        ActivityScenario.launch(MainActivity.class)) {
             scenario.onActivity(activity -> {
                 old.set(harmless(activity, () -> submitted.incrementAndGet()));
                 assertNotNull(old.get());
@@ -92,7 +97,8 @@ public final class MainActivityConfirmationTest {
         var submitted = new AtomicInteger();
         var old = new AtomicReference<AlertDialog>();
         var button = new AtomicReference<Button>();
-        try (ActivityScenario<MainActivity> scenario = ActivityScenario.launch(MainActivity.class)) {
+        try (ActivityScenario<MainActivity> scenario =
+                        ActivityScenario.launch(MainActivity.class)) {
             scenario.onActivity(activity -> {
                 old.set(harmless(activity, () -> submitted.incrementAndGet()));
                 assertNotNull(old.get());

@@ -17,8 +17,8 @@ public final class TorrentSafStorageTest {
         var leases = new TorrentSafGrantLeases();
         var authority = new TorrentSafStorage.MappingAuthority(leases::drain);
         int[] released = {0};
-        var token = leases.acquire("content://fixture/document", 1, () -> 0,
-                modes -> {}, () -> false, modes -> released[0]++);
+        var token = leases.acquire("content://fixture/document", 1,
+                () -> 0, modes -> {}, () -> false, modes -> released[0]++);
         var entered = new java.util.concurrent.CountDownLatch(1);
         var leave = new java.util.concurrent.CountDownLatch(1);
         var worker = java.util.concurrent.Executors.newSingleThreadExecutor();
@@ -75,8 +75,9 @@ public final class TorrentSafStorageTest {
         assertTrue(TorrentSafStorage.releaseUnreferencedGrant(
                 () -> grants, oldTree, "replaced", release));
         assertEquals(java.util.Collections.singletonList(android.net.Uri.parse(oldTree)), released);
-        assertEquals(java.util.Collections.singletonList(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION
-                                             | android.content.Intent.FLAG_GRANT_WRITE_URI_PERMISSION),
+        assertEquals(java.util.Collections.singletonList(
+                             android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION
+                             | android.content.Intent.FLAG_GRANT_WRITE_URI_PERMISSION),
                 modes);
     }
 
@@ -140,16 +141,24 @@ public final class TorrentSafStorageTest {
         String oldTree = "content://org.openi2pd.fixture/tree/old";
         var grants = new java.util.HashMap<String, String>();
         int[] reads = {0}, releases = {0};
-        assertTrue(TorrentSafStorage.releaseUnreferencedGrant(() -> {
-            reads[0]++;
-            return grants;
-        }, oldTree, null, (uri, flags) -> {
-            releases[0]++;
-            assertFalse(TorrentSafStorage.releaseUnreferencedGrant(() -> {
-                fail("a reentrant snapshot read must not run");
-                return grants;
-            }, oldTree, null, (nestedUri, nestedModes) -> fail("nested release must not run")));
-        }));
+        assertTrue(TorrentSafStorage.releaseUnreferencedGrant(
+                ()
+                        -> {
+                    reads[0]++;
+                    return grants;
+                },
+                oldTree, null,
+                (uri, flags) -> {
+                    releases[0]++;
+                    assertFalse(TorrentSafStorage.releaseUnreferencedGrant(
+                            ()
+                                    -> {
+                                fail("a reentrant snapshot read must not run");
+                                return grants;
+                            },
+                            oldTree, null,
+                            (nestedUri, nestedModes) -> fail("nested release must not run")));
+                }));
         assertEquals(1, reads[0]);
         assertEquals(1, releases[0]);
     }

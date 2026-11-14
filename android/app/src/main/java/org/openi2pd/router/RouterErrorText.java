@@ -17,7 +17,8 @@ import java.util.concurrent.TimeoutException;
 
 /* Converts internal exceptions to safe text for UI snapshots. */
 final class RouterErrorText {
-    private RouterErrorText() {}
+    private RouterErrorText() {
+    }
 
     /*
      * Return a stable public category without exception messages, causes,

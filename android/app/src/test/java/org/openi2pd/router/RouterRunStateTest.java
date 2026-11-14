@@ -274,9 +274,7 @@ public final class RouterRunStateTest {
         // command has already passed through two transitions before the
         // older precomputed drain attempts to publish.
         RouterRunState stale = initial.draining(NOW + 60_000L);
-        RouterRunState newer = initial.running(NOW)
-                .draining(NOW + 30_000L)
-                .cancelGraceful();
+        RouterRunState newer = initial.running(NOW).draining(NOW + 30_000L).cancelGraceful();
 
         assertTrue(RouterRunState.saveIfNewer(preferences, writerLock, newer, NOW));
         assertFalse(RouterRunState.saveIfNewer(preferences, writerLock, stale, NOW));

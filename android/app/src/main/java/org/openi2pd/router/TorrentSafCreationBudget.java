@@ -30,8 +30,8 @@ final class TorrentSafCreationBudget {
 
     /* Validate a component against the native UTF-8 byte limit. */
     static String component(String name) throws IOException {
-        if (name == null || name.isEmpty() || name.length() > 255
-                || name.equals(".") || name.equals("..")
+        if (name == null || name.isEmpty() || name.length() > 255 || name.equals(".")
+                || name.equals("..")
                 || name.chars().anyMatch(value -> "/\\:<>\"|?*".indexOf(value) >= 0))
             throw new IOException("Invalid source name");
         for (int i = 0; i < name.length(); ++i)
@@ -49,13 +49,12 @@ final class TorrentSafCreationBudget {
      * rejection messages never include their contents.
      */
     void document(String id, String relativePath) throws IOException {
-        if (id == null || id.isEmpty() || id.length() > MAX_ID_BYTES
-                || relativePath == null || relativePath.length() > MAX_PATH_BYTES)
+        if (id == null || id.isEmpty() || id.length() > MAX_ID_BYTES || relativePath == null
+                || relativePath.length() > MAX_PATH_BYTES)
             throw new IOException("Source text limit exceeded");
         int ids = utf8Length(id);
         int paths = utf8Length(relativePath);
-        if (ids > MAX_ID_BYTES || paths > MAX_PATH_BYTES
-                || ids > MAX_TEXT_BYTES - documentIdBytes
+        if (ids > MAX_ID_BYTES || paths > MAX_PATH_BYTES || ids > MAX_TEXT_BYTES - documentIdBytes
                 || paths > MAX_TEXT_BYTES - pathBytes)
             throw new IOException("Source text limit exceeded");
         documentIdBytes += ids;

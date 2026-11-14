@@ -116,8 +116,7 @@ final class TorrentSafCreator {
                 throw new IOException("Source unavailable");
             name = safe(cursor.getString(0));
         }
-        budget.document(tree ? DocumentsContract.getTreeDocumentId(uri)
-                             : "document", name);
+        budget.document(tree ? DocumentsContract.getTreeDocumentId(uri) : "document", name);
         if (tree)
             enumerate(resolver, uri, DocumentsContract.getTreeDocumentId(uri), "", 0, files,
                     new HashSet<>(), cancel, budget);
@@ -200,8 +199,7 @@ final class TorrentSafCreator {
 
     private static void enumerate(ContentResolver resolver, Uri tree, String id, String prefix,
             int depth, List<Source> files, HashSet<String> visited, CancellationSignal cancel,
-            TorrentSafCreationBudget budget)
-            throws IOException {
+            TorrentSafCreationBudget budget) throws IOException {
         cancel.throwIfCanceled();
         if (depth > 32 || !visited.add(id) || visited.size() > 20000)
             throw new IOException("Directory limit exceeded");
@@ -224,15 +222,15 @@ final class TorrentSafCreator {
                 if (!names.add(name))
                     throw new IOException("Duplicate source name");
                 if (DocumentsContract.Document.MIME_TYPE_DIR.equals(cursor.getString(2)))
-                    enumerate(resolver, tree, child, path + "/", depth + 1, files, visited,
-                            cancel, budget);
+                    enumerate(resolver, tree, child, path + "/", depth + 1, files, visited, cancel,
+                            budget);
                 else {
                     if (files.size() >= MAX_FILES)
                         throw new IOException("Too many files");
                     Uri document = DocumentsContract.buildDocumentUriUsingTree(tree, child);
                     budget.authority(document.toString());
-                    files.add(new Source(document, path,
-                            cursor.isNull(3) ? -1 : cursor.getLong(3)));
+                    files.add(
+                            new Source(document, path, cursor.isNull(3) ? -1 : cursor.getLong(3)));
                 }
             }
         }

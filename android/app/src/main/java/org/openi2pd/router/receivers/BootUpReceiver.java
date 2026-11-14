@@ -82,8 +82,8 @@ public class BootUpReceiver extends BroadcastReceiver {
      *                          anything other than a stopped router
      * @return whether the restore command may be delivered
      */
-    public static boolean mayResume(String action, boolean autostartEnabled,
-            boolean runIntentRequested) {
+    public static boolean mayResume(
+            String action, boolean autostartEnabled, boolean runIntentRequested) {
         // A stopped run intent is terminal for both actions: only an
         // explicit start command may begin a new run.
         if (!runIntentRequested)

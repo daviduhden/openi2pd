@@ -93,8 +93,7 @@ public final class RouterServiceLifecycleTest {
 
         try {
             context.sendBroadcast(new Intent(Intent.ACTION_BOOT_COMPLETED)
-                                          .setComponent(
-                                                  new ComponentName(context, BootUpReceiver.class)));
+                            .setComponent(new ComponentName(context, BootUpReceiver.class)));
         } catch (SecurityException denied) {
             // A platform that refuses to let the app send its own
             // protected broadcast cannot exercise the receiver; the JVM
@@ -106,13 +105,12 @@ public final class RouterServiceLifecycleTest {
         while (SystemClock.elapsedRealtime() < deadline) {
             assertFalse("a boot broadcast must not request a run",
                     RouterService.isStartRequested(context));
-            assertFalse("a boot broadcast must not start the daemon",
-                    RouterService.isRouterRunning());
+            assertFalse(
+                    "a boot broadcast must not start the daemon", RouterService.isRouterRunning());
             SystemClock.sleep(50L);
         }
         String phase = context.getSharedPreferences("router_state", Context.MODE_PRIVATE)
                                .getString("run_phase", null);
-        assertTrue("the persisted stop must be unchanged, was " + phase,
-                "stopped".equals(phase));
+        assertTrue("the persisted stop must be unchanged, was " + phase, "stopped".equals(phase));
     }
 }

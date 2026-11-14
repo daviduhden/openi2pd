@@ -24,10 +24,13 @@ public class RouterErrorTextTest {
     @Test
     public void mapsKnownFailuresToStableCategories() {
         assertEquals("", RouterErrorText.describe(null));
-        assertEquals("Permission denied", RouterErrorText.describe(new SecurityException("private")));
+        assertEquals(
+                "Permission denied", RouterErrorText.describe(new SecurityException("private")));
         assertEquals("I/O operation failed", RouterErrorText.describe(new IOException("private")));
-        assertEquals("Operation timed out", RouterErrorText.describe(new TimeoutException("private")));
-        assertEquals("Invalid operation", RouterErrorText.describe(new IllegalArgumentException("private")));
+        assertEquals(
+                "Operation timed out", RouterErrorText.describe(new TimeoutException("private")));
+        assertEquals("Invalid operation",
+                RouterErrorText.describe(new IllegalArgumentException("private")));
         assertEquals("Operation failed", RouterErrorText.describe(new RuntimeException("private")));
     }
 

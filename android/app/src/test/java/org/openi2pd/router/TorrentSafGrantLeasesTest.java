@@ -20,13 +20,20 @@ public final class TorrentSafGrantLeasesTest {
         final List<Integer> releases = new ArrayList<>();
 
         TorrentSafGrantLeases.Token acquire(TorrentSafGrantLeases leases, int modes) {
-            return leases.acquire(URI, modes, () -> retained, missing -> {
-                takes.add(missing);
-                retained |= missing;
-            }, () -> mapped, released -> {
-                releases.add(released);
-                retained &= ~released;
-            });
+            return leases.acquire(URI, modes,
+                    ()
+                            -> retained,
+                    missing
+                    -> {
+                        takes.add(missing);
+                        retained |= missing;
+                    },
+                    ()
+                            -> mapped,
+                    released -> {
+                        releases.add(released);
+                        retained &= ~released;
+                    });
         }
     }
 
@@ -150,10 +157,11 @@ public final class TorrentSafGrantLeasesTest {
     public void providerFailuresRemainBoundedAndNeverGrantFalseAuthority() {
         var leases = new TorrentSafGrantLeases();
         for (int i = 0; i < TorrentSafGrantLeases.MAX_LEASES + 1; i++)
-            assertNull(leases.acquire(URI, 1, () -> 0,
-                    modes -> { throw new SecurityException(); }, () -> false, modes -> fail()));
-        var token = leases.acquire(URI, 1, () -> 0, modes -> {},
-                () -> { throw new SecurityException(); }, modes -> fail());
+            assertNull(leases.acquire(URI, 1, () -> 0, modes -> {
+                throw new SecurityException();
+            }, () -> false, modes -> fail()));
+        var token = leases.acquire(URI, 1,
+                () -> 0, modes -> {}, () -> { throw new SecurityException(); }, modes -> fail());
         assertNotNull(token);
         leases.retire(token);
         leases.drain();
@@ -172,8 +180,14 @@ public final class TorrentSafGrantLeasesTest {
         var leases = new TorrentSafGrantLeases();
         int[] attempts = {0};
         for (int i = 0; i < TorrentSafGrantLeases.MAX_LEASES + 1; i++) {
-            var token = leases.acquire(URI, 1, () -> 0, modes -> {},
-                    () -> false, modes -> {
+            var token = leases.acquire(URI, 1,
+                    ()
+                            -> 0,
+                    modes
+                    -> {},
+                    ()
+                            -> false,
+                    modes -> {
                         attempts[0]++;
                         throw new SecurityException();
                     });
