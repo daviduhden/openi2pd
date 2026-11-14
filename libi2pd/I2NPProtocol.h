@@ -621,6 +621,9 @@ std::shared_ptr<I2NPMessage> CreateI2NPMessage (
 	I2NPMessageType msgType, const uint8_t * buf, size_t len, uint32_t replyMsgID = 0);
 std::shared_ptr<I2NPMessage> CreateI2NPMessage (
 	const uint8_t * buf, size_t len, std::shared_ptr<i2p::tunnel::InboundTunnel> from = nullptr);
+/// Copy a backed message, preserving its offset and origin metadata.
+/// Reject null or invalid geometry and messages beyond the largest tier.
+/// The caller keeps source bytes and geometry stable until return.
 std::shared_ptr<I2NPMessage> CopyI2NPMessage (std::shared_ptr<I2NPMessage> msg);
 
 std::shared_ptr<I2NPMessage> CreateTunnelTestMsg (uint32_t msgID);

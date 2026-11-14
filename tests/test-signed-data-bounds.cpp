@@ -12,6 +12,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <limits>
+#include <memory>
 
 #include "I2NPProtocol.h"
 #include "TransportSession.h"
@@ -122,5 +123,39 @@ int main ()
 	const auto empty = i2p::CreateI2NPMessage (nullptr, 0, nullptr);
 	assert (empty && empty->GetLength () == 0);
 	assert (!i2p::CreateI2NPMessage (nullptr, 1, nullptr));
+
+	// Destination tier selection includes the preserved source offset.
+	const auto copySource = i2p::NewI2NPMessage ();
+	for (const size_t start : std::array<size_t, 6> { 0, 2, 4095, 5000,
+		i2p::I2NP_MAX_MEDIUM_MESSAGE_SIZE, i2p::I2NP_MAX_MESSAGE_SIZE - 1 })
+	{
+		copySource->offset = start;
+		copySource->len = start + 1;
+		copySource->buf[start] = 0xA5;
+		copySource->fromClove = true;
+		copySource->fromTunnel = true;
+		const auto copiedMessage = i2p::CopyI2NPMessage (copySource);
+		assert (copiedMessage && copiedMessage->maxLen >= copySource->len);
+		assert (copiedMessage->offset == start && copiedMessage->len == start + 1);
+		assert (copiedMessage->GetLength () == 1 && copiedMessage->GetBuffer ()[0] == 0xA5);
+		assert (copiedMessage->fromClove && copiedMessage->fromTunnel);
+		copySource->buf[start] = 0x5A;
+		assert (copiedMessage->GetBuffer ()[0] == 0xA5);
+	}
+	copySource->offset = 5000;
+	copySource->len = 5000;
+	const auto emptyCopy = i2p::CopyI2NPMessage (copySource);
+	assert (emptyCopy && emptyCopy->offset == 5000 && emptyCopy->GetLength () == 0);
+	assert (!i2p::CopyI2NPMessage (nullptr));
+	assert (!i2p::CopyI2NPMessage (std::make_shared<i2p::I2NPMessage> ()));
+	copySource->offset = 1;
+	copySource->len = 0;
+	assert (!i2p::CopyI2NPMessage (copySource));
+	copySource->offset = 0;
+	copySource->len = copySource->maxLen + 1;
+	assert (!i2p::CopyI2NPMessage (copySource));
+	copySource->offset = std::numeric_limits<size_t>::max ();
+	copySource->len = std::numeric_limits<size_t>::max ();
+	assert (!i2p::CopyI2NPMessage (copySource));
 	return 0;
 }

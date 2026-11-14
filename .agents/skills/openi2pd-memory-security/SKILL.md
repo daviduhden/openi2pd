@@ -107,6 +107,13 @@ Do not let reconnaissance agents edit, compile, execute tests or run scripts.
 
 ## Known issues and decisions
 
+- A copy that preserves a source offset must size its destination for the
+  complete occupied extent, not just payload length. Validate backed source
+  geometry and destination offset before subtraction. Exercise tiny payloads
+  at large offsets, empty copies and tier boundaries; nearby append paths
+  with reset destination offsets require a separate geometry review.
+
+
 - Audit factory tier selection alongside append bounds. Adding fixed header
   overhead before classifying an arbitrary size can wrap into a short tier;
   compare payload thresholds before addition and preserve the documented
