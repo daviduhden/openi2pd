@@ -5,6 +5,74 @@ and license details.
 
 # Runtime error inventory
 
+## cfc15d644: executed ECIES/DHT controls and static-contract failures
+
+`test-crypto-audit-bounds` passes in ASan+UBSan job 132447806018, UBSan
+132447806130 and TSan 132447806238, run
+[43595095702](https://github.com/daviduhden/openi2pd/actions/runs/43595095702),
+SHA `cfc15d644d6f9888c533c15dad6d35cecd6a2fa9`. This includes newly published
+ECIES positive, tamper and overlapping-envelope controls. The six suite
+failures are TF-106 source/fixture contracts; no actual sanitizer diagnostic
+was found in these logs. Instrumented OpenSSL TSan job 132447790354, run
+43595090827, passes. Ordinary controls do not inject digest/provider failure.
+
+Published DHT timer admission regressions likewise execute in native suites;
+this does not establish all shutdown/restart paths or remove remaining UDP
+lifetime work. A formatted fixture mutation failure cannot explain the
+separate Windows initialization-status failure below.
+
+### RT-087 continuation — Armed probe reaches loader termination
+
+The exact [Windows run 43595088361](https://github.com/daviduhden/openi2pd/actions/runs/43595088361),
+MSVC job 132447783285, publishes `build-msvc/startup-probe` evidence for
+SHA `cfc15d644d6f9888c533c15dad6d35cecd6a2fa9`. Its image SHA-256 is
+`652E3F93F3091D75CF671B6E79605EB9DD24166DB36DF23DC15B5643AFC59B05`.
+Unlike earlier missing-marker runs, stdout and initializer logs contain the
+executed `OPENI2PD_PROBE_ARMED` marker, followed by child events:
+
+- conhost PID `1ffc` exits with status `c0000022`;
+- worker PID `1ff8` reaches `OPENI2PD_PROBE_TERMINATION`, with code-only
+  stack frames `ntdll!NtTerminateProcess`, `LdrInitializeThunk` and
+  `LdrStandardizeSystemPath`, then exits with `c0000142`;
+- parent PID `1ed0` exits with status 1; the later exit-event continuation
+  encounters `No runnable debuggees` after the process set has terminated.
+
+This advances the observation to loader termination. It does not identify
+which loader dependency, process setup or access condition caused the worker
+status, establish that conhost caused it, or justify weakening token, Job,
+mitigation or authentication policy. The debugger's final continuation error
+is distinct from the earlier worker termination evidence. Root-cause
+attribution and a confident correction remain Pending; preserve this exact
+image and nonsecret trace when preparing the next diagnostic.
+
+
+### RT-097 — UDP periodic callbacks lacked lifetime and wait authority
+
+Preventive continuation of RT-095 found raw owner bindings in server cleanup/
+stats and client keepalive/stats callbacks. Cancellation did not reject already
+successful queued completions or keep a shared owner alive through use.
+Weak-owner acquisition now precedes a revocable generation gate; each wait
+has its own identity. Stop drains periodic admission before ACK/session work,
+receiver reset and resolver joining. Replacement timers retire old authority
+before destruction outside the gate. Existing ACK authority is preserved.
+
+The existing UDP ACK lifecycle fixture now drives the actual server/client
+periodic factories for stale/replaced/error callbacks, generation changes,
+admitted Stop and owner release with an undrained stats timer. It bypasses
+network Start/receiver/socket/resolver setup; complete partial-Start cleanup
+remains Pending and callers still need Stop after a failed Start. Production
+server consumers already use shared ownership, which Start now requires.
+
+The same review found a configured uint32 seconds value multiplied by 1000
+before widening. Keepalive uses a constexpr elapsed-time predicate that widens
+first and avoids timestamp addition/backward-clock underflow. Prepared
+controls cover UINT32_MAX, near-UINT64_MAX and boundary/backward times.
+Equivalent tracker conversions use bounded constants or 1000LL; other UDP
+repliable intervals are already uint64. This is source analysis, not an
+observed CI sanitizer report. Implemented / static; Pending CI compilation /
+Pending CI tests. The manual MSVC target/filter/artifact inventory now also
+includes test-udp-ack-lifecycle; published cfc15d644 did not select it there.
+
 ## b001b969: scoped regression validation and remaining startup evidence
 
 At [the exact published matrix](TEST-FAILURES.md#published-b001b969-audit),

@@ -15,18 +15,19 @@ requirements and current code; `TODO.md` is the authoritative task list.
 
 ## Current baseline
 
-At b001b969, history reaches 475 runs / 74 SHAs. Eight workflows pass;
-Android's standalone probe uses an unrelated old R8, and MSVC initialization
-remains unattributed. Published I2NP copy/ElGamal regressions pass in executed
-native and sanitizer lanes. Local work binds the Java 25 probe to AGP's
-resolved R8, checks ECIES digests before cipher/publication, and revokes DHT
-timer owner admission across Stop/restart/destruction. Windows spawn rollback
-also covers allocating metadata after child creation. All are Implemented /
-static; Pending CI compilation / Pending CI tests. Windows diagnostics now
-require proof their command file ran before interpreting missing events.
-Keep UDP lifetime admission, provider injection, Android device coverage and
-ABI Lint findings open. No local builds/tests or publishing are authorized;
-CMake source contracts remain pending because cmake is unavailable locally.
+At cfc15d644, history reaches 485 runs / 75 SHAs. Three workflows pass;
+seven fail on six format-sensitive contract families, Android's module-only
+R8 resolver and the unresolved MSVC initializer. Native builds and focused
+ECIES/DHT tests pass in executed lanes; no new sanitizer defect is observed.
+Local work preserves source-contract tokens/operands, resolves wrapped MSVC
+selection without evaluation, verifies effective negative mutations, and
+finds bundled D8/R8 through the AGP plugin loader. UDP periodic callback
+admission and documentation Unicode boundaries receive preventive fixes.
+These corrections are Implemented / static; Pending CI compilation / Pending
+CI tests. The Windows probe now proves execution and loader termination;
+conhost access denial is correlation, not attribution. Preserve containment,
+Java 25 and all existing failure assertions. CMake contracts cannot run
+locally because cmake is unavailable; no local builds/tests or publishing.
 
 Local repository-wide formatting uses the checked-in clang-format language
 styles, perltidy and shfmt. Workflow linters pass; Perl::Critic and the local

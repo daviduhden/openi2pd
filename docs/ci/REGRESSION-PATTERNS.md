@@ -5,6 +5,18 @@ and license details.
 
 # Regression patterns
 
+## Formatting must preserve effective negative mutations
+
+TF-106 demonstrates two distinct failures: exact source needles no longer
+match formatter layout, and a negative fixture substitution becomes a no-op.
+Require the mutation to change its intended final operand before interpreting
+a passing checker. Scope whitespace tolerance to syntax between tokens;
+never strip quoted literals globally or relax security command allowlists.
+Review multiline PowerShell arrays, joined filters, shell case alternatives,
+Perl call spacing and Java argument wrapping as one formatting seam family.
+Retain ordering assertions, complete operands and focused negative coverage.
+
+
 ## Scope published regression success to the exercised failure boundary
 
 At b001b969, RT-092/093 bounded copy and ElGamal controls pass, including

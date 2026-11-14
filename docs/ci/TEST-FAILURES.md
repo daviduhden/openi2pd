@@ -5,6 +5,96 @@ and license details.
 
 # Test failure inventory
 
+## Published cfc15d644 audit
+
+Accessible paginated metadata now contains **485 runs / 75 SHAs**: 147
+success, 272 failure and 66 cancelled. The latest ten execute
+`cfc15d644d6f9888c533c15dad6d35cecd6a2fa9`: three successful workflows and
+seven failures. Complete latest logs include successful siblings; metadata
+coverage does not establish availability of every historical log or artifact.
+
+| Run | Job ID | Lane | Conclusion |
+|---|---|---|---|
+| [43595072942](https://github.com/daviduhden/openi2pd/actions/runs/43595072942) | 132447735042 | Agent and skills synchronization | success |
+| [43595075812](https://github.com/daviduhden/openi2pd/actions/runs/43595075812) | 132447742474 | Android arm64 build and unit tests | failure |
+| [43595075812](https://github.com/daviduhden/openi2pd/actions/runs/43595075812) | 132447744051 | Android API 29 UI and accessibility | skipped |
+| [43595078584](https://github.com/daviduhden/openi2pd/actions/runs/43595078584) | 132447751525 | Linux (gcc, OpenSSL 3.x) | failure |
+| [43595078584](https://github.com/daviduhden/openi2pd/actions/runs/43595078584) | 132447751792 | Linux (clang, OpenSSL 3.x) | failure |
+| [43595081014](https://github.com/daviduhden/openi2pd/actions/runs/43595081014) | 132447762274 | Linux (clang, OpenSSL 4.x) | failure |
+| [43595081014](https://github.com/daviduhden/openi2pd/actions/runs/43595081014) | 132447762475 | Linux (gcc, OpenSSL 4.x) | failure |
+| [43595083617](https://github.com/daviduhden/openi2pd/actions/runs/43595083617) | 132447766913 | Install components and consumer package | success |
+| [43595083617](https://github.com/daviduhden/openi2pd/actions/runs/43595083617) | 132447767111 | I2P Java interoperability | success |
+| [43595085942](https://github.com/daviduhden/openi2pd/actions/runs/43595085942) | 132447774844 | OpenBSD 8.0 build and tests | failure |
+| [43595088361](https://github.com/daviduhden/openi2pd/actions/runs/43595088361) | 132447783081 | Windows MSYS2 Clang64 build and tests | failure |
+| [43595088361](https://github.com/daviduhden/openi2pd/actions/runs/43595088361) | 132447783285 | Windows MSVC build and tests | failure |
+| [43595090827](https://github.com/daviduhden/openi2pd/actions/runs/43595090827) | 132447790354 | Instrumented OpenSSL TSan diagnostic | success |
+| [43595093355](https://github.com/daviduhden/openi2pd/actions/runs/43595093355) | 132447799272 | Service component install matrix | success |
+| [43595093355](https://github.com/daviduhden/openi2pd/actions/runs/43595093355) | 132447799424 | Static musl build and package | success |
+| [43595093355](https://github.com/daviduhden/openi2pd/actions/runs/43595093355) | 132447799437 | Debian packages | success |
+| [43595093355](https://github.com/daviduhden/openi2pd/actions/runs/43595093355) | 132447799497 | Container image | success |
+| [43595093355](https://github.com/daviduhden/openi2pd/actions/runs/43595093355) | 132447799543 | Service contracts | failure |
+| [43595095702](https://github.com/daviduhden/openi2pd/actions/runs/43595095702) | 132447805872 | Agent Skills static contract | failure |
+| [43595095702](https://github.com/daviduhden/openi2pd/actions/runs/43595095702) | 132447806018 | Sanitizers (asan-ubsan) | failure |
+| [43595095702](https://github.com/daviduhden/openi2pd/actions/runs/43595095702) | 132447806092 | C++ source API documentation | success |
+| [43595095702](https://github.com/daviduhden/openi2pd/actions/runs/43595095702) | 132447806102 | Bounded fuzz smoke checks | success |
+| [43595095702](https://github.com/daviduhden/openi2pd/actions/runs/43595095702) | 132447806130 | Sanitizers (ubsan) | failure |
+| [43595095702](https://github.com/daviduhden/openi2pd/actions/runs/43595095702) | 132447806238 | Sanitizers (tsan) | failure |
+| [43595095702](https://github.com/daviduhden/openi2pd/actions/runs/43595095702) | 132447807004 | Perl quality (Test::More and Perl::Critic) | skipped |
+
+### TF-106 — Formatting invalidated six source/fixture contracts
+
+Validation run 43595095702 reproduces six failed entries in each ASan+UBSan,
+UBSan and TSan job: `perl-maintenance-checkers`, `build-system-static`,
+`control-security-static`, `services-static`, `packaging-static` and
+`i18n-static`. These are fixture/source-inspection failures, not observed
+sanitizer reports or compiler errors. Linux OpenSSL 3/4, OpenBSD and CLANG64
+repeat applicable contracts; packaging's service job fails its service guard.
+
+| Contract | First diagnostic / root cause | Correction boundary |
+|---|---|---|
+| Perl maintenance fixture | Final supervisor operand mutation no longer matches the formatted PowerShell array; tests 153-155 fail | Match only final quoted worker with layout whitespace; retain effective-mutation assertion and exact other boundaries |
+| Build-system | Selective MSVC CTest filter is missing | Inspect the joined PowerShell filter representation and preserve selected-test membership |
+| SAF creation budget | Encoded URI must be charged before source retention | Adapt the exact wrapped Source-construction expression while preserving charge-before-retain ordering |
+| Services | Missing `1|true|yes) I2PD_ENABLED=yes` | Accept shell formatter layout without changing enable-state tokens |
+| Packaging | Missing `configure|reconfigure)` | Inspect formatted case alternatives without weakening maintainer-script operations |
+| I18N | Missing `File::Spec->abs2rel($path, $root)` | Pin full actual `File::Spec->abs2rel( $path, $root )` expression |
+
+Local contract corrections are Implemented / static; Pending CI tests.
+Do not normalize whitespace inside quoted strings or drop security operands.
+The new ECIES integrity/overlap controls and DHT timer lifetime controls pass
+in reached native suites, including the sanitizer matrix. Provider/allocator
+fault injection and complete DHT transport teardown remain separate gaps.
+Android's classpath-report task fails before D8 execution (CE-091). Windows
+MSVC retains RT-087's initialization-status failure. Its exact artifact now
+contains an executed arming marker and worker termination stack through
+`NtTerminateProcess` / `LdrInitializeThunk` / `LdrStandardizeSystemPath`, with
+worker `1ff8` exit `c0000142` and separate conhost `1ffc` exit `c0000022`.
+The parent later exits 1 and the debugger reports no runnable debuggees.
+See [RT-087's image hash and evidence limits](RUNTIME-ERRORS.md#rt-087-continuation-armed-probe-reaches-loader-termination).
+This is loader-context evidence, not causal attribution or a reason to relax
+sandbox restrictions; root cause remains Pending.
+
+
+### TF-107 — Unicode link validation mixed characters and bytes
+
+A new local Markdown link exposed that check-doc-links read raw UTF-8 bytes
+before Unicode slug/case folding. Punctuation could become false letters and
+Cyrillic fragments could disagree. This is a local compile-free diagnostic,
+not a failure attributed to a GitHub job. Both input paths now decode strictly;
+URL escapes are decoded as UTF-8 octets before Unicode comparison. Filesystem
+joins preserve their native byte-path boundary and diagnostics encode UTF-8.
+
+Prepared maintenance fixtures cover em dash/Cyrillic headings, literal and
+percent-encoded paths/fragments/images, non-ASCII parent directories, broken
+Unicode anchors and malformed UTF-8/percent/NUL input. URL validation retains
+exit 1; unreadable or malformed Markdown aborts explicitly. Direct checker
+execution passes the current Markdown tree; the fixture suite is Pending CI
+tests. No policy suppression or empty-anchor fallback is used.
+
+New UDP periodic regressions (RT-097) and all TF-106/CE-091 corrections remain
+Implemented / static; Pending CI compilation / Pending CI tests. The new
+MSVC selection expands to 25 required entries without removing old coverage.
+
 ## Published b001b969 audit
 
 Accessible paginated metadata contains **475 runs / 74 SHAs**: 144 success,

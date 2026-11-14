@@ -10,17 +10,19 @@ Documents project documentation.
 
 # Master TODO
 
-Latest retrospective: 475 runs / 74 SHAs (144 success, 265 failure,
-66 cancelled). Published b001b969 has eight successful workflows; Android
-fails its standalone Java 25 probe with unrelated R8 8.6.2-dev (CE-090),
-and MSVC still exits 0xC0000142 before authentication (RT-087). RT-092/093
-bounded native regressions pass in executed lanes. Local AGP-resolved R8
-selection, ECIES digest gates (RT-094), DHT timer admission (RT-095 /
-CONC-028 continuation), spawn exception rollback (RT-096) and Windows
-script-arming evidence are Implemented / static; Pending CI compilation / Pending CI tests. Android device and later
-JNI/DEX checks were skipped, and two ABI Lint findings remain. Provider fault
-injection, UDP timer admission and broader privilege separation remain Pending.
-Exact run/job/SHA and historical evidence gaps are retained in docs/ci.
+Latest retrospective: 485 runs / 75 SHAs (147 success, 272 failure,
+66 cancelled). Published cfc15d644 has three successful workflows and seven
+failures. Native builds and focused ECIES/DHT tests pass; six formatting-
+sensitive maintenance/source contracts fail across platforms (TF-106).
+Android's module-only R8 resolver fails before D8 (CE-091). The armed Windows
+probe reaches loader termination with 0xC0000142; its cause remains RT-087.
+Corrections for closed MSVC-filter parsing, effective negative mutations,
+SAF/I18N/service/package source contracts and AGP-loaded tool provenance are
+Implemented / static; Pending CI compilation / Pending CI tests. Local UDP
+periodic owner admission and strict Unicode documentation handling also remain
+pending CI. Device coverage, provider injection, broader UDP/privsep lifecycle
+and the existing Perl/Shell lint findings remain open. Exact run/job/SHA and
+historical evidence gaps are retained in docs/ci.
 
 - Local formatting/lint: Implemented / static for C++/Java, Perl/Shell and
   workflows. Perl::Critic's 932 findings and 11 OpenBSD framework ShellCheck

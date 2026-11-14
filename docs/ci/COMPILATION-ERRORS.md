@@ -9,6 +9,30 @@ Tracks compile/configure/link failures reported by manual GitHub Actions.
 
 # Compilation error inventory
 
+## cfc15d644: source-contract failures versus actual compilation
+
+The [exact latest matrix](TEST-FAILURES.md#published-cfc15d644-audit) reaches
+native compilation and crypto/DHT tests. TF-106's six static contract families
+are formatting-sensitive source/fixture assertions, not compiler errors.
+Expected failed OpenSSL feature probes remain distinct from build failures.
+
+### CE-091 — AGP bundles R8 without a separate resolved Maven artifact
+
+- **Evidence:** [Android 43595075812](https://github.com/daviduhden/openi2pd/actions/runs/43595075812),
+  job 132447742474, SHA `cfc15d644d6f9888c533c15dad6d35cecd6a2fa9`.
+- **Diagnostic:** task `:writeJava25R8Classpath` fails at build.gradle:61 with
+  `Expected exactly one AGP-resolved R8 artifact`. D8 does not execute.
+- **Cause:** the buildscript configuration can load AGP-bundled D8/R8 classes
+  without exposing a separate R8 Maven artifact. This differs from CE-090's
+  unrelated SDK fallback jar and does not demonstrate Java 25 incompatibility.
+- **Correction:** local class-loading/code-source resolution identifies the
+  D8/R8 container actually loaded by AGP and rejects inconsistent containers;
+  no SDK fallback, independent R8 pin or Java lowering is introduced.
+- **Regression/status:** existing configuration and workflow guards are
+  updated. Implemented / static; Pending CI compilation / Pending CI tests.
+  Retain the selected JAR/version and actual D8 probe result in the next run.
+
+
 ## b001b969: native builds pass; Android probe selects a different D8
 
 The [exact job matrix](TEST-FAILURES.md#published-b001b969-audit) separates

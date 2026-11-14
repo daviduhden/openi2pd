@@ -8400,3 +8400,47 @@ or push.
 - Static checks and pending CI states remain distinct. Perl::Critic's 932
   findings, OpenBSD's 11 ShellCheck diagnostics, native regression execution
   and MSVC startup attribution are not closed by publication.
+
+
+## 2026-11-14: retrospective CI audit after cfc15d64
+
+- Recovered paginated metadata for 485 runs across 75 revisions and the
+  complete latest ten runs at cfc15d644d6f9888c533c15dad6d35cecd6a2fa9,
+  including successful sibling jobs. Three runs succeeded and seven failed.
+  Exact job evidence and historical gaps remain in the six CI inventories.
+- Corrected six formatting-sensitive contract/fixture families (TF-106),
+  preserving their assertions. MSVC CTest selection now uses one closed
+  literal-concatenation reader with effective negative mutations; no command
+  evaluation or blanket whitespace normalization was introduced.
+- Corrected the Java 25 probe's R8 discovery (CE-091) to use D8/R8 code
+  containers from the actual AGP plugin loader. The published app/JVM lane
+  passed 174 tests, but the subsequent probe failed before D8; this does
+  not validate the local resolver or close the older Java 25 probe issue.
+- The MSVC worker still exits 0xc0000142 before authentication (RT-087).
+  Exact-run artifacts prove the debugger script executed and show loader
+  termination plus a conhost access-denied exit; they do not establish the
+  failing initializer. Added return-address symbol context for future CI
+  without weakening worker restrictions or logging operand values.
+- Implemented weak owner plus per-wait admission for all four UDP periodic
+  callbacks (RT-097), revoking before teardown and rejecting stale waits.
+  Keepalive arithmetic widens seconds and compares elapsed time without
+  overflowing timestamp addition. Prepared lifecycle and boundary regressions
+  and included the existing UDP target in MSVC selection/artifacts. Full
+  network Start rollback, receiver and resolver coverage remain separate gaps.
+- Corrected strict UTF-8 Markdown/URL handling (TF-107), byte-valued filesystem
+  joins and encoded diagnostics. Prepared Unicode parent/path/fragment/image
+  and malformed-input fixtures while preserving invalid-URL exit status 1.
+- Reviewed AGENTS, discovery and eight affected Skills; recorded closed
+  grammar review, effective mutations, callback destruction ordering, AGP
+  provenance and Unicode boundary procedures. Local checks are compile-free;
+  regression suites, compilation and platform validation remain pending CI.
+  Existing Perl::Critic 932 and OpenBSD ShellCheck 11 findings remain open.
+- No build, compiler, test suite, commit or push was executed in this audit.
+
+- Final compile-free checks passed: worktree whitespace; agent knowledge
+  structure/references (AK004 relevance advisory manually reviewed); links
+  across 118 Markdown files; manual workflow policy (10 workflows, 3 actions);
+  shell policy (323 sources); actionlint; yamllint; and offline zizmor for
+  the modified Windows workflow. Its three existing suppressions remain
+  unchanged. Reviewed the untracked CMake helper's whitespace separately.
+  These results do not execute the prepared regression suites.

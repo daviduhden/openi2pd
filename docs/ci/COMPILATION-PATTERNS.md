@@ -1,5 +1,14 @@
 # Compilation diagnostic patterns and repository-wide review
 
+## Bundled classes are not necessarily separate dependency artifacts
+
+CE-091 follows CE-090: resolving a buildscript classpath is preferable to a
+cache search, but filtering Maven coordinates can still miss classes bundled
+inside the selected plugin. Resolve the actual loaded D8/R8 class code source,
+check both identify the same container, and retain that container/version.
+A failed report task before D8 says nothing about the tool's classfile support.
+
+
 ## Resolve the same compiler tool that the application actually uses
 
 CE-090 at b001b969 demonstrates that successful Android compilation and a

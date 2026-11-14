@@ -1,5 +1,18 @@
 # Compilation and lint warning inventory
 
+## cfc15d644: successful steps remain warning evidence
+
+Review of full Validation 43595095702 and instrumented OpenSSL 43595090827
+logs found no new own-code compiler warning or actual sanitizer diagnostic.
+Their failed feature probes are expected configuration checks; TF-106 failures
+are source-contract assertions. The [job matrix](TEST-FAILURES.md#published-cfc15d644-audit)
+records successful documentation/fuzz/instrumented jobs alongside failures.
+This scoped review does not establish that unavailable historical lanes were
+warning-free. Android still reports builtInKotlin/Gradle deprecation debt;
+CE-091 is a classpath-report failure before D8, not a compiler warning.
+Preserve prior Lint, package and sandbox-capability warning families separately.
+
+
 ## Local formatting and static lint pass
 
 This is local lint evidence over the existing working tree, not a CI run or
