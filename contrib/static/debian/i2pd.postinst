@@ -28,58 +28,58 @@ I2PDHOME='/var/lib/i2pd'
 I2PDUSER='i2pd'
 
 case "$1" in
-  configure|reconfigure)
-    # Older versions of adduser created the home directory. The version
-    # of adduser in Debian unstable does not. Create user and group as a
-    # system user. Every expansion is quoted so an unusual configured
-    # name cannot word-split under the shell.
-    if getent passwd "$I2PDUSER" > /dev/null 2>&1; then
-      groupadd -f "$I2PDUSER" || true
-    else
-      adduser --system --quiet --group --no-create-home \
-        --home "$I2PDHOME" "$I2PDUSER"
-    fi
+configure | reconfigure)
+	# Older versions of adduser created the home directory. The version
+	# of adduser in Debian unstable does not. Create user and group as a
+	# system user. Every expansion is quoted so an unusual configured
+	# name cannot word-split under the shell.
+	if getent passwd "$I2PDUSER" >/dev/null 2>&1; then
+		groupadd -f "$I2PDUSER" || true
+	else
+		adduser --system --quiet --group --no-create-home \
+			--home "$I2PDHOME" "$I2PDUSER"
+	fi
 
-    # Preserve an administrator's ownership/mode on upgrade; create only
-    # missing paths with the packaged 0700/0600 policy. The certificate
-    # link can make dpkg create /var/lib/i2pd as root:root before this
-    # script, so repair only an otherwise empty root-owned directory.
-    if [ ! -d /var/log/i2pd ]; then
-      install -d -m 0700 -o "$I2PDUSER" -g "$I2PDUSER" /var/log/i2pd
-    elif [ ! -L /var/log/i2pd ] && [ "$(stat -c %u /var/log/i2pd)" = 0 ] \
-      && [ -z "$(find /var/log/i2pd -mindepth 1 -maxdepth 1 -print -quit 2>/dev/null)" ]; then
-      chown "$I2PDUSER:$I2PDUSER" /var/log/i2pd
-      chmod 0700 /var/log/i2pd
-    fi
-    if [ ! -e "$LOGFILE" ]; then
-      install -m 0600 -o "$I2PDUSER" -g "$I2PDUSER" /dev/null "$LOGFILE"
-    elif [ ! -L "$LOGFILE" ] && [ "$(stat -c %u "$LOGFILE")" = 0 ]; then
-      chown "$I2PDUSER:$I2PDUSER" "$LOGFILE"
-      chmod 0600 "$LOGFILE"
-    fi
-    if [ ! -d "$I2PDHOME" ]; then
-      install -d -m 0700 -o "$I2PDUSER" -g "$I2PDUSER" "$I2PDHOME"
-    elif [ ! -L "$I2PDHOME" ] && [ "$(stat -c %u "$I2PDHOME")" = 0 ] \
-      && [ -z "$(find "$I2PDHOME" -mindepth 1 -maxdepth 1 \
-        ! -name certificates -print -quit 2>/dev/null)" ]; then
-      chown "$I2PDUSER:$I2PDUSER" "$I2PDHOME"
-      chmod 0700 "$I2PDHOME"
-    fi
-  ;;
-  abort-upgrade|abort-remove|abort-deconfigure)
-    echo "Aborting upgrade"
-    exit 0
-  ;;
-  triggered)
-    # A deferred trigger activation is not a configuration step: the
-    # debhelper snippets own the service action and no state here is
-    # trigger-maintained.
-    exit 0
-  ;;
-  *)
-    echo "postinst called with unknown argument '$1'" >&2
-    exit 1
-  ;;
+	# Preserve an administrator's ownership/mode on upgrade; create only
+	# missing paths with the packaged 0700/0600 policy. The certificate
+	# link can make dpkg create /var/lib/i2pd as root:root before this
+	# script, so repair only an otherwise empty root-owned directory.
+	if [ ! -d /var/log/i2pd ]; then
+		install -d -m 0700 -o "$I2PDUSER" -g "$I2PDUSER" /var/log/i2pd
+	elif [ ! -L /var/log/i2pd ] && [ "$(stat -c %u /var/log/i2pd)" = 0 ] &&
+		[ -z "$(find /var/log/i2pd -mindepth 1 -maxdepth 1 -print -quit 2>/dev/null)" ]; then
+		chown "$I2PDUSER:$I2PDUSER" /var/log/i2pd
+		chmod 0700 /var/log/i2pd
+	fi
+	if [ ! -e "$LOGFILE" ]; then
+		install -m 0600 -o "$I2PDUSER" -g "$I2PDUSER" /dev/null "$LOGFILE"
+	elif [ ! -L "$LOGFILE" ] && [ "$(stat -c %u "$LOGFILE")" = 0 ]; then
+		chown "$I2PDUSER:$I2PDUSER" "$LOGFILE"
+		chmod 0600 "$LOGFILE"
+	fi
+	if [ ! -d "$I2PDHOME" ]; then
+		install -d -m 0700 -o "$I2PDUSER" -g "$I2PDUSER" "$I2PDHOME"
+	elif [ ! -L "$I2PDHOME" ] && [ "$(stat -c %u "$I2PDHOME")" = 0 ] &&
+		[ -z "$(find "$I2PDHOME" -mindepth 1 -maxdepth 1 \
+			! -name certificates -print -quit 2>/dev/null)" ]; then
+		chown "$I2PDUSER:$I2PDUSER" "$I2PDHOME"
+		chmod 0700 "$I2PDHOME"
+	fi
+	;;
+abort-upgrade | abort-remove | abort-deconfigure)
+	echo "Aborting upgrade"
+	exit 0
+	;;
+triggered)
+	# A deferred trigger activation is not a configuration step: the
+	# debhelper snippets own the service action and no state here is
+	# trigger-maintained.
+	exit 0
+	;;
+*)
+	echo "postinst called with unknown argument '$1'" >&2
+	exit 1
+	;;
 esac
 
 #DEBHELPER#

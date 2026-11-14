@@ -31,73 +31,73 @@
 set -eu
 
 fail() {
-    echo "FAIL: $*" >&2
-    exit 1
+	echo "FAIL: $*" >&2
+	exit 1
 }
 
 require_exec() {
-    [ -x "$1" ] || fail "missing executable: $1"
+	[ -x "$1" ] || fail "missing executable: $1"
 }
 
 require_file() {
-    [ -f "$1" ] || fail "missing file: $1"
+	[ -f "$1" ] || fail "missing file: $1"
 }
 
 # Debhelper may gzip documentation as it grows past its size threshold.
 # Accept both installed representations; legal files keep exact checks.
 require_document() {
-    if [ ! -f "$1" ] && [ ! -f "$1.gz" ]; then
-        fail "missing document: $1 or $1.gz"
-    fi
+	if [ ! -f "$1" ] && [ ! -f "$1.gz" ]; then
+		fail "missing document: $1 or $1.gz"
+	fi
 }
 
 require_manpage() {
-    if [ ! -e "/usr/share/man/man1/$1" ] && [ ! -e "/usr/share/man/man1/$1.gz" ]; then
-        fail "missing manpage: $1"
-    fi
+	if [ ! -e "/usr/share/man/man1/$1" ] && [ ! -e "/usr/share/man/man1/$1.gz" ]; then
+		fail "missing manpage: $1"
+	fi
 }
 
 # The daemon package owns the router, i2pdctl and all fifteen native
 # tools.
 for binary in i2pd i2pdctl autoconf_i2pd b33address b33offlinekeys famtool \
-              i2pbase64 keygen keyinfo offlinekeys regaddr regaddr_3ld \
-              regaddralias routerinfo vain verifyhost x25519; do
-    require_exec "/usr/bin/$binary"
+	i2pbase64 keygen keyinfo offlinekeys regaddr regaddr_3ld \
+	regaddralias routerinfo vain verifyhost x25519; do
+	require_exec "/usr/bin/$binary"
 done
-timeout 30 /usr/bin/i2pd --version >/dev/null 2>&1 \
-    || fail "i2pd --version failed"
+timeout 30 /usr/bin/i2pd --version >/dev/null 2>&1 ||
+	fail "i2pd --version failed"
 
 # The TUI is a separate package and must not duplicate daemon files. The
 # desktop launcher is a TUI client, never a second router start.
 require_exec /usr/bin/i2pd-tui
-timeout 30 /usr/bin/i2pd-tui --version >/dev/null 2>&1 \
-    || fail "i2pd-tui --version failed"
+timeout 30 /usr/bin/i2pd-tui --version >/dev/null 2>&1 ||
+	fail "i2pd-tui --version failed"
 require_file /usr/share/applications/openi2pd.desktop
 require_file /usr/share/icons/hicolor/scalable/apps/openi2pd.svg
 require_file /usr/share/icons/hicolor/256x256/apps/openi2pd.png
 if dpkg-query -L i2pd | grep -qx '/usr/bin/i2pd-tui'; then
-    fail "i2pd contains /usr/bin/i2pd-tui"
+	fail "i2pd contains /usr/bin/i2pd-tui"
 fi
 if dpkg-query -L i2pd | grep -qE '/usr/share/applications/openi2pd\.desktop|/icons/hicolor/'; then
-    fail "i2pd contains TUI desktop assets"
+	fail "i2pd contains TUI desktop assets"
 fi
 if dpkg-query -L i2pd-tui | grep -qE '^/etc/|/systemd/|/init\.d/'; then
-    fail "i2pd-tui contains daemon configuration or service files"
+	fail "i2pd-tui contains daemon configuration or service files"
 fi
 if grep -q '^Exec=i2pd$' /usr/share/applications/openi2pd.desktop; then
-    fail "desktop entry starts an unmanaged router"
+	fail "desktop entry starts an unmanaged router"
 fi
-grep -q '^Exec=i2pd-tui$' /usr/share/applications/openi2pd.desktop \
-    || fail "desktop entry does not launch i2pd-tui"
+grep -q '^Exec=i2pd-tui$' /usr/share/applications/openi2pd.desktop ||
+	fail "desktop entry does not launch i2pd-tui"
 
 # Exact-version pairing between the TUI and the daemon.
 i2pd_version=$(dpkg-query -W -f='${Version}' i2pd)
 tui_version=$(dpkg-query -W -f='${Version}' i2pd-tui)
 [ "$i2pd_version" = "$tui_version" ] || fail "i2pd/i2pd-tui version mismatch"
-dpkg-query -W -f='${Depends}' i2pd-tui | grep -F "i2pd (= " >/dev/null \
-    || fail "i2pd-tui does not require the exact i2pd version"
-dpkg-query -W -f='${Depends}' i2pd | grep -F "adduser" >/dev/null \
-    || fail "i2pd does not depend on adduser"
+dpkg-query -W -f='${Depends}' i2pd-tui | grep -F "i2pd (= " >/dev/null ||
+	fail "i2pd-tui does not require the exact i2pd version"
+dpkg-query -W -f='${Depends}' i2pd | grep -F "adduser" >/dev/null ||
+	fail "i2pd does not depend on adduser"
 
 # Configuration is installed as conffiles, so upgrades preserve local
 # edits.
@@ -108,14 +108,14 @@ require_file /etc/i2pd/tunnels.conf.d/README
 require_file /etc/default/i2pd
 conffiles=$(dpkg-query -W -f='${Conffiles}\n' i2pd)
 for conffile in /etc/i2pd/i2pd.conf /etc/i2pd/subscriptions.txt \
-                /etc/i2pd/tunnels.conf \
-                /etc/i2pd/tunnels.conf.d/README \
-                /etc/default/i2pd; do
-    printf '%s\n' "$conffiles" | grep -F " $conffile " >/dev/null \
-        || fail "not a conffile: $conffile"
+	/etc/i2pd/tunnels.conf \
+	/etc/i2pd/tunnels.conf.d/README \
+	/etc/default/i2pd; do
+	printf '%s\n' "$conffiles" | grep -F " $conffile " >/dev/null ||
+		fail "not a conffile: $conffile"
 done
 if printf '%s\n' "$conffiles" | grep -F ' /var/' >/dev/null; then
-    fail "a /var path is registered as a conffile"
+	fail "a /var path is registered as a conffile"
 fi
 
 # Service integration: one native unit, one executable SysV fallback and
@@ -123,33 +123,33 @@ fi
 # tmpfiles policy for non-systemd managers.
 unit=
 for candidate in /lib/systemd/system/i2pd.service \
-                 /usr/lib/systemd/system/i2pd.service; do
-    if [ -f "$candidate" ]; then
-        unit=$candidate
-        break
-    fi
+	/usr/lib/systemd/system/i2pd.service; do
+	if [ -f "$candidate" ]; then
+		unit=$candidate
+		break
+	fi
 done
 [ -n "$unit" ] || fail "missing i2pd.service"
 [ -r "$unit" ] || fail "unreadable i2pd.service"
 
 tmpfiles=
 for candidate in /usr/lib/tmpfiles.d/i2pd.conf \
-                 /lib/tmpfiles.d/i2pd.conf; do
-    if [ -f "$candidate" ]; then
-        tmpfiles=$candidate
-        break
-    fi
+	/lib/tmpfiles.d/i2pd.conf; do
+	if [ -f "$candidate" ]; then
+		tmpfiles=$candidate
+		break
+	fi
 done
 [ -n "$tmpfiles" ] || fail "missing i2pd tmpfiles policy"
 
 [ -x /etc/init.d/i2pd ] || fail "/etc/init.d/i2pd is not executable"
 sh -n /etc/init.d/i2pd || fail "/etc/init.d/i2pd has invalid shell syntax"
-grep -qE '^d /var/lib/i2pd 0700 i2pd i2pd ' "$tmpfiles" \
-    || fail "$tmpfiles lacks the persistent state directory"
-grep -qE '^d /var/log/i2pd 0700 i2pd i2pd ' "$tmpfiles" \
-    || fail "$tmpfiles lacks the log directory"
-grep -qE '^d /run/i2pd 0700 i2pd i2pd ' "$tmpfiles" \
-    || fail "$tmpfiles lacks the runtime directory"
+grep -qE '^d /var/lib/i2pd 0700 i2pd i2pd ' "$tmpfiles" ||
+	fail "$tmpfiles lacks the persistent state directory"
+grep -qE '^d /var/log/i2pd 0700 i2pd i2pd ' "$tmpfiles" ||
+	fail "$tmpfiles lacks the log directory"
+grep -qE '^d /run/i2pd 0700 i2pd i2pd ' "$tmpfiles" ||
+	fail "$tmpfiles lacks the runtime directory"
 
 # A native systemd unit plus a SysV script must not start the daemon
 # twice.
@@ -166,7 +166,7 @@ require_file "$postrm"
 sh -n "$postinst" || fail "postinst has invalid shell syntax"
 sh -n "$postrm" || fail "postrm has invalid shell syntax"
 if grep -qE '(^|[;&|[:space:]])systemctl[[:space:]]+start' "$postinst"; then
-    fail "postinst issues a manual systemctl start"
+	fail "postinst issues a manual systemctl start"
 fi
 # debhelper may emit one invoke-rc.d start; it must not emit a second
 # action.
@@ -175,7 +175,7 @@ start_count=$(grep -cE 'invoke-rc\.d[[:space:]]+i2pd[[:space:]]+start' "$postins
 
 # Data may only be removed by purge, never by remove or upgrade.
 if grep -qE 'rm -rf /(etc/i2pd|var/lib/i2pd|var/log/i2pd)' "$postrm"; then
-    awk '
+	awk '
         /^[[:space:]]*purge\)/ { purge = 1 }
         /^[[:space:]]*;;/ { purge = 0 }
         /rm -rf \/(etc\/i2pd|var\/lib\/i2pd|var\/log\/i2pd)/ && !purge { bad = 1 }
@@ -184,16 +184,16 @@ if grep -qE 'rm -rf /(etc/i2pd|var/lib/i2pd|var/log/i2pd)' "$postrm"; then
 fi
 
 if command -v systemd-analyze >/dev/null 2>&1; then
-    verify_status=0
-    if command -v timeout >/dev/null 2>&1; then
-        verify_output=$(timeout 60 systemd-analyze verify --man=no "$unit" 2>&1) || verify_status=$?
-    else
-        verify_output=$(systemd-analyze verify --man=no "$unit" 2>&1) || verify_status=$?
-    fi
-    if [ "$verify_status" -ne 0 ]; then
-        printf '%s\n' "$verify_output" >&2
-        fail "systemd-analyze verify failed (status $verify_status)"
-    fi
+	verify_status=0
+	if command -v timeout >/dev/null 2>&1; then
+		verify_output=$(timeout 60 systemd-analyze verify --man=no "$unit" 2>&1) || verify_status=$?
+	else
+		verify_output=$(systemd-analyze verify --man=no "$unit" 2>&1) || verify_status=$?
+	fi
+	if [ "$verify_status" -ne 0 ]; then
+		printf '%s\n' "$verify_output" >&2
+		fail "systemd-analyze verify failed (status $verify_status)"
+	fi
 fi
 
 # Optional OpenRC/runit installation paths are checked statically when
@@ -203,9 +203,9 @@ fi
 # above covers it; runit/s6 paths are tested if a local package supplies
 # them.
 for runit_run in /etc/sv/i2pd/run /etc/s6/sv/i2pd/run; do
-    if [ -e "$runit_run" ]; then
-        sh -n "$runit_run" || fail "invalid runit script: $runit_run"
-    fi
+	if [ -e "$runit_run" ]; then
+		sh -n "$runit_run" || fail "invalid runit script: $runit_run"
+	fi
 done
 
 # User, group and writable state/log paths created by the maintainer
@@ -214,8 +214,8 @@ getent passwd i2pd >/dev/null || fail "missing i2pd user"
 getent group i2pd >/dev/null || fail "missing i2pd group"
 [ -d /var/lib/i2pd ] || fail "missing /var/lib/i2pd"
 [ -d /var/log/i2pd ] || fail "missing /var/log/i2pd"
-dpkg-query -L i2pd | grep -qx '/var/lib/i2pd/certificates' \
-    || fail "missing certificate directory link"
+dpkg-query -L i2pd | grep -qx '/var/lib/i2pd/certificates' ||
+	fail "missing certificate directory link"
 [ "$(stat -c '%U' /var/lib/i2pd)" = i2pd ] || fail "/var/lib/i2pd owner"
 [ "$(stat -c '%a' /var/lib/i2pd)" = 700 ] || fail "/var/lib/i2pd mode"
 [ "$(stat -c '%U' /var/log/i2pd)" = i2pd ] || fail "/var/log/i2pd owner"
@@ -233,18 +233,18 @@ require_document /usr/share/doc/i2pd/docs/i18n.md
 require_document /usr/share/doc/i2pd/assets/branding/colors.md
 require_file /usr/share/doc/i2pd/copyright
 grep -q '^Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/' \
-    /usr/share/doc/i2pd/copyright || fail "copyright is not DEP-5 formatted"
-grep -q '^profile i2pd .*flags=(attach_disconnected)' /etc/apparmor.d/usr.bin.i2pd \
-    || fail "AppArmor profile header is missing"
-grep -q 'mixr' /etc/apparmor.d/usr.bin.i2pd \
-    || fail "AppArmor profile does not allow the privsep worker exec"
+	/usr/share/doc/i2pd/copyright || fail "copyright is not DEP-5 formatted"
+grep -q '^profile i2pd .*flags=(attach_disconnected)' /etc/apparmor.d/usr.bin.i2pd ||
+	fail "AppArmor profile header is missing"
+grep -q 'mixr' /etc/apparmor.d/usr.bin.i2pd ||
+	fail "AppArmor profile does not allow the privsep worker exec"
 if command -v apparmor_parser >/dev/null 2>&1; then
-    apparmor_parser -Q -T /etc/apparmor.d/usr.bin.i2pd >/dev/null 2>&1 \
-        || fail "apparmor_parser rejected the profile"
+	apparmor_parser -Q -T /etc/apparmor.d/usr.bin.i2pd >/dev/null 2>&1 ||
+		fail "apparmor_parser rejected the profile"
 fi
 if command -v desktop-file-validate >/dev/null 2>&1; then
-    desktop-file-validate /usr/share/applications/openi2pd.desktop \
-        || fail "desktop-file-validate rejected the launcher"
+	desktop-file-validate /usr/share/applications/openi2pd.desktop ||
+		fail "desktop-file-validate rejected the launcher"
 fi
 
 # Manpages follow the package split.
@@ -252,17 +252,17 @@ require_manpage i2pd.1
 require_manpage i2pdctl.1
 require_manpage openi2pd-tools.1
 for tool in autoconf_i2pd b33address b33offlinekeys famtool i2pbase64 \
-    keygen keyinfo offlinekeys regaddr regaddr_3ld regaddralias routerinfo \
-    vain verifyhost x25519; do
-    require_manpage "$tool.1"
+	keygen keyinfo offlinekeys regaddr regaddr_3ld regaddralias routerinfo \
+	vain verifyhost x25519; do
+	require_manpage "$tool.1"
 done
 require_manpage i2pd-tui.1
-dpkg-query -L i2pd | grep -qE '/usr/share/man/man1/i2pd\.1(\.gz)?$' \
-    || fail "i2pd.1 is not owned by i2pd"
-dpkg-query -L i2pd | grep -qE '/usr/share/man/man1/i2pdctl\.1(\.gz)?$' \
-    || fail "i2pdctl.1 is not owned by i2pd"
-dpkg-query -L i2pd-tui | grep -qE '/usr/share/man/man1/i2pd-tui\.1(\.gz)?$' \
-    || fail "i2pd-tui.1 is not owned by i2pd-tui"
+dpkg-query -L i2pd | grep -qE '/usr/share/man/man1/i2pd\.1(\.gz)?$' ||
+	fail "i2pd.1 is not owned by i2pd"
+dpkg-query -L i2pd | grep -qE '/usr/share/man/man1/i2pdctl\.1(\.gz)?$' ||
+	fail "i2pdctl.1 is not owned by i2pd"
+dpkg-query -L i2pd-tui | grep -qE '/usr/share/man/man1/i2pd-tui\.1(\.gz)?$' ||
+	fail "i2pd-tui.1 is not owned by i2pd-tui"
 # A package installation may have started the router through
 # invoke-rc.d;
 # this test does not stop or restart it and never touches router state.

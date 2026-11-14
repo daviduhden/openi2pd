@@ -494,6 +494,15 @@ focused regression that pins secret redaction, lifetime ownership, bounds and
 failure behavior. A size cap alone does not mitigate slow clients: inspect the
 executor for blocking calls, deadlines and admission quotas.
 
+### Authorized formatting and lint review
+
+Formatting and static lint do not authorize compilation or test execution.
+Use checked-in language configurations, inventory maintained tracked inputs,
+exclude generated/vendor files, preserve modes and keep backup reports outside
+the tree. Compare formatting against the pre-format working copy so prior
+functional changes remain intact. Review string-based source contracts after
+formatting; formatter success cannot certify their semantic assertions.
+
 ## Source documentation policy
 
 - New code must include documentation appropriate to its complexity and
