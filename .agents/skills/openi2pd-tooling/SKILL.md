@@ -122,6 +122,20 @@ a TUI client.
 
 ## Known issues and decisions
 
+- Decode Markdown as strict UTF-8 before both Unicode slug/case folding and
+  link extraction. Raw punctuation bytes can become false letters; applying
+  decoding on only one side still breaks non-ASCII fragments. Reject read or
+  encoding errors explicitly and retain encoded-path containment/NUL checks.
+  Keep filesystem joins byte-valued, fragments Unicode, and diagnostics
+  explicitly UTF-8. Cover non-ASCII parent directories as well as filenames;
+  an ASCII fixture root can hide double encoding at the path boundary.
+
+- A negative mutation that no longer matches its formatted fixture tests
+  nothing. Require its substitution to succeed, then assert refusal. Scope
+  layout-tolerant matching to the intended final list operand rather than
+  weakening every escaped literal mutation or the production allowlist.
+
+
 - For an authorized lint pass, inventory tracked Perl modules and fixtures
   as well as executable scripts. Resolve perlcritic's interpreter/module path
   before reporting it missing; keep external lint tools distinct from runtime

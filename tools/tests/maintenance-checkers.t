@@ -1755,6 +1755,98 @@ CPP
     is( $code, 0, 'rendered operands remain outside trusted label harvesting' );
 }
 
+# --- Unicode Markdown anchors and strict input decoding ---------------
+{
+    my $tmp  = tempdir( CLEANUP => 1 );
+    my $docs = File::Spec->catdir( $tmp, 'docs' );
+    my $page = File::Spec->catfile( $docs, 'page.md' );
+
+    # Explicit UTF-8 bytes keep this raw fixture writer platform-neutral.
+    my $emdash = "\xE2\x80\x94";
+    my $upper  = "\xD0\x9F\xD0\xA0\xD0\x98\xD0\x92\xD0\x95\xD0\xA2";
+    my $lower  = "\xD0\xBF\xD1\x80\xD0\xB8\xD0\xB2\xD0\xB5\xD1\x82";
+    write_file( $page, "# RT-087 $emdash Armed probe\n\n# $upper\n" );
+    write_file( File::Spec->catfile( $docs, 'index.md' ),
+        "[probe](page.md#rt-087-armed-probe)\n[cyrillic](page.md#$lower)\n" );
+    my ( $code, $out ) = run_checker( $link_checker, $docs );
+    is( $code, 0, 'Unicode headings and link fragments share decoded text' );
+    my $escaped = join '', map { sprintf '%%%02X', $_ } unpack 'C*', $lower;
+    write_file( File::Spec->catfile( $docs, "$lower.md" ),  "# $upper\n" );
+    write_file( File::Spec->catfile( $docs, "$lower.png" ), '' );
+    write_file(
+        File::Spec->catfile( $docs, 'index.md' ),
+        "[encoded]("
+          . $escaped . ".md#"
+          . $escaped . ")\n"
+          . "![image]("
+          . $escaped
+          . ".png)\n"
+          . "<img src=\""
+          . $escaped
+          . ".png\">\n"
+    );
+    ( $code, $out ) = run_checker( $link_checker, $docs );
+    is( $code, 0, 'escaped UTF-8 paths, fragments and images resolve' );
+
+    # Parent paths and fixture contents remain raw UTF-8 bytes. A decoded
+    # filename must not upgrade the already encoded parent a second time.
+    my $nested = File::Spec->catdir( $docs, $lower );
+    write_file( File::Spec->catfile( $nested, "$lower.md" ), "# $upper\n" );
+    write_file( File::Spec->catfile( $nested, "$lower.png" ), '' );
+    write_file(
+        File::Spec->catfile( $nested, 'index.md' ),
+        "[encoded]($escaped.md#$escaped)\n"
+          . "[literal]($lower.md#$lower)\n"
+          . "![image]($escaped.png)\n<img src=\"$escaped.png\">\n"
+    );
+    ( $code, $out ) = run_checker( $link_checker, $docs );
+    is( $code, 0, 'Unicode parent paths preserve encoded filename bytes' );
+    ( $code, $out ) = run_checker( $link_checker, $nested );
+    is( $code, 0, 'Unicode documentation root resolves relative links' );
+
+    write_file( File::Spec->catfile( $docs, 'index.md' ),
+        "[broken](page.md#$lower-missing)\n" );
+    ( $code, $out ) = run_checker( $link_checker, $docs );
+    is( $code, 1, 'valid Unicode missing fragment keeps link-failure status' );
+    like( $out, qr/\Q$lower\E-missing/,
+        'missing fragment diagnostic renders UTF-8 bytes' );
+    unlike( $out, qr/Wide character/,
+        'Unicode diagnostics do not emit Perl encoding warnings' );
+
+    for my $component ( 'page.md#%C3%28', '%C3%28.md', '%00.md', '%GG.md' ) {
+        write_file( File::Spec->catfile( $docs, 'index.md' ),
+            "[invalid]($component)\n" );
+        ( $code, $out ) = run_checker( $link_checker, $docs );
+        is( $code, 1, 'malformed local URL component is rejected' );
+        like(
+            $out,
+            qr/invalid UTF-8|invalid percent escape|NUL in local link/,
+            'component decoding fails with a non-content diagnostic'
+        );
+    }
+    write_file( File::Spec->catfile( $docs, 'index.md' ), "[page](page.md)\n" );
+    write_file( $page, "# Invalid \xC3\x28\n" );
+    ( $code, $out ) = run_checker( $link_checker, $docs );
+    isnt( $code, 0, 'malformed UTF-8 heading input is rejected' );
+    like(
+        $out,
+        qr/invalid UTF-8 in Markdown file/,
+        'malformed Markdown has an explicit encoding diagnostic'
+    );
+    write_file( $page, "# Present\n" );
+    write_file(
+        File::Spec->catfile( $docs, 'index.md' ),
+        "[invalid](page.md#\xC3\x28)\n"
+    );
+    ( $code, $out ) = run_checker( $link_checker, $docs );
+    isnt( $code, 0, 'malformed UTF-8 link input is rejected' );
+    like(
+        $out,
+        qr/invalid UTF-8 in Markdown file/,
+        'link parsing uses the same strict decoder as anchor parsing'
+    );
+}
+
 # --- nested documentation pages --------------------------------------
 {
     my $tmp  = tempdir( CLEANUP => 1 );

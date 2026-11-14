@@ -15,14 +15,37 @@ use 5.016;
 use File::Find;
 use File::Basename qw(basename dirname);
 use File::Spec;
-use Cwd qw(abs_path);
+use Cwd    qw(abs_path);
+use Encode qw(encode decode FB_CROAK);
 
-my $docs = shift @ARGV // 'docs';
+# Filesystem operations use UTF-8 octets; Markdown and fragments stay
+# Unicode. Never concatenate decoded link text with byte-valued parents.
+sub path_octets {
+    my ($path) = @_;
+    return $path unless defined $path && utf8::is_utf8($path);
+    return encode( 'UTF-8', $path, FB_CROAK );
+}
+
+# Diagnostics use Unicode independently of filesystem byte paths. Escape
+# undecodable names rather than emitting malformed UTF-8 or mojibake.
+sub display_path {
+    my ($path) = @_;
+    return $path if utf8::is_utf8($path);
+    my $copy = $path;
+    my $text = eval { decode( 'UTF-8', $copy, FB_CROAK ) };
+    return $text unless $@;
+    return join '', map { $_ < 128 ? chr($_) : sprintf '\\x%02X', $_ }
+      unpack 'C*', $path;
+}
+
+binmode STDERR, ':encoding(UTF-8)' or die "cannot encode diagnostics\n";
+my $docs = path_octets( shift @ARGV // 'docs' );
 $docs =~ s{/+$}{};
-die "documentation directory not found: $docs\n" unless -d $docs;
+die "documentation directory not found: " . display_path($docs) . "\n" unless -d $docs;
 
-my $root      = abs_path($docs) or die "cannot resolve $docs\n";
-my $repo_root = abs_path( File::Spec->catdir( $root, File::Spec->updir ) );
+my $root = path_octets( abs_path($docs) )
+  or die "cannot resolve " . display_path($docs) . "\n";
+my $repo_root = path_octets( abs_path( File::Spec->catdir( $root, File::Spec->updir ) ) );
 die "cannot resolve repository root\n" unless defined $repo_root;
 
 # Cwd::abs_path() returns forward-slash paths on Windows while
@@ -65,7 +88,7 @@ sub resolved_target {
     my $candidate = File::Spec->rel2abs($path);
     my @suffix;
     my $physical;
-    while ( !defined( $physical = abs_path($candidate) ) ) {
+    while ( !defined( $physical = path_octets( abs_path($candidate) ) ) ) {
         my $parent = dirname($candidate);
         return undef if $parent eq $candidate;
         unshift @suffix, basename($candidate);
@@ -79,7 +102,7 @@ sub resolved_target {
         }
         $candidate = File::Spec->catfile( $physical, $part );
         if ( -l $candidate ) {
-            my $target = readlink $candidate;
+            my $target = path_octets( readlink $candidate );
             return undef unless defined $target;
             $target = File::Spec->catfile( dirname($candidate), $target )
               unless File::Spec->file_name_is_absolute($target);
@@ -87,7 +110,7 @@ sub resolved_target {
             return undef unless defined $physical;
             next;
         }
-        my $resolved = abs_path($candidate);
+        my $resolved = path_octets( abs_path($candidate) );
         $physical = defined $resolved ? $resolved : $candidate;
     }
     return $physical;
@@ -98,16 +121,50 @@ find(
     {
         wanted => sub {
             return unless -f $_ && /\.md\z/;
-            push @files, $File::Find::name;
+            push @files, path_octets($File::Find::name);
         },
         no_chdir => 1,
     },
     $docs
 );
 
-die "no Markdown files under $docs\n" unless @files;
+die "no Markdown files under " . display_path($docs) . "\n" unless @files;
 
 my %anchor_cache;
+
+# Decode before both Unicode slug generation and link comparison. A raw
+# byte stream makes punctuation and case-folding depend on UTF-8 bytes.
+sub markdown_lines {
+    my ($path) = @_;
+    my $shown_path = display_path($path);
+    open my $fh, '<:raw', $path or die "cannot read Markdown file: $shown_path\n";
+    my $bytes = '';
+    while (1) {
+        my $count = read( $fh, my $chunk, 65536 );
+        die "cannot read Markdown file: $shown_path\n" unless defined $count;
+        last                                     unless $count;
+        $bytes .= $chunk;
+    }
+    close $fh or die "cannot close Markdown file: $shown_path\n";
+    my $text = eval { decode( 'UTF-8', $bytes, FB_CROAK ) };
+    die "invalid UTF-8 in Markdown file: $shown_path\n" if $@;
+    my @lines = split /(?<=\n)/, $text;
+    return \@lines;
+}
+
+# URL escapes carry bytes, not Unicode code points. Keep literal Unicode
+# and escaped UTF-8 in one strict encoding before comparing or resolving.
+sub local_component {
+    my ($component) = @_;
+    return ( undef, 'invalid percent escape in local link' )
+      if $component =~ /%(?![0-9A-Fa-f]{2})/;
+    my $bytes = encode( 'UTF-8', $component, FB_CROAK );
+    $bytes =~ s/%([0-9A-Fa-f]{2})/chr(hex($1))/ge;
+    my $decoded = eval { decode( 'UTF-8', $bytes, FB_CROAK ) };
+    return ( undef,    'invalid UTF-8 in local link component' ) if $@;
+    return ( undef,    'NUL in local link component' ) if $decoded =~ /\0/;
+    return ( $decoded, undef );
+}
 
 sub slugify {
     my ($heading) = @_;
@@ -148,13 +205,9 @@ sub anchors_for {
         $slug = "$base-" . $seen_slug{$base} if $seen_slug{$base}++;
         $anchors{$slug} = 1;
     };
-    open my $fh, '<', $path or do {
-        $anchor_cache{$path} = \%anchors;
-        return \%anchors;
-    };
     my $in_fence = 0;
     my $previous = '';
-    while ( my $line = <$fh> ) {
+    for my $line ( @{ markdown_lines($path) } ) {
         $in_fence = !$in_fence if $line =~ /^\s*(?:```|~~~)/;
         next                   if $in_fence;
         if ( $line =~ /^\s{0,3}#{1,6}\s+(.+?)\s*\z/ ) {
@@ -176,7 +229,6 @@ sub anchors_for {
         }
         $previous = $line if $line =~ /\S/;
     }
-    close $fh;
     $anchor_cache{$path} = \%anchors;
     return \%anchors;
 }
@@ -184,10 +236,10 @@ sub anchors_for {
 my @missing;
 my @missing_anchors;
 for my $file ( sort @files ) {
-    open my $fh, '<', $file or die "cannot read $file: $!\n";
+    my $shown_file = display_path($file);
     my $in_fence    = 0;
     my $line_number = 0;
-    while ( my $line = <$fh> ) {
+    for my $line ( @{ markdown_lines($file) } ) {
         ++$line_number;
         $in_fence = !$in_fence if $line =~ /^\s*(?:```|~~~)/;
         next                   if $in_fence;
@@ -198,46 +250,51 @@ for my $file ( sort @files ) {
             my $fragment;
             $fragment = $1 if $target =~ /#(.*)\z/;
             $target =~ s/[?#].*\z//;
-            $target =~ s/%([0-9A-Fa-f]{2})/chr(hex($1))/ge;
-            if ( $target =~ /\0/ ) {
-                push @missing, "$file:$line_number: $target (NUL in target)";
+            my $component_error;
+            ( $target, $component_error ) = local_component($target);
+            if ( !$component_error && defined $fragment ) {
+                ( $fragment, $component_error ) = local_component($fragment);
+            }
+            if ($component_error) {
+                push @missing, "$shown_file:$line_number: $component_error";
                 next;
             }
 
+            my $filesystem_target = path_octets($target);
             my $path;
             if ( $target eq '' ) {
                 $path = File::Spec->rel2abs($file);
             }
             elsif ( $target =~ m{\A/} ) {
                 $path = File::Spec->catfile( $root, split m{/},
-                    substr( $target, 1 ) );
+                    substr( $filesystem_target, 1 ) );
             }
             else {
                 my ( undef, $dir ) =
                   File::Spec->splitpath( File::Spec->rel2abs($file) );
-                $path = File::Spec->catfile( $dir, split m{/}, $target );
+                $path = File::Spec->catfile( $dir, split m{/}, $filesystem_target );
             }
             my $resolved = resolved_target($path);
             if ( !defined $resolved ) {
                 push @missing,
-                  "$file:$line_number: $target (unresolvable path)";
+                  "$shown_file:$line_number: $target (unresolvable path)";
                 next;
             }
             if ( !is_inside_repository($resolved) ) {
                 push @missing,
-                  "$file:$line_number: $target (escapes repository)";
+                  "$shown_file:$line_number: $target (escapes repository)";
                 next;
             }
 
             # Resolution classifies containment, but a missing directory
             # before '..' must not become a valid existing link target.
             unless ( -e $path ) {
-                push @missing, "$file:$line_number: $target";
+                push @missing, "$shown_file:$line_number: $target";
                 next;
             }
             if ( defined $fragment && $fragment ne '' && $path =~ /\.md\z/ ) {
                 my $anchors = anchors_for($path);
-                push @missing_anchors, "$file:$line_number: $target#$fragment"
+                push @missing_anchors, "$shown_file:$line_number: $target#$fragment"
                   unless $anchors->{$fragment};
             }
         }
@@ -246,30 +303,32 @@ for my $file ( sort @files ) {
             next if $target =~ m{\A(?:[a-z][a-z0-9+.-]*:|//|\#)}i;
             $target =~ s/[?#].*\z//;
             next if $target eq '';
-            $target =~ s/%([0-9A-Fa-f]{2})/chr(hex($1))/ge;
-            if ( $target =~ /\0/ ) {
-                push @missing, "$file:$line_number: $target (NUL in target)";
+            my $component_error;
+            ( $target, $component_error ) = local_component($target);
+            if ($component_error) {
+                push @missing, "$shown_file:$line_number: $component_error";
                 next;
             }
+            my $filesystem_target = path_octets($target);
             my ( undef, $dir ) =
               File::Spec->splitpath( File::Spec->rel2abs($file) );
             my $path =
               $target =~ m{\A/}
-              ? File::Spec->catfile( $root, split m{/}, substr( $target, 1 ) )
-              : File::Spec->catfile( $dir,  split m{/}, $target );
+              ? File::Spec->catfile( $root, split m{/}, substr( $filesystem_target, 1 ) )
+              : File::Spec->catfile( $dir,  split m{/}, $filesystem_target );
             my $resolved = resolved_target($path);
+
             if ( !defined $resolved ) {
                 push @missing,
-                  "$file:$line_number: $target (unresolvable path)";
+                  "$shown_file:$line_number: $target (unresolvable path)";
                 next;
             }
-            push @missing, "$file:$line_number: $target (escapes repository)"
+            push @missing, "$shown_file:$line_number: $target (escapes repository)"
               unless is_inside_repository($resolved);
-            push @missing, "$file:$line_number: $target"
+            push @missing, "$shown_file:$line_number: $target"
               if is_inside_repository($resolved) && !-e $path;
         }
     }
-    close $fh;
 }
 
 if (@missing) {
@@ -301,10 +360,17 @@ DOCS_DIR defaults to F<docs> and must exist.
 
 Walks the Markdown tree, validates every inline link and C<< <img src> >>
 target that points inside the repository, and validates the C<#fragment> of a
-Markdown target against the anchors of the destination page. Absolute URLs,
-protocol-relative URLs and fragment-only links are neither fetched nor
-resolved. A target that resolves outside the repository (for example through
-C<..>) and a target containing a NUL byte are reported as missing.
+Markdown target against the anchors of the destination page. Fragment-only
+Markdown links are checked against the current page. Absolute URLs and
+protocol-relative URLs are neither fetched nor resolved; fragment-only HTML
+image sources are ignored. A target that resolves outside the repository
+(for example through C<..>) is reported as missing.
+
+Markdown is decoded as strict UTF-8 before link parsing and Unicode heading
+case-folding. Local paths, image targets and fragments decode percent escapes
+as UTF-8 bytes; malformed escapes, invalid UTF-8 and NUL components are
+validation errors. Literal Unicode and percent-encoded Unicode share this
+same comparison model; no legacy non-UTF-8 URL encoding is accepted.
 
 =head1 ANCHOR MODEL
 
@@ -320,7 +386,9 @@ headings are recorded so a link to either form resolves.
 Problems are grouped under a heading on STDERR, one C<file:line: target> entry
 each, and the checker exits 1. A clean run prints a one-line summary on
 STDOUT and exits 0. An unreadable Markdown file or a missing DOCS_DIR aborts
-through C<die>.
+through C<die>. Invalid UTF-8 Markdown also aborts explicitly. Malformed
+percent escapes, non-UTF-8 URL components and NUL components are validation
+errors (exit 1), reported by file and line without echoing the component.
 
 =head1 LIMITS
 
@@ -333,7 +401,7 @@ reported.
 =head1 DEPENDENCIES
 
 Core Perl only (strict, warnings, File::Find, File::Basename, File::Spec,
-Cwd, 5.016), which the OpenBSD base interpreter provides.
+Cwd, Encode, 5.016), which the OpenBSD base interpreter provides.
 
 =head1 SECURITY AND PORTABILITY
 
