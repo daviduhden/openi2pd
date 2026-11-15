@@ -1205,3 +1205,10 @@ require_runtime_order("libi2pd/SSU2.cpp"
 require_runtime_source("tests/CMakeLists.txt" "test-ssu2-socket-lifecycle")
 require_runtime_source("tests/test-ssu2-proxy-lifecycle.cpp"
   "assert (SSU2ProxyTestAccess::AdmissionIsHeld (server));")
+
+# Disposable timers retire by ownership, with real cancellation controls.
+require_runtime_source("tests/test-ssu2-proxy-lifecycle.cpp"
+  "SSU2ProxyTestAccess::CheckTimerRetirement (server);")
+require_runtime_order("libi2pd/SSU2.cpp"
+  "void SSU2Server::RetireProxyAttempt (" "void SSU2Server::RevokeProxyAuthority ("
+  "attempt->socket.reset ();" "attempt->deadline.reset ();" "attempt->retry.reset ();")

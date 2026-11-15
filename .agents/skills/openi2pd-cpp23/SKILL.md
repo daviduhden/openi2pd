@@ -165,9 +165,12 @@ compile, run tests or run project scripts.
   UINT64_MAX input and a clock near time_point::max without waiting.
 
 - Asio timer cancellation and socket cancellation have different API
-  availability. New timer code uses cancel() and contains system_error at
-  retired-authority teardown boundaries; fixture failures remain visible.
-  Search timers independently before changing valid socket overloads.
+  availability. Reusable timers use cancel() and contain system_error at
+  retired-authority teardown boundaries; disposable owners can reset the
+  wrapper, whose destructor cancels pending waits without throwing cancel().
+  Preserve operation authority for already-queued successful completions.
+  Search concrete timer declarations and neutral names such as retry as well
+  as Timer/Deadline spellings before changing valid socket overloads.
 
 - Encoding alphabet accessors return static-extent spans over process-life
   storage, excluding a NUL terminator. HashedStorage consumes the span

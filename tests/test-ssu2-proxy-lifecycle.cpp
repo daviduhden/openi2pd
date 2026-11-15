@@ -76,6 +76,39 @@ struct SSU2ProxyTestAccess
 			{ owner.HandleProxyMethodReply (current, error); });
 		handler (boost::system::error_code { });
 	}
+	static void CheckTimerRetirement (SSU2Server & server)
+	{
+		for (bool handshakeComplete : { false, true })
+		{
+			auto attempt = Publish (server);
+			auto & service = server.m_ReceiveService.GetService ();
+			unsigned cancelled = 0;
+			auto observe = [&cancelled] (const boost::system::error_code & error)
+			{
+				assert (error == boost::asio::error::operation_aborted);
+				++cancelled;
+			};
+			attempt->deadline->expires_after (std::chrono::hours (1));
+			attempt->retry->expires_after (std::chrono::hours (1));
+			attempt->deadline->async_wait (observe);
+			attempt->retry->async_wait (observe);
+			if (handshakeComplete)
+			{
+				attempt->handshakeComplete = true;
+				server.CancelProxyHandshakeDeadline (attempt);
+				assert (!attempt->deadline && attempt->retry);
+			}
+			server.RetireProxyAttempt (attempt);
+			assert (!attempt->socket && !attempt->deadline && !attempt->retry);
+			// Observe actual cancelled waits after the production wrappers
+			// have retired. No borrowing observer outlives this fixture.
+			service.restart ();
+			const auto deadline = std::chrono::steady_clock::now () + std::chrono::seconds (5);
+			while (cancelled != 2 && std::chrono::steady_clock::now () < deadline)
+				if (!service.run_one_until (deadline)) break;
+			assert (cancelled == 2);
+		}
+	}
 	static void CheckFragmentedTransfer (SSU2Server & server)
 	{
 		auto attempt = Publish (server);
@@ -216,6 +249,10 @@ void TestMalformedProxyDiagnostic ()
 
 int main ()
 {
+	{
+		SSU2Server server;
+		SSU2ProxyTestAccess::CheckTimerRetirement (server);
+	}
 	{
 		SSU2Server server;
 		SSU2ProxyTestAccess::CheckRetainedAttemptCap (server);

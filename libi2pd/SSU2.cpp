@@ -2114,11 +2114,10 @@ namespace transport
 		if (!attempt) return;
 		boost::system::error_code ignored;
 		if (attempt->socket) attempt->socket->close (ignored);
-		if (attempt->deadline) attempt->deadline->cancel (ignored);
-		if (attempt->retry) attempt->retry->cancel (ignored);
-		// Operation handlers retain only inert buffers after
-		// retirement, never an Asio object borrowing the server's dying
-		// executor.
+		// Destroying these disposable timers cancels their pending waits.
+		// No throwing cancel() may escape destructor-driven retirement.
+		// Operation handlers retain inert buffers, not executor wrappers;
+		// attempt authority still rejects already-queued completions.
 		attempt->socket.reset ();
 		attempt->deadline.reset ();
 		attempt->retry.reset ();
@@ -2206,8 +2205,8 @@ namespace transport
 
 	void SSU2Server::CancelProxyHandshakeDeadline (const std::shared_ptr<ProxyAttempt> & attempt)
 	{
-		boost::system::error_code ignored;
-		if (attempt->deadline) attempt->deadline->cancel (ignored);
+		// The handshake-complete flag rejects an already-queued success.
+		// Timer destruction cancels pending waits without throwing cancel().
 		attempt->deadline.reset ();
 	}
 
