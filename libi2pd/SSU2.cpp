@@ -466,16 +466,30 @@ namespace transport
 		return !error;
 	}
 
+	void SSU2Server::ReceiveHandler::operator() (const boost::system::error_code & error, size_t size)
+	{
+		if (!packet) return;
+		// The completion path returns the packet to the live owner's pool.
+		// Execution still borrows server/socket lifecycle authority; only
+		// undelivered-handler destruction is independent of those owners.
+		owner->HandleReceivedFrom (error, size, packet.release (), *socket);
+	}
+
+	SSU2Server::ReceiveHandler SSU2Server::MakeReceiveHandler (boost::asio::ip::udp::socket & socket)
+	{
+		return { this, ReceiveHandler::PacketOwner (m_PacketsPool.AcquireMt ()), &socket };
+	}
+
 	void SSU2Server::Receive (boost::asio::ip::udp::socket & socket)
 	{
-		Packet * packet = m_PacketsPool.AcquireMt ();
-		auto release = i2p::modern::ScopeExit ([this, packet] { m_PacketsPool.ReleaseMt (packet); });
+		auto handler = MakeReceiveHandler (socket);
 		std::lock_guard socketLock (m_SocketMutex);
 		if (!socket.is_open ()) return;
-		socket.async_receive_from (boost::asio::buffer (packet->buf, SSU2_MAX_PACKET_SIZE), packet->from,
-			std::bind (&SSU2Server::HandleReceivedFrom, this, std::placeholders::_1, std::placeholders::_2, packet,
-				std::ref (socket)));
-		release.dismiss ();
+		// Bind views before moving ownership into Asio. Closed admission or
+		// initiation failure destroys the packet without borrowing the pool.
+		auto buffer = boost::asio::buffer (handler.packet->buf, SSU2_MAX_PACKET_SIZE);
+		auto & endpoint = handler.packet->from;
+		socket.async_receive_from (buffer, endpoint, std::move (handler));
 	}
 
 	void SSU2Server::HandleReceivedFrom (const boost::system::error_code & ecode, size_t bytes_transferred,

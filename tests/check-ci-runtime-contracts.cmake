@@ -1212,3 +1212,14 @@ require_runtime_source("tests/test-ssu2-proxy-lifecycle.cpp"
 require_runtime_order("libi2pd/SSU2.cpp"
   "void SSU2Server::RetireProxyAttempt (" "void SSU2Server::RevokeProxyAuthority ("
   "attempt->socket.reset ();" "attempt->deadline.reset ();" "attempt->retry.reset ();")
+require_runtime_source("libi2pd/SSU2.h"
+  "using PacketOwner = std::unique_ptr<Packet>;")
+require_runtime_order("libi2pd/SSU2.cpp"
+  "void SSU2Server::Receive (" "void SSU2Server::HandleReceivedFrom ("
+  "auto handler = MakeReceiveHandler (socket);" "if (!socket.is_open ()) return;"
+  "auto buffer = boost::asio::buffer (handler.packet->buf, SSU2_MAX_PACKET_SIZE);"
+  "auto & endpoint = handler.packet->from;"
+  "socket.async_receive_from (buffer, endpoint, std::move (handler));")
+require_runtime_source("tests/test-ssu2-receive-lifecycle.cpp"
+  "TestPendingReadWithoutExecutorRestart ();")
+require_runtime_source("tests/CMakeLists.txt" "test-ssu2-receive-lifecycle")

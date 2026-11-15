@@ -220,6 +220,18 @@ namespace transport
 		void Receive (boost::asio::ip::udp::socket & socket);
 		void HandleReceivedFrom (const boost::system::error_code & ecode, size_t bytes_transferred, Packet * packet,
 			boost::asio::ip::udp::socket & socket);
+		// Own receive storage until completion hands it back to the pool.
+		// Undelivered handlers may die after the server and executor;
+		// their default deleter must not borrow either owner.
+		struct ReceiveHandler
+		{
+			using PacketOwner = std::unique_ptr<Packet>;
+			SSU2Server * owner;
+			PacketOwner packet;
+			boost::asio::ip::udp::socket * socket;
+			void operator() (const boost::system::error_code & error, size_t size);
+		};
+		ReceiveHandler MakeReceiveHandler (boost::asio::ip::udp::socket & socket);
 		void HandleReceivedPackets (std::list<Packet *> && packets);
 		void ProcessNextPacket (uint8_t * buf, size_t len, const boost::asio::ip::udp::endpoint & senderEndpoint);
 		void InsertToReceivedPacketsQueue (Packet * packet);
@@ -319,6 +331,7 @@ namespace transport
 		void CancelProxyHandshakeDeadline (const std::shared_ptr<ProxyAttempt> & attempt);
 		friend struct SSU2ProxyTestAccess;
 		friend struct SSU2SocketTestAccess;
+		friend struct SSU2ReceiveTestAccess;
 
 	private:
 		// The receive service may drain handlers that use pool-backed data.

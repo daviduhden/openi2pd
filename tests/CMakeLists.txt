@@ -207,6 +207,7 @@ set(I2PD_TESTS
   test-ssu2-admission
   test-ssu2-proxy-lifecycle
   test-ssu2-socket-lifecycle
+  test-ssu2-receive-lifecycle
   test-crypto-wire-validation
   test-crypto-x25519-noise-elligator-mlkem-audit
   test-openssl-capabilities

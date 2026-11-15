@@ -107,6 +107,13 @@ Do not let reconnaissance agents edit, compile, execute tests or run scripts.
 
 ## Known issues and decisions
 
+- SSU2 receive storage belongs to a move-only ReceiveHandler until actual
+  handoff, with default deletion independent of the pool. Bind buffer views
+  before moving it into Asio. Exercise abandoned handlers after owner/context
+  destruction and live cancellation reuse separately; this storage contract
+  does not authorize executing a borrowed-owner callback after teardown.
+
+
 - SSU2 synchronous sends and receive-side reopen share a socket-object
   mutex, distinct from callback authority. Keep proxy UDP nonblocking;
   snapshot relay endpoints before socket admission and never acquire proxy

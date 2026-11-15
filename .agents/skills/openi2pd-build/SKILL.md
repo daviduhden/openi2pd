@@ -111,6 +111,12 @@ build.
 
 ## Known issues and decisions
 
+- The SSU2 receive-lifecycle fixture belongs to common native suites and
+  sanitizer labels, plus MSVC's explicit build/filter/artifact inventory.
+  Its retained-handler control deliberately never restarts the executor;
+  it proves allocation ownership, not full nonproxy callback authority.
+
+
 - Keep included source-contract fixture variables in a function scope.
   The project supports CMake 3.24; `block()` requires 3.25 and cannot
   replace functions merely because newer CI runners accept it. Review

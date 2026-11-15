@@ -31,6 +31,10 @@ that the later CI environment or full engine/TUI runtime was validated.
 
 Prepared coverage:
 
+- `test-ssu2-receive-lifecycle`: handler-owned receive allocation after owner
+  and executor destruction, cancelled pool reuse and never-run pending reads.
+  These transport controls do not establish torrent or owner-execution parity.
+
 - `test-torrents-requests`: actual writer-observed CANCEL framing, Fast tuple
   retirement and choke semantics, exact Reject parsing, canceled responses,
   allocation rollback and atomic selection epochs. No live Java peer is used.
