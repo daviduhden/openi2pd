@@ -363,3 +363,11 @@ cannot override CTest or establish IPC/restart coverage. This local workflow
 has not run. CMake is unavailable locally; no configure/build/test or tool
 installation was attempted. Source-only Perl checks do not substitute for
 those pending CMake contracts or native CI.
+
+
+The prepared Validation skills-static lane runs the timer cancellation source
+checker and its mutation contract independently of native builds. CE-088 at
+5fafdcf1 showed that including a guard only from native CTest hides it behind
+the very compiler error it should prevent. The checker is lexical: concrete
+same-stem declarations supplement timer/deadline names, without AST or alias
+resolution claims. This local workflow change has not executed remotely.

@@ -206,6 +206,11 @@ workflow, run `gh`, build or test.
 
 ## Known issues and decisions
 
+- Run the timer API checker and its mutation contract in skills-static,
+  independently of native compilation. A checker included only by native
+  CTest is hidden by a shared compile blocker.
+
+
 - The nonce-free Windows loader probe may retain code disassembly around
   its failing return alongside image/PDB identity. Avoid raw stack memory,
   locals and command lines; predecessor instructions narrow attribution but

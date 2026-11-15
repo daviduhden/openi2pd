@@ -122,6 +122,12 @@ a TUI client.
 
 ## Known issues and decisions
 
+- Workflow policy pins both independent timer-check commands in the
+  skills-static block, with command-removal mutations. The lexical timer
+  checker combines a naming heuristic with concrete same-stem header/source
+  declarations; aliases and C++ scope resolution remain review obligations.
+
+
 - Windows crash-command checking is a closed grammar. When adding bounded
   code disassembly to the nonce-free probe, update its exact accepted line
   and negative maintenance fixture together. Keep stack/data-dumping

@@ -492,6 +492,22 @@ for my $file ( sort keys %split_jobs ) {
         $job_owner{$job} = $file;
     }
 }
+# Native compile failures must not hide the timer API policy itself.
+my $timer_guard_job   = $blocks_for{'validation.yml'}{'skills-static'} // '';
+my @timer_guard_lines = split /\n/, $timer_guard_job;
+for my $command (
+    q{cmake -DPROJECT_ROOT="$PWD" -P tests/check-timer-cancellation.cmake},
+q{cmake -DPROJECT_ROOT="$PWD" -DBINARY_DIR="$RUNNER_TEMP/timer-contract" -P tests/test-timer-cancellation-contract.cmake}
+  )
+{
+    push @errors, 'validation.yml: missing independent timer API contract'
+      unless
+      grep { my $line = $_; $line =~ s/\A\s+|\s+\z//gx; $line eq $command }
+      @timer_guard_lines;
+}
+push @errors, 'validation.yml: timer API contract must not wait on builds'
+  if $timer_guard_job =~ /^\s+needs:/m;
+
 for my $legacy (qw(build.yml fuzz.yml)) {
     if ( -f File::Spec->catfile( $dir, $legacy ) ) {
         push @errors, "$legacy: the aggregate workflow was split by concern";

@@ -693,6 +693,26 @@ qr/worker initialization diagnostic|unsupported crash debugger line|missing boun
       or BAIL_OUT("read sanitizer fixture: $!");
     my $validation_source = do { local $/ = undef; <$validation_fh> };
     close $validation_fh or BAIL_OUT("close sanitizer fixture: $!");
+    for my $timer_contract (
+        'tests/check-timer-cancellation.cmake',
+        'tests/test-timer-cancellation-contract.cmake'
+      )
+    {
+        my $candidate = $validation_source;
+        ok(
+            $candidate =~ s/\Q$timer_contract\E/missing-timer-contract.cmake/,
+            'timer workflow mutation changes the actual command'
+        );
+        write_file( $validation, $candidate );
+        ( $code, $out ) = run_checker($checker);
+        is( $code, 1, 'timer policy and mutations must run independently' );
+        like(
+            $out,
+            qr/missing independent timer API contract/,
+            'missing early timer guard is diagnosed'
+        );
+    }
+    write_file( $validation, $validation_source );
     for my $boundary (
         [ "if: matrix.name == 'tsan'", "if: matrix.name == 'ubsan'" ],
         [

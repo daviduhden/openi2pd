@@ -317,6 +317,11 @@ A queued callback retaining the service that owns its timer can preserve
 the whole destination/executor cycle; cancellation alone does not drain it.
 Review weak ownership and stale successful completions across restarts.
 
+When a known API failure recurs, audit whether its source guard ran before
+native compilation failed. Keep the guard and its negative controls in an
+independent manual lane; a checker hidden behind the blocked build provides
+no preventive evidence. Distinguish disposable timer destruction from
+reusable timer cancellation and from socket cancellation APIs.
 For library-template failures, inspect the instantiated clock and platform
 branch before changing call spelling. Relative waits may instantiate the
 same broken steady-clock path; preserve the absolute transaction deadline

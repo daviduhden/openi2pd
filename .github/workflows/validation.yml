@@ -90,6 +90,10 @@ jobs:
         run: cmake -DPROJECT_ROOT="$PWD" -P tests/check-agent-skills.cmake
       - name: Validate modern-language policy without compiling
         run: cmake -DPROJECT_ROOT="$PWD" -P tests/check-language-modernization.cmake
+      - name: Inspect timer APIs before native compilation
+        run: |
+          cmake -DPROJECT_ROOT="$PWD" -P tests/check-timer-cancellation.cmake
+          cmake -DPROJECT_ROOT="$PWD" -DBINARY_DIR="$RUNNER_TEMP/timer-contract" -P tests/test-timer-cancellation-contract.cmake
       - name: Inspect queued AddressBook re-arm authority
         run: cmake -DSOURCE_DIR="$PWD" -P tests/check-addressbook-rearm-lifetime.cmake
       - name: Check maintained C++ comment delimiters without compiling
