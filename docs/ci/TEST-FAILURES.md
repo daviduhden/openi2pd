@@ -5,6 +5,32 @@ and license details.
 
 # Test failure inventory
 
+## 5fafdcf1: compile-blocked runtime validation
+
+Latest accessible history: 515 runs / 78 SHAs, 162 success, 287 failure,
+66 cancelled. The new batch has two successful workflows and eight failures;
+see [CE-088's exact run/job table](COMPILATION-ERRORS.md#ce-088-recurrence-at-5fafdcf1-disposable-proxy-timers).
+All use SHA `5fafdcf1f616c10077d480971a6946d15dd0d56f`.
+Native CTest, sanitizers and fuzzers did not execute after the SSU2 blocker.
+Windows startup probe/test never ran, so RT-087 remains unresolved. OpenBSD
+never reached TF-109; the fixture correction is still Pending CI tests.
+Android JVM/Lint/JNI/APK and API-29 UI validation likewise did not execute.
+
+Successful Agent Knowledge job 132614358857, source API 132614427197 and
+Skills 132614427249 establish only their own scopes. Java interop job
+132614389872 reports 24 static/vector successes and two known gaps, explicitly
+without --binary or differential execution. All five packaging jobs pass;
+the container's older Boost version does not test the new native regressions.
+Perl quality 132614428584 was skipped and does not close style debt.
+
+Exact artifacts inspected: OpenBSD 14135437896 (configure/build only), Linux3
+GCC 14135228336 (logs/cache/probe YAML), Windows MSYS2 14136015374 (no MSVC
+artifact was produced), UBSan 14135388137 (logs/cache/revision and explicit
+missing-images list). Missing runtime reports/binaries are phase gaps.
+Larger TSan archives remain available but were not downloaded after targeted
+artifacts established the common compile blocker; no stack is inferred.
+New timer and receive-ownership regressions remain unpublished and unexecuted.
+
 ## e1d1b7a6: completed lanes and OpenBSD observation failure
 
 Exact SHA `e1d1b7a63ce42cb2dbc2fd8331c95283742a705e`. Initial history

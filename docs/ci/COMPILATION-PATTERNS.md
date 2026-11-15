@@ -509,3 +509,16 @@ function scope for included fixtures at the project CMake 3.24 floor;
 `block()` needs 3.25. Preset schema requirements are a separate boundary.
 Review shared builder size arithmetic before addition, not merely the final
 cast to a wire field; outbound I2CP now shares this admission pattern too.
+
+
+## Recurring timer API guards must precede native builds
+
+CE-088 recurred in disposable proxy deadline/retry owners. Distinguish
+reusable timer cancellation from destruction of a disposable wrapper and
+from socket/acceptor overloads. Name-only guards missed retry; concrete
+same-stem header/source declarations extend coverage without claiming AST
+resolution. Crucially, a source checker behind CTest cannot report before a
+shared compile blocker. The prepared independent skills-static lane runs
+both the existing timer checker and mutation contract without a native build.
+Mutations must establish actual input change and the expected diagnostic;
+keep valid socket controls and unrelated identifier scopes.

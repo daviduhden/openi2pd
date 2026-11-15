@@ -1117,3 +1117,17 @@ a Fixture member. Renamed both and checked the piece index's representability
 and range before its signed API conversion. This is a static warning risk,
 not a diagnostic attributed to any remote run. The prepared MSVC target uses
 the real request ledger; Pending CI compilation / Pending CI tests.
+
+
+## 5fafdcf1 warning review
+
+Full successful and failed job logs were retrieved for all ten workflows.
+No new own compiler-warning family was observed before CE-088 stopped native
+compilation; later units and tests cannot be called warning-free. Successful
+packaging and source-documentation jobs supply only their executed scopes.
+External Landlock ABI 8 versus required 10 and MSYS2 process advice recur.
+Missing report/artifact warnings follow early build failure. Historical
+ChromeOS/Kotlin warnings remain unverified because Android's later phases
+were skipped; Perl quality was skipped, retaining 932 Critic findings and
+11 OpenBSD ShellCheck diagnostics. Exact runs/jobs are linked in
+[the current run table](COMPILATION-ERRORS.md#ce-088-recurrence-at-5fafdcf1-disposable-proxy-timers).

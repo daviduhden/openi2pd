@@ -208,7 +208,9 @@ workflow, run `gh`, build or test.
 
 - Run the timer API checker and its mutation contract in skills-static,
   independently of native compilation. A checker included only by native
-  CTest is hidden by a shared compile blocker.
+  CTest is hidden by a shared compile blocker. Classify older-Boost package
+  successes separately from modern-header regression builds and preserve
+  missing test images as phase gaps, not sanitizer or startup evidence.
 
 
 - The nonce-free Windows loader probe may retain code disassembly around

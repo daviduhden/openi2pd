@@ -818,3 +818,16 @@ scheduler timing proves a waiting thread. A separate SSU2 barrier stress
 exercises actual synchronous send/close/reopen, while source contracts pin
 nonblocking proxy setup. Callback owner authority and socket-object
 synchronization require separate checks and retain separate open findings.
+
+
+## Disposable timers and undelivered receive owners
+
+Destruction cancels pending timer waits, while already-queued successful
+callbacks still need operation authority. Test actual production retirement
+and observe cancelled handlers under one deadline. For receive storage,
+cancellation is insufficient if an executor never runs again: the operation
+handler itself must own the allocation with a deleter independent of the
+pool's lifetime. Preserve live-completion cache reuse and exercise final
+handler destruction after the server and executor are gone. Keep execution
+authority and exceptions after handoff as separately scoped obligations.
+These controls are prepared; CE-088 prevented native execution at 5fafdcf1.

@@ -2363,3 +2363,46 @@ fixture isolation. A global build/tests CMake search found no other block
 commands. Prepared cache contract remains registered in build-system checks;
 execution on the supported floor is Pending CI tests. Also corrected the
 owning Skill's stale schema-5 minimum (3.25, distinct from project 3.24).
+
+
+### CE-088 recurrence at 5fafdcf1: disposable proxy timers
+
+All entries below executed SHA `5fafdcf1f616c10077d480971a6946d15dd0d56f`.
+First significant diagnostics: SSU2.cpp:2117/2118/2210, Clang "expected 0,
+have 1", GCC "no matching function", MSVC C2660 for timer cancel(error_code).
+This is the same API family as CE-008/CE-088, reintroduced while retiring
+SOCKS proxy attempts. The selected Boost 1.92 headers expose only cancel();
+no enabling macro is inferred from the logs. Packaging's older Boost 1.84
+success is not evidence for modern-header compatibility.
+
+| Run | Jobs and configuration | Outcome |
+| --- | --- | --- |
+| [43649425845](https://github.com/daviduhden/openi2pd/actions/runs/43649425845) | 132614358857 Agent/skills synchronization | success |
+| [43649428360](https://github.com/daviduhden/openi2pd/actions/runs/43649428360) | 132614367732 Android arm64, Clang21.0.0 NDK30 OpenSSL3.6.5;132614369004 API29 UI | compile failure; UI skipped |
+| [43649430646](https://github.com/daviduhden/openi2pd/actions/runs/43649430646) | 132614373663 GCC16.2.0;132614373877 Clang23.1.5; Boost1.92/OpenSSL3.5.9 Release | compile failure both |
+| [43649433070](https://github.com/daviduhden/openi2pd/actions/runs/43649433070) | 132614381583 GCC16.2.0;132614381826 Clang23.1.5; Boost1.92/OpenSSL4.1.0 Release | compile failure both |
+| [43649435567](https://github.com/daviduhden/openi2pd/actions/runs/43649435567) | 132614389608 Clang components/consumer;132614389872 historical Java interop vectors | component compile failure; vectors success |
+| [43649437998](https://github.com/daviduhden/openi2pd/actions/runs/43649437998) | 132614396613 OpenBSD8.0 Clang22.1.6 LibreSSL4.4.0 Release | compile failure |
+| [43649440419](https://github.com/daviduhden/openi2pd/actions/runs/43649440419) | 132614403974 MSVC19.44.35230 BoostAsio1.92/OpenSSL3.6.5;132614404150 CLANG64 Clang23.1.5/OpenSSL3.6.5 | compile failure both |
+| [43649442725](https://github.com/daviduhden/openi2pd/actions/runs/43649442725) | 132614411413 instrumented OpenSSL4.1.0/Clang23.1.5 focused TSan | product compile failure |
+| [43649445155](https://github.com/daviduhden/openi2pd/actions/runs/43649445155) | 132614419704 container;132614419870 service install matrix;132614419903 service contracts;132614419940 musl;132614419948 Debian | all success |
+| [43649447594](https://github.com/daviduhden/openi2pd/actions/runs/43649447594) | 132614427024 fuzz;132614427194 UBSan;132614427222 TSan;132614427368 ASan+UBSan | compile failure all |
+| [43649447594](https://github.com/daviduhden/openi2pd/actions/runs/43649447594) | 132614427197 source API;132614427249 Skills contract;132614428584 Perl quality | success,success,skipped |
+
+
+The local correction resets disposable timer owners; their documented
+destructors cancel pending waits without invoking the throwing cancellation
+API during server teardown. Existing run/attempt/handshake checks still reject
+already-queued successful completions. Reusable timers retain their separate
+parameterless-cancel/error policy. Socket/acceptor overloads are unchanged.
+[Boost 1.74 destructor contract](https://www.boost.org/doc/libs/1_74_0/doc/html/boost_asio/reference/basic_waitable_timer/_basic_waitable_timer.html)
+already provides this behavior at the supported floor.
+
+Prepared actual-production retirement controls observe both cancelled waits
+under one absolute deadline. Global source review found only these three
+operand-bearing timer calls; socket/acceptor calls remain valid. The existing
+lexical checker now discovers concrete same-stem header/source timer names
+such as retry, and its mutation suite runs in the prepared independent
+skills-static lane. Earlier guards could detect deadline but were hidden
+behind native compilation. Implemented / static; Pending CI compilation /
+Pending CI tests. No native sanitizer or fuzzer test ran after the blocker.

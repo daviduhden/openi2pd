@@ -374,3 +374,9 @@ The prepared MSVC selection includes `test-ssu2-proxy-lifecycle` and
 The additional `test-ssu2-socket-lifecycle` brings the local selection from
 25 to 28 targets; the published
 `e1d1b7a6` run exercised the earlier 25-target selection only.
+
+The prepared follow-up adds `test-ssu2-receive-lifecycle` to common suites,
+sanitizer labels and MSVC's explicit build/filter/artifact list (29 targets,
+versus 28 in published 5fafdcf1). Independent Validation skills-static steps
+run the existing timer API checker and mutation contract before any native
+compilation can conceal that guard. Their execution remains pending CI.

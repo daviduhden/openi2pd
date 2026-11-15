@@ -10,6 +10,18 @@ Documents project documentation.
 
 # Master TODO
 
+Current audit: 5fafdcf1 has two successful workflows and eight compile failures
+from CE-088 recurrence (SSU2 disposable timer API). History is 515 runs /
+78 SHAs: 162 success, 287 failure, 66 cancelled. Timer ownership correction,
+early independent API/mutation checks and RT-107 undelivered receive storage
+are Implemented / static; Pending CI compilation / Pending CI tests.
+MSVC prepared selection is 29 targets. No native runtime suites, Windows
+probe or Android later phases executed after the blocker. RT-087/TF-109
+remain pending; exact evidence is retained in docs/ci.
+
+Previous audit snapshot before the 5fafdcf1 dispatch:
+
+
 New audit follow-up: RT-105 shared SSU2 socket admission/nonblocking proxy,
 RT-106 outbound I2CP checked arithmetic, CE-093 CMake floor compatibility and
 CW-033 request-fixture shadowing are Implemented / static; Pending CI

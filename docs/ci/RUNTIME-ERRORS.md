@@ -2544,3 +2544,30 @@ subtraction before addition/allocation, initializing reserved metadata and
 preserving closeAfterFlush failure teardown. Prepared actual-builder tests
 cover maximum, first invalid, SIZE_MAX, null/empty and extreme prefix input.
 Implemented / static; Pending CI compilation / Pending CI tests.
+
+
+### RT-107 — Undelivered SSU2 receive handler abandoned its packet
+
+Static follow-up to RT-102/105 found Receive acquiring a raw pooled Packet
+and publishing a raw-pointer handler. Stopping the executor before closing
+sockets could leave that operation undispatched; destroying the handler
+returned nothing, and pool cleanup frees only returned/cache items.
+No sanitizer report is attributed: 5fafdcf1 sanitizer jobs never executed.
+
+ReceiveHandler now owns a unique_ptr with default deletion until invocation
+hands the Packet to the existing live-owner consumer. Views are established
+before moving the handler into Asio. Closed admission, initiation failure
+and undelivered-handler destruction release storage independently of owner,
+socket and pool lifetimes; completed reads retain normal pool reuse.
+Prepared controls cover move/deleter contracts, handler destruction after
+server/executor, canceled completion pool reuse and pending-read teardown
+without ever running the executor. Registered common CTest/sanitizers and
+MSVC (29 targets locally, 28 in published 5fafdcf1).
+
+Implemented / static; Pending CI compilation / Pending CI tests. This fixes
+abandoned storage, not callback execution authority after owner removal.
+Nonproxy raw-owner execution and post-handoff exception ownership remain
+separate open review areas. UDPSession's analogous send/Stop hypothesis was
+revisited: normal callers drain receiver registrations and share destination
+service affinity; no active race was demonstrated, so no speculative fix.
+RT-087 retains prior exact image/PDB evidence; 5fafdcf1 never ran its probe.

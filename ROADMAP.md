@@ -15,6 +15,17 @@ requirements and current code; `TODO.md` is the authoritative task list.
 
 ## Current baseline
 
+Published 5fafdcf1 exposed CE-088 again across eight workflows; packaging and
+agent validation succeeded within their own scopes. Local correction retires
+disposable timers by ownership and moves timer API/mutation checks into an
+independent manual lane. RT-107 assigns undelivered receive storage to the
+handler; native/sanitizer execution remains pending. Windows initialization,
+OpenBSD fixture validation and nonproxy callback execution authority remain
+open. No local builds/tests or publication are performed in this audit.
+
+### Earlier increment
+
+
 The next local audit increment closes demonstrated SSU2 socket-object races
 and outbound I2CP size arithmetic, while retaining separate nonproxy callback
 ownership and Windows loader attribution findings. Prepared fixture updates

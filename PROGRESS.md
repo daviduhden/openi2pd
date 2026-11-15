@@ -8595,3 +8595,46 @@ Status: Implemented / static; Pending CI compilation; Pending CI tests.
   errors; AK004 relevance was reviewed against these concrete procedures.
   New source assertions/order were inspected without executing CMake.
   Negative debugger mutations are prepared for CI, not executed locally.
+
+
+## 5fafdcf1 retrospective and prevention audit
+
+Status: Implemented / static; Pending CI compilation; Pending CI tests.
+
+- Ten real specialized reconnaissance subagents covered history, C++ errors,
+  memory, concurrency, crypto/I2P, IPC, torrent/storage, Android, portability
+  and regression/CI documentation. Exclusive source scopes were integrated
+  and the new receive owner received independent C++/pool-lifetime review.
+- Refreshed all 515 accessible runs / 78 SHAs (162 success, 287 failure,
+  66 cancelled). Retrieved full and failed logs and metadata for every new
+  workflow, including successful sibling jobs, plus exact OpenBSD/Linux3/
+  Windows/UBSan diagnostic artifacts. The batch has two workflow successes
+  and eight failures; no new native runtime suite executed after compilation.
+- CE-088 recurred in SSU2 disposable deadline/retry cancellation at three
+  lines. No macro cause is inferred. Resetting the owners uses the supported
+  destructor cancellation contract and avoids throwing cancellation in
+  teardown. Prepared production retirement controls observe real aborts.
+- Extended the existing timer checker with concrete paired declarations and
+  neutral names. Mutation fixtures prove input changes and diagnostics;
+  independent skills-static wiring prevents native failure hiding the guard.
+- Fixed RT-107 raw receive allocation abandonment through a move-only handler
+  with a pool-independent deleter. Prepared retained-handler, cancelled reuse
+  and never-run executor controls; registered common/sanitizer/MSVC suites.
+  Borrowed-owner callback execution and post-handoff exceptions remain open.
+- Classified Java's 24 static/vector controls and two gaps separately from
+  unexecuted differentials. Android JVM/Lint/JNI/APK/UI and Windows probes
+  were not executed. Older-Boost package success does not validate new tests.
+  Retained RT-087, TF-109, Critic/ShellCheck and historical warning debt.
+- Updated all six inventories and applicable root/CI/build/C++/memory/tooling
+  knowledge. Corrected stale privsep registry guidance; disabled broker
+  duplicate wait ownership remains a reactivation hazard, not an active bug.
+  No local compilation, test suites, commits, push or dispatch occurred.
+
+- Final compile-free checks pass: whitespace including the untracked native
+  fixture, clang-format on changed native sources, documentation links and
+  Doxygen parameter contracts, manual workflow policy, actionlint, yamllint
+  and offline zizmor on both modified workflows (existing exceptions kept).
+  Source literals/new assertion order were inspected without running CMake.
+  Agent knowledge validation passes with zero errors; the AK004 semantic
+  relevance advisory was reviewed against the actual ownership/API changes.
+  New native and CMake mutation suites remain prepared, not locally executed.
