@@ -148,10 +148,11 @@ report that limitation; do not substitute local execution. Ask for:
   device and inode. RouterStorage and DataStorage share this boundary;
   subsequent worker configuration remains a separate failure interval.
 
-- Stop's retained PID/pidfd guarantee ends with the owning object. Audit
-  failed-reap move assignment and destruction separately: PRIVSEP-017's
-  deferred-retirement registry is still required before discarded owners
-  can preserve reap authority. Passing phase-budget tests do not cover it.
+- Failed-reap move assignment and destruction transfer to PRIVSEP-017's
+  bounded process-local retirement registry. Keep phase-budget checks
+  separate from deferred ownership/drain controls. The historical disabled
+  on-demand broker has its own waitpid list; reactivating it requires one
+  reap owner compatible with Disown, not two independent waiters.
 
 - Capability fixtures emit a fixed non-secret reason through
   tests/capability-skip.h before return code 77. Distinguish root runners,
