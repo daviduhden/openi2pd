@@ -522,3 +522,13 @@ shared compile blocker. The prepared independent skills-static lane runs
 both the existing timer checker and mutation contract without a native build.
 Mutations must establish actual input change and the expected diagnostic;
 keep valid socket controls and unrelated identifier scopes.
+
+
+## Successful script-mode checks still require warning review
+
+CW-034 came from the project's own helper, despite both jobs succeeding.
+Review callers' policy context and data geometry: empty list operands can
+trigger policy diagnostics absent from the native configure path. Construct
+only meaningful configuration names, retain the declared CMake floor, and
+prepare a policy-free child with developer warnings treated as errors rather
+than globally suppressing diagnostics or changing unrelated caller policies.

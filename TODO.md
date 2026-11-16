@@ -10,6 +10,22 @@ Documents project documentation.
 
 # Master TODO
 
+Latest audit at published 35da66ad: 525 runs / 79 SHAs (170 success,
+289 failure, 66 cancelled), eight successful workflows and two runtime
+failures. Linux/sanitizer suites pass 273/273, fuzz 15/15, CLANG64 257/257,
+Android JVM 179/179; MSVC is 28/29 and OpenBSD 267/268. Published CE-088
+and RT-107 controls are Validated by CI in their executed lanes.
+CW-034 CMake policy/list cleanup, TF-110 OpenBSD buffer/checkpoint correction,
+RT-108 SSU2 exception/capacity admission and RT-109 Streaming preparation
+ownership are Implemented / static; Pending CI compilation / Pending CI
+tests. MSVC prepared selection is 30 targets versus 29 published.
+RT-087 initializer attribution, raw-owner callback execution, broader
+Streaming allocation seams, device/provider coverage and known lint debt
+remain open. Native 10/3/9 groups are not Java differential execution.
+
+Previous compile-blocked snapshot:
+
+
 Current audit: 5fafdcf1 has two successful workflows and eight compile failures
 from CE-088 recurrence (SSU2 disposable timer API). History is 515 runs /
 78 SHAs: 162 success, 287 failure, 66 cancelled. Timer ownership correction,

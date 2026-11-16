@@ -99,6 +99,12 @@ peer or add a hidden external checkout. The reference is for reading only.
 
 ## Known issues and decisions
 
+- The reference/vector lane can report 24 successes and two known gaps
+  while explicitly skipping differentials without --binary. Focused native
+  group counts (10/3/9) are a different suite. Trace each harness invocation
+  before promoting compatibility controls to a Java interoperability claim.
+
+
 - Review both I2NP Data framing and client-output I2CP frames when auditing
   payload capacity. Outbound framing uses CreateI2CPMessageFrame so header
   and optional metadata admission precede addition/allocation; keep maximum,

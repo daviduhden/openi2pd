@@ -9,6 +9,17 @@ Tracks compile/configure/link failures reported by manual GitHub Actions.
 
 # Compilation error inventory
 
+## 35da66ad: CE-088 correction executes across the supported lanes
+
+[Current exact-run table](TEST-FAILURES.md#35da66ad-runtime-validation-resumes-two-platform-failures-remain).
+No new source compile/link blocker was observed in full successful and failed
+logs. CE-088's disposable-timer correction compiles with the selected modern
+Boost and its real cancellation controls pass native suites, including
+OpenBSD and MSVC sibling tests. The previously blocked sanitizer/fuzz suites
+also execute. This closes that published API recurrence in the executed lanes;
+new local batch ownership, UDP buffer and CMP0007 corrections remain pending.
+OpenBSD TF-110 and Windows RT-087 are runtime failures, not compiler errors.
+
 ## e1d1b7a6 and preventive build-cache correction
 
 The [completed lane evidence](TEST-FAILURES.md#e1d1b7a6-completed-lanes-and-openbsd-observation-failure)

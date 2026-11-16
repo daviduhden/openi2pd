@@ -15,6 +15,18 @@ requirements and current code; `TODO.md` is the authoritative task list.
 
 ## Current baseline
 
+Published 35da66ad removes the common compile blocker: eight workflows pass,
+with scoped sanitizer/native/SAF evidence. OpenBSD reaches a later rollback
+fixture failure (TF-110); MSVC retains RT-087. Successful checks reveal own
+CMP0007 warnings. Local work fixes the empty-list policy path, OpenBSD default
+UDP buffer requests, SSU2 batch exception/capacity ownership and equivalent
+Streaming reinjection preparation. These changes require new manual CI;
+strict Fast policy, owner execution authority, device coverage and Windows
+initializer attribution remain independent open work.
+
+### Earlier baseline
+
+
 Published 5fafdcf1 exposed CE-088 again across eight workflows; packaging and
 agent validation succeeded within their own scopes. Local correction retires
 disposable timers by ownership and moves timer API/mutation checks into an

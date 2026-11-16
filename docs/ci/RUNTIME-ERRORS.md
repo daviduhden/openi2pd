@@ -2571,3 +2571,54 @@ separate open review areas. UDPSession's analogous send/Stop hypothesis was
 revisited: normal callers drain receiver registrations and share destination
 service affinity; no active race was demonstrated, so no speculative fix.
 RT-087 retains prior exact image/PDB evidence; 5fafdcf1 never ran its probe.
+
+
+## 35da66ad runtime continuation
+
+The published retained-receive/timer controls pass the executed Linux,
+sanitizer, CLANG64, OpenBSD and MSVC sibling suites; no sanitizer diagnostic
+was found in complete current logs. This does not validate the new static
+findings below. TF-110 is recorded in TEST-FAILURES; its exact startup error
+remains unknown despite the independently demonstrated buffer incompatibility.
+
+### RT-087: exact loader evidence advances without initializer attribution
+
+[Windows 43693778358](https://github.com/daviduhden/openi2pd/actions/runs/43693778358),
+MSVC job 132749757767, artifact 14154521368, SHA 35da66ad: image SHA-256
+`D55F18DF61335CE7221F879969C0B3B28F08B8D1BD7256058F330C087D00EC96`,
+ntdll PDB `C2C87600B169E76C65E3732E4A1C19911`, module 10.0.20348.5866.
+The arming marker and predecessor disassembly actually ran. They show
+LdrpInitializationFailure then NtTerminateProcess with c0000142 (worker 76c).
+Conhost 1c84 exits c0000022 earlier, without established causality. The next
+needed evidence is the first failing initializer and its verified return;
+undocumented callback argument layouts and raw memory dumps are not a safe
+substitute. No product workaround or containment weakening is justified.
+
+### RT-108 — SSU2 packet/batch publication lacked unwind authority
+
+Static continuation of RT-107 found raw handoff before fallible list-node
+allocation, subsequent packet acquisition and queue wake allocation. A list
+of raw pointers did not free its allocations during unwind. Batched admission
+also checked only the old queue size, allowing 2499 + 32 to exceed 2500.
+ReceiveHandler now moves a PacketOwner into the consumer; ReceiveBatch owns
+pending nodes until no-throw splice. Wake allocation precedes publication
+under the consumer's queue mutex. Exact remaining-capacity admission preserves
+FIFO and leaves overflow owned for release. Prepared actual-seam tests cover
+node/wake failure, original exception, retry and exact cap/overflow ordering.
+Later acquisition failure is covered structurally by the batch guard; no
+separate SSU2 allocator-fault checkpoint is claimed. Implemented / static;
+Pending CI compilation / Pending CI tests. Borrowed-owner callback execution
+remains a separate open finding.
+
+### RT-109 — Streaming abandoned-read reinjection leaked prepared packets
+
+The equivalent-pattern search found PushBackReceived creating raw packet
+batches before emplace/new allocations completed. Current-packet and local
+batch owners now delete uncommitted preparation on failure, leaving the
+previous queue unchanged; successful reinjection splices the full prefix in
+order and retains normal pool consumption. Existing streaming-sendstate now
+prepares six first/later acquisition/node failures, exception identity and a
+multichunk prefix-plus-tail control. Added to the prepared MSVC selection
+(30 locally versus 29 in published 35da66ad). Implemented / static; Pending
+CI compilation / Pending CI tests. SavePacket, ProcessPacket and send-prep
+allocation ownership remain separate review seams, not declared closed here.

@@ -371,3 +371,11 @@ checker and its mutation contract independently of native builds. CE-088 at
 the very compiler error it should prevent. The checker is lexical: concrete
 same-stem declarations supplement timer/deadline names, without AST or alias
 resolution claims. This local workflow change has not executed remotely.
+
+
+At published 35da66ad the independent timer guard and its mutations execute,
+but successful script-mode jobs disclose CMP0007 from the project's probe
+helper. The prepared policy-free child treats developer warnings as errors
+without changing dependency/header diagnostics. Source tests that pass still
+require full log review; their native focused counts do not imply execution
+of the separate Java differential harness without its --binary operand.

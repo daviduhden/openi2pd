@@ -1,5 +1,31 @@
 # Compilation and lint warning inventory
 
+## CW-034 — Successful source checks emit CMP0007 warnings
+
+At SHA `35da66ad6bfdca2210f0b4e8cb582c6ef88e4368`, service contracts job 132749773962
+in [43693783386](https://github.com/daviduhden/openi2pd/actions/runs/43693783386)
+and Skills job 132749782003 in
+[43693785901](https://github.com/daviduhden/openi2pd/actions/runs/43693785901)
+each emit 22 warnings (44 console occurrences) from
+`build/cmake/OpenSSLProbeStamp.cmake:26 list(REMOVE_DUPLICATES)`.
+The diagnostic names unset CMP0007 and list
+`[;;DEBUG;RELEASE;RELWITHDEBINFO;MINSIZEREL]`.
+
+Cause: the shared probe fixture enters script-mode policy context with empty
+build/try-compile configurations. Quoted empty operands were passed to list
+operations. The local v3 stamp constructs a nonempty configuration list and
+omits empty names before de-duplication, without setting caller policies or
+suppressing warnings. A prepared child deliberately has no policy setup and
+runs with -Werror=dev, checking that empty configuration elements preserve
+identity. [CMake policy contract](https://cmake.org/cmake/help/latest/policy/CMP0007.html).
+Implemented / static; Pending CI tests, including this child's execution.
+
+Full logs contain no new own native compiler/link warning family or sanitizer
+report; that does not close static risks. Android repeats builtInKotlin=false
+deprecation and two ChromeOsAbiSupport findings. Java 25 cannot be lowered or
+ABI filters broadened without real dependency/build coverage to hide them.
+The skipped Perl-quality lane does not clear existing Critic/ShellCheck debt.
+
 ## e1d1b7a6 partial completed-job review
 
 The [scoped completed jobs](TEST-FAILURES.md#e1d1b7a6-completed-lanes-and-openbsd-observation-failure)

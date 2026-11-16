@@ -8638,3 +8638,59 @@ Status: Implemented / static; Pending CI compilation; Pending CI tests.
   Agent knowledge validation passes with zero errors; the AK004 semantic
   relevance advisory was reviewed against the actual ownership/API changes.
   New native and CMake mutation suites remain prepared, not locally executed.
+
+
+## 35da66ad runtime, warnings and equivalent-pattern continuation
+
+Status: Implemented / static; Pending CI compilation; Pending CI tests.
+
+- Ten real specialized subagents covered Actions history, C++ warnings,
+  memory, concurrency, crypto/I2P, IPC, torrent/storage, Android, portability
+  and regressions/documentation. Source ownership was exclusive; the root
+  reviewed shared interfaces, helper policy context, assertions and queues.
+- Recovered all current full/failed logs, successful siblings and six-page
+  history: 525 runs / 79 SHAs, 170 success, 289 failure, 66 cancelled. Eight
+  workflows succeed, two fail. Downloaded exact OpenBSD/MSVC/Linux3/Android
+  artifacts; sanitizer archives remain available, with no stack requiring
+  further image recovery in current complete passing logs.
+- Published Linux and three sanitizer lanes pass 273/273, fuzz 15/15,
+  CLANG64 257/257, Android JVM 179/179 including five SAF controls. CE-088
+  and retained-receive controls pass their executed scopes. MSVC 28/29 and
+  OpenBSD 267/268 are not clean matrices. API-29 UI remains skipped.
+- Corrected a prior evidence label in TEST-FAILURES: 10/3/9 are focused native
+  groups, not Java differentials. Both actual reference harness invocations
+  explicitly omit --binary. Instrumented OpenSSL TSan is registry 1/1 only.
+- CW-034: successful source-check jobs emit 44 CMP0007 warnings. Probe stamp
+  v3 omits empty configuration names before list operations. A policy-free
+  child with -Werror=dev prepares a regression without suppressing warnings.
+- TF-110: the earlier OpenBSD read phase passed, then originalFailure failed
+  in startup rollback. Four shared UDP buffer calls requested 4 MiB versus
+  OpenBSD's default 2 MiB ceiling. Local platform sizing preserves errors;
+  checkpoint witnessing and fixed owner/category/numeric diagnostics plus a
+  real UDPSession option control retain unresolved exact-run attribution.
+- RT-108: SSU2 owns packets through consumer/batch preparation, allocates a
+  wake before publication under the queue mutex and admits exact remaining
+  capacity. Prepared first/later node, wake, exception-identity, retry and
+  2500-cap/FIFO controls use real production seams. Later packet-acquire
+  failure is guarded structurally; no separate fault checkpoint is claimed.
+- RT-109: equivalent Streaming reinjection now owns current and pending
+  packets until commit, preserving the old queue on six first/later failure
+  controls and prefix order on success. Existing target now joins MSVC's
+  explicit prepared selection (30 versus 29 at the published revision).
+- RT-087: exact image/PDB and executed predecessor disassembly still identify
+  loader failure rather than its first failing initializer. No speculative
+  product workaround or containment change. SavePacket/ProcessPacket/send
+  allocation seams and nonproxy owner execution remain separately open.
+- Updated all six inventories, tracking, OpenBSD/build/CI documentation and
+  relevant knowledge. Android ChromeOS/Kotlin warnings and skipped Critic
+  debt remain explicit. No local builds/tests, commits, push or dispatch.
+
+- Final compile-free checks pass: git whitespace, clang-format on changed
+  native sources/fixtures, documentation links, Doxygen parameter contracts,
+  manual workflow checker, actionlint, yamllint and offline zizmor (existing
+  three Windows exceptions unchanged). Source literal/order checks match
+  the current tree without executing CMake. Knowledge validator passes with
+  zero errors; AK004 relevance was reviewed manually against these changes.
+  Independent final C++ review found no blocking interface, deleter, splice
+  or MSVC inventory issue. All new native/CMake regressions remain unexecuted
+  locally and pending manual CI on a published revision.

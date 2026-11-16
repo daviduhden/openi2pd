@@ -831,3 +831,22 @@ pool's lifetime. Preserve live-completion cache reuse and exercise final
 handler destruction after the server and executor are gone. Keep execution
 authority and exceptions after handoff as separately scoped obligations.
 These controls are prepared; CE-088 prevented native execution at 5fafdcf1.
+
+
+## Ownership extends through allocation and publication
+
+A receive handler's owning pointer is insufficient if it releases before
+fallible node allocation. Trace packet acquisition, local batch nodes, wake
+allocation and final queue publication together. Pending owners survive each
+failure; post before no-throw splice under the consumer mutex, and test exact
+remaining capacity for the entire incoming batch. Streaming reinjection has
+the same preparation/commit pattern and must preserve its prior queue on error.
+Keep successful pool reuse distinct from default deletion during unwind.
+
+A rollback fixture must witness its injected checkpoint and separately report
+pre-checkpoint platform refusal through closed labels and numeric codes.
+Its assertion does not identify an absent original exception. Kernel socket
+limits are distinct from datagram sizes; review every consumer of a shared
+buffer request. Current TF-110 attribution still needs its improved run output.
+Native focused groups (10/3/9) are not Java differential execution; inspect the
+actual command and --binary operand before describing interop evidence.

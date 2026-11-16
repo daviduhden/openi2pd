@@ -5,6 +5,68 @@ and license details.
 
 # Test failure inventory
 
+## 35da66ad: runtime validation resumes; two platform failures remain
+
+Refreshed accessible history: 525 runs / 79 SHAs, 170 success, 289 failure,
+66 cancelled. All ten runs below executed SHA `35da66ad6bfdca2210f0b4e8cb582c6ef88e4368`.
+Full and failed logs, successful sibling jobs and artifact metadata were
+retrieved. The batch has eight successful workflows and two failures.
+
+| Run | Outcome | Exact jobs |
+|---|---|---|
+| [43693762485](https://github.com/daviduhden/openi2pd/actions/runs/43693762485) | success | 132749710891 Agent and skills synchronization success |
+| [43693764849](https://github.com/daviduhden/openi2pd/actions/runs/43693764849) | success | 132749717145 Android arm64 build and unit tests success; 132749718074 Android API 29 UI and accessibility skipped |
+| [43693767409](https://github.com/daviduhden/openi2pd/actions/runs/43693767409) | success | 132749724640 Linux (clang, OpenSSL 3.x) success; 132749724825 Linux (gcc, OpenSSL 3.x) success |
+| [43693770322](https://github.com/daviduhden/openi2pd/actions/runs/43693770322) | success | 132749733687 Linux (gcc, OpenSSL 4.x) success; 132749733865 Linux (clang, OpenSSL 4.x) success |
+| [43693773158](https://github.com/daviduhden/openi2pd/actions/runs/43693773158) | success | 132749741166 I2P Java interoperability success; 132749741333 Install components and consumer package success |
+| [43693775689](https://github.com/daviduhden/openi2pd/actions/runs/43693775689) | failure | 132749749314 OpenBSD 8.0 build and tests failure |
+| [43693778358](https://github.com/daviduhden/openi2pd/actions/runs/43693778358) | failure | 132749757668 Windows MSYS2 Clang64 build and tests success; 132749757767 Windows MSVC build and tests failure |
+| [43693780880](https://github.com/daviduhden/openi2pd/actions/runs/43693780880) | success | 132749765723 Instrumented OpenSSL TSan diagnostic success |
+| [43693783386](https://github.com/daviduhden/openi2pd/actions/runs/43693783386) | success | 132749773679 Service component install matrix success; 132749773828 Container image success; 132749773850 Debian packages success; 132749773912 Static musl build and package success; 132749773962 Service contracts success |
+| [43693785901](https://github.com/daviduhden/openi2pd/actions/runs/43693785901) | success | 132749782003 Agent Skills static contract success; 132749782139 Sanitizers (tsan) success; 132749782233 Bounded fuzz smoke checks success; 132749782244 Sanitizers (asan-ubsan) success; 132749782269 C++ source API documentation success; 132749782275 Sanitizers (ubsan) success; 132749783201 Perl quality (Test::More and Perl::Critic) skipped |
+
+
+Linux OpenSSL 3/4 GCC and Clang each pass 273/273; the additional 10/3/9
+counts are focused native groups, not Java differentials. ASan+UBSan, UBSan
+and TSan each pass 273/273; fuzz smoke is 15/15. CLANG64 passes 257/257.
+Independent timer checker/mutation controls execute successfully. These
+results validate the published timer and retained-receive controls only;
+they do not validate the new local transaction/capacity corrections.
+
+Android JUnit has 179 tests in 26 suites with zero failures, including five
+SAF exact-transfer cases. JNI arm64, APK, Javadoc and 46-declaration parity
+pass. UI/device job is skipped; no provider/device claim is made. The Java
+reference job reports 24 static/vector cases plus two known gaps and explicitly
+no --binary execution. Instrumented OpenSSL TSan runs only the registry test
+1/1, not a general provider-failure suite. Optional Perl quality is skipped.
+
+OpenBSD passes 267/268 and reaches a later rollback assertion: TF-110 below.
+MSVC passes 28/29 and retains RT-087. Exact downloaded artifacts are OpenBSD
+14153463329, MSVC 14154521368, Linux3 GCC 14153753156 and Android 14153927534.
+Sanitizer archives are listed and available but were not downloaded because
+complete logs contain no runtime diagnostic stack requiring those images.
+
+### TF-110 — UDP rollback fixture failed before observing its checkpoint
+
+Run [43693775689](https://github.com/daviduhden/openi2pd/actions/runs/43693775689),
+job 132749749314, OpenBSD 8.0 / Clang 22.1.6 / LibreSSL 4.4.0 Release:
+`test-udp-ack-lifecycle.cpp:222 CheckFailedStartup: originalFailure`.
+The earlier CheckReadCompletion TF-109 phase was passed; this assertion is a
+new startup phase. The original log does not expose owner or exception code,
+so the exact failure attribution remains open.
+
+Static investigation found four consumers of an unconditional 4 MiB UDP
+buffer request, including client startup before its injected checkpoint.
+OpenBSD's default SB_MAX is 2 MiB; sbreserve rejects larger requests. The
+shared request is now 2 MiB only on OpenBSD, preserving other platforms and
+all real configuration errors. Sources: [socketvar.h](https://raw.githubusercontent.com/openbsd/src/master/sys/sys/socketvar.h)
+(SB_MAX, revision 1.161) and [uipc_socket2.c](https://raw.githubusercontent.com/openbsd/src/master/sys/kern/uipc_socket2.c)
+(sb_max/sbreserve, revision 1.186). This fixes a demonstrated default-platform
+incompatibility, not a proven exact-run exception. The fixture now witnesses
+the injection, emits only fixed owner/category labels and numeric codes on
+failure, and exercises the other UDPSession consumer without network traffic.
+Implemented / static; Pending CI compilation / Pending CI tests.
+
 ## 5fafdcf1: compile-blocked runtime validation
 
 Latest accessible history: 515 runs / 78 SHAs, 162 success, 287 failure,
@@ -41,7 +103,7 @@ including successful siblings while parent workflows were still active.
 OpenSSL3/Clang job 132565599632, OpenSSL4/GCC 132565609027 and UBSan
 132565663479 each pass 269/269; CLANG64 132565636198 passes 253/253.
 Published RT-097/098/099/100 and TF-108 controls explicitly pass there.
-Additional Linux differential groups pass 10/10, 3/3 and 9/9; fuzz 15/15,
+Additional focused native groups pass 10/10, 3/3 and 9/9; fuzz 15/15,
 documentation and agent contracts pass. These are scoped results, not a claim
 that still-running jobs or subsequent local corrections pass.
 

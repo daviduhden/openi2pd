@@ -206,6 +206,14 @@ workflow, run `gh`, build or test.
 
 ## Known issues and decisions
 
+- Successful jobs can emit own script-mode policy warnings: inspect helper
+  stacks as well as compiler output. CW-034's empty configuration list needs
+  a policy-free regression, not suppression. Linux 10/3/9 groups are focused
+  native controls; differential evidence requires --binary and recorded
+  completed differential cases, not the command alone. Report registry
+  TSan (1/1) separately from broad provider-failure coverage.
+
+
 - Run the timer API checker and its mutation contract in skills-static,
   independently of native compilation. A checker included only by native
   CTest is hidden by a shared compile blocker. Classify older-Boost package
