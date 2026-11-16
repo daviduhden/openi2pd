@@ -4,7 +4,7 @@
 # Cache identity for compile and link probes, independent of file access.
 # Length-prefixed fields preserve list separators and delimiter characters.
 function(i2pd_openssl_probe_stamp output)
-  set(identity "openi2pd-openssl-probes-v2;")
+  set(identity "openi2pd-openssl-probes-v3;")
   foreach(input IN ITEMS
       OPENSSL_INCLUDE_DIR OPENSSL_SSL_LIBRARY OPENSSL_CRYPTO_LIBRARY
       I2PD_OPENSSL_KIND I2PD_OPENSSL_VERSION OPENSSL_USE_STATIC_LIBS
@@ -21,8 +21,18 @@ function(i2pd_openssl_probe_stamp output)
     string(APPEND identity "${input}:${size}:${${input}};")
   endforeach()
   # Multi-config generators can choose a different try_compile lane.
-  set(configurations ${CMAKE_CONFIGURATION_TYPES} "${CMAKE_BUILD_TYPE}"
-    "${CMAKE_TRY_COMPILE_CONFIGURATION}" DEBUG RELEASE RELWITHDEBINFO MINSIZEREL)
+  # Standalone source checks may have no CMP0007 policy context.
+  # Build a nonempty list instead of passing empty configuration names
+  # to list operations or depending on the caller's policy settings.
+  set(configurations DEBUG RELEASE RELWITHDEBINFO MINSIZEREL)
+  foreach(input IN ITEMS CMAKE_CONFIGURATION_TYPES CMAKE_BUILD_TYPE
+      CMAKE_TRY_COMPILE_CONFIGURATION)
+    foreach(configuration IN LISTS ${input})
+      if(NOT configuration STREQUAL "")
+        list(APPEND configurations "${configuration}")
+      endif()
+    endforeach()
+  endforeach()
   list(REMOVE_DUPLICATES configurations)
   foreach(configuration IN LISTS configurations)
     string(TOUPPER "${configuration}" configuration)

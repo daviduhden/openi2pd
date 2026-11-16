@@ -3,6 +3,29 @@
 # Prepared compile-free contract; execution belongs to manual CI.
 include("${PROJECT_ROOT}/build/cmake/OpenSSLProbeStamp.cmake")
 
+# This child intentionally has no cmake_minimum_required/policy setup.
+# Developer warnings become failures, matching standalone CI callers.
+if(DEFINED I2PD_PROBE_POLICY_CHILD)
+  set(CMAKE_BUILD_TYPE "")
+  set(CMAKE_TRY_COMPILE_CONFIGURATION "")
+  set(CMAKE_CONFIGURATION_TYPES "")
+  i2pd_openssl_probe_stamp(empty_configurations)
+  set(CMAKE_CONFIGURATION_TYPES ";;")
+  i2pd_openssl_probe_stamp(empty_elements)
+  if(NOT empty_configurations STREQUAL empty_elements)
+    message(FATAL_ERROR "Empty configuration names must not affect probes")
+  endif()
+  return()
+endif()
+
+execute_process(COMMAND "${CMAKE_COMMAND}" "-DPROJECT_ROOT=${PROJECT_ROOT}"
+  -DI2PD_PROBE_POLICY_CHILD=1 -Werror=dev -P "${CMAKE_CURRENT_LIST_FILE}"
+  RESULT_VARIABLE policy_status OUTPUT_VARIABLE policy_output
+  ERROR_VARIABLE policy_error TIMEOUT 10)
+if(NOT policy_status STREQUAL "0")
+  message(FATAL_ERROR "Standalone probe policy failed: ${policy_output}${policy_error}")
+endif()
+
 # Fixture inputs must not leak into the including source checker.
 function(check_openssl_probe_stamp_fixture)
 

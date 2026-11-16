@@ -837,6 +837,8 @@ read_required("${PROJECT_ROOT}/tests/check-openssl-probe-stamp.cmake" probe_fixt
 assert_present("${probe_fixture}" "function(check_openssl_probe_stamp_fixture)"
   "Probe fixture isolation must retain the CMake 3.24 command floor")
 assert_absent("${probe_fixture}" "block(" "Probe fixture must not require CMake 3.25")
+assert_present("${probe_fixture}" "-Werror=dev"
+  "Standalone probe policy warnings must fail the prepared regression")
 include("${PROJECT_ROOT}/tests/check-openssl-probe-stamp.cmake")
 
 file(READ "${PROJECT_ROOT}/.github/workflows/validation.yml" build_workflow_text)

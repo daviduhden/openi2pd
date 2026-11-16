@@ -380,3 +380,10 @@ sanitizer labels and MSVC's explicit build/filter/artifact list (29 targets,
 versus 28 in published 5fafdcf1). Independent Validation skills-static steps
 run the existing timer API checker and mutation contract before any native
 compilation can conceal that guard. Their execution remains pending CI.
+
+Probe identity v3 omits empty configuration names before list operations.
+A prepared child runs without native policy setup and treats developer
+warnings as errors, covering the successful-job CMP0007 finding. The new
+Streaming reinjection fault cases use the existing streaming-sendstate target,
+now also in MSVC's explicit 30-target selection; published 35da66ad ran 29.
+These local changes remain pending manual CI compilation/tests.

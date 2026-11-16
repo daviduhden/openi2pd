@@ -111,6 +111,13 @@ build.
 
 ## Known issues and decisions
 
+- Probe stamp v3 filters empty configuration names before list operations.
+  Standalone source checks may lack native-configure policy settings; the
+  prepared policy-free child treats developer warnings as errors and checks
+  empty-element identity. Preserve policy independence rather than adding
+  -Wno-dev. MSVC's local explicit inventory includes streaming-sendstate.
+
+
 - The SSU2 receive-lifecycle fixture belongs to common native suites and
   sanitizer labels, plus MSVC's explicit build/filter/artifact inventory.
   Its retained-handler control deliberately never restarts the executor;
