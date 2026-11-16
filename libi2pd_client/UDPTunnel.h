@@ -121,8 +121,14 @@ namespace client
 
 	/* max size for i2p udp */
 	const size_t I2P_UDP_MAX_MTU = 64 * 1024;
-	/* local socket buffers, not datagram size */
+	// Local socket capacity, independent of datagram size. OpenBSD's
+	// default kernel socket-buffer ceiling is 2 MiB; larger requests
+	// fail rather than being silently clamped as on some platforms.
+#if defined(__OpenBSD__)
+	const size_t I2P_UDP_SOCKET_BUFFER_SIZE = 2 * 1024 * 1024;
+#else
 	const size_t I2P_UDP_SOCKET_BUFFER_SIZE = 4 * 1024 * 1024;
+#endif
 
 	// Reliability state of one datagram conversation. Both tunnel
 	// directions share it: the client tunnel keeps one per local UDP

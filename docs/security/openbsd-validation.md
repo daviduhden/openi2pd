@@ -379,3 +379,10 @@ for reaping is not proof of fork prohibition. The one-way shared launcher
 barrier is an additional application invariant, not a kernel replacement.
 The core still has networking and persistent write authority. No general
 launcher service or arbitrary executable/path IPC operation was introduced.
+
+
+The local TF-110 correction bounds both UDPTunnel consumers' buffer requests
+to OpenBSD's default 2 MiB socket ceiling. Existing rollback controls now
+witness checkpoint entry and exercise UDPSession option admission. Exact-run
+exception attribution still requires the next published test output; no
+pledge/unveil change or ignored socket error is part of this correction.

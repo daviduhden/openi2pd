@@ -9,6 +9,7 @@
 #include <atomic>
 #include <chrono>
 #include <cassert>
+#include <cstdio>
 #include <functional>
 #include <memory>
 #include <limits>
@@ -17,6 +18,7 @@
 #include <stdexcept>
 #include <string_view>
 #include <type_traits>
+#include <boost/system/system_error.hpp>
 #include "UDPTunnel.h"
 
 namespace i2p::client
@@ -35,9 +37,16 @@ struct UDPPeriodicTestAccess
 		owner.m_StatsTimer = std::make_unique<boost::asio::steady_timer> (owner.m_LocalDest->GetService ());
 		owner.ScheduleStatsTimer ();
 	}
+	inline static thread_local bool startupCheckpointReached = false;
 	template <typename Owner> static void FailStartup (Owner & owner)
 	{
-		owner.StartImpl ([] { throw std::runtime_error ("UDP startup checkpoint"); });
+		startupCheckpointReached = false;
+		owner.StartImpl (
+			[]
+			{
+				startupCheckpointReached = true;
+				throw std::runtime_error ("UDP startup checkpoint");
+			});
 	}
 	template <typename Owner> static bool IsStopped (const Owner & owner)
 	{
@@ -211,15 +220,41 @@ template <typename Owner> void CheckFailedStartup (const std::shared_ptr<Owner> 
 	for (unsigned attempt = 0; attempt < 2; ++attempt)
 	{
 		bool originalFailure = false;
+		const char * failureKind = "none";
+		const char * errorCategory = "none";
+		int errorValue = 0;
 		try
 		{
 			UDPPeriodicTestAccess::FailStartup (*owner);
 		}
+		catch (const boost::system::system_error & error)
+		{
+			failureKind = "system";
+			errorValue = error.code ().value ();
+			errorCategory = "other";
+			if (error.code ().category () == boost::system::generic_category ())
+				errorCategory = "generic";
+			else if (error.code ().category () == boost::system::system_category ())
+				errorCategory = "system";
+		}
 		catch (const std::runtime_error & error)
 		{
+			failureKind = "runtime";
 			originalFailure = std::string_view (error.what ()) == "UDP startup checkpoint";
 		}
-		assert (originalFailure);
+		catch (...)
+		{
+			failureKind = "other";
+		}
+		const bool reached = UDPPeriodicTestAccess::startupCheckpointReached;
+		if (!originalFailure || !reached)
+		{
+			// Do not echo arbitrary exceptions from startup dependencies.
+			constexpr const char * ownerKind = std::is_same_v<Owner, I2PUDPClientTunnel> ? "client" : "server";
+			std::fprintf (stderr, "UDP startup fixture: owner=%s checkpoint=%u failure=%s category=%s code=%d\n",
+				ownerKind, reached ? 1u : 0u, failureKind, errorCategory, errorValue);
+		}
+		assert (originalFailure && reached);
 		assert (UDPPeriodicTestAccess::IsStopped (*owner));
 		if constexpr (std::is_same_v<Owner, I2PUDPClientTunnel>)
 			assert (UDPPeriodicTestAccess::ClientResourcesRetired (*owner));
@@ -241,6 +276,21 @@ void TestFailedStartupRollback ()
 	CheckFailedStartup (
 		std::make_shared<I2PUDPServerTunnel> ("failed-server", destination, boost::asio::ip::address_v4::loopback (),
 			boost::asio::ip::udp::endpoint (boost::asio::ip::address_v4::loopback (), 1), 1, false));
+	// Exercise the other production consumer of the same buffer policy.
+	// No receive starts and no datagram is sent to the loopback peer.
+	{
+		auto session = std::make_shared<UDPSession> (
+			boost::asio::ip::udp::endpoint (boost::asio::ip::address_v4::loopback (), 0), destination,
+			boost::asio::ip::udp::endpoint (boost::asio::ip::address_v4::loopback (), 1), destination->GetIdentHash (),
+			1, 1);
+		boost::asio::socket_base::receive_buffer_size received;
+		boost::asio::socket_base::send_buffer_size sent;
+		session->IPSocket.get_option (received);
+		session->IPSocket.get_option (sent);
+		assert (received.value () > 0 && sent.value () > 0);
+		assert (session->IPSocket.non_blocking ());
+		session->Stop ();
+	}
 	auto client = std::make_shared<I2PUDPClientTunnel> ("failed-client", "unused.i2p",
 		boost::asio::ip::udp::endpoint (boost::asio::ip::address_v4::loopback (), 0), destination, 1, false,
 		i2p::datagram::eDatagramV3);

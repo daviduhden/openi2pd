@@ -1249,3 +1249,9 @@ require_runtime_order("libi2pd/Streaming.cpp"
   "m_ReceiveQueue.splice (m_ReceiveQueue.begin (), pieces);")
 require_runtime_source("tests/test-streaming-sendstate.cpp"
   "TestPushBackReceivedAllocationFailures (f);")
+require_runtime_source("tests/test-udp-ack-lifecycle.cpp"
+  "assert (originalFailure && reached);")
+require_runtime_source("tests/test-udp-ack-lifecycle.cpp"
+  "startupCheckpointReached = true;")
+require_runtime_source("libi2pd_client/UDPTunnel.h"
+  "#if defined(__OpenBSD__)\n\tconst size_t I2P_UDP_SOCKET_BUFFER_SIZE = 2 * 1024 * 1024;")

@@ -97,6 +97,14 @@ limitation; do not substitute local execution. Ask for:
 
 ## Known issues and decisions
 
+- UDPTunnel's shared socket-buffer request is 2 MiB on OpenBSD, matching
+  default SB_MAX, and 4 MiB elsewhere. Client startup and UDPSession both
+  use it; retain configuration errors if a custom kernel limit still fails.
+  The rollback fixture witnesses its checkpoint before classifying an
+  injected failure and reports only closed labels/numeric error codes.
+  TF-110's exact runner exception remains pending improved CI evidence.
+
+
 - The imsg write loop attempts nonblocking output before polling and checks
   its original deadline after any partial progress. Timeout or ambiguous
   write/poll failure closes the composed queue instead of replaying a frame.
