@@ -218,8 +218,6 @@ namespace transport
 		// Admit a nonblocking proxy socket or close it on setup failure.
 		bool OpenProxySocket (boost::system::error_code & error);
 		void Receive (boost::asio::ip::udp::socket & socket);
-		void HandleReceivedFrom (const boost::system::error_code & ecode, size_t bytes_transferred, Packet * packet,
-			boost::asio::ip::udp::socket & socket);
 		// Own receive storage until completion hands it back to the pool.
 		// Undelivered handlers may die after the server and executor;
 		// their default deleter must not borrow either owner.
@@ -232,10 +230,32 @@ namespace transport
 			void operator() (const boost::system::error_code & error, size_t size);
 		};
 		ReceiveHandler MakeReceiveHandler (boost::asio::ip::udp::socket & socket);
+		void HandleReceivedFrom (const boost::system::error_code & ecode, size_t bytes_transferred,
+			ReceiveHandler::PacketOwner packet, boost::asio::ip::udp::socket & socket);
+		// Pending nodes own their packets until no-throw queue splicing.
+		// Destruction during unwind never borrows a pool or executor.
+		struct ReceiveBatch
+		{
+			std::list<Packet *> packets;
+			ReceiveBatch () = default;
+			~ReceiveBatch ()
+			{
+				for (auto * packet : packets) delete packet;
+			}
+			ReceiveBatch (const ReceiveBatch &) = delete;
+			ReceiveBatch & operator= (const ReceiveBatch &) = delete;
+		};
+		enum class ReceiveCheckpoint
+		{
+			BatchNode,
+			QueueWake
+		};
+		void (*m_ReceiveCheckpointForTesting) (ReceiveCheckpoint) = nullptr;
+		void AppendReceivedPacket (ReceiveBatch & batch, ReceiveHandler::PacketOwner & packet);
 		void HandleReceivedPackets (std::list<Packet *> && packets);
 		void ProcessNextPacket (uint8_t * buf, size_t len, const boost::asio::ip::udp::endpoint & senderEndpoint);
-		void InsertToReceivedPacketsQueue (Packet * packet);
-		void InsertToReceivedPacketsQueue (std::list<Packet *> & packets);
+		void InsertToReceivedPacketsQueue (ReceiveHandler::PacketOwner packet);
+		void InsertToReceivedPacketsQueue (ReceiveBatch & batch);
 		void HandleReceivedPacketsQueue ();
 
 		void ScheduleTermination ();

@@ -472,7 +472,7 @@ namespace transport
 		// The completion path returns the packet to the live owner's pool.
 		// Execution still borrows server/socket lifecycle authority; only
 		// undelivered-handler destruction is independent of those owners.
-		owner->HandleReceivedFrom (error, size, packet.release (), *socket);
+		owner->HandleReceivedFrom (error, size, std::move (packet), *socket);
 	}
 
 	SSU2Server::ReceiveHandler SSU2Server::MakeReceiveHandler (boost::asio::ip::udp::socket & socket)
@@ -493,7 +493,7 @@ namespace transport
 	}
 
 	void SSU2Server::HandleReceivedFrom (const boost::system::error_code & ecode, size_t bytes_transferred,
-		Packet * packet, boost::asio::ip::udp::socket & socket)
+		ReceiveHandler::PacketOwner packet, boost::asio::ip::udp::socket & socket)
 	{
 		// Runs on the receive service (m_ReceiveService), never on the SSU2
 		// service: packets are only classified by size here and handed to the
@@ -521,7 +521,7 @@ namespace transport
 			if (bytes_transferred < SSU2_MIN_RECEIVED_PACKET_SIZE)
 			{
 				// drop too short packets
-				m_PacketsPool.ReleaseMt (packet);
+				m_PacketsPool.ReleaseMt (packet.release ());
 				Receive (socket);
 				return;
 			}
@@ -535,11 +535,11 @@ namespace transport
 			}
 			if (!ec && moreBytes)
 			{
-				std::list<Packet *> packets;
-				packets.push_back (packet);
-				while (moreBytes && packets.size () < SSU2_MAX_NUM_PACKETS_PER_BATCH)
+				ReceiveBatch batch;
+				AppendReceivedPacket (batch, packet);
+				while (moreBytes && batch.packets.size () < SSU2_MAX_NUM_PACKETS_PER_BATCH)
 				{
-					packet = m_PacketsPool.AcquireMt ();
+					packet.reset (m_PacketsPool.AcquireMt ());
 					{
 						std::lock_guard socketLock (m_SocketMutex);
 						packet->len = socket.receive_from (
@@ -549,9 +549,9 @@ namespace transport
 					{
 						i2p::transport::transports.UpdateReceivedBytes (packet->len);
 						if (packet->len >= SSU2_MIN_RECEIVED_PACKET_SIZE)
-							packets.push_back (packet);
+							AppendReceivedPacket (batch, packet);
 						else // drop too short packets
-							m_PacketsPool.ReleaseMt (packet);
+							m_PacketsPool.ReleaseMt (packet.release ());
 						{
 							std::lock_guard socketLock (m_SocketMutex);
 							moreBytes = socket.available (ec);
@@ -561,19 +561,19 @@ namespace transport
 					else
 					{
 						LogPrint (eLogError, "SSU2: receive_from error: code ", ec.value (), ": ", ec.message ());
-						m_PacketsPool.ReleaseMt (packet);
+						m_PacketsPool.ReleaseMt (packet.release ());
 						break;
 					}
 				}
-				InsertToReceivedPacketsQueue (packets);
+				InsertToReceivedPacketsQueue (batch);
 			}
 			else
-				InsertToReceivedPacketsQueue (packet);
+				InsertToReceivedPacketsQueue (std::move (packet));
 			Receive (socket);
 		}
 		else
 		{
-			m_PacketsPool.ReleaseMt (packet);
+			m_PacketsPool.ReleaseMt (packet.release ());
 			if (ecode != boost::asio::error::operation_aborted)
 			{
 				LogPrint (eLogError, "SSU2: Receive error: code ", ecode.value (), ": ", ecode.message ());
@@ -632,50 +632,48 @@ namespace transport
 		if (m_LastSession && m_LastSession->GetState () != eSSU2SessionStateTerminated) m_LastSession->FlushData ();
 	}
 
-	void SSU2Server::InsertToReceivedPacketsQueue (Packet * packet)
+	void SSU2Server::AppendReceivedPacket (ReceiveBatch & batch, ReceiveHandler::PacketOwner & packet)
 	{
-		if (!packet) return;
-		bool empty = false, dropped = false;
-		{
-			std::lock_guard<std::mutex> l (m_ReceivedPacketsQueueMutex);
-			if (m_ReceivedPacketsQueue.size () < SSU2_MAX_RECEIVED_QUEUE_SIZE)
-			{
-				empty = m_ReceivedPacketsQueue.empty ();
-				m_ReceivedPacketsQueue.push_back (packet);
-			}
-			else
-				dropped = true;
-		}
-		if (dropped)
-		{
-			// The single-packet path must honour the same backlog bound as the
-			// batched receive path, otherwise a busy socket can grow the queue
-			// without limit until the SSU2 service catches up.
-			LogPrint (eLogError, "SSU2: Received queue size ", SSU2_MAX_RECEIVED_QUEUE_SIZE, " exceeds max size");
-			m_PacketsPool.ReleaseMt (packet);
-			return;
-		}
-		if (empty) boost::asio::post (GetService (), [this] () { HandleReceivedPacketsQueue (); });
+		if (m_ReceiveCheckpointForTesting) m_ReceiveCheckpointForTesting (ReceiveCheckpoint::BatchNode);
+		batch.packets.push_back (packet.get ());
+		packet.release (); // The new list node now owns this allocation.
 	}
 
-	void SSU2Server::InsertToReceivedPacketsQueue (std::list<Packet *> & packets)
+	void SSU2Server::InsertToReceivedPacketsQueue (ReceiveHandler::PacketOwner packet)
 	{
-		if (packets.empty ()) return;
-		size_t queueSize = 0;
+		if (!packet) return;
+		ReceiveBatch batch;
+		AppendReceivedPacket (batch, packet);
+		InsertToReceivedPacketsQueue (batch);
+	}
+
+	void SSU2Server::InsertToReceivedPacketsQueue (ReceiveBatch & batch)
+	{
+		if (batch.packets.empty ()) return;
 		{
-			std::lock_guard<std::mutex> l (m_ReceivedPacketsQueueMutex);
-			queueSize = m_ReceivedPacketsQueue.size ();
-			if (queueSize < SSU2_MAX_RECEIVED_QUEUE_SIZE)
-				m_ReceivedPacketsQueue.splice (m_ReceivedPacketsQueue.end (), packets);
-			else
+			std::lock_guard queueLock (m_ReceivedPacketsQueueMutex);
+			const size_t used = m_ReceivedPacketsQueue.size ();
+			const size_t available = used < SSU2_MAX_RECEIVED_QUEUE_SIZE ? SSU2_MAX_RECEIVED_QUEUE_SIZE - used : 0;
+			const size_t admitted = std::min (available, batch.packets.size ());
+			if (admitted)
 			{
-				LogPrint (eLogError, "SSU2: Received queue size ", queueSize, " exceeds max size ",
-					SSU2_MAX_RECEIVED_QUEUE_SIZE);
-				m_PacketsPool.ReleaseMt (packets);
-				queueSize = 0; // invoke processing just in case
+				if (!used)
+				{
+					// Posting may allocate. Do it before publication while the
+					// consumer still waits on this same queue mutex. A failed
+					// post leaves every packet in the caller's owning batch.
+					if (m_ReceiveCheckpointForTesting) m_ReceiveCheckpointForTesting (ReceiveCheckpoint::QueueWake);
+					boost::asio::post (GetService (), [this] () { HandleReceivedPacketsQueue (); });
+				}
+				auto end = batch.packets.begin ();
+				for (size_t i = 0; i < admitted; ++i) ++end;
+				m_ReceivedPacketsQueue.splice (
+					m_ReceivedPacketsQueue.end (), batch.packets, batch.packets.begin (), end);
 			}
 		}
-		if (!queueSize) boost::asio::post (GetService (), [this] () { HandleReceivedPacketsQueue (); });
+		// Overflow stays owned by the caller, including diagnostic failure.
+		if (!batch.packets.empty ())
+			LogPrint (eLogError, "SSU2: Receive queue at capacity; dropping ", batch.packets.size (), " packets");
 	}
 
 	void SSU2Server::HandleReceivedPacketsQueue ()

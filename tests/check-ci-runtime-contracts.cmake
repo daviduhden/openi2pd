@@ -1223,6 +1223,24 @@ require_runtime_order("libi2pd/SSU2.cpp"
 require_runtime_source("tests/test-ssu2-receive-lifecycle.cpp"
   "TestPendingReadWithoutExecutorRestart ();")
 require_runtime_source("tests/CMakeLists.txt" "test-ssu2-receive-lifecycle")
+
+# Receiving a packet does not retire ownership before fallible batching.
+require_runtime_source("libi2pd/SSU2.cpp"
+  "owner->HandleReceivedFrom (error, size, std::move (packet), *socket);")
+require_runtime_order("libi2pd/SSU2.cpp"
+  "void SSU2Server::AppendReceivedPacket (" "void SSU2Server::InsertToReceivedPacketsQueue ("
+  "batch.packets.push_back (packet.get ());" "packet.release ();")
+require_runtime_order("libi2pd/SSU2.cpp"
+  "void SSU2Server::InsertToReceivedPacketsQueue (ReceiveBatch & batch)"
+  "void SSU2Server::HandleReceivedPacketsQueue ()"
+  "std::lock_guard queueLock (m_ReceivedPacketsQueueMutex);"
+  "const size_t admitted = std::min (available, batch.packets.size ());"
+  "boost::asio::post (GetService (), [this] () { HandleReceivedPacketsQueue (); });"
+  "m_ReceivedPacketsQueue.splice (")
+require_runtime_source("tests/test-ssu2-receive-lifecycle.cpp"
+  "TestBatchAdmissionExactCapacity ();")
+require_runtime_source("tests/test-ssu2-receive-lifecycle.cpp"
+  "TestBatchWakeFailureAndRetry ();")
 require_runtime_order("libi2pd/Streaming.cpp"
   "void Stream::PushBackReceived (" "size_t Stream::Send ("
   "pending (&pieces, deletePending);"

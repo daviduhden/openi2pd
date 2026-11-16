@@ -293,6 +293,10 @@ document lock ordering and exclude synchronous reentrant lifecycle calls.
 Review reusable correlation keys independently of owner lifetime. An old
 successful completion can survive cancellation and key reuse; require
 per-admission authority before mutating or retiring a successor operation.
+For packet queues, trace allocation ownership through node creation and wake
+publication, not only through the asynchronous receive. Bound an entire
+incoming batch against remaining capacity. A fallible wake must not leave
+published work without a consumer; preserve prior queue state on failure.
 For exception safety, trace the interval between remote handle/transaction
 admission and subsequent allocations. Guard the entire transaction, retire
 transport authority without allocation during unwind, and preserve the

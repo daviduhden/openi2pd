@@ -107,11 +107,13 @@ Do not let reconnaissance agents edit, compile, execute tests or run scripts.
 
 ## Known issues and decisions
 
-- SSU2 receive storage belongs to a move-only ReceiveHandler until actual
-  handoff, with default deletion independent of the pool. Bind buffer views
-  before moving it into Asio. Exercise abandoned handlers after owner/context
-  destruction and live cancellation reuse separately; this storage contract
-  does not authorize executing a borrowed-owner callback after teardown.
+- SSU2 receive storage stays owning through handler and consumer preparation.
+  ReceiveBatch covers node/acquisition unwind; queue admission posts before
+  splice under the queue mutex and caps the whole batch by remaining space.
+  Streaming PushBackReceived uses the same prepare/commit review boundary.
+  Exercise first/later allocation failures, prior queue preservation and FIFO.
+  Default deletion during unwind is independent of pool reuse on success;
+  neither contract authorizes a borrowed-owner callback after teardown.
 
 
 - SSU2 synchronous sends and receive-side reopen share a socket-object

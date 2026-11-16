@@ -31,6 +31,13 @@ that the later CI environment or full engine/TUI runtime was validated.
 
 Prepared coverage:
 
+- SSU2 receive lifecycle adds pending-node/wake allocation failure, original
+  exception identity, queue retry and exact 2500-packet/FIFO controls.
+- Streaming sendstate adds reinjection preparation failures at first/later
+  packet acquisitions and list nodes, preserving prior queued data and the
+  successful multichunk prefix order. These are native ownership tests, not
+  a live torrent/Java-peer interoperability guarantee.
+
 - `test-ssu2-receive-lifecycle`: handler-owned receive allocation after owner
   and executor destruction, cancelled pool reuse and never-run pending reads.
   These transport controls do not establish torrent or owner-execution parity.
