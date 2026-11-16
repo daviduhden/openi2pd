@@ -1255,14 +1255,24 @@ namespace stream
 		// spliced in front of whatever arrived meanwhile, in their original
 		// order, so a later read observes the stream byte-for-byte.
 		std::list<Packet *> pieces;
+		// Every packet still in this local batch is uncommitted. Delete
+		// directly during unwind, without a borrowing pool deleter.
+		auto deletePending = [] (std::list<Packet *> * batch)
+		{
+			for (auto * packet : *batch) delete packet;
+		};
+		std::unique_ptr<std::list<Packet *>, decltype (deletePending)> pending (&pieces, deletePending);
 		while (len)
 		{
 			const size_t chunk = std::min (len, MAX_PACKET_SIZE);
-			Packet * packet = m_LocalDestination.NewPacket ();
+			if (m_PushBackCheckpointForTesting) m_PushBackCheckpointForTesting (PushBackCheckpoint::PacketAcquire);
+			std::unique_ptr<Packet> packet (m_LocalDestination.NewPacket ());
 			packet->offset = 0;
 			memcpy (packet->buf, data, chunk);
 			packet->len = chunk;
-			pieces.emplace_back (packet);
+			if (m_PushBackCheckpointForTesting) m_PushBackCheckpointForTesting (PushBackCheckpoint::BatchNode);
+			pieces.emplace_back (packet.get ());
+			packet.release (); // The batch now owns this allocation.
 			data += chunk;
 			len -= chunk;
 		}

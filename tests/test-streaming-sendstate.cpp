@@ -14,7 +14,12 @@
  *
  */
 
+#include <algorithm>
+#include <array>
 #include <cassert>
+#include <exception>
+#include <new>
+#include <vector>
 #include <cstdint>
 #include <cstring>
 #include <memory>
@@ -23,6 +28,48 @@
 
 #include "Destination.h"
 #include "Streaming.h"
+#include "Modern.h"
+
+namespace i2p::stream
+{
+struct StreamReceiveTestAccess
+{
+	using Checkpoint = Stream::PushBackCheckpoint;
+	inline static Checkpoint failurePoint = Checkpoint::PacketAcquire;
+	inline static unsigned callsBeforeFailure = 0;
+	inline static std::exception_ptr failure;
+	static void Restore (Stream & stream, const uint8_t * data, size_t len) { stream.PushBackReceived (data, len); }
+	static void FailAt (Checkpoint point)
+	{
+		if (point != failurePoint) return;
+		if (!callsBeforeFailure) std::rethrow_exception (failure);
+		--callsBeforeFailure;
+	}
+	template <typename Action>
+	static bool FailBefore (Stream & stream, Checkpoint point, unsigned after, Action && action)
+	{
+		failurePoint = point;
+		callsBeforeFailure = after;
+		failure = std::make_exception_ptr (std::bad_alloc ());
+		stream.m_PushBackCheckpointForTesting = &FailAt;
+		auto clear = i2p::modern::ScopeExit (
+			[&stream]
+			{
+				stream.m_PushBackCheckpointForTesting = nullptr;
+				failure = nullptr;
+			});
+		try
+		{
+			action ();
+		}
+		catch (...)
+		{
+			return std::current_exception () == failure;
+		}
+		return false;
+	}
+};
+}
 
 namespace
 {
@@ -68,6 +115,40 @@ void Write (boost::asio::io_context & service, i2p::stream::Stream & stream, std
 		});
 	service.poll ();
 }
+
+void TestPushBackReceivedAllocationFailures (Fixture & fixture)
+{
+	using namespace i2p::stream;
+	using Access = StreamReceiveTestAccess;
+	std::vector<uint8_t> restored (MAX_PACKET_SIZE * 2 + 7);
+	for (size_t i = 0; i < restored.size (); ++i) restored[i] = static_cast<uint8_t> (i % 251);
+	const std::array<uint8_t, 2> tail { 0xD1, 0xD2 };
+	for (auto point : { Access::Checkpoint::PacketAcquire, Access::Checkpoint::BatchNode })
+		for (unsigned after : { 0u, 1u, 2u })
+		{
+			auto stream = std::make_shared<Stream> (fixture.service, fixture.destination);
+			Access::Restore (*stream, tail.data (), tail.size ());
+			assert (stream->GetReceiveQueueSize () == 1);
+			assert (Access::FailBefore (
+				*stream, point, after, [&] { Access::Restore (*stream, restored.data (), restored.size ()); }));
+			// A failed first or later allocation publishes no partial prefix.
+			// ASan/LSan must also observe all temporary packet storage retire.
+			assert (stream->GetReceiveQueueSize () == 1);
+			std::array<uint8_t, 2> received { };
+			assert (stream->ReadSome (received.data (), received.size ()) == received.size ());
+			assert (received == tail && !stream->GetReceiveQueueSize ());
+		}
+	{
+		auto stream = std::make_shared<Stream> (fixture.service, fixture.destination);
+		Access::Restore (*stream, tail.data (), tail.size ());
+		Access::Restore (*stream, restored.data (), restored.size ());
+		std::vector<uint8_t> received (restored.size () + tail.size ());
+		assert (stream->ReadSome (received.data (), received.size ()) == received.size ());
+		assert (std::equal (restored.begin (), restored.end (), received.begin ()));
+		assert (std::equal (tail.begin (), tail.end (), received.data () + restored.size ()));
+		assert (!stream->GetReceiveQueueSize ());
+	}
+}
 } // namespace
 
 int main ()
@@ -78,6 +159,7 @@ int main ()
 	using i2p::stream::Stream;
 
 	Fixture f;
+	TestPushBackReceivedAllocationFailures (f);
 	// Tunnel setup may initiate the handshake before any local payload
 	// arrives. An empty send must still build the SYN asynchronously.
 	{

@@ -117,6 +117,13 @@ compile, run tests or run project scripts.
 
 ## Known issues and decisions
 
+- Raw-pointer list preparation needs two ownership levels: the current
+  packet until node allocation succeeds, then an owning local batch until
+  no-throw splice. PushBackReceived keeps the old queue intact if any first
+  or later acquisition/node fails; source guards and fault controls cover
+  the shared preparation/commit boundary without borrowing a dying pool.
+
+
 - Review fixture lambdas and static factories for constructor/member name
   hiding too: a callback parameter can shadow an enclosing constructor
   operand, and a factory local can hide a class member. Keep fixture indices

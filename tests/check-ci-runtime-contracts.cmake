@@ -1223,3 +1223,11 @@ require_runtime_order("libi2pd/SSU2.cpp"
 require_runtime_source("tests/test-ssu2-receive-lifecycle.cpp"
   "TestPendingReadWithoutExecutorRestart ();")
 require_runtime_source("tests/CMakeLists.txt" "test-ssu2-receive-lifecycle")
+require_runtime_order("libi2pd/Streaming.cpp"
+  "void Stream::PushBackReceived (" "size_t Stream::Send ("
+  "pending (&pieces, deletePending);"
+  "std::unique_ptr<Packet> packet (m_LocalDestination.NewPacket ());"
+  "pieces.emplace_back (packet.get ());" "packet.release ();"
+  "m_ReceiveQueue.splice (m_ReceiveQueue.begin (), pieces);")
+require_runtime_source("tests/test-streaming-sendstate.cpp"
+  "TestPushBackReceivedAllocationFailures (f);")

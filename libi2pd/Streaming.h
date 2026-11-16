@@ -423,8 +423,16 @@ namespace stream
 		void SavePacket (Packet * packet);
 		// Puts bytes that an abandoned blocking read already dequeued back at
 		// the front of the receive queue, preserving their order. Service
-		// thread only.
+		// thread only. Allocation failure preserves the existing queue;
+		// temporary packets remain owned until the final no-throw splice.
 		void PushBackReceived (const uint8_t * data, size_t len);
+		enum class PushBackCheckpoint
+		{
+			PacketAcquire,
+			BatchNode
+		};
+		void (*m_PushBackCheckpointForTesting) (PushBackCheckpoint) = nullptr;
+		friend struct StreamReceiveTestAccess;
 		void ProcessPacket (Packet * packet);
 		bool ProcessOptions (uint16_t flags, Packet * packet);
 		void ProcessAck (Packet * packet);
