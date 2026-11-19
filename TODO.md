@@ -2691,3 +2691,20 @@ HTTP/SOCKS handoff against shutdown, POSIX ChildProcess shutdown's composed
 relative waits, coordinated typed filesystem APIs, periodic torrent interest
 refresh and the previously recorded Windows/Android/quality coverage gaps.
 No new CI execution contains these local changes; no commits or push made.
+
+## CI audit after 6fbe50c1
+
+| ID | State | Scope and remaining work |
+|---|---|---|
+| AUDIT-6FBE-01 | Validated by CI | Published Linux/OpenBSD/CLANG64/sanitizer/fuzz suites; exact 535-run metadata and ten-run/job inventory in docs/ci/TEST-FAILURES.md; skipped UI/Perl and live Java differentials remain open |
+| AUDIT-6FBE-02 | Implemented / static | TF-111 typed exception provenance and negative controls; Pending CI compilation and Pending CI tests on MSVC |
+| AUDIT-6FBE-03 | Implemented / static | RT-110 Streaming admission/saved-drain/control ownership; new target; Pending CI compilation and Pending CI tests; send-state rollback and other strong timer cycles remain open |
+| AUDIT-6FBE-04 | Implemented / static | RT-111 ratchet exception transactions; new target; Pending CI compilation and Pending CI tests; ordinary void-HKDF provider failure remains open |
+| AUDIT-6FBE-05 | Implemented / static | RT-112 tracker/DHT multi-index admission; new target; Pending CI compilation and Pending CI tests |
+| AUDIT-6FBE-06 | Implemented / static | RT-113 SAF handle unwind ownership/source guard; Pending CI compilation and Pending CI tests/device failure injection |
+| AUDIT-6FBE-07 | Correction pending | RT-087 exact loader image/probe evidence still does not identify first failing initializer; retain containment and collect bounded nonsecret evidence |
+
+Android 179 JVM tests pass on the published SHA, but ChromeOS/Kotlin warnings,
+API29 device evidence, older compiler/OpenSSL4.0.x floor and skipped quality
+lanes remain open. Corrections require CI on their published revision; the
+audit runs above predate them.

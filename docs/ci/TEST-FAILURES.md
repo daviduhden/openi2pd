@@ -5,6 +5,57 @@ and license details.
 
 # Test failure inventory
 
+
+## 6fbe50c1: nine successful workflows, three MSVC test failures
+
+Exact SHA `6fbe50c1d34ac151aecfce8be15c9ff960f074f1`. Paginated metadata
+covers 535 runs / 80 SHAs: 179 success, 290 failure and 66 cancelled.
+Complete latest-run logs, failed logs and artifact indexes were recovered for
+all ten runs below. This does not claim retrieval of all 535 historical logs;
+older evidence and retention gaps remain in their original entries.
+
+
+- [43796719181](https://github.com/daviduhden/openi2pd/actions/runs/43796719181): Agent Knowledge Validation / success; 133067090195 Agent and skills synchronization=success
+- [43796722505](https://github.com/daviduhden/openi2pd/actions/runs/43796722505): Android / success; 133067099029 Android arm64 build and unit tests=success; 133067101044 Android API 29 UI and accessibility=skipped
+- [43796726343](https://github.com/daviduhden/openi2pd/actions/runs/43796726343): Linux OpenSSL 3.x / success; 133067110984 Linux (clang, OpenSSL 3.x)=success; 133067111435 Linux (gcc, OpenSSL 3.x)=success
+- [43796730745](https://github.com/daviduhden/openi2pd/actions/runs/43796730745): Linux OpenSSL 4.x / success; 133067124292 Linux (clang, OpenSSL 4.x)=success; 133067124616 Linux (gcc, OpenSSL 4.x)=success
+- [43796734463](https://github.com/daviduhden/openi2pd/actions/runs/43796734463): Linux / success; 133067135400 I2P Java interoperability=success; 133067135811 Install components and consumer package=success
+- [43796738507](https://github.com/daviduhden/openi2pd/actions/runs/43796738507): OpenBSD / success; 133067148538 OpenBSD 8.0 build and tests=success
+- [43796742021](https://github.com/daviduhden/openi2pd/actions/runs/43796742021): Windows / failure; 133067159459 Windows MSVC build and tests=failure; 133067159867 Windows MSYS2 Clang64 build and tests=success
+- [43796745676](https://github.com/daviduhden/openi2pd/actions/runs/43796745676): Instrumented OpenSSL TSan diagnostic / success; 133067169234 Instrumented OpenSSL TSan diagnostic=success
+- [43796749555](https://github.com/daviduhden/openi2pd/actions/runs/43796749555): Packaging and service validation / success; 133067181444 Static musl build and package=success; 133067181679 Service component install matrix=success; 133067181746 Debian packages=success; 133067181792 Service contracts=success; 133067181893 Container image=success
+- [43796752971](https://github.com/daviduhden/openi2pd/actions/runs/43796752971): Validation / success; 133067190986 Bounded fuzz smoke checks=success; 133067191139 Sanitizers (ubsan)=success; 133067191275 Agent Skills static contract=success; 133067191287 C++ source API documentation=success; 133067191404 Sanitizers (tsan)=success; 133067191479 Sanitizers (asan-ubsan)=success; 133067192582 Perl quality (Test::More and Perl::Critic)=skipped
+
+
+Executed suites: Linux GCC 16.2 / Clang 23.1.5 with OpenSSL 3.5.9 / 4.1.0,
+273/273 each; OpenBSD 8.0 / Clang 22.1.6 / LibreSSL 4.4.0, 268/268;
+CLANG64 / OpenSSL 3.6.5, 257/257; MSVC 19.44 / OpenSSL 3.6.5, 27/30.
+ASan+UBSan, UBSan and TSan each pass 273/273; fuzz smoke passes 15/15.
+The instrumented OpenSSL TSan job executes only one focused test.
+Java interoperability reports 24 static/vector successes and two known gaps;
+no differential ran because no `--binary` was supplied. Android UI and Perl
+quality are skipped. None of these results validates subsequent local edits.
+
+### TF-111: exception provenance fixtures assume exception_ptr identity
+
+Windows run 43796742021, MSVC job 133067159459, reports assertions at
+`test-streaming-sendstate.cpp:133` and `test-ssu2-receive-lifecycle.cpp:137`.
+Both helpers rethrow an exception_ptr and compare current_exception() with
+the original pointer. Static inspection demonstrates a nonportable fixture:
+[C++ permits copies of the exception object](https://eel.is/c++draft/propagation#current_exception),
+so object identity is not a portable propagation contract. This explains an
+invalid assertion assumption; the logs alone do not expose MSVC's internal
+copy operation. Global search found this comparison in these two helpers.
+
+Both now throw a dedicated bad_alloc subtype carrying a shared provenance
+token, catch that exact type and compare its payload. No-throw and unrelated
+bad_alloc controls must fail injection verification. Existing first/later
+allocation, unchanged-queue and retry controls remain. Implemented / static;
+Pending CI compilation / Pending CI tests, especially MSVC. RT-087 is the
+third MSVC failure and remains independent. TF-110 passes on this published
+OpenBSD revision; its former missing diagnostic is not retroactively known.
+
+
 ## 35da66ad: runtime validation resumes; two platform failures remain
 
 Refreshed accessible history: 525 runs / 79 SHAs, 170 success, 289 failure,

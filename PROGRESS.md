@@ -8694,3 +8694,55 @@ Status: Implemented / static; Pending CI compilation; Pending CI tests.
   Independent final C++ review found no blocking interface, deleter, splice
   or MSVC inventory issue. All new native/CMake regressions remain unexecuted
   locally and pending manual CI on a published revision.
+
+## 2026-11-19 — 6fbe50c1 retrospective and preventive audit
+
+Recovered paginated metadata for 535 runs /80 SHAs (179 success,290 failure,
+66 cancelled), all ten latest full/failed logs and artifact indexes, plus exact
+MSVC startup and Android test/Lint reports. Nine workflows succeed; MSVC is
+27/30. Linux/sanitizers273/273 each, OpenBSD268/268, CLANG64257/257,
+fuzz15/15, Android179 JVM successes. No new native compiler/CMP0007 warning;
+Android warnings and skipped UI/Perl/live differentials remain explicit.
+
+Ten specialized real workstreams reviewed history, native errors, memory,
+concurrency, crypto/I2P, IPC, torrent, Android, portability and regressions.
+TF-111 corrects two exception_ptr identity fixtures. RT-110 guards Streaming
+admission/preparation, detaches saved ownership and weakens FIN/RST stream
+captures while retaining packet storage. RT-111 stages ratchet key transactions.
+RT-112 rolls back tracker/DHT partial admission before incumbent eviction.
+RT-113 closes SAF handles if native registration throws. Three focused native
+targets join common CTest/sanitizers and MSVC's 33-target explicit selection.
+No local compiler/build/configure/test or workflow dispatch, commit or push.
+
+RT-087 exact image60048CF1...F329310 and armed loader stack remain
+unattributed; containment is unchanged. New fixes are Implemented / static,
+Pending CI compilation and Pending CI tests. Six CI inventories, relevant
+Skills and AGENTS synchronize transaction/provenance procedures; stale Windows
+blanket inheritance prose now matches the explicit three-NUL-handle allowlist.
+
+Final synchronization review covered root AGENTS, discovery index and the
+build/CI/memory/crypto/torrent/Android/platform Skills. Seven Skills and root
+policy now retain reusable exception provenance, complete ownership transfer,
+transactional multi-index/ratchet admission and JNI unwind authority. The
+knowledge validator passes with zero errors; AK004 semantic relevance was
+reviewed manually. Documentation links, Doxygen parameter references, manual
+workflow policy, actionlint, yamllint, offline zizmor and changed-native
+clang-format checks pass. Zizmor retains three existing suppressions. Git
+whitespace review includes all three untracked fixtures. Text inspection
+confirms new source-order literals and MSVC filter membership without running
+CMake. Prepared guard-removal mutations require actual changed inputs; their
+CMake execution remains pending manual CI. No PageHeap coverage is claimed
+for the three new targets. An independent fixture review removed an implicit
+service-starting factory and added a nonzero ratchet derivation control.
+
+## 2026-11-19 — Authorized atomic publication review
+
+Under explicit publication authorization, reviewed all modified and untracked
+files and split the corrections by fixture provenance, Streaming, ratchet,
+torrent admission and SAF cleanup. Shared CMake, runtime guards and MSVC
+build/filter/artifact inventories were projected into the index incrementally,
+without changing working files, so each new target accompanies its source.
+The Windows handle-policy clarification is an independent knowledge correction;
+this final audit record groups the historical evidence and validation limits.
+Existing Git identity and signing configuration are preserved. Publication
+supplies no compilation, runtime or sanitizer evidence for these corrections.

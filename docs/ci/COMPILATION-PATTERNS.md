@@ -1,5 +1,14 @@
 # Compilation diagnostic patterns and repository-wide review
 
+## Runtime fixture failures after clean compilation
+
+At 6fbe50c1 all reached native targets compile; MSVC still fails two allocation
+fixtures and a worker startup. TF-111 requires inspecting the assertion's C++
+contract, rather than treating an exception_ptr identity comparison as proof
+of changed production propagation. Preserve exact run/job/SHA and classify
+runtime assertions separately from compiler errors and sanitizer reports.
+
+
 ## Capability caches must identify their actual link transaction
 
 CE-092 shows that headers/version cannot identify a link probe. Include exact

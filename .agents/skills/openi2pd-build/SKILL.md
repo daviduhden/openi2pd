@@ -111,6 +111,11 @@ build.
 
 ## Known issues and decisions
 
+- A new packet/ratchet exception regression must join common CTest and the
+  explicit MSVC build, closed filter, parser fixture and diagnostic artifact
+  inventories together. Independent targets make a fixture failure distinguishable
+  from the production ownership or transactional-state regression it exposed.
+
 - Probe stamp v3 filters empty configuration names before list operations.
   Standalone source checks may lack native-configure policy settings; the
   prepared policy-free child treats developer warnings as errors and checks

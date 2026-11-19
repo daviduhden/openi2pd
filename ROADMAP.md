@@ -2478,3 +2478,15 @@ commit decisions. Java stable 2.14.1 is verified independently; existing
 handler-admission architecture before converting HTTP/SOCKS success writes,
 and migrate typed filesystem interfaces coherently with no-follow storage.
 Advanced torrent bandwidth/ranking and live peer parity remain open.
+
+## Exception transactions and 6fbe50c1 CI continuation
+
+The published batch passes nine workflows; MSVC exposes two nonportable
+exception fixtures and the independent RT-087 loader failure. AUDIT-6FBE-02..06
+implement typed fault provenance, Streaming ownership, ratchet transactions,
+tracker/DHT admission and SAF handle unwind cleanup. Three focused native
+regressions join common/sanitizer and MSVC selection. All new code is
+Implemented / static, Pending CI compilation and Pending CI tests. Keep
+partial-send rollback, remaining strong timer cycles, fallible HKDF, Windows
+initializer attribution, Android warnings/device and skipped quality evidence
+open; successful older suites cannot validate the local tree.

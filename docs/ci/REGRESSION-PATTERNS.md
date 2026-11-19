@@ -5,6 +5,21 @@ and license details.
 
 # Regression patterns
 
+## Portable fault provenance and complete ownership transfer
+
+TF-111 compares a dedicated exception type and immutable shared payload,
+which survive legal exception copies. Test no-throw and unrelated failures;
+never replace provenance with a broad bad_alloc catch alone. Search related
+fault helpers globally when one platform exposes an invalid assumption.
+
+RT-110 detaches a saved packet node before a consuming call can publish it to
+the receive queue. Exercise failure before insertion and after publication:
+allocation cleanup alone misses double ownership. Undelivered FIN/RST handlers
+own packets independently and weakly reference their stream; test owner
+release without ever draining the executor and stopped dispatch separately.
+Do not infer send-state rollback from packet reclamation after partial sends.
+
+
 ## Read completion, tuple authority and deferred ownership
 
 Manual cleanup after successful encoding does not cover provider refusal or
@@ -850,3 +865,13 @@ limits are distinct from datagram sizes; review every consumer of a shared
 buffer request. Current TF-110 attribution still needs its improved run output.
 Native focused groups (10/3/9) are not Java differential execution; inspect the
 actual command and --binary operand before describing interop evidence.
+
+## Multi-index admission and cryptographic state transactions
+
+RT-111 preserves chain, index, cache and caller output until derivation and
+allocation finish. Compare cold and warm failed retries against a separate
+uninterrupted reference; a successful return alone cannot detect key drift.
+RT-112 must preserve incumbents at capacity, per-origin quotas and every
+index after each failed preparation step. Total size alone misses orphan
+entries. RT-113 keeps a remote handle under unwind ownership until local
+registration commits, while its cleanup execution authority is still alive.

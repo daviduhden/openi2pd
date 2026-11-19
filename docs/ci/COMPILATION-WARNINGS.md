@@ -1,5 +1,19 @@
 # Compilation and lint warning inventory
 
+## 6fbe50c1 warning review
+
+Complete logs for the [ten current runs](TEST-FAILURES.md#6fbe50c1-nine-successful-workflows-three-msvc-test-failures)
+contain no new own native compiler/link warning and no CMP0007 diagnostic.
+CW-034's published correction is Validated by CI in the executed static lanes,
+including the policy-free child contract. Preserve its historical diagnosis
+below. Android still emits `builtInKotlin=false` deprecation and
+`ChromeOsAbiSupport` at build.gradle:89/109 in debug/release; successful
+Android compilation does not close them. MSYS2 package process notices are
+infrastructure diagnostics. Optional Perl quality did not execute; earlier
+932 Critic and eleven OpenBSD ShellCheck findings are not cleared by silence.
+No blanket zero-warning or complete supported-matrix claim is justified.
+
+
 ## CW-034 — Successful source checks emit CMP0007 warnings
 
 At SHA `35da66ad6bfdca2210f0b4e8cb582c6ef88e4368`, service contracts job 132749773962

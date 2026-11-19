@@ -1043,3 +1043,15 @@ validator entry point and complete module tree into private temporary Git
 repositories, then check worktree/range changes, configuration and report
 semantics. Syntax, optional Critic, portability and platform execution remain
 Pending CI for the new implementation; no local test run is recorded.
+
+## Exception transaction regressions after 6fbe50c1
+
+Prepared targets: `test-streaming-packet-ownership`,
+`test-ratchet-key-transaction` and torrent-conditional
+`test-torrents-admission`. They use normal 120 s / sanitizer 300 s timeouts,
+security/memory labels, no shared temporary files or threads, and common
+CTest/sanitizer execution. The explicit MSVC build/filter/parser/artifact
+inventory includes all three (33 selected targets versus 30 in published
+6fbe50c1). Existing allocation fixtures use typed provenance tokens rather
+than exception_ptr identity. Native tests are prepared, not locally executed;
+SAF cleanup additionally has a source-order guard and needs device evidence.

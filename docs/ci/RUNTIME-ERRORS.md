@@ -5,6 +5,53 @@ and license details.
 
 # Runtime error inventory
 
+
+## 6fbe50c1: executed coverage and preventive exception audit
+
+[Exact run/job/toolchain evidence](TEST-FAILURES.md#6fbe50c1-nine-successful-workflows-three-msvc-test-failures).
+No sanitizer signature was found in the complete executed suites. Published
+RT-107/108/109 controls pass Linux, OpenBSD, CLANG64 and sanitizer suites;
+MSVC's two allocation-fixture assertions are TF-111, not a sanitizer report.
+The static findings below are newly identified and have no dynamic validation.
+
+### RT-087: loader termination remains unattributed
+
+Windows run 43796742021, MSVC job 133067159459, SHA 6fbe50c1;
+`windows-msvc-ctest` artifact contains the live startup probe. Image SHA-256:
+`60048CF1B0679F694F1E6874B4B6AD67D159B6E38627D288BDF4B69E0F329310`.
+The arming marker executed; ntdll PDB is
+`C2C87600B169E76C65E3732E4A1C19911`. Worker 18e8 terminates c0000142
+through NtTerminateProcess / LdrpInitialize / LdrpInitializeInternal /
+LdrInitializeThunk, after LdrpInitializationFailure. Nested conhost ac4 exits
+c0000022; this does not establish causality. `exceptions.txt` is configured
+commands, whereas `initializer.txt` contains live evidence. No demonstrated
+spawn/handle/Job defect justifies weakening containment. Needed: the first
+failing loader operation and verified return before the failure handler.
+
+### RT-110: Streaming packet admission and saved-drain ownership
+
+Static review of Streaming.cpp SavePacket, HandleNextPacket, ProcessPacket,
+SendBuffer, SendPacket and FIN/RST preparation found unowned allocations across
+fallible insertion/encoding/posting. More seriously, saved drain processed a
+packet while the saved set still owned it; a post-publication exception could
+leave both saved and receive containers deleting it. HandleNextPacket also
+read SYN after a consuming call could return the packet to the pool.
+
+Packets now have guards before fallible preparation; saved nodes detach before
+consumption, and SYN is snapshotted first. SendPacket prepares the resend node
+before transport work and splices without allocation. FIN/RST handlers own
+packets independently and weakly reference the stream, avoiding the existing
+stream/destination/executor cycle for these handlers; terminal dispatch refuses.
+Other strong timer/close captures remain a separate lifecycle review scope.
+
+`test-streaming-packet-ownership` prepares actual save/receive insertion
+failures, post-publication failure, successful drain, never-dispatched owner
+release and stopped dispatch. Common CTest/sanitizers and explicit MSVC
+selection include it. Implemented / static; Pending CI compilation / Pending
+CI tests. Packet cleanup does not roll back consumed send buffers, sequence
+state or transport side effects after a partial send; those remain open.
+
+
 ## New local corrections after e1d1b7a6
 
 Published controls pass in the [completed lanes](TEST-FAILURES.md#e1d1b7a6-completed-lanes-and-openbsd-observation-failure).
@@ -2622,3 +2669,47 @@ multichunk prefix-plus-tail control. Added to the prepared MSVC selection
 (30 locally versus 29 in published 35da66ad). Implemented / static; Pending
 CI compilation / Pending CI tests. SavePacket, ProcessPacket and send-prep
 allocation ownership remain separate review seams, not declared closed here.
+
+## Preventive transaction families following 6fbe50c1
+
+These findings have no failing workflow attribution: they were demonstrated by
+source inspection after TF-111 triggered a global exception-boundary search.
+All corrections are Implemented / static; Pending CI compilation and Pending
+CI tests. Exact published run metadata is retained above without assigning
+those results to this local tree.
+
+### RT-111: symmetric ratchet chain and index commit diverged
+
+`RatchetTagSet::GetSymmKey` advanced the live chain before an allocating
+intermediate-key insertion, while advancing its index only after the loop.
+An exception left key indexes inconsistent. It now derives into a cleansed
+scratch chain/cache, reserves live buckets and transfers prepared nodes before
+publishing chain/index/output. Existing derivation and initial-gap key-zero
+semantics are preserved. `test-ratchet-key-transaction` prepares cold/warm
+first/later insertion, reserve and derivation-boundary failures, unchanged
+state/output and retry against an uninterrupted reference. Ordinary provider
+failure through the existing void HKDF API is not detected by this change;
+a fallible provider interface remains open. No nonce-reuse claim is made.
+
+### RT-112: tracker and DHT admission updated only part of an index
+
+`TorrentsTunnel::ResolveTrackerSlot` appended a tracker before appending its
+parallel slot. Failure could leave unequal lengths and a later out-of-bounds
+slot write. Rollback restores the tracker append if slot preparation fails.
+`PrivateInfoHashSet::Insert` and `DHTTokenStore::Issue` likewise published
+set/FIFO/token/per-node state in separate fallible steps, sometimes evicting
+incumbents before admission completed. They now prepare all indexes with
+rollback before eviction. Existing quotas, FIFO and I2P-only behavior remain.
+`test-torrents-admission` prepares tracker retry, full private-hash incumbent
+preservation and four token checkpoints for existing/new node quota paths.
+It joins torrent-conditional CTest/sanitizers and explicit MSVC coverage.
+
+### RT-113: SAF remote handle had no native admission-unwind owner
+
+`SafPayload::Open` obtained a Java handle before allocating its native handles
+set entry. Failure leaked the unrecorded broker capability. A ScopeExit now
+closes the uncommitted handle while SafEnv, its local frame and bridge remain
+alive, clearing cleanup JNI exceptions and preserving the C++ exception.
+The source-order contract pins guard, close, insertion and dismiss order.
+JNI symbol parity remains unchanged. Forced-allocation/device broker release
+still needs runtime evidence; source order is not proof of provider behavior.

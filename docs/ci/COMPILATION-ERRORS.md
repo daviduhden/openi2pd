@@ -9,6 +9,17 @@ Tracks compile/configure/link failures reported by manual GitHub Actions.
 
 # Compilation error inventory
 
+## 6fbe50c1: no new observed compile or link blocker
+
+The [exact ten-run evidence](TEST-FAILURES.md#6fbe50c1-nine-successful-workflows-three-msvc-test-failures)
+separates successful native builds from three MSVC runtime/test failures.
+The selected GCC, Clang, MSVC, Android Clang and LibreSSL lanes compile their
+executed targets. No new compiler root cause was found in complete current
+logs; this is not evidence for skipped configurations or new local sources.
+CE-088 and the published probe-stamp correction have executed coverage.
+New Streaming/ratchet regressions remain Pending CI compilation and tests.
+
+
 ## 35da66ad: CE-088 correction executes across the supported lanes
 
 [Current exact-run table](TEST-FAILURES.md#35da66ad-runtime-validation-resumes-two-platform-failures-remain).
