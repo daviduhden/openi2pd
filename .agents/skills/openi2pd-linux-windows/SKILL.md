@@ -85,8 +85,9 @@ execution. Ask for:
 ### Windows
 
 - Use message-mode local named pipes with a protected user/SYSTEM DACL,
-  `PIPE_REJECT_REMOTE_CLIENTS`, peer SID/session checks and no inherited
-  handles.
+  `PIPE_REJECT_REMOTE_CLIENTS` and peer SID/session checks. Worker startup
+  delegates exactly three NUL standard handles through an explicit HANDLE_LIST;
+  general handle inheritance remains forbidden.
 - Spawn workers suspended, assign the Job Object/restricted token as designed,
   then resume. Treat AppContainer/LPAC probing as fail-closed.
 - Keep pipe names local and derived from configuration; do not expose a
