@@ -21,19 +21,27 @@ namespace i2p::transport
 {
 struct SSU2ReceiveTestAccess
 {
+	struct AllocationFailure final : std::bad_alloc
+	{
+		std::shared_ptr<const unsigned> token;
+		explicit AllocationFailure (std::shared_ptr<const unsigned> value)
+			: token (std::move (value))
+		{
+		}
+	};
 	using Handler = SSU2Server::ReceiveHandler;
 	using Batch = SSU2Server::ReceiveBatch;
 	using Checkpoint = SSU2Server::ReceiveCheckpoint;
 	inline static Checkpoint failurePoint = Checkpoint::BatchNode;
-	inline static std::exception_ptr failure;
+	inline static std::shared_ptr<const unsigned> failure;
 	static void FailAt (Checkpoint point)
 	{
-		if (point == failurePoint) std::rethrow_exception (failure);
+		if (point == failurePoint) throw AllocationFailure (failure);
 	}
 	template <typename Action> static bool FailBefore (SSU2Server & server, Checkpoint point, Action && action)
 	{
 		failurePoint = point;
-		failure = std::make_exception_ptr (std::bad_alloc ());
+		failure = std::make_shared<const unsigned> (0);
 		server.m_ReceiveCheckpointForTesting = &FailAt;
 		auto clear = i2p::modern::ScopeExit (
 			[&server]
@@ -45,9 +53,14 @@ struct SSU2ReceiveTestAccess
 		{
 			action ();
 		}
+		catch (const AllocationFailure & injected)
+		{
+			// Exception copies retain this payload, including on MSVC.
+			return injected.token == failure;
+		}
 		catch (...)
 		{
-			return std::current_exception () == failure;
+			return false;
 		}
 		return false;
 	}
@@ -129,6 +142,15 @@ void TestCompletedHandlerReturnsPacket ()
 
 void TestCompletionPublicationFailures ()
 {
+	{
+		SSU2Server server;
+		// Neither unrelated failures nor an unarmed path prove injection.
+		assert (!SSU2ReceiveTestAccess::FailBefore (
+			server, SSU2ReceiveTestAccess::Checkpoint::BatchNode, [] { throw std::bad_alloc (); }));
+		assert (!SSU2ReceiveTestAccess::FailBefore (server, SSU2ReceiveTestAccess::Checkpoint::BatchNode, [] { }));
+		assert (!SSU2ReceiveTestAccess::FailBefore (server, SSU2ReceiveTestAccess::Checkpoint::BatchNode,
+			[] { throw SSU2ReceiveTestAccess::AllocationFailure (std::make_shared<const unsigned> (0)); }));
+	}
 	for (auto point : { SSU2ReceiveTestAccess::Checkpoint::BatchNode, SSU2ReceiveTestAccess::Checkpoint::QueueWake })
 	{
 		SSU2Server server;

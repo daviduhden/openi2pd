@@ -206,6 +206,11 @@ workflow, run `gh`, build or test.
 
 ## Known issues and decisions
 
+- Fault provenance must survive legal exception copies. Use a dedicated
+  exception type carrying a shared immutable token, with no-throw and unrelated
+  failure controls; exception_ptr equality pins object identity instead of
+  propagation. Keep allocation fixtures on MSVC as well as sanitizer lanes.
+
 - Successful jobs can emit own script-mode policy warnings: inspect helper
   stacks as well as compiler output. CW-034's empty configuration list needs
   a policy-free regression, not suppression. Linux 10/3/9 groups are focused

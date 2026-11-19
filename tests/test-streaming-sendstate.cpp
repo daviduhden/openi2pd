@@ -23,6 +23,7 @@
 #include <cstdint>
 #include <cstring>
 #include <memory>
+#include <utility>
 
 #include <boost/asio.hpp>
 
@@ -34,15 +35,23 @@ namespace i2p::stream
 {
 struct StreamReceiveTestAccess
 {
+	struct AllocationFailure final : std::bad_alloc
+	{
+		std::shared_ptr<const unsigned> token;
+		explicit AllocationFailure (std::shared_ptr<const unsigned> value)
+			: token (std::move (value))
+		{
+		}
+	};
 	using Checkpoint = Stream::PushBackCheckpoint;
 	inline static Checkpoint failurePoint = Checkpoint::PacketAcquire;
 	inline static unsigned callsBeforeFailure = 0;
-	inline static std::exception_ptr failure;
+	inline static std::shared_ptr<const unsigned> failure;
 	static void Restore (Stream & stream, const uint8_t * data, size_t len) { stream.PushBackReceived (data, len); }
 	static void FailAt (Checkpoint point)
 	{
 		if (point != failurePoint) return;
-		if (!callsBeforeFailure) std::rethrow_exception (failure);
+		if (!callsBeforeFailure) throw AllocationFailure (failure);
 		--callsBeforeFailure;
 	}
 	template <typename Action>
@@ -50,7 +59,7 @@ struct StreamReceiveTestAccess
 	{
 		failurePoint = point;
 		callsBeforeFailure = after;
-		failure = std::make_exception_ptr (std::bad_alloc ());
+		failure = std::make_shared<const unsigned> (0);
 		stream.m_PushBackCheckpointForTesting = &FailAt;
 		auto clear = i2p::modern::ScopeExit (
 			[&stream]
@@ -62,9 +71,14 @@ struct StreamReceiveTestAccess
 		{
 			action ();
 		}
+		catch (const AllocationFailure & injected)
+		{
+			// Exception copies retain this payload, including on MSVC.
+			return injected.token == failure;
+		}
 		catch (...)
 		{
-			return std::current_exception () == failure;
+			return false;
 		}
 		return false;
 	}
@@ -120,6 +134,14 @@ void TestPushBackReceivedAllocationFailures (Fixture & fixture)
 {
 	using namespace i2p::stream;
 	using Access = StreamReceiveTestAccess;
+	{
+		auto stream = std::make_shared<Stream> (fixture.service, fixture.destination);
+		// Neither unrelated failures nor an unarmed path prove injection.
+		assert (!Access::FailBefore (*stream, Access::Checkpoint::PacketAcquire, 0, [] { throw std::bad_alloc (); }));
+		assert (!Access::FailBefore (*stream, Access::Checkpoint::PacketAcquire, 0, [] { }));
+		assert (!Access::FailBefore (*stream, Access::Checkpoint::PacketAcquire, 0,
+			[] { throw Access::AllocationFailure (std::make_shared<const unsigned> (0)); }));
+	}
 	std::vector<uint8_t> restored (MAX_PACKET_SIZE * 2 + 7);
 	for (size_t i = 0; i < restored.size (); ++i) restored[i] = static_cast<uint8_t> (i % 251);
 	const std::array<uint8_t, 2> tail { 0xD1, 0xD2 };

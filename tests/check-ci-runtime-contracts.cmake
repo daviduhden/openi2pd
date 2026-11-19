@@ -1255,3 +1255,9 @@ require_runtime_source("tests/test-udp-ack-lifecycle.cpp"
   "startupCheckpointReached = true;")
 require_runtime_source("libi2pd_client/UDPTunnel.h"
   "#if defined(__OpenBSD__)\n\tconst size_t I2P_UDP_SOCKET_BUFFER_SIZE = 2 * 1024 * 1024;")
+
+# Exception provenance and consuming handoffs are independent boundaries.
+require_runtime_source("tests/test-streaming-sendstate.cpp"
+  "return injected.token == failure;")
+require_runtime_source("tests/test-ssu2-receive-lifecycle.cpp"
+  "return injected.token == failure;")
