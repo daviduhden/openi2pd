@@ -121,6 +121,12 @@ run Gradle, install an APK or run a device test.
 
 ## Known issues and decisions
 
+- A Java SAF handle is already remote authority before its native set entry
+  allocates. Guard close until native insertion commits, with cleanup inside
+  the live SafEnv/frame and bridge lifetime. Clear cleanup JNI exceptions while
+  preserving the original C++ fault; source-order checks do not prove broker
+  release under device/provider failures.
+
 - SAF exact positional transfers share TorrentSafTransfer with JVM tests.
   Inject fragment counts, EOF/zero progress, cancellation and exceptions at
   that production seam; regular files cannot reliably force short syscalls.

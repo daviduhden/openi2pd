@@ -52,6 +52,7 @@
 #include "Torrents.h"
 #include "TorrentsControl.h"
 #include "HTTP.h"
+#include "Modern.h"
 
 namespace
 {
@@ -2277,7 +2278,17 @@ public:
 			error = "SAF document unavailable, permission revoked or seek unsupported";
 			return 0;
 		}
+		// Java has already admitted this capability. Retire it if local
+		// bookkeeping cannot publish ownership, while the JNI frame and
+		// bridge are still alive. Cleanup never replaces the native fault.
+		auto closeUncommitted = i2p::modern::ScopeExit (
+			[&] () noexcept
+			{
+				e.env->CallStaticVoidMethod (bridge->type, bridge->close, id);
+				if (e.env->ExceptionCheck ()) e.env->ExceptionClear ();
+			});
 		handles.insert (static_cast<uint64_t> (id));
+		closeUncommitted.dismiss ();
 		return static_cast<uint64_t> (id);
 	}
 	bool Read (uint64_t handle, uint64_t offset, std::span<uint8_t> bytes, std::string & error) override

@@ -1279,6 +1279,11 @@ require_runtime_order("libi2pd/ECIESX25519AEADRatchetSession.cpp"
   "memcpy (m_CurrentSymmKeyCK," "m_NextSymmKeyIndex = nextIndex + num;")
 require_runtime_source("tests/test-ratchet-key-transaction.cpp"
   "assert (Access::Capture (candidate) == before);")
+require_runtime_order("android/app/src/main/cpp/i2pd_android.cpp"
+  "auto closeUncommitted =" "bool Read (uint64_t handle"
+  "i2p::modern::ScopeExit (" "bridge->close, id);"
+  "e.env->ExceptionClear ();" "handles.insert (" "closeUncommitted.dismiss ();")
+
 require_runtime_order("libi2pd_client/TorrentsTunnel.cpp"
   "m_Trackers.emplace_back (TrackerInfo { reqURL," "void TorrentsTunnel::TrackerRequestSent ("
   "auto rollback =" "m_Trackers.pop_back ();"
@@ -1297,3 +1302,37 @@ require_runtime_order("libi2pd_client/TorrentsDHT.cpp"
   "node->second.push_back (last);" "rollback.dismiss ();")
 require_runtime_source("tests/test-torrents-admission.cpp"
   "assert (store.m_Order.size () == store.Size ());")
+
+# The SAF guard contract must reject removal of its cleanup authority.
+function(has_saf_admission_guard source result)
+  set(remaining "${source}")
+  foreach(token IN ITEMS "auto closeUncommitted =" "i2p::modern::ScopeExit ("
+      "bridge->close, id);" "e.env->ExceptionClear ();"
+      "handles.insert (" "closeUncommitted.dismiss ();")
+    string(FIND "${remaining}" "${token}" position)
+    if(position LESS 0)
+      set(${result} FALSE PARENT_SCOPE)
+      return()
+    endif()
+    string(LENGTH "${token}" token_length)
+    math(EXPR next "${position} + ${token_length}")
+    string(SUBSTRING "${remaining}" ${next} -1 remaining)
+  endforeach()
+  set(${result} TRUE PARENT_SCOPE)
+endfunction()
+file(READ "${PROJECT_ROOT}/android/app/src/main/cpp/i2pd_android.cpp" saf_source)
+has_saf_admission_guard("${saf_source}" saf_guard_present)
+if(NOT saf_guard_present)
+  message(FATAL_ERROR "SAF admission cleanup guard is absent")
+endif()
+foreach(token IN ITEMS "auto closeUncommitted =" "bridge->close, id);"
+    "e.env->ExceptionClear ();" "closeUncommitted.dismiss ();")
+  string(REPLACE "${token}" "removed_admission_guard" mutated "${saf_source}")
+  if(mutated STREQUAL saf_source)
+    message(FATAL_ERROR "SAF admission negative mutation did not apply")
+  endif()
+  has_saf_admission_guard("${mutated}" mutation_accepted)
+  if(mutation_accepted)
+    message(FATAL_ERROR "SAF admission guard-removal mutation was accepted")
+  endif()
+endforeach()
