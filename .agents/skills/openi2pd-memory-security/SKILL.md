@@ -107,6 +107,14 @@ Do not let reconnaissance agents edit, compile, execute tests or run scripts.
 
 ## Known issues and decisions
 
+- Streaming packet admission guards must span parsing, node allocation and
+  control posting. Detach saved nodes before a consumer can publish into the
+  receive queue; snapshot flags before releasing a packet to a consuming call.
+  Test failures both before insertion and after publication. FIN/RST callbacks
+  own packets independently and weakly reference the stream; executor teardown
+  must not require the stream/destination cycle to break itself. Memory cleanup
+  is distinct from rollback of already-consumed send state or transport effects.
+
 - SSU2 receive storage stays owning through handler and consumer preparation.
   ReceiveBatch covers node/acquisition unwind; queue admission posts before
   splice under the queue mutex and caps the whole batch by remaining space.

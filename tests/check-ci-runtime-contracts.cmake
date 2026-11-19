@@ -1261,3 +1261,14 @@ require_runtime_source("tests/test-streaming-sendstate.cpp"
   "return injected.token == failure;")
 require_runtime_source("tests/test-ssu2-receive-lifecycle.cpp"
   "return injected.token == failure;")
+require_runtime_order("libi2pd/Streaming.cpp"
+  "void Stream::ProcessSavedPackets ()" "void Stream::SavePacket ("
+  "m_SavedPackets.erase (it);" "ProcessPacket (packet);")
+require_runtime_order("libi2pd/Streaming.cpp"
+  "bool Stream::SendPacket (" "void Stream::SendPackets ("
+  "std::list<Packet *> prepared { packet.get () };"
+  "SendPackets (prepared);" "m_SentPackets.splice (" "packet.release ();")
+require_runtime_source("tests/test-streaming-packet-ownership.cpp"
+  "assert (weak.expired ());")
+require_runtime_source("tests/test-streaming-packet-ownership.cpp"
+  "assert (!Access::HasSent (*stream));")

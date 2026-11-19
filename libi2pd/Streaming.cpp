@@ -430,15 +430,16 @@ namespace stream
 
 	void Stream::HandleNextPacket (Packet * packet)
 	{
+		std::unique_ptr<Packet> pending (packet);
 		if (m_Status == eStreamStatusTerminated)
 		{
-			m_LocalDestination.DeletePacket (packet);
+			m_LocalDestination.DeletePacket (pending.release ());
 			return;
 		}
 		if (!ValidatePacket (packet))
 		{
 			LogPrint (eLogWarning, "Streaming: Malformed packet of ", packet ? packet->len : 0, " bytes, dropped");
-			m_LocalDestination.DeletePacket (packet);
+			m_LocalDestination.DeletePacket (pending.release ());
 			return;
 		}
 		m_NumReceivedBytes += packet->GetLength ();
@@ -450,7 +451,7 @@ namespace stream
 			{
 				LogPrint (eLogWarning, "Streaming: Destination mismatch for ",
 					m_LocalDestination.GetOwner ()->GetIdentHash ().ToBase32 ());
-				m_LocalDestination.DeletePacket (packet);
+				m_LocalDestination.DeletePacket (pending.release ());
 				return;
 			}
 		}
@@ -488,7 +489,7 @@ namespace stream
 					m_IsImmediateAckRequested = false;
 				}
 			}
-			m_LocalDestination.DeletePacket (packet);
+			m_LocalDestination.DeletePacket (pending.release ());
 			return;
 		}
 
@@ -504,7 +505,7 @@ namespace stream
 		if (m_ReceiveQueue.size () > m_MaxWindowSize * 3)
 		{
 			LogPrint (eLogDebug, "Streaming: ReceiveQueue is full, delete packet");
-			m_LocalDestination.DeletePacket (packet);
+			m_LocalDestination.DeletePacket (pending.release ());
 			m_IsChoking3 = true;
 			if (!m_IsAckSendScheduled)
 			{
@@ -519,26 +520,12 @@ namespace stream
 		if (receivedSeqn == m_LastReceivedSequenceNumber + 1)
 		{
 			// we have received next in sequence message
-			ProcessPacket (packet);
+			const bool isSYN = packet->IsSYN ();
+			ProcessPacket (pending.release ());
 			if (m_Status == eStreamStatusTerminated) return;
 
-			if (!m_SavedPackets.empty ())
-			{
-				// we should also try stored messages if any
-				auto it = m_SavedPackets.begin ();
-				while (it != m_SavedPackets.end ())
-				{
-					if ((*it)->GetSeqn () == (uint32_t)(m_LastReceivedSequenceNumber + 1))
-					{
-						ProcessPacket (*it);
-						it++;
-					}
-					else
-						break;
-				}
-				m_SavedPackets.erase (m_SavedPackets.begin (), it);
-				if (m_Status == eStreamStatusTerminated) return; // status migth have changed in ProcessPacket
-			}
+			ProcessSavedPackets ();
+			if (m_Status == eStreamStatusTerminated) return;
 
 			// schedule ack for last message
 			if (m_Status == eStreamStatusOpen)
@@ -550,7 +537,7 @@ namespace stream
 					ScheduleAck (static_cast<int> (ackTimeout));
 				}
 			}
-			else if (packet->IsSYN ())
+			else if (isSYN)
 				// we have to send SYN back to incoming connection
 				SendBuffer (); // also sets m_IsOpen
 		}
@@ -568,7 +555,7 @@ namespace stream
 					UpdateCurrentRemoteLease ();
 				}
 				m_PreviousReceivedSequenceNumber = receivedSeqn;
-				m_LocalDestination.DeletePacket (packet); // packet dropped
+				m_LocalDestination.DeletePacket (pending.release ()); // packet dropped
 				if (!m_IsAckSendScheduled)
 				{
 					SendQuickAck (); // resend ack for previous message again
@@ -583,12 +570,12 @@ namespace stream
 					m_LastReceivedSequenceNumber + 1, " to ", receivedSeqn - 1);
 				if ((receivedSeqn - m_LastReceivedSequenceNumber) >= m_MaxWindowSize * 3)
 				{
-					m_LocalDestination.DeletePacket (packet);
+					m_LocalDestination.DeletePacket (pending.release ());
 					m_IsChoking2 = true;
 				}
 				else if (m_SavedPackets.empty () && (receivedSeqn - m_LastReceivedSequenceNumber) >= 256)
 				{
-					m_LocalDestination.DeletePacket (packet);
+					m_LocalDestination.DeletePacket (pending.release ());
 					m_IsChoking2 = true;
 				}
 				else if (!m_SavedPackets.empty ())
@@ -606,16 +593,16 @@ namespace stream
 
 					if (numNacks + (receivedSeqn - lastSavedSeq) >= 256)
 					{
-						m_LocalDestination.DeletePacket (packet);
+						m_LocalDestination.DeletePacket (pending.release ());
 						m_IsChoking2 = true;
 					}
 					else
 						// save message and wait for missing message again
-						SavePacket (packet);
+						SavePacket (pending.release ());
 				}
 				else
 					// save message and wait for missing message again
-					SavePacket (packet);
+					SavePacket (pending.release ());
 				if (m_LastReceivedSequenceNumber >= 0)
 				{
 					if (!m_IsAckSendScheduled)
@@ -634,22 +621,43 @@ namespace stream
 		}
 	}
 
+	void Stream::ProcessSavedPackets ()
+	{
+		while (!m_SavedPackets.empty ())
+		{
+			auto it = m_SavedPackets.begin ();
+			if ((*it)->GetSeqn () != static_cast<uint32_t> (m_LastReceivedSequenceNumber + 1)) break;
+			auto * packet = *it;
+			// Consumption may publish into the receive queue and then throw.
+			// Revoke the old ownership before crossing that boundary.
+			m_SavedPackets.erase (it);
+			ProcessPacket (packet);
+			if (m_Status == eStreamStatusTerminated) return;
+		}
+	}
+
 	void Stream::SavePacket (Packet * packet)
 	{
+		std::unique_ptr<Packet> pending (packet);
 		// Reordered packets may outlive the ratchet session that delivered them.
 		packet->from = nullptr;
-		if (!m_SavedPackets.insert (packet).second) m_LocalDestination.DeletePacket (packet);
+		if (m_PacketCheckpointForTesting) m_PacketCheckpointForTesting (PacketCheckpoint::SaveNode);
+		if (m_SavedPackets.insert (packet).second)
+			pending.release ();
+		else
+			m_LocalDestination.DeletePacket (pending.release ());
 	}
 
 	void Stream::ProcessPacket (Packet * packet)
 	{
+		std::unique_ptr<Packet> pending (packet);
 		uint32_t receivedSeqn = packet->GetSeqn ();
 		uint16_t flags = packet->GetFlags ();
 		LogPrint (eLogDebug, "Streaming: Process seqn=", receivedSeqn, ", flags=", flags);
 
 		if (!ProcessOptions (flags, packet))
 		{
-			m_LocalDestination.DeletePacket (packet);
+			m_LocalDestination.DeletePacket (pending.release ());
 			Terminate ();
 			return;
 		}
@@ -658,7 +666,10 @@ namespace stream
 		size_t packetLength = packet->GetLength ();
 		if (packetLength > 0)
 		{
+			if (m_PacketCheckpointForTesting) m_PacketCheckpointForTesting (PacketCheckpoint::ReceiveNode);
 			m_ReceiveQueue.push_back (packet);
+			pending.release ();
+			if (m_PacketCheckpointForTesting) m_PacketCheckpointForTesting (PacketCheckpoint::ReceivePublished);
 			if (m_SizeToReceive)
 			{
 				if (packetLength < m_SizeToReceive)
@@ -669,7 +680,7 @@ namespace stream
 			if (!m_SizeToReceive) m_ReceiveTimer.cancel ();
 		}
 		else
-			m_LocalDestination.DeletePacket (packet);
+			m_LocalDestination.DeletePacket (pending.release ());
 
 		m_LastReceivedSequenceNumber = receivedSeqn;
 
@@ -1382,9 +1393,15 @@ namespace stream
 		}
 		bool isNoAck = m_LastReceivedSequenceNumber < 0; // first packet
 		std::list<Packet *> packets;
+		auto deletePending = [] (std::list<Packet *> * batch)
+		{
+			for (auto * packet : *batch) delete packet;
+		};
+		std::unique_ptr<std::list<Packet *>, decltype (deletePending)> pending (&packets, deletePending);
 		while ((m_Status == eStreamStatusNew) || (IsEstablished () && !m_SendBuffer.IsEmpty () && numMsgs > 0))
 		{
-			Packet * p = m_LocalDestination.NewPacket ();
+			std::unique_ptr<Packet> current (m_LocalDestination.NewPacket ());
+			auto * p = current.get ();
 			uint8_t * packet = p->GetBuffer ();
 			// TODO: implement setters
 			size_t size = 0;
@@ -1504,6 +1521,7 @@ namespace stream
 			p->len = size;
 			p->sendTime = ts;
 			packets.emplace_back (p);
+			current.release ();
 			numMsgs--;
 		}
 		if (m_SendBuffer.GetSize () == 0)
@@ -1780,7 +1798,8 @@ namespace stream
 
 	void Stream::SendClose ()
 	{
-		Packet * p = m_LocalDestination.NewPacket ();
+		std::unique_ptr<Packet> pending (m_LocalDestination.NewPacket ());
+		auto * p = pending.get ();
 		uint8_t * packet = p->GetBuffer ();
 		size_t size = 0;
 		htobe32buf (packet + size, m_SendStreamID);
@@ -1838,7 +1857,11 @@ namespace stream
 		// state retains the closed connection. FIN/TIME-WAIT retention is
 		// tracked as an open divergence from I2P Java; do not add
 		// retransmission here without a specification reference.
-		boost::asio::post (m_Service, std::bind (&Stream::SendPacket, shared_from_this (), p));
+		boost::asio::post (m_Service,
+			[self = weak_from_this (), packet = std::move (pending)] () mutable
+			{
+				if (auto stream = self.lock ()) stream->SendPacket (std::move (packet));
+			});
 		if (m_RoutingSession)
 		{
 			int numSentPackets = m_RoutingSession->NumSentPackets ();
@@ -1849,7 +1872,8 @@ namespace stream
 
 	Packet * Stream::CreateResetPacket ()
 	{
-		Packet * p = m_LocalDestination.NewPacket ();
+		std::unique_ptr<Packet> pending (m_LocalDestination.NewPacket ());
+		auto * p = pending.get ();
 		uint8_t * packet = p->GetBuffer ();
 		size_t size = 0;
 		htobe32buf (packet + size, m_SendStreamID);
@@ -1901,13 +1925,17 @@ namespace stream
 			m_LocalDestination.GetOwner ()->Sign (packet, static_cast<int> (size), signature);
 		}
 		p->len = size;
-		return p;
+		return pending.release ();
 	}
 
 	void Stream::SendReset ()
 	{
-		Packet * p = CreateResetPacket ();
-		boost::asio::post (m_Service, std::bind (&Stream::SendPacket, shared_from_this (), p));
+		std::unique_ptr<Packet> pending (CreateResetPacket ());
+		boost::asio::post (m_Service,
+			[self = weak_from_this (), packet = std::move (pending)] () mutable
+			{
+				if (auto stream = self.lock ()) stream->SendPacket (std::move (packet));
+			});
 		if (m_RoutingSession)
 		{
 			int numSentPackets = m_RoutingSession->NumSentPackets ();
@@ -1919,12 +1947,12 @@ namespace stream
 	bool Stream::SendResetOnce ()
 	{
 		if (!m_SendStreamID) return false;
-		Packet * p = CreateResetPacket ();
+		std::unique_ptr<Packet> pending (CreateResetPacket ());
 		// Send synchronously and do not retain the packet: a RESET for a
 		// connection we never accepted must not enter the resend queue, which
 		// would retransmit it and arm timers for a stream nobody owns.
-		SendPackets ({ p });
-		m_LocalDestination.DeletePacket (p);
+		SendPackets ({ pending.get () });
+		m_LocalDestination.DeletePacket (pending.release ());
 		LogPrint (eLogDebug, "Streaming: RST sent once, sSID=", m_SendStreamID);
 		return true;
 	}
@@ -1971,8 +1999,9 @@ namespace stream
 		return pos;
 	}
 
-	bool Stream::SendPacket (Packet * packet)
+	bool Stream::SendPacket (std::unique_ptr<Packet> packet)
 	{
+		if (m_Status == eStreamStatusTerminated) return false;
 		if (packet)
 		{
 			if (m_IsAckSendScheduled)
@@ -1981,9 +2010,13 @@ namespace stream
 				m_AckSendTimer.cancel ();
 			}
 			if (!packet->sendTime) packet->sendTime = i2p::util::GetMillisecondsSinceEpoch ();
-			SendPackets ({ packet });
+			// Allocate the ownership node before sending. Publication after
+			// transport work must not allocate and strand the packet.
+			std::list<Packet *> prepared { packet.get () };
+			SendPackets (prepared);
 			bool isEmpty = m_SentPackets.empty ();
-			m_SentPackets.emplace_back (packet);
+			m_SentPackets.splice (m_SentPackets.end (), prepared);
+			packet.release ();
 			if (isEmpty) ScheduleResend ();
 			return true;
 		}

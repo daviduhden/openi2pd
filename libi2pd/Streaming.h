@@ -416,11 +416,16 @@ namespace stream
 		void SendClose ();
 		void SendReset ();
 		Packet * CreateResetPacket ();
-		bool SendPacket (Packet * packet);
+		// Consumes the packet even when preparation or transport throws.
+		// Undelivered control handlers own it independently of the pool.
+		bool SendPacket (std::unique_ptr<Packet> packet);
 		void SendPackets (const std::list<Packet *> & packets);
 		void SendUpdatedLeaseSet ();
 
+		// These operations consume their packet on every exit. Saved nodes
+		// are detached before processing may publish to another container.
 		void SavePacket (Packet * packet);
+		void ProcessSavedPackets ();
 		// Puts bytes that an abandoned blocking read already dequeued back at
 		// the front of the receive queue, preserving their order. Service
 		// thread only. Allocation failure preserves the existing queue;
@@ -433,6 +438,14 @@ namespace stream
 		};
 		void (*m_PushBackCheckpointForTesting) (PushBackCheckpoint) = nullptr;
 		friend struct StreamReceiveTestAccess;
+		enum class PacketCheckpoint
+		{
+			SaveNode,
+			ReceiveNode,
+			ReceivePublished
+		};
+		void (*m_PacketCheckpointForTesting) (PacketCheckpoint) = nullptr;
+		friend struct StreamPacketOwnershipTestAccess;
 		void ProcessPacket (Packet * packet);
 		bool ProcessOptions (uint16_t flags, Packet * packet);
 		void ProcessAck (Packet * packet);

@@ -339,6 +339,10 @@ and reap fixture children before asserting the final failure outcomes.
 Fault-injection provenance must survive permitted exception copies. Compare a
 closed exception type and immutable correlation payload, with no-throw and
 unrelated-exception controls; exception_ptr identity is not that contract.
+For packet consumption, detach the old owning node before calling a consumer
+that may publish into another container and then throw. Snapshot any flags
+needed after transfer before relinquishing ownership. Memory reclamation does
+not imply rollback of protocol state or already-submitted transport effects.
 
 Publication reviews must inspect the staged snapshot as well as the worktree.
 Worktree consistency checks can see uncommitted dependencies and do not prove

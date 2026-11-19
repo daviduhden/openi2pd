@@ -145,6 +145,7 @@ set(I2PD_TESTS
   test-streaming-recently-closed
   test-streaming-overlimit-reset
   test-streaming-sendstate
+  test-streaming-packet-ownership
   test-log-lifecycle
   test-blinding-b33-strict
   test-crypto-audit-bounds
@@ -443,6 +444,7 @@ foreach(test IN LISTS I2PD_TESTS)
       OR test STREQUAL "test-streaming-recently-closed"
       OR test STREQUAL "test-streaming-overlimit-reset"
       OR test STREQUAL "test-streaming-sendstate"
+      OR test STREQUAL "test-streaming-packet-ownership"
       OR test STREQUAL "test-torrents-engine-interop"
       OR test STREQUAL "test-torrents-state"
       OR test STREQUAL "test-sam-stream-lifecycle"
