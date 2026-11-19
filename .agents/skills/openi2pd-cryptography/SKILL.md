@@ -93,6 +93,12 @@ executing project code, or inspect a real private key.
 
 ## Known issues and decisions
 
+- Ratchet key derivation and intermediate-key admission form one exception
+  transaction: stage chain/index/cache, finish allocations, then transfer nodes
+  and publish output. Cleanse scratch secrets on every exit and compare failed
+  retry against uninterrupted derivation. A void HKDF wrapper's ordinary
+  provider failure is separate from this exception guarantee.
+
 - ECIES checks both the coordinate-to-key digest and plaintext-integrity
   digest before cipher use or output publication. Preserve its existing
   decrypt-failure contract (output unchanged), which differs from ElGamal's

@@ -111,6 +111,8 @@ namespace garlic
 		/// @param key Writable 32-byte output.
 		/// @return False for an invalid index, null output or missing cached
 		///         key.
+		/// Allocation/provider exceptions leave keys, index and output intact.
+		/// The caller must serialize access to this tagset.
 		bool GetSymmKey (int index, uint8_t * key);
 		void DeleteSymmKey (int index);
 
@@ -127,10 +129,29 @@ namespace garlic
 		}; // (tagsetid << 16) + N
 
 	private:
+		friend struct RatchetKeyTransactionTestAccess;
+		enum class KeyCheckpoint
+		{
+			Derive,
+			CacheNode,
+			CacheReserve
+		};
+		using KeyCheckpointHook = void (*) (KeyCheckpoint);
+		bool GetSymmKeyImpl (int index, uint8_t * key, KeyCheckpointHook checkpoint);
+		// Node transfer after reserve must not invoke throwing predicates.
+		struct KeyHash
+		{
+			size_t operator() (int index) const noexcept { return std::hash<int> { }(index); }
+		};
+		struct KeyEqual
+		{
+			bool operator() (int left, int right) const noexcept { return left == right; }
+		};
+		using SymmKeyCache = std::unordered_map<int, i2p::data::Tag<32>, KeyHash, KeyEqual>;
 		i2p::data::Tag<64> m_SessionTagKeyData;
 		uint8_t m_SessTagConstant[32], m_SymmKeyCK[32], m_CurrentSymmKeyCK[64], m_NextRootKey[32];
 		int m_NextIndex = 0, m_NextSymmKeyIndex = 0;
-		std::unordered_map<int, i2p::data::Tag<32>> m_ItermediateSymmKeys;
+		SymmKeyCache m_ItermediateSymmKeys;
 
 		int m_TagSetID = 0;
 	};

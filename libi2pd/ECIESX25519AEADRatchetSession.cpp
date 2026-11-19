@@ -94,6 +94,11 @@ namespace garlic
 
 	bool RatchetTagSet::GetSymmKey (int index, uint8_t * key)
 	{
+		return GetSymmKeyImpl (index, key, nullptr);
+	}
+
+	bool RatchetTagSet::GetSymmKeyImpl (int index, uint8_t * key, KeyCheckpointHook checkpoint)
+	{
 		if (!key) return false;
 		// A tagset can never index beyond the 16-bit message number space.
 		if (index < 0 || index > 0xFFFF)
@@ -103,21 +108,48 @@ namespace garlic
 		}
 		if (index >= m_NextSymmKeyIndex)
 		{
-			auto num = index + 1 - m_NextSymmKeyIndex;
-			if (!m_NextSymmKeyIndex)
+			// Derivation and cache allocation form one transaction. An
+			// exception must not advance the chain without its index.
+			std::array<uint8_t, 64> chain { };
+			SymmKeyCache pending;
+			i2p::modern::ScopeExit cleansePending (
+				[&] ()
+				{
+					OPENSSL_cleanse (chain.data (), chain.size ());
+					for (auto & entry : pending) entry.second.Wipe ();
+				});
+			auto nextIndex = m_NextSymmKeyIndex;
+			auto num = index + 1 - nextIndex;
+			if (!nextIndex)
 			{
-				i2p::crypto::HKDF (m_SymmKeyCK, nullptr, 0, "SymmetricRatchet",
-					m_CurrentSymmKeyCK); // keydata_0 = HKDF(symmKey_ck, SYMMKEY_CONSTANT, "SymmetricRatchet", 64)
-				m_NextSymmKeyIndex = 1;
+				if (checkpoint) checkpoint (KeyCheckpoint::Derive);
+				i2p::crypto::HKDF (m_SymmKeyCK, nullptr, 0, "SymmetricRatchet", chain.data ());
+				nextIndex = 1;
 				num--;
 			}
+			else
+				memcpy (chain.data (), m_CurrentSymmKeyCK, chain.size ());
 			for (int i = 0; i < num; i++)
 			{
-				i2p::crypto::HKDF (m_CurrentSymmKeyCK, nullptr, 0, "SymmetricRatchet", m_CurrentSymmKeyCK);
-				if (i < num - 1) m_ItermediateSymmKeys.emplace (m_NextSymmKeyIndex + i, m_CurrentSymmKeyCK + 32);
+				if (checkpoint) checkpoint (KeyCheckpoint::Derive);
+				i2p::crypto::HKDF (chain.data (), nullptr, 0, "SymmetricRatchet", chain.data ());
+				if (i < num - 1)
+				{
+					if (checkpoint) checkpoint (KeyCheckpoint::CacheNode);
+					pending.emplace (nextIndex + i, chain.data () + 32);
+				}
 			}
-			m_NextSymmKeyIndex += num;
-			memcpy (key, m_CurrentSymmKeyCK + 32, 32);
+			if (!pending.empty ())
+			{
+				if (checkpoint) checkpoint (KeyCheckpoint::CacheReserve);
+				m_ItermediateSymmKeys.reserve (m_ItermediateSymmKeys.size () + pending.size ());
+				// Equal allocators, sufficient buckets and nonthrowing integer
+				// predicates make this node transfer allocation-free.
+				m_ItermediateSymmKeys.merge (pending);
+			}
+			memcpy (m_CurrentSymmKeyCK, chain.data (), chain.size ());
+			m_NextSymmKeyIndex = nextIndex + num;
+			memcpy (key, chain.data () + 32, 32);
 			return true;
 		}
 		auto it = m_ItermediateSymmKeys.find (index);

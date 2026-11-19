@@ -879,7 +879,7 @@ foreach(required_test IN ITEMS
     test-win32-shutdown-deadline test-profile-static-lifetime test-i2p-service-readiness
     test-tunnel-destination-cache test-destination-leaseset-session test-deadline-mutex
     test-child-stop-budget test-atomic-shared-ptr test-kad-dht test-udp-ack-lifecycle
-    test-ssu2-proxy-lifecycle test-ssu2-socket-lifecycle test-ssu2-receive-lifecycle test-streaming-sendstate test-streaming-packet-ownership test-torrents-requests test-eddsa
+    test-ssu2-proxy-lifecycle test-ssu2-socket-lifecycle test-ssu2-receive-lifecycle test-streaming-sendstate test-streaming-packet-ownership test-ratchet-key-transaction test-torrents-requests test-eddsa
     test-signature-identity-hardening test-crypto-audit-bounds test-signed-data-bounds
     test-command-line-policy test-release-assertions command-line-policy-rejections
     i2pd-command-line-policy)
@@ -889,7 +889,7 @@ foreach(required_test IN ITEMS
 endforeach()
 
 # Prepared text-only parser regressions run with this contract in CI.
-set(valid_filter_fixture "$testPattern = '^' + '(test-(tui-protocol|tui-terminal|tui-pipe-name|tui-win32-pipe|privsep-windows-(ipc|isolation|supervisor)|win32-shutdown-deadline|profile-static-lifetime|i2p-service-readiness|tunnel-destination-cache|destination-leaseset-session|deadline-mutex|child-stop-budget|atomic-shared-ptr|kad-dht|udp-ack-lifecycle|ssu2-proxy-lifecycle|ssu2-socket-lifecycle|ssu2-receive-lifecycle|streaming-sendstate|streaming-packet-ownership|torrents-requests|eddsa|signature-identity-hardening|crypto-audit-bounds|signed-data-bounds|command-line-policy|release-assertions)|command-line-policy-rejections|i2pd-command-line-policy)' + '$'\nctest -R $testPattern\n")
+set(valid_filter_fixture "$testPattern = '^' + '(test-(tui-protocol|tui-terminal|tui-pipe-name|tui-win32-pipe|privsep-windows-(ipc|isolation|supervisor)|win32-shutdown-deadline|profile-static-lifetime|i2p-service-readiness|tunnel-destination-cache|destination-leaseset-session|deadline-mutex|child-stop-budget|atomic-shared-ptr|kad-dht|udp-ack-lifecycle|ssu2-proxy-lifecycle|ssu2-socket-lifecycle|ssu2-receive-lifecycle|streaming-sendstate|streaming-packet-ownership|ratchet-key-transaction|torrents-requests|eddsa|signature-identity-hardening|crypto-audit-bounds|signed-data-bounds|command-line-policy|release-assertions)|command-line-policy-rejections|i2pd-command-line-policy)' + '$'\nctest -R $testPattern\n")
 read_msvc_test_pattern("${valid_filter_fixture}" fixture_pattern fixture_error)
 if(fixture_error OR NOT fixture_pattern STREQUAL assertion_filter)
   message(FATAL_ERROR "MSVC literal concatenation fixture failed")

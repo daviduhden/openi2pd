@@ -1272,3 +1272,10 @@ require_runtime_source("tests/test-streaming-packet-ownership.cpp"
   "assert (weak.expired ());")
 require_runtime_source("tests/test-streaming-packet-ownership.cpp"
   "assert (!Access::HasSent (*stream));")
+require_runtime_order("libi2pd/ECIESX25519AEADRatchetSession.cpp"
+  "bool RatchetTagSet::GetSymmKeyImpl (" "void RatchetTagSet::DeleteSymmKey ("
+  "SymmKeyCache pending;" "pending.emplace ("
+  "m_ItermediateSymmKeys.reserve (" "m_ItermediateSymmKeys.merge (pending);"
+  "memcpy (m_CurrentSymmKeyCK," "m_NextSymmKeyIndex = nextIndex + num;")
+require_runtime_source("tests/test-ratchet-key-transaction.cpp"
+  "assert (Access::Capture (candidate) == before);")
