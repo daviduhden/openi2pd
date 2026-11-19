@@ -375,8 +375,14 @@ namespace torrents
 	PrivateInfoHashSet::Admission PrivateInfoHashSet::Insert (const Torrent::InfoHash & infoHash)
 	{
 		if (m_Hashes.contains (infoHash)) return Admission::AlreadyKnown;
+		if (m_AdmissionCheckpointForTesting) m_AdmissionCheckpointForTesting (AdmissionCheckpoint::Order);
+		m_Order.push_back (infoHash);
+		auto rollback = i2p::modern::ScopeExit ([this] { m_Order.pop_back (); });
+		if (m_AdmissionCheckpointForTesting) m_AdmissionCheckpointForTesting (AdmissionCheckpoint::Index);
+		m_Hashes.insert (infoHash);
+		rollback.dismiss ();
 		Admission result = Admission::Inserted;
-		if (m_Hashes.size () >= MaxHashes && !m_Order.empty ())
+		if (m_Hashes.size () > MaxHashes)
 		{
 			// Evict only the oldest admission; the set must stay bounded even
 			// when an operator keeps adding private torrents.
@@ -384,8 +390,6 @@ namespace torrents
 			m_Order.pop_front ();
 			result = Admission::EvictedOldest;
 		}
-		m_Hashes.insert (infoHash);
-		m_Order.push_back (infoHash);
 		return result;
 	}
 
@@ -412,6 +416,28 @@ namespace torrents
 	{
 		if (!IsValidToken (entry.token) || !IsValidPort (entry.port)) return Admission::Rejected;
 		if (m_Tokens.contains (entry.token)) return Admission::AlreadyPresent;
+		// Prepare all three indexes before evicting any incumbent token.
+		// A failed allocation must preserve both quota and FIFO authority.
+		if (m_AdmissionCheckpointForTesting) m_AdmissionCheckpointForTesting (AdmissionCheckpoint::Order);
+		m_Order.push_back (entry);
+		const auto last = std::prev (m_Order.end ());
+		bool tokenInserted = false, nodeInserted = false;
+		auto rollback = i2p::modern::ScopeExit (
+			[&]
+			{
+				if (nodeInserted) m_ByNode.erase (entry.nodeID);
+				if (tokenInserted) m_Tokens.erase (entry.token);
+				m_Order.erase (last);
+			});
+		if (m_AdmissionCheckpointForTesting) m_AdmissionCheckpointForTesting (AdmissionCheckpoint::Token);
+		m_Tokens.emplace (entry.token, last);
+		tokenInserted = true;
+		if (m_AdmissionCheckpointForTesting) m_AdmissionCheckpointForTesting (AdmissionCheckpoint::Node);
+		auto [node, inserted] = m_ByNode.try_emplace (entry.nodeID);
+		nodeInserted = inserted;
+		if (m_AdmissionCheckpointForTesting) m_AdmissionCheckpointForTesting (AdmissionCheckpoint::NodeOrder);
+		node->second.push_back (last);
+		rollback.dismiss ();
 		Admission result = Admission::Issued;
 		// Per-node quota first: reclaim only this node's own oldest token, so
 		// a destination that keeps issuing get_peers cannot flush every other
@@ -420,21 +446,16 @@ namespace torrents
 		while (true)
 		{
 			auto node = m_ByNode.find (entry.nodeID);
-			if (node == m_ByNode.end () || node->second.size () < MaxTokensPerNode) break;
+			if (node == m_ByNode.end () || node->second.size () <= MaxTokensPerNode) break;
 			Erase (node->second.front ());
 			result = Admission::ReplacedOwnOldest;
 		}
 		// Then the global capacity: the FIFO front is the oldest issue.
-		while (m_Tokens.size () >= MaxTokens && !m_Order.empty ())
+		while (m_Tokens.size () > MaxTokens && !m_Order.empty ())
 		{
 			Erase (m_Order.begin ());
 			result = Admission::EvictedOldest;
 		}
-		if (m_Tokens.size () >= MaxTokens) return Admission::Rejected;
-		m_Order.push_back (entry);
-		const auto last = std::prev (m_Order.end ());
-		m_Tokens.emplace (entry.token, last);
-		m_ByNode[entry.nodeID].push_back (last);
 		return result;
 	}
 

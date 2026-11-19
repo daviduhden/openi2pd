@@ -365,12 +365,20 @@ namespace torrents
 			EvictedOldest
 		};
 
+		// Allocation failure preserves all prior suppression and FIFO state.
 		Admission Insert (const Torrent::InfoHash & infoHash);
 		bool Erase (const Torrent::InfoHash & infoHash);
 		bool Contains (const Torrent::InfoHash & infoHash) const { return m_Hashes.contains (infoHash); }
 		size_t Size () const { return m_Hashes.size (); }
 
 	private:
+		enum class AdmissionCheckpoint
+		{
+			Order,
+			Index
+		};
+		void (*m_AdmissionCheckpointForTesting) (AdmissionCheckpoint) = nullptr;
+		friend struct TorrentAdmissionTestAccess;
 		std::set<Torrent::InfoHash> m_Hashes;
 		std::deque<Torrent::InfoHash> m_Order; // insertion order, same bound
 	};
@@ -475,6 +483,8 @@ namespace torrents
 			Rejected // malformed entry, nothing stored
 		};
 		// `entry.issued` is the issue time in monotonic seconds.
+		// Prepare every index before eviction; allocation failure preserves
+		// existing tokens, quota accounting and insertion order.
 		Admission Issue (const DHTIncomingToken & entry);
 
 		enum class Validation
@@ -504,6 +514,15 @@ namespace torrents
 	private:
 		using Order = std::list<DHTIncomingToken>;
 		void Erase (Order::iterator it);
+		enum class AdmissionCheckpoint
+		{
+			Order,
+			Token,
+			Node,
+			NodeOrder
+		};
+		void (*m_AdmissionCheckpointForTesting) (AdmissionCheckpoint) = nullptr;
+		friend struct TorrentAdmissionTestAccess;
 
 		Order m_Order; // insertion order
 		std::unordered_map<GetPeersToken, Order::iterator> m_Tokens; // token -> entry

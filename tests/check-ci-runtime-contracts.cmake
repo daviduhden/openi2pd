@@ -1279,3 +1279,21 @@ require_runtime_order("libi2pd/ECIESX25519AEADRatchetSession.cpp"
   "memcpy (m_CurrentSymmKeyCK," "m_NextSymmKeyIndex = nextIndex + num;")
 require_runtime_source("tests/test-ratchet-key-transaction.cpp"
   "assert (Access::Capture (candidate) == before);")
+require_runtime_order("libi2pd_client/TorrentsTunnel.cpp"
+  "m_Trackers.emplace_back (TrackerInfo { reqURL," "void TorrentsTunnel::TrackerRequestSent ("
+  "auto rollback =" "m_Trackers.pop_back ();"
+  "m_TrackerSlots.emplace_back (" "rollback.dismiss ();")
+require_runtime_order("libi2pd_client/TorrentsDHT.cpp"
+  "PrivateInfoHashSet::Admission PrivateInfoHashSet::Insert ("
+  "bool PrivateInfoHashSet::Erase ("
+  "m_Order.push_back (infoHash);" "auto rollback ="
+  "m_Hashes.insert (infoHash);" "rollback.dismiss ();"
+  "if (m_Hashes.size () > MaxHashes)")
+require_runtime_order("libi2pd_client/TorrentsDHT.cpp"
+  "DHTTokenStore::Admission DHTTokenStore::Issue ("
+  "DHTTokenStore::Validation DHTTokenStore::Validate ("
+  "m_Order.push_back (entry);" "auto rollback ="
+  "m_Tokens.emplace (" "m_ByNode.try_emplace ("
+  "node->second.push_back (last);" "rollback.dismiss ();")
+require_runtime_source("tests/test-torrents-admission.cpp"
+  "assert (store.m_Order.size () == store.Size ());")

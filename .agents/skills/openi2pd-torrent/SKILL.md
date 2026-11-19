@@ -116,6 +116,11 @@ Do not let them edit, build or run tests.
 
 ## Known issues and decisions
 
+- Tracker parallel registries and DHT FIFO/token/per-node indexes must admit
+  transactionally. Roll back failed preparation before any incumbent eviction;
+  test full-capacity and same/new-origin failures so quota loss cannot hide
+  behind a correct total size. Reused slots must preserve equal registry sizes.
+
 - Outgoing CANCEL uses the exact request tuple and existing wire writer.
   Fast cancellation retains bounded authority until Piece/Reject, preventing
   an old terminal response from retiring a reused tuple. Release local leases

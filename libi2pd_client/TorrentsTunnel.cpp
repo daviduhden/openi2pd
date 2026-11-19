@@ -35,6 +35,7 @@
 #include "AddressBook.h"
 #include "Base.h"
 #include "ClientContext.h"
+#include "Modern.h"
 #include "TorrentsTunnel.h"
 #include "TorrentsCreator.h"
 
@@ -3309,7 +3310,11 @@ namespace torrents
 			else
 			{
 				m_Trackers.emplace_back (TrackerInfo { reqURL, isCommon, 0, 0, 0 });
+				// Keep the parallel registries equal if slot allocation fails.
+				auto rollback = i2p::modern::ScopeExit ([this] { m_Trackers.pop_back (); });
+				if (m_TrackerAppendCheckpointForTesting) m_TrackerAppendCheckpointForTesting ();
 				m_TrackerSlots.emplace_back (TrackerSlotState { 0, isCommon });
+				rollback.dismiss ();
 			}
 		}
 		return index;

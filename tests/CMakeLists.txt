@@ -72,6 +72,7 @@ endfunction()
 # separate list so WITH_TORRENTS=OFF neither compiles their translation
 # units nor hides them as disabled tests at run time.
 set(I2PD_TORRENT_TESTS
+  test-torrents-admission
   test-torrent-bencode
   test-torrents-comments
   test-torrents-creator
@@ -447,6 +448,7 @@ foreach(test IN LISTS I2PD_TESTS)
       OR test STREQUAL "test-streaming-sendstate"
       OR test STREQUAL "test-streaming-packet-ownership"
       OR test STREQUAL "test-ratchet-key-transaction"
+      OR test STREQUAL "test-torrents-admission"
       OR test STREQUAL "test-torrents-engine-interop"
       OR test STREQUAL "test-torrents-state"
       OR test STREQUAL "test-sam-stream-lifecycle"

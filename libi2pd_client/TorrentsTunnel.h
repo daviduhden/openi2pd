@@ -628,6 +628,8 @@ namespace torrents
 		// held across a stream, timer or torrent operation.
 		mutable std::mutex m_TrackerRegistryMutex;
 		TrackerSlots m_TrackerSlots;
+		void (*m_TrackerAppendCheckpointForTesting) () = nullptr;
+		friend struct TorrentAdmissionTestAccess;
 		// Registry slots referenced by one torrent membership. Indexed by
 		// info hash so removal releases exactly one reference per membership
 		// even when the torrent's tier list or instance is already gone.
