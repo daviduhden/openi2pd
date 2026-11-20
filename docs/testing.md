@@ -1068,3 +1068,12 @@ Android JVM discovery includes eight `TorrentSafAdmissionTest` controls;
 actual Binder/provider/device races remain pending. No new target is claimed
 in the optional PageHeap subset. All these local regressions are Prepared /
 not executed; publication and a subsequent manual CI pass are still required.
+
+## Stream registration transaction regression
+
+`test-streaming-registration` is prepared in the common native suite and
+security-memory label, with the standard 120/300-second timeout and no
+fixed-path serialization requirement. It witnesses a second-index fault,
+local/peer collisions, pre-SYN identity cleanup, stale retirement after
+key reuse, successful outgoing admission and throwing external handoff.
+It is also in the prepared MSVC 36-target selection. It has not executed.

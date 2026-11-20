@@ -1891,7 +1891,17 @@ namespace client
 		std::shared_ptr<const i2p::data::LeaseSet> remote, uint16_t port)
 	{
 		auto streaming = GetDefaultStreamingDestination ();
-		return streaming ? streaming->CreateNewOutgoingStream (remote, port) : nullptr;
+		if (!streaming) return nullptr;
+		try
+		{
+			return streaming->CreateNewOutgoingStream (remote, port);
+		}
+		catch (const i2p::stream::StreamingDestination::RegistrationError &)
+		{
+			// Refusal is a completed request, including after asynchronous
+			// LeaseSet lookup. Do not catch the caller's completion callback.
+			return nullptr;
+		}
 	}
 
 	void ClientDestination::SendPing (const i2p::data::IdentHash & to, uint16_t fromPort, uint16_t toPort)

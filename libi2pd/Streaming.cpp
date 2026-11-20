@@ -25,6 +25,7 @@
 #include "Timestamp.h"
 #include "Destination.h"
 #include "Streaming.h"
+#include "Modern.h"
 
 namespace i2p
 {
@@ -3308,6 +3309,22 @@ namespace stream
 					}
 				}
 				auto incomingStream = CreateNewIncomingStream (receiveStreamID);
+				bool admitted = false;
+				auto rollback = i2p::modern::ScopeExit (
+					[&]
+					{
+						if (admitted) return;
+						UnregisterStream (incomingStream);
+						// Preserve the original consumer/allocation exception even if
+						// timer cancellation fails. No external delivery is undone.
+						try
+						{
+							incomingStream->Terminate (false);
+						}
+						catch (...)
+						{
+						}
+					});
 				incomingStream->HandleNextPacket (pending.release ()); // SYN
 				if (incomingStream->GetStatus () != eStreamStatusOpen)
 				{
@@ -3315,12 +3332,6 @@ namespace stream
 					// Do not leave a half-open registration behind: follow-on
 					// packets for this receiveStreamID must never be routed to a
 					// stream that never opened.
-					incomingStream->Terminate (false);
-					{
-						std::lock_guard<std::mutex> l (m_StreamsMutex);
-						m_Streams.erase (incomingStream->GetRecvStreamID ());
-						m_IncomingStreams.erase (receiveStreamID);
-					}
 					return;
 				}
 				if (!incomingStream->GetRemoteLeaseSet ())
@@ -3337,7 +3348,7 @@ namespace stream
 				// acceptor decision happen under one lock, so a concurrent
 				// ResetAcceptor cannot orphan the stream between the check and
 				// the invocation.
-				if (!AddPendingIncomingStream (incomingStream))
+				if (!AddPendingIncomingStream (incomingStream, &admitted))
 				{
 					// The backlog can only fill on this thread, so this is a
 					// defensive branch: refuse the stream instead of leaving the
@@ -3384,8 +3395,7 @@ namespace stream
 		std::shared_ptr<const i2p::data::LeaseSet> remote, int port)
 	{
 		auto s = std::make_shared<Stream> (m_Owner->GetService (), shared_from_this (), remote, port);
-		std::lock_guard<std::mutex> l (m_StreamsMutex);
-		m_Streams.emplace (s->GetRecvStreamID (), s);
+		RegisterStream (s, std::nullopt);
 		return s;
 	}
 
@@ -3403,10 +3413,47 @@ namespace stream
 		// An incoming stream replies to the peer's source port, and reports
 		// the destination port it arrived on (SAM 3.2 FROM_PORT/TO_PORT).
 		s->SetPorts (m_LastFromPort, m_LastToPort);
-		std::lock_guard<std::mutex> l (m_StreamsMutex);
-		m_Streams.emplace (s->GetRecvStreamID (), s);
-		m_IncomingStreams.emplace (receiveStreamID, s);
+		RegisterStream (s, receiveStreamID);
 		return s;
+	}
+
+	void StreamingDestination::RegisterStream (
+		const std::shared_ptr<Stream> & stream, std::optional<uint32_t> incomingID)
+	{
+		std::lock_guard<std::mutex> lock (m_StreamsMutex);
+		if (!stream->GetRecvStreamID () || (incomingID && !*incomingID)) throw RegistrationError { };
+		auto [position, inserted] = m_Streams.emplace (stream->GetRecvStreamID (), stream);
+		if (!inserted) throw RegistrationError { };
+		try
+		{
+			if (incomingID)
+			{
+				if (m_RegistrationCheckpointForTesting) m_RegistrationCheckpointForTesting ();
+				if (!m_IncomingStreams.emplace (*incomingID, stream).second) throw RegistrationError { };
+			}
+		}
+		catch (...)
+		{
+			m_Streams.erase (position);
+			throw;
+		}
+	}
+
+	bool StreamingDestination::UnregisterStream (const std::shared_ptr<Stream> & stream)
+	{
+		std::lock_guard<std::mutex> lock (m_StreamsMutex);
+		auto it = m_Streams.find (stream->GetRecvStreamID ());
+		bool registered = it != m_Streams.end () && it->second == stream;
+		if (registered) m_Streams.erase (it);
+		// Before SYN processing the peer ID is not installed in Stream yet.
+		// Match authority, not the still-zero or reusable numeric wire key.
+		for (auto incoming = m_IncomingStreams.begin (); incoming != m_IncomingStreams.end ();)
+			if (incoming->second == stream)
+				incoming = m_IncomingStreams.erase (incoming);
+			else
+				++incoming;
+		if (m_LastStream == stream) m_LastStream.reset ();
+		return registered;
 	}
 
 	void StreamingDestination::DeleteStream (std::shared_ptr<Stream> stream)
@@ -3414,16 +3461,7 @@ namespace stream
 		if (stream)
 		{
 			uint32_t recentlyClosedID = 0;
-			{
-				std::lock_guard<std::mutex> l (m_StreamsMutex);
-				// Only a stream that was really registered counts as closed; the
-				// detached stream used to refuse a SYN is never in the map, so a
-				// forged SYN cannot poison the recently-closed set.
-				if (m_Streams.erase (stream->GetRecvStreamID ()) && stream->IsIncoming ())
-					recentlyClosedID = stream->GetSendStreamID ();
-				if (stream->IsIncoming ()) m_IncomingStreams.erase (stream->GetSendStreamID ());
-				if (m_LastStream == stream) m_LastStream = nullptr;
-			}
+			if (UnregisterStream (stream) && stream->IsIncoming ()) recentlyClosedID = stream->GetSendStreamID ();
 			// Java ConnectionManager._recentlyClosed: a retransmitted SYN for
 			// this connection must not open it again.
 			if (recentlyClosedID) RememberRecentlyClosed (recentlyClosedID);
@@ -3569,13 +3607,16 @@ namespace stream
 		return m_RecentlyClosed.size ();
 	}
 
-	bool StreamingDestination::AddPendingIncomingStream (std::shared_ptr<Stream> stream)
+	bool StreamingDestination::AddPendingIncomingStream (std::shared_ptr<Stream> stream, bool * admitted)
 	{
 		if (!stream) return false;
 		{
 			std::lock_guard<std::mutex> lock (m_AcceptorMutex);
 			if (m_PendingIncomingStreams.size () >= MAX_PENDING_INCOMING_BACKLOG) return false;
 			m_PendingIncomingStreams.push_back (stream);
+			// Admission is committed before an external acceptor can run.
+			// A throwing callback may already have published its own effects.
+			if (admitted) *admitted = true;
 		}
 		DispatchPendingIncoming ();
 		return true;

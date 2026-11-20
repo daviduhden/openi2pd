@@ -111,6 +111,12 @@ build.
 
 ## Known issues and decisions
 
+When adding a selected Windows regression, update the CMake registration,
+security-memory classification, MSVC build list, closed literal filter
+parser and fixture, and uploaded executable inventory together. Distinguish
+the prepared target count from the exact published run count.
+
+
 - Destination packet and tag-publication controls are independent native
   targets. Add each to the common inventory, security/memory labels and the
   explicit MSVC build/filter/parser/artifact set together. Selected counts must

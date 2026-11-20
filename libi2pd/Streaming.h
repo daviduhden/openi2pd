@@ -27,6 +27,7 @@
 #include <memory>
 #include <mutex>
 #include <optional>
+#include <stdexcept>
 #include <span>
 #include <chrono>
 #include <list>
@@ -567,6 +568,15 @@ namespace stream
 		void Start ();
 		void Stop ();
 
+		/// Registration fails atomically with RegistrationError on a reserved
+		/// or occupied ID; allocation/provider failures propagate unchanged.
+		struct RegistrationError final : std::runtime_error
+		{
+			RegistrationError ()
+				: std::runtime_error ("stream registration refused")
+			{
+			}
+		};
 		std::shared_ptr<Stream> CreateNewOutgoingStream (
 			std::shared_ptr<const i2p::data::LeaseSet> remote, int port = 0);
 		void SendPing (std::shared_ptr<const i2p::data::LeaseSet> remote, uint16_t fromPort = 0, uint16_t toPort = 0);
@@ -657,6 +667,12 @@ namespace stream
 		};
 		void (*m_SavedPacketCheckpointForTesting) (SavedPacketCheckpoint) = nullptr;
 		friend struct StreamingDestinationPacketTestAccess;
+		friend struct StreamingRegistrationTestAccess;
+		// Both indexes commit together. The caller retains the stream while
+		// rollback releases map references, so no destructor runs locked.
+		void RegisterStream (const std::shared_ptr<Stream> & stream, std::optional<uint32_t> incomingID);
+		bool UnregisterStream (const std::shared_ptr<Stream> & stream);
+		void (*m_RegistrationCheckpointForTesting) () = nullptr;
 		std::shared_ptr<Stream> CreateNewIncomingStream (uint32_t receiveStreamID);
 		void HandlePendingIncomingTimer (const boost::system::error_code & ecode);
 		void StopInternal ();
@@ -665,7 +681,7 @@ namespace stream
 		// Decides and dispatches under one lock so a stream is either handed
 		// to an acceptor or queued in m_PendingIncomingStreams, never lost.
 		void DispatchPendingIncoming ();
-		bool AddPendingIncomingStream (std::shared_ptr<Stream> stream);
+		bool AddPendingIncomingStream (std::shared_ptr<Stream> stream, bool * admitted = nullptr);
 		AcceptorToken ArmSyncAccept (const std::shared_ptr<SyncAcceptState> & state);
 		// Service thread only.
 		SynAdmission DecideSynAdmission (uint32_t receiveStreamID, i2p::garlic::ECIESX25519AEADRatchetSession * from);

@@ -1019,8 +1019,17 @@ namespace client
 				uint16_t fromPort = m_ConnectFromPort ? m_ConnectFromPort : session->FromPort;
 				auto streamingDest = localDest->GetStreamingDestination (fromPort);
 				if (!streamingDest && fromPort) streamingDest = localDest->CreateStreamingDestination (fromPort);
-				m_Stream = streamingDest ? streamingDest->CreateNewOutgoingStream (remote, m_ConnectToPort)
-										 : localDest->CreateStream (remote, m_ConnectToPort);
+				try
+				{
+					m_Stream = streamingDest ? streamingDest->CreateNewOutgoingStream (remote, m_ConnectToPort)
+											 : localDest->CreateStream (remote, m_ConnectToPort);
+				}
+				catch (const i2p::stream::StreamingDestination::RegistrationError &)
+				{
+					// A refused local ID has no stream to finish the connect.
+					SendStreamCantReachPeer ("Stream registration refused");
+					return;
+				}
 				if (m_Stream)
 				{
 					m_Stream->Send ((uint8_t *)m_Buffer, m_BufferOffset); // connect and send
@@ -1031,7 +1040,7 @@ namespace client
 						std::bind (&SAMSocket::HandleStreamConnectTimer, shared_from_this (), std::placeholders::_1));
 				}
 				else
-					SendMessageReply (SAM_STREAM_STATUS_INVALID_ID, true);
+					SendStreamCantReachPeer ("Stream creation refused");
 			}
 			else
 				SendStreamCantReachPeer ("Incompatible crypto");

@@ -1401,6 +1401,17 @@ require_runtime_order("android/app/src/main/java/org/openi2pd/router/TorrentSafS
 require_runtime_source("android/app/src/main/java/org/openi2pd/router/TorrentSafAdmission.java"
   "return publish(operation.acquire(), publisher, release);")
 
+# Registration refusal must complete callers without losing either index.
+require_runtime_source("libi2pd/Streaming.cpp" "m_Streams.erase (position);")
+require_runtime_source("libi2pd/Streaming.cpp" "it->second == stream")
+require_runtime_source("libi2pd/Destination.cpp"
+  "catch (const i2p::stream::StreamingDestination::RegistrationError &)")
+require_runtime_source("libi2pd_client/SAM.cpp"
+  "SendStreamCantReachPeer (\"Stream registration refused\");")
+require_runtime_source("tests/CMakeLists.txt" "test-streaming-registration")
+require_runtime_source("tests/test-streaming-registration.cpp"
+  "assert (failed && admitted && callbacks == 1);")
+
 require_runtime_source("libi2pd_client/TorrentsTunnel.cpp"
   "m_RegistryCheckpointForTesting (RegistryCheckpoint::PeerDialCompletion)")
 require_runtime_source("libi2pd_client/TorrentsTunnel.cpp"

@@ -107,6 +107,12 @@ Do not let reconnaissance agents edit, compile, execute tests or run scripts.
 
 ## Known issues and decisions
 
+For multi-index stream admission, retain the caller owner through rollback,
+match both indexes by object identity on retirement, and commit backlog
+ownership before external callbacks. Review typed refusal consumers separately
+so asynchronous lookups complete even when registration is refused.
+
+
 - Follow consuming packet ownership through the enclosing dispatcher too.
   StreamingDestination pre-SYN batches own packets and their expiry timer;
   draining retires the old map entry before entering Stream. Weak destination
