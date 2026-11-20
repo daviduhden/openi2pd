@@ -5,6 +5,35 @@ and license details.
 
 # Runtime error inventory
 
+## dab02eb3: same initializer boundary, new exact image
+
+RT-087 persists in Windows run 44743766901, MSVC job 136313704140.
+Probe image SHA256:
+`4D20A1B6141899217B6C75732215CC20FCFA41EAEF2F39DD7A6C08F389A26E18`.
+Exact initializer.txt:1167..1168 identifies child 048c:0200 calling
+KERNELBASE.dll initializer 00007FFBC4E3B170 and failing DLL_PROCESS_ATTACH;
+KERNEL32 subsystem loading propagates c0000142 at 1186. This is a
+module/phase attribution, not the internal failed operation. Do not infer
+that a separate conhost denial proves the cause or weaken containment.
+Prepared closed-probe ld:kernelbase.dll observation captures lmvm identity
+before unload, inside the original 60-second collection deadline. Exact
+image/PDB evidence and initializer branch attribution still require CI.
+
+### RT-121: final collector exit command resumes without a debuggee
+
+The same exact artifact reports No runnable debuggees at initializer.txt:1292
+when the epr command ends in g after the parent exits. Collector failure
+is independent of RT-087. Replace the break/resume exit handler with sxn
+notification plus the existing marker/.lastevent. Microsoft's sx documentation
+states that -c commands execute regardless of break status; notification
+therefore preserves exit evidence without requesting a nonexistent resume:
+https://learn.microsoft.com/en-us/windows-hardware/drivers/debuggercmds/sx--sxd--sxe--sxi--sxn--sxr--sx---set-exceptions- .
+No debugger exit-code check, exception filter, authentication or original
+worker-test assertion is removed. Closed command inventory and independent
+negative fixtures cover notification and module identity. Implemented /
+static; Pending CI tests. RT-087 remains CI failure.
+
+
 ## ad9514b5: RT-087 initialization boundary identified
 
 Windows run 44734750922, MSVC job 136283218498, artifact 14629807396.

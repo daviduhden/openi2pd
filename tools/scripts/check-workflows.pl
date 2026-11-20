@@ -698,7 +698,6 @@ push @errors, windows_startup_command_errors( $texts{'build-windows.yml'} )
   if exists $texts{'build-windows.yml'};
 push @errors, windows_startup_probe_errors( $texts{'build-windows.yml'} )
   if exists $texts{'build-windows.yml'};
-
 push @errors,
   windows_process_wait_errors(
     $texts{'build-windows.yml'},
@@ -813,7 +812,8 @@ sub windows_exception_command_errors {
     # lines keep nested breakpoint commands outside the heap allowlist.
     my %probe_commands = map { $_ => 1 } (
 q{sxe -c "bu ntdll!NtTerminateProcess \".if (@edx == 0xc0000142) { .echo OPENI2PD_PROBE_TERMINATION; ln @rip; ln @$ra; ub @$ra L20; kc 40; }; gc\"; g" cpr},
-        q{sxe -c ".echo OPENI2PD_PROBE_EXIT; .lastevent; g" epr}
+        q{sxn -c ".echo OPENI2PD_PROBE_EXIT; .lastevent" epr},
+q{sxe -c ".echo OPENI2PD_PROBE_KERNELBASE; lmvm kernelbase; g" ld:kernelbase.dll}
     );
     my %probe_seen;
     my %allowed = map { $_ => 1 }
@@ -830,8 +830,11 @@ q{sxe -c "bu ntdll!NtTerminateProcess \".if (@edx == 0xc0000142) { .echo OPENI2P
             last;
         }
         next if !length $line || $line eq 'g';
-        if ( $probe_mode
-            && ( $line eq '.echo OPENI2PD_PROBE_ARMED' || $line eq 'lmvm ntdll' ) )
+        if (
+            $probe_mode
+            && (   $line eq '.echo OPENI2PD_PROBE_ARMED'
+                || $line eq 'lmvm ntdll' )
+          )
         {
             $probe_seen{$line}++;
             next;
@@ -859,7 +862,7 @@ q{sxe -c "bu ntdll!NtTerminateProcess \".if (@edx == 0xc0000142) { .echo OPENI2P
     push @violations,
       'build-windows.yml: startup probe termination evidence missing'
       if $probe_mode
-      && ( keys(%probe_seen) != 4 || grep { $_ != 1 } values %probe_seen );
+      && ( keys(%probe_seen) != 5 || grep { $_ != 1 } values %probe_seen );
     return @violations;
 }
 
@@ -902,7 +905,7 @@ q!if (-not $process.WaitForExit(5000)) { throw 'startup probe cleanup deadline' 
         q{if: ${{ always() && steps.msvc_tests.outcome == 'failure' }}},
         q{Get-FileHash -Algorithm SHA256 -Path $binary},
         q{$symbolCache = Join-Path $env:RUNNER_TEMP 'openi2pd-os-symbols'},
-        q{$symbols = (Split-Path -Parent $binary) + ';srv*' + $symbolCache + '*https://msdl.microsoft.com/download/symbols'},
+q{$symbols = (Split-Path -Parent $binary) + ';srv*' + $symbolCache + '*https://msdl.microsoft.com/download/symbols'},
         q{Select-String -Path $log -Pattern '^OPENI2PD_PROBE_ARMED\s*$' -Quiet},
         q{60000 - $probeClock.ElapsedMilliseconds},
         q{@('/i', $image, '+sls')},

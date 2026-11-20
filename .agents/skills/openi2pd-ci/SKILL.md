@@ -206,6 +206,14 @@ workflow, run `gh`, build or test.
 
 ## Known issues and decisions
 
+A witnessed deadline mutation can still expose a checker false pass when
+another process retains the same API substring. Bind every wait to its
+receiver and full argument grammar, with exact per-step and global call
+inventory; independently mutate GFlags, debugger, cleanup and other lanes.
+Use notification-only exit commands when no resume is needed, and collect
+module identity at load before a failed initializer unloads it.
+
+
 When a diagnostic command changes, update the checker and every mutation
 operand together. A negative fixture must first witness its substitution;
 then independently reject loss of the shared budget, loader activation and

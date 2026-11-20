@@ -528,8 +528,16 @@ qr/worker initialization diagnostic|unsupported crash debugger line|missing boun
     for my $boundary (
         [ '@edx == 0xc0000142',         '@edx == 0' ],
         [ '.echo OPENI2PD_PROBE_ARMED', '.echo UNARMED' ],
-        [ 'lmvm ntdll', 'lmvm kernel32' ],
-        [ 'https://msdl.microsoft.com/download/symbols', 'https://invalid.example/symbols' ],
+        [ 'lmvm ntdll',                 'lmvm kernel32' ],
+        [
+            'OPENI2PD_PROBE_KERNELBASE; lmvm kernelbase; g',
+            'OPENI2PD_PROBE_KERNELBASE; lmvm kernel32; g'
+        ],
+        [ 'ld:kernelbase.dll', 'ld:kernel32.dll' ],
+        [
+            'https://msdl.microsoft.com/download/symbols',
+            'https://invalid.example/symbols'
+        ],
         [
             q{$probeArguments = @('-o'},
             q{$probeArguments = @('-g', '-G', '-o'}
@@ -541,8 +549,12 @@ qr/worker initialization diagnostic|unsupported crash debugger line|missing boun
         [ 'NtTerminateProcess', 'ExitProcess' ],
         [ 'ub @$ra L20; ',      '' ],
         [
-            'OPENI2PD_PROBE_EXIT; .lastevent; g',
-            'OPENI2PD_PROBE_EXIT; .lastevent; q'
+            'OPENI2PD_PROBE_EXIT; .lastevent',
+            'OPENI2PD_PROBE_EXIT; .lastevent; g'
+        ],
+        [
+            q{sxn -c ".echo OPENI2PD_PROBE_EXIT; .lastevent" epr},
+            q{sxe -c ".echo OPENI2PD_PROBE_EXIT; .lastevent" epr}
         ]
       )
     {

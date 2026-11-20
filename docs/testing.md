@@ -1086,3 +1086,12 @@ rollback preserves incumbent reservations and rejects stale generation,
 wrong ID and foreign owner authority. Existing label/timeout/parallel-safety
 registration is retained. These new controls are Pending CI tests; published
 ad9514b5 only validates the earlier inner-callback transaction controls.
+
+## Per-process deadline and loader collector regressions
+
+The maintenance fixture independently removes the GFlags, probe-debugger,
+cleanup, router-loader and worker-heap wait bounds, with witnessed mutations.
+The closed source inventory rejects extra, missing, duplicate or unbounded
+calls. Separate negative controls pin KERNELBASE load identity and an exit
+notification without a resume. These new controls are Pending CI tests;
+the ordinary workflow-source guard is compile-free and is not their execution.

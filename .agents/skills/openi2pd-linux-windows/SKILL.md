@@ -102,6 +102,13 @@ execution. Ask for:
 
 ## Known issues and decisions
 
+A final process-exit debugger handler must not resume when no debuggee
+remains. A closed sxn notification with the exit marker and last event
+retains evidence without that resume. Capture KERNELBASE module identity
+on its load event, before initializer failure unloads it; this does not
+identify the failing internal operation or justify relaxing containment.
+
+
 Loader snaps naming KERNELBASE DLL_PROCESS_ATTACH narrows the failure to
 an initializer, not to an API or sandbox rule. Correlate each process ID and
 exact module image before relating a conhost denial to worker startup. A
