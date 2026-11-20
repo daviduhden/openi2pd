@@ -206,6 +206,13 @@ workflow, run `gh`, build or test.
 
 ## Known issues and decisions
 
+For pre-entry Windows loader failures, arm documented per-image loader
+snaps before creating the closed authority-free probe. Snapshot and restore
+the exact GlobalFlag value, registry type and absence in finally; bound
+setup and debugger collection by one absolute deadline. An armed debugger
+and termination stack still do not identify the failing initializer.
+
+
 - Historical evidence completeness needs one record per run, not a directory
   count. Reuse exact-run cached logs, fetch remaining run logs and fall back to
   job logs for empty/canceled runs. A gh API refusal of ANSI control output is

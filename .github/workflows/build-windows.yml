@@ -353,9 +353,18 @@ jobs:
         run: |
           # Only this nonce-free probe may trace children.
           # Preserve the ordinary worker test failure.
+          $probeClock = [System.Diagnostics.Stopwatch]::StartNew()
+          function Remaining-ProbeMilliseconds {
+            $remaining = 60000 - $probeClock.ElapsedMilliseconds
+            if ($remaining -le 0) { throw 'startup probe collection deadline' }
+            return [int]$remaining
+          }
           $debugTools = Join-Path ${env:ProgramFiles(x86)} 'Windows Kits\10\Debuggers\x64'
           $cdb = Join-Path $debugTools 'cdb.exe'
-          if (-not (Test-Path $cdb)) { throw 'startup probe requires installed x64 CDB' }
+          $gflags = Join-Path $debugTools 'gflags.exe'
+          if (-not (Test-Path $cdb) -or -not (Test-Path $gflags)) {
+            throw 'startup probe requires installed x64 CDB and GFlags'
+          }
           $evidence = Join-Path $env:GITHUB_WORKSPACE 'build-msvc/startup-probe'
           New-Item -ItemType Directory -Force $evidence | Out-Null
           $commands = Join-Path $evidence 'exceptions.txt'
@@ -387,8 +396,44 @@ jobs:
           $consoleLog = Join-Path $evidence 'stdout.txt'
           $consoleError = Join-Path $evidence 'stderr.txt'
           $probeArguments = @('-o', '-noshell', '-lines', '-y', "`"$symbols`"", '-logo', "`"$log`"", '-cf', "`"$commands`"", "`"$binary`"", '--diagnose-worker-initialization')
+          # Loader snaps must be enabled before initialization begins.
+          # Scope the registry change to this fixed, nonce-free image;
+          # no ordinary authenticated worker test runs in this bracket.
+          $image = 'test-privsep-windows-supervisor.exe'
+          $ifeoPath = 'SOFTWARE\Microsoft\Windows NT\CurrentVersion\Image File Execution Options'
+          $registry = [Microsoft.Win32.RegistryKey]::OpenBaseKey([Microsoft.Win32.RegistryHive]::LocalMachine, [Microsoft.Win32.RegistryView]::Registry64)
+          $ifeo = $registry.OpenSubKey($ifeoPath, $true)
+          if ($null -eq $ifeo) { $registry.Dispose(); throw 'startup probe IFEO unavailable' }
+          $key = $ifeo.OpenSubKey($image, $false)
+          $hadKey = $null -ne $key
+          $hadFlag = $hadKey -and ($key.GetValueNames() -contains 'GlobalFlag')
+          $savedFlag = $null
+          $savedKind = $null
+          if ($hadFlag) {
+            $savedKind = $key.GetValueKind('GlobalFlag')
+            $savedFlag = $key.GetValue('GlobalFlag', $null, [Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames)
+          }
+          if ($hadKey) { $key.Dispose() }
+          $flagProcess = $null
+          $debugger = $null
+          try {
+          $flagProcess = Start-Process -FilePath $gflags -ArgumentList @('/i', $image, '+sls') -NoNewWindow -PassThru -RedirectStandardOutput (Join-Path $evidence 'loader-flags.txt') -RedirectStandardError (Join-Path $evidence 'loader-flags-error.txt')
+          if (-not $flagProcess.WaitForExit((Remaining-ProbeMilliseconds))) {
+            throw 'startup probe loader flag deadline'
+          }
+          if ($flagProcess.ExitCode -ne 0) { throw 'startup probe loader flag activation failed' }
+          $armedKey = $ifeo.OpenSubKey($image, $false)
+          try {
+            if ($null -eq $armedKey) { throw 'startup probe loader flag missing' }
+            $armedValue = $armedKey.GetValue('GlobalFlag')
+            $armedBits = if ($armedValue -is [string]) { [Convert]::ToUInt32($armedValue, 16) } else { [Convert]::ToUInt32($armedValue) }
+            if (($armedBits -band 2) -eq 0) { throw 'startup probe loader snaps not enabled' }
+          } finally {
+            if ($null -ne $armedKey) { $armedKey.Dispose() }
+          }
+          [void](Remaining-ProbeMilliseconds)
           $debugger = Start-Process -FilePath $cdb -ArgumentList $probeArguments -NoNewWindow -PassThru -RedirectStandardOutput $consoleLog -RedirectStandardError $consoleError
-          if (-not $debugger.WaitForExit(60000)) {
+          if (-not $debugger.WaitForExit((Remaining-ProbeMilliseconds))) {
             & taskkill.exe /PID $debugger.Id /T /F
             if ($LASTEXITCODE -ne 0) { throw 'startup probe cleanup failed' }
             throw 'startup probe debugger deadline'
@@ -403,6 +448,37 @@ jobs:
           }
           if (-not (Select-String -Path @($log, $consoleLog, $consoleError) -Pattern '^startup probe: exit=0\b' -Quiet)) {
             throw 'startup probe did not establish successful initialization'
+          }
+          } finally {
+            # Stop traced processes before restoring per-image settings,
+            # including when activation or debugger startup fails.
+            try {
+              foreach ($process in @($debugger, $flagProcess)) {
+                if ($null -ne $process) {
+                  try {
+                    if (-not $process.HasExited) {
+                      $process.Kill($true)
+                      if (-not $process.WaitForExit(5000)) { throw 'startup probe cleanup deadline' }
+                    }
+                  }
+                  finally { $process.Dispose() }
+                }
+              }
+            } finally {
+              try {
+                $restoreKey = $ifeo.OpenSubKey($image, $true)
+                if ($hadFlag -and $null -eq $restoreKey) { $restoreKey = $ifeo.CreateSubKey($image) }
+                if ($null -ne $restoreKey) {
+                  try {
+                    if ($hadFlag) { $restoreKey.SetValue('GlobalFlag', $savedFlag, $savedKind) }
+                    else { $restoreKey.DeleteValue('GlobalFlag', $false) }
+                    $emptyKey = $restoreKey.ValueCount -eq 0 -and $restoreKey.SubKeyCount -eq 0
+                  } finally { $restoreKey.Dispose() }
+                  # Keep any unrelated values/subkeys introduced meanwhile.
+                  if (-not $hadKey -and $emptyKey) { $ifeo.DeleteSubKey($image, $false) }
+                }
+              } finally { $ifeo.Dispose(); $registry.Dispose() }
+            }
           }
       - name: Upload Windows MSVC evidence
         if: always()
