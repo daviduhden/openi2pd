@@ -151,8 +151,8 @@ not imply that the openi2pd APK, minified release or ART runtime is validated.
 - Stable pinned dependencies were added for the UI work:
   `androidx.core:core:1.19.1`, `androidx.appcompat:appcompat:1.8.0`,
   `androidx.activity:activity:1.13.0`, `androidx.fragment:fragment:1.9.1`,
-  `androidx.lifecycle:lifecycle-viewmodel:2.11.0`,
-  `androidx.lifecycle:lifecycle-livedata:2.11.0`,
+  `androidx.lifecycle:lifecycle-viewmodel:2.11.1`,
+  `androidx.lifecycle:lifecycle-livedata:2.11.1`,
   `androidx.preference:preference:1.2.1`,
   `androidx.recyclerview:recyclerview:1.4.0`,
   `com.google.android.material:material:1.14.0`.

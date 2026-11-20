@@ -121,6 +121,12 @@ run Gradle, install an APK or run a device test.
 
 ## Known issues and decisions
 
+When successful Lint reports a Lifecycle patch, inspect official release
+notes and move ViewModel and LiveData pins together with the dependency
+matrix. A source pin update is pending Gradle/Lint/device evidence and
+does not resolve intentional ABI coverage or AGP deprecation findings.
+
+
 - Java SAF admission can complete after timeout, close or binding replacement.
   Guard remote results until exact local-entry/binding publication commits;
   stale results close/revoke through the captured original session outside the
