@@ -206,6 +206,13 @@ workflow, run `gh`, build or test.
 
 ## Known issues and decisions
 
+When a diagnostic command changes, update the checker and every mutation
+operand together. A negative fixture must first witness its substitution;
+then independently reject loss of the shared budget, loader activation and
+exact registry restoration. Distinguish collector exit-command errors from
+the worker's original initialization failure.
+
+
 For pre-entry Windows loader failures, arm documented per-image loader
 snaps before creating the closed authority-free probe. Snapshot and restore
 the exact GlobalFlag value, registry type and absence in finally; bound

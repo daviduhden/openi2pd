@@ -479,9 +479,23 @@ qr/worker initialization diagnostic|unsupported crash debugger line|missing boun
     }
     write_file( $windows, $source );
     for my $boundary (
-        [ '--diagnose-worker-initialization', '--privsep-worker' ],
-        [ 'WaitForExit(60000)',               'WaitForExit()' ],
-        [ 'startup probe: exit=0',            'startup probe: ignored=0' ]
+        [ '--diagnose-worker-initialization',           '--privsep-worker' ],
+        [ 'WaitForExit((Remaining-ProbeMilliseconds))', 'WaitForExit()' ],
+        [ '60000 - $probeClock.ElapsedMilliseconds',    '60000' ],
+        [ q{@('/i', $image, '+sls')}, q{@('/i', $image, '-sls')} ],
+        [
+            q{$savedKind = $key.GetValueKind('GlobalFlag')},
+            q{$savedKind = $null}
+        ],
+        [
+            q{$restoreKey.SetValue('GlobalFlag', $savedFlag, $savedKind)},
+            q{$restoreKey.SetValue('GlobalFlag', 0)}
+        ],
+        [
+            q{$restoreKey.DeleteValue('GlobalFlag', $false)},
+            q{$restoreKey.DeleteValue('OtherFlag', $false)}
+        ],
+        [ 'startup probe: exit=0', 'startup probe: ignored=0' ]
       )
     {
         my ( $before, $after ) = @{$boundary};

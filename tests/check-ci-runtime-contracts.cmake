@@ -595,11 +595,21 @@ require_runtime_source(".github/workflows/build-windows.yml"
 
 # Outbound run admission must also work without inbound registration.
 foreach(needle IN ITEMS "StartPeerDials ();"
-    "return [owner, generation, torrent, peer, origin, dial]"
+    "= [owner, generation, torrent, peer, origin, dial]"
     "pending->second.torrent.lock () != torrent"
     "self->FindTorrent (torrent->GetInfoHash ()) == torrent")
   require_runtime_source("libi2pd_client/TorrentsTunnel.cpp" "${needle}")
 endforeach()
+# Callable construction is fallible after dial admission. Keep rollback
+# armed through construction, then return the completed owned callable.
+require_runtime_order("libi2pd_client/TorrentsTunnel.cpp"
+  "TorrentsTunnel::CreatePeerDialCompletion (" "size_t TorrentsTunnel::ConnectToPeers ("
+  "dialPublication (m_InboundAcceptMutex)" "dialAdmission (generation->mutex)"
+  "m_PendingDials.emplace (" "if (!inserted) return { };"
+  "auto rollback =" "m_PendingDials.erase (position);"
+  "i2p::client::StreamRequestComplete complete"
+  "= [owner, generation, torrent, peer, origin, dial]"
+  "rollback.dismiss ();" "return complete;")
 require_runtime_source("tests/test-torrents-security.cpp"
   "TestPeerDialAuthority ();")
 string(FIND "${tracker_callbacks}" "[this, torrent, peer, origin, dial]" raw_dial)

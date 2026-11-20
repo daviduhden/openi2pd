@@ -122,6 +122,12 @@ a TUI client.
 
 ## Known issues and decisions
 
+When a source-based workflow checker changes command spelling, search its
+negative fixture operands too. Preserve a witnessed mutation before checking
+refusal, and keep deadline, flag activation and cleanup controls independent.
+A no-op mutation failing is a fixture defect, not a product runtime failure.
+
+
 - Workflow policy pins both independent timer-check commands in the
   skills-static block, with command-removal mutations. The lexical timer
   checker combines a naming heuristic with concrete same-stem header/source
