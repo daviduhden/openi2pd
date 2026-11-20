@@ -1,5 +1,14 @@
 # Compilation diagnostic patterns and repository-wide review
 
+## Green compiler output does not cover fallible timer publication
+
+The 4e6aed8d lanes compile and run their registered suites. Preventive
+RT-122/123 inspect exceptions between queue/map admission and timer/
+callback allocation, a separate dimension from compile success. Keep the
+new witnessed fault controls pending until executed on their own revision;
+do not attribute them to earlier green sanitizer suites.
+
+
 ## Repeated API names need per-consumer source authority
 
 TF-114 demonstrates that a witnessed source mutation is necessary but not

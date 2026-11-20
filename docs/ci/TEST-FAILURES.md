@@ -5,6 +5,36 @@ and license details.
 
 # Test failure inventory
 
+## 4e6aed8d: nine workflows pass; RT-087 remains
+
+Exact SHA `4e6aed8d01d5a7a442fd9cceb7a04bbc6f4440e0`. Runs:
+44749048926 maintenance, 44749053668 Android, 44749058101/44749062746
+OpenSSL 3/4, 44749067556 components/Java, 44749072560 OpenBSD,
+44749082196 focused instrumented TSan, 44749086732 packaging and
+44749092184 validation succeed. Windows 44749077334 fails.
+
+Linux jobs 136331870671/136331871090/136331887962/136331888562
+and ASan+UBSan/TSan/UBSan jobs 136331994494/136331994466/136331994497
+each pass 279/279. Focused native 10 torrent/3 client/9 profile groups and
+15 fuzz smoke checks pass. OpenBSD job 136331922198: 271 pass/three
+root-runner capability skips (274); CLANG64 job 136331940190: 262 pass/
+one POSIX-only socket skip (263). MSVC job 136331939592: 35 pass/one
+RT-087 failure (36). TF-112/113/114 and existing registration/dial controls
+pass in their executed lanes. No actual sanitizer error signature was found
+in complete current logs; this does not validate local new fault controls.
+
+Android: 187 JVM tests/27 suites; API29 UI skipped. All five packaging
+jobs succeed. Java interoperability remains 24 static/vector checks and
+two known gaps, no differential binary execution. Perl quality skipped.
+
+History: 585 accessible runs/85 SHAs (214 success/305 failure/66 cancelled),
+582 full logs, one partial with three job logs and two unavailable cancelled
+runs. Previous 575 entries reused only after exact ID/SHA agreement. All
+five missing historical job logs were retried and remain HTTP 404; no
+retention-expiry cause is inferred. Logs, metadata and downloaded exact
+artifacts remain outside the tree under /var/tmp/openi2pd-ci-4e6a.
+
+
 ## dab02eb3: one checker family plus retained Windows failure
 
 Exact SHA `dab02eb3f89340dd464af646702954b44795e002`. Runs:

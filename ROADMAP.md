@@ -10,6 +10,43 @@ Documents project documentation.
 
 # Roadmap
 
+## Published 4e6aed8d audit continuation (2026-11-20)
+
+585 runs/85 SHAs reviewed: 214 success/305 failure/66 cancelled; 582 full
+logs, one partial, two unavailable cancelled runs. Five job gaps retried:
+HTTP 404, cause unproven. Latest ten workflows: nine success/one Windows
+failure. Linux backend and three sanitizer suites pass 279/279; focused
+10/3/9 native groups and 15 fuzz smoke pass. OpenBSD 271 pass/three root
+capability skips; CLANG64 262 pass/one POSIX-only skip; MSVC 35/36.
+Android 187 JVM tests pass; UI and Perl quality remain skipped. Java
+checks remain 24 static/vector plus two known gaps, no live differential.
+No own native warning or actual sanitizer report found in complete logs.
+All five packaging jobs pass; their toolchains differ from primary lanes.
+
+TF-112/113/114 controls are Validated by CI in executed lanes. RT-121's
+No runnable debuggees error is absent; current nonzero debugger/probe
+result retains the original worker failure. RT-087 remains CI failure:
+KERNELBASE module identity is observed but PDB symbols are deferred; no
+internal failing operation is proven.
+
+AUDIT-4E6A-01 / RT-122: readiness arming/selection/rearm exception safety
+and witnessed failure/recovery controls. AUDIT-4E6A-02 / RT-123: tracker
+exact-authority rollback across timer and HTTP dispatch construction;
+extended admission controls. Both Implemented / static; Pending CI
+compilation; Pending CI tests. Existing native target registration,
+security-memory labels and platform selections are retained.
+AUDIT-4E6A-03: fixed-module forced symbol loading, closed grammar and
+negative controls rejecting deferred-only load or mismatch acceptance.
+Implemented / static; Pending CI tests. No containment relaxation.
+
+Independent scoped reviews covered historical logs, C++/memory/concurrency,
+crypto/I2P, IPC, torrent/storage, Android/JNI, portability and regressions.
+Void HKDF/MixKey error propagation, physical provider/device evidence,
+OpenSSL 4.0.x/minimum-version coverage and skipped capabilities remain
+open. No local builds/configuration/tests, dispatch, commits or push.
+Published evidence does not validate these unpublished corrections.
+
+
 ## Published dab02eb3 follow-up (2026-11-20)
 
 575 runs/84 SHAs, 572 full logs plus one partial and two unavailable

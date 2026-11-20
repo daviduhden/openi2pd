@@ -3232,3 +3232,14 @@ unknown/duplicate operations; global replacement is not an independent
 negative control. A process-exit debugger notification must not request a
 resume after the final process exits. Retain original worker status and
 module provenance separately from collector errors.
+
+## Readiness and tracker timer exception boundaries (2026-11-20)
+
+Timer ownership publication follows successful wait registration. Queue
+selection must secure storage before moving callbacks; rearm failure must
+complete both selected and still-pending consumers outside locks, preserving
+selected outcomes and stop precedence. Trace tracker registry admission
+through timer setup and outer HTTP/callback construction, with exact
+non-reused authority rollback and no replay or callback during unwind.
+A green sanitizer suite without these injected faults does not validate
+these exception paths. Recheck source extractors after changing order.

@@ -5,6 +5,57 @@ and license details.
 
 # Runtime error inventory
 
+## 4e6aed8d: exact module identity; original worker failure retained
+
+RT-087 persists: Windows run 44749077334/job 136331939592, artifact
+14637330480. Exact authority-free image SHA256:
+`EBC318359DB1A2DE3A0FC57804CF862D619EB58AE2C6BA60123A1A075EDB9891`.
+The module-load event executes at initializer.txt:1057. KERNELBASE
+10.0.20348.5866 has reproducible-build value A09087D7, checksum 0038E0B2,
+image size 00371000; symbols are deferred, so no matching PDB is proven.
+The child initializer at module RVA 0x1b170 fails DLL_PROCESS_ATTACH at
+1203. Nested bcc exits c0000022, worker 4a4 exits c0000142, probe parent
+14b0 exits 1. Correlation does not prove the internal failing operation.
+RT-121's No runnable debuggees error is absent on this exact run; the
+current nonzero debugger/probe result must not be relabeled a collector bug.
+
+Prepare .reload /f kernelbase.dll before lmvm in the same closed load
+event: Microsoft documents /f as overriding deferred symbol loading.
+Never add /i (mismatch acceptance), guessed RVA breakpoints or credential
+tracing. Symbol lookup stays inside the original absolute 60-second budget.
+Pending CI; reference:
+https://learn.microsoft.com/en-us/windows-hardware/drivers/debuggercmds/-reload--reload-module- .
+
+### RT-122: readiness timer admission and rearm lose completion authority
+
+Static preventive finding in I2PService: registration queued a callback before
+fallible timer setup; Trigger published wait before async_wait succeeded.
+Failure could leave an unarmed nonnull wait blocking subsequent admission.
+Selection allocation or rearm could also drop selected notifications after
+resetting wait authority. Publish wait only after registration; refuse failed
+admission with no_buffer_space outside the lock. Reserve selection capacity
+before moving callbacks, preserve selected outcomes and detach remaining
+callbacks by swap for explicit failure outside locks. Stop still takes
+precedence as operation_aborted. Expanded test-i2p-service-readiness
+witnesses allocation/registration/selection/rearm faults, recovery, callback
+mutex reentry and stale cancellation. Implemented / static; Pending CI
+compilation; Pending CI tests. No observed CI crash is attributed here.
+
+### RT-123: tracker setup exceptions retain admitted registry capacity
+
+Static preventive finding in TorrentsTunnel: timer allocation/registration
+after AcquireTrackerRequest could strand one of 16 slots indefinitely;
+subsequent announce construction/dispatch could retain it until timeout.
+Exact-authority rollback now spans both timer setup and outer request
+construction. Registry authority is never reused across retirement/restart;
+no external completion or ambiguous request is replayed during unwind.
+Expanded test-torrents-admission witnesses timer/wait/parameter/dispatch
+faults, incumbent preservation, timer release and stale timeout/refusal
+after key reuse. Equivalent peer-dial and readiness seams were reviewed.
+Implemented / static; Pending CI compilation; Pending CI tests. Existing
+accepted asynchronous work retains its original deadline.
+
+
 ## dab02eb3: same initializer boundary, new exact image
 
 RT-087 persists in Windows run 44743766901, MSVC job 136313704140.

@@ -1,5 +1,16 @@
 # Compilation and lint warning inventory
 
+## 4e6aed8d: executed native logs remain free of own warnings
+
+No own native compiler warning was found in complete latest logs.
+Android 44749053668/job 136331855047 retains two ChromeOsAbiSupport
+warnings in each Debug/Release variant and builtInKotlin=false deprecation;
+187 JVM tests pass. Lifecycle notices remain absent. External apt
+--force-yes and MSYS2 package advisories remain separate. Perl quality
+and Android API29 UI are skipped, not evidence of clean quality/device lanes.
+No suppression or ABI-coverage claim is introduced by this audit.
+
+
 ## dab02eb3: own native warnings absent in executed logs
 
 No own native compiler warning was found in complete latest job logs.

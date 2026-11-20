@@ -5,6 +5,21 @@ and license details.
 
 # Regression patterns
 
+## Timer authority follows registration; failure still completes consumers
+
+RT-122 reserves selection storage before moving callbacks and publishes
+wait authority after async_wait. Failed rearm must not discard already
+selected outcomes; pending callbacks get explicit failure outside the lock.
+Witness initial allocation, registration, selection and rearm separately,
+then verify retry and stale canceled-completion behavior.
+
+RT-123 treats tracker registry admission, timer setup and HTTP construction/
+dispatch as separate transactions. Rollback uses exact non-reused authority
+and preserves an incumbent or successor. Tests retain a weak timer owner to
+check reclamation and invoke old timeout authority after reuse. Existing
+manual target labels/timeouts remain; expanded tests have not executed.
+
+
 ## Independent deadline and debugger-event mutations
 
 TF-114 keeps separate GFlags/debugger/cleanup wait mutations and rejects

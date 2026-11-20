@@ -9,6 +9,17 @@ Tracks compile/configure/link failures reported by manual GitHub Actions.
 
 # Compilation error inventory
 
+## 4e6aed8d: executed configurations compile and link
+
+No new compile/link blocker appears in the latest ten workflows. Linux
+GCC 16.2.0/Clang 23.1.6 use OpenSSL 3.5.9/4.1.0; OpenBSD Clang
+22.1.6 uses LibreSSL 4.4.0; MSVC 19.44.35230.0 uses OpenSSL 3.6.5.
+Packaging also exercises GCC 15.2.0/13.3.0 and OpenSSL 3.5.9/3.0.13.
+Do not substitute primary-lane versions for package jobs or infer dedicated
+OpenSSL 4.0.x/minimum-3.0.2 coverage. Windows fails at RT-087 execution.
+Local readiness/tracker corrections are Pending CI compilation.
+
+
 ## dab02eb3: compilation reaches executed suites
 
 No new compile/link blocker was found in the ten latest workflows. Linux
