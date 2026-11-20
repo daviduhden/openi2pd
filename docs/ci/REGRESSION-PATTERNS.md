@@ -5,6 +5,20 @@ and license details.
 
 # Regression patterns
 
+## Complete admission includes the enclosing synchronous dispatcher
+
+RT-120 follows inner callable allocation into Address creation and executor
+dispatch. Carry exact run/ID/live-instance authority across that outer scope;
+never execute completion as a destructor workaround. Negative controls must
+preserve an incumbent and reject stale generations, wrong IDs and foreign
+owners. Accepted asynchronous work remains deadline-bound separately.
+
+TF-112 pins semantic transaction order inside a bounded function; TF-113
+keeps a witness for every changed source mutation and independently removes
+loader activation, shared budget and registry restoration. A checker passing
+on the unmodified tree cannot establish that its mutation controls still run.
+
+
 ## Registration transactions extend beyond owning packets
 
 RT-118 follows packet ownership into both destination indexes and their

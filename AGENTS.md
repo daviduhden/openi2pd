@@ -3213,3 +3213,13 @@ LdrpInitializationFailure identifies aftermath, not the failing DLL. Enable
 per-image loader snaps before the authority-free probe, restore exact prior
 registry type/value/absence, and keep one absolute collection deadline.
 Never trace credential-bearing worker command lines to obtain this evidence.
+
+## Enclosing dispatch and source-contract review (2026-11-20, static)
+
+Factory rollback does not cover later caller allocations or synchronous
+executor dispatch. Trace each published reservation until handoff returns,
+retire by exact run/key/live-owner authority on exception, and keep accepted
+asynchronous expiry separate. Never invoke user completion during unwind.
+A named callable refactor must update source extractors and negative mutation
+operands together; mutation witnesses must remain explicit. A source-check
+failure is neither a compiler failure nor a sanitizer report.

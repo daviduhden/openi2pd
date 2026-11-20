@@ -5,6 +5,53 @@ and license details.
 
 # Test failure inventory
 
+## ad9514b5: fixture drift repeats across otherwise executed suites
+
+Exact SHA `ad9514b5c155884b76c09d8c37198ad38482a3ac`. Latest runs:
+44734723359 maintenance (success), 44734727435 Android (success),
+44734732111/44734737265 OpenSSL 3/4 (failure), 44734742273 components/Java
+(success), 44734747132 OpenBSD (failure), 44734750922 Windows (failure),
+44734754669 focused TSan (success), 44734759132 packaging (success),
+44734763926 validation (failure). Five success/five failure.
+
+### TF-112: stale named-completion source contract
+
+Linux branch jobs 136283154785/136283155166/136283173917/136283174350,
+OpenBSD 136283204648, CLANG64 136283218765 and sanitizer jobs
+136283272414/136283272728/136283272871 fail control-security-static.
+Original diagnostic at check-ci-runtime-contracts.cmake:601 requires
+`return [owner, generation, torrent, peer, origin, dial]`. Production now
+constructs a named std::function before releasing rollback. Update the
+contract to assert that transaction ordering within its function, retaining
+capture/identity checks. Implemented / static; Pending CI tests.
+
+### TF-113: a negative mutation no longer changes the workflow
+
+The same jobs fail perl-maintenance-checkers TAP 165..167. The fixture
+still mutates WaitForExit(60000), which was replaced by a shared remaining
+deadline. Its mutation witness correctly fails; unchanged valid input
+then returns success instead of the expected refusal. Mutate the actual
+remaining-budget wait and add separate witnessed negatives for setup budget,
+loader activation, saved registry kind, exact restore and absent-value cleanup.
+Global search found no other maintained old wait operand. Implemented /
+static; Pending CI tests. No retry, suppression or test removal.
+
+Each Linux branch/sanitizer suite: 279 selected, 277 pass/two above failures.
+OpenBSD: 269 pass/two failures/three root-runner capability skips (274).
+CLANG64: 260 pass/two failures/one POSIX-only skip (263). MSVC: 35 pass/
+one RT-087 failure (36). New Streaming registration and dial admission
+regressions pass in executed lanes. Android: 187 JVM tests/27 suites pass;
+15 fuzz smoke pass. Java: 24 static/vector checks/two known gaps, no
+differential binary. All five packaging jobs pass. No actual sanitizer
+error signature was found; the two failed static checks remain real failures.
+
+History: six pages, 565 runs/83 SHAs (200 success/299 failure/66 cancelled),
+562 complete logs, one partial with three job logs, two unavailable cancelled
+runs. Five missing job logs were retried, still HTTP 404; no retention cause
+is inferred. Evidence and downloaded exact artifacts stay outside the tree
+under /var/tmp/openi2pd-ci-ad95.
+
+
 ## 4e524d06: nine successful workflows, one remaining Windows failure
 
 Exact SHA: `4e524d06ef37a4031610c21a24213155e7a6ce67`. Runs:

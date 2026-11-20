@@ -10,6 +10,35 @@ Documents project documentation.
 
 # Master TODO
 
+## Published ad9514b5 audit continuation (2026-11-20)
+
+565 runs /83 SHAs reviewed; 562 full logs, one partial, two unavailable
+cancelled runs; five missing job logs remain HTTP 404. Latest batch has five
+successful and five failed workflows. No own native compiler warning or
+new compile/link blocker was found in executed lanes. CW-036 and Android
+Lifecycle notice corrections are Validated by CI for their executed lanes.
+
+AUDIT-AD95-01 / TF-112: named peer completion source-contract correction.
+AUDIT-AD95-02 / TF-113: absolute-wait mutation and independent witnessed
+loader/registry negatives. Both Implemented / static; Pending CI tests.
+AUDIT-AD95-03 / RT-120: enclosing dial dispatch rollback by generation,
+ID and live instance; extended existing admission fixture and source-order
+contract. Implemented / static; Pending CI compilation; Pending CI tests.
+
+Published branch/sanitizer suites each select 279: 277 pass/two static-check
+failures. OpenBSD 269 pass/two failures/three skips; CLANG64 260 pass/two
+failures/one skip. MSVC 35/36: RT-087 remains CI failure. Exact loader snaps
+now identify KERNELBASE DLL_PROCESS_ATTACH failure; its internal cause and
+the relationship to conhost denial remain unresolved. Collector no-runnable
+exit-command status is separate. Android 187 JVM tests pass, 15 fuzz smoke
+pass, all five packaging jobs pass. Java checks remain static/vectors,
+not live differential execution; UI and Perl quality are skipped.
+
+Prepared regressions were not executed locally. No compilation, build
+configuration, tests, workflow dispatch, commits or push in this audit.
+Historical results do not validate current unpublished corrections.
+
+
 ## Published 4e524d06 follow-up (2026-11-20)
 
 History reviewed: 555 runs / 82 SHAs, 552 full logs, one partial and two

@@ -1,5 +1,18 @@
 # Compilation and lint warning inventory
 
+## ad9514b5: prior own warning correction observed
+
+CW-036 C4389 is absent from successful MSVC compilation in run
+[44734750922](https://github.com/daviduhden/openi2pd/actions/runs/44734750922),
+job 136283218498, SHA ad9514b5. No own native compiler warning was found
+in complete latest logs. This statement is limited to executed toolchains.
+Android run 44734727435/job 136283140327 no longer emits Lifecycle
+GradleDependency notices after both 2.11.1 pins; Debug/Release each retain
+two ChromeOsAbiSupport warnings. builtInKotlin=false deprecation and
+Debian DEP8 --force-yes remain toolchain/external warnings, not cleared
+by successful execution. Perl quality and device UI were skipped.
+
+
 ## Successful Android and package diagnostics on 4e524d06
 
 Android run 44728029797, job 136260347188: Debug and Release each report

@@ -1,5 +1,14 @@
 # Compilation diagnostic patterns and repository-wide review
 
+## Successful native compilation does not validate source extractors
+
+In ad9514b5 no new native compile/link error was observed. Named callable
+construction preserves ownership but invalidates a literal direct-return
+extractor. Review guards, mutation fixtures and consumers when refactoring
+a transaction, even when public signatures retain defaults. TF-112/113
+remain fixture corrections pending CI rather than compiler fixes.
+
+
 ## Conditional count expressions and platform warnings
 
 C4389 may appear in a successful compile inside a failed job. Review the

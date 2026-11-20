@@ -22,6 +22,21 @@ Next evidence needs exact KERNELBASE image/PDB/initializer RVA and a
 code-only entry/return trace within the original closed probe deadline;
 never inspect credential-bearing worker operands. RT-087 remains CI failure.
 
+### RT-120: enclosing peer dispatch retains an admitted slot on exception
+
+Static preventive finding: CreatePeerDialCompletion rollback ended before
+ConnectToPeer allocated Address and dispatched CreateStream. A synchronous
+allocation/dispatch exception left a slot until expiry. DispatchPeerDial now
+keeps a reservation guard across both operations; retirement checks run
+generation, monotonic dial ID and a live exact torrent instance. It never
+invokes an external completion during unwind; accepted asynchronous work
+keeps its existing expiry. Review included tracker deadline ownership, null
+completions, generation restart and mismatched/expired owners.
+Extended test-torrents-admission witnesses Address/dispatch faults, incumbent
+preservation and stale-generation/wrong-ID/foreign-owner refusal. Implemented
+/ static; Pending CI compilation; Pending CI tests. RT-119's inner callable
+regression passes published ad9514b5; that does not validate this outer fix.
+
 
 ## 4e524d06: loader aftermath and preventive registration audit
 
