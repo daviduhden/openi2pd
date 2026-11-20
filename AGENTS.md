@@ -3223,3 +3223,12 @@ asynchronous expiry separate. Never invoke user completion during unwind.
 A named callable refactor must update source extractors and negative mutation
 operands together; mutation witnesses must remain explicit. A source-check
 failure is neither a compiler failure nor a sanitizer report.
+
+## Per-operation source authority and diagnostic exit (2026-11-20)
+
+After a witnessed source mutation, verify that another consumer cannot
+satisfy the same generic needle. Review each receiver and operand plus
+unknown/duplicate operations; global replacement is not an independent
+negative control. A process-exit debugger notification must not request a
+resume after the final process exits. Retain original worker status and
+module provenance separately from collector errors.

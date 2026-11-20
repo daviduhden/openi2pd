@@ -1,5 +1,17 @@
 # Compilation and lint warning inventory
 
+## dab02eb3: own native warnings absent in executed logs
+
+No own native compiler warning was found in complete latest job logs.
+Android run 44743740590/job 136313616369 passes 187 JVM tests; Debug
+and Release each retain two ChromeOsAbiSupport warnings. Lifecycle
+notices remain absent; builtInKotlin=false deprecation remains open.
+Successful Debian DEP8 still emits deprecated --force-yes, and MSYS2
+package installation advises closing other programs. These external/toolchain
+diagnostics do not justify project suppression flags. Device UI and Perl
+quality are skipped; their earlier findings remain open.
+
+
 ## ad9514b5: prior own warning correction observed
 
 CW-036 C4389 is absent from successful MSVC compilation in run

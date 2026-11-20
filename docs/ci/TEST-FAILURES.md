@@ -5,6 +5,48 @@ and license details.
 
 # Test failure inventory
 
+## dab02eb3: one checker family plus retained Windows failure
+
+Exact SHA `dab02eb3f89340dd464af646702954b44795e002`. Runs:
+44743735674 maintenance, 44743740590 Android, 44743755467 components/
+Java, 44743772027 focused instrumented TSan and 44743777396 packaging
+succeed. Runs 44743745432/44743749721 OpenSSL 3/4, 44743762052
+OpenBSD, 44743766901 Windows and 44743781980 validation fail.
+
+### TF-114: one process deadline masks another in a source checker
+
+Affected jobs: Linux 136313631524/136313631910/136313648312/136313648752,
+OpenBSD 136313690599, CLANG64 136313703616, sanitizers
+136313755634/136313755786/136313755806. Original TAP 166/167:
+child tracing requires bounded nonsecret probe / privacy boundary diagnosed.
+Mutation witness 165 now succeeds, but checker exit is 0 instead of 1.
+
+Root cause: the fixture changes GFlags WaitForExit while the checker still
+finds the generic bounded-wait substring on the debugger. Unlike TF-113,
+the mutation actually happened. Enforce the complete receiver/operand/line
+grammar and exact inventory for GFlags, debugger and cleanup; independently
+mutate each role. Global review includes router-loader and worker-heap
+waits, missing/duplicate/unknown waits and newly inserted unbounded waits.
+Implemented / static; Pending CI tests. The unchanged workflow's deadline
+was bounded; this is checker enforcement, not an observed product hang.
+
+Each Linux branch and sanitizer suite selects 279: 278 pass/one above
+failure. OpenBSD: 270 pass/one failure/three root-runner skips (274).
+CLANG64: 261 pass/one failure/one POSIX-only skip (263). MSVC job
+136313704140: 35 pass/one RT-087 failure (36). The source-order contract
+and published RT-120 admission regressions pass in executed suites.
+No actual ASan/LSan/UBSan/TSan report signature was found in complete logs;
+failed static checks remain real CI failures. Android: 187 JVM/27 suites
+pass; fuzz smoke 15; all five packaging jobs succeed. Java: 24 static/
+vector checks plus two known gaps, no differential binary execution.
+
+Six metadata pages: 575 runs/84 SHAs, 205 success/304 failure/66 cancelled.
+572 complete logs, one partial with three job logs, two cancelled runs
+unavailable; all five historical missing job logs retried, HTTP 404 remains.
+No retention-expiry cause is inferred. Exact metadata, logs and downloaded
+artifacts are retained outside the tree in /var/tmp/openi2pd-ci-dab0.
+
+
 ## ad9514b5: fixture drift repeats across otherwise executed suites
 
 Exact SHA `ad9514b5c155884b76c09d8c37198ad38482a3ac`. Latest runs:

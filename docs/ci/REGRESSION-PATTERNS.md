@@ -5,6 +5,20 @@ and license details.
 
 # Regression patterns
 
+## Independent deadline and debugger-event mutations
+
+TF-114 keeps separate GFlags/debugger/cleanup wait mutations and rejects
+unknown, missing or repeated process waits through a closed literal grammar.
+The analogous router-loader and worker-heap waits are reviewed separately;
+a second occurrence cannot satisfy another role's contract. Each negative
+control witnesses its own substitution before expecting refusal.
+
+RT-121 preserves exit event evidence with notification rather than an
+unconditional resume. Module-load identity is collected in the closed
+authority-free probe before unload; no credential-bearing tracing, guessed
+internal breakpoint, retry or containment relaxation is introduced.
+
+
 ## Complete admission includes the enclosing synchronous dispatcher
 
 RT-120 follows inner callable allocation into Address creation and executor

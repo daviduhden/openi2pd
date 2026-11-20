@@ -1,5 +1,14 @@
 # Compilation diagnostic patterns and repository-wide review
 
+## Repeated API names need per-consumer source authority
+
+TF-114 demonstrates that a witnessed source mutation is necessary but not
+sufficient: a second process can retain the same WaitForExit substring and
+mask removal of the first process's deadline. Review complete receiver,
+argument and inventory cardinality per diagnostic action. Distinguish
+source-checker failures from compiler or sanitizer diagnostics.
+
+
 ## Successful native compilation does not validate source extractors
 
 In ad9514b5 no new native compile/link error was observed. Named callable

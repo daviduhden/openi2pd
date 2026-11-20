@@ -9,6 +9,16 @@ Tracks compile/configure/link failures reported by manual GitHub Actions.
 
 # Compilation error inventory
 
+## dab02eb3: compilation reaches executed suites
+
+No new compile/link blocker was found in the ten latest workflows. Linux
+GCC 16.2.0/Clang 23.1.6 use OpenSSL 3.5.9/4.1.0; OpenBSD Clang
+22.1.6 uses LibreSSL 4.4.0; MSVC 19.44.35230.0 uses OpenSSL 3.6.5.
+Failures are TF-114 and the retained Windows RT-087, not compilation.
+OpenSSL 4.1.0 is not dedicated 4.0.x evidence. Skipped capabilities and
+unpublished corrections remain unvalidated.
+
+
 ## ad9514b5: no new compilation blocker
 
 The ten latest manual workflows reached their executed build targets without

@@ -8868,3 +8868,34 @@ not live differential execution; UI and Perl quality are skipped.
 Prepared regressions were not executed locally. No compilation, build
 configuration, tests, workflow dispatch, commits or push in this audit.
 Historical results do not validate current unpublished corrections.
+
+## Published dab02eb3 follow-up (2026-11-20)
+
+575 runs/84 SHAs, 572 full logs plus one partial and two unavailable
+cancelled logs; five historical job gaps retried HTTP 404. Latest ten
+workflows: five success/five failure. No new compile/link blocker or own
+native compiler warning found in executed lanes. Source-order TF-112 and
+RT-120 controls are Validated by CI in executed native lanes; tests added
+after that SHA remain Pending CI tests.
+
+AUDIT-DAB0-01 / TF-114: per-process closed wait inventory and independent
+negative fixtures; global review covers all five diagnostic waits.
+Implemented / static; Pending CI tests. Mutation now occurs but another
+receiver's matching substring masked the missing deadline.
+AUDIT-DAB0-02 / RT-121: closed notification-only debugger exit plus
+KERNELBASE load identity collection. Implemented / static; Pending CI tests.
+RT-087 remains CI failure: exact new image confirms KERNELBASE
+DLL_PROCESS_ATTACH failure, not its internal cause. No containment change.
+
+Published Linux backend/sanitizer lanes: 278/279 pass, one Perl checker
+failure. OpenBSD 270 pass/one failure/three root capability skips; CLANG64
+261 pass/one failure/one POSIX-only skip; MSVC 35/36, RT-087 fails.
+No actual sanitizer error signature found. Android 187 JVM tests pass, two
+ChromeOS warnings per variant and AGP deprecation remain; device UI and
+Perl quality skipped. Fifteen fuzz smoke tests and all five packaging jobs
+pass. Java checks remain static/vectors, not live differential evidence.
+Historical void HKDF propagation, dedicated OpenSSL 4.0.x coverage and
+physical provider/device/capability evidence remain open.
+
+No local compilation, build configuration or tests; no dispatch, commit
+or push. Local corrections require manual CI on their own revision.
