@@ -3525,8 +3525,38 @@ namespace torrents
 			LogPrint (eLogInfo, "TorrentsTunnel: Can't connect to self");
 			return;
 		}
-		auto complete = CreatePeerDialCompletion (torrent, peer, origin);
-		if (complete) CreateStream (std::move (complete), std::make_shared<i2p::client::Address> (peer), TORRENT_PORT);
+		DispatchPeerDial (std::move (torrent), peer, origin);
+	}
+
+	void TorrentsTunnel::RetireUnsubmittedDial (const PeerDialReservation & reservation)
+	{
+		std::lock_guard<std::mutex> publication (m_InboundAcceptMutex);
+		if (!reservation.generation || m_PeerDialGeneration != reservation.generation) return;
+		std::lock_guard<std::mutex> admission (reservation.generation->mutex);
+		auto torrent = reservation.torrent.lock ();
+		if (!torrent) return;
+		auto pending = m_PendingDials.find (reservation.dial);
+		if (pending != m_PendingDials.end () && pending->second.torrent.lock () == torrent)
+			m_PendingDials.erase (pending);
+	}
+
+	void TorrentsTunnel::DispatchPeerDial (
+		std::shared_ptr<Torrent> torrent, const i2p::data::IdentHash & peer, PeerConnectionOrigin origin)
+	{
+		PeerDialReservation reservation;
+		auto complete = CreatePeerDialCompletion (torrent, peer, origin, &reservation);
+		if (!complete) return;
+		// Callable construction is only the first admission transaction.
+		// Address allocation and synchronous dispatch can still throw. Do
+		// not execute a user completion while unwinding those operations.
+		auto rollback = i2p::modern::ScopeExit ([&] { RetireUnsubmittedDial (reservation); });
+		if (m_RegistryCheckpointForTesting) m_RegistryCheckpointForTesting (RegistryCheckpoint::PeerDialAddress);
+		auto address = std::make_shared<i2p::client::Address> (peer);
+		if (m_RegistryCheckpointForTesting) m_RegistryCheckpointForTesting (RegistryCheckpoint::PeerDialDispatch);
+		CreateStream (std::move (complete), std::move (address), TORRENT_PORT);
+		// Accepted asynchronous work remains bounded by the existing dial
+		// expiry; returning from dispatch is not completion evidence.
+		rollback.dismiss ();
 	}
 
 	void TorrentsTunnel::StartPeerDials ()
@@ -3540,8 +3570,8 @@ namespace torrents
 		m_PeerDialGeneration = std::make_shared<InboundAcceptGeneration> ();
 	}
 
-	i2p::client::StreamRequestComplete TorrentsTunnel::CreatePeerDialCompletion (
-		std::shared_ptr<Torrent> torrent, const i2p::data::IdentHash & peer, PeerConnectionOrigin origin)
+	i2p::client::StreamRequestComplete TorrentsTunnel::CreatePeerDialCompletion (std::shared_ptr<Torrent> torrent,
+		const i2p::data::IdentHash & peer, PeerConnectionOrigin origin, PeerDialReservation * reservation)
 	{
 		std::weak_ptr<TorrentsTunnel> owner = std::static_pointer_cast<TorrentsTunnel> (weak_from_this ().lock ());
 		std::shared_ptr<InboundAcceptGeneration> generation;
@@ -3604,6 +3634,7 @@ namespace torrents
 					torrent->MarkPeerCandidateFailed (peer, i2p::util::GetMonotonicSeconds ());
 			}
 		};
+		if (reservation) *reservation = PeerDialReservation { generation, torrent, dial };
 		rollback.dismiss ();
 		return complete;
 	}

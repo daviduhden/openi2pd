@@ -116,6 +116,13 @@ Do not let them edit, build or run tests.
 
 ## Known issues and decisions
 
+The peer completion factory is not the end of dial admission: the caller
+still allocates an Address and dispatches service work. Keep rollback across
+that synchronous boundary with exact generation, dial ID and live torrent
+instance checks. Do not run a completion during unwinding; asynchronous
+acceptance and physical completion retain separate deadline ownership.
+
+
 Peer dial admission includes allocating the completion callable. Keep exact
 reservation rollback armed through std::function construction under the
 admission gate; retain the attempt timestamp and consumed ID on failure.

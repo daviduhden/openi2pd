@@ -1428,3 +1428,18 @@ require_runtime_source("libi2pd_client/TorrentsTunnel.cpp"
   "m_PendingDials.erase (position);")
 require_runtime_source("tests/test-torrents-admission.cpp"
   "assert (dialing->m_PendingDials.empty ());")
+
+# The caller owns admission until synchronous dispatch has returned.
+require_runtime_order("libi2pd_client/TorrentsTunnel.cpp"
+  "void TorrentsTunnel::DispatchPeerDial (" "void TorrentsTunnel::StartPeerDials ("
+  "CreatePeerDialCompletion (torrent, peer, origin, &reservation)"
+  "if (!complete) return;" "auto rollback ="
+  "RetireUnsubmittedDial (reservation);" "RegistryCheckpoint::PeerDialAddress"
+  "std::make_shared<i2p::client::Address> (peer)"
+  "RegistryCheckpoint::PeerDialDispatch"
+  "CreateStream (std::move (complete), std::move (address), TORRENT_PORT)"
+  "rollback.dismiss ();")
+require_runtime_source("libi2pd_client/TorrentsTunnel.cpp"
+  "m_PeerDialGeneration != reservation.generation")
+require_runtime_source("tests/test-torrents-admission.cpp"
+  "RegistryPoint::PeerDialAddress, RegistryPoint::PeerDialDispatch")

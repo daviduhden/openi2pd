@@ -503,8 +503,19 @@ namespace torrents
 		// Lock order is publication mutex, then generation admission mutex.
 		std::shared_ptr<InboundAcceptGeneration> m_PeerDialGeneration;
 		void StartPeerDials ();
-		i2p::client::StreamRequestComplete CreatePeerDialCompletion (
+		// Dispatch rollback retires only its exact run and torrent instance.
+		struct PeerDialReservation
+		{
+			std::shared_ptr<InboundAcceptGeneration> generation;
+			std::weak_ptr<Torrent> torrent;
+			uint64_t dial = 0;
+		};
+		void RetireUnsubmittedDial (const PeerDialReservation & reservation);
+		void DispatchPeerDial (
 			std::shared_ptr<Torrent> torrent, const i2p::data::IdentHash & peer, PeerConnectionOrigin origin);
+		i2p::client::StreamRequestComplete CreatePeerDialCompletion (std::shared_ptr<Torrent> torrent,
+			const i2p::data::IdentHash & peer, PeerConnectionOrigin origin,
+			PeerDialReservation * reservation = nullptr);
 		// Enumerate and read the configured torrent directory on the storage
 		// service. Parsing/insertion is posted back to the network service;
 		// the network thread never walks the directory or opens a file.
@@ -636,7 +647,9 @@ namespace torrents
 			MembershipNode,
 			TorrentID,
 			TrackersReady,
-			PeerDialCompletion
+			PeerDialCompletion,
+			PeerDialAddress,
+			PeerDialDispatch
 		};
 		void (*m_RegistryCheckpointForTesting) (RegistryCheckpoint) = nullptr;
 		friend struct TorrentAdmissionTestAccess;

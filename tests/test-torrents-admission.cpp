@@ -179,6 +179,36 @@ struct TorrentAdmissionTestAccess
 		assert (complete && dialing->m_PendingDials.size () == 1);
 		complete (nullptr);
 		assert (dialing->m_PendingDials.empty ());
+		// An incumbent must survive failure of another outer dispatch.
+		TorrentsTunnel::PeerDialReservation incumbent;
+		auto incumbentComplete
+			= dialing->CreatePeerDialCompletion (torrent, peer, ePeerConnectionOriginTracker, &incumbent);
+		assert (incumbentComplete && dialing->m_PendingDials.size () == 1);
+		for (auto point : { RegistryPoint::PeerDialAddress, RegistryPoint::PeerDialDispatch })
+		{
+			FailRegistry (
+				*dialing, point, 0, [&] { dialing->DispatchPeerDial (torrent, peer, ePeerConnectionOriginTracker); });
+			assert (dialing->m_PendingDials.size () == 1);
+			assert (dialing->m_PendingDials.contains (incumbent.dial));
+		}
+		// A different ID never retires the incumbent either.
+		auto wrongID = incumbent;
+		++wrongID.dial;
+		dialing->RetireUnsubmittedDial (wrongID);
+		assert (dialing->m_PendingDials.contains (incumbent.dial));
+		// A stale rollback cannot erase an ID reused by another run.
+		dialing->StartPeerDials ();
+		dialing->RetireUnsubmittedDial (incumbent);
+		assert (dialing->m_PendingDials.contains (incumbent.dial));
+		// Nor may it erase the same run's differently owned entry.
+		incumbent.generation = dialing->m_PeerDialGeneration;
+		auto replacement = std::make_shared<Torrent> (Hash (78));
+		dialing->m_PendingDials.at (incumbent.dial).torrent = replacement;
+		dialing->RetireUnsubmittedDial (incumbent);
+		assert (dialing->m_PendingDials.at (incumbent.dial).torrent.lock () == replacement);
+		incumbent.torrent = replacement;
+		dialing->RetireUnsubmittedDial (incumbent);
+		assert (dialing->m_PendingDials.empty ());
 	}
 
 	static Torrent::InfoHash Hash (unsigned value)

@@ -1077,3 +1077,12 @@ fixed-path serialization requirement. It witnesses a second-index fault,
 local/peer collisions, pre-SYN identity cleanup, stale retirement after
 key reuse, successful outgoing admission and throwing external handoff.
 It is also in the prepared MSVC 36-target selection. It has not executed.
+
+## Enclosing peer dispatch exception controls
+
+The extended test-torrents-admission prepares witnessed failures before
+Address allocation and synchronous CreateStream dispatch. It checks that
+rollback preserves incumbent reservations and rejects stale generation,
+wrong ID and foreign owner authority. Existing label/timeout/parallel-safety
+registration is retained. These new controls are Pending CI tests; published
+ad9514b5 only validates the earlier inner-callback transaction controls.
