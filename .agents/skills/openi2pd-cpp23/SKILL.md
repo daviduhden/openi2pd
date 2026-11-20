@@ -117,6 +117,12 @@ compile, run tests or run project scripts.
 
 ## Known issues and decisions
 
+- Fixture conditionals have a type before comparison: int literals in
+  `fault ? 1 : 0` can trigger MSVC C4389 against unsigned counters. Use
+  unsigned literals for unsigned observations and std::size_t expectations
+  for container counts; review equivalent fixtures without casting arbitrary
+  protocol operands or weakening the assertion.
+
 - Raw-pointer list preparation needs two ownership levels: the current
   packet until node allocation succeeds, then an owning local batch until
   no-throw splice. PushBackReceived keeps the old queue intact if any first

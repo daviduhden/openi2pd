@@ -7,6 +7,7 @@
  * handlers release their packets without a borrowing pool deleter.
  */
 #include <cassert>
+#include <cstddef>
 #include <cstring>
 #include <initializer_list>
 #include <memory>
@@ -62,7 +63,8 @@ struct StreamPacketOwnershipTestAccess
 		stream.m_PacketCheckpointForTesting = nullptr;
 		assert (threw && observed == 1);
 		assert (stream.m_SavedPackets.empty ());
-		assert (stream.m_ReceiveQueue.size () == (point == Point::ReceivePublished ? 1 : 0));
+		const std::size_t expectedReceived = point == Point::ReceivePublished ? 1 : 0;
+		assert (stream.m_ReceiveQueue.size () == expectedReceived);
 	}
 	static void Drain (Stream & stream, StreamingDestination & destination)
 	{

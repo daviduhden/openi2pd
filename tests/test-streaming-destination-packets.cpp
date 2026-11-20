@@ -6,6 +6,7 @@
  * use an unstarted destination; no network or timer wait is required.
  */
 #include <cassert>
+#include <cstddef>
 #include <cstring>
 #include <initializer_list>
 #include <memory>
@@ -61,7 +62,8 @@ struct StreamingDestinationPacketTestAccess
 			threw = true;
 		}
 		assert (threw && observed == 1);
-		assert (destination.m_SavedPackets.size () == (existing ? 1 : 0));
+		const std::size_t expectedSaved = existing ? 1 : 0;
+		assert (destination.m_SavedPackets.size () == expectedSaved);
 		if (existing)
 		{
 			assert (destination.m_SavedPackets.at (id) == prior);
@@ -95,10 +97,11 @@ struct StreamingDestinationPacketTestAccess
 		{
 			threw = true;
 		}
-		assert (threw == fault && observed == (fault ? 1 : 0));
+		assert (threw == fault && observed == (fault ? 1u : 0u));
 		assert (destination.m_SavedPackets.empty ());
 		assert (old.expired ());
-		assert (stream.m_ReceiveQueue.size () == (fault ? 1 : 2));
+		const std::size_t expectedReceived = fault ? 1 : 2;
+		assert (stream.m_ReceiveQueue.size () == expectedReceived);
 	}
 	static void CheckExpiry (StreamingDestination & destination)
 	{
