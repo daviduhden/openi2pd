@@ -699,6 +699,39 @@ push @errors, windows_startup_command_errors( $texts{'build-windows.yml'} )
 push @errors, windows_startup_probe_errors( $texts{'build-windows.yml'} )
   if exists $texts{'build-windows.yml'};
 
+push @errors,
+  windows_process_wait_errors(
+    $texts{'build-windows.yml'},
+    'diagnostic',
+    q!if (-not $debugger.WaitForExit(20000)) {!,
+    q!if (-not $debugger.WaitForExit(120000)) {!,
+    q!if (-not $flagProcess.WaitForExit((Remaining-ProbeMilliseconds))) {!,
+    q!if (-not $debugger.WaitForExit((Remaining-ProbeMilliseconds))) {!,
+q!if (-not $process.WaitForExit(5000)) { throw 'startup probe cleanup deadline' }!
+  ) if exists $texts{'build-windows.yml'};
+
+# Inventory complete call lines rather than sharing a spelling across
+# processes or allowing a second call to satisfy a missing deadline.
+sub windows_process_wait_errors {
+    my ( $source, $context, @expected ) = @_;
+    my @violations;
+    my %wait_roles = map { $_ => 0 } @expected;
+    for my $wait_line ( $source =~ /^([^\n]*WaitForExit[^\n]*)$/mg ) {
+        $wait_line =~ s/\A\s+|\s+\z//g;
+        if ( exists $wait_roles{$wait_line} ) {
+            ++$wait_roles{$wait_line};
+        }
+        else {
+            push @violations,
+              "build-windows.yml: $context has an unreviewed process wait";
+        }
+    }
+    push @violations,
+      "build-windows.yml: $context process wait inventory changed"
+      if grep { $_ != 1 } values %wait_roles;
+    return @violations;
+}
+
 sub windows_startup_command_errors {
     my ($windows) = @_;
     my @violations;
@@ -756,7 +789,8 @@ sub windows_crash_command_errors {
       && $windows =~
       /foreach \(\$test in \@\([^)]*'test-privsep-windows-supervisor'\s*\)\)/
       && $windows =~
-/^\s*build-msvc\/tests\/Release\/test-privsep-windows-supervisor[.]exe\s*$/m;
+/^\s*build-msvc\/tests\/Release\/test-privsep-windows-supervisor[.]exe\s*$/m
+      && index( $windows, q{$debugger.WaitForExit(120000)} ) >= 0;
     push @violations,
       'build-windows.yml: crash marker must fail the diagnostic step'
       unless index( $windows,
@@ -852,13 +886,24 @@ q{$probeArguments = @('-o', '-noshell', '-lines', '-y', "`"$symbols`"", '-logo',
       'build-windows.yml: startup probe cannot trace authenticated workers'
       unless @child_lines == 1 && $child_lines[0] eq $arguments;
 
+    # Each process owns a separate wait. A shared substring can remain
+    # present after another receiver loses its deadline. Accept only the
+    # closed source grammar below, once per role, including cleanup.
+    push @violations,
+      windows_process_wait_errors(
+        $probe,
+        'startup probe',
+        q!if (-not $flagProcess.WaitForExit((Remaining-ProbeMilliseconds))) {!,
+        q!if (-not $debugger.WaitForExit((Remaining-ProbeMilliseconds))) {!,
+q!if (-not $process.WaitForExit(5000)) { throw 'startup probe cleanup deadline' }!
+      );
+
     for my $required (
         q{if: ${{ always() && steps.msvc_tests.outcome == 'failure' }}},
         q{Get-FileHash -Algorithm SHA256 -Path $binary},
         q{$symbolCache = Join-Path $env:RUNNER_TEMP 'openi2pd-os-symbols'},
         q{$symbols = (Split-Path -Parent $binary) + ';srv*' + $symbolCache + '*https://msdl.microsoft.com/download/symbols'},
         q{Select-String -Path $log -Pattern '^OPENI2PD_PROBE_ARMED\s*$' -Quiet},
-        q{WaitForExit((Remaining-ProbeMilliseconds))},
         q{60000 - $probeClock.ElapsedMilliseconds},
         q{@('/i', $image, '+sls')},
         q{$restoreKey.SetValue('GlobalFlag', $savedFlag, $savedKind)},

@@ -452,6 +452,7 @@ sub workflow_crash_fixtures {
         ],
         [ qr{,\s*'test-privsep-windows-supervisor'(?=\s*\)\))}, '' ],
         [ '0xc0000142',                                         '0xc0000143' ],
+        [ q{$debugger.WaitForExit(120000)}, q{$debugger.WaitForExit()} ],
         [
             'build-msvc/tests/Release/test-privsep-windows-supervisor.exe',
             'missing-image.exe'
@@ -479,9 +480,25 @@ qr/worker initialization diagnostic|unsupported crash debugger line|missing boun
     }
     write_file( $windows, $source );
     for my $boundary (
-        [ '--diagnose-worker-initialization',           '--privsep-worker' ],
-        [ 'WaitForExit((Remaining-ProbeMilliseconds))', 'WaitForExit()' ],
-        [ '60000 - $probeClock.ElapsedMilliseconds',    '60000' ],
+        [ '--diagnose-worker-initialization', '--privsep-worker' ],
+        [
+            q{$flagProcess.WaitForExit((Remaining-ProbeMilliseconds))},
+            q{$flagProcess.WaitForExit()}
+        ],
+        [
+            q{$debugger.WaitForExit((Remaining-ProbeMilliseconds))},
+            q{$debugger.WaitForExit()}
+        ],
+        [ q{$process.WaitForExit(5000)}, q{$process.WaitForExit()} ],
+        [
+            q{$flagProcess.WaitForExit((Remaining-ProbeMilliseconds))},
+            q{$debugger.WaitForExit((Remaining-ProbeMilliseconds))}
+        ],
+        [
+            q!function Remaining-ProbeMilliseconds {!,
+            q!$unreviewed.WaitForExit(); function Remaining-ProbeMilliseconds {!
+        ],
+        [ '60000 - $probeClock.ElapsedMilliseconds', '60000' ],
         [ q{@('/i', $image, '+sls')}, q{@('/i', $image, '-sls')} ],
         [
             q{$savedKind = $key.GetValueKind('GlobalFlag')},

@@ -122,6 +122,12 @@ a TUI client.
 
 ## Known issues and decisions
 
+For repeated source APIs, a single substring-presence assertion cannot
+protect each consumer. Inventory complete closed call lines by receiver,
+reject duplicate/unknown/unbounded calls, and witness separate negatives
+for each admitted role. Never globally mutate all copies to hide a gap.
+
+
 When a source-based workflow checker changes command spelling, search its
 negative fixture operands too. Preserve a witnessed mutation before checking
 refusal, and keep deadline, flag activation and cleanup controls independent.
