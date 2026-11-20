@@ -102,6 +102,13 @@ execution. Ask for:
 
 ## Known issues and decisions
 
+Loader snaps naming KERNELBASE DLL_PROCESS_ATTACH narrows the failure to
+an initializer, not to an API or sandbox rule. Correlate each process ID and
+exact module image before relating a conhost denial to worker startup. A
+final debugger go with no runnable process is collector status, not the
+worker exit; retain both without removing containment to change results.
+
+
 - Interpret loader return addresses against matching OS PDBs and retained
   module identity. A local-only symbol path may resolve nearest exports,
   which cannot identify the failing initializer. CREATE_NO_WINDOW and a

@@ -5,6 +5,24 @@ and license details.
 
 # Runtime error inventory
 
+## ad9514b5: RT-087 initialization boundary identified
+
+Windows run 44734750922, MSVC job 136283218498, artifact 14629807396.
+Exact authority-free probe image SHA256:
+`5C2F5597143DE546AF61DB55A2AA77BF3FAAA4E1373C253CBFD879BFCA4D6A35`.
+Actual arming marker and GFlags value 2 establish loader snaps ran. At
+initializer.txt:1158 child 1b58 fails KERNELBASE.dll DLL_PROCESS_ATTACH
+(initializer 00007FF9A044B170), then KERNEL32 subsystem loading propagates
+c0000142. This narrows RT-087 to a DLL initializer, not its internal failing
+operation. Separate conhost 41c exits c0000022; causality is unproven.
+The collector additionally reports No runnable debuggees when its final
+exit handler executes g; that debugger status is distinct from the original
+worker failure. Do not weaken tokens, jobs, inherited handles or mitigations.
+Next evidence needs exact KERNELBASE image/PDB/initializer RVA and a
+code-only entry/return trace within the original closed probe deadline;
+never inspect credential-bearing worker operands. RT-087 remains CI failure.
+
+
 ## 4e524d06: loader aftermath and preventive registration audit
 
 RT-087 remains open: [Windows run 44728051011](https://github.com/daviduhden/openi2pd/actions/runs/44728051011),
