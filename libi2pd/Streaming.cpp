@@ -1000,6 +1000,7 @@ namespace stream
 
 	void Stream::HandlePing (Packet * packet)
 	{
+		std::unique_ptr<Packet> pending (packet);
 		uint16_t flags = packet->GetFlags ();
 		if (ProcessOptions (flags, packet) && m_RemoteIdentity)
 		{
@@ -1019,7 +1020,7 @@ namespace stream
 			SendPackets ({ &p });
 			LogPrint (eLogDebug, "Streaming: Pong of ", p.len, " bytes sent");
 		}
-		m_LocalDestination.DeletePacket (packet);
+		m_LocalDestination.DeletePacket (pending.release ());
 	}
 
 	void Stream::ProcessAck (Packet * packet)
@@ -2821,13 +2822,14 @@ namespace stream
 
 	bool StreamingDestination::RejectSynWithReset (Packet * packet, uint32_t receiveStreamID)
 	{
+		std::unique_ptr<Packet> pending (packet);
 		if (!packet) return false;
 		// A detached stream consumes the SYN so only an authenticated packet
 		// is answered, and it is never registered: follow-on packets for this
 		// receiveStreamID still find no stream and are treated as unknown.
 		auto stream = std::make_shared<Stream> (m_Owner->GetService (), shared_from_this ());
 		stream->SetPorts (m_LastFromPort, m_LastToPort);
-		bool sent = stream->RejectWithReset (packet);
+		bool sent = stream->RejectWithReset (pending.release ());
 		if (sent)
 		{
 			m_NumRejectionResets.fetch_add (1);
@@ -2893,17 +2895,18 @@ namespace stream
 
 	void StreamingDestination::RejectSyn (Packet * packet, uint32_t receiveStreamID, const char * reason)
 	{
+		std::unique_ptr<Packet> pending (packet);
 		LogSynRejection (reason, receiveStreamID);
 		if (m_RejectionAction.load () == StreamAdmission::eDrop)
 		{
 			// `limitAction=drop`: the peer gets no answer at all, so the SYN is
 			// consumed without a stream and without polluting the
 			// recently-closed table (a retransmission is dropped again).
-			DeletePacket (packet);
+			DeletePacket (pending.release ());
 			return;
 		}
 		RememberRecentlyClosed (receiveStreamID);
-		RejectSynWithReset (packet, receiveStreamID);
+		RejectSynWithReset (pending.release (), receiveStreamID);
 	}
 
 	// Bounded memory of streams that ended, or whose SYN was refused,
@@ -3032,11 +3035,6 @@ namespace stream
 
 	StreamingDestination::~StreamingDestination ()
 	{
-		for (auto & it : m_SavedPackets)
-		{
-			for (auto it1 : it.second) DeletePacket (it1);
-			it.second.clear ();
-		}
 		m_SavedPackets.clear ();
 	}
 
@@ -3113,10 +3111,8 @@ namespace stream
 		}
 		// Packets buffered before their SYN belong to the generation that is
 		// being stopped. Keeping them would hand data from before the stop
-		// to a stream created after a restart, and their expiry timers hold
-		// a reference to this destination for no purpose.
-		for (auto & it : m_SavedPackets)
-			for (auto it1 : it.second) DeletePacket (it1);
+		// to a stream created after a restart. Clearing each owning batch
+		// retires its timer; queued callbacks retain only weak authority.
 		m_SavedPackets.clear ();
 		{
 			std::lock_guard<std::mutex> l (m_StreamsMutex);
@@ -3127,12 +3123,83 @@ namespace stream
 		}
 	}
 
+	void StreamingDestination::SaveIncomingPacket (uint32_t receiveStreamID, std::unique_ptr<Packet> packet)
+	{
+		packet->from = nullptr; // A saved packet cannot borrow a ratchet session.
+		auto it = m_SavedPackets.find (receiveStreamID);
+		if (it != m_SavedPackets.end ())
+		{
+			if (it->second->packets.size () >= MAX_SAVED_PACKETS_PER_STREAM)
+			{
+				LogPrint (eLogWarning, "Streaming: Saved packet list is full for ", receiveStreamID);
+				DeletePacket (packet.release ());
+				return;
+			}
+			if (m_SavedPacketCheckpointForTesting)
+				m_SavedPacketCheckpointForTesting (SavedPacketCheckpoint::PacketNode);
+			it->second->packets.emplace_back (std::move (packet));
+			return;
+		}
+		if (m_SavedPackets.size () >= MAX_SAVED_STREAM_IDS)
+		{
+			LogPrint (eLogWarning, "Streaming: Saved stream table is full");
+			DeletePacket (packet.release ());
+			return;
+		}
+		if (m_SavedPacketCheckpointForTesting) m_SavedPacketCheckpointForTesting (SavedPacketCheckpoint::Batch);
+		auto batch = std::make_shared<SavedPacketBatch> (m_Owner->GetService ());
+		if (m_SavedPacketCheckpointForTesting) m_SavedPacketCheckpointForTesting (SavedPacketCheckpoint::PacketNode);
+		batch->packets.emplace_back (std::move (packet));
+		batch->expiry.expires_after (std::chrono::seconds (PENDING_INCOMING_TIMEOUT));
+		if (m_SavedPacketCheckpointForTesting) m_SavedPacketCheckpointForTesting (SavedPacketCheckpoint::TimerWait);
+		batch->expiry.async_wait (
+			[weak = weak_from_this (), expected = std::weak_ptr<SavedPacketBatch> (batch), receiveStreamID] (
+				const boost::system::error_code & ecode)
+			{
+				if (auto self = weak.lock ()) self->ExpireSavedPackets (receiveStreamID, expected, ecode);
+			});
+		if (m_SavedPacketCheckpointForTesting) m_SavedPacketCheckpointForTesting (SavedPacketCheckpoint::TableNode);
+		m_SavedPackets.emplace (receiveStreamID, std::move (batch));
+	}
+
+	void StreamingDestination::DrainSavedPackets (uint32_t receiveStreamID, Stream & stream)
+	{
+		auto it = m_SavedPackets.find (receiveStreamID);
+		if (it == m_SavedPackets.end ()) return;
+		auto batch = std::move (it->second);
+		// Consumption may throw after transferring or deleting a packet.
+		// Retire the entire old map entry before entering the consumer.
+		m_SavedPackets.erase (it);
+		batch->expiry.cancel ();
+		LogPrint (
+			eLogDebug, "Streaming: Processing ", batch->packets.size (), " saved packets for rSID=", receiveStreamID);
+		while (!batch->packets.empty ())
+		{
+			auto packet = std::move (batch->packets.front ());
+			batch->packets.pop_front ();
+			stream.HandleNextPacket (packet.release ());
+		}
+	}
+
+	void StreamingDestination::ExpireSavedPackets (uint32_t receiveStreamID,
+		const std::weak_ptr<SavedPacketBatch> & expected, const boost::system::error_code & ecode)
+	{
+		if (ecode) return;
+		auto batch = expected.lock ();
+		if (!batch) return;
+		auto it = m_SavedPackets.find (receiveStreamID);
+		if (it == m_SavedPackets.end () || it->second != batch) return;
+		// Identity also rejects an old successful completion after key reuse.
+		m_SavedPackets.erase (it);
+	}
+
 	void StreamingDestination::HandleNextPacket (Packet * packet)
 	{
+		std::unique_ptr<Packet> pending (packet);
 		if (!ValidatePacket (packet))
 		{
 			LogPrint (eLogWarning, "Streaming: Malformed packet of ", packet ? packet->len : 0, " bytes, dropped");
-			DeletePacket (packet);
+			DeletePacket (pending.release ());
 			return;
 		}
 		uint32_t sendStreamID = packet->GetSendStreamID ();
@@ -3152,19 +3219,19 @@ namespace stream
 				lastToPort = m_LastToPort;
 			}
 			if (stream)
-				stream->HandleNextPacket (packet);
+				stream->HandleNextPacket (pending.release ());
 			else if (packet->IsEcho () && m_Owner->IsStreamingAnswerPings ())
 			{
 				// ping
 				LogPrint (eLogInfo, "Streaming: Ping received sSID=", sendStreamID);
 				auto s = std::make_shared<Stream> (m_Owner->GetService (), shared_from_this ());
 				s->SetPorts (lastFromPort, lastToPort);
-				s->HandlePing (packet);
+				s->HandlePing (pending.release ());
 			}
 			else
 			{
 				LogPrint (eLogInfo, "Streaming: Unknown stream sSID=", sendStreamID);
-				DeletePacket (packet);
+				DeletePacket (pending.release ());
 			}
 		}
 		else
@@ -3182,7 +3249,7 @@ namespace stream
 				// from other threads while this one runs.
 				if (pongHandler && *pongHandler)
 					(*pongHandler) (packet->from ? packet->from->GetDestinationPtr () : nullptr);
-				DeletePacket (packet);
+				DeletePacket (pending.release ());
 				return;
 			}
 			if (packet->IsSYN () && !packet->GetSeqn ()) // new incoming stream
@@ -3197,18 +3264,22 @@ namespace stream
 					// live stream (that would throw away a working path and the
 					// connection's RTT/RTO history).
 					LogPrint (eLogInfo, "Streaming: Incoming streaming with rSID=", receiveStreamID, " already exists");
-					DeletePacket (packet);
+					DeletePacket (pending.release ());
 					return;
 				case SynAdmission::eRecentlyClosed:
 					// A retransmitted SYN must not resurrect a connection that is
 					// already gone (Java ConnectionManager._recentlyClosed).
-					RejectSyn (packet, receiveStreamID, "recently closed"); // consumes the packet
+					RejectSyn (pending.release (), receiveStreamID, "recently closed"); // consumes the packet
 					return;
-				case SynAdmission::eOverLimit: RejectSyn (packet, receiveStreamID, "concurrent stream limit"); return;
+				case SynAdmission::eOverLimit:
+					RejectSyn (pending.release (), receiveStreamID, "concurrent stream limit");
+					return;
 				case SynAdmission::eBacklogFull:
-					RejectSyn (packet, receiveStreamID, "pending incoming backlog full");
+					RejectSyn (pending.release (), receiveStreamID, "pending incoming backlog full");
 					return;
-				case SynAdmission::eThrottled: RejectSyn (packet, receiveStreamID, "connection throttle"); return;
+				case SynAdmission::eThrottled:
+					RejectSyn (pending.release (), receiveStreamID, "connection throttle");
+					return;
 				case SynAdmission::eAccept: break;
 				}
 				// Server-tunnel access filter (Java access/*). The decision is
@@ -3225,19 +3296,19 @@ namespace stream
 						{
 						case StreamAdmission::eDrop:
 							LogSynRejection ("access filter drop", receiveStreamID);
-							DeletePacket (packet);
+							DeletePacket (pending.release ());
 							return;
 						case StreamAdmission::eReset:
 							LogSynRejection ("access filter deny", receiveStreamID);
 							RememberRecentlyClosed (receiveStreamID);
-							RejectSynWithReset (packet, receiveStreamID); // consumes the packet
+							RejectSynWithReset (pending.release (), receiveStreamID); // consumes the packet
 							return;
 						case StreamAdmission::eAllow: break;
 						}
 					}
 				}
 				auto incomingStream = CreateNewIncomingStream (receiveStreamID);
-				incomingStream->HandleNextPacket (packet); // SYN
+				incomingStream->HandleNextPacket (pending.release ()); // SYN
 				if (incomingStream->GetStatus () != eStreamStatusOpen)
 				{
 					LogPrint (eLogInfo, "Streaming: SYN did not create an open stream, rSID=", receiveStreamID);
@@ -3261,17 +3332,7 @@ namespace stream
 						eLogDebug, "Streaming: Incoming stream has no cached LeaseSet yet, rSID=", receiveStreamID);
 				}
 
-				// handle saved packets if any
-				{
-					auto it = m_SavedPackets.find (receiveStreamID);
-					if (it != m_SavedPackets.end ())
-					{
-						LogPrint (eLogDebug, "Streaming: Processing ", it->second.size (),
-							" saved packets for rSID=", receiveStreamID);
-						for (auto savedPacket : it->second) incomingStream->HandleNextPacket (savedPacket);
-						m_SavedPackets.erase (it);
-					}
-				}
+				DrainSavedPackets (receiveStreamID, *incomingStream);
 				// Hand the stream to an acceptor or queue it. Admission and the
 				// acceptor decision happen under one lock, so a concurrent
 				// ResetAcceptor cannot orphan the stream between the check and
@@ -3293,7 +3354,7 @@ namespace stream
 				{
 					// Late data for a connection that is already gone: do not
 					// buffer it for a stream that will never be created.
-					DeletePacket (packet);
+					DeletePacket (pending.release ());
 					return;
 				}
 				// m_IncomingStreams is guarded by m_StreamsMutex; take the
@@ -3309,50 +3370,12 @@ namespace stream
 				if (incomingStream)
 				{
 					// found
-					incomingStream->HandleNextPacket (packet);
+					incomingStream->HandleNextPacket (pending.release ());
 					return;
 				}
 
-				// save follow on packet
-				packet->from = nullptr; // session might be invalid when saved packet gets handled
-				auto it = m_SavedPackets.find (receiveStreamID);
-				if (it != m_SavedPackets.end ())
-				{
-					if (it->second.size () >= MAX_SAVED_PACKETS_PER_STREAM)
-					{
-						LogPrint (eLogWarning, "Streaming: Saved packet list is full for ", receiveStreamID);
-						DeletePacket (packet);
-					}
-					else
-						it->second.push_back (packet);
-				}
-				else
-				{
-					if (m_SavedPackets.size () >= MAX_SAVED_STREAM_IDS)
-					{
-						LogPrint (eLogWarning, "Streaming: Saved stream table is full");
-						DeletePacket (packet);
-						return;
-					}
-					m_SavedPackets.emplace (receiveStreamID, std::list<Packet *> { packet });
-					auto timer = std::make_shared<boost::asio::steady_timer> (m_Owner->GetService ());
-					timer->expires_after (std::chrono::seconds (PENDING_INCOMING_TIMEOUT));
-					auto s = shared_from_this ();
-					timer->async_wait (
-						[s, timer, receiveStreamID] (const boost::system::error_code & ecode)
-						{
-							if (ecode != boost::asio::error::operation_aborted)
-							{
-								auto it = s->m_SavedPackets.find (receiveStreamID);
-								if (it != s->m_SavedPackets.end ())
-								{
-									for (auto it1 : it->second) s->DeletePacket (it1);
-									it->second.clear ();
-									s->m_SavedPackets.erase (it);
-								}
-							}
-						});
-				}
+				// The admission helper owns the packet through every allocation.
+				SaveIncomingPacket (receiveStreamID, std::move (pending));
 			}
 		}
 	}
@@ -3709,16 +3732,17 @@ namespace stream
 		const uint8_t * buf, size_t len, i2p::garlic::ECIESX25519AEADRatchetSession * from)
 	{
 		// unzip it
-		Packet * uncompressed = NewPacket ();
+		std::unique_ptr<Packet> pending (NewPacket ());
+		auto * uncompressed = pending.get ();
 		uncompressed->offset = 0;
 		uncompressed->len = m_Inflator.Inflate (buf, len, uncompressed->buf, MAX_PACKET_SIZE);
 		if (uncompressed->len)
 		{
 			uncompressed->from = from;
-			HandleNextPacket (uncompressed);
+			HandleNextPacket (pending.release ());
 		}
 		else
-			DeletePacket (uncompressed);
+			DeletePacket (pending.release ());
 	}
 
 	std::shared_ptr<I2NPMessage> StreamingDestination::CreateDataMessage (

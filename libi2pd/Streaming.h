@@ -446,6 +446,7 @@ namespace stream
 		};
 		void (*m_PacketCheckpointForTesting) (PacketCheckpoint) = nullptr;
 		friend struct StreamPacketOwnershipTestAccess;
+		friend struct StreamingDestinationPacketTestAccess;
 		void ProcessPacket (Packet * packet);
 		bool ProcessOptions (uint16_t flags, Packet * packet);
 		void ProcessAck (Packet * packet);
@@ -632,6 +633,30 @@ namespace stream
 
 	private:
 		void HandleNextPacket (Packet * packet);
+		// Saved packet admission, draining and expiry run on the owner service.
+		// Every helper consumes ownership before any fallible work.
+		struct SavedPacketBatch
+		{
+			explicit SavedPacketBatch (boost::asio::io_context & service)
+				: expiry (service)
+			{
+			}
+			std::list<std::unique_ptr<Packet>> packets;
+			boost::asio::steady_timer expiry;
+		};
+		void SaveIncomingPacket (uint32_t receiveStreamID, std::unique_ptr<Packet> packet);
+		void DrainSavedPackets (uint32_t receiveStreamID, Stream & stream);
+		void ExpireSavedPackets (uint32_t receiveStreamID, const std::weak_ptr<SavedPacketBatch> & expected,
+			const boost::system::error_code & ecode);
+		enum class SavedPacketCheckpoint
+		{
+			Batch,
+			PacketNode,
+			TimerWait,
+			TableNode
+		};
+		void (*m_SavedPacketCheckpointForTesting) (SavedPacketCheckpoint) = nullptr;
+		friend struct StreamingDestinationPacketTestAccess;
 		std::shared_ptr<Stream> CreateNewIncomingStream (uint32_t receiveStreamID);
 		void HandlePendingIncomingTimer (const boost::system::error_code & ecode);
 		void StopInternal ();
@@ -692,8 +717,8 @@ namespace stream
 		boost::asio::steady_timer m_PendingIncomingTimer;
 		boost::asio::steady_timer m_ConnectionCleanupTimer;
 		std::atomic<bool> m_Started { false };
-		std::unordered_map<uint32_t, std::list<Packet *>>
-			m_SavedPackets; // receiveStreamID->packets, arrived before SYN
+		std::unordered_map<uint32_t, std::shared_ptr<SavedPacketBatch>>
+			m_SavedPackets; // receiveStreamID->owning batch, arrived before SYN
 		mutable std::mutex m_RecentlyClosedMutex;
 		mutable std::unordered_map<uint32_t, uint64_t> m_RecentlyClosed; // receiveStreamID->seconds
 		std::atomic<size_t> m_NumRejectionResets { 0 };

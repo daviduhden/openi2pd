@@ -107,6 +107,14 @@ Do not let reconnaissance agents edit, compile, execute tests or run scripts.
 
 ## Known issues and decisions
 
+- Follow consuming packet ownership through the enclosing dispatcher too.
+  StreamingDestination pre-SYN batches own packets and their expiry timer;
+  draining retires the old map entry before entering Stream. Weak destination
+  and exact batch identity distinguish an expired predecessor from a reused
+  stream ID. Admission must prepare node/wait/table without stranding packets.
+  Test post-publication unwind, stale successful expiry and undrained teardown.
+  This service-thread contract does not establish public Start/Stop quiescence.
+
 - Streaming packet admission guards must span parsing, node allocation and
   control posting. Detach saved nodes before a consumer can publish into the
   receive queue; snapshot flags before releasing a packet to a consuming call.

@@ -1336,3 +1336,24 @@ foreach(token IN ITEMS "auto closeUncommitted =" "bridge->close, id);"
     message(FATAL_ERROR "SAF admission guard-removal mutation was accepted")
   endif()
 endforeach()
+
+# The enclosing destination retains packet and per-entry expiry authority.
+require_runtime_order("libi2pd/Streaming.cpp"
+  "void StreamingDestination::DrainSavedPackets (" "void StreamingDestination::ExpireSavedPackets ("
+  "auto batch = std::move (it->second);" "m_SavedPackets.erase (it);"
+  "auto packet = std::move (batch->packets.front ());"
+  "batch->packets.pop_front ();" "stream.HandleNextPacket (packet.release ());")
+require_runtime_order("libi2pd/Streaming.cpp"
+  "void StreamingDestination::SaveIncomingPacket (" "void StreamingDestination::DrainSavedPackets ("
+  "auto batch = std::make_shared<SavedPacketBatch> ("
+  "batch->packets.emplace_back (std::move (packet));"
+  "batch->expiry.async_wait (" "expected = std::weak_ptr<SavedPacketBatch> (batch)"
+  "m_SavedPackets.emplace (receiveStreamID, std::move (batch));")
+require_runtime_source("libi2pd/Streaming.cpp"
+  "it == m_SavedPackets.end () || it->second != batch")
+require_runtime_source("libi2pd/Streaming.h"
+  "std::list<std::unique_ptr<Packet>> packets;")
+require_runtime_source("tests/test-streaming-destination-packets.cpp"
+  "assert (old.expired ());")
+require_runtime_source("tests/test-streaming-destination-packets.cpp"
+  "destination.ExpireSavedPackets (id, previous, { });")

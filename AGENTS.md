@@ -339,6 +339,10 @@ and reap fixture children before asserting the final failure outcomes.
 Fault-injection provenance must survive permitted exception copies. Compare a
 closed exception type and immutable correlation payload, with no-throw and
 unrelated-exception controls; exception_ptr identity is not that contract.
+After a consuming-packet correction, trace the enclosing dispatcher and its
+saved registry as separate owners. A corrected stream consumer cannot revoke
+raw aliases retained by an outer pre-admission map. Review allocation, drain,
+expiry and restart ownership together, including reuse of the same wire key.
 For packet consumption, detach the old owning node before calling a consumer
 that may publish into another container and then throw. Snapshot any flags
 needed after transfer before relinquishing ownership. Memory reclamation does
