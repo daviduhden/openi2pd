@@ -5,6 +5,36 @@ and license details.
 
 # Runtime error inventory
 
+## 4e524d06: loader aftermath and preventive registration audit
+
+RT-087 remains open: [Windows run 44728051011](https://github.com/daviduhden/openi2pd/actions/runs/44728051011),
+MSVC job 136260420057, image SHA256
+`A974409A7B4B9ED9CB30F65305D1CCBBC001264FBA67CEC99CE8DEA6EBAD9ED7`.
+The executed arming/termination markers and ntdll PDB
+`C2C87600B169E76C65E3732E4A1C19911` establish termination after
+LdrpInitializationFailure with c0000142, not the failing initializer.
+The separate conhost c0000022 exit does not prove causality. Prepared
+per-image GFlags loader snaps precede the authority-free probe; exact
+GlobalFlag type/value/absence is restored, collection shares 60 seconds.
+No security restriction or ordinary test failure is suppressed. Pending CI.
+
+### RT-118: atomic stream registration and identity retirement
+
+Source-only finding, no observed CI crash: StreamingDestination factories
+published a primary index before a fallible secondary insertion and ignored
+collisions. Numeric-only deletion could remove a successor. RegisterStream
+now rolls back both-index admission; UnregisterStream matches exact owners.
+SYN processing rolls back until backlog admission, committed before external
+callback effects. ClientDestination and SAM translate typed refusal into
+completed failure without catching external completion exceptions.
+Global review covered outgoing/incoming factories, both indexes, queued
+deletion, pre-SYN IDs, reuse and callback handoff.
+`test-streaming-registration` prepares witnessed allocation, collision,
+stale-removal and throwing-callback controls. Implemented / static; Pending
+CI compilation; Pending CI tests. General provider/allocation exceptions
+in asynchronous lookup and existing Stop affinity remain separate residuals.
+
+
 
 ## 0b882952: new ownership controls pass; exact loader root remains open
 
@@ -2826,3 +2856,15 @@ publication-exception/cleanup-failure controls. Android JVM discovery includes
 it; source contracts pin both real call sites and fallback close. Implemented /
 static; Pending CI compilation and Pending CI tests. Blocking-provider and
 actual Binder/device allocation/death races still require device evidence.
+
+## RT-119: peer dial callback allocation retains its reservation
+
+Source-only preventive finding in TorrentsTunnel::CreatePeerDialCompletion.
+The pending dial was inserted before constructing an allocating std::function;
+failure held capacity until expiry or Stop. Exact iterator rollback now stays
+armed through callable construction under publication/admission locks. Attempt
+time and consumed ID remain charged. Global review included null completion,
+tracker deadline retirement and generation cancellation. The extended
+test-torrents-admission witnesses the fault, empty reservation and subsequent
+successful admission/null completion. Implemented / static; Pending CI
+compilation; Pending CI tests. No observed CI crash is attributed to this path.

@@ -10,6 +10,34 @@ Documents project documentation.
 
 # Roadmap
 
+## Published 4e524d06 follow-up (2026-11-20)
+
+History reviewed: 555 runs / 82 SHAs, 552 full logs, one partial and two
+unavailable cancelled logs. Five missing job logs remain HTTP 404. Latest
+ten runs: nine success, Windows MSVC RT-087 remains CI failure (34/35).
+Linux backend/sanitizer suites pass 278 selections; OpenBSD 270/3 skipped,
+CLANG64 261/1 skipped, Android 187 JVM tests; UI and Perl quality skipped.
+Java vectors are not differential interoperability. Packaging apt blockers
+are absent in executed successful jobs.
+
+AUDIT-4E52-01: CW-036 conditional count warning correction, Implemented /
+static; Pending CI compilation. AUDIT-4E52-02: RT-118 atomic stream indexes,
+identity-bound retirement and refusal completion, Implemented / static;
+Pending CI compilation; Pending CI tests. New test-streaming-registration
+is security-memory, default shared test timeout, no fixed temporary paths;
+prepared MSVC selection 36 versus 35 published. AUDIT-4E52-03: prelaunch
+loader snaps with exact registry restoration, Implemented / static; Pending
+CI tests; RT-087 root cause remains unresolved. AUDIT-4E52-04: Lifecycle
+ViewModel/LiveData 2.11.1 pins, Implemented / static; Pending CI compilation
+and Pending CI tests. ChromeOS ABI/AGP notices remain open.
+
+Independent reviews covered history, C++ warnings, memory, concurrency,
+crypto/I2P, IPC, torrent/storage, Android/JNI, portability and regression
+integration. General asynchronous provider/allocation exception completion,
+Stop affinity, void HKDF failure propagation and device/provider evidence
+remain open. No local compilation or tests, dispatch, commit or push.
+
+
 This roadmap coordinates parallel workstreams. It is subordinate to the
 requirements and current code; `TODO.md` is the authoritative task list.
 
@@ -2505,3 +2533,7 @@ SAF results. Two native targets join common CTest/sanitizers and MSVC's
 All new corrections are Implemented / static, Pending CI compilation and
 Pending CI tests. Do not close public lifecycle affinity, provider failure,
 Windows loader attribution, Android warnings/device or skipped quality gaps.
+
+AUDIT-4E52-05 / RT-119: rollback peer dial reservations when completion
+allocation fails; extended test-torrents-admission prepared. Implemented /
+static; Pending CI compilation; Pending CI tests.

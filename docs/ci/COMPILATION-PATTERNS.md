@@ -1,5 +1,14 @@
 # Compilation diagnostic patterns and repository-wide review
 
+## Conditional count expressions and platform warnings
+
+C4389 may appear in a successful compile inside a failed job. Review the
+conditional expression's common type before its comparison: use unsigned
+observation literals and size_t count expectations, not suppression flags
+or arbitrary protocol casts. Both Streaming ownership fixtures were reviewed
+for this family (CW-036); updated fixtures are Pending CI.
+
+
 
 ## Multi-index transaction fixes can introduce cross-platform shadow warnings
 

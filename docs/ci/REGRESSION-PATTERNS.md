@@ -5,6 +5,18 @@ and license details.
 
 # Regression patterns
 
+## Registration transactions extend beyond owning packets
+
+RT-118 follows packet ownership into both destination indexes and their
+consumers. A primary insert is not a complete admission; rollback must
+retain a caller owner until locks release. Removal requires pointer identity
+when keys can be reused. Commit backlog ownership before external callbacks;
+an exception cannot undo already-delivered effects. Typed factory refusal
+must still complete asynchronous callers. The new registered fixture uses
+a witnessed second-index fault and stale-owner negative controls.
+Prepared MSVC selection is 36 targets versus 35 executed on 4e524d06.
+
+
 
 ## Enclosing saved registries and per-entry expiry identity
 
@@ -901,3 +913,9 @@ until all replacement allocations finish. RT-117 follows authority across
 Binder completion: cancellation can precede physical completion, so stale
 results still need an exact-session releaser and a publication-failure guard.
 Distinguish those helper controls from unexecuted device/provider races.
+
+RT-119 extends the same admission rule to peer dial completion allocation.
+The existing admission fixture witnesses failure before std::function
+construction, verifies exact reservation rollback and consumed-ID behavior,
+then exercises successful admission and null completion. No executor or
+network is required by that prepared regression.

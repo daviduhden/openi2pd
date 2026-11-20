@@ -1,5 +1,39 @@
 # Compilation and lint warning inventory
 
+## Successful Android and package diagnostics on 4e524d06
+
+Android run 44728029797, job 136260347188: Debug and Release each report
+four Lint warnings. Two GradleDependency notices identify Lifecycle
+ViewModel/LiveData 2.11.0 to 2.11.1; both pins and dependency documentation
+are updated after reviewing the official stable release notes:
+https://developer.android.com/jetpack/androidx/releases/lifecycle#2.11.1 .
+Implemented / static; Gradle/Lint/device validation pending. The two
+ChromeOsAbiSupport sites and builtInKotlin=false deprecation remain open.
+Successful Debian DEP8 emits deprecated --force-yes (external tooling).
+Skipped Perl quality cannot resolve historical Critic/ShellCheck debt.
+
+
+
+## CW-036: conditional fixture counts compare signed and unsigned types
+
+[Windows 44728051011](https://github.com/daviduhden/openi2pd/actions/runs/44728051011),
+MSVC job 136260420057, SHA `4e524d06ef37a4031610c21a24213155e7a6ce67`:
+the successful build step emits C4389 at
+`tests/test-streaming-destination-packets.cpp:98`. An unsigned observed count
+was compared with `(fault ? 1 : 0)`, whose type is signed int. The later
+worker startup failure is independent; successful build exit does not remove
+this own warning. The published CW-035 iterator warning is absent.
+
+Use unsigned observation literals and std::size_t expected container counts,
+with direct cstddef includes. Equivalent nonnegative size conditionals were
+corrected in this fixture (saved/receive counts) and
+`test-streaming-packet-ownership.cpp`. Global review distinguished signed JSON
+and small promoted protocol fields rather than casting arbitrary operands.
+Assertions and exception-fault witnesses remain unchanged; no suppression or
+unsafe cast was added. Existing two ownership targets are regressions.
+Implemented / static; Pending CI compilation and Pending CI tests on MSVC.
+
+
 
 ## 0b882952 warning and infrastructure review
 

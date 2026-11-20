@@ -3197,3 +3197,19 @@ skill and `docs/torrent/security.md` for the current boundary.
   dispositions are in `docs/upstream-sync.md`. Do not port the intrusive
   receive queue or connection replacement without fixing pooled ownership and
   identity-keyed removal first.
+
+## Registration and loader evidence continuation (2026-11-20, static)
+
+Trace stream admission through both indexes and every factory consumer. A
+reused numeric key does not authorize removal of a successor; compare the
+registered owner. Roll back partial index insertion while a caller retains
+the object, and commit backlog handoff before invoking external callbacks.
+Typed refusal must complete asynchronous callers without swallowing their
+callback exceptions. Keep general allocation/provider failure completion
+and stopped-executor affinity as separate review tasks.
+
+For loader initialization failures, an executed debugger arming marker plus
+LdrpInitializationFailure identifies aftermath, not the failing DLL. Enable
+per-image loader snaps before the authority-free probe, restore exact prior
+registry type/value/absence, and keep one absolute collection deadline.
+Never trace credential-bearing worker command lines to obtain this evidence.

@@ -9,6 +9,15 @@ Tracks compile/configure/link failures reported by manual GitHub Actions.
 
 # Compilation error inventory
 
+## 4e524d06: current compilation evidence
+
+All ten manual runs compiled their executed targets; no new compile/link
+root failure was found. Windows run 44728051011 fails during a test, not
+compilation. Linux OpenSSL 3.5.9/4.1.0 GCC/Clang and LibreSSL 4.4.0 lanes
+passed their executed suites. This does not establish a dedicated OpenSSL
+4.0.x lane or validation of unpublished changes.
+
+
 
 ## 0b882952: reached native builds succeed; three jobs stop at apt
 

@@ -5,6 +5,30 @@ and license details.
 
 # Test failure inventory
 
+## 4e524d06: nine successful workflows, one remaining Windows failure
+
+Exact SHA: `4e524d06ef37a4031610c21a24213155e7a6ce67`. Runs:
+44728025476 (maintenance), 44728029797 (Android), 44728034259/44728038369
+(OpenSSL 3/4), 44728042168 (components/Java), 44728046818 (OpenBSD),
+44728051011 (Windows), 44728054974 (focused instrumented TSan),
+44728059591 (packaging), 44728063794 (validation).
+
+GCC/Clang backend lanes and each sanitizer suite: 278 selected, zero
+failures; fuzz smoke: 15. OpenBSD: 270 pass/3 capability skips; CLANG64:
+261 pass/1 POSIX-only skip. MSVC: 34 pass/1 RT-087 failure. Android:
+187 JVM tests across 27 suites; device UI skipped. Java comparison:
+24 static/vector checks and two known gaps, no differential binary.
+No sanitizer error signature was found in complete executed-suite logs.
+Previous packaging apt blockers are absent in all five successful jobs.
+Perl quality remains skipped. None of these results validates local edits.
+
+Accessible history: 555 runs, 82 SHAs (195 success/294 failure/66
+cancelled); 552 full logs, one partial with three job logs and two
+unavailable cancelled runs. Five missing job logs were retried and return
+HTTP 404; retention expiry is not inferred. Evidence files remain outside
+the repository under /var/tmp/openi2pd-ci-4e52.
+
+
 
 ## 0b882952: previous allocation regressions pass; infrastructure blocks three jobs
 
