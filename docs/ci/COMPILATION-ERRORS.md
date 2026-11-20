@@ -9,6 +9,17 @@ Tracks compile/configure/link failures reported by manual GitHub Actions.
 
 # Compilation error inventory
 
+
+## 0b882952: reached native builds succeed; three jobs stop at apt
+
+[Exact current run/job evidence](TEST-FAILURES.md#0b882952-previous-allocation-regressions-pass-infrastructure-blocks-three-jobs).
+No new own compile/link root failure was found in the complete latest logs.
+MSVC C4456 is CW-035 and its worker startup failure is RT-087, not a linker
+failure. CI-NOV19-APT stops Doxygen/service jobs before their actual checks;
+those skipped phases are unverified. Do not change source/build dependencies
+based on runner mirror 503 or connection-timeout output alone.
+
+
 ## 6fbe50c1: no new observed compile or link blocker
 
 The [exact ten-run evidence](TEST-FAILURES.md#6fbe50c1-nine-successful-workflows-three-msvc-test-failures)

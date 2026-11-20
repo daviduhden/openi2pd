@@ -206,6 +206,13 @@ workflow, run `gh`, build or test.
 
 ## Known issues and decisions
 
+- Historical evidence completeness needs one record per run, not a directory
+  count. Reuse exact-run cached logs, fetch remaining run logs and fall back to
+  job logs for empty/canceled runs. A gh API refusal of ANSI control output is
+  not retention expiry; use its explicit escape-output option before recording
+  an evidence gap. Report selected/passed/skipped counts independently, retaining
+  capability-skip reasons even when CTest reports zero failures.
+
 - Fault provenance must survive legal exception copies. Use a dedicated
   exception type carrying a shared immutable token, with no-throw and unrelated
   failure controls; exception_ptr equality pins object identity instead of

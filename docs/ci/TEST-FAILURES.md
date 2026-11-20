@@ -6,6 +6,82 @@ and license details.
 # Test failure inventory
 
 
+## 0b882952: previous allocation regressions pass; infrastructure blocks three jobs
+
+Exact SHA `0b882952006e36755458a1876b6821108f51186e`. Paginated history
+metadata covers 545 runs / 81 SHAs: 186 success, 293 failure, 66 cancelled.
+All ten latest full/failed logs, job metadata and artifact indexes were
+retrieved, including successful steps inside failed jobs. Broader historical
+retrieval coverage is recorded separately; metadata alone is not a log.
+Seven workflows succeed; Windows, Packaging and Validation fail.
+
+Historical log coverage is now explicit: 542 complete run-log files (237
+reused caches with exact expected SHA verified, 305 recovered this pass),
+one partial run with three recovered job logs, and two canceled runs without
+accessible job logs. Every one of the 545 unique metadata records was
+accounted for. Full historical output was scanned for compiler, test and
+sanitizer diagnostic families; occurrence counts include repeats and cascades
+and are not independent findings or evidence of current source defects.
+
+| Historical run / SHA | Remaining evidence gap |
+|---|---|
+| [39058841124](https://github.com/daviduhden/openi2pd/actions/runs/39058841124), `fe4b29012c83c113efd3d9ca1420c1fb19b4b370` | Canceled Linux/Android; job logs 117472519475 and 117472519699 return HTTP 404; no artifacts |
+| [39058346321](https://github.com/daviduhden/openi2pd/actions/runs/39058346321), `a12f6ea9143df1f1cfb65e2a1e265448873c4f82` | Canceled OpenBSD UPnP OFF/ON; jobs 117470871030 and 117470871309 return HTTP 404; no artifacts |
+| [39058430980](https://github.com/daviduhden/openi2pd/actions/runs/39058430980), `915d5424014bd48959675926186ea8d7b064968e` | Three musl job logs recovered (117471100986, 117471101202, 117471101278); package job 117472356821 returns HTTP 404. Artifact metadata 12110656110 names static aarch64; it supplies no packaging execution evidence |
+
+An initial gh API refusal to print ANSI controls was corrected with
+`--allow-escape-sequences` and three job logs were recovered. That client
+policy failure was not retention expiry. The five remaining job 404s above
+are recorded without inventing diagnostics or an expiry cause. Raw logs and
+per-run coverage/SHA manifests remain outside the repository.
+
+
+| Run | Outcome | Exact jobs |
+|---|---|---|
+| [44523997053](https://github.com/daviduhden/openi2pd/actions/runs/44523997053) | success | 135559647353 Agent and skills synchronization: success |
+| [44524001311](https://github.com/daviduhden/openi2pd/actions/runs/44524001311) | success | 135559675228 Android arm64 build and unit tests: success; 135559678583 Android API 29 UI and accessibility: skipped |
+| [44524006841](https://github.com/daviduhden/openi2pd/actions/runs/44524006841) | success | 135559680441 Linux (gcc, OpenSSL 3.x): success; 135559681032 Linux (clang, OpenSSL 3.x): success |
+| [44524012153](https://github.com/daviduhden/openi2pd/actions/runs/44524012153) | success | 135559698041 Linux (clang, OpenSSL 4.x): success; 135559698762 Linux (gcc, OpenSSL 4.x): success |
+| [44524017683](https://github.com/daviduhden/openi2pd/actions/runs/44524017683) | success | 135559716156 Install components and consumer package: success; 135559716582 I2P Java interoperability: success |
+| [44524022145](https://github.com/daviduhden/openi2pd/actions/runs/44524022145) | success | 135559735746 OpenBSD 8.0 build and tests: success |
+| [44524027363](https://github.com/daviduhden/openi2pd/actions/runs/44524027363) | failure | 135559751720 Windows MSVC build and tests: failure; 135559751762 Windows MSYS2 Clang64 build and tests: success |
+| [44524032264](https://github.com/daviduhden/openi2pd/actions/runs/44524032264) | success | 135559771894 Instrumented OpenSSL TSan diagnostic: success |
+| [44524036291](https://github.com/daviduhden/openi2pd/actions/runs/44524036291) | failure | 135559796085 Static musl build and package: success; 135559796413 Service component install matrix: failure; 135559796461 Container image: success; 135559796556 Debian packages: success; 135559796648 Service contracts: failure |
+| [44524040625](https://github.com/daviduhden/openi2pd/actions/runs/44524040625) | failure | 135559803653 C++ source API documentation: failure; 135559803831 Bounded fuzz smoke checks: success; 135559804091 Sanitizers (ubsan): success; 135559804155 Agent Skills static contract: success; 135559804156 Sanitizers (tsan): success; 135559804240 Sanitizers (asan-ubsan): success; 135559806789 Perl quality (Test::More and Perl::Critic): skipped |
+
+MSVC selects 33 tests: 32 pass; only `test-privsep-windows-supervisor`
+fails with worker-before-authentication exit 3221225794 / c0000142 (RT-087).
+TF-111's two typed-provenance fixtures and all three new RT-110/111/112
+native targets pass in this executed revision. These results do not validate
+subsequent local fixes, remaining strong callbacks or device-only behavior.
+
+Executed scope is selected / passed / skipped / failed, not just a CTest
+summary percentage. Linux GCC 16.2 / Clang 23.1.6 with OpenSSL 3.5.9 / 4.1.0:
+276 / 276 / 0 / 0 each. ASan+UBSan, UBSan and TSan have the same counts;
+fuzz smoke is 15 / 15 / 0 / 0. Instrumented OpenSSL TSan is only one focused
+registry test. OpenBSD 8.0 / Clang 22.1.6 / LibreSSL 4.4.0 selects 271:
+268 pass and three skip because the runner is root (`worker-identity`,
+`credentials`, `torrent-storage-openbsd`). CLANG64 / Clang 23.1.5 /
+OpenSSL 4.1.0 selects 260: 259 pass and the POSIX-only I2PControl AF_UNIX test
+skips. These skips leave the skipped security boundaries unverified.
+Android's exact 26 JUnit XML reports contain 179 tests, zero failures/errors
+and zero skipped JVM tests; the separate API 29 UI job is skipped. Java
+interoperability is 24 static/vector successes plus two gaps, with no
+`--binary` and no live differential. Optional Perl quality did not execute.
+
+### CI-NOV19-APT: runner downloads fail before the requested validators
+
+Validation source-docs job 135559803653 fails installing Doxygen dependencies
+(libfmt9, libxapian30, doxygen and ripgrep): mirror connection timeout/failure,
+exit 100. Packaging service install job 135559796413 and service-contract job
+135559796648 encounter Ubuntu mirror 503/download failures, also exit 100.
+Neither Doxygen nor those service checks ran. Static-musl, Debian and container
+siblings succeed. This is infrastructure evidence, not a compiler, test or
+packaging-product diagnosis; no retries, source weakening or skipped tests
+were added. A future successful manual lane remains necessary.
+
+
+
 ## 6fbe50c1: nine successful workflows, three MSVC test failures
 
 Exact SHA `6fbe50c1d34ac151aecfce8be15c9ff960f074f1`. Paginated metadata

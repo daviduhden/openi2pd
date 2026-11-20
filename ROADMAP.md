@@ -2490,3 +2490,18 @@ Implemented / static, Pending CI compilation and Pending CI tests. Keep
 partial-send rollback, remaining strong timer cycles, fallible HKDF, Windows
 initializer attribution, Android warnings/device and skipped quality evidence
 open; successful older suites cannot validate the local tree.
+
+## Audited receive and registry transactions after 0b882952
+
+The accessible historical inventory now accounts for 545 runs and all retained
+run/job logs, with exact gaps preserved. Seven workflows in the audited
+0b882952 batch succeeded;
+Windows retains RT-087, while three jobs stop at Ubuntu downloads. Native
+selected/pass/skip counts are recorded separately from workflow success.
+CW-035 and RT-114..117 correct the next enclosing ownership/admission layers:
+pre-SYN batches, receive/ElGamal tags, tracker memberships/torrent IDs and late
+SAF results. Two native targets join common CTest/sanitizers and MSVC's
+35-target selection; Java helper controls join Android JVM discovery.
+All new corrections are Implemented / static, Pending CI compilation and
+Pending CI tests. Do not close public lifecycle affinity, provider failure,
+Windows loader attribution, Android warnings/device or skipped quality gaps.

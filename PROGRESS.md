@@ -8746,3 +8746,66 @@ The Windows handle-policy clarification is an independent knowledge correction;
 this final audit record groups the historical evidence and validation limits.
 Existing Git identity and signing configuration are preserved. Publication
 supplies no compilation, runtime or sanitizer evidence for these corrections.
+
+## 2026-11-19 — Complete retained-history recovery and enclosing-admission audit
+
+Read gh auth/repository/workflows and refreshed all545 metadata records across
+81 SHAs (186success,293failure,66cancelled). Recovered 542complete run logs,
+one partial run's three job logs and documented two canceled runs without
+accessible logs. Verified exact SHA in all237 reused caches;305logs newly
+retrieved. Five job404s remain; ANSI output refusal was corrected before
+classifying evidence gaps. Historical diagnostic matches include repeats and
+cascades; old sanitizer families remain attached to their original findings.
+
+Current0b882952 batch:7success/3failure. Linux/sanitizers276passed each;
+OpenBSD268passed/3skipped;CLANG64259passed/1skipped;MSVC32passed/1failed;
+fuzz15passed;Android179JVMpassed. InstrumentedOpenSSLTSan executes1test;
+Java24vectors+2gaps has no live differential. Doxygen and two service jobs fail
+apt downloads before checking product output. CW-035 is one actual new own
+MSVC warning in a successful build step, corrected locally without suppression.
+RT-087 exact image8047594A...1D29170 still terminates during loader init;
+no first failing initializer or conhost causality is established.
+
+Ten specialty roles were delegated. Crypto, Android and portability/recovery
+turns encountered an environment authentication error after partial work;
+the coordinator inspected and completed partial changes and regression seams,
+rather than counting the interrupted reports as completed validation.
+RT-114 owns destination pre-SYN batches and fences exact expiry admissions;
+RT-115 stages ratchet publication and ElGamal confirmation prefixes;
+RT-116 guards tracker references/memberships and torrent hash/ID admission;
+RT-117 prepares callbacks before remote SAF admission and retires late results
+on the exact original broker. A fallback after publication closes the local ID;
+cleanup remains best effort and retains the existing close budget.
+
+Prepared regressions: two new native targets plus extended torrent controls
+and eight Java helper controls. Common/sanitizer and explicit MSVC35 inventories
+are synchronized; no new PageHeap coverage is claimed. Six inventories,
+AGENTS, owning Skills and testing/tracking docs distinguish static changes
+from executed results. No compiler, build configure, CTest/Gradle/test,
+workflow dispatch, commit or push was run locally for this increment.
+
+Final compile-free review passed git whitespace (including four untracked
+sources), clang-format over15changed C++/Java inputs, documentation links,
+Doxygen parameter/reference checks, Android Javadoc/JNI parity, workflow
+policy, actionlint, yamllint and offline zizmor. Zizmor retains three existing
+Windows suppressions. Literal/order source inspection covers18new contracts
+without executing CMake. No CMake contract, native/JVM test or device fixture
+was executed locally. Knowledge validator passes with zero errors; AK004
+semantic relevance was reviewed against six owning Skill updates and the
+AGENTS enclosing-owner procedure. The recovered crypto fixture also pins the
+pre-transaction in-place HKDF transcript and first/later ElGamal faults; Java
+cleanup preserves primary failures while not hiding an independent Error.
+At audit completion, the new implementation evidence was static and unpublished.
+
+## 2026-11-20 — Authorized publication of the 0b882952 audit continuation
+
+Reviewed every modified and untracked file under explicit commit/push
+authorization. Split the work into six cohesive commits: DHT shadowing,
+pre-SYN packet ownership, session-tag publication, torrent admission,
+late SAF cleanup and historical evidence. Shared CMake, MSVC filters,
+parser fixtures, artifacts and runtime-source guards were staged as
+incremental index projections, preserving the working files and modes.
+Independent read-only review found no blocking issue or inappropriate
+artifact. Existing author/committer identity and signing settings are
+preserved. Publication provides no new compilation or test evidence;
+all prepared regressions remain pending manual CI on the published revision.

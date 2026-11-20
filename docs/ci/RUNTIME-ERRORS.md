@@ -6,6 +6,31 @@ and license details.
 # Runtime error inventory
 
 
+## 0b882952: new ownership controls pass; exact loader root remains open
+
+[Exact runs and executed/skipped scope](TEST-FAILURES.md#0b882952-previous-allocation-regressions-pass-infrastructure-blocks-three-jobs).
+No ASan, LSan, UBSan or TSan error signature was found in complete current
+logs. RT-110 packet ownership, RT-111 key transactions and RT-112 registry
+admission regressions pass Linux, OpenBSD, CLANG64, MSVC and the executed
+sanitizer suites. RT-113 SAF compiles on Android; no forced-allocation device
+or provider test executed, so its cleanup behavior is not dynamically proven.
+
+### RT-087: new image, same termination aftermath
+
+Windows run 44524027363, MSVC job 135559751720, SHA 0b882952,
+artifact 14532347540 `windows-msvc-ctest`: probe image SHA-256
+`8047594A755AFA10414CA0BFBCD8A3E0D4E77C7CC892C0D73E63F5F851D29170`.
+OPENI2PD_PROBE_ARMED and TERMINATION markers executed. ntdll 10.0.20348.5866
+PDB `C2C87600B169E76C65E3732E4A1C19911` identifies the same verified
+termination stack after LdrpInitializationFailure. Worker 16ec exits
+c0000142; nested conhost 1a08 exits c0000022. That ordering proves neither
+conhost causality nor the first failing initializer. Exact image identity
+changes between builds, so earlier hashes must not be reused. The next missing
+evidence remains the first loader failure and verified return status. No
+containment weakening, unconditional retry or test skip is justified.
+
+
+
 ## 6fbe50c1: executed coverage and preventive exception audit
 
 [Exact run/job/toolchain evidence](TEST-FAILURES.md#6fbe50c1-nine-successful-workflows-three-msvc-test-failures).
@@ -2713,3 +2738,91 @@ alive, clearing cleanup JNI exceptions and preserving the C++ exception.
 The source-order contract pins guard, close, insertion and dismiss order.
 JNI symbol parity remains unchanged. Forced-allocation/device broker release
 still needs runtime evidence; source order is not proof of provider behavior.
+
+## RT-114: destination-level saved packet aliases and expiry authority
+
+Static follow-up of RT-110 found the same ownership defect one level higher.
+StreamingDestination drained its raw pre-SYN list before erasing the map entry.
+If Stream consumed a packet and then threw, the outer map retained a dangling
+owner. Fresh/existing list and table admission also lacked unwind ownership.
+The timer captured the destination strongly and addressed only a reusable
+receive-stream ID, so stale successful expiry could retire a successor batch.
+
+`SavedPacketBatch` now owns unique packets and its expiry timer. Admission
+prepares list, wait and table under local ownership; draining detaches the old
+entry before consuming each packet. Weak destination/batch captures plus exact
+entry identity fence expiry. Ingress decompression, ping and SYN-refusal paths
+retain packet guards through preparation too. Wire bytes, 64-packet/512-ID caps
+and the original expiry budget are preserved. Normal Stream consumption keeps
+pool reuse; abandoned batches free independently of the pool.
+
+`test-streaming-destination-packets` prepares four fresh admission failures,
+existing-node failure, successful drain, post-publication throw, stale/canceled/
+successful expiry, both caps, stop clearing and owner release with no executor
+dispatch. Registered common CTest/sanitizers and selected MSVC. Implemented /
+static; Pending CI compilation and Pending CI tests. Service-thread affinity
+is required. The public Start/Stop stopped-context assumption and other strong
+queued captures remain separate unresolved lifecycle seams; this patch does
+not claim complete shutdown synchronization. No CI sanitizer report is
+attributed to this static finding.
+
+## RT-115: receive-tag publication and confirmed ElGamal prefixes
+
+The RT-111 follow-up found GetNextSessionTag advancing a live ratchet before
+GarlicDestination's receive-map emplace allocated. Failure permanently skipped
+a receive tag. A noncopyable prepared-tag value now owns a cleansed scratch
+chain/index; receive-map insertion precedes no-throw live commit. Ordinary
+GetNextSessionTag uses the same preparation. Existing zero/collision and full
+16-bit exhaustion semantics remain unchanged. Capacity eviction is separate
+and is not rolled back; ordinary failure of the void HKDF interface remains
+open. This is an availability finding, not observed nonce reuse or a CI crash.
+
+Equivalent ElGamal confirmation appended live session tags one at a time
+before retiring the unconfirmed message. A later allocation failure could
+publish a prefix again on retry. TagsConfirmedImpl now prepares the complete
+list under local cleanup authority, then splices and erases without allocation.
+`test-ratchet-tag-publication` prepares receive-map fault/retry against an
+uninterrupted reference, collision/exhaustion, first/later ElGamal node faults,
+incumbent/unconfirmed preservation, exact retry and repeated/expired controls.
+Common CTest/sanitizers and MSVC select it. Implemented / static; Pending CI
+compilation and Pending CI tests. Scratch provider failure behavior and other
+cache transaction seams are not inferred from this exception guarantee.
+
+## RT-116: tracker membership and torrent hash/ID admission
+
+Passing RT-112 index tests did not cover the enclosing registry. In
+RegisterTorrentTrackers, acquired slot references could be orphaned by later
+set/vector/map allocation, while an incumbent membership was erased before
+replacement allocation. InsertTorrent could publish its hash before ID-map
+allocation. Both are static partial-admission defects, not observed CI crashes.
+
+A pre-reserved acquired-reference ledger rolls back new counts. Replacement
+vectors/map nodes finish allocation before incumbent swap/release. Slot release
+clears URL fields in place to avoid allocating copy assignment during unwind.
+InsertTorrent guards its newly admitted hash/ID/membership through later
+initialization. Persistent/admin/DHT side effects are not promised rolled back.
+Extended test-torrents-admission prepares first/later desired insertion,
+replacement-vector/node, ID and post-tracker faults, incumbent counts and
+successful retries. Implemented / static; Pending CI compilation and tests.
+
+## RT-117: late Java SAF admission lost its broker capability
+
+Native RT-113 set-insertion cleanup did not cover Java fileId/rootId. A Binder
+open/authorize result could arrive after local close, root release, timeout or
+binding replacement; stale checks returned zero without retiring that result.
+Future.cancel is advisory and does not reclaim an admitted remote handle.
+
+TorrentSafAdmission now retains cleanup authority until local publication.
+The publisher validates exact entry and binding under the local lock; cleanup
+then targets the captured admitting session outside that lock. Late files close
+and late roots revoke on their original broker, never a successor. If open's
+fallback races after successful publication, existing close retires the local
+ID and its published remote handle, under the existing close budget. No timeout
+or retry count was raised. Cleanup failure remains best effort; no provider
+rollback or device behavior is claimed from the helper.
+
+TorrentSafAdmissionTest prepares commit/refusal, stale captured authority and
+publication-exception/cleanup-failure controls. Android JVM discovery includes
+it; source contracts pin both real call sites and fallback close. Implemented /
+static; Pending CI compilation and Pending CI tests. Blocking-provider and
+actual Binder/device allocation/death races still require device evidence.

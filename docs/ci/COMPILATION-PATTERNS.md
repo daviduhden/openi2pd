@@ -1,5 +1,17 @@
 # Compilation diagnostic patterns and repository-wide review
 
+
+## Multi-index transaction fixes can introduce cross-platform shadow warnings
+
+CW-035 appears inside a successful MSVC build step even when its enclosing
+job later fails for worker startup. Trace preparation bindings and later
+quota/eviction loops together after a transaction refactor; distinct role
+names retain clarity and avoid hiding a live iterator. Update source guards
+without removing the original behavior controls. Mirror download errors before
+configuration or documentation generation are infrastructure, not compiler
+or source-documentation failures.
+
+
 ## Runtime fixture failures after clean compilation
 
 At 6fbe50c1 all reached native targets compile; MSVC still fails two allocation

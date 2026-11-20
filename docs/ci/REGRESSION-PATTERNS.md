@@ -5,6 +5,21 @@ and license details.
 
 # Regression patterns
 
+
+## Enclosing saved registries and per-entry expiry identity
+
+RT-114 follows RT-110 outward from Stream into StreamingDestination. A raw
+alias retained in a pre-SYN map can double-delete even when the consumer is
+correct. Make each saved batch own its packets and timer, detach the whole map
+entry before consumption, and remove one packet from batch ownership before
+each call. Allocation and post-publication exceptions need separate controls.
+A weak owner alone cannot distinguish two admissions with the same stream ID;
+compare the exact batch identity on expiry, including an old successful
+completion after replacement. Teardown without running the executor detects
+retention that cancellation alone can miss. Public Start/Stop affinity remains
+a separate lifecycle contract, not proved by the packet regression.
+
+
 ## Portable fault provenance and complete ownership transfer
 
 TF-111 compares a dedicated exception type and immutable shared payload,
@@ -875,3 +890,14 @@ RT-112 must preserve incumbents at capacity, per-origin quotas and every
 index after each failed preparation step. Total size alone misses orphan
 entries. RT-113 keeps a remote handle under unwind ownership until local
 registration commits, while its cleanup execution authority is still alive.
+
+## Admission completion must preserve the enclosing ledger
+
+RT-115 extends key transactions to receive-map publication and ElGamal
+confirmation: compare failed retry against uninterrupted generation and verify
+that a partial live prefix cannot survive an exception. RT-116 tracks acquired
+references separately from index sizes, retaining the incumbent membership
+until all replacement allocations finish. RT-117 follows authority across
+Binder completion: cancellation can precede physical completion, so stale
+results still need an exact-session releaser and a publication-failure guard.
+Distinguish those helper controls from unexecuted device/provider races.

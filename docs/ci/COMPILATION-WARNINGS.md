@@ -1,5 +1,18 @@
 # Compilation and lint warning inventory
 
+
+## 0b882952 warning and infrastructure review
+
+The full latest logs contain one own native warning family, CW-035 below.
+Android repeats the `builtInKotlin=false` deprecation four times and two
+`ChromeOsAbiSupport` sites at build.gradle:89/109 in debug/release. Those
+remain open even though Android and its 179 JVM tests succeed. Ubuntu apt
+503/timeouts are CI-NOV19-APT infrastructure diagnostics, not documentation
+warnings or a reason to suppress failure. Successful Debian/static-musl and
+MSYS2 package messages are reviewed separately. Skipped Perl quality cannot
+clear historical Critic/ShellCheck findings. See the current exact-run table
+in [TEST-FAILURES](TEST-FAILURES.md#0b882952-previous-allocation-regressions-pass-infrastructure-blocks-three-jobs).
+
 ## CW-035: transactional DHT admission shadows its quota iterator
 
 Observed in [Windows 44524027363](https://github.com/daviduhden/openi2pd/actions/runs/44524027363),
@@ -18,7 +31,6 @@ demonstrated same-scope shadow. The source-order contract follows the renamed
 consumer; `test-torrents-admission` remains the behavioral regression.
 Implemented / static; Pending CI compilation and Pending CI tests. Do not
 suppress C4456 or infer zero warnings from a successful compile exit.
-
 
 
 ## 6fbe50c1 warning review

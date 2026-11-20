@@ -1055,3 +1055,16 @@ inventory includes all three (33 selected targets versus 30 in published
 6fbe50c1). Existing allocation fixtures use typed provenance tokens rather
 than exception_ptr identity. Native tests are prepared, not locally executed;
 SAF cleanup additionally has a source-order guard and needs device evidence.
+
+## Enclosing admission regressions after 0b882952
+
+Prepared `test-streaming-destination-packets` and
+`test-ratchet-tag-publication` join common CTest, security/memory labels,
+normal120s/sanitizer300s budgets and the explicit MSVC35-target
+build/filter/parser/artifact inventory. Extended `test-torrents-admission`
+checks memberships and hash/ID rollback. Fixtures use no network, threads or
+shared temporary paths; there is no new RUN_SERIAL/resource-lock requirement.
+Android JVM discovery includes eight `TorrentSafAdmissionTest` controls;
+actual Binder/provider/device races remain pending. No new target is claimed
+in the optional PageHeap subset. All these local regressions are Prepared /
+not executed; publication and a subsequent manual CI pass are still required.

@@ -111,10 +111,13 @@ build.
 
 ## Known issues and decisions
 
-- A new packet/ratchet exception regression must join common CTest and the
-  explicit MSVC build, closed filter, parser fixture and diagnostic artifact
-  inventories together. Independent targets make a fixture failure distinguishable
-  from the production ownership or transactional-state regression it exposed.
+- Destination packet and tag-publication controls are independent native
+  targets. Add each to the common inventory, security/memory labels and the
+  explicit MSVC build/filter/parser/artifact set together. Selected counts must
+  distinguish real execution from capability skips; optional PageHeap coverage
+  is a separate targeted inventory, not implied by ordinary CTest selection.
+  Independent targets distinguish fixture failures from production ownership
+  or transactional-state regressions.
 
 - Probe stamp v3 filters empty configuration names before list operations.
   Standalone source checks may lack native-configure policy settings; the

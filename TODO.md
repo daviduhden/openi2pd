@@ -2708,3 +2708,23 @@ Android 179 JVM tests pass on the published SHA, but ChromeOS/Kotlin warnings,
 API29 device evidence, older compiler/OpenSSL4.0.x floor and skipped quality
 lanes remain open. Corrections require CI on their published revision; the
 audit runs above predate them.
+
+## Audit continuation after 0b882952
+
+| ID | State | Work and remaining evidence |
+|---|---|---|
+| AUDIT-0B88-01 | Validated by CI | Published 0b882952 TF-111 and RT-110/111/112 native controls pass executed Linux/OpenBSD/CLANG64/MSVC/sanitizer lanes; exact selected/pass/skip counts in docs/ci/TEST-FAILURES.md |
+| AUDIT-0B88-02 | Implemented / static | CW-035 MSVC binding shadow correction; Pending CI compilation and Pending CI tests |
+| AUDIT-0B88-03 | Implemented / static | RT-114 pre-SYN batch ownership/expiry identity and new destination regression; Pending CI compilation and Pending CI tests; public Start/Stop lifecycle residual open |
+| AUDIT-0B88-04 | Implemented / static | RT-115 receive-tag publication and ElGamal confirmation staging, dedicated regression; Pending CI compilation and Pending CI tests; ordinary void-HKDF failure and capacity eviction separate |
+| AUDIT-0B88-05 | Implemented / static | RT-116 tracker reference/membership and torrent hash/ID rollback; extended admission regression; Pending CI compilation and Pending CI tests; external side effects not rolled back |
+| AUDIT-0B88-06 | Implemented / static | RT-117 exact-session Java SAF admission cleanup including late completion and fallback close; eight JVM controls prepared; Pending CI compilation and Pending CI tests/device races |
+| AUDIT-0B88-07 | Correction pending | RT-087 first failing Windows loader operation remains unknown despite exact-image armed probe; preserve containment |
+| AUDIT-0B88-08 | Pending CI tests | CI-NOV19-APT prevented Doxygen/service contracts/install matrix from running; no source cause established, no retries or coverage reduction added |
+
+Historical retrieval accounts for all 545 accessible metadata records: 542 full
+logs, one partial and two canceled runs without accessible job logs. Five job
+404s remain explicit evidence gaps. Current Android ChromeOS/Kotlin warnings,
+optional UI/Perl, root-runner capability skips, live Java differential and old
+toolchain/OpenSSL4.0.x floor evidence remain open. These corrections require
+manual CI on their published revision; the audit did not dispatch workflows.
