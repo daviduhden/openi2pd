@@ -635,7 +635,8 @@ namespace torrents
 			MembershipVector,
 			MembershipNode,
 			TorrentID,
-			TrackersReady
+			TrackersReady,
+			PeerDialCompletion
 		};
 		void (*m_RegistryCheckpointForTesting) (RegistryCheckpoint) = nullptr;
 		friend struct TorrentAdmissionTestAccess;

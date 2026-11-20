@@ -116,6 +116,12 @@ Do not let them edit, build or run tests.
 
 ## Known issues and decisions
 
+Peer dial admission includes allocating the completion callable. Keep exact
+reservation rollback armed through std::function construction under the
+admission gate; retain the attempt timestamp and consumed ID on failure.
+A typed null completion and an allocation exception are separate paths.
+
+
 - Review enclosing membership after fixing parallel tracker indexes. Reserve
   rollback bookkeeping before acquiring references, retain old membership until
   replacement allocation completes, and keep release allocation-free. Torrent

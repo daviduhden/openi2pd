@@ -165,6 +165,20 @@ struct TorrentAdmissionTestAccess
 		assert (tunnel.m_Trackers.size () == 2 && tunnel.m_TrackerSlots.size () == 2);
 		Memberships (tunnel);
 		TorrentIndexes (tunnel);
+		auto dialing = std::make_shared<TorrentsTunnel> ("dial-admission", owner, "/unused-authority", "", false);
+		dialing->m_InboundAcceptStopped = false;
+		dialing->StartPeerDials ();
+		auto torrent = std::make_shared<Torrent> (Hash (77));
+		i2p::data::IdentHash peer { };
+		const auto firstID = dialing->m_NextDialID;
+		FailRegistry (*dialing, RegistryPoint::PeerDialCompletion, 0,
+			[&] { dialing->CreatePeerDialCompletion (torrent, peer, ePeerConnectionOriginTracker); });
+		assert (dialing->m_PendingDials.empty ());
+		assert (dialing->m_NextDialID == firstID + 1);
+		auto complete = dialing->CreatePeerDialCompletion (torrent, peer, ePeerConnectionOriginTracker);
+		assert (complete && dialing->m_PendingDials.size () == 1);
+		complete (nullptr);
+		assert (dialing->m_PendingDials.empty ());
 	}
 
 	static Torrent::InfoHash Hash (unsigned value)

@@ -3545,21 +3545,25 @@ namespace torrents
 	{
 		std::weak_ptr<TorrentsTunnel> owner = std::static_pointer_cast<TorrentsTunnel> (weak_from_this ().lock ());
 		std::shared_ptr<InboundAcceptGeneration> generation;
-		uint64_t dial;
-		{
-			std::lock_guard<std::mutex> publication (m_InboundAcceptMutex);
-			generation = m_PeerDialGeneration;
-			if (!generation || owner.expired ()) return { };
-			std::lock_guard<std::mutex> admission (generation->mutex);
-			if (!generation->active || m_InboundAcceptStopped || m_Stopping || !torrent || !m_NextDialID
-				|| !CanDial (*torrent))
-				return { };
-			const uint64_t now = i2p::util::GetMonotonicSeconds ();
-			dial = m_NextDialID++;
-			m_PendingDials.emplace (dial, PendingDial { torrent, now });
-			torrent->MarkPeerCandidateAttempt (peer, now);
-		}
-		return [owner, generation, torrent, peer, origin, dial] (std::shared_ptr<i2p::stream::Stream> stream)
+		std::lock_guard<std::mutex> dialPublication (m_InboundAcceptMutex);
+		generation = m_PeerDialGeneration;
+		if (!generation || owner.expired ()) return { };
+		std::lock_guard<std::mutex> dialAdmission (generation->mutex);
+		if (!generation->active || m_InboundAcceptStopped || m_Stopping || !torrent || !m_NextDialID
+			|| !CanDial (*torrent))
+			return { };
+		const uint64_t now = i2p::util::GetMonotonicSeconds ();
+		const uint64_t dial = m_NextDialID++;
+		auto [position, inserted] = m_PendingDials.emplace (dial, PendingDial { torrent, now });
+		if (!inserted) return { };
+		// Keep admission locked through callable allocation. Rollback erases
+		// only this exact reservation without allocating or re-locking. The
+		// attempt timestamp remains charged when construction fails.
+		auto rollback = i2p::modern::ScopeExit ([&] { m_PendingDials.erase (position); });
+		torrent->MarkPeerCandidateAttempt (peer, now);
+		if (m_RegistryCheckpointForTesting) m_RegistryCheckpointForTesting (RegistryCheckpoint::PeerDialCompletion);
+		i2p::client::StreamRequestComplete complete
+			= [owner, generation, torrent, peer, origin, dial] (std::shared_ptr<i2p::stream::Stream> stream)
 		{
 			auto self = owner.lock ();
 			if (!self)
@@ -3600,6 +3604,8 @@ namespace torrents
 					torrent->MarkPeerCandidateFailed (peer, i2p::util::GetMonotonicSeconds ());
 			}
 		};
+		rollback.dismiss ();
+		return complete;
 	}
 
 	size_t TorrentsTunnel::ConnectToPeers (std::shared_ptr<Torrent> torrent)

@@ -1400,3 +1400,10 @@ require_runtime_order("android/app/src/main/java/org/openi2pd/router/TorrentSafS
 
 require_runtime_source("android/app/src/main/java/org/openi2pd/router/TorrentSafAdmission.java"
   "return publish(operation.acquire(), publisher, release);")
+
+require_runtime_source("libi2pd_client/TorrentsTunnel.cpp"
+  "m_RegistryCheckpointForTesting (RegistryCheckpoint::PeerDialCompletion)")
+require_runtime_source("libi2pd_client/TorrentsTunnel.cpp"
+  "m_PendingDials.erase (position);")
+require_runtime_source("tests/test-torrents-admission.cpp"
+  "assert (dialing->m_PendingDials.empty ());")
