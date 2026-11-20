@@ -3172,6 +3172,10 @@ namespace torrents
 			return false;
 		}
 		const auto authority = m_TrackerRequests.Authority (key);
+		// Authority is a non-reused admission generation across run restarts.
+		// Roll back synchronous construction only; never invoke completion.
+		auto rollback = i2p::modern::ScopeExit ([&] { ReleaseTrackerRequest (key, authority); });
+		if (m_RegistryCheckpointForTesting) m_RegistryCheckpointForTesting (RegistryCheckpoint::TrackerParameters);
 		std::map<std::string, std::string> params;
 		params.emplace ("info_hash", torrent->GetHexStringInfoHash ());
 		// Percent-encoded per-torrent random peer id. The tunnel identity is
@@ -3211,6 +3215,7 @@ namespace torrents
 		req->set (boost::beast::http::field::user_agent, "I2PSocketEepGet");
 		req->keep_alive (false); // Connection: close
 		std::weak_ptr<i2p::client::I2PService> weakSelf = weak_from_this ();
+		if (m_RegistryCheckpointForTesting) m_RegistryCheckpointForTesting (RegistryCheckpoint::TrackerDispatch);
 		CreateStream (
 			[weakSelf, req, torrent, key, authority, event] (std::shared_ptr<i2p::stream::Stream> stream)
 			{
@@ -3251,6 +3256,7 @@ namespace torrents
 					});
 			},
 			reqURL.host, reqURL.port);
+		rollback.dismiss ();
 		return true;
 	}
 
@@ -3432,7 +3438,10 @@ namespace torrents
 		const auto admission = m_TrackerRequests.TryAcquire (
 			key, TrackerRequestState { nullptr, { }, torrent, i2p::util::GetMonotonicMilliseconds () });
 		if (admission != TrackerInflightRegistry<TrackerRequestState>::Admission::Accepted) return false;
-		ScheduleTrackerRequestDeadline (key, m_TrackerRequests.Authority (key));
+		const auto authority = m_TrackerRequests.Authority (key);
+		auto rollback = i2p::modern::ScopeExit ([&] { ReleaseTrackerRequest (key, authority); });
+		ScheduleTrackerRequestDeadline (key, authority);
+		rollback.dismiss ();
 		return true;
 	}
 
@@ -3477,10 +3486,12 @@ namespace torrents
 	{
 		auto * state = m_TrackerRequests.Find (key, authority);
 		if (!state) return;
+		if (m_RegistryCheckpointForTesting) m_RegistryCheckpointForTesting (RegistryCheckpoint::TrackerTimer);
 		auto deadline = std::make_shared<boost::asio::steady_timer> (GetService ());
 		deadline->expires_after (std::chrono::seconds (TRACKER_RESPONSE_TIMEOUT));
 		state->deadline = deadline;
 		std::weak_ptr<i2p::client::I2PService> weakSelf = weak_from_this ();
+		if (m_RegistryCheckpointForTesting) m_RegistryCheckpointForTesting (RegistryCheckpoint::TrackerWait);
 		deadline->async_wait (
 			[weakSelf, key, authority] (const boost::system::error_code & ecode)
 			{

@@ -1457,3 +1457,20 @@ require_runtime_order("libi2pd_client/I2PService.cpp"
   "InvokeReadyCallback (entry.first, result);")
 require_runtime_source("tests/test-i2p-service-readiness.cpp" "TestReadinessArmingFailure ();")
 require_runtime_source("tests/test-i2p-service-readiness.cpp" "TestReadinessSelectionAndRearmFailure ();")
+
+# Tracker timer setup and outer request dispatch are separate transactions.
+require_runtime_order("libi2pd_client/TorrentsTunnel.cpp"
+  "bool TorrentsTunnel::AcquireTrackerRequest (" "void TorrentsTunnel::ReleaseTrackerRequest ("
+  "m_TrackerRequests.TryAcquire (" "const auto authority ="
+  "auto rollback =" "ReleaseTrackerRequest (key, authority);"
+  "ScheduleTrackerRequestDeadline (key, authority);" "rollback.dismiss ();")
+require_runtime_order("libi2pd_client/TorrentsTunnel.cpp"
+  "bool TorrentsTunnel::RequestTracker (" "void TorrentsTunnel::AcquireTrackerSlot ("
+  "AcquireTrackerRequest (key, torrent)" "const auto authority ="
+  "auto rollback =" "ReleaseTrackerRequest (key, authority);"
+  "RegistryCheckpoint::TrackerParameters" "RegistryCheckpoint::TrackerDispatch"
+  "CreateStream (" "rollback.dismiss ();")
+require_runtime_source("tests/test-torrents-admission.cpp"
+  "RegistryPoint::TrackerTimer, RegistryPoint::TrackerWait")
+require_runtime_source("tests/test-torrents-admission.cpp"
+  "RegistryPoint::TrackerParameters, RegistryPoint::TrackerDispatch")

@@ -1095,3 +1095,15 @@ The closed source inventory rejects extra, missing, duplicate or unbounded
 calls. Separate negative controls pin KERNELBASE load identity and an exit
 notification without a resume. These new controls are Pending CI tests;
 the ordinary workflow-source guard is compile-free and is not their execution.
+
+## Readiness and tracker timer fault regression expansion
+
+Existing test-i2p-service-readiness adds witnessed wait allocation, wait
+registration, callback selection and rearm faults. It checks explicit
+failure outside locks, selected timeout outcomes, retry and stale canceled
+completion. Existing test-torrents-admission adds timer/wait/parameter/
+dispatch faults, incumbent preservation, timer reclamation and stale
+authority rejection. No new target or timeout change is needed: existing
+common/security-memory and focused Windows selections include both. These
+expanded controls are Pending CI compilation and Pending CI tests; the
+earlier 4e6aed8d success does not cover the new branches.

@@ -116,6 +116,13 @@ Do not let them edit, build or run tests.
 
 ## Known issues and decisions
 
+Tracker admission includes its deadline allocation/registration and later
+HTTP parameter, callable and stream-dispatch construction. Guard each
+transaction with the registry's exact non-reused authority, release on
+exception without invoking completion, and test incumbent preservation,
+timer reclamation and stale timeout after key reuse.
+
+
 The peer completion factory is not the end of dial admission: the caller
 still allocates an Address and dispatches service work. Keep rollback across
 that synchronous boundary with exact generation, dial ID and live torrent

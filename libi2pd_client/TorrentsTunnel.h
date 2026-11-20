@@ -649,7 +649,11 @@ namespace torrents
 			TrackersReady,
 			PeerDialCompletion,
 			PeerDialAddress,
-			PeerDialDispatch
+			PeerDialDispatch,
+			TrackerTimer,
+			TrackerWait,
+			TrackerParameters,
+			TrackerDispatch
 		};
 		void (*m_RegistryCheckpointForTesting) (RegistryCheckpoint) = nullptr;
 		friend struct TorrentAdmissionTestAccess;

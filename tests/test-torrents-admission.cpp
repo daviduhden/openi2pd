@@ -163,6 +163,41 @@ struct TorrentAdmissionTestAccess
 		assert (tunnel.GetTrackerAnnounce (0) == "http://first.i2p/announce");
 		assert (tunnel.AddTracker ("http://second.i2p/announce", false) == 1);
 		assert (tunnel.m_Trackers.size () == 2 && tunnel.m_TrackerSlots.size () == 2);
+		// Timer allocation/registration and announce construction are
+		// separate transactions. Neither may strand an admitted request.
+		auto tracked = std::make_shared<Torrent> (Hash (79));
+		tracked->SetAnnounce ("http://first.i2p/announce");
+		assert (tracked->HasPeerID ());
+		const TrackerRequestKey incumbentKey { tracked->GetInfoHash (), 1 };
+		const TrackerRequestKey candidateKey { tracked->GetInfoHash (), 0 };
+		assert (tunnel.AcquireTrackerRequest (incumbentKey, tracked));
+		const auto incumbentAuthority = tunnel.m_TrackerRequests.Authority (incumbentKey);
+		for (auto point : { RegistryPoint::TrackerTimer, RegistryPoint::TrackerWait })
+		{
+			FailRegistry (tunnel, point, 0, [&] { tunnel.AcquireTrackerRequest (candidateKey, tracked); });
+			assert (!tunnel.m_TrackerRequests.Contains (candidateKey));
+			assert (tunnel.m_TrackerRequests.Find (incumbentKey, incumbentAuthority));
+		}
+		for (auto point : { RegistryPoint::TrackerParameters, RegistryPoint::TrackerDispatch })
+		{
+			FailRegistry (tunnel, point, 0, [&] { tunnel.RequestTracker (0, tracked, eTrackerAnnounceEventStopped); });
+			assert (!tunnel.m_TrackerRequests.Contains (candidateKey));
+			assert (tunnel.m_TrackerRequests.Find (incumbentKey, incumbentAuthority));
+		}
+		assert (tunnel.AcquireTrackerRequest (candidateKey, tracked));
+		const auto retiredAuthority = tunnel.m_TrackerRequests.Authority (candidateKey);
+		std::weak_ptr<boost::asio::steady_timer> retiredTimer
+			= tunnel.m_TrackerRequests.Find (candidateKey, retiredAuthority)->deadline;
+		tunnel.ReleaseTrackerRequest (candidateKey, retiredAuthority);
+		assert (retiredTimer.expired ());
+		assert (tunnel.AcquireTrackerRequest (candidateKey, tracked));
+		const auto successorAuthority = tunnel.m_TrackerRequests.Authority (candidateKey);
+		assert (successorAuthority != retiredAuthority);
+		tunnel.ReleaseTrackerRequest (candidateKey, retiredAuthority);
+		tunnel.HandleTrackerRequestTimeout (candidateKey, retiredAuthority);
+		assert (tunnel.m_TrackerRequests.Find (candidateKey, successorAuthority));
+		tunnel.ReleaseTrackerRequest (candidateKey, successorAuthority);
+		tunnel.ReleaseTrackerRequest (incumbentKey, incumbentAuthority);
 		Memberships (tunnel);
 		TorrentIndexes (tunnel);
 		auto dialing = std::make_shared<TorrentsTunnel> ("dial-admission", owner, "/unused-authority", "", false);
