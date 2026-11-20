@@ -859,14 +859,19 @@ final class TorrentSafStorage {
             if (root.generation == session.generation && root.remoteId != 0)
                 return root.remoteId;
         }
-        long result = session.remote.authorizeTree(root.uri, session.operation);
-        synchronized (lock) {
-            if (generation != session.generation || roots.get(id) != root)
-                return 0;
-            root.generation = session.generation;
-            root.remoteId = result;
-        }
-        return result;
+        // A late result belongs to the admitting broker, even if the
+        // local root or binding was retired while Binder was blocked.
+        return TorrentSafAdmission.acquire(
+                () -> session.remote.authorizeTree(root.uri, session.operation), admitted -> {
+                    synchronized (lock) {
+                        if (generation != session.generation || remote != session.remote
+                                || roots.get(id) != root)
+                            return false;
+                        root.generation = session.generation;
+                        root.remoteId = admitted;
+                        return true;
+                    }
+                }, session.remote::revokeTree);
     }
     private static long fileId(Session session, long id) throws Exception {
         File file;
@@ -880,15 +885,22 @@ final class TorrentSafStorage {
         long root = rootId(session, file.root);
         if (root == 0)
             return 0;
-        long result = session.remote.openFile(
-                root, file.path, file.length, file.create, session.operation);
-        synchronized (lock) {
-            if (generation != session.generation || files.get(id) != file)
-                return 0;
-            file.generation = session.generation;
-            file.remoteId = result;
-        }
-        return result;
+        return TorrentSafAdmission.acquire(
+                ()
+                        -> session.remote.openFile(
+                                root, file.path, file.length, file.create, session.operation),
+                admitted
+                -> {
+                    synchronized (lock) {
+                        if (generation != session.generation || remote != session.remote
+                                || files.get(id) != file)
+                            return false;
+                        file.generation = session.generation;
+                        file.remoteId = admitted;
+                        return true;
+                    }
+                },
+                session.remote::closeFile);
     }
     /**
      * Create a local file capability and open it through the current
@@ -912,9 +924,9 @@ final class TorrentSafStorage {
             files.put(id, new File(root, relative, length, create));
         }
         if (!Boolean.TRUE.equals(run(session -> fileId(session, id) != 0, false).value())) {
-            synchronized (lock) {
-                files.remove(id);
-            }
+            // Cancellation is advisory: fileId retires a later result.
+            // If publication already won, close retires that exact ID.
+            close(id);
             return 0;
         }
         return id;

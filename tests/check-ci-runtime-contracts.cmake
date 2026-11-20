@@ -1377,3 +1377,26 @@ require_runtime_order("libi2pd_client/TorrentsTunnel.cpp"
   "previous->second.swap (replacement);" "rollback.dismiss ();")
 require_runtime_source("libi2pd_client/TorrentsTunnel.cpp"
   "if (trackersRegistered) ReleaseTorrentTrackers (torrent->GetInfoHash ());")
+require_runtime_source("android/app/src/main/java/org/openi2pd/router/TorrentSafStorage.java"
+  "session.remote::revokeTree);")
+require_runtime_source("android/app/src/main/java/org/openi2pd/router/TorrentSafStorage.java"
+  "session.remote::closeFile);")
+require_runtime_order("android/app/src/main/java/org/openi2pd/router/TorrentSafStorage.java"
+  "public static long open(long root," "public static byte[] read("
+  "run(session -> fileId(session, id) != 0, false)" "close(id);" "return id;")
+require_runtime_order("android/app/src/main/java/org/openi2pd/router/TorrentSafAdmission.java"
+  "static long publish(" "\n}\n"
+  "boolean committed = false;" "committed = publisher.test(capability);"
+  "} finally {" "if (!committed)" "release.release(capability);")
+
+require_runtime_order("android/app/src/main/java/org/openi2pd/router/TorrentSafStorage.java"
+  "private static long rootId(" "private static long fileId("
+  "TorrentSafAdmission.acquire(" "session.remote.authorizeTree("
+  "roots.get(id) != root" "root.remoteId = admitted;" "session.remote::revokeTree);")
+require_runtime_order("android/app/src/main/java/org/openi2pd/router/TorrentSafStorage.java"
+  "private static long fileId(" "public static long open("
+  "TorrentSafAdmission.acquire(" "session.remote.openFile("
+  "files.get(id) != file" "file.remoteId = admitted;" "session.remote::closeFile);")
+
+require_runtime_source("android/app/src/main/java/org/openi2pd/router/TorrentSafAdmission.java"
+  "return publish(operation.acquire(), publisher, release);")

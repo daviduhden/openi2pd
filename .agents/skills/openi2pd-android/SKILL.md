@@ -121,6 +121,14 @@ run Gradle, install an APK or run a device test.
 
 ## Known issues and decisions
 
+- Java SAF admission can complete after timeout, close or binding replacement.
+  Guard remote results until exact local-entry/binding publication commits;
+  stale results close/revoke through the captured original session outside the
+  local monitor. Prepare callback objects before remote admission too: allocating
+  a cleanup closure after obtaining the capability leaves an unwind gap. Advisory Future cancellation does not reclaim capabilities.
+  Cover fallback after publication separately with local close and retain
+  best-effort cleanup/device limitations instead of claiming provider rollback.
+
 - A Java SAF handle is already remote authority before its native set entry
   allocates. Guard close until native insertion commits, with cleanup inside
   the live SafEnv/frame and bridge lifetime. Clear cleanup JNI exceptions while
