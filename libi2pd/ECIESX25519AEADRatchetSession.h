@@ -130,6 +130,21 @@ namespace garlic
 
 	private:
 		friend struct RatchetKeyTransactionTestAccess;
+		friend struct RatchetTagPublicationTestAccess;
+		friend class GarlicDestination;
+		// A receive tag is committed only after its registry admission.
+		// The staged chain must not survive either success or unwind.
+		struct PreparedSessionTag
+		{
+			PreparedSessionTag () = default;
+			PreparedSessionTag (const PreparedSessionTag &) = delete;
+			PreparedSessionTag & operator= (const PreparedSessionTag &) = delete;
+			~PreparedSessionTag () { keyData.Wipe (); }
+			i2p::data::Tag<64> keyData;
+			int index = 0;
+		};
+		bool PrepareNextSessionTag (i2p::crypto::HKDFContext & hkdfCtx, PreparedSessionTag & prepared) const;
+		void CommitNextSessionTag (const PreparedSessionTag & prepared) noexcept;
 		enum class KeyCheckpoint
 		{
 			Derive,

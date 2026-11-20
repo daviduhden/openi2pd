@@ -366,6 +366,8 @@ namespace garlic
 		size_t CreateDeliveryStatusClove (uint8_t * buf, size_t capacity, uint32_t msgID);
 
 		void TagsConfirmed (uint32_t msgID);
+		void TagsConfirmedImpl (uint32_t msgID, void (*checkpoint) ());
+		friend struct RatchetTagPublicationTestAccess;
 		std::unique_ptr<UnconfirmedTags> GenerateSessionTags ();
 
 	private:
@@ -475,6 +477,9 @@ namespace garlic
 		virtual bool SubmitSessionKey (const uint8_t * key, const uint8_t * tag); // from different thread
 		virtual void SubmitECIESx25519Key (const uint8_t * key, uint64_t tag); // from different thread
 		void DeliveryStatusSent (GarlicRoutingSessionPtr session, uint32_t msgID);
+		/// Publish the next receive tag before committing its chain/index.
+		/// Allocation exceptions preserve tag generation, but do not undo
+		/// capacity eviction. Callers serialize other access to the tagset.
 		uint64_t AddECIESx25519SessionNextTag (ReceiveRatchetTagSetPtr tagset);
 		bool IsDuplicateNewSessionKey (const uint8_t * key) const;
 		void AddNewSessionKey (const uint8_t * key);
@@ -509,6 +514,8 @@ namespace garlic
 		void LoadTags ();
 
 	private:
+		friend struct RatchetTagPublicationTestAccess;
+		uint64_t AddECIESx25519SessionNextTagImpl (ReceiveRatchetTagSetPtr tagset, void (*checkpoint) ());
 		bool SupportsRatchets () const { return GetRatchetsHighestCryptoType () > 0; }
 		// Called with m_TagsMutex held. Expired entries are removed first; if
 		// the hard map bound is still reached, arbitrary oldest entries are

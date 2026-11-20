@@ -21,6 +21,7 @@
 #include <inttypes.h>
 #include <cstring>
 #include "I2PEndian.h"
+#include "Modern.h"
 #include <algorithm>
 #include <limits>
 #include <map>
@@ -634,6 +635,11 @@ namespace garlic
 
 	void ElGamalAESSession::TagsConfirmed (uint32_t msgID)
 	{
+		TagsConfirmedImpl (msgID, nullptr);
+	}
+
+	void ElGamalAESSession::TagsConfirmedImpl (uint32_t msgID, void (*checkpoint) ())
+	{
 		uint32_t ts = static_cast<uint32_t> (i2p::util::GetSecondsSinceEpoch ());
 		auto it = m_UnconfirmedTagsMsgs.find (msgID);
 		if (it != m_UnconfirmedTagsMsgs.end ())
@@ -641,7 +647,20 @@ namespace garlic
 			auto & tags = it->second;
 			if (ts < tags->tagsCreationTime + OUTGOING_TAGS_EXPIRATION_TIMEOUT)
 			{
-				for (const auto & tag : tags->sessionTags) m_SessionTags.push_back (tag);
+				// A failed later node must not publish a prefix that a repeated
+				// confirmation could admit again as one-time session tags.
+				std::list<SessionTag> pending;
+				i2p::modern::ScopeExit cleansePending (
+					[&pending] ()
+					{
+						for (auto & tag : pending) tag.Wipe ();
+					});
+				for (const auto & tag : tags->sessionTags)
+				{
+					if (checkpoint) checkpoint ();
+					pending.push_back (tag);
+				}
+				m_SessionTags.splice (m_SessionTags.end (), pending);
 			}
 			m_UnconfirmedTagsMsgs.erase (it);
 		}
@@ -1792,10 +1811,15 @@ namespace garlic
 
 	uint64_t GarlicDestination::AddECIESx25519SessionNextTag (ReceiveRatchetTagSetPtr tagset)
 	{
+		return AddECIESx25519SessionNextTagImpl (std::move (tagset), nullptr);
+	}
+
+	uint64_t GarlicDestination::AddECIESx25519SessionNextTagImpl (ReceiveRatchetTagSetPtr tagset, void (*checkpoint) ())
+	{
 		if (!tagset) return 0;
-		// Reserve the budget before advancing the tag chain. If the map is
-		// full, leaving the index unchanged lets a later cleanup generate the
-		// same tag instead of permanently skipping it.
+		// Capacity eviction is separate from chain publication. Preparing a
+		// tag does not advance the live chain; allocation failure during map
+		// insertion must leave that same tag available for a later attempt.
 		std::vector<ReceiveRatchetTagSetPtr> removed;
 		uint64_t tag = 0;
 		{
@@ -1805,9 +1829,19 @@ namespace garlic
 				LogPrint (eLogWarning, "Garlic: Incoming ECIES tag budget exceeded");
 			else
 			{
-				auto index = tagset->GetNextIndex ();
-				tag = tagset->GetNextSessionTag (GetThreadLocalHKDFContext ());
-				if (tag) m_ECIESx25519Tags.emplace (tag, ECIESX25519AEADRatchetIndexTagset { index, tagset });
+				RatchetTagSet::PreparedSessionTag prepared;
+				if (tagset->PrepareNextSessionTag (GetThreadLocalHKDFContext (), prepared))
+				{
+					tag = prepared.keyData.GetLL ()[4];
+					if (tag)
+					{
+						if (checkpoint) checkpoint ();
+						m_ECIESx25519Tags.emplace (tag, ECIESX25519AEADRatchetIndexTagset { prepared.index, tagset });
+					}
+					// Preserve existing zero-tag/collision consumption semantics.
+					// No fallible work remains after registry admission succeeds.
+					tagset->CommitNextSessionTag (prepared);
+				}
 			}
 		}
 		// Removed tagsets are released outside m_TagsMutex.

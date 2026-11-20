@@ -1357,3 +1357,15 @@ require_runtime_source("tests/test-streaming-destination-packets.cpp"
   "assert (old.expired ());")
 require_runtime_source("tests/test-streaming-destination-packets.cpp"
   "destination.ExpireSavedPackets (id, previous, { });")
+
+require_runtime_order("libi2pd/Garlic.cpp"
+  "uint64_t GarlicDestination::AddECIESx25519SessionNextTagImpl ("
+  "void GarlicDestination::AddECIESx25519Session ("
+  "PrepareNextSessionTag (" "m_ECIESx25519Tags.emplace ("
+  "tagset->CommitNextSessionTag (prepared);")
+require_runtime_order("libi2pd/Garlic.cpp"
+  "void ElGamalAESSession::TagsConfirmedImpl (" "bool ElGamalAESSession::CleanupExpiredTags ("
+  "std::list<SessionTag> pending;" "pending.push_back (tag);"
+  "m_SessionTags.splice (m_SessionTags.end (), pending);" "m_UnconfirmedTagsMsgs.erase (it);")
+require_runtime_source("tests/test-ratchet-tag-publication.cpp"
+  "Access::CheckElGamalConfirmation (after);")

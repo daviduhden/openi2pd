@@ -78,18 +78,33 @@ namespace garlic
 
 	uint64_t RatchetTagSet::GetNextSessionTag (i2p::crypto::HKDFContext & hkdfCtx)
 	{
+		PreparedSessionTag prepared;
+		if (!PrepareNextSessionTag (hkdfCtx, prepared)) return 0;
+		const auto tag = prepared.keyData.GetLL ()[4];
+		CommitNextSessionTag (prepared);
+		return tag;
+	}
+
+	bool RatchetTagSet::PrepareNextSessionTag (i2p::crypto::HKDFContext & hkdfCtx, PreparedSessionTag & prepared) const
+	{
 		// Java RatchetTagSet.consumeNext(): _lastTag starts at -1 and accepts
 		// the full 16-bit index space 0..65535, then refuses the next call.
 		// Check before advancing so index 0xFFFF is emitted exactly once.
 		if (m_NextIndex > 0xFFFF)
 		{
 			LogPrint (eLogError, "Garlic: Tagset ", GetTagSetID (), " is empty");
-			return 0;
+			return false;
 		}
 		hkdfCtx (m_SessionTagKeyData, m_SessTagConstant, 32, "SessionTagKeyGen",
-			m_SessionTagKeyData); // [sessTag_ck, tag] = HKDF(sessTag_chainkey, SESSTAG_CONSTANT, "SessionTagKeyGen", 64)
-		m_NextIndex++;
-		return m_SessionTagKeyData.GetLL ()[4]; // tag = keydata[32:39]
+			prepared.keyData); // [sessTag_ck, tag], with tag = keydata[32:39]
+		prepared.index = m_NextIndex;
+		return true;
+	}
+
+	void RatchetTagSet::CommitNextSessionTag (const PreparedSessionTag & prepared) noexcept
+	{
+		memcpy (m_SessionTagKeyData, prepared.keyData, 64);
+		m_NextIndex = prepared.index + 1;
 	}
 
 	bool RatchetTagSet::GetSymmKey (int index, uint8_t * key)

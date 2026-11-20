@@ -148,6 +148,7 @@ set(I2PD_TESTS
   test-streaming-sendstate
   test-streaming-packet-ownership
   test-streaming-destination-packets
+  test-ratchet-tag-publication
   test-ratchet-key-transaction
   test-log-lifecycle
   test-blinding-b33-strict
@@ -449,6 +450,7 @@ foreach(test IN LISTS I2PD_TESTS)
       OR test STREQUAL "test-streaming-sendstate"
       OR test STREQUAL "test-streaming-packet-ownership"
       OR test STREQUAL "test-streaming-destination-packets"
+      OR test STREQUAL "test-ratchet-tag-publication"
       OR test STREQUAL "test-ratchet-key-transaction"
       OR test STREQUAL "test-torrents-admission"
       OR test STREQUAL "test-torrents-engine-interop"

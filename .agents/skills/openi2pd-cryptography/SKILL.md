@@ -93,6 +93,13 @@ executing project code, or inspect a real private key.
 
 ## Known issues and decisions
 
+- Receive-tag generation and map publication are a distinct transaction from
+  symmetric-key caching. Stage the chain/index until insertion succeeds and
+  cleanse the staged value. Preserve existing exhaustion/collision semantics;
+  capacity eviction is separate. ElGamal confirmations prepare the complete
+  one-time-tag list before live splice so failed retries cannot repeat a prefix.
+  Exercise first/later allocation faults and an uninterrupted generation control.
+
 - Ratchet key derivation and intermediate-key admission form one exception
   transaction: stage chain/index/cache, finish allocations, then transfer nodes
   and publish output. Cleanse scratch secrets on every exit and compare failed
