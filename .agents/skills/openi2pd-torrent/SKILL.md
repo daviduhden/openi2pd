@@ -116,6 +116,11 @@ Do not let them edit, build or run tests.
 
 ## Known issues and decisions
 
+- Transaction preparation bindings and later quota/eviction iterators need
+  distinct role names. MSVC C4456 exposed an admission binding shadowed by
+  the quota loop after RT-112; keep source-order guards synchronized when
+  renaming, and preserve the same rollback/eviction regression coverage.
+
 - Tracker parallel registries and DHT FIFO/token/per-node indexes must admit
   transactionally. Roll back failed preparation before any incumbent eviction;
   test full-capacity and same/new-origin failures so quota loss cannot hide

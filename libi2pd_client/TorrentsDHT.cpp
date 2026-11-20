@@ -433,10 +433,10 @@ namespace torrents
 		m_Tokens.emplace (entry.token, last);
 		tokenInserted = true;
 		if (m_AdmissionCheckpointForTesting) m_AdmissionCheckpointForTesting (AdmissionCheckpoint::Node);
-		auto [node, inserted] = m_ByNode.try_emplace (entry.nodeID);
-		nodeInserted = inserted;
+		auto [admittedNode, admittedNodeInserted] = m_ByNode.try_emplace (entry.nodeID);
+		nodeInserted = admittedNodeInserted;
 		if (m_AdmissionCheckpointForTesting) m_AdmissionCheckpointForTesting (AdmissionCheckpoint::NodeOrder);
-		node->second.push_back (last);
+		admittedNode->second.push_back (last);
 		rollback.dismiss ();
 		Admission result = Admission::Issued;
 		// Per-node quota first: reclaim only this node's own oldest token, so

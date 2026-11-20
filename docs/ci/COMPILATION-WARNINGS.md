@@ -1,5 +1,26 @@
 # Compilation and lint warning inventory
 
+## CW-035: transactional DHT admission shadows its quota iterator
+
+Observed in [Windows 44524027363](https://github.com/daviduhden/openi2pd/actions/runs/44524027363),
+MSVC job 135559751720, SHA `0b882952006e36755458a1876b6821108f51186e`,
+MSVC 19.44 / OpenSSL 3.6.5. The successful build step reports
+`TorrentsDHT.cpp(448,9): warning C4456: declaration of 'node' hides previous
+local declaration`; the earlier declaration is the structured binding at 436.
+This is an own compiler warning even though the later test job fails for an
+independent worker startup fault.
+
+Root cause: the RT-112 preparation binding and later quota loop shared an
+identifier after the transaction refactor. Rename the admission binding to
+`admittedNode` / `admittedNodeInserted`, preserving rollback and eviction
+ordering. Global review of the adjacent store/erase/quota paths found one
+demonstrated same-scope shadow. The source-order contract follows the renamed
+consumer; `test-torrents-admission` remains the behavioral regression.
+Implemented / static; Pending CI compilation and Pending CI tests. Do not
+suppress C4456 or infer zero warnings from a successful compile exit.
+
+
+
 ## 6fbe50c1 warning review
 
 Complete logs for the [ten current runs](TEST-FAILURES.md#6fbe50c1-nine-successful-workflows-three-msvc-test-failures)

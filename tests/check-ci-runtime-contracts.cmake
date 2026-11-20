@@ -1299,7 +1299,7 @@ require_runtime_order("libi2pd_client/TorrentsDHT.cpp"
   "DHTTokenStore::Validation DHTTokenStore::Validate ("
   "m_Order.push_back (entry);" "auto rollback ="
   "m_Tokens.emplace (" "m_ByNode.try_emplace ("
-  "node->second.push_back (last);" "rollback.dismiss ();")
+  "admittedNode->second.push_back (last);" "rollback.dismiss ();")
 require_runtime_source("tests/test-torrents-admission.cpp"
   "assert (store.m_Order.size () == store.Size ());")
 
