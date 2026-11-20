@@ -376,7 +376,7 @@ jobs:
           @'
           .echo OPENI2PD_PROBE_ARMED
           lmvm ntdll
-          sxe -c ".echo OPENI2PD_PROBE_KERNELBASE; lmvm kernelbase; g" ld:kernelbase.dll
+          sxe -c ".echo OPENI2PD_PROBE_KERNELBASE; .reload /f kernelbase.dll; lmvm kernelbase; g" ld:kernelbase.dll
           sxe -c ".echo OPENI2PD_CRASH; .lastevent; ln @rip; kc 40; q" av
           sxe -c ".echo OPENI2PD_CRASH; .lastevent; ln @rip; kc 40; q" 0xc0000374
           sxe -c ".echo OPENI2PD_CRASH; .lastevent; ln @rip; kc 40; q" 0xc0000409

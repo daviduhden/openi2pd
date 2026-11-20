@@ -102,6 +102,13 @@ execution. Ask for:
 
 ## Known issues and decisions
 
+After changing collector exit handling, inspect exact-run events before
+calling a nonzero debugger exit a collector bug. An authority-free parent
+can itself exit 1 after its worker fails. Deferred KERNELBASE symbols do
+not prove a PDB; request fixed-module symbol loading without /i while
+retaining the original probe deadline, containment and failure assertions.
+
+
 A final process-exit debugger handler must not resume when no debuggee
 remains. A closed sxn notification with the exit marker and last event
 retains evidence without that resume. Capture KERNELBASE module identity

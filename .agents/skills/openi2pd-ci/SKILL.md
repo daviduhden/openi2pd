@@ -206,6 +206,13 @@ workflow, run `gh`, build or test.
 
 ## Known issues and decisions
 
+A successful module-load lmvm can still report deferred symbols. When
+exact evidence needs PDB provenance, force loading for that fixed module
+with .reload /f before lmvm under the existing collection deadline. Keep
+mismatch acceptance (/i) forbidden and distinguish unresolved symbols from
+missing module identity or a proved internal initializer failure.
+
+
 A witnessed deadline mutation can still expose a checker false pass when
 another process retains the same API substring. Bind every wait to its
 receiver and full argument grammar, with exact per-step and global call

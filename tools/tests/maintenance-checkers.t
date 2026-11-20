@@ -530,10 +530,12 @@ qr/worker initialization diagnostic|unsupported crash debugger line|missing boun
         [ '.echo OPENI2PD_PROBE_ARMED', '.echo UNARMED' ],
         [ 'lmvm ntdll',                 'lmvm kernel32' ],
         [
-            'OPENI2PD_PROBE_KERNELBASE; lmvm kernelbase; g',
-            'OPENI2PD_PROBE_KERNELBASE; lmvm kernel32; g'
+'OPENI2PD_PROBE_KERNELBASE; .reload /f kernelbase.dll; lmvm kernelbase; g',
+'OPENI2PD_PROBE_KERNELBASE; .reload /f kernelbase.dll; lmvm kernel32; g'
         ],
-        [ 'ld:kernelbase.dll', 'ld:kernel32.dll' ],
+        [ 'ld:kernelbase.dll',         'ld:kernel32.dll' ],
+        [ '.reload /f kernelbase.dll', '.reload kernelbase.dll' ],
+        [ '.reload /f kernelbase.dll', '.reload /f /i kernelbase.dll' ],
         [
             'https://msdl.microsoft.com/download/symbols',
             'https://invalid.example/symbols'

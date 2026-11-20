@@ -813,7 +813,7 @@ sub windows_exception_command_errors {
     my %probe_commands = map { $_ => 1 } (
 q{sxe -c "bu ntdll!NtTerminateProcess \".if (@edx == 0xc0000142) { .echo OPENI2PD_PROBE_TERMINATION; ln @rip; ln @$ra; ub @$ra L20; kc 40; }; gc\"; g" cpr},
         q{sxn -c ".echo OPENI2PD_PROBE_EXIT; .lastevent" epr},
-q{sxe -c ".echo OPENI2PD_PROBE_KERNELBASE; lmvm kernelbase; g" ld:kernelbase.dll}
+q{sxe -c ".echo OPENI2PD_PROBE_KERNELBASE; .reload /f kernelbase.dll; lmvm kernelbase; g" ld:kernelbase.dll}
     );
     my %probe_seen;
     my %allowed = map { $_ => 1 }
