@@ -629,6 +629,15 @@ namespace torrents
 		mutable std::mutex m_TrackerRegistryMutex;
 		TrackerSlots m_TrackerSlots;
 		void (*m_TrackerAppendCheckpointForTesting) () = nullptr;
+		enum class RegistryCheckpoint
+		{
+			WantedNode,
+			MembershipVector,
+			MembershipNode,
+			TorrentID,
+			TrackersReady
+		};
+		void (*m_RegistryCheckpointForTesting) (RegistryCheckpoint) = nullptr;
 		friend struct TorrentAdmissionTestAccess;
 		// Registry slots referenced by one torrent membership. Indexed by
 		// info hash so removal releases exactly one reference per membership

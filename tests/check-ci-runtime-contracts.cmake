@@ -1369,3 +1369,11 @@ require_runtime_order("libi2pd/Garlic.cpp"
   "m_SessionTags.splice (m_SessionTags.end (), pending);" "m_UnconfirmedTagsMsgs.erase (it);")
 require_runtime_source("tests/test-ratchet-tag-publication.cpp"
   "Access::CheckElGamalConfirmation (after);")
+require_runtime_order("libi2pd_client/TorrentsTunnel.cpp"
+  "void TorrentsTunnel::RegisterTorrentTrackers (" "void TorrentsTunnel::ReleaseTorrentTrackers ("
+  "acquired.reserve (MAX_NUM_TRACKERS);" "auto rollback ="
+  "AcquireTrackerSlot (*slot);" "acquired.push_back (*slot);"
+  "std::vector<size_t> replacement (wanted.begin (), wanted.end ());"
+  "previous->second.swap (replacement);" "rollback.dismiss ();")
+require_runtime_source("libi2pd_client/TorrentsTunnel.cpp"
+  "if (trackersRegistered) ReleaseTorrentTrackers (torrent->GetInfoHash ());")

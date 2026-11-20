@@ -11,6 +11,7 @@
 #include <initializer_list>
 #include <memory>
 #include <new>
+#include <vector>
 #include <boost/asio/io_context.hpp>
 #include "Destination.h"
 #include "TorrentsDHT.h"
@@ -22,6 +23,8 @@ struct TorrentAdmissionTestAccess
 {
 	using TokenPoint = DHTTokenStore::AdmissionCheckpoint;
 	using HashPoint = PrivateInfoHashSet::AdmissionCheckpoint;
+	using RegistryPoint = TorrentsTunnel::RegistryCheckpoint;
+	inline static unsigned callsBeforeFailure = 0;
 	inline static unsigned target = 0, observed = 0;
 	static void Fail ()
 	{
@@ -35,6 +38,103 @@ struct TorrentAdmissionTestAccess
 	static void HashFault (HashPoint point)
 	{
 		if (static_cast<unsigned> (point) == target) Fail ();
+	}
+
+	static void RegistryFault (RegistryPoint point)
+	{
+		if (static_cast<unsigned> (point) == target && callsBeforeFailure-- == 0) Fail ();
+	}
+	template <typename Action>
+	static void FailRegistry (TorrentsTunnel & tunnel, RegistryPoint point, unsigned after, Action action)
+	{
+		target = static_cast<unsigned> (point);
+		observed = 0;
+		callsBeforeFailure = after;
+		tunnel.m_RegistryCheckpointForTesting = &RegistryFault;
+		try
+		{
+			action ();
+			assert (false);
+		}
+		catch (const std::bad_alloc &)
+		{
+			assert (observed == 1);
+		}
+		tunnel.m_RegistryCheckpointForTesting = nullptr;
+	}
+	static std::vector<size_t> References (const TorrentsTunnel & tunnel)
+	{
+		std::vector<size_t> result;
+		for (const auto & slot : tunnel.m_TrackerSlots) result.push_back (slot.references);
+		return result;
+	}
+	static void CheckReferences (const TorrentsTunnel & tunnel, const std::vector<size_t> & before)
+	{
+		for (size_t i = 0; i < tunnel.m_TrackerSlots.size (); ++i)
+			assert (tunnel.m_TrackerSlots[i].references == (i < before.size () ? before[i] : 0));
+	}
+	static void Memberships (TorrentsTunnel & tunnel)
+	{
+		Torrent torrent (Hash (42));
+		torrent.SetAnnounce ("http://first.i2p/announce");
+		tunnel.RegisterTorrentTrackers (torrent);
+		const auto incumbent = tunnel.m_TrackerMemberships.at (torrent.GetInfoHash ());
+		const auto before = References (tunnel);
+		assert (torrent.SetTrackerTiers ({ { "http://second.i2p/announce", "http://third.i2p/announce" } }));
+		for (auto point : { RegistryPoint::WantedNode, RegistryPoint::MembershipVector })
+		{
+			FailRegistry (tunnel, point, 0, [&] { tunnel.RegisterTorrentTrackers (torrent); });
+			assert (tunnel.m_TrackerMemberships.at (torrent.GetInfoHash ()) == incumbent);
+			CheckReferences (tunnel, before);
+		}
+		FailRegistry (tunnel, RegistryPoint::WantedNode, 1, [&] { tunnel.RegisterTorrentTrackers (torrent); });
+		assert (tunnel.m_TrackerMemberships.at (torrent.GetInfoHash ()) == incumbent);
+		CheckReferences (tunnel, before);
+		tunnel.RegisterTorrentTrackers (torrent);
+		assert (tunnel.m_TrackerMemberships.at (torrent.GetInfoHash ()).size () == 3);
+		tunnel.ReleaseTorrentTrackers (torrent.GetInfoHash ());
+		assert (!tunnel.m_TrackerMemberships.contains (torrent.GetInfoHash ()));
+		assert (tunnel.m_TrackerSlots[0].references == 1 && tunnel.m_TrackerSlots[1].references == 1);
+
+		Torrent fresh (Hash (43));
+		fresh.SetAnnounce ("http://third.i2p/announce");
+		const auto freshBefore = References (tunnel);
+		FailRegistry (tunnel, RegistryPoint::MembershipNode, 0, [&] { tunnel.RegisterTorrentTrackers (fresh); });
+		assert (!tunnel.m_TrackerMemberships.contains (fresh.GetInfoHash ()));
+		CheckReferences (tunnel, freshBefore);
+		tunnel.RegisterTorrentTrackers (fresh);
+		tunnel.ReleaseTorrentTrackers (fresh.GetInfoHash ());
+		CheckReferences (tunnel, freshBefore);
+	}
+	static void TorrentIndexes (TorrentsTunnel & tunnel)
+	{
+		auto incumbent = std::make_shared<Torrent> (Hash (44));
+		incumbent->SetAnnounce ("http://first.i2p/announce");
+		assert (!incumbent->IsValid ()); // Avoid metadata/persistence startup.
+		const auto original = tunnel.InsertTorrent (incumbent);
+		assert (original.first == 1 && original.second);
+		const auto before = References (tunnel);
+		for (auto point : { RegistryPoint::TorrentID, RegistryPoint::TrackersReady })
+		{
+			auto candidate = std::make_shared<Torrent> (Hash (45));
+			candidate->SetAnnounce ("http://second.i2p/announce");
+			assert (!candidate->IsValid ());
+			FailRegistry (tunnel, point, 0, [&] { tunnel.InsertTorrent (candidate); });
+			assert (tunnel.m_Torrents.size () == 1 && tunnel.m_TorrentsByID.size () == 1);
+			assert (tunnel.m_Torrents.at (incumbent->GetInfoHash ()) == incumbent);
+			assert (tunnel.m_TorrentsByID.at (1).lock () == incumbent);
+			assert (!tunnel.m_TrackerMemberships.contains (candidate->GetInfoHash ()));
+			CheckReferences (tunnel, before);
+			const auto retry = tunnel.InsertTorrent (candidate);
+			assert (retry.first == 2 && retry.second);
+			tunnel.ReleaseTorrentTrackers (candidate->GetInfoHash ());
+			tunnel.m_TorrentsByID.erase (2);
+			tunnel.m_Torrents.erase (candidate->GetInfoHash ());
+			CheckReferences (tunnel, before);
+		}
+		tunnel.ReleaseTorrentTrackers (incumbent->GetInfoHash ());
+		tunnel.m_TorrentsByID.clear ();
+		tunnel.m_Torrents.clear ();
 	}
 
 	static void Trackers ()
@@ -63,6 +163,8 @@ struct TorrentAdmissionTestAccess
 		assert (tunnel.GetTrackerAnnounce (0) == "http://first.i2p/announce");
 		assert (tunnel.AddTracker ("http://second.i2p/announce", false) == 1);
 		assert (tunnel.m_Trackers.size () == 2 && tunnel.m_TrackerSlots.size () == 2);
+		Memberships (tunnel);
+		TorrentIndexes (tunnel);
 	}
 
 	static Torrent::InfoHash Hash (unsigned value)

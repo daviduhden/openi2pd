@@ -2442,8 +2442,20 @@ namespace torrents
 		if (!torrent || torrent->IsRemoved ()) return { 0, false };
 		std::lock_guard<std::mutex> l (m_TorrentsMutex);
 		if (m_RemovingTorrents.contains (torrent->GetInfoHash ())) return { 0, false };
-		if (m_Torrents.emplace (torrent->GetInfoHash (), torrent).second)
+		auto [admittedTorrent, inserted] = m_Torrents.emplace (torrent->GetInfoHash (), torrent);
+		if (inserted)
 		{
+			int admittedID = 0;
+			bool trackersRegistered = false;
+			// Roll back only local registry authority. Initialization may
+			// already have scheduled storage work or changed private DHT state.
+			auto rollback = i2p::modern::ScopeExit (
+				[&]
+				{
+					if (trackersRegistered) ReleaseTorrentTrackers (torrent->GetInfoHash ());
+					if (admittedID) m_TorrentsByID.erase (admittedID);
+					m_Torrents.erase (admittedTorrent);
+				});
 			// Reuse freed ids instead of overflowing int after INT_MAX
 			// additions. The map is ordered, so a hole scan is bounded by the
 			// number of live torrents and only happens at the wrap point.
@@ -2467,16 +2479,19 @@ namespace torrents
 					if (!id)
 					{
 						LogPrint (eLogError, "TorrentsTunnel: No free torrent id");
-						m_Torrents.erase (torrent->GetInfoHash ());
 						return { 0, false };
 					}
 				}
 			}
+			if (m_RegistryCheckpointForTesting) m_RegistryCheckpointForTesting (RegistryCheckpoint::TorrentID);
 			m_TorrentsByID.emplace (id, torrent);
+			admittedID = id;
 			if (torrent->IsValid ()) LoadTorrentAdminState (torrent);
 			// Reference the announce URL and every tier once, keyed by this
 			// torrent's membership so removal releases each slot exactly once.
 			RegisterTorrentTrackers (*torrent);
+			trackersRegistered = true;
+			if (m_RegistryCheckpointForTesting) m_RegistryCheckpointForTesting (RegistryCheckpoint::TrackersReady);
 			if (!torrent->GetAnnounce ().empty ())
 			{
 				const auto announceSlot = ResolveTrackerSlot (torrent->GetAnnounce (), false, false);
@@ -2485,6 +2500,7 @@ namespace torrents
 			// A torrent whose metadata is already private never uses the public
 			// DHT, and any state collected before insertion is purged.
 			if (m_DHT && torrent->IsPrivate ()) m_DHT->MarkPrivate (torrent->GetInfoHash ());
+			rollback.dismiss ();
 			return { id, true };
 		}
 		else // already exists, find id without re-locking m_TorrentsMutex
@@ -3254,7 +3270,24 @@ namespace torrents
 			// Free slot: keep the index (it is never renumbered) but drop the
 			// announce URL so no membership, snapshot or retry can match it. The
 			// datagram connection state is reset with it.
-			m_Trackers[trackerID] = TrackerInfo { i2p::http::URL { }, false, 0, 0, 0 };
+			// clear() keeps release allocation-free during admission unwind;
+			// URL has copy assignment but no move-assignment contract.
+			auto & tracker = m_Trackers[trackerID];
+			auto & url = std::get<0> (tracker);
+			url.schema.clear ();
+			url.user.clear ();
+			url.pass.clear ();
+			url.host.clear ();
+			url.path.clear ();
+			url.query.clear ();
+			url.frag.clear ();
+			url.port = 0;
+			url.hasquery = false;
+			url.ipv6 = false;
+			std::get<1> (tracker) = false;
+			std::get<2> (tracker) = 0;
+			std::get<3> (tracker) = 0;
+			std::get<4> (tracker) = 0;
 		}
 		return true;
 	}
@@ -4087,30 +4120,49 @@ namespace torrents
 	void TorrentsTunnel::RegisterTorrentTrackers (const Torrent & torrent)
 	{
 		const auto infoHash = torrent.GetInfoHash ();
-		// Admit the new tier list first: an entry that stays registered keeps
-		// its index, so a torrent edit can never move live statistics to
-		// another announce URL. Duplicated tier entries count once.
+		// Reserve rollback bookkeeping before acquiring any slot. A failed
+		// replacement must retain the incumbent membership and its counts.
+		std::vector<size_t> acquired;
+		acquired.reserve (MAX_NUM_TRACKERS);
+		auto rollback = i2p::modern::ScopeExit (
+			[&]
+			{
+				for (auto trackerID : acquired) ReleaseTrackerSlot (trackerID);
+			});
 		std::set<size_t> wanted;
-		const auto acquire = [this, &wanted] (std::string_view announce)
+		const auto acquire = [this, &wanted, &acquired] (std::string_view announce)
 		{
 			if (announce.empty ()) return;
 			const auto slot = ResolveTrackerSlot (announce, false, true);
-			if (slot && wanted.insert (*slot).second) AcquireTrackerSlot (*slot);
+			if (slot && !wanted.contains (*slot))
+			{
+				AcquireTrackerSlot (*slot);
+				acquired.push_back (*slot); // Capacity was reserved above.
+				if (m_RegistryCheckpointForTesting) m_RegistryCheckpointForTesting (RegistryCheckpoint::WantedNode);
+				wanted.insert (*slot);
+			}
 		};
 		acquire (torrent.GetAnnounce ());
 		for (const auto & tier : torrent.GetTrackerTiers ())
 			for (const auto & announce : tier) acquire (announce);
 
-		if (auto previous = m_TrackerMemberships.find (infoHash); previous != m_TrackerMemberships.end ())
+		if (m_RegistryCheckpointForTesting) m_RegistryCheckpointForTesting (RegistryCheckpoint::MembershipVector);
+		std::vector<size_t> replacement (wanted.begin (), wanted.end ());
+		auto previous = m_TrackerMemberships.find (infoHash);
+		if (previous != m_TrackerMemberships.end ())
 		{
-			// Release the old membership after the new one is counted: a
-			// retained slot transiently holds two references and settles back to
-			// one, while a dropped slot is freed only once nothing else uses it.
-			for (auto trackerID : previous->second) ReleaseTrackerSlot (trackerID);
-			m_TrackerMemberships.erase (previous);
+			// Swap cannot allocate; replacement now owns the retired counts.
+			previous->second.swap (replacement);
+			rollback.dismiss ();
+			for (auto trackerID : replacement) ReleaseTrackerSlot (trackerID);
+			if (previous->second.empty ()) m_TrackerMemberships.erase (previous);
 		}
-		if (!wanted.empty ())
-			m_TrackerMemberships.emplace (infoHash, std::vector<size_t> (wanted.begin (), wanted.end ()));
+		else if (!replacement.empty ())
+		{
+			if (m_RegistryCheckpointForTesting) m_RegistryCheckpointForTesting (RegistryCheckpoint::MembershipNode);
+			m_TrackerMemberships.emplace (infoHash, std::move (replacement));
+			rollback.dismiss ();
+		}
 	}
 
 	void TorrentsTunnel::ReleaseTorrentTrackers (const Torrent::InfoHash & infoHash)

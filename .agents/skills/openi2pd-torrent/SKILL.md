@@ -116,6 +116,12 @@ Do not let them edit, build or run tests.
 
 ## Known issues and decisions
 
+- Review enclosing membership after fixing parallel tracker indexes. Reserve
+  rollback bookkeeping before acquiring references, retain old membership until
+  replacement allocation completes, and keep release allocation-free. Torrent
+  hash/ID admission needs its own unwind owner; local map rollback does not
+  prove scheduled storage, admin-state or DHT effects were undone.
+
 - Transaction preparation bindings and later quota/eviction iterators need
   distinct role names. MSVC C4456 exposed an admission binding shadowed by
   the quota loop after RT-112; keep source-order guards synchronized when
