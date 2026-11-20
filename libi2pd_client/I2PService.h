@@ -87,6 +87,8 @@ namespace client
 		 * or closed-generation requests are refused synchronously outside
 		 * locks, with no_buffer_space or operation_aborted respectively.
 		 * Callback exceptions are contained so other requests still finish.
+		 * Timer arming/selection failure completes affected pending requests
+		 * with no_buffer_space; already selected outcomes remain unchanged.
 		 * @param cb non-empty callback; reentrant registration is allowed
 		 */
 		void AddReadyCallback (ReadyCallback cb);
@@ -152,6 +154,12 @@ namespace client
 		struct ReadyWait
 		{
 		};
+		enum class ReadyCheckpoint
+		{
+			WaitAllocation,
+			WaitRegistration,
+			SelectionAllocation
+		};
 		struct ReadyGeneration
 		{
 			explicit ReadyGeneration (std::shared_ptr<ClientDestination> dest)
@@ -165,6 +173,7 @@ namespace client
 			std::atomic<bool> accepting { true };
 			std::vector<std::pair<ReadyCallback, uint64_t>> callbacks;
 			std::shared_ptr<ReadyWait> wait;
+			void (*checkpointForTesting) (ReadyCheckpoint) = nullptr;
 		};
 		// Publication precedes generation locking. Completion never calls
 		// user code under either lock. Timers retain neither service nor
@@ -172,6 +181,8 @@ namespace client
 		std::shared_ptr<ReadyGeneration> GetReadyGeneration () const;
 		void ResetReadyGeneration (bool accepting, bool preserveClosed = false);
 		void RegisterReadyCallback (const std::shared_ptr<ReadyGeneration> & generation, ReadyCallback cb);
+		// Called with generation->mutex held. Publish wait authority only
+		// after async registration succeeds; failures leave wait empty.
 		static void TriggerReadyCheckTimer (const std::shared_ptr<ReadyGeneration> & generation);
 		static void HandleReadyCheckTimer (const boost::system::error_code & ec,
 			const std::shared_ptr<ReadyGeneration> & generation, const std::shared_ptr<ReadyWait> & wait);

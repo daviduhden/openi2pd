@@ -1443,3 +1443,17 @@ require_runtime_source("libi2pd_client/TorrentsTunnel.cpp"
   "m_PeerDialGeneration != reservation.generation")
 require_runtime_source("tests/test-torrents-admission.cpp"
   "RegistryPoint::PeerDialAddress, RegistryPoint::PeerDialDispatch")
+
+# A timer is authority only after its wait has been registered.
+require_runtime_order("libi2pd_client/I2PService.cpp"
+  "void I2PService::TriggerReadyCheckTimer (" "void I2PService::HandleReadyCheckTimer ("
+  "ReadyCheckpoint::WaitAllocation" "std::make_shared<ReadyWait> ()"
+  "ReadyCheckpoint::WaitRegistration" "generation->timer.async_wait ("
+  "generation->wait = wait;")
+require_runtime_order("libi2pd_client/I2PService.cpp"
+  "void I2PService::HandleReadyCheckTimer (" "StreamRequestComplete I2PService::GuardStreamCompletion ("
+  "selected.reserve (pending.size ());" "selected.push_back (std::move (*it));"
+  "TriggerReadyCheckTimer (generation);" "failed.swap (generation->callbacks);"
+  "InvokeReadyCallback (entry.first, result);")
+require_runtime_source("tests/test-i2p-service-readiness.cpp" "TestReadinessArmingFailure ();")
+require_runtime_source("tests/test-i2p-service-readiness.cpp" "TestReadinessSelectionAndRearmFailure ();")

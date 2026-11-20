@@ -14,6 +14,7 @@
 #include <limits>
 #include <memory>
 #include <mutex>
+#include <new>
 #include <stdexcept>
 #include <string>
 #include <thread>
@@ -27,6 +28,31 @@ namespace i2p::client
 {
 struct I2PServiceReadinessTestAccess
 {
+	using Checkpoint = I2PService::ReadyCheckpoint;
+	inline static Checkpoint fault = Checkpoint::WaitAllocation;
+	inline static unsigned observed = 0;
+	static void Inject (Checkpoint point)
+	{
+		if (point != fault) return;
+		++observed;
+		throw std::bad_alloc { };
+	}
+	static void SetFault (I2PService & service, Checkpoint point, bool enabled)
+	{
+		auto generation = service.GetReadyGeneration ();
+		std::lock_guard lock (generation->mutex);
+		fault = point;
+		observed = 0;
+		generation->checkpointForTesting = enabled ? &Inject : nullptr;
+	}
+	static void ExpireFirst (I2PService & service)
+	{
+		auto generation = service.GetReadyGeneration ();
+		std::lock_guard lock (generation->mutex);
+		assert (generation->callbacks.size () == 2);
+		generation->callbacks.front ().second = 0;
+		generation->callbacks.back ().second = (std::numeric_limits<uint64_t>::max) ();
+	}
 	static auto Snapshot (I2PService & service)
 	{
 		auto generation = service.GetReadyGeneration ();
@@ -304,6 +330,72 @@ void TestThrowingCallbackDoesNotAbandonPeers ()
 	assert (completed == 1);
 }
 
+void TestReadinessArmingFailure ()
+{
+	for (auto point : { Access::Checkpoint::WaitAllocation, Access::Checkpoint::WaitRegistration })
+	{
+		Fixture fixture;
+		unsigned refused = 0;
+		Access::SetFault (*fixture.owner, point, true);
+		fixture.owner->AddReadyCallback (
+			[&] (const Error & error)
+			{
+				assert (error == boost::asio::error::no_buffer_space);
+				assert (Access::Pending (*fixture.owner) == 0); // Not under the mutex.
+				++refused;
+			});
+		assert (refused == 1 && Access::observed == 1);
+		assert (!Access::Snapshot (*fixture.owner).second);
+		Access::SetFault (*fixture.owner, point, false);
+		fixture.owner->AddReadyCallback ([&] (const Error &) { ++refused; });
+		fixture.Dispatch ();
+		assert (refused == 2);
+	}
+}
+
+void TestReadinessSelectionAndRearmFailure ()
+{
+	for (auto point : { Access::Checkpoint::WaitAllocation, Access::Checkpoint::WaitRegistration,
+			 Access::Checkpoint::SelectionAllocation })
+	{
+		Fixture fixture;
+		unsigned expired = 0, refused = 0;
+		fixture.owner->AddReadyCallback (
+			[&] (const Error & error)
+			{
+				assert (Access::Pending (*fixture.owner) == 0);
+				if (point == Access::Checkpoint::SelectionAllocation)
+				{
+					assert (error == boost::asio::error::no_buffer_space);
+					++refused;
+				}
+				else
+				{
+					assert (error == boost::asio::error::timed_out);
+					++expired;
+				}
+			});
+		fixture.owner->AddReadyCallback (
+			[&] (const Error & error)
+			{
+				assert (error == boost::asio::error::no_buffer_space);
+				assert (Access::Pending (*fixture.owner) == 0);
+				++refused;
+			});
+		Access::ExpireFirst (*fixture.owner);
+		auto old = Access::Snapshot (*fixture.owner);
+		Access::Cancel (old);
+		Access::SetFault (*fixture.owner, point, true);
+		Access::Deliver (old, { });
+		assert (Access::observed == 1);
+		assert (expired + refused == 2);
+		assert (!Access::Snapshot (*fixture.owner).second);
+		Access::SetFault (*fixture.owner, point, false);
+		fixture.Drain ();
+		assert (expired + refused == 2); // Canceled predecessor has no authority.
+	}
+}
+
 void TestPendingTimerDoesNotRetainOwnerOrDestination ()
 {
 	Fixture fixture;
@@ -448,6 +540,8 @@ int main ()
 	TestClearAndLateStreamCompletion ();
 	TestQueueBoundAndTimeoutSaturation ();
 	TestThrowingCallbackDoesNotAbandonPeers ();
+	TestReadinessArmingFailure ();
+	TestReadinessSelectionAndRearmFailure ();
 	TestPendingTimerDoesNotRetainOwnerOrDestination ();
 	TestOwnedExecutorDestructionWithPendingCancellation ();
 	TestIdleWaitRevocationAndRestart ();

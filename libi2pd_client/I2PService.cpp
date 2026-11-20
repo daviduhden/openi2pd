@@ -214,8 +214,19 @@ namespace client
 					const auto limit = (std::numeric_limits<uint64_t>::max) ();
 					const auto deadline = !timeout ? NEVER_TIMES_OUT : timeout > limit - now ? limit : now + timeout;
 					generation->callbacks.emplace_back (std::move (cb), deadline);
-					if (!generation->wait) TriggerReadyCheckTimer (generation);
-					return;
+					try
+					{
+						if (!generation->wait) TriggerReadyCheckTimer (generation);
+						return;
+					}
+					catch (...)
+					{
+						// Arming failure refuses this admission outside the lock.
+						// No callback remains dependent on an unregistered wait.
+						cb = std::move (generation->callbacks.back ().first);
+						generation->callbacks.pop_back ();
+						rejection = boost::asio::error::no_buffer_space;
+					}
 				}
 			}
 		}
@@ -226,17 +237,21 @@ namespace client
 	void I2PService::TriggerReadyCheckTimer (const std::shared_ptr<ReadyGeneration> & generation)
 	{
 		// The generation mutex serializes all operations on this timer.
+		if (generation->checkpointForTesting) generation->checkpointForTesting (ReadyCheckpoint::WaitAllocation);
 		auto wait = std::make_shared<ReadyWait> ();
-		generation->wait = wait;
 		generation->timer.expires_after (std::chrono::seconds (I2P_SERVICE_READINESS_CHECK_INTERVAL));
+		if (generation->checkpointForTesting) generation->checkpointForTesting (ReadyCheckpoint::WaitRegistration);
 		generation->timer.async_wait ([generation, wait] (const boost::system::error_code & ec)
 			{ HandleReadyCheckTimer (ec, generation, wait); });
+		// Publication is nonthrowing and follows successful wait ownership.
+		generation->wait = wait;
 	}
 
 	void I2PService::HandleReadyCheckTimer (const boost::system::error_code & ec,
 		const std::shared_ptr<ReadyGeneration> & generation, const std::shared_ptr<ReadyWait> & wait)
 	{
 		decltype (generation->callbacks) selected;
+		decltype (generation->callbacks) failed;
 		boost::system::error_code outcome = ec;
 		{
 			std::lock_guard admission (generation->mutex);
@@ -250,32 +265,52 @@ namespace client
 				generation->accepting.store (false, std::memory_order_release);
 				outcome = boost::asio::error::operation_aborted;
 			}
-			if (outcome || destination->IsReady ())
-				selected.swap (generation->callbacks);
-			else
+			try
 			{
-				const auto now = i2p::util::GetMonotonicSeconds ();
-				auto & pending = generation->callbacks;
-				for (auto it = pending.begin (); it != pending.end ();)
+				if (outcome || destination->IsReady ())
+					selected.swap (generation->callbacks);
+				else
 				{
-					if (it->second != NEVER_TIMES_OUT && now >= it->second)
+					const auto now = i2p::util::GetMonotonicSeconds ();
+					auto & pending = generation->callbacks;
+					// Reserve before moving any callable out of live ownership.
+					if (generation->checkpointForTesting)
+						generation->checkpointForTesting (ReadyCheckpoint::SelectionAllocation);
+					selected.reserve (pending.size ());
+					for (auto it = pending.begin (); it != pending.end ();)
 					{
-						selected.push_back (std::move (*it));
-						it = pending.erase (it);
+						if (it->second != NEVER_TIMES_OUT && now >= it->second)
+						{
+							selected.push_back (std::move (*it));
+							it = pending.erase (it);
+						}
+						else
+							++it;
 					}
-					else
-						++it;
+					outcome = boost::asio::error::timed_out;
 				}
-				outcome = boost::asio::error::timed_out;
+				if (generation->accepting.load (std::memory_order_acquire) && !generation->callbacks.empty ())
+					TriggerReadyCheckTimer (generation);
 			}
-			if (generation->accepting.load (std::memory_order_acquire) && !generation->callbacks.empty ())
-				TriggerReadyCheckTimer (generation);
+			catch (...)
+			{
+				// Selection and rearming may allocate. Preserve already selected
+				// notifications and retire every still-pending callback by swap.
+				failed.swap (generation->callbacks);
+			}
 		}
 		// Reentrant registration cannot mutate the detached callback list.
 		for (auto & entry : selected)
 		{
 			const auto result = generation->accepting.load (std::memory_order_acquire)
 				? outcome
+				: boost::system::error_code (boost::asio::error::operation_aborted);
+			InvokeReadyCallback (entry.first, result);
+		}
+		for (auto & entry : failed)
+		{
+			const auto result = generation->accepting.load (std::memory_order_acquire)
+				? boost::system::error_code (boost::asio::error::no_buffer_space)
 				: boost::system::error_code (boost::asio::error::operation_aborted);
 			InvokeReadyCallback (entry.first, result);
 		}

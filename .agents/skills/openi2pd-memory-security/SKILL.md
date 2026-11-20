@@ -107,6 +107,13 @@ Do not let reconnaissance agents edit, compile, execute tests or run scripts.
 
 ## Known issues and decisions
 
+For readiness queues, publish wait authority after async registration
+succeeds. Reserve selection capacity before moving callbacks; if rearm
+fails, preserve selected outcomes and detach remaining callbacks by swap
+for explicit failure outside the lock. Exercise reentrant registration,
+retry and stale cancellation independently of initial timer admission.
+
+
 For multi-index stream admission, retain the caller owner through rollback,
 match both indexes by object identity on retirement, and commit backlog
 ownership before external callbacks. Review typed refusal consumers separately
