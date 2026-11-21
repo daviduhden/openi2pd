@@ -552,7 +552,11 @@ qr/worker initialization diagnostic|unsupported crash debugger line|missing boun
             q{$restoreKey.DeleteValue('GlobalFlag', $false)},
             q{$restoreKey.DeleteValue('OtherFlag', $false)}
         ],
-        [ 'startup probe: exit=0', 'startup probe: ignored=0' ]
+        [ 'startup probe: exit=0', 'startup probe: ignored=0' ],
+        [
+            'contained startup probe child exited',
+            'startup probe debugger failed'
+        ]
       )
     {
         my ( $before, $after ) = @{$boundary};

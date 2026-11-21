@@ -443,10 +443,15 @@ jobs:
           if (-not (Select-String -Path $log -Pattern '^OPENI2PD_PROBE_ARMED\s*$' -Quiet)) {
             throw 'startup probe command file did not execute'
           }
-          if ($debugger.ExitCode -ne 0) { throw 'startup probe debugger failed' }
           if (Select-String -Path $log -Pattern '^OPENI2PD_CRASH\s*$' -Quiet) {
             throw 'startup probe debugger exception'
           }
+          # CDB can return the probe parent's unsuccessful exit status.
+          $childFailure = Select-String -Path @($consoleLog, $consoleError) -Pattern '^startup probe: exit=([1-9][0-9]{0,9}) peak_process=[0-9]+ peak_job=[0-9]+ limit_process=[0-9]+ limit_job=[0-9]+\s*$' | Select-Object -First 1
+          if ($null -ne $childFailure) {
+            throw ('contained startup probe child exited ' + $childFailure.Matches[0].Groups[1].Value)
+          }
+          if ($debugger.ExitCode -ne 0) { throw 'startup probe debugger failed without a child result' }
           if (-not (Select-String -Path @($log, $consoleLog, $consoleError) -Pattern '^startup probe: exit=0\b' -Quiet)) {
             throw 'startup probe did not establish successful initialization'
           }

@@ -977,6 +977,10 @@ q{Select-String -Path @($log, $consoleLog, $consoleError) -Pattern '^startup pro
           'build-windows.yml: startup probe evidence boundary missing'
           if index( $probe, $required ) < 0;
     }
+    my $child_result = index( $probe, q{throw ('contained startup probe child exited '} );
+    my $debugger_failure = index( $probe, q{if ($debugger.ExitCode -ne 0)} );
+    push @violations, 'build-windows.yml: startup probe must classify a child result before the debugger exit'
+      if $child_result < 0 || $debugger_failure < $child_result;
     push @violations, 'build-windows.yml: startup probe lacks retained artifact'
       unless $windows =~ /^\s*build-msvc\/startup-probe\s*$/m;
     push @violations, windows_exception_command_errors( $probe, 1 );
