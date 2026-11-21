@@ -1804,3 +1804,21 @@ Earlier concatenated output counts are not comparable. The catalog checker
 now checks source I/O and uses extended regex formatting for singular and
 plural pattern families, preserving captured literals. Existing maintenance
 fixtures cover escaped newlines and duplicate plurals. Pending CI tests.
+
+## 38a3debd manual batch
+
+Seven of ten workflows succeeded. Android API 29 stopped at RT-38-01,
+MSVC passed 35/36 with RT-087, and Validation's only failed job was optional
+Perl quality (TF-066). Four Linux compiler/provider jobs and the three
+sanitizer variants passed 279 selections each. OpenBSD had three known
+skips among 274 selections. The 15 fuzz selections and instrumented
+OpenSSL TSan probe passed. Android arm64 passed and signing was skipped.
+
+[Perl quality job 136925560524](https://github.com/daviduhden/openi2pd/actions/runs/44930403992/job/136925560524)
+reported 949 policy records, down from 953 in the preceding batch.
+The native catalog checker accounted for 47, down from 53. The local
+printf-pattern refactor preserves operand order and capture boundaries;
+the existing maintenance fixtures cover these semantics. Pending CI tests.
+
+Paginated Actions metadata covers 635 executions across 90 SHAs. Complete
+job-log evidence in this increment covers the ten executions above.

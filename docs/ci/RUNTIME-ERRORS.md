@@ -3051,3 +3051,22 @@ still fail. Artifact 14716379563 records KERNELBASE DLL_PROCESS_ATTACH
 failure for diagnostic image SHA-256
 `B6CB0929DAC172EA4DB8567A05C1E6E151BE87C358ECEEB091E69FB0833FAE76`.
 The internal operation responsible remains unresolved.
+
+## 38a3debd emulator acceleration and Windows worker
+
+RT-38-01. [Android API 29 job 136925561569](https://github.com/daviduhden/openi2pd/actions/runs/44930404273/job/136925561569)
+on `38a3debd133f4af4b8c50a90ba99e8612c863986` passed AVD discovery.
+The emulator exited 1 before ADB because the runner could not access
+`/dev/kvm`. Artifact 14717767574 contains the exact host log and bounded
+ADB diagnostic. The UI job now provisions access for its ephemeral runner
+user and captures a bounded acceleration check before the native build.
+Pending CI tests. [Android emulator acceleration](https://developer.android.com/studio/run/emulator-acceleration)
+
+[MSVC job 136925561416](https://github.com/daviduhden/openi2pd/actions/runs/44930403985/job/136925561416)
+continues to report RT-087 pre-authentication exit 3221225794. PageHeap
+repeats the supervisor failure. The closed startup probe reports the child
+exit. Windows worker initialization remains open.
+
+Exact Windows artifact 14718179557 identifies a KERNELBASE
+DLL_PROCESS_ATTACH failure in diagnostic image SHA-256
+`0408D7ECC561CF4C987D3299009D4B20E51B0D45ACA913D31403EC670523A3EC`.

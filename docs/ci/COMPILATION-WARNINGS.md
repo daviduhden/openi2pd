@@ -1318,3 +1318,12 @@ uses explicit assignments and the Java 25 config guard checks those
 spellings. The remaining Gradle 11 Configuration.setVisible warning has
 no matching call in maintained Gradle source. Kotlin opt-out and arm64
 ChromeOS ABI warnings also persist. Pending CI tests.
+
+## 38a3debd warning follow-up
+
+CW-36-01's 11 Groovy property-assignment diagnostics were absent in the
+successful Android arm64 job. The Kotlin opt-out, Configuration.setVisible
+and ChromeOS ABI notices remain. Linux dependency setup repeated the
+Homebrew Landlock capability warning. No native compiler warning was
+identified in the latest logs.
+[Android arm64 job](https://github.com/daviduhden/openi2pd/actions/runs/44930404273/job/136925561650)

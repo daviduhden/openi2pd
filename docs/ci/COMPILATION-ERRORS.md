@@ -2517,3 +2517,10 @@ four Linux compiler/provider jobs, OpenBSD, Windows and Android. No new
 compile or link blocker was found. CE-7F-01 is validated by
 [documentation job 136916729540](https://github.com/daviduhden/openi2pd/actions/runs/44927502209/job/136916729540),
 which installed both tools, ran Doxygen and collected source TODOs.
+
+## 38a3debd compilation follow-up
+
+No new compile or link blocker was identified in the ten exact-run logs.
+Linux with OpenSSL 3/4, OpenBSD, Windows, and Android arm64 and x86_64
+reached execution or post-build validation. The documentation lane passed.
+RT-38-01, RT-087 and TF-066 are separate runtime or quality results.

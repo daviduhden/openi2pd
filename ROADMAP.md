@@ -2680,3 +2680,10 @@ RT-087 remains CI failure. RT-36-01, CW-36-01 and the TF-066 catalog-checker
 increment are Implemented / static; Pending CI tests. API 29 instrumentation,
 Perl quality and full Windows worker initialization remain open.
 See [batch outcomes](docs/ci/TEST-FAILURES.md#36ae883e-manual-batch).
+
+## 38a3debd manual CI follow-up
+
+AVD discovery and the Gradle property migration are Validated by CI.
+RT-38-01 KVM preflight and the TF-066 printf checker increment are
+Implemented / static; Pending CI tests. RT-087 remains CI failure.
+See [batch outcomes](docs/ci/TEST-FAILURES.md#38a3debd-manual-batch).
