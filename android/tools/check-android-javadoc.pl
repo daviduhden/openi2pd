@@ -22,6 +22,7 @@
 use strict;
 use warnings;
 use 5.016;
+use Carp qw(croak);
 use File::Find qw(find);
 use File::Spec;
 use Getopt::Long qw(GetOptions);
@@ -73,11 +74,13 @@ sub fail {
 
 sub slurp {
     my ($path) = @_;
-    open( my $fh, '<:raw', $path ) or die "open $path: $!";
+    open( my $fh, '<:raw', $path ) or croak "open $path: $!";
     local $/ = undef;
+    local $! = 0;
     my $text = <$fh>;
-    close($fh);
-    return $text;
+    croak "read $path: $!" if $!;
+    close($fh) or croak "close $path: $!";
+    return $text // '';
 }
 
 # Remove the inline tags that switch javadoc out of HTML parsing. Both
@@ -325,8 +328,8 @@ passes C<-missing> to keep coverage a tracked task rather than a gate.
 
 Each defect is printed on STDERR followed by a C<FAIL:> summary, and the
 exit status is 1. A clean run prints one C<OK:> line on STDOUT and exits
-0. An absent Java tree or an unreadable source file is reported with C<FAIL:>
-on STDOUT or aborts through C<die> (typically status 255).
+0. An absent Java tree prints C<FAIL:> on STDOUT and exits 1. A source I/O
+error aborts with the failed operation and path on STDERR.
 
 =head1 FILE FORMAT
 
@@ -337,8 +340,8 @@ their content is rendered verbatim.
 
 =head1 DEPENDENCIES
 
-Core Perl only (strict, warnings, File::Find, File::Spec, Getopt::Long,
-5.016). No Gradle, javadoc, APK or device is involved.
+Core Perl 5.16 and its Carp, File::Find, File::Spec, and Getopt::Long
+modules. No Gradle, javadoc, APK or device is involved.
 
 =head1 SECURITY AND PORTABILITY
 

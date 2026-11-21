@@ -1231,6 +1231,12 @@ workflow_crash_fixtures($root);
         'Probe.java'
     );
 
+    write_file( $java, '' );
+    my ( $empty_code, $empty_out ) =
+      run_checker( $javadoc_checker, '--root', $android );
+    is( $empty_code, 0, 'empty Java input has no Javadoc defects' );
+    unlike( $empty_out, qr/uninitialized/, 'empty input is handled as EOF' );
+
     # The manual Gradle Javadoc lane uses -Xdoclint:all -Werror. It
     # rejects raw placeholders, JDK-internal block tags, inline tags
     # used as block tags and mismatched @param names.
