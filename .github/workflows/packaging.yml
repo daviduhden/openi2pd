@@ -13,6 +13,11 @@ name: Packaging and service validation
 
 on:
   workflow_dispatch:
+    inputs:
+      pinned_static_images:
+        description: Use the reviewed Alpine and Debian digests for the static package job
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -179,13 +184,20 @@ jobs:
     name: Static musl build and package
     runs-on: ubuntu-24.04
     timeout-minutes: 45
+    env:
+      STATIC_ALPINE_IMAGE: ${{ inputs.pinned_static_images && 'alpine:3.24.4@sha256:f59abe656b692d901e184be3445e084786602108599d2a51d229c0f5a48c71bf' || 'alpine:3.24.4' }}
+      STATIC_DEBIAN_IMAGE: ${{ inputs.pinned_static_images && 'debian:trixie@sha256:9c6e381421d0f48d1b8133e573f33c185ee16cbf505eda9c4a8a4791b25ea8a6' || 'debian:trixie' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           persist-credentials: false
       - name: Build the fully static router in Alpine
         run: |
-          docker run --rm -v "$PWD:/src" -w /src alpine:3.24.4 \
+          docker pull "$STATIC_ALPINE_IMAGE"
+          alpine_image=$(docker image inspect --format '{{.Id}}' "$STATIC_ALPINE_IMAGE")
+          docker image inspect --format 'alpine_image_id={{.Id}} alpine_repo_digests={{json .RepoDigests}}' \
+            "$alpine_image" > static-build-image.txt
+          docker run --rm -v "$PWD:/src" -w /src "$alpine_image" \
             sh contrib/static/build-musl.sh
       - name: Verify the static binary and package it
         run: |
@@ -198,10 +210,22 @@ jobs:
           version=$(sed -n 's/^#define I2PD_VERSION_MAJOR \([0-9]*\)$/\1/p' libi2pd/version.h)
           version="${version}.$(sed -n 's/^#define I2PD_VERSION_MINOR \([0-9]*\)$/\1/p' libi2pd/version.h)"
           version="${version}.$(sed -n 's/^#define I2PD_VERSION_MICRO \([0-9]*\)$/\1/p' libi2pd/version.h)"
+          docker pull "$STATIC_DEBIAN_IMAGE"
+          debian_image=$(docker image inspect --format '{{.Id}}' "$STATIC_DEBIAN_IMAGE")
+          docker image inspect --format 'debian_image_id={{.Id}} debian_repo_digests={{json .RepoDigests}}' \
+            "$debian_image" > static-package-image.txt
           docker run --rm -e VERSION="$version" \
-            -v "$PWD:/src" -w /src debian:trixie \
+            -v "$PWD:/src" -w /src "$debian_image" \
             sh contrib/static/package.sh deb /src/static-bin /src/static-out
           test -n "$(find static-out -name '*.deb' -print -quit)"
+          (
+            cd static-out
+            sha256sum -- ./*.deb > SHA256SUMS
+            printf 'revision=%s\nrepository=%s\nrun_id=%s\nrun_attempt=%s\n' \
+              "$GITHUB_SHA" "$GITHUB_REPOSITORY" "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" \
+              > build-provenance.txt
+            cat ../static-build-image.txt ../static-package-image.txt >> build-provenance.txt
+          )
       - name: Upload static package evidence
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
@@ -210,6 +234,8 @@ jobs:
           path: |
             static-out
             static-file.txt
+            static-build-image.txt
+            static-package-image.txt
           if-no-files-found: warn
           retention-days: 7
 
@@ -355,6 +381,16 @@ jobs:
           mkdir -p package-output
           cp ../i2pd_*.deb ../i2pd-tui_*.deb ../i2pd_*.changes \
             ../i2pd_*.buildinfo ../lintian.log package-output/ 2>/dev/null || true
+          (
+            cd package-output
+            set -- ./*.deb
+            if [ -f "$1" ]; then
+              sha256sum -- "$@" > SHA256SUMS
+              printf 'revision=%s\nrepository=%s\nrun_id=%s\nrun_attempt=%s\n' \
+                "$GITHUB_SHA" "$GITHUB_REPOSITORY" "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" \
+                > build-provenance.txt
+            fi
+          )
           ls -l package-output
       - name: Upload Debian package evidence
         if: always()

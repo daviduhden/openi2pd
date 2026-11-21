@@ -346,3 +346,9 @@ Record the exact AGENTS.md `Tracking states` value and state which validations w
 - [Service management](../../../docs/service-management.md)
 - [Build system](../../../docs/build-system.md)
 - [Global policy](../../../AGENTS.md)
+
+Generate package checksums after staging and record the exact run and
+source revision. Run static build and packaging containers by their
+resolved image IDs and retain registry digests. A failure-time upload
+contains evidence, so check the workflow result before treating an
+artifact as a release candidate.
