@@ -298,3 +298,7 @@ When converting catalog patterns to Perl extended mode, keep literal
 whitespace inside the quoted-fragment character class. Capture the key and
 value fragments before nested matching and review both singular and plural
 parsers against the existing maintenance fixtures.
+
+Keep interpolated printf-regex fragments noncapturing so directive, width,
+precision, modifier and conversion retain their capture indices. Keep the
+literal space flag inside the flag character class in extended mode.

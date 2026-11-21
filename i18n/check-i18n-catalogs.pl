@@ -149,19 +149,25 @@ sub placeholders {
     # accept %s/%d becoming %d/%s and reinterpret pointers as integers.
     # Consume %% atomically; its second percent must never start a
     # conversion.
+    my $position = qr/ \d+ \$ /x;
+    my $flags    = qr/ [-+ 0#]* /x;
+    my $field    = qr/ \* (?: $position )? | \d* /x;
+    my $length_modifier = qr/ hh | ll | [hljztL] /x;
     my @found;
     my $escaped_percent = 0;
-    while ( $value =~ /%/g ) {
+    while ( $value =~ / % /gx ) {
         my $offset = pos($value);
         my $tail   = substr( $value, $offset );
-        if ( $tail =~ /^%/ ) {
+        if ( substr( $tail, 0, 1 ) eq '%' ) {
             ++$escaped_percent;
             pos($value) = $offset + 1;
             next;
         }
-        if ( $tail =~
-/^((?:\d+\$)?[-+ 0#]*(\*(?:\d+\$)?|\d*)(?:\.(\*(?:\d+\$)?|\d*))?(hh|ll|[hljztL])?([diuoxXfFeEgGaAcspn]))/
-          )
+        if ( $tail =~ /
+             ^ ( (?: $position )? $flags
+                 ( $field ) (?: \. ( $field ) )?
+                 ( $length_modifier )? ([diuoxXfFeEgGaAcspn]) )
+             /x )
         {
             my ( $directive, $width, $precision, $length, $conversion ) =
               ( $1, $2, $3 // '', $4 // '', $5 );
@@ -170,15 +176,15 @@ sub placeholders {
             fail("forbidden printf %n directive in '$value'")
               if $conversion eq 'n';
             my $legal_length =
-                $conversion =~ /^[diuoxXn]$/
-              ? $length =~ /^(?:hh|h|l|ll|j|z|t)?$/
-              : $conversion =~ /^[fFeEgGaA]$/ ? $length =~ /^(?:l|L)?$/
-              : $conversion =~ /^[cs]$/       ? $length =~ /^l?$/
+                $conversion =~ / ^ [diuoxXn] $ /x
+              ? $length =~ / ^ (?: hh | h | l | ll | j | z | t )? $ /x
+              : $conversion =~ / ^ [fFeEgGaA] $ /x ? $length =~ / ^ [lL]? $ /x
+              : $conversion =~ / ^ [cs] $ /x       ? $length =~ / ^ l? $ /x
               :                                 $length eq '';
             fail("unsupported printf length in '%$directive'")
               unless $legal_length;
-            push @found, 'width:int'     if $width     =~ /^\*/;
-            push @found, 'precision:int' if $precision =~ /^\*/;
+            push @found, 'width:int'     if substr( $width,     0, 1 ) eq '*';
+            push @found, 'precision:int' if substr( $precision, 0, 1 ) eq '*';
             push @found, $length . $conversion;
             pos($value) = $offset + length($directive);
             next;
@@ -187,7 +193,7 @@ sub placeholders {
         # A terminal percent or ordinary prose punctuation is literal.
         # Unknown source operands such as %q are never portable formats.
         fail("unsupported printf directive in '$value'")
-          if $tail =~ /^(?:\d+\$)?[-+ 0#]*(?:\*|\d)*(?:\.(?:\*|\d)*)?[A-Za-z]/;
+          if $tail =~ / ^ (?: $position )? $flags [*\d]* (?: \. [*\d]* )? [A-Za-z] /x;
     }
     return join( ',', @found ) . ";escaped-percent=$escaped_percent";
 }
