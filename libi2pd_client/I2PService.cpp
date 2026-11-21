@@ -271,7 +271,8 @@ namespace client
 					selected.swap (generation->callbacks);
 				else
 				{
-					const auto now = i2p::util::GetMonotonicSeconds ();
+					const auto now
+						= generation->nowForTesting ? generation->nowForTesting () : i2p::util::GetMonotonicSeconds ();
 					auto & pending = generation->callbacks;
 					// Reserve before moving any callable out of live ownership.
 					if (generation->checkpointForTesting)

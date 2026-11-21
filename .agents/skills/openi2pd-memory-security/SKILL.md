@@ -775,3 +775,9 @@ optional owner notification and error-code socket closure. An unstarted pipe
 is a useful regression because no pending callback masks the final-owner
 case. This correction alone does not resolve cross-thread teardown races or
 attribute historical LeakSanitizer stacks.
+
+
+For deadline fault fixtures, check the finite expiry against the same
+clock input used by production selection and against the disabled-deadline
+sentinel. A rearm-failure test must witness which callbacks were selected
+before asserting that the remaining callbacks received a failure.

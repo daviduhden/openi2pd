@@ -962,3 +962,11 @@ The existing admission fixture witnesses failure before std::function
 construction, verifies exact reservation rollback and consumed-ID behavior,
 then exercises successful admission and null completion. No executor or
 network is required by that prepared regression.
+
+## Finite deadline fixtures
+
+Use the same time input for selection and its witness. Verify that the
+expired value differs from the never-expiring sentinel. Pair the expired
+entry with a never-expiring sibling to distinguish timeout selection from
+failure to rearm. Review zero-valued deadline assignments wherever timing
+fixtures drive production selection directly.

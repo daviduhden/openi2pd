@@ -3243,3 +3243,9 @@ through timer setup and outer HTTP/callback construction, with exact
 non-reused authority rollback and no replay or callback during unwind.
 A green sanitizer suite without these injected faults does not validate
 these exception paths. Recheck source extractors after changing order.
+
+
+For deadline fault fixtures, check the finite expiry against the same
+clock input used by production selection and against the disabled-deadline
+sentinel. A rearm-failure test must witness which callbacks were selected
+before asserting that the remaining callbacks received a failure.

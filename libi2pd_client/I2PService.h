@@ -174,6 +174,8 @@ namespace client
 			std::vector<std::pair<ReadyCallback, uint64_t>> callbacks;
 			std::shared_ptr<ReadyWait> wait;
 			void (*checkpointForTesting) (ReadyCheckpoint) = nullptr;
+			// Selection-only fixture clock, accessed under this mutex.
+			uint64_t (*nowForTesting) () = nullptr;
 		};
 		// Publication precedes generation locking. Completion never calls
 		// user code under either lock. Timers retain neither service nor

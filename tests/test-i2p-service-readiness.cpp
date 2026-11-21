@@ -50,8 +50,19 @@ struct I2PServiceReadinessTestAccess
 		auto generation = service.GetReadyGeneration ();
 		std::lock_guard lock (generation->mutex);
 		assert (generation->callbacks.size () == 2);
-		generation->callbacks.front ().second = 0;
+		// Zero is the production never-expire sentinel, not a past deadline.
+		// A closed clock avoids assumptions about the runner's uptime.
+		generation->nowForTesting = [] () -> uint64_t { return 42; };
+		generation->callbacks.front ().second = 41;
 		generation->callbacks.back ().second = (std::numeric_limits<uint64_t>::max) ();
+		assert (generation->callbacks.front ().second != I2PService::NEVER_TIMES_OUT);
+		assert (generation->callbacks.front ().second <= generation->nowForTesting ());
+	}
+	static void UseFixtureClock (I2PService & service)
+	{
+		auto generation = service.GetReadyGeneration ();
+		std::lock_guard lock (generation->mutex);
+		generation->nowForTesting = [] () -> uint64_t { return 42; };
 	}
 	static auto Snapshot (I2PService & service)
 	{
@@ -396,6 +407,29 @@ void TestReadinessSelectionAndRearmFailure ()
 	}
 }
 
+void TestZeroDeadlineDoesNotExpire ()
+{
+	Fixture fixture;
+	fixture.owner->SetConnectTimeout (0);
+	unsigned calls = 0;
+	fixture.owner->AddReadyCallback (
+		[&] (const Error & error)
+		{
+			assert (error == boost::asio::error::operation_aborted);
+			++calls;
+		});
+	assert (Access::LastDeadline (*fixture.owner) == 0);
+	Access::UseFixtureClock (*fixture.owner);
+	auto old = Access::Snapshot (*fixture.owner);
+	Access::Cancel (old);
+	Access::Deliver (old, { });
+	assert (calls == 0 && Access::Pending (*fixture.owner) == 1);
+	assert (Access::Snapshot (*fixture.owner).second != old.second);
+	fixture.owner->Stop ();
+	fixture.Drain ();
+	assert (calls == 1);
+}
+
 void TestPendingTimerDoesNotRetainOwnerOrDestination ()
 {
 	Fixture fixture;
@@ -542,6 +576,7 @@ int main ()
 	TestThrowingCallbackDoesNotAbandonPeers ();
 	TestReadinessArmingFailure ();
 	TestReadinessSelectionAndRearmFailure ();
+	TestZeroDeadlineDoesNotExpire ();
 	TestPendingTimerDoesNotRetainOwnerOrDestination ();
 	TestOwnedExecutorDestructionWithPendingCancellation ();
 	TestIdleWaitRevocationAndRestart ();
