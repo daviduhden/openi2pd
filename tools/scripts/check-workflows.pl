@@ -732,7 +732,7 @@ if ( exists $texts{'build-android.yml'} ) {
     my ($probe) = $texts{'build-android.yml'} =~
       /      - name: Probe Java 25 D8\/R8 dexing\n(.*?)(?=      - name:|\z)/s;
     for my $required (
-        '(cd android && ./gradlew --no-daemon writeJava25R8Classpath)',
+        '(cd android && ./gradlew --no-daemon --warning-mode all writeJava25R8Classpath)',
         'R8_JAR=$(cat android/build/reports/java25/r8-classpath.txt)',
         'test -f "$R8_JAR"'
       )

@@ -143,7 +143,7 @@ jobs:
       - name: Android unit tests and Lint
         run: |
           cd android
-          ./gradlew :i2pd:testDebugUnitTest :i2pd:lintDebug --no-daemon \
+          ./gradlew :i2pd:testDebugUnitTest :i2pd:lintDebug --no-daemon --warning-mode all \
             -Pi2pd.ndkVersion="$NDK_VERSION" \
             -Pi2pd.abis=arm64-v8a \
             -Pandroid.injected.build.abi=arm64-v8a \
@@ -151,7 +151,7 @@ jobs:
       - name: Generate and check Android Javadoc
         run: |
           cd android
-          ./gradlew :i2pd:sourceJavadoc --no-daemon \
+          ./gradlew :i2pd:sourceJavadoc --no-daemon --warning-mode all \
             -Pi2pd.ndkVersion="$NDK_VERSION" \
             -Pi2pd.abis=arm64-v8a \
             -Pandroid.injected.build.abi=arm64-v8a \
@@ -173,7 +173,7 @@ jobs:
         run: |
           cd android
           ./gradlew :i2pd:assembleDebug :i2pd:assembleDebugAndroidTest \
-            :i2pd:assembleRelease :i2pd:lintRelease --no-daemon \
+            :i2pd:assembleRelease :i2pd:lintRelease --no-daemon --warning-mode all \
             -Pi2pd.ndkVersion="$NDK_VERSION" \
             -Pi2pd.abis=arm64-v8a \
             -Pandroid.injected.build.abi=arm64-v8a \
@@ -241,7 +241,7 @@ jobs:
       - name: Probe Java 25 D8/R8 dexing
         run: |
           # Use AGP's resolved dependency, never an unrelated cached R8.
-          (cd android && ./gradlew --no-daemon writeJava25R8Classpath)
+          (cd android && ./gradlew --no-daemon --warning-mode all writeJava25R8Classpath)
           R8_JAR=$(cat android/build/reports/java25/r8-classpath.txt)
           test -f "$R8_JAR"
           "$JAVA_HOME/bin/java" -cp "$R8_JAR" com.android.tools.r8.D8 --version \
@@ -611,7 +611,7 @@ jobs:
       - name: Run UI and accessibility instrumentation tests
         run: |
           cd android
-          ./gradlew :i2pd:connectedDebugAndroidTest --no-daemon \
+          ./gradlew :i2pd:connectedDebugAndroidTest --no-daemon --warning-mode all \
             -Pi2pd.ndkVersion="$NDK_VERSION" \
             -Pi2pd.abis=x86_64 \
             -Pandroid.injected.build.abi=x86_64 \
