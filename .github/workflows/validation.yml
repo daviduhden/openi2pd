@@ -42,10 +42,12 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           persist-credentials: false
-      - name: Install Doxygen
+      - name: Install documentation tools
+        id: doc_tools
         run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends doxygen ripgrep
+          brew=/home/linuxbrew/.linuxbrew/bin/brew
+          "$brew" install doxygen ripgrep
+          printf '%s/bin\n' "$("$brew" --prefix)" >> "$GITHUB_PATH"
       - name: Generate and check C++ API documentation
         run: |
           mkdir -p docs/generated/source-api
@@ -53,7 +55,7 @@ jobs:
       - name: Collect source TODO candidates for review
         # Preserve candidates even when Doxygen failed. No matches is
         # normal; unreadable inputs or rg failures must still fail.
-        if: always()
+        if: ${{ always() && steps.doc_tools.outcome == 'success' }}
         run: |
           if rg -n '\b(TODO|FIXME|XXX)\b' libi2pd libi2pd_client privsep daemon tui tools android i18n tests/interop contrib debian \
             -g '*.{h,hpp,c,cpp,java,aidl,pl,sh,rc,openrc,scm}' \
