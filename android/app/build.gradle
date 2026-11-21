@@ -208,6 +208,15 @@ androidComponents {
     }
 }
 
+// Keep javac's JNI header in the debug build outputs for CI to compare
+// against the checked-in declarations and C++ entry points.
+tasks.withType(JavaCompile).configureEach {
+    if (name == 'compileDebugJavaWithJavac') {
+        options.headerOutputDirectory.set(
+                layout.buildDirectory.dir('generated/openi2pd-jni/debug'))
+    }
+}
+
 // Optional manual-CI API documentation. Reuse the debug javac classpath
 // and output so AndroidX, generated R/BuildConfig and AIDL types
 // resolve exactly as they do for the application; the JDK itself is

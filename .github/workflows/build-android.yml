@@ -148,6 +148,11 @@ jobs:
             -Pi2pd.abis=arm64-v8a \
             -Pandroid.injected.build.abi=arm64-v8a \
             -Pi2pd.cmakeArgs="$I2PD_ANDROID_CMAKE_ARGS"
+      - name: Compare checked-in JNI ABI with javac headers
+        run: >-
+          perl android/tools/check-android-jni-symbols.pl
+          --generated-header
+          android/app/build/generated/openi2pd-jni/debug/org_openi2pd_router_I2PD_JNI.h
       - name: Generate and check Android Javadoc
         run: |
           cd android
@@ -639,6 +644,9 @@ jobs:
           timeout --kill-after=2s 10s "$ADB" -s emulator-5554 shell settings put global animator_duration_scale 0
           timeout --kill-after=2s 10s "$ADB" -s emulator-5554 shell input keyevent 82
           timeout --kill-after=2s 10s "$ADB" -s emulator-5554 shell getprop ro.build.version.sdk
+          timeout --kill-after=2s 10s "$ADB" -s emulator-5554 shell setprop debug.checkjni 1
+          checkjni=$(timeout --kill-after=2s 10s "$ADB" -s emulator-5554 shell getprop debug.checkjni)
+          test "$checkjni" = 1
       - name: Run UI and accessibility instrumentation tests
         run: |
           cd android

@@ -1219,6 +1219,18 @@ workflow_crash_fixtures($root);
     my ( $code, $out ) = run_checker( $jni_checker, '--root', $tmp );
     is( $code, 0, 'JNI checker accepts matching declarations and definitions' );
 
+    my $valid_native = read_fixture_file($native);
+    for my $parameter ( 'jobject', 'jclass, jint' ) {
+        my $candidate = $valid_native;
+        ok( $candidate =~ s/\bjclass\b/$parameter/,
+            'fixture changes the native ABI' );
+        write_file( $native, $candidate );
+        ( $code, $out ) = run_checker( $jni_checker, '--root', $tmp );
+        is( $code, 1, 'JNI checker rejects receiver or parameter drift' );
+        like( $out, qr/C\+\+ definition signature mismatch/,
+            'diagnostic identifies the mismatched definition' );
+    }
+
     write_file( $native, "// no definition\n" );
     ( $code, $out ) = run_checker( $jni_checker, '--root', $tmp );
     is( $code, 1, 'JNI checker rejects a missing definition' );
