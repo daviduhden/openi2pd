@@ -309,6 +309,29 @@ sub workflow_crash_fixtures {
     my $android =
       File::Spec->catfile( $tmp, '.github', 'workflows', 'build-android.yml' );
     my $android_source = read_fixture_file($android);
+    my $unbounded_adb = $android_source;
+    ok(
+        $unbounded_adb =~ s/timeout --kill-after=5s 15s ("\$ADB" -s emulator-5554 logcat)/$1/,
+        'fixture removes the logcat deadline'
+    );
+    write_file( $android, $unbounded_adb );
+    ( $code, $out ) = run_checker($checker);
+    is( $code, 1, 'workflow checker rejects unbounded emulator diagnostics' );
+    like( $out, qr/Android emulator diagnostics must be bounded/,
+        'diagnostic identifies the missing ADB deadline' );
+    write_file( $android, $android_source );
+    my $unchecked_emulator = $android_source;
+    my $liveness_check = q{kill -0 "$emulator_pid"};
+    ok(
+        $unchecked_emulator =~ s/\Q$liveness_check\E/true/,
+        'fixture removes the emulator liveness check'
+    );
+    write_file( $android, $unchecked_emulator );
+    ( $code, $out ) = run_checker($checker);
+    is( $code, 1, 'workflow checker rejects unchecked emulator startup' );
+    like( $out, qr/Android emulator startup must check process liveness/,
+        'diagnostic identifies the missing startup liveness check' );
+    write_file( $android, $android_source );
     for my $boundary (
         [
             '-DVCPKG_TARGET_TRIPLET=x64-android',

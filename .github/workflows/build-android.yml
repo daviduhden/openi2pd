@@ -558,6 +558,7 @@ jobs:
           cmake --build build-android-x86_64 --parallel 2 --target i2pd_jni
           file build-android-x86_64/libi2pd.so | grep 'x86-64'
       - name: Boot API 29 emulator
+        timeout-minutes: 12
         run: |
           AVDMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/avdmanager"
           if [ ! -x "$AVDMANAGER" ]; then
@@ -566,17 +567,47 @@ jobs:
           test -x "$AVDMANAGER"
           echo "no" | "$AVDMANAGER" create avd --force --name openi2pd-api29 \
             --package "system-images;android-29;google_apis;x86_64" --device pixel_2
-          "$ANDROID_HOME/emulator/emulator" -avd openi2pd-api29 -no-window -no-audio \
+          "$ANDROID_HOME/emulator/emulator" -avd openi2pd-api29 -port 5554 -no-window -no-audio \
             -no-boot-anim -no-snapshot -gpu swiftshader_indirect > "$RUNNER_TEMP/emulator.log" 2>&1 &
+          emulator_pid=$!
           ADB="$ANDROID_HOME/platform-tools/adb"
-          timeout 180 "$ADB" wait-for-device
-          timeout 420 bash -c "until [ \"\$($ADB shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')\" = 1 ]; do sleep 3; done" \
-            || { cat "$RUNNER_TEMP/emulator.log"; exit 1; }
-          "$ADB" shell settings put global window_animation_scale 0
-          "$ADB" shell settings put global transition_animation_scale 0
-          "$ADB" shell settings put global animator_duration_scale 0
-          "$ADB" shell input keyevent 82
-          "$ADB" shell getprop ro.build.version.sdk
+          require_emulator() {
+            if kill -0 "$emulator_pid" 2>/dev/null; then
+              return
+            fi
+            if wait "$emulator_pid"; then status=0; else status=$?; fi
+            echo "Emulator exited during startup (status $status)" >&2
+            tail -n 100 "$RUNNER_TEMP/emulator.log"
+            exit 1
+          }
+          device_deadline=$((SECONDS + 180))
+          while :; do
+            require_emulator
+            if (( SECONDS >= device_deadline )); then
+              echo "Emulator did not connect to ADB within 180 seconds" >&2
+              tail -n 100 "$RUNNER_TEMP/emulator.log"
+              exit 1
+            fi
+            if state=$(timeout --kill-after=2s 5s "$ADB" -s emulator-5554 get-state 2>/dev/null) &&
+              [[ "$state" == device ]]; then
+              break
+            fi
+            sleep 2
+          done
+          boot_deadline=$((SECONDS + 420))
+          until [ "$(timeout --kill-after=2s 10s "$ADB" -s emulator-5554 shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" = 1 ]; do
+            require_emulator
+            if (( SECONDS >= boot_deadline )); then
+              tail -n 100 "$RUNNER_TEMP/emulator.log"
+              exit 1
+            fi
+            sleep 3
+          done
+          timeout --kill-after=2s 10s "$ADB" -s emulator-5554 shell settings put global window_animation_scale 0
+          timeout --kill-after=2s 10s "$ADB" -s emulator-5554 shell settings put global transition_animation_scale 0
+          timeout --kill-after=2s 10s "$ADB" -s emulator-5554 shell settings put global animator_duration_scale 0
+          timeout --kill-after=2s 10s "$ADB" -s emulator-5554 shell input keyevent 82
+          timeout --kill-after=2s 10s "$ADB" -s emulator-5554 shell getprop ro.build.version.sdk
       - name: Run UI and accessibility instrumentation tests
         run: |
           cd android
@@ -591,10 +622,15 @@ jobs:
           ! grep -R -E '<(failure|error)' "$results"
       - name: Collect emulator diagnostics on failure
         if: failure()
+        timeout-minutes: 1
         run: |
           ADB="$ANDROID_HOME/platform-tools/adb"
-          "$ADB" logcat -d -v threadtime > "$RUNNER_TEMP/logcat.txt" || true
-          cat "$RUNNER_TEMP/emulator.log" 2>/dev/null || true
+          if [[ -f "$RUNNER_TEMP/emulator.log" ]]; then
+            tail -n 100 "$RUNNER_TEMP/emulator.log"
+          fi
+          if ! timeout --kill-after=5s 15s "$ADB" -s emulator-5554 logcat -d -v threadtime > "$RUNNER_TEMP/logcat.txt"; then
+            echo "ADB logcat did not complete; retaining any partial output" >&2
+          fi
       - name: Upload Android UI reports
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
@@ -604,5 +640,7 @@ jobs:
             android/app/build/reports
             android/app/build/outputs/androidTest-results
             android/app/build/test-results
+            ${{ runner.temp }}/emulator.log
+            ${{ runner.temp }}/logcat.txt
           if-no-files-found: warn
           retention-days: 7

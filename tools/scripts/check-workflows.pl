@@ -609,6 +609,25 @@ for my $file ( sort keys %input_gate ) {
 # Only the isolated, explicitly approved job can access signing secrets.
 if ( exists $blocks_for{'build-android.yml'} ) {
     my $android = $blocks_for{'build-android.yml'};
+    my $ui = $android->{'android-ui'} // '';
+    my ($boot) =
+      $ui =~ /^      - name: Boot API 29 emulator\n(.*?)(?=^      - |\z)/ms;
+    push @errors, 'build-android.yml: Android emulator startup must check process liveness'
+      if !defined($boot)
+      || index( $boot, q{emulator_pid=$!} ) < 0
+      || index( $boot, q{kill -0 "$emulator_pid"} ) < 0
+      || index( $boot, q{-s emulator-5554 get-state} ) < 0
+      || index( $boot, q{-s emulator-5554 shell getprop sys.boot_completed} ) < 0;
+    my ($diagnostics) =
+      $ui =~ /^      - name: Collect emulator diagnostics on failure\n(.*?)(?=^      - |\z)/ms;
+    push @errors, 'build-android.yml: Android emulator diagnostics must be bounded'
+      if !defined($diagnostics)
+      || $diagnostics !~ /^        timeout-minutes: 1$/m
+      || index( $diagnostics, q{timeout --kill-after=5s 15s "$ADB" -s emulator-5554 logcat} ) < 0;
+    for my $report ( 'emulator.log', 'logcat.txt' ) {
+        push @errors, "build-android.yml: missing Android emulator diagnostic artifact $report"
+          if index( $ui, q{${{ runner.temp }}/} . $report ) < 0;
+    }
     my $sign = $android->{'android-sign'} // '';
     for my $marker (
         q{environment: android-openi2pd-release},
