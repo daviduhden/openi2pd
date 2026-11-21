@@ -71,6 +71,38 @@ jobs:
           ctest --test-dir build-output -j 2 --output-on-failure \
             --no-tests=error --output-junit "$PWD/ctest-openbsd.xml"
           ctest --test-dir build-output -N -L platform --no-tests=error
+          # The VM shell is root. Stage only these two executables in a
+          # private directory for the unprivileged credential cases.
+          useradd -g =uid -s /bin/sh openi2pd-ci
+          credential_dir=$(mktemp -d /tmp/openi2pd-credentials.XXXXXXXX)
+          chown openi2pd-ci "$credential_dir"
+          for name in test-privsep-worker-identity test-privsep-credentials; do
+            install -m 0555 "build-output/tests/$name" "$credential_dir/$name"
+            printf 'add_test(%s "./%s")\n' "$name" "$name"
+            printf 'set_tests_properties(%s PROPERTIES TIMEOUT 120 SKIP_RETURN_CODE 77)\n' "$name"
+          done > "$credential_dir/CTestTestfile.cmake"
+          credential_status=0
+          su -s /bin/sh openi2pd-ci -c '
+            set -eu
+            test "$(id -u)" -ne 0
+            cd "$1"
+            exec /usr/local/bin/ctest --test-dir . -j 1 --output-on-failure \
+              --no-tests=error --output-junit credentials.xml
+          ' sh "$credential_dir" || credential_status=$?
+          if [ -f "$credential_dir/credentials.xml" ]; then
+            cp "$credential_dir/credentials.xml" ctest-openbsd-credentials.xml
+          fi
+          if [ "$credential_status" -ne 0 ]; then
+            exit "$credential_status"
+          fi
+          test -s ctest-openbsd-credentials.xml
+          for name in test-privsep-worker-identity test-privsep-credentials; do
+            grep -Fq "name=\"$name\"" ctest-openbsd-credentials.xml
+          done
+          if grep -Eq '<skipped([[:space:]]|/|>)' ctest-openbsd-credentials.xml; then
+            echo 'OpenBSD non-root credential coverage was skipped' >&2
+            exit 1
+          fi
           make BUILD_DIR=build-make \
             CMAKE_FLAGS="-DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF -DI2PD_OPENSSL_EXPECT=LibreSSL" \
             router
@@ -85,5 +117,6 @@ jobs:
             configure.log
             build.log
             ctest-openbsd.xml
+            ctest-openbsd-credentials.xml
           if-no-files-found: warn
           retention-days: 7
