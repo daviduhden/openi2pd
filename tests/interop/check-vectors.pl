@@ -102,7 +102,8 @@ sub run_git {
     # List-form pipe open: the argument vector is handed to the process
     # directly, so no shell interprets the reference path or the git
     # options.
-    open my $fh, '-|', $git, '-C', $reference, @args
+    open my $fh, '-|', $git, '--no-replace-objects', '--no-optional-locks',
+      '-C', $reference, @args
       or return ( undef, "git: $!" );
     local $/ = undef;
     my $out    = <$fh>;
@@ -126,15 +127,16 @@ sub validate_reference {
         print STDERR "unexpected reference commit: $commit\n";
         return 2;
     }
-    my ( $tag, $terr ) = run_git( 'describe', '--tags', '--exact-match' );
+    my ( $tag_commit, $terr ) =
+      run_git( 'rev-parse', '--verify', "refs/tags/$TAG^{commit}" );
     if ( defined $terr ) { print STDERR "$terr\n"; return 2; }
-    chomp $tag;
-    if ( $tag ne $TAG ) {
-        print STDERR "unexpected reference tag: ",
-          ( $tag eq '' ? '<detached>' : $tag ), "\n";
+    chomp $tag_commit;
+    if ( $tag_commit ne $COMMIT ) {
+        print STDERR "unexpected reference commit for tag $TAG: $tag_commit\n";
         return 2;
     }
-    my ( $status, $serr ) = run_git( 'status', '--porcelain' );
+    my ( $status, $serr ) =
+      run_git( 'status', '--porcelain', '--untracked-files=all' );
     if ( defined $serr ) { print STDERR "$serr\n"; return 2; }
     if ( $status ne '' ) {
         print STDERR "reference tree is not clean\n";
@@ -218,8 +220,8 @@ sub check_provenance {
         }
         if (  !defined $relative
             || ref $relative
-            || $relative =~ m{\A/}
-            || $relative =~ m{(?:\A|/)\.\.(?:/|\z)} )
+            || $relative !~ m{\A(?:[\w.-]+/)*[\w.-]+\.java\z}a
+            || $relative =~ m{(?:\A|/)\.\.?(?:/|\z)} )
         {
             push @errors, 'provenance path must be relative';
             next;
@@ -231,15 +233,15 @@ sub check_provenance {
             push @errors, 'provenance contains must be a non-empty string';
             next;
         }
-        my $p = File::Spec->catfile( $ref, $relative );
-        if ( !-f $p ) {
-            push @errors, "provenance file missing: $j->{path}";
+        # Resolve source from the pinned commit, so checkout filters
+        # and working-tree flags cannot change citation contents.
+        my ( $source, $error ) = run_git( 'cat-file', 'blob', "$COMMIT:$relative" );
+        if ( defined $error ) {
+            push @errors, "provenance file unavailable in $COMMIT: $relative";
             next;
         }
-        open my $fh, '<', $p or do { push @errors, "open $p: $!"; next; };
-        my $line;
-        for ( my $i = 1 ; $i <= $line_no ; ++$i ) { $line = <$fh>; }
-        close $fh;
+        my @lines = split /\n/, $source;
+        my $line = $lines[$line_no - 1];
         if ( !defined $line ) {
             push @errors, "provenance line $j->{line} past EOF: $j->{path}";
             next;
@@ -523,8 +525,8 @@ check-vectors.pl - validate the interoperability fixtures and provenance
 =item --reference DIR
 
 Validate the historical corpus against an I2P Java 2.13.0 checkout: tag,
-commit and a clean working tree are required before the provenance line
-references are compared.
+commit and a clean working tree are required before comparing provenance
+line references against the committed Java blobs.
 
 =item --require-reference
 

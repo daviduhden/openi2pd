@@ -30,23 +30,30 @@ if [ ! -d "$ref/.git" ]; then
 	exit 1
 fi
 
-tag=$(git -C "$ref" describe --tags --exact-match 2>/dev/null || true)
-commit=$(git -C "$ref" rev-parse HEAD)
-[ "$tag" = "i2p-2.14.0" ] || {
-	echo "unexpected tag: ${tag:-<detached>}" >&2
+read_git()
+{
+	git --no-replace-objects --no-optional-locks -C "$ref" "$@"
+}
+
+tag=i2p-2.14.0
+commit=$(read_git rev-parse --verify HEAD) || exit 1
+tag_commit=$(read_git rev-parse --verify "refs/tags/$tag^{commit}") || exit 1
+[ "$tag_commit" = "$commit" ] || {
+	echo "HEAD does not match the reference tag $tag" >&2
 	exit 1
 }
 [ "$commit" = "3c98503c5f14efe7bdd783528ba7f621f12d8081" ] || {
 	echo "unexpected commit: $commit" >&2
 	exit 1
 }
-tag_object=$(git -C "$ref" rev-parse refs/tags/i2p-2.14.0 2>/dev/null || true)
-tag_type=$(git -C "$ref" cat-file -t "$tag_object" 2>/dev/null || true)
+tag_object=$(read_git rev-parse --verify "refs/tags/$tag") || exit 1
+tag_type=$(read_git cat-file -t "$tag_object") || exit 1
 [ "$tag_type" = "tag" ] && [ "$tag_object" = "9db233ed7241599eba76f29b8c334eaaf3db2e87" ] || {
 	echo "unexpected annotated tag object: ${tag_object:-<missing>} (${tag_type:-<unknown>})" >&2
 	exit 1
 }
-if [ -n "$(git -C "$ref" status --porcelain)" ]; then
+status=$(read_git status --porcelain --untracked-files=all) || exit 1
+if [ -n "$status" ]; then
 	echo "reference tree is not clean" >&2
 	exit 1
 fi

@@ -48,12 +48,15 @@ I2P_JAVA_REFERENCE=/var/tmp/i2p-java-2.14.0 \
   tests/interop/check-reference.sh
 ```
 
-`check-reference.sh` verifies the tag, commit, cleanliness and read-only state.
-It never modifies the reference tree.
+`check-reference.sh` checks the exact annotated tag and peeled commit,
+requires a clean checkout and warns when the directory is writable.
+Git replacement objects and optional index refreshes are disabled.
 
 The checked-in JSON/hex fixtures and their Java line citations retain their
 original 2.13.0 provenance. `check-vectors.pl --reference` checks that older
 source, with `I2P_JAVA_FIXTURE_REFERENCE` as its default environment variable.
+The checker reads cited Java lines from blobs at the pinned corpus commit.
+Checkout filters and alternate working-tree contents cannot supply the lines.
 It deliberately does not inherit `I2P_JAVA_REFERENCE`, which names the current
 2.14.0 target. Updating the target neither re-derives fixtures nor establishes
 2.14.0 compatibility. Keep the historical checkout separate:

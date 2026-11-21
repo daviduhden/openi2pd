@@ -424,3 +424,8 @@ Record the exact AGENTS.md `Tracking states` value and state which validations w
 - [Interoperability audit](../../../docs/INTEROPERABILITY.md)
 - [Feature parity](../../../docs/FEATURE-PARITY.md)
 - [Global policy](../../../AGENTS.md)
+
+Verify the pinned named reference tag directly. Resolve historical Java
+citations from committed blobs with Git replacement objects disabled.
+Checkout cleanliness is a separate gate and does not identify the source
+bytes used for provenance. The metadata check is not a peer test.
