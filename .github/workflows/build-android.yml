@@ -15,6 +15,10 @@ name: Android
 on:
   workflow_dispatch:
     inputs:
+      sign_release:
+        description: Sign the production arm64 APK after environment approval
+        type: boolean
+        default: false
       android_ui:
         description: 'Run the API 29 emulator UI/accessibility lane (x86_64)'
         type: boolean
@@ -32,6 +36,8 @@ jobs:
     name: Android arm64 build and unit tests
     runs-on: ubuntu-24.04
     timeout-minutes: 90
+    outputs:
+      unsigned-apk-id: ${{ steps.unsigned-apk.outputs.artifact-id }}
     env:
       I2PD_ANDROID_CMAKE_ARGS: >-
         -DWITH_HARDENING=ON
@@ -297,6 +303,157 @@ jobs:
             android/app/build/docs/javadoc
           if-no-files-found: warn
           retention-days: 7
+
+      - name: Prepare production APK for signing
+        if: ${{ inputs.sign_release && github.ref == 'refs/heads/main' }}
+        shell: bash
+        run: |
+          mapfile -d '' -t apks < <(find android/app/build -type f -name 'i2pd-arm64-v8a-release-unsigned.apk' -print0)
+          test "${#apks[@]}" -eq 1
+          mkdir -p android-signing-input
+          cp "${apks[0]}" android-signing-input/openi2pd-release-unsigned.apk
+          listing=$(unzip -Z1 "${apks[0]}")
+          for library in libi2pd.so libc++_shared.so; do
+            entry="lib/arm64-v8a/$library"
+            grep -Fxq "$entry" <<<"$listing"
+            unzip -p "${apks[0]}" "$entry" > "android-signing-input/$library"
+            readelf -lW "android-signing-input/$library" | gawk '
+              $1 == "LOAD" { count++; if (strtonum($NF) < 16384) bad = 1 }
+              END { exit (!count || bad) }'
+          done
+          (cd android-signing-input && sha256sum openi2pd-release-unsigned.apk > SHA256SUMS)
+      - name: Upload unsigned production APK
+        id: unsigned-apk
+        if: ${{ inputs.sign_release && github.ref == 'refs/heads/main' }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
+        with:
+          name: android-production-unsigned
+          path: |
+            android-signing-input/openi2pd-release-unsigned.apk
+            android-signing-input/SHA256SUMS
+          if-no-files-found: error
+          retention-days: 1
+
+  android-sign:
+    name: Sign Android production APK
+    if: ${{ inputs.sign_release && github.ref == 'refs/heads/main' }}
+    needs: android
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    environment: android-openi2pd-release
+    permissions: {}
+    steps:
+      - name: Require one build artifact ID
+        shell: bash
+        env:
+          APK_ARTIFACT_ID: ${{ needs.android.outputs.unsigned-apk-id }}
+        run: '[[ "$APK_ARTIFACT_ID" =~ ^[1-9][0-9]*$ ]]'
+      - name: Download the exact unsigned artifact from this run
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093  # v4.3.0
+        with:
+          artifact-ids: ${{ needs.android.outputs.unsigned-apk-id }}
+          merge-multiple: true
+          path: signing-input
+      - name: Inspect and align production APK
+        shell: bash
+        run: |
+          tools="$ANDROID_HOME/build-tools/36.0.0"
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'build-tools;36.0.0'
+          (cd signing-input && sha256sum -c SHA256SUMS)
+          apk=signing-input/openi2pd-release-unsigned.apk
+          unzip -tq "$apk"
+          badging=$("$tools/aapt2" dump badging "$apk")
+          grep -q "^package: name='dev.uhden.i2pd' versionCode='[0-9]\{1,\}'" <<<"$badging"
+          grep -Fxq "sdkVersion:'29'" <<<"$badging"
+          if grep -q '^application-debuggable' <<<"$badging"; then
+            echo "Production APK is debuggable" >&2
+            exit 1
+          fi
+          listing=$(unzip -Z1 "$apk")
+          grep -Fxq 'lib/arm64-v8a/libi2pd.so' <<<"$listing"
+          grep -Fxq 'lib/arm64-v8a/libc++_shared.so' <<<"$listing"
+          if grep -Eiq '^META-INF/.*[.](RSA|DSA|EC|SF)$' <<<"$listing"; then
+            echo "Expected an unsigned APK" >&2
+            exit 1
+          fi
+          if "$tools/apksigner" verify "$apk" >/dev/null 2>&1; then
+            echo "Expected an unsigned APK" >&2
+            exit 1
+          fi
+          "$tools/zipalign" -P 16 -f 4 "$apk" signing-input/aligned.apk
+      - name: Sign aligned APK
+        shell: bash
+        env:
+          OPENI2PD_KEYSTORE_BASE64: ${{ secrets.OPENI2PD_KEYSTORE_BASE64 }}
+          OPENI2PD_KEYSTORE_PASSWORD: ${{ secrets.OPENI2PD_KEYSTORE_PASSWORD }}
+          EXPECTED_CERT: ${{ vars.OPENI2PD_CERT_SHA256 }}
+        run: |
+          umask 077
+          keystore=$(mktemp "$RUNNER_TEMP/openi2pd.XXXXXX")
+          trap 'unlink "$keystore"' EXIT
+          trap 'exit 1' HUP INT TERM
+          test -n "$OPENI2PD_KEYSTORE_BASE64"
+          test -n "$OPENI2PD_KEYSTORE_PASSWORD"
+          printf '%s' "$OPENI2PD_KEYSTORE_BASE64" | base64 --decode > "$keystore"
+          unset OPENI2PD_KEYSTORE_BASE64
+          [[ "$EXPECTED_CERT" =~ ^[0-9a-f]{64}$ ]]
+          digest=$(keytool -exportcert -storetype PKCS12 -keystore "$keystore" \
+            -alias openi2pd -storepass:env OPENI2PD_KEYSTORE_PASSWORD | sha256sum)
+          test "${digest%% *}" = "$EXPECTED_CERT"
+          mkdir signed-android
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" sign \
+            --ks "$keystore" --ks-type PKCS12 --ks-key-alias openi2pd \
+            --ks-pass env:OPENI2PD_KEYSTORE_PASSWORD \
+            --min-sdk-version 29 --v1-signing-enabled false \
+            --v2-signing-enabled true --v3-signing-enabled true --v4-signing-enabled false \
+            --out signed-android/openi2pd-release.apk signing-input/aligned.apk
+      - name: Verify production certificate and APK integrity
+        shell: bash
+        env:
+          EXPECTED_CERT: ${{ vars.OPENI2PD_CERT_SHA256 }}
+        run: |
+          tools="$ANDROID_HOME/build-tools/36.0.0"
+          apk=signed-android/openi2pd-release.apk
+          [[ "$EXPECTED_CERT" =~ ^[0-9a-f]{64}$ ]]
+          "$tools/zipalign" -c -P 16 -v 4 "$apk"
+          # API 24 forces verification of v2 as well as v3.
+          "$tools/apksigner" verify --min-sdk-version 24 --verbose --print-certs "$apk" > signed-android/certificate.txt
+          cat signed-android/certificate.txt
+          grep -Fxq 'Number of signers: 1' signed-android/certificate.txt
+          grep -Fxq 'Verified using v2 scheme (APK Signature Scheme v2): true' signed-android/certificate.txt
+          grep -Fxq 'Verified using v3 scheme (APK Signature Scheme v3): true' signed-android/certificate.txt
+          grep -Fxq "Signer #1 certificate SHA-256 digest: $EXPECTED_CERT" signed-android/certificate.txt
+          if grep -Eiq '^Signer #[0-9]+ certificate DN:.*CN=Android Debug' signed-android/certificate.txt; then
+            echo "Debug signer is forbidden" >&2
+            exit 1
+          fi
+          badging=$("$tools/aapt2" dump badging "$apk")
+          grep -q "^package: name='dev.uhden.i2pd' versionCode='[0-9]\{1,\}'" <<<"$badging"
+          grep -Fxq "sdkVersion:'29'" <<<"$badging"
+          if grep -q '^application-debuggable' <<<"$badging"; then
+            echo "Production APK is debuggable" >&2
+            exit 1
+          fi
+          listing=$(unzip -Z1 "$apk")
+          for library in libi2pd.so libc++_shared.so; do
+            grep -Fxq "lib/arm64-v8a/$library" <<<"$listing"
+          done
+          original_badging=$("$tools/aapt2" dump badging signing-input/openi2pd-release-unsigned.apk)
+          test "${badging%%$'\n'*}" = "${original_badging%%$'\n'*}"
+          for library in libi2pd.so libc++_shared.so; do
+            entry="lib/arm64-v8a/$library"
+            original_digest=$(unzip -p signing-input/openi2pd-release-unsigned.apk "$entry" | sha256sum)
+            signed_digest=$(unzip -p "$apk" "$entry" | sha256sum)
+            test "$original_digest" = "$signed_digest"
+          done
+          cd signed-android
+          sha256sum openi2pd-release.apk > SHA256SUMS
+      - name: Publish verified signed APK artifact
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
+        with:
+          name: openi2pd-android-release
+          path: signed-android/
+          if-no-files-found: error
 
   android-ui:
     name: Android API 29 UI and accessibility

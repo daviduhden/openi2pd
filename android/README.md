@@ -109,7 +109,7 @@ migration from the old app-specific directory is not implemented yet.
 ## Security
 
 - Release builds are unsigned by default. Signing is performed by the
-  distribution/release process; no keystore or password is stored here.
+  isolated, opt-in Android release job. See [release signing](../docs/android-release-signing.md).
 - Cleartext WebView traffic and the administrative HTTP console are gone.
 - The app uses the same local proxies and I2PControl as the desktop router.
 - The native status string exposes only public counts/state.

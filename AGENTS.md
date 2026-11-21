@@ -3249,3 +3249,8 @@ For deadline fault fixtures, check the finite expiry against the same
 clock input used by production selection and against the disabled-deadline
 sentinel. A rearm-failure test must witness which callbacks were selected
 before asserting that the remaining callbacks received a failure.
+
+Android release signing is opt-in on main. The approved release environment
+belongs only to the isolated signer. Keep checkout, Gradle and repository
+code in the secret-free build job. Maintain the application ID
+`dev.uhden.i2pd` separately from the Java and JNI namespace.

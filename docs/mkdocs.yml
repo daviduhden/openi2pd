@@ -62,6 +62,7 @@ nav:
       - Android modernization: android-modernization.md
       - Android JNI status: android-jni-status.md
       - Android Java 25: android-java25.md
+      - Android release signing: android-release-signing.md
       - Security audit: security-audit.md
       - Testing: testing.md
       - OpenBSD validation: security/openbsd-validation.md

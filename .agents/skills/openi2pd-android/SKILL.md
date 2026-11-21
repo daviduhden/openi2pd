@@ -729,3 +729,8 @@ Record the exact AGENTS.md `Tracking states` value and state which validations w
 - [Android modernization](../../../docs/android-modernization.md)
 - [Java 25 on Android](../../../docs/android-java25.md)
 - [Global policy](../../../AGENTS.md)
+
+For Android releases, verify the application ID independently of the Java
+namespace and JNI symbols. Keep Gradle unsigned and pass its exact artifact
+ID to the approved release signer. Verify the certificate, version metadata,
+and native libraries before exposing the release artifact.

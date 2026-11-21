@@ -2866,3 +2866,10 @@ TF-115 tracks the readiness fixture deadline sentinel correction. Pending
 CI tests. The exact published batch passed five workflows. RT-087 remains
 open after matching KERNELBASE symbol loading. See
 [the test inventory](docs/ci/TEST-FAILURES.md) for history and job coverage.
+
+## Android release signing
+
+The local identity and restored encrypted backup were verified. GitHub's
+main-only release environment is provisioned. The isolated workflow and
+`dev.uhden.i2pd` package change await the first published signing run and
+Developer Console registration. See [Android release signing](docs/android-release-signing.md).

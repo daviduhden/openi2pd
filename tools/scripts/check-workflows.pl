@@ -471,7 +471,7 @@ if ( defined $crypto_diagnostic ) {
 # owning workflow, and the former aggregate names must not return.
 my %split_jobs = (
     'build-linux.yml'   => [qw(install-components interop)],
-    'build-android.yml' => [qw(android android-ui)],
+    'build-android.yml' => [qw(android android-ui android-sign)],
     'validation.yml'    =>
       [qw(source-docs skills-static perl-quality sanitizers fuzz-smoke)],
 );
@@ -589,7 +589,7 @@ if ( exists $blocks_for{'validation.yml'}{'sanitizers'} ) {
 # a Perl::Critic run on every dispatch is a cost regression, and an
 # accidental `if:` removal is otherwise invisible until the job starts.
 my %input_gate = (
-    'build-android.yml' => { 'android-ui'   => 'android_ui' },
+    'build-android.yml' => { 'android-ui' => 'android_ui', 'android-sign' => 'sign_release' },
     'validation.yml'    => { 'perl-quality' => 'perl_style' },
 );
 for my $file ( sort keys %input_gate ) {
@@ -603,6 +603,31 @@ for my $file ( sort keys %input_gate ) {
         if ( $blocks_for{$file}{$job} !~ /\binputs\.\Q$input\E\b/ ) {
             push @errors, "$file: job '$job' must stay gated on inputs.$input";
         }
+    }
+}
+
+# Only the isolated, explicitly approved job can access signing secrets.
+if ( exists $blocks_for{'build-android.yml'} ) {
+    my $android = $blocks_for{'build-android.yml'};
+    my $sign = $android->{'android-sign'} // '';
+    for my $marker (
+        q{environment: android-openi2pd-release},
+        q{github.ref == 'refs/heads/main'},
+        q{needs: android},
+        q{permissions: {}},
+        q{artifact-ids: ${{ needs.android.outputs.unsigned-apk-id }}},
+        q{Signer #1 certificate SHA-256 digest: $EXPECTED_CERT}
+      )
+    {
+        push @errors, "build-android.yml: signing boundary lacks $marker"
+          if index( $sign, $marker ) < 0;
+    }
+    push @errors, 'build-android.yml: signer must not run repository code'
+      if $sign =~ /actions\/checkout|gradlew|uses:\s*\.\//;
+    for my $job ( keys %{$android} ) {
+        next if $job eq 'android-sign';
+        push @errors, "build-android.yml: signing credentials in $job"
+          if $android->{$job} =~ /android-openi2pd-release|secrets\.OPENI2PD_(?:KEYSTORE_|KEY_PASSWORD)/;
     }
 }
 

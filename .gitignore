@@ -273,3 +273,6 @@ android/app/build/
 android/local.properties
 android/**/*.jks
 android/**/*.keystore
+
+# Per-account Android Developer Console ownership challenge.
+/android/app/src/main/assets/adi-registration.properties
