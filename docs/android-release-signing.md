@@ -36,7 +36,7 @@ preserved package metadata and native library bytes.
 
 Download `openi2pd-android-release` from the successful run and verify
 `SHA256SUMS` with `sha256sum -c SHA256SUMS`. Attach
-`openi2pd-release.apk` and `SHA256SUMS` to the intended GitHub Release
+`openi2pd-release.apk`, `SHA256SUMS` and `build-provenance.json` to the intended GitHub Release
 manually. Confirm the release points to the build commit and that its
 version code increases relative to the last published version of this
 package. Retain the same signing certificate for updates. Run
@@ -95,3 +95,9 @@ See the [Android Developer Console guide](https://developer.android.com/develope
 and the [APK alignment reference](https://developer.android.com/tools/zipalign).
 
 The first signed CI run and Console registration are pending.
+
+The release artifact also contains build-provenance.json. Compare its
+revision, repository and run identifiers with the selected workflow run.
+Compare its APK digest with SHA256SUMS and its certificate digest with the
+local apksigner verification. This manifest is emitted by CI and is not
+an independent attestation.

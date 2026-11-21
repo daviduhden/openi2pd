@@ -416,6 +416,7 @@ jobs:
         shell: bash
         env:
           EXPECTED_CERT: ${{ vars.OPENI2PD_CERT_SHA256 }}
+          UNSIGNED_ARTIFACT_ID: ${{ needs.android.outputs.unsigned-apk-id }}
         run: |
           tools="$ANDROID_HOME/build-tools/36.0.0"
           apk=signed-android/openi2pd-release.apk
@@ -453,6 +454,15 @@ jobs:
           done
           cd signed-android
           sha256sum openi2pd-release.apk > SHA256SUMS
+          read -r apk_digest _ < SHA256SUMS
+          jq -n --arg revision "$GITHUB_SHA" --arg repository "$GITHUB_REPOSITORY" \
+            --arg run_id "$GITHUB_RUN_ID" --arg run_attempt "$GITHUB_RUN_ATTEMPT" \
+            --arg unsigned_artifact_id "$UNSIGNED_ARTIFACT_ID" \
+            --arg sha256 "$apk_digest" --arg certificate_sha256 "$EXPECTED_CERT" \
+            '{schema: 1, revision: $revision, repository: $repository,
+              run_id: $run_id, run_attempt: $run_attempt,
+              unsigned_artifact_id: $unsigned_artifact_id, sha256: $sha256,
+              certificate_sha256: $certificate_sha256}' > build-provenance.json
       - name: Publish verified signed APK artifact
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
         with:
