@@ -1712,3 +1712,30 @@ establish a cause until that diagnostic executes on a published revision.
 The local MSVC selection now contains 28 targets (25 at published e1d1b7a6),
 including proxy, socket-lifecycle and request-ledger controls. CE-093 and
 CW-033 are preventive local findings, not failures assigned to old runs.
+
+## c9e81108 readiness regression (TF-115)
+
+On `c9e8110858eb1d0a3ac1e1807e665e49b64a0b61`, five workflows
+passed and five failed. The same readiness fixture failed across the
+[OpenSSL 3](https://github.com/daviduhden/openi2pd/actions/runs/44757377506),
+[OpenSSL 4](https://github.com/daviduhden/openi2pd/actions/runs/44757382951),
+[OpenBSD](https://github.com/daviduhden/openi2pd/actions/runs/44757393726),
+[Windows](https://github.com/daviduhden/openi2pd/actions/runs/44757399249)
+and [sanitizer](https://github.com/daviduhden/openi2pd/actions/runs/44757416055)
+jobs. Affected jobs: 136360561437, 136360562057, 136360582466,
+136360582924, 136360625745, 136360638345, 136360638614, 136360697317,
+136360697424 and 136360697512.
+
+`TestReadinessSelectionAndRearmFailure` expected `timed_out` at line 374.
+The fixture set the deadline to zero, which is `NEVER_TIMES_OUT`.
+Both callbacks consequently remained pending when rearm failed.
+The regression now exercises an actual finite expiry and checks that
+a never-expiring sibling receives the rearm failure. Pending CI.
+
+Four Linux suites and three sanitizer suites each passed 278/279.
+OpenBSD passed 270 with one failure and three skips. CLANG64 passed 261
+with one failure and one skip. MSVC passed 34/36, with RT-087 also failing.
+Android passed 187 JVM tests. No sanitizer report accompanied the assertion.
+
+The inventory covers 595 runs at 86 SHAs, with 592 complete logs, one partial
+and two unavailable runs. Five retried historical job logs still return 404.

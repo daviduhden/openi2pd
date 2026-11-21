@@ -1274,3 +1274,9 @@ ChromeOS/Kotlin warnings remain unverified because Android's later phases
 were skipped; Perl quality was skipped, retaining 932 Critic findings and
 11 OpenBSD ShellCheck diagnostics. Exact runs/jobs are linked in
 [the current run table](COMPILATION-ERRORS.md#ce-088-recurrence-at-5fafdcf1-disposable-proxy-timers).
+
+## c9e81108 warning review
+
+No new first-party native compiler warning was identified in the batch.
+Android run 44757371046, job 136360539543, retains two ChromeOS ABI warnings
+per variant. Debian DEP8 retains the external apt force-yes deprecation.

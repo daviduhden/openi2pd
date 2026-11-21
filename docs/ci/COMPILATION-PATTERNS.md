@@ -589,3 +589,9 @@ trigger policy diagnostics absent from the native configure path. Construct
 only meaningful configuration names, retain the declared CMake floor, and
 prepare a policy-free child with developer warnings treated as errors rather
 than globally suppressing diagnostics or changing unrelated caller policies.
+
+## c9e81108 diagnostic classification
+
+Identical assertions across compilers and sanitizer configurations can
+indicate a shared fixture contract violation. Check the fixture inputs
+against production sentinels before changing a timer or sanitizer policy.

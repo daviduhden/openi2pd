@@ -2981,3 +2981,11 @@ tracker deadline retirement and generation cancellation. The extended
 test-torrents-admission witnesses the fault, empty reservation and subsequent
 successful admission/null completion. Implemented / static; Pending CI
 compilation; Pending CI tests. No observed CI crash is attributed to this path.
+
+## c9e81108 RT-087 symbol provenance
+
+Windows run 44757399249, MSVC job 136360638345, retains the worker
+initialization failure. The KERNELBASE load event now reports matching PDB
+symbols (0792E1E7A24BB52249313BF74137D2B11). Loader output still reports
+DLL_PROCESS_ATTACH failure. The specific failing internal operation remains
+unresolved. TF-115 is a separate fixture assertion.

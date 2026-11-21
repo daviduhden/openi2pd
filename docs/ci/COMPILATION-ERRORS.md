@@ -2479,3 +2479,9 @@ such as retry, and its mutation suite runs in the prepared independent
 skills-static lane. Earlier guards could detect deadline but were hidden
 behind native compilation. Implemented / static; Pending CI compilation /
 Pending CI tests. No native sanitizer or fuzzer test ran after the blocker.
+
+## c9e81108 executed build results
+
+The five failing workflows reached tests. No new compile or link
+blocker was identified in the batch. See TF-115 in
+[the test inventory](TEST-FAILURES.md) for the affected jobs.

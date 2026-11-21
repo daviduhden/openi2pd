@@ -2635,3 +2635,11 @@ Windows loader attribution, Android warnings/device or skipped quality gaps.
 AUDIT-4E52-05 / RT-119: rollback peer dial reservations when completion
 allocation fails; extended test-torrents-admission prepared. Implemented /
 static; Pending CI compilation; Pending CI tests.
+
+
+## c9e81108 audit follow-up
+
+TF-115 tracks the readiness fixture deadline sentinel correction. Pending
+CI tests. The exact published batch passed five workflows. RT-087 remains
+open after matching KERNELBASE symbol loading. See
+[the test inventory](docs/ci/TEST-FAILURES.md) for history and job coverage.
