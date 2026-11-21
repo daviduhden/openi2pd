@@ -282,19 +282,26 @@ void TestHKDFAndNoise ()
 		ikm[i] = (uint8_t)(0x40 + i);
 	}
 	uint8_t out[64], reference[64];
-	i2p::crypto::HKDF (salt, ikm, 32, "audit-info", out, sizeof (out));
+	assert (i2p::crypto::HKDF (salt, ikm, 32, "audit-info", out, sizeof (out)));
 	RefHKDF (salt, ikm, 32, "audit-info", reference, sizeof (reference));
 	assert (memcmp (out, reference, sizeof (out)) == 0);
 
 	// ZEROLEN key path used by ratchet/tunnel key derivation.
-	i2p::crypto::HKDF (salt, nullptr, 0, "zerolen", out, sizeof (out));
+	assert (i2p::crypto::HKDF (salt, nullptr, 0, "zerolen", out, sizeof (out)));
 	RefHKDF (salt, nullptr, 0, "zerolen", reference, sizeof (reference));
 	assert (memcmp (out, reference, sizeof (out)) == 0);
 
-	// More than 255 * HashLen output must be rejected and wiped.
+	// An invalid length does not authorize writes to the destination.
 	std::vector<uint8_t> tooLong (255 * 32 + 1, 0xA5);
-	i2p::crypto::HKDF (salt, ikm, 32, "", tooLong.data (), tooLong.size ());
-	assert (IsAllZero (tooLong.data (), tooLong.size ()));
+	assert (!i2p::crypto::HKDF (salt, ikm, 32, "", tooLong.data (), tooLong.size ()));
+	for (auto byte : tooLong) assert (byte == 0xA5);
+	assert (!i2p::crypto::HKDF (nullptr, ikm, 32, "", out, sizeof (out)));
+	assert (IsAllZero (out, sizeof (out)));
+	i2p::crypto::HKDFContext reused;
+	assert (reused (salt, nullptr, 0, "first", out, sizeof (out)));
+	assert (reused (salt, ikm, sizeof (ikm), "", out, sizeof (out)));
+	RefHKDF (salt, ikm, sizeof (ikm), "", reference, sizeof (reference));
+	assert (memcmp (out, reference, sizeof (out)) == 0);
 
 	uint8_t pub[32];
 	for (size_t i = 0; i < 32; ++i) pub[i] = (uint8_t)(i * 3 + 1);
@@ -344,11 +351,16 @@ void TestHKDFAndNoise ()
 	for (size_t i = 0; i < 32; ++i) shared[i] = (uint8_t)(0x80 + i);
 	uint8_t oldCK[32];
 	memcpy (oldCK, nState.m_CK, 32);
-	nState.MixKey (shared);
+	assert (nState.MixKey (shared));
 	uint8_t mixed[64];
 	RefHKDF (oldCK, shared, 32, "", mixed, sizeof (mixed));
 	assert (memcmp (nState.m_CK, mixed, 64) == 0);
 	assert (nState.m_N == 0);
+	nState.m_N = 3;
+	assert (!nState.MixKey (nullptr));
+	assert (nState.m_N == 3);
+	assert (memcmp (nState.m_CK, mixed, sizeof (mixed)) == 0);
+	nState.m_N = 0;
 
 	// MixHash(h) = SHA256(h || data).
 	uint8_t prevH[32], data[7] = { 1, 2, 3, 4, 5, 6, 7 }, expectedH[32];

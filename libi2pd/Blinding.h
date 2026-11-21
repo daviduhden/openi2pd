@@ -50,7 +50,7 @@ namespace data
 
 	private:
 		void GetCredential (uint8_t * credential) const; // 32 bytes
-		void GenerateAlpha (const char * date, uint8_t * seed) const; // 64 bytes, date is 8 chars "YYYYMMDD"
+		bool GenerateAlpha (const char * date, uint8_t * seed) const; // 64 bytes, date is 8 chars "YYYYMMDD"
 		void H (
 			const std::string & p, const std::vector<std::pair<const uint8_t *, size_t>> & bufs, uint8_t * hash) const;
 

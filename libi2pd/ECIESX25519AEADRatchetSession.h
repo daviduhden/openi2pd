@@ -101,8 +101,9 @@ namespace garlic
 			m_ItermediateSymmKeys.clear ();
 		};
 
-		void DHInitialize (const uint8_t * rootKey, const uint8_t * k);
-		void NextSessionTagRatchet ();
+		/// Commit new key and tag chains only after successful derivation.
+		bool DHInitialize (const uint8_t * rootKey, const uint8_t * k);
+		bool NextSessionTagRatchet ();
 		uint64_t GetNextSessionTag (i2p::crypto::HKDFContext & hkdfCtx);
 		const uint8_t * GetNextRootKey () const { return m_NextRootKey; };
 		int GetNextIndex () const { return m_NextIndex; };
@@ -401,7 +402,8 @@ namespace garlic
 		};
 
 		bool GenerateEphemeralKeysAndEncode (uint8_t * buf); // buf is 32 bytes
-		void InitNewSessionTagset (std::shared_ptr<RatchetTagSet> tagsetNsr) const;
+		bool InitNewSessionTagset (std::shared_ptr<RatchetTagSet> tagsetNsr,
+			const uint8_t * chainKey) const;
 		void RestoreNewSessionState ();
 
 		void SetSendTagset (std::shared_ptr<RatchetTagSet> tagset);

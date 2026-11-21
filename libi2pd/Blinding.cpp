@@ -217,12 +217,12 @@ namespace data
 		H ("subcredential", { { credential, 32 }, { blinded, len } }, subcredential);
 	}
 
-	void BlindedPublicKey::GenerateAlpha (const char * date, uint8_t * seed) const
+	bool BlindedPublicKey::GenerateAlpha (const char * date, uint8_t * seed) const
 	{
 		if (!date)
 		{
 			memset (seed, 0, 64);
-			return;
+			return false;
 		}
 		uint16_t stA = htobe16 (GetSigType ()), stA1 = htobe16 (GetBlindedSigType ());
 		uint8_t salt[32];
@@ -231,14 +231,18 @@ namespace data
 		H ("I2PGenerateAlpha",
 			{ { GetPublicKey (), GetPublicKeyLen () }, { (const uint8_t *)&stA, 2 }, { (const uint8_t *)&stA1, 2 } },
 			salt);
-		i2p::crypto::HKDF (salt, (const uint8_t *)date, 8, "i2pblinding1", seed);
+		return i2p::crypto::HKDF (salt, (const uint8_t *)date, 8, "i2pblinding1", seed);
 	}
 
 	size_t BlindedPublicKey::GetBlindedKey (const char * date, uint8_t * blindedKey) const
 	{
 		if (!date || !blindedKey) return 0;
 		uint8_t seed[64] { };
-		GenerateAlpha (date, seed);
+		if (!GenerateAlpha (date, seed))
+		{
+			memset (blindedKey, 0, i2p::crypto::EDDSA25519_PUBLIC_KEY_LENGTH);
+			return 0;
+		}
 
 		size_t publicKeyLength = 0;
 		switch (m_SigType)
@@ -266,7 +270,12 @@ namespace data
 	{
 		if (!priv || !date || !blindedPriv || !blindedPub) return 0;
 		uint8_t seed[64] { };
-		GenerateAlpha (date, seed);
+		if (!GenerateAlpha (date, seed))
+		{
+			OPENSSL_cleanse (blindedPriv, i2p::crypto::EDDSA25519_PRIVATE_KEY_LENGTH);
+			memset (blindedPub, 0, i2p::crypto::EDDSA25519_PUBLIC_KEY_LENGTH);
+			return 0;
+		}
 		size_t publicKeyLength = 0;
 		switch (m_SigType)
 		{

@@ -468,3 +468,13 @@ Record the exact AGENTS.md `Tracking states` value and state which validations w
 - [Threat model](../../../docs/security/threat-model.md)
 - [Interoperability audit](../../../docs/INTEROPERABILITY.md)
 - [Global policy](../../../AGENTS.md)
+
+When a provider derivation can fail, propagate its result through every
+caller that would publish derived state. Derive into a cleansed temporary
+buffer before replacing active Noise key material or resetting its nonce.
+Run reference vectors alongside invalid-input or provider-failure controls.
+
+Treat the boolean result as authorization to consume a derived buffer.
+Reset a reusable provider HKDF context between requests and use a fresh
+legacy context so mode and info cannot carry over. Reject geometry before
+any output write or cleanup that relies on the rejected length.

@@ -456,9 +456,9 @@ namespace tunnel
 						clearText[SHORT_REQUEST_RECORD_LAYER_ENCRYPTION_TYPE], " in short request record");
 				uint8_t replyKey[32]; // AEAD/Chacha20/Poly1305
 				i2p::crypto::AESKey layerKey, ivKey; // AES
-				i2p::crypto::HKDF (noiseState.m_CK, nullptr, 0, "SMTunnelReplyKey", noiseState.m_CK);
+				if (!i2p::crypto::HKDF (noiseState.m_CK, nullptr, 0, "SMTunnelReplyKey", noiseState.m_CK)) return;
 				memcpy (replyKey, noiseState.m_CK + 32, 32);
-				i2p::crypto::HKDF (noiseState.m_CK, nullptr, 0, "SMTunnelLayerKey", noiseState.m_CK);
+				if (!i2p::crypto::HKDF (noiseState.m_CK, nullptr, 0, "SMTunnelLayerKey", noiseState.m_CK)) return;
 				memcpy (layerKey, noiseState.m_CK + 32, 32);
 				// The reply key is unique per legitimate request (it is derived
 				// from the request DH), so a repeat inside the window is a
@@ -470,7 +470,7 @@ namespace tunnel
 				}
 				if (isEndpoint)
 				{
-					i2p::crypto::HKDF (noiseState.m_CK, nullptr, 0, "TunnelLayerIVKey", noiseState.m_CK);
+					if (!i2p::crypto::HKDF (noiseState.m_CK, nullptr, 0, "TunnelLayerIVKey", noiseState.m_CK)) return;
 					memcpy (ivKey, noiseState.m_CK + 32, 32);
 				}
 				else
@@ -622,7 +622,11 @@ namespace tunnel
 					if (memcmp ((const uint8_t *)i2p::context.GetIdentHash (),
 							clearText + SHORT_REQUEST_RECORD_NEXT_IDENT_OFFSET, 32)) // reply IBGW is not local?
 					{
-						i2p::crypto::HKDF (noiseState.m_CK, nullptr, 0, "RGarlicKeyAndTag", noiseState.m_CK);
+						if (!i2p::crypto::HKDF (noiseState.m_CK, nullptr, 0, "RGarlicKeyAndTag", noiseState.m_CK))
+						{
+							onDrop ();
+							return;
+						}
 						uint64_t tag;
 						memcpy (&tag, noiseState.m_CK, 8);
 						// we send it to reply tunnel

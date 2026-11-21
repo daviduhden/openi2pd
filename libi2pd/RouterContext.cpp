@@ -1934,7 +1934,7 @@ bool RouterContext::DecryptECIESTunnelBuildRecord (
 		LogPrint (eLogWarning, "Router: Incorrect ephemeral public key");
 		return false;
 	}
-	noiseState.MixKey (sharedSecret);
+	if (!noiseState.MixKey (sharedSecret)) return false;
 	encrypted += 32;
 	uint8_t nonce[12];
 	memset (nonce, 0, 12);

@@ -1157,7 +1157,7 @@ namespace transport
 		m_NoiseState->MixHash (m_EphemeralKeys->GetPublicKey (), 32); // h = SHA256(h || aepk)
 		uint8_t sharedSecret[32];
 		if (!m_EphemeralKeys || !m_Address || !m_EphemeralKeys->Agree (m_Address->s, sharedSecret)) return false;
-		m_NoiseState->MixKey (sharedSecret);
+		if (!m_NoiseState->MixKey (sharedSecret)) return false;
 		// encrypt
 #if OPENSSL_PQ
 		if (m_Version > 2 && m_PQKeys)
@@ -1321,7 +1321,7 @@ namespace transport
 		m_NoiseState->MixHash (headerX + 16, 32); // h = SHA256(h || aepk);
 		uint8_t sharedSecret[32];
 		if (!i2p::context.GetSSU2StaticKeys ().Agree (headerX + 16, sharedSecret)) return false;
-		m_NoiseState->MixKey (sharedSecret);
+		if (!m_NoiseState->MixKey (sharedSecret)) return false;
 		// decrypt
 		size_t offset = 64;
 #if OPENSSL_PQ
@@ -1409,8 +1409,8 @@ namespace transport
 
 		uint8_t kh2[32];
 		auto cleanseHeaderKey = i2p::modern::ScopeExit ([&kh2] { OPENSSL_cleanse (kh2, sizeof (kh2)); });
-		i2p::crypto::HKDF (m_NoiseState->m_CK, nullptr, 0, "SessCreateHeader", kh2,
-			32); // k_header_2 = HKDF(chainKey, ZEROLEN, "SessCreateHeader", 32)
+		if (!i2p::crypto::HKDF (m_NoiseState->m_CK, nullptr, 0, "SessCreateHeader", kh2,
+			32)) return false;
 		// fill packet
 		Header & header = m_SentHandshakePacket->header;
 		uint8_t *headerX = m_SentHandshakePacket->headerX, *payload = m_SentHandshakePacket->payload;
@@ -1436,7 +1436,7 @@ namespace transport
 		m_NoiseState->MixHash (headerX + 16, 32); // h = SHA256(h || bepk);
 		uint8_t sharedSecret[32];
 		if (!m_EphemeralKeys || !m_EphemeralKeys->Agree (X, sharedSecret)) return false;
-		m_NoiseState->MixKey (sharedSecret);
+		if (!m_NoiseState->MixKey (sharedSecret)) return false;
 		// payload
 		size_t maxPayloadSize = m_MaxPayloadSize - 48;
 		size_t payloadSize = 0, offset = 0;
@@ -1454,7 +1454,7 @@ namespace transport
 			}
 			offset = cipherTextLen + 16;
 			m_NoiseState->MixHash (payload, offset); // encrypt ML-KEM frame
-			m_NoiseState->MixKey (sharedSecret);
+			if (!m_NoiseState->MixKey (sharedSecret)) return false;
 			payloadSize += offset;
 		}
 #endif
@@ -1540,8 +1540,8 @@ namespace transport
 		memcpy (header.buf, buf, 16);
 		header.ll[0] ^= CreateHeaderMask (m_Address->i, buf + (len - 24));
 		uint8_t kh2[32];
-		i2p::crypto::HKDF (m_NoiseState->m_CK, nullptr, 0, "SessCreateHeader", kh2,
-			32); // k_header_2 = HKDF(chainKey, ZEROLEN, "SessCreateHeader", 32)
+		if (!i2p::crypto::HKDF (m_NoiseState->m_CK, nullptr, 0, "SessCreateHeader", kh2,
+			32)) return failHandshake ();
 		header.ll[1] ^= CreateHeaderMask (kh2, buf + (len - 12));
 		if (header.h.type != eSSU2SessionCreated)
 			// this situation is valid, because it might be Retry with different
@@ -1578,7 +1578,7 @@ namespace transport
 		m_NoiseState->MixHash (headerX + 16, 32); // h = SHA256(h || bepk);
 		uint8_t sharedSecret[32];
 		if (!m_EphemeralKeys || !m_EphemeralKeys->Agree (headerX + 16, sharedSecret)) return failHandshake ();
-		m_NoiseState->MixKey (sharedSecret);
+		if (!m_NoiseState->MixKey (sharedSecret)) return failHandshake ();
 		size_t offset = 64;
 #if OPENSSL_PQ
 		if (m_Version > 2)
@@ -1597,7 +1597,7 @@ namespace transport
 			m_NoiseState->MixHash (buf + offset, cipherTextLen + 16);
 			offset += cipherTextLen + 16;
 			if (!m_PQKeys || !m_PQKeys->Decaps (kemCiphertext.data (), sharedSecret)) return failHandshake ();
-			m_NoiseState->MixKey (sharedSecret);
+			if (!m_NoiseState->MixKey (sharedSecret)) return failHandshake ();
 		}
 #endif
 		// decrypt
@@ -1643,8 +1643,6 @@ namespace transport
 			m_Server.RemovePendingOutgoingSession (m_RemoteEndpoint, shared_from_this ());
 			return failHandshake ();
 		}
-		KDFDataPhase (m_KeyDataSend, m_KeyDataReceive);
-
 		return true;
 	}
 
@@ -1656,8 +1654,8 @@ namespace transport
 		m_SentHandshakePacket->sendTime = i2p::util::GetMillisecondsSinceEpoch ();
 
 		uint8_t kh2[32];
-		i2p::crypto::HKDF (m_NoiseState->m_CK, nullptr, 0, "SessionConfirmed", kh2,
-			32); // k_header_2 = HKDF(chainKey, ZEROLEN, "SessionConfirmed", 32)
+		if (!i2p::crypto::HKDF (m_NoiseState->m_CK, nullptr, 0, "SessionConfirmed", kh2,
+			32)) return false;
 
 		// Fragment 0 carries the 32-byte static key (+16 MAC) after the short
 		// header. The jumbo payload is one AEAD frame split over fragments.
@@ -1769,7 +1767,7 @@ namespace transport
 		// KDF for Session Confirmed part 2
 		uint8_t sharedSecret[32];
 		if (!i2p::context.GetSSU2StaticKeys ().Agree (Y, sharedSecret)) return false;
-		m_NoiseState->MixKey (sharedSecret);
+		if (!m_NoiseState->MixKey (sharedSecret)) return false;
 		if (!m_NoiseState->Encrypt (jumbo.data (), jumbo.data (), payloadSize))
 		{
 			LogPrint (eLogError, "SSU2: SessionConfirmed payload encryption failed");
@@ -1824,6 +1822,12 @@ namespace transport
 			return false;
 		}
 
+		if (!KDFDataPhase (m_KeyDataSend, m_KeyDataReceive))
+		{
+			m_SessionConfirmedFragmentsOut.clear ();
+			m_SentHandshakePacket.reset ();
+			return false;
+		}
 		m_State = eSSU2SessionStateSessionConfirmedSent;
 		m_Server.Send (header.buf, 16, part1, part1Len, m_SentHandshakePacket->payload,
 			m_SentHandshakePacket->payloadSize, m_RemoteEndpoint);
@@ -1851,8 +1855,8 @@ namespace transport
 		memcpy (header.buf, buf, 16);
 		header.ll[0] ^= CreateHeaderMask (i2p::context.GetSSU2IntroKey (), buf + (len - 24));
 		uint8_t kh2[32];
-		i2p::crypto::HKDF (m_NoiseState->m_CK, nullptr, 0, "SessionConfirmed", kh2,
-			32); // k_header_2 = HKDF(chainKey, ZEROLEN, "SessionConfirmed", 32)
+		if (!i2p::crypto::HKDF (m_NoiseState->m_CK, nullptr, 0, "SessionConfirmed", kh2,
+			32)) return false;
 		header.ll[1] ^= CreateHeaderMask (kh2, buf + (len - 12));
 		if (header.h.connID != GetConnID ())
 		{
@@ -1978,8 +1982,8 @@ namespace transport
 		// KDF for Session Confirmed part 2 and data phase
 		uint8_t sharedSecret[32];
 		if (!m_EphemeralKeys || !m_EphemeralKeys->Agree (S, sharedSecret)) return false;
-		m_NoiseState->MixKey (sharedSecret);
-		KDFDataPhase (m_KeyDataReceive, m_KeyDataSend);
+		if (!m_NoiseState->MixKey (sharedSecret)) return false;
+		if (!KDFDataPhase (m_KeyDataReceive, m_KeyDataSend)) return false;
 		// decrypt part2
 		uint8_t * payload = buf + 64;
 		std::vector<uint8_t> decryptedPayload (len - 80);
@@ -2135,16 +2139,21 @@ namespace transport
 		return true;
 	}
 
-	void SSU2Session::KDFDataPhase (uint8_t * keydata_ab, uint8_t * keydata_ba)
+	bool SSU2Session::KDFDataPhase (uint8_t * keydata_ab, uint8_t * keydata_ba)
 	{
-		uint8_t keydata[64];
-		i2p::crypto::HKDF (m_NoiseState->m_CK, nullptr, 0, "", keydata); // keydata = HKDF(chainKey, ZEROLEN, "", 64)
-		// ab
-		i2p::crypto::HKDF (keydata, nullptr, 0, "HKDFSSU2DataKeys",
-			keydata_ab); // keydata_ab = HKDF(keydata, ZEROLEN, "HKDFSSU2DataKeys", 64)
-		// ba
-		i2p::crypto::HKDF (keydata + 32, nullptr, 0, "HKDFSSU2DataKeys",
-			keydata_ba); // keydata_ba = HKDF(keydata + 32, ZEROLEN, "HKDFSSU2DataKeys", 64)
+		uint8_t keydata[64], ab[64], ba[64];
+		const bool derived = i2p::crypto::HKDF (m_NoiseState->m_CK, nullptr, 0, "", keydata)
+			&& i2p::crypto::HKDF (keydata, nullptr, 0, "HKDFSSU2DataKeys", ab)
+			&& i2p::crypto::HKDF (keydata + 32, nullptr, 0, "HKDFSSU2DataKeys", ba);
+		if (derived)
+		{
+			memcpy (keydata_ab, ab, sizeof (ab));
+			memcpy (keydata_ba, ba, sizeof (ba));
+		}
+		OPENSSL_cleanse (keydata, sizeof (keydata));
+		OPENSSL_cleanse (ab, sizeof (ab));
+		OPENSSL_cleanse (ba, sizeof (ba));
+		return derived;
 	}
 
 	void SSU2Session::SendTokenRequest ()

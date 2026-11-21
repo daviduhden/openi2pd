@@ -987,7 +987,7 @@ namespace transport
 		bool SendSessionRequest (uint64_t token = 0);
 		bool SendSessionCreated (const uint8_t * X);
 		bool SendSessionConfirmed (const uint8_t * Y);
-		void KDFDataPhase (uint8_t * keydata_ab, uint8_t * keydata_ba);
+		bool KDFDataPhase (uint8_t * keydata_ab, uint8_t * keydata_ba);
 		void SendTokenRequest ();
 		void SendRetry ();
 		// Returns false when the packet could not be built or sent. Packet

@@ -151,8 +151,9 @@ namespace transport
 		// x25519 between pub and priv
 		uint8_t inputKeyMaterial[32];
 		if (!AgreeAndValidate (priv, pub, inputKeyMaterial)) return false;
-		MixKey (inputKeyMaterial);
-		return true;
+		const bool mixed = MixKey (inputKeyMaterial);
+		OPENSSL_cleanse (inputKeyMaterial, sizeof (inputKeyMaterial));
+		return mixed;
 	}
 
 	bool NTCP2Establisher::KDF1Alice ()
@@ -173,8 +174,9 @@ namespace transport
 		// x25519 between remote pub and ephemaral priv
 		uint8_t inputKeyMaterial[32];
 		if (!AgreeAndValidate (*m_EphemeralKeys, GetRemotePub (), inputKeyMaterial)) return false;
-		MixKey (inputKeyMaterial);
-		return true;
+		const bool mixed = MixKey (inputKeyMaterial);
+		OPENSSL_cleanse (inputKeyMaterial, sizeof (inputKeyMaterial));
+		return mixed;
 	}
 
 	bool NTCP2Establisher::KDF2Alice ()
@@ -191,16 +193,18 @@ namespace transport
 	{
 		uint8_t inputKeyMaterial[32];
 		if (!AgreeAndValidate (i2p::context.GetNTCP2StaticKeys (), GetRemotePub (), inputKeyMaterial)) return false;
-		MixKey (inputKeyMaterial);
-		return true;
+		const bool mixed = MixKey (inputKeyMaterial);
+		OPENSSL_cleanse (inputKeyMaterial, sizeof (inputKeyMaterial));
+		return mixed;
 	}
 
 	bool NTCP2Establisher::KDF3Bob ()
 	{
 		uint8_t inputKeyMaterial[32];
 		if (!AgreeAndValidate (*m_EphemeralKeys, m_RemoteStaticKey, inputKeyMaterial)) return false;
-		MixKey (inputKeyMaterial);
-		return true;
+		const bool mixed = MixKey (inputKeyMaterial);
+		OPENSSL_cleanse (inputKeyMaterial, sizeof (inputKeyMaterial));
+		return mixed;
 	}
 
 	void NTCP2Establisher::CreateEphemeralKey ()
@@ -389,7 +393,9 @@ namespace transport
 				return false;
 			}
 			MixHash (m_Buffer + offset, cipherTextLen + 16); // encrypt ML-KEM frame
-			MixKey (sharedSecret);
+			const bool mixed = MixKey (sharedSecret);
+			OPENSSL_cleanse (sharedSecret, sizeof (sharedSecret));
+			if (!mixed) return false;
 			offset += cipherTextLen + 16;
 			maxPaddingLength = offset + 32; // 32 bytes following options block size
 			// adjust max msg size because we might send smaller message that we
@@ -640,7 +646,9 @@ namespace transport
 			// decaps
 			uint8_t sharedSecret[32];
 			if (!m_PQKeys || !m_PQKeys->Decaps (kemCiphertext.data (), sharedSecret)) return false;
-			MixKey (sharedSecret);
+			const bool mixed = MixKey (sharedSecret);
+			OPENSSL_cleanse (sharedSecret, sizeof (sharedSecret));
+			if (!mixed) return false;
 		}
 #endif
 		// decrypt options and verify MAC
@@ -913,22 +921,29 @@ namespace transport
 	 *          handshake message was authenticated; the derived arrays are
 	 *          cleansed in the destructor.
 	 */
-	void NTCP2Session::KeyDerivationFunctionDataPhase ()
+	bool NTCP2Session::KeyDerivationFunctionDataPhase ()
 	{
-		uint8_t k[64];
-		i2p::crypto::HKDF (m_Establisher->GetCK (), nullptr, 0, "", k); // k_ab, k_ba = HKDF(ck, zerolen)
-		memcpy (m_Kab, k, 32);
-		memcpy (m_Kba, k + 32, 32);
+		uint8_t k[64], sip[64];
 		uint8_t master[32];
-		i2p::crypto::HKDF (
-			m_Establisher->GetCK (), nullptr, 0, "ask", master, 32); // ask_master = HKDF(ck, zerolen, info="ask")
 		uint8_t h[39];
 		memcpy (h, m_Establisher->GetH (), 32);
 		memcpy (h + 32, "siphash", 7);
-		i2p::crypto::HKDF (master, h, 39, "", master, 32); // sip_master = HKDF(ask_master, h || "siphash")
-		i2p::crypto::HKDF (master, nullptr, 0, "", k); // sipkeys_ab, sipkeys_ba = HKDF(sip_master, zerolen)
-		memcpy (m_Sipkeysab, k, 32);
-		memcpy (m_Sipkeysba, k + 32, 32);
+		const auto * ck = m_Establisher->GetCK ();
+		const bool derived = i2p::crypto::HKDF (ck, nullptr, 0, "", k)
+			&& i2p::crypto::HKDF (ck, nullptr, 0, "ask", master, 32)
+			&& i2p::crypto::HKDF (master, h, sizeof (h), "", master, 32)
+			&& i2p::crypto::HKDF (master, nullptr, 0, "", sip);
+		if (derived)
+		{
+			memcpy (m_Kab, k, 32);
+			memcpy (m_Kba, k + 32, 32);
+			memcpy (m_Sipkeysab, sip, 32);
+			memcpy (m_Sipkeysba, sip + 32, 32);
+		}
+		OPENSSL_cleanse (master, sizeof (master));
+		OPENSSL_cleanse (k, sizeof (k));
+		OPENSSL_cleanse (sip, sizeof (sip));
+		return derived;
 	}
 
 	void NTCP2Session::SendSessionRequest ()
@@ -1255,7 +1270,11 @@ namespace transport
 		else
 		{
 			LogPrint (eLogDebug, "NTCP2: SessionConfirmed sent");
-			KeyDerivationFunctionDataPhase ();
+			if (!KeyDerivationFunctionDataPhase ())
+			{
+				Terminate ();
+				return;
+			}
 			// Alice data phase keys
 			m_SendKey = m_Kab;
 			m_ReceiveKey = m_Kba;
@@ -1348,7 +1367,11 @@ namespace transport
 	void NTCP2Session::EstablishSessionAfterSessionConfirmed (std::shared_ptr<std::vector<uint8_t>> buf, size_t size)
 	{
 		// run on main NTCP2 thread
-		KeyDerivationFunctionDataPhase ();
+		if (!KeyDerivationFunctionDataPhase ())
+		{
+			Terminate ();
+			return;
+		}
 		// Bob data phase keys
 		m_SendKey = m_Kba;
 		m_ReceiveKey = m_Kab;

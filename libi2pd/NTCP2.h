@@ -413,7 +413,7 @@ namespace transport
 
 		void CreateNonce (uint64_t seqn, uint8_t * nonce);
 		void CreateNextReceivedBuffer (size_t size);
-		void KeyDerivationFunctionDataPhase ();
+		bool KeyDerivationFunctionDataPhase ();
 		bool SetSipKeys (const uint8_t * sendSipKey, const uint8_t * receiveSipKey);
 
 		// establish

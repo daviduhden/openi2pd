@@ -110,8 +110,8 @@ int main ()
 	const Bytes32 tagsetKey = Fill (0x5a);
 
 	i2p::garlic::RatchetTagSet tagset;
-	tagset.DHInitialize (rootKey.data (), tagsetKey.data ());
-	tagset.NextSessionTagRatchet ();
+	assert (tagset.DHInitialize (rootKey.data (), tagsetKey.data ()));
+	assert (tagset.NextSessionTagRatchet ());
 	tagset.SetTagSetID (3);
 
 	ReferenceTagSet reference (rootKey, tagsetKey);
@@ -173,8 +173,8 @@ int main ()
 	// A fresh tagset starts at index 0.
 	{
 		i2p::garlic::RatchetTagSet fresh;
-		fresh.DHInitialize (rootKey.data (), tagsetKey.data ());
-		fresh.NextSessionTagRatchet ();
+		assert (fresh.DHInitialize (rootKey.data (), tagsetKey.data ()));
+		assert (fresh.NextSessionTagRatchet ());
 		ReferenceTagSet freshReference (rootKey, tagsetKey);
 		assert (fresh.GetNextIndex () == 0);
 		assert (fresh.GetNextSessionTag (hkdf) == freshReference.NextTag ());
@@ -189,8 +189,8 @@ int main ()
 	// must not advance the index (which would silently skip a peer tag).
 	{
 		i2p::garlic::RatchetTagSet boundary;
-		boundary.DHInitialize (rootKey.data (), tagsetKey.data ());
-		boundary.NextSessionTagRatchet ();
+		assert (boundary.DHInitialize (rootKey.data (), tagsetKey.data ()));
+		assert (boundary.NextSessionTagRatchet ());
 		for (int i = 0; i <= 0xFFFF; ++i) assert (boundary.GetNextSessionTag (hkdf) != 0);
 		assert (boundary.GetNextIndex () == 0x10000);
 		assert (boundary.GetNextSessionTag (hkdf) == 0);

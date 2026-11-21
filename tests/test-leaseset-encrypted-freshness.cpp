@@ -133,7 +133,7 @@ std::vector<uint8_t> SealEncryptedLeaseSet2 (
 	blindedKey.GetSubcredential (blindedPub, publicKeyLen, subcredential);
 	htobe32buf (subcredential + 32, published);
 	uint8_t outerKeys[64], innerKeys[64];
-	i2p::crypto::HKDF (buffer.data () + outerSaltPos, subcredential, 36, "ELS2_L1K", outerKeys);
+	assert (i2p::crypto::HKDF (buffer.data () + outerSaltPos, subcredential, 36, "ELS2_L1K", outerKeys));
 	// The layer 1 plaintext is one region: the flags byte, the inner
 	// salt and the inner plaintext. Reserve it once and index inside it.
 	// Appending the inner salt and plaintext after an already reserved
@@ -145,7 +145,7 @@ std::vector<uint8_t> SealEncryptedLeaseSet2 (
 	buffer[outerPlaintextPos] = 0; // layer 1 flags: no per-client auth
 	size_t innerSaltPos = outerPlaintextPos + 1;
 	assert (RAND_bytes (buffer.data () + innerSaltPos, 32) == 1);
-	i2p::crypto::HKDF (buffer.data () + innerSaltPos, subcredential, 36, "ELS2_L2K", innerKeys);
+	assert (i2p::crypto::HKDF (buffer.data () + innerSaltPos, subcredential, 36, "ELS2_L2K", innerKeys));
 	size_t innerPlaintextPos = innerSaltPos + 32;
 	assert (innerPlaintextPos + lenInnerPlaintext == outerPlaintextPos + lenOuterPlaintext);
 	buffer[innerPlaintextPos] = inner.front (); // inner store type

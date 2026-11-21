@@ -170,8 +170,8 @@ void Initialize (i2p::garlic::RatchetTagSet & tagset)
 	std::array<uint8_t, 32> root, input;
 	root.fill (0x19);
 	input.fill (0x42);
-	tagset.DHInitialize (root.data (), input.data ());
-	tagset.NextSessionTagRatchet ();
+	assert (tagset.DHInitialize (root.data (), input.data ()));
+	assert (tagset.NextSessionTagRatchet ());
 }
 
 void CheckFailure (bool warm)

@@ -16,6 +16,7 @@
 #include <openssl/sha.h>
 #include <cstring>
 #include "Log.h"
+#include "Modern.h"
 #include "Transports.h"
 #include "Timestamp.h"
 #include "I2PEndian.h"
@@ -108,8 +109,13 @@ namespace tunnel
 			memset (encrypted - 32, 0, 32 + SHORT_REQUEST_RECORD_CLEAR_TEXT_SIZE + 16);
 			return false;
 		}
-		MixKey (sharedSecret);
+		const bool mixed = MixKey (sharedSecret);
 		OPENSSL_cleanse (sharedSecret, sizeof (sharedSecret));
+		if (!mixed)
+		{
+			memset (encrypted - 32, 0, 32 + SHORT_REQUEST_RECORD_CLEAR_TEXT_SIZE + 16);
+			return false;
+		}
 		if (!Encrypt (plainText, encrypted, SHORT_REQUEST_RECORD_CLEAR_TEXT_SIZE))
 		{
 			LogPrint (eLogWarning, "Tunnel: Plaintext AEAD encryption failed");
@@ -152,20 +158,22 @@ namespace tunnel
 			return false;
 		}
 		// derive keys
-		i2p::crypto::HKDF (m_CK, nullptr, 0, "SMTunnelReplyKey", m_CK);
+		auto discardRecord = i2p::modern::ScopeExit ([record] { memset (record, 0, SHORT_TUNNEL_BUILD_RECORD_SIZE); });
+		if (!i2p::crypto::HKDF (m_CK, nullptr, 0, "SMTunnelReplyKey", m_CK)) return false;
 		memcpy (replyKey, m_CK + 32, 32);
-		i2p::crypto::HKDF (m_CK, nullptr, 0, "SMTunnelLayerKey", m_CK);
+		if (!i2p::crypto::HKDF (m_CK, nullptr, 0, "SMTunnelLayerKey", m_CK)) return false;
 		memcpy (layerKey, m_CK + 32, 32);
 		if (isEndpoint)
 		{
-			i2p::crypto::HKDF (m_CK, nullptr, 0, "TunnelLayerIVKey", m_CK);
+			if (!i2p::crypto::HKDF (m_CK, nullptr, 0, "TunnelLayerIVKey", m_CK)) return false;
 			memcpy (ivKey, m_CK + 32, 32);
-			i2p::crypto::HKDF (
-				m_CK, nullptr, 0, "RGarlicKeyAndTag", m_CK); // OTBRM garlic key m_CK + 32, tag first 8 bytes of m_CK
+			// OTBRM garlic key is m_CK + 32; tag is first 8 bytes.
+			if (!i2p::crypto::HKDF (m_CK, nullptr, 0, "RGarlicKeyAndTag", m_CK)) return false;
 		}
 		else
 			memcpy (ivKey, m_CK, 32); // last HKDF
 		memcpy (record + BUILD_REQUEST_RECORD_TO_PEER_OFFSET, (const uint8_t *)ident->GetIdentHash (), 16);
+		discardRecord.dismiss ();
 		return true;
 	}
 

@@ -1452,11 +1452,11 @@ namespace crypto
 		ChaCha20AndWipeOnFailure (m_Ctx, msg, msgLen, key, nonce, out);
 	}
 
-	void HKDF (
+	bool HKDF (
 		const uint8_t * salt, const uint8_t * key, size_t keyLen, std::string_view info, uint8_t * out, size_t outLen)
 	{
 		HKDFContext ctx;
-		ctx (salt, key, keyLen, info, out, outLen);
+		return ctx (salt, key, keyLen, info, out, outLen);
 	}
 
 	/*
@@ -1467,8 +1467,7 @@ namespace crypto
 	 * EXTRACT_AND_EXPAND with the 32-byte salt, and a zero-length key
 	 * selects EXPAND_ONLY with PRK = HMAC-SHA256(salt, ""), which is what
 	 * the ratchet spec pins. Output is capped at 255 * 32 bytes per RFC
-	 * 5869 and is zeroed on every failure, so a caller never derives a
-	 * session key from a partially written buffer.
+	 * 5869. On failure, a destination within the limit is cleansed.
 	 *
 	 * The context is stateful and not reentrant: concurrent calls from two
 	 * threads corrupt both derivations. Use the free HKDF() helper or one
@@ -1480,8 +1479,6 @@ namespace crypto
 		EVP_KDF * kdf = EVP_KDF_fetch (nullptr, "HKDF", nullptr);
 		m_KdfCtx = kdf ? EVP_KDF_CTX_new (kdf) : nullptr;
 		EVP_KDF_free (kdf);
-#else
-		m_Ctx = EVP_PKEY_CTX_new_id (EVP_PKEY_HKDF, nullptr);
 #endif
 	}
 
@@ -1489,26 +1486,24 @@ namespace crypto
 	{
 #if I2PD_HAVE_EVP_KDF_FETCH
 		if (m_KdfCtx) EVP_KDF_CTX_free (m_KdfCtx);
-#else
-		if (m_Ctx) EVP_PKEY_CTX_free (m_Ctx);
 #endif
 	}
 
-	void HKDFContext::operator() (
+	bool HKDFContext::operator() (
 		const uint8_t * salt, const uint8_t * key, size_t keyLen, std::string_view info, uint8_t * out, size_t outLen)
 	{
 		// RFC 5869 allows at most 255 * HashLen output bytes.
 		constexpr size_t MAX_HKDF_OUTPUT = 255 * 32;
 		if (!out || !outLen || outLen > MAX_HKDF_OUTPUT || !salt || (!key && keyLen))
 		{
-			if (out && outLen) OPENSSL_cleanse (out, outLen);
-			return;
+			if (out && outLen <= MAX_HKDF_OUTPUT) OPENSSL_cleanse (out, outLen);
+			return false;
 		}
 #if I2PD_HAVE_EVP_KDF_FETCH
 		if (!m_KdfCtx)
 		{
 			OPENSSL_cleanse (out, outLen);
-			return;
+			return false;
 		}
 		uint8_t tempKey[32];
 		const bool zeroKey = !key || !keyLen;
@@ -1520,7 +1515,7 @@ namespace crypto
 				OPENSSL_cleanse (tempKey, sizeof (tempKey));
 				OPENSSL_cleanse (out, outLen);
 				LogPrint (eLogError, "HKDF: expand-only PRK derivation failed");
-				return;
+				return false;
 			}
 		}
 		OSSL_PARAM params[6];
@@ -1540,50 +1535,58 @@ namespace crypto
 				OSSL_KDF_PARAM_INFO, const_cast<char *> (info.data ()), info.size ());
 		params[n] = OSSL_PARAM_construct_end ();
 		const int ok = EVP_KDF_derive (m_KdfCtx, out, outLen, params);
+		EVP_KDF_CTX_reset (m_KdfCtx);
 		OPENSSL_cleanse (tempKey, sizeof (tempKey));
 		if (ok != 1)
 		{
 			OPENSSL_cleanse (out, outLen);
 			LogPrint (eLogError, "HKDF: derivation failed");
 		}
+		return ok == 1;
 #else
-		if (!m_Ctx || keyLen > (size_t)std::numeric_limits<int>::max ()
+		if (keyLen > (size_t)std::numeric_limits<int>::max ()
 			|| info.size () > (size_t)std::numeric_limits<int>::max ())
 		{
 			OPENSSL_cleanse (out, outLen);
-			return;
+			return false;
 		}
-		bool ok = EVP_PKEY_derive_init (m_Ctx) == 1 && EVP_PKEY_CTX_set_hkdf_md (m_Ctx, EVP_sha256 ()) == 1;
+		// The legacy API appends info and retains its mode in the context.
+		// Start each request with fresh state.
+		std::unique_ptr<EVP_PKEY_CTX, decltype (&EVP_PKEY_CTX_free)> ctx (
+			EVP_PKEY_CTX_new_id (EVP_PKEY_HKDF, nullptr), EVP_PKEY_CTX_free);
+		bool ok = ctx && EVP_PKEY_derive_init (ctx.get ()) == 1
+			&& EVP_PKEY_CTX_set_hkdf_md (ctx.get (), EVP_sha256 ()) == 1;
 		if (ok && key && keyLen)
 		{
-			ok = EVP_PKEY_CTX_set1_hkdf_salt (m_Ctx, salt, 32) == 1
-				&& EVP_PKEY_CTX_set1_hkdf_key (m_Ctx, key, (int)keyLen) == 1;
+			ok = EVP_PKEY_CTX_set1_hkdf_salt (ctx.get (), salt, 32) == 1
+				&& EVP_PKEY_CTX_set1_hkdf_key (ctx.get (), key, (int)keyLen) == 1;
 		}
 		else if (ok)
 		{
 			// zerolen
-			ok = EVP_PKEY_CTX_hkdf_mode (m_Ctx, EVP_PKEY_HKDEF_MODE_EXPAND_ONLY) == 1;
+			ok = EVP_PKEY_CTX_hkdf_mode (ctx.get (), EVP_PKEY_HKDEF_MODE_EXPAND_ONLY) == 1;
 			uint8_t tempKey[32];
 			unsigned int len = 0;
 			if (ok)
 			{
 				ok = HMAC (EVP_sha256 (), salt, 32, nullptr, 0, tempKey, &len) != nullptr && len == 32;
-				if (ok) ok = EVP_PKEY_CTX_set1_hkdf_key (m_Ctx, tempKey, (int)len) == 1;
+				if (ok) ok = EVP_PKEY_CTX_set1_hkdf_key (ctx.get (), tempKey, (int)len) == 1;
 			}
 			OPENSSL_cleanse (tempKey, sizeof (tempKey));
 		}
 		if (ok && !info.empty ())
-			ok = EVP_PKEY_CTX_add1_hkdf_info (m_Ctx, (const uint8_t *)info.data (), (int)info.size ()) == 1;
+			ok = EVP_PKEY_CTX_add1_hkdf_info (ctx.get (), (const uint8_t *)info.data (), (int)info.size ()) == 1;
 		if (ok)
 		{
 			size_t derived = outLen;
-			ok = EVP_PKEY_derive (m_Ctx, out, &derived) == 1 && derived == outLen;
+			ok = EVP_PKEY_derive (ctx.get (), out, &derived) == 1 && derived == outLen;
 		}
 		if (!ok)
 		{
 			OPENSSL_cleanse (out, outLen);
 			LogPrint (eLogError, "HKDF: derivation failed");
 		}
+		return ok;
 #endif
 	}
 
@@ -1645,16 +1648,21 @@ namespace crypto
 		EVP_MD_CTX_free (ctx);
 	}
 
-	void NoiseSymmetricState::MixKey (const uint8_t * sharedSecret)
+	bool NoiseSymmetricState::MixKey (const uint8_t * sharedSecret)
 	{
 		if (!sharedSecret)
 		{
 			LogPrint (eLogError, "Noise: MixKey called without a shared secret");
-			return;
+			return false;
 		}
-		HKDF (m_CK, sharedSecret, 32, "", m_CK);
+		uint8_t nextKey[sizeof (m_CK)];
+		const bool derived = HKDF (m_CK, sharedSecret, 32, "", nextKey);
+		if (derived) memcpy (m_CK, nextKey, sizeof (m_CK));
+		OPENSSL_cleanse (nextKey, sizeof (nextKey));
+		if (!derived) return false;
 		// new ck is m_CK[0:31], key is m_CK[32:63]
 		m_N = 0;
+		return true;
 	}
 
 	bool NoiseSymmetricState::Encrypt (const uint8_t * in, uint8_t * out, size_t len)

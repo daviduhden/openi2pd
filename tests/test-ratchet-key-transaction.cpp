@@ -81,8 +81,8 @@ void CheckFailure (bool warm, Access::Point point, unsigned after)
 	root.fill (0x11);
 	input.fill (0x5a);
 	i2p::garlic::RatchetTagSet candidate, uninterrupted;
-	candidate.DHInitialize (root.data (), input.data ());
-	uninterrupted.DHInitialize (root.data (), input.data ());
+	assert (candidate.DHInitialize (root.data (), input.data ()));
+	assert (uninterrupted.DHInitialize (root.data (), input.data ()));
 	Access::Key actual { }, expected { };
 	if (warm)
 	{

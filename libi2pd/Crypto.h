@@ -410,15 +410,12 @@ namespace crypto
 	/// @param out Destination holding at least outLen bytes.
 	/// @param outLen Requested length, bounded by RFC 5869's 255 * 32
 	///               bytes.
-	/// @warning A failed or rejected derivation leaves the whole output
-	/// zeroed; callers must treat that as failure rather than as a key.
-	void HKDF (const uint8_t * salt, const uint8_t * key, size_t keyLen, std::string_view info, uint8_t * out,
+	/// @return True only if the provider derived the complete output.
+	/// On failure an output within the supported length is cleansed.
+	bool HKDF (const uint8_t * salt, const uint8_t * key, size_t keyLen, std::string_view info, uint8_t * out,
 		size_t outLen = 64); // salt - 32, out - 32 or 64, info <= 32
 
-	/// Reusable HKDF context. Unlike the free function it owns a provider
-	/// context and is therefore stateful and not reentrant: every thread
-	/// that derives keys must use its own instance, never one shared
-	/// context.
+	/// Reusable HKDF helper, confined to one deriving thread.
 	class HKDFContext final
 	{
 	public:
@@ -426,14 +423,12 @@ namespace crypto
 		~HKDFContext ();
 
 		/// Derive with the same contract as the free HKDF() function.
-		void operator() (const uint8_t * salt, const uint8_t * key, size_t keyLen, std::string_view info, uint8_t * out,
+		bool operator() (const uint8_t * salt, const uint8_t * key, size_t keyLen, std::string_view info, uint8_t * out,
 			size_t outLen = 64); // salt - 32, out - 32 or 64, info <= 32
 
 	private:
 #if I2PD_HAVE_EVP_KDF_FETCH
 		EVP_KDF_CTX * m_KdfCtx;
-#else
-		EVP_PKEY_CTX * m_Ctx;
 #endif
 	};
 
@@ -454,7 +449,8 @@ namespace crypto
 
 		void MixHash (const uint8_t * buf, size_t len);
 		void MixHash (const std::vector<std::pair<uint8_t *, size_t>> & bufs);
-		void MixKey (const uint8_t * sharedSecret);
+		/// Mix and reset the nonce only after a successful derivation.
+		[[nodiscard]] bool MixKey (const uint8_t * sharedSecret);
 
 		bool Encrypt (const uint8_t * in, uint8_t * out, size_t len); // out length = len + 16
 		bool Decrypt (const uint8_t * in, uint8_t * out, size_t len); // len without 16 bytes tag

@@ -553,7 +553,7 @@ void CheckRouterEnvelope ()
 	noise.MixHash (envelope, 32); // h = SHA256(h || aepk)
 	uint8_t sharedSecret[32];
 	assert (bob.destination->Decrypt (envelope, sharedSecret, i2p::data::CRYPTO_KEY_TYPE_ECIES_X25519_AEAD));
-	noise.MixKey (sharedSecret); // x25519(bsk, aepk)
+	assert (noise.MixKey (sharedSecret)); // x25519(bsk, aepk)
 	std::vector<uint8_t> inner (innerLen);
 	assert (noise.Decrypt (envelope + 32, inner.data (), innerLen));
 
