@@ -101,9 +101,9 @@ this environment; CI/device execution is required.
 
 ## Identity migration
 
-The application ID and namespace are `org.openi2pd.router`. An installation of
-the upstream `org.purplei2p.i2pd` package is a different Android application and
-cannot be updated in place. Back up/export data before switching; automatic
+The application ID is `dev.uhden.i2pd`. Java and JNI retain the
+`org.openi2pd.router` namespace. Android installs this package separately
+from both `org.openi2pd.router` and the upstream `org.purplei2p.i2pd`. Back up/export data before switching; automatic
 migration from the old app-specific directory is not implemented yet.
 
 ## Security

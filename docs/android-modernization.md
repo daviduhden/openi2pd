@@ -219,7 +219,7 @@ RouterService (started + bound, non-exported, same process)
   in both light and dark themes. The launcher icon, splash and notification
   icon are also not dynamically recoloured.
 - The user-facing label is `openi2pd` (`app_name` and the About licence
-  summary). The application ID `org.openi2pd.router`, Java packages, service
+  summary). At that stage the application ID `org.openi2pd.router`, Java packages, service
   actions, JNI symbol names, configuration/data paths and protocol names are
   unchanged.
 
@@ -258,8 +258,8 @@ RouterService (started + bound, non-exported, same process)
   main thread.
 - Existing `i2pd.conf` keys are preserved; no secrets are added to preferences.
 - Autostart uses an app-private marker with cache migration.
-- Application ID remains `org.openi2pd.router`; changing it remains
-  non-updatable from the upstream app (migration tracked as REBRAND-009).
+- The release application ID is now `dev.uhden.i2pd`. Previous package IDs
+  require a separate installation (migration tracked as REBRAND-009).
 
 ## Validation performed
 

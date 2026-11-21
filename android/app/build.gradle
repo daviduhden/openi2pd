@@ -73,7 +73,7 @@ android {
     }
 
     defaultConfig {
-        applicationId "org.openi2pd.router"
+        applicationId "dev.uhden.i2pd"
         targetSdk 37
         // Android 10 (API 29) is the supported floor. It provides the
         // modern ART/libc surface and avoids obsolete Android 7/8

@@ -87,7 +87,8 @@ This directory records cross-component decisions for the openi2pd fork.
 ## ADR-003 — Android identity and toolchain
 
 - **Status:** Implemented / build validation blocked on Android SDK.
-- **Decision:** Application ID/namespace `org.openi2pd.router`, UI name
+- **Decision:** Application ID `dev.uhden.i2pd`, Java/JNI namespace
+  `org.openi2pd.router`, UI name
   `openi2pd`, app-specific storage, no WebView console, no broad storage
   permission. Build with OpenJDK 25, Gradle 9.8.1, AGP 9.4.1, compile/target
   SDK 37, minSdk 29 (Android 10), Java source/target 25 (class-file major 69, D8/R8
