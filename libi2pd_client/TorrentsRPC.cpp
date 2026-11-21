@@ -7,15 +7,15 @@
  * Implements a Transmission-style JSON-RPC endpoint restricted to
  * loopback HTTP, with optional Basic authentication, strict POST and
  * application/json checks, and bounded bodies, fields and torrent IDs.
- * A subset of the Transmission method set is marshalled to the torrent
- * service thread with a fixed timeout so a stalled engine cannot pin an
- * RPC thread.
+ * Authenticated JSON requests execute on the torrent service thread.
+ * The listener keeps its own deadlines and never waits for the engine.
  *
  */
 
 #ifndef NO_TORRENTS
 
 #include <cstring>
+#include <algorithm>
 #include <boost/json.hpp>
 #include <boost/url.hpp>
 #include <boost/url/encode.hpp>
@@ -23,9 +23,9 @@
 #include <boost/algorithm/hex.hpp>
 #include <vector>
 #include <array>
+#include <atomic>
 #include <chrono>
 #include <functional>
-#include <future>
 #include <filesystem>
 #include <limits>
 #include <stdexcept>
@@ -46,6 +46,28 @@ namespace i2p
 {
 namespace torrents
 {
+	struct TorrentsRPCDispatch
+	{
+		// Stop revokes this borrowed executor under the same lock used
+		// to post replies. Pending tickets can outlive the listener.
+		std::mutex mutex;
+		boost::asio::io_context * replies = nullptr;
+		uint64_t generation = 0;
+		std::atomic_size_t pending = 0;
+	};
+
+	struct TorrentsRPCWork
+	{
+		explicit TorrentsRPCWork (std::shared_ptr<TorrentsRPCDispatch> gate)
+			: dispatch (std::move (gate)) { dispatch->pending.fetch_add (1); }
+		~TorrentsRPCWork () { dispatch->pending.fetch_sub (1); }
+		const std::shared_ptr<TorrentsRPCDispatch> dispatch;
+		std::chrono::steady_clock::time_point deadline;
+		uint64_t generation = 0;
+		bool canceled = false; // Protected by dispatch->mutex.
+		bool admitted = false; // Protected by dispatch->mutex.
+	};
+
 	// The callback authority is independent of the public facade. A stopped
 	// generation is drained before this state can admit another session.
 	struct TorrentsRPCState
@@ -67,6 +89,7 @@ namespace torrents
 		uint64_t nextId = 0;
 		std::map<uint64_t, std::shared_ptr<TorrentsRPCSession>> sessions;
 		std::map<std::string, Route, std::less<>> routes;
+		std::shared_ptr<TorrentsRPCDispatch> dispatch = std::make_shared<TorrentsRPCDispatch> ();
 	};
 
 	namespace
@@ -78,7 +101,6 @@ namespace torrents
 		constexpr size_t MAX_RPC_METADATA_SIZE = 24 * 1024 * 1024; // 24 MiB
 		constexpr size_t MAX_RPC_MAGNET_LENGTH = 2048;
 		constexpr size_t MAX_RPC_TRACKERS_PER_REQUEST = 32;
-		constexpr size_t MAX_RPC_TRACKER_LENGTH = 2048;
 		constexpr size_t MAX_RPC_FIELDS_PER_REQUEST = 64;
 		constexpr size_t MAX_RPC_CREDENTIAL_LENGTH = 256;
 		// One request must not be able to enqueue an unbounded number of
@@ -120,7 +142,6 @@ namespace torrents
 		// control plane. A stalled or stopped tunnel service must never pin
 		// an RPC I/O thread indefinitely.
 		constexpr std::chrono::milliseconds RPC_SERVICE_TIMEOUT = CONTROL_DEFAULT_TIMEOUT;
-		constexpr std::string_view RPC_SERVICE_TIMEOUT_ERROR = "Torrent service timeout";
 		constexpr std::string_view RPC_SERVICE_FAILURE_ERROR = "Internal error";
 
 		struct DHTStatistics
@@ -152,67 +173,23 @@ namespace torrents
 		{
 		};
 
-		// Runs one operation on the torrent service and waits for it with a
-		// fixed bound. The packaged task owns its result, so a timed-out task
-		// can only complete into its own shared state and never writes to
-		// caller stack storage.
-		template <typename F> auto RunOnTorrentService (const std::shared_ptr<TorrentsTunnel> & tunnel, F && operation)
+		// JSON dispatch is already on the torrent service thread.
+		template <typename F> auto RunEngineOperation (F && operation)
 		{
 			using OperationResult = std::invoke_result_t<F &>;
 			using Result = std::conditional_t<std::is_void_v<OperationResult>, ServiceTaskVoid, OperationResult>;
 			struct Outcome
 			{
 				bool success = false;
-				bool timedOut = false;
 				Result value { };
 			};
 
 			Outcome outcome;
-			if (!tunnel) return outcome;
-			std::shared_ptr<std::packaged_task<Result ()>> task;
 			try
 			{
-				task = std::make_shared<std::packaged_task<Result ()>> (
-					[operation = std::forward<F> (operation)] () mutable -> Result
-					{
-						if constexpr (std::is_void_v<OperationResult>)
-						{
-							operation ();
-							return { };
-						}
-						else
-							return operation ();
-					});
-			}
-			catch (const std::exception & ex)
-			{
-				LogPrint (eLogWarning, "TorrentsRPC: Failed to create service task: ", ex.what ());
-				return outcome;
-			}
-			auto future = task->get_future ();
-			try
-			{
-				boost::asio::post (tunnel->GetService (), [task] () { (*task) (); });
-			}
-			catch (const std::exception & ex)
-			{
-				LogPrint (eLogWarning, "TorrentsRPC: Failed to queue service task: ", ex.what ());
-				return outcome;
-			}
-			if (future.wait_for (RPC_SERVICE_TIMEOUT) != std::future_status::ready)
-			{
-				LogPrint (eLogWarning, "TorrentsRPC: Torrent service task timed out");
-				outcome.timedOut = true;
-				return outcome;
-			}
-			try
-			{
-				outcome.value = future.get ();
+				if constexpr (std::is_void_v<OperationResult>) operation ();
+				else outcome.value = operation ();
 				outcome.success = true;
-			}
-			catch (const std::exception & ex)
-			{
-				LogPrint (eLogWarning, "TorrentsRPC: Torrent service task failed: ", ex.what ());
 			}
 			catch (...)
 			{
@@ -356,9 +333,9 @@ namespace torrents
 				return ErrorResponse (GetTag (jsonRequest), "Invalid Request");
 			return (this->*(it->second)) (std::move (jsonRequest));
 		}
-		catch (const std::exception & ex)
+		catch (const std::exception &)
 		{
-			LogPrint (eLogInfo, "TorrentsRPC: Failed to parse JSON: ", ex.what ());
+			LogPrint (eLogInfo, "TorrentsRPC: Request parsing or dispatch failed");
 			return ErrorResponse (0, "Parse error");
 		}
 	}
@@ -392,17 +369,19 @@ namespace torrents
 
 		response["dht-enabled"] = m_Tunnel->SupportsDHT ();
 		response["download-dir"] = m_Tunnel->GetTorrentsDir ().string ();
-		response["download-dir-free-space"] = 9999999999; // TODO:
-		response["download-queue-enabled"] = true; // TODO:
-		response["download-queue-size"] = 5; // TODO:
+		// Keep the signed integer field for legacy clients. Capacity is
+		// unknown for providers with no filesystem-space operation.
+		response["download-dir-free-space"] = -1;
+		response["download-queue-enabled"] = false;
+		response["download-queue-size"] = 0;
 		response["encryption"] = "required";
 		response["idle-seeding-limit"] = 30;
 		response["idle-seeding-limit-enabled"] = false;
 		response["incomplete-dir"] = m_Tunnel->GetTorrentsDir ().string ();
 		response["incomplete-dir-enabled"] = false;
 		response["lpd-enabled"] = false;
-		response["peer-limit-global"] = 200; // TODO:
-		response["peer-limit-per-torrent"] = 50; // TODO:
+		response["peer-limit-global"] = MAX_TOTAL_PEERS;
+		response["peer-limit-per-torrent"] = MAX_PEERS_PER_TORRENT;
 		response["peer-port"] = 6881;
 		response["peer-port-random-on-start"] = false;
 		response["pex-enabled"] = true;
@@ -461,7 +440,7 @@ namespace torrents
 			if (!written || consumed != b64torrent.size ())
 				return ErrorResponse (GetTag (jsonRequest), "invalid or corrupt torrent file");
 			torrentFileContent.resize (written);
-			std::tie (torrent, id) = m_Tunnel->AddTorrentFromRpc (torrentFileContent);
+			std::tie (torrent, id) = m_Tunnel->AddTorrent (torrentFileContent);
 		}
 		else
 		{
@@ -471,7 +450,7 @@ namespace torrents
 			std::string_view magnet (magnetString.data (), magnetString.size ());
 			if (magnet.empty () || magnet.size () > MAX_RPC_MAGNET_LENGTH)
 				return ErrorResponse (GetTag (jsonRequest), "Invalid magnet link");
-			std::tie (torrent, id) = m_Tunnel->AddMagnetFromRpc (magnet);
+			std::tie (torrent, id) = m_Tunnel->AddMagnet (magnet);
 		}
 
 		if (torrent)
@@ -479,7 +458,7 @@ namespace torrents
 			boost::json::object response, torrentInfo;
 			// Name and hash are owned by the service thread and a magnet can
 			// receive its metadata concurrently, so copy them there.
-			auto summary = RunOnTorrentService (m_Tunnel,
+			auto summary = RunEngineOperation (
 				[torrent] ()
 				{
 					TorrentSummary s;
@@ -490,7 +469,7 @@ namespace torrents
 				});
 			if (!summary.success)
 				return ErrorResponse (
-					GetTag (jsonRequest), summary.timedOut ? RPC_SERVICE_TIMEOUT_ERROR : RPC_SERVICE_FAILURE_ERROR);
+					GetTag (jsonRequest), RPC_SERVICE_FAILURE_ERROR);
 			torrentInfo["id"] = id;
 			torrentInfo["hashString"] = std::move (summary.value.hexHash);
 			torrentInfo["name"] = std::move (summary.value.name);
@@ -578,7 +557,7 @@ namespace torrents
 				if (isTable)
 				{
 					bool isFirst = header.empty ();
-					auto outcome = RunOnTorrentService (m_Tunnel,
+					auto outcome = RunEngineOperation (
 						[handler = *this, torrent, id, fields] ()
 						{
 							boost::json::array rowHeader;
@@ -588,7 +567,7 @@ namespace torrents
 						});
 					if (!outcome.success)
 						return ErrorResponse (GetTag (jsonRequest),
-							outcome.timedOut ? RPC_SERVICE_TIMEOUT_ERROR : RPC_SERVICE_FAILURE_ERROR);
+							RPC_SERVICE_FAILURE_ERROR);
 					if (isFirst)
 					{
 						header = outcome.value.second;
@@ -598,11 +577,11 @@ namespace torrents
 				}
 				else
 				{
-					auto outcome = RunOnTorrentService (m_Tunnel, [handler = *this, torrent, id, fields] ()
+					auto outcome = RunEngineOperation ([handler = *this, torrent, id, fields] ()
 						{ return handler.GetTorrentObject (torrent, id, fields); });
 					if (!outcome.success)
 						return ErrorResponse (GetTag (jsonRequest),
-							outcome.timedOut ? RPC_SERVICE_TIMEOUT_ERROR : RPC_SERVICE_FAILURE_ERROR);
+							RPC_SERVICE_FAILURE_ERROR);
 					torrents.push_back (std::move (outcome.value));
 				}
 			}
@@ -1043,7 +1022,7 @@ namespace torrents
 		// Counters and peer maps belong to the tunnel service thread.
 		// Aggregate them there instead of walking live connections from the
 		// RPC thread.
-		auto outcome = RunOnTorrentService (m_Tunnel,
+		auto outcome = RunEngineOperation (
 			[tunnel = m_Tunnel] ()
 			{
 				SessionStatistics statistics;
@@ -1061,7 +1040,7 @@ namespace torrents
 			});
 		if (!outcome.success)
 			return ErrorResponse (
-				GetTag (jsonRequest), outcome.timedOut ? RPC_SERVICE_TIMEOUT_ERROR : RPC_SERVICE_FAILURE_ERROR);
+				GetTag (jsonRequest), RPC_SERVICE_FAILURE_ERROR);
 
 		boost::json::object response, stats;
 		stats["downloadedBytes"] = outcome.value.downloaded;
@@ -1086,7 +1065,7 @@ namespace torrents
 		response["supported"] = isDHTSupported;
 		if (isDHTSupported)
 		{
-			auto outcome = RunOnTorrentService (m_Tunnel,
+			auto outcome = RunEngineOperation (
 				[tunnel = m_Tunnel] ()
 				{
 					DHTStatistics stats;
@@ -1103,7 +1082,7 @@ namespace torrents
 				});
 			if (!outcome.success)
 				return ErrorResponse (
-					GetTag (jsonRequest), outcome.timedOut ? RPC_SERVICE_TIMEOUT_ERROR : RPC_SERVICE_FAILURE_ERROR);
+					GetTag (jsonRequest), RPC_SERVICE_FAILURE_ERROR);
 			response["numNodes"] = outcome.value.numNodes;
 			response["numBuckets"] = outcome.value.numBuckets;
 			response["numTorrents"] = outcome.value.numTorrents;
@@ -1123,24 +1102,26 @@ namespace torrents
 			const auto & trackers = arguments.at ("trackerAdd").as_array ();
 			if (trackers.size () > MAX_RPC_TRACKERS_PER_REQUEST)
 				return ErrorResponse (GetTag (jsonRequest), "Too many trackers");
+			std::vector<std::string_view> validated;
+			validated.reserve (trackers.size ());
 			for (const auto & it : trackers)
 			{
 				if (!it.is_string ()) return ErrorResponse (GetTag (jsonRequest), "Invalid Request");
 				const auto & announceString = it.as_string ();
 				std::string_view announce (announceString.data (), announceString.size ());
-				if (announce.empty () || announce.size () > MAX_RPC_TRACKER_LENGTH
-					|| announce.find ('\n') != std::string_view::npos)
+				if (announce.empty () || announce.size () > MAX_TRACKER_ANNOUNCE_LENGTH
+					|| std::any_of (announce.begin (), announce.end (),
+						[] (unsigned char c) { return c <= 32 || c == 127; }))
 					return ErrorResponse (GetTag (jsonRequest), "Invalid tracker");
-				// A timed-out task is not cancellable: it can still add the
-				// tracker, but it owns its announce string and tunnel reference.
-				auto outcome = RunOnTorrentService (m_Tunnel, [tunnel = m_Tunnel, announce = std::string (announce)] ()
-					{ return tunnel->AddTracker (announce, true); });
-				if (!outcome.success)
-					return ErrorResponse (
-						GetTag (jsonRequest), outcome.timedOut ? RPC_SERVICE_TIMEOUT_ERROR : RPC_SERVICE_FAILURE_ERROR);
-				if (outcome.value < 0)
+				const i2p::http::URL url (announce);
+				if ((url.schema != "http" && url.schema != "udp")
+					|| !IsI2PTrackerHost (url.host) || !url.user.empty ()
+					|| !url.pass.empty () || url.ipv6)
 					return ErrorResponse (GetTag (jsonRequest), "Tracker is not a valid I2P announce URL");
+				validated.push_back (announce);
 			}
+			if (!m_Tunnel->AddCommonTrackers (validated))
+				return ErrorResponse (GetTag (jsonRequest), "Tracker registry is full");
 		}
 		boost::json::object response; // always empty
 		return SuccessResponse (GetTag (jsonRequest), std::move (response));
@@ -1161,6 +1142,11 @@ namespace torrents
 	void TorrentsRPCSession::Close ()
 	{
 		if (std::exchange (m_Closed, true)) return;
+		if (auto work = std::exchange (m_EngineWork, nullptr))
+		{
+			std::lock_guard lock (work->dispatch->mutex);
+			work->canceled = true;
+		}
 		boost::system::error_code ignored;
 		m_Socket.cancel (ignored);
 		m_Socket.close (ignored);
@@ -1211,7 +1197,7 @@ namespace torrents
 			return;
 		}
 
-		const auto & request = m_RequestParser.get ();
+		auto & request = m_RequestParser.get ();
 		if (request.method () != boost::beast::http::verb::post)
 		{
 			// GET, HEAD, OPTIONS and every other method are not resources here.
@@ -1273,12 +1259,95 @@ namespace torrents
 			return;
 		}
 
-		JSONRPCHandler jsonHandler (tunnel);
-		auto response = jsonHandler.HandleRequest (request.body ());
-		if (!response.empty ())
-			SendResponse (boost::beast::http::status::ok, response);
-		else
+		auto state = m_State.lock ();
+		if (!state) return Close ();
+		auto dispatch = state->dispatch;
+		try
+		{
+			const auto expires = std::chrono::steady_clock::now () + RPC_SERVICE_TIMEOUT;
+			{
+				std::lock_guard lock (dispatch->mutex);
+				if (dispatch->replies && dispatch->pending.load () < TorrentsRPCServer::MAX_SESSIONS)
+				{
+					m_EngineWork = std::make_shared<TorrentsRPCWork> (dispatch);
+					m_EngineWork->generation = dispatch->generation;
+					m_EngineWork->deadline = expires;
+				}
+			}
+			if (!m_EngineWork)
+				return SendResponse (boost::beast::http::status::service_unavailable);
+
+			m_Deadline.expires_at (expires);
+			m_Deadline.async_wait ([weak = weak_from_this ()] (const boost::system::error_code & error)
+			{
+				if (error) return;
+				auto session = weak.lock ();
+				if (!session || !session->m_EngineWork) return;
+				auto work = std::exchange (session->m_EngineWork, nullptr);
+				bool started;
+				{
+					std::lock_guard lock (work->dispatch->mutex);
+					work->canceled = true;
+					started = work->admitted;
+				}
+				const auto status = started ? boost::beast::http::status::gateway_timeout
+					: boost::beast::http::status::service_unavailable;
+				try
+				{
+					session->SendResponse (
+						status, started ? "Torrent operation outcome unknown" : "Torrent operation did not start");
+				}
+				catch (...)
+				{
+					session->Close ();
+				}
+			});
+			// The queued job owns its bytes and reservation, and borrows the
+			// tunnel to avoid a cycle with its executor.
+			boost::asio::post (tunnel->GetService (),
+				[weak = weak_from_this (), target = std::weak_ptr<TorrentsTunnel> (tunnel),
+				 work = m_EngineWork, body = std::move (request.body ())] ()
+				{
+					auto engine = target.lock ();
+					if (!engine) return;
+					auto & gate = *work->dispatch;
+					{
+						std::lock_guard lock (gate.mutex);
+						if (!gate.replies || gate.generation != work->generation || work->canceled
+							|| std::chrono::steady_clock::now () >= work->deadline) return;
+						work->admitted = true;
+					}
+					try
+					{
+						auto response = JSONRPCHandler (std::move (engine)).HandleRequest (body);
+						std::lock_guard lock (gate.mutex);
+						if (!gate.replies || gate.generation != work->generation || work->canceled) return;
+						boost::asio::post (*gate.replies, [weak, work, response = std::move (response)] ()
+						{
+							auto session = weak.lock ();
+							if (!session || session->m_Closed || session->m_EngineWork != work
+								|| std::chrono::steady_clock::now () >= work->deadline) return;
+							session->m_EngineWork.reset ();
+							try
+							{
+								session->SendResponse (boost::beast::http::status::ok, response);
+							}
+							catch (...)
+							{
+								session->Close ();
+							}
+						});
+					}
+					catch (...)
+					{
+						LogPrint (eLogWarning, "TorrentsRPC: Failed to complete engine request");
+					}
+				});
+		}
+		catch (...)
+		{
 			Close ();
+		}
 	}
 
 	void TorrentsRPCSession::SendResponse (boost::beast::http::status result, std::string_view data)
@@ -1370,6 +1439,10 @@ namespace torrents
 			}
 		}
 		m_State->running = true;
+		{
+			std::lock_guard lock (m_State->dispatch->mutex);
+			m_State->dispatch->replies = &GetService ();
+		}
 		try
 		{
 			StartIOService ();
@@ -1378,6 +1451,11 @@ namespace torrents
 		catch (...)
 		{
 			m_State->running = false;
+			{
+				std::lock_guard lock (m_State->dispatch->mutex);
+				m_State->dispatch->replies = nullptr;
+				++m_State->dispatch->generation;
+			}
 			// No session can publish while admission is locked. Release it
 			// before joining a worker that may be waiting at this barrier.
 			admission.unlock ();
@@ -1400,6 +1478,9 @@ namespace torrents
 		{
 			std::lock_guard admission (m_State->mutex);
 			m_State->running = false;
+			std::lock_guard lock (m_State->dispatch->mutex);
+			m_State->dispatch->replies = nullptr;
+			++m_State->dispatch->generation;
 		}
 		StopIOService ();
 		std::map<uint64_t, std::shared_ptr<TorrentsRPCSession>> sessions;

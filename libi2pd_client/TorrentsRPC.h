@@ -28,6 +28,7 @@ namespace i2p
 namespace torrents
 {
 	struct TorrentsRPCState;
+	struct TorrentsRPCWork;
 	class TorrentsTunnel;
 
 	/// One bounded request. Completions own the session, and the weak
@@ -56,6 +57,7 @@ namespace torrents
 		boost::beast::flat_buffer m_ReceiveBuffer;
 		boost::beast::http::request_parser<boost::beast::http::string_body> m_RequestParser;
 		boost::beast::http::response<boost::beast::http::string_body> m_Response;
+		std::shared_ptr<TorrentsRPCWork> m_EngineWork;
 	};
 
 	/// Loopback RPC with bounded sessions and read/write deadlines.

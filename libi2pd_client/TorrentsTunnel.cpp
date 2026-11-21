@@ -3298,6 +3298,12 @@ namespace torrents
 	std::optional<size_t> TorrentsTunnel::ResolveTrackerSlot (std::string_view announce, bool isCommon, bool create)
 	{
 		std::lock_guard<std::mutex> lock (m_TrackerRegistryMutex);
+		return ResolveTrackerSlotLocked (announce, isCommon, create, m_Trackers, m_TrackerSlots);
+	}
+
+	std::optional<size_t> TorrentsTunnel::ResolveTrackerSlotLocked (std::string_view announce, bool isCommon, bool create,
+		std::vector<TrackerInfo> & trackers, TrackerSlots & slots)
+	{
 		if (announce.empty ()
 			|| std::any_of (announce.begin (), announce.end (), [] (unsigned char c) { return c <= 32 || c == 127; }))
 			return std::nullopt;
@@ -3314,19 +3320,19 @@ namespace torrents
 		}
 		const auto normalized = reqURL.to_string ();
 		std::optional<size_t> existing;
-		for (size_t i = 0; i < m_Trackers.size (); i++)
+		for (size_t i = 0; i < trackers.size (); i++)
 		{
-			if (!IsTrackerSlotLive (m_TrackerSlots, i)) continue;
+			if (!IsTrackerSlotLive (slots, i)) continue;
 			// Paths and schemes identify distinct tracker endpoints even on the
 			// same I2P destination; do not merge private announce URLs.
-			if (std::get<0> (m_Trackers[i]).to_string () == normalized)
+			if (std::get<0> (trackers[i]).to_string () == normalized)
 			{
 				existing = i;
 				break;
 			}
 		}
 		if (!create) return existing;
-		const auto admission = AdmitTrackerSlot (m_TrackerSlots, existing);
+		const auto admission = AdmitTrackerSlot (slots, existing);
 		if (!admission.trackerID)
 		{
 			LogPrint (eLogWarning, "TorrentsTunnel: Ignoring tracker above the limit ", MAX_NUM_TRACKERS);
@@ -3338,18 +3344,18 @@ namespace torrents
 			// A released slot is re-initialised here: no connection id, no
 			// expiration and no from_port survive from the previous announce
 			// URL.
-			if (index < m_Trackers.size ())
+			if (index < trackers.size ())
 			{
-				m_Trackers[index] = TrackerInfo { reqURL, isCommon, 0, 0, 0 };
-				m_TrackerSlots[index] = TrackerSlotState { 0, isCommon };
+				trackers[index] = TrackerInfo { reqURL, isCommon, 0, 0, 0 };
+				slots[index] = TrackerSlotState { 0, isCommon };
 			}
 			else
 			{
-				m_Trackers.emplace_back (TrackerInfo { reqURL, isCommon, 0, 0, 0 });
+				trackers.emplace_back (TrackerInfo { reqURL, isCommon, 0, 0, 0 });
 				// Keep the parallel registries equal if slot allocation fails.
-				auto rollback = i2p::modern::ScopeExit ([this] { m_Trackers.pop_back (); });
+				auto rollback = i2p::modern::ScopeExit ([&trackers] { trackers.pop_back (); });
 				if (m_TrackerAppendCheckpointForTesting) m_TrackerAppendCheckpointForTesting ();
-				m_TrackerSlots.emplace_back (TrackerSlotState { 0, isCommon });
+				slots.emplace_back (TrackerSlotState { 0, isCommon });
 				rollback.dismiss ();
 			}
 		}
@@ -4160,6 +4166,25 @@ namespace torrents
 		if (!slot) return -1;
 		AcquireTrackerSlot (*slot);
 		return static_cast<int> (*slot);
+	}
+
+	bool TorrentsTunnel::AddCommonTrackers (std::span<const std::string_view> announces)
+	{
+		if (announces.empty ()) return true;
+		std::lock_guard<std::mutex> lock (m_TrackerRegistryMutex);
+		// Both bounded tables keep their indexes. Readers observe either
+		// the prior pair or the committed pair under this same lock.
+		auto trackers = m_Trackers;
+		auto slots = m_TrackerSlots;
+		for (auto announce : announces)
+		{
+			const auto slot = ResolveTrackerSlotLocked (announce, true, true, trackers, slots);
+			if (!slot) return false;
+			AcquireTrackerSlotReference (slots, *slot);
+		}
+		m_Trackers.swap (trackers);
+		m_TrackerSlots.swap (slots);
+		return true;
 	}
 
 	void TorrentsTunnel::RegisterTorrentTrackers (const Torrent & torrent)

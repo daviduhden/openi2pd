@@ -1304,9 +1304,14 @@ require_runtime_order("android/app/src/main/cpp/i2pd_android.cpp"
   "e.env->ExceptionClear ();" "handles.insert (" "closeUncommitted.dismiss ();")
 
 require_runtime_order("libi2pd_client/TorrentsTunnel.cpp"
-  "m_Trackers.emplace_back (TrackerInfo { reqURL," "void TorrentsTunnel::TrackerRequestSent ("
-  "auto rollback =" "m_Trackers.pop_back ();"
-  "m_TrackerSlots.emplace_back (" "rollback.dismiss ();")
+  "trackers.emplace_back (TrackerInfo { reqURL," "void TorrentsTunnel::TrackerRequestSent ("
+  "auto rollback =" "trackers.pop_back ();"
+  "slots.emplace_back (" "rollback.dismiss ();")
+require_runtime_order("libi2pd_client/TorrentsTunnel.cpp"
+  "bool TorrentsTunnel::AddCommonTrackers (" "void TorrentsTunnel::RegisterTorrentTrackers ("
+  "std::lock_guard" "auto trackers = m_Trackers;" "auto slots = m_TrackerSlots;"
+  "ResolveTrackerSlotLocked (announce, true, true, trackers, slots)" "if (!slot) return false;"
+  "AcquireTrackerSlotReference (slots, *slot);" "m_Trackers.swap (trackers);" "m_TrackerSlots.swap (slots);")
 require_runtime_order("libi2pd_client/TorrentsDHT.cpp"
   "PrivateInfoHashSet::Admission PrivateInfoHashSet::Insert ("
   "bool PrivateInfoHashSet::Erase ("

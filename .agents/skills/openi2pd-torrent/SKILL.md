@@ -92,6 +92,20 @@ Do not let them edit, build or run tests.
 
 ## Conventions
 
+- The optional Transmission RPC accepts and writes on its own executor.
+  Run the authenticated JSON request on the torrent executor. Keep the
+  cross-executor reservation charged until the queued operation releases
+  it, including after response timeout. Gate any reply under the same
+  mutex that revokes the RPC executor on shutdown.
+- Validate the complete tracker-add list before registering any URLs.
+  Capacity failure after a successful insertion reports possible partial
+  application. A response deadline before engine admission revokes the
+  work. An already admitted request can have an unknown outcome.
+- Resume verification completions borrow the tunnel and check the live
+  torrent instance before applying recovered state. A subsequent disk
+  cleanup rechecks that instance when admitted. This guard does not
+  move all file preparation state to the service executor.
+
 - Apply the [source documentation policy](../../../AGENTS.md#source-documentation-policy)
   to torrent state, bounded payload access and private-swarm behavior.
 
@@ -151,6 +165,9 @@ A typed null completion and an allocation exception are separate paths.
   transactionally. Roll back failed preparation before any incumbent eviction;
   test full-capacity and same/new-origin failures so quota loss cannot hide
   behind a correct total size. Reused slots must preserve equal registry sizes.
+  RPC tracker batches stage both bounded registry tables under one lock
+  and publish only after every URL is admitted. Exercise a batch one
+  slot over capacity and verify that a singleton can still use that slot.
 
 - Outgoing CANCEL uses the exact request tuple and existing wire writer.
   Fast cancellation retains bounded authority until Piece/Reject, preventing
@@ -663,3 +680,9 @@ Record the exact AGENTS.md `Tracking states` value and state which validations w
 - [Native torrent architecture](../../../docs/torrent/architecture.md)
 - [I2PSnark compatibility](../../../docs/torrent/snark-compatibility.md)
 - [Global policy](../../../AGENTS.md)
+
+When initializing torrent files, carry existing-file observations and
+a bounded resume bitfield together into one owner-executor completion.
+Validate the live instance, apply both observations and only then schedule
+verification. Existing bytes and resume claims remain unavailable until
+hashed. Backend and path setup still belong to the current disk phase.

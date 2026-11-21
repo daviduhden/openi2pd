@@ -238,6 +238,12 @@ void TestRPCAdmissionAndRestart ()
 	assert (ReadClosedRPC (orphan).empty ());
 }
 
+std::string RpcPost (std::string_view body)
+{
+	return "POST /rpc HTTP/1.1\r\nHost: localhost\r\nContent-Type: application/json\r\nContent-Length: "
+		+ std::to_string (body.size ()) + "\r\n\r\n" + std::string (body);
+}
+
 std::string Bytes (std::string_view value)
 {
 	return std::to_string (value.size ()) + ":" + std::string (value);
@@ -1386,6 +1392,49 @@ void TestRPCMetadataFields ()
 		assert (std::string_view (returnedCreator.data (), returnedCreator.size ())
 			== (populated ? creator : std::string { }));
 	}
+	const auto trackerCount = tunnel->GetNumTrackers ();
+	boost::asio::ip::tcp::socket invalidBatch (clientService);
+	invalidBatch.connect (server.GetEndpoint ());
+	const auto invalidRequest = RpcPost (
+		R"({"method":"torrent-set","arguments":{"trackerAdd":["http://batch.i2p/announce","https://other.example/announce"]}})");
+	boost::asio::write (invalidBatch, boost::asio::buffer (invalidRequest));
+	assert (ReadClosedRPC (invalidBatch).find ("Tracker is not a valid I2P announce URL") != std::string::npos);
+	assert (tunnel->GetNumTrackers () == trackerCount);
+	boost::asio::ip::tcp::socket validBatch (clientService);
+	validBatch.connect (server.GetEndpoint ());
+	const auto validRequest = RpcPost (
+		R"({"method":"torrent-set","arguments":{"trackerAdd":["http://batch.i2p/announce"]}})");
+	boost::asio::write (validBatch, boost::asio::buffer (validRequest));
+	assert (ReadClosedRPC (validBatch).find (R"("result":"success")") != std::string::npos);
+	assert (tunnel->GetNumTrackers () == trackerCount + 1);
+	assert (tunnel->GetTrackerAnnounce (trackerCount) == "http://batch.i2p/announce");
+	server.Stop ();
+}
+
+void TestRPCExpiredRequestDoesNotMutate ()
+{
+	TempDir dir { MakeTempDir () };
+	boost::asio::io_context engine, clients;
+	auto keys = i2p::data::PrivateKeys::CreateRandomKeys (
+		i2p::data::SIGNING_KEY_TYPE_EDDSA_SHA512_ED25519, i2p::data::CRYPTO_KEY_TYPE_ELGAMAL, true);
+	auto destination = std::make_shared<i2p::client::ClientDestination> (engine, keys, false);
+	auto tunnel = std::make_shared<TorrentsTunnel> ("rpc-expiry", destination, dir.path.string (), "", false);
+	TorrentsRPCServer server ("127.0.0.1", 0);
+	server.AddTunnel ("", tunnel);
+	server.Start ();
+	const auto trackerCount = tunnel->GetNumTrackers ();
+	boost::asio::ip::tcp::socket client (clients);
+	client.connect (server.GetEndpoint ());
+	const auto request = RpcPost (
+		R"({"method":"torrent-set","arguments":{"trackerAdd":["http://expiry.i2p/announce"]}})");
+	boost::asio::write (client, boost::asio::buffer (request));
+	// The engine has no running thread, so expiry must precede admission.
+	const auto response = ReadClosedRPC (client);
+	assert (response.find ("503") != std::string::npos);
+	assert (response.find ("Torrent operation did not start") != std::string::npos);
+	engine.restart ();
+	assert (engine.poll () > 0); // Observe the queued work after revocation.
+	assert (tunnel->GetNumTrackers () == trackerCount);
 	server.Stop ();
 }
 
@@ -1572,6 +1621,7 @@ int main ()
 	TestMagnetRecovery ();
 	TestRPCAdmissionAndRestart ();
 	TestRPCMetadataFields ();
+	TestRPCExpiredRequestDoesNotMutate ();
 	TestI2PTrackerHostValidation ();
 	TestPieceBlockBounds ();
 	TestCanAcceptPieceBlock ();

@@ -38,6 +38,7 @@
 #include <compare>
 #include <cstdint>
 #include <tuple>
+#include <span>
 #include <boost/asio.hpp>
 #include <boost/beast.hpp>
 #include "HTTP.h"
@@ -401,6 +402,10 @@ namespace torrents
 		// Resolves/creates the slot and increments its reference count;
 		// returns the tracker id or -1 if not inserted.
 		int AddTracker (std::string_view announce, bool isCommon);
+		/// Admit common trackers on the service thread as one registry
+		/// update. Invalid URLs, capacity refusal and exceptions leave
+		/// the published registry and all stable slot IDs unchanged.
+		bool AddCommonTrackers (std::span<const std::string_view> announces);
 		std::shared_ptr<Torrent> FindTorrent (const Torrent::InfoHash & infoHash) const;
 		std::shared_ptr<Torrent> FindTorrentByID (int id) const;
 		std::vector<int> GetTorrentIDs () const;
@@ -566,6 +571,9 @@ namespace torrents
 		// URL into the lowest free slot (or append) without changing any
 		// reference count; returned indices are stable for the process.
 		std::optional<size_t> ResolveTrackerSlot (std::string_view announce, bool isCommon, bool create);
+		// Resolve against the supplied tables with the registry lock held.
+		std::optional<size_t> ResolveTrackerSlotLocked (std::string_view announce, bool isCommon, bool create,
+			std::vector<TrackerInfo> & trackers, TrackerSlots & slots);
 		void AcquireTrackerSlot (size_t trackerID);
 		// Decrements one membership. A non-common slot whose count reaches
 		// zero becomes free (its announce is cleared) and may be reused

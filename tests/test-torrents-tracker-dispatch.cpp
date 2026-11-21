@@ -30,10 +30,13 @@
  * API that is synchronous by construction.
  */
 
+#include <array>
 #include <cassert>
 #include <cstdint>
 #include <optional>
+#include <span>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 #include "Torrents.h"
@@ -254,12 +257,22 @@ void TestTrackerRegistryApi ()
 	// Fill the registry through the public API: every distinct I2P
 	// announce URL
 	// takes the next appended index until the cap is reached.
-	for (size_t i = 0; i < MAX_NUM_TRACKERS; i++)
+	for (size_t i = 0; i < MAX_NUM_TRACKERS - 1; i++)
 	{
 		const std::string announce = "http://tracker" + std::to_string (i) + ".i2p/announce";
 		assert (tunnel.AddTracker (announce, false) == static_cast<int> (i));
 	}
+	// The first URL fits; the second must refuse the entire batch.
+	const std::array<std::string_view, 2> batch {
+		"http://tracker-new.i2p/announce", "http://tracker-extra.i2p/announce"
+	};
+	assert (!tunnel.AddCommonTrackers (batch));
+	assert (tunnel.GetNumTrackers () == MAX_NUM_TRACKERS - 1);
+	assert (tunnel.GetTrackerAnnounce (MAX_NUM_TRACKERS - 1).empty ());
+	assert (tunnel.GetTrackerAnnounce (7) == "http://tracker7.i2p/announce");
+	assert (tunnel.AddCommonTrackers (std::span { batch }.first (1)));
 	assert (tunnel.GetNumTrackers () == MAX_NUM_TRACKERS);
+	assert (tunnel.GetTrackerAnnounce (MAX_NUM_TRACKERS - 1) == batch.front ());
 	assert (tunnel.GetTrackerAnnounce (7) == "http://tracker7.i2p/announce");
 
 	// An identical announce URL resolves to its existing slot and only
