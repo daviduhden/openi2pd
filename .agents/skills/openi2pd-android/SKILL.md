@@ -94,6 +94,11 @@ run Gradle, install an APK or run a device test.
 - Keep Java source/target 25, exact JDK 25 toolchain, Gradle JVM >=25, AGP
   9.4.1, compile/target 37, `minSdk 29` and NDK r30 unless a deliberate
   toolchain task updates the whole matrix.
+- Use explicit assignment for Gradle-generated Groovy property setters.
+  Keep real DSL method calls, such as `abiFilters(*i2pdAbis)`, as calls.
+  Update literal pin checks in `android/tools/java25-probe/check-config.sh`
+  alongside syntax changes. Trace a plugin-facing deprecation to its caller
+  before changing an unrelated app property.
 - The APK contains ART-executed DEX, not a JDK. Do not add a JDK, V8, QuickJS or
   a runtime download.
 - Keep Material 3/Views/Java; no Kotlin/Compose migration unless explicitly

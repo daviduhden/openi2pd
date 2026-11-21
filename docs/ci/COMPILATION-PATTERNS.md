@@ -611,3 +611,10 @@ execution and secondary scans independently. Gate consumers on the tool
 install outcome while allowing scans after a successful setup and a failed
 generator. Compare runner package indexes across siblings before
 attributing a missing package to an image-wide regression.
+
+### Gradle DSL property migration
+
+Translate reported synthetic property setters to explicit assignment.
+Search sibling Gradle sources for equivalent settings and update exact
+source guards with the DSL. Keep real AGP method calls intact. Attribute
+dependency deprecations from a call stack before editing dependencies.

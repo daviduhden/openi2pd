@@ -1308,3 +1308,13 @@ Detailed warning mode was only in the local tree. Homebrew Landlock ABI
 notices recurred on Linux. No own native compiler warning was identified
 in the recovered logs. Windows and Android runtime evidence is tracked
 separately.
+
+## 36ae883e Gradle deprecation attribution
+
+CW-36-01. [Android arm64 job](https://github.com/daviduhden/openi2pd/actions/runs/44927502281/job/136916729528)
+on `36ae883e` exposed 11 distinct first-party Groovy DSL properties using
+deprecated generated assignment syntax. `android/app/build.gradle` now
+uses explicit assignments and the Java 25 config guard checks those
+spellings. The remaining Gradle 11 Configuration.setVisible warning has
+no matching call in maintained Gradle source. Kotlin opt-out and arm64
+ChromeOS ABI warnings also persist. Pending CI tests.

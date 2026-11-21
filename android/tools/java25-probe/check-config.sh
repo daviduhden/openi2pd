@@ -60,8 +60,13 @@ grep -Fq 'org.gradle.jvmargs=-Xmx' "$properties" ||
 	fail 'Gradle daemon heap is not bounded'
 grep -Fq 'org.gradle.workers.max=' "$properties" ||
 	fail 'Gradle worker count is not bounded'
-grep -Fq 'version "3.31.6"' "$app_gradle" ||
+grep -Fq 'version = "3.31.6"' "$app_gradle" ||
 	fail 'SDK CMake version pin is not 3.31.6'
+# These settings are properties. Gradle 10 removes their generated
+# Groovy space and method assignment syntax.
+if grep -Eq '^[[:space:]]*(namespace|enable|universalApk|debugSymbolLevel|version|buildConfig|aidl|abortOnError|checkReleaseBuilds|textReport|xmlReport)([[:space:]]+[^=[:space:]]|[[:space:]]*\()' "$app_gradle"; then
+	fail 'deprecated Groovy Android property assignment'
+fi
 grep -Fq '"-DANDROID_STL=c++_shared"' "$app_gradle" ||
 	fail 'JNI build is not aligned with the c++_shared vcpkg STL'
 grep -Fq '"-DI2PD_OPENSSL_EXPECT=OpenSSL"' "$app_gradle" ||

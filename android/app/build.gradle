@@ -53,7 +53,7 @@ dependencies {
 }
 
 android {
-    namespace 'org.openi2pd.router'
+    namespace = 'org.openi2pd.router'
     compileSdk 37
     // NDK r30 LTS provides the current Clang/C++23 toolchain and
     // getifaddrs at the API 29 baseline. ndkVersion belongs to the
@@ -104,10 +104,10 @@ android {
 
     splits {
         abi {
-            enable true
+            enable = true
             reset()
             include(*i2pdAbis)
-            universalApk true
+            universalApk = true
         }
     }
 
@@ -121,7 +121,7 @@ android {
                 // Keep a symbol artifact for native crash triage even
                 // though release packaging remains unsigned and
                 // unminified.
-                debugSymbolLevel 'FULL'
+                debugSymbolLevel = 'FULL'
             }
         }
         debug {
@@ -134,7 +134,7 @@ android {
             // The SDK CMake package is explicit: the project requires
             // 3.24+ and must not silently fall back to the older
             // bundled default.
-            version "3.31.6"
+            version = "3.31.6"
             path "src/main/cpp/CMakeLists.txt"
         }
     }
@@ -154,15 +154,15 @@ android {
     buildFeatures {
         // DaemonWrapper uses BuildConfig.VERSION_NAME for the asset
         // cache key.
-        buildConfig true
-        aidl true
+        buildConfig = true
+        aidl = true
     }
 
     lint {
-        abortOnError true
-        checkReleaseBuilds true
-        textReport true
-        xmlReport true
+        abortOnError = true
+        checkReleaseBuilds = true
+        textReport = true
+        xmlReport = true
     }
 
     testOptions {
